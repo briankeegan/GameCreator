@@ -183,6 +183,8 @@
     this.cappedDecisions = 0;
     this.cappedMovesDropped = 0;
     this.takeTheRow = opts.takeTheRow === true;
+    this.reachOnly = opts.reachOnly === true;
+    this.unreachableDropped = 0;
     this.starvedDecisions = 0;
     this.allDoomedNow = false;
     // Off only for the harness that measures what the rule is worth. A rule
@@ -917,6 +919,44 @@
     return live;
   };
 
+  // A MOVE IT CANNOT REACH IN TIME IS NOT A MOVE.
+  //
+  // The cursor walks to the square and the board keeps moving while it
+  // walks. Read off a dying board: swap 2,3 then 6,1 then 1,5 then 5,1 --
+  // the length of the board four times over, with the floor rising, so the
+  // position it planned against was gone before it arrived and the swap
+  // landed on different panels.
+  //
+  // travelCost is a weight, so a big enough predicted combo outbids it. In
+  // danger it is not a preference: if the row lands before the cursor does,
+  // the move is a plan for a board that will not exist.
+  PuyoCpu.prototype._framesToRise = function () {
+    var st = this.stack;
+    if (!st || !this.rise) return 1e9;
+    var engine = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
+    if (!engine || typeof engine.riseTime !== 'function') return 1e9;
+    return (st.stopTime || 0) + (st.preStopTime || 0) +
+           st.riseTimer + Math.max(0, st.displacement - 1) * engine.riseTime(st.speed);
+  };
+  PuyoCpu.prototype.REACH_ROWS = 4;
+  PuyoCpu.prototype._reachable = function (cands) {
+    if (!this.reachOnly || !cands || cands.length < 2) return cands;
+    var b = this._board;
+    if (!b) return cands;
+    // Only while the stack is high enough that a row landing matters.
+    if (this._topRowOf(b) <= b.height - this.REACH_ROWS) return cands;
+    var budget = this._framesToRise();
+    if (!isFinite(budget) || budget > 600) return cands;
+    var live = [], i, t;
+    for (i = 0; i < cands.length; i++) {
+      t = cands[i].travel;
+      if (t == null || t <= budget) live.push(cands[i]);
+    }
+    if (!live.length || live.length === cands.length) return cands;
+    this.unreachableDropped += cands.length - live.length;
+    return live;
+  };
+
   // ROOM FOR WHAT IS ALREADY COMING. The cap is not a number, it is the
   // ceiling minus the rows queued against this board minus a margin.
   //
@@ -1047,6 +1087,22 @@
     if (stack.manualRaise) return false;
     if (typeof stack.isToppedOut === 'function' && stack.isToppedOut()) return false;
     if (typeof stack.hasFallingGarbage === 'function' && stack.hasFallingGarbage()) return false;
+    // THE ENGINE WILL NOT ACT ON IT WHILE THE FLOOR IS LOCKED.
+    //
+    // handleManualRaise returns immediately unless riseLock is false, and
+    // updateRiseLock sets it whenever a swap is queued, the screen is shaking
+    // or ANY panel is in motion. On a stack full of holes something is always
+    // falling, so the raise was offered, scored as though a fresh row
+    // arrives, chosen -- and nothing happened. Read off one board: six raises
+    // in a row with row 1 unchanged at 252132 throughout, while the panels
+    // under the garbage drained from three to one.
+    //
+    // A move the engine refuses is not a move. The lock is re-decided every
+    // frame, so a raise blocked by a passing cascade is available again at
+    // the next decision twelve frames later.
+    if (stack.riseLock) return false;
+    if (typeof stack.hasActivePanels === 'function' && stack.hasActivePanels()) return false;
+    if ((stack.shakeTime || 0) > 0) return false;
     return true;
   };
 
@@ -1134,7 +1190,7 @@
                    travel: this._scoredTravel,
                    earnedStop: resolved.stopTimeEarned || 0 });
     }
-    return this._starved(this._heightCap(this._doomed(this._survivors(cands))));
+    return this._reachable(this._starved(this._heightCap(this._doomed(this._survivors(cands)))));
   };
 
   // Narrow the pool to the moves this decision is allowed to choose between,
