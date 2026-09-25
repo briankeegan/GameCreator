@@ -306,6 +306,39 @@ var MOVE_FRAMES = 4;
     return count;
   }
 
+  // ------------------------------------------------------------ chainLayers
+  //
+  // HOW MANY DIFFERENT HEIGHTS THE LINKS SIT AT.
+  //
+  // linksV calls stacked pairs "cascade fuel", and it is right, but it
+  // cannot tell six pairs stacked in one place from six pairs spread up the
+  // board. The first is one combo. The second is the shape a long chain is
+  // made of: a clear at the bottom drops panels into the pair above it,
+  // which clears and drops into the pair above that.
+  //
+  // So this counts the DISTINCT ROWS holding at least one same-coloured
+  // adjacent pair. Rows rather than pairs, because a second pair on a row
+  // already counted adds nothing a cascade can use -- it fires with the
+  // first one, not after it.
+  //
+  // Both orientations count. A horizontal pair one row up is as much a
+  // landing place for a falling panel as a vertical one.
+  function chainLayers(input) {
+    var board = input.board, grid = board.grid, W = board.width, H = board.height;
+    var rows = 0, r, c, v;
+    for (r = 1; r <= H; r++) {
+      var has = false;
+      for (c = 1; c <= W && !has; c++) {
+        v = grid[r][c];
+        if (v <= 0) continue;
+        if (c < W && grid[r][c + 1] === v) has = true;
+        else if (r < H && grid[r + 1][c] === v) has = true;
+      }
+      if (has) rows++;
+    }
+    return rows;
+  }
+
   // Per colour: the mean Manhattan distance of its panels from their centroid, summed over colours. Colours with one panel are skipped.
   function colourVariance(input) {
     var board = input.board, grid = board.grid, W = board.width, H = board.height;
@@ -709,6 +742,7 @@ var MOVE_FRAMES = 4;
     travelCost: travelCost,
     _matchedCellsNear: matchedCellsNear,
     latentChain: latentChain,
+    chainLayers: chainLayers,
     garbageCleared: garbageCleared,
     stopTimeEarned: stopTimeEarned,
     brokeGarbage: brokeGarbage,
