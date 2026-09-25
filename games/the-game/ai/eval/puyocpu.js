@@ -176,11 +176,6 @@
     this.deepSurvival = opts.deepSurvival !== false;
     this.doomedDecisions = 0;
     this.doomedMovesDropped = 0;
-    // RULES 15, off until it has earned its cost: a rollout per candidate.
-    this.ownPlay = opts.ownPlay === true;
-    this.ownPlayDoomedDecisions = 0;
-    this.ownPlayMovesDropped = 0;
-    this.ownPlayRollouts = 0;
     // ON. 65% survival against an unconstrained equal over 96 duels, 62 of
     // 96 against 48 expected, with sent RISING 35.7 -> 37.0: it is not
     // trading attack for safety, it is clearing instead of being buried.
@@ -691,7 +686,9 @@
     if (!cands || !cands.length) return cands;
     var live = [], i;
     for (i = 0; i < cands.length; i++) {
-      if (!this._boardToppedOut(cands[i].board)) live.push(cands[i]);
+      if (this._boardToppedOut(cands[i].board)) continue;
+      if (this._diesToQueue(cands[i].board)) continue;
+      live.push(cands[i]);
     }
     // MEASURED ALWAYS, REFUSED ONLY WHEN THE RULE IS ON. These read the board,
     // they do not change the move, and the harness that switches the refusals
@@ -780,8 +777,20 @@
   // them multiplies the work by ten and cannot change the answer.
   PuyoCpu.prototype._survivesRise = function (board, depth) {
     if (this._boardToppedOut(board)) return false;
+    // The queue lands whatever the floor does.
+    if (this._diesToQueue(board)) return false;
     if (depth <= 0) return true;
     var risen = board.clone().rise(this._incoming);
+    // TOPPED OUT BEFORE THE CASCADE, NOT AFTER IT. The resolve below settles
+    // the whole cascade in zero time; the engine takes flash + face + pop to
+    // do it, dozens of frames, and the board is topped out for every one of
+    // them. maxHealth is 1 at level 10, so the drain kills it on the FIRST
+    // such frame -- traced: f902 the row lands and the top reads 12, f903
+    // health 0. Asking after the resolve let a rise that pushed row 11 into
+    // row 12 report survival because the new bottom row happened to complete
+    // a match, and the bot played it. That is the death this check exists to
+    // refuse.
+    if (this._boardToppedOut(risen)) return false;
     this._resolveCandidate(risen);
     // A TOPPED-OUT BOARD HAS NO NEXT MOVE. maxHealth is 1 at level 10, so the
     // drain runs the first frame the board reads topped out and the game is
@@ -789,7 +798,7 @@
     // swap that would have saved it. Searching for one anyway is what made
     // this report survival on 14 of 36 deaths: row 11 full, row 12 empty, the
     // rise pushes it over, and a swap on the dead board answered yes.
-    if (this._boardToppedOut(risen)) return false;
+    if (this._boardToppedOut(risen) || this._diesToQueue(risen)) return false;
     if (this._survivesRise(risen, depth - 1)) return true;
     var swaps = risen.legalSwaps(), i, t, r;
     for (i = 0; i < swaps.length; i++) {
@@ -801,48 +810,6 @@
       if (this._survivesRise(t, depth - 1)) return true;
     }
     return false;
-  };
-
-  // WILL THE BOT ITSELF DIE FROM HERE.
-  //
-  // _survivesRise asks whether a survivable line EXISTS, which assumes
-  // perfect play afterwards. This bot does not play perfectly -- it follows
-  // its score -- so that question passed 16 of 20.5 moves on positions its
-  // own play then lost, measured over 48 deaths at 25 to 40 decisions out.
-  // Proving something true of a player that is not this one is not a
-  // requirement, it is a formality.
-  //
-  // So roll THIS bot forward instead: greedy on the same weights, one row of
-  // rise between decisions, and report whether it is still standing. A move
-  // that leads somewhere its own play dies is not a move.
-  PuyoCpu.prototype._survivesOwnPlay = function (board, steps) {
-    var b = board, i, j, sw, best, bestScore, cand, r, t;
-    for (i = 0; i < steps; i++) {
-      if (this._boardToppedOut(b)) return false;
-      b = b.clone().rise(this._incoming);
-      if (this._boardToppedOut(b)) return false;
-      this._resolveCandidate(b);
-      if (this._boardToppedOut(b)) return false;
-      // Greedy on the same evaluator the real decision uses. Hold is
-      // candidate zero here as well, so standing still can win the step.
-      best = null; bestScore = -Infinity;
-      cand = b.clone();
-      r = this._resolveCandidate(cand);
-      if (!this._boardToppedOut(cand)) { best = cand; bestScore = this._score(cand, r, null); }
-      sw = b.legalSwaps();
-      for (j = 0; j < sw.length; j++) {
-        t = b.clone();
-        t.swap(sw[j][0], sw[j][1]);
-        r = this._resolveCandidate(t);
-        if (this._boardToppedOut(t)) continue;
-        var sc = this._score(t, r, sw[j]);
-        if (sc > bestScore) { bestScore = sc; best = t; }
-      }
-      // Nothing it would play leaves it standing: this line is lost.
-      if (!best) return false;
-      b = best;
-    }
-    return true;
   };
 
   // Only worth asking when the stack is high enough for a rise to matter.
@@ -928,53 +895,6 @@
     if (!live.length) { this.cappedDecisions++; return cands; }
     if (live.length === cands.length) return cands;
     this.cappedMovesDropped += cands.length - live.length;
-    return live;
-  };
-
-  // RULES 15. THE CHOICE SET IS LIMITED TO MOVES ITS OWN PLAY SURVIVES.
-  //
-  // _doomed above is an existence check and it does not bind: 16 of 20.5
-  // moves pass it at 25 to 40 decisions before a death, so it drops four
-  // options and the score picks freely among the rest while the position
-  // rots. This one rolls the bot's own greedy play forward instead, so a
-  // move is kept only if THIS bot, choosing the way it actually chooses,
-  // is still standing afterwards.
-  //
-  // WHEN EVERY MOVE FAILS IT, THE FILTER LIFTS and the board decides. That
-  // is the only death this rule permits: one where nothing it could have
-  // done would have helped.
-  //
-  // Gated on height because on a low board every rollout survives and the
-  // answer is bought at the price of a rollout per candidate.
-  // IN SCORE ORDER, AND IT STOPS EARLY. A rollout costs three steps of
-  // legalSwaps against every candidate, so testing all twenty is ~1,200
-  // extra resolves a decision and the trainer cannot afford it. The move
-  // finally played is near the top of the ply-1 order, so walking down that
-  // order and keeping the first OWNPLAY_TRIES survivors buys the same
-  // decision for a handful of rollouts. If none of them survives it keeps
-  // walking -- the guarantee is not traded for the saving.
-  PuyoCpu.prototype.OWNPLAY_ROWS = 6;
-  PuyoCpu.prototype.OWNPLAY_STEPS = 3;
-  PuyoCpu.prototype.OWNPLAY_TRIES = 6;
-  PuyoCpu.prototype._ownPlay = function (cands) {
-    if (!this.refuseSuicide || !this.ownPlay || !cands || cands.length < 2) return cands;
-    var top = this._board ? this._topRowOf(this._board) : 0;
-    if (!top || top <= (this._board.height - this.OWNPLAY_ROWS)) return cands;
-    var order = cands.slice().sort(function (a, b) { return b.score - a.score; });
-    var live = [], i;
-    for (i = 0; i < order.length; i++) {
-      if (this._survivesOwnPlay(order[i].board, this.OWNPLAY_STEPS)) {
-        live.push(order[i]);
-        if (live.length >= this.OWNPLAY_TRIES) break;
-      }
-      this.ownPlayRollouts++;
-    }
-    this.allOwnPlayDoomedNow = !live.length;
-    // NOTHING IT WOULD PLAY SURVIVES. The filter lifts and the board decides:
-    // the one death this rule permits.
-    if (!live.length) { this.ownPlayDoomedDecisions++; return cands; }
-    if (live.length === cands.length) return cands;
-    this.ownPlayMovesDropped += cands.length - live.length;
     return live;
   };
 
@@ -1147,7 +1067,7 @@
                    travel: this._scoredTravel,
                    earnedStop: resolved.stopTimeEarned || 0 });
     }
-    return this._heightCap(this._ownPlay(this._doomed(this._survivors(cands))));
+    return this._heightCap(this._doomed(this._survivors(cands)));
   };
 
   // Narrow the pool to the moves this decision is allowed to choose between,
@@ -1328,6 +1248,33 @@
   };
 
   // Is this board topped out.
+  // A MOVE THAT THE QUEUED GARBAGE WILL KILL IS A FATAL MOVE.
+  //
+  // The survival check tested the board against the FLOOR rising and never
+  // against the ceiling arriving, so it passed the move the bot died playing
+  // on 42 of 84 deaths: it asked "do I survive the stack creeping up two
+  // rows" while six rows of garbage were already in flight. The queue is
+  // visible the instant the attack crosses. Stack height plus queued rows
+  // over the ceiling is death, and nothing tested that sum.
+  PuyoCpu.prototype._diesToQueue = function (board) {
+    if (!board || !board.grid) return false;
+    var q = this._nextGarbageRows();
+    if (!q) return false;
+    return this._topRowOf(board) + q > board.height;
+  };
+
+  // THE NEXT PIECE, NOT THE WHOLE QUEUE. shouldDropGarbage takes
+  // incoming.shift() one at a time and hasFallingGarbage() blocks the next
+  // until that one has landed, so six queued rows are not six rows arriving
+  // together -- the bot gets decisions in between. Summing the queue refuses
+  // moves that were never fatal.
+  PuyoCpu.prototype._nextGarbageRows = function () {
+    var st = this.stack, w = this._board ? this._board.width : 6;
+    if (!st || !st.incoming || !st.incoming.length || !w) return 0;
+    var g = st.incoming[0];
+    return Math.ceil(((g.width || 0) * (g.height || 0)) / w);
+  };
+
   PuyoCpu.prototype._boardToppedOut = function (board) {
     if (!board || !board.grid) return false;
     var row = board.grid[board.height];

@@ -82,7 +82,6 @@ function makeCpu(stack, weights, opts) {
         sinkingEscape: opts.sinkingEscape,
         refuseBrokeRaise: opts.refuseBrokeRaise,
         deepSurvival: opts.deepSurvival,
-        ownPlay: opts.ownPlay === true,
         heightCap: opts.heightCap !== false,
         goal: opts.goal,
         alsoTake: opts.alsoTake,
