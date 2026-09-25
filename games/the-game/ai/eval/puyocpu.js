@@ -182,6 +182,8 @@
     this.heightCap = opts.heightCap !== false;
     this.cappedDecisions = 0;
     this.cappedMovesDropped = 0;
+    this.takeTheRow = opts.takeTheRow === true;
+    this.starvedDecisions = 0;
     this.allDoomedNow = false;
     // Off only for the harness that measures what the rule is worth. A rule
     // that cannot be switched off cannot be shown to be doing anything.
@@ -865,6 +867,56 @@
   // WHEN NO MOVE KEEPS IT UNDER, THE CAP LIFTS. Building needs height and a
   // bot that may never exceed row 8 can never hold a chain; the rule is that
   // it may not CHOOSE to go higher while a way down is on the table.
+  // STARVED UNDER A LID: TAKE THE ROW.
+  //
+  // A garbage slab only clears when a match TOUCHES it, so the only panels
+  // that can ever remove it are the ones in the row directly beneath. Clear
+  // those away and the lid becomes permanent: measured, 97% of decisions
+  // holding 12 or more garbage cells had NO legal move that breaks any of
+  // it -- not one of twelve to thirty moves -- because the row under the
+  // slab was down to two or three panels with no matching three among them.
+  // One board carried thirty garbage cells above eight colour panels.
+  //
+  // Raising is the only way to get material back, and the bot will not do
+  // it: across 2,168 decisions starved under a lid WITH room above, the
+  // raise was legal on 96% and it took it on 5% -- less often than it
+  // raises in general (9.3%). Height is what its weights see, and a raise
+  // adds height.
+  //
+  // So when it is starved and has the room, the row is the move. Gated on
+  // headroom, so this never pushes a stack toward the ceiling, and on a
+  // thin row, so it does not fire while it still has something to work with.
+  PuyoCpu.prototype.STARVED_UNDER = 4;
+  PuyoCpu.prototype.STARVED_HEADROOM = 3;
+  PuyoCpu.prototype._starved = function (cands) {
+    if (!this.takeTheRow || !cands || cands.length < 2) return cands;
+    var b = this._board;
+    if (!b) return cands;
+    var g = 0, top = 0, lid = 0, r, c, v;
+    for (r = 1; r <= b.height; r++) {
+      for (c = 1; c <= b.width; c++) {
+        v = b.grid[r][c];
+        if (!v) continue;
+        if (r > top) top = r;
+        if (v === -2) { g++; if (!lid || r < lid) lid = r; }
+      }
+    }
+    if (g < 12 || lid < 2) return cands;
+    if (b.height - top < this.STARVED_HEADROOM) return cands;
+    var under = 0;
+    for (c = 1; c <= b.width; c++) if (b.grid[lid - 1][c] > 0) under++;
+    if (under > this.STARVED_UNDER) return cands;
+    // A move that breaks the lid beats taking a row, so it is kept too.
+    var live = [], i, rr;
+    for (i = 0; i < cands.length; i++) {
+      rr = cands[i].resolved;
+      if (cands[i].kind === 'raise' || (rr && rr.garbage && rr.garbage.length)) live.push(cands[i]);
+    }
+    if (!live.length || live.length === cands.length) return cands;
+    this.starvedDecisions++;
+    return live;
+  };
+
   // ROOM FOR WHAT IS ALREADY COMING. The cap is not a number, it is the
   // ceiling minus the rows queued against this board minus a margin.
   //
@@ -1082,7 +1134,7 @@
                    travel: this._scoredTravel,
                    earnedStop: resolved.stopTimeEarned || 0 });
     }
-    return this._heightCap(this._doomed(this._survivors(cands)));
+    return this._starved(this._heightCap(this._doomed(this._survivors(cands))));
   };
 
   // Narrow the pool to the moves this decision is allowed to choose between,
