@@ -99,14 +99,20 @@ function makeCpu(stack, weights, opts) {
 // One duel. Returns which side died, and the numbers worth looking at.
 //
 //   winner  0 | 1 | null      null is a draw: the ceiling, or both at once
-exports.duel = function (weightsA, weightsB, seed, opts) {
+// `optsB` gives side 1 DIFFERENT switches from side 0. Without it a rule
+// under test is handed to both bots, the duel stays symmetric, and the
+// survival rate reads 50% however good the rule is -- measured at exactly
+// 48 of 96 across five configurations before this existed. Defaults to
+// `opts`, so every existing caller duels two bots under the same rules.
+exports.duel = function (weightsA, weightsB, seed, opts, optsB) {
     opts = opts || {};
+    optsB = optsB || opts;
     var level = opts.level || LEVEL;
     var stacks = [
         new PanelEngine.Stack({ level: level, seed: seed, countdown: false }),
         new PanelEngine.Stack({ level: level, seed: seed, countdown: false })
     ];
-    var cpus = [ makeCpu(stacks[0], weightsA, opts), makeCpu(stacks[1], weightsB, opts) ];
+    var cpus = [ makeCpu(stacks[0], weightsA, opts), makeCpu(stacks[1], weightsB, optsB) ];
     // EACH SIDE CAN SEE THE OTHER. Without this the opponent features are
     // wired all the way to the evaluator and then handed null, which reads as
     // a feature that is correct, registered and constant — the shape of dead
