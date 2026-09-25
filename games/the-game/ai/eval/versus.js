@@ -83,7 +83,7 @@ function makeCpu(stack, weights, opts) {
         refuseBrokeRaise: opts.refuseBrokeRaise,
         deepSurvival: opts.deepSurvival,
         ownPlay: opts.ownPlay === true,
-        heightCap: opts.heightCap === true,
+        heightCap: opts.heightCap !== false,
         goal: opts.goal,
         alsoTake: opts.alsoTake,
         buildToward: opts.buildToward,

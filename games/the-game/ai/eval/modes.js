@@ -522,7 +522,7 @@
   //      10 there is no turn after topping out. Counting a stack-lowering
   //      clear as an escape is in the file but OFF: it measured nothing
   //      alone and cancelled the raise rule's gain when both ran
-  var RULES = 14;
+  var RULES = 15;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

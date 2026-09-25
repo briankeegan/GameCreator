@@ -181,7 +181,10 @@
     this.ownPlayDoomedDecisions = 0;
     this.ownPlayMovesDropped = 0;
     this.ownPlayRollouts = 0;
-    this.heightCap = opts.heightCap === true;
+    // ON. 65% survival against an unconstrained equal over 96 duels, 62 of
+    // 96 against 48 expected, with sent RISING 35.7 -> 37.0: it is not
+    // trading attack for safety, it is clearing instead of being buried.
+    this.heightCap = opts.heightCap !== false;
     this.cappedDecisions = 0;
     this.cappedMovesDropped = 0;
     this.allDoomedNow = false;
@@ -899,8 +902,10 @@
   // the stack had to be at row 5. It was at row 8 with a surviving line
   // still available, the slab landed, and from the next decision no line
   // survived -- fourteen decisions of a game that was already over.
-  PuyoCpu.prototype.HEIGHT_CAP = 8;
-  PuyoCpu.prototype.HEIGHT_MARGIN = 1;
+  // No fixed ceiling: a cap of 10 measured bit-identical to none, so the
+  // whole effect is the queue term. Margin 2 beat margin 3 (65% against 56%).
+  PuyoCpu.prototype.HEIGHT_CAP = 12;
+  PuyoCpu.prototype.HEIGHT_MARGIN = 2;
   PuyoCpu.prototype._queuedRows = function () {
     var st = this.stack, w = this._board ? this._board.width : 6;
     if (!st || !st.incoming || !st.incoming.length || !w) return 0;
