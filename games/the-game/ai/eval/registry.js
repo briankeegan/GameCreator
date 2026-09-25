@@ -130,6 +130,9 @@
 
 
 
+    { key: 'reachBreak',       group: 'board',  sign: +1, norm: 1, fn: F.reachBreak,
+      what: 'Can the board this move LEAVES break garbage next move. Garbage clears only when a match touches it, so the move BEFORE the break -- the one that lines a match up against the garbage -- is where the break is decided, and nothing pays for it. brokeGarbage pays once the break happens; garbageAdjacency counts panels resting against garbage whether or not they are near matching. Free at depth 2, where the second ply already resolves every swap from that board. Lives on about 11% of decisions, so it cannot carry a run on its own.' },
+
     { key: 'reach4combo',      group: 'board',  sign: +1, norm: 1, fn: null,
       what: 'Can the board this move LEAVES fire a combo 4 wide next move. One measurement per size, so WHICH sizes are worth building toward is a weight rather than a setting picked by hand. Cumulative: a board holding a 7 reads on every size up to 7. Free at depth 2, where the second ply already resolves every swap from that board. 4 is the floor because COMBO_GARBAGE sends nothing below it.' },
     { key: 'reach5combo',      group: 'board',  sign: +1, norm: 1, fn: null,

@@ -112,6 +112,9 @@
     for (var j = 0; j < CHAIN_SIZES.length; j++) {
       out['reach' + CHAIN_SIZES[j] + 'chain'] = links >= CHAIN_SIZES[j] ? 1 : 0;
     }
+    // Garbage clears only when a match touches it, so the break is decided by
+    // the move BEFORE it -- the one that lines a match up against the garbage.
+    out.reachBreak = (r && r.breaks) ? 1 : 0;
     return out;
   }
 

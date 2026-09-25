@@ -746,6 +746,7 @@ var MOVE_FRAMES = 4;
     garbageCleared: garbageCleared,
     stopTimeEarned: stopTimeEarned,
     brokeGarbage: brokeGarbage,
+    reachBreak: function (i) { return reachOf(i, 'reachBreak'); },
     reach4combo: function (i) { return reachOf(i, 'reach4combo'); },
     reach5combo: function (i) { return reachOf(i, 'reach5combo'); },
     reach6combo: function (i) { return reachOf(i, 'reach6combo'); },
