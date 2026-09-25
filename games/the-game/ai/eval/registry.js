@@ -87,6 +87,9 @@
     { key: 'chainLayers',      group: 'board',  sign: +1, norm: 12, fn: F.chainLayers,
       what: 'Distinct ROWS holding at least one same-coloured adjacent pair. linksV calls stacked pairs cascade fuel and is right, but counts six pairs gathered in one place the same as six spread up the board -- the first is one combo, the second is the shape a long chain is made of. Rows rather than pairs: a second pair on a row already counted fires WITH the first, not after it. Divisor is the board height, the analytic bound, since at most one row can be counted per row. NOT chainPotential UNDER A NEW NAME: reach* asks whether ONE SWAP from here fires an N-chain, which is a trigger already loaded, and chainPotential was removed as its duplicate. This asks what STRUCTURE is stacked up whether or not any trigger exists yet, which is where the middle of a multi-move build lives -- the moves reach* scores as worthless because nothing fires at the end of them.' },
 
+    { key: 'breakPairs',       group: 'board',  sign: +1, norm: 11, fn: F.breakPairs,
+      what: 'Colour panels touching garbage that ALREADY have a same-coloured neighbour: one panel short of a match that pops the lid. Garbage clears only when a match touches it, so these are the only panels on the board that can take any of it away. garbageAdjacency counts panels resting against garbage whether or not they are near matching, and reachBreak asks the binary question one ply out; this counts how much of the surface under the lid is loaded. Divisor 11, the maximum observed over 945,796 candidate evaluations of live play; nonzero on 33.9% of them, 1 or 2 on 30%.' },
+
     { key: 'colourVariance',   group: 'board',  sign: -1, norm: 32, fn: null,
       what: 'Per colour, the mean position of its panels and the deviation from it. Low variance means that colour is gathered rather than scattered.' },
 
