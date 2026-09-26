@@ -182,6 +182,16 @@ function stage(chip, colorMap, fillerOffset) {
 }
 
 var MAP = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7 };
+
+// STAGING IS LENT OUT, NEVER COPIED. Every rule in stage() above was earned
+// against a failure it prevents, and a second copy of it drifts from this one
+// silently — which is the whole reason panel-rules.js exists. A caller that
+// needs a chip on a board requires this file and uses stage(); the verifier
+// below still runs when this file is the entry point.
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { stage: stage, MAP: MAP, W: W, H: H, chips: chips };
+    if (require.main !== module) return;
+}
 var pass = 0, fail = 0, skipped = 0;
 // A MACHINE-READABLE VERDICT, so no caller has to read the prose.
 //
