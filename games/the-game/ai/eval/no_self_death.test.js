@@ -62,6 +62,18 @@ function toppedOut(board) {
     return false;
 }
 
+// THE BOARD THE MOVE LEAVES, not the one it was scored on. A candidate's
+// `board` is _scoredBoard -- the settled board plus `1 + _rowsArriving`
+// rises, where the unconditional 1 is _score's measurement device so a move
+// is not judged the frame its match finishes popping. It adds a row to every
+// candidate alike, so asking "is this topped out" of it counts a move as
+// fatal that leaves the stack a clear row below the lid. `settled` is what
+// _resolveCandidate left, with the real floor run through the walk and the
+// settle, and it is what _survivors judges.
+function settledOf(cand) {
+    return (cand && cand.settled) ? cand.settled : (cand ? cand.board : null);
+}
+
 function play(wA, wB, seed, opts) {
     var stacks = [new PanelEngine.Stack({ level: LEVEL, seed: seed, countdown: false }),
                   new PanelEngine.Stack({ level: LEVEL, seed: seed, countdown: false })];
@@ -85,10 +97,10 @@ function play(wA, wB, seed, opts) {
             var picked = orig(cands);
             seen.decisions++;
             var safe = 0, i;
-            for (i = 0; i < cands.length; i++) if (!toppedOut(cands[i].board)) safe++;
+            for (i = 0; i < cands.length; i++) if (!toppedOut(settledOf(cands[i]))) safe++;
             if (safe > 0 && safe < cands.length) {
                 seen.offered++;
-                if (c._lastTaken && toppedOut(c._lastTaken.board)) seen.tookFatal++;
+                if (c._lastTaken && toppedOut(settledOf(c._lastTaken))) seen.tookFatal++;
             }
             return picked;
         };
