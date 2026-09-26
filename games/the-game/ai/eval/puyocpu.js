@@ -331,6 +331,40 @@
   // A swap the aged board refuses is a swap that will really be refused —
   // canSwap is the engine's own — and it resolves to nothing, which is the
   // honest answer rather than a prediction made on a board that is gone.
+  // THE FLOOR MOVES AT THE SPEED AND PHASE THE MATCH IS ACTUALLY AT.
+  //
+  // riseLock is not copied because it is not state: updateRiseLock recomputes
+  // it from swapQueued, shakeTime and hasActivePanels on the first frame of
+  // run(), so setting it false here only stops a stale lock outliving its
+  // cause.
+  //
+  // SHAKE TIME IS THE PIECE THAT WAS MISSING. paint() zeroes it, and a stack
+  // with shakeTime 0 has a free floor while the real one is pinned -- so the
+  // resolve aged the board with the rise running through a window the game
+  // spends standing still, and handed back the live board SHIFTED UP A ROW.
+  // Read off the boards at frame 785 of seed 970: live rows 9/10/11 full and
+  // 12 empty, shakeTime 38, riseLock true; the candidate had the same panels
+  // in rows 10/11/12 and read topped out. All 28 candidates read topped out,
+  // so _survivors saw no survivor, lifted, and the bot chose unfiltered for
+  // three decisions with two empty rows in hand.
+  PuyoCpu.prototype._copyRiseState = function (st) {
+    var live = this.stack;
+    if (!live) {
+      st.riseLock = true; st.riseTimer = 1e9;
+      st.stopTime = 0; st.preStopTime = 0;
+      st.shakeTime = 0; st.peakShakeTime = 0;
+      return;
+    }
+    st.riseLock = false;
+    st.riseTimer = live.riseTimer;
+    st.displacement = live.displacement;
+    st.speed = live.speed;
+    st.stopTime = live.stopTime || 0;
+    st.preStopTime = live.preStopTime || 0;
+    st.shakeTime = live.shakeTime || 0;
+    st.peakShakeTime = live.peakShakeTime || 0;
+  };
+
   PuyoCpu.prototype._resolveCandidate = function (board, move, delay) {
     if (!this.engine) {
       // LogicalBoard cannot be aged cheaply, so this path keeps the old
@@ -405,14 +439,7 @@
         p0.gWidth = 0; p0.gHeight = 0; p0.xOffset = null; p0.yOffset = null;
       }
     }
-    if (wait > 0 && this.stack) {
-      st.riseLock = false;
-      st.riseTimer = this.stack.riseTimer;
-      st.displacement = this.stack.displacement;
-      st.speed = this.stack.speed;
-      st.stopTime = this.stack.stopTime || 0;
-      st.preStopTime = this.stack.preStopTime || 0;
-    }
+    if (wait > 0 && this.stack) this._copyRiseState(st);
     // DEAD BEFORE THE CURSOR ARRIVES IS NOT A MOVE IT CAN PLAY.
     //
     // The loop already knew: it breaks on gameOver. What followed did the
@@ -440,17 +467,7 @@
     //
     // Everything needed is on the stack: riseTimer, displacement and speed say
     // when the next row lands, and board.incoming says what is in it.
-    if (this.stack) {
-      st.riseLock = false;
-      st.riseTimer = this.stack.riseTimer;
-      st.displacement = this.stack.displacement;
-      st.speed = this.stack.speed;
-      st.stopTime = this.stack.stopTime || 0;
-      st.preStopTime = this.stack.preStopTime || 0;
-    } else {
-      st.riseLock = true; st.riseTimer = 1e9;
-      st.stopTime = 0; st.preStopTime = 0;
-    }
+    this._copyRiseState(st);
     // A REFUSED SWAP IS NOT A QUIET NO-OP. canSwap and LogicalBoard.legalSwaps
     // disagree on 3.5% of the moves the search is handed, and resolving the
     // UNMOVED board scores the candidate as "this move changes nothing" —
