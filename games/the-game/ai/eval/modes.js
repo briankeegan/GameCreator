@@ -615,7 +615,13 @@
   //      nothing forbids every match the real row will make; the scratch's own
   //      generator (fillNewRow) makes it instead, with the game's colour rules
   //      and without reading the match's rng.
-  var RULES = 24;
+  //   25. A SURVIVAL LINE MAY MAKE THE MOVES THE BOT REALLY HAS. One clearing
+  //      swap per rise was all the check allowed; the bot decides several
+  //      times per row and most escapes start with a swap that clears nothing
+  //      yet. On three boards where it condemned every move (0 of 35, 28, 34)
+  //      two swaps of any kind before each rise found 2, 15 and 4 survivors.
+  //      A budget spent without an answer no longer counts as a proof of death.
+  var RULES = 25;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

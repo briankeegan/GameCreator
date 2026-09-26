@@ -1054,19 +1054,31 @@
   // ONLY CLEARING SWAPS ARE FOLLOWED past the first rise. A swap that clears
   // nothing cannot lower the stack, so it cannot answer a rise -- following
   // them multiplies the work by ten and cannot change the answer.
-  PuyoCpu.prototype._survivesRise = function (board, depth, vetted, carry) {
+  // THE MOVES THE BOT REALLY HAS BETWEEN TWO ROWS. It decides every 13 to 30
+  // frames and a row takes 120, so it gets several moves per rise, and a move
+  // that clears nothing yet is how most escapes start. The search allowed one
+  // CLEARING swap per rise, and on the boards that decide a game that was not
+  // enough: seed 700 frames 297 and 513 and seed 701 frame 291, 0 of 35, 28
+  // and 34 moves "survived", and a search allowed two swaps of any kind before
+  // each rise found a surviving line on all three in 431, 2006 and 1543
+  // resolves. Played in the real game from frame 297, that line outlived every
+  // slab then in flight and died twelve seconds later to garbage sent after.
+  //
+  // So between rises a line may make up to SWAPS_PER_RISE swaps of any kind.
+  // The search has a budget, and a budget spent without an answer is not a
+  // proof of death: a move is condemned only when every line has been tried.
+  PuyoCpu.prototype.SWAPS_PER_RISE = 2;
+  PuyoCpu.prototype.SURVIVAL_BUDGET = 400;
+  PuyoCpu.prototype._survivesRise = function (board, depth, vetted, carry, pre, budget) {
+    if (!budget) {
+      budget = { n: this.SURVIVAL_BUDGET };
+      // The candidate move itself is the first of this rise's moves.
+      pre = this.SWAPS_PER_RISE - 1;
+    }
     // A board this function already put through the engine is alive on the
     // engine's say-so, shield and all; asking the grid again would condemn the
     // topped-out boards the engine let live.
     if (!vetted && this._boardToppedOut(board)) return false;
-    // THE END OF A LINE IS NOT "ALIVE THIS FRAME". A topped-out board is
-    // alive only while a shield runs -- stop time, or the shake of a slab that
-    // just landed -- and when it runs out the engine drains it, no rise needed.
-    // Accepting it here certified lines the game kills: seed 701 frame 466,
-    // certified [6,4] then [9,4]; played in the real game, the 6x3 already in
-    // flight landed on a stack at row 10, shook, and it was dead at frame 668
-    // after one rise. So a line may end topped out only if the engine, run on
-    // until the board stands on its own, says it lives.
     if (depth <= 0) {
       if (!this._boardToppedOut(board)) return true;
       var saved0 = this._carry;
@@ -1077,36 +1089,40 @@
       this._carry = saved0;
       return !!er && !er.died && !this._boardToppedOut(end);
     }
-    // THE SAME RESOLVE AS EVERY CANDIDATE, asked to look as far as the next
-    // row, continuing from the engine state the line has reached. The engine
-    // drops whatever is queued, rises on its own timing and runs its own
-    // drain; `died` is its verdict.
+    if (budget.n <= 0) { this.survivalUnproven = (this.survivalUnproven || 0) + 1; return true; }
     var saved = this._carry;
+    // LET THE NEXT ROW COME -- the same resolve as every candidate, asked to
+    // look as far as the next row, from the engine state this line has
+    // reached. The engine drops whatever is queued, rises on its own timing
+    // and runs its own drain; `died` is its verdict.
     this._carry = carry || null;
     var risen = board.clone();
     risen.incoming = (carry && carry.nextRow) || (board.incoming === false ? false : (board.incoming || this._incoming || null));
     var rr = this._resolveCandidate(risen, null, 0, true);
-    if (!rr || rr.died || this._resolvesDead(risen, rr)) { this._carry = saved; return false; }
-    if (this._survivesRise(risen, depth - 1, true, rr.carry)) {
-      this._carry = saved;
+    budget.n--;
+    this._carry = saved;
+    if (rr && !rr.died && !this._resolvesDead(risen, rr) &&
+        this._survivesRise(risen, depth - 1, true, rr.carry, this.SWAPS_PER_RISE, budget)) {
       if (this._line) this._line.unshift(null);
       return true;
     }
-    var swaps = risen.legalSwaps(), i, t, r;
-    for (i = 0; i < swaps.length; i++) {
-      t = risen.clone();
-      t.swap(swaps[i][0], swaps[i][1]);
-      this._carry = rr.carry;
-      r = this._resolveCandidate(t);
-      if (!r || !r.clearedPanels) continue;
-      if (r.died || this._resolvesDead(t, r)) continue;
-      if (this._survivesRise(t, depth - 1, true, r.carry)) {
+    // OR MOVE FIRST -- any swap, before this row arrives.
+    if (pre > 0) {
+      var swaps = board.legalSwaps(), i, t, r;
+      for (i = 0; i < swaps.length && budget.n > 0; i++) {
+        t = board.clone();
+        t.swap(swaps[i][0], swaps[i][1]);
+        this._carry = carry || null;
+        r = this._resolveCandidate(t);
+        budget.n--;
         this._carry = saved;
-        if (this._line) this._line.unshift(swaps[i]);
-        return true;
+        if (!r || r.died || this._resolvesDead(t, r)) continue;
+        if (this._survivesRise(t, depth, true, r.carry, pre - 1, budget)) {
+          if (this._line) this._line.unshift(swaps[i]);
+          return true;
+        }
       }
     }
-    this._carry = saved;
     return false;
   };
 
