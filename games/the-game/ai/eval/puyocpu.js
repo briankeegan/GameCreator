@@ -172,6 +172,10 @@
     // hold and is the alarm if one ever stops holding.
     this.selfInflicted = 0;
     this.hadSurvivorNow = false;
+    // Moves dropped by the GRADED lift: nothing survived the queue, so the
+    // fallback is the moves that are not dead this instant rather than every
+    // move there is.
+    this.standingMovesDropped = 0;
     // Refusing a move that no line of play survives once the stack rises.
     this.deepSurvival = opts.deepSurvival !== false;
     this.doomedDecisions = 0;
@@ -804,14 +808,37 @@
   //
   // WHEN EVERY MOVE IS FATAL THE FILTER LIFTS, because then it is not a
   // choice and an empty pool would fall through to no bot at all.
+  //
+  // BUT THE LIFT IS GRADED, BECAUSE THE CONDEMNATIONS ARE NOT THE SAME DEATH.
+  // Three separate things condemn a candidate here: dead this instant
+  // (_resolvesDead), dead before the cursor even arrives (diedInWalk), and
+  // dead when the slab already queued lands (_diesToQueue). The last of those
+  // is a LATER death -- the bot gets decisions in between, and a decision is
+  // the only thing that can change a position -- so lifting to the whole pool
+  // threw away an ordering the loop had already computed, and the score then
+  // picked among deaths with no idea which was which.
+  //
+  // Read off frame 1190 of seed 971: 22 of 23 candidates were not dead this
+  // instant, the pool lifted because all 23 died to the queue, and it played
+  // the one that was already dead -- stopTime 0, shakeTime 0, against a `hold`
+  // on the same list that left row 6 reading `4 4 . . 4 4`. Over 12 duels the
+  // pool lifted 27 times, 7 of those with a not-dead-now candidate still in
+  // it, and the bot played a dead-now move on 2 of the 7.
+  //
+  // allFatalNow still means "no fully surviving move", so FORCED and the
+  // danger-weight rescore are unchanged: this only decides what the lift
+  // falls back TO.
   PuyoCpu.prototype._survivors = function (cands) {
     if (!cands || !cands.length) return cands;
-    var live = [], i;
+    var live = [], standing = [], i, b;
     for (i = 0; i < cands.length; i++) {
-      if (this._resolvesDead(this._settledOf(cands[i]), cands[i].resolved)) continue;
-      if (this._diesToQueue(this._settledOf(cands[i]))) continue;
+      b = this._settledOf(cands[i]);
+      if (this._resolvesDead(b, cands[i].resolved)) continue;
       // The walk to this square ends in a game over.
       if (cands[i].resolved && cands[i].resolved.diedInWalk) continue;
+      // Not dead THIS INSTANT, whatever the queue does to it after.
+      standing.push(cands[i]);
+      if (this._diesToQueue(b)) continue;
       live.push(cands[i]);
     }
     // MEASURED ALWAYS, REFUSED ONLY WHEN THE RULE IS ON. These read the board,
@@ -822,9 +849,15 @@
     this.allFatalNow = !live.length;
     this.hadSurvivorNow = live.length > 0;
     if (!live.length) this.forcedDecisions++;
-    if (!this.refuseSuicide || !live.length || live.length === cands.length) return cands;
-    this.fatalMovesDropped += cands.length - live.length;
-    return live;
+    if (!this.refuseSuicide) return cands;
+    if (live.length) {
+      if (live.length === cands.length) return cands;
+      this.fatalMovesDropped += cands.length - live.length;
+      return live;
+    }
+    if (!standing.length || standing.length === cands.length) return cands;
+    this.standingMovesDropped += cands.length - standing.length;
+    return standing;
   };
 
   // A MOVE INTO A CORNER IS A MOVE INTO DEATH, one decision further out.

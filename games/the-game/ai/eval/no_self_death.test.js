@@ -4,11 +4,25 @@
 // survive is on the list. Losing to a board that offers nothing is not.
 //
 // Three refusals enforce it, in puyocpu.js:
-//   _survivors        drops a move whose board is topped out once the rows
-//                     arriving during it have landed
+//   _survivors        drops a move the ENGINE would kill, and when nothing
+//                     survives the queue falls back to the moves that are not
+//                     dead this instant rather than to every move there is
 //   _standing         drops a move after which every reply is topped out
 //   _raiseIsSuicide   drops a raise the queued garbage cannot fit under
 // Each lifts when every move is fatal.
+//
+// FATAL IS THE ENGINE'S QUESTION, NOT THE GRID'S -- RULES 16. checkGameOver is
+// `health <= 0 && shakeTime <= 0`, and health drains only on a frame where
+// `!riseLock && stopTime === 0 && isToppedOut()`, so a topped-out board holding
+// stop time or shaking is ALIVE. Chaining INTO the ceiling is how the position
+// is meant to be held: a link cashed while topped out pays 88 to 98 frames.
+//
+// This file asked the grid until RULES 16 and was never updated, so it counted
+// exactly that play as a self-death and failed 17 times in 21 -- read off five
+// of them, four carried a shield of 58 to 89 frames against a reaction of 12,
+// and the dump said "the filter ALLOWED this" for every one. It now asks
+// _resolvesDead, the same question the refusal asks, and a check below binds
+// the distinction so this cannot drift back to the grid.
 //
 // It is a refusal and not a weight because maxHealth is 1 at level 10, so
 // the drain runs the first frame the board reads topped out and there is no
@@ -53,7 +67,18 @@ function topRow(stack) {
     return 0;
 }
 
-// The board a move leaves, after the rows arriving during it have landed.
+// IS THIS MOVE FATAL -- the engine's question, asked through the same method
+// the refusal uses, so the check and the rule cannot disagree about what a
+// death is. A board whose top row is occupied while stop time or a shaking
+// slab holds the drain off is not a death; one with no shield is.
+function fatalFor(cpu, cand) {
+    if (!cand) return false;
+    if (cand.resolved && cand.resolved.diedInWalk) return true;
+    return cpu._resolvesDead(settledOf(cand), cand.resolved);
+}
+
+// The grid question, kept because the check below needs both to bind the
+// difference between them.
 function toppedOut(board) {
     if (!board || !board.grid) return false;
     var row = board.grid[board.height];
@@ -97,10 +122,10 @@ function play(wA, wB, seed, opts) {
             var picked = orig(cands);
             seen.decisions++;
             var safe = 0, i;
-            for (i = 0; i < cands.length; i++) if (!toppedOut(settledOf(cands[i]))) safe++;
+            for (i = 0; i < cands.length; i++) if (!fatalFor(c, cands[i])) safe++;
             if (safe > 0 && safe < cands.length) {
                 seen.offered++;
-                if (c._lastTaken && toppedOut(settledOf(c._lastTaken))) {
+                if (c._lastTaken && fatalFor(c, c._lastTaken)) {
                     seen.tookFatal++;
                     // GC_DUMP_FATAL=1 prints the board at the moment this
                     // fires, so the count can be read rather than believed.
@@ -177,6 +202,31 @@ test('IT NEVER PLAYS A MOVE IT COULD NOT SURVIVE WHILE ONE IT COULD WAS ON THE L
     assert.strictEqual(fatal, 0,
         'the bot played a move it could not survive ' + fatal + ' times, out of ' +
         offered + ' decisions where a survivable move was also on the list');
+});
+
+test('A SHIELD IS NOT A DEATH, AND NO SHIELD IS', function () {
+    // The whole of RULES 16, bound so this file cannot drift back to asking
+    // the grid. Same topped-out board both times; the only difference is
+    // whether anything is holding the drain off for longer than one reaction.
+    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 3, countdown: false });
+    var cpu = new PuyoCpu(stack, { reaction: 12, engine: true, level: LEVEL });
+    var H = stack.height, W = stack.width;
+    var g = [];
+    for (var r = 0; r <= H; r++) { g[r] = []; for (var c = 1; c <= W; c++) g[r][c] = 1; }
+    var lidFull = { grid: g, height: H, width: W };
+    assert.ok(toppedOut(lidFull), 'fixture: the board must be topped out');
+    var banked = { settled: lidFull, resolved: { stopTime: 88, shakeTime: 0, stillMoving: false } };
+    var bare = { settled: lidFull, resolved: { stopTime: 0, shakeTime: 0, stillMoving: false } };
+    assert.strictEqual(fatalFor(cpu, banked), false,
+        'a chain banked into the ceiling reads as a self-death, which is the ' +
+        'play the engine rewards -- 88 frames against a reaction of 12');
+    assert.strictEqual(fatalFor(cpu, bare), true,
+        'a topped-out board with nothing holding the drain off is not fatal, so ' +
+        'this check would pass whatever the bot did');
+    var brief = { settled: lidFull, resolved: { stopTime: 4, shakeTime: 0, stillMoving: false } };
+    assert.strictEqual(fatalFor(cpu, brief), true,
+        'a shield shorter than one reaction buys no move at all and must still ' +
+        'count as a death');
 });
 
 test('and the check can SEE a self-death, so passing it means something', function () {

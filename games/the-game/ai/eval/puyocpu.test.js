@@ -381,6 +381,51 @@ test('WHEN EVERY MOVE IS FATAL THE FILTER LIFTS', function () {
     assert.strictEqual(cpu.fatalMovesDropped, 0, 'nothing was dropped, so nothing is counted');
 });
 
+test('BUT THE LIFT IS GRADED: dying to the queue is not dying now', function () {
+    // The three condemnations are not the same death. Dead this instant is
+    // final; dead when the already-queued slab lands is a death several
+    // decisions away, and a decision is the only thing that can change a
+    // position. Lifting to the whole pool handed the score a choice between
+    // deaths with no idea which was which -- read off frame 1190 of seed 971,
+    // where 22 of 23 candidates were not dead this instant and it played the
+    // one that was.
+    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 11, countdown: false });
+    var cpu = new PuyoCpu(stack, { weights: sample() });
+    var H = stack.height, W = stack.width;
+    // Six rows on their way: anything standing above row 6 dies when they
+    // land, so nothing survives the queue and the pool must lift.
+    stack.incoming = [{ width: W, height: 6 }];
+    var deadNow = { kind: 'swap', move: [1, 1], board: boardAt(H, W, H) };
+    var standing = { kind: 'hold', board: boardAt(H, W, 7) };
+    assert.ok(cpu._diesToQueue(standing.board),
+        'fixture: the standing board should die to the queue, or nothing lifts');
+    assert.ok(!cpu._resolvesDead(standing.board, standing.resolved),
+        'fixture: the standing board must not read dead this instant');
+    var out = cpu._survivors([deadNow, standing]);
+    assert.strictEqual(out.length, 1,
+        'the lift fell back to every move there is, including the one that is ' +
+        'already dead -- ' + out.length + ' of 2 kept');
+    assert.strictEqual(out[0], standing, 'it kept the dead-now move');
+    assert.strictEqual(cpu.standingMovesDropped, 1, 'the graded lift is not counted');
+    assert.strictEqual(cpu.allFatalNow, true,
+        'allFatalNow must still mean "no fully surviving move", or FORCED and the ' +
+        'danger-weight rescore change meaning with it');
+});
+
+test('and it lifts ALL THE WAY when every move is dead this instant', function () {
+    // Then it really is not a choice, and an empty pool falls through to no
+    // bot at all. A graded lift that narrowed here would be the empty-pool
+    // defect wearing a new hat.
+    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 11, countdown: false });
+    var cpu = new PuyoCpu(stack, { weights: sample() });
+    var H = stack.height, W = stack.width;
+    stack.incoming = [{ width: W, height: 6 }];
+    var pool = [{ kind: 'hold', board: boardAt(H, W, H) },
+                { kind: 'swap', move: [1, 1], board: boardAt(H, W, H) }];
+    assert.strictEqual(cpu._survivors(pool), pool);
+    assert.strictEqual(cpu.standingMovesDropped, 0, 'nothing was dropped, so nothing is counted');
+});
+
 test('a board nobody is near the top of is left alone', function () {
     // The filter must bite only where it matters. Dropping nothing has to
     // return the SAME list, or every decision pays for a copy.

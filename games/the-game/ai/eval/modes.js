@@ -546,7 +546,22 @@
   //      allAboveCapNow and allCorneredNow are cleared at the top of every
   //      decision, so a filter that declined to run leaves "unknown" rather
   //      than the last board's answer.
-  var RULES = 17;
+  //   18. THE LIFT IS GRADED, BECAUSE THE CONDEMNATIONS ARE NOT THE SAME
+  //      DEATH. _survivors drops a move on three separate tests -- dead this
+  //      instant, dead before the cursor arrives, and dead when the slab
+  //      already queued lands -- and when nothing passed all three it fell
+  //      back to EVERY move there is, including the ones already dead. Dying
+  //      to the queue is a death several decisions away and a decision is the
+  //      only thing that can change a position, so the ordering was thrown
+  //      away and the score chose among deaths blind. Read off frame 1190 of
+  //      seed 971: 22 of 23 candidates were not dead this instant, the pool
+  //      lifted because all 23 died to the queue, and it played the one that
+  //      was already dead -- stopTime 0, shakeTime 0, with a `hold` on the
+  //      same list leaving row 6 reading `4 4 . . 4 4`. Over 12 duels the pool
+  //      lifted 27 times, 7 of those with a not-dead-now candidate in it, and
+  //      it played a dead-now move on 2 of the 7. allFatalNow still means "no
+  //      fully surviving move", so FORCED is unchanged.
+  var RULES = 18;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
