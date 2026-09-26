@@ -298,6 +298,44 @@
     // takeDeliverableGarbage releases it; the scratch has no opponent, so the
     // same pieces are handed over at the same frames. idleSkip stands down
     // while any are pending -- it would jump straight past an arrival.
+    // A ROW NOBODY CAN KNOW YET. The row entering next is dealt from the
+    // match's generator and is on screen; the row behind it is not. Filling it
+    // with a copy of the known row, or with whatever the scratch's reseeded rng
+    // draws, invents matches the game will never deal -- a certificate that
+    // survives on them is a lie. Seed 703 frame 3014: raised, certified "wait,
+    // wait" on a board whose next row the model had copied from the row just
+    // raised; thirteen frames later, with the game's real row underneath and
+    // nothing new in flight, 0 of 31 moves survived. An unknown row takes up
+    // its space and matches nothing: six colours no level deals (canMatch
+    // excludes only 0 and 9), a fresh six for each unknown row so they cannot
+    // stack into a vertical three either.
+    var INERT_BASE = 20;
+    function inertRow(k, width) {
+        var row = [0];
+        for (var c = 1; c <= (width || 6); c++) row[c] = INERT_BASE + 6 * k + c;
+        return row;
+    }
+    function nextInert(stack, width) {
+        var k = -1, r, c, v;
+        for (r = 0; r < stack.panels.length; r++) {
+            for (c = 1; c <= width; c++) {
+                v = stack.panels[r][c] && stack.panels[r][c].color;
+                if (v > INERT_BASE && Math.floor((v - INERT_BASE - 1) / 6) > k) k = Math.floor((v - INERT_BASE - 1) / 6);
+            }
+        }
+        return k + 1;
+    }
+    function refillRow0(stack, width) {
+        var row = inertRow(nextInert(stack, width), width);
+        for (var c = 1; c <= width; c++) {
+            var p = stack.panels[0][c];
+            if (!p) continue;
+            p.color = row[c]; p.isGarbage = false; p.state = 'dimmed';
+            p.timer = 0; p.chaining = false; p.matching = false; p.dontSwap = false;
+            p.gWidth = 0; p.gHeight = 0; p.xOffset = null; p.yOffset = null;
+        }
+    }
+
     function settle(stack, budget, live, untilRise, arrivals) {
         var chain = 0, comboSizes = [], garbage = [], cleared = 0;
         var cap = budget || 900;
@@ -341,7 +379,7 @@
             quiet = stack.events.length === 0;
             for (var i = 0; i < stack.events.length; i++) {
                 var e = stack.events[i];
-                if (e.type === 'newRow') { rose = true; continue; }
+                if (e.type === 'newRow') { rose = true; if (live) refillRow0(stack, stack.panels[1] ? stack.panels[1].length - 1 : 6); continue; }
                 if (e.type !== 'match') continue;
                 comboSizes.push(e.size);
                 cleared += e.size;
@@ -415,5 +453,6 @@
         return out;
     }
 
-    return { scratch: scratch, paint: paint, settle: settle, readGrid: readGrid, readBlocks: readBlocks };
+    return { scratch: scratch, paint: paint, settle: settle, readGrid: readGrid, readBlocks: readBlocks,
+             inertRow: inertRow };
 }));

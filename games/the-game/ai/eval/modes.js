@@ -602,7 +602,16 @@
   //      the slab had a hole under any column, so canSwap refused legal moves
   //      -- a slab is held by any of its columns. Live fidelity 90 of 91,
   //      the one left a growing attack read early; resolve corpus 0 wrong.
-  var RULES = 22;
+  //   23. A SURVIVABLE MOVE ON THE LIST MEANS A SURVIVABLE MOVE IS PLAYED.
+  //      The survival filter was skipped whenever no candidate stood above row
+  //      8; at seed 702 frame 1293 6 of 24 moves survived two rises and it
+  //      played a raise that did not. It now runs on every decision. A raise
+  //      is offered only if it passes the same check itself, so it cannot come
+  //      back in when nothing else survives. The row after the known one is
+  //      inert (it matches nothing) instead of a copy of the known row, and a
+  //      raise is released on the engine's hand-off even when that happens in
+  //      one frame.
+  var RULES = 23;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

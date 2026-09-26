@@ -540,7 +540,10 @@
     // land during the wait OR during the settle, and either way the row that
     // enters play is the dimmed one already on screen. Only the row BEHIND it
     // is the game's own RNG, which nothing can know.
-    var inc0 = board.incoming || (this._board && this._board.incoming);
+    // The line's own next row first: the known row enters once, and after it
+    // every row is one nobody can know yet (engineboard.inertRow).
+    var inc0 = (this._carry && this._carry.nextRow) || board.incoming ||
+               (this._board && this._board.incoming);
     if (inc0 && st.panels[0]) {
       for (var i0 = 1; i0 <= board.width; i0++) {
         var p0 = st.panels[0][i0];
@@ -654,6 +657,7 @@
         return { width: g.width, height: g.height, isChain: g.isChain };
       }),
       dropColumnIndex: (function (d) { var o = {}; for (var k in d) if (d.hasOwnProperty(k)) o[k] = d[k]; return o; })(st.dropColumnIndex || {}),
+      nextRow: (function (p0, w) { var r = [0]; for (var c = 1; c <= w; c++) r[c] = p0 && p0[c] ? p0[c].color : 0; return r; })(st.panels[0], board.width),
       riseTimer: st.riseTimer, displacement: st.displacement, speed: st.speed,
       stopTime: st.stopTime || 0, preStopTime: st.preStopTime || 0,
       shakeTime: st.shakeTime || 0, peakShakeTime: st.peakShakeTime || 0,
@@ -1067,7 +1071,7 @@
       var saved0 = this._carry;
       this._carry = carry || null;
       var end = board.clone();
-      end.incoming = this._incoming || board.incoming || null;
+      end.incoming = (carry && carry.nextRow) || board.incoming || this._incoming || null;
       var er = this._resolveCandidate(end, null, 0, true);
       this._carry = saved0;
       return !!er && !er.died && !this._boardToppedOut(end);
@@ -1079,7 +1083,7 @@
     var saved = this._carry;
     this._carry = carry || null;
     var risen = board.clone();
-    risen.incoming = this._incoming || board.incoming || null;
+    risen.incoming = (carry && carry.nextRow) || board.incoming || this._incoming || null;
     var rr = this._resolveCandidate(risen, null, 0, true);
     if (!rr || rr.died || this._resolvesDead(risen, rr)) { this._carry = saved; return false; }
     if (this._survivesRise(risen, depth - 1, true, rr.carry)) {
@@ -1127,43 +1131,20 @@
     return ok ? line : null;
   };
 
-  // Only worth asking when the stack is high enough for a rise to matter,
-  // bought at ten times the price otherwise.
+  // DROP EVERY MOVE THAT DOES NOT SURVIVE THE NEXT TWO ROWS, whenever one
+  // that does is on the list. Asked on every decision.
   //
-  // THE BOARDS THIS FILTER JUDGES, NOT THE ONE IT IS STANDING ON. The gate
-  // read the LIVE board's top row while every test below is applied to a
-  // candidate's SETTLED board -- which can be rows taller, because a raise
-  // adds one, a slab can land during the settle, and a candidate that clears
-  // nothing still carries the rise the walk paid for. So the gate answered a
-  // question about a board nothing was being asked about.
-  //
-  // Read off 20 duels: the gate was shut on 101 decisions where some
-  // candidates were doomed and others were not -- 69 of them at a live top
-  // row of exactly 8, one row under the threshold, with up to 8 of 18
-  // candidates dead -- and on 15 more where EVERY candidate was doomed, which
-  // also left allDoomedNow unset and _lastResort blind. The old comment
-  // claimed "on a low board every move survives every rise and the answer is
-  // always yes"; it was false on all 116.
-  //
-  // Reading the tallest candidate instead recovers 71 of those 113 for 75
-  // extra decisions filtered -- 57.7% of decisions against 55.8%, a 3.5% cost.
-  // The 48 it still misses are boards whose candidates all settle at row 8 or
-  // lower and die to the SECOND rise; DOOMED_ROWS is where that trade sits.
-  // On survival, 20 duels on one pair of island snapshots with the same
-  // setting both sides -- absolute survival, not a win rate: average game
-  // 32.5s -> 36.6s and longest 59.4s -> 84.0s. n=20 on a game length is not a
-  // verdict, and the correction stands on the boards either way.
-  PuyoCpu.prototype.DOOMED_ROWS = 4;
+  // It used to be asked only when some candidate stood above row 8, to save
+  // the cost on low boards -- on the claim that a low board survives every
+  // rise. It does not: at seed 702 frame 1293 the tallest candidate stood at
+  // row 8, the filter was skipped, 6 of 24 moves survived two rises, and the
+  // bot played a raise that did not. A survivable move was on the list and it
+  // played one that dies. The requirement is not a trade against cost.
   PuyoCpu.prototype.DOOMED_DEPTH = 2;
   PuyoCpu.prototype._doomed = function (cands) {
     if (!this.refuseSuicide || !this.deepSurvival || !cands || cands.length < 2) return cands;
     if (!this._board) return cands;
-    var i, top = 0, t;
-    for (i = 0; i < cands.length; i++) {
-      t = this._topRowOf(this._settledOf(cands[i]));
-      if (t > top) top = t;
-    }
-    if (!top || top <= (this._board.height - this.DOOMED_ROWS)) return cands;
+    var i;
     var live = [];
     for (i = 0; i < cands.length; i++) {
       if (this._survivesRise(this._settledOf(cands[i]), this.DOOMED_DEPTH)) live.push(cands[i]);
@@ -1714,6 +1695,8 @@
       // The row the engine will actually deal, resolved, because a raise
       // can complete a match and that match is the reason to make it.
       var raiseBoard = board.clone().rise(this._incoming);
+      // The raise spends the known row; the one behind it is unknown.
+      raiseBoard.incoming = engineBoard.inertRow(0, board.width);
       var raiseResolved = this._resolveCandidate(raiseBoard);
       // A MOVE THAT KILLS YOU IS NOT A MOVE. Raising is the one thing the
       // bot does that pushes its own stack up, and it is the only way it
@@ -1725,8 +1708,16 @@
       // own legalSwaps() -- and a refusal decides whether the scored move is
       // offered, not whether it is looked at.
       var raiseScore = this._score(raiseBoard, raiseResolved, null);
+      // A RAISE IS OFFERED ONLY IF IT IS LEGAL AND DOES NOT KILL. Legal is
+      // _canRaise, above. "Does not kill" is the same survival check every
+      // other move faces -- asked of the raise itself, not left to the filter,
+      // because the filter lets everything back in when nothing survives, and
+      // a raise is the one move that pushes the stack up on purpose.
       if (!(this.refuseSuicide && (this._raiseIsSuicide(raiseBoard) ||
-                                   this._raiseWhileBroke(raiseBoard, raiseResolved)))) {
+                                   this._raiseWhileBroke(raiseBoard, raiseResolved) ||
+                                   raiseResolved.died ||
+                                   this._resolvesDead(raiseBoard, raiseResolved) ||
+                                   !this._survivesRise(raiseBoard.clone(), this.DOOMED_DEPTH)))) {
         cands.push({ kind: 'raise',
                      score: raiseScore,
                      board: this._scoredBoard,
@@ -2396,9 +2387,17 @@
     // row lands. run() is runPhysics, then applyInput: on the landing frame
     // newRow clears preventManualRaise and a still-held input re-latches
     // before this can see the row arrive.
+    //
+    // And the hand-off can happen inside ONE frame: decided with the floor a
+    // pixel from its row, the engine latches the raise and hands it to passive
+    // raise in the same run(), so manualRaise is never seen true here and the
+    // input stayed held into the next row. The hand-off always sets
+    // preventManualRaise (clear when the raise was offered -- _canRaise checks
+    // it), so that is the signal. Seed 703 frame 3014: raised, rows landed at
+    // 3017 and 3032, fifteen frames apart.
     if (this.raiseFrames > 0) {
       if (stack.manualRaise) this._raiseStarted = true;
-      if (this._raiseStarted && !stack.manualRaise) this.raiseFrames = 0;
+      if (stack.preventManualRaise || (this._raiseStarted && !stack.manualRaise)) this.raiseFrames = 0;
       else { this.raiseFrames--; input.raise = true; }
     }
 
