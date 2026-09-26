@@ -233,6 +233,18 @@
     // changes nothing, a slab perched on a tower may be a symptom of a game
     // already being lost rather than the cause of losing it.
     this.levelForSlab = opts.levelForSlab === true;
+    // ON, AND IT CANNOT BE CREDITED WITH ANYTHING. It fires 6 times over 20
+    // games -- it needs allDoomedNow AND a candidate that actually breaks,
+    // and those rarely coincide: doomed stretches are common, available
+    // breaks are not. Measured: 41 breaks against 43, 532 cells against 538,
+    // 9 deaths of 20 against 8. Six firings cannot move twenty games; this is
+    // indistinguishable from nothing, which is NOT what the rules that were
+    // switched off measured -- those were worse.
+    //
+    // Kept as a correctness guard rather than a performance bet: in those six
+    // cases the bot was dead on the board with a break in front of it and
+    // spent the decision elsewhere. The rule makes "if it dies it is because
+    // nothing it could have played would have helped" literally true there.
     this.lastResortBreak = opts.lastResortBreak !== false;
     this.lastResortDecisions = 0;
     this.levelMovesDropped = 0;
