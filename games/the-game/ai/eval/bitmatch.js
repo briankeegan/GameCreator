@@ -171,21 +171,6 @@
     return out;
   }
 
-  // GRAVITY IS ONE OPERATION: keep the bits the clear did not take, packed
-  // down. That is a parallel bit extract — every colour plane, and the
-  // chaining mask, compacted with the SAME selector, so they stay in step
-  // without anything tracking which panel is which.
-  function pext(bits, keep) {
-    var out = 0, n = 0;
-    for (var i = 0; i < 32; i++) {
-      var b = 1 << i;
-      if (!(keep & b)) continue;
-      if (bits & b) out |= (1 << n);
-      n++;
-    }
-    return out;
-  }
-
   // A WHOLE CASCADE, AS BITS.
   //
   //   match -> mark -> fall a row -> match again -> sweep -> ...
@@ -210,36 +195,28 @@
   // HOW MANY COLOURS IS READ OFF THE BOARD, never assumed — a board staged for
   // a chip fills the cells its shape ignores with colours no real board uses,
   // exactly so that filler cannot join a match.
-  // policy decides what an UNKNOWN cell may do. A slab pop turns a row of
-  // garbage into panels whose colours the engine draws from its own rng, so a
-  // planner cannot know them — but it can bound them. 'certain' lets an unknown
-  // cell only occupy, giving the clear that happens whatever the draw is;
-  // 'possible' lets it stand in for every colour at once, giving a clear that no
-  // draw can exceed. The truth is somewhere in between, and both ends are
-  // computable.
-  function resolveBits(grid, blocks, W, H, policy) {
-    var WILD = policy === 'possible';
-    var sawUnknown = false;
+  function resolveBits(grid, blocks, W, H) {
     var N = api.topColour(grid, W, H);
-    if (WILD && N < 3) N = 3;
-    var occ = [], colour = [], chaining = [], popping = [], inert = [], garb = [], unknown = [];
+    var occ = [], colour = [], chaining = [], popping = [], inert = [], garb = [];
     var a, c, r;
     for (a = 1; a <= N; a++) { colour[a] = []; for (c = 1; c <= W; c++) colour[a][c] = 0; }
     for (c = 0; c <= W + 1; c++) {
-      occ[c] = 0; chaining[c] = 0; popping[c] = 0; inert[c] = 0; garb[c] = 0; unknown[c] = 0;
+      occ[c] = 0; chaining[c] = 0; popping[c] = 0; inert[c] = 0; garb[c] = 0;
     }
     for (r = 1; r <= H; r++) {
       for (c = 1; c <= W; c++) {
         var v = grid[r][c], b = 1 << (r - 1);
         if (v === 0) continue;
-        if (v === -1) sawUnknown = true;
         occ[c] |= b;
         // A GARBAGE SLAB AND A POPPED GARBAGE CELL BOTH OCCUPY AND NEITHER
         // MATCHES. -2 is a slab; -1 is a cell a slab pop already turned into a
         // panel whose colour comes from the engine's rng, which the planner is
         // not allowed to know. Both hold things up and neither joins a run.
         if (v === -2) { inert[c] |= b; garb[c] |= b; continue; }
-        if (v === -1) { inert[c] |= b; unknown[c] |= b; continue; }
+        // A CELL OF UNKNOWN COLOUR IS REFUSED, NOT GUESSED. -1 is what a slab
+        // pop leaves behind, and this stops before making one; nothing here has
+        // ever been measured against a board that arrives carrying one.
+        if (v === -1) return { scope: 'unknown-cell', chain: 0, total: 0, rounds: 0 };
         colour[v][c] |= b;
       }
     }
@@ -306,8 +283,7 @@
       for (a = 1; a <= N; a++) {
         B[a] = [];
         for (c = 1; c <= W; c++) {
-          B[a][c] = (colour[a][c] | (WILD ? unknown[c] : 0)) & rest[c] & ~popping[c] &
-                    ~(inert[c] & ~(WILD ? unknown[c] : 0));
+          B[a][c] = colour[a][c] & rest[c] & ~popping[c] & ~inert[c];
         }
       }
       for (c = 0; c <= W + 1; c++) k[c] = 0;
@@ -336,11 +312,11 @@
           if (k[c] & ((garb[c] >> 1) | (garb[c] << 1) | garb[c - 1] | garb[c + 1])) brokeGarbage = true;
         }
         if (brokeGarbage) {
-          // NOTHING PAST HERE IS KNOWABLE. The pop turns a row of the slab into
-          // panels whose colours the engine draws from its own rng, and what
-          // those panels go on to do depends on the draw. The numbers up to the
-          // break are reported and the scope says which kind of answer this is,
-          // so a caller cannot read a stopped cascade as a finished one.
+          // NOTHING PAST HERE IS KNOWABLE. Touching a slab pops a row of it and
+          // the engine colours that row from its own rng, so what those panels
+          // go on to do depends on the draw. The numbers up to the break are
+          // reported and the scope says which kind of answer this is, so a
+          // caller cannot read a stopped cascade as a finished one.
           return { scope: 'garbage-broke', chain: Math.max(counter, 1),
                    total: total, rounds: rounds };
         }
@@ -355,7 +331,7 @@
       for (c = 1; c <= W; c++) {
         var hole = (~occ[c]) & (occ[c] + 1);
         var above = ~((hole << 1) - 1);
-        var blockAbove = ((inert[c] & ~unknown[c]) | popping[c]) & above;
+        var blockAbove = (inert[c] | popping[c]) & above;
         var ceiling = blockAbove & -blockAbove;          // lowest immovable cell
         var movable = occ[c] & above & (ceiling ? (ceiling - 1) : ~0);
         if (!movable) continue;
@@ -367,7 +343,6 @@
                          (colour[a][c] & keepPut);
         }
         chaining[c] = (chaining[c] & below) | ((chaining[c] & movable) >> 1) | (chaining[c] & keepPut);
-        unknown[c] = (unknown[c] & below) | ((unknown[c] & movable) >> 1) | (unknown[c] & keepPut);
         inert[c] = (inert[c] & below) | ((inert[c] & movable) >> 1) | (inert[c] & keepPut);
         occ[c] = (occ[c] & below) | (movable >> 1) | keepPut;
       }
@@ -396,7 +371,6 @@
         var keep = occ[c] & ~popping[c];
         chaining[c] = (chaining[c] | (keep & ~(lowest - 1))) & keep;
         for (a = 1; a <= N; a++) colour[a][c] &= keep;
-        unknown[c] &= keep;
         inert[c] &= keep;
         occ[c] = keep;
         popping[c] = 0;
@@ -405,27 +379,7 @@
       break;
     }
     return { scope: 'ok', chain: rounds ? Math.max(counter, 1) : 0, total: total,
-             rounds: rounds, policy: WILD ? 'possible' : 'certain', sawUnknown: sawUnknown };
-  }
-
-  // WHERE A SLAB BREAKS, THE ANSWER IS NOT A NUMBER.
-  //
-  // A match touching a slab pops a row of it, and the engine colours that row
-  // from its own rng. What those panels go on to do depends on the draw, so the
-  // cascade past that point is not predictable and resolveBits stops, reporting
-  // scope 'garbage-broke' with the numbers up to the break.
-  //
-  // Bounding it instead was tried and is NOT in place. Letting an unknown cell
-  // stand in for every colour bounds how much CLEARS but not how DEEP the chain
-  // goes — firing everything at the first opportunity merges links the engine
-  // keeps separate. And the opposite end is not a floor either: on one of 299
-  // break cases it reported more cleared than the engine did, which means the
-  // way converted panels land is not yet modelled. Neither end is sound, so
-  // neither is offered.
-  function resolveFloor(grid, blocks, W, H) {
-    var r = api.resolveBits(grid, blocks, W, H);
-    return { scope: r.scope, chain: r.chain, total: r.total,
-             exact: r.scope === 'ok' };
+             rounds: rounds };
   }
 
   // Calls go through this object so a test can swap one step for a broken one
@@ -436,9 +390,7 @@
     restingMask: restingMask,
     colourMasks: colourMasks,
     clears: clears,
-    resolveFloor: resolveFloor,
     clearedCells: clearedCells,
-    pext: pext,
     resolveBits: resolveBits
   };
 

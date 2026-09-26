@@ -504,11 +504,11 @@ for (var ei = 0; ei < src.boards.length; ei++) {
         post.swap(eswaps[es][0], eswaps[es][1]);
         EB.paint(stack, post.grid, H, W, paintBlocks(eb.blocks));
         var truthE = EB.settle(stack, 900);
-        var mine = bit.resolveFloor(post.grid, post.blocks, W, H);
+        var mine = bit.resolveBits(post.grid, post.blocks, W, H);
         if (truthE.clearedPanels) eng.fired++;
         eng.depth[truthE.chainLength] = (eng.depth[truthE.chainLength] || 0) + 1;
         var bad = null;
-        if (mine.exact) {
+        if (mine.scope === 'ok') {
             eng.exact++;
             if (mine.chain !== truthE.chainLength || mine.total !== truthE.clearedPanels) {
                 eng.exactBad++;
