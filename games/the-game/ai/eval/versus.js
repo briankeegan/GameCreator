@@ -80,6 +80,7 @@ function makeCpu(stack, weights, opts) {
         refuseSuicide: opts.refuseSuicide !== false,
         engineDeath: opts.engineDeath !== false,
         refuseUndo: opts.refuseUndo === true,
+        deepestLine: opts.deepestLine !== false,
         rules14: opts.rules14 !== false,
         sinkingEscape: opts.sinkingEscape,
         refuseBrokeRaise: opts.refuseBrokeRaise,

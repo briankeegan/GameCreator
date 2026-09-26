@@ -192,6 +192,8 @@
     // -- the cursor is already on that square, and forcing a different one
     // spends travel frames and leaves it out of position.
     this.refuseUndo = opts.refuseUndo === true;
+    this.deepestLine = opts.deepestLine !== false;
+    this.shallowMovesDropped = 0;
     this.undoMovesDropped = 0;
     this._lastSquare = null;
     this.engineDeath = opts.engineDeath !== false;
@@ -888,9 +890,46 @@
     }
     this.allDoomedNow = !live.length;
     if (!live.length) { this.doomedDecisions++; return cands; }
+    live = this._deepestLine(live);
     if (live.length === cands.length) return cands;
     this.doomedMovesDropped += cands.length - live.length;
     return live;
+  };
+
+  // A LINE EXISTING IS NOT A LINE BEING FOLLOWED.
+  //
+  // _doomed keeps every move from which some surviving line exists, and then
+  // the evaluator picks among them by SCORE -- and at the next decision it
+  // picks by score again. So the bot never walks the line the search found
+  // for it. Read off seed 971: at frame 1351, 8 of 12 moves survived the
+  // rise; it played one of the 8; twenty-two frames later 0 of 15 survived,
+  // with the garbage unchanged at 32 cells, an empty queue and no shake.
+  // Nothing happened to it. It chose its way from eight lines to none.
+  //
+  // So depth is the preference, not just the threshold: of the moves that
+  // survive, keep the ones that survive LONGEST. Survival is monotone --
+  // surviving d rises implies surviving d-1 -- so this walks up from the
+  // depth already proven and stops at the first failure.
+  PuyoCpu.prototype.DEEPEST_MAX = 4;
+  PuyoCpu.prototype._survivalDepth = function (board, from, max) {
+    var d = from;
+    while (d < max && this._survivesRise(board, d + 1)) d++;
+    return d;
+  };
+  PuyoCpu.prototype._deepestLine = function (live) {
+    if (!this.deepestLine || !live || live.length < 2) return live;
+    var best = -1, depths = [], i, d;
+    for (i = 0; i < live.length; i++) {
+      d = this._survivalDepth(this._settledOf(live[i]), this.DOOMED_DEPTH,
+                              this.DEEPEST_MAX);
+      depths.push(d);
+      if (d > best) best = d;
+    }
+    var keep = [];
+    for (i = 0; i < live.length; i++) if (depths[i] === best) keep.push(live[i]);
+    if (!keep.length || keep.length === live.length) return live;
+    this.shallowMovesDropped += live.length - keep.length;
+    return keep;
   };
 
   // THE STACK DOES NOT GO ABOVE THE CAP WHILE A MOVE EXISTS THAT KEEPS IT
