@@ -233,6 +233,8 @@
     // changes nothing, a slab perched on a tower may be a symptom of a game
     // already being lost rather than the cause of losing it.
     this.levelForSlab = opts.levelForSlab === true;
+    this.lastResortBreak = opts.lastResortBreak !== false;
+    this.lastResortDecisions = 0;
     this.levelMovesDropped = 0;
     this.levelDecisions = 0;
     this.flattenMovesDropped = 0;
@@ -1235,6 +1237,43 @@
     }
     return (lo === 99) ? 0 : hi - lo;
   };
+  // WHEN NOTHING SURVIVES, RACE FOR THE LID.
+  //
+  // _doomed lifts when every move is doomed -- correctly, since an empty pool
+  // is no bot at all -- and the evaluator then picks by score, which has no
+  // idea the position is lost. Read off seed 981: seven consecutive decisions
+  // with 17 candidates, all alive this instant, ZERO surviving the rise,
+  // topped out at row 12 under 39 cells of garbage, playing the identical
+  // move [3,1] every time. Then one decision took the garbage from 39 to 18
+  // -- a 21-cell break, and it died 30 frames later anyway.
+  //
+  // The break was there. It arrived too late because nothing was steering
+  // toward it while the bot was already dead on the board.
+  //
+  // Forcing a break in general is WORSE and was measured so: taking one the
+  // instant it appears cashes a small break where waiting lets the same lid
+  // come off inside a chain (5 breaks/66 cells against 6/82). That argument
+  // is about preserving a future. Here there is no future to preserve --
+  // every move on the list dies to the next rise -- so the break costs
+  // nothing and is the only thing that can change the position.
+  PuyoCpu.prototype._lastResort = function (cands) {
+    if (!this.lastResortBreak || !cands || cands.length < 2) return cands;
+    if (!this.allDoomedNow || !this._board) return cands;
+    var now = this._garbageOn(this._board);
+    if (!now) return cands;
+    var best = 0, got = [], i, b, broke;
+    for (i = 0; i < cands.length; i++) {
+      b = this._settledOf(cands[i]);
+      if (!b) continue;
+      broke = now - this._garbageOn(b);
+      if (broke > best) { best = broke; got = [cands[i]]; }
+      else if (broke === best && best > 0) got.push(cands[i]);
+    }
+    if (!best || !got.length || got.length === cands.length) return cands;
+    this.lastResortDecisions++;
+    return got;
+  };
+
   PuyoCpu.prototype._levelForSlab = function (cands) {
     if (!this.levelForSlab || !cands || cands.length < 2 || !this._board) return cands;
     // Only while something is on its way. Nothing queued, nothing to level for.
@@ -1515,7 +1554,9 @@
                    travel: this._scoredTravel,
                    earnedStop: resolved.stopTimeEarned || 0 });
     }
-    return this._levelForSlab(this._flatten(this._towardBreak(this._notAnUndo(this._heightCap(this._doomed(this._survivors(cands)))))));
+    var out = this._levelForSlab(this._flatten(this._towardBreak(
+        this._notAnUndo(this._heightCap(this._doomed(this._survivors(cands)))))));
+    return this._lastResort(out);
   };
 
   // Narrow the pool to the moves this decision is allowed to choose between,
