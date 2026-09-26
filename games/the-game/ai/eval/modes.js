@@ -582,7 +582,17 @@
   //      queue [3x1, 6x6, 5x1, 5x1] on a stack at row 8, 9 of 23 moves
   //      certified by the first-slab rule; the engine holding is dead at frame
   //      95. Resolve corpus 0 wrong of 55; live fidelity 102 of 104.
-  var RULES = 20;
+  //   21. GARBAGE IN FLIGHT IS DELIVERED, AND ONE RAISE IS ONE ROW. An attack
+  //      sits in the sender's `outgoing` for GARBAGE_FLIGHT (151) frames and
+  //      nothing read it: at the last decision with a save in all four
+  //      RULES 20 deaths the queue was empty and the slab that killed it was
+  //      already in flight, landing in 8, 9, 14 and 19 frames. The resolve now
+  //      hands those pieces to the scratch's queue on the engine's clock. And
+  //      a raise held its input a flat 20 frames, which the engine re-latches
+  //      into two or three rows (seed 703: rows at 1068, 1083, 1098, dead at
+  //      1098 after a raise certified as one row); the input is released the
+  //      frame the engine hands the raise off.
+  var RULES = 21;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

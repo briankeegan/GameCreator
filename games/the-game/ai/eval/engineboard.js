@@ -267,11 +267,19 @@
     // has actually risen, the board is still, and nothing queued is left to
     // drop -- every slab the engine drops before that row, where its drop cycle
     // puts it, and the shake each one costs are part of the answer.
-    function settle(stack, budget, live, untilRise) {
+    // `arrivals`: GARBAGE ALREADY IN FLIGHT, delivered on the engine's clock.
+    // [{at, width, height, isChain}], `at` in frames from the start of this
+    // settle, in delivery order. The match hands each piece to the queue when
+    // takeDeliverableGarbage releases it; the scratch has no opponent, so the
+    // same pieces are handed over at the same frames. idleSkip stands down
+    // while any are pending -- it would jump straight past an arrival.
+    function settle(stack, budget, live, untilRise, arrivals) {
         var chain = 0, comboSizes = [], garbage = [], cleared = 0;
         var cap = budget || 900;
         var quiet = false;
         var died = false, diedAt = 0, rose = false;
+        var clock0 = stack.clock || 0, next = 0;
+        var pend = arrivals || [];
         for (var f = 0; f < cap; f++) {
             if (live) {
                 if (stack.gameOver) { died = true; diedAt = f; break; }
@@ -296,7 +304,13 @@
             // for that walk and then refuses — measured slower in real duels
             // than not trying at all. A frame that emitted nothing is the
             // cheap signal that a countdown is what is left.
-            if (quiet) stack.idleSkip();
+            var elapsed = (stack.clock || 0) - clock0;
+            while (next < pend.length && pend[next].at <= elapsed) {
+                stack.incoming.push({ width: pend[next].width, height: pend[next].height,
+                                      isChain: pend[next].isChain });
+                next++;
+            }
+            if (quiet && next >= pend.length) stack.idleSkip();
             stack.events.length = 0;
             stack.run();
             quiet = stack.events.length === 0;
@@ -312,7 +326,8 @@
             if (live && stack.gameOver) { died = true; diedAt = f + 1; break; }
             var still = !stack.hasActivePanels() && !stack.hasChainingPanels();
             if (untilRise) {
-                if (rose && still && !(stack.incoming && stack.incoming.length) &&
+                if (rose && still && next >= pend.length &&
+                    !(stack.incoming && stack.incoming.length) &&
                     !(stack.hasFallingGarbage && stack.hasFallingGarbage())) break;
                 continue;
             }
@@ -328,7 +343,9 @@
             clearedPanels: cleared,
             died: died,
             diedAt: diedAt,
-            rose: rose
+            rose: rose,
+            elapsed: (stack.clock || 0) - clock0,
+            pending: pend.slice(next)
         };
     }
 

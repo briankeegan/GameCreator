@@ -444,6 +444,39 @@
     st.peakShakeTime = live.peakShakeTime || 0;
   };
 
+  // GARBAGE ALREADY IN FLIGHT, AS THE ENGINE WILL DELIVER IT.
+  //
+  // An attack sits in the sender's `outgoing` for GARBAGE_FLIGHT frames --
+  // transit, telegraph and land delay, 151 in all -- before
+  // takeDeliverableGarbage hands it to this stack's queue. It is on screen the
+  // whole time, and it was invisible to the bot: nothing read
+  // opponent.outgoing. Read off RULES 20's four deaths: at the last decision
+  // with a move that survived, the queue was empty every time and the garbage
+  // that killed it was already in flight, landing in 8, 9, 14 and 19 frames --
+  // before the next decision. The check certified moves against a queue the
+  // engine was about to fill.
+  //
+  // Delivery order is the engine's: first in, first out, and a chain still
+  // running (not finalized) holds up everything behind it. Its size can still
+  // grow, so it is counted at the size it has reached -- the least it will be.
+  PuyoCpu.prototype._inFlight = function () {
+    if (this._carry) return this._carry.arrivals || [];
+    var opp = this.opponent;
+    if (!opp || !opp.outgoing || !opp.outgoing.length) return [];
+    var PE = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
+    var flight = (PE && PE.GARBAGE_FLIGHT) || 151;
+    var out = [], prev = 0, i, g, at;
+    for (i = 0; i < opp.outgoing.length; i++) {
+      g = opp.outgoing[i];
+      at = (g.frameEarned || 0) + flight - (opp.clock || 0);
+      if (at < prev) at = prev;
+      if (at < 0) at = 0;
+      out.push({ at: at, width: g.width, height: g.height, isChain: !!g.isChain });
+      prev = at;
+    }
+    return out;
+  };
+
   PuyoCpu.prototype._resolveCandidate = function (board, move, delay, untilRise) {
     if (!this.engine) {
       // LogicalBoard cannot be aged cheaply, so this path keeps the old
@@ -531,11 +564,23 @@
     // engine's board was the live one shifted up a row with the swap never
     // made. The score had picked the prettiest board in a future it died on
     // the way to.
+    var arrivals = this._inFlight(), nextArr = 0;
     var diedInWalk = false;
     for (var f = 0; f < wait; f++) {
+      while (nextArr < arrivals.length && arrivals[nextArr].at <= f) {
+        st.incoming.push({ width: arrivals[nextArr].width, height: arrivals[nextArr].height,
+                           isChain: arrivals[nextArr].isChain });
+        nextArr++;
+      }
       st.events.length = 0;
       st.run();
       if (st.gameOver) { diedInWalk = true; break; }
+    }
+    var walked = f;
+    var settleArrivals = [];
+    for (var ai = nextArr; ai < arrivals.length; ai++) {
+      settleArrivals.push({ at: Math.max(0, arrivals[ai].at - walked), width: arrivals[ai].width,
+                            height: arrivals[ai].height, isChain: arrivals[ai].isChain });
     }
     // THE FLOOR KEEPS MOVING THROUGH THE SETTLE TOO.
     //
@@ -599,7 +644,7 @@
     st.manualRaise = false;
     st.health = st.maxHealth;
     st.gameOver = false;
-    var out = engineBoard.settle(st, untilRise ? 1800 : 900, true, !!untilRise);
+    var out = engineBoard.settle(st, untilRise ? 1800 : 900, true, !!untilRise, settleArrivals);
     if (refused) out.refused = true;
     if (diedInWalk) out.diedInWalk = true;
     // WHERE THE ENGINE LEFT OFF, so a survival line continues from the
@@ -611,7 +656,11 @@
       dropColumnIndex: (function (d) { var o = {}; for (var k in d) if (d.hasOwnProperty(k)) o[k] = d[k]; return o; })(st.dropColumnIndex || {}),
       riseTimer: st.riseTimer, displacement: st.displacement, speed: st.speed,
       stopTime: st.stopTime || 0, preStopTime: st.preStopTime || 0,
-      shakeTime: st.shakeTime || 0, peakShakeTime: st.peakShakeTime || 0
+      shakeTime: st.shakeTime || 0, peakShakeTime: st.peakShakeTime || 0,
+      arrivals: (out.pending || []).map(function (a) {
+        return { at: Math.max(0, a.at - (out.elapsed || 0)), width: a.width,
+                 height: a.height, isChain: a.isChain };
+      })
     };
     // WHAT IS HOLDING THE BOARD UP WHEN THE DUST SETTLES.
     //
@@ -2313,7 +2362,24 @@
     if (stack.gameOver) return;
 
     var input = {};
-    if (this.raiseFrames > 0) { this.raiseFrames--; input.raise = true; }
+    // ONE RAISE IS ONE ROW. The engine re-latches manualRaise on every frame
+    // the input is held while preventManualRaise is clear, and every new row
+    // clears it -- so the fixed 20-frame hold, at one pixel a frame against a
+    // 16-pixel row, served two or three rows for one decision the resolve had
+    // judged as one. Read off seed 703 frame 1062: raised, certified to
+    // survive two rises; rows then landed at 1068, 1083 and 1098 and it was
+    // dead at 1098.
+    //
+    // Released the frame the engine HANDS THE RAISE OFF -- manualRaise goes
+    // false with the last pixel given to passive raise -- not the frame the
+    // row lands. run() is runPhysics, then applyInput: on the landing frame
+    // newRow clears preventManualRaise and a still-held input re-latches
+    // before this can see the row arrive.
+    if (this.raiseFrames > 0) {
+      if (stack.manualRaise) this._raiseStarted = true;
+      if (this._raiseStarted && !stack.manualRaise) this.raiseFrames = 0;
+      else { this.raiseFrames--; input.raise = true; }
+    }
 
     // A committed move owns the frame — the cursor has to get there.
     if (this._walk) {
@@ -2331,6 +2397,7 @@
       // latches manualRaise on a rising edge and the row takes frames to
       // arrive.
       this.raiseFrames = 20;
+      this._raiseStarted = false;
       this.cooldown = this.reaction;
       return;
     }
