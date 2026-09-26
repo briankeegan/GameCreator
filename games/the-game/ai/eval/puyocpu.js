@@ -198,6 +198,7 @@
     // that one run per condition measures nothing. It costs a depth-4 search
     // on every near-ceiling decision, so a wash is a loss.
     this.deepestLine = opts.deepestLine === true;
+    this.breakingEscape = opts.breakingEscape !== false;
     this._line = null;
     this.shallowMovesDropped = 0;
     this.undoMovesDropped = 0;
@@ -1082,6 +1083,55 @@
   // Only consulted when no candidate banks any stop time. `drop` is rows
   // taken off the top; a move that clears without lowering the stack is not
   // a way out of a board that is too tall.
+  // BREAKING THE LID IS AN ESCAPE, AND IT IS THE ONLY ONE THAT LASTS.
+  //
+  // The escape tier ranks two things: a move that banks stop time, and, when
+  // nothing pays, a move that sinks the stack. Neither notices the one move
+  // that takes GARBAGE off the board, and garbage is what the bot dies
+  // under. Measured over whole games with the count taken every frame: the
+  // garbage on the board goes DOWN on one frame per game -- peak 28 cells,
+  // a single break of about 8, and the rest only ever accumulates.
+  //
+  // Stop time and a lower stack both buy one more turn. A break is the only
+  // move that makes the next turn EASIER rather than merely available, so it
+  // is consulted before either, and ranked by how much of the lid it takes.
+  //
+  // The settled grid cannot show this on its own -- the resolve deliberately
+  // stops AT a garbage break, because the colours the popped row becomes are
+  // rng the planner may not read -- so it is the count on the board now
+  // against the count the candidate leaves, which is the same diff _score
+  // credits as garbageCleared.
+  PuyoCpu.prototype._breaking = function (expand) {
+    if (!this.breakingEscape || !this._board) return null;
+    var now = this._garbageOn(this._board);
+    if (!now) return null;
+    var best = 0, i, broke, gone = new Array(expand.length);
+    for (i = 0; i < expand.length; i++) {
+      gone[i] = 0;
+      var b = this._settledOf(expand[i]);
+      if (!b) continue;
+      if (this._resolvesDead(b, expand[i].resolved)) continue;
+      broke = now - this._garbageOn(b);
+      if (broke <= 0) continue;
+      gone[i] = broke;
+      if (broke > best) best = broke;
+    }
+    if (!best) return null;
+    var out = [];
+    for (i = 0; i < expand.length; i++) if (gone[i] === best) out.push(i);
+    return out;
+  };
+
+  PuyoCpu.prototype._garbageOn = function (board) {
+    if (!board || !board.grid) return 0;
+    var n = 0, r, c;
+    for (r = 1; r <= board.height; r++) {
+      if (!board.grid[r]) continue;
+      for (c = 1; c <= board.width; c++) if (board.grid[r][c] === -2) n++;
+    }
+    return n;
+  };
+
   PuyoCpu.prototype._sinking = function (expand) {
     var best = 0, i, drop, tops = new Array(expand.length);
     var now = this._board ? this._topRowOf(this._board) : 0;
@@ -1812,7 +1862,11 @@
         if (worth[i] > bestWorth) bestWorth = worth[i];
       }
       tier = [];
-      if (bestWorth > 0) {
+      // THE LID FIRST. A break outranks banking time: stop time buys one more
+      // turn, a break makes every turn after it easier.
+      var breaking = this._breaking(expand);
+      if (breaking && breaking.length) tier = breaking;
+      else if (bestWorth > 0) {
         for (i = 0; i < expand.length; i++) if (worth[i] === bestWorth) tier.push(i);
       }
       // STAYING ALIVE IS AN ESCAPE TOO.
