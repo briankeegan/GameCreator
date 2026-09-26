@@ -186,7 +186,12 @@
     // Off only for the harness that measures what the rule is worth. A rule
     // that cannot be switched off cannot be shown to be doing anything.
     this.refuseSuicide = opts.refuseSuicide !== false;
-    this.refuseUndo = opts.refuseUndo !== false;
+    // OFF. MEASURED ONE-SIDED AND IT LOSES, badly: 120 duels with sides
+    // alternated, 37% survival against 63% for the same bot without it, 76
+    // deaths against 44. Banning the repeat costs more than the repeat does
+    // -- the cursor is already on that square, and forcing a different one
+    // spends travel frames and leaves it out of position.
+    this.refuseUndo = opts.refuseUndo === true;
     this.undoMovesDropped = 0;
     this._lastSquare = null;
     this.engineDeath = opts.engineDeath !== false;
@@ -954,6 +959,12 @@
   // candidate list at all on 251 of them. No raise means no new panels, a
   // starved interface means no match can reach the slab, and the garbage only
   // ever accumulates.
+  //
+  // MEASURED AND OFF. The reasoning above is sound and the rule does what it
+  // says -- undos fall from 263 of 1,334 decisions to 119, and decisions that
+  // clear something rise from 21% to 23%. It still LOSES: 120 duels, sides
+  // alternated, 37% survival against 63% without it. Keeping the cursor where
+  // it already is buys more than the wasted swap costs.
   //
   // Narrow on purpose: only the SAME SQUARE as the move just taken, only when
   // that move cleared nothing, and it lifts if it would empty the pool.
