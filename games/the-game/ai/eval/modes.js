@@ -621,7 +621,15 @@
   //      yet. On three boards where it condemned every move (0 of 35, 28, 34)
   //      two swaps of any kind before each rise found 2, 15 and 4 survivors.
   //      A budget spent without an answer no longer counts as a proof of death.
-  var RULES = 25;
+  //   26. EVERY MOVE COSTS WHAT IT COSTS IN THE GAME. Moves in a survival line
+  //      were free in time, so a line could make two before a row fifteen
+  //      frames away; seed 700 frame 2659 was certified on one and died one
+  //      frame after the next decision. Each move now walks from the last and
+  //      waits out the reaction with the engine running. And the resolve
+  //      copied the floor's state again after the walk, throwing the walk's
+  //      time away; it is copied once, and a row that lands during the walk
+  //      carries the target up with it. Live fidelity 67 of 67.
+  var RULES = 26;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

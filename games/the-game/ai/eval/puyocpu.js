@@ -556,7 +556,10 @@
         p0.gWidth = 0; p0.gHeight = 0; p0.xOffset = null; p0.yOffset = null;
       }
     }
-    if (wait > 0 && this.stack) this._copyRiseState(st);
+    // The floor's state is copied ONCE, before the walk, and then the walk
+    // and the settle both spend it. Copying it again after the walk threw the
+    // walk's time away: the rise came as though no frames had passed.
+    this._copyRiseState(st);
     // DEAD BEFORE THE CURSOR ARRIVES IS NOT A MOVE IT CAN PLAY.
     //
     // The loop already knew: it breaks on gameOver. What followed did the
@@ -569,7 +572,7 @@
     // made. The score had picked the prettiest board in a future it died on
     // the way to.
     var arrivals = this._inFlight(), nextArr = 0;
-    var diedInWalk = false;
+    var diedInWalk = false, rowsInWalk = 0;
     for (var f = 0; f < wait; f++) {
       while (nextArr < arrivals.length && arrivals[nextArr].at <= f) {
         st.incoming.push({ width: arrivals[nextArr].width, height: arrivals[nextArr].height,
@@ -578,6 +581,7 @@
       }
       st.events.length = 0;
       st.run();
+      for (var we = 0; we < st.events.length; we++) if (st.events[we].type === 'newRow') rowsInWalk++;
       if (st.gameOver) { diedInWalk = true; break; }
     }
     var walked = f;
@@ -595,8 +599,12 @@
     // and the simulation had not been told it could.
     //
     // Everything needed is on the stack: riseTimer, displacement and speed say
-    // when the next row lands, and board.incoming says what is in it.
-    this._copyRiseState(st);
+    // when the next row lands, and board.incoming says what is in it. It was
+    // copied before the walk; the walk has already moved it on.
+    //
+    // A row that lands during the walk carries the target up with it, as it
+    // carries the cursor (newRow: curRow + 1).
+    if (move && rowsInWalk) move = [move[0] + rowsInWalk, move[1]];
     // A REFUSED SWAP IS NOT A QUIET NO-OP. canSwap and LogicalBoard.legalSwaps
     // disagree on 3.5% of the moves the search is handed, and resolving the
     // UNMOVED board scores the candidate as "this move changes nothing" —
@@ -1069,12 +1077,19 @@
   // proof of death: a move is condemned only when every line has been tried.
   PuyoCpu.prototype.SWAPS_PER_RISE = 2;
   PuyoCpu.prototype.SURVIVAL_BUDGET = 400;
-  PuyoCpu.prototype._survivesRise = function (board, depth, vetted, carry, pre, budget) {
+  // EVERY MOVE COSTS WHAT IT COSTS IN THE GAME. A move in a line is made by
+  // walking to it from where the cursor last was and waiting out the
+  // reaction, with the engine running the whole time -- rows rise, garbage
+  // lands. Resolved as free, a line could make two moves before a row that
+  // was fifteen frames away: seed 700 frame 2659 was certified on such a
+  // line, and died one frame after the next decision when that row arrived.
+  PuyoCpu.prototype._survivesRise = function (board, depth, vetted, carry, pre, budget, pos) {
     if (!budget) {
       budget = { n: this.SURVIVAL_BUDGET };
       // The candidate move itself is the first of this rise's moves.
       pre = this.SWAPS_PER_RISE - 1;
     }
+    if (!pos && this.stack) pos = [this.stack.curRow, this.stack.curCol];
     // A board this function already put through the engine is alive on the
     // engine's say-so, shield and all; asking the grid again would condemn the
     // topped-out boards the engine let live.
@@ -1102,7 +1117,8 @@
     budget.n--;
     this._carry = saved;
     if (rr && !rr.died && !this._resolvesDead(risen, rr) &&
-        this._survivesRise(risen, depth - 1, true, rr.carry, this.SWAPS_PER_RISE, budget)) {
+        this._survivesRise(risen, depth - 1, true, rr.carry, this.SWAPS_PER_RISE, budget,
+                           pos && [Math.min(pos[0] + (rr.rose ? 1 : 0), board.height), pos[1]])) {
       if (this._line) this._line.unshift(null);
       return true;
     }
@@ -1111,13 +1127,15 @@
       var swaps = board.legalSwaps(), i, t, r;
       for (i = 0; i < swaps.length && budget.n > 0; i++) {
         t = board.clone();
-        t.swap(swaps[i][0], swaps[i][1]);
+        t.incoming = (carry && carry.nextRow) || (board.incoming === false ? false : (board.incoming || this._incoming || null));
+        var cost = this.reaction +
+                   (pos ? travel.cost(pos[0], pos[1], swaps[i][0], swaps[i][1]) : 0);
         this._carry = carry || null;
-        r = this._resolveCandidate(t);
+        r = this._resolveCandidate(t, swaps[i], cost);
         budget.n--;
         this._carry = saved;
-        if (!r || r.died || this._resolvesDead(t, r)) continue;
-        if (this._survivesRise(t, depth, true, r.carry, pre - 1, budget)) {
+        if (!r || r.refused || r.died || r.diedInWalk || this._resolvesDead(t, r)) continue;
+        if (this._survivesRise(t, depth, true, r.carry, pre - 1, budget, swaps[i])) {
           if (this._line) this._line.unshift(swaps[i]);
           return true;
         }
@@ -1164,7 +1182,8 @@
     var i;
     var live = [];
     for (i = 0; i < cands.length; i++) {
-      if (this._survivesRise(this._settledOf(cands[i]), this.DOOMED_DEPTH)) live.push(cands[i]);
+      if (this._survivesRise(this._settledOf(cands[i]), this.DOOMED_DEPTH, false, null, undefined, undefined,
+                             cands[i].move || null)) live.push(cands[i]);
     }
     this.allDoomedNow = !live.length;
     if (!live.length) { this.doomedDecisions++; return cands; }
