@@ -592,7 +592,17 @@
   //      into two or three rows (seed 703: rows at 1068, 1083, 1098, dead at
   //      1098 after a raise certified as one row); the input is released the
   //      frame the engine hands the raise off.
-  var RULES = 21;
+  //   22. WHAT THE ENGINE HOLDS, THE RESOLVE HOLDS. Three places the scratch
+  //      disagreed with the engine on a board read off a real game. Rows above
+  //      the lid were cut off on read-back and repaint, so a 6x3 landing on a
+  //      stack at row 10 became a 6x1 and the model lived where the game died
+  //      (seed 701 frame 466, dead at 668). A line could end on a board
+  //      topped out and alive only on a shake that was about to run out. And
+  //      paint called every panel resting on a supported slab "hovering" if
+  //      the slab had a hole under any column, so canSwap refused legal moves
+  //      -- a slab is held by any of its columns. Live fidelity 90 of 91,
+  //      the one left a growing attack read early; resolve corpus 0 wrong.
+  var RULES = 22;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

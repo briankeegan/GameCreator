@@ -65,12 +65,23 @@
     // Giving every floating panel a fresh full hover lands it late, and a panel
     // that lands late can come to rest a row above where it belongs because
     // something settled under it first.
+    // ROWS ABOVE THE LID ARE PART OF THE BOARD. A slab that lands on a tall
+    // stack sits partly above row 12 -- the engine grows its panel array to
+    // hold it (dropGarbage, newRow) -- and those rows keep the stack topped out
+    // and fall back in when anything below clears. Reading and painting rows
+    // 1..height only cut a 6x3 landing on a stack at row 10 down to the one
+    // row that was visible, and the model then lived where the game died
+    // (seed 701 frame 466). So a grid may carry rows past `height`, and they
+    // are painted and read like any other.
     function paint(stack, grid, height, width, blocks, chaining, motion) {
+        while (stack.makeEmptyRow && grid && stack.panels.length < grid.length) {
+            stack.panels.push(stack.makeEmptyRow(stack.panels.length));
+        }
         for (var r = 0; r < stack.panels.length; r++) {
             for (var c = 1; c <= width; c++) {
                 var p = stack.panels[r][c];
                 if (!p) continue;
-                var v = (r >= 1 && r <= height && grid[r]) ? (grid[r][c] || 0) : 0;
+                var v = (r >= 1 && grid[r]) ? (grid[r][c] || 0) : 0;
                 p.color = v > 0 ? v : 0;
                 p.isGarbage = v === -2;
                 p.state = 'normal';
@@ -155,32 +166,46 @@
         // actually comes to rest. Garbage is skipped — it spans columns and
         // the engine's supportedFromBelow handles it before the stateChanged
         // guard.
-        for (var gc = 1; gc <= width; gc++) {
-            var rest = 1;
-            for (var gr = 1; gr <= height; gr++) {
-                var gp = stack.panels[gr] && stack.panels[gr][gc];
-                if (!gp || gp.color === 0) continue;
-                // GARBAGE IS NOT A FLOOR. A slab with a gap under it falls, and
-                // everything resting on it falls the same distance. Treating
-                // it as fixed left the colour panels above a sinking slab
-                // marked normal, where updateNormal never looks at them again.
-                if (gp.isGarbage) { rest = gr + 1; continue; }
-                // Anything with an empty cell somewhere below it in this column
-                // is going down, whether the gap is directly beneath or under a
-                // slab that is itself about to sink.
-                var gap = gr > rest;
-                if (!gap) {
-                    for (var gb = gr - 1; gb >= 1; gb--) {
-                        var bp = stack.panels[gb] && stack.panels[gb][gc];
-                        if (!bp || bp.color === 0) { gap = true; break; }
+        // WHAT IS HELD UP, worked out the way the engine holds it. A colour
+        // panel is held if the cell under it is held; a SLAB is held if any
+        // cell of its bottom row is -- it moves as one piece, so a hole under
+        // one of its columns does not sink it while another column carries
+        // it. The rule this replaced asked each column on its own ("anything
+        // with an empty cell somewhere below it is going down") and so marked
+        // every panel resting on a supported slab as hovering whenever the
+        // slab had a hole under it anywhere -- and canSwap refuses a swap
+        // under a hovering panel. Read off live_fidelity: row 7 resting on a
+        // full-width slab held by columns 1-3, a hole under column 4; the
+        // engine made the swap at (7,4), the scratch refused it.
+        //
+        // Bottom-up, one pass: the first row a slab is met in is its bottom
+        // row, and everything under that row is already decided.
+        var held = [], slabHeld = {};
+        for (var hr = 1; hr <= height; hr++) {
+            held[hr] = [];
+            for (var hc = 1; hc <= width; hc++) {
+                var hp = stack.panels[hr] && stack.panels[hr][hc];
+                if (!hp || hp.color === 0) { held[hr][hc] = false; continue; }
+                if (hp.isGarbage) {
+                    var hid = hp.garbageId;
+                    if (slabHeld[hid] === undefined) {
+                        var any = false;
+                        for (var hc2 = 1; hc2 <= width; hc2++) {
+                            var hq = stack.panels[hr][hc2];
+                            if (!hq || !hq.isGarbage || hq.garbageId !== hid) continue;
+                            if (hr === 1 || held[hr - 1][hc2]) { any = true; break; }
+                        }
+                        slabHeld[hid] = any;
                     }
+                    held[hr][hc] = slabHeld[hid];
+                    continue;
                 }
-                if (gap) {
-                    var mv = motion && motion[gr] && motion[gr][gc];
-                    if (mv) { gp.state = mv.state; gp.timer = mv.timer; }
-                    else { gp.state = 'hovering'; gp.timer = stack.frames.HOVER; }
+                held[hr][hc] = hr === 1 || !!held[hr - 1][hc];
+                if (!held[hr][hc]) {
+                    var mv = motion && motion[hr] && motion[hr][hc];
+                    if (mv) { hp.state = mv.state; hp.timer = mv.timer; }
+                    else { hp.state = 'hovering'; hp.timer = stack.frames.HOVER; }
                 }
-                rest++;
             }
         }
         stack.riseLock = true;
@@ -352,7 +377,17 @@
     // Read the settled board back out, in LogicalBoard's grid shape.
     function readGrid(stack, height, width) {
         var grid = [];
-        for (var r = 0; r <= height; r++) {
+        // Up to the highest row that holds anything, never below the lid.
+        var top = height, rr, cc;
+        for (rr = stack.panels.length - 1; rr > height; rr--) {
+            var any = false;
+            for (cc = 1; cc <= width; cc++) {
+                var q = stack.panels[rr] && stack.panels[rr][cc];
+                if (q && q.color !== 0) { any = true; break; }
+            }
+            if (any) { top = rr; break; }
+        }
+        for (var r = 0; r <= top; r++) {
             grid[r] = [];
             for (var c = 1; c <= width; c++) {
                 var p = stack.panels[r] && stack.panels[r][c];
@@ -369,7 +404,7 @@
     // very next move.
     function readBlocks(stack, height, width) {
         var out = {};
-        for (var r = 1; r <= height; r++) {
+        for (var r = 1; r < stack.panels.length; r++) {
             for (var c = 1; c <= width; c++) {
                 var p = stack.panels[r] && stack.panels[r][c];
                 if (!p || !p.isGarbage || p.color === 0) continue;

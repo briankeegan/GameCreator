@@ -117,7 +117,11 @@
 
   LogicalBoard.prototype.clone = function () {
     var g = [];
-    for (var r = 0; r <= this.height; r++) g[r] = this.grid[r] ? this.grid[r].slice() : [];
+    // Rows above the lid too, when a board carries them: a slab that landed
+    // on a tall stack sits partly above row `height`, and a copy without
+    // those rows is a smaller slab than the one on the board.
+    var rows = Math.max(this.height + 1, this.grid.length);
+    for (var r = 0; r < rows; r++) g[r] = this.grid[r] ? this.grid[r].slice() : [];
     var blocks = {};
     for (var id in this.blocks) if (this.blocks.hasOwnProperty(id)) {
       blocks[id] = { cells: this.blocks[id].cells.map(function (rc) { return [rc[0], rc[1]]; }) };
