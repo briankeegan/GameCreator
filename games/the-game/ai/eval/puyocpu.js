@@ -193,6 +193,7 @@
     // spends travel frames and leaves it out of position.
     this.refuseUndo = opts.refuseUndo === true;
     this.deepestLine = opts.deepestLine !== false;
+    this._line = null;
     this.shallowMovesDropped = 0;
     this.undoMovesDropped = 0;
     this._lastSquare = null;
@@ -862,7 +863,10 @@
     // this report survival on 14 of 36 deaths: row 11 full, row 12 empty, the
     // rise pushes it over, and a swap on the dead board answered yes.
     if (this._boardToppedOut(risen) || this._diesToQueue(risen)) return false;
-    if (this._survivesRise(risen, depth - 1)) return true;
+    // THE LINE, NOT JUST THE VERDICT. Waiting is a step like any other, so
+    // it is recorded too -- a line that says "hold, then swap here" is the
+    // commonest escape there is.
+    if (this._survivesRise(risen, depth - 1)) { if (this._line) this._line.unshift(null); return true; }
     var swaps = risen.legalSwaps(), i, t, r;
     for (i = 0; i < swaps.length; i++) {
       t = risen.clone();
@@ -870,9 +874,31 @@
       r = this._resolveCandidate(t);
       if (!r || !r.clearedPanels) continue;
       if (this._boardToppedOut(t)) continue;
-      if (this._survivesRise(t, depth - 1)) return true;
+      if (this._survivesRise(t, depth - 1)) { if (this._line) this._line.unshift(swaps[i]); return true; }
     }
     return false;
+  };
+
+  // THE ESCAPE THE SEARCH FOUND, KEPT.
+  //
+  // _survivesRise proves a line exists by playing its own swaps, and then
+  // threw every one of them away and answered true. _doomed used that as a
+  // gate, the evaluator picked among the survivors by score, and at the next
+  // decision the whole thing ran again from nothing -- so the bot never
+  // walked the line that was found for it. Read off seed 971: frame 1351,
+  // 8 of 12 moves survived the rise; it played one of the 8; twenty-two
+  // frames later 0 of 15 survived, with the garbage unchanged at 32 cells,
+  // an empty queue and no shake. Nothing happened to it. It chose its way
+  // from eight lines to none.
+  //
+  // So the search hands the line back. _lineFor runs it for one candidate
+  // and returns the swaps, deepest first tried.
+  PuyoCpu.prototype._lineFor = function (board, depth) {
+    this._line = [];
+    var ok = this._survivesRise(board, depth);
+    var line = this._line;
+    this._line = null;
+    return ok ? line : null;
   };
 
   // Only worth asking when the stack is high enough for a rise to matter.
