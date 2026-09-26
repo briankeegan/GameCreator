@@ -7,6 +7,23 @@ have played.
 
 Target: no deaths before the duel ceiling, 21,600 frames (6 minutes).
 
+## Read the actual board. Do not trust the readings you wrote.
+
+A probe is code I wrote five minutes ago, and it is as likely to be wrong as
+the thing it measures. A count that says "0 certified" or "8 broken" is a
+CLAIM, not a finding. Before any number is believed, reported or acted on:
+print the boards behind it and look at them -- the live board, the board
+the check judged, the move played, and what the game actually did next --
+and confirm by eye that the board shows what the number says.
+
+This has already failed in practice: "8 certificates broke with nothing to
+break them" was an operator-precedence bug that selected exactly the cases
+where the opponent's garbage had just arrived. The boards would have shown
+it; the count could not.
+
+If the check says it survives, great -- then look at the board and see
+that it did.
+
 ## Do not add gates. Fix the resolve.
 
 The verdicts have to be TRUE. Before this, the bot thought it was making
