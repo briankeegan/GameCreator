@@ -186,6 +186,7 @@
     // Off only for the harness that measures what the rule is worth. A rule
     // that cannot be switched off cannot be shown to be doing anything.
     this.refuseSuicide = opts.refuseSuicide !== false;
+    this.engineDeath = opts.engineDeath !== false;
     // RULES 14's two rules, behind one switch so the pair can be measured
     // against the procedure they changed. A rule that cannot be switched off
     // cannot be shown to be doing anything.
@@ -1351,6 +1352,10 @@
   // to the grid -- a board with no account of itself is judged as before.
   PuyoCpu.prototype._resolvesDead = function (board, resolved) {
     if (!this._boardToppedOut(board)) return false;
+    // OFF IS THE OLD VERDICT, so one side of a duel can be asked the grid
+    // question while the other is asked the engine's. A rule that both sides
+    // get cannot be measured -- the record is 50% by construction.
+    if (this.engineDeath === false) return true;
     if (!resolved) return true;
     if ((resolved.stopTime || 0) > 0) return false;
     if ((resolved.shakeTime || 0) > 0) return false;
