@@ -1357,10 +1357,24 @@
     // get cannot be measured -- the record is 50% by construction.
     if (this.engineDeath === false) return true;
     if (!resolved) return true;
-    if ((resolved.stopTime || 0) > 0) return false;
-    if ((resolved.shakeTime || 0) > 0) return false;
+    // A SHIELD THAT EXPIRES BEFORE YOU CAN MOVE IS NOT A SHIELD.
+    //
+    // Stop time and a shaking slab both hold the drain off, so the first
+    // version of this asked only whether one was present. Read off the last
+    // decision of 18 deaths: 178 moves were judged safe, 134 of them topped
+    // out but "shielded", and 116 of those were spared by banked stop time
+    // with an average of FOUR FRAMES LEFT. Four frames is a fifteenth of a
+    // second. The board was still topped out when it ran out.
+    //
+    // The bot cannot act for `reaction` frames after a decision -- update()
+    // returns while the cooldown is above zero -- so a shield shorter than
+    // that buys no move at all, and the board it leaves is the board it dies
+    // on. Anything that will still be standing when the cursor is free again
+    // is a real reprieve; anything shorter is death with a delay.
     if (resolved.stillMoving) return false;
-    return true;
+    var shield = resolved.stopTime || 0;
+    if ((resolved.shakeTime || 0) > shield) shield = resolved.shakeTime;
+    return shield <= this.reaction;
   };
 
   PuyoCpu.prototype._boardToppedOut = function (board) {
