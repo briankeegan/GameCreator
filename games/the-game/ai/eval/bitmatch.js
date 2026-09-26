@@ -210,41 +210,110 @@
   // HOW MANY COLOURS IS READ OFF THE BOARD, never assumed — a board staged for
   // a chip fills the cells its shape ignores with colours no real board uses,
   // exactly so that filler cannot join a match.
-  function resolveBits(grid, blocks, W, H) {
-    if (blocks && Object.keys(blocks).length) return { scope: 'garbage', chain: 0, total: 0, rounds: 0 };
+  // policy decides what an UNKNOWN cell may do. A slab pop turns a row of
+  // garbage into panels whose colours the engine draws from its own rng, so a
+  // planner cannot know them — but it can bound them. 'certain' lets an unknown
+  // cell only occupy, giving the clear that happens whatever the draw is;
+  // 'possible' lets it stand in for every colour at once, giving a clear that no
+  // draw can exceed. The truth is somewhere in between, and both ends are
+  // computable.
+  function resolveBits(grid, blocks, W, H, policy) {
+    var WILD = policy === 'possible';
+    var sawUnknown = false;
     var N = api.topColour(grid, W, H);
-    var occ = [], colour = [], chaining = [], popping = [], a, c, r;
+    if (WILD && N < 3) N = 3;
+    var occ = [], colour = [], chaining = [], popping = [], inert = [], garb = [], unknown = [];
+    var a, c, r;
     for (a = 1; a <= N; a++) { colour[a] = []; for (c = 1; c <= W; c++) colour[a][c] = 0; }
-    for (c = 1; c <= W; c++) { occ[c] = 0; chaining[c] = 0; popping[c] = 0; }
+    for (c = 0; c <= W + 1; c++) {
+      occ[c] = 0; chaining[c] = 0; popping[c] = 0; inert[c] = 0; garb[c] = 0; unknown[c] = 0;
+    }
     for (r = 1; r <= H; r++) {
       for (c = 1; c <= W; c++) {
-        var v = grid[r][c];
+        var v = grid[r][c], b = 1 << (r - 1);
         if (v === 0) continue;
-        if (v < 1) return { scope: 'unknown-cell', chain: 0, total: 0, rounds: 0 };
-        occ[c] |= (1 << (r - 1));
-        colour[v][c] |= (1 << (r - 1));
+        if (v === -1) sawUnknown = true;
+        occ[c] |= b;
+        // A GARBAGE SLAB AND A POPPED GARBAGE CELL BOTH OCCUPY AND NEITHER
+        // MATCHES. -2 is a slab; -1 is a cell a slab pop already turned into a
+        // panel whose colour comes from the engine's rng, which the planner is
+        // not allowed to know. Both hold things up and neither joins a run.
+        if (v === -2) { inert[c] |= b; garb[c] |= b; continue; }
+        if (v === -1) { inert[c] |= b; unknown[c] |= b; continue; }
+        colour[v][c] |= b;
       }
     }
 
-    // A round costs up to H iterations, because the fall moves one row at a
-    // time and every row needs its own look. A guard sized for rounds alone
-    // truncates a deep cascade into a shallower one that cleared less.
+    // A SLAB MOVES AS A UNIT, one mask per column it spans. It falls only when
+    // EVERY column beneath it is clear, which is also why it BRIDGES: held up
+    // in one column, it spans the holes in the others and everything standing
+    // on it rests. A slab resting on a falling slab is falling too, so the test
+    // runs to a fixed point.
+    var slabs = [];
+    if (blocks) {
+      for (var id in blocks) {
+        var cells = blocks[id].cells, sm = [];
+        for (var c0 = 0; c0 <= W + 1; c0++) sm[c0] = 0;
+        for (var i = 0; i < cells.length; i++) sm[cells[i][1]] |= (1 << (cells[i][0] - 1));
+        slabs.push(sm);
+      }
+    }
+    function slabsThatFall() {
+      var falling = new Array(slabs.length).fill(false), moved = true, pass = 0;
+      while (moved && pass++ <= slabs.length + 1) {
+        moved = false;
+        for (var si = 0; si < slabs.length; si++) {
+          if (falling[si]) continue;
+          var sm2 = slabs[si], held = false;
+          for (var cc3 = 1; cc3 <= W && !held; cc3++) {
+            if (!sm2[cc3]) continue;
+            var lowBit = sm2[cc3] & -sm2[cc3];
+            if (lowBit === 1) { held = true; break; }          // on the floor
+            var under = lowBit >> 1;
+            if (!(occ[cc3] & under)) continue;                 // nothing below
+            var owner = -1;
+            for (var sj = 0; sj < slabs.length; sj++) if (slabs[sj][cc3] & under) owner = sj;
+            if (owner >= 0 && falling[owner]) continue;        // falling too
+            held = true;
+          }
+          if (!held) { falling[si] = true; moved = true; }
+        }
+      }
+      return falling;
+    }
+
+    // Landed cells, bottom up. An inert cell never moves, so it rests on its
+    // own account and is a floor for whatever stands on it — which is how a
+    // slab bridges a hole in one of the columns it spans.
+    function restingOf() {
+      var out = [];
+      for (var cc2 = 1; cc2 <= W; cc2++) {
+        var o = occ[cc2], m = 0;
+        for (var rr = 1; rr <= H; rr++) {
+          var bb = 1 << (rr - 1);
+          if (!(o & bb)) continue;
+          if (rr === 1 || (m & (bb >> 1)) || (inert[cc2] & bb)) m |= bb;
+        }
+        out[cc2] = m;
+      }
+      return out;
+    }
+
     var counter = 0, rounds = 0, total = 0, guard = 0, LIMIT = W * H * H;
     while (guard++ <= LIMIT) {
-      // Only a landed cell that is not already popping can match. With no
-      // garbage, landed is the run of occupied bits reaching the floor:
-      // everything from the first hole up is in the air.
-      var rest = [], k = [], link = false, any = false;
-      for (c = 1; c <= W; c++) {
-        var o = occ[c], lowestZero = (~o) & (o + 1);
-        rest[c] = o & (lowestZero - 1) & ~popping[c];
-      }
+      var rest = restingOf(), k = [], link = false, any = false;
       var B = [];
-      for (a = 1; a <= N; a++) { B[a] = []; for (c = 1; c <= W; c++) B[a][c] = colour[a][c] & rest[c]; }
-      for (c = 1; c <= W; c++) k[c] = 0;
+      for (a = 1; a <= N; a++) {
+        B[a] = [];
+        for (c = 1; c <= W; c++) {
+          B[a][c] = (colour[a][c] | (WILD ? unknown[c] : 0)) & rest[c] & ~popping[c] &
+                    ~(inert[c] & ~(WILD ? unknown[c] : 0));
+        }
+      }
+      for (c = 0; c <= W + 1; c++) k[c] = 0;
       for (a = 1; a <= N; a++) {
         for (c = 1; c <= W; c++) {
-          var b = B[a][c], cv = b & (b >> 1) & (b >> 2);
+          var bb2 = B[a][c], cv = bb2 & (bb2 >> 1) & (bb2 >> 2);
           k[c] |= cv | (cv << 1) | (cv << 2);
         }
         for (c = 1; c + 2 <= W; c++) {
@@ -257,34 +326,68 @@
       if (any) {
         rounds++;
         if (link) counter = counter === 0 ? 2 : counter + 1;
-        for (c = 1; c <= W; c++) { total += popcount(k[c]); popping[c] |= k[c]; }
+        var brokeGarbage = false;
+        for (c = 1; c <= W; c++) {
+          total += popcount(k[c]);
+          popping[c] |= k[c];
+          // Touching a slab pops a row of it, and the engine colours that row
+          // from its own rng. Nothing past that point is knowable, so the pop
+          // is counted and the cascade stops — the same place resolve() stops.
+          if (k[c] & ((garb[c] >> 1) | (garb[c] << 1) | garb[c - 1] | garb[c + 1])) brokeGarbage = true;
+        }
+        if (brokeGarbage) {
+          // NOTHING PAST HERE IS KNOWABLE. The pop turns a row of the slab into
+          // panels whose colours the engine draws from its own rng, and what
+          // those panels go on to do depends on the draw. The numbers up to the
+          // break are reported and the scope says which kind of answer this is,
+          // so a caller cannot read a stopped cascade as a finished one.
+          return { scope: 'garbage-broke', chain: Math.max(counter, 1),
+                   total: total, rounds: rounds };
+        }
         continue;
       }
 
-      // Nothing new matched. Let the board fall a row; a marked group is still
-      // in place, so it still holds up what stands on it.
+      // Nothing new matched. Fall one row: a marked group is still in place and
+      // still holds up what stands on it, and an inert cell does not move, so
+      // only the panels between the hole and the first inert cell above it can
+      // slide down.
       var fell = false;
       for (c = 1; c <= W; c++) {
         var hole = (~occ[c]) & (occ[c] + 1);
         var above = ~((hole << 1) - 1);
-        if (!(occ[c] & above)) continue;
-        // A popping cell does not move, and nothing slides past it.
-        if (popping[c] & above & ~(hole - 1)) {
-          var lowestPop = popping[c] & -popping[c];
-          if (lowestPop && lowestPop > hole) { /* only the run under it may fall */ }
-          else continue;
-        }
+        var blockAbove = ((inert[c] & ~unknown[c]) | popping[c]) & above;
+        var ceiling = blockAbove & -blockAbove;          // lowest immovable cell
+        var movable = occ[c] & above & (ceiling ? (ceiling - 1) : ~0);
+        if (!movable) continue;
         fell = true;
         var below = hole - 1;
-        for (a = 1; a <= N; a++) colour[a][c] = (colour[a][c] & below) | ((colour[a][c] & above) >> 1);
-        chaining[c] = (chaining[c] & below) | ((chaining[c] & above) >> 1);
-        popping[c] = (popping[c] & below) | ((popping[c] & above) >> 1);
-        occ[c] = (occ[c] & below) | ((occ[c] & above) >> 1);
+        var keepPut = occ[c] & ~movable & ~below;        // above the ceiling
+        for (a = 1; a <= N; a++) {
+          colour[a][c] = (colour[a][c] & below) | ((colour[a][c] & movable) >> 1) |
+                         (colour[a][c] & keepPut);
+        }
+        chaining[c] = (chaining[c] & below) | ((chaining[c] & movable) >> 1) | (chaining[c] & keepPut);
+        unknown[c] = (unknown[c] & below) | ((unknown[c] & movable) >> 1) | (unknown[c] & keepPut);
+        inert[c] = (inert[c] & below) | ((inert[c] & movable) >> 1) | (inert[c] & keepPut);
+        occ[c] = (occ[c] & below) | (movable >> 1) | keepPut;
+      }
+      // THEN THE SLABS, which is the order resolve() falls them in.
+      var slabFell = slabsThatFall();
+      for (var sk = 0; sk < slabs.length; sk++) {
+        if (!slabFell[sk]) continue;
+        fell = true;
+        for (c = 1; c <= W; c++) {
+          var sb = slabs[sk][c];
+          if (!sb) continue;
+          occ[c] &= ~sb; inert[c] &= ~sb; garb[c] &= ~sb;
+          slabs[sk][c] = sb >> 1;
+          occ[c] |= slabs[sk][c]; inert[c] |= slabs[sk][c]; garb[c] |= slabs[sk][c];
+        }
       }
       if (fell) continue;
 
-      // Still, and nothing new matched: now the marked cells actually leave,
-      // and everything above one of them is falling BECAUSE of that.
+      // Still, and nothing new matched: the marked cells leave now, and
+      // everything above one of them is falling BECAUSE of that.
       var swept = false;
       for (c = 1; c <= W; c++) {
         if (!popping[c]) continue;
@@ -293,13 +396,36 @@
         var keep = occ[c] & ~popping[c];
         chaining[c] = (chaining[c] | (keep & ~(lowest - 1))) & keep;
         for (a = 1; a <= N; a++) colour[a][c] &= keep;
+        unknown[c] &= keep;
+        inert[c] &= keep;
         occ[c] = keep;
         popping[c] = 0;
       }
       if (swept) continue;
       break;
     }
-    return { scope: 'ok', chain: rounds ? Math.max(counter, 1) : 0, total: total, rounds: rounds };
+    return { scope: 'ok', chain: rounds ? Math.max(counter, 1) : 0, total: total,
+             rounds: rounds, policy: WILD ? 'possible' : 'certain', sawUnknown: sawUnknown };
+  }
+
+  // WHERE A SLAB BREAKS, THE ANSWER IS NOT A NUMBER.
+  //
+  // A match touching a slab pops a row of it, and the engine colours that row
+  // from its own rng. What those panels go on to do depends on the draw, so the
+  // cascade past that point is not predictable and resolveBits stops, reporting
+  // scope 'garbage-broke' with the numbers up to the break.
+  //
+  // Bounding it instead was tried and is NOT in place. Letting an unknown cell
+  // stand in for every colour bounds how much CLEARS but not how DEEP the chain
+  // goes — firing everything at the first opportunity merges links the engine
+  // keeps separate. And the opposite end is not a floor either: on one of 299
+  // break cases it reported more cleared than the engine did, which means the
+  // way converted panels land is not yet modelled. Neither end is sound, so
+  // neither is offered.
+  function resolveFloor(grid, blocks, W, H) {
+    var r = api.resolveBits(grid, blocks, W, H);
+    return { scope: r.scope, chain: r.chain, total: r.total,
+             exact: r.scope === 'ok' };
   }
 
   // Calls go through this object so a test can swap one step for a broken one
@@ -310,6 +436,7 @@
     restingMask: restingMask,
     colourMasks: colourMasks,
     clears: clears,
+    resolveFloor: resolveFloor,
     clearedCells: clearedCells,
     pext: pext,
     resolveBits: resolveBits
