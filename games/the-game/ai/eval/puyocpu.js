@@ -1146,7 +1146,8 @@
   // is far outside any noise at that sample -- peak garbage 24.0 against
   // 25.3, games 39.3s against 31.7s. Head to head over 120 duels, one-sided
   // with optsB and sides alternated: 56 deaths against 64, 53% against 47%,
-  // garbage@death 27.8 against 30.5. The survival edge is 0.7 sigma and NOT
+  // garbage@death 27.8 against 30.5; at 240 duels 116 against 124, 52%
+  // against 48%, garbage@death 28.0 against 30.7. The edge is 0.5 sigma, NOT
   // established; the clearing is. ON because the clearing is the cause of
   // death and the edge points the right way, not because 53% means anything.
   //
