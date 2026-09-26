@@ -52,13 +52,23 @@ minutes, and a duel result cannot tell you WHY.
    two runs come out bit-identical and nothing else matters. `_breaking`
    fired on 0 decisions because the escape tier is gated behind FORCED --
    a 120-duel run would have said "no effect" and not said why.
-2. **Did it move the number it targets?** One to three games. Forcing the
-   garbage break made the garbage come down LESS (5 times/66 cells against
-   6/82). Rejected on its own objective, no duels spent.
+2. **Did it move the number it targets?** THIS IS A MEASUREMENT AND IT
+   LIES AT n=3. Step 1 is binary and obvious -- 0 firings against 83 cannot
+   be noise -- but a game length or a garbage count needs 30+ games. Read
+   at n=3, the danger clock looked like 52.5s against 38.6s and 126 cells
+   against 82; at 60 duels it was 28.4s against 29.7s, i.e. nothing.
+   AND BOTH SIDES MUST NOT CHANGE TOGETHER: a same-setting duel says how
+   long games last, never which bot is better. Use `optsB` for that.
 3. **Read a board where it fired.** What did it actually choose?
 4. **Only then**, survival duels, one-sided with `optsB`, sides alternated,
    120+. 60 duels is ~1 sigma and will lie to you: deepestLine read 57/43
-   at 60 and 52/48 at 120.
+   at 60, 52/48 at 120 and 52/48 at 240.
+
+Both questions are worth asking and they are not the same. Head-to-head
+(`optsB`, one side) asks which bot is better. Absolute survival (same
+setting both sides, read game length and ceilings, never the win rate)
+asks whether the bot is closer to living 21,600 frames -- which is the
+actual goal. The danger clock failed both.
 
 ## Ground truth about dying
 
