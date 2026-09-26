@@ -983,6 +983,10 @@
   // extra decisions filtered -- 57.7% of decisions against 55.8%, a 3.5% cost.
   // The 48 it still misses are boards whose candidates all settle at row 8 or
   // lower and die to the SECOND rise; DOOMED_ROWS is where that trade sits.
+  // On survival, 20 duels on one pair of island snapshots with the same
+  // setting both sides -- absolute survival, not a win rate: average game
+  // 32.5s -> 36.6s and longest 59.4s -> 84.0s. n=20 on a game length is not a
+  // verdict, and the correction stands on the boards either way.
   PuyoCpu.prototype.DOOMED_ROWS = 4;
   PuyoCpu.prototype.DOOMED_DEPTH = 2;
   PuyoCpu.prototype._doomed = function (cands) {
