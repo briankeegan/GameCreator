@@ -828,6 +828,13 @@
   // allFatalNow still means "no fully surviving move", so FORCED and the
   // danger-weight rescore are unchanged: this only decides what the lift
   // falls back TO.
+  //
+  // ON, AND IT DOES NOT BUY TIME. 30 duels, same setting both sides: average
+  // game 29.2s -> 27.6s and longest 110.3s -> 55.0s, neither a gap n=30 can
+  // resolve on a game length and the longest is one duel either way. It is
+  // kept because it is the requirement, not because it pays: it is what takes
+  // no_self_death.test.js's "IT NEVER PLAYS A MOVE IT COULD NOT SURVIVE" to 0,
+  // and a self-death read off a board is not traded for an average.
   PuyoCpu.prototype._survivors = function (cands) {
     if (!cands || !cands.length) return cands;
     var live = [], standing = [], i, b;
