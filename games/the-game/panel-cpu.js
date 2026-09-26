@@ -940,7 +940,16 @@
       for (var c = 1; c <= width; c++) {
         var p = stack.panelAt(r, c);
         chaining[r][c] = !!(p && p.chaining);
-        motion[r][c] = (p && (p.state === 'hovering' || p.state === 'falling'))
+        // ANY STATE THAT IS NOT SETTLED, not just the two that fall.
+        // eligible() in the engine refuses to pop garbage unless its state is
+        // 'normal', so a slab that is matched or popping cannot be broken
+        // again -- and paint was writing 'normal' over every garbage panel,
+        // which handed the search a slab it could break a second time. One
+        // swap "cleared" 29 garbage cells that way, and a board read off a
+        // death had two full rows of garbage erased that the engine never
+        // touched: the bot then believed it had three rows of headroom where
+        // it had one, and played a swap in row 3 while the floor closed it.
+        motion[r][c] = (p && p.state && p.state !== 'normal')
                        ? { state: p.state, timer: p.timer || 0 } : null;
         var v;
         if (!p) v = -1;

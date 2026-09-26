@@ -115,7 +115,13 @@
                     gp.gWidth = gw; gp.gHeight = gh;
                     gp.yOffset = cells[i][0] - minR;
                     gp.xOffset = cells[i][1] - minC;
-                    gp.state = 'normal';
+                    // AND THE STATE IT IS ACTUALLY IN. Writing 'normal' here
+                    // makes a slab that is matched, popping or in flight
+                    // eligible again -- the engine's eligible() requires
+                    // 'normal' precisely so a break cannot be counted twice.
+                    var gmv = motion && motion[cells[i][0]] && motion[cells[i][0]][cells[i][1]];
+                    if (gmv) { gp.state = gmv.state; gp.timer = gmv.timer; }
+                    else { gp.state = 'normal'; }
                 }
                 gid++;
             }
