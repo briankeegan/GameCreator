@@ -128,9 +128,16 @@
     }
     // The flags are COPIED, not shared: every candidate resolves its own
     // cascade and would otherwise write its chaining into its siblings.
-    return new LogicalBoard(this.width, this.height, this.colors, g, blocks,
-                            this._nextBlockId,
-                            this.chaining ? this._chainingGrid(this.chaining) : null);
+    var copy = new LogicalBoard(this.width, this.height, this.colors, g, blocks,
+                                this._nextBlockId,
+                                this.chaining ? this._chainingGrid(this.chaining) : null);
+    // Panels in flight too: a copy without them is a board where nothing is
+    // falling and nothing is breaking. The records are never written to.
+    if (this.motion) {
+      copy.motion = [];
+      for (r = 0; r < this.motion.length; r++) copy.motion[r] = this.motion[r] ? this.motion[r].slice() : [];
+    }
+    return copy;
   };
 
   // Lowest row (0 = bottom-most playable row) any garbage cell occupies, or
@@ -174,6 +181,11 @@
     this.grid[1] = [];
     for (c = 1; c <= this.width; c++) {
       this.grid[1][c] = (colors && colors[c] !== undefined) ? colors[c] : -1;
+    }
+    if (this.motion) {
+      for (r = this.height; r >= 2; r--) this.motion[r] = this.motion[r - 1] ? this.motion[r - 1].slice() : [];
+      this.motion[1] = [];
+      this.motion[0] = [];
     }
     // Row 0 is the NEXT incoming row, which nothing can know yet.
     this.grid[0] = [];
@@ -923,6 +935,20 @@
     return best;
   }
 
+  // A panel the engine has mid-animation, as the engine holds it. A clear in
+  // progress is more than a state and a timer: a breaking slab's bottom row
+  // already has the colours it turns into and yOffset -1, the rest of the
+  // slab has shrunk by a row, and each panel has its own pop time. Without
+  // these a painted slab turns back into garbage when its timer runs out.
+  function motionOf(p) {
+    if (!p || !p.state || p.state === 'normal') return null;
+    return { state: p.state, timer: p.timer || 0, initialTime: p.initialTime || 0,
+             popTime: p.popTime || 0, popIndex: p.popIndex || 0, color: p.color,
+             isGarbage: !!p.isGarbage, xOffset: p.xOffset, yOffset: p.yOffset,
+             gWidth: p.gWidth, gHeight: p.gHeight, fellFromGarbage: p.fellFromGarbage || 0,
+             propagatesChaining: !!p.propagatesChaining };
+  }
+
   function snapshot() {
     var stack = this.stack, width = root.PanelEngine.WIDTH;
     var grid = [];
@@ -953,8 +979,7 @@
         // death had two full rows of garbage erased that the engine never
         // touched: the bot then believed it had three rows of headroom where
         // it had one, and played a swap in row 3 while the floor closed it.
-        motion[r][c] = (p && p.state && p.state !== 'normal')
-                       ? { state: p.state, timer: p.timer || 0 } : null;
+        motion[r][c] = motionOf(p);
         var v;
         if (!p) v = -1;
         else if (p.isGarbage) {
@@ -1013,5 +1038,5 @@
 
   root.PanelCpu = { LogicalBoard: LogicalBoard,
                     beginWalk: beginWalk, driveWalk: driveWalk,
-                    nearestSwappable: nearestSwappable, snapshot: snapshot };
+                    nearestSwappable: nearestSwappable, snapshot: snapshot, motionOf: motionOf };
 })(typeof window !== "undefined" ? window : globalThis);

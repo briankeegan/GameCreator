@@ -644,7 +644,17 @@
   //      or 22 depending on whether they had been asked before. The speed-up
   //      now counts from the match's clock and the drop cycle is set before
   //      the walk.
-  var RULES = 28;
+  //   29. A BREAK IN PROGRESS IS ON THE BOARD. Every candidate resolved a
+  //      clone of the board, and clone() dropped every panel in flight, so a
+  //      slab mid-break was painted solid and turned back into garbage when
+  //      its timer ran out, and panels mid-pop read as empty. On 72 of 72
+  //      positions with garbage breaking (seed 700) the model's board kept
+  //      the lid the engine had broken. The copy carries every panel's state,
+  //      and a breaking slab is painted with its converting row, shrunken
+  //      height and pop times. 0 of 167 wrong on the next four seeds except
+  //      the colours of rows that convert later, which come from the match's
+  //      rng and are not read.
+  var RULES = 29;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

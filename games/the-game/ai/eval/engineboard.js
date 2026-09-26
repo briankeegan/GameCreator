@@ -73,6 +73,31 @@
     // row that was visible, and the model then lived where the game died
     // (seed 701 frame 466). So a grid may carry rows past `height`, and they
     // are painted and read like any other.
+    function isClearing(state) {
+        return state === 'matched' || state === 'popping' || state === 'popped';
+    }
+    function restore(p, m) {
+        p.state = m.state; p.timer = m.timer;
+        p.initialTime = m.initialTime || 0; p.popTime = m.popTime || 0; p.popIndex = m.popIndex || 0;
+        if (m.color !== undefined) p.color = m.color;
+        if (m.xOffset !== undefined) { p.xOffset = m.xOffset; p.yOffset = m.yOffset;
+                                       p.gWidth = m.gWidth; p.gHeight = m.gHeight; }
+        p.fellFromGarbage = m.fellFromGarbage || 0;
+        p.propagatesChaining = !!m.propagatesChaining;
+    }
+    // The same record snapshot() takes, read off the scratch after a resolve.
+    function readMotion(stack, height, width) {
+        var PC = (typeof window !== 'undefined' ? window : globalThis).PanelCpu;
+        var of = PC && PC.motionOf;
+        if (!of) return null;
+        var m = [];
+        for (var r = 0; r <= height && r < stack.panels.length; r++) {
+            m[r] = [];
+            for (var c = 1; c <= width; c++) m[r][c] = of(stack.panels[r][c]);
+        }
+        return m;
+    }
+
     function paint(stack, grid, height, width, blocks, chaining, motion) {
         while (stack.makeEmptyRow && grid && stack.panels.length < grid.length) {
             stack.panels.push(stack.makeEmptyRow(stack.panels.length));
@@ -133,10 +158,30 @@
                     var gmv = motion && motion[cells[i][0]] && motion[cells[i][0]][cells[i][1]];
                     if (gmv) { gp.state = gmv.state; gp.timer = gmv.timer; }
                     else { gp.state = 'normal'; }
+                    // A SLAB THAT IS BREAKING is painted as the engine holds
+                    // it: its converting row already coloured with yOffset -1,
+                    // the rest a row shorter, each cell with its pop time.
+                    // Rebuilt from the bounding box instead, the slab turns
+                    // back into garbage when its timer runs out.
+                    if (gmv && isClearing(gmv.state) && gmv.yOffset !== undefined) restore(gp, gmv);
                 }
                 gid++;
             }
             stack.garbageIdCounter = Math.max(stack.garbageIdCounter || 0, gid);
+        }
+        // AND COLOUR PANELS THAT ARE CLEARING. snapshot() reads their cells as
+        // empty because they are leaving, but until they pop they still hold
+        // up what sits on them and hold the floor still.
+        if (motion) {
+            for (var mr = 1; mr < motion.length && mr < stack.panels.length; mr++) {
+                if (!motion[mr]) continue;
+                for (var mc = 1; mc <= width; mc++) {
+                    var mm = motion[mr][mc], mp = stack.panels[mr][mc];
+                    if (!mm || !mp || mm.isGarbage || !isClearing(mm.state)) continue;
+                    if (mp.isGarbage || mp.color !== 0) continue;
+                    restore(mp, mm);
+                }
+            }
         }
         // GRAVITY NEEDS A STATE IT CAN ACT ON.
         //
@@ -423,5 +468,6 @@
         return out;
     }
 
-    return { scratch: scratch, paint: paint, settle: settle, readGrid: readGrid, readBlocks: readBlocks };
+    return { scratch: scratch, paint: paint, settle: settle, readGrid: readGrid, readBlocks: readBlocks,
+             readMotion: readMotion };
 }));

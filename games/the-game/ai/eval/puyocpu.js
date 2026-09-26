@@ -712,6 +712,9 @@
       for (var c = 1; c <= board.width; c++) board.grid[r][c] = settled[r][c];
     }
     board.grid.length = Math.max(board.height + 1, settled.length);
+    // What is still in flight where the engine stopped, so the next step of a
+    // line starts from it rather than from the motion before this move.
+    board.motion = engineBoard.readMotion(st, board.height, board.width);
     // AND THE SLABS THE SETTLE LEFT. The grid goes back and the blocks did
     // not, so the board handed to the second ply carried the garbage
     // structure from BEFORE the swap — a slab that has just been broken, or
