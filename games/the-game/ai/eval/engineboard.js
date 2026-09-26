@@ -206,6 +206,12 @@
         stack.chainCounter = 0;
         stack.shakeTime = 0;
         stack.highestGarbageIdMatched = 0;
+        // THE PANELS IN MOTION COUNT AS MOVING, as they did on the frame before.
+        // hasActivePanels is nActive || nPrevActive and updateRiseLock reads it
+        // FIRST thing in a frame, so zeroing both handed every painted board a
+        // floor with no rise lock on frame 1 -- a board with panels falling at
+        // the lid drained in the scratch where the engine held it. The
+        // engine's own count, run twice so the "previous frame" sees the same.
         stack.nActive = 0; stack.nPrevActive = 0; stack.swappingCount = 0;
         stack.queuedSwapRow = 0; stack.queuedSwapCol = 0;
         stack.manualRaise = false; stack.preventManualRaise = false;
@@ -240,6 +246,7 @@
         // disagreements between this and LogicalBoard were this harness
         // rising, and would have been "fixed" in LogicalBoard.
         stack.riseTimer = 1e9;
+        if (stack.countActivePanels) { stack.countActivePanels(); stack.countActivePanels(); }
     }
 
     // Run until the board is STILL, collecting what the engine says happened.
@@ -247,19 +254,26 @@
     // idle frames let the stack climb a row — which silently moved the board
     // between the two swaps of a two-swap chip and made thirteen good chips
     // read as clearing nothing.
-    // `watchDeath`: LET THE ENGINE KILL IT. The default settle forces health
-    // back every frame because it is answering "what does this move DO", and a
-    // board painted at the lid would otherwise die on frame 1 and hand back the
-    // board unchanged. A survival question is the opposite: whether the engine
-    // kills it is the answer. So with watchDeath the drain runs exactly as the
-    // match runs it and the settle stops the frame the game is over.
-    function settle(stack, budget, watchDeath) {
+    // `live`: RUN IT AS THE MATCH RUNS IT. The puzzle and chip tools settle a
+    // static board and want only what a swap clears, so by default health is
+    // forced back each frame -- a puzzle painted near the ceiling would
+    // otherwise die on frame 1 and answer nothing. The bot's resolve is not
+    // that question. It is asking what the GAME does to this board, and
+    // whether the engine kills it is part of the answer, so with `live` the
+    // drain runs exactly as it runs in the match and the settle stops the
+    // frame the game is over.
+    //
+    // `untilRise`: HOW FAR AHEAD, not a different simulation. Run until a row
+    // has actually risen, the board is still, and nothing queued is left to
+    // drop -- every slab the engine drops before that row, where its drop cycle
+    // puts it, and the shake each one costs are part of the answer.
+    function settle(stack, budget, live, untilRise) {
         var chain = 0, comboSizes = [], garbage = [], cleared = 0;
         var cap = budget || 900;
         var quiet = false;
-        var died = false, diedAt = 0;
+        var died = false, diedAt = 0, rose = false;
         for (var f = 0; f < cap; f++) {
-            if (watchDeath) {
+            if (live) {
                 if (stack.gameOver) { died = true; diedAt = f; break; }
             } else {
             // THE SCRATCH IS NOT PLAYING, IT IS ANSWERING A QUESTION.
@@ -288,14 +302,21 @@
             quiet = stack.events.length === 0;
             for (var i = 0; i < stack.events.length; i++) {
                 var e = stack.events[i];
+                if (e.type === 'newRow') { rose = true; continue; }
                 if (e.type !== 'match') continue;
                 comboSizes.push(e.size);
                 cleared += e.size;
                 if (e.chainCounter > chain) chain = e.chainCounter;
                 if (e.garbage) garbage.push([e.garbage, 1]);
             }
-            if (watchDeath && stack.gameOver) { died = true; diedAt = f + 1; break; }
-            if (f >= 3 && !stack.hasActivePanels() && !stack.hasChainingPanels()) break;
+            if (live && stack.gameOver) { died = true; diedAt = f + 1; break; }
+            var still = !stack.hasActivePanels() && !stack.hasChainingPanels();
+            if (untilRise) {
+                if (rose && still && !(stack.incoming && stack.incoming.length) &&
+                    !(stack.hasFallingGarbage && stack.hasFallingGarbage())) break;
+                continue;
+            }
+            if (f >= 3 && still) break;
         }
         // resolve()'s chainLength counts match-and-settle ROUNDS: a plain combo
         // is 1 where the engine's chain counter is 0. Reported in resolve()'s
@@ -306,7 +327,8 @@
             garbage: garbage,
             clearedPanels: cleared,
             died: died,
-            diedAt: diedAt
+            diedAt: diedAt,
+            rose: rose
         };
     }
 
