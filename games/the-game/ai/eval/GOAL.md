@@ -32,6 +32,29 @@ one checked so far was wrong in a way nobody had noticed:
 - the escape tier -- `_sinking` AND the stop-time ranking -- opens on
   2 of 89 decisions, because the danger clock that gates it is off by
   default and `versus.js` never passed it through.
+- `_doomed`'s height gate read the LIVE board while every test in the
+  filter is applied to a candidate's SETTLED board, which can be rows
+  taller. Shut on 101 decisions in 20 duels where some candidates were
+  doomed and others were not, and on 15 more where EVERY candidate was --
+  which also left `allDoomedNow` unset, so `_lastResort` was blind exactly
+  when it is the only thing left.
+- `allDoomedNow`, `allAboveCapNow` and `allCorneredNow` are written by
+  filters that can decline to run, and nothing cleared them, so the last
+  answer stood in for the missing one.
+- `feature_liveness.js` measured variance across a whole GAME and called
+  that learnable. Only the spread WITHIN a decision can change which move
+  is played; four reach sizes separate the candidates on under 5% of
+  decisions.
+
+Audited and HONEST -- do not re-audit these without a new reason:
+`_standing` (1 genuine violation in 89 decisions), `_sinking` (0
+violations of its claim, but dormant), `_heightCap` (0 moves kept or
+played over the cap in 759 bound decisions), the resolve's garbage gravity
+(a floating lid does fall when its support is stripped, and the candidate
+that strips it is on the list -- it ranks about 11th of 22 on score),
+`_raiseIsSuicide`'s queue arithmetic (wrong -- it sums block heights
+instead of cells -- but it is called with garbage queued twice in eight
+duels, so it measures nothing).
 
 ## The loop
 
@@ -134,3 +157,18 @@ actual goal. The danger clock failed both.
 - Do NOT dispatch the 35 until the bot stops dying.
 - Training runs on GitHub Actions. `node -e "require('./train_pbt.js')"`
   STARTS A RUN.
+- A behaviour change bumps `modes.RULES`, which restarts every PBT island
+  at generation 0. That is the right cost while the bot still dies.
+
+## Where it stands
+
+`RULES 17`, 20 duels, two current island snapshots, same setting both
+sides: avg 36.6s, longest 84.0s, ceiling reached 0 times against a target
+of 360s. Every duel still ends in a death.
+
+The shape of every death read so far: all moves pass the survival filter
+at the last decision that had a save, 10 to 23 decisions before the end,
+and the position is already lost. So the filter cannot discriminate there
+-- its horizon is `DOOMED_DEPTH = 2` RISES, about 4 seconds, and the death
+is decided 2 to 12 seconds out. The horizon is the mechanism's own
+parameter and is the next thing to measure.
