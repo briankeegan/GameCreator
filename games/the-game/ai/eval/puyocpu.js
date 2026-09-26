@@ -441,7 +441,7 @@
     st.peakShakeTime = live.peakShakeTime || 0;
   };
 
-  PuyoCpu.prototype._resolveCandidate = function (board, move, delay) {
+  PuyoCpu.prototype._resolveCandidate = function (board, move, delay, riseNow) {
     if (!this.engine) {
       // LogicalBoard cannot be aged cheaply, so this path keeps the old
       // behaviour: the caller has already applied the swap.
@@ -553,7 +553,39 @@
       if (st.canSwap(move[0], move[1])) st.doSwap(move[0], move[1]);
       else refused = true;
     }
-    var out = engineBoard.settle(st, 900);
+    // THE RISE, RUN BY THE ENGINE. `riseNow` asks what the next row does to
+    // this board, and the engine is the only thing that can say, because the
+    // answer depends on the ORDER inside one frame: updateRiseLock, then
+    // advancePassiveRaise -- which drains health if the stack is topped out and
+    // otherwise rises it -- then checkMatches. A row that lands and completes a
+    // match locks the floor and pays stop time before the drain can run; a row
+    // that lands and completes nothing is drained the next frame, and at level
+    // 10 maxHealth is 1 (LevelPresets.lua, and Stack.lua says it in as many
+    // words: "passive raise will instakill").
+    //
+    // Rising a LogicalBoard and painting the result cannot see that. It hands
+    // the scratch a board already topped out and unlocked, so frame 1 drains
+    // whether or not the row made a match. So the PRE-rise board is painted,
+    // the rise is set to fire on frame 1 exactly as advancePassiveRaise fires
+    // it, and the drain is left to run: `died` is the engine's own verdict.
+    //
+    // Read off frame 367 of seed 703: the queued slab at row 11 on column 1,
+    // the rising row completing a match. The grid rule condemned every one of
+    // 35 candidates; the engine, asked on the same board, paid 50 frames of
+    // stop time and lived -- and the same board with a rising row that matches
+    // nothing is dead on frame 2, in the engine and in the scratch alike.
+    if (riseNow) {
+      st.manualRaise = false;
+      st.stopTime = 0; st.preStopTime = 0;
+      st.shakeTime = 0; st.peakShakeTime = 0;
+      st.riseLock = false;
+      st.riseTimer = 1;
+      st.displacement = 1;
+      if (this.stack && this.stack.speed) st.speed = this.stack.speed;
+      st.health = st.maxHealth;
+      st.gameOver = false;
+    }
+    var out = engineBoard.settle(st, 900, !!riseNow);
     if (refused) out.refused = true;
     if (diedInWalk) out.diedInWalk = true;
     // WHAT IS HOLDING THE BOARD UP WHEN THE DUST SETTLES.
@@ -939,42 +971,33 @@
   // ONLY CLEARING SWAPS ARE FOLLOWED past the first rise. A swap that clears
   // nothing cannot lower the stack, so it cannot answer a rise -- following
   // them multiplies the work by ten and cannot change the answer.
-  PuyoCpu.prototype._survivesRise = function (board, depth) {
-    if (this._boardToppedOut(board)) return false;
+  PuyoCpu.prototype._survivesRise = function (board, depth, vetted) {
+    // A board this function already put through the engine is alive on the
+    // engine's say-so, shield and all; asking the grid again would condemn the
+    // topped-out boards the engine let live.
+    if (!vetted && this._boardToppedOut(board)) return false;
     // The queue lands whatever the floor does.
     if (this._diesToQueue(board)) return false;
     if (depth <= 0) return true;
-    var risen = board.clone().rise(this._incoming);
-    // TOPPED OUT BEFORE THE CASCADE, NOT AFTER IT. The resolve below settles
-    // the whole cascade in zero time; the engine takes flash + face + pop to
-    // do it, dozens of frames, and the board is topped out for every one of
-    // them. maxHealth is 1 at level 10, so the drain kills it on the FIRST
-    // such frame -- traced: f902 the row lands and the top reads 12, f903
-    // health 0. Asking after the resolve let a rise that pushed row 11 into
-    // row 12 report survival because the new bottom row happened to complete
-    // a match, and the bot played it. That is the death this check exists to
-    // refuse.
-    if (this._boardToppedOut(risen)) return false;
-    this._resolveCandidate(risen);
-    // A TOPPED-OUT BOARD HAS NO NEXT MOVE. maxHealth is 1 at level 10, so the
-    // drain runs the first frame the board reads topped out and the game is
-    // over on it -- there is no turn afterwards in which to play the clearing
-    // swap that would have saved it. Searching for one anyway is what made
-    // this report survival on 14 of 36 deaths: row 11 full, row 12 empty, the
-    // rise pushes it over, and a swap on the dead board answered yes.
-    if (this._boardToppedOut(risen) || this._diesToQueue(risen)) return false;
-    // THE LINE, NOT JUST THE VERDICT. Waiting is a step like any other, so
-    // it is recorded too -- a line that says "hold, then swap here" is the
-    // commonest escape there is.
-    if (this._survivesRise(risen, depth - 1)) { if (this._line) this._line.unshift(null); return true; }
+    // THE ENGINE RISES IT, AND SAYS WHETHER IT DIED. See _resolveCandidate's
+    // riseNow: a board risen here and painted in afterwards drains on frame 1
+    // whatever the rising row does, which condemned boards the engine lets live.
+    var risen = board.clone();
+    risen.incoming = this._incoming || board.incoming || null;
+    var rr = this._resolveCandidate(risen, null, 0, true);
+    if (!rr || rr.died) return false;
+    // Alive now is not alive for the next move: a shield shorter than one
+    // reaction buys no move, the same question _survivors asks.
+    if (this._resolvesDead(risen, rr) || this._diesToQueue(risen)) return false;
+    if (this._survivesRise(risen, depth - 1, true)) { if (this._line) this._line.unshift(null); return true; }
     var swaps = risen.legalSwaps(), i, t, r;
     for (i = 0; i < swaps.length; i++) {
       t = risen.clone();
       t.swap(swaps[i][0], swaps[i][1]);
       r = this._resolveCandidate(t);
       if (!r || !r.clearedPanels) continue;
-      if (this._boardToppedOut(t)) continue;
-      if (this._survivesRise(t, depth - 1)) { if (this._line) this._line.unshift(swaps[i]); return true; }
+      if (this._resolvesDead(t, r)) continue;
+      if (this._survivesRise(t, depth - 1, true)) { if (this._line) this._line.unshift(swaps[i]); return true; }
     }
     return false;
   };

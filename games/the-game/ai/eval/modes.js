@@ -561,7 +561,17 @@
   //      lifted 27 times, 7 of those with a not-dead-now candidate in it, and
   //      it played a dead-now move on 2 of the 7. allFatalNow still means "no
   //      fully surviving move", so FORCED is unchanged.
-  var RULES = 18;
+  //   19. THE RISE IS RUN BY THE ENGINE, AND THE ENGINE SAYS WHETHER IT
+  //      DIED. _survivesRise rose a LogicalBoard, painted the result and asked
+  //      the grid "is row 12 occupied before the cascade". The engine's frame
+  //      is updateRiseLock, advancePassiveRaise (drain OR rise), checkMatches:
+  //      a rising row that completes a match locks the floor and pays stop
+  //      time before any drain, and one that completes nothing is drained the
+  //      next frame. Read off frame 367 of seed 703: the grid rule condemned
+  //      all 35 candidates; the engine on the same board paid stop time and
+  //      lived. The pre-rise board is now painted and the engine fires the
+  //      rise and runs its own drain.
+  var RULES = 19;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

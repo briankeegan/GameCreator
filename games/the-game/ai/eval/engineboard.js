@@ -247,11 +247,21 @@
     // idle frames let the stack climb a row — which silently moved the board
     // between the two swaps of a two-swap chip and made thirteen good chips
     // read as clearing nothing.
-    function settle(stack, budget) {
+    // `watchDeath`: LET THE ENGINE KILL IT. The default settle forces health
+    // back every frame because it is answering "what does this move DO", and a
+    // board painted at the lid would otherwise die on frame 1 and hand back the
+    // board unchanged. A survival question is the opposite: whether the engine
+    // kills it is the answer. So with watchDeath the drain runs exactly as the
+    // match runs it and the settle stops the frame the game is over.
+    function settle(stack, budget, watchDeath) {
         var chain = 0, comboSizes = [], garbage = [], cleared = 0;
         var cap = budget || 900;
         var quiet = false;
+        var died = false, diedAt = 0;
         for (var f = 0; f < cap; f++) {
+            if (watchDeath) {
+                if (stack.gameOver) { died = true; diedAt = f; break; }
+            } else {
             // THE SCRATCH IS NOT PLAYING, IT IS ANSWERING A QUESTION.
             //
             // A board painted near the ceiling reads topped out, and the
@@ -266,6 +276,7 @@
             // Dying is the match's business. What settles is this module's.
             stack.health = stack.maxHealth;
             stack.gameOver = false;
+            }
             // ONLY ATTEMPT THE JUMP AFTER A SILENT FRAME. idleSkip walks the
             // board to find the soonest timer, and on a busy frame it pays
             // for that walk and then refuses — measured slower in real duels
@@ -283,6 +294,7 @@
                 if (e.chainCounter > chain) chain = e.chainCounter;
                 if (e.garbage) garbage.push([e.garbage, 1]);
             }
+            if (watchDeath && stack.gameOver) { died = true; diedAt = f + 1; break; }
             if (f >= 3 && !stack.hasActivePanels() && !stack.hasChainingPanels()) break;
         }
         // resolve()'s chainLength counts match-and-settle ROUNDS: a plain combo
@@ -292,7 +304,9 @@
             chainLength: comboSizes.length ? Math.max(chain, 1) : 0,
             comboSizes: comboSizes,
             garbage: garbage,
-            clearedPanels: cleared
+            clearedPanels: cleared,
+            died: died,
+            diedAt: diedAt
         };
     }
 
