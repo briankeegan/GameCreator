@@ -636,7 +636,15 @@
   //      [2,2] really leaves, it dies, and the bot died 39 frames later. A
   //      line now continues from the move's own resolve. And when any move is
   //      proven to live, a move the search ran out of budget on is not kept.
-  var RULES = 27;
+  //   28. ONE QUESTION, ONE ANSWER. The scratch engine every check runs on
+  //      kept its own clock, so a speed-up fired wherever that clock landed,
+  //      and garbage landing during a walk used the previous check's drop
+  //      columns. Asking the survival check about a move changed what it said
+  //      about the next one: seed 701 frame 462, the same 36 candidates kept 18
+  //      or 22 depending on whether they had been asked before. The speed-up
+  //      now counts from the match's clock and the drop cycle is set before
+  //      the walk.
+  var RULES = 28;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

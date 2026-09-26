@@ -253,6 +253,14 @@
         if (stack.incoming) stack.incoming.length = 0;
         if (stack.garbageLandedThisFrame) stack.garbageLandedThisFrame.length = 0;
         if (stack.swapStallBacklog) stack.swapStallBacklog.length = 0;
+        // What the scratch has "sent" and the drop cycle it has run: left
+        // over, a chain from the last board is extended by this one and
+        // garbage lands in the last board's columns.
+        if (stack.outgoing) stack.outgoing.length = 0;
+        stack.currentChain = null;
+        stack.dropColumnIndex = {};
+        // Speed-ups run on the stack's own clock; a painted board has none.
+        stack.nextSpeedIncreaseClock = -1;
         if (stack.events) stack.events.length = 0;
         // AND STOP THE FLOOR MOVING. riseLock alone does not: the engine
         // re-decides it every frame (updateRiseLock), so a settle long enough

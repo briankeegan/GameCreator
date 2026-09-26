@@ -432,6 +432,7 @@
       st.riseLock = true; st.riseTimer = 1e9;
       st.stopTime = 0; st.preStopTime = 0;
       st.shakeTime = 0; st.peakShakeTime = 0;
+      st.nextSpeedIncreaseClock = -1;
       return;
     }
     st.riseLock = false;
@@ -442,6 +443,12 @@
     st.preStopTime = live.preStopTime || 0;
     st.shakeTime = live.shakeTime || 0;
     st.peakShakeTime = live.peakShakeTime || 0;
+    // The next speed-up, counted from the match's clock, not the scratch's:
+    // the scratch has run millions of frames and would speed up wherever its
+    // own clock happened to land.
+    var toSpeed = this._carry ? this._carry.toSpeed
+                              : (live.nextSpeedIncreaseClock - (live.clock || 0));
+    st.nextSpeedIncreaseClock = (toSpeed > 0) ? (st.clock || 0) + toSpeed : -1;
   };
 
   // GARBAGE ALREADY IN FLIGHT, AS THE ENGINE WILL DELIVER IT.
@@ -560,6 +567,13 @@
     // and the settle both spend it. Copying it again after the walk threw the
     // walk's time away: the rise came as though no frames had passed.
     this._copyRiseState(st);
+    // The drop cycle too, before the walk: garbage can land during it.
+    st.dropColumnIndex = {};
+    var dsrc = (this._carry && this._carry.dropColumnIndex) ||
+               (this.stack && this.stack.dropColumnIndex) || null;
+    if (dsrc) {
+      for (var dw in dsrc) if (dsrc.hasOwnProperty(dw)) st.dropColumnIndex[dw] = dsrc[dw];
+    }
     // DEAD BEFORE THE CURSOR ARRIVES IS NOT A MOVE IT CAN PLAY.
     //
     // The loop already knew: it breaks on gameOver. What followed did the
@@ -647,12 +661,6 @@
     // frame 2777: queue [3x1, 6x6, 5x1, 5x1] on a stack at row 8, the check
     // asked about the first slab only and certified 9 of 23 moves; the 6x6
     // landed and the board it died on was garbage from row 7 to row 12.
-    var dsrc = (this._carry && this._carry.dropColumnIndex) ||
-               (this.stack && this.stack.dropColumnIndex) || null;
-    if (dsrc) {
-      st.dropColumnIndex = {};
-      for (var dw in dsrc) if (dsrc.hasOwnProperty(dw)) st.dropColumnIndex[dw] = dsrc[dw];
-    }
     st.manualRaise = false;
     st.health = st.maxHealth;
     st.gameOver = false;
@@ -669,6 +677,7 @@
       nextRow: (function (p0, w) { var r = [0]; for (var c = 1; c <= w; c++) r[c] = p0 && p0[c] ? p0[c].color : 0; return r; })(st.panels[0], board.width),
       riseTimer: st.riseTimer, displacement: st.displacement, speed: st.speed,
       stopTime: st.stopTime || 0, preStopTime: st.preStopTime || 0,
+      toSpeed: st.nextSpeedIncreaseClock > st.clock ? st.nextSpeedIncreaseClock - st.clock : -1,
       shakeTime: st.shakeTime || 0, peakShakeTime: st.peakShakeTime || 0,
       arrivals: (out.pending || []).map(function (a) {
         return { at: Math.max(0, a.at - (out.elapsed || 0)), width: a.width,
