@@ -569,6 +569,32 @@ gate_raise() {
   node games/the-game/ai/eval/raise.test.js
 }
 
+# THE SCRATCH FLOOR MOVES ONLY WHEN THE REAL FLOOR MOVES.
+#
+# _resolveCandidate copies the live stack's rise state onto the scratch so a
+# candidate ages at the speed and phase the match is actually at. shakeTime
+# was not in that list and paint() zeroes it, so the scratch rose through the
+# window the engine spends standing still and handed the live board back
+# SHIFTED UP A ROW -- every candidate reading topped out, _survivors lifting
+# because nothing helped, and the bot choosing unfiltered with two empty rows
+# in hand.
+gate_shake_hold() {
+  node games/the-game/ai/eval/shakehold.test.js
+}
+
+# THE DEEP-SURVIVAL FILTER'S GATE ASKS ABOUT THE BOARDS IT JUDGES.
+#
+# _doomed is gated on height for cost, and the gate read the LIVE board while
+# every test below it is applied to a candidate's SETTLED board -- which can be
+# rows taller. Measured over 20 duels: shut on 101 decisions where some
+# candidates were doomed and others were not, and on 15 more where every
+# candidate was, which also left allDoomedNow unset and _lastResort blind.
+# Both halves are bound, because a gate that only ever opens is the ten-times
+# cost it exists to avoid.
+gate_doomed_gate() {
+  node games/the-game/ai/eval/doomgate.test.js
+}
+
 # THE RUN RECORDS WHAT KIND OF GARBAGE IT SENT, NOT JUST HOW MUCH.
 #
 # Score cannot say whether the bot learned to CHAIN: one that survives on
@@ -712,6 +738,8 @@ GATES=(
   "the resolve answers what the engine answered:gate_resolve_corpus:games/the-game/ai/"
   "two variants on one seed keep separate islands:gate_pbt_dirs:games/the-game/ai/"
   "the bot may not kill itself:gate_no_self_death:games/the-game/ai/"
+  "the scratch floor moves only when the real floor moves:gate_shake_hold:games/the-game/ai/"
+  "the deep-survival gate asks about the candidates:gate_doomed_gate:games/the-game/ai/"
   "the puyo brain:gate_puyo_cpu:games/the-game/ai/"
   "the training harness:gate_training_harness:games/the-game/ai/"
   "rise-adjusted scoring:gate_rise_scoring:games/the-game/ai/"

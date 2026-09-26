@@ -961,16 +961,40 @@
     return ok ? line : null;
   };
 
-  // Only worth asking when the stack is high enough for a rise to matter.
-  // On a low board every move survives every rise and the answer is always
-  // yes, bought at ten times the price.
+  // Only worth asking when the stack is high enough for a rise to matter,
+  // bought at ten times the price otherwise.
+  //
+  // THE BOARDS THIS FILTER JUDGES, NOT THE ONE IT IS STANDING ON. The gate
+  // read the LIVE board's top row while every test below is applied to a
+  // candidate's SETTLED board -- which can be rows taller, because a raise
+  // adds one, a slab can land during the settle, and a candidate that clears
+  // nothing still carries the rise the walk paid for. So the gate answered a
+  // question about a board nothing was being asked about.
+  //
+  // Read off 20 duels: the gate was shut on 101 decisions where some
+  // candidates were doomed and others were not -- 69 of them at a live top
+  // row of exactly 8, one row under the threshold, with up to 8 of 18
+  // candidates dead -- and on 15 more where EVERY candidate was doomed, which
+  // also left allDoomedNow unset and _lastResort blind. The old comment
+  // claimed "on a low board every move survives every rise and the answer is
+  // always yes"; it was false on all 116.
+  //
+  // Reading the tallest candidate instead recovers 71 of those 113 for 75
+  // extra decisions filtered -- 57.7% of decisions against 55.8%, a 3.5% cost.
+  // The 48 it still misses are boards whose candidates all settle at row 8 or
+  // lower and die to the SECOND rise; DOOMED_ROWS is where that trade sits.
   PuyoCpu.prototype.DOOMED_ROWS = 4;
   PuyoCpu.prototype.DOOMED_DEPTH = 2;
   PuyoCpu.prototype._doomed = function (cands) {
     if (!this.refuseSuicide || !this.deepSurvival || !cands || cands.length < 2) return cands;
-    var top = this._board ? this._topRowOf(this._board) : 0;
+    if (!this._board) return cands;
+    var i, top = 0, t;
+    for (i = 0; i < cands.length; i++) {
+      t = this._topRowOf(this._settledOf(cands[i]));
+      if (t > top) top = t;
+    }
     if (!top || top <= (this._board.height - this.DOOMED_ROWS)) return cands;
-    var live = [], i;
+    var live = [];
     for (i = 0; i < cands.length; i++) {
       if (this._survivesRise(this._settledOf(cands[i]), this.DOOMED_DEPTH)) live.push(cands[i]);
     }
@@ -1490,6 +1514,20 @@
     // ONE incoming row for the whole decision. Every candidate is risen by
     // the SAME row or the comparison is back to being unfair in a new way.
     this._incoming = board.incoming || null;
+    // A VERDICT FROM A DECISION AGO IS NOT A VERDICT ABOUT THIS ONE.
+    //
+    // These three say "every candidate here is doomed / above the cap /
+    // cornered", and each is written by a filter that can decline to run --
+    // on its own gate, on a pool of one, or because the rule is switched off.
+    // Unreset, the last answer stood in for the missing one: _lastResort
+    // reads allDoomedNow and so could fire on a decision nothing had judged,
+    // using a verdict from an earlier board. Their own comment already says
+    // they are "THE STATE OF THE LAST DECISION, not a total over the duel";
+    // this is what makes that true. Unknown reads as false, which is the
+    // value that keeps every consumer quiet.
+    this.allDoomedNow = false;
+    this.allAboveCapNow = false;
+    this.allCorneredNow = false;
 
     var holdBoard = board.clone();
     var holdResolved = this._resolveCandidate(holdBoard, null, this.reaction);

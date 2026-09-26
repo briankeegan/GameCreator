@@ -532,7 +532,21 @@
   //      _resolvesDead asks that instead of the grid. Read off 190 decisions
   //      where every move was condemned: 14% were dead within a second, 36%
   //      were still alive twenty seconds later.
-  var RULES = 16;
+  //   17. THE DEEP-SURVIVAL FILTER IS ASKED ON THE DECISIONS IT IS FOR. Its
+  //      height gate read the LIVE board while every test in it is applied to
+  //      a candidate's SETTLED board, which can be rows taller -- a raise adds
+  //      one, a slab can land during the settle, and the walk's own rise is
+  //      already in it. Over 20 duels the gate was shut on 101 decisions where
+  //      some candidates were doomed and others were not, 69 of them one row
+  //      under the threshold with up to 8 of 18 dead, and on 15 more where
+  //      EVERY candidate was doomed -- which also left allDoomedNow unset, so
+  //      the last-resort break was blind exactly when it is the only thing
+  //      left. The gate now reads the tallest candidate. And a verdict from a
+  //      decision ago is no longer a verdict about this one: allDoomedNow,
+  //      allAboveCapNow and allCorneredNow are cleared at the top of every
+  //      decision, so a filter that declined to run leaves "unknown" rather
+  //      than the last board's answer.
+  var RULES = 17;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
