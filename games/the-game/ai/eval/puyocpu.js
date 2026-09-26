@@ -737,8 +737,8 @@
     if (!cands || !cands.length) return cands;
     var live = [], i;
     for (i = 0; i < cands.length; i++) {
-      if (this._resolvesDead(cands[i].board, cands[i].resolved)) continue;
-      if (this._diesToQueue(cands[i].board)) continue;
+      if (this._resolvesDead(this._settledOf(cands[i]), cands[i].resolved)) continue;
+      if (this._diesToQueue(this._settledOf(cands[i]))) continue;
       // The walk to this square ends in a game over.
       if (cands[i].resolved && cands[i].resolved.diedInWalk) continue;
       live.push(cands[i]);
@@ -876,7 +876,7 @@
     if (!top || top <= (this._board.height - this.DOOMED_ROWS)) return cands;
     var live = [], i;
     for (i = 0; i < cands.length; i++) {
-      if (this._survivesRise(cands[i].board, this.DOOMED_DEPTH)) live.push(cands[i]);
+      if (this._survivesRise(this._settledOf(cands[i]), this.DOOMED_DEPTH)) live.push(cands[i]);
     }
     this.allDoomedNow = !live.length;
     if (!live.length) { this.doomedDecisions++; return cands; }
@@ -941,7 +941,7 @@
     var cap = Math.min(this.HEIGHT_CAP, h - this._queuedRows() - this.HEIGHT_MARGIN);
     var live = [], i, t;
     for (i = 0; i < cands.length; i++) {
-      t = this._topRowOf(cands[i].board);
+      t = this._topRowOf(this._settledOf(cands[i]));
       if (t <= cap) live.push(cands[i]);
     }
     this.allAboveCapNow = !live.length;
@@ -1069,6 +1069,7 @@
     var cands = [{ kind: 'hold',
                    score: this._score(holdBoard, holdResolved, null),
                    board: this._scoredBoard,
+                   settled: holdBoard,
                    resolved: holdResolved,
                    risen: this._scoredResolved,
                    travel: this._scoredTravel,
@@ -1094,6 +1095,7 @@
         cands.push({ kind: 'raise',
                      score: raiseScore,
                      board: this._scoredBoard,
+                     settled: raiseBoard,
                      resolved: raiseResolved,
                      risen: this._scoredResolved,
                      travel: this._scoredTravel,
@@ -1131,6 +1133,7 @@
                    score: this._score(trial, resolved, [r, c]),
                    move: [r, c],
                    board: this._scoredBoard,
+                   settled: trial,
                    resolved: resolved,
                    risen: this._scoredResolved,
                    travel: this._scoredTravel,
@@ -1350,6 +1353,29 @@
   // want it. This answers the engine's: topped out AND nothing holding the
   // drain off. Without the resolve there is nothing to ask, so it falls back
   // to the grid -- a board with no account of itself is judged as before.
+  // THE BOARD THE MOVE LEAVES, NOT THE BOARD IT WAS SCORED ON.
+  //
+  // `board` on a candidate is _scoredBoard: the settled board plus
+  // `1 + _rowsArriving` rises. The unconditional 1 is a MEASUREMENT DEVICE --
+  // _score's own comment says it "is not about time passing at all, it is
+  // about WHEN a candidate is measured", so a move is not judged the frame
+  // its match finishes popping. Scoring needs it. Survival must never see it:
+  // it adds a row to every candidate alike, and a row is the whole distance
+  // between alive and dead near the ceiling.
+  //
+  // Read off seed 973 frame 1561, live top 11, seventeen candidates: thirteen
+  // moves read top 12 and were condemned while a clean re-resolve of the same
+  // move leaves top 11, and the move the bot PLAYED read top 10 while a clean
+  // re-resolve leaves top 12. The filter was inverted -- it refused thirteen
+  // survivable moves and cleared the one that killed it. Sixteen of the
+  // seventeen disagreed with their own resolve.
+  //
+  // `settled` is what _resolveCandidate left: the engine ran the real floor
+  // through the walk and the settle, so it is the board the game will have.
+  PuyoCpu.prototype._settledOf = function (cand) {
+    return (cand && cand.settled) ? cand.settled : (cand ? cand.board : null);
+  };
+
   PuyoCpu.prototype._resolvesDead = function (board, resolved) {
     if (!this._boardToppedOut(board)) return false;
     // OFF IS THE OLD VERDICT, so one side of a duel can be asked the grid
@@ -1411,7 +1437,7 @@
     // chain's stop time was counted as a suicide -- the two have to agree or
     // the count is measuring a rule nothing enforces.
     if (cand && this.hadSurvivorNow &&
-        this._resolvesDead(cand.board, cand.resolved)) this.selfInflicted++;
+        this._resolvesDead(this._settledOf(cand), cand.resolved)) this.selfInflicted++;
   };
 
   // TWO NUMBERS, AND THEY ARE NOT THE SAME NUMBER.
