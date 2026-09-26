@@ -78,6 +78,12 @@ actual goal. The danger clock failed both.
   that way. A cross-section is not an intervention; measure the
   intervention.
 
+- **Reusing a probe without changing its target number.** The level-step
+  rule was measured with the flatten rule's harness, which reports columns
+  touching the lid -- not the step. It fired 110 times and whether it did
+  its job is still unknown. The probe's target metric must be the rule's
+  target metric.
+
 ## Ground truth about dying
 
 - maxHealth is 1 at level 10: topping out and dying are the same frame

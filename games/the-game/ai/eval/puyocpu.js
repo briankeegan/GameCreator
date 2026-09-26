@@ -219,7 +219,20 @@
     // one. Read a cross-section, treated it as causal, and the intervention
     // reversed the sign.
     this.flattenToLid = opts.flattenToLid === true;
-    this.levelForSlab = opts.levelForSlab !== false;
+    // OFF. It fires 110 times over 20 games and buys nothing: breaks 44
+    // against 43, cells cleared 527 against 538, deaths 8 of 20 either way,
+    // peak garbage 26.6 against 24.0 -- worse. Games run 42.2s against 39.3s,
+    // which does not matter at the same death rate.
+    //
+    // NOT FULLY MEASURED, and the gap is mine: the harness reported columns
+    // touching the lid, which was flattenToLid's target, not the colour STEP
+    // this rule moves. So whether it reduced the step is unverified. What is
+    // verified is that it changed no outcome.
+    //
+    // It also weakens the tower reading: if levelling BEFORE the slab lands
+    // changes nothing, a slab perched on a tower may be a symptom of a game
+    // already being lost rather than the cause of losing it.
+    this.levelForSlab = opts.levelForSlab === true;
     this.levelMovesDropped = 0;
     this.levelDecisions = 0;
     this.flattenMovesDropped = 0;
