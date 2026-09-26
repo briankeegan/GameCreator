@@ -100,7 +100,32 @@ function play(wA, wB, seed, opts) {
             for (i = 0; i < cands.length; i++) if (!toppedOut(settledOf(cands[i]))) safe++;
             if (safe > 0 && safe < cands.length) {
                 seen.offered++;
-                if (c._lastTaken && toppedOut(settledOf(c._lastTaken))) seen.tookFatal++;
+                if (c._lastTaken && toppedOut(settledOf(c._lastTaken))) {
+                    seen.tookFatal++;
+                    // GC_DUMP_FATAL=1 prints the board at the moment this
+                    // fires, so the count can be read rather than believed.
+                    if (process.env.GC_DUMP_FATAL && seen.tookFatal <= 3) {
+                        var t = c._lastTaken, sb = settledOf(t);
+                        console.log('--- took a fatal move, frame ' + (c.stack.clock || 0) +
+                            '  move ' + (t.move ? ('[' + t.move[0] + ',' + t.move[1] + ']') : t.kind));
+                        console.log('    the filter itself said: ' +
+                            (c._resolvesDead(sb, t.resolved) ? 'DEAD (so it had condemned every move and LIFTED)'
+                                                             : 'LIVE (the filter ALLOWED this)'));
+                        console.log('    shield on it: stopTime ' + (t.resolved ? t.resolved.stopTime : 0) +
+                            '  shakeTime ' + (t.resolved ? t.resolved.shakeTime : 0) +
+                            '  reaction ' + c.reaction);
+                        var ln = [];
+                        for (var rr = sb.height; rr >= 1; rr--) {
+                            var str = '    ' + String(rr).padStart(2) + '|';
+                            for (var cc = 1; cc <= sb.width; cc++) {
+                                var v = sb.grid[rr] ? sb.grid[rr][cc] : 0;
+                                str += (v === 0) ? ' .' : (v === -2 ? ' #' : (' ' + v));
+                            }
+                            ln.push(str + ' |');
+                        }
+                        console.log(ln.join('\n'));
+                    }
+                }
             }
             return picked;
         };
