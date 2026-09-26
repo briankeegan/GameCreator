@@ -571,7 +571,18 @@
   //      all 35 candidates; the engine on the same board paid stop time and
   //      lived. The pre-rise board is now painted and the engine fires the
   //      rise and runs its own drain.
-  var RULES = 19;
+  //   20. ONE RESOLVE, RUN AS THE MATCH RUNS IT. The bot's resolve departed
+  //      from the engine in five places: health forced back every frame, the
+  //      garbage drop cycle left over from the last candidate, the queue asked
+  //      about only by its first slab, no panel counted as moving on the first
+  //      frame, and no floor lock on the frame a swap is made. Now the drain
+  //      runs, the live rise timing, whole queue and drop cycle are copied,
+  //      survival lines continue from the engine's own state, and the only
+  //      parameter is how far ahead to look. Read off seed 702 frame 2777:
+  //      queue [3x1, 6x6, 5x1, 5x1] on a stack at row 8, 9 of 23 moves
+  //      certified by the first-slab rule; the engine holding is dead at frame
+  //      95. Resolve corpus 0 wrong of 55; live fidelity 102 of 104.
+  var RULES = 20;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

@@ -424,7 +424,10 @@
   // so _survivors saw no survivor, lifted, and the bot chose unfiltered for
   // three decisions with two empty rows in hand.
   PuyoCpu.prototype._copyRiseState = function (st) {
-    var live = this.stack;
+    // Inside a survival line the state is the ENGINE's, carried forward from
+    // the step before -- not the live stack's again, which would re-run a
+    // rise timer and a stop clock the line has already spent.
+    var live = this._carry || this.stack;
     if (!live) {
       st.riseLock = true; st.riseTimer = 1e9;
       st.stopTime = 0; st.preStopTime = 0;
@@ -441,7 +444,7 @@
     st.peakShakeTime = live.peakShakeTime || 0;
   };
 
-  PuyoCpu.prototype._resolveCandidate = function (board, move, delay, riseNow) {
+  PuyoCpu.prototype._resolveCandidate = function (board, move, delay, untilRise) {
     if (!this.engine) {
       // LogicalBoard cannot be aged cheaply, so this path keeps the old
       // behaviour: the caller has already applied the swap.
@@ -492,9 +495,10 @@
     // has ALREADY ARRIVED and is waiting for a gap to drop into. The bot can
     // see it coming and the resolve was throwing it away, so a slab that lands
     // during the settle was a surprise to the simulation and not to the game.
-    if (this.stack && this.stack.incoming && this.stack.incoming.length && st.incoming) {
-      for (var q0 = 0; q0 < this.stack.incoming.length; q0++) {
-        var gq = this.stack.incoming[q0];
+    var queue = this._carry ? this._carry.incoming : (this.stack && this.stack.incoming);
+    if (queue && queue.length && st.incoming) {
+      for (var q0 = 0; q0 < queue.length; q0++) {
+        var gq = queue[q0];
         st.incoming.push({ width: gq.width, height: gq.height, isChain: gq.isChain });
       }
     }
@@ -550,44 +554,65 @@
     // a phantom the bot then reasons about and sometimes plays.
     var refused = false;
     if (move) {
-      if (st.canSwap(move[0], move[1])) st.doSwap(move[0], move[1]);
+      if (st.canSwap(move[0], move[1])) {
+        st.doSwap(move[0], move[1]);
+        // A SWAP HOLDS THE FLOOR THE FRAME IT IS MADE. In the match the swap is
+        // queued first and updateRiseLock locks on swapQueued(); after that the
+        // swapping panels count as active. doSwap skips the queue, and the
+        // active count was taken before it -- so frame 1 had no lock and a
+        // board standing at the lid drained in the scratch while the engine
+        // held it and let the swap play. The engine's own count, taken again.
+        if (st.countActivePanels) { st.countActivePanels(); st.countActivePanels(); }
+      }
       else refused = true;
     }
-    // THE RISE, RUN BY THE ENGINE. `riseNow` asks what the next row does to
-    // this board, and the engine is the only thing that can say, because the
-    // answer depends on the ORDER inside one frame: updateRiseLock, then
-    // advancePassiveRaise -- which drains health if the stack is topped out and
-    // otherwise rises it -- then checkMatches. A row that lands and completes a
-    // match locks the floor and pays stop time before the drain can run; a row
-    // that lands and completes nothing is drained the next frame, and at level
-    // 10 maxHealth is 1 (LevelPresets.lua, and Stack.lua says it in as many
-    // words: "passive raise will instakill").
+    // ONE RESOLVE, RUN AS THE MATCH RUNS IT.
     //
-    // Rising a LogicalBoard and painting the result cannot see that. It hands
-    // the scratch a board already topped out and unlocked, so frame 1 drains
-    // whether or not the row made a match. So the PRE-rise board is painted,
-    // the rise is set to fire on frame 1 exactly as advancePassiveRaise fires
-    // it, and the drain is left to run: `died` is the engine's own verdict.
+    // This is the bot's only model of what the game does to a board. It used
+    // to depart from the engine in three places: health forced back every
+    // frame, so the engine could never kill the board it was asked about; the
+    // garbage drop cycle left from whatever the previous candidate did; and a
+    // window so short that no row ever rose inside it -- 0 in 690,071 resolves
+    // in four duels. A second, survival-only mode was then bolted on to get
+    // the engine's answer where it mattered, and two answers to one question
+    // is how the bot came to certify moves the game killed.
     //
-    // Read off frame 367 of seed 703: the queued slab at row 11 on column 1,
-    // the rising row completing a match. The grid rule condemned every one of
-    // 35 candidates; the engine, asked on the same board, paid 50 frames of
-    // stop time and lived -- and the same board with a rising row that matches
-    // nothing is dead on frame 2, in the engine and in the scratch alike.
-    if (riseNow) {
-      st.manualRaise = false;
-      st.stopTime = 0; st.preStopTime = 0;
-      st.shakeTime = 0; st.peakShakeTime = 0;
-      st.riseLock = false;
-      st.riseTimer = 1;
-      st.displacement = 1;
-      if (this.stack && this.stack.speed) st.speed = this.stack.speed;
-      st.health = st.maxHealth;
-      st.gameOver = false;
+    // So there is one: the drain runs (maxHealth is 1 at level 10, and
+    // Stack.lua says a topped-out stack with nothing holding it "will
+    // instakill"), the rise runs on the live timing, the whole queue drops in
+    // the columns the engine's own cycle picks -- GARBAGE_DROP_COLUMN_MAPS
+    // indexed by dropColumnIndex, which paint() never touched -- and `died`
+    // is the engine's verdict. `untilRise` is only how far ahead to look.
+    //
+    // Read off frame 367 of seed 703: a rising row that completes a match
+    // locks the floor and pays stop time before any drain runs; the grid rule
+    // condemned all 35 candidates the engine let live. Read off seed 702
+    // frame 2777: queue [3x1, 6x6, 5x1, 5x1] on a stack at row 8, the check
+    // asked about the first slab only and certified 9 of 23 moves; the 6x6
+    // landed and the board it died on was garbage from row 7 to row 12.
+    var dsrc = (this._carry && this._carry.dropColumnIndex) ||
+               (this.stack && this.stack.dropColumnIndex) || null;
+    if (dsrc) {
+      st.dropColumnIndex = {};
+      for (var dw in dsrc) if (dsrc.hasOwnProperty(dw)) st.dropColumnIndex[dw] = dsrc[dw];
     }
-    var out = engineBoard.settle(st, 900, !!riseNow);
+    st.manualRaise = false;
+    st.health = st.maxHealth;
+    st.gameOver = false;
+    var out = engineBoard.settle(st, untilRise ? 1800 : 900, true, !!untilRise);
     if (refused) out.refused = true;
     if (diedInWalk) out.diedInWalk = true;
+    // WHERE THE ENGINE LEFT OFF, so a survival line continues from the
+    // engine's state instead of re-running the live one.
+    out.carry = {
+      incoming: (st.incoming || []).map(function (g) {
+        return { width: g.width, height: g.height, isChain: g.isChain };
+      }),
+      dropColumnIndex: (function (d) { var o = {}; for (var k in d) if (d.hasOwnProperty(k)) o[k] = d[k]; return o; })(st.dropColumnIndex || {}),
+      riseTimer: st.riseTimer, displacement: st.displacement, speed: st.speed,
+      stopTime: st.stopTime || 0, preStopTime: st.preStopTime || 0,
+      shakeTime: st.shakeTime || 0, peakShakeTime: st.peakShakeTime || 0
+    };
     // WHAT IS HOLDING THE BOARD UP WHEN THE DUST SETTLES.
     //
     // The engine does not kill you for being topped out. checkGameOver is
@@ -971,34 +996,42 @@
   // ONLY CLEARING SWAPS ARE FOLLOWED past the first rise. A swap that clears
   // nothing cannot lower the stack, so it cannot answer a rise -- following
   // them multiplies the work by ten and cannot change the answer.
-  PuyoCpu.prototype._survivesRise = function (board, depth, vetted) {
+  PuyoCpu.prototype._survivesRise = function (board, depth, vetted, carry) {
     // A board this function already put through the engine is alive on the
     // engine's say-so, shield and all; asking the grid again would condemn the
     // topped-out boards the engine let live.
     if (!vetted && this._boardToppedOut(board)) return false;
-    // The queue lands whatever the floor does.
-    if (this._diesToQueue(board)) return false;
     if (depth <= 0) return true;
-    // THE ENGINE RISES IT, AND SAYS WHETHER IT DIED. See _resolveCandidate's
-    // riseNow: a board risen here and painted in afterwards drains on frame 1
-    // whatever the rising row does, which condemned boards the engine lets live.
+    // THE SAME RESOLVE AS EVERY CANDIDATE, asked to look as far as the next
+    // row, continuing from the engine state the line has reached. The engine
+    // drops whatever is queued, rises on its own timing and runs its own
+    // drain; `died` is its verdict.
+    var saved = this._carry;
+    this._carry = carry || null;
     var risen = board.clone();
     risen.incoming = this._incoming || board.incoming || null;
     var rr = this._resolveCandidate(risen, null, 0, true);
-    if (!rr || rr.died) return false;
-    // Alive now is not alive for the next move: a shield shorter than one
-    // reaction buys no move, the same question _survivors asks.
-    if (this._resolvesDead(risen, rr) || this._diesToQueue(risen)) return false;
-    if (this._survivesRise(risen, depth - 1, true)) { if (this._line) this._line.unshift(null); return true; }
+    if (!rr || rr.died || this._resolvesDead(risen, rr)) { this._carry = saved; return false; }
+    if (this._survivesRise(risen, depth - 1, true, rr.carry)) {
+      this._carry = saved;
+      if (this._line) this._line.unshift(null);
+      return true;
+    }
     var swaps = risen.legalSwaps(), i, t, r;
     for (i = 0; i < swaps.length; i++) {
       t = risen.clone();
       t.swap(swaps[i][0], swaps[i][1]);
+      this._carry = rr.carry;
       r = this._resolveCandidate(t);
       if (!r || !r.clearedPanels) continue;
-      if (this._resolvesDead(t, r)) continue;
-      if (this._survivesRise(t, depth - 1, true)) { if (this._line) this._line.unshift(swaps[i]); return true; }
+      if (r.died || this._resolvesDead(t, r)) continue;
+      if (this._survivesRise(t, depth - 1, true, r.carry)) {
+        this._carry = saved;
+        if (this._line) this._line.unshift(swaps[i]);
+        return true;
+      }
     }
+    this._carry = saved;
     return false;
   };
 
@@ -1911,6 +1944,8 @@
   };
 
   PuyoCpu.prototype._resolvesDead = function (board, resolved) {
+    // The engine already said so.
+    if (resolved && (resolved.died || resolved.diedInWalk)) return true;
     if (!this._boardToppedOut(board)) return false;
     // OFF IS THE OLD VERDICT, so one side of a duel can be asked the grid
     // question while the other is asked the engine's. A rule that both sides
