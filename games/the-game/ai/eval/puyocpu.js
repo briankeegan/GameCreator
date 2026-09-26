@@ -207,6 +207,9 @@
     // and you don't" -- the owner, before this was measured.
     this.breakingEscape = opts.breakingEscape === true;
     this.towardBreak = opts.towardBreak !== false;
+    this.flattenToLid = opts.flattenToLid !== false;
+    this.flattenMovesDropped = 0;
+    this.flattenDecisions = 0;
     this.towardMovesDropped = 0;
     this.towardDecisions = 0;
     this._line = null;
@@ -1139,6 +1142,63 @@
   // It only narrows -- it never invents a move -- and it lifts when no
   // candidate is closer, which is most of the time.
   PuyoCpu.prototype.TOWARD_MIN_GARBAGE = 6;
+  // FLATTEN, THEN BREAK. Reach the lid with more columns before trying to pop it.
+  //
+  // Breaking garbage needs a match TOUCHING the slab, so only the columns that
+  // reach its underside can ever take part. Measured over 20 games and 1,289
+  // decisions with six or more cells of garbage up, by how many of the six
+  // columns touch the lid:
+  //
+  //     0 cols  119 decisions   a break existed on  8%
+  //     1 col   415 decisions                       3%
+  //     2 cols  391 decisions                       5%
+  //     3 cols  201 decisions                       5%
+  //     4 cols   97 decisions                      11%
+  //     5 cols   52 decisions                      21%
+  //
+  // Seven-fold from one column to five -- and the bot spends 63% of its time
+  // at one or two, where a break essentially never exists. The slab lands flat
+  // across the width and comes to rest on the TALLEST column, so a ragged
+  // surface leaves it perched out of everything else's reach: read off seed
+  // 972, three full rows of garbage with column 1 at row 6 and every other
+  // column stopping at row 4, one panel touching the lid.
+  //
+  // So when garbage is up and nothing on the list breaks it, prefer the moves
+  // that put more columns against it. _towardBreak already handles the case
+  // where a break is one swap off; this is the move before that.
+  PuyoCpu.prototype._lidCols = function (board) {
+    if (!board || !board.grid) return 0;
+    var n = 0, c, r, v, above;
+    for (c = 1; c <= board.width; c++) {
+      for (r = 1; r < board.height; r++) {
+        v = board.grid[r] ? board.grid[r][c] : 0;
+        above = board.grid[r + 1] ? board.grid[r + 1][c] : 0;
+        if (v !== 0 && v !== -2 && above === -2) { n++; break; }
+      }
+    }
+    return n;
+  };
+  PuyoCpu.prototype._flatten = function (cands) {
+    if (!this.flattenToLid || !cands || cands.length < 2 || !this._board) return cands;
+    var now = this._garbageOn(this._board);
+    if (now < this.TOWARD_MIN_GARBAGE) return cands;
+    var best = this._lidCols(this._board), got = [], i, b, k;
+    for (i = 0; i < cands.length; i++) {
+      b = this._settledOf(cands[i]);
+      if (!b) continue;
+      // A move that breaks the lid outright is not this rule's business.
+      if (this._garbageOn(b) < now) return cands;
+      if (this._resolvesDead(b, cands[i].resolved)) continue;
+      k = this._lidCols(b);
+      if (k > best) { best = k; got = [cands[i]]; }
+      else if (k === best && got.length) got.push(cands[i]);
+    }
+    if (got.length < 1 || got.length === cands.length) return cands;
+    this.flattenMovesDropped += cands.length - got.length;
+    this.flattenDecisions++;
+    return got;
+  };
+
   PuyoCpu.prototype._towardBreak = function (cands) {
     if (!this.towardBreak || !cands || cands.length < 2 || !this._board) return cands;
     var now = this._garbageOn(this._board);
@@ -1378,7 +1438,7 @@
                    travel: this._scoredTravel,
                    earnedStop: resolved.stopTimeEarned || 0 });
     }
-    return this._towardBreak(this._notAnUndo(this._heightCap(this._doomed(this._survivors(cands)))));
+    return this._flatten(this._towardBreak(this._notAnUndo(this._heightCap(this._doomed(this._survivors(cands))))));
   };
 
   // Narrow the pool to the moves this decision is allowed to choose between,
