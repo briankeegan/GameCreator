@@ -1862,11 +1862,7 @@
         if (worth[i] > bestWorth) bestWorth = worth[i];
       }
       tier = [];
-      // THE LID FIRST. A break outranks banking time: stop time buys one more
-      // turn, a break makes every turn after it easier.
-      var breaking = this._breaking(expand);
-      if (breaking && breaking.length) tier = breaking;
-      else if (bestWorth > 0) {
+      if (bestWorth > 0) {
         for (i = 0; i < expand.length; i++) if (worth[i] === bestWorth) tier.push(i);
       }
       // STAYING ALIVE IS AN ESCAPE TOO.
@@ -1886,6 +1882,25 @@
       // because it is only consulted when there is none.
       if (!tier.length && this.sinkingEscape) tier = this._sinking(expand);
       if (!tier || !tier.length) tier = null;
+    }
+
+    // THE LID COMES OFF IN BUILD TOO.
+    //
+    // The escape tier is gated behind FORCED or the danger clock, and
+    // measured over a whole game that gate opens on TWO of 89 decisions --
+    // BUILD 74, ATTACK 13, FORCED 2, warned 0. So the entire survival
+    // ranking, _sinking included, never gets a vote, in a game that ends
+    // under 32 cells of garbage. A third escape added inside that gate fired
+    // zero times.
+    //
+    // Breaking the lid is not an emergency measure. It is the only move that
+    // removes garbage, and garbage is what the bot dies under -- so it is
+    // asked on every decision that has a lid to break, whatever the mode.
+    // It still only narrows when a break is actually on offer: _breaking
+    // returns null when nothing takes a cell off, which is most of the time.
+    if (!tier) {
+      var lid = this._breaking(expand);
+      if (lid && lid.length && lid.length < expand.length) tier = lid;
     }
 
     tier = this._standing(expand, tier);
