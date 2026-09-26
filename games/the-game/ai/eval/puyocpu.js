@@ -1127,6 +1127,15 @@
   // gradient does the carrying: at distance two, prefer distance one; at
   // distance one, the break itself is on the list.
   //
+  // MEASURED. Over 20 games against the same seeds with it off: 43 garbage
+  // breaks against 18, 538 cells cleared against 224 -- 2.4x on both, which
+  // is far outside any noise at that sample -- peak garbage 24.0 against
+  // 25.3, games 39.3s against 31.7s. Head to head over 120 duels, one-sided
+  // with optsB and sides alternated: 56 deaths against 64, 53% against 47%,
+  // garbage@death 27.8 against 30.5. The survival edge is 0.7 sigma and NOT
+  // established; the clearing is. ON because the clearing is the cause of
+  // death and the edge points the right way, not because 53% means anything.
+  //
   // It only narrows -- it never invents a move -- and it lifts when no
   // candidate is closer, which is most of the time.
   PuyoCpu.prototype.TOWARD_MIN_GARBAGE = 6;
