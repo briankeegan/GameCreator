@@ -666,6 +666,16 @@ gate_chip_verifier_fires() {
   bash games/the-game/ai/eval/chips.test.sh
 }
 
+# THE BIT ARITHMETIC ANSWERS WHAT THE SIMULATION ANSWERS. bitmatch.js computes
+# the cleared cells with AND and popcount instead of walking the grid for runs,
+# so the two have to agree on the CELL SET over every legal swap on every real
+# board, in all five board states a clear can be asked about — and the states
+# where a match is expected have to produce some, because every captured board
+# is settled and a sweep of those alone agrees on nothing at all.
+gate_bitmatch() {
+  node games/the-game/ai/eval/bitmatch.test.js
+}
+
 gate_gates_reject_defects() {
   bash .github/scripts/gates.test.sh
 }
@@ -756,6 +766,7 @@ GATES=(
   "a run records what kind of garbage it sent:gate_chain_depth:games/the-game/ai/"
   "a garbage break stops the resolve:gate_garbage_rules:games/the-game/ai/"
   "the chip matcher enforces every constraint:gate_chip_matcher_constraints:games/the-game/ai/"
+  "the bit arithmetic answers what the simulation answers:gate_bitmatch:games/the-game/ai/"
   "the simulation resolves like the game:gate_resolve_fidelity:games/the-game/ai/"
   "that fidelity check fires:gate_resolve_fidelity_fires:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"
