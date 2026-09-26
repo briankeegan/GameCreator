@@ -629,7 +629,14 @@
   //      copied the floor's state again after the walk, throwing the walk's
   //      time away; it is copied once, and a row that lands during the walk
   //      carries the target up with it. Live fidelity 67 of 67.
-  var RULES = 26;
+  //   27. A LINE STARTS WHERE ITS MOVE ENDS. The survival check began every
+  //      candidate's line from the live rise timer and the live garbage
+  //      clock, handing back the frames the move itself took. Seed 703 frame
+  //      1573: [2,2] was the one move proven to live; asked from the state
+  //      [2,2] really leaves, it dies, and the bot died 39 frames later. A
+  //      line now continues from the move's own resolve. And when any move is
+  //      proven to live, a move the search ran out of budget on is not kept.
+  var RULES = 27;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

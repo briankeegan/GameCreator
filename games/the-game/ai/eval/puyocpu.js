@@ -1176,15 +1176,30 @@
   // bot played a raise that did not. A survivable move was on the list and it
   // played one that dies. The requirement is not a trade against cost.
   PuyoCpu.prototype.DOOMED_DEPTH = 2;
+  // A move's line starts where the move's own resolve ended: its board, its
+  // rise timer, its garbage still in the air, and the cursor on its square.
+  // Starting from the live state instead hands every line back the frames
+  // the move itself took.
+  PuyoCpu.prototype._survivesAfter = function (cand, depth) {
+    var k = cand.resolved && cand.resolved.carry;
+    return this._survivesRise(this._settledOf(cand).clone(), depth, false, k || null,
+                              undefined, undefined, cand.move || null);
+  };
   PuyoCpu.prototype._doomed = function (cands) {
     if (!this.refuseSuicide || !this.deepSurvival || !cands || cands.length < 2) return cands;
     if (!this._board) return cands;
-    var i;
-    var live = [];
+    var i, u0, ok;
+    var proven = [], unproven = [];
     for (i = 0; i < cands.length; i++) {
-      if (this._survivesRise(this._settledOf(cands[i]), this.DOOMED_DEPTH, false, null, undefined, undefined,
-                             cands[i].move || null)) live.push(cands[i]);
+      u0 = this.survivalUnproven || 0;
+      ok = this._survivesAfter(cands[i], this.DOOMED_DEPTH);
+      if (!ok) continue;
+      if ((this.survivalUnproven || 0) > u0) unproven.push(cands[i]);
+      else proven.push(cands[i]);
     }
+    // A move the search ran out of budget on is a guess. When any move is
+    // proven to live, the guesses are dropped.
+    var live = proven.length ? proven : unproven;
     this.allDoomedNow = !live.length;
     if (!live.length) { this.doomedDecisions++; return cands; }
     live = this._deepestLine(live);
@@ -1216,16 +1231,16 @@
   // surviving d rises implies surviving d-1 -- so this walks up from the
   // depth already proven and stops at the first failure.
   PuyoCpu.prototype.DEEPEST_MAX = 4;
-  PuyoCpu.prototype._survivalDepth = function (board, from, max) {
+  PuyoCpu.prototype._survivalDepth = function (cand, from, max) {
     var d = from;
-    while (d < max && this._survivesRise(board, d + 1)) d++;
+    while (d < max && this._survivesAfter(cand, d + 1)) d++;
     return d;
   };
   PuyoCpu.prototype._deepestLine = function (live) {
     if (!this.deepestLine || !live || live.length < 2) return live;
     var best = -1, depths = [], i, d;
     for (i = 0; i < live.length; i++) {
-      d = this._survivalDepth(this._settledOf(live[i]), this.DOOMED_DEPTH,
+      d = this._survivalDepth(live[i], this.DOOMED_DEPTH,
                               this.DEEPEST_MAX);
       depths.push(d);
       if (d > best) best = d;
@@ -1760,7 +1775,8 @@
                                    this._raiseWhileBroke(raiseBoard, raiseResolved) ||
                                    raiseResolved.died ||
                                    this._resolvesDead(raiseBoard, raiseResolved) ||
-                                   !this._survivesRise(raiseBoard.clone(), this.DOOMED_DEPTH)))) {
+                                   !this._survivesRise(raiseBoard.clone(), this.DOOMED_DEPTH, false,
+                                                       raiseResolved.carry || null)))) {
         cands.push({ kind: 'raise',
                      score: raiseScore,
                      board: this._scoredBoard,
