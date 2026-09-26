@@ -682,10 +682,14 @@
     out.shakeTime = st.shakeTime || 0;
     out.stillMoving = (typeof st.hasActivePanels === 'function')
                       ? !!st.hasActivePanels() : false;
+    // Every row the engine left, including any above the lid; rows the old
+    // board had above it and the engine no longer does are dropped.
     var settled = engineBoard.readGrid(st, board.height, board.width);
-    for (var r = 0; r <= board.height; r++) {
+    for (var r = 0; r < settled.length; r++) {
+      if (!board.grid[r]) board.grid[r] = [];
       for (var c = 1; c <= board.width; c++) board.grid[r][c] = settled[r][c];
     }
+    board.grid.length = Math.max(board.height + 1, settled.length);
     // AND THE SLABS THE SETTLE LEFT. The grid goes back and the blocks did
     // not, so the board handed to the second ply carried the garbage
     // structure from BEFORE the swap — a slab that has just been broken, or
@@ -1050,7 +1054,24 @@
     // engine's say-so, shield and all; asking the grid again would condemn the
     // topped-out boards the engine let live.
     if (!vetted && this._boardToppedOut(board)) return false;
-    if (depth <= 0) return true;
+    // THE END OF A LINE IS NOT "ALIVE THIS FRAME". A topped-out board is
+    // alive only while a shield runs -- stop time, or the shake of a slab that
+    // just landed -- and when it runs out the engine drains it, no rise needed.
+    // Accepting it here certified lines the game kills: seed 701 frame 466,
+    // certified [6,4] then [9,4]; played in the real game, the 6x3 already in
+    // flight landed on a stack at row 10, shook, and it was dead at frame 668
+    // after one rise. So a line may end topped out only if the engine, run on
+    // until the board stands on its own, says it lives.
+    if (depth <= 0) {
+      if (!this._boardToppedOut(board)) return true;
+      var saved0 = this._carry;
+      this._carry = carry || null;
+      var end = board.clone();
+      end.incoming = this._incoming || board.incoming || null;
+      var er = this._resolveCandidate(end, null, 0, true);
+      this._carry = saved0;
+      return !!er && !er.died && !this._boardToppedOut(end);
+    }
     // THE SAME RESOLVE AS EVERY CANDIDATE, asked to look as far as the next
     // row, continuing from the engine state the line has reached. The engine
     // drops whatever is queued, rises on its own timing and runs its own
