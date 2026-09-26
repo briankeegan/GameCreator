@@ -1404,7 +1404,14 @@
   PuyoCpu.prototype._took = function (cand) {
     var bar = this._bar();
     this._firedLast = !!cand && modes.fires(cand.resolved, bar.links, bar.wide);
-    if (cand && this.hadSurvivorNow && this._boardToppedOut(cand.board)) this.selfInflicted++;
+    // THE SAME QUESTION THE FILTER ASKED. selfInflicted means "it chose a
+    // board it cannot survive while one it could survive was on the list",
+    // and _survivors decides what cannot be survived. While this asked the
+    // grid and the filter asked the engine, a board legitimately held up by a
+    // chain's stop time was counted as a suicide -- the two have to agree or
+    // the count is measuring a rule nothing enforces.
+    if (cand && this.hadSurvivorNow &&
+        this._resolvesDead(cand.board, cand.resolved)) this.selfInflicted++;
   };
 
   // TWO NUMBERS, AND THEY ARE NOT THE SAME NUMBER.
