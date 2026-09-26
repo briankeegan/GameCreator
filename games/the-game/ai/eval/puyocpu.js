@@ -186,6 +186,9 @@
     // Off only for the harness that measures what the rule is worth. A rule
     // that cannot be switched off cannot be shown to be doing anything.
     this.refuseSuicide = opts.refuseSuicide !== false;
+    this.refuseUndo = opts.refuseUndo !== false;
+    this.undoMovesDropped = 0;
+    this._lastSquare = null;
     this.engineDeath = opts.engineDeath !== false;
     // RULES 14's two rules, behind one switch so the pair can be measured
     // against the procedure they changed. A rule that cannot be switched off
@@ -935,6 +938,40 @@
     }
     return Math.ceil(cells / w);
   };
+  // PUTTING A PANEL BACK WHERE IT WAS IS NOT A MOVE.
+  //
+  // The evaluator scores every candidate on its own board and has no memory,
+  // so on a quiet board the swap it liked last decision is still the one it
+  // likes -- and playing it again just undoes it. Measured over 1,334
+  // decisions in six duels: 263 of them, ONE IN FIVE, played the same square
+  // twice in a row, and only 21% of decisions cleared anything at all.
+  //
+  // It is not merely wasted time. handleManualRaise returns while riseLock is
+  // set, and updateRiseLock sets it on swapQueued() or hasActivePanels() --
+  // so a bot that is always mid-swap can never raise. Read off 335 decisions
+  // where the stack was starved under the lid (two panels or fewer touching
+  // the slab) with three or more rows of headroom: RAISE was not on the
+  // candidate list at all on 251 of them. No raise means no new panels, a
+  // starved interface means no match can reach the slab, and the garbage only
+  // ever accumulates.
+  //
+  // Narrow on purpose: only the SAME SQUARE as the move just taken, only when
+  // that move cleared nothing, and it lifts if it would empty the pool.
+  PuyoCpu.prototype._notAnUndo = function (cands) {
+    if (!this.refuseUndo || !cands || cands.length < 2) return cands;
+    var last = this._lastSquare;
+    if (!last) return cands;
+    var live = [], i, m;
+    for (i = 0; i < cands.length; i++) {
+      m = cands[i].move;
+      if (m && m[0] === last[0] && m[1] === last[1]) continue;
+      live.push(cands[i]);
+    }
+    if (!live.length || live.length === cands.length) return cands;
+    this.undoMovesDropped += cands.length - live.length;
+    return live;
+  };
+
   PuyoCpu.prototype._heightCap = function (cands) {
     if (!this.heightCap || !cands || cands.length < 2) return cands;
     var h = this._board ? this._board.height : 12;
@@ -1139,7 +1176,7 @@
                    travel: this._scoredTravel,
                    earnedStop: resolved.stopTimeEarned || 0 });
     }
-    return this._heightCap(this._doomed(this._survivors(cands)));
+    return this._notAnUndo(this._heightCap(this._doomed(this._survivors(cands))));
   };
 
   // Narrow the pool to the moves this decision is allowed to choose between,
@@ -1428,6 +1465,9 @@
   // it has to be able to see. Reading it off the mode would answer "something
   // was offered", which is a different question and hides the break.
   PuyoCpu.prototype._took = function (cand) {
+    // The square to refuse next time: only a swap that changed nothing.
+    this._lastSquare = (cand && cand.move && cand.resolved &&
+                        !cand.resolved.clearedPanels) ? cand.move : null;
     var bar = this._bar();
     this._firedLast = !!cand && modes.fires(cand.resolved, bar.links, bar.wide);
     // THE SAME QUESTION THE FILTER ASKED. selfInflicted means "it chose a
