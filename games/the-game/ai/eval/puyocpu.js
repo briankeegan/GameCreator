@@ -540,11 +540,12 @@
     // land during the wait OR during the settle, and either way the row that
     // enters play is the dimmed one already on screen. Only the row BEHIND it
     // is the game's own RNG, which nothing can know.
-    // The line's own next row first: the known row enters once, and after it
-    // every row is one nobody can know yet (engineboard.inertRow).
-    var inc0 = (this._carry && this._carry.nextRow) || board.incoming ||
-               (this._board && this._board.incoming);
-    if (inc0 && st.panels[0]) {
+    // The line's own next row first: the known row enters once. After it the
+    // engine's generator makes each row, as the match's own does.
+    var inc0 = (this._carry && this._carry.nextRow) ||
+               (board.incoming === false ? false : (board.incoming || (this._board && this._board.incoming)));
+    if (inc0 === false && st.panels[0] && st.fillNewRow) st.fillNewRow(0);
+    else if (inc0 && st.panels[0]) {
       for (var i0 = 1; i0 <= board.width; i0++) {
         var p0 = st.panels[0][i0];
         if (!p0) continue;
@@ -1071,7 +1072,7 @@
       var saved0 = this._carry;
       this._carry = carry || null;
       var end = board.clone();
-      end.incoming = (carry && carry.nextRow) || board.incoming || this._incoming || null;
+      end.incoming = (carry && carry.nextRow) || (board.incoming === false ? false : (board.incoming || this._incoming || null));
       var er = this._resolveCandidate(end, null, 0, true);
       this._carry = saved0;
       return !!er && !er.died && !this._boardToppedOut(end);
@@ -1083,7 +1084,7 @@
     var saved = this._carry;
     this._carry = carry || null;
     var risen = board.clone();
-    risen.incoming = (carry && carry.nextRow) || board.incoming || this._incoming || null;
+    risen.incoming = (carry && carry.nextRow) || (board.incoming === false ? false : (board.incoming || this._incoming || null));
     var rr = this._resolveCandidate(risen, null, 0, true);
     if (!rr || rr.died || this._resolvesDead(risen, rr)) { this._carry = saved; return false; }
     if (this._survivesRise(risen, depth - 1, true, rr.carry)) {
@@ -1695,8 +1696,15 @@
       // The row the engine will actually deal, resolved, because a raise
       // can complete a match and that match is the reason to make it.
       var raiseBoard = board.clone().rise(this._incoming);
-      // The raise spends the known row; the one behind it is unknown.
-      raiseBoard.incoming = engineBoard.inertRow(0, board.width);
+      // THE RAISE SPENDS THE KNOWN ROW. The one behind it is dealt from the
+      // match's rng, which this code does not read, so the engine's own
+      // generator makes it (false = unknown; see _resolveCandidate). Copying
+      // the known row into its place invents matches the game will not deal:
+      // seed 703 frame 3014 was certified on a copy and nothing survived
+      // thirteen frames later on the real row. A row that matches nothing
+      // forbids the ones it will: measured over the same ten games, 23.1s
+      // against 28.6s without it.
+      raiseBoard.incoming = false;
       var raiseResolved = this._resolveCandidate(raiseBoard);
       // A MOVE THAT KILLS YOU IS NOT A MOVE. Raising is the one thing the
       // bot does that pushes its own stack up, and it is the only way it

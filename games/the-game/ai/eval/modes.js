@@ -611,7 +611,11 @@
   //      inert (it matches nothing) instead of a copy of the known row, and a
   //      raise is released on the engine's hand-off even when that happens in
   //      one frame.
-  var RULES = 23;
+  //   24. THE UNKNOWN ROW IS THE ENGINE'S, NOT INERT. A row that matches
+  //      nothing forbids every match the real row will make; the scratch's own
+  //      generator (fillNewRow) makes it instead, with the game's colour rules
+  //      and without reading the match's rng.
+  var RULES = 24;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
