@@ -7,6 +7,24 @@ have played.
 
 Target: no deaths before the duel ceiling, 21,600 frames (6 minutes).
 
+## Do not add gates. Fix the resolve.
+
+The verdicts have to be TRUE. Before this, the bot thought it was making
+saving moves and it was not -- the survival check certified a move and the
+move died. That is the defect that matters, and it is not fixed by
+changing which moves get offered: a filter built on a verdict that lies
+refuses the wrong moves however honest the filter is.
+
+So the work is in the RESOLVE -- `_resolveCandidate`, `_survivesRise`,
+`_resolvesDead` -- and in the existing checks that already measure it:
+`verify_resolve_corpus.js`, `live_fidelity.js`, `resolve_fidelity.js`.
+Those checks are RED. Fix what they are pointing at. Do not write another
+test file, do not add a gate, and do not make a red check green by
+changing what it asks.
+
+A gate that asks the implementation's own predicate proves nothing. If
+`_resolvesDead` is wrong, `no_self_death` passes while the bot dies.
+
 ## Do not write new rules. Make the existing mechanisms work.
 
 This is the whole method, and the record is unambiguous: eleven
