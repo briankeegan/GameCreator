@@ -192,7 +192,12 @@
     // -- the cursor is already on that square, and forcing a different one
     // spends travel frames and leaves it out of position.
     this.refuseUndo = opts.refuseUndo === true;
-    this.deepestLine = opts.deepestLine !== false;
+    // OFF. A WASH, AND IT IS NOT FREE. 120 duels with sides alternated: 58
+    // deaths against 62, 52% against 48% -- 0.4 sigma, nothing. A 60-duel
+    // read said 57% against 43% and that was noise; the repo's own rule is
+    // that one run per condition measures nothing. It costs a depth-4 search
+    // on every near-ceiling decision, so a wash is a loss.
+    this.deepestLine = opts.deepestLine === true;
     this._line = null;
     this.shallowMovesDropped = 0;
     this.undoMovesDropped = 0;
@@ -931,6 +936,14 @@
   // rise; it played one of the 8; twenty-two frames later 0 of 15 survived,
   // with the garbage unchanged at 32 cells, an empty queue and no shake.
   // Nothing happened to it. It chose its way from eight lines to none.
+  //
+  // MEASURED AND OFF: 52% survival against 48% over 120 duels, 0.4 sigma.
+  // The reasoning below is still the right diagnosis -- the bot does choose
+  // its way from eight lines to none -- but preferring depth among the
+  // survivors does not fix it, because the thing that kills it is upstream:
+  // garbage comes down on ONE FRAME PER GAME, peak 28 cells against a single
+  // break of about 8. A bot that reads its board perfectly still dies if it
+  // clears garbage once a game.
   //
   // So depth is the preference, not just the threshold: of the moves that
   // survive, keep the ones that survive LONGEST. Survival is monotone --
