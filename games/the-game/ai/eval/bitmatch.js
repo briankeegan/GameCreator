@@ -111,26 +111,41 @@
     return rest;
   }
 
+  // HOW MANY COLOURS IS NOT A CONSTANT. The game plays 5 or 6, but a board
+  // staged for a chip fills the cells the shape does not care about with
+  // colours no real board uses, precisely so the filler cannot join a match.
+  // The arithmetic does not care how many there are — one mask per colour —
+  // so the count is read off the board rather than assumed.
+  function topColour(grid, W, H) {
+    var top = 0;
+    for (var r = 1; r <= H; r++) {
+      for (var c = 1; c <= W; c++) if (grid[r][c] > top) top = grid[r][c];
+    }
+    return top;
+  }
+
   // Resting cells only, one mask per colour per column.
-  function colourMasks(grid, blocks, W, H) {
+  function colourMasks(grid, blocks, W, H, nColours) {
     var rest = api.restingMask(grid, blocks, W, H);
+    var N = nColours || api.topColour(grid, W, H);
     var B = [], a, c;
-    for (a = 1; a <= 6; a++) { B[a] = []; for (c = 1; c <= W; c++) B[a][c] = 0; }
+    for (a = 1; a <= N; a++) { B[a] = []; for (c = 1; c <= W; c++) B[a][c] = 0; }
     for (var r = 1; r <= H; r++) {
       for (c = 1; c <= W; c++) {
         var v = grid[r][c];
-        if (v >= 1 && v <= 6 && (rest[c] & (1 << (r - 1)))) B[v][c] |= (1 << (r - 1));
+        if (v >= 1 && v <= N && (rest[c] & (1 << (r - 1)))) B[v][c] |= (1 << (r - 1));
       }
     }
+    B.nColours = N;
     return B;
   }
 
   // The cleared cells as one mask per column, plus how many there are.
-  function clears(grid, blocks, W, H) {
-    var B = api.colourMasks(grid, blocks, W, H);
+  function clears(grid, blocks, W, H, nColours) {
+    var B = api.colourMasks(grid, blocks, W, H, nColours);
     var mask = [], a, c;
     for (c = 1; c <= W; c++) mask[c] = 0;
-    for (a = 1; a <= 6; a++) {
+    for (a = 1; a <= B.nColours; a++) {
       for (c = 1; c <= W; c++) {
         var b = B[a][c], cv = b & (b >> 1) & (b >> 2);
         mask[c] |= cv | (cv << 1) | (cv << 2);
@@ -146,8 +161,8 @@
   }
 
   // Same answer as an "r:c" -> true map, for comparing against _findMatches.
-  function clearedCells(grid, blocks, W, H) {
-    var out = {}, res = api.clears(grid, blocks, W, H);
+  function clearedCells(grid, blocks, W, H, nColours) {
+    var out = {}, res = api.clears(grid, blocks, W, H, nColours);
     for (var c = 1; c <= W; c++) {
       for (var bit = 0; bit < H; bit++) {
         if (res.mask[c] & (1 << bit)) out[(bit + 1) + ':' + c] = true;
@@ -173,48 +188,61 @@
 
   // A WHOLE CASCADE, AS BITS.
   //
-  //   clear -> compact -> clear again, until nothing clears.
+  //   match -> mark -> fall a row -> match again -> sweep -> ...
   //
-  // COUNTING ROUNDS IS NOT THE CHAIN COUNTER. Two combos that happen to fire
-  // in separate rounds are still one combo: a link counts only when a matched
-  // panel is CHAINING — it fell because something below it cleared. So a
-  // chaining mask rides along, set on every survivor above a cleared cell and
-  // compacted with the same selector, and a round is a link when the clear
-  // intersects it. The first link of a chain is an x2, as the engine counts.
+  // A MATCHED GROUP DOES NOT LEAVE YET. In the game a matched panel flashes
+  // and pops over dozens of frames, and it holds up whatever sits on it the
+  // whole time. Empty its cells the instant it matches and those panels drop
+  // early: a group that was about to complete its own match lands somewhere
+  // else and that match never happens. So a match is MARKED — still occupying,
+  // no longer matchable — and swept once the board has come to rest.
   //
-  // IT STOPS AT GARBAGE. A match touching a slab pops one row and the engine
-  // turns that row into panels whose colours come from its own rng, so
-  // anything past that point is unknowable. Boards carrying garbage are
-  // reported as out of scope rather than guessed at.
+  // THE BOARD FALLS ONE ROW BETWEEN LOOKS, because panels land at different
+  // times and a match fires the moment its own cells are down. Drop everything
+  // to its final place at once and two matches the game fires a beat apart
+  // merge into one.
+  //
+  // COUNTING ROUNDS IS NOT THE CHAIN COUNTER. A link counts only when a
+  // matched panel is CHAINING: it fell because something below it cleared.
+  // That flag is another mask, set on every survivor above a swept cell and
+  // carried through the fall. The first link of a chain is an x2.
+  //
+  // HOW MANY COLOURS IS READ OFF THE BOARD, never assumed — a board staged for
+  // a chip fills the cells its shape ignores with colours no real board uses,
+  // exactly so that filler cannot join a match.
   function resolveBits(grid, blocks, W, H) {
     if (blocks && Object.keys(blocks).length) return { scope: 'garbage', chain: 0, total: 0, rounds: 0 };
-    var occ = [], colour = [], chaining = [], a, c, r;
-    for (a = 1; a <= 6; a++) { colour[a] = []; for (c = 1; c <= W; c++) colour[a][c] = 0; }
-    for (c = 1; c <= W; c++) { occ[c] = 0; chaining[c] = 0; }
+    var N = api.topColour(grid, W, H);
+    var occ = [], colour = [], chaining = [], popping = [], a, c, r;
+    for (a = 1; a <= N; a++) { colour[a] = []; for (c = 1; c <= W; c++) colour[a][c] = 0; }
+    for (c = 1; c <= W; c++) { occ[c] = 0; chaining[c] = 0; popping[c] = 0; }
     for (r = 1; r <= H; r++) {
       for (c = 1; c <= W; c++) {
         var v = grid[r][c];
         if (v === 0) continue;
-        if (v < 1 || v > 6) return { scope: 'unknown-cell', chain: 0, total: 0, rounds: 0 };
+        if (v < 1) return { scope: 'unknown-cell', chain: 0, total: 0, rounds: 0 };
         occ[c] |= (1 << (r - 1));
         colour[v][c] |= (1 << (r - 1));
       }
     }
 
-    var counter = 0, rounds = 0, total = 0, guard = 0;
-    while (guard++ <= H * W) {
-      // Only landed cells match, and with no garbage that is the run of
-      // occupied bits reaching the floor: everything from the first hole up
-      // is in the air.
-      var rest = [], link = false, any = false, k = [];
+    // A round costs up to H iterations, because the fall moves one row at a
+    // time and every row needs its own look. A guard sized for rounds alone
+    // truncates a deep cascade into a shallower one that cleared less.
+    var counter = 0, rounds = 0, total = 0, guard = 0, LIMIT = W * H * H;
+    while (guard++ <= LIMIT) {
+      // Only a landed cell that is not already popping can match. With no
+      // garbage, landed is the run of occupied bits reaching the floor:
+      // everything from the first hole up is in the air.
+      var rest = [], k = [], link = false, any = false;
       for (c = 1; c <= W; c++) {
         var o = occ[c], lowestZero = (~o) & (o + 1);
-        rest[c] = o & (lowestZero - 1);
+        rest[c] = o & (lowestZero - 1) & ~popping[c];
       }
       var B = [];
-      for (a = 1; a <= 6; a++) { B[a] = []; for (c = 1; c <= W; c++) B[a][c] = colour[a][c] & rest[c]; }
+      for (a = 1; a <= N; a++) { B[a] = []; for (c = 1; c <= W; c++) B[a][c] = colour[a][c] & rest[c]; }
       for (c = 1; c <= W; c++) k[c] = 0;
-      for (a = 1; a <= 6; a++) {
+      for (a = 1; a <= N; a++) {
         for (c = 1; c <= W; c++) {
           var b = B[a][c], cv = b & (b >> 1) & (b >> 2);
           k[c] |= cv | (cv << 1) | (cv << 2);
@@ -225,52 +253,51 @@
         }
       }
       for (c = 1; c <= W; c++) { if (k[c]) any = true; if (k[c] & chaining[c]) link = true; }
-      if (!any) {
-        // NOTHING HAS LANDED INTO A MATCH YET. A swap that moves a panel
-        // sideways leaves a hole, and what stands over it is in the air, so
-        // the match it will make has not happened yet.
-        //
-        // ONE ROW, NOT ALL THE WAY DOWN. Panels land at different times, and
-        // a match fires the moment its own cells are down — while the rest of
-        // the board is still falling. Dropping everything to its final place
-        // in one go makes two matches that the game fires a beat apart happen
-        // together, and a chain reads one link short. So: shift the run above
-        // the lowest hole down by one, and look again.
-        var fell = false;
-        for (c = 1; c <= W; c++) {
-          var hole = (~occ[c]) & (occ[c] + 1);
-          if (!(occ[c] & ~((hole << 1) - 1))) continue;   // nothing above it
-          fell = true;
-          var below = (hole - 1), above = ~((hole << 1) - 1);
-          for (a = 1; a <= 6; a++) {
-            colour[a][c] = (colour[a][c] & below) | ((colour[a][c] & above) >> 1);
-          }
-          chaining[c] = (chaining[c] & below) | ((chaining[c] & above) >> 1);
-          occ[c] = (occ[c] & below) | ((occ[c] & above) >> 1);
-        }
-        if (fell) continue;
-        break;
-      }
-      rounds++;
-      if (link) counter = counter === 0 ? 2 : counter + 1;
-      for (c = 1; c <= W; c++) total += popcount(k[c]);
 
-      // Everything still standing above the lowest cell this clear took is
-      // falling BECAUSE of it: that is the chaining flag, in one expression.
-      for (c = 1; c <= W; c++) {
-        if (!k[c]) { continue; }
-        var lowest = k[c] & -k[c];
-        chaining[c] |= occ[c] & ~k[c] & ~(lowest - 1);
+      if (any) {
+        rounds++;
+        if (link) counter = counter === 0 ? 2 : counter + 1;
+        for (c = 1; c <= W; c++) { total += popcount(k[c]); popping[c] |= k[c]; }
+        continue;
       }
-      // The cleared cells leave; what stood on them is now falling BECAUSE
-      // of that, and the one-row fall above brings it down a row at a time.
+
+      // Nothing new matched. Let the board fall a row; a marked group is still
+      // in place, so it still holds up what stands on it.
+      var fell = false;
       for (c = 1; c <= W; c++) {
-        if (!k[c]) continue;
-        var keep = occ[c] & ~k[c];
-        for (a = 1; a <= 6; a++) colour[a][c] &= keep;
-        chaining[c] &= keep;
+        var hole = (~occ[c]) & (occ[c] + 1);
+        var above = ~((hole << 1) - 1);
+        if (!(occ[c] & above)) continue;
+        // A popping cell does not move, and nothing slides past it.
+        if (popping[c] & above & ~(hole - 1)) {
+          var lowestPop = popping[c] & -popping[c];
+          if (lowestPop && lowestPop > hole) { /* only the run under it may fall */ }
+          else continue;
+        }
+        fell = true;
+        var below = hole - 1;
+        for (a = 1; a <= N; a++) colour[a][c] = (colour[a][c] & below) | ((colour[a][c] & above) >> 1);
+        chaining[c] = (chaining[c] & below) | ((chaining[c] & above) >> 1);
+        popping[c] = (popping[c] & below) | ((popping[c] & above) >> 1);
+        occ[c] = (occ[c] & below) | ((occ[c] & above) >> 1);
+      }
+      if (fell) continue;
+
+      // Still, and nothing new matched: now the marked cells actually leave,
+      // and everything above one of them is falling BECAUSE of that.
+      var swept = false;
+      for (c = 1; c <= W; c++) {
+        if (!popping[c]) continue;
+        swept = true;
+        var lowest = popping[c] & -popping[c];
+        var keep = occ[c] & ~popping[c];
+        chaining[c] = (chaining[c] | (keep & ~(lowest - 1))) & keep;
+        for (a = 1; a <= N; a++) colour[a][c] &= keep;
         occ[c] = keep;
+        popping[c] = 0;
       }
+      if (swept) continue;
+      break;
     }
     return { scope: 'ok', chain: rounds ? Math.max(counter, 1) : 0, total: total, rounds: rounds };
   }
@@ -279,6 +306,7 @@
   // and prove the check notices.
   var api = {
     popcount: popcount,
+    topColour: topColour,
     restingMask: restingMask,
     colourMasks: colourMasks,
     clears: clears,

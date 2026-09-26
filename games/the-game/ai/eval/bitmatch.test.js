@@ -156,7 +156,7 @@ var BREAKS = {
         bit.clears = function (grid, blocks, w, h) {
             var B = bit.colourMasks(grid, blocks, w, h), mask = [], a, c;
             for (c = 1; c <= w; c++) mask[c] = 0;
-            for (a = 1; a <= 6; a++) {
+            for (a = 1; a <= B.nColours; a++) {
                 for (c = 1; c <= w; c++) {
                     var b = B[a][c];
                     mask[c] |= b & (b >> 1) & (b >> 2);
@@ -174,15 +174,17 @@ var BREAKS = {
     // Garbage treated as a colour, so a slab joins a match.
     'garbage allowed to match': function () {
         bit.colourMasks = function (grid, blocks, w, h) {
+            var N = Math.max(1, bit.topColour(grid, w, h));
             var rest = bit.restingMask(grid, blocks, w, h), B = [], a, c;
-            for (a = 1; a <= 6; a++) { B[a] = []; for (c = 1; c <= w; c++) B[a][c] = 0; }
+            for (a = 1; a <= N; a++) { B[a] = []; for (c = 1; c <= w; c++) B[a][c] = 0; }
             for (var r = 1; r <= h; r++) {
                 for (c = 1; c <= w; c++) {
                     var v = grid[r][c];
                     if (v === -2) v = 1;
-                    if (v >= 1 && v <= 6 && (rest[c] & (1 << (r - 1)))) B[v][c] |= (1 << (r - 1));
+                    if (v >= 1 && v <= N && (rest[c] & (1 << (r - 1)))) B[v][c] |= (1 << (r - 1));
                 }
             }
+            B.nColours = N;
             return B;
         };
     }
@@ -346,6 +348,136 @@ if (cascadeMissed.length) {
     process.exit(1);
 }
 
+// ---------------------------------------------------------------------------
+// THE CHIP LIBRARY, WHICH IS WHERE THE DEEP CHAINS ARE.
+//
+// Real play barely reaches depth 4 — three cases in the whole sweep above — so
+// the cascade check cannot tell a correct deep chain from a truncated one. The
+// chips are 6,228 positions built for exactly that, up to depth 6, and their
+// boards are staged by verify_chips.js, borrowed rather than copied.
+//
+// They also carry FILLER in colours no real board uses, so this is the check
+// that the arithmetic reads the colour count off the board instead of assuming
+// the six the game plays.
+var V = require('./verify_chips.js');
+function chipSweep() {
+    var out = { cases: 0, agree: 0, chainBad: 0, totalBad: 0, depth: {}, worst: null };
+    V.chips.forEach(function (chip) {
+        if (chip.swaps.length > 2) return;
+        var st = V.stage(chip, V.MAP);
+        if (st.skip) return;
+        var b = st.board, i, r, c;
+        for (i = 0; i < chip.swaps.length; i++) {
+            r = chip.swaps[i][0] + st.rowOff; c = chip.swaps[i][1] + st.colOff;
+            if (r < 1 || r > V.H || c < 1 || c >= V.W) return;
+            if (i > 0) b._applyGravity();
+            b.swap(r, c);
+        }
+        var truth = b.clone().resolve();
+        var mine = bit.resolveBits(b.clone().grid, b.blocks, V.W, V.H);
+        out.cases++;
+        if (mine.scope !== 'ok') {
+            out.chainBad++;
+            if (!out.worst) out.worst = { kind: chip.kind, scope: mine.scope };
+            return;
+        }
+        var tTotal = truth.comboSizes.reduce(function (x, y) { return x + y; }, 0);
+        out.depth[truth.chainLength] = (out.depth[truth.chainLength] || 0) + 1;
+        var okChain = mine.chain === truth.chainLength, okTotal = mine.total === tTotal;
+        if (okChain && okTotal) { out.agree++; return; }
+        if (!okChain) out.chainBad++;
+        if (!okTotal) out.totalBad++;
+        if (!out.worst) {
+            out.worst = { kind: chip.kind, file: chip._file,
+                          chain: truth.chainLength + ' vs ' + mine.chain,
+                          cleared: tTotal + ' vs ' + mine.total, combos: truth.comboSizes };
+        }
+    });
+    return out;
+}
+var chipsR = chipSweep();
+console.log('  chips               ' + String(chipsR.cases).padStart(7) + ' cases  ' +
+            'depths ' + JSON.stringify(chipsR.depth) + '  ' +
+            (chipsR.agree === chipsR.cases ? 'all agree' : (chipsR.cases - chipsR.agree) + ' DISAGREE'));
+if (chipsR.agree !== chipsR.cases) {
+    console.error('FAIL the chips: ' + JSON.stringify(chipsR.worst));
+    process.exit(1);
+}
+if (chipsR.cases !== V.chips.length) {
+    console.error('FAIL only ' + chipsR.cases + ' of ' + V.chips.length + ' chips were staged');
+    process.exit(1);
+}
+// The point of this sweep is the depth real play does not reach.
+if (!chipsR.depth[5] || !chipsR.depth[6]) {
+    console.error('FAIL no chain of depth 5 and 6 among the chips — this sweep is not testing depth');
+    process.exit(1);
+}
+
+// A MATCHED GROUP HOLDS UP WHAT STANDS ON IT UNTIL THE BOARD RESTS. Empty its
+// cells the moment it matches and panels drop early, so a group that was about
+// to complete its own match lands elsewhere and that match never happens: the
+// chain reads short and fewer panels clear. Twenty-eight chips say so.
+var realBits = bit.resolveBits;
+bit.resolveBits = function (grid, blocks, W, H) {
+    if (blocks && Object.keys(blocks).length) return { scope: 'garbage', chain: 0, total: 0, rounds: 0 };
+    var N = bit.topColour(grid, W, H), occ = [], colour = [], chaining = [], a, c, r;
+    for (a = 1; a <= N; a++) { colour[a] = []; for (c = 1; c <= W; c++) colour[a][c] = 0; }
+    for (c = 1; c <= W; c++) { occ[c] = 0; chaining[c] = 0; }
+    for (r = 1; r <= H; r++) for (c = 1; c <= W; c++) {
+        var v = grid[r][c];
+        if (v === 0) continue;
+        if (v < 1) return { scope: 'unknown-cell', chain: 0, total: 0, rounds: 0 };
+        occ[c] |= (1 << (r - 1)); colour[v][c] |= (1 << (r - 1));
+    }
+    var counter = 0, rounds = 0, total = 0, guard = 0;
+    while (guard++ <= W * H * H) {
+        var rest = [], k = [], link = false, any = false;
+        for (c = 1; c <= W; c++) { var o = occ[c], lz = (~o) & (o + 1); rest[c] = o & (lz - 1); }
+        var B = [];
+        for (a = 1; a <= N; a++) { B[a] = []; for (c = 1; c <= W; c++) B[a][c] = colour[a][c] & rest[c]; }
+        for (c = 1; c <= W; c++) k[c] = 0;
+        for (a = 1; a <= N; a++) {
+            for (c = 1; c <= W; c++) { var bb = B[a][c], cv = bb & (bb >> 1) & (bb >> 2); k[c] |= cv | (cv << 1) | (cv << 2); }
+            for (c = 1; c + 2 <= W; c++) { var hc = B[a][c] & B[a][c + 1] & B[a][c + 2]; k[c] |= hc; k[c + 1] |= hc; k[c + 2] |= hc; }
+        }
+        for (c = 1; c <= W; c++) { if (k[c]) any = true; if (k[c] & chaining[c]) link = true; }
+        if (any) {
+            rounds++;
+            if (link) counter = counter === 0 ? 2 : counter + 1;
+            for (c = 1; c <= W; c++) {
+                total += bit.popcount(k[c]);
+                if (!k[c]) continue;
+                var lowest = k[c] & -k[c], keep = occ[c] & ~k[c];
+                chaining[c] = (chaining[c] | (keep & ~(lowest - 1))) & keep;
+                for (a = 1; a <= N; a++) colour[a][c] &= keep;
+                occ[c] = keep;
+            }
+            continue;
+        }
+        var fell = false;
+        for (c = 1; c <= W; c++) {
+            var hole = (~occ[c]) & (occ[c] + 1), above = ~((hole << 1) - 1);
+            if (!(occ[c] & above)) continue;
+            fell = true;
+            var below = hole - 1;
+            for (a = 1; a <= N; a++) colour[a][c] = (colour[a][c] & below) | ((colour[a][c] & above) >> 1);
+            chaining[c] = (chaining[c] & below) | ((chaining[c] & above) >> 1);
+            occ[c] = (occ[c] & below) | ((occ[c] & above) >> 1);
+        }
+        if (!fell) break;
+    }
+    return { scope: 'ok', chain: rounds ? Math.max(counter, 1) : 0, total: total, rounds: rounds };
+};
+var brokenChips = chipSweep();
+bit.resolveBits = realBits;
+var sweptEarly = brokenChips.cases - brokenChips.agree;
+console.log('  break: ' + 'matches swept the instant they fire'.padEnd(34) +
+            (sweptEarly ? sweptEarly + ' cases caught it' : 'NOT CAUGHT'));
+if (!sweptEarly) {
+    console.error('FAIL the chip sweep did not notice matches being swept early');
+    process.exit(1);
+}
+
 console.log('bitmatch: ' + cases + ' cases agree with _findMatches, ' + ruleCases +
             ' with the run rule itself, ' + casc.cases + ' cascades agree with resolve(), ' +
-            'and 5 breaks are caught');
+            chipsR.cases + ' chips up to depth 6, and 6 breaks are caught');
