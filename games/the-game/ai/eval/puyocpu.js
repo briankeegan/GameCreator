@@ -480,6 +480,26 @@
     var out = engineBoard.settle(st, 900);
     if (refused) out.refused = true;
     if (diedInWalk) out.diedInWalk = true;
+    // WHAT IS HOLDING THE BOARD UP WHEN THE DUST SETTLES.
+    //
+    // The engine does not kill you for being topped out. checkGameOver is
+    // `health <= 0 && shakeTime <= 0`, and health only drains on a frame where
+    // `!riseLock && stopTime === 0 && isToppedOut()`. So a topped-out board
+    // with stop time banked, a slab still shaking, or panels still in motion
+    // is a board that is alive -- and banking stop time by chaining INTO the
+    // ceiling is how the game is meant to be survived: a chain link cashed
+    // while topped out pays 88 to 98 frames.
+    //
+    // Read off 190 decisions where every move read fatal: only 14% were dead
+    // within a second and 36% were still alive twenty seconds later. The
+    // verdict was a proxy -- "row 12 holds a panel" -- and it was wrong most
+    // of the times it fired, which is what emptied _survivors and left the bot
+    // choosing unfiltered at exactly the decisions that decide the game.
+    out.toppedOut = st.isToppedOut ? !!st.isToppedOut() : false;
+    out.stopTime = st.stopTime || 0;
+    out.shakeTime = st.shakeTime || 0;
+    out.stillMoving = (typeof st.hasActivePanels === 'function')
+                      ? !!st.hasActivePanels() : false;
     var settled = engineBoard.readGrid(st, board.height, board.width);
     for (var r = 0; r <= board.height; r++) {
       for (var c = 1; c <= board.width; c++) board.grid[r][c] = settled[r][c];
@@ -716,7 +736,7 @@
     if (!cands || !cands.length) return cands;
     var live = [], i;
     for (i = 0; i < cands.length; i++) {
-      if (this._boardToppedOut(cands[i].board)) continue;
+      if (this._resolvesDead(cands[i].board, cands[i].resolved)) continue;
       if (this._diesToQueue(cands[i].board)) continue;
       // The walk to this square ends in a game over.
       if (cands[i].resolved && cands[i].resolved.diedInWalk) continue;
@@ -1321,6 +1341,21 @@
     if (!st || !st.incoming || !st.incoming.length || !w) return 0;
     var g = st.incoming[0];
     return Math.ceil(((g.width || 0) * (g.height || 0)) / w);
+  };
+
+  // IS THIS BOARD ACTUALLY DEAD, or only standing in the top row.
+  //
+  // _boardToppedOut answers the grid question and is kept for the places that
+  // want it. This answers the engine's: topped out AND nothing holding the
+  // drain off. Without the resolve there is nothing to ask, so it falls back
+  // to the grid -- a board with no account of itself is judged as before.
+  PuyoCpu.prototype._resolvesDead = function (board, resolved) {
+    if (!this._boardToppedOut(board)) return false;
+    if (!resolved) return true;
+    if ((resolved.stopTime || 0) > 0) return false;
+    if ((resolved.shakeTime || 0) > 0) return false;
+    if (resolved.stillMoving) return false;
+    return true;
   };
 
   PuyoCpu.prototype._boardToppedOut = function (board) {

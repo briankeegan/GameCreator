@@ -522,7 +522,17 @@
   //      10 there is no turn after topping out. Counting a stack-lowering
   //      clear as an escape is in the file but OFF: it measured nothing
   //      alone and cancelled the raise rule's gain when both ran
-  var RULES = 15;
+  //   16. A CANDIDATE IS DEAD WHEN THE ENGINE WOULD KILL IT, not when its
+  //      top row is occupied. checkGameOver is `health <= 0 && shakeTime <=
+  //      0`, and health only drains on a frame where `!riseLock && stopTime
+  //      === 0 && isToppedOut()` -- so a topped-out board holding stop time,
+  //      a shaking slab, or panels still in motion is alive, and banking stop
+  //      time by chaining INTO the ceiling is how the position is meant to be
+  //      held. The resolve reports what the engine knows about itself and
+  //      _resolvesDead asks that instead of the grid. Read off 190 decisions
+  //      where every move was condemned: 14% were dead within a second, 36%
+  //      were still alive twenty seconds later.
+  var RULES = 16;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
