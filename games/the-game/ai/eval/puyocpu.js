@@ -206,6 +206,9 @@
     // more. "Break it too soon and you die, break it half a second later
     // and you don't" -- the owner, before this was measured.
     this.breakingEscape = opts.breakingEscape === true;
+    this.towardBreak = opts.towardBreak !== false;
+    this.towardMovesDropped = 0;
+    this.towardDecisions = 0;
     this._line = null;
     this.shallowMovesDropped = 0;
     this.undoMovesDropped = 0;
@@ -1108,6 +1111,50 @@
   // rng the planner may not read -- so it is the count on the board now
   // against the count the candidate leaves, which is the same diff _score
   // credits as garbageCleared.
+  // WALK TOWARD THE BREAK. The bot cannot hold a plan, so give it a gradient.
+  //
+  // A garbage break is NEVER one swap away, is two swaps away on a third of
+  // boards and beyond three on the rest. The bot picks every move
+  // independently on a two-ply horizon, so it arrives at a board where the
+  // colours for a break are already against the lid -- a pair or better of
+  // one colour on 43 of 71 decisions -- and walks away from it, the same way
+  // it walked out of eight surviving lines at frame 1351. It takes every
+  // break it is offered, 3 of 3; a break is simply offered on 3 of 71.
+  //
+  // No plan is stored and none has to be. If a move leaves a board from
+  // which ONE swap breaks the lid, then playing it makes the break available
+  // next decision, and the bot already takes a break when it sees one. The
+  // gradient does the carrying: at distance two, prefer distance one; at
+  // distance one, the break itself is on the list.
+  //
+  // It only narrows -- it never invents a move -- and it lifts when no
+  // candidate is closer, which is most of the time.
+  PuyoCpu.prototype.TOWARD_MIN_GARBAGE = 6;
+  PuyoCpu.prototype._towardBreak = function (cands) {
+    if (!this.towardBreak || !cands || cands.length < 2 || !this._board) return cands;
+    var now = this._garbageOn(this._board);
+    if (now < this.TOWARD_MIN_GARBAGE) return cands;
+    var live = [], i, j, b, swaps, t;
+    for (i = 0; i < cands.length; i++) {
+      b = this._settledOf(cands[i]);
+      if (!b) continue;
+      // A move that breaks the lid outright is already the best case.
+      if (this._garbageOn(b) < now) { live.push(cands[i]); continue; }
+      if (this._resolvesDead(b, cands[i].resolved)) continue;
+      swaps = b.legalSwaps();
+      for (j = 0; j < swaps.length; j++) {
+        t = b.clone();
+        t.swap(swaps[j][0], swaps[j][1]);
+        this._resolveCandidate(t);
+        if (this._garbageOn(t) < now) { live.push(cands[i]); break; }
+      }
+    }
+    if (!live.length || live.length === cands.length) return cands;
+    this.towardMovesDropped += cands.length - live.length;
+    this.towardDecisions++;
+    return live;
+  };
+
   PuyoCpu.prototype._breaking = function (expand) {
     if (!this.breakingEscape || !this._board) return null;
     var now = this._garbageOn(this._board);
@@ -1322,7 +1369,7 @@
                    travel: this._scoredTravel,
                    earnedStop: resolved.stopTimeEarned || 0 });
     }
-    return this._notAnUndo(this._heightCap(this._doomed(this._survivors(cands))));
+    return this._towardBreak(this._notAnUndo(this._heightCap(this._doomed(this._survivors(cands)))));
   };
 
   // Narrow the pool to the moves this decision is allowed to choose between,
