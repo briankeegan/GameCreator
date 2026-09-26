@@ -198,7 +198,14 @@
     // that one run per condition measures nothing. It costs a depth-4 search
     // on every near-ceiling decision, so a wash is a loss.
     this.deepestLine = opts.deepestLine === true;
-    this.breakingEscape = opts.breakingEscape !== false;
+    // OFF, AND REJECTED ON ITS OWN OBJECTIVE. With it narrowing on 12
+    // decisions across three games the garbage came down 5 times for 66
+    // cells; without it, 6 times for 82. Forcing the break CLEARS LESS
+    // GARBAGE. Taking a break the moment it appears cashes a small one;
+    // leaving it lets the same lid come off inside a chain that takes far
+    // more. "Break it too soon and you die, break it half a second later
+    // and you don't" -- the owner, before this was measured.
+    this.breakingEscape = opts.breakingEscape === true;
     this._line = null;
     this.shallowMovesDropped = 0;
     this.undoMovesDropped = 0;
