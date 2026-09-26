@@ -207,7 +207,18 @@
     // and you don't" -- the owner, before this was measured.
     this.breakingEscape = opts.breakingEscape === true;
     this.towardBreak = opts.towardBreak !== false;
-    this.flattenToLid = opts.flattenToLid !== false;
+    // OFF, AND THE THEORY BEHIND IT IS WRONG. It works mechanically -- it
+    // fires 192 times over 20 games and lifts the average columns touching
+    // the lid from 1.89 to 2.25 -- and every downstream number gets WORSE:
+    // breaks 37 against 43, cells cleared 383 against 538, peak garbage 26.6
+    // against 24.0, games 35.1s against 39.3s, deaths 10 of 20 against 8.
+    //
+    // The 3%-to-21% table below is a CORRELATION ACROSS BOARDS, not a lever.
+    // Boards with five columns at the lid have breaks because of whatever
+    // shaped them that way; putting a column there on purpose does not create
+    // one. Read a cross-section, treated it as causal, and the intervention
+    // reversed the sign.
+    this.flattenToLid = opts.flattenToLid === true;
     this.flattenMovesDropped = 0;
     this.flattenDecisions = 0;
     this.towardMovesDropped = 0;

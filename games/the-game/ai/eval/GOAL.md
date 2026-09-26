@@ -70,6 +70,14 @@ setting both sides, read game length and ceilings, never the win rate)
 asks whether the bot is closer to living 21,600 frames -- which is the
 actual goal. The danger clock failed both.
 
+- **Reading a correlation across boards as a lever.** Break availability
+  runs 3% at one column touching the lid to 21% at five, so forcing more
+  columns to touch looked obvious. Built, it raised columns touching 1.89
+  to 2.25 and made breaks FALL 43 to 37 and deaths RISE 8 to 10. Boards
+  with five columns at the lid have breaks because of whatever shaped them
+  that way. A cross-section is not an intervention; measure the
+  intervention.
+
 ## Ground truth about dying
 
 - maxHealth is 1 at level 10: topping out and dying are the same frame
