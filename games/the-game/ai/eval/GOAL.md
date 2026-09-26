@@ -34,9 +34,31 @@ so I stop repeating them.
 - **Adding a feature.** A feature is something the bot may choose. The
   rules have to be such that its choices cannot kill it.
 - **Trusting a number from a tool I wrote without checking the field
-  exists.** `garbagePopped` is not a field; the zero it returned was
-  meaningless. Make a tool emit data and assert the shape.
+  exists.** Four probes returned confident nonsense in one session:
+  `garbagePopped` is not a field; the settled grid CANNOT show a garbage
+  break (the resolve stops at one); a hand-rolled duel loop needs
+  `takeDeliverableGarbage`/`receiveGarbage` or both sides play solo with no
+  garbage at all; and `_lookahead` does not return candidate objects (read
+  the taken move through the `_took` hook). EVERY probe asserts its own
+  shape and says loudly when the measurement is vacuous.
 - **Chain depth, combo size, score.** Not the focus until it stops dying.
+
+## Measure in this order
+
+Cheap first. Every one of these steps is seconds; the duels are twenty
+minutes, and a duel result cannot tell you WHY.
+
+1. **Did the mechanism fire?** One game. If the rule narrowed nothing, the
+   two runs come out bit-identical and nothing else matters. `_breaking`
+   fired on 0 decisions because the escape tier is gated behind FORCED --
+   a 120-duel run would have said "no effect" and not said why.
+2. **Did it move the number it targets?** One to three games. Forcing the
+   garbage break made the garbage come down LESS (5 times/66 cells against
+   6/82). Rejected on its own objective, no duels spent.
+3. **Read a board where it fired.** What did it actually choose?
+4. **Only then**, survival duels, one-sided with `optsB`, sides alternated,
+   120+. 60 duels is ~1 sigma and will lie to you: deepestLine read 57/43
+   at 60 and 52/48 at 120.
 
 ## Ground truth about dying
 
