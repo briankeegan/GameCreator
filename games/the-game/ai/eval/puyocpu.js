@@ -219,6 +219,9 @@
     // one. Read a cross-section, treated it as causal, and the intervention
     // reversed the sign.
     this.flattenToLid = opts.flattenToLid === true;
+    this.levelForSlab = opts.levelForSlab !== false;
+    this.levelMovesDropped = 0;
+    this.levelDecisions = 0;
     this.flattenMovesDropped = 0;
     this.flattenDecisions = 0;
     this.towardMovesDropped = 0;
@@ -1190,6 +1193,55 @@
     }
     return n;
   };
+  // THE STEP IS ONLY FIXABLE BEFORE THE SLAB LANDS.
+  //
+  // A slab lands flat across the width and comes to rest on the TALLEST
+  // column. Over 103 landings the colour surface carried a 3 to 5 row step
+  // at the moment of landing. When it does, the slab bridges a gap: seed
+  // 970, garbage at rows 10-12 resting on column 1 at row 9 while columns
+  // 2-6 stop at rows 5-6 and rows 7-9 sit empty beneath it. That board
+  // cannot be broken by construction -- panels FALL, so nothing is ever
+  // lifted into the gap, and the only way to fill it is a rise, which drives
+  // the tower into the ceiling.
+  //
+  // So the step is worth levelling only while garbage is IN FLIGHT. Once it
+  // has landed the damage is done, which is why flattenToLid -- which waited
+  // for garbage to be on the board -- made everything worse.
+  PuyoCpu.prototype.STEP_MAX = 3;
+  PuyoCpu.prototype._colourStep = function (board) {
+    if (!board || !board.grid) return 0;
+    var hi = 0, lo = 99, c, r, v, top;
+    for (c = 1; c <= board.width; c++) {
+      top = 0;
+      for (r = board.height; r >= 1; r--) {
+        v = board.grid[r] ? board.grid[r][c] : 0;
+        if (v !== 0 && v !== -2) { top = r; break; }
+      }
+      if (top > hi) hi = top;
+      if (top < lo) lo = top;
+    }
+    return (lo === 99) ? 0 : hi - lo;
+  };
+  PuyoCpu.prototype._levelForSlab = function (cands) {
+    if (!this.levelForSlab || !cands || cands.length < 2 || !this._board) return cands;
+    // Only while something is on its way. Nothing queued, nothing to level for.
+    if (!this._queuedRows || !this._queuedRows()) return cands;
+    if (this._colourStep(this._board) <= this.STEP_MAX) return cands;
+    var best = Infinity, got = [], i, b, k;
+    for (i = 0; i < cands.length; i++) {
+      b = this._settledOf(cands[i]);
+      if (!b || this._resolvesDead(b, cands[i].resolved)) continue;
+      k = this._colourStep(b);
+      if (k < best) { best = k; got = [cands[i]]; }
+      else if (k === best) got.push(cands[i]);
+    }
+    if (!got.length || got.length === cands.length) return cands;
+    if (best >= this._colourStep(this._board)) return cands;
+    this.levelMovesDropped += cands.length - got.length;
+    this.levelDecisions++;
+    return got;
+  };
+
   PuyoCpu.prototype._flatten = function (cands) {
     if (!this.flattenToLid || !cands || cands.length < 2 || !this._board) return cands;
     var now = this._garbageOn(this._board);
@@ -1450,7 +1502,7 @@
                    travel: this._scoredTravel,
                    earnedStop: resolved.stopTimeEarned || 0 });
     }
-    return this._flatten(this._towardBreak(this._notAnUndo(this._heightCap(this._doomed(this._survivors(cands))))));
+    return this._levelForSlab(this._flatten(this._towardBreak(this._notAnUndo(this._heightCap(this._doomed(this._survivors(cands)))))));
   };
 
   // Narrow the pool to the moves this decision is allowed to choose between,

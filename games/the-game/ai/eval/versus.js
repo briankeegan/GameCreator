@@ -85,6 +85,7 @@ function makeCpu(stack, weights, opts) {
         dangerClock: opts.dangerClock === true,
         towardBreak: opts.towardBreak !== false,
         flattenToLid: opts.flattenToLid === true,
+        levelForSlab: opts.levelForSlab !== false,
         rules14: opts.rules14 !== false,
         sinkingEscape: opts.sinkingEscape,
         refuseBrokeRaise: opts.refuseBrokeRaise,
