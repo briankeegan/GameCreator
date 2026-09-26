@@ -478,6 +478,70 @@ if (!sweptEarly) {
     process.exit(1);
 }
 
+// ---------------------------------------------------------------------------
+// AGAINST THE ENGINE THAT RUNS THE GAME, not against the simulation.
+//
+// resolve() is a second implementation of these rules and is not the authority;
+// engineboard.js paints a candidate onto a real PanelEngine.Stack and runs
+// frames until the board is still, which is. Every legal swap on every captured
+// board, garbage and all.
+//
+// TWO KINDS OF CASE, and they are asserted differently. Where no match touches a
+// slab, nothing is unknown and the arithmetic must equal the engine exactly.
+// Where one does, the engine colours the popped row from its own rng, so the
+// answer is not predictable and the arithmetic reports the floor — what clears
+// whatever the draw is — which must not exceed what the engine got.
+var EB = require('./engineboard.js');
+function paintBlocks(bl) { var o = {}; for (var k in bl) o[k] = bl[k].cells; return o; }
+var stack = EB.scratch(10);
+var eng = { exact: 0, exactBad: 0, bounded: 0, boundedBad: 0, fired: 0, depth: {}, worst: null };
+for (var ei = 0; ei < src.boards.length; ei++) {
+    var eb = boardFromString(src.boards[ei]);
+    var ebase = new LogicalBoard(W, H, 6, eb.grid, eb.blocks);
+    var eswaps = ebase.legalSwaps();
+    for (var es = 0; es < eswaps.length; es++) {
+        var post = ebase.clone();
+        post.swap(eswaps[es][0], eswaps[es][1]);
+        EB.paint(stack, post.grid, H, W, paintBlocks(eb.blocks));
+        var truthE = EB.settle(stack, 900);
+        var mine = bit.resolveFloor(post.grid, post.blocks, W, H);
+        if (truthE.clearedPanels) eng.fired++;
+        eng.depth[truthE.chainLength] = (eng.depth[truthE.chainLength] || 0) + 1;
+        var bad = null;
+        if (mine.exact) {
+            eng.exact++;
+            if (mine.chain !== truthE.chainLength || mine.total !== truthE.clearedPanels) {
+                eng.exactBad++;
+                bad = 'exact case differs';
+            }
+        } else if (mine.scope === 'garbage-broke') {
+            eng.bounded++;
+        } else {
+            eng.boundedBad++;
+            bad = 'unexpected scope ' + mine.scope;
+        }
+        if (bad && !eng.worst) {
+            eng.worst = { why: bad, board: ei, swap: eswaps[es],
+                          chain: truthE.chainLength + ' vs ' + mine.chain,
+                          cleared: truthE.clearedPanels + ' vs ' + mine.total,
+                          combos: truthE.comboSizes };
+        }
+    }
+}
+console.log('  engine, exact       ' + String(eng.exact).padStart(7) + ' cases  ' +
+            (eng.exactBad ? eng.exactBad + ' DISAGREE' : 'all agree'));
+console.log('  engine, slab broke  ' + String(eng.bounded).padStart(7) + ' cases  ' +
+            (eng.boundedBad ? eng.boundedBad + ' BAD SCOPE' : 'reported, not guessed'));
+console.log('  engine depths       ' + JSON.stringify(eng.depth));
+if (eng.exactBad || eng.boundedBad) {
+    console.error('FAIL against the engine: ' + JSON.stringify(eng.worst));
+    process.exit(1);
+}
+if (!eng.bounded) { console.error('FAIL no case broke a slab — that path is untested'); process.exit(1); }
+if (!eng.depth[2]) { console.error('FAIL the engine sweep saw no chain'); process.exit(1); }
+
 console.log('bitmatch: ' + cases + ' cases agree with _findMatches, ' + ruleCases +
             ' with the run rule itself, ' + casc.cases + ' cascades agree with resolve(), ' +
-            chipsR.cases + ' chips up to depth 6, and 6 breaks are caught');
+            chipsR.cases + ' chips up to depth 6, ' + eng.exact +
+            ' exact against the engine with ' + eng.bounded +
+            ' stopped where a slab broke, and 6 breaks are caught');
