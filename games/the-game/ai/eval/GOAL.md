@@ -7,14 +7,40 @@ have played.
 
 Target: no deaths before the duel ceiling, 21,600 frames (6 minutes).
 
+## Do not write new rules. Make the existing mechanisms work.
+
+This is the whole method, and the record is unambiguous: eleven
+hand-written rules produced one marginal success, while SEVEN existing
+mechanisms were found broken and fixing them was the only real progress.
+A new rule is almost always the wrong move. The machinery to survive is
+already in this file -- `_survivors`, `_doomed`, `_heightCap`, `_standing`,
+`_sinking`, the stop-time escape ranking, the danger clock, `breakPairs`,
+`reachBreak`, the reach* family -- and when it fails it is because it is
+asking the wrong question, reading the wrong board, or never running at
+all.
+
+So the question is never "what rule would help". It is: **does this
+mechanism do what its comment says it does?** Check it on a board. Every
+one checked so far was wrong in a way nobody had noticed:
+
+- `_survivors` judged the SCORING board, which carries a deliberate extra
+  rise -- thirteen survivable moves refused, the fatal one cleared.
+- the fatality test asked the grid when only the engine can answer.
+- the scratch stack never carried `shakeTime`, so candidates aged through
+  a window the engine spends standing still.
+- `selfInflicted` kept asking the grid after the filter moved on.
+- the escape tier -- `_sinking` AND the stop-time ranking -- opens on
+  2 of 89 decisions, because the danger clock that gates it is off by
+  default and `versus.js` never passed it through.
+
 ## The loop
 
 1. Run it.
 2. **READ THE BOARD** at the death. The actual grid. The move it played.
    The moves it had.
-3. Find the defect on that board.
-4. Fix it.
-5. Repeat.
+3. Find which EXISTING mechanism should have prevented it.
+4. Check whether that mechanism does what it claims. It usually does not.
+5. Fix it. Repeat.
 
 ## How to get this wrong
 
@@ -28,9 +54,12 @@ so I stop repeating them.
   aggregate. When you catch yourself tabulating, stop and print the board.
 - **Measuring instead of fixing.** "I'll quantify this first" is how a
   fix turns into an afternoon of sweeps.
-- **Stacking a new rule beside a broken one.** Fix the rule that is
-  already there. Four rules built from theory were measured as losses and
-  deleted.
+- **Writing a new rule at all.** Eleven tried, one marginal success, and
+  that one came off a board rather than out of an argument. `_ownPlay`,
+  no-undo, `_deepestLine`, forcing the break, the danger clock,
+  `flattenToLid`, `levelForSlab` and three earlier ones all measured worse
+  or inert. If the answer looks like a new rule, the real answer is an
+  existing mechanism that is not doing its job.
 - **Adding a feature.** A feature is something the bot may choose. The
   rules have to be such that its choices cannot kill it.
 - **Trusting a number from a tool I wrote without checking the field
