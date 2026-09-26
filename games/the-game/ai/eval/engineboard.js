@@ -166,32 +166,46 @@
         // actually comes to rest. Garbage is skipped — it spans columns and
         // the engine's supportedFromBelow handles it before the stateChanged
         // guard.
-        for (var gc = 1; gc <= width; gc++) {
-            var rest = 1;
-            for (var gr = 1; gr <= height; gr++) {
-                var gp = stack.panels[gr] && stack.panels[gr][gc];
-                if (!gp || gp.color === 0) continue;
-                // GARBAGE IS NOT A FLOOR. A slab with a gap under it falls, and
-                // everything resting on it falls the same distance. Treating
-                // it as fixed left the colour panels above a sinking slab
-                // marked normal, where updateNormal never looks at them again.
-                if (gp.isGarbage) { rest = gr + 1; continue; }
-                // Anything with an empty cell somewhere below it in this column
-                // is going down, whether the gap is directly beneath or under a
-                // slab that is itself about to sink.
-                var gap = gr > rest;
-                if (!gap) {
-                    for (var gb = gr - 1; gb >= 1; gb--) {
-                        var bp = stack.panels[gb] && stack.panels[gb][gc];
-                        if (!bp || bp.color === 0) { gap = true; break; }
+        // WHAT IS HELD UP, worked out the way the engine holds it. A colour
+        // panel is held if the cell under it is held; a SLAB is held if any
+        // cell of its bottom row is -- it moves as one piece, so a hole under
+        // one of its columns does not sink it while another column carries
+        // it. The rule this replaced asked each column on its own ("anything
+        // with an empty cell somewhere below it is going down") and so marked
+        // every panel resting on a supported slab as hovering whenever the
+        // slab had a hole under it anywhere -- and canSwap refuses a swap
+        // under a hovering panel. Read off live_fidelity: row 7 resting on a
+        // full-width slab held by columns 1-3, a hole under column 4; the
+        // engine made the swap at (7,4), the scratch refused it.
+        //
+        // Bottom-up, one pass: the first row a slab is met in is its bottom
+        // row, and everything under that row is already decided.
+        var held = [], slabHeld = {};
+        for (var hr = 1; hr <= height; hr++) {
+            held[hr] = [];
+            for (var hc = 1; hc <= width; hc++) {
+                var hp = stack.panels[hr] && stack.panels[hr][hc];
+                if (!hp || hp.color === 0) { held[hr][hc] = false; continue; }
+                if (hp.isGarbage) {
+                    var hid = hp.garbageId;
+                    if (slabHeld[hid] === undefined) {
+                        var any = false;
+                        for (var hc2 = 1; hc2 <= width; hc2++) {
+                            var hq = stack.panels[hr][hc2];
+                            if (!hq || !hq.isGarbage || hq.garbageId !== hid) continue;
+                            if (hr === 1 || held[hr - 1][hc2]) { any = true; break; }
+                        }
+                        slabHeld[hid] = any;
                     }
+                    held[hr][hc] = slabHeld[hid];
+                    continue;
                 }
-                if (gap) {
-                    var mv = motion && motion[gr] && motion[gr][gc];
-                    if (mv) { gp.state = mv.state; gp.timer = mv.timer; }
-                    else { gp.state = 'hovering'; gp.timer = stack.frames.HOVER; }
+                held[hr][hc] = hr === 1 || !!held[hr - 1][hc];
+                if (!held[hr][hc]) {
+                    var mv = motion && motion[hr] && motion[hr][hc];
+                    if (mv) { hp.state = mv.state; hp.timer = mv.timer; }
+                    else { hp.state = 'hovering'; hp.timer = stack.frames.HOVER; }
                 }
-                rest++;
             }
         }
         stack.riseLock = true;
