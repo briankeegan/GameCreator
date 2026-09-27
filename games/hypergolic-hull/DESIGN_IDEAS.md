@@ -255,6 +255,59 @@ outside the thesis).
 - Are the eight weapons above the right eight? They were chosen to fill
   gaps in the existing shape table, not because a player asked for them.
 
+## DRIFT — REJECTED (2026-09-27)
+
+Every ship carries a heading and a speed, moves that far free each round, and
+spends its one action on either a burn (vector-added, braking is burning
+backwards) or acting. Facing follows heading. The board edge kills above speed
+1; the gate is flown through rather than landed on.
+
+It was proposed against a measured problem — 70% of turns are movement, 41% of
+rounds have no living enemy on the board, a fight is 1.07 shots long — and
+rejected on measurement.
+
+**It makes contact worse, not better.** Simulated pursuit, real 7x10 board,
+1,074 starting pairs, one-step-lookahead pursuer, at the proposed speed cap 1:
+
+| | rounds to first contact | rounds in weapon range (of 40) |
+|---|---|---|
+| shipped | 8.0 | 33.0 |
+| drift | 13.1 | 3.6 |
+
+Range 2 is a wash. The loss lands squarely on the range-1 band the early game
+is built from.
+
+**At the speed cap a ship has 4 legal velocities, not 7.** Adding a unit vector
+to a capped vector overshoots in three of six directions, at every cap. So
+speed does not merely displace options, it removes them — which was the whole
+argument for speed being a live choice.
+
+**Speed cap 1 cannot test it.** Crossing the board still takes one round per
+hex, so sector length is unchanged and the empty-round figure cannot move. The
+only number that shifts is the turn mix, which is the metric the proposal was
+aimed at.
+
+**The threat overlay stops being drawable.** `computeThreatHexes` is honest
+only because a hostile moves or fires, never both. Give hostiles momentum and
+the threatened set is the union of a weapon footprint over every hex it can
+land on: one Picket covers 71% of the board. Worse, the true map depends on
+which burn the player picks, so there are four to seven of them and no way to
+draw one.
+
+**Two dominant lines.** Speed 0 is bit-for-bit the shipped game, so the
+rational play is speed 0 near anything and speed 1 in transit. And Ion Drive
+plus Afterburner reaches speed 3 against hostiles capped at 1 — uncatchable,
+so the strongest line is to burn at the gate and take no fights at all.
+
+**And the economy is priced on movement costing the turn.** Recharge, the
+shield cost of 3, the measured hull parity and `waitedThisPhase` all assume it.
+Free movement means arriving at every fight with a full bus.
+
+Build instead, in order: move+action with 2-hull hostiles (measured 70/24 ->
+55/34), locking zone of control (below), and stored facing — which delivers the
+one thing drift genuinely promised, the blind sides the game advertises and
+does not have.
+
 ## TERRAIN — a plan, not yet built (2026-09-19)
 
 ### What is there now
