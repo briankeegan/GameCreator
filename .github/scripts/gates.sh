@@ -697,6 +697,17 @@ gate_bitdecide() {
   node games/the-game/ai/eval/bitdecide.test.js
 }
 
+# THE CLOCK KEEPS TIME WITH THE ENGINE, FRAME BY FRAME. bitframes.js carries the
+# per-panel state and timer a still picture of the board leaves out, which is a
+# THIRD implementation of rules the engine and LogicalBoard already have — safe
+# only because this compares every panel's colour, state and timer after every
+# frame against a real Stack, so the frame they differ on is the frame that
+# fails. A run that would have to invent a colour a broken slab has not drawn yet
+# stops and says so instead.
+gate_bitframes() {
+  node games/the-game/ai/eval/bitframes.test.js
+}
+
 gate_gates_reject_defects() {
   bash .github/scripts/gates.test.sh
 }
@@ -790,6 +801,7 @@ GATES=(
   "the bit arithmetic answers what the simulation answers:gate_bitmatch:games/the-game/ai/"
   "a plan that claims a chain plays one:gate_bitplan:games/the-game/ai/"
   "the engine decides while panels are in the air:gate_bitdecide:games/the-game/ai/"
+  "the clock keeps frame-for-frame time with the engine:gate_bitframes:games/the-game/ai/"
   "the simulation resolves like the game:gate_resolve_fidelity:games/the-game/ai/"
   "that fidelity check fires:gate_resolve_fidelity_fires:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"
