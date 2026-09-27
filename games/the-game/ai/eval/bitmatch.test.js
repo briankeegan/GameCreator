@@ -540,8 +540,75 @@ if (eng.exactBad || eng.boundedBad) {
 if (!eng.bounded) { console.error('FAIL no case broke a slab — that path is untested'); process.exit(1); }
 if (!eng.depth[2]) { console.error('FAIL the engine sweep saw no chain'); process.exit(1); }
 
+// ---------------------------------------------------------------------------
+// THE FAST PATH IS THE SAME PATH.
+//
+// Reading a grid costs 72 double-indexed reads; a swap changes four bits. So a
+// caller scoring every swap on one board builds the masks once and mutates them
+// per swap. That is a second way into the same arithmetic, and a second way in
+// is a second thing to drift — it has to give the identical verdict on every
+// legal swap of every captured board, scope included.
+var fast = { cases: 0, differ: 0, skipped: 0, worst: null };
+for (var fi = 0; fi < src.boards.length; fi++) {
+    var fb = boardFromString(src.boards[fi]);
+    var fbase = new LogicalBoard(W, H, 6, fb.grid, fb.blocks);
+    var fswaps = fbase.legalSwaps();
+    var st = bit.maskState(fbase.grid, fbase.blocks, W, H);
+    for (var fs = 0; fs < fswaps.length; fs++) {
+        var viaGrid = fbase.clone();
+        viaGrid.swap(fswaps[fs][0], fswaps[fs][1]);
+        var want = bit.resolveBits(viaGrid.grid, viaGrid.blocks, W, H);
+        if (!bit.swapMasks(st, fswaps[fs][0], fswaps[fs][1])) { fast.skipped++; continue; }
+        var got = bit.resolveFromMasks(st);
+        bit.swapMasks(st, fswaps[fs][0], fswaps[fs][1]);   // and put it back
+        fast.cases++;
+        if (want.scope === got.scope && want.chain === got.chain && want.total === got.total) continue;
+        fast.differ++;
+        if (!fast.worst) {
+            fast.worst = { board: fi, swap: fswaps[fs],
+                           grid: want.scope + ' chain ' + want.chain + ' cleared ' + want.total,
+                           masks: got.scope + ' chain ' + got.chain + ' cleared ' + got.total };
+        }
+    }
+}
+console.log('  mask path           ' + String(fast.cases).padStart(7) + ' swaps  ' +
+            (fast.differ ? fast.differ + ' DIFFER' : 'identical to the grid path'));
+if (fast.differ) { console.error('FAIL mask path: ' + JSON.stringify(fast.worst)); process.exit(1); }
+if (!fast.cases) { console.error('FAIL the mask path was never exercised'); process.exit(1); }
+
+// AND IT CAN FAIL: a swap that moves only one of the two cells leaves the masks
+// disagreeing with the board, which is the mistake this path invites.
+var realSwap = bit.swapMasks;
+bit.swapMasks = function (st2, r, c) {
+    var W2 = st2.W, b = 1 << (r - 1), o = c + 1, stride = W2 + 2, a, left = 0;
+    if ((st2.inert[c] & b) || (st2.inert[o] & b)) return false;
+    for (a = 1; a <= st2.N; a++) if (st2.colour[a * stride + c] & b) left = a;
+    if (left) { st2.colour[left * stride + c] &= ~b; st2.colour[left * stride + o] |= b; }
+    if (left) st2.occ[o] |= b;
+    return true;
+};
+var halfBad = 0;
+for (var hi = 0; hi < 400; hi++) {
+    var hb = boardFromString(src.boards[hi]);
+    var hbase = new LogicalBoard(W, H, 6, hb.grid, hb.blocks);
+    var hsw = hbase.legalSwaps(), hst = bit.maskState(hbase.grid, hbase.blocks, W, H);
+    for (var hs = 0; hs < hsw.length; hs++) {
+        var hg = hbase.clone(); hg.swap(hsw[hs][0], hsw[hs][1]);
+        var hwant = bit.resolveBits(hg.grid, hg.blocks, W, H);
+        if (!bit.swapMasks(hst, hsw[hs][0], hsw[hs][1])) continue;
+        var hgot = bit.resolveFromMasks(hst);
+        hst = bit.maskState(hbase.grid, hbase.blocks, W, H);   // this break cannot undo itself
+        if (hwant.chain !== hgot.chain || hwant.total !== hgot.total) halfBad++;
+    }
+}
+bit.swapMasks = realSwap;
+console.log('  break: ' + 'only one half of the swap moves'.padEnd(34) +
+            (halfBad ? halfBad + ' cases caught it' : 'NOT CAUGHT'));
+if (!halfBad) { console.error('FAIL a half-applied swap went unnoticed'); process.exit(1); }
+
 console.log('bitmatch: ' + cases + ' cases agree with _findMatches, ' + ruleCases +
             ' with the run rule itself, ' + casc.cases + ' cascades agree with resolve(), ' +
             chipsR.cases + ' chips up to depth 6, ' + eng.exact +
             ' exact against the engine with ' + eng.bounded +
-            ' stopped where a slab broke, and 6 breaks are caught');
+            ' stopped where a slab broke, ' + fast.cases +
+            ' swaps identical through the mask path, and 7 breaks are caught');

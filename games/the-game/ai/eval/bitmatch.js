@@ -29,6 +29,30 @@
 (function (root) {
   'use strict';
 
+  // SCRATCH, REUSED. Every one of these was a fresh array per call, and a
+  // couple of them per cascade round: on a 6x12 board the arithmetic itself is
+  // a few dozen integer ops and the allocation around it cost more than the
+  // work. Sized on first use and never grown down.
+  //
+  // NOT REENTRANT. resolveBits may not be called from inside resolveBits, and
+  // nothing does.
+  var S = null;
+  function scratch(W, H, N) {
+    if (!S || S.W !== W || S.N < N) {
+      S = { W: W, H: H, N: Math.max(N, 8), occ: [], chaining: [], popping: [],
+            inert: [], garb: [], rest: [], k: [], colour: [], B: [] };
+      for (var c = 0; c <= W + 1; c++) {
+        S.occ[c] = 0; S.chaining[c] = 0; S.popping[c] = 0;
+        S.inert[c] = 0; S.garb[c] = 0; S.rest[c] = 0; S.k[c] = 0;
+      }
+      for (var a = 0; a <= S.N; a++) {
+        S.colour[a] = []; S.B[a] = [];
+        for (var c2 = 0; c2 <= W + 1; c2++) { S.colour[a][c2] = 0; S.B[a][c2] = 0; }
+      }
+    }
+    return S;
+  }
+
   function popcount(x) {
     var n = 0;
     while (x) { x &= x - 1; n++; }
@@ -171,6 +195,60 @@
     return out;
   }
 
+  // THE BOARD AS MASKS, BUILT ONCE.
+  //
+  // Reading a grid costs 72 double-indexed reads and a branch each; a swap
+  // changes FOUR BITS. A caller scoring every legal swap on one board builds
+  // this once and then mutates it per swap, instead of rescanning the grid ~30
+  // times for a board that did not change.
+  //
+  // colour is one mask per colour per column, flat: colour[a * (W + 2) + c].
+  function maskState(grid, blocks, W, H) {
+    var st = { W: W, H: H, N: 0, occ: new Int32Array(W + 2), inert: new Int32Array(W + 2),
+               garb: new Int32Array(W + 2), colour: new Int32Array(13 * (W + 2)),
+               slabs: [], bad: null };
+    var r, c, row;
+    for (r = 1; r <= H; r++) {
+      row = grid[r];
+      for (c = 1; c <= W; c++) {
+        var v = row[c], b = 1 << (r - 1);
+        if (v === 0) continue;
+        st.occ[c] |= b;
+        if (v === -2) { st.inert[c] |= b; st.garb[c] |= b; continue; }
+        if (v < 0) { st.bad = 'unknown-cell'; return st; }
+        if (v > st.N) st.N = v;
+        st.colour[v * (W + 2) + c] |= b;
+      }
+    }
+    if (blocks) {
+      for (var id in blocks) {
+        var cells = blocks[id].cells, sm = new Int32Array(W + 2);
+        for (var i2 = 0; i2 < cells.length; i2++) sm[cells[i2][1]] |= (1 << (cells[i2][0] - 1));
+        st.slabs.push(sm);
+      }
+    }
+    return st;
+  }
+
+  // Move one panel sideways in a mask state, or put it back: the swap and its
+  // undo are the same call. Returns false when the pair cannot be swapped as
+  // panels — an inert cell is not a panel and the game cannot move it.
+  function swapMasks(st, r, c) {
+    var W2 = st.W, b = 1 << (r - 1), o = c + 1;
+    if ((st.inert[c] & b) || (st.inert[o] & b)) return false;
+    var stride = W2 + 2, a;
+    var left = 0, right = 0;
+    for (a = 1; a <= st.N; a++) {
+      if (st.colour[a * stride + c] & b) left = a;
+      if (st.colour[a * stride + o] & b) right = a;
+    }
+    if (left) { st.colour[left * stride + c] &= ~b; st.colour[left * stride + o] |= b; }
+    if (right) { st.colour[right * stride + o] &= ~b; st.colour[right * stride + c] |= b; }
+    if (left) st.occ[o] |= b; else st.occ[o] &= ~b;
+    if (right) st.occ[c] |= b; else st.occ[c] &= ~b;
+    return true;
+  }
+
   // A WHOLE CASCADE, AS BITS.
   //
   //   match -> mark -> fall a row -> match again -> sweep -> ...
@@ -196,29 +274,22 @@
   // a chip fills the cells its shape ignores with colours no real board uses,
   // exactly so that filler cannot join a match.
   function resolveBits(grid, blocks, W, H) {
-    var N = api.topColour(grid, W, H);
-    var occ = [], colour = [], chaining = [], popping = [], inert = [], garb = [];
-    var a, c, r;
-    for (a = 1; a <= N; a++) { colour[a] = []; for (c = 1; c <= W; c++) colour[a][c] = 0; }
+    return resolveFromMasks(maskState(grid, blocks, W, H));
+  }
+
+  function resolveFromMasks(st) {
+    var W = st.W, H = st.H, N = st.N;
+    if (st.bad) return { scope: st.bad, chain: 0, total: 0, rounds: 0 };
+    var S2 = scratch(W, H, 12);
+    var occ = S2.occ, colour = S2.colour, chaining = S2.chaining,
+        popping = S2.popping, inert = S2.inert, garb = S2.garb;
+    var a, c, stride = W + 2;
     for (c = 0; c <= W + 1; c++) {
-      occ[c] = 0; chaining[c] = 0; popping[c] = 0; inert[c] = 0; garb[c] = 0;
+      occ[c] = st.occ[c]; inert[c] = st.inert[c]; garb[c] = st.garb[c];
+      chaining[c] = 0; popping[c] = 0;
     }
-    for (r = 1; r <= H; r++) {
-      for (c = 1; c <= W; c++) {
-        var v = grid[r][c], b = 1 << (r - 1);
-        if (v === 0) continue;
-        occ[c] |= b;
-        // A GARBAGE SLAB AND A POPPED GARBAGE CELL BOTH OCCUPY AND NEITHER
-        // MATCHES. -2 is a slab; -1 is a cell a slab pop already turned into a
-        // panel whose colour comes from the engine's rng, which the planner is
-        // not allowed to know. Both hold things up and neither joins a run.
-        if (v === -2) { inert[c] |= b; garb[c] |= b; continue; }
-        // A CELL OF UNKNOWN COLOUR IS REFUSED, NOT GUESSED. -1 is what a slab
-        // pop leaves behind, and this stops before making one; nothing here has
-        // ever been measured against a board that arrives carrying one.
-        if (v === -1) return { scope: 'unknown-cell', chain: 0, total: 0, rounds: 0 };
-        colour[v][c] |= b;
-      }
+    for (a = 1; a <= N; a++) {
+      for (c = 0; c <= W + 1; c++) colour[a][c] = st.colour[a * stride + c];
     }
 
     // A SLAB MOVES AS A UNIT, one mask per column it spans. It falls only when
@@ -227,14 +298,7 @@
     // on it rests. A slab resting on a falling slab is falling too, so the test
     // runs to a fixed point.
     var slabs = [];
-    if (blocks) {
-      for (var id in blocks) {
-        var cells = blocks[id].cells, sm = [];
-        for (var c0 = 0; c0 <= W + 1; c0++) sm[c0] = 0;
-        for (var i = 0; i < cells.length; i++) sm[cells[i][1]] |= (1 << (cells[i][0] - 1));
-        slabs.push(sm);
-      }
-    }
+    for (var si0 = 0; si0 < st.slabs.length; si0++) slabs.push(Int32Array.from(st.slabs[si0]));
     function slabsThatFall() {
       var falling = new Array(slabs.length).fill(false), moved = true, pass = 0;
       while (moved && pass++ <= slabs.length + 1) {
@@ -259,21 +323,32 @@
       return falling;
     }
 
-    // Landed cells, bottom up. An inert cell never moves, so it rests on its
-    // own account and is a floor for whatever stands on it — which is how a
-    // slab bridges a hole in one of the columns it spans.
+    // Landed cells. With no inert cell in the column this is one expression:
+    // everything from the first hole up is in the air, so resting is the bits
+    // below it.
+    //
+    // An inert cell never moves, so it rests on its own account and is a floor
+    // for whatever stands on it — which is how a slab bridges a hole in one of
+    // the columns it spans. Then the run is walked from each inert cell upward,
+    // over the inert cells only, rather than over all twelve rows.
+    var rest = S2.rest;
     function restingOf() {
-      var out = [];
       for (var cc2 = 1; cc2 <= W; cc2++) {
-        var o = occ[cc2], m = 0;
-        for (var rr = 1; rr <= H; rr++) {
-          var bb = 1 << (rr - 1);
-          if (!(o & bb)) continue;
-          if (rr === 1 || (m & (bb >> 1)) || (inert[cc2] & bb)) m |= bb;
+        var o = occ[cc2];
+        var lowestZero = (~o) & (o + 1);
+        var m = o & (lowestZero - 1);
+        var seeds = inert[cc2] & ~m;
+        while (seeds) {
+          var seed = seeds & -seeds;
+          // the contiguous occupied run from this inert cell upward
+          var run = seed, probe = seed;
+          while ((probe <<= 1) && (o & probe)) run |= probe;
+          m |= run;
+          seeds &= ~run;
         }
-        out[cc2] = m;
+        rest[cc2] = m;
       }
-      return out;
+      return rest;
     }
 
     var counter = 0, rounds = 0, total = 0, guard = 0, LIMIT = W * H * H;
@@ -390,6 +465,9 @@
     restingMask: restingMask,
     colourMasks: colourMasks,
     clears: clears,
+    maskState: maskState,
+    swapMasks: swapMasks,
+    resolveFromMasks: resolveFromMasks,
     clearedCells: clearedCells,
     resolveBits: resolveBits
   };
