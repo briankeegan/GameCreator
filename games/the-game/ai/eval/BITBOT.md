@@ -262,6 +262,80 @@ this is not "level with the shipped bot" — it is that an untrained guess is no
 obviously worse, which says the features are wired to something real. A verdict
 needs the island round with a trained population behind it.
 
+## Why it was dying
+
+Not the hoarding above. **It was undoing its own move.** On seed 701, 56 of 76
+decisions repeated the previous cell — `(2,5)` thirteen times running, `(1,1)`
+ten — and swapping the same cell twice is the identity, so the board never
+changed. **Zero matches in 1,093 frames** while the floor climbed into the
+ceiling, with a 6-chain and nine clears on the board the whole time.
+
+The cause is that scoring is stateless: if board X's best swap leads to Y and
+Y's best swap leads back to X, the pair is played forever. ATTACK made it fatal
+by dropping hold, so the bot was forced to act and the only thing it would do
+was undo. `_lastSwap` was tracked and never read.
+
+Two filters, measured separately over seeds 701-704, capped at 4,000 frames:
+
+| | avg frames | matches |
+|---|---|---|
+| neither | 1,858 | 40 |
+| **no-return only** | **2,340** | **57** |
+| death horizon only | 1,853 | 40 |
+| both | 2,380 | 57 |
+
+`refuseReturn` is the fix — seed 703 went 789 → 2,730 frames and 0 → 16 matches.
+It is exact, not a heuristic: the resulting board is compared cell for cell
+against the boards recent decisions were made on, and hold is exempt because
+waiting is what BUILD is for.
+
+**The death horizon did nothing measurable** (1,858 → 1,853, which is noise) and
+the reason is arithmetic: the horizon is the walk plus the 12-frame reaction, and
+`framesToNextRow` is larger than that on nearly every board, so it almost never
+adds a row. It is kept because "would die" is the rule the plan asked for and
+"already dead" was what was implemented, but nothing here has shown it earns its
+place. Recorded so it is not re-measured as though it were new.
+
+**The loop was not the only cause.** With the filter on, seed 701's repeats go
+from 33 of 75 decisions to **0 of 72** — and it still makes **zero matches** in
+1,100 frames. So there is a second failure underneath: having been stopped from
+undoing, it now walks a longer orbit of non-clearing setups instead. That is the
+hoarding above, and it is structural rather than a bug — eight features count
+ways to clear, cashing destroys them, and `stopEarned` caps at 50 against ~240
+of potential. ATTACK dropping hold means it must move, so it rearranges forever.
+
+The gate holds the RULE (repeats fall, refusals happen, no clears are lost) and
+not "it now plays well", because an untrained hand-set vector playing well is
+not something a filter can deliver.
+
+## How much of this is the new arithmetic
+
+Less than it should be, and the split is worth stating rather than implying:
+
+| | |
+|---|---|
+| features and scoring | `bitoptions` → `bitmatch` — masks |
+| the death test | `bit.maskState` — masks |
+| the reveal window | `bitlineup` → `bitframes` — masks |
+| **candidate generation** | `board.legalSwaps()` — the old simulation |
+| **what each swap does** | `LogicalBoard.clone/swap/resolve()` — the old simulation |
+
+`bitoptions` is mask-native inside; the old calls are all in `BitBot.candidates`,
+which is exactly the question `bitswap` and `resolveFromMasks` were built to
+answer. Moving it over needs `bitoptions` and `bitfeatures` to take a mask state
+instead of a `LogicalBoard`, because both currently re-derive masks from a grid
+and `options` needs `clone`/`legalSwaps` for its second ply.
+
+The enabling piece is in: `resolveFromMasks` now returns `settled`, the board the
+cascade left, in the shape `maskState` builds. It could previously say what
+happened but not what the position became, which is why a caller wanting the
+resulting board had to go back to the simulation. Additive — `bitmatch.test.js`
+still passes all 168,128 / 100,000 / 54,264 / 6,228 / 74,522 / 74,821 cases.
+
+What masks do NOT carry is slab identity: `blocks` groups garbage cells into
+slabs, and bridging depends on it, so materialising a board from masks alone
+would guess it. That is the part to solve, not to paper over.
+
 ## Open
 
 - Survival is short: ~690 frames a duel in self-play, against the ~1,100

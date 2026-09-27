@@ -454,7 +454,29 @@
       break;
     }
     return { scope: 'ok', chain: rounds ? Math.max(counter, 1) : 0, total: total,
-             rounds: rounds };
+             rounds: rounds, settled: settledFrom(S2, W, H, N) };
+  }
+
+  // THE BOARD THE CASCADE LEFT, as a state of the same shape maskState builds.
+  //
+  // The resolver worked on a scratch copy and reported only what happened, so a
+  // caller that needed the RESULTING position had no way to get it and went back
+  // to the simulation for it -- which is the one thing this module exists to
+  // replace. Returned rather than exposed as the scratch itself, because the
+  // scratch is reused by the next call and a caller holding it would watch its
+  // board change underneath it.
+  //
+  // Only on the 'ok' path: a stopped cascade has no settled board to hand back,
+  // which is what 'garbage-broke' means.
+  function settledFrom(S, W, H, N) {
+    var stride = W + 2, out = { W: W, H: H, N: N, occ: [], inert: [], garb: [],
+                                colour: new Int32Array((N + 1) * stride), slabs: [] };
+    var a, c;
+    for (c = 0; c <= W + 1; c++) {
+      out.occ[c] = S.occ[c]; out.inert[c] = S.inert[c]; out.garb[c] = S.garb[c];
+    }
+    for (a = 1; a <= N; a++) for (c = 0; c <= W + 1; c++) out.colour[a * stride + c] = S.colour[a][c];
+    return out;
   }
 
   // Calls go through this object so a test can swap one step for a broken one
@@ -469,7 +491,8 @@
     swapMasks: swapMasks,
     resolveFromMasks: resolveFromMasks,
     clearedCells: clearedCells,
-    resolveBits: resolveBits
+    resolveBits: resolveBits,
+    settledFrom: settledFrom
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

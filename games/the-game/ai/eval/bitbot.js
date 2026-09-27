@@ -50,6 +50,37 @@
         stopEarned: 50, stopReachable: 30
     };
 
+    // The engine rises one PIXEL at a time and a row is sixteen of them, so
+    // riseTime is frames per pixel. Rows do not move at all while stop time is
+    // running -- updateRise returns before the timer on any frame with
+    // stopTime above zero.
+    function framesPerRow(s) {
+        var e = PanelEngine();
+        return e.riseTime ? e.riseTime(s.speed) * 16 : 0;
+    }
+    function framesToNextRow(s) {
+        var e = PanelEngine();
+        if (!e.riseTime) return Infinity;
+        var perPixel = e.riseTime(s.speed);
+        var disp = s.displacement === undefined ? 16 : s.displacement;
+        return (s.riseTimer || 0) + Math.max(0, disp - 1) * perPixel;
+    }
+
+    // THE BOARD AS A STRING, so "have we been here" is an exact question and
+    // not a similarity score. Only the settled colours matter: two boards with
+    // the same panels in the same cells are the same position to swap from.
+    function signature(board) {
+        var out = [], r, c;
+        for (r = 1; r <= board.height; r++) {
+            var row = board.grid[r];
+            if (!row) { out.push(''); continue; }
+            var line = '';
+            for (c = 1; c <= W; c++) line += (row[c] === undefined ? -1 : row[c]) + ',';
+            out.push(line);
+        }
+        return out.join('|');
+    }
+
     function BitBot(stack, opts) {
         opts = opts || {};
         this.stack = stack;
@@ -65,6 +96,15 @@
         // is worth.
         this.reveal = opts.reveal !== false;
         this.allowRaise = opts.allowRaise !== false;
+        // TWO FILTERS THAT ARE NOT WEIGHTS, both off only for the run that
+        // measures what they are worth. See refuseReturn and deadly below.
+        this.refuseReturn = opts.refuseReturn !== false;
+        this.horizonDeath = opts.horizonDeath !== false;
+        // The boards recent decisions were made on. Three, because a swap is an
+        // involution -- it can only walk back one step at a time -- and a
+        // longer memory starts refusing legitimate revisits of a position the
+        // rising stack has genuinely changed.
+        this._seen = [];
 
         this._snapshot = PanelCpu().snapshot;
         this._beginWalk = PanelCpu().beginWalk;
@@ -78,6 +118,7 @@
         this._lastSwap = null;
         this.decisions = 0;
         this.counts = { refusedDeadly: 0, allDead: 0, byMode: {},
+                        refusedReturn: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
                         revealWindows: 0 };
     }
@@ -98,7 +139,12 @@
             cursorRow: board.cursor ? board.cursor.row : (s.curRow || 1),
             cursorCol: board.cursor ? board.cursor.col : (s.curCol || 1),
             health: s.health,
-            framesPerRow: PanelEngine().riseTime ? PanelEngine().riseTime(s.speed) * 16 : 0
+            framesPerRow: framesPerRow(s),
+            // FRAMES UNTIL THE NEXT ROW LANDS, not a whole row's worth: the
+            // floor is already part way up. displacement is the pixels left and
+            // riseTimer the frames left of the current pixel, both read off the
+            // engine, so nothing here is a constant.
+            framesToNextRow: framesToNextRow(s)
         };
     };
 
@@ -148,7 +194,7 @@
     // isToppedOut()` — so a topped-out board holding stop time is alive, and
     // chaining INTO the ceiling is how the position is meant to be played.
     // Borrowed from PuyoCpu's own note, which records getting this wrong.
-    BitBot.prototype.deadly = function (board, resolved, info) {
+    BitBot.prototype.deadly = function (board, resolved, info, horizon) {
         var st = bit.maskState(board.grid, board.blocks, W, board.height);
         var tallest = 0;
         for (var c = 1; c <= W; c++) {
@@ -156,7 +202,6 @@
             while (o) { o &= o - 1; n++; }
             if (n > tallest) tallest = n;
         }
-        if (tallest < board.height) return false;             // room left: not dead
         var banked = info.stopTime || 0;
         if (resolved && resolved.total > 0) {
             var isChain = resolved.chain >= 2;
@@ -164,7 +209,28 @@
                                                     isChain ? 0 : resolved.total,
                                                     isChain ? resolved.chain : 0, true));
         }
-        return banked <= 0;                                   // full, nothing holding it
+
+        // THE ROWS THAT LAND BEFORE THE BOT CAN ACT AGAIN COUNT AS HEIGHT.
+        //
+        // Without this the filter says "already dead", not "would die": it fired
+        // only once a board was FULL, which at stopTime 0 is the frame health
+        // starts draining. Measured on seed 701 -- twelve consecutive decisions
+        // at tallest 11 with nothing refused, then topped out and dead. The
+        // plan's rule is that a candidate the engine WOULD KILL is not offered,
+        // and one row is the granularity the engine rises at.
+        //
+        // Stop time freezes the floor, so what is banked is subtracted from the
+        // horizon before asking how much of it the floor gets.
+        var rows = 0;
+        if (this.horizonDeath && info.framesToNextRow !== undefined) {
+            var spend = (horizon || 0) - banked;
+            if (spend >= info.framesToNextRow && isFinite(info.framesToNextRow)) {
+                rows = 1 + (info.framesPerRow > 0
+                            ? Math.floor((spend - info.framesToNextRow) / info.framesPerRow) : 0);
+            }
+        }
+        if (tallest + rows < board.height) return false;       // room left: not dead
+        return banked <= 0;                                    // full, nothing holding it
     };
 
     BitBot.prototype.score = function (board, moveFrames, resolved, info) {
@@ -269,17 +335,44 @@
 
         // THE MODE FILTERS, IT DOES NOT PICK. ATTACK and DEFEND drop hold:
         // there is something to cash, or idling is what kills us.
+        var here = signature(board);
         var allowed = [];
         for (var i = 0; i < pool.length; i++) {
             if (pool[i].kind === 'hold' && mode.name !== 'BUILD') continue;
+            // A MOVE THAT PUTS THE BOARD BACK WHERE IT WAS IS NOT A MOVE.
+            //
+            // The scoring is stateless, so if board X's best swap leads to Y and
+            // Y's best swap leads back to X, the bot plays that pair forever. It
+            // did: 56 of 76 decisions on seed 701 repeated the previous cell --
+            // (2,5) thirteen times running -- and a swap of the same cell twice
+            // is the identity, so ZERO matches were made in 1,093 frames while
+            // the floor climbed into the ceiling, with a 6-chain on the board
+            // throughout. ATTACK made it fatal by dropping hold, so the bot was
+            // forced to act and the only thing it would do was undo.
+            //
+            // Exact, not a heuristic: the resulting board is compared cell for
+            // cell against the boards recent decisions were made on. Hold is
+            // exempt -- waiting is not a failure to progress, it is the thing
+            // BUILD is for, and it is how the board legitimately stays put.
+            if (this.refuseReturn && pool[i].kind === 'swap' && pool[i].board) {
+                var sig = signature(pool[i].board);
+                if (sig === here || this._seen.indexOf(sig) >= 0) { this.counts.refusedReturn++; continue; }
+            }
             allowed.push(pool[i]);
         }
         if (!allowed.length) allowed = pool;
 
+        this._seen.push(here);
+        if (this._seen.length > 3) this._seen.shift();
+
         var best = null, alive = 0;
         for (i = 0; i < allowed.length; i++) {
             var cand = allowed[i];
-            if (this.deadly(cand.board, cand.resolved, info)) { this.counts.refusedDeadly++; continue; }
+            // WHAT THE HORIZON IS: the frames before this bot decides again --
+            // the walk to the move, then the reaction cooldown. A candidate has
+            // to survive its own cost, which is why it is per candidate.
+            var horizon = (cand.moveFrames || 0) + this.reaction;
+            if (this.deadly(cand.board, cand.resolved, info, horizon)) { this.counts.refusedDeadly++; continue; }
             alive++;
             var s = this.score(cand.board, cand.moveFrames, cand.resolved, info);
             if (!best || s > best.score) best = { cand: cand, score: s };
