@@ -113,9 +113,14 @@ body {
   flex: 1 1 0%;
   min-height: 0;
   min-width: 0;
-  width: 100%;
-  max-width: 520px;
-  margin: 0 auto;
+  /* THE BOARD GETS THE WHOLE WIDTH. .game-area keeps a side gutter for the
+     console and the readout under it; the playfield breaks out of it, so
+     the grid is sized against the screen rather than against the screen
+     minus two 12px strips. On a phone that gutter plus the canvas's own
+     padding was 44px of 412 — a tenth of the board, spent on nothing. */
+  width: calc(100% + 24px);
+  max-width: calc(100% + 24px);
+  margin: 0 -12px;
   display: flex;
   align-items: center;
   justify-content: center;

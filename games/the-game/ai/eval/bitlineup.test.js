@@ -227,5 +227,127 @@ if (!starved) {
     process.exit(1);
 }
 
+// --------------------------------------------------------------------------
+// IT RE-MEASURES ON EVERY INSTALMENT, ON A BOARD THAT REALLY HAS TWO.
+//
+// A match converts ONE ROW of the slab it touches, so a second instalment needs
+// a LATER LINK of the chain to reach the same slab again. Height does not
+// produce it — a four-row slab hit once still reveals one row.
+//
+// No captured board does that: they break a slab once and never come back, which
+// is printed below rather than assumed. So these two positions were SEARCHED FOR
+// against the real engine — 1,084 swaps over random boards with a slab — and
+// kept because the engine emits two 'match' events carrying garbage on them.
+// They are constructed, and labelled as such; what is not constructed is the
+// engine's behaviour on them, which is the thing under test.
+var TWO_INSTALMENTS = [
+    { rows: ["541312", "235343", "413525", "######", "######", "######",
+             "030301", "031501", "503311", "000000", "000000", "000000"],
+      swap: [3, 3] },
+    { rows: ["412334", "234253", "122545", "134133", "######", "######", "######",
+             "415122", "500154", "100213", "000000", "000000"],
+      swap: [10, 4] }
+];
+function fromRows(rows) {
+    var grid = [], blocks = { A: { cells: [] } }, r, c;
+    for (r = 0; r <= H; r++) { grid[r] = []; for (c = 1; c <= W; c++) grid[r][c] = 0; }
+    for (r = 1; r <= H && r <= rows.length; r++) {
+        for (c = 1; c <= W; c++) {
+            var ch = rows[r - 1].charAt(c - 1);
+            if (ch === '#') { grid[r][c] = -2; blocks.A.cells.push([r, c]); }
+            else grid[r][c] = Number(ch);
+        }
+    }
+    return { grid: grid, blocks: blocks };
+}
+
+// First: what real play offers, so the constructed boards are justified and not
+// just convenient.
+var mostInPlay = 0;
+for (var ri = 0; ri < 400 && ri < src.boards.length; ri++) {
+    var rb = boardFromString(src.boards[ri]);
+    if (!Object.keys(rb.blocks).length) continue;
+    var rbase = new LogicalBoard(W, H, 6, rb.grid, rb.blocks);
+    var rsw = rbase.legalSwaps();
+    for (var rs = 0; rs < rsw.length; rs++) {
+        var rp = rbase.clone();
+        rp.swap(rsw[rs][0], rsw[rs][1]);
+        if (bit.resolveBits(rp.grid, rp.blocks, W, H).scope !== 'garbage-broke') continue;
+        var rstack = EB.scratch(10);
+        EB.paint(rstack, rp.grid, H, W, paintBlocks(rb.blocks));
+        rstack.drainEvents();
+        var hits = 0;
+        for (var rf = 0; rf < 420; rf++) {
+            rstack.run();
+            var ev = rstack.drainEvents();
+            for (var e = 0; e < ev.length; e++) if (ev[e].type === 'match' && ev[e].garbage > 0) hits++;
+        }
+        if (hits > mostInPlay) mostInPlay = hits;
+        break;
+    }
+}
+console.log('  most times a captured board hits a slab: ' + mostInPlay);
+
+// Now the constructed ones: the engine must really hit the slab twice, the
+// colours must arrive in two instalments, and the loop must plan on both.
+var twoSeen = 0;
+for (var ti = 0; ti < TWO_INSTALMENTS.length; ti++) {
+    var spec = TWO_INSTALMENTS[ti];
+    var board = fromRows(spec.rows);
+    var lb = new LogicalBoard(W, H, 6, board.grid, board.blocks);
+    var post = lb.clone();
+    post.swap(spec.swap[0], spec.swap[1]);
+
+    var stack = EB.scratch(10);
+    EB.paint(stack, post.grid, H, W, paintBlocks(board.blocks));
+    stack.drainEvents();
+
+    var planned = [], seenConverted = 0, hitCount = 0, pending = null;
+    for (var f = 0; f < 420; f++) {
+        stack.run();
+        var ev2 = stack.drainEvents();
+        for (var e2 = 0; e2 < ev2.length; e2++) {
+            if (ev2[e2].type === 'match' && ev2[e2].garbage > 0) hitCount++;
+        }
+        // count converted panels: a fresh instalment is more of them than before
+        var conv = 0, flying = 0, rr, cc, pp;
+        for (rr = 1; rr <= H; rr++) {
+            for (cc = 1; cc <= W; cc++) {
+                pp = stack.panels[rr][cc];
+                if (!pp || pp.isGarbage || !pp.color) continue;
+                if (pp.fellFromGarbage) conv++;
+                if (pp.state && pp.state !== 'normal') flying++;
+            }
+        }
+        // A rise, not a new high — fellFromGarbage decays, so a second
+        // instalment of the same size never exceeds the first.
+        if (conv > seenConverted) {
+            seenConverted = conv;
+            if (flying > 0) {
+                var snap2 = snapshot(stack);
+                var live2 = new LogicalBoard(W, H, 6, gridOf(stack), snap2.blocks);
+                var plan2 = lineup.bestInWindow(snap2, stack.frames, H,
+                                                [stack.curRow || 1, stack.curCol || 1],
+                                                live2.legalSwaps());
+                planned.push({ frame: f, converted: conv,
+                               swap: plan2 && plan2.best.swap, window: plan2 && plan2.window });
+            }
+        } else {
+            seenConverted = conv;
+        }
+    }
+    console.log('  constructed board ' + (ti + 1) + ': slab hit ' + hitCount +
+                ' times, colours arrived ' + planned.length + ' times, re-planned on each');
+    if (hitCount >= 2) twoSeen++;
+    if (planned.length < 2) {
+        console.error('FAIL a board built to reveal twice only revealed ' + planned.length);
+        process.exit(1);
+    }
+}
+if (!twoSeen) {
+    console.error('FAIL neither constructed board actually hit its slab twice — the fixture is stale');
+    process.exit(1);
+}
+
 console.log('bitlineup: ' + R.verified + ' plans made from colours that had just appeared, ' +
             'played on the engine exactly, ' + R.improved + ' of them deeper than standing still');

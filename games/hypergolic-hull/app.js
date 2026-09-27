@@ -634,7 +634,7 @@ function angleToward(from, to) {
 let geom = { sx: 32, sy: 28, offX: 0, offY: 0, w: 320, h: 320 };
 
 function updateGeometry() {
-  const availW = Math.min(boardWrapEl.clientWidth || 320, 520);
+  const availW = Math.min(boardWrapEl.clientWidth || 320, 560);
   const availH = boardWrapEl.clientHeight || 320;
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (const h of state.boardHexes) {
@@ -645,7 +645,9 @@ function updateGeometry() {
     if (y < minY) minY = y;
     if (y > maxY) maxY = y;
   }
-  const pad = 10;
+  // Just enough that a hex's edge is not flush against the frame. This was
+  // 10 a side, which on a phone is another 5% of the board given away.
+  const pad = 4;
   // Flat-top full extents (at unit sx=1): width (vertex-to-vertex) is 2,
   // height (flat-to-flat) is SQRT3*HEX_RATIO — the reverse pairing from
   // pointy-top, where width used the SQRT3 factor and height used 2.

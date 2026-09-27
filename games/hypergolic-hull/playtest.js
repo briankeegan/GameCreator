@@ -675,6 +675,7 @@ function playSector(state, report) {
     }
     if (shot) {
       Engine.setFacing(state, shot.facing);
+      report.turnKind.fire = (report.turnKind.fire||0)+1;
       Engine.applyFire(state, shot.enemy.id, shot.weapon.id); // one action, one named gun
       report.kills[shot.weapon.id] = report.kills[shot.weapon.id] || { shots: 0, kills: 0 };
       report.kills[shot.weapon.id].shots++;
@@ -803,6 +804,7 @@ function playSector(state, report) {
     if (PILOT !== "reckless" && nearestChaser && !threatened && healthy && waited < 8 && Engine.hexDistance(state.playerPos, nearestChaser) <= 3) {
       waited++;
       if (state.energy < state.maxEnergy) {
+        report.turnKind.recharge = (report.turnKind.recharge||0)+1;
         Engine.applyRecharge(state);
         report.recharges++;
       } else {
@@ -848,6 +850,7 @@ function playSector(state, report) {
       Engine.applyEndTurn(state);
       continue;
     }
+    report.turnKind.move = (report.turnKind.move||0)+1;
     Engine.applySublight(state, step);
     const discovery = state.events.find((e) => e.type === "discovery");
     if (discovery) report.discoveries[discovery.kind] = (report.discoveries[discovery.kind] || 0) + 1;
@@ -980,6 +983,7 @@ function main() {
     fitted: {},
     kills: {},
     armed: {},
+    turnKind: {},
     hostileMoves: {},
     shape: {},
     depthReached: {},
@@ -1039,6 +1043,10 @@ function main() {
   console.log(`recharges: ${report.recharges}, shields raised: ${report.shieldsRaised}`);
 console.log("gates taken:", report.gates);
   console.log("discoveries found:", report.discoveries);
+  {
+    const t=report.turnKind, tot=Object.values(t).reduce((a,b)=>a+b,0)||1;
+    console.log("what a turn is spent on:", Object.entries(t).map(([k,v])=>`${k} ${(v/tot*100).toFixed(0)}%`).join("  "), `(${tot} turns)`);
+  }
   console.log("what the hostiles did:", report.hostileMoves);
   if (process.env.ECON) {
     const byDepth = (rows, key) => {
