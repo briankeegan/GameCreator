@@ -729,6 +729,17 @@ gate_bitoptions() {
   node games/the-game/ai/eval/bitoptions.test.js
 }
 
+# WHAT A SWAP CLEARS, WITHOUT APPLYING IT. On a settled board every column is a
+# packed run from the floor, so a swap does two things to it and both are shifts:
+# the panel crosses and lands on top of the run it joins, and the hole it left
+# closes by one. No gravity loop. Checked the other way round — apply the swap,
+# run gravity, read the clear — and the two must name the same cells. The FALL
+# cases are the point, so the gate counts them and fails a sweep that has none;
+# the two ways the fall can be got wrong are both caught.
+gate_bitswap() {
+  node games/the-game/ai/eval/bitswap.test.js
+}
+
 gate_gates_reject_defects() {
   bash .github/scripts/gates.test.sh
 }
@@ -825,6 +836,7 @@ GATES=(
   "the clock keeps frame-for-frame time with the engine:gate_bitframes:games/the-game/ai/"
   "lining up with colours as they appear:gate_bitlineup:games/the-game/ai/"
   "every option listed is real and priced:gate_bitoptions:games/the-game/ai/"
+  "a swap is answered without applying it:gate_bitswap:games/the-game/ai/"
   "the simulation resolves like the game:gate_resolve_fidelity:games/the-game/ai/"
   "that fidelity check fires:gate_resolve_fidelity_fires:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"
