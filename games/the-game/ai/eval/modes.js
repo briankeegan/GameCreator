@@ -731,7 +731,13 @@
   //      tests (topped out on a shield no longer than a reaction, dies to the
   //      queue) refused moves the search proves: seed 701 frame 1395, [2,2]
   //      was the next step of a line proven at 1382 and was never offered.
-  var RULES = 40;
+  //   41. A LINE MOVES AT THE BOT'S PACE, ITS CURSOR WHERE THE ENGINE PUTS IT.
+  //      A swap step ran the reaction but not the swap frame, so every swap in
+  //      a line came one frame before the bot could make it; and the cursor
+  //      was a formula that missed rows rising after the swap. The resolve now
+  //      walks the cursor with the bot's own driveWalk through the engine and
+  //      a line reads the cursor back. Seed 702 frame 3690 died one frame late.
+  var RULES = 41;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

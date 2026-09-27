@@ -605,11 +605,33 @@
     // the way to.
     var arrivals = this._inFlight(), nextArr = 0;
     var diedInWalk = false, rowsInWalk = 0;
+    // THE CURSOR IS THE ENGINE'S. Given where it starts, the walk is the bot's
+    // own driveWalk feeding the engine one input a frame, so rows rising under
+    // it, the clamp at the top and the step timing are the game's, and the
+    // walk ends when the cursor arrives, not after a formula's count.
+    var from = this._walkFrom || null, walker = null;
+    if (from) {
+      st.curRow = from[0]; st.curCol = from[1];
+      if (this.stack && this.stack.topCurRow) st.topCurRow = this.stack.topCurRow;
+      st.input = {}; st.prevInput = {}; st.cursorDirection = null; st.cursorTimer = 0;
+      if (move) {
+        walker = { stack: st, cursorMoveFrames: this.cursorMoveFrames,
+                   _walk: { row: move[0], col: move[1], timer: 0, cooldown: 0, retries: 2 },
+                   _beginWalk: PanelCpu.beginWalk, _nearestSwappable: function () { return null; } };
+        wait = 600;
+      }
+    }
     for (var f = 0; f < wait; f++) {
       while (nextArr < arrivals.length && arrivals[nextArr].at <= f) {
         st.incoming.push({ width: arrivals[nextArr].width, height: arrivals[nextArr].height,
                            isChain: arrivals[nextArr].isChain });
         nextArr++;
+      }
+      if (walker) {
+        var inp = {};
+        PanelCpu.driveWalk.call(walker, inp);
+        if (!walker._walk) break;
+        st.setInput(inp);
       }
       st.events.length = 0;
       st.run();
@@ -636,7 +658,21 @@
     //
     // A row that lands during the walk carries the target up with it, as it
     // carries the cursor (newRow: curRow + 1).
-    if (move && rowsInWalk) move = [move[0] + rowsInWalk, move[1]];
+    if (move && rowsInWalk && !walker) move = [move[0] + rowsInWalk, move[1]];
+    var refusedInWalk = false;
+    if (walker) {
+      st.setInput({});
+      // driveWalk arrived and asked the engine: queued means canSwap and the
+      // stalling rule both let it through, on the cell the cursor reached.
+      move = null;
+      if (diedInWalk) { /* the walk is where it ended */ }
+      else if (walker._lastSwap && st.queuedSwapRow > 0) {
+        var qr = st.queuedSwapRow, qc = st.queuedSwapCol;
+        st.queuedSwapRow = 0; st.queuedSwapCol = 0;
+        st.doSwap(qr, qc);
+        if (st.countActivePanels) { st.countActivePanels(); st.countActivePanels(); }
+      } else refusedInWalk = true;
+    }
     // A REFUSED SWAP IS NOT A QUIET NO-OP. canSwap and LogicalBoard.legalSwaps
     // disagree on 3.5% of the moves the search is handed, and resolving the
     // UNMOVED board scores the candidate as "this move changes nothing" —
@@ -687,9 +723,11 @@
     st.health = st.maxHealth;
     st.gameOver = false;
     var out = engineBoard.settle(st, cap || (untilRise ? 1800 : 900), true, !!untilRise, settleArrivals, !!exact);
-    if (refused) out.refused = true;
+    if (refused || refusedInWalk) out.refused = true;
     if (diedInWalk) out.diedInWalk = true;
     if (rowsInWalk) out.rose = true;
+    out.walked = walked;
+    if (from) out.cursor = [st.curRow, st.curCol];
     // WHERE THE ENGINE LEFT OFF, so a survival line continues from the
     // engine's state instead of re-running the live one.
     out.carry = {
@@ -1275,15 +1313,18 @@
   PuyoCpu.prototype.SURVIVE_FRAMES = 240;
   PuyoCpu.prototype.SURVIVE_BEAM = 30;
   PuyoCpu.prototype._lineStep = function (node, m, long) {
-    var t = node.b.clone(), r, used, saved = this._carry;
+    var t = node.b.clone(), r, used, saved = this._carry, savedFrom = this._walkFrom;
     t.incoming = (node.carry && node.carry.nextRow) ||
                  (node.b.incoming === false ? false : (node.b.incoming || this._incoming || null));
     this._carry = node.carry || null;
+    this._walkFrom = node.pos || null;
     if (m) {
       var w = node.pos ? travel.cost(node.pos[0], node.pos[1], m[0], m[1]) : 0;
-      // Walk, swap, and the whole reaction before the bot can act again.
-      r = this._resolveCandidate(t, m, w, false, this.reaction, true);
-      used = w + ((r && r.elapsed) || 0);
+      // The engine walks the cursor there, swaps, and runs the whole
+      // reaction: the bot's next decision comes reaction + 1 frames after the
+      // swap frame, the same as a hold's reaction + 1.
+      r = this._resolveCandidate(t, m, w, false, this.reaction + 1, true);
+      used = (r && r.walked !== undefined ? r.walked : w) + ((r && r.elapsed) || 0);
     } else if (long) {
       // To the horizon, rows and all: an easy board is proven in one resolve.
       r = this._resolveCandidate(t, null, 0, false, Math.max(1, this.SURVIVE_FRAMES - node.t), true);
@@ -1293,8 +1334,9 @@
       used = this.reaction + ((r && r.elapsed) || 0);
     }
     this._carry = saved;
+    this._walkFrom = savedFrom;
     if (!r || r.refused || r.died || r.diedInWalk) return null;
-    var pos = m || (node.pos && [Math.min(node.pos[0] + (r.rose ? 1 : 0), node.b.height), node.pos[1]]);
+    var pos = r.cursor || m || (node.pos && [Math.min(node.pos[0] + (r.rose ? 1 : 0), node.b.height), node.pos[1]]);
     return { b: t, carry: r.carry || null, pos: pos, t: node.t + Math.max(1, used) };
   };
   PuyoCpu.prototype._heldFor = function (k) {
@@ -2046,7 +2088,9 @@
       var resolved;
       if (this.engine) {
         // The engine ages the board and makes the swap itself.
+        this._walkFrom = [this.stack.curRow, this.stack.curCol];
         resolved = this._resolveCandidate(trial, [r, c], delay);
+        this._walkFrom = null;
       } else {
         trial.swap(r, c);
         resolved = this._resolveCandidate(trial);
