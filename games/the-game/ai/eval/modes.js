@@ -701,7 +701,15 @@
   //      without its shake, and it kept the chain flags the line started
   //      with, so resting panels came back as chain links. Now the whole stack
   //      is read and the flags come from the scratch.
-  var RULES = 35;
+  //   36. SURVIVAL IS SEARCHED FOR, NOT SCORED. When no move survives by the
+  //      check, one search from the live board over lines at the bot's own
+  //      pace, kept by how long the board is held, then garbage, then height,
+  //      with no weights in it; a line that reaches 240 frames alive is played
+  //      and followed. Seed 700 frame 1867 had a save the check called doomed
+  //      and the weights ranked last; the search finds it and it lives in the
+  //      real engine. Swaps in the model go through the stalling rule, as a
+  //      key press does, so a line cannot wiggle one pair to hold the floor.
+  var RULES = 36;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
