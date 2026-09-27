@@ -694,7 +694,14 @@
   //      below the one it chose. What still differs is only an opponent chain
   //      that has not ended, which lands later and larger than the model has
   //      it.
-  var RULES = 34;
+  //   35. A LINE'S STEPS HAND THE BOARD ON WHOLE. Chained step by step --
+  //      resolved, written back, repainted -- the same moves the real bot made
+  //      died where one continuous run lived: the write-back read the motion
+  //      of rows 1-12 only, so a slab still falling above the lid landed
+  //      without its shake, and it kept the chain flags the line started
+  //      with, so resting panels came back as chain links. Now the whole stack
+  //      is read and the flags come from the scratch.
+  var RULES = 35;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

@@ -953,7 +953,7 @@
     // flags tell the panel above to fall on the next frame, as a chain link.
     if (!p || !p.state) return null;
     if (p.state === 'normal' && !(p.isGarbage && p.shakeTime) && !p.stateChanged &&
-        !p.propagatesChaining && !p.queuedHover && !p.matchAnyway && !p.fellFromGarbage) return null;
+        !p.propagatesChaining && !p.queuedHover && !p.matchAnyway && !p.fellFromGarbage && !p.chaining) return null;
     // EVERY FIELD, not a chosen few: a popping panel without comboSize and
     // comboIndex reads as the last of its group and pops at once, and each
     // field left out was one more way for the copy to play a different game.

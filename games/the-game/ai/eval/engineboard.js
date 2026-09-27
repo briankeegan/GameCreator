@@ -103,7 +103,8 @@
         var of = PC && PC.motionOf;
         if (!of) return null;
         var m = [];
-        for (var r = 0; r <= height && r < stack.panels.length; r++) {
+        // Every row the engine holds: a slab above the lid can still be falling.
+        for (var r = 0; r < stack.panels.length; r++) {
             m[r] = [];
             for (var c = 1; c <= width; c++) m[r][c] = of(stack.panels[r][c]);
         }
