@@ -353,9 +353,24 @@ test('the refusal happens in the CANDIDATE LIST, not in the score', function () 
 
 // ---- a move that leaves you topped out is not a move -----------------
 
-test('a fatal move is dropped when a survivable one exists', function () {
+test('WITH THE SURVIVAL SEARCH ON, ONLY THE ENGINE SAYS A MOVE DIES', function () {
+    // A topped-out board on a short shield lives if a swap or a match holds
+    // the stack; the search plays that out, so the grid test must not veto it.
     var stack = new PanelEngine.Stack({ level: LEVEL, seed: 11, countdown: false });
     var cpu = new PuyoCpu(stack, { weights: sample() });
+    var H = stack.height, W = stack.width;
+    var toppedOut = { kind: 'swap', move: [2, 2], board: boardAt(H, W, H), resolved: { shakeTime: 8 } };
+    var died = { kind: 'swap', move: [1, 1], board: boardAt(H, W, H), resolved: { died: true } };
+    var low = { kind: 'hold', board: boardAt(H, W, 3), resolved: {} };
+    var out = cpu._survivors([toppedOut, died, low]);
+    assert.strictEqual(out.length, 2, out.length + ' of 3 kept');
+    assert.ok(out.indexOf(toppedOut) >= 0, 'the topped-out move the engine did not kill was dropped');
+    assert.ok(out.indexOf(died) < 0, 'the move the engine killed was kept');
+});
+
+test('a fatal move is dropped when a survivable one exists', function () {
+    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 11, countdown: false });
+    var cpu = new PuyoCpu(stack, { weights: sample(), deepSurvival: false });
     var H = stack.height, W = stack.width;
     var cands = [
         { kind: 'hold', board: boardAt(H, W, H) },      // topped out
@@ -373,7 +388,7 @@ test('WHEN EVERY MOVE IS FATAL THE FILTER LIFTS', function () {
     // all. Seven of twenty deaths had no survivable move by the last
     // decision -- those were lost earlier, not chosen here.
     var stack = new PanelEngine.Stack({ level: LEVEL, seed: 11, countdown: false });
-    var cpu = new PuyoCpu(stack, { weights: sample() });
+    var cpu = new PuyoCpu(stack, { weights: sample(), deepSurvival: false });
     var H = stack.height, W = stack.width;
     var all = [{ kind: 'hold', board: boardAt(H, W, H) },
                { kind: 'swap', board: boardAt(H, W, H) }];
@@ -390,7 +405,7 @@ test('BUT THE LIFT IS GRADED: dying to the queue is not dying now', function () 
     // where 22 of 23 candidates were not dead this instant and it played the
     // one that was.
     var stack = new PanelEngine.Stack({ level: LEVEL, seed: 11, countdown: false });
-    var cpu = new PuyoCpu(stack, { weights: sample() });
+    var cpu = new PuyoCpu(stack, { weights: sample(), deepSurvival: false });
     var H = stack.height, W = stack.width;
     // Six rows on their way: anything standing above row 6 dies when they
     // land, so nothing survives the queue and the pool must lift.
@@ -417,7 +432,7 @@ test('and it lifts ALL THE WAY when every move is dead this instant', function (
     // bot at all. A graded lift that narrowed here would be the empty-pool
     // defect wearing a new hat.
     var stack = new PanelEngine.Stack({ level: LEVEL, seed: 11, countdown: false });
-    var cpu = new PuyoCpu(stack, { weights: sample() });
+    var cpu = new PuyoCpu(stack, { weights: sample(), deepSurvival: false });
     var H = stack.height, W = stack.width;
     stack.incoming = [{ width: W, height: 6 }];
     var pool = [{ kind: 'hold', board: boardAt(H, W, H) },
@@ -430,7 +445,7 @@ test('a board nobody is near the top of is left alone', function () {
     // The filter must bite only where it matters. Dropping nothing has to
     // return the SAME list, or every decision pays for a copy.
     var stack = new PanelEngine.Stack({ level: LEVEL, seed: 11, countdown: false });
-    var cpu = new PuyoCpu(stack, { weights: sample() });
+    var cpu = new PuyoCpu(stack, { weights: sample(), deepSurvival: false });
     var low = [{ kind: 'hold', board: boardAt(stack.height, stack.width, 3) },
                { kind: 'swap', board: boardAt(stack.height, stack.width, 4) }];
     assert.strictEqual(cpu._survivors(low), low);

@@ -726,7 +726,12 @@
   //      through to the full search. Audited against the real engine (every
   //      proven move played, its line replayed): seed 700, 900 frames, 40
   //      proven moves, 38 held, 2 broken by garbage sent afterwards, none false.
-  var RULES = 39;
+  //   40. ONLY THE ENGINE SAYS A MOVE DIES. With the survival search on,
+  //      _survivors drops only moves the engine resolves to death; the grid
+  //      tests (topped out on a shield no longer than a reaction, dies to the
+  //      queue) refused moves the search proves: seed 701 frame 1395, [2,2]
+  //      was the next step of a line proven at 1382 and was never offered.
+  var RULES = 40;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
