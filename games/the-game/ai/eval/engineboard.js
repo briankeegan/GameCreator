@@ -41,6 +41,23 @@
         // change costs a player nothing and saves the search most of its
         // time. A Stack a person is playing never sets this.
         stack.allowIdleSkip = true;
+        // WHAT A CLEAR EARNED, read where the engine decides it. The award is
+        // the stop time this clear pays, whether or not it beats what is
+        // already on the clock; a broken slab's converting row is the garbage
+        // it takes off.
+        var award = stack.awardStopTime, matchG = stack.matchGarbagePanels;
+        stack.earnedStop = 0; stack.brokeCells = 0;
+        stack.awardStopTime = function (isChain, comboSize) {
+            var had = this.stopTime;
+            this.stopTime = 0;
+            award.call(this, isChain, comboSize);
+            if (this.stopTime > this.earnedStop) this.earnedStop = this.stopTime;
+            if (had > this.stopTime) this.stopTime = had;
+        };
+        stack.matchGarbagePanels = function (panels, t, isChain, onScreen) {
+            matchG.call(this, panels, t, isChain, onScreen);
+            for (var i = 0; i < panels.length; i++) if (panels[i].yOffset === -1) this.brokeCells++;
+        };
         return stack;
     }
 
@@ -358,6 +375,7 @@
         var died = false, diedAt = 0, rose = false;
         var clock0 = stack.clock || 0, next = 0;
         var pend = arrivals || [];
+        stack.earnedStop = 0; stack.brokeCells = 0;
         for (var f = 0; f < cap; f++) {
             if (live) {
                 if (stack.gameOver) { died = true; diedAt = f; break; }
@@ -423,7 +441,9 @@
             diedAt: diedAt,
             rose: rose,
             elapsed: (stack.clock || 0) - clock0,
-            pending: pend.slice(next)
+            pending: pend.slice(next),
+            stopTimeEarned: stack.earnedStop || 0,
+            brokeGarbage: stack.brokeCells || 0
         };
     }
 

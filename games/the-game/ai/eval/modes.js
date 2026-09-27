@@ -654,7 +654,13 @@
   //      height and pop times. 0 of 167 wrong on the next four seeds except
   //      the colours of rows that convert later, which come from the match's
   //      rng and are not read.
-  var RULES = 29;
+  //   30. WHAT A CLEAR EARNS IS READ OFF THE ENGINE. The engine resolve
+  //      never reported stop time earned or garbage broken, so both features
+  //      read 0 on every candidate the live bot scored. The scratch records
+  //      them where the engine decides them: awardStopTime's award and the
+  //      converting row of each broken slab. Seed 703: 2047 of 8137
+  //      candidates earn stop time, 475 break garbage.
+  var RULES = 30;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
