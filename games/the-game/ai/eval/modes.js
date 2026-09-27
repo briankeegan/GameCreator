@@ -675,7 +675,14 @@
   //      where the game lets it act: against the frozen RULES 30 bot on the
   //      same boards it died 12 of 16 with line-following and 8 of 16
   //      without.
-  var RULES = 32;
+  //   33. AS MANY MOVES AS THE TIME ALLOWS. A survival line could make two
+  //      swaps before each row, whatever the clock said; under stop time the
+  //      bot has room for several, which is how a lid is broken -- earn stop
+  //      time, then break. A line now keeps moving until a row actually
+  //      arrives (up to five), and a row that arrives during a move counts as
+  //      that rise. Against the frozen RULES 30 bot on the same boards: died
+  //      4 of 16 against its 12.
+  var RULES = 33;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

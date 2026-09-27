@@ -667,6 +667,7 @@
     var out = engineBoard.settle(st, untilRise ? 1800 : 900, true, !!untilRise, settleArrivals);
     if (refused) out.refused = true;
     if (diedInWalk) out.diedInWalk = true;
+    if (rowsInWalk) out.rose = true;
     // WHERE THE ENGINE LEFT OFF, so a survival line continues from the
     // engine's state instead of re-running the live one.
     out.carry = {
@@ -1087,7 +1088,10 @@
   // So between rises a line may make up to SWAPS_PER_RISE swaps of any kind.
   // The search has a budget, and a budget spent without an answer is not a
   // proof of death: a move is condemned only when every line has been tried.
-  PuyoCpu.prototype.SWAPS_PER_RISE = 2;
+  // As many moves as the time before the next row allows: a move whose
+  // resolve brings the row ends that rise, and stop time buys room for more
+  // -- earn it, then break. Five bounds the search, not the game.
+  PuyoCpu.prototype.SWAPS_PER_RISE = 5;
   PuyoCpu.prototype.SURVIVAL_BUDGET = 400;
   // EVERY MOVE COSTS WHAT IT COSTS IN THE GAME. A move in a line is made by
   // walking to it from where the cursor last was and waiting out the
@@ -1147,7 +1151,10 @@
         budget.n--;
         this._carry = saved;
         if (!r || r.refused || r.died || r.diedInWalk || this._resolvesDead(t, r)) continue;
-        if (this._survivesRise(t, depth, true, r.carry, pre - 1, budget, swaps[i])) {
+        // A row that came during this move is this rise, done.
+        if (r.rose ? (depth <= 1 ? this._survivesRise(t, 0, true, r.carry, 0, budget, swaps[i])
+                                 : this._survivesRise(t, depth - 1, true, r.carry, this.SWAPS_PER_RISE, budget, swaps[i]))
+                   : this._survivesRise(t, depth, true, r.carry, pre - 1, budget, swaps[i])) {
           if (this._line) this._line.unshift(swaps[i]);
           return true;
         }
