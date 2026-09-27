@@ -686,6 +686,17 @@ gate_bitplan() {
   node games/the-game/ai/eval/bitplan.test.js
 }
 
+# THE ENGINE DECIDES WHILE PANELS ARE IN THE AIR, AND ONLY THEN. A board read
+# while a broken slab's converted row is still hovering records where those
+# panels sit but not that they have yet to land, and the arithmetic matches them
+# a beat early. So those positions go to a real Stack, and the move chosen has to
+# be the move the engine itself would choose. A settled board must never reach
+# for the engine — counted, because a decision that quietly did would still be
+# right and would blow the budget.
+gate_bitdecide() {
+  node games/the-game/ai/eval/bitdecide.test.js
+}
+
 gate_gates_reject_defects() {
   bash .github/scripts/gates.test.sh
 }
@@ -778,6 +789,7 @@ GATES=(
   "the chip matcher enforces every constraint:gate_chip_matcher_constraints:games/the-game/ai/"
   "the bit arithmetic answers what the simulation answers:gate_bitmatch:games/the-game/ai/"
   "a plan that claims a chain plays one:gate_bitplan:games/the-game/ai/"
+  "the engine decides while panels are in the air:gate_bitdecide:games/the-game/ai/"
   "the simulation resolves like the game:gate_resolve_fidelity:games/the-game/ai/"
   "that fidelity check fires:gate_resolve_fidelity_fires:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"
