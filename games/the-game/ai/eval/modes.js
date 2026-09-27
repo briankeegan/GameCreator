@@ -670,7 +670,12 @@
   //      until the move has settled, then its next step while that step is
   //      still proven. And a break is sought on any garbage, two moves deep,
   //      walked and aged as the game plays it.
-  var RULES = 31;
+  //   32. THE LINE IS NOT PLAYED STEP BY STEP. Holding until each move of a
+  //      line had fully settled kept the bot from acting during cascades,
+  //      where the game lets it act: against the frozen RULES 30 bot on the
+  //      same boards it died 12 of 16 with line-following and 8 of 16
+  //      without.
+  var RULES = 32;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

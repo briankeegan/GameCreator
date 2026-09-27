@@ -1204,49 +1204,10 @@
     var proven = [], unproven = [];
     for (i = 0; i < cands.length; i++) {
       u0 = this.survivalUnproven || 0;
-      var keepLine = this._line;
-      this._line = [];
       ok = this._survivesAfter(cands[i], this.DOOMED_DEPTH);
-      cands[i].line = ok ? this._line : null;
-      this._line = keepLine;
       if (!ok) continue;
       if ((this.survivalUnproven || 0) > u0) unproven.push(cands[i]);
       else proven.push(cands[i]);
-    }
-    // THE LINE A MOVE WAS CERTIFIED ON IS THE LINE PLAYED. A move is safe
-    // because of the moves its line makes after it; re-choosing by score at
-    // the next decision throws them away, and "wait, then swap" stays
-    // certified at every decision while the time for the swap runs out --
-    // seed 704: hold certified at 569, 582, 595 and 608 on the line
-    // [wait, (1,2), (5,1)], never played, dead at 806. So the next step of
-    // the last certified line is played while it is still proven.
-    var step = this._planStep();
-    // AND ON ITS CLOCK. Each step of a line is made after the one before has
-    // settled; the bot decides again long before that, mid-cascade, where
-    // the next step is a different move on a different board. Until the last
-    // move has settled, the line is holding.
-    if (step !== undefined && this.stack && this.stack.clock < this._follow.due) {
-      for (i = 0; i < cands.length; i++) {
-        if (cands[i].kind === 'hold') {
-          this.planFollowed = (this.planFollowed || 0) + 1;
-          this.allDoomedNow = false;
-          return [cands[i]];
-        }
-      }
-      this._follow = null;
-      step = undefined;
-    }
-    if (step !== undefined && proven.length) {
-      for (i = 0; i < proven.length; i++) {
-        var pm = proven[i].move;
-        if (step === null ? proven[i].kind === 'hold'
-                          : (pm && pm[0] === step[0] && pm[1] === step[1])) {
-          this.planFollowed = (this.planFollowed || 0) + 1;
-          this.allDoomedNow = false;
-          return [proven[i]];
-        }
-      }
-      this._follow = null;
     }
     // A move the search ran out of budget on is a guess. When any move is
     // proven to live, the guesses are dropped.
@@ -2195,31 +2156,7 @@
   // decision where a payout was on offer and the bot held is exactly the case
   // it has to be able to see. Reading it off the mode would answer "something
   // was offered", which is a different question and hides the break.
-  // The next step of the plan, once the rows it was waiting for have come:
-  // null is a wait for the next row, [r,c] a swap, undefined no plan.
-  PuyoCpu.prototype._planStep = function () {
-    var plan = this._follow;
-    if (!plan) return undefined;
-    while (plan.steps.length && plan.steps[0] === null && (this._rowsSeen || 0) > plan.rows) {
-      plan.steps.shift();
-      plan.rows++;
-    }
-    if (!plan.steps.length) { this._follow = null; return undefined; }
-    return plan.steps[0];
-  };
-
   PuyoCpu.prototype._took = function (cand) {
-    // A hold inside a line being followed keeps the line.
-    if (cand && cand.kind === 'hold' && this._follow && this.stack && this.stack.clock < this._follow.due) {
-      // nothing
-    } else {
-      var walk = (cand && cand.move && this.stack)
-        ? travel.cost(this.stack.curRow, this.stack.curCol, cand.move[0], cand.move[1]) : 0;
-      this._follow = (cand && cand.line && cand.line.length)
-        ? { steps: cand.line.slice(), rows: this._rowsSeen || 0,
-            due: (this.stack ? this.stack.clock : 0) + walk + ((cand.resolved && cand.resolved.elapsed) || 0) }
-        : null;
-    }
     // The square to refuse next time: only a swap that changed nothing.
     this._lastSquare = (cand && cand.move && cand.resolved &&
                         !cand.resolved.clearedPanels) ? cand.move : null;
@@ -2534,10 +2471,6 @@
   PuyoCpu.prototype.update = function () {
     var stack = this.stack;
     if (stack.gameOver) return;
-    // Rows the floor has brought up, counted as they land: a new row resets
-    // displacement upwards.
-    if (this._lastDisp !== undefined && stack.displacement > this._lastDisp) this._rowsSeen = (this._rowsSeen || 0) + 1;
-    this._lastDisp = stack.displacement;
 
     var input = {};
     // ONE RAISE IS ONE ROW. The engine re-latches manualRaise on every frame
