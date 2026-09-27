@@ -25,6 +25,7 @@ var path = require('path');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
 var PuyoCpu = require('./puyocpu.js');
+var BitBot = require('./bitbot.js');
 var report = require(path.join(__dirname, '..', 'experiments', 'report.js'));
 var PanelEngine = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
 
@@ -61,6 +62,21 @@ exports.decideWinner = function (aDead, bDead, scores) {
 };
 
 function makeCpu(stack, weights, opts) {
+    // WHICH BOT. Absent means PuyoCpu, so every existing caller is unchanged.
+    //
+    // BitBot is a SECOND BOT, not a switch on the first: it reads a different
+    // weight vector, over features PuyoCpu does not have. So a duel with `bot`
+    // set on one side only compares two DECISION PROCEDURES, and the weights
+    // handed to each side are not comparable numbers -- which is exactly why
+    // optsB exists and why a mixed duel must pass each side its own vector.
+    if (opts.bot === 'bitbot') {
+        return new BitBot(stack, {
+            weights: weights || {},
+            reaction: opts.reaction || 12,
+            reveal: opts.reveal !== false,
+            allowRaise: opts.allowRaise === true
+        });
+    }
     return new PuyoCpu(stack, {
         weights: weights || {},
         // FRAMES BETWEEN DECISIONS. 12 is the human-paced default every

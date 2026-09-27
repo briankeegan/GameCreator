@@ -753,6 +753,19 @@ gate_bitfeatures() {
   node games/the-game/ai/eval/bitfeatures.test.js
 }
 
+# BITBOT PLAYS A REAL STACK, and every claim BITBOT.md makes about it is checked
+# against one: a chosen swap is legal on the board it was chosen from and actually
+# reaches the engine, the aim is read off the weights rather than set here, BUILD
+# and ATTACK are both entered and ATTACK really does drop hold, and the one rule
+# that is not a weight refuses a full board with nothing banked while ALLOWING the
+# same board holding stop time -- chaining into the ceiling is how the position is
+# played. A mirror duel must draw, or the two instances read something that is not
+# on the board. Each check is followed by a break test that damages it and proves
+# it goes red.
+gate_bitbot() {
+  node games/the-game/ai/eval/bitbot.test.js
+}
+
 gate_gates_reject_defects() {
   bash .github/scripts/gates.test.sh
 }
@@ -851,6 +864,7 @@ GATES=(
   "every option listed is real and priced:gate_bitoptions:games/the-game/ai/"
   "a swap is answered without applying it:gate_bitswap:games/the-game/ai/"
   "the options are features that vary:gate_bitfeatures:games/the-game/ai/"
+  "the bot plays what it picks and cannot be killed:gate_bitbot:games/the-game/ai/"
   "the simulation resolves like the game:gate_resolve_fidelity:games/the-game/ai/"
   "that fidelity check fires:gate_resolve_fidelity_fires:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"
