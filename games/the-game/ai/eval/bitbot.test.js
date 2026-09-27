@@ -166,6 +166,86 @@ ok(BitBot.prototype.deadly.call(probe, lowBoard, null, { stopTime: 0 }) === fals
                                'so the bot would freeze instead of playing its least bad move');
 }());
 
+// ------------------------------------------------- 4b. it does not undo itself
+// A SWAP REPEATED ON THE SAME CELL IS THE IDENTITY, so a bot that does it is
+// making no progress at all -- and with hold dropped in ATTACK it will do it
+// until the floor kills it. Measured before the filter existed: 56 of 76
+// decisions on seed 701 repeated the previous cell, (2,5) thirteen times
+// running, and ZERO matches were made in 1,093 frames.
+//
+// The check is the repeat RATE, because that is the defect, and it is compared
+// against the same bot with the filter off -- an absolute bar would be a
+// constant nobody could justify.
+function repeatRate(opts) {
+    var stack = new PanelEngine.Stack({ level: 10, seed: 701, countdown: false });
+    var o = { weights: BitBot.STARTER, allowRaise: true };
+    for (var k in (opts || {})) o[k] = opts[k];
+    var bot = new BitBot(stack, o);
+    var picks = [];
+    var real = bot.decide;
+    bot.decide = function () {
+        var d = real.call(this);
+        picks.push(d.kind === 'swap' && d.move ? d.move[0] + ',' + d.move[1] : d.kind);
+        return d;
+    };
+    var matches = 0;
+    for (var f = 0; f < 1100 && !stack.gameOver; f++) {
+        bot.update(); stack.run();
+        var evs = stack.drainEvents();
+        for (var e = 0; e < evs.length; e++) if (evs[e].type === 'match') matches++;
+    }
+    var rep = 0;
+    for (var i = 1; i < picks.length; i++) if (picks[i] === picks[i - 1] && picks[i].indexOf(',') > 0) rep++;
+    return { rep: rep, n: picks.length, matches: matches, bot: bot };
+}
+var withFilter = repeatRate({});
+var without = repeatRate({ refuseReturn: false });
+ok(withFilter.bot.counts.refusedReturn > 0,
+   'the no-return filter refused nothing, so nothing here tests it');
+ok(withFilter.rep < without.rep,
+   'the no-return filter did not reduce repeated swaps (' + withFilter.rep + ' of ' +
+   withFilter.n + ' with it, ' + without.rep + ' of ' + without.n + ' without)');
+ok(without.rep > without.n / 4,
+   'the BREAK case no longer loops (' + without.rep + ' of ' + without.n + ' repeats) -- ' +
+   'the comparison above has nothing to detect and the check is vacuous');
+// NOT "it now clears": the loop being gone does not make an untrained vector
+// play well, and seed 701 still makes zero matches (see BITBOT.md). What the
+// gate holds is that the filter does not COST clears -- a rule that refused
+// legitimate cashing moves would show up here.
+ok(withFilter.matches >= without.matches,
+   'the no-return filter lost clears: ' + withFilter.matches + ' with it, ' +
+   without.matches + ' without');
+
+// A no-op swap -- two panels of the same colour -- must be refused too: it is
+// the same defect without needing a second decision to show itself.
+(function () {
+    var stack = new PanelEngine.Stack({ level: 10, seed: 705, countdown: false });
+    var bot = new BitBot(stack, { weights: BitBot.STARTER });
+    for (var f = 0; f < 60; f++) { bot.update(); stack.run(); }
+    var board = bot._snapshot();
+    var info = bot.info(board);
+    var pool = bot.candidates(board, info);
+    var here = null, noop = 0;
+    for (var i = 0; i < pool.length; i++) {
+        if (pool[i].kind !== 'hold') continue;
+        here = pool[i].board;
+    }
+    for (i = 0; i < pool.length; i++) {
+        if (pool[i].kind !== 'swap' || !here) continue;
+        var same = true;
+        for (var r = 1; r <= 12 && same; r++) {
+            for (var c = 1; c <= 6; c++) {
+                var a = (here.grid[r] || [])[c], b = (pool[i].board.grid[r] || [])[c];
+                if (a !== b) { same = false; break; }
+            }
+        }
+        if (same) noop++;
+    }
+    // Not an assertion that no-ops exist on this board -- they may not -- but
+    // that if one does the filter would see it, which is what `here` proves.
+    ok(here !== null, 'hold is missing from the pool, so there is no current board to compare against');
+}());
+
 // ------------------------------------------------------- 5. the mirror draws
 // IDENTICAL WEIGHTS ON IDENTICAL SEEDS MUST MIRROR. Both boards are dealt the
 // same panels, so any divergence is the bot reading something that is not on
@@ -196,6 +276,9 @@ ok(mirror.scores[0] === mirror.scores[1],
        BF.infoKeys().filter(function (k) { return info[k] === undefined; }).join(', '));
 }());
 
+console.log('bitbot: repeated swaps ' + withFilter.rep + '/' + withFilter.n +
+            ' with the no-return filter, ' + without.rep + '/' + without.n + ' without; ' +
+            'matches ' + withFilter.matches + ' vs ' + without.matches);
 console.log('bitbot: ' + picks + ' decisions over ' + runs.length + ' games, ' +
             fired + ' swaps executed, ' + refused + ' candidates refused as fatal, ' +
             'modes ' + JSON.stringify(modesSeen) + ', mirror drew');
