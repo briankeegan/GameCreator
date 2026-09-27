@@ -435,6 +435,135 @@ Heading+speed is an exact representation only at cap 1.
 `firingPositions`, the auto-router, both test pilots, and tap-to-move. Balance
 resets to zero. This is not a day.
 
+## WHAT THE RESEARCH SAYS ABOUT DODGE-OR-ACT (2026-09-27)
+
+The loop Mk II proposes splits into three parts with very different track
+records.
+
+**Telegraphed enemies + perfect information + a real dodge-or-act decision
+each round — PROVEN.** Into the Breach, Slay the Spire, Cobalt Core, Shogun
+Showdown, Star Renegades, Invisible Inc, 868-HACK. One of the most reliable
+loops in modern turn-based design.
+
+**Dodge-or-act where the only thing at stake is your own hull — PROVEN BAD,
+and it is an identified defect rather than a risk.** Subset Games built this
+exact version and cut it. Matthew Davis: *"When the mechs were the only
+target, they found that the threatened havoc was trivial, because all the
+mechs needed to do was to walk away."* The Power Grid exists because of it.
+Three fixes are documented, any one of which is probably enough:
+
+1. Something other than your hull is on the line, so evasion is a cost rather
+   than an answer.
+2. The encounter degrades while you stall — Slay the Spire's enemies ramping
+   and block not carrying over, Invisible Inc's alarm, 868-HACK's zero score
+   being as bad as death.
+3. The dodge is itself offensive — Into the Breach's push, Auro's bump.
+
+**Newtonian momentum on a hex grid — NICHE for fifty years, for reasons that
+are written down.** Triplanetary (1973) is the elegant end and its projected-
+course arrow is worth copying literally. The costs: accelerating for N turns
+means decelerating for N turns with nothing tactical happening in between,
+high closing speeds give brief engagements separated by long approaches, and
+the learning cliff is front-loaded. Going digital removes the bookkeeping and
+nothing else.
+
+**The three combined, inside a loot roguelike — untried.** No shipped
+turn-based game was found where enemies lead a player's momentum vector.
+
+**The nearest shipped relative chose against momentum.** Cobalt Core is a
+loot/build roguelike with telegraphed lane attacks where every card is move,
+shield or shoot — the same dilemma — with INSTANT repositioning. 96% positive
+on ~3,400 reviews. Before building momentum, it is worth knowing the cheap
+version of this dilemma already shipped and worked.
+
+**What keeps the shop and the 25 weapons alive**: each must answer "what does
+this let me do about a shot aimed at my projected hex" — arcs relative to the
+velocity vector, retrograde versus prograde fire, trading a shot for a free
+burn, making the projection ambiguous. If they differ mainly in damage they
+become decoration.
+
+**The one link nobody else has**: crate mass and layout feeding thrust and
+handling, so how the hold is packed changes how the ship flies. Neither Into
+the Breach nor Cobalt Core can do that.
+
+## MK II, MEASURED — the commit rule is the part that fails (2026-09-27)
+
+Two independent passes: a threat-map probe over 5,004 rounds of real
+`playtest.js` play, and a 3,000-sector-per-condition simulation carrying the
+shipped roster distribution, energy bus and archetypes, with the shipped
+game reproduced as its baseline (72% move / 28% fire, 1.33 hits per sector).
+
+**One action moves your landing hex by at most one hex from your ghost, at
+every speed.** That is a proof over all velocity states, not a measurement.
+The dodge menu is the ring at 1 around the ghost whether you are at rest or
+at the cap, and a burn costs the same either way. So speed does not make an
+aimed shot miss — the burn does. "Motion becomes defence" is false.
+
+Consequence: a committed single-hex shot against a 5-to-7 hex reachable set
+cannot land against a competent pilot.
+
+| hits taken per sector | shipped | Mk II |
+|---|---|---|
+| pursuing roster | 1.33 | **0.06** |
+| ranged roster | 2.59 | **0.21** |
+
+3.6% of committed shots land; 95% of shot-at rounds end fully dodged; death
+by fire goes 5% → 0%. Refusing to fire at all becomes a 93% sector-clear
+(shipped: 34%). Fire share falls 28% → 21%. Every adversarial variant was
+tested — coordinated aim, no shot cancellation, the path hit as well as the
+destination, hostiles acting twice, free burns, cap 1 — and none recovers it.
+Closing the dodge with bodies needs ~24 hostiles against a real mean roster
+of 2.75 and a hard cap of 5.
+
+**The commit rule does not need momentum, and inherits the same collapse
+without it.** Declare-your-next-hex with no inertia scores 0.14 hits per
+sector against Mk II's 0.06 — a cheaper build of the same trivial game.
+
+**What momentum buys on its own, with no commit rule and no ghost-aiming:**
+
+| | fire share | dead turns/sector | hits/sector | exit% |
+|---|---|---|---|---|
+| shipped | 28% | 5.00 | 1.33 | 95% |
+| speed cap 2, no commit | **30%** | **2.25** | 1.57 | 85% |
+| Mk II | 21% | 2.79 | 0.06 | 99% |
+
+Cap 2 halves the transit floor (optimal exit 6.9 → 4.7 rounds), which is
+where the 41%-of-rounds-empty number goes. It is the only condition that
+moves fire share, dead turns and damage the right way at once, and it needs
+none of the commit phase, the ghost overlay or the threat-overlay rework.
+
+**Charging energy for moves is what drags fire share down.** Cost 1 alone,
+nothing else changed, gives 17% fire and doubles dead turns; the pilot wants
+1.88 dodges a sector and cannot afford 1.5% of them, so the wallet binds
+before the board does. Cost 2 is the only dial that produced survivable
+damage under Mk II (0.43 hits, 8% death) and it spends a third of all turns
+recharging. Cost 3 stops the game (37% exit, 36.5 rounds).
+
+**An area shot deletes the dilemma in both directions.** A blast covering the
+aimed hex and its six neighbours covers the entire reachable set, because the
+whole set is within 1 of the ghost: 93% of shots land and damage returns to
+1.48 per sector. Flak Burst, Flak Burst Heavy and Shockwave already do this,
+so under a commit rule nothing with a footprint can be dodged and nothing can
+dodge the player either.
+
+**Two rules Mk II never states, either of which decides it:**
+
+- Does killing a hostile cancel its committed shot? Every armed class has
+  1 hull and every player weapon does ≥1 damage, so "yes" makes firing a
+  perfect defence *and* progress and the answer is always shoot. Into the
+  Breach escapes this because its enemies need two hits.
+- `enemyPhase` re-validates shots against `state.playerPos` and moves against
+  a `claimed` set. Commitment means it cannot, so either ghosts stack — the
+  bug `claimed` exists for — or committed ghosts do not happen.
+
+**Unmeasured, and cheap.** The engine already implements "an enemy aims at a
+hex you will be in, you have rounds to leave, and the overlay draws it
+honestly": `placeCharge`, `chargeBlastHexes`, `advanceCharges`, and
+`computeThreatHexes` folds live blasts into the threat map. The Demolitionist
+and Sapper are the two classes that do it and they are measured at 4 shots
+and 0 kills across 40 runs. Raising their density in `typePoolFor` and
+shortening the fuse tests the whole hypothesis with no engine change.
+
 ## TERRAIN — a plan, not yet built (2026-09-19)
 
 ### What is there now
