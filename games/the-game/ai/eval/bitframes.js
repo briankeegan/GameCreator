@@ -408,6 +408,73 @@
         return false;
     }
 
+    function allowsSwap(p) {
+        if (p.dontSwap || p.isGarbage) return false;
+        return p.state === 'normal' || p.state === 'swapping' ||
+               p.state === 'landing' || p.state === 'falling';
+    }
+
+    // The engine's canSwap. The rule that matters here: a panel cannot be
+    // pulled out from under a HOVERING one, which is exactly the situation a
+    // broken slab creates — so a plan made in that window has to ask.
+    function canSwap(st, row, col) {
+        if (row < 1 || row > st.height || col < 1 || col >= W) return false;
+        var left = st.panels[row][col], right = st.panels[row][col + 1];
+        if (left.color === 0 && right.color === 0) return false;
+        if (!allowsSwap(left) || !allowsSwap(right)) return false;
+        var above1 = null, above2 = null;
+        if (row < st.height) {
+            above1 = st.panels[row + 1][col];
+            above2 = st.panels[row + 1][col + 1];
+            if (above1.state === 'hovering' || above2.state === 'hovering') return false;
+        }
+        if (left.color === 0 || right.color === 0) {
+            if (above1 && above2 && above1.state === 'swapping' && above2.state === 'swapping' &&
+                (above1.color === 0 || above2.color === 0) &&
+                (above1.color !== 0 || above2.color !== 0)) return false;
+            if (row > 1) {
+                var b1 = st.panels[row - 1][col], b2 = st.panels[row - 1][col + 1];
+                if (b1.state === 'swapping' && b2.state === 'swapping' &&
+                    (b1.color === 0 || b2.color === 0) &&
+                    (b1.color !== 0 || b2.color !== 0)) return false;
+            }
+        }
+        return true;
+    }
+
+    function startSwap(p, fromLeft) {
+        var chaining = p.chaining;
+        clearFlags(p, false);
+        p.stateChanged = true;
+        p.state = 'swapping';
+        p.chaining = chaining;
+        p.timer = 4;
+        p.swapFromLeft = fromLeft;
+        p.fellFromGarbage = 0;
+    }
+
+    // A swap is not instant: both panels enter 'swapping' for four frames and
+    // only then settle or hover. A panel swapped over a hole cannot be swapped
+    // back, because it is already on its way down.
+    function doSwap(st, row, col) {
+        var panels = st.panels;
+        var left = panels[row][col], right = panels[row][col + 1];
+        startSwap(left, true);
+        startSwap(right, false);
+        switchPanels(st, left, right);
+        var tmp = left; left = right; right = tmp;
+        if (row !== 1) {
+            if (left.color !== 0 && (panels[row - 1][col].color === 0 ||
+                panels[row - 1][col].state === 'falling')) left.dontSwap = true;
+            if (right.color !== 0 && (panels[row - 1][col + 1].color === 0 ||
+                panels[row - 1][col + 1].state === 'falling')) right.dontSwap = true;
+        }
+        if (row !== st.height) {
+            if (left.color === 0 && panels[row + 1][col].color !== 0) left.dontSwap = true;
+            if (right.color === 0 && panels[row + 1][col + 1].color !== 0) right.dontSwap = true;
+        }
+    }
+
     // snapshot: { grid, blocks, motion, chaining } as a planner reads the board.
     // grid holds colours, -2 for garbage; motion[r][c] is the engine's own
     // { state, timer, ... } for a panel it still has in flight.
@@ -526,5 +593,5 @@
     }
 
     return { build: build, step: step, settle: settle, readGrid: readGrid,
-             readStates: readStates, anyBusy: anyBusy };
+             readStates: readStates, anyBusy: anyBusy, canSwap: canSwap, doSwap: doSwap };
 }));
