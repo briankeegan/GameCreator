@@ -30,7 +30,38 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function (bit, BF, lineup, travel) {
     'use strict';
 
-    var W = 6;
+    var W = 6, H = 12;
+
+    // HOW MUCH SLACK COUNTS AS NONE, IN ROWS, which is modes.js's own
+    // ESCAPE_RESERVE_ROWS and a measured number rather than one invented here.
+    //
+    // Frames were the wrong unit and the mistake is worth keeping written down. A
+    // row is 112 frames at this speed, so one row from death the bot has 112
+    // frames of room -- which beats the ~30 frames an escape costs to walk to, so
+    // a frames-against-walk-cost trigger reads "plenty of time" and stays in
+    // BUILD. Read off seed 101: the last five decisions before death were all
+    // BUILD at tallest 11, and DEFEND opened on the single frame it topped out,
+    // one decision before it died.
+    //
+    // Rows are the right unit because the danger is not the walk, it is having no
+    // workspace: a chain needs several rows to assemble in, and at tallest 11
+    // there is one.
+    var ESCAPE_RESERVE_ROWS = 2;
+
+    function tallestOf(pool) {
+        for (var i = 0; i < pool.length; i++) {
+            if (pool[i].kind !== 'hold') continue;
+            var st = bit.maskState(pool[i].board.grid, pool[i].board.blocks, W, H);
+            var t = 0;
+            for (var c = 1; c <= W; c++) {
+                var n = 0, o = st.occ[c];
+                while (o) { o &= o - 1; n++; }
+                if (n > t) t = n;
+            }
+            return t;
+        }
+        return 0;
+    }
 
     function G() { return (typeof window !== 'undefined' ? window : globalThis); }
     function PanelCpu() { return G().PanelCpu; }
@@ -135,8 +166,19 @@
         this._walk = null;
         this._lastSwap = null;
         this.decisions = 0;
+        // WHERE EVERY FRAME WENT. Not diagnostics bolted on -- the bot could not
+        // say what it did with a frame, so every question about its behaviour was
+        // answered by inference and three separate fixes landed in code paths that
+        // never ran. One counter per exit from update(), and they must sum to the
+        // frames played: a frame that is not in exactly one bucket is a frame
+        // nobody can account for.
+        //
+        // `frozen` is the same buckets restricted to frames with stop time
+        // running, because those are the frames that decide whether the bot lives.
+        this.spend = { gameOver: 0, walking: 0, cooling: 0, decided: 0 };
+        this.frozen = { walking: 0, cooling: 0, hold: 0, raise: 0, swap: 0 };
         this.counts = { refusedDeadly: 0, allDead: 0, byMode: {},
-                        refusedReturn: 0, defendByClock: 0,
+                        refusedReturn: 0, defendByClock: 0, refusedTooSlow: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
                         revealWindows: 0 };
     }
@@ -194,7 +236,24 @@
     // clears at or above the aim, there is something to cash and hold drops.
     BitBot.prototype.mode = function (info, pool, revealOpen) {
         var name = 'BUILD';
+        // DEFEND OPENS WHEN THE FLOOR ARRIVES BEFORE AN ESCAPE CAN BE REACHED,
+        // not on topped out alone.
+        //
+        // Topped out is too late: by then health is already draining. The
+        // condition that matters is the one modes.warned states -- the room left
+        // measured in frames against the frames to the nearest move that banks
+        // time -- and it is arithmetic, not a threshold written here.
+        //
+        // WHY THIS IS SAFE HERE AND WAS NOT IN modes.js. Opening FORCED on the
+        // clock made PuyoCpu worse (8-16-16) because FORCED narrows the pool to
+        // moves that bank time and PuyoCpu usually had none: over the last
+        // fifteen seconds of ten deaths, 84% of its decisions had no such move at
+        // all, so narrowing left it with nothing. BitBot is the opposite case,
+        // measured on one duel -- of 53 decisions taken with an EMPTY clock, 50
+        // had a payout of 30 to 66 frames on the board and it declined 45 of
+        // them. Narrowing to those moves is narrowing to something.
         if (info.toppedOut) name = 'DEFEND';
+        else if (H - tallestOf(pool) <= ESCAPE_RESERVE_ROWS) name = 'DEFEND';
         else {
             var goal = this.aim();
             for (var i = 0; i < pool.length; i++) {
@@ -342,6 +401,66 @@
         return plan.best && plan.best.swap ? plan : null;
     };
 
+    // The tallest column of any board, from the masks.
+    function tallestBoard(board) {
+        var st = bit.maskState(board.grid, board.blocks, W, board.height || H);
+        var t = 0;
+        for (var c = 1; c <= W; c++) {
+            var n = 0, o = st.occ[c];
+            while (o) { o &= o - 1; n++; }
+            if (n > t) t = n;
+        }
+        return t;
+    }
+
+    // HOW MANY FRAMES ARE LEFT BEFORE THIS BOARD IS DEAD.
+    //
+    // The engine drains health by one on every frame where it is topped out with
+    // no stop time (updateRise: `if (!riseLock && stopTime === 0)` then `if
+    // (isToppedOut()) this.health--`), and checkGameOver ends it at health 0. So:
+    //
+    //   topped out      stopTime + health      -- the freeze, then the drain
+    //   not topped out  stopTime + the rows still free, in frames
+    //
+    // Both terms are the engine's own numbers, so this is a measurement and not a
+    // budget invented here.
+    function framesToDeath(info, tallest, framesPerRow) {
+        var clock = info.stopTime || 0;
+        if (info.toppedOut) return clock + (info.health === undefined ? 0 : info.health);
+        return clock + Math.max(0, H - tallest) * (framesPerRow || 0);
+    }
+
+    // IS A REVEAL WINDOW OPEN, read straight off the live stack.
+    //
+    // Cheap on purpose: this is asked on EVERY frame, so it cannot afford the
+    // snapshot that bestInWindow needs. A slab's converted row carries
+    // fellFromGarbage and something is still in the air -- the same two
+    // conditions bitlineup's own `revealed` tests, against the engine's panels
+    // instead of a copy of them.
+    BitBot.prototype.windowOpen = function () {
+        var s = this.stack, flying = 0, converted = 0;
+        for (var r = 1; r <= s.height; r++) {
+            var row = s.panels[r];
+            if (!row) continue;
+            for (var c = 1; c <= s.width; c++) {
+                var p = row[c];
+                if (!p) continue;
+                if (p.state && p.state !== 'normal') flying++;
+                if (p.fellFromGarbage) converted++;
+                if (flying && converted) return true;
+            }
+        }
+        return false;
+    };
+
+    // IS ANYTHING MOVING. A cascade in progress changes the board without the
+    // bot doing anything, so those frames are not idle even when it holds.
+    BitBot.prototype.inFlight = function () {
+        var s = this.stack;
+        if (typeof s.hasActivePanels === 'function' && s.hasActivePanels()) return true;
+        return (s.shakeTime || 0) > 0;
+    };
+
     BitBot.prototype.decide = function () {
         var board = this._snapshot();
         var info = this.info(board);
@@ -354,9 +473,39 @@
         // THE MODE FILTERS, IT DOES NOT PICK. ATTACK and DEFEND drop hold:
         // there is something to cash, or idling is what kills us.
         var here = signature(board);
+        // ONLY OPTIONS IT CAN ACTUALLY FINISH IN THE TIME IT HAS LEFT.
+        //
+        // Every candidate is already priced in frames -- travel.cost to the cell
+        // plus the swap -- and the frames before this board is dead are arithmetic
+        // off the engine's own health drain and rise rate. A move costing more
+        // than that cannot be completed before the game ends, so it is not a move,
+        // however well it scores. Measured on seed 101: the bot spent a 29-frame
+        // freeze walking toward something 60 frames away and died holding the
+        // cursor mid-walk.
+        //
+        // It almost never bites -- a walk is at most 64 frames and a healthy board
+        // has hundreds -- which is the point: it bites exactly in the spiral, and
+        // nowhere else.
+        var deadline = framesToDeath(info, tallestOf(pool), info.framesPerRow);
         var allowed = [];
         for (var i = 0; i < pool.length; i++) {
-            if (pool[i].kind === 'hold' && mode.name !== 'BUILD') continue;
+            // HOLD IS NOT AN OPTION WHILE THE CLOCK IS BURNING.
+            //
+            // A freeze is a fixed number of frames in which the floor is held and
+            // the board can be changed for free. Holding through one spends a
+            // resource with a deadline and gets nothing for it. Measured after the
+            // reaction was lifted for freezes: 339 decisions on seed 101 and 526
+            // frozen frames on which the board did not change at all, because
+            // BUILD kept hold in the pool and holding kept winning.
+            //
+            // Only on a SETTLED board. With panels in the air the right move is
+            // often to let the cascade land, and that is not idling -- the board
+            // is changing without the bot touching it.
+            var wasting = info.stopTime > 0 && !this.inFlight();
+            if (pool[i].kind === 'hold' && (mode.name !== 'BUILD' || wasting)) continue;
+            if (pool[i].kind === 'swap' && (pool[i].moveFrames || 0) > deadline) {
+                this.counts.refusedTooSlow++; continue;
+            }
             // A MOVE THAT PUTS THE BOARD BACK WHERE IT WAS IS NOT A MOVE.
             //
             // The scoring is stateless, so if board X's best swap leads to Y and
@@ -395,15 +544,48 @@
         // If nothing banks anything the ordinary ranking stands, because then no
         // move here is an escape and there is nothing for this to choose between.
         // Borrowed from modes.js, whose FORCED does exactly this.
-        var banking = [];
+        // SURVIVAL IS ONE NUMBER, AND IT IS THE ONE TO MAXIMISE.
+        //
+        // Every patch before this was a symptom. The quantity that actually
+        // matters is how long the position you end up in can live, counting what
+        // it cost to get there:
+        //
+        //     clockAfter = max( max(0, S - cost), P )
+        //     value      = cost + framesToDeath(tallestAfter, clockAfter)
+        //
+        // S is the clock now, cost the frames to play the move, P what its clear
+        // pays. The inner max is awardStopTime being a MAX, applied to the clock
+        // as it will be WHEN THE MOVE LANDS rather than as it is now -- the clock
+        // drains while the cursor walks.
+        //
+        // This subsumes the lot. A big payout too far away scores badly because
+        // max(0, S - cost) has gone to zero by the time it arrives. A clear that
+        // pays NOTHING but lowers the stack still scores, because tallestAfter
+        // falls and rows free are frames. Ranking by the payout alone could see
+        // neither, which is why the bot spent a 29-frame freeze walking 60 frames
+        // and why digging 23 garbage cells was never worth anything to it.
+        //
+        // Only in DEFEND. Everywhere else the weights decide, which is the plan:
+        // the modes change which shapes it prefers, and survival is the one place
+        // that preference is overruled.
+        var survival = null;
         if (mode.name === 'DEFEND') {
+            survival = [];
+            var S = info.stopTime || 0;
             for (i = 0; i < allowed.length; i++) {
-                var rr = allowed[i].resolved;
-                if (!rr || !rr.total) continue;
-                var ch = rr.chain >= 2;
-                var pays = BF.stopTimeOf(PanelEngine(), ch, ch ? 0 : rr.total,
-                                         ch ? rr.chain : 0, !!info.toppedOut);
-                if (pays > 0) banking.push({ cand: allowed[i], pays: pays });
+                var cd = allowed[i], cost = cd.moveFrames || 0;
+                var rr = cd.resolved, P = 0;
+                if (rr && rr.total > 0) {
+                    var ch = rr.chain >= 2;
+                    P = BF.stopTimeOf(PanelEngine(), ch, ch ? 0 : rr.total,
+                                      ch ? rr.chain : 0, !!info.toppedOut);
+                }
+                var clockAfter = Math.max(Math.max(0, S - cost), P);
+                var tAfter = tallestBoard(cd.board);
+                var after = { stopTime: clockAfter, health: info.health,
+                              toppedOut: tAfter >= (cd.board.height || H) };
+                survival.push({ cand: cd,
+                                value: cost + framesToDeath(after, tAfter, info.framesPerRow) });
             }
         }
 
@@ -419,11 +601,9 @@
             // In DEFEND, a move that banks time is ranked by the time it banks
             // and beats every move that banks none.
             var s;
-            if (banking.length) {
-                var pay = 0;
-                for (var q = 0; q < banking.length; q++) if (banking[q].cand === cand) pay = banking[q].pays;
-                if (!pay) continue;                       // banks nothing: not an escape
-                s = pay;
+            if (survival) {
+                s = 0;
+                for (var q = 0; q < survival.length; q++) if (survival[q].cand === cand) s = survival[q].value;
                 this.counts.defendByClock++;
             } else {
                 s = this.score(cand.board, cand.moveFrames, cand.resolved, info);
@@ -446,7 +626,15 @@
         // against the settled candidates, because the two are not priced on the
         // same scale — so it is taken when the ordinary decision was to wait,
         // which is the case the window exists for.
-        if (rev && best && best.cand.kind === 'hold') {
+        // TAKEN WHENEVER ONE EXISTS, because bestInWindow has ALREADY established
+        // that it beats standing still -- it scores every reachable swap against
+        // doing nothing and returns a swap only when one wins. Requiring the
+        // settled decision to be `hold` too made this unreachable: ATTACK and
+        // DEFEND drop hold from the pool, so the branch needed a mode that had
+        // already been ruled out. Measured -- 4 windows over 9,510 frames of
+        // duelling and 0 lineup swaps ever played, so the module the window
+        // exists for had never once run in a game.
+        if (rev && rev.best && rev.best.swap) {
             this.counts.revealSwaps++;
             return { kind: 'swap', move: rev.best.swap, mode: mode, alive: alive, reveal: true };
         }
@@ -457,7 +645,8 @@
     // One call per frame from the match loop, the same shape PuyoCpu has.
     BitBot.prototype.update = function () {
         var stack = this.stack;
-        if (stack.gameOver) return;
+        if (stack.gameOver) { this.spend.gameOver++; return; }
+        var froz = (stack.stopTime || 0) > 0;
         var input = {};
 
         // ONE RAISE IS ONE ROW. The engine re-latches manualRaise on every frame
@@ -471,12 +660,44 @@
         }
 
         // A committed move owns the frame — the cursor has to get there.
-        if (this._walk) { this._driveWalk(input); stack.setInput(input); return; }
+        if (this._walk) {
+            this.spend.walking++; if (froz) this.frozen.walking++;
+            this._driveWalk(input); stack.setInput(input); return;
+        }
         stack.setInput(input);
-        if (this.cooldown > 0) { this.cooldown--; return; }
+        // THE COOLDOWN DOES NOT GET TO SLEEP THROUGH A REVEAL WINDOW. The window
+        // is 21 frames and the bot decides every 12, so on cooldown it misses
+        // most of them -- and a window missed is information that arrived and went
+        // unused, which is the whole thing bitlineup was built for. The reaction
+        // still applies everywhere else: this does not make the bot faster in
+        // general, it makes it awake for the one situation that is over before the
+        // next decision would have come round.
+        // FROZEN TIME IS FREE TIME, AND IT WAS BEING THROWN AWAY.
+        //
+        // Read off seed 101, the last 30 frames of a duel: topped out, 29 frames
+        // of stop time on the clock, and the board IDENTICAL on every one of
+        // them -- 31 panels and 23 garbage cells, unchanged -- until the clock hit
+        // 0 and health with it. The one thing stop time is FOR is acting while
+        // the floor is held, and the bot sat through all of it.
+        //
+        // The arithmetic: at reaction 12, a 29-frame freeze buys two decisions,
+        // and a walk can cost 60. So the reaction has to lift while the clock is
+        // running or while topped out -- the two states where an idle frame is a
+        // frame of life spent for nothing. Everywhere else it still applies.
+        var urgent = (stack.stopTime || 0) > 0 ||
+                     (typeof stack.isToppedOut === 'function' && stack.isToppedOut());
+        if (this.cooldown > 0) {
+            if (!urgent && !(this.reveal && this.windowOpen())) {
+                this.spend.cooling++; if (froz) this.frozen.cooling++;
+                this.cooldown--; return;
+            }
+            this.cooldown = 0;
+        }
 
+        this.spend.decided++;
         var d = this.decide();
         if (d.kind === 'raise') {
+            if (froz) this.frozen.raise++;
             this.counts.raises++;
             this.raiseFrames = 20;
             this._raiseStarted = false;
@@ -484,11 +705,13 @@
             return;
         }
         if (d.kind === 'hold' || !d.move) {
+            if (froz) this.frozen.hold++;
             this.counts.holds++;
             this.cooldown = this.reaction;
             return;
         }
         this.counts.swaps++;
+        if (froz) this.frozen.swap++;
         this._beginWalk(d.move[0], d.move[1], this.reaction);
         this._driveWalk(input);
         stack.setInput(input);

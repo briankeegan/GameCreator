@@ -405,6 +405,91 @@ break tests passed with the filters switched off**. A check that only fires whil
 the default weights are bad retires itself the moment the bot gets better. The
 defect vector is pinned in the test as `LOOPER` now, and the checks sweep that.
 
+## Every frame is accounted for
+
+The bot could not say what it did with a frame, so every question about its
+behaviour was answered by inference — and three separate fixes landed in code
+paths that never ran. `spend` now has one counter per exit from `update()` and
+they must sum to the frames played; `frozen` is the same buckets restricted to
+frames with the clock running. A frame in no bucket is a frame nobody can account
+for.
+
+It immediately contradicted two of my own readings. Frozen frames go mostly to
+WALKING, not idling (287 of 423 on seed 101), and the `hold 195` on seed 103
+survives the hold-drop because during a freeze a cascade is usually still
+running — the board is changing without the bot touching it, which is not waste.
+
+## DEFEND was opening one decision before death
+
+Measured on seed 101, the last six decisions:
+
+```
+tallest 11   room 112 frames   stop 0   BUILD
+tallest 11   room 112 frames   stop 0   BUILD
+tallest 11   room 112 frames   stop 0   BUILD
+tallest 11   room 112 frames   stop 0   BUILD
+tallest 11   room 112 frames   stop 0   BUILD
+tallest 12   room   0 frames   stop 0   DEFEND   <- too late
+```
+
+`framesPerRow` is **112**. So one row from death the bot has 112 frames of room,
+and a trigger comparing that against the ~30 frames an escape costs to walk to
+reads "plenty of time". FRAMES WERE THE WRONG UNIT. Rows are the right one,
+because the danger is not the walk — it is having no workspace, and a chain needs
+several rows to assemble in. `ESCAPE_RESERVE_ROWS = 2`, which is `modes.js`'s own
+measured number rather than one invented here.
+
+With that, DEFEND actually opens and the survival objective actually runs:
+**1,758 to 2,339 average frames** over six one-on-one duels, seed 106 reaching
+4,007.
+
+## Survival is one number
+
+Every fix before this was a symptom. The quantity to maximise is how long the
+position you end up in can live, counting what it cost to get there:
+
+```
+clockAfter = max( max(0, S - cost), P )
+value      = cost + framesToDeath(tallestAfter, clockAfter)
+```
+
+`framesToDeath` is `stopTime + health` topped out and `stopTime + rowsFree x
+framesPerRow` otherwise, both the engine's own numbers. The inner `max` is
+`awardStopTime` applied to the clock AS IT WILL BE WHEN THE MOVE LANDS, because it
+drains while the cursor walks.
+
+This subsumes the patches. A big payout too far away scores badly because
+`max(0, S - cost)` has gone to zero by the time it arrives. A clear that pays
+NOTHING but lowers the stack still scores, because `tallestAfter` falls and rows
+free are frames — which is why digging 23 garbage cells was previously worth
+nothing to it. Only in DEFEND; everywhere else the weights decide.
+
+### The clock fixes, and one that was wrong twice
+
+`awardStopTime` is a MAX, so `stopEarned` is the GAIN, not the payout — and the
+gain is against the clock when the move LANDS, `max(0, left - cost)`, not the
+clock now. Subtracting `left` flat was the second wrong version: it suppressed
+every big clear while the clock was high, including the ones whose walk empties
+it. `stopReachable`'s budget was the stop clock, which is 0 off a freeze, so the
+feature read 0 for every candidate and cancelled out of the ranking on most frames
+of the game.
+
+## A check must provoke its own defect, deterministically
+
+The no-return check compared the repeat rate of a real game with the filter on
+against one with it off. It went vacuous **twice** — once when STARTER's weights
+improved and once when DEFEND changed — because whether a game loops depends on
+the whole decision path, and that path keeps moving. It is constructed now: the
+bot is told it has just been at a position and the candidate returning it there
+must be refused, with the flag off proving the refusal came from the filter.
+
+The end-to-end version is kept as a BOUND, not zero, and the gap is the finding:
+8 of 387 decisions still land on a board seen within the last three. The filter
+refuses a PREDICTED return, the prediction comes from `LogicalBoard.resolve`, the
+board that arrives comes from the engine, and the two part company when a row
+rises mid-walk. That number tightens when the candidate path stops predicting with
+the old simulation.
+
 ## Open
 
 - Survival is short: ~690 frames a duel in self-play, against the ~1,100
