@@ -721,7 +721,12 @@
   //      seed 700 frame 1454, (4,5) proven for 240 frames, dead 22 frames
   //      later; played at the bot's real pace the line died at +36. A step now
   //      runs its whole reaction.
-  var RULES = 38;
+  //   39. THE LONG WAIT GOES TO THE HORIZON. It stopped at the next row, so an
+  //      easy board was never proven in one resolve and every decision fell
+  //      through to the full search. Audited against the real engine (every
+  //      proven move played, its line replayed): seed 700, 900 frames, 40
+  //      proven moves, 38 held, 2 broken by garbage sent afterwards, none false.
+  var RULES = 39;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

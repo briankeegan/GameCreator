@@ -1275,7 +1275,8 @@
       r = this._resolveCandidate(t, m, w, false, this.reaction, true);
       used = w + ((r && r.elapsed) || 0);
     } else if (long) {
-      r = this._resolveCandidate(t, null, 0, true, Math.max(1, this.SURVIVE_FRAMES - node.t));
+      // To the horizon, rows and all: an easy board is proven in one resolve.
+      r = this._resolveCandidate(t, null, 0, false, Math.max(1, this.SURVIVE_FRAMES - node.t), true);
       used = (r && r.elapsed) || 0;
     } else {
       r = this._resolveCandidate(t, null, this.reaction, false, 1);
