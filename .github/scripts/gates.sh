@@ -740,6 +740,19 @@ gate_bitswap() {
   node games/the-game/ai/eval/bitswap.test.js
 }
 
+# THE OPTIONS, AS FEATURES, FOR THE BOT BITBOT.md PLANS. A quantity identical
+# across every candidate in a decision cannot change which move is played, so the
+# clock and the incoming queue are INFO and are not here. The gate checks the
+# stop-time arithmetic against Stack.awardStopTime itself, fails a feature that
+# takes one value on every board, fails a clamp, and fails a pair at Pearson 0.9 —
+# collinear terms split their weight arbitrarily and the result cannot be read.
+# chain5plus is judged on the CHIP CORPUS, because captured boards are positions a
+# bot that does not build chains played, and judging a chain feature there is
+# circular.
+gate_bitfeatures() {
+  node games/the-game/ai/eval/bitfeatures.test.js
+}
+
 gate_gates_reject_defects() {
   bash .github/scripts/gates.test.sh
 }
@@ -837,6 +850,7 @@ GATES=(
   "lining up with colours as they appear:gate_bitlineup:games/the-game/ai/"
   "every option listed is real and priced:gate_bitoptions:games/the-game/ai/"
   "a swap is answered without applying it:gate_bitswap:games/the-game/ai/"
+  "the options are features that vary:gate_bitfeatures:games/the-game/ai/"
   "the simulation resolves like the game:gate_resolve_fidelity:games/the-game/ai/"
   "that fidelity check fires:gate_resolve_fidelity_fires:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"
