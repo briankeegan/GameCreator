@@ -375,7 +375,9 @@
     // takeDeliverableGarbage releases it; the scratch has no opponent, so the
     // same pieces are handed over at the same frames. idleSkip stands down
     // while any are pending -- it would jump straight past an arrival.
-    function settle(stack, budget, live, untilRise, arrivals) {
+    // `exact`: run exactly `budget` frames -- a step of a line that the bot
+    // cannot end early, because it cannot act again before its reaction is up.
+    function settle(stack, budget, live, untilRise, arrivals, exact) {
         var chain = 0, comboSizes = [], garbage = [], cleared = 0;
         var cap = budget || 900;
         var quiet = false, wasStill = false;
@@ -441,7 +443,7 @@
                     !(stack.hasFallingGarbage && stack.hasFallingGarbage())) break;
                 continue;
             }
-            if (f >= 3 && still) break;
+            if (!exact && f >= 3 && still) break;
         }
         // resolve()'s chainLength counts match-and-settle ROUNDS: a plain combo
         // is 1 where the engine's chain counter is 0. Reported in resolve()'s

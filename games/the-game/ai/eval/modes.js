@@ -715,7 +715,13 @@
   //      tried first, then a beam kept by frames held, garbage and height --
   //      no weights. On seed 700 frame 1867 it proves (3,3), (3,4), (4,2)
   //      and (4,4); the old check proved nothing.
-  var RULES = 37;
+  //   38. A LINE MOVES NO FASTER THAN THE BOT. A step of a survival line ran
+  //      "up to" one reaction and ended as soon as the board went still, so a
+  //      proven line could make moves five frames apart that the bot cannot:
+  //      seed 700 frame 1454, (4,5) proven for 240 frames, dead 22 frames
+  //      later; played at the bot's real pace the line died at +36. A step now
+  //      runs its whole reaction.
+  var RULES = 38;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

@@ -501,7 +501,7 @@
     return out;
   };
 
-  PuyoCpu.prototype._resolveCandidate = function (board, move, delay, untilRise, cap) {
+  PuyoCpu.prototype._resolveCandidate = function (board, move, delay, untilRise, cap, exact) {
     if (!this.engine) {
       // LogicalBoard cannot be aged cheaply, so this path keeps the old
       // behaviour: the caller has already applied the swap.
@@ -686,7 +686,7 @@
     st.manualRaise = false;
     st.health = st.maxHealth;
     st.gameOver = false;
-    var out = engineBoard.settle(st, cap || (untilRise ? 1800 : 900), true, !!untilRise, settleArrivals);
+    var out = engineBoard.settle(st, cap || (untilRise ? 1800 : 900), true, !!untilRise, settleArrivals, !!exact);
     if (refused) out.refused = true;
     if (diedInWalk) out.diedInWalk = true;
     if (rowsInWalk) out.rose = true;
@@ -1271,7 +1271,8 @@
     this._carry = node.carry || null;
     if (m) {
       var w = node.pos ? travel.cost(node.pos[0], node.pos[1], m[0], m[1]) : 0;
-      r = this._resolveCandidate(t, m, w, false, this.reaction);
+      // Walk, swap, and the whole reaction before the bot can act again.
+      r = this._resolveCandidate(t, m, w, false, this.reaction, true);
       used = w + ((r && r.elapsed) || 0);
     } else if (long) {
       r = this._resolveCandidate(t, null, 0, true, Math.max(1, this.SURVIVE_FRAMES - node.t));
@@ -1308,8 +1309,8 @@
         ? { b: this._settledOf(cd).clone(), carry: cd.resolved.carry || null, pos: root.pos, t: cd.resolved.elapsed || 0 }
         : this._lineStep(root, cd.move || null, false);
       if (!c) { verdict[i] = 'dies'; continue; }
-      if (c.t >= this.SURVIVE_FRAMES) { verdict[i] = 'proven'; continue; }
-      c.tag = i; level.push(c); open++;
+      if (c.t >= this.SURVIVE_FRAMES) { verdict[i] = 'proven'; if (this._proofs) { c.m = cd.move || null; this._proofs[i] = c; } continue; }
+      c.tag = i; c.m = cd.move || null; c.first = true; level.push(c); open++;
     }
     // The one-ply bot exists to be cheap: the same search, a smaller budget.
     var budget = (this.depth || 1) > 1 ? this.SURVIVE_SEARCH_BUDGET : this.SURVIVE_SEARCH_BUDGET_CHEAP;
@@ -1328,8 +1329,8 @@
           budget--;
           c = moves[j] === 'long' ? this._lineStep(n, null, true) : this._lineStep(n, moves[j], false);
           if (!c) continue;
-          c.tag = n.tag;
-          if (c.t >= this.SURVIVE_FRAMES) { verdict[n.tag] = 'proven'; break; }
+          c.tag = n.tag; c.prev = n; c.m = moves[j];
+          if (c.t >= this.SURVIVE_FRAMES) { verdict[n.tag] = 'proven'; if (this._proofs) this._proofs[n.tag] = c; break; }
           var h = n.tag + '|' + JSON.stringify(c.b.grid) + '|' + this._heldFor(c.carry) + '|' + c.pos;
           if (seen[h]) continue;
           seen[h] = 1;
