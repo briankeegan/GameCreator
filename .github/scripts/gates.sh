@@ -676,6 +676,38 @@ gate_bitmatch() {
   node games/the-game/ai/eval/bitmatch.test.js
 }
 
+# A PLAN THAT CLAIMS A CHAIN HAS TO PLAY ONE. bestSetup names a swap that clears
+# nothing and the swap that cashes it in; both are played onto a real
+# PanelEngine.Stack in order, and the engine's own chain counter and cleared
+# count have to be the numbers claimed. The second ply also has to earn its
+# place: a planner that never finds what playing now would miss is one nobody
+# needs, so a sweep that finds nothing deeper fails.
+gate_bitplan() {
+  node games/the-game/ai/eval/bitplan.test.js
+}
+
+# THE ENGINE DECIDES WHILE PANELS ARE IN THE AIR, AND ONLY THEN. A board read
+# while a broken slab's converted row is still hovering records where those
+# panels sit but not that they have yet to land, and the arithmetic matches them
+# a beat early. So those positions go to a real Stack, and the move chosen has to
+# be the move the engine itself would choose. A settled board must never reach
+# for the engine — counted, because a decision that quietly did would still be
+# right and would blow the budget.
+gate_bitdecide() {
+  node games/the-game/ai/eval/bitdecide.test.js
+}
+
+# THE CLOCK KEEPS TIME WITH THE ENGINE, FRAME BY FRAME. bitframes.js carries the
+# per-panel state and timer a still picture of the board leaves out, which is a
+# THIRD implementation of rules the engine and LogicalBoard already have — safe
+# only because this compares every panel's colour, state and timer after every
+# frame against a real Stack, so the frame they differ on is the frame that
+# fails. A run that would have to invent a colour a broken slab has not drawn yet
+# stops and says so instead.
+gate_bitframes() {
+  node games/the-game/ai/eval/bitframes.test.js
+}
+
 gate_gates_reject_defects() {
   bash .github/scripts/gates.test.sh
 }
@@ -767,6 +799,9 @@ GATES=(
   "a garbage break stops the resolve:gate_garbage_rules:games/the-game/ai/"
   "the chip matcher enforces every constraint:gate_chip_matcher_constraints:games/the-game/ai/"
   "the bit arithmetic answers what the simulation answers:gate_bitmatch:games/the-game/ai/"
+  "a plan that claims a chain plays one:gate_bitplan:games/the-game/ai/"
+  "the engine decides while panels are in the air:gate_bitdecide:games/the-game/ai/"
+  "the clock keeps frame-for-frame time with the engine:gate_bitframes:games/the-game/ai/"
   "the simulation resolves like the game:gate_resolve_fidelity:games/the-game/ai/"
   "that fidelity check fires:gate_resolve_fidelity_fires:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"
