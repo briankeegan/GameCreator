@@ -128,9 +128,56 @@
                  unknown: unknown, doNothing: doNothing, converted: state.converted };
     }
 
+    // RE-MEASURE EVERY TIME MORE COLOURS ARRIVE.
+    //
+    // A match converts exactly ONE ROW of the slab it touches —
+    // matchGarbagePanels drops each touched panel's offset and only the row
+    // reaching -1 becomes panels. So colours arrive one instalment per match
+    // that touches garbage, and a chain that reaches back into the same slab
+    // reveals another row. Each instalment is information the last plan did not
+    // have, so the window is measured again and the plan redone; nothing is
+    // carried over from the previous look.
+    //
+    // This is a driver, not a decision: `advance` steps the world one frame and
+    // `read` hands back the current snapshot, so the same loop runs against a
+    // real Stack or against bitframes. It returns what it planned and when.
+    //
+    // ON THE BOARDS MEASURED IT FIRES ONCE. Every captured position with a slab
+    // break converts a single row and never reaches back, so re-planning has
+    // nothing extra to use there and the result matches planning once. It is
+    // written this way because arriving information should be used when it
+    // arrives, not because a gain has been demonstrated.
+    function planAsTheyAppear(advance, read, frames, H, cursorOf, legalSwapsOf, budget) {
+        var seen = 0, plans = [], pending = null, limit = budget || 900;
+        for (var f = 0; f < limit; f++) {
+            var snapshot = read();
+            var state = api.revealed(snapshot, H);
+            if (state.converted > seen) {
+                seen = state.converted;
+                if (state.flying > 0) {
+                    var plan = api.bestInWindow(snapshot, frames, H, cursorOf(), legalSwapsOf());
+                    if (plan && plan.best.swap) {
+                        pending = { swap: plan.best.swap, at: f + plan.best.cost };
+                        plans.push({ reveal: plans.length + 1, frame: f, swap: plan.best.swap,
+                                     cost: plan.best.cost, window: plan.window,
+                                     chain: plan.best.chain, total: plan.best.total });
+                    }
+                }
+            }
+            if (pending && f >= pending.at) {
+                pending.played = advance(pending.swap) !== false;
+                pending = null;
+                continue;
+            }
+            if (advance(null) === 'done') break;
+        }
+        return { plans: plans, reveals: plans.length };
+    }
+
     // Calls go through this object so a test can replace one step with a
     // broken one and prove the check notices.
     var api = { bestInWindow: bestInWindow, revealed: revealed,
-                windowFrames: windowFrames, play: play };
+                windowFrames: windowFrames, play: play,
+                planAsTheyAppear: planAsTheyAppear };
     return api;
 }));

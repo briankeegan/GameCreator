@@ -227,5 +227,77 @@ if (!starved) {
     process.exit(1);
 }
 
+// --------------------------------------------------------------------------
+// IT RE-MEASURES ON EVERY INSTALMENT, NOT JUST THE FIRST.
+//
+// A match converts one row of the slab it touches, so colours arrive one
+// instalment per match that reaches garbage. Every captured position with a
+// break converts a single row and never reaches back into it, so a real board
+// cannot exercise a second instalment — that is measured below and stated, not
+// assumed. The loop is therefore driven against a scripted sequence of reveals,
+// which is the only way to show it looks again rather than once.
+var reveals = 0;
+for (var ri = 0; ri < src.boards.length; ri++) {
+    var rb = boardFromString(src.boards[ri]);
+    if (!Object.keys(rb.blocks).length) continue;
+    var rbase = new LogicalBoard(W, H, 6, rb.grid, rb.blocks);
+    var rsw = rbase.legalSwaps();
+    for (var rs = 0; rs < rsw.length; rs++) {
+        var rp = rbase.clone();
+        rp.swap(rsw[rs][0], rsw[rs][1]);
+        if (bit.resolveBits(rp.grid, rp.blocks, W, H).scope !== 'garbage-broke') continue;
+        var rstack = EB.scratch(10);
+        EB.paint(rstack, rp.grid, H, W, paintBlocks(rb.blocks));
+        var seenConv = 0, count = 0;
+        for (var rf = 0; rf < 900; rf++) {
+            rstack.run();
+            var cv = 0, cr, cc2, cp;
+            for (cr = 1; cr <= H; cr++) for (cc2 = 1; cc2 <= W; cc2++) {
+                cp = rstack.panels[cr][cc2];
+                if (cp && !cp.isGarbage && cp.color && cp.fellFromGarbage) cv++;
+            }
+            if (cv > seenConv) { seenConv = cv; count++; }
+        }
+        if (count > reveals) reveals = count;
+        break;
+    }
+    if (ri > 400) break;
+}
+console.log('  most instalments seen on a real board: ' + reveals +
+            (reveals < 2 ? '   (so a second one cannot be shown from play)' : ''));
+
+// The loop, driven against a scripted world: two instalments, five frames apart.
+var script = [
+    { converted: 0, flying: 1 },
+    { converted: 6, flying: 6 },   // first row's colours land
+    { converted: 6, flying: 6 },
+    { converted: 12, flying: 6 }   // and later a second row's
+];
+var at = 0, asked = [];
+var fakeRevealed = lineup.revealed, fakeBest = lineup.bestInWindow;
+lineup.revealed = function () {
+    var s2 = script[Math.min(at, script.length - 1)];
+    return { flying: s2.flying, converted: s2.converted, open: s2.flying > 0 && s2.converted > 0 };
+};
+lineup.bestInWindow = function () {
+    asked.push(at);
+    return { best: { swap: [1, 1], cost: 0, chain: 2, total: 3 }, window: 10 };
+};
+lineup.planAsTheyAppear(
+    function () { at++; return at >= script.length ? 'done' : true; },
+    function () { return { motion: [] }; },
+    { HOVER: 6 }, H,
+    function () { return [1, 1]; },
+    function () { return [[1, 1]]; },
+    10
+);
+lineup.revealed = fakeRevealed;
+lineup.bestInWindow = fakeBest;
+console.log('  the loop re-planned on ' + asked.length + ' of 2 instalments');
+if (asked.length !== 2) {
+    console.error('FAIL the loop did not plan again when more colours arrived: ' + JSON.stringify(asked));
+    process.exit(1);
+}
+
 console.log('bitlineup: ' + R.verified + ' plans made from colours that had just appeared, ' +
             'played on the engine exactly, ' + R.improved + ' of them deeper than standing still');
