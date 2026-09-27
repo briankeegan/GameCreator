@@ -40,7 +40,7 @@ Info, read off the engine, shared by every candidate:
 
 Info picks the mode and gates the pool. It is never weighted.
 
-## The features — 18
+## The features — 20
 
 Measured on the board each candidate LEAVES.
 
@@ -187,10 +187,89 @@ costs attaches to the candidate, as `moveFrames`.
 - the bot: every chosen move played on a real `PanelEngine.Stack`
 - the death rule: a sweep must contain candidates it refused, or the rule is untested
 
+## DEFEND has no clock, and that is measured
+
+The open question was where DEFEND's clock threshold sits. It does not sit
+anywhere: `modes.forced` opens on `toppedOut` alone and deliberately not on the
+clock, because opening it on the clock was tried — FORCED went from 0.8% of
+decisions to 23.3% and the bot **lost 8-16-16 to the same weights without it**.
+An emergency DISCARDS the build pool, and doing that on a quarter of all
+decisions throws away the trained policy.
+
+So the clock belongs in what is PREFERRED, not in what is ALLOWED. Here that is
+`stopReachable`, which is a weight. DEFEND is `toppedOut`.
+
+## ATTACK is derived from the aim, not from a constant
+
+ATTACK opens when something in the pool clears at or above the aim, and the aim
+is read off the weights — the chain size and combo size the vector scores
+highest. Nothing in the bot names a bar.
+
+## What the first round measured
+
+`bitbot_round.js` runs the face-off the PBT trainer runs each leg, on these
+features: every island duels every other on the same seeds, garbage crosses, the
+fitness is who died.
+
+**The machinery works.** A mirror duel draws, so two instances on identical
+boards never diverge. Chosen swaps are legal on the board they were chosen from
+and reach the engine (107 of them over three games). The pool is real: over 39
+decisions it offered 175 clearing candidates, the best of them a **6-chain**.
+
+**`STARTER` hoards, and the reason is structural.** It took 0 of those 175
+clears, scored 0 and sent nothing. Eight of the twenty features count WAYS TO
+CLEAR, and a clear necessarily destroys ways — so with positive weights on all
+eight, potential is worth up to ~240 while the only feature that pays for
+realising it, `stopEarned`, caps at 50. The vector is a guess and this is what
+guesses do; it is recorded because the same trap is available to the trainer.
+
+In a duel it does attack (24 sent, 5 chains, tied first of six islands), which
+is the difference garbage crossing makes. Six islands over 30 duels, all decided
+by death, none reaching the ceiling.
+
+**Same depth, much cheaper.** BitBot is NOT searching deeper than the shipped
+bot: both are two plies. `bitoptions` at depth 2 is a setup that clears nothing
+followed by the swap that cashes it, and the shipped weights were fitted at
+`GC_DEPTH=2`. What differs is what a ply costs, measured on one board, 360
+frames, seed 101:
+
+| | per decision |
+|---|---|
+| BitBot, depth 2, bit arithmetic | **160 ms** |
+| PuyoCpu, depth 2, LogicalBoard | 750 ms |
+| PuyoCpu, depth 2, `engine` — the shipped config | 5,012 ms |
+| PuyoCpu, depth 1, LogicalBoard | 58 ms |
+
+So 4.7× against the same depth on LogicalBoard, and 31× against the
+configuration the shipped weights were actually fitted under, which pays a real
+`Stack` per candidate. The extra depth that buys is HEADROOM, not something
+spent yet.
+
+### Against the shipped bot
+
+`STARTER`, untrained and hand-set, against `ai/trained-weights.js` at depth 2
+`rise` `raise` `engine` `modes`, seeds 101-106:
+
+| | |
+|---|---|
+| duels | 3W - 3L - 0D |
+| garbage sent | 84 vs 88 |
+| frames a duel | 1,063 |
+
+**SIX DUELS DECIDE NOTHING.** One run per condition measures nothing and the
+seed-to-seed noise floor swallows a gap this size, so the number to take from
+this is not "level with the shipped bot" — it is that an untrained guess is not
+obviously worse, which says the features are wired to something real. A verdict
+needs the island round with a trained population behind it.
+
 ## Open
 
-- Where DEFEND's clock threshold sits. It should come out of `reArm` arithmetic —
-  the clock against the frames to the nearest earning option — rather than a
-  constant, but that is unmeasured
+- Survival is short: ~690 frames a duel in self-play, against the ~1,100
+  `versus.js` records for PuyoCpu. Whether that is the vector or the pool is not
+  yet separated
+- Nothing is trained. The round measures whether the machinery can be searched,
+  not how well it plays
+- DEFEND was entered once in three games, so the mode is reached but barely
+  exercised; the gate asserts BUILD and ATTACK only
 - Whether ATTACK should drop hold as hard as the old bot does. Measured there as
   ~73% of champions aiming at the floor, which reads as "sell everything"
