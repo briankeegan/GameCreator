@@ -36,17 +36,35 @@
     function PanelCpu() { return G().PanelCpu; }
     function PanelEngine() { return G().PanelEngine; }
 
-    // A STARTER VECTOR, HAND-SET AND UNMEASURED. It exists so the bot can be run
-    // at all before anything is trained; every number here is a guess and none
-    // of them has beaten anything. Nothing should be concluded from a result
-    // this produces beyond "it plays and does not crash".
+    // A STARTER VECTOR. Still not trained -- it is a hand-set guess with ONE
+    // number group measured -- so nothing about how well the bot plays should be
+    // read off a result it produces.
+    //
+    // WHY THE POTENTIAL WEIGHTS ARE HALF WHAT THEY WERE. The first guess made
+    // the bot refuse to clear at all: it found a 6-chain, scored it +1, and
+    // scored RAISING +54, because it was paid +45 for HAVING a big chain
+    // available against +34 for playing one. On seeds 701-704 capped at 4,000
+    // frames, halving this group and changing nothing else:
+    //
+    //   as first guessed   2,380 frames   57 matches   (one seed cleared nothing)
+    //   potential x0.5     4,000 frames  133 matches   (died on no seed)
+    //   potential x0.25    3,627 frames  104 matches
+    //   stopEarned x5      4,000 frames  119 matches
+    //
+    // IT IS A BALANCE, NOT A STRUCTURE. An earlier reading of this blamed the
+    // features for measuring a LEVEL of potential rather than a CHANGE in it.
+    // That is wrong and the test is in the history: within one decision the two
+    // differ by the potential of the board every candidate started from, which
+    // is the same constant for all of them, so they rank identically -- measured
+    // over 40 candidates, one distinct difference per feature. Rewriting them as
+    // changes would alter no decision. Do not retry it.
     var STARTER = {
         bumpiness: -20, spread: -10, tallest: -40,
-        chain2: 10, chain3: 25, chain4: 40, chain5plus: 60,
-        combo4: 8, combo5: 12, combo6: 16, combo7: 20,
+        chain2: 5, chain3: 13, chain4: 20, chain5plus: 30,
+        combo4: 4, combo5: 6, combo6: 8, combo7: 10,
         cheapestFrames: 10, moveFrames: 5,
-        nextBestChain: 30, nextBestCombo: 10, nextWays: 10,
-        breaksNow: 25, breakWays: 10,
+        nextBestChain: 15, nextBestCombo: 5, nextWays: 5,
+        breaksNow: 25, breakWays: 5,
         stopEarned: 50, stopReachable: 30
     };
 
@@ -118,7 +136,7 @@
         this._lastSwap = null;
         this.decisions = 0;
         this.counts = { refusedDeadly: 0, allDead: 0, byMode: {},
-                        refusedReturn: 0,
+                        refusedReturn: 0, defendByClock: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
                         revealWindows: 0 };
     }
@@ -365,6 +383,30 @@
         this._seen.push(here);
         if (this._seen.length > 3) this._seen.shift();
 
+        // DEFEND RANKS BY THE CLOCK, NOT BY THE WEIGHTS.
+        //
+        // The bot is always attacking -- the modes only change which shapes it
+        // prefers -- with ONE exception: when survival is on the line it does
+        // whatever survives, even against its own preferences. The weights score
+        // board quality, and board quality is not what matters one frame from
+        // death; the clock is. So among the moves that bank time, the MOST time
+        // wins, and that is the whole of DEFEND.
+        //
+        // If nothing banks anything the ordinary ranking stands, because then no
+        // move here is an escape and there is nothing for this to choose between.
+        // Borrowed from modes.js, whose FORCED does exactly this.
+        var banking = [];
+        if (mode.name === 'DEFEND') {
+            for (i = 0; i < allowed.length; i++) {
+                var rr = allowed[i].resolved;
+                if (!rr || !rr.total) continue;
+                var ch = rr.chain >= 2;
+                var pays = BF.stopTimeOf(PanelEngine(), ch, ch ? 0 : rr.total,
+                                         ch ? rr.chain : 0, !!info.toppedOut);
+                if (pays > 0) banking.push({ cand: allowed[i], pays: pays });
+            }
+        }
+
         var best = null, alive = 0;
         for (i = 0; i < allowed.length; i++) {
             var cand = allowed[i];
@@ -374,7 +416,18 @@
             var horizon = (cand.moveFrames || 0) + this.reaction;
             if (this.deadly(cand.board, cand.resolved, info, horizon)) { this.counts.refusedDeadly++; continue; }
             alive++;
-            var s = this.score(cand.board, cand.moveFrames, cand.resolved, info);
+            // In DEFEND, a move that banks time is ranked by the time it banks
+            // and beats every move that banks none.
+            var s;
+            if (banking.length) {
+                var pay = 0;
+                for (var q = 0; q < banking.length; q++) if (banking[q].cand === cand) pay = banking[q].pays;
+                if (!pay) continue;                       // banks nothing: not an escape
+                s = pay;
+                this.counts.defendByClock++;
+            } else {
+                s = this.score(cand.board, cand.moveFrames, cand.resolved, info);
+            }
             if (!best || s > best.score) best = { cand: cand, score: s };
         }
         // NOTHING SURVIVES: the position is lost either way, so the best-scoring

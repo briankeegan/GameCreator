@@ -336,6 +336,75 @@ What masks do NOT carry is slab identity: `blocks` groups garbage cells into
 slabs, and bridging depends on it, so materialising a board from masks alone
 would guess it. That is the part to solve, not to paper over.
 
+## Why it would not clear, and what it actually was
+
+It found the clears. It priced them wrong. On seed 701 it found a **6-chain**,
+scored it **+1**, and scored **raising +54**:
+
+```
+BEST CLEAR: a 6-chain, 18 panels      TOTAL  +1
+   stopEarned +34   bumpiness -15  spread -9  tallest -27
+IT PICKED: raise                      TOTAL +54
+   nextBestChain +30  chain5plus +15  combo6 +8  nextWays +10
+```
+
+Paid +45 for HAVING a big chain against +34 for playing one, and playing it
+deletes the material paying the +45.
+
+**IT IS THE BALANCE, NOT THE STRUCTURE.** Two wrong explanations were tried and
+both are recorded so they are not retried:
+
+1. *"The features should measure a CHANGE in potential, not a LEVEL."* Wrong, and
+   it would change no decision. Within one decision the two differ by the
+   potential of the board every candidate started from — the same constant for
+   all of them — so they rank identically. Measured over 40 candidates: exactly
+   one distinct difference per feature.
+2. *"Potential should not be weighted at all."* Wrong the other way. Zeroing those
+   twelve weights took it from 2,380 frames and 57 matches to **906 and 7**. The
+   potential features are load-bearing.
+
+What fixed it was halving one group of numbers. Seeds 701-704, 4,000-frame cap:
+
+| | frames | matches |
+|---|---|---|
+| as first guessed | 2,380 | 57 (one seed cleared nothing at all) |
+| **potential x0.5** | **4,000 — died on no seed** | **133** |
+| potential x0.25 | 3,627 | 104 |
+| stopEarned x5 | 4,000 — died on no seed | 119 |
+
+### That table is SOLO, and solo flatters it
+
+No opponent, no garbage arriving, so `DEFEND` is entered 0 times and `BUILD`
+900 against `ATTACK` 34. One-on-one against an instance of itself with garbage
+crossing, the old balance against the new, 8 seeds:
+
+| | |
+|---|---|
+| duels | NEW 5W - old 3W |
+| garbage sent | 184 vs 201 — the new one sends LESS |
+| every duel | ended in a death, average 1,393 frames |
+
+Eight duels is inside the noise floor, so 5-3 is not a result. The honest reading
+is that "never dies" was an artifact of having nothing to fight, and under
+pressure it still dies every time. A real verdict needs training.
+
+## DEFEND ranks by the clock, not by the weights
+
+The bot is always attacking; the modes only change which shapes it prefers. The
+one exception is survival: the weights score board QUALITY, which is not what
+matters one frame from death. So in DEFEND the pool narrows to moves that bank
+stop time and the MOST time wins, whatever the weights would rather do. If
+nothing banks anything the ordinary ranking stands, because then no move is an
+escape. `modes.js` FORCED does exactly this.
+
+## Checks have to provoke their own defect
+
+The loop and death checks were written against whatever `STARTER` was, and then
+`STARTER` improved: the bot stopped looping, stopped nearing death, and **the
+break tests passed with the filters switched off**. A check that only fires while
+the default weights are bad retires itself the moment the bot gets better. The
+defect vector is pinned in the test as `LOOPER` now, and the checks sweep that.
+
 ## Open
 
 - Survival is short: ~690 frames a duel in self-play, against the ~1,100

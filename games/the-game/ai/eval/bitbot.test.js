@@ -21,6 +21,29 @@ var PanelEngine = globalThis.PanelEngine;
 var fails = 0;
 function ok(cond, msg) { if (!cond) { console.log('FAIL: ' + msg); fails++; } }
 
+// A VECTOR THAT PROVOKES THE DEFECTS, PINNED AS A FIXTURE.
+//
+// This is BitBot's first hand-set vector, the one whose potential weights were
+// twice what they are now. It refuses to clear -- it is paid more for HAVING a
+// chain than for playing one -- so it loops on one cell and walks into the
+// ceiling, which is exactly the behaviour the no-return filter and the death
+// filter exist to catch.
+//
+// It is here because those checks were first written against whatever STARTER
+// happened to be, and STARTER then got better: the bot stopped looping, stopped
+// nearing death, and the break tests had nothing left to detect and passed on a
+// bot with the filters switched OFF. A check that only fires when the default
+// weights are bad is a check that retires itself the moment the bot improves.
+var LOOPER = {
+    bumpiness: -20, spread: -10, tallest: -40,
+    chain2: 10, chain3: 25, chain4: 40, chain5plus: 60,
+    combo4: 8, combo5: 12, combo6: 16, combo7: 20,
+    cheapestFrames: 10, moveFrames: 5,
+    nextBestChain: 30, nextBestCombo: 10, nextWays: 10,
+    breaksNow: 25, breakWays: 10,
+    stopEarned: 50, stopReachable: 30
+};
+
 // Run one game and record what the bot did, without changing how it decides.
 function playOut(weights, seed, frames, opts) {
     var stack = new PanelEngine.Stack({ level: 10, seed: seed, countdown: false });
@@ -133,10 +156,14 @@ ok(heldInAttack === 0, heldInAttack + ' decisions held while not in BUILD -- ' +
 // is untested. And it must refuse the right thing: a full board with no stop
 // time banked is dead, the same board holding stop time is NOT -- chaining into
 // the ceiling is how the position is played.
+// Swept with LOOPER, because a vector that plays adequately never gets near
+// enough to death for the filter to have anything to refuse -- and then this
+// check would pass with the filter removed.
+var refusedRuns = [701, 703].map(function (sd) { return playOut(LOOPER, sd, 1400); });
 var refused = 0;
-runs.forEach(function (r) { refused += r.bot.counts.refusedDeadly; });
-ok(refused > 0, 'the death filter never refused a single candidate over three games, ' +
-                'so nothing here tests it');
+refusedRuns.forEach(function (r) { refused += r.bot.counts.refusedDeadly; });
+ok(refused > 0, 'the death filter never refused a single candidate even on the vector ' +
+                'that walks into the ceiling, so nothing here tests it');
 
 var full = { grid: [], blocks: {}, height: 12 };
 for (var r0 = 0; r0 <= 12; r0++) { full.grid[r0] = []; for (var c0 = 1; c0 <= 6; c0++) full.grid[r0][c0] = ((r0 + c0) % 5) + 1; }
@@ -178,7 +205,9 @@ ok(BitBot.prototype.deadly.call(probe, lowBoard, null, { stopTime: 0 }) === fals
 // constant nobody could justify.
 function repeatRate(opts) {
     var stack = new PanelEngine.Stack({ level: 10, seed: 701, countdown: false });
-    var o = { weights: BitBot.STARTER, allowRaise: true };
+    // LOOPER, not STARTER: the defect has to be present for the filter to be
+    // shown to remove it.
+    var o = { weights: LOOPER, allowRaise: true };
     for (var k in (opts || {})) o[k] = opts[k];
     var bot = new BitBot(stack, o);
     var picks = [];
