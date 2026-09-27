@@ -1689,7 +1689,7 @@
     // a panel whose timer was smaller than the skip got clamped to zero
     // instead of staying ahead, so two groups two frames apart fired
     // together and a 3-chain resolved as a 2-chain.
-    var soonest = Infinity, r, c, p;
+    var soonest = Infinity, r, c, p, holding = false;
     for (r = 1; r < this.panels.length; r++) {
       for (c = 1; c <= W; c++) {
         p = this.panels[r][c];
@@ -1705,6 +1705,10 @@
         // difference between a 3-chain and a 2-chain.
         if (p.state === "swapping") return 0;
         if (p.timer > 0 && p.timer < soonest) soonest = p.timer;
+        // A panel countActivePanels counts, with a timer that outlasts the
+        // jump, holds the floor for all of it.
+        if (p.timer > 0 && r <= this.height && p.color !== 0 &&
+            (p.isGarbage ? p.state !== "normal" : (p.state !== "normal" && p.state !== "landing"))) holding = true;
         // A matched panel also does something at popTime, before it hits 0.
         if (p.state === "matched" && p.timer > p.popTime &&
             (p.timer - p.popTime) < soonest) soonest = p.timer - p.popTime;
@@ -1727,6 +1731,12 @@
       if (toSpeed < soonest) soonest = toSpeed;
     }
     if (!isFinite(soonest) || soonest <= 1) return 0;
+    // A FREE FLOOR MOVES EVERY FEW FRAMES. Unless stop time or a moving
+    // panel holds it, the rise timer ticks, the stack climbs and a topped-out
+    // stack drains, and none of that is a timer above. Jumping here skipped
+    // the rise: a settle that took 5 frames read as 889 with the floor
+    // unmoved, and every line's clock was off by as much.
+    if (this.riseTimer < 1e8 && !holding && this.stopTime === 0 && this.preStopTime === 0) return 0;
 
     // LAST, BECAUSE IT IS THE EXPENSIVE ONE. A full match scan on every frame
     // costs more than the frames it saves: most frames are refused by the

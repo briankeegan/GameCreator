@@ -371,14 +371,14 @@
     function settle(stack, budget, live, untilRise, arrivals) {
         var chain = 0, comboSizes = [], garbage = [], cleared = 0;
         var cap = budget || 900;
-        var quiet = false;
+        var quiet = false, wasStill = false;
         var died = false, diedAt = 0, rose = false;
         var clock0 = stack.clock || 0, next = 0;
         var pend = arrivals || [];
         stack.earnedStop = 0; stack.brokeCells = 0;
         for (var f = 0; f < cap; f++) {
             if (live) {
-                if (stack.gameOver) { died = true; diedAt = f; break; }
+                if (stack.gameOver) { died = true; diedAt = (stack.clock || 0) - clock0; break; }
             } else {
             // THE SCRATCH IS NOT PLAYING, IT IS ANSWERING A QUESTION.
             //
@@ -406,7 +406,13 @@
                                       isChain: pend[next].isChain });
                 next++;
             }
-            if (quiet && next >= pend.length) stack.idleSkip();
+            // NOT WHILE THE MATCH IS LIVE. With the rise, the drain and stop
+            // time all running, the skip jumped past frames that changed the
+            // board: over two games 58 of 1,722 live resolves came out
+            // different with it on, by as much as 41 frames of clock. A plain
+            // settle also ends on its first still frame, so a still board has
+            // nothing to jump toward.
+            if (!live && quiet && next >= pend.length && (untilRise || !wasStill)) stack.idleSkip();
             stack.events.length = 0;
             stack.run();
             quiet = stack.events.length === 0;
@@ -419,8 +425,9 @@
                 if (e.chainCounter > chain) chain = e.chainCounter;
                 if (e.garbage) garbage.push([e.garbage, 1]);
             }
-            if (live && stack.gameOver) { died = true; diedAt = f + 1; break; }
+            if (live && stack.gameOver) { died = true; diedAt = (stack.clock || 0) - clock0; break; }
             var still = !stack.hasActivePanels() && !stack.hasChainingPanels();
+            wasStill = still;
             if (untilRise) {
                 if (rose && still && next >= pend.length &&
                     !(stack.incoming && stack.incoming.length) &&

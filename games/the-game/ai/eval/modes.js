@@ -660,7 +660,17 @@
   //      them where the engine decides them: awardStopTime's award and the
   //      converting row of each broken slab. Seed 703: 2047 of 8137
   //      candidates earn stop time, 475 break garbage.
-  var RULES = 30;
+  //   31. THE CLOCK IS THE ENGINE'S, AND THE LINE IS PLAYED. idleSkip never
+  //      looked at the floor: in a live resolve it jumped to the next speed-up
+  //      with the rise and the drain not running, so a settle that took 5
+  //      frames read as 889 and every line's timing was off by as much; 55%
+  //      of live resolves differed with it on. It now refuses while the floor
+  //      is free and is not used in live resolves at all. A certified move
+  //      is safe because of the line after it, so the line is played: held
+  //      until the move has settled, then its next step while that step is
+  //      still proven. And a break is sought on any garbage, two moves deep,
+  //      walked and aged as the game plays it.
+  var RULES = 31;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

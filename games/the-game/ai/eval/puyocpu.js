@@ -1204,10 +1204,49 @@
     var proven = [], unproven = [];
     for (i = 0; i < cands.length; i++) {
       u0 = this.survivalUnproven || 0;
+      var keepLine = this._line;
+      this._line = [];
       ok = this._survivesAfter(cands[i], this.DOOMED_DEPTH);
+      cands[i].line = ok ? this._line : null;
+      this._line = keepLine;
       if (!ok) continue;
       if ((this.survivalUnproven || 0) > u0) unproven.push(cands[i]);
       else proven.push(cands[i]);
+    }
+    // THE LINE A MOVE WAS CERTIFIED ON IS THE LINE PLAYED. A move is safe
+    // because of the moves its line makes after it; re-choosing by score at
+    // the next decision throws them away, and "wait, then swap" stays
+    // certified at every decision while the time for the swap runs out --
+    // seed 704: hold certified at 569, 582, 595 and 608 on the line
+    // [wait, (1,2), (5,1)], never played, dead at 806. So the next step of
+    // the last certified line is played while it is still proven.
+    var step = this._planStep();
+    // AND ON ITS CLOCK. Each step of a line is made after the one before has
+    // settled; the bot decides again long before that, mid-cascade, where
+    // the next step is a different move on a different board. Until the last
+    // move has settled, the line is holding.
+    if (step !== undefined && this.stack && this.stack.clock < this._follow.due) {
+      for (i = 0; i < cands.length; i++) {
+        if (cands[i].kind === 'hold') {
+          this.planFollowed = (this.planFollowed || 0) + 1;
+          this.allDoomedNow = false;
+          return [cands[i]];
+        }
+      }
+      this._follow = null;
+      step = undefined;
+    }
+    if (step !== undefined && proven.length) {
+      for (i = 0; i < proven.length; i++) {
+        var pm = proven[i].move;
+        if (step === null ? proven[i].kind === 'hold'
+                          : (pm && pm[0] === step[0] && pm[1] === step[1])) {
+          this.planFollowed = (this.planFollowed || 0) + 1;
+          this.allDoomedNow = false;
+          return [proven[i]];
+        }
+      }
+      this._follow = null;
     }
     // A move the search ran out of budget on is a guess. When any move is
     // proven to live, the guesses are dropped.
@@ -1565,26 +1604,54 @@
     return got;
   };
 
+  // THE SHORTEST WAY TO A BREAK, walked the way the game plays it. Every
+  // follow-up move pays its reaction and its walk from the square before, and
+  // the board ages on the engine's clock between them, as a survival line
+  // does. Any garbage counts: a 5x1 lid on a low stack is where the bot held
+  // for a whole row with a two-swap break on the board (seed 700 frame 520).
+  // Breadth first, so a candidate is kept only if it starts a line as short
+  // as the shortest found; a line cut off by the budget is not claimed.
+  PuyoCpu.prototype.TOWARD_DEPTH = 2;
+  PuyoCpu.prototype.TOWARD_BUDGET = 3000;
   PuyoCpu.prototype._towardBreak = function (cands) {
     if (!this.towardBreak || !cands || cands.length < 2 || !this._board) return cands;
-    var now = this._garbageOn(this._board);
-    if (now < this.TOWARD_MIN_GARBAGE) return cands;
-    var live = [], i, j, b, swaps, t;
+    if (!this._garbageOn(this._board) && !(this.stack && this.stack.incoming && this.stack.incoming.length)) return cands;
+    var hit = [], any = false, level = [], i, j;
+    var cur = this.stack ? [this.stack.curRow, this.stack.curCol] : null;
     for (i = 0; i < cands.length; i++) {
-      b = this._settledOf(cands[i]);
-      if (!b) continue;
-      // A move that breaks the lid outright is already the best case.
-      if (this._garbageOn(b) < now) { live.push(cands[i]); continue; }
-      if (this._resolvesDead(b, cands[i].resolved)) continue;
-      swaps = b.legalSwaps();
-      for (j = 0; j < swaps.length; j++) {
-        t = b.clone();
-        t.swap(swaps[j][0], swaps[j][1]);
-        this._resolveCandidate(t);
-        if (this._garbageOn(t) < now) { live.push(cands[i]); break; }
-      }
+      var res = cands[i].resolved;
+      if (!res || res.died || res.diedInWalk) continue;
+      if ((res.brokeGarbage || 0) > 0) { hit[i] = true; any = true; continue; }
+      level.push({ root: i, board: this._settledOf(cands[i]), carry: res.carry || null,
+                   pos: cands[i].move || cur });
     }
-    if (!live.length || live.length === cands.length) return cands;
+    var budget = this.TOWARD_BUDGET, saved = this._carry;
+    for (var d = 2; !any && d <= this.TOWARD_DEPTH && level.length && budget > 0; d++) {
+      var next = [];
+      for (i = 0; i < level.length && budget > 0; i++) {
+        var node = level[i];
+        if (hit[node.root]) continue;
+        var swaps = node.board.legalSwaps();
+        for (j = 0; j < swaps.length && budget > 0; j++) {
+          var t = node.board.clone();
+          t.incoming = (node.carry && node.carry.nextRow) ||
+                       (node.board.incoming === false ? false : (node.board.incoming || this._incoming || null));
+          var cost = this.reaction + (node.pos ? travel.cost(node.pos[0], node.pos[1], swaps[j][0], swaps[j][1]) : 0);
+          this._carry = node.carry;
+          var r = this._resolveCandidate(t, swaps[j], cost);
+          this._carry = saved;
+          budget--;
+          if (!r || r.refused || r.died || r.diedInWalk) continue;
+          if ((r.brokeGarbage || 0) > 0) { hit[node.root] = true; any = true; break; }
+          if (d < this.TOWARD_DEPTH) next.push({ root: node.root, board: t, carry: r.carry || null, pos: swaps[j] });
+        }
+      }
+      level = next;
+    }
+    if (!any) return cands;
+    var live = [];
+    for (i = 0; i < cands.length; i++) if (hit[i]) live.push(cands[i]);
+    if (live.length === cands.length) return cands;
     this.towardMovesDropped += cands.length - live.length;
     this.towardDecisions++;
     return live;
@@ -2128,7 +2195,31 @@
   // decision where a payout was on offer and the bot held is exactly the case
   // it has to be able to see. Reading it off the mode would answer "something
   // was offered", which is a different question and hides the break.
+  // The next step of the plan, once the rows it was waiting for have come:
+  // null is a wait for the next row, [r,c] a swap, undefined no plan.
+  PuyoCpu.prototype._planStep = function () {
+    var plan = this._follow;
+    if (!plan) return undefined;
+    while (plan.steps.length && plan.steps[0] === null && (this._rowsSeen || 0) > plan.rows) {
+      plan.steps.shift();
+      plan.rows++;
+    }
+    if (!plan.steps.length) { this._follow = null; return undefined; }
+    return plan.steps[0];
+  };
+
   PuyoCpu.prototype._took = function (cand) {
+    // A hold inside a line being followed keeps the line.
+    if (cand && cand.kind === 'hold' && this._follow && this.stack && this.stack.clock < this._follow.due) {
+      // nothing
+    } else {
+      var walk = (cand && cand.move && this.stack)
+        ? travel.cost(this.stack.curRow, this.stack.curCol, cand.move[0], cand.move[1]) : 0;
+      this._follow = (cand && cand.line && cand.line.length)
+        ? { steps: cand.line.slice(), rows: this._rowsSeen || 0,
+            due: (this.stack ? this.stack.clock : 0) + walk + ((cand.resolved && cand.resolved.elapsed) || 0) }
+        : null;
+    }
     // The square to refuse next time: only a swap that changed nothing.
     this._lastSquare = (cand && cand.move && cand.resolved &&
                         !cand.resolved.clearedPanels) ? cand.move : null;
@@ -2443,6 +2534,10 @@
   PuyoCpu.prototype.update = function () {
     var stack = this.stack;
     if (stack.gameOver) return;
+    // Rows the floor has brought up, counted as they land: a new row resets
+    // displacement upwards.
+    if (this._lastDisp !== undefined && stack.displacement > this._lastDisp) this._rowsSeen = (this._rowsSeen || 0) + 1;
+    this._lastDisp = stack.displacement;
 
     var input = {};
     // ONE RAISE IS ONE ROW. The engine re-latches manualRaise on every frame
