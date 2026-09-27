@@ -676,6 +676,16 @@ gate_bitmatch() {
   node games/the-game/ai/eval/bitmatch.test.js
 }
 
+# A PLAN THAT CLAIMS A CHAIN HAS TO PLAY ONE. bestSetup names a swap that clears
+# nothing and the swap that cashes it in; both are played onto a real
+# PanelEngine.Stack in order, and the engine's own chain counter and cleared
+# count have to be the numbers claimed. The second ply also has to earn its
+# place: a planner that never finds what playing now would miss is one nobody
+# needs, so a sweep that finds nothing deeper fails.
+gate_bitplan() {
+  node games/the-game/ai/eval/bitplan.test.js
+}
+
 gate_gates_reject_defects() {
   bash .github/scripts/gates.test.sh
 }
@@ -767,6 +777,7 @@ GATES=(
   "a garbage break stops the resolve:gate_garbage_rules:games/the-game/ai/"
   "the chip matcher enforces every constraint:gate_chip_matcher_constraints:games/the-game/ai/"
   "the bit arithmetic answers what the simulation answers:gate_bitmatch:games/the-game/ai/"
+  "a plan that claims a chain plays one:gate_bitplan:games/the-game/ai/"
   "the simulation resolves like the game:gate_resolve_fidelity:games/the-game/ai/"
   "that fidelity check fires:gate_resolve_fidelity_fires:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"
