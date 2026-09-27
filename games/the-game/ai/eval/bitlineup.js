@@ -148,12 +148,19 @@
     // written this way because arriving information should be used when it
     // arrives, not because a gain has been demonstrated.
     function planAsTheyAppear(advance, read, frames, H, cursorOf, legalSwapsOf, budget) {
-        var seen = 0, plans = [], pending = null, limit = budget || 900;
+        // AN INSTALMENT IS A RISE, NOT A NEW HIGH. fellFromGarbage is a
+        // COUNTDOWN the engine sets to 12 and decays, not a flag: the first
+        // instalment's six panels stop being counted long before a second
+        // instalment arrives, and a second six is not greater than the first
+        // six. Watching a running maximum therefore sees exactly one instalment
+        // however many there are, which is what a board that really reveals
+        // twice showed.
+        var prev = 0, plans = [], pending = null, limit = budget || 900;
         for (var f = 0; f < limit; f++) {
             var snapshot = read();
             var state = api.revealed(snapshot, H);
-            if (state.converted > seen) {
-                seen = state.converted;
+            if (state.converted > prev) {
+                prev = state.converted;
                 if (state.flying > 0) {
                     var plan = api.bestInWindow(snapshot, frames, H, cursorOf(), legalSwapsOf());
                     if (plan && plan.best.swap) {
@@ -163,6 +170,8 @@
                                      chain: plan.best.chain, total: plan.best.total });
                     }
                 }
+            } else {
+                prev = state.converted;      // it decayed; the next rise is a new one
             }
             if (pending && f >= pending.at) {
                 pending.played = advance(pending.swap) !== false;
