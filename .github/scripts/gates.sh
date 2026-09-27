@@ -708,6 +708,17 @@ gate_bitframes() {
   node games/the-game/ai/eval/bitframes.test.js
 }
 
+# LINING UP WITH WHAT A BROKEN SLAB HAS JUST REVEALED. Its bottom row takes real
+# colours and then hovers, and for as long as it is in the air there is time to
+# move what is under it so the landing completes a chain rather than filling a
+# hole. The plan names a swap and the frames the cursor needs to reach it; the
+# gate waits those frames on a real Stack, plays the swap, and requires the
+# engine's own chain counter to be the number claimed. A sweep where lining up
+# never beat standing still fails, since then the whole window earns nothing.
+gate_bitlineup() {
+  node games/the-game/ai/eval/bitlineup.test.js
+}
+
 gate_gates_reject_defects() {
   bash .github/scripts/gates.test.sh
 }
@@ -802,6 +813,7 @@ GATES=(
   "a plan that claims a chain plays one:gate_bitplan:games/the-game/ai/"
   "the engine decides while panels are in the air:gate_bitdecide:games/the-game/ai/"
   "the clock keeps frame-for-frame time with the engine:gate_bitframes:games/the-game/ai/"
+  "lining up with colours as they appear:gate_bitlineup:games/the-game/ai/"
   "the simulation resolves like the game:gate_resolve_fidelity:games/the-game/ai/"
   "that fidelity check fires:gate_resolve_fidelity_fires:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"

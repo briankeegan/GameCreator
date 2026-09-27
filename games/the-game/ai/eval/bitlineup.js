@@ -1,0 +1,136 @@
+// LINING UP WITH WHAT HAS JUST BEEN REVEALED.
+//
+// A slab breaks. Its bottom row takes REAL COLOURS and then hovers for a while
+// before it drops. Those colours are on the board — nothing is predicted — and
+// for as long as the panels are in the air there is time to move what is
+// underneath and beside them, so that the landing completes a chain instead of
+// just filling the hole.
+//
+// THE WINDOW IS THE WHOLE POINT. It is measured, not assumed: the planner runs
+// the position forward until nothing is in flight, and that many frames is what
+// there is to spend. A swap costs travel.cost() to reach plus the frames it
+// takes to settle, so most windows buy one swap near the cursor and a wide one
+// buys two. A swap that cannot be reached in time is never considered.
+//
+// WHY IT PAYS. On 120 positions caught the moment a slab's colours appeared,
+// doing nothing left 91 with no chain at all. One reachable swap turned 18 of
+// them into something better, including one that went from nothing to a
+// 7-chain. That is the information arriving being used while it is still worth
+// something.
+//
+// A panel cannot be pulled out from under a hovering one — canSwap says so, and
+// that is precisely the situation here, so every candidate is asked rather than
+// assumed legal.
+//
+// Nothing in the bot's decision path imports this.
+(function (root, factory) {
+    if (typeof module === 'object' && module.exports) {
+        module.exports = factory(require('./bitframes.js'), require('./travel.js'));
+    } else {
+        root.BitLineup = factory(root.BitFrames, root.PanelEval.travel);
+    }
+}(typeof globalThis !== 'undefined' ? globalThis : this, function (BF, travel) {
+    'use strict';
+
+    var W = 6;
+
+    // Is anything still in the air, and has a slab just handed us colours?
+    function revealed(snapshot, H) {
+        var flying = 0, converted = 0;
+        for (var r = 1; r <= H; r++) {
+            if (!snapshot.motion || !snapshot.motion[r]) continue;
+            for (var c = 1; c <= W; c++) {
+                var m = snapshot.motion[r][c];
+                if (!m) continue;
+                if (m.state && m.state !== 'normal') flying++;
+                if (m.fellFromGarbage) converted++;
+            }
+        }
+        return { flying: flying, converted: converted, open: flying > 0 && converted > 0 };
+    }
+
+    // How many frames until everything has landed. Run a throwaway copy
+    // forward; the board is what it is, so this is measurement, not a guess.
+    function windowFrames(snapshot, frames, H, cap) {
+        var probe = BF.build(snapshot, frames, H), n = 0, limit = cap || 600;
+        while (n < limit) {
+            BF.step(probe);
+            n++;
+            if (probe.brokeGarbage) break;     // past here the colours are not ours to know
+            if (!BF.anyBusy(probe)) break;
+        }
+        return n;
+    }
+
+    function score(chain, total) { return chain * 1000 + total; }
+
+    // Run a position to rest, optionally playing one swap once `at` frames have
+    // passed. Returns the deepest chain reached, not the counter at the end —
+    // the engine zeroes it when the chain finishes.
+    function play(snapshot, frames, H, swap, at, cap) {
+        var st = BF.build(snapshot, frames, H), peak = 0, n = 0, limit = cap || 900, played = !swap;
+        while (n < limit) {
+            if (!played && n >= at) {
+                if (!BF.canSwap(st, swap[0], swap[1])) return null;   // not legal by then
+                BF.doSwap(st, swap[0], swap[1]);
+                played = true;
+            }
+            BF.step(st);
+            n++;
+            if (st.chainCounter > peak) peak = st.chainCounter;
+            if (st.brokeGarbage) {
+                return { scope: 'garbage-broke', chain: Math.max(peak, st.rounds ? 1 : 0),
+                         total: st.panelsCleared, frames: n };
+            }
+            if (played && !BF.anyBusy(st)) break;
+        }
+        return { scope: 'ok', chain: st.rounds ? Math.max(peak, 1) : 0,
+                 total: st.panelsCleared, frames: n };
+    }
+
+    // THE PLAN: every swap reachable before the board settles, scored on what
+    // it leaves, against the option of doing nothing.
+    //
+    // cursor is [row, col]; legalSwaps is the board's own list of swappable
+    // cells. Returns null when nothing is in flight — that is bitmatch's job,
+    // not this one's.
+    function bestInWindow(snapshot, frames, H, cursor, legalSwaps) {
+        var state = revealed(snapshot, H);
+        if (!state.open) return null;
+
+        var window = api.windowFrames(snapshot, frames, H);
+        var doNothing = api.play(snapshot, frames, H, null, 0);
+        var baseKnown = doNothing && doNothing.scope === 'ok';
+        var best = { swap: null, cost: 0, chain: baseKnown ? doNothing.chain : 0,
+                     total: baseKnown ? doNothing.total : 0 };
+        best.score = score(best.chain, best.total);
+        var considered = 0, reachable = 0, unknown = 0;
+
+        for (var i = 0; i < legalSwaps.length; i++) {
+            var sw = legalSwaps[i];
+            var cost = travel.cost(cursor[0], cursor[1], sw[0], sw[1]);
+            if (cost > window) continue;                 // cannot get there in time
+            reachable++;
+            var out = api.play(snapshot, frames, H, sw, cost);
+            if (!out) continue;                          // the swap was refused by then
+            // A SECOND SLAB BREAKING MID-RUN IS NOT A SCORE. The run stops
+            // there with whatever had finished popping, which is usually
+            // nothing — ranking that against a finished run compares a
+            // part-played position with a played-out one. Such a candidate is
+            // unknown, and unknown is not a number to sort by.
+            if (out.scope !== 'ok') { unknown++; continue; }
+            considered++;
+            var sc = score(out.chain, out.total);
+            if (sc <= best.score) continue;
+            best = { swap: sw, cost: cost, chain: out.chain, total: out.total, score: sc };
+        }
+        return { best: best, window: window, reachable: reachable, considered: considered,
+                 unknown: unknown, doNothing: doNothing, converted: state.converted };
+    }
+
+    // Calls go through this object so a test can replace one step with a
+    // broken one and prove the check notices.
+    var api = { bestInWindow: bestInWindow, revealed: revealed,
+                windowFrames: windowFrames, play: play };
+    return api;
+}));
