@@ -431,7 +431,8 @@
     if (!live) {
       st.riseLock = true; st.riseTimer = 1e9;
       st.stopTime = 0; st.preStopTime = 0;
-      st.shakeTime = 0; st.peakShakeTime = 0;
+      st.shakeTime = 0; st.peakShakeTime = 0; st.shakeTimeOnFrame = 0;
+      st.chainCounter = 0;
       st.nextSpeedIncreaseClock = -1;
       return;
     }
@@ -443,6 +444,17 @@
     st.preStopTime = live.preStopTime || 0;
     st.shakeTime = live.shakeTime || 0;
     st.peakShakeTime = live.peakShakeTime || 0;
+    // A slab that landed on the last frame has not started shaking yet: the
+    // engine applies it on the next one. Without it the model drains a
+    // topped-out stack the game holds (seed 703 frame 611).
+    st.shakeTimeOnFrame = live.shakeTimeOnFrame || 0;
+    // A chain already running continues from its link, not from zero: the
+    // next clear is link 3 in the game and was link 2 here, paying less stop
+    // time and sending less (seed 703 frame 309).
+    st.chainCounter = live.chainCounter || 0;
+    // And last frame's count of moving panels: the floor stays locked for a
+    // frame after the last one stops (seed 701 frame 153).
+    if (live.nActive !== undefined) { st.nActive = live.nActive; st.nPrevActive = live.nPrevActive; }
     // The next speed-up, counted from the match's clock, not the scratch's:
     // the scratch has run millions of frames and would speed up wherever its
     // own clock happened to land.
@@ -513,6 +525,7 @@
     // without them resolves a chain as a plain combo.
     engineBoard.paint(st, board.grid, board.height, board.width, slabs,
                       board.chaining || null, board.motion || null);
+    if (board.queuedSwap) { st.queuedSwapRow = board.queuedSwap[0]; st.queuedSwapCol = board.queuedSwap[1]; }
     var wait = Math.max(0, delay || 0);
     // AGE IT WITH THE FLOOR MOVING. paint() parks the rise — riseLock true and
     // riseTimer at 1e9 — because a rise DURING THE SETTLE shifts the board out
@@ -680,6 +693,9 @@
       stopTime: st.stopTime || 0, preStopTime: st.preStopTime || 0,
       toSpeed: st.nextSpeedIncreaseClock > st.clock ? st.nextSpeedIncreaseClock - st.clock : -1,
       shakeTime: st.shakeTime || 0, peakShakeTime: st.peakShakeTime || 0,
+      shakeTimeOnFrame: st.shakeTimeOnFrame || 0,
+      chainCounter: st.chainCounter || 0,
+      nActive: st.nActive || 0, nPrevActive: st.nPrevActive || 0,
       arrivals: (out.pending || []).map(function (a) {
         return { at: Math.max(0, a.at - (out.elapsed || 0)), width: a.width,
                  height: a.height, isChain: a.isChain };
@@ -716,6 +732,7 @@
     // What is still in flight where the engine stopped, so the next step of a
     // line starts from it rather than from the motion before this move.
     board.motion = engineBoard.readMotion(st, board.height, board.width);
+    board.queuedSwap = st.queuedSwapRow > 0 ? [st.queuedSwapRow, st.queuedSwapCol] : null;
     // AND THE SLABS THE SETTLE LEFT. The grid goes back and the blocks did
     // not, so the board handed to the second ply carried the garbage
     // structure from BEFORE the swap — a slab that has just been broken, or

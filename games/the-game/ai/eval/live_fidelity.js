@@ -120,6 +120,9 @@ seeds.forEach(function (seed) {
         if (open) { open.dirty = true; open.why = open.why || 'swapped again mid-settle'; }
         else {
             var b = cpus[0]._snapshot().clone();
+            // This runs inside doSwap, so the snapshot still names this swap
+            // as queued; the resolve below makes it, so it is not queued too.
+            b.queuedSwap = null;
             // The engine path applies the swap itself, after ageing by `delay`;
             // here the swap is happening NOW, so the delay is zero.
             var pred;

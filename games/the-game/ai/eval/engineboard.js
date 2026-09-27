@@ -93,14 +93,9 @@
     function isClearing(state) {
         return state === 'matched' || state === 'popping' || state === 'popped';
     }
+    // The panel exactly as the engine held it, field for field.
     function restore(p, m) {
-        p.state = m.state; p.timer = m.timer;
-        p.initialTime = m.initialTime || 0; p.popTime = m.popTime || 0; p.popIndex = m.popIndex || 0;
-        if (m.color !== undefined) p.color = m.color;
-        if (m.xOffset !== undefined) { p.xOffset = m.xOffset; p.yOffset = m.yOffset;
-                                       p.gWidth = m.gWidth; p.gHeight = m.gHeight; }
-        p.fellFromGarbage = m.fellFromGarbage || 0;
-        p.propagatesChaining = !!m.propagatesChaining;
+        for (var k in m) if (m.hasOwnProperty(k)) p[k] = m[k];
     }
     // The same record snapshot() takes, read off the scratch after a resolve.
     function readMotion(stack, height, width) {
@@ -173,14 +168,13 @@
                     // eligible again -- the engine's eligible() requires
                     // 'normal' precisely so a break cannot be counted twice.
                     var gmv = motion && motion[cells[i][0]] && motion[cells[i][0]][cells[i][1]];
-                    if (gmv) { gp.state = gmv.state; gp.timer = gmv.timer; }
-                    else { gp.state = 'normal'; }
-                    // A SLAB THAT IS BREAKING is painted as the engine holds
-                    // it: its converting row already coloured with yOffset -1,
-                    // the rest a row shorter, each cell with its pop time.
-                    // Rebuilt from the bounding box instead, the slab turns
-                    // back into garbage when its timer runs out.
-                    if (gmv && isClearing(gmv.state) && gmv.yOffset !== undefined) restore(gp, gmv);
+                    // A slab in motion -- falling, or breaking with its
+                    // converting row already coloured, yOffset -1 and the
+                    // rest a row shorter -- is painted as the engine holds
+                    // it. Rebuilt from the bounding box, a breaking slab
+                    // turns back into garbage when its timer runs out.
+                    if (gmv) restore(gp, gmv);
+                    else gp.state = 'normal';
                 }
                 gid++;
             }
@@ -194,8 +188,10 @@
                 if (!motion[mr]) continue;
                 for (var mc = 1; mc <= width; mc++) {
                     var mm = motion[mr][mc], mp = stack.panels[mr][mc];
-                    if (!mm || !mp || mm.isGarbage || !isClearing(mm.state)) continue;
-                    if (mp.isGarbage || mp.color !== 0) continue;
+                    if (!mm || !mp || mm.isGarbage || mp.isGarbage) continue;
+                    // Every non-garbage panel the engine had in motion or
+                    // flagged, empty cells included: a cell that just popped
+                    // is empty and carries the flags that drop the panel above.
                     restore(mp, mm);
                 }
             }
@@ -262,10 +258,19 @@
                     held[hr][hc] = slabHeld[hid];
                     continue;
                 }
-                held[hr][hc] = hr === 1 || !!held[hr - 1][hc];
+                var mv = motion && motion[hr] && motion[hr][hc];
+                // A panel gravity does not act on -- matched, popping, swapping,
+                // landing -- stays where it is whatever is under it, and holds
+                // up what rests on it (seed 700 frame 322: a popping row over a
+                // hole, and the panels on it painted as falling).
+                held[hr][hc] = hr === 1 || !!held[hr - 1][hc] ||
+                               !!(mv && mv.state !== 'hovering' && mv.state !== 'falling' && mv.state !== 'normal');
                 if (!held[hr][hc]) {
-                    var mv = motion && motion[hr] && motion[hr][hc];
-                    if (mv) { hp.state = mv.state; hp.timer = mv.timer; }
+                    var mb = motion && motion[hr - 1] && motion[hr - 1][hc];
+                    if (mv) restore(hp, mv);
+                    // The engine opened this hole itself and has flagged it;
+                    // it drops the panel above on its own next frame.
+                    else if (mb && mb.stateChanged) { /* left as the engine holds it */ }
                     else { hp.state = 'hovering'; hp.timer = stack.frames.HOVER; }
                 }
             }
@@ -292,6 +297,7 @@
         stack.stopTime = 0;
         stack.chainCounter = 0;
         stack.shakeTime = 0;
+        stack.shakeTimeOnFrame = 0;
         stack.highestGarbageIdMatched = 0;
         // THE PANELS IN MOTION COUNT AS MOVING, as they did on the frame before.
         // hasActivePanels is nActive || nPrevActive and updateRiseLock reads it

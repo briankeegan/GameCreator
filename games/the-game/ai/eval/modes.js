@@ -682,7 +682,19 @@
   //      arrives (up to five), and a row that arrives during a move counts as
   //      that rise. Against the frozen RULES 30 bot on the same boards: died
   //      4 of 16 against its 12.
-  var RULES = 33;
+  //   34. THE COPY IS THE ENGINE'S STATE, ALL OF IT. Checked frame for frame
+  //      against the real game at every decision until the next input (1,992
+  //      windows, 8 seeds), the model differed on most of them. Carried now:
+  //      every field of a panel in motion (a popping panel without comboSize
+  //      and comboIndex popped at once), a just-popped cell's flags, panels
+  //      resting on a popping row, the shake a landing slab is about to
+  //      start, the rows above 12, a queued swap, the running chain counter
+  //      and last frame's count of moving panels. And the walk now carries
+  //      its target up with a rising row: it had been swapping the pair a row
+  //      below the one it chose. What still differs is only an opponent chain
+  //      that has not ended, which lands later and larger than the model has
+  //      it.
+  var RULES = 34;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

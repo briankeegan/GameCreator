@@ -137,6 +137,7 @@
       copy.motion = [];
       for (r = 0; r < this.motion.length; r++) copy.motion[r] = this.motion[r] ? this.motion[r].slice() : [];
     }
+    if (this.queuedSwap) copy.queuedSwap = this.queuedSwap.slice();
     return copy;
   };
 
@@ -876,6 +877,12 @@
 
   function driveWalk(input) {
     var stack = this.stack, w = this._walk, width = root.PanelEngine.WIDTH;
+    // A ROW THAT RISES MID-WALK CARRIES THE TARGET UP WITH IT, as it carries
+    // the cursor: the move chosen was a pair of panels, not a cell. Without
+    // this the bot swapped the pair a row below the one it had evaluated
+    // (seed 701 frame 229: chose (2,2), a row rose, swapped the old (1,2)).
+    if (w.disp !== undefined && stack.displacement > w.disp) w.row++;
+    w.disp = stack.displacement;
     // The target can drift out of reach mid-walk: the stack rises, so
     // topCurRow moves under us. Clamp rather than abandon — the same clamp
     // clampCursor would apply on arrival.
@@ -941,12 +948,21 @@
   // slab has shrunk by a row, and each panel has its own pop time. Without
   // these a painted slab turns back into garbage when its timer runs out.
   function motionOf(p) {
-    if (!p || !p.state || p.state === 'normal') return null;
-    return { state: p.state, timer: p.timer || 0, initialTime: p.initialTime || 0,
-             popTime: p.popTime || 0, popIndex: p.popIndex || 0, color: p.color,
-             isGarbage: !!p.isGarbage, xOffset: p.xOffset, yOffset: p.yOffset,
-             gWidth: p.gWidth, gHeight: p.gHeight, fellFromGarbage: p.fellFromGarbage || 0,
-             propagatesChaining: !!p.propagatesChaining };
+    // A slab that has not landed yet carries the shake it will land with.
+    // So does a cell that has just popped: it is empty and normal, but its
+    // flags tell the panel above to fall on the next frame, as a chain link.
+    if (!p || !p.state) return null;
+    if (p.state === 'normal' && !(p.isGarbage && p.shakeTime) && !p.stateChanged &&
+        !p.propagatesChaining && !p.queuedHover && !p.matchAnyway && !p.fellFromGarbage) return null;
+    // EVERY FIELD, not a chosen few: a popping panel without comboSize and
+    // comboIndex reads as the last of its group and pops at once, and each
+    // field left out was one more way for the copy to play a different game.
+    var m = {};
+    for (var k in p) {
+      if (!p.hasOwnProperty(k) || k === 'row' || k === 'col' || k === 'id' || k === 'garbageId') continue;
+      if (typeof p[k] !== 'object' || p[k] === null) m[k] = p[k];
+    }
+    return m;
   }
 
   function snapshot() {
@@ -963,7 +979,17 @@
     // something settled underneath it first. State and timer, for the panels
     // that have one.
     var motion = [];
-    for (var r = 0; r <= stack.height; r++) {
+    // EVERY ROW THE ENGINE HOLDS, not just the visible twelve: a slab that
+    // landed on a tall stack sits partly above the lid, and when anything
+    // under it clears it falls back into view. Read to 12 only, the copy
+    // lost it (seed 703 frame 1135).
+    var topRow = stack.height;
+    for (var rr = stack.panels.length - 1; rr > stack.height; rr--) {
+      var any = false;
+      for (var cc = 1; cc <= width; cc++) { var q = stack.panels[rr] && stack.panels[rr][cc]; if (q && q.color !== 0) { any = true; break; } }
+      if (any) { topRow = rr; break; }
+    }
+    for (var r = 0; r <= topRow; r++) {
       grid[r] = [];
       chaining[r] = [];
       motion[r] = [];
@@ -1021,6 +1047,9 @@
     // because clampCursor caps the cursor there — cells above the stack top
     // are unreachable rather than expensive.
     board.motion = motion;
+    // A swap queued on the last frame executes on the next: part of the
+    // position, like the panels in motion.
+    board.queuedSwap = stack.queuedSwapRow > 0 ? [stack.queuedSwapRow, stack.queuedSwapCol] : null;
     board.cursor = { row: stack.curRow, col: stack.curCol, topRow: stack.topCurRow };
     // THE INCOMING ROW IS VISIBLE INFORMATION, and the grid above threw it
     // away: row 0's panels are state "dimmed", which the loop maps to -1
