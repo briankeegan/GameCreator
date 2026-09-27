@@ -211,9 +211,6 @@
     // and you don't" -- the owner, before this was measured.
     this.breakingEscape = opts.breakingEscape === true;
     this.towardBreak = opts.towardBreak !== false;
-    // The rescue search runs for the search bot (depth 2, which plays and
-    // trains); the one-ply bot exists to be cheap and goes without.
-    this.rescue = opts.rescue !== undefined ? !!opts.rescue : (this.depth || 1) > 1;
     // OFF, AND THE THEORY BEHIND IT IS WRONG. It works mechanically -- it
     // fires 192 times over 20 games and lifts the average columns touching
     // the lid from 1.89 to 2.25 -- and every downstream number gets WORSE:
@@ -1235,112 +1232,165 @@
   // the move itself took.
   PuyoCpu.prototype._survivesAfter = function (cand, depth) {
     var k = cand.resolved && cand.resolved.carry;
-    if (this.SURVIVE_FRAMES && depth === this.DOOMED_DEPTH && this._board && cand.kind !== 'raise') {
-      // The candidate at the same pace as the line after it: its walk, the
-      // swap, one reaction, and the line picks up from the board in motion.
+    if (depth === this.DOOMED_DEPTH && this._board && this.stack && cand.kind !== 'raise') {
       if (cand.resolved && (cand.resolved.died || cand.resolved.diedInWalk)) return false;
-      var t0 = this._board.clone(), walk0 = 0, r0;
-      if (cand.move) {
-        walk0 = this.stack ? travel.cost(this.stack.curRow, this.stack.curCol, cand.move[0], cand.move[1]) : 0;
-        r0 = this._resolveCandidate(t0, cand.move, walk0, false, this.reaction);
-      } else {
-        r0 = this._resolveCandidate(t0, null, this.reaction, false, 1);
-        walk0 = this.reaction;
-      }
-      if (!r0 || r0.refused || r0.died || r0.diedInWalk) return false;
-      return this._survivesFor(t0, r0.carry || null, cand.move || null,
-                               this.SURVIVE_FRAMES - walk0 - (r0.elapsed || 0), { n: this.SURVIVAL_BUDGET });
+      // The move itself at the same pace as the line after it.
+      var root = { b: this._board.clone(), carry: null, pos: [this.stack.curRow, this.stack.curCol], t: 0 };
+      return this._lineSurvives(this._lineStep(root, cand.move || null, false), { n: this.SURVIVAL_BUDGET });
     }
     return this._survivesRise(this._settledOf(cand).clone(), depth, false, k || null,
                               undefined, undefined, cand.move || null);
   };
 
-  // SAFE MEANS ALIVE FOR THE NEXT STRETCH OF TIME, not through the next two
-  // rows. Topped out under stop time a row may never come while the bot keeps
-  // clearing -- seed 700 frame 1867: after (3,4) it lived 439 frames with no
-  // row rising, on a run of moves every 20 to 30 frames, while the row-based
-  // check, allowed five swaps before each row, called every move doomed. A
-  // line here is any run of moves that fits in the time, each walked and
-  // waited for as the game plays it, or a wait; the engine decides rows, stop
+  // SAFE MEANS ALIVE FOR THE NEXT 240 FRAMES, WHATEVER THE WEIGHTS THINK.
+  //
+  // One question for every decision: from the board this move leaves, is
+  // there a line that keeps the bot alive that long? A line is what the bot
+  // can actually do -- at its own pace (walk, swap, one reaction before the
+  // next decision, with panels still moving), through the engine's rules
+  // (the stalling rule included) -- or waiting. The engine decides rows, stop
   // time, garbage and death.
-  // 0 = the row-based check. 240 is measured separately before it is switched on.
-  PuyoCpu.prototype.SURVIVE_FRAMES = 0;
-  PuyoCpu.prototype.SURVIVE_WIDTH = 4;
-  PuyoCpu.prototype._survivesFor = function (board, carry, pos, timeLeft, budget) {
-    if (timeLeft <= 0) return true;
-    if (budget.n <= 0) { this.survivalUnproven = (this.survivalUnproven || 0) + 1; return true; }
-    if (!pos && this.stack) pos = [this.stack.curRow, this.stack.curCol];
-    var saved = this._carry;
-    var inc = (carry && carry.nextRow) || (board.incoming === false ? false : (board.incoming || this._incoming || null));
-    // AT THE BOT'S OWN PACE. A step is a walk, a swap, and a reaction's worth
-    // of frames before the next decision -- not a wait for the board to go
-    // still. The bot moves while panels are still falling and catches them;
-    // a line that waited for every settle could never make those clears (seed
-    // 700 frame 1867: the real bot's (2,2) came 27 frames after the decision,
-    // mid-fall, and cleared; the line's came after the settle and cleared
-    // nothing). Moves that clear or earn stop time are tried first, then
-    // waiting, then the rest.
-    var swaps = board.legalSwaps(), opts = [], i, t, r;
-    for (i = 0; i < swaps.length && budget.n > 0; i++) {
-      t = board.clone();
-      t.incoming = inc;
-      var walk = pos ? travel.cost(pos[0], pos[1], swaps[i][0], swaps[i][1]) : 0;
-      this._carry = carry || null;
-      r = this._resolveCandidate(t, swaps[i], walk, false, this.reaction);
-      this._carry = saved;
-      budget.n--;
-      if (!r || r.refused || r.died || r.diedInWalk) continue;
-      var used = walk + (r.elapsed || 0);
-      if (used >= timeLeft) { if (this._line) this._line.unshift({ move: swaps[i], frames: used }); return true; }
-      opts.push({ b: t, r: r, m: swaps[i], used: used, pos: swaps[i] });
+  //
+  // It replaced a check that asked "survive the next two rows, five swaps
+  // before each, each after the board had settled", and a rescue bolted on
+  // beside it. Topped out under stop time a row may never come while the bot
+  // keeps clearing, and the saves are made mid-cascade: seed 700 frame 1867
+  // had a save that check called doomed, and the weights ranked the match
+  // that paid 136 frames of stop time 22nd of 23.
+  //
+  // So the search takes no weights. A long wait is tried first, which proves
+  // an easy board in one resolve; then a beam over the bot's moves, keeping
+  // the boards held longest (stop, pre-stop, shake), then least garbage,
+  // then lowest stack. A line reaching the horizon alive proves the move.
+  PuyoCpu.prototype.SURVIVE_FRAMES = 240;
+  PuyoCpu.prototype.SURVIVE_BEAM = 30;
+  PuyoCpu.prototype._lineStep = function (node, m, long) {
+    var t = node.b.clone(), r, used, saved = this._carry;
+    t.incoming = (node.carry && node.carry.nextRow) ||
+                 (node.b.incoming === false ? false : (node.b.incoming || this._incoming || null));
+    this._carry = node.carry || null;
+    if (m) {
+      var w = node.pos ? travel.cost(node.pos[0], node.pos[1], m[0], m[1]) : 0;
+      r = this._resolveCandidate(t, m, w, false, this.reaction);
+      used = w + ((r && r.elapsed) || 0);
+    } else if (long) {
+      r = this._resolveCandidate(t, null, 0, true, Math.max(1, this.SURVIVE_FRAMES - node.t));
+      used = (r && r.elapsed) || 0;
+    } else {
+      r = this._resolveCandidate(t, null, this.reaction, false, 1);
+      used = this.reaction + ((r && r.elapsed) || 0);
     }
-    // WAIT one reaction, as one more option.
-    this._carry = carry || null;
-    var w = board.clone();
-    w.incoming = inc;
-    var rr = this._resolveCandidate(w, null, this.reaction, false, 1);
     this._carry = saved;
-    budget.n--;
-    if (rr && !rr.died && !rr.diedInWalk) {
-      var el = this.reaction + (rr.elapsed || 0);
-      if (el >= timeLeft) { if (this._line) this._line.unshift({ move: null, frames: el }); return true; }
-      opts.push({ b: w, r: rr, m: null, used: el,
-                  pos: pos && [Math.min(pos[0] + (rr.rose ? 1 : 0), board.height), pos[1]] });
+    if (!r || r.refused || r.died || r.diedInWalk) return null;
+    var pos = m || (node.pos && [Math.min(node.pos[0] + (r.rose ? 1 : 0), node.b.height), node.pos[1]]);
+    return { b: t, carry: r.carry || null, pos: pos, t: node.t + Math.max(1, used) };
+  };
+  PuyoCpu.prototype._heldFor = function (k) {
+    return k ? (k.stopTime || 0) + (k.preStopTime || 0) + (k.shakeTime || 0) : 0;
+  };
+  // ONE SEARCH PER DECISION, shared by every move: each first move starts a
+  // branch, the branches grow together, and a move is proven the moment one of
+  // its lines reaches the horizon. Proven moves stop drawing on the budget; the
+  // rest keep at least SURVIVE_QUOTA boards each so none is crowded out. On an
+  // easy board the first long wait proves nearly every move at once.
+  PuyoCpu.prototype.SURVIVE_SEARCH_BEAM = 200;
+  PuyoCpu.prototype.SURVIVE_QUOTA = 4;
+  PuyoCpu.prototype.SURVIVE_SEARCH_BUDGET = 60000;
+  PuyoCpu.prototype.SURVIVE_SEARCH_BUDGET_CHEAP = 4000;
+  PuyoCpu.prototype._survivalSearch = function (cands) {
+    var verdict = new Array(cands.length), level = [], self = this, i, j, n, c;
+    var root = { b: this._board.clone(), carry: null, pos: [this.stack.curRow, this.stack.curCol], t: 0 };
+    var open = 0;
+    for (i = 0; i < cands.length; i++) {
+      var cd = cands[i];
+      if (cd.resolved && (cd.resolved.died || cd.resolved.diedInWalk)) { verdict[i] = 'dies'; continue; }
+      c = cd.kind === 'raise'
+        ? { b: this._settledOf(cd).clone(), carry: cd.resolved.carry || null, pos: root.pos, t: cd.resolved.elapsed || 0 }
+        : this._lineStep(root, cd.move || null, false);
+      if (!c) { verdict[i] = 'dies'; continue; }
+      if (c.t >= this.SURVIVE_FRAMES) { verdict[i] = 'proven'; continue; }
+      c.tag = i; level.push(c); open++;
     }
-    // STOP TIME FIRST. Topped out, what holds the board is stop time, a break,
-    // or panels still clearing; the weights were trained while stop time read
-    // zero and rank the move that pays it near the bottom (seed 700 frame
-    // 1867: the match that paid 136 frames was 22nd of 23 by score). So every
-    // move that earns stop time, breaks garbage or clears is tried, in that
-    // order, and then the best few by score; waiting is one of the options.
-    var nPaying = 0;
-    for (i = 0; i < opts.length; i++) {
-      var rs = opts[i].r;
-      opts[i].pay = (rs.stopTimeEarned || 0) * 1e4 + (rs.brokeGarbage || 0) * 100 + (rs.clearedPanels || 0);
-      opts[i].key = this._score(opts[i].b, rs, opts[i].m);
-      if (opts[i].pay > 0) nPaying++;
+    // The one-ply bot exists to be cheap: the same search, a smaller budget.
+    var budget = (this.depth || 1) > 1 ? this.SURVIVE_SEARCH_BUDGET : this.SURVIVE_SEARCH_BUDGET_CHEAP;
+    function garb(b) { var g = 0; for (var r = 1; r < b.grid.length; r++) if (b.grid[r]) for (var q = 1; q <= b.width; q++) if (b.grid[r][q] === -2) g++; return g; }
+    function top(b) { for (var r = b.grid.length - 1; r >= 1; r--) if (b.grid[r]) for (var q = 1; q <= b.width; q++) { var v = b.grid[r][q]; if (v && v !== -1) return r; } return 0; }
+    function better(x, y) {
+      return (self._heldFor(y.carry) - self._heldFor(x.carry)) || (garb(x.b) - garb(y.b)) || (top(x.b) - top(y.b));
     }
-    opts.sort(function (x, y) { return (y.pay - x.pay) || (y.key - x.key); });
-    var width = nPaying + this.SURVIVE_WIDTH;
-    for (i = 0; i < opts.length && i < width && budget.n > 0; i++) {
-      if (this._survivesFor(opts[i].b, opts[i].r.carry, opts[i].pos, timeLeft - opts[i].used, budget)) {
-        if (this._line) this._line.unshift({ move: opts[i].m, frames: opts[i].used });
-        return true;
+    while (level.length && budget > 0) {
+      var next = [], seen = {};
+      for (i = 0; i < level.length && budget > 0; i++) {
+        n = level[i];
+        if (verdict[n.tag]) continue;
+        var moves = [ 'long', null ].concat(n.b.legalSwaps());
+        for (j = 0; j < moves.length && budget > 0; j++) {
+          budget--;
+          c = moves[j] === 'long' ? this._lineStep(n, null, true) : this._lineStep(n, moves[j], false);
+          if (!c) continue;
+          c.tag = n.tag;
+          if (c.t >= this.SURVIVE_FRAMES) { verdict[n.tag] = 'proven'; break; }
+          var h = n.tag + '|' + JSON.stringify(c.b.grid) + '|' + this._heldFor(c.carry) + '|' + c.pos;
+          if (seen[h]) continue;
+          seen[h] = 1;
+          next.push(c);
+        }
       }
+      next = next.filter(function (x) { return !verdict[x.tag]; });
+      next.sort(better);
+      var keep = [], per = {};
+      for (i = 0; i < next.length; i++) {           // the quota first
+        if ((per[next[i].tag] || 0) < this.SURVIVE_QUOTA) { per[next[i].tag] = (per[next[i].tag] || 0) + 1; keep.push(next[i]); next[i].kept = true; }
+      }
+      for (i = 0; i < next.length && keep.length < this.SURVIVE_SEARCH_BEAM; i++) if (!next[i].kept) keep.push(next[i]);
+      keep.sort(better);
+      level = keep;
+    }
+    // A move with lines still open when the budget ran out is not proven dead.
+    var alive = {};
+    for (i = 0; i < level.length; i++) alive[level[i].tag] = true;
+    for (i = 0; i < cands.length; i++) if (!verdict[i]) verdict[i] = alive[i] && budget <= 0 ? 'unproven' : 'dies';
+    return verdict;
+  };
+
+  PuyoCpu.prototype._lineSurvives = function (start, budget) {
+    if (!start) return false;
+    if (start.t >= this.SURVIVE_FRAMES) return true;
+    var level = [start], self = this, i, j, n, c;
+    function garb(b) { var g = 0; for (var r = 1; r < b.grid.length; r++) if (b.grid[r]) for (var q = 1; q <= b.width; q++) if (b.grid[r][q] === -2) g++; return g; }
+    function top(b) { for (var r = b.grid.length - 1; r >= 1; r--) if (b.grid[r]) for (var q = 1; q <= b.width; q++) { var v = b.grid[r][q]; if (v && v !== -1) return r; } return 0; }
+    while (level.length) {
+      var next = [], seen = {};
+      for (i = 0; i < level.length; i++) {
+        n = level[i];
+        var moves = [ 'long', null ].concat(n.b.legalSwaps());
+        for (j = 0; j < moves.length; j++) {
+          if (budget.n <= 0) { this.survivalUnproven = (this.survivalUnproven || 0) + 1; return true; }
+          budget.n--;
+          c = moves[j] === 'long' ? this._lineStep(n, null, true) : this._lineStep(n, moves[j], false);
+          if (!c) continue;
+          if (c.t >= this.SURVIVE_FRAMES) return true;
+          var h = JSON.stringify(c.b.grid) + '|' + this._heldFor(c.carry) + '|' + c.pos;
+          if (seen[h]) continue;
+          seen[h] = 1;
+          next.push(c);
+        }
+      }
+      next.sort(function (x, y) {
+        return (self._heldFor(y.carry) - self._heldFor(x.carry)) || (garb(x.b) - garb(y.b)) || (top(x.b) - top(y.b));
+      });
+      level = next.slice(0, this.SURVIVE_BEAM);
     }
     return false;
   };
   PuyoCpu.prototype._doomed = function (cands) {
     if (!this.refuseSuicide || !this.deepSurvival || !cands || cands.length < 2) return cands;
     if (!this._board) return cands;
-    var i, u0, ok;
-    var proven = [], unproven = [];
+    var i, proven = [], unproven = [];
+    var verdict = this._survivalSearch(cands);
     for (i = 0; i < cands.length; i++) {
-      u0 = this.survivalUnproven || 0;
-      ok = this._survivesAfter(cands[i], this.DOOMED_DEPTH);
-      if (!ok) continue;
-      if ((this.survivalUnproven || 0) > u0) unproven.push(cands[i]);
-      else proven.push(cands[i]);
+      if (verdict[i] === 'proven') proven.push(cands[i]);
+      else if (verdict[i] === 'unproven') unproven.push(cands[i]);
     }
     // A move the search ran out of budget on is a guess. When any move is
     // proven to live, the guesses are dropped.
@@ -1348,102 +1398,12 @@
     this.allDoomedNow = !live.length;
     if (!live.length) {
       this.doomedDecisions++;
-      // NOTHING SURVIVES BY THE CHECK: SEARCH FOR A LINE THAT DOES. Survival is
-      // not a preference; if a line exists it is played.
-      var saving = this.rescue ? this._rescue(cands) : null;
-      if (saving) { this.allDoomedNow = false; return [saving]; }
       return cands;
     }
-    this._rescuePlan = null;
     live = this._deepestLine(live);
     if (live.length === cands.length) return cands;
     this.doomedMovesDropped += cands.length - live.length;
     return live;
-  };
-
-  // THE RESCUE. When no move survives by the check, one search from the live
-  // board over lines made at the bot's own pace -- walk, swap, one reaction --
-  // keeping at each step the boards held longest (stop, pre-stop, shake),
-  // then least garbage, then lowest stack. No weights: seed 700 frame 1867,
-  // the weights ranked the move that paid 136 frames of stop time 22nd of
-  // 23, and the bot died with a save on the board. A line that reaches the
-  // horizon alive is a save; its first move is played and the rest kept, and
-  // at each later decision the rest is re-run against the board as it now
-  // stands and followed while it still holds. Found in 7.7s on that board
-  // with a beam of 200, and played in the real engine it lived.
-  PuyoCpu.prototype.RESCUE_BEAM = 200;
-  PuyoCpu.prototype.RESCUE_FRAMES = 240;
-  PuyoCpu.prototype.RESCUE_MAX_RESOLVES = 60000;
-  PuyoCpu.prototype._rescueStep = function (node, m) {
-    var t = node.b.clone(), r, used, saved = this._carry;
-    t.incoming = (node.carry && node.carry.nextRow) || (node.b.incoming === false ? false : (node.b.incoming || this._incoming || null));
-    this._carry = node.carry || null;
-    if (m) {
-      var w = node.pos ? travel.cost(node.pos[0], node.pos[1], m[0], m[1]) : 0;
-      r = this._resolveCandidate(t, m, w, false, this.reaction);
-      used = w + ((r && r.elapsed) || 0);
-    } else {
-      r = this._resolveCandidate(t, null, this.reaction, false, 1);
-      used = this.reaction + ((r && r.elapsed) || 0);
-    }
-    this._carry = saved;
-    if (!r || r.refused || r.died || r.diedInWalk) return null;
-    return { b: t, carry: r.carry || null, pos: m || node.pos, t: node.t + used, line: node.line.concat([m]) };
-  };
-  PuyoCpu.prototype._rescueHeld = function (k) {
-    return k ? (k.stopTime || 0) + (k.preStopTime || 0) + (k.shakeTime || 0) : 0;
-  };
-  PuyoCpu.prototype._rescue = function (cands) {
-    if (!this._board || !this.stack) return null;
-    var root = { b: this._board.clone(), carry: null, pos: [this.stack.curRow, this.stack.curCol], t: 0, line: [] };
-    var found = null, i, j, n, nn;
-    // THE PLAN ALREADY FOUND, re-run from the board as it stands.
-    if (this._rescuePlan && this._rescuePlan.length) {
-      n = root;
-      for (i = 0; i < this._rescuePlan.length && n; i++) n = this._rescueStep(n, this._rescuePlan[i]);
-      if (n) {
-        var tail = n;
-        while (tail && tail.t < this.RESCUE_FRAMES) tail = this._rescueStep(tail, null);
-        if (tail) found = n;
-      }
-    }
-    var budget = this.RESCUE_MAX_RESOLVES, level = [root], self = this;
-    function garb(b) { var g = 0; for (var r = 1; r < b.grid.length; r++) if (b.grid[r]) for (var c = 1; c <= b.width; c++) if (b.grid[r][c] === -2) g++; return g; }
-    function top(b) { for (var r = b.grid.length - 1; r >= 1; r--) if (b.grid[r]) for (var c = 1; c <= b.width; c++) { var v = b.grid[r][c]; if (v && v !== -1) return r; } return 0; }
-    while (!found && level.length && budget > 0) {
-      var next = [], seen = {};
-      for (i = 0; i < level.length && !found && budget > 0; i++) {
-        n = level[i];
-        var moves = n.b.legalSwaps();
-        moves.push(null);
-        for (j = 0; j < moves.length && budget > 0; j++) {
-          nn = this._rescueStep(n, moves[j]);
-          budget--;
-          if (!nn) continue;
-          if (nn.t >= this.RESCUE_FRAMES) { found = nn; break; }
-          var h = JSON.stringify(nn.b.grid) + '|' + this._rescueHeld(nn.carry) + '|' + nn.pos;
-          if (seen[h]) continue;
-          seen[h] = 1;
-          next.push(nn);
-        }
-      }
-      next.sort(function (x, y) {
-        return (self._rescueHeld(y.carry) - self._rescueHeld(x.carry)) || (garb(x.b) - garb(y.b)) || (top(x.b) - top(y.b));
-      });
-      level = next.slice(0, this.RESCUE_BEAM);
-    }
-    if (!found || !found.line.length) { this._rescuePlan = null; return null; }
-    var first = found.line[0];
-    this._rescuePlan = found.line.slice(1);
-    for (i = 0; i < cands.length; i++) {
-      var cm = cands[i].move;
-      if (first === null ? cands[i].kind === 'hold' : (cm && cm[0] === first[0] && cm[1] === first[1])) {
-        this.rescues = (this.rescues || 0) + 1;
-        return cands[i];
-      }
-    }
-    this._rescuePlan = null;
-    return null;
   };
 
   // A LINE EXISTING IS NOT A LINE BEING FOLLOWED.
@@ -2041,8 +2001,10 @@
                                    this._raiseWhileBroke(raiseBoard, raiseResolved) ||
                                    raiseResolved.died ||
                                    this._resolvesDead(raiseBoard, raiseResolved) ||
-                                   !this._survivesRise(raiseBoard.clone(), this.DOOMED_DEPTH, false,
-                                                       raiseResolved.carry || null)))) {
+                                   !this._lineSurvives({ b: raiseBoard.clone(), carry: raiseResolved.carry || null,
+                                                         pos: [this.stack.curRow, this.stack.curCol],
+                                                         t: raiseResolved.elapsed || 0 },
+                                                       { n: this.SURVIVAL_BUDGET })))) {
         cands.push({ kind: 'raise',
                      score: raiseScore,
                      board: this._scoredBoard,

@@ -709,7 +709,13 @@
   //      and the weights ranked last; the search finds it and it lives in the
   //      real engine. Swaps in the model go through the stalling rule, as a
   //      key press does, so a line cannot wiggle one pair to hold the floor.
-  var RULES = 36;
+  //   37. ONE SURVIVAL CHECK. The row-based check and the rescue beside it
+  //      are one search now, run once per decision for every move together:
+  //      alive for the next 240 frames at the bot's own pace, a long wait
+  //      tried first, then a beam kept by frames held, garbage and height --
+  //      no weights. On seed 700 frame 1867 it proves (3,3), (3,4), (4,2)
+  //      and (4,4); the old check proved nothing.
+  var RULES = 37;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
