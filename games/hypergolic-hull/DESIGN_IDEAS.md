@@ -435,6 +435,57 @@ Heading+speed is an exact representation only at cap 1.
 `firingPositions`, the auto-router, both test pilots, and tap-to-move. Balance
 resets to zero. This is not a day.
 
+## WHAT THE RESEARCH SAYS ABOUT DODGE-OR-ACT (2026-09-27)
+
+The loop Mk II proposes splits into three parts with very different track
+records.
+
+**Telegraphed enemies + perfect information + a real dodge-or-act decision
+each round — PROVEN.** Into the Breach, Slay the Spire, Cobalt Core, Shogun
+Showdown, Star Renegades, Invisible Inc, 868-HACK. One of the most reliable
+loops in modern turn-based design.
+
+**Dodge-or-act where the only thing at stake is your own hull — PROVEN BAD,
+and it is an identified defect rather than a risk.** Subset Games built this
+exact version and cut it. Matthew Davis: *"When the mechs were the only
+target, they found that the threatened havoc was trivial, because all the
+mechs needed to do was to walk away."* The Power Grid exists because of it.
+Three fixes are documented, any one of which is probably enough:
+
+1. Something other than your hull is on the line, so evasion is a cost rather
+   than an answer.
+2. The encounter degrades while you stall — Slay the Spire's enemies ramping
+   and block not carrying over, Invisible Inc's alarm, 868-HACK's zero score
+   being as bad as death.
+3. The dodge is itself offensive — Into the Breach's push, Auro's bump.
+
+**Newtonian momentum on a hex grid — NICHE for fifty years, for reasons that
+are written down.** Triplanetary (1973) is the elegant end and its projected-
+course arrow is worth copying literally. The costs: accelerating for N turns
+means decelerating for N turns with nothing tactical happening in between,
+high closing speeds give brief engagements separated by long approaches, and
+the learning cliff is front-loaded. Going digital removes the bookkeeping and
+nothing else.
+
+**The three combined, inside a loot roguelike — untried.** No shipped
+turn-based game was found where enemies lead a player's momentum vector.
+
+**The nearest shipped relative chose against momentum.** Cobalt Core is a
+loot/build roguelike with telegraphed lane attacks where every card is move,
+shield or shoot — the same dilemma — with INSTANT repositioning. 96% positive
+on ~3,400 reviews. Before building momentum, it is worth knowing the cheap
+version of this dilemma already shipped and worked.
+
+**What keeps the shop and the 25 weapons alive**: each must answer "what does
+this let me do about a shot aimed at my projected hex" — arcs relative to the
+velocity vector, retrograde versus prograde fire, trading a shot for a free
+burn, making the projection ambiguous. If they differ mainly in damage they
+become decoration.
+
+**The one link nobody else has**: crate mass and layout feeding thrust and
+handling, so how the hold is packed changes how the ship flies. Neither Into
+the Breach nor Cobalt Core can do that.
+
 ## TERRAIN — a plan, not yet built (2026-09-19)
 
 ### What is there now
