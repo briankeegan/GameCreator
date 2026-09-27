@@ -339,6 +339,102 @@ Cheaper things first, all measured: move+action with 2-hull hostiles (70/24 ->
 one thing drift promised that is available without it, the blind sides the game
 advertises and does not have.
 
+## DRIFT, MK II — the version worth testing (2026-09-27)
+
+Mk I (above) capped speed at 1, left everything else alone, and measured as
+"no change plus a regression". This is the version the same measurements point
+at. It is bigger, and it is a different game in the places it touches.
+
+### The round
+
+1. **Hostiles commit, visibly.** Each one locks in its burn — so its landing
+   hex is drawn — and whether it fires, and at which hex.
+2. **You act**, knowing exactly what is coming.
+3. **Everything resolves**, then everything drifts at once.
+
+Order matters and this order is the design. It is Into the Breach's loop: the
+enemy states its intent and cannot take it back. Momentum is what makes that
+statement expensive for them, because a committed vector cannot be undone.
+
+### The core dilemma
+
+**Your projected landing hex is public** — the ghost marker is always drawn —
+**and hostiles aim at it, not at where you are now.**
+
+So every round: **burn to change where you are going and dodge, or hold your
+line and shoot and take the hit.** One action, two things wanted, every single
+round. That is the thing the game has never had anywhere.
+
+It also kills the strategy that beat every other policy in simulation. The
+speed-0 creeper won because stopping was free; under this rule, at rest your
+ghost is the hex you are standing on, so every committed shot lands unless you
+spend your action burning — and burning starts you moving. Turtling means
+eating everything.
+
+### What that fixes, and how
+
+**The threat overlay stays drawable, exactly.** Hostiles commit before you act,
+so there is one true map, not one per burn. This is the single reason Mk I was
+unbuildable and it is answered by ordering, not by drawing more.
+
+**Motion becomes defence.** Speed is how you make an aimed shot miss. That is
+the reward for going fast that Mk I never really had — and it is not available
+at all today, where stepping one hex is the same price as shooting.
+
+**Burning costs energy.** A burn is a burn. This re-couples movement to the
+economy that free movement would otherwise break (recharge, `SHIELD_RAISE_COST
+= 3`, the measured hull parity all assume movement costs the turn), and it
+fixes a separately measured defect: max energy sits flat at 6 from sector 1 to
+12, every gun used costs 1-2, and buying capacity changed zero outcomes in 60
+seeded runs. Under this rule speed and shooting compete for the same bus.
+
+**Speed cap 2.** Cap 1 has no speed axis to test — the entire option set from
+speed 1 is turn 60 degrees, brake, or coast. Cap 3 cannot brake inside a
+7-wide board: measured, 93% of cap-3 pursuits end trapped against the edge,
+and the re-approach arc is 64 rounds, i.e. never.
+
+**Velocity is stored as a vector, not heading plus speed.** At cap 2, twelve of
+the eighteen non-zero velocity states are not a multiple of a unit direction.
+Heading+speed is an exact representation only at cap 1.
+
+### What it needs alongside, all load-bearing
+
+- **A standoff hostile that wants range 2 and may back away.** This is where
+  drift actually pays, and it is an archetype the game cannot have today
+  because at one hex per turn a kiter is uncatchable — which is why
+  `decideIntent` forbids hostiles from retreating at all. Measured against one:
+  firing share 7% -> 22%, kills 20% -> 70%, survival 60% -> 76%.
+- **A per-sector escalation clock**, pre-announced and deterministic. Without
+  it, waiting is free. With it, the creeper exits within 12 rounds 14-22% of
+  the time against 73-76% for every other policy.
+- **Density, or things worth crossing to.** Drift makes transit cheap; it does
+  not put anything on the board. 41% of rounds have nothing alive on them and
+  momentum does not change that.
+
+### Consequences to settle
+
+- **Rock and hazards check the PATH, not the destination.** Otherwise a black
+  hole is survivable at speed. Rock: stop, 1 damage at speed 1, 2 at speed 2.
+- **Docking and the gate**: pass through, at speed 1 or less for a berth, at
+  any speed for a gate. The price of shopping is slowing down.
+- **The edge**: brace and take 1 at speed 0-1, destroyed at 2+. Note this rule
+  never once fired at cap 1 in 3000 sectors — it only exists at cap 2.
+- **The Harrier inverts.** Its rule is "fires only if you did not move"; under
+  drift you almost always move. Make it fire only at ships that ARE moving —
+  an interceptor that punishes speed.
+- **Pushes stay positional** (one hex), not velocity changes. A velocity shove
+  at speed 2 is an instant edge kill, which the engine already rejected in
+  writing as "a coin, not a tactic".
+- **Missiles keep one hex per round** and become outrunnable. That is fine and
+  is counterplay; the Seeker's routing still matters against cover.
+
+### Cost, honestly
+
+`applySublight`, `sublightRoutes`, `legalSublightTargets`, `decideIntent`,
+`enemyPhase`, `spendAp`'s win check, `computeThreatHexes`, `facingFrom` /
+`firingPositions`, the auto-router, both test pilots, and tap-to-move. Balance
+resets to zero. This is not a day.
+
 ## TERRAIN — a plan, not yet built (2026-09-19)
 
 ### What is there now
