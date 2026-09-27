@@ -719,6 +719,16 @@ gate_bitlineup() {
   node games/the-game/ai/eval/bitlineup.test.js
 }
 
+# WHAT A BOARD CAN BE MADE TO DO, AND WHAT EACH COSTS. The reach* features answer
+# "could a 5-chain be fired from here" yes or no; a yes with no price cannot be
+# compared against a cheaper smaller one. bitoptions lists every option with the
+# swaps and the cursor frames, and the gate plays them on a real Stack: the
+# payout has to be what was listed. It also pins the quote against driving the
+# real cursor, and fails if the cost side stops separating options at all.
+gate_bitoptions() {
+  node games/the-game/ai/eval/bitoptions.test.js
+}
+
 gate_gates_reject_defects() {
   bash .github/scripts/gates.test.sh
 }
@@ -814,6 +824,7 @@ GATES=(
   "the engine decides while panels are in the air:gate_bitdecide:games/the-game/ai/"
   "the clock keeps frame-for-frame time with the engine:gate_bitframes:games/the-game/ai/"
   "lining up with colours as they appear:gate_bitlineup:games/the-game/ai/"
+  "every option listed is real and priced:gate_bitoptions:games/the-game/ai/"
   "the simulation resolves like the game:gate_resolve_fidelity:games/the-game/ai/"
   "that fidelity check fires:gate_resolve_fidelity_fires:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"
