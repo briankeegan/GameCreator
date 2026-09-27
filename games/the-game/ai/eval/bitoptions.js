@@ -69,9 +69,17 @@
             if (!bit.swapMasks(st, swaps[i][0], swaps[i][1])) { refused++; continue; }
             var r = bit.resolveFromMasks(st);
             bit.swapMasks(st, swaps[i][0], swaps[i][1]);
-            if (r.scope !== 'ok') { unknown++; continue; }
-            if (r.total === 0) continue;                    // clears nothing: not an option, a setup
-            now.push(optionOf([swaps[i]], travel.cost(cursor[0], cursor[1], swaps[i][0], swaps[i][1]), r));
+            // A MOVE THAT BREAKS A SLAB IS AN OPTION, NOT AN UNKNOWN. The cascade
+            // past the break is unknowable — the engine draws the converted row's
+            // colours from its own rng — but the BREAK is the point of the move,
+            // and digging is progress even when the clear itself pays nothing.
+            // Discarding these made every digging option invisible.
+            var broke = r.scope === 'garbage-broke';
+            if (r.scope !== 'ok' && !broke) { unknown++; continue; }
+            if (r.total === 0 && !broke) continue;           // clears nothing: a setup, not an option
+            var opt = optionOf([swaps[i]], travel.cost(cursor[0], cursor[1], swaps[i][0], swaps[i][1]), r);
+            opt.breaks = broke;
+            now.push(opt);
         }
 
         if ((depth || 1) >= 2) {
@@ -91,9 +99,13 @@
                     if (!bit.swapMasks(st2, then[j][0], then[j][1])) continue;
                     var r2 = bit.resolveFromMasks(st2);
                     bit.swapMasks(st2, then[j][0], then[j][1]);
-                    if (r2.scope !== 'ok' || r2.total === 0) continue;
+                    var broke2 = r2.scope === 'garbage-broke';
+                    if (r2.scope !== 'ok' && !broke2) continue;
+                    if (r2.total === 0 && !broke2) continue;
                     var frames = toSetup + travel.cost(swaps[i][0], swaps[i][1], then[j][0], then[j][1]);
-                    next.push(optionOf([swaps[i], then[j]], frames, r2));
+                    var opt2 = optionOf([swaps[i], then[j]], frames, r2);
+                    opt2.breaks = broke2;
+                    next.push(opt2);
                 }
             }
         }
