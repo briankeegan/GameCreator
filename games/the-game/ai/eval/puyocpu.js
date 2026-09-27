@@ -211,6 +211,9 @@
     // and you don't" -- the owner, before this was measured.
     this.breakingEscape = opts.breakingEscape === true;
     this.towardBreak = opts.towardBreak !== false;
+    // The rescue search runs for the search bot (depth 2, which plays and
+    // trains); the one-ply bot exists to be cheap and goes without.
+    this.rescue = opts.rescue !== undefined ? !!opts.rescue : (this.depth || 1) > 1;
     // OFF, AND THE THEORY BEHIND IT IS WRONG. It works mechanically -- it
     // fires 192 times over 20 games and lifts the average columns touching
     // the lid from 1.89 to 2.25 -- and every downstream number gets WORSE:
@@ -1347,7 +1350,7 @@
       this.doomedDecisions++;
       // NOTHING SURVIVES BY THE CHECK: SEARCH FOR A LINE THAT DOES. Survival is
       // not a preference; if a line exists it is played.
-      var saving = this._rescue(cands);
+      var saving = this.rescue ? this._rescue(cands) : null;
       if (saving) { this.allDoomedNow = false; return [saving]; }
       return cands;
     }
