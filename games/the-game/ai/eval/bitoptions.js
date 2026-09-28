@@ -102,8 +102,25 @@
         // A SETUP CLEARS NOTHING, at every ply. That is what makes the recursion
         // terminate on something meaningful rather than wandering: each step holds
         // the board still while it arranges, and the last step cashes.
+        // A BEAM INSIDE THE RECURSION, WHICH IS WHAT MAKES DEPTH AFFORDABLE.
+        //
+        // Every legal swap is a branch and a board offers thirty to sixty of them,
+        // so an exhaustive search costs b^d and only four plies ever fit. That is
+        // the whole reason depth was capped at 4: not a judgement about how far
+        // ahead is useful, but the only thing holding back the explosion.
+        //
+        // Keeping the best SETUPS_KEPT setups at each ply makes the cost
+        // SETUPS_KEPT * b * d -- linear in depth instead of exponential -- so the
+        // depth can be whatever the deadline affords.
+        //
+        // Setups are ranked by what they cost, because a setup clears nothing by
+        // definition and price is the only thing that separates two of them. The
+        // cheap ones leave the most frames for the cash at the end.
+        var SETUPS_KEPT = 6;
+
         function expand(state, chain, from, spent, left) {
             var list = bit.legalSwapsOf(state), k;
+            var setups = [];
             // PRUNE THE SETUPS THAT CANNOT LEAD ANYWHERE, but only below the top
             // ply: ply one stays exhaustive so an immediate clear is never missed.
             // A swap out of reach of any pair cannot make a line however many moves
@@ -135,12 +152,20 @@
                         }
                         continue;
                     }
-                    // Cleared nothing, so it is a setup. Go on if there are plies
-                    // left to spend.
+                    // Cleared nothing, so it is a setup. Collected rather than
+                    // recursed into immediately, so the ply can be ranked whole
+                    // and only its best few are paid for.
                     if (left > 1 && res.settled) {
-                        expand(res.settled, chain.concat([sw]), sw, cost, left - 1);
+                        setups.push({ state: res.settled, sw: sw, cost: cost });
                     }
                 }
+            }
+            if (!setups.length) return;
+            setups.sort(function (a, b) { return a.cost - b.cost; });
+            var take = Math.min(setups.length, SETUPS_KEPT);
+            for (k = 0; k < take; k++) {
+                var su = setups[k];
+                expand(su.state, chain.concat([su.sw]), su.sw, su.cost, left - 1);
             }
         }
         if ((depth || 1) >= 2) expand(st, [], cursor, 0, depth || 1);

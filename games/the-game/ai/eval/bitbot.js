@@ -631,8 +631,16 @@
 
     function depthFor(deadline, reaction, tallest) {
         var playable = Math.max(1, Math.floor(deadline / Math.max(1, reaction)));
-        var room = tallest <= H / 2 ? 4 : 3;          // material to think with
-        return Math.min(room, playable);
+        // THE DEADLINE SETS THE DEPTH, and a constant used to throw that away.
+        // `playable` is how many moves fit before the floor arrives -- a board
+        // with three rows of headroom has 28 -- and clamping it to 4 meant the
+        // bot planned a fifth of the way to its own death. Measured: depth 4 and
+        // depth 10 both cost 3.0ms a frame, because the beam sets the cost and
+        // the depth does not.
+        //
+        // The sequence that survives is break the slab, let it settle, line the
+        // colours up, cash. Four plies cannot hold that sequence.
+        return playable;
     }
 
     // THE WORKING BAND: A BOARD TOO LOW HAS NOTHING TO PLAY WITH.
@@ -849,13 +857,24 @@
             if (keep.length) { this.counts.forcedMaterial++; acts = keep; }
         }
 
-        // MUST ATTACK, AND MUST USE THE WINDOW. The best tier on the board wins
-        // outright: sends-and-breaks over sends, and both over a lineup swap whose
-        // window is open. Which of the survivors to play is the weights' business;
-        // that one of them is played is not.
+        // MUST ATTACK MEANS AN ATTACK IS ALWAYS AVAILABLE, NOT THAT EVERY CLEAR IS
+        // SPENT THE FRAME IT APPEARS.
+        //
+        // Forcing the best tier to be the ONLY option was measured at 7 deaths in
+        // 8 against 1: it cashed 1,127 times on one seed, 53 pieces for 309 cells,
+        // and never held anything long enough to become a chain. A 4-combo sends 3
+        // cells and a 6-chain sends 30, so spending the small one costs the big
+        // one, and a board with nothing left on it cannot defend either.
+        //
+        // So the obligation is that the set CONTAINS an attack, which is what stops
+        // a vector from choosing never to attack. Keeping the building moves beside
+        // it is what lets a chain get built. The narrowing happens only when the
+        // clock is what matters: with nothing banked and the floor advancing,
+        // holding a shape for later is a bet against a deadline, and then the
+        // attack is taken.
         var bestTier = 5;
         for (i = 0; i < acts.length; i++) { var t = tierOf(acts[i]); if (t < bestTier) bestTier = t; }
-        if (bestTier <= 2) {
+        if (bestTier <= 2 && !(info.stopTime > 0)) {
             keep = [];
             for (i = 0; i < acts.length; i++) if (tierOf(acts[i]) === bestTier) keep.push(acts[i]);
             this.counts.forcedAttack++;
