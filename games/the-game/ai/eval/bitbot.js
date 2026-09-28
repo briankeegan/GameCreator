@@ -729,7 +729,7 @@
         for (i = 0; i < all.length; i++) {
             var o = all[i];
             if (!o.swaps || !o.swaps.length) continue;
-            if (o.frames > deadline) continue;
+            if ((o.duration || o.frames) > deadline) continue;
             var isChain = o.kind === 'chain';
             var cells = cellsSent(engine, o.kind, o.size, o.chain);
             // A BREAK IS AN ATTACK ON YOUR OWN BOARD. It sends nothing, and it is
@@ -754,7 +754,7 @@
                 : 'combo' + Math.max(4, Math.min(7, o.size));
             var taste = 1 + ((weights[key] || 0) / 100);
             if (taste < 0.1) taste = 0.1;
-            var rate = (cells / Math.max(1, o.frames)) * taste;
+            var rate = (cells / Math.max(1, o.duration || o.frames)) * taste;
             if (!best || rate > best.rate) {
                 best = { rate: rate, cells: cells, frames: o.frames,
                          move: o.swaps[0], option: o };
@@ -764,20 +764,31 @@
     }
 
     function bestPlan(list, clock, deadline, engine, toppedOut, framesPerRow, framesTable) {
-        var best = null, all = list.now.concat(list.next), i;
+        var best = null, over = null, all = list.now.concat(list.next), i;
         // ONE PANEL REMOVED IS framesPerRow / W FRAMES OF LIFE -- 18.7 at level 10.
         // Panels and stop time are the same currency and this is the exchange rate.
         var perPanel = (framesPerRow || 0) / W;
         for (i = 0; i < all.length; i++) {
             var o = all[i];
             if (!o.swaps || !o.swaps.length) continue;
-            if (o.frames > deadline) continue;                 // cannot finish in time
+            // CAN IT BE FINISHED IN THE TIME THERE IS. The duration, not the walk:
+            // the swap, the cooldown when one applies, and the frames the board is
+            // busy resolving the cash at the end of it.
+            var took = o.duration || o.frames;
+            // A PLAN THAT DOES NOT FIT IS STILL THE ANSWER IF NOTHING DOES.
+            //
+            // Honest durations mean plans genuinely run past the deadline, and
+            // returning nothing then hands the board to the weights -- which is
+            // how a vector ends up choosing a death. There is no board on which
+            // the right answer is "no opinion": if nothing fits, the best of what
+            // does not fit is what the bot plays, ranked by the same objective.
+            var fits = took <= deadline;
             var isChain = o.kind === 'chain';
             var pays = BF.stopTimeOf(engine, isChain, isChain ? 0 : o.size,
                                      isChain ? o.chain : 0, toppedOut);
             // WHAT THE CLOCK GAINS, against the clock as it will be when the
             // move LANDS, because it drains while the cursor walks.
-            var stopGain = Math.max(0, pays - Math.max(0, clock - o.frames));
+            var stopGain = Math.max(0, pays - Math.max(0, clock - took));
             // AND THEN THE WHOLE HOLD, of which that is only one part. A break
             // holds the floor for as long as the slab takes to come apart and pays
             // no stop time at all, which is why digging looked worthless.
@@ -795,13 +806,35 @@
             // deepest chain pays only 68. The panels were always the larger half and
             // the gain-only ranking was reading the smaller one.
             var bought = o.total * perPanel + gain;
-            var rate = bought / Math.max(1, o.frames);
-            if (!best || rate > best.rate || (rate === best.rate && o.frames < best.frames)) {
-                best = { rate: rate, gain: gain, frames: o.frames, move: o.swaps[0], option: o };
+            var rate = bought / Math.max(1, took);
+            var cur = fits ? best : over;
+            if (!cur || rate > cur.rate || (rate === cur.rate && took < cur.frames)) {
+                cur = { rate: rate, gain: gain, frames: took, move: o.swaps[0], option: o };
+                if (fits) best = cur; else over = cur;
             }
         }
-        return best;
+        // The best that fits, or if nothing fits, the best there is.
+        return best || over;
     }
+
+    // WHAT A MOVE COSTS AT THIS MOMENT, which is not a constant.
+    //
+    // The reaction cooldown is skipped whenever stop time is running or the board
+    // is topped out -- see `urgent` in update() -- so an action inside a freeze
+    // costs the swap alone and one outside it also pays the reaction. Measured at
+    // 2.8 frames an action while frozen against 17 outside.
+    //
+    // The resolve time is the engine's own preStop and depends on the match, so
+    // it is a function rather than a number.
+    BitBot.prototype.timing = function (info) {
+        var frozen = (info.stopTime || 0) > 0 || !!info.toppedOut;
+        return {
+            overhead: travel.MOVE_FRAMES + (frozen ? 0 : this.reaction),
+            resolve: function (size, garbage) {
+                return BF.resolveFramesOf(PanelEngine(), size, garbage);
+            }
+        };
+    };
 
     BitBot.prototype.decide = function () {
         var board = this._snapshot();
@@ -920,7 +953,8 @@
                 }
             }
             if (!survival) {
-                options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base);
+                options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
+                                                   this.timing(info));
                 var plan = bestPlan(options, info.stopTime || 0, deadline, PanelEngine(),
                                     !!info.toppedOut, info.framesPerRow, this.stack.frames);
                 if (plan && plan.rate > 0) {
@@ -1182,7 +1216,8 @@
                 this._attack = null;
                 this.counts.attackDropped++;
             }
-            options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base);
+            options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
+                                                   this.timing(info));
             var atk = bestAttack(options, this.weights, PanelEngine(), deadline,
                                  this.stack.frames, (info.framesPerRow || 0) / W);
             if (atk && atk.move) {

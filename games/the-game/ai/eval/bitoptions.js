@@ -44,9 +44,31 @@
     // for a combo.
     function sizeOf(chain, total) { return chain >= 2 ? chain : total; }
 
+    // WHAT A SEQUENCE ACTUALLY TAKES, which is not what it costs to walk.
+    //
+    //   frames    cursor travel, and only that
+    //   overhead  the swap, plus the reaction cooldown when one applies. A plan's
+    //             moves are played one per decision, so every move pays it. The
+    //             cooldown is skipped while stop time runs, so the caller says
+    //             which number is right at this moment.
+    //   resolve   FLASH + FACE + POP * (comboSize + garbage) -- the engine's own
+    //             preStop. The board is busy for this long after the cash and the
+    //             next move cannot land until it is over. 59 frames for a bare
+    //             three, 143 for a three into twelve garbage panels.
+    //
+    // Left out, a three-move plan ending in a clear prices at ~15 frames and
+    // really takes 120 or more, so the deadline test passed plans the floor
+    // arrives in the middle of.
+    function durationOf(swaps, frames, r) {
+        var d = frames + swaps.length * OVERHEAD;
+        if (RESOLVE && r && r.total > 0) d += RESOLVE(r.total, r.garbage || 0);
+        return d;
+    }
+
     function optionOf(swaps, frames, r) {
         return { kind: kindOf(r.chain), size: sizeOf(r.chain, r.total),
-                 swaps: swaps, frames: frames, chain: r.chain, total: r.total };
+                 swaps: swaps, frames: frames, chain: r.chain, total: r.total,
+                 garbage: r.garbage || 0, duration: durationOf(swaps, frames, r) };
     }
 
     // Cheapest first, then bigger — the order a caller wants to read.
@@ -59,7 +81,13 @@
     //
     // board is a LogicalBoard; cursor is [row, col]. `depth` 1 lists only what
     // fires this move, 2 also lists what a setup opens up.
-    function options(board, W, H, cursor, depth, st) {
+    // Set per call by the caller, which knows its own reaction and whether the
+    // clock is running.
+    var OVERHEAD = 0, RESOLVE = null;
+
+    function options(board, W, H, cursor, depth, st, timing) {
+        OVERHEAD = (timing && timing.overhead) || 0;
+        RESOLVE = (timing && timing.resolve) || null;
         var now = [], next = [], i, j;
         if (!st) st = bit.maskState(board.grid, board.blocks, W, H);
         var swaps = board ? board.legalSwaps() : bit.legalSwapsOf(st);
