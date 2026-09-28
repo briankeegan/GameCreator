@@ -25,23 +25,33 @@
     {
       "gen": 0,
       "champion": 0,
-      "wins": 3,
-      "sent": 136,
-      "chains": 4,
-      "ceilings": 5
+      "wins": 6,
+      "sent": 796,
+      "chains": 12,
+      "ceilings": 1
     },
     {
       "gen": 1,
       "champion": 0,
-      "wins": 2,
-      "sent": 30,
-      "chains": 0,
-      "ceilings": 6
+      "wins": 4,
+      "sent": 1133,
+      "chains": 10,
+      "ceilings": 2
+    },
+    {
+      "gen": 2,
+      "champion": 0,
+      "wins": 4,
+      "sent": 1205,
+      "chains": 16,
+      "ceilings": 1
     }
   ],
   "population": 4,
-  "generations": 2,
-  "generationsPlanned": 2,
-  "controlWins": 2,
-  "seed": 20250928
+  "generations": 3,
+  "generationsPlanned": 3,
+  "controlWins": 3,
+  "seed": 10616,
+  "ceiling": 30000,
+  "generationsTotal": 3
 }

@@ -479,13 +479,29 @@
           if (k[c] & ((garb[c] >> 1) | (garb[c] << 1) | garb[c - 1] | garb[c + 1])) brokeGarbage = true;
         }
         if (brokeGarbage) {
+          // HOW MANY GARBAGE PANELS THIS MATCH TOUCHES, because the engine's own
+          // resolve time is FLASH + FACE + POP * (comboSize + onScreen) and
+          // onScreen is exactly this count. A caller that only knows a slab was
+          // hit cannot price the move; the slabs are in the state, so count them.
+          //
+          // The whole connected slab, not the cells beside the match: the engine
+          // takes getConnectedGarbagePanels(matching), so touching one cell of a
+          // slab pops a row of all of it.
+          var touched = 0;
+          for (var sl = 0; sl < st.slabs.length; sl++) {
+            var sm2 = st.slabs[sl], hit = false, cc;
+            for (cc = 1; cc <= W && !hit; cc++) {
+              if (k[cc] & ((sm2[cc] >> 1) | (sm2[cc] << 1) | sm2[cc - 1] | sm2[cc + 1])) hit = true;
+            }
+            if (hit) for (cc = 1; cc <= W; cc++) touched += popcount(sm2[cc]);
+          }
           // NOTHING PAST HERE IS KNOWABLE. Touching a slab pops a row of it and
           // the engine colours that row from its own rng, so what those panels
           // go on to do depends on the draw. The numbers up to the break are
           // reported and the scope says which kind of answer this is, so a
           // caller cannot read a stopped cascade as a finished one.
           return { scope: 'garbage-broke', chain: Math.max(counter, 1),
-                   total: total, rounds: rounds };
+                   total: total, rounds: rounds, garbage: touched };
         }
         continue;
       }

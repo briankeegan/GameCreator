@@ -63,6 +63,22 @@
 
     // Level 10's own numbers, read off LEVELS rather than restated, so a level
     // table change cannot leave a stale copy here saying otherwise.
+    // HOW LONG A MATCH TAKES TO RESOLVE, the engine's own `preStop`:
+    //
+    //     FLASH + FACE + POP * (comboSize + garbagePanelsOnScreen)
+    //
+    // panel-engine.js computes exactly this the moment a match is found. It is
+    // the frames the board is busy before the next move of a plan can land, and
+    // it scales with the match AND with the slab it touches -- a three into six
+    // garbage panels takes 101 frames at level 10 against 59 for a bare three.
+    //
+    // Pricing a move at travel + swap leaves this out, which is a twentyfold
+    // underestimate for anything that clears.
+    function resolveFramesOf(engine, comboSize, garbageOnScreen) {
+        var f = engine.LEVELS[9].frames;
+        return f.FLASH + f.FACE + f.POP * ((comboSize || 0) + (garbageOnScreen || 0));
+    }
+
     function stopTimeOf(engine, isChain, comboSize, chainCounter, toppedOut) {
         var stop = engine.LEVELS[9].stop, t = 0;
         if (comboSize > 3 || isChain) {
@@ -287,7 +303,8 @@
     // Calls go through this object so a test can replace one step with a broken
     // one and prove the sweep notices.
     var api = { features: features, keys: keys, infoKeys: infoKeys, surface: surface,
-                stopTimeOf: stopTimeOf, ways: ways, bestSize: bestSize, NORM: NORM,
+                stopTimeOf: stopTimeOf, resolveFramesOf: resolveFramesOf,
+                ways: ways, bestSize: bestSize, NORM: NORM,
                 CHAIN_BUCKETS: CHAIN_BUCKETS, COMBO_BUCKETS: COMBO_BUCKETS,
                 CHAIN_TOP: CHAIN_TOP, COMBO_TOP: COMBO_TOP,
                 clamps: function () { return clamped; },

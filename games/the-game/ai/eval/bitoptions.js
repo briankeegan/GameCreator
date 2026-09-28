@@ -44,9 +44,31 @@
     // for a combo.
     function sizeOf(chain, total) { return chain >= 2 ? chain : total; }
 
+    // WHAT A SEQUENCE ACTUALLY TAKES, which is not what it costs to walk.
+    //
+    //   frames    cursor travel, and only that
+    //   overhead  the swap, plus the reaction cooldown when one applies. A plan's
+    //             moves are played one per decision, so every move pays it. The
+    //             cooldown is skipped while stop time runs, so the caller says
+    //             which number is right at this moment.
+    //   resolve   FLASH + FACE + POP * (comboSize + garbage) -- the engine's own
+    //             preStop. The board is busy for this long after the cash and the
+    //             next move cannot land until it is over. 59 frames for a bare
+    //             three, 143 for a three into twelve garbage panels.
+    //
+    // Left out, a three-move plan ending in a clear prices at ~15 frames and
+    // really takes 120 or more, so the deadline test passed plans the floor
+    // arrives in the middle of.
+    function durationOf(swaps, frames, r) {
+        var d = frames + swaps.length * OVERHEAD;
+        if (RESOLVE && r && r.total > 0) d += RESOLVE(r.total, r.garbage || 0);
+        return d;
+    }
+
     function optionOf(swaps, frames, r) {
         return { kind: kindOf(r.chain), size: sizeOf(r.chain, r.total),
-                 swaps: swaps, frames: frames, chain: r.chain, total: r.total };
+                 swaps: swaps, frames: frames, chain: r.chain, total: r.total,
+                 garbage: r.garbage || 0, duration: durationOf(swaps, frames, r) };
     }
 
     // Cheapest first, then bigger — the order a caller wants to read.
@@ -59,7 +81,13 @@
     //
     // board is a LogicalBoard; cursor is [row, col]. `depth` 1 lists only what
     // fires this move, 2 also lists what a setup opens up.
-    function options(board, W, H, cursor, depth, st) {
+    // Set per call by the caller, which knows its own reaction and whether the
+    // clock is running.
+    var OVERHEAD = 0, RESOLVE = null;
+
+    function options(board, W, H, cursor, depth, st, timing) {
+        OVERHEAD = (timing && timing.overhead) || 0;
+        RESOLVE = (timing && timing.resolve) || null;
         var now = [], next = [], i, j;
         if (!st) st = bit.maskState(board.grid, board.blocks, W, H);
         var swaps = board ? board.legalSwaps() : bit.legalSwapsOf(st);
@@ -102,8 +130,25 @@
         // A SETUP CLEARS NOTHING, at every ply. That is what makes the recursion
         // terminate on something meaningful rather than wandering: each step holds
         // the board still while it arranges, and the last step cashes.
+        // A BEAM INSIDE THE RECURSION, WHICH IS WHAT MAKES DEPTH AFFORDABLE.
+        //
+        // Every legal swap is a branch and a board offers thirty to sixty of them,
+        // so an exhaustive search costs b^d and only four plies ever fit. That is
+        // the whole reason depth was capped at 4: not a judgement about how far
+        // ahead is useful, but the only thing holding back the explosion.
+        //
+        // Keeping the best SETUPS_KEPT setups at each ply makes the cost
+        // SETUPS_KEPT * b * d -- linear in depth instead of exponential -- so the
+        // depth can be whatever the deadline affords.
+        //
+        // Setups are ranked by what they cost, because a setup clears nothing by
+        // definition and price is the only thing that separates two of them. The
+        // cheap ones leave the most frames for the cash at the end.
+        var SETUPS_KEPT = 6;
+
         function expand(state, chain, from, spent, left) {
             var list = bit.legalSwapsOf(state), k;
+            var setups = [];
             // PRUNE THE SETUPS THAT CANNOT LEAD ANYWHERE, but only below the top
             // ply: ply one stays exhaustive so an immediate clear is never missed.
             // A swap out of reach of any pair cannot make a line however many moves
@@ -135,12 +180,20 @@
                         }
                         continue;
                     }
-                    // Cleared nothing, so it is a setup. Go on if there are plies
-                    // left to spend.
+                    // Cleared nothing, so it is a setup. Collected rather than
+                    // recursed into immediately, so the ply can be ranked whole
+                    // and only its best few are paid for.
                     if (left > 1 && res.settled) {
-                        expand(res.settled, chain.concat([sw]), sw, cost, left - 1);
+                        setups.push({ state: res.settled, sw: sw, cost: cost });
                     }
                 }
+            }
+            if (!setups.length) return;
+            setups.sort(function (a, b) { return a.cost - b.cost; });
+            var take = Math.min(setups.length, SETUPS_KEPT);
+            for (k = 0; k < take; k++) {
+                var su = setups[k];
+                expand(su.state, chain.concat([su.sw]), su.sw, su.cost, left - 1);
             }
         }
         if ((depth || 1) >= 2) expand(st, [], cursor, 0, depth || 1);

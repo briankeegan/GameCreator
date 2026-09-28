@@ -34,7 +34,11 @@ var BitBot = require('./bitbot.js');
 var POP = Number(process.argv[2] || 8);
 var GENS = Number(process.argv[3] || 8);
 var SEEDS = Number(process.argv[4] || 1);
-var SHARDS = Number(process.env.GC_SHARDS || 4);
+// One shard per core, read off the machine rather than assumed. A hardcoded 4
+// wastes cores on a bigger runner and oversubscribes a smaller one, and the
+// duels are independent processes so the count is the only thing that decides
+// how much of the box is used.
+var SHARDS = Number(process.env.GC_SHARDS || require('os').cpus().length || 4);
 
 // A CEILING, BECAUSE THE BOT NOW SURVIVES. Duels ran about 1,000 frames before
 // today and run 14,000 to 16,700 now, so an unbounded pairing can hold up a whole
@@ -42,10 +46,10 @@ var SHARDS = Number(process.env.GC_SHARDS || 4);
 // versus.js warns is not what that tie-break was calibrated for -- the count is
 // reported every generation so a run where most pairings hit it is visible rather
 // than silently meaning something else.
-// NOTHING DIES ANY MORE, so a long ceiling buys nothing but wall clock. The
-// fitness at the ceiling is garbage sent, and 8,000 frames is plenty to measure
-// that -- 21,600 was sized when duels ended on a death at about 1,100.
-var CEILING = Number(process.env.GC_VERSUS_CEILING || 8000);
+// NOTHING DIES ANY MORE, so the fitness at the ceiling is garbage sent and the
+// ceiling is how long a game the vectors are scored over. 30,000 frames is 8m20s
+// of play at 60fps and about 60 seconds of wall clock a duel.
+var CEILING = Number(process.env.GC_VERSUS_CEILING || 30000);
 var OPTS = { bot: 'bitbot', level: 10, reaction: 12, allowRaise: true, ceiling: CEILING };
 
 var rngState = (Number(process.env.GC_GA_SEED || 20250928) >>> 0) || 1;
@@ -79,8 +83,98 @@ function mutate(parent, strength) {
     return w;
 }
 
-var pop = [BitBot.STARTER];            // island 0 is the control, as in the round
-for (var p = 1; p < POP; p++) pop.push(randomVector());
+// IT RESUMES, WHICH IS WHAT MAKES A SHORT RUN WORTH DISPATCHING TWICE.
+//
+// A run is sized to about ten minutes, which buys three generations. Three
+// generations starting from random vectors is not a search -- the control wins
+// it and the champion is noise. What makes the fan-out add up is that each run
+// CONTINUES the one before it under the same tag: the champion committed last
+// time is the parent this time, so generations accumulate across dispatches even
+// though no single run holds many.
+//
+// ISLAND 0 STAYS THE CONTROL. It is the untrained BitBot.STARTER every time, so
+// controlWins keeps meaning the one thing it is for -- whether everything learned
+// so far actually beats the hand-set vector. Seeding it with the champion would
+// make the measurement compare the champion against itself.
+//
+// No champion on disk is the first run of that tag, and it starts from random as
+// it always did.
+function seedPopulation() {
+    var pop = [BitBot.STARTER], prior = null;
+    var tag = process.env.GC_TAG || String(process.env.GC_GA_SEED || 'default');
+    var file = path.join(__dirname, 'islands', 'bitbot.island.' + tag + '.json');
+    try {
+        var saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+        if (saved && saved.weights) prior = saved;
+    } catch (e) { /* first run under this tag */ }
+
+    if (!prior) {
+        for (var p = 1; p < POP; p++) pop.push(randomVector());
+        console.log('no champion for tag ' + tag + ' -- starting from random vectors');
+        return { pop: pop, carried: 0 };
+    }
+    // The champion itself, then children of it. Keeping the parent verbatim means
+    // a run can only lose ground if something genuinely beats it.
+    pop.push(prior.weights);
+
+    // MIGRATION: ONE SLOT COMES FROM ANOTHER ISLAND.
+    //
+    // Twenty tags each resuming only their own lineage are twenty separate
+    // searches that happen to share a directory -- isolation with nothing
+    // crossing it, which is the half of the island model that makes each one
+    // converge on whatever it found first. The other half is that a neighbour's
+    // champion occasionally arrives and has to compete.
+    //
+    // It is one slot, not the whole population: migration that floods every
+    // island with the current leader collapses the twenty searches into one, and
+    // the diversity was the reason for running twenty.
+    //
+    // The visitor is entered verbatim and duels for its place like anything else.
+    // Losing it costs this island nothing, since its own champion is still here.
+    var visitor = bestForeignChampion(tag);
+    if (visitor && POP > 2) {
+        pop.push(visitor.weights);
+        console.log('   migrant from ' + visitor.tag + ' (sent ' + visitor.sent + ')');
+    }
+    for (var q = pop.length; q < POP; q++) pop.push(mutate(prior.weights, 12));
+    var carried = Number(prior.generationsTotal || prior.generations || 0);
+    console.log('resuming tag ' + tag + ' from a champion of ' + carried +
+                ' generations (controlWins ' + (prior.controlWins || 0) + ')');
+    return { pop: pop, carried: carried };
+}
+
+// THE BEST CHAMPION THAT IS NOT THIS ISLAND'S, ranked by what the fitness
+// actually is: garbage sent at the ceiling, read from the last generation this
+// island recorded. A file with no history has never finished a generation and is
+// not a candidate.
+//
+// ONLY CHAMPIONS MEASURED AT THIS CEILING. `sent` is a count over the duel, so a
+// vector scored over 30,000 frames sends more than one scored over 8,000 for no
+// reason but the length of the game -- ranking the two together imports whichever
+// island ran longest rather than whichever plays best. A file from before the
+// ceiling was recorded cannot be placed and is skipped.
+function bestForeignChampion(tag) {
+    var dir = path.join(__dirname, 'islands'), best = null;
+    var names;
+    try { names = fs.readdirSync(dir); } catch (e) { return null; }
+    for (var i = 0; i < names.length; i++) {
+        if (names[i].indexOf('bitbot.island.') !== 0) continue;
+        var theirs = names[i].slice('bitbot.island.'.length, -'.json'.length);
+        if (theirs === tag) continue;
+        var saved;
+        try { saved = JSON.parse(fs.readFileSync(path.join(dir, names[i]), 'utf8')); }
+        catch (e) { continue; }
+        if (!saved || !saved.weights || !saved.history || !saved.history.length) continue;
+        if (Number(saved.ceiling) !== CEILING) continue;
+        var sent = Number(saved.history[saved.history.length - 1].sent || 0);
+        if (!best || sent > best.sent) best = { weights: saved.weights, tag: theirs, sent: sent };
+    }
+    return best;
+}
+
+var seeded = seedPopulation();
+var pop = seeded.pop;
+var CARRIED = seeded.carried;
 
 var history = [];
 
@@ -148,11 +242,17 @@ function generation(g, done) {
         // generation now overwrites the same per-tag file, so the best vector so
         // far is on disk from the first one and the results are readable while the
         // run is still going.
-        writeChampion(pop[order[0]], g + 1);
+        deliver(pop[order[0]], g + 1);
 
         var champ = order[0];
         history.push({ gen: g, champion: champ, wins: score[champ],
-                       sent: sent[champ], chains: chains[champ], ceilings: ceilings });
+                       sent: sent[champ], chains: chains[champ], ceilings: ceilings,
+                       // THE DENOMINATOR, so "did anything die" is arithmetic off the
+                       // file rather than read out of the log line below it. A duel
+                       // that did not reach the ceiling ended early, and with the bot
+                       // surviving 30,000 frames the only way to end early is a death:
+                       // duels - ceilings IS the death count.
+                       duels: out.length });
         console.log('gen ' + String(g).padStart(2) + '  best island ' +
                     (champ === 0 ? 'CONTROL' : String(champ)) +
                     '  wins ' + String(score[champ]).padStart(4) +
@@ -185,6 +285,43 @@ console.log('population ' + POP + ', generations ' + GENS + ', ' + SEEDS +
             ' seed(s) per pairing, ceiling ' + CEILING + ', shards ' + SHARDS);
 console.log('island 0 is BitBot.STARTER, the control -- watch where it places\n');
 
+// PUSHED AS IT IS EARNED, NOT WHEN THE RUN ENDS.
+//
+// Writing the champion every generation protects against a crash inside this
+// script. It does NOT protect against the job dying, because the workflow step
+// that commits runs only after training finishes -- so a cancelled or timed-out
+// run still delivers nothing, which is exactly what lost the first twenty runs
+// (an hour of runners each, not one champion between them).
+//
+// So the commit happens here, per generation. Off unless GC_DELIVER is set, so a
+// local run does not try to push. A failed push is NOT fatal: the next generation
+// will try again a minute later, and losing a push is not a reason to throw away
+// a search that is still running.
+function deliver(weights, gensDone) {
+    var done = writeChampion(weights, gensDone);
+    if (process.env.GC_DELIVER !== '1') return done;
+    try {
+        var cp = require('child_process');
+        var rel = path.relative(path.join(__dirname, '..', '..', '..'), done.out);
+        cp.execSync('git add ' + JSON.stringify(rel), { stdio: 'ignore' });
+        cp.execSync('git commit -m ' + JSON.stringify(
+            'BitBot island ' + done.tag + ' generation ' + gensDone +
+            '\n\ncontrolWins ' + done.controlWins + ' so far. High means the untrained ' +
+            'control is still winning and this run has found nothing yet, which is a ' +
+            'result rather than a failure.'), { stdio: 'ignore' });
+        cp.execSync('git fetch origin main --quiet', { stdio: 'ignore' });
+        cp.execSync('git rebase origin/main', { stdio: 'ignore' });
+        cp.execSync('git push origin HEAD:main', { stdio: 'ignore' });
+        console.log('   delivered generation ' + gensDone);
+    } catch (e) {
+        // Twenty runs push to main within minutes of each other, so losing a race
+        // is expected. Say so and carry on; the next generation re-delivers.
+        try { require('child_process').execSync('git rebase --abort', { stdio: 'ignore' }); } catch (e2) { /* nothing to abort */ }
+        console.log('   generation ' + gensDone + ' not delivered (will retry next generation)');
+    }
+    return done;
+}
+
 function writeChampion(weights, gensDone) {
     var tag = process.env.GC_TAG || String(process.env.GC_GA_SEED || 'default');
     try { fs.mkdirSync(path.join(__dirname, 'islands'), { recursive: true }); } catch (e) { /* already there */ }
@@ -193,6 +330,8 @@ function writeChampion(weights, gensDone) {
     fs.writeFileSync(out, JSON.stringify({ weights: weights, history: history,
                                            population: POP, generations: gensDone,
                                            generationsPlanned: GENS,
+                                           generationsTotal: CARRIED + gensDone,
+                                           ceiling: CEILING,
                                            controlWins: controlWins,
                                            seed: Number(process.env.GC_GA_SEED || 20250928) }, null, 2));
     return { out: out, tag: tag, controlWins: controlWins };
