@@ -156,7 +156,26 @@
                     // PRUNE BELOW THE TOP PLY ONLY: ply one stays exhaustive so an
                     // immediate clear is never missed. A swap out of reach of any
                     // pair cannot make a line however many moves follow it.
-                    var reach = node.chain.length ? bit.reachMask(state) : null;
+                    // THE PRUNE MUST NOT HIDE THE DIGGING.
+                    //
+                    // reachMask marks cells that would complete a same-colour
+                    // PAIR. A setup that puts a panel beside a slab is not near a
+                    // pair, so it was discarded -- and with it every sequence that
+                    // breaks garbage. Measured on seed 106's final board: an
+                    // exhaustive three-swap search finds 2 breaks and 323 clears,
+                    // and this search found 0 breaks at depth 3, 6 or 12.
+                    //
+                    // So a cell against garbage is in reach too. Breaking is the
+                    // only thing that converts a slab back into panels, and the
+                    // search exists to find it.
+                    var reach = null;
+                    if (node.chain.length) {
+                        reach = bit.reachMask(state);
+                        for (var rc = 1; rc <= W; rc++) {
+                            reach[rc] |= ((state.garb[rc] >> 1) | (state.garb[rc] << 1) |
+                                          state.garb[rc - 1] | state.garb[rc + 1]) & ~state.garb[rc];
+                        }
+                    }
                     for (k = 0; k < list.length; k++) {
                         var sw = list[k];
                         if (reach) {
