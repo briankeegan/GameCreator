@@ -1,0 +1,149 @@
+# THE ISLAND LOOP FOR BITBOT, ONE RUN PER SEED.
+#
+# Separate from ai-train-pbt.yml because it trains a DIFFERENT BOT. BitBot reads
+# its own feature set (bitfeatures.js, 20 features) and its survival is
+# arithmetic rather than weights -- the plan objective in bitbot.js ranks by
+# frames of life bought per frame spent and the weights never see it. So what
+# this searches is the ATTACK: which shapes the bot builds toward when it is not
+# saving itself. A vector from here means nothing to the PuyoCpu trainer and
+# vice versa.
+#
+# WHY A FAN-OUT OF INDEPENDENT RUNS AND NOT ONE LONGER RUN. The first island run
+# did not converge. Over ten generations at one seed a pairing, the untrained
+# control won three of them and placed 1st, 3rd, 4th and 5th with weights that
+# never changed; winning scores sat flat at 5 to 6 of 7 and garbage sent drifted
+# DOWN. A champion decided by seven duels is a champion decided by noise, and
+# running more generations of that amplifies the noise rather than the signal.
+#
+# One run of one condition measures nothing. Twenty seeds give a distribution,
+# and the null result is countable: `controlWins` in each champion file says how
+# many generations the untrained hand-set vector took. If that is high across the
+# fan-out, the search found nothing and no vector from any run should be shipped.
+name: Train BitBot (islands)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ga_seed:
+        description: 'RNG seed. CHANGE IT for an independent run of the same config -- that is the whole point of the fan-out'
+        default: '11'
+      variant:
+        description: 'Label for this experiment, used in the champion filename and in the concurrency key'
+        default: ''
+      population:
+        description: 'Weight vectors in the population. Island 0 is always BitBot.STARTER, the control'
+        default: '8'
+      generations:
+        description: 'Generations. Each one duels every pairing, keeps the top half and refills with their mutated children'
+        default: '10'
+      seeds:
+        description: 'Seeds per pairing. ONE IS THE NOISE FLOOR -- at population 8 that is 7 duels per island per generation, which cannot separate vectors that are close'
+        default: '3'
+      ceiling:
+        description: 'Frames before a duel is called. BitBot now survives, so duels run 14000-16700 frames and an unbounded pairing can hold up a generation. A duel that reaches this is decided on SCORE, which versus.js says that tie-break was not calibrated for, so the count is printed every generation'
+        default: '21600'
+
+# THE SEED IS IN THE KEY, NOT JUST THE VARIANT.
+#
+# A fan-out that sets ga_seed and leaves variant empty puts every job in one
+# group named `default`, where only one can be pending -- so all but one are
+# cancelled within seconds of being dispatched and the fan-out silently becomes a
+# single run. That has happened twice in this repo (see ai-train-pbt.yml) and it
+# reads from outside as runs dying rather than as jobs never starting.
+#
+# cancel-in-progress is FALSE: a run that has done its generations has earned
+# them.
+concurrency:
+  group: ai-train-bitbot-${{ github.event.inputs.variant || 'default' }}-s${{ github.event.inputs.ga_seed || '11' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  islands:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          # It commits its champion, so real credentials and enough history to
+          # rebase onto whatever the other nineteen runs have pushed.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Who is committing
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      # SECONDS AGAINST HOURS. A run that spends five hours searching with a
+      # broken evaluator has measured nothing, and these are the checks that say
+      # the evaluator is the one the bot will actually play with.
+      - name: Check the harness before spending hours on it
+        working-directory: games/the-game/ai/eval
+        timeout-minutes: 45
+        run: |
+          node bitmatch.test.js
+          node bitoptions.test.js
+          node bitfeatures.test.js
+          node bitbot.test.js
+
+      - name: Islands
+        id: train
+        working-directory: games/the-game/ai/eval
+        timeout-minutes: 270
+        env:
+          GC_GA_SEED: ${{ github.event.inputs.ga_seed || '11' }}
+          GC_TAG: bitbot-${{ github.event.inputs.variant || 'default' }}-s${{ github.event.inputs.ga_seed || '11' }}
+          GC_VERSUS_CEILING: ${{ github.event.inputs.ceiling || '21600' }}
+          # One shard per core on the runner, which is four.
+          GC_SHARDS: '4'
+        run: |
+          node bitbot_islands.js \
+            "${{ github.event.inputs.population || '8' }}" \
+            "${{ github.event.inputs.generations || '10' }}" \
+            "${{ github.event.inputs.seeds || '3' }}" \
+            | tee run.log
+          echo "tag=bitbot-${{ github.event.inputs.variant || 'default' }}-s${{ github.event.inputs.ga_seed || '11' }}" >> "$GITHUB_OUTPUT"
+
+      # THE CHAMPION IS DELIVERED, NOT LEFT ON A DEAD RUNNER. One file per tag,
+      # so twenty runs do not overwrite each other -- nineteen results lost and
+      # one kept would look like a result and be a race.
+      #
+      # REBASE AND RETRY, because twenty runs finish within minutes of each other
+      # and each one pushes to main. A plain push loses that race and the run's
+      # whole search with it.
+      - name: Deliver the champion
+        if: always() && steps.train.outcome == 'success'
+        working-directory: games/the-game/ai/eval
+        run: |
+          TAG="${{ steps.train.outputs.tag }}"
+          FILE="islands/bitbot.island.$TAG.json"
+          if [ ! -f "$FILE" ]; then
+            echo "no champion at $FILE -- the run did not finish its generations"
+            exit 1
+          fi
+          echo "--- what this run found ---"
+          grep -E '^(gen|FINAL)' run.log || true
+          for attempt in 1 2 3 4 5; do
+            git add "$FILE"
+            git commit -m "BitBot island champion $TAG
+
+          controlWins is how many generations the UNTRAINED control took. High
+          means this run found nothing, which is a result and not a failure." || true
+            if git push origin HEAD:main; then
+              echo "delivered on attempt $attempt"
+              exit 0
+            fi
+            echo "push lost the race, rebasing (attempt $attempt)"
+            git fetch origin main
+            git rebase origin/main || git rebase --abort
+            sleep $((attempt * 5))
+          done
+          echo "could not deliver after 5 attempts"
+          exit 1
