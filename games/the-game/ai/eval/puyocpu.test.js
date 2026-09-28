@@ -357,7 +357,7 @@ test('the refusal happens in the CANDIDATE LIST, not in the score', function () 
 
 // ---- a move that leaves you topped out is not a move -----------------
 
-test('WITH THE SURVIVAL SEARCH ON, ONLY THE ENGINE SAYS A MOVE DIES', function () {
+test('WITH THE SURVIVAL SEARCH ON, ONLY THE SEARCH SAYS A MOVE DIES', function () {
     // A topped-out board on a short shield lives if a swap or a match holds
     // the stack; the search plays that out, so the grid test must not veto it.
     var stack = new PanelEngine.Stack({ level: LEVEL, seed: 11, countdown: false });
@@ -367,9 +367,8 @@ test('WITH THE SURVIVAL SEARCH ON, ONLY THE ENGINE SAYS A MOVE DIES', function (
     var died = { kind: 'swap', move: [1, 1], board: boardAt(H, W, H), resolved: { died: true } };
     var low = { kind: 'hold', board: boardAt(H, W, 3), resolved: {} };
     var out = cpu._survivors([toppedOut, died, low]);
-    assert.strictEqual(out.length, 2, out.length + ' of 3 kept');
+    assert.strictEqual(out.length, 3, out.length + ' of 3 kept: the search judges them, not this filter');
     assert.ok(out.indexOf(toppedOut) >= 0, 'the topped-out move the engine did not kill was dropped');
-    assert.ok(out.indexOf(died) < 0, 'the move the engine killed was kept');
 });
 
 test('a fatal move is dropped when a survivable one exists', function () {

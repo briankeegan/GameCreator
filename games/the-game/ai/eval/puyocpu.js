@@ -1053,12 +1053,12 @@
     var live = [], standing = [], i, b;
     for (i = 0; i < cands.length; i++) {
       b = this._settledOf(cands[i]);
-      // With the survival search on, the engine alone says what dies: a
-      // topped-out board on a short shield still lives if a swap or a match
-      // holds the stack, and the search plays that out. The grid tests
-      // below would refuse the move that saves it.
+      // With the survival search on, the search alone says what dies. The
+      // grid tests below refuse moves it proves, and so does this resolve's
+      // own death: it plays the move and then nothing, until the board is
+      // still, so "died" means "dies if the bot never acts again" -- a hold
+      // on the way through a proven line read as fatal (seed 700 frame 1711).
       if (this.deepSurvival && this.refuseSuicide) {
-        if (cands[i].resolved && (cands[i].resolved.died || cands[i].resolved.diedInWalk)) continue;
         standing.push(cands[i]);
         live.push(cands[i]);
         continue;

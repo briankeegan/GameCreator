@@ -759,7 +759,11 @@
   //      are searched on to EXTEND_FRAMES and the furthest are offered. And
   //      the scratch no longer carries history: paint keeps the live slab
   //      ids and the match marker, and resets the row generator's tally.
-  var RULES = 45;
+  //   46. ONLY THE SEARCH SAYS A MOVE DIES. A candidate's own resolve plays
+  //      the move and then nothing until the board is still, so its "died"
+  //      was "dies if the bot never acts again"; it vetoed a hold that was
+  //      the next step of a proven line (seed 700 frame 1711, dead at 1727).
+  var RULES = 46;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
