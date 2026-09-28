@@ -62,6 +62,10 @@ concurrency:
 
 permissions:
   contents: write
+  # ...and to dispatch its own continuation. Without this the chaining step gets
+  # HTTP 403 "Resource not accessible by integration" and the rotation stops
+  # after one run, with the training itself having succeeded.
+  actions: write
 
 jobs:
   islands:
