@@ -156,7 +156,7 @@
         // So depth is worth having and the naive expansion was what made it look
         // like it was not: 3.4x cheaper than before and now the best attacker.
         // Two seeds, so this is a direction and not a calibration.
-        this.maxDepth = opts.maxDepth === undefined ? 4 : opts.maxDepth;
+        this.maxDepth = opts.maxDepth === undefined ? 20 : opts.maxDepth;
         this.horizonDeath = opts.horizonDeath !== false;
         // The boards recent decisions were made on. Three, because a swap is an
         // involution -- it can only walk back one step at a time -- and a
@@ -664,8 +664,12 @@
 
     function depthFor(deadline, reaction, tallest) {
         var playable = Math.max(1, Math.floor(deadline / Math.max(1, reaction)));
-        var room = tallest <= H / 2 ? 4 : 3;          // material to think with
-        return Math.min(room, playable);
+        // THE DEADLINE SETS THE DEPTH. The constant here capped the search at four
+        // plies -- about 80 frames of play against a deadline of several hundred.
+        // It was holding back an explosion that no longer exists: bitoptions beams
+        // across the ply rather than per node, so cost is BEAM * branching * depth
+        // and depth 20 measures the same as depth 4, 0.27ms a frame.
+        return playable;
     }
 
     // THE WORKING BAND: A BOARD TOO LOW HAS NOTHING TO PLAY WITH.

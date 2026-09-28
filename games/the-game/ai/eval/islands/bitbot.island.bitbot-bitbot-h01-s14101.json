@@ -1,0 +1,60 @@
+{
+  "weights": {
+    "bumpiness": 8,
+    "spread": 98,
+    "tallest": -30,
+    "chain2": -16,
+    "chain3": -12,
+    "chain4": -51,
+    "chain5plus": -81,
+    "combo4": -72,
+    "combo5": -62,
+    "combo6": 71,
+    "combo7": -71,
+    "cheapestFrames": -20,
+    "moveFrames": -92,
+    "nextBestChain": -77,
+    "nextBestCombo": -28,
+    "nextWays": -38,
+    "breaksNow": -68,
+    "breakWays": -57,
+    "stopEarned": 95,
+    "stopReachable": 21
+  },
+  "history": [
+    {
+      "gen": 0,
+      "champion": 3,
+      "wins": 6,
+      "sent": 1903,
+      "chains": 28,
+      "ceilings": 3,
+      "duels": 12
+    },
+    {
+      "gen": 1,
+      "champion": 2,
+      "wins": 4,
+      "sent": 841,
+      "chains": 15,
+      "ceilings": 0,
+      "duels": 12
+    },
+    {
+      "gen": 2,
+      "champion": 1,
+      "wins": 4,
+      "sent": 1161,
+      "chains": 32,
+      "ceilings": 4,
+      "duels": 12
+    }
+  ],
+  "population": 4,
+  "generations": 3,
+  "generationsPlanned": 3,
+  "generationsTotal": 3,
+  "ceiling": 30000,
+  "controlWins": 0,
+  "seed": 14101
+}

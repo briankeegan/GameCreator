@@ -126,73 +126,93 @@
         // A SETUP CLEARS NOTHING, at every ply. That is what makes the recursion
         // terminate on something meaningful rather than wandering: each step holds
         // the board still while it arranges, and the last step cashes.
-        // A BEAM INSIDE THE RECURSION, WHICH IS WHAT MAKES DEPTH AFFORDABLE.
+        // A BEAM ACROSS THE PLY, WHICH IS WHAT MAKES DEPTH AFFORDABLE.
         //
-        // Every legal swap is a branch and a board offers thirty to sixty of them,
-        // so an exhaustive search costs b^d and only four plies ever fit. That is
-        // the whole reason depth was capped at 4: not a judgement about how far
-        // ahead is useful, but the only thing holding back the explosion.
+        // Every legal swap is a branch and a board offers thirty to sixty, so an
+        // exhaustive search costs b^d and only four plies ever fit. Keeping the
+        // best few setups AT EACH NODE does not fix that -- it only lowers the
+        // base, so six kept per node is 6^d and depth 8 is 1.7 million boards.
         //
-        // Keeping the best SETUPS_KEPT setups at each ply makes the cost
-        // SETUPS_KEPT * b * d -- linear in depth instead of exponential -- so the
-        // depth can be whatever the deadline affords.
+        // Keeping the best BEAM setups across the WHOLE ply does fix it: every
+        // ply costs BEAM * b resolves whatever its number, so the total is
+        // BEAM * b * depth. Linear. Depth is then a question of what the clock
+        // affords rather than what the search survives.
         //
-        // Setups are ranked by what they cost, because a setup clears nothing by
-        // definition and price is the only thing that separates two of them. The
-        // cheap ones leave the most frames for the cash at the end.
-        var SETUPS_KEPT = 6;
+        // Setups are ranked by price, because a setup clears nothing by
+        // definition and cost is the only thing separating two of them. The cheap
+        // ones leave the most frames for the cash at the end.
+        var BEAM = 12;
 
-        function expand(state, chain, from, spent, left) {
-            var list = bit.legalSwapsOf(state), k;
-            var setups = [];
-            // PRUNE THE SETUPS THAT CANNOT LEAD ANYWHERE, but only below the top
-            // ply: ply one stays exhaustive so an immediate clear is never missed.
-            // A swap out of reach of any pair cannot make a line however many moves
-            // follow it, and the reach is a handful of cells rather than the board.
-            var reach = chain.length ? bit.reachMask(state) : null;
-            for (k = 0; k < list.length; k++) {
-                var sw = list[k];
-                if (reach) {
-                    var rb = 1 << (sw[0] - 1);
-                    if (!((reach[sw[1]] | reach[sw[1] + 1]) & rb)) continue;
-                }
-                if (!bit.swapMasks(state, sw[0], sw[1])) continue;
-                // The settled board is only needed when we are going deeper.
-                var res = bit.resolveFromMasks(state, left > 1);
-                bit.swapMasks(state, sw[0], sw[1]);
-                var cost = spent + travel.cost(from[0], from[1], sw[0], sw[1]);
-                var broke = res.scope === 'garbage-broke';
-                if (res.scope === 'ok' || broke) {
-                    if (res.total > 0 || broke) {
-                        // A CASH ENDS THE LINE. Recorded only when something was
-                        // set up first -- a cash with an empty chain is a depth-1
-                        // option and `now` already holds it, so pushing it here
-                        // would list every immediate clear twice and make the two
-                        // lists disagree about what is on offer.
-                        if (chain.length) {
-                            var opt = optionOf(chain.concat([sw]), cost, res);
-                            opt.breaks = broke;
-                            next.push(opt);
+        function expandAll(state0, depth) {
+            var frontier = [{ st: state0, chain: [], from: cursor, spent: 0 }], ply;
+            // depth LEVELS, not depth-1. The first level's cashes belong to `now`
+            // (they are one swap from the board as it stands) and are skipped here;
+            // the levels after it are what this exists to find.
+            for (ply = 1; ply <= depth && frontier.length; ply++) {
+                var born = [], fi, k;
+                for (fi = 0; fi < frontier.length; fi++) {
+                    var node = frontier[fi], state = node.st;
+                    var list = bit.legalSwapsOf(state);
+                    // PRUNE BELOW THE TOP PLY ONLY: ply one stays exhaustive so an
+                    // immediate clear is never missed. A swap out of reach of any
+                    // pair cannot make a line however many moves follow it.
+                    // THE PRUNE MUST NOT HIDE THE DIGGING.
+                    //
+                    // reachMask marks cells that would complete a same-colour
+                    // PAIR. A setup that puts a panel beside a slab is not near a
+                    // pair, so it was discarded -- and with it every sequence that
+                    // breaks garbage. Measured on seed 106's final board: an
+                    // exhaustive three-swap search finds 2 breaks and 323 clears,
+                    // and this search found 0 breaks at depth 3, 6 or 12.
+                    //
+                    // So a cell against garbage is in reach too. Breaking is the
+                    // only thing that converts a slab back into panels, and the
+                    // search exists to find it.
+                    var reach = null;
+                    if (node.chain.length) {
+                        reach = bit.reachMask(state);
+                        for (var rc = 1; rc <= W; rc++) {
+                            reach[rc] |= ((state.garb[rc] >> 1) | (state.garb[rc] << 1) |
+                                          state.garb[rc - 1] | state.garb[rc + 1]) & ~state.garb[rc];
                         }
-                        continue;
                     }
-                    // Cleared nothing, so it is a setup. Collected rather than
-                    // recursed into immediately, so the ply can be ranked whole
-                    // and only its best few are paid for.
-                    if (left > 1 && res.settled) {
-                        setups.push({ state: res.settled, sw: sw, cost: cost });
+                    for (k = 0; k < list.length; k++) {
+                        var sw = list[k];
+                        if (reach) {
+                            var rb = 1 << (sw[0] - 1);
+                            if (!((reach[sw[1]] | reach[sw[1] + 1]) & rb)) continue;
+                        }
+                        if (!bit.swapMasks(state, sw[0], sw[1])) continue;
+                        var res = bit.resolveFromMasks(state, ply < depth);
+                        bit.swapMasks(state, sw[0], sw[1]);
+                        var cost = node.spent + travel.cost(node.from[0], node.from[1], sw[0], sw[1]);
+                        var broke = res.scope === 'garbage-broke';
+                        if (res.scope !== 'ok' && !broke) continue;
+                        if (res.total > 0 || broke) {
+                            // A CASH ENDS THE LINE. Recorded only when something was
+                            // set up first -- a cash with an empty chain is a depth-1
+                            // option and `now` already holds it, so pushing it here
+                            // would list every immediate clear twice.
+                            if (node.chain.length) {
+                                var opt = optionOf(node.chain.concat([sw]), cost, res);
+                                opt.breaks = broke;
+                                next.push(opt);
+                            }
+                            continue;
+                        }
+                        // Cleared nothing, so it is a setup and can be built on.
+                        if (res.settled) {
+                            born.push({ st: res.settled, chain: node.chain.concat([sw]),
+                                        from: sw, spent: cost });
+                        }
                     }
                 }
-            }
-            if (!setups.length) return;
-            setups.sort(function (a, b) { return a.cost - b.cost; });
-            var take = Math.min(setups.length, SETUPS_KEPT);
-            for (k = 0; k < take; k++) {
-                var su = setups[k];
-                expand(su.state, chain.concat([su.sw]), su.sw, su.cost, left - 1);
+                born.sort(function (a, b) { return a.spent - b.spent; });
+                frontier = born.length > BEAM ? born.slice(0, BEAM) : born;
             }
         }
-        if ((depth || 1) >= 2) expand(st, [], cursor, 0, depth || 1);
+
+        if ((depth || 1) >= 2) expandAll(st, depth || 1);
 
         now.sort(byPrice);
         next.sort(byPrice);
