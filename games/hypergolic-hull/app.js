@@ -1009,6 +1009,14 @@ for (const [type, name] of Object.entries(SPRITE_NAMES)) {
 function drawWreck(center, wreck, size) {
   ctx.save();
   ctx.translate(center.x, center.y);
+  // THE RENDERER OWNS "DEAD", not the prompt. wreckRule asks for a hull
+  // cracked open, which the model draws well, and asked for the colour
+  // knocked toward grey too — which it simply did not do: the first wreck
+  // came back as saturated as the live ship. A global saturation and
+  // brightness shift is construction, not generation, so it is done here,
+  // exactly, for all twenty-two, and a wreck can never read as alive
+  // because one prompt out of twenty-two was ignored.
+  ctx.filter = "saturate(45%) brightness(68%)";
   if (!drawShipImage(WRECK_SPRITES[wreck.type], size)) {
     ctx.rotate((25 * Math.PI) / 180);
     ctx.globalAlpha = 0.45;
