@@ -39,6 +39,9 @@ on:
       seeds:
         description: 'Seeds per pairing. ONE IS THE NOISE FLOOR -- a champion decided by a handful of duels is decided by the draw, which is what the first run measured'
         default: '2'
+      chain:
+        description: 'false = run once and stop. Otherwise the run dispatches its own continuation under the same tag, which RESUMES its champion -- so generations accumulate across runs and the fan-out rotates for as long as it is left alone'
+        default: 'true'
       ceiling:
         description: 'Frames before a duel is called. Sized for the fitness, not for the game: nothing dies any more, so what is measured at the ceiling is garbage sent. 30000 frames is 8m20s of play at 60fps and about 60s a duel'
         default: '30000'
@@ -154,3 +157,34 @@ jobs:
           done
           echo "could not deliver after 5 attempts"
           exit 1
+
+      # THE ROTATION. Each run continues its own tag, and because seedPopulation
+      # reopens the champion committed under that tag, the next run breeds from
+      # this one -- three generations a run, accumulating for as long as the chain
+      # is left running. Same shape as ai-train-pbt.yml's continuation.
+      #
+      # STOP_TRAINING on main ends it, so a chain can be stopped without touching
+      # the Actions UI.
+      - name: Dispatch the next leg
+        if: github.event.inputs.chain != 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          git fetch -q origin main
+          if git cat-file -e origin/main:games/the-game/ai/eval/STOP_TRAINING 2>/dev/null; then
+            echo "STOP_TRAINING is on main -- not continuing."
+            exit 0
+          fi
+          code=$(curl -sS -o /tmp/dispatch.out -w '%{http_code}' -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/ai-train-bitbot.yml/dispatches" \
+            -d '{"ref":"main","inputs":{"ga_seed":"${{ github.event.inputs.ga_seed }}","variant":"${{ github.event.inputs.variant }}","population":"${{ github.event.inputs.population }}","generations":"${{ github.event.inputs.generations }}","seeds":"${{ github.event.inputs.seeds }}","ceiling":"${{ github.event.inputs.ceiling }}","chain":"true"}}')
+          if [ "$code" != "204" ]; then
+            echo "the continuation was REFUSED (HTTP $code) -- this chain ends here:"
+            cat /tmp/dispatch.out
+            exit 1
+          fi
+          echo "next leg dispatched"
+
