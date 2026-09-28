@@ -1339,7 +1339,7 @@
                     this._attack.moves = this._attack.moves.slice(1);
                     if (!this._attack.moves.length) this._attack = null;
                     this.counts.attacked++;
-                    return { kind: 'swap', move: an, mode: mode, alive: alive };
+                    return { kind: 'swap', move: an, mode: mode, alive: alive, via: 'attackPlan' };
                 }
                 this._attack = null;
                 this.counts.attackDropped++;
@@ -1353,7 +1353,7 @@
                 if (!this._attack.moves.length) this._attack = null;
                 this.counts.attacked++;
                 this.counts.cellsPlanned += atk.cells;
-                return { kind: 'swap', move: atk.move, mode: mode, alive: alive };
+                return { kind: 'swap', move: atk.move, mode: mode, alive: alive, via: 'bestAttack' };
             }
         }
 
@@ -1413,7 +1413,7 @@
             for (i = 0; i < pool.length; i++) if (pool[i].kind === 'raise') risenCand = pool[i];
             if (risenCand && !this.deadly(risenCand.masks, risenCand.resolved, info, this.reaction)) {
                 this.counts.raisedForMaterial++;
-                return { kind: 'raise', mode: mode, alive: alive };
+                return { kind: 'raise', mode: mode, alive: alive, via: 'raiseMaterial' };
             }
             this.counts.refusedRaise++;
         }
@@ -1436,16 +1436,16 @@
                 survival = null;
             } else {
                 this.counts.planned++;
-                return { kind: 'swap', move: survival.move, mode: mode, alive: alive };
+                return { kind: 'swap', move: survival.move, mode: mode, alive: alive, via: 'survivalPlan' };
             }
         }
 
         if (rev && rev.best && rev.best.swap) {
             this.counts.revealSwaps++;
-            return { kind: 'swap', move: rev.best.swap, mode: mode, alive: alive, reveal: true };
+            return { kind: 'swap', move: rev.best.swap, mode: mode, alive: alive, reveal: true, via: 'lineup' };
         }
-        if (!best) return { kind: 'hold', mode: mode, alive: alive };
-        return { kind: best.cand.kind, move: best.cand.swap, mode: mode, alive: alive };
+        if (!best) return { kind: 'hold', mode: mode, alive: alive, via: 'noBest' };
+        return { kind: best.cand.kind, move: best.cand.swap, mode: mode, alive: alive, via: (noneClear ? 'setup' : 'WEIGHTS') };
     };
 
     // One call per frame from the match loop, the same shape PuyoCpu has.
