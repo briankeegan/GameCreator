@@ -867,7 +867,9 @@
         // same depth and cannot disagree about what is on offer.
         var lookDepth = Math.min(this.maxDepth, depthFor(deadline, this.reaction, tallestOf(pool)));
         var survival = null;
+        var swept = false;
         if (info.toppedOut || !(info.stopTime > 0)) {
+            swept = true;
             // A PLAN IS EXECUTED, NOT RE-CHOSEN EVERY FRAME.
             //
             // Re-planning each decision and playing the first move of whatever
@@ -891,7 +893,7 @@
                     if (ls[i][0] === nx[0] && ls[i][1] === nx[1]) { stillLegal = true; break; }
                 }
                 if (stillLegal && this._plan.frames <= deadline) {
-                    survival = { move: nx, gain: this._plan.gain, frames: this._plan.frames };
+                    survival = { move: nx, gain: this._plan.gain, frames: this._plan.frames, rate: this._plan.rate };
                     this._plan.moves = this._plan.moves.slice(1);
                     if (!this._plan.moves.length) this._plan = null;
                 } else {
@@ -904,21 +906,38 @@
                 var plan = bestPlan(options, info.stopTime || 0, deadline, PanelEngine(),
                                     !!info.toppedOut, info.framesPerRow, this.stack.frames);
                 if (plan && plan.rate > 0) {
-                    this._plan = { moves: plan.option.swaps.slice(1), frames: plan.frames, gain: plan.gain };
+                    this._plan = { moves: plan.option.swaps.slice(1), frames: plan.frames, gain: plan.gain, rate: plan.rate };
                     if (!this._plan.moves.length) this._plan = null;
-                    survival = { move: plan.move, gain: plan.gain, frames: plan.frames };
+                    survival = { move: plan.move, gain: plan.gain, frames: plan.frames, rate: plan.rate };
                 }
             }
         } else if (this._plan) {
             this._plan = null;                    // clock running again: the plan is stale
         }
 
-        // WHAT THE MODE IS LATE AGAINST: the frames the cheapest surviving plan
-        // costs. null when there is no such plan, and then DEFEND has nothing to
-        // open on -- being late for an escape that does not exist is not danger,
-        // it is an ordinary board.
-        var escape = survival ? survival.frames : null;
+        // WHAT THE MODE IS LATE AGAINST: the frames of the cheapest plan that HOLDS
+        // STATION. Survival is a clear rate of 1.0 -- a plan buying a frame of life
+        // per frame spent breaks even and anything under that loses ground, so
+        // `rate >= 1` is the whole test and there is no threshold to pick.
+        //
+        // A plan merely worth playing is not an escape. Ranked by `rate > 0` the
+        // cheapest one costs a frame or two, so `deadline <= escape + reaction`
+        // reads 52 <= 13 and DEFEND cannot open however close the ceiling is.
+        //
+        // NOTHING HOLDING STATION IS THE DANGEROUS CASE, NOT THE SAFE ONE, so it is
+        // Infinity rather than null: every deadline is inside it and DEFEND opens.
+        // null is reserved for not having looked -- while stop time runs the floor
+        // is held and the sweep does not run, and that is not the same as finding
+        // nothing.
+        var escape = null;
+        if (swept) escape = (survival && survival.rate >= 1) ? survival.frames : Infinity;
         var mode = this.mode(info, pool, !!rev, deadline, escape);
+        // THE TIMING THE DECISION WAS MADE ON, so a death can be read back off the
+        // bot rather than reconstructed from the board afterwards.
+        this._last = { mode: mode.name, deadline: deadline, escape: escape,
+                       pool: pool.length, tallest: tallestOf(pool),
+                       stopTime: info.stopTime | 0, health: info.health,
+                       toppedOut: !!info.toppedOut };
         this.decisions++;
         this.counts.byMode[mode.name] = (this.counts.byMode[mode.name] || 0) + 1;
 
