@@ -199,7 +199,9 @@ test('WIRING: over a real game the walk sometimes costs an EXTRA row', function 
 });
 
 test('rise stays OFF by default, so the shipped bot is untouched', function () {
-    var cpu = cpuAt({ rise: false });
+    // Raising is a move of its own and builds the raised board to judge it;
+    // this is about the passive rise, so the raise is left out.
+    var cpu = cpuAt({ rise: false, allowRaise: false });
     var count = 0;
     var orig = globalThis.PanelCpu.LogicalBoard.prototype.rise;
     globalThis.PanelCpu.LogicalBoard.prototype.rise = function (c) { count++; return orig.call(this, c); };
