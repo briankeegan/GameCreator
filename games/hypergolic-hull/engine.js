@@ -4502,7 +4502,29 @@
             state.events.push({ type: "playerMove", from: { ...state.playerPos }, to: dest });
             state.playerPos = { q: dest.q, r: dest.r };
             state.draggedOnRound = (state.round || 0) + 1; // this drag blocks the next round's
-            pushLog(state, `${enemy.type.toUpperCase()} shoves us off our ground.`);
+            // IT IS A SCAVENGER, AND CUTTING GEAR CUTS. A landed haul strips
+            // one salvage off the hold. The lens still costs turns and money
+            // and never blood — the rule this class has always had — but
+            // turns alone is a cost the flagship shrugs off, and a hull that
+            // cannot make you pay anything is a hull you ignore. Opening it
+            // hands back nine.
+            //
+            // Aiming the lens was tried instead and does not work: a haul
+            // drags the flagship one hex along the beam, so where it lands
+            // is set by where the hauler stands, and teaching it to prefer
+            // ground that hands you to a wingman — then to decline a haul
+            // that does not — moved 8% of hauls onto a threatened hex and
+            // then 8.5%. The destination has to be one particular neighbour
+            // of your hex with a wingman covering it on that round, and it
+            // almost never is.
+            const skimmed = state.salvage > 0 ? 1 : 0;
+            if (skimmed) state.salvage -= skimmed;
+            pushLog(
+              state,
+              skimmed
+                ? `${enemy.type.toUpperCase()} shoves us off our ground and cuts a crate loose — -${skimmed} salvage.`
+                : `${enemy.type.toUpperCase()} shoves us off our ground — nothing left in the hold to cut.`
+            );
             checkPlayerHazard(state);
             if (state.status !== "playing") return;
           }
