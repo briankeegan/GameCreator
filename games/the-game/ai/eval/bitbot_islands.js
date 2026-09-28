@@ -79,8 +79,98 @@ function mutate(parent, strength) {
     return w;
 }
 
-var pop = [BitBot.STARTER];            // island 0 is the control, as in the round
-for (var p = 1; p < POP; p++) pop.push(randomVector());
+// IT RESUMES, WHICH IS WHAT MAKES A SHORT RUN WORTH DISPATCHING TWICE.
+//
+// A run is sized to about ten minutes, which buys three generations. Three
+// generations starting from random vectors is not a search -- the control wins
+// it and the champion is noise. What makes the fan-out add up is that each run
+// CONTINUES the one before it under the same tag: the champion committed last
+// time is the parent this time, so generations accumulate across dispatches even
+// though no single run holds many.
+//
+// ISLAND 0 STAYS THE CONTROL. It is the untrained BitBot.STARTER every time, so
+// controlWins keeps meaning the one thing it is for -- whether everything learned
+// so far actually beats the hand-set vector. Seeding it with the champion would
+// make the measurement compare the champion against itself.
+//
+// No champion on disk is the first run of that tag, and it starts from random as
+// it always did.
+function seedPopulation() {
+    var pop = [BitBot.STARTER], prior = null;
+    var tag = process.env.GC_TAG || String(process.env.GC_GA_SEED || 'default');
+    var file = path.join(__dirname, 'islands', 'bitbot.island.' + tag + '.json');
+    try {
+        var saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+        if (saved && saved.weights) prior = saved;
+    } catch (e) { /* first run under this tag */ }
+
+    if (!prior) {
+        for (var p = 1; p < POP; p++) pop.push(randomVector());
+        console.log('no champion for tag ' + tag + ' -- starting from random vectors');
+        return { pop: pop, carried: 0 };
+    }
+    // The champion itself, then children of it. Keeping the parent verbatim means
+    // a run can only lose ground if something genuinely beats it.
+    pop.push(prior.weights);
+
+    // MIGRATION: ONE SLOT COMES FROM ANOTHER ISLAND.
+    //
+    // Twenty tags each resuming only their own lineage are twenty separate
+    // searches that happen to share a directory -- isolation with nothing
+    // crossing it, which is the half of the island model that makes each one
+    // converge on whatever it found first. The other half is that a neighbour's
+    // champion occasionally arrives and has to compete.
+    //
+    // It is one slot, not the whole population: migration that floods every
+    // island with the current leader collapses the twenty searches into one, and
+    // the diversity was the reason for running twenty.
+    //
+    // The visitor is entered verbatim and duels for its place like anything else.
+    // Losing it costs this island nothing, since its own champion is still here.
+    var visitor = bestForeignChampion(tag);
+    if (visitor && POP > 2) {
+        pop.push(visitor.weights);
+        console.log('   migrant from ' + visitor.tag + ' (sent ' + visitor.sent + ')');
+    }
+    for (var q = pop.length; q < POP; q++) pop.push(mutate(prior.weights, 12));
+    var carried = Number(prior.generationsTotal || prior.generations || 0);
+    console.log('resuming tag ' + tag + ' from a champion of ' + carried +
+                ' generations (controlWins ' + (prior.controlWins || 0) + ')');
+    return { pop: pop, carried: carried };
+}
+
+// THE BEST CHAMPION THAT IS NOT THIS ISLAND'S, ranked by what the fitness
+// actually is: garbage sent at the ceiling, read from the last generation this
+// island recorded. A file with no history has never finished a generation and is
+// not a candidate.
+//
+// ONLY CHAMPIONS MEASURED AT THIS CEILING. `sent` is a count over the duel, so a
+// vector scored over 30,000 frames sends more than one scored over 8,000 for no
+// reason but the length of the game -- ranking the two together imports whichever
+// island ran longest rather than whichever plays best. A file from before the
+// ceiling was recorded cannot be placed and is skipped.
+function bestForeignChampion(tag) {
+    var dir = path.join(__dirname, 'islands'), best = null;
+    var names;
+    try { names = fs.readdirSync(dir); } catch (e) { return null; }
+    for (var i = 0; i < names.length; i++) {
+        if (names[i].indexOf('bitbot.island.') !== 0) continue;
+        var theirs = names[i].slice('bitbot.island.'.length, -'.json'.length);
+        if (theirs === tag) continue;
+        var saved;
+        try { saved = JSON.parse(fs.readFileSync(path.join(dir, names[i]), 'utf8')); }
+        catch (e) { continue; }
+        if (!saved || !saved.weights || !saved.history || !saved.history.length) continue;
+        if (Number(saved.ceiling) !== CEILING) continue;
+        var sent = Number(saved.history[saved.history.length - 1].sent || 0);
+        if (!best || sent > best.sent) best = { weights: saved.weights, tag: theirs, sent: sent };
+    }
+    return best;
+}
+
+var seeded = seedPopulation();
+var pop = seeded.pop;
+var CARRIED = seeded.carried;
 
 var history = [];
 
@@ -230,6 +320,8 @@ function writeChampion(weights, gensDone) {
     fs.writeFileSync(out, JSON.stringify({ weights: weights, history: history,
                                            population: POP, generations: gensDone,
                                            generationsPlanned: GENS,
+                                           generationsTotal: CARRIED + gensDone,
+                                           ceiling: CEILING,
                                            controlWins: controlWins,
                                            seed: Number(process.env.GC_GA_SEED || 20250928) }, null, 2));
     return { out: out, tag: tag, controlWins: controlWins };
