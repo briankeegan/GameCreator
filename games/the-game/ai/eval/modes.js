@@ -743,7 +743,12 @@
   //      from its end; the beam had pruned lines a wide search found (seed
   //      703 frame 1881: 0 proven, 6 of 7 wide). Among proven moves, those
   //      whose line lives longest past the horizon are offered.
-  var RULES = 42;
+  //   43. THE BEAM KEEPS THE BOARDS SAFE THE LONGEST. A board is alive at
+  //      least until its time plus what holds it; ranking by what holds it
+  //      alone set a board 100 frames in level with one 30 frames in, and
+  //      pruned the lines that dig out. Seed 702 frame 4209: 1 move proven,
+  //      2 with this order, 7 with a beam five times wider.
+  var RULES = 43;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

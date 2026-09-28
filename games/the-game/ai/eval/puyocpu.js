@@ -1412,8 +1412,10 @@
     var budget = (this.depth || 1) > 1 ? this.SURVIVE_SEARCH_BUDGET : this.SURVIVE_SEARCH_BUDGET_CHEAP;
     function garb(b) { var g = 0; for (var r = 1; r < b.grid.length; r++) if (b.grid[r]) for (var q = 1; q <= b.width; q++) if (b.grid[r][q] === -2) g++; return g; }
     function top(b) { for (var r = b.grid.length - 1; r >= 1; r--) if (b.grid[r]) for (var q = 1; q <= b.width; q++) { var v = b.grid[r][q]; if (v && v !== -1) return r; } return 0; }
+    // A board is guaranteed alive until its time plus what holds it (stop,
+    // pre-stop, shake): the nearer that is to the horizon, the better.
     function better(x, y) {
-      return (self._heldFor(y.carry) - self._heldFor(x.carry)) || (garb(x.b) - garb(y.b)) || (top(x.b) - top(y.b));
+      return ((y.t + self._heldFor(y.carry)) - (x.t + self._heldFor(x.carry))) || (garb(x.b) - garb(y.b)) || (top(x.b) - top(y.b));
     }
     while (level.length && budget > 0) {
       var next = [], seen = {};
