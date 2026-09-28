@@ -305,6 +305,39 @@
     // isToppedOut()` — so a topped-out board holding stop time is alive, and
     // chaining INTO the ceiling is how the position is meant to be played.
     // Borrowed from PuyoCpu's own note, which records getting this wrong.
+    // HOW MUCH THIS BOARD CAN STILL BE MATCHED ON.
+    //
+    // reachMask marks every cell that would complete a vertical or horizontal
+    // pair, so its popcount is how many ways a clear can still be made. A board
+    // with none has no clear at any depth and dies whatever the clock says.
+    //
+    // This is the number a SETUP moves. Seed 104 spent eight decisions holding at
+    // tallest 8 with 202 frames in hand and no clear anywhere -- the moment to
+    // build one -- because nothing in the bot could tell a swap that improves the
+    // board from a swap that does nothing. bitoptions only names a setup when a
+    // cash follows it inside the search depth; with nothing to aim at it is
+    // silent, and that is exactly when the board most needs arranging.
+    // HOW UNEVEN THE STACK IS: the total step between neighbouring columns.
+    //
+    // A flat board is where clears come from -- a column standing alone has
+    // nothing beside it to match with, and a hole under a spike cannot be reached
+    // at all. When nothing clears and nothing improves the count of ways to
+    // match, levelling is what is left, and it is still survival: it is the board
+    // keeping its ability to make a clear at all.
+    function bumpiness(st) {
+        var h = [], c;
+        for (c = 1; c <= W; c++) h[c] = 32 - Math.clz32(st.occ[c] >>> 0);
+        var n = 0;
+        for (c = 1; c < W; c++) n += Math.abs(h[c] - h[c + 1]);
+        return n;
+    }
+
+    function matchWays(st) {
+        var r = bit.reachMask(st), n = 0;
+        for (var c = 1; c <= W; c++) n += bit.popcount(r[c] >>> 0);
+        return n;
+    }
+
     BitBot.prototype.deadly = function (st, resolved, info, horizon) {
         var tallest = tallestBoard(st);
         var banked = info.stopTime || 0;
@@ -1038,8 +1071,18 @@
             // Only on a SETTLED board. With panels in the air the right move is
             // often to let the cascade land, and that is not idling -- the board
             // is changing without the bot touching it.
-            var wasting = info.stopTime > 0 && !this.inFlight();
-            if (pool[i].kind === 'hold' && (mode.name !== 'BUILD' || wasting)) continue;
+            // HOLDING IS WAITING ONLY WHILE THE BOARD CHANGES ON ITS OWN.
+            //
+            // With panels in flight the cascade is doing the work and waiting for
+            // it is real. Settled, it is not: either the clock runs, and holding
+            // spends a freeze for nothing, or it does not, and the floor is
+            // advancing while holding buys zero frames. It is the one action that
+            // is never survival.
+            //
+            // Seed 104 held eight decisions running at tallest 8 with 202 frames
+            // in hand and no clear anywhere on the board. By the time it acted the
+            // deadline was 47, then 1.
+            if (pool[i].kind === 'hold' && (mode.name !== 'BUILD' || !this.inFlight())) continue;
             // A PAYLESS CLEAR IS NOT PROGRESS, IT IS UNBUILDING.
             //
             // A bare three sends no garbage and earns no stop time -- the engine's
@@ -1159,6 +1202,12 @@
             for (i = 0; i < scored.length && i < this.beam; i++) allowed.push(scored[i].cand);
         }
 
+        // Does anything on this board clear at all? If not, every option is a
+        // setup and they are judged as setups.
+        var noneClear = true;
+        for (i = 0; i < allowed.length; i++) {
+            if (allowed[i].resolved && allowed[i].resolved.total > 0) { noneClear = false; break; }
+        }
         var best = null, alive = 0;
         for (i = 0; i < allowed.length; i++) {
             var cand = allowed[i];
@@ -1177,7 +1226,13 @@
                                    info.framesPerRow || 0);
             if (this.deadly(cand.masks, cand.resolved, info, horizon)) { this.counts.refusedDeadly++; continue; }
             alive++;
-            var s = this.score(cand.masks, cand.moveFrames, cand.resolved, info);
+            // NOTHING CLEARS ANYWHERE: SET UP. When no option on the board
+            // clears anything, the only thing that separates the swaps is what
+            // they leave behind, and the board's own count of ways a clear can
+            // still be made is that. Ties to the cheaper move.
+            var s = noneClear
+                  ? matchWays(cand.masks) * 100 - (cand.moveFrames || 0)
+                  : this.score(cand.masks, cand.moveFrames, cand.resolved, info);
             if (!best || s > best.score) best = { cand: cand, score: s };
         }
         // NOTHING SURVIVES: the position is lost either way, so the best-scoring
