@@ -35,6 +35,12 @@ on:
       - 'games/the-game/panel-cpu.js'
   workflow_dispatch:
 
+# A newer commit supersedes the run for an older one. Without this every push
+# left a slow-gates job running for hours and the account ran out of runners.
+concurrency:
+  group: ai-checks-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   evaluator:
     runs-on: ubuntu-latest
