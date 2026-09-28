@@ -1053,7 +1053,16 @@
             // WHAT THE HORIZON IS: the frames before this bot decides again --
             // the walk to the move, then the reaction cooldown. A candidate has
             // to survive its own cost, which is why it is per candidate.
-            var horizon = (cand.moveFrames || 0) + this.reaction;
+            // THE HORIZON IS A ROW, NOT A WALK.
+            //
+            // Judging a candidate over the frames it takes to reach it -- about 70
+            // at most -- asks whether it kills immediately. A row of rise is 112
+            // frames, so a move that kills as the next row lands passes that test
+            // and gets offered as though it were survivable. It is the engine's
+            // own unit and it is the shortest horizon on which a death can
+            // actually happen.
+            var horizon = Math.max((cand.moveFrames || 0) + this.reaction,
+                                   info.framesPerRow || 0);
             if (this.deadly(cand.masks, cand.resolved, info, horizon)) { this.counts.refusedDeadly++; continue; }
             alive++;
             var s = this.score(cand.masks, cand.moveFrames, cand.resolved, info);
