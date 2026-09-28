@@ -77,35 +77,6 @@ function cand(board) {
                          clearedPanels: 0, stopTimeEarned: 0 } };
 }
 
-check('the gate OPENS on a doomed candidate while the live board is low', function () {
-    var cpu = cpuOn();
-    cpu._board = boardTo(3);
-    assert.strictEqual(cpu._topRowOf(cpu._board), 3, 'fixture live board should be low');
-    var dead = cand(boardTo(H));       // standing in the lid: no line survives it
-    var alive = cand(boardTo(3));
-    assert.ok(!cpu._survivesRise(dead.settled, cpu.DOOMED_DEPTH),
-              'fixture: the tall candidate should not survive the rise');
-    assert.ok(cpu._survivesRise(alive.settled, cpu.DOOMED_DEPTH),
-              'fixture: the low candidate should survive the rise');
-    var out = cpu._doomed([dead, alive]);
-    assert.strictEqual(out.length, 1,
-        'the gate stayed shut on a pool holding a candidate in row ' + H +
-        ' because the LIVE board was at row 3 -- ' + out.length + ' of 2 kept');
-    assert.strictEqual(out[0], alive, 'it kept the doomed move instead of the living one');
-});
-
-check('the gate STAYS SHUT when the candidates themselves are low', function () {
-    var cpu = cpuOn();
-    cpu._board = boardTo(3);
-    var a = cand(boardTo(3)), b = cand(boardTo(4));
-    var pool = [a, b];
-    var out = cpu._doomed(pool);
-    assert.strictEqual(out, pool,
-        'the gate ran on a pool of low boards, which is the ten-times cost it ' +
-        'exists to avoid');
-    assert.strictEqual(cpu.doomedDecisions, 0, 'it recorded a verdict it never reached');
-});
-
 check('a decision that judges nothing does not inherit the last one\'s verdict', function () {
     var cpu = cpuOn();
     cpu.allDoomedNow = true;

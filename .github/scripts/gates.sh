@@ -803,6 +803,39 @@ gate_character_spec_provenance() {
 # pass before this repo is safe to ship. Add a new gate ONCE here (a
 # gate_* function above, one entry below) and both callers pick it up: a
 # gate added to only one caller only protects that caller.
+# SLOW GATES RUN IN CI, NOT IN THE PUSH HOOK. The hook sets GC_DEFER_SLOW=1
+# and gate_all skips these, printing each as DEFERRED; ai-checks.yml runs
+# gate_slow on every push that touches the AI, after the push. The list is
+# measured, not guessed: each took over SLOW_SECONDS seconds on its own
+# (times beside them, 4 cores, 2026-09-28). gate_all prints its slowest
+# gates at the end of every run; move one here when it crosses the line.
+SLOW_SECONDS=60
+SLOW_GATES=(
+  gate_versus_duel          # >900s
+  gate_features_live        # >900s
+  gate_checkpoint_resume    # >900s
+  gate_pbt_leg              # 600s
+  gate_snapshot_pipe        # 153s
+  gate_puyo_cpu             # plays whole games with the bot: ~10 min
+  gate_live_fidelity        # plays whole duels: over an hour
+  gate_no_self_death        # plays whole games with the bot
+  gate_training_harness     # plays whole games with the bot
+  gate_earned_features_arrive  # plays a real game
+)
+_gate_is_slow() {
+  local g
+  for g in "${SLOW_GATES[@]}"; do [ "$g" = "$1" ] && return 0; done
+  return 1
+}
+gate_slow() {
+  local overall=0 g
+  for g in "${SLOW_GATES[@]}"; do
+    echo "=== SLOW GATE: $g ==="
+    "$g" || { overall=1; echo "FAILED: $g"; }
+  done
+  return $overall
+}
+
 GATES=(
   "engine tests:gate_engine_tests:games/"
   "room exits:gate_room_exits:games/"
@@ -1026,6 +1059,11 @@ gate_all() {
       fi
     fi
 
+    if [ "${GC_DEFER_SLOW:-}" = "1" ] && _gate_is_slow "$fn"; then
+      echo "=== GATE: $name === DEFERRED to CI (slow; ai-checks.yml runs it after the push)"
+      skipped="${skipped}  ${name} (deferred to CI)"$'\n'
+      continue
+    fi
     echo "=== GATE: $name ==="
     local out t0 t1
     t0=$(date +%s)

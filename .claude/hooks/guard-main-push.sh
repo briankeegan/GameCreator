@@ -73,7 +73,10 @@ echo "guard-main-push: running gate_all before this push to main (minutes, not s
 # as skipped rather than passing quietly. If the range cannot be worked out
 # the variable is empty and the full list runs, which is the safe direction.
 CHANGED=$( cd "$REPO" && git diff --name-only origin/main...HEAD 2>/dev/null )
-out=$( cd "$REPO" && export GC_CHANGED_PATHS="$CHANGED" && source .github/scripts/gates.sh && gate_all 2>&1 )
+# The slow gates (SLOW_GATES in gates.sh) run in ai-checks.yml after the
+# push instead of here; GC_FULL_GATES=1 runs them here as well.
+DEFER=1; [ "${GC_FULL_GATES:-}" = "1" ] && DEFER=0
+out=$( cd "$REPO" && export GC_CHANGED_PATHS="$CHANGED" GC_DEFER_SLOW="$DEFER" && source .github/scripts/gates.sh && gate_all 2>&1 )
 rc=$?
 if [ "$rc" -ne 0 ]; then
   {

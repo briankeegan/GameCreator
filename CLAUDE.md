@@ -28,7 +28,9 @@ don't fork it per-game.
 - **The gates run themselves.** `.claude/hooks/guard-main-push.sh` runs them
   on every `main` push and blocks one that fails, scoped to the paths that
   push changes; `pages.yml` runs the full list. `GC_SKIP_GATES=1` overrides
-  and says so loudly. To check early, `source .github/scripts/gates.sh &&
+  and says so loudly. The slow gates (`SLOW_GATES` in `gates.sh`, measured)
+  are deferred from the hook to `ai-checks.yml`'s `slow-gates` job after the
+  push; `GC_FULL_GATES=1` runs them in the hook too. To check early, `source .github/scripts/gates.sh &&
   gate_changed` is the same scoped list; bare `gate_all` is all 55 gates and
   takes many minutes.
 - Every rule that matters needs three pieces: a plain-English rule where

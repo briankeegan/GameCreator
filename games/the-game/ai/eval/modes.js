@@ -781,7 +781,11 @@
   //      (seed 703 side 1: raise at 737, two pixels low at 780); a speed step
   //      due this frame read as never (703 frame 900); and colours a break
   //      deals were invented rather than unknown (701 frame 6477).
-  var RULES = 50;
+  //   51. SURVIVAL LINES RUN ON THE ENGINE ITSELF. Each step copies the live
+  //      Stack object and plays the bot's own update() on it; nothing is
+  //      summarised into a grid and rebuilt, which is where every traced
+  //      model error came from. Only what no player can see is changed.
+  var RULES = 51;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

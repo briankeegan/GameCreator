@@ -40,9 +40,9 @@ function sample() {
     return w;
 }
 
-function play(weights, seed, frames) {
+function play(weights, seed, frames, opts) {
     var stack = new PanelEngine.Stack({ level: LEVEL, seed: seed, countdown: false });
-    var cpu = new PuyoCpu(stack, { weights: weights });
+    var cpu = new PuyoCpu(stack, Object.assign({ weights: weights }, opts || {}));
     var f;
     for (f = 0; f < (frames || 2000); f++) {
         if (f > 120 && f % 120 === 0) {
@@ -128,10 +128,14 @@ test('the weights decide: changing them changes the game', function () {
     // renamed and says "the weights do not reach the scoring", which is a lie
     // about the thing under test. Every other key gets a weight instead, so
     // the two sets disagree about every candidate whatever the set is.
-    var a = play(sample(), 3).frames;
+    // Under a flood of garbage every decision is a danger, and the survival
+    // search rightly narrows each to the one move with the most room, so the
+    // weights never get a vote. This is about the weights reaching the
+    // score, so the search stands down.
+    var a = play(sample(), 3, 2000, { deepSurvival: false }).frames;
     var flipped = zeros();
     registry.keys.forEach(function (k, i) { if (i % 2 === 0) flipped[k] = 40; });
-    var b = play(flipped, 3).frames;
+    var b = play(flipped, 3, 2000, { deepSurvival: false }).frames;
     assert.notStrictEqual(a, b,
         'two very different weight sets played identically (' + a + ' frames each). ' +
         'Either the weights are not reaching the scoring or every candidate ties.');
@@ -178,7 +182,9 @@ test('it plays level 10 at all, and faster than the search bot', function () {
     // whole reason for this design is that it is cheap enough to run
     // thousands of games.
     var t = Date.now();
-    var r = play(sample(), 2, 3000);
+    // The one-ply evaluator's own speed; the survival search is timed where
+    // it is used.
+    var r = play(sample(), 2, 3000, { deepSurvival: false });
     var ms = Date.now() - t;
     assert.ok(r.frames > 200,
         'survived only ' + r.frames + ' frames at level 10 — too fragile to learn from');

@@ -1359,7 +1359,214 @@
   // proven for 600 frames avoided.
   PuyoCpu.prototype.SURVIVE_REST = 120;
   PuyoCpu.prototype.SURVIVE_BEAM = 30;
+
+  // ======================= LINES RUN ON THE ENGINE ITSELF =================
+  //
+  // A survival line is played on a copy of the live Stack object -- every
+  // panel, every field -- by the bot's own update() logic: the raise it is
+  // holding, its walk, its cooldown. Nothing is summarised and rebuilt, so
+  // nothing can be lost in the rebuilding. What a player cannot know is all
+  // that is changed: rows not yet shown and colours a break has not dealt
+  // match nothing, and opponent garbage arrives only once it is truly sent.
+  function unseenRow() {
+    var k = (this.unseenRows = (this.unseenRows || 0) + 1), row = [null];
+    for (var c = 1; c <= 6; c++) row[c] = 11 + ((c + 3 * k) % 6);
+    return row;
+  }
+  function unseenBreak(count) {
+    var k = (this.unseenBreaks = (this.unseenBreaks || 0) + 1), colors = [];
+    for (var n = 0; n < count; n++) colors.push(21 + ((n + 3 * k) % 6));
+    return colors;
+  }
+  function noRng() { return 0.5; }
+  // Built by a constructor generated from the Stack's own field list, so
+  // every copy has one fixed shape: an object grown field by field drops to
+  // V8's dictionary mode and the engine runs several times slower on it.
+  var cloneMakers = {};
+  // Panels too, with one copier covering every field the engine writes on a
+  // panel. garbageId and propagatesFalling are only on some panels; copied as
+  // undefined where absent, which the engine reads the same. A field the
+  // engine starts writing later would be dropped here -- checkModel reports
+  // exactly that.
+  var PANEL_FIELDS = ['row', 'col', 'id', 'color', 'chaining', 'matching', 'timer', 'initialTime', 'popTime',
+                      'popIndex', 'xOffset', 'yOffset', 'gWidth', 'gHeight', 'shakeTime', 'isGarbage', 'state',
+                      'comboIndex', 'comboSize', 'swapFromLeft', 'dontSwap', 'queuedHover', 'fellFromGarbage',
+                      'stateChanged', 'propagatesChaining', 'matchAnyway', 'propagatesFalling', 'garbageId'];
+  var copyPanel = new Function('p', 'return {' + PANEL_FIELDS.map(function (k) {
+    return JSON.stringify(k) + ': p[' + JSON.stringify(k) + ']';
+  }).join(', ') + '};');
+  function panelCopier() { return copyPanel; }
+  function copyValue(k, v) {
+    if (k === 'panels') {
+      var rows = new Array(v.length), copy = null, sig = null;
+      for (var r = 0; r < v.length; r++) {
+        var row = v[r], out = new Array(row.length);
+        for (var c = 0; c < row.length; c++) {
+          var p = row[c];
+          if (p && typeof p === 'object') {
+            if (!copy) copy = panelCopier(p);
+            out[c] = copy(p);
+          } else out[c] = p;
+        }
+        rows[r] = out;
+      }
+      return rows;
+    }
+    if (k === 'levelData' || k === 'frames') return v;
+    if (k === 'events' || k === 'outgoing') return [];
+    if (Array.isArray(v)) return v.map(function (x) { return x && typeof x === 'object' ? Object.assign({}, x) : x; });
+    if (v && typeof v === 'object') return Object.assign({}, v);
+    return v;
+  }
+  function cloneStack(src) {
+    var keys = [];
+    for (var k in src) {
+      if (!Object.prototype.hasOwnProperty.call(src, k) || typeof src[k] === 'function') continue;
+      if (k === 'allowIdleSkip' || k === 'unseenRows' || k === 'unseenBreaks') continue;
+      keys.push(k);
+    }
+    var sig = keys.join(',');
+    var Make = cloneMakers[sig];
+    if (!Make) {
+      var body = keys.map(function (k2) { return 'this[' + JSON.stringify(k2) + '] = copy(' + JSON.stringify(k2) + ', s[' + JSON.stringify(k2) + ']);'; }).join('\n') +
+                 '\nthis.rng = noRng; this.allowIdleSkip = false; this.generateRowColors = unseenRow;' +
+                 '\nthis.garbageRowColors = unseenBreak; this.unseenRows = s.unseenRows || 0; this.unseenBreaks = s.unseenBreaks || 0;';
+      Make = cloneMakers[sig] = new Function('copy', 'noRng', 'unseenRow', 'unseenBreak',
+        'function C(s) {\n' + body + '\n}\nreturn C;')(copyValue, noRng, unseenRow, unseenBreak);
+      Make.prototype = Object.getPrototypeOf(src);
+    }
+    return new Make(src);
+  }
+  PuyoCpu.cloneStack = cloneStack;
+  function engineGrid(st) {
+    var H = st.height, grid = [], key = '', r, c;
+    for (r = 0; r <= H + 1; r++) {
+      var row = st.panels[r], g = [0];
+      for (c = 1; c <= 6; c++) {
+        var p = row && row[c];
+        if (!p || p.color === 0) g[c] = 0;
+        else g[c] = p.isGarbage ? -2 : p.color;
+        if (r >= 1 && p) key += (p.isGarbage ? '#' : p.color) + p.state.charAt(0) + (p.timer || '') + ',';
+      }
+      grid[r] = g;
+    }
+    return { grid: grid, key: key };
+  }
+  PuyoCpu.prototype._engineNode = function (st, t, hold, arrivals, fresh) {
+    var g = engineGrid(st);
+    return {
+      st: st, t: t, hold: hold, arrivals: arrivals, fresh: !!fresh,
+      pos: [st.curRow, st.curCol],
+      carry: { stopTime: st.stopTime || 0, preStopTime: st.preStopTime || 0, shakeTime: st.shakeTime || 0,
+               displacement: st.displacement, riseTimer: st.riseTimer, speed: st.speed },
+      b: { grid: g.grid, key: g.key, height: st.height, width: 6,
+           legalSwaps: function () {
+             var out = [];
+             for (var r = 1; r <= st.height; r++) for (var c = 1; c < 6; c++) {
+               var a = st.panels[r][c], b2 = st.panels[r][c + 1];
+               if (a.isGarbage || b2.isGarbage) continue;
+               if (a.color === 0 && b2.color === 0) continue;
+               if (a.color === b2.color) continue;
+               if (!st.canSwap(r, c)) continue;
+               out.push([r, c]);
+             }
+             return out;
+           } }
+    };
+  };
+  PuyoCpu.prototype._engineRoot = function () {
+    var saved = this._carry;
+    this._carry = null;
+    var arr = this._inFlight().map(function (a) { return { at: a.at, width: a.width, height: a.height, isChain: a.isChain }; });
+    this._carry = saved;
+    return this._engineNode(cloneStack(this.stack), 0,
+                            { left: this.raiseFrames || 0, started: !!this._raiseStarted }, arr, true);
+  };
+  // One decision of the bot, played frame by frame from the start of the
+  // node's frame: kind 'swap' (m), 'hold', 'raise', or 'long' (hold until
+  // frames have passed). Returns the node at the bot's next decision, a dead
+  // marker { dead: true, t }, or null when the swap is refused.
+  PuyoCpu.prototype._engineAdvance = function (node, kind, m, frames) {
+    var st = cloneStack(node.st), self = this;
+    var bot = { stack: st, cursorMoveFrames: this.cursorMoveFrames, _walk: null, cooldown: 0, _lastSwap: null,
+                _beginWalk: PanelCpu.beginWalk, _driveWalk: PanelCpu.driveWalk,
+                _nearestSwappable: PanelCpu.nearestSwappable,
+                raiseFrames: node.hold.left, _raiseStarted: node.hold.started };
+    var arr = node.arrivals.map(function (a) { return { at: a.at, width: a.width, height: a.height, isChain: a.isChain }; });
+    var f = 0;
+    function raiseBlock(input) {
+      if (bot.raiseFrames > 0) {
+        if (st.manualRaise) bot._raiseStarted = true;
+        if (st.preventManualRaise || (bot._raiseStarted && !st.manualRaise)) bot.raiseFrames = 0;
+        else { bot.raiseFrames--; input.raise = true; }
+      }
+    }
+    function runFrame(input) {
+      st.setInput(input);
+      st.run();
+      st.events.length = 0;
+      f++;
+      for (var i = 0; i < arr.length; ) {
+        if (arr[i].at <= f) { st.incoming.push({ width: arr[i].width, height: arr[i].height, isChain: arr[i].isChain }); arr.splice(i, 1); }
+        else i++;
+      }
+      return st.gameOver;
+    }
+    // The decision frame. At the root, update() has already run the raise
+    // step and set this frame's input; everywhere else it runs it now.
+    var input = node.fresh ? Object.assign({}, st.input) : {};
+    if (!node.fresh) raiseBlock(input);
+    if (kind === 'swap') {
+      bot._beginWalk(m[0], m[1], this.reaction);
+      bot._driveWalk(input);
+    } else if (kind === 'raise') {
+      bot.raiseFrames = 20; bot._raiseStarted = false; bot.cooldown = this.reaction;
+    } else if (kind === 'hold') {
+      bot.cooldown = this.reaction;
+    }
+    var refused = function () { return kind === 'swap' && !bot._walk && !bot._lastSwap; };
+    if (refused() || (bot._walk && bot._walk.retries)) return null;
+    if (runFrame(input)) return { dead: true, t: node.t + f };
+    for (var guard = 0; guard < 4000; guard++) {
+      if (kind === 'long' && f >= frames) break;
+      input = {};
+      raiseBlock(input);
+      if (bot._walk) {
+        bot._driveWalk(input);
+        if (refused() || (bot._walk && bot._walk.retries)) return null;
+        if (runFrame(input)) return { dead: true, t: node.t + f };
+        continue;
+      }
+      if (kind !== 'long') {
+        if (bot.cooldown > 0) { bot.cooldown--; if (runFrame(input)) return { dead: true, t: node.t + f }; continue; }
+        break;
+      }
+      if (runFrame(input)) return { dead: true, t: node.t + f };
+    }
+    arr.forEach(function (a) { a.at -= f; });
+    return this._engineNode(st, node.t + f, { left: bot.raiseFrames, started: bot._raiseStarted }, arr, false);
+  };
+  PuyoCpu.prototype._engineStep = function (node, m, long) {
+    var r;
+    if (long) {
+      var until = this._lineUntil || (this.SURVIVE_FRAMES + (this._restNeeded ? this.SURVIVE_REST : 0));
+      r = this._engineAdvance(node, 'long', null, Math.max(1, until - node.t));
+    } else if (m === 'raise') r = this._engineAdvance(node, 'raise', null, 0);
+    else r = this._engineAdvance(node, m ? 'swap' : 'hold', m, 0);
+    if (!r) return null;
+    if (r.dead) {
+      // Alive at the horizon but not through the rest: the end of the road.
+      if (long && r.t >= this.SURVIVE_FRAMES) {
+        return { st: node.st, b: node.b, carry: node.carry, pos: node.pos, hold: node.hold, arrivals: node.arrivals,
+                 t: r.t, dead: true };
+      }
+      return null;
+    }
+    return r;
+  };
+
   PuyoCpu.prototype._lineStep = function (node, m, long) {
+    if (node.st) return this._engineStep(node, m, long);
     var t = node.b.clone(), r, used, saved = this._carry, savedFrom = this._walkFrom;
     t.incoming = (node.carry && node.carry.nextRow) ||
                  (node.b.incoming === false ? false : (node.b.incoming || this._incoming || null));
@@ -1402,6 +1609,25 @@
   // error, and is recorded as such.
   PuyoCpu.prototype.CHECK_FRAMES = 60;
   PuyoCpu.prototype._checkModel = function (live, predicted) {
+    this.modelChecks = (this.modelChecks || 0) + 1;
+    if (predicted.st && live.st) {
+      var a = live.st, b = predicted.st, cells = [], rr, cc;
+      for (rr = 0; rr <= a.height + 1; rr++) for (cc = 1; cc <= 6; cc++) {
+        var pa = a.panels[rr] && a.panels[rr][cc], pb = b.panels[rr] && b.panels[rr][cc];
+        if (!pa || !pb) continue;
+        if (pb.color >= 11) continue;       // dealt since: new information
+        var ka = (pa.isGarbage ? '#' : pa.color) + ':' + pa.state + '/' + pa.timer,
+            kb = (pb.isGarbage ? '#' : pb.color) + ':' + pb.state + '/' + pb.timer;
+        if (ka !== kb) cells.push('(' + rr + ',' + cc + ') game ' + ka + ' model ' + kb);
+      }
+      var fields = ['stopTime', 'preStopTime', 'shakeTime', 'displacement', 'riseTimer', 'speed', 'curRow', 'curCol', 'manualRaise', 'health'], fd = [];
+      fields.forEach(function (f) { if (a[f] !== b[f]) fd.push(f + ' game ' + a[f] + ' model ' + b[f]); });
+      var newG = JSON.stringify(a.incoming.map(function (g) { return g.width + 'x' + g.height; })) !==
+                 JSON.stringify(b.incoming.map(function (g) { return g.width + 'x' + g.height; }));
+      if (cells.length || fd.length) this.modelMismatches.push({ clock: this.stack.clock, after: 0, newGarbage: newG, played: this._lastPlayed,
+                                                            game: fd.join(', '), model: '', cells: cells.slice(0, 8) });
+      return;
+    }
     var self = this;
     function run(nd, k) {
       var t = nd.b.clone(), sv = self._carry, sf = self._walkFrom;
@@ -1456,17 +1682,22 @@
     var verdict = new Array(cands.length), level = [], self = this, i, j, n, c, proofs = {}, weak = {};
     var FULL = this.SURVIVE_FRAMES + this.SURVIVE_REST, savedRest = this._restNeeded;
     this._restNeeded = true;
-    var root = { b: this._board.clone(), carry: null, pos: [this.stack.curRow, this.stack.curCol], t: 0 };
+    // A real engine Stack is copied and played; a harness's stand-in stack
+    // (puzzles.play.js) has no engine to copy and keeps the painted path.
+    var real = this.stack && typeof this.stack.run === 'function' && typeof this.stack.setInput === 'function' && this.stack.panels;
+    var root = real ? this._engineRoot()
+                    : { b: this._board.clone(), carry: null, pos: [this.stack.curRow, this.stack.curCol], t: 0 };
     var open = 0;
     this._searchProofs = { cands: cands, proofs: proofs };
     for (i = 0; i < cands.length; i++) {
       var cd = cands[i];
       if (cd.resolved && (cd.resolved.died || cd.resolved.diedInWalk)) { verdict[i] = 'dies'; continue; }
       c = cd.kind === 'raise'
-        ? { b: this._settledOf(cd).clone(), carry: cd.resolved.carry || null, pos: root.pos, t: cd.resolved.elapsed || 0 }
+        ? (root.st ? this._lineStep(root, 'raise', false)
+                   : { b: this._settledOf(cd).clone(), carry: cd.resolved.carry || null, pos: root.pos, t: cd.resolved.elapsed || 0 })
         : this._lineStep(root, cd.move || null, false);
       if (!c) { verdict[i] = 'dies'; continue; }
-      c.tag = i; c.m = cd.move || null;
+      c.tag = i; c.m = cd.kind === 'raise' ? 'raise' : (cd.move || null);
       if (c.t >= FULL) { verdict[i] = 'proven'; proofs[i] = c; if (this._proofs) this._proofs[i] = c; continue; }
       if (c.t >= this.SURVIVE_FRAMES && !weak[i]) weak[i] = c;
       c.first = true; level.push(c); open++;
@@ -1477,13 +1708,14 @@
     // end covers the frames since. Replayed first, it cannot be pruned.
     var fl = this._following;
     this._following = null;
-    if (this.checkModel && fl && fl.at === this.stack.clock && fl.node) this._checkModel(root, fl.node);
+    if (this.checkModel && fl && fl.at === this.stack.clock && fl.node && fl.node.st) this._checkModel(root, fl.node);
     if (fl && fl.at === this.stack.clock && fl.steps.length) {
       var want = fl.steps[0], fi = -1;
       for (i = 0; i < cands.length; i++) {
         var ck = cands[i];
-        if (want && want !== 'long' ? (ck.kind === 'swap' && ck.move && ck.move[0] === want[0] && ck.move[1] === want[1])
-                                    : ck.kind === 'hold') { fi = i; break; }
+        if (want === 'raise' ? ck.kind === 'raise'
+            : want && want !== 'long' ? (ck.kind === 'swap' && ck.move && ck.move[0] === want[0] && ck.move[1] === want[1])
+            : ck.kind === 'hold') { fi = i; break; }
       }
       if (fi >= 0 && verdict[fi] !== 'proven') {
         this.followTried = (this.followTried || 0) + 1;
@@ -1540,7 +1772,7 @@
           if (c.t >= FULL && !c.dead) { verdict[n.tag] = 'proven'; proofs[n.tag] = c; if (this._proofs) this._proofs[n.tag] = c; break; }
           if (c.t >= this.SURVIVE_FRAMES && !weak[n.tag]) weak[n.tag] = c;
           if (c.dead) continue;
-          var h = n.tag + '|' + JSON.stringify(c.b.grid) + '|' + this._heldFor(c.carry) + '|' + c.pos;
+          var h = n.tag + '|' + (c.b.key || JSON.stringify(c.b.grid)) + '|' + this._heldFor(c.carry) + '|' + c.pos;
           if (seen[h]) continue;
           seen[h] = 1;
           next.push(c);
@@ -1593,7 +1825,7 @@
           c = moves[j] === 'long' ? this._lineStep(n, null, true) : this._lineStep(n, moves[j], false);
           if (!c) continue;
           if (c.t >= this.SURVIVE_FRAMES) return true;
-          var h = JSON.stringify(c.b.grid) + '|' + this._heldFor(c.carry) + '|' + c.pos;
+          var h = (c.b.key || JSON.stringify(c.b.grid)) + '|' + this._heldFor(c.carry) + '|' + c.pos;
           if (seen[h]) continue;
           seen[h] = 1;
           next.push(c);
@@ -1648,6 +1880,7 @@
   PuyoCpu.prototype.EXTEND_BEAM = 24;
   PuyoCpu.prototype.EXTEND_BUDGET = 2500;
   PuyoCpu.prototype._extendLine = function (start) {
+    if (start.dead) return start;
     var self = this, until = this.EXTEND_FRAMES, best = start, budget = this.EXTEND_BUDGET, i, j, n, c;
     var saved = this._lineUntil, savedRest = this._restNeeded;
     this._lineUntil = until;
@@ -1664,7 +1897,7 @@
           c.prev = n; c.m = moves[j]; c.tag = start.tag;
           if (c.t > best.t) best = c;
           if (c.dead || c.t >= until) { if (c.t >= until) break; continue; }
-          var h = JSON.stringify(c.b.grid) + '|' + this._heldFor(c.carry) + '|' + c.pos;
+          var h = (c.b.key || JSON.stringify(c.b.grid)) + '|' + this._heldFor(c.carry) + '|' + c.pos;
           if (seen[h]) continue;
           seen[h] = 1;
           next.push(c);
@@ -1693,6 +1926,12 @@
   };
   PuyoCpu.prototype.SLACK_FRAMES = 480;
   PuyoCpu.prototype._slack = function (node) {
+    if (node.dead) return 0;
+    if (node.st) {
+      var e = this._engineAdvance(node, 'long', null, this.SLACK_FRAMES);
+      if (!e) return 0;
+      return e.dead ? Math.max(0, e.t - node.t) : this.SLACK_FRAMES;
+    }
     var t = node.b.clone(), saved = this._carry, savedFrom = this._walkFrom;
     t.incoming = (node.carry && node.carry.nextRow) ||
                  (node.b.incoming === false ? false : (node.b.incoming || this._incoming || null));
