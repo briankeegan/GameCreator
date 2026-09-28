@@ -148,7 +148,7 @@ function generation(g, done) {
         // generation now overwrites the same per-tag file, so the best vector so
         // far is on disk from the first one and the results are readable while the
         // run is still going.
-        writeChampion(pop[order[0]], g + 1);
+        deliver(pop[order[0]], g + 1);
 
         var champ = order[0];
         history.push({ gen: g, champion: champ, wins: score[champ],
@@ -184,6 +184,43 @@ var g = 0;
 console.log('population ' + POP + ', generations ' + GENS + ', ' + SEEDS +
             ' seed(s) per pairing, ceiling ' + CEILING + ', shards ' + SHARDS);
 console.log('island 0 is BitBot.STARTER, the control -- watch where it places\n');
+
+// PUSHED AS IT IS EARNED, NOT WHEN THE RUN ENDS.
+//
+// Writing the champion every generation protects against a crash inside this
+// script. It does NOT protect against the job dying, because the workflow step
+// that commits runs only after training finishes -- so a cancelled or timed-out
+// run still delivers nothing, which is exactly what lost the first twenty runs
+// (an hour of runners each, not one champion between them).
+//
+// So the commit happens here, per generation. Off unless GC_DELIVER is set, so a
+// local run does not try to push. A failed push is NOT fatal: the next generation
+// will try again a minute later, and losing a push is not a reason to throw away
+// a search that is still running.
+function deliver(weights, gensDone) {
+    var done = writeChampion(weights, gensDone);
+    if (process.env.GC_DELIVER !== '1') return done;
+    try {
+        var cp = require('child_process');
+        var rel = path.relative(path.join(__dirname, '..', '..', '..'), done.out);
+        cp.execSync('git add ' + JSON.stringify(rel), { stdio: 'ignore' });
+        cp.execSync('git commit -m ' + JSON.stringify(
+            'BitBot island ' + done.tag + ' generation ' + gensDone +
+            '\n\ncontrolWins ' + done.controlWins + ' so far. High means the untrained ' +
+            'control is still winning and this run has found nothing yet, which is a ' +
+            'result rather than a failure.'), { stdio: 'ignore' });
+        cp.execSync('git fetch origin main --quiet', { stdio: 'ignore' });
+        cp.execSync('git rebase origin/main', { stdio: 'ignore' });
+        cp.execSync('git push origin HEAD:main', { stdio: 'ignore' });
+        console.log('   delivered generation ' + gensDone);
+    } catch (e) {
+        // Twenty runs push to main within minutes of each other, so losing a race
+        // is expected. Say so and carry on; the next generation re-delivers.
+        try { require('child_process').execSync('git rebase --abort', { stdio: 'ignore' }); } catch (e2) { /* nothing to abort */ }
+        console.log('   generation ' + gensDone + ' not delivered (will retry next generation)');
+    }
+    return done;
+}
 
 function writeChampion(weights, gensDone) {
     var tag = process.env.GC_TAG || String(process.env.GC_GA_SEED || 'default');
