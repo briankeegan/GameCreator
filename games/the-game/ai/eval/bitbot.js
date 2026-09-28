@@ -317,19 +317,16 @@
     // board from a swap that does nothing. bitoptions only names a setup when a
     // cash follows it inside the search depth; with nothing to aim at it is
     // silent, and that is exactly when the board most needs arranging.
-    // HOW UNEVEN THE STACK IS: the total step between neighbouring columns.
+    // MATERIAL, IN FLAT ROWS: non-garbage panels over the width.
     //
-    // A flat board is where clears come from -- a column standing alone has
-    // nothing beside it to match with, and a hole under a spike cannot be reached
-    // at all. When nothing clears and nothing improves the count of ways to
-    // match, levelling is what is left, and it is still survival: it is the board
-    // keeping its ability to make a clear at all.
-    function bumpiness(st) {
-        var h = [], c;
-        for (c = 1; c <= W; c++) h[c] = 32 - Math.clz32(st.occ[c] >>> 0);
+    // GARBAGE DOES NOT COUNT. A slab is inert until something breaks it, and
+    // breaking needs panels beside it -- so a board can be twelve rows tall and
+    // have nothing to play with. Seed 101 died under seven rows of garbage
+    // holding eighteen panels, two of them in the row beneath the slab.
+    function materialRows(st) {
         var n = 0;
-        for (c = 1; c < W; c++) n += Math.abs(h[c] - h[c + 1]);
-        return n;
+        for (var c = 1; c <= W; c++) n += bit.popcount((st.occ[c] & ~st.garb[c]) >>> 0);
+        return n / W;
     }
 
     // HOW UNEVEN THE STACK IS: the total step between neighbouring columns.
@@ -1352,7 +1349,38 @@
         // nothing queued against us the row costs nothing we need back.
         //
         // Survival has already had its turn above; this cannot preempt it.
-        if (!survival && !info.incoming && tallestOf(pool) < WORKING_ROWS && this.canRaise()) {
+        // LOW ON MATERIAL: RAISE OR BREAK. Those two make panels and nothing else
+        // does -- a raise adds W of them, breaking a slab converts its cells. The
+        // board starts near empty, so this fires from the first decision.
+        //
+        // MATERIAL, NOT HEIGHT. The test was tallestOf(pool), so garbage counted
+        // as material and a buried board never raised while holding three flat
+        // rows of panels and no way to dig out.
+        //
+        // ONLY IF ABLE TO: canRaise() is the engine's own list of refusals, and
+        // the risen board still faces the death filter just below.
+        // AND SOMEWHERE TO PUT THE ROW. Material alone fires on nearly every
+        // decision -- a board with fewer than WORKING_ROWS * W non-garbage panels
+        // is the ordinary state -- so on its own it raises the stack into the
+        // ceiling: 8 deaths in 8, average life 10,369 frames.
+        //
+        // A raise adds a row and a chain needs WORKING_ROWS to stand in, so the
+        // row must leave that much. deadly() only refuses a raise once the board
+        // is FULL, which is far too late to be this guard.
+        // RAISE OR BREAK, AND WHICH ONE THE BOARD DECIDES. Both make panels and
+        // nothing else does. But a slab is material already on the board, just
+        // inert -- breaking converts it for free, while raising buys the same
+        // panels with a row of headroom. So raising is for a board with no
+        // garbage on it; buried, the answer is to dig.
+        //
+        // Measured: material sits at 2 to 3 flat rows for 82% of a game, so a
+        // floor of WORKING_ROWS fires almost always. Raising on all of those is
+        // 8 deaths in 8 at an average of 10,369 frames.
+        var buried = false;
+        for (i = 1; i <= W; i++) if (base.garb[i]) { buried = true; break; }
+        if (!survival && !info.incoming && !buried && this.canRaise() &&
+            materialRows(base) < WORKING_ROWS &&
+            tallestOf(pool) + 1 <= H - WORKING_ROWS) {
             // ONLY IF IT DOES NOT KILL. canRaise() is the engine's own list of
             // refusals -- whether the raise is LEGAL -- and says nothing about
             // whether the board survives it. Returning here skipped the death
