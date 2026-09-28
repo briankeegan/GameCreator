@@ -564,6 +564,82 @@ and Sapper are the two classes that do it and they are measured at 4 shots
 and 0 kills across 40 runs. Raising their density in `typePoolFor` and
 shortening the fuse tests the whole hypothesis with no engine change.
 
+## THE ROSTER IS ONE ENEMY WITH 22 SKINS (2026-09-28)
+
+Audited: 22 classes, four with any behavioural rule at all and all four of
+them REFUSALS (won't fire if it would catch a friend; only fires when you
+move). Two emplacements. Two carrying shields, for themselves. Nothing in
+the game affects another hostile in any way — zero. So every class walks at
+you and shoots you, and differs only in the shape of the shot.
+
+Every hostile has 1 hull, so killing is instant, which means kill ORDER
+should be the puzzle. It cannot be, because no ship makes any other ship
+better. A crowd is N guns and arithmetic.
+
+### What a support hostile has to clear, measured
+
+Three attempts, all of which came out at roughly nothing:
+
+**Aiming the Hauler's lens.** A haul drags the flagship one hex ALONG THE
+BEAM, so where it lands is set by where the hauler stands — and it stood at
+the nearest hex its lens reached, which dragged the flagship toward it, where
+it already wanted to be to shoot it. Ranking its ground by what the haul
+hands you to: 8% of hauls landed on a threatened hex. Adding an inhibition so
+it declines a haul that hands you nowhere: 8.5%. The destination has to be
+one particular neighbour of your hex with a wingman covering it that round,
+and it almost never is.
+
+**A Spotter paying the board's energy bill.** No gun, no drive, 1 hull: while
+it lives nobody spends a round recharging. Incoming went from 0.115 hits a
+round to 0.137. Hostiles spend their rounds walking, not recharging, so there
+was no bill to free.
+
+**A Spotter extending everyone's reach by a hex.** Applied through
+`enemyShip`, so overlay, AI and shot all agreed. Threatened hexes went 4.7 to
+7.9 — a real, visible 68% — and incoming went DOWN, 0.114 to 0.099, with wins
+7 to 12. Patch kept at `scratchpad/spotter.patch`.
+
+### The rule those three add up to
+
+**Anything that only threatens hexes gets walked around, and anything that
+occupies a roster slot a gun would have held makes the board weaker.** A
+1-hull ship with no gun is a discount on the sector. So a support hostile has
+to either add pressure that cannot be dodged by standing somewhere else, or
+arrive IN ADDITION to the roster rather than inside it.
+
+The one thing measured this session that does bite is the Hauler cutting a
+crate off the hold on a landed haul: it threatens money, which is not
+dodgeable by position and does not get cheaper with careful play.
+
+## THE WRECK LOOP — the design to build (2026-09-28)
+
+Owner's, and it hangs everything off one new object.
+
+A kill leaves a WRECK on its hex, with art. The wreck pays its salvage only
+when it is DESTROYED — a second shot, not a walk — so every kill is two steps
+and the second is optional: spend the shot, or move on and leave the money.
+
+Three claims on every wreck:
+
+- **You**, finishing it for the salvage at the cost of a shot.
+- **The Tender**, reviving it, so the kill undoes itself.
+- **The Collector** (the Hauler, rethought), towing it and then RUNNING for
+  the gate. Reaches the gate and the salvage is gone.
+
+The Collector is the one hostile allowed to flee. Fleeing is catastrophic for
+a shooter — a gun that holds its distance cannot be answered by a ship that
+walks one hex a round, measured at 23 wins in 60 down to 1 — but a thief may,
+because letting it go costs money and not hull, which makes it a decision
+rather than a grind. It carries what it took, so killing it hands the load
+back, and it keeps cutting a crate off your hold on a landed haul.
+
+Open: whether a wreck blocks movement and shots as a hull does (recommended —
+the board then accumulates cover as the fight goes), and whether the wreck
+sprite is one shared plate or 22.
+
+Salvage is about two thirds of all income, so charging a shot per payout will
+cut it. Measure and reprice rather than guess.
+
 ## TERRAIN — a plan, not yet built (2026-09-19)
 
 ### What is there now
