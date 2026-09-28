@@ -1056,27 +1056,7 @@
             var horizon = (cand.moveFrames || 0) + this.reaction;
             if (this.deadly(cand.masks, cand.resolved, info, horizon)) { this.counts.refusedDeadly++; continue; }
             alive++;
-            // WHEN NOTHING HOLDS STATION, THE BOARD DECIDES AND THE WEIGHTS DO NOT.
-            //
-            // A plan is only offered above when something on the board pays. When
-            // nothing does -- no clear, no stop time, escape at Infinity -- there
-            // is no survival move to overrule with, and the decision used to fall
-            // through to the weights. So the weights got the wheel exactly on the
-            // boards that kill, which is how a bad vector kills ITSELF rather than
-            // merely attacking badly. Survival is meant to be arithmetic the
-            // weights never see.
-            //
-            // The arithmetic left at that point is the board: take the move that
-            // leaves the stack lowest, and among equal heights the one that costs
-            // the fewest frames. Both come off the engine and the masks -- height
-            // is clz32 over the column words, frames is travel.cost -- so every
-            // vector plays this identically.
-            var s;
-            if (escape === Infinity) {
-                s = -tallestBoard(cand.masks) * 1000 - (cand.moveFrames || 0);
-            } else {
-                s = this.score(cand.masks, cand.moveFrames, cand.resolved, info);
-            }
+            var s = this.score(cand.masks, cand.moveFrames, cand.resolved, info);
             if (!best || s > best.score) best = { cand: cand, score: s };
         }
         // NOTHING SURVIVES: the position is lost either way, so the best-scoring
