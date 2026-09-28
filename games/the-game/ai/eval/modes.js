@@ -775,7 +775,13 @@
   //      scratch dealt from its own generator, and a line was proven on a
   //      match the real row did not make (seed 702 frame 13814, dead at
   //      13879). Unseen rows are six colours outside the palette.
-  var RULES = 49;
+  //   50. THE MODEL CHECKS ITSELF, AND THREE THINGS IT FOUND. checkModel
+  //      plays each followed line's prediction and the live board forward and
+  //      records where they part. A held raise was dropped by every resolve
+  //      (seed 703 side 1: raise at 737, two pixels low at 780); a speed step
+  //      due this frame read as never (703 frame 900); and colours a break
+  //      deals were invented rather than unknown (701 frame 6477).
+  var RULES = 50;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

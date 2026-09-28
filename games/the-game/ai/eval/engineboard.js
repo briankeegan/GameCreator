@@ -68,6 +68,14 @@
             for (var c = 1; c <= 6; c++) row[c] = 11 + ((c + 3 * k) % 6);
             return row;
         };
+        // So does a row garbage turns into when it breaks here: the game
+        // picks those colours at the break, and a line went on to match
+        // colours the real break did not deal (seed 701 frame 6477).
+        stack.garbageRowColors = function (count) {
+            var k = (this.unseenBreaks = (this.unseenBreaks || 0) + 1), colors = [];
+            for (var n = 0; n < count; n++) colors.push(21 + ((n + 3 * k) % 6));
+            return colors;
+        };
         return stack;
     }
 
@@ -323,7 +331,7 @@
         if (PanelEngine.makeRng) stack.rng = PanelEngine.makeRng(7);
         // The row generator's adjacency tally too: it steers every row dealt,
         // and left running, a row depended on every resolve before it.
-        stack.adjacentDenied = 0; stack.adjacentAccepted = 0; stack.unseenRows = 0;
+        stack.adjacentDenied = 0; stack.adjacentAccepted = 0; stack.unseenRows = 0; stack.unseenBreaks = 0;
         stack.stopTime = 0;
         stack.chainCounter = 0;
         stack.shakeTime = 0;

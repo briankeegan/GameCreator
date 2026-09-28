@@ -178,6 +178,10 @@
     this.standingMovesDropped = 0;
     // Refusing a move that no line of play survives once the stack rises.
     this.deepSurvival = opts.deepSurvival !== false;
+    // Opt-in: at every decision on a followed line, check the line's
+    // prediction for this frame against the live board (see _checkModel).
+    this.checkModel = !!opts.checkModel;
+    this.modelMismatches = [];
     this.doomedDecisions = 0;
     this.doomedMovesDropped = 0;
     // ON. 65% survival against an unconstrained equal over 96 duels, 62 of
@@ -453,6 +457,10 @@
     // time and sending less (seed 703 frame 309).
     st.chainCounter = live.chainCounter || 0;
     st.highestGarbageIdMatched = live.highestGarbageIdMatched || 0;
+    st.manualRaise = !!live.manualRaise;
+    st.manualRaiseYet = !!live.manualRaiseYet;
+    st.preventManualRaise = !!live.preventManualRaise;
+    st.hasRisen = !!live.hasRisen;
     st.garbageCreatedCount = Math.max(st.garbageCreatedCount || 0, live.garbageCreatedCount || 0);
     st.swapStallBacklog = (live.swapStallBacklog || []).map(function (q) { return { row: q.row, col: q.col }; });
     // Topped out as of the last frame, which the stalling rule reads: paint
@@ -467,7 +475,8 @@
     // own clock happened to land.
     var toSpeed = this._carry ? this._carry.toSpeed
                               : (live.nextSpeedIncreaseClock - (live.clock || 0));
-    st.nextSpeedIncreaseClock = (toSpeed > 0) ? (st.clock || 0) + toSpeed : -1;
+    // Zero is this frame: runPhysics checks the speed before the clock moves.
+    st.nextSpeedIncreaseClock = (toSpeed >= 0) ? (st.clock || 0) + toSpeed : -1;
   };
 
   // GARBAGE ALREADY IN FLIGHT, AS THE ENGINE WILL DELIVER IT.
@@ -611,6 +620,28 @@
     // the way to.
     var arrivals = this._inFlight(), nextArr = 0;
     var diedInWalk = false, rowsInWalk = 0;
+    // A RAISE THE BOT IS STILL HOLDING goes on being held, frame by frame,
+    // exactly as update() holds it: the engine raises fast while it is held,
+    // and a resolve that dropped it had the stack two pixels low within a
+    // frame (seed 703 side 1, raise at 737, swap at 750).
+    st.setInput({});
+    var hold = this._carry ? { left: this._carry.raiseLeft || 0, started: !!this._carry.raiseStarted, now: null }
+                           : { left: (this.raiseFrames || 0), started: !!this._raiseStarted, now: !!this._raiseNow };
+    var baseRun = st.run, ownRun = st.hasOwnProperty('run'), firstFrame = true;
+    if (hold.left > 0 || hold.now) {
+      st.run = function () {
+        var up = false;
+        if (firstFrame && hold.now !== null) up = hold.now;
+        else if (hold.left > 0) {
+          if (this.manualRaise) hold.started = true;
+          if (this.preventManualRaise || (hold.started && !this.manualRaise)) hold.left = 0;
+          else { hold.left--; up = true; }
+        }
+        firstFrame = false;
+        this.input.raise = up;
+        return baseRun.call(this);
+      };
+    }
     // THE CURSOR IS THE ENGINE'S. Given where it starts, the walk is the bot's
     // own driveWalk feeding the engine one input a frame, so rows rising under
     // it, the clamp at the top and the step timing are the game's, and the
@@ -725,10 +756,10 @@
     // frame 2777: queue [3x1, 6x6, 5x1, 5x1] on a stack at row 8, the check
     // asked about the first slab only and certified 9 of 23 moves; the 6x6
     // landed and the board it died on was garbage from row 7 to row 12.
-    st.manualRaise = false;
     st.health = st.maxHealth;
     st.gameOver = false;
     var out = engineBoard.settle(st, cap || (untilRise ? 1800 : 900), true, !!untilRise, settleArrivals, !!exact);
+    if (ownRun) st.run = baseRun; else delete st.run;
     if (refused || refusedInWalk) out.refused = true;
     if (diedInWalk) out.diedInWalk = true;
     if (rowsInWalk) out.rose = true;
@@ -744,11 +775,14 @@
       nextRow: (function (p0, w) { var r = [0]; for (var c = 1; c <= w; c++) r[c] = p0 && p0[c] ? p0[c].color : 0; return r; })(st.panels[0], board.width),
       riseTimer: st.riseTimer, displacement: st.displacement, speed: st.speed,
       stopTime: st.stopTime || 0, preStopTime: st.preStopTime || 0,
-      toSpeed: st.nextSpeedIncreaseClock > st.clock ? st.nextSpeedIncreaseClock - st.clock : -1,
+      toSpeed: st.nextSpeedIncreaseClock >= st.clock ? st.nextSpeedIncreaseClock - st.clock : -1,
       shakeTime: st.shakeTime || 0, peakShakeTime: st.peakShakeTime || 0,
       shakeTimeOnFrame: st.shakeTimeOnFrame || 0,
       chainCounter: st.chainCounter || 0,
       highestGarbageIdMatched: st.highestGarbageIdMatched || 0,
+      manualRaise: !!st.manualRaise, manualRaiseYet: !!st.manualRaiseYet,
+      preventManualRaise: !!st.preventManualRaise, hasRisen: !!st.hasRisen,
+      raiseLeft: hold.left, raiseStarted: hold.started,
       garbageCreatedCount: st.garbageCreatedCount || 0,
       swapStallBacklog: (st.swapStallBacklog || []).map(function (q) { return { row: q.row, col: q.col }; }),
       nActive: st.nActive || 0, nPrevActive: st.nPrevActive || 0,
@@ -1361,6 +1395,50 @@
     var pos = r.cursor || m || (node.pos && [Math.min(node.pos[0] + (r.rose ? 1 : 0), node.b.height), node.pos[1]]);
     return { b: t, carry: r.carry || null, pos: pos, t: node.t + Math.max(1, used) };
   };
+  // THE MODEL AGAINST THE GAME. The line predicted this board; the game dealt
+  // one. Both are played forward through the engine, doing nothing, and the
+  // first frame they part is recorded with the cells and fields that differ.
+  // Garbage sent since the prediction is a real difference, not a model
+  // error, and is recorded as such.
+  PuyoCpu.prototype.CHECK_FRAMES = 60;
+  PuyoCpu.prototype._checkModel = function (live, predicted) {
+    var self = this;
+    function run(nd, k) {
+      var t = nd.b.clone(), sv = self._carry, sf = self._walkFrom;
+      t.incoming = (nd.carry && nd.carry.nextRow) ||
+                   (nd.b.incoming === false ? false : (nd.b.incoming || self._incoming || null));
+      self._carry = nd.carry || null;
+      self._walkFrom = nd.pos || null;
+      var r = self._resolveCandidate(t, null, 0, false, k, true);
+      self._carry = sv; self._walkFrom = sf;
+      return { b: t, r: r };
+    }
+    function key(x, rr, cc) {
+      var g = x.b.grid[rr] && x.b.grid[rr][cc], m = x.b.motion && x.b.motion[rr] && x.b.motion[rr][cc];
+      return g + ':' + (m ? m.state + '/' + m.timer : '-');
+    }
+    function held(x) {
+      var k = x.r && x.r.carry;
+      return k ? [k.stopTime, k.preStopTime, k.shakeTime, k.displacement, !!x.r.died].join(',') : '';
+    }
+    var queued = JSON.stringify(((predicted.carry && predicted.carry.incoming) || []).map(function (g) { return g.width + 'x' + g.height; })),
+        now = JSON.stringify((this.stack.incoming || []).map(function (g) { return g.width + 'x' + g.height; }));
+    for (var k = 1; k <= this.CHECK_FRAMES; k++) {
+      var a = run(live, k), b = run(predicted, k), cells = [], rr, cc;
+      for (rr = 0; rr <= 13; rr++) for (cc = 1; cc <= 6; cc++) {
+        var ka = key(a, rr, cc), kb = key(b, rr, cc);
+        // A panel the prediction could not know (a row or a break dealt
+        // since) is new information, not a model error.
+        var mv = b.b.grid[rr] && b.b.grid[rr][cc];
+        if (ka !== kb && !(mv >= 11)) cells.push('(' + rr + ',' + cc + ') game ' + ka + ' model ' + kb);
+      }
+      if (cells.length || held(a) !== held(b)) {
+        this.modelMismatches.push({ clock: this.stack.clock, after: k, newGarbage: queued !== now, played: this._lastPlayed,
+                                    game: held(a), model: held(b), cells: cells.slice(0, 8) });
+        return;
+      }
+    }
+  };
   PuyoCpu.prototype._heldFor = function (k) {
     return k ? (k.stopTime || 0) + (k.preStopTime || 0) + (k.shakeTime || 0) : 0;
   };
@@ -1399,6 +1477,7 @@
     // end covers the frames since. Replayed first, it cannot be pruned.
     var fl = this._following;
     this._following = null;
+    if (this.checkModel && fl && fl.at === this.stack.clock && fl.node) this._checkModel(root, fl.node);
     if (fl && fl.at === this.stack.clock && fl.steps.length) {
       var want = fl.steps[0], fi = -1;
       for (i = 0; i < cands.length; i++) {
@@ -2585,11 +2664,12 @@
     var sp = this._searchProofs;
     this._searchProofs = null;
     this._following = null;
+    this._lastPlayed = cand ? (cand.move ? '[' + cand.move + ']' : cand.kind) : null;
     if (sp && cand && this.stack) {
       var k = sp.cands.indexOf(cand), pf = k >= 0 ? sp.proofs[k] : null, line = [];
       for (var q = pf; q; q = q.prev) line.unshift(q);
       if (line.length > 1) {
-        this._following = { at: this.stack.clock + line[0].t,
+        this._following = { at: this.stack.clock + line[0].t, node: line[0],
                             steps: line.slice(1).map(function (x) { return x.m; }) };
       }
     }
@@ -2935,6 +3015,7 @@
       if (stack.preventManualRaise || (this._raiseStarted && !stack.manualRaise)) this.raiseFrames = 0;
       else { this.raiseFrames--; input.raise = true; }
     }
+    this._raiseNow = !!input.raise;
 
     // A committed move owns the frame — the cursor has to get there.
     if (this._walk) {
