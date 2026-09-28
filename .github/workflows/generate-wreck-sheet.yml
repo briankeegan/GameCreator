@@ -30,6 +30,15 @@ on:
 permissions:
   contents: write
 
+# ONE AT A TIME, and queued rather than cancelled. Every run of this commits to
+# main and bumps the same PWA cache version, so five firing together is five
+# rebases onto each other's commits — measured: four of five runs lost the race
+# and failed after exhausting their retries, with the art already paid for.
+# cancel-in-progress would throw that art away instead, which is worse.
+concurrency:
+  group: wreck-sheet
+  cancel-in-progress: false
+
 jobs:
   generate:
     runs-on: ubuntu-latest
@@ -91,8 +100,13 @@ jobs:
           node .github/autopilot/sync-precache.js --fix >/dev/null 2>&1 || true
           git add "games/$GAME/icons" "games/$GAME/art-src" "$SW" 2>/dev/null || true
           git commit -m "Wreck sheet (${{ inputs.game }}) batch ${{ inputs.batch }}" || { echo "Nothing to commit"; exit 0; }
+          # ABORT THE FAILED REBASE BEFORE RETRYING. Without this the first
+          # conflict leaves the tree with unmerged files and every later pull
+          # refuses with "Pulling is not possible because you have unmerged
+          # files" — so six retries are six copies of the same failure.
           for i in 1 2 3 4 5 6; do
             git pull --rebase origin main && git push && exit 0
+            git rebase --abort 2>/dev/null || true
             echo "push race, retrying ($i)…"; sleep $((RANDOM % 6 + 2))
           done
           echo "::error::Could not push after retries"; exit 1
