@@ -25,16 +25,13 @@ don't fork it per-game.
 - **Always merge to `main`.** Pages deploys only from `main` (`pages.yml`),
   so work on a branch is invisible. Resolve conflicts and say in the commit
   message which side won.
-- **The gates run themselves.** `.claude/hooks/guard-main-push.sh` runs them
-  on every `main` push and blocks one that fails, scoped to the paths that
-  push changes; `pages.yml` runs the full list. `GC_SKIP_GATES=1` overrides
-  and says so loudly. The slow gates (`SLOW_GATES` in `gates.sh`, measured)
-  are deferred from the hook to `ai-checks.yml`'s `slow-gates` job after the
-  push; `GC_FULL_GATES=1` runs them in the hook too. A gate is slow past 10 s.
-  Only `SEARCH_GATES` run the survival search; the rest run with
-  `GC_SURVIVAL_SEARCH=0`. To check early, `source .github/scripts/gates.sh &&
-  gate_changed` is the same scoped list; bare `gate_all` is all 55 gates and
-  takes many minutes.
+- **The gates run after the push, in CI.** `pages.yml` runs `gate_all`;
+  `ai-checks.yml`'s `slow-gates` job runs `SLOW_GATES` (each over 10 s,
+  measured). A push waits on none of them; `GC_RUN_GATES=1` makes
+  `.claude/hooks/guard-main-push.sh` run the scoped list first
+  (`GC_FULL_GATES=1` adds the slow ones). Only `SEARCH_GATES` run the
+  survival search; the rest run with `GC_SURVIVAL_SEARCH=0`. Check CI after
+  pushing and fix what it finds.
 - Every rule that matters needs three pieces: a plain-English rule where
   someone would be editing, a script that decides it mechanically, and a
   gate that runs the script on every push.

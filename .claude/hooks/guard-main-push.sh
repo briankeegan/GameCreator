@@ -57,8 +57,11 @@ REPO="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}"
 [ -z "$REPO" ] && exit 0
 [ -f "$REPO/.github/scripts/gates.sh" ] || exit 0
 
-if [ "${GC_SKIP_GATES:-}" = "1" ]; then
-  echo "GC_SKIP_GATES=1 — pushing to main WITHOUT running gate_all. Say so out loud." >&2
+# THE GATES RUN AFTER THE PUSH, IN CI: pages.yml runs gate_all and
+# ai-checks.yml runs the slow ones. A push waits on none of them unless
+# GC_RUN_GATES=1 asks for the scoped list here first.
+if [ "${GC_RUN_GATES:-}" != "1" ]; then
+  echo "guard-main-push: gates run in CI after this push (GC_RUN_GATES=1 runs them here first)" >&2
   exit 0
 fi
 
