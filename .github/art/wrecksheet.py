@@ -68,12 +68,33 @@ def sheet_path(game, n):
 
 
 def build_prompt(game, group):
+    """The game's STYLE CONTRACT comes first, exactly as generate-game-asset.yml
+    builds it, and then what this particular row is.
+
+    Skipping it was the first thing that went wrong here: a row came back as
+    four inked illustrations while every live icon in the game is crisp 16-bit
+    pixel art. The wrecks have to sit on the board beside the ships they came
+    from, so they answer to the same contract — this tool supplying only
+    `wreckRule` and the per-ship lines was it quietly opting out of one.
+    """
     style = contract(game)
     rule = style.get("wreckRule", "")
+    house = " ".join(
+        str(style[k]) for k in ("style", "palette", "constraints") if style.get(k)
+    )
+    camera = style.get("camera", "")
     lines = []
     for i, (stem, desc) in enumerate(group, start=1):
         lines.append(f"{i}. {desc}")
     return (
+        f"{camera}\n\n{house}\n\n"
+        # The contract is written for ONE icon, so its square-composition and
+        # its background clause both describe a single sprite. A sheet is a
+        # wide row on flat white that gets cut up; say so, or the row comes
+        # back as one square ship.
+        "THAT SQUARE COMPOSITION NOTE DESCRIBES A SINGLE ICON. This image is not one "
+        "icon: it is a WIDE SHEET holding several, and it is cut apart afterwards. Each "
+        "ship on it still obeys the camera and rendering style above.\n\n" +
         f"A single horizontal row of exactly {len(group)} DERELICT spaceships on a FLAT PURE WHITE "
         "background, evenly spaced with clear white gaps between them, none touching or overlapping, "
         "none clipped by the edge of the frame.\n\n"
