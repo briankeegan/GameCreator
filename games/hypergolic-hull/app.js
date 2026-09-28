@@ -981,6 +981,10 @@ for (const [type, file] of Object.entries({
   // The launcher hull. No gun barrels on it anywhere — what it carries is
   // one cell with a round in it, and the round is the threat.
   hound: "icons/enemy-hound.png",
+  // The engineering hull. No guns on it anywhere — welding arms, a cable
+  // spool and hazard striping, so "that one is not shooting at me" is
+  // something you read off the board rather than off its stat block.
+  tender: "icons/enemy-tender.png",
 })) {
   const img = new Image();
   img.src = file;
