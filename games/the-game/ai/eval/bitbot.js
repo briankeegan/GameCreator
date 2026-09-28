@@ -743,7 +743,7 @@
             // one number ranks both: the frames it holds, divided by the frames a
             // panel of life is worth.
             if (o.breaks && perPanelFrames > 0) {
-                cells += heldFrames(framesTable, 0, o.total, W) / perPanelFrames;
+                cells += heldFrames(framesTable, 0, o.total, o.garbage || W) / perPanelFrames;
             }
             if (cells <= 0) continue;                       // sends nothing, holds nothing
             // The vector's taste for this shape, read off the same buckets the
@@ -792,7 +792,10 @@
             // AND THEN THE WHOLE HOLD, of which that is only one part. A break
             // holds the floor for as long as the slab takes to come apart and pays
             // no stop time at all, which is why digging looked worthless.
-            var gain = heldFrames(framesTable, stopGain, o.total, o.breaks ? W : 0);
+            // The real count, not W as a stand-in: the slab the match touches is
+            // what sets the resolve, and the resolver reports it now.
+            var gain = heldFrames(framesTable, stopGain, o.total,
+                                  o.garbage || (o.breaks ? W : 0));
             // WHAT SURVIVAL ACTUALLY REQUIRES IS A CLEAR RATE OF 1.0, and ranking
             // by the stop-time gain alone cannot see it. Measured over three duels:
             // panels arriving 234, 147, 224 against panels cleared 225, 114, 195 --

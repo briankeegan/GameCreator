@@ -757,6 +757,18 @@ gate_bitbot() {
   node games/the-game/ai/eval/bitbot.test.js
 }
 
+# THE FRAME ARITHMETIC IS CHECKED AGAINST THE ENGINE, not against itself. The bot
+# prices every move in frames and decides what fits in the time there is; if those
+# frames disagree with what the engine spends, every decision built on them is
+# wrong and no outcome measurement says which number lied. So resolveFramesOf is
+# asserted to equal the engine's own preStop, stopTimeOf to equal awardStopTime on
+# a real Stack, and -- the fact the pricing turns on -- riseLock is asserted held
+# on every frame panels are in motion, which is why resolve time is floor HELD and
+# not time spent.
+gate_bitbot_timing() {
+  node games/the-game/ai/eval/timing.test.js
+}
+
 gate_gates_reject_defects() {
   bash .github/scripts/gates.test.sh
 }
@@ -815,6 +827,7 @@ SLOW_GATES=(
   gate_features_live        # 37s
   gate_chips_real_boards    # 26s
   gate_bitbot               # 19s
+  gate_bitbot_timing        # 3s
   gate_bitmatch             # 18s
   gate_chips_decidable      # 17s
   gate_chip_verifier_fires  # 12s
@@ -905,6 +918,7 @@ GATES=(
   "a swap is answered without applying it:gate_bitswap:games/the-game/ai/"
   "the options are features that vary:gate_bitfeatures:games/the-game/ai/"
   "the bot plays what it picks and cannot be killed:gate_bitbot:games/the-game/ai/"
+  "the bot's frame arithmetic matches the engine:gate_bitbot_timing:games/the-game/ai/"
   "the simulation resolves like the game:gate_resolve_fidelity:games/the-game/ai/"
   "that fidelity check fires:gate_resolve_fidelity_fires:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"

@@ -51,24 +51,20 @@
     //             moves are played one per decision, so every move pays it. The
     //             cooldown is skipped while stop time runs, so the caller says
     //             which number is right at this moment.
-    //   resolve   FLASH + FACE + POP * (comboSize + garbage) -- the engine's own
-    //             preStop. The board is busy for this long after the cash and the
-    //             next move cannot land until it is over. 59 frames for a bare
-    //             three, 143 for a three into twelve garbage panels.
     //
-    // Left out, a three-move plan ending in a clear prices at ~15 frames and
-    // really takes 120 or more, so the deadline test passed plans the floor
-    // arrives in the middle of.
-    function durationOf(swaps, frames, r) {
-        var d = frames + swaps.length * OVERHEAD;
-        if (RESOLVE && r && r.total > 0) d += RESOLVE(r.total, r.garbage || 0);
-        return d;
+    // RESOLVE TIME IS NOT A COST AND MUST NOT BE ADDED HERE. While a clear
+    // resolves, hasActivePanels() holds riseLock, so the floor does not move for
+    // the whole of it -- the engine's resolve time is floor HELD, not time spent.
+    // heldFrames counts it on the other side of the ledger; adding it here as
+    // well priced the same frames as both a gain and a cost.
+    function durationOf(swaps, frames) {
+        return frames + swaps.length * OVERHEAD;
     }
 
     function optionOf(swaps, frames, r) {
         return { kind: kindOf(r.chain), size: sizeOf(r.chain, r.total),
                  swaps: swaps, frames: frames, chain: r.chain, total: r.total,
-                 garbage: r.garbage || 0, duration: durationOf(swaps, frames, r) };
+                 garbage: r.garbage || 0, duration: durationOf(swaps, frames) };
     }
 
     // Cheapest first, then bigger — the order a caller wants to read.
