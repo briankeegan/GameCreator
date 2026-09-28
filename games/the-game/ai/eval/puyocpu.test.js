@@ -84,9 +84,12 @@ test('it scores EVERY legal move, not a shortlist', function () {
     // "+ 1 for hold" is what made this fail the day raise became a control:
     // it reported a shortlist where the bot had in fact scored one move MORE
     // than expected, which is the opposite complaint.
-    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 7, countdown: false });
-    var cpu = new PuyoCpu(stack, { weights: sample() });
+    // Under garbage every two seconds a game ends early, so further seeds are
+    // played until enough decisions have been seen.
     var mismatches = [], checked = 0, widths = {};
+    for (var seed = 7; seed < 12 && checked < 40; seed++) {
+    var stack = new PanelEngine.Stack({ level: LEVEL, seed: seed, countdown: false });
+    var cpu = new PuyoCpu(stack, { weights: sample() });
     for (var f = 0; f < 1200; f++) {
         if (f > 120 && f % 120 === 0) stack.receiveGarbage([{ width: 6, height: 3, isChain: false }]);
         var before = cpu.evaluations;
@@ -105,6 +108,7 @@ test('it scores EVERY legal move, not a shortlist', function () {
         }
         stack.run(); stack.drainEvents();
         if (stack.gameOver) break;
+    }
     }
     assert.ok(checked >= 20, 'only ' + checked + ' decisions observed — too few to mean anything');
     assert.ok(Object.keys(widths).length >= 3,
