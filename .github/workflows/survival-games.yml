@@ -1,0 +1,43 @@
+name: Survival games
+
+# Full duels of the deep-survival bot, one seed per runner, so a batch of
+# seeds takes the wall-clock time of one game. A job goes red when a side
+# dies; its log ends with the dying side's last decisions and board, and the
+# RESULT line is copied to the run summary.
+on:
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: 'JSON array of seeds'
+        default: '[700,701,702,703,704,705,706,707,708,709]'
+      frames:
+        description: 'Frames per game (21600 = six minutes)'
+        default: '21600'
+
+jobs:
+  game:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: ${{ fromJSON(inputs.seeds) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Play seed ${{ matrix.seed }}
+        timeout-minutes: 345
+        run: |
+          set -o pipefail
+          node games/the-game/ai/eval/survival_game.js ${{ matrix.seed }} ${{ inputs.frames }} | tee game.log
+      - name: Summary
+        if: always()
+        run: |
+          grep -E '^RESULT|DIED|both alive|MISMATCH' game.log >> "$GITHUB_STEP_SUMMARY" || echo "no result: the game did not finish" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: survival-${{ matrix.seed }}
+          path: game.log
