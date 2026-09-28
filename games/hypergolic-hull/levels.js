@@ -730,7 +730,7 @@
     // turn count.
     const roster = Math.max(
       1,
-      Math.min(1 + Math.floor(depth / 3) + (variant ? variant.enemyDelta : 0) + locale.enemyDelta, ceiling, 5)
+      Math.min(1 + Math.floor(depth / 3) + (variant ? variant.enemyDelta : 0) + locale.enemyDelta, ceiling, 6)
     );
     // Two candidate sizes per roster so sectors of the same weight still
     // don't all look alike; the seeded roll picks one.
@@ -748,14 +748,22 @@
     // size, and then half the height goes empty. These are all taller than
     // they are wide, which is also what "growth goes downrange, not
     // sideways" was always supposed to mean.
+    // The board grew in step with the roster, which held density almost flat
+    // across the whole crawl: 35 hexes to one contact at depth 1 and still
+    // 14 at depth 12, so depth bought walking at the same rate it bought
+    // guns. Growth is now much shallower — 35 hexes to 50 rather than 35 to
+    // 70 — and the roster carries the escalation, which lands a full sector
+    // at one contact per 8 hexes instead of 14. Five columns throughout:
+    // the two outgoing gates sit at the top of the middle column and at
+    // cols-2, so a 4-wide board puts both on the same column.
     const SIZE_FOR_ROSTER = {
       1: [{ cols: 5, rows: 7 }, { cols: 5, rows: 7 }],
       2: [{ cols: 5, rows: 7 }, { cols: 5, rows: 8 }],
-      3: [{ cols: 5, rows: 8 }, { cols: 7, rows: 8 }],
-      4: [{ cols: 7, rows: 8 }, { cols: 7, rows: 9 }],
-      5: [{ cols: 7, rows: 9 }, { cols: 7, rows: 10 }],
-      6: [{ cols: 7, rows: 10 }, { cols: 7, rows: 10 }],
-      7: [{ cols: 7, rows: 10 }, { cols: 7, rows: 10 }],
+      3: [{ cols: 5, rows: 7 }, { cols: 5, rows: 8 }],
+      4: [{ cols: 5, rows: 8 }, { cols: 5, rows: 8 }],
+      5: [{ cols: 5, rows: 8 }, { cols: 5, rows: 9 }],
+      6: [{ cols: 5, rows: 9 }, { cols: 5, rows: 10 }],
+      7: [{ cols: 5, rows: 10 }, { cols: 5, rows: 10 }],
     };
     const sizes = SIZE_FOR_ROSTER[roster];
     const shape = sizes[Math.floor(rng() * sizes.length)];
