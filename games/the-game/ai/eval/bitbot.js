@@ -333,6 +333,21 @@
     }
 
     function matchWays(st) {
+        // PAIRS, NOT MATCHES. reachMask marks every cell that would complete an
+        // adjacent same-colour pair, so its popcount is how much the board can
+        // still be built on.
+        //
+        // Counting the swaps that actually clear right now was tried and is the
+        // worst thing measured all day -- 8 deaths in 8. Maximising it maximises
+        // structure about to be SPENT: a board covered in ready triples has no
+        // vertical structure left, because every pair is one swap from being
+        // cashed and gone. A pair is a chain waiting to happen; a match is a chain
+        // about to stop existing.
+        //
+        // Restricting the mask to reachable cells was also worse, in both
+        // directions -- above the stack (6 deaths) and level with it (5). The
+        // unreachable pairs still count because the board moves: the floor rises
+        // under them and a slab above them breaks.
         var r = bit.reachMask(st), n = 0;
         for (var c = 1; c <= W; c++) n += bit.popcount(r[c] >>> 0);
         return n;
