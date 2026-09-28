@@ -168,18 +168,22 @@ ok(refused > 0, 'the death filter never refused a single candidate even on the v
 var full = { grid: [], blocks: {}, height: 12 };
 for (var r0 = 0; r0 <= 12; r0++) { full.grid[r0] = []; for (var c0 = 1; c0 <= 6; c0++) full.grid[r0][c0] = ((r0 + c0) % 5) + 1; }
 var probe = { deadly: BitBot.prototype.deadly };
-ok(BitBot.prototype.deadly.call(probe, full, null, { stopTime: 0 }) === true,
+// deadly() reads the masks now, not a grid -- the bot never holds a predicted
+// grid any more, so the unit cases build the state the same way it does.
+var bitm = require('./bitmatch.js');
+function masksOf(b) { return bitm.maskState(b.grid, b.blocks, 6, 12); }
+ok(BitBot.prototype.deadly.call(probe, masksOf(full), null, { stopTime: 0 }) === true,
    'a full board with nothing banked should be refused');
-ok(BitBot.prototype.deadly.call(probe, full, null, { stopTime: 60 }) === false,
+ok(BitBot.prototype.deadly.call(probe, masksOf(full), null, { stopTime: 60 }) === false,
    'a full board is NOT dead while stop time is running -- health only drains ' +
    'on a frame with stopTime 0, and refusing this forbids chaining into the ceiling');
 var chainOut = { chain: 4, total: 8, biggest: 4 };
-ok(BitBot.prototype.deadly.call(probe, full, chainOut, { stopTime: 0 }) === false,
+ok(BitBot.prototype.deadly.call(probe, masksOf(full), chainOut, { stopTime: 0 }) === false,
    'a full board is NOT dead when the move itself banks time -- the chain that ' +
    'saves the position was being refused as suicide');
 var lowBoard = { grid: full.grid.slice(0, 4), blocks: {}, height: 12 };
 for (var rr = 4; rr <= 12; rr++) { lowBoard.grid[rr] = []; for (var cc = 1; cc <= 6; cc++) lowBoard.grid[rr][cc] = -1; }
-ok(BitBot.prototype.deadly.call(probe, lowBoard, null, { stopTime: 0 }) === false,
+ok(BitBot.prototype.deadly.call(probe, masksOf(lowBoard), null, { stopTime: 0 }) === false,
    'a board with room left should never be refused');
 
 // BREAK TEST: with the filter wired to refuse everything, the fallback must
@@ -247,14 +251,10 @@ function repeatRate(opts) {
 
     // Tell the bot the board a chosen swap leads to is one it was JUST at. The
     // filter must then refuse exactly that candidate and nothing else.
+    // The bot's own notion of "the same position", not a second one written here.
     var target = swaps[0];
-    var sig = [];
-    for (var r = 1; r <= target.board.height; r++) {
-        var row = target.board.grid[r], line = '';
-        for (var c = 1; c <= 6; c++) line += (row && row[c] !== undefined ? row[c] : -1) + ',';
-        sig.push(line);
-    }
-    bot._seen = [sig.join('|')];
+    ok(target.masks, 'a swap candidate carries no masks, so nothing can be compared');
+    bot._seen = [BitBot.signatureOf(target.masks)];
     var before = bot.counts.refusedReturn;
     bot.decide();
     ok(bot.counts.refusedReturn > before,
@@ -263,7 +263,7 @@ function repeatRate(opts) {
     // And with the filter off it must NOT be refused -- otherwise the count above
     // proves nothing about the filter.
     var bot2 = new BitBot(stack, { weights: LOOPER, allowRaise: true, refuseReturn: false });
-    bot2._seen = [sig.join('|')];
+    bot2._seen = [BitBot.signatureOf(target.masks)];
     var b2 = bot2.counts.refusedReturn;
     bot2.decide();
     ok(bot2.counts.refusedReturn === b2,
@@ -304,34 +304,31 @@ function repeatRate(opts) {
 var withFilter = { rep: 0, n: 0, matches: 0 };
 var without = { rep: 0, n: 0, matches: 0 };
 
-// A no-op swap -- two panels of the same colour -- must be refused too: it is
-// the same defect without needing a second decision to show itself.
+// A no-op swap -- two panels of the same colour -- is never OFFERED now, because
+// the swap list comes from bit.legalSwapsOf, which applies legalSwaps's own rule:
+// garbage on either side, both cells empty, or both the same colour are all
+// excluded. This was the bug that made the bot pick 28 swaps the board it chose
+// them from did not offer, and 416 phantom options over 200 boards -- each one an
+// "option" the engine answered by clearing nothing.
 (function () {
     var stack = new PanelEngine.Stack({ level: 10, seed: 705, countdown: false });
     var bot = new BitBot(stack, { weights: BitBot.STARTER });
     for (var f = 0; f < 60; f++) { bot.update(); stack.run(); }
     var board = bot._snapshot();
-    var info = bot.info(board);
-    var pool = bot.candidates(board, info);
-    var here = null, noop = 0;
+    var pool = bot.candidates(board, bot.info(board));
+    var offered = {}, sw = 0;
     for (var i = 0; i < pool.length; i++) {
-        if (pool[i].kind !== 'hold') continue;
-        here = pool[i].board;
+        if (pool[i].kind !== 'swap') continue;
+        sw++;
+        offered[pool[i].swap[0] + ',' + pool[i].swap[1]] = true;
     }
-    for (i = 0; i < pool.length; i++) {
-        if (pool[i].kind !== 'swap' || !here) continue;
-        var same = true;
-        for (var r = 1; r <= 12 && same; r++) {
-            for (var c = 1; c <= 6; c++) {
-                var a = (here.grid[r] || [])[c], b = (pool[i].board.grid[r] || [])[c];
-                if (a !== b) { same = false; break; }
-            }
-        }
-        if (same) noop++;
-    }
-    // Not an assertion that no-ops exist on this board -- they may not -- but
-    // that if one does the filter would see it, which is what `here` proves.
-    ok(here !== null, 'hold is missing from the pool, so there is no current board to compare against');
+    ok(sw > 0, 'no swaps offered at all, so this proves nothing');
+    // Every offered swap must be one the board itself calls legal.
+    var legal = {};
+    board.legalSwaps().forEach(function (s2) { legal[s2[0] + ',' + s2[1]] = true; });
+    var bogus = Object.keys(offered).filter(function (k) { return !legal[k]; });
+    ok(bogus.length === 0, bogus.length + ' offered swaps are not in the board\'s own ' +
+                           'legalSwaps list: ' + bogus.slice(0, 5).join(' '));
 }());
 
 // ------------------------------------------------------- 5. the mirror draws

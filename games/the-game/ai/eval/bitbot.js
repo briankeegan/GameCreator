@@ -50,15 +50,7 @@
 
     function tallestOf(pool) {
         for (var i = 0; i < pool.length; i++) {
-            if (pool[i].kind !== 'hold') continue;
-            var st = bit.maskState(pool[i].board.grid, pool[i].board.blocks, W, H);
-            var t = 0;
-            for (var c = 1; c <= W; c++) {
-                var n = 0, o = st.occ[c];
-                while (o) { o &= o - 1; n++; }
-                if (n > t) t = n;
-            }
-            return t;
+            if (pool[i].kind === 'hold') return tallestBoard(pool[i].masks);
         }
         return 0;
     }
@@ -115,19 +107,17 @@
         return (s.riseTimer || 0) + Math.max(0, disp - 1) * perPixel;
     }
 
-    // THE BOARD AS A STRING, so "have we been here" is an exact question and
-    // not a similarity score. Only the settled colours matter: two boards with
-    // the same panels in the same cells are the same position to swap from.
-    function signature(board) {
-        var out = [], r, c;
-        for (r = 1; r <= board.height; r++) {
-            var row = board.grid[r];
-            if (!row) { out.push(''); continue; }
-            var line = '';
-            for (c = 1; c <= W; c++) line += (row[c] === undefined ? -1 : row[c]) + ',';
-            out.push(line);
-        }
-        return out.join('|');
+    // THE BOARD AS A STRING, so "have we been here" is an exact question and not
+    // a similarity score. Straight off the masks: one integer per colour per
+    // column plus the occupancy, which IS the settled position. Built from the
+    // grid before, which meant a candidate's signature came from a board the old
+    // simulation had predicted -- so a return the engine actually made could go
+    // unrecognised.
+    function signature(st) {
+        var out = [], a, c, stride = st.W + 2;
+        for (c = 1; c <= st.W; c++) out.push(st.occ[c] + ':' + st.garb[c]);
+        for (a = 1; a <= st.N; a++) for (c = 1; c <= st.W; c++) out.push(st.colour[a * stride + c]);
+        return out.join(',');
     }
 
     function BitBot(stack, opts) {
@@ -148,6 +138,14 @@
         // TWO FILTERS THAT ARE NOT WEIGHTS, both off only for the run that
         // measures what they are worth. See refuseReturn and deadly below.
         this.refuseReturn = opts.refuseReturn !== false;
+        // HOW MANY CANDIDATES GET THE EXPENSIVE SCORE. Scoring one runs a depth-2
+        // option sweep -- about 900 cascade resolves -- and there are ~30
+        // candidates, so a full decision is ~27,000 resolves and 171ms. A cheap
+        // pre-rank on the surface and the candidate's own clear costs nothing and
+        // orders them well enough that the winner is almost always in the top few.
+        // 0 disables the beam and scores everything, for a run measuring what the
+        // beam costs in quality.
+        this.beam = opts.beam === undefined ? 8 : opts.beam;
         this.horizonDeath = opts.horizonDeath !== false;
         // The boards recent decisions were made on. Three, because a swap is an
         // involution -- it can only walk back one step at a time -- and a
@@ -271,14 +269,8 @@
     // isToppedOut()` — so a topped-out board holding stop time is alive, and
     // chaining INTO the ceiling is how the position is meant to be played.
     // Borrowed from PuyoCpu's own note, which records getting this wrong.
-    BitBot.prototype.deadly = function (board, resolved, info, horizon) {
-        var st = bit.maskState(board.grid, board.blocks, W, board.height);
-        var tallest = 0;
-        for (var c = 1; c <= W; c++) {
-            var n = 0, o = st.occ[c];
-            while (o) { o &= o - 1; n++; }
-            if (n > tallest) tallest = n;
-        }
+    BitBot.prototype.deadly = function (st, resolved, info, horizon) {
+        var tallest = tallestBoard(st);
         var banked = info.stopTime || 0;
         if (resolved && resolved.total > 0) {
             var isChain = resolved.chain >= 2;
@@ -306,13 +298,13 @@
                             ? Math.floor((spend - info.framesToNextRow) / info.framesPerRow) : 0);
             }
         }
-        if (tallest + rows < board.height) return false;       // room left: not dead
+        if (tallest + rows < H) return false;                  // room left: not dead
         return banked <= 0;                                    // full, nothing holding it
     };
 
-    BitBot.prototype.score = function (board, moveFrames, resolved, info) {
-        var out = BF.features(board, [info.cursorRow, info.cursorCol], moveFrames,
-                             resolved, info, PanelEngine());
+    BitBot.prototype.score = function (st, moveFrames, resolved, info) {
+        var out = BF.features(null, [info.cursorRow, info.cursorCol], moveFrames,
+                             resolved, info, PanelEngine(), st);
         var w = this.weights, total = 0, keys = BF.keys();
         for (var i = 0; i < keys.length; i++) {
             var k = keys[i], v = out.f[k];
@@ -337,47 +329,75 @@
         return true;
     };
 
+    // What the mask resolver reports, in the shape the rest of the bot reads.
+    // `biggest` is the widest single clear, and for a cascade of one round that is
+    // the whole of it -- which is the only case the aim needs it for, since a
+    // chain is judged on its depth.
     function summarise(res) {
-        var total = 0, biggest = 0;
-        for (var i = 0; i < res.comboSizes.length; i++) {
-            total += res.comboSizes[i];
-            if (res.comboSizes[i] > biggest) biggest = res.comboSizes[i];
-        }
-        return { chain: res.chainLength || 0, total: total, biggest: biggest,
-                 brokeGarbage: res.brokeGarbage || 0 };
+        return { chain: res.chain || 0, total: res.total || 0,
+                 biggest: res.rounds === 1 ? (res.total || 0) : 0,
+                 brokeGarbage: res.scope === 'garbage-broke' ? 1 : 0,
+                 scope: res.scope };
     }
 
     // THE POOL: hold, raise, every legal swap, and during a reveal window the
     // lineup swaps as well. Hold is always built — that is what waiting is, and
     // without it the bot cannot build — but a mode may filter it out.
     BitBot.prototype.candidates = function (board, info) {
-        var out = [], i;
+        var out = [], i, r, c;
+        var base = bit.maskState(board.grid, board.blocks, W, board.height);
 
-        out.push({ kind: 'hold', swap: null, board: board, moveFrames: 0, resolved: null });
+        out.push({ kind: 'hold', swap: null, board: board, masks: base,
+                   moveFrames: 0, resolved: null });
 
-        // A raise is scored like a swap, on the board it leaves. Not a feature:
-        // if it opens options nextWays rises, if it is dangerous tallest rises,
-        // if it wastes the clock stopReachable falls.
-        //
-        // THE RAISE SPENDS THE KNOWN ROW AND NO MORE. The row behind it comes
-        // from the match rng, which nothing here reads, so `incoming = false`
-        // says unknown rather than copying the visible row into its place and
-        // inventing matches the game will not deal.
+        // A raise is the one candidate that still needs the simulation, and for a
+        // reason that is not going away: the row being dealt is ENGINE data that no
+        // arithmetic here can produce. The row behind it comes from the match rng,
+        // so `incoming = false` says unknown rather than inventing matches the game
+        // will not deal.
         if (this.canRaise() && board.rise) {
             var risen = board.clone().rise(board.incoming);
             risen.incoming = false;
-            out.push({ kind: 'raise', swap: null, board: risen, moveFrames: 0,
-                       resolved: summarise(risen.resolve()) });
+            var rst = bit.maskState(risen.grid, risen.blocks, W, risen.height);
+            var rres = bit.resolveFromMasks(rst, true);
+            out.push({ kind: 'raise', swap: null,
+                       board: null,
+                       masks: rres.settled || rst,
+                       moveFrames: 0, resolved: summarise(rres) });
         }
 
-        var swaps = board.legalSwaps();
-        for (i = 0; i < swaps.length; i++) {
-            var b = board.clone();
-            b.swap(swaps[i][0], swaps[i][1]);
-            var res = b.resolve();
-            out.push({ kind: 'swap', swap: swaps[i], board: b,
-                       moveFrames: travel.cost(info.cursorRow, info.cursorCol,
-                                               swaps[i][0], swaps[i][1]),
+        // EVERY SWAP, ANSWERED BY THE ARITHMETIC AND NOT BY A SECOND SIMULATION.
+        //
+        // swapMasks refuses what an engine swap cannot touch, so it is the legality
+        // test as well as the move -- no legalSwaps() call. resolveFromMasks says
+        // what the cascade does and now hands back the board it left, so the
+        // position every candidate is scored on comes from the same arithmetic that
+        // is checked frame-exact against the engine on 74,522 cases and 74,821
+        // swaps. LogicalBoard.resolve() was a different implementation predicting
+        // it, and a prediction that disagrees is a decision made about a board the
+        // game will not produce -- measured as 26 decisions revisiting a position
+        // the no-return filter had already refused.
+        var legal = bit.legalSwapsOf(base);
+        for (i = 0; i < legal.length; i++) {
+            r = legal[i][0]; c = legal[i][1];
+            if (!bit.swapMasks(base, r, c)) continue;       // refused: not a move
+            var res = bit.resolveFromMasks(base, true);
+            // A MOVE THAT BREAKS A SLAB HAS NO SETTLED BOARD. The engine draws the
+            // converted row's colours from its own rng, so the cascade past the
+            // break is unknowable and the resolver refuses to invent it. The BREAK
+            // is still the point of the move, so the candidate is scored on the
+            // position as swapped -- what is known up to the break -- rather than
+            // being dropped, which is how every digging option went invisible once
+            // before.
+            var after = res.settled || bit.copyState(base);
+            bit.swapMasks(base, r, c);                     // put it back
+            // A broken slab hands us colours the engine draws from its own rng, so
+            // there is no settled board to score. The BREAK is still the point of
+            // the move, so the candidate is kept with what is known up to it.
+            out.push({ kind: 'swap', swap: [r, c],
+                       board: null,
+                       masks: after,
+                       moveFrames: travel.cost(info.cursorRow, info.cursorCol, r, c),
                        resolved: summarise(res) });
         }
         return out;
@@ -401,9 +421,10 @@
         return plan.best && plan.best.swap ? plan : null;
     };
 
-    // The tallest column of any board, from the masks.
-    function tallestBoard(board) {
-        var st = bit.maskState(board.grid, board.blocks, W, board.height || H);
+    // The tallest column, from the masks. On a settled board a column is a packed
+    // run from the floor, so its height is a popcount.
+    function tallestBoard(st) {
+        if (!st) return H;                  // unknown position: treat as full
         var t = 0;
         for (var c = 1; c <= W; c++) {
             var n = 0, o = st.occ[c];
@@ -465,6 +486,7 @@
         var board = this._snapshot();
         var info = this.info(board);
         var pool = this.candidates(board, info);
+        var base = pool.length ? pool[0].masks : bit.maskState(board.grid, board.blocks, W, board.height);
         var rev = this.revealPick(board);
         var mode = this.mode(info, pool, !!rev);
         this.decisions++;
@@ -472,7 +494,7 @@
 
         // THE MODE FILTERS, IT DOES NOT PICK. ATTACK and DEFEND drop hold:
         // there is something to cash, or idling is what kills us.
-        var here = signature(board);
+        var here = signature(base);
         // ONLY OPTIONS IT CAN ACTUALLY FINISH IN THE TIME IT HAS LEFT.
         //
         // Every candidate is already priced in frames -- travel.cost to the cell
@@ -521,8 +543,8 @@
             // cell against the boards recent decisions were made on. Hold is
             // exempt -- waiting is not a failure to progress, it is the thing
             // BUILD is for, and it is how the board legitimately stays put.
-            if (this.refuseReturn && pool[i].kind === 'swap' && pool[i].board) {
-                var sig = signature(pool[i].board);
+            if (this.refuseReturn && pool[i].kind === 'swap' && pool[i].masks) {
+                var sig = signature(pool[i].masks);
                 if (sig === here || this._seen.indexOf(sig) >= 0) { this.counts.refusedReturn++; continue; }
             }
             allowed.push(pool[i]);
@@ -544,49 +566,79 @@
         // If nothing banks anything the ordinary ranking stands, because then no
         // move here is an escape and there is nothing for this to choose between.
         // Borrowed from modes.js, whose FORCED does exactly this.
-        // SURVIVAL IS ONE NUMBER, AND IT IS THE ONE TO MAXIMISE.
+        // SURVIVAL IS A RATE, NOT A PAYOUT. This is the arithmetic of the game.
         //
-        // Every patch before this was a symptom. The quantity that actually
-        // matters is how long the position you end up in can live, counting what
-        // it cost to get there:
+        // The floor rises one row per framesPerRow -- 112 at this speed -- and a
+        // row is W panels. So every panel removed buys framesPerRow / W frames of
+        // life, 18.7 of them, and stop time adds frames directly. A move that
+        // clears C panels and gains S stop frames buys:
         //
-        //     clockAfter = max( max(0, S - cost), P )
-        //     value      = cost + framesToDeath(tallestAfter, clockAfter)
+        //     framesBought = C * (framesPerRow / W) + S
         //
-        // S is the clock now, cost the frames to play the move, P what its clear
-        // pays. The inner max is awardStopTime being a MAX, applied to the clock
-        // as it will be WHEN THE MOVE LANDS rather than as it is now -- the clock
-        // drains while the cursor walks.
+        // and it costs the frames to play it. The ratio is what decides whether
+        // the bot is ahead of the floor or behind it:
         //
-        // This subsumes the lot. A big payout too far away scores badly because
-        // max(0, S - cost) has gone to zero by the time it arrives. A clear that
-        // pays NOTHING but lowers the stack still scores, because tallestAfter
-        // falls and rows free are frames. Ranking by the payout alone could see
-        // neither, which is why the bot spent a 29-frame freeze walking 60 frames
-        // and why digging 23 garbage cells was never worth anything to it.
+        //     rate = framesBought / framesSpent        (> 1 is gaining ground)
         //
-        // Only in DEFEND. Everywhere else the weights decide, which is the plan:
-        // the modes change which shapes it prefers, and survival is the one place
-        // that preference is overruled.
+        // WHAT THE NUMBERS SAY, and it is why threes were never going to be
+        // enough: a plain three buys 3 * 18.7 + 0 = 56 frames and a walk plus a
+        // settle costs 50 to 80, so clearing threes is at the break-even line or
+        // just under it. A 4-combo buys 105. A 2-chain buys 172. A six-chain buys
+        // 18 * 18.7 + 68 = 404. Only the big shapes buy real slack, and a rule
+        // that ranks by the PAYOUT cannot see that, because the payout for a
+        // six-chain (68) is barely more than for a two-chain (60) -- while the
+        // frames bought differ by a factor of two and a half. The panels are most
+        // of the value and stop time is the smaller half.
+        //
+        // The clock enters as the GAIN, since awardStopTime is a MAX, and against
+        // the clock as it will be when the move lands because it drains while the
+        // cursor walks.
         var survival = null;
         if (mode.name === 'DEFEND') {
             survival = [];
             var S = info.stopTime || 0;
+            var perPanel = (info.framesPerRow || 0) / W;
             for (i = 0; i < allowed.length; i++) {
                 var cd = allowed[i], cost = cd.moveFrames || 0;
-                var rr = cd.resolved, P = 0;
+                var rr = cd.resolved, P = 0, C = 0;
                 if (rr && rr.total > 0) {
                     var ch = rr.chain >= 2;
                     P = BF.stopTimeOf(PanelEngine(), ch, ch ? 0 : rr.total,
                                       ch ? rr.chain : 0, !!info.toppedOut);
+                    // Garbage cells leave the board too, and the whole reason to
+                    // dig is that they are the ones that are not coming off any
+                    // other way.
+                    C = rr.total + (rr.brokeGarbage || 0);
                 }
-                var clockAfter = Math.max(Math.max(0, S - cost), P);
-                var tAfter = tallestBoard(cd.board);
-                var after = { stopTime: clockAfter, health: info.health,
-                              toppedOut: tAfter >= (cd.board.height || H) };
-                survival.push({ cand: cd,
-                                value: cost + framesToDeath(after, tAfter, info.framesPerRow) });
+                var gain = Math.max(0, P - Math.max(0, S - cost));
+                var bought = C * perPanel + gain;
+                // The frames this costs: the walk, plus the decision cycle that
+                // has to pass before the next move can be made. A move that buys
+                // nothing rates 0 rather than dividing by a guess.
+                var spent = cost + this.reaction;
+                survival.push({ cand: cd, value: spent > 0 ? bought / spent : 0 });
             }
+        }
+
+        // THE BEAM: pre-rank cheaply, then pay for the top few only.
+        //
+        // The cheap score is the two things that need no option sweep -- how much
+        // the move clears, and how flat and low it leaves the board. Candidates the
+        // survival objective will rank are exempt, because that objective is itself
+        // cheap and DEFEND is the one place a wrong cut is fatal.
+        if (this.beam > 0 && !survival && allowed.length > this.beam) {
+            var perPanel2 = (info.framesPerRow || 0) / W;
+            var scored = [];
+            for (i = 0; i < allowed.length; i++) {
+                var ac = allowed[i], arr = ac.resolved;
+                var cheap = (arr && arr.total ? arr.total * perPanel2 : 0)
+                          - tallestBoard(ac.masks) * 8
+                          - (ac.moveFrames || 0) * 0.5;
+                scored.push({ cand: ac, cheap: cheap });
+            }
+            scored.sort(function (x, y) { return y.cheap - x.cheap; });
+            allowed = [];
+            for (i = 0; i < scored.length && i < this.beam; i++) allowed.push(scored[i].cand);
         }
 
         var best = null, alive = 0;
@@ -596,7 +648,7 @@
             // the walk to the move, then the reaction cooldown. A candidate has
             // to survive its own cost, which is why it is per candidate.
             var horizon = (cand.moveFrames || 0) + this.reaction;
-            if (this.deadly(cand.board, cand.resolved, info, horizon)) { this.counts.refusedDeadly++; continue; }
+            if (this.deadly(cand.masks, cand.resolved, info, horizon)) { this.counts.refusedDeadly++; continue; }
             alive++;
             // In DEFEND, a move that banks time is ranked by the time it banks
             // and beats every move that banks none.
@@ -606,7 +658,7 @@
                 for (var q = 0; q < survival.length; q++) if (survival[q].cand === cand) s = survival[q].value;
                 this.counts.defendByClock++;
             } else {
-                s = this.score(cand.board, cand.moveFrames, cand.resolved, info);
+                s = this.score(cand.masks, cand.moveFrames, cand.resolved, info);
             }
             if (!best || s > best.score) best = { cand: cand, score: s };
         }
@@ -616,7 +668,7 @@
         if (!best) {
             this.counts.allDead++;
             for (i = 0; i < allowed.length; i++) {
-                var s2 = this.score(allowed[i].board, allowed[i].moveFrames,
+                var s2 = this.score(allowed[i].masks, allowed[i].moveFrames,
                                     allowed[i].resolved, info);
                 if (!best || s2 > best.score) best = { cand: allowed[i], score: s2 };
             }
@@ -717,6 +769,10 @@
         stack.setInput(input);
     };
 
+    // Exposed so a test can ask what the bot considers "the same position" rather
+    // than reimplementing it -- two implementations of a sameness rule is how a
+    // test ends up agreeing with itself.
+    BitBot.signatureOf = signature;
     BitBot.STARTER = STARTER;
     return BitBot;
 }));

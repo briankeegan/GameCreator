@@ -146,10 +146,15 @@
     //   info        engine state every candidate shares: { stopTime, toppedOut }.
     //               Without it the stop-time features are ABSENT rather than
     //               guessed, the way modes.warned refuses to be warned on a guess.
-    function features(board, cursor, moveFrames, resolved, info, engine) {
-        var st = bit.maskState(board.grid, board.blocks, W, H);
+    // `masks` lets a caller pass a mask state it already holds, and then nothing
+    // here converts a grid at all. The grid path is kept for callers that have a
+    // board and no masks; where both exist the masks win, because a grid built
+    // from masks and then parsed back into masks is a round trip that can only
+    // lose information (slab identity, most of all).
+    function features(board, cursor, moveFrames, resolved, info, engine, masks) {
+        var st = masks || bit.maskState(board.grid, board.blocks, W, H);
         var surf = api.surface(st);
-        var list = bitoptions.options(board, W, H, cursor || [1, 1], 2);
+        var list = bitoptions.options(masks ? null : board, W, H, cursor || [1, 1], 2, st);
         var f = {}, i;
 
         f.bumpiness = share(surf.bumpiness, NORM.bumpiness);
