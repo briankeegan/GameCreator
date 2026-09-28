@@ -905,7 +905,12 @@
                 options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base);
                 var plan = bestPlan(options, info.stopTime || 0, deadline, PanelEngine(),
                                     !!info.toppedOut, info.framesPerRow, this.stack.frames);
-                if (plan && plan.rate > 0) {
+                // THE OBJECTIVE ALWAYS ANSWERS. `rate > 0` was doing two jobs --
+                // whether a survival move exists, and whether survival is what is
+                // being decided -- and the second one is what `escape` says. Refusing
+                // to answer handed the board to the weights exactly when the best rate
+                // was poor, which is the board that kills.
+                if (plan) {
                     this._plan = { moves: plan.option.swaps.slice(1), frames: plan.frames, gain: plan.gain, rate: plan.rate };
                     if (!this._plan.moves.length) this._plan = null;
                     survival = { move: plan.move, gain: plan.gain, frames: plan.frames, rate: plan.rate };
@@ -1097,7 +1102,11 @@
         // re-choosing every frame plays the first move of a different plan each
         // time and never finishes any of them, which was worth LESS than having no
         // plans at all (2,521 frames against 2,892).
-        if (!survival) {
+        // ATTACKING IS FOR A BOARD THAT IS HOLDING STATION. escape is Infinity
+        // when nothing on the board keeps up with the floor; there the survival
+        // objective is the only thing that runs, so the bot is never offered a
+        // move whose merit is anything but staying alive.
+        if (escape !== Infinity) {
             if (this._attack && this._attack.moves.length) {
                 var an = this._attack.moves[0];
                 var okNext = false, als = bit.legalSwapsOf(base);
