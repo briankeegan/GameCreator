@@ -149,6 +149,30 @@
         // 0 disables the beam and scores everything, for a run measuring what the
         // beam costs in quality.
         this.beam = opts.beam === undefined ? 8 : opts.beam;
+        // A CEILING ON HOW DEEP TO LOOK. depthFor spends rows of headroom, and a
+        // cap lets a run ask what the depth is actually worth -- measured in live
+        // duels rather than on static boards, because a board in play is fuller
+        // than a quiet one and offers more swaps a ply.
+        // FOUR, BECAUSE PRUNING CHANGED THE ANSWER.
+        //
+        // Unpruned, deeper measured WORSE -- 8,000-frame duels on two seeds:
+        //
+        //     depth 2     9s wall    sent 71
+        //     depth 3    20s wall    sent 47
+        //     depth 4    57s wall    sent 30
+        //
+        // That was the search drowning in setups that could not lead anywhere.
+        // With bit.reachMask pruning the deeper plies to cells that could complete
+        // a pair, the same duels give:
+        //
+        //     depth 2     7s wall    sent  90
+        //     depth 3     5s wall    sent  48
+        //     depth 4    17s wall    sent 101, and the only big pieces
+        //
+        // So depth is worth having and the naive expansion was what made it look
+        // like it was not: 3.4x cheaper than before and now the best attacker.
+        // Two seeds, so this is a direction and not a calibration.
+        this.maxDepth = opts.maxDepth === undefined ? 4 : opts.maxDepth;
         this.horizonDeath = opts.horizonDeath !== false;
         // The boards recent decisions were made on. Three, because a swap is an
         // involution -- it can only walk back one step at a time -- and a
@@ -920,7 +944,7 @@
         var options = null;
         // Spent once for the decision, so both halves search the same board at the
         // same depth and cannot disagree about what is on offer.
-        var lookDepth = depthFor(mode.name, tallestOf(pool));
+        var lookDepth = Math.min(this.maxDepth, depthFor(mode.name, tallestOf(pool)));
         var survival = null;
         if (mode.name === 'DEFEND' || !(info.stopTime > 0)) {
             // A PLAN IS EXECUTED, NOT RE-CHOSEN EVERY FRAME.

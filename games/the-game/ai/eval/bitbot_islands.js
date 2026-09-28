@@ -42,7 +42,10 @@ var SHARDS = Number(process.env.GC_SHARDS || 4);
 // versus.js warns is not what that tie-break was calibrated for -- the count is
 // reported every generation so a run where most pairings hit it is visible rather
 // than silently meaning something else.
-var CEILING = Number(process.env.GC_VERSUS_CEILING || 14400);
+// NOTHING DIES ANY MORE, so a long ceiling buys nothing but wall clock. The
+// fitness at the ceiling is garbage sent, and 8,000 frames is plenty to measure
+// that -- 21,600 was sized when duels ended on a death at about 1,100.
+var CEILING = Number(process.env.GC_VERSUS_CEILING || 8000);
 var OPTS = { bot: 'bitbot', level: 10, reaction: 12, allowRaise: true, ceiling: CEILING };
 
 var rngState = (Number(process.env.GC_GA_SEED || 20250928) >>> 0) || 1;
@@ -103,7 +106,25 @@ function generation(g, done) {
         var ceilings = 0;
         for (i = 0; i < out.length; i++) {
             var d = out[i], pa = who[i][0], pb = who[i][1];
-            if (d.winner === 0) score[pa]++;
+            // WHO DIED IS NO LONGER A SIGNAL, so the ceiling decides most duels.
+            //
+            // The bot used to die in about 1,100 frames and the fitness was one bit:
+            // who topped out. It now survives 30,000, so nearly every pairing runs to
+            // the ceiling and versus.decideWinner falls through to the game's SCORE --
+            // a tie-break its own comment says was never calibrated for this, because
+            // it pays for grinding threes.
+            //
+            // GARBAGE SENT IS WHAT IS BEING SEARCHED. Survival is arithmetic in
+            // bitbot.js and no weight touches it; what the weights decide is the
+            // attack. So a duel that ends in a death is still decided by the death --
+            // dying is losing, whatever you sent -- and a duel that reaches the
+            // ceiling goes to whoever sent more.
+            if (d.reason === 'ceiling') {
+                if (d.sent[0] > d.sent[1]) score[pa]++;
+                else if (d.sent[1] > d.sent[0]) score[pb]++;
+                else { score[pa] += 0.5; score[pb] += 0.5; }
+            }
+            else if (d.winner === 0) score[pa]++;
             else if (d.winner === 1) score[pb]++;
             else { score[pa] += 0.5; score[pb] += 0.5; }
             if (d.reason === 'ceiling') ceilings++;
@@ -118,6 +139,16 @@ function generation(g, done) {
         var order = [];
         for (i = 0; i < pop.length; i++) order.push(i);
         order.sort(function (x, y) { return score[y] - score[x]; });
+
+        // WRITTEN EVERY GENERATION, NOT ONLY AT THE END.
+        //
+        // A run that only delivers when it finishes delivers nothing when it is
+        // cancelled or times out -- which is what happened to the first twenty,
+        // an hour of runners each and not one champion between them. Every
+        // generation now overwrites the same per-tag file, so the best vector so
+        // far is on disk from the first one and the results are readable while the
+        // run is still going.
+        writeChampion(pop[order[0]], g + 1);
 
         var champ = order[0];
         history.push({ gen: g, champion: champ, wins: score[champ],
@@ -154,27 +185,26 @@ console.log('population ' + POP + ', generations ' + GENS + ', ' + SEEDS +
             ' seed(s) per pairing, ceiling ' + CEILING + ', shards ' + SHARDS);
 console.log('island 0 is BitBot.STARTER, the control -- watch where it places\n');
 
+function writeChampion(weights, gensDone) {
+    var tag = process.env.GC_TAG || String(process.env.GC_GA_SEED || 'default');
+    try { fs.mkdirSync(path.join(__dirname, 'islands'), { recursive: true }); } catch (e) { /* already there */ }
+    var out = path.join(__dirname, 'islands', 'bitbot.island.' + tag + '.json');
+    var controlWins = history.filter(function (h) { return h.champion === 0; }).length;
+    fs.writeFileSync(out, JSON.stringify({ weights: weights, history: history,
+                                           population: POP, generations: gensDone,
+                                           generationsPlanned: GENS,
+                                           controlWins: controlWins,
+                                           seed: Number(process.env.GC_GA_SEED || 20250928) }, null, 2));
+    return { out: out, tag: tag, controlWins: controlWins };
+}
+
 (function step() {
     if (g >= GENS) {
-        // ONE FILE PER RUN. Twenty concurrent runs sharing a filename is nineteen
-        // results overwritten and one kept, which would look like a result and be
-        // a race.
-        var tag = process.env.GC_TAG || String(process.env.GC_GA_SEED || 'default');
-        try { fs.mkdirSync(path.join(__dirname, 'islands'), { recursive: true }); } catch (e) { /* already there */ }
-        var out = path.join(__dirname, 'islands', 'bitbot.island.' + tag + '.json');
-        var controlWins = history.filter(function (h) { return h.champion === 0; }).length;
-        fs.writeFileSync(out, JSON.stringify({ weights: pop[0], history: history,
-                                               population: pop.length, generations: GENS,
-                                               controlWins: controlWins,
-                                               seed: Number(process.env.GC_GA_SEED || 20250928) }, null, 2));
-        console.log('\nchampion written to ' + path.basename(out));
+        var done = writeChampion(pop[0], GENS);
+        console.log('\nchampion written to ' + path.basename(done.out));
         console.log('control placed: ' + history.map(function (h) { return h.champion === 0 ? 'won' : '-'; }).join(' '));
-        // ONE LINE PER RUN THAT AGGREGATES CLEANLY, because twenty runs are read
-        // by a script and not by eye. The control winning is the null result: a
-        // run where the untrained hand-set vector took the last generation found
-        // nothing, and that has to be countable rather than inferred from prose.
         var last = history[history.length - 1];
-        console.log('FINAL tag=' + tag + ' controlWins=' + controlWins + '/' + GENS +
+        console.log('FINAL tag=' + done.tag + ' controlWins=' + done.controlWins + '/' + GENS +
                     ' lastChampion=' + (last.champion === 0 ? 'CONTROL' : last.champion) +
                     ' wins=' + last.wins + ' sent=' + last.sent + ' chains=' + last.chains);
         return;
