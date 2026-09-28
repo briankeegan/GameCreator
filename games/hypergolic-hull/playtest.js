@@ -100,6 +100,27 @@ function bestShot(state) {
       }
     }
   }
+  // CUTTING A WRECK OPEN IS A SHOT, and bestShot could not see one — which
+  // would have banked nothing all run and made every economy number here a
+  // measurement of a game nobody was playing. Scored on the same scale as a
+  // kill, deliberately far below one: staying alive first, money second, so
+  // a wreck only gets the round when nothing worth killing is in reach.
+  // An "all" weapon scores every wreck in its footprint, which is where a
+  // footprint finally beats a cheaper single-target gun.
+  const wrecks = Engine.liveWrecks ? Engine.liveWrecks(state) : state.wrecks || [];
+  for (const wreck of wrecks) {
+    for (const weapon of weapons) {
+      for (let facing = 0; facing < 6; facing++) {
+        const reach = Engine.weaponHexes(state.playerPos, facing, weapon, state);
+        if (!reach.some((h) => Engine.posEq(h, wreck))) continue;
+        const cut =
+          weapon.targets === "all" ? wrecks.filter((w) => reach.some((h) => Engine.posEq(h, w))) : [wreck];
+        const paid = cut.reduce((n, w) => n + ((Engine.ENEMY_TYPES[w.type] || {}).salvage || 0), 0);
+        const score = paid * 3 - weapon.energyCost - Engine.hexDistance(state.playerPos, wreck);
+        if (!best || score > best.score) best = { wreck, weapon, facing, score };
+      }
+    }
+  }
   return best;
 }
 
@@ -659,12 +680,19 @@ function playSector(state, report) {
     // exactly nothing. Skill is taking the fights you WIN: a shot that
     // kills outright, or a trade you can afford, and leaving the rest.
     const raw = bestShot(state);
-    const worthIt =
-      !raw ||
-      PILOT !== "careful" ||
-      raw.enemy.hp <= raw.weapon.damage || // it dies this round: always take it
-      threatened || // already in its zone — trading beats standing there
-      state.hull > 1; // can afford the reply; at one Hull, don't start anything
+    // CUTTING IS FOR A QUIET ROUND. Nothing shoots back at a wreck, but the
+    // round still costs you, and spending it on scrap while a gun bears on
+    // you is not something a competent pilot does — measured, a pilot that
+    // cut whenever it could and damned the threat map died in 40 of 40 runs.
+    const worthIt = !raw
+      ? true
+      : PILOT !== "careful"
+        ? true
+        : !raw.enemy
+          ? !threatened && state.hull > 1
+          : raw.enemy.hp <= raw.weapon.damage || // it dies this round: always take it
+            threatened || // already in its zone — trading beats standing there
+            state.hull > 1; // can afford the reply; at one Hull, don't start anything
     const shot = PILOT === "reckless" ? null : worthIt ? raw : null;
     if (process.env.VERBOSE === "2") {
       console.log(
@@ -676,10 +704,15 @@ function playSector(state, report) {
     if (shot) {
       Engine.setFacing(state, shot.facing);
       report.turnKind.fire = (report.turnKind.fire||0)+1;
-      Engine.applyFire(state, shot.enemy.id, shot.weapon.id); // one action, one named gun
+      const bankedBefore = state.salvage;
+      Engine.applyFire(state, shot.enemy ? shot.enemy.id : undefined, shot.weapon.id); // one action, one named gun
       report.kills[shot.weapon.id] = report.kills[shot.weapon.id] || { shots: 0, kills: 0 };
       report.kills[shot.weapon.id].shots++;
-      if (!shot.enemy.alive) report.kills[shot.weapon.id].kills++;
+      if (shot.enemy && !shot.enemy.alive) report.kills[shot.weapon.id].kills++;
+      if (!shot.enemy) {
+        report.turnKind.cut = (report.turnKind.cut || 0) + 1;
+        report.banked = (report.banked || 0) + (state.salvage - bankedBefore);
+      }
       continue;
     }
 

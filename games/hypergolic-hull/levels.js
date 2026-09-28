@@ -730,7 +730,13 @@
     // turn count.
     const roster = Math.max(
       1,
-      Math.min(2 + Math.floor(depth / 2) + (variant ? variant.enemyDelta : 0) + locale.enemyDelta, ceiling, 6)
+      // BACK TO THE SHALLOWER RAMP, because the wreck loop is now spending
+      // the actions the steeper one was priced against. Cutting a wreck open
+      // takes 13% of every action in a run; with the steep ramp on top of
+      // that, 40 of 40 runs died and none reached the Bulwark. Handing the
+      // ramp back buys it: movement 70% of turns down to 50%, firing 32%,
+      // cutting 13%, 15% of runs won. The board cap does the density work.
+      Math.min(1 + Math.floor(depth / 3) + (variant ? variant.enemyDelta : 0) + locale.enemyDelta, ceiling, 6)
     );
     // Two candidate sizes per roster so sectors of the same weight still
     // don't all look alike; the seeded roll picks one.

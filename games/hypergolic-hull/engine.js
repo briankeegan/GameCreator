@@ -1929,9 +1929,15 @@
   // What a slug runs into: solid terrain, or any hull that isn't the
   // shooter's own. (The target itself is included before the line stops —
   // the shot hits the first thing in the lane, which is the whole point.)
+  // Does a wreck stop a slug the way a live hull does? Measurable, because
+  // "the board accumulates cover as the fight goes" cuts both ways: cover
+  // for you is also cover for the six things shooting at you.
+  const WRECKS_ARE_COVER = envNumber("GC_WRECK_COVER", 1) !== 0;
+
   function blocksShot(state, hex, opts) {
     if (isBlockingHazard(hazardAt(state, hex))) return true;
     if (enemyAt(state, hex)) return true;
+    if (WRECKS_ARE_COVER && wreckAt(state, hex)) return true; // a wreck is a hull: it stops a slug
     // A threat map answers "would I be hit if I STOOD there" — so the
     // flagship's current hull must not count as cover for the hex behind
     // it. It used to, which reported the hexes directly behind you as safe
@@ -3149,6 +3155,9 @@
   function canFlyInto(state, hex, mover) {
     if (!onBoard(state, hex)) return false;
     if (isBlockingHazard(hazardAt(state, hex))) return false;
+    // A wreck is a hull. Cover has to be cover for everyone, so nothing
+    // flies through one — and one shot clears it, so it is never a wall.
+    if (wreckAt(state, hex)) return false;
     if (!(mover && mover === "player") && posEq(hex, state.playerPos)) return false;
     const blocker = enemyAt(state, hex);
     if (blocker && blocker !== mover) return false;
@@ -3490,6 +3499,11 @@
     // Cutting gear pays per WRECK, not per sector: a hull built around it
     // gets richer the more it kills, which is what makes it a late ship.
     const rig = (state.hold ? deriveShip(state.hold).salvageBonus : 0) || 0;
+    // A wreck pays exactly what the kill used to, and no more. Paying a
+    // premium for the second shot was tried and buys nothing: at 1, 2 and 3
+    // times the old value, 40, 39 and 38 of 40 runs died. The cost of this
+    // loop is ROUNDS, not money, so money does not answer it — and this
+    // economy is already the loose end, not the tight one.
     let amount = base > 0 ? base + localeBonus(state) + rig : 0;
     // PICKED CLEAN. Somebody stripped this system before you got here, so
     // a wreck pays a fraction. One-sided the way the economy is — nothing
@@ -3757,6 +3771,66 @@
   // Two rounds of fuse: it lands, one round ticks with it visible and
   // counting, and it goes off at the end of the next. That's enough time
   // to walk out of a seven-hex blast from anywhere inside it, so being
+  // ---- wrecks ------------------------------------------------------------
+  //
+  // A HULL YOU OPENED IS NOT A HULL YOU EMPTIED. Killing a contact used to
+  // pay its salvage on the spot, which made a kill a single instant with no
+  // aftermath: the board emptied as the fight went, and the richest thing on
+  // it stopped existing the moment you hit it.
+  //
+  // Now a kill leaves the hull where it died and the salvage is paid when
+  // the WRECK is destroyed — a second shot, never a walk. So every kill is
+  // two steps and the second one is optional: spend the shot and bank it, or
+  // leave it and move on. Three things want that wreck, which is the whole
+  // point of it (see games/hypergolic-hull/DESIGN_IDEAS.md, "THE WRECK
+  // LOOP"): you, for the salvage; a Tender, to stand the hull back up; a
+  // Collector, to tow it off the board.
+  //
+  // A wreck IS a hull, so it blocks movement and shots exactly as a live one
+  // does (canFlyInto, blocksShot) — the board accumulates cover as the fight
+  // goes, and because one shot clears a wreck a wall of them is always
+  // answerable. It also means an area weapon finally earns its cost:
+  // wreckage collects where the fighting was, so a Flak Burst clearing three
+  // at once is the first time in this game a footprint has beaten a cheaper
+  // single-target gun.
+  function liveWrecks(state) {
+    return state.wrecks || (state.wrecks = []);
+  }
+
+  function wreckAt(state, pos) {
+    return liveWrecks(state).find((w) => posEq(w, pos)) || null;
+  }
+
+  // Left on the hull's OWN hex, which is always on the board and always free
+  // — the ship was standing there. Reading the destination instead breaks on
+  // the two shove kills, where the hex a hull was pushed into is off the map
+  // or already holds the thing it was pushed into.
+  function leaveWreck(state, victim) {
+    const base = (ENEMY_TYPES[victim.type] || {}).salvage || 0;
+    if (base <= 0) return;
+    if (wreckAt(state, victim)) return; // two hulls cannot die onto one hex
+    liveWrecks(state).push({
+      id: `wreck-${victim.id || victim.type}-${liveWrecks(state).length}`,
+      type: victim.type,
+      q: victim.q,
+      r: victim.r,
+    });
+    state.events.push({ type: "wreck", q: victim.q, r: victim.r, victim: victim.type });
+  }
+
+  // Every wreck inside a footprint, paid and gone. Called with the hexes a
+  // shot actually covered, so cover and range are already settled.
+  function clearWrecksIn(state, hexKeys) {
+    const hit = liveWrecks(state).filter((w) => hexKeys.has(hexKey(w)));
+    if (!hit.length) return 0;
+    state.wrecks = liveWrecks(state).filter((w) => !hexKeys.has(hexKey(w)));
+    for (const w of hit) {
+      state.events.push({ type: "wreckCleared", q: w.q, r: w.r, victim: w.type });
+      awardSalvage(state, w.type);
+    }
+    return hit.length;
+  }
+
   // caught is a decision you made, never something that happened to you.
   const CHARGE_FUSE = 2;
 
@@ -3833,7 +3907,7 @@
         victim.alive = false;
         state.events.push({ type: "kill", q: victim.q, r: victim.r, victim: victim.type, source: "charge" });
         pushLog(state, `${victim.type.toUpperCase()} caught in the blast.`);
-        awardSalvage(state, victim.type);
+        leaveWreck(state, victim);
       } else {
         state.events.push({ type: "hit", q: victim.q, r: victim.r, source: "charge" });
       }
@@ -3894,7 +3968,7 @@
           victim.alive = false;
           state.events.push({ type: "kill", q: victim.q, r: victim.r, victim: victim.type, source: "missile" });
           pushLog(state, `${victim.type.toUpperCase()} took its own side's missile.`);
-          awardSalvage(state, victim.type);
+          leaveWreck(state, victim);
         } else {
           state.events.push({ type: "hit", q: victim.q, r: victim.r, source: "missile" });
         }
@@ -4243,11 +4317,36 @@
     // it, and that trade is the whole point of ordnance being a real
     // object on a real hex.
     const swatted = targets.length ? 0 : shootDownMissiles(state, hexKeys, weapon.label);
+    // WRECKS INSIDE THIS FOOTPRINT, captured BEFORE the volley resolves.
+    // A kill leaves a wreck on the hex it died on, which is inside this
+    // footprint — reading the list afterwards would have every shot
+    // instantly scrap the wreck it just made, and the second step of a kill
+    // would never exist.
+    //
+    // The share a shot may clear is the weapon's own `targets`. An "all"
+    // weapon clears every wreck it covers, which is the first time in this
+    // game a footprint beats a cheaper single-target gun: wreckage collects
+    // where the fighting was, so a Flak Burst banking three at once is
+    // worth its 3 energy against an Autocannon's 1. A "one" weapon puts its
+    // shot into a hull if there is one to hit, and can only be spent on a
+    // wreck when there is nothing alive in reach.
+    const coveredWrecks = liveWrecks(state).filter((w) => hexKeys.has(hexKey(w)));
+    const spread = weapon.targets === "all";
+    const wreckSpoils = new Set(
+      (spread ? coveredWrecks : targets.length ? [] : coveredWrecks.slice(0, 1)).map(hexKey)
+    );
     // A charge dropped on your OWN hex has no target by definition, so the
     // usual "nothing in range, no shot" bail would mean it could never
     // fire at all. It is the one weapon here whose whole point is the
     // ground you are leaving rather than anything you can see.
     if (targets.length === 0 && !weapon.placesSelf) {
+      // Nothing alive in reach, but there is wreckage: the shot is spent
+      // cutting it open, which is the whole second step of a kill.
+      if (wreckSpoils.size) {
+        state.energy = Math.max(0, state.energy - weapon.energyCost);
+        clearWrecksIn(state, wreckSpoils);
+        return;
+      }
       if (swatted) state.energy = Math.max(0, state.energy - weapon.energyCost); // it fired, and it hit something
       return;
     }
@@ -4320,7 +4419,10 @@
         if (dir < 0) continue;
         pushEnemyInDirection(state, victim, dir, weapon.label);
       }
-      if (!weapon.damage) return; // push-only: the board does the killing
+      if (!weapon.damage) {
+        clearWrecksIn(state, wreckSpoils);
+        return; // push-only: the board does the killing
+      }
     }
     for (const victim of targets) {
       if (!victim.alive) continue; // an earlier target's push/collision in this same volley already took it out
@@ -4337,13 +4439,14 @@
         victim.alive = false;
         state.events.push({ type: "kill", q: victim.q, r: victim.r, victim: victim.type, source: "weapon" });
         pushLog(state, `${weapon.label}: ${victim.type.toUpperCase()} destroyed.`);
-        awardSalvage(state, victim.type);
+        leaveWreck(state, victim);
       } else {
         state.events.push({ type: "hit", q: victim.q, r: victim.r, source: "weapon" });
         pushLog(state, `${weapon.label}: ${victim.type.toUpperCase()} hit — hull ${victim.hp} of ${victim.maxHp}.`);
         if (onHit) onHit(state, victim);
       }
     }
+    clearWrecksIn(state, wreckSpoils);
   }
 
   // The ENEMY PHASE: every living enemy spends ENEMY_AP action points,
@@ -4731,7 +4834,7 @@
       enemy.alive = false;
       state.events.push({ type: "kill", q: dest.q, r: dest.r, victim: enemy.type });
       pushLog(state, `${sourceLabel}-pushed ${enemy.type} off the map edge.`);
-      awardSalvage(state, enemy.type);
+      leaveWreck(state, enemy);
       return;
     }
     const blocker = enemyAt(state, dest);
@@ -4742,13 +4845,13 @@
       state.events.push({ type: "kill", q: dest.q, r: dest.r, victim: enemy.type });
       state.events.push({ type: "kill", q: blocker.q, r: blocker.r, victim: blocker.type });
       pushLog(state, `${sourceLabel}-pushed ${enemy.type} into ${blocker.type} — both destroyed.`);
-      awardSalvage(state, enemy.type);
-      awardSalvage(state, blocker.type);
+      leaveWreck(state, enemy);
+      leaveWreck(state, blocker);
     } else if (hazard) {
       enemy.alive = false;
       state.events.push({ type: "kill", q: dest.q, r: dest.r, victim: enemy.type });
       pushLog(state, `${sourceLabel}-pushed ${enemy.type} into a hazard.`);
-      awardSalvage(state, enemy.type);
+      leaveWreck(state, enemy);
     } else {
       state.events.push({ type: "enemyMove", enemyId: enemy.id, from: { q: enemy.q, r: enemy.r }, to: dest });
       enemy.q = dest.q;
@@ -4837,6 +4940,10 @@
       // "nothing in arc" and cannot be fired at all — which would leave
       // the one answer to a Seeker unavailable exactly when it is needed.
       if (liveMissiles(state).some((m) => !m.spent && hexKeys.has(hexKey(m)))) return true;
+      // A wreck is something to shoot at. It is the second half of every
+      // kill and the only way salvage is ever banked, so a gun covering one
+      // has to read as bearing or the loop cannot be played at all.
+      if (liveWrecks(state).some((w) => hexKeys.has(hexKey(w)))) return true;
       return livingEnemies(state).some((e) => hexKeys.has(hexKey(e)));
     });
   }
@@ -5215,6 +5322,8 @@
     conditionIs,
     WEAPONS,
     ENEMY_TYPES,
+    liveWrecks,
+    wreckAt,
     STARTING_LOADOUTS,
     previewLoadout,
     loadoutUnlocked,
