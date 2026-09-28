@@ -1934,7 +1934,13 @@
       this.doomedDecisions++;
       return this._longestLived(cands);
     }
-    if (this.EXTEND_FRAMES && proven.length > 1) live = this._furthest(live);
+    if (proven.length > 1) {
+      // A line already known to run past the horizon (the one being followed)
+      // beats lines that only reach it; nothing needs extending to see that.
+      var known = this._longestKnown(live);
+      if (known) live = known;
+      else if (this.EXTEND_FRAMES && proven.length < cands.length) live = this._furthest(live);
+    }
     if (live.length > 1) live = this._mostRoom(live, cands);
     else live = this._deepestLine(live);
     if (live.length === cands.length) return cands;
@@ -2004,15 +2010,38 @@
     this._restNeeded = savedRest;
     return best;
   };
-  PuyoCpu.prototype._furthest = function (live) {
-    var sp = this._searchProofs, best = -1, reach = [], i, k, e;
-    if (!sp) return live;
+  PuyoCpu.prototype._longestKnown = function (live) {
+    var sp = this._searchProofs, FULL = this.SURVIVE_FRAMES + this.SURVIVE_REST, best = FULL, i, k, t;
+    if (!sp) return null;
     for (i = 0; i < live.length; i++) {
       k = sp.cands.indexOf(live[i]);
+      t = k >= 0 && sp.proofs[k] ? sp.proofs[k].t : 0;
+      if (t > best) best = t;
+    }
+    if (best <= FULL) return null;
+    var keep = [];
+    for (i = 0; i < live.length; i++) {
+      k = sp.cands.indexOf(live[i]);
+      if (k >= 0 && sp.proofs[k] && sp.proofs[k].t === best) keep.push(live[i]);
+    }
+    return keep;
+  };
+  // IN SCORE ORDER, STOPPING AT THE FIRST LINE THAT REACHES EXTEND_FRAMES:
+  // no move can beat that, so the best-scoring move alive that far is the
+  // answer and the rest are not extended.
+  PuyoCpu.prototype._furthest = function (live) {
+    var sp = this._searchProofs, best = -1, reach = [], i, k, e, q;
+    if (!sp) return live;
+    var order = live.map(function (x, n) { return n; });
+    order.sort(function (a, b) { return (live[b].score || 0) - (live[a].score || 0); });
+    for (q = 0; q < order.length; q++) {
+      i = order[q];
+      k = sp.cands.indexOf(live[i]);
       e = k >= 0 && sp.proofs[k] ? this._extendLine(sp.proofs[k]) : null;
-      reach.push(e ? Math.min(e.t, this.EXTEND_FRAMES) : 0);
+      reach[i] = e ? Math.min(e.t, this.EXTEND_FRAMES) : 0;
       if (e && !e.dead && e.t >= sp.proofs[k].t) sp.proofs[k] = e;
       if (reach[i] > best) best = reach[i];
+      if (reach[i] >= this.EXTEND_FRAMES) return [live[i]];
     }
     var keep = [];
     for (i = 0; i < live.length; i++) if (reach[i] === best) keep.push(live[i]);
