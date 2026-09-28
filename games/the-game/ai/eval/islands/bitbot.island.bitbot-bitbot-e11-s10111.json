@@ -51,5 +51,7 @@
   "generations": 3,
   "generationsPlanned": 3,
   "controlWins": 0,
-  "seed": 10111
+  "seed": 10111,
+  "ceiling": 30000,
+  "generationsTotal": 3
 }
