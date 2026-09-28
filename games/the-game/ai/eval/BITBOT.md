@@ -490,6 +490,60 @@ board that arrives comes from the engine, and the two part company when a row
 rises mid-walk. That number tightens when the candidate path stops predicting with
 the old simulation.
 
+## Survival, as it actually measures
+
+**Survival is a clear rate of 1.0.** Panels arriving against panels cleared, and
+nothing in the bot was measuring it. Two thirds of the inflow is GARBAGE, not the
+rising floor, so what a move REMOVES matters more than the freeze it buys.
+
+One panel removed buys `framesPerRow / W` frames of life — 18.7 at level 10 — so
+panels and stop time are the same currency and that is the exchange rate. Ranking
+plans by the stop-time gain alone read the smaller half: a plan clearing 18 panels
+buys 337 frames of life while the deepest chain in the game pays 68.
+
+Ranking by frames-of-life-bought per frame-spent, at a 30,000-frame ceiling
+(8 minutes), garbage crossing:
+
+| seed | | rate |
+|---|---|---|
+| 101 | died at 19,308 | 0.94 |
+| 103 | alive at the cap | 1.01 |
+| 105 | alive at the cap | 0.99 |
+
+**The rate predicts it.** 0.94 dies, 0.99 and 1.01 live. That is the model
+holding, not a coincidence — and it is the number to watch, not frames survived.
+
+A 7,200-frame run shows 0 of 6 dead, and that figure is worth nothing on its own:
+every game ended AT the cap, so the cap ended them. Only the long run says
+anything, and it says 2 of 3.
+
+### They do attack, and weakly
+
+Over 15,000 frames, each way (a mirror match, so identical by construction):
+
+| seed | cells sent | pieces | pieces of 12+ cells |
+|---|---|---|---|
+| 101 | 93 | 14 | 2 |
+| 103 | 190 | 32 | 3 |
+
+So 6 to 13 cells per 1,000 frames, almost all of it small — combos and two-chains.
+**The survival objective is why.** It maximises panels cleared per frame, which
+prefers many small clears to few big ones; that is what holds the rate above 1.0
+and it is also what makes the attack weak. Surviving and attacking pull opposite
+ways at this setting, and the attacking half is still the untrained BUILD weights.
+
+### Rejected, with numbers
+
+- **Launching a plan so its cash LANDS as the clock empties** (`clock <= frames`
+  rather than `clock == 0`). The obvious reading of the gain formula, and worse:
+  4,593 frames against 5,040, payouts 92 against 100. Launching earlier wins
+  continuity and loses building time, and the building time is worth more.
+- **Re-planning every decision** instead of executing the plan. 2,521 frames
+  against 2,892 for no plans at all — it starts plans and never finishes them.
+- **A `keepUp` feature** for the clear rate, weighted in BUILD: 2,068 against
+  2,404, and identical on four of six seeds because it barely varies between
+  candidates. The rate belongs in the plan objective, not in the weight vector.
+
 ## Open
 
 - Survival is short: ~690 frames a duel in self-play, against the ~1,100
