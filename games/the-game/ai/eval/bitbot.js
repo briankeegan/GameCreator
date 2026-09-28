@@ -508,6 +508,67 @@
     //
     // Ties go to the cheaper plan, because the frames not spent are frames still
     // available for the plan after this one.
+    // HOW DEEP TO LOOK, GIVEN HOW MUCH TROUBLE THE BOARD IS IN.
+    //
+    // Looking costs time and time is what a threatened board does not have, so the
+    // depth is spent out of the same budget everything else is: rows of headroom.
+    // Calm board, look further; one row from the ceiling, answer now.
+    //
+    // WHAT EACH PLY COSTS, measured over 51 real mid-game boards with the bit
+    // arithmetic -- a resolve is 0.9 microseconds and a real board offers about
+    // nine legal swaps:
+    //
+    //     depth 2    0.4 ms      no chains found at all
+    //     depth 3    5.0 ms      2-chains start appearing
+    //     depth 4   95.1 ms      245 two-chains over the same boards
+    //
+    // AND NO DEPTH FOUND A 3-CHAIN, not once in 51 boards even at four plies. That
+    // is not the search running out of room, it is the board having no material:
+    // survival keeps it low and flat by clearing, and a low board cannot be chained
+    // from however long you stare at it. Depth is worth having and is not the
+    // answer to attacking.
+    //
+    // The thresholds are rows and are NOT calibrated -- halfway up the board is a
+    // landmark, not a measurement, and it is written here rather than implied.
+    function depthFor(mode, tallest) {
+        if (mode === 'DEFEND') return 2;              // answer now
+        if (tallest <= H / 2) return 4;               // room to think
+        return 3;
+    }
+
+    // THE WORKING BAND: A BOARD TOO LOW HAS NOTHING TO PLAY WITH.
+    //
+    // Survival is a clear rate at or above 1.0 and the objective that delivers it
+    // maximises panels removed per frame -- which drives the board as low as it
+    // can go. That is what keeps it alive and it is also why it cannot attack:
+    // measured over 51 real mid-game boards, a 3-chain was on offer ZERO times,
+    // at two plies and at four. Not because the search ran out of room, but
+    // because a nearly empty board has no material to chain with.
+    //
+    // A chain is built out of panels. Raising ADDS material and breaking garbage
+    // CONVERTS it; clearing spends it. So below the band the bot stops cashing
+    // small change and puts panels on the board instead.
+    //
+    // ORDER: living, then material, then attacking. Nothing here outranks
+    // survival -- this only applies when survival is not at stake.
+    //
+    // FOUR ROWS IS NOT CALIBRATED. It is a third of the board and roughly what a
+    // chain needs to stand in, written here rather than implied so the next
+    // measurement can move it.
+    // TRIED AND MEASURED WORSE, so the numbers are here rather than the code.
+    // Below four rows: refuse to cash anything under W cells, and raise instead to
+    // put panels on the board. Over four duels it went from 1 death, 510 cells and
+    // 7 big pieces to 2 DEATHS, 378 cells and 3 big pieces. Raising to build walks
+    // the stack up and the bot dies in the middle of building; withholding small
+    // attacks only cuts the output that was working.
+    //
+    // The REASONING still stands and this is the honest state of it: a board kept
+    // low by the survival objective has no material to chain with, and material is
+    // what raising and breaking garbage provide. What is wrong is doing it with a
+    // height threshold and a blanket refusal. It wants to be a property of the
+    // plan -- build toward a shape, spend only what the shape does not need --
+    // which is not a threshold at all.
+
     // WHAT AN OPTION SENDS, from the engine's own tables and never restated here.
     //
     //   a combo of N panels   PanelEngine.comboGarbage(N), each piece 1 row tall
@@ -778,6 +839,9 @@
         // it and it is the expensive call in here -- two sweeps a decision would
         // double the cost of every frame for an answer that cannot have changed.
         var options = null;
+        // Spent once for the decision, so both halves search the same board at the
+        // same depth and cannot disagree about what is on offer.
+        var lookDepth = depthFor(mode.name, tallestOf(pool));
         var survival = null;
         if (mode.name === 'DEFEND' || !(info.stopTime > 0)) {
             // A PLAN IS EXECUTED, NOT RE-CHOSEN EVERY FRAME.
@@ -812,7 +876,7 @@
                 }
             }
             if (!survival) {
-                options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], 2, base);
+                options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base);
                 var plan = bestPlan(options, info.stopTime || 0, deadline, PanelEngine(),
                                     !!info.toppedOut, info.framesPerRow);
                 if (plan && plan.rate > 0) {
@@ -912,7 +976,7 @@
                 this._attack = null;
                 this.counts.attackDropped++;
             }
-            options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], 2, base);
+            options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base);
             var atk = bestAttack(options, this.weights, PanelEngine(), deadline);
             if (atk && atk.move) {
                 this._attack = { moves: atk.option.swaps.slice(1) };

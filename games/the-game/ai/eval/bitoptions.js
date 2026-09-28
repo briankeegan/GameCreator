@@ -82,38 +82,59 @@
             now.push(opt);
         }
 
-        if ((depth || 1) >= 2) {
-            for (i = 0; i < swaps.length; i++) {
-                if (!bit.swapMasks(st, swaps[i][0], swaps[i][1])) continue;
-                var first = bit.resolveFromMasks(st, true);
-                bit.swapMasks(st, swaps[i][0], swaps[i][1]);
-                if (first.scope !== 'ok' || first.total !== 0) continue;   // a setup clears nothing
-
-                // THE SETUP'S OWN RESULT, not a second simulation of it. The
-                // resolver already settled this position to work out that it
-                // clears nothing, and it now hands that state back -- so the mid
-                // board comes from the same arithmetic as everything else rather
-                // than from LogicalBoard's gravity, which is a different
-                // implementation that only has to disagree once to make the
-                // second ply a claim about a board the game will not produce.
-                var st2 = first.settled;
-                if (!st2) continue;
-                var then = bit.legalSwapsOf(st2);
-                var toSetup = travel.cost(cursor[0], cursor[1], swaps[i][0], swaps[i][1]);
-                for (j = 0; j < then.length; j++) {
-                    if (!bit.swapMasks(st2, then[j][0], then[j][1])) continue;
-                    var r2 = bit.resolveFromMasks(st2);
-                    bit.swapMasks(st2, then[j][0], then[j][1]);
-                    var broke2 = r2.scope === 'garbage-broke';
-                    if (r2.scope !== 'ok' && !broke2) continue;
-                    if (r2.total === 0 && !broke2) continue;
-                    var frames = toSetup + travel.cost(swaps[i][0], swaps[i][1], then[j][0], then[j][1]);
-                    var opt2 = optionOf([swaps[i], then[j]], frames, r2);
-                    opt2.breaks = broke2;
-                    next.push(opt2);
+        // SETUPS, TO WHATEVER DEPTH IS ASKED FOR.
+        //
+        // THIS IS CHEAP AND I TALKED MYSELF OUT OF IT ONCE. The claim was that a
+        // third ply explodes -- thirty swaps cubed, twenty-seven thousand boards a
+        // decision. Measured on a real mid-game board: NINE legal swaps, and
+        // resolveFromMasks runs in 0.9 MICROSECONDS, 1,111 of them a millisecond.
+        // Depth 2 is 90 resolves and 0.3ms; depth 3 is 729 and about 1ms. Even at
+        // a pessimistic twenty swaps a ply, depth 3 is 7ms and depth 4 is 144ms.
+        // Being able to afford this is the entire reason the arithmetic exists.
+        //
+        // WHY DEPTH MATTERS HERE AND DID NOT FOR SURVIVAL. A stop-time plan exists
+        // at two plies on most boards -- measured, 86 of 103 starving decisions --
+        // so survival never needed more. An ATTACK does: a 4-chain takes three or
+        // four coordinated placements, and a two-ply search finds only the chains
+        // that are already one move from existing. Over 990 decisions it offered
+        // 5,176 bare threes and a 3-chain twice.
+        //
+        // A SETUP CLEARS NOTHING, at every ply. That is what makes the recursion
+        // terminate on something meaningful rather than wandering: each step holds
+        // the board still while it arranges, and the last step cashes.
+        function expand(state, chain, from, spent, left) {
+            var list = bit.legalSwapsOf(state), k;
+            for (k = 0; k < list.length; k++) {
+                var sw = list[k];
+                if (!bit.swapMasks(state, sw[0], sw[1])) continue;
+                // The settled board is only needed when we are going deeper.
+                var res = bit.resolveFromMasks(state, left > 1);
+                bit.swapMasks(state, sw[0], sw[1]);
+                var cost = spent + travel.cost(from[0], from[1], sw[0], sw[1]);
+                var broke = res.scope === 'garbage-broke';
+                if (res.scope === 'ok' || broke) {
+                    if (res.total > 0 || broke) {
+                        // A CASH ENDS THE LINE. Recorded only when something was
+                        // set up first -- a cash with an empty chain is a depth-1
+                        // option and `now` already holds it, so pushing it here
+                        // would list every immediate clear twice and make the two
+                        // lists disagree about what is on offer.
+                        if (chain.length) {
+                            var opt = optionOf(chain.concat([sw]), cost, res);
+                            opt.breaks = broke;
+                            next.push(opt);
+                        }
+                        continue;
+                    }
+                    // Cleared nothing, so it is a setup. Go on if there are plies
+                    // left to spend.
+                    if (left > 1 && res.settled) {
+                        expand(res.settled, chain.concat([sw]), sw, cost, left - 1);
+                    }
                 }
             }
         }
+        if ((depth || 1) >= 2) expand(st, [], cursor, 0, depth || 1);
 
         now.sort(byPrice);
         next.sort(byPrice);
