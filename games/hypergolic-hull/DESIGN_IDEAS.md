@@ -611,7 +611,7 @@ The one thing measured this session that does bite is the Hauler cutting a
 crate off the hold on a landed haul: it threatens money, which is not
 dodgeable by position and does not get cheaper with careful play.
 
-## THE WRECK LOOP — the design to build (2026-09-28)
+## THE WRECK LOOP — BUILT (2026-09-28)
 
 Owner's, and it hangs everything off one new object.
 
@@ -633,12 +633,35 @@ because letting it go costs money and not hull, which makes it a decision
 rather than a grind. It carries what it took, so killing it hands the load
 back, and it keeps cutting a crate off your hold on a landed haul.
 
-Open: whether a wreck blocks movement and shots as a hull does (recommended —
-the board then accumulates cover as the fight goes), and whether the wreck
-sprite is one shared plate or 22.
+Settled: a wreck blocks movement and shots as a hull does, and one shot clears
+it so a wall of them is always answerable. Twenty-two sprites, one per hull,
+because what you weigh is WHICH ship you opened.
 
-Salvage is about two thirds of all income, so charging a shot per payout will
-cut it. Measure and reprice rather than guess.
+Measured across 40 runs with all four pieces in: 965 wrecks left, 648 cut open
+by the player, 32 towed away with 16 escaping, 23 stood back up by a Tender.
+Turn mix went from firing 24% and moving 70% to firing 32%, cutting 12% and
+moving 51%; 15% of runs won.
+
+**Three things measured and NOT done**, each of which looked obviously right:
+
+- A PREMIUM on wreck salvage, since cutting costs an action the kill did not.
+  At 1, 2 and 3 times the old value: 40, 39 and 38 of 40 runs died. The cost
+  of this loop is rounds, not money, so money cannot answer it.
+- WRECKS NOT STOPPING A SLUG. Identical, 40 deaths either way. Kept behind
+  `GC_WRECK_COVER` rather than written up as a decision.
+- What actually paid for the loop was handing back the steeper roster ramp.
+  Cutting takes 13% of every action in a run, and that ramp was priced against
+  having them.
+
+**Two rules the art had to learn**, both caught by looking at the picture:
+
+- The renderer greys a wreck down, not the prompt. The first generation came
+  back as saturated as the live hull, which would have read as alive.
+- A WRECK IS A DERELICT, NOT CONFETTI. The first rule asked for pieces snapped
+  off and drifting clear and got ships shattered into fragments — which no
+  Tender could restart, no Collector could tow and nothing could cut open, all
+  three mechanics resting on a wreck still being a ship. Intact hull, scorched,
+  panels buckled, holes punched through, everything dead.
 
 ## TERRAIN — a plan, not yet built (2026-09-19)
 
