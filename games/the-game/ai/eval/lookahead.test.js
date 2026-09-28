@@ -76,7 +76,7 @@ function valuations(cpu) {
     return cands;
 }
 
-function key(d) { return d.kind === 'hold' ? 'hold' : 'swap:' + d.move[0] + ',' + d.move[1]; }
+function key(d) { return d.kind === 'hold' || d.kind === 'raise' ? d.kind : 'swap:' + d.move[0] + ',' + d.move[1]; }
 
 // Run a real game at level 10 and stop at each decision point with the
 // board the bot is about to decide on. Real engine, real boards — nothing
@@ -89,7 +89,15 @@ function playOut(opts, limit, seed) {
         if (f > 120 && f % 120 === 0) stack.receiveGarbage([{ width: 6, height: 3, isChain: false }]);
         if (!cpu._walk && cpu.cooldown === 0 && !stack.gameOver) {
             var cands = valuations(cpu);
-            out.push({ at: seed + '/' + f, cands: cands, played: cpu._decide() });
+            // The filters in _candidates decide what may be played; the
+            // invariant is about choosing among those.
+            var realCands = cpu._candidates, offered = null;
+            cpu._candidates = function () { return (offered = realCands.apply(this, arguments)); };
+            var played = cpu._decide();
+            cpu._candidates = realCands;
+            var keys = (offered || []).map(key);
+            out.push({ at: seed + '/' + f, cands: cands, played: played,
+                       offered: cands.filter(function (c) { return keys.indexOf(key(c)) >= 0; }) });
         }
         cpu.update(); stack.run(); stack.drainEvents();
         if (stack.gameOver) break;
@@ -115,7 +123,16 @@ function decisions(opts, limit) {
 test('ply 2 offers RAISE, the same as ply 1', function () {
     var stack = new PanelEngine.Stack({ level: 10, seed: 7, countdown: false });
     var cpu = new PuyoCpu(stack, { weights: W, reaction: 12, depth: 2, allowRaise: true });
-    for (var f = 0; f < 40; f++) { cpu.update(); stack.run(); stack.drainEvents(); }
+    // A board where ply 1 offers a raise, or there is nothing to compare.
+    var cands = [];
+    for (var f = 0; f < 2000 && !stack.gameOver; f++) {
+        cpu.update(); stack.run(); stack.drainEvents();
+        if (f < 40 || cpu._walk || cpu.cooldown) continue;
+        cands = cpu._candidates();
+        if (cands.some(function (c) { return c.kind === 'raise'; })) break;
+        cands = [];
+    }
+    assert.ok(cands.length, 'SETUP: no board in 2000 frames where ply 1 offers a raise');
 
     var seen = [];
     var realScore = cpu._score;
@@ -124,8 +141,8 @@ test('ply 2 offers RAISE, the same as ply 1', function () {
         if (baseline && move === null) seen.push('raise');
         return realScore.apply(this, arguments);
     };
-    var cands = cpu._candidates();
-    cpu._value(cands[cands.length - 1]);
+    // Every first move, not one: the beam decides which get a second ply.
+    cands.forEach(function (c) { if (c.kind !== 'raise') cpu._value(c); });
     cpu._score = realScore;
 
     assert.ok(seen.length > 0,
@@ -169,10 +186,10 @@ test('it plays the best two-move future, on every decision', function () {
     var bad = [];
     d.list.forEach(function (x) {
         var played = x.cands.filter(function (c) { return key(c) === key(x.played); })[0];
-        if (!played) { bad.push('frame ' + x.frame + ': played ' + key(x.played) + ', not a candidate'); return; }
-        var best = x.cands.reduce(function (a, b) { return b.value > a.value ? b : a; });
+        if (!played) { bad.push(x.at + ': played ' + key(x.played) + ', not a candidate'); return; }
+        var best = x.offered.reduce(function (a, b) { return b.value > a.value ? b : a; }, played);
         if (best.value > played.value + EPS) {
-            bad.push('frame ' + x.frame + ': played ' + key(played) + ' worth ' + played.value.toFixed(1) +
+            bad.push(x.at + ': played ' + key(played) + ' worth ' + played.value.toFixed(1) +
                      ' when ' + key(best) + ' was worth ' + best.value.toFixed(1));
         }
     });
@@ -197,7 +214,7 @@ test('the move that looks bad NOW and pays LATER is the one it plays', function 
         interesting++;
         if (key(x.played) !== key(best) &&
             best.value > x.cands.filter(function (c) { return key(c) === key(x.played); })[0].value + EPS) {
-            wrong.push('frame ' + x.frame + ': best future ranked #' + (rank + 1) + ' by immediate score, played ' + key(x.played));
+            wrong.push(x.at + ': best future ranked #' + (rank + 1) + ' by immediate score, played ' + key(x.played));
         }
     });
     assert.ok(interesting >= 3,

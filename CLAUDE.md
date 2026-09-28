@@ -30,7 +30,9 @@ don't fork it per-game.
   push changes; `pages.yml` runs the full list. `GC_SKIP_GATES=1` overrides
   and says so loudly. The slow gates (`SLOW_GATES` in `gates.sh`, measured)
   are deferred from the hook to `ai-checks.yml`'s `slow-gates` job after the
-  push; `GC_FULL_GATES=1` runs them in the hook too. To check early, `source .github/scripts/gates.sh &&
+  push; `GC_FULL_GATES=1` runs them in the hook too. A gate is slow past 10 s.
+  Only `SEARCH_GATES` run the survival search; the rest run with
+  `GC_SURVIVAL_SEARCH=0`. To check early, `source .github/scripts/gates.sh &&
   gate_changed` is the same scoped list; bare `gate_all` is all 55 gates and
   takes many minutes.
 - Every rule that matters needs three pieces: a plain-English rule where

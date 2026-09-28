@@ -31,7 +31,7 @@
 
     // A Stack kept aside for thinking on. Built once — construction runs a
     // thousand frames of countdown and costs more than the whole evaluation.
-    function scratch(level) {
+    function scratch(level, unseen) {
         var PanelEngine = engine();
         var stack = new PanelEngine.Stack({ level: level || 10, seed: 7 });
         var guard = 0;
@@ -58,19 +58,18 @@
             matchG.call(this, panels, t, isChain, onScreen);
             for (var i = 0; i < panels.length; i++) if (panels[i].yOffset === -1) this.brokeCells++;
         };
+        // A MODEL ASKS FOR `unseen`; a fixture that plays the real game does not.
+        if (!unseen) return stack;
         // A ROW NOBODY HAS SEEN MATCHES NOTHING. Past the dimmed row the game
-        // deals from its own generator, which no player can see; a row made
-        // up here matched where the real one did not, and a line was proven
-        // on it (seed 702 frame 13814, dead at 13879). Six colours outside
-        // the palette, shifted each row so no column stacks three alike.
+        // deals from its own generator, which no player can see. Six colours
+        // outside the palette, shifted each row so no column stacks three alike.
         stack.generateRowColors = function () {
             var k = (this.unseenRows = (this.unseenRows || 0) + 1), row = [null];
             for (var c = 1; c <= 6; c++) row[c] = 11 + ((c + 3 * k) % 6);
             return row;
         };
-        // So does a row garbage turns into when it breaks here: the game
-        // picks those colours at the break, and a line went on to match
-        // colours the real break did not deal (seed 701 frame 6477).
+        // So does the row a slab turns into when it breaks: the game picks
+        // those colours at the break.
         stack.garbageRowColors = function (count) {
             var k = (this.unseenBreaks = (this.unseenBreaks || 0) + 1), colors = [];
             for (var n = 0; n < count; n++) colors.push(21 + ((n + 3 * k) % 6));

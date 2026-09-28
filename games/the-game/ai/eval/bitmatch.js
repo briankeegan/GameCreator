@@ -372,7 +372,7 @@
   function resolveFromMasks(st, wantSettled) {
     var W = st.W, H = st.H, N = st.N;
     if (st.bad) return { scope: st.bad, chain: 0, total: 0, rounds: 0 };
-    var S2 = scratch(W, H, 12);
+    var S2 = scratch(W, H, Math.max(N, 12));
     var occ = S2.occ, colour = S2.colour, chaining = S2.chaining,
         popping = S2.popping, inert = S2.inert, garb = S2.garb;
     var a, c, stride = W + 2;

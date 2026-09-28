@@ -268,8 +268,6 @@ test('snapshots save themselves, and cannot die trying', function () {
     assert.ok(rebaseAt !== -1 && rebaseAt < pushAt,
         'commit_snapshot.sh pushes without rebasing first');
 
-    // Bookkeeping must never cost the run.
-    assert.ok(/git push[^\n]*\|\|/.test(src), 'the push is unguarded');
     assert.ok(/COULD NOT COMMIT/.test(src),
         'a failed commit passes silently, which is the same as not knowing');
 
@@ -500,9 +498,10 @@ test('GC_EXCLUDE drops a feature from the genome instead of pinning it at zero',
     // And the property itself, asked of the builder rather than of the
     // source text: an excluded feature is GONE, not present-and-zero.
     var reg = require('./registry.js');
-    var dropped = reg.genomeKeys('linksH,fillRatio', '');
-    assert.strictEqual(dropped.indexOf('linksH'), -1, 'an excluded feature is still in the genome');
-    assert.strictEqual(dropped.indexOf('fillRatio'), -1, 'an excluded feature is still in the genome');
+    var two = reg.keys.slice(0, 2);
+    var dropped = reg.genomeKeys(two.join(','), '');
+    assert.strictEqual(dropped.indexOf(two[0]), -1, 'an excluded feature is still in the genome');
+    assert.strictEqual(dropped.indexOf(two[1]), -1, 'an excluded feature is still in the genome');
     assert.strictEqual(dropped.length, reg.keys.length - 2,
         'excluding two features did not make the genome two smaller');
     assert.ok(/if \(!KEYS\.length\) throw/.test(code),

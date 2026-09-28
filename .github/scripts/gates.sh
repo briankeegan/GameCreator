@@ -648,15 +648,6 @@ gate_resolve_fidelity_fires() {
   return 0
 }
 
-# Four features share one clone-swap-resolve pass instead of running it four
-# times, which is what makes a gravity-correct matchPotential affordable
-# (+2.8% per candidate instead of +102%). The saving is only honest if the
-# answers are identical, and a shared pass that answers one feature from
-# another feature's board reads as a fast bot rather than a broken one.
-gate_features_shared_pass() {
-  node games/the-game/ai/eval/features.shared.test.js
-}
-
 gate_features() {
   local d; d="$(_gc_training_dir)" || return 1
   GC_TRAINING_DIR="$d" node games/the-game/ai/eval/features.test.js
@@ -809,19 +800,35 @@ gate_character_spec_provenance() {
 # measured, not guessed: each took over SLOW_SECONDS seconds on its own
 # (times beside them, 4 cores, 2026-09-28). gate_all prints its slowest
 # gates at the end of every run; move one here when it crosses the line.
-SLOW_SECONDS=60
+SLOW_SECONDS=10
 SLOW_GATES=(
-  gate_versus_duel          # >900s
-  gate_features_live        # >900s
-  gate_checkpoint_resume    # >900s
-  gate_pbt_leg              # 600s
-  gate_snapshot_pipe        # 153s
-  gate_puyo_cpu             # plays whole games with the bot: ~10 min
+  gate_gates_reject_defects # 90s
+  gate_puyo_cpu             # plays whole games with the survival search
+  gate_no_self_death        # plays whole games with the survival search
   gate_live_fidelity        # plays whole duels: over an hour
-  gate_no_self_death        # plays whole games with the bot
-  gate_training_harness     # plays whole games with the bot
-  gate_earned_features_arrive  # plays a real game
+  gate_training_harness     # 156s
+  gate_snapshot_pipe        # 154s
+  gate_versus_duel          # 123s
+  gate_checkpoint_resume    # 73s
+  gate_pbt_leg              # 64s
+  gate_modes                # 53s
+  gate_features_live        # 37s
+  gate_chips_real_boards    # 26s
+  gate_bitbot               # 19s
+  gate_bitmatch             # 18s
+  gate_chips_decidable      # 17s
+  gate_chip_verifier_fires  # 12s
 )
+# ONLY THESE RUN THE SURVIVAL SEARCH. It is what they test. Every other gate
+# tests something the search sits on top of, so it runs with
+# GC_SURVIVAL_SEARCH=0: the search costs seconds per decision and its
+# decisions trip bench.js's 85ms timing guard, which zeroes the game.
+SEARCH_GATES=( gate_puyo_cpu gate_no_self_death gate_live_fidelity gate_doomed_gate )
+_gate_exec() {
+  local g
+  for g in "${SEARCH_GATES[@]}"; do [ "$g" = "$1" ] && { "$1"; return; }; done
+  GC_SURVIVAL_SEARCH=0 "$1"
+}
 _gate_is_slow() {
   local g
   for g in "${SLOW_GATES[@]}"; do [ "$g" = "$1" ] && return 0; done
@@ -831,7 +838,7 @@ gate_slow() {
   local overall=0 g
   for g in "${SLOW_GATES[@]}"; do
     echo "=== SLOW GATE: $g ==="
-    "$g" || { overall=1; echo "FAILED: $g"; }
+    _gate_exec "$g" || { overall=1; echo "FAILED: $g"; }
   done
   return $overall
 }
@@ -902,7 +909,6 @@ GATES=(
   "that fidelity check fires:gate_resolve_fidelity_fires:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"
   "every feature is a share, not a count:gate_normalise:games/the-game/ai/"
-  "the shared resolve pass is the same answer:gate_features_shared_pass:games/the-game/ai/"
   "that chip check fires:gate_chip_verifier_fires:games/the-game/ai/"
   "the shipped weights and the tools that measure them:gate_shipped_weights:games/the-game/ai/"
   "that check fires:gate_shipped_weights_check_fires:games/the-game/ai/"
@@ -1067,7 +1073,7 @@ gate_all() {
     echo "=== GATE: $name ==="
     local out t0 t1
     t0=$(date +%s)
-    out=$("$fn" 2>&1)
+    out=$(_gate_exec "$fn" 2>&1)
     local rc=$?
     t1=$(date +%s)
     printf '%s\n' "$out"

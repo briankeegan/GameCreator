@@ -526,7 +526,7 @@
       // behaviour: the caller has already applied the swap.
       return board.resolve();
     }
-    if (!this._scratch) this._scratch = engineBoard.scratch(10);
+    if (!this._scratch) this._scratch = engineBoard.scratch(10, true);
     var st = this._scratch;
     // WITH THE SLABS, not just the cells that read -2. The engine walks
     // gWidth, gHeight and each cell's offset to decide whether a garbage block

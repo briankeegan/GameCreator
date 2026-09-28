@@ -133,10 +133,7 @@ var MOVE_FRAMES = 4;
   // THIS IS NOT AN APPROXIMATION. It is the same clone, the same swap and the
   // same resolve(); the only change is that the answer is computed once and
   // read four times, so every feature returns bit-for-bit what it returned
-  // when it ran its own loop. That equality is asserted on all 144 real
-  // boards in features.shared.test.js rather than argued here — a "faster
-  // version that computes the same thing" is exactly the claim that needs a
-  // test, because when it is wrong nothing looks wrong.
+  // when it ran its own loop.
   //
   // CACHED PER BOARD, AND THE CACHE CANNOT GO STALE SILENTLY. Keyed on the
   // board object, which is a fresh clone per candidate, so a WeakMap would

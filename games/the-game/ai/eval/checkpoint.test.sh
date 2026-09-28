@@ -92,7 +92,7 @@ trap cleanup EXIT
 # runs the wrong thing looks exactly like a test that found something.
 train() {  # train <generations> <logfile> [extra env assignments...]
   local gens="$1" log="$2"; shift 2
-  env GC_SEEDS_PER_GEN=1 GC_LEVEL=10 GC_BRAIN=puyo GC_GA_SEED=99 \
+  env GC_BENCH_CEILING=600 GC_SURVIVAL_SEARCH=0 GC_SEEDS_PER_GEN=1 GC_LEVEL=10 GC_BRAIN=puyo GC_GA_SEED=99 \
       GC_TAG=checkpoint-test GC_SNAPSHOT_HOOK= "$@" \
       node train.js "$gens" 8 "$MODE" 2 > "$log" 2>&1
 }
@@ -102,7 +102,7 @@ train() {  # train <generations> <logfile> [extra env assignments...]
 LASTLOG=""
 outOfTimeRun() {  # outOfTimeRun [extra env assignments...]
   local secs
-  for secs in 15 45 120; do
+  for secs in 5 15 60; do
     clearOurs
     LASTLOG="$(mktemp)"
     train 1000 "$LASTLOG" GC_DEADLINE=$(( $(date +%s) + secs )) "$@"
@@ -126,7 +126,7 @@ if outOfTimeRun; then
     note "no checkpoint after an out-of-time stop — the next run starts over"
   fi
 else
-  note "SETUP: could not get two generations in before the deadline, even at 120s. Not a verdict on the checkpoint."
+  note "SETUP: could not get two generations in before the deadline, even at 60s. Not a verdict on the checkpoint."
 fi
 
 # ------------------------------------------------------------ search finished
@@ -206,7 +206,7 @@ if outOfTimeRun; then
   small="$(mktemp)"
   # Exactly what the pre-flight does: two generations of eight, same mode,
   # same directory, run to a clean finish.
-  env GC_SEEDS_PER_GEN=1 GC_LEVEL=10 GC_BRAIN=puyo GC_GA_SEED=4242 \
+  env GC_BENCH_CEILING=600 GC_SURVIVAL_SEARCH=0 GC_SEEDS_PER_GEN=1 GC_LEVEL=10 GC_BRAIN=puyo GC_GA_SEED=4242 \
       GC_TAG=checkpoint-test GC_SNAPSHOT_HOOK= \
       node train.js 2 8 "$MODE" 4 score > "$small" 2>&1
   if [ ! -f "$keep" ]; then

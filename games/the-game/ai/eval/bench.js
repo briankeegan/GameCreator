@@ -154,6 +154,12 @@ function burstFires(f) {
 // what it meant.
 var LEVEL = Number(process.env.GC_LEVEL || 3);
 
+// A FIXTURE-ONLY CAP on every scenario's game length. Plumbing tests
+// (checkpoint.test.sh) need generations that finish in seconds and do not
+// care how a game ends. Never set it in a run whose scores mean anything:
+// it censors the objective the same way the old 4,000-frame ceiling did.
+var CEILING_CAP = Number(process.env.GC_BENCH_CEILING || 0);
+
 var SCENARIOS = {
     build: {
         level: 3,
@@ -483,7 +489,8 @@ exports.run = function (weights, seed, opts) {
             // differently here than in the report is a game the report does
             // not describe. They also stop an unkillable genome hanging a
             // run forever, which no-cap could and did threaten.
-            if (sc.ceiling && f >= sc.ceiling - 1) { f++; break; }
+            var ceiling = CEILING_CAP ? Math.min(CEILING_CAP, sc.ceiling || Infinity) : sc.ceiling;
+            if (ceiling && f >= ceiling - 1) { f++; break; }
         }
     } finally {
         PuyoCpu.prototype._decide = origDecide;
