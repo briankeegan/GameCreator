@@ -789,7 +789,10 @@
   //      is replayed to its end with every wait ending where it ended when
   //      found; among live moves the furthest line wins, and when no move
   //      reaches the horizon the move that lives longest is played.
-  var RULES = 52;
+  //   53. A WAIT LASTS WHOLE HOLDS. The bot can act again only reaction + 1
+  //      frames after a hold, so a line's wait ends on that beat and a proof
+  //      never asks it to move between two decisions.
+  var RULES = 53;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

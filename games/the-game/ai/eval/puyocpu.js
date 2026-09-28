@@ -1554,7 +1554,10 @@
     var r;
     if (long) {
       var until = this._lineUntil || (this.SURVIVE_FRAMES + (this._restNeeded ? this.SURVIVE_REST : 0));
-      r = this._engineAdvance(node, 'long', null, Math.max(1, until - node.t));
+      // THE BOT WAITS IN WHOLE HOLDS. A hold is reaction + 1 frames before it
+      // can act again, so a wait the bot is to act after ends on that beat.
+      var beat = (this.reaction || 0) + 1, fr = Math.max(1, until - node.t);
+      r = this._engineAdvance(node, 'long', null, Math.ceil(fr / beat) * beat);
     } else if (m === 'raise') r = this._engineAdvance(node, 'raise', null, 0);
     else r = this._engineAdvance(node, m ? 'swap' : 'hold', m, 0);
     if (!r) return null;
