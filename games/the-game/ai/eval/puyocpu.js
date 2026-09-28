@@ -1414,6 +1414,10 @@
           c = sm === 'long' ? this._lineStep(n, null, true) : this._lineStep(n, sm, false);
           if (c) { c.prev = j ? n : null; c.m = sm === 'long' && !j ? null : sm; c.tag = fi; }
           if (!c) break;
+          // The line's wait ran out in the frames since it was proven: alive
+          // at the horizon is still a fallback, and the search goes on from
+          // the board before the wait, not from the dead one.
+          if (c.dead) { if (c.t >= this.SURVIVE_FRAMES && !weak[fi]) weak[fi] = c; break; }
           n = c;
         }
         if (n && !n.dead && j === fl.steps.length && n.t < FULL) {

@@ -767,7 +767,11 @@
   //      over a slab that is about to fall was painted hovering; the engine
   //      drops it with the slab. Seed 700 frame 6220: the line's shake was
   //      two frames long and it died in its first walk (6247).
-  var RULES = 47;
+  //   48. A LINE WHOSE LAST WAIT RUNS OUT IS SEARCHED ON FROM BEFORE THE WAIT.
+  //      The followed line's end was the dead board, so the search neither
+  //      went on from it nor kept the move as alive at the horizon: seed 700
+  //      frame 15881, one move proven a decision earlier, none after.
+  var RULES = 48;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
