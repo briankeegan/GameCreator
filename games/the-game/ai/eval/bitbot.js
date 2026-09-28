@@ -192,7 +192,7 @@
         this.counts = { refusedDeadly: 0, allDead: 0, byMode: {},
                         refusedReturn: 0, defendByClock: 0, refusedTooSlow: 0, planned: 0, planDropped: 0,
                         attacked: 0, attackDropped: 0, cellsPlanned: 0, refusedPayless: 0,
-                        raisedForMaterial: 0, refusedRaise: 0, forcedBoth: 0, refusedEarly: 0,
+                        raisedForMaterial: 0, refusedRaise: 0, forcedBreak: 0, forcedBoth: 0, refusedEarly: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
                         revealWindows: 0 };
     }
@@ -305,6 +305,66 @@
     // isToppedOut()` — so a topped-out board holding stop time is alive, and
     // chaining INTO the ceiling is how the position is meant to be played.
     // Borrowed from PuyoCpu's own note, which records getting this wrong.
+    // HOW MUCH THIS BOARD CAN STILL BE MATCHED ON.
+    //
+    // reachMask marks every cell that would complete a vertical or horizontal
+    // pair, so its popcount is how many ways a clear can still be made. A board
+    // with none has no clear at any depth and dies whatever the clock says.
+    //
+    // This is the number a SETUP moves. Seed 104 spent eight decisions holding at
+    // tallest 8 with 202 frames in hand and no clear anywhere -- the moment to
+    // build one -- because nothing in the bot could tell a swap that improves the
+    // board from a swap that does nothing. bitoptions only names a setup when a
+    // cash follows it inside the search depth; with nothing to aim at it is
+    // silent, and that is exactly when the board most needs arranging.
+    // MATERIAL, IN FLAT ROWS: non-garbage panels over the width.
+    //
+    // GARBAGE DOES NOT COUNT. A slab is inert until something breaks it, and
+    // breaking needs panels beside it -- so a board can be twelve rows tall and
+    // have nothing to play with. Seed 101 died under seven rows of garbage
+    // holding eighteen panels, two of them in the row beneath the slab.
+    function materialRows(st) {
+        var n = 0;
+        for (var c = 1; c <= W; c++) n += bit.popcount((st.occ[c] & ~st.garb[c]) >>> 0);
+        return n / W;
+    }
+
+    // HOW UNEVEN THE STACK IS: the total step between neighbouring columns.
+    //
+    // A tower is where it dies -- one column reaches the ceiling while the rest of
+    // the board still has room, and the game ends with half the board empty. It is
+    // never a reason to choose a worse move, but between two moves worth the same
+    // the flatter board is strictly better: more columns in reach of the cursor,
+    // no panel stranded on top of a spike, and a slab that lands sits level
+    // instead of bridging a gap.
+    function bumpiness(st) {
+        var h = [], c, n = 0;
+        for (c = 1; c <= W; c++) h[c] = 32 - Math.clz32(st.occ[c] >>> 0);
+        for (c = 1; c < W; c++) n += Math.abs(h[c] - h[c + 1]);
+        return n;
+    }
+
+    function matchWays(st) {
+        // PAIRS, NOT MATCHES. reachMask marks every cell that would complete an
+        // adjacent same-colour pair, so its popcount is how much the board can
+        // still be built on.
+        //
+        // Counting the swaps that actually clear right now was tried and is the
+        // worst thing measured all day -- 8 deaths in 8. Maximising it maximises
+        // structure about to be SPENT: a board covered in ready triples has no
+        // vertical structure left, because every pair is one swap from being
+        // cashed and gone. A pair is a chain waiting to happen; a match is a chain
+        // about to stop existing.
+        //
+        // Restricting the mask to reachable cells was also worse, in both
+        // directions -- above the stack (6 deaths) and level with it (5). The
+        // unreachable pairs still count because the board moves: the floor rises
+        // under them and a slab above them breaks.
+        var r = bit.reachMask(st), n = 0;
+        for (var c = 1; c <= W; c++) n += bit.popcount(r[c] >>> 0);
+        return n;
+    }
+
     BitBot.prototype.deadly = function (st, resolved, info, horizon) {
         var tallest = tallestBoard(st);
         var banked = info.stopTime || 0;
@@ -1038,8 +1098,18 @@
             // Only on a SETTLED board. With panels in the air the right move is
             // often to let the cascade land, and that is not idling -- the board
             // is changing without the bot touching it.
-            var wasting = info.stopTime > 0 && !this.inFlight();
-            if (pool[i].kind === 'hold' && (mode.name !== 'BUILD' || wasting)) continue;
+            // HOLDING IS WAITING ONLY WHILE THE BOARD CHANGES ON ITS OWN.
+            //
+            // With panels in flight the cascade is doing the work and waiting for
+            // it is real. Settled, it is not: either the clock runs, and holding
+            // spends a freeze for nothing, or it does not, and the floor is
+            // advancing while holding buys zero frames. It is the one action that
+            // is never survival.
+            //
+            // Seed 104 held eight decisions running at tallest 8 with 202 frames
+            // in hand and no clear anywhere on the board. By the time it acted the
+            // deadline was 47, then 1.
+            if (pool[i].kind === 'hold' && (mode.name !== 'BUILD' || !this.inFlight())) continue;
             // A PAYLESS CLEAR IS NOT PROGRESS, IT IS UNBUILDING.
             //
             // A bare three sends no garbage and earns no stop time -- the engine's
@@ -1159,6 +1229,31 @@
             for (i = 0; i < scored.length && i < this.beam; i++) allowed.push(scored[i].cand);
         }
 
+        // Does anything on this board clear at all? If not, every option is a
+        // setup and they are judged as setups.
+        var noneClear = true;
+        for (i = 0; i < allowed.length; i++) {
+            if (allowed[i].resolved && allowed[i].resolved.total > 0) { noneClear = false; break; }
+        }
+        // SHORT OF MATERIAL: BREAKING GARBAGE IS THE PRIORITY.
+        //
+        // A slab is material already on the board, just inert, and breaking is the
+        // only thing that converts it. Below six flat rows the board cannot afford
+        // to leave it sitting there: the panels a chain is made of are locked
+        // inside it, and every row of slab is a row of ceiling gone.
+        //
+        // It costs almost nothing to say so. Material is under six rows for 98% of
+        // a game, but a break is only AVAILABLE on about 4% of decisions -- a
+        // match has to land beside a slab -- so this narrows the choice on one
+        // decision in twenty-five and leaves the rest alone.
+        if (materialRows(base) < 6) {
+            var digs = [];
+            for (i = 0; i < allowed.length; i++) {
+                if (allowed[i].resolved && allowed[i].resolved.brokeGarbage) digs.push(allowed[i]);
+            }
+            if (digs.length) { this.counts.forcedBreak++; allowed = digs; }
+        }
+
         var best = null, alive = 0;
         for (i = 0; i < allowed.length; i++) {
             var cand = allowed[i];
@@ -1177,7 +1272,18 @@
                                    info.framesPerRow || 0);
             if (this.deadly(cand.masks, cand.resolved, info, horizon)) { this.counts.refusedDeadly++; continue; }
             alive++;
-            var s = this.score(cand.masks, cand.moveFrames, cand.resolved, info);
+            // NOTHING CLEARS ANYWHERE: SET UP. When no option on the board
+            // clears anything, the only thing that separates the swaps is what
+            // they leave behind, and the board's own count of ways a clear can
+            // still be made is that. Ties to the cheaper move.
+            // LEXICOGRAPHIC, NOT A WEIGHTED SUM. Ways to build decide it; between
+            // two boards offering the same, the flatter one wins; between two of
+            // those, the cheaper move. Each term is scaled past the next so it
+            // cannot be outvoted -- there is no weight here to get wrong, and a
+            // flatter board can never beat a better one.
+            var s = noneClear
+                  ? matchWays(cand.masks) * 10000 - bumpiness(cand.masks) * 100 - (cand.moveFrames || 0)
+                  : this.score(cand.masks, cand.moveFrames, cand.resolved, info);
             if (!best || s > best.score) best = { cand: cand, score: s };
         }
         // NOTHING SURVIVES: the position is lost either way, so the best-scoring
@@ -1262,7 +1368,38 @@
         // nothing queued against us the row costs nothing we need back.
         //
         // Survival has already had its turn above; this cannot preempt it.
-        if (!survival && !info.incoming && tallestOf(pool) < WORKING_ROWS && this.canRaise()) {
+        // LOW ON MATERIAL: RAISE OR BREAK. Those two make panels and nothing else
+        // does -- a raise adds W of them, breaking a slab converts its cells. The
+        // board starts near empty, so this fires from the first decision.
+        //
+        // MATERIAL, NOT HEIGHT. The test was tallestOf(pool), so garbage counted
+        // as material and a buried board never raised while holding three flat
+        // rows of panels and no way to dig out.
+        //
+        // ONLY IF ABLE TO: canRaise() is the engine's own list of refusals, and
+        // the risen board still faces the death filter just below.
+        // AND SOMEWHERE TO PUT THE ROW. Material alone fires on nearly every
+        // decision -- a board with fewer than WORKING_ROWS * W non-garbage panels
+        // is the ordinary state -- so on its own it raises the stack into the
+        // ceiling: 8 deaths in 8, average life 10,369 frames.
+        //
+        // A raise adds a row and a chain needs WORKING_ROWS to stand in, so the
+        // row must leave that much. deadly() only refuses a raise once the board
+        // is FULL, which is far too late to be this guard.
+        // RAISE OR BREAK, AND WHICH ONE THE BOARD DECIDES. Both make panels and
+        // nothing else does. But a slab is material already on the board, just
+        // inert -- breaking converts it for free, while raising buys the same
+        // panels with a row of headroom. So raising is for a board with no
+        // garbage on it; buried, the answer is to dig.
+        //
+        // Measured: material sits at 2 to 3 flat rows for 82% of a game, so a
+        // floor of WORKING_ROWS fires almost always. Raising on all of those is
+        // 8 deaths in 8 at an average of 10,369 frames.
+        var buried = false;
+        for (i = 1; i <= W; i++) if (base.garb[i]) { buried = true; break; }
+        if (!survival && !info.incoming && !buried && this.canRaise() &&
+            materialRows(base) < WORKING_ROWS &&
+            tallestOf(pool) + 1 <= H - WORKING_ROWS) {
             // ONLY IF IT DOES NOT KILL. canRaise() is the engine's own list of
             // refusals -- whether the raise is LEGAL -- and says nothing about
             // whether the board survives it. Returning here skipped the death
