@@ -149,6 +149,30 @@
         // 0 disables the beam and scores everything, for a run measuring what the
         // beam costs in quality.
         this.beam = opts.beam === undefined ? 8 : opts.beam;
+        // A CEILING ON HOW DEEP TO LOOK. depthFor spends rows of headroom, and a
+        // cap lets a run ask what the depth is actually worth -- measured in live
+        // duels rather than on static boards, because a board in play is fuller
+        // than a quiet one and offers more swaps a ply.
+        // FOUR, BECAUSE PRUNING CHANGED THE ANSWER.
+        //
+        // Unpruned, deeper measured WORSE -- 8,000-frame duels on two seeds:
+        //
+        //     depth 2     9s wall    sent 71
+        //     depth 3    20s wall    sent 47
+        //     depth 4    57s wall    sent 30
+        //
+        // That was the search drowning in setups that could not lead anywhere.
+        // With bit.reachMask pruning the deeper plies to cells that could complete
+        // a pair, the same duels give:
+        //
+        //     depth 2     7s wall    sent  90
+        //     depth 3     5s wall    sent  48
+        //     depth 4    17s wall    sent 101, and the only big pieces
+        //
+        // So depth is worth having and the naive expansion was what made it look
+        // like it was not: 3.4x cheaper than before and now the best attacker.
+        // Two seeds, so this is a direction and not a calibration.
+        this.maxDepth = opts.maxDepth === undefined ? 4 : opts.maxDepth;
         this.horizonDeath = opts.horizonDeath !== false;
         // The boards recent decisions were made on. Three, because a swap is an
         // involution -- it can only walk back one step at a time -- and a
@@ -184,6 +208,7 @@
         this.counts = { refusedDeadly: 0, allDead: 0, byMode: {},
                         refusedReturn: 0, defendByClock: 0, refusedTooSlow: 0, planned: 0, planDropped: 0,
                         attacked: 0, attackDropped: 0, cellsPlanned: 0, refusedPayless: 0,
+                        raisedForMaterial: 0, refusedRaise: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
                         revealWindows: 0 };
     }
@@ -204,6 +229,11 @@
             cursorRow: board.cursor ? board.cursor.row : (s.curRow || 1),
             cursorCol: board.cursor ? board.cursor.col : (s.curCol || 1),
             health: s.health,
+            // THE ENGINE'S OWN DANGER SIGNAL, not a reimplementation of it.
+            // fillRatio is what the renderer paints the danger state from and what
+            // the reference CPU panics on: the highest occupied row over the board
+            // height. For the LIVE board there is no reason to derive it again.
+            fillRatio: typeof s.fillRatio === 'function' ? s.fillRatio() : 0,
             framesPerRow: framesPerRow(s),
             // FRAMES UNTIL THE NEXT ROW LANDS, not a whole row's worth: the
             // floor is already part way up. displacement is the pixels left and
@@ -428,15 +458,30 @@
         return plan.best && plan.best.swap ? plan : null;
     };
 
-    // The tallest column, from the masks. On a settled board a column is a packed
-    // run from the floor, so its height is a popcount.
+    // THE TOPMOST OCCUPIED ROW, WHICH IS NOT A POPCOUNT.
+    //
+    // A popcount counts the cells in a column. That equals the height only while
+    // the column is a PACKED RUN from the floor, and garbage breaks that: a slab
+    // BRIDGES the columns it spans, so cells sit above holes and the top row runs
+    // ahead of the count.
+    //
+    // This read the popcount, and every height decision in the bot understated the
+    // danger by exactly the number of holes -- worst when the board is full of
+    // garbage, which is precisely when it matters. Seed 103 died with its top row
+    // at 11 while this reported 9: DEFEND opens at two rows of headroom and fired
+    // TWICE in 1,154 decisions, framesToDeath thought there was room that was not
+    // there, and the death filter agreed. It stood at the ceiling refusing to
+    // clear and was eaten.
+    //
+    // The highest set bit, then. 32 - clz32 gives the 1-based row of the top cell.
     function tallestBoard(st) {
         if (!st) return H;                  // unknown position: treat as full
         var t = 0;
         for (var c = 1; c <= W; c++) {
-            var n = 0, o = st.occ[c];
-            while (o) { o &= o - 1; n++; }
-            if (n > t) t = n;
+            var o = st.occ[c];
+            if (!o) continue;
+            var top = 32 - Math.clz32(o >>> 0);
+            if (top > t) t = top;
         }
         return t;
     }
@@ -555,6 +600,10 @@
     // FOUR ROWS IS NOT CALIBRATED. It is a third of the board and roughly what a
     // chain needs to stand in, written here rather than implied so the next
     // measurement can move it.
+    // How thin is too thin to have anything to play with. A third of the board,
+    // roughly what a chain needs to stand in. NOT calibrated.
+    var WORKING_ROWS = 4;
+
     // TRIED AND MEASURED WORSE, so the numbers are here rather than the code.
     // Below four rows: refuse to cash anything under W cells, and raise instead to
     // put panels on the board. Over four duels it went from 1 death, 510 cells and
@@ -568,6 +617,41 @@
     // height threshold and a blanket refusal. It wants to be a property of the
     // plan -- build toward a shape, spend only what the shape does not need --
     // which is not a threshold at all.
+
+    // FRAMES THE FLOOR CANNOT MOVE. The one quantity all of this ever wanted.
+    //
+    // THE ENGINE HAS ONE RULE, NOT THREE. The floor rises, and health drains, only
+    // on a frame where `!riseLock && stopTime === 0`, and
+    //
+    //     riseLock = swapQueued || shakeTime > 0 || hasActivePanels()
+    //
+    // So stop time, shake time and panels-in-motion are not three mechanisms to be
+    // handled separately -- they are three ways of setting one bit. Anything that
+    // holds that bit buys exactly the same thing: frames in which the board cannot
+    // kill you. Measuring only stop time, which is what this did, sees one of the
+    // three and misses the two that digging earns.
+    //
+    // THEY OVERLAP, SO IT IS A MAX AND NOT A SUM. A clear that takes 100 frames to
+    // play out while 60 of stop time is running holds the floor for 100, not 160.
+    //
+    // WHAT A CLEAR HOLDS, from the engine's own frame table via stack.frames:
+    // every matched panel runs FLASH then FACE then POP per panel, and garbage
+    // pops alongside its own cells -- matchGarbagePanels gives each garbage panel
+    // FLASH + FACE + POP * (size + onScreen). Read, never restated.
+    //
+    // WHY THIS IS NOT A PATCH. stopTimeOf answers "what did the clock get", and
+    // that is a real number the engine computes, so it stays. What changed is that
+    // nothing ranks on it directly any more: every objective asks how long the
+    // floor is held, and the clock is one of the three things that holds it.
+    function heldFrames(frames, stopGain, cleared, garbagePanels) {
+        if (!frames) return stopGain || 0;
+        var popping = 0;
+        if (cleared > 0 || garbagePanels > 0) {
+            popping = (frames.FLASH || 0) + (frames.FACE || 0) +
+                      (frames.POP || 0) * (cleared + garbagePanels);
+        }
+        return Math.max(stopGain || 0, popping);
+    }
 
     // WHAT AN OPTION SENDS, from the engine's own tables and never restated here.
     //
@@ -613,7 +697,7 @@
     // preference can say "a chain is worth twice a combo to me" without being able
     // to say "attack nothing at all" -- a zero or negative weight leaves the shape
     // merely unloved, not forbidden.
-    function bestAttack(list, weights, engine, deadline) {
+    function bestAttack(list, weights, engine, deadline, framesTable, perPanelFrames) {
         var best = null, all = list.now.concat(list.next), i;
         for (i = 0; i < all.length; i++) {
             var o = all[i];
@@ -621,7 +705,20 @@
             if (o.frames > deadline) continue;
             var isChain = o.kind === 'chain';
             var cells = cellsSent(engine, o.kind, o.size, o.chain);
-            if (cells <= 0) continue;                       // sends nothing: not an attack
+            // A BREAK IS AN ATTACK ON YOUR OWN BOARD. It sends nothing, and it is
+            // still one of the best moves in the game: it holds the floor while the
+            // slab comes apart, and it CONVERTS a garbage row into coloured panels.
+            // Material is what chains are built out of, and breaking is the only
+            // source of it once the opponent starts sending -- raising is the only
+            // other one, and that is unavailable under attack.
+            //
+            // Counted in the same units as the garbage it would otherwise send, so
+            // one number ranks both: the frames it holds, divided by the frames a
+            // panel of life is worth.
+            if (o.breaks && perPanelFrames > 0) {
+                cells += heldFrames(framesTable, 0, o.total, W) / perPanelFrames;
+            }
+            if (cells <= 0) continue;                       // sends nothing, holds nothing
             // The vector's taste for this shape, read off the same buckets the
             // features use, floored so it can only ever scale the rate down to a
             // tenth and never to nothing.
@@ -639,7 +736,7 @@
         return best;
     }
 
-    function bestPlan(list, clock, deadline, engine, toppedOut, framesPerRow) {
+    function bestPlan(list, clock, deadline, engine, toppedOut, framesPerRow, framesTable) {
         var best = null, all = list.now.concat(list.next), i;
         // ONE PANEL REMOVED IS framesPerRow / W FRAMES OF LIFE -- 18.7 at level 10.
         // Panels and stop time are the same currency and this is the exchange rate.
@@ -651,7 +748,13 @@
             var isChain = o.kind === 'chain';
             var pays = BF.stopTimeOf(engine, isChain, isChain ? 0 : o.size,
                                      isChain ? o.chain : 0, toppedOut);
-            var gain = Math.max(0, pays - Math.max(0, clock - o.frames));
+            // WHAT THE CLOCK GAINS, against the clock as it will be when the
+            // move LANDS, because it drains while the cursor walks.
+            var stopGain = Math.max(0, pays - Math.max(0, clock - o.frames));
+            // AND THEN THE WHOLE HOLD, of which that is only one part. A break
+            // holds the floor for as long as the slab takes to come apart and pays
+            // no stop time at all, which is why digging looked worthless.
+            var gain = heldFrames(framesTable, stopGain, o.total, o.breaks ? W : 0);
             // WHAT SURVIVAL ACTUALLY REQUIRES IS A CLEAR RATE OF 1.0, and ranking
             // by the stop-time gain alone cannot see it. Measured over three duels:
             // panels arriving 234, 147, 224 against panels cleared 225, 114, 195 --
@@ -841,7 +944,7 @@
         var options = null;
         // Spent once for the decision, so both halves search the same board at the
         // same depth and cannot disagree about what is on offer.
-        var lookDepth = depthFor(mode.name, tallestOf(pool));
+        var lookDepth = Math.min(this.maxDepth, depthFor(mode.name, tallestOf(pool)));
         var survival = null;
         if (mode.name === 'DEFEND' || !(info.stopTime > 0)) {
             // A PLAN IS EXECUTED, NOT RE-CHOSEN EVERY FRAME.
@@ -878,7 +981,7 @@
             if (!survival) {
                 options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base);
                 var plan = bestPlan(options, info.stopTime || 0, deadline, PanelEngine(),
-                                    !!info.toppedOut, info.framesPerRow);
+                                    !!info.toppedOut, info.framesPerRow, this.stack.frames);
                 if (plan && plan.rate > 0) {
                     this._plan = { moves: plan.option.swaps.slice(1), frames: plan.frames, gain: plan.gain };
                     if (!this._plan.moves.length) this._plan = null;
@@ -977,7 +1080,8 @@
                 this.counts.attackDropped++;
             }
             options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base);
-            var atk = bestAttack(options, this.weights, PanelEngine(), deadline);
+            var atk = bestAttack(options, this.weights, PanelEngine(), deadline,
+                                 this.stack.frames, (info.framesPerRow || 0) / W);
             if (atk && atk.move) {
                 this._attack = { moves: atk.option.swaps.slice(1) };
                 if (!this._attack.moves.length) this._attack = null;
@@ -985,6 +1089,36 @@
                 this.counts.cellsPlanned += atk.cells;
                 return { kind: 'swap', move: atk.move, mode: mode, alive: alive };
             }
+        }
+
+        // NOTHING TO PLAY WITH AND NOTHING COMING: PUT PANELS ON THE BOARD.
+        //
+        // A chain is built out of panels and an empty board has none. Material
+        // arrives two ways: raising, and breaking a slab -- which converts a
+        // garbage row into coloured panels. At the START there is no garbage,
+        // because the opponent has not attacked yet, so raising is the only source
+        // there is.
+        //
+        // NOTHING INCOMING IS THE CONDITION, not merely a thin board. An earlier
+        // version raised whenever the board was thin, at any point in the game,
+        // and it walked the stack up while under attack and died mid-build: 1
+        // death, 510 cells and 7 big pieces became 2 deaths, 378 and 3. With
+        // nothing queued against us the row costs nothing we need back.
+        //
+        // Survival has already had its turn above; this cannot preempt it.
+        if (!survival && !info.incoming && tallestOf(pool) < WORKING_ROWS && this.canRaise()) {
+            // ONLY IF IT DOES NOT KILL. canRaise() is the engine's own list of
+            // refusals -- whether the raise is LEGAL -- and says nothing about
+            // whether the board survives it. Returning here skipped the death
+            // filter every other move faces, on the one move that pushes the stack
+            // up on purpose. Under attack a raise is how the bot kills itself.
+            var risenCand = null;
+            for (i = 0; i < pool.length; i++) if (pool[i].kind === 'raise') risenCand = pool[i];
+            if (risenCand && !this.deadly(risenCand.masks, risenCand.resolved, info, this.reaction)) {
+                this.counts.raisedForMaterial++;
+                return { kind: 'raise', mode: mode, alive: alive };
+            }
+            this.counts.refusedRaise++;
         }
 
         // A PLAN MOVE IS STILL A MOVE, so it faces the no-return rule like any
@@ -1095,6 +1229,11 @@
     // Exposed so a test can ask what the bot considers "the same position" rather
     // than reimplementing it -- two implementations of a sameness rule is how a
     // test ends up agreeing with itself.
+    // Exposed so the gate can hold it against the engine's own fillRatio, which
+    // is the canonical answer to "how close to the top is this board". The two
+    // must agree: when they did not, every height decision in the bot was wrong
+    // and the bot stood at the ceiling believing it had room.
+    BitBot.tallestOfMasks = tallestBoard;
     BitBot.signatureOf = signature;
     BitBot.STARTER = STARTER;
     return BitBot;

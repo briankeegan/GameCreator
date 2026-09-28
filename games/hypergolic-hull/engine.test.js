@@ -856,21 +856,36 @@ salvageState.outpostOfferIds = ["repair", "reinforce"];
 assert.strictEqual(salvageState.salvage, 0, "a fresh run starts with zero salvage");
 assert.deepStrictEqual(Engine.outpostOffers(salvageState), [], "not standing on the outpost hex means no offers");
 
-// Step into range, then FIRE — the kill drops its salvage.
+// Step into range, then FIRE — the kill leaves a WRECK, and pays nothing yet.
+// A kill is two steps: the hull, then the wreck. The second one is optional
+// and costs a shot, which is the decision the whole loop exists for.
 Engine.applySublight(salvageState, { q: 0, r: -1 });
 Engine.applyFire(salvageState);
 assert.strictEqual(salvageState.enemies[0].alive, false, "the FIRE volley kills the adjacent Interceptor");
-// A wreck is worth its type's value, full stop, at any depth from Sector 6
-// on — see EARLY_SUBSIDY_UNTIL in engine.js. This fixture's level id is
-// 992, so it is well past the subsidy. Asserted as the flat value rather
-// than by re-deriving the subsidy formula: a test that recomputes what the
-// code computes passes whatever the code does.
+assert.strictEqual(salvageState.salvage, 0, "a kill pays nothing on its own — the salvage is in the wreck");
+assert.strictEqual(salvageState.wrecks.length, 1, "the dead hull is left on the board as a wreck");
+assert.deepStrictEqual(
+  { q: salvageState.wrecks[0].q, r: salvageState.wrecks[0].r },
+  { q: 0, r: -2 },
+  "the wreck sits on the hex the hull died on"
+);
+assert.ok(
+  salvageState.events.some((e) => e.type === "wreck"),
+  "a kill emits a wreck event for the UI to draw"
+);
+// Now cut it open. A wreck is worth its type's value, full stop, at any depth
+// from Sector 6 on — see EARLY_SUBSIDY_UNTIL in engine.js. This fixture's
+// level id is 992, so it is well past the subsidy. Asserted as the flat value
+// rather than by re-deriving the subsidy formula: a test that recomputes what
+// the code computes passes whatever the code does.
+Engine.applyFire(salvageState);
 assert.strictEqual(
   salvageState.salvage,
   Engine.ENEMY_TYPES.interceptor.salvage,
   "a deep wreck drops exactly its type's salvage value — no depth bonus on top"
 );
-assert.ok(salvageState.events.some((e) => e.type === "salvage"), "a kill emits a salvage event for the UI to animate");
+assert.strictEqual(salvageState.wrecks.length, 0, "cutting it open takes the wreck off the board");
+assert.ok(salvageState.events.some((e) => e.type === "salvage"), "a wreck emits a salvage event for the UI to animate");
 
 // ---- a wreck is worth what it is worth, at every depth -------------------
 //
@@ -882,7 +897,8 @@ assert.ok(salvageState.events.some((e) => e.type === "salvage"), "a kill emits a
   const paid = (levelId) => {
     const st = Engine.createGameState({ ...salvageLevel, id: levelId });
     Engine.applySublight(st, { q: 0, r: -1 });
-    Engine.applyFire(st);
+    Engine.applyFire(st); // the hull
+    Engine.applyFire(st); // the wreck, which is what pays
     return st.salvage;
   };
   const worth = Engine.ENEMY_TYPES.interceptor.salvage;

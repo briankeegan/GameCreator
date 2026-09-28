@@ -1149,6 +1149,36 @@
         ],
       },
     },
+    // IT UNDOES YOUR WORK, which is the only thing on this board that does.
+    //
+    // A wreck is a hull waiting to be either cut open or stood back up, and
+    // the Tender is the second of those: it flies to wreckage and rebuilds
+    // the ship. Leave one alive and the sector does not shrink as you kill
+    // through it — the thing you shot is back, at full hull, and your two
+    // shots bought nothing. That is what puts an ORDER on a crowd, which is
+    // what this roster has never had: every hull is one-shot, so killing is
+    // instant and there was never a question of what to kill first.
+    //
+    // No gun. A hull that undoes kills and also shoots gives you nothing to
+    // weigh — the whole point is that it is harmless and still the most
+    // urgent thing on the board.
+    //
+    // A rebuild costs it REVIVE_COST, and its bus only ticks on a round it
+    // spends waiting (the same 1-to-1 rule both sides play by), so it works
+    // at about every other round rather than emptying the board of your
+    // progress as fast as you make it.
+    tender: {
+      hull: 1, salvage: 7, revives: true,
+      hold: {
+        cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
+        items: [
+          { id: "scanner", x: 1, y: 0 },
+          { id: "sublightDrive", x: 0, y: 1 },
+          { id: "microReactor", x: 2, y: 1 },
+          { id: "chargeBank", x: 2, y: 2 },
+        ],
+      },
+    },
     sentry: {
       hull: 1, salvage: 3,
       hold: {
@@ -1357,7 +1387,7 @@
     // more than anything else on the board and every turn you spend
     // cracking it is a turn the things that CAN shoot get for free.
     salvager: {
-      hull: 1, salvage: 9,
+      hull: 1, salvage: 9, collects: true,
       hold: {
         cols: 3, rows: 6, blocked: ["0,0", "2,0", "0,5", "2,5"],
         items: [
@@ -1769,6 +1799,45 @@
     },
   };
 
+  // What a rebuild costs the hull doing it. Its bus only fills on a round it
+  // spends waiting, so this is what paces it: high enough that it cannot keep
+  // up with a ship that is killing, low enough that ignoring it is a mistake.
+  const REVIVE_COST = 2;
+
+  function isTender(enemy) {
+    const def = ENEMY_TYPES[enemy.type];
+    return Boolean(def && def.revives);
+  }
+
+  // Does this hull come for the wreckage rather than for you? One place, so
+  // the AI, the renderer and the tests cannot disagree about which it is.
+  function isCollector(enemy) {
+    const def = ENEMY_TYPES[enemy.type];
+    return Boolean(def && def.collects);
+  }
+
+  function nearestExit(state, from) {
+    const gates = state.exits && state.exits.length ? state.exits : state.exit ? [state.exit] : [];
+    if (!gates.length) return null;
+    return gates.slice().sort((a, b) => hexDistance(from, a) - hexDistance(from, b))[0];
+  }
+
+  // One legal step that closes on a goal, or null. Greedy on purpose: a
+  // hostile walks one hex a round, and a full search would let a thief thread
+  // a gap a chaser cannot, which is the kiting problem wearing a hat.
+  function stepToward(state, enemy, goal) {
+    let best = null;
+    for (let i = 0; i < 6; i++) {
+      const to = neighbor(enemy, i);
+      if (!canFlyInto(state, to, enemy)) continue;
+      if (hazardAt(state, to)) continue;
+      const d = hexDistance(to, goal);
+      if (d >= hexDistance(enemy, goal)) continue;
+      if (!best || d < best.d) best = { to, d };
+    }
+    return best ? best.to : null;
+  }
+
   // Does this class refuse the shot it could otherwise take?
   function inhibited(state, enemy, weapon) {
     const def = ENEMY_TYPES[enemy.type];
@@ -1929,9 +1998,15 @@
   // What a slug runs into: solid terrain, or any hull that isn't the
   // shooter's own. (The target itself is included before the line stops —
   // the shot hits the first thing in the lane, which is the whole point.)
+  // Does a wreck stop a slug the way a live hull does? Measurable, because
+  // "the board accumulates cover as the fight goes" cuts both ways: cover
+  // for you is also cover for the six things shooting at you.
+  const WRECKS_ARE_COVER = envNumber("GC_WRECK_COVER", 1) !== 0;
+
   function blocksShot(state, hex, opts) {
     if (isBlockingHazard(hazardAt(state, hex))) return true;
     if (enemyAt(state, hex)) return true;
+    if (WRECKS_ARE_COVER && wreckAt(state, hex)) return true; // a wreck is a hull: it stops a slug
     // A threat map answers "would I be hit if I STOOD there" — so the
     // flagship's current hull must not count as cover for the hex behind
     // it. It used to, which reported the hexes directly behind you as safe
@@ -3149,6 +3224,9 @@
   function canFlyInto(state, hex, mover) {
     if (!onBoard(state, hex)) return false;
     if (isBlockingHazard(hazardAt(state, hex))) return false;
+    // A wreck is a hull. Cover has to be cover for everyone, so nothing
+    // flies through one — and one shot clears it, so it is never a wall.
+    if (wreckAt(state, hex)) return false;
     if (!(mover && mover === "player") && posEq(hex, state.playerPos)) return false;
     const blocker = enemyAt(state, hex);
     if (blocker && blocker !== mover) return false;
@@ -3490,6 +3568,11 @@
     // Cutting gear pays per WRECK, not per sector: a hull built around it
     // gets richer the more it kills, which is what makes it a late ship.
     const rig = (state.hold ? deriveShip(state.hold).salvageBonus : 0) || 0;
+    // A wreck pays exactly what the kill used to, and no more. Paying a
+    // premium for the second shot was tried and buys nothing: at 1, 2 and 3
+    // times the old value, 40, 39 and 38 of 40 runs died. The cost of this
+    // loop is ROUNDS, not money, so money does not answer it — and this
+    // economy is already the loose end, not the tight one.
     let amount = base > 0 ? base + localeBonus(state) + rig : 0;
     // PICKED CLEAN. Somebody stripped this system before you got here, so
     // a wreck pays a fraction. One-sided the way the economy is — nothing
@@ -3757,6 +3840,91 @@
   // Two rounds of fuse: it lands, one round ticks with it visible and
   // counting, and it goes off at the end of the next. That's enough time
   // to walk out of a seven-hex blast from anywhere inside it, so being
+  // ---- wrecks ------------------------------------------------------------
+  //
+  // A HULL YOU OPENED IS NOT A HULL YOU EMPTIED. Killing a contact used to
+  // pay its salvage on the spot, which made a kill a single instant with no
+  // aftermath: the board emptied as the fight went, and the richest thing on
+  // it stopped existing the moment you hit it.
+  //
+  // Now a kill leaves the hull where it died and the salvage is paid when
+  // the WRECK is destroyed — a second shot, never a walk. So every kill is
+  // two steps and the second one is optional: spend the shot and bank it, or
+  // leave it and move on. Three things want that wreck, which is the whole
+  // point of it (see games/hypergolic-hull/DESIGN_IDEAS.md, "THE WRECK
+  // LOOP"): you, for the salvage; a Tender, to stand the hull back up; a
+  // Collector, to tow it off the board.
+  //
+  // A wreck IS a hull, so it blocks movement and shots exactly as a live one
+  // does (canFlyInto, blocksShot) — the board accumulates cover as the fight
+  // goes, and because one shot clears a wreck a wall of them is always
+  // answerable. It also means an area weapon finally earns its cost:
+  // wreckage collects where the fighting was, so a Flak Burst clearing three
+  // at once is the first time in this game a footprint has beaten a cheaper
+  // single-target gun.
+  function liveWrecks(state) {
+    return state.wrecks || (state.wrecks = []);
+  }
+
+  function wreckAt(state, pos) {
+    return liveWrecks(state).find((w) => posEq(w, pos)) || null;
+  }
+
+  // Left on the hull's OWN hex, which is always on the board and always free
+  // — the ship was standing there. Reading the destination instead breaks on
+  // the two shove kills, where the hex a hull was pushed into is off the map
+  // or already holds the thing it was pushed into.
+  function leaveWreck(state, victim, typeOverride) {
+    const type = typeOverride || victim.type;
+    const base = (ENEMY_TYPES[type] || {}).salvage || 0;
+    if (base <= 0) return;
+    if (wreckAt(state, victim)) return; // two hulls cannot die onto one hex
+    liveWrecks(state).push({
+      id: `wreck-${victim.id || type}-${liveWrecks(state).length}-${type}`,
+      type,
+      q: victim.q,
+      r: victim.r,
+    });
+    state.events.push({ type: "wreck", q: victim.q, r: victim.r, victim: type });
+  }
+
+  // KILL THE THIEF AND YOU GET THE LOAD BACK. It drops where the Collector
+  // died, which is a wreck again and still wants a shot — so catching one
+  // costs you nothing but the rounds, and letting it out of the sector is the
+  // only way the salvage is actually lost.
+  //
+  // The Collector's own hull leaves its own wreck through the normal path;
+  // this is the cargo, which needs the hex next door because two hulls cannot
+  // die onto one.
+  function dropCargo(state, enemy) {
+    if (!enemy.carrying) return;
+    const load = enemy.carrying.type;
+    enemy.carrying = null;
+    for (let i = 0; i < 6; i++) {
+      const to = neighbor(enemy, i);
+      if (!onBoard(state, to) || wreckAt(state, to) || enemyAt(state, to) || posEq(to, state.playerPos)) continue;
+      if (isBlockingHazard(hazardAt(state, to))) continue;
+      leaveWreck(state, to, load);
+      pushLog(state, `The ${load.toUpperCase()} hulk breaks loose.`);
+      return;
+    }
+    // Nowhere to put it: the tow was the only thing holding it together.
+    pushLog(state, `The ${load.toUpperCase()} hulk goes up with its tug.`);
+  }
+
+  // Every wreck inside a footprint, paid and gone. Called with the hexes a
+  // shot actually covered, so cover and range are already settled.
+  function clearWrecksIn(state, hexKeys) {
+    const hit = liveWrecks(state).filter((w) => hexKeys.has(hexKey(w)));
+    if (!hit.length) return 0;
+    state.wrecks = liveWrecks(state).filter((w) => !hexKeys.has(hexKey(w)));
+    for (const w of hit) {
+      state.events.push({ type: "wreckCleared", q: w.q, r: w.r, victim: w.type });
+      awardSalvage(state, w.type);
+    }
+    return hit.length;
+  }
+
   // caught is a decision you made, never something that happened to you.
   const CHARGE_FUSE = 2;
 
@@ -3833,7 +4001,8 @@
         victim.alive = false;
         state.events.push({ type: "kill", q: victim.q, r: victim.r, victim: victim.type, source: "charge" });
         pushLog(state, `${victim.type.toUpperCase()} caught in the blast.`);
-        awardSalvage(state, victim.type);
+        leaveWreck(state, victim);
+        dropCargo(state, victim);
       } else {
         state.events.push({ type: "hit", q: victim.q, r: victim.r, source: "charge" });
       }
@@ -3894,7 +4063,8 @@
           victim.alive = false;
           state.events.push({ type: "kill", q: victim.q, r: victim.r, victim: victim.type, source: "missile" });
           pushLog(state, `${victim.type.toUpperCase()} took its own side's missile.`);
-          awardSalvage(state, victim.type);
+          leaveWreck(state, victim);
+          dropCargo(state, victim);
         } else {
           state.events.push({ type: "hit", q: victim.q, r: victim.r, source: "missile" });
         }
@@ -3996,6 +4166,62 @@
     // fuse is three rounds, so the move is: out to the rim, then out.
     // Ranked by how far the step gets from the charge, not by whether it
     // is clear yet.
+    // ---- THE COLLECTOR ----------------------------------------------------
+    //
+    // A Hauler does not want you, it wants the wreckage — which is what makes
+    // it the answer to its own oldest complaint. It used to keep station at
+    // exactly lens range and drag you a hex, which was a chase after a ship
+    // that could not hurt you and had nothing else to do; three separate
+    // attempts to make the drag itself matter measured out at nothing (see
+    // DESIGN_IDEAS.md). So it stops being about you.
+    //
+    // It takes a wreck off the board and leaves with it. Kill it and the load
+    // drops back where it dies, so you lose nothing but the rounds. Let it
+    // reach a gate and the salvage is gone for good.
+    //
+    // THE ONE HULL IN THE GAME ALLOWED TO RUN. A gun that holds its distance
+    // cannot be answered by a ship that walks one hex a round — measured at
+    // 23 wins in 60 down to 1, and to 0 — but a thief may, because letting it
+    // go costs money and not hull. That makes it a decision instead of a
+    // grind, and it is the whole clock: be quick or be poorer.
+    if (isCollector(enemy) && ship.hasDrive) {
+      if (enemy.carrying) {
+        const gate = nearestExit(state, enemy);
+        if (gate) {
+          const step = stepToward(state, enemy, gate);
+          if (step) return { enemyId: enemy.id, type: "move", to: step };
+        }
+      } else {
+        const claim = liveWrecks(state)
+          .slice()
+          .sort((a, b) => hexDistance(enemy, a) - hexDistance(enemy, b))[0];
+        if (claim) {
+          if (hexDistance(enemy, claim) <= 1) return { enemyId: enemy.id, type: "tow", wreck: claim.id };
+          const step = stepToward(state, enemy, claim);
+          if (step) return { enemyId: enemy.id, type: "move", to: step };
+        }
+      }
+    }
+
+    // ---- THE TENDER --------------------------------------------------------
+    // Same claim on a wreck as the Collector's, opposite purpose: it stands
+    // the hull back up rather than carrying it off. It ignores the flagship
+    // entirely while there is work to do, which is what makes killing it a
+    // decision instead of a reflex — nothing it does can hurt you.
+    if (isTender(enemy) && ship.hasDrive) {
+      const job = liveWrecks(state)
+        .slice()
+        .sort((a, b) => hexDistance(enemy, a) - hexDistance(enemy, b))[0];
+      if (job) {
+        if (hexDistance(enemy, job) <= 1) {
+          if (enemy.energy >= REVIVE_COST) return { enemyId: enemy.id, type: "revive", wreck: job.id };
+          return { enemyId: enemy.id, type: "wait" }; // standing over it, filling the bus
+        }
+        const step = stepToward(state, enemy, job);
+        if (step) return { enemyId: enemy.id, type: "move", to: step };
+      }
+    }
+
     const burning = chargedHexes(state);
     if (burning.has(hexKey(enemy)) && ship.hasDrive) {
       const fromBlast = (hex) => {
@@ -4243,11 +4469,36 @@
     // it, and that trade is the whole point of ordnance being a real
     // object on a real hex.
     const swatted = targets.length ? 0 : shootDownMissiles(state, hexKeys, weapon.label);
+    // WRECKS INSIDE THIS FOOTPRINT, captured BEFORE the volley resolves.
+    // A kill leaves a wreck on the hex it died on, which is inside this
+    // footprint — reading the list afterwards would have every shot
+    // instantly scrap the wreck it just made, and the second step of a kill
+    // would never exist.
+    //
+    // The share a shot may clear is the weapon's own `targets`. An "all"
+    // weapon clears every wreck it covers, which is the first time in this
+    // game a footprint beats a cheaper single-target gun: wreckage collects
+    // where the fighting was, so a Flak Burst banking three at once is
+    // worth its 3 energy against an Autocannon's 1. A "one" weapon puts its
+    // shot into a hull if there is one to hit, and can only be spent on a
+    // wreck when there is nothing alive in reach.
+    const coveredWrecks = liveWrecks(state).filter((w) => hexKeys.has(hexKey(w)));
+    const spread = weapon.targets === "all";
+    const wreckSpoils = new Set(
+      (spread ? coveredWrecks : targets.length ? [] : coveredWrecks.slice(0, 1)).map(hexKey)
+    );
     // A charge dropped on your OWN hex has no target by definition, so the
     // usual "nothing in range, no shot" bail would mean it could never
     // fire at all. It is the one weapon here whose whole point is the
     // ground you are leaving rather than anything you can see.
     if (targets.length === 0 && !weapon.placesSelf) {
+      // Nothing alive in reach, but there is wreckage: the shot is spent
+      // cutting it open, which is the whole second step of a kill.
+      if (wreckSpoils.size) {
+        state.energy = Math.max(0, state.energy - weapon.energyCost);
+        clearWrecksIn(state, wreckSpoils);
+        return;
+      }
       if (swatted) state.energy = Math.max(0, state.energy - weapon.energyCost); // it fired, and it hit something
       return;
     }
@@ -4320,7 +4571,10 @@
         if (dir < 0) continue;
         pushEnemyInDirection(state, victim, dir, weapon.label);
       }
-      if (!weapon.damage) return; // push-only: the board does the killing
+      if (!weapon.damage) {
+        clearWrecksIn(state, wreckSpoils);
+        return; // push-only: the board does the killing
+      }
     }
     for (const victim of targets) {
       if (!victim.alive) continue; // an earlier target's push/collision in this same volley already took it out
@@ -4337,13 +4591,15 @@
         victim.alive = false;
         state.events.push({ type: "kill", q: victim.q, r: victim.r, victim: victim.type, source: "weapon" });
         pushLog(state, `${weapon.label}: ${victim.type.toUpperCase()} destroyed.`);
-        awardSalvage(state, victim.type);
+        leaveWreck(state, victim);
+        dropCargo(state, victim);
       } else {
         state.events.push({ type: "hit", q: victim.q, r: victim.r, source: "weapon" });
         pushLog(state, `${weapon.label}: ${victim.type.toUpperCase()} hit — hull ${victim.hp} of ${victim.maxHp}.`);
         if (onHit) onHit(state, victim);
       }
     }
+    clearWrecksIn(state, wreckSpoils);
   }
 
   // The ENEMY PHASE: every living enemy spends ENEMY_AP action points,
@@ -4399,6 +4655,33 @@
         enemy.energy -= weapon.energyCost; // paid for, same as any other shot
         firedThisPhase.add(enemy.id);
         shootDownMissiles(state, covers, enemy.type.toUpperCase());
+      }
+      // A Collector picks a wreck up. It comes off the board the moment it is
+      // towed, so you cannot cut it open any more — the race is for reaching
+      // it first, not for shooting it out of the tractor.
+      for (const { enemy, intent } of intents.filter(({ intent: i }) => i.type === "tow")) {
+        if (!enemy.alive || enemy.carrying) continue;
+        const wreck = liveWrecks(state).find((w) => w.id === intent.wreck);
+        if (!wreck || hexDistance(enemy, wreck) > 1) continue;
+        state.wrecks = liveWrecks(state).filter((w) => w.id !== wreck.id);
+        enemy.carrying = { type: wreck.type };
+        state.events.push({ type: "wreckTowed", q: wreck.q, r: wreck.r, victim: wreck.type, enemyId: enemy.id });
+        pushLog(state, `${enemy.type.toUpperCase()} has the ${wreck.type.toUpperCase()} hulk under tow — stop it or lose it.`);
+      }
+      // A Tender stands a wreck back up. Resolved after the tow on purpose:
+      // a hulk already under tow is off the board and cannot be rebuilt, so
+      // two of them cannot both claim the same wreck in one round.
+      for (const { enemy, intent } of intents.filter(({ intent: i }) => i.type === "revive")) {
+        if (!enemy.alive || enemy.energy < REVIVE_COST) continue;
+        const wreck = liveWrecks(state).find((w) => w.id === intent.wreck);
+        if (!wreck || hexDistance(enemy, wreck) > 1) continue;
+        if (enemyAt(state, wreck) || posEq(state.playerPos, wreck)) continue; // something is standing on it
+        state.wrecks = liveWrecks(state).filter((w) => w.id !== wreck.id);
+        enemy.energy -= REVIVE_COST;
+        const reborn = spawnEnemy(wreck.type, wreck.q, wreck.r);
+        state.enemies.push(reborn);
+        state.events.push({ type: "wreckRevived", q: wreck.q, r: wreck.r, victim: wreck.type, enemyId: enemy.id });
+        pushLog(state, `${enemy.type.toUpperCase()} has the ${wreck.type.toUpperCase()} back on its feet.`);
       }
       const attackers = intents
         .filter(({ intent }) => intent.type === "attack")
@@ -4559,6 +4842,20 @@
         state.events.push({ type: "enemyMove", enemyId: enemy.id, from, to: intent.to });
         enemy.q = intent.to.q;
         enemy.r = intent.to.r;
+        // OUT THROUGH THE GATE WITH IT. A laden Collector that reaches a gate
+        // is gone and so is the salvage — the one loss in this game you take
+        // by being slow rather than by being hit, and the reason it is a clock
+        // and not a pest. It does not need the gate unlocked: it is leaving
+        // with cargo, not finishing a sector.
+        if (enemy.carrying && (state.exits || []).some((ex) => posEq(ex, enemy))) {
+          enemy.alive = false;
+          enemy.escaped = true;
+          state.events.push({ type: "collectorEscaped", q: enemy.q, r: enemy.r, victim: enemy.carrying.type });
+          pushLog(
+            state,
+            `${enemy.type.toUpperCase()} jumped out with the ${enemy.carrying.type.toUpperCase()} hulk. That salvage is gone.`
+          );
+        }
       }
     }
     // Anyone who found a shot this round is fresh out of patience-spending;
@@ -4731,7 +5028,8 @@
       enemy.alive = false;
       state.events.push({ type: "kill", q: dest.q, r: dest.r, victim: enemy.type });
       pushLog(state, `${sourceLabel}-pushed ${enemy.type} off the map edge.`);
-      awardSalvage(state, enemy.type);
+      leaveWreck(state, enemy);
+      dropCargo(state, enemy);
       return;
     }
     const blocker = enemyAt(state, dest);
@@ -4742,13 +5040,16 @@
       state.events.push({ type: "kill", q: dest.q, r: dest.r, victim: enemy.type });
       state.events.push({ type: "kill", q: blocker.q, r: blocker.r, victim: blocker.type });
       pushLog(state, `${sourceLabel}-pushed ${enemy.type} into ${blocker.type} — both destroyed.`);
-      awardSalvage(state, enemy.type);
-      awardSalvage(state, blocker.type);
+      leaveWreck(state, enemy);
+      leaveWreck(state, blocker);
+      dropCargo(state, enemy);
+      dropCargo(state, blocker);
     } else if (hazard) {
       enemy.alive = false;
       state.events.push({ type: "kill", q: dest.q, r: dest.r, victim: enemy.type });
       pushLog(state, `${sourceLabel}-pushed ${enemy.type} into a hazard.`);
-      awardSalvage(state, enemy.type);
+      leaveWreck(state, enemy);
+      dropCargo(state, enemy);
     } else {
       state.events.push({ type: "enemyMove", enemyId: enemy.id, from: { q: enemy.q, r: enemy.r }, to: dest });
       enemy.q = dest.q;
@@ -4837,6 +5138,10 @@
       // "nothing in arc" and cannot be fired at all — which would leave
       // the one answer to a Seeker unavailable exactly when it is needed.
       if (liveMissiles(state).some((m) => !m.spent && hexKeys.has(hexKey(m)))) return true;
+      // A wreck is something to shoot at. It is the second half of every
+      // kill and the only way salvage is ever banked, so a gun covering one
+      // has to read as bearing or the loop cannot be played at all.
+      if (liveWrecks(state).some((w) => hexKeys.has(hexKey(w)))) return true;
       return livingEnemies(state).some((e) => hexKeys.has(hexKey(e)));
     });
   }
@@ -5215,6 +5520,10 @@
     conditionIs,
     WEAPONS,
     ENEMY_TYPES,
+    liveWrecks,
+    wreckAt,
+    isCollector,
+    isTender,
     STARTING_LOADOUTS,
     previewLoadout,
     loadoutUnlocked,

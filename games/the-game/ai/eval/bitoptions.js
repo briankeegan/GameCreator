@@ -104,8 +104,17 @@
         // the board still while it arranges, and the last step cashes.
         function expand(state, chain, from, spent, left) {
             var list = bit.legalSwapsOf(state), k;
+            // PRUNE THE SETUPS THAT CANNOT LEAD ANYWHERE, but only below the top
+            // ply: ply one stays exhaustive so an immediate clear is never missed.
+            // A swap out of reach of any pair cannot make a line however many moves
+            // follow it, and the reach is a handful of cells rather than the board.
+            var reach = chain.length ? bit.reachMask(state) : null;
             for (k = 0; k < list.length; k++) {
                 var sw = list[k];
+                if (reach) {
+                    var rb = 1 << (sw[0] - 1);
+                    if (!((reach[sw[1]] | reach[sw[1] + 1]) & rb)) continue;
+                }
                 if (!bit.swapMasks(state, sw[0], sw[1])) continue;
                 // The settled board is only needed when we are going deeper.
                 var res = bit.resolveFromMasks(state, left > 1);

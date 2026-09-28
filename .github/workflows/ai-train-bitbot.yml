@@ -32,16 +32,16 @@ on:
         default: ''
       population:
         description: 'Weight vectors in the population. Island 0 is always BitBot.STARTER, the control'
-        default: '8'
+        default: '6'
       generations:
         description: 'Generations. Each one duels every pairing, keeps the top half and refills with their mutated children'
-        default: '10'
+        default: '9'
       seeds:
-        description: 'Seeds per pairing. ONE IS THE NOISE FLOOR -- at population 8 that is 7 duels per island per generation, which cannot separate vectors that are close'
-        default: '3'
+        description: 'Seeds per pairing. ONE IS THE NOISE FLOOR -- a champion decided by a handful of duels is decided by the draw, which is what the first run measured'
+        default: '2'
       ceiling:
-        description: 'Frames before a duel is called. BitBot now survives, so duels run 14000-16700 frames and an unbounded pairing can hold up a generation. A duel that reaches this is decided on SCORE, which versus.js says that tie-break was not calibrated for, so the count is printed every generation'
-        default: '21600'
+        description: 'Frames before a duel is called. Sized for the fitness, not for the game: nothing dies any more, so what is being measured at the ceiling is garbage sent, and 8000 frames is plenty of that. 21600 was sized when duels ended on a death at about 1100'
+        default: '8000'
 
 # THE SEED IS IN THE KEY, NOT JUST THE VARIANT.
 #
@@ -63,14 +63,22 @@ permissions:
 jobs:
   islands:
     runs-on: ubuntu-latest
-    timeout-minutes: 330
+    timeout-minutes: 60
     steps:
+      # SHALLOW, BECAUSE THE CLONE WAS THE RUN.
+      #
+      # fetch-depth: 0 fetches every commit ever made, and this repo carries
+      # thousands of trainer snapshots and the art assets. Measured on run 60:
+      # checkout took 10 minutes 5 seconds of a run whose duels take nine, and
+      # twenty runners each paid it.
+      #
+      # The job commits its champion back, which is why full history looked
+      # necessary -- it is not. A shallow clone commits onto main perfectly well,
+      # and the delivery fetches origin/main before it rebases anyway.
       - uses: actions/checkout@v4
         with:
           ref: main
-          # It commits its champion, so real credentials and enough history to
-          # rebase onto whatever the other nineteen runs have pushed.
-          fetch-depth: 0
+          fetch-depth: 1
 
       - uses: actions/setup-node@v4
         with:
@@ -81,12 +89,12 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      # SECONDS AGAINST HOURS. A run that spends five hours searching with a
-      # broken evaluator has measured nothing, and these are the checks that say
-      # the evaluator is the one the bot will actually play with.
-      - name: Check the harness before spending hours on it
+      # SECONDS AGAINST MINUTES. A run that searches with a broken evaluator has
+      # measured nothing, and these are the checks that say the evaluator is the
+      # one the bot will actually play with. Thirty seconds, measured.
+      - name: Check the harness before spending the run on it
         working-directory: games/the-game/ai/eval
-        timeout-minutes: 45
+        timeout-minutes: 20
         run: |
           node bitmatch.test.js
           node bitoptions.test.js
@@ -96,40 +104,39 @@ jobs:
       - name: Islands
         id: train
         working-directory: games/the-game/ai/eval
-        timeout-minutes: 270
+        timeout-minutes: 40
         env:
           GC_GA_SEED: ${{ github.event.inputs.ga_seed || '11' }}
           GC_TAG: bitbot-${{ github.event.inputs.variant || 'default' }}-s${{ github.event.inputs.ga_seed || '11' }}
-          GC_VERSUS_CEILING: ${{ github.event.inputs.ceiling || '21600' }}
+          GC_VERSUS_CEILING: ${{ github.event.inputs.ceiling || '8000' }}
           # One shard per core on the runner, which is four.
           GC_SHARDS: '4'
+          # Push the champion as each generation earns it, so a run that is
+          # cancelled or times out still leaves behind what it found.
+          GC_DELIVER: '1'
         run: |
           node bitbot_islands.js \
-            "${{ github.event.inputs.population || '8' }}" \
-            "${{ github.event.inputs.generations || '10' }}" \
-            "${{ github.event.inputs.seeds || '3' }}" \
+            "${{ github.event.inputs.population || '6' }}" \
+            "${{ github.event.inputs.generations || '9' }}" \
+            "${{ github.event.inputs.seeds || '2' }}" \
             | tee run.log
           echo "tag=bitbot-${{ github.event.inputs.variant || 'default' }}-s${{ github.event.inputs.ga_seed || '11' }}" >> "$GITHUB_OUTPUT"
 
-      # THE CHAMPION IS DELIVERED, NOT LEFT ON A DEAD RUNNER. One file per tag,
-      # so twenty runs do not overwrite each other -- nineteen results lost and
-      # one kept would look like a result and be a race.
-      #
-      # REBASE AND RETRY, because twenty runs finish within minutes of each other
-      # and each one pushes to main. A plain push loses that race and the run's
-      # whole search with it.
+      # A BACKSTOP, NOT THE DELIVERY. The loop pushes every generation now; this
+      # catches the case where the last one lost its race, and prints what the run
+      # found so the result is readable from the job without opening the file.
       - name: Deliver the champion
         if: always() && steps.train.outcome == 'success'
         working-directory: games/the-game/ai/eval
         run: |
           TAG="${{ steps.train.outputs.tag }}"
           FILE="islands/bitbot.island.$TAG.json"
-          if [ ! -f "$FILE" ]; then
-            echo "no champion at $FILE -- the run did not finish its generations"
-            exit 1
-          fi
           echo "--- what this run found ---"
           grep -E '^(gen|FINAL)' run.log || true
+          if [ ! -f "$FILE" ]; then
+            echo "no champion at $FILE -- the run did not finish a single generation"
+            exit 1
+          fi
           for attempt in 1 2 3 4 5; do
             git add "$FILE"
             git commit -m "BitBot island champion $TAG

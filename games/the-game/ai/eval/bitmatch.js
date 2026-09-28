@@ -279,6 +279,48 @@
     return out;
   }
 
+  // WHERE A SETUP COULD POSSIBLY MATTER.
+  //
+  // A clear is three of a colour in a line, so a swap that is not within reach of
+  // an existing PAIR cannot lead to one however many plies follow it. The pairs
+  // are one operation per colour:
+  //
+  //     vertical, in a column   P = B & (B >> 1)    completes at r-1 and r+2
+  //     horizontal, across two  B[c] & B[c+1]       completes in c-1 and c+2
+  //
+  // The union of those completion cells, plus the pair cells themselves (a swap
+  // can break a pair as easily as make one, and moving the blocker off a
+  // completion cell is a setup too), is where a setup can do anything at all.
+  //
+  // THIS IS WHY DEPTH IS AFFORDABLE. Enumerating every legal swap at every ply is
+  // 9 to 30 wide and compounds; the cells that can matter are a small fraction of
+  // the board, so the deeper plies get narrow instead of exponential. Nothing is
+  // lost at ply one, which stays exhaustive -- an immediate clear is never pruned,
+  // only the setups that could not have led anywhere.
+  function reachMask(st) {
+    var W2 = st.W, stride = W2 + 2, out = [], a, c;
+    for (c = 0; c <= W2 + 1; c++) out[c] = 0;
+    for (a = 1; a <= st.N; a++) {
+      for (c = 1; c <= W2; c++) {
+        var B = st.colour[a * stride + c];
+        if (!B) continue;
+        // Vertical pair: rows r and r+1. The cells that would finish it are the
+        // row below the pair and the row above it.
+        var vp = B & (B >> 1);
+        if (vp) out[c] |= vp | (vp >> 1) | (vp << 2);
+        // Horizontal pair with the next column: the same rows, one column out on
+        // either side.
+        var hp = B & st.colour[a * stride + c + 1];
+        if (hp) {
+          out[c] |= hp; out[c + 1] |= hp;
+          if (c > 1) out[c - 1] |= hp;
+          if (c + 2 <= W2) out[c + 2] |= hp;
+        }
+      }
+    }
+    return out;
+  }
+
   function swapMasks(st, r, c) {
     var W2 = st.W, b = 1 << (r - 1), o = c + 1;
     if ((st.inert[c] & b) || (st.inert[o] & b)) return false;
@@ -555,6 +597,7 @@
     maskState: maskState,
     swapMasks: swapMasks,
     legalSwapsOf: legalSwapsOf,
+    reachMask: reachMask,
     copyState: copyState,
     resolveFromMasks: resolveFromMasks,
     clearedCells: clearedCells,
