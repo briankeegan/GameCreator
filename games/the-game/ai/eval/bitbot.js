@@ -33,22 +33,6 @@
 
     var W = 6, H = 12;
 
-    // HOW MUCH SLACK COUNTS AS NONE, IN ROWS, which is modes.js's own
-    // ESCAPE_RESERVE_ROWS and a measured number rather than one invented here.
-    //
-    // Frames were the wrong unit and the mistake is worth keeping written down. A
-    // row is 112 frames at this speed, so one row from death the bot has 112
-    // frames of room -- which beats the ~30 frames an escape costs to walk to, so
-    // a frames-against-walk-cost trigger reads "plenty of time" and stays in
-    // BUILD. Read off seed 101: the last five decisions before death were all
-    // BUILD at tallest 11, and DEFEND opened on the single frame it topped out,
-    // one decision before it died.
-    //
-    // Rows are the right unit because the danger is not the walk, it is having no
-    // workspace: a chain needs several rows to assemble in, and at tallest 11
-    // there is one.
-    var ESCAPE_RESERVE_ROWS = 2;
-
     function tallestOf(pool) {
         for (var i = 0; i < pool.length; i++) {
             if (pool[i].kind === 'hold') return tallestBoard(pool[i].masks);
@@ -269,7 +253,7 @@
     //
     // ATTACK is derived, not triggered by a constant: if anything in the pool
     // clears at or above the aim, there is something to cash and hold drops.
-    BitBot.prototype.mode = function (info, pool, revealOpen) {
+    BitBot.prototype.mode = function (info, pool, revealOpen, deadline, escape) {
         var name = 'BUILD';
         // DEFEND OPENS WHEN THE FLOOR ARRIVES BEFORE AN ESCAPE CAN BE REACHED,
         // not on topped out alone.
@@ -288,7 +272,22 @@
         // had a payout of 30 to 66 frames on the board and it declined 45 of
         // them. Narrowing to those moves is narrowing to something.
         if (info.toppedOut) name = 'DEFEND';
-        else if (H - tallestOf(pool) <= ESCAPE_RESERVE_ROWS) name = 'DEFEND';
+        // DEFENCE TIMING IS ARITHMETIC, NOT A ROW COUNT.
+        //
+        // The question is not "is the board tall" -- height is fine, and a tall
+        // board is where chains come from. It is whether the escape can still be
+        // reached before the floor arrives:
+        //
+        //     framesToDeath  <=  frames to play the cheapest plan that survives
+        //
+        // Both sides are measured. framesToDeath is the engine's own drain and
+        // rise; the plan's cost is travel.cost over its moves. Below that line
+        // there is no longer time to choose, so the weights stop choosing.
+        //
+        // `escape` is null when the caller has no plan to offer, and then there is
+        // nothing to be late for: topped out still opens DEFEND above.
+        else if (escape !== null && escape !== undefined &&
+                 deadline <= escape + this.reaction) name = 'DEFEND';
         else {
             var goal = this.aim();
             for (var i = 0; i < pool.length; i++) {
@@ -468,10 +467,9 @@
     // This read the popcount, and every height decision in the bot understated the
     // danger by exactly the number of holes -- worst when the board is full of
     // garbage, which is precisely when it matters. Seed 103 died with its top row
-    // at 11 while this reported 9: DEFEND opens at two rows of headroom and fired
-    // TWICE in 1,154 decisions, framesToDeath thought there was room that was not
-    // there, and the death filter agreed. It stood at the ceiling refusing to
-    // clear and was eaten.
+    // at 11 while this reported 9, so framesToDeath thought there was room that was
+    // not there, DEFEND fired twice in 1,154 decisions and the death filter agreed.
+    // It stood at the ceiling refusing to clear and was eaten.
     //
     // The highest set bit, then. 32 - clz32 gives the 1-based row of the top cell.
     function tallestBoard(st) {
@@ -575,10 +573,21 @@
     //
     // The thresholds are rows and are NOT calibrated -- halfway up the board is a
     // landmark, not a measurement, and it is written here rather than implied.
-    function depthFor(mode, tallest) {
-        if (mode === 'DEFEND') return 2;              // answer now
-        if (tallest <= H / 2) return 4;               // room to think
-        return 3;
+    // HOW DEEP THERE IS TIME TO SEARCH, off the engine rather than off the mode.
+    //
+    // A plan of d moves cannot be PLAYED in under d reaction cooldowns: the bot
+    // issues one swap, waits out `reaction`, then issues the next. So searching
+    // past `deadline / reaction` plies is searching for plans the board will not
+    // be there for.
+    //
+    // That replaces an arm keyed on the mode name reading DEFEND. The mode is
+    // downstream of this number now -- it is chosen from the timing -- so keying
+    // the depth on it would be circular, and the cooldown says the same thing
+    // without the constant.
+    function depthFor(deadline, reaction, tallest) {
+        var playable = Math.max(1, Math.floor(deadline / Math.max(1, reaction)));
+        var room = tallest <= H / 2 ? 4 : 3;          // material to think with
+        return Math.min(room, playable);
     }
 
     // THE WORKING BAND: A BOARD TOO LOW HAS NOTHING TO PLAY WITH.
@@ -782,23 +791,6 @@
         var pool = this.candidates(board, info);
         var base = pool.length ? pool[0].masks : bit.maskState(board.grid, board.blocks, W, board.height);
         var rev = this.revealPick(board);
-        var mode = this.mode(info, pool, !!rev);
-        this.decisions++;
-        this.counts.byMode[mode.name] = (this.counts.byMode[mode.name] || 0) + 1;
-
-        // THE MODE FILTERS, IT DOES NOT PICK. ATTACK and DEFEND drop hold:
-        // there is something to cash, or idling is what kills us.
-        // Whether survival is at stake, decided before the pool is filtered so the
-        // payless rule knows when to stand aside.
-        //
-        // DEFEND AND ONLY DEFEND. An empty clock is not danger -- it is the normal
-        // state of a board with room, true on almost every frame -- so exempting
-        // on that made the rule stand aside always and changed nothing at all
-        // (identical histograms over 990 decisions). DEFEND opens at two rows of
-        // headroom, which is the measured threshold for survival actually being at
-        // stake.
-        var survivalNeeded = mode.name === 'DEFEND';
-        var here = signature(base);
         // ONLY OPTIONS IT CAN ACTUALLY FINISH IN THE TIME IT HAS LEFT.
         //
         // Every candidate is already priced in frames -- travel.cost to the cell
@@ -813,6 +805,136 @@
         // has hundreds -- which is the point: it bites exactly in the spiral, and
         // nowhere else.
         var deadline = framesToDeath(info, tallestOf(pool), info.framesPerRow);
+        // DEFEND RANKS BY THE CLOCK, NOT BY THE WEIGHTS.
+        //
+        // The bot is always attacking -- the modes only change which shapes it
+        // prefers -- with ONE exception: when survival is on the line it does
+        // whatever survives, even against its own preferences. The weights score
+        // board quality, and board quality is not what matters one frame from
+        // death; the clock is. So among the moves that bank time, the MOST time
+        // wins, and that is the whole of DEFEND.
+        //
+        // If nothing banks anything the ordinary ranking stands, because then no
+        // move here is an escape and there is nothing for this to choose between.
+        // Borrowed from modes.js, whose FORCED does exactly this.
+        // SURVIVAL IS A PLAN THAT FINISHES IN TIME.
+        //
+        // Ranking single candidates could never express it: the move that saves
+        // the position is often the SETUP, which clears nothing and rates zero on
+        // any measure of what it does by itself. A plan is priced over both plies
+        // by bitoptions, so the setup is paid for by the cash it leads to.
+        //
+        // One call for the whole decision, not one per candidate -- the plans are
+        // a property of the position, not of the move being scored.
+        // AN EMPTY CLOCK IS ALWAYS LOSING GROUND, whatever the headroom.
+        //
+        // The plan arithmetic used to be gated behind DEFEND, so on a board with
+        // room it never ran and the weights decided instead.
+        // Measured on one duel: 103 decisions were taken with the clock at zero,
+        // 86 of them had a setup-then-cash plan worth 32 to 62 frames sitting on
+        // the board, and 81 were in BUILD where that plan was never consulted.
+        // That is the whole of the 455-to-873 frame gaps between payouts.
+        //
+        // While the clock runs the floor is held and there is time to build. While
+        // it is empty the floor is advancing every frame, so keeping it supplied
+        // comes first -- which is the constant supply this bot was asked for. The
+        // plan still has to gain time and finish in time, so on a board with
+        // nothing worth cashing this changes nothing.
+        // WHEN TO START THE NEXT PLAN, AND WHY IT IS NOT "SO IT LANDS AS THE CLOCK
+        // RUNS OUT".
+        //
+        // That refinement is the obvious one and it was tried. A plan costing
+        // `frames` looks like it should be STARTED when `clock <= frames`, so the
+        // cash lands exactly as the clock reaches zero -- no dead frames with the
+        // floor moving, and maximum value, since the gain is
+        // max(0, pays - max(0, clock - frames)) and a plan arriving at clock zero
+        // has nothing left to beat.
+        //
+        // It measures WORSE: 4,593 frames against 5,040, payouts 92 against 100,
+        // over the same six duels. Launching earlier wins continuity and loses
+        // building time, and the building time is worth more -- every frame spent
+        // walking toward a cash is a frame not spent assembling the bigger one.
+        //
+        // So the plan runs when the clock is EMPTY, which is the latest it can be
+        // started, and the frames the floor moves during execution are the price.
+        // Do not re-derive the earlier launch from the gain formula; the formula is
+        // right and the trade it misses is the cost of not building.
+        // ONE OPTION SWEEP FOR THE WHOLE DECISION. Survival and attack both read
+        // it and it is the expensive call in here -- two sweeps a decision would
+        // double the cost of every frame for an answer that cannot have changed.
+        var options = null;
+        // Spent once for the decision, so both halves search the same board at the
+        // same depth and cannot disagree about what is on offer.
+        var lookDepth = Math.min(this.maxDepth, depthFor(deadline, this.reaction, tallestOf(pool)));
+        var survival = null;
+        if (info.toppedOut || !(info.stopTime > 0)) {
+            // A PLAN IS EXECUTED, NOT RE-CHOSEN EVERY FRAME.
+            //
+            // Re-planning each decision and playing the first move of whatever
+            // came back means starting plans and never finishing them: the setup
+            // is played, the board changes, a different plan now looks best, and
+            // its setup is played instead. The cash at the end of either one never
+            // arrives. Measured as wild variance -- one seed reached 5,397 frames
+            // and another 1,370, with 204 planned moves and the gaps between
+            // payouts unchanged.
+            //
+            // So the remaining moves are held and played in order. The plan is
+            // dropped the moment it stops being true: its next move must still be
+            // legal, and the whole thing must still fit inside the frames left.
+            // That is the arithmetic of "how many moves will it take, and will the
+            // board still be there when they are done".
+            if (this._plan && this._plan.moves.length) {
+                var nx = this._plan.moves[0];
+                var stillLegal = false;
+                var ls = bit.legalSwapsOf(base);
+                for (i = 0; i < ls.length; i++) {
+                    if (ls[i][0] === nx[0] && ls[i][1] === nx[1]) { stillLegal = true; break; }
+                }
+                if (stillLegal && this._plan.frames <= deadline) {
+                    survival = { move: nx, gain: this._plan.gain, frames: this._plan.frames };
+                    this._plan.moves = this._plan.moves.slice(1);
+                    if (!this._plan.moves.length) this._plan = null;
+                } else {
+                    this._plan = null;
+                    this.counts.planDropped++;
+                }
+            }
+            if (!survival) {
+                options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base);
+                var plan = bestPlan(options, info.stopTime || 0, deadline, PanelEngine(),
+                                    !!info.toppedOut, info.framesPerRow, this.stack.frames);
+                if (plan && plan.rate > 0) {
+                    this._plan = { moves: plan.option.swaps.slice(1), frames: plan.frames, gain: plan.gain };
+                    if (!this._plan.moves.length) this._plan = null;
+                    survival = { move: plan.move, gain: plan.gain, frames: plan.frames };
+                }
+            }
+        } else if (this._plan) {
+            this._plan = null;                    // clock running again: the plan is stale
+        }
+
+        // WHAT THE MODE IS LATE AGAINST: the frames the cheapest surviving plan
+        // costs. null when there is no such plan, and then DEFEND has nothing to
+        // open on -- being late for an escape that does not exist is not danger,
+        // it is an ordinary board.
+        var escape = survival ? survival.frames : null;
+        var mode = this.mode(info, pool, !!rev, deadline, escape);
+        this.decisions++;
+        this.counts.byMode[mode.name] = (this.counts.byMode[mode.name] || 0) + 1;
+
+        // THE MODE FILTERS, IT DOES NOT PICK. ATTACK and DEFEND drop hold:
+        // there is something to cash, or idling is what kills us.
+        // Whether survival is at stake, decided before the pool is filtered so the
+        // payless rule knows when to stand aside.
+        //
+        // DEFEND AND ONLY DEFEND. An empty clock is not danger -- it is the normal
+        // state of a board with room, true on almost every frame -- so exempting
+        // on that made the rule stand aside always and changed nothing at all
+        // (identical histograms over 990 decisions). DEFEND opens when the floor
+        // arrives before the escape can be reached, which is survival being at
+        // stake and nothing else is.
+        var survivalNeeded = mode.name === 'DEFEND';
+        var here = signature(base);
         var allowed = [];
         for (var i = 0; i < pool.length; i++) {
             // HOLD IS NOT AN OPTION WHILE THE CLOCK IS BURNING.
@@ -884,113 +1006,6 @@
         this._seen.push(here);
         if (this._seen.length > 3) this._seen.shift();
 
-        // DEFEND RANKS BY THE CLOCK, NOT BY THE WEIGHTS.
-        //
-        // The bot is always attacking -- the modes only change which shapes it
-        // prefers -- with ONE exception: when survival is on the line it does
-        // whatever survives, even against its own preferences. The weights score
-        // board quality, and board quality is not what matters one frame from
-        // death; the clock is. So among the moves that bank time, the MOST time
-        // wins, and that is the whole of DEFEND.
-        //
-        // If nothing banks anything the ordinary ranking stands, because then no
-        // move here is an escape and there is nothing for this to choose between.
-        // Borrowed from modes.js, whose FORCED does exactly this.
-        // SURVIVAL IS A PLAN THAT FINISHES IN TIME.
-        //
-        // Ranking single candidates could never express it: the move that saves
-        // the position is often the SETUP, which clears nothing and rates zero on
-        // any measure of what it does by itself. A plan is priced over both plies
-        // by bitoptions, so the setup is paid for by the cash it leads to.
-        //
-        // One call for the whole decision, not one per candidate -- the plans are
-        // a property of the position, not of the move being scored.
-        // AN EMPTY CLOCK IS ALWAYS LOSING GROUND, whatever the headroom.
-        //
-        // The plan arithmetic was gated behind DEFEND, which opens at two rows --
-        // so on a board with room it never ran and the weights decided instead.
-        // Measured on one duel: 103 decisions were taken with the clock at zero,
-        // 86 of them had a setup-then-cash plan worth 32 to 62 frames sitting on
-        // the board, and 81 were in BUILD where that plan was never consulted.
-        // That is the whole of the 455-to-873 frame gaps between payouts.
-        //
-        // While the clock runs the floor is held and there is time to build. While
-        // it is empty the floor is advancing every frame, so keeping it supplied
-        // comes first -- which is the constant supply this bot was asked for. The
-        // plan still has to gain time and finish in time, so on a board with
-        // nothing worth cashing this changes nothing.
-        // WHEN TO START THE NEXT PLAN, AND WHY IT IS NOT "SO IT LANDS AS THE CLOCK
-        // RUNS OUT".
-        //
-        // That refinement is the obvious one and it was tried. A plan costing
-        // `frames` looks like it should be STARTED when `clock <= frames`, so the
-        // cash lands exactly as the clock reaches zero -- no dead frames with the
-        // floor moving, and maximum value, since the gain is
-        // max(0, pays - max(0, clock - frames)) and a plan arriving at clock zero
-        // has nothing left to beat.
-        //
-        // It measures WORSE: 4,593 frames against 5,040, payouts 92 against 100,
-        // over the same six duels. Launching earlier wins continuity and loses
-        // building time, and the building time is worth more -- every frame spent
-        // walking toward a cash is a frame not spent assembling the bigger one.
-        //
-        // So the plan runs when the clock is EMPTY, which is the latest it can be
-        // started, and the frames the floor moves during execution are the price.
-        // Do not re-derive the earlier launch from the gain formula; the formula is
-        // right and the trade it misses is the cost of not building.
-        // ONE OPTION SWEEP FOR THE WHOLE DECISION. Survival and attack both read
-        // it and it is the expensive call in here -- two sweeps a decision would
-        // double the cost of every frame for an answer that cannot have changed.
-        var options = null;
-        // Spent once for the decision, so both halves search the same board at the
-        // same depth and cannot disagree about what is on offer.
-        var lookDepth = Math.min(this.maxDepth, depthFor(mode.name, tallestOf(pool)));
-        var survival = null;
-        if (mode.name === 'DEFEND' || !(info.stopTime > 0)) {
-            // A PLAN IS EXECUTED, NOT RE-CHOSEN EVERY FRAME.
-            //
-            // Re-planning each decision and playing the first move of whatever
-            // came back means starting plans and never finishing them: the setup
-            // is played, the board changes, a different plan now looks best, and
-            // its setup is played instead. The cash at the end of either one never
-            // arrives. Measured as wild variance -- one seed reached 5,397 frames
-            // and another 1,370, with 204 planned moves and the gaps between
-            // payouts unchanged.
-            //
-            // So the remaining moves are held and played in order. The plan is
-            // dropped the moment it stops being true: its next move must still be
-            // legal, and the whole thing must still fit inside the frames left.
-            // That is the arithmetic of "how many moves will it take, and will the
-            // board still be there when they are done".
-            if (this._plan && this._plan.moves.length) {
-                var nx = this._plan.moves[0];
-                var stillLegal = false;
-                var ls = bit.legalSwapsOf(base);
-                for (i = 0; i < ls.length; i++) {
-                    if (ls[i][0] === nx[0] && ls[i][1] === nx[1]) { stillLegal = true; break; }
-                }
-                if (stillLegal && this._plan.frames <= deadline) {
-                    survival = { move: nx, gain: this._plan.gain };
-                    this._plan.moves = this._plan.moves.slice(1);
-                    if (!this._plan.moves.length) this._plan = null;
-                } else {
-                    this._plan = null;
-                    this.counts.planDropped++;
-                }
-            }
-            if (!survival) {
-                options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base);
-                var plan = bestPlan(options, info.stopTime || 0, deadline, PanelEngine(),
-                                    !!info.toppedOut, info.framesPerRow, this.stack.frames);
-                if (plan && plan.rate > 0) {
-                    this._plan = { moves: plan.option.swaps.slice(1), frames: plan.frames, gain: plan.gain };
-                    if (!this._plan.moves.length) this._plan = null;
-                    survival = { move: plan.move, gain: plan.gain };
-                }
-            }
-        } else if (this._plan) {
-            this._plan = null;                    // clock running again: the plan is stale
-        }
 
         // THE BEAM: pre-rank cheaply, then pay for the top few only.
         //
