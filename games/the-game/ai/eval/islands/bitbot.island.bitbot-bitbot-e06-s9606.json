@@ -1,57 +1,57 @@
 {
   "weights": {
-    "bumpiness": 5,
-    "spread": -35,
-    "tallest": -39,
-    "chain2": -41,
-    "chain3": -8,
+    "bumpiness": 27,
+    "spread": -79,
+    "tallest": -36,
+    "chain2": -100,
+    "chain3": -12,
     "chain4": -100,
-    "chain5plus": -4,
-    "combo4": 22,
-    "combo5": -32,
-    "combo6": -15,
-    "combo7": 13,
-    "cheapestFrames": 9,
-    "moveFrames": 32,
-    "nextBestChain": -18,
-    "nextBestCombo": 7,
-    "nextWays": -6,
-    "breaksNow": 19,
-    "breakWays": -40,
-    "stopEarned": 42,
-    "stopReachable": 74
+    "chain5plus": -26,
+    "combo4": -21,
+    "combo5": -73,
+    "combo6": 40,
+    "combo7": 21,
+    "cheapestFrames": 16,
+    "moveFrames": 56,
+    "nextBestChain": -75,
+    "nextBestCombo": 10,
+    "nextWays": -28,
+    "breaksNow": 22,
+    "breakWays": -95,
+    "stopEarned": 56,
+    "stopReachable": 100
   },
   "history": [
     {
       "gen": 0,
-      "champion": 0,
-      "wins": 5,
-      "sent": 705,
-      "chains": 11,
-      "ceilings": 0
+      "champion": 3,
+      "wins": 6,
+      "sent": 1021,
+      "chains": 13,
+      "ceilings": 6
     },
     {
       "gen": 1,
       "champion": 2,
       "wins": 5,
-      "sent": 869,
-      "chains": 9,
-      "ceilings": 2
+      "sent": 779,
+      "chains": 19,
+      "ceilings": 0
     },
     {
       "gen": 2,
       "champion": 0,
       "wins": 4,
-      "sent": 1109,
-      "chains": 15,
-      "ceilings": 2
+      "sent": 827,
+      "chains": 17,
+      "ceilings": 4
     }
   ],
   "population": 4,
   "generations": 3,
   "generationsPlanned": 3,
-  "controlWins": 2,
-  "seed": 9606,
+  "generationsTotal": 6,
   "ceiling": 30000,
-  "generationsTotal": 3
+  "controlWins": 1,
+  "seed": 9606
 }
