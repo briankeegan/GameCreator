@@ -763,7 +763,11 @@
   //      the move and then nothing until the board is still, so its "died"
   //      was "dies if the bot never acts again"; it vetoed a hold that was
   //      the next step of a proven line (seed 700 frame 1711, dead at 1727).
-  var RULES = 46;
+  //   47. PAINT TRUSTS THE ENGINE'S STATES. A panel the engine holds normal
+  //      over a slab that is about to fall was painted hovering; the engine
+  //      drops it with the slab. Seed 700 frame 6220: the line's shake was
+  //      two frames long and it died in its first walk (6247).
+  var RULES = 47;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

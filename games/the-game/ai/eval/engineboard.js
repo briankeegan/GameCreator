@@ -282,6 +282,12 @@
                     // The engine opened this hole itself and has flagged it;
                     // it drops the panel above on its own next frame.
                     else if (mb && mb.stateChanged) { /* left as the engine holds it */ }
+                    // With the engine's own states supplied, no record means
+                    // the engine holds it normal: it falls when what is under
+                    // it falls, with it, not after a hover of its own (seed
+                    // 700 frame 6220: a row between two slabs, hovered here,
+                    // fell at once in the game).
+                    else if (motion) { /* normal, as the engine holds it */ }
                     else { hp.state = 'hovering'; hp.timer = stack.frames.HOVER; }
                 }
             }
