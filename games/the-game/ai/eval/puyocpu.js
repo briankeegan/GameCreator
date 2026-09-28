@@ -177,7 +177,11 @@
     // move there is.
     this.standingMovesDropped = 0;
     // Refusing a move that no line of play survives once the stack rises.
-    this.deepSurvival = opts.deepSurvival !== false;
+    // GC_SURVIVAL_SEARCH=0 turns the survival search off for tests of the
+    // plumbing around the bot (duels, training legs, checkpoints), which pay
+    // for it on every decision and test nothing it does.
+    var envOff = typeof process !== 'undefined' && process.env && process.env.GC_SURVIVAL_SEARCH === '0';
+    this.deepSurvival = opts.deepSurvival !== false && !envOff;
     // Opt-in: at every decision on a followed line, check the line's
     // prediction for this frame against the live board (see _checkModel).
     this.checkModel = !!opts.checkModel;

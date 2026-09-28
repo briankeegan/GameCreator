@@ -106,56 +106,7 @@ check('the matcher finds every chip on a board laid out from its own template', 
                            ' chips are invisible to the reader:\n  ' + missed.slice(0, 8).join('\n  '));
 });
 
-// ---- 3. a REAL resolve on a REAL engine, on a sample ----
-// The whole library through a live Stack is what verify_chips_engine.js is
-// for and it takes minutes. This asks a different question — that a chip the
-// reader can SEE is a chip the engine FIRES — so a spread sample is enough,
-// and it is deterministic (every Nth chip) rather than random, so a failure
-// is reproducible by rerunning rather than by guessing a seed.
-check('a chip the reader can see is a chip the real engine fires', function () {
-    var every = Math.max(1, Math.floor(chips.length / 120));
-    var stack = engineBoard.scratch(10);
-    stack.speed = 0;
-    var dead = [], tried = 0;
-    for (var i = 0; i < chips.length; i += every) {
-        var chip = chips[i];
-        var grid = lay(chip);
-        if (!grid) continue;
-        var tmpl = cm.compile(chip);
-        var board = new LogicalBoard(W, H, 9, grid, {});
-        var seen = false;
-        for (var R = 1; R <= H - tmpl.h && !seen; R++)
-            for (var C = 1; C <= W - tmpl.w && !seen; C++)
-                if (cm.matchAt(board.grid, tmpl, R, C)) seen = true;
-        if (!seen) continue;
-        tried++;
-        // The chip's own swaps, on a live Stack, run to STILLNESS — not for a
-        // fixed number of frames. Everything has to land before the answer
-        // means anything.
-        engineBoard.paint(stack, grid, H, W);
-        engineBoard.settle(stack, 60);
-        var cleared = 0;
-        for (var s = 0; s < chip.swaps.length; s++) {
-            var sr = chip.swaps[s][0] + (1 - Math.min.apply(null, chip.tmpl.map(function (c) { return c[0]; })));
-            var sc = chip.swaps[s][1] + (1 - Math.min.apply(null, chip.tmpl.map(function (c) { return c[1]; })));
-            if (!stack.canSwap(sr, sc)) break;
-            stack.curRow = sr; stack.curCol = sc;
-            stack.doSwap(sr, sc);
-            cleared += engineBoard.settle(stack, 900).clearedPanels;
-        }
-        if (!cleared) dead.push(chip.kind);
-    }
-    assert.ok(tried > 50, 'only ' + tried + ' chips sampled — the sample proves nothing');
-    // Laid out bare, with no support under it, a chip is not obliged to fire
-    // exactly what it claims — that is what the verifier's staging is for.
-    // It IS obliged to do something: a shape the reader sees and the engine
-    // does nothing with is not a chain shape.
-    var rate = 1 - dead.length / tried;
-    assert.ok(rate >= 0.5, Math.round(100 * (1 - rate)) + '% of sampled chips cleared NOTHING on a live engine (' +
-              dead.length + ' of ' + tried + '): ' + dead.slice(0, 6).join(', '));
-    console.log('       ' + tried + ' sampled on a live Stack, ' + Math.round(100 * rate) + '% cleared panels');
-});
 
 console.log('');
 if (failures.length) { console.log(failures.length + ' failed.'); process.exit(1); }
-console.log('The chip library is readable, and what the reader sees, the engine fires.');
+console.log('The chip library is readable. That the engine fires every chip is checked by verify_chips_engine.js.');
