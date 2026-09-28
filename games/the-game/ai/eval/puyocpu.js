@@ -1349,12 +1349,14 @@
   // easy board the first long wait proves nearly every move at once.
   PuyoCpu.prototype.SURVIVE_SEARCH_BEAM = 200;
   PuyoCpu.prototype.SURVIVE_QUOTA = 4;
+  PuyoCpu.prototype.SURVIVE_SEEDS = 30;
   PuyoCpu.prototype.SURVIVE_SEARCH_BUDGET = 60000;
   PuyoCpu.prototype.SURVIVE_SEARCH_BUDGET_CHEAP = 4000;
   PuyoCpu.prototype._survivalSearch = function (cands) {
-    var verdict = new Array(cands.length), level = [], self = this, i, j, n, c;
+    var verdict = new Array(cands.length), level = [], self = this, i, j, n, c, proofs = {};
     var root = { b: this._board.clone(), carry: null, pos: [this.stack.curRow, this.stack.curCol], t: 0 };
     var open = 0;
+    this._searchProofs = { cands: cands, proofs: proofs };
     for (i = 0; i < cands.length; i++) {
       var cd = cands[i];
       if (cd.resolved && (cd.resolved.died || cd.resolved.diedInWalk)) { verdict[i] = 'dies'; continue; }
@@ -1362,9 +1364,50 @@
         ? { b: this._settledOf(cd).clone(), carry: cd.resolved.carry || null, pos: root.pos, t: cd.resolved.elapsed || 0 }
         : this._lineStep(root, cd.move || null, false);
       if (!c) { verdict[i] = 'dies'; continue; }
-      if (c.t >= this.SURVIVE_FRAMES) { verdict[i] = 'proven'; if (this._proofs) { c.m = cd.move || null; this._proofs[i] = c; } continue; }
-      c.tag = i; c.m = cd.move || null; c.first = true; level.push(c); open++;
+      c.tag = i; c.m = cd.move || null;
+      if (c.t >= this.SURVIVE_FRAMES) { verdict[i] = 'proven'; proofs[i] = c; if (this._proofs) this._proofs[i] = c; continue; }
+      c.first = true; level.push(c); open++;
     }
+    // THE LINE BEING FOLLOWED IS STILL A PROOF. The bot played the first move
+    // of a line proven last decision, at the line's own pace, so the rest of
+    // that line is alive on this board to the old horizon; a wait from its
+    // end covers the frames since. Replayed first, it cannot be pruned.
+    var fl = this._following;
+    this._following = null;
+    if (fl && fl.at === this.stack.clock && fl.steps.length) {
+      var want = fl.steps[0], fi = -1;
+      for (i = 0; i < cands.length; i++) {
+        var ck = cands[i];
+        if (want && want !== 'long' ? (ck.kind === 'swap' && ck.move && ck.move[0] === want[0] && ck.move[1] === want[1])
+                                    : ck.kind === 'hold') { fi = i; break; }
+      }
+      if (fi >= 0 && verdict[fi] !== 'proven') {
+        this.followTried = (this.followTried || 0) + 1;
+        n = root;
+        for (j = 0; j < fl.steps.length && n && n.t < this.SURVIVE_FRAMES; j++) {
+          var sm = fl.steps[j];
+          c = sm === 'long' ? this._lineStep(n, null, true) : this._lineStep(n, sm, false);
+          if (c) { c.prev = j ? n : null; c.m = sm === 'long' && !j ? null : sm; c.tag = fi; }
+          if (!c) break;
+          n = c;
+        }
+        if (n && j === fl.steps.length && n.t < this.SURVIVE_FRAMES) {
+          c = this._lineStep(n, null, true);
+          if (c) { c.prev = n; c.m = 'long'; c.tag = fi; }
+          if (c) n = c;
+        }
+        if (n && n.t >= this.SURVIVE_FRAMES) {
+          verdict[fi] = 'proven'; proofs[fi] = n; if (this._proofs) this._proofs[fi] = n;
+          this.followHeld = (this.followHeld || 0) + 1;
+        } else if (n && n !== root) {
+          // The line reached the old horizon and no further: the search goes
+          // on from where it ends, with a few moves to find, not a whole line.
+          n.tag = fi; n.seed = true;
+          level.unshift(n);
+        }
+      }
+    }
+    level = level.filter(function (x) { return !verdict[x.tag]; });
     // The one-ply bot exists to be cheap: the same search, a smaller budget.
     var budget = (this.depth || 1) > 1 ? this.SURVIVE_SEARCH_BUDGET : this.SURVIVE_SEARCH_BUDGET_CHEAP;
     function garb(b) { var g = 0; for (var r = 1; r < b.grid.length; r++) if (b.grid[r]) for (var q = 1; q <= b.width; q++) if (b.grid[r][q] === -2) g++; return g; }
@@ -1382,8 +1425,8 @@
           budget--;
           c = moves[j] === 'long' ? this._lineStep(n, null, true) : this._lineStep(n, moves[j], false);
           if (!c) continue;
-          c.tag = n.tag; c.prev = n; c.m = moves[j];
-          if (c.t >= this.SURVIVE_FRAMES) { verdict[n.tag] = 'proven'; if (this._proofs) this._proofs[n.tag] = c; break; }
+          c.tag = n.tag; c.prev = n; c.m = moves[j]; c.seed = n.seed;
+          if (c.t >= this.SURVIVE_FRAMES) { verdict[n.tag] = 'proven'; proofs[n.tag] = c; if (this._proofs) this._proofs[n.tag] = c; break; }
           var h = n.tag + '|' + JSON.stringify(c.b.grid) + '|' + this._heldFor(c.carry) + '|' + c.pos;
           if (seen[h]) continue;
           seen[h] = 1;
@@ -1392,13 +1435,18 @@
       }
       next = next.filter(function (x) { return !verdict[x.tag]; });
       next.sort(better);
-      var keep = [], per = {};
+      var keep = [], per = {}, seeds = 0;
+      // The followed line's continuations first: they are frames from the
+      // horizon, where the rest of the beam starts from the root.
+      for (i = 0; i < next.length && seeds < this.SURVIVE_SEEDS; i++) {
+        if (next[i].seed) { keep.push(next[i]); next[i].kept = true; seeds++; }
+      }
       for (i = 0; i < next.length; i++) {           // the quota first
+        if (next[i].kept) continue;
         if ((per[next[i].tag] || 0) < this.SURVIVE_QUOTA) { per[next[i].tag] = (per[next[i].tag] || 0) + 1; keep.push(next[i]); next[i].kept = true; }
       }
       for (i = 0; i < next.length && keep.length < this.SURVIVE_SEARCH_BEAM; i++) if (!next[i].kept) keep.push(next[i]);
-      keep.sort(better);
-      level = keep;
+      level = keep.slice(0, seeds).concat(keep.slice(seeds).sort(better));
     }
     // A move with lines still open when the budget ran out is not proven dead.
     var alive = {};
@@ -1454,10 +1502,43 @@
       this.doomedDecisions++;
       return cands;
     }
-    live = this._deepestLine(live);
+    if (proven.length > 1) live = this._mostRoom(live, cands);
+    else live = this._deepestLine(live);
     if (live.length === cands.length) return cands;
     this.doomedMovesDropped += cands.length - live.length;
     return live;
+  };
+
+  // SAFE MOVES ARE NOT EQUALLY SAFE. Each proven line is carried on past the
+  // horizon by waiting, through the engine, and the moves whose lines live
+  // longest are the ones offered; the weights choose among those. Chosen by
+  // score alone, the bot walks to the edge one safe move at a time: seed 700
+  // side 1, 19 proven moves, then 10, 6, 1, 2, and none.
+  PuyoCpu.prototype.SLACK_FRAMES = 480;
+  PuyoCpu.prototype._slack = function (node) {
+    var t = node.b.clone(), saved = this._carry, savedFrom = this._walkFrom;
+    t.incoming = (node.carry && node.carry.nextRow) ||
+                 (node.b.incoming === false ? false : (node.b.incoming || this._incoming || null));
+    this._carry = node.carry || null;
+    this._walkFrom = node.pos || null;
+    var r = this._resolveCandidate(t, null, 0, false, this.SLACK_FRAMES, true);
+    this._carry = saved;
+    this._walkFrom = savedFrom;
+    if (!r) return 0;
+    return (r.died || r.diedInWalk) ? (r.diedAt || 0) : this.SLACK_FRAMES;
+  };
+  PuyoCpu.prototype._mostRoom = function (live, cands) {
+    var sp = this._searchProofs, best = -1, room = [], i, k, pf;
+    if (!sp) return live;
+    for (i = 0; i < live.length; i++) {
+      k = sp.cands.indexOf(live[i]);
+      pf = k >= 0 ? sp.proofs[k] : null;
+      room.push(pf ? this._slack(pf) : 0);
+      if (room[i] > best) best = room[i];
+    }
+    var keep = [];
+    for (i = 0; i < live.length; i++) if (room[i] === best) keep.push(live[i]);
+    return keep.length ? keep : live;
   };
 
   // A LINE EXISTING IS NOT A LINE BEING FOLLOWED.
@@ -2401,6 +2482,19 @@
   // it has to be able to see. Reading it off the mode would answer "something
   // was offered", which is a different question and hides the break.
   PuyoCpu.prototype._took = function (cand) {
+    // The proven line behind the move played, for the next decision to
+    // continue (see _survivalSearch).
+    var sp = this._searchProofs;
+    this._searchProofs = null;
+    this._following = null;
+    if (sp && cand && this.stack) {
+      var k = sp.cands.indexOf(cand), pf = k >= 0 ? sp.proofs[k] : null, line = [];
+      for (var q = pf; q; q = q.prev) line.unshift(q);
+      if (line.length > 1) {
+        this._following = { at: this.stack.clock + line[0].t,
+                            steps: line.slice(1).map(function (x) { return x.m; }) };
+      }
+    }
     // The square to refuse next time: only a swap that changed nothing.
     this._lastSquare = (cand && cand.move && cand.resolved &&
                         !cand.resolved.clearedPanels) ? cand.move : null;

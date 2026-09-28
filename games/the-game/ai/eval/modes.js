@@ -737,7 +737,13 @@
   //      was a formula that missed rows rising after the swap. The resolve now
   //      walks the cursor with the bot's own driveWalk through the engine and
   //      a line reads the cursor back. Seed 702 frame 3690 died one frame late.
-  var RULES = 41;
+  //   42. THE LINE BEING FOLLOWED IS KEPT, AND SAFE MOVES ARE RANKED BY ROOM.
+  //      Each decision first replays the rest of the proven line the bot is
+  //      playing, and when it ends at the old horizon the search continues
+  //      from its end; the beam had pruned lines a wide search found (seed
+  //      703 frame 1881: 0 proven, 6 of 7 wide). Among proven moves, those
+  //      whose line lives longest past the horizon are offered.
+  var RULES = 42;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
