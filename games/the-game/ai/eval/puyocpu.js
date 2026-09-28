@@ -492,6 +492,10 @@
     var out = [], prev = 0, i, g, at;
     for (i = 0; i < opp.outgoing.length; i++) {
       g = opp.outgoing[i];
+      // A chain still running sends when it ends, taller than it is now, and
+      // everything behind it waits for it: when it lands is not known, so no
+      // line may count on it. Once finished it has a time and is read then.
+      if (g.finalized === false) break;
       at = (g.frameEarned || 0) + flight - (opp.clock || 0);
       if (at < prev) at = prev;
       if (at < 0) at = 0;

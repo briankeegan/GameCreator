@@ -748,7 +748,12 @@
   //      alone set a board 100 frames in level with one 30 frames in, and
   //      pruned the lines that dig out. Seed 702 frame 4209: 1 move proven,
   //      2 with this order, 7 with a beam five times wider.
-  var RULES = 43;
+  //   44. A LINE DOES NOT COUNT ON GARBAGE WHOSE LANDING IS NOT KNOWN. An
+  //      opponent's chain still running sends when it ends, and what queues
+  //      behind it waits: seed 700 frame 16814 was proven on a slab landing
+  //      at +49 whose shake held the floor; it had not landed by +53, a row
+  //      rose, and the bot died.
+  var RULES = 44;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
