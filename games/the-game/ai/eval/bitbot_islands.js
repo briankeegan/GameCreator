@@ -42,10 +42,10 @@ var SHARDS = Number(process.env.GC_SHARDS || 4);
 // versus.js warns is not what that tie-break was calibrated for -- the count is
 // reported every generation so a run where most pairings hit it is visible rather
 // than silently meaning something else.
-// NOTHING DIES ANY MORE, so a long ceiling buys nothing but wall clock. The
-// fitness at the ceiling is garbage sent, and 8,000 frames is plenty to measure
-// that -- 21,600 was sized when duels ended on a death at about 1,100.
-var CEILING = Number(process.env.GC_VERSUS_CEILING || 8000);
+// NOTHING DIES ANY MORE, so the fitness at the ceiling is garbage sent and the
+// ceiling is how long a game the vectors are scored over. 30,000 frames is 8m20s
+// of play at 60fps and about 60 seconds of wall clock a duel.
+var CEILING = Number(process.env.GC_VERSUS_CEILING || 30000);
 var OPTS = { bot: 'bitbot', level: 10, reaction: 12, allowRaise: true, ceiling: CEILING };
 
 var rngState = (Number(process.env.GC_GA_SEED || 20250928) >>> 0) || 1;

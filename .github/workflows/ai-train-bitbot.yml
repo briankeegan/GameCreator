@@ -31,17 +31,17 @@ on:
         description: 'Label for this experiment, used in the champion filename and in the concurrency key'
         default: ''
       population:
-        description: 'Weight vectors in the population. Island 0 is always BitBot.STARTER, the control'
-        default: '6'
+        description: 'Weight vectors in the population. Island 0 is always BitBot.STARTER, the control. Duels per generation are C(population,2) x seeds, so this is the quadratic term in the run length'
+        default: '4'
       generations:
         description: 'Generations. Each one duels every pairing, keeps the top half and refills with their mutated children'
-        default: '9'
+        default: '3'
       seeds:
         description: 'Seeds per pairing. ONE IS THE NOISE FLOOR -- a champion decided by a handful of duels is decided by the draw, which is what the first run measured'
         default: '2'
       ceiling:
-        description: 'Frames before a duel is called. Sized for the fitness, not for the game: nothing dies any more, so what is being measured at the ceiling is garbage sent, and 8000 frames is plenty of that. 21600 was sized when duels ended on a death at about 1100'
-        default: '8000'
+        description: 'Frames before a duel is called. Sized for the fitness, not for the game: nothing dies any more, so what is measured at the ceiling is garbage sent. 30000 frames is 8m20s of play at 60fps and about 60s a duel'
+        default: '30000'
 
 # THE SEED IS IN THE KEY, NOT JUST THE VARIANT.
 #
@@ -108,7 +108,7 @@ jobs:
         env:
           GC_GA_SEED: ${{ github.event.inputs.ga_seed || '11' }}
           GC_TAG: bitbot-${{ github.event.inputs.variant || 'default' }}-s${{ github.event.inputs.ga_seed || '11' }}
-          GC_VERSUS_CEILING: ${{ github.event.inputs.ceiling || '8000' }}
+          GC_VERSUS_CEILING: ${{ github.event.inputs.ceiling || '30000' }}
           # One shard per core on the runner, which is four.
           GC_SHARDS: '4'
           # Push the champion as each generation earns it, so a run that is
