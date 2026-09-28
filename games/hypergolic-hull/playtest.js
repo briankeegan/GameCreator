@@ -640,8 +640,29 @@ function playSector(state, report) {
   // that or it is scenery, and the win rate cannot tell the two apart. The
   // log is the ship's own account, so read it: the engine keeps the last
   // twenty lines and this loop runs every round, so nothing is missed.
+  // THE WRECK LOOP, COUNTED OFF EVENTS RATHER THAN OFF PROSE. The tally
+  // below reads the log because that is the ship's own account of a shove;
+  // these are state.events, which is the data channel, and the difference
+  // matters the moment somebody rewords a log line.
+  //
+  // Read WHOLE, once a round, with no running index: state.events is the
+  // cues from the LAST ACTION only and every apply* call clears it, so a
+  // cumulative offset goes stale immediately and silently undercounts. It
+  // did — 541 wrecks left against 4 cut open, while the turn mix said the
+  // pilot was cutting on 12% of its turns. Two numbers that cannot both be
+  // true is the only reason it got noticed.
+  const WRECK_EVENTS = {
+    wreck: "wrecks left",
+    wreckCleared: "wrecks cut open",
+    wreckTowed: "wrecks towed away",
+    collectorEscaped: "collectors escaped with a load",
+  };
   let logSeen = 0;
   for (let round = 0; round < MAX_ROUNDS; round++) {
+    for (const ev of state.events || []) {
+      const label = WRECK_EVENTS[ev.type];
+      if (label) report.wreckLoop[label] = (report.wreckLoop[label] || 0) + 1;
+    }
     for (const line of state.log.slice(logSeen)) {
       const who = /^([A-Z]+)/.exec(line);
       if (!who) continue;
@@ -693,13 +714,34 @@ function playSector(state, report) {
           : raw.enemy.hp <= raw.weapon.damage || // it dies this round: always take it
             threatened || // already in its zone — trading beats standing there
             state.hull > 1; // can afford the reply; at one Hull, don't start anything
-    const shot = PILOT === "reckless" ? null : worthIt ? raw : null;
+    let shot = PILOT === "reckless" ? null : worthIt ? raw : null;
     if (process.env.VERBOSE === "2") {
       console.log(
         `    r${round} pos ${state.playerPos.q},${state.playerPos.r} hull ${state.hull} e ${state.energy}` +
           ` | ${enemies.map((e) => `${e.type}@${Engine.hexDistance(state.playerPos, e)}`).join(" ")}` +
           ` | ${shot ? "FIRE " + shot.weapon.id : "-"}`
       );
+    }
+    // The Collector is a CLOCK, and a pilot that ignores it measures a game
+    // nobody is playing: a laden thief two hexes from the gate is worth more
+    // than any other target on the board, because everything else will still
+    // be there next round and that will not.
+    {
+      const laden = Engine.livingEnemies(state).filter((e) => e.carrying);
+      if (laden.length && shot && shot.enemy && !laden.includes(shot.enemy)) {
+        const grab = laden
+          .map((thief) => {
+            for (const weapon of armedWeapons(state).filter((w) => w.energyCost <= state.energy)) {
+              for (let facing = 0; facing < 6; facing++) {
+                const reach = Engine.weaponHexes(state.playerPos, facing, weapon, state);
+                if (reach.some((h) => Engine.posEq(h, thief))) return { enemy: thief, weapon, facing, score: 999 };
+              }
+            }
+            return null;
+          })
+          .find(Boolean);
+        if (grab) shot = grab;
+      }
     }
     if (shot) {
       Engine.setFacing(state, shot.facing);
@@ -1018,6 +1060,7 @@ function main() {
     armed: {},
     turnKind: {},
     hostileMoves: {},
+    wreckLoop: {},
     shape: {},
     depthReached: {},
     hullAtDepth: {},
@@ -1081,6 +1124,7 @@ console.log("gates taken:", report.gates);
     console.log("what a turn is spent on:", Object.entries(t).map(([k,v])=>`${k} ${(v/tot*100).toFixed(0)}%`).join("  "), `(${tot} turns)`);
   }
   console.log("what the hostiles did:", report.hostileMoves);
+  console.log("the wreck loop:", report.wreckLoop);
   if (process.env.ECON) {
     const byDepth = (rows, key) => {
       const m = {};
