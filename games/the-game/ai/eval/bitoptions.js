@@ -59,10 +59,10 @@
     //
     // board is a LogicalBoard; cursor is [row, col]. `depth` 1 lists only what
     // fires this move, 2 also lists what a setup opens up.
-    function options(board, W, H, cursor, depth) {
+    function options(board, W, H, cursor, depth, st) {
         var now = [], next = [], i, j;
-        var st = bit.maskState(board.grid, board.blocks, W, H);
-        var swaps = board.legalSwaps();
+        if (!st) st = bit.maskState(board.grid, board.blocks, W, H);
+        var swaps = board ? board.legalSwaps() : bit.legalSwapsOf(st);
         var refused = 0, unknown = 0;
 
         for (i = 0; i < swaps.length; i++) {
@@ -85,15 +85,20 @@
         if ((depth || 1) >= 2) {
             for (i = 0; i < swaps.length; i++) {
                 if (!bit.swapMasks(st, swaps[i][0], swaps[i][1])) continue;
-                var first = bit.resolveFromMasks(st);
+                var first = bit.resolveFromMasks(st, true);
                 bit.swapMasks(st, swaps[i][0], swaps[i][1]);
                 if (first.scope !== 'ok' || first.total !== 0) continue;   // a setup clears nothing
 
-                var mid = board.clone();
-                mid.swap(swaps[i][0], swaps[i][1]);
-                mid._applyGravity();
-                var st2 = bit.maskState(mid.grid, mid.blocks, W, H);
-                var then = mid.legalSwaps();
+                // THE SETUP'S OWN RESULT, not a second simulation of it. The
+                // resolver already settled this position to work out that it
+                // clears nothing, and it now hands that state back -- so the mid
+                // board comes from the same arithmetic as everything else rather
+                // than from LogicalBoard's gravity, which is a different
+                // implementation that only has to disagree once to make the
+                // second ply a claim about a board the game will not produce.
+                var st2 = first.settled;
+                if (!st2) continue;
+                var then = bit.legalSwapsOf(st2);
                 var toSetup = travel.cost(cursor[0], cursor[1], swaps[i][0], swaps[i][1]);
                 for (j = 0; j < then.length; j++) {
                     if (!bit.swapMasks(st2, then[j][0], then[j][1])) continue;

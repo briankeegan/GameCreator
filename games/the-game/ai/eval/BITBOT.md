@@ -336,6 +336,160 @@ What masks do NOT carry is slab identity: `blocks` groups garbage cells into
 slabs, and bridging depends on it, so materialising a board from masks alone
 would guess it. That is the part to solve, not to paper over.
 
+## Why it would not clear, and what it actually was
+
+It found the clears. It priced them wrong. On seed 701 it found a **6-chain**,
+scored it **+1**, and scored **raising +54**:
+
+```
+BEST CLEAR: a 6-chain, 18 panels      TOTAL  +1
+   stopEarned +34   bumpiness -15  spread -9  tallest -27
+IT PICKED: raise                      TOTAL +54
+   nextBestChain +30  chain5plus +15  combo6 +8  nextWays +10
+```
+
+Paid +45 for HAVING a big chain against +34 for playing one, and playing it
+deletes the material paying the +45.
+
+**IT IS THE BALANCE, NOT THE STRUCTURE.** Two wrong explanations were tried and
+both are recorded so they are not retried:
+
+1. *"The features should measure a CHANGE in potential, not a LEVEL."* Wrong, and
+   it would change no decision. Within one decision the two differ by the
+   potential of the board every candidate started from — the same constant for
+   all of them — so they rank identically. Measured over 40 candidates: exactly
+   one distinct difference per feature.
+2. *"Potential should not be weighted at all."* Wrong the other way. Zeroing those
+   twelve weights took it from 2,380 frames and 57 matches to **906 and 7**. The
+   potential features are load-bearing.
+
+What fixed it was halving one group of numbers. Seeds 701-704, 4,000-frame cap:
+
+| | frames | matches |
+|---|---|---|
+| as first guessed | 2,380 | 57 (one seed cleared nothing at all) |
+| **potential x0.5** | **4,000 — died on no seed** | **133** |
+| potential x0.25 | 3,627 | 104 |
+| stopEarned x5 | 4,000 — died on no seed | 119 |
+
+### That table is SOLO, and solo flatters it
+
+No opponent, no garbage arriving, so `DEFEND` is entered 0 times and `BUILD`
+900 against `ATTACK` 34. One-on-one against an instance of itself with garbage
+crossing, the old balance against the new, 8 seeds:
+
+| | |
+|---|---|
+| duels | NEW 5W - old 3W |
+| garbage sent | 184 vs 201 — the new one sends LESS |
+| every duel | ended in a death, average 1,393 frames |
+
+Eight duels is inside the noise floor, so 5-3 is not a result. The honest reading
+is that "never dies" was an artifact of having nothing to fight, and under
+pressure it still dies every time. A real verdict needs training.
+
+## DEFEND ranks by the clock, not by the weights
+
+The bot is always attacking; the modes only change which shapes it prefers. The
+one exception is survival: the weights score board QUALITY, which is not what
+matters one frame from death. So in DEFEND the pool narrows to moves that bank
+stop time and the MOST time wins, whatever the weights would rather do. If
+nothing banks anything the ordinary ranking stands, because then no move is an
+escape. `modes.js` FORCED does exactly this.
+
+## Checks have to provoke their own defect
+
+The loop and death checks were written against whatever `STARTER` was, and then
+`STARTER` improved: the bot stopped looping, stopped nearing death, and **the
+break tests passed with the filters switched off**. A check that only fires while
+the default weights are bad retires itself the moment the bot gets better. The
+defect vector is pinned in the test as `LOOPER` now, and the checks sweep that.
+
+## Every frame is accounted for
+
+The bot could not say what it did with a frame, so every question about its
+behaviour was answered by inference — and three separate fixes landed in code
+paths that never ran. `spend` now has one counter per exit from `update()` and
+they must sum to the frames played; `frozen` is the same buckets restricted to
+frames with the clock running. A frame in no bucket is a frame nobody can account
+for.
+
+It immediately contradicted two of my own readings. Frozen frames go mostly to
+WALKING, not idling (287 of 423 on seed 101), and the `hold 195` on seed 103
+survives the hold-drop because during a freeze a cascade is usually still
+running — the board is changing without the bot touching it, which is not waste.
+
+## DEFEND was opening one decision before death
+
+Measured on seed 101, the last six decisions:
+
+```
+tallest 11   room 112 frames   stop 0   BUILD
+tallest 11   room 112 frames   stop 0   BUILD
+tallest 11   room 112 frames   stop 0   BUILD
+tallest 11   room 112 frames   stop 0   BUILD
+tallest 11   room 112 frames   stop 0   BUILD
+tallest 12   room   0 frames   stop 0   DEFEND   <- too late
+```
+
+`framesPerRow` is **112**. So one row from death the bot has 112 frames of room,
+and a trigger comparing that against the ~30 frames an escape costs to walk to
+reads "plenty of time". FRAMES WERE THE WRONG UNIT. Rows are the right one,
+because the danger is not the walk — it is having no workspace, and a chain needs
+several rows to assemble in. `ESCAPE_RESERVE_ROWS = 2`, which is `modes.js`'s own
+measured number rather than one invented here.
+
+With that, DEFEND actually opens and the survival objective actually runs:
+**1,758 to 2,339 average frames** over six one-on-one duels, seed 106 reaching
+4,007.
+
+## Survival is one number
+
+Every fix before this was a symptom. The quantity to maximise is how long the
+position you end up in can live, counting what it cost to get there:
+
+```
+clockAfter = max( max(0, S - cost), P )
+value      = cost + framesToDeath(tallestAfter, clockAfter)
+```
+
+`framesToDeath` is `stopTime + health` topped out and `stopTime + rowsFree x
+framesPerRow` otherwise, both the engine's own numbers. The inner `max` is
+`awardStopTime` applied to the clock AS IT WILL BE WHEN THE MOVE LANDS, because it
+drains while the cursor walks.
+
+This subsumes the patches. A big payout too far away scores badly because
+`max(0, S - cost)` has gone to zero by the time it arrives. A clear that pays
+NOTHING but lowers the stack still scores, because `tallestAfter` falls and rows
+free are frames — which is why digging 23 garbage cells was previously worth
+nothing to it. Only in DEFEND; everywhere else the weights decide.
+
+### The clock fixes, and one that was wrong twice
+
+`awardStopTime` is a MAX, so `stopEarned` is the GAIN, not the payout — and the
+gain is against the clock when the move LANDS, `max(0, left - cost)`, not the
+clock now. Subtracting `left` flat was the second wrong version: it suppressed
+every big clear while the clock was high, including the ones whose walk empties
+it. `stopReachable`'s budget was the stop clock, which is 0 off a freeze, so the
+feature read 0 for every candidate and cancelled out of the ranking on most frames
+of the game.
+
+## A check must provoke its own defect, deterministically
+
+The no-return check compared the repeat rate of a real game with the filter on
+against one with it off. It went vacuous **twice** — once when STARTER's weights
+improved and once when DEFEND changed — because whether a game loops depends on
+the whole decision path, and that path keeps moving. It is constructed now: the
+bot is told it has just been at a position and the candidate returning it there
+must be refused, with the flag off proving the refusal came from the filter.
+
+The end-to-end version is kept as a BOUND, not zero, and the gap is the finding:
+8 of 387 decisions still land on a board seen within the last three. The filter
+refuses a PREDICTED return, the prediction comes from `LogicalBoard.resolve`, the
+board that arrives comes from the engine, and the two part company when a row
+rises mid-walk. That number tightens when the candidate path stops predicting with
+the old simulation.
+
 ## Open
 
 - Survival is short: ~690 frames a duel in self-play, against the ~1,100

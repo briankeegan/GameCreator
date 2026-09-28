@@ -146,10 +146,15 @@
     //   info        engine state every candidate shares: { stopTime, toppedOut }.
     //               Without it the stop-time features are ABSENT rather than
     //               guessed, the way modes.warned refuses to be warned on a guess.
-    function features(board, cursor, moveFrames, resolved, info, engine) {
-        var st = bit.maskState(board.grid, board.blocks, W, H);
+    // `masks` lets a caller pass a mask state it already holds, and then nothing
+    // here converts a grid at all. The grid path is kept for callers that have a
+    // board and no masks; where both exist the masks win, because a grid built
+    // from masks and then parsed back into masks is a round trip that can only
+    // lose information (slab identity, most of all).
+    function features(board, cursor, moveFrames, resolved, info, engine, masks) {
+        var st = masks || bit.maskState(board.grid, board.blocks, W, H);
         var surf = api.surface(st);
-        var list = bitoptions.options(board, W, H, cursor || [1, 1], 2);
+        var list = bitoptions.options(masks ? null : board, W, H, cursor || [1, 1], 2, st);
         var f = {}, i;
 
         f.bumpiness = share(surf.bumpiness, NORM.bumpiness);
@@ -192,19 +197,58 @@
             var toppedOut = !!info.toppedOut;
             var left = info.stopTime || 0;
 
-            // WHAT THIS MOVE BANKED. It differs candidate to candidate, which is
-            // exactly what makes it a feature while the clock itself is only info.
+            // WHAT THIS MOVE BANKED -- MINUS WHAT WAS ALREADY ON THE CLOCK.
+            //
+            // awardStopTime ends `if (stopTime > this.stopTime) this.stopTime =
+            // stopTime`: a MAX, not a sum. A clear paying 60 with 90 still
+            // running buys NOTHING, and this feature paid the full share for it
+            // anyway -- so the bot was rewarded for spending a chain on nothing,
+            // fired early, and had no material left when the clock ran out. That
+            // is why a supply is a matter of TIMING and not of clearing more.
+            //
+            // THE GAIN IS NOT THE PAYOUT SHIFTED BY A CONSTANT, which is the
+            // trap the potential features fell into. `left` is the same for every
+            // candidate, but max(0, earned - left) CLAMPS, so every payout under
+            // the running clock collapses to the same 0 while the ones above it
+            // stay ordered. That changes the ranking: while the clock is high
+            // nothing is worth cashing and the bot does something else; as it
+            // empties, payouts separate again and firing becomes the best move.
             var earned = 0;
             if (resolved && resolved.total > 0) {
                 var isChain = resolved.chain >= 2;
                 earned = api.stopTimeOf(engine, isChain, isChain ? 0 : resolved.total,
                                         isChain ? resolved.chain : 0, toppedOut);
             }
-            f.stopEarned = share(earned, NORM.stop);
+            // THE CLOCK DRAINS WHILE THE CURSOR WALKS, so what this clear has to
+            // beat is not the clock NOW but the clock WHEN IT LANDS. stopTime
+            // decrements every frame it is above zero, so after the move's own
+            // cost only max(0, left - cost) is still running:
+            //
+            //     gain = max(0, earned - max(0, left - cost))
+            //
+            // Subtracting `left` flat was wrong the other way: it suppressed
+            // every big clear while the clock was high, including the ones whose
+            // walk is long enough to empty it. A 6-chain 60 frames away with 70
+            // running lands with 10 left and gains about 50, not nothing.
+            //
+            // This is the whole of "do not fire until it is low enough to gain
+            // more", and it is arithmetic rather than a preference -- the weight
+            // only decides how much the gain is worth against everything else.
+            var cost = moveFrames || 0;
+            var whenItLands = Math.max(0, left - cost);
+            f.stopEarned = share(Math.max(0, earned - whenItLands), NORM.stop);
 
             // AND WHAT THE BOARD IT LEAVES COULD BANK BEFORE THE CLOCK EMPTIES.
             // Stop time is a MAX, not a sum, so an option worth 98 frames that
             // takes 120 to reach does not keep the supply up.
+            // THE BUDGET IS THE CLOCK WHILE IT RUNS, AND THE FLOOR'S ARRIVAL
+            // WHEN IT DOES NOT. With `left` alone the budget is 0 on every frame
+            // the board is not frozen -- which is most of them -- so the feature
+            // read 0 for every candidate and cancelled out of the ranking
+            // exactly when the bot needed to be lining the next payout up.
+            var budget = left;
+            var room = (H - surf.tallest) * (info.framesPerRow || 0);
+            if (room > budget) budget = room;
             var reachable = 0;
             var all = list.now.concat(list.next);
             for (i = 0; i < all.length; i++) {
@@ -212,7 +256,7 @@
                 var oChain = o.kind === 'chain';
                 var pays = api.stopTimeOf(engine, oChain, oChain ? 0 : o.size,
                                           oChain ? o.chain : 0, toppedOut);
-                if (pays > reachable && o.frames <= left) reachable = pays;
+                if (pays > reachable && o.frames <= budget) reachable = pays;
             }
             f.stopReachable = share(reachable, NORM.stop);
         }

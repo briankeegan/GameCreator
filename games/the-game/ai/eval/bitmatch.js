@@ -233,6 +233,52 @@
   // Move one panel sideways in a mask state, or put it back: the swap and its
   // undo are the same call. Returns false when the pair cannot be swapped as
   // panels — an inert cell is not a panel and the game cannot move it.
+  // EVERY SWAP THE ENGINE WOULD ACCEPT, from the masks alone.
+  //
+  // ONE implementation, because two drift: this is LogicalBoard.legalSwaps's rule
+  // expressed in bits, and bitoptions.test.js asserts the two lists are equal.
+  // Its three exclusions, and the two that a bits-only version gets wrong if it is
+  // written by looking at swapMasks instead of at the rule:
+  //
+  //   garbage on either side   swapMasks already refuses this (inert)
+  //   BOTH CELLS EMPTY         nothing moves
+  //   BOTH THE SAME COLOUR     nothing changes -- and this is the one that bites,
+  //                            416 phantom swaps over 200 boards, each of them an
+  //                            "option" the engine answers by clearing nothing
+  // A DETACHED COPY OF A STATE. Needed where a caller must keep a position that
+  // the next call would otherwise overwrite -- the swapped board of a move that
+  // breaks a slab, whose cascade has no knowable end and so has no settled state
+  // to hand back.
+  function copyState(st) {
+    var stride = st.W + 2, out = { W: st.W, H: st.H, N: st.N, occ: [], inert: [], garb: [],
+                                   colour: new Int32Array((st.N + 1) * stride), slabs: [],
+                                   bad: st.bad || null };
+    var c, i;
+    for (c = 0; c <= st.W + 1; c++) { out.occ[c] = st.occ[c]; out.inert[c] = st.inert[c]; out.garb[c] = st.garb[c]; }
+    for (i = 0; i < out.colour.length && i < st.colour.length; i++) out.colour[i] = st.colour[i];
+    for (i = 0; st.slabs && i < st.slabs.length; i++) out.slabs.push(Int32Array.from(st.slabs[i]));
+    return out;
+  }
+
+  function legalSwapsOf(st) {
+    var out = [], r, c, a, stride = st.W + 2;
+    for (r = 1; r <= st.H; r++) {
+      var b = 1 << (r - 1);
+      for (c = 1; c < st.W; c++) {
+        if ((st.inert[c] & b) || (st.inert[c + 1] & b)) continue;
+        if (!((st.occ[c] | st.occ[c + 1]) & b)) continue;
+        var left = 0, right = 0;
+        for (a = 1; a <= st.N; a++) {
+          if (st.colour[a * stride + c] & b) left = a;
+          if (st.colour[a * stride + c + 1] & b) right = a;
+        }
+        if (left === right) continue;              // same colour, or both empty
+        out.push([r, c]);
+      }
+    }
+    return out;
+  }
+
   function swapMasks(st, r, c) {
     var W2 = st.W, b = 1 << (r - 1), o = c + 1;
     if ((st.inert[c] & b) || (st.inert[o] & b)) return false;
@@ -277,7 +323,11 @@
     return resolveFromMasks(maskState(grid, blocks, W, H));
   }
 
-  function resolveFromMasks(st) {
+  // `wantSettled` asks for the board the cascade left. OFF BY DEFAULT because it
+  // allocates, and the depth-2 option sweep calls this tens of thousands of times
+  // a decision where only the outcome is read -- building the state every time
+  // cost 214ms of a 374ms decision. The callers that need the position ask for it.
+  function resolveFromMasks(st, wantSettled) {
     var W = st.W, H = st.H, N = st.N;
     if (st.bad) return { scope: st.bad, chain: 0, total: 0, rounds: 0 };
     var S2 = scratch(W, H, 12);
@@ -454,7 +504,8 @@
       break;
     }
     return { scope: 'ok', chain: rounds ? Math.max(counter, 1) : 0, total: total,
-             rounds: rounds, settled: settledFrom(S2, W, H, N) };
+             rounds: rounds,
+             settled: wantSettled ? settledFrom(S2, W, H, N, slabs) : null };
   }
 
   // THE BOARD THE CASCADE LEFT, as a state of the same shape maskState builds.
@@ -468,14 +519,28 @@
   //
   // Only on the 'ok' path: a stopped cascade has no settled board to hand back,
   // which is what 'garbage-broke' means.
-  function settledFrom(S, W, H, N) {
+  function settledFrom(S, W, H, N, slabs) {
     var stride = W + 2, out = { W: W, H: H, N: N, occ: [], inert: [], garb: [],
-                                colour: new Int32Array((N + 1) * stride), slabs: [] };
-    var a, c;
+                                colour: new Int32Array((N + 1) * stride), slabs: [], bad: null };
+    var a, c, i;
     for (c = 0; c <= W + 1; c++) {
       out.occ[c] = S.occ[c]; out.inert[c] = S.inert[c]; out.garb[c] = S.garb[c];
     }
     for (a = 1; a <= N; a++) for (c = 0; c <= W + 1; c++) out.colour[a * stride + c] = S.colour[a][c];
+    // THE SLABS COME WITH IT. A slab is one mask per column it spans and it is
+    // what makes garbage BRIDGE -- held up in one column it spans the holes in
+    // the others. A settled state handed on without them is a state where every
+    // slab has silently become loose cells, so the next resolve lets garbage
+    // fall through gaps the game holds it over. Copied, not shared, because the
+    // resolver reuses its own arrays on the next call.
+    //
+    // A slab with nothing left in any column has been fully cleared and is
+    // dropped rather than carried as an empty.
+    for (i = 0; slabs && i < slabs.length; i++) {
+      var any = false;
+      for (c = 0; c <= W + 1; c++) if (slabs[i][c]) { any = true; break; }
+      if (any) out.slabs.push(Int32Array.from(slabs[i]));
+    }
     return out;
   }
 
@@ -489,6 +554,8 @@
     clears: clears,
     maskState: maskState,
     swapMasks: swapMasks,
+    legalSwapsOf: legalSwapsOf,
+    copyState: copyState,
     resolveFromMasks: resolveFromMasks,
     clearedCells: clearedCells,
     resolveBits: resolveBits,
