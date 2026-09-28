@@ -1020,7 +1020,15 @@ function drawWreck(center, wreck, size) {
   // brightness shift is construction, not generation, so it is done here,
   // exactly, for all twenty-two, and a wreck can never read as alive
   // because one prompt out of twenty-two was ignored.
-  ctx.filter = "saturate(45%) brightness(68%)";
+  //
+  // NOT TOO FAR DOWN, THOUGH. At 45% saturation the whole roster converged
+  // on the same brown-grey — the Carrier's violet, the Corsair's orange and
+  // the Bulwark's red all became mud — which throws away the entire reason
+  // there are twenty-two of these rather than one: what you weigh before
+  // spending a shot is WHICH hull you opened, and you read that off its
+  // colour. Dead enough to never be mistaken for a live ship, bright enough
+  // to still be recognisably that ship.
+  ctx.filter = "saturate(62%) brightness(76%)";
   if (!drawShipImage(WRECK_SPRITES[wreck.type], size)) {
     ctx.rotate((25 * Math.PI) / 180);
     ctx.globalAlpha = 0.45;
