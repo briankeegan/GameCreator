@@ -771,7 +771,11 @@
   //      The followed line's end was the dead board, so the search neither
   //      went on from it nor kept the move as alive at the horizon: seed 700
   //      frame 15881, one move proven a decision earlier, none after.
-  var RULES = 48;
+  //   49. A ROW NOBODY HAS SEEN MATCHES NOTHING. Past the dimmed row the
+  //      scratch dealt from its own generator, and a line was proven on a
+  //      match the real row did not make (seed 702 frame 13814, dead at
+  //      13879). Unseen rows are six colours outside the palette.
+  var RULES = 49;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

@@ -58,6 +58,16 @@
             matchG.call(this, panels, t, isChain, onScreen);
             for (var i = 0; i < panels.length; i++) if (panels[i].yOffset === -1) this.brokeCells++;
         };
+        // A ROW NOBODY HAS SEEN MATCHES NOTHING. Past the dimmed row the game
+        // deals from its own generator, which no player can see; a row made
+        // up here matched where the real one did not, and a line was proven
+        // on it (seed 702 frame 13814, dead at 13879). Six colours outside
+        // the palette, shifted each row so no column stacks three alike.
+        stack.generateRowColors = function () {
+            var k = (this.unseenRows = (this.unseenRows || 0) + 1), row = [null];
+            for (var c = 1; c <= 6; c++) row[c] = 11 + ((c + 3 * k) % 6);
+            return row;
+        };
         return stack;
     }
 
@@ -313,7 +323,7 @@
         if (PanelEngine.makeRng) stack.rng = PanelEngine.makeRng(7);
         // The row generator's adjacency tally too: it steers every row dealt,
         // and left running, a row depended on every resolve before it.
-        stack.adjacentDenied = 0; stack.adjacentAccepted = 0;
+        stack.adjacentDenied = 0; stack.adjacentAccepted = 0; stack.unseenRows = 0;
         stack.stopTime = 0;
         stack.chainCounter = 0;
         stack.shakeTime = 0;
