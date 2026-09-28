@@ -193,7 +193,6 @@
                         refusedReturn: 0, defendByClock: 0, refusedTooSlow: 0, planned: 0, planDropped: 0,
                         attacked: 0, attackDropped: 0, cellsPlanned: 0, refusedPayless: 0,
                         raisedForMaterial: 0, refusedRaise: 0,
-                        forcedMaterial: 0, forcedAttack: 0, forcedBreak: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
                         revealWindows: 0 };
     }
@@ -585,62 +584,10 @@
     // downstream of this number now -- it is chosen from the timing -- so keying
     // the depth on it would be circular, and the cooldown says the same thing
     // without the constant.
-    // HOW MUCH MATERIAL IS ON THE BOARD, IN FLAT ROWS.
-    //
-    // Panels divided by the width, not the height of the tallest column. A
-    // jagged board can carry a spike over almost nothing, and it is the panels
-    // that a chain is built out of -- height is what kills you, material is what
-    // you play with, and they are different questions.
-    //
-    // Garbage is not material. A slab is inert until it is broken, so it counts
-    // only once it has become panels.
-    function materialRows(st) {
-        var n = 0;
-        for (var c = 1; c <= W; c++) n += bit.popcount((st.occ[c] & ~st.garb[c]) >>> 0);
-        return n / W;
-    }
-
-    // WHAT AN ACTION IS, decided by the engine's garbage table and the masks.
-    // Lower is better, and nothing here reads a weight.
-    //
-    //   0  SENDS AND BREAKS. One move that attacks and digs at once. Garbage is
-    //      two thirds of what arrives, so a clear that opens a slab while paying
-    //      cells is doing both jobs and there is nothing better on a board.
-    //   1  SENDS. An attack. Attacking is not optional, so this is mandatory
-    //      whenever it is on offer.
-    //   2  LINEUP. A slab's bottom row has taken real colours and is hovering. The
-    //      window is measured in frames and it closes, so the swap that turns that
-    //      landing into a chain is worth more now than anything worth the same
-    //      later. This is the one tier that expires.
-    //   3  BREAKS ONLY -- a three into a slab. It pays no cells and spends the
-    //      vertical structure a chain is made of, but it turns an inert slab back
-    //      into panels. LAST RESORT: taken when material is short or nothing else
-    //      is on offer, never because a vector likes it.
-    //   4  everything else: building, holding, raising.
-    //
-    // A three that neither sends nor breaks is not an action at all.
-    function tierOf(cand) {
-        if (cand.kind === 'lineup') return 2;
-        var r = cand.resolved;
-        if (!r || !r.total) return 4;
-        var cells = cellsSent(PanelEngine(), r.chain >= 2 ? 'chain' : 'combo', r.total, r.chain);
-        if (cells > 0) return r.brokeGarbage ? 0 : 1;
-        if (r.brokeGarbage) return 3;
-        return 4;
-    }
-
     function depthFor(deadline, reaction, tallest) {
         var playable = Math.max(1, Math.floor(deadline / Math.max(1, reaction)));
-        // THE DEADLINE SETS THE DEPTH, and a constant used to throw that away.
-        // `playable` is how many moves fit before the floor arrives -- a board
-        // with three rows of headroom has 28 -- and clamping it to 4 meant the
-        // bot planned a fifth of the way to its own death. Measured: depth 4 and
-        // depth 10 both cost 3.0ms a frame, because the beam sets the cost and
-        // the depth does not.
-        //
-        // The sequence that survives is break the slab, let it settle, line the
-        // colours up, cash. Four plies cannot hold that sequence.
-        return playable;
+        var room = tallest <= H / 2 ? 4 : 3;          // material to think with
+        return Math.min(room, playable);
     }
 
     // THE WORKING BAND: A BOARD TOO LOW HAS NOTHING TO PLAY WITH.
@@ -838,80 +785,12 @@
         return best;
     }
 
-    // MUST SURVIVE, MUST HOLD MATERIAL, MUST ATTACK -- in that order, each one a
-    // filter over the actions rather than a term in a score. Nothing here reads
-    // this.weights.
-    BitBot.prototype.obligations = function (acts, base, info) {
-        var i, keep;
-
-        // MUST HOLD MATERIAL. Below the floor the board has nothing to build a
-        // chain out of, and clearing more makes it worse. Material arrives two
-        // ways and only two: breaking a slab, which turns inert garbage back into
-        // panels, and raising. So below the floor those are the only actions.
-        if (materialRows(base) < WORKING_ROWS) {
-            keep = [];
-            for (i = 0; i < acts.length; i++) {
-                if (acts[i].kind === 'raise' ||
-                    (acts[i].resolved && acts[i].resolved.brokeGarbage)) keep.push(acts[i]);
-            }
-            if (keep.length) { this.counts.forcedMaterial++; acts = keep; }
-        }
-
-        // MUST ATTACK MEANS AN ATTACK IS ALWAYS AVAILABLE, NOT THAT EVERY CLEAR IS
-        // SPENT THE FRAME IT APPEARS.
-        //
-        // Forcing the best tier to be the ONLY option was measured at 7 deaths in
-        // 8 against 1: it cashed 1,127 times on one seed, 53 pieces for 309 cells,
-        // and never held anything long enough to become a chain. A 4-combo sends 3
-        // cells and a 6-chain sends 30, so spending the small one costs the big
-        // one, and a board with nothing left on it cannot defend either.
-        //
-        // So the obligation is that the set CONTAINS an attack, which is what stops
-        // a vector from choosing never to attack. Keeping the building moves beside
-        // it is what lets a chain get built. The narrowing happens only when the
-        // clock is what matters: with nothing banked and the floor advancing,
-        // holding a shape for later is a bet against a deadline, and then the
-        // attack is taken.
-        var bestTier = 5;
-        for (i = 0; i < acts.length; i++) { var t = tierOf(acts[i]); if (t < bestTier) bestTier = t; }
-        if (bestTier <= 2 && !(info.stopTime > 0)) {
-            keep = [];
-            for (i = 0; i < acts.length; i++) if (tierOf(acts[i]) === bestTier) keep.push(acts[i]);
-            this.counts.forcedAttack++;
-            return keep;
-        }
-
-        // LAST RESORT. Nothing sends and no window is open. A three that opens a
-        // slab is the only payless clear worth playing, and only because it makes
-        // material -- so it is taken when material is short, and otherwise left
-        // alone so the structure a chain needs stays on the board.
-        if (bestTier === 3 && materialRows(base) < WORKING_ROWS) {
-            keep = [];
-            for (i = 0; i < acts.length; i++) if (tierOf(acts[i]) === 3) keep.push(acts[i]);
-            if (keep.length) { this.counts.forcedBreak++; return keep; }
-        }
-        return acts;
-    };
-
     BitBot.prototype.decide = function () {
         var board = this._snapshot();
         var info = this.info(board);
         var pool = this.candidates(board, info);
         var base = pool.length ? pool[0].masks : bit.maskState(board.grid, board.blocks, W, board.height);
         var rev = this.revealPick(board);
-        // THE WINDOW JOINS THE POOL. It used to sit in this variable and get
-        // consulted near the bottom of the decision, so it could not be filtered,
-        // ranked or compared with anything -- and nothing ever built a candidate
-        // for it. As a candidate the obligations can see it, and its tier says
-        // what it is worth: a landing turned into a chain, on a clock.
-        //
-        // The board is unsettled by definition here, so the 20 features cannot
-        // price it and it carries the current masks: what it does is measured by
-        // bitlineup, not by scoring the board it leaves.
-        if (rev && rev.best && rev.best.swap) {
-            pool.push({ kind: 'lineup', swap: rev.best.swap, board: board, masks: base,
-                        moveFrames: rev.best.frames || 0, resolved: null });
-        }
         // ONLY OPTIONS IT CAN ACTUALLY FINISH IN THE TIME IT HAS LEFT.
         //
         // Every candidate is already priced in frames -- travel.cost to the cell
@@ -1026,12 +905,7 @@
                 options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base);
                 var plan = bestPlan(options, info.stopTime || 0, deadline, PanelEngine(),
                                     !!info.toppedOut, info.framesPerRow, this.stack.frames);
-                // THE OBJECTIVE ALWAYS ANSWERS. `rate > 0` was doing two jobs --
-                // whether a survival move exists, and whether survival is what is
-                // being decided -- and the second one is what `escape` says. Refusing
-                // to answer handed the board to the weights exactly when the best rate
-                // was poor, which is the board that kills.
-                if (plan) {
+                if (plan && plan.rate > 0) {
                     this._plan = { moves: plan.option.swaps.slice(1), frames: plan.frames, gain: plan.gain, rate: plan.rate };
                     if (!this._plan.moves.length) this._plan = null;
                     survival = { move: plan.move, gain: plan.gain, frames: plan.frames, rate: plan.rate };
@@ -1096,12 +970,6 @@
             // is changing without the bot touching it.
             var wasting = info.stopTime > 0 && !this.inFlight();
             if (pool[i].kind === 'hold' && (mode.name !== 'BUILD' || wasting)) continue;
-            // A THREE THAT NEITHER SENDS NOR BREAKS IS NOT AN ACTION. It spends
-            // the vertical structure a chain is made of and buys nothing back.
-            if (pool[i].kind === 'swap' && tierOf(pool[i]) === 4 &&
-                pool[i].resolved && pool[i].resolved.total) {
-                this.counts.refusedPayless++; continue;
-            }
             // A PAYLESS CLEAR IS NOT PROGRESS, IT IS UNBUILDING.
             //
             // A bare three sends no garbage and earns no stop time -- the engine's
@@ -1131,21 +999,6 @@
             if (pool[i].kind === 'swap' && (pool[i].moveFrames || 0) > deadline) {
                 this.counts.refusedTooSlow++; continue;
             }
-            // MUST SURVIVE, AND IT IS THE FIRST STAGE BECAUSE THE OTHERS NARROW.
-            //
-            // This used to sit below the obligations, so MUST HOLD MATERIAL could
-            // cut the set down to raise-or-break and only then would anything ask
-            // whether those kill -- on a thin board that forced the bot to push its
-            // own stack up. Measured at 8 deaths in 8, with the material stage
-            // firing 300 times a game.
-            //
-            // A later stage can only ever remove, so anything that survives this is
-            // the most the board offers, and nothing downstream can reintroduce a
-            // death.
-            if (this.deadly(pool[i].masks, pool[i].resolved, info,
-                            (pool[i].moveFrames || 0) + this.reaction)) {
-                this.counts.refusedDeadly++; continue;
-            }
             // A MOVE THAT PUTS THE BOARD BACK WHERE IT WAS IS NOT A MOVE.
             //
             // The scoring is stateless, so if board X's best swap leads to Y and
@@ -1167,22 +1020,7 @@
             }
             allowed.push(pool[i]);
         }
-        // EVERY OPTION KILLS. The pool comes back so there is a move to play, and
-        // it is counted here rather than after scoring: the death filter runs
-        // first now, so by the time anything is scored the fatal ones are already
-        // gone and `best` is always set.
-        if (!allowed.length) { this.counts.allDead++; allowed = pool; }
-
-        // THE OBLIGATIONS NARROW THE SET; THE WEIGHTS PICK INSIDE WHAT IS LEFT.
-        //
-        // Each stage only ever removes, and a stage that would empty the set is
-        // skipped -- so there is always something to play, and by the time the
-        // weights see it every option already survives, already holds material and
-        // already attacks. A vector chooses WHICH, never whether.
-        //
-        // The order is the order the obligations rank in: living first, then
-        // having something to play with, then using it.
-        allowed = this.obligations(allowed, base, info);
+        if (!allowed.length) allowed = pool;
 
         this._seen.push(here);
         if (this._seen.length > 3) this._seen.shift();
@@ -1215,6 +1053,8 @@
             // WHAT THE HORIZON IS: the frames before this bot decides again --
             // the walk to the move, then the reaction cooldown. A candidate has
             // to survive its own cost, which is why it is per candidate.
+            var horizon = (cand.moveFrames || 0) + this.reaction;
+            if (this.deadly(cand.masks, cand.resolved, info, horizon)) { this.counts.refusedDeadly++; continue; }
             alive++;
             var s = this.score(cand.masks, cand.moveFrames, cand.resolved, info);
             if (!best || s > best.score) best = { cand: cand, score: s };
@@ -1223,6 +1063,7 @@
         // move is played rather than freezing. Counted, because a bot reaching
         // here often is a bot about to die and the count is the warning.
         if (!best) {
+            this.counts.allDead++;
             for (i = 0; i < allowed.length; i++) {
                 var s2 = this.score(allowed[i].masks, allowed[i].moveFrames,
                                     allowed[i].resolved, info);
@@ -1256,11 +1097,7 @@
         // re-choosing every frame plays the first move of a different plan each
         // time and never finishes any of them, which was worth LESS than having no
         // plans at all (2,521 frames against 2,892).
-        // ATTACKING IS FOR A BOARD THAT IS HOLDING STATION. escape is Infinity
-        // when nothing on the board keeps up with the floor; there the survival
-        // objective is the only thing that runs, so the bot is never offered a
-        // move whose merit is anything but staying alive.
-        if (escape !== Infinity) {
+        if (!survival) {
             if (this._attack && this._attack.moves.length) {
                 var an = this._attack.moves[0];
                 var okNext = false, als = bit.legalSwapsOf(base);
@@ -1340,14 +1177,11 @@
             }
         }
 
-        if (!best) return { kind: 'hold', mode: mode, alive: alive };
-        // A LINEUP CANDIDATE IS PLAYED AS THE SWAP IT IS. It reached here by
-        // winning its tier in the obligations, not by being consulted after
-        // everything else had declined.
-        if (best.cand.kind === 'lineup') {
+        if (rev && rev.best && rev.best.swap) {
             this.counts.revealSwaps++;
-            return { kind: 'swap', move: best.cand.swap, mode: mode, alive: alive, reveal: true };
+            return { kind: 'swap', move: rev.best.swap, mode: mode, alive: alive, reveal: true };
         }
+        if (!best) return { kind: 'hold', mode: mode, alive: alive };
         return { kind: best.cand.kind, move: best.cand.swap, mode: mode, alive: alive };
     };
 
