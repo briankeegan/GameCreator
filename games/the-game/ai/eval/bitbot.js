@@ -192,7 +192,7 @@
         this.counts = { refusedDeadly: 0, allDead: 0, byMode: {},
                         refusedReturn: 0, defendByClock: 0, refusedTooSlow: 0, planned: 0, planDropped: 0,
                         attacked: 0, attackDropped: 0, cellsPlanned: 0, refusedPayless: 0,
-                        raisedForMaterial: 0, refusedRaise: 0,
+                        raisedForMaterial: 0, refusedRaise: 0, forcedBoth: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
                         revealWindows: 0 };
     }
@@ -584,6 +584,24 @@
     // downstream of this number now -- it is chosen from the timing -- so keying
     // the depth on it would be circular, and the cooldown says the same thing
     // without the constant.
+    // WHAT AN ACTION IS WORTH, from the engine's garbage table and nothing else.
+    // Lower is better.
+    //
+    //   0  sends and breaks -- attacks and digs in one move
+    //   1  sends
+    //   2  breaks but sends nothing -- a three into a slab, the last resort: it
+    //      pays no cells and spends the vertical structure a chain is made of,
+    //      but it turns an inert slab back into panels
+    //   3  clears nothing: building, holding, raising
+    //   4  clears something and neither sends nor breaks -- not an action at all
+    function tierOf(cand) {
+        var r = cand.resolved;
+        if (!r || !r.total) return 3;
+        var cells = cellsSent(PanelEngine(), r.chain >= 2 ? 'chain' : 'combo', r.total, r.chain);
+        if (cells > 0) return r.brokeGarbage ? 0 : 1;
+        return r.brokeGarbage ? 2 : 4;
+    }
+
     function depthFor(deadline, reaction, tallest) {
         var playable = Math.max(1, Math.floor(deadline / Math.max(1, reaction)));
         var room = tallest <= H / 2 ? 4 : 3;          // material to think with
@@ -983,18 +1001,18 @@
             // can still hold, raise, or play a swap that clears nothing -- which is
             // what building IS. Survival is exempt: a board that needs the clock
             // takes whatever buys it.
-            if (this.refusePayless && !survivalNeeded && pool[i].kind === 'swap') {
-                var pr2 = pool[i].resolved;
-                // UNLESS IT BREAKS GARBAGE. A three that opens a slab is the one
-                // payless clear worth playing: digging is progress even when the
-                // clear itself pays nothing, and garbage is two thirds of what
-                // arrives. modes.pays says the same about the old bot.
-                if (pr2 && pr2.total > 0 && !pr2.brokeGarbage &&
-                    cellsSent(PanelEngine(), pr2.chain >= 2 ? 'chain' : 'combo',
-                              pr2.total, pr2.chain) <= 0) {
-                    this.counts.refusedPayless++;
-                    continue;
-                }
+            // A THREE THAT NEITHER SENDS NOR BREAKS IS NOT AN ACTION.
+            //
+            // It spends the vertical structure a chain is made of and the engine's
+            // table pays nothing for it. Measured over 990 decisions: 5,176 of the
+            // options on offer were size-three combos and a 3-chain appeared twice.
+            //
+            // Survival is exempt -- a board that needs the clock takes whatever
+            // buys it.
+            if (this.refusePayless && !survivalNeeded && pool[i].kind === 'swap' &&
+                tierOf(pool[i]) === 4) {
+                this.counts.refusedPayless++;
+                continue;
             }
             if (pool[i].kind === 'swap' && (pool[i].moveFrames || 0) > deadline) {
                 this.counts.refusedTooSlow++; continue;
@@ -1021,6 +1039,20 @@
             allowed.push(pool[i]);
         }
         if (!allowed.length) allowed = pool;
+
+        // SENDS AND BREAKS BEATS SENDS, and that is not a preference.
+        //
+        // One move that attacks and digs at the same time does both jobs, and
+        // garbage is two thirds of what arrives. It dominates a plain clear of the
+        // same size on the axis that matters -- it pays the same cells and leaves
+        // less garbage on the board -- so there is nothing for a vector to weigh.
+        //
+        // Only this one domination is enforced. Forcing the best tier generally
+        // was measured at 7 deaths in 8: it cashes every clear the frame it
+        // appears and nothing survives long enough to become a chain.
+        var both = [];
+        for (var bi = 0; bi < allowed.length; bi++) if (tierOf(allowed[bi]) === 0) both.push(allowed[bi]);
+        if (both.length) { this.counts.forcedBoth++; allowed = both; }
 
         this._seen.push(here);
         if (this._seen.length > 3) this._seen.shift();
