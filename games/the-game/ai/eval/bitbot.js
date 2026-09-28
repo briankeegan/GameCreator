@@ -584,23 +584,6 @@
     // downstream of this number now -- it is chosen from the timing -- so keying
     // the depth on it would be circular, and the cooldown says the same thing
     // without the constant.
-    // HOW LONG THIS OPTION LIVES, and nothing about whether it is liked.
-    //
-    // Used wherever the decision being made is survival: no plan holds station,
-    // or every candidate on the board is fatal. A weight vector picks HOW the bot
-    // attacks and defends and must never pick whether it dies, so on those boards
-    // the ordering comes off the engine and the masks alone and every vector plays
-    // them identically.
-    //
-    // Frames to death is the engine's own drain and rise off the resulting board,
-    // so it already carries the stop time a clear banks and the rows a lower stack
-    // buys. Ties go to the cheaper move, because frames not spent walking are
-    // frames still available to the next decision.
-    function survivalRank(cand, info) {
-        var lives = framesToDeath(info, tallestBoard(cand.masks), info.framesPerRow);
-        return lives * 1000 - (cand.moveFrames || 0);
-    }
-
     function depthFor(deadline, reaction, tallest) {
         var playable = Math.max(1, Math.floor(deadline / Math.max(1, reaction)));
         var room = tallest <= H / 2 ? 4 : 3;          // material to think with
@@ -1037,12 +1020,7 @@
             }
             allowed.push(pool[i]);
         }
-        // EVERY OPTION WAS FATAL. The pool goes back so there is something to
-        // play, but the fact is remembered: from here the weights may not choose,
-        // because every choice left is a death and preference has no business
-        // picking which one.
-        var nothingSurvives = false;
-        if (!allowed.length) { allowed = pool; nothingSurvives = true; }
+        if (!allowed.length) allowed = pool;
 
         this._seen.push(here);
         if (this._seen.length > 3) this._seen.shift();
@@ -1093,9 +1071,12 @@
             // the fewest frames. Both come off the engine and the masks -- height
             // is clz32 over the column words, frames is travel.cost -- so every
             // vector plays this identically.
-            var s = (escape === Infinity || nothingSurvives)
-                  ? survivalRank(cand, info)
-                  : this.score(cand.masks, cand.moveFrames, cand.resolved, info);
+            var s;
+            if (escape === Infinity) {
+                s = -tallestBoard(cand.masks) * 1000 - (cand.moveFrames || 0);
+            } else {
+                s = this.score(cand.masks, cand.moveFrames, cand.resolved, info);
+            }
             if (!best || s > best.score) best = { cand: cand, score: s };
         }
         // NOTHING SURVIVES: the position is lost either way, so the best-scoring
@@ -1104,7 +1085,8 @@
         if (!best) {
             this.counts.allDead++;
             for (i = 0; i < allowed.length; i++) {
-                var s2 = survivalRank(allowed[i], info);
+                var s2 = this.score(allowed[i].masks, allowed[i].moveFrames,
+                                    allowed[i].resolved, info);
                 if (!best || s2 > best.score) best = { cand: allowed[i], score: s2 };
             }
         }
