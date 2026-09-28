@@ -156,12 +156,27 @@ console.log('island 0 is BitBot.STARTER, the control -- watch where it places\n'
 
 (function step() {
     if (g >= GENS) {
-        var out = path.join(__dirname, 'bitbot.island.json');
+        // ONE FILE PER RUN. Twenty concurrent runs sharing a filename is nineteen
+        // results overwritten and one kept, which would look like a result and be
+        // a race.
+        var tag = process.env.GC_TAG || String(process.env.GC_GA_SEED || 'default');
+        try { fs.mkdirSync(path.join(__dirname, 'islands'), { recursive: true }); } catch (e) { /* already there */ }
+        var out = path.join(__dirname, 'islands', 'bitbot.island.' + tag + '.json');
+        var controlWins = history.filter(function (h) { return h.champion === 0; }).length;
         fs.writeFileSync(out, JSON.stringify({ weights: pop[0], history: history,
                                                population: pop.length, generations: GENS,
+                                               controlWins: controlWins,
                                                seed: Number(process.env.GC_GA_SEED || 20250928) }, null, 2));
         console.log('\nchampion written to ' + path.basename(out));
         console.log('control placed: ' + history.map(function (h) { return h.champion === 0 ? 'won' : '-'; }).join(' '));
+        // ONE LINE PER RUN THAT AGGREGATES CLEANLY, because twenty runs are read
+        // by a script and not by eye. The control winning is the null result: a
+        // run where the untrained hand-set vector took the last generation found
+        // nothing, and that has to be countable rather than inferred from prose.
+        var last = history[history.length - 1];
+        console.log('FINAL tag=' + tag + ' controlWins=' + controlWins + '/' + GENS +
+                    ' lastChampion=' + (last.champion === 0 ? 'CONTROL' : last.champion) +
+                    ' wins=' + last.wins + ' sent=' + last.sent + ' chains=' + last.chains);
         return;
     }
     generation(g, function (err) {
