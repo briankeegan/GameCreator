@@ -139,6 +139,8 @@
         // TWO FILTERS THAT ARE NOT WEIGHTS, both off only for the run that
         // measures what they are worth. See refuseReturn and deadly below.
         this.refuseReturn = opts.refuseReturn !== false;
+        // Off only for the run that measures what the rule is worth.
+        this.refusePayless = opts.refusePayless !== false;
         // HOW MANY CANDIDATES GET THE EXPENSIVE SCORE. Scoring one runs a depth-2
         // option sweep -- about 900 cascade resolves -- and there are ~30
         // candidates, so a full decision is ~27,000 resolves and 171ms. A cheap
@@ -155,6 +157,7 @@
         this._seen = [];
         // The plan being executed, if any. See the commitment note in decide().
         this._plan = null;
+        this._attack = null;
 
         this._snapshot = PanelCpu().snapshot;
         this._beginWalk = PanelCpu().beginWalk;
@@ -180,6 +183,7 @@
         this.frozen = { walking: 0, cooling: 0, hold: 0, raise: 0, swap: 0 };
         this.counts = { refusedDeadly: 0, allDead: 0, byMode: {},
                         refusedReturn: 0, defendByClock: 0, refusedTooSlow: 0, planned: 0, planDropped: 0,
+                        attacked: 0, attackDropped: 0, cellsPlanned: 0, refusedPayless: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
                         revealWindows: 0 };
     }
@@ -504,6 +508,76 @@
     //
     // Ties go to the cheaper plan, because the frames not spent are frames still
     // available for the plan after this one.
+    // WHAT AN OPTION SENDS, from the engine's own tables and never restated here.
+    //
+    //   a combo of N panels   PanelEngine.comboGarbage(N), each piece 1 row tall
+    //   a chain of L links    ONE piece, full width, height L - 1
+    //
+    // The numbers are the reason the bot has to chain. A 4-combo sends 3 cells and
+    // the widest realistic combo sends 12; a 3-chain sends 12 and a 6-chain sends
+    // 30. A chain is worth up to TEN TIMES a combo, and nothing that ranks by
+    // panels cleared or by stop time can see that -- the deepest chain pays only
+    // 68 frames of stop time against a two-chain's 60, while sending five times
+    // the garbage.
+    function cellsSent(engine, kind, size, chain) {
+        var cells = 0, i;
+        if (kind !== 'chain') {
+            var pieces = engine.comboGarbage(size) || [];
+            for (i = 0; i < pieces.length; i++) cells += pieces[i];   // each one row tall
+            return cells;
+        }
+        // A chain also fires its opening combo, but the opener is what STARTS the
+        // chain and its size is not carried on the option -- so this counts the
+        // chain card alone and is a floor on what the move sends, never an
+        // overstatement.
+        return chain > 1 ? W * (chain - 1) : 0;
+    }
+
+    // THE BEST ATTACK, AND IT IS ARITHMETIC LIKE SURVIVAL IS.
+    //
+    // The bot is ALWAYS attacking. Whether to attack is not a preference and the
+    // weights get no vote on it -- exactly as they get no vote on whether to
+    // survive. What they steer is WHICH attack: a vector that likes deep chains
+    // holds out for one, a vector that likes wide combos takes them. That is what
+    // a feature is for here, and it is the only thing it does.
+    //
+    // This was the hole. Attacking had no plan at all: BUILD ranked single
+    // candidates by the weighted features and played the winner, so a vector that
+    // happened to prefer setups never cashed anything and the bot sent 93 cells in
+    // 15,000 frames. Nothing made it attack.
+    //
+    // RANKED BY CELLS PER FRAME, so a big attack that takes a long walk is
+    // compared fairly against a small one that is already under the cursor. The
+    // weight is a MULTIPLIER on that rate rather than an addition to it, so a
+    // preference can say "a chain is worth twice a combo to me" without being able
+    // to say "attack nothing at all" -- a zero or negative weight leaves the shape
+    // merely unloved, not forbidden.
+    function bestAttack(list, weights, engine, deadline) {
+        var best = null, all = list.now.concat(list.next), i;
+        for (i = 0; i < all.length; i++) {
+            var o = all[i];
+            if (!o.swaps || !o.swaps.length) continue;
+            if (o.frames > deadline) continue;
+            var isChain = o.kind === 'chain';
+            var cells = cellsSent(engine, o.kind, o.size, o.chain);
+            if (cells <= 0) continue;                       // sends nothing: not an attack
+            // The vector's taste for this shape, read off the same buckets the
+            // features use, floored so it can only ever scale the rate down to a
+            // tenth and never to nothing.
+            var key = isChain
+                ? 'chain' + (o.chain >= 5 ? '5plus' : Math.max(2, Math.min(4, o.chain)))
+                : 'combo' + Math.max(4, Math.min(7, o.size));
+            var taste = 1 + ((weights[key] || 0) / 100);
+            if (taste < 0.1) taste = 0.1;
+            var rate = (cells / Math.max(1, o.frames)) * taste;
+            if (!best || rate > best.rate) {
+                best = { rate: rate, cells: cells, frames: o.frames,
+                         move: o.swaps[0], option: o };
+            }
+        }
+        return best;
+    }
+
     function bestPlan(list, clock, deadline, engine, toppedOut, framesPerRow) {
         var best = null, all = list.now.concat(list.next), i;
         // ONE PANEL REMOVED IS framesPerRow / W FRAMES OF LIFE -- 18.7 at level 10.
@@ -550,6 +624,16 @@
 
         // THE MODE FILTERS, IT DOES NOT PICK. ATTACK and DEFEND drop hold:
         // there is something to cash, or idling is what kills us.
+        // Whether survival is at stake, decided before the pool is filtered so the
+        // payless rule knows when to stand aside.
+        //
+        // DEFEND AND ONLY DEFEND. An empty clock is not danger -- it is the normal
+        // state of a board with room, true on almost every frame -- so exempting
+        // on that made the rule stand aside always and changed nothing at all
+        // (identical histograms over 990 decisions). DEFEND opens at two rows of
+        // headroom, which is the measured threshold for survival actually being at
+        // stake.
+        var survivalNeeded = mode.name === 'DEFEND';
         var here = signature(base);
         // ONLY OPTIONS IT CAN ACTUALLY FINISH IN THE TIME IT HAS LEFT.
         //
@@ -581,6 +665,32 @@
             // is changing without the bot touching it.
             var wasting = info.stopTime > 0 && !this.inFlight();
             if (pool[i].kind === 'hold' && (mode.name !== 'BUILD' || wasting)) continue;
+            // A PAYLESS CLEAR IS NOT PROGRESS, IT IS UNBUILDING.
+            //
+            // A bare three sends no garbage and earns no stop time -- the engine's
+            // own tables say so -- and it spends the vertical structure a chain is
+            // made of. Measured over 990 decisions: 5,176 of the options on offer
+            // were size-three combos and a 3-chain appeared twice. The bot was
+            // cashing threes constantly and then finding no chains, which is cause
+            // and effect, not coincidence.
+            //
+            // So when nothing is at stake the weights may not spend a three. They
+            // can still hold, raise, or play a swap that clears nothing -- which is
+            // what building IS. Survival is exempt: a board that needs the clock
+            // takes whatever buys it.
+            if (this.refusePayless && !survivalNeeded && pool[i].kind === 'swap') {
+                var pr2 = pool[i].resolved;
+                // UNLESS IT BREAKS GARBAGE. A three that opens a slab is the one
+                // payless clear worth playing: digging is progress even when the
+                // clear itself pays nothing, and garbage is two thirds of what
+                // arrives. modes.pays says the same about the old bot.
+                if (pr2 && pr2.total > 0 && !pr2.brokeGarbage &&
+                    cellsSent(PanelEngine(), pr2.chain >= 2 ? 'chain' : 'combo',
+                              pr2.total, pr2.chain) <= 0) {
+                    this.counts.refusedPayless++;
+                    continue;
+                }
+            }
             if (pool[i].kind === 'swap' && (pool[i].moveFrames || 0) > deadline) {
                 this.counts.refusedTooSlow++; continue;
             }
@@ -664,6 +774,10 @@
         // started, and the frames the floor moves during execution are the price.
         // Do not re-derive the earlier launch from the gain formula; the formula is
         // right and the trade it misses is the cost of not building.
+        // ONE OPTION SWEEP FOR THE WHOLE DECISION. Survival and attack both read
+        // it and it is the expensive call in here -- two sweeps a decision would
+        // double the cost of every frame for an answer that cannot have changed.
+        var options = null;
         var survival = null;
         if (mode.name === 'DEFEND' || !(info.stopTime > 0)) {
             // A PLAN IS EXECUTED, NOT RE-CHOSEN EVERY FRAME.
@@ -698,8 +812,8 @@
                 }
             }
             if (!survival) {
-                var plans = bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], 2, base);
-                var plan = bestPlan(plans, info.stopTime || 0, deadline, PanelEngine(),
+                options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], 2, base);
+                var plan = bestPlan(options, info.stopTime || 0, deadline, PanelEngine(),
                                     !!info.toppedOut, info.framesPerRow);
                 if (plan && plan.rate > 0) {
                     this._plan = { moves: plan.option.swaps.slice(1), frames: plan.frames, gain: plan.gain };
@@ -772,6 +886,43 @@
         // place preference is overruled, and it is overruled by arithmetic. Only
         // the FIRST move is played: by the next decision the board has moved, and
         // a plan committed to blind is a plan about a board that no longer exists.
+        // ATTACKING IS NOT A PREFERENCE EITHER.
+        //
+        // Survival comes first -- a board about to die has nothing to attack with
+        // -- and everything after that is an attack. The weights choose WHICH one
+        // inside bestAttack; they cannot choose not to.
+        //
+        // Committed like a survival plan, and for the same measured reason:
+        // re-choosing every frame plays the first move of a different plan each
+        // time and never finishes any of them, which was worth LESS than having no
+        // plans at all (2,521 frames against 2,892).
+        if (!survival) {
+            if (this._attack && this._attack.moves.length) {
+                var an = this._attack.moves[0];
+                var okNext = false, als = bit.legalSwapsOf(base);
+                for (i = 0; i < als.length; i++) {
+                    if (als[i][0] === an[0] && als[i][1] === an[1]) { okNext = true; break; }
+                }
+                if (okNext) {
+                    this._attack.moves = this._attack.moves.slice(1);
+                    if (!this._attack.moves.length) this._attack = null;
+                    this.counts.attacked++;
+                    return { kind: 'swap', move: an, mode: mode, alive: alive };
+                }
+                this._attack = null;
+                this.counts.attackDropped++;
+            }
+            options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], 2, base);
+            var atk = bestAttack(options, this.weights, PanelEngine(), deadline);
+            if (atk && atk.move) {
+                this._attack = { moves: atk.option.swaps.slice(1) };
+                if (!this._attack.moves.length) this._attack = null;
+                this.counts.attacked++;
+                this.counts.cellsPlanned += atk.cells;
+                return { kind: 'swap', move: atk.move, mode: mode, alive: alive };
+            }
+        }
+
         // A PLAN MOVE IS STILL A MOVE, so it faces the no-return rule like any
         // other. Returning early with it skipped that check and the bot went back
         // to oscillating -- 48 decisions on a board it had been on within the last
