@@ -1026,9 +1026,12 @@
             // pays 30 against 43 still on the clock and gains ZERO. The same combo
             // fired as the clock reaches zero is worth the whole 30.
             //
-            // A freeze is a fixed budget of free actions -- 60 frames buys three
-            // adjacent moves, 30 buys one -- so the ones before the last are for
-            // building and the last is for cashing. Refusing a zero-gain cash is
+            // A freeze is a fixed budget of free actions, and it is a large one:
+            // the reaction cooldown is skipped while the clock runs (see `urgent`
+            // in update), so an action costs travel plus the swap -- about 5
+            // frames adjacent, measured at 2.8 over a real game. Sixty frames of
+            // stop time buys roughly a dozen moves, not three. So there is room to
+            // build inside a window and still cash at the end of it. Refusing a zero-gain cash is
             // what spends the window that way, and it is the engine's own formula
             // deciding, not a preference.
             if (info.stopTime > 0 && pool[i].kind === 'swap' && pool[i].resolved &&
