@@ -11,6 +11,12 @@
   "quality": "medium",
   "size": "1536x1024"
  },
+ "wrecksheet-2.png": {
+  "background": "opaque",
+  "model": "gpt-image-2",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
  "wrecksheet-4.png": {
   "background": "opaque",
   "model": "gpt-image-2",
