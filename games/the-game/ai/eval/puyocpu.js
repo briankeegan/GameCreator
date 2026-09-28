@@ -1682,6 +1682,44 @@
   PuyoCpu.prototype.SURVIVE_SEEDS = 30;
   PuyoCpu.prototype.SURVIVE_SEARCH_BUDGET = 60000;
   PuyoCpu.prototype.SURVIVE_SEARCH_BUDGET_CHEAP = 4000;
+  PuyoCpu.prototype.FOLLOW_FAST = 540;
+  // The followed line replayed from this board, or null when it is not
+  // followed here or no longer reaches FOLLOW_FAST frames alive.
+  PuyoCpu.prototype._fastFollow = function (root, cands) {
+    var fl = this._following, i, j, n, c;
+    if (!fl || !fl.steps || !fl.steps.length) return null;
+    if (fl.hold && fl.at > this.stack.clock) {
+      var dt = fl.at - this.stack.clock;
+      fl = { at: this.stack.clock, steps: [{ long: dt }].concat(fl.steps.map(function (x) { return isLong(x) ? { long: x.long + dt } : x; })) };
+    }
+    if (fl.at !== this.stack.clock) return null;
+    var want = fl.steps[0], fi = -1;
+    for (i = 0; i < cands.length; i++) {
+      var ck = cands[i];
+      if (want === 'raise' ? ck.kind === 'raise'
+          : Array.isArray(want) ? (ck.kind === 'swap' && ck.move && ck.move[0] === want[0] && ck.move[1] === want[1])
+          : ck.kind === 'hold') { fi = i; break; }
+    }
+    if (fi < 0) return null;
+    var cd = cands[fi];
+    if (cd.resolved && (cd.resolved.died || cd.resolved.diedInWalk)) return null;
+    n = root;
+    for (j = 0; j < fl.steps.length; j++) {
+      var sm = fl.steps[j], lg = isLong(sm);
+      if (lg) {
+        var su = this._lineUntil;
+        this._lineUntil = sm.long !== undefined ? sm.long : su;
+        c = this._lineStep(n, null, true);
+        this._lineUntil = su;
+      } else c = this._lineStep(n, sm, false);
+      if (!c || c.dead) break;
+      c.prev = j ? n : null; c.m = lg ? 'long' : sm; c.tag = fi;
+      n = c;
+    }
+    if (n === root || n.dead || n.t < this.FOLLOW_FAST) return null;
+    if (this.checkModel && fl.node && fl.node.st) this._checkModel(root, fl.node);
+    return { fi: fi, n: n };
+  };
   function isLong(m) { return m === 'long' || (!!m && typeof m === 'object' && !Array.isArray(m) && m.long !== undefined); }
   PuyoCpu.prototype._survivalSearch = function (cands) {
     var verdict = new Array(cands.length), level = [], self = this, i, j, n, c, proofs = {}, weak = {};
@@ -1699,6 +1737,18 @@
                     : { b: this._board.clone(), carry: null, pos: [this.stack.curRow, this.stack.curCol], t: 0 };
     var open = 0;
     this._searchProofs = { cands: cands, proofs: proofs, reach: reach, far: far };
+    // A FOLLOWED LINE STILL ALIVE WELL PAST THE HORIZON IS THE ANSWER. Its
+    // next move is played without searching the others; the full search runs
+    // again once what is left of the line drops under FOLLOW_FAST frames.
+    var fast = real && this.FOLLOW_FAST ? this._fastFollow(root, cands) : null;
+    if (fast) {
+      for (i = 0; i < cands.length; i++) verdict[i] = i === fast.fi ? 'proven' : 'skipped';
+      proofs[fast.fi] = fast.n; reach[fast.fi] = fast.n.t; far[fast.fi] = fast.n;
+      this._following = null;
+      this.followFast = (this.followFast || 0) + 1;
+      this._restNeeded = savedRest;
+      return verdict;
+    }
     for (i = 0; i < cands.length; i++) {
       var cd = cands[i];
       if (cd.resolved && (cd.resolved.died || cd.resolved.diedInWalk)) { verdict[i] = 'dies'; continue; }
