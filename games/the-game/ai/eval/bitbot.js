@@ -332,6 +332,21 @@
         return n;
     }
 
+    // HOW UNEVEN THE STACK IS: the total step between neighbouring columns.
+    //
+    // A tower is where it dies -- one column reaches the ceiling while the rest of
+    // the board still has room, and the game ends with half the board empty. It is
+    // never a reason to choose a worse move, but between two moves worth the same
+    // the flatter board is strictly better: more columns in reach of the cursor,
+    // no panel stranded on top of a spike, and a slab that lands sits level
+    // instead of bridging a gap.
+    function bumpiness(st) {
+        var h = [], c, n = 0;
+        for (c = 1; c <= W; c++) h[c] = 32 - Math.clz32(st.occ[c] >>> 0);
+        for (c = 1; c < W; c++) n += Math.abs(h[c] - h[c + 1]);
+        return n;
+    }
+
     function matchWays(st) {
         // PAIRS, NOT MATCHES. reachMask marks every cell that would complete an
         // adjacent same-colour pair, so its popcount is how much the board can
@@ -1245,8 +1260,13 @@
             // clears anything, the only thing that separates the swaps is what
             // they leave behind, and the board's own count of ways a clear can
             // still be made is that. Ties to the cheaper move.
+            // LEXICOGRAPHIC, NOT A WEIGHTED SUM. Ways to build decide it; between
+            // two boards offering the same, the flatter one wins; between two of
+            // those, the cheaper move. Each term is scaled past the next so it
+            // cannot be outvoted -- there is no weight here to get wrong, and a
+            // flatter board can never beat a better one.
             var s = noneClear
-                  ? matchWays(cand.masks) * 100 - (cand.moveFrames || 0)
+                  ? matchWays(cand.masks) * 10000 - bumpiness(cand.masks) * 100 - (cand.moveFrames || 0)
                   : this.score(cand.masks, cand.moveFrames, cand.resolved, info);
             if (!best || s > best.score) best = { cand: cand, score: s };
         }
