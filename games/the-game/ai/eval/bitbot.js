@@ -1131,6 +1131,21 @@
             if (pool[i].kind === 'swap' && (pool[i].moveFrames || 0) > deadline) {
                 this.counts.refusedTooSlow++; continue;
             }
+            // MUST SURVIVE, AND IT IS THE FIRST STAGE BECAUSE THE OTHERS NARROW.
+            //
+            // This used to sit below the obligations, so MUST HOLD MATERIAL could
+            // cut the set down to raise-or-break and only then would anything ask
+            // whether those kill -- on a thin board that forced the bot to push its
+            // own stack up. Measured at 8 deaths in 8, with the material stage
+            // firing 300 times a game.
+            //
+            // A later stage can only ever remove, so anything that survives this is
+            // the most the board offers, and nothing downstream can reintroduce a
+            // death.
+            if (this.deadly(pool[i].masks, pool[i].resolved, info,
+                            (pool[i].moveFrames || 0) + this.reaction)) {
+                this.counts.refusedDeadly++; continue;
+            }
             // A MOVE THAT PUTS THE BOARD BACK WHERE IT WAS IS NOT A MOVE.
             //
             // The scoring is stateless, so if board X's best swap leads to Y and
@@ -1152,7 +1167,11 @@
             }
             allowed.push(pool[i]);
         }
-        if (!allowed.length) allowed = pool;
+        // EVERY OPTION KILLS. The pool comes back so there is a move to play, and
+        // it is counted here rather than after scoring: the death filter runs
+        // first now, so by the time anything is scored the fatal ones are already
+        // gone and `best` is always set.
+        if (!allowed.length) { this.counts.allDead++; allowed = pool; }
 
         // THE OBLIGATIONS NARROW THE SET; THE WEIGHTS PICK INSIDE WHAT IS LEFT.
         //
@@ -1196,8 +1215,6 @@
             // WHAT THE HORIZON IS: the frames before this bot decides again --
             // the walk to the move, then the reaction cooldown. A candidate has
             // to survive its own cost, which is why it is per candidate.
-            var horizon = (cand.moveFrames || 0) + this.reaction;
-            if (this.deadly(cand.masks, cand.resolved, info, horizon)) { this.counts.refusedDeadly++; continue; }
             alive++;
             var s = this.score(cand.masks, cand.moveFrames, cand.resolved, info);
             if (!best || s > best.score) best = { cand: cand, score: s };
@@ -1206,7 +1223,6 @@
         // move is played rather than freezing. Counted, because a bot reaching
         // here often is a bot about to die and the count is the warning.
         if (!best) {
-            this.counts.allDead++;
             for (i = 0; i < allowed.length; i++) {
                 var s2 = this.score(allowed[i].masks, allowed[i].moveFrames,
                                     allowed[i].resolved, info);
