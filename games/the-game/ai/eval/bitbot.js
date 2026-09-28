@@ -192,7 +192,7 @@
         this.counts = { refusedDeadly: 0, allDead: 0, byMode: {},
                         refusedReturn: 0, defendByClock: 0, refusedTooSlow: 0, planned: 0, planDropped: 0,
                         attacked: 0, attackDropped: 0, cellsPlanned: 0, refusedPayless: 0,
-                        raisedForMaterial: 0, refusedRaise: 0, forcedBoth: 0,
+                        raisedForMaterial: 0, refusedRaise: 0, forcedBoth: 0, refusedEarly: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
                         revealWindows: 0 };
     }
@@ -1013,6 +1013,31 @@
                 tierOf(pool[i]) === 4) {
                 this.counts.refusedPayless++;
                 continue;
+            }
+            // A CASH THAT GAINS NOTHING IS NOT AN ACTION YET: FIRE AT THE LAST
+            // SECOND.
+            //
+            // awardStopTime takes a MAX, not a sum, so a payout only counts for
+            // what it adds on top of the clock still running:
+            //
+            //     gain = max(0, pays - max(0, clock - frames))
+            //
+            // Inside a 2-chain's 60-frame freeze, cashing a 4-combo 17 frames in
+            // pays 30 against 43 still on the clock and gains ZERO. The same combo
+            // fired as the clock reaches zero is worth the whole 30.
+            //
+            // A freeze is a fixed budget of free actions -- 60 frames buys three
+            // adjacent moves, 30 buys one -- so the ones before the last are for
+            // building and the last is for cashing. Refusing a zero-gain cash is
+            // what spends the window that way, and it is the engine's own formula
+            // deciding, not a preference.
+            if (info.stopTime > 0 && pool[i].kind === 'swap' && pool[i].resolved &&
+                pool[i].resolved.total > 0) {
+                var pr3 = pool[i].resolved, isCh = pr3.chain >= 2;
+                var pays3 = BF.stopTimeOf(PanelEngine(), isCh, isCh ? 0 : pr3.total,
+                                          isCh ? pr3.chain : 0, !!info.toppedOut);
+                var left3 = info.stopTime - (pool[i].moveFrames || 0);
+                if (pays3 - Math.max(0, left3) <= 0) { this.counts.refusedEarly++; continue; }
             }
             if (pool[i].kind === 'swap' && (pool[i].moveFrames || 0) > deadline) {
                 this.counts.refusedTooSlow++; continue;
