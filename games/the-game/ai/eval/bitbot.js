@@ -504,8 +504,11 @@
     //
     // Ties go to the cheaper plan, because the frames not spent are frames still
     // available for the plan after this one.
-    function bestPlan(list, clock, deadline, engine, toppedOut) {
+    function bestPlan(list, clock, deadline, engine, toppedOut, framesPerRow) {
         var best = null, all = list.now.concat(list.next), i;
+        // ONE PANEL REMOVED IS framesPerRow / W FRAMES OF LIFE -- 18.7 at level 10.
+        // Panels and stop time are the same currency and this is the exchange rate.
+        var perPanel = (framesPerRow || 0) / W;
         for (i = 0; i < all.length; i++) {
             var o = all[i];
             if (!o.swaps || !o.swaps.length) continue;
@@ -514,8 +517,22 @@
             var pays = BF.stopTimeOf(engine, isChain, isChain ? 0 : o.size,
                                      isChain ? o.chain : 0, toppedOut);
             var gain = Math.max(0, pays - Math.max(0, clock - o.frames));
-            if (!best || gain > best.gain || (gain === best.gain && o.frames < best.frames)) {
-                best = { gain: gain, frames: o.frames, move: o.swaps[0], option: o };
+            // WHAT SURVIVAL ACTUALLY REQUIRES IS A CLEAR RATE OF 1.0, and ranking
+            // by the stop-time gain alone cannot see it. Measured over three duels:
+            // panels arriving 234, 147, 224 against panels cleared 225, 114, 195 --
+            // rates of 0.96, 0.78 and 0.87, and the only board that survived was
+            // the 0.96. The deficit is 9 to 33 panels a game, three to eight extra
+            // clears. TWO THIRDS OF THE INFLOW IS GARBAGE, not the rising floor, so
+            // the panels a move removes matter more than the freeze it buys.
+            //
+            // So the objective is frames of life bought per frame spent. A plan
+            // clearing 18 panels is worth 337 frames before any stop time; the
+            // deepest chain pays only 68. The panels were always the larger half and
+            // the gain-only ranking was reading the smaller one.
+            var bought = o.total * perPanel + gain;
+            var rate = bought / Math.max(1, o.frames);
+            if (!best || rate > best.rate || (rate === best.rate && o.frames < best.frames)) {
+                best = { rate: rate, gain: gain, frames: o.frames, move: o.swaps[0], option: o };
             }
         }
         return best;
@@ -628,6 +645,25 @@
         // comes first -- which is the constant supply this bot was asked for. The
         // plan still has to gain time and finish in time, so on a board with
         // nothing worth cashing this changes nothing.
+        // WHEN TO START THE NEXT PLAN, AND WHY IT IS NOT "SO IT LANDS AS THE CLOCK
+        // RUNS OUT".
+        //
+        // That refinement is the obvious one and it was tried. A plan costing
+        // `frames` looks like it should be STARTED when `clock <= frames`, so the
+        // cash lands exactly as the clock reaches zero -- no dead frames with the
+        // floor moving, and maximum value, since the gain is
+        // max(0, pays - max(0, clock - frames)) and a plan arriving at clock zero
+        // has nothing left to beat.
+        //
+        // It measures WORSE: 4,593 frames against 5,040, payouts 92 against 100,
+        // over the same six duels. Launching earlier wins continuity and loses
+        // building time, and the building time is worth more -- every frame spent
+        // walking toward a cash is a frame not spent assembling the bigger one.
+        //
+        // So the plan runs when the clock is EMPTY, which is the latest it can be
+        // started, and the frames the floor moves during execution are the price.
+        // Do not re-derive the earlier launch from the gain formula; the formula is
+        // right and the trade it misses is the cost of not building.
         var survival = null;
         if (mode.name === 'DEFEND' || !(info.stopTime > 0)) {
             // A PLAN IS EXECUTED, NOT RE-CHOSEN EVERY FRAME.
@@ -663,8 +699,9 @@
             }
             if (!survival) {
                 var plans = bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], 2, base);
-                var plan = bestPlan(plans, info.stopTime || 0, deadline, PanelEngine(), !!info.toppedOut);
-                if (plan && plan.gain > 0) {
+                var plan = bestPlan(plans, info.stopTime || 0, deadline, PanelEngine(),
+                                    !!info.toppedOut, info.framesPerRow);
+                if (plan && plan.rate > 0) {
                     this._plan = { moves: plan.option.swaps.slice(1), frames: plan.frames, gain: plan.gain };
                     if (!this._plan.moves.length) this._plan = null;
                     survival = { move: plan.move, gain: plan.gain };
