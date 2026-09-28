@@ -192,7 +192,7 @@
         this.counts = { refusedDeadly: 0, allDead: 0, byMode: {},
                         refusedReturn: 0, defendByClock: 0, refusedTooSlow: 0, planned: 0, planDropped: 0,
                         attacked: 0, attackDropped: 0, cellsPlanned: 0, refusedPayless: 0,
-                        raisedForMaterial: 0, refusedRaise: 0, forcedBoth: 0, refusedEarly: 0,
+                        raisedForMaterial: 0, refusedRaise: 0, forcedBreak: 0, forcedBoth: 0, refusedEarly: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
                         revealWindows: 0 };
     }
@@ -1235,6 +1235,25 @@
         for (i = 0; i < allowed.length; i++) {
             if (allowed[i].resolved && allowed[i].resolved.total > 0) { noneClear = false; break; }
         }
+        // SHORT OF MATERIAL: BREAKING GARBAGE IS THE PRIORITY.
+        //
+        // A slab is material already on the board, just inert, and breaking is the
+        // only thing that converts it. Below six flat rows the board cannot afford
+        // to leave it sitting there: the panels a chain is made of are locked
+        // inside it, and every row of slab is a row of ceiling gone.
+        //
+        // It costs almost nothing to say so. Material is under six rows for 98% of
+        // a game, but a break is only AVAILABLE on about 4% of decisions -- a
+        // match has to land beside a slab -- so this narrows the choice on one
+        // decision in twenty-five and leaves the rest alone.
+        if (materialRows(base) < 6) {
+            var digs = [];
+            for (i = 0; i < allowed.length; i++) {
+                if (allowed[i].resolved && allowed[i].resolved.brokeGarbage) digs.push(allowed[i]);
+            }
+            if (digs.length) { this.counts.forcedBreak++; allowed = digs; }
+        }
+
         var best = null, alive = 0;
         for (i = 0; i < allowed.length; i++) {
             var cand = allowed[i];
