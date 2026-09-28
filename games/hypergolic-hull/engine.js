@@ -1149,6 +1149,36 @@
         ],
       },
     },
+    // IT UNDOES YOUR WORK, which is the only thing on this board that does.
+    //
+    // A wreck is a hull waiting to be either cut open or stood back up, and
+    // the Tender is the second of those: it flies to wreckage and rebuilds
+    // the ship. Leave one alive and the sector does not shrink as you kill
+    // through it — the thing you shot is back, at full hull, and your two
+    // shots bought nothing. That is what puts an ORDER on a crowd, which is
+    // what this roster has never had: every hull is one-shot, so killing is
+    // instant and there was never a question of what to kill first.
+    //
+    // No gun. A hull that undoes kills and also shoots gives you nothing to
+    // weigh — the whole point is that it is harmless and still the most
+    // urgent thing on the board.
+    //
+    // A rebuild costs it REVIVE_COST, and its bus only ticks on a round it
+    // spends waiting (the same 1-to-1 rule both sides play by), so it works
+    // at about every other round rather than emptying the board of your
+    // progress as fast as you make it.
+    tender: {
+      hull: 1, salvage: 7, revives: true,
+      hold: {
+        cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
+        items: [
+          { id: "scanner", x: 1, y: 0 },
+          { id: "sublightDrive", x: 0, y: 1 },
+          { id: "microReactor", x: 2, y: 1 },
+          { id: "chargeBank", x: 2, y: 2 },
+        ],
+      },
+    },
     sentry: {
       hull: 1, salvage: 3,
       hold: {
@@ -1768,6 +1798,16 @@
       return livingEnemies(state).some((other) => other !== enemy && covered.some((h) => posEq(h, other)));
     },
   };
+
+  // What a rebuild costs the hull doing it. Its bus only fills on a round it
+  // spends waiting, so this is what paces it: high enough that it cannot keep
+  // up with a ship that is killing, low enough that ignoring it is a mistake.
+  const REVIVE_COST = 2;
+
+  function isTender(enemy) {
+    const def = ENEMY_TYPES[enemy.type];
+    return Boolean(def && def.revives);
+  }
 
   // Does this hull come for the wreckage rather than for you? One place, so
   // the AI, the renderer and the tests cannot disagree about which it is.
@@ -4163,6 +4203,25 @@
       }
     }
 
+    // ---- THE TENDER --------------------------------------------------------
+    // Same claim on a wreck as the Collector's, opposite purpose: it stands
+    // the hull back up rather than carrying it off. It ignores the flagship
+    // entirely while there is work to do, which is what makes killing it a
+    // decision instead of a reflex — nothing it does can hurt you.
+    if (isTender(enemy) && ship.hasDrive) {
+      const job = liveWrecks(state)
+        .slice()
+        .sort((a, b) => hexDistance(enemy, a) - hexDistance(enemy, b))[0];
+      if (job) {
+        if (hexDistance(enemy, job) <= 1) {
+          if (enemy.energy >= REVIVE_COST) return { enemyId: enemy.id, type: "revive", wreck: job.id };
+          return { enemyId: enemy.id, type: "wait" }; // standing over it, filling the bus
+        }
+        const step = stepToward(state, enemy, job);
+        if (step) return { enemyId: enemy.id, type: "move", to: step };
+      }
+    }
+
     const burning = chargedHexes(state);
     if (burning.has(hexKey(enemy)) && ship.hasDrive) {
       const fromBlast = (hex) => {
@@ -4608,6 +4667,21 @@
         enemy.carrying = { type: wreck.type };
         state.events.push({ type: "wreckTowed", q: wreck.q, r: wreck.r, victim: wreck.type, enemyId: enemy.id });
         pushLog(state, `${enemy.type.toUpperCase()} has the ${wreck.type.toUpperCase()} hulk under tow — stop it or lose it.`);
+      }
+      // A Tender stands a wreck back up. Resolved after the tow on purpose:
+      // a hulk already under tow is off the board and cannot be rebuilt, so
+      // two of them cannot both claim the same wreck in one round.
+      for (const { enemy, intent } of intents.filter(({ intent: i }) => i.type === "revive")) {
+        if (!enemy.alive || enemy.energy < REVIVE_COST) continue;
+        const wreck = liveWrecks(state).find((w) => w.id === intent.wreck);
+        if (!wreck || hexDistance(enemy, wreck) > 1) continue;
+        if (enemyAt(state, wreck) || posEq(state.playerPos, wreck)) continue; // something is standing on it
+        state.wrecks = liveWrecks(state).filter((w) => w.id !== wreck.id);
+        enemy.energy -= REVIVE_COST;
+        const reborn = spawnEnemy(wreck.type, wreck.q, wreck.r);
+        state.enemies.push(reborn);
+        state.events.push({ type: "wreckRevived", q: wreck.q, r: wreck.r, victim: wreck.type, enemyId: enemy.id });
+        pushLog(state, `${enemy.type.toUpperCase()} has the ${wreck.type.toUpperCase()} back on its feet.`);
       }
       const attackers = intents
         .filter(({ intent }) => intent.type === "attack")
@@ -5449,6 +5523,7 @@
     liveWrecks,
     wreckAt,
     isCollector,
+    isTender,
     STARTING_LOADOUTS,
     previewLoadout,
     loadoutUnlocked,

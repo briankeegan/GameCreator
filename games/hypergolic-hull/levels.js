@@ -624,7 +624,12 @@
             // question the Cruiser asks (contact, in numbers) moved one hex
             // further out, which is exactly the sort of small re-ask this
             // stretch is for.
-            ["interceptor", "interceptor", "cruiser", "cruiser", "corsair", "picket", "sentry", "salvager"]
+            ["interceptor", "interceptor", "cruiser", "cruiser", "corsair", "picket", "sentry", "salvager",
+            // And the Tender, the first hull whose job is undoing yours. It
+            // lands here rather than earlier because a rebuild is only a
+            // decision once there is enough on the board that spending two
+            // shots twice on the same hull actually costs you the sector.
+            "tender"]
           : depth < 11
             ? // The shelf has had three or four passes by now: the Scout
               // (reach that fires every round) and the Mortar (reach that
@@ -641,7 +646,7 @@
               // and it stops hurting you" quietly worked on the whole
               // roster. The Sapper mines the ground it is leaving, which
               // makes chasing anything across this stretch a real decision.
-              ["interceptor", "cruiser", "corsair", "picket", "cutter", "escort", "carrier", "demolitionist", "outrider", "sapper", "sentry", "bombard", "salvager"]
+              ["interceptor", "cruiser", "corsair", "picket", "cutter", "escort", "carrier", "demolitionist", "outrider", "sapper", "sentry", "bombard", "salvager", "tender"]
             : // Everything, including the two that shoot the length of the
               // board. The Interceptor stays in the pool — it was dropped
               // here at some point and that only made the deep end MORE
@@ -651,7 +656,7 @@
               // that goes THROUGH a hull. Deep boards are where hostiles
               // stack up in lines and where hiding behind one of them was
               // the free answer to the other two.
-              ["interceptor", "cruiser", "corsair", "picket", "cutter", "escort", "carrier", "demolitionist", "outrider", "sapper", "impaler", "sentry", "bombard", "lancer", "railgun", "salvager",
+              ["interceptor", "cruiser", "corsair", "picket", "cutter", "escort", "carrier", "demolitionist", "outrider", "sapper", "impaler", "sentry", "bombard", "lancer", "railgun", "salvager", "tender",
                 // The pirates. A whole faction is a large step, so it lands
                 // where a ship has a developed hold to answer it with — and
                 // measured, four new classes spread across the middle tiers
@@ -1268,10 +1273,12 @@
     const enemies = [];
     const LIGHT = ["interceptor", "cruiser"];
     const SPLITS = new Set(["splitter"]);
+    const TENDERS = new Set(["tender"]);
     let emplaced = 0;
     let heavies = 0;
     let longGuns = 0;
     let splitters = 0;
+    let tenders = 0;
     for (const hex of candidates) {
       if (enemies.length >= enemyCount) break;
       if (hazardKeys.has(`${hex.q},${hex.r}`)) continue;
@@ -1296,6 +1303,14 @@
       if (SPLITS.has(type)) {
         if (splitters >= 1) type = LIGHT[Math.floor(rng() * LIGHT.length)];
         else splitters++;
+      }
+      // ONE TENDER per board. It is the top of the kill order and there can
+      // only be one top; two of them rebuild each other's work faster than
+      // any ship can shoot, which is not a harder sector, it is one that
+      // does not end.
+      if (TENDERS.has(type)) {
+        if (tenders >= 1) type = LIGHT[Math.floor(rng() * LIGHT.length)];
+        else tenders++;
       }
       enemies.push({ type, q: hex.q, r: hex.r });
     }

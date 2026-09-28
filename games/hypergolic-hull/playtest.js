@@ -656,6 +656,7 @@ function playSector(state, report) {
     wreckCleared: "wrecks cut open",
     wreckTowed: "wrecks towed away",
     collectorEscaped: "collectors escaped with a load",
+    wreckRevived: "wrecks stood back up by a Tender",
   };
   let logSeen = 0;
   for (let round = 0; round < MAX_ROUNDS; round++) {
@@ -727,7 +728,9 @@ function playSector(state, report) {
     // than any other target on the board, because everything else will still
     // be there next round and that will not.
     {
-      const laden = Engine.livingEnemies(state).filter((e) => e.carrying);
+      const laden = Engine.livingEnemies(state).filter(
+        (e) => e.carrying || (Engine.isTender && Engine.isTender(e) && (state.wrecks || []).length)
+      );
       if (laden.length && shot && shot.enemy && !laden.includes(shot.enemy)) {
         const grab = laden
           .map((thief) => {
