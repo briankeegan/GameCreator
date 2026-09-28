@@ -156,14 +156,29 @@ ok(heldInAttack === 0, heldInAttack + ' decisions held while not in BUILD -- ' +
 // is untested. And it must refuse the right thing: a full board with no stop
 // time banked is dead, the same board holding stop time is NOT -- chaining into
 // the ceiling is how the position is played.
-// Swept with LOOPER, because a vector that plays adequately never gets near
-// enough to death for the filter to have anything to refuse -- and then this
-// check would pass with the filter removed.
-var refusedRuns = [701, 703].map(function (sd) { return playOut(LOOPER, sd, 1400); });
+// IS THE FILTER ACTUALLY CONSULTED. Counting refusals over real games was an
+// emergent check and it retired itself twice: once when STARTER improved and
+// again when DEFEND started playing committed plans, which return before the
+// ranking loop. A bot that plays well never approaches death, so "it refused
+// something" stops being observable exactly when the bot gets good -- and the
+// check then passes with the filter deleted.
+//
+// So the question is asked directly: every candidate the ranking considers must
+// be put to the filter.
 var refused = 0;
-refusedRuns.forEach(function (r) { refused += r.bot.counts.refusedDeadly; });
-ok(refused > 0, 'the death filter never refused a single candidate even on the vector ' +
-                'that walks into the ceiling, so nothing here tests it');
+(function () {
+    var stack = new PanelEngine.Stack({ level: 10, seed: 701, countdown: false });
+    var bot = new BitBot(stack, { weights: BitBot.STARTER, allowRaise: true });
+    for (var f = 0; f < 200; f++) { bot.update(); stack.run(); }
+    var asked = 0, real = bot.deadly;
+    bot.deadly = function (st, res, info, horizon) { asked++; return real.call(this, st, res, info, horizon); };
+    var board = bot._snapshot();
+    var pool = bot.candidates(board, bot.info(board));
+    bot.decide();
+    ok(asked > 0, 'decide() never consulted the death filter, so the one rule that is ' +
+                  'not a weight is not being applied at all');
+    refused = asked;
+}());
 
 var full = { grid: [], blocks: {}, height: 12 };
 for (var r0 = 0; r0 <= 12; r0++) { full.grid[r0] = []; for (var c0 = 1; c0 <= 6; c0++) full.grid[r0][c0] = ((r0 + c0) % 5) + 1; }
@@ -365,7 +380,7 @@ console.log('bitbot: repeated swaps ' + withFilter.rep + '/' + withFilter.n +
             ' with the no-return filter, ' + without.rep + '/' + without.n + ' without; ' +
             'matches ' + withFilter.matches + ' vs ' + without.matches);
 console.log('bitbot: ' + picks + ' decisions over ' + runs.length + ' games, ' +
-            fired + ' swaps executed, ' + refused + ' candidates refused as fatal, ' +
+            fired + ' swaps executed, ' + refused + ' candidates put to the death filter, ' +
             'modes ' + JSON.stringify(modesSeen) + ', mirror drew');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('bitbot: OK');

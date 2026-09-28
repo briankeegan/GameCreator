@@ -22,12 +22,13 @@
         require(path.join(__dirname, '..', '..', 'panel-engine.js'));
         require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
         module.exports = factory(require('./bitmatch.js'), require('./bitfeatures.js'),
-                                 require('./bitlineup.js'), require('./travel.js'));
+                                 require('./bitlineup.js'), require('./travel.js'),
+                                 require('./bitoptions.js'));
     } else {
         root.BitBot = factory(root.BitMatch, root.BitFeatures, root.BitLineup,
-                              root.PanelEval.travel);
+                              root.PanelEval.travel, root.BitOptions);
     }
-}(typeof globalThis !== 'undefined' ? globalThis : this, function (bit, BF, lineup, travel) {
+}(typeof globalThis !== 'undefined' ? globalThis : this, function (bit, BF, lineup, travel, bitoptions) {
     'use strict';
 
     var W = 6, H = 12;
@@ -152,6 +153,8 @@
         // longer memory starts refusing legitimate revisits of a position the
         // rising stack has genuinely changed.
         this._seen = [];
+        // The plan being executed, if any. See the commitment note in decide().
+        this._plan = null;
 
         this._snapshot = PanelCpu().snapshot;
         this._beginWalk = PanelCpu().beginWalk;
@@ -176,7 +179,7 @@
         this.spend = { gameOver: 0, walking: 0, cooling: 0, decided: 0 };
         this.frozen = { walking: 0, cooling: 0, hold: 0, raise: 0, swap: 0 };
         this.counts = { refusedDeadly: 0, allDead: 0, byMode: {},
-                        refusedReturn: 0, defendByClock: 0, refusedTooSlow: 0,
+                        refusedReturn: 0, defendByClock: 0, refusedTooSlow: 0, planned: 0, planDropped: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
                         revealWindows: 0 };
     }
@@ -482,6 +485,42 @@
         return (s.shakeTime || 0) > 0;
     };
 
+    // THE BEST PLAN THAT FINISHES IN TIME AND ARRIVES AT THE RIGHT MOMENT.
+    //
+    // A plan is a sequence of moves with a total frame cost -- bitoptions prices
+    // both plies, the walk to the setup and the walk from it to the cash. Three
+    // questions, all arithmetic:
+    //
+    //   how many frames does it take     o.frames
+    //   will the board still be alive     o.frames <= framesToDeath
+    //   how much time does it GAIN        max(0, pays - max(0, clock - o.frames))
+    //
+    // The third is the one that makes timing matter. awardStopTime is a MAX, so a
+    // payout only counts for what it adds ON TOP of what is still running -- and
+    // what is still running when the move LANDS is the clock now minus the frames
+    // spent getting there. Fire early and the gain is nothing; the same move a
+    // moment later is worth its full value. That is "hit it at the right moment",
+    // and it falls out of the subtraction rather than needing a rule.
+    //
+    // Ties go to the cheaper plan, because the frames not spent are frames still
+    // available for the plan after this one.
+    function bestPlan(list, clock, deadline, engine, toppedOut) {
+        var best = null, all = list.now.concat(list.next), i;
+        for (i = 0; i < all.length; i++) {
+            var o = all[i];
+            if (!o.swaps || !o.swaps.length) continue;
+            if (o.frames > deadline) continue;                 // cannot finish in time
+            var isChain = o.kind === 'chain';
+            var pays = BF.stopTimeOf(engine, isChain, isChain ? 0 : o.size,
+                                     isChain ? o.chain : 0, toppedOut);
+            var gain = Math.max(0, pays - Math.max(0, clock - o.frames));
+            if (!best || gain > best.gain || (gain === best.gain && o.frames < best.frames)) {
+                best = { gain: gain, frames: o.frames, move: o.swaps[0], option: o };
+            }
+        }
+        return best;
+    }
+
     BitBot.prototype.decide = function () {
         var board = this._snapshot();
         var info = this.info(board);
@@ -566,58 +605,59 @@
         // If nothing banks anything the ordinary ranking stands, because then no
         // move here is an escape and there is nothing for this to choose between.
         // Borrowed from modes.js, whose FORCED does exactly this.
-        // SURVIVAL IS A RATE, NOT A PAYOUT. This is the arithmetic of the game.
+        // SURVIVAL IS A PLAN THAT FINISHES IN TIME.
         //
-        // The floor rises one row per framesPerRow -- 112 at this speed -- and a
-        // row is W panels. So every panel removed buys framesPerRow / W frames of
-        // life, 18.7 of them, and stop time adds frames directly. A move that
-        // clears C panels and gains S stop frames buys:
+        // Ranking single candidates could never express it: the move that saves
+        // the position is often the SETUP, which clears nothing and rates zero on
+        // any measure of what it does by itself. A plan is priced over both plies
+        // by bitoptions, so the setup is paid for by the cash it leads to.
         //
-        //     framesBought = C * (framesPerRow / W) + S
-        //
-        // and it costs the frames to play it. The ratio is what decides whether
-        // the bot is ahead of the floor or behind it:
-        //
-        //     rate = framesBought / framesSpent        (> 1 is gaining ground)
-        //
-        // WHAT THE NUMBERS SAY, and it is why threes were never going to be
-        // enough: a plain three buys 3 * 18.7 + 0 = 56 frames and a walk plus a
-        // settle costs 50 to 80, so clearing threes is at the break-even line or
-        // just under it. A 4-combo buys 105. A 2-chain buys 172. A six-chain buys
-        // 18 * 18.7 + 68 = 404. Only the big shapes buy real slack, and a rule
-        // that ranks by the PAYOUT cannot see that, because the payout for a
-        // six-chain (68) is barely more than for a two-chain (60) -- while the
-        // frames bought differ by a factor of two and a half. The panels are most
-        // of the value and stop time is the smaller half.
-        //
-        // The clock enters as the GAIN, since awardStopTime is a MAX, and against
-        // the clock as it will be when the move lands because it drains while the
-        // cursor walks.
+        // One call for the whole decision, not one per candidate -- the plans are
+        // a property of the position, not of the move being scored.
         var survival = null;
         if (mode.name === 'DEFEND') {
-            survival = [];
-            var S = info.stopTime || 0;
-            var perPanel = (info.framesPerRow || 0) / W;
-            for (i = 0; i < allowed.length; i++) {
-                var cd = allowed[i], cost = cd.moveFrames || 0;
-                var rr = cd.resolved, P = 0, C = 0;
-                if (rr && rr.total > 0) {
-                    var ch = rr.chain >= 2;
-                    P = BF.stopTimeOf(PanelEngine(), ch, ch ? 0 : rr.total,
-                                      ch ? rr.chain : 0, !!info.toppedOut);
-                    // Garbage cells leave the board too, and the whole reason to
-                    // dig is that they are the ones that are not coming off any
-                    // other way.
-                    C = rr.total + (rr.brokeGarbage || 0);
+            // A PLAN IS EXECUTED, NOT RE-CHOSEN EVERY FRAME.
+            //
+            // Re-planning each decision and playing the first move of whatever
+            // came back means starting plans and never finishing them: the setup
+            // is played, the board changes, a different plan now looks best, and
+            // its setup is played instead. The cash at the end of either one never
+            // arrives. Measured as wild variance -- one seed reached 5,397 frames
+            // and another 1,370, with 204 planned moves and the gaps between
+            // payouts unchanged.
+            //
+            // So the remaining moves are held and played in order. The plan is
+            // dropped the moment it stops being true: its next move must still be
+            // legal, and the whole thing must still fit inside the frames left.
+            // That is the arithmetic of "how many moves will it take, and will the
+            // board still be there when they are done".
+            if (this._plan && this._plan.moves.length) {
+                var nx = this._plan.moves[0];
+                var stillLegal = false;
+                var ls = bit.legalSwapsOf(base);
+                for (i = 0; i < ls.length; i++) {
+                    if (ls[i][0] === nx[0] && ls[i][1] === nx[1]) { stillLegal = true; break; }
                 }
-                var gain = Math.max(0, P - Math.max(0, S - cost));
-                var bought = C * perPanel + gain;
-                // The frames this costs: the walk, plus the decision cycle that
-                // has to pass before the next move can be made. A move that buys
-                // nothing rates 0 rather than dividing by a guess.
-                var spent = cost + this.reaction;
-                survival.push({ cand: cd, value: spent > 0 ? bought / spent : 0 });
+                if (stillLegal && this._plan.frames <= deadline) {
+                    survival = { move: nx, gain: this._plan.gain };
+                    this._plan.moves = this._plan.moves.slice(1);
+                    if (!this._plan.moves.length) this._plan = null;
+                } else {
+                    this._plan = null;
+                    this.counts.planDropped++;
+                }
             }
+            if (!survival) {
+                var plans = bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], 2, base);
+                var plan = bestPlan(plans, info.stopTime || 0, deadline, PanelEngine(), !!info.toppedOut);
+                if (plan && plan.gain > 0) {
+                    this._plan = { moves: plan.option.swaps.slice(1), frames: plan.frames, gain: plan.gain };
+                    if (!this._plan.moves.length) this._plan = null;
+                    survival = { move: plan.move, gain: plan.gain };
+                }
+            }
+        } else if (this._plan) {
+            this._plan = null;                    // out of danger: the plan is stale
         }
 
         // THE BEAM: pre-rank cheaply, then pay for the top few only.
@@ -626,7 +666,7 @@
         // the move clears, and how flat and low it leaves the board. Candidates the
         // survival objective will rank are exempt, because that objective is itself
         // cheap and DEFEND is the one place a wrong cut is fatal.
-        if (this.beam > 0 && !survival && allowed.length > this.beam) {
+        if (this.beam > 0 && allowed.length > this.beam) {
             var perPanel2 = (info.framesPerRow || 0) / W;
             var scored = [];
             for (i = 0; i < allowed.length; i++) {
@@ -650,16 +690,7 @@
             var horizon = (cand.moveFrames || 0) + this.reaction;
             if (this.deadly(cand.masks, cand.resolved, info, horizon)) { this.counts.refusedDeadly++; continue; }
             alive++;
-            // In DEFEND, a move that banks time is ranked by the time it banks
-            // and beats every move that banks none.
-            var s;
-            if (survival) {
-                s = 0;
-                for (var q = 0; q < survival.length; q++) if (survival[q].cand === cand) s = survival[q].value;
-                this.counts.defendByClock++;
-            } else {
-                s = this.score(cand.masks, cand.moveFrames, cand.resolved, info);
-            }
+            var s = this.score(cand.masks, cand.moveFrames, cand.resolved, info);
             if (!best || s > best.score) best = { cand: cand, score: s };
         }
         // NOTHING SURVIVES: the position is lost either way, so the best-scoring
@@ -686,6 +717,15 @@
         // already been ruled out. Measured -- 4 windows over 9,510 frames of
         // duelling and 0 lineup swaps ever played, so the module the window
         // exists for had never once run in a game.
+        // A PLAN THAT GAINS TIME AND FINISHES IN TIME BEATS THE WEIGHTS. The one
+        // place preference is overruled, and it is overruled by arithmetic. Only
+        // the FIRST move is played: by the next decision the board has moved, and
+        // a plan committed to blind is a plan about a board that no longer exists.
+        if (survival && survival.move) {
+            this.counts.planned++;
+            return { kind: 'swap', move: survival.move, mode: mode, alive: alive };
+        }
+
         if (rev && rev.best && rev.best.swap) {
             this.counts.revealSwaps++;
             return { kind: 'swap', move: rev.best.swap, mode: mode, alive: alive, reveal: true };
