@@ -614,8 +614,22 @@
         //
         // One call for the whole decision, not one per candidate -- the plans are
         // a property of the position, not of the move being scored.
+        // AN EMPTY CLOCK IS ALWAYS LOSING GROUND, whatever the headroom.
+        //
+        // The plan arithmetic was gated behind DEFEND, which opens at two rows --
+        // so on a board with room it never ran and the weights decided instead.
+        // Measured on one duel: 103 decisions were taken with the clock at zero,
+        // 86 of them had a setup-then-cash plan worth 32 to 62 frames sitting on
+        // the board, and 81 were in BUILD where that plan was never consulted.
+        // That is the whole of the 455-to-873 frame gaps between payouts.
+        //
+        // While the clock runs the floor is held and there is time to build. While
+        // it is empty the floor is advancing every frame, so keeping it supplied
+        // comes first -- which is the constant supply this bot was asked for. The
+        // plan still has to gain time and finish in time, so on a board with
+        // nothing worth cashing this changes nothing.
         var survival = null;
-        if (mode.name === 'DEFEND') {
+        if (mode.name === 'DEFEND' || !(info.stopTime > 0)) {
             // A PLAN IS EXECUTED, NOT RE-CHOSEN EVERY FRAME.
             //
             // Re-planning each decision and playing the first move of whatever
@@ -657,7 +671,7 @@
                 }
             }
         } else if (this._plan) {
-            this._plan = null;                    // out of danger: the plan is stale
+            this._plan = null;                    // clock running again: the plan is stale
         }
 
         // THE BEAM: pre-rank cheaply, then pay for the top few only.
@@ -721,9 +735,26 @@
         // place preference is overruled, and it is overruled by arithmetic. Only
         // the FIRST move is played: by the next decision the board has moved, and
         // a plan committed to blind is a plan about a board that no longer exists.
+        // A PLAN MOVE IS STILL A MOVE, so it faces the no-return rule like any
+        // other. Returning early with it skipped that check and the bot went back
+        // to oscillating -- 48 decisions on a board it had been on within the last
+        // three, against the 8 the prediction gap accounts for. A plan that walks
+        // the board in a circle is not a plan, it is the loop with extra steps.
         if (survival && survival.move) {
-            this.counts.planned++;
-            return { kind: 'swap', move: survival.move, mode: mode, alive: alive };
+            var planSig = null;
+            for (i = 0; i < pool.length; i++) {
+                var pc = pool[i];
+                if (pc.kind === 'swap' && pc.swap[0] === survival.move[0] &&
+                    pc.swap[1] === survival.move[1] && pc.masks) { planSig = signature(pc.masks); break; }
+            }
+            if (this.refuseReturn && planSig && (planSig === here || this._seen.indexOf(planSig) >= 0)) {
+                this._plan = null;
+                this.counts.refusedReturn++;
+                survival = null;
+            } else {
+                this.counts.planned++;
+                return { kind: 'swap', move: survival.move, mode: mode, alive: alive };
+            }
         }
 
         if (rev && rev.best && rev.best.swap) {

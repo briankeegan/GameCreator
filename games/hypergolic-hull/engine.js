@@ -397,7 +397,11 @@
   // you route around costs nothing — and now, since the boards are small
   // enough to actually route across, that is a real option rather than a
   // slogan.
-  const START_HULL = 3;
+  // Four, not three. The board stopped growing and the roster ramp climbs
+  // twice as fast, so a full sector now brings six guns to 40 hexes where it
+  // used to bring five to seventy. Density is the pressure; this is what
+  // pays for it, and without it good play drops from 27% of runs won to 8%.
+  const START_HULL = 4;
 
   // Energy is a second resource, distinct from Hull (permanent damage,
   // repaired only at an Outpost) and salvage (a currency): it regenerates

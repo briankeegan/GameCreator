@@ -2645,51 +2645,78 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
 // particularly when there are less enemies... generally smaller boards
 // in the beginning.")
 {
-  const shapes = new Map();
   const areaByRoster = new Map();
+  const mixes = new Set();
+  const rockCounts = new Set();
+  const flavours = new Set();
   for (let depth = 1; depth <= 40; depth++) {
     for (const variant of ["aggressive", "quiet", "drift"]) {
       const level = generateLevel(depth, variant);
       if (level.isBoss) continue;
       const { cols, rows } = level.board;
-      // AREA, not shape. The rule is "never bigger than the old fixed 9x11
-      // board", and that board held 99 hexes; a deeper, narrower one of 84
-      // obeys it while failing a rows<=11 spelling of it.
+      // THE BOARD DOES NOT GROW, and 40 hexes is the whole allowance. Every
+      // hex above that is walking: growing the board alongside the roster
+      // held density at one contact per 14 hexes at depth 12, the same as
+      // depth 1, so twelve sectors of progress bought no crowding at all.
       assert.ok(
-        cols * rows <= 99,
-        `depth ${depth} deals ${cols}x${rows} — bigger than the old fixed board's 99 hexes`
+        cols * rows <= 40,
+        `depth ${depth} deals ${cols}x${rows} — over the 40-hex allowance, which is board size buying walking`
       );
-      // And never wider than tall, which every comment about board growth
-      // in levels.js claims and nothing checked: the screen is a portrait
-      // window, and a board wider than it is tall wastes the height twice
-      // over — the width sets the hex size and the rest is left empty.
+      // Never wider than tall: the screen is a portrait window, and a board
+      // wider than it is tall wastes the height twice over — the width sets
+      // the hex size and the rest is left empty.
       assert.ok(rows > cols, `depth ${depth} deals ${cols}x${rows} — growth goes downrange, not sideways`);
       assert.ok(rows >= 7, `depth ${depth} is still big enough that a gate isn't on the doorstep`);
-      shapes.set(`${cols}x${rows}`, (shapes.get(`${cols}x${rows}`) || 0) + 1);
+      // Five columns exactly: the two outgoing gates sit at the middle
+      // column and at cols-2, which collide on a 4-wide board.
+      assert.ok(cols === 5, `depth ${depth} deals ${cols} columns — both gates land on one column below five`);
       const n = level.enemies.length;
       if (!areaByRoster.has(n)) areaByRoster.set(n, []);
       areaByRoster.get(n).push(cols * rows);
+      // A SECTOR'S CHARACTER IS NOT ITS DIMENSIONS. Board shape used to be
+      // the thing counted here, which is a weak kind of variety and an
+      // expensive one, since every hex of it is a hex you walk. These are
+      // what actually differ between two sectors of the same weight.
+      mixes.add([...level.enemies.map((e) => e.type)].sort().join("+"));
+      rockCounts.add(level.hazards.length);
+      flavours.add(`${level.locale && level.locale.id}|${level.condition}|${level.objective}`);
     }
   }
-  assert.ok(shapes.size >= 4, "sectors come in genuinely different shapes, not one");
-  // More hostiles, more room — monotonically, with no roster ever getting
-  // a smaller board than a lighter one.
+  assert.ok(mixes.size >= 20, `sectors deal genuinely different rosters (saw ${mixes.size} distinct mixes)`);
+  assert.ok(rockCounts.size >= 4, `sectors deal genuinely different ground (saw ${rockCounts.size} rock counts)`);
+  assert.ok(flavours.size >= 8, `sectors deal genuinely different situations (saw ${flavours.size} locale/condition/objective combinations)`);
+  // DENSITY DOES NOT FALL AS THE CRAWL DEEPENS. The old rule here was the
+  // opposite — "more hostiles, more room, monotonically" — and that is
+  // precisely what diluted the late crawl: the roster and the board grew
+  // together and cancelled out. A heavier roster gets the same room, so
+  // hexes-per-contact only ever goes down.
   const rosters = [...areaByRoster.keys()].sort((a, b) => a - b);
   assert.ok(rosters.length >= 4, "rosters genuinely vary across a crawl");
   for (let i = 1; i < rosters.length; i++) {
-    const lighter = Math.max(...areaByRoster.get(rosters[i - 1]));
-    const heavier = Math.max(...areaByRoster.get(rosters[i]));
-    assert.ok(heavier >= lighter, `a ${rosters[i]}-hostile sector is never given less room than a ${rosters[i - 1]}-hostile one`);
+    const lighter = Math.max(...areaByRoster.get(rosters[i - 1])) / rosters[i - 1];
+    const heavier = Math.max(...areaByRoster.get(rosters[i])) / rosters[i];
+    assert.ok(
+      heavier <= lighter + 1e-9,
+      `a ${rosters[i]}-hostile sector is roomier per contact (${heavier.toFixed(1)} hexes) than a ${rosters[i - 1]}-hostile one (${lighter.toFixed(1)})`
+    );
   }
-  // And the sectors you meet first are the small ones, because they hold
-  // the smallest fights. The aggressive fork is exempt on purpose: taking
-  // it early means asking for a heavier roster, and a heavier roster is
-  // owed the room to fight it in — that's the deal that gate offers.
+  // A full roster is genuinely crowded, not merely crowded relative to the
+  // sector before it. Around 7 hexes a contact is the band a crowded
+  // turn-based tactics board sits in; above 10 you are walking again.
+  const heaviest = rosters[rosters.length - 1];
+  const perContact = Math.max(...areaByRoster.get(heaviest)) / heaviest;
+  assert.ok(
+    perContact <= 10,
+    `a full ${heaviest}-hostile sector gives ${perContact.toFixed(1)} hexes a contact — too sparse to make position the turn`
+  );
+  // And the sectors you meet first hold the smallest fights, so a run gets
+  // moving straight away. The aggressive fork is exempt on purpose: taking
+  // it early means asking for a heavier roster.
   for (let depth = 1; depth <= 4; depth++) {
     for (const variant of ["quiet", "drift"]) {
       const level = generateLevel(depth, variant);
       assert.ok(
-        level.board.cols * level.board.rows <= 72,
+        level.board.cols * level.board.rows <= 40,
         `depth ${depth} (${variant}) starts tight — a run should get moving straight away`
       );
     }
@@ -2721,7 +2748,12 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
       }
     }
   }
-  assert.ok(berths.size >= 8, "stations berth all over the place, not in one corner forever");
+  // NOT ONE CORNER FOREVER, which is the rule — not a count of berths. A
+  // dock has to be on the border, 4 or more from where you spawn and 3 or
+  // more from either gate, and on a 40-hex board that geometry leaves about
+  // five legal hexes. Demanding eight of them only ever meant demanding a
+  // bigger board, so what is checked is that no single berth dominates.
+  assert.ok(berths.size >= 4, `stations berth in several places (saw ${berths.size})`);
   // Measured as a SHARE of docks, not as a ratio against the dock count:
   // the old form (berths.size > docks * 0.25) failed the moment stations
   // got commoner, because more docks over the same berth pool is exactly

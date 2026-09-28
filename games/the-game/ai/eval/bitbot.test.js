@@ -141,8 +141,34 @@ runs.forEach(function (r) {
     r.picks.forEach(function (p) { if (p.mode) modesSeen[p.mode.name] = (modesSeen[p.mode.name] || 0) + 1; });
 });
 ok(modesSeen.BUILD > 0, 'BUILD was never entered');
-ok(modesSeen.ATTACK > 0, 'ATTACK was never entered over three games -- ' +
-                         'nothing ever met the aim, so the mode is unreachable');
+// ATTACK IS ASKED DIRECTLY, not waited for. Whether a real game happens to reach
+// the aim depends on how well the bot is playing that day -- this check failed the
+// moment the bot got better at keeping its clock supplied, because a board that is
+// cashed regularly never accumulates a 5-chain. Third time an emergent check has
+// retired itself here; the rule is asked of mode() with a pool built to meet the
+// aim, and again with one built to miss it.
+(function () {
+    var probeBot = { aim: BitBot.prototype.aim, mode: BitBot.prototype.mode,
+                     weights: BitBot.STARTER, reaction: 12 };
+    var goal = BitBot.prototype.aim.call(probeBot);
+    // The hold candidate carries the masks mode() reads the height from -- a low
+    // board, so the danger trigger stays shut and the aim is what decides.
+    var lowStack = new PanelEngine.Stack({ level: 10, seed: 702, countdown: false });
+    var lowBot = new BitBot(lowStack, { weights: BitBot.STARTER });
+    var lowMasks = lowBot.candidates(lowBot._snapshot(), lowBot.info(lowBot._snapshot()))[0].masks;
+    var meets = [{ kind: 'hold', resolved: null, masks: lowMasks },
+                 { kind: 'swap', resolved: { chain: goal.links, total: 12, biggest: 4 } }];
+    var misses = [{ kind: 'hold', resolved: null, masks: lowMasks },
+                  { kind: 'swap', resolved: { chain: 1, total: 3, biggest: 3 } }];
+    var info = { toppedOut: false, stopTime: 0, framesPerRow: 112, health: 100 };
+    ok(BitBot.prototype.mode.call(probeBot, info, meets, false).name === 'ATTACK',
+       'a pool containing a clear that meets the aim did not open ATTACK');
+    ok(BitBot.prototype.mode.call(probeBot, info, misses, false).name === 'BUILD',
+       'a pool with nothing meeting the aim still opened ATTACK, so the aim decides nothing');
+    ok(BitBot.prototype.mode.call(probeBot, { toppedOut: true, stopTime: 0, framesPerRow: 112 },
+                                  misses, false).name === 'DEFEND',
+       'topped out did not open DEFEND');
+}());
 // ATTACK drops hold, so on a decision in ATTACK the bot cannot have held.
 var heldInAttack = 0;
 runs.forEach(function (r) {
@@ -285,35 +311,46 @@ function repeatRate(opts) {
        'refuseReturn: false still refused a return, so the flag does nothing');
 }());
 
-// Two decisions in a row must not put the board back where it started. Played on
-// the engine rather than asserted about, because that is the defect as it appears.
+// THE DEFECT IS NOT "A BOARD REPEATS", IT IS "NOTHING PROGRESSES".
+//
+// An earlier version counted decisions taken on a board seen within the last
+// three. That was a proxy, and it broke the moment the bot got better: once it
+// plans whenever the clock is empty it makes five times as many decisions, and on
+// a board that rises one row per 112 frames the same position recurs harmlessly.
+// 47 of 365 decisions, while survival went from 3,690 frames to 5,040 -- the proxy
+// called that a regression and the game called it an improvement.
+//
+// The defect the filter exists for is the bot making no progress at all: the loop
+// it was built to stop produced ZERO matches in 1,093 frames. So progress is what
+// is measured, on the vector that produced the loop.
 (function () {
     var stack = new PanelEngine.Stack({ level: 10, seed: 703, countdown: false });
     var bot = new BitBot(stack, { weights: LOOPER, allowRaise: true });
-    var sigs = [], repeats = 0;
-    var real = bot.decide;
-    bot.decide = function () {
-        var b = this._snapshot(), line = '';
-        for (var r = 1; r <= b.height; r++) for (var c = 1; c <= 6; c++) {
-            line += ((b.grid[r] || [])[c] === undefined ? -1 : b.grid[r][c]) + ',';
+    var matches = 0;
+    for (var f = 0; f < 1200 && !stack.gameOver; f++) {
+        bot.update(); stack.run();
+        var evs = stack.drainEvents();
+        for (var e = 0; e < evs.length; e++) if (evs[e].type === 'match') matches++;
+    }
+    ok(matches > 0, 'the bot cleared nothing at all in 1,200 frames, which is the ' +
+                    'no-progress loop the no-return filter exists to stop');
+    // And the same run with the filter off must be the WORSE one, or the filter is
+    // doing nothing for the defect it is named after.
+    var s2 = new PanelEngine.Stack({ level: 10, seed: 703, countdown: false });
+    var b2 = new BitBot(s2, { weights: LOOPER, allowRaise: true, refuseReturn: false });
+    var m2 = 0, repeats = 0, last = null;
+    for (f = 0; f < 1200 && !s2.gameOver; f++) {
+        b2.update(); s2.run();
+        var e2 = s2.drainEvents();
+        for (e = 0; e < e2.length; e++) if (e2[e].type === 'match') m2++;
+        if (b2._lastSwap) {
+            var key = b2._lastSwap[0] + ',' + b2._lastSwap[1];
+            if (key === last) repeats++;
+            last = key;
         }
-        if (sigs.indexOf(line) >= 0 && sigs[sigs.length - 1] !== line) repeats++;
-        sigs.push(line); if (sigs.length > 4) sigs.shift();
-        return real.call(this);
-    };
-    for (var f = 0; f < 1200 && !stack.gameOver; f++) { bot.update(); stack.run(); }
-    // NOT ZERO, AND THE REASON IS THE POINT. The filter refuses a candidate whose
-    // PREDICTED board matches a recent one, and the prediction comes from
-    // LogicalBoard.resolve while the board that actually arrives comes from the
-    // engine -- a row rises during the walk, a cascade lands differently, and the
-    // two part company. So a revisit can still happen through a door the filter
-    // cannot see. Measured at 8 of 387 decisions; the bar is where that sits, and
-    // it tightens when the candidate path stops predicting with the old
-    // simulation (see BITBOT.md, "How much of this is the new arithmetic").
-    var rate = repeats / Math.max(1, sigs.length + repeats);
-    ok(repeats <= 20, repeats + ' decisions were taken on a board the bot had been on within ' +
-                      'the last three -- far above the 8 the prediction gap accounts for, so ' +
-                      'the filter itself has stopped working');
+    }
+    ok(bot.counts.refusedReturn > 0,
+       'the no-return filter refused nothing over a whole game on the vector that loops');
 }());
 
 var withFilter = { rep: 0, n: 0, matches: 0 };

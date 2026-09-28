@@ -730,7 +730,7 @@
     // turn count.
     const roster = Math.max(
       1,
-      Math.min(1 + Math.floor(depth / 3) + (variant ? variant.enemyDelta : 0) + locale.enemyDelta, ceiling, 6)
+      Math.min(2 + Math.floor(depth / 2) + (variant ? variant.enemyDelta : 0) + locale.enemyDelta, ceiling, 6)
     );
     // Two candidate sizes per roster so sectors of the same weight still
     // don't all look alike; the seeded roll picks one.
@@ -748,22 +748,35 @@
     // size, and then half the height goes empty. These are all taller than
     // they are wide, which is also what "growth goes downrange, not
     // sideways" was always supposed to mean.
-    // The board grew in step with the roster, which held density almost flat
-    // across the whole crawl: 35 hexes to one contact at depth 1 and still
-    // 14 at depth 12, so depth bought walking at the same rate it bought
-    // guns. Growth is now much shallower — 35 hexes to 50 rather than 35 to
-    // 70 — and the roster carries the escalation, which lands a full sector
-    // at one contact per 8 hexes instead of 14. Five columns throughout:
-    // the two outgoing gates sit at the top of the middle column and at
-    // cols-2, so a 4-wide board puts both on the same column.
+    // THE BOARD DOES NOT GROW. It used to grow in step with the roster,
+    // which held density almost flat across the whole crawl — 35 hexes to
+    // one contact at depth 1 and still 14 at depth 12 — so depth bought
+    // walking at the same rate it bought guns, and a sector was mostly the
+    // commute. Every sector is now 35 or 40 hexes and the roster carries
+    // the whole escalation, which lands a full sector at one contact per 7
+    // playable hexes. That is the density a crowded tactics board needs:
+    // enough contacts that most hexes are threatened and picking one is the
+    // turn, rather than one contact you walk at for six rounds.
+    //
+    // A SECTOR'S CHARACTER IS NOT ITS DIMENSIONS. Board size is a weak
+    // source of variety and an expensive one, because every hex of it is
+    // walking. What makes two sectors of the same weight feel different is
+    // the rocks, the gate fork, the condition, the objective and the enemy
+    // mix — all of which vary already, none of which needs a wider board.
+    // engine.test.js checks variety against those instead of against the
+    // count of distinct board shapes.
+    //
+    // Five columns throughout: the two outgoing gates sit at the top of the
+    // middle column and at cols-2, so a 4-wide board puts both on one
+    // column.
     const SIZE_FOR_ROSTER = {
       1: [{ cols: 5, rows: 7 }, { cols: 5, rows: 7 }],
       2: [{ cols: 5, rows: 7 }, { cols: 5, rows: 8 }],
       3: [{ cols: 5, rows: 7 }, { cols: 5, rows: 8 }],
-      4: [{ cols: 5, rows: 8 }, { cols: 5, rows: 8 }],
-      5: [{ cols: 5, rows: 8 }, { cols: 5, rows: 9 }],
-      6: [{ cols: 5, rows: 9 }, { cols: 5, rows: 10 }],
-      7: [{ cols: 5, rows: 10 }, { cols: 5, rows: 10 }],
+      4: [{ cols: 5, rows: 7 }, { cols: 5, rows: 8 }],
+      5: [{ cols: 5, rows: 8 }, { cols: 5, rows: 8 }],
+      6: [{ cols: 5, rows: 8 }, { cols: 5, rows: 8 }],
+      7: [{ cols: 5, rows: 8 }, { cols: 5, rows: 8 }],
     };
     const sizes = SIZE_FOR_ROSTER[roster];
     const shape = sizes[Math.floor(rng() * sizes.length)];
