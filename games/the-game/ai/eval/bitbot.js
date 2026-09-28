@@ -943,8 +943,21 @@
                 for (i = 0; i < ls.length; i++) {
                     if (ls[i][0] === nx[0] && ls[i][1] === nx[1]) { stillLegal = true; break; }
                 }
-                if (stillLegal && this._plan.frames <= deadline) {
-                    survival = { move: nx, gain: this._plan.gain, frames: this._plan.frames, rate: this._plan.rate };
+                // WHAT IS LEFT OF THE PLAN, NOT WHAT IT COST WHEN IT WAS MADE.
+                //
+                // The plan is priced once and then executed over several
+                // decisions. Checking its original total against the current
+                // deadline compares a number that still includes the moves
+                // already played against a clock that has since drained -- both
+                // sides stale, in opposite directions.
+                //
+                // The engine's own frame counter is the clock, so the plan stamps
+                // it when it starts and the frames since are subtracted. What is
+                // left is what has to fit.
+                var spent = Math.max(0, this.stack.frames - (this._plan.startedAt || 0));
+                var remains = Math.max(0, this._plan.frames - spent);
+                if (stillLegal && remains <= deadline) {
+                    survival = { move: nx, gain: this._plan.gain, frames: remains, rate: this._plan.rate };
                     this._plan.moves = this._plan.moves.slice(1);
                     if (!this._plan.moves.length) this._plan = null;
                 } else {
@@ -958,7 +971,9 @@
                 var plan = bestPlan(options, info.stopTime || 0, deadline, PanelEngine(),
                                     !!info.toppedOut, info.framesPerRow, this.stack.frames);
                 if (plan && plan.rate > 0) {
-                    this._plan = { moves: plan.option.swaps.slice(1), frames: plan.frames, gain: plan.gain, rate: plan.rate };
+                    this._plan = { moves: plan.option.swaps.slice(1), frames: plan.frames,
+                                   gain: plan.gain, rate: plan.rate,
+                                   startedAt: this.stack.frames };
                     if (!this._plan.moves.length) this._plan = null;
                     survival = { move: plan.move, gain: plan.gain, frames: plan.frames, rate: plan.rate };
                 }
