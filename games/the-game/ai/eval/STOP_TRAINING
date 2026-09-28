@@ -1,0 +1,12 @@
+Island chains stopped deliberately.
+
+141 deaths in 180 duels (78%) after the search prune was fixed, against 81%
+before it. Random and mutated weight vectors die at essentially the same rate
+either way, so the islands are ranking which vector avoids killing itself
+rather than which one attacks best -- the wrong search.
+
+The invariant a vector must not be able to break: it chooses HOW the bot
+attacks and defends, never whether it survives. Measured this morning on
+identical seeds, STARTER 0 deaths in 4 and a random vector 3 in 4.
+
+Delete this file to let the chains run again.
