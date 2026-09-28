@@ -989,6 +989,53 @@ for (const [type, file] of Object.entries({
   SPRITE_NAMES[type] = file.replace(/^icons\//, "").replace(/\.png$/, "");
 }
 
+// A WRECK PER HULL, not one shared plate. What you are looking at when you
+// decide whether to spend a shot on it is WHICH ship you opened — a Hauler is
+// worth nine and an Interceptor two — so the wreckage has to still read as
+// the thing it was. Keyed off SPRITE_NAMES so a class can never have a live
+// sprite and a mismatched wreck.
+const WRECK_SPRITES = {};
+for (const [type, name] of Object.entries(SPRITE_NAMES)) {
+  const img = new Image();
+  img.src = `icons/wreck-${name}.png`;
+  img.onload = () => draw();
+  WRECK_SPRITES[type] = img;
+}
+
+// Until a class's wreck art lands, its live hull is drawn dimmed and canted
+// over — a placeholder that still says "that one, dead" rather than a
+// coloured polygon. drawShipImage returns false when the art is missing or
+// still loading, which is the same fallthrough the live sprites use.
+function drawWreck(center, wreck, size) {
+  ctx.save();
+  ctx.translate(center.x, center.y);
+  if (!drawShipImage(WRECK_SPRITES[wreck.type], size)) {
+    ctx.rotate((25 * Math.PI) / 180);
+    ctx.globalAlpha = 0.45;
+    if (!drawShipImage(ENEMY_SPRITES[wreck.type], size)) {
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#6b7488";
+      ctx.beginPath();
+      ctx.arc(0, 0, size * 0.55, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+  // It is MONEY until somebody cuts it open, and that is the whole reason to
+  // spend a round on it, so it gets a mark of its own rather than relying on
+  // the player remembering which dim shape was worth nine.
+  ctx.save();
+  ctx.translate(center.x, center.y);
+  ctx.globalAlpha = 0.9;
+  ctx.strokeStyle = "#e8b765";
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.arc(0, 0, size * 0.72, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
 // THE ROUND IN THE TUBE IS THE ROUND IN THE AIR. One sprite, drawn into
 // the bay while it is loaded and flying once it launches — so the two can
 // never drift apart, and "is that thing loaded" is something you read off
@@ -3238,6 +3285,12 @@ function draw() {
         overrides.set(a.enemyId, { x: base.x + (playerCenter.x - base.x) * t, y: base.y + (playerCenter.y - base.y) * t });
       }
     }
+  }
+
+  // Wreckage first, under everything that still flies. A wreck blocks a hex
+  // exactly as a hull does, so nothing is ever drawn on top of one.
+  for (const wreck of state.wrecks || []) {
+    drawWreck(hexToPixel(wreck), wreck, geom.sx * 0.46);
   }
 
   for (const enemy of Engine.livingEnemies(state)) {
