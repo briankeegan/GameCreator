@@ -753,7 +753,13 @@
   //      behind it waits: seed 700 frame 16814 was proven on a slab landing
   //      at +49 whose shake held the floor; it had not landed by +53, a row
   //      rose, and the bot died.
-  var RULES = 44;
+  //   45. A PROOF ENDS WHERE THE BOT CAN REST, AND SEES TEN SECONDS OUT. A
+  //      line counts when it ends on a board that can sit still SURVIVE_REST
+  //      frames past the horizon; where some moves already die, proven lines
+  //      are searched on to EXTEND_FRAMES and the furthest are offered. And
+  //      the scratch no longer carries history: paint keeps the live slab
+  //      ids and the match marker, and resets the row generator's tally.
+  var RULES = 45;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

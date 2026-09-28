@@ -142,11 +142,17 @@
         // REBUILD THE SLABS. A garbage block in this game is always a
         // rectangle, so its bounding box is its shape, and each cell's offset
         // from the block's origin is what the engine walks.
+        // THE LIVE GAME'S IDS, where the board carries them ('g41'): the engine
+        // orders slabs by id (which may break above the screen, see
+        // highestGarbageIdMatched) and garbage it drops takes the next one.
+        stack.garbageCreatedCount = 0;
         if (blocks) {
-            var gid = 1;
+            var gid = 1, maxGid = 0;
             for (var id in blocks) {
                 var cells = blocks[id];
                 if (!cells || !cells.length) continue;
+                var liveId = /^g(\d+)$/.exec(id);
+                if (liveId) gid = +liveId[1];
                 var minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
                 for (var i = 0; i < cells.length; i++) {
                     if (cells[i][0] < minR) minR = cells[i][0];
@@ -177,9 +183,13 @@
                     if (gmv) restore(gp, gmv);
                     else gp.state = 'normal';
                 }
+                if (gid > maxGid) maxGid = gid;
                 gid++;
             }
             stack.garbageIdCounter = Math.max(stack.garbageIdCounter || 0, gid);
+            // Behind every painted slab, or garbage dropped during the resolve
+            // shares an id with one on the board and the two act as one.
+            stack.garbageCreatedCount = maxGid;
         }
         // AND COLOUR PANELS THAT ARE CLEARING. snapshot() reads their cells as
         // empty because they are leaving, but until they pop they still hold
@@ -295,6 +305,9 @@
         // from it. Reseeded per paint, which makes a repainted Stack
         // indistinguishable from a new one.
         if (PanelEngine.makeRng) stack.rng = PanelEngine.makeRng(7);
+        // The row generator's adjacency tally too: it steers every row dealt,
+        // and left running, a row depended on every resolve before it.
+        stack.adjacentDenied = 0; stack.adjacentAccepted = 0;
         stack.stopTime = 0;
         stack.chainCounter = 0;
         stack.shakeTime = 0;

@@ -452,6 +452,8 @@
     // next clear is link 3 in the game and was link 2 here, paying less stop
     // time and sending less (seed 703 frame 309).
     st.chainCounter = live.chainCounter || 0;
+    st.highestGarbageIdMatched = live.highestGarbageIdMatched || 0;
+    st.garbageCreatedCount = Math.max(st.garbageCreatedCount || 0, live.garbageCreatedCount || 0);
     st.swapStallBacklog = (live.swapStallBacklog || []).map(function (q) { return { row: q.row, col: q.col }; });
     // Topped out as of the last frame, which the stalling rule reads: paint
     // clears it, and a swap made before any frame runs would read "not topped
@@ -746,6 +748,8 @@
       shakeTime: st.shakeTime || 0, peakShakeTime: st.peakShakeTime || 0,
       shakeTimeOnFrame: st.shakeTimeOnFrame || 0,
       chainCounter: st.chainCounter || 0,
+      highestGarbageIdMatched: st.highestGarbageIdMatched || 0,
+      garbageCreatedCount: st.garbageCreatedCount || 0,
       swapStallBacklog: (st.swapStallBacklog || []).map(function (q) { return { row: q.row, col: q.col }; }),
       nActive: st.nActive || 0, nPrevActive: st.nPrevActive || 0,
       arrivals: (out.pending || []).map(function (a) {
@@ -1315,6 +1319,11 @@
   // the boards held longest (stop, pre-stop, shake), then least garbage,
   // then lowest stack. A line reaching the horizon alive proves the move.
   PuyoCpu.prototype.SURVIVE_FRAMES = 240;
+  // A proof ends in a board that can then sit still this long past the
+  // horizon. Alive at 240 and dead at 250 is a corridor, not a way out: seed
+  // 702 frames 5105-5258 played three such lines into a death that a line
+  // proven for 600 frames avoided.
+  PuyoCpu.prototype.SURVIVE_REST = 120;
   PuyoCpu.prototype.SURVIVE_BEAM = 30;
   PuyoCpu.prototype._lineStep = function (node, m, long) {
     var t = node.b.clone(), r, used, saved = this._carry, savedFrom = this._walkFrom;
@@ -1330,9 +1339,18 @@
       r = this._resolveCandidate(t, m, w, false, this.reaction + 1, true);
       used = (r && r.walked !== undefined ? r.walked : w) + ((r && r.elapsed) || 0);
     } else if (long) {
-      // To the horizon, rows and all: an easy board is proven in one resolve.
-      r = this._resolveCandidate(t, null, 0, false, Math.max(1, this.SURVIVE_FRAMES - node.t), true);
+      // To the horizon and REST frames past it, rows and all: an easy board
+      // is proven in one resolve.
+      var until = this._lineUntil || (this.SURVIVE_FRAMES + (this._restNeeded ? this.SURVIVE_REST : 0));
+      r = this._resolveCandidate(t, null, 0, false, Math.max(1, until - node.t), true);
       used = (r && r.elapsed) || 0;
+      // Alive at the horizon but not through the rest: a line, not a resting
+      // place, and the end of the road for this one.
+      if (r && r.died && !r.diedInWalk && node.t + (r.diedAt || 0) >= this.SURVIVE_FRAMES) {
+        this._carry = saved;
+        this._walkFrom = savedFrom;
+        return { b: t, carry: r.carry || null, pos: node.pos, t: node.t + (r.diedAt || 0), dead: true };
+      }
     } else {
       r = this._resolveCandidate(t, null, this.reaction, false, 1);
       used = this.reaction + ((r && r.elapsed) || 0);
@@ -1357,7 +1375,9 @@
   PuyoCpu.prototype.SURVIVE_SEARCH_BUDGET = 60000;
   PuyoCpu.prototype.SURVIVE_SEARCH_BUDGET_CHEAP = 4000;
   PuyoCpu.prototype._survivalSearch = function (cands) {
-    var verdict = new Array(cands.length), level = [], self = this, i, j, n, c, proofs = {};
+    var verdict = new Array(cands.length), level = [], self = this, i, j, n, c, proofs = {}, weak = {};
+    var FULL = this.SURVIVE_FRAMES + this.SURVIVE_REST, savedRest = this._restNeeded;
+    this._restNeeded = true;
     var root = { b: this._board.clone(), carry: null, pos: [this.stack.curRow, this.stack.curCol], t: 0 };
     var open = 0;
     this._searchProofs = { cands: cands, proofs: proofs };
@@ -1369,7 +1389,8 @@
         : this._lineStep(root, cd.move || null, false);
       if (!c) { verdict[i] = 'dies'; continue; }
       c.tag = i; c.m = cd.move || null;
-      if (c.t >= this.SURVIVE_FRAMES) { verdict[i] = 'proven'; proofs[i] = c; if (this._proofs) this._proofs[i] = c; continue; }
+      if (c.t >= FULL) { verdict[i] = 'proven'; proofs[i] = c; if (this._proofs) this._proofs[i] = c; continue; }
+      if (c.t >= this.SURVIVE_FRAMES && !weak[i]) weak[i] = c;
       c.first = true; level.push(c); open++;
     }
     // THE LINE BEING FOLLOWED IS STILL A PROOF. The bot played the first move
@@ -1388,22 +1409,23 @@
       if (fi >= 0 && verdict[fi] !== 'proven') {
         this.followTried = (this.followTried || 0) + 1;
         n = root;
-        for (j = 0; j < fl.steps.length && n && n.t < this.SURVIVE_FRAMES; j++) {
+        for (j = 0; j < fl.steps.length && n && !n.dead && n.t < FULL; j++) {
           var sm = fl.steps[j];
           c = sm === 'long' ? this._lineStep(n, null, true) : this._lineStep(n, sm, false);
           if (c) { c.prev = j ? n : null; c.m = sm === 'long' && !j ? null : sm; c.tag = fi; }
           if (!c) break;
           n = c;
         }
-        if (n && j === fl.steps.length && n.t < this.SURVIVE_FRAMES) {
+        if (n && !n.dead && j === fl.steps.length && n.t < FULL) {
           c = this._lineStep(n, null, true);
           if (c) { c.prev = n; c.m = 'long'; c.tag = fi; }
-          if (c) n = c;
+          if (c && !c.dead) n = c;
+          else if (c && !weak[fi]) weak[fi] = c;
         }
-        if (n && n.t >= this.SURVIVE_FRAMES) {
+        if (n && n.t >= FULL) {
           verdict[fi] = 'proven'; proofs[fi] = n; if (this._proofs) this._proofs[fi] = n;
           this.followHeld = (this.followHeld || 0) + 1;
-        } else if (n && n !== root) {
+        } else if (n && n !== root && !n.dead) {
           // The line reached the old horizon and no further: the search goes
           // on from where it ends, with a few moves to find, not a whole line.
           n.tag = fi; n.seed = true;
@@ -1432,7 +1454,9 @@
           c = moves[j] === 'long' ? this._lineStep(n, null, true) : this._lineStep(n, moves[j], false);
           if (!c) continue;
           c.tag = n.tag; c.prev = n; c.m = moves[j]; c.seed = n.seed;
-          if (c.t >= this.SURVIVE_FRAMES) { verdict[n.tag] = 'proven'; proofs[n.tag] = c; if (this._proofs) this._proofs[n.tag] = c; break; }
+          if (c.t >= FULL && !c.dead) { verdict[n.tag] = 'proven'; proofs[n.tag] = c; if (this._proofs) this._proofs[n.tag] = c; break; }
+          if (c.t >= this.SURVIVE_FRAMES && !weak[n.tag]) weak[n.tag] = c;
+          if (c.dead) continue;
           var h = n.tag + '|' + JSON.stringify(c.b.grid) + '|' + this._heldFor(c.carry) + '|' + c.pos;
           if (seen[h]) continue;
           seen[h] = 1;
@@ -1451,13 +1475,21 @@
         if (next[i].kept) continue;
         if ((per[next[i].tag] || 0) < this.SURVIVE_QUOTA) { per[next[i].tag] = (per[next[i].tag] || 0) + 1; keep.push(next[i]); next[i].kept = true; }
       }
-      for (i = 0; i < next.length && keep.length < this.SURVIVE_SEARCH_BEAM; i++) if (!next[i].kept) keep.push(next[i]);
+      // A move already alive at the horizon looks for its resting place on
+      // its quota alone; the rest of the beam goes to moves not yet alive.
+      for (i = 0; i < next.length && keep.length < this.SURVIVE_SEARCH_BEAM; i++) if (!next[i].kept && !weak[next[i].tag]) keep.push(next[i]);
       level = keep.slice(0, seeds).concat(keep.slice(seeds).sort(better));
     }
     // A move with lines still open when the budget ran out is not proven dead.
     var alive = {};
     for (i = 0; i < level.length; i++) alive[level[i].tag] = true;
-    for (i = 0; i < cands.length; i++) if (!verdict[i]) verdict[i] = alive[i] && budget <= 0 ? 'unproven' : 'dies';
+    for (i = 0; i < cands.length; i++) {
+      if (verdict[i]) continue;
+      // Alive at the horizon without a resting place in sight.
+      if (weak[i]) { verdict[i] = 'weak'; proofs[i] = weak[i]; if (this._proofs) this._proofs[i] = weak[i]; continue; }
+      verdict[i] = alive[i] && budget <= 0 ? 'unproven' : 'dies';
+    }
+    this._restNeeded = savedRest;
     return verdict;
   };
 
@@ -1494,12 +1526,14 @@
   PuyoCpu.prototype._doomed = function (cands) {
     if (!this.refuseSuicide || !this.deepSurvival || !cands || cands.length < 2) return cands;
     if (!this._board) return cands;
-    var i, proven = [], unproven = [];
+    var i, proven = [], weakly = [], unproven = [];
     var verdict = this._survivalSearch(cands);
     for (i = 0; i < cands.length; i++) {
       if (verdict[i] === 'proven') proven.push(cands[i]);
+      else if (verdict[i] === 'weak') weakly.push(cands[i]);
       else if (verdict[i] === 'unproven') unproven.push(cands[i]);
     }
+    if (!proven.length) proven = weakly;
     // A move the search ran out of budget on is a guess. When any move is
     // proven to live, the guesses are dropped.
     var live = proven.length ? proven : unproven;
@@ -1508,7 +1542,8 @@
       this.doomedDecisions++;
       return cands;
     }
-    if (proven.length > 1) live = this._mostRoom(live, cands);
+    if (this.EXTEND_FRAMES && proven.length > 1 && proven.length < cands.length) live = this._furthest(live);
+    if (live.length > 1) live = this._mostRoom(live, cands);
     else live = this._deepestLine(live);
     if (live.length === cands.length) return cands;
     this.doomedMovesDropped += cands.length - live.length;
@@ -1520,6 +1555,59 @@
   // longest are the ones offered; the weights choose among those. Chosen by
   // score alone, the bot walks to the edge one safe move at a time: seed 700
   // side 1, 19 proven moves, then 10, 6, 1, 2, and none.
+  // TEN SECONDS OUT, NOT FOUR. On a board where some moves already die, each
+  // proven line is searched on from where it ends to EXTEND_FRAMES, and the
+  // moves whose lines get furthest are the ones offered; the furthest line
+  // becomes the proof the bot follows. Seed 703 frame 1601: seven moves
+  // proven for 360 frames, six of them good for 720, and the one played
+  // was the seventh.
+  PuyoCpu.prototype.EXTEND_FRAMES = 720;
+  PuyoCpu.prototype.EXTEND_BEAM = 24;
+  PuyoCpu.prototype.EXTEND_BUDGET = 2500;
+  PuyoCpu.prototype._extendLine = function (start) {
+    var self = this, until = this.EXTEND_FRAMES, best = start, budget = this.EXTEND_BUDGET, i, j, n, c;
+    var saved = this._lineUntil, savedRest = this._restNeeded;
+    this._lineUntil = until;
+    var level = [start];
+    while (level.length && budget > 0 && best.t < until) {
+      var next = [], seen = {};
+      for (i = 0; i < level.length && budget > 0 && best.t < until; i++) {
+        n = level[i];
+        var moves = [ 'long', null ].concat(n.b.legalSwaps());
+        for (j = 0; j < moves.length && budget > 0; j++) {
+          budget--;
+          c = moves[j] === 'long' ? this._lineStep(n, null, true) : this._lineStep(n, moves[j], false);
+          if (!c) continue;
+          c.prev = n; c.m = moves[j]; c.tag = start.tag;
+          if (c.t > best.t) best = c;
+          if (c.dead || c.t >= until) { if (c.t >= until) break; continue; }
+          var h = JSON.stringify(c.b.grid) + '|' + this._heldFor(c.carry) + '|' + c.pos;
+          if (seen[h]) continue;
+          seen[h] = 1;
+          next.push(c);
+        }
+      }
+      next.sort(function (x, y) { return (y.t + self._heldFor(y.carry)) - (x.t + self._heldFor(x.carry)); });
+      level = next.slice(0, this.EXTEND_BEAM);
+    }
+    this._lineUntil = saved;
+    this._restNeeded = savedRest;
+    return best;
+  };
+  PuyoCpu.prototype._furthest = function (live) {
+    var sp = this._searchProofs, best = -1, reach = [], i, k, e;
+    if (!sp) return live;
+    for (i = 0; i < live.length; i++) {
+      k = sp.cands.indexOf(live[i]);
+      e = k >= 0 && sp.proofs[k] ? this._extendLine(sp.proofs[k]) : null;
+      reach.push(e ? Math.min(e.t, this.EXTEND_FRAMES) : 0);
+      if (e && !e.dead && e.t >= sp.proofs[k].t) sp.proofs[k] = e;
+      if (reach[i] > best) best = reach[i];
+    }
+    var keep = [];
+    for (i = 0; i < live.length; i++) if (reach[i] === best) keep.push(live[i]);
+    return keep.length ? keep : live;
+  };
   PuyoCpu.prototype.SLACK_FRAMES = 480;
   PuyoCpu.prototype._slack = function (node) {
     var t = node.b.clone(), saved = this._carry, savedFrom = this._walkFrom;
