@@ -34,7 +34,11 @@ var BitBot = require('./bitbot.js');
 var POP = Number(process.argv[2] || 8);
 var GENS = Number(process.argv[3] || 8);
 var SEEDS = Number(process.argv[4] || 1);
-var SHARDS = Number(process.env.GC_SHARDS || 4);
+// One shard per core, read off the machine rather than assumed. A hardcoded 4
+// wastes cores on a bigger runner and oversubscribes a smaller one, and the
+// duels are independent processes so the count is the only thing that decides
+// how much of the box is used.
+var SHARDS = Number(process.env.GC_SHARDS || require('os').cpus().length || 4);
 
 // A CEILING, BECAUSE THE BOT NOW SURVIVES. Duels ran about 1,000 frames before
 // today and run 14,000 to 16,700 now, so an unbounded pairing can hold up a whole
