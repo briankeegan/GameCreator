@@ -205,6 +205,11 @@
             cursorRow: board.cursor ? board.cursor.row : (s.curRow || 1),
             cursorCol: board.cursor ? board.cursor.col : (s.curCol || 1),
             health: s.health,
+            // THE ENGINE'S OWN DANGER SIGNAL, not a reimplementation of it.
+            // fillRatio is what the renderer paints the danger state from and what
+            // the reference CPU panics on: the highest occupied row over the board
+            // height. For the LIVE board there is no reason to derive it again.
+            fillRatio: typeof s.fillRatio === 'function' ? s.fillRatio() : 0,
             framesPerRow: framesPerRow(s),
             // FRAMES UNTIL THE NEXT ROW LANDS, not a whole row's worth: the
             // floor is already part way up. displacement is the pixels left and
@@ -429,15 +434,30 @@
         return plan.best && plan.best.swap ? plan : null;
     };
 
-    // The tallest column, from the masks. On a settled board a column is a packed
-    // run from the floor, so its height is a popcount.
+    // THE TOPMOST OCCUPIED ROW, WHICH IS NOT A POPCOUNT.
+    //
+    // A popcount counts the cells in a column. That equals the height only while
+    // the column is a PACKED RUN from the floor, and garbage breaks that: a slab
+    // BRIDGES the columns it spans, so cells sit above holes and the top row runs
+    // ahead of the count.
+    //
+    // This read the popcount, and every height decision in the bot understated the
+    // danger by exactly the number of holes -- worst when the board is full of
+    // garbage, which is precisely when it matters. Seed 103 died with its top row
+    // at 11 while this reported 9: DEFEND opens at two rows of headroom and fired
+    // TWICE in 1,154 decisions, framesToDeath thought there was room that was not
+    // there, and the death filter agreed. It stood at the ceiling refusing to
+    // clear and was eaten.
+    //
+    // The highest set bit, then. 32 - clz32 gives the 1-based row of the top cell.
     function tallestBoard(st) {
         if (!st) return H;                  // unknown position: treat as full
         var t = 0;
         for (var c = 1; c <= W; c++) {
-            var n = 0, o = st.occ[c];
-            while (o) { o &= o - 1; n++; }
-            if (n > t) t = n;
+            var o = st.occ[c];
+            if (!o) continue;
+            var top = 32 - Math.clz32(o >>> 0);
+            if (top > t) t = top;
         }
         return t;
     }
@@ -1185,6 +1205,11 @@
     // Exposed so a test can ask what the bot considers "the same position" rather
     // than reimplementing it -- two implementations of a sameness rule is how a
     // test ends up agreeing with itself.
+    // Exposed so the gate can hold it against the engine's own fillRatio, which
+    // is the canonical answer to "how close to the top is this board". The two
+    // must agree: when they did not, every height decision in the bot was wrong
+    // and the bot stood at the ceiling believing it had room.
+    BitBot.tallestOfMasks = tallestBoard;
     BitBot.signatureOf = signature;
     BitBot.STARTER = STARTER;
     return BitBot;

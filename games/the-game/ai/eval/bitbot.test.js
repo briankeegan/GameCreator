@@ -383,6 +383,68 @@ var without = { rep: 0, n: 0, matches: 0 };
                            'legalSwaps list: ' + bogus.slice(0, 5).join(' '));
 }());
 
+// --------------------------------- 4c. height means what the engine means by it
+// A POPCOUNT IS NOT A HEIGHT, and believing it was is what killed seed 103.
+//
+// The mask height counted occupied CELLS in a column. That equals the top row
+// only while the column is a packed run from the floor, and garbage breaks it: a
+// slab BRIDGES the columns it spans, so cells sit above holes. On a board with 34
+// garbage cells the top row was 11 while the count read 9 -- so DEFEND, which
+// opens at two rows of headroom, fired twice in 1,154 decisions, framesToDeath
+// saw room that was not there, and the bot stood at the ceiling refusing to clear
+// until it was eaten.
+//
+// The engine's own answer is fillRatio(): the highest occupied row over the board
+// height. This holds the mask version against it on real boards, so the two
+// cannot drift apart again.
+(function () {
+    // A DUEL, BECAUSE GARBAGE IS THE WHOLE POINT. A solo bot is never sent any,
+    // so the bridging case that caused the bug never appears and the check passes
+    // on a board that cannot fail it.
+    var stacks = [new PanelEngine.Stack({ level: 10, seed: 103, countdown: false }),
+                  new PanelEngine.Stack({ level: 10, seed: 103, countdown: false })];
+    var stack = stacks[0];
+    var bot = new BitBot(stacks[0], { weights: BitBot.STARTER, allowRaise: true });
+    var foe = new BitBot(stacks[1], { weights: BitBot.STARTER, allowRaise: true });
+    var checked = 0, worst = 0, sawGarbage = false, example = null;
+    for (var f = 0; f < 5000 && !stacks[0].gameOver && !stacks[1].gameOver; f++) {
+        bot.update(); foe.update(); stacks[0].run(); stacks[1].run();
+        for (var q = 0; q < 2; q++) {
+            var out = stacks[q].takeDeliverableGarbage();
+            if (out && out.length) stacks[q ^ 1].receiveGarbage(out);
+        }
+        stacks[0].drainEvents(); stacks[1].drainEvents();
+        if (f % 25) continue;
+        var board = bot._snapshot();
+        var pool = bot.candidates(board, bot.info(board));
+        if (!pool.length || !pool[0].masks) continue;
+        // The engine's height, read the way fillRatio reads it.
+        var engineTop = 0, r, c;
+        for (r = stack.height; r >= 1; r--) {
+            for (c = 1; c <= 6; c++) if (stack.panels[r][c].color !== 0) { engineTop = r; break; }
+            if (engineTop) break;
+        }
+        var g = 0;
+        for (r = 1; r <= stack.height; r++) for (c = 1; c <= 6; c++) {
+            var p = stack.panels[r][c];
+            if (p && p.isGarbage && p.color !== 0) g++;
+        }
+        if (g > 6) sawGarbage = true;
+        var mine = BitBot.tallestOfMasks(pool[0].masks);
+        checked++;
+        var off = Math.abs(mine - engineTop);
+        if (off > worst) { worst = off; example = { frame: f, mine: mine, engine: engineTop, garbage: g }; }
+    }
+    ok(checked > 20, 'only ' + checked + ' boards compared, which is too few to say anything');
+    ok(sawGarbage, 'no board in the sweep had real garbage on it, so the bridging case ' +
+                   'that caused the bug was never exercised');
+    // A panel mid-flight can sit a row above where the masks rest it, so one row
+    // of disagreement is the engine being ahead of a settled reading, not the
+    // popcount bug -- which was off by the number of HOLES and reached three.
+    ok(worst <= 1, 'mask height disagrees with the engine by ' + worst + ' rows: ' +
+                   JSON.stringify(example));
+}());
+
 // ------------------------------------------------------- 5. the mirror draws
 // IDENTICAL WEIGHTS ON IDENTICAL SEEDS MUST MIRROR. Both boards are dealt the
 // same panels, so any divergence is the bot reading something that is not on
