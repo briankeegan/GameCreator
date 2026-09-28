@@ -242,7 +242,13 @@ function generation(g, done) {
 
         var champ = order[0];
         history.push({ gen: g, champion: champ, wins: score[champ],
-                       sent: sent[champ], chains: chains[champ], ceilings: ceilings });
+                       sent: sent[champ], chains: chains[champ], ceilings: ceilings,
+                       // THE DENOMINATOR, so "did anything die" is arithmetic off the
+                       // file rather than read out of the log line below it. A duel
+                       // that did not reach the ceiling ended early, and with the bot
+                       // surviving 30,000 frames the only way to end early is a death:
+                       // duels - ceilings IS the death count.
+                       duels: out.length });
         console.log('gen ' + String(g).padStart(2) + '  best island ' +
                     (champ === 0 ? 'CONTROL' : String(champ)) +
                     '  wins ' + String(score[champ]).padStart(4) +
