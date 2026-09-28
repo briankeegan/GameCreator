@@ -785,7 +785,11 @@
   //      Stack object and plays the bot's own update() on it; nothing is
   //      summarised into a grid and rebuilt, which is where every traced
   //      model error came from. Only what no player can see is changed.
-  var RULES = 51;
+  //   52. A LINE IS KEPT WHOLE AND THE LONGEST ONE IS PLAYED. A followed line
+  //      is replayed to its end with every wait ending where it ended when
+  //      found; among live moves the furthest line wins, and when no move
+  //      reaches the horizon the move that lives longest is played.
+  var RULES = 52;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

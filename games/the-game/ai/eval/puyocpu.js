@@ -1682,8 +1682,14 @@
   PuyoCpu.prototype.SURVIVE_SEEDS = 30;
   PuyoCpu.prototype.SURVIVE_SEARCH_BUDGET = 60000;
   PuyoCpu.prototype.SURVIVE_SEARCH_BUDGET_CHEAP = 4000;
+  function isLong(m) { return m === 'long' || (!!m && typeof m === 'object' && !Array.isArray(m) && m.long !== undefined); }
   PuyoCpu.prototype._survivalSearch = function (cands) {
     var verdict = new Array(cands.length), level = [], self = this, i, j, n, c, proofs = {}, weak = {};
+    // HOW FAR EACH MOVE'S BEST LINE GOT, dead or alive, and the node that got
+    // there. When no move reaches the horizon, the one that lives longest is
+    // played and its line followed.
+    var reach = {}, far = {};
+    function note(tag, x) { if (x && (reach[tag] === undefined || x.t > reach[tag])) { reach[tag] = x.t; far[tag] = x; } }
     var FULL = this.SURVIVE_FRAMES + this.SURVIVE_REST, savedRest = this._restNeeded;
     this._restNeeded = true;
     // A real engine Stack is copied and played; a harness's stand-in stack
@@ -1692,7 +1698,7 @@
     var root = real ? this._engineRoot()
                     : { b: this._board.clone(), carry: null, pos: [this.stack.curRow, this.stack.curCol], t: 0 };
     var open = 0;
-    this._searchProofs = { cands: cands, proofs: proofs };
+    this._searchProofs = { cands: cands, proofs: proofs, reach: reach, far: far };
     for (i = 0; i < cands.length; i++) {
       var cd = cands[i];
       if (cd.resolved && (cd.resolved.died || cd.resolved.diedInWalk)) { verdict[i] = 'dies'; continue; }
@@ -1702,6 +1708,7 @@
         : this._lineStep(root, cd.move || null, false);
       if (!c) { verdict[i] = 'dies'; continue; }
       c.tag = i; c.m = cd.kind === 'raise' ? 'raise' : (cd.move || null);
+      note(i, c);
       if (c.t >= FULL) { verdict[i] = 'proven'; proofs[i] = c; if (this._proofs) this._proofs[i] = c; continue; }
       if (c.t >= this.SURVIVE_FRAMES && !weak[i]) weak[i] = c;
       c.first = true; level.push(c); open++;
@@ -1713,21 +1720,36 @@
     var fl = this._following;
     this._following = null;
     if (this.checkModel && fl && fl.at === this.stack.clock && fl.node && fl.node.st) this._checkModel(root, fl.node);
+    // A LINE THAT STARTS WITH A WAIT is played as a hold, and the bot decides
+    // again before the wait is over: the rest of the wait comes first.
+    if (fl && fl.hold && fl.at > this.stack.clock) {
+      var dt = fl.at - this.stack.clock;
+      fl = { at: this.stack.clock, steps: [{ long: dt }].concat(fl.steps.map(function (x) { return isLong(x) ? { long: x.long + dt } : x; })) };
+    }
     if (fl && fl.at === this.stack.clock && fl.steps.length) {
       var want = fl.steps[0], fi = -1;
       for (i = 0; i < cands.length; i++) {
         var ck = cands[i];
         if (want === 'raise' ? ck.kind === 'raise'
-            : want && want !== 'long' ? (ck.kind === 'swap' && ck.move && ck.move[0] === want[0] && ck.move[1] === want[1])
+            : Array.isArray(want) ? (ck.kind === 'swap' && ck.move && ck.move[0] === want[0] && ck.move[1] === want[1])
             : ck.kind === 'hold') { fi = i; break; }
       }
       if (fi >= 0 && verdict[fi] !== 'proven') {
         this.followTried = (this.followTried || 0) + 1;
         n = root;
-        for (j = 0; j < fl.steps.length && n && !n.dead && n.t < FULL; j++) {
-          var sm = fl.steps[j];
-          c = sm === 'long' ? this._lineStep(n, null, true) : this._lineStep(n, sm, false);
-          if (c) { c.prev = j ? n : null; c.m = sm === 'long' && !j ? null : sm; c.tag = fi; }
+        // The WHOLE line, not the first horizon of it: a line extended past
+        // the horizon last decision is kept, not searched for again.
+        for (j = 0; j < fl.steps.length && n && !n.dead; j++) {
+          var sm = fl.steps[j], lg = isLong(sm);
+          if (lg) {
+            // A wait ends where it ended when the line was found, not at this
+            // search's horizon.
+            var su = this._lineUntil;
+            this._lineUntil = sm.long !== undefined ? sm.long : su;
+            c = this._lineStep(n, null, true);
+            this._lineUntil = su;
+          } else c = this._lineStep(n, sm, false);
+          if (c) { c.prev = j ? n : null; c.m = lg ? 'long' : sm; c.tag = fi; note(fi, c); }
           if (!c) break;
           // The line's wait ran out in the frames since it was proven: alive
           // at the horizon is still a fallback, and the search goes on from
@@ -1737,7 +1759,7 @@
         }
         if (n && !n.dead && j === fl.steps.length && n.t < FULL) {
           c = this._lineStep(n, null, true);
-          if (c) { c.prev = n; c.m = 'long'; c.tag = fi; }
+          if (c) { c.prev = n; c.m = 'long'; c.tag = fi; note(fi, c); }
           if (c && !c.dead) n = c;
           else if (c && !weak[fi]) weak[fi] = c;
         }
@@ -1773,6 +1795,7 @@
           c = moves[j] === 'long' ? this._lineStep(n, null, true) : this._lineStep(n, moves[j], false);
           if (!c) continue;
           c.tag = n.tag; c.prev = n; c.m = moves[j]; c.seed = n.seed;
+          note(n.tag, c);
           if (c.t >= FULL && !c.dead) { verdict[n.tag] = 'proven'; proofs[n.tag] = c; if (this._proofs) this._proofs[n.tag] = c; break; }
           if (c.t >= this.SURVIVE_FRAMES && !weak[n.tag]) weak[n.tag] = c;
           if (c.dead) continue;
@@ -1859,14 +1882,31 @@
     this.allDoomedNow = !live.length;
     if (!live.length) {
       this.doomedDecisions++;
-      return cands;
+      return this._longestLived(cands);
     }
-    if (this.EXTEND_FRAMES && proven.length > 1 && proven.length < cands.length) live = this._furthest(live);
+    if (this.EXTEND_FRAMES && proven.length > 1) live = this._furthest(live);
     if (live.length > 1) live = this._mostRoom(live, cands);
     else live = this._deepestLine(live);
     if (live.length === cands.length) return cands;
     this.doomedMovesDropped += cands.length - live.length;
     return live;
+  };
+
+  // NOTHING REACHES THE HORIZON: PLAY THE MOVE THAT LIVES LONGEST. Its
+  // furthest line becomes the one followed, so a line still alive is never
+  // traded for one that dies sooner because both fall short of "now + horizon".
+  PuyoCpu.prototype._longestLived = function (cands) {
+    var sp = this._searchProofs, best = -1, i;
+    if (!sp || !sp.reach) return cands;
+    for (i = 0; i < cands.length; i++) if (sp.reach[i] !== undefined && sp.reach[i] > best) best = sp.reach[i];
+    if (best < 0) return cands;
+    var keep = [];
+    for (i = 0; i < cands.length; i++) {
+      if (sp.reach[i] !== best) continue;
+      keep.push(cands[i]);
+      sp.proofs[i] = sp.far[i];
+    }
+    return keep;
   };
 
   // SAFE MOVES ARE NOT EQUALLY SAFE. Each proven line is carried on past the
@@ -2912,8 +2952,9 @@
       var k = sp.cands.indexOf(cand), pf = k >= 0 ? sp.proofs[k] : null, line = [];
       for (var q = pf; q; q = q.prev) line.unshift(q);
       if (line.length > 1) {
-        this._following = { at: this.stack.clock + line[0].t, node: line[0],
-                            steps: line.slice(1).map(function (x) { return x.m; }) };
+        var t0 = line[0].t;
+        this._following = { at: this.stack.clock + t0, node: line[0], hold: cand.kind === 'hold',
+                            steps: line.slice(1).map(function (x) { return isLong(x.m) ? { long: x.t - t0 } : x.m; }) };
       }
     }
     // The square to refuse next time: only a swap that changed nothing.
