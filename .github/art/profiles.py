@@ -168,6 +168,19 @@ PROFILES = {
                 "card, a weapon, a ship, a badge. ALWAYS transparent: it has to "
                 "sit on whatever background the UI already has, not carry its own.",
     },
+    "wreck_sheet": {
+        "model": MODEL, "size": "1536x1024", "quality": "medium",
+        "background": "opaque",
+        "verify": None,
+        # FOUR ACROSS, LANDSCAPE, and flat white rather than transparent. Four
+        # leaves each ship ~380px and a gutter wide enough to split on; the
+        # count is checked by wrecksheet.py cut, which refuses a sheet that
+        # came back with the wrong number rather than shipping whatever the
+        # split produced. White because the cutter keys it, same as every
+        # other sheet here.
+        "note": "A row of derelict ship sprites drawn as one matched set, cut "
+                "into per-ship icons by .github/art/wrecksheet.py.",
+    },
     "cutscene": {
         "model": MODEL, "size": "1536x1024", "quality": "medium",
         "background": "opaque",

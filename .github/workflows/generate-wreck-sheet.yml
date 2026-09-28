@@ -1,0 +1,98 @@
+name: Generate wreck sheet
+
+# One ROW of derelict ships, drawn together and cut into per-ship icons.
+#
+# Use this — not "Generate game asset" — for any wreck. Ships drawn together
+# cannot drift; ships drawn one dispatch at a time always do, in scale, grime
+# and colour. That is not a guess: twenty-three wrecks were fired off
+# individually and came back a set only by coincidence.
+#
+# The recipe (which ships are in which batch, the prompt, the cut) lives in
+# .github/art/wrecksheet.py, so this workflow only supplies the key and commits
+# the result. See .github/art/README.md.
+on:
+  workflow_dispatch:
+    inputs:
+      game:
+        description: "Game id — must have games/<id>/art-style.json with a `wrecks` map"
+        required: true
+        type: string
+      batch:
+        description: "Which row to draw. `wrecksheet.py list --game <id>` prints them."
+        required: true
+        type: string
+      force:
+        description: "Redraw (and re-bill) even though this sheet already exists."
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/validate-game-input
+        with:
+          game: ${{ inputs.game }}
+
+      - name: Generate the sheet
+        timeout-minutes: 10
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check pillow
+          python3 .github/art/wrecksheet.py generate \
+            --game "${{ inputs.game }}" \
+            --batch "${{ inputs.batch }}" \
+            ${{ inputs.force && '--force' || '' }}
+
+      # Cutting REFUSES a sheet that came back with the wrong number of ships,
+      # so a bad generation fails here and never reaches icons/.
+      - name: Cut it into per-ship icons
+        timeout-minutes: 5
+        run: |
+          python3 .github/art/wrecksheet.py cut \
+            --game "${{ inputs.game }}" \
+            --batch "${{ inputs.batch }}"
+
+      - name: Shrink the cut icons for the web
+        timeout-minutes: 5
+        env:
+          GAME: ${{ inputs.game }}
+        run: |
+          python3 - <<'PYEOF'
+          import os, pathlib
+          from PIL import Image
+          for p in sorted(pathlib.Path("games", os.environ["GAME"], "icons").glob("wreck-*.png")):
+              im = Image.open(p).convert("RGBA")
+              box = im.getbbox()
+              if box:
+                  im = im.crop(box)
+              if max(im.size) > 512:
+                  im.thumbnail((512, 512), Image.LANCZOS)
+              im.save(p)
+          PYEOF
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          GAME="${{ inputs.game }}"
+          SW="games/$GAME/sw.js"
+          if [ -f "$SW" ] && perl -i -pe 's/(GCRegisterServiceWorker\("[^"]*?-v)(\d+)(")/$1 . ($2 + 1) . $3/e' "$SW" && ! git diff --quiet -- "$SW"; then
+            git add "$SW"
+          fi
+          node .github/autopilot/sync-precache.js --fix >/dev/null 2>&1 || true
+          git add "games/$GAME/icons" "games/$GAME/art-src" "$SW" 2>/dev/null || true
+          git commit -m "Wreck sheet (${{ inputs.game }}) batch ${{ inputs.batch }}" || { echo "Nothing to commit"; exit 0; }
+          for i in 1 2 3 4 5 6; do
+            git pull --rebase origin main && git push && exit 0
+            echo "push race, retrying ($i)…"; sleep $((RANDOM % 6 + 2))
+          done
+          echo "::error::Could not push after retries"; exit 1
