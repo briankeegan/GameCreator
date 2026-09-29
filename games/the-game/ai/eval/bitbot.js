@@ -193,7 +193,7 @@
         this.frozen = { walking: 0, cooling: 0, hold: 0, raise: 0, swap: 0 };
         this.counts = { refusedDeadly: 0, allDead: 0, byMode: {},
                         refusedReturn: 0, defendByClock: 0, refusedTooSlow: 0, planned: 0, planDropped: 0,
-                        attacked: 0, attackDropped: 0, cellsPlanned: 0, refusedPayless: 0, refusedStarving: 0,
+                        attacked: 0, attackDropped: 0, cellsPlanned: 0, refusedPayless: 0, refusedStarving: 0, refusedAtExit: 0,
                         raisedForMaterial: 0, waitedToRaise: 0, dugFor: 0, digDropped: 0, brokeNow: 0,
                         openingRaises: 0, waitedToRaise: 0, saveKept: 0, saveUnkeepable: 0, savePlanned: 0, heldTheBreak: 0, forcedBreak: 0, forcedBoth: 0, refusedEarly: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
@@ -1444,6 +1444,7 @@
         // arrives before the escape can be reached, which is survival being at
         // stake and nothing else is.
         var survivalNeeded = mode.name === 'DEFEND';
+        this._lastSurvivalNeeded = survivalNeeded;
         var here = signature(base);
         var allowed = [];
         for (var i = 0; i < pool.length; i++) {
@@ -1492,27 +1493,11 @@
             //
             // Survival is exempt -- a board that needs the clock takes whatever
             // buys it.
-            if (this.refusePayless && !survivalNeeded && pool[i].kind === 'swap' &&
-                tierOf(pool[i]) === 4) {
-                this.counts.refusedPayless++;
-                continue;
-            }
-            // UNDER THE WORKING FLOOR, ONLY A BREAK MAY CLEAR.
-            //
-            // Breaking is the only thing that takes garbage off the board, and it
-            // needs three panels against the slab. A board under the floor cannot
-            // reach one, so every panel it spends there is spent on never digging
-            // out again -- and raising, the other source, is a non-event once the
-            // opponent is sending. All three deaths in the round-robin end the
-            // same way: material between 1.8 and 3.5 rows, five to eight rows of
-            // garbage, every candidate refused, frozen on the weights fallback.
-            //
-            // Survival is exempt, as everywhere: a board that needs the clock
-            // takes whatever buys it.
-            if (!survivalNeeded && pool[i].kind === 'swap' && pool[i].resolved &&
-                pool[i].resolved.total > 0 && !pool[i].resolved.brokeGarbage &&
-                materialRows(base) < WORKING_ROWS) {
-                this.counts.refusedStarving++;
+            // THE ONE PREDICATE. Its rules are enforced again at the exit, on
+            // whatever move was actually chosen, so writing one here is enough.
+            var why = this.refuses(pool[i], info, base, survivalNeeded);
+            if (why) {
+                this.counts['refused' + why.charAt(0).toUpperCase() + why.slice(1)]++;
                 continue;
             }
             // A CASH THAT GAINS NOTHING IS NOT AN ACTION YET: FIRE AT THE LAST
@@ -2275,6 +2260,41 @@
         return false;
     };
 
+    // EVERY RULE THAT REFUSES A MOVE, IN ONE PLACE, ASKED OF ANY MOVE.
+    //
+    // Three paths pick the move -- the attack, the survival plan and the flatten
+    // plan -- and all three read the OPTION list. The candidate list is read by
+    // the weights fallback alone, which is the path that runs least. So a rule
+    // written into the candidate loop shapes the one path that matters least and
+    // the moves that actually get played walk past it.
+    //
+    // It has now happened three times. The beam cut breaks before the
+    // break-priority rule could see them. The save rule, wired into the loop,
+    // only ever narrowed the fallback. And "breaking garbage is the priority"
+    // left bestAttack free to attack with a break sitting in the pool.
+    //
+    // The pool holds every legal swap with the board it lands on, so a move from
+    // any path can be found in it and put to the same question. That is what
+    // makes the exit gate an enforcement point rather than a fourth place to
+    // write a rule and be bypassed. Add rules HERE.
+    BitBot.prototype.refuses = function (cand, info, base, survivalNeeded) {
+        if (!cand || cand.kind !== 'swap' || !cand.resolved) return null;
+        // Survival is exempt from all of them: a board that needs the clock takes
+        // whatever buys it.
+        if (survivalNeeded) return null;
+        // A THREE THAT NEITHER SENDS NOR BREAKS IS NOT AN ACTION. It spends the
+        // vertical structure a chain is made of and the engine's table pays
+        // nothing for it.
+        if (this.refusePayless && tierOf(cand) === 4) return 'payless';
+        // UNDER THE WORKING FLOOR, ONLY A BREAK MAY CLEAR. Breaking is the only
+        // thing that takes garbage off the board and it needs three panels
+        // against the slab; a board under the floor cannot reach one, so every
+        // panel spent there is spent on never digging out.
+        if (cand.resolved.total > 0 && !cand.resolved.brokeGarbage &&
+            materialRows(base) < WORKING_ROWS) return 'starving';
+        return null;
+    };
+
     // THE GATE EVERY DECISION LEAVES BY.
     //
     // The rule belongs at the exit, not inside one of the paths that can pick a
@@ -2289,6 +2309,44 @@
         var info = this._lastInfo, pool = this._lastPool, base = this._lastBase;
         if (!d || d.kind !== 'swap' || !d.move || !info || !pool || !base) return d;
         var i;
+
+        // THE RULES, APPLIED TO THE MOVE THAT WAS ACTUALLY CHOSEN.
+        //
+        // Whichever path picked it. The pool holds every legal swap with the
+        // board it lands on, so the move is found there and put to the same
+        // predicate the candidate loop asks -- and when it is refused, the
+        // best-scoring move that is not refused and not deadly is played
+        // instead. Nothing gets to pick a move the rules forbid by reading a
+        // different list.
+        //
+        // Soft, like the save rule below it: if every move is refused the
+        // original stands. A rule that can leave the bot with nothing to play is
+        // not a rule, it is a freeze.
+        var picked = null;
+        for (i = 0; i < pool.length; i++) {
+            var pk = pool[i];
+            if (pk.kind === 'swap' && pk.swap[0] === d.move[0] &&
+                pk.swap[1] === d.move[1] && pk.masks) { picked = pk; break; }
+        }
+        if (picked && this.refuses(picked, info, base, this._lastSurvivalNeeded)) {
+            var sub = null;
+            for (i = 0; i < pool.length; i++) {
+                var sc0 = pool[i];
+                if (sc0 === picked || sc0.kind !== 'swap' || !sc0.masks) continue;
+                if (this.refuses(sc0, info, base, this._lastSurvivalNeeded)) continue;
+                if ((sc0.moveFrames || 0) > this._lastDeadline) continue;
+                if (this.deadly(sc0.masks, sc0.resolved, info,
+                                Math.max((sc0.moveFrames || 0) + this.reaction,
+                                         info.framesPerRow || 0))) continue;
+                var sv0 = this.score(sc0.masks, sc0.moveFrames, sc0.resolved, info);
+                if (!sub || sv0 > sub.score) sub = { cand: sc0, score: sv0 };
+            }
+            if (sub) {
+                this.counts.refusedAtExit++;
+                d = { kind: 'swap', move: sub.cand.swap, mode: d.mode,
+                      alive: d.alive, via: 'ruled' };
+            }
+        }
         // AT ALL TIMES, not once the garbage has landed. The board is filled to
         // the top on purpose and the thing that makes that safe is the answer
         // standing ready when the slab arrives, which is before it arrives.

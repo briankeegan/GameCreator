@@ -128,6 +128,46 @@ function hostile() {
        'can be played in three frames');
 }());
 
-console.log('survival: 11 invariants checked without playing a game');
+// ------------------------ 6. a rule reaches the move, whichever path chose it
+//
+// THE BUG THIS EXISTS FOR, three times over: the beam cut breaks before the
+// break-priority rule saw them; the save rule wired into the candidate loop
+// only ever narrowed the weights fallback; and "breaking garbage is the
+// priority" left bestAttack free to attack with a break in the pool. The attack,
+// the survival plan and the flatten plan all read the OPTION list, and the
+// candidate list is read by the fallback alone -- the path that runs least.
+//
+// So this does not test any particular rule. It tests the WIRING: a rule that
+// refuses the chosen move must be enforced on it even when the move came from a
+// path that never looks at the candidate list.
+(function () {
+    var st = new P.Stack({ level: 10, seed: 101, countdown: false });
+    var bot = new BitBot(st, { allowRaise: true });
+    var real = BitBot.prototype._decide, forced = null;
+    // Stand in for the attack path: pick some legal swap the ordinary decision
+    // did not, and hand it back as though bestAttack had chosen it.
+    bot._decide = function () {
+        var d = real.call(this), i;
+        for (i = 0; i < this._lastPool.length; i++) {
+            var c = this._lastPool[i];
+            if (c.kind !== 'swap' || !c.masks) continue;
+            if (d.move && c.swap[0] === d.move[0] && c.swap[1] === d.move[1]) continue;
+            forced = c; break;
+        }
+        if (!forced) return d;
+        return { kind: 'swap', move: forced.swap, mode: d.mode, alive: d.alive,
+                 via: 'bestAttack' };
+    };
+    bot.refuses = function (cand) { return cand === forced ? 'test' : null; };
+    var out = bot.decide();
+    ok(forced, 'no second swap in the pool, so this proves nothing');
+    ok(out && out.kind === 'swap' && out.move, 'the gate refused to move at all');
+    ok(out.move[0] !== forced.swap[0] || out.move[1] !== forced.swap[1],
+       'a rule refused the chosen move and it was played anyway -- the gate is ' +
+       'not enforcing on moves that come from the attack and plan paths, which ' +
+       'is the whole reason it exists');
+}());
+
+console.log('survival: 14 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');
