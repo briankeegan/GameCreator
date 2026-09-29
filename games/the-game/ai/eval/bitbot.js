@@ -2137,11 +2137,17 @@
         // whose only qualification is that it leaves a break standing. Measured:
         // 6 deaths in 16 boards against 1 in 30.
         //
-        // Two rows of rise is the slack, and it is slack KEEPING needs: a
-        // substitute ranked by the weights is a luxury and a board close to death
-        // cannot afford one. MAKING an answer is not that -- see below -- so this
-        // guards the keeping half only.
-        var slack = this._lastDeadline >= 2 * (info.framesPerRow || 0);
+        // WHAT KEEPING MUST NOT OVERRULE IS THE SURVIVAL PLAN, AND SAYING SO
+        // DIRECTLY BEATS A CLOCK READING THAT MEANS IT.
+        //
+        // The substitute is ranked by the weights, so on a board that needs to
+        // survive this trades a plan priced in frames for a move whose only
+        // qualification is that it leaves a break standing -- measured at 6
+        // deaths in 16 boards against 1 in 30. Two rows of deadline stood in for
+        // that, and it was a proxy: once the deadline started counting queued
+        // garbage, "under two rows" became the ordinary state of any board under
+        // pressure and the rule switched itself off exactly where it is worth
+        // having. The plan is what it must not overrule, so that is the test.
 
         // A SAVE IS KEPT, NOT CONJURED.
         //
@@ -2184,7 +2190,7 @@
             }
             return d;
         }
-        if (!slack) return d;
+        if (d.via === 'survivalPlan') return d;
 
         var chosen = null;
         for (i = 0; i < pool.length; i++) {
