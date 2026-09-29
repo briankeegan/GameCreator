@@ -1700,23 +1700,16 @@
         // two ways to get them are raising and breaking. Measured on seed 101, it
         // sat at 3 rows for six straight decisions under the floor of 4, refusing
         // to raise because a slab was queued, and died 150 frames later.
-        // ONLY UP TO A HEIGHT IT CANNOT DIE AT, and dying is topping out -- there
-        // is no margin beyond that. The row it adds, plus every cell already
-        // queued against it, has to still fit under the ceiling. WORKING_ROWS is
-        // the material minimum that triggers the raise; it is not a headroom
-        // reserve and does not belong in this bound.
-        var incomingRows = Math.ceil((info.incoming || 0) / W);
-        if (!survival && this.canRaise() &&
-            materialRows(base) < WORKING_ROWS &&
-            tallestOf(pool) + 1 + incomingRows < H) {
-            // ONLY IF IT DOES NOT KILL. canRaise() is the engine's own list of
-            // refusals -- whether the raise is LEGAL -- and says nothing about
-            // whether the board survives it. Returning here skipped the death
-            // filter every other move faces, on the one move that pushes the stack
-            // up on purpose. Under attack a raise is how the bot kills itself.
+        // WHETHER A RAISE IS AVAILABLE IS THE POOL'S ANSWER, NOT THIS BRANCH'S.
+        //
+        // A raise the engine refuses, or one the board would not survive, is not
+        // in the pool -- the same way an illegal swap is not. So finding one there
+        // IS the validity test, and this branch asks only its own question: is the
+        // board short of material.
+        if (!survival && materialRows(base) < WORKING_ROWS) {
             var risenCand = null;
             for (i = 0; i < pool.length; i++) if (pool[i].kind === 'raise') risenCand = pool[i];
-            if (risenCand && !this.deadly(risenCand.masks, risenCand.resolved, info, this.reaction)) {
+            if (risenCand) {
                 this.counts.raisedForMaterial++;
                 return { kind: 'raise', mode: mode, alive: alive, via: 'raiseMaterial' };
             }
