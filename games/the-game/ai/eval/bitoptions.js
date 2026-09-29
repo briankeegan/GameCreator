@@ -261,6 +261,27 @@
             saveBudget--;
             return savesOfRaw(state);
         }
+        // IS THERE ANY CLEAR ON THIS BOARD AT ALL -- the emergency valve, not the
+        // break. Firing anything holds the floor for its resolve, and at
+        // maxHealth 1 that is the whole difference between living and not, so a
+        // board with no clear on it is a board one full row from dying.
+        //
+        // Cheap because it stops at the first one and is only asked while no
+        // route has been found yet: the frontier grows in cost order, so the
+        // first node that answers is the cheapest way to a board that can fire.
+        function readyOf(state) {
+            if (readyBudget <= 0) return 0;
+            readyBudget--;
+            var sw = bit.legalSwapsOf(state), i, r;
+            for (i = 0; i < sw.length; i++) {
+                if (!bit.swapMasks(state, sw[i][0], sw[i][1])) continue;
+                r = bit.resolveFromMasks(state, false);
+                bit.swapMasks(state, sw[i][0], sw[i][1]);
+                if (r.total > 0 || r.scope === 'garbage-broke') return 1;
+            }
+            return 0;
+        }
+
         function savesOfRaw(state) {
             var sw = bit.legalSwapsOf(state), n = 0, i, r;
             for (i = 0; i < sw.length; i++) {
@@ -283,7 +304,8 @@
             return { mask: reach, dig: dig };
         }
 
-        var flat = null, save = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
+        var flat = null, save = null, ready = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
+        var readyBudget = 0;
         var FPR = (timing && timing.framesPerRow) || 112;
         var DEADLINE = (timing && timing.deadline) || 0;
 
@@ -291,6 +313,7 @@
             BASE = shapeOf(state0);
             BASEDIG = DIG ? reachOf(state0).dig : 0;
             saveBudget = 192;
+            readyBudget = 96;
             BASESAVE = (DIG && BASEDIG > 0) ? savesOfRaw(state0) : 0;
             // The root has no reach mask: ply one stays exhaustive so an immediate
             // clear is never missed.
@@ -390,6 +413,13 @@
                             // One number. Ties go to the board offering more ways to
                             // finish a line, and there is no tier for the arithmetic
                             // to be outvoted by.
+                            // THE CHEAPEST ROUTE TO A BOARD THAT CAN FIRE. Not
+                            // gated on digging: a board with nothing to fire is
+                            // in danger whether or not there is garbage on it.
+                            if (!ready && readyOf(res.settled)) {
+                                ready = { swaps: seq, frames: cost,
+                                          duration: durationOf(seq, cost) };
+                            }
                             var sh2 = shapeOf(res.settled);
                             if (sh2) {
                                 var dur = durationOf(seq, cost);
@@ -508,6 +538,7 @@
         if (flat && !(flat.value > 0)) flat = null;
 
         return { now: now, next: next, cheapest: cheapest, flatten: flat, save: save,
+                 ready: ready,
                  swapsConsidered: swaps.length, refused: refused, unknown: unknown };
     }
 

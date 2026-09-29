@@ -2487,9 +2487,24 @@
             // is already frames-priced -- this is the fallback for a decision
             // that was about something else.
             if (ARITHMETIC[d.via]) return d;
-            if (this._lastOptions && this._lastOptions.save &&
-                this._lastOptions.save.swaps.length) {
-                var sp0 = this._lastOptions.save, sm0 = sp0.swaps[0];
+            // THE BETTER ROUTE FIRST, THEN ANY ROUTE.
+            //
+            // `save` is the cheapest way to a board that can break the slab --
+            // the save at the top of the stack. `ready` is the cheapest way to a
+            // board that can fire anything at all. The first hands ceiling back
+            // when it fires and the second only holds the floor, so the first
+            // wins when both exist; but with nothing to fire the board is one row
+            // from dying, and then the second is the whole difference.
+            var route = null;
+            if (this._lastOptions) {
+                if (this._lastOptions.save && this._lastOptions.save.swaps.length) {
+                    route = this._lastOptions.save;
+                } else if (this._lastOptions.ready && this._lastOptions.ready.swaps.length) {
+                    route = this._lastOptions.ready;
+                }
+            }
+            if (route) {
+                var sp0 = route, sm0 = sp0.swaps[0];
                 var lg0 = bit.legalSwapsOf(base), ok0 = false;
                 for (i = 0; i < lg0.length; i++) {
                     if (lg0[i][0] === sm0[0] && lg0[i][1] === sm0[1]) { ok0 = true; break; }
