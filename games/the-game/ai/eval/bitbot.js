@@ -2161,8 +2161,28 @@
     // the garbage on the board), so the gate and the search were answering
     // different questions and the plan could never satisfy the rule.
     BitBot.prototype.slabToAnswer = function (masks) {
+        masks = this.restingBoard(masks);
         for (var c = 1; c <= W; c++) if (masks.garb[c]) return masks;
         return this.withSlab(masks) || masks;
+    };
+
+    // WHERE THE BOARD IS LANDING, NOT WHERE IT IS MID-AIR.
+    //
+    // Holding a break is a property of the board at rest: a match cannot be read
+    // off panels that are still falling, so resolveFromMasks finds nothing on a
+    // board in flight and the answer comes back "no break" whatever is really
+    // there. The bot decides mid-cascade nearly always -- the cooldown lifts
+    // while stop time runs, and stop time runs because something is resolving.
+    // Measured on seed 101: of 262 decisions with garbage on the board, ONE was
+    // on a settled board. The save rule was asking its question at the one
+    // moment it cannot be answered, and reading the answer as a missing break.
+    //
+    // The search has always worked on landed boards (every node it keeps is
+    // res.settled). This puts the rule on the same footing.
+    BitBot.prototype.restingBoard = function (masks) {
+        if (!this.inFlight()) return masks;
+        var r = bit.resolveFromMasks(bit.copyState(masks), true);
+        return (r && r.settled) || masks;
     };
 
     // HOW MANY EMPTY ROWS ARE ABOVE THE STACK, ON THE BOARD AS IT IS NOW.
@@ -2323,6 +2343,10 @@
         var info = this._lastInfo, pool = this._lastPool, base = this._lastBase;
         if (!d || d.kind !== 'swap' || !d.move || !info || !pool || !base) return d;
         var i;
+        // THE PATHS THAT ARE ARITHMETIC, NOT PREFERENCE. Each is already priced
+        // in frames against the clock, or is the break the rest of this gate
+        // exists to reach. Nothing below may overrule or restart one.
+        var ARITHMETIC = { survivalPlan: 1, planSave: 1, digPlan: 1, 'break': 1, keepSave: 1 };
 
         // THE RULES, APPLIED TO THE MOVE THAT WAS ACTUALLY CHOSEN.
         //
@@ -2349,7 +2373,6 @@
         // deaths in 16 boards, and worse: 15 deaths in 30 on both seeds, from
         // frame 813, against 3 and 0 without it. Overruling frames-priced
         // arithmetic with a weights ranking is how the bot dies.
-        var ARITHMETIC = { survivalPlan: 1, planSave: 1, digPlan: 1, 'break': 1, keepSave: 1 };
         var picked = null;
         for (i = 0; i < pool.length; i++) {
             var pk = pool[i];
@@ -2425,7 +2448,19 @@
         // same job done more directly, and overruling it here is what cost 6
         // deaths in 16 boards when this rule outranked everything.
         if (!this.saveAfter(base, info.cursorRow, info.cursorCol, info)) {
-            if (d.via !== 'survivalPlan' && this._lastOptions && this._lastOptions.save &&
+            // A ROUTE ALREADY UNDERWAY IS NOT RE-STARTED FROM ITS FIRST MOVE.
+            //
+            // The dig plan holds the route and plays it out; this branch hands
+            // back swaps[0]. Firing it over a decision that IS the route replaced
+            // move two with move one, every decision, so the route never advanced
+            // past its first step: 208 routes planned and a break in hand on 3 of
+            // 262 buried decisions, 1%.
+            //
+            // The same for the break it is meant to reach and for the plan that
+            // is already frames-priced -- this is the fallback for a decision
+            // that was about something else.
+            if (ARITHMETIC[d.via]) return d;
+            if (this._lastOptions && this._lastOptions.save &&
                 this._lastOptions.save.swaps.length) {
                 var sp0 = this._lastOptions.save, sm0 = sp0.swaps[0];
                 var lg0 = bit.legalSwapsOf(base), ok0 = false;
