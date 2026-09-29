@@ -185,6 +185,14 @@
     // Opt-in: at every decision on a followed line, check the line's
     // prediction for this frame against the live board (see _checkModel).
     this.checkModel = !!opts.checkModel;
+    // Worker threads for the survival search: opts.threads or GC_THREADS, a
+    // number or 'auto' (one per core). The main thread only coordinates.
+    var want = opts.threads || (typeof process !== 'undefined' && process.env && process.env.GC_THREADS) || 0;
+    if (want === 'auto' && typeof require === 'function') {
+      var os = require('os');
+      want = os.availableParallelism ? os.availableParallelism() : os.cpus().length;
+    }
+    this.threads = typeof require === 'function' && typeof SharedArrayBuffer !== 'undefined' && Number(want) > 1 ? Number(want) : 0;
     this.modelMismatches = [];
     this.doomedDecisions = 0;
     this.doomedMovesDropped = 0;
@@ -1442,6 +1450,156 @@
     return new Make(src);
   }
   PuyoCpu.cloneStack = cloneStack;
+
+  // A BOARD AS NUMBERS, for handing to a worker thread. Every panel field is
+  // an integer, a boolean, null, undefined or a state name; each gets its
+  // own code so decoding gives back exactly what was encoded. The rest of
+  // the Stack is small and travels as it is; levelData and frames are the
+  // level's shared constants and are looked up on the other side.
+  var NUL = -2147483648, UND = -2147483647, BT = -2147483646, BF = -2147483645, STR = -2147483600;
+  var STATES = ['normal', 'dimmed', 'swapping', 'matched', 'popping', 'popped', 'hovering', 'falling', 'landing'];
+  var NF = PANEL_FIELDS.length;
+  function encodeStack(st) {
+    var rows = st.panels, R = rows.length, buf = new Int32Array(R * 6 * NF), meta = {}, k, i = 0;
+    for (k in st) {
+      if (!Object.prototype.hasOwnProperty.call(st, k) || typeof st[k] === 'function') continue;
+      if (k === 'panels' || k === 'levelData' || k === 'frames') continue;
+      meta[k] = st[k];
+    }
+    for (var r = 0; r < R; r++) {
+      for (var c = 1; c <= 6; c++) {
+        var p = rows[r][c];
+        for (var f = 0; f < NF; f++) {
+          var v = p[PANEL_FIELDS[f]];
+          if (v === null) buf[i++] = NUL;
+          else if (v === undefined) buf[i++] = UND;
+          else if (v === true) buf[i++] = BT;
+          else if (v === false) buf[i++] = BF;
+          else if (typeof v === 'string') {
+            var si = STATES.indexOf(v);
+            if (si < 0) throw new Error('encodeStack: unknown panel state ' + v);
+            buf[i++] = STR + si;
+          } else {
+            if ((v | 0) !== v || v <= STR + STATES.length) throw new Error('encodeStack: ' + PANEL_FIELDS[f] + '=' + v + ' is not a small integer');
+            buf[i++] = v;
+          }
+        }
+      }
+    }
+    return { meta: meta, rows: R, row0: rows[0] ? rows[0][0] : null, buf: buf };
+  }
+  var levelConsts = {};
+  function decodeStack(e) {
+    var PE = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
+    var lc = levelConsts[e.meta.level];
+    if (!lc) { var t = new PE.Stack({ level: e.meta.level, seed: 1, countdown: false }); lc = levelConsts[e.meta.level] = { levelData: t.levelData, frames: t.frames }; }
+    var o = Object.create(PE.Stack.prototype), k, i = 0, buf = e.buf;
+    o.levelData = lc.levelData; o.frames = lc.frames;
+    for (k in e.meta) o[k] = e.meta[k];
+    var rows = new Array(e.rows);
+    for (var r = 0; r < e.rows; r++) {
+      var row = [e.row0];
+      for (var c = 1; c <= 6; c++) {
+        var p = {};
+        for (var f = 0; f < NF; f++) {
+          var v = buf[i++];
+          p[PANEL_FIELDS[f]] = v === NUL ? null : v === UND ? undefined : v === BT ? true : v === BF ? false
+            : (v >= STR && v < STR + STATES.length) ? STATES[v - STR] : v;
+        }
+        row[c] = p;
+      }
+      rows[r] = row;
+    }
+    o.panels = rows;
+    return cloneStack(o);
+  }
+  PuyoCpu.encodeStack = encodeStack;
+  PuyoCpu.decodeStack = decodeStack;
+
+  // WORKER THREADS FOR THE SEARCH (Node only, opt-in: opts.threads or
+  // GC_THREADS). Before a search level is expanded, every (node, move) step in
+  // it is computed on the workers; _lineStep then takes each result instead of
+  // computing it. Which steps are taken, in what order and against what
+  // budget is unchanged, so the search decides exactly what it decides
+  // without them.
+  var pools = {};
+  function getPool(n) {
+    if (pools[n]) return pools[n];
+    var wt = require('worker_threads'), path = require('path');
+    var flag = new Int32Array(new SharedArrayBuffer(4)), ws = [];
+    for (var i = 0; i < n; i++) {
+      var ch = new wt.MessageChannel();
+      var w = new wt.Worker(path.join(__dirname, 'survival_worker.js'), { workerData: { flag: flag.buffer, port: ch.port2 }, transferList: [ch.port2] });
+      w.unref();
+      ws.push({ w: w, port: ch.port1 });
+    }
+    return (pools[n] = { ws: ws, flag: flag, receive: wt.receiveMessageOnPort });
+  }
+  function moveKey(m, long) { return long ? 'long' : m === null ? 'hold' : m === 'raise' ? 'raise' : m[0] + ',' + m[1]; }
+  // `partial`: only the first move of each node now (the wait, which usually
+  // settles a calm board on its own); the rest of the level's moves are
+  // fetched the first time the search asks for one of them.
+  PuyoCpu.prototype._prefetch = function (nodes, movesOf, partial) {
+    if (!this.threads || !nodes.length) return;
+    var pool = getPool(this.threads), until = this._lineUntil || 0, rest = !!this._restNeeded;
+    var tasks = [], i, j;
+    for (i = 0; i < nodes.length; i++) {
+      var n = nodes[i];
+      if ((n._pre && !n._pre.partial) || !(n._enc || n.st)) continue;
+      var moves = movesOf(n);
+      if (!moves.length) continue;
+      if (!n._pre) n._pre = { until: until, rest: rest, res: {} };
+      n._pre.partial = !!partial;
+      tasks.push({ n: n, msg: { id: tasks.length, enc: n._enc || encodeStack(n.st), t: n.t, hold: n.hold, arrivals: n.arrivals, fresh: !!n.fresh,
+                                moves: moves, until: until, rest: rest, reaction: this.reaction, cursorMoveFrames: this.cursorMoveFrames } });
+    }
+    if (!tasks.length) return;
+    Atomics.store(pool.flag, 0, 0);
+    for (i = 0; i < tasks.length; i++) pool.ws[i % pool.ws.length].port.postMessage(tasks[i].msg);
+    var sent = tasks.length;
+    var got = 0;
+    while (got < sent) {
+      Atomics.wait(pool.flag, 0, got, 60000);
+      for (j = 0; j < pool.ws.length; j++) {
+        var m;
+        while ((m = pool.receive(pool.ws[j].port))) {
+          var r = m.message;
+          if (r.error) throw new Error('survival worker: ' + r.error);
+          var into = tasks[r.id].n._pre.res;
+          for (var rk in r.res) into[rk] = r.res[rk];
+          got++;
+        }
+      }
+    }
+  };
+  PuyoCpu.prototype._fromPrefetch = function (node, m, long) {
+    var pre = node._pre;
+    if (!pre || !pre.res || pre.until !== (this._lineUntil || 0) || pre.rest !== !!this._restNeeded) return undefined;
+    var mk = moveKey(m, long), r = pre.res[mk];
+    if (r === undefined && pre.partial && this._curLevel) {
+      var lvl = this._curLevel, vd = this._curVerdict;
+      this._prefetch(lvl.filter(function (x) { return x._pre && x._pre.partial && !vd[x.tag]; }),
+                     function (x) { return [ null ].concat(x.b.legalSwaps()); }, false);
+      r = pre.res[mk];
+    }
+    if (r === undefined) return undefined;
+    if (r === null) return null;
+    if (r.dead) return r.parent ? { st: node.st, b: node.b, carry: node.carry, pos: node.pos, hold: node.hold, arrivals: node.arrivals, t: r.t, dead: true }
+                                : { dead: true, t: r.t };
+    return lazyNode(r);
+  };
+  // What _engineNode would build, from the worker's summary, with the board
+  // itself left encoded until something reads node.st.
+  function lazyNode(r) {
+    var legal = r.legal, n = { _enc: r.enc, t: r.t, hold: r.hold, arrivals: r.arrivals, fresh: false, pos: r.pos, carry: r.carry,
+                               b: { grid: r.grid, key: r.key, height: r.height, width: 6, legalSwaps: function () { return legal.map(function (x) { return x.slice(); }); } } };
+    var st = null;
+    Object.defineProperty(n, 'st', { enumerable: true, configurable: true,
+      get: function () { if (!st) st = decodeStack(n._enc); return st; },
+      set: function (v) { st = v; } });
+    return n;
+  }
+  PuyoCpu.lazyNode = lazyNode;
   function engineGrid(st) {
     var H = st.height, grid = [], key = '', r, c;
     for (r = 0; r <= H + 1; r++) {
@@ -1573,6 +1731,10 @@
   };
 
   PuyoCpu.prototype._lineStep = function (node, m, long) {
+    if (node._pre) {
+      var pre = this._fromPrefetch(node, m, long);
+      if (pre !== undefined) return pre;
+    }
     if (node.st) return this._engineStep(node, m, long);
     var t = node.b.clone(), r, used, saved = this._carry, savedFrom = this._walkFrom;
     t.incoming = (node.carry && node.carry.nextRow) ||
@@ -1838,6 +2000,10 @@
       return ((y.t + self._heldFor(y.carry)) - (x.t + self._heldFor(x.carry))) || (garb(x.b) - garb(y.b)) || (top(x.b) - top(y.b));
     }
     while (level.length && budget > 0) {
+      if (this.threads) {
+        this._curLevel = level; this._curVerdict = verdict;
+        this._prefetch(level.filter(function (x) { return !verdict[x.tag]; }), function () { return [ 'long' ]; }, true);
+      }
       var next = [], seen = {};
       for (i = 0; i < level.length && budget > 0; i++) {
         n = level[i];
@@ -1875,6 +2041,7 @@
       for (i = 0; i < next.length && keep.length < this.SURVIVE_SEARCH_BEAM; i++) if (!next[i].kept && !weak[next[i].tag]) keep.push(next[i]);
       level = keep.slice(0, seeds).concat(keep.slice(seeds).sort(better));
     }
+    this._curLevel = null; this._curVerdict = null;
     // A move with lines still open when the budget ran out is not proven dead.
     var alive = {};
     for (i = 0; i < level.length; i++) alive[level[i].tag] = true;
