@@ -415,14 +415,28 @@
         return banked <= 0;                                    // full, nothing holding it
     };
 
+    // A TOWER IS WHERE THE BOARD DIES, so how much it minds one is not the
+    // vector's to choose. Death is the tallest column reaching the ceiling while
+    // the material is spread over all six, so an uneven board is holding rows of
+    // life it is not using. A vector that zeroes or reverses these two is a
+    // vector choosing to die, and that is not what the weights are for: they say
+    // how much MORE than this to care, never less.
+    //
+    // The numbers are STARTER's own, so the starting vector is unchanged and only
+    // the ones that went tower-friendly are clamped.
+    var FLOOR = { bumpiness: -20, tallest: -40 };
+
     BitBot.prototype.score = function (st, moveFrames, resolved, info) {
         var out = BF.features(null, [info.cursorRow, info.cursorCol], moveFrames,
                              resolved, info, PanelEngine(), st);
         var w = this.weights, total = 0, keys = BF.keys();
         for (var i = 0; i < keys.length; i++) {
             var k = keys[i], v = out.f[k];
-            if (v === undefined || !w[k]) continue;
-            total += w[k] * v;
+            if (v === undefined) continue;
+            var wk = w[k] || 0;
+            if (FLOOR[k] !== undefined) wk = Math.min(wk, FLOOR[k]);
+            if (!wk) continue;
+            total += wk * v;
         }
         return total;
     };
@@ -844,13 +858,7 @@
         return best;
     }
 
-    // `dig` makes BREAKING THE TOP OF THE ORDER rather than a term in it. It is
-    // set when the board is buried and short of material, and there the garbage
-    // is not one option among several: it is the material, locked up, and the
-    // rows of ceiling it occupies are what the board runs out of. A plan that
-    // breaks a slab beats every plan that does not, however either one rates;
-    // between two that break, the rate decides as usual.
-    function bestPlan(list, clock, deadline, engine, toppedOut, framesPerRow, framesTable, dig) {
+    function bestPlan(list, clock, deadline, engine, toppedOut, framesPerRow, framesTable) {
         var best = null, over = null, all = list.now.concat(list.next), i;
         // ONE PANEL REMOVED IS framesPerRow / W FRAMES OF LIFE -- 18.7 at level 10.
         // Panels and stop time are the same currency and this is the exchange rate.
@@ -895,14 +903,19 @@
             // clearing 18 panels is worth 337 frames before any stop time; the
             // deepest chain pays only 68. The panels were always the larger half and
             // the gain-only ranking was reading the smaller one.
-            var bought = o.total * perPanel + gain;
+            // AND THE CELLS A BREAK RETURNS TO THE BOARD.
+            //
+            // THIS IS NOT A PREFERENCE FOR DIGGING. A garbage cell is a cell that
+            // can never come off the board; a panel is a cell that can. Breaking
+            // converts one into the other, so the survival value of a break is the
+            // same as clearing those cells -- deferred by a clear, which is why it
+            // is worth that and not more. Priced here, a break wins when it buys
+            // more life than the alternatives and loses when it does not, which is
+            // the whole of the ranking.
+            var bought = (o.total + (o.garbage || 0)) * perPanel + gain;
             var rate = bought / Math.max(1, took);
             var cur = fits ? best : over;
-            var wins;
-            if (!cur) wins = true;
-            else if (dig && !!o.breaks !== !!cur.option.breaks) wins = !!o.breaks;
-            else wins = rate > cur.rate || (rate === cur.rate && took < cur.frames);
-            if (wins) {
+            if (!cur || rate > cur.rate || (rate === cur.rate && took < cur.frames)) {
                 cur = { rate: rate, gain: gain, frames: took, move: o.swaps[0], option: o };
                 if (fits) best = cur; else over = cur;
             }
@@ -1011,21 +1024,18 @@
         // Spent once for the decision, so both halves search the same board at the
         // same depth and cannot disagree about what is on offer.
         var lookDepth = Math.min(this.maxDepth, depthFor(deadline, this.reaction, tallestOf(pool)));
-        // BURIED AND SHORT IS A STATE, NOT A SCORE.
+        // BURIED AND SHORT: WIDEN THE SEARCH, NOT THE PREFERENCE.
         //
-        // Garbage is material, unbroken. Below six flat rows of panels the board
-        // does not have the material to build with, and the slabs sitting on it
-        // are both where the missing panels are and the rows of ceiling it is
-        // running out of. Breaking is the only thing that converts one into the
-        // other.
+        // This says where to LOOK, and nothing about what to play. Ranked by price
+        // alone the beam keeps the twelve cheapest setups and a position one swap
+        // from a break falls out of it whenever twelve cheaper ones exist, so a
+        // break was something the search stumbled on rather than something it
+        // could see. Six more slots, ranked by how close the board is to a slab,
+        // make it visible; bestPlan then prices it against everything else and
+        // takes it only when it buys more life.
         //
-        // So from here the search is told to look for a break (bitoptions weights
-        // half its beam toward positions against a slab) and the plan ranking is
-        // told to take one when it finds one (bestPlan). Neither is a weight and
-        // no vector can turn either off -- which is the point: measured over a
-        // duel on seed 103, the starting weights dug out 339 of 339 panels of
-        // garbage and a random vector dug 45 of 92, carried the rest to the
-        // ceiling and died at 10,163 frames.
+        // Finding is not preferring, and the bot does not prefer digging. It
+        // prefers not dying, and under a slab those are usually the same move.
         var digging = false;
         for (i = 1; i <= W; i++) if (base.garb[i]) { digging = true; break; }
         if (digging && materialRows(base) >= 6) digging = false;
@@ -1082,7 +1092,7 @@
                 options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
                                                    this.timing(info), digging);
                 var plan = bestPlan(options, info.stopTime || 0, deadline, PanelEngine(),
-                                    !!info.toppedOut, info.framesPerRow, this.stack.frames, digging);
+                                    !!info.toppedOut, info.framesPerRow, this.stack.frames);
                 if (plan && plan.rate > 0) {
                     this._plan = { moves: plan.option.swaps.slice(1), frames: plan.frames,
                                    gain: plan.gain, rate: plan.rate,
