@@ -1520,8 +1520,20 @@
             // build inside a window and still cash at the end of it. Refusing a zero-gain cash is
             // what spends the window that way, and it is the engine's own formula
             // deciding, not a preference.
+            // A BREAK IS NOT A CASH AND THIS RULE DOES NOT PRICE IT.
+            //
+            // The formula above is stop time and nothing else: gain = pays minus
+            // what is still on the clock. A break that sends nothing pays no stop
+            // time, so it read as gaining zero and was dropped -- on every
+            // decision with a freeze running, which is most of them, because the
+            // freeze is why the cooldown lifts in the first place.
+            //
+            // What a break is worth is not on that clock. It converts the slab's
+            // cells into panels and hands back the rows the slab was sitting in,
+            // and neither of those gets better by waiting. Deferring it only
+            // risks the match that makes it.
             if (info.stopTime > 0 && pool[i].kind === 'swap' && pool[i].resolved &&
-                pool[i].resolved.total > 0) {
+                pool[i].resolved.total > 0 && !pool[i].resolved.brokeGarbage) {
                 var pr3 = pool[i].resolved, isCh = pr3.chain >= 2;
                 var pays3 = BF.stopTimeOf(PanelEngine(), isCh, isCh ? 0 : pr3.total,
                                           isCh ? pr3.chain : 0, !!info.toppedOut);
@@ -1839,7 +1851,25 @@
         // Only when there is nothing to break RIGHT NOW: with a break in the pool
         // the priority rule above has already narrowed to it, and planning a
         // route to another one instead would be walking past the one in hand.
-        if (!survival && digging) {
+        // BREAKING IS NOT BEHIND SURVIVAL, BECAUSE BREAKING IS SURVIVAL.
+        //
+        // This whole block used to be gated on `!survival`, and a survival plan
+        // exists whenever the clock is empty -- which is most decisions. So on
+        // most decisions the bot never looked at the break sitting in its own
+        // pool.
+        //
+        // There is nothing to weigh. A break holds the floor for the whole of its
+        // resolve, exactly as any clear does, AND converts the slab's cells into
+        // panels, AND hands back the rows it was occupying. A survival plan buys
+        // frames; a break buys frames and the material to buy more with. Nothing
+        // the plan can do is better, and without it the board runs out of panels
+        // and then out of clears: 116 and 102 of the decisions with nothing to
+        // fire had no clear on the board at all, with four hundred frames of
+        // deadline in hand.
+        //
+        // The plan is dropped when this fires, because the board it was priced
+        // against is about to come apart.
+        if (digging) {
             var haveBreak = false;
             for (i = 0; i < pool.length; i++) {
                 if (pool[i].resolved && pool[i].resolved.brokeGarbage) { haveBreak = true; break; }
@@ -1881,6 +1911,7 @@
                 }
                 if (bk) {
                     this._dig = null;
+                    this._plan = null;
                     this.counts.brokeNow++;
                     return { kind: 'swap', move: bk.swap, mode: mode, alive: alive,
                              via: 'break' };
@@ -1896,6 +1927,7 @@
                 if (dnOk && Math.max(0, this._dig.frames - dspent) <= deadline) {
                     this._dig.moves = this._dig.moves.slice(1);
                     if (!this._dig.moves.length) this._dig = null;
+                    this._plan = null;
                     this.counts.dugFor++;
                     return { kind: 'swap', move: dn, mode: mode, alive: alive, via: 'digPlan' };
                 }
