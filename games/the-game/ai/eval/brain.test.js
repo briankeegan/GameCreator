@@ -8,7 +8,7 @@
 // on the spot), or the test proves nothing about the ahead path.
 //
 // Then the same brain with its answers late: the bot must still play (the
-// plan), not freeze.
+// plan), not freeze; and with only its quick side in time, it plays that.
 var fs = require('fs'), path = require('path'), assert = require('assert');
 var DIR = __dirname;
 require(path.join(DIR, '..', '..', 'panel-engine.js'));
@@ -110,5 +110,25 @@ assert.ok(played[0] > 5 && played[1] > 5, 'with late answers the bot played only
 assert.ok(C.cp[0].planned >= 6 && C.cp[1].planned >= 6, 'with late answers the plan was played only ' +
           C.cp.map(function (c) { return c.planned || 0; }) + ' times');
 console.log('ok: late answers, ' + played + ' moves played (' + C.cp.map(function (c) { return c.planned || 0; }) + ' from the plan)');
+
+// Full answers never in time, quick ones on the spot: the quick side's are
+// the ones played, and the bot does not freeze.
+function Slow(m, q) { this.inner = new P.LocalBrain(m, 0, q); }
+Slow.prototype.request = function (bot, point, acted) {
+  var q = this.inner.quickMind.think(P.message(bot, point, acted));
+  var p = this.inner.request(bot, point, acted);
+  p.answer = p.decision; p.decision = null; p.readyAt = Infinity;
+  p.quick = q;
+  return p;
+};
+Slow.prototype.poll = P.LocalBrain.prototype.poll;
+Slow.prototype.lead = function () { return 60; };
+Slow.prototype.quickLead = function () { return 1; };
+var Q = duel(function (i, st) { return new Slow(mind(i, st), new P.Mind(opts(i), null, true)); });
+for (f = 0; f < FRAMES; f++) step(Q);
+var quick = Q.cp.map(function (c) { return c.quickPlayed || 0; });
+assert.ok(quick[0] > 5 && quick[1] > 5, 'with only quick answers in time the bot played ' + quick + ' of them');
+assert.ok(!Q.cp[0].acted && !Q.cp[1].acted, 'a full answer that never came was played');
+console.log('ok: full answers late, ' + quick + ' quick answers played');
 P.closePools();
 process.exit(0);

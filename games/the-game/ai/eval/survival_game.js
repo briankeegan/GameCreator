@@ -7,7 +7,8 @@
 // is data: RESULT {"seed":..,"frames":..,"died":null|0|1,"seconds":..}.
 // GC_REALTIME=X: each side decides through a brain whose answers arrive as
 // many frames after they are asked for as the thinking took (60 a second,
-// times X), as in the browser; 0 or unset decides on the frame. GC_THREADS:
+// times X), as in the browser; 0 or unset decides on the frame. Each brain
+// has a quick side too (PuyoCpu.Mind quick), unless GC_QUICK=0. GC_THREADS:
 // worker threads for the search.
 //
 // survival-games.yml runs one seed per runner.
@@ -34,7 +35,8 @@ function opts(i) {
 var mind = [0, 1].map(function (i) { return REALTIME ? new PuyoCpu(PuyoCpu.cloneStack(st[i]), opts(i)) : null; });
 var cp = [0, 1].map(function (i) {
   var o = opts(i);
-  if (REALTIME) o.brain = new PuyoCpu.LocalBrain(new PuyoCpu.Mind(opts(i), mind[i]), REALTIME);
+  if (REALTIME) o.brain = new PuyoCpu.LocalBrain(new PuyoCpu.Mind(opts(i), mind[i]), REALTIME,
+                                                 process.env.GC_QUICK === '0' ? null : new PuyoCpu.Mind(opts(i), null, true));
   return new PuyoCpu(st[i], o);
 });
 cp[0].opponent = st[1]; cp[1].opponent = st[0];
@@ -105,5 +107,6 @@ console.log('RESULT ' + JSON.stringify({ seed: SEED, frames: f, died: died,
                                          planned: REALTIME ? cp.map(function (c) { return c.planned || 0; }) : undefined,
                                          missed: REALTIME ? cp.map(function (c) { return c.missed || 0; }) : undefined,
                                          dropped: REALTIME ? cp.map(function (c) { return c.dropped || 0; }) : undefined,
+                                         quick: REALTIME ? cp.map(function (c) { return c.quickPlayed || 0; }) : undefined,
                                          seconds: Math.round((Date.now() - t0) / 1000) }));
 process.exit(died === null ? 0 : 1);
