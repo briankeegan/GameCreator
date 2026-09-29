@@ -93,7 +93,18 @@
         for (c = 1; c <= w2; c++) {
             var top = 32 - Math.clz32(st2.occ[c] >>> 0);
             if (top > tall) tall = top;
-            h[c] = bit.popcount((st2.occ[c] & ~st2.garb[c]) >>> 0);
+            // ONLY THE PANELS THAT CAN BE SPREAD INTO EACH OTHER.
+            //
+            // A slab splits the board into pockets and nothing crosses it, so
+            // panels sitting above one are not part of the surface being
+            // levelled. Counting the whole column made a column holding five
+            // workable panels and two stranded above a slab read as the fullest
+            // on the board, and the plan spent its effort on material it could
+            // not move.
+            var g = st2.garb[c] >>> 0;
+            var floor = g ? (g & -g) : 0;            // lowest garbage cell
+            var below = floor ? (floor - 1) : 0xffffffff;
+            h[c] = bit.popcount((st2.occ[c] & ~g & below) >>> 0);
             sum += h[c];
             if (h[c] > mx) mx = h[c];
         }

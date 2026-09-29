@@ -369,7 +369,14 @@
     // a slab is not material, and the bot cannot move it.
     function bumpiness(st) {
         var h = [], c, n = 0;
-        for (c = 1; c <= W; c++) h[c] = bit.popcount((st.occ[c] & ~st.garb[c]) >>> 0);
+        for (c = 1; c <= W; c++) {
+            // Only the pocket under the lowest slab: a slab splits the board and
+            // panels above one cannot be spread into the surface below it.
+            var g = st.garb[c] >>> 0;
+            var floor = g ? (g & -g) : 0;
+            var below = floor ? (floor - 1) : 0xffffffff;
+            h[c] = bit.popcount((st.occ[c] & ~g & below) >>> 0);
+        }
         for (c = 1; c < W; c++) n += Math.abs(h[c] - h[c + 1]);
         return n;
     }
