@@ -434,7 +434,27 @@
             }
         }
         if (tallest + rows < H) return false;                  // room left: not dead
-        return banked <= 0;                                    // full, nothing holding it
+
+        // FULL. WHAT HOLDS A FULL BOARD IS THE CLOCK **OR PANELS IN MOTION**.
+        //
+        // The drain runs only while riseLock is clear, and riseLock is set for
+        // the whole of a resolve -- so a clear holds a full board for as long as
+        // it takes to resolve, whether or not it pays any stop time. Counting
+        // only the stop time refused the one move that saves this board: a bare
+        // three pays nothing and holds the floor for 59 frames, which is exactly
+        // the three the save is kept for. The engine's own arithmetic, via
+        // resolveFramesOf, not a restatement of it.
+        //
+        // At level 10 maxHealth is 1, so a full board that is settled and off
+        // the clock dies on that frame -- instrumented over three duels, every
+        // death was this and none was anything else. Nothing to hold it is the
+        // whole test.
+        var held = banked;
+        if (resolved && (resolved.total > 0 || resolved.garbage > 0)) {
+            held += BF.resolveFramesOf(PanelEngine(), resolved.total || 0,
+                                       resolved.garbage || 0);
+        }
+        return held <= 0;                                      // full, nothing holding it
     };
 
     // A MOVE THAT LEAVES NOWHERE TO GO IS DEADLY, whatever the horizon says.
