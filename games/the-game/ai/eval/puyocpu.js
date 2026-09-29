@@ -1859,6 +1859,7 @@
     return kids;
   };
   PuyoCpu.prototype._svRound = function (par, level, verdict, budget, from, kids) {
+    if (this._abort && this._abort()) throw ABORTED;
     var pool = par.pool, k = pool.ws.length, want = [], left = budget, i, j, n, x, FULL = this.SURVIVE_FRAMES + this.SURVIVE_REST;
     for (i = from; i < level.length && left > 0; i++) {
       n = level[i];

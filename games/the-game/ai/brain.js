@@ -12,6 +12,9 @@
     var self = this, o = {}, k;
     for (k in opts) o[k] = opts[k];
     o.threads = Brain.threads();
+    // The search runs on faststack.js, the engine on numbers
+    // (faststack.test.js and GC_ENGINE_CHECK hold it to panel-engine.js).
+    o.fastEngine = true;
     this.threads = o.threads;
     this.worker = new Worker(Brain.URL);
     // Shared with the worker: the id of the request to stop thinking about.
