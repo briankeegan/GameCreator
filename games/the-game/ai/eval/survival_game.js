@@ -8,8 +8,10 @@
 // GC_REALTIME=X: each side decides through a brain whose answers arrive as
 // many frames after they are asked for as the thinking took (60 a second,
 // times X), as in the browser; 0 or unset decides on the frame. Each brain
-// has a quick side too (PuyoCpu.Mind quick), unless GC_QUICK=0. GC_THREADS:
-// worker threads for the search.
+// has a quick side too (PuyoCpu.Mind quick), unless GC_QUICK=0.
+// GC_REALTIME_STEPS=N: an answer takes a frame per N search steps instead of
+// the time it took, so the game is the same on every machine (with
+// GC_THREADS=0). GC_THREADS: worker threads for the search.
 //
 // survival-games.yml runs one seed per runner.
 var fs = require('fs'), path = require('path');
@@ -36,7 +38,8 @@ var mind = [0, 1].map(function (i) { return REALTIME ? new PuyoCpu(PuyoCpu.clone
 var cp = [0, 1].map(function (i) {
   var o = opts(i);
   if (REALTIME) o.brain = new PuyoCpu.LocalBrain(new PuyoCpu.Mind(opts(i), mind[i]), REALTIME,
-                                                 process.env.GC_QUICK === '0' ? null : new PuyoCpu.Mind(opts(i), null, true));
+                                                 process.env.GC_QUICK === '0' ? null : new PuyoCpu.Mind(opts(i), null, true),
+                                                 Number(process.env.GC_REALTIME_STEPS || 0));
   return new PuyoCpu(st[i], o);
 });
 cp[0].opponent = st[1]; cp[1].opponent = st[0];

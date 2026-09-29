@@ -545,6 +545,7 @@
   };
 
   PuyoCpu.prototype._resolveCandidate = function (board, move, delay, untilRise, cap, exact) {
+    PuyoCpu.steps++;
     if (!this.engine) {
       // LogicalBoard cannot be aged cheaply, so this path keeps the old
       // behaviour: the caller has already applied the swap.
@@ -2329,7 +2330,11 @@
     return r;
   };
 
+  // Steps taken on this thread, for a brain that counts its time in steps
+  // (LocalBrain `steps`).
+  PuyoCpu.steps = 0;
   PuyoCpu.prototype._lineStep = function (node, m, long) {
+    PuyoCpu.steps++;
     if (node._pre) {
       var pre = this._fromPrefetch(node, m, long);
       if (pre !== undefined) return pre;
@@ -4446,16 +4451,19 @@
   // as the thinking took (60 a second, times `realtime`), so a game played
   // here plays out as it would with the brain in a worker.
   // With a quick Mind too, both sides are asked, as if each were a worker of
-  // its own.
-  function LocalBrain(mind, realtime, quick) {
+  // its own. With `steps`, thinking takes a frame per that many search steps
+  // (PuyoCpu.steps) instead of the time it took, so a game plays out the same
+  // on any machine; it needs the search on this thread (threads 0).
+  function LocalBrain(mind, realtime, quick, steps) {
     this.mind = mind; this.realtime = realtime || 0; this.pace = new Pace(); this.quickMind = quick || null;
-    this.quickPace = quick ? new Pace() : null;
+    this.quickPace = quick ? new Pace() : null; this.steps = steps || 0;
   }
   LocalBrain.prototype.request = function (bot, point, acted) {
-    var clock = (typeof performance !== 'undefined' && performance.now) ? performance : Date, rt = this.realtime;
+    var clock = (typeof performance !== 'undefined' && performance.now) ? performance : Date, rt = this.realtime, per = this.steps;
     function timed(mind) {
-      var t0 = clock.now(), d = mind.think(PuyoCpu.message(bot, point, acted));
-      return { d: d, frames: rt ? Math.ceil((clock.now() - t0) * 0.06 * rt) : 0 };
+      var t0 = clock.now(), s0 = PuyoCpu.steps, d = mind.think(PuyoCpu.message(bot, point, acted));
+      var frames = !rt ? 0 : per ? Math.ceil((PuyoCpu.steps - s0) / per) : Math.ceil((clock.now() - t0) * 0.06 * rt);
+      return { d: d, frames: frames };
     }
     var full = timed(this.mind), q = this.quickMind && rt ? timed(this.quickMind) : null;
     if (rt) this.pace.took(full.frames);
