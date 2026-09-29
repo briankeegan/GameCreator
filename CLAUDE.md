@@ -202,7 +202,10 @@ ways: a tool not listed, or a path listed that doesn't exist.
   a garbage cell can never come off the board and a panel can, so converting one
   is worth clearing it, deferred. Being buried and short widens the SEARCH (six
   beam slots ranked by closeness to a slab, added to the twelve price-ranked
-  ones) so the option is visible; finding is not preferring.
+  ones) so the option is visible; finding is not preferring. `survival.test.js`
+  is the gate: six vectors over two seeds, counted by deaths against a measured
+  budget, plus a direct check that a vector asking for towers still scores the
+  flat board higher.
 - **An explicit instruction beats a measurement.** Say the number once, then
   do what was asked.
 - **Never parse a tool's prose — make it emit data**, and have the consumer

@@ -1396,6 +1396,31 @@
         // re-choosing every frame plays the first move of a different plan each
         // time and never finishes any of them, which was worth LESS than having no
         // plans at all (2,521 frames against 2,892).
+        // AND AN ATTACK THAT PUTS THE BOARD BACK IS NOT AN ATTACK, IT IS THE LOOP.
+        //
+        // The survival plan has refused a move returning to a board it has just
+        // been on; the attack path did not, and it reaches the cursor first. On
+        // rand4 seed 101 the last seventeen decisions before the death alternate
+        // bestAttack and attackPlan one frame apart with the board unchanged
+        // throughout -- a whole freeze spent walking between two boards, under 45
+        // cells of garbage, and then it topped out.
+        //
+        // The candidate loop already refuses these, but it filters `allowed` and
+        // the attack path reads `pool`, so it walked straight past the guard.
+        var self = this;
+        function returnsToSeen(mv) {
+            if (!self.refuseReturn || !mv) return false;
+            for (var q = 0; q < pool.length; q++) {
+                var pc = pool[q];
+                if (pc.kind === 'swap' && pc.swap[0] === mv[0] &&
+                    pc.swap[1] === mv[1] && pc.masks) {
+                    var sg = signature(pc.masks);
+                    return sg === here || self._seen.indexOf(sg) >= 0;
+                }
+            }
+            return false;
+        }
+
         if (!survival) {
             if (this._attack && this._attack.moves.length) {
                 var an = this._attack.moves[0];
@@ -1403,6 +1428,7 @@
                 for (i = 0; i < als.length; i++) {
                     if (als[i][0] === an[0] && als[i][1] === an[1]) { okNext = true; break; }
                 }
+                if (okNext && returnsToSeen(an)) { okNext = false; this.counts.refusedReturn++; }
                 if (okNext) {
                     this._attack.moves = this._attack.moves.slice(1);
                     if (!this._attack.moves.length) this._attack = null;
@@ -1416,6 +1442,11 @@
                                                    this.timing(info), digging);
             var atk = bestAttack(options, this.weights, PanelEngine(), deadline,
                                  this.stack.frames, (info.framesPerRow || 0) / W);
+            if (atk && atk.move && returnsToSeen(atk.move)) {
+                atk = null;
+                this._attack = null;
+                this.counts.refusedReturn++;
+            }
             if (atk && atk.move) {
                 this._attack = { moves: atk.option.swaps.slice(1) };
                 if (!this._attack.moves.length) this._attack = null;
