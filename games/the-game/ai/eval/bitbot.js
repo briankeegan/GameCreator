@@ -195,7 +195,8 @@
                         attacked: 0, attackDropped: 0, cellsPlanned: 0, refusedPayless: 0,
                         raisedForMaterial: 0, refusedRaise: 0, forcedBreak: 0, forcedBoth: 0, refusedEarly: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
-                        revealWindows: 0, digging: 0, flattened: 0, flattenDropped: 0 };
+                        revealWindows: 0, digging: 0, flattened: 0, flattenDropped: 0,
+                        refusedStranded: 0 };
     }
 
     // WHAT THE ENGINE KNOWS, shared by every candidate in the decision. None of
@@ -425,6 +426,34 @@
         }
         if (tallest + rows < H) return false;                  // room left: not dead
         return banked <= 0;                                    // full, nothing holding it
+    };
+
+    // A MOVE THAT LEAVES NOWHERE TO GO IS DEADLY, whatever the horizon says.
+    //
+    // deadly() asks one question: is there room for the rows that land before the
+    // bot acts again. A position that is lost in TWO rows passes it cleanly, and
+    // that is how every death in the tournament looks -- eight healthy options at
+    // tallest 10, then one row lands and `alive` is 0. The mistake was made
+    // several decisions earlier and nothing reported it.
+    //
+    // So a candidate has to leave a board that still has a move: at least one
+    // legal swap whose own result survives the row AFTER the one the candidate
+    // already survives. One more ply, applied to every candidate, which is what
+    // turns "would die now" into "would be stranded".
+    //
+    // The caller keeps its fallback: when nothing passes, the best-scoring move is
+    // played anyway. This narrows the choice, it never refuses to move.
+    BitBot.prototype.stranded = function (st, info, horizon) {
+        var sw = bit.legalSwapsOf(st), i, r;
+        var deeper = (horizon || 0) + (info.framesPerRow || 0);
+        for (i = 0; i < sw.length; i++) {
+            if (!bit.swapMasks(st, sw[i][0], sw[i][1])) continue;
+            r = bit.resolveFromMasks(st, true);
+            bit.swapMasks(st, sw[i][0], sw[i][1]);
+            if (r.scope !== 'ok' && r.scope !== 'garbage-broke') continue;
+            if (!this.deadly(r.settled || st, r, info, deeper)) return false;
+        }
+        return true;
     };
 
     // A TOWER IS WHERE THE BOARD DIES, so how much it minds one is not the
@@ -984,9 +1013,11 @@
     //
     // The resolve time is the engine's own preStop and depends on the match, so
     // it is a function rather than a number.
-    BitBot.prototype.timing = function (info) {
+    BitBot.prototype.timing = function (info, deadline) {
         var frozen = (info.stopTime || 0) > 0 || !!info.toppedOut;
         return {
+            framesPerRow: info.framesPerRow || 0,
+            deadline: deadline || 0,
             overhead: travel.MOVE_FRAMES + (frozen ? 0 : this.reaction),
             resolve: function (size, garbage) {
                 return BF.resolveFramesOf(PanelEngine(), size, garbage);
@@ -1141,7 +1172,7 @@
             }
             if (!survival) {
                 options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
-                                                   this.timing(info), digging);
+                                                   this.timing(info, deadline), digging);
                 var plan = bestPlan(options, info.stopTime || 0, deadline, PanelEngine(),
                                     !!info.toppedOut, info.framesPerRow, this.stack.frames,
                                     tallestOf(pool));
@@ -1383,6 +1414,7 @@
             var horizon = Math.max((cand.moveFrames || 0) + this.reaction,
                                    info.framesPerRow || 0);
             if (this.deadly(cand.masks, cand.resolved, info, horizon)) { this.counts.refusedDeadly++; continue; }
+            if (this.stranded(cand.masks, info, horizon)) { this.counts.refusedStranded++; continue; }
             alive++;
             // NOTHING CLEARS ANYWHERE: FLATTEN. Flattening IS the setup.
             //
@@ -1483,7 +1515,7 @@
                 this.counts.attackDropped++;
             }
             options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
-                                                   this.timing(info), digging);
+                                                   this.timing(info, deadline), digging);
             var atk = bestAttack(options, this.weights, PanelEngine(), deadline,
                                  this.stack.frames, (info.framesPerRow || 0) / W);
             if (atk && atk.move && returnsToSeen(atk.move)) {
@@ -1614,7 +1646,7 @@
         // legal and must not put the board back where it has just been.
         if (noneClear && (!this._flatten || !this._flatten.moves.length)) {
             options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
-                                                    lookDepth, base, this.timing(info), digging);
+                                                    lookDepth, base, this.timing(info, deadline), digging);
         }
         // AND IT HAS TO FIT IN THE TIME THERE IS. The plan is priced in frames like
         // every other -- the walk to each swap, the swap, and the cooldown when one
