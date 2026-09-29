@@ -30,10 +30,20 @@ cp "$SRC/games/the-game/index.html" "$SRC/games/the-game/sw.js" \
    "$SRC/games/the-game/duel.js" "$WORK/games/the-game/"
 cp "$SRC/games/the-game/ai/trained-weights.js" "$WORK/games/the-game/ai/"
 cp "$SRC/games/the-game/ai/eval/"*.js "$WORK/games/the-game/ai/eval/" 2>/dev/null
-cp "$SRC/games/the-game/ai/eval/"*.json "$WORK/games/the-game/ai/eval/" 2>/dev/null
 
 G="$WORK/games/the-game"
 SNAP=$(sed -n 's/.*source: "\(.*\)".*/\1/p' "$G/ai/trained-weights.js")
+
+# ONE SNAPSHOT, BY NAME — the only one the checker opens. Copying the whole
+# directory with a glob stopped working the moment training had produced enough
+# of them: 31,468 files is past ARG_MAX, so `cp` failed with "Argument list too
+# long", `2>/dev/null` swallowed it, nothing was copied, and the checker then
+# correctly reported that the shipped snapshot was not in ai/eval. Pages runs
+# this, so the site stopped deploying on a gate that was reporting a real
+# absence in a directory the test had failed to populate.
+if [ -n "$SNAP" ] && [ -f "$SRC/games/the-game/ai/eval/$SNAP" ]; then
+  cp "$SRC/games/the-game/ai/eval/$SNAP" "$WORK/games/the-game/ai/eval/" || exit 1
+fi
 pass=0; missed=0
 
 check() { ( cd "$WORK" && node .github/scripts/check_shipped_weights.mjs . ) >/dev/null 2>&1; }
