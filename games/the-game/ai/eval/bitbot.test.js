@@ -445,10 +445,23 @@ var without = { rep: 0, n: 0, matches: 0 };
         var board = bot._snapshot();
         var pool = bot.candidates(board, bot.info(board));
         if (!pool.length || !pool[0].masks) continue;
-        // The engine's height, read the way fillRatio reads it.
+        // The engine's height, read the way fillRatio reads it -- MINUS THE
+        // PANELS THAT ARE ALREADY GONE. A matched panel still has a colour for
+        // the 45 frames it spends flashing and popping, and the masks do not
+        // count it because it is about to vanish. Counting it here compares a
+        // pre-clear reading against a settled one, and a vertical three clearing
+        // off a short stack puts three rows between them.
+        //
+        // GARBAGE IS NOT GONE WHEN IT MATCHES. A slab in the same states is
+        // converting, not vanishing: every cell of it becomes a panel and stays
+        // on the board. Excluding it went wrong the other way by three rows.
+        var DEAD = { matched: 1, popping: 1, popped: 1 };
         var engineTop = 0, r, c;
         for (r = stack.height; r >= 1; r--) {
-            for (c = 1; c <= 6; c++) if (stack.panels[r][c].color !== 0) { engineTop = r; break; }
+            for (c = 1; c <= 6; c++) {
+                var ep = stack.panels[r][c];
+                if (ep.color !== 0 && (ep.isGarbage || !DEAD[ep.state])) { engineTop = r; break; }
+            }
             if (engineTop) break;
         }
         var g = 0;

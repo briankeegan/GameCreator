@@ -195,6 +195,14 @@ ways: a tool not listed, or a path listed that doesn't exist.
   it taps the evaluator on every candidate the bot scores. `stopTimeGain`
   looked right and was constant 0 across 4,381 candidates because it needs
   three rare things at once.
+- **Buried and short of material is a state, not a score.** With garbage on the
+  board and under six flat rows of panels, `bitoptions` widens its beam toward
+  positions against a slab and `bestPlan` takes a break over anything that does
+  not break. No weight reaches either: a vector chooses WHICH attack, never
+  whether to dig. Garbage is material, unbroken — breaking is the only thing
+  that converts it, and the rows it sits in are the ceiling the board runs out
+  of. `dig.test.js` rejects a dig beam that displaces the price-ranked nodes
+  instead of adding to them, and requires a clean board to search identically.
 - **An explicit instruction beats a measurement.** Say the number once, then
   do what was asked.
 - **Never parse a tool's prose — make it emit data**, and have the consumer

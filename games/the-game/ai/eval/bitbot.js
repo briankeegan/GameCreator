@@ -194,7 +194,7 @@
                         attacked: 0, attackDropped: 0, cellsPlanned: 0, refusedPayless: 0,
                         raisedForMaterial: 0, refusedRaise: 0, forcedBreak: 0, forcedBoth: 0, refusedEarly: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
-                        revealWindows: 0 };
+                        revealWindows: 0, digging: 0 };
     }
 
     // WHAT THE ENGINE KNOWS, shared by every candidate in the decision. None of
@@ -844,7 +844,13 @@
         return best;
     }
 
-    function bestPlan(list, clock, deadline, engine, toppedOut, framesPerRow, framesTable) {
+    // `dig` makes BREAKING THE TOP OF THE ORDER rather than a term in it. It is
+    // set when the board is buried and short of material, and there the garbage
+    // is not one option among several: it is the material, locked up, and the
+    // rows of ceiling it occupies are what the board runs out of. A plan that
+    // breaks a slab beats every plan that does not, however either one rates;
+    // between two that break, the rate decides as usual.
+    function bestPlan(list, clock, deadline, engine, toppedOut, framesPerRow, framesTable, dig) {
         var best = null, over = null, all = list.now.concat(list.next), i;
         // ONE PANEL REMOVED IS framesPerRow / W FRAMES OF LIFE -- 18.7 at level 10.
         // Panels and stop time are the same currency and this is the exchange rate.
@@ -892,7 +898,11 @@
             var bought = o.total * perPanel + gain;
             var rate = bought / Math.max(1, took);
             var cur = fits ? best : over;
-            if (!cur || rate > cur.rate || (rate === cur.rate && took < cur.frames)) {
+            var wins;
+            if (!cur) wins = true;
+            else if (dig && !!o.breaks !== !!cur.option.breaks) wins = !!o.breaks;
+            else wins = rate > cur.rate || (rate === cur.rate && took < cur.frames);
+            if (wins) {
                 cur = { rate: rate, gain: gain, frames: took, move: o.swaps[0], option: o };
                 if (fits) best = cur; else over = cur;
             }
@@ -1001,6 +1011,25 @@
         // Spent once for the decision, so both halves search the same board at the
         // same depth and cannot disagree about what is on offer.
         var lookDepth = Math.min(this.maxDepth, depthFor(deadline, this.reaction, tallestOf(pool)));
+        // BURIED AND SHORT IS A STATE, NOT A SCORE.
+        //
+        // Garbage is material, unbroken. Below six flat rows of panels the board
+        // does not have the material to build with, and the slabs sitting on it
+        // are both where the missing panels are and the rows of ceiling it is
+        // running out of. Breaking is the only thing that converts one into the
+        // other.
+        //
+        // So from here the search is told to look for a break (bitoptions weights
+        // half its beam toward positions against a slab) and the plan ranking is
+        // told to take one when it finds one (bestPlan). Neither is a weight and
+        // no vector can turn either off -- which is the point: measured over a
+        // duel on seed 103, the starting weights dug out 339 of 339 panels of
+        // garbage and a random vector dug 45 of 92, carried the rest to the
+        // ceiling and died at 10,163 frames.
+        var digging = false;
+        for (i = 1; i <= W; i++) if (base.garb[i]) { digging = true; break; }
+        if (digging && materialRows(base) >= 6) digging = false;
+        if (digging) this.counts.digging++;
         var survival = null;
         var swept = false;
         if (info.toppedOut || !(info.stopTime > 0)) {
@@ -1051,9 +1080,9 @@
             }
             if (!survival) {
                 options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
-                                                   this.timing(info));
+                                                   this.timing(info), digging);
                 var plan = bestPlan(options, info.stopTime || 0, deadline, PanelEngine(),
-                                    !!info.toppedOut, info.framesPerRow, this.stack.frames);
+                                    !!info.toppedOut, info.framesPerRow, this.stack.frames, digging);
                 if (plan && plan.rate > 0) {
                     this._plan = { moves: plan.option.swaps.slice(1), frames: plan.frames,
                                    gain: plan.gain, rate: plan.rate,
@@ -1362,7 +1391,7 @@
                 this.counts.attackDropped++;
             }
             options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
-                                                   this.timing(info));
+                                                   this.timing(info), digging);
             var atk = bestAttack(options, this.weights, PanelEngine(), deadline,
                                  this.stack.frames, (info.framesPerRow || 0) / W);
             if (atk && atk.move) {
