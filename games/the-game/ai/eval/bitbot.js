@@ -2322,13 +2322,28 @@
         // Soft, like the save rule below it: if every move is refused the
         // original stands. A rule that can leave the bot with nothing to play is
         // not a rule, it is a freeze.
+        // WHAT THESE RULES BIND IS PREFERENCE, NOT ARITHMETIC.
+        //
+        // They exist to stop the bot spending the board on moves it merely likes
+        // -- a payless three, a clear that starves the dig. The survival plan,
+        // the planned save, the dig route and a break in hand are not preferences:
+        // each is priced in frames against the clock, and bestPlan already
+        // carries the material shortfall as `- shortfall * framesPerRow`. So the
+        // one path that has ALREADY paid this price was the one being overruled.
+        //
+        // Applied to all of them it is the failure the save rule measured at 6
+        // deaths in 16 boards, and worse: 15 deaths in 30 on both seeds, from
+        // frame 813, against 3 and 0 without it. Overruling frames-priced
+        // arithmetic with a weights ranking is how the bot dies.
+        var ARITHMETIC = { survivalPlan: 1, planSave: 1, digPlan: 1, 'break': 1, keepSave: 1 };
         var picked = null;
         for (i = 0; i < pool.length; i++) {
             var pk = pool[i];
             if (pk.kind === 'swap' && pk.swap[0] === d.move[0] &&
                 pk.swap[1] === d.move[1] && pk.masks) { picked = pk; break; }
         }
-        if (picked && this.refuses(picked, info, base, this._lastSurvivalNeeded)) {
+        if (picked && !ARITHMETIC[d.via] &&
+            this.refuses(picked, info, base, this._lastSurvivalNeeded)) {
             var sub = null;
             for (i = 0; i < pool.length; i++) {
                 var sc0 = pool[i];
