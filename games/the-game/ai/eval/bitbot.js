@@ -1518,18 +1518,49 @@
         if (this._seen.length > 3) this._seen.shift();
 
 
+        // SHORT OF MATERIAL: BREAKING GARBAGE IS THE PRIORITY.
+        //
+        // A slab is material already on the board, just inert, and breaking is the
+        // only thing that converts it. Below six flat rows the board cannot afford
+        // to leave it sitting there: the panels a chain is made of are locked
+        // inside it, and every row of slab is a row of ceiling gone.
+        //
+        // It costs almost nothing to say so. Material is under six rows for 98% of
+        // a game, but a break is only AVAILABLE on about 4% of decisions -- a
+        // match has to land beside a slab -- so this narrows the choice on one
+        // decision in twenty-five and leaves the rest alone.
+        //
+        // BEFORE THE BEAM, because the beam is a cost control and a cost control
+        // must not throw away what a later rule requires. Ranked after it, the
+        // break had to survive a cut of twelve made on a score that did not know
+        // what a break was, and on a buried board it usually did not.
+        if (materialRows(base) < 6) {
+            var digs = [];
+            for (i = 0; i < allowed.length; i++) {
+                if (allowed[i].resolved && allowed[i].resolved.brokeGarbage) digs.push(allowed[i]);
+            }
+            if (digs.length) { this.counts.forcedBreak++; allowed = digs; }
+        }
         // THE BEAM: pre-rank cheaply, then pay for the top few only.
         //
-        // The cheap score is the two things that need no option sweep -- how much
-        // the move clears, and how flat and low it leaves the board. Candidates the
-        // survival objective will rank are exempt, because that objective is itself
-        // cheap and DEFEND is the one place a wrong cut is fatal.
+        // The cheap score is the things that need no option sweep -- how much the
+        // move clears, how much slab it converts, and how flat and low it leaves
+        // the board. Candidates the survival objective will rank are exempt,
+        // because that objective is itself cheap and DEFEND is the one place a
+        // wrong cut is fatal.
+        //
+        // A CONVERTED GARBAGE CELL IS PRICED LIKE A CLEARED PANEL, which is the
+        // price the rest of the bot puts on one. Left out, the beam ranked a break
+        // by the panels it happened to clear -- three, usually -- so the one move
+        // that takes garbage off the board sorted below a dozen ordinary combos
+        // and was cut before anything that prefers breaks could see it.
         if (this.beam > 0 && allowed.length > this.beam) {
             var perPanel2 = (info.framesPerRow || 0) / W;
             var scored = [];
             for (i = 0; i < allowed.length; i++) {
                 var ac = allowed[i], arr = ac.resolved;
                 var cheap = (arr && arr.total ? arr.total * perPanel2 : 0)
+                          + (arr && arr.garbage ? arr.garbage * perPanel2 : 0)
                           - tallestBoard(ac.masks) * 8
                           - (ac.moveFrames || 0) * 0.5;
                 scored.push({ cand: ac, cheap: cheap });
@@ -1544,24 +1575,6 @@
         var noneClear = true;
         for (i = 0; i < allowed.length; i++) {
             if (allowed[i].resolved && allowed[i].resolved.total > 0) { noneClear = false; break; }
-        }
-        // SHORT OF MATERIAL: BREAKING GARBAGE IS THE PRIORITY.
-        //
-        // A slab is material already on the board, just inert, and breaking is the
-        // only thing that converts it. Below six flat rows the board cannot afford
-        // to leave it sitting there: the panels a chain is made of are locked
-        // inside it, and every row of slab is a row of ceiling gone.
-        //
-        // It costs almost nothing to say so. Material is under six rows for 98% of
-        // a game, but a break is only AVAILABLE on about 4% of decisions -- a
-        // match has to land beside a slab -- so this narrows the choice on one
-        // decision in twenty-five and leaves the rest alone.
-        if (materialRows(base) < 6) {
-            var digs = [];
-            for (i = 0; i < allowed.length; i++) {
-                if (allowed[i].resolved && allowed[i].resolved.brokeGarbage) digs.push(allowed[i]);
-            }
-            if (digs.length) { this.counts.forcedBreak++; allowed = digs; }
         }
 
         var buried = false;
@@ -1927,6 +1940,36 @@
         return false;
     };
 
+    // THE BOARD WITH THE NEXT SLAB ON IT.
+    //
+    // Garbage rests on the tallest column and spans the width, so the row it
+    // lands on is one above the stack, in every column, as one block.
+    // Null when nothing can land, which is when the board is already full.
+    BitBot.prototype.withSlab = function (masks) {
+        var t = tallestBoard(masks);
+        if (t >= H) return null;
+        var st = bit.copyState(masks), b = 1 << t, sm = new Int32Array(W + 2), c;
+        for (c = 1; c <= W; c++) { st.occ[c] |= b; st.inert[c] |= b; st.garb[c] |= b; sm[c] = b; }
+        st.slabs.push(sm);
+        return st;
+    };
+
+    // IS THERE AN ANSWER TO THE SLAB THAT LANDS NEXT?
+    //
+    // This is the question, and asking it of the bare board was asking the wrong
+    // one. The board is filled to the top on purpose: raising to the ceiling is
+    // right as long as it arrives there ready to defend, and what it has to be
+    // ready for is garbage. A clear that touches nothing is not an answer to a
+    // slab; a clear that would break the row landing on top of it is.
+    //
+    // Put to the board WITH that row on it, one rule covers both cases: buried
+    // already, or about to be. hasFireable then sees garbage either way and asks
+    // for a break, which is what "a three there it can knock" means.
+    BitBot.prototype.answersASlab = function (masks) {
+        var st = this.withSlab(masks);
+        return this.hasFireable(st || masks);
+    };
+
     // HOW MANY EMPTY ROWS ARE ABOVE THE STACK, ON THE BOARD AS IT IS NOW.
     //
     // Read off the live stack rather than a decision's snapshot because the two
@@ -1993,16 +2036,24 @@
         if (this._opening && (info.incoming || !fits)) this._opening = false;
         if (!fits) return null;
         if (!this._opening && materialRows(base) >= WORKING_ROWS) return null;
-        // SOMETHING READY FIRST. A raise fills the board; take one with no move
-        // in hand and the next thing that lands has no answer.
-        if (!this.hasFireable(base)) return null;
+        // SOMETHING READY FIRST, AND READY FOR GARBAGE. A raise fills the board;
+        // take one with no answer in hand and the next thing that lands has none.
+        if (!this.answersASlab(base)) return null;
         return this._opening ? 'opening' : 'material';
     };
 
+    // IS THE ANSWER STILL IN HAND AFTER THIS MOVE, and reachable in time?
+    //
+    // Asked of the landed board WITH the next slab on it, the same question
+    // answersASlab asks -- a save is a break, and on a board with no garbage
+    // there is nothing to break, so asking the bare board meant an unburied
+    // board could never hold one and the whole rule stood aside until the
+    // garbage had already arrived.
     BitBot.prototype.saveAfter = function (masks, row, col, info) {
         var deadline = framesToDeath(info, tallestBoard(masks), info.framesPerRow);
         var frozen = (info.stopTime || 0) > 0 || !!info.toppedOut;
         var step = travel.MOVE_FRAMES + (frozen ? 0 : this.reaction);
+        masks = this.withSlab(masks) || masks;
         var sw = bit.legalSwapsOf(masks), i, r;
         for (i = 0; i < sw.length; i++) {
             if (travel.cost(row, col, sw[i][0], sw[i][1]) + step > deadline) continue;
@@ -2027,9 +2078,10 @@
         var d = this._decide();
         var info = this._lastInfo, pool = this._lastPool, base = this._lastBase;
         if (!d || d.kind !== 'swap' || !d.move || !info || !pool || !base) return d;
-        var buried = false, i;
-        for (i = 1; i <= W; i++) if (base.garb[i]) { buried = true; break; }
-        if (!buried) return d;
+        var i;
+        // AT ALL TIMES, not once the garbage has landed. The board is filled to
+        // the top on purpose and the thing that makes that safe is the answer
+        // standing ready when the slab arrives, which is before it arrives.
 
         // ONLY WITH TIME TO SPARE. Keeping a save means playing something other
         // than what the decision chose, and the substitute is ranked by the

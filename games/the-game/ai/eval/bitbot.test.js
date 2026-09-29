@@ -396,9 +396,12 @@ ok(BitBot.prototype.deadly.call(probe, masksOf(lowBoard), null, { stopTime: 0 })
 // height. This holds the mask version against it on real boards, so the two
 // cannot drift apart again.
 (function () {
-    // A DUEL, BECAUSE GARBAGE IS THE WHOLE POINT. A solo bot is never sent any,
-    // so the bridging case that caused the bug never appears and the check passes
-    // on a board that cannot fail it.
+    // GARBAGE IS THE WHOLE POINT, so it is DELIVERED, not waited for. The bug is
+    // about reading a board a slab has bridged; whether two bots happen to attack
+    // each other inside the frame budget is a different question and not this
+    // one. Waiting for them went vacuous the moment the bot got safer and stopped
+    // trading -- 18 cells over 3,000 frames -- and a check that passes because
+    // nothing it cares about ever appeared is worse than no check.
     var stacks = [new PanelEngine.Stack({ level: 10, seed: 103, countdown: false }),
                   new PanelEngine.Stack({ level: 10, seed: 103, countdown: false })];
     var stack = stacks[0];
@@ -416,6 +419,10 @@ ok(BitBot.prototype.deadly.call(probe, masksOf(lowBoard), null, { stopTime: 0 })
             if (out && out.length) stacks[q ^ 1].receiveGarbage(out);
         }
         stacks[0].drainEvents(); stacks[1].drainEvents();
+        // Two full-width slabs, far enough in that the bot has a stack for them
+        // to bridge and far enough apart that the first is part-broken by the
+        // second.
+        if (f === 200 || f === 500) stacks[0].receiveGarbage([{ width: 6, height: 2, isChain: false }]);
         if (f % 25) continue;
         var board = bot._snapshot();
         var pool = bot.candidates(board, bot.info(board));
