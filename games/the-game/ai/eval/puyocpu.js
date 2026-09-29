@@ -7,12 +7,12 @@
 
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory(require('./evaluator.js'), require('./input.js'), require('./travel.js'), require('./engineboard.js'), require('./modes.js'));
+    module.exports = factory(require('./evaluator.js'), require('./input.js'), require('./travel.js'), require('./engineboard.js'), require('./modes.js'), require('./faststack.js'));
   } else {
     root.PanelEval = root.PanelEval || {};
-    root.PanelEval.PuyoCpu = factory(root.PanelEval.evaluator, root.PanelEval.input, root.PanelEval.travel, root.PanelEval.engineBoard, root.PanelEval.modes);
+    root.PanelEval.PuyoCpu = factory(root.PanelEval.evaluator, root.PanelEval.input, root.PanelEval.travel, root.PanelEval.engineBoard, root.PanelEval.modes, root.PanelEval.FastStack);
   }
-}(this, function (evaluator, inputMod, travel, engineBoard, modes) {
+}(this, function (evaluator, inputMod, travel, engineBoard, modes, FastStack) {
   'use strict';
 
   // Options: weights, depth (1 = greedy, 2 = one move of lookahead), beam
@@ -188,6 +188,12 @@
     // Where decisions come from when they cannot be made on the frame (see
     // REAL TIME). Absent, the bot decides on the frame.
     this.brain = opts.brain || null;
+    // The search's steps on faststack.js (opts.fastEngine or GC_FAST_ENGINE=1),
+    // each checked against the real engine with opts.engineCheck or
+    // GC_ENGINE_CHECK=1, which turns the fast engine on.
+    var envOn = function (k) { return typeof process !== 'undefined' && process.env && process.env[k] === '1'; };
+    this.engineCheck = !!opts.engineCheck || envOn('GC_ENGINE_CHECK');
+    this.fastEngine = !!opts.fastEngine || envOn('GC_FAST_ENGINE') || this.engineCheck;
     // Worker threads for the survival search: opts.threads or GC_THREADS, a
     // number or 'auto' (one per core). The main thread only coordinates.
     // In a browser the page must be cross-origin isolated for shared memory.
@@ -1441,6 +1447,7 @@
     return v;
   }
   function cloneStack(src) {
+    if (FastStack && src instanceof FastStack) return src.clone();
     var keys = [];
     for (var k in src) {
       if (!Object.prototype.hasOwnProperty.call(src, k) || typeof src[k] === 'function') continue;
@@ -1460,6 +1467,8 @@
     return new Make(src);
   }
   PuyoCpu.cloneStack = cloneStack;
+  if (FastStack) FastStack.register({ cloneStack: cloneStack, noRng: noRng, unseenRow: unseenRow, unseenBreak: unseenBreak });
+  PuyoCpu.FastStack = FastStack || null;
 
   // A BOARD AS NUMBERS, for handing to a worker thread. Every panel field is
   // an integer, a boolean, null, undefined or a state name; each gets its
@@ -1470,6 +1479,7 @@
   var STATES = ['normal', 'dimmed', 'swapping', 'matched', 'popping', 'popped', 'hovering', 'falling', 'landing'];
   var NF = PANEL_FIELDS.length;
   function encodeStack(st) {
+    if (FastStack && st instanceof FastStack) st = st.toStack();
     var rows = st.panels, R = rows.length, buf = new Int32Array(R * 6 * NF), meta = {}, k, i = 0;
     for (k in st) {
       if (!Object.prototype.hasOwnProperty.call(st, k) || typeof st[k] === 'function') continue;
@@ -1666,20 +1676,34 @@
     bot.cursorMoveFrames = task.cursorMoveFrames;
     bot._lineUntil = task.until || null;
     bot._restNeeded = task.rest;
-    var n = bot._engineNode(decodeStack(task.enc), task.t, task.hold, task.arrivals, task.fresh), res = {};
+    bot.fastEngine = !!task.fast;
+    bot.engineCheck = !!task.check;
+    var board = task.fpack ? FastStack.unpack(task.fpack, parseText) : decodeStack(task.enc);
+    var n = bot._engineNode(board, task.t, task.hold, task.arrivals, task.fresh), res = {};
     for (var i = 0; i < task.moves.length; i++) {
       var m = task.moves[i], long = m === 'long';
       var r = long ? bot._lineStep(n, null, true) : bot._lineStep(n, m, false);
       var k = moveKey(long ? null : m, long);
       if (!r) res[k] = null;
       else if (r.dead) res[k] = { dead: 1, t: r.t, parent: r.st === n.st };
-      else {
+      else if (FastStack && r.st instanceof FastStack) {
+        // The board as numbers; its grid, key and legal swaps are read off
+        // them on the other side (FastStack.viewOf) rather than sent.
+        var pk = r.st.pack();
+        bufs.push(pk.D, pk.G, new Int32Array(pk.num.buffer));
+        texts.push(new RawText(JSON.stringify(pk.rest, tagged)));
+        res[k] = { t: r.t, hold: r.hold, arrivals: r.arrivals, pos: r.pos, carry: r.carry, clock: r.st.clock, height: r.st.height,
+                   fp: { kinds: pk.kinds, rest: texts.length - 1, D: bufs.length - 3, G: bufs.length - 2, num: bufs.length - 1,
+                         free: pk.free, top: pk.top, nrows: pk.nrows } };
+        // Names only when the other side does not have them already.
+        if (!task.fpack) res[k].fp.keys = pk.keys;
+      } else {
         var e = encodeStack(r.st);
         bufs.push(e.buf);
         texts.push(new RawText(JSON.stringify(e.meta, tagged)));
         res[k] = { t: r.t, hold: r.hold, arrivals: r.arrivals, pos: r.pos, carry: r.carry,
-                   enc: { text: texts.length - 1, rows: e.rows, row0: e.row0, buf: bufs.length - 1 },
-                   grid: r.b.grid, key: r.b.key, height: r.b.height, legal: r.b.legalSwaps() };
+                   grid: r.b.grid, key: r.b.key, height: r.b.height, legal: r.b.legalSwaps(),
+                   enc: { text: texts.length - 1, rows: e.rows, row0: e.row0, buf: bufs.length - 1 } };
       }
     }
     return res;
@@ -1694,12 +1718,15 @@
     var tasks = [], i, j;
     for (i = 0; i < nodes.length; i++) {
       var n = nodes[i];
-      if ((n._pre && !n._pre.partial) || !(n._enc || n.st)) continue;
+      if ((n._pre && !n._pre.partial) || !(n._fpack || n._enc || n.st)) continue;
       var moves = movesOf(n);
       if (!moves.length) continue;
       if (!n._pre) n._pre = { until: until, rest: rest, res: {} };
       n._pre.partial = !!partial;
-      tasks.push({ n: n, msg: { id: tasks.length, enc: n._enc || encodeStack(n.st), t: n.t, hold: n.hold, arrivals: n.arrivals, fresh: !!n.fresh,
+      // The board as it is held: packed numbers, the old encoding, or live.
+      var fpack = n._fpack || (!n._enc && FastStack && n.st instanceof FastStack ? n.st.pack() : null);
+      tasks.push({ n: n, msg: { id: tasks.length, fpack: fpack, enc: fpack ? null : (n._enc || encodeStack(n.st)),
+                                t: n.t, hold: n.hold, arrivals: n.arrivals, fresh: !!n.fresh, fast: !!this.fastEngine, check: !!this.engineCheck,
                                 moves: moves, until: until, rest: rest, reaction: this.reaction, cursorMoveFrames: this.cursorMoveFrames } });
     }
     if (!tasks.length) return;
@@ -1717,10 +1744,20 @@
         Atomics.notify(s.i32, 0);
         if (r.error) throw new Error('survival worker: ' + r.error);
         var into = tasks[r.id].n._pre.res;
+        var task = tasks[r.id].msg, keys = task.fpack ? task.fpack.keys : null;
         for (var rk in r.res) {
-          var e = r.res[rk] && r.res[rk].enc;
-          if (e) r.res[rk].enc = { metaText: u.texts[e.text], rows: e.rows, row0: e.row0, buf: u.bufs[e.buf] };
-          into[rk] = r.res[rk];
+          var x = r.res[rk], e = x && x.enc, fp = x && x.fp;
+          if (e) x.enc = { metaText: u.texts[e.text], rows: e.rows, row0: e.row0, buf: u.bufs[e.buf] };
+          if (fp) {
+            var nb = u.bufs[fp.num];
+            x.fpack = { keys: fp.keys || keys, num: new Float64Array(nb.buffer, nb.byteOffset, nb.length >> 1), kinds: fp.kinds,
+                        rest: u.texts[fp.rest], D: u.bufs[fp.D], G: u.bufs[fp.G], free: fp.free, top: fp.top, nrows: fp.nrows };
+            x.view = FastStack.viewOf(x.fpack, x.height, x.clock);
+            var g = x.view.grid();
+            x.grid = g.grid; x.key = g.key;
+            delete x.fp;
+          }
+          into[rk] = x;
         }
         got++;
       }
@@ -1759,11 +1796,13 @@
   // What _engineNode would build, from the worker's summary, with the board
   // itself left encoded until something reads node.st.
   function lazyNode(r) {
-    var legal = r.legal, n = { _enc: r.enc, t: r.t, hold: r.hold, arrivals: r.arrivals, fresh: false, pos: r.pos, carry: r.carry,
-                               b: { grid: r.grid, key: r.key, height: r.height, width: 6, legalSwaps: function () { return legal.map(function (x) { return x.slice(); }); } } };
+    var legal = r.legal, view = r.view;
+    var n = { _enc: r.enc, _fpack: r.fpack, t: r.t, hold: r.hold, arrivals: r.arrivals, fresh: false, pos: r.pos, carry: r.carry,
+              b: { grid: r.grid, key: r.key, height: r.height, width: 6,
+                   legalSwaps: function () { return legal ? legal.map(function (x) { return x.slice(); }) : view.legalSwaps(); } } };
     var st = null;
     Object.defineProperty(n, 'st', { enumerable: true, configurable: true,
-      get: function () { if (!st) st = decodeStack(n._enc); return st; },
+      get: function () { if (!st) st = n._fpack ? FastStack.unpack(n._fpack, parseText) : decodeStack(n._enc); return st; },
       set: function (v) { st = v; } });
     return n;
   }
@@ -1783,6 +1822,16 @@
     return { grid: grid, key: key };
   }
   PuyoCpu.prototype._engineNode = function (st, t, hold, arrivals, fresh) {
+    if (FastStack && st instanceof FastStack) {
+      var fg = st.grid();
+      return {
+        st: st, t: t, hold: hold, arrivals: arrivals, fresh: !!fresh,
+        pos: [st.curRow, st.curCol],
+        carry: { stopTime: st.stopTime || 0, preStopTime: st.preStopTime || 0, shakeTime: st.shakeTime || 0,
+                 displacement: st.displacement, riseTimer: st.riseTimer, speed: st.speed },
+        b: { grid: fg.grid, key: fg.key, height: st.height, width: 6, legalSwaps: function () { return st.legalSwaps(); } }
+      };
+    }
     var g = engineGrid(st);
     return {
       st: st, t: t, hold: hold, arrivals: arrivals, fresh: !!fresh,
@@ -1816,8 +1865,36 @@
   // node's frame: kind 'swap' (m), 'hold', 'raise', or 'long' (hold until
   // frames have passed). Returns the node at the bot's next decision, a dead
   // marker { dead: true, t }, or null when the swap is refused.
+  // THE SEARCH'S STEPS RUN ON FastStack when this.fastEngine is set (the
+  // numbers engine, faststack.js). With this.engineCheck every step is played
+  // on both engines and any difference in what comes out -- the board, the
+  // time, the raise in hand, the garbage in flight, what the search reads --
+  // throws.
   PuyoCpu.prototype._engineAdvance = function (node, kind, m, frames) {
-    var st = cloneStack(node.st), self = this;
+    if (!this.fastEngine || !FastStack) return this._engineAdvanceOn(cloneStack(node.st), node, kind, m, frames);
+    var r = this._engineAdvanceOn(node.st instanceof FastStack ? node.st.clone() : FastStack.fromStack(node.st), node, kind, m, frames);
+    if (this.engineCheck) {
+      var q = this._engineAdvanceOn(cloneStack(realStack(node.st)), node, kind, m, frames);
+      var d = sameStep(q, r);
+      if (d) throw new Error('ENGINE CHECK: ' + kind + ' ' + JSON.stringify(m) + ' ' + frames + ' from t=' + node.t + ': ' + d);
+      this.engineChecks = (this.engineChecks || 0) + 1;
+    }
+    return r;
+  };
+  function realStack(st) { return FastStack && st instanceof FastStack ? st.toStack() : st; }
+  // The first way two results of one step differ, or null.
+  function sameStep(q, r) {
+    if (!q || !r) return q === r ? null : 'refused on one engine only';
+    if (!!q.dead !== !!r.dead || q.t !== r.t) return 'dead ' + !!q.dead + '/' + !!r.dead + ' t ' + q.t + '/' + r.t;
+    if (q.dead) return null;
+    var d = FastStack.diff(q.st, r.st.toStack());
+    if (d) return 'board: ' + d;
+    var a = JSON.stringify([q.hold, q.arrivals, q.pos, q.carry, q.b.grid, q.b.key, q.b.legalSwaps(), q.fresh]),
+        b = JSON.stringify([r.hold, r.arrivals, r.pos, r.carry, r.b.grid, r.b.key, r.b.legalSwaps(), r.fresh]);
+    return a === b ? null : 'node: ' + a.slice(0, 400) + ' vs ' + b.slice(0, 400);
+  }
+  PuyoCpu.prototype._engineAdvanceOn = function (st, node, kind, m, frames) {
+    var self = this;
     var bot = { stack: st, cursorMoveFrames: this.cursorMoveFrames, _walk: null, cooldown: 0, _lastSwap: null,
                 _beginWalk: PanelCpu.beginWalk, _driveWalk: PanelCpu.driveWalk,
                 _nearestSwappable: PanelCpu.nearestSwappable,
@@ -1942,7 +2019,7 @@
   PuyoCpu.prototype._checkModel = function (live, predicted) {
     this.modelChecks = (this.modelChecks || 0) + 1;
     if (predicted.st && live.st) {
-      var a = live.st, b = predicted.st, cells = [], rr, cc;
+      var a = realStack(live.st), b = realStack(predicted.st), cells = [], rr, cc;
       for (rr = 0; rr <= a.height + 1; rr++) for (cc = 1; cc <= 6; cc++) {
         var pa = a.panels[rr] && a.panels[rr][cc], pb = b.panels[rr] && b.panels[rr][cc];
         if (!pa || !pb) continue;

@@ -3,7 +3,7 @@
 // sends (see ai/brain.js).
 importScripts('../panel-rules.js', '../panel-engine.js', '../panel-cpu.js',
               'eval/features.js', 'eval/registry.js', 'eval/input.js', 'eval/travel.js', 'eval/evaluator.js',
-              'eval/engineboard.js', 'eval/modes.js', 'eval/puyocpu.js', 'trained-weights.js');
+              'eval/engineboard.js', 'eval/modes.js', 'eval/faststack.js', 'eval/puyocpu.js', 'trained-weights.js');
 
 var mind = null, ready = null, queued = [];
 

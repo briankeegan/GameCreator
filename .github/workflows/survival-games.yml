@@ -19,6 +19,12 @@ on:
       threads:
         description: 'Worker threads for the search (0 = none, auto = one per core)'
         default: 'auto'
+      fast_engine:
+        description: 'The search on faststack.js (1) or panel-engine.js (0)'
+        default: '0'
+      engine_check:
+        description: 'Play every search step on both engines and fail on any difference (1 turns the fast engine on)'
+        default: '0'
 
 jobs:
   game:
@@ -37,7 +43,7 @@ jobs:
         timeout-minutes: 345
         run: |
           set -o pipefail
-          GC_REALTIME=${{ inputs.realtime }} GC_THREADS=${{ inputs.threads }} node games/the-game/ai/eval/survival_game.js ${{ matrix.seed }} ${{ inputs.frames }} | tee game.log
+          GC_REALTIME=${{ inputs.realtime }} GC_THREADS=${{ inputs.threads }} GC_FAST_ENGINE=${{ inputs.fast_engine }} GC_ENGINE_CHECK=${{ inputs.engine_check }} node games/the-game/ai/eval/survival_game.js ${{ matrix.seed }} ${{ inputs.frames }} | tee game.log
       - name: Summary
         if: always()
         run: |

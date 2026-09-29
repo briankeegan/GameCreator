@@ -382,6 +382,12 @@ gate_pbt_dirs() {
   node games/the-game/ai/eval/pbt_dirs.test.js
 }
 
+gate_fast_engine() {
+  node games/the-game/ai/eval/faststack.test.js 20000
+}
+gate_engine_check() {
+  node games/the-game/ai/eval/engine_check.test.js 600
+}
 gate_brain() {
   node games/the-game/ai/eval/brain.test.js
 }
@@ -825,6 +831,8 @@ SLOW_GATES=(
   gate_puyo_cpu             # plays whole games with the survival search
   gate_no_self_death        # plays whole games with the survival search
   gate_live_fidelity        # plays whole duels: over an hour
+  gate_fast_engine          # 20000 frames of both engines side by side
+  gate_engine_check         # 30s: every search step on both engines
   gate_training_harness     # 156s
   gate_snapshot_pipe        # 154s
   gate_versus_duel          # 123s
@@ -843,7 +851,7 @@ SLOW_GATES=(
 # tests something the search sits on top of, so it runs with
 # GC_SURVIVAL_SEARCH=0: the search costs seconds per decision and its
 # decisions trip bench.js's 85ms timing guard, which zeroes the game.
-SEARCH_GATES=( gate_puyo_cpu gate_no_self_death gate_live_fidelity gate_doomed_gate gate_brain )
+SEARCH_GATES=( gate_puyo_cpu gate_no_self_death gate_live_fidelity gate_doomed_gate gate_brain gate_engine_check )
 _gate_exec() {
   local g
   for g in "${SEARCH_GATES[@]}"; do [ "$g" = "$1" ] && { "$1"; return; }; done
@@ -896,6 +904,8 @@ GATES=(
   "the idle skip changes nothing:gate_idle_skip:games/the-game/ai/"
   "the simulation is the engine mid-play:gate_live_fidelity:games/the-game/ai/"
   "the bot through its brain is the same bot:gate_brain:games/the-game/ai/"
+  "the fast engine is the engine, frame by frame:gate_fast_engine:games/"
+  "the search's steps are the same on both engines:gate_engine_check:games/the-game/ai/"
   "the resolve answers what the engine answered:gate_resolve_corpus:games/the-game/ai/"
   "two variants on one seed keep separate islands:gate_pbt_dirs:games/the-game/ai/"
   "the bot may not kill itself:gate_no_self_death:games/the-game/ai/"
