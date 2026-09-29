@@ -195,7 +195,8 @@
                         attacked: 0, attackDropped: 0, cellsPlanned: 0, refusedPayless: 0,
                         raisedForMaterial: 0, refusedRaise: 0, forcedBreak: 0, forcedBoth: 0, refusedEarly: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
-                        revealWindows: 0, digging: 0, flattened: 0, flattenDropped: 0 };
+                        revealWindows: 0, digging: 0, flattened: 0, flattenDropped: 0,
+                        refusedStranded: 0 };
     }
 
     // WHAT THE ENGINE KNOWS, shared by every candidate in the decision. None of
@@ -425,6 +426,34 @@
         }
         if (tallest + rows < H) return false;                  // room left: not dead
         return banked <= 0;                                    // full, nothing holding it
+    };
+
+    // A MOVE THAT LEAVES NOWHERE TO GO IS DEADLY, whatever the horizon says.
+    //
+    // deadly() asks one question: is there room for the rows that land before the
+    // bot acts again. A position that is lost in TWO rows passes it cleanly, and
+    // that is how every death in the tournament looks -- eight healthy options at
+    // tallest 10, then one row lands and `alive` is 0. The mistake was made
+    // several decisions earlier and nothing reported it.
+    //
+    // So a candidate has to leave a board that still has a move: at least one
+    // legal swap whose own result survives the row AFTER the one the candidate
+    // already survives. One more ply, applied to every candidate, which is what
+    // turns "would die now" into "would be stranded".
+    //
+    // The caller keeps its fallback: when nothing passes, the best-scoring move is
+    // played anyway. This narrows the choice, it never refuses to move.
+    BitBot.prototype.stranded = function (st, info, horizon) {
+        var sw = bit.legalSwapsOf(st), i, r;
+        var deeper = (horizon || 0) + (info.framesPerRow || 0);
+        for (i = 0; i < sw.length; i++) {
+            if (!bit.swapMasks(st, sw[i][0], sw[i][1])) continue;
+            r = bit.resolveFromMasks(st, true);
+            bit.swapMasks(st, sw[i][0], sw[i][1]);
+            if (r.scope !== 'ok' && r.scope !== 'garbage-broke') continue;
+            if (!this.deadly(r.settled || st, r, info, deeper)) return false;
+        }
+        return true;
     };
 
     // A TOWER IS WHERE THE BOARD DIES, so how much it minds one is not the
@@ -1384,6 +1413,7 @@
             var horizon = Math.max((cand.moveFrames || 0) + this.reaction,
                                    info.framesPerRow || 0);
             if (this.deadly(cand.masks, cand.resolved, info, horizon)) { this.counts.refusedDeadly++; continue; }
+            if (this.stranded(cand.masks, info, horizon)) { this.counts.refusedStranded++; continue; }
             alive++;
             // NOTHING CLEARS ANYWHERE: FLATTEN. Flattening IS the setup.
             //
