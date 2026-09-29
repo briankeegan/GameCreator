@@ -444,21 +444,26 @@
     // several decisions earlier and nothing reported it.
     //
     // So a candidate has to leave a board that still has a move: at least one
-    // legal swap whose own result survives the row AFTER the one the candidate
-    // already survives. One more ply, applied to every candidate, which is what
-    // turns "would die now" into "would be stranded".
+    // legal swap whose own result survives its own row. One more ply, applied to
+    // every candidate, which is what turns "would die now" into "would be
+    // stranded".
+    //
+    // THE CONTINUATION IS JUDGED ON THE SAME HORIZON, not a deeper one. Asking it
+    // to survive an EXTRA row means asking a board at tallest 10 to survive to
+    // 12, which is the ceiling, so every continuation read as fatal and every
+    // candidate was refused: `alive` was 0 from tallest 10 upward and the bot fell
+    // through to the fallback ranking for the rest of the game.
     //
     // The caller keeps its fallback: when nothing passes, the best-scoring move is
     // played anyway. This narrows the choice, it never refuses to move.
     BitBot.prototype.stranded = function (st, info, horizon) {
         var sw = bit.legalSwapsOf(st), i, r;
-        var deeper = (horizon || 0) + (info.framesPerRow || 0);
         for (i = 0; i < sw.length; i++) {
             if (!bit.swapMasks(st, sw[i][0], sw[i][1])) continue;
             r = bit.resolveFromMasks(st, true);
             bit.swapMasks(st, sw[i][0], sw[i][1]);
             if (r.scope !== 'ok' && r.scope !== 'garbage-broke') continue;
-            if (!this.deadly(r.settled || st, r, info, deeper)) return false;
+            if (!this.deadly(r.settled || st, r, info, horizon)) return false;
         }
         return true;
     };
