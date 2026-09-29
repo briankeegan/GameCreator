@@ -841,7 +841,7 @@ SLOW_GATES=(
   gate_modes                # 53s
   gate_features_live        # 37s
   gate_chips_real_boards    # 26s
-  gate_bitbot               # 11s
+  gate_bitbot               # 25s
   gate_bitbot_timing        # 3s
   gate_bitmatch             # 18s
   gate_chips_decidable      # 17s

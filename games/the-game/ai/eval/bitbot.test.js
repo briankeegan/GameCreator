@@ -473,10 +473,13 @@ ok(BitBot.prototype.deadly.call(probe, masksOf(lowBoard), null, { stopTime: 0 })
 // the board -- shared mutable state between the two instances, most likely.
 // versus.test.js asserts the same thing of PuyoCpu.
 // A SHORT DUEL, BECAUSE DIVERGENCE IS AN EARLY EVENT. Shared mutable state
-// shows in the first decisions the two instances make; playing on costs a
-// second of gate time per hundred frames and can only confirm it again.
+// shows in the first decisions the two instances make; playing on can only
+// confirm it again. The cost per frame is not fixed either: the cooldown lifts
+// while the board is topped out or the clock is running, so a bot that survives
+// at the top decides on nearly every frame, and 1,200 frames of it was 28s of a
+// 39s gate.
 var mirror = versus.duel(BitBot.STARTER, BitBot.STARTER, 701,
-                         { bot: 'bitbot', level: 10, allowRaise: true, ceiling: 1200 });
+                         { bot: 'bitbot', level: 10, allowRaise: true, ceiling: 600 });
 ok(mirror.draw === true, 'a mirror duel did not draw (winner ' + mirror.winner + ') -- ' +
                          'two instances of the same weights diverged on identical boards');
 ok(mirror.scores[0] === mirror.scores[1],
