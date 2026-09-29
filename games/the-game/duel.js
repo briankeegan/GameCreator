@@ -1649,7 +1649,8 @@ window.NewseyDuel = (function () {
         playerClock: state.player.clock, playerDead: state.player.gameOver, foeDead: state.foe.gameOver,
         foeBrain: state.cpu && state.cpu.brain && {
           acted: state.cpu.acted || 0, missed: state.cpu.missed || 0,
-          lead: state.cpu.brain.lead(), slowestFrames: state.cpu.brain.pace.slowest
+          lead: state.cpu.brain.lead(), slowestFrames: state.cpu.brain.pace.slowest,
+          threads: state.cpu.brain.threads, planned: state.cpu.planned || 0
         },
         selection: state.selection && (state.selection.row + "," + state.selection.col),
         pointer: state.pointer && (state.pointer.row + "," + state.pointer.col + (state.pointer.dragged ? ",dragged" : "")),

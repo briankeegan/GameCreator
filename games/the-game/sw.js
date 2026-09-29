@@ -1,6 +1,6 @@
 importScripts("../../shared/sw-core.js");
 
-GCRegisterServiceWorker("the-game-v109", [
+GCRegisterServiceWorker("the-game-v110", [
   "./",
   "./index.html",
   "./style.css",
@@ -20,6 +20,7 @@ GCRegisterServiceWorker("the-game-v109", [
   "./ai/eval/engineboard.js",
   "./ai/eval/modes.js",
   "./ai/eval/puyocpu.js",
+  "./ai/eval/survival_worker.js",
   "./ai/brain.js",
   "./ai/brain-worker.js",
   "./ai/trained-weights.js",
@@ -45,4 +46,4 @@ GCRegisterServiceWorker("the-game-v109", [
   "./art/walk-garden.png",
   "./art/walk-lab.png",
   "./icons/icon.svg",
-]);
+], { isolate: true });

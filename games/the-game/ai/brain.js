@@ -6,17 +6,28 @@
 (function (root) {
   var PanelEval = root.PanelEval = root.PanelEval || {};
 
+  // The brain searches on threads of its own when the page is cross-origin
+  // isolated (sw.js); every core but one, which the page keeps.
   function Brain(opts) {
-    var self = this;
+    var self = this, o = {}, k;
+    for (k in opts) o[k] = opts[k];
+    o.threads = Brain.threads();
+    this.threads = o.threads;
     this.worker = new Worker(Brain.URL);
-    this.worker.postMessage({ type: 'init', opts: opts });
+    this.worker.postMessage({ type: 'init', opts: o });
     this.worker.onmessage = function (e) { self._reply(e.data); };
+    this.worker.onerror = function (e) { console.error('brain worker: ' + (e.message || e)); };
     this.pending = null;
     this.id = 0;
     this.pace = new PanelEval.PuyoCpu.Pace();
   }
   Brain.URL = 'ai/brain-worker.js';
   Brain.available = function () { return typeof Worker === 'function'; };
+  Brain.threads = function () {
+    if (!root.crossOriginIsolated || typeof SharedArrayBuffer !== 'function') return 0;
+    var n = (root.navigator && root.navigator.hardwareConcurrency) || 1;
+    return n - 1 > 1 ? n - 1 : 0;
+  };
 
   Brain.prototype.request = function (bot, point, acted) {
     var m = PanelEval.PuyoCpu.message(bot, point, acted), transfer = [m.enc.buf.buffer];
@@ -31,6 +42,7 @@
 
   // How long it took is counted in game frames, the unit the bot waits in.
   Brain.prototype._reply = function (m) {
+    if (m.error) { console.error('brain: ' + m.error); return; }
     var p = this.pending;
     if (!p || p.id !== m.id) return;
     this.pace.took(p.bot.stack.clock - p.sentAt);
