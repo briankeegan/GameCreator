@@ -4268,7 +4268,8 @@
       pt.step = pl[i].step;
       out.push(pt);
       if (!ask && pt.at >= until) ask = pt;
-      n = this._engineAdvanceOn(cloneStack(n.st), n, stepKind(pt.step), Array.isArray(pt.step) ? pt.step : null, 0);
+      // On the board itself: a copy would lose the game's generator.
+      n = this._engineAdvanceOn(n.st, n, stepKind(pt.step), Array.isArray(pt.step) ? pt.step : null, 0);
     }
     if (!ask && n && !n.dead) ask = exact(pointOf(n));
     if (!ask) ask = out[out.length - 1];
@@ -4278,8 +4279,9 @@
     return { plan: out, point: q };
   };
   // Where to ask for the next decision: the first board of the plan at least
-  // lead() frames on, else the board after this move, else lead() frames on
-  // holding.
+  // lead() frames on, else the board after this move, else, holding, as far
+  // on as the quick side needs (quickLead()), if the brain has one: the bot
+  // holds until an answer comes.
   PuyoCpu.prototype._target = function (now, d) {
     var lead = this.brain.lead(), pl = this._planned || [];
     if (pl.length && d) {
@@ -4287,6 +4289,7 @@
       if (re) { this._planned = re.plan; return re.point; }
     }
     this._planned = null;
+    if (this.brain.quickLead) lead = Math.min(lead, this.brain.quickLead());
     if (d) { var pa = this._pointAfter(d); if (pa) return pa; }
     // Holding that long dies: the latest board before it that is alive.
     for (var k = lead; k >= 1; k >>= 1) { var ph = this._pointAhead(k); if (ph) return ph; }
@@ -4313,26 +4316,31 @@
   // The decision to play on this frame, or null to hold.
   PuyoCpu.prototype._fromBrain = function (again) {
     var p = this._pending, now = this.stack.clock, d = null;
+    // The answer: the full one, or on its frame, if that is not in yet, the
+    // quick one (a brain with a quick side decides the same board on a small
+    // survival budget, for when the full search is late).
+    var ans = null;
     if (p) {
       if (this.brain.poll) this.brain.poll(p, now);
-      if (!(p.decision && p.at <= now) && this._stale(p.point, now)) {
+      ans = p.decision || (p.at === now ? p.quick : null) || null;
+      if (!(ans && p.at <= now) && this._stale(p.point, now)) {
         if (this.brain.cancel) this.brain.cancel(p);
         this._pending = p = null;
         this.dropped = (this.dropped || 0) + 1;
       }
     }
-    if (p) {
-      if (p.decision && p.at <= now) {
-        this._pending = null;
-        // An exact point must match exactly; a plan's own board, which could
-        // not see what was dealt since, matches whatever was dealt there.
-        if (p.at === now && this._matches(p.point, !p.point.exact)) {
-          this.acted = (this.acted || 0) + 1;
-          this._played = true;
-          this._planned = p.decision.plan || null;
-          d = decisionOf(p.decision.move || p.decision.kind);
-        } else this.missed = (this.missed || 0) + 1;
-      }
+    if (p && ans && p.at <= now) {
+      this._pending = null;
+      if (!p.decision && this.brain.cancel) this.brain.cancel(p);
+      // An exact point must match exactly; a plan's own board, which could
+      // not see what was dealt since, matches whatever was dealt there.
+      if (p.at === now && this._matches(p.point, !p.point.exact)) {
+        if (ans === p.decision) this.acted = (this.acted || 0) + 1;
+        else this.quickPlayed = (this.quickPlayed || 0) + 1;
+        this._played = ans === p.decision ? 'full' : 'quick';
+        this._planned = ans.plan || null;
+        d = decisionOf(ans.move || ans.kind);
+      } else this.missed = (this.missed || 0) + 1;
     }
     // A brain that answers on the spot (lead 0) is asked about this frame
     // itself; the plan is for brains that cannot.
@@ -4346,17 +4354,18 @@
     return d;
   };
   PuyoCpu.prototype._ask = function (point) {
-    var played = !!this._played;
+    var played = this._played || false;
     this._played = false;
     return this.brain.request(this, point, played);
   };
   // What a brain is sent: the board it decides on, the raise in hand, the
-  // garbage in flight, and the other board.
+  // garbage in flight, the other board, and which of its answers to the last
+  // question was played ('full', 'quick' or false).
   PuyoCpu.message = function (bot, point, acted) {
     var e = point.enc;
     return { enc: { meta: e.meta, rows: e.rows, row0: e.row0, buf: e.buf.slice() },
              raiseFrames: point.raiseFrames, raiseStarted: point.raiseStarted, arrivals: point.arrivals,
-             opp: bot.opponent ? encodeStack(bot.opponent) : null, acted: !!acted };
+             opp: bot.opponent ? encodeStack(bot.opponent) : null, acted: acted === true ? 'full' : acted || false };
   };
   // The brain's side: a bot of its own, deciding on the boards it is sent,
   // and answering with the move and the plan that proved it. A decision that
@@ -4365,10 +4374,19 @@
   // `abort`, if set, is asked between engine steps whether to stop; a search
   // stopped throws PuyoCpu.ABORTED, and the next message (never `acted`)
   // takes back what it had done.
-  function Mind(opts, bot) { this.opts = opts; this.bot = bot || null; this._snap = null; this.abort = null; }
+  // `quick`: the quick side, the same bot on QUICK_BUDGET survival steps.
+  function Mind(opts, bot, quick) {
+    this.opts = opts; this.bot = bot || null; this._snap = null; this.abort = null; this.quick = !!quick;
+    if (this.bot && quick) this.bot.SURVIVE_SEARCH_BUDGET = Mind.QUICK_BUDGET;
+  }
+  Mind.QUICK_BUDGET = PuyoCpu.prototype.SURVIVE_SEARCH_BUDGET_CHEAP;
   Mind.prototype.think = function (m) {
-    var st = decodeStack(m.enc), bot = this.bot || (this.bot = new PuyoCpu(st, this.opts)), k, snap = this._snap;
-    if (snap && !m.acted) {
+    var st = decodeStack(m.enc), bot = this.bot, k, snap = this._snap;
+    if (!bot) {
+      bot = this.bot = new PuyoCpu(st, this.opts);
+      if (this.quick) bot.SURVIVE_SEARCH_BUDGET = Mind.QUICK_BUDGET;
+    }
+    if (snap && m.acted !== (this.quick ? 'quick' : 'full')) {
       for (k in bot) if (Object.prototype.hasOwnProperty.call(bot, k) && !Object.prototype.hasOwnProperty.call(snap, k)) delete bot[k];
       for (k in snap) bot[k] = snap[k];
     }
@@ -4427,16 +4445,30 @@
   // `realtime` > 0 the answer is held back until as many frames have passed
   // as the thinking took (60 a second, times `realtime`), so a game played
   // here plays out as it would with the brain in a worker.
-  function LocalBrain(mind, realtime) { this.mind = mind; this.realtime = realtime || 0; this.pace = new Pace(); }
+  // With a quick Mind too, both sides are asked, as if each were a worker of
+  // its own.
+  function LocalBrain(mind, realtime, quick) {
+    this.mind = mind; this.realtime = realtime || 0; this.pace = new Pace(); this.quickMind = quick || null;
+    this.quickPace = quick ? new Pace() : null;
+  }
   LocalBrain.prototype.request = function (bot, point, acted) {
-    var clock = (typeof performance !== 'undefined' && performance.now) ? performance : Date, t0 = clock.now();
-    var d = this.mind.think(PuyoCpu.message(bot, point, acted));
-    var frames = this.realtime ? Math.ceil((clock.now() - t0) * 0.06 * this.realtime) : 0;
-    if (this.realtime) this.pace.took(frames);
-    return { at: point.at, point: point, decision: frames ? null : d, answer: d, readyAt: bot.stack.clock + frames };
+    var clock = (typeof performance !== 'undefined' && performance.now) ? performance : Date, rt = this.realtime;
+    function timed(mind) {
+      var t0 = clock.now(), d = mind.think(PuyoCpu.message(bot, point, acted));
+      return { d: d, frames: rt ? Math.ceil((clock.now() - t0) * 0.06 * rt) : 0 };
+    }
+    var full = timed(this.mind), q = this.quickMind && rt ? timed(this.quickMind) : null;
+    if (rt) this.pace.took(full.frames);
+    if (q) this.quickPace.took(q.frames);
+    return { at: point.at, point: point, decision: full.frames ? null : full.d, answer: full.d, readyAt: bot.stack.clock + full.frames,
+             quick: q && !q.frames ? q.d : null, quickAnswer: q ? q.d : null, quickAt: q ? bot.stack.clock + q.frames : 0 };
   };
-  LocalBrain.prototype.poll = function (p, clock) { if (!p.decision && clock >= p.readyAt) p.decision = p.answer; };
+  LocalBrain.prototype.poll = function (p, clock) {
+    if (!p.decision && clock >= p.readyAt) p.decision = p.answer;
+    if (!p.quick && p.quickAnswer && clock >= p.quickAt) p.quick = p.quickAnswer;
+  };
   LocalBrain.prototype.lead = function () { return this.realtime ? this.pace.lead() : 0; };
+  LocalBrain.prototype.quickLead = function () { return this.realtime && this.quickPace ? this.quickPace.lead() : this.lead(); };
   PuyoCpu.LocalBrain = LocalBrain;
 
   // One frame. A committed walk owns the frame until the cursor arrives.

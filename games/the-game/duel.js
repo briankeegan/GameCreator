@@ -1650,7 +1650,8 @@ window.NewseyDuel = (function () {
         foeBrain: state.cpu && state.cpu.brain && {
           acted: state.cpu.acted || 0, missed: state.cpu.missed || 0,
           lead: state.cpu.brain.lead(), slowestFrames: state.cpu.brain.pace.slowest,
-          threads: state.cpu.brain.threads, planned: state.cpu.planned || 0
+          threads: state.cpu.brain.threads, planned: state.cpu.planned || 0,
+          quick: state.cpu.quickPlayed || 0, dropped: state.cpu.dropped || 0
         },
         selection: state.selection && (state.selection.row + "," + state.selection.col),
         pointer: state.pointer && (state.pointer.row + "," + state.pointer.col + (state.pointer.dragged ? ",dragged" : "")),

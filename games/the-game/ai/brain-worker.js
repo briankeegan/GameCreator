@@ -11,7 +11,7 @@ onmessage = function (e) {
   var m = e.data;
   if (m.type === 'init') {
     var opts = m.opts, P = self.PanelEval.PuyoCpu;
-    mind = new P.Mind(opts);
+    mind = new P.Mind(opts, null, !!m.quick);
     var stop = m.stop ? new Int32Array(m.stop) : null;
     if (stop) mind.abort = function () { return Atomics.load(stop, 0) === current; };
     // Its search threads have to be running before it may wait on them.
