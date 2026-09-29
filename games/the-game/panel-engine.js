@@ -848,6 +848,12 @@
   // stateChanged culling is a speed optimisation we don't need here).
   // ONE SCRATCH, REUSED. checkMatches runs every frame of every stack.
   var MATCH_EFF = null;
+  // scanRuns' callback, one function rather than a closure a frame.
+  var MARK_PANELS = null, MARK_OUT = null;
+  function markMatch(mr, mc) {
+    var panel = MARK_PANELS[mr][mc];
+    if (panel && !panel.matching) { panel.matching = true; MARK_OUT.push(panel); }
+  }
 
   Stack.prototype.getMatchingPanels = function () {
     var matching = [];
@@ -868,11 +874,9 @@
         eff[base + col] = (p && canMatch(p)) ? p.color : 0;
       }
     }
-    var panels = this.panels;
-    rules().scanRuns(eff, W, H, stride, function (mr, mc) {
-      var panel = panels[mr][mc];
-      if (panel && !panel.matching) { panel.matching = true; matching.push(panel); }
-    });
+    MARK_PANELS = this.panels; MARK_OUT = matching;
+    rules().scanRuns(eff, W, H, stride, markMatch);
+    MARK_PANELS = null; MARK_OUT = null;
     // Hovering panels that match can never START a chain (Panel.matchAnyway).
     for (i = 0; i < matching.length; i++) {
       if (matching[i].state === "hovering") matching[i].chaining = false;
