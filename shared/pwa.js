@@ -22,6 +22,18 @@
         window.location.reload();
       });
     }
+    // A page that needs cross-origin isolation (data-isolate) gets it only
+    // once its service worker controls it: the first visit reloads once when
+    // the worker takes over.
+    if (script.dataset.isolate !== undefined && !window.crossOriginIsolated) {
+      navigator.serviceWorker.addEventListener("controllerchange", function () {
+        try {
+          if (sessionStorage.getItem("gc_isolateReload") === "1") return;
+          sessionStorage.setItem("gc_isolateReload", "1");
+        } catch (err) { return; }
+        window.location.reload();
+      });
+    }
     window.addEventListener("load", function () {
       navigator.serviceWorker.register(swPath).then(function (reg) {
         // Proactively check for a new worker now and whenever the tab regains

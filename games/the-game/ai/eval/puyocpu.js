@@ -190,12 +190,18 @@
     this.brain = opts.brain || null;
     // Worker threads for the survival search: opts.threads or GC_THREADS, a
     // number or 'auto' (one per core). The main thread only coordinates.
+    // In a browser the page must be cross-origin isolated for shared memory.
     var want = opts.threads || (typeof process !== 'undefined' && process.env && process.env.GC_THREADS) || 0;
-    if (want === 'auto' && typeof require === 'function') {
-      var os = require('os');
-      want = os.availableParallelism ? os.availableParallelism() : os.cpus().length;
+    if (want === 'auto') {
+      if (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) want = navigator.hardwareConcurrency;
+      else if (typeof require === 'function') {
+        var os = require('os');
+        want = os.availableParallelism ? os.availableParallelism() : os.cpus().length;
+      }
     }
-    this.threads = typeof require === 'function' && typeof SharedArrayBuffer !== 'undefined' && Number(want) > 1 ? Number(want) : 0;
+    var shared = typeof SharedArrayBuffer === 'function' && typeof Atomics !== 'undefined' &&
+                 (typeof crossOriginIsolated === 'undefined' || crossOriginIsolated);
+    this.threads = shared && Number(want) > 1 ? Number(want) : 0;
     this.modelMismatches = [];
     this.doomedDecisions = 0;
     this.doomedMovesDropped = 0;
@@ -1494,6 +1500,7 @@
   }
   var levelConsts = {};
   function decodeStack(e) {
+    if (!e.meta && e.metaText) e = { meta: parseText(e.metaText), rows: e.rows, row0: e.row0, buf: e.buf };
     var PE = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
     var lc = levelConsts[e.meta.level];
     if (!lc) { var t = new PE.Stack({ level: e.meta.level, seed: 1, countdown: false }); lc = levelConsts[e.meta.level] = { levelData: t.levelData, frames: t.frames }; }
@@ -1520,25 +1527,163 @@
   PuyoCpu.encodeStack = encodeStack;
   PuyoCpu.decodeStack = decodeStack;
 
-  // WORKER THREADS FOR THE SEARCH (Node only, opt-in: opts.threads or
+  // WORKER THREADS FOR THE SEARCH (opt-in: opts.threads or
   // GC_THREADS). Before a search level is expanded, every (node, move) step in
   // it is computed on the workers; _lineStep then takes each result instead of
   // computing it. Which steps are taken, in what order and against what
   // budget is unchanged, so the search decides exactly what it decides
   // without them.
+  // One pool per size, shared by every bot in the process. Tasks go out as
+  // messages; results come back through shared memory, one slot a worker, so
+  // the coordinator can block for them (Atomics.wait) and take them without
+  // returning to an event loop -- the only way there is in a browser.
   var pools = {};
+  PuyoCpu.SLOT_BYTES = 8 << 20;
+  PuyoCpu.WORKER_URL = 'eval/survival_worker.js';
+  function isNode() { return typeof process !== 'undefined' && !!(process.versions && process.versions.node); }
   function getPool(n) {
     if (pools[n]) return pools[n];
-    var wt = require('worker_threads'), path = require('path');
-    var flag = new Int32Array(new SharedArrayBuffer(4)), ws = [];
-    for (var i = 0; i < n; i++) {
-      var ch = new wt.MessageChannel();
-      var w = new wt.Worker(path.join(__dirname, 'survival_worker.js'), { workerData: { flag: flag.buffer, port: ch.port2 }, transferList: [ch.port2] });
-      w.unref();
-      ws.push({ w: w, port: ch.port1 });
+    var ctl = new Int32Array(new SharedArrayBuffer(4)), ws = [], i, w;
+    for (i = 0; i < n; i++) {
+      var sab = new SharedArrayBuffer(PuyoCpu.SLOT_BYTES);
+      if (isNode()) {
+        var wt = require('worker_threads'), path = require('path');
+        w = new wt.Worker(path.join(__dirname, 'survival_worker.js'));
+        w.unref();
+      } else w = new Worker(PuyoCpu.WORKER_URL);
+      w.postMessage({ type: 'init', ctl: ctl.buffer, slot: sab });
+      ws.push({ w: w, slot: slotViews(sab) });
     }
-    return (pools[n] = { ws: ws, flag: flag, receive: wt.receiveMessageOnPort });
+    return (pools[n] = { ws: ws, ctl: ctl });
   }
+  // A browser starts a worker made by a worker only when its maker returns
+  // to its event loop, so a pool is started, and every worker heard from,
+  // before anything blocks on it. Resolves to the pool's size, 0 if a worker
+  // failed to load.
+  PuyoCpu.warmPool = function (n) {
+    var pool = getPool(n), left = pool.ws.length;
+    return new Promise(function (done) {
+      pool.ws.forEach(function (x) {
+        x.w.onmessage = function (e) { if (e.data && e.data.type === 'ready' && --left === 0) done(n); };
+        x.w.onerror = function () { done(0); };
+      });
+    });
+  };
+  PuyoCpu.closePools = function () {
+    Object.keys(pools).forEach(function (k) { pools[k].ws.forEach(function (x) { x.w.terminate(); }); delete pools[k]; });
+  };
+  // A slot: i32[0] is 0 empty, 1 full; i32[1..3] the JSON's length, the
+  // number of integer buffers and where the JSON starts; the buffers from
+  // i32[4], each as its length then its values; then the JSON, a UTF-16
+  // code unit each.
+  function slotViews(sab) { return { i32: new Int32Array(sab), u16: new Uint16Array(sab) }; }
+  PuyoCpu.slotViews = slotViews;
+  // Exact: undefined, NaN, the infinities, -0 and Int32Arrays are tagged, and
+  // put back by assignment, so a key that held undefined still exists.
+  // Text carried as UTF-16 code units and parsed only when read: a board's
+  // fields come back with every step, and most boards are never looked at.
+  function RawText(s) { this.s = s; }
+  // Counted, so a result with none (nearly all of them) is not walked to
+  // put them back.
+  var packSpecial = 0;
+  function tagged(k, v) {
+    if (v === undefined) { packSpecial++; return { $u: 1 }; }
+    if (v instanceof RawText) { packTexts.push(v.s); return { $t: packTexts.length - 1 }; }
+    if (typeof v === 'number') {
+      if (v === v && v !== Infinity && v !== -Infinity && (v !== 0 || 1 / v > 0)) return v;
+      packSpecial++;
+      return { $n: v !== v ? 'NaN' : v === Infinity ? '+' : v === -Infinity ? '-' : '-0' };
+    }
+    if (v instanceof Int32Array) { packBufs.push(v); return { $b: packBufs.length - 1 }; }
+    return v;
+  }
+  var packBufs = null, packTexts = null;
+  function putText(s, str, pos) {
+    s.i32[pos++] = str.length;
+    var at = pos * 2;
+    for (var k = 0; k < str.length; k++) s.u16[at + k] = str.charCodeAt(k);
+    return pos + ((str.length + 1) >> 1);
+  }
+  // `bufs` and `texts`, when given, are the result's own Int32Arrays and
+  // RawTexts, which it names by index; anything else found is tagged.
+  function pack(obj, s, bufs0, texts0) {
+    packBufs = bufs0 || []; packTexts = (texts0 || []).map(function (t) { return t.s; }); packSpecial = 0;
+    var json = JSON.stringify(obj, tagged), bufs = packBufs, texts = packTexts, need = 6 + ((json.length + 1) >> 1), pos = 6, i;
+    var walk = packSpecial > 0 || bufs.length > (bufs0 ? bufs0.length : 0) || texts.length > (texts0 ? texts0.length : 0);
+    packBufs = null; packTexts = null;
+    for (i = 0; i < bufs.length; i++) need += 1 + bufs[i].length;
+    for (i = 0; i < texts.length; i++) need += 1 + ((texts[i].length + 1) >> 1);
+    if (need * 4 > s.i32.byteLength) throw new Error('survival result of ' + need * 4 + ' bytes does not fit its slot');
+    for (i = 0; i < bufs.length; i++) { s.i32[pos++] = bufs[i].length; s.i32.set(bufs[i], pos); pos += bufs[i].length; }
+    for (i = 0; i < texts.length; i++) pos = putText(s, texts[i], pos);
+    s.i32[1] = bufs.length; s.i32[2] = texts.length; s.i32[3] = pos; s.i32[4] = walk ? 1 : 0;
+    putText(s, json, pos);
+  }
+  function untag(v, bufs, texts) {
+    if (!v || typeof v !== 'object') return v;
+    if (!Array.isArray(v)) {
+      var ks = Object.keys(v);
+      if (ks.length === 1) {
+        if (ks[0] === '$u') return undefined;
+        if (ks[0] === '$b') return bufs[v.$b];
+        if (ks[0] === '$t') return texts[v.$t];
+        if (ks[0] === '$n') return v.$n === 'NaN' ? NaN : v.$n === '+' ? Infinity : v.$n === '-' ? -Infinity : -0;
+      }
+    }
+    for (var k in v) v[k] = untag(v[k], bufs, texts);
+    return v;
+  }
+  function textOf(u16) {
+    var out = '', i;
+    for (i = 0; i < u16.length; i += 8192) out += String.fromCharCode.apply(null, u16.subarray(i, Math.min(u16.length, i + 8192)));
+    return out;
+  }
+  // A RawText's contents, parsed.
+  function parseText(u16) { return untag(JSON.parse(textOf(u16)), [], []); }
+  function unpack(s) {
+    var nb = s.i32[1], nt = s.i32[2], bufs = [], texts = [], pos = 6, i, len;
+    for (i = 0; i < nb; i++) { len = s.i32[pos++]; bufs.push(s.i32.slice(pos, pos + len)); pos += len; }
+    for (i = 0; i < nt; i++) { len = s.i32[pos++]; texts.push(s.u16.slice(pos * 2, pos * 2 + len)); pos += (len + 1) >> 1; }
+    len = s.i32[pos++];
+    var obj = JSON.parse(textOf(s.u16.subarray(pos * 2, pos * 2 + len)));
+    return { obj: s.i32[4] ? untag(obj, bufs, texts) : obj, bufs: bufs, texts: texts };
+  }
+  // The worker's side: wait for the slot to be read, fill it, say so.
+  PuyoCpu.sendResult = function (ctl, s, out, bufs, texts) {
+    while (Atomics.load(s.i32, 0) !== 0) Atomics.wait(s.i32, 0, 1);
+    pack(out, s, bufs, texts);
+    Atomics.store(s.i32, 0, 1);
+    Atomics.add(ctl, 0, 1);
+    Atomics.notify(ctl, 0);
+  };
+  // What a worker computes for one task: every step of the node's move list,
+  // with the bot's own _lineStep on a decoded copy of the node's board.
+  // Each board's integers and fields go in `bufs` and `texts`, named in the
+  // result by index.
+  PuyoCpu.runSteps = function (task, bufs, texts) {
+    var bot = Object.create(PuyoCpu.prototype);
+    bot.reaction = task.reaction;
+    bot.cursorMoveFrames = task.cursorMoveFrames;
+    bot._lineUntil = task.until || null;
+    bot._restNeeded = task.rest;
+    var n = bot._engineNode(decodeStack(task.enc), task.t, task.hold, task.arrivals, task.fresh), res = {};
+    for (var i = 0; i < task.moves.length; i++) {
+      var m = task.moves[i], long = m === 'long';
+      var r = long ? bot._lineStep(n, null, true) : bot._lineStep(n, m, false);
+      var k = moveKey(long ? null : m, long);
+      if (!r) res[k] = null;
+      else if (r.dead) res[k] = { dead: 1, t: r.t, parent: r.st === n.st };
+      else {
+        var e = encodeStack(r.st);
+        bufs.push(e.buf);
+        texts.push(new RawText(JSON.stringify(e.meta, tagged)));
+        res[k] = { t: r.t, hold: r.hold, arrivals: r.arrivals, pos: r.pos, carry: r.carry,
+                   enc: { text: texts.length - 1, rows: e.rows, row0: e.row0, buf: bufs.length - 1 },
+                   grid: r.b.grid, key: r.b.key, height: r.b.height, legal: r.b.legalSwaps() };
+      }
+    }
+    return res;
+  };
   function moveKey(m, long) { return long ? 'long' : m === null ? 'hold' : m === 'raise' ? 'raise' : m[0] + ',' + m[1]; }
   // `partial`: only the first move of each node now (the wait, which usually
   // settles a calm board on its own); the rest of the level's moves are
@@ -1558,32 +1703,51 @@
                                 moves: moves, until: until, rest: rest, reaction: this.reaction, cursorMoveFrames: this.cursorMoveFrames } });
     }
     if (!tasks.length) return;
-    Atomics.store(pool.flag, 0, 0);
-    for (i = 0; i < tasks.length; i++) pool.ws[i % pool.ws.length].port.postMessage(tasks[i].msg);
-    var sent = tasks.length;
-    var got = 0;
+    Atomics.store(pool.ctl, 0, 0);
+    for (i = 0; i < tasks.length; i++) pool.ws[i % pool.ws.length].w.postMessage(tasks[i].msg);
+    var sent = tasks.length, got = 0, seen = 0;
     while (got < sent) {
-      Atomics.wait(pool.flag, 0, got, 60000);
+      Atomics.wait(pool.ctl, 0, seen, 60000);
+      seen = Atomics.load(pool.ctl, 0);
       for (j = 0; j < pool.ws.length; j++) {
-        var m;
-        while ((m = pool.receive(pool.ws[j].port))) {
-          var r = m.message;
-          if (r.error) throw new Error('survival worker: ' + r.error);
-          var into = tasks[r.id].n._pre.res;
-          for (var rk in r.res) into[rk] = r.res[rk];
-          got++;
+        var s = pool.ws[j].slot;
+        if (Atomics.load(s.i32, 0) !== 1) continue;
+        var u = unpack(s), r = u.obj;
+        Atomics.store(s.i32, 0, 0);
+        Atomics.notify(s.i32, 0);
+        if (r.error) throw new Error('survival worker: ' + r.error);
+        var into = tasks[r.id].n._pre.res;
+        for (var rk in r.res) {
+          var e = r.res[rk] && r.res[rk].enc;
+          if (e) r.res[rk].enc = { metaText: u.texts[e.text], rows: e.rows, row0: e.row0, buf: u.bufs[e.buf] };
+          into[rk] = r.res[rk];
         }
+        got++;
       }
     }
+  };
+  // The next boards the search will expand, from where it is: a few for each
+  // thread. Fetching the whole level ahead computed twice what the search
+  // used -- a board is skipped once its move is proven.
+  PuyoCpu.prototype._window = function (want) {
+    var lvl = this._curLevel, vd = this._curVerdict, out = [], i;
+    for (i = this._curIndex; i < lvl.length && out.length < this.threads * 2; i++) {
+      if (!vd[lvl[i].tag] && want(lvl[i])) out.push(lvl[i]);
+    }
+    return out;
   };
   PuyoCpu.prototype._fromPrefetch = function (node, m, long) {
     var pre = node._pre;
     if (!pre || !pre.res || pre.until !== (this._lineUntil || 0) || pre.rest !== !!this._restNeeded) return undefined;
     var mk = moveKey(m, long), r = pre.res[mk];
     if (r === undefined && pre.partial && this._curLevel) {
-      var lvl = this._curLevel, vd = this._curVerdict;
-      this._prefetch(lvl.filter(function (x) { return x._pre && x._pre.partial && !vd[x.tag]; }),
-                     function (x) { return [ null ].concat(x.b.legalSwaps()); }, false);
+      // The rest of the moves, for boards whose wait did not prove them: a
+      // wait that proves its board ends that board's turn.
+      var FULL = this.SURVIVE_FRAMES + this.SURVIVE_REST;
+      this._prefetch(this._window(function (x) {
+        var lg = x._pre && x._pre.partial && x._pre.res.long;
+        return x === node || (x._pre && x._pre.partial && !(lg && !lg.dead && lg.t >= FULL));
+      }), function (x) { return [ null ].concat(x.b.legalSwaps()); }, false);
       r = pre.res[mk];
     }
     if (r === undefined) return undefined;
@@ -1998,14 +2162,15 @@
       return ((y.t + self._heldFor(y.carry)) - (x.t + self._heldFor(x.carry))) || (garb(x.b) - garb(y.b)) || (top(x.b) - top(y.b));
     }
     while (level.length && budget > 0) {
-      if (this.threads) {
-        this._curLevel = level; this._curVerdict = verdict;
-        this._prefetch(level.filter(function (x) { return !verdict[x.tag]; }), function () { return [ 'long' ]; }, true);
-      }
+      if (this.threads) { this._curLevel = level; this._curVerdict = verdict; }
       var next = [], seen = {};
       for (i = 0; i < level.length && budget > 0; i++) {
         n = level[i];
         if (verdict[n.tag]) continue;
+        if (this.threads) {
+          this._curIndex = i;
+          if (!n._pre) this._prefetch(this._window(function (x) { return !x._pre; }), function () { return [ 'long' ]; }, true);
+        }
         var moves = [ 'long', null ].concat(n.b.legalSwaps());
         for (j = 0; j < moves.length && budget > 0; j++) {
           budget--;
@@ -2039,7 +2204,7 @@
       for (i = 0; i < next.length && keep.length < this.SURVIVE_SEARCH_BEAM; i++) if (!next[i].kept && !weak[next[i].tag]) keep.push(next[i]);
       level = keep.slice(0, seeds).concat(keep.slice(seeds).sort(better));
     }
-    this._curLevel = null; this._curVerdict = null;
+    this._curLevel = null; this._curVerdict = null; this._curIndex = 0;
     // A move with lines still open when the budget ran out is not proven dead.
     var alive = {};
     for (i = 0; i < level.length; i++) alive[level[i].tag] = true;
