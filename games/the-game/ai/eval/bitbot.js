@@ -1165,7 +1165,7 @@
         // DECIDED BEFORE ANYTHING IS PLANNED, because while it is on there is
         // nothing to plan: the raise outranks the attack and the board is not
         // being played, it is being filled.
-        var raising = this.raiseMode(info, pool, base);
+        var raising = this.raiseMode(info, base);
         this._wantRaise = !!raising;
         // AND WHETHER IT IS HAPPENING, which is not the same as wanting it.
         //
@@ -2021,7 +2021,7 @@
     // places, and they disagreed -- the button was held on decisions that
     // refused to raise, so the bot raised and built at the same time and the row
     // never came.
-    BitBot.prototype.raiseMode = function (info, pool, base) {
+    BitBot.prototype.raiseMode = function (info, base) {
         if (!this.allowRaise || info.toppedOut) { this._opening = false; return null; }
         // Every queued cell lands on this board, so it counts against the
         // ceiling exactly like one already there.
