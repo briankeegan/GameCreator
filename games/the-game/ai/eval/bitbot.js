@@ -196,7 +196,7 @@
                         raisedForMaterial: 0, refusedRaise: 0, forcedBreak: 0, forcedBoth: 0, refusedEarly: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
                         revealWindows: 0, digging: 0, flattened: 0, flattenDropped: 0,
-                        refusedStranded: 0 };
+                        refusedStranded: 0, refusedNoFailsafe: 0 };
     }
 
     // WHAT THE ENGINE KNOWS, shared by every candidate in the decision. None of
@@ -456,16 +456,29 @@
     //
     // The caller keeps its fallback: when nothing passes, the best-scoring move is
     // played anyway. This narrows the choice, it never refuses to move.
-    BitBot.prototype.stranded = function (st, info, horizon) {
+    // AND WHETHER THERE IS STILL A THREE IN HAND.
+    //
+    // The same pass answers both. A clear that can be fired the instant something
+    // lands is the only thing that buys stop time on demand, and a board with
+    // none has to build one first -- which is time it does not have when a slab
+    // arrives. So the sweep reports whether any legal swap on this board clears
+    // anything, and the caller keeps one.
+    BitBot.prototype.lookahead = function (st, info, horizon) {
         var sw = bit.legalSwapsOf(st), i, r;
+        var out = { stranded: true, hasClear: false, hasBreak: false };
         for (i = 0; i < sw.length; i++) {
             if (!bit.swapMasks(st, sw[i][0], sw[i][1])) continue;
             r = bit.resolveFromMasks(st, true);
             bit.swapMasks(st, sw[i][0], sw[i][1]);
             if (r.scope !== 'ok' && r.scope !== 'garbage-broke') continue;
-            if (!this.deadly(r.settled || st, r, info, horizon)) return false;
+            if (r.scope === 'garbage-broke') { out.hasBreak = true; out.hasClear = true; }
+            else if (r.total > 0) out.hasClear = true;
+            if (out.stranded && !this.deadly(r.settled || st, r, info, horizon)) {
+                out.stranded = false;
+            }
+            if (out.hasBreak && !out.stranded) break;
         }
-        return true;
+        return out;
     };
 
     // A TOWER IS WHERE THE BOARD DIES, so how much it minds one is not the
@@ -1429,7 +1442,9 @@
             if (digs.length) { this.counts.forcedBreak++; allowed = digs; }
         }
 
-        var best = null, alive = 0;
+        var buried = false;
+        for (i = 1; i <= W; i++) if (base.garb[i]) { buried = true; break; }
+        var best = null, alive = 0, spare = [];
         for (i = 0; i < allowed.length; i++) {
             var cand = allowed[i];
             // WHAT THE HORIZON IS: the frames before this bot decides again --
@@ -1446,8 +1461,32 @@
             var horizon = Math.max((cand.moveFrames || 0) + this.reaction,
                                    info.framesPerRow || 0);
             if (this.deadly(cand.masks, cand.resolved, info, horizon)) { this.counts.refusedDeadly++; continue; }
-            if (this.stranded(cand.masks, info, horizon)) { this.counts.refusedStranded++; continue; }
+            var ahead = this.lookahead(cand.masks, info, horizon);
+            if (ahead.stranded) { this.counts.refusedStranded++; continue; }
             alive++;
+            // KEEP A THREE IN HAND, IF THE BOARD CAN AFFORD ONE. A clear that can
+            // be fired the instant something lands is the only thing that buys
+            // stop time on demand; a board with none must build a match first,
+            // which is time it does not have when a slab arrives.
+            //
+            // A PREFERENCE THAT BECOMES A RULE WHEN IT CAN BE KEPT, not a veto.
+            // Most mid-game boards genuinely hold no immediate clear -- refusing
+            // those outright threw away 6,945 candidates in a duel and dropped the
+            // bot into its fallback 565 times. So these are set aside and used
+            // only if nothing that keeps a three survives.
+            // A GARBAGE BREAK IS WHAT IS WORTH HOLDING, when there is a slab to
+            // break. It converts the slab into panels and holds the floor for the
+            // whole of its resolve; a bare three buys 59 frames and takes three
+            // panels off the board. With no garbage on it there is nothing to
+            // break, so any clear is the fail-safe.
+            var cashes = cand.resolved && (cand.resolved.total > 0 ||
+                                           cand.resolved.brokeGarbage);
+            var held = buried ? ahead.hasBreak : ahead.hasClear;
+            if (!cashes && !held) {
+                this.counts.refusedNoFailsafe++;
+                spare.push(cand);
+                continue;
+            }
             // NOTHING CLEARS ANYWHERE: FLATTEN. Flattening IS the setup.
             //
             // LEXICOGRAPHIC, NOT A WEIGHTED SUM: the flatter board wins; between
@@ -1466,6 +1505,18 @@
                   : this.score(cand.masks, cand.moveFrames, cand.resolved, info);
             if (!best || s > best.score) best = { cand: cand, score: s };
         }
+        // NOTHING KEPT A THREE: rank the ones that survive but spend it, which is
+        // still better than the lost-position fallback below.
+        if (!best && spare.length) {
+            for (i = 0; i < spare.length; i++) {
+                var sc = spare[i];
+                var ss = noneClear
+                       ? -bumpiness(sc.masks) * 10000 + matchWays(sc.masks) * 100 - (sc.moveFrames || 0)
+                       : this.score(sc.masks, sc.moveFrames, sc.resolved, info);
+                if (!best || ss > best.score) best = { cand: sc, score: ss };
+            }
+        }
+
         // NOTHING SURVIVES: the position is lost either way, so the best-scoring
         // move is played rather than freezing. Counted, because a bot reaching
         // here often is a bot about to die and the count is the warning.
