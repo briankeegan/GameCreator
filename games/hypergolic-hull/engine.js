@@ -1830,7 +1830,7 @@
     for (let i = 0; i < 6; i++) {
       const to = neighbor(enemy, i);
       if (!canFlyInto(state, to, enemy)) continue;
-      if (hazardAt(state, to)) continue;
+      if (hazardHarms(state, to)) continue;
       const d = hexDistance(to, goal);
       if (d >= hexDistance(enemy, goal)) continue;
       if (!best || d < best.d) best = { to, d };
@@ -1966,7 +1966,9 @@
     const spots = [];
     for (const hex of state.boardHexes) {
       if (!canFlyInto(state, hex, enemy)) continue;
-      if (hazardAt(state, hex)) continue;
+      // Harm only. A gun may stand in an ion cloud — it is blind in there and
+      // that is its own problem, but it is not somewhere it dies.
+      if (hazardHarms(state, hex)) continue;
       const facing = facingFrom(state, hex, enemy);
       const bears = ship.weapons.some(
         (w) =>
@@ -2004,7 +2006,7 @@
   const WRECKS_ARE_COVER = envNumber("GC_WRECK_COVER", 1) !== 0;
 
   function blocksShot(state, hex, opts) {
-    if (isBlockingHazard(hazardAt(state, hex))) return true;
+    if (hazardRule(hazardAt(state, hex)).blocksShot) return true;
     if (enemyAt(state, hex)) return true;
     if (WRECKS_ARE_COVER && wreckAt(state, hex)) return true; // a wreck is a hull: it stops a slug
     // A threat map answers "would I be hit if I STOOD there" — so the
@@ -3210,8 +3212,49 @@
     }
   }
 
+  // WHAT A PIECE OF GROUND DOES, in one table. Every hazard is some
+  // combination of four verbs and nothing else; a type that is only a damage
+  // number with a new name does not belong here.
+  //
+  //   blocksMove  nothing can end on it — a wall, not a trap
+  //   blocksShot  it stops a slug, from either side
+  //   jams        guns do not work from inside it (hull untouched)
+  //   lethal      whatever ends on it is destroyed
+  //   damageOnEnd hull, per round, to whatever is still standing there
+  //
+  // Everything that reads terrain goes through the helpers below rather than
+  // naming a type, because the lethal case used to be "any hazard that is not
+  // a scrambler" — so every new kind of ground was instant death until
+  // somebody remembered to special-case it.
+  const HAZARDS = {
+    asteroid: { blocksMove: true, blocksShot: true },
+    blackhole: { lethal: true },
+    scrambler: { jams: true },
+    // COVER YOU CAN WALK THROUGH, and the direct answer to reach. A gun
+    // inside one is blind and a ship crossing one cannot be shot, so it is
+    // the first ground in this game that is worth standing ON rather than
+    // merely worth avoiding. A piercing weapon still goes through it: that
+    // is what `pierces` reads isBlockingHazard for.
+    ionCloud: { blocksShot: true },
+    // AREA DENIAL WITHOUT A KILL. It costs a hull to be caught standing in
+    // one at the end of a round, which prices a hex rather than removing it —
+    // the board gains somewhere you may cross but should not loiter.
+    mineDrift: { damageOnEnd: 1 },
+  };
+
+  function hazardRule(hazard) {
+    return (hazard && HAZARDS[hazard.type]) || {};
+  }
+
   function isBlockingHazard(hazard) {
-    return Boolean(hazard) && hazard.type === "asteroid";
+    return Boolean(hazardRule(hazard).blocksMove);
+  }
+
+  // Ground that costs a ship something for ending on it. What an AI routes
+  // around, and what the flagship pays for crossing.
+  function hazardHarms(state, pos) {
+    const rule = hazardRule(hazardAt(state, pos));
+    return Boolean(rule.lethal || rule.damageOnEnd);
   }
 
   // Can a ship — ANY ship — end a burn on this hex? One rule, one place:
@@ -3269,7 +3312,7 @@
     const steps = Math.floor(rng() * (DRIFT_MAX + 1)); // 0, 1 or 2, this ship's own roll
     for (let i = 0; i < steps; i++) {
       const options = neighbors(enemy).filter(
-        (to) => canFlyInto(state, to, enemy) && (!hazardAt(state, to) || inScrambler(state, to))
+        (to) => canFlyInto(state, to, enemy) && !hazardHarms(state, to)
       );
       if (!options.length) return;
       const pick = options[Math.floor(rng() * options.length)];
@@ -3287,7 +3330,7 @@
         const away = neighbors(enemy).filter(
           (to) =>
             canFlyInto(state, to, enemy) &&
-            !hazardAt(state, to) &&
+            !hazardHarms(state, to) &&
             hexDistance(to, state.playerPos) > hexDistance(enemy, state.playerPos)
         );
         if (!away.length) break;
@@ -3717,6 +3760,17 @@
     // danger zone in the game — seven hexes with a number on them — and it
     // has to be in here or nothing that reads this map (the overlay, the
     // auto-router, the pilots in playtest.js) can see a bomb at all.
+    // GROUND THAT TAKES HULL IS A THREAT HEX. Everything that reads this map
+    // — the overlay, the auto-router, the pilots — would otherwise route
+    // straight across a minefield, because a mine is not a gun and nothing
+    // else told them about it. It is not a fixed range chart either: rock and
+    // black holes stay out, because those are refused by canFlyInto and by
+    // the lethal check rather than survived.
+    for (const hex of state.boardHexes) {
+      const rule = HAZARDS[(hazardAt(state, hex) || {}).type] || {};
+      if (!rule.damageOnEnd) continue;
+      threats.set(hexKey(hex), (threats.get(hexKey(hex)) || 0) + rule.damageOnEnd);
+    }
     for (const charge of liveCharges(state)) {
       if (charge.spent) continue;
       for (const hex of chargeBlastHexes(state, charge)) {
@@ -4236,7 +4290,7 @@
       const out = [];
       for (let i = 0; i < 6; i++) {
         const to = neighbor(enemy, i);
-        if (!canFlyInto(state, to, enemy) || hazardAt(state, to)) continue;
+        if (!canFlyInto(state, to, enemy) || hazardHarms(state, to)) continue;
         const gap = fromBlast(to);
         if (gap <= here) continue; // sideways inside the blast is not an escape
         out.push({ to, gap, clear: !burning.has(hexKey(to)), dist: hexDistance(to, state.playerPos) });
@@ -4445,11 +4499,21 @@
   }
 
   function checkPlayerHazard(state) {
-    if (inScrambler(state, state.playerPos)) return; // it takes your guns, not your hull
-    if (hazardAt(state, state.playerPos)) {
+    const rule = hazardRule(hazardAt(state, state.playerPos));
+    if (rule.lethal) {
       state.hull = 0;
       state.status = "lost";
       pushLog(state, "Hull breached. All hands.");
+      return;
+    }
+    if (rule.damageOnEnd) {
+      state.hull = Math.max(0, state.hull - rule.damageOnEnd);
+      state.events.push({ type: "damage", amount: rule.damageOnEnd, q: state.playerPos.q, r: state.playerPos.r });
+      pushLog(state, `Mines under the hull — down ${rule.damageOnEnd}.`);
+      if (state.hull <= 0) {
+        state.status = "lost";
+        pushLog(state, "Hull breached. All hands.");
+      }
     }
   }
 
@@ -4842,6 +4906,21 @@
         state.events.push({ type: "enemyMove", enemyId: enemy.id, from, to: intent.to });
         enemy.q = intent.to.q;
         enemy.r = intent.to.r;
+        // GROUND CHARGES EVERYONE. A hull that ends a round on a mine drift
+        // pays the same hull the flagship does; a one-hull contact caught in
+        // one dies there and leaves its wreck like any other kill.
+        const ground = hazardRule(hazardAt(state, enemy));
+        if (ground.lethal || ground.damageOnEnd) {
+          enemy.hp -= ground.lethal ? enemy.maxHp : ground.damageOnEnd;
+          if (enemy.hp <= 0) {
+            enemy.alive = false;
+            state.events.push({ type: "kill", q: enemy.q, r: enemy.r, victim: enemy.type, source: "hazard" });
+            pushLog(state, `${enemy.type.toUpperCase()} caught in the minefield.`);
+            leaveWreck(state, enemy);
+            dropCargo(state, enemy);
+            continue;
+          }
+        }
         // OUT THROUGH THE GATE WITH IT. A laden Collector that reaches a gate
         // is gone and so is the salvage — the one loss in this game you take
         // by being slow rather than by being hit, and the reason it is a clock

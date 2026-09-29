@@ -663,7 +663,34 @@ moving 51%; 15% of runs won.
   three mechanics resting on a wreck still being a ship. Intact hull, scorched,
   panels buckled, holes punched through, everything dead.
 
-## TERRAIN — a plan, not yet built (2026-09-19)
+## WHY THE WALKING IS DULL — measured (2026-09-29)
+
+Not the share of turns spent moving. The sameness of the hexes.
+
+Before any terrain was added, over 4,751 rounds of real play: **9.2% of the
+board was ever dangerous** (3.3 threatened hexes of 35.7), **89.5% of the
+steps available on a given round were completely free** (4.06 of 4.54), and
+**42.6% of rounds had nothing alive on them at all**. A board where nine of
+every ten steps cost nothing is a board where moving is not a decision.
+
+Ion clouds and mine drifts took the contested share to 13.3% and empty rounds
+to 24.4%, at no measurable cost to win rate. They did **not** move the steps
+figure: 90.0%.
+
+**The reason is a three-way squeeze, and it is the thing to solve next.**
+Hostiles are placed from the same candidate hexes as terrain and skip any hex
+holding a hazard, so ground laid down greedily silently costs the board its
+ships — a sector dealing three contacts instead of five because it rolled a
+wide cloud. Spawn room is now reserved, which caps terrain: raising the mine
+share from 0.14 to 0.22 changes nothing at all, because the reservation binds
+first. On a 40-hex board, enemy density and terrain density are competing for
+the same hexes, and the board was capped at 40 precisely to buy the first one.
+
+So terrain cannot be the answer to movement here, and neither can more
+hostiles while the flagship gets one action a round and every hull dies to one
+shot. That is the constraint to attack, not the board.
+
+## TERRAIN — BUILT (2026-09-19, shipped 2026-09-29)
 
 ### What is there now
 

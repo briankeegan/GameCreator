@@ -1066,6 +1066,61 @@
         if (clouds % PATCH === 0) break;
       }
     }
+    // ---- GROUND THAT IS NOT A WALL --------------------------------------
+    //
+    // Measured before these existed: 9.2% of the board was ever dangerous and
+    // 89.5% of the steps available to the flagship on a given round were
+    // completely free. A board where nine of every ten steps cost nothing is
+    // a board where moving is not a decision, which is the whole of the
+    // "you're just chasing ships around" complaint — the share of turns spent
+    // moving is not the problem, the sameness of the hexes is.
+    //
+    // Neither of these deals with that by adding damage. An ion cloud prices
+    // a hex by what you can SEE from it, a mine drift by what it costs to
+    // STOP on it, and both are there on the 42.6% of rounds when nothing is
+    // alive, which no hostile can be.
+    const CLOUD_PATCHES = Math.max(0, Math.round(envNumber("GC_IONCLOUD", 2)));
+    const MINE_SHARE = envNumber("GC_MINES", 0.06);
+    // GROUND NEVER COSTS THE BOARD ITS SHIPS. Hostiles are placed later from
+    // the same candidate list and skip any hex holding a hazard, so terrain
+    // laid down greedily simply spawns fewer of them — a sector quietly
+    // dealing three contacts instead of five because it happened to roll a
+    // wide cloud. The roster is what the board is sized for, so it is
+    // reserved: spacing means a contact needs roughly three hexes to itself.
+    const spawnRoom = roster * 3;
+    const roomLeft = () => candidates.length - hazards.length > spawnRoom;
+    const takenHex = (at) =>
+      hazards.some((h) => h.q === at.q && h.r === at.r) ||
+      exits.some((ex) => hexDist(at, ex) < 2) ||
+      (outpost && hexDist(at, outpost) < 2) ||
+      hexDist(at, playerStart) < 2;
+
+    // Patches, not a sprinkle — the point is somewhere to duck INTO, and a
+    // scatter of single blind hexes is only a tax on everyone's firing lines.
+    let patches = 0;
+    for (const hex of candidates) {
+      if (patches >= CLOUD_PATCHES || !roomLeft()) break;
+      if (takenHex(hex)) continue;
+      const patch = [hex, ...ringOf(hex, 1)].filter(
+        (at) => candidates.some((c) => c.q === at.q && c.r === at.r) && !takenHex(at)
+      );
+      if (patch.length < 3) continue;
+      for (const at of patch.slice(0, 4)) hazards.push({ type: "ionCloud", q: at.q, r: at.r });
+      patches++;
+    }
+
+    // Scattered, because area denial that clumps is just a wall with a
+    // different name — what this is for is making a step sideways cost
+    // something, and that only works where you were going to step.
+    const mineCount = Math.max(0, Math.round(area * MINE_SHARE));
+    let mines = 0;
+    for (const hex of candidates) {
+      if (mines >= mineCount || !roomLeft()) break;
+      if (takenHex(hex)) continue;
+      hazards.push({ type: "mineDrift", q: hex.q, r: hex.r });
+      mines++;
+    }
+
     // ---- THE GATE HAS TO BE REACHABLE ----------------------------------
     //
     // Nothing checked this until a Debris Field was built. At the old
