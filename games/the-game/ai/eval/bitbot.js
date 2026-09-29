@@ -2231,9 +2231,19 @@
         if (this._opening && (info.incoming || !fits)) this._opening = false;
         if (!fits) return null;
         if (!this._opening && materialRows(base) >= WORKING_ROWS) return null;
-        // SOMETHING READY FIRST, AND READY FOR GARBAGE. A raise fills the board;
-        // take one with no answer in hand and the next thing that lands has none.
-        if (!this.answersASlab(base)) return null;
+        // AND NOTHING ELSE. In particular NOT "only with an answer ready".
+        //
+        // Having a break in hand is the save invariant's job, at the exit gate,
+        // on every decision. Making it a PRECONDITION OF RAISING defeats itself:
+        // on a clean board there is no garbage to break, so no answer can exist,
+        // so the raise is refused -- and the raise is the only thing that adds
+        // the material an answer is made of. Measured on seed 101: the board sat
+        // at 3.0 rows for a thousand frames, flat, empty and with nothing
+        // incoming, never raising, and then took a 30-cell chain with eighteen
+        // panels in hand and died at 1,560.
+        //
+        // What is left is the rule as given: the opening, or material under the
+        // floor, and only to a height the board survives.
         return this._opening ? 'opening' : 'material';
     };
 
