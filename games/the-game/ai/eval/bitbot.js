@@ -2093,6 +2093,20 @@
         // Two rows of rise is the slack. Inside that the decision stands as made.
         if (this._lastDeadline < 2 * (info.framesPerRow || 0)) return d;
 
+        // A SAVE IS KEPT, NOT CONJURED.
+        //
+        // If the board had no answer before the move, the move did not spend one
+        // -- and substituting a weights-ranked move because none exists is not
+        // keeping a save, it is a second objective running on every decision from
+        // frame 0. It fired on a fifth of them, over attack and survival plans
+        // alike, and the round-robin went to 13 deaths from 11 with the earliest
+        // at frame 1,293 against 4,205.
+        //
+        // The rule is that the last answer is not spent for nothing: it is okay
+        // to break it as long as breaking it leaves another. So the gate binds
+        // only where there is one to keep.
+        if (!this.saveAfter(base, info.cursorRow, info.cursorCol, info)) return d;
+
         var chosen = null;
         for (i = 0; i < pool.length; i++) {
             var pc = pool[i];
