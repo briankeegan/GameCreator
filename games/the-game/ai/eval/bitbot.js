@@ -166,6 +166,7 @@
         // The plan being executed, if any. See the commitment note in decide().
         this._plan = null;
         this._flatten = null;
+        this._opening = true;
         this._attack = null;
 
         this._snapshot = PanelCpu().snapshot;
@@ -193,7 +194,8 @@
         this.counts = { refusedDeadly: 0, allDead: 0, byMode: {},
                         refusedReturn: 0, defendByClock: 0, refusedTooSlow: 0, planned: 0, planDropped: 0,
                         attacked: 0, attackDropped: 0, cellsPlanned: 0, refusedPayless: 0,
-                        raisedForMaterial: 0, refusedRaise: 0, forcedBreak: 0, forcedBoth: 0, refusedEarly: 0,
+                        raisedForMaterial: 0, refusedRaise: 0, waitedToRaise: 0,
+                        openingRaises: 0, openingWaits: 0, forcedBreak: 0, forcedBoth: 0, refusedEarly: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
                         revealWindows: 0, digging: 0, flattened: 0, flattenDropped: 0,
                         refusedStranded: 0, refusedNoFailsafe: 0 };
@@ -539,6 +541,13 @@
         if (s.preventManualRaise || s.manualRaise) return false;
         if (typeof s.isToppedOut === 'function' && s.isToppedOut()) return false;
         if (typeof s.hasFallingGarbage === 'function' && s.hasFallingGarbage()) return false;
+        // AND NOT WHILE THE ENGINE IS BUSY. riseLock is set while a swap is queued
+        // or panels are still in motion, and a raise asked for then is not a move
+        // the engine will take. It clears on its own; the answer is to do
+        // something else this decision, not to hold the button through it.
+        if (s.riseLock) return false;
+        if (typeof s.hasActivePanels === 'function' && s.hasActivePanels()) return false;
+        if ((s.shakeTime || 0) > 0) return false;
         return true;
     };
 
@@ -573,10 +582,28 @@
             risen.incoming = false;
             var rst = bit.maskState(risen.grid, risen.blocks, W, risen.height);
             var rres = bit.resolveFromMasks(rst, true);
-            out.push({ kind: 'raise', swap: null,
-                       board: null,
-                       masks: rres.settled || rst,
-                       moveFrames: 0, resolved: summarise(rres) });
+            var rmasks = rres.settled || rst;
+            var rres2 = summarise(rres);
+            // AND ONLY IF THE BOARD SURVIVES IT.
+            //
+            // canRaise() is the ENGINE's list of refusals and says nothing about
+            // whether the row kills. A raise that tops the board out is not an
+            // option any more than an illegal swap is, so it does not go in the
+            // pool -- otherwise every path that reads the pool can pick one and
+            // only the branch that happens to re-check is safe.
+            //
+            // Every queued cell lands, so it counts toward the height, and the
+            // risen board faces the death filter over a full row of rise like any
+            // other candidate.
+            var inRows = Math.ceil((info.incoming || 0) / W);
+            if (tallestBoard(rmasks) + inRows < H &&
+                !this.deadly(rmasks, rres2, info,
+                             Math.max(this.reaction, info.framesPerRow || 0))) {
+                out.push({ kind: 'raise', swap: null,
+                           board: null,
+                           masks: rmasks,
+                           moveFrames: 0, resolved: rres2 });
+            }
         }
 
         // EVERY SWAP, ANSWERED BY THE ARITHMETIC AND NOT BY A SECOND SIMULATION.
@@ -1611,6 +1638,105 @@
             return false;
         }
 
+        // THE OPENING: THE FIRST THING IT DOES IS RAISE.
+        //
+        // The board is dealt nearly empty and a chain is built out of panels, so
+        // the opening is not a decision -- it is holding raise until there is
+        // something to play with. Nothing else is considered while it lasts.
+        //
+        // It ends the moment the board has the material, or the moment the game
+        // starts happening to it: garbage on the way, or topped out. After that
+        // the ordinary floor rule takes over.
+        if (this._opening) {
+            // The board is not dealt empty, so this is not a material-floor rule:
+            // it is filling the board while filling it is free. It ends when the
+            // game starts happening -- garbage on the way, or topped out -- or
+            // when another row would not leave the room a chain needs to stand in.
+            // The only height bound is the one that matters: the row it adds,
+            // plus every cell already queued, still has to fit under the ceiling.
+            // There is no headroom reserve beyond that, and the raise in the pool
+            // has already faced the death filter besides.
+            var openRows = Math.ceil((info.incoming || 0) / W);
+            if (info.incoming || info.toppedOut ||
+                tallestOf(pool) + 1 + openRows >= H) {
+                this._opening = false;
+            } else {
+                var openRaise = null;
+                for (i = 0; i < pool.length; i++) if (pool[i].kind === 'raise') openRaise = pool[i];
+                if (openRaise) {
+                    this.counts.openingRaises++;
+                    return { kind: 'raise', mode: mode, alive: alive, via: 'opening' };
+                }
+                var o0 = this.stack;
+                // A RAISE ALREADY IN FLIGHT IS NOT A RAISE REFUSED. update() holds
+                // the input for twenty frames after one is asked for, which makes
+                // canRaise() false and takes the raise out of the pool -- so the
+                // opening read its own success as "no raise is possible" and ended
+                // after a single row.
+                if (this.raiseFrames > 0) {
+                    this.counts.openingWaits++;
+                    return { kind: 'hold', mode: mode, alive: alive, via: 'opening' };
+                }
+                // The engine is mid-swap or mid-resolve. That clears on its own,
+                // and waiting for the row beats spending the decision elsewhere.
+                if (this.allowRaise &&
+                    !o0.preventManualRaise && !o0.manualRaise &&
+                    !(typeof o0.hasFallingGarbage === 'function' && o0.hasFallingGarbage())) {
+                    this.counts.openingWaits++;
+                    return { kind: 'hold', mode: mode, alive: alive, via: 'opening' };
+                }
+                this._opening = false;
+            }
+        }
+
+        // MATERIAL BEFORE ATTACKING. A board under the floor has nothing to
+        // attack WITH -- every clear it fires spends panels a chain would have
+        // been built from -- so the raise comes first, at the start of the game
+        // when the board is nearly empty and every time it drops back under.
+        // Ranked after the attack, the bot spent the opening attacking off two
+        // rows instead of building up.
+        // WHETHER A RAISE IS AVAILABLE IS THE POOL'S ANSWER, NOT THIS BRANCH'S.
+        //
+        // A raise the engine refuses, or one the board would not survive, is not
+        // in the pool -- the same way an illegal swap is not. So finding one there
+        // IS the validity test, and this branch asks only its own question: is the
+        // board short of material.
+        if (!survival && materialRows(base) < WORKING_ROWS) {
+            var risenCand = null;
+            for (i = 0; i < pool.length; i++) if (pool[i].kind === 'raise') risenCand = pool[i];
+            if (risenCand) {
+                this.counts.raisedForMaterial++;
+                return { kind: 'raise', mode: mode, alive: alive, via: 'raiseMaterial' };
+            }
+            this.counts.refusedRaise++;
+
+            // WAIT A BEAT FOR IT. riseLock is set while a swap is queued or panels
+            // are in motion, and the bot swaps on nearly every decision, so the
+            // engine is busy on 2,514 of the 2,723 decisions taken below the floor
+            // -- the raise it owes itself is almost never available and the board
+            // sits under four rows for 90% of a game.
+            //
+            // The lock clears on its own in a few frames. Below the floor, with
+            // nothing to survive and nothing queued against it, standing still for
+            // one decision and taking the row is the move; swapping past the
+            // opportunity is how the board never refills.
+            //
+            // Only for a lock that clears: topped out or garbage still falling are
+            // refusals that waiting does not fix.
+            var s0 = this.stack;
+            var busy = !!s0.riseLock ||
+                       (typeof s0.hasActivePanels === 'function' && s0.hasActivePanels()) ||
+                       (s0.shakeTime || 0) > 0;
+            var wontClear = s0.preventManualRaise || s0.manualRaise ||
+                            (typeof s0.isToppedOut === 'function' && s0.isToppedOut()) ||
+                            (typeof s0.hasFallingGarbage === 'function' && s0.hasFallingGarbage());
+            if (this.allowRaise && busy && !wontClear && !this.raiseFrames &&
+                !info.incoming && !info.toppedOut) {
+                this.counts.waitedToRaise++;
+                return { kind: 'hold', mode: mode, alive: alive, via: 'waitRaise' };
+            }
+        }
+
         if (!survival) {
             if (this._attack && this._attack.moves.length) {
                 var an = this._attack.moves[0];
@@ -1700,21 +1826,6 @@
         // two ways to get them are raising and breaking. Measured on seed 101, it
         // sat at 3 rows for six straight decisions under the floor of 4, refusing
         // to raise because a slab was queued, and died 150 frames later.
-        // WHETHER A RAISE IS AVAILABLE IS THE POOL'S ANSWER, NOT THIS BRANCH'S.
-        //
-        // A raise the engine refuses, or one the board would not survive, is not
-        // in the pool -- the same way an illegal swap is not. So finding one there
-        // IS the validity test, and this branch asks only its own question: is the
-        // board short of material.
-        if (!survival && materialRows(base) < WORKING_ROWS) {
-            var risenCand = null;
-            for (i = 0; i < pool.length; i++) if (pool[i].kind === 'raise') risenCand = pool[i];
-            if (risenCand) {
-                this.counts.raisedForMaterial++;
-                return { kind: 'raise', mode: mode, alive: alive, via: 'raiseMaterial' };
-            }
-            this.counts.refusedRaise++;
-        }
 
         // A PLAN MOVE IS STILL A MOVE, so it faces the no-return rule like any
         // other. Returning early with it skipped that check and the bot went back
