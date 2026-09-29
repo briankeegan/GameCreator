@@ -2519,6 +2519,27 @@
         }
         if (d.via === 'survivalPlan') return d;
 
+        // A SAVE IS ONLY WORTH GUARDING IF IT CANNOT BE REBUILT IN TIME.
+        //
+        // Substituting costs the move the decision actually wanted, so the rule
+        // has to be worth that. It is worth it when the board fills before
+        // another clear could be made, and not otherwise -- with time in hand a
+        // spent clear is a clear that gets rebuilt.
+        //
+        // The number is not a choice: the search already prices the cheapest
+        // route to a board that can fire, and framesToDeath prices how long this
+        // board has. Guard the save when the first is longer than the second.
+        //
+        // Measured: holding any clear unconditionally fires on two thirds of all
+        // decisions -- 113 and 150 a duel against 1 to 10 -- and the round-robin
+        // went to 6 deaths in 60 boards from 4, with two of them before frame
+        // 1,000. Every one of those substitutions replaces a purposeful move with
+        // a weights-ranked one.
+        var rebuild = (this._lastOptions && this._lastOptions.ready)
+                    ? (this._lastOptions.ready.duration || 0)
+                    : travel.MOVE_FRAMES * W + this.reaction;
+        if (this._lastDeadline > rebuild) return d;
+
         var chosen = null;
         for (i = 0; i < pool.length; i++) {
             var pc = pool[i];
