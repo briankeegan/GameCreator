@@ -1917,14 +1917,16 @@
     var res2 = svSend(pool, rest.map(function (it) { return it.length ? { type: 'sv-expand', pass: 2, items: ids(it) } : null; }));
     read(res2, 2, rest);
   };
-  // The nodes the search keeps, played again on this thread.
+  // The nodes the search keeps, played again on this thread the first time
+  // one is read, as the search played them (its horizon and rest, one move
+  // from each board).
   PuyoCpu.prototype._svEnd = function (par, proofs, weak, far) {
-    var self = this, k;
+    var self = this, until = this._lineUntil, rest = this._restNeeded;
     par.pool.ws.forEach(function (x) { x.w.postMessage({ type: 'sv-end' }); });
-    function real(x) {
+    function replay(x) {
       if (!x || !x._svp) return x;
       if (x._real) return x._real;
-      var parent = real(x.prev), long = x.m === 'long';
+      var parent = replay(x.prev), long = x.m === 'long';
       var r = self._lineStep(parent, long ? null : x.m, long);
       if (!r || r.t !== x.t || !!r.dead !== !!x.dead ||
           (!r.dead && (r.b.key !== x.b.key || String(r.pos) !== String(x.pos) || self._heldFor(r.carry) !== x.carry.stopTime))) {
@@ -1934,14 +1936,24 @@
       x._real = r;
       return r;
     }
-    // One move from each board: its walk alone, not every swap's.
-    this._oneMove = true;
-    try {
-      for (k in proofs) proofs[k] = real(proofs[k]);
-      for (k in weak) weak[k] = real(weak[k]);
-      for (k in far) far[k] = real(far[k]);
-      if (this._proofs) for (k in this._proofs) this._proofs[k] = real(this._proofs[k]);
-    } finally { this._oneMove = false; }
+    function real(x) {
+      if (!x || !x._svp || x._real) return x && x._svp ? x._real : x;
+      var su = self._lineUntil, sr = self._restNeeded, so = self._oneMove;
+      self._lineUntil = until; self._restNeeded = rest; self._oneMove = true;
+      try { return replay(x); } finally { self._lineUntil = su; self._restNeeded = sr; self._oneMove = so; }
+    }
+    function lazy(o) {
+      if (!o) return;
+      Object.keys(o).forEach(function (k) {
+        var x = o[k];
+        if (!x || !x._svp) return;
+        var get = function () { var r = real(x); Object.defineProperty(o, k, { value: r, writable: true, enumerable: true, configurable: true }); return r; };
+        get.t = x.t;
+        Object.defineProperty(o, k, { enumerable: true, configurable: true, get: get,
+          set: function (v) { Object.defineProperty(o, k, { value: v, writable: true, enumerable: true, configurable: true }); } });
+      });
+    }
+    lazy(proofs); lazy(weak); lazy(far); lazy(this._proofs);
   };
   // The worker's side of it.
   var SV = null, SV_F = 10;
@@ -2778,19 +2790,26 @@
     this._restNeeded = savedRest;
     return best;
   };
+  // A proof's time, without playing again a proof the threaded search left
+  // on its workers (_svEnd).
+  function proofTime(o, k) {
+    var d = Object.getOwnPropertyDescriptor(o, k);
+    if (d && d.get && d.get.t !== undefined) return d.get.t;
+    return o[k] ? o[k].t : 0;
+  }
   PuyoCpu.prototype._longestKnown = function (live) {
     var sp = this._searchProofs, FULL = this.SURVIVE_FRAMES + this.SURVIVE_REST, best = FULL, i, k, t;
     if (!sp) return null;
     for (i = 0; i < live.length; i++) {
       k = sp.cands.indexOf(live[i]);
-      t = k >= 0 && sp.proofs[k] ? sp.proofs[k].t : 0;
+      t = k >= 0 ? proofTime(sp.proofs, k) : 0;
       if (t > best) best = t;
     }
     if (best <= FULL) return null;
     var keep = [];
     for (i = 0; i < live.length; i++) {
       k = sp.cands.indexOf(live[i]);
-      if (k >= 0 && sp.proofs[k] && sp.proofs[k].t === best) keep.push(live[i]);
+      if (k >= 0 && proofTime(sp.proofs, k) === best) keep.push(live[i]);
     }
     return keep;
   };
