@@ -1344,17 +1344,21 @@
                                    info.framesPerRow || 0);
             if (this.deadly(cand.masks, cand.resolved, info, horizon)) { this.counts.refusedDeadly++; continue; }
             alive++;
-            // NOTHING CLEARS ANYWHERE: SET UP. When no option on the board
-            // clears anything, the only thing that separates the swaps is what
-            // they leave behind, and the board's own count of ways a clear can
-            // still be made is that. Ties to the cheaper move.
-            // LEXICOGRAPHIC, NOT A WEIGHTED SUM. Ways to build decide it; between
-            // two boards offering the same, the flatter one wins; between two of
-            // those, the cheaper move. Each term is scaled past the next so it
-            // cannot be outvoted -- there is no weight here to get wrong, and a
-            // flatter board can never beat a better one.
+            // NOTHING CLEARS ANYWHERE: FLATTEN. Flattening IS the setup.
+            //
+            // LEXICOGRAPHIC, NOT A WEIGHTED SUM: the flatter board wins; between
+            // two equally flat ones, the one offering more ways to make a line;
+            // between two of those, the cheaper move. Each term is scaled past the
+            // next so it cannot be outvoted, and there is no weight here to get
+            // wrong.
+            //
+            // WAYS-TO-BUILD LED THIS AND IT BUILT TOWERS. Two boards rarely offer
+            // the same count, so flatness was a tiebreak that never fired, and the
+            // bot stacked columns 1-3 five and six high with columns 5-6 empty and
+            // a hole in the bottom row. The same panels spread across six columns
+            // offer more lines anyway and are not against the ceiling.
             var s = noneClear
-                  ? matchWays(cand.masks) * 10000 - bumpiness(cand.masks) * 100 - (cand.moveFrames || 0)
+                  ? -bumpiness(cand.masks) * 10000 + matchWays(cand.masks) * 100 - (cand.moveFrames || 0)
                   : this.score(cand.masks, cand.moveFrames, cand.resolved, info);
             if (!best || s > best.score) best = { cand: cand, score: s };
         }
@@ -1498,9 +1502,17 @@
         // Measured: material sits at 2 to 3 flat rows for 82% of a game, so a
         // floor of WORKING_ROWS fires almost always. Raising on all of those is
         // 8 deaths in 8 at an average of 10,369 frames.
-        var buried = false;
-        for (i = 1; i <= W; i++) if (base.garb[i]) { buried = true; break; }
-        if (!survival && !info.incoming && !buried && this.canRaise() &&
+        // GARBAGE ON THE BOARD IS NOT A REASON NOT TO RAISE. Raise first, then
+        // break: both make panels and a board short of them needs whichever it can
+        // get. Refusing while buried starved the board that needed material most --
+        // on rand4 seed 101 it was holding 2 rows when a 24-cell slab landed, and
+        // died with 20 panels in four columns and no line left in them.
+        //
+        // The guards that matter are still every one of them: canRaise() is the
+        // engine's own list of refusals, the row has to leave WORKING_ROWS of
+        // headroom under the ceiling -- and garbage counts toward that height --
+        // and the risen board faces the death filter like any other move.
+        if (!survival && !info.incoming && this.canRaise() &&
             materialRows(base) < WORKING_ROWS &&
             tallestOf(pool) + 1 <= H - WORKING_ROWS) {
             // ONLY IF IT DOES NOT KILL. canRaise() is the engine's own list of
