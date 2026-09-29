@@ -69,16 +69,29 @@
     // the ceiling. `bumps` is PANELS PER COLUMN, because height is the wrong
     // ruler for how the material is spread: under a slab every column measures
     // the same height however lopsided the panels beneath it are.
+    // `tall` is the whole board, garbage and all, because that is what reaches
+    // the ceiling.
+    //
+    // `excess` is the rows the fullest column is carrying above what an even
+    // spread of the same panels would need: max(panels per column) minus their
+    // mean. It is the ceiling the board owns and is not using, in rows, so it
+    // converts to frames at framesPerRow like any other row. Garbage is left out
+    // of it for the same reason it is left out of materialRows -- a slab is not
+    // material and cannot be spread.
+    //
+    // `bumps` is the same panel counts as a sum of steps, kept for tie-breaks.
     function shapeOf(st2) {
-        var h = [], c, tall = 0, bumps = 0, w2 = st2 && (st2.W || 6);
+        var h = [], c, tall = 0, bumps = 0, sum = 0, mx = 0, w2 = st2 && (st2.W || 6);
         if (!st2) return null;
         for (c = 1; c <= w2; c++) {
             var top = 32 - Math.clz32(st2.occ[c] >>> 0);
             if (top > tall) tall = top;
             h[c] = bit.popcount((st2.occ[c] & ~st2.garb[c]) >>> 0);
+            sum += h[c];
+            if (h[c] > mx) mx = h[c];
         }
         for (c = 1; c < w2; c++) bumps += Math.abs(h[c] - h[c + 1]);
-        return { tall: tall, bumps: bumps };
+        return { tall: tall, bumps: bumps, excess: mx - sum / w2 };
     }
 
     function optionOf(swaps, frames, r) {
@@ -215,9 +228,10 @@
             return { mask: reach, dig: dig };
         }
 
-        var flat = null;
+        var flat = null, BASE = null, FPR = (timing && timing.framesPerRow) || 112;
 
         function expandAll(state0, depth) {
+            BASE = shapeOf(state0);
             // The root has no reach mask: ply one stays exhaustive so an immediate
             // clear is never missed.
             var frontier = [{ st: state0, chain: [], from: cursor, spent: 0, reach: null, dig: 0 }], ply;
@@ -296,13 +310,40 @@
                             // only counted on a board that ties or beats the best
                             // flatness, so the mask is built for a handful of nodes
                             // a ply rather than all of them.
-                            var bp = bumpsOf(res.settled);
-                            if (!flat || bp <= flat.bumps) {
-                                var wy = waysOf(res.settled);
-                                if (!flat || bp < flat.bumps || wy > flat.ways ||
-                                    (wy === flat.ways && cost < flat.frames)) {
-                                    flat = { swaps: seq, frames: cost, bumps: bp,
-                                             ways: wy, duration: durationOf(seq, cost) };
+                            // WHAT FLATTENING IS WORTH, IN FRAMES.
+                            //
+                            //   (tallNow - tallAfter) * framesPerRow
+                            // the ceiling it hands back. Death comes at the TALLEST
+                            // column, so a row off the top is framesPerRow frames --
+                            // 112 at level 10. A one-block spike swapped sideways
+                            // into a shorter column lowers the whole board by a row
+                            // for one swap.
+                            //
+                            //   (excessNow - excessAfter) * framesPerRow
+                            // the ceiling the board owns and is not using: the rows
+                            // the fullest column carries above an even spread of the
+                            // same panels. Also rows, so also framesPerRow.
+                            //
+                            //   - duration
+                            // what the walk costs, in the same frames.
+                            //
+                            // One number. Ties go to the board offering more ways to
+                            // finish a line, and there is no tier for the arithmetic
+                            // to be outvoted by.
+                            var sh2 = shapeOf(res.settled);
+                            if (sh2) {
+                                var dur = durationOf(seq, cost);
+                                var val = (BASE.tall - sh2.tall) * FPR
+                                        + (BASE.excess - sh2.excess) * FPR
+                                        - dur;
+                                var take = !flat || val > flat.value;
+                                if (!take && flat && val === flat.value) {
+                                    take = waysOf(res.settled) > flat.ways;
+                                }
+                                if (take) {
+                                    flat = { swaps: seq, frames: cost, value: val,
+                                             tall: sh2.tall, bumps: sh2.bumps,
+                                             ways: waysOf(res.settled), duration: dur };
                                 }
                             }
                             born.push({ st: res.settled, chain: seq,
@@ -363,8 +404,9 @@
         offer(now);
         offer(next);
 
-        // Only worth naming if it is flatter than standing still.
-        if (flat && flat.bumps >= bumpsOf(st)) flat = null;
+        // Worth naming only if it buys more frames than it costs. Standing still is
+        // worth zero.
+        if (flat && !(flat.value > 0)) flat = null;
 
         return { now: now, next: next, cheapest: cheapest, flatten: flat,
                  swapsConsidered: swaps.length, refused: refused, unknown: unknown };

@@ -987,6 +987,7 @@
     BitBot.prototype.timing = function (info) {
         var frozen = (info.stopTime || 0) > 0 || !!info.toppedOut;
         return {
+            framesPerRow: info.framesPerRow || 0,
             overhead: travel.MOVE_FRAMES + (frozen ? 0 : this.reaction),
             resolve: function (size, garbage) {
                 return BF.resolveFramesOf(PanelEngine(), size, garbage);
