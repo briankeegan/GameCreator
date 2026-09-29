@@ -12,7 +12,7 @@
   } else {
     importScripts('../../panel-rules.js', '../../panel-engine.js', '../../panel-cpu.js',
                   'features.js', 'registry.js', 'input.js', 'travel.js', 'evaluator.js',
-                  'engineboard.js', 'modes.js', 'puyocpu.js');
+                  'engineboard.js', 'modes.js', 'faststack.js', 'puyocpu.js');
     PuyoCpu = self.PanelEval.PuyoCpu;
   }
   function handle(m) {

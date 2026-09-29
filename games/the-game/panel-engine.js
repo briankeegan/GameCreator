@@ -1810,6 +1810,7 @@
     comboGarbage: comboGarbage,
     moveScore: moveScore,
     riseTime: riseTime,
+    shakeFramesFor: shakeFramesFor,
     makeRng: makeRng
   };
 })(typeof window !== "undefined" ? window : globalThis);
