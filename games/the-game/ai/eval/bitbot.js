@@ -166,6 +166,7 @@
         // The plan being executed, if any. See the commitment note in decide().
         this._plan = null;
         this._flatten = null;
+        this._opening = true;
         this._attack = null;
 
         this._snapshot = PanelCpu().snapshot;
@@ -193,7 +194,8 @@
         this.counts = { refusedDeadly: 0, allDead: 0, byMode: {},
                         refusedReturn: 0, defendByClock: 0, refusedTooSlow: 0, planned: 0, planDropped: 0,
                         attacked: 0, attackDropped: 0, cellsPlanned: 0, refusedPayless: 0,
-                        raisedForMaterial: 0, refusedRaise: 0, forcedBreak: 0, forcedBoth: 0, refusedEarly: 0,
+                        raisedForMaterial: 0, refusedRaise: 0, waitedToRaise: 0,
+                        openingRaises: 0, openingWaits: 0, saveKept: 0, saveUnkeepable: 0, savePlanned: 0, heldTheBreak: 0, forcedBreak: 0, forcedBoth: 0, refusedEarly: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
                         revealWindows: 0, digging: 0, flattened: 0, flattenDropped: 0,
                         refusedStranded: 0, refusedNoFailsafe: 0 };
@@ -539,6 +541,13 @@
         if (s.preventManualRaise || s.manualRaise) return false;
         if (typeof s.isToppedOut === 'function' && s.isToppedOut()) return false;
         if (typeof s.hasFallingGarbage === 'function' && s.hasFallingGarbage()) return false;
+        // AND NOT WHILE THE ENGINE IS BUSY. riseLock is set while a swap is queued
+        // or panels are still in motion, and a raise asked for then is not a move
+        // the engine will take. It clears on its own; the answer is to do
+        // something else this decision, not to hold the button through it.
+        if (s.riseLock) return false;
+        if (typeof s.hasActivePanels === 'function' && s.hasActivePanels()) return false;
+        if ((s.shakeTime || 0) > 0) return false;
         return true;
     };
 
@@ -573,10 +582,28 @@
             risen.incoming = false;
             var rst = bit.maskState(risen.grid, risen.blocks, W, risen.height);
             var rres = bit.resolveFromMasks(rst, true);
-            out.push({ kind: 'raise', swap: null,
-                       board: null,
-                       masks: rres.settled || rst,
-                       moveFrames: 0, resolved: summarise(rres) });
+            var rmasks = rres.settled || rst;
+            var rres2 = summarise(rres);
+            // AND ONLY IF THE BOARD SURVIVES IT.
+            //
+            // canRaise() is the ENGINE's list of refusals and says nothing about
+            // whether the row kills. A raise that tops the board out is not an
+            // option any more than an illegal swap is, so it does not go in the
+            // pool -- otherwise every path that reads the pool can pick one and
+            // only the branch that happens to re-check is safe.
+            //
+            // Every queued cell lands, so it counts toward the height, and the
+            // risen board faces the death filter over a full row of rise like any
+            // other candidate.
+            var inRows = Math.ceil((info.incoming || 0) / W);
+            if (tallestBoard(rmasks) + inRows < H &&
+                !this.deadly(rmasks, rres2, info,
+                             Math.max(this.reaction, info.framesPerRow || 0))) {
+                out.push({ kind: 'raise', swap: null,
+                           board: null,
+                           masks: rmasks,
+                           moveFrames: 0, resolved: rres2 });
+            }
         }
 
         // EVERY SWAP, ANSWERED BY THE ARITHMETIC AND NOT BY A SECOND SIMULATION.
@@ -1102,11 +1129,13 @@
         };
     };
 
-    BitBot.prototype.decide = function () {
+    BitBot.prototype._decide = function () {
         var board = this._snapshot();
         var info = this.info(board);
         var pool = this.candidates(board, info);
         var base = pool.length ? pool[0].masks : bit.maskState(board.grid, board.blocks, W, board.height);
+        this._lastInfo = info; this._lastPool = pool; this._lastBase = base;
+        this._lastOptions = null; this._lastDeadline = 0;
         var rev = this.revealPick(board);
         // ONLY OPTIONS IT CAN ACTUALLY FINISH IN THE TIME IT HAS LEFT.
         //
@@ -1122,6 +1151,7 @@
         // has hundreds -- which is the point: it bites exactly in the spiral, and
         // nowhere else.
         var deadline = framesToDeath(info, tallestOf(pool), info.framesPerRow);
+        this._lastDeadline = deadline;
         // DEFEND RANKS BY THE CLOCK, NOT BY THE WEIGHTS.
         //
         // The bot is always attacking -- the modes only change which shapes it
@@ -1247,7 +1277,7 @@
                 }
             }
             if (!survival) {
-                options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
+                options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
                                                    this.timing(info, deadline), digging);
                 var plan = bestPlan(options, info.stopTime || 0, deadline, PanelEngine(),
                                     !!info.toppedOut, info.framesPerRow, this.stack.frames,
@@ -1611,6 +1641,108 @@
             return false;
         }
 
+        // THE OPENING: THE FIRST THING IT DOES IS RAISE.
+        //
+        // The board is dealt nearly empty and a chain is built out of panels, so
+        // the opening is not a decision -- it is holding raise until there is
+        // something to play with. Nothing else is considered while it lasts.
+        //
+        // It ends the moment the board has the material, or the moment the game
+        // starts happening to it: garbage on the way, or topped out. After that
+        // the ordinary floor rule takes over.
+        if (this._opening) {
+            // The board is not dealt empty, so this is not a material-floor rule:
+            // it is filling the board while filling it is free. It ends when the
+            // game starts happening -- garbage on the way, or topped out -- or
+            // when another row would not leave the room a chain needs to stand in.
+            // The only height bound is the one that matters: the row it adds,
+            // plus every cell already queued, still has to fit under the ceiling.
+            // There is no headroom reserve beyond that, and the raise in the pool
+            // has already faced the death filter besides.
+            var openRows = Math.ceil((info.incoming || 0) / W);
+            if (info.incoming || info.toppedOut ||
+                tallestOf(pool) + 1 + openRows >= H) {
+                this._opening = false;
+            } else {
+                var openRaise = null;
+                for (i = 0; i < pool.length; i++) if (pool[i].kind === 'raise') openRaise = pool[i];
+                if (openRaise) {
+                    this.counts.openingRaises++;
+                    return { kind: 'raise', mode: mode, alive: alive, via: 'opening' };
+                }
+                var o0 = this.stack;
+                // A RAISE ALREADY IN FLIGHT IS NOT A RAISE REFUSED. update() holds
+                // the input for twenty frames after one is asked for, which makes
+                // canRaise() false and takes the raise out of the pool -- so the
+                // opening read its own success as "no raise is possible" and ended
+                // after a single row.
+                // ONLY IN BUILD. ATTACK and DEFEND drop hold from the pool because
+                // there is something that has to be done now; a wait is still a
+                // decision spent doing nothing, and the rule does not care why.
+                if (this.raiseFrames > 0 && mode.name === 'BUILD') {
+                    this.counts.openingWaits++;
+                    return { kind: 'hold', mode: mode, alive: alive, via: 'opening' };
+                }
+                // The engine is mid-swap or mid-resolve. That clears on its own,
+                // and waiting for the row beats spending the decision elsewhere.
+                if (this.allowRaise && mode.name === 'BUILD' &&
+                    !o0.preventManualRaise && !o0.manualRaise &&
+                    !(typeof o0.hasFallingGarbage === 'function' && o0.hasFallingGarbage())) {
+                    this.counts.openingWaits++;
+                    return { kind: 'hold', mode: mode, alive: alive, via: 'opening' };
+                }
+                this._opening = false;
+            }
+        }
+
+        // MATERIAL BEFORE ATTACKING. A board under the floor has nothing to
+        // attack WITH -- every clear it fires spends panels a chain would have
+        // been built from -- so the raise comes first, at the start of the game
+        // when the board is nearly empty and every time it drops back under.
+        // Ranked after the attack, the bot spent the opening attacking off two
+        // rows instead of building up.
+        // WHETHER A RAISE IS AVAILABLE IS THE POOL'S ANSWER, NOT THIS BRANCH'S.
+        //
+        // A raise the engine refuses, or one the board would not survive, is not
+        // in the pool -- the same way an illegal swap is not. So finding one there
+        // IS the validity test, and this branch asks only its own question: is the
+        // board short of material.
+        if (!survival && materialRows(base) < WORKING_ROWS) {
+            var risenCand = null;
+            for (i = 0; i < pool.length; i++) if (pool[i].kind === 'raise') risenCand = pool[i];
+            if (risenCand) {
+                this.counts.raisedForMaterial++;
+                return { kind: 'raise', mode: mode, alive: alive, via: 'raiseMaterial' };
+            }
+            this.counts.refusedRaise++;
+
+            // WAIT A BEAT FOR IT. riseLock is set while a swap is queued or panels
+            // are in motion, and the bot swaps on nearly every decision, so the
+            // engine is busy on 2,514 of the 2,723 decisions taken below the floor
+            // -- the raise it owes itself is almost never available and the board
+            // sits under four rows for 90% of a game.
+            //
+            // The lock clears on its own in a few frames. Below the floor, with
+            // nothing to survive and nothing queued against it, standing still for
+            // one decision and taking the row is the move; swapping past the
+            // opportunity is how the board never refills.
+            //
+            // Only for a lock that clears: topped out or garbage still falling are
+            // refusals that waiting does not fix.
+            var s0 = this.stack;
+            var busy = !!s0.riseLock ||
+                       (typeof s0.hasActivePanels === 'function' && s0.hasActivePanels()) ||
+                       (s0.shakeTime || 0) > 0;
+            var wontClear = s0.preventManualRaise || s0.manualRaise ||
+                            (typeof s0.isToppedOut === 'function' && s0.isToppedOut()) ||
+                            (typeof s0.hasFallingGarbage === 'function' && s0.hasFallingGarbage());
+            if (this.allowRaise && busy && !wontClear && !this.raiseFrames &&
+                mode.name === 'BUILD' && !info.incoming && !info.toppedOut) {
+                this.counts.waitedToRaise++;
+                return { kind: 'hold', mode: mode, alive: alive, via: 'waitRaise' };
+            }
+        }
+
         if (!survival) {
             if (this._attack && this._attack.moves.length) {
                 var an = this._attack.moves[0];
@@ -1628,7 +1760,7 @@
                 this._attack = null;
                 this.counts.attackDropped++;
             }
-            options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
+            options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
                                                    this.timing(info, deadline), digging);
             var atk = bestAttack(options, this.weights, PanelEngine(), deadline,
                                  this.stack.frames, (info.framesPerRow || 0) / W);
@@ -1700,21 +1832,6 @@
         // two ways to get them are raising and breaking. Measured on seed 101, it
         // sat at 3 rows for six straight decisions under the floor of 4, refusing
         // to raise because a slab was queued, and died 150 frames later.
-        // WHETHER A RAISE IS AVAILABLE IS THE POOL'S ANSWER, NOT THIS BRANCH'S.
-        //
-        // A raise the engine refuses, or one the board would not survive, is not
-        // in the pool -- the same way an illegal swap is not. So finding one there
-        // IS the validity test, and this branch asks only its own question: is the
-        // board short of material.
-        if (!survival && materialRows(base) < WORKING_ROWS) {
-            var risenCand = null;
-            for (i = 0; i < pool.length; i++) if (pool[i].kind === 'raise') risenCand = pool[i];
-            if (risenCand) {
-                this.counts.raisedForMaterial++;
-                return { kind: 'raise', mode: mode, alive: alive, via: 'raiseMaterial' };
-            }
-            this.counts.refusedRaise++;
-        }
 
         // A PLAN MOVE IS STILL A MOVE, so it faces the no-return rule like any
         // other. Returning early with it skipped that check and the bot went back
@@ -1755,7 +1872,7 @@
         // Dropped the moment it stops being true -- the next move must still be
         // legal and must not put the board back where it has just been.
         if (noneClear && (!this._flatten || !this._flatten.moves.length)) {
-            options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
+            options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
                                                     lookDepth, base, this.timing(info, deadline), digging);
         }
         // AND IT HAS TO FIT IN THE TIME THERE IS. The plan is priced in frames like
@@ -1799,6 +1916,118 @@
         }
         if (!best) return { kind: 'hold', mode: mode, alive: alive, via: 'noBest' };
         return { kind: best.cand.kind, move: best.cand.swap, mode: mode, alive: alive, via: (noneClear ? 'setup' : 'WEIGHTS') };
+    };
+
+    // A BREAK HAS TO SURVIVE THE MOVE, AND BE REACHABLE IN TIME.
+    //
+    // The bot may do whatever it likes -- attack, flatten, raise, set up -- as
+    // long as the board it leaves behind still holds a break it could get to.
+    // "Could get to" is the arithmetic used everywhere else: the walk from where
+    // the cursor ends up, plus the swap, against the frames that board has before
+    // it tops out. A break on the far side with twenty frames left is not a save.
+    BitBot.prototype.saveAfter = function (masks, row, col, info) {
+        var deadline = framesToDeath(info, tallestBoard(masks), info.framesPerRow);
+        var frozen = (info.stopTime || 0) > 0 || !!info.toppedOut;
+        var step = travel.MOVE_FRAMES + (frozen ? 0 : this.reaction);
+        var sw = bit.legalSwapsOf(masks), i, r;
+        for (i = 0; i < sw.length; i++) {
+            if (travel.cost(row, col, sw[i][0], sw[i][1]) + step > deadline) continue;
+            if (!bit.swapMasks(masks, sw[i][0], sw[i][1])) continue;
+            r = bit.resolveFromMasks(masks, false);
+            bit.swapMasks(masks, sw[i][0], sw[i][1]);
+            if (r.scope === 'garbage-broke') return true;
+        }
+        return false;
+    };
+
+    // THE GATE EVERY DECISION LEAVES BY.
+    //
+    // The rule belongs at the exit, not inside one of the paths that can pick a
+    // move: a filter wired into the candidate loop only ever shaped the fallback,
+    // and the moves that actually get played come from the attack and survival
+    // plans, which walked straight past it.
+    //
+    // Soft: if nothing keeps a save, the original move stands. This narrows the
+    // choice, it never refuses to move.
+    BitBot.prototype.decide = function () {
+        var d = this._decide();
+        var info = this._lastInfo, pool = this._lastPool, base = this._lastBase;
+        if (!d || d.kind !== 'swap' || !d.move || !info || !pool || !base) return d;
+        var buried = false, i;
+        for (i = 1; i <= W; i++) if (base.garb[i]) { buried = true; break; }
+        if (!buried) return d;
+
+        // ONLY WITH TIME TO SPARE. Keeping a save means playing something other
+        // than what the decision chose, and the substitute is ranked by the
+        // weights rather than by whatever objective picked the original -- so on
+        // a board that needs to survive, this trades a survival plan for a move
+        // whose only qualification is that it leaves a break standing. Measured:
+        // 6 deaths in 16 boards against 1 in 30.
+        //
+        // Two rows of rise is the slack. Inside that the decision stands as made.
+        if (this._lastDeadline < 2 * (info.framesPerRow || 0)) return d;
+
+        var chosen = null;
+        for (i = 0; i < pool.length; i++) {
+            var pc = pool[i];
+            if (pc.kind === 'swap' && pc.swap[0] === d.move[0] &&
+                pc.swap[1] === d.move[1] && pc.masks) { chosen = pc; break; }
+        }
+        if (!chosen) return d;
+        // A BREAK THAT LEAVES ANOTHER BREAK IS FREE. That is the whole rule: the
+        // save may be spent as long as spending it makes a new one.
+        //
+        // Neither extreme works. Guarding a break on its result refuses the very
+        // move the save exists to enable and the board ends up buried on five
+        // times as many decisions. Exempting every break cashes the save the
+        // instant one appears, and the board holds one on 3% of decisions.
+        //
+        // So a break that leaves none is the save being CASHED, and that is for
+        // when the board needs it: short of material, where the garbage has to be
+        // prioritised because the panels are locked inside it. With material in
+        // hand there is something else to do and the break keeps.
+        if (chosen.resolved && chosen.resolved.brokeGarbage) {
+            if (materialRows(base) < 6) return d;
+            if (this.saveAfter(chosen.masks, chosen.swap[0], chosen.swap[1], info)) return d;
+            this.counts.heldTheBreak++;
+        } else if (this.saveAfter(chosen.masks, chosen.swap[0], chosen.swap[1], info)) {
+            return d;
+        }
+        var keep = null;
+        for (i = 0; i < pool.length; i++) {
+            var alt = pool[i];
+            if (alt === chosen || alt.kind !== 'swap' || !alt.masks) continue;
+            if (this.deadly(alt.masks, alt.resolved, info,
+                            Math.max((alt.moveFrames || 0) + this.reaction,
+                                     info.framesPerRow || 0))) continue;
+            if (!this.saveAfter(alt.masks, alt.swap[0], alt.swap[1], info)) continue;
+            var sc = this.score(alt.masks, alt.moveFrames, alt.resolved, info);
+            if (!keep || sc > keep.score) keep = { cand: alt, score: sc };
+        }
+        // NO SINGLE SWAP KEEPS ONE: PLAN FOR IT.
+        //
+        // The pool is one ply deep, and at one ply there is almost never another
+        // move that leaves a break standing -- 2 of 100. The search is not: it
+        // walks landed boards several moves out and can name the cheapest route
+        // to one that holds a save. Asking the pool and stopping there was the
+        // reason this rule had nothing to do.
+        if (!keep && this._lastOptions && this._lastOptions.save &&
+            this._lastOptions.save.swaps.length) {
+            var sp = this._lastOptions.save, sm = sp.swaps[0];
+            var legal = bit.legalSwapsOf(base), okMove = false;
+            for (i = 0; i < legal.length; i++) {
+                if (legal[i][0] === sm[0] && legal[i][1] === sm[1]) { okMove = true; break; }
+            }
+            if (okMove && (sp.duration || 0) <= this._lastDeadline) {
+                this.counts.savePlanned++;
+                return { kind: 'swap', move: sm, mode: d.mode, alive: d.alive,
+                         via: 'planSave' };
+            }
+        }
+        if (!keep) { this.counts.saveUnkeepable++; return d; }
+        this.counts.saveKept++;
+        return { kind: 'swap', move: keep.cand.swap, mode: d.mode,
+                 alive: d.alive, via: 'keepSave' };
     };
 
     // One call per frame from the match loop, the same shape PuyoCpu has.
