@@ -1472,13 +1472,33 @@
             // cell against the boards recent decisions were made on. Hold is
             // exempt -- waiting is not a failure to progress, it is the thing
             // BUILD is for, and it is how the board legitimately stays put.
-            if (this.refuseReturn && pool[i].kind === 'swap' && pool[i].masks) {
-                var sig = signature(pool[i].masks);
-                if (sig === here || this._seen.indexOf(sig) >= 0) { this.counts.refusedReturn++; continue; }
-            }
             allowed.push(pool[i]);
         }
         if (!allowed.length) allowed = pool;
+        // APPLIED LAST, AND ONLY WHILE IT LEAVES SOMETHING.
+        //
+        // `if (!allowed.length) allowed = pool` is the escape hatch for a board
+        // where every candidate is refused, and a filter that runs before it
+        // takes the whole pool down with it: refuse every candidate as a return
+        // and the escape hatch hands the returns straight back. On seed 101 the
+        // bot spent frames 1,548 to 1,614 playing an undo pair on an unchanged
+        // board, topped out, deciding every two frames because the cooldown lifts
+        // when it is.
+        //
+        // So this narrows what is already there, and stands aside when narrowing
+        // would leave nothing -- which is what it means for the position to have
+        // no move that is not a return.
+        if (this.refuseReturn) {
+            var kept = [];
+            for (i = 0; i < allowed.length; i++) {
+                if (allowed[i].kind === 'swap' && allowed[i].masks) {
+                    var sig = signature(allowed[i].masks);
+                    if (sig === here || this._seen.indexOf(sig) >= 0) { this.counts.refusedReturn++; continue; }
+                }
+                kept.push(allowed[i]);
+            }
+            if (kept.length) allowed = kept;
+        }
 
         // SENDS AND BREAKS BEATS SENDS, and that is not a preference.
         //
