@@ -903,16 +903,28 @@
             // clearing 18 panels is worth 337 frames before any stop time; the
             // deepest chain pays only 68. The panels were always the larger half and
             // the gain-only ranking was reading the smaller one.
-            // AND THE CELLS A BREAK RETURNS TO THE BOARD.
+            // AND THE CELLS A BREAK RETURNS TO THE BOARD, WHICH ARE WORTH FAR
+            // MORE THAN ONE CLEAR EACH.
             //
-            // THIS IS NOT A PREFERENCE FOR DIGGING. A garbage cell is a cell that
-            // can never come off the board; a panel is a cell that can. Breaking
-            // converts one into the other, so the survival value of a break is the
-            // same as clearing those cells -- deferred by a clear, which is why it
-            // is worth that and not more. Priced here, a break wins when it buys
-            // more life than the alternatives and loses when it does not, which is
-            // the whole of the ranking.
-            var bought = (o.total + (o.garbage || 0)) * perPanel + gain;
+            // THIS IS NOT A PREFERENCE FOR DIGGING. A cleared panel buys perPanel
+            // frames ONCE. A garbage cell is a cell of board that can never be
+            // freed, so it costs perPanel EVERY TIME the board would have cycled
+            // through it -- for the whole of the rest of the game. Converting it
+            // hands all of that back.
+            //
+            // The rest of the game, in rows, is deadline / framesPerRow, so a
+            // converted cell is worth perPanel * that, which is deadline / W.
+            // Nothing is chosen here: it is the same exchange rate as a clear,
+            // multiplied by the number of times the board still gets to use the
+            // cell. It falls to one clear's worth as the deadline runs out, which
+            // is right -- one frame from death the immediate clear is the only
+            // thing that matters.
+            //
+            // Priced at one clear instead, a break stopped winning and rand2 went
+            // from 0 deaths in 4 to 3, converting 83% of the garbage that landed
+            // against 98%.
+            var perCell = Math.max(perPanel, (deadline || 0) / W);
+            var bought = o.total * perPanel + (o.garbage || 0) * perCell + gain;
             var rate = bought / Math.max(1, took);
             var cur = fits ? best : over;
             if (!cur || rate > cur.rate || (rate === cur.rate && took < cur.frames)) {
