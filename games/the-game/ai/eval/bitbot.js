@@ -165,6 +165,7 @@
         this._seen = [];
         // The plan being executed, if any. See the commitment note in decide().
         this._plan = null;
+        this._flatten = null;
         this._attack = null;
 
         this._snapshot = PanelCpu().snapshot;
@@ -194,7 +195,7 @@
                         attacked: 0, attackDropped: 0, cellsPlanned: 0, refusedPayless: 0,
                         raisedForMaterial: 0, refusedRaise: 0, forcedBreak: 0, forcedBoth: 0, refusedEarly: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
-                        revealWindows: 0 };
+                        revealWindows: 0, digging: 0, flattened: 0, flattenDropped: 0 };
     }
 
     // WHAT THE ENGINE KNOWS, shared by every candidate in the decision. None of
@@ -289,11 +290,28 @@
         else if (escape !== null && escape !== undefined &&
                  deadline <= escape + this.reaction) name = 'DEFEND';
         else {
-            var goal = this.aim();
+            // THE BAR IS THE ENGINE'S TABLE, NOT A WEIGHT.
+            //
+            // This asked aim(), which reads the weights: whichever chain or combo
+            // weight is highest sets the shape that counts as worth cashing. A
+            // vector whose top chain weight is chain5plus therefore only enters
+            // ATTACK when a 5-chain exists -- the vector deciding WHETHER to
+            // attack, not which shape to build.
+            //
+            // Measured on seed 103: STARTER cashes 708 times and survives 30000
+            // frames; a random vector cashes FOUR times in the whole game and dies
+            // at 10163. It never sends, so it is never un-buried, so nothing
+            // clears, and its last twelve decisions are setups at tallest 12.
+            //
+            // A shape is worth cashing when it sends cells, which comboGarbage
+            // already answers: a 4-combo sends 3, a 6-chain sends 30, a bare three
+            // sends nothing. Every vector now attacks on the same trigger and
+            // chooses only among the shapes that pay.
             for (var i = 0; i < pool.length; i++) {
                 var r = pool[i].resolved;
                 if (!r || !r.total) continue;
-                if (r.chain >= goal.links || r.biggest >= goal.wide) { name = 'ATTACK'; break; }
+                if (cellsSent(PanelEngine(), r.chain >= 2 ? 'chain' : 'combo',
+                              r.total, r.chain) > 0) { name = 'ATTACK'; break; }
             }
         }
         return { name: name, reveal: !!revealOpen };
@@ -337,9 +355,20 @@
     // the flatter board is strictly better: more columns in reach of the cursor,
     // no panel stranded on top of a spike, and a slab that lands sits level
     // instead of bridging a gap.
+    // HOW UNEVENLY THE MATERIAL IS SPREAD, counted in PANELS PER COLUMN and not
+    // in column heights.
+    //
+    // Height is the wrong ruler on a buried board. Garbage caps every column at
+    // the same row, so six columns holding 6, 1, 1, 2, 2, 2 panels under a slab
+    // all measure the same height and the board reads as flat while one column
+    // hoards the material and the rest have nothing to build with. Panels per
+    // column sees that; height cannot.
+    //
+    // Garbage is excluded for the same reason it is excluded from materialRows:
+    // a slab is not material, and the bot cannot move it.
     function bumpiness(st) {
         var h = [], c, n = 0;
-        for (c = 1; c <= W; c++) h[c] = 32 - Math.clz32(st.occ[c] >>> 0);
+        for (c = 1; c <= W; c++) h[c] = bit.popcount((st.occ[c] & ~st.garb[c]) >>> 0);
         for (c = 1; c < W; c++) n += Math.abs(h[c] - h[c + 1]);
         return n;
     }
@@ -398,14 +427,28 @@
         return banked <= 0;                                    // full, nothing holding it
     };
 
+    // A TOWER IS WHERE THE BOARD DIES, so how much it minds one is not the
+    // vector's to choose. Death is the tallest column reaching the ceiling while
+    // the material is spread over all six, so an uneven board is holding rows of
+    // life it is not using. A vector that zeroes or reverses these two is a
+    // vector choosing to die, and that is not what the weights are for: they say
+    // how much MORE than this to care, never less.
+    //
+    // The numbers are STARTER's own, so the starting vector is unchanged and only
+    // the ones that went tower-friendly are clamped.
+    var FLOOR = { bumpiness: -20, tallest: -40 };
+
     BitBot.prototype.score = function (st, moveFrames, resolved, info) {
         var out = BF.features(null, [info.cursorRow, info.cursorCol], moveFrames,
                              resolved, info, PanelEngine(), st);
         var w = this.weights, total = 0, keys = BF.keys();
         for (var i = 0; i < keys.length; i++) {
             var k = keys[i], v = out.f[k];
-            if (v === undefined || !w[k]) continue;
-            total += w[k] * v;
+            if (v === undefined) continue;
+            var wk = w[k] || 0;
+            if (FLOOR[k] !== undefined) wk = Math.min(wk, FLOOR[k]);
+            if (!wk) continue;
+            total += wk * v;
         }
         return total;
     };
@@ -819,7 +862,17 @@
             var taste = 1 + ((weights[key] || 0) / 100);
             if (taste < 0.1) taste = 0.1;
             var rate = (cells / Math.max(1, o.duration || o.frames)) * taste;
-            if (!best || rate > best.rate) {
+            // AN ATTACK THAT ALSO FLATTENS IS THE BETTER ATTACK. Between two
+            // sending at the same rate, the one leaving the flatter board -- it
+            // costs nothing to prefer and a tower is where the board dies.
+            var win = !best || rate > best.rate;
+            if (!win && best && rate === best.rate) {
+                var ob = o.bumps === null || o.bumps === undefined ? 1e9 : o.bumps;
+                var bb = best.option && best.option.bumps !== null &&
+                         best.option.bumps !== undefined ? best.option.bumps : 1e9;
+                win = ob < bb;
+            }
+            if (win) {
                 best = { rate: rate, cells: cells, frames: o.frames,
                          move: o.swaps[0], option: o };
             }
@@ -827,7 +880,7 @@
         return best;
     }
 
-    function bestPlan(list, clock, deadline, engine, toppedOut, framesPerRow, framesTable) {
+    function bestPlan(list, clock, deadline, engine, toppedOut, framesPerRow, framesTable, tallNow) {
         var best = null, over = null, all = list.now.concat(list.next), i;
         // ONE PANEL REMOVED IS framesPerRow / W FRAMES OF LIFE -- 18.7 at level 10.
         // Panels and stop time are the same currency and this is the exchange rate.
@@ -872,10 +925,48 @@
             // clearing 18 panels is worth 337 frames before any stop time; the
             // deepest chain pays only 68. The panels were always the larger half and
             // the gain-only ranking was reading the smaller one.
-            var bought = o.total * perPanel + gain;
+            // AND THE CELLS A BREAK RETURNS TO THE BOARD, WHICH ARE WORTH FAR
+            // MORE THAN ONE CLEAR EACH.
+            //
+            // THIS IS NOT A PREFERENCE FOR DIGGING. A cleared panel buys perPanel
+            // frames ONCE. A garbage cell is a cell of board that can never be
+            // freed, so it costs perPanel EVERY TIME the board would have cycled
+            // through it -- for the whole of the rest of the game. Converting it
+            // hands all of that back.
+            //
+            // The rest of the game, in rows, is deadline / framesPerRow, so a
+            // converted cell is worth perPanel * that, which is deadline / W.
+            // Nothing is chosen here: it is the same exchange rate as a clear,
+            // multiplied by the number of times the board still gets to use the
+            // cell. It falls to one clear's worth as the deadline runs out, which
+            // is right -- one frame from death the immediate clear is the only
+            // thing that matters.
+            //
+            // Priced at one clear instead, a break stopped winning and rand2 went
+            // from 0 deaths in 4 to 3, converting 83% of the garbage that landed
+            // against 98%.
+            var perCell = Math.max(perPanel, (deadline || 0) / W);
+            // AND THE CEILING IT GIVES BACK. Death comes at the TALLEST column, so
+            // the rows a clear takes off the top of the board are frames of life in
+            // the plainest sense -- one row is framesPerRow. The same clear taken
+            // off a short column gives none of them back, which is the difference
+            // between a move that works and a move that works AND flattens.
+            var lowered = (tallNow && o.tall !== null && o.tall !== undefined)
+                        ? Math.max(0, tallNow - o.tall) : 0;
+            var bought = o.total * perPanel + (o.garbage || 0) * perCell
+                       + lowered * (framesPerRow || 0) + gain;
             var rate = bought / Math.max(1, took);
             var cur = fits ? best : over;
-            if (!cur || rate > cur.rate || (rate === cur.rate && took < cur.frames)) {
+            // Between two plans buying life at the same rate, the one leaving the
+            // flatter board; between two of those, the cheaper.
+            var better = !cur || rate > cur.rate;
+            if (!better && cur && rate === cur.rate) {
+                var mb = o.bumps === null || o.bumps === undefined ? 1e9 : o.bumps;
+                var cb = cur.option.bumps === null || cur.option.bumps === undefined
+                       ? 1e9 : cur.option.bumps;
+                better = mb < cb || (mb === cb && took < cur.frames);
+            }
+            if (better) {
                 cur = { rate: rate, gain: gain, frames: took, move: o.swaps[0], option: o };
                 if (fits) best = cur; else over = cur;
             }
@@ -984,6 +1075,22 @@
         // Spent once for the decision, so both halves search the same board at the
         // same depth and cannot disagree about what is on offer.
         var lookDepth = Math.min(this.maxDepth, depthFor(deadline, this.reaction, tallestOf(pool)));
+        // BURIED AND SHORT: WIDEN THE SEARCH, NOT THE PREFERENCE.
+        //
+        // This says where to LOOK, and nothing about what to play. Ranked by price
+        // alone the beam keeps the twelve cheapest setups and a position one swap
+        // from a break falls out of it whenever twelve cheaper ones exist, so a
+        // break was something the search stumbled on rather than something it
+        // could see. Six more slots, ranked by how close the board is to a slab,
+        // make it visible; bestPlan then prices it against everything else and
+        // takes it only when it buys more life.
+        //
+        // Finding is not preferring, and the bot does not prefer digging. It
+        // prefers not dying, and under a slab those are usually the same move.
+        var digging = false;
+        for (i = 1; i <= W; i++) if (base.garb[i]) { digging = true; break; }
+        if (digging && materialRows(base) >= 6) digging = false;
+        if (digging) this.counts.digging++;
         var survival = null;
         var swept = false;
         if (info.toppedOut || !(info.stopTime > 0)) {
@@ -1034,9 +1141,10 @@
             }
             if (!survival) {
                 options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
-                                                   this.timing(info));
+                                                   this.timing(info), digging);
                 var plan = bestPlan(options, info.stopTime || 0, deadline, PanelEngine(),
-                                    !!info.toppedOut, info.framesPerRow, this.stack.frames);
+                                    !!info.toppedOut, info.framesPerRow, this.stack.frames,
+                                    tallestOf(pool));
                 if (plan && plan.rate > 0) {
                     this._plan = { moves: plan.option.swaps.slice(1), frames: plan.frames,
                                    gain: plan.gain, rate: plan.rate,
@@ -1276,17 +1384,21 @@
                                    info.framesPerRow || 0);
             if (this.deadly(cand.masks, cand.resolved, info, horizon)) { this.counts.refusedDeadly++; continue; }
             alive++;
-            // NOTHING CLEARS ANYWHERE: SET UP. When no option on the board
-            // clears anything, the only thing that separates the swaps is what
-            // they leave behind, and the board's own count of ways a clear can
-            // still be made is that. Ties to the cheaper move.
-            // LEXICOGRAPHIC, NOT A WEIGHTED SUM. Ways to build decide it; between
-            // two boards offering the same, the flatter one wins; between two of
-            // those, the cheaper move. Each term is scaled past the next so it
-            // cannot be outvoted -- there is no weight here to get wrong, and a
-            // flatter board can never beat a better one.
+            // NOTHING CLEARS ANYWHERE: FLATTEN. Flattening IS the setup.
+            //
+            // LEXICOGRAPHIC, NOT A WEIGHTED SUM: the flatter board wins; between
+            // two equally flat ones, the one offering more ways to make a line;
+            // between two of those, the cheaper move. Each term is scaled past the
+            // next so it cannot be outvoted, and there is no weight here to get
+            // wrong.
+            //
+            // WAYS-TO-BUILD LED THIS AND IT BUILT TOWERS. Two boards rarely offer
+            // the same count, so flatness was a tiebreak that never fired, and the
+            // bot stacked columns 1-3 five and six high with columns 5-6 empty and
+            // a hole in the bottom row. The same panels spread across six columns
+            // offer more lines anyway and are not against the ceiling.
             var s = noneClear
-                  ? matchWays(cand.masks) * 10000 - bumpiness(cand.masks) * 100 - (cand.moveFrames || 0)
+                  ? -bumpiness(cand.masks) * 10000 + matchWays(cand.masks) * 100 - (cand.moveFrames || 0)
                   : this.score(cand.masks, cand.moveFrames, cand.resolved, info);
             if (!best || s > best.score) best = { cand: cand, score: s };
         }
@@ -1328,6 +1440,31 @@
         // re-choosing every frame plays the first move of a different plan each
         // time and never finishes any of them, which was worth LESS than having no
         // plans at all (2,521 frames against 2,892).
+        // AND AN ATTACK THAT PUTS THE BOARD BACK IS NOT AN ATTACK, IT IS THE LOOP.
+        //
+        // The survival plan has refused a move returning to a board it has just
+        // been on; the attack path did not, and it reaches the cursor first. On
+        // rand4 seed 101 the last seventeen decisions before the death alternate
+        // bestAttack and attackPlan one frame apart with the board unchanged
+        // throughout -- a whole freeze spent walking between two boards, under 45
+        // cells of garbage, and then it topped out.
+        //
+        // The candidate loop already refuses these, but it filters `allowed` and
+        // the attack path reads `pool`, so it walked straight past the guard.
+        var self = this;
+        function returnsToSeen(mv) {
+            if (!self.refuseReturn || !mv) return false;
+            for (var q = 0; q < pool.length; q++) {
+                var pc = pool[q];
+                if (pc.kind === 'swap' && pc.swap[0] === mv[0] &&
+                    pc.swap[1] === mv[1] && pc.masks) {
+                    var sg = signature(pc.masks);
+                    return sg === here || self._seen.indexOf(sg) >= 0;
+                }
+            }
+            return false;
+        }
+
         if (!survival) {
             if (this._attack && this._attack.moves.length) {
                 var an = this._attack.moves[0];
@@ -1335,25 +1472,31 @@
                 for (i = 0; i < als.length; i++) {
                     if (als[i][0] === an[0] && als[i][1] === an[1]) { okNext = true; break; }
                 }
+                if (okNext && returnsToSeen(an)) { okNext = false; this.counts.refusedReturn++; }
                 if (okNext) {
                     this._attack.moves = this._attack.moves.slice(1);
                     if (!this._attack.moves.length) this._attack = null;
                     this.counts.attacked++;
-                    return { kind: 'swap', move: an, mode: mode, alive: alive };
+                    return { kind: 'swap', move: an, mode: mode, alive: alive, via: 'attackPlan' };
                 }
                 this._attack = null;
                 this.counts.attackDropped++;
             }
             options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
-                                                   this.timing(info));
+                                                   this.timing(info), digging);
             var atk = bestAttack(options, this.weights, PanelEngine(), deadline,
                                  this.stack.frames, (info.framesPerRow || 0) / W);
+            if (atk && atk.move && returnsToSeen(atk.move)) {
+                atk = null;
+                this._attack = null;
+                this.counts.refusedReturn++;
+            }
             if (atk && atk.move) {
                 this._attack = { moves: atk.option.swaps.slice(1) };
                 if (!this._attack.moves.length) this._attack = null;
                 this.counts.attacked++;
                 this.counts.cellsPlanned += atk.cells;
-                return { kind: 'swap', move: atk.move, mode: mode, alive: alive };
+                return { kind: 'swap', move: atk.move, mode: mode, alive: alive, via: 'bestAttack' };
             }
         }
 
@@ -1399,9 +1542,22 @@
         // Measured: material sits at 2 to 3 flat rows for 82% of a game, so a
         // floor of WORKING_ROWS fires almost always. Raising on all of those is
         // 8 deaths in 8 at an average of 10,369 frames.
-        var buried = false;
-        for (i = 1; i <= W; i++) if (base.garb[i]) { buried = true; break; }
-        if (!survival && !info.incoming && !buried && this.canRaise() &&
+        // GARBAGE ON THE BOARD IS NOT A REASON NOT TO RAISE. Raise first, then
+        // break: both make panels and a board short of them needs whichever it can
+        // get. Refusing while buried starved the board that needed material most --
+        // on rand4 seed 101 it was holding 2 rows when a 24-cell slab landed, and
+        // died with 20 panels in four columns and no line left in them.
+        //
+        // The guards that matter are still every one of them: canRaise() is the
+        // engine's own list of refusals, the row has to leave WORKING_ROWS of
+        // headroom under the ceiling -- and garbage counts toward that height --
+        // and the risen board faces the death filter like any other move.
+        // NOR IS GARBAGE ON THE WAY. Same reasoning as the slab already on the
+        // board: under the floor the thing it is short of is panels, and the only
+        // two ways to get them are raising and breaking. Measured on seed 101, it
+        // sat at 3 rows for six straight decisions under the floor of 4, refusing
+        // to raise because a slab was queued, and died 150 frames later.
+        if (!survival && this.canRaise() &&
             materialRows(base) < WORKING_ROWS &&
             tallestOf(pool) + 1 <= H - WORKING_ROWS) {
             // ONLY IF IT DOES NOT KILL. canRaise() is the engine's own list of
@@ -1413,7 +1569,7 @@
             for (i = 0; i < pool.length; i++) if (pool[i].kind === 'raise') risenCand = pool[i];
             if (risenCand && !this.deadly(risenCand.masks, risenCand.resolved, info, this.reaction)) {
                 this.counts.raisedForMaterial++;
-                return { kind: 'raise', mode: mode, alive: alive };
+                return { kind: 'raise', mode: mode, alive: alive, via: 'raiseMaterial' };
             }
             this.counts.refusedRaise++;
         }
@@ -1436,16 +1592,71 @@
                 survival = null;
             } else {
                 this.counts.planned++;
-                return { kind: 'swap', move: survival.move, mode: mode, alive: alive };
+                return { kind: 'swap', move: survival.move, mode: mode, alive: alive, via: 'survivalPlan' };
             }
+        }
+
+        // NOTHING CLEARS: FLATTEN, TO A PLAN.
+        //
+        // Ranking single swaps by the flatness they leave is greedy -- it takes
+        // the best step available this frame and has no idea where it is going, so
+        // it walks the board into a spike one locally-flattest swap at a time.
+        // Measured on seed 101: columns at heights 8,5,4,3,4,3 with the tall one
+        // pressed against the slab, and every decision that built it was a setup.
+        //
+        // bitoptions plans it instead. Every node it keeps IS a landed board --
+        // where the panels came to rest -- so it knows the shape each sequence
+        // arrives at and the swaps that get there, and it names the flattest one
+        // it can reach. The plan is then played in order like a survival or attack
+        // plan: re-choosing every frame is how the greedy version got here.
+        //
+        // Dropped the moment it stops being true -- the next move must still be
+        // legal and must not put the board back where it has just been.
+        if (noneClear && (!this._flatten || !this._flatten.moves.length)) {
+            options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
+                                                    lookDepth, base, this.timing(info), digging);
+        }
+        // AND IT HAS TO FIT IN THE TIME THERE IS. The plan is priced in frames like
+        // every other -- the walk to each swap, the swap, and the cooldown when one
+        // applies -- and a plan that runs past the deadline is not a plan, however
+        // flat the board at the end of it.
+        if (noneClear && options && options.flatten && options.flatten.swaps.length &&
+            (options.flatten.duration || 0) <= deadline) {
+            if (!this._flatten || !this._flatten.moves.length) {
+                this._flatten = { moves: options.flatten.swaps.slice(),
+                                  frames: options.flatten.duration,
+                                  startedAt: this.stack.frames };
+            }
+        }
+        if (noneClear && this._flatten && this._flatten.moves.length) {
+            var fm = this._flatten.moves[0], fok = false, fls = bit.legalSwapsOf(base);
+            for (i = 0; i < fls.length; i++) {
+                if (fls[i][0] === fm[0] && fls[i][1] === fm[1]) { fok = true; break; }
+            }
+            if (fok && returnsToSeen(fm)) fok = false;
+            // WHAT IS LEFT OF IT AGAINST THE CLOCK AS IT IS NOW, not what it cost
+            // when it was made: the plan is priced once and played over several
+            // decisions, and the clock drains the whole time.
+            if (fok) {
+                var fspent = Math.max(0, this.stack.frames - (this._flatten.startedAt || 0));
+                if (Math.max(0, (this._flatten.frames || 0) - fspent) > deadline) fok = false;
+            }
+            if (fok) {
+                this._flatten.moves = this._flatten.moves.slice(1);
+                if (!this._flatten.moves.length) this._flatten = null;
+                this.counts.flattened++;
+                return { kind: 'swap', move: fm, mode: mode, alive: alive, via: 'flatten' };
+            }
+            this._flatten = null;
+            this.counts.flattenDropped++;
         }
 
         if (rev && rev.best && rev.best.swap) {
             this.counts.revealSwaps++;
-            return { kind: 'swap', move: rev.best.swap, mode: mode, alive: alive, reveal: true };
+            return { kind: 'swap', move: rev.best.swap, mode: mode, alive: alive, reveal: true, via: 'lineup' };
         }
-        if (!best) return { kind: 'hold', mode: mode, alive: alive };
-        return { kind: best.cand.kind, move: best.cand.swap, mode: mode, alive: alive };
+        if (!best) return { kind: 'hold', mode: mode, alive: alive, via: 'noBest' };
+        return { kind: best.cand.kind, move: best.cand.swap, mode: mode, alive: alive, via: (noneClear ? 'setup' : 'WEIGHTS') };
     };
 
     // One call per frame from the match loop, the same shape PuyoCpu has.

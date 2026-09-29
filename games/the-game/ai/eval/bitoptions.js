@@ -61,10 +61,32 @@
         return frames + swaps.length * OVERHEAD;
     }
 
+    // AND THE SHAPE OF THE BOARD IT LEAVES BEHIND. A clear that comes off the
+    // tall column flattens; the same clear off a short one deepens the spike. The
+    // resolver already settles the cascade, so the height it lands at is there to
+    // be read, and a move that clears AND flattens is the one worth playing.
+    // `tall` is the whole board, garbage and all, because that is what reaches
+    // the ceiling. `bumps` is PANELS PER COLUMN, because height is the wrong
+    // ruler for how the material is spread: under a slab every column measures
+    // the same height however lopsided the panels beneath it are.
+    function shapeOf(st2) {
+        var h = [], c, tall = 0, bumps = 0, w2 = st2 && (st2.W || 6);
+        if (!st2) return null;
+        for (c = 1; c <= w2; c++) {
+            var top = 32 - Math.clz32(st2.occ[c] >>> 0);
+            if (top > tall) tall = top;
+            h[c] = bit.popcount((st2.occ[c] & ~st2.garb[c]) >>> 0);
+        }
+        for (c = 1; c < w2; c++) bumps += Math.abs(h[c] - h[c + 1]);
+        return { tall: tall, bumps: bumps };
+    }
+
     function optionOf(swaps, frames, r) {
+        var sh = shapeOf(r.settled);
         return { kind: kindOf(r.chain), size: sizeOf(r.chain, r.total),
                  swaps: swaps, frames: frames, chain: r.chain, total: r.total,
-                 garbage: r.garbage || 0, duration: durationOf(swaps, frames) };
+                 garbage: r.garbage || 0, duration: durationOf(swaps, frames),
+                 tall: sh ? sh.tall : null, bumps: sh ? sh.bumps : null };
     }
 
     // Cheapest first, then bigger — the order a caller wants to read.
@@ -79,11 +101,15 @@
     // fires this move, 2 also lists what a setup opens up.
     // Set per call by the caller, which knows its own reaction and whether the
     // clock is running.
-    var OVERHEAD = 0, RESOLVE = null;
+    var OVERHEAD = 0, RESOLVE = null, DIG = false;
 
-    function options(board, W, H, cursor, depth, st, timing) {
+    function options(board, W, H, cursor, depth, st, timing, dig) {
         OVERHEAD = (timing && timing.overhead) || 0;
         RESOLVE = (timing && timing.resolve) || null;
+        // DIGGING IS A GOAL, NOT A PREFERENCE. The caller sets it when the board
+        // is buried and short of material, and it changes what the beam keeps --
+        // see expandAll. Nothing else in here reads it.
+        DIG = !!dig;
         var now = [], next = [], i, j;
         if (!st) st = bit.maskState(board.grid, board.blocks, W, H);
         var swaps = board ? board.legalSwaps() : bit.legalSwapsOf(st);
@@ -91,7 +117,7 @@
 
         for (i = 0; i < swaps.length; i++) {
             if (!bit.swapMasks(st, swaps[i][0], swaps[i][1])) { refused++; continue; }
-            var r = bit.resolveFromMasks(st);
+            var r = bit.resolveFromMasks(st, true);
             bit.swapMasks(st, swaps[i][0], swaps[i][1]);
             // A MOVE THAT BREAKS A SLAB IS AN OPTION, NOT AN UNKNOWN. The cascade
             // past the break is unknowable — the engine draws the converted row's
@@ -141,10 +167,60 @@
         // Setups are ranked by price, because a setup clears nothing by
         // definition and cost is the only thing separating two of them. The cheap
         // ones leave the most frames for the cash at the end.
-        var BEAM = 12;
+        var BEAM = 12, DIG_BEAM = 6;
+
+        // HOW UNEVEN A LANDED BOARD IS: the sum of the steps between neighbouring
+        // column heights. Zero is flat. Death comes at the TALLEST column while
+        // the material is spread over all six, so the steps are rows of life the
+        // board is not using.
+        // WHAT A LANDED BOARD CAN STILL BUILD: the cells where putting the right
+        // colour would finish a line. A flat board that cannot make a match is not
+        // a place worth walking to.
+        function waysOf(state) {
+            var r = bit.reachMask(state), n = 0, c;
+            for (c = 1; c <= W; c++) n += bit.popcount(r[c]);
+            return n;
+        }
+
+        function bumpsOf(state) {
+            var h = [], c, n = 0;
+            for (c = 1; c <= W; c++) h[c] = bit.popcount((state.occ[c] & ~state.garb[c]) >>> 0);
+            for (c = 1; c < W; c++) n += Math.abs(h[c] - h[c + 1]);
+            return n;
+        }
+
+        // WHERE A CLEAR CAN STILL BE MADE, AND HOW MUCH OF IT IS AGAINST A SLAB.
+        //
+        // reachMask marks the cells that would complete a same-colour pair. A
+        // cell touching garbage counts as reachable too: a match landing beside a
+        // slab breaks it, and breaking is the only thing that converts a slab
+        // back into panels.
+        //
+        // `dig` is the board's own count of ways this position is one move from a
+        // break -- reachable cells that are against a slab, before the widening.
+        //
+        // WHEN DIGGING THIS RUNS AT BIRTH, for every node born in the ply, because
+        // the dig count is what the beam ranks by and a node cannot be ranked
+        // after it has been culled. Otherwise it runs at expansion, for the twelve
+        // that survived -- the mask is the same either way, and paying for the
+        // hundreds that did not survive cost 13% of a decision for nothing.
+        function reachOf(state) {
+            var reach = bit.reachMask(state), dig = 0, c, adj;
+            for (c = 1; c <= W; c++) {
+                adj = ((state.garb[c] >> 1) | (state.garb[c] << 1) |
+                       state.garb[c - 1] | state.garb[c + 1]) & ~state.garb[c];
+                dig += bit.popcount(reach[c] & adj);
+                reach[c] |= adj;
+            }
+            return { mask: reach, dig: dig };
+        }
+
+        var flat = null;
 
         function expandAll(state0, depth) {
-            var frontier = [{ st: state0, chain: [], from: cursor, spent: 0 }], ply;
+            // The root has no reach mask: ply one stays exhaustive so an immediate
+            // clear is never missed.
+            var frontier = [{ st: state0, chain: [], from: cursor, spent: 0, reach: null, dig: 0 }], ply;
             // depth LEVELS, not depth-1. The first level's cashes belong to `now`
             // (they are one swap from the board as it stands) and are skipped here;
             // the levels after it are what this exists to find.
@@ -168,14 +244,11 @@
                     // So a cell against garbage is in reach too. Breaking is the
                     // only thing that converts a slab back into panels, and the
                     // search exists to find it.
-                    var reach = null;
-                    if (node.chain.length) {
-                        reach = bit.reachMask(state);
-                        for (var rc = 1; rc <= W; rc++) {
-                            reach[rc] |= ((state.garb[rc] >> 1) | (state.garb[rc] << 1) |
-                                          state.garb[rc - 1] | state.garb[rc + 1]) & ~state.garb[rc];
-                        }
-                    }
+                    // Scored at birth when digging, because the dig count is what
+                    // the beam ranks by; otherwise built here, for the twelve
+                    // nodes that survived the cull rather than the hundreds born.
+                    var reach = node.reach;
+                    if (!reach && node.chain.length) reach = reachOf(state).mask;
                     for (k = 0; k < list.length; k++) {
                         var sw = list[k];
                         if (reach) {
@@ -183,7 +256,7 @@
                             if (!((reach[sw[1]] | reach[sw[1] + 1]) & rb)) continue;
                         }
                         if (!bit.swapMasks(state, sw[0], sw[1])) continue;
-                        var res = bit.resolveFromMasks(state, ply < depth);
+                        var res = bit.resolveFromMasks(state, true);
                         bit.swapMasks(state, sw[0], sw[1]);
                         var cost = node.spent + travel.cost(node.from[0], node.from[1], sw[0], sw[1]);
                         var broke = res.scope === 'garbage-broke';
@@ -202,13 +275,67 @@
                         }
                         // Cleared nothing, so it is a setup and can be built on.
                         if (res.settled) {
-                            born.push({ st: res.settled, chain: node.chain.concat([sw]),
-                                        from: sw, spent: cost });
+                            var rr = DIG ? reachOf(res.settled) : null;
+                            var seq = node.chain.concat([sw]);
+                            // THE FLATTEST BOARD THIS SEARCH CAN REACH, AND THE
+                            // SWAPS THAT REACH IT.
+                            //
+                            // res.settled is where everything LANDED, which is the
+                            // board the next move is played on, so the sequence is
+                            // planned against boards that will exist rather than
+                            // against the one in front of the cursor. The search
+                            // already built them and threw the geometry away.
+                            //
+                            // Cheapest wins a tie, because a flat board arrived at
+                            // sooner is flat for longer.
+                            // FLAT FIRST, THEN WHAT IT CAN BUILD, THEN CHEAPEST.
+                            //
+                            // Flatness is the goal, but two boards equally flat are
+                            // not equally useful: the one offering more ways to
+                            // finish a line is the one worth arriving at. Ways are
+                            // only counted on a board that ties or beats the best
+                            // flatness, so the mask is built for a handful of nodes
+                            // a ply rather than all of them.
+                            var bp = bumpsOf(res.settled);
+                            if (!flat || bp <= flat.bumps) {
+                                var wy = waysOf(res.settled);
+                                if (!flat || bp < flat.bumps || wy > flat.ways ||
+                                    (wy === flat.ways && cost < flat.frames)) {
+                                    flat = { swaps: seq, frames: cost, bumps: bp,
+                                             ways: wy, duration: durationOf(seq, cost) };
+                                }
+                            }
+                            born.push({ st: res.settled, chain: seq,
+                                        from: sw, spent: cost,
+                                        reach: rr && rr.mask, dig: rr ? rr.dig : 0 });
                         }
                     }
                 }
                 born.sort(function (a, b) { return a.spent - b.spent; });
                 frontier = born.length > BEAM ? born.slice(0, BEAM) : born;
+                // AND, WHEN DIGGING, THE NODES CLOSEST TO A SLAB AS WELL.
+                //
+                // Ranked by price alone the beam keeps the cheapest twelve setups,
+                // and a position one swap from a break falls out of it whenever
+                // twelve cheaper setups exist -- which is most buried boards. That
+                // is why breaking was something the search stumbled on rather than
+                // looked for: over a duel on seed 103 the starting weights dug out
+                // 339 of 339 panels of garbage and a random vector dug 45 of 92,
+                // carried the rest to the ceiling and died at 10,163 frames.
+                //
+                // ADDED, NOT SUBSTITUTED. Splitting the beam -- half by price, half
+                // by proximity -- found breaks on 11 more boards of 194 and LOST
+                // them on 21, because the cheap setups it dropped led to breaks of
+                // their own. Widening instead can only gain: every node the price
+                // order kept is still kept, and the extra slots cost half a ply's
+                // search again, on the boards that are already losing.
+                if (DIG && born.length > frontier.length) {
+                    var spare = born.slice(frontier.length);
+                    spare.sort(function (a, b) { return (b.dig - a.dig) || (a.spent - b.spent); });
+                    for (k = 0; k < spare.length && k < DIG_BEAM; k++) {
+                        if (spare[k].dig) frontier.push(spare[k]);
+                    }
+                }
             }
         }
 
@@ -236,7 +363,10 @@
         offer(now);
         offer(next);
 
-        return { now: now, next: next, cheapest: cheapest,
+        // Only worth naming if it is flatter than standing still.
+        if (flat && flat.bumps >= bumpsOf(st)) flat = null;
+
+        return { now: now, next: next, cheapest: cheapest, flatten: flat,
                  swapsConsidered: swaps.length, refused: refused, unknown: unknown };
     }
 
