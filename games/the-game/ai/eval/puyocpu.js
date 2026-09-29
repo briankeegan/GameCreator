@@ -1918,10 +1918,54 @@
     }
     return false;
   };
+  // The evaluator's top move, then the move that continues the line being
+  // followed, then the next by score: each searched alone on a small budget.
+  // Returns [the first proven] with its proof set up for _took, or null.
+  PuyoCpu.prototype.QUICK_TRIES = 4;
+  PuyoCpu.prototype.QUICK_BUDGET = 1500;
+  PuyoCpu.prototype._quickProve = function (cands) {
+    var fl = this._following, order = [], i, k, fi = -1;
+    var byScore = cands.map(function (c, n) { return n; });
+    byScore.sort(function (a, b) { return (cands[b].score || 0) - (cands[a].score || 0); });
+    if (fl && fl.steps && fl.steps.length) {
+      var want = fl.steps[0];
+      for (i = 0; i < cands.length; i++) {
+        var ck = cands[i];
+        if (want === 'raise' ? ck.kind === 'raise'
+            : Array.isArray(want) ? (ck.kind === 'swap' && ck.move && ck.move[0] === want[0] && ck.move[1] === want[1])
+            : ck.kind === 'hold') { fi = i; break; }
+      }
+    }
+    order.push(byScore[0]);
+    if (fi >= 0 && fi !== byScore[0]) order.push(fi);
+    for (i = 1; i < byScore.length && order.length < this.QUICK_TRIES; i++) if (order.indexOf(byScore[i]) < 0) order.push(byScore[i]);
+    var saved = this.SURVIVE_SEARCH_BUDGET, found = -1, proof = null;
+    this.SURVIVE_SEARCH_BUDGET = this.QUICK_BUDGET;
+    try {
+      for (k = 0; k < order.length && found < 0; k++) {
+        this._following = fl;
+        var v = this._survivalSearch([cands[order[k]]]);
+        if (v[0] === 'proven') { found = order[k]; proof = this._searchProofs.proofs[0]; }
+      }
+    } finally {
+      this.SURVIVE_SEARCH_BUDGET = saved;
+    }
+    this._following = fl;
+    if (found < 0) return null;
+    var proofs = {}, reach = {}, far = {};
+    proofs[found] = proof; reach[found] = proof.t; far[found] = proof;
+    this._searchProofs = { cands: cands, proofs: proofs, reach: reach, far: far };
+    this._following = null;
+    return [cands[found]];
+  };
   PuyoCpu.prototype._doomed = function (cands) {
     if (!this.refuseSuicide || !this.deepSurvival || !cands || cands.length < 2) return cands;
     if (!this._board) return cands;
     var i, proven = [], weakly = [], unproven = [];
+    // A FEW MOVES FIRST, CHEAPEST FIRST. The first one proven is played; the
+    // full search runs only when none of them can be.
+    var quick = this.QUICK_TRIES ? this._quickProve(cands) : null;
+    if (quick) { this.quickDecisions = (this.quickDecisions || 0) + 1; return quick; }
     var verdict = this._survivalSearch(cands);
     for (i = 0; i < cands.length; i++) {
       if (verdict[i] === 'proven') proven.push(cands[i]);
