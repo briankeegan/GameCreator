@@ -796,7 +796,12 @@
   //      the move continuing the followed line and the next by score are each
   //      searched alone on a small budget; the first proven is played. The
   //      full search runs only when none of them can be proven.
-  var RULES = 54;
+  //   55. THE LONGEST LINE IS STILL THE ONE PLAYED, WITHOUT SEARCHING FOR IT.
+  //      A followed line replaying past FOLLOW_FAST is the line the full
+  //      search keeps anyway, so it is played unsearched, and a few search
+  //      steps every frame keep it that far ahead. Replaces 54, which played
+  //      the evaluator's first provable move and died in 17 of 20 games.
+  var RULES = 55;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
