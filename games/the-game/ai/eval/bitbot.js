@@ -2292,16 +2292,33 @@
         var deadline = framesToDeath(info, tallestBoard(masks), info.framesPerRow);
         var frozen = (info.stopTime || 0) > 0 || !!info.toppedOut;
         var step = travel.MOVE_FRAMES + (frozen ? 0 : this.reaction);
+        // TWO TIERS, BECAUSE THE SAVE IS AT THE TOP OF THE STACK.
+        //
+        // Garbage lands on the surface, so a clear whose cells sit at the top of
+        // the stack is the one touching the slab when it arrives -- firing it
+        // holds the floor AND takes the slab apart. A clear three rows down in
+        // the pocket only does the first.
+        //
+        //   2  breaks the garbage that is there, or the row that lands next --
+        //      the same thing seen before and after it arrives, and the only kind
+        //      that hands ceiling back
+        //   1  clears something, anywhere. Holds the floor for its resolve, which
+        //      at maxHealth 1 is the difference between living and not
+        //   0  nothing reachable in time
+        //
+        // One sweep for both: the board already has the next row on it when it is
+        // clean, so a clear that does not touch that row still scores 1.
         masks = this.slabToAnswer(masks);
-        var sw = bit.legalSwapsOf(masks), i, r;
+        var sw = bit.legalSwapsOf(masks), i, r, best = 0;
         for (i = 0; i < sw.length; i++) {
             if (travel.cost(row, col, sw[i][0], sw[i][1]) + step > deadline) continue;
             if (!bit.swapMasks(masks, sw[i][0], sw[i][1])) continue;
             r = bit.resolveFromMasks(masks, false);
             bit.swapMasks(masks, sw[i][0], sw[i][1]);
-            if (r.scope === 'garbage-broke' || r.total > 0) return true;
+            if (r.scope === 'garbage-broke') return 2;
+            if (r.total > 0) best = 1;
         }
-        return false;
+        return best;
     };
 
     // EVERY RULE THAT REFUSES A MOVE, IN ONE PLACE, ASKED OF ANY MOVE.
@@ -2520,9 +2537,16 @@
             if (this.deadly(alt.masks, alt.resolved, info,
                             Math.max((alt.moveFrames || 0) + this.reaction,
                                      info.framesPerRow || 0))) continue;
-            if (!this.saveAfter(alt.masks, alt.swap[0], alt.swap[1], info)) continue;
+            // RANKED BY WHAT SAVE IT KEEPS FIRST, then by the weights. A clear
+            // at the top of the stack is worth more than one in the pocket and
+            // the difference is not something a vector should get to weigh: one
+            // hands ceiling back when it fires and the other does not.
+            var q = this.saveAfter(alt.masks, alt.swap[0], alt.swap[1], info);
+            if (!q) continue;
             var sc = this.score(alt.masks, alt.moveFrames, alt.resolved, info);
-            if (!keep || sc > keep.score) keep = { cand: alt, score: sc };
+            if (!keep || q > keep.q || (q === keep.q && sc > keep.score)) {
+                keep = { cand: alt, score: sc, q: q };
+            }
         }
         // NO SINGLE SWAP KEEPS ONE: the board is about to be without an answer,
         // and the decision above is what handles that -- on the next decision,
