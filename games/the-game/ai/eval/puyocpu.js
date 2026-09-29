@@ -1872,7 +1872,9 @@
   // throws.
   PuyoCpu.prototype._engineAdvance = function (node, kind, m, frames) {
     if (!this.fastEngine || !FastStack) return this._engineAdvanceOn(cloneStack(node.st), node, kind, m, frames);
-    var r = this._engineAdvanceOn(node.st instanceof FastStack ? node.st.clone() : FastStack.fromStack(node.st), node, kind, m, frames);
+    var r;
+    if (kind === 'swap' && node.st instanceof FastStack) r = this._swapShared(node, m);
+    if (r === undefined) r = this._engineAdvanceOn(node.st instanceof FastStack ? node.st.clone() : FastStack.fromStack(node.st), node, kind, m, frames);
     if (this.engineCheck) {
       var q = this._engineAdvanceOn(cloneStack(realStack(node.st)), node, kind, m, frames);
       var d = sameStep(q, r);
@@ -1894,14 +1896,28 @@
     return a === b ? null : 'node: ' + a.slice(0, 400) + ' vs ' + b.slice(0, 400);
   }
   PuyoCpu.prototype._engineAdvanceOn = function (st, node, kind, m, frames) {
-    var self = this;
     var bot = { stack: st, cursorMoveFrames: this.cursorMoveFrames, _walk: null, cooldown: 0, _lastSwap: null,
                 _beginWalk: PanelCpu.beginWalk, _driveWalk: PanelCpu.driveWalk,
                 _nearestSwappable: PanelCpu.nearestSwappable,
                 raiseFrames: node.hold.left, _raiseStarted: node.hold.started };
-    var arr = node.arrivals.map(function (a) { return { at: a.at, width: a.width, height: a.height, isChain: a.isChain }; });
-    var f = 0;
-    function raiseBlock(input) { raiseStep(bot, st, input); }
+    var arr = node.arrivals.map(copyArrival);
+    // The decision frame. At the root, update() has already run the raise
+    // step and set this frame's input; everywhere else it runs it now.
+    var input = node.fresh ? Object.assign({}, st.input) : {};
+    if (!node.fresh) raiseStep(bot, st, input);
+    if (kind === 'swap') {
+      bot._beginWalk(m[0], m[1], this.reaction);
+      bot._driveWalk(input);
+    } else if (kind === 'raise') {
+      bot.raiseFrames = 20; bot._raiseStarted = false; bot.cooldown = this.reaction;
+    } else if (kind === 'hold') {
+      bot.cooldown = this.reaction;
+    }
+    return this._runFrom(st, bot, arr, 0, input, node, kind, frames);
+  };
+  function copyArrival(a) { return { at: a.at, width: a.width, height: a.height, isChain: a.isChain }; }
+  // The step from frame f on: `input` is that frame's, already driven.
+  PuyoCpu.prototype._runFrom = function (st, bot, arr, f, input, node, kind, frames) {
     function runFrame(input) {
       st.setInput(input);
       st.run();
@@ -1913,25 +1929,13 @@
       }
       return st.gameOver;
     }
-    // The decision frame. At the root, update() has already run the raise
-    // step and set this frame's input; everywhere else it runs it now.
-    var input = node.fresh ? Object.assign({}, st.input) : {};
-    if (!node.fresh) raiseBlock(input);
-    if (kind === 'swap') {
-      bot._beginWalk(m[0], m[1], this.reaction);
-      bot._driveWalk(input);
-    } else if (kind === 'raise') {
-      bot.raiseFrames = 20; bot._raiseStarted = false; bot.cooldown = this.reaction;
-    } else if (kind === 'hold') {
-      bot.cooldown = this.reaction;
-    }
     var refused = function () { return kind === 'swap' && !bot._walk && !bot._lastSwap; };
     if (refused() || (bot._walk && bot._walk.retries)) return null;
     if (runFrame(input)) return { dead: true, t: node.t + f };
     for (var guard = 0; guard < 4000; guard++) {
       if (kind === 'long' && f >= frames) break;
       input = {};
-      raiseBlock(input);
+      raiseStep(bot, st, input);
       if (bot._walk) {
         bot._driveWalk(input);
         if (refused() || (bot._walk && bot._walk.retries)) return null;
@@ -1947,6 +1951,98 @@
     arr.forEach(function (a) { a.at -= f; });
     return this._engineNode(st, node.t + f, { left: bot.raiseFrames, started: bot._raiseStarted }, arr, false);
   };
+
+  // A SWAP'S WALK IS SHARED. Until its swap is queued, a move plays its node
+  // exactly as holding does, except for the cursor, and nothing the board
+  // does reads the cursor. So each node's board is played forward once,
+  // holding, while every legal swap walks only its cursor alongside it, with
+  // the engine's own input code, against what that board does to cursors (a
+  // new row carries it up; topCurRow clamps it). The board is copied on the
+  // frames some walk arrives, and each move plays on from its copy with its
+  // own cursor. engineCheck compares every such step with the whole step
+  // played on panel-engine.js.
+  var WALKS = null, ARRIVED = {}, SP = null;
+  function cursorOf(o) {
+    return { curRow: o.curRow, curCol: o.curCol, cursorDirection: o.cursorDirection, cursorTimer: o.cursorTimer,
+             input: Object.assign({}, o.input), prevInput: Object.assign({}, o.prevInput) };
+  }
+  PuyoCpu.prototype._walksOf = function (node) {
+    if (WALKS && WALKS.node === node) return WALKS;
+    SP = SP || (typeof window !== 'undefined' ? window : globalThis).PanelEngine.Stack.prototype;
+    var live = node.st.clone(), hold = { raiseFrames: node.hold.left, _raiseStarted: node.hold.started };
+    var arr = node.arrivals.map(copyArrival), out = { node: node, at: {}, copies: {} }, self = this;
+    var walks = node.b.legalSwaps().map(function (m) {
+      var px = { curRow: live.curRow, curCol: live.curCol, cursorDirection: live.cursorDirection, cursorTimer: live.cursorTimer,
+                 input: live.input, prevInput: live.prevInput, topCurRow: live.topCurRow, displacement: live.displacement,
+                 height: live.height, animatingCursorDuringCountdown: live.animatingCursorDuringCountdown,
+                 preventManualRaise: live.preventManualRaise, manualRaise: false, manualRaiseYet: false,
+                 moveCursor: SP.moveCursor, clampCursor: SP.clampCursor, tryQueueSwap: function () { throw ARRIVED; } };
+      var bot = { stack: px, cursorMoveFrames: self.cursorMoveFrames, _walk: null, cooldown: 0, _lastSwap: null,
+                  _beginWalk: PanelCpu.beginWalk, _driveWalk: PanelCpu.driveWalk, _nearestSwappable: PanelCpu.nearestSwappable };
+      bot._beginWalk(m[0], m[1], self.reaction);
+      return { key: m[0] + ',' + m[1], px: px, bot: bot, input: null };
+    });
+    for (var k = 0; walks.length && k < 4000; k++) {
+      // Frame k's input, before any walk adds to it.
+      var input = k === 0 && node.fresh ? Object.assign({}, live.input) : {};
+      if (!(k === 0 && node.fresh)) raiseStep(hold, live, input);
+      var held = { left: hold.raiseFrames, started: hold._raiseStarted }, going = [];
+      for (var i = 0; i < walks.length; i++) {
+        var w = walks[i], mine = Object.assign({}, input);
+        w.px.displacement = live.displacement; w.px.topCurRow = live.topCurRow;
+        try { w.bot._driveWalk(mine); }
+        catch (e) {
+          if (e !== ARRIVED) throw e;
+          if (!out.copies[k]) out.copies[k] = live.copy();
+          out.at[w.key] = { k: k, cursor: cursorOf(w.px), walk: Object.assign({}, w.bot._walk), input: mine, held: held };
+          continue;
+        }
+        w.input = mine;
+        going.push(w);
+      }
+      walks = going;
+      if (!walks.length) break;
+      // Frame k + 1: the board, holding; each cursor, as Stack.run moves it.
+      var stamp = live.rowStamp();
+      live.setInput(input);
+      live.run();
+      live.events.length = 0;
+      for (i = 0; i < arr.length; ) {
+        if (arr[i].at <= k + 1) { live.incoming.push({ width: arr[i].width, height: arr[i].height, isChain: arr[i].isChain }); arr.splice(i, 1); }
+        else i++;
+      }
+      if (live.gameOver) { walks.forEach(function (x) { out.at[x.key] = { dead: k + 1 }; }); break; }
+      var newRow = live.rowStamp() !== stamp;
+      for (i = 0; i < walks.length; i++) {
+        var q = walks[i].px;
+        SP.setInput.call(q, walks[i].input);
+        if (newRow && q.curRow !== 0) q.curRow = Math.min(q.curRow + 1, q.height);
+        q.topCurRow = live.topCurRow;
+        SP.applyInput.call(q);
+        SP.clampCursor.call(q);
+        q.prevInput = q.input;
+      }
+    }
+    return (WALKS = out);
+  };
+  // The swap m from node, on the shared walk; undefined when m was not one of
+  // the node's legal swaps (it is then played in full).
+  PuyoCpu.prototype._swapShared = function (node, m) {
+    var a = this._walksOf(node).at[m[0] + ',' + m[1]];
+    if (!a) return undefined;
+    if (a.dead) return { dead: true, t: node.t + a.dead };
+    var st = WALKS.copies[a.k].copy(), c = a.cursor;
+    st.curRow = c.curRow; st.curCol = c.curCol; st.cursorDirection = c.cursorDirection; st.cursorTimer = c.cursorTimer;
+    st.input = Object.assign({}, c.input); st.prevInput = Object.assign({}, c.prevInput);
+    var bot = { stack: st, cursorMoveFrames: this.cursorMoveFrames, _walk: Object.assign({}, a.walk), cooldown: 0, _lastSwap: null,
+                _beginWalk: PanelCpu.beginWalk, _driveWalk: PanelCpu.driveWalk, _nearestSwappable: PanelCpu.nearestSwappable,
+                raiseFrames: a.held.left, _raiseStarted: a.held.started };
+    var input = Object.assign({}, a.input);
+    bot._driveWalk(input);
+    var arr = node.arrivals.filter(function (x) { return x.at > a.k; }).map(copyArrival);
+    return this._runFrom(st, bot, arr, a.k, input, node, 'swap', 0);
+  };
+
   PuyoCpu.prototype._engineStep = function (node, m, long) {
     var r;
     if (long) {
@@ -2231,8 +2327,8 @@
     level = level.filter(function (x) { return !verdict[x.tag]; });
     // The one-ply bot exists to be cheap: the same search, a smaller budget.
     var budget = (this.depth || 1) > 1 ? this.SURVIVE_SEARCH_BUDGET : this.SURVIVE_SEARCH_BUDGET_CHEAP;
-    function garb(b) { var g = 0; for (var r = 1; r < b.grid.length; r++) if (b.grid[r]) for (var q = 1; q <= b.width; q++) if (b.grid[r][q] === -2) g++; return g; }
-    function top(b) { for (var r = b.grid.length - 1; r >= 1; r--) if (b.grid[r]) for (var q = 1; q <= b.width; q++) { var v = b.grid[r][q]; if (v && v !== -1) return r; } return 0; }
+    function garb(b) { return b._garb !== undefined ? b._garb : (b._garb = garbageCells(b)); }
+    function top(b) { return b._top !== undefined ? b._top : (b._top = topRow(b)); }
     // A board is guaranteed alive until its time plus what holds it (stop,
     // pre-stop, shake): the nearer that is to the horizon, the better.
     function better(x, y) {
@@ -2295,12 +2391,15 @@
     return verdict;
   };
 
+  // A node's board never changes, so what the beam sorts it by is read once.
+  function garbageCells(b) { var g = 0; for (var r = 1; r < b.grid.length; r++) if (b.grid[r]) for (var q = 1; q <= b.width; q++) if (b.grid[r][q] === -2) g++; return g; }
+  function topRow(b) { for (var r = b.grid.length - 1; r >= 1; r--) if (b.grid[r]) for (var q = 1; q <= b.width; q++) { var v = b.grid[r][q]; if (v && v !== -1) return r; } return 0; }
   PuyoCpu.prototype._lineSurvives = function (start, budget) {
     if (!start) return false;
     if (start.t >= this.SURVIVE_FRAMES) return true;
     var level = [start], self = this, i, j, n, c;
-    function garb(b) { var g = 0; for (var r = 1; r < b.grid.length; r++) if (b.grid[r]) for (var q = 1; q <= b.width; q++) if (b.grid[r][q] === -2) g++; return g; }
-    function top(b) { for (var r = b.grid.length - 1; r >= 1; r--) if (b.grid[r]) for (var q = 1; q <= b.width; q++) { var v = b.grid[r][q]; if (v && v !== -1) return r; } return 0; }
+    function garb(b) { return b._garb !== undefined ? b._garb : (b._garb = garbageCells(b)); }
+    function top(b) { return b._top !== undefined ? b._top : (b._top = topRow(b)); }
     while (level.length) {
       var next = [], seen = {};
       for (i = 0; i < level.length; i++) {

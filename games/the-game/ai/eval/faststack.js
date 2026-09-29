@@ -118,6 +118,7 @@
     var rows = st.panels, n = rows.length;
     var init = { D: new Int32Array((n * W + 8) * NF), G: new Int32Array(Math.max(n, 32) * S8), top: NF, free: [], nrows: n };
     var s = build(keys.concat(TAIL), function (x) { return init.hasOwnProperty(x) ? init[x] : st[x]; });
+    s.D[WRITE] = 1;
     for (r = 0; r < n; r++) {
       if (rows[r][0] !== null) throw new Error('FastStack: row ' + r + ' has a column 0');
       for (c = 1; c <= W; c++) {
@@ -150,6 +151,45 @@
     return new Make(pick, Make.keys);
   }
   var TAIL = ['D', 'G', 'top', 'free', 'nrows'];
+  // Copiers generated per field list, like cloneStack's: no callback, no
+  // switch, one fixed shape. `mode` 'copy' keeps everything (copy()); 'clone'
+  // is cloneStack's copy (clone()).
+  function shallow(v) {
+    if (Array.isArray(v)) return v.map(function (x) { return x && typeof x === 'object' ? Object.assign({}, x) : x; });
+    return Object.assign({}, v);
+  }
+  var copiers = {};
+  function copier(keys, mode) {
+    var slot = mode === 'clone' ? '_clone' : '_copy';
+    if (keys[slot]) return keys[slot];
+    var sig = mode + ':' + keys.join(','), C = copiers[sig];
+    if (C) return stash(keys, slot, C);
+    var body = ['var v;'];
+    keys.forEach(function (k) {
+      var K = JSON.stringify(k), dst = 'this[' + K + ']', src = 's[' + K + ']';
+      if (k === 'D') body.push(dst + ' = s.D.slice(0, s.top);');
+      else if (k === 'G') body.push(dst + ' = s.G.slice(0, s.nrows * ' + S8 + ');');
+      else if (k === 'free') body.push(dst + ' = s.free.slice();');
+      else if (k === 'levelData' || k === 'frames' || k === 'top' || k === 'nrows') body.push(dst + ' = ' + src + ';');
+      else if (mode === 'clone' && (k === 'events' || k === 'outgoing')) body.push(dst + ' = [];');
+      else if (mode === 'clone' && k === 'rng') body.push(dst + ' = fns.noRng;');
+      else if (mode === 'clone' && k === 'generateRowColors') body.push(dst + ' = fns.unseenRow;');
+      else if (mode === 'clone' && k === 'garbageRowColors') body.push(dst + ' = fns.unseenBreak;');
+      else if (mode === 'clone' && k === 'allowIdleSkip') body.push(dst + ' = false;');
+      else if (mode === 'clone' && (k === 'unseenRows' || k === 'unseenBreaks')) body.push(dst + ' = ' + src + ' || 0;');
+      else body.push('v = ' + src + '; ' + dst + ' = (v !== null && typeof v === "object") ? shallow(v) : v;');
+    });
+    body.push('this._keys = keys;');
+    C = copiers[sig] = new Function('shallow', 'fns', 'keys', 'return function C(s) {\n' + body.join('\n') + '\n};')(shallow, CLONE, keys);
+    C.prototype = FastStack.prototype;
+    return stash(keys, slot, C);
+  }
+  // Kept on the field list itself, out of sight of JSON and structured clone
+  // (the list travels to worker threads with each board).
+  function stash(keys, slot, C) {
+    Object.defineProperty(keys, slot, { value: C, enumerable: false, configurable: true, writable: true });
+    return C;
+  }
 
   // cloneStack's copy of every non-panel field.
   function copyField(k, v) {
@@ -161,6 +201,10 @@
   }
   // What cloneStack(this.toStack()) would be, taken over.
   FastStack.prototype.clone = function () {
+    var C = copier(this._keys, 'clone');
+    return new C(this);
+  };
+  FastStack.prototype.cloneSlow = function () {
     var src = this;
     return build(this._keys, function (k) {
       switch (k) {
@@ -241,6 +285,41 @@
     v.D = p.D; v.G = p.G; v.nrows = p.nrows; v.height = height; v.clock = clock; v.doCountdown = false;
     return v;
   };
+
+  // THIS BOARD, AS IT IS -- not what cloneStack makes of it. Outgoing
+  // garbage and events are kept, and a chain still growing stays the same
+  // object as its entry in outgoing, so play can go on from the copy exactly
+  // as it would have gone on from this.
+  FastStack.prototype.copy = function () {
+    var chainAt = this.currentChain && this.outgoing ? this.outgoing.indexOf(this.currentChain) : -1;
+    var C = copier(this._keys, 'copy'), s = new C(this);
+    if (chainAt >= 0) s.currentChain = s.outgoing[chainAt];
+    if (this.prevInput === this.input) s.prevInput = s.input;
+    return s;
+  };
+  FastStack.prototype.copySlow = function () {
+    var src = this, chainAt = -1;
+    if (this.currentChain && this.outgoing) chainAt = this.outgoing.indexOf(this.currentChain);
+    var s = build(this._keys, function (k) {
+      switch (k) {
+        case 'D': return src.D.slice(0, src.top);
+        case 'G': return src.G.slice(0, src.nrows * S8);
+        case 'free': return src.free.slice();
+        case 'levelData': case 'frames': return src[k];
+      }
+      var v = src[k];
+      if (typeof v === 'function') return v;
+      if (Array.isArray(v)) return v.map(function (x) { return x && typeof x === 'object' ? Object.assign({}, x) : x; });
+      if (v && typeof v === 'object') return Object.assign({}, v);
+      return v;
+    });
+    if (chainAt >= 0) s.currentChain = s.outgoing[chainAt];
+    if (this.prevInput === this.input) s.prevInput = s.input;
+    return s;
+  };
+  // The id of row 0's first panel: it changes when, and only when, a new
+  // row is made.
+  FastStack.prototype.rowStamp = function () { return this.D[this.G[1] + ID]; };
 
   // The Stack this is: every field, every panel with all its fields.
   FastStack.prototype.toStack = function () {
@@ -583,7 +662,7 @@
   }
 
   // ------------------------------------------------- the Stack's panel code
-  var MATCH_EFF = null, MARK_S = null, MARK_OUT = null;
+  var MATCH_EFF = null, MARK_S = null, MARK_OUT = null, LAST_EFF = null, LAST_OBJ = null, LAST_EMPTY = false;
   function markMatch(mr, mc) {
     var panel = MARK_S.G[mr * S8 + mc], D = MARK_S.D;
     if (panel && !D[panel + MATCHING]) { D[panel + MATCHING] = 1; MARK_OUT.push(panel); }
@@ -595,6 +674,18 @@
   }
   function putRow(s, row, r) { for (var c = 1; c <= W; c++) s.G[row * S8 + c] = r[c]; }
 
+  // WHAT A BOARD'S PANELS SAY, KEPT UNTIL ONE CHANGES. D[0] counts this
+  // board's writes that can change a panel; each fact is kept in D (slots 1-12,
+  // which no panel uses) with the count it was read at, and holds while the
+  // count is the same. The panel functions below read only panels, rows and
+  // the fixed height, so a read while nothing has been written gives the same
+  // answer again -- and a pass that changed nothing, run on the same panels,
+  // changes nothing again, so it is not run. A copy carries its facts, true
+  // of its panels because they are the same panels.
+  var WRITE = 0, TOP_AT = 1, TOP_V = 2, FALL_AT = 3, FALL_V = 4, CHN_AT = 5, CHN_V = 6, CNT_AT = 7, CNT_V = 8,
+      CNT_SW = 9, MATCH_AT = 10, CHAIN_AT = 11, UPD_AT = 12;
+  function wrote(s) { s.D[WRITE]++; }
+
   var OVERRIDES = {
     panelAt: function (row, col) {
       if (row < 0 || row >= this.nrows || col < 1 || col > W) return null;
@@ -602,8 +693,15 @@
     },
     isToppedOut: function () {
       var D = this.D;
+      if (D[TOP_AT] === D[WRITE]) return D[TOP_V] === 1;
+      var v = this._toppedOut();
+      D[TOP_AT] = D[WRITE]; D[TOP_V] = v ? 1 : 0;
+      return v;
+    },
+    _toppedOut: function () {
+      var D = this.D, G = this.G;
       for (var col = 1; col <= W; col++) {
-        var p = cell(this, this.height, col);
+        var p = G[(this.height) * S8 + col];
         var dangerous = D[p + ISGARBAGE] ? D[p + STATE] !== FALLING : D[p + COLOR] !== 0;
         if (dangerous) return true;
       }
@@ -611,9 +709,16 @@
     },
     hasFallingGarbage: function () {
       var D = this.D;
+      if (D[FALL_AT] === D[WRITE]) return D[FALL_V] === 1;
+      var v = this._fallingGarbage();
+      D[FALL_AT] = D[WRITE]; D[FALL_V] = v ? 1 : 0;
+      return v;
+    },
+    _fallingGarbage: function () {
+      var D = this.D, G = this.G;
       for (var row = Math.min(this.height + 3, this.nrows - 1); row >= 1; row--) {
         for (var col = 1; col <= W; col++) {
-          var p = cell(this, row, col);
+          var p = G[(row) * S8 + col];
           if (D[p + ISGARBAGE] && D[p + STATE] === FALLING) return true;
         }
       }
@@ -621,19 +726,33 @@
     },
     hasChainingPanels: function () {
       var D = this.D;
+      if (D[CHN_AT] === D[WRITE]) return D[CHN_V] === 1;
+      var v = this._chainingPanels();
+      D[CHN_AT] = D[WRITE]; D[CHN_V] = v ? 1 : 0;
+      return v;
+    },
+    _chainingPanels: function () {
+      var D = this.D, G = this.G;
       for (var row = 1; row < this.nrows; row++) {
         for (var col = 1; col <= W; col++) {
-          var p = cell(this, row, col);
+          var p = G[(row) * S8 + col];
           if (D[p + CHAINING] && D[p + COLOR] !== 0) return true;
         }
       }
       return false;
     },
     countActivePanels: function () {
-      var count = 0, swapping = 0, D = this.D;
+      var D = this.D, G = this.G;
+      if (D[CNT_AT] === D[WRITE]) {
+        this.nPrevActive = this.nActive;
+        this.nActive = D[CNT_V];
+        this.swappingCount = D[CNT_SW];
+        return;
+      }
+      var count = 0, swapping = 0;
       for (var row = 1; row <= this.height; row++) {
         for (var col = 1; col <= W; col++) {
-          var p = cell(this, row, col);
+          var p = G[(row) * S8 + col];
           if (D[p + COLOR] === 0) continue;
           if (D[p + ISGARBAGE]) {
             if (D[p + STATE] !== NORMAL) count++;
@@ -646,22 +765,39 @@
       this.nPrevActive = this.nActive;
       this.nActive = count;
       this.swappingCount = swapping;
+      D[CNT_AT] = D[WRITE]; D[CNT_V] = count; D[CNT_SW] = swapping;
     },
     getMatchingPanels: function () {
+      var D = this.D;
+      if (D[MATCH_AT] === D[WRITE]) return [];
+      var matching = this._matchingPanels();
+      if (matching.length) wrote(this);
+      else D[MATCH_AT] = D[WRITE];
+      return matching;
+    },
+    _matchingPanels: function () {
       var matching = [], row, col, p, i, D = this.D;
       var H = this.height, stride = W + 2, need = (H + 2) * stride;
       if (!MATCH_EFF || MATCH_EFF.length < need) MATCH_EFF = new Int8Array(need);
-      var eff = MATCH_EFF;
+      var eff = MATCH_EFF, G = this.G, same = LAST_OBJ === this && LAST_EFF && LAST_EFF.length >= need;
       for (row = 1; row <= H; row++) {
         var base = row * stride;
         for (col = 1; col <= W; col++) {
-          p = cell(this, row, col);
-          eff[base + col] = canMatch(D, p) ? D[p + COLOR] : 0;
+          p = G[row * S8 + col];
+          var e = canMatch(D, p) ? D[p + COLOR] : 0;
+          eff[base + col] = e;
+          if (same && LAST_EFF[base + col] !== e) same = false;
         }
       }
+      // scanRuns reads nothing but eff: the same eff as this board's last
+      // frame, which had no run, has none now.
+      if (same && LAST_EMPTY) return matching;
       MARK_S = this; MARK_OUT = matching;
       rules().scanRuns(eff, W, H, stride, markMatch);
       MARK_S = null; MARK_OUT = null;
+      if (!LAST_EFF || LAST_EFF.length < need) LAST_EFF = new Int8Array(need);
+      LAST_EFF.set(eff.subarray(0, need));
+      LAST_OBJ = this; LAST_EMPTY = matching.length === 0;
       for (i = 0; i < matching.length; i++) {
         if (D[matching[i] + STATE] === HOVERING) D[matching[i] + CHAINING] = 0;
       }
@@ -711,6 +847,7 @@
       var comboSize = matching.length;
       var i, D = this.D;
       if (comboSize > 0) {
+        wrote(this);
         var f = this.frames;
         var isChainLink = false;
         for (i = 0; i < matching.length; i++) if (D[matching[i] + CHAINING]) isChainLink = true;
@@ -748,6 +885,7 @@
       this.clearChainingFlags();
     },
     matchGarbagePanels: function (garbagePanels, garbageMatchTime, isChain, onScreenCount) {
+      wrote(this);
       var D = this.D;
       sortByPopOrder(D, garbagePanels, true);
       for (var i = 0; i < garbagePanels.length; i++) {
@@ -763,6 +901,7 @@
       this.convertGarbagePanels(isChain);
     },
     convertGarbagePanels: function (isChain) {
+      wrote(this);
       var D = this.D;
       for (var row = 1; row < this.nrows; row++) {
         var cols = [];
@@ -780,19 +919,22 @@
       }
     },
     clearChainingFlags: function () {
-      var D = this.D;
+      var D = this.D, G = this.G, changed = false;
+      if (D[CHAIN_AT] === D[WRITE]) return;
       for (var row = 1; row <= Math.min(this.nrows - 1, this.height + 2); row++) {
         for (var col = 1; col <= W; col++) {
-          var p = cell(this, row, col);
+          var p = G[(row) * S8 + col];
           if (!D[p + MATCHING] && D[p + CHAINING] && !D[p + MATCHANYWAY] && (canMatch(D, p) || D[p + COLOR] === 9)) {
             if (row > 1) {
-              if (D[cell(this, row - 1, col) + STATE] !== SWAPPING) D[p + CHAINING] = 0;
+              if (D[G[(row - 1) * S8 + col] + STATE] !== SWAPPING) { D[p + CHAINING] = 0; changed = true; }
             } else {
-              D[p + CHAINING] = 0;
+              D[p + CHAINING] = 0; changed = true;
             }
           }
         }
       }
+      if (changed) wrote(this);
+      else D[CHAIN_AT] = D[WRITE];
     },
     shouldDropGarbage: function () {
       var garbage = this.incoming[0];
@@ -808,6 +950,7 @@
       return garbage.height > 1;
     },
     dropGarbage: function (width, height) {
+      wrote(this);
       var originRow = this.height + 1;
       var originCol = this.garbageSpawnColumn(width);
       var id = ++this.garbageCreatedCount;
@@ -832,6 +975,7 @@
       this.events.push({ type: "garbageDrop", width: width, height: height, col: originCol });
     },
     newRow: function () {
+      wrote(this);
       var top = this.nrows - 1, topOccupied = false, col, c, row;
       for (col = 1; col <= W; col++) if (this.D[cell(this, top, col) + COLOR] !== 0) topOccupied = true;
       if (topOccupied) {
@@ -862,6 +1006,7 @@
       this.events.push({ type: "newRow" });
     },
     fillNewRow: function (row) {
+      wrote(this);
       var D = this.D, neighborColors = null, col;
       if (row + 1 < this.nrows) {
         neighborColors = [];
@@ -906,6 +1051,7 @@
       return true;
     },
     doSwap: function (row, col) {
+      wrote(this);
       var D = this.D;
       var left = cell(this, row, col);
       var right = cell(this, row, col + 1);
@@ -926,17 +1072,32 @@
     },
     updatePanels: function () {
       this.shakeTimeOnFrame = 0;
-      var G = this.G;
-      for (var row = 1; row < this.nrows; row++) {
+      var G = this.G, D = this.D, n = this.nrows, changed = false;
+      if (D[UPD_AT] === D[WRITE]) return;
+      for (var row = 1; row < n; row++) {
         for (var col = 1; col <= W; col++) {
-          var p = G[row * S8 + col], D = this.D;
-          // An empty cell with its four per-frame flags already 0: updatePanel
-          // would set them to 0 and updateNormal returns at colour 0.
-          if (D[p + COLOR] === 0 && D[p + STATE] === NORMAL && D[p + ISGARBAGE] === 0 && D[p + STATECHANGED] === 0 &&
-              D[p + PROPCHAIN] === 0 && D[p + PROPFALL] === 0 && D[p + MATCHING] === 0) continue;
+          var p = G[row * S8 + col];
+          if (D[p + STATE] === NORMAL) {
+            // updatePanel's resets, then updateNormal, with what changes noted.
+            var flags = D[p + STATECHANGED] !== 0 || D[p + PROPCHAIN] !== 0 || D[p + PROPFALL] !== 0 || D[p + MATCHING] !== 0;
+            if (D[p + ISGARBAGE] === 0) {
+              if (D[p + COLOR] === 0 && !flags) continue;
+              if (flags) { D[p + STATECHANGED] = 0; D[p + PROPCHAIN] = 0; D[p + PROPFALL] = 0; D[p + MATCHING] = 0; changed = true; }
+              if (D[p + COLOR] === 0 || !D[G[(row - 1) * S8 + col] + STATECHANGED]) continue;
+              updateNormal(this, p);
+              changed = true;
+              continue;
+            }
+            if (flags) { D[p + STATECHANGED] = 0; D[p + PROPCHAIN] = 0; D[p + PROPFALL] = 0; D[p + MATCHING] = 0; changed = true; }
+            if (!supportedFromBelow(this, p)) { fall(this, p); changed = true; }
+            continue;
+          }
           updatePanel(this, p);
+          changed = true;
         }
       }
+      if (changed) wrote(this);
+      else D[UPD_AT] = D[WRITE];
     },
     fillRatio: function () {
       var highest = 0, D = this.D;
