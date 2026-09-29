@@ -240,6 +240,27 @@
         // after it has been culled. Otherwise it runs at expansion, for the twelve
         // that survived -- the mask is the same either way, and paying for the
         // hundreds that did not survive cost 13% of a decision for nothing.
+        // BREAKS IN HAND: legal swaps on this board that touch a slab and clear.
+        //
+        // `dig` counts cells where the right colour WOULD finish a line against
+        // the garbage, which is satisfied by a board that is near a break and
+        // never closes it -- and that is where the bot parks, on half of all
+        // buried decisions. This counts the ones it can actually play.
+        //
+        // Only asked of nodes that already have somewhere to break (dig > 0), so
+        // the resolve sweep runs on a minority of the nodes rather than all of
+        // them.
+        function savesOf(state) {
+            var sw = bit.legalSwapsOf(state), n = 0, i, r;
+            for (i = 0; i < sw.length; i++) {
+                if (!bit.swapMasks(state, sw[i][0], sw[i][1])) continue;
+                r = bit.resolveFromMasks(state, false);
+                bit.swapMasks(state, sw[i][0], sw[i][1]);
+                if (r.scope === 'garbage-broke') n++;
+            }
+            return n;
+        }
+
         function reachOf(state) {
             var reach = bit.reachMask(state), dig = 0, c, adj;
             for (c = 1; c <= W; c++) {
@@ -251,13 +272,14 @@
             return { mask: reach, dig: dig };
         }
 
-        var flat = null, BASE = null, BASEDIG = 0;
+        var flat = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
         var FPR = (timing && timing.framesPerRow) || 112;
         var DEADLINE = (timing && timing.deadline) || 0;
 
         function expandAll(state0, depth) {
             BASE = shapeOf(state0);
             BASEDIG = DIG ? reachOf(state0).dig : 0;
+            BASESAVE = (DIG && BASEDIG > 0) ? savesOf(state0) : 0;
             // The root has no reach mask: ply one stays exhaustive so an immediate
             // clear is never missed.
             var frontier = [{ st: state0, chain: [], from: cursor, spent: 0, reach: null, dig: 0 }], ply;
@@ -379,7 +401,16 @@
                                 // the same deadline/W a converted cell is priced at
                                 // everywhere else, since that is what it leads to.
                                 // Reaching the slab IS the flattening here.
-                                if (DIG && rr) val += (rr.dig - BASEDIG) * (DEADLINE / W);
+                                // A BREAK IN HAND IS WORTH WHAT IT UNLOCKS; being NEAR
+                            // one is worth a fraction of it. Both are priced at the
+                            // same deadline/W a converted cell gets, because that
+                            // is what a break leads to -- but only the one it can
+                            // actually play counts in full.
+                            if (DIG && rr) {
+                                var sv = rr.dig > 0 ? savesOf(res.settled) : 0;
+                                val += (sv - BASESAVE) * (DEADLINE / W) * W
+                                     + (rr.dig - BASEDIG) * (DEADLINE / W);
+                            }
                                 var take = !flat || val > flat.value;
                                 if (!take && flat && val === flat.value) {
                                     take = waysOf(res.settled) > flat.ways;
