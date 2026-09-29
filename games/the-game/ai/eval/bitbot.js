@@ -1125,7 +1125,17 @@
             // is there.
             var shortfall = (o.mat === null || o.mat === undefined)
                           ? 0 : Math.max(0, WORKING_ROWS - o.mat);
-            var bought = o.total * perPanel + (o.garbage || 0) * perCell
+            // WHAT THE CLEAR ITSELF HOLDS, from the engine's table rather than a
+            // proxy for it. The floor is held for the whole of a resolve, and a
+            // resolve is FLASH + FACE + POP per panel -- a fixed cost plus a
+            // per-panel one, not a straight multiple. perPanel is 18.67 here, so
+            // it read a three as 56 frames against 59 and a six as 112 against
+            // 80: up to 40% over on exactly the big clears the survival
+            // arithmetic leans on. resolveFramesOf is the same function deadly
+            // uses, so the two cannot disagree about what a clear is worth.
+            var holds = (o.total > 0 || (o.garbage || 0) > 0)
+                      ? BF.resolveFramesOf(engine, o.total || 0, o.garbage || 0) : 0;
+            var bought = holds + (o.garbage || 0) * perCell
                        + lowered * (framesPerRow || 0) + gain
                        - shortfall * (framesPerRow || 0);
             var rate = bought / Math.max(1, took);
