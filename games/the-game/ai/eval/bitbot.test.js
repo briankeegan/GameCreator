@@ -183,9 +183,15 @@ ok(modesSeen.BUILD > 0, 'BUILD was never entered');
        'topped out did not open DEFEND');
 }());
 // ATTACK drops hold, so on a decision in ATTACK the bot cannot have held.
+//
+// The raise mode's hold is not that hold. `via: 'raising'` is the bot keeping
+// the board still so its own row can arrive -- the raise outranks the mode, so
+// it is not the pool's hold leaking through and it is excluded here by name.
 var heldInAttack = 0;
 runs.forEach(function (r) {
-    r.picks.forEach(function (p) { if (p.mode && p.mode.name !== 'BUILD' && p.kind === 'hold') heldInAttack++; });
+    r.picks.forEach(function (p) {
+        if (p.mode && p.mode.name !== 'BUILD' && p.kind === 'hold' && p.via !== 'raising') heldInAttack++;
+    });
 });
 ok(heldInAttack === 0, heldInAttack + ' decisions held while not in BUILD -- ' +
                        'ATTACK and DEFEND are supposed to drop hold from the pool');
@@ -261,30 +267,6 @@ ok(BitBot.prototype.deadly.call(probe, masksOf(lowBoard), null, { stopTime: 0 })
 // The check is the repeat RATE, because that is the defect, and it is compared
 // against the same bot with the filter off -- an absolute bar would be a
 // constant nobody could justify.
-function repeatRate(opts) {
-    var stack = new PanelEngine.Stack({ level: 10, seed: 701, countdown: false });
-    // LOOPER, not STARTER: the defect has to be present for the filter to be
-    // shown to remove it.
-    var o = { weights: LOOPER, allowRaise: true };
-    for (var k in (opts || {})) o[k] = opts[k];
-    var bot = new BitBot(stack, o);
-    var picks = [];
-    var real = bot.decide;
-    bot.decide = function () {
-        var d = real.call(this);
-        picks.push(d.kind === 'swap' && d.move ? d.move[0] + ',' + d.move[1] : d.kind);
-        return d;
-    };
-    var matches = 0;
-    for (var f = 0; f < 500 && !stack.gameOver; f++) {
-        bot.update(); stack.run();
-        var evs = stack.drainEvents();
-        for (var e = 0; e < evs.length; e++) if (evs[e].type === 'match') matches++;
-    }
-    var rep = 0;
-    for (var i = 1; i < picks.length; i++) if (picks[i] === picks[i - 1] && picks[i].indexOf(',') > 0) rep++;
-    return { rep: rep, n: picks.length, matches: matches, bot: bot };
-}
 // DETERMINISTIC, not emergent. An earlier version compared the repeat RATE of a
 // real game with the filter on against one with it off, and it went vacuous twice
 // -- once when STARTER's weights improved and once when DEFEND changed -- because
@@ -363,27 +345,14 @@ function repeatRate(opts) {
     // improves.
     ok(matches > 0, 'the bot cleared nothing at all in 1,200 frames, which is the ' +
                     'no-progress loop the no-return filter exists to stop');
-    // And the same run with the filter off must be the WORSE one, or the filter is
-    // doing nothing for the defect it is named after.
-    var s2 = new PanelEngine.Stack({ level: 10, seed: 703, countdown: false });
-    var b2 = new BitBot(s2, { weights: LOOPER, allowRaise: true, refuseReturn: false });
-    var m2 = 0, repeats = 0, last = null;
-    for (f = 0; f < 500 && !s2.gameOver; f++) {
-        b2.update(); s2.run();
-        var e2 = s2.drainEvents();
-        for (e = 0; e < e2.length; e++) if (e2[e].type === 'match') m2++;
-        if (b2._lastSwap) {
-            var key = b2._lastSwap[0] + ',' + b2._lastSwap[1];
-            if (key === last) repeats++;
-            last = key;
-        }
-    }
-    ok(bot.counts.refusedReturn > 0,
-       'the no-return filter refused nothing over a whole game on the vector that loops');
+    // PROGRESS IS THE ASSERTION, NOT THE COUNTER. Whether a real game happens to
+    // offer the filter anything to refuse depends on the whole decision path, and
+    // that path keeps changing -- counting refusals here went vacuous again when
+    // the raise became a mode and the bot stopped oscillating. The filter being
+    // APPLIED is proved above, on a constructed position; this run is here for the
+    // defect it is named after, which is a game where nothing clears.
 }());
 
-var withFilter = { rep: 0, n: 0, matches: 0 };
-var without = { rep: 0, n: 0, matches: 0 };
 
 // A no-op swap -- two panels of the same colour -- is never OFFERED now, because
 // the swap list comes from bit.legalSwapsOf, which applies legalSwaps's own rule:
@@ -521,9 +490,6 @@ ok(mirror.scores[0] === mirror.scores[1],
        BF.infoKeys().filter(function (k) { return info[k] === undefined; }).join(', '));
 }());
 
-console.log('bitbot: repeated swaps ' + withFilter.rep + '/' + withFilter.n +
-            ' with the no-return filter, ' + without.rep + '/' + without.n + ' without; ' +
-            'matches ' + withFilter.matches + ' vs ' + without.matches);
 console.log('bitbot: ' + picks + ' decisions over ' + runs.length + ' games, ' +
             fired + ' swaps executed, ' + refused + ' candidates put to the death filter, ' +
             'modes ' + JSON.stringify(modesSeen) + ', mirror drew');
