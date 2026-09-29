@@ -2104,20 +2104,31 @@
     // "Could get to" is the arithmetic used everywhere else: the walk from where
     // the cursor ends up, plus the swap, against the frames that board has before
     // it tops out. A break on the far side with twenty frames left is not a save.
-    // IS THERE A MOVE IN HAND ON THIS BOARD.
+    // IS THERE A MOVE IN HAND ON THIS BOARD: ANY CLEAR, NOT ONLY A BREAK.
     //
-    // A raise fills the board, so it should not happen until there is something
-    // to answer with. Buried, that means a break -- the only move that converts
-    // the slab. Clear of garbage there is nothing to break, so any clear counts.
+    // THE EMERGENCY VALVE. Death is one frame with the board full, nothing
+    // moving and the clock at zero, and maxHealth is 1 at level 10, so there is
+    // no second frame. The only thing that prevents it is a clear it can fire on
+    // that frame -- and firing holds the floor for the whole resolve, 59 frames
+    // for a three, whether or not the three touches garbage.
+    //
+    // So a bare three IS the save. Demanding a break made the valve almost never
+    // present: a break needs a match landing beside a slab and is available on
+    // about 4% of boards, while some clear is available on most. All three deaths
+    // over seed 101 are a full board with no clear one swap away -- row 7 reading
+    // `4 2 2 3 5 5`, two pairs and no way to finish either in one swap -- so the
+    // rule was not failing to keep a save, it was never counting one.
+    //
+    // A break is still the better save and the rest of the bot still chases it:
+    // it converts the slab, which is the only way ceiling comes back. This is the
+    // floor under that, not a replacement for it.
     BitBot.prototype.hasFireable = function (masks) {
-        var sw = bit.legalSwapsOf(masks), i, r, buried = false;
-        for (i = 1; i <= W; i++) if (masks.garb[i]) { buried = true; break; }
+        var sw = bit.legalSwapsOf(masks), i, r;
         for (i = 0; i < sw.length; i++) {
             if (!bit.swapMasks(masks, sw[i][0], sw[i][1])) continue;
             r = bit.resolveFromMasks(masks, false);
             bit.swapMasks(masks, sw[i][0], sw[i][1]);
-            if (r.scope === 'garbage-broke') return true;
-            if (!buried && r.total > 0) return true;
+            if (r.scope === 'garbage-broke' || r.total > 0) return true;
         }
         return false;
     };
@@ -2271,11 +2282,12 @@
 
     // IS THE ANSWER STILL IN HAND AFTER THIS MOVE, and reachable in time?
     //
-    // Asked of the landed board WITH the next slab on it, the same question
-    // answersASlab asks -- a save is a break, and on a board with no garbage
-    // there is nothing to break, so asking the bare board meant an unburied
-    // board could never hold one and the whole rule stood aside until the
-    // garbage had already arrived.
+    // The same question hasFireable asks -- any clear, because any clear holds
+    // the floor -- put to the landed board, and to the row that lands next when
+    // the board is clean. "Reachable" is the arithmetic used everywhere else: the
+    // walk from where the cursor ends up plus the swap, against the frames that
+    // board has left. A clear on the far side with twenty frames to live is not a
+    // save.
     BitBot.prototype.saveAfter = function (masks, row, col, info) {
         var deadline = framesToDeath(info, tallestBoard(masks), info.framesPerRow);
         var frozen = (info.stopTime || 0) > 0 || !!info.toppedOut;
@@ -2287,7 +2299,7 @@
             if (!bit.swapMasks(masks, sw[i][0], sw[i][1])) continue;
             r = bit.resolveFromMasks(masks, false);
             bit.swapMasks(masks, sw[i][0], sw[i][1]);
-            if (r.scope === 'garbage-broke') return true;
+            if (r.scope === 'garbage-broke' || r.total > 0) return true;
         }
         return false;
     };
