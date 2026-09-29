@@ -119,8 +119,7 @@
         return { kind: kindOf(r.chain), size: sizeOf(r.chain, r.total),
                  swaps: swaps, frames: frames, chain: r.chain, total: r.total,
                  garbage: r.garbage || 0, duration: durationOf(swaps, frames),
-                 tall: sh ? sh.tall : null, bumps: sh ? sh.bumps : null,
-                 excess: sh ? sh.excess : null };
+                 tall: sh ? sh.tall : null, bumps: sh ? sh.bumps : null };
     }
 
     // Cheapest first, then bigger — the order a caller wants to read.
