@@ -1167,6 +1167,25 @@
         // being played, it is being filled.
         var raising = this.raiseMode(info, pool, base);
         this._wantRaise = !!raising;
+        // AND WHETHER IT IS HAPPENING, which is not the same as wanting it.
+        //
+        // The engine is offering the row now, or it is part-way through handing
+        // one over. THAT is when the bot keeps its hands off the swap button,
+        // because a swap sets riseLock and takes back the row it just asked for.
+        // The rest of the time the button stays held -- update() sends it on the
+        // mode, not on this -- and the bot plays.
+        //
+        // Holding for the whole mode instead is a hundred frames of standing
+        // still per episode with nothing sent, and the opponent spends them
+        // building: on seed 101 the bot held from frame 862 to 984 at three rows
+        // of material and took fifteen cells at 998 it had no answer to.
+        var delivering = false;
+        if (raising) {
+            for (var ri = 0; ri < pool.length; ri++) {
+                if (pool[ri].kind === 'raise') { delivering = true; break; }
+            }
+            if (!delivering && this.stack.manualRaise && !this.stack.riseLock) delivering = true;
+        }
         // DEFEND RANKS BY THE CLOCK, NOT BY THE WEIGHTS.
         //
         // The bot is always attacking -- the modes only change which shapes it
@@ -1245,10 +1264,10 @@
         if (digging) this.counts.digging++;
         var survival = null;
         var swept = false;
-        if (raising) {
-            // A MODE, NOT A MOVE. While the raise is on the whole sweep is
-            // skipped: a plan made now is a plan about a board that is about to
-            // gain a row, and the move it opens with would stop that row coming.
+        if (delivering) {
+            // THE ROW IS ON ITS WAY, so there is nothing to plan: a plan made now
+            // is about a board one row from changing, and its opening move would
+            // take the row back.
             this._plan = null;
             this._attack = null;
             this._flatten = null;
@@ -1668,27 +1687,22 @@
         // The button is already held -- update() sends it on this same answer.
         // What is left is the rest of raising: play the row when the engine is
         // offering one, and otherwise keep the board still so it can.
-        if (raising) {
+        if (delivering) {
             var rc = null;
             for (i = 0; i < pool.length; i++) if (pool[i].kind === 'raise') rc = pool[i];
             if (rc) {
                 this.counts[raising === 'opening' ? 'openingRaises' : 'raisedForMaterial']++;
                 return { kind: 'raise', mode: mode, alive: alive, via: 'raise:' + raising };
             }
-            // WHEN IT IS RAISING, IT IS NOT SWAPPING.
+            // WHILE THE RAISE IS HAPPENING, IT IS NOT SWAPPING.
             //
             // riseLock is swapQueued || shakeTime || hasActivePanels, so the
-            // bot's own swap is what stops the bot's own row. Swapping while the
-            // mode is on is asking for a row and then refusing to let it come.
-            // Not swapping is not a move competing with the others; it is what
-            // raising IS, the way a player takes their hand off the swap button
-            // to hold raise.
+            // bot's own swap is what stops the bot's own row, and mid-delivery a
+            // swap takes back the row it just asked for.
             //
-            // Bounded by the mode and not by a cap. Every state that sets
-            // riseLock clears on its own, so the row arrives; each row adds W
-            // panels, so MATERIAL is satisfied within WORKING_ROWS of them; and
-            // both scenarios end the moment the risen board stops fitting. The
-            // engine refusing on this frame is not a reason to go and swap.
+            // Bounded by the delivery: the engine hands a row over in sixteen
+            // frames. Between rows the mode is still on -- the button is still
+            // held -- and the bot is playing.
             this.counts.waitedToRaise++;
             return { kind: 'hold', mode: mode, alive: alive, via: 'raising' };
         }
