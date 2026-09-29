@@ -517,6 +517,11 @@
     // is exactly how those are waited out.
     BitBot.prototype.canRaise = function () {
         if (!this.allowRaise) return false;
+        // ONE RAISE AT A TIME. update() holds the input for twenty frames and the
+        // engine re-grants a row on every frame it is held, so one decision buys
+        // two or three rows. Re-arming the hold on the next decision holds it
+        // forever and walks the stack into the ceiling.
+        if (this.raiseFrames > 0) return false;
         var s = this.stack;
         if (s.preventManualRaise || s.manualRaise) return false;
         if (typeof s.isToppedOut === 'function' && s.isToppedOut()) return false;
@@ -1616,9 +1621,16 @@
         // two ways to get them are raising and breaking. Measured on seed 101, it
         // sat at 3 rows for six straight decisions under the floor of 4, refusing
         // to raise because a slab was queued, and died 150 frames later.
+        // ONLY UP TO A HEIGHT IT CANNOT DIE AT, AND THAT INCLUDES WHAT IS ALREADY
+        // ON ITS WAY. The bound was tallest + 1 <= H - WORKING_ROWS, which reads
+        // the stack as it stands and ignores the queue, so the bot would raise
+        // into a board with thirty cells already in flight. Every queued cell
+        // lands: incoming / W is the rows it will add, and the room for a chain to
+        // stand in has to survive both.
+        var incomingRows = Math.ceil((info.incoming || 0) / W);
         if (!survival && this.canRaise() &&
             materialRows(base) < WORKING_ROWS &&
-            tallestOf(pool) + 1 <= H - WORKING_ROWS) {
+            tallestOf(pool) + 1 + incomingRows <= H - WORKING_ROWS) {
             // ONLY IF IT DOES NOT KILL. canRaise() is the engine's own list of
             // refusals -- whether the raise is LEGAL -- and says nothing about
             // whether the board survives it. Returning here skipped the death
