@@ -64,13 +64,22 @@ for (f = 0; f < FRAMES; f++) {
   for (i = 0; i < 2; i++) assert.strictEqual(key(T.st[i]), trace[2 * f + i], 'side ' + i + ' on threads parted at frame ' + f);
 }
 console.log('ok: ' + FRAMES + ' frames identical with the search on 2 threads');
+// And on faststack.js, where the survival search keeps its boards on the
+// workers (_svLevel).
+var T2 = duel(null);
+T2.cp.forEach(function (c) { c.threads = 2; c.fastEngine = true; });
+for (f = 0; f < FRAMES; f++) {
+  step(T2);
+  for (i = 0; i < 2; i++) assert.strictEqual(key(T2.st[i]), trace[2 * f + i], 'side ' + i + ' on threads and FastStack parted at frame ' + f);
+}
+console.log('ok: ' + FRAMES + ' frames identical with the search on 2 threads on FastStack');
 
 // A board where the search goes deep (brain.fixture.json): the same
 // decision, the same verdict for every move and the same proven line.
-function heavy(threads) {
+function heavy(threads, fast) {
   var fx = JSON.parse(fs.readFileSync(path.join(DIR, 'brain.fixture.json'), 'utf8'));
   function dec(e) { return P.decodeStack({ meta: e.meta, rows: e.rows, row0: e.row0, buf: Int32Array.from(e.buf) }); }
-  var o = opts(1); o.threads = threads;
+  var o = opts(1); o.threads = threads; o.fastEngine = !!fast;
   var b = new P(dec(fx.me), o), verdicts = null, search = b._survivalSearch;
   b.opponent = dec(fx.opp); b.raiseFrames = fx.raiseFrames; b._raiseStarted = fx.raiseStarted; b._predArr = fx.arrivals;
   b._survivalSearch = function (c) { verdicts = search.call(b, c); return verdicts; };
@@ -78,9 +87,10 @@ function heavy(threads) {
   return JSON.stringify({ d: d, verdicts: verdicts,
                           line: b._proofLine && b._proofLine.line.map(function (n) { return [n.t, n.m]; }) });
 }
-var one = heavy(0), two = heavy(2);
+var one = heavy(0), two = heavy(2), three = heavy(3, true);
 assert.strictEqual(two, one, 'the deep search on 2 threads decided differently');
-console.log('ok: a deep search decides the same on 2 threads');
+assert.strictEqual(three, one, 'the deep search on 3 threads on FastStack decided differently');
+console.log('ok: a deep search decides the same on 2 threads, and on 3 on FastStack');
 
 // Late: every answer lands 40 frames after it was asked for.
 function Late(m) { this.inner = new P.LocalBrain(m, 0); }
