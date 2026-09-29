@@ -2231,19 +2231,23 @@
         if (this._opening && (info.incoming || !fits)) this._opening = false;
         if (!fits) return null;
         if (!this._opening && materialRows(base) >= WORKING_ROWS) return null;
-        // AND NOTHING ELSE. In particular NOT "only with an answer ready".
+        // AN ANSWER IS REQUIRED ONLY WHERE ONE CAN EXIST.
         //
-        // Having a break in hand is the save invariant's job, at the exit gate,
-        // on every decision. Making it a PRECONDITION OF RAISING defeats itself:
-        // on a clean board there is no garbage to break, so no answer can exist,
-        // so the raise is refused -- and the raise is the only thing that adds
-        // the material an answer is made of. Measured on seed 101: the board sat
-        // at 3.0 rows for a thousand frames, flat, empty and with nothing
-        // incoming, never raising, and then took a 30-cell chain with eighteen
-        // panels in hand and died at 1,560.
+        // With garbage on the board the condition is real: filling a board that
+        // cannot answer what is already sitting on it is how it tops out. Drop it
+        // there and the round-robin goes to 11 deaths in 13 pairings against 5 in
+        // 30.
         //
-        // What is left is the rule as given: the opening, or material under the
-        // floor, and only to a height the board survives.
+        // On a CLEAN board it cannot be satisfied at all -- there is no garbage
+        // to break, so no answer exists, so the raise is refused forever, and the
+        // raise is the only thing that adds the material a break is made of.
+        // Seed 101 sat at 3.0 rows for a thousand frames, flat and with nothing
+        // incoming, and died at 1,560 to a 30-cell chain with eighteen panels in
+        // hand. A precondition that forbids the only thing that could meet it is
+        // not a precondition.
+        var dirty = false;
+        for (var gc = 1; gc <= W; gc++) if (base.garb[gc]) { dirty = true; break; }
+        if (dirty && !this.answersASlab(base)) return null;
         return this._opening ? 'opening' : 'material';
     };
 
