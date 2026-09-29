@@ -165,6 +165,7 @@
         this._seen = [];
         // The plan being executed, if any. See the commitment note in decide().
         this._plan = null;
+        this._flatten = null;
         this._attack = null;
 
         this._snapshot = PanelCpu().snapshot;
@@ -194,7 +195,7 @@
                         attacked: 0, attackDropped: 0, cellsPlanned: 0, refusedPayless: 0,
                         raisedForMaterial: 0, refusedRaise: 0, forcedBreak: 0, forcedBoth: 0, refusedEarly: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
-                        revealWindows: 0, digging: 0 };
+                        revealWindows: 0, digging: 0, flattened: 0, flattenDropped: 0 };
     }
 
     // WHAT THE ENGINE KNOWS, shared by every candidate in the decision. None of
@@ -850,7 +851,17 @@
             var taste = 1 + ((weights[key] || 0) / 100);
             if (taste < 0.1) taste = 0.1;
             var rate = (cells / Math.max(1, o.duration || o.frames)) * taste;
-            if (!best || rate > best.rate) {
+            // AN ATTACK THAT ALSO FLATTENS IS THE BETTER ATTACK. Between two
+            // sending at the same rate, the one leaving the flatter board -- it
+            // costs nothing to prefer and a tower is where the board dies.
+            var win = !best || rate > best.rate;
+            if (!win && best && rate === best.rate) {
+                var ob = o.bumps === null || o.bumps === undefined ? 1e9 : o.bumps;
+                var bb = best.option && best.option.bumps !== null &&
+                         best.option.bumps !== undefined ? best.option.bumps : 1e9;
+                win = ob < bb;
+            }
+            if (win) {
                 best = { rate: rate, cells: cells, frames: o.frames,
                          move: o.swaps[0], option: o };
             }
@@ -858,7 +869,7 @@
         return best;
     }
 
-    function bestPlan(list, clock, deadline, engine, toppedOut, framesPerRow, framesTable) {
+    function bestPlan(list, clock, deadline, engine, toppedOut, framesPerRow, framesTable, tallNow) {
         var best = null, over = null, all = list.now.concat(list.next), i;
         // ONE PANEL REMOVED IS framesPerRow / W FRAMES OF LIFE -- 18.7 at level 10.
         // Panels and stop time are the same currency and this is the exchange rate.
@@ -924,10 +935,27 @@
             // from 0 deaths in 4 to 3, converting 83% of the garbage that landed
             // against 98%.
             var perCell = Math.max(perPanel, (deadline || 0) / W);
-            var bought = o.total * perPanel + (o.garbage || 0) * perCell + gain;
+            // AND THE CEILING IT GIVES BACK. Death comes at the TALLEST column, so
+            // the rows a clear takes off the top of the board are frames of life in
+            // the plainest sense -- one row is framesPerRow. The same clear taken
+            // off a short column gives none of them back, which is the difference
+            // between a move that works and a move that works AND flattens.
+            var lowered = (tallNow && o.tall !== null && o.tall !== undefined)
+                        ? Math.max(0, tallNow - o.tall) : 0;
+            var bought = o.total * perPanel + (o.garbage || 0) * perCell
+                       + lowered * (framesPerRow || 0) + gain;
             var rate = bought / Math.max(1, took);
             var cur = fits ? best : over;
-            if (!cur || rate > cur.rate || (rate === cur.rate && took < cur.frames)) {
+            // Between two plans buying life at the same rate, the one leaving the
+            // flatter board; between two of those, the cheaper.
+            var better = !cur || rate > cur.rate;
+            if (!better && cur && rate === cur.rate) {
+                var mb = o.bumps === null || o.bumps === undefined ? 1e9 : o.bumps;
+                var cb = cur.option.bumps === null || cur.option.bumps === undefined
+                       ? 1e9 : cur.option.bumps;
+                better = mb < cb || (mb === cb && took < cur.frames);
+            }
+            if (better) {
                 cur = { rate: rate, gain: gain, frames: took, move: o.swaps[0], option: o };
                 if (fits) best = cur; else over = cur;
             }
@@ -1104,7 +1132,8 @@
                 options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
                                                    this.timing(info), digging);
                 var plan = bestPlan(options, info.stopTime || 0, deadline, PanelEngine(),
-                                    !!info.toppedOut, info.framesPerRow, this.stack.frames);
+                                    !!info.toppedOut, info.framesPerRow, this.stack.frames,
+                                    tallestOf(pool));
                 if (plan && plan.rate > 0) {
                     this._plan = { moves: plan.option.swaps.slice(1), frames: plan.frames,
                                    gain: plan.gain, rate: plan.rate,
@@ -1512,7 +1541,12 @@
         // engine's own list of refusals, the row has to leave WORKING_ROWS of
         // headroom under the ceiling -- and garbage counts toward that height --
         // and the risen board faces the death filter like any other move.
-        if (!survival && !info.incoming && this.canRaise() &&
+        // NOR IS GARBAGE ON THE WAY. Same reasoning as the slab already on the
+        // board: under the floor the thing it is short of is panels, and the only
+        // two ways to get them are raising and breaking. Measured on seed 101, it
+        // sat at 3 rows for six straight decisions under the floor of 4, refusing
+        // to raise because a slab was queued, and died 150 frames later.
+        if (!survival && this.canRaise() &&
             materialRows(base) < WORKING_ROWS &&
             tallestOf(pool) + 1 <= H - WORKING_ROWS) {
             // ONLY IF IT DOES NOT KILL. canRaise() is the engine's own list of
@@ -1549,6 +1583,61 @@
                 this.counts.planned++;
                 return { kind: 'swap', move: survival.move, mode: mode, alive: alive, via: 'survivalPlan' };
             }
+        }
+
+        // NOTHING CLEARS: FLATTEN, TO A PLAN.
+        //
+        // Ranking single swaps by the flatness they leave is greedy -- it takes
+        // the best step available this frame and has no idea where it is going, so
+        // it walks the board into a spike one locally-flattest swap at a time.
+        // Measured on seed 101: columns at heights 8,5,4,3,4,3 with the tall one
+        // pressed against the slab, and every decision that built it was a setup.
+        //
+        // bitoptions plans it instead. Every node it keeps IS a landed board --
+        // where the panels came to rest -- so it knows the shape each sequence
+        // arrives at and the swaps that get there, and it names the flattest one
+        // it can reach. The plan is then played in order like a survival or attack
+        // plan: re-choosing every frame is how the greedy version got here.
+        //
+        // Dropped the moment it stops being true -- the next move must still be
+        // legal and must not put the board back where it has just been.
+        if (noneClear && (!this._flatten || !this._flatten.moves.length)) {
+            options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
+                                                    lookDepth, base, this.timing(info), digging);
+        }
+        // AND IT HAS TO FIT IN THE TIME THERE IS. The plan is priced in frames like
+        // every other -- the walk to each swap, the swap, and the cooldown when one
+        // applies -- and a plan that runs past the deadline is not a plan, however
+        // flat the board at the end of it.
+        if (noneClear && options && options.flatten && options.flatten.swaps.length &&
+            (options.flatten.duration || 0) <= deadline) {
+            if (!this._flatten || !this._flatten.moves.length) {
+                this._flatten = { moves: options.flatten.swaps.slice(),
+                                  frames: options.flatten.duration,
+                                  startedAt: this.stack.frames };
+            }
+        }
+        if (noneClear && this._flatten && this._flatten.moves.length) {
+            var fm = this._flatten.moves[0], fok = false, fls = bit.legalSwapsOf(base);
+            for (i = 0; i < fls.length; i++) {
+                if (fls[i][0] === fm[0] && fls[i][1] === fm[1]) { fok = true; break; }
+            }
+            if (fok && returnsToSeen(fm)) fok = false;
+            // WHAT IS LEFT OF IT AGAINST THE CLOCK AS IT IS NOW, not what it cost
+            // when it was made: the plan is priced once and played over several
+            // decisions, and the clock drains the whole time.
+            if (fok) {
+                var fspent = Math.max(0, this.stack.frames - (this._flatten.startedAt || 0));
+                if (Math.max(0, (this._flatten.frames || 0) - fspent) > deadline) fok = false;
+            }
+            if (fok) {
+                this._flatten.moves = this._flatten.moves.slice(1);
+                if (!this._flatten.moves.length) this._flatten = null;
+                this.counts.flattened++;
+                return { kind: 'swap', move: fm, mode: mode, alive: alive, via: 'flatten' };
+            }
+            this._flatten = null;
+            this.counts.flattenDropped++;
         }
 
         if (rev && rev.best && rev.best.swap) {

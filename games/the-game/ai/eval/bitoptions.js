@@ -61,10 +61,27 @@
         return frames + swaps.length * OVERHEAD;
     }
 
+    // AND THE SHAPE OF THE BOARD IT LEAVES BEHIND. A clear that comes off the
+    // tall column flattens; the same clear off a short one deepens the spike. The
+    // resolver already settles the cascade, so the height it lands at is there to
+    // be read, and a move that clears AND flattens is the one worth playing.
+    function shapeOf(st2) {
+        var h = [], c, tall = 0, bumps = 0;
+        if (!st2) return null;
+        for (c = 1; c <= (st2.W || 6); c++) {
+            h[c] = 32 - Math.clz32(st2.occ[c]);
+            if (h[c] > tall) tall = h[c];
+        }
+        for (c = 1; c < (st2.W || 6); c++) bumps += Math.abs(h[c] - h[c + 1]);
+        return { tall: tall, bumps: bumps };
+    }
+
     function optionOf(swaps, frames, r) {
+        var sh = shapeOf(r.settled);
         return { kind: kindOf(r.chain), size: sizeOf(r.chain, r.total),
                  swaps: swaps, frames: frames, chain: r.chain, total: r.total,
-                 garbage: r.garbage || 0, duration: durationOf(swaps, frames) };
+                 garbage: r.garbage || 0, duration: durationOf(swaps, frames),
+                 tall: sh ? sh.tall : null, bumps: sh ? sh.bumps : null };
     }
 
     // Cheapest first, then bigger — the order a caller wants to read.
@@ -95,7 +112,7 @@
 
         for (i = 0; i < swaps.length; i++) {
             if (!bit.swapMasks(st, swaps[i][0], swaps[i][1])) { refused++; continue; }
-            var r = bit.resolveFromMasks(st);
+            var r = bit.resolveFromMasks(st, true);
             bit.swapMasks(st, swaps[i][0], swaps[i][1]);
             // A MOVE THAT BREAKS A SLAB IS AN OPTION, NOT AN UNKNOWN. The cascade
             // past the break is unknowable — the engine draws the converted row's
@@ -147,6 +164,26 @@
         // ones leave the most frames for the cash at the end.
         var BEAM = 12, DIG_BEAM = 6;
 
+        // HOW UNEVEN A LANDED BOARD IS: the sum of the steps between neighbouring
+        // column heights. Zero is flat. Death comes at the TALLEST column while
+        // the material is spread over all six, so the steps are rows of life the
+        // board is not using.
+        // WHAT A LANDED BOARD CAN STILL BUILD: the cells where putting the right
+        // colour would finish a line. A flat board that cannot make a match is not
+        // a place worth walking to.
+        function waysOf(state) {
+            var r = bit.reachMask(state), n = 0, c;
+            for (c = 1; c <= W; c++) n += bit.popcount(r[c]);
+            return n;
+        }
+
+        function bumpsOf(state) {
+            var h = [], c, n = 0;
+            for (c = 1; c <= W; c++) h[c] = 32 - Math.clz32(state.occ[c]);
+            for (c = 1; c < W; c++) n += Math.abs(h[c] - h[c + 1]);
+            return n;
+        }
+
         // WHERE A CLEAR CAN STILL BE MADE, AND HOW MUCH OF IT IS AGAINST A SLAB.
         //
         // reachMask marks the cells that would complete a same-colour pair. A
@@ -172,6 +209,8 @@
             }
             return { mask: reach, dig: dig };
         }
+
+        var flat = null;
 
         function expandAll(state0, depth) {
             // The root has no reach mask: ply one stays exhaustive so an immediate
@@ -212,7 +251,7 @@
                             if (!((reach[sw[1]] | reach[sw[1] + 1]) & rb)) continue;
                         }
                         if (!bit.swapMasks(state, sw[0], sw[1])) continue;
-                        var res = bit.resolveFromMasks(state, ply < depth);
+                        var res = bit.resolveFromMasks(state, true);
                         bit.swapMasks(state, sw[0], sw[1]);
                         var cost = node.spent + travel.cost(node.from[0], node.from[1], sw[0], sw[1]);
                         var broke = res.scope === 'garbage-broke';
@@ -232,7 +271,36 @@
                         // Cleared nothing, so it is a setup and can be built on.
                         if (res.settled) {
                             var rr = DIG ? reachOf(res.settled) : null;
-                            born.push({ st: res.settled, chain: node.chain.concat([sw]),
+                            var seq = node.chain.concat([sw]);
+                            // THE FLATTEST BOARD THIS SEARCH CAN REACH, AND THE
+                            // SWAPS THAT REACH IT.
+                            //
+                            // res.settled is where everything LANDED, which is the
+                            // board the next move is played on, so the sequence is
+                            // planned against boards that will exist rather than
+                            // against the one in front of the cursor. The search
+                            // already built them and threw the geometry away.
+                            //
+                            // Cheapest wins a tie, because a flat board arrived at
+                            // sooner is flat for longer.
+                            // FLAT FIRST, THEN WHAT IT CAN BUILD, THEN CHEAPEST.
+                            //
+                            // Flatness is the goal, but two boards equally flat are
+                            // not equally useful: the one offering more ways to
+                            // finish a line is the one worth arriving at. Ways are
+                            // only counted on a board that ties or beats the best
+                            // flatness, so the mask is built for a handful of nodes
+                            // a ply rather than all of them.
+                            var bp = bumpsOf(res.settled);
+                            if (!flat || bp <= flat.bumps) {
+                                var wy = waysOf(res.settled);
+                                if (!flat || bp < flat.bumps || wy > flat.ways ||
+                                    (wy === flat.ways && cost < flat.frames)) {
+                                    flat = { swaps: seq, frames: cost, bumps: bp,
+                                             ways: wy, duration: durationOf(seq, cost) };
+                                }
+                            }
+                            born.push({ st: res.settled, chain: seq,
                                         from: sw, spent: cost,
                                         reach: rr && rr.mask, dig: rr ? rr.dig : 0 });
                         }
@@ -290,7 +358,10 @@
         offer(now);
         offer(next);
 
-        return { now: now, next: next, cheapest: cheapest,
+        // Only worth naming if it is flatter than standing still.
+        if (flat && flat.bumps >= bumpsOf(st)) flat = null;
+
+        return { now: now, next: next, cheapest: cheapest, flatten: flat,
                  swapsConsidered: swaps.length, refused: refused, unknown: unknown };
     }
 
