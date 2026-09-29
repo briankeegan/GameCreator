@@ -250,7 +250,18 @@
         // Only asked of nodes that already have somewhere to break (dig > 0), so
         // the resolve sweep runs on a minority of the nodes rather than all of
         // them.
+        // BUDGETED. Each call is a full swap sweep of the landed board, and the
+        // search offers hundreds of nodes a decision -- unbudgeted it took a
+        // decision from 47ms to 77ms against an 85ms guard. The nodes arrive
+        // cheapest-first, so the budget spends itself on the ones most likely to
+        // become the plan, and the rest fall back to the proximity term.
+        var saveBudget = 0;
         function savesOf(state) {
+            if (saveBudget <= 0) return 0;
+            saveBudget--;
+            return savesOfRaw(state);
+        }
+        function savesOfRaw(state) {
             var sw = bit.legalSwapsOf(state), n = 0, i, r;
             for (i = 0; i < sw.length; i++) {
                 if (!bit.swapMasks(state, sw[i][0], sw[i][1])) continue;
@@ -272,14 +283,15 @@
             return { mask: reach, dig: dig };
         }
 
-        var flat = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
+        var flat = null, save = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
         var FPR = (timing && timing.framesPerRow) || 112;
         var DEADLINE = (timing && timing.deadline) || 0;
 
         function expandAll(state0, depth) {
             BASE = shapeOf(state0);
             BASEDIG = DIG ? reachOf(state0).dig : 0;
-            BASESAVE = (DIG && BASEDIG > 0) ? savesOf(state0) : 0;
+            saveBudget = 192;
+            BASESAVE = (DIG && BASEDIG > 0) ? savesOfRaw(state0) : 0;
             // The root has no reach mask: ply one stays exhaustive so an immediate
             // clear is never missed.
             var frontier = [{ st: state0, chain: [], from: cursor, spent: 0, reach: null, dig: 0 }], ply;
@@ -408,6 +420,18 @@
                             // actually play counts in full.
                             if (DIG && rr) {
                                 var sv = rr.dig > 0 ? savesOf(res.settled) : 0;
+                                // THE CHEAPEST ROUTE BACK TO HOLDING A BREAK.
+                                //
+                                // Kept separately from the flatten plan because it
+                                // answers a different question: not "is this board
+                                // better" but "is there a save on it". At one ply
+                                // there is almost never another move that keeps
+                                // one -- 2 of 100 -- so it has to be planned over
+                                // several.
+                                if (sv > 0 && (!save || cost < save.frames)) {
+                                    save = { swaps: seq, frames: cost,
+                                             duration: durationOf(seq, cost) };
+                                }
                                 val += (sv - BASESAVE) * (DEADLINE / W) * W
                                      + (rr.dig - BASEDIG) * (DEADLINE / W);
                             }
@@ -483,7 +507,7 @@
         // worth zero.
         if (flat && !(flat.value > 0)) flat = null;
 
-        return { now: now, next: next, cheapest: cheapest, flatten: flat,
+        return { now: now, next: next, cheapest: cheapest, flatten: flat, save: save,
                  swapsConsidered: swaps.length, refused: refused, unknown: unknown };
     }
 
