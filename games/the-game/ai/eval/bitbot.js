@@ -1603,9 +1603,6 @@
         // panels with a row of headroom. So raising is for a board with no
         // garbage on it; buried, the answer is to dig.
         //
-        // Measured: material sits at 2 to 3 flat rows for 82% of a game, so a
-        // floor of WORKING_ROWS fires almost always. Raising on all of those is
-        // 8 deaths in 8 at an average of 10,369 frames.
         // GARBAGE ON THE BOARD IS NOT A REASON NOT TO RAISE. Raise first, then
         // break: both make panels and a board short of them needs whichever it can
         // get. Refusing while buried starved the board that needed material most --
@@ -1621,16 +1618,15 @@
         // two ways to get them are raising and breaking. Measured on seed 101, it
         // sat at 3 rows for six straight decisions under the floor of 4, refusing
         // to raise because a slab was queued, and died 150 frames later.
-        // ONLY UP TO A HEIGHT IT CANNOT DIE AT, AND THAT INCLUDES WHAT IS ALREADY
-        // ON ITS WAY. The bound was tallest + 1 <= H - WORKING_ROWS, which reads
-        // the stack as it stands and ignores the queue, so the bot would raise
-        // into a board with thirty cells already in flight. Every queued cell
-        // lands: incoming / W is the rows it will add, and the room for a chain to
-        // stand in has to survive both.
+        // ONLY UP TO A HEIGHT IT CANNOT DIE AT, and dying is topping out -- there
+        // is no margin beyond that. The row it adds, plus every cell already
+        // queued against it, has to still fit under the ceiling. WORKING_ROWS is
+        // the material minimum that triggers the raise; it is not a headroom
+        // reserve and does not belong in this bound.
         var incomingRows = Math.ceil((info.incoming || 0) / W);
         if (!survival && this.canRaise() &&
             materialRows(base) < WORKING_ROWS &&
-            tallestOf(pool) + 1 + incomingRows <= H - WORKING_ROWS) {
+            tallestOf(pool) + 1 + incomingRows < H) {
             // ONLY IF IT DOES NOT KILL. canRaise() is the engine's own list of
             // refusals -- whether the raise is LEGAL -- and says nothing about
             // whether the board survives it. Returning here skipped the death
