@@ -1197,7 +1197,6 @@
         // prefers not dying, and under a slab those are usually the same move.
         var digging = false;
         for (i = 1; i <= W; i++) if (base.garb[i]) { digging = true; break; }
-        if (digging && materialRows(base) >= 6) digging = false;
         if (digging) this.counts.digging++;
         var survival = null;
         var swept = false;
