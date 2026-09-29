@@ -596,10 +596,20 @@
             // Every queued cell lands, so it counts toward the height, and the
             // risen board faces the death filter over a full row of rise like any
             // other candidate.
+            // STOP TIME DOES NOT EXCUSE A RAISE.
+            //
+            // deadly() calls a full board survivable while the clock is running,
+            // because stop time freezes the rise. It does not freeze a row the bot
+            // adds itself: the raise lands now and the clock runs out later, so a
+            // raise at tallest 10 during a freeze passes the filter and tops the
+            // board out the moment it ends. That is how the board reached 11 with
+            // the death filter supposedly guarding it.
+            //
+            // So the row is judged on height alone, and the risen board has to
+            // leave room for the NEXT row as well -- every queued cell lands, and
+            // the floor keeps coming whatever the clock says.
             var inRows = Math.ceil((info.incoming || 0) / W);
-            if (tallestBoard(rmasks) + inRows < H &&
-                !this.deadly(rmasks, rres2, info,
-                             Math.max(this.reaction, info.framesPerRow || 0))) {
+            if (tallestBoard(rmasks) + inRows + 1 < H) {
                 out.push({ kind: 'raise', swap: null,
                            board: null,
                            masks: rmasks,
@@ -1687,6 +1697,9 @@
             } else {
                 var openRaise = null;
                 for (i = 0; i < pool.length; i++) if (pool[i].kind === 'raise') openRaise = pool[i];
+                // SOMETHING READY FIRST. A raise fills the board; do it with no
+                // move in hand and the next thing that lands has no answer.
+                if (openRaise && !this.hasFireable(base)) openRaise = null;
                 if (openRaise) {
                     this.counts.openingRaises++;
                     return { kind: 'raise', mode: mode, alive: alive, via: 'opening' };
@@ -1716,6 +1729,7 @@
         if (!survival && materialRows(base) < WORKING_ROWS) {
             var risenCand = null;
             for (i = 0; i < pool.length; i++) if (pool[i].kind === 'raise') risenCand = pool[i];
+            if (risenCand && !this.hasFireable(base)) risenCand = null;
             if (risenCand) {
                 this._waited = 0;
                 this.counts.raisedForMaterial++;
@@ -1933,6 +1947,24 @@
     // "Could get to" is the arithmetic used everywhere else: the walk from where
     // the cursor ends up, plus the swap, against the frames that board has before
     // it tops out. A break on the far side with twenty frames left is not a save.
+    // IS THERE A MOVE IN HAND ON THIS BOARD.
+    //
+    // A raise fills the board, so it should not happen until there is something
+    // to answer with. Buried, that means a break -- the only move that converts
+    // the slab. Clear of garbage there is nothing to break, so any clear counts.
+    BitBot.prototype.hasFireable = function (masks) {
+        var sw = bit.legalSwapsOf(masks), i, r, buried = false;
+        for (i = 1; i <= W; i++) if (masks.garb[i]) { buried = true; break; }
+        for (i = 0; i < sw.length; i++) {
+            if (!bit.swapMasks(masks, sw[i][0], sw[i][1])) continue;
+            r = bit.resolveFromMasks(masks, false);
+            bit.swapMasks(masks, sw[i][0], sw[i][1]);
+            if (r.scope === 'garbage-broke') return true;
+            if (!buried && r.total > 0) return true;
+        }
+        return false;
+    };
+
     BitBot.prototype.saveAfter = function (masks, row, col, info) {
         var deadline = framesToDeath(info, tallestBoard(masks), info.framesPerRow);
         var frozen = (info.stopTime || 0) > 0 || !!info.toppedOut;
