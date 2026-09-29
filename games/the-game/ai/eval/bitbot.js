@@ -1588,8 +1588,20 @@
         // two ways to get them are raising and breaking. Measured on seed 101, it
         // sat at 3 rows for six straight decisions under the floor of 4, refusing
         // to raise because a slab was queued, and died 150 frames later.
+        // BANK MATERIAL WHILE THERE IS ROOM, rather than only once it runs out.
+        //
+        // WORKING_ROWS is a starvation floor: it fires when the board is already
+        // short, which is the worst moment to be spending rows of headroom. What
+        // actually decides a big hit is how much material was on the board when it
+        // landed -- a 35-cell slab is six rows, and it arrived on a board holding
+        // 3.2 rows of panels with seven rows of headroom going spare.
+        //
+        // So the bound is the CEILING, not a minimum: raise whenever the risen row
+        // still leaves WORKING_ROWS of headroom, and stop when it would not. The
+        // board fills to what it can afford and no further, and the guards below --
+        // canRaise(), the death filter, and survival taking precedence -- are
+        // unchanged.
         if (!survival && this.canRaise() &&
-            materialRows(base) < WORKING_ROWS &&
             tallestOf(pool) + 1 <= H - WORKING_ROWS) {
             // ONLY IF IT DOES NOT KILL. canRaise() is the engine's own list of
             // refusals -- whether the raise is LEGAL -- and says nothing about
