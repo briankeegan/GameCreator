@@ -1685,10 +1685,7 @@
   PuyoCpu.prototype.SURVIVE_SEEDS = 30;
   PuyoCpu.prototype.SURVIVE_SEARCH_BUDGET = 60000;
   PuyoCpu.prototype.SURVIVE_SEARCH_BUDGET_CHEAP = 4000;
-  // A fresh proof stops within one step of the horizon (FULL + about 40
-  // frames), so a followed line replaying past FOLLOW_FAST is the line the
-  // full search would keep anyway (_longestKnown): it is played unsearched.
-  PuyoCpu.prototype.FOLLOW_FAST = 405;
+  PuyoCpu.prototype.FOLLOW_FAST = 540;
   // The followed line replayed from this board, or null when it is not
   // followed here or no longer reaches FOLLOW_FAST frames alive.
   PuyoCpu.prototype._fastFollow = function (root, cands) {
@@ -3038,7 +3035,7 @@
       for (var q = pf; q; q = q.prev) line.unshift(q);
       if (line.length > 1) {
         var t0 = line[0].t;
-        this._following = { at: this.stack.clock + t0, node: line[0], hold: cand.kind === 'hold', nodes: line,
+        this._following = { at: this.stack.clock + t0, node: line[0], hold: cand.kind === 'hold',
                             steps: line.slice(1).map(function (x) { return isLong(x.m) ? { long: x.t - t0 } : x.m; }) };
       }
     }
@@ -3354,72 +3351,6 @@
 
   // One frame. A committed walk owns the frame until the cursor arrives.
   PuyoCpu.prototype.update = function () {
-    this._act();
-    if (!this.stack.gameOver) this._background();
-  };
-
-  // KEEP THE LINE AHEAD, A LITTLE EVERY FRAME. BG_STEPS search steps per frame
-  // extend the followed line until it runs BG_TARGET frames past now, so the
-  // next decision finds it already proven instead of searching then. The
-  // search starts at the line's last node and backs up one node at a time
-  // when that end leads nowhere; what it finds replaces the rest of the line.
-  PuyoCpu.prototype.BG_STEPS = 20;
-  PuyoCpu.prototype.BG_TARGET = 450;
-  PuyoCpu.prototype._background = function () {
-    var fl = this._following;
-    if (!this.BG_STEPS || !this.deepSurvival || !fl || !fl.nodes || !fl.nodes.length || !fl.nodes[0].st) return;
-    var nodes = fl.nodes, t0 = nodes[0].t, i, c;
-    var rel = this.stack.clock + this.BG_TARGET - fl.at + t0;
-    var last = nodes.length - 1;
-    while (last > 0 && nodes[last].dead) last--;
-    if (nodes[last].dead || nodes[last].t >= rel) return;
-    var bg = this._bg;
-    if (!bg || bg.fl !== fl) bg = this._bg = { fl: fl, k: last + 1, level: null, i: 0, moves: null, j: 0, next: [], seen: {} };
-    if (bg.failed) return;
-    var budget = this.BG_STEPS, su = this._lineUntil, self = this;
-    this._lineUntil = rel;
-    try {
-      while (budget > 0) {
-        if (!bg.level || bg.i >= bg.level.length) {
-          if (bg.level && bg.next.length) {
-            bg.next.sort(function (x, y) { return (y.t + self._heldFor(y.carry)) - (x.t + self._heldFor(x.carry)); });
-            bg.level = bg.next.slice(0, this.EXTEND_BEAM); bg.i = 0; bg.next = []; bg.seen = {};
-          } else {
-            bg.k--;
-            if (bg.k < 0) { bg.failed = true; return; }
-            bg.level = [nodes[bg.k]]; bg.i = 0; bg.next = []; bg.seen = {};
-          }
-          bg.moves = null;
-        }
-        var n = bg.level[bg.i];
-        if (!bg.moves) { bg.moves = [ 'long', null ].concat(n.b.legalSwaps()); bg.j = 0; }
-        if (bg.j >= bg.moves.length) { bg.i++; bg.moves = null; continue; }
-        var m = bg.moves[bg.j++];
-        budget--;
-        c = m === 'long' ? this._lineStep(n, null, true) : this._lineStep(n, m, false);
-        if (!c) continue;
-        c.prev = n; c.m = m;
-        if (!c.dead && c.t >= rel) {
-          var chain = [];
-          for (var q = c; q && q !== nodes[bg.k]; q = q.prev) chain.unshift(q);
-          fl.nodes = nodes.slice(0, bg.k + 1).concat(chain);
-          fl.steps = fl.steps.slice(0, bg.k).concat(chain.map(function (x) { return isLong(x.m) ? { long: x.t - t0 } : x.m; }));
-          this._bg = null;
-          this.bgExtended = (this.bgExtended || 0) + 1;
-          return;
-        }
-        if (c.dead) continue;
-        var h = (c.b.key || JSON.stringify(c.b.grid)) + '|' + this._heldFor(c.carry) + '|' + c.pos;
-        if (bg.seen[h]) continue;
-        bg.seen[h] = 1;
-        bg.next.push(c);
-      }
-    } finally {
-      this._lineUntil = su;
-    }
-  };
-
-  PuyoCpu.prototype._act = function () {
     var stack = this.stack;
     if (stack.gameOver) return;
 

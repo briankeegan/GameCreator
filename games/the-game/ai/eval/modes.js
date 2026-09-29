@@ -801,7 +801,11 @@
   //      search keeps anyway, so it is played unsearched, and a few search
   //      steps every frame keep it that far ahead. Replaces 54, which played
   //      the evaluator's first provable move and died in 17 of 20 games.
-  var RULES = 55;
+  //   56. RULES 53'S CHOICE, RESTORED. The followed line is played unsearched
+  //      only past FOLLOW_FAST (540), and nothing extends it between
+  //      decisions, so a crisis still compares every proven move by how far
+  //      its line reaches (_furthest). 55 died in 5 of 20 games.
+  var RULES = 56;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
