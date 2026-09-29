@@ -825,7 +825,6 @@ SLOW_GATES=(
   gate_puyo_cpu             # plays whole games with the survival search
   gate_no_self_death        # plays whole games with the survival search
   gate_live_fidelity        # plays whole duels: over an hour
-  gate_bitbot_survival      # 762s: twelve duels of 30000 frames
   gate_training_harness     # 156s
   gate_snapshot_pipe        # 154s
   gate_versus_duel          # 123s
@@ -928,7 +927,7 @@ GATES=(
   "the options are features that vary:gate_bitfeatures:games/the-game/ai/"
   "the bot plays what it picks and cannot be killed:gate_bitbot:games/the-game/ai/"
   "the bot's frame arithmetic matches the engine:gate_bitbot_timing:games/the-game/ai/"
-  "no weight vector can choose to die:gate_bitbot_survival:games/the-game/ai/"
+  "the rules a vector cannot reach:gate_bitbot_survival:games/the-game/ai/"
   "the simulation resolves like the game:gate_resolve_fidelity:games/the-game/ai/"
   "that fidelity check fires:gate_resolve_fidelity_fires:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"
