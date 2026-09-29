@@ -2090,8 +2090,11 @@
         // whose only qualification is that it leaves a break standing. Measured:
         // 6 deaths in 16 boards against 1 in 30.
         //
-        // Two rows of rise is the slack. Inside that the decision stands as made.
-        if (this._lastDeadline < 2 * (info.framesPerRow || 0)) return d;
+        // Two rows of rise is the slack, and it is slack KEEPING needs: a
+        // substitute ranked by the weights is a luxury and a board close to death
+        // cannot afford one. MAKING an answer is not that -- see below -- so this
+        // guards the keeping half only.
+        var slack = this._lastDeadline >= 2 * (info.framesPerRow || 0);
 
         // A SAVE IS KEPT, NOT CONJURED.
         //
@@ -2105,7 +2108,36 @@
         // The rule is that the last answer is not spent for nothing: it is okay
         // to break it as long as breaking it leaves another. So the gate binds
         // only where there is one to keep.
-        if (!this.saveAfter(base, info.cursorRow, info.cursorCol, info)) return d;
+        //
+        // NO ANSWER AT ALL IS THE OTHER CASE, AND IT IS THE DANGEROUS ONE.
+        // Topping out does not kill -- the engine holds a slab that has nowhere
+        // to land -- draining does, and the drain only runs on a board that is
+        // full, settled and off the clock. So at the ceiling the thing that keeps
+        // the bot alive is a clear to fire, and a board with none there is losing
+        // health every frame. Making one is then not a preference, and it is not
+        // ranked by the weights either: the search prices the cheapest route to a
+        // board that holds a save, and it is taken only when it finishes in time.
+        //
+        // Not over a survival plan. That plan buys frames outright, which is the
+        // same job done more directly, and overruling it here is what cost 6
+        // deaths in 16 boards when this rule outranked everything.
+        if (!this.saveAfter(base, info.cursorRow, info.cursorCol, info)) {
+            if (d.via !== 'survivalPlan' && this._lastOptions && this._lastOptions.save &&
+                this._lastOptions.save.swaps.length) {
+                var sp0 = this._lastOptions.save, sm0 = sp0.swaps[0];
+                var lg0 = bit.legalSwapsOf(base), ok0 = false;
+                for (i = 0; i < lg0.length; i++) {
+                    if (lg0[i][0] === sm0[0] && lg0[i][1] === sm0[1]) { ok0 = true; break; }
+                }
+                if (ok0 && (sp0.duration || 0) <= this._lastDeadline) {
+                    this.counts.savePlanned++;
+                    return { kind: 'swap', move: sm0, mode: d.mode, alive: d.alive,
+                             via: 'planSave' };
+                }
+            }
+            return d;
+        }
+        if (!slack) return d;
 
         var chosen = null;
         for (i = 0; i < pool.length; i++) {
@@ -2144,26 +2176,10 @@
             var sc = this.score(alt.masks, alt.moveFrames, alt.resolved, info);
             if (!keep || sc > keep.score) keep = { cand: alt, score: sc };
         }
-        // NO SINGLE SWAP KEEPS ONE: PLAN FOR IT.
-        //
-        // The pool is one ply deep, and at one ply there is almost never another
-        // move that leaves a break standing -- 2 of 100. The search is not: it
-        // walks landed boards several moves out and can name the cheapest route
-        // to one that holds a save. Asking the pool and stopping there was the
-        // reason this rule had nothing to do.
-        if (!keep && this._lastOptions && this._lastOptions.save &&
-            this._lastOptions.save.swaps.length) {
-            var sp = this._lastOptions.save, sm = sp.swaps[0];
-            var legal = bit.legalSwapsOf(base), okMove = false;
-            for (i = 0; i < legal.length; i++) {
-                if (legal[i][0] === sm[0] && legal[i][1] === sm[1]) { okMove = true; break; }
-            }
-            if (okMove && (sp.duration || 0) <= this._lastDeadline) {
-                this.counts.savePlanned++;
-                return { kind: 'swap', move: sm, mode: d.mode, alive: d.alive,
-                         via: 'planSave' };
-            }
-        }
+        // NO SINGLE SWAP KEEPS ONE: the board is about to be without an answer,
+        // and the decision above is what handles that -- on the next decision,
+        // with the board it actually left. Planning a route to one from here
+        // would be planning from a board this move is about to replace.
         if (!keep) { this.counts.saveUnkeepable++; return d; }
         this.counts.saveKept++;
         return { kind: 'swap', move: keep.cand.swap, mode: d.mode,
