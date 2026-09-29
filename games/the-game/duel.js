@@ -20,7 +20,10 @@ window.NewseyDuel = (function () {
   // ONE BOT, one cadence. Every tier is PuyoCpu with the trained weights at
   // reaction 12, which is what they were trained at. The tier sets the LEVEL
   // and nothing else (difficulty.js: easy 3, medium 5, hard 8, nightmare 10).
-  function makeCpu(stack, difficulty, seed) {
+  // opponentStack: the other board, so the bot knows the garbage in flight at
+  // it. With a Worker available the bot thinks in ai/brain-worker.js
+  // (ai/brain.js); the page never waits on it.
+  function makeCpu(stack, difficulty, seed, opponentStack) {
     var ev = window.PanelEval;
     if (!ev || !ev.PuyoCpu || !ev.trained) {
       throw new Error("the trained bot is missing (window.PanelEval.PuyoCpu/.trained) — " +
@@ -31,8 +34,12 @@ window.NewseyDuel = (function () {
     var opts = { weights: ev.trained.weights, reaction: 12, seed: seed };
     var sw = ev.trained.switches || {};
     Object.keys(sw).forEach(function (k) { opts[k] = sw[k]; });
-    return new ev.PuyoCpu(stack, opts);
+    var cpu = new ev.PuyoCpu(stack, opts);
+    if (opponentStack) cpu.opponent = opponentStack;
+    if (ev.Brain && ev.Brain.available()) cpu.brain = new ev.Brain(opts);
+    return cpu;
   }
+  function closeCpu(cpu) { if (cpu && cpu.brain) cpu.brain.close(); }
 
   // Panel colors. Each one also carries a shape, so panels stay tellable apart
   // when they flash, when the board goes red, and for anyone who reads shape
@@ -99,7 +106,7 @@ window.NewseyDuel = (function () {
     state = {
       player: player,
       foe: foe,
-      cpu: makeCpu(foe, opponent.difficulty, seed + 55),
+      cpu: makeCpu(foe, opponent.difficulty, seed + 55, player),
       opponent: opponent,
       // A duel can be a SET rather than a single game — Kat's is "first to
       // five wins", straight out of the plot. firstTo 1 (the default) behaves
@@ -148,6 +155,7 @@ window.NewseyDuel = (function () {
   }
 
   function stop() {
+    if (state) { closeCpu(state.cpu); closeCpu(state.autopilot); }
     if (rafId) cancelAnimationFrame(rafId);
     rafId = null;
     unbindInput();
@@ -541,7 +549,8 @@ window.NewseyDuel = (function () {
     s.seed = (s.seed + s.wins.player * 7919 + s.wins.foe * 104729 + 13) >>> 0;
     s.player = new E.Stack({ level: s.playerLevel, seed: s.seed, name: s.player.name });
     s.foe = new E.Stack({ level: o.level || 3, seed: s.seed + 101, name: s.foe.name });
-    s.cpu = makeCpu(s.foe, o.difficulty, s.seed + 55);
+    closeCpu(s.cpu);
+    s.cpu = makeCpu(s.foe, o.difficulty, s.seed + 55, s.player);
     s.over = null;
     s.overDelay = 0;
     s.crush = null;
@@ -1636,6 +1645,12 @@ window.NewseyDuel = (function () {
         playerSwaps: state.swapCount,
         cursor: state.player.curRow + "," + state.player.curCol,
         foeCursor: state.foe.curRow + "," + state.foe.curCol,
+        foeClock: state.foe.clock,
+        playerClock: state.player.clock, playerDead: state.player.gameOver, foeDead: state.foe.gameOver,
+        foeBrain: state.cpu && state.cpu.brain && {
+          acted: state.cpu.acted || 0, missed: state.cpu.missed || 0,
+          lead: state.cpu.brain.lead(), slowestFrames: state.cpu.brain.pace.slowest
+        },
         selection: state.selection && (state.selection.row + "," + state.selection.col),
         pointer: state.pointer && (state.pointer.row + "," + state.pointer.col + (state.pointer.dragged ? ",dragged" : "")),
         displacement: state.player.displacement,
@@ -1667,7 +1682,8 @@ window.NewseyDuel = (function () {
                        .map(function (p) { return p.release; })
         },
         autoplay: function (difficulty) {
-          state.autopilot = makeCpu(state.player, difficulty || "brutal", 99);
+          closeCpu(state.autopilot);
+          state.autopilot = makeCpu(state.player, difficulty || "brutal", 99, state.foe);
         }
       };
     }

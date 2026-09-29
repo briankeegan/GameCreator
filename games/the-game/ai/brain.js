@@ -1,0 +1,44 @@
+// The page side of the bot's brain (ai/brain-worker.js). A PuyoCpu given a
+// Brain walks and swaps on the page every frame and asks the worker for its
+// decisions ahead of their frames, so the page never stops while the bot
+// thinks (see REAL TIME in ai/eval/puyocpu.js). PuyoCpu.LocalBrain is the same
+// thing on one thread, for Node.
+(function (root) {
+  var PanelEval = root.PanelEval = root.PanelEval || {};
+
+  function Brain(opts) {
+    var self = this;
+    this.worker = new Worker(Brain.URL);
+    this.worker.postMessage({ type: 'init', opts: opts });
+    this.worker.onmessage = function (e) { self._reply(e.data); };
+    this.pending = null;
+    this.id = 0;
+    this.pace = new PanelEval.PuyoCpu.Pace();
+  }
+  Brain.URL = 'ai/brain-worker.js';
+  Brain.available = function () { return typeof Worker === 'function'; };
+
+  Brain.prototype.request = function (bot, point, acted) {
+    var m = PanelEval.PuyoCpu.message(bot, point, acted), transfer = [m.enc.buf.buffer];
+    if (m.opp) transfer.push(m.opp.buf.buffer);
+    var p = { id: ++this.id, at: point.at, point: point, decision: null, bot: bot, sentAt: bot.stack.clock };
+    m.type = 'decide';
+    m.id = p.id;
+    this.pending = p;
+    this.worker.postMessage(m, transfer);
+    return p;
+  };
+
+  // How long it took is counted in game frames, the unit the bot waits in.
+  Brain.prototype._reply = function (m) {
+    var p = this.pending;
+    if (!p || p.id !== m.id) return;
+    this.pace.took(p.bot.stack.clock - p.sentAt);
+    p.decision = m.decision;
+  };
+
+  Brain.prototype.lead = function () { return this.pace.lead(); };
+  Brain.prototype.close = function () { this.worker.terminate(); };
+
+  PanelEval.Brain = Brain;
+}(this));

@@ -185,7 +185,9 @@
     // Opt-in: at every decision on a followed line, check the line's
     // prediction for this frame against the live board (see _checkModel).
     this.checkModel = !!opts.checkModel;
-    this.thinkAhead = opts.thinkAhead || 0;
+    // Where decisions come from when they cannot be made on the frame (see
+    // REAL TIME). Absent, the bot decides on the frame.
+    this.brain = opts.brain || null;
     // Worker threads for the survival search: opts.threads or GC_THREADS, a
     // number or 'auto' (one per core). The main thread only coordinates.
     var want = opts.threads || (typeof process !== 'undefined' && process.env && process.env.GC_THREADS) || 0;
@@ -1658,13 +1660,7 @@
                 raiseFrames: node.hold.left, _raiseStarted: node.hold.started };
     var arr = node.arrivals.map(function (a) { return { at: a.at, width: a.width, height: a.height, isChain: a.isChain }; });
     var f = 0;
-    function raiseBlock(input) {
-      if (bot.raiseFrames > 0) {
-        if (st.manualRaise) bot._raiseStarted = true;
-        if (st.preventManualRaise || (bot._raiseStarted && !st.manualRaise)) bot.raiseFrames = 0;
-        else { bot.raiseFrames--; input.raise = true; }
-      }
-    }
+    function raiseBlock(input) { raiseStep(bot, st, input); }
     function runFrame(input) {
       st.setInput(input);
       st.run();
@@ -3198,10 +3194,12 @@
     var sp = this._searchProofs;
     this._searchProofs = null;
     this._following = null;
+    this._proofLine = null;
     this._lastPlayed = cand ? (cand.move ? '[' + cand.move + ']' : cand.kind) : null;
     if (sp && cand && this.stack) {
       var k = sp.cands.indexOf(cand), pf = k >= 0 ? sp.proofs[k] : null, line = [];
       for (var q = pf; q; q = q.prev) line.unshift(q);
+      this._proofLine = line.length > 1 ? { at: this.stack.clock, line: line } : null;
       if (line.length > 1) {
         var t0 = line[0].t;
         this._following = { at: this.stack.clock + t0, node: line[0], hold: cand.kind === 'hold',
@@ -3518,32 +3516,228 @@
     return chosen.kind === 'swap' ? { kind: 'swap', move: chosen.move } : { kind: chosen.kind };
   };
 
-  // One frame. A committed walk owns the frame until the cursor arrives.
-  // The decision this bot will act on `frames` from now: the board is played
-  // forward that far with the bot holding, and decided on there. { at, decision }.
-  PuyoCpu.prototype._decideAhead = function (frames) {
-    var root = this._engineRoot();
-    var node = frames > 0 ? this._engineAdvance(root, 'long', null, frames) : null;
-    this.decisions++;
-    if (!node || node.dead) return { at: this.stack.clock, decision: this._decide() };
-    // Every later decision also waits `frames` before it acts, so the lines
-    // are searched at that cadence: reaction + frames between moves.
-    var real = this.stack, rf = this.raiseFrames, rs = this._raiseStarted, rx = this.reaction;
-    this.stack = node.st; this._predArr = node.arrivals;
-    this.raiseFrames = node.hold.left; this._raiseStarted = node.hold.started;
-    this.reaction = rx + frames;
+  // REAL TIME. Thinking takes time, so a decision is asked for ahead of its
+  // frame, on the board the engine says that frame will hold, and played only
+  // if on its frame the real board, the raise in hand and the garbage in
+  // flight are the ones it was made on. The one thing a prediction cannot
+  // know is the colours of rows and breaks dealt in between; it decides with
+  // them unseen, as the search does beyond the board it has. A brain that
+  // answers on the spot is asked about the real board instead, and then each
+  // decision is exactly the one the bot makes deciding on the frame.
+  //
+  // Every decision comes with the line that proved it: moves and the boards
+  // they lead to, alive to the horizon. That line is the plan. The next
+  // decision is asked for at the first board of the plan far enough ahead
+  // for the brain to finish (brain.lead() frames), and until the answer is
+  // due the bot plays the plan, each move only on the board the plan
+  // expected. With answers that keep up, the plan's first board is the very
+  // next decision and the bot plays exactly as it does deciding on the frame.
+  // With no answer and no plan to play, it holds.
+  //
+  // A brain has request(bot, point, acted) -> { at, point, decision }, the
+  // decision filled in once made; poll(p, clock), if it has one, called on
+  // every frame the answer is waited for; and lead(). `acted` says whether
+  // its last decision was played.
+  function raiseStep(h, st, input) {
+    if (h.raiseFrames > 0) {
+      if (st.manualRaise) h._raiseStarted = true;
+      if (st.preventManualRaise || (h._raiseStarted && !st.manualRaise)) h.raiseFrames = 0;
+      else { h.raiseFrames--; input.raise = true; }
+    }
+  }
+  // A decision frame as update() finds it: the node's board with that frame's
+  // raise step taken and its input set.
+  function pointOf(n) {
+    if (!n || n.dead) return null;
+    var st = cloneStack(n.st), h = { raiseFrames: n.hold.left, _raiseStarted: n.hold.started }, input = {};
+    raiseStep(h, st, input);
+    st.setInput(input);
+    return { at: st.clock, enc: encodeStack(st), raiseFrames: h.raiseFrames, raiseStarted: h._raiseStarted,
+             arrivals: n.arrivals };
+  }
+  PuyoCpu.prototype._pointAfter = function (d) {
+    return pointOf(this._engineAdvance(this._engineRoot(), d.kind, d.kind === 'swap' ? d.move : null, 0));
+  };
+  PuyoCpu.prototype._pointAhead = function (frames) {
+    if (frames <= 0) {
+      return { at: this.stack.clock, enc: encodeStack(this.stack), raiseFrames: this.raiseFrames || 0,
+               raiseStarted: !!this._raiseStarted, arrivals: this._inFlight() };
+    }
+    return pointOf(this._engineAdvance(this._engineRoot(), 'long', null, frames));
+  };
+  // Fields a prediction does not track and no decision reads.
+  var UNTRACKED = { events: 1, outgoing: 1, allowIdleSkip: 1, unseenRows: 1, unseenBreaks: 1 };
+  var COLOR_FIELD = PANEL_FIELDS.indexOf('color');
+  // `unseen`: a panel the prediction could not know (a row or a break dealt
+  // since, colour 11 and up) matches whatever the game dealt there.
+  function sameAs(st, e, unseen) {
+    var ea = encodeStack(st), a = ea.buf, b = e.buf, i, k;
+    if (ea.rows !== e.rows || a.length !== b.length) return false;
+    for (i = 0; i < a.length; i += NF) {
+      if (unseen && b[i + COLOR_FIELD] >= 11) continue;
+      for (k = 0; k < NF; k++) if (a[i + k] !== b[i + k]) return false;
+    }
+    var keys = Object.keys(ea.meta).concat(Object.keys(e.meta));
+    for (i = 0; i < keys.length; i++) {
+      k = keys[i];
+      if (!UNTRACKED[k] && JSON.stringify(ea.meta[k]) !== JSON.stringify(e.meta[k])) return false;
+    }
+    return true;
+  }
+  PuyoCpu.prototype._matches = function (pt, unseen) {
+    return (this.raiseFrames || 0) === pt.raiseFrames && !!this._raiseStarted === pt.raiseStarted &&
+           JSON.stringify(this._inFlight()) === JSON.stringify(pt.arrivals) && sameAs(this.stack, pt.enc, unseen);
+  };
+  function decisionOf(step) {
+    return Array.isArray(step) ? { kind: 'swap', move: step } : step === 'raise' ? { kind: 'raise' } : { kind: 'hold' };
+  }
+  // The plan's move for this frame: its board must be the one the plan
+  // expected, or the plan is dropped.
+  PuyoCpu.prototype._planStep = function (now) {
+    var pl = this._planned, j;
+    if (!pl) return null;
+    for (j = 0; j < pl.length && pl[j].at < now; j++);
+    if (j < pl.length && pl[j].at === now) {
+      if (!this._matches(pl[j], true)) { this._planned = null; return null; }
+      this._planned = pl.slice(j + 1);
+      this.planned = (this.planned || 0) + 1;
+      return decisionOf(pl[j].step);
+    }
+    this._planned = null;
+    return null;
+  };
+  // Where to ask for the next decision: the first board of the plan at least
+  // lead() frames on, else the board after this move, else lead() frames on
+  // holding.
+  PuyoCpu.prototype._target = function (now, d) {
+    var lead = this.brain.lead(), pl = this._planned || [], j, last = null;
+    for (j = 0; j < pl.length; j++) {
+      if (pl[j].at <= now) continue;
+      last = pl[j];
+      if (pl[j].at >= now + lead) return pl[j];
+    }
+    if (last) return last;
+    return (d && this._pointAfter(d)) || this._pointAhead(lead) || this._pointAhead(0);
+  };
+  // The decision to play on this frame, or null to hold.
+  PuyoCpu.prototype._fromBrain = function (again) {
+    var p = this._pending, now = this.stack.clock, d = null;
+    if (p) {
+      if (this.brain.poll) this.brain.poll(p, now);
+      if (p.decision && p.at <= now) {
+        this._pending = null;
+        // Asked ahead, the board had cells it could not see yet (see
+        // sameAs); asked on the spot, it had the board itself.
+        if (p.at === now && this._matches(p.point, this.brain.lead() > 0)) {
+          this.acted = (this.acted || 0) + 1;
+          this._played = true;
+          this._planned = p.decision.plan || null;
+          d = decisionOf(p.decision.move || p.decision.kind);
+        } else this.missed = (this.missed || 0) + 1;
+      }
+    }
+    // A brain that answers on the spot (lead 0) is asked about this frame
+    // itself; the plan is for brains that cannot.
+    if (!d && !this._pending && !again && this.brain.lead() === 0) {
+      this._pending = this._ask(this._pointAhead(0));
+      return this._fromBrain(true);
+    }
+    if (!d) d = this._planStep(now);
+    if (!this._pending) this._pending = this._ask(this._target(now, d));
+    if (d) this.decisions++;
+    return d;
+  };
+  PuyoCpu.prototype._ask = function (point) {
+    var played = !!this._played;
+    this._played = false;
+    return this.brain.request(this, point, played);
+  };
+  // What a brain is sent: the board it decides on, the raise in hand, the
+  // garbage in flight, and the other board.
+  PuyoCpu.message = function (bot, point, acted) {
+    var e = point.enc;
+    return { enc: { meta: e.meta, rows: e.rows, row0: e.row0, buf: e.buf.slice() },
+             raiseFrames: point.raiseFrames, raiseStarted: point.raiseStarted, arrivals: point.arrivals,
+             opp: bot.opponent ? encodeStack(bot.opponent) : null, acted: !!acted };
+  };
+  // The brain's side: a bot of its own, deciding on the boards it is sent,
+  // and answering with the move and the plan that proved it. A decision that
+  // was not played is taken back -- the bot's own state (the line it
+  // follows, the square it refuses) goes back to before it.
+  function Mind(opts, bot) { this.opts = opts; this.bot = bot || null; this._snap = null; }
+  Mind.prototype.think = function (m) {
+    var st = decodeStack(m.enc), bot = this.bot || (this.bot = new PuyoCpu(st, this.opts)), k, snap = this._snap;
+    if (snap && !m.acted) {
+      for (k in bot) if (Object.prototype.hasOwnProperty.call(bot, k) && !Object.prototype.hasOwnProperty.call(snap, k)) delete bot[k];
+      for (k in snap) bot[k] = snap[k];
+    }
+    this._snap = Object.assign({}, bot);
+    bot.stack = st;
+    bot.raiseFrames = m.raiseFrames; bot._raiseStarted = m.raiseStarted;
+    bot.opponent = m.opp ? decodeStack(m.opp) : null;
+    bot._predArr = m.arrivals;
+    bot.decisions++;
     var d;
-    try { d = this._decide(); }
-    finally { this.stack = real; this._predArr = null; this.raiseFrames = rf; this._raiseStarted = rs; this.reaction = rx; }
-    return { at: node.st.clock, decision: d };
+    try { d = bot._decide(); } finally { bot._predArr = null; }
+    return { kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, plan: this._planOf(bot._proofLine) };
   };
-  // Where a decision comes from: here, or (this.brain) a worker that answers
-  // later by filling in `decision` on the object returned.
-  PuyoCpu.prototype._requestAhead = function (frames) {
-    if (this.brain) return this.brain.request(this, frames);
-    return this._decideAhead(frames);
+  // The proven line as the decision frames the bot will meet on it: a wait is
+  // played as holds, one decision frame a beat, so it is laid out beat by
+  // beat (the search rounds waits to whole beats).
+  Mind.prototype._planOf = function (pl) {
+    var plan = [], bot = this.bot, j, pt;
+    for (j = 0; pl && j + 1 < pl.line.length; j++) {
+      var a = pl.line[j], b = pl.line[j + 1], nx = b.m;
+      if (isLong(nx)) {
+        var n = a;
+        while (n && !n.dead && n.t < b.t) {
+          if (!(pt = pointOf(n))) return plan;
+          pt.step = null;
+          plan.push(pt);
+          n = bot._engineAdvance(n, 'hold', null, 0);
+        }
+        if (!n || n.dead || n.t !== b.t) return plan;
+        continue;
+      }
+      if (!(pt = pointOf(a))) return plan;
+      pt.step = nx === 'raise' ? 'raise' : nx ? [nx[0], nx[1]] : null;
+      plan.push(pt);
+    }
+    return plan;
   };
+  PuyoCpu.Mind = Mind;
+  // How far ahead to ask: half again the slowest of the last few answers, in
+  // frames.
+  function Pace() { this.recent = []; this.slowest = 0; }
+  Pace.FIRST = 30;
+  Pace.MAX = 600;
+  Pace.prototype.took = function (frames) {
+    this.recent.push(frames);
+    if (this.recent.length > 8) this.recent.shift();
+    if (frames > this.slowest) this.slowest = frames;
+  };
+  Pace.prototype.lead = function () {
+    if (!this.recent.length) return Pace.FIRST;
+    return Math.min(Pace.MAX, Math.ceil(1.5 * Math.max.apply(null, this.recent)));
+  };
+  PuyoCpu.Pace = Pace;
+  // A brain on this thread. It decides the moment it is asked; with
+  // `realtime` > 0 the answer is held back until as many frames have passed
+  // as the thinking took (60 a second, times `realtime`), so a game played
+  // here plays out as it would with the brain in a worker.
+  function LocalBrain(mind, realtime) { this.mind = mind; this.realtime = realtime || 0; this.pace = new Pace(); }
+  LocalBrain.prototype.request = function (bot, point, acted) {
+    var clock = (typeof performance !== 'undefined' && performance.now) ? performance : Date, t0 = clock.now();
+    var d = this.mind.think(PuyoCpu.message(bot, point, acted));
+    var frames = this.realtime ? Math.ceil((clock.now() - t0) * 0.06 * this.realtime) : 0;
+    if (this.realtime) this.pace.took(frames);
+    return { at: point.at, point: point, decision: frames ? null : d, answer: d, readyAt: bot.stack.clock + frames };
+  };
+  LocalBrain.prototype.poll = function (p, clock) { if (!p.decision && clock >= p.readyAt) p.decision = p.answer; };
+  LocalBrain.prototype.lead = function () { return this.realtime ? this.pace.lead() : 0; };
+  PuyoCpu.LocalBrain = LocalBrain;
 
+  // One frame. A committed walk owns the frame until the cursor arrives.
   PuyoCpu.prototype.update = function () {
     var stack = this.stack;
     if (stack.gameOver) return;
@@ -3570,11 +3764,7 @@
     // preventManualRaise (clear when the raise was offered -- _canRaise checks
     // it), so that is the signal. Seed 703 frame 3014: raised, rows landed at
     // 3017 and 3032, fifteen frames apart.
-    if (this.raiseFrames > 0) {
-      if (stack.manualRaise) this._raiseStarted = true;
-      if (stack.preventManualRaise || (this._raiseStarted && !stack.manualRaise)) this.raiseFrames = 0;
-      else { this.raiseFrames--; input.raise = true; }
-    }
+    raiseStep(this, stack, input);
     this._raiseNow = !!input.raise;
 
     // A committed move owns the frame — the cursor has to get there.
@@ -3587,18 +3777,9 @@
     if (this.cooldown > 0) { this.cooldown--; return; }
 
     var decision;
-    if (this.thinkAhead) {
-      // THINKING TAKES TIME. The decision is made for thinkAhead frames from
-      // now, on the board this one becomes by then with the bot holding, and
-      // the bot holds until that frame. Nothing it does not already know can
-      // arrive meanwhile: garbage is in flight for GARBAGE_FLIGHT frames first.
-      if (!this._pending) this._pending = this._requestAhead(this.thinkAhead);
-      var p = this._pending;
-      if (!p.decision) return;
-      if (stack.clock < p.at) return;
-      this._pending = null;
-      if (stack.clock > p.at) return;        // it came too late for its frame: think again
-      decision = p.decision;
+    if (this.brain) {
+      decision = this._fromBrain();
+      if (!decision) return;
     } else {
       this.decisions++;
       decision = this._decide();

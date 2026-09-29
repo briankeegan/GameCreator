@@ -851,7 +851,7 @@
 
   Stack.prototype.getMatchingPanels = function () {
     var matching = [];
-    var row, col, p;
+    var row, col, p, i;
     // WHICH CELLS CAN TAKE PART is this board's own rule — canMatch knows
     // about panel states and matchAnyway, which the simulation's view of the
     // same board expresses completely differently. THE RUN RULE is not: three

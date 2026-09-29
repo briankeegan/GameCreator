@@ -47,9 +47,16 @@ var body = keys.map(function (k) {
 // is used verbatim; anything without one is a training snapshot.
 var origin = snap.provenance
     ? String(snap.provenance).split('\n')
+    : snap.mode === 'pbt'
+    ? ['Found by population-based training in ai/eval/train_pbt.js:', snap.selection + '.']
     : ['Found by the cross-entropy search in ai/eval/train.js, which stopped',
        'itself when the numbers stopped moving, not on a generation budget.',
        snap.selection + '.'];
+var versus = held && shipped
+    ? ['// Held out (seeds never trained on), against the game\'s previous AI:',
+       '//   learned ' + Math.round(held) + '   previous ' + Math.round(shipped) +
+           '   +' + Math.round(((held - shipped) / shipped) * 100) + '%']
+    : ['// This snapshot carries no held-out comparison against the previous AI.'];
 
 var out = [
     '// TRAINED WEIGHTS — GENERATED, DO NOT EDIT BY HAND.',
@@ -57,10 +64,8 @@ var out = [
     '//   node ai/eval/export_weights.js ai/eval/' + path.basename(src),
     '//'
 ].concat(origin.map(function (l) { return ('// ' + l).replace(/\s+$/, ''); })).concat([
-    '//',
-    '// Held out (seeds never trained on), against the game\'s previous AI:',
-    '//   learned ' + Math.round(held || 0) + '   previous ' + Math.round(shipped || 0) +
-        '   +' + Math.round(((held - shipped) / shipped) * 100) + '%',
+    '//'
+]).concat(versus).concat([
     '//',
     '// Features absent from this list were searched and left at zero, or were',
     '// added after this snapshot; evaluate() skips a zero weight, so either way',
@@ -86,7 +91,11 @@ var out = [
         // and `||` treated it as unset and shipped 6 instead -- so weights
         // found by a full search would have run against a beam of 6, which
         // is the switches mismatch this object exists to prevent.
-        beam: snap.beam == null ? 6 : snap.beam
+        beam: snap.beam == null ? 6 : snap.beam,
+        allowRaise: snap.allowRaise !== false,
+        engine: !!snap.engine,
+        // A snapshot that does not say trained under GC_MODES's default: on.
+        modes: snap.modes == null ? true : !!snap.modes
     }) + ',',
     '    weights: {',
     body.split('\n').map(function (l) { return '  ' + l; }).join(',\n').replace(/,,/g, ','),

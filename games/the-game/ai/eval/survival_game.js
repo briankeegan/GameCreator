@@ -5,8 +5,10 @@
 // dies or at FRAMES (default 21600, six minutes). A death prints the dying
 // side's last decisions and its board before and at the death. The last line
 // is data: RESULT {"seed":..,"frames":..,"died":null|0|1,"seconds":..}.
-// GC_THINK=N: each decision is made N frames ahead and acted on then (the
-// real-time bot). GC_THREADS: worker threads for the search.
+// GC_REALTIME=X: each side decides through a brain whose answers arrive as
+// many frames after they are asked for as the thinking took (60 a second,
+// times X), as in the browser; 0 or unset decides on the frame. GC_THREADS:
+// worker threads for the search.
 //
 // survival-games.yml runs one seed per runner.
 var fs = require('fs'), path = require('path');
@@ -23,10 +25,17 @@ var WEIGHTS = ['trained.pbt.pbt-r22-s322.0926-142336.g03120.json',
   .map(function (f) { return JSON.parse(fs.readFileSync(path.join(DIR, f), 'utf8')).weights; });
 
 var st = [0, 1].map(function () { return new PanelEngine.Stack({ level: 10, seed: SEED, countdown: false }); });
+var REALTIME = Number(process.env.GC_REALTIME || 0);
+function opts(i) {
+  return { weights: WEIGHTS[i], reaction: 12, depth: 2, beam: 0, rise: true, allowRaise: true, modes: true,
+           engine: true, checkModel: true, threads: process.env.GC_THREADS || 0 };
+}
+// With a brain, the side's decisions are made by the brain's own bot (mind[i]).
+var mind = [0, 1].map(function (i) { return REALTIME ? new PuyoCpu(PuyoCpu.cloneStack(st[i]), opts(i)) : null; });
 var cp = [0, 1].map(function (i) {
-  return new PuyoCpu(st[i], { weights: WEIGHTS[i], reaction: 12, depth: 2, beam: 0, rise: true,
-                              allowRaise: true, modes: true, engine: true, checkModel: true,
-                              thinkAhead: Number(process.env.GC_THINK || 0), threads: process.env.GC_THREADS || 0 });
+  var o = opts(i);
+  if (REALTIME) o.brain = new PuyoCpu.LocalBrain(new PuyoCpu.Mind(opts(i), mind[i]), REALTIME);
+  return new PuyoCpu(st[i], o);
 });
 cp[0].opponent = st[1]; cp[1].opponent = st[0];
 
@@ -48,7 +57,7 @@ function draw(s) {
 // The last few decisions of each side: what the search said and what was played.
 var log = [[], []];
 [0, 1].forEach(function (i) {
-  var c = cp[i], last = null;
+  var c = mind[i] || cp[i], last = null;
   var search = c._survivalSearch;
   c._survivalSearch = function (cands) {
     var v = search.call(c, cands), n = {};
@@ -59,7 +68,7 @@ var log = [[], []];
   var took = c._took;
   c._took = function (cand) {
     var sp = c._searchProofs, k = sp ? sp.cands.indexOf(cand) : -1, pf = k >= 0 ? sp.proofs[k] : null;
-    log[i].push('f' + st[i].clock + ' plays ' + (cand && cand.move ? cand.move.join(',') : cand && cand.kind) +
+    log[i].push('f' + c.stack.clock + ' plays ' + (cand && cand.move ? cand.move.join(',') : cand && cand.kind) +
                 (last && k >= 0 && last.cands === sp.cands ? ' (' + last.v[k] + ')' : '') +
                 (pf ? ' line to +' + pf.t : '') + (last ? ' ' + JSON.stringify(last.verdicts) : ''));
     if (log[i].length > 12) log[i].shift();
@@ -75,7 +84,7 @@ for (f = 0; f < FRAMES; f++) {
     if (out && out.length) st[i ^ 1].receiveGarbage(out);
     st[i].drainEvents();
     before[i].push(draw(st[i])); if (before[i].length > 31) before[i].shift();
-    var mm = cp[i].modelMismatches || [];
+    var mm = (mind[i] || cp[i]).modelMismatches || [];
     while (mismatches[i] < mm.length) {
       var x = mm[mismatches[i]++];
       console.log('MISMATCH side ' + i + ' at ' + x.clock + ' after ' + x.played + ': ' + x.cells.join(' ; '));
@@ -92,5 +101,8 @@ if (died !== null) {
 } else console.log('both alive at frame ' + f);
 console.log('RESULT ' + JSON.stringify({ seed: SEED, frames: f, died: died,
                                          mismatches: mismatches[0] + mismatches[1],
+                                         acted: REALTIME ? cp.map(function (c) { return c.acted || 0; }) : undefined,
+                                         planned: REALTIME ? cp.map(function (c) { return c.planned || 0; }) : undefined,
+                                         missed: REALTIME ? cp.map(function (c) { return c.missed || 0; }) : undefined,
                                          seconds: Math.round((Date.now() - t0) / 1000) }));
 process.exit(died === null ? 0 : 1);

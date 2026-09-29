@@ -382,6 +382,9 @@ gate_pbt_dirs() {
   node games/the-game/ai/eval/pbt_dirs.test.js
 }
 
+gate_brain() {
+  node games/the-game/ai/eval/brain.test.js
+}
 gate_live_fidelity() {
   node games/the-game/ai/eval/live_fidelity.js \
     games/the-game/ai/eval/trained.pbt.pbt-m29-s301-s301.0920-205538.g01000.json 3
@@ -635,7 +638,7 @@ gate_resolve_fidelity() {
 gate_resolve_fidelity_fires() {
   local work
   work="$(mktemp -d)"
-  trap 'rm -rf "$work"' RETURN
+  trap 'rm -rf "$work"; trap - RETURN' RETURN
   mkdir -p "$work/games/the-game/ai/eval"
   cp games/the-game/panel-engine.js games/the-game/panel-cpu.js "$work/games/the-game/" || return 1
   cp games/the-game/ai/eval/*.js games/the-game/ai/eval/realboards.json "$work/games/the-game/ai/eval/" || return 1
@@ -841,7 +844,7 @@ SLOW_GATES=(
 # tests something the search sits on top of, so it runs with
 # GC_SURVIVAL_SEARCH=0: the search costs seconds per decision and its
 # decisions trip bench.js's 85ms timing guard, which zeroes the game.
-SEARCH_GATES=( gate_puyo_cpu gate_no_self_death gate_live_fidelity gate_doomed_gate )
+SEARCH_GATES=( gate_puyo_cpu gate_no_self_death gate_live_fidelity gate_doomed_gate gate_brain )
 _gate_exec() {
   local g
   for g in "${SEARCH_GATES[@]}"; do [ "$g" = "$1" ] && { "$1"; return; }; done
@@ -893,6 +896,7 @@ GATES=(
   "a switch means the same thing everywhere:gate_flags:games/the-game/ai/"
   "the idle skip changes nothing:gate_idle_skip:games/the-game/ai/"
   "the simulation is the engine mid-play:gate_live_fidelity:games/the-game/ai/"
+  "the bot through its brain is the same bot:gate_brain:games/the-game/ai/"
   "the resolve answers what the engine answered:gate_resolve_corpus:games/the-game/ai/"
   "two variants on one seed keep separate islands:gate_pbt_dirs:games/the-game/ai/"
   "the bot may not kill itself:gate_no_self_death:games/the-game/ai/"

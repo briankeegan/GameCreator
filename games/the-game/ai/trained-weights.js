@@ -1,32 +1,11 @@
 // TRAINED WEIGHTS — GENERATED, DO NOT EDIT BY HAND.
 //
-//   node ai/eval/export_weights.js ai/eval/trained.hand.ste60-from-s125-g11000.0920-0146.json
+//   node ai/eval/export_weights.js ai/eval/trained.pbt.pbt-r22-s322.0926-142336.g03120.json
 //
-// NOT FOUND BY A SEARCH. Assembled by hand from
-// trained.pbt.pbt-norm-s125-s125.0919-222912.g11000.json by setting
-// stopTimeEarned from -45.64 to +60 and changing nothing else. That
-// snapshot IS a trainer champion; this file is one number away from it.
+// Found by population-based training in ai/eval/train_pbt.js:
+// champion of 4 islands after 3120 updates.
 //
-// WHY THE NUMBER MOVED. Every champion the normalised run has produced
-// scores stopTimeEarned negative: it avoids the freeze a clear earns it.
-// Positive, it takes the freeze and uses it to set up the next clear, and
-// sends more garbage over a longer game. A garbageSent sweep does not do
-// this — raising it monotonically shortens the game and lowers total
-// garbage, because it prices the clear being made, not the shape that
-// makes the next one possible.
-//
-// MEASURED, 24 seeds (holdout 101-112 and finals 201-212), depth 2 beam 0
-// rise on density off level 10:
-//   vs the previously shipped bot (s120 g3000)  17W-7L    sent 197.2 / 165.8
-//   vs s125 g11000 (the set it came from)       16W-7L-1D sent 201.5 / 163.7
-//   vs s131 g06000 (the run benchmark)          17W-7L    sent 149.5 / 162.6
-//
-// The peak is narrow: +46 loses to the shipped bot 10W-14L and +75 loses
-// to s125 11W-13L, both over the same 24 seeds. Re-measure before moving
-// this number.
-//
-// Held out (seeds never trained on), against the game's previous AI:
-//   learned 1   previous 0   +143%
+// This snapshot carries no held-out comparison against the previous AI.
 //
 // Features absent from this list were searched and left at zero, or were
 // added after this snapshot; evaluate() skips a zero weight, so either way
@@ -36,18 +15,42 @@
   "use strict";
   root.PanelEval = root.PanelEval || {};
   root.PanelEval.trained = {
-    source: "trained.hand.ste60-from-s125-g11000.0920-0146.json",
-    heldOut: 1,
-    switches: {"density":false,"rise":true,"depth":2,"beam":0},
+    source: "trained.pbt.pbt-r22-s322.0926-142336.g03120.json",
+    heldOut: 0,
+    switches: {"density":false,"rise":true,"depth":2,"beam":0,"allowRaise":true,"engine":true,"modes":true},
     weights: {
-      linksH: 5,
-      linksV: 16,
-      colourVariance: 122,
-      edgePenalty: 53,
-      garbageOnBoard: 150,
-      maxHeight: 39,
-      garbageAdjacency: 5,
-      stopTimeEarned: 60
+      linksH: 39,
+      linksV: 80,
+      chainLayers: 46,
+      breakPairs: 61,
+      colourVariance: 91,
+      edgePenalty: 59,
+      garbageOnBoard: 78,
+      maxHeight: 81,
+      material: 68,
+      garbageAdjacency: 101,
+      reachBreak: 34,
+      reach4combo: 47,
+      reach5combo: 79,
+      reach6combo: 26,
+      reach7combo: 75,
+      reach8combo: 24,
+      reach9combo: 5,
+      reach10combo: 28,
+      reach2chain: 120,
+      reach3chain: 99,
+      reach4chain: 34,
+      reach5chain: 42,
+      reach6chain: 64,
+      reach7chain: 40,
+      reach8chain: 11,
+      pressure: 16,
+      overkill: 85,
+      chainLength: 47,
+      stopTimeEarned: 39,
+      brokeGarbage: 37,
+      garbageCleared: 64,
+      travelCost: -4
     }
   };
 }(typeof window !== "undefined" ? window : globalThis));

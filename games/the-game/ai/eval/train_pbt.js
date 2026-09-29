@@ -469,7 +469,7 @@ function writeSnapshot(best, report, totalUpdates, diversity) {
         selection: 'champion of ' + ISLANDS + ' islands after ' + totalUpdates + ' updates',
         updates: totalUpdates, islands: ISLANDS, population: POP, leg: LEG,
         depth: OPTS.depth, beam: OPTS.beam, rise: OPTS.rise, density: OPTS.density,
-        allowRaise: OPTS.allowRaise, engine: OPTS.engine,
+        allowRaise: OPTS.allowRaise, engine: OPTS.engine, modes: OPTS.modes,
         diversity: diversity, rules: modes.RULES,
         features: KEYS.slice(), excluded: EXCLUDE.slice(),
         holdoutSeeds: SEEDS.HOLDOUT, holdout: report, weights: best
