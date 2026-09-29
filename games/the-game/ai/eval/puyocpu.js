@@ -1685,7 +1685,10 @@
   PuyoCpu.prototype.SURVIVE_SEEDS = 30;
   PuyoCpu.prototype.SURVIVE_SEARCH_BUDGET = 60000;
   PuyoCpu.prototype.SURVIVE_SEARCH_BUDGET_CHEAP = 4000;
-  PuyoCpu.prototype.FOLLOW_FAST = 540;
+  // A fresh proof stops within one step of the horizon (FULL + about 40
+  // frames), so a followed line replaying past FOLLOW_FAST is the line the
+  // full search would keep anyway (_longestKnown): it is played unsearched.
+  PuyoCpu.prototype.FOLLOW_FAST = 405;
   // The followed line replayed from this board, or null when it is not
   // followed here or no longer reaches FOLLOW_FAST frames alive.
   PuyoCpu.prototype._fastFollow = function (root, cands) {
@@ -1918,54 +1921,10 @@
     }
     return false;
   };
-  // The evaluator's top move, then the move that continues the line being
-  // followed, then the next by score: each searched alone on a small budget.
-  // Returns [the first proven] with its proof set up for _took, or null.
-  PuyoCpu.prototype.QUICK_TRIES = 4;
-  PuyoCpu.prototype.QUICK_BUDGET = 1500;
-  PuyoCpu.prototype._quickProve = function (cands) {
-    var fl = this._following, order = [], i, k, fi = -1;
-    var byScore = cands.map(function (c, n) { return n; });
-    byScore.sort(function (a, b) { return (cands[b].score || 0) - (cands[a].score || 0); });
-    if (fl && fl.steps && fl.steps.length) {
-      var want = fl.steps[0];
-      for (i = 0; i < cands.length; i++) {
-        var ck = cands[i];
-        if (want === 'raise' ? ck.kind === 'raise'
-            : Array.isArray(want) ? (ck.kind === 'swap' && ck.move && ck.move[0] === want[0] && ck.move[1] === want[1])
-            : ck.kind === 'hold') { fi = i; break; }
-      }
-    }
-    order.push(byScore[0]);
-    if (fi >= 0 && fi !== byScore[0]) order.push(fi);
-    for (i = 1; i < byScore.length && order.length < this.QUICK_TRIES; i++) if (order.indexOf(byScore[i]) < 0) order.push(byScore[i]);
-    var saved = this.SURVIVE_SEARCH_BUDGET, found = -1, proof = null;
-    this.SURVIVE_SEARCH_BUDGET = this.QUICK_BUDGET;
-    try {
-      for (k = 0; k < order.length && found < 0; k++) {
-        this._following = fl;
-        var v = this._survivalSearch([cands[order[k]]]);
-        if (v[0] === 'proven') { found = order[k]; proof = this._searchProofs.proofs[0]; }
-      }
-    } finally {
-      this.SURVIVE_SEARCH_BUDGET = saved;
-    }
-    this._following = fl;
-    if (found < 0) return null;
-    var proofs = {}, reach = {}, far = {};
-    proofs[found] = proof; reach[found] = proof.t; far[found] = proof;
-    this._searchProofs = { cands: cands, proofs: proofs, reach: reach, far: far };
-    this._following = null;
-    return [cands[found]];
-  };
   PuyoCpu.prototype._doomed = function (cands) {
     if (!this.refuseSuicide || !this.deepSurvival || !cands || cands.length < 2) return cands;
     if (!this._board) return cands;
     var i, proven = [], weakly = [], unproven = [];
-    // A FEW MOVES FIRST, CHEAPEST FIRST. The first one proven is played; the
-    // full search runs only when none of them can be.
-    var quick = this.QUICK_TRIES ? this._quickProve(cands) : null;
-    if (quick) { this.quickDecisions = (this.quickDecisions || 0) + 1; return quick; }
     var verdict = this._survivalSearch(cands);
     for (i = 0; i < cands.length; i++) {
       if (verdict[i] === 'proven') proven.push(cands[i]);
@@ -3079,7 +3038,7 @@
       for (var q = pf; q; q = q.prev) line.unshift(q);
       if (line.length > 1) {
         var t0 = line[0].t;
-        this._following = { at: this.stack.clock + t0, node: line[0], hold: cand.kind === 'hold',
+        this._following = { at: this.stack.clock + t0, node: line[0], hold: cand.kind === 'hold', nodes: line,
                             steps: line.slice(1).map(function (x) { return isLong(x.m) ? { long: x.t - t0 } : x.m; }) };
       }
     }
@@ -3395,6 +3354,72 @@
 
   // One frame. A committed walk owns the frame until the cursor arrives.
   PuyoCpu.prototype.update = function () {
+    this._act();
+    if (!this.stack.gameOver) this._background();
+  };
+
+  // KEEP THE LINE AHEAD, A LITTLE EVERY FRAME. BG_STEPS search steps per frame
+  // extend the followed line until it runs BG_TARGET frames past now, so the
+  // next decision finds it already proven instead of searching then. The
+  // search starts at the line's last node and backs up one node at a time
+  // when that end leads nowhere; what it finds replaces the rest of the line.
+  PuyoCpu.prototype.BG_STEPS = 20;
+  PuyoCpu.prototype.BG_TARGET = 450;
+  PuyoCpu.prototype._background = function () {
+    var fl = this._following;
+    if (!this.BG_STEPS || !this.deepSurvival || !fl || !fl.nodes || !fl.nodes.length || !fl.nodes[0].st) return;
+    var nodes = fl.nodes, t0 = nodes[0].t, i, c;
+    var rel = this.stack.clock + this.BG_TARGET - fl.at + t0;
+    var last = nodes.length - 1;
+    while (last > 0 && nodes[last].dead) last--;
+    if (nodes[last].dead || nodes[last].t >= rel) return;
+    var bg = this._bg;
+    if (!bg || bg.fl !== fl) bg = this._bg = { fl: fl, k: last + 1, level: null, i: 0, moves: null, j: 0, next: [], seen: {} };
+    if (bg.failed) return;
+    var budget = this.BG_STEPS, su = this._lineUntil, self = this;
+    this._lineUntil = rel;
+    try {
+      while (budget > 0) {
+        if (!bg.level || bg.i >= bg.level.length) {
+          if (bg.level && bg.next.length) {
+            bg.next.sort(function (x, y) { return (y.t + self._heldFor(y.carry)) - (x.t + self._heldFor(x.carry)); });
+            bg.level = bg.next.slice(0, this.EXTEND_BEAM); bg.i = 0; bg.next = []; bg.seen = {};
+          } else {
+            bg.k--;
+            if (bg.k < 0) { bg.failed = true; return; }
+            bg.level = [nodes[bg.k]]; bg.i = 0; bg.next = []; bg.seen = {};
+          }
+          bg.moves = null;
+        }
+        var n = bg.level[bg.i];
+        if (!bg.moves) { bg.moves = [ 'long', null ].concat(n.b.legalSwaps()); bg.j = 0; }
+        if (bg.j >= bg.moves.length) { bg.i++; bg.moves = null; continue; }
+        var m = bg.moves[bg.j++];
+        budget--;
+        c = m === 'long' ? this._lineStep(n, null, true) : this._lineStep(n, m, false);
+        if (!c) continue;
+        c.prev = n; c.m = m;
+        if (!c.dead && c.t >= rel) {
+          var chain = [];
+          for (var q = c; q && q !== nodes[bg.k]; q = q.prev) chain.unshift(q);
+          fl.nodes = nodes.slice(0, bg.k + 1).concat(chain);
+          fl.steps = fl.steps.slice(0, bg.k).concat(chain.map(function (x) { return isLong(x.m) ? { long: x.t - t0 } : x.m; }));
+          this._bg = null;
+          this.bgExtended = (this.bgExtended || 0) + 1;
+          return;
+        }
+        if (c.dead) continue;
+        var h = (c.b.key || JSON.stringify(c.b.grid)) + '|' + this._heldFor(c.carry) + '|' + c.pos;
+        if (bg.seen[h]) continue;
+        bg.seen[h] = 1;
+        bg.next.push(c);
+      }
+    } finally {
+      this._lineUntil = su;
+    }
+  };
+
+  PuyoCpu.prototype._act = function () {
     var stack = this.stack;
     if (stack.gameOver) return;
 
