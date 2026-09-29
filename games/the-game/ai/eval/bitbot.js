@@ -193,8 +193,8 @@
         this.frozen = { walking: 0, cooling: 0, hold: 0, raise: 0, swap: 0 };
         this.counts = { refusedDeadly: 0, allDead: 0, byMode: {},
                         refusedReturn: 0, defendByClock: 0, refusedTooSlow: 0, planned: 0, planDropped: 0,
-                        attacked: 0, attackDropped: 0, cellsPlanned: 0, refusedPayless: 0,
-                        raisedForMaterial: 0, waitedToRaise: 0,
+                        attacked: 0, attackDropped: 0, cellsPlanned: 0, refusedPayless: 0, refusedStarving: 0,
+                        raisedForMaterial: 0, waitedToRaise: 0, dugFor: 0, digDropped: 0,
                         openingRaises: 0, waitedToRaise: 0, saveKept: 0, saveUnkeepable: 0, savePlanned: 0, heldTheBreak: 0, forcedBreak: 0, forcedBoth: 0, refusedEarly: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
                         revealWindows: 0, digging: 0, flattened: 0, flattenDropped: 0,
@@ -1012,6 +1012,25 @@
             if (o.breaks && perPanelFrames > 0) {
                 cells += heldFrames(framesTable, 0, o.total, o.garbage || W) / perPanelFrames;
             }
+            // AND WHAT IT COSTS TO SPEND THE BOARD BELOW THE WORKING FLOOR,
+            // WHICH THIS PATH WAS NOT PAYING.
+            //
+            // bestPlan prices it as `- shortfall * framesPerRow`: under the floor
+            // the panels have to be put back and a row of rise is the only way.
+            // In this function's currency a panel of life is perPanelFrames, so a
+            // row short is framesPerRow / perPanelFrames = W cells. Same price,
+            // same number, expressed in the units this ranking uses.
+            //
+            // It was priced in the survival plan and NOWHERE else, so the attack
+            // spent the board down freely: seed 101 went from 5.5 rows of
+            // material at frame 1,674 to 1.8 by 2,243 through attackPlan, WEIGHTS
+            // and flatten, and died at 2,630 with eleven panels under forty-seven
+            // cells of garbage and no way to put three of them against the slab.
+            // A break is exempt without being excused -- its settled board is
+            // unknowable so `mat` is null, and it ADDS material besides.
+            var short = (o.mat === null || o.mat === undefined)
+                      ? 0 : Math.max(0, WORKING_ROWS - o.mat);
+            cells -= short * W;
             if (cells <= 0) continue;                       // sends nothing, holds nothing
             // The vector's taste for this shape, read off the same buckets the
             // features use, floored so it can only ever scale the rate down to a
@@ -1478,6 +1497,24 @@
                 this.counts.refusedPayless++;
                 continue;
             }
+            // UNDER THE WORKING FLOOR, ONLY A BREAK MAY CLEAR.
+            //
+            // Breaking is the only thing that takes garbage off the board, and it
+            // needs three panels against the slab. A board under the floor cannot
+            // reach one, so every panel it spends there is spent on never digging
+            // out again -- and raising, the other source, is a non-event once the
+            // opponent is sending. All three deaths in the round-robin end the
+            // same way: material between 1.8 and 3.5 rows, five to eight rows of
+            // garbage, every candidate refused, frozen on the weights fallback.
+            //
+            // Survival is exempt, as everywhere: a board that needs the clock
+            // takes whatever buys it.
+            if (!survivalNeeded && pool[i].kind === 'swap' && pool[i].resolved &&
+                pool[i].resolved.total > 0 && !pool[i].resolved.brokeGarbage &&
+                materialRows(base) < WORKING_ROWS) {
+                this.counts.refusedStarving++;
+                continue;
+            }
             // A CASH THAT GAINS NOTHING IS NOT AN ACTION YET: FIRE AT THE LAST
             // SECOND.
             //
@@ -1792,6 +1829,81 @@
             return { kind: 'hold', mode: mode, alive: alive, via: 'raising' };
         }
 
+        // BREAKING IS THE PRIORITY, AND WHEN THERE IS NOTHING TO BREAK WITH,
+        // GETTING SOMETHING TO BREAK WITH IS.
+        //
+        // A slab can never come off the board on its own: raising is a non-event
+        // after the opening, so breaking is the only thing that converts garbage
+        // back into panels, and a board that stops breaking is a board filling up
+        // with cells it can never remove.
+        //
+        // The rule that keeps a break in hand only KEEPS one. Measured over a
+        // 6,000-frame duel: the board held a break on 14% of decisions, and on
+        // every single decision where the chosen move would have spent the last
+        // one, an alternative that kept it existed and was played -- 0
+        // unkeepable. The keeping half works. There was no making half, so 86% of
+        // the time there was nothing to keep and the rule stood aside.
+        //
+        // This is the making half. `options.save` is the search's cheapest route
+        // to a board that HOLDS a break -- it walks landed boards several moves
+        // out, which is the only way to find one, since at one ply a break is
+        // available on about 4% of boards. It outranks the attack because a board
+        // that cannot dig is a board that dies, and attacking off a board that
+        // cannot dig spends the panels the dig needs.
+        //
+        // Only when there is nothing to break RIGHT NOW: with a break in the pool
+        // the priority rule above has already narrowed to it, and planning a
+        // route to another one instead would be walking past the one in hand.
+        if (!survival && digging) {
+            var haveBreak = false;
+            for (i = 0; i < pool.length; i++) {
+                if (pool[i].resolved && pool[i].resolved.brokeGarbage) { haveBreak = true; break; }
+            }
+            // HELD AND PLAYED OUT, LIKE EVERY OTHER PLAN.
+            //
+            // A route to a break is two or three swaps. Re-planning every decision
+            // and playing the first move of whatever came back starts a different
+            // route each time and finishes none of them: measured, 143 of 943
+            // decisions were spent on this and the board held a break on 9% of
+            // buried decisions either way. The dropping rule is the same as the
+            // others -- the next move must still be legal, and what is LEFT of the
+            // plan must still fit the clock as it is now.
+            if (haveBreak) this._dig = null;
+            if (!haveBreak && this._dig && this._dig.moves.length) {
+                var dn = this._dig.moves[0], dnOk = false, dnl = bit.legalSwapsOf(base);
+                for (i = 0; i < dnl.length; i++) {
+                    if (dnl[i][0] === dn[0] && dnl[i][1] === dn[1]) { dnOk = true; break; }
+                }
+                var dspent = Math.max(0, this.stack.frames - (this._dig.startedAt || 0));
+                if (dnOk && Math.max(0, this._dig.frames - dspent) <= deadline) {
+                    this._dig.moves = this._dig.moves.slice(1);
+                    if (!this._dig.moves.length) this._dig = null;
+                    this.counts.dugFor++;
+                    return { kind: 'swap', move: dn, mode: mode, alive: alive, via: 'digPlan' };
+                }
+                this._dig = null;
+                this.counts.digDropped++;
+            }
+            if (!haveBreak) {
+                options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
+                                                       lookDepth, base, this.timing(info, deadline), digging);
+                var dp = options.save;
+                if (dp && dp.swaps.length && (dp.duration || 0) <= deadline) {
+                    var dm = dp.swaps[0], dls = bit.legalSwapsOf(base), dok = false;
+                    for (i = 0; i < dls.length; i++) {
+                        if (dls[i][0] === dm[0] && dls[i][1] === dm[1]) { dok = true; break; }
+                    }
+                    if (dok && !returnsToSeen(dm)) {
+                        this._dig = { moves: dp.swaps.slice(1), frames: dp.duration || 0,
+                                      startedAt: this.stack.frames };
+                        if (!this._dig.moves.length) this._dig = null;
+                        this.counts.dugFor++;
+                        return { kind: 'swap', move: dm, mode: mode, alive: alive, via: 'digPlan' };
+                    }
+                }
+            }
+        }
+
         if (!survival) {
             if (this._attack && this._attack.moves.length) {
                 var an = this._attack.moves[0];
@@ -2018,8 +2130,21 @@
     // already, or about to be. hasFireable then sees garbage either way and asks
     // for a break, which is what "a three there it can knock" means.
     BitBot.prototype.answersASlab = function (masks) {
-        var st = this.withSlab(masks);
-        return this.hasFireable(st || masks);
+        return this.hasFireable(this.slabToAnswer(masks));
+    };
+
+    // THE GARBAGE THE ANSWER IS FOR: the garbage that is ON the board, or, when
+    // there is none, the row that lands next.
+    //
+    // Adding a row unconditionally asked a stricter question than the one that
+    // matters -- on a buried board it wanted a break of a slab that has not
+    // arrived, at the very top surface, rather than of the forty cells already
+    // sitting there. The search solves for the second (savesOf counts breaks of
+    // the garbage on the board), so the gate and the search were answering
+    // different questions and the plan could never satisfy the rule.
+    BitBot.prototype.slabToAnswer = function (masks) {
+        for (var c = 1; c <= W; c++) if (masks.garb[c]) return masks;
+        return this.withSlab(masks) || masks;
     };
 
     // HOW MANY EMPTY ROWS ARE ABOVE THE STACK, ON THE BOARD AS IT IS NOW.
@@ -2105,7 +2230,7 @@
         var deadline = framesToDeath(info, tallestBoard(masks), info.framesPerRow);
         var frozen = (info.stopTime || 0) > 0 || !!info.toppedOut;
         var step = travel.MOVE_FRAMES + (frozen ? 0 : this.reaction);
-        masks = this.withSlab(masks) || masks;
+        masks = this.slabToAnswer(masks);
         var sw = bit.legalSwapsOf(masks), i, r;
         for (i = 0; i < sw.length; i++) {
             if (travel.cost(row, col, sw[i][0], sw[i][1]) + step > deadline) continue;
