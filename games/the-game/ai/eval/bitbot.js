@@ -194,7 +194,7 @@
         this.counts = { refusedDeadly: 0, allDead: 0, byMode: {},
                         refusedReturn: 0, defendByClock: 0, refusedTooSlow: 0, planned: 0, planDropped: 0,
                         attacked: 0, attackDropped: 0, cellsPlanned: 0, refusedPayless: 0, refusedStarving: 0,
-                        raisedForMaterial: 0, waitedToRaise: 0, dugFor: 0, digDropped: 0,
+                        raisedForMaterial: 0, waitedToRaise: 0, dugFor: 0, digDropped: 0, brokeNow: 0,
                         openingRaises: 0, waitedToRaise: 0, saveKept: 0, saveUnkeepable: 0, savePlanned: 0, heldTheBreak: 0, forcedBreak: 0, forcedBoth: 0, refusedEarly: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
                         revealWindows: 0, digging: 0, flattened: 0, flattenDropped: 0,
@@ -1868,6 +1868,39 @@
             // buried decisions either way. The dropping rule is the same as the
             // others -- the next move must still be legal, and what is LEFT of the
             // plan must still fit the clock as it is now.
+            // A BREAK IN HAND IS PLAYED, NOT RANKED AGAINST AN ATTACK.
+            //
+            // "Short of material, breaking garbage is the priority" narrows
+            // `allowed` -- and `allowed` feeds the weights fallback only. The
+            // attack path reads the option list, so with a break sitting in the
+            // pool bestAttack picked an attack and the priority rule never fired.
+            // Same shape as the beam cutting breaks before that rule saw them,
+            // and as the save rule shaping only the fallback: a rule wired into
+            // the candidate list does not reach the paths that actually pick the
+            // move.
+            //
+            // Under six rows, which is where that rule already applies: the
+            // panels a chain is made of are locked inside the slab, and every row
+            // of slab is a row of ceiling gone. It still has to survive its own
+            // cost like any other move.
+            if (haveBreak && materialRows(base) < 6) {
+                var bk = null;
+                for (i = 0; i < pool.length; i++) {
+                    var bc = pool[i];
+                    if (bc.kind !== 'swap' || !bc.resolved || !bc.resolved.brokeGarbage) continue;
+                    if ((bc.moveFrames || 0) > deadline) continue;
+                    if (this.deadly(bc.masks, bc.resolved, info,
+                                    Math.max((bc.moveFrames || 0) + this.reaction,
+                                             info.framesPerRow || 0))) continue;
+                    if (!bk || (bc.resolved.garbage || 0) > (bk.resolved.garbage || 0)) bk = bc;
+                }
+                if (bk) {
+                    this._dig = null;
+                    this.counts.brokeNow++;
+                    return { kind: 'swap', move: bk.swap, mode: mode, alive: alive,
+                             via: 'break' };
+                }
+            }
             if (haveBreak) this._dig = null;
             if (!haveBreak && this._dig && this._dig.moves.length) {
                 var dn = this._dig.moves[0], dnOk = false, dnl = bit.legalSwapsOf(base);
