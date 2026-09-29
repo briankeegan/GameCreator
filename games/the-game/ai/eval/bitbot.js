@@ -1013,10 +1013,11 @@
     //
     // The resolve time is the engine's own preStop and depends on the match, so
     // it is a function rather than a number.
-    BitBot.prototype.timing = function (info) {
+    BitBot.prototype.timing = function (info, deadline) {
         var frozen = (info.stopTime || 0) > 0 || !!info.toppedOut;
         return {
             framesPerRow: info.framesPerRow || 0,
+            deadline: deadline || 0,
             overhead: travel.MOVE_FRAMES + (frozen ? 0 : this.reaction),
             resolve: function (size, garbage) {
                 return BF.resolveFramesOf(PanelEngine(), size, garbage);
@@ -1171,7 +1172,7 @@
             }
             if (!survival) {
                 options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
-                                                   this.timing(info), digging);
+                                                   this.timing(info, deadline), digging);
                 var plan = bestPlan(options, info.stopTime || 0, deadline, PanelEngine(),
                                     !!info.toppedOut, info.framesPerRow, this.stack.frames,
                                     tallestOf(pool));
@@ -1514,7 +1515,7 @@
                 this.counts.attackDropped++;
             }
             options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
-                                                   this.timing(info), digging);
+                                                   this.timing(info, deadline), digging);
             var atk = bestAttack(options, this.weights, PanelEngine(), deadline,
                                  this.stack.frames, (info.framesPerRow || 0) / W);
             if (atk && atk.move && returnsToSeen(atk.move)) {
@@ -1645,7 +1646,7 @@
         // legal and must not put the board back where it has just been.
         if (noneClear && (!this._flatten || !this._flatten.moves.length)) {
             options = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
-                                                    lookDepth, base, this.timing(info), digging);
+                                                    lookDepth, base, this.timing(info, deadline), digging);
         }
         // AND IT HAS TO FIT IN THE TIME THERE IS. The plan is priced in frames like
         // every other -- the walk to each swap, the swap, and the cooldown when one

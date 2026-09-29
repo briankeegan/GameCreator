@@ -72,12 +72,19 @@
     // `tall` is the whole board, garbage and all, because that is what reaches
     // the ceiling.
     //
-    // `excess` is the rows the fullest column is carrying above what an even
-    // spread of the same panels would need: max(panels per column) minus their
-    // mean. It is the ceiling the board owns and is not using, in rows, so it
-    // converts to frames at framesPerRow like any other row. Garbage is left out
-    // of it for the same reason it is left out of materialRows -- a slab is not
-    // material and cannot be spread.
+    // `excess` is how far the panels are from an even spread, as the MEAN
+    // DEVIATION from their own mean -- the average number of rows a column is away
+    // from where it would be if the material were level.
+    //
+    // NOT max MINUS mean. That only ever sees the single fullest column, so moving
+    // a panel into a four-deep hole changed nothing whenever a second column
+    // matched the tallest, and the objective had no reason to fill holes at all.
+    // A mean deviation moves for every panel shifted toward level, which is the
+    // gradient the plan needs.
+    //
+    // It is in rows, so it converts to frames at framesPerRow like any other row.
+    // Garbage is left out for the same reason it is left out of materialRows: a
+    // slab is not material and cannot be spread.
     //
     // `bumps` is the same panel counts as a sum of steps, kept for tie-breaks.
     function shapeOf(st2) {
@@ -91,7 +98,9 @@
             if (h[c] > mx) mx = h[c];
         }
         for (c = 1; c < w2; c++) bumps += Math.abs(h[c] - h[c + 1]);
-        return { tall: tall, bumps: bumps, excess: mx - sum / w2 };
+        var mean = sum / w2, dev = 0;
+        for (c = 1; c <= w2; c++) dev += Math.abs(h[c] - mean);
+        return { tall: tall, bumps: bumps, excess: dev / w2 };
     }
 
     function optionOf(swaps, frames, r) {
@@ -228,10 +237,13 @@
             return { mask: reach, dig: dig };
         }
 
-        var flat = null, BASE = null, FPR = (timing && timing.framesPerRow) || 112;
+        var flat = null, BASE = null, BASEDIG = 0;
+        var FPR = (timing && timing.framesPerRow) || 112;
+        var DEADLINE = (timing && timing.deadline) || 0;
 
         function expandAll(state0, depth) {
             BASE = shapeOf(state0);
+            BASEDIG = DIG ? reachOf(state0).dig : 0;
             // The root has no reach mask: ply one stays exhaustive so an immediate
             // clear is never missed.
             var frontier = [{ st: state0, chain: [], from: cursor, spent: 0, reach: null, dig: 0 }], ply;
@@ -336,6 +348,24 @@
                                 var val = (BASE.tall - sh2.tall) * FPR
                                         + (BASE.excess - sh2.excess) * FPR
                                         - dur;
+                                // UNDER A SLAB, FLAT AND LOW IS THE WRONG GOAL.
+                                //
+                                // A slab is not only a threat, it is panels and a
+                                // long hold waiting to be unlocked, and the only
+                                // thing standing between the board and them is a
+                                // match that touches it. A board spread low and
+                                // even cannot reach the slab's floor at all: on
+                                // seed 101 the floor was at r6 and the material
+                                // topped out at r5 in two columns, with plenty of
+                                // panels and no way to put three of them together
+                                // against it.
+                                //
+                                // So while digging, every cell that would finish a
+                                // line against the slab is worth what it unlocks --
+                                // the same deadline/W a converted cell is priced at
+                                // everywhere else, since that is what it leads to.
+                                // Reaching the slab IS the flattening here.
+                                if (DIG && rr) val += (rr.dig - BASEDIG) * (DEADLINE / W);
                                 var take = !flat || val > flat.value;
                                 if (!take && flat && val === flat.value) {
                                     take = waysOf(res.settled) > flat.ways;
