@@ -289,11 +289,28 @@
         else if (escape !== null && escape !== undefined &&
                  deadline <= escape + this.reaction) name = 'DEFEND';
         else {
-            var goal = this.aim();
+            // THE BAR IS THE ENGINE'S TABLE, NOT A WEIGHT.
+            //
+            // This asked aim(), which reads the weights: whichever chain or combo
+            // weight is highest sets the shape that counts as worth cashing. A
+            // vector whose top chain weight is chain5plus therefore only enters
+            // ATTACK when a 5-chain exists -- the vector deciding WHETHER to
+            // attack, not which shape to build.
+            //
+            // Measured on seed 103: STARTER cashes 708 times and survives 30000
+            // frames; a random vector cashes FOUR times in the whole game and dies
+            // at 10163. It never sends, so it is never un-buried, so nothing
+            // clears, and its last twelve decisions are setups at tallest 12.
+            //
+            // A shape is worth cashing when it sends cells, which comboGarbage
+            // already answers: a 4-combo sends 3, a 6-chain sends 30, a bare three
+            // sends nothing. Every vector now attacks on the same trigger and
+            // chooses only among the shapes that pay.
             for (var i = 0; i < pool.length; i++) {
                 var r = pool[i].resolved;
                 if (!r || !r.total) continue;
-                if (r.chain >= goal.links || r.biggest >= goal.wide) { name = 'ATTACK'; break; }
+                if (cellsSent(PanelEngine(), r.chain >= 2 ? 'chain' : 'combo',
+                              r.total, r.chain) > 0) { name = 'ATTACK'; break; }
             }
         }
         return { name: name, reveal: !!revealOpen };
