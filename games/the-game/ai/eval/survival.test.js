@@ -119,8 +119,15 @@ function hostile() {
     ok(bot.deadly(full, nothing, info, 112),
        'a full board with an empty clock and nothing to fire was called survivable, ' +
        'so the filter accepts everything and refuses nothing');
+    // A SHIELD SHORTER THAN AN ACTION IS NOT A SHIELD. puyocpu measured this on
+    // its own deaths: 116 moves spared by banked stop time with four frames left
+    // on average, and the board still topped out when it ran out.
+    ok(bot.deadly(full, nothing, { toppedOut: true, stopTime: 3, incoming: 0,
+                                   health: 1, framesPerRow: 112, framesToNextRow: 112 }, 112),
+       'three frames of stop time counted as holding a full board, and nothing ' +
+       'can be played in three frames');
 }());
 
-console.log('survival: 10 invariants checked without playing a game');
+console.log('survival: 11 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');

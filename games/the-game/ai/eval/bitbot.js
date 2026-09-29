@@ -449,12 +449,19 @@
         // the clock dies on that frame -- instrumented over three duels, every
         // death was this and none was anything else. Nothing to hold it is the
         // whole test.
+        // AND A SHIELD THAT EXPIRES BEFORE THE BOT CAN MOVE IS NOT A SHIELD.
+        // puyocpu's _resolvesDead makes the same point from its own measurements:
+        // of 178 moves judged safe on the last decision before 18 deaths, 116
+        // were spared by banked stop time with FOUR FRAMES left on average, and
+        // the board was still topped out when it ran out. This bot lifts its
+        // cooldown while topped out, so what it still has to pay is the action
+        // itself -- the engine's own tap cadence, travel.MOVE_FRAMES.
         var held = banked;
         if (resolved && (resolved.total > 0 || resolved.garbage > 0)) {
             held += BF.resolveFramesOf(PanelEngine(), resolved.total || 0,
                                        resolved.garbage || 0);
         }
-        return held <= 0;                                      // full, nothing holding it
+        return held <= travel.MOVE_FRAMES;                     // full, nothing holding it
     };
 
     // A MOVE THAT LEAVES NOWHERE TO GO IS DEADLY, whatever the horizon says.
