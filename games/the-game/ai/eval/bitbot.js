@@ -367,6 +367,22 @@
     //
     // Garbage is excluded for the same reason it is excluded from materialRows:
     // a slab is not material, and the bot cannot move it.
+    // The pocket's mean deviation, the number an option's `excess` is compared
+    // against. Same shape as bitoptions.shapeOf so the two can be subtracted.
+    function excessOf(st) {
+        var h = [], c, sum = 0;
+        for (c = 1; c <= W; c++) {
+            var g = st.garb[c] >>> 0;
+            var floor = g ? (g & -g) : 0;
+            var below = floor ? (floor - 1) : 0xffffffff;
+            h[c] = bit.popcount((st.occ[c] & ~g & below) >>> 0);
+            sum += h[c];
+        }
+        var mean = sum / W, dev = 0;
+        for (c = 1; c <= W; c++) dev += Math.abs(h[c] - mean);
+        return dev / W;
+    }
+
     function bumpiness(st) {
         var h = [], c, n = 0;
         for (c = 1; c <= W; c++) {
@@ -444,21 +460,26 @@
     // several decisions earlier and nothing reported it.
     //
     // So a candidate has to leave a board that still has a move: at least one
-    // legal swap whose own result survives the row AFTER the one the candidate
-    // already survives. One more ply, applied to every candidate, which is what
-    // turns "would die now" into "would be stranded".
+    // legal swap whose own result survives its own row. One more ply, applied to
+    // every candidate, which is what turns "would die now" into "would be
+    // stranded".
+    //
+    // THE CONTINUATION IS JUDGED ON THE SAME HORIZON, not a deeper one. Asking it
+    // to survive an EXTRA row means asking a board at tallest 10 to survive to
+    // 12, which is the ceiling, so every continuation read as fatal and every
+    // candidate was refused: `alive` was 0 from tallest 10 upward and the bot fell
+    // through to the fallback ranking for the rest of the game.
     //
     // The caller keeps its fallback: when nothing passes, the best-scoring move is
     // played anyway. This narrows the choice, it never refuses to move.
     BitBot.prototype.stranded = function (st, info, horizon) {
         var sw = bit.legalSwapsOf(st), i, r;
-        var deeper = (horizon || 0) + (info.framesPerRow || 0);
         for (i = 0; i < sw.length; i++) {
             if (!bit.swapMasks(st, sw[i][0], sw[i][1])) continue;
             r = bit.resolveFromMasks(st, true);
             bit.swapMasks(st, sw[i][0], sw[i][1]);
             if (r.scope !== 'ok' && r.scope !== 'garbage-broke') continue;
-            if (!this.deadly(r.settled || st, r, info, deeper)) return false;
+            if (!this.deadly(r.settled || st, r, info, horizon)) return false;
         }
         return true;
     };
@@ -492,15 +513,35 @@
     // Can the engine act on a raise at all. Every clause is one the engine
     // itself checks; a raise it refuses is not a move, and offering one means
     // scoring a board that never arrives.
+    // A RAISE IS HELD FOR, NOT ASKED FOR ONCE.
+    //
+    // riseLock is set while a swap is queued or panels are still in motion, which
+    // for this bot is nearly every frame -- it swaps almost every decision. Asking
+    // "can I raise THIS INSTANT" therefore answers no almost always: measured over
+    // a duel, 2,402 of the 2,723 decisions taken under four rows of material were
+    // refused on riseLock alone, and the board starved to eight panels with nine
+    // rows of headroom going spare.
+    //
+    // A player does not ask once, they hold the button and the engine grants the
+    // row when the lock clears. update() already holds it for twenty frames, so
+    // the decision only has to say whether raising is WRONG, not whether it is
+    // possible this instant.
+    //
+    // These are the refusals that do not clear on their own: already raising, the
+    // engine refusing manual raises outright, topped out, or garbage still
+    // falling. riseLock, panels in motion and shake time all pass, because holding
+    // is exactly how those are waited out.
     BitBot.prototype.canRaise = function () {
         if (!this.allowRaise) return false;
+        // ONE RAISE AT A TIME. update() holds the input for twenty frames and the
+        // engine re-grants a row on every frame it is held, so one decision buys
+        // two or three rows. Re-arming the hold on the next decision holds it
+        // forever and walks the stack into the ceiling.
+        if (this.raiseFrames > 0) return false;
         var s = this.stack;
         if (s.preventManualRaise || s.manualRaise) return false;
         if (typeof s.isToppedOut === 'function' && s.isToppedOut()) return false;
         if (typeof s.hasFallingGarbage === 'function' && s.hasFallingGarbage()) return false;
-        if (s.riseLock) return false;
-        if (typeof s.hasActivePanels === 'function' && s.hasActivePanels()) return false;
-        if ((s.shakeTime || 0) > 0) return false;
         return true;
     };
 
@@ -916,7 +957,7 @@
         return best;
     }
 
-    function bestPlan(list, clock, deadline, engine, toppedOut, framesPerRow, framesTable, tallNow) {
+    function bestPlan(list, clock, deadline, engine, toppedOut, framesPerRow, framesTable, tallNow, excessNow) {
         var best = null, over = null, all = list.now.concat(list.next), i;
         // ONE PANEL REMOVED IS framesPerRow / W FRAMES OF LIFE -- 18.7 at level 10.
         // Panels and stop time are the same currency and this is the exchange rate.
@@ -989,8 +1030,18 @@
             // between a move that works and a move that works AND flattens.
             var lowered = (tallNow && o.tall !== null && o.tall !== undefined)
                         ? Math.max(0, tallNow - o.tall) : 0;
+            // AND THE ROWS IT FREES INSIDE THE POCKET.
+            //
+            // `tall` is the whole board, garbage included, so under a slab it
+            // never moves and the term above is zero on exactly the boards where
+            // the choice matters. The pocket's own unevenness does move: a clear
+            // taken off the six-tall column levels it, the same clear taken off
+            // the short side leaves a spike and empties the rest. Priced in the
+            // same rows-to-frames as everything else.
+            var levelled = (excessNow !== null && o.excess !== null && o.excess !== undefined)
+                         ? (excessNow - o.excess) : 0;
             var bought = o.total * perPanel + (o.garbage || 0) * perCell
-                       + lowered * (framesPerRow || 0) + gain;
+                       + (lowered + levelled) * (framesPerRow || 0) + gain;
             var rate = bought / Math.max(1, took);
             var cur = fits ? best : over;
             // Between two plans buying life at the same rate, the one leaving the
@@ -1182,7 +1233,7 @@
                                                    this.timing(info, deadline), digging);
                 var plan = bestPlan(options, info.stopTime || 0, deadline, PanelEngine(),
                                     !!info.toppedOut, info.framesPerRow, this.stack.frames,
-                                    tallestOf(pool));
+                                    tallestOf(pool), excessOf(base));
                 if (plan && plan.rate > 0) {
                     this._plan = { moves: plan.option.swaps.slice(1), frames: plan.frames,
                                    gain: plan.gain, rate: plan.rate,
@@ -1578,9 +1629,6 @@
         // panels with a row of headroom. So raising is for a board with no
         // garbage on it; buried, the answer is to dig.
         //
-        // Measured: material sits at 2 to 3 flat rows for 82% of a game, so a
-        // floor of WORKING_ROWS fires almost always. Raising on all of those is
-        // 8 deaths in 8 at an average of 10,369 frames.
         // GARBAGE ON THE BOARD IS NOT A REASON NOT TO RAISE. Raise first, then
         // break: both make panels and a board short of them needs whichever it can
         // get. Refusing while buried starved the board that needed material most --
@@ -1596,45 +1644,10 @@
         // two ways to get them are raising and breaking. Measured on seed 101, it
         // sat at 3 rows for six straight decisions under the floor of 4, refusing
         // to raise because a slab was queued, and died 150 frames later.
-        if (!survival && this.canRaise() &&
-            materialRows(base) < WORKING_ROWS &&
-            tallestOf(pool) + 1 <= H - WORKING_ROWS) {
-            // ONLY IF IT DOES NOT KILL. canRaise() is the engine's own list of
-            // refusals -- whether the raise is LEGAL -- and says nothing about
-            // whether the board survives it. Returning here skipped the death
-            // filter every other move faces, on the one move that pushes the stack
-            // up on purpose. Under attack a raise is how the bot kills itself.
-            var risenCand = null;
-            for (i = 0; i < pool.length; i++) if (pool[i].kind === 'raise') risenCand = pool[i];
-            if (risenCand && !this.deadly(risenCand.masks, risenCand.resolved, info, this.reaction)) {
-                this.counts.raisedForMaterial++;
-                return { kind: 'raise', mode: mode, alive: alive, via: 'raiseMaterial' };
-            }
-            this.counts.refusedRaise++;
-        }
-
-        // A PLAN MOVE IS STILL A MOVE, so it faces the no-return rule like any
-        // other. Returning early with it skipped that check and the bot went back
-        // to oscillating -- 48 decisions on a board it had been on within the last
-        // three, against the 8 the prediction gap accounts for. A plan that walks
-        // the board in a circle is not a plan, it is the loop with extra steps.
-        if (survival && survival.move) {
-            var planSig = null;
-            for (i = 0; i < pool.length; i++) {
-                var pc = pool[i];
-                if (pc.kind === 'swap' && pc.swap[0] === survival.move[0] &&
-                    pc.swap[1] === survival.move[1] && pc.masks) { planSig = signature(pc.masks); break; }
-            }
-            if (this.refuseReturn && planSig && (planSig === here || this._seen.indexOf(planSig) >= 0)) {
-                this._plan = null;
-                this.counts.refusedReturn++;
-                survival = null;
-            } else {
-                this.counts.planned++;
-                return { kind: 'swap', move: survival.move, mode: mode, alive: alive, via: 'survivalPlan' };
-            }
-        }
-
+        // FLATTEN BEFORE RAISING. A raise adds a row to every column, so raising
+        // a lopsided board locks the spike in one row higher and spends the
+        // headroom doing it. Level the pocket first; raise once there is nothing
+        // left worth levelling.
         // NOTHING CLEARS: FLATTEN, TO A PLAN.
         //
         // Ranking single swaps by the flatness they leave is greedy -- it takes
@@ -1689,6 +1702,60 @@
             this._flatten = null;
             this.counts.flattenDropped++;
         }
+
+        // ONLY UP TO A HEIGHT IT CANNOT DIE AT, and dying is topping out -- there
+        // is no margin beyond that. The row it adds, plus every cell already
+        // queued against it, has to still fit under the ceiling. WORKING_ROWS is
+        // the material minimum that triggers the raise; it is not a headroom
+        // reserve and does not belong in this bound.
+        var incomingRows = Math.ceil((info.incoming || 0) / W);
+        if (!survival && this.canRaise() &&
+            materialRows(base) < WORKING_ROWS &&
+            tallestOf(pool) + 1 + incomingRows < H) {
+            // ONLY IF IT DOES NOT KILL. canRaise() is the engine's own list of
+            // refusals -- whether the raise is LEGAL -- and says nothing about
+            // whether the board survives it. Returning here skipped the death
+            // filter every other move faces, on the one move that pushes the stack
+            // up on purpose. Under attack a raise is how the bot kills itself.
+            var risenCand = null;
+            for (i = 0; i < pool.length; i++) if (pool[i].kind === 'raise') risenCand = pool[i];
+            // ON THE SAME HORIZON AS EVERY OTHER MOVE, WHICH IS A ROW.
+            //
+            // this.reaction is twelve frames; a row of rise is 112. Checking the
+            // one move that pushes the stack up on purpose over twelve frames asks
+            // whether it kills instantly, not whether the board survives the next
+            // row -- so a raise at tallest 10 under six rows of garbage passed,
+            // and the board was at the ceiling 800 frames later.
+            var raiseHorizon = Math.max(this.reaction, info.framesPerRow || 0);
+            if (risenCand && !this.deadly(risenCand.masks, risenCand.resolved, info, raiseHorizon)) {
+                this.counts.raisedForMaterial++;
+                return { kind: 'raise', mode: mode, alive: alive, via: 'raiseMaterial' };
+            }
+            this.counts.refusedRaise++;
+        }
+
+        // A PLAN MOVE IS STILL A MOVE, so it faces the no-return rule like any
+        // other. Returning early with it skipped that check and the bot went back
+        // to oscillating -- 48 decisions on a board it had been on within the last
+        // three, against the 8 the prediction gap accounts for. A plan that walks
+        // the board in a circle is not a plan, it is the loop with extra steps.
+        if (survival && survival.move) {
+            var planSig = null;
+            for (i = 0; i < pool.length; i++) {
+                var pc = pool[i];
+                if (pc.kind === 'swap' && pc.swap[0] === survival.move[0] &&
+                    pc.swap[1] === survival.move[1] && pc.masks) { planSig = signature(pc.masks); break; }
+            }
+            if (this.refuseReturn && planSig && (planSig === here || this._seen.indexOf(planSig) >= 0)) {
+                this._plan = null;
+                this.counts.refusedReturn++;
+                survival = null;
+            } else {
+                this.counts.planned++;
+                return { kind: 'swap', move: survival.move, mode: mode, alive: alive, via: 'survivalPlan' };
+            }
+        }
+
 
         if (rev && rev.best && rev.best.swap) {
             this.counts.revealSwaps++;
