@@ -104,5 +104,6 @@ console.log('RESULT ' + JSON.stringify({ seed: SEED, frames: f, died: died,
                                          acted: REALTIME ? cp.map(function (c) { return c.acted || 0; }) : undefined,
                                          planned: REALTIME ? cp.map(function (c) { return c.planned || 0; }) : undefined,
                                          missed: REALTIME ? cp.map(function (c) { return c.missed || 0; }) : undefined,
+                                         dropped: REALTIME ? cp.map(function (c) { return c.dropped || 0; }) : undefined,
                                          seconds: Math.round((Date.now() - t0) / 1000) }));
 process.exit(died === null ? 0 : 1);

@@ -1,7 +1,8 @@
-// A survival-search worker (see _prefetch in puyocpu.js), in Node or a
-// browser. Given one search node and its move list, computes every step with
-// the bot's own _lineStep and writes the results to its shared slot. Holds no
-// state between tasks.
+// A survival-search worker (see _prefetch and _svExpand in puyocpu.js), in
+// Node or a browser. Given a search node and its move list, computes every
+// step with the bot's own _lineStep and writes the results to its shared
+// slot. Between an 'sv-begin' and an 'sv-end' it holds the boards of one
+// survival search.
 (function () {
   var node = typeof importScripts !== 'function', PuyoCpu, ctl = null, slot = null;
   if (node) {
@@ -22,6 +23,12 @@
       return;
     }
     var out, bufs = [], texts = [];
+    if (typeof m.type === 'string' && m.type.indexOf('sv-') === 0) {
+      try { out = PuyoCpu.svHandle(m, bufs, texts); }
+      catch (err) { out = { error: String(err && err.stack || err) }; bufs = []; texts = []; console.error('survival worker: ' + out.error); }
+      if (out) PuyoCpu.sendResult(ctl, slot, out, bufs, texts);
+      return;
+    }
     try { out = { id: m.id, res: PuyoCpu.runSteps(m, bufs, texts) }; }
     catch (err) { out = { id: m.id, error: String(err && err.stack || err) }; bufs = []; texts = []; }
     PuyoCpu.sendResult(ctl, slot, out, bufs, texts);

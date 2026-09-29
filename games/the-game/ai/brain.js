@@ -14,7 +14,9 @@
     o.threads = Brain.threads();
     this.threads = o.threads;
     this.worker = new Worker(Brain.URL);
-    this.worker.postMessage({ type: 'init', opts: o });
+    // Shared with the worker: the id of the request to stop thinking about.
+    this.stop = typeof SharedArrayBuffer === 'function' && root.crossOriginIsolated ? new Int32Array(new SharedArrayBuffer(4)) : null;
+    this.worker.postMessage({ type: 'init', opts: o, stop: this.stop && this.stop.buffer });
     this.worker.onmessage = function (e) { self._reply(e.data); };
     this.worker.onerror = function (e) { console.error('brain worker: ' + (e.message || e)); };
     this.pending = null;
@@ -40,9 +42,17 @@
     return p;
   };
 
+  // An answer that can no longer be played: the worker stops on it (when it
+  // can share memory with the page) and the reply, if one comes, is ignored.
+  Brain.prototype.cancel = function (p) {
+    if (this.stop) Atomics.store(this.stop, 0, p.id);
+    if (this.pending === p) this.pending = null;
+  };
+
   // How long it took is counted in game frames, the unit the bot waits in.
   Brain.prototype._reply = function (m) {
     if (m.error) { console.error('brain: ' + m.error); return; }
+    if (m.aborted) return;
     var p = this.pending;
     if (!p || p.id !== m.id) return;
     this.pace.took(p.bot.stack.clock - p.sentAt);

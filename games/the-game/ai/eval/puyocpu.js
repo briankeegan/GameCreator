@@ -1763,6 +1763,254 @@
       }
     }
   };
+  // THE SURVIVAL SEARCH ON THREADS. Each worker holds the boards it made;
+  // a level is expanded where its boards are (a few are moved so every
+  // worker has as much to do), every move of every board is played there
+  // with the bot's own _lineStep, and what comes back is only what the
+  // search loop reads: the time, whether it died, the hold, the cursor, the
+  // grid's key, its garbage and its top, and how many moves it has. The
+  // nodes kept past the search (proofs, fallbacks, furthest lines) are
+  // played again here from the last board this thread holds, and any
+  // difference from what the worker reported throws.
+  PuyoCpu.prototype._svBegin = function () {
+    var pool = getPool(this.threads), cfg = { reaction: this.reaction, cursorMoveFrames: this.cursorMoveFrames,
+      until: this._lineUntil || 0, rest: !!this._restNeeded, check: !!this.engineCheck };
+    pool.ws.forEach(function (x) { x.w.postMessage({ type: 'sv-begin', cfg: cfg }); });
+    return { pool: pool, put: 0, at: null };
+  };
+  function svSend(pool, msgs) {
+    var sent = 0, got = 0, seen = 0, out = new Array(pool.ws.length), j;
+    Atomics.store(pool.ctl, 0, 0);
+    for (j = 0; j < msgs.length; j++) if (msgs[j]) { pool.ws[j].w.postMessage(msgs[j]); sent++; }
+    while (got < sent) {
+      Atomics.wait(pool.ctl, 0, seen, 60000);
+      seen = Atomics.load(pool.ctl, 0);
+      for (j = 0; j < pool.ws.length; j++) {
+        var s = pool.ws[j].slot;
+        if (Atomics.load(s.i32, 0) !== 1) continue;
+        var u = unpack(s);
+        Atomics.store(s.i32, 0, 0);
+        Atomics.notify(s.i32, 0);
+        if (u.obj.error) throw new Error('survival worker: ' + u.obj.error);
+        if (out[j]) throw new Error('survival worker ' + j + ': a second reply to one message ' + JSON.stringify(u.obj).slice(0, 200) + ' after ' + JSON.stringify(out[j].obj).slice(0, 200));
+        out[j] = u;
+        got++;
+      }
+    }
+    return out;
+  }
+  function svPacked(fp, u) {
+    var nb = u.bufs[fp.num];
+    return { keys: fp.keys, num: new Float64Array(nb.buffer, nb.byteOffset, nb.length >> 1), kinds: fp.kinds,
+             rest: u.texts[fp.rest], D: u.bufs[fp.D], G: u.bufs[fp.G], free: fp.free, top: fp.top, nrows: fp.nrows };
+  }
+  // A LEVEL: every board the loop may reach is placed on a worker (moved,
+  // if its worker has more than its share of the level's moves, or sent,
+  // if this thread holds it) and stays there for the level. Boards are then
+  // played in rounds from the loop's position -- as many as the budget left
+  // could reach if every move were read -- and when the loop reaches a board
+  // not yet played, the next round starts there. kids[i] is { moves, kids }
+  // for level[i], in the loop's own move order.
+  PuyoCpu.prototype._svLevel = function (par, level, verdict, budget) {
+    var pool = par.pool, k = pool.ws.length, all = [], total = 0, i, j, n;
+    for (i = 0; i < level.length; i++) {
+      n = level[i];
+      if (verdict[n.tag]) continue;
+      var nm = n._sv ? n._sv.nm : 2 + n.b.legalSwaps().length;
+      all.push({ i: i, n: n, nm: nm });
+      total += nm;
+    }
+    var load = [], keep = [], puts = [], exports = [], moved = [];
+    for (j = 0; j < k; j++) { load.push(0); keep.push([]); puts.push([]); exports.push(null); }
+    var cap = Math.ceil(total / k);
+    for (i = 0; i < all.length; i++) {
+      var x = all[i], to = 0;
+      for (j = 1; j < k; j++) if (load[j] < load[to]) to = j;
+      if (x.n._sv && load[x.n._sv.w] + x.nm <= cap) to = x.n._sv.w;
+      load[to] += x.nm;
+      x.w = to;
+      if (x.n._sv && x.n._sv.w === to) x.id = x.n._sv.id;
+      else {
+        x.id = -(++par.put);
+        if (x.n._sv) { (exports[x.n._sv.w] = exports[x.n._sv.w] || []).push(x.n._sv.id); moved.push(x); }
+        else {
+          var st = x.n.st instanceof FastStack ? x.n.st : FastStack.fromStack(x.n.st);
+          puts[to].push({ id: x.id, fpack: st.pack(), t: x.n.t, hold: x.n.hold, arrivals: x.n.arrivals, fresh: !!x.n.fresh });
+        }
+      }
+      keep[to].push(x.id);
+    }
+    if (moved.length) {
+      var got = svSend(pool, exports.map(function (ids) { return ids && { type: 'sv-export', ids: ids }; })), from = {};
+      got.forEach(function (u, w) {
+        if (u) u.obj.res.forEach(function (r) { from[w + ':' + r.id] = { r: r, fpack: svPacked(r.fp, u) }; });
+      });
+      moved.forEach(function (x) {
+        var f = from[x.n._sv.w + ':' + x.n._sv.id];
+        puts[x.w].push({ id: x.id, fpack: f.fpack, t: f.r.t, hold: f.r.hold, arrivals: f.r.arrivals, fresh: f.r.fresh });
+      });
+    }
+    pool.ws.forEach(function (x, w) { x.w.postMessage({ type: 'sv-level', keep: keep[w], put: puts[w] }); });
+    var at = [];
+    for (i = 0; i < all.length; i++) at[all[i].i] = all[i];
+    par.at = at;
+    var kids = [];
+    this._svRound(par, level, verdict, budget, 0, kids);
+    return kids;
+  };
+  PuyoCpu.prototype._svRound = function (par, level, verdict, budget, from, kids) {
+    var pool = par.pool, k = pool.ws.length, want = [], left = budget, i, j, n, x, FULL = this.SURVIVE_FRAMES + this.SURVIVE_REST;
+    for (i = from; i < level.length && left > 0; i++) {
+      n = level[i];
+      if (verdict[n.tag] || kids[i]) continue;
+      x = par.at[i];
+      if (!x) throw new Error('survival search on threads: board ' + i + ' of the level was not placed');
+      want.push(x);
+      left -= x.nm;
+    }
+    var items = [];
+    for (j = 0; j < k; j++) items.push([]);
+    want.forEach(function (x) { items[x.w].push(x); });
+    function read(res, pass, rows) {
+      rows.forEach(function (it, w) {
+        var u = res[w];
+        if (!u && !it.length) return;
+        if (u.obj.n !== it.length) throw new Error('survival worker: ' + u.obj.n + ' boards back for ' + it.length + ' sent');
+        var F = u.bufs[0], M = u.bufs[1], keys = textOf(u.texts[0]), f = 0, mi = 0, ko = 0;
+        it.forEach(function (x) {
+          var kx = kids[x.i], q, a, b;
+          if (pass === 1) {
+            var ns = M[mi++], moves = [ 'long', null ];
+            for (q = 0; q < ns; q++, mi += 2) moves.push([M[mi], M[mi + 1]]);
+            kx = kids[x.i] = { moves: moves, kids: [] };
+            a = 0; b = 1;
+          } else { a = 1; b = kx.moves.length; }
+          for (q = a; q < b; q++, f += SV_F) {
+            if (F[f] === 0) kx.kids[q] = null;
+            else if (F[f] === 1) kx.kids[q] = { dead: true, t: F[f + 1], _svp: true };
+            else {
+              var kl = F[f + 9];
+              kx.kids[q] = { t: F[f + 1], carry: { stopTime: F[f + 3] }, pos: [F[f + 4], F[f + 5]],
+                             b: { key: keys.substr(ko, kl), _garb: F[f + 6], _top: F[f + 7] }, _svp: true,
+                             _sv: { w: w, id: F[f + 2], nm: F[f + 8] } };
+              ko += kl;
+            }
+          }
+        });
+        if (f !== F.length || mi !== M.length || ko !== keys.length) throw new Error('survival worker: summaries do not add up');
+      });
+    }
+    var ids = function (it) { return it.map(function (x) { return x.id; }); };
+    var res = svSend(pool, items.map(function (it) { return { type: 'sv-expand', pass: 1, items: ids(it) }; }));
+    read(res, 1, items);
+    // The rest of a board's moves are wanted unless its own wait proves its
+    // move, or an earlier board's wait did: the loop never reads them.
+    var done = {}, rest = items.map(function () { return []; });
+    for (i = 0; i < want.length; i++) {
+      x = want[i];
+      var c = kids[x.i].kids[0];
+      if (done[x.n.tag]) continue;
+      if (c && !c.dead && c.t >= FULL) { done[x.n.tag] = true; continue; }
+      rest[x.w].push(x);
+    }
+    var res2 = svSend(pool, rest.map(function (it) { return it.length ? { type: 'sv-expand', pass: 2, items: ids(it) } : null; }));
+    read(res2, 2, rest);
+  };
+  // The nodes the search keeps, played again on this thread.
+  PuyoCpu.prototype._svEnd = function (par, proofs, weak, far) {
+    var self = this, k;
+    par.pool.ws.forEach(function (x) { x.w.postMessage({ type: 'sv-end' }); });
+    function real(x) {
+      if (!x || !x._svp) return x;
+      if (x._real) return x._real;
+      var parent = real(x.prev), long = x.m === 'long';
+      var r = self._lineStep(parent, long ? null : x.m, long);
+      if (!r || r.t !== x.t || !!r.dead !== !!x.dead ||
+          (!r.dead && (r.b.key !== x.b.key || String(r.pos) !== String(x.pos) || self._heldFor(r.carry) !== x.carry.stopTime))) {
+        throw new Error('survival search on threads: a board played again here is not the one its worker reported');
+      }
+      r.prev = parent; r.m = x.m; r.tag = x.tag; r.seed = x.seed;
+      x._real = r;
+      return r;
+    }
+    // One move from each board: its walk alone, not every swap's.
+    this._oneMove = true;
+    try {
+      for (k in proofs) proofs[k] = real(proofs[k]);
+      for (k in weak) weak[k] = real(weak[k]);
+      for (k in far) far[k] = real(far[k]);
+      if (this._proofs) for (k in this._proofs) this._proofs[k] = real(this._proofs[k]);
+    } finally { this._oneMove = false; }
+  };
+  // The worker's side of it.
+  var SV = null, SV_F = 10;
+  PuyoCpu.svHandle = function (m, bufs, texts) {
+    if (m.type === 'sv-begin') {
+      var bot = Object.create(PuyoCpu.prototype), cfg = m.cfg;
+      bot.reaction = cfg.reaction; bot.cursorMoveFrames = cfg.cursorMoveFrames;
+      bot._lineUntil = cfg.until || null; bot._restNeeded = cfg.rest;
+      bot.fastEngine = true; bot.engineCheck = !!cfg.check;
+      SV = { bot: bot, made: new Map(), lvl: null, next: 1 };
+      return null;
+    }
+    if (m.type === 'sv-end') { SV = null; return null; }
+    // Boards to hand to another worker: the ones this one made last level.
+    if (m.type === 'sv-export') {
+      return { res: m.ids.map(function (id) {
+        var n = SV.made.get(id), pk = n.st.pack();
+        SV.made.delete(id);
+        bufs.push(pk.D, pk.G, new Int32Array(pk.num.buffer));
+        texts.push(new RawText(JSON.stringify(pk.rest, tagged)));
+        return { id: id, t: n.t, hold: n.hold, arrivals: n.arrivals, fresh: !!n.fresh,
+                 fp: { keys: pk.keys, kinds: pk.kinds, rest: texts.length - 1, D: bufs.length - 3, G: bufs.length - 2, num: bufs.length - 1,
+                       free: pk.free, top: pk.top, nrows: pk.nrows } };
+      }) };
+    }
+    // A new level: the boards kept of those made last level, and those sent.
+    if (m.type === 'sv-level') {
+      var lvl = new Map(), i;
+      for (i = 0; i < m.keep.length; i++) if (SV.made.has(m.keep[i])) lvl.set(m.keep[i], SV.made.get(m.keep[i]));
+      for (i = 0; i < m.put.length; i++) {
+        var p = m.put[i];
+        lvl.set(p.id, SV.bot._engineNode(FastStack.unpack(p.fpack, parseText), p.t, p.hold, p.arrivals, p.fresh));
+      }
+      for (i = 0; i < m.keep.length; i++) if (!lvl.has(m.keep[i])) throw new Error('no board ' + m.keep[i]);
+      SV.lvl = lvl; SV.made = new Map();
+      return null;
+    }
+    // Boards of the level played: pass 1 their wait, pass 2 their other moves.
+    if (m.type === 'sv-expand') {
+      var b = SV.bot, j, n, c, id, k;
+      // Per child, SV_F integers (kind 0 refused, 1 dead, 2 alive; time;
+      // board id; hold; cursor row and column; garbage; top; moves), and its
+      // key in one text; in pass 1, per board, its swap count and swaps.
+      var F = [], M = [], keys = [];
+      for (i = 0; i < m.items.length; i++) {
+        n = SV.lvl.get(m.items[i]);
+        if (!n) throw new Error('no board ' + m.items[i]);
+        var moves;
+        if (m.pass === 1) {
+          var sw = n.b.legalSwaps();
+          M.push(sw.length);
+          for (j = 0; j < sw.length; j++) M.push(sw[j][0], sw[j][1]);
+          moves = [ 'long' ];
+        } else moves = [ null ].concat(n.b.legalSwaps());
+        for (j = 0; j < moves.length; j++) {
+          c = moves[j] === 'long' ? b._lineStep(n, null, true) : b._lineStep(n, moves[j], false);
+          if (!c) { F.push(0, 0, 0, 0, 0, 0, 0, 0, 0, 0); continue; }
+          if (c.dead) { F.push(1, c.t, 0, 0, 0, 0, 0, 0, 0, 0); continue; }
+          id = SV.next++; k = c.b.key;
+          SV.made.set(id, c);
+          F.push(2, c.t, id, b._heldFor(c.carry), c.pos[0], c.pos[1], garbageCells(c.b), topRow(c.b), 2 + c.b.legalSwaps().length, k.length);
+          keys.push(k);
+        }
+      }
+      bufs.push(Int32Array.from(F), Int32Array.from(M));
+      texts.push(new RawText(keys.join('')));
+      return { n: m.items.length };
+    }
+    throw new Error('unknown message ' + m.type);
+  };
   // The next boards the search will expand, from where it is: a few for each
   // thread. Fetching the whole level ahead computed twice what the search
   // used -- a board is skipped once its move is proven.
@@ -1871,9 +2119,10 @@
   // time, the raise in hand, the garbage in flight, what the search reads --
   // throws.
   PuyoCpu.prototype._engineAdvance = function (node, kind, m, frames) {
+    if (this._abort && this._abort()) throw ABORTED;
     if (!this.fastEngine || !FastStack) return this._engineAdvanceOn(cloneStack(node.st), node, kind, m, frames);
     var r;
-    if (kind === 'swap' && node.st instanceof FastStack) r = this._swapShared(node, m);
+    if (kind === 'swap' && node.st instanceof FastStack && !this._oneMove) r = this._swapShared(node, m);
     if (r === undefined) r = this._engineAdvanceOn(node.st instanceof FastStack ? node.st.clone() : FastStack.fromStack(node.st), node, kind, m, frames);
     if (this.engineCheck) {
       var q = this._engineAdvanceOn(cloneStack(realStack(node.st)), node, kind, m, frames);
@@ -1962,6 +2211,8 @@
   // own cursor. engineCheck compares every such step with the whole step
   // played on panel-engine.js.
   var WALKS = null, ARRIVED = {}, SP = null;
+  // Thrown out of a search its brain was told to stop (Mind's `abort`).
+  var ABORTED = PuyoCpu.ABORTED = { aborted: true };
   function cursorOf(o) {
     return { curRow: o.curRow, curCol: o.curCol, cursorDirection: o.cursorDirection, cursorTimer: o.cursorTimer,
              input: Object.assign({}, o.input), prevInput: Object.assign({}, o.prevInput) };
@@ -2334,20 +2585,26 @@
     function better(x, y) {
       return ((y.t + self._heldFor(y.carry)) - (x.t + self._heldFor(x.carry))) || (garb(x.b) - garb(y.b)) || (top(x.b) - top(y.b));
     }
+    // ON THREADS every board of the level is played on the workers, which
+    // keep them; what comes back is what this loop reads of each, and the
+    // loop is the same one.
+    var par = real && this.threads > 1 && this.fastEngine && FastStack ? this._svBegin() : null;
     while (level.length && budget > 0) {
-      if (this.threads) { this._curLevel = level; this._curVerdict = verdict; }
-      var next = [], seen = {};
+      if (this.threads && !par) { this._curLevel = level; this._curVerdict = verdict; }
+      var next = [], seen = {}, kids = par ? this._svLevel(par, level, verdict, budget) : null;
       for (i = 0; i < level.length && budget > 0; i++) {
         n = level[i];
         if (verdict[n.tag]) continue;
-        if (this.threads) {
+        if (kids && !kids[i]) this._svRound(par, level, verdict, budget, i, kids);
+        if (this.threads && !par) {
           this._curIndex = i;
           if (!n._pre) this._prefetch(this._window(function (x) { return !x._pre; }), function () { return [ 'long' ]; }, true);
         }
-        var moves = [ 'long', null ].concat(n.b.legalSwaps());
+        var moves = kids ? kids[i].moves : [ 'long', null ].concat(n.b.legalSwaps());
         for (j = 0; j < moves.length && budget > 0; j++) {
           budget--;
-          c = moves[j] === 'long' ? this._lineStep(n, null, true) : this._lineStep(n, moves[j], false);
+          c = kids ? kids[i].kids[j] : moves[j] === 'long' ? this._lineStep(n, null, true) : this._lineStep(n, moves[j], false);
+          if (c === undefined) throw new Error('survival search on threads: a move the loop reads was not played');
           if (!c) continue;
           c.tag = n.tag; c.prev = n; c.m = moves[j]; c.seed = n.seed;
           note(n.tag, c);
@@ -2378,6 +2635,7 @@
       level = keep.slice(0, seeds).concat(keep.slice(seeds).sort(better));
     }
     this._curLevel = null; this._curVerdict = null; this._curIndex = 0;
+    if (par) this._svEnd(par, proofs, weak, far);
     // A move with lines still open when the budget ran out is not proven dead.
     var alive = {};
     for (i = 0; i < level.length; i++) alive[level[i].tag] = true;
@@ -3927,18 +4185,6 @@
     if (root) return exact(pointOf(this._engineAdvanceOn(root.st, root, 'long', null, frames)));
     return pointOf(this._engineAdvance(this._engineRoot(), 'long', null, frames));
   };
-  // Plan entry `want`, reached exactly: this frame's move d, then the plan's
-  // own moves, on the seen copy. Null when the plan cannot be walked to it.
-  PuyoCpu.prototype._replayTo = function (d, pl, want) {
-    var n = this._seenRoot();
-    if (!n || !d) return null;
-    n = this._engineAdvanceOn(n.st, n, d.kind, d.kind === 'swap' ? d.move : null, 0);
-    for (var i = 0; n && !n.dead && n.st.clock === pl[i].at; i++) {
-      if (i === want) return exact(pointOf(n));
-      n = this._engineAdvanceOn(n.st, n, stepKind(pl[i].step), Array.isArray(pl[i].step) ? pl[i].step : null, 0);
-    }
-    return null;
-  };
   // Fields a prediction does not track and no decision reads.
   var UNTRACKED = { events: 1, outgoing: 1, allowIdleSkip: 1, unseenRows: 1, unseenBreaks: 1 };
   var COLOR_FIELD = PANEL_FIELDS.indexOf('color');
@@ -3958,21 +4204,25 @@
     }
     return true;
   }
-  PuyoCpu.prototype._matches = function (pt, unseen) {
+  // `board`: the board and the raise in hand only, not the garbage in the air.
+  PuyoCpu.prototype._matches = function (pt, unseen, board) {
     return (this.raiseFrames || 0) === pt.raiseFrames && !!this._raiseStarted === pt.raiseStarted &&
-           JSON.stringify(this._inFlight()) === JSON.stringify(pt.arrivals) && sameAs(this.stack, pt.enc, unseen);
+           (board || JSON.stringify(this._inFlight()) === JSON.stringify(pt.arrivals)) && sameAs(this.stack, pt.enc, unseen);
   };
   function decisionOf(step) {
     return Array.isArray(step) ? { kind: 'swap', move: step } : step === 'raise' ? { kind: 'raise' } : { kind: 'hold' };
   }
   // The plan's move for this frame: its board must be the one the plan
-  // expected, or the plan is dropped.
+  // expected, or the plan is dropped. Garbage sent since does not drop it:
+  // until it lands the board is the one the plan was proven on, and the
+  // decision asked for meanwhile (on the plan's boards, with that garbage
+  // known) takes over when it comes. Once it lands the board is not.
   PuyoCpu.prototype._planStep = function (now) {
     var pl = this._planned, j;
     if (!pl) return null;
     for (j = 0; j < pl.length && pl[j].at < now; j++);
     if (j < pl.length && pl[j].at === now) {
-      if (!this._matches(pl[j], true)) { this._planned = null; return null; }
+      if (!this._matches(pl[j], !pl[j].exact, true)) { this._planned = null; return null; }
       this._planned = pl.slice(j + 1);
       this.planned = (this.planned || 0) + 1;
       return decisionOf(pl[j].step);
@@ -3980,24 +4230,78 @@
     this._planned = null;
     return null;
   };
+  // THE PLAN FROM HERE, ON THE GAME'S OWN BOARD: this frame's move d, then
+  // the plan's moves in order, played on the seen copy with the garbage in
+  // the air now. Each board it reaches is exact, and the boards with their
+  // moves become the plan, up to a move the board refuses or dies of. The
+  // board to ask about is the first at least `until`, or the plan's last;
+  // the plan goes on past it, to be played if that answer is not. Null when
+  // d itself leads nowhere.
+  PuyoCpu.prototype._replayPlan = function (d, pl, now, until) {
+    var n = this._seenRoot(), out = [], i = 0, pt, ask = null;
+    if (!n || !d) return null;
+    n = this._engineAdvanceOn(n.st, n, d.kind, d.kind === 'swap' ? d.move : null, 0);
+    while (i < pl.length && pl[i].at <= now) i++;
+    for (; n && !n.dead && i < pl.length; i++) {
+      pt = exact(pointOf(n));
+      if (!pt) break;
+      pt.step = pl[i].step;
+      out.push(pt);
+      if (!ask && pt.at >= until) ask = pt;
+      n = this._engineAdvanceOn(cloneStack(n.st), n, stepKind(pt.step), Array.isArray(pt.step) ? pt.step : null, 0);
+    }
+    if (!ask && n && !n.dead) ask = exact(pointOf(n));
+    if (!ask) ask = out[out.length - 1];
+    if (!ask) return null;
+    var q = {}, k;
+    for (k in ask) if (k !== 'step') q[k] = ask[k];
+    return { plan: out, point: q };
+  };
   // Where to ask for the next decision: the first board of the plan at least
   // lead() frames on, else the board after this move, else lead() frames on
   // holding.
   PuyoCpu.prototype._target = function (now, d) {
-    var lead = this.brain.lead(), pl = this._planned || [], j, want = -1;
-    for (j = 0; j < pl.length; j++) {
-      if (pl[j].at <= now) continue;
-      want = j;
-      if (pl[j].at >= now + lead) break;
+    var lead = this.brain.lead(), pl = this._planned || [];
+    if (pl.length && d) {
+      var re = this._replayPlan(d, pl, now, now + lead);
+      if (re) { this._planned = re.plan; return re.point; }
     }
-    if (want >= 0) return this._replayTo(d, pl, want) || pl[want];
-    return (d && this._pointAfter(d)) || this._pointAhead(lead) || this._pointAhead(0);
+    this._planned = null;
+    if (d) { var pa = this._pointAfter(d); if (pa) return pa; }
+    // Holding that long dies: the latest board before it that is alive.
+    for (var k = lead; k >= 1; k >>= 1) { var ph = this._pointAhead(k); if (ph) return ph; }
+    return this._pointAhead(0);
+  };
+  // AN ANSWER THAT CAN NO LONGER BE PLAYED IS NOT WAITED FOR: its frame has
+  // passed, or garbage the board it was made on did not have is in the air
+  // and will still be in the air on its frame. The brain stops on it and is
+  // asked again at once.
+  PuyoCpu.prototype._stale = function (pt, now) {
+    if (pt.at < now) return true;
+    var real = this._inFlight(), ahead = pt.at - now, want = pt.arrivals || [], i, j;
+    for (i = 0; i < real.length; i++) {
+      var e = real[i], at = e.at - ahead;
+      if (at <= 0) continue;
+      for (j = 0; j < want.length; j++) {
+        var w = want[j];
+        if (w.at === at && w.width === e.width && w.height === e.height && !!w.isChain === !!e.isChain) break;
+      }
+      if (j === want.length) return true;
+    }
+    return false;
   };
   // The decision to play on this frame, or null to hold.
   PuyoCpu.prototype._fromBrain = function (again) {
     var p = this._pending, now = this.stack.clock, d = null;
     if (p) {
       if (this.brain.poll) this.brain.poll(p, now);
+      if (!(p.decision && p.at <= now) && this._stale(p.point, now)) {
+        if (this.brain.cancel) this.brain.cancel(p);
+        this._pending = p = null;
+        this.dropped = (this.dropped || 0) + 1;
+      }
+    }
+    if (p) {
       if (p.decision && p.at <= now) {
         this._pending = null;
         // An exact point must match exactly; a plan's own board, which could
@@ -4038,7 +4342,10 @@
   // and answering with the move and the plan that proved it. A decision that
   // was not played is taken back -- the bot's own state (the line it
   // follows, the square it refuses) goes back to before it.
-  function Mind(opts, bot) { this.opts = opts; this.bot = bot || null; this._snap = null; }
+  // `abort`, if set, is asked between engine steps whether to stop; a search
+  // stopped throws PuyoCpu.ABORTED, and the next message (never `acted`)
+  // takes back what it had done.
+  function Mind(opts, bot) { this.opts = opts; this.bot = bot || null; this._snap = null; this.abort = null; }
   Mind.prototype.think = function (m) {
     var st = decodeStack(m.enc), bot = this.bot || (this.bot = new PuyoCpu(st, this.opts)), k, snap = this._snap;
     if (snap && !m.acted) {
@@ -4050,9 +4357,10 @@
     bot.raiseFrames = m.raiseFrames; bot._raiseStarted = m.raiseStarted;
     bot.opponent = m.opp ? decodeStack(m.opp) : null;
     bot._predArr = m.arrivals;
+    bot._abort = this.abort;
     bot.decisions++;
     var d;
-    try { d = bot._decide(); } finally { bot._predArr = null; }
+    try { d = bot._decide(); } finally { bot._predArr = null; bot._abort = null; }
     return { kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, plan: this._planOf(bot._proofLine) };
   };
   // The proven line as the decision frames the bot will meet on it: a wait is
