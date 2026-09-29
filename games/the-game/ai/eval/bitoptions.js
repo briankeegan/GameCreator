@@ -111,7 +111,9 @@
         for (c = 1; c < w2; c++) bumps += Math.abs(h[c] - h[c + 1]);
         var mean = sum / w2, dev = 0;
         for (c = 1; c <= w2; c++) dev += Math.abs(h[c] - mean);
-        return { tall: tall, bumps: bumps, excess: dev / w2 };
+        // `mat` is the pocket's material in rows, which is what the caller has to
+        // decide whether it can afford to spend.
+        return { tall: tall, bumps: bumps, excess: dev / w2, mat: mean };
     }
 
     function optionOf(swaps, frames, r) {
@@ -119,7 +121,8 @@
         return { kind: kindOf(r.chain), size: sizeOf(r.chain, r.total),
                  swaps: swaps, frames: frames, chain: r.chain, total: r.total,
                  garbage: r.garbage || 0, duration: durationOf(swaps, frames),
-                 tall: sh ? sh.tall : null, bumps: sh ? sh.bumps : null };
+                 tall: sh ? sh.tall : null, bumps: sh ? sh.bumps : null,
+                 mat: sh ? sh.mat : null };
     }
 
     // Cheapest first, then bigger — the order a caller wants to read.

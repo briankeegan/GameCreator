@@ -905,6 +905,18 @@
     // preference can say "a chain is worth twice a combo to me" without being able
     // to say "attack nothing at all" -- a zero or negative weight leaves the shape
     // merely unloved, not forbidden.
+    // A BARE THREE IS THE ONE MOVE A SHORT BOARD CANNOT AFFORD.
+    //
+    // It sends nothing, breaks nothing and spends three of the panels a chain
+    // would have been built from. A break is always allowed, at any material
+    // level, and a break behind a combo or a chain is better still; combos and
+    // chains are always allowed because they send. Only the bare three is
+    // refused, and only below the working minimum.
+    //
+    // The pool filter says this already, but it narrows `allowed` and this reads
+    // `options`, so attacking walked past it: on seed 101 the board sat between
+    // half a row and one and a half rows of material for three thousand frames
+    // firing threes off six panels, and a 31-cell slab landed on nothing.
     function bestAttack(list, weights, engine, deadline, framesTable, perPanelFrames) {
         var best = null, all = list.now.concat(list.next), i;
         for (i = 0; i < all.length; i++) {
@@ -1027,8 +1039,28 @@
             // between a move that works and a move that works AND flattens.
             var lowered = (tallNow && o.tall !== null && o.tall !== undefined)
                         ? Math.max(0, tallNow - o.tall) : 0;
+            // WHAT SPENDING THE PANELS COSTS, which is nothing until the board
+            // cannot afford it.
+            //
+            // A cleared panel buys perPanel frames once, and that is already
+            // counted above. Left on the board it would have bought the same
+            // later, so spending it early is free -- UNTIL the board drops below
+            // the material it needs to make any clear at all. Under that floor
+            // the panels have to be put back, and the only way to put them back
+            // is a row of rise: framesPerRow per row short.
+            //
+            // This is what makes a bare three a bad move on a healthy board and
+            // the right move on a dying one. It sends nothing and breaks nothing,
+            // so all it has is the panels it removes -- and when the board is
+            // short, removing them costs more than they buy. Banning it outright
+            // instead died at 6,936 frames where the engine's own arithmetic
+            // survives, because a three is genuinely the move when nothing else
+            // is there.
+            var shortfall = (o.mat === null || o.mat === undefined)
+                          ? 0 : Math.max(0, WORKING_ROWS - o.mat);
             var bought = o.total * perPanel + (o.garbage || 0) * perCell
-                       + lowered * (framesPerRow || 0) + gain;
+                       + lowered * (framesPerRow || 0) + gain
+                       - shortfall * (framesPerRow || 0);
             var rate = bought / Math.max(1, took);
             var cur = fits ? best : over;
             // Between two plans buying life at the same rate, the one leaving the
