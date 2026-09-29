@@ -183,15 +183,21 @@
   var COUNTDOWN_TOTAL = COUNTDOWN_START + COUNTDOWN_LENGTH;
 
   // Deterministic RNG (mulberry32) so a duel replays identically from a seed —
-  // Math.random would make the smoke test unreproducible.
-  function makeRng(seed) {
-    var a = (seed >>> 0) || 1;
-    return function () {
+  // Math.random would make the smoke test unreproducible. Its state is the
+  // function's `a`, so a copy of a board can go on drawing the same rows
+  // (makeRng(0, rng.a)); the bot's prediction of its next decision frame
+  // uses that to see the row the game will have dealt by then.
+  function makeRng(seed, state) {
+    var f = function () {
+      var a = f.a;
       a |= 0; a = (a + 0x6D2B79F5) | 0;
+      f.a = a;
       var t = Math.imul(a ^ (a >>> 15), 1 | a);
       t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
+    f.a = state !== undefined ? state : ((seed >>> 0) || 1);
+    return f;
   }
 
   // =========================================================================

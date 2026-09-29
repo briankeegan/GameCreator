@@ -3896,15 +3896,48 @@
     return { at: st.clock, enc: encodeStack(st), raiseFrames: h.raiseFrames, raiseStarted: h._raiseStarted,
              arrivals: n.arrivals };
   }
+  // THE ROWS THE GAME WILL HAVE DEALT BY THEN ARE SEEN. A prediction runs on
+  // a copy of the real board that keeps the game's own generator, so a row or
+  // a break dealt before the frame predicted has the colours it will have --
+  // the colours the bot deciding on that frame would see. (The search itself
+  // still cannot see past the board it is given.) Such a point is exact, and
+  // an answer made on it is played only if the board matches it exactly.
+  PuyoCpu.prototype._seenRoot = function () {
+    var root = this._engineRoot(), rng = this.stack.rng, PE = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
+    if (!rng || rng.a === undefined) return null;
+    var S = PE.Stack.prototype;
+    root.st.rng = PE.makeRng(0, rng.a);
+    root.st.generateRowColors = S.generateRowColors;
+    root.st.garbageRowColors = S.garbageRowColors;
+    return root;
+  };
+  function stepKind(step) { return Array.isArray(step) ? 'swap' : step === 'raise' ? 'raise' : 'hold'; }
+  function exact(pt) { if (pt) pt.exact = true; return pt; }
   PuyoCpu.prototype._pointAfter = function (d) {
+    var root = this._seenRoot();
+    if (root) return exact(pointOf(this._engineAdvanceOn(root.st, root, d.kind, d.kind === 'swap' ? d.move : null, 0)));
     return pointOf(this._engineAdvance(this._engineRoot(), d.kind, d.kind === 'swap' ? d.move : null, 0));
   };
   PuyoCpu.prototype._pointAhead = function (frames) {
     if (frames <= 0) {
-      return { at: this.stack.clock, enc: encodeStack(this.stack), raiseFrames: this.raiseFrames || 0,
-               raiseStarted: !!this._raiseStarted, arrivals: this._inFlight() };
+      return exact({ at: this.stack.clock, enc: encodeStack(this.stack), raiseFrames: this.raiseFrames || 0,
+                     raiseStarted: !!this._raiseStarted, arrivals: this._inFlight() });
     }
+    var root = this._seenRoot();
+    if (root) return exact(pointOf(this._engineAdvanceOn(root.st, root, 'long', null, frames)));
     return pointOf(this._engineAdvance(this._engineRoot(), 'long', null, frames));
+  };
+  // Plan entry `want`, reached exactly: this frame's move d, then the plan's
+  // own moves, on the seen copy. Null when the plan cannot be walked to it.
+  PuyoCpu.prototype._replayTo = function (d, pl, want) {
+    var n = this._seenRoot();
+    if (!n || !d) return null;
+    n = this._engineAdvanceOn(n.st, n, d.kind, d.kind === 'swap' ? d.move : null, 0);
+    for (var i = 0; n && !n.dead && n.st.clock === pl[i].at; i++) {
+      if (i === want) return exact(pointOf(n));
+      n = this._engineAdvanceOn(n.st, n, stepKind(pl[i].step), Array.isArray(pl[i].step) ? pl[i].step : null, 0);
+    }
+    return null;
   };
   // Fields a prediction does not track and no decision reads.
   var UNTRACKED = { events: 1, outgoing: 1, allowIdleSkip: 1, unseenRows: 1, unseenBreaks: 1 };
@@ -3951,13 +3984,13 @@
   // lead() frames on, else the board after this move, else lead() frames on
   // holding.
   PuyoCpu.prototype._target = function (now, d) {
-    var lead = this.brain.lead(), pl = this._planned || [], j, last = null;
+    var lead = this.brain.lead(), pl = this._planned || [], j, want = -1;
     for (j = 0; j < pl.length; j++) {
       if (pl[j].at <= now) continue;
-      last = pl[j];
-      if (pl[j].at >= now + lead) return pl[j];
+      want = j;
+      if (pl[j].at >= now + lead) break;
     }
-    if (last) return last;
+    if (want >= 0) return this._replayTo(d, pl, want) || pl[want];
     return (d && this._pointAfter(d)) || this._pointAhead(lead) || this._pointAhead(0);
   };
   // The decision to play on this frame, or null to hold.
@@ -3967,9 +4000,9 @@
       if (this.brain.poll) this.brain.poll(p, now);
       if (p.decision && p.at <= now) {
         this._pending = null;
-        // Asked ahead, the board had cells it could not see yet (see
-        // sameAs); asked on the spot, it had the board itself.
-        if (p.at === now && this._matches(p.point, this.brain.lead() > 0)) {
+        // An exact point must match exactly; a plan's own board, which could
+        // not see what was dealt since, matches whatever was dealt there.
+        if (p.at === now && this._matches(p.point, !p.point.exact)) {
           this.acted = (this.acted || 0) + 1;
           this._played = true;
           this._planned = p.decision.plan || null;

@@ -151,6 +151,20 @@
     return new Make(pick, Make.keys);
   }
   var TAIL = ['D', 'G', 'top', 'free', 'nrows'];
+  // BOARD ARRAYS CUT FROM CHUNKS. A 16KB typed array is allocated outside
+  // the JS heap, and allocating one cost as much as copying the rest of a
+  // board; views into a shared 1MB chunk cost next to nothing. A slot is
+  // never reused -- a chunk is freed when the last board viewing it is -- and
+  // anything sent to another thread is sliced out of it first (pack).
+  var CHUNK = 1 << 15, chunk = null, chunkAt = 0;
+  function sliceInts(src, n) {
+    if (n > CHUNK >> 2) return src.slice(0, n);
+    if (!chunk || chunkAt + n > CHUNK) { chunk = new Int32Array(CHUNK); chunkAt = 0; }
+    var v = chunk.subarray(chunkAt, chunkAt + n);
+    chunkAt += n;
+    v.set(src.subarray(0, n));
+    return v;
+  }
   // Copiers generated per field list, like cloneStack's: no callback, no
   // switch, one fixed shape. `mode` 'copy' keeps everything (copy()); 'clone'
   // is cloneStack's copy (clone()).
@@ -167,8 +181,8 @@
     var body = ['var v;'];
     keys.forEach(function (k) {
       var K = JSON.stringify(k), dst = 'this[' + K + ']', src = 's[' + K + ']';
-      if (k === 'D') body.push(dst + ' = s.D.slice(0, s.top);');
-      else if (k === 'G') body.push(dst + ' = s.G.slice(0, s.nrows * ' + S8 + ');');
+      if (k === 'D') body.push(dst + ' = sliceInts(s.D, s.top);');
+      else if (k === 'G') body.push(dst + ' = sliceInts(s.G, s.nrows * ' + S8 + ');');
       else if (k === 'free') body.push(dst + ' = s.free.slice();');
       else if (k === 'levelData' || k === 'frames' || k === 'top' || k === 'nrows') body.push(dst + ' = ' + src + ';');
       else if (mode === 'clone' && (k === 'events' || k === 'outgoing')) body.push(dst + ' = [];');
@@ -180,7 +194,7 @@
       else body.push('v = ' + src + '; ' + dst + ' = (v !== null && typeof v === "object") ? shallow(v) : v;');
     });
     body.push('this._keys = keys;');
-    C = copiers[sig] = new Function('shallow', 'fns', 'keys', 'return function C(s) {\n' + body.join('\n') + '\n};')(shallow, CLONE, keys);
+    C = copiers[sig] = new Function('shallow', 'fns', 'keys', 'sliceInts', 'return function C(s) {\n' + body.join('\n') + '\n};')(shallow, CLONE, keys, sliceInts);
     C.prototype = FastStack.prototype;
     return stash(keys, slot, C);
   }
