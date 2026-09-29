@@ -2251,23 +2251,21 @@
         if (this._opening && (info.incoming || !fits)) this._opening = false;
         if (!fits) return null;
         if (!this._opening && materialRows(base) >= WORKING_ROWS) return null;
-        // AN ANSWER IS REQUIRED ONLY WHERE ONE CAN EXIST.
+        // WITH GARBAGE ON THE BOARD, THE ANSWER IS TO DIG, NOT TO RAISE.
         //
-        // With garbage on the board the condition is real: filling a board that
-        // cannot answer what is already sitting on it is how it tops out. Drop it
-        // there and the round-robin goes to 11 deaths in 13 pairings against 5 in
-        // 30.
+        // Raising is a start-of-game event and it stays one. Both sources of
+        // panels are the same rule seen twice -- a raise adds W of them, breaking
+        // converts a slab's cells into them -- but they are not interchangeable:
+        // the raise costs a row of ceiling and the break hands one back. On a
+        // buried board the row is the thing it cannot afford, and the dig plan is
+        // already the branch that handles it.
         //
-        // On a CLEAN board it cannot be satisfied at all -- there is no garbage
-        // to break, so no answer exists, so the raise is refused forever, and the
-        // raise is the only thing that adds the material a break is made of.
-        // Seed 101 sat at 3.0 rows for a thousand frames, flat and with nothing
-        // incoming, and died at 1,560 to a 30-cell chain with eighteen panels in
-        // hand. A precondition that forbids the only thing that could meet it is
-        // not a precondition.
-        var dirty = false;
-        for (var gc = 1; gc <= W; gc++) if (base.garb[gc]) { dirty = true; break; }
-        if (dirty && !this.answersASlab(base)) return null;
+        // Measured three ways. Raising while buried whenever a break was in hand:
+        // 11 deaths in 13 pairings. Gated on an answer being visible, which the
+        // landing-board fix made true 26% of the time instead of 1%: 10 deaths in
+        // 30 and 3 in 30. Not raising there at all is what is left, and the
+        // condition needs no answer test because there is nothing to answer for.
+        for (var gc = 1; gc <= W; gc++) if (base.garb[gc]) return null;
         return this._opening ? 'opening' : 'material';
     };
 
