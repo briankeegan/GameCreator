@@ -712,7 +712,17 @@
     function framesToDeath(info, tallest, framesPerRow) {
         var clock = info.stopTime || 0;
         if (info.toppedOut) return clock + (info.health === undefined ? 0 : info.health);
-        return clock + Math.max(0, H - tallest) * (framesPerRow || 0);
+        // EVERY QUEUED CELL LANDS ON THIS BOARD, so it is ceiling already gone --
+        // the engine holds a slab only while there is nowhere to put it, and then
+        // puts it there. This is the clock the whole bot runs on: the plans are
+        // priced against it, moves too slow for it are refused, the save is
+        // reachable inside it and DEFEND opens on it. Without the queue in it, a
+        // board at tallest 9 with three rows on the way was told it had four rows
+        // of life, and seed 101 took eighteen cells at frame 658 and died at
+        // 1,293. When the queue is more than the room the answer is the clock and
+        // nothing else, which is what being topped out is worth.
+        var queued = Math.ceil((info.incoming || 0) / W);
+        return clock + Math.max(0, H - tallest - queued) * (framesPerRow || 0);
     }
 
     // IS A REVEAL WINDOW OPEN, read straight off the live stack.
