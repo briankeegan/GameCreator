@@ -2102,6 +2102,17 @@ function drawWormhole(center, r, now) {
   ctx.restore();
 }
 
+// What each kind of ground looks like. Keyed by the same type names the
+// engine's HAZARDS table uses, so a type added there without a look here
+// falls back to the most cautious reading rather than the prettiest.
+const HAZARD_LOOK = {
+  asteroid: { fill: "#38302b", alpha: 0.8 },   // a wall
+  blackhole: { fill: "#3a1030", alpha: 0.8 },  // ends you
+  scrambler: { fill: "#16303a", alpha: 0.55 }, // crossable, takes your guns
+  ionCloud: { fill: "#4a5f7a", alpha: 0.5 },   // crossable, and nothing sees through it
+  mineDrift: { fill: "#5a4410", alpha: 0.55 }, // crossable, costs a hull to STOP in
+};
+
 // A scrambler field: ionised dust you can fly straight through. It takes
 // nothing off your hull — it takes your guns while you are inside it, and
 // it does the same to anything else standing in one. Drawn as drifting
@@ -3161,11 +3172,14 @@ function draw() {
     let fill = null;
     let fillAlpha = 0;
     if (isHazard) {
-      fill =
-        isHazard.type === "asteroid" ? "#38302b" : isHazard.type === "scrambler" ? "#16303a" : "#3a1030";
-      // A scrambler is flown through, not avoided, so it does not get the
-      // near-opaque wash the two lethal kinds do.
-      fillAlpha = isHazard.type === "scrambler" ? 0.55 : 0.8;
+      // GROUND READS AS WHAT IT COSTS. The fallback used to be the black
+      // hole's purple at near-opaque, so any ground that wasn't rock or a
+      // scrambler painted itself as instant death — which is the one thing a
+      // player must never be wrong about. A hex you may cross is washed, a
+      // hex that destroys you is solid.
+      const look = HAZARD_LOOK[isHazard.type] || HAZARD_LOOK.blackhole;
+      fill = look.fill;
+      fillAlpha = look.alpha;
     } else if (isExit) {
       fill = state.exitUnlocked ? "#1f4d3a" : "#2a2f45";
       fillAlpha = 0.8;

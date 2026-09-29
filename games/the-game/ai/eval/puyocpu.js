@@ -185,6 +185,7 @@
     // Opt-in: at every decision on a followed line, check the line's
     // prediction for this frame against the live board (see _checkModel).
     this.checkModel = !!opts.checkModel;
+    this.thinkAhead = opts.thinkAhead || 0;
     // Worker threads for the survival search: opts.threads or GC_THREADS, a
     // number or 'auto' (one per core). The main thread only coordinates.
     var want = opts.threads || (typeof process !== 'undefined' && process.env && process.env.GC_THREADS) || 0;
@@ -507,6 +508,7 @@
   // running (not finalized) holds up everything behind it. Its size can still
   // grow, so it is counted at the size it has reached -- the least it will be.
   PuyoCpu.prototype._inFlight = function () {
+    if (this._predArr) return this._predArr;
     if (this._carry) return this._carry.arrivals || [];
     var opp = this.opponent;
     if (!opp || !opp.outgoing || !opp.outgoing.length) return [];
@@ -3517,6 +3519,31 @@
   };
 
   // One frame. A committed walk owns the frame until the cursor arrives.
+  // The decision this bot will act on `frames` from now: the board is played
+  // forward that far with the bot holding, and decided on there. { at, decision }.
+  PuyoCpu.prototype._decideAhead = function (frames) {
+    var root = this._engineRoot();
+    var node = frames > 0 ? this._engineAdvance(root, 'long', null, frames) : null;
+    this.decisions++;
+    if (!node || node.dead) return { at: this.stack.clock, decision: this._decide() };
+    // Every later decision also waits `frames` before it acts, so the lines
+    // are searched at that cadence: reaction + frames between moves.
+    var real = this.stack, rf = this.raiseFrames, rs = this._raiseStarted, rx = this.reaction;
+    this.stack = node.st; this._predArr = node.arrivals;
+    this.raiseFrames = node.hold.left; this._raiseStarted = node.hold.started;
+    this.reaction = rx + frames;
+    var d;
+    try { d = this._decide(); }
+    finally { this.stack = real; this._predArr = null; this.raiseFrames = rf; this._raiseStarted = rs; this.reaction = rx; }
+    return { at: node.st.clock, decision: d };
+  };
+  // Where a decision comes from: here, or (this.brain) a worker that answers
+  // later by filling in `decision` on the object returned.
+  PuyoCpu.prototype._requestAhead = function (frames) {
+    if (this.brain) return this.brain.request(this, frames);
+    return this._decideAhead(frames);
+  };
+
   PuyoCpu.prototype.update = function () {
     var stack = this.stack;
     if (stack.gameOver) return;
@@ -3559,8 +3586,23 @@
     stack.setInput(input);
     if (this.cooldown > 0) { this.cooldown--; return; }
 
-    this.decisions++;
-    var decision = this._decide();
+    var decision;
+    if (this.thinkAhead) {
+      // THINKING TAKES TIME. The decision is made for thinkAhead frames from
+      // now, on the board this one becomes by then with the bot holding, and
+      // the bot holds until that frame. Nothing it does not already know can
+      // arrive meanwhile: garbage is in flight for GARBAGE_FLIGHT frames first.
+      if (!this._pending) this._pending = this._requestAhead(this.thinkAhead);
+      var p = this._pending;
+      if (!p.decision) return;
+      if (stack.clock < p.at) return;
+      this._pending = null;
+      if (stack.clock > p.at) return;        // it came too late for its frame: think again
+      decision = p.decision;
+    } else {
+      this.decisions++;
+      decision = this._decide();
+    }
     if (decision.kind === 'raise') {
       // HOLD THE INPUT LONG ENOUGH FOR THE ENGINE TO SERVE IT. setInput
       // latches manualRaise on a rising edge and the row takes frames to
