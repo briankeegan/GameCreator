@@ -355,9 +355,20 @@
     // the flatter board is strictly better: more columns in reach of the cursor,
     // no panel stranded on top of a spike, and a slab that lands sits level
     // instead of bridging a gap.
+    // HOW UNEVENLY THE MATERIAL IS SPREAD, counted in PANELS PER COLUMN and not
+    // in column heights.
+    //
+    // Height is the wrong ruler on a buried board. Garbage caps every column at
+    // the same row, so six columns holding 6, 1, 1, 2, 2, 2 panels under a slab
+    // all measure the same height and the board reads as flat while one column
+    // hoards the material and the rest have nothing to build with. Panels per
+    // column sees that; height cannot.
+    //
+    // Garbage is excluded for the same reason it is excluded from materialRows:
+    // a slab is not material, and the bot cannot move it.
     function bumpiness(st) {
         var h = [], c, n = 0;
-        for (c = 1; c <= W; c++) h[c] = 32 - Math.clz32(st.occ[c] >>> 0);
+        for (c = 1; c <= W; c++) h[c] = bit.popcount((st.occ[c] & ~st.garb[c]) >>> 0);
         for (c = 1; c < W; c++) n += Math.abs(h[c] - h[c + 1]);
         return n;
     }

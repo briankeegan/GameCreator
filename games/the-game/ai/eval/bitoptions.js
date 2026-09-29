@@ -65,14 +65,19 @@
     // tall column flattens; the same clear off a short one deepens the spike. The
     // resolver already settles the cascade, so the height it lands at is there to
     // be read, and a move that clears AND flattens is the one worth playing.
+    // `tall` is the whole board, garbage and all, because that is what reaches
+    // the ceiling. `bumps` is PANELS PER COLUMN, because height is the wrong
+    // ruler for how the material is spread: under a slab every column measures
+    // the same height however lopsided the panels beneath it are.
     function shapeOf(st2) {
-        var h = [], c, tall = 0, bumps = 0;
+        var h = [], c, tall = 0, bumps = 0, w2 = st2 && (st2.W || 6);
         if (!st2) return null;
-        for (c = 1; c <= (st2.W || 6); c++) {
-            h[c] = 32 - Math.clz32(st2.occ[c]);
-            if (h[c] > tall) tall = h[c];
+        for (c = 1; c <= w2; c++) {
+            var top = 32 - Math.clz32(st2.occ[c] >>> 0);
+            if (top > tall) tall = top;
+            h[c] = bit.popcount((st2.occ[c] & ~st2.garb[c]) >>> 0);
         }
-        for (c = 1; c < (st2.W || 6); c++) bumps += Math.abs(h[c] - h[c + 1]);
+        for (c = 1; c < w2; c++) bumps += Math.abs(h[c] - h[c + 1]);
         return { tall: tall, bumps: bumps };
     }
 
@@ -179,7 +184,7 @@
 
         function bumpsOf(state) {
             var h = [], c, n = 0;
-            for (c = 1; c <= W; c++) h[c] = 32 - Math.clz32(state.occ[c]);
+            for (c = 1; c <= W; c++) h[c] = bit.popcount((state.occ[c] & ~state.garb[c]) >>> 0);
             for (c = 1; c < W; c++) n += Math.abs(h[c] - h[c + 1]);
             return n;
         }
