@@ -792,7 +792,11 @@
   //   53. A WAIT LASTS WHOLE HOLDS. The bot can act again only reaction + 1
   //      frames after a hold, so a line's wait ends on that beat and a proof
   //      never asks it to move between two decisions.
-  var RULES = 53;
+  //   54. A FEW MOVES ARE PROVEN BEFORE ALL OF THEM. The evaluator's top move,
+  //      the move continuing the followed line and the next by score are each
+  //      searched alone on a small budget; the first proven is played. The
+  //      full search runs only when none of them can be proven.
+  var RULES = 54;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
