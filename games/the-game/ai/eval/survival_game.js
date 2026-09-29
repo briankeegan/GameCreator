@@ -5,6 +5,8 @@
 // dies or at FRAMES (default 21600, six minutes). A death prints the dying
 // side's last decisions and its board before and at the death. The last line
 // is data: RESULT {"seed":..,"frames":..,"died":null|0|1,"seconds":..}.
+// GC_THINK=N: each decision is made N frames ahead and acted on then (the
+// real-time bot). GC_THREADS: worker threads for the search.
 //
 // survival-games.yml runs one seed per runner.
 var fs = require('fs'), path = require('path');
@@ -23,7 +25,8 @@ var WEIGHTS = ['trained.pbt.pbt-r22-s322.0926-142336.g03120.json',
 var st = [0, 1].map(function () { return new PanelEngine.Stack({ level: 10, seed: SEED, countdown: false }); });
 var cp = [0, 1].map(function (i) {
   return new PuyoCpu(st[i], { weights: WEIGHTS[i], reaction: 12, depth: 2, beam: 0, rise: true,
-                              allowRaise: true, modes: true, engine: true, checkModel: true });
+                              allowRaise: true, modes: true, engine: true, checkModel: true,
+                              thinkAhead: Number(process.env.GC_THINK || 0), threads: process.env.GC_THREADS || 0 });
 });
 cp[0].opponent = st[1]; cp[1].opponent = st[0];
 

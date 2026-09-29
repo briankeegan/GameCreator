@@ -13,6 +13,12 @@ on:
       frames:
         description: 'Frames per game (21600 = six minutes)'
         default: '21600'
+      think:
+        description: 'Frames each decision is made ahead (0 = instant; the browser bot thinks ahead)'
+        default: '0'
+      threads:
+        description: 'Worker threads for the search (0 = none, auto = one per core)'
+        default: 'auto'
 
 jobs:
   game:
@@ -31,7 +37,7 @@ jobs:
         timeout-minutes: 345
         run: |
           set -o pipefail
-          node games/the-game/ai/eval/survival_game.js ${{ matrix.seed }} ${{ inputs.frames }} | tee game.log
+          GC_THINK=${{ inputs.think }} GC_THREADS=${{ inputs.threads }} node games/the-game/ai/eval/survival_game.js ${{ matrix.seed }} ${{ inputs.frames }} | tee game.log
       - name: Summary
         if: always()
         run: |
