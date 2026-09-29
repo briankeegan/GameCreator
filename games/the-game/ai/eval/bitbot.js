@@ -2288,7 +2288,7 @@
     // walk from where the cursor ends up plus the swap, against the frames that
     // board has left. A clear on the far side with twenty frames to live is not a
     // save.
-    BitBot.prototype.saveAfter = function (masks, row, col, info) {
+    BitBot.prototype.saveAfter = function (masks, row, col, info, deep) {
         var deadline = framesToDeath(info, tallestBoard(masks), info.framesPerRow);
         var frozen = (info.stopTime || 0) > 0 || !!info.toppedOut;
         var step = travel.MOVE_FRAMES + (frozen ? 0 : this.reaction);
@@ -2308,15 +2308,59 @@
         //
         // One sweep for both: the board already has the next row on it when it is
         // clean, so a clear that does not touch that row still scores 1.
+        // EITHER IT IS IN HAND, OR IT IS REACHABLE IN THE TIME THERE IS.
+        //
+        // "One ready" was read as "one swap away", and that is not the rule. The
+        // rule is that a clear can be FIRED inside the frames this board has
+        // left, and depth is free as long as the frames fit -- the same
+        // arithmetic every plan in here is priced by. One swap is only the
+        // cheapest case of it. Depth 1 alone read 19% and 34% of decisions as
+        // having nothing while a two-swap answer was on the board.
         masks = this.slabToAnswer(masks);
-        var sw = bit.legalSwapsOf(masks), i, r, best = 0;
+        var sw = bit.legalSwapsOf(masks), i, j, r, best = 0, setups = [];
         for (i = 0; i < sw.length; i++) {
-            if (travel.cost(row, col, sw[i][0], sw[i][1]) + step > deadline) continue;
+            var walk = travel.cost(row, col, sw[i][0], sw[i][1]) + step;
+            if (walk > deadline) continue;
             if (!bit.swapMasks(masks, sw[i][0], sw[i][1])) continue;
-            r = bit.resolveFromMasks(masks, false);
+            // SETTLING A BOARD COSTS SEVERAL TIMES WHAT RESOLVING ONE DOES, and
+            // the landed board is only wanted for the second ply. Asking for it
+            // regardless settled every swap of every board with nothing in hand
+            // and took gate_bitbot from 11s to 39s.
+            var want = deep && !best;
+            r = bit.resolveFromMasks(masks, want);
             bit.swapMasks(masks, sw[i][0], sw[i][1]);
             if (r.scope === 'garbage-broke') return 2;
-            if (r.total > 0) best = 1;
+            if (r.total > 0) { best = 1; continue; }
+            if (want && r.settled) setups.push({ st: r.settled, at: sw[i], spent: walk });
+        }
+        if (best) return best;
+        // SHALLOW WHERE THE ANSWER ONLY RANKS, DEEP WHERE IT DECIDES.
+        //
+        // The second ply costs a resolve sweep per setup, and the keeping half
+        // asks this of every alternative in the pool -- thirty of them on a
+        // decision. Run deep there and gate_bitbot goes 11s to 39s for an answer
+        // that is only choosing between moves that all keep something. It runs
+        // deep on the two questions that decide: does THIS board have an answer,
+        // and does the move the bot is about to play leave one.
+        if (!deep) return best;
+        // THE SECOND PLY, AND THE DEADLINE PAYS FOR BOTH SWAPS. Cheapest setups
+        // first and a handful of them: this runs only on a board with nothing in
+        // hand, which is where the bot dies, and the cost is a resolve sweep over
+        // a board that was going to be settled anyway.
+        setups.sort(function (a, b) { return a.spent - b.spent; });
+        for (i = 0; i < setups.length && i < 6; i++) {
+            var st2 = setups[i].st, from = setups[i].at, left = deadline - setups[i].spent;
+            if (left <= 0) continue;
+            var sw2 = bit.legalSwapsOf(st2);
+            for (j = 0; j < sw2.length; j++) {
+                if (travel.cost(from[0], from[1], sw2[j][0], sw2[j][1]) + step > left) continue;
+                if (!bit.swapMasks(st2, sw2[j][0], sw2[j][1])) continue;
+                r = bit.resolveFromMasks(st2, false);
+                bit.swapMasks(st2, sw2[j][0], sw2[j][1]);
+                if (r.scope === 'garbage-broke') return 2;
+                if (r.total > 0) best = 1;
+            }
+            if (best) return best;
         }
         return best;
     };
@@ -2474,7 +2518,7 @@
         // Not over a survival plan. That plan buys frames outright, which is the
         // same job done more directly, and overruling it here is what cost 6
         // deaths in 16 boards when this rule outranked everything.
-        if (!this.saveAfter(base, info.cursorRow, info.cursorCol, info)) {
+        if (!this.saveAfter(base, info.cursorRow, info.cursorCol, info, true)) {
             // A ROUTE ALREADY UNDERWAY IS NOT RE-STARTED FROM ITS FIRST MOVE.
             //
             // The dig plan holds the route and plays it out; this branch hands
@@ -2519,26 +2563,13 @@
         }
         if (d.via === 'survivalPlan') return d;
 
-        // A SAVE IS ONLY WORTH GUARDING IF IT CANNOT BE REBUILT IN TIME.
+        // THERE IS ALWAYS ONE READY. Not a preference and not a trade against the
+        // clock: the board can be full on any frame, maxHealth is 1, and a clear
+        // in hand is the only thing that answers it. So a move that leaves none,
+        // where another move leaves one, is not played.
         //
-        // Substituting costs the move the decision actually wanted, so the rule
-        // has to be worth that. It is worth it when the board fills before
-        // another clear could be made, and not otherwise -- with time in hand a
-        // spent clear is a clear that gets rebuilt.
-        //
-        // The number is not a choice: the search already prices the cheapest
-        // route to a board that can fire, and framesToDeath prices how long this
-        // board has. Guard the save when the first is longer than the second.
-        //
-        // Measured: holding any clear unconditionally fires on two thirds of all
-        // decisions -- 113 and 150 a duel against 1 to 10 -- and the round-robin
-        // went to 6 deaths in 60 boards from 4, with two of them before frame
-        // 1,000. Every one of those substitutions replaces a purposeful move with
-        // a weights-ranked one.
-        var rebuild = (this._lastOptions && this._lastOptions.ready)
-                    ? (this._lastOptions.ready.duration || 0)
-                    : travel.MOVE_FRAMES * W + this.reaction;
-        if (this._lastDeadline > rebuild) return d;
+        // Ranked by tier below, so the one it keeps is the one at the top of the
+        // stack when there is a choice.
 
         var chosen = null;
         for (i = 0; i < pool.length; i++) {
@@ -2561,9 +2592,9 @@
         // hand there is something else to do and the break keeps.
         if (chosen.resolved && chosen.resolved.brokeGarbage) {
             if (materialRows(base) < 6) return d;
-            if (this.saveAfter(chosen.masks, chosen.swap[0], chosen.swap[1], info)) return d;
+            if (this.saveAfter(chosen.masks, chosen.swap[0], chosen.swap[1], info, true)) return d;
             this.counts.heldTheBreak++;
-        } else if (this.saveAfter(chosen.masks, chosen.swap[0], chosen.swap[1], info)) {
+        } else if (this.saveAfter(chosen.masks, chosen.swap[0], chosen.swap[1], info, true)) {
             return d;
         }
         var keep = null;

@@ -313,7 +313,12 @@
             BASE = shapeOf(state0);
             BASEDIG = DIG ? reachOf(state0).dig : 0;
             saveBudget = 192;
-            readyBudget = 96;
+            // TWENTY-FOUR, because the frontier grows in cost order and the
+            // cheapest route is found in the first few nodes or not at all. At 96
+            // this swept up to thirty swaps on each of ninety-six landed boards
+            // whenever no route existed, which is exactly the board where the
+            // whole sweep is already expensive: gate_bitbot went 11s to 40s.
+            readyBudget = 24;
             BASESAVE = (DIG && BASEDIG > 0) ? savesOfRaw(state0) : 0;
             // The root has no reach mask: ply one stays exhaustive so an immediate
             // clear is never missed.
