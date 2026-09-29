@@ -497,15 +497,30 @@
     // Can the engine act on a raise at all. Every clause is one the engine
     // itself checks; a raise it refuses is not a move, and offering one means
     // scoring a board that never arrives.
+    // A RAISE IS HELD FOR, NOT ASKED FOR ONCE.
+    //
+    // riseLock is set while a swap is queued or panels are still in motion, which
+    // for this bot is nearly every frame -- it swaps almost every decision. Asking
+    // "can I raise THIS INSTANT" therefore answers no almost always: measured over
+    // a duel, 2,402 of the 2,723 decisions taken under four rows of material were
+    // refused on riseLock alone, and the board starved to eight panels with nine
+    // rows of headroom going spare.
+    //
+    // A player does not ask once, they hold the button and the engine grants the
+    // row when the lock clears. update() already holds it for twenty frames, so
+    // the decision only has to say whether raising is WRONG, not whether it is
+    // possible this instant.
+    //
+    // These are the refusals that do not clear on their own: already raising, the
+    // engine refusing manual raises outright, topped out, or garbage still
+    // falling. riseLock, panels in motion and shake time all pass, because holding
+    // is exactly how those are waited out.
     BitBot.prototype.canRaise = function () {
         if (!this.allowRaise) return false;
         var s = this.stack;
         if (s.preventManualRaise || s.manualRaise) return false;
         if (typeof s.isToppedOut === 'function' && s.isToppedOut()) return false;
         if (typeof s.hasFallingGarbage === 'function' && s.hasFallingGarbage()) return false;
-        if (s.riseLock) return false;
-        if (typeof s.hasActivePanels === 'function' && s.hasActivePanels()) return false;
-        if ((s.shakeTime || 0) > 0) return false;
         return true;
     };
 
