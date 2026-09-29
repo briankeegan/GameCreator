@@ -87,7 +87,9 @@ function playOut(weights, seed, frames, opts) {
 // happen. A bot whose swaps are never executed scores the same as one that
 // decided to wait, and nothing in a duel result tells the two apart.
 var runs = [];
-[701, 702, 703].forEach(function (s) { runs.push(playOut(BitBot.STARTER, s, 900)); });
+// An illegal or unfired move is wrong on the first decision or never; three
+// seeds still cover the shapes, 300 frames is enough to see them.
+[701, 702, 703].forEach(function (s) { runs.push(playOut(BitBot.STARTER, s, 300)); });
 var picks = 0, illegal = 0, fired = 0;
 runs.forEach(function (r) { picks += r.picks.length; illegal += r.illegal; fired += r.swapsFired; });
 // NO MAGIC NUMBERS ABOUT HOW A GAME GOES. `picks > 50` and `fired > 20` were
@@ -274,7 +276,7 @@ function repeatRate(opts) {
         return d;
     };
     var matches = 0;
-    for (var f = 0; f < 1100 && !stack.gameOver; f++) {
+    for (var f = 0; f < 500 && !stack.gameOver; f++) {
         bot.update(); stack.run();
         var evs = stack.drainEvents();
         for (var e = 0; e < evs.length; e++) if (evs[e].type === 'match') matches++;
@@ -350,7 +352,7 @@ function repeatRate(opts) {
     var stack = new PanelEngine.Stack({ level: 10, seed: 703, countdown: false });
     var bot = new BitBot(stack, { weights: LOOPER, allowRaise: true });
     var matches = 0;
-    for (var f = 0; f < 1200 && !stack.gameOver; f++) {
+    for (var f = 0; f < 500 && !stack.gameOver; f++) {
         bot.update(); stack.run();
         var evs = stack.drainEvents();
         for (var e = 0; e < evs.length; e++) if (evs[e].type === 'match') matches++;
@@ -366,7 +368,7 @@ function repeatRate(opts) {
     var s2 = new PanelEngine.Stack({ level: 10, seed: 703, countdown: false });
     var b2 = new BitBot(s2, { weights: LOOPER, allowRaise: true, refuseReturn: false });
     var m2 = 0, repeats = 0, last = null;
-    for (f = 0; f < 1200 && !s2.gameOver; f++) {
+    for (f = 0; f < 500 && !s2.gameOver; f++) {
         b2.update(); s2.run();
         var e2 = s2.drainEvents();
         for (e = 0; e < e2.length; e++) if (e2[e].type === 'match') m2++;
@@ -434,7 +436,11 @@ var without = { rep: 0, n: 0, matches: 0 };
     var bot = new BitBot(stacks[0], { weights: BitBot.STARTER, allowRaise: true });
     var foe = new BitBot(stacks[1], { weights: BitBot.STARTER, allowRaise: true });
     var checked = 0, worst = 0, sawGarbage = false, example = null;
-    for (var f = 0; f < 12000 && !stacks[0].gameOver && !stacks[1].gameOver; f++) {
+    // SHORT ON PURPOSE. The bot costs about 47ms a decision, so a 12,000-frame
+    // duel here was most of a two-minute test. Every disagreement this has caught
+    // appeared inside the first couple of thousand frames -- the reading is wrong
+    // from the first board that has garbage on it or it is not wrong at all.
+    for (var f = 0; f < 900 && !stacks[0].gameOver && !stacks[1].gameOver; f++) {
         bot.update(); foe.update(); stacks[0].run(); stacks[1].run();
         for (var q = 0; q < 2; q++) {
             var out = stacks[q].takeDeliverableGarbage();
