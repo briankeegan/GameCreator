@@ -302,25 +302,7 @@
         function slabReadyOf(state) {
             if (slabBudget <= 0) return 0;
             slabBudget--;
-            var t = 0, c, top;
-            for (c = 1; c <= W; c++) {
-                top = 32 - Math.clz32(state.occ[c] >>> 0);
-                if (top > t) t = top;
-            }
-            if (t >= H) return 0;
-            var st2 = bit.copyState(state), b = 1 << t, sm = new Int32Array(W + 2);
-            for (c = 1; c <= W; c++) {
-                st2.occ[c] |= b; st2.inert[c] |= b; st2.garb[c] |= b; sm[c] = b;
-            }
-            st2.slabs.push(sm);
-            var sw = bit.legalSwapsOf(st2), i, r;
-            for (i = 0; i < sw.length; i++) {
-                if (!bit.swapMasks(st2, sw[i][0], sw[i][1])) continue;
-                r = bit.resolveFromMasks(st2, false);
-                bit.swapMasks(st2, sw[i][0], sw[i][1]);
-                if (r && r.scope === 'garbage-broke') return 1;
-            }
-            return 0;
+            return slabReadyBoard(state) ? 1 : 0;
         }
 
         function readyOf(state) {
@@ -695,5 +677,26 @@
     // Exposed so the exit gate asks the SAME question the option list asks.
     // `low === 0 && baseLow > 0` is the whole of opensHole, and two copies of it
     // is how the two lists come to disagree about what a hole is.
-    return { options: options, kindOf: kindOf, sizeOf: sizeOf, shapeOf: shapeOf };
+    // Exposed so a test asks the REAL question rather than a copy of it. A test
+    // carrying its own implementation of a rule agrees with itself and catches
+    // nothing.
+    function slabReadyBoard(st) {
+        var t = 0, c, top, Wl = (st && st.W) || 6, Hl = (st && st.H) || 12;
+        for (c = 1; c <= Wl; c++) { top = 32 - Math.clz32(st.occ[c] >>> 0); if (top > t) t = top; }
+        if (t >= Hl) return false;
+        var s2 = bit.copyState(st), b = 1 << t, sm = new Int32Array(Wl + 2), i, r;
+        for (c = 1; c <= Wl; c++) { s2.occ[c] |= b; s2.inert[c] |= b; s2.garb[c] |= b; sm[c] = b; }
+        s2.slabs.push(sm);
+        var sw = bit.legalSwapsOf(s2);
+        for (i = 0; i < sw.length; i++) {
+            if (!bit.swapMasks(s2, sw[i][0], sw[i][1])) continue;
+            r = bit.resolveFromMasks(s2, false);
+            bit.swapMasks(s2, sw[i][0], sw[i][1]);
+            if (r && r.scope === 'garbage-broke') return true;
+        }
+        return false;
+    }
+
+    return { options: options, kindOf: kindOf, sizeOf: sizeOf, shapeOf: shapeOf,
+             slabReadyBoard: slabReadyBoard };
 }));

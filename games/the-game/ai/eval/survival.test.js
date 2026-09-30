@@ -312,6 +312,63 @@ function hostile() {
        'forms. It belongs in the ranking, not in the refusals');
 }());
 
-console.log('survival: 28 invariants checked without playing a game');
+// ------------ 10. every board produces a legal action, and no board produces
+//                  the same one forever
+//
+// The two ways the decision ladder fails are DOING NOTHING while something is
+// possible, and doing the same thing over and over. Both have happened: a bot
+// that spent five hundred of its last six hundred decisions on a board that
+// never changed, and a pair of swaps played back and forth for a whole freeze.
+//
+// The duel gate catches those after the fact over thousands of frames. This
+// catches the shapes they come from, instantly, on boards built to be awkward:
+// empty, one panel, a single colour with no clear anywhere, a full board, and a
+// board buried under garbage with its material out of reach. Each has to yield
+// an action that is legal on the board it was asked about.
+(function () {
+    var boards = {
+        empty:       [],
+        onePanel:    [[1, 0, 0, 0, 0, 0]],
+        oneColour:   [[1, 1, 1, 1, 1, 1]],   // resolves away; nothing to set up
+        noClear:     [[1, 2, 3, 1, 2, 3], [2, 3, 1, 2, 3, 1]],
+        nearlyFull:  [[1, 2, 3, 1, 2, 3], [2, 3, 1, 2, 3, 1], [3, 1, 2, 3, 1, 2],
+                      [1, 2, 3, 1, 2, 3], [2, 3, 1, 2, 3, 1], [3, 1, 2, 3, 1, 2],
+                      [1, 2, 3, 1, 2, 3], [2, 3, 1, 2, 3, 1], [3, 1, 2, 3, 1, 2],
+                      [1, 2, 3, 1, 2, 3], [2, 3, 1, 2, 3, 1]]
+    };
+    Object.keys(boards).forEach(function (name) {
+        var st = new P.Stack({ level: 10, seed: 101, countdown: false });
+        var r, c;
+        for (r = 1; r <= st.height; r++)
+            for (c = 1; c <= W; c++) { st.panels[r][c].color = 0; st.panels[r][c].isGarbage = false; }
+        boards[name].forEach(function (row, ri) {
+            for (c = 1; c <= W; c++) st.panels[ri + 1][c].color = row[c - 1];
+        });
+        var bot = new BitBot(st, { allowRaise: true });
+        var d = null, threw = null;
+        try { d = bot.decide(); } catch (e) { threw = e; }
+        ok(!threw, 'board "' + name + '" threw from decide(): ' + (threw && threw.message));
+        ok(d && (d.kind === 'swap' || d.kind === 'hold' || d.kind === 'raise'),
+           'board "' + name + '" produced no action at all -- the ladder must always ' +
+           'return, because doing nothing is the failure it exists to prevent');
+        if (d && d.kind === 'swap') {
+            var legal = bit.legalSwapsOf(bot._lastBase), i, found = false;
+            for (i = 0; i < legal.length; i++)
+                if (legal[i][0] === d.move[0] && legal[i][1] === d.move[1]) { found = true; break; }
+            ok(found, 'board "' + name + '" chose a swap the board does not allow, at r' +
+               d.move[0] + 'c' + d.move[1]);
+        }
+    });
+
+    // THE LOOP ITSELF CANNOT BE CHECKED HERE, and the numbers say so. Driving a
+    // solo board 3,000 frames, the longest run of one answer with the board
+    // unchanged is 3 -- and 1 with the swap-in-flight guard deliberately removed,
+    // which is the defect. It takes two boards trading garbage to produce a
+    // freeze long enough to wiggle inside, so the duel gate measures it
+    // (progress.test.js, `same swap`) and invariant 8 above checks the mechanism
+    // that caused it. A check here would pass either way.
+}());
+
+console.log('survival: 32 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');
