@@ -33,7 +33,7 @@ local PACE = (tonumber(arg[4]) or 1) ~= 0
 local SOLO = (tonumber(arg[5]) or 0) ~= 0
 -- STREAM: what the extra garbage is. "wild" (the default): chains up to 6
 -- tall and full-width metal among the combos. "human": chains 1-3 tall and
--- combos, no metal -- what a strong player sends.
+-- combos, no metal -- what a strong player sends, through a telegraph.
 local STREAM = arg[6] or "wild"
 
 local state = SEED * 2654435761 % 4294967296
@@ -56,11 +56,22 @@ local brain = WeightedBrain.new({ profile = "bot/profiles/beverly.json" })
 local controller = CursorController.new({ cursorMoveInterval = 4, reactionFrames = 12 })
 local WAIT = { type = "WAIT" }
 
+-- THE EXTRA GARBAGE'S TELEGRAPH. "human" garbage is sent as a player sends
+-- it: shown staged in a telegraph from the frame it is earned, received 151
+-- frames later (45 + 45 + 1 staged, then 60 in transit: GarbageQueue),
+-- once the frame before has run. "wild" garbage lands unannounced.
+local STAGING, LAND = 45 + 45 + 1, 60
+local extra = { stopWatch = 0, outgoingGarbage = { stagedGarbage = {}, transitTimers = { first = 0, last = -1 }, garbageInTransit = {} } }
+
 local t0 = socket.gettime()
 local frame, handed = 0, 0
 while frame < FRAMES and not a:game_ended() and not b:game_ended() do
   frame = frame + 1
-  local ca = link:input(a, match.garbageSources[a])
+  extra.stopWatch = a.stopWatch
+  local sources = {}
+  for i, src in ipairs(match.garbageSources[a]) do sources[i] = src end
+  sources[#sources + 1] = extra
+  local ca = link:input(a, sources)
   local cb
   if b.clock > 190 then
     -- The opponent thinks on its own machine: its time is not the frame's.
@@ -83,10 +94,22 @@ while frame < FRAMES and not a:game_ended() and not b:game_ended() do
     elseif k == 1 then g = { width = 6, height = 1, isChain = false, isMetal = true }
     else g = { width = 3 + rand(4), height = 1, isChain = false, isMetal = false } end
     g.frameEarned = a.stopWatch; g.rowEarned = 1; g.colEarned = 1; g.finalized = true
-    a:receiveGarbage({ g }, 0)
+    if STREAM == "human" then table.insert(extra.outgoingGarbage.stagedGarbage, 1, g)   -- the next to ship last
+    else a:receiveGarbage({ g }, 0) end
     handed = handed + 1
   end
   match:run()
+  local q = extra.outgoingGarbage
+  while #q.stagedGarbage > 0 and q.stagedGarbage[#q.stagedGarbage].frameEarned + STAGING <= a.stopWatch do
+    local t = a.stopWatch + LAND
+    if q.garbageInTransit[t] then table.insert(q.garbageInTransit[t], table.remove(q.stagedGarbage))
+    else q.garbageInTransit[t] = { table.remove(q.stagedGarbage) }; q.transitTimers.last = q.transitTimers.last + 1; q.transitTimers[q.transitTimers.last] = t end
+  end
+  local tt = q.transitTimers
+  while tt.first <= tt.last and tt[tt.first] <= a.stopWatch do
+    a:receiveGarbage(q.garbageInTransit[tt[tt.first]], 0)
+    q.garbageInTransit[tt[tt.first]] = nil; tt[tt.first] = nil; tt.first = tt.first + 1
+  end
   if PACE then
     local due = t0 + frame / 60
     local now = socket.gettime()
