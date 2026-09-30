@@ -1343,6 +1343,12 @@
     //    save invariant: with nothing to fire, take the route to something; with
     //    something to fire, do not spend it for nothing.
     //
+    // AND BEFORE ANY OF IT: A SWAP ALREADY PLAYED HAS TO LAND. update() lifts the
+    // reaction inside a freeze and inside a reveal window, and a decision taken
+    // while the bot's own swap is still animating is taken on a board between two
+    // positions -- the answer comes back the same and playing it restarts the
+    // swap, so the match under it never fires. swapLanding() holds the lift off.
+    //
     // TWO THINGS THAT MUST NEVER HAPPEN, and where they were made impossible:
     //    DO NOTHING while something is possible -- every filter that can empty a
     //    list stands aside instead (stage 3's hatch, the no-return filter, the
@@ -2954,6 +2960,16 @@
     };
 
     // One call per frame from the match loop, the same shape PuyoCpu has.
+    // IS A SWAP OF THE BOT'S STILL LANDING.
+    //
+    // Queued but not yet executed, or executed and still animating. Either way
+    // the board is between two positions and a decision made on it is a decision
+    // about neither.
+    BitBot.prototype.swapLanding = function () {
+        var s = this.stack;
+        return (s.queuedSwapRow || 0) > 0 || (s.swappingCount || 0) > 0;
+    };
+
     BitBot.prototype.update = function () {
         var stack = this.stack;
         if (stack.gameOver) { this.spend.gameOver++; return; }
@@ -3012,8 +3028,25 @@
         // frame of life spent for nothing. Everywhere else it still applies.
         var urgent = (stack.stopTime || 0) > 0 ||
                      (typeof stack.isToppedOut === 'function' && stack.isToppedOut());
+        // AND NEITHER LIFT INTERRUPTS THE BOT'S OWN SWAP.
+        //
+        // A swap is not finished when it is queued. The engine switches the two
+        // panels immediately and leaves them in `swapping` for a few frames, and a
+        // match is only read off panels in `normal` -- so the board the next
+        // decision snapshots is mid-change, the answer comes back the same, and
+        // playing it again RESTARTS the animation on the same pair. It never
+        // completes, the match under it never fires, and the pair wiggles at one
+        // frame per swap for as long as the lift lasts.
+        //
+        // The no-return filter cannot see this: the model of the swap contains the
+        // clear, so the landed board looks like somewhere new rather than the board
+        // it just left. Read off seed 103, ZERO: 51 frames on `swap r6c2` inside a
+        // 62-frame freeze, then 107 on `swap r4c4`, the board alternating between
+        // exactly two positions the whole time, and dead at 2,063. Roughly five
+        // hundred of its last six hundred decisions were spent this way.
         if (this.cooldown > 0) {
-            if (!urgent && !(this.reveal && this.windowOpen())) {
+            var lift = (urgent || (this.reveal && this.windowOpen())) && !this.swapLanding();
+            if (!lift) {
                 this.spend.cooling++; if (froz) this.frozen.cooling++;
                 this.cooldown--; return;
             }

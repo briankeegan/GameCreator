@@ -211,6 +211,59 @@ function hostile() {
        'not wired into the ranking');
 }());
 
-console.log('survival: 18 invariants checked without playing a game');
+// ------------------ 8. a cooldown lift does not interrupt the bot's own swap
+//
+// The reaction lifts inside a freeze and inside a reveal window, because an idle
+// frame there is a frame of life spent for nothing. But a swap is not finished
+// when it is queued: the engine switches the two panels at once and leaves them
+// in `swapping` for a few frames, and a match is only read off `normal` panels.
+// So a decision taken then is taken on a board between two positions, comes back
+// with the same answer, and playing it RESTARTS the animation on the same pair --
+// which never completes, so the match under it never fires. Seed 103, ZERO: 51
+// frames on one swap inside a 62-frame freeze, then 107 on the next, the board
+// alternating between exactly two positions, dead at 2,063 having broken 16 of
+// the 57 garbage cells it was sent. With the lift held off until the swap lands:
+// alive at 30,000, 289 of 292.
+//
+// Both directions. A lift that never fires is the bug this rule replaced.
+(function () {
+    var st = new P.Stack({ level: 10, seed: 101, countdown: false });
+    var bot = new BitBot(st, { allowRaise: false });
+    var i;
+    for (i = 0; i < 400; i++) { bot.update(); st.run(); st.drainEvents(); }
+
+    // The freeze is the lift, and the in-flight swap is what holds it back.
+    st.stopTime = 60;
+    bot.cooldown = 5;
+    st.queuedSwapRow = 0; st.swappingCount = 0;
+    var before = bot.spend.decided;
+    bot.update();
+    ok(bot.spend.decided > before,
+       'a freeze with nothing in flight did not lift the cooldown, so the free ' +
+       'frames a freeze exists for are still being thrown away');
+
+    st.stopTime = 60;
+    bot.cooldown = 5;
+    st.swappingCount = 2;
+    before = bot.spend.decided;
+    var cd = bot.cooldown;
+    bot.update();
+    ok(bot.spend.decided === before,
+       'decided again while its own swap was still animating -- replaying that ' +
+       'answer restarts the swap and the match under it never fires');
+    ok(bot.cooldown === cd - 1,
+       'the cooldown did not tick while a swap was landing, so it never runs out');
+
+    st.swappingCount = 0; st.queuedSwapRow = 3;
+    bot.cooldown = 5;
+    before = bot.spend.decided;
+    bot.update();
+    ok(bot.spend.decided === before,
+       'decided again with a swap queued and not yet executed, which is the same ' +
+       'board mid-change');
+    st.queuedSwapRow = 0;
+}());
+
+console.log('survival: 22 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');
