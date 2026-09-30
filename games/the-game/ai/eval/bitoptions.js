@@ -206,6 +206,7 @@
             // which it is -- the landed board's bumpiness says it outright.
             opt.levels = opt.bumps !== null && opt.bumps <= BASEBUMPS;
             opt.opensHole = opt.low === 0 && BASELOW > 0;
+            opt.breakReady = r.settled ? breakReadyOf(r.settled) : null;
             now.push(opt);
         }
 
@@ -316,6 +317,25 @@
             return bit.anyOneSwapClear(state) ? 1 : 0;
         }
 
+        // CAN THE BOARD THIS LANDS ON BREAK ITS GARBAGE.
+        //
+        // A garbage cell comes off the board one way: three panels in a line
+        // against it. Every board in the six deaths of the last round-robin had
+        // clears to fire and was firing them -- what none of them had was three
+        // adjacent columns reaching the slab's underside. Measured across the
+        // six: spread 4 to 6, and the longest run of columns touching the slab
+        // was two. Two is not three, so the garbage could never come off, and a
+        // garbage cell that never comes off is a row of ceiling gone for good.
+        //
+        // null when the landed board carries no garbage -- the question does not
+        // apply, and a null is not a no. Being ready for the slab that has not
+        // landed yet is a different question and flatSlab already asks it.
+        function breakReadyOf(state) {
+            var c;
+            for (c = 1; c <= W; c++) if (state.garb[c]) return savesOfRaw(state) > 0;
+            return null;
+        }
+
         function savesOfRaw(state) {
             var sw = bit.legalSwapsOf(state), n = 0, i, r;
             for (i = 0; i < sw.length; i++) {
@@ -407,6 +427,7 @@
                                 // which it is -- the landed board's bumpiness says it outright.
                                 opt.levels = opt.bumps !== null && opt.bumps <= BASEBUMPS;
                                 opt.opensHole = opt.low === 0 && BASELOW > 0;
+                                opt.breakReady = res.settled ? breakReadyOf(res.settled) : null;
                                 next.push(opt);
                             }
                             continue;

@@ -1042,6 +1042,23 @@
         var rdy = [];
         for (i = 0; i < all.length; i++) if (all[i].ready !== false) rdy.push(all[i]);
         if (rdy.length) all = rdy;
+        // AND, WHILE THERE IS GARBAGE, THE ONES THAT CAN STILL BREAK IT.
+        //
+        // A garbage cell comes off the board one way: three panels in a line
+        // against it. `ready` above is any clear, which is not the same question
+        // and is not what these boards were short of -- all six deaths of the
+        // last round-robin had clears and were firing them. What none of them had
+        // was three adjacent columns reaching the slab's underside: spread 4 to 6
+        // and a longest touching run of two, every time. Two is not three, so the
+        // garbage could never come off, and a cell that never comes off is a row
+        // of ceiling gone for good.
+        //
+        // The same narrowing shape, for the same reason: it stands aside when
+        // nothing keeps a break alive, and `breakReady` is null on a board with
+        // no garbage on it and on a break, neither of which is a no.
+        var dig = [];
+        for (i = 0; i < all.length; i++) if (all[i].breakReady !== false) dig.push(all[i]);
+        if (dig.length) all = dig;
         for (i = 0; i < all.length; i++) {
             var o = all[i];
             if (!o.swaps || !o.swaps.length) continue;
@@ -1170,6 +1187,23 @@
         var rdy = [];
         for (i = 0; i < all.length; i++) if (all[i].ready !== false) rdy.push(all[i]);
         if (rdy.length) all = rdy;
+        // AND, WHILE THERE IS GARBAGE, THE ONES THAT CAN STILL BREAK IT.
+        //
+        // A garbage cell comes off the board one way: three panels in a line
+        // against it. `ready` above is any clear, which is not the same question
+        // and is not what these boards were short of -- all six deaths of the
+        // last round-robin had clears and were firing them. What none of them had
+        // was three adjacent columns reaching the slab's underside: spread 4 to 6
+        // and a longest touching run of two, every time. Two is not three, so the
+        // garbage could never come off, and a cell that never comes off is a row
+        // of ceiling gone for good.
+        //
+        // The same narrowing shape, for the same reason: it stands aside when
+        // nothing keeps a break alive, and `breakReady` is null on a board with
+        // no garbage on it and on a break, neither of which is a no.
+        var dig = [];
+        for (i = 0; i < all.length; i++) if (all[i].breakReady !== false) dig.push(all[i]);
+        if (dig.length) all = dig;
         // ONE PANEL REMOVED IS framesPerRow / W FRAMES OF LIFE -- 18.7 at level 10.
         // Panels and stop time are the same currency and this is the exchange rate.
         var perPanel = (framesPerRow || 0) / W;

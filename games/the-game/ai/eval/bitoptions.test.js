@@ -505,5 +505,92 @@ if (flatSpread !== 0) {
     if (rfails) process.exit(1);
 }());
 
+// --------------------------------------------------------------------------
+// `breakReady` ON EVERY OPTION: CAN THE BOARD THIS LANDS ON BREAK ITS GARBAGE.
+//
+// A garbage cell comes off the board one way -- three panels in a line against
+// it -- and a cell that never comes off is a row of ceiling gone for good. Both
+// paths that pick moves narrow on this field, so it has to be BOTH values on
+// the boards that deserve them, and null where the question does not apply.
+(function () {
+    var bfails = 0;
+    function bok(cond, msg) { if (!cond) { console.log('FAIL: ' + msg); bfails++; } }
+    // Columns bottom-up; 'G' is a garbage cell.
+    function listOf(cols) {
+        var grid = [], cells = [], r, c;
+        for (r = 0; r <= H; r++) { grid[r] = []; for (c = 1; c <= W; c++) grid[r][c] = 0; }
+        for (c = 1; c <= W; c++)
+            for (r = 1; r <= cols[c - 1].length; r++) {
+                var v = cols[c - 1][r - 1];
+                if (v === 'G') { grid[r][c] = -2; cells.push([r, c]); }
+                else grid[r][c] = v;
+            }
+        var blocks = cells.length ? { s: { cells: cells } } : {};
+        var base = new LogicalBoard(W, H, 6, grid, blocks);
+        var l = opts.options(base, W, H, [1, 1], 2);
+        return l.now.concat(l.next);
+    }
+
+    // NO GARBAGE ON THE LANDED BOARD: the question does not apply, so null. A
+    // false here would narrow every option out of both paths on a clean board.
+    var clean = listOf([[1, 3, 3], [1, 4, 5], [2, 5, 4], [1, 3, 4], [1, 5, 3], [4, 3, 5]]);
+    var cc = clean.filter(function (o) { return o.total > 0; });
+    bok(cc.length > 0, '`breakReady`: the clean board offered no clear at all');
+    bok(cc.every(function (o) { return o.breakReady === null; }),
+        '`breakReady`: a clear on a board with no garbage came back ' +
+        (cc[0] && cc[0].breakReady) + ' rather than null -- there is nothing to break, ' +
+        'and a false there narrows the whole list away every opening');
+
+    // GARBAGE ON THE BOARD: both answers have to occur. Five rows of material
+    // under a full-width slab, so there is enough left after a clear for some
+    // routes to keep a break alive and enough spent on others that they do not.
+    var spend = listOf([[1, 1, 1, 2, 5, 'G'], [1, 5, 1, 2, 2, 'G'], [4, 3, 3, 5, 3, 'G'],
+                        [1, 3, 5, 2, 2, 'G'], [4, 1, 5, 3, 5, 'G'], [3, 1, 4, 5, 4, 'G']]);
+    var sc = spend.filter(function (o) { return o.total > 0 && o.breakReady !== null; });
+    bok(sc.length > 0,
+        '`breakReady`: no option on the buried board carried a true/false, so the ' +
+        'field is null wherever there IS garbage and narrows nothing');
+    bok(sc.some(function (o) { return o.breakReady === false; }),
+        '`breakReady`: not one option on a buried board left it unable to break, so ' +
+        'a field stuck true would pass every check there is');
+    bok(sc.some(function (o) { return o.breakReady === true; }),
+        '`breakReady`: not one option on a buried board left it able to break, so a ' +
+        'field stuck false would pass and the narrowing throws the list away');
+
+    // AND IT IS A BREAK IT IS ASKING ABOUT, NOT A CLEAR. This is the whole rule:
+    // all six boards that died had clears and were firing them, and none could
+    // put three panels against the slab. A board six deep under a full slab that
+    // offers plenty of both, so the two answers have to come apart.
+    var apart = listOf([[3, 5, 4, 3, 5, 2, 'G'], [3, 5, 3, 2, 4, 5, 'G'], [5, 1, 2, 2, 1, 1, 'G'],
+                        [4, 5, 2, 3, 2, 1, 'G'], [4, 4, 5, 5, 2, 4, 'G'], [1, 5, 2, 2, 4, 1, 'G']]);
+    var canFire = apart.filter(function (o) { return o.ready === true; });
+    bok(canFire.length > 0,
+        '`breakReady`: no option on the six-deep board landed on a board that can ' +
+        'fire, so the two questions cannot be told apart here');
+    bok(canFire.some(function (o) { return o.breakReady === false; }),
+        '`breakReady`: every option that lands on a board able to FIRE also reads ' +
+        'able to BREAK, so this is asking "is there a clear" -- the question all ' +
+        'six death boards answered yes to on their way to dying');
+
+    // AND A BREAK CARRIES null, NOT false. Its settled board is unknowable, and a
+    // break is the one move that takes garbage off -- narrowing it out of a rule
+    // about breaking is the expensive mistake.
+    var bl = listOf([[2, 3, 4, 5, 2, 1, 'G'], [3, 4, 5, 2, 3, 1, 'G'],
+                     [4, 5, 2, 3, 4, 2, 'G'], [5, 2, 3, 4, 5, 1, 'G'],
+                     [3, 4, 5, 2, 3, 4, 'G'], [2, 3, 4, 5, 2, 5, 'G']]);
+    var brs = bl.filter(function (o) { return o.breaks; });
+    bok(brs.length > 0,
+        '`breakReady`: the board with a three one swap under a slab offered no ' +
+        'break, so this cannot check what a break carries');
+    bok(brs.every(function (o) { return o.breakReady === null; }),
+        '`breakReady`: a break came back ' + (brs[0] && brs[0].breakReady) +
+        ' rather than null -- a false there narrows the one move that takes ' +
+        'garbage off the board straight out of both paths');
+
+    console.log('  breakReady: ' + (bfails ? bfails + ' FAILED' :
+                'every option says whether the board it lands on can still break'));
+    if (bfails) process.exit(1);
+}());
+
 console.log('bitoptions: ' + R.listed + ' options listed over ' + R.boards +
             ' boards, ' + R.played + ' played on the engine exactly, priced by the walk');

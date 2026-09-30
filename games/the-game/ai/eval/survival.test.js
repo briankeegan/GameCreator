@@ -928,6 +928,85 @@ function hostile() {
        'paths above are narrowing on a field that is not set and the rule is off');
 }());
 
-console.log('survival: 76 invariants checked without playing a game');
+// ---------- 18. while there is garbage, the move keeps a break alive
+//
+// A garbage cell comes off the board one way: three panels in a line against
+// it. `ready` (17) is any clear, which is a different question and not what
+// these boards were short of -- all six deaths of the round-robin had clears
+// and were firing them. What none had was three adjacent columns reaching the
+// slab's underside: spread 4 to 6, longest touching run of two, every time.
+//
+// Same three claims as 17, on each path separately, because that is what has
+// gone wrong here every time.
+(function () {
+    var engine = P, FT = { FLASH: 28, FACE: 10, POP: 7 }, WV = {};
+    BF.keys().forEach(function (k) { WV[k] = 0; });
+    function o(over) {
+        var x = { kind: 'combo', swaps: [[1, 1]], frames: 10, duration: 10, chain: 0,
+                  total: 4, size: 4, garbage: 0, tall: 5, bumps: 2, mat: 5, low: 2,
+                  spread: 1, levels: true, opensHole: false, ready: true,
+                  breakReady: true };
+        for (var k in over) x[k] = over[k];
+        return x;
+    }
+
+    // The bigger attack leaves a board that can still fire but can no longer put
+    // three against the slab. `ready` true on both, so 17's narrowing cannot be
+    // what decides it.
+    var deadA = o({ total: 8, size: 8, breakReady: false });
+    var liveA = o({ total: 4, size: 4, breakReady: true, swaps: [[1, 3]] });
+    var pickA = BitBot.bestAttackOf({ now: [deadA, liveA], next: [] }, WV, engine, 600, FT, 18.7);
+    ok(pickA && pickA.option === liveA,
+       'attack: took the bigger attack that leaves the board unable to break its ' +
+       'garbage. It can still fire -- that is not the same question, and it is not ' +
+       'the one the six death boards failed');
+
+    var deadB = o({ total: 8, size: 8, breakReady: false });
+    var deadC = o({ total: 4, size: 4, breakReady: false, swaps: [[1, 3]] });
+    var pickB = BitBot.bestAttackOf({ now: [deadB, deadC], next: [] }, WV, engine, 600, FT, 18.7);
+    ok(pickB && pickB.option === deadB,
+       'attack: with no option keeping a break alive it took the smaller one, so ' +
+       'the narrowing empties the list instead of standing aside');
+
+    // A BREAK IS NEVER NARROWED OUT BY A RULE ABOUT BREAKING. Its settled board
+    // is unknowable, so `breakReady` is null -- and it is the move that takes the
+    // garbage off. Paired with a ready option so the narrowing actually runs.
+    var brk = o({ total: 3, size: 3, garbage: 4, breaks: true, ready: null,
+                  breakReady: null, mat: null, low: null, bumps: null, swaps: [[1, 5]] });
+    var weak = o({ total: 4, size: 4, frames: 200, duration: 200, swaps: [[1, 3]] });
+    var pickC = BitBot.bestAttackOf({ now: [brk, weak], next: [] }, WV, engine, 600, FT, 18.7);
+    ok(pickC && pickC.option === brk,
+       'attack: a break was narrowed out of the list by the break rule -- ' +
+       '`breakReady` is null on a break, and a null is not a no');
+
+    // AND A CLEAN BOARD IS NOT NARROWED EITHER: with no garbage on it the
+    // question does not apply, and a null must not read as a no.
+    var cleanA = o({ total: 8, size: 8, breakReady: null });
+    var cleanB = o({ total: 4, size: 4, breakReady: null, swaps: [[1, 3]] });
+    var pickD = BitBot.bestAttackOf({ now: [cleanA, cleanB], next: [] }, WV, engine, 600, FT, 18.7);
+    ok(pickD && pickD.option === cleanA,
+       'attack: on a board with no garbage the bigger attack was narrowed out by a ' +
+       'rule about breaking garbage that is not there');
+
+    // ---- bestPlan, the path that picks most moves
+    var deadP = o({ total: 8, size: 8, breakReady: false });
+    var liveP = o({ total: 4, size: 4, breakReady: true, swaps: [[1, 3]] });
+    var pickP = BitBot.bestPlanOf({ now: [deadP, liveP], next: [] },
+                                  0, 600, engine, false, 112, FT, 5);
+    ok(pickP && pickP.option === liveP,
+       'survival plan: took the route that leaves the board unable to break its ' +
+       'garbage. This is the path that picked the move on nearly every frame of ' +
+       'all six boards that died');
+
+    var deadQ = o({ total: 8, size: 8, breakReady: false });
+    var deadR = o({ total: 4, size: 4, breakReady: false, swaps: [[1, 3]] });
+    var pickQ = BitBot.bestPlanOf({ now: [deadQ, deadR], next: [] },
+                                  0, 600, engine, false, 112, FT, 5);
+    ok(pickQ && pickQ.option === deadQ,
+       'survival plan: with no plan keeping a break alive it took the smaller one, ' +
+       'so the narrowing empties the list instead of standing aside');
+}());
+
+console.log('survival: 83 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');
