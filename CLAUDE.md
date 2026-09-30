@@ -28,8 +28,7 @@ don't fork it per-game.
 - **The gates run after the push, in CI.** `pages.yml` names the ones worth
   their own step, then `gate_fast` runs every other gate that is not in
   `SLOW_GATES` — so a gate added to `GATES` is covered without a step of its
-  own. `SLOW_GATES` run nightly in `ai-slow-gates.yml`: they take hours (or, like
-  `gate_bitbot_progress`, play whole duels), and
+  own. `SLOW_GATES` run nightly in `ai-slow-gates.yml`: they take hours, and
   a job that long never survives a `cancel-in-progress` workflow to reach a
   conclusion. `check_gate_wiring.mjs` fails if the set of gates no workflow
   runs grows past its recorded count. The ten in `PANEL_GAME_GATES` need the
