@@ -2106,7 +2106,7 @@
             for (i = 0; i < spare.length; i++) {
                 var sc = spare[i];
                 var ss = noneClear
-                       ? -bumpiness(sc.masks) * 10000 + matchWays(sc.masks) * 100 - (sc.moveFrames || 0)
+                       ? this.idleScore(sc, base, info)
                        : this.score(sc.masks, sc.moveFrames, sc.resolved, info);
                 if (!best || ss > best.score) best = { cand: sc, score: ss };
             }
@@ -2675,6 +2675,50 @@
     // shapeOf counts only the panels BELOW the lowest garbage cell, so material
     // stranded above a slab is not a tower -- it is in another pocket and nothing
     // the bot plays can spread it.
+    // WHAT A MOVE IS WORTH WHEN NOTHING CLEARS, IN FRAMES.
+    //
+    // This branch used to rank `-bumpiness * 10000 + matchWays * 100`, which is a
+    // lexicographic sort on flatness: one step of bumpiness outweighs a hundred
+    // ways, and a real board carries about twenty, so the ways term never broke a
+    // tie and nothing else was consulted at all. Every board that died today died
+    // in this branch, and both of them died FLAT -- bumpiness 3, spread 3.
+    //
+    // Frames, like the rest of the file, so the terms can be compared:
+    //
+    //   dropping the stack   The slab rests on the TALLEST column, so only the
+    //                        tallest touches it. One panel of height on one column
+    //                        puts the slab out of reach of the other five. Taking
+    //                        it down brings the garbage DOWN onto the rest of the
+    //                        board, where three adjacent columns can reach it --
+    //                        and a row of height is a row of rise, framesPerRow.
+    //
+    //   reaching the slab    A surface that can put three against the garbage is
+    //                        worth the break it unlocks. slabReadyFast asks
+    //                        exactly that and reached only the flatten's third
+    //                        winner.
+    //
+    //   ways and flatness    Both in panels of life -- framesPerRow / W -- which
+    //                        is the atom this file converts with everywhere else.
+    //                        Still there, no longer at a hundred to one.
+    //
+    // NOT CALIBRATED beyond the conversions being real ones.
+    BitBot.prototype.idleScore = function (cand, base, info) {
+        var m = cand.masks;
+        if (!m) return -(cand.moveFrames || 0);
+        var fpr = info.framesPerRow || 0, perPanel = fpr / W;
+        // THE TALLEST MATERIAL COLUMN, NOT THE TALLEST CELL. tallestBoard counts
+        // garbage, and on a buried board that is the slab -- 12 on the board this
+        // was written for -- so it does not move when a panel does, and the term
+        // reads zero on exactly the boards that need it. shapeOf measures the
+        // pocket under the lowest slab, which is the surface the garbage rests on.
+        var was = bitoptions.shapeOf(base), now = bitoptions.shapeOf(m);
+        var s = ((was ? was.high : 0) - (now ? now.high : 0)) * fpr;
+        if (bitoptions.slabReadyFast(m)) s += fpr;
+        s += matchWays(m) * perPanel;
+        s -= bumpiness(m) * perPanel;
+        return s - (cand.moveFrames || 0);
+    };
+
     BitBot.prototype.towering = function (base) {
         var shp = base && bitoptions.shapeOf(base);
         return !!shp && (shp.spread || 0) >= WORKING_ROWS;

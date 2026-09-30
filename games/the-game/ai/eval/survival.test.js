@@ -1252,6 +1252,107 @@ function hostile() {
        'being read and the freeze is undervalued exactly when it is survival');
 }());
 
-console.log('survival: 105 invariants checked without playing a game');
+// ---- 23. with nothing to fire, dropping the stack and reaching the slab count
+//
+// The slab rests on the TALLEST column, so only the tallest touches it: one
+// panel of height on one column puts the garbage out of reach of the other five.
+// The board that died at 2,261 was FLAT -- spread 3, bumpiness 3 -- with c1 a
+// single panel above the rest and 40 cells of garbage nobody could reach.
+//
+// This branch ranked `-bumpiness * 10000 + matchWays * 100`, a lexicographic
+// sort on flatness in which one step of bumpiness outweighs a hundred ways and a
+// real board carries twenty. Neither dropping the stack nor reaching the slab
+// was in it.
+(function () {
+    // A BURIED BOARD, because that is the case this exists for -- and the case a
+    // clean fixture cannot fail. Measuring the tallest CELL instead of the
+    // tallest material column reads the slab at r12, which no panel move changes,
+    // so the term is zero exactly where it is needed. On a clean board the two
+    // numbers agree and the bug is invisible.
+    var st = new P.Stack({ level: 10, seed: 101, countdown: false });
+    var r, c;
+    for (r = 1; r <= st.height; r++)
+        for (c = 1; c <= W; c++) { st.panels[r][c].color = 0; st.panels[r][c].isGarbage = false; }
+    // cols 5,2,3,4,4,4 under five rows of garbage: the shape that died at 2,261,
+    // flat by every measure and sealed because c1 stands one panel proud.
+    var cols = [[3, 3, 5, 1, 4], [1, 5], [2, 3, 4], [1, 4, 1, 3], [1, 5, 2, 3], [3, 4, 4, 6]];
+    for (c = 1; c <= W; c++)
+        for (r = 1; r <= cols[c - 1].length; r++) st.panels[r][c].color = cols[c - 1][r - 1];
+    for (r = 6; r <= 10; r++)
+        for (c = 1; c <= W; c++) { st.panels[r][c].color = 8; st.panels[r][c].isGarbage = true; }
+    var bot = new BitBot(st, { allowRaise: true });
+    var board = bot._snapshot();
+    var info = bot.info(board);
+    var base = bit.maskState(board.grid, board.blocks, W, board.height);
+    ok(bitoptions.shapeOf(base).high === 5,
+       'idle: the fixture is not the shape it is meant to be -- tallest material ' +
+       'column reads ' + bitoptions.shapeOf(base).high + ', wanted 5');
+
+    function candOf(masks) { return { kind: 'swap', swap: [1, 1], masks: masks, moveFrames: 0 }; }
+    ok(typeof bot.idleScore === 'function', 'no idle ranking to check');
+
+    // DROPPING THE STACK IS WORTH A ROW OF RISE. The slab rests on the tallest
+    // column, so taking c1 down brings the garbage onto the rest of the board.
+    var tallB = bit.copyState(base), shortB = bit.copyState(base);
+    var topRow = 5, topCol = 1, bitv = 1 << (topRow - 1);
+    shortB.occ[topCol] &= ~bitv;
+    for (var a = 1; a <= shortB.N; a++) shortB.colour[a * (W + 2) + topCol] &= ~bitv;
+    ok(bitoptions.shapeOf(shortB).high === 4,
+       'idle: the shortened board still reads tallest ' + bitoptions.shapeOf(shortB).high);
+    var tallScore = bot.idleScore(candOf(tallB), base, info);
+    var shortScore = bot.idleScore(candOf(shortB), base, info);
+    ok(shortScore > tallScore,
+       'idle: taking the top panel off the tallest column scored no better than ' +
+       'leaving it. The slab rests on that column -- one panel there puts the ' +
+       'garbage out of reach of every other column on the board');
+    ok(shortScore - tallScore >= info.framesPerRow * 0.5,
+       'idle: dropping the stack was worth only ' + (shortScore - tallScore).toFixed(0) +
+       ' frames against a row of rise at ' + info.framesPerRow + '. Measured on the ' +
+       'tallest CELL this reads zero on a buried board, because the slab is the ' +
+       'tallest cell and no panel move touches it');
+
+    // AND REACHING THE SLAB COUNTS. A surface that can put three panels against
+    // the garbage is worth the break it unlocks, and slabReadyFast is the
+    // question. Stubbed, because two boards differing ONLY in slab-readiness
+    // cannot be built by hand -- and a term nothing separates is a term nothing
+    // checks.
+    var realSlab = bitoptions.slabReadyFast;
+    var yes, no;
+    try {
+        bitoptions.slabReadyFast = function () { return true; };
+        yes = bot.idleScore(candOf(base), base, info);
+        bitoptions.slabReadyFast = function () { return false; };
+        no = bot.idleScore(candOf(base), base, info);
+    } finally { bitoptions.slabReadyFast = realSlab; }
+    ok(yes > no,
+       'idle: a board that can put three against the slab scored no higher than ' +
+       'one that cannot. That question already existed and reached one place -- ' +
+       'the flatten\'s third winner -- and never the branch that plays when the ' +
+       'board is dying');
+    ok(yes - no >= info.framesPerRow * 0.5,
+       'idle: reaching the slab was worth ' + (yes - no).toFixed(0) + ' frames ' +
+       'against a row of rise at ' + info.framesPerRow);
+
+    // AND FLATNESS STILL COUNTS, JUST NOT AT A HUNDRED TO ONE. Made lumpier by
+    // taking a panel off a SHORT column, so the tallest is untouched and only
+    // the roughness term can separate the two.
+    var lumpy = bit.copyState(base);
+    var lb = 1 << (2 - 1);                       // c2 tops at 2
+    lumpy.occ[2] &= ~lb;
+    for (var a2 = 1; a2 <= lumpy.N; a2++) lumpy.colour[a2 * (W + 2) + 2] &= ~lb;
+    ok(bitoptions.shapeOf(lumpy).high === bitoptions.shapeOf(base).high,
+       'idle: the lumpy fixture changed the tallest column, so the height term ' +
+       'is what separates them and this checks nothing');
+    var flatScore = bot.idleScore(candOf(base), base, info);
+    var lumpyScore = bot.idleScore(candOf(lumpy), base, info);
+    ok(flatScore > lumpyScore,
+       'idle: a lumpier board scored at or above the smoother one');
+    ok((flatScore - lumpyScore) < info.framesPerRow * 10,
+       'idle: roughness is worth ' + (flatScore - lumpyScore).toFixed(0) + ' frames ' +
+       'against a row of rise at ' + info.framesPerRow + '. At that ratio it is a ' +
+       'lexicographic sort again and nothing else in the ranking can ever matter');
+}());
+
+console.log('survival: 112 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');
