@@ -121,11 +121,19 @@ if (ONE) {
                     if ((rz.chain || 0) > chainBest) chainBest = rz.chain;
                 }
             }
-            // GARBAGE CELLS TAKEN OFF THE BOARD -- THE END GOAL.
+            // GARBAGE CELLS TAKEN OFF THE BOARD.
             //
-            // Combos, chains and flattening are means; a broken slab is the only
-            // thing that removes garbage permanently, and a run that reports deaths
-            // and frames says nothing about whether the bot is doing the job. The
+            // NOT THE GOAL. Not dying is the goal; breaking garbage is how a board
+            // stops dying, and a combo, a chain or a flatten is how it breaks. The
+            // order matters to the arithmetic: if breaking were terminal the bot
+            // would break at any price, when what it is actually worth is the
+            // survival it buys -- which is why a break has a right TIME rather than
+            // a standing priority.
+            //
+            // Counted because it is the diagnostic the survival number cannot give.
+            // Frames can be bought with stop time while the garbage keeps stacking,
+            // so a run at 93% of frames does not say whether the board is getting
+            // out from under it or merely postponing. The
             // count falls only when a break lands, so summing the falls is the cells
             // broken. It rises when garbage ARRIVES, which is not progress and is
             // not counted.
@@ -252,7 +260,7 @@ function spawnOne(job) {
                         '   (' + Math.round(100 * frames / Math.max(1, pairings * 30000)) + '%)');
             console.log('garbage broken ' + brokeAll + ' cells   mean ' +
                         Math.round(brokeAll / Math.max(1, pairings * 2)) + ' a board' +
-                        '   (the end goal; combos and flattening are means to it)');
+                        '   (how a board stops dying; not the goal itself)');
             process.exit(hard ? 1 : 0);
         }
         pump();
