@@ -1353,6 +1353,36 @@ function hostile() {
        'lexicographic sort again and nothing else in the ranking can ever matter');
 }());
 
-console.log('survival: 112 invariants checked without playing a game');
+// ------ 24. the two things that hold a full board, and what each is worth
+//
+// The floor is held for every frame panels are in motion -- the resolve -- and
+// the engine AWARDS stop time on top, from its table, for combos over three and
+// for chains. Two mechanics that add, and deadly()'s full-board branch counts
+// both.
+//
+// The numbers are pinned here because the reasoning everywhere else rests on
+// them: a break clearing exactly three panels earns NO award, and holds the
+// floor through its resolve alone -- which is why counting only the award would
+// price the one move that stops the board at nothing.
+(function () {
+    ok(BF.stopTimeOf(P, false, 3, 0, true) === 0,
+       'a three-panel combo earns ' + BF.stopTimeOf(P, false, 3, 0, true) + ' awarded ' +
+       'frames, not 0. The engine pays for combos over three and for chains, and a ' +
+       'bare three is neither -- every rule that treats a three as payless reads this');
+    ok(BF.stopTimeOf(P, false, 4, 0, true) > 0 && BF.stopTimeOf(P, true, 0, 2, true) > 0,
+       'a combo 4 or a 2-chain earns nothing either, so the award table is not ' +
+       'being read at all');
+    // The resolve holds regardless, and scales with the garbage it pops.
+    ok(BF.resolveFramesOf(P, 3, 0) > 0,
+       'a three holds the floor for ' + BF.resolveFramesOf(P, 3, 0) + ' frames while ' +
+       'it resolves. If that is zero, nothing holds a full board and every clear is fatal');
+    ok(BF.resolveFramesOf(P, 3, 24) > BF.resolveFramesOf(P, 3, 0) * 3,
+       'popping a four-row slab holds ' + BF.resolveFramesOf(P, 3, 24) + ' frames ' +
+       'against ' + BF.resolveFramesOf(P, 3, 0) + ' for the same three panels alone. ' +
+       'The hold scales with the garbage on screen and that is what makes a break ' +
+       'worth more than the clear inside it');
+}());
+
+console.log('survival: 116 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');
