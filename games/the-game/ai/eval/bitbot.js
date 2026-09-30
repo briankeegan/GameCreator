@@ -180,6 +180,7 @@
         this._walk = null;
         this._lastSwap = null;
         this._slab = null;
+        this._slabTries = 0;
         this.decisions = 0;
         // WHERE EVERY FRAME WENT. Not diagnostics bolted on -- the bot could not
         // say what it did with a frame, so every question about its behaviour was
@@ -2006,7 +2007,24 @@
         //
         // It never stalls: with no route available it falls through and raises,
         // because no answer exists to wait for and a row beats standing still.
-        if (raising && !this.breaksLandingSlab(base)) {
+        // BOUNDED, AND THE BOUND HAS NEVER BEEN SEEN TO BIND.
+        //
+        // The route is planned against withSlab, which rests the slab on the
+        // TALLEST column -- and a setup move can change which column that is, so a
+        // plan can run out with the board still not holding the break and the next
+        // decision plans again. The board changes every move, so nothing watching
+        // for a still board would see an opening spent entirely on preparing.
+        //
+        // In practice it cannot run long: `raising` is itself rarely sustained --
+        // stubbing readiness false and handing it a route every decision, the
+        // longest streak is 8 with the count and 8 without, over 1,200 frames that
+        // carried the raise intent on only 4 of them. So this is insurance against
+        // a case not yet observed, not a measured necessity, and there is no test
+        // for it because a test that passes either way is worse than none.
+        var SLAB_TRIES = 8;
+        if (!raising) this._slabTries = 0;
+        if (raising && !this.breaksLandingSlab(base) &&
+            (this._slabTries || 0) < SLAB_TRIES) {
             var sn = null;
             if (this._slab && this._slab.moves.length) sn = this._slab.moves[0];
             else {
@@ -2026,6 +2044,7 @@
                     if (!this._slab.moves.length) this._slab = null;
                     this._wantRaise = false;
                     this.raiseFrames = 0;
+                    this._slabTries = (this._slabTries || 0) + 1;
                     this.counts.slabSetup = (this.counts.slabSetup || 0) + 1;
                     return { kind: 'swap', move: sn, mode: mode, alive: alive,
                              via: 'slabSetup' };
@@ -2033,7 +2052,10 @@
                 this._slab = null;
             }
         } else if (raising) {
+            // Holding the break, or out of tries: either way nothing is owed and
+            // the count starts again the next time one is needed.
             this._slab = null;
+            if (this.breaksLandingSlab(base)) this._slabTries = 0;
         }
         if (raising) {
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
@@ -2062,6 +2084,9 @@
             if (rc) {
                 if (raising === 'opening') this.counts.openingRaises++;
                 else this.counts.raisedForMaterial++;
+                // THE BUDGET IS PER ROW, NOT PER OPENING. Spending it once must not
+                // leave every later row unprepared.
+                this._slabTries = 0;
                 return { kind: 'raise', mode: mode, alive: alive, via: 'raise:' + raising };
             }
             // WHILE THE RAISE IS HAPPENING, IT IS NOT SWAPPING.
