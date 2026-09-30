@@ -2596,6 +2596,15 @@
         var f = options && options.flatten;
         if (!f || !f.swaps.length) return null;
         if ((f.duration || 0) > deadline) return null;
+        // AND IT MUST LAND SOMEWHERE THE RAISE WOULD HAVE BEEN ALLOWED FROM.
+        //
+        // The raise itself is refused unless the board has something to fire, so a
+        // route that postpones the raise must not land where the raise would have
+        // been refused -- otherwise levelling walks the board into the position the
+        // readiness rule exists to prevent. The route carries the board it lands on
+        // and the physics are deterministic, so this is asked before committing, the
+        // same way the other flatten path asks it.
+        if (f.lands && !this.hasFireable(f.lands)) return null;
         return f;
     };
 
