@@ -27,6 +27,9 @@ var WEIGHTS = ['trained.pbt.pbt-r22-s322.0926-142336.g03120.json',
                'trained.pbt.pbt-r01-s301.0926-142244.g00560.json']
   .map(function (f) { return JSON.parse(fs.readFileSync(path.join(DIR, f), 'utf8')).weights; });
 
+// GC_SURVIVE_BUDGET: the survival search's step budget (PuyoCpu
+// SURVIVE_SEARCH_BUDGET), for measuring what a smaller one costs.
+if (process.env.GC_SURVIVE_BUDGET) PuyoCpu.prototype.SURVIVE_SEARCH_BUDGET = Number(process.env.GC_SURVIVE_BUDGET);
 var st = [0, 1].map(function () { return new PanelEngine.Stack({ level: 10, seed: SEED, countdown: false }); });
 var REALTIME = Number(process.env.GC_REALTIME || 0);
 function opts(i) {
