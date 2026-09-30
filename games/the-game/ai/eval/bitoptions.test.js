@@ -274,8 +274,46 @@ if (flatSpread !== 0) {
     gok(ready(boardOf([])) === false,
         'slabReadyBoard: an empty board was called ready');
 
+    // THE SAME FIVE CASES AGAINST THE ARITHMETIC VERSION. slabReadyFast asks the
+    // question with bit operations over three rows instead of sweeping every legal
+    // swap and resolving each -- so it has to answer the same way on the cases that
+    // pin the meaning, or it is a different question wearing the same name.
+    var fast = opts.slabReadyFast;
+    gok(fast(boardOf([[3, 4, 5, 3, 4, 5], [1, 1, 2, 1, 1, 1]])) === true,
+        'slabReadyFast: missed a three one swap away in the top row');
+    gok(fast(boardOf([[1, 1, 2, 1, 1, 1], [3, 4, 5, 3, 4, 5]])) === false,
+        'slabReadyFast: counted a three that the slab lands above');
+    gok(fast(boardOf([[1, 2, 3, 1, 2, 3], [2, 3, 1, 2, 3, 1]])) === false,
+        'slabReadyFast: called a board with no clear one swap away ready');
+    var full2 = [], f2;
+    for (f2 = 0; f2 < 12; f2++) full2.push([1, 2, 3, 1, 2, 3]);
+    gok(fast(boardOf(full2)) === false,
+        'slabReadyFast: called a board with no room for a slab ready for one');
+    gok(fast(boardOf([])) === false, 'slabReadyFast: called an empty board ready');
+
+    // AND IT MAY NEVER SAY YES WHERE THE SWEEP SAYS NO.
+    //
+    // It looks at three rows and only at swaps between two occupied cells, so it
+    // misses a cascade, a panel dropped into an empty cell, and any match outside
+    // those rows. Every one of those is a missed yes, which costs an opportunity.
+    // A yes the sweep does not agree with would be the opposite: the search
+    // preferring a route to a board that cannot answer what lands on it.
+    var over = 0, checked = 0;
+    for (var bi = 0; bi < src.boards.length && checked < 120; bi++) {
+        var rb = boardFromString(src.boards[bi]);
+        var stb = bit.maskState(rb.grid, rb.blocks, W, H);
+        if (!stb) continue;
+        checked++;
+        if (fast(stb) && !ready(stb)) over++;
+    }
+    gok(checked > 20, 'slabReadyFast: too few real boards to compare against (' + checked + ')');
+    gok(over === 0,
+        'slabReadyFast said a board was ready for the slab on ' + over + ' of ' +
+        checked + ' real boards where the sweep says it is not -- it may be cheaper ' +
+        'than the sweep, never less careful');
+
     console.log('  gating: ' + (gfails ? gfails + ' FAILED' :
-                'slabReadyBoard answers for the row that lands, not the board it sits on'));
+                'slabReadyBoard answers for the row that lands, and the bit version agrees'));
     if (gfails) process.exit(1);
 }());
 

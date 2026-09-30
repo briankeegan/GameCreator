@@ -550,9 +550,13 @@
                                 // a clear that breaks the slab is still a clear -- so
                                 // `slabReady || ready` accepts what ready accepted and
                                 // prefers nothing. Its own budget, or it halves ready's.
+                                // AND THE BUDGET COMES BEFORE THE WORK.
+                                // slabReadyBoard sweeps every legal swap on a copy of
+                                // the board; asking it first and then deciding whether
+                                // the answer was affordable bounds nothing at all.
                                 var takeSlab = !flatSlab || val > flatSlab.value;
-                                if (takeSlab && slabReadyBoard(res.settled) &&
-                                    slabBudget > 0) {
+                                if (takeSlab && slabBudget > 0 &&
+                                    slabReadyFast(res.settled)) {
                                     slabBudget--;
                                     flatSlab = { swaps: seq, frames: cost, value: val,
                                                  tall: sh2.tall, bumps: sh2.bumps,
@@ -691,6 +695,77 @@
         return false;
     }
 
+    // THE SAME QUESTION AS ARITHMETIC.
+    //
+    // slabReadyBoard lays a slab on a copy, sweeps every legal swap on the board
+    // and resolves each one. Almost all of that work cannot matter: garbage lands
+    // as one row at the height of the tallest column, so a clear only touches it
+    // by lying IN the row beneath it, and only a swap in that row or the two below
+    // can put one there. Everything else is a resolve spent to learn nothing.
+    //
+    // So this looks at three rows and does the matching with bit operations. A
+    // swap exchanges two bits in one row; a horizontal three is three consecutive
+    // columns carrying a colour in the target row, and a vertical three is one
+    // column carrying it on three consecutive rows ending at the target.
+    //
+    // ONLY SWAPS BETWEEN TWO OCCUPIED CELLS. On a settled board those cannot make
+    // anything fall, so the board after the swap is the board with two bits
+    // exchanged and nothing else. A swap into an empty cell can drop a panel, and
+    // a dropped panel never rises into the target row -- it can only leave it, so
+    // the answer this gives is never a false yes.
+    function slabReadyFast(st) {
+        var Wl = (st && st.W) || 6, Hl = (st && st.H) || 12, stride = Wl + 2;
+        var t = 0, c, top, a, r;
+        for (c = 1; c <= Wl; c++) { top = 32 - Math.clz32(st.occ[c] >>> 0); if (top > t) t = top; }
+        if (t >= Hl || t < 1) return false;
+        var target = 1 << (t - 1);            // the row the slab rests on
+        var N = st.N;
+        // colour bits per column, copied so a swap can be applied and undone
+        var col = [];
+        for (a = 1; a <= N; a++) for (c = 1; c <= Wl; c++) col[a * stride + c] = st.colour[a * stride + c] >>> 0;
+
+        function colourAt(cc, bitv) {
+            for (var aa = 1; aa <= N; aa++) if (col[aa * stride + cc] & bitv) return aa;
+            return 0;
+        }
+        function matchesTarget() {
+            for (var aa = 1; aa <= N; aa++) {
+                // horizontal: three consecutive columns carrying aa in the target row
+                var runlen = 0;
+                for (var cc = 1; cc <= Wl; cc++) {
+                    if (col[aa * stride + cc] & target) { runlen++; if (runlen >= 3) return true; }
+                    else runlen = 0;
+                }
+                // vertical: aa on three consecutive rows ending at the target row
+                if (t >= 3) {
+                    for (var c2 = 1; c2 <= Wl; c2++) {
+                        var m = col[aa * stride + c2];
+                        if ((m & target) && (m & (target >> 1)) && (m & (target >> 2))) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        var rows = [t, t - 1, t - 2];
+        for (var ri = 0; ri < rows.length; ri++) {
+            r = rows[ri];
+            if (r < 1) continue;
+            var bitv = 1 << (r - 1);
+            for (c = 1; c < Wl; c++) {
+                var left = colourAt(c, bitv), right = colourAt(c + 1, bitv);
+                if (!left || !right || left === right) continue;   // empty or nothing to exchange
+                col[left * stride + c] &= ~bitv;  col[left * stride + c + 1] |= bitv;
+                col[right * stride + c + 1] &= ~bitv; col[right * stride + c] |= bitv;
+                var hit = matchesTarget();
+                col[left * stride + c] |= bitv;   col[left * stride + c + 1] &= ~bitv;
+                col[right * stride + c + 1] |= bitv; col[right * stride + c] &= ~bitv;
+                if (hit) return true;
+            }
+        }
+        return false;
+    }
+
     return { options: options, kindOf: kindOf, sizeOf: sizeOf, shapeOf: shapeOf,
-             slabReadyBoard: slabReadyBoard };
+             slabReadyBoard: slabReadyBoard, slabReadyFast: slabReadyFast };
 }));
