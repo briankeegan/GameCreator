@@ -520,7 +520,24 @@
     //
     // The numbers are STARTER's own, so the starting vector is unchanged and only
     // the ones that went tower-friendly are clamped.
-    var FLOOR = { bumpiness: -20, tallest: -40 };
+    // AND SPREAD IS ON THE FLOOR WITH THEM, because it is survival and not a
+    // preference.
+    //
+    // Spread is the rows a slab seals: garbage rests on the tallest column and spans
+    // the width, so every column shorter than it has the difference sealed
+    // underneath, out of reach, holding whatever is below. A vector that zeroes or
+    // reverses that is choosing to bury its own board, which is the same argument
+    // that put bumpiness and tallest here.
+    //
+    // It was left out, and two of the four random vectors in the tournament carry a
+    // POSITIVE weight on it -- rand2 at +43.2 and rand4 at +55.4 -- so they actively
+    // prefer a sealed board and nothing stopped them. rand3 carries +75.0 on
+    // bumpiness and +85.4 on tallest and is held to -20 and -40 by this clamp; its
+    // spread was the one term it was free to get wrong.
+    //
+    // STARTER's own number, as the other two are, so the starting vector is
+    // unchanged and this only ever binds a vector that wanted less.
+    var FLOOR = { bumpiness: -20, tallest: -40, spread: -10 };
 
     BitBot.prototype.score = function (st, moveFrames, resolved, info) {
         var out = BF.features(null, [info.cursorRow, info.cursorCol], moveFrames,
