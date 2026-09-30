@@ -90,29 +90,34 @@ console.log(jobs.length + ' pairings, ' + Math.min(JOBS, jobs.length) + ' at a t
 var next = 0, live = 0, done = 0, deaths = 0, hard = 0, lines = [];
 function pump() {
     while (live < JOBS && next < jobs.length) {
-        var job = jobs[next++];
-        live++;
-        var ch = cp.spawn(process.execPath,
-            [__filename, '--root', ROOT, '--one', job], { stdio: ['ignore', 'pipe', 'inherit'] });
-        var buf = '';
-        ch.stdout.on('data', function (d) { buf += d; });
-        ch.on('close', function () {
-            live--; done++;
-            var line = buf.trim();
-            if (line) {
-                lines.push(line);
-                var n = (line.match(/DEAD@/g) || []).length;
-                deaths += n;
-                if (n && /(STARTER|ZERO)\s+DEAD@/.test(line)) hard += n;
-                console.log('  [' + done + '/' + jobs.length + '] ' + line);
-            }
-            if (done === jobs.length) {
-                console.log('\n' + deaths + ' deaths / ' + (jobs.length * 2) + ' boards' +
-                            '   STARTER or ZERO: ' + hard);
-                process.exit(hard ? 1 : 0);
-            }
-            pump();
-        });
+        // ONE CLOSURE PER CHILD. `var` is function-scoped, so a buffer declared
+        // in this loop is ONE buffer shared by every child started in the same
+        // pass -- four children appending to it and each printing the lot.
+        spawnOne(jobs[next++]);
     }
+}
+function spawnOne(job) {
+    live++;
+    var ch = cp.spawn(process.execPath,
+        [__filename, '--root', ROOT, '--one', job], { stdio: ['ignore', 'pipe', 'inherit'] });
+    var buf = '';
+    ch.stdout.on('data', function (d) { buf += d; });
+    ch.on('close', function () {
+        live--; done++;
+        var line = buf.trim();
+        if (line) {
+            lines.push(line);
+            var n = (line.match(/DEAD@/g) || []).length;
+            deaths += n;
+            if (n && /(STARTER|ZERO)\s+DEAD@/.test(line)) hard += n;
+            console.log('  [' + done + '/' + jobs.length + '] ' + line);
+        }
+        if (done === jobs.length) {
+            console.log('\n' + deaths + ' deaths / ' + (jobs.length * 2) + ' boards' +
+                        '   STARTER or ZERO: ' + hard);
+            process.exit(hard ? 1 : 0);
+        }
+        pump();
+    });
 }
 pump();
