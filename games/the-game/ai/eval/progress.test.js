@@ -173,13 +173,18 @@ function run(seed, weightsA, weightsB, frames) {
 //   SAME_ANSWER_MAX    the same swap returned with the board unchanged in between.
 //                      The same cell twice is ordinary -- a break lands and the
 //                      column refills -- so the board not moving is the whole
-//                      signal. Observed: 4. Budget 8.
+//                      signal. Observed: 9 (seed 103 rand2, via flatten). Budget 14.
 //
-// Before the two fixes this gate was written for, the same three read 144, 144 and
-// 38, with a 151-decision run of one answer.
+// Before the fix this gate was written for, the same figures read 144, 144 and 38,
+// with a 151-decision run of one answer.
+//
+// EVERY NUMBER ABOVE IS FROM A CLEAN CHECKOUT AT A KNOWN COMMIT. An earlier set was
+// taken from a working tree being edited while the runs were in flight, which made
+// them unattributable and sent two wrong conclusions into this file and one wrong
+// change into the bot. Measure from a worktree, not from the tree you are editing.
 var STILL_MAX = 80;
 var FROZEN_STILL_MAX = 40;
-var SAME_ANSWER_MAX = 8;
+var SAME_ANSWER_MAX = 14;
 //   CYCLE_MAX          settled frames confined to at most two board positions --
 //                      standing still is one, an undo pair is two. Observed on
 //                      this build: 118 (seed 103 rand1, via digPlan). Budget 140.
@@ -188,15 +193,12 @@ var SAME_ANSWER_MAX = 8;
 // between two positions is two seconds of not playing, and this number is here to
 // be driven down -- the budget is set above what the build does so the gate catches
 // a REGRESSION today, and it should be lowered every time the figure improves.
-// 118 was the figure before the undo replay was refused; 93 is with it. That change
-// is survival-neutral -- every one of the nine deaths over sixty boards landed on
-// the identical frame with it and without -- so it buys frames, not lives, and the
-// number still has a long way to come down.
-//
-// AND THE WIDE FORM OF THAT RULE IS MEASURED AND REJECTED: matching a move against
-// the last three positions rather than only the replay cut the bot from 233
-// decisions to 102 over three duels. Whatever drives this number further down has
-// to do it without taking moves away from the bot.
+// REFUSING THE REPLAY WOULD TAKE 118 TO 93 AND IS REJECTED: on one pairing in
+// isolation it took seed 103 rand3 from surviving 28,345 frames at 311 of 329
+// garbage broken to dying at 1,235 at 5 of 47. Three rules that work by taking a
+// move away from the bot have now been measured -- that one, and the empty-column
+// refusal in two forms -- and all three cost more than they saved. Whatever brings
+// this number down has to change what the bot PREFERS, not what it is allowed.
 var CYCLE_MAX = 140;
 
 var GAMES = [

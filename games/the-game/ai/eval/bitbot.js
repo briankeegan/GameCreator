@@ -179,7 +179,6 @@
         this._raiseStarted = false;
         this._walk = null;
         this._lastSwap = null;
-        this._undoGuard = null;
         this.decisions = 0;
         // WHERE EVERY FRAME WENT. Not diagnostics bolted on -- the bot could not
         // say what it did with a frame, so every question about its behaviour was
@@ -1732,7 +1731,6 @@
                 if (allowed[i].kind === 'swap' && allowed[i].masks) {
                     var sig = signature(allowed[i].masks);
                     if (sig === here || this._seen.indexOf(sig) >= 0) { this.counts.refusedReturn++; continue; }
-                    if (this.undoesRecent(base, allowed[i].swap)) { this.counts.refusedReturn++; continue; }
                 }
                 kept.push(allowed[i]);
             }
@@ -1962,8 +1960,6 @@
         var self = this;
         function returnsToSeen(mv) {
             if (!self.refuseReturn || !mv) return false;
-            // The position the swap MAKES, before anything it might set off.
-            if (self.undoesRecent(base, mv)) return true;
             for (var q = 0; q < pool.length; q++) {
                 var pc = pool[q];
                 if (pc.kind === 'swap' && pc.swap[0] === mv[0] &&
@@ -2720,37 +2716,25 @@
     // any path can be found in it and put to the same question. That is what
     // makes the exit gate an enforcement point rather than a fourth place to
     // write a rule and be bypassed. Add rules HERE.
-    // AN UNDO IS AN UNDO WHETHER OR NOT A CLEAR IS PREDICTED.
+    // REFUSING THE REPLAY OF A SWAP IS MEASURED AND REJECTED.
     //
-    // The return filters compare the board a swap RESOLVES to. Inside a freeze the
-    // pool is read off panels still in motion, and resolveFromMasks finds matches on
-    // a board the engine cannot see yet -- so the landed board looks like somewhere
-    // new and the move goes through. Seed 103 played one swap sixteen decisions in a
-    // row at four-frame intervals, and another fifteen, the board alternating
-    // between exactly two positions inside a 51-frame freeze, via bestAttack,
-    // attackPlan, flatten and digPlan in turn. Nothing was in flight; each swap
-    // completed and the next one put it back.
+    // The wiggle it was aimed at is real: inside a freeze the pool is read off
+    // panels still in motion, resolveFromMasks finds matches the engine cannot see
+    // yet, so the board a swap RESOLVES to looks like somewhere new and the existing
+    // return filters let a two-cycle run. Seed 103 played one swap sixteen decisions
+    // in a row at four-frame intervals, the board alternating between two positions.
     //
-    // THE NARROW FORM, which is the only one that pays. Matching a move against the
-    // last three positions refuses real moves -- a cascade revisits positions -- and
-    // over three duels it cut the bot from 233 decisions to 102. This is the case
-    // with no legitimate reading at all: the move is the one just played, and the
-    // board it makes is exactly the board that swap was played FROM. Replaying it
-    // cannot do anything but put the board back.
+    // Refusing it -- even in the narrowest form, the same swap onto the exact board
+    // it was played from, which has no legitimate reading -- costs the game. Measured
+    // on one pairing in isolation, seed 103 rand1 vs rand3, the only difference being
+    // that clause: rand3 survives to 28,345 and breaks 311 of 329 garbage cells
+    // without it, and dies at 1,235 having broken 5 of 47 with it. The wasted frames
+    // it saves (118 down to 93 over three duels) are not worth that.
     //
-    // Measured over 60 boards: every death identical to without it, and the longest
-    // stretch confined to two positions down from 118 frames to 93. It buys frames,
-    // not lives.
-    //
-    // On a copy: `base` is pool[0].masks and every stage after this reads it.
-    BitBot.prototype.undoesRecent = function (base, mv) {
-        var g = this._undoGuard;
-        if (!this.refuseReturn || !mv || !base || !g) return false;
-        if (g.mv[0] !== mv[0] || g.mv[1] !== mv[1]) return false;
-        var st = bit.copyState(base);
-        if (!bit.swapMasks(st, mv[0], mv[1])) return false;
-        return signature(st) === g.from;
-    };
+    // Three rules have now been tried that work by taking a move away from the bot
+    // -- this, and the empty-column refusal in two forms -- and all three cost more
+    // than they saved. What is left for the two-position figure in
+    // progress.test.js is something that changes what the bot PREFERS.
 
     BitBot.prototype.refuses = function (cand, info, base, survivalNeeded) {
         if (!cand || cand.kind !== 'swap' || !cand.resolved) return null;
@@ -2800,20 +2784,7 @@
     //
     // Soft: if nothing keeps a save, the original move stands. This narrows the
     // choice, it never refuses to move.
-    // THE MOVE THAT WAS ACTUALLY PLAYED, AND THE BOARD IT WAS PLAYED FROM.
-    //
-    // Written down outside the gate rather than at its many exits, because the gate
-    // can substitute the move on the way out and what has to be remembered is what
-    // left the building. One copy, and no path can play a swap without it.
     BitBot.prototype.decide = function () {
-        var d = this._gate();
-        if (d && d.kind === 'swap' && d.move && this._lastBase) {
-            this._undoGuard = { mv: [d.move[0], d.move[1]], from: signature(this._lastBase) };
-        }
-        return d;
-    };
-
-    BitBot.prototype._gate = function () {
         var d = this._decide();
         var info = this._lastInfo, pool = this._lastPool, base = this._lastBase;
         if (!d || d.kind !== 'swap' || !d.move || !info || !pool || !base) return d;
