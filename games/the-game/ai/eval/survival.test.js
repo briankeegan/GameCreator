@@ -1074,6 +1074,31 @@ function hostile() {
        'attack: a one-cell loss of dig outranked a clear more than ten times the ' +
        'size, so this is a refusal wearing a price and the bot will not cash');
 
+    // AND THE LOSS IS NOT CHARGED TWICE. Clearing removes panels, so nearly every
+    // clear drops `dig` -- and those panels are already paid for, as cells sent
+    // here and as o.total * perPanel in the plan. Charging again for the reach
+    // they carried is the same panels twice, and it lands as a blanket tax on
+    // cashing while buried: seed 103 STARTER sat on two rows of material under
+    // thirty-three cells of garbage playing setups, dead at 2,319.
+    //
+    // Two options identical but for the reach they spend, so only a charge for
+    // the loss can separate them. Equal rates go to the first seen.
+    var spendsA = o({ total: 6, size: 6, digGain: -5 });
+    var evenA = o({ total: 6, size: 6, digGain: 0, swaps: [[1, 3]] });
+    var pickSpend = BitBot.bestAttackOf({ now: [spendsA, evenA], next: [] },
+                                        WV, engine, 600, FT, 18.7);
+    ok(pickSpend && pickSpend.option === spendsA,
+       'attack: a clear was ranked below an identical one because it spent reach. ' +
+       'Those panels are already paid for as cells sent -- this charges for them ' +
+       'twice and taxes cashing on exactly the boards that need it');
+    var spendsP = o({ total: 6, size: 6, digGain: -5 });
+    var evenP = o({ total: 6, size: 6, digGain: 0, swaps: [[1, 3]] });
+    var pickSpendP = BitBot.bestPlanOf({ now: [spendsP, evenP], next: [] },
+                                       0, 600, engine, false, 112, FT, 5);
+    ok(pickSpendP && pickSpendP.option === spendsP,
+       'survival plan: a plan was ranked below an identical one because it spent ' +
+       'reach, which o.total * perPanel has already paid for');
+
     // AND OFF THE SLAB IT IS SILENT: with no garbage there is nothing to dig
     // toward, digGain is zero everywhere, and the ranking is untouched.
     var cleanBig = o({ total: 8, size: 8, digGain: 0 });
@@ -1085,6 +1110,6 @@ function hostile() {
        'every digGain is zero and this term may not change anything');
 }());
 
-console.log('survival: 88 invariants checked without playing a game');
+console.log('survival: 90 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');

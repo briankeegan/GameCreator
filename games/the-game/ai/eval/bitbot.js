@@ -1141,7 +1141,21 @@
             // that MIGHT finish a line against the slab outweighed a six-combo.
             // perPanel is the atom this file converts with everywhere else.
             // NOT CALIBRATED; written here so the next measurement can move it.
-            cells += (o.digGain || 0);
+            //
+            // THE GAIN ONLY, BECAUSE THE LOSS IS ALREADY PAID FOR. `dig` counts
+            // cells that would finish a line against the slab, and clearing
+            // REMOVES panels, so nearly every clear drops it -- 5 of 15 options on
+            // a buried board spend reach against 2 that gain it. Those panels are
+            // already valued: this ranking pays for them as cells sent and the
+            // plan's as o.total * perPanel. Charging again for the reach they
+            // carried is the same panels twice, and it comes out as a blanket tax
+            // on cashing while buried. Measured on seed 103 STARTER: two rows of
+            // material under thirty-three cells of garbage, playing setups, dead
+            // at 2,319 where the same board without the tax lives.
+            //
+            // A clear that OPENS new reach is information nothing else carries, so
+            // that half stays.
+            cells += Math.max(0, o.digGain || 0);
             if (cells <= 0) continue;                       // sends nothing, holds nothing
             // The vector's taste for this shape, read off the same buckets the
             // features use, floored so it can only ever scale the rate down to a
@@ -1335,8 +1349,11 @@
             // moves -- where it was never asked at all.
             // One cell of the way out is worth one panel of life -- perPanel, the
             // atom this ranking already converts everything else with. NOT
-            // CALIBRATED. See bestAttack for why it is not bitoptions' deadline/W.
-            var digs = (o.digGain || 0) * perPanel;
+            // CALIBRATED. See bestAttack for why it is not bitoptions' deadline/W,
+            // and for why only the GAIN counts: the panels a clear spends are
+            // already priced as o.total * perPanel just above, so charging for the
+            // reach they carried is the same panels twice.
+            var digs = Math.max(0, o.digGain || 0) * perPanel;
             var bought = o.total * perPanel + holds + (o.garbage || 0) * perCell
                        + lowered * (framesPerRow || 0) + gain
                        - shortfall * (framesPerRow || 0)
