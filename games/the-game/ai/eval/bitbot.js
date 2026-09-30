@@ -179,6 +179,7 @@
         this._raiseStarted = false;
         this._walk = null;
         this._lastSwap = null;
+        this._justUnlooped = false;
         this.decisions = 0;
         // WHERE EVERY FRAME WENT. Not diagnostics bolted on -- the bot could not
         // say what it did with a frame, so every question about its behaviour was
@@ -1147,6 +1148,9 @@
             // unknowable so `mat` is null, and it ADDS material besides.
             var short = shortfallOf(o);
             cells -= short * W;
+            // AND THE VOID THE SLAB WOULD SEAL, converted the way everything here
+            // is: a row of void is a row of ceiling, and a row is W panels.
+            cells += (o.voidGain || 0) * W;
             // AND BEING READY FOR THE SLAB THAT IS COMING. Worth a row of rise,
             // converted to this ranking's currency. Zero unless there is a slab
             // to be ready for, so it cannot speak on a clean board.
@@ -1429,6 +1433,9 @@
             var bought = o.total * perPanel + holds + (o.garbage || 0) * perCell
                        + lowered * (framesPerRow || 0) + gain
                        - shortfall * (framesPerRow || 0)
+                       // AND THE VOID THE SLAB WOULD SEAL -- a row of it is a row
+                       // of ceiling, so framesPerRow, like height.
+                       + (o.voidGain || 0) * (framesPerRow || 0)
                        + digs
                        // AND BEING READY FOR THE SLAB THAT IS COMING -- already in
                        // frames, which is this ranking's currency. See bestAttack.
@@ -3208,28 +3215,52 @@
         function cashes(c) {
             return !!(c.resolved && (c.resolved.total > 0 || c.resolved.brokeGarbage));
         }
+        // A REPEAT OF THE SAME TWO CELLS, AND ONLY THAT. A landing whose signature
+        // has been seen is no loop on a sparse board: a panel swapped sideways with
+        // nothing under it falls straight back, so the position really is unchanged
+        // and the signature really does match. That is the cost of walking the
+        // cursor, and refusing it fired fifteen times in one duel.
+        // AND BOTH CELLS HAVE TO HOLD A PANEL.
+        //
+        // With one side empty it is not a swap, it is a panel moved sideways -- and
+        // moving a panel along, at the same coordinates, over and over is ordinary
+        // play. It is what levelFirst does across a sparse opening, which is why
+        // refusing it overrode that route eight times and left the board at
+        // 3,4,1,3,4,9.
+        //
+        // Two panels exchanged is the case that undoes itself: play it again and
+        // the board is exactly as it was. That is the loop.
+        function bothFilled(sw) {
+            if (!sw) return false;
+            var row = sw[0], col = sw[1], b = 1 << (row - 1);
+            return !!(base.occ[col] & b) && !!(base.occ[col + 1] & b);
+        }
         function loops(c) {
             if (cashes(c)) return false;
             var ls = self._lastSwap;
-            if (ls && c.swap && c.swap[0] === ls[0] && c.swap[1] === ls[1]) return true;
-            return !!c.masks && self._seen.indexOf(signature(c.masks)) >= 0;
+            if (!ls || !c.swap) return false;
+            if (c.swap[0] !== ls[0] || c.swap[1] !== ls[1]) return false;
+            return bothFilled(c.swap);
         }
-        if (!loops(picked)) return d;
-        // WHAT THE REPLACEMENT IS RANKED BY, AND WHY IT IS NOT `score`.
+        if (!loops(picked)) { this._justUnlooped = false; return d; }
+        // AND NOT TWICE RUNNING.
         //
-        // The move being refused buys ZERO frames: it cashes nothing and puts the
-        // board where it has already been. So the replacement has to be measured in
-        // frames, against zero. `score` is the weighted vector in its own units --
-        // it cannot be compared to zero frames, and ranking a substitution by it is
-        // overruling a frames-priced route with a preference, which this file
-        // measures at 15 deaths in 30. Ranked that way the guard fired four times
-        // in one duel and the four were enough: columns 3,4,1,3,4,9, a nine-high
-        // tower, dead at 1,211.
+        // The substitution is played, so it becomes `_lastSwap` -- and then the
+        // route's own next choice is that move, which this refuses as a repeat of
+        // what it forced. It fights itself: forcing 3-4 to 3-3 makes 3-3 the
+        // repeat. Eight of fifteen firings overrode levelFirst across the opening
+        // of one duel, the board never levelled, 3,4,1,3,4,9, dead at 1,129 --
+        // 67% of frames against 93%.
         //
-        // A CLEAR IS THE EXCEPTION, because a clear buys frames outright -- the
-        // resolve holds the floor and the stop time is awarded. Those are ranked by
-        // `score` as they always were. Everything else is ranked by idleScore,
-        // which is in frames and has no weight in it.
+        // A guard breaks a loop; it does not get to drive. One refusal, then it
+        // stands aside for a decision. A real cycle cannot survive that: it comes
+        // back round and is broken again.
+        if (this._justUnlooped) { this._justUnlooped = false; return d; }
+        // RANKED IN FRAMES. The refused move buys ZERO frames -- it cashes nothing
+        // and returns the board -- so the replacement has to be measured against
+        // zero in the same unit. `score` is the weighted vector in its own units,
+        // with no exchange rate to frames. A candidate that CLEARS keeps `score`,
+        // because a clear buys frames outright.
         var sub = null, cash = null;
         for (i = 0; i < pool.length; i++) {
             var sc = pool[i];
@@ -3249,6 +3280,7 @@
         }
         if (cash) sub = cash;
         if (!sub) return d;
+        this._justUnlooped = true;
         this.counts.refusedLoop++;
         return { kind: 'swap', move: sub.cand.swap, mode: d.mode,
                  alive: d.alive, via: 'unlooped' };
