@@ -671,15 +671,6 @@
             // A broken slab hands us colours the engine draws from its own rng, so
             // there is no settled board to score. The BREAK is still the point of
             // the move, so the candidate is kept with what is known up to it.
-            // THE UNDO IS NOT A CANDIDATE EITHER. The weights path ranks this pool
-            // rather than the option list, so it needs the same exclusion. Same test:
-            // the move just played, clearing nothing, with a panel in both cells.
-            var ls0 = this._lastSwap;
-            if (ls0 && ls0[0] === r && ls0[1] === c &&
-                !(res && (res.total > 0 || res.scope === 'garbage-broke'))) {
-                var ub = 1 << (r - 1);
-                if ((base.occ[c] & ub) && (base.occ[c + 1] & ub)) continue;
-            }
             out.push({ kind: 'swap', swap: [r, c],
                        board: null,
                        masks: after,
@@ -1479,10 +1470,6 @@
             // THE MATERIAL FLOOR, carried rather than duplicated: the number lives
             // here and the search prices it in its own currency.
             workingRows: WORKING_ROWS,
-            // THE MOVE JUST PLAYED, so the search can leave out the one that would
-            // undo it. Carried rather than consulted here: the search enumerates the
-            // options every route reads, so excluding it there covers all of them.
-            avoidSwap: this._lastSwap,
             // WHAT A CLEAR IN HAND IS WORTH, IN FRAMES. The smallest clear is a
             // three, and what it buys is the floor held for its own resolve --
             // resolveFramesOf, the same function the death filter uses, so this is
