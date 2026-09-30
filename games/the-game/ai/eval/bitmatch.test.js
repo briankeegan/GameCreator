@@ -716,16 +716,14 @@ var BitBot = require('./bitbot.js');
         }
         return best;
     }
+    // FIXTURE BOARDS, NOT A PLAYED GAME. Collecting boards by playing 2,500
+    // frames with a live bot put twenty seconds on a gate that is meant to be
+    // instant; realboards.json is already here and already real.
     var checked = 0, wrong = 0, nonzero = 0, seen = {};
-    var st0 = new P.Stack({ level: 10, seed: 101, countdown: false });
-    var probe = new BitBot(st0, { allowRaise: true });
-    for (var f = 0; f < 2500 && !st0.gameOver; f++) {
-        probe.update(); st0.run();
-        if (f % 150 === 0 && f > 0) st0.receiveGarbage([{ width: 6, height: 1, isMetal: false }]);
-        st0.drainEvents();
-        if (f % 11) continue;
-        var b = probe._snapshot();
-        var m = bit.maskState(b.grid, b.blocks, W, b.height);
+    for (var qi = 0; qi < src.boards.length && checked < 240; qi++) {
+        var qb = boardFromString(src.boards[qi]);
+        var m = bit.maskState(qb.grid, qb.blocks, W, H);
+        if (!m || m.bad) continue;
         [false, true].forEach(function (top) {
             var price = priceOf(top);
             var got = bit.bestOneSwapStop(m, price), want = brute(m, price);
@@ -734,7 +732,7 @@ var BitBot = require('./bitbot.js');
             if (got > 0) { nonzero++; seen[got] = (seen[got] || 0) + 1; }
         });
     }
-    bok(checked > 100, 'bestOneSwapStop: only ' + checked + ' boards checked');
+    bok(checked > 120, 'bestOneSwapStop: only ' + checked + ' boards checked');
     bok(wrong === 0,
         'bestOneSwapStop: disagreed with brute force on ' + wrong + ' of ' + checked +
         ' real boards -- a landing ranked on a number that is sometimes wrong is a ' +
