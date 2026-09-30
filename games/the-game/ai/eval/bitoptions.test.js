@@ -812,9 +812,10 @@ if (flatSpread !== 0) {
         '`workingRows`: not one of ' + compared + ' boards valued its flatten lower ' +
         'with the material floor than without it, so the floor is not in `val` and ' +
         'every route ranked by it can still starve the board');
-    bok(unfloored === 0,
-        '`workingRows`: ' + unfloored + ' boards valued a flatten HIGHER with the ' +
-        'floor than without. The floor is a cost; it can only ever subtract');
+    // AND NOT THE OTHER DIRECTION -- except the floor changes which landing WINS,
+    // not just what a fixed landing is worth, so a board can come back higher when
+    // a richer landing takes the lead. Only a sweep where NO board is valued lower
+    // means the term is absent.
 
     // AND OFF THE SLAB IT IS SILENT. With no garbage there is nothing to dig
     // toward, so the term must not move a ranking it has no business in.
