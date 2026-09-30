@@ -193,6 +193,15 @@
         // the same fraction a save (DEADLINE/W * W) and a dig cell one step from
         // one (DEADLINE/W) are already counted at.
         var PREPWORTH = FPR / W;
+        // THE MATERIAL FLOOR. bestAttack and bestPlan each refuse a move that
+        // spends the board below it; none of the routes ranked in here did, and
+        // they are the ones that pick the move on a dying board. Seed 103 walked
+        // its columns to 1,0,1,0,3,4 -- nine panels under twenty-three cells of
+        // garbage -- through six saves and four flattens, and died at 3,538.
+        //
+        // Priced the way bestPlan prices it, at a row of rise per row short, so a
+        // route that starves the board pays what the starving costs.
+        var WORK = (timing && timing.workingRows) || 0;
         // A CAP ON HOW MANY LANDINGS GET ASKED. slabReadyFast walks the landed
         // board, so neither list can ask it of everything. Declared here and reset
         // in expandAll, so the beam gets the same cap the depth-1 list does.
@@ -688,6 +697,7 @@
                                 var val = (BASE.tall - sh2.tall) * FPR
                                         + (BASE.excess - sh2.excess) * FPR
                                         + landStop
+                                        - Math.max(0, WORK - sh2.mat) * FPR
                                         - dur;
                                 // UNDER A SLAB, FLAT AND LOW IS THE WRONG GOAL.
                                 //
