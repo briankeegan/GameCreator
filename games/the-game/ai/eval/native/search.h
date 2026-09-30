@@ -455,9 +455,12 @@ static void runTasks(void) {
     if (i >= n) break;
     const int32_t *t = pool.tasks + 4 * i;
     int32_t mv = t[1];
-    pool.res[t[3]] = mv == -1 ? lineStep(x, t[0], MK_LONG, 0, 0, t[2])
-                   : mv == -2 ? lineStep(x, t[0], MK_HOLD, 0, 0, 0)
-                   : lineStep(x, t[0], MK_SWAP, CR(mv), CC(mv), 0);
+    int32_t r = mv == -1 ? lineStep(x, t[0], MK_LONG, 0, 0, t[2])
+              : mv == -2 ? lineStep(x, t[0], MK_HOLD, 0, 0, 0)
+              : lineStep(x, t[0], MK_SWAP, CR(mv), CC(mv), 0);
+    // A step's board is not read till its node is expanded: replayed then.
+    if (r >= 0) dropBoard(x, r);
+    pool.res[t[3]] = r;
   }
 }
 #ifdef THREADS
@@ -533,7 +536,7 @@ static int runPhase(Ctx *x, Vec *tasks, int32_t *res) {
 EXPORT(ns_loop) int ns_loop(Ctx *x, int budget, int until, int full, int beam, int quota, int seedsMax) {
   int32_t *verdict = x->verdict, *proofs = x->proofs, *weak = x->weak, *reach = x->reach, *reachSet = x->reachSet, *far = x->far;
   int polled = 0, i, j;
-  static Vec poff, res, tasks, proven;
+  static Vec poff, res, tasks, proven, parents;
   for (i = 0; i < x->ntags; i++) {
     if (proofs[i] >= 0) NODE(x, proofs[i])->pins++;
     if (weak[i] >= 0) NODE(x, weak[i])->pins++;
@@ -543,7 +546,7 @@ EXPORT(ns_loop) int ns_loop(Ctx *x, int budget, int until, int full, int beam, i
   if (!vreserve(&proven, x->ntags)) return LOOP_ERR;
   while (x->level.n && budget > 0) {
     int32_t seenN = 0;
-    x->next.n = 0;
+    x->next.n = 0; parents.n = 0;
     clearSeen(x);
     int32_t at = 0;
     while (at < x->level.n && budget > 0) {
@@ -611,6 +614,9 @@ EXPORT(ns_loop) int ns_loop(Ctx *x, int budget, int until, int full, int beam, i
           if (!reachSet[tag] || cn->t > reach[tag]) { reach[tag] = cn->t; reachSet[tag] = 1; pin(x, &far[tag], c); }
           if (cn->t >= full && !cn->dead) { verdict[tag] = 1; pin(x, &proofs[tag], c); break; }
           if (cn->t >= x->surviveFrames && weak[tag] < 0) pin(x, &weak[tag], c);
+          // A child's board is not read till the level is cut to the beam: a
+          // child kept is replayed from its parent then.
+          dropBoard(x, c);
           if (cn->dead) continue;
           int sb = seenBefore(x, c, &seenN);
           if (sb < 0) return LOOP_ERR;
@@ -619,7 +625,7 @@ EXPORT(ns_loop) int ns_loop(Ctx *x, int budget, int until, int full, int beam, i
           cn = NODE(x, c); cn->live = 1;
         }
         NODE(x, ni)->live = 0;
-        release(x, ni);
+        if (!vpush(&parents, ni)) return LOOP_ERR;
       }
       for (j = 0; j < x->moves.n; j++) if (res.a[j] >= 0) dropBoard(x, res.a[j]);
       at = e;
@@ -657,6 +663,8 @@ EXPORT(ns_loop) int ns_loop(Ctx *x, int budget, int until, int full, int beam, i
       if (!cn->kept) { cn->live = 0; release(x, x->next.a[j]); }
     }
     if (!sortBetter(x, keep + seeds, nk - seeds)) return LOOP_ERR;
+    for (j = 0; j < nk; j++) if (!ensureBoard(x, keep[j])) return LOOP_ERR;
+    for (j = 0; j < parents.n; j++) release(x, parents.a[j]);
     if (!vreserve(&x->level, nk)) return LOOP_ERR;
     for (j = 0; j < nk; j++) x->level.a[j] = keep[j];
     x->level.n = nk;
