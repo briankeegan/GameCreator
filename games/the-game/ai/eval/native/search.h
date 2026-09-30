@@ -66,6 +66,7 @@ EXPORT(ns_ctx_new) Ctx *ns_ctx_new(void) { Ctx *x = (Ctx *)grab(sizeof(Ctx)); me
 EXPORT(ns_ctx_set) void ns_ctx_set(Ctx *x, int reaction, int cursorMoveFrames, int surviveFrames, int surviveRest) {
   x->reaction = reaction; x->cursorMoveFrames = cursorMoveFrames; x->surviveFrames = surviveFrames; x->surviveRest = surviveRest;
 }
+EXPORT(ns_ctx_cap) int ns_ctx_cap(Ctx *x) { return x->cap; }
 // Every node gone and every board back in the pool.
 EXPORT(ns_reset) void ns_reset(Ctx *x) {
   for (int i = 0; i < x->n; i++) if (x->nodes[i].st && !x->nodes[i].fromPrev) nb_free(x->nodes[i].st);

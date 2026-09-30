@@ -2129,8 +2129,15 @@
   // The engine in C's nodes for this bot, emptied at each decision.
   PuyoCpu.prototype._natSearch = function () {
     // On threads, this thread and threads - 1 workers share the level loop.
-    if (!this._nat) this._nat = new (NativeMod().Search)({ reaction: this.reaction || 0, cursorMoveFrames: this.cursorMoveFrames,
-                                                          threads: this.threads || 1 });
+    // A bot given serverStack (a pa-engine.js Stack: the panel-game server's
+    // rules) searches on native/pa.c from it; its own stack is then only the
+    // view of that board the rest of the bot reads.
+    var mod = this.serverStack ? NativeMod().server : NativeMod();
+    if (this._nat && this._nat.module !== mod) throw new Error('PuyoCpu: a bot searches on one engine');
+    if (!this._nat) {
+      this._nat = new mod.Search({ reaction: this.reaction || 0, cursorMoveFrames: this.cursorMoveFrames, threads: this.threads || 1 });
+      this._nat.module = mod;
+    }
     this._nat.configure(this.reaction || 0, this.cursorMoveFrames, this.SURVIVE_FRAMES, this.SURVIVE_REST);
     return this._nat;
   };
@@ -2139,6 +2146,10 @@
     this._carry = null;
     var arr = this._inFlight().map(function (a) { return { at: a.at, width: a.width, height: a.height, isChain: a.isChain }; });
     this._carry = saved;
+    if (this.native && this.serverStack) {
+      // Garbage in flight is the server's to deliver: nothing is known of it here.
+      return this._natSearch().root(this.serverStack.copy(), { left: this.raiseFrames || 0, started: !!this._raiseStarted }, [], false);
+    }
     if (this.native) return this._natSearch().root(cloneStack(this.stack), { left: this.raiseFrames || 0, started: !!this._raiseStarted }, arr, true);
     return this._engineNode(cloneStack(this.stack), 0,
                             { left: this.raiseFrames || 0, started: !!this._raiseStarted }, arr, true);

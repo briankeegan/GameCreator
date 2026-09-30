@@ -183,7 +183,7 @@
     NAMES = [];
     var mem = function () { return new Uint8Array(MEM.buffer); };
     for (var i = 0, n = X.nb_nhead(); i < n; i++) {
-      var p = X.nb_head_name(i), m = mem(), e = p;
+      var p = (X.nb_head_name(i) >>> 0), m = mem(), e = p;
       while (m[e]) e++;
       NAMES.push(String.fromCharCode.apply(null, m.subarray(p, e)));
     }
@@ -223,7 +223,7 @@
     THREADS = n;
     var STACK = 1 << 20;
     for (var k = 1; k < n; k++) {
-      var sp = X.ns_grab(STACK);
+      var sp = (X.ns_grab(STACK) >>> 0);
       if (!sp) throw new Error('Native: no memory for a thread');
       var w = new wt.Worker(WORKER_SRC, { eval: true, workerData: { mod: mod, mem: MEM, id: k, sp: sp + STACK } });
       w.unref();
@@ -240,8 +240,8 @@
   }
   function views() {
     // Memory can grow under any call; views are made fresh.
-    HEAD = new Float64Array(MEM.buffer, X.nb_io_head(), NAMES.length);
-    BODY = new Int32Array(MEM.buffer, X.nb_io_body());
+    HEAD = new Float64Array(MEM.buffer, (X.nb_io_head() >>> 0), NAMES.length);
+    BODY = new Int32Array(MEM.buffer, (X.nb_io_body() >>> 0));
   }
   function searchBoard(st) {
     if (st.doCountdown || st.allowIdleSkip || !st.rng || st.rng.name !== 'noRng' ||
@@ -418,7 +418,7 @@
     NODEOFF = {};
     var m = new Uint8Array(MEM.buffer);
     for (var i = 0; ; i++) {
-      var p = X.ns_field_name(i);
+      var p = (X.ns_field_name(i) >>> 0);
       if (!p) break;
       var e = p; while (m[e]) e++;
       NODEOFF[String.fromCharCode.apply(null, m.subarray(p, e))] = X.ns_field_off(i);
@@ -446,7 +446,7 @@
     if (typeof st.toStack === 'function') st = st.toStack();
     this.template = st;
     wire(st);
-    var body = new Int32Array(MEM.buffer, X.nb_io_body()), used = bodyLen(st);
+    var body = new Int32Array(MEM.buffer, (X.nb_io_body() >>> 0)), used = bodyLen(st);
     arrivals.forEach(function (a, i) {
       body[used + 5 * i] = int(a.at, 'arrival'); body[used + 5 * i + 1] = int(a.width, 'arrival');
       body[used + 5 * i + 2] = int(a.height, 'arrival'); body[used + 5 * i + 3] = bool(!!a.isChain, 'arrival');
@@ -457,14 +457,14 @@
     return this.wrap(r);
   };
   function moveOf(n) {
-    var o = NODEOFF, v = new Int32Array(MEM.buffer, X.ns_node(n.ctx, n.i), o.size >> 2);
+    var o = NODEOFF, v = new Int32Array(MEM.buffer, (X.ns_node(n.ctx, n.i) >>> 0), o.size >> 2);
     var mk = v[o.mk >> 2];
     return mk === 0 ? 'long' : mk === 1 ? null : mk === 2 ? 'raise' : [v[o.mr >> 2], v[o.mc >> 2]];
   }
   // A node as puyocpu.js reads one.
   Search.prototype.wrap = function (i) {
     if (this.nodes[i]) return this.nodes[i];
-    var S = this, gen = this.gen, o = NODEOFF, base = X.ns_node(this.ctx, i);
+    var S = this, gen = this.gen, o = NODEOFF, base = (X.ns_node(this.ctx, i) >>> 0);
     var v = new Int32Array(MEM.buffer, base, o.size >> 2);
     function g(k) { return v[o[k] >> 2]; }
     function live() { if (S.gen !== gen) throw new Error('Native: a node from an earlier decision was read'); }
@@ -488,7 +488,7 @@
       b: { key: key, height: height, width: 6, _garb: g('garb'), _top: g('top'),
            legalSwaps: function () {
              live();
-             var m = X.ns_legal(S.ctx, i), body = new Int32Array(MEM.buffer, X.nb_io_body(), Math.max(0, m)), out = [];
+             var m = X.ns_legal(S.ctx, i), body = new Int32Array(MEM.buffer, (X.nb_io_body() >>> 0), Math.max(0, m)), out = [];
              if (m < 0) throw new Error('Native: board lost');
              for (var q = 0; q < m; q++) out.push([body[q] >> 3, body[q] & 7]);
              return out;
@@ -498,7 +498,7 @@
     Object.defineProperty(n.b, 'grid', { enumerable: true, configurable: true, get: function () {
       if (grid) return grid;
       live();
-      var H = X.ns_grid(S.ctx, i), body = new Int32Array(MEM.buffer, X.nb_io_body(), (H + 2) * 7);
+      var H = X.ns_grid(S.ctx, i), body = new Int32Array(MEM.buffer, (X.nb_io_body() >>> 0), (H + 2) * 7);
       if (H < 0) throw new Error('Native: board lost');
       grid = [];
       for (var r = 0; r <= H + 1; r++) grid.push(Array.prototype.slice.call(body.subarray(r * 7, r * 7 + 7)));
@@ -540,7 +540,7 @@
   Search.prototype.wrapLoop = function (i) {
     var n = this.wrap(i), S = this;
     if (Object.prototype.hasOwnProperty.call(n, 'tag')) return n;
-    var v = new Int32Array(MEM.buffer, X.ns_node(this.ctx, i), NODEOFF.size >> 2), o = NODEOFF;
+    var v = new Int32Array(MEM.buffer, (X.ns_node(this.ctx, i) >>> 0), NODEOFF.size >> 2), o = NODEOFF;
     var tag = v[o.tag >> 2], prev = v[o.prev >> 2], seed = v[o.seed >> 2], m = moveOf({ ctx: this.ctx, i: i });
     n.tag = tag; n.m = m;
     if (seed) n.seed = true;
@@ -560,7 +560,7 @@
   // have changed it. Returns the budget left; o.level is the level left open.
   Search.prototype.loop = function (o, abortFn, abortValue) {
     var S = this, n = o.ntags, i;
-    var base = X.ns_tags(this.ctx, n), stride = X.ns_tag_stride(this.ctx);
+    var base = (X.ns_tags(this.ctx, n) >>> 0), stride = X.ns_tag_stride(this.ctx);
     if (!base) throw new Error('Native: out of memory');
     var T = new Int32Array(MEM.buffer, base, stride * 7);
     for (i = 0; i < n; i++) {
@@ -571,7 +571,7 @@
       T[4 * stride + i] = o.reach[i] === undefined ? 0 : 1;
       T[5 * stride + i] = idx(S, o.far[i]);
     }
-    var lv = o.level, L = X.ns_level(this.ctx, lv.length);
+    var lv = o.level, L = (X.ns_level(this.ctx, lv.length) >>> 0);
     if (!L && lv.length) throw new Error('Native: out of memory');
     var LA = new Int32Array(MEM.buffer, L, lv.length);
     for (i = 0; i < lv.length; i++) LA[i] = idx(S, lv[i]);
@@ -581,14 +581,14 @@
     try { left = X.ns_loop(this.ctx, o.budget, o.until, o.full, o.beam, o.quota, o.seeds); } finally { ABORT = null; }
     if (left === -10) throw abortValue;
     if (left < 0) throw new Error('Native: the level loop failed (' + left + ')');
-    T = new Int32Array(MEM.buffer, X.ns_tags(this.ctx, n), stride * 7);
+    T = new Int32Array(MEM.buffer, (X.ns_tags(this.ctx, n) >>> 0), stride * 7);
     for (i = 0; i < n; i++) {
       if (T[i] === 1 && !o.verdict[i]) { o.verdict[i] = 'proven'; o.newlyProven.push(i); }
       if (T[stride + i] >= 0) o.proofs[i] = S.wrapLoop(T[stride + i]);
       if (T[2 * stride + i] >= 0) o.weak[i] = S.wrapLoop(T[2 * stride + i]);
       if (T[4 * stride + i]) { o.reach[i] = T[3 * stride + i]; o.far[i] = S.wrapLoop(T[5 * stride + i]); }
     }
-    var ln = X.ns_level_n(this.ctx), LB = new Int32Array(MEM.buffer, X.ns_level(this.ctx, ln), ln);
+    var ln = X.ns_level_n(this.ctx), LB = new Int32Array(MEM.buffer, (X.ns_level(this.ctx, ln) >>> 0), ln);
     o.level = [];
     for (i = 0; i < ln; i++) o.level.push(S.wrapLoop(LB[i]));
     return left;
@@ -598,6 +598,7 @@
     init: init,
     initThreads: initThreads,
     threads: function () { return THREADS; },
+    memoryBytes: function () { return MEM ? MEM.buffer.byteLength : 0; },
     fromStack: fromStack,
     toStack: toStack,
     free: function (h) { X.nb_free(h); },

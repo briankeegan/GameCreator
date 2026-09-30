@@ -973,6 +973,66 @@
     return s;
   }
 
-  return { Stack: Stack, Panel: Panel, fromLua: fromLua, Unseen: Unseen, Recorded: Recorded, PANEL_FROM_LUA: PANEL_FROM_LUA,
+  // A board sent to another thread comes back a plain object: give it its
+  // prototypes again (the source is unseen: a search's).
+  function revive(o) {
+    Object.setPrototypeOf(o, Stack.prototype);
+    for (var r = 0; r < o.panels.length; r++) for (var c = 1; c <= W; c++) Object.setPrototypeOf(o.panels[r][c], Panel.prototype);
+    o.source = new Unseen();
+    o.events = o.events || [];
+    return o;
+  }
+  // THE SAME BOARD AS panel-engine.js HOLDS ONE, for the parts of a bot that
+  // read a board rather than play it (candidates, their scores): nil is the
+  // engine's default, shock panels are the colour 8 they match as, shock
+  // garbage is garbage. Nothing is played on this; searches play the Stack.
+  function toPanelEngine(s, PE) {
+    var st = new PE.Stack({ level: 10, seed: 1, countdown: false });
+    var ints = ['speed', 'nextSpeedIncreaseClock', 'clock', 'displacement', 'stopTime', 'preStopTime', 'shakeTime', 'shakeTimeOnFrame',
+                'peakShakeTime', 'health', 'chainCounter', 'nActive', 'nPrevActive', 'swappingCount', 'panelsCleared', 'score', 'curRow',
+                'curCol', 'topCurRow', 'queuedSwapRow', 'queuedSwapCol', 'garbageCreatedCount', 'highestGarbageIdMatched', 'panelIdCount'];
+    ints.forEach(function (k) { st[k] = s[k]; });
+    st.riseTimer = s.riseTimer;
+    ['riseLock', 'hasRisen', 'manualRaise', 'manualRaiseYet', 'preventManualRaise', 'wasToppedOut'].forEach(function (k) { st[k] = !!s[k]; });
+    st.gameOver = s.gameOverClock > 0;
+    st.stopWatchIsRunning = true; st.doCountdown = false; st.animatingCursorDuringCountdown = false;
+    st.cursorDirection = null; st.cursorTimer = 0;
+    st.incoming = s.incoming.slice().reverse().map(function (g) { return { width: g.width, height: g.height, isChain: !!g.isChain }; });
+    st.outgoing = []; st.currentChain = null; st.swapStallBacklog = []; st.garbageLandedThisFrame = [];
+    st.dropColumnIndex = {};
+    for (var w = 1; w <= 6; w++) st.dropColumnIndex[w] = s.dropColumnIndex[w - 1] - 1;
+    var rows = [], r, c;
+    for (r = 0; r < Math.max(24, s.panels.length); r++) {
+      var row = [null];
+      for (c = 1; c <= W; c++) {
+        var q = r < s.panels.length ? s.panels[r][c] : null, p = {};
+        if (!q) {
+          p = { row: r, col: c, id: ++st.panelIdCount, color: 0, chaining: false, matching: false, timer: 0, initialTime: 0, popTime: 0,
+                popIndex: 0, xOffset: null, yOffset: null, gWidth: 0, gHeight: 0, shakeTime: 0, isGarbage: false, state: 'normal',
+                comboIndex: null, comboSize: null, swapFromLeft: null, dontSwap: false, queuedHover: false, fellFromGarbage: 0,
+                stateChanged: false, propagatesChaining: false, matchAnyway: false };
+        } else {
+          p = { row: r, col: c, id: q.id, color: q.color, chaining: !!q.chaining, matching: !!q.matching, timer: q.timer,
+                initialTime: q.initialTime || 0, popTime: q.popTime || 0, popIndex: q.popIndex || 0, xOffset: q.xOffset, yOffset: q.yOffset,
+                gWidth: q.gWidth || 0, gHeight: q.gHeight || 0, shakeTime: q.shakeTime || 0, isGarbage: !!q.isGarbage,
+                state: q.state === 'dead' ? 'normal' : q.state, comboIndex: q.comboIndex, comboSize: q.comboSize,
+                swapFromLeft: q.swapFromLeft, dontSwap: !!q.dontSwap, queuedHover: !!q.queuedHover,
+                fellFromGarbage: Math.max(0, q.fellFromGarbage || 0), stateChanged: !!q.stateChanged,
+                propagatesChaining: !!q.propagatesChaining, matchAnyway: !!q.matchAnyway };
+          if (q.propagatesFalling !== null) p.propagatesFalling = !!q.propagatesFalling;
+          if (q.garbageId !== null) p.garbageId = q.garbageId;
+        }
+        row[c] = p;
+      }
+      rows.push(row);
+    }
+    st.panels = rows;
+    st.input = { left: false, right: false, up: false, down: false, swap: false, raise: false };
+    st.prevInput = st.input;
+    st.events = [];
+    return st;
+  }
+
+  return { Stack: Stack, Panel: Panel, fromLua: fromLua, revive: revive, toPanelEngine: toPanelEngine, Unseen: Unseen, Recorded: Recorded, PANEL_FROM_LUA: PANEL_FROM_LUA,
            STACK_FROM_LUA: STACK_FROM_LUA, IN: IN, list: list, WIDTH: W, HEIGHT: H };
 }));
