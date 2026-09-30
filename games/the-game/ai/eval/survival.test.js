@@ -1200,6 +1200,45 @@ function hostile() {
        'attack: a break was narrowed out by a rule about keeping breaks alive');
 }());
 
-console.log('survival: 98 invariants checked without playing a game');
+// ------ 22. the search is handed the price of a freeze, not a boolean
+//
+// The flatten used to choose its destination by `hasFireable` -- can the board
+// it lands on fire at all. That is a boolean where the answer is a number: a
+// bare three holds the floor for 0 frames, a combo 4 for 60 topped out, a chain
+// 4 for 94, against a framesPerRow of 120. Ranking landings by the boolean
+// scores those three the same.
+(function () {
+    var st = new P.Stack({ level: 10, seed: 101, countdown: false });
+    var bot = new BitBot(st, { allowRaise: true });
+    var info = bot.info(bot._snapshot());
+    var t = bot.timing(info, 600);
+    ok(typeof t.stopPrice === 'function',
+       'the search is handed no way to price a landing, so it is still choosing ' +
+       'its destination by whether one exists');
+
+    // A BARE THREE BUYS NOTHING. It clears, and the engine's table pays zero for
+    // it -- which is exactly the case a boolean gets wrong.
+    ok(t.stopPrice({ chain: 1, total: 3 }) === 0,
+       'a bare three priced at ' + t.stopPrice({ chain: 1, total: 3 }) + ' frames. ' +
+       'The engine pays nothing for it and telling that apart from a chain is the ' +
+       'whole point of the number');
+    // AND A CHAIN BUYS A LOT. Not a threshold -- the engine's own table, whose
+    // chainConstant is 56 before any coefficient.
+    ok(t.stopPrice({ chain: 4, total: 12 }) >= 56,
+       'a 4-chain priced at ' + t.stopPrice({ chain: 4, total: 12 }) + ' frames, ' +
+       'under the engine chainConstant of 56');
+    ok(t.stopPrice({ chain: 4, total: 12 }) > t.stopPrice({ chain: 2, total: 6 }),
+       'a 4-chain is not priced above a 2-chain, so the number does not rank the ' +
+       'thing it exists to rank');
+
+    // AND IT FOLLOWS THE BOARD: topped out pays more, which is when it matters.
+    var top = Object.create(info); top.toppedOut = true;
+    var tt = bot.timing(top, 600);
+    ok(tt.stopPrice({ chain: 4, total: 12 }) > t.stopPrice({ chain: 4, total: 12 }),
+       'a chain is priced the same topped out as not, so the danger table is not ' +
+       'being read and the freeze is undervalued exactly when it is survival');
+}());
+
+console.log('survival: 103 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');

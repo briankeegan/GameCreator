@@ -165,7 +165,7 @@
     // fires this move, 2 also lists what a setup opens up.
     // Set per call by the caller, which knows its own reaction and whether the
     // clock is running.
-    var OVERHEAD = 0, RESOLVE = null, DIG = false;
+    var OVERHEAD = 0, RESOLVE = null, DIG = false, stopPrice = null;
 
     function options(board, W, H, cursor, depth, st, timing, dig) {
         OVERHEAD = (timing && timing.overhead) || 0;
@@ -411,16 +411,18 @@
             return { mask: reach, dig: dig };
         }
 
-        var flat = null, flatReady = null, flatSlab = null, save = null, ready = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
-        var slabBudget = 0;
+        var flat = null, flatReady = null, flatSlab = null, flatStop = null, save = null, ready = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
+        var slabBudget = 0, stopBudget = 0;
         var FPR = (timing && timing.framesPerRow) || 112;
         var DEADLINE = (timing && timing.deadline) || 0;
+        stopPrice = (timing && timing.stopPrice) || null;
 
         function expandAll(state0, depth) {
             BASE = shapeOf(state0);
             BASEDIG = DIG ? reachOf(state0).dig : 0;
             saveBudget = 192;
             slabBudget = 24;
+            stopBudget = 24;
             BASESAVE = (DIG && BASEDIG > 0) ? savesOfRaw(state0) : 0;
             // The root has no reach mask: ply one stays exhaustive so an immediate
             // clear is never missed.
@@ -664,6 +666,26 @@
                                                  ways: ways2, duration: dur,
                                                  lands: bit.copyState(res.settled) };
                                 }
+                                // AND THE FREEZE AT THE DESTINATION, PRICED.
+                                //
+                                // readyOf says whether the landing can fire. This says
+                                // what firing there is WORTH, which is a different
+                                // number: a bare three holds 0 frames, a combo 4 holds
+                                // 60 topped out, a chain 4 holds 94 -- and `ready`
+                                // scores all three the same while framesPerRow is 120.
+                                // Budget before the work, as with the slab.
+                                if (stopPrice && stopBudget > 0) {
+                                    stopBudget--;
+                                    var landStop = bit.bestOneSwapStop(res.settled, stopPrice);
+                                    if (landStop > 0 && (!flatStop || landStop > flatStop.landStop ||
+                                        (landStop === flatStop.landStop && val > flatStop.value))) {
+                                        flatStop = { swaps: seq, frames: cost, value: val,
+                                                     tall: sh2.tall, bumps: sh2.bumps,
+                                                     ways: ways2, duration: dur,
+                                                     landStop: landStop,
+                                                     lands: bit.copyState(res.settled) };
+                                    }
+                                }
                                 if (takeReady && readyOf(res.settled)) {
                                     flatReady = { swaps: seq, frames: cost, value: val,
                                                   tall: sh2.tall, bumps: sh2.bumps,
@@ -758,6 +780,21 @@
         // Bounded to routes that are not worse, it can only pick a different winner
         // among equals.
         if (flatSlab && (!flat || flatSlab.value >= flat.value)) flat = flatSlab;
+        // AND THE BIGGEST FREEZE AT THE FAR END BEATS MERELY LANDING ABLE TO FIRE,
+        // ON THE SAME TERMS THE SLAB OVERRIDE IS ON: never at the price of a
+        // flatter board. Taken outright, the slab version of this measured 10
+        // deaths over 24 pairings against 7 over 30 -- readiness bought with
+        // levelling the board needed. Bounded to routes that are not worse, it can
+        // only pick a different winner among equals.
+        if (flatStop && !(flatStop.value > 0)) flatStop = null;
+        if (flatStop && (!flat || flatStop.value >= flat.value)) flat = flatStop;
+        // AND WHATEVER WINS CARRIES WHAT ITS DESTINATION IS WORTH. One call on the
+        // route actually chosen, not one per contender: the caller decides whether
+        // to commit to a flatten by what it can do on arrival, and a route that
+        // lands on a bare three and one that lands on a chain are 94 frames apart.
+        if (stopPrice && flat && flat.lands && flat.landStop === undefined) {
+            flat.landStop = bit.bestOneSwapStop(flat.lands, stopPrice);
+        }
 
         return { now: now, next: next, cheapest: cheapest, flatten: flat, save: save,
                  ready: ready,

@@ -1463,6 +1463,17 @@
             overhead: travel.MOVE_FRAMES + (frozen ? 0 : this.reaction),
             resolve: function (size, garbage) {
                 return BF.resolveFramesOf(PanelEngine(), size, garbage);
+            },
+            // WHAT A CLEAR WOULD HOLD THE FLOOR FOR, in frames, from the engine's
+            // own stop table. Handed to the search so it can price the board a
+            // route LANDS on rather than asking whether that board can fire at
+            // all: a bare three holds 0, a combo 4 holds 60 topped out, a chain 4
+            // holds 94, and a boolean scores the three of them the same.
+            stopPrice: function (r) {
+                var isChain = r.chain >= 2;
+                return BF.stopTimeOf(PanelEngine(), isChain,
+                                     isChain ? 0 : bitoptions.sizeOf(r.chain, r.total),
+                                     isChain ? r.chain : 0, !!info.toppedOut);
             }
         };
     };
