@@ -102,7 +102,7 @@ if (ONE) {
                     if (pc.swap && pc.swap[0] === d.move[0] && pc.swap[1] === d.move[1] && pc.masks) {
                         var sg = Bot.signatureOf(pc.masks);
                         var ix = bots[side]._seen.indexOf(sg);
-                        seenAt = ix < 0 ? 'new' : String(ix);
+                        seenAt = (ix < 0 ? 'new' : String(ix)) + '/' + bots[side]._seen.length;
                         break;
                     }
                 }
