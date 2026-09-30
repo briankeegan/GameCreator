@@ -159,6 +159,7 @@
         // that has one.
         var START = shapeOf(st);
         var BASELOW = START ? START.low : 0;
+        var BASEBUMPS = START ? START.bumps : 0;
         var swaps = board ? board.legalSwaps() : bit.legalSwapsOf(st);
         var refused = 0, unknown = 0;
 
@@ -176,6 +177,12 @@
             if (r.total === 0 && !broke) continue;           // clears nothing: a setup, not an option
             var opt = optionOf([swaps[i]], travel.cost(cursor[0], cursor[1], swaps[i][0], swaps[i][1]), r);
             opt.breaks = broke;
+            // HORIZONTAL AND VERTICAL ARE NOT THE SAME MOVE, AND THE DIFFERENCE IS
+            // THE SHAPE. A vertical three takes three panels out of ONE column and
+            // drops it three below its neighbours; a horizontal three takes one from
+            // each of three and leaves the surface where it was. No need to detect
+            // which it is -- the landed board's bumpiness says it outright.
+            opt.levels = opt.bumps !== null && opt.bumps <= BASEBUMPS;
             opt.opensHole = opt.low === 0 && BASELOW > 0;
             now.push(opt);
         }
@@ -383,6 +390,12 @@
                             if (node.chain.length) {
                                 var opt = optionOf(node.chain.concat([sw]), cost, res);
                                 opt.breaks = broke;
+                                // HORIZONTAL AND VERTICAL ARE NOT THE SAME MOVE, AND THE DIFFERENCE IS
+                                // THE SHAPE. A vertical three takes three panels out of ONE column and
+                                // drops it three below its neighbours; a horizontal three takes one from
+                                // each of three and leaves the surface where it was. No need to detect
+                                // which it is -- the landed board's bumpiness says it outright.
+                                opt.levels = opt.bumps !== null && opt.bumps <= BASEBUMPS;
                                 opt.opensHole = opt.low === 0 && BASELOW > 0;
                                 next.push(opt);
                             }

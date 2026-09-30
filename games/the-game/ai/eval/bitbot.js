@@ -1011,6 +1011,20 @@
     // firing threes off six panels, and a 31-cell slab landed on nothing.
     function bestAttack(list, weights, engine, deadline, framesTable, perPanelFrames) {
         var best = null, all = list.now.concat(list.next), i;
+        // THE ATTACKS THAT DO NOT COST SHAPE, IF THERE ARE ANY.
+        //
+        // A vertical three takes three panels out of one column and leaves it three
+        // below its neighbours; a horizontal three takes one from each of three and
+        // leaves the surface alone. Same cells sent, different board afterwards --
+        // so between them there is nothing for a vector to weigh, the way sending
+        // AND breaking already beats sending.
+        //
+        // A NARROWING, NOT A WEIGHT, and it stands aside when every attack costs
+        // shape: then the shape was going to be paid whatever was played, and the
+        // biggest attack is the right one.
+        var level = [];
+        for (i = 0; i < all.length; i++) if (all[i].levels) level.push(all[i]);
+        if (level.length) all = level;
         for (i = 0; i < all.length; i++) {
             var o = all[i];
             if (!o.swaps || !o.swaps.length) continue;
