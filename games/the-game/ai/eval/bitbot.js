@@ -3214,8 +3214,19 @@
         // so this tightens on its own as the level speeds up: fewer decisions fit
         // in a row, and only shorter cycles can still repeat.
         if (this._lastSwap) {
-            var fprNow = (this._lastInfo && this._lastInfo.framesPerRow) || 0;
-            var depth = Math.max(1, Math.floor(fprNow / Math.max(1, this.reaction)));
+            // TWO, AND THE DERIVATION THAT SAYS TEN IS ANSWERING A DIFFERENT
+            // QUESTION. framesPerRow / reaction is 10 at level 10, and it is the
+            // right number for "which cycle lengths can go round inside one row".
+            // It says nothing about how much of an option list can be deleted
+            // before the search starves, and that is the binding constraint: the
+            // lists here run 15 to 20 candidates, and at ten the bot lost a board
+            // it survives at two -- 103 rand1 v rand2, dead at 1,524 with no
+            // garbage broken at all, against 30,000 frames and 362 cells.
+            //
+            // One is not enough either: it can only push a loop out by a step, and
+            // turned 1-cycles into 2-cycles. Two blocks both, measured at 4 deaths
+            // over 22 boards and 90% of frames against 6 and 55% at one.
+            var depth = 2;
             this._recentSwaps = [this._lastSwap].concat(this._recentSwaps || []);
             if (this._recentSwaps.length > depth) this._recentSwaps.length = depth;
         }
