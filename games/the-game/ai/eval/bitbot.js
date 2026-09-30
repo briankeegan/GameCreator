@@ -2718,11 +2718,24 @@
     // Null when there is no route. The caller raises anyway then: no answer is
     // available, and standing still is worse than a row.
     BitBot.prototype.slabRoute = function (info, base, deadline, lookDepth) {
-        var slab = this.withSlab(this.restingBoard(base));
-        if (!slab) return null;
+        var rest = this.restingBoard(base);
+        if (!this.withSlab(rest)) return null;
+        var self = this;
+        // ONE GOAL, AND THE ROUTE INCLUDES WHATEVER IT TAKES.
+        //
+        // Not "flatten, then set up". The board wanted is one where a swap breaks
+        // the slab that will land, and levelling is only wanted insofar as it gets
+        // there -- the slab rests on the tallest column and spans the width, so a
+        // break needs three adjacent columns at that height, and making the top row
+        // wide enough is part of the route, not a separate errand before it.
+        //
+        // So the search is handed the goal and finds its own way. Its own value
+        // function still prices the moves; this only decides which board counts as
+        // arriving.
         var o = bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
-                                   lookDepth, slab, this.timing(info, deadline), true);
-        var r = o && o.save;
+                                   lookDepth, rest, this.timing(info, deadline), false,
+                                   function (settled) { return self.breaksLandingSlab(settled); });
+        var r = o && o.goal;
         if (!r || !r.swaps.length) return null;
         if ((r.duration || 0) > deadline) return null;
         return r;
@@ -3083,6 +3096,40 @@
                 pc.swap[1] === d.move[1] && pc.masks) { chosen = pc; break; }
         }
         if (!chosen) return d;
+
+        // A RESERVED BREAK IS NOT A REASON TO STOP PLAYING.
+        //
+        // Once the board holds the break the raise is waiting for, the bot keeps
+        // moving -- it just may not spend that break on the way. Standing still to
+        // protect it is the worse failure and it is measured: holding for a mode
+        // is a hundred frames per episode with nothing sent. So this takes moves
+        // away from nothing; it only chooses between moves that were already
+        // available, preferring one that lands with the break still there.
+        //
+        // Soft, like every rule at this exit: if no move preserves it, the move
+        // stands. The setup was spent, and the next decision plans another.
+        if (this._wantRaise && !ARITHMETIC[d.via] && this.breaksLandingSlab(base) &&
+            !this.breaksLandingSlab(chosen.masks)) {
+            var kept = null, keptScore = -Infinity;
+            for (i = 0; i < pool.length; i++) {
+                var rc2 = pool[i];
+                if (rc2 === chosen || rc2.kind !== 'swap' || !rc2.masks) continue;
+                if ((rc2.moveFrames || 0) > this._lastDeadline) continue;
+                if (this.deadly(rc2.masks, rc2.resolved, info,
+                                Math.max((rc2.moveFrames || 0) + this.reaction,
+                                         info.framesPerRow || 0))) continue;
+                if (this.refuses(rc2, info, base, false)) continue;
+                if (!this.breaksLandingSlab(rc2.masks)) continue;
+                var s2 = this.score(rc2.masks, rc2.moveFrames, rc2.resolved, info);
+                if (s2 > keptScore) { kept = rc2; keptScore = s2; }
+            }
+            if (kept) {
+                this.counts.keptSlabBreak = (this.counts.keptSlabBreak || 0) + 1;
+                d = { kind: 'swap', move: kept.swap, mode: d.mode, alive: d.alive,
+                      via: 'keepSlab' };
+                chosen = kept;
+            }
+        }
         // A BREAK THAT LEAVES ANOTHER BREAK IS FREE. That is the whole rule: the
         // save may be spent as long as spending it makes a new one.
         //

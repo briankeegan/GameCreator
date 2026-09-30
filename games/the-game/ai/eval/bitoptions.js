@@ -145,7 +145,7 @@
     // clock is running.
     var OVERHEAD = 0, RESOLVE = null, DIG = false;
 
-    function options(board, W, H, cursor, depth, st, timing, dig) {
+    function options(board, W, H, cursor, depth, st, timing, dig, goal) {
         OVERHEAD = (timing && timing.overhead) || 0;
         RESOLVE = (timing && timing.resolve) || null;
         // DIGGING IS A GOAL, NOT A PREFERENCE. The caller sets it when the board
@@ -324,6 +324,11 @@
         }
 
         var flat = null, flatReady = null, save = null, ready = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
+        // THE GOAL IS WHAT THE CALLER CAME FOR, so it is not budgeted like a
+        // side question. `ready` and `saves` are asked opportunistically while the
+        // search does something else; this IS the search when it is passed, and at
+        // 24 nodes it barely looked -- one route found over 3,000 frames.
+        var goalRoute = null, goalBudget = 400;
         var readyBudget = 0;
         var FPR = (timing && timing.framesPerRow) || 112;
         var DEADLINE = (timing && timing.deadline) || 0;
@@ -450,6 +455,26 @@
                             if (!ready && readyOf(res.settled)) {
                                 ready = { swaps: seq, frames: cost,
                                           duration: durationOf(seq, cost) };
+                            }
+                            // THE CHEAPEST ROUTE TO A BOARD THE CALLER IS ASKING FOR.
+                            //
+                            // `ready` asks a question this file owns -- can the board
+                            // fire. A caller can have a goal this file has no business
+                            // knowing: the raise wants a board holding a break for the
+                            // slab that will land on it, which is a question about
+                            // garbage that does not exist yet. Rather than teach the
+                            // search about slabs, it takes the predicate.
+                            //
+                            // Budgeted like the others, and asked only while no route
+                            // has been found. The frontier grows in cost order, so the
+                            // first node that answers is the cheapest way there.
+                            if (goal && !goalRoute && goalBudget > 0) {
+                                goalBudget--;
+                                if (goal(res.settled)) {
+                                    goalRoute = { swaps: seq, frames: cost,
+                                                  duration: durationOf(seq, cost),
+                                                  lands: bit.copyState(res.settled) };
+                                }
                             }
                             var sh2 = shapeOf(res.settled);
                             if (sh2) {
@@ -630,7 +655,7 @@
         if (flatReady) flat = flatReady;
 
         return { now: now, next: next, cheapest: cheapest, flatten: flat, save: save,
-                 ready: ready,
+                 ready: ready, goal: goalRoute,
                  swapsConsidered: swaps.length, refused: refused, unknown: unknown };
     }
 
