@@ -130,6 +130,20 @@
                  high: mx, spread: mx - low };
     }
 
+    // EVERY FIELD AN OPTION CARRIES HAS TO BE READ BY EVERY RANKER THAT RANKS
+    // OPTIONS -- bestAttack and bestPlan both, each in its own currency: cells for
+    // one, frames for the other.
+    //
+    // Adding a quantity here and pricing it in one of them is the defect that came
+    // back eleven times in a single session. digGain, slabWorth, the material floor
+    // and the sealed void each fixed the board they were written for only once they
+    // reached both, and each wasted a measurement round first -- the board dies on
+    // the identical frame, because the route that picked the move ranked by the
+    // ranker that could not see the term.
+    //
+    // check_option_pricing.mjs decides this mechanically and gate_option_pricing
+    // runs it. A field that genuinely belongs in only one place is named in that
+    // script's EXEMPT list with the reason.
     function optionOf(swaps, frames, r) {
         var sh = shapeOf(r.settled);
         return { kind: kindOf(r.chain), size: sizeOf(r.chain, r.total),

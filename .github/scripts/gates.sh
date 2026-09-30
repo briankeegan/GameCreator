@@ -743,6 +743,17 @@ gate_bitoptions() {
   node games/the-game/ai/eval/bitoptions.test.js
 }
 
+# EVERY FIELD AN OPTION CARRIES IS READ BY EVERY RANKER THAT RANKS OPTIONS.
+#
+# Eleven times in one session the same defect: a quantity added to the option list
+# and priced in one ranker, while the route that picked the move on the dying board
+# ranked by the other and never saw it. Reads the source rather than playing a
+# game, because a term nobody reads has no board on which it gives a wrong answer
+# -- only one where it does nothing.
+gate_option_pricing() {
+  node games/the-game/ai/eval/check_option_pricing.mjs
+}
+
 # WHAT A SWAP CLEARS, WITHOUT APPLYING IT. On a settled board every column is a
 # packed run from the floor, so a swap does two things to it and both are shifts:
 # the panel crosses and lands on top of the run it joins, and the hole it left
@@ -964,6 +975,7 @@ GATES=(
   "the clock keeps frame-for-frame time with the engine:gate_bitframes:games/the-game/ai/"
   "lining up with colours as they appear:gate_bitlineup:games/the-game/ai/"
   "every option listed is real and priced:gate_bitoptions:games/the-game/ai/"
+  "every option field is priced by both rankers:gate_option_pricing:games/the-game/ai/"
   "a swap is answered without applying it:gate_bitswap:games/the-game/ai/"
   "the options are features that vary:gate_bitfeatures:games/the-game/ai/"
   "the bot plays what it picks and cannot be killed:gate_bitbot:games/the-game/ai/"
