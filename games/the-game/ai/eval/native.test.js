@@ -32,7 +32,7 @@ var F = { diff: FS.diff, same: FS.same, fromStack: NB.fromStack };
 (function () {
   var crypto = require('crypto'), built = {};
   fs.readFileSync(path.join(DIR, 'native', 'BUILT'), 'utf8').trim().split('\n').forEach(function (l) { var p = l.split(' '); built[p[0]] = p[1]; });
-  ['engine.c', 'engine.wasm', 'engine-mt.wasm'].forEach(function (f) {
+  ['engine.c', 'pa.c', 'memory.h', 'search.h', 'engine.wasm', 'engine-mt.wasm', 'pa.wasm', 'pa-mt.wasm'].forEach(function (f) {
     var h = crypto.createHash('sha256').update(fs.readFileSync(path.join(DIR, 'native', f))).digest('hex');
     assert.strictEqual(h, built[f], f + ' is not the one native/build.sh built: run native/build.sh');
   });

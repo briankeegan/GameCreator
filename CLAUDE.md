@@ -243,6 +243,11 @@ ways: a tool not listed, or a path listed that doesn't exist.
   400 real boards, because agreeing on every feature is not the same as
   playing the same game. Change a feature or the search and re-export, or the
   two drift apart in silence.
+- **The bramp server plays by its own engine.** panel-engine.js is this game's
+  engine and differs from the panel-game server's Lua (shock, garbage order,
+  input before physics). A bot for that server searches on `pa-engine.js` /
+  `native/pa.c`, which `gate_server_engine` holds to recordings of the Lua
+  (`lua/engineRecord.lua`, run in a panel-game checkout).
 - A test's scratch files go beside the test, never `os.tmpdir()`.
 
 ## Infrastructure

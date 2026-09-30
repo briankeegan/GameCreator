@@ -391,6 +391,14 @@ gate_fast_engine() {
 gate_native_engine() {
   node games/the-game/ai/eval/native.test.js 20000
 }
+# THE SERVER'S ENGINE: pa-engine.js replays real play on the panel-game
+# server's Lua engine (pa.record.jsonl.gz, made by lua/engineRecord.lua) and
+# must land on every recorded state; native/pa.c must match pa-engine.js
+# frame by frame.
+gate_server_engine() {
+  node games/the-game/ai/eval/pa_engine.test.js &&
+  node games/the-game/ai/eval/native_pa.test.js 20000
+}
 gate_engine_check() {
   node games/the-game/ai/eval/engine_check.test.js 600
 }
@@ -927,6 +935,7 @@ GATES=(
   "the bot through its brain is the same bot:gate_brain:games/the-game/ai/"
   "the fast engine is the engine, frame by frame:gate_fast_engine:games/"
   "the engine in C is the engine, frame by frame:gate_native_engine:games/"
+  "the server's engine, in JS and in C, is the server's:gate_server_engine:games/"
   "the search's steps are the same on both engines:gate_engine_check:games/the-game/ai/"
   "the resolve answers what the engine answered:gate_resolve_corpus:games/the-game/ai/"
   "two variants on one seed keep separate islands:gate_pbt_dirs:games/the-game/ai/"
