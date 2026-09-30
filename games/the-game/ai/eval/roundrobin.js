@@ -58,6 +58,32 @@ if (ONE) {
         if (V[nm]) o.weights = V[nm];
         return new Bot(st[side], o);
     });
+    // THE BOARD A DEATH HAPPENED ON, KEPT AS IT GOES. Re-running a whole duel
+    // afterwards to look at the board costs minutes and the run already had it.
+    var bit = require(path.join(ROOT, 'ai', 'eval', 'bitmatch.js'));
+    var opts = require(path.join(ROOT, 'ai', 'eval', 'bitoptions.js'));
+    function popc(n) { var k = 0; while (n) { n &= n - 1; k++; } return k; }
+    var ring = [[], []];
+    [0, 1].forEach(function (side) {
+        var real = bots[side].decide.bind(bots[side]);
+        bots[side].decide = function () {
+            var d = real();
+            var b = bots[side]._snapshot();
+            var m = bit.maskState(b.grid, b.blocks, 6, b.height);
+            var sh = opts.shapeOf(m), h = [], gar = 0, tall = 0, c;
+            for (c = 1; c <= 6; c++) {
+                var g = m.garb[c] >>> 0, fl = g ? (g & -g) : 0, bel = fl ? (fl - 1) : 0xffffffff;
+                h.push(popc((m.occ[c] & ~g & bel) >>> 0));
+                gar += popc(g);
+                var t = 32 - Math.clz32(m.occ[c] >>> 0); if (t > tall) tall = t;
+            }
+            ring[side].push({ f: st[side].clock, via: d && d.via, alive: d && d.alive,
+                              mode: d && d.mode && d.mode.name, cols: h.join(','),
+                              sp: sh ? sh.spread : 0, gar: gar, tall: tall });
+            if (ring[side].length > 14) ring[side].shift();
+            return d;
+        };
+    });
     var sent = [0, 0], f;
     for (f = 0; f < 30000 && !st[0].gameOver && !st[1].gameOver; f++) {
         bots[0].update(); bots[1].update(); st[0].run(); st[1].run();
@@ -74,6 +100,25 @@ if (ONE) {
     console.log('seed ' + seed + '  ' + A.padEnd(8) + died(0).padEnd(11) +
                 ' vs ' + Bn.padEnd(8) + died(1).padEnd(11) +
                 '  [sent ' + sent[0] + '/' + sent[1] + ']  frames ' + f);
+    var D = st[0].gameOver ? 0 : (st[1].gameOver ? 1 : -1);
+    if (D >= 0) {
+        console.log('  --- ' + [A, Bn][D] + ' died. last decisions:');
+        console.log('   frame alive mode    via           tall gar spread cols');
+        ring[D].forEach(function (r) {
+            console.log('  ' + String(r.f).padStart(6) + String(r.alive).padStart(5) + '  ' +
+                        String(r.mode).padEnd(7) + ' ' + String(r.via).padEnd(13) +
+                        String(r.tall).padStart(4) + String(r.gar).padStart(4) +
+                        String(r.sp).padStart(6) + '  ' + r.cols);
+        });
+        for (var rr = st[D].height; rr >= 1; rr--) {
+            var line = '  r' + String(rr).padStart(2) + ' ';
+            for (var cc = 1; cc <= 6; cc++) {
+                var pp = st[D].panels[rr][cc];
+                line += pp.color === 0 ? ' . ' : (pp.isGarbage ? '[#]' : ' ' + pp.color + ' ');
+            }
+            console.log(line);
+        }
+    }
     process.exit(0);
 }
 
