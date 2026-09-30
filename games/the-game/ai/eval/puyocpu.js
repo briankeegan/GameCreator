@@ -2128,7 +2128,9 @@
   }
   // The engine in C's nodes for this bot, emptied at each decision.
   PuyoCpu.prototype._natSearch = function () {
-    if (!this._nat) this._nat = new (NativeMod().Search)({ reaction: this.reaction || 0, cursorMoveFrames: this.cursorMoveFrames });
+    // On threads, this thread and threads - 1 workers share the level loop.
+    if (!this._nat) this._nat = new (NativeMod().Search)({ reaction: this.reaction || 0, cursorMoveFrames: this.cursorMoveFrames,
+                                                          threads: this.threads || 1 });
     this._nat.configure(this.reaction || 0, this.cursorMoveFrames, this.SURVIVE_FRAMES, this.SURVIVE_REST);
     return this._nat;
   };

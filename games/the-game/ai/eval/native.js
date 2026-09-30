@@ -110,16 +110,18 @@
   }
 
   var ABORT = null;   // the running loop's `should I stop` (Mind.abort)
+  var MEM = null, THREADS = 1, WORKERS = [];
   var X = null, HEAD = null, BODY = null, NAMES = null, FIELDSOF = null, AT = {};
   // The module is compiled once per thread: from bytes where there is no file
   // system (a page, a worker), from native/engine.wasm beside this file in node.
-  function init(bytes) {
-    if (X) return Native;
-    if (!bytes) bytes = require('fs').readFileSync(require('path').join(__dirname, 'native', 'engine.wasm'));
-    var inst = new WebAssembly.Instance(new WebAssembly.Module(bytes), { env: { abort_poll: function () { return ABORT && ABORT() ? 1 : 0; } } });
-    X = inst.exports;
+  function imports(memory) {
+    var env = { abort_poll: function () { return ABORT && ABORT() ? 1 : 0; } };
+    if (memory) env.memory = memory;
+    return { env: env };
+  }
+  function readNames() {
     NAMES = [];
-    var mem = function () { return new Uint8Array(X.memory.buffer); };
+    var mem = function () { return new Uint8Array(MEM.buffer); };
     for (var i = 0, n = X.nb_nhead(); i < n; i++) {
       var p = X.nb_head_name(i), m = mem(), e = p;
       while (m[e]) e++;
@@ -127,12 +129,59 @@
     }
     NAMES.forEach(function (nm, j) { AT[nm] = j; });
     FIELDSOF = NAMES.map(field);
+  }
+  // The module is compiled once per process (or page, or worker): from bytes
+  // where there is no file system, from native/engine.wasm beside this file
+  // in node.
+  function init(bytes) {
+    if (X) return Native;
+    if (!bytes) bytes = require('fs').readFileSync(require('path').join(__dirname, 'native', 'engine.wasm'));
+    var inst = new WebAssembly.Instance(new WebAssembly.Module(bytes), imports(null));
+    X = inst.exports; MEM = X.memory;
+    readNames();
+    return Native;
+  }
+  // THREADS: engine-mt.wasm on one shared memory, this thread and n - 1
+  // workers (node worker_threads), each an instance with its own stack. The
+  // level loop hands them steps; see engine.c THREADS. Once per process, and
+  // before init(): a process runs one kind or the other.
+  var WORKER_SRC = [
+    "var wt = require('worker_threads'), d = wt.workerData;",
+    "var inst = new WebAssembly.Instance(d.mod, { env: { memory: d.mem, abort_poll: function () { return 0; } } });",
+    "inst.exports.__stack_pointer.value = d.sp;",
+    "inst.exports.ns_thread_init(d.id);",
+    "inst.exports.ns_worker_loop();"
+  ].join('\n');
+  function initThreads(n) {
+    n = Math.max(1, n | 0);
+    if (X) { if (THREADS === n || (THREADS > 1 && n > 1)) return Native; throw new Error('Native: already running on ' + THREADS + ' thread(s)'); }
+    var fs = require('fs'), path = require('path'), wt = require('worker_threads');
+    var mod = new WebAssembly.Module(fs.readFileSync(path.join(__dirname, 'native', 'engine-mt.wasm')));
+    MEM = new WebAssembly.Memory({ initial: 256, maximum: 65536, shared: true });
+    X = new WebAssembly.Instance(mod, imports(MEM)).exports;
+    X.ns_thread_init(0);
+    THREADS = n;
+    var STACK = 1 << 20;
+    for (var k = 1; k < n; k++) {
+      var sp = X.ns_grab(STACK);
+      if (!sp) throw new Error('Native: no memory for a thread');
+      var w = new wt.Worker(WORKER_SRC, { eval: true, workerData: { mod: mod, mem: MEM, id: k, sp: sp + STACK } });
+      w.unref();
+      w.on('error', function (e) { console.error('Native worker: ' + (e && e.stack || e)); });
+      WORKERS.push(w);
+    }
+    var nap = new Int32Array(new SharedArrayBuffer(4)), t0 = Date.now();
+    while (X.ns_workers() < n - 1) {
+      if (Date.now() - t0 > 30000) throw new Error('Native: workers did not start');
+      Atomics.wait(nap, 0, 0, 2);
+    }
+    readNames();
     return Native;
   }
   function views() {
     // Memory can grow under any call; views are made fresh.
-    HEAD = new Float64Array(X.memory.buffer, X.nb_io_head(), NAMES.length);
-    BODY = new Int32Array(X.memory.buffer, X.nb_io_body());
+    HEAD = new Float64Array(MEM.buffer, X.nb_io_head(), NAMES.length);
+    BODY = new Int32Array(MEM.buffer, X.nb_io_body());
   }
   function searchBoard(st) {
     if (st.doCountdown || st.allowIdleSkip || !st.rng || st.rng.name !== 'noRng' ||
@@ -243,7 +292,7 @@
   function nodeFields() {
     if (NODEOFF) return NODEOFF;
     NODEOFF = {};
-    var m = new Uint8Array(X.memory.buffer);
+    var m = new Uint8Array(MEM.buffer);
     for (var i = 0; ; i++) {
       var p = X.ns_field_name(i);
       if (!p) break;
@@ -254,7 +303,8 @@
   }
   var KIND = { long: 0, hold: 1, raise: 2, swap: 3 };
   function Search(cfg) {
-    init(); nodeFields();
+    if (cfg.threads > 1) initThreads(cfg.threads); else init();
+    nodeFields();
     this.ctx = X.ns_ctx_new();
     X.ns_ctx_set(this.ctx, cfg.reaction | 0, cfg.cursorMoveFrames | 0, cfg.surviveFrames | 0, cfg.surviveRest | 0);
     this.gen = 0; this.nodes = []; this.template = null;
@@ -272,7 +322,7 @@
     if (typeof st.toStack === 'function') st = st.toStack();
     this.template = st;
     fromStackWire(st);
-    var body = new Int32Array(X.memory.buffer, X.nb_io_body()), used = bodyLength(st);
+    var body = new Int32Array(MEM.buffer, X.nb_io_body()), used = bodyLength(st);
     arrivals.forEach(function (a, i) {
       body[used + 4 * i] = int(a.at, 'arrival'); body[used + 4 * i + 1] = int(a.width, 'arrival');
       body[used + 4 * i + 2] = int(a.height, 'arrival'); body[used + 4 * i + 3] = bool(!!a.isChain, 'arrival');
@@ -282,7 +332,7 @@
     return this.wrap(r);
   };
   function moveOf(n) {
-    var o = NODEOFF, v = new Int32Array(X.memory.buffer, X.ns_node(n.ctx, n.i), o.size >> 2);
+    var o = NODEOFF, v = new Int32Array(MEM.buffer, X.ns_node(n.ctx, n.i), o.size >> 2);
     var mk = v[o.mk >> 2];
     return mk === 0 ? 'long' : mk === 1 ? null : mk === 2 ? 'raise' : [v[o.mr >> 2], v[o.mc >> 2]];
   }
@@ -290,7 +340,7 @@
   Search.prototype.wrap = function (i) {
     if (this.nodes[i]) return this.nodes[i];
     var S = this, gen = this.gen, o = NODEOFF, base = X.ns_node(this.ctx, i);
-    var v = new Int32Array(X.memory.buffer, base, o.size >> 2);
+    var v = new Int32Array(MEM.buffer, base, o.size >> 2);
     function g(k) { return v[o[k] >> 2]; }
     function live() { if (S.gen !== gen) throw new Error('Native: a node from an earlier decision was read'); }
     var arr = [], a0 = o.arr >> 2;
@@ -300,7 +350,7 @@
       var c = v[k0 + k], col = c & 255;
       key += (col === 255 ? '#' : col) + KEYCH[(c >> 8) & 15] + ((c >> 12) || '') + ',';
     }
-    var rise = new Float64Array(X.memory.buffer, base + o.riseTimer, 1)[0], height = S.template.height, st = null, grid = null;
+    var rise = new Float64Array(MEM.buffer, base + o.riseTimer, 1)[0], height = S.template.height, st = null, grid = null;
     var n = {
       _nat: S, _i: i, t: g('t'), hold: { left: g('holdLeft'), started: g('holdStarted') === 1 }, arrivals: arr, fresh: g('fresh') === 1,
       pos: [g('pos0'), g('pos1')],
@@ -309,7 +359,7 @@
       b: { key: key, height: height, width: 6, _garb: g('garb'), _top: g('top'),
            legalSwaps: function () {
              live();
-             var m = X.ns_legal(S.ctx, i), body = new Int32Array(X.memory.buffer, X.nb_io_body(), Math.max(0, m)), out = [];
+             var m = X.ns_legal(S.ctx, i), body = new Int32Array(MEM.buffer, X.nb_io_body(), Math.max(0, m)), out = [];
              if (m < 0) throw new Error('Native: board lost');
              for (var q = 0; q < m; q++) out.push([body[q] >> 3, body[q] & 7]);
              return out;
@@ -319,7 +369,7 @@
     Object.defineProperty(n.b, 'grid', { enumerable: true, configurable: true, get: function () {
       if (grid) return grid;
       live();
-      var H = X.ns_grid(S.ctx, i), body = new Int32Array(X.memory.buffer, X.nb_io_body(), (H + 2) * 7);
+      var H = X.ns_grid(S.ctx, i), body = new Int32Array(MEM.buffer, X.nb_io_body(), (H + 2) * 7);
       if (H < 0) throw new Error('Native: board lost');
       grid = [];
       for (var r = 0; r <= H + 1; r++) grid.push(Array.prototype.slice.call(body.subarray(r * 7, r * 7 + 7)));
@@ -361,7 +411,7 @@
   Search.prototype.wrapLoop = function (i) {
     var n = this.wrap(i), S = this;
     if (Object.prototype.hasOwnProperty.call(n, 'tag')) return n;
-    var v = new Int32Array(X.memory.buffer, X.ns_node(this.ctx, i), NODEOFF.size >> 2), o = NODEOFF;
+    var v = new Int32Array(MEM.buffer, X.ns_node(this.ctx, i), NODEOFF.size >> 2), o = NODEOFF;
     var tag = v[o.tag >> 2], prev = v[o.prev >> 2], seed = v[o.seed >> 2], m = moveOf({ ctx: this.ctx, i: i });
     n.tag = tag; n.m = m;
     if (seed) n.seed = true;
@@ -383,7 +433,7 @@
     var S = this, n = o.ntags, i;
     var base = X.ns_tags(this.ctx, n), stride = X.ns_tag_stride(this.ctx);
     if (!base) throw new Error('Native: out of memory');
-    var T = new Int32Array(X.memory.buffer, base, stride * 7);
+    var T = new Int32Array(MEM.buffer, base, stride * 7);
     for (i = 0; i < n; i++) {
       T[i] = o.verdict[i] ? 2 : 0;
       T[stride + i] = idx(S, o.proofs[i]);
@@ -394,7 +444,7 @@
     }
     var lv = o.level, L = X.ns_level(this.ctx, lv.length);
     if (!L && lv.length) throw new Error('Native: out of memory');
-    var LA = new Int32Array(X.memory.buffer, L, lv.length);
+    var LA = new Int32Array(MEM.buffer, L, lv.length);
     for (i = 0; i < lv.length; i++) LA[i] = idx(S, lv[i]);
     for (i = 0; i < lv.length; i++) X.ns_set_tag(this.ctx, lv[i]._i, lv[i].tag, lv[i].seed ? 1 : 0);
     ABORT = abortFn || null;
@@ -402,14 +452,14 @@
     try { left = X.ns_loop(this.ctx, o.budget, o.until, o.full, o.beam, o.quota, o.seeds); } finally { ABORT = null; }
     if (left === -10) throw abortValue;
     if (left < 0) throw new Error('Native: the level loop failed (' + left + ')');
-    T = new Int32Array(X.memory.buffer, X.ns_tags(this.ctx, n), stride * 7);
+    T = new Int32Array(MEM.buffer, X.ns_tags(this.ctx, n), stride * 7);
     for (i = 0; i < n; i++) {
       if (T[i] === 1 && !o.verdict[i]) { o.verdict[i] = 'proven'; o.newlyProven.push(i); }
       if (T[stride + i] >= 0) o.proofs[i] = S.wrapLoop(T[stride + i]);
       if (T[2 * stride + i] >= 0) o.weak[i] = S.wrapLoop(T[2 * stride + i]);
       if (T[4 * stride + i]) { o.reach[i] = T[3 * stride + i]; o.far[i] = S.wrapLoop(T[5 * stride + i]); }
     }
-    var ln = X.ns_level_n(this.ctx), LB = new Int32Array(X.memory.buffer, X.ns_level(this.ctx, ln), ln);
+    var ln = X.ns_level_n(this.ctx), LB = new Int32Array(MEM.buffer, X.ns_level(this.ctx, ln), ln);
     o.level = [];
     for (i = 0; i < ln; i++) o.level.push(S.wrapLoop(LB[i]));
     return left;
@@ -417,6 +467,8 @@
 
   var Native = {
     init: init,
+    initThreads: initThreads,
+    threads: function () { return THREADS; },
     fromStack: fromStack,
     toStack: toStack,
     free: function (h) { X.nb_free(h); },

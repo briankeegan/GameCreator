@@ -32,7 +32,7 @@ on:
         description: 'Worker threads for the search (0 = none, auto = one per core)'
         default: 'auto'
       fast_engine:
-        description: 'The search on faststack.js (1) or panel-engine.js (0)'
+        description: 'The search on faststack.js (1), panel-engine.js (0) or the engine in C (native)'
         default: '0'
       engine_check:
         description: 'Play every search step on both engines and fail on any difference (1 turns the fast engine on)'
@@ -55,7 +55,9 @@ jobs:
         timeout-minutes: 345
         run: |
           set -o pipefail
-          GC_REALTIME=${{ inputs.realtime }} GC_REALTIME_STEPS=${{ inputs.realtime_steps }} GC_QUICK=${{ inputs.quick }} GC_SURVIVE_BUDGET=${{ inputs.survive_budget }} GC_SURVIVE_SEARCH=${{ inputs.survive_search }} GC_THREADS=${{ inputs.threads }} GC_FAST_ENGINE=${{ inputs.fast_engine }} GC_ENGINE_CHECK=${{ inputs.engine_check }} node games/the-game/ai/eval/survival_game.js ${{ matrix.seed }} ${{ inputs.frames }} | tee game.log
+          ENGINE='${{ inputs.fast_engine }}'
+          if [ "$ENGINE" = native ]; then export GC_NATIVE=1; ENGINE=0; fi
+          GC_REALTIME=${{ inputs.realtime }} GC_REALTIME_STEPS=${{ inputs.realtime_steps }} GC_QUICK=${{ inputs.quick }} GC_SURVIVE_BUDGET=${{ inputs.survive_budget }} GC_SURVIVE_SEARCH=${{ inputs.survive_search }} GC_THREADS=${{ inputs.threads }} GC_FAST_ENGINE=$ENGINE GC_ENGINE_CHECK=${{ inputs.engine_check }} node games/the-game/ai/eval/survival_game.js ${{ matrix.seed }} ${{ inputs.frames }} | tee game.log
       - name: Summary
         if: always()
         run: |
