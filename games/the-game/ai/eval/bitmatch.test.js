@@ -612,3 +612,71 @@ console.log('bitmatch: ' + cases + ' cases agree with _findMatches, ' + ruleCase
             ' exact against the engine with ' + eng.bounded +
             ' stopped where a slab broke, ' + fast.cases +
             ' swaps identical through the mask path, and 7 breaks are caught');
+
+// ------------- anyOneSwapClear answers what the sweep answers, far cheaper
+//
+// "Is any single swap a clear" was asked in two places with two copies of the
+// same sweep: apply every legal swap, run a full resolve, look at the result. A
+// resolve allocates a scratch board the size of the stack, once per swap.
+//
+// The arithmetic reads lines through the two cells a swap exchanges. It takes
+// the slow path only where a cell is empty, because a hole makes everything
+// above it fall and a match can form among panels no line through those two
+// cells passes.
+//
+// IT NEEDS A SETTLED BOARD. Mid-flight it disagrees both ways, and both callers
+// pass one: restingBoard in bitbot, res.settled in bitoptions.
+(function () {
+    function sweep(st) {
+        var sw = bit.legalSwapsOf(st), i, r;
+        for (i = 0; i < sw.length; i++) {
+            if (!bit.swapMasks(st, sw[i][0], sw[i][1])) continue;
+            r = bit.resolveFromMasks(st, false);
+            bit.swapMasks(st, sw[i][0], sw[i][1]);
+            if (r.scope === 'garbage-broke' || r.total > 0) return true;
+        }
+        return false;
+    }
+    var P = globalThis.PanelEngine;
+    var boards = [], seeds = [101, 103, 211];
+    seeds.forEach(function (sd) {
+        var st = new P.Stack({ level: 10, seed: sd, countdown: false });
+        var BitBot = require('./bitbot.js');
+        var bot = new BitBot(st, { allowRaise: true });
+        for (var f = 0; f < 900; f++) {
+            bot.update(); st.run();
+            if (f % 180 === 0 && f > 0) st.receiveGarbage([{ width: 6, height: 1, isMetal: false }]);
+            st.drainEvents();
+            if (f % 11 === 0) {
+                var b = bot._snapshot();
+                var m = bit.maskState(b.grid, b.blocks, 6, b.height);
+                var rr = bit.resolveFromMasks(bit.copyState(m), true);
+                boards.push((rr && rr.settled) || m);       // settled, as callers pass
+            }
+            if (st.gameOver) break;
+        }
+    });
+    var over = 0, under = 0, yes = 0;
+    boards.forEach(function (b) {
+        var s = sweep(bit.copyState(b)), f = bit.anyOneSwapClear(b);
+        if (s) yes++;
+        if (s !== f) { if (f) over++; else under++; }
+    });
+    var bad = 0;
+    if (boards.length < 100) { console.error('FAIL anyOneSwapClear: only ' + boards.length + ' boards to compare'); bad++; }
+    if (over > 0) {
+        console.error('FAIL anyOneSwapClear said a clear was available on ' + over + ' of ' +
+                      boards.length + ' settled boards where the sweep says none is. A false ' +
+                      'yes here tells the raise a dead board is ready and tells the save ' +
+                      'invariant it has something it does not.');
+        bad++;
+    }
+    if (under > boards.length * 0.01) {
+        console.error('FAIL anyOneSwapClear missed a clear on ' + under + ' of ' + boards.length +
+                      ' settled boards, over the 1% the empty-cell fallback is meant to leave');
+        bad++;
+    }
+    console.log('  anyOneSwapClear: ' + boards.length + ' settled boards, sweep finds a clear on ' +
+                yes + ', disagreements ' + over + ' over / ' + under + ' under');
+    if (bad) process.exit(1);
+}());
