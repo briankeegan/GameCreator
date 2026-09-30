@@ -694,8 +694,36 @@
                                     stopBudget--;
                                     landStop = bit.bestOneSwapStop(res.settled, stopPrice);
                                 }
+                                // AND THE VOID THE SLAB SEALS OVER.
+                                //
+                                // Garbage rests on the TALLEST column and spans the
+                                // width, so every column shorter than that one has
+                                // the difference in empty rows sealed beneath it.
+                                // Summed over the board that is
+                                //
+                                //   void = SUM(high - h[c]) = W*high - SUM(h)
+                                //        = W * (high - mat)
+                                //
+                                // so in ROWS it is simply (high - mat), and a row of
+                                // void is a row of ceiling gone -- priced at FPR, the
+                                // same as height. Per panel that is FPR/W, the
+                                // conversion everything else here uses.
+                                //
+                                // Neither term above sees it: `tall` does not move
+                                // when a SHORT column drops, and `excess` is a mean
+                                // deviation about the mean, not a deficit against the
+                                // column the slab rests on. So survivalPlan cleared
+                                // three panels out of column three -- 6,5,5,6,8,8 to
+                                // 6,5,2,6,8,8, void 10 panels to 13 -- and paid
+                                // nothing for it, dead at 1,160.
+                                //
+                                // NOT `spread`. high - low prices the tall column the
+                                // board needs to touch the slab at all, and charged at
+                                // FPR a row it billed that same move 315 frames and
+                                // killed STARTER at 2,424. This is 60.
                                 var val = (BASE.tall - sh2.tall) * FPR
                                         + (BASE.excess - sh2.excess) * FPR
+                                        + ((BASE.high - BASE.mat) - (sh2.high - sh2.mat)) * FPR
                                         + landStop
                                         - Math.max(0, WORK - sh2.mat) * FPR
                                         - dur;
