@@ -2833,6 +2833,12 @@
       else if (verdict[i] === 'unproven') unproven.push(cands[i]);
     }
     if (!proven.length) proven = weakly;
+    // The caller's moves first (preferMove, see _decide): of those proven to
+    // live, before the proven ones are narrowed to the line that lives longest.
+    if (this.preferMove && proven.length) {
+      var preferred = proven.filter(this.preferMove, this);
+      if (preferred.length) proven = preferred;
+    }
     // A move the search ran out of budget on is a guess. When any move is
     // proven to live, the guesses are dropped.
     var live = proven.length ? proven : unproven;
@@ -3784,7 +3790,11 @@
       if (this._following && this._following.node && this._following.node._nat) void this._following.node.st;
       this._nat.reset();
     }
-    var cands = this._applyModes(this._candidates());
+    // preferMove: the caller's moves to play before any other, of those every
+    // filter kept (survivor_mind.js: the moves that break garbage). When one
+    // is kept the pool is those; the modes do not get to refuse them.
+    var pool = this._candidates(), pick = this.preferMove ? pool.filter(this.preferMove, this) : [];
+    var cands = pick.length ? pick : this._applyModes(pool);
 
     // HOLD IS CANDIDATE ZERO, not a separate case carried alongside the
     // others. It was the separate case, and that is how it ended up judged

@@ -105,7 +105,7 @@ function Match(level) {
   this.nextAt = 0;         // the frame the plan ends on
   this.arrivals = [];      // garbage on its way (arrivalsOf)
   this.line = null;        // the proven line after the plan: { steps, at } (follow)
-  this.stats = { frames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0 };
+  this.stats = { frames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0, breaknow: 0, tooknow: 0, breaknext: 0, tooknext: 0 };
   this.history = []; this.decided = []; this.asked = []; this.dumped = false;
   // A question from the last match is not this one's: its answer is dropped.
   pending = null;
@@ -173,6 +173,7 @@ Match.prototype.take = function (truth) {
     if (a.mem) this.stats.memMB = Math.round(a.mem.bytes / 1048576);
     if (process.env.GC_SURVIVOR_DEBUG && a.mem) console.error('decision ' + a.id + ' at ' + a.at + ': ' + a.ms + ' ms ' + a.kind + ' ' + JSON.stringify(a.move) + ' ' + JSON.stringify(a.diag) + ' ' + Math.round(a.mem.bytes / 1048576) + 'MB');
     if (a.error) { console.error('decision failed: ' + a.error); this.acted = false; pending = null; continue; }
+    if (a.breaks) { this.stats['break' + a.breaks.offered]++; if (a.breaks.took) this.stats['took' + a.breaks.offered]++; }
     this.decided.push({ id: a.id, at: a.at, now: now, kind: a.kind, move: a.move, ms: a.ms, diag: a.diag,
                        asked: pending && pending.id === a.id ? pending.askedAt : null, trip: pending && pending.id === a.id ? a.got - pending.sent : null });
     if (this.decided.length > 60) this.decided.shift();

@@ -6,5 +6,6 @@
   "depth": 2,
   "modes": true,
   "ahead": 90,
-  "threat": null
+  "threat": null,
+  "breakFirst": true
 }

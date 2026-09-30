@@ -81,6 +81,33 @@ function threat(p, lead) {
   return { at: Math.max(1, STAGING + LAND - lead), width: p.threat.width, height: p.threat.height, isChain: !!p.threat.isChain, isMetal: false };
 }
 
+// ---------------------------------------------------------------- breaking garbage
+// The moves from `board` that break garbage, played on the server's rules
+// (search S, native.js server Search): `now`, the swaps whose own step
+// breaks a row; `next`, when none does, the first moves (swaps and a hold)
+// after which some swap does. Keys "row,col" or "hold".
+function breakMoves(S, board, hold, arrivals) {
+  S.reset();
+  var root = S.root(board.copy(), hold, arrivals, false), base = S.breaks(root), now = {}, next = {}, any = false, i, j;
+  var firsts = root.b.legalSwaps().map(function (m) { return { key: m[0] + ',' + m[1], kind: 'swap', m: m }; });
+  firsts.forEach(function (f) {
+    f.n = S.advance(root, 'swap', f.m, 0);
+    if (f.n && !f.n.dead && S.breaks(f.n) > base) { now[f.key] = true; any = true; }
+  });
+  if (any) return { now: now, next: next };
+  firsts.push({ key: 'hold', kind: 'hold', n: S.advance(root, 'hold', null, 0) });
+  for (i = 0; i < firsts.length; i++) {
+    var f = firsts[i];
+    if (!f.n || f.n.dead) continue;
+    var seconds = f.n.b.legalSwaps();
+    for (j = 0; j < seconds.length; j++) {
+      var c = S.advance(f.n, 'swap', seconds[j], 0);
+      if (c && !c.dead && S.breaks(c) > base) { next[f.key] = true; break; }
+    }
+  }
+  return { now: now, next: next };
+}
+
 // ---------------------------------------------------------------- the hands
 // Hands(p): keys(board, hold, kind, move, arrivals) is the decision played
 // from `board` as { inputs, holds } per frame, or null when it is refused.
@@ -100,4 +127,4 @@ Hands.prototype.idle = function (board, hold, arrivals) {
   return { bits: k.inputs[0], hold: k.holds[0] };
 };
 
-module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, land: land, arrivalsFrom: arrivalsFrom, threat: threat, Hands: Hands };
+module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, land: land, arrivalsFrom: arrivalsFrom, threat: threat, breakMoves: breakMoves, Hands: Hands };
