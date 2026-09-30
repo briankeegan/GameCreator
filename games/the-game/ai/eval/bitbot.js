@@ -194,7 +194,7 @@
         this.counts = { refusedDeadly: 0, allDead: 0, byMode: {},
                         refusedReturn: 0, defendByClock: 0, refusedTooSlow: 0, planned: 0, planDropped: 0,
                         attacked: 0, attackDropped: 0, cellsPlanned: 0, refusedPayless: 0, refusedStarving: 0, refusedAtExit: 0,
-                        raisedForMaterial: 0, waitedToRaise: 0, dugFor: 0, digDropped: 0, brokeNow: 0,
+                        raisedForMaterial: 0, waitedToRaise: 0, dugFor: 0, digDropped: 0, brokeNow: 0, flattenBlind: 0,
                         openingRaises: 0, waitedToRaise: 0, saveKept: 0, saveUnkeepable: 0, savePlanned: 0, heldTheBreak: 0, forcedBreak: 0, forcedBoth: 0, refusedEarly: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
                         revealWindows: 0, digging: 0, flattened: 0, flattenDropped: 0,
@@ -2142,7 +2142,23 @@
         // just toward flat -- which is the other half of doing both at once.
         var shapeBudget = (info.stopTime || 0) > 0
                         ? Math.min(info.stopTime, deadline) : deadline;
-        if (shapeTime && options && options.flatten && options.flatten.swaps.length &&
+        // AND THE OUTCOME IS DETERMINISTIC, SO IT IS CHECKED BEFORE COMMITTING.
+        //
+        // The plan carries the board it lands on -- `lands` -- and that is not a
+        // prediction: the swaps and the physics are fixed, so it is where the board
+        // WILL be. So the question that matters can be asked of it now rather than
+        // discovered on arrival: does the board this route ends on have something to
+        // fire. A route that flattens into a position with no answer is a route into
+        // the state every death in the round-robin ends in.
+        //
+        // Only while the board has garbage on it. Clean, a flatten is ordinary
+        // building and there is nothing to be ready for yet.
+        var landsOk = true;
+        if (options && options.flatten && options.flatten.lands && digging) {
+            landsOk = !!this.hasFireable(options.flatten.lands);
+            if (!landsOk) this.counts.flattenBlind++;
+        }
+        if (shapeTime && landsOk && options && options.flatten && options.flatten.swaps.length &&
             (options.flatten.duration || 0) <= shapeBudget) {
             if (!this._flatten || !this._flatten.moves.length) {
                 this._flatten = { moves: options.flatten.swaps.slice(),

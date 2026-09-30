@@ -475,9 +475,15 @@
                                     take = waysOf(res.settled) > flat.ways;
                                 }
                                 if (take) {
+                                    // THE BOARD IT LANDS ON, CARRIED WITH THE PLAN.
+                                    // The swaps and the physics are deterministic, so
+                                    // this is not a prediction -- it is where the board
+                                    // WILL be. A caller can ask it anything it would ask
+                                    // a real board before committing to the route.
                                     flat = { swaps: seq, frames: cost, value: val,
                                              tall: sh2.tall, bumps: sh2.bumps,
-                                             ways: waysOf(res.settled), duration: dur };
+                                             ways: waysOf(res.settled), duration: dur,
+                                             lands: bit.copyState(res.settled) };
                                 }
                             }
                             born.push({ st: res.settled, chain: seq,
