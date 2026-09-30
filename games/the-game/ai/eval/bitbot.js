@@ -179,7 +179,6 @@
         this._raiseStarted = false;
         this._walk = null;
         this._lastSwap = null;
-        this._justUnlooped = false;
         this.decisions = 0;
         // WHERE EVERY FRAME WENT. Not diagnostics bolted on -- the bot could not
         // say what it did with a frame, so every question about its behaviour was
@@ -199,7 +198,7 @@
                         openingRaises: 0, waitedToRaise: 0, saveKept: 0, saveUnkeepable: 0, savePlanned: 0, heldTheBreak: 0, forcedBreak: 0, forcedBoth: 0, refusedEarly: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
                         revealWindows: 0, digging: 0, flattened: 0, flattenDropped: 0,
-                        refusedStranded: 0, refusedNoFailsafe: 0, refusedSameSwap: 0, refusedLoop: 0 };
+                        refusedStranded: 0, refusedNoFailsafe: 0, refusedSameSwap: 0 };
     }
 
     // WHAT THE ENGINE KNOWS, shared by every candidate in the decision. None of
@@ -1148,9 +1147,6 @@
             // unknowable so `mat` is null, and it ADDS material besides.
             var short = shortfallOf(o);
             cells -= short * W;
-            // AND THE VOID THE SLAB WOULD SEAL, converted the way everything here
-            // is: a row of void is a row of ceiling, and a row is W panels.
-            cells += (o.voidGain || 0) * W;
             // AND BEING READY FOR THE SLAB THAT IS COMING. Worth a row of rise,
             // converted to this ranking's currency. Zero unless there is a slab
             // to be ready for, so it cannot speak on a clean board.
@@ -1433,9 +1429,6 @@
             var bought = o.total * perPanel + holds + (o.garbage || 0) * perCell
                        + lowered * (framesPerRow || 0) + gain
                        - shortfall * (framesPerRow || 0)
-                       // AND THE VOID THE SLAB WOULD SEAL -- a row of it is a row
-                       // of ceiling, so framesPerRow, like height.
-                       + (o.voidGain || 0) * (framesPerRow || 0)
                        + digs
                        // AND BEING READY FOR THE SLAB THAT IS COMING -- already in
                        // frames, which is this ranking's currency. See bestAttack.
@@ -3175,115 +3168,8 @@
     // assigned, and the rule it was for never existed.
     BitBot.prototype.decide = function () {
         var d = this._decideGated();
-        d = this.notALoop(d);
         this._lastSwap = (d && d.kind === 'swap' && d.move) ? [d.move[0], d.move[1]] : null;
         return d;
-    };
-
-    // THE CYCLE GUARD, AT THE EXIT, FOR EVERY ROUTE.
-    //
-    // `returnsToSeen` is asked at five route sites and not at keepSave, planSave
-    // or survivalPlan; the `allowed` narrowing that carries it reaches only the
-    // routes that rank candidates, and the save routes pick from the option list
-    // instead. So seed 103 played 5-1 twice running with the guard reporting the
-    // landing at index 1 of its own history -- it saw the return and the move went
-    // out anyway.
-    //
-    // Six copies of one rule with two missing is the bug, not the two. The rule
-    // belongs at the gate every decision leaves by, where a route cannot be added
-    // without it.
-    //
-    // NOT A PREFERENCE. Overruling a frames-priced route with a weights ranking is
-    // measured at 15 deaths in 30 and is why those routes are exempt from
-    // `refuses`. This is not that: a swap that cashes nothing and puts the board
-    // somewhere it has just been buys no frames for any route to have priced.
-    //
-    // Soft, like every other rule at this gate: with nothing better to play the
-    // original stands.
-    BitBot.prototype.notALoop = function (d) {
-        if (!d || d.kind !== 'swap' || !d.move || !this.refuseReturn) return d;
-        var pool = this._lastPool, info = this._lastInfo, base = this._lastBase;
-        if (!pool || !info || !base) return d;
-        var i, picked = null;
-        for (i = 0; i < pool.length; i++) {
-            var pc = pool[i];
-            if (pc.kind === 'swap' && pc.swap && pc.swap[0] === d.move[0] &&
-                pc.swap[1] === d.move[1] && pc.masks) { picked = pc; break; }
-        }
-        if (!picked) return d;
-        var self = this;
-        function cashes(c) {
-            return !!(c.resolved && (c.resolved.total > 0 || c.resolved.brokeGarbage));
-        }
-        // A REPEAT OF THE SAME TWO CELLS, AND ONLY THAT. A landing whose signature
-        // has been seen is no loop on a sparse board: a panel swapped sideways with
-        // nothing under it falls straight back, so the position really is unchanged
-        // and the signature really does match. That is the cost of walking the
-        // cursor, and refusing it fired fifteen times in one duel.
-        // AND BOTH CELLS HAVE TO HOLD A PANEL.
-        //
-        // With one side empty it is not a swap, it is a panel moved sideways -- and
-        // moving a panel along, at the same coordinates, over and over is ordinary
-        // play. It is what levelFirst does across a sparse opening, which is why
-        // refusing it overrode that route eight times and left the board at
-        // 3,4,1,3,4,9.
-        //
-        // Two panels exchanged is the case that undoes itself: play it again and
-        // the board is exactly as it was. That is the loop.
-        function bothFilled(sw) {
-            if (!sw) return false;
-            var row = sw[0], col = sw[1], b = 1 << (row - 1);
-            return !!(base.occ[col] & b) && !!(base.occ[col + 1] & b);
-        }
-        function loops(c) {
-            if (cashes(c)) return false;
-            var ls = self._lastSwap;
-            if (!ls || !c.swap) return false;
-            if (c.swap[0] !== ls[0] || c.swap[1] !== ls[1]) return false;
-            return bothFilled(c.swap);
-        }
-        if (!loops(picked)) { this._justUnlooped = false; return d; }
-        // AND NOT TWICE RUNNING.
-        //
-        // The substitution is played, so it becomes `_lastSwap` -- and then the
-        // route's own next choice is that move, which this refuses as a repeat of
-        // what it forced. It fights itself: forcing 3-4 to 3-3 makes 3-3 the
-        // repeat. Eight of fifteen firings overrode levelFirst across the opening
-        // of one duel, the board never levelled, 3,4,1,3,4,9, dead at 1,129 --
-        // 67% of frames against 93%.
-        //
-        // A guard breaks a loop; it does not get to drive. One refusal, then it
-        // stands aside for a decision. A real cycle cannot survive that: it comes
-        // back round and is broken again.
-        if (this._justUnlooped) { this._justUnlooped = false; return d; }
-        // RANKED IN FRAMES. The refused move buys ZERO frames -- it cashes nothing
-        // and returns the board -- so the replacement has to be measured against
-        // zero in the same unit. `score` is the weighted vector in its own units,
-        // with no exchange rate to frames. A candidate that CLEARS keeps `score`,
-        // because a clear buys frames outright.
-        var sub = null, cash = null;
-        for (i = 0; i < pool.length; i++) {
-            var sc = pool[i];
-            if (sc === picked || sc.kind !== 'swap' || !sc.masks || !sc.swap) continue;
-            if (loops(sc)) continue;
-            if ((sc.moveFrames || 0) > this._lastDeadline) continue;
-            if (this.deadly(sc.masks, sc.resolved, info,
-                            Math.max((sc.moveFrames || 0) + this.reaction,
-                                     info.framesPerRow || 0))) continue;
-            if (cashes(sc)) {
-                var cv = this.score(sc.masks, sc.moveFrames, sc.resolved, info);
-                if (!cash || cv > cash.score) cash = { cand: sc, score: cv };
-            } else {
-                var sv = this.idleScore(sc, base, info);
-                if (!sub || sv > sub.score) sub = { cand: sc, score: sv };
-            }
-        }
-        if (cash) sub = cash;
-        if (!sub) return d;
-        this._justUnlooped = true;
-        this.counts.refusedLoop++;
-        return { kind: 'swap', move: sub.cand.swap, mode: d.mode,
-                 alive: d.alive, via: 'unlooped' };
     };
 
     BitBot.prototype._decideGated = function () {

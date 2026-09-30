@@ -76,6 +76,7 @@ if (ONE) {
     var opts = require(path.join(ROOT, 'ai', 'eval', 'bitoptions.js'));
     function popc(n) { var k = 0; while (n) { n &= n - 1; k++; } return k; }
     var ring = [[], []];
+    var broke = [0, 0], lastGar = [null, null];
     [0, 1].forEach(function (side) {
         var real = bots[side].decide.bind(bots[side]);
         bots[side].decide = function () {
@@ -120,6 +121,24 @@ if (ONE) {
                     if ((rz.chain || 0) > chainBest) chainBest = rz.chain;
                 }
             }
+            // GARBAGE CELLS TAKEN OFF THE BOARD.
+            //
+            // NOT THE GOAL. Not dying is the goal; breaking garbage is how a board
+            // stops dying, and a combo, a chain or a flatten is how it breaks. The
+            // order matters to the arithmetic: if breaking were terminal the bot
+            // would break at any price, when what it is actually worth is the
+            // survival it buys -- which is why a break has a right TIME rather than
+            // a standing priority.
+            //
+            // Counted because it is the diagnostic the survival number cannot give.
+            // Frames can be bought with stop time while the garbage keeps stacking,
+            // so a run at 93% of frames does not say whether the board is getting
+            // out from under it or merely postponing. The
+            // count falls only when a break lands, so summing the falls is the cells
+            // broken. It rises when garbage ARRIVES, which is not progress and is
+            // not counted.
+            if (lastGar[side] !== null && gar < lastGar[side]) broke[side] += lastGar[side] - gar;
+            lastGar[side] = gar;
             ring[side].push({ clr: clr, ch: chainBest,
                               f: st[side].clock, via: d && d.via, alive: d && d.alive,
                               mode: d && d.mode && d.mode.name, cols: h.join(','),
@@ -145,7 +164,8 @@ if (ONE) {
     function died(k) { return st[k].gameOver ? 'DEAD@' + st[k].clock : 'alive'; }
     console.log('seed ' + seed + '  ' + A.padEnd(8) + died(0).padEnd(11) +
                 ' vs ' + Bn.padEnd(8) + died(1).padEnd(11) +
-                '  [sent ' + sent[0] + '/' + sent[1] + ']  frames ' + f);
+                '  [sent ' + sent[0] + '/' + sent[1] + ']  frames ' + f +
+                '  broke ' + broke[0] + '/' + broke[1]);
     var D = st[0].gameOver ? 0 : (st[1].gameOver ? 1 : -1);
     if (D >= 0) {
         console.log('  --- ' + [A, Bn][D] + ' died. last decisions:');
@@ -182,7 +202,7 @@ if (!jobs.length) {
 }
 console.log(jobs.length + ' pairings, ' + Math.min(JOBS, jobs.length) + ' at a time, root ' + ROOT);
 var next = 0, live = 0, done = 0, deaths = 0, hard = 0, broken = 0, lines = [];
-var frames = 0, pairings = 0;
+var frames = 0, pairings = 0, brokeAll = 0;
 function pump() {
     while (live < JOBS && next < jobs.length) {
         // ONE CLOSURE PER CHILD. `var` is function-scoped, so a buffer declared
@@ -222,6 +242,8 @@ function spawnOne(job) {
             // even when the count does not.
             var fm = line.match(/frames (\d+)/);
             if (fm) { frames += Number(fm[1]); pairings++; }
+            var bm = line.match(/broke (\d+)\/(\d+)/);
+            if (bm) { brokeAll += Number(bm[1]) + Number(bm[2]); }
             console.log('  [' + done + '/' + jobs.length + '] ' + line);
         }
         if (done === jobs.length) {
@@ -236,6 +258,9 @@ function spawnOne(job) {
             console.log('frames ' + frames + ' of ' + (pairings * 30000) +
                         '   mean ' + Math.round(frames / Math.max(1, pairings)) +
                         '   (' + Math.round(100 * frames / Math.max(1, pairings * 30000)) + '%)');
+            console.log('garbage broken ' + brokeAll + ' cells   mean ' +
+                        Math.round(brokeAll / Math.max(1, pairings * 2)) + ' a board' +
+                        '   (how a board stops dying; not the goal itself)');
             process.exit(hard ? 1 : 0);
         }
         pump();

@@ -138,22 +138,6 @@
                  tall: sh ? sh.tall : null, bumps: sh ? sh.bumps : null,
                  mat: sh ? sh.mat : null, low: sh ? sh.low : null,
                  spread: sh ? sh.spread : null,
-                 // THE VOID THE SLAB WOULD SEAL OVER, IN ROWS.
-                 //
-                 // Garbage rests on the TALLEST column and spans the width, so
-                 // every column shorter than that one has the difference in empty
-                 // rows sealed beneath it. Summed:
-                 //
-                 //   void = SUM(high - h[c]) = W*high - SUM(h) = W * (high - mat)
-                 //
-                 // so in rows it is (high - mat). A row of void is a row of ceiling
-                 // gone, priced at framesPerRow like height; per panel, FPR/W.
-                 //
-                 // Carried per option because the two rankers price it, not just the
-                 // routes ranked inside the search: the move that sealed the board on
-                 // seed 103 came through survivalPlan, which reads bestPlan and never
-                 // sees the search's own value.
-                 voidRows: sh ? (sh.high - sh.mat) : null,
                  // CAN THE BOARD THIS LANDS ON STILL FIRE.
                  //
                  // Firing anything holds the floor for its resolve, and at
@@ -237,9 +221,6 @@
         // reason: an option is asked whether IT takes the last way to break, not
         // whether it merely lands on a board that has none. False when there is no
         // garbage, and then nothing can close what was never open.
-        // THE VOID THE BOARD ALREADY CARRIES, in rows, so an option is judged on
-        // what IT did to the seal rather than on a position it inherited.
-        var BASEVOID = START ? (START.high - START.mat) : 0;
         var BASEBREAK = breakReadyOf(st) === true;
         LASTBREAKREADY = BASEBREAK;
         // AND HOW MANY WAYS THERE ARE TO REACH THE GARBAGE BEFORE ANY MOVE.
@@ -309,12 +290,6 @@
             // Zero off the slab: with no garbage there is nothing to dig toward. Zero on
             // a break too -- its settled board is unknowable.
             opt.digGain = (DIG && r.settled) ? reachOf(r.settled).dig - BASEDIG : 0;
-            // AND WHAT IT DID TO THE SEALED VOID, in rows, as a delta for the
-            // same reason digGain is one: an absolute count is a fact about the
-            // position, not about the move. Null on a break -- `mat` is null there
-            // and a break ADDS material anyway.
-            opt.voidGain = (opt.voidRows === null || opt.voidRows === undefined)
-                             ? 0 : (BASEVOID - opt.voidRows);
             // AND WHETHER THE BOARD IT LANDS ON COULD ANSWER THE NEXT SLAB.
             //
             // slabReadyFast asks whether a three can be put against the row the next
@@ -600,12 +575,6 @@
                                 // Zero off the slab: with no garbage there is nothing to dig toward. Zero on
                                 // a break too -- its settled board is unknowable.
                                 opt.digGain = (DIG && res.settled) ? reachOf(res.settled).dig - BASEDIG : 0;
-                                // AND WHAT IT DID TO THE SEALED VOID, in rows, as a delta for the
-                                // same reason digGain is one: an absolute count is a fact about the
-                                // position, not about the move. Null on a break -- `mat` is null there
-                                // and a break ADDS material anyway.
-                                opt.voidGain = (opt.voidRows === null || opt.voidRows === undefined)
-                                                 ? 0 : (BASEVOID - opt.voidRows);
                                 // AND WHETHER THE BOARD IT LANDS ON COULD ANSWER THE NEXT SLAB.
                                 //
                                 // slabReadyFast asks whether a three can be put against the row the next
@@ -725,36 +694,8 @@
                                     stopBudget--;
                                     landStop = bit.bestOneSwapStop(res.settled, stopPrice);
                                 }
-                                // AND THE VOID THE SLAB SEALS OVER.
-                                //
-                                // Garbage rests on the TALLEST column and spans the
-                                // width, so every column shorter than that one has
-                                // the difference in empty rows sealed beneath it.
-                                // Summed over the board that is
-                                //
-                                //   void = SUM(high - h[c]) = W*high - SUM(h)
-                                //        = W * (high - mat)
-                                //
-                                // so in ROWS it is simply (high - mat), and a row of
-                                // void is a row of ceiling gone -- priced at FPR, the
-                                // same as height. Per panel that is FPR/W, the
-                                // conversion everything else here uses.
-                                //
-                                // Neither term above sees it: `tall` does not move
-                                // when a SHORT column drops, and `excess` is a mean
-                                // deviation about the mean, not a deficit against the
-                                // column the slab rests on. So survivalPlan cleared
-                                // three panels out of column three -- 6,5,5,6,8,8 to
-                                // 6,5,2,6,8,8, void 10 panels to 13 -- and paid
-                                // nothing for it, dead at 1,160.
-                                //
-                                // NOT `spread`. high - low prices the tall column the
-                                // board needs to touch the slab at all, and charged at
-                                // FPR a row it billed that same move 315 frames and
-                                // killed STARTER at 2,424. This is 60.
                                 var val = (BASE.tall - sh2.tall) * FPR
                                         + (BASE.excess - sh2.excess) * FPR
-                                        + ((BASE.high - BASE.mat) - (sh2.high - sh2.mat)) * FPR
                                         + landStop
                                         - Math.max(0, WORK - sh2.mat) * FPR
                                         - dur;

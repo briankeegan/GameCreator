@@ -812,13 +812,9 @@ if (flatSpread !== 0) {
         '`workingRows`: not one of ' + compared + ' boards valued its flatten lower ' +
         'with the material floor than without it, so the floor is not in `val` and ' +
         'every route ranked by it can still starve the board');
-    // NOT THE OTHER DIRECTION -- and in exact arithmetic that would hold, since
-    // every landing's floor is >= 0, so max(v - f) <= max(v). It does not hold
-    // here because the valuation is budget-coupled: `landStop` and slabReadyFast
-    // are only spent on a landing that is CURRENTLY winning, so changing the floor
-    // changes who leads, which changes which landings get their stop credit priced
-    // at all. The two runs are not scoring the same quantity, and asserting the
-    // inequality tests the budget rather than the floor.
+    bok(unfloored === 0,
+        '`workingRows`: ' + unfloored + ' boards valued a flatten HIGHER with the ' +
+        'floor than without. The floor is a cost; it can only ever subtract');
 
     // AND OFF THE SLAB IT IS SILENT. With no garbage there is nothing to dig
     // toward, so the term must not move a ranking it has no business in.
