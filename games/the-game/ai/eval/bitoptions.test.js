@@ -667,6 +667,60 @@ if (flatSpread !== 0) {
         'count never can, so the base is not being subtracted and every clear ' +
         'looks like progress');
 
+    // THE TWO FALLBACK ROUTES ARE RANKED BY THE SAME NUMBER AS THE WINNERS.
+    //
+    // `ready` and `flattenReady` accept exactly the same landings -- the ones
+    // readyOf says can fire. One is the caller's fallback route, the other the
+    // flatten winner restricted the same way. So while both are ranked by `val`
+    // they must land on the same value, every time. They disagree the moment
+    // `ready` goes back to being chosen by what the walk costs.
+    //
+    // `save` has no twin to compare against, so it is checked structurally: a
+    // route ranked by cost carries no value at all.
+    var agreed = 0, disagreed = 0, savesSeen = 0, unvalued = 0;
+    var DIGBOARDS = [
+        [[1, 2, 1, 5, 'G'], [1, 1, 1, 3, 'G'], [1, 2, 3, 1, 'G'],
+         [1, 5, 3, 3, 'G'], [5, 4, 4, 5, 'G'], [2, 1, 2, 3, 'G']],
+        [[3, 2, 4, 'G'], [1, 1, 5, 'G'], [4, 2, 3, 'G'],
+         [2, 5, 1, 'G'], [5, 3, 2, 'G'], [1, 4, 4, 'G']],
+        [[2, 6, 1, 3, 2, 'G'], [4, 4, 5, 1, 6, 'G'], [1, 3, 3, 2, 4, 'G'],
+         [5, 1, 2, 6, 3, 'G'], [3, 5, 4, 4, 1, 'G'], [6, 2, 6, 5, 5, 'G']]
+    ];
+    DIGBOARDS.forEach(function (cols) {
+        var grid = [], cells = [], r, c;
+        for (r = 0; r <= H; r++) { grid[r] = []; for (c = 1; c <= W; c++) grid[r][c] = 0; }
+        for (c = 1; c <= W; c++)
+            for (r = 1; r <= cols[c - 1].length; r++) {
+                var v = cols[c - 1][r - 1];
+                if (v === 'G') { grid[r][c] = -2; cells.push([r, c]); }
+                else grid[r][c] = v;
+            }
+        var lb = new LogicalBoard(W, H, 6, grid, { s: { cells: cells } });
+        var l = opts.options(lb, W, H, CURSOR, 2, null,
+                             { framesPerRow: 120, deadline: 600 }, true);
+        if (l.ready && l.flattenReady) {
+            if (l.ready.value === l.flattenReady.value) agreed++; else disagreed++;
+        }
+        if (l.save) {
+            savesSeen++;
+            if (typeof l.save.value !== 'number') unvalued++;
+        }
+    });
+    bok(agreed + disagreed > 0,
+        '`ready`: no buried board produced both a fallback route and a flatten ' +
+        'winner that can fire, so nothing here is compared');
+    bok(disagreed === 0,
+        '`ready`: ' + disagreed + ' of ' + (agreed + disagreed) + ' boards chose a ' +
+        'different fallback route than the flatten winner over the same landings. ' +
+        'Both rank readyOf landings, so they can only differ if one of them is ' +
+        'ranking by what the walk costs instead of what it lands on');
+    bok(savesSeen > 0,
+        '`save`: no buried board offered a route back to holding a break, so the ' +
+        'save route is unchecked here');
+    bok(unvalued === 0,
+        '`save`: ' + unvalued + ' of ' + savesSeen + ' save routes carry no value. ' +
+        'A route chosen by cost has nothing to carry -- that is the shape of the bug');
+
     // AND OFF THE SLAB IT IS SILENT. With no garbage there is nothing to dig
     // toward, so the term must not move a ranking it has no business in.
     bok(diggingListOf([[1, 3, 3], [1, 4, 5], [2, 5, 4], [1, 3, 4], [1, 5, 3], [4, 3, 5]])

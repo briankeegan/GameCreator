@@ -583,14 +583,12 @@
                             // One number. Ties go to the board offering more ways to
                             // finish a line, and there is no tier for the arithmetic
                             // to be outvoted by.
-                            // THE CHEAPEST ROUTE TO A BOARD THAT CAN FIRE. Not
-                            // gated on digging: a board with nothing to fire is
-                            // in danger whether or not there is garbage on it.
-                            if (!ready && readyOf(res.settled)) {
-                                ready = { swaps: seq, frames: cost,
-                                          duration: durationOf(seq, cost) };
-                            }
+                            // `ready` and `save` -- the two routes the caller falls
+                            // back on -- are chosen below, once `val` exists. Picking
+                            // them here, by cost, was picking them before anyone had
+                            // asked what board they land on.
                             var sh2 = shapeOf(res.settled);
+                            var svNow = 0;
                             if (sh2) {
                                 var dur = durationOf(seq, cost);
                                 // FLATTENING HAS TO CREATE SETUP WHILE IT DOES IT.
@@ -679,10 +677,7 @@
                                 // there is almost never another move that keeps
                                 // one -- 2 of 100 -- so it has to be planned over
                                 // several.
-                                if (sv > 0 && (!save || cost < save.frames)) {
-                                    save = { swaps: seq, frames: cost,
-                                             duration: durationOf(seq, cost) };
-                                }
+                                svNow = sv;
                                 val += (sv - BASESAVE) * (DEADLINE / W) * W
                                      + (rr.dig - BASEDIG) * (DEADLINE / W);
                             }
@@ -726,6 +721,36 @@
                                                   tall: sh2.tall, bumps: sh2.bumps,
                                                   ways: ways2, duration: dur,
                                                   lands: bit.copyState(res.settled) };
+                                }
+                                // AND THE TWO FALLBACK ROUTES, ON THE SAME NUMBER.
+                                //
+                                // `save` is the route back to holding a break and
+                                // `ready` the route back to having anything to fire.
+                                // Both were chosen by what the WALK cost, with no
+                                // term for the board at the end of it, while the
+                                // three winners above were chosen by `val` -- which
+                                // prices height, evenness, what the landing can fire
+                                // and what it digs. So the cheapest save could be the
+                                // one that empties a column, and planSave plays the
+                                // route it is handed: seed 103 walked its columns
+                                // 5,5,5,2,2,3 -> 5,5,1,1,1,3 through four of them and
+                                // the slab went from sealing three rows to four.
+                                //
+                                // Nothing here is new arithmetic. `val` is already
+                                // computed for this landing a few lines up; these two
+                                // were simply decided before it existed. Cost stays as
+                                // the tiebreak, so between two landings worth the same
+                                // the shorter walk still wins.
+                                if (svNow > 0 && (!save || val > save.value ||
+                                                  (val === save.value && cost < save.frames))) {
+                                    save = { swaps: seq, frames: cost, value: val,
+                                             duration: durationOf(seq, cost) };
+                                }
+                                if ((!ready || val > ready.value ||
+                                     (val === ready.value && cost < ready.frames)) &&
+                                    readyOf(res.settled)) {
+                                    ready = { swaps: seq, frames: cost, value: val,
+                                              duration: durationOf(seq, cost) };
                                 }
                                 if (take) {
                                     // THE BOARD IT LANDS ON, CARRIED WITH THE PLAN.
@@ -829,8 +854,12 @@
             flat.landStop = bit.bestOneSwapStop(flat.lands, stopPrice);
         }
 
+        // `flattenReady` is the flatten winner restricted to landings that can
+        // fire. Returned beside the others so the gate can check that `ready`,
+        // which accepts exactly the same landings, agrees with it on value --
+        // which it only does while both are ranked by `val`.
         return { now: now, next: next, cheapest: cheapest, flatten: flat, save: save,
-                 ready: ready,
+                 ready: ready, flattenReady: flatReady,
                  swapsConsidered: swaps.length, refused: refused, unknown: unknown };
     }
 
