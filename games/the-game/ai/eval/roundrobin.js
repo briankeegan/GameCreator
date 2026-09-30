@@ -107,7 +107,21 @@ if (ONE) {
                     }
                 }
             }
-            ring[side].push({ f: st[side].clock, via: d && d.via, alive: d && d.alive,
+            // AND WHAT WAS ON THE TABLE, not only what was played. A board that
+            // dies with a chain sitting on it is a different failure from a board
+            // with nothing to fire, and the trace could not tell them apart.
+            var clr = 0, chainBest = 0, sws = bit.legalSwapsOf(m);
+            for (var si = 0; si < sws.length; si++) {
+                if (!bit.swapMasks(m, sws[si][0], sws[si][1])) continue;
+                var rz = bit.resolveFromMasks(m, true);
+                bit.swapMasks(m, sws[si][0], sws[si][1]);
+                if (rz.total > 0 || rz.scope === 'garbage-broke') {
+                    clr++;
+                    if ((rz.chain || 0) > chainBest) chainBest = rz.chain;
+                }
+            }
+            ring[side].push({ clr: clr, ch: chainBest,
+                              f: st[side].clock, via: d && d.via, alive: d && d.alive,
                               mode: d && d.mode && d.mode.name, cols: h.join(','),
                               sp: sh ? sh.spread : 0, gar: gar, tall: tall,
                               mv: mv, seen: seenAt,
@@ -142,7 +156,8 @@ if (ONE) {
                         String(r.tall).padStart(4) + String(r.gar).padStart(4) +
                         String(r.sp).padStart(6) + '  ' + String(r.cols).padEnd(12) +
                         ' ' + String(r.mv).padStart(6) + String(r.seen).padStart(5) +
-                        String(r.cands).padStart(6));
+                        String(r.cands).padStart(6) +
+                        String(r.clr).padStart(7) + String(r.ch).padStart(6));
         });
         for (var rr = st[D].height; rr >= 1; rr--) {
             var line = '  r' + String(rr).padStart(2) + ' ';
