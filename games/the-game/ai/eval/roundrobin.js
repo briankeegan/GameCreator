@@ -167,6 +167,7 @@ if (!jobs.length) {
 }
 console.log(jobs.length + ' pairings, ' + Math.min(JOBS, jobs.length) + ' at a time, root ' + ROOT);
 var next = 0, live = 0, done = 0, deaths = 0, hard = 0, broken = 0, lines = [];
+var frames = 0, pairings = 0;
 function pump() {
     while (live < JOBS && next < jobs.length) {
         // ONE CLOSURE PER CHILD. `var` is function-scoped, so a buffer declared
@@ -197,6 +198,15 @@ function spawnOne(job) {
             var n = (line.match(/DEAD@/g) || []).length;
             deaths += n;
             if (n && /(STARTER|ZERO)\s+DEAD@/.test(line)) hard += n;
+            // HOW LONG IT LASTED, NOT ONLY WHETHER IT DIED.
+            //
+            // Deaths are a two-gradation ruler on fourteen boards: a change that
+            // takes a board from 30,000 frames to 2,424 and saves a different one
+            // reads as no change at all. The frames are already in the line and
+            // they move continuously, so a run says which direction a change went
+            // even when the count does not.
+            var fm = line.match(/frames (\d+)/);
+            if (fm) { frames += Number(fm[1]); pairings++; }
             console.log('  [' + done + '/' + jobs.length + '] ' + line);
         }
         if (done === jobs.length) {
@@ -208,6 +218,9 @@ function spawnOne(job) {
             }
             console.log('\n' + deaths + ' deaths / ' + (played * 2) + ' boards' +
                         '   STARTER or ZERO: ' + hard);
+            console.log('frames ' + frames + ' of ' + (pairings * 30000) +
+                        '   mean ' + Math.round(frames / Math.max(1, pairings)) +
+                        '   (' + Math.round(100 * frames / Math.max(1, pairings * 30000)) + '%)');
             process.exit(hard ? 1 : 0);
         }
         pump();

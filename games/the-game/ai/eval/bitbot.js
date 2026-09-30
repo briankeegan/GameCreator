@@ -2783,6 +2783,16 @@
         if (bitoptions.slabReadyFast(m)) s += fpr;
         s += matchWays(m) * perPanel;
         s -= bumpiness(m) * perPanel;
+        // AND THE MATERIAL FLOOR, the same price bestPlan and the search both put
+        // on it -- a row of rise per row short.
+        //
+        // This is the ranking all three noneClear branches use, so without the
+        // floor here every one of them will flatten the board by spending it. Seed
+        // 103 rand3 went 5,3,1,1,1,1 to 4,3,2,1,1,1 under twenty-four cells of
+        // garbage -- twelve panels, four columns one high -- and died at 19,031.
+        // The floor priced into the search's own `val` does not reach here: these
+        // decisions come through the weights path, which ranks candidates itself.
+        s -= Math.max(0, WORKING_ROWS - (now ? now.mat : 0)) * fpr;
         return s - (cand.moveFrames || 0);
     };
 
