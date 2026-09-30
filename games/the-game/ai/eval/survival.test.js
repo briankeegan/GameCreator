@@ -269,19 +269,22 @@ function hostile() {
     st.queuedSwapRow = 0;
 }());
 
-// ------------------- 9. emptying a column is refused on every path, not one
+// ------------- 9. emptying a column shapes the choice, it does not forbid it
 //
 // A column at zero holds no vertical match, breaks the adjacency a horizontal one
-// needs, and is where a slab bridges -- garbage rests on the tall columns and
-// spans the width, so the empty column is capped and nothing under the cap can
-// reach the slab. All three remaining deaths over seed 101 died on that board:
-// 7,3,2,1,3,4 at 1,446, 8,7,3,1,2,3 at 14,959, 7,3,4,1,5,7 at 19,371.
+// needs, and is where a slab bridges: garbage rests on the tall columns and spans
+// the width, so the empty column is sealed and nothing under it reaches the slab.
+// Three deaths over seed 101 are that board -- 7,3,2,1,3,4 at 1,446; 8,7,3,1,2,3
+// at 14,959; 7,3,4,1,5,7 at 19,371.
 //
-// opensHole already said this to bestAttack's ranking and FLOOR says it to the
-// weights, and the moves that emptied these columns came via `setup` and
-// `WEIGHTS`. So this checks the predicate at the exit, where every preference
-// path passes: a swap landing on a board with an empty column is refused when the
-// board it left had none, and is NOT refused when the board it left already did.
+// It was tried as a refusal at the exit, where it would reach every path, and
+// measured over 60 boards: 7 deaths without it, 9 refusing the hole everywhere, 14
+// refusing it only under garbage. Taking the move away leaves the bot somewhere
+// worse than the hole does, so it stays a preference -- opensHole out of bestAttack
+// (invariant 7 above) and score()'s floor on bumpiness and tallest.
+//
+// What is checked here is that it is NOT a refusal, because re-adding it is the
+// obvious thing to try and it has already been paid for three times.
 (function () {
     var bo = require('./bitoptions.js');
     var st = new P.Stack({ level: 10, seed: 101, countdown: false });
@@ -292,54 +295,21 @@ function hostile() {
     var info = bot.info(board);
     var base = bit.maskState(board.grid, board.blocks, W, board.height);
 
-    ok(bo.shapeOf(base) && bo.shapeOf(base).low > 0,
-       'the live board already has an empty column, so it cannot test the rule');
-
-    // A stub move whose landed board has a column emptied. The predicate reads
-    // cand.masks, so the landed board is what has to carry the hole.
-    function landing(low) {
-        var m = bit.copyState(base);
-        if (low) { m.occ[3] = 0; m.inert[3] = 0; m.garb[3] = 0;
-                   for (var a = 1; a <= m.N; a++) m.colour[a * (W + 2) + 3] = 0; }
-        return { kind: 'swap', swap: [1, 1], masks: m,
-                 resolved: { total: 0, garbage: 0, brokeGarbage: false, chain: null } };
-    }
-
-    // THE RULE IS ABOUT A CAPPED HOLE, so the board it is asked about has to have
-    // something to cap it. A slab in column 1 is enough to make the board dirty.
     var dirty = bit.copyState(base);
     dirty.occ[1] |= 1 << 8; dirty.inert[1] |= 1 << 8; dirty.garb[1] |= 1 << 8;
 
-    ok(bot.refuses(landing(true), info, dirty, false) === 'hole',
-       'a move landing with column 3 emptied under garbage was not refused, so the ' +
-       'rule that kept it out of bestAttack still does not reach the other paths');
-    ok(bot.refuses(landing(false), info, dirty, false) !== 'hole',
-       'a move that empties nothing was refused as a hole, which would refuse ' +
-       'most of the board');
+    var holed = bit.copyState(base);
+    holed.occ[3] = 0; holed.inert[3] = 0; holed.garb[3] = 0;
+    for (var a = 1; a <= holed.N; a++) holed.colour[a * (W + 2) + 3] = 0;
+    ok(bo.shapeOf(holed).low === 0 && bo.shapeOf(dirty).low > 0,
+       'the stub boards do not set up the case, so this checks nothing');
 
-    // AND NOT ON A CLEAN BOARD, which is the narrowing and has to stay narrowed.
-    // An empty column with no garbage on the board is filled by the next raise;
-    // refusing every move that makes one there cost two boards in sixty while
-    // making the survivors live longer, and the count is what is being minimised.
-    ok(bot.refuses(landing(true), info, base, false) !== 'hole',
-       'refused an empty column on a board with no garbage on it and none coming, ' +
-       'where the next raise fills it -- that is the form that measured worse');
-
-    // AND IT DOES NOT FIRE WHEN THE HOLE WAS ALREADY THERE. Filling five columns
-    // from five is not opening a hole, and refusing it leaves the bot unable to
-    // play on the one board that most needs playing on.
-    var already = bit.copyState(dirty);
-    already.occ[5] = 0; already.inert[5] = 0; already.garb[5] = 0;
-    for (var a2 = 1; a2 <= already.N; a2++) already.colour[a2 * (W + 2) + 5] = 0;
-    ok(bo.shapeOf(already).low === 0, 'the stub base has no empty column to test with');
-    ok(bot.refuses(landing(true), info, already, false) !== 'hole',
-       'refused a hole on a board that already had one, which forbids playing at ' +
-       'all exactly where the bot has least room to stand still');
-
-    // And survival still overrules it, like every other preference rule.
-    ok(bot.refuses(landing(true), info, dirty, true) === null,
-       'the hole rule overruled survival, which is priced in frames and is not a ' +
-       'preference');
+    var cand = { kind: 'swap', swap: [1, 1], masks: holed,
+                 resolved: { total: 0, garbage: 0, brokeGarbage: false, chain: null } };
+    ok(bot.refuses(cand, info, dirty, false) !== 'hole',
+       'emptying a column is being refused at the exit again -- measured at 9 and ' +
+       '14 deaths in 60 against 7 without it, in the everywhere and under-garbage ' +
+       'forms. It belongs in the ranking, not in the refusals');
 }());
 
 console.log('survival: 28 invariants checked without playing a game');

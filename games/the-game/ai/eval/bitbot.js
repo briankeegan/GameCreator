@@ -123,8 +123,6 @@
         // TWO FILTERS THAT ARE NOT WEIGHTS, both off only for the run that
         // measures what they are worth. See refuseReturn and deadly below.
         this.refuseReturn = opts.refuseReturn !== false;
-        // Off only for the run that measures what emptying a column costs.
-        this.refuseHole = opts.refuseHole !== false;
         // Off only for the run that measures what the rule is worth.
         this.refusePayless = opts.refusePayless !== false;
         // HOW MANY CANDIDATES GET THE EXPENSIVE SCORE. Scoring one runs a depth-2
@@ -2769,46 +2767,27 @@
         // panel spent there is spent on never digging out.
         if (cand.resolved.total > 0 && !cand.resolved.brokeGarbage &&
             materialRows(base) < WORKING_ROWS) return 'starving';
-        // AND IT MAY NOT EMPTY A COLUMN.
+        // EMPTYING A COLUMN IS NOT REFUSED HERE, AND THE NUMBERS ARE WHY.
         //
-        // A column at zero holds no vertical match and breaks the adjacency a
-        // horizontal one needs, and it is where a slab bridges: garbage rests on
-        // the tall columns and spans the width, so the empty one is capped and
-        // nothing under the cap can ever reach the slab. That is the board all
-        // three remaining deaths over seed 101 died on -- 7,3,2,1,3,4 at 1,446;
-        // 8,7,3,1,2,3 at 14,959; 7,3,4,1,5,7 at 19,371 -- each a tower beside a
-        // column at one, capped, with `alive` already at zero for the last fifty
-        // frames. The death is decided thousands of frames before it happens.
+        // A column at zero holds no vertical match, breaks the adjacency a
+        // horizontal one needs, and is where a slab bridges -- garbage rests on the
+        // tall columns and spans the width, so the empty column is sealed and
+        // nothing under it can reach the slab. All three deaths this was written
+        // from are that board: 7,3,2,1,3,4 at 1,446; 8,7,3,1,2,3 at 14,959;
+        // 7,3,4,1,5,7 at 19,371, each a tower beside a column at one, capped, with
+        // `alive` already at zero for the last fifty frames.
         //
-        // The rule existed and reached one path. `opensHole` was wired into
-        // bestAttack's ranking, and score()'s bumpiness floor shapes the weights
-        // fallback; the moves that emptied these columns came via `setup` and
-        // `WEIGHTS`. Here it is a refusal at the exit, so it reaches every path
-        // that is preference rather than arithmetic -- which is the same place the
-        // payless three and the starving clear are decided, and for the same
-        // reason.
+        // The reading is right and the refusal is the wrong instrument. Measured
+        // over 60 boards: 7 deaths without it, 9 refusing the hole everywhere, 14
+        // refusing it only on a board with garbage on it -- the narrowing that
+        // should have cost less cost twice as much. Taking the move away puts the
+        // bot somewhere worse than the hole does.
         //
-        // Asked of the board the move LANDS on, and only when the board it left
-        // had no empty column already: filling six columns from five is not this.
-        // ONLY WHERE THE HOLE IS FATAL: under garbage, or with garbage on the way.
-        //
-        // The three boards this was written from were all capped -- garbage resting
-        // on the tall columns, spanning the width, with the empty column sealed
-        // under it and no way to reach the slab. On a CLEAN board an empty column is
-        // not that: the next raise fills it from below, and refusing every move that
-        // makes one just takes options away. Measured, refusing it everywhere: the
-        // death count went 7 to 9 over the same 60 boards, while the median death
-        // frame moved from about 19,400 to 24,300 -- longer lives, more of them
-        // ending. Count is the thing being minimised, so the condition narrows to
-        // the case the death boards actually show.
-        if (this.refuseHole) {
-            var dirty = (info && info.incoming || 0) > 0;
-            if (!dirty) { for (var hc = 1; hc <= W; hc++) if (base.garb[hc]) { dirty = true; break; } }
-            if (dirty) {
-                var lands = bitoptions.shapeOf(cand.masks), from = bitoptions.shapeOf(base);
-                if (lands && from && lands.low === 0 && from.low > 0) return 'hole';
-            }
-        }
+        // So it stays where it already was and already measured well: a PREFERENCE.
+        // `opensHole` ranks it out of bestAttack (survival invariant 7) and score()
+        // clamps bumpiness and tallest to a floor no vector can undo. A rule that
+        // shapes the choice is not the same as one that forbids it, and this is a
+        // case where only the first pays.
         return null;
     };
 
