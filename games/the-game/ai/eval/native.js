@@ -551,6 +551,11 @@
     return out;
   };
   Search.prototype.steps = function () { return X.ns_steps(this.ctx); };
+  // The server's engine: garbage rows broken on a node's board so far.
+  Search.prototype.breaks = function (node) {
+    if (!X.ns_breaks) throw new Error('Native: this engine does not count breaks');
+    return X.ns_breaks(this.ctx, node._i);
+  };
   // A node the level loop made: its move, its parent and its line's tag, as
   // the JS loop would have written them on it.
   Search.prototype.wrapLoop = function (i) {

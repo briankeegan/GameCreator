@@ -13,7 +13,7 @@ require(path.join(DIR, '..', '..', 'panel-cpu.js'));
 var P = require(path.join(DIR, 'puyocpu.js')), PA = require(path.join(DIR, 'pa-engine.js')), PE = globalThis.PanelEngine;
 var SH = require(path.join(DIR, 'survivor_shared.js'));
 var cfg = wt.workerData, OPTS = SH.botOptions(cfg.profile, cfg.threads);
-var bot = null, snap = null, nat = null;   // nat: the search's C context, kept from match to match
+var bot = null, snap = null, nat = null, BS = null;   // BS: a search context of its own for breakMoves   // nat: the search's C context, kept from match to match
 var NativeMem = function () {
   var N = require(path.join(DIR, 'native.js')).server, X = N.exports(), free = [];
   for (var k = 0; k < 4; k++) free.push(X.nb_pool_stat(k));
@@ -46,6 +46,18 @@ wt.parentPort.on('message', function (m) {
     bot.opponent = null;
     bot._predArr = [];
     bot.decisions = (bot.decisions || 0) + 1;
+    // BREAK GARBAGE FIRST: of the moves every filter keeps (so proven to
+    // live), one that breaks garbage now; failing that, one that sets up a
+    // break for the next move.
+    bot.preferMove = null;
+    var br = null, want = null;
+    if (cfg.profile.breakFirst) {
+      bot._natSearch();   // the engine, on this bot's threads, before a second context is made on it
+      if (!BS) BS = new (require(path.join(DIR, 'native.js')).server.Search)({ reaction: OPTS.reaction, cursorMoveFrames: OPTS.cursorMoveFrames, threads: OPTS.threads || 1 });
+      br = SH.breakMoves(BS, board, { left: m.hold.left, started: m.hold.started }, arrivals);
+      want = Object.keys(br.now).length ? br.now : Object.keys(br.next).length ? br.next : null;
+      if (want) bot.preferMove = function (c) { return !!want[c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[1] : c.kind]; };
+    }
     // The frame loop stops a question it no longer needs (cfg.abort holds its id).
     bot._abort = cfg.abort ? function () { return Atomics.load(cfg.abort, 0) === m.id; } : null;
     var d;
@@ -57,6 +69,7 @@ wt.parentPort.on('message', function (m) {
     out = { id: m.id, epoch: m.epoch, at: m.at, kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, ms: Date.now() - t0,
           line: line, lineAt: line ? fl.at : null,
           mem: NativeMem(),
+          breaks: bot.preferMove ? { offered: want === br.now ? 'now' : 'next', took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
           diag: { doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped } };
   } catch (e) {
     if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
