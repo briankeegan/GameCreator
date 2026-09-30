@@ -845,6 +845,9 @@
     //      but it turns an inert slab back into panels
     //   3  clears nothing: building, holding, raising
     //   4  clears something and neither sends nor breaks -- not an action at all
+    // The verdict a cash gets without asking: see the candidate loop.
+    var NOT_STRANDED = { stranded: false, hasClear: false, hasBreak: false };
+
     function tierOf(cand) {
         var r = cand.resolved;
         if (!r || !r.total) return 3;
@@ -1682,7 +1685,28 @@
             var horizon = Math.max((cand.moveFrames || 0) + this.reaction,
                                    info.framesPerRow || 0);
             if (this.deadly(cand.masks, cand.resolved, info, horizon)) { this.counts.refusedDeadly++; continue; }
-            var ahead = this.lookahead(cand.masks, info, horizon);
+            // A CASH IS NEVER STRANDED. THE STRANDED TEST IS FOR SETUPS.
+            //
+            // It asks whether any follow-up survives, of the STATIC board this
+            // move settles to. For a setup that is the right question: a swap
+            // leading to a position with no way out leads nowhere. For a move that
+            // CLEARS it is the wrong board entirely -- the resolve holds the floor
+            // for its whole duration, panels fall into the gaps, the row rises, and
+            // the position the follow-up is played on is not the one being judged.
+            //
+            // It killed the bot. Seed 101, STARTER against rand1, the last three
+            // decisions before frame 21,514: 28 candidates, 27 refused as deadly,
+            // and the ONE that cleared -- a three at (2,4) -- refused as stranded.
+            // survived=0, so the decision fell through to the weights fallback and
+            // the three was still on the board when it died.
+            //
+            // Fourth time today a rule written for one kind of move was applied to
+            // another; see refuses() above for where that keeps coming from.
+            var cashes = cand.resolved && (cand.resolved.total > 0 || cand.resolved.brokeGarbage);
+            // And the walk is not spent on it either: a cash needs neither the
+            // stranded verdict nor the failsafe below, and lookahead settles a
+            // board per legal swap.
+            var ahead = cashes ? NOT_STRANDED : this.lookahead(cand.masks, info, horizon);
             if (ahead.stranded) { this.counts.refusedStranded++; continue; }
             alive++;
             // KEEP A THREE IN HAND, IF THE BOARD CAN AFFORD ONE. A clear that can
@@ -1700,8 +1724,6 @@
             // whole of its resolve; a bare three buys 59 frames and takes three
             // panels off the board. With no garbage on it there is nothing to
             // break, so any clear is the fail-safe.
-            var cashes = cand.resolved && (cand.resolved.total > 0 ||
-                                           cand.resolved.brokeGarbage);
             var held = buried ? ahead.hasBreak : ahead.hasClear;
             if (!cashes && !held) {
                 this.counts.refusedNoFailsafe++;
@@ -2082,7 +2104,23 @@
         //
         // Dropped the moment it stops being true -- the next move must still be
         // legal and must not put the board back where it has just been.
-        if (noneClear && (!this._flatten || !this._flatten.moves.length)) {
+        // A FREEZE IS FREE SHAPE WORK, SO FLATTEN IN IT.
+        //
+        // While the clock runs the floor is HELD -- that is what stop time is --
+        // so a swap that only changes the shape costs nothing it needs back. The
+        // comment on the early-cash rule above already says this: "there is room
+        // to build inside a window and still cash at the end of it". Building is
+        // what flattening is, and it was never reached, because the whole flatten
+        // branch is gated on nothing clearing anywhere and during a freeze there
+        // is usually something.
+        //
+        // And under a slab it is the thing that matters most. Garbage rests on the
+        // tallest column and bridges the rest, so a ragged pocket can never reach
+        // it: the board the bot died on had columns 4,2,2,4,5,6 under the slab,
+        // two deep in the middle, and no match it could put against the garbage
+        // anywhere. Levelling the pocket IS reaching the slab.
+        var shapeTime = noneClear || (info.stopTime || 0) > 0;
+        if (shapeTime && (!this._flatten || !this._flatten.moves.length)) {
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
                                                     lookDepth, base, this.timing(info, deadline), digging);
         }
@@ -2090,15 +2128,29 @@
         // every other -- the walk to each swap, the swap, and the cooldown when one
         // applies -- and a plan that runs past the deadline is not a plan, however
         // flat the board at the end of it.
-        if (noneClear && options && options.flatten && options.flatten.swaps.length &&
-            (options.flatten.duration || 0) <= deadline) {
+        // AND IT KNOWS HOW LONG IT HAS: THE CLOCK IS THE BUDGET.
+        //
+        // Free shape work is only free while the floor is held, and the engine
+        // says exactly how long that is -- stopTime. A plan that runs past the end
+        // of the freeze stops being free partway through and finishes on a board
+        // that has started rising again, so during a freeze the budget is the
+        // freeze, and off the clock it is the deadline as before.
+        //
+        // The plan already knows what it LANDS as: bitoptions picks it from
+        // res.settled and ranks ties by waysOf, the number of ways to finish a
+        // line on that board. So it is shaping toward what it can build next, not
+        // just toward flat -- which is the other half of doing both at once.
+        var shapeBudget = (info.stopTime || 0) > 0
+                        ? Math.min(info.stopTime, deadline) : deadline;
+        if (shapeTime && options && options.flatten && options.flatten.swaps.length &&
+            (options.flatten.duration || 0) <= shapeBudget) {
             if (!this._flatten || !this._flatten.moves.length) {
                 this._flatten = { moves: options.flatten.swaps.slice(),
                                   frames: options.flatten.duration,
                                   startedAt: this.stack.frames };
             }
         }
-        if (noneClear && this._flatten && this._flatten.moves.length) {
+        if (shapeTime && this._flatten && this._flatten.moves.length) {
             var fm = this._flatten.moves[0], fok = false, fls = bit.legalSwapsOf(base);
             for (i = 0; i < fls.length; i++) {
                 if (fls[i][0] === fm[0] && fls[i][1] === fm[1]) { fok = true; break; }
