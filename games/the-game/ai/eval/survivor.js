@@ -105,7 +105,7 @@ function Match(level) {
   this.nextAt = 0;         // the frame the plan ends on
   this.arrivals = [];      // garbage on its way (arrivalsOf)
   this.line = null;        // the proven line after the plan: { steps, at } (follow)
-  this.stats = { frames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0, breaknow: 0, tooknow: 0, breaknext: 0, tooknext: 0 };
+  this.stats = { frames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0, break1: 0, took1: 0, break2: 0, took2: 0, break3: 0, took3: 0 };
   this.history = []; this.decided = []; this.asked = []; this.dumped = false;
   // A question from the last match is not this one's: its answer is dropped.
   pending = null;

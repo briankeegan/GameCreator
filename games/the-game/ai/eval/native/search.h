@@ -12,6 +12,10 @@
 //                      frame and that frame decides (the server's engine);
 //                      st->swapDenied then says it was not taken
 //   pushArrival(b, a)  garbage arriving
+//   NODE_BREAKS(b)     garbage rows broken on the board so far (0 where not counted)
+#ifndef NODE_BREAKS
+#define NODE_BREAKS(b) 0   // an engine that counts breaks says how
+#endif
 typedef struct { int32_t at, width, height, isChain, isMetal; } Arr;
 #define MAXARR 16
 #define KEYMAX (16 * W)
@@ -21,7 +25,7 @@ typedef struct Node {
   int32_t t, holdLeft, holdStarted, fresh, dead, fromPrev;   // fromPrev: a dead end, on its parent's board
   int32_t narr; Arr arr[MAXARR];
   int32_t tag, prev, mk, mr, mc, frames, seed, pins, err, live, kept;
-  int32_t held, garb, top, pos0, pos1;
+  int32_t held, garb, top, pos0, pos1, brk;   // brk: garbage rows broken so far (NODE_BREAKS)
   int32_t stopTime, preStopTime, shakeTime, displacement, speed;
   double riseTimer;
   uint32_t hash;
@@ -36,7 +40,8 @@ typedef struct Ctx {
   Vec level, next, keep, tmp, moves;
   int32_t *seen; int32_t seenCap;
   int32_t ntags;
-  int32_t *verdict, *proofs, *weak, *reach, *reachSet, *far, *per; int32_t tagCap;
+  int32_t *verdict, *proofs, *weak, *reach, *reachSet, *far, *per, *brkAt; int32_t tagCap;
+  int32_t rootBrk;   // the root's rows broken: a line breaks garbage when a node's brk is past it
   int32_t par;   // threads are making nodes: newNode takes a reserved slot
 } Ctx;
 #define NODE(x, i) (&(x)->nodes[i])
@@ -93,6 +98,7 @@ static void readBoard(Node *n, Board *b) {
   n->stopTime = b->stopTime; n->preStopTime = b->preStopTime; n->shakeTime = b->shakeTime;
   n->displacement = b->displacement; n->riseTimer = b->riseTimer; n->speed = b->speed;
   n->held = b->stopTime + b->preStopTime + b->shakeTime;
+  n->brk = NODE_BREAKS(b);
 }
 static int legalSwaps(Board *b, int32_t *out) {
   int n = 0;
@@ -315,6 +321,9 @@ EXPORT(ns_root) int ns_root(Ctx *x, int holdLeft, int holdStarted, int narr, int
     n->arr[i].at = a[0]; n->arr[i].width = a[1]; n->arr[i].height = a[2]; n->arr[i].isChain = a[3]; n->arr[i].isMetal = a[4];
   }
   readBoard(n, b);
+  // A new search: no line of it has broken garbage yet.
+  x->rootBrk = n->brk;
+  for (int i = 0; i < x->tagCap; i++) x->brkAt[i] = -1;
   return n->err ? STEP_ERR : (int)(n - x->nodes);
 }
 EXPORT(ns_step) int ns_step(Ctx *x, int pi, int kind, int mr, int mc, int until) { x->steps++; return lineStep(x, pi, kind, mr, mc, until); }
@@ -377,15 +386,18 @@ static int vpush(Vec *v, int32_t x) { if (!vreserve(v, v->n + 1)) return 0; v->a
 EXPORT(ns_tags) int32_t *ns_tags(Ctx *x, int ntags) {
   if (ntags > x->tagCap) {
     int32_t cap = ntags < 64 ? 64 : ntags * 2;
-    int32_t *m = (int32_t *)grab((unsigned long)cap * 4 * 7);
+    int32_t *m = (int32_t *)grab((unsigned long)cap * 4 * 8);
     if (!m) return 0;
     x->verdict = m; x->proofs = m + cap; x->weak = m + 2 * cap; x->reach = m + 3 * cap; x->reachSet = m + 4 * cap;
-    x->far = m + 5 * cap; x->per = m + 6 * cap; x->tagCap = cap;
+    x->far = m + 5 * cap; x->per = m + 6 * cap; x->brkAt = m + 7 * cap; x->tagCap = cap;
+    for (int i = 0; i < cap; i++) x->brkAt[i] = -1;
   }
   x->ntags = ntags;
   return x->verdict;
 }
 EXPORT(ns_tag_stride) int ns_tag_stride(Ctx *x) { return x->tagCap; }
+// The first frame a live line of the move tagged `tag` breaks garbage, -1 for none.
+EXPORT(ns_break_at) int ns_break_at(Ctx *x, int tag) { return tag >= 0 && tag < x->tagCap ? x->brkAt[tag] : -1; }
 EXPORT(ns_level) int32_t *ns_level(Ctx *x, int n) { if (!vreserve(&x->level, n)) return 0; x->level.n = n; return x->level.a; }
 EXPORT(ns_level_n) int ns_level_n(Ctx *x) { return x->level.n; }
 EXPORT(ns_set_tag) void ns_set_tag(Ctx *x, int i, int tag, int seed) { NODE(x, i)->tag = tag; NODE(x, i)->seed = seed; }
@@ -637,6 +649,8 @@ EXPORT(ns_loop) int ns_loop(Ctx *x, int budget, int until, int full, int beam, i
           if (!reachSet[tag] || cn->t > reach[tag]) { reach[tag] = cn->t; reachSet[tag] = 1; pin(x, &far[tag], c); }
           if (cn->t >= full && !cn->dead) { verdict[tag] = 1; pin(x, &proofs[tag], c); break; }
           if (cn->t >= x->surviveFrames && weak[tag] < 0) pin(x, &weak[tag], c);
+          // THE EARLIEST BREAK: of the move's live lines, the first frame one breaks garbage.
+          if (!cn->dead && cn->brk > x->rootBrk && (x->brkAt[tag] < 0 || cn->t < x->brkAt[tag])) x->brkAt[tag] = cn->t;
           // A child's board is not read till the level is cut to the beam: a
           // child kept is replayed from its parent then.
           dropBoard(x, c);
