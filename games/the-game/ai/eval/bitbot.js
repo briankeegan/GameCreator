@@ -1116,6 +1116,26 @@
 
     function bestPlan(list, clock, deadline, engine, toppedOut, framesPerRow, framesTable, tallNow) {
         var best = null, over = null, all = list.now.concat(list.next), i;
+        // THE PLANS THAT DO NOT COST SHAPE, IF THERE ARE ANY.
+        //
+        // The same narrowing bestAttack makes, on the path that actually fires: a
+        // vertical three takes three panels out of ONE column and drops it three
+        // below its neighbours, a horizontal three takes one from each of three and
+        // leaves the surface where it was. Same frames bought, different board
+        // after, so there is nothing here for a rate to weigh.
+        //
+        // It is what this bot dies of. Seed 101 rand4 went from 8,5,3,5,5,9 to
+        // 8,5,0,5,2,9 in thirty frames -- two columns each dropping by exactly
+        // three, two vertical threes -- and from there to a lone tower seven high
+        // that a four-row slab bridged on and sealed every column under. `levels`
+        // is the rule for that and it reached bestAttack only; the move that made
+        // this board came via survivalPlan.
+        //
+        // A narrowing, not a weight, and it stands aside when every plan costs
+        // shape: then the shape was going to be paid whatever was played.
+        var lvl = [];
+        for (i = 0; i < all.length; i++) if (all[i].levels) lvl.push(all[i]);
+        if (lvl.length) all = lvl;
         // ONE PANEL REMOVED IS framesPerRow / W FRAMES OF LIFE -- 18.7 at level 10.
         // Panels and stop time are the same currency and this is the exchange rate.
         var perPanel = (framesPerRow || 0) / W;
