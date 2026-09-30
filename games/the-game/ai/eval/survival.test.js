@@ -305,17 +305,30 @@ function hostile() {
                  resolved: { total: 0, garbage: 0, brokeGarbage: false, chain: null } };
     }
 
-    ok(bot.refuses(landing(true), info, base, false) === 'hole',
-       'a move landing with column 3 emptied was not refused, so the rule that ' +
-       'kept it out of bestAttack still does not reach the other paths');
-    ok(bot.refuses(landing(false), info, base, false) !== 'hole',
+    // THE RULE IS ABOUT A CAPPED HOLE, so the board it is asked about has to have
+    // something to cap it. A slab in column 1 is enough to make the board dirty.
+    var dirty = bit.copyState(base);
+    dirty.occ[1] |= 1 << 8; dirty.inert[1] |= 1 << 8; dirty.garb[1] |= 1 << 8;
+
+    ok(bot.refuses(landing(true), info, dirty, false) === 'hole',
+       'a move landing with column 3 emptied under garbage was not refused, so the ' +
+       'rule that kept it out of bestAttack still does not reach the other paths');
+    ok(bot.refuses(landing(false), info, dirty, false) !== 'hole',
        'a move that empties nothing was refused as a hole, which would refuse ' +
        'most of the board');
+
+    // AND NOT ON A CLEAN BOARD, which is the narrowing and has to stay narrowed.
+    // An empty column with no garbage on the board is filled by the next raise;
+    // refusing every move that makes one there cost two boards in sixty while
+    // making the survivors live longer, and the count is what is being minimised.
+    ok(bot.refuses(landing(true), info, base, false) !== 'hole',
+       'refused an empty column on a board with no garbage on it and none coming, ' +
+       'where the next raise fills it -- that is the form that measured worse');
 
     // AND IT DOES NOT FIRE WHEN THE HOLE WAS ALREADY THERE. Filling five columns
     // from five is not opening a hole, and refusing it leaves the bot unable to
     // play on the one board that most needs playing on.
-    var already = bit.copyState(base);
+    var already = bit.copyState(dirty);
     already.occ[5] = 0; already.inert[5] = 0; already.garb[5] = 0;
     for (var a2 = 1; a2 <= already.N; a2++) already.colour[a2 * (W + 2) + 5] = 0;
     ok(bo.shapeOf(already).low === 0, 'the stub base has no empty column to test with');
@@ -324,11 +337,11 @@ function hostile() {
        'all exactly where the bot has least room to stand still');
 
     // And survival still overrules it, like every other preference rule.
-    ok(bot.refuses(landing(true), info, base, true) === null,
+    ok(bot.refuses(landing(true), info, dirty, true) === null,
        'the hole rule overruled survival, which is priced in frames and is not a ' +
        'preference');
 }());
 
-console.log('survival: 27 invariants checked without playing a game');
+console.log('survival: 28 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');

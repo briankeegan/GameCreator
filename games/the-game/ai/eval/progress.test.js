@@ -188,13 +188,15 @@ var SAME_ANSWER_MAX = 8;
 // between two positions is two seconds of not playing, and this number is here to
 // be driven down -- the budget is set above what the build does so the gate catches
 // a REGRESSION today, and it should be lowered every time the figure improves.
-// REFUSING THE UNDO OUTRIGHT IS NOT THE INSTRUMENT, and it has been measured so
-// nobody has to measure it again. Refusing a swap that replays onto the board it
-// came from -- the narrow form, the only one with no legitimate case -- took the
-// worst figure from 118 to 93 and cost two boards: 9 deaths in 60 against 7 in the
-// same 60 without it. The diagnosis is right and the lever is wrong. Whatever
-// drives this number down has to do it without taking moves away from the bot,
-// because the board it leaves it standing on is worse than the frames it saves.
+// 118 was the figure before the undo replay was refused; 93 is with it. That change
+// is survival-neutral -- every one of the nine deaths over sixty boards landed on
+// the identical frame with it and without -- so it buys frames, not lives, and the
+// number still has a long way to come down.
+//
+// AND THE WIDE FORM OF THAT RULE IS MEASURED AND REJECTED: matching a move against
+// the last three positions rather than only the replay cut the bot from 233
+// decisions to 102 over three duels. Whatever drives this number further down has
+// to do it without taking moves away from the bot.
 var CYCLE_MAX = 140;
 
 var GAMES = [

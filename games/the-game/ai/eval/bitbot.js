@@ -181,6 +181,7 @@
         this._raiseStarted = false;
         this._walk = null;
         this._lastSwap = null;
+        this._undoGuard = null;
         this.decisions = 0;
         // WHERE EVERY FRAME WENT. Not diagnostics bolted on -- the bot could not
         // say what it did with a frame, so every question about its behaviour was
@@ -1733,6 +1734,7 @@
                 if (allowed[i].kind === 'swap' && allowed[i].masks) {
                     var sig = signature(allowed[i].masks);
                     if (sig === here || this._seen.indexOf(sig) >= 0) { this.counts.refusedReturn++; continue; }
+                    if (this.undoesRecent(base, allowed[i].swap)) { this.counts.refusedReturn++; continue; }
                 }
                 kept.push(allowed[i]);
             }
@@ -1962,6 +1964,8 @@
         var self = this;
         function returnsToSeen(mv) {
             if (!self.refuseReturn || !mv) return false;
+            // The position the swap MAKES, before anything it might set off.
+            if (self.undoesRecent(base, mv)) return true;
             for (var q = 0; q < pool.length; q++) {
                 var pc = pool[q];
                 if (pc.kind === 'swap' && pc.swap[0] === mv[0] &&
@@ -2718,6 +2722,38 @@
     // any path can be found in it and put to the same question. That is what
     // makes the exit gate an enforcement point rather than a fourth place to
     // write a rule and be bypassed. Add rules HERE.
+    // AN UNDO IS AN UNDO WHETHER OR NOT A CLEAR IS PREDICTED.
+    //
+    // The return filters compare the board a swap RESOLVES to. Inside a freeze the
+    // pool is read off panels still in motion, and resolveFromMasks finds matches on
+    // a board the engine cannot see yet -- so the landed board looks like somewhere
+    // new and the move goes through. Seed 103 played one swap sixteen decisions in a
+    // row at four-frame intervals, and another fifteen, the board alternating
+    // between exactly two positions inside a 51-frame freeze, via bestAttack,
+    // attackPlan, flatten and digPlan in turn. Nothing was in flight; each swap
+    // completed and the next one put it back.
+    //
+    // THE NARROW FORM, which is the only one that pays. Matching a move against the
+    // last three positions refuses real moves -- a cascade revisits positions -- and
+    // over three duels it cut the bot from 233 decisions to 102. This is the case
+    // with no legitimate reading at all: the move is the one just played, and the
+    // board it makes is exactly the board that swap was played FROM. Replaying it
+    // cannot do anything but put the board back.
+    //
+    // Measured over 60 boards: every death identical to without it, and the longest
+    // stretch confined to two positions down from 118 frames to 93. It buys frames,
+    // not lives.
+    //
+    // On a copy: `base` is pool[0].masks and every stage after this reads it.
+    BitBot.prototype.undoesRecent = function (base, mv) {
+        var g = this._undoGuard;
+        if (!this.refuseReturn || !mv || !base || !g) return false;
+        if (g.mv[0] !== mv[0] || g.mv[1] !== mv[1]) return false;
+        var st = bit.copyState(base);
+        if (!bit.swapMasks(st, mv[0], mv[1])) return false;
+        return signature(st) === g.from;
+    };
+
     BitBot.prototype.refuses = function (cand, info, base, survivalNeeded) {
         if (!cand || cand.kind !== 'swap' || !cand.resolved) return null;
         // Survival is exempt from all of them: a board that needs the clock takes
@@ -2754,9 +2790,24 @@
         //
         // Asked of the board the move LANDS on, and only when the board it left
         // had no empty column already: filling six columns from five is not this.
+        // ONLY WHERE THE HOLE IS FATAL: under garbage, or with garbage on the way.
+        //
+        // The three boards this was written from were all capped -- garbage resting
+        // on the tall columns, spanning the width, with the empty column sealed
+        // under it and no way to reach the slab. On a CLEAN board an empty column is
+        // not that: the next raise fills it from below, and refusing every move that
+        // makes one just takes options away. Measured, refusing it everywhere: the
+        // death count went 7 to 9 over the same 60 boards, while the median death
+        // frame moved from about 19,400 to 24,300 -- longer lives, more of them
+        // ending. Count is the thing being minimised, so the condition narrows to
+        // the case the death boards actually show.
         if (this.refuseHole) {
-            var lands = bitoptions.shapeOf(cand.masks), from = bitoptions.shapeOf(base);
-            if (lands && from && lands.low === 0 && from.low > 0) return 'hole';
+            var dirty = (info && info.incoming || 0) > 0;
+            if (!dirty) { for (var hc = 1; hc <= W; hc++) if (base.garb[hc]) { dirty = true; break; } }
+            if (dirty) {
+                var lands = bitoptions.shapeOf(cand.masks), from = bitoptions.shapeOf(base);
+                if (lands && from && lands.low === 0 && from.low > 0) return 'hole';
+            }
         }
         return null;
     };
@@ -2770,7 +2821,20 @@
     //
     // Soft: if nothing keeps a save, the original move stands. This narrows the
     // choice, it never refuses to move.
+    // THE MOVE THAT WAS ACTUALLY PLAYED, AND THE BOARD IT WAS PLAYED FROM.
+    //
+    // Written down outside the gate rather than at its many exits, because the gate
+    // can substitute the move on the way out and what has to be remembered is what
+    // left the building. One copy, and no path can play a swap without it.
     BitBot.prototype.decide = function () {
+        var d = this._gate();
+        if (d && d.kind === 'swap' && d.move && this._lastBase) {
+            this._undoGuard = { mv: [d.move[0], d.move[1]], from: signature(this._lastBase) };
+        }
+        return d;
+    };
+
+    BitBot.prototype._gate = function () {
         var d = this._decide();
         var info = this._lastInfo, pool = this._lastPool, base = this._lastBase;
         if (!d || d.kind !== 'swap' || !d.move || !info || !pool || !base) return d;
