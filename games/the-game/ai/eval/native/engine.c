@@ -954,24 +954,41 @@ static void run(Board *b) {
 }
 
 // ------------------------------------------------------------------ memory
+// THREADS. engine-mt.wasm is this file on shared memory: every thread is an
+// instance of it, with its own stack and its own copy of what is
+// _Thread_local here. Memory is taken under a lock; each thread keeps its own
+// free boards (a list per thread, so the main thread can hand boards over
+// while the others wait).
 extern unsigned char __heap_base;
 static unsigned long heapTop;
+static int32_t heapLock;
 static void *grab(unsigned long n) {
+  while (__atomic_exchange_n(&heapLock, 1, __ATOMIC_ACQUIRE)) {}
   if (!heapTop) heapTop = ((unsigned long)&__heap_base + 15) & ~15ul;
   n = (n + 15) & ~15ul;
   unsigned long at = heapTop, end = at + n, have = __builtin_wasm_memory_size(0) * 65536ul;
-  if (end > have && __builtin_wasm_memory_grow(0, (end - have + 65535) / 65536) == (unsigned long)-1) return 0;
-  heapTop = end;
-  return (void *)at;
+  void *r = (void *)at;
+  if (end > have && __builtin_wasm_memory_grow(0, (end - have + 65535) / 65536) == (unsigned long)-1) r = 0;
+  else heapTop = end;
+  __atomic_store_n(&heapLock, 0, __ATOMIC_RELEASE);
+  return r;
 }
-static Board *freeBoards;
+#define MAXTHREADS 16
+#ifdef THREADS
+#define LOCAL _Thread_local
+#else
+#define LOCAL
+#endif
+static LOCAL int32_t thId;          // 0 on the thread that runs the search
+static Board *freeOf[MAXTHREADS];
+static int32_t freeCount[MAXTHREADS];
 #define EXPORT(name) __attribute__((export_name(#name)))
 EXPORT(nb_new) Board *nb_new(void) {
-  Board *b = freeBoards;
-  if (b) { freeBoards = *(Board **)b; return b; }
+  Board *b = freeOf[thId];
+  if (b) { freeOf[thId] = *(Board **)b; freeCount[thId]--; return b; }
   return (Board *)grab(sizeof(Board));
 }
-EXPORT(nb_free) void nb_free(Board *b) { *(Board **)b = freeBoards; freeBoards = b; }
+EXPORT(nb_free) void nb_free(Board *b) { *(Board **)b = freeOf[thId]; freeOf[thId] = b; freeCount[thId]++; }
 static void copyBoard(Board *dst, const Board *src) { memcpy(dst, src, BOARD_BYTES(src)); }
 EXPORT(nb_copy) void nb_copy(Board *dst, Board *src) { copyBoard(dst, src); }
 
@@ -1111,10 +1128,19 @@ typedef struct Ctx {
   int32_t *seen; int32_t seenCap;
   int32_t ntags;
   int32_t *verdict, *proofs, *weak, *reach, *reachSet, *far, *per; int32_t tagCap;
+  int32_t par;   // threads are making nodes: newNode takes a reserved slot
 } Ctx;
 #define NODE(x, i) (&(x)->nodes[i])
 
 static Node *newNode(Ctx *x) {
+  if (x->par) {
+    int32_t i = __atomic_fetch_add(&x->n, 1, __ATOMIC_SEQ_CST);
+    if (i >= x->cap) return 0;   // reserved before the threads start: never here
+    Node *n = &x->nodes[i];
+    memset(n, 0, sizeof(Node) - sizeof(n->key));
+    n->prev = -1; n->tag = -1;
+    return n;
+  }
   if (x->n == x->cap) {
     int32_t cap = x->cap ? x->cap * 2 : 1024;
     Node *nn = (Node *)grab((unsigned long)cap * sizeof(Node));
@@ -1229,7 +1255,7 @@ static void raiseStep(Bot *h, Board *st, int32_t *input) {
 #define STEP_NULL (-1)
 #define STEP_DEAD (-2)
 #define STEP_ERR (-3)
-static int32_t deadAt;   // the frame a STEP_DEAD died on
+static LOCAL int32_t deadAt;   // the frame a STEP_DEAD died on
 static int runFrame(Board *st, Arr *arr, int32_t *narr, int32_t input, int32_t *f) {
   st->input = input;
   run(st);
@@ -1307,7 +1333,6 @@ static int lineStep(Ctx *x, int pi, int kind, int mr, int mc, int32_t until) {
     int32_t beat = x->reaction + 1, fr = imax(1, until - NODE(x, pi)->t);
     frames = ((fr + beat - 1) / beat) * beat;
   }
-  x->steps++;
   int r = advance(x, pi, kind, mr, mc, frames);
   if (r != STEP_DEAD) return r;
   if (kind == MK_LONG && deadAt >= x->surviveFrames) {
@@ -1367,7 +1392,7 @@ EXPORT(ns_root) int ns_root(Ctx *x, int holdLeft, int holdStarted, int narr, int
   readBoard(n, b);
   return n->err ? STEP_ERR : (int)(n - x->nodes);
 }
-EXPORT(ns_step) int ns_step(Ctx *x, int pi, int kind, int mr, int mc, int until) { return lineStep(x, pi, kind, mr, mc, until); }
+EXPORT(ns_step) int ns_step(Ctx *x, int pi, int kind, int mr, int mc, int until) { x->steps++; return lineStep(x, pi, kind, mr, mc, until); }
 EXPORT(ns_advance) int ns_advance(Ctx *x, int pi, int kind, int mr, int mc, int frames) { return advance(x, pi, kind, mr, mc, frames); }
 EXPORT(ns_dead_at) int ns_dead_at(void) { return deadAt; }
 EXPORT(ns_node) Node *ns_node(Ctx *x, int i) { return NODE(x, i); }
@@ -1499,55 +1524,194 @@ static int seenBefore(Ctx *x, int i, int32_t *count) {
 static void clearSeen(Ctx *x) { for (int32_t k = 0; k < x->seenCap; k++) x->seen[k] = -1; }
 #define LOOP_ABORTED (-10)
 #define LOOP_ERR (-11)
+#define NOTRUN (-99)
+// ---- the other threads. A phase is a list of steps (parent, move), each
+// written to its own slot; the threads take them in any order, and the level
+// loop reads them in its own. What a step makes does not depend on which
+// thread made it or when.
+static struct {
+  int32_t gen, next, ntasks, ack, nworkers;
+  Ctx *ctx; int32_t *tasks, *res;
+} pool;
+static void runTasks(void) {
+  Ctx *x = pool.ctx;
+  int32_t n = pool.ntasks;
+  for (;;) {
+    int32_t i = __atomic_fetch_add(&pool.next, 1, __ATOMIC_SEQ_CST);
+    if (i >= n) break;
+    const int32_t *t = pool.tasks + 4 * i;
+    int32_t mv = t[1];
+    pool.res[t[3]] = mv == -1 ? lineStep(x, t[0], MK_LONG, 0, 0, t[2])
+                   : mv == -2 ? lineStep(x, t[0], MK_HOLD, 0, 0, 0)
+                   : lineStep(x, t[0], MK_SWAP, CR(mv), CC(mv), 0);
+  }
+}
+#ifdef THREADS
+extern void __wasm_init_tls(void *);
+// Every instance, the searching one included, before anything else.
+EXPORT(ns_thread_init) void ns_thread_init(int id) {
+  void *tls = grab(__builtin_wasm_tls_size() + __builtin_wasm_tls_align());
+  unsigned long a = __builtin_wasm_tls_align();
+  __wasm_init_tls((void *)(((unsigned long)tls + a - 1) & ~(a - 1)));
+  thId = id;
+}
+EXPORT(ns_grab) void *ns_grab(int n) { return grab((unsigned long)n); }
+// A worker's life: wait for a phase, take steps until there are none, say so.
+EXPORT(ns_worker_loop) void ns_worker_loop(void) {
+  int32_t last = __atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST);
+  __atomic_add_fetch(&pool.nworkers, 1, __ATOMIC_SEQ_CST);
+  __builtin_wasm_memory_atomic_notify(&pool.nworkers, 1);
+  for (;;) {
+    while (__atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST) == last) __builtin_wasm_memory_atomic_wait32(&pool.gen, last, -1);
+    last = __atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST);
+    runTasks();
+    __atomic_add_fetch(&pool.ack, 1, __ATOMIC_SEQ_CST);
+    __builtin_wasm_memory_atomic_notify(&pool.ack, 1);
+  }
+}
+EXPORT(ns_workers) int ns_workers(void) { return __atomic_load_n(&pool.nworkers, __ATOMIC_SEQ_CST); }
+#endif
+static int reserveNodes(Ctx *x, int32_t more) {
+  if (x->n + more <= x->cap) return 1;
+  int32_t cap = x->cap ? x->cap : 1024;
+  while (cap < x->n + more) cap *= 2;
+  Node *nn = (Node *)grab((unsigned long)cap * sizeof(Node));
+  if (!nn) return 0;
+  if (x->n) memcpy(nn, x->nodes, (unsigned long)x->n * sizeof(Node));
+  x->nodes = nn; x->cap = cap;
+  return 1;
+}
+// Runs the phase's steps on every thread; back when all are done.
+static int runPhase(Ctx *x, Vec *tasks, int32_t *res) {
+  int32_t n = tasks->n / 4, w = pool.nworkers;
+  if (!n) return 1;
+  if (!reserveNodes(x, n)) return 0;
+  // Boards for the workers, from this thread's spares, so memory goes round.
+  int32_t each = n / (w + 1) + 4;
+  for (int k = 1; k <= w && k < MAXTHREADS; k++)
+    while (freeCount[k] < each && freeOf[0]) {
+      Board *b = freeOf[0]; freeOf[0] = *(Board **)b; freeCount[0]--;
+      *(Board **)b = freeOf[k]; freeOf[k] = b; freeCount[k]++;
+    }
+  pool.ctx = x; pool.tasks = tasks->a; pool.res = res; pool.ntasks = n; pool.ack = 0;
+  x->par = 1;
+  __atomic_store_n(&pool.next, 0, __ATOMIC_SEQ_CST);
+  __atomic_add_fetch(&pool.gen, 1, __ATOMIC_SEQ_CST);
+  __builtin_wasm_memory_atomic_notify(&pool.gen, (unsigned)-1);
+  runTasks();
+  int32_t a;
+  while ((a = __atomic_load_n(&pool.ack, __ATOMIC_SEQ_CST)) < w) __builtin_wasm_memory_atomic_wait32(&pool.ack, a, -1);
+  x->par = 0;
+  if (x->n > x->cap) x->n = x->cap;
+  return 1;
+}
+#define CHUNK 96
 // The level loop. In: the level (ns_level), each level node's tag and seed
 // (ns_set_tag), and per move (ns_tags): verdict (1 proven), proofs, weak,
 // reach/reachSet and far, nodes as indices, -1 for none. Out: the same, and
 // the level still open. Returns the budget left.
+//
+// It reads the level a chunk of parents at a time. With threads, a chunk's
+// waits are played first, then the other moves of every parent whose wait
+// did not prove its move; then the chunk is read in order, exactly as the
+// single-threaded loop reads it, a step not played yet being played then.
+// Steps played but not read are dropped.
 EXPORT(ns_loop) int ns_loop(Ctx *x, int budget, int until, int full, int beam, int quota, int seedsMax) {
   int32_t *verdict = x->verdict, *proofs = x->proofs, *weak = x->weak, *reach = x->reach, *reachSet = x->reachSet, *far = x->far;
   int polled = 0, i, j;
+  static Vec poff, res, tasks, proven;
   for (i = 0; i < x->ntags; i++) {
     if (proofs[i] >= 0) NODE(x, proofs[i])->pins++;
     if (weak[i] >= 0) NODE(x, weak[i])->pins++;
     if (far[i] >= 0) NODE(x, far[i])->pins++;
   }
   for (i = 0; i < x->level.n; i++) NODE(x, x->level.a[i])->live = 1;
+  if (!vreserve(&proven, x->ntags)) return LOOP_ERR;
   while (x->level.n && budget > 0) {
     int32_t seenN = 0;
     x->next.n = 0;
     clearSeen(x);
-    for (i = 0; i < x->level.n && budget > 0; i++) {
-      int ni = x->level.a[i];
-      int32_t tag = NODE(x, ni)->tag;
-      if (verdict[tag]) continue;
-      Board *nb = ensureBoard(x, ni);
-      if (!nb || !vreserve(&x->moves, 2 + 6 * MAXROWS)) return LOOP_ERR;
-      int nm = 2 + legalSwaps(nb, x->moves.a + 2);
-      x->moves.a[0] = -1; x->moves.a[1] = -2;
-      for (j = 0; j < nm && budget > 0; j++) {
-        budget--;
-        if (++polled >= 64) { polled = 0; if (abort_poll()) return LOOP_ABORTED; }
-        int32_t mv = x->moves.a[j];
-        int c = mv == -1 ? lineStep(x, ni, MK_LONG, 0, 0, until)
+    int32_t at = 0;
+    while (at < x->level.n && budget > 0) {
+      // the chunk: parents at..e, their moves at poff[k]..poff[k+1]
+      int32_t e = at, est = 0;
+      x->moves.n = 0; poff.n = 0;
+      while (e < x->level.n && e - at < CHUNK && (e == at || est < budget)) {
+        int ni = x->level.a[e];
+        if (!vpush(&poff, x->moves.n)) return LOOP_ERR;
+        if (!verdict[NODE(x, ni)->tag]) {
+          Board *nb = ensureBoard(x, ni);
+          if (!nb || !vreserve(&x->moves, x->moves.n + 2 + 6 * MAXROWS)) return LOOP_ERR;
+          int32_t *m = x->moves.a + x->moves.n;
+          int nm = 2 + legalSwaps(nb, m + 2);
+          m[0] = -1; m[1] = -2;
+          x->moves.n += nm; est += nm;
+        }
+        e++;
+      }
+      if (!vpush(&poff, x->moves.n) || !vreserve(&res, x->moves.n)) return LOOP_ERR;
+      for (j = 0; j < x->moves.n; j++) res.a[j] = NOTRUN;
+      if (pool.nworkers) {
+        tasks.n = 0;
+        for (int k = 0; k < e - at; k++) {
+          if (poff.a[k + 1] == poff.a[k]) continue;
+          int32_t t[4] = { x->level.a[at + k], -1, until, poff.a[k] };
+          for (j = 0; j < 4; j++) if (!vpush(&tasks, t[j])) return LOOP_ERR;
+        }
+        if (!runPhase(x, &tasks, res.a)) return LOOP_ERR;
+        tasks.n = 0;
+        for (i = 0; i < x->ntags; i++) proven.a[i] = verdict[i];
+        int32_t cum = 0;
+        for (int k = 0; k < e - at && cum < budget; k++) {
+          int32_t o = poff.a[k], nm = poff.a[k + 1] - o, tag = NODE(x, x->level.a[at + k])->tag;
+          if (!nm || proven.a[tag]) continue;
+          cum++;
+          int32_t r = res.a[o];
+          if (r >= 0 && NODE(x, r)->t >= full && !NODE(x, r)->dead) { proven.a[tag] = 1; continue; }
+          for (j = 1; j < nm; j++) {
+            int32_t t[4] = { x->level.a[at + k], x->moves.a[o + j], 0, o + j };
+            for (int q = 0; q < 4; q++) if (!vpush(&tasks, t[q])) return LOOP_ERR;
+          }
+          cum += nm - 1;
+        }
+        if (!runPhase(x, &tasks, res.a)) return LOOP_ERR;
+      }
+      for (int k = 0; k < e - at && budget > 0; k++) {
+        int ni = x->level.a[at + k];
+        int32_t tag = NODE(x, ni)->tag, o = poff.a[k], nm = poff.a[k + 1] - o;
+        if (verdict[tag]) { NODE(x, ni)->live = 0; release(x, ni); continue; }
+        for (j = 0; j < nm && budget > 0; j++) {
+          budget--;
+          if (++polled >= 64) { polled = 0; if (abort_poll()) return LOOP_ABORTED; }
+          int32_t mv = x->moves.a[o + j];
+          int c = res.a[o + j];
+          if (c == NOTRUN)
+            c = mv == -1 ? lineStep(x, ni, MK_LONG, 0, 0, until)
               : mv == -2 ? lineStep(x, ni, MK_HOLD, 0, 0, 0)
               : lineStep(x, ni, MK_SWAP, CR(mv), CC(mv), 0);
-        if (c == STEP_NULL) continue;
-        if (c < 0) return LOOP_ERR;
-        Node *cn = NODE(x, c), *pn = NODE(x, ni);
-        cn->tag = tag; cn->seed = pn->seed;
-        if (!reachSet[tag] || cn->t > reach[tag]) { reach[tag] = cn->t; reachSet[tag] = 1; pin(x, &far[tag], c); }
-        if (cn->t >= full && !cn->dead) { verdict[tag] = 1; pin(x, &proofs[tag], c); break; }
-        if (cn->t >= x->surviveFrames && weak[tag] < 0) pin(x, &weak[tag], c);
-        if (cn->dead) continue;
-        int sb = seenBefore(x, c, &seenN);
-        if (sb < 0) return LOOP_ERR;
-        if (sb) { release(x, c); continue; }
-        if (!vpush(&x->next, c)) return LOOP_ERR;
-        cn = NODE(x, c); cn->live = 1;
+          res.a[o + j] = NOTRUN;   // read: nothing to drop
+          if (c == STEP_NULL) continue;
+          if (c < 0) return LOOP_ERR;
+          Node *cn = NODE(x, c), *pn = NODE(x, ni);
+          cn->tag = tag; cn->seed = pn->seed;
+          if (!reachSet[tag] || cn->t > reach[tag]) { reach[tag] = cn->t; reachSet[tag] = 1; pin(x, &far[tag], c); }
+          if (cn->t >= full && !cn->dead) { verdict[tag] = 1; pin(x, &proofs[tag], c); break; }
+          if (cn->t >= x->surviveFrames && weak[tag] < 0) pin(x, &weak[tag], c);
+          if (cn->dead) continue;
+          int sb = seenBefore(x, c, &seenN);
+          if (sb < 0) return LOOP_ERR;
+          if (sb) { release(x, c); continue; }
+          if (!vpush(&x->next, c)) return LOOP_ERR;
+          cn = NODE(x, c); cn->live = 1;
+        }
+        NODE(x, ni)->live = 0;
+        release(x, ni);
       }
-      NODE(x, ni)->live = 0;
-      release(x, ni);
+      for (j = 0; j < x->moves.n; j++) if (res.a[j] >= 0) dropBoard(x, res.a[j]);
+      at = e;
     }
+    // Parents the budget did not reach are let go too.
+    for (; at < x->level.n; at++) { NODE(x, x->level.a[at])->live = 0; release(x, x->level.a[at]); }
     // the level left unexpanded when the budget ran out stays open
     int32_t k = 0;
     for (j = 0; j < x->next.n; j++) {

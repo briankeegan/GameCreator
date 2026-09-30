@@ -32,7 +32,7 @@ var F = { diff: FS.diff, same: FS.same, fromStack: NB.fromStack };
 (function () {
   var crypto = require('crypto'), built = {};
   fs.readFileSync(path.join(DIR, 'native', 'BUILT'), 'utf8').trim().split('\n').forEach(function (l) { var p = l.split(' '); built[p[0]] = p[1]; });
-  ['engine.c', 'engine.wasm'].forEach(function (f) {
+  ['engine.c', 'engine.wasm', 'engine-mt.wasm'].forEach(function (f) {
     var h = crypto.createHash('sha256').update(fs.readFileSync(path.join(DIR, 'native', f))).digest('hex');
     assert.strictEqual(h, built[f], f + ' is not the one native/build.sh built: run native/build.sh');
   });
@@ -216,6 +216,23 @@ function unwrapped(m) {
 })();
 
 console.log('exercised: ' + JSON.stringify(seen));
+
+// 4. The search on it: the frozen heavy boards decided on FastStack, on the
+// engine in C, and on the engine in C with threads, each in its own process
+// (a process runs one kind of module). Decisions, verdicts and proven lines
+// must all be the same.
+(function () {
+  var cp = require('child_process'), runs = [['fast', 0], ['native', 0], ['native', 3]].map(function (a) {
+    var out = cp.execFileSync(process.execPath, [path.join(DIR, 'native_search.js'), a[0], String(a[1])], { encoding: 'utf8' });
+    return JSON.parse(out.trim().split('\n').pop());
+  });
+  runs.forEach(function (r) {
+    assert.deepStrictEqual(r.prints, runs[0].prints, r.engine + ' on ' + r.threads + ' threads decides differently: ' +
+                           r.prints.join(',') + ' vs ' + runs[0].prints.join(','));
+  });
+  console.log('ok: the search decides the same on ' + runs[0].prints.length + ' heavy boards: ' +
+              runs.map(function (r) { return r.engine + '/' + r.threads + ' ' + r.ms + 'ms'; }).join(', '));
+})();
 // Floors: half of what a 20000-frame run of each part exercised (seed 1:
 // chainLink 61, garbageClear 40, garbagePop 501, garbageDrop 381,
 // garbageLand 398, newRow 196, chainEnd 49, converted 419, highChaining 0,
