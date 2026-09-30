@@ -2439,6 +2439,31 @@
         return false;
     };
 
+    // IS THERE A CLEAR THAT WOULD BREAK THE GARBAGE WHEN IT LANDS.
+    //
+    // Not "is there a clear". A raise adds a row the opponent can answer, and the
+    // answer lands on top -- so the question the board has to pass before it
+    // raises is whether something is set up to hit that slab the moment it
+    // arrives. withSlab lays the next one across the stack, and this asks for a
+    // single swap on that board that comes back `garbage-broke`.
+    //
+    // hasFireable accepts any clear and is the emergency valve -- a bare three
+    // holds the floor for 59 frames whether or not it touches garbage, which is
+    // what keeps a full board alive. This is the stricter question, asked only
+    // where raising is the choice being made.
+    BitBot.prototype.breaksLandingSlab = function (masks) {
+        var st = this.withSlab(this.restingBoard(masks));
+        if (!st) return false;
+        var sw = bit.legalSwapsOf(st), i, r;
+        for (i = 0; i < sw.length; i++) {
+            if (!bit.swapMasks(st, sw[i][0], sw[i][1])) continue;
+            r = bit.resolveFromMasks(st, false);
+            bit.swapMasks(st, sw[i][0], sw[i][1]);
+            if (r && r.scope === 'garbage-broke') return true;
+        }
+        return false;
+    };
+
     // THE BOARD WITH THE NEXT SLAB ON IT.
     //
     // Garbage rests on the tallest column and spans the width, so the row it
@@ -2598,7 +2623,24 @@
         // whole and adds a row beneath, so a clear that exists before the row still
         // exists after it -- this refuses only the board that had nothing to fire
         // in the first place, which is exactly the board that must not be filled.
-        if (!this.hasFireable(this.restingBoard(base))) return null;
+        // TWO THINGS BEFORE IT RAISES: FLAT ENOUGH, AND HOLDING A BREAK FOR WHAT
+        // LANDS ON IT.
+        //
+        // A raise lifts the board whole and lays a flat row underneath, so the
+        // surface it has is the surface it keeps, one row higher -- a lumpy board
+        // raises into a lumpier one, and the short columns are where a slab
+        // bridges and seals whatever is under it.
+        //
+        // The second is the one that matters. The row invites an answer and the
+        // answer lands on top, so what the board must be holding is not a clear
+        // but a clear that HITS THAT SLAB when it arrives. Seed 101 rand4 raised
+        // to 11,10,10,7,11,11 by frame 235 with something fireable at every step
+        // and `alive` already 0: every one of those clears was a clear on the
+        // board it had, and none of them answered the garbage that followed.
+        var rest = this.restingBoard(base);
+        var sh = bitoptions.shapeOf(rest);
+        if (sh && (sh.bumps || 0) > W) return null;
+        if (!this.breaksLandingSlab(rest)) return null;
         return this._opening ? 'opening' : 'material';
     };
 
