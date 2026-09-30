@@ -1155,7 +1155,21 @@
             //
             // A clear that OPENS new reach is information nothing else carries, so
             // that half stays.
-            cells += Math.max(0, o.digGain || 0);
+            //
+            // AND ONLY WHILE THE BOARD IS SHORT UNDER THE SLAB. `digging` is set
+            // by ANY garbage cell, so this was pricing the way out on healthy
+            // boards carrying one row of it -- which is every board it killed:
+            // STARTER against ZERO on both seeds, and rand2, all of them alive
+            // without it. The board it helps carried two rows of material under
+            // thirty-three cells of garbage.
+            //
+            // The file's own note on the dig goal says why: "BURIED AND SHORT:
+            // WIDEN THE SEARCH, NOT THE PREFERENCE... finding is not preferring".
+            // Reaching the slab is the goal when there is nothing else left to
+            // play for; with material in hand the ordinary ranking decides.
+            // `short` is the same WORKING_ROWS measure starving and raiseMode use.
+            if (o.matNow !== null && o.matNow !== undefined &&
+                o.matNow < WORKING_ROWS) cells += Math.max(0, o.digGain || 0);
             if (cells <= 0) continue;                       // sends nothing, holds nothing
             // The vector's taste for this shape, read off the same buckets the
             // features use, floored so it can only ever scale the rate down to a
@@ -1353,7 +1367,11 @@
             // and for why only the GAIN counts: the panels a clear spends are
             // already priced as o.total * perPanel just above, so charging for the
             // reach they carried is the same panels twice.
-            var digs = Math.max(0, o.digGain || 0) * perPanel;
+            // AND ONLY WHILE THE BOARD IS SHORT UNDER THE SLAB -- see bestAttack.
+            // `digging` is any garbage at all, which is not the case this is for.
+            var digs = (o.matNow !== null && o.matNow !== undefined &&
+                        o.matNow < WORKING_ROWS)
+                     ? Math.max(0, o.digGain || 0) * perPanel : 0;
             var bought = o.total * perPanel + holds + (o.garbage || 0) * perCell
                        + lowered * (framesPerRow || 0) + gain
                        - shortfall * (framesPerRow || 0)

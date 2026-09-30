@@ -254,6 +254,12 @@
             // Zero off the slab: with no garbage there is nothing to dig toward. Zero on
             // a break too -- its settled board is unknowable.
             opt.digGain = (DIG && r.settled) ? reachOf(r.settled).dig - BASEDIG : 0;
+            // AND WHAT THE BOARD HELD BEFORE THE MOVE, in rows of material. Whether the
+            // board is BURIED AND SHORT is a fact about the position and not about the
+            // move, so it cannot be read off the landing -- and `mat` is null on a break,
+            // which is exactly the move that matters here. The threshold stays with the
+            // caller: this carries the number, WORKING_ROWS lives in bitbot.
+            opt.matNow = START ? START.mat : null;
             now.push(opt);
         }
 
@@ -487,6 +493,12 @@
                                 // Zero off the slab: with no garbage there is nothing to dig toward. Zero on
                                 // a break too -- its settled board is unknowable.
                                 opt.digGain = (DIG && res.settled) ? reachOf(res.settled).dig - BASEDIG : 0;
+                                // AND WHAT THE BOARD HELD BEFORE THE MOVE, in rows of material. Whether the
+                                // board is BURIED AND SHORT is a fact about the position and not about the
+                                // move, so it cannot be read off the landing -- and `mat` is null on a break,
+                                // which is exactly the move that matters here. The threshold stays with the
+                                // caller: this carries the number, WORKING_ROWS lives in bitbot.
+                                opt.matNow = START ? START.mat : null;
                                 next.push(opt);
                             }
                             continue;

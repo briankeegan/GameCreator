@@ -1037,9 +1037,12 @@ function hostile() {
     var engine = P, FT = { FLASH: 28, FACE: 10, POP: 7 }, WV = {};
     BF.keys().forEach(function (k) { WV[k] = 0; });
     function o(over) {
+        // matNow BELOW THE WORKING FLOOR: buried and short is the case this term
+        // is for, and the only one it is allowed to speak in. `mat` stays above
+        // it so bestPlan's starving refusal is not what decides these.
         var x = { kind: 'combo', swaps: [[1, 1]], frames: 10, duration: 10, chain: 0,
                   total: 4, size: 4, garbage: 0, tall: 5, bumps: 2, mat: 5, low: 2,
-                  levels: true, opensHole: false, breakReady: false,
+                  matNow: 2, levels: true, opensHole: false, breakReady: false,
                   closesBreak: false, digGain: 0 };
         for (var k in over) x[k] = over[k];
         return x;
@@ -1099,6 +1102,30 @@ function hostile() {
        'survival plan: a plan was ranked below an identical one because it spent ' +
        'reach, which o.total * perPanel has already paid for');
 
+    // AND IT IS SILENT WHILE THE BOARD STILL HAS MATERIAL. `digging` is set by
+    // ANY garbage cell, so priced on that alone this spoke on healthy boards
+    // carrying one row of it -- and that is every board it killed: STARTER
+    // against ZERO on both seeds and rand2 on 101, all three alive without it,
+    // all three dead with it. The board it helps carried two rows of material
+    // under thirty-three cells of garbage.
+    //
+    // Reaching the slab is the goal when there is nothing else left to play for.
+    // With material in hand the ordinary ranking decides, which is the file's own
+    // rule for the dig goal: widen the search, do not move the preference.
+    var richAway = o({ total: 6, size: 6, digGain: -4, matNow: 9 });
+    var richToward = o({ total: 4, size: 4, digGain: +4, matNow: 9, swaps: [[1, 3]] });
+    var pickRich = BitBot.bestAttackOf({ now: [richAway, richToward], next: [] },
+                                       WV, engine, 600, FT, 18.7);
+    ok(pickRich && pickRich.option === richAway,
+       'attack: the way out outranked a clear half again as big on a board holding ' +
+       'nine rows of material. This term is for a board with nothing else left to ' +
+       'play for, and priced on any garbage at all it killed three pairings');
+    var pickRichP = BitBot.bestPlanOf({ now: [richAway, richToward], next: [] },
+                                      0, 600, engine, false, 112, FT, 5);
+    ok(pickRichP && pickRichP.option === richAway,
+       'survival plan: the way out outranked a bigger clear on a board holding ' +
+       'nine rows of material');
+
     // AND OFF THE SLAB IT IS SILENT: with no garbage there is nothing to dig
     // toward, digGain is zero everywhere, and the ranking is untouched.
     var cleanBig = o({ total: 8, size: 8, digGain: 0 });
@@ -1110,6 +1137,6 @@ function hostile() {
        'every digGain is zero and this term may not change anything');
 }());
 
-console.log('survival: 90 invariants checked without playing a game');
+console.log('survival: 92 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');
