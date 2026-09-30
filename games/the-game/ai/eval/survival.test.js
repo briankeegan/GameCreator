@@ -1383,6 +1383,65 @@ function hostile() {
        'worth more than the clear inside it');
 }());
 
-console.log('survival: 116 invariants checked without playing a game');
+// ---- 25. arrange for the slab that is coming, while there is still room
+//
+// slabReadyFast asks whether three panels can be put against the row the next
+// slab will rest on. It reached the flatten's third winner and nothing else, so
+// nothing asked it while the board was healthy and firing -- which is the only
+// time there is room to arrange for it.
+//
+// Measured on the duel this was written from: 48 decisions with garbage
+// INCOMING, and the board was ready for it on ONE of them.
+(function () {
+    var engine = P, FT = { FLASH: 28, FACE: 10, POP: 7 }, WV = {};
+    BF.keys().forEach(function (k) { WV[k] = 0; });
+    function o(over) {
+        var x = { kind: 'combo', swaps: [[1, 1]], frames: 10, duration: 10, chain: 0,
+                  total: 4, size: 4, garbage: 0, tall: 5, bumps: 2, mat: 5, low: 2,
+                  matNow: 5, levels: true, opensHole: false, breakReady: true,
+                  closesBreak: false, digGain: 0, slabWorth: 0 };
+        for (var k in over) x[k] = over[k];
+        return x;
+    }
+    // What bitoptions puts on an option: ONE PANEL OF LIFE, framesPerRow / W.
+    // Not a row -- a row converts to 6.4 cells here, which is a whole combo, for
+    // a slab that has not landed yet.
+    var READY = 120 / W;
+
+    // TWO EQUAL CLEARS, one landing able to answer the slab and one not. Equal
+    // on purpose: a panel of life is a fraction, so it decides between equals and
+    // does not overturn a better move -- which is what the next case checks.
+    var blindA = o({ total: 5, size: 5, slabWorth: 0 });
+    var readyA = o({ total: 5, size: 5, slabWorth: READY, swaps: [[1, 3]] });
+    ok(BitBot.bestAttackOf({ now: [blindA, readyA], next: [] }, WV, engine, 600, FT, 18.7)
+         .option === readyA,
+       'attack: took the bigger clear that leaves the board unable to answer the ' +
+       'slab that is coming. Arranging for it has to happen while there is still ' +
+       'room, and that is this path');
+    ok(BitBot.bestPlanOf({ now: [blindA, readyA], next: [] }, 0, 600, engine, false, 112, FT, 5)
+         .option === readyA,
+       'survival plan: took the route that leaves the board unable to answer the ' +
+       'slab that is coming');
+
+    // AND IT IS A PRICE, NOT A REFUSAL: a big enough clear still outranks
+    // readiness, because a slab that has not landed is worth less than cells now.
+    var bigA = o({ total: 40, size: 7, slabWorth: 0 });
+    var tinyReady = o({ total: 3, size: 3, slabWorth: READY, swaps: [[1, 3]] });
+    ok(BitBot.bestAttackOf({ now: [bigA, tinyReady], next: [] }, WV, engine, 600, FT, 18.7)
+         .option === bigA,
+       'attack: readiness for a slab that has not landed outranked a clear ten ' +
+       'times the size, so this is a refusal wearing a price');
+
+    // AND IT IS SILENT WITH NOTHING TO BE READY FOR. On a clean board with no
+    // queue, slabWorth is zero on every option and the ranking is untouched.
+    var cleanBig = o({ total: 8, size: 8, slabWorth: 0 });
+    var cleanSmall = o({ total: 4, size: 4, slabWorth: 0, swaps: [[1, 3]] });
+    ok(BitBot.bestAttackOf({ now: [cleanBig, cleanSmall], next: [] }, WV, engine, 600, FT, 18.7)
+         .option === cleanBig,
+       'attack: the bigger clear lost on a board with no slab on it and none ' +
+       'queued, where this term may not change anything');
+}());
+
+console.log('survival: 120 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');

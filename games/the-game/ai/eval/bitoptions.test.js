@@ -710,6 +710,57 @@ if (flatSpread !== 0) {
         '`landStop`: not one flatten on ' + anyFlatten + ' boards carried a priced ' +
         'destination, so the search is still choosing where to stand by a boolean');
 
+    // AND READINESS FOR THE NEXT SLAB IS WORTH ONE PANEL OF LIFE, not a row.
+    // A row converts to 6.4 cells in bestAttack -- a whole combo -- for a slab
+    // that has not landed, and at that size it overturns clears ten times bigger.
+    //
+    // AND IT IS PRICED AT PLY ONE TOO. The depth-1 options are built near the top
+    // of `options`, before the beam runs, so anything they read that is assigned
+    // beside the beam is undefined when they read it -- a price off it comes out
+    // NaN, and NaN fails `> 0` silently, which is exactly what a count of priced
+    // options cannot see. Counted per ply, and every option checked for a number.
+    var FPR = 120, prepped = 0, wrongSize = 0, notANumber = 0;
+    var preppedNow = 0, preppedNext = 0;
+    for (var pi = 0; pi < src.boards.length && prepped < 400; pi++) {
+        var pb = boardFromString(src.boards[pi]);
+        if (Object.keys(pb.blocks).length) continue;
+        // WITH THE FLAG OFF FIRST. `PREPARE` is module state, so a second call
+        // inherits the first one's value: read it too late and ply one still sees
+        // a true left over from the call before, and the bug hides behind its own
+        // history. One call with the flag off leaves a false there to be caught.
+        opts.options(new LogicalBoard(W, H, 6, pb.grid, pb.blocks), W, H, CURSOR, 2,
+                     null, { framesPerRow: FPR, deadline: 600, prepare: false }, false);
+        var pl = opts.options(new LogicalBoard(W, H, 6, pb.grid, pb.blocks), W, H, CURSOR, 2,
+                              null, { framesPerRow: FPR, deadline: 600, prepare: true }, false);
+        [['now', pl.now], ['next', pl.next]].forEach(function (pair) {
+            pair[1].forEach(function (x) {
+                if (typeof x.slabWorth !== 'number' || !isFinite(x.slabWorth)) {
+                    notANumber++;
+                    return;
+                }
+                if (!(x.slabWorth > 0)) return;
+                prepped++;
+                if (pair[0] === 'now') preppedNow++; else preppedNext++;
+                if (Math.abs(x.slabWorth - FPR / W) > 0.001) wrongSize++;
+            });
+        });
+    }
+    lok(notANumber === 0,
+        '`slabWorth`: ' + notANumber + ' options carry a slabWorth that is not a finite ' +
+        'number, so they are poisoning whatever ranks them and no count of priced ' +
+        'options can see it');
+    lok(preppedNow > 0 && preppedNext > 0,
+        '`slabWorth`: priced on ' + preppedNow + ' depth-1 options and ' + preppedNext +
+        ' depth-2 ones. Both plies must see the price -- the depth-1 list is built ' +
+        'before the beam, so it is the one that reads a timing value too early');
+    lok(prepped > 0,
+        '`slabWorth`: not one option on ' + 400 + ' real boards was priced for slab ' +
+        'readiness, so the term is dead and nothing checks its size');
+    lok(wrongSize === 0,
+        '`slabWorth`: ' + wrongSize + ' of ' + prepped + ' priced options are not one ' +
+        'panel of life (' + (FPR / W) + ' frames). A row is 6.4 cells in bestAttack, ' +
+        'a whole combo, for a slab that has not landed yet');
+
     // AND WITHOUT A PRICE IT MUST STILL WORK. The caller may not hand one over,
     // and a search that needs it is a search that breaks its own callers.
     var noPrice = opts.options(new LogicalBoard(W, H, 6,
