@@ -194,7 +194,7 @@
         this.counts = { refusedDeadly: 0, allDead: 0, byMode: {},
                         refusedReturn: 0, defendByClock: 0, refusedTooSlow: 0, planned: 0, planDropped: 0,
                         attacked: 0, attackDropped: 0, cellsPlanned: 0, refusedPayless: 0, refusedStarving: 0, refusedOther: 0, refusedAtExit: 0,
-                        raisedForMaterial: 0, waitedToRaise: 0, dugFor: 0, digDropped: 0, brokeNow: 0, flattenBlind: 0,
+                        raisedForMaterial: 0, waitedToRaise: 0, dugFor: 0, digDropped: 0, brokeNow: 0, flattenBlind: 0, levelledFirst: 0,
                         openingRaises: 0, waitedToRaise: 0, saveKept: 0, saveUnkeepable: 0, savePlanned: 0, heldTheBreak: 0, forcedBreak: 0, forcedBoth: 0, refusedEarly: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
                         revealWindows: 0, digging: 0, flattened: 0, flattenDropped: 0,
@@ -1970,6 +1970,46 @@
         // The button is already held -- update() sends it on this same answer.
         // What is left is the rest of raising: play the row when the engine is
         // offering one, and otherwise keep the board still so it can.
+        // LEVEL IT BEFORE RAISING, AND THAT MEANS STOPPING THE BUTTON.
+        //
+        // A raise lifts the board whole and lays a flat row underneath, so the shape
+        // it raises FROM is the shape it keeps, one row higher. Seed 101 opened on
+        // columns 5,6,5,4,5,5 and had raised to 10,10,5,5,8,9 by frame 300 -- two
+        // columns one row under the ceiling, two at five -- and played every
+        // remaining decision from there.
+        //
+        // GATED ON THE MODE, NOT ON `delivering`. Almost every row arrives through
+        // the held button rather than through the branch below: update() sends the
+        // raise on raiseMode's answer, and by the time the engine is offering a row
+        // in the pool the previous one is usually already on its way. Gating this on
+        // the branch left it firing zero times.
+        //
+        // So the intent itself is dropped while there is levelling to do, which is
+        // what actually stops the row. The search decides whether there is any: it
+        // already throws away a flatten worth less than it costs, so a flatten plan
+        // existing IS the answer and there is no threshold to choose here. Once the
+        // board is level the plan stops appearing and the raise resumes on its own.
+        if (raising) {
+            options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
+                                                   lookDepth, base, this.timing(info, deadline), digging);
+            var lvl = this.flattenFirst(options, deadline);
+            if (lvl && !returnsToSeen(lvl.swaps[0])) {
+                var lm = lvl.swaps[0], lls = bit.legalSwapsOf(base), lok = false;
+                for (i = 0; i < lls.length; i++) {
+                    if (lls[i][0] === lm[0] && lls[i][1] === lm[1]) { lok = true; break; }
+                }
+                if (lok) {
+                    this._wantRaise = false;
+                    this.raiseFrames = 0;
+                    this._flatten = { moves: lvl.swaps.slice(1), frames: lvl.duration || 0,
+                                      startedAt: this.stack.clock, blind: !digging };
+                    if (!this._flatten.moves.length) this._flatten = null;
+                    this.counts.levelledFirst++;
+                    return { kind: 'swap', move: lm, mode: mode, alive: alive,
+                             via: 'levelFirst' };
+                }
+            }
+        }
         if (delivering) {
             var rc = null;
             for (i = 0; i < pool.length; i++) if (pool[i].kind === 'raise') rc = pool[i];
@@ -2537,6 +2577,26 @@
         // in the first place, which is exactly the board that must not be filled.
         if (!this.hasFireable(this.restingBoard(base))) return null;
         return this._opening ? 'opening' : 'material';
+    };
+
+    // FLATTEN BEFORE RAISING.
+    //
+    // A raise lifts the board whole and lays a flat row underneath, so it carries
+    // the lumps up with it -- the shape it raises FROM is the shape it ends up
+    // with, one row higher. Seed 101 opened on columns 5,6,5,4,5,5 and had raised
+    // to 10,10,5,5,8,9 by frame 288: two columns one row under the ceiling, two at
+    // five, and every decision after that played from there.
+    //
+    // Levelling first puts the same material at about eight everywhere, with room
+    // above it. And there is no threshold to pick: the search already discards a
+    // flatten worth less than it costs (`if (flat && !(flat.value > 0)) flat =
+    // null`), so "is there levelling worth doing" is a question it has answered.
+    // The route must also finish in the time there is, like every other plan.
+    BitBot.prototype.flattenFirst = function (options, deadline) {
+        var f = options && options.flatten;
+        if (!f || !f.swaps.length) return null;
+        if ((f.duration || 0) > deadline) return null;
+        return f;
     };
 
     // IS THE ANSWER STILL IN HAND AFTER THIS MOVE, and reachable in time?
