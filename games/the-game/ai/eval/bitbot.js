@@ -179,6 +179,7 @@
         this._raiseStarted = false;
         this._walk = null;
         this._lastSwap = null;
+        this._recentSwaps = [];
         this.decisions = 0;
         // WHERE EVERY FRAME WENT. Not diagnostics bolted on -- the bot could not
         // say what it did with a frame, so every question about its behaviour was
@@ -674,12 +675,15 @@
             // THE UNDO IS NOT A CANDIDATE EITHER. The weights path ranks this pool
             // rather than the option list, so it needs the same exclusion. Same test:
             // the move just played, clearing nothing, with a panel in both cells.
-            var ls0 = this._lastSwap;
-            if (ls0 && ls0[0] === r && ls0[1] === c &&
-                !(res && (res.total > 0 || res.scope === 'garbage-broke'))) {
-                var ub = 1 << (r - 1);
-                if ((base.occ[c] & ub) && (base.occ[c + 1] & ub)) continue;
+            var rs0 = this._recentSwaps || [], skip0 = false;
+            if (!(res && (res.total > 0 || res.scope === 'garbage-broke'))) {
+                for (var z0 = 0; z0 < rs0.length; z0++) {
+                    if (rs0[z0][0] !== r || rs0[z0][1] !== c) continue;
+                    var ub = 1 << (r - 1);
+                    if ((base.occ[c] & ub) && (base.occ[c + 1] & ub)) { skip0 = true; break; }
+                }
             }
+            if (skip0) continue;
             out.push({ kind: 'swap', swap: [r, c],
                        board: null,
                        masks: after,
@@ -1482,7 +1486,7 @@
             // THE MOVE JUST PLAYED, so the search can leave out the one that would
             // undo it. Carried rather than consulted here: the search enumerates the
             // options every route reads, so excluding it there covers all of them.
-            avoidSwap: this._lastSwap,
+            avoidSwap: this._recentSwaps,
             // WHAT A CLEAR IN HAND IS WORTH, IN FRAMES. The smallest clear is a
             // three, and what it buys is the floor held for its own resolve --
             // resolveFramesOf, the same function the death filter uses, so this is
@@ -3188,6 +3192,14 @@
     BitBot.prototype.decide = function () {
         var d = this._decideGated();
         this._lastSwap = (d && d.kind === 'swap' && d.move) ? [d.move[0], d.move[1]] : null;
+        // THE LAST TWO, NOT THE LAST ONE. Excluding only the immediate repeat turns a
+        // 1-cycle into a 2-cycle: seed 103 rand1 went 1-3, 1-4, 1-3, 1-4, 1-5, 1-4,
+        // 1-5 with the pocket frozen at 2,2,2,2,3,4 and died at 2,051. One move of
+        // memory can only ever push the loop out by one.
+        if (this._lastSwap) {
+            this._recentSwaps = [this._lastSwap].concat(this._recentSwaps || []);
+            if (this._recentSwaps.length > 2) this._recentSwaps.length = 2;
+        }
         return d;
     };
 

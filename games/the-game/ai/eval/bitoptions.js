@@ -266,10 +266,14 @@
         // same cells again is how a board reaches a slab it could not touch.
         var AVOID = (timing && timing.avoidSwap) || null;
         function undoesLast(row, col, res) {
-            if (!AVOID || row !== AVOID[0] || col !== AVOID[1]) return false;
+            if (!AVOID || !AVOID.length) return false;
             if (res && (res.total > 0 || res.scope === 'garbage-broke')) return false;
             var b = 1 << (row - 1);
-            return !!(st.occ[col] & b) && !!(st.occ[col + 1] & b);
+            if (!(st.occ[col] & b) || !(st.occ[col + 1] & b)) return false;
+            for (var q = 0; q < AVOID.length; q++) {
+                if (AVOID[q][0] === row && AVOID[q][1] === col) return true;
+            }
+            return false;
         }
         var swaps = board ? board.legalSwaps() : bit.legalSwapsOf(st);
         var refused = 0, unknown = 0;
