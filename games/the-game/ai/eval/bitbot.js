@@ -193,7 +193,7 @@
         this.frozen = { walking: 0, cooling: 0, hold: 0, raise: 0, swap: 0 };
         this.counts = { refusedDeadly: 0, allDead: 0, byMode: {},
                         refusedReturn: 0, defendByClock: 0, refusedTooSlow: 0, planned: 0, planDropped: 0,
-                        attacked: 0, attackDropped: 0, cellsPlanned: 0, refusedPayless: 0, refusedStarving: 0, refusedAtExit: 0,
+                        attacked: 0, attackDropped: 0, cellsPlanned: 0, refusedPayless: 0, refusedStarving: 0, refusedOther: 0, refusedAtExit: 0,
                         raisedForMaterial: 0, waitedToRaise: 0, dugFor: 0, digDropped: 0, brokeNow: 0, flattenBlind: 0,
                         openingRaises: 0, waitedToRaise: 0, saveKept: 0, saveUnkeepable: 0, savePlanned: 0, heldTheBreak: 0, forcedBreak: 0, forcedBoth: 0, refusedEarly: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
@@ -1498,9 +1498,14 @@
             // buys it.
             // THE ONE PREDICATE. Its rules are enforced again at the exit, on
             // whatever move was actually chosen, so writing one here is enough.
+            // COUNTED BY NAME, NOT BY STRING ARITHMETIC. `counts['refused' + why]`
+            // turns a renamed reason into `undefined + 1` and the counter reads NaN
+            // for the rest of the game without anything failing.
             var why = this.refuses(pool[i], info, base, survivalNeeded);
             if (why) {
-                this.counts['refused' + why.charAt(0).toUpperCase() + why.slice(1)]++;
+                if (why === 'payless') this.counts.refusedPayless++;
+                else if (why === 'starving') this.counts.refusedStarving++;
+                else this.counts.refusedOther++;
                 continue;
             }
             // A CASH THAT GAINS NOTHING IS NOT AN ACTION YET: FIRE AT THE LAST
@@ -1832,7 +1837,8 @@
             var rc = null;
             for (i = 0; i < pool.length; i++) if (pool[i].kind === 'raise') rc = pool[i];
             if (rc) {
-                this.counts[raising === 'opening' ? 'openingRaises' : 'raisedForMaterial']++;
+                if (raising === 'opening') this.counts.openingRaises++;
+                else this.counts.raisedForMaterial++;
                 return { kind: 'raise', mode: mode, alive: alive, via: 'raise:' + raising };
             }
             // WHILE THE RAISE IS HAPPENING, IT IS NOT SWAPPING.
@@ -2161,10 +2167,19 @@
         if (shapeTime && landsOk && options && options.flatten && options.flatten.swaps.length &&
             (options.flatten.duration || 0) <= shapeBudget) {
             if (!this._flatten || !this._flatten.moves.length) {
+                // WHETHER IT WAS CHECKED AT ALL, carried with it. On a clean board
+                // there is nothing to be ready for, so the landing is not asked --
+                // and a route chosen under that exemption must not go on being
+                // played once a slab has landed on the board it was drawn for.
                 this._flatten = { moves: options.flatten.swaps.slice(),
                                   frames: options.flatten.duration,
-                                  startedAt: this.stack.frames };
+                                  startedAt: this.stack.frames,
+                                  blind: !digging };
             }
+        }
+        if (digging && this._flatten && this._flatten.blind) {
+            this._flatten = null;
+            this.counts.flattenBlind++;
         }
         if (shapeTime && this._flatten && this._flatten.moves.length) {
             var fm = this._flatten.moves[0], fok = false, fls = bit.legalSwapsOf(base);
@@ -2245,21 +2260,6 @@
         for (c = 1; c <= W; c++) { st.occ[c] |= b; st.inert[c] |= b; st.garb[c] |= b; sm[c] = b; }
         st.slabs.push(sm);
         return st;
-    };
-
-    // IS THERE AN ANSWER TO THE SLAB THAT LANDS NEXT?
-    //
-    // This is the question, and asking it of the bare board was asking the wrong
-    // one. The board is filled to the top on purpose: raising to the ceiling is
-    // right as long as it arrives there ready to defend, and what it has to be
-    // ready for is garbage. A clear that touches nothing is not an answer to a
-    // slab; a clear that would break the row landing on top of it is.
-    //
-    // Put to the board WITH that row on it, one rule covers both cases: buried
-    // already, or about to be. hasFireable then sees garbage either way and asks
-    // for a break, which is what "a three there it can knock" means.
-    BitBot.prototype.answersASlab = function (masks) {
-        return this.hasFireable(this.slabToAnswer(masks));
     };
 
     // THE GARBAGE THE ANSWER IS FOR: the garbage that is ON the board, or, when
