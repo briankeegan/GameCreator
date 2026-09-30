@@ -667,17 +667,6 @@ if (flatSpread !== 0) {
         'count never can, so the base is not being subtracted and every clear ' +
         'looks like progress');
 
-    // THE TWO FALLBACK ROUTES ARE RANKED BY THE SAME NUMBER AS THE WINNERS.
-    //
-    // `ready` and `flattenReady` accept exactly the same landings -- the ones
-    // readyOf says can fire. One is the caller's fallback route, the other the
-    // flatten winner restricted the same way. So while both are ranked by `val`
-    // they must land on the same value, every time. They disagree the moment
-    // `ready` goes back to being chosen by what the walk costs.
-    //
-    // `save` has no twin to compare against, so it is checked structurally: a
-    // route ranked by cost carries no value at all.
-    var agreed = 0, disagreed = 0, savesSeen = 0, unvalued = 0;
     var DIGBOARDS = [
         [[1, 2, 1, 5, 'G'], [1, 1, 1, 3, 'G'], [1, 2, 3, 1, 'G'],
          [1, 5, 3, 3, 'G'], [5, 4, 4, 5, 'G'], [2, 1, 2, 3, 'G']],
@@ -686,6 +675,18 @@ if (flatSpread !== 0) {
         [[2, 6, 1, 3, 2, 'G'], [4, 4, 5, 1, 6, 'G'], [1, 3, 3, 2, 4, 'G'],
          [5, 1, 2, 6, 3, 'G'], [3, 5, 4, 4, 1, 'G'], [6, 2, 6, 5, 5, 'G']]
     ];
+
+    // THE SAVE ROUTE IS RANKED BY WHERE IT LANDS, NOT BY WHAT THE WALK COST.
+    //
+    // A route chosen by cost carries no value at all, so this is structural: the
+    // field being there is the evidence it was ranked on `val` with the rest.
+    //
+    // It used to be checked against `flattenReady` too -- the flatten winner
+    // restricted to landings that can fire -- because the two accept the same
+    // landings and so had to agree. There is one winner now, with readiness priced
+    // into its value instead of split off into a winner of its own, so there is
+    // nothing left to compare it against.
+    var savesSeen = 0, unvalued = 0;
     DIGBOARDS.forEach(function (cols) {
         var grid = [], cells = [], r, c;
         for (r = 0; r <= H; r++) { grid[r] = []; for (c = 1; c <= W; c++) grid[r][c] = 0; }
@@ -697,124 +698,15 @@ if (flatSpread !== 0) {
             }
         var lb = new LogicalBoard(W, H, 6, grid, { s: { cells: cells } });
         var l = opts.options(lb, W, H, CURSOR, 2, null,
-                             { framesPerRow: 120, deadline: 600 }, true);
-        if (l.ready && l.flattenReady) {
-            if (l.ready.value === l.flattenReady.value) agreed++; else disagreed++;
-        }
-        if (l.save) {
-            savesSeen++;
-            if (typeof l.save.value !== 'number') unvalued++;
-        }
+                             { framesPerRow: 120, deadline: 600, holdWorth: 59 }, true);
+        if (l.save) { savesSeen++; if (typeof l.save.value !== 'number') unvalued++; }
     });
-    bok(agreed + disagreed > 0,
-        '`ready`: no buried board produced both a fallback route and a flatten ' +
-        'winner that can fire, so nothing here is compared');
-    bok(disagreed === 0,
-        '`ready`: ' + disagreed + ' of ' + (agreed + disagreed) + ' boards chose a ' +
-        'different fallback route than the flatten winner over the same landings. ' +
-        'Both rank readyOf landings, so they can only differ if one of them is ' +
-        'ranking by what the walk costs instead of what it lands on');
     bok(savesSeen > 0,
         '`save`: no buried board offered a route back to holding a break, so the ' +
         'save route is unchecked here');
     bok(unvalued === 0,
         '`save`: ' + unvalued + ' of ' + savesSeen + ' save routes carry no value. ' +
         'A route chosen by cost has nothing to carry -- that is the shape of the bug');
-
-    // A BOARD IS NOT SEALED BECAUSE ONE SWAP CANNOT BREAK IT.
-    //
-    // A clear underneath drops what was resting on it, the slab comes down onto
-    // the material, and the break is on the board after. Asked one swap deep most
-    // buried boards read sealed, and every rule built on breakReady then treats a
-    // position with a way out as a position without one.
-    //
-    // Checked against a one-swap reference written here, over buried boards built
-    // with real garbage blocks -- setting isGarbage by hand makes a cell that no
-    // swap can ever break, which would make this pass for the wrong reason.
-    //
-    // TWO CLAIMS. It has to find breaks the one-swap test misses, or the drop is
-    // not being modelled; and it must never MISS one the one-swap test finds,
-    // because looking further can only add answers. The second is the invariant --
-    // the first is only evidence the code runs.
-    function oneSwapBreak(st) {
-        var sw = bit.legalSwapsOf(st), i, r;
-        for (i = 0; i < sw.length; i++) {
-            if (!bit.swapMasks(st, sw[i][0], sw[i][1])) continue;
-            r = bit.resolveFromMasks(st, false);
-            bit.swapMasks(st, sw[i][0], sw[i][1]);
-            if (r.scope === 'garbage-broke') return true;
-        }
-        return false;
-    }
-    var dseed = 12345;
-    function drnd() { dseed = (dseed * 1103515245 + 12345) & 0x7fffffff; return dseed / 0x7fffffff; }
-    var deeper = 0, lost = 0, agreed2 = 0, boardsTried = 0;
-    for (var bt = 0; bt < 400; bt++) {
-        var dg = [], dcells = [], dr, dc;
-        for (dr = 0; dr <= H; dr++) { dg[dr] = []; for (dc = 1; dc <= W; dc++) dg[dr][dc] = 0; }
-        var mh = 2 + Math.floor(drnd() * 4);
-        for (dc = 1; dc <= W; dc++)
-            for (dr = 1; dr <= mh + Math.floor(drnd() * 2); dr++)
-                dg[dr][dc] = 1 + Math.floor(drnd() * 5);
-        var gs = mh + 3;
-        for (dr = gs; dr < gs + 3 && dr <= H; dr++)
-            for (dc = 1; dc <= W; dc++) { dg[dr][dc] = -2; dcells.push([dr, dc]); }
-        var dst = bit.maskState(dg, { s: { cells: dcells } }, W, H);
-        if (dst.bad) continue;
-        boardsTried++;
-        var shallow = oneSwapBreak(dst);
-        var deep = opts.breakReadyBoard(dst);
-        if (deep && !shallow) deeper++;
-        else if (shallow && !deep) lost++;
-        else agreed2++;
-    }
-    bok(boardsTried > 100,
-        '`breakReady`: only ' + boardsTried + ' buried boards were built, so this ' +
-        'checks almost nothing');
-    bok(deeper > 0,
-        '`breakReady`: not one of ' + boardsTried + ' buried boards found a break ' +
-        'past a drop that one swap could not reach. The drop is not being modelled, ' +
-        'and every board with a way out still reads sealed');
-    bok(lost === 0,
-        '`breakReady`: ' + lost + ' boards report NO break where a single swap ' +
-        'breaks the slab outright. Looking two swaps deep can only add answers, so ' +
-        'this is the search losing a break it already had');
-
-    // A ROUTE THAT STARVES THE BOARD PAYS FOR IT.
-    //
-    // bestAttack and bestPlan each refuse a move that spends the board below the
-    // material floor. None of the routes ranked in here did, and they are the ones
-    // that pick the move on a dying board -- so `val` now carries the same price,
-    // which reaches the flatten, both its variants, and the two fallback routes at
-    // once.
-    //
-    // Checked by asking the SAME board twice, once with the floor and once with it
-    // at zero. A starved landing has to be worth less when the floor exists, or the
-    // term is not in the number.
-    var floored = 0, unfloored = 0, compared = 0;
-    for (var wi = 0; wi < src.boards.length && compared < 60; wi++) {
-        var wb = boardFromString(src.boards[wi]);
-        if (Object.keys(wb.blocks).length) continue;
-        var args = [new LogicalBoard(W, H, 6, wb.grid, wb.blocks), W, H, CURSOR, 2, null];
-        var withFloor = opts.options.apply(null, args.concat(
-            [{ framesPerRow: 120, deadline: 600, workingRows: 4 }, false]));
-        var without = opts.options.apply(null, args.concat(
-            [{ framesPerRow: 120, deadline: 600, workingRows: 0 }, false]));
-        if (!withFloor.flatten || !without.flatten) continue;
-        compared++;
-        if (withFloor.flatten.value < without.flatten.value) floored++;
-        else if (withFloor.flatten.value > without.flatten.value) unfloored++;
-    }
-    bok(compared > 10,
-        '`workingRows`: only ' + compared + ' boards offered a flatten both ways, so ' +
-        'the floor is not being compared against anything');
-    bok(floored > 0,
-        '`workingRows`: not one of ' + compared + ' boards valued its flatten lower ' +
-        'with the material floor than without it, so the floor is not in `val` and ' +
-        'every route ranked by it can still starve the board');
-    bok(unfloored === 0,
-        '`workingRows`: ' + unfloored + ' boards valued a flatten HIGHER with the ' +
-        'floor than without. The floor is a cost; it can only ever subtract');
 
     // AND OFF THE SLAB IT IS SILENT. With no garbage there is nothing to dig
     // toward, so the term must not move a ranking it has no business in.

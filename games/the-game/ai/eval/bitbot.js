@@ -1470,6 +1470,12 @@
             // THE MATERIAL FLOOR, carried rather than duplicated: the number lives
             // here and the search prices it in its own currency.
             workingRows: WORKING_ROWS,
+            // WHAT A CLEAR IN HAND IS WORTH, IN FRAMES. The smallest clear is a
+            // three, and what it buys is the floor held for its own resolve --
+            // resolveFramesOf, the same function the death filter uses, so this is
+            // the engine's number and not a restatement of it. Carried over because
+            // the search prices readiness and has no engine to ask.
+            holdWorth: BF.resolveFramesOf(PanelEngine(), 3, 0),
             deadline: deadline || 0,
             overhead: travel.MOVE_FRAMES + (frozen ? 0 : this.reaction),
             resolve: function (size, garbage) {
