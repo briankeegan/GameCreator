@@ -2170,7 +2170,22 @@
         if (!best) {
             this.counts.allDead++;
             for (i = 0; i < allowed.length; i++) {
-                var s2 = this.score(allowed[i].masks, allowed[i].moveFrames,
+                // RANKED THE WAY THE OTHER TWO BRANCHES RANK IT. With nothing to
+                // clear anywhere, `score` is the weighted vector applied to a
+                // position that is already lost -- so what the bot does with its
+                // last frames is whatever that vector happens to like. Seed 103
+                // rand3 held its pocket at 6,6,4,3,3,3 for fourteen decisions,
+                // every move different, twenty-three candidates each time, and
+                // shuffled panels within rows until the rise killed it at 6,956.
+                //
+                // idleScore is the same lexicographic ranking the spare branch
+                // above already uses: height, then readiness for the slab, then
+                // ways to make a line, then flatness. None of it is the vector's
+                // to weigh, which is the point -- a lost position is exactly where
+                // the vector must not be deciding.
+                var s2 = noneClear
+                       ? this.idleScore(allowed[i], base, info)
+                       : this.score(allowed[i].masks, allowed[i].moveFrames,
                                     allowed[i].resolved, info);
                 if (!best || s2 > best.score) best = { cand: allowed[i], score: s2 };
             }
