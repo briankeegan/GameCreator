@@ -22,114 +22,12 @@
 // way, as the senders' telegraphs show it, is played into every prediction
 // and handed to the search.
 var net = require('net'), path = require('path'), wt = require('worker_threads');
-var PA = require(path.join(__dirname, 'pa-engine.js'));
+var PA = require(path.join(__dirname, 'pa-engine.js')), SH = require(path.join(__dirname, 'survivor_shared.js'));
 
 var args = process.argv.slice(2), opt = { port: 47777, threads: 3 };
 for (var i = 0; i < args.length; i += 2) opt[args[i].replace(/^--/, '')] = Number(args[i + 1]);
-var CFG = { reaction: 12, cursorMoveFrames: 4, threads: opt.threads, weights: 'trained.pbt.pbt-r22-s322.0926-142336.g03120.json',
-            modes: process.env.GC_SURVIVOR_MODES !== '0' };
+var PROFILE = SH.profile(), HANDS = new SH.Hands(PROFILE), land = SH.land, arrivalsOf = SH.arrivalsOf;
 var IN = PA.IN;
-
-// ---------------------------------------------------------------- garbage on its way
-// What the senders' telegraphs show (bot/SurvivalLink.lua telegraph), as the
-// garbage this board will receive and the stopWatch it arrives on: garbage
-// due at T is received once the frame before T has run, so the board sent
-// for frame T already holds it. A sender stages garbage for STAGING frames, then it lands
-// LAND frames later; the staged are shipped highest priority first (the
-// end of the list) and an unfinished chain holds back everything behind it,
-// so nothing past one is counted on.
-var STAGING = 45 + 45 + 1, LAND = 60;
-function arrivalsOf(state) {
-  var out = [], mine = state.stack.stopWatch;
-  PA.list(state.telegraph).forEach(function (src) {
-    var offset = mine - src.stopWatch;
-    PA.list(src.transit).forEach(function (t) {
-      PA.list(t.garbage).forEach(function (g) { out.push({ at: t.at + offset, g: g }); });
-    });
-    var staged = PA.list(src.staged), ship = src.stopWatch;
-    for (var i = staged.length - 1; i >= 0; i--) {
-      var g = staged[i];
-      if (g.isChain && !g.finalized) break;
-      ship = Math.max(ship, g.frameEarned + STAGING);
-      out.push({ at: ship + LAND + offset, g: g });
-    }
-  });
-  return out.sort(function (x, y) { return x.at - y.at; });
-}
-// Garbage due on the frame just reached, received as the server receives it.
-function land(st, arrivals) {
-  for (var i = 0; i < arrivals.length; i++) if (arrivals[i].at === st.stopWatch) st.receiveGarbage([arrivals[i].g]);
-}
-
-// ---------------------------------------------------------------- the hands
-// search.h's walk, swap, raise and reaction on a pa-engine.js board: the
-// frames a decision takes and the keys pressed on each.
-function raiseStep(h, st) {
-  var bits = 0;
-  if (h.left > 0) {
-    if (st.manualRaise) h.started = true;
-    if (st.preventManualRaise || (h.started && !st.manualRaise)) h.left = 0;
-    else { h.left--; bits |= IN.raise; }
-  }
-  return bits;
-}
-// Returns { inputs, end, hold } or null when the move is refused. `end` is
-// the board at the decision after this one; `hold` the raise still held.
-function playStep(board, hold, kind, move, arrivals) {
-  var st = board.copy(), h = { left: hold.left, started: hold.started }, inputs = [], holds = [];
-  var walk = null, cooldown = 0, lastSwap = false, reaction = CFG.reaction;
-  function driveWalk() {
-    var w = walk, bits = 0;
-    if (w.disp !== undefined && st.displacement > w.disp) w.row++;
-    w.disp = st.displacement;
-    var row = Math.max(1, Math.min(w.row, st.topCurRow)), col = Math.max(1, Math.min(w.col, 5));
-    if (st.curRow !== row || st.curCol !== col) {
-      if (w.timer > 0) { w.timer--; return 0; }
-      if (st.curCol < col) bits |= IN.right;
-      else if (st.curCol > col) bits |= IN.left;
-      else if (st.curRow < row) bits |= IN.up;
-      else bits |= IN.down;
-      w.timer = CFG.cursorMoveFrames - 1;
-      return bits;
-    }
-    var ok = st.tryQueueSwap(st.curRow, st.curCol);
-    walk = null;
-    if (ok) { lastSwap = true; cooldown = w.cooldown; return 0; }
-    return null;                        // refused where it stood: search.h's retry is a refusal too
-  }
-  function frame(bits) {
-    var sent = bits | (st.pressSwap ? IN.swap : 0);
-    st.setInput(bits);
-    st.run();
-    land(st, arrivals);
-    inputs.push(sent);
-    holds.push({ left: h.left, started: h.started });
-    if (kind === 'swap' && st.swapDeniedThisFrame) return false;
-    return true;
-  }
-  var bits = raiseStep(h, st);
-  if (kind === 'swap') {
-    walk = { row: move[0], col: move[1], timer: 0, cooldown: reaction, retries: 0 };
-    var b = driveWalk();
-    if (b === null) return null;
-    bits |= b;
-  } else if (kind === 'raise') { h.left = 20; h.started = false; cooldown = reaction; }
-  else cooldown = reaction;
-  if (kind === 'swap' && !walk && !lastSwap) return null;
-  if (!frame(bits)) return null;
-  for (var guard = 0; guard < 4000 && st.gameOverClock <= 0; guard++) {
-    bits = raiseStep(h, st);
-    if (walk) {
-      var b2 = driveWalk();
-      if (b2 === null) return null;
-      if (!frame(bits | b2)) return null;
-      continue;
-    }
-    if (cooldown > 0) { cooldown--; if (!frame(bits)) return null; continue; }
-    break;
-  }
-  return { inputs: inputs, holds: holds, end: st, hold: h };
-}
 
 // ---------------------------------------------------------------- the board, as predicted
 // Two boards agree when every panel and every counter does, except the
@@ -180,7 +78,7 @@ function gridOf(st) {
 }
 
 // ---------------------------------------------------------------- the mind
-var mind = new wt.Worker(path.join(__dirname, 'survivor_mind.js'), { workerData: CFG });
+var mind = new wt.Worker(path.join(__dirname, 'survivor_mind.js'), { workerData: { profile: PROFILE, threads: opt.threads } });
 var mindReady = false, nextId = 1, pending = null, answers = [], thinking = [];
 // GC_SURVIVOR_SYNC=1: every decision is waited for, asked a frame ahead --
 // the bot as it plays with all the time it wants, for telling what it knows
@@ -203,25 +101,31 @@ function Match(level) {
   this.acted = true;       // whether the mind's last decision was played
   this.nextAt = 0;         // the frame the plan ends on
   this.arrivals = [];      // garbage on its way (arrivalsOf)
-  this.stats = { frames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0 };
+  this.stats = { frames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0 };
   this.history = []; this.decided = []; this.asked = []; this.dumped = false;
   // A question from the last match is not this one's: its answer is dropped.
   pending = null;
   mind.postMessage({ type: 'reset' });
 }
-// How far ahead to ask: half again the slowest of the last few answers.
-Match.prototype.lead = function () {
-  if (process.env.GC_SURVIVOR_LEAD) return Number(process.env.GC_SURVIVOR_LEAD);
+// How soon an answer can be had: half again the slowest of the last few.
+Match.prototype.soon = function () {
   if (SYNC) return 1;
-  var worst = thinking.length ? Math.max.apply(null, thinking) : 500;
+  var worst = thinking.length ? Math.max.apply(null, thinking) : 300;
   return Math.max(6, Math.min(600, Math.ceil(worst * 0.06 * 1.5)));
+};
+// How far ahead a decision may be asked (the profile's `ahead`, frames): a
+// long move's frames are spent deciding the next, which a short one needs.
+Match.prototype.ahead = function () {
+  if (process.env.GC_SURVIVOR_LEAD) return Number(process.env.GC_SURVIVOR_LEAD);
+  return SYNC ? 1 : Math.max(PROFILE.ahead, this.soon());
 };
 // The board at `at`, from `board` now, pressing what is planned till then.
 Match.prototype.predict = function (board, at, hold) {
   var st = board.copy(), h = { left: hold.left, started: hold.started }, arrivals = this.arrivals;
   while (st.clock < at && st.gameOverClock <= 0) {
-    var planned = this.plan[st.clock], bits = planned !== undefined ? planned.bits : raiseStep(h, st);
-    if (planned !== undefined) h = { left: planned.hold.left, started: planned.hold.started };
+    var planned = this.plan[st.clock], bits;
+    if (planned !== undefined) { bits = planned.bits; h = { left: planned.hold.left, started: planned.hold.started }; }
+    else { var id = HANDS.idle(st, h, arrivals); bits = id.bits; h = id.hold; }
     st.setInput(bits & ~IN.swap);
     if (bits & IN.swap) st.pressSwap = true;
     st.run();
@@ -241,9 +145,22 @@ Match.prototype.ask = function (at, board, hold) {
   mind.postMessage({ id: pending.id, epoch: this.epoch, at: at, board: board, hold: hold, arrivals: arrivals, acted: this.acted });
   this.stats.decisions++;
 };
-// The answer, if it is for a board still to come: its keys go in the plan,
-// and the next decision is due on the frame they end on.
-Match.prototype.take = function (now) {
+// The answer: its keys go in the plan, and the next decision is due on the
+// frame they end on. One that came after its frame is played from this
+// frame's board if its move still stands -- the frames since were held, as
+// the board it was decided on assumed -- with the swap found again by its
+// panels, in case a row has come up since.
+function moved(from, to, move) {
+  var a = from.panels[move[0]] && from.panels[move[0]][move[1]], b = from.panels[move[0]] && from.panels[move[0]][move[1] + 1];
+  if (!a || !b) return null;
+  for (var r = 1; r < to.panels.length; r++) {
+    var row = to.panels[r];
+    if (row && row[move[1]] && row[move[1]].id === a.id) return row[move[1] + 1] && row[move[1] + 1].id === b.id ? [r, move[1]] : null;
+  }
+  return null;
+}
+Match.prototype.take = function (truth) {
+  var now = truth.clock;
   while (answers.length) {
     var a = answers.shift();
     thinking.push(a.ms); if (thinking.length > 8) thinking.shift();
@@ -254,17 +171,21 @@ Match.prototype.take = function (now) {
     this.decided.push({ id: a.id, at: a.at, now: now, kind: a.kind, move: a.move, ms: a.ms, diag: a.diag });
     if (this.decided.length > 60) this.decided.shift();
     if (!pending || a.id !== pending.id) continue;
-    var p = pending;
+    var p = pending, board = p.board, hold = p.hold, at = a.at, arrivals = p.arrivals, move = a.move;
     pending = null;
-    if (a.epoch !== this.epoch || a.at < now) { this.stats.late++; this.acted = false; continue; }
-    var step = playStep(p.board, p.hold, a.kind, a.move, p.arrivals);
+    if (a.epoch !== this.epoch) { this.stats.late++; this.acted = false; continue; }
+    if (at < now) {
+      if (a.kind === 'swap' && !(move = moved(p.board, truth, a.move))) { this.stats.late++; this.acted = false; continue; }
+      board = truth; hold = this.hold; at = now; arrivals = this.arrivals;
+      this.stats.lateTaken++;
+    }
+    var step = HANDS.keys(board, hold, a.kind, move, arrivals);
     if (!step) { this.stats.refused++; this.acted = false; continue; }
     this.acted = true;
     this.stats.played++;
-    // The frames till it starts are holds, as predicted; each planned frame
-    // carries the raise held after it.
-    for (var i = 0; i < step.inputs.length; i++) this.plan[a.at + i] = { bits: step.inputs[i], hold: step.holds[i] };
-    this.nextAt = a.at + step.inputs.length;
+    // Each planned frame carries the raise held after it.
+    for (var i = 0; i < step.inputs.length; i++) this.plan[at + i] = { bits: step.inputs[i], hold: step.holds[i] };
+    this.nextAt = at + step.inputs.length;
   }
 };
 Match.prototype.frame = function (truth, arrivals) {
@@ -277,18 +198,18 @@ Match.prototype.frame = function (truth, arrivals) {
     this.stats.diverged++;
     if (process.env.GC_SURVIVOR_DEBUG) console.error('clock ' + now + ' (stopWatch ' + truth.stopWatch + '): ' + d + ' arrivals before ' + JSON.stringify(before.map(function (a) { return a.at; })));
   }
-  this.take(now);
+  this.take(truth);
   // The next decision is asked a lead before it is due, on the board
   // predicted from this one: the plan never runs further ahead than that, so
   // every decision sees the rows that have come up since.
-  var planned = this.plan[now], lead = this.lead();
+  var planned = this.plan[now];
   if (!pending && truth.gameOverClock <= 0) {
-    var at = this.nextAt > now ? this.nextAt : now + lead;
-    if (at - now <= lead) { var pr = this.predict(truth, at, this.hold); this.ask(at, pr.board, pr.hold); }
+    var at = this.nextAt > now ? this.nextAt : now + this.soon();
+    if (at - now <= this.ahead()) { var pr = this.predict(truth, at, this.hold); this.ask(at, pr.board, pr.hold); }
   }
   var bits;
   if (planned) { bits = planned.bits; this.hold = { left: planned.hold.left, started: planned.hold.started }; delete this.plan[now]; }
-  else { bits = raiseStep(this.hold, truth); this.stats.idle++; }
+  else { var id = HANDS.idle(truth, this.hold, arrivals); bits = id.bits; this.hold = id.hold; this.stats.idle++; }
   // What this frame should make of the board.
   var next = truth.copy();
   next.setInput(bits & ~IN.swap);
@@ -344,5 +265,5 @@ var server = net.createServer(function (sock) {
 });
 (function wait() {
   if (!mindReady) { setTimeout(wait, 20); return; }
-  server.listen(opt.port, '127.0.0.1', function () { console.log('WasmSurvivor listening on 127.0.0.1:' + opt.port + ' (' + CFG.threads + ' threads)'); });
+  server.listen(opt.port, '127.0.0.1', function () { console.log(PROFILE.name + ' listening on 127.0.0.1:' + opt.port + ' (' + opt.threads + ' threads, reaction ' + PROFILE.reaction + ', cursor ' + PROFILE.cursorMoveFrames + ')'); });
 })();

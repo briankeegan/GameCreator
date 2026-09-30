@@ -4,9 +4,7 @@
 // past its countdown; rows and breaks dealt are the unseen colours; garbage
 // sent goes nowhere. native_pa.test.js plays it beside pa-engine.js and
 // compares every field after every frame.
-typedef int int32_t;
-typedef unsigned int uint32_t;
-typedef unsigned char uint8_t;
+#include "libc.h"
 
 #define W 6
 #define MAXROWS 48
@@ -67,6 +65,8 @@ typedef struct Board {
   int32_t curRow, curCol, topCurRow, queuedSwapRow, queuedSwapCol, swapCount, curTimer, curWaitTime, cursorDirection, cursorLock;
   int32_t garbageCreatedCount, highestGarbageIdMatched, gameOverClock, gameOver;
   int32_t input, pressSwap, swapDenied, inputBits, unseenRows, unseenBreaks, err;
+  int32_t quiet, noQuiet;   // see QUIET; not part of the board, never sent
+  int32_t hi;               // see SETTLED ROWS; not part of the board, never sent
   int32_t ninc, nstall, nlanded;
   int32_t dropColumnIndex[7];     // [width], 1-based as the Lua keeps them
   Incoming inc[MAXINC];           // the next to drop last
@@ -84,15 +84,6 @@ static int32_t bound(int32_t a, int32_t b, int32_t c) { return b < a ? a : b > c
 #define SETB(v) ((v) != NUL && (v) != 0)   // Lua truthiness of a nil-or-boolean
 #define SETN(v) ((v) != NUL)               // of a nil-or-number: 0 is true
 
-void *memcpy(void *d, const void *s, unsigned long n) {
-  unsigned char *dd = d; const unsigned char *ss = s;
-  if ((((unsigned long)dd | (unsigned long)ss | n) & 3) == 0) {
-    uint32_t *d4 = (uint32_t *)dd; const uint32_t *s4 = (const uint32_t *)ss;
-    for (unsigned long i = 0; i < (n >> 2); i++) d4[i] = s4[i];
-  } else for (unsigned long i = 0; i < n; i++) dd[i] = ss[i];
-  return d;
-}
-void *memset(void *d, int c, unsigned long n) { unsigned char *dd = d; for (unsigned long i = 0; i < n; i++) dd[i] = (unsigned char)c; return d; }
 
 static const int SPEED_TO_RISE_TIME[99] = {
   942, 983, 838, 790, 755, 695, 649, 604, 570, 515, 474, 444, 394, 370, 347, 325, 306, 289, 271, 256,
@@ -359,11 +350,22 @@ static int canMatch(const Panel *p) {
   return st == NORMAL || st == LANDING || (p->f[MATCHANYWAY] && st == HOVERING);
 }
 
+// SETTLED ROWS. A settled cell is empty, not garbage, normal, with no flag a
+// pass reads or updatePanel clears: every pass leaves it as it is and no scan
+// finds anything in it. Every row from `hi` up is settled, so the passes run
+// every frame stop there. Nothing in a frame moves a panel up; a new row, a
+// drop, a swap and a loaded board raise hi, and updatePanels lowers it again.
+static int rowsTo(const Board *b) { return b->hi < b->nrows ? b->hi : b->nrows; }
+static int settled(const int32_t *f) {
+  return f[COLOR] == 0 && !f[ISGARBAGE] && f[STATE] == NORMAL && f[STATECHANGED] == 0 && f[PROPCHAIN] == 0 && f[PROPFALL] == 0 &&
+         f[MATCHING] == 0 && !SETB(f[CHAINING]) && !f[MATCHANYWAY] && !SETB(f[QUEUEDHOVER]) && !SETN(f[FELL]);
+}
+
 // ------------------------------------------------------------------ stack
 #define DT_SPEED_INCREASE (15 * 60)
 static int hasActivePanels(Board *b) { return b->nActive > 0 || b->nPrevActive > 0; }
 static int hasFallingGarbage(Board *b) {
-  for (int r = imin(b->height + 3, TOP(b)); r >= 1; r--)
+  for (int r = imin(b->height + 3, rowsTo(b) - 1); r >= 1; r--)
     for (int c = 1; c <= W; c++) { Panel *p = P(b, r, c); if (p->f[ISGARBAGE] && p->f[STATE] == FALLING) return 1; }
   return 0;
 }
@@ -373,14 +375,14 @@ static int isToppedOut(Board *b) {
   return 0;
 }
 static int hasChainingPanels(Board *b) {
-  for (int r = 1; r <= TOP(b); r++)
+  for (int r = 1, n = rowsTo(b); r < n; r++)
     for (int c = 1; c <= W; c++) { Panel *p = P(b, r, c); if (SETB(p->f[CHAINING]) && p->f[COLOR] != 0) return 1; }
   return 0;
 }
 static void updateActivePanelCount(Board *b) {
   b->nPrevActive = b->nActive;
   int32_t count = 0, swapping = 0;
-  for (int r = 1; r <= b->height; r++)
+  for (int r = 1, top = imin(b->height, rowsTo(b) - 1); r <= top; r++)
     for (int c = 1; c <= W; c++) {
       Panel *p = P(b, r, c);
       if (p->f[ISGARBAGE]) { if (p->f[STATE] != NORMAL) count++; }
@@ -415,6 +417,8 @@ static void recordDeath(Board *b) { if (b->gameOverClock > 0) return; b->gameOve
 // ---- rows. The row dealt is unseen (pa-engine.js Unseen): colours 11..16,
 // never shock, since where shock may go is not known yet.
 static void newRow(Board *b) {
+  b->quiet = 0;
+  b->hi = MAXROWS;
   if (b->curRow != 0) b->curRow = bound(1, b->curRow + 1, b->topCurRow);
   if (b->queuedSwapRow > 0) b->queuedSwapRow++;
   int top = TOP(b) + 1, r, c;
@@ -558,6 +562,8 @@ static int tryQueueSwapPanels(Board *b, Panel *p1, Panel *p2) {
   return 0;
 }
 static void doSwap(Board *b, int row, int col) {
+  b->quiet = 0;
+  b->hi = imax(b->hi, row + 1);
   startSwap(P(b, row, col), 1);
   startSwap(P(b, row, col + 1), 0);
   switchPanels(b, P(b, row, col), P(b, row, col + 1));
@@ -581,7 +587,7 @@ static void cellsPush(Board *b, Cells *l, int r, int c) { if (l->n < MAXMATCH) l
 static void getMatchingPanels(Board *b, Cells *out) {
   int32_t cand[W * 16], nc = 0, vert[16], horiz[8], nv, nh, r, c, i, j;
   out->n = 0;
-  for (r = 1; r <= b->height; r++)
+  for (r = 1, nv = imin(b->height, rowsTo(b) - 1); r <= nv; r++)
     for (c = 1; c <= W; c++) { Panel *p = P(b, r, c); if (p->f[STATECHANGED] && canMatch(p)) cand[nc++] = r * 8 + c; }
   for (i = 0; i < nc; i++) {
     int cr = CR(cand[i]), cc = CC(cand[i]);
@@ -706,7 +712,7 @@ static int32_t calculateStopTime(Board *b, int32_t comboSize, int toppedOut, int
   return t;
 }
 static void clearChainingFlags(Board *b) {
-  int top = imin(TOP(b), b->height + 2);
+  int top = imin(rowsTo(b) - 1, b->height + 2);
   for (int r = 1; r <= top; r++)
     for (int c = 1; c <= W; c++) {
       Panel *p = P(b, r, c);
@@ -767,6 +773,8 @@ static int shouldDropGarbage(Board *b) {
   return g->height > 1;
 }
 static void dropGarbage(Board *b, int32_t width, int32_t height, int32_t isMetal) {
+  b->quiet = 0;
+  b->hi = MAXROWS;
   int32_t originRow = b->height + 1;
   if (width < 1 || width > 6) { b->err |= ERR_WIDTH; return; }
   int32_t index = b->dropColumnIndex[width], originCol = DROP_COLUMNS[width][index - 1];
@@ -818,8 +826,36 @@ static void updatePanels(Board *b) {
   b->shakeTimeOnFrame = 0;
   // A panel that falls moves to the cell below, already updated; the one it
   // trades with comes up into this cell, which is not visited again.
-  for (int r = 1; r <= TOP(b); r++)
-    for (int c = 1; c <= W; c++) updatePanel(b, P(b, r, c));
+  int n = rowsTo(b), r, c;
+  for (r = 1; r < n; r++)
+    for (c = 1; c <= W; c++) updatePanel(b, P(b, r, c));
+  for (r = n - 1; r >= 1; r--) {
+    for (c = 1; c <= W; c++) if (!settled(P(b, r, c)->f)) break;
+    if (c <= W) break;
+  }
+  b->hi = r + 1;
+}
+// QUIET: a board on which a frame moves no panel. Every panel is at rest
+// (normal, with no flag a neighbour or a scan reads,
+// nothing chaining, garbage held up) and nothing is active. Matches are only
+// looked for among panels that changed, so a frame on it changes only the
+// stack's counters -- checkMatches finds nothing, every updatePanel clears
+// flags already clear, nothing is counted active, no row is extra -- until
+// something moves a panel: a swap, a row, a drop, each of which ends it (the
+// rest of that frame is played in full). Decided after a full frame;
+// native_pa.test.js holds every frame to pa-engine.js.
+static int isQuiet(Board *b) {
+  if (b->nActive || b->nPrevActive || b->swappingCount || swapQueued(b) || b->chainCounter) return 0;
+  // Row 0 is neither updated nor scanned, and what reads it (updateNormal
+  // on row 1) reads a change flag only a row sets.
+  for (int r = 1, n = rowsTo(b); r < n; r++)
+    for (int c = 1; c <= W; c++) {
+      const int32_t *f = b->p[r][c].f;
+      if (f[STATE] != NORMAL || f[STATECHANGED] != 0 || f[PROPCHAIN] != 0 || f[MATCHING] != 0 || f[PROPFALL] != 0 ||
+          SETB(f[CHAINING]) || f[MATCHANYWAY] || SETB(f[QUEUEDHOVER]) || SETN(f[FELL])) return 0;
+      if (f[ISGARBAGE] && !supportedFromBelow(b, &b->p[r][c])) return 0;
+    }
+  return 1;
 }
 static void runPhysics(Board *b) {
   b->nlanded = 0;
@@ -831,11 +867,17 @@ static void runPhysics(Board *b) {
   if (!b->wasToppedOut && !hasFallingGarbage(b)) b->health = b->maxHealth;
   if (b->displacement % 16 != 0) b->topCurRow = b->height - 1;
   if (swapQueued(b)) { doSwap(b, b->queuedSwapRow, b->queuedSwapCol); b->queuedSwapCol = 0; b->queuedSwapRow = 0; }
-  checkMatches(b);
-  updatePanels(b);
-  updateActivePanelCount(b);
-  if (b->chainCounter != 0 && !hasChainingPanels(b)) b->chainCounter = 0;
-  removeExtraRows(b);
+  if (b->quiet && !b->noQuiet) {
+    b->shakeTimeOnFrame = 0;
+    b->nPrevActive = b->nActive;
+  } else {
+    checkMatches(b);
+    updatePanels(b);
+    updateActivePanelCount(b);
+    if (b->chainCounter != 0 && !hasChainingPanels(b)) b->chainCounter = 0;
+    removeExtraRows(b);
+    b->quiet = !b->noQuiet && isQuiet(b);
+  }
   if (checkDeath(b)) recordDeath(b);
 }
 // Stack:run, past the countdown. b->input is the frame's keys; pressSwap
@@ -940,6 +982,7 @@ EXPORT(nb_load) int nb_load(Board *b) {
   for (i = 0; i < b->nlanded; i++) b->landed[i] = *x++;
   b->dropColumnIndex[0] = 0;
   for (i = 1; i <= 6; i++) b->dropColumnIndex[i] = *x++;
+  b->quiet = 0; b->noQuiet = 0; b->hi = MAXROWS;
   return b->err;
 }
 EXPORT(nb_save) int nb_save(Board *b) {
@@ -974,6 +1017,8 @@ EXPORT(nb_receive) void nb_receive(Board *b, int32_t w, int32_t h, int32_t isCha
   receiveGarbage(b, &g);
 }
 EXPORT(nb_game_over) int nb_game_over(Board *b) { return b->gameOver; }
+EXPORT(nb_no_quiet) void nb_no_quiet(Board *b, int off) { b->noQuiet = off; if (off) b->quiet = 0; }
+EXPORT(nb_quiet) int nb_quiet(Board *b) { return b->quiet; }
 EXPORT(nb_clock) int nb_clock(Board *b) { return b->clock; }
 static void cloneBoard(Board *dst, const Board *src) { copyBoard(dst, src); }
 EXPORT(nb_clone) void nb_clone(Board *dst, Board *src) { cloneBoard(dst, src); }
@@ -981,4 +1026,5 @@ EXPORT(nb_clone) void nb_clone(Board *dst, Board *src) { cloneBoard(dst, src); }
 // ---- what the search needs from this engine (search.h)
 #define KEY_COLOR(f) ((f)[ISGARBAGE] ? (SETB((f)[METAL]) ? 254 : 255) : ((f)[COLOR] & 255))
 #define SWAP_PRESSED 1
+#define SENT_KEYS(st, input) ((input) | ((st)->pressSwap ? IN_SWAP : 0))
 #include "search.h"

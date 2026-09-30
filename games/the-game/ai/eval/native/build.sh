@@ -3,7 +3,7 @@
 # threads) from engine.c, and pa.wasm / pa-mt.wasm from pa.c, and records
 # every hash in BUILT, which
 # native.test.js checks: a change to engine.c without a rebuild fails there.
-# Needs clang with the wasm32 target (clang 18 here; no libc is used).
+# Needs clang with the wasm32 target (clang 18 here; no libc: libc.h has what is used).
 set -e
 cd "$(dirname "$0")"
 FLAGS="--target=wasm32 -O3 -matomics -mbulk-memory -nostdlib -Wall -Wno-unused-function -Wl,--no-entry -Wl,--allow-undefined"
@@ -14,5 +14,5 @@ for e in engine pa; do
   clang $FLAGS $MT $e.c -o $e-mt.wasm
 done
 h() { sha256sum "$1" | cut -c1-64; }
-for f in engine.c pa.c memory.h search.h engine.wasm engine-mt.wasm pa.wasm pa-mt.wasm; do printf '%s %s\n' "$f" "$(h $f)"; done > BUILT
+for f in engine.c pa.c libc.h memory.h search.h engine.wasm engine-mt.wasm pa.wasm pa-mt.wasm; do printf '%s %s\n' "$f" "$(h $f)"; done > BUILT
 cat BUILT

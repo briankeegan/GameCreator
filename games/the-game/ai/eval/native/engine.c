@@ -4,9 +4,7 @@
 // in the search are the unseen colours puyocpu.js deals (unseenRow,
 // unseenBreak) -- and events are not kept. native.test.js plays it beside
 // panel-engine.js and compares every field after every frame.
-typedef int int32_t;
-typedef unsigned int uint32_t;
-typedef unsigned char uint8_t;
+#include "libc.h"
 
 #define W 6
 #define MAXROWS 48
@@ -85,15 +83,6 @@ static int32_t imax(int32_t a, int32_t b) { return a > b ? a : b; }
 static int32_t imin(int32_t a, int32_t b) { return a < b ? a : b; }
 static int32_t nz(int32_t v) { return v == NUL ? 0 : v; }
 
-void *memcpy(void *d, const void *s, unsigned long n) {
-  unsigned char *dd = d; const unsigned char *ss = s;
-  if ((((unsigned long)dd | (unsigned long)ss | n) & 3) == 0) {
-    uint32_t *d4 = (uint32_t *)dd; const uint32_t *s4 = (const uint32_t *)ss;
-    for (unsigned long i = 0; i < (n >> 2); i++) d4[i] = s4[i];
-  } else for (unsigned long i = 0; i < n; i++) dd[i] = ss[i];
-  return d;
-}
-void *memset(void *d, int c, unsigned long n) { unsigned char *dd = d; for (unsigned long i = 0; i < n; i++) dd[i] = (unsigned char)c; return d; }
 
 static const int SPEED_TO_RISE_TIME[99] = {
   942, 983, 838, 790, 755, 695, 649, 604, 570, 515, 474, 444, 394, 370, 347, 325, 306, 289, 271, 256,
