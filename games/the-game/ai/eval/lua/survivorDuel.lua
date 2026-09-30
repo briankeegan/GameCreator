@@ -2,7 +2,7 @@
 --
 --   (in a panel-game checkout that has bot/SurvivalLink.lua, with its LUA_PATH;
 --    survivor.js listening)
---   luajit GameCreator/games/the-game/ai/eval/lua/survivorDuel.lua SEED FRAMES [GARBAGE_EVERY] [PACE] [SOLO] [STREAM]
+--   luajit GameCreator/games/the-game/ai/eval/lua/survivorDuel.lua SEED FRAMES [GARBAGE_EVERY] [PACE] [SOLO] [STREAM] [OPPONENT]
 --
 -- A VS match as the server sets one up (TWO_PLAYER_VS, level 10, shock on),
 -- played on panel-game's own Lua engine: side 1 is WasmSurvivor through the
@@ -35,6 +35,11 @@ local SOLO = (tonumber(arg[5]) or 0) ~= 0
 -- tall and full-width metal among the combos. "human": chains 1-3 tall and
 -- combos, no metal -- what a strong player sends, through a telegraph.
 local STREAM = arg[6] or "wild"
+-- OPPONENT: "beverly" (the Lua bot, the default) or "survivor": a second
+-- WasmSurvivor, through its own link to a survivor.js on PA_SURVIVOR_PORT2
+-- (default 47778) -- the bot against itself, or against a variation of
+-- itself run under another profile.
+local OPPONENT = arg[7] or "beverly"
 
 local state = SEED * 2654435761 % 4294967296
 local function rand(n)
@@ -52,6 +57,11 @@ match:start()
 
 local link = SurvivalLink.new({})
 link:startMatch(a)
+local link2
+if OPPONENT == "survivor" then
+  link2 = SurvivalLink.new({ port = tonumber(os.getenv("PA_SURVIVOR_PORT2") or "") or 47778 })
+  link2:startMatch(b)
+end
 local brain = WeightedBrain.new({ profile = "bot/profiles/beverly.json" })
 local controller = CursorController.new({ cursorMoveInterval = 4, reactionFrames = 12 })
 local WAIT = { type = "WAIT" }
@@ -73,7 +83,9 @@ while frame < FRAMES and not a:game_ended() and not b:game_ended() do
   sources[#sources + 1] = extra
   local ca = link:input(a, sources)
   local cb
-  if b.clock > 190 then
+  if link2 then
+    cb = link2:input(b, match.garbageSources[b])
+  elseif b.clock > 190 then
     -- The opponent thinks on its own machine: its time is not the frame's.
     local t1 = socket.gettime()
     local st = BoardState.extract(b)
@@ -117,6 +129,7 @@ while frame < FRAMES and not a:game_ended() and not b:game_ended() do
   end
 end
 link:endMatch()
+if link2 then link2:endMatch() end
 local died = a:game_ended() and "WasmSurvivor" or (b:game_ended() and "opponent" or "nobody")
 print(string.format('RESULT {"seed":%d,"frames":%d,"clock":%d,"died":"%s","late":%d,"handed":%d,"seconds":%.0f}',
   SEED, frame, a.clock, died, link.late, handed, socket.gettime() - t0))

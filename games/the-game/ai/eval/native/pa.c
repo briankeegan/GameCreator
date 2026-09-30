@@ -1027,6 +1027,7 @@ EXPORT(nb_clone) void nb_clone(Board *dst, Board *src) { cloneBoard(dst, src); }
 #define KEY_COLOR(f) ((f)[ISGARBAGE] ? (SETB((f)[METAL]) ? 254 : 255) : ((f)[COLOR] & 255))
 #define SWAP_PRESSED 1
 #define SENT_KEYS(st, input) ((input) | ((st)->pressSwap ? IN_SWAP : 0))
+#define NODE_BREAKS(b) ((b)->unseenBreaks)
 #include "search.h"
 // Garbage rows broken on node i's board since the game began (convertGarbagePanels).
 EXPORT(ns_breaks) int ns_breaks(Ctx *x, int i) { Board *b = ensureBoard(x, i); return b ? b->unseenBreaks : -1; }

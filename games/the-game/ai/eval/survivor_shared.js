@@ -82,30 +82,54 @@ function threat(p, lead) {
 }
 
 // ---------------------------------------------------------------- breaking garbage
-// The moves from `board` that break garbage, played on the server's rules
-// (search S, native.js server Search): `now`, the swaps whose own step
-// breaks a row; `next`, when none does, the first moves (swaps and a hold)
-// after which some swap does. Keys "row,col" or "hold".
-function breakMoves(S, board, hold, arrivals) {
+// The moves from `board` that break garbage soonest, played on the server's
+// rules (search S, native.js server Search): the swaps whose own step
+// breaks a row; failing those, the first moves (swaps and a hold) after
+// which one swap does; failing those, after which two do -- the last swap
+// only where a match can touch garbage, the rows under its lowest. Returns
+// { depth, moves } (keys "row,col" or "hold"), depth 0 for none.
+function lowestGarbageRow(board) {
+  for (var r = 1; r < board.panels.length; r++) {
+    var row = board.panels[r];
+    if (row) for (var c = 1; c <= 6; c++) if (row[c] && row[c].isGarbage) return r;
+  }
+  return 0;
+}
+var BREAK_BUDGET = 2500;   // steps past the first level: the search stops there
+function breakMoves(S, board, hold, arrivals, maxDepth) {
+  maxDepth = maxDepth || 3;
+  var g = lowestGarbageRow(board);
+  if (!g) return { depth: 0, moves: {} };
   S.reset();
-  var root = S.root(board.copy(), hold, arrivals, false), base = S.breaks(root), now = {}, next = {}, any = false, i, j;
-  var firsts = root.b.legalSwaps().map(function (m) { return { key: m[0] + ',' + m[1], kind: 'swap', m: m }; });
-  firsts.forEach(function (f) {
-    f.n = S.advance(root, 'swap', f.m, 0);
-    if (f.n && !f.n.dead && S.breaks(f.n) > base) { now[f.key] = true; any = true; }
+  var root = S.root(board.copy(), hold, arrivals, false), base = S.breaks(root), i, j, k, steps = 0;
+  function breaks(n) { return n && !n.dead && S.breaks(n) > base; }
+  function swapsOf(n, near) {
+    var ms = n.b.legalSwaps();
+    return near ? ms.filter(function (m) { return m[0] >= g - 3 && m[0] <= g + 1; }) : ms;
+  }
+  var firsts = swapsOf(root).map(function (m) { return { key: m[0] + ',' + m[1], m: m }; }), found = {}, any = false;
+  firsts.forEach(function (f) { f.n = S.advance(root, 'swap', f.m, 0); if (breaks(f.n)) { found[f.key] = true; any = true; } });
+  if (any) return { depth: 1, moves: found };
+  if (maxDepth < 2) return { depth: 0, moves: {} };
+  firsts.push({ key: 'hold', n: S.advance(root, 'hold', null, 0) });
+  var live = firsts.filter(function (f) { return f.n && !f.n.dead; });
+  live.forEach(function (f) {
+    if (steps >= BREAK_BUDGET) { f.seconds = []; return; }
+    f.seconds = swapsOf(f.n).map(function (m) { steps++; return S.advance(f.n, 'swap', m, 0); });
+    if (f.seconds.some(breaks)) { found[f.key] = true; any = true; }
   });
-  if (any) return { now: now, next: next };
-  firsts.push({ key: 'hold', kind: 'hold', n: S.advance(root, 'hold', null, 0) });
-  for (i = 0; i < firsts.length; i++) {
-    var f = firsts[i];
-    if (!f.n || f.n.dead) continue;
-    var seconds = f.n.b.legalSwaps();
-    for (j = 0; j < seconds.length; j++) {
-      var c = S.advance(f.n, 'swap', seconds[j], 0);
-      if (c && !c.dead && S.breaks(c) > base) { next[f.key] = true; break; }
+  if (any) return { depth: 2, moves: found };
+  if (maxDepth < 3) return { depth: 0, moves: {} };
+  for (i = 0; i < live.length && steps < BREAK_BUDGET; i++) {
+    var f = live[i];
+    for (j = 0; j < f.seconds.length && !found[f.key] && steps < BREAK_BUDGET; j++) {
+      var n2 = f.seconds[j];
+      if (!n2 || n2.dead) continue;
+      var thirds = swapsOf(n2, true);
+      for (k = 0; k < thirds.length; k++) { steps++; if (breaks(S.advance(n2, 'swap', thirds[k], 0))) { found[f.key] = true; any = true; break; } }
     }
   }
-  return { now: now, next: next };
+  return { depth: any ? 3 : 0, moves: found };
 }
 
 // ---------------------------------------------------------------- the hands

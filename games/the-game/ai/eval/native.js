@@ -551,6 +551,9 @@
     return out;
   };
   Search.prototype.steps = function () { return X.ns_steps(this.ctx); };
+  // The first frame a live line of the move tagged `tag` broke garbage in the
+  // last level loop (the server's engine; -1 for none).
+  Search.prototype.breakAt = function (tag) { return X.ns_break_at ? X.ns_break_at(this.ctx, tag) : -1; };
   // The server's engine: garbage rows broken on a node's board so far.
   Search.prototype.breaks = function (node) {
     if (!X.ns_breaks) throw new Error('Native: this engine does not count breaks');

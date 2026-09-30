@@ -2833,12 +2833,9 @@
       else if (verdict[i] === 'unproven') unproven.push(cands[i]);
     }
     if (!proven.length) proven = weakly;
-    // The caller's moves first (preferMove, see _decide): of those proven to
+    // The caller's moves first (preferRank, see _decide): of those proven to
     // live, before the proven ones are narrowed to the line that lives longest.
-    if (this.preferMove && proven.length) {
-      var preferred = proven.filter(this.preferMove, this);
-      if (preferred.length) proven = preferred;
-    }
+    if (this.preferRank && proven.length) proven = this._preferred(proven, proven);
     // A move the search ran out of budget on is a guess. When any move is
     // proven to live, the guesses are dropped.
     var live = proven.length ? proven : unproven;
@@ -3782,6 +3779,12 @@
   };
 
   // Pick a move. Greedy at depth 1; at depth 2 hand off to _lookahead.
+  // The moves of `list` preferRank puts first, or `none` when it ranks none.
+  PuyoCpu.prototype._preferred = function (list, none) {
+    var sp = this._searchProofs, self = this, best = Infinity;
+    var ranks = list.map(function (c) { var r = self.preferRank(c, sp ? sp.cands.indexOf(c) : -1); if (r < best) best = r; return r; });
+    return best < Infinity ? list.filter(function (c, i) { return ranks[i] === best; }) : none;
+  };
   PuyoCpu.prototype._decide = function () {
     // The engine in C's nodes last one decision. The line being followed is
     // compared with the board next decision (checkModel), so its board is
@@ -3790,10 +3793,12 @@
       if (this._following && this._following.node && this._following.node._nat) void this._following.node.st;
       this._nat.reset();
     }
-    // preferMove: the caller's moves to play before any other, of those every
-    // filter kept (survivor_mind.js: the moves that break garbage). When one
-    // is kept the pool is those; the modes do not get to refuse them.
-    var pool = this._candidates(), pick = this.preferMove ? pool.filter(this.preferMove, this) : [];
+    // preferRank(cand, index in the survival search's candidates): the
+    // caller's order for moves to play before any other, lower first,
+    // Infinity for none (survivor_mind.js: how soon a move breaks garbage).
+    // Of the moves every filter kept, the best ranked are the pool; the modes
+    // do not get to refuse them.
+    var pool = this._candidates(), pick = this.preferRank ? this._preferred(pool, []) : [];
     var cands = pick.length ? pick : this._applyModes(pool);
 
     // HOLD IS CANDIDATE ZERO, not a separate case carried alongside the
