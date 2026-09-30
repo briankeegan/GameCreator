@@ -3208,11 +3208,26 @@
         function cashes(c) {
             return !!(c.resolved && (c.resolved.total > 0 || c.resolved.brokeGarbage));
         }
+        // THE SAME TWO CELLS AGAIN, AND ONLY THAT.
+        //
+        // A landing whose signature has been seen before is NOT a loop on a sparse
+        // board: a panel swapped sideways with nothing under it falls straight
+        // back, so the settled position is unchanged and the signature matches.
+        // That is the ordinary cost of walking the cursor. Refusing it here fired
+        // fifteen times in one duel, eight of them overriding levelFirst between
+        // frames 207 and 663 -- the opening -- and the board was never levelled:
+        // 3,4,1,3,4,9, a nine-high tower, dead at 1,129. None of the fifteen was a
+        // repeated move.
+        //
+        // Replaying the same pair IS unambiguous, and it is the shape that kills:
+        // keepSave played 5-1 twice running at 15,706 with the signature guard
+        // reporting the landing at index 1 of its own history. A cashing move is
+        // exempt -- swap, let a stack drop, swap the same cells again is how the
+        // board reaches a slab it could not touch.
         function loops(c) {
             if (cashes(c)) return false;
             var ls = self._lastSwap;
-            if (ls && c.swap && c.swap[0] === ls[0] && c.swap[1] === ls[1]) return true;
-            return !!c.masks && self._seen.indexOf(signature(c.masks)) >= 0;
+            return !!(ls && c.swap && c.swap[0] === ls[0] && c.swap[1] === ls[1]);
         }
         if (!loops(picked)) return d;
         // WHAT THE REPLACEMENT IS RANKED BY, AND WHY IT IS NOT `score`.
