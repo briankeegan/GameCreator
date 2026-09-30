@@ -830,6 +830,104 @@ function hostile() {
        'leg the whole flatten path was built on');
 }());
 
-console.log('survival: 68 invariants checked without playing a game');
+// ------ 17. every path that picks a move leaves the board able to answer
+//
+// Firing anything holds the floor for its resolve, and at maxHealth 1 that hold
+// is the difference between living and not -- so a board with no clear anywhere
+// on it is one row from dying however much the move that made it just sent.
+//
+// The rule existed and reached two paths: raiseMode will not raise into a board
+// that cannot fire, and a flatten route must land somewhere that can. Neither is
+// the path that picks most moves -- the 103 death played survivalPlan, digPlan,
+// bestAttack and WEIGHTS for nineteen thousand frames, and none of them asked.
+//
+// Put to the functions directly with hand-built option lists, and to each path
+// separately, because reaching one is not reaching another.
+(function () {
+    var engine = P, FT = { FLASH: 28, FACE: 10, POP: 7 }, WV = {};
+    BF.keys().forEach(function (k) { WV[k] = 0; });
+    // Options identical but for the board they land on. `mat` sits on the working
+    // floor so nothing is docked for a thin board, and `levels` is true on both so
+    // the shape narrowing above cannot be what decides it.
+    function o(over) {
+        var x = { kind: 'combo', swaps: [[1, 1]], frames: 10, duration: 10, chain: 0,
+                  total: 4, size: 4, garbage: 0, tall: 5, bumps: 2, mat: 5, low: 2,
+                  spread: 1, levels: true, opensHole: false, ready: true };
+        for (var k in over) x[k] = over[k];
+        return x;
+    }
+
+    // ---- bestAttack. The bigger attack is the better rate, and it leaves the
+    // board with nothing to fire.
+    var deadA = o({ total: 8, size: 8, ready: false });
+    var liveA = o({ total: 4, size: 4, ready: true, swaps: [[1, 3]] });
+    var pickA = BitBot.bestAttackOf({ now: [deadA, liveA], next: [] }, WV, engine, 600, FT, 18.7);
+    ok(pickA && pickA.option === liveA,
+       'attack: took the bigger attack that leaves the board with nothing to fire. ' +
+       'The rule reaches raiseMode and the flatten route and not the path that ' +
+       'picks the attack, which is where it is needed');
+
+    // AND IT STANDS ASIDE when nothing leaves an answer: then the board was going
+    // to be unanswerable whatever was played, and the bigger attack is right.
+    var deadB = o({ total: 8, size: 8, ready: false });
+    var deadC = o({ total: 4, size: 4, ready: false, swaps: [[1, 3]] });
+    var pickB = BitBot.bestAttackOf({ now: [deadB, deadC], next: [] }, WV, engine, 600, FT, 18.7);
+    ok(pickB && pickB.option === deadB,
+       'attack: with no option leaving an answer it took the smaller one, so the ' +
+       'narrowing empties the list instead of standing aside');
+
+    // AND A BREAK IS NEVER NARROWED OUT. Its settled board is unknowable, so it
+    // carries `ready` null the way it carries `low` and `mat` null -- and a null
+    // is not a no. A garbage cell comes off the board no other way.
+    //
+    // Alongside an option that IS ready, so the narrowing actually happens: with
+    // the break on its own the list empties and the stand-aside hides the defect.
+    var brk = o({ total: 3, size: 3, garbage: 4, breaks: true, ready: null,
+                  mat: null, low: null, bumps: null, swaps: [[1, 5]] });
+    var weak = o({ total: 4, size: 4, frames: 200, duration: 200, ready: true,
+                   swaps: [[1, 3]] });
+    var pickC = BitBot.bestAttackOf({ now: [brk, weak], next: [] }, WV, engine, 600, FT, 18.7);
+    ok(pickC && pickC.option === brk,
+       'attack: a break was narrowed out by a question it cannot answer -- `ready` ' +
+       'is null on a break, and a null must not read as "cannot fire"');
+
+    // ---- bestPlan, the path that fires most often and the one the 103 board
+    // played into its tower.
+    var deadP = o({ total: 8, size: 8, ready: false });
+    var liveP = o({ total: 4, size: 4, ready: true, swaps: [[1, 3]] });
+    var pickP = BitBot.bestPlanOf({ now: [deadP, liveP], next: [] },
+                                  0, 600, engine, false, 112, FT, 5);
+    ok(pickP && pickP.option === liveP,
+       'survival plan: took the route that leaves the board with nothing to fire. ' +
+       'This is the path that picked the move on nearly every frame of the board ' +
+       'that died at 19,135');
+
+    var deadQ = o({ total: 8, size: 8, ready: false });
+    var deadR = o({ total: 4, size: 4, ready: false, swaps: [[1, 3]] });
+    var pickQ = BitBot.bestPlanOf({ now: [deadQ, deadR], next: [] },
+                                  0, 600, engine, false, 112, FT, 5);
+    ok(pickQ && pickQ.option === deadQ,
+       'survival plan: with no plan leaving an answer it took the smaller one, so ' +
+       'the narrowing empties the list instead of standing aside');
+
+    // ---- AND THE LIST HAS TO CARRY THE ANSWER, ON EVERY OPTION. The two
+    // narrowings above read a field; a field that is not there narrows nothing
+    // and every case above would pass on a list that never sets it.
+    var st3 = new P.Stack({ level: 10, seed: 101, countdown: false });
+    var bot3 = new BitBot(st3, { allowRaise: true });
+    var board3 = bot3._snapshot();
+    var base3 = bit.maskState(board3.grid, board3.blocks, W, board3.height);
+    var list = bitoptions.options(null, W, 12, [1, 1], 2, base3,
+                                  bot3.timing(bot3.info(board3), 600), false);
+    var all = list.now.concat(list.next), missing = 0, i;
+    for (i = 0; i < all.length; i++) if (all[i].ready === undefined) missing++;
+    ok(all.length > 0,
+       'the option list came back empty, so this checks nothing');
+    ok(missing === 0,
+       missing + ' of ' + all.length + ' options came back without `ready`, so both ' +
+       'paths above are narrowing on a field that is not set and the rule is off');
+}());
+
+console.log('survival: 76 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');

@@ -1025,6 +1025,23 @@
         var level = [];
         for (i = 0; i < all.length; i++) if (all[i].levels) level.push(all[i]);
         if (level.length) all = level;
+        // AND THE ONES THAT LEAVE THE BOARD ABLE TO ANSWER.
+        //
+        // Firing anything holds the floor for its resolve, and at maxHealth 1 that
+        // hold is the difference between living and not -- so a board with no clear
+        // anywhere on it is one row from dying however much the move that made it
+        // just sent. The question already existed and reached two paths: raiseMode
+        // will not raise into a board that cannot fire, and a flatten route must
+        // land somewhere that can. Neither is the path that picks most moves.
+        //
+        // A NARROWING, NOT A WEIGHT, and it stands aside when nothing leaves the
+        // board able to answer: then it was going to be unanswerable whatever was
+        // played, and the best attack is the right one. A break carries `ready` null --
+        // its settled board is unknowable, the way `low` is -- and a null is not a
+        // no, so breaks are never narrowed out.
+        var rdy = [];
+        for (i = 0; i < all.length; i++) if (all[i].ready !== false) rdy.push(all[i]);
+        if (rdy.length) all = rdy;
         for (i = 0; i < all.length; i++) {
             var o = all[i];
             if (!o.swaps || !o.swaps.length) continue;
@@ -1136,6 +1153,23 @@
         var lvl = [];
         for (i = 0; i < all.length; i++) if (all[i].levels) lvl.push(all[i]);
         if (lvl.length) all = lvl;
+        // AND THE ONES THAT LEAVE THE BOARD ABLE TO ANSWER.
+        //
+        // Firing anything holds the floor for its resolve, and at maxHealth 1 that
+        // hold is the difference between living and not -- so a board with no clear
+        // anywhere on it is one row from dying however much the move that made it
+        // just sent. The question already existed and reached two paths: raiseMode
+        // will not raise into a board that cannot fire, and a flatten route must
+        // land somewhere that can. Neither is the path that picks most moves.
+        //
+        // A NARROWING, NOT A WEIGHT, and it stands aside when nothing leaves the
+        // board able to answer: then it was going to be unanswerable whatever was
+        // played, and the best plan is the right one. A break carries `ready` null --
+        // its settled board is unknowable, the way `low` is -- and a null is not a
+        // no, so breaks are never narrowed out.
+        var rdy = [];
+        for (i = 0; i < all.length; i++) if (all[i].ready !== false) rdy.push(all[i]);
+        if (rdy.length) all = rdy;
         // ONE PANEL REMOVED IS framesPerRow / W FRAMES OF LIFE -- 18.7 at level 10.
         // Panels and stop time are the same currency and this is the exchange rate.
         var perPanel = (framesPerRow || 0) / W;
