@@ -194,6 +194,9 @@
     var envOn = function (k) { return typeof process !== 'undefined' && process.env && process.env[k] === '1'; };
     this.engineCheck = !!opts.engineCheck || envOn('GC_ENGINE_CHECK');
     this.fastEngine = !!opts.fastEngine || envOn('GC_FAST_ENGINE') || this.engineCheck;
+    // The search's steps on the engine in C (native.js; opts.native or
+    // GC_NATIVE=1), each checked against the real engine under engineCheck.
+    this.native = !!opts.native || envOn('GC_NATIVE');
     // The survival search's order: breadth first (the default) or 'best'
     // (opts.surviveSearch or GC_SURVIVE_SEARCH; experimental).
     this.surviveSearch = opts.surviveSearch || (typeof process !== 'undefined' && process.env && process.env.GC_SURVIVE_SEARCH) || null;
@@ -2118,11 +2121,23 @@
            } }
     };
   };
+  function NativeMod() {
+    if (typeof module === 'object' && module.exports) return require('./native.js');
+    var g = typeof self !== 'undefined' ? self : globalThis;
+    return g.PanelEval && g.PanelEval.Native;
+  }
+  // The engine in C's nodes for this bot, emptied at each decision.
+  PuyoCpu.prototype._natSearch = function () {
+    if (!this._nat) this._nat = new (NativeMod().Search)({ reaction: this.reaction || 0, cursorMoveFrames: this.cursorMoveFrames });
+    this._nat.configure(this.reaction || 0, this.cursorMoveFrames, this.SURVIVE_FRAMES, this.SURVIVE_REST);
+    return this._nat;
+  };
   PuyoCpu.prototype._engineRoot = function () {
     var saved = this._carry;
     this._carry = null;
     var arr = this._inFlight().map(function (a) { return { at: a.at, width: a.width, height: a.height, isChain: a.isChain }; });
     this._carry = saved;
+    if (this.native) return this._natSearch().root(cloneStack(this.stack), { left: this.raiseFrames || 0, started: !!this._raiseStarted }, arr, true);
     return this._engineNode(cloneStack(this.stack), 0,
                             { left: this.raiseFrames || 0, started: !!this._raiseStarted }, arr, true);
   };
@@ -2137,6 +2152,11 @@
   // throws.
   PuyoCpu.prototype._engineAdvance = function (node, kind, m, frames) {
     if (this._abort && this._abort()) throw ABORTED;
+    if (node._nat) {
+      var nr = node._nat.advance(node, kind, m, frames);
+      if (this.engineCheck) this._natCheck(node, nr, function (bot, js) { return bot._engineAdvanceOn(cloneStack(js.st), js, kind, m, frames); });
+      return nr;
+    }
     if (!this.fastEngine || !FastStack) return this._engineAdvanceOn(cloneStack(node.st), node, kind, m, frames);
     var r;
     if (kind === 'swap' && node.st instanceof FastStack && !this._oneMove) r = this._swapShared(node, m);
@@ -2311,8 +2331,39 @@
     return this._runFrom(st, bot, arr, a.k, input, node, 'swap', 0);
   };
 
+  // A step on the engine in C, played again on panel-engine.js: any
+  // difference in what comes out throws.
+  PuyoCpu.prototype._natCheck = function (node, r, play) {
+    var js = { st: realStack(node.st), t: node.t, hold: node.hold, arrivals: node.arrivals, fresh: node.fresh, b: node.b,
+               carry: node.carry, pos: node.pos };
+    var f = this.fastEngine, c = this.engineCheck, q;
+    this.fastEngine = false; this.engineCheck = false;
+    try { q = play(this, js); } finally { this.fastEngine = f; this.engineCheck = c; }
+    var d;
+    if (!q || !r) d = q === r ? null : 'refused on one engine only';
+    else if (!!q.dead !== !!r.dead || q.t !== r.t) d = 'dead ' + !!q.dead + '/' + !!r.dead + ' t ' + q.t + '/' + r.t;
+    else if (!q.dead) {
+      d = FastStack.diff(q.st, realStack(r.st));
+      if (d) d = 'board: ' + d;
+      else {
+        var qg = engineGrid(q.st);
+        var a = JSON.stringify([q.hold, q.arrivals, q.pos, q.carry, qg.grid, qg.key, q.b.legalSwaps(), q.fresh]),
+            b = JSON.stringify([r.hold, r.arrivals, r.pos, r.carry, r.b.grid, r.b.key, r.b.legalSwaps(), r.fresh]);
+        if (a !== b) d = 'node: ' + a.slice(0, 400) + ' vs ' + b.slice(0, 400);
+      }
+    }
+    if (d) throw new Error('ENGINE CHECK (native) from t=' + node.t + ': ' + d);
+    this.engineChecks = (this.engineChecks || 0) + 1;
+  };
   PuyoCpu.prototype._engineStep = function (node, m, long) {
     var r;
+    if (node._nat) {
+      if (this._abort && this._abort()) throw ABORTED;
+      var until = long ? (this._lineUntil || (this.SURVIVE_FRAMES + (this._restNeeded ? this.SURVIVE_REST : 0))) : 0;
+      r = node._nat.step(node, m, long, until);
+      if (this.engineCheck) this._natCheck(node, r, function (bot, js) { return bot._engineStep(js, m, long); });
+      return r;
+    }
     if (long) {
       var until = this._lineUntil || (this.SURVIVE_FRAMES + (this._restNeeded ? this.SURVIVE_REST : 0));
       // THE BOT WAITS IN WHOLE HOLDS. A hold is reaction + 1 frames before it
@@ -2342,7 +2393,7 @@
       var pre = this._fromPrefetch(node, m, long);
       if (pre !== undefined) return pre;
     }
-    if (node.st) return this._engineStep(node, m, long);
+    if (node._nat || node.st) return this._engineStep(node, m, long);
     var t = node.b.clone(), r, used, saved = this._carry, savedFrom = this._walkFrom;
     t.incoming = (node.carry && node.carry.nextRow) ||
                  (node.b.incoming === false ? false : (node.b.incoming || this._incoming || null));
@@ -2652,15 +2703,26 @@
     // ON THREADS every board of the level is played on the workers, which
     // keep them; what comes back is what this loop reads of each, and the
     // loop is the same one.
-    var par = real && this.surviveSearch !== 'best' && this.threads > 1 && this.fastEngine && FastStack ? this._svBegin() : null;
+    // ON THE ENGINE IN C the loop below runs there (native.js loop), the same
+    // loop over the same nodes.
+    if (root._nat && this.surviveSearch !== 'best' && level.length && budget > 0) {
+      var nl = { ntags: cands.length, verdict: verdict, proofs: proofs, weak: weak, reach: reach, far: far, level: level,
+                 budget: budget, until: this._lineUntil || FULL, full: FULL, beam: this.SURVIVE_SEARCH_BEAM,
+                 quota: this.SURVIVE_QUOTA, seeds: this.SURVIVE_SEEDS, newlyProven: [] };
+      var left = root._nat.loop(nl, this._abort, ABORTED);
+      PuyoCpu.steps += budget - left;
+      budget = left; level = nl.level;
+      if (this._proofs) for (i = 0; i < nl.newlyProven.length; i++) this._proofs[nl.newlyProven[i]] = proofs[nl.newlyProven[i]];
+    }
+    var par = real && !root._nat && this.surviveSearch !== 'best' && this.threads > 1 && this.fastEngine && FastStack ? this._svBegin() : null;
     while (this.surviveSearch !== 'best' && level.length && budget > 0) {
-      if (this.threads && !par) { this._curLevel = level; this._curVerdict = verdict; }
+      if (this.threads && !par && !root._nat) { this._curLevel = level; this._curVerdict = verdict; }
       var next = [], seen = {}, kids = par ? this._svLevel(par, level, verdict, budget) : null;
       for (i = 0; i < level.length && budget > 0; i++) {
         n = level[i];
         if (verdict[n.tag]) continue;
         if (kids && !kids[i]) this._svRound(par, level, verdict, budget, i, kids);
-        if (this.threads && !par) {
+        if (this.threads && !par && !root._nat) {
           this._curIndex = i;
           if (!n._pre) this._prefetch(this._window(function (x) { return !x._pre; }), function () { return [ 'long' ]; }, true);
         }
@@ -3701,6 +3763,13 @@
 
   // Pick a move. Greedy at depth 1; at depth 2 hand off to _lookahead.
   PuyoCpu.prototype._decide = function () {
+    // The engine in C's nodes last one decision. The line being followed is
+    // compared with the board next decision (checkModel), so its board is
+    // read out first.
+    if (this._nat) {
+      if (this._following && this._following.node && this._following.node._nat) void this._following.node.st;
+      this._nat.reset();
+    }
     var cands = this._applyModes(this._candidates());
 
     // HOLD IS CANDIDATE ZERO, not a separate case carried alongside the

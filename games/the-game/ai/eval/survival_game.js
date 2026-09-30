@@ -84,6 +84,10 @@ var log = [[], []];
   };
 });
 
+// `trace`: both boards on every frame, hashed, so two runs that are meant to
+// play the same game (one engine against another, threads or none) can be
+// checked to have.
+var trace = require('crypto').createHash('md5');
 var before = [[], []], t0 = Date.now(), died = null, mismatches = [0, 0], f;
 for (f = 0; f < FRAMES; f++) {
   cp[0].update(); cp[1].update(); st[0].run(); st[1].run();
@@ -92,6 +96,7 @@ for (f = 0; f < FRAMES; f++) {
     if (out && out.length) st[i ^ 1].receiveGarbage(out);
     st[i].drainEvents();
     before[i].push(draw(st[i])); if (before[i].length > 31) before[i].shift();
+    trace.update(before[i][before[i].length - 1]);
     var mm = (mind[i] || cp[i]).modelMismatches || [];
     while (mismatches[i] < mm.length) {
       var x = mm[mismatches[i]++];
@@ -114,5 +119,6 @@ console.log('RESULT ' + JSON.stringify({ seed: SEED, frames: f, died: died,
                                          missed: REALTIME ? cp.map(function (c) { return c.missed || 0; }) : undefined,
                                          dropped: REALTIME ? cp.map(function (c) { return c.dropped || 0; }) : undefined,
                                          quick: REALTIME ? cp.map(function (c) { return c.quickPlayed || 0; }) : undefined,
+                                         trace: trace.digest('hex').slice(0, 12),
                                          seconds: Math.round((Date.now() - t0) / 1000) }));
 process.exit(died === null ? 0 : 1);
