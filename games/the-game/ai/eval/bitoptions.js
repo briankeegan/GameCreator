@@ -119,7 +119,15 @@
         // one can never reach it.
         var low = h[1];
         for (c = 2; c <= w2; c++) if (h[c] < low) low = h[c];
-        return { tall: tall, bumps: bumps, excess: dev / w2, mat: mean, low: low };
+        // THE SPREAD IS WHAT A SLAB SEALS. Garbage rests on the TALLEST column and
+        // spans the width, so every column shorter than that one ends up with the
+        // difference in empty rows under the slab -- sealed, out of reach, and
+        // holding whatever material was beneath. Bumpiness counts neighbour
+        // differences and stays small while one column towers: the board that died
+        // read 4,2,2,2,3,6, bumpiness 6, spread 4, with four rows sealed under
+        // columns 2 to 4 and nothing able to reach the slab but column 6.
+        return { tall: tall, bumps: bumps, excess: dev / w2, mat: mean, low: low,
+                 high: mx, spread: mx - low };
     }
 
     function optionOf(swaps, frames, r) {

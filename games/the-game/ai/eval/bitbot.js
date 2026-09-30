@@ -2351,7 +2351,14 @@
         // needs -- it replaces the weights fallback on frames where every path
         // above it passed, and while the clock runs those frames are free, because
         // the floor is held.
-        var shapeTime = noneClear || (info.stopTime || 0) > 0;
+        // A TOWER IS URGENT, NOT IDLE WORK.
+        //
+        // Without towering() this is "nothing to fire, or the clock is already
+        // running" -- the bot puts its shape right only once it is already in
+        // trouble. Every other shape rule is "do not make it worse" (levels,
+        // opensHole, score()'s floor); this is the one that goes and fixes it
+        // while there are still moves to play. towering() says what counts.
+        var shapeTime = noneClear || (info.stopTime || 0) > 0 || this.towering(base);
         if (shapeTime && (!this._flatten || !this._flatten.moves.length)) {
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
                                                     lookDepth, base, this.timing(info, deadline), digging);
@@ -2468,6 +2475,27 @@
     // own copy of the same sweep, which is two places for one rule to drift.
     // Callers pass a settled board -- restingBoard here, res.settled there -- which
     // is what anyOneSwapClear needs to be exact.
+    // IS ONE COLUMN RUNNING AWAY FROM THE REST.
+    //
+    // The spread of the material -- the fullest column minus the emptiest -- and
+    // not the bumpiness. Garbage rests on the TALLEST column and spans the whole
+    // width, so every shorter column is sealed under the slab by exactly that
+    // difference, holding whatever material was beneath it. Bumpiness sums
+    // neighbour steps and so stays small while one column towers: the board the
+    // bot died on read 4,2,2,2,3,6 -- bumpiness 6, spread 4 -- with four rows
+    // sealed under columns 2 to 4 and only column 6 able to touch the slab.
+    //
+    // WORKING_ROWS is the anchor: at that spread a whole working floor of rows
+    // goes under the slab the moment a load lands.
+    //
+    // shapeOf counts only the panels BELOW the lowest garbage cell, so material
+    // stranded above a slab is not a tower -- it is in another pocket and nothing
+    // the bot plays can spread it.
+    BitBot.prototype.towering = function (base) {
+        var shp = base && bitoptions.shapeOf(base);
+        return !!shp && (shp.spread || 0) >= WORKING_ROWS;
+    };
+
     BitBot.prototype.hasFireable = function (masks) {
         return bit.anyOneSwapClear(masks);
     };
@@ -3167,6 +3195,7 @@
     // testable on its own, and a test that plays a game to reach it is not a test
     // of the choice.
     BitBot.bestPlanOf = bestPlan;
+    BitBot.WORKING_ROWS = WORKING_ROWS;
     BitBot.STARTER = STARTER;
     return BitBot;
 }));

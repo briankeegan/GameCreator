@@ -14,6 +14,7 @@ require(path.join(ROOT, 'panel-cpu.js'));
 var BitBot = require('./bitbot.js');
 var BF = require('./bitfeatures.js');
 var bit = require('./bitmatch.js');
+var bitoptions = require('./bitoptions.js');
 var P = globalThis.PanelEngine, W = 6;
 
 var fails = 0;
@@ -693,6 +694,142 @@ function hostile() {
        'garbage off the board');
 }());
 
-console.log('survival: 54 invariants checked without playing a game');
+// -------------- 15. a tower is urgent, and a tower is a SPREAD
+//
+// towering() is the trigger that sends the bot to fix its shape while it still
+// has moves to play. Two things have to hold, and neither is visible from a
+// death count: it fires at WORKING_ROWS and not before, and it measures the rows
+// a slab would seal rather than how bumpy the surface looks.
+(function () {
+    function masksOfHeights(h) {
+        var st = new P.Stack({ level: 10, seed: 101, countdown: false }), r, c;
+        for (r = 1; r <= st.height; r++)
+            for (c = 1; c <= W; c++) { st.panels[r][c].color = 0; st.panels[r][c].isGarbage = false; }
+        for (c = 1; c <= W; c++)
+            for (r = 1; r <= h[c - 1]; r++) st.panels[r][c].color = 1 + ((r + c) % 3);
+        var bot = new BitBot(st, { allowRaise: true }), b = bot._snapshot();
+        return { bot: bot, masks: bit.maskState(b.grid, b.blocks, W, b.height) };
+    }
+    var N = BitBot.WORKING_ROWS;
+
+    // THE BOUNDARY IS WORKING_ROWS, both sides of it. One row short is a board the
+    // bot can still work in; at WORKING_ROWS a whole working floor goes under the
+    // slab the moment a load lands.
+    var under = masksOfHeights([N, 1, 1, 1, 1, 1]);          // spread N-1
+    var at = masksOfHeights([N + 1, 1, 1, 1, 1, 1]);         // spread N
+    ok(bitoptions.shapeOf(under.masks).spread === N - 1 &&
+       bitoptions.shapeOf(at.masks).spread === N,
+       'the boundary boards no longer read one either side of WORKING_ROWS (' +
+       bitoptions.shapeOf(under.masks).spread + ' and ' +
+       bitoptions.shapeOf(at.masks).spread + '), so this pair checks nothing');
+    ok(!under.bot.towering(under.masks),
+       'towering at spread ' + (N - 1) + ', one row inside the working floor -- the ' +
+       'shape path then runs on boards that are still workable and there is nothing ' +
+       'left between "fine" and "urgent"');
+    ok(at.bot.towering(at.masks),
+       'not towering at spread ' + N + ', which is a whole working floor sealed by ' +
+       'the next slab');
+
+    // AND IT IS THE SPREAD, NOT THE BUMPINESS. A smooth ramp seals four rows and
+    // reads calm by neighbour steps; a sawtooth seals two and reads alarming.
+    // Judged by bumps the bot goes and fixes the wrong board.
+    var ramp = masksOfHeights([1, 2, 3, 4, 5, 5]);           // bumps 4, spread 4
+    var saw = masksOfHeights([1, 3, 1, 3, 1, 3]);            // bumps 10, spread 2
+    ok(bitoptions.shapeOf(saw.masks).bumps > bitoptions.shapeOf(ramp.masks).bumps,
+       'the sawtooth no longer reads bumpier than the ramp, so this pair no longer ' +
+       'separates the two measures');
+    ok(ramp.bot.towering(ramp.masks),
+       'the ramp seals four rows under the next slab and towering() called it fine ' +
+       '-- bumpiness is what calls it fine, and it is the measure that is wrong');
+    ok(!saw.bot.towering(saw.masks),
+       'the sawtooth is lumpy but seals two rows, and towering() called it urgent ' +
+       '-- the trigger is reading bumpiness');
+
+    // MATERIAL ABOVE A SLAB IS NOT A TOWER. It is in another pocket: nothing the
+    // bot plays spreads it sideways, and the slab it would be measured against is
+    // already underneath it.
+    var st2 = new P.Stack({ level: 10, seed: 101, countdown: false }), r2, c2;
+    for (r2 = 1; r2 <= st2.height; r2++)
+        for (c2 = 1; c2 <= W; c2++) { st2.panels[r2][c2].color = 0; st2.panels[r2][c2].isGarbage = false; }
+    for (c2 = 1; c2 <= W; c2++) {
+        st2.panels[1][c2].color = 1 + (c2 % 3);
+        st2.panels[2][c2].color = 1 + ((c2 + 1) % 3);
+        st2.panels[3][c2].color = 8; st2.panels[3][c2].isGarbage = true;
+    }
+    for (r2 = 4; r2 <= 8; r2++) st2.panels[r2][1].color = 1 + (r2 % 3);
+    var sb = new BitBot(st2, { allowRaise: true }), sm0 = sb._snapshot();
+    var sm = bit.maskState(sm0.grid, sm0.blocks, W, sm0.height);
+    ok(!sb.towering(sm),
+       'five panels stranded above a slab were called a tower -- they are in another ' +
+       'pocket and no swap the bot plays can spread them');
+}());
+
+// ------------- 16. the tower reaches the move, and it only ADDS to the rule
+//
+// The recurring bug in this ladder is a rule written into a stage that does not
+// feed the path that picks the move. So: the same board twice, differing only in
+// whether one column runs away from the rest -- and what comes back has to
+// differ with it.
+//
+// The option list is stubbed to one flatten route and nothing else, so the paths
+// above cannot answer and the question is purely whether the shape branch
+// opened; the raise is stubbed off for the same reason. Both boards have a clear
+// available and the clock stopped, which is exactly the case the old rule shut
+// the shape branch on.
+(function () {
+    var real = bitoptions.options;
+    function via(cols, stopTime) {
+        var st = new P.Stack({ level: 10, seed: 101, countdown: false }), r, c;
+        for (r = 1; r <= st.height; r++)
+            for (c = 1; c <= W; c++) { st.panels[r][c].color = 0; st.panels[r][c].isGarbage = false; }
+        for (c = 1; c <= W; c++)
+            for (r = 1; r <= cols[c - 1].length; r++) st.panels[r][c].color = cols[c - 1][r - 1];
+        if (stopTime) st.stopTime = stopTime;
+        var bot = new BitBot(st, { allowRaise: true });
+        var b = bot._snapshot(), m = bit.maskState(b.grid, b.blocks, W, b.height);
+        var ls = bit.legalSwapsOf(m), pick = null, i;
+        for (i = 0; i < ls.length; i++) if (ls[i][0] === 1) { pick = ls[i]; break; }
+        bitoptions.options = function () {
+            return { now: [], next: [], cheapest: null, save: null, ready: 0,
+                     flatten: { swaps: [pick], duration: 4, lands: null, value: 1 },
+                     swapsConsidered: 0, refused: 0, unknown: 0 };
+        };
+        bot.raiseMode = function () { return null; };
+        var d;
+        try { d = bot.decide(); } finally { bitoptions.options = real; }
+        return { via: d && d.via, clear: bit.anyOneSwapClear(m), towering: bot.towering(m) };
+    }
+    //          one column five deep, the rest one -- spread 4
+    var TOWER = [[1, 2, 1, 2, 1], [2], [3], [2], [2], [3]];
+    //          the same bottom row with the tower taken off -- spread 0
+    var LEVEL = [[1], [2], [3], [2], [2], [3]];
+    //          level, and nothing any single swap can fire
+    var QUIET = [[1], [2], [3], [4], [5], [1]];
+
+    var t = via(TOWER, 0), l = via(LEVEL, 0);
+    ok(t.clear && l.clear && t.towering && !l.towering,
+       'the two boards no longer differ in the tower alone (tower: clear ' + t.clear +
+       ' towering ' + t.towering + ', level: clear ' + l.clear + ' towering ' +
+       l.towering + '), so the comparison below proves nothing');
+    ok(t.via === 'flatten',
+       'a board with a column four rows clear of the rest came back via `' + t.via +
+       '` with a clear in hand -- the tower rule does not reach the move, which is ' +
+       'the shape of every other bug in this ladder');
+    ok(l.via !== 'flatten',
+       'a level board with a clear in hand and the clock stopped came back via ' +
+       '`flatten` -- the shape branch is open on every board, so the tower is not ' +
+       'what opened it and nothing is being triggered on');
+
+    // AND THE TWO LEGS IT WAS ADDED TO STILL CARRY. A tower is one more reason to
+    // fix the shape, not a replacement for the two already there.
+    ok(via(LEVEL, 60).via === 'flatten',
+       'a freeze no longer opens the shape branch -- while the clock runs the floor ' +
+       'is held and shape work costs nothing it needs back');
+    ok(via(QUIET, 0).via === 'flatten',
+       'a board with nothing to fire no longer opens the shape branch, which is the ' +
+       'leg the whole flatten path was built on');
+}());
+
+console.log('survival: 68 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');

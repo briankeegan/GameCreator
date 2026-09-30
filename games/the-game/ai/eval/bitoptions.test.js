@@ -317,5 +317,102 @@ if (flatSpread !== 0) {
     if (gfails) process.exit(1);
 }());
 
+// --------------------------------------------------------------------------
+// SPREAD: THE NUMBER A SLAB IS MEASURED IN.
+//
+// Garbage rests on the TALLEST column and spans the whole width, so every
+// shorter column ends up with the difference in dead rows under the slab,
+// holding whatever material was beneath it. `spread` is that difference --
+// fullest material column minus emptiest -- and it is a different number from
+// `bumps`, which is what the board was judged by before.
+//
+// Arithmetic only, on boards built by hand: no engine, no search.
+(function () {
+    var sfails = 0;
+    function sok(cond, msg) { if (!cond) { console.log('FAIL: ' + msg); sfails++; } }
+
+    // Columns given bottom-up as colours; 'G' is a garbage cell.
+    function shapeOfColumns(cols) {
+        var grid = [], blocks = { g: { cells: [] } }, r, c;
+        for (r = 0; r <= H; r++) { grid[r] = []; for (c = 1; c <= W; c++) grid[r][c] = 0; }
+        for (c = 1; c <= W; c++) {
+            for (r = 1; r <= cols[c - 1].length; r++) {
+                var v = cols[c - 1][r - 1];
+                if (v === 'G') { grid[r][c] = -2; blocks.g.cells.push([r, c]); }
+                else grid[r][c] = v;
+            }
+        }
+        if (!blocks.g.cells.length) blocks = {};
+        return opts.shapeOf(bit.maskState(grid, blocks, W, H));
+    }
+    // Heights alone, coloured so nothing matches: enough for a shape.
+    function shapeOfHeights(h) {
+        var cols = [], c, r;
+        for (c = 1; c <= W; c++) {
+            cols[c - 1] = [];
+            for (r = 1; r <= h[c - 1]; r++) cols[c - 1].push(1 + ((r + c) % 3));
+        }
+        return shapeOfColumns(cols);
+    }
+
+    // A LEVEL BOARD HAS NO SPREAD. Nothing is sealed when a slab lands flat.
+    var level = shapeOfHeights([3, 3, 3, 3, 3, 3]);
+    sok(level.spread === 0,
+        'a level board read spread ' + level.spread + ', so a slab landing on it ' +
+        'would be scored as sealing rows that do not exist');
+    sok(level.high === 3 && level.low === 3,
+        'a level board read high ' + level.high + ' low ' + level.low);
+
+    // THE BOARD THAT DIED: 4,2,2,2,3,6. Four rows go under the slab in columns
+    // 2 to 4 the moment a load lands, and only column 6 can touch it.
+    var died = shapeOfHeights([4, 2, 2, 2, 3, 6]);
+    sok(died.spread === 4,
+        'the board the bot died on read spread ' + died.spread + ' instead of 4 -- ' +
+        'six minus two is what goes under the slab');
+    sok(died.high === 6 && died.low === 2,
+        'spread is high minus low and they disagree: high ' + died.high +
+        ' low ' + died.low + ' spread ' + died.spread);
+
+    // AND BUMPINESS CANNOT SEE IT. These two are the whole reason for the number:
+    // a smooth ramp seals four rows and reads calm by neighbour steps, while a
+    // sawtooth seals one and reads alarming. Judged by bumps the bot fixes the
+    // wrong board.
+    var ramp = shapeOfHeights([1, 2, 3, 4, 5, 5]);       // bumps 4, spread 4
+    var saw  = shapeOfHeights([1, 3, 1, 3, 1, 3]);       // bumps 10, spread 2
+    sok(ramp.spread === 4 && saw.spread === 2,
+        'ramp spread ' + ramp.spread + ' saw spread ' + saw.spread +
+        ' -- expected 4 and 2');
+    sok(saw.bumps > ramp.bumps,
+        'the sawtooth did not read bumpier than the ramp (' + saw.bumps + ' vs ' +
+        ramp.bumps + '), so this pair no longer separates the two measures');
+    sok(ramp.spread > saw.spread,
+        'the ramp seals four rows under a slab and the sawtooth two, but spread ' +
+        'ranked them ' + ramp.spread + ' and ' + saw.spread + ' -- bumpiness is ' +
+        'what ranks them the other way round, and it is the one that is wrong');
+
+    // MATERIAL ABOVE A SLAB IS NOT A TOWER. It is in another pocket: nothing the
+    // bot plays can spread it sideways into the columns beside it, and the slab
+    // it would be measured against is already below it. shapeOf counts only the
+    // panels under the lowest garbage cell, so a column carrying five panels on
+    // top of garbage must read as the empty column it is.
+    var stranded = shapeOfColumns([
+        [1, 2, 'G', 3, 1, 2, 3],   // one panel in the pocket, five stranded above
+        [1, 2, 'G'],
+        [1, 2, 'G'],
+        [1, 2, 'G'],
+        [1, 2, 'G'],
+        [1, 2, 'G']
+    ]);
+    sok(stranded.spread === 0,
+        'panels stranded above a slab were counted as a tower (spread ' +
+        stranded.spread + ') -- they are in another pocket and cannot be spread');
+    sok(stranded.high === 2,
+        'the pocket holds two rows in every column but high read ' + stranded.high);
+
+    console.log('  spread: ' + (sfails ? sfails + ' FAILED' :
+                'measured as the rows a slab seals, and it is not bumpiness'));
+    if (sfails) process.exit(1);
+}());
+
 console.log('bitoptions: ' + R.listed + ' options listed over ' + R.boards +
             ' boards, ' + R.played + ' played on the engine exactly, priced by the walk');
