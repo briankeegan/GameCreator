@@ -1386,6 +1386,15 @@
         // being played, it is being filled.
         var raising = this.raiseMode(info, base);
         this._wantRaise = !!raising;
+        // THE MODE, KEPT SEPARATELY FROM THE BUTTON.
+        //
+        // The paths that prepare -- slabSetup, levelFirst -- clear _wantRaise on
+        // purpose, because dropping the intent is how they stop the row while they
+        // work. So _wantRaise is false for the whole of the preparation, and a rule
+        // that reads it to mean "raising" is switched off exactly when it matters:
+        // gated that way the exit gate's reservation saw 10 swaps a game and fired
+        // on none of them.
+        this._raisingNow = raising;
         // AND WHETHER IT IS HAPPENING, which is not the same as wanting it.
         //
         // The engine is offering the row now, or it is part-way through handing
@@ -3097,39 +3106,22 @@
         }
         if (!chosen) return d;
 
-        // A RESERVED BREAK IS NOT A REASON TO STOP PLAYING.
+        // KEEPING THE RESERVED BREAK BY SUBSTITUTING THE MOVE DOES NOT PAY.
         //
-        // Once the board holds the break the raise is waiting for, the bot keeps
-        // moving -- it just may not spend that break on the way. Standing still to
-        // protect it is the worse failure and it is measured: holding for a mode
-        // is a hundred frames per episode with nothing sent. So this takes moves
-        // away from nothing; it only chooses between moves that were already
-        // available, preferring one that lands with the break still there.
+        // The board holds a break for the slab that will land, the chosen move
+        // spends it, and another move in the pool would not -- so swap them. It
+        // works and it costs: 25 substitutions a game on seed 101, and the raises
+        // that arrived holding the break went from 3 of 4 down to 1 of 3.
         //
-        // Soft, like every rule at this exit: if no move preserves it, the move
-        // stands. The setup was spent, and the next decision plans another.
-        if (this._wantRaise && !ARITHMETIC[d.via] && this.breaksLandingSlab(base) &&
-            !this.breaksLandingSlab(chosen.masks)) {
-            var kept = null, keptScore = -Infinity;
-            for (i = 0; i < pool.length; i++) {
-                var rc2 = pool[i];
-                if (rc2 === chosen || rc2.kind !== 'swap' || !rc2.masks) continue;
-                if ((rc2.moveFrames || 0) > this._lastDeadline) continue;
-                if (this.deadly(rc2.masks, rc2.resolved, info,
-                                Math.max((rc2.moveFrames || 0) + this.reaction,
-                                         info.framesPerRow || 0))) continue;
-                if (this.refuses(rc2, info, base, false)) continue;
-                if (!this.breaksLandingSlab(rc2.masks)) continue;
-                var s2 = this.score(rc2.masks, rc2.moveFrames, rc2.resolved, info);
-                if (s2 > keptScore) { kept = rc2; keptScore = s2; }
-            }
-            if (kept) {
-                this.counts.keptSlabBreak = (this.counts.keptSlabBreak || 0) + 1;
-                d = { kind: 'swap', move: kept.swap, mode: d.mode, alive: d.alive,
-                      via: 'keepSlab' };
-                chosen = kept;
-            }
-        }
+        // The reason is the one this gate already knows about the save rule. The
+        // substitute is ranked by the weights alone, so it overrules whatever the
+        // attack or the setup path chose it for, and being right about the break
+        // does not make it right about the rest. A constraint on which move to
+        // play is not the same as a licence to pick a different one.
+        //
+        // What is left is the search, which plans the setup as a goal and does not
+        // need protecting from the bot afterwards.
+
         // A BREAK THAT LEAVES ANOTHER BREAK IS FREE. That is the whole rule: the
         // save may be spent as long as spending it makes a new one.
         //
