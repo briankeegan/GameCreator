@@ -168,6 +168,49 @@ function hostile() {
        'is the whole reason it exists');
 }());
 
-console.log('survival: 14 invariants checked without playing a game');
+// ------------------------------ 7. an attack may not be the move that opens a hole
+//
+// A column at zero holds no vertical match and breaks the adjacency a horizontal
+// one needs, and it is where a slab bridges. bestAttack ranks cells over frames
+// and its shape tiebreak needs exactly equal rates, so it never fires; score()'s
+// bumpiness floor ranks the weights fallback only. Both deaths this exists for
+// went 2,6,6,6,7,4 -> 2,6,6,6,7,0 and 6,4,2,1,6,8 -> 6,0,1,4,5,7 via this path.
+//
+// The flag is the option's, so the check is that it is honoured: an option that
+// opens a hole must not be chosen while one that does not is available, and the
+// one that does not must still be chosen when it is all there is.
+(function () {
+    // A BOARD WITH AN ATTACK ON IT. At frame 0 every clear is a bare three, which
+    // sends nothing, so bestAttack returns null whatever the shape rule does and
+    // the check would pass on a board that cannot fail it.
+    var st = new P.Stack({ level: 10, seed: 101, countdown: false });
+    var bot = new BitBot(st, { allowRaise: true });
+    var f, opts = null, all = null;
+    for (f = 0; f < 3000 && !st.gameOver; f++) {
+        bot.update(); st.run(); st.takeDeliverableGarbage(); st.drainEvents();
+        if (f % 50) continue;
+        var board = bot._snapshot(), info = bot.info(board);
+        opts = require('./bitoptions.js').options(null, W, 12,
+                   [info.cursorRow, info.cursorCol], 2,
+                   bit.maskState(board.grid, board.blocks, W, board.height),
+                   bot.timing(info, 600), false);
+        all = opts.now.concat(opts.next);
+        if (BitBot.bestAttackOf(opts, BitBot.STARTER, P, 600, st.frames, 112 / W)) break;
+    }
+    ok(all && all.length > 0, 'no options found in 3,000 frames, so nothing can be compared');
+    var reported = 0, i;
+    for (i = 0; i < all.length; i++) if (all[i].opensHole !== undefined) reported++;
+    ok(reported === all.length,
+       reported + ' of ' + all.length + ' options carry opensHole -- an option the ' +
+       'attack cannot ask about is an option the rule cannot refuse');
+    ok(BitBot.bestAttackOf(opts, BitBot.STARTER, P, 600, st.frames, 112 / W) !== null,
+       'no board in 3,000 frames offered an attack, so this cannot test the refusal');
+    for (i = 0; i < all.length; i++) all[i].opensHole = true;
+    ok(BitBot.bestAttackOf(opts, BitBot.STARTER, P, 600, st.frames, 112 / W) === null,
+       'every option opens a hole and an attack was still chosen, so the refusal is ' +
+       'not wired into the ranking');
+}());
+
+console.log('survival: 18 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');

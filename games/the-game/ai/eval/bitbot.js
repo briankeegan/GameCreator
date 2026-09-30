@@ -1015,6 +1015,29 @@
             var o = all[i];
             if (!o.swaps || !o.swaps.length) continue;
             if ((o.duration || o.frames) > deadline) continue;
+            // AN ATTACK MAY NOT BE THE MOVE THAT OPENS A HOLE.
+            //
+            // This ranking is cells sent over the frames it takes, and shape only
+            // breaks a tie at EXACTLY equal rate -- which two attacks essentially
+            // never have, so the flatness preference beside it has never fired.
+            // Meanwhile score() clamps bumpiness to a floor no vector can undo,
+            // and score() ranks the weights fallback only. So the floor exists and
+            // this path cannot see it.
+            //
+            // Read off two deaths on seed 101: columns 2,6,6,6,7,4 became
+            // 2,6,6,6,7,0 and then 2,6,6,6,2,1, all via bestAttack, bumpiness 8 to
+            // 12; and 6,4,2,1,6,8 became 6,0,1,4,5,7, bumpiness 13. Both boards
+            // died with one or two columns at zero while the rest stood at six to
+            // eight.
+            //
+            // A column at zero holds no vertical match and breaks the adjacency a
+            // horizontal one needs, and it is where a slab bridges -- garbage rests
+            // on the tall columns and the empty one can never reach it. So this is
+            // a refusal, not a price: no threshold to choose and nothing a vector
+            // can weigh away. Only the move that OPENS the hole is refused; playing
+            // on a board that already has one is not this move's doing. A break is
+            // exempt -- its settled board is unknowable, so `low` is null.
+            if (o.opensHole) continue;
             var isChain = o.kind === 'chain';
             var cells = cellsSent(engine, o.kind, o.size, o.chain);
             // A BREAK IS AN ATTACK ON YOUR OWN BOARD. It sends nothing, and it is
@@ -2946,6 +2969,10 @@
     // and the bot stood at the ceiling believing it had room.
     BitBot.tallestOfMasks = tallestBoard;
     BitBot.signatureOf = signature;
+    // Exposed so the attack ranking can be checked as a property rather than by
+    // playing games: survival.test.js asserts that an option flagged as opening a
+    // hole is refused here, and that an unflagged one still plays.
+    BitBot.bestAttackOf = bestAttack;
     BitBot.STARTER = STARTER;
     return BitBot;
 }));

@@ -113,7 +113,13 @@
         for (c = 1; c <= w2; c++) dev += Math.abs(h[c] - mean);
         // `mat` is the pocket's material in rows, which is what the caller has to
         // decide whether it can afford to spend.
-        return { tall: tall, bumps: bumps, excess: dev / w2, mat: mean };
+        // `low` is the emptiest column of the pocket. A column at zero holds no
+        // vertical match and breaks the adjacency a horizontal one needs, and it
+        // is where a slab bridges: garbage rests on the tall columns and the empty
+        // one can never reach it.
+        var low = h[1];
+        for (c = 2; c <= w2; c++) if (h[c] < low) low = h[c];
+        return { tall: tall, bumps: bumps, excess: dev / w2, mat: mean, low: low };
     }
 
     function optionOf(swaps, frames, r) {
@@ -122,7 +128,7 @@
                  swaps: swaps, frames: frames, chain: r.chain, total: r.total,
                  garbage: r.garbage || 0, duration: durationOf(swaps, frames),
                  tall: sh ? sh.tall : null, bumps: sh ? sh.bumps : null,
-                 mat: sh ? sh.mat : null };
+                 mat: sh ? sh.mat : null, low: sh ? sh.low : null };
     }
 
     // Cheapest first, then bigger — the order a caller wants to read.
@@ -148,6 +154,11 @@
         DIG = !!dig;
         var now = [], next = [], i, j;
         if (!st) st = bit.maskState(board.grid, board.blocks, W, H);
+        // THE EMPTIEST COLUMN BEFORE ANY MOVE, so an option can be asked whether
+        // IT is the one that opens a hole rather than merely landing on a board
+        // that has one.
+        var START = shapeOf(st);
+        var BASELOW = START ? START.low : 0;
         var swaps = board ? board.legalSwaps() : bit.legalSwapsOf(st);
         var refused = 0, unknown = 0;
 
@@ -165,6 +176,7 @@
             if (r.total === 0 && !broke) continue;           // clears nothing: a setup, not an option
             var opt = optionOf([swaps[i]], travel.cost(cursor[0], cursor[1], swaps[i][0], swaps[i][1]), r);
             opt.breaks = broke;
+            opt.opensHole = opt.low === 0 && BASELOW > 0;
             now.push(opt);
         }
 
@@ -371,6 +383,7 @@
                             if (node.chain.length) {
                                 var opt = optionOf(node.chain.concat([sw]), cost, res);
                                 opt.breaks = broke;
+                                opt.opensHole = opt.low === 0 && BASELOW > 0;
                                 next.push(opt);
                             }
                             continue;
