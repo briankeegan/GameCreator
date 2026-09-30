@@ -369,6 +369,98 @@ function hostile() {
     // that caused it. A check here would pass either way.
 }());
 
-console.log('survival: 32 invariants checked without playing a game');
+// ------------------- 10. the raise trigger, condition by condition
+//
+// raiseMode is where every gate this bot has got wrong tonight lived: a height
+// cap, a flatness cap, a material cap, a readiness veto. It is a pure function
+// of (info, base) and it decides one thing -- whether the bot is raising -- so
+// each condition is checkable on its own, instantly, with no game at all.
+//
+// The conditions, in the order the function applies them:
+//   allowRaise off, or topped out   -> never
+//   the row and everything queued must fit under the ceiling
+//   past the opening, material at or above the floor -> nothing to raise for
+//   any garbage on the board        -> dig instead
+//   nothing fireable                -> the row must not land on a dead board
+(function () {
+    function botOn(rows, opts) {
+        var st = new P.Stack({ level: 10, seed: 101, countdown: false });
+        var r, c;
+        for (r = 1; r <= st.height; r++)
+            for (c = 1; c <= W; c++) { st.panels[r][c].color = 0; st.panels[r][c].isGarbage = false; }
+        rows.forEach(function (row, ri) {
+            for (c = 1; c <= W; c++) {
+                st.panels[ri + 1][c].color = row[c - 1] < 0 ? 8 : row[c - 1];
+                st.panels[ri + 1][c].isGarbage = row[c - 1] < 0;
+            }
+        });
+        var bot = new BitBot(st, opts || { allowRaise: true });
+        var board = bot._snapshot();
+        return { bot: bot, st: st, info: bot.info(board),
+                 base: bit.maskState(board.grid, board.blocks, W, board.height) };
+    }
+    // Low, clean, and genuinely one swap from a clear -- swapping c3 and c4 in the
+    // bottom row makes 1,1,1. A board whose 1s are merely present but two swaps
+    // apart is refused, correctly, and reads as the opening being broken.
+    var OPEN = [[1, 1, 2, 1, 4, 5],
+                [2, 3, 4, 5, 3, 2]];
+
+    var a = botOn(OPEN);
+    a.bot._opening = true;
+    ok(a.bot.raiseMode(a.info, a.base) === 'opening',
+       'raise trigger: a low clean board with a clear in hand did not open, so the ' +
+       'opening cannot happen at all');
+
+    var b = botOn(OPEN, { allowRaise: false });
+    b.bot._opening = true;
+    ok(b.bot.raiseMode(b.info, b.base) === null,
+       'raise trigger: allowRaise false still raised');
+
+    var c2 = botOn(OPEN);
+    c2.bot._opening = true;
+    var infoTop = {}; Object.keys(c2.info).forEach(function (k) { infoTop[k] = c2.info[k]; });
+    infoTop.toppedOut = true;
+    ok(c2.bot.raiseMode(infoTop, c2.base) === null,
+       'raise trigger: raised while topped out, which is the one board a row kills');
+    ok(c2.bot._opening === false,
+       'raise trigger: topped out did not end the opening, so it resumes raising ' +
+       'the moment the board comes down');
+
+    // NO ROOM. The row lands under the stack and lifts everything, so a board
+    // filled to the ceiling has nowhere to put it.
+    // EVERY NEGATIVE CASE PASSES EVERY OTHER CONDITION, or removing the one under
+    // test changes nothing and the check cannot fail. So each carries the same
+    // one-swap clear the opening board has.
+    //
+    // NO CASE FOR "no room for the row", because there is no board that only that
+    // condition rejects. A board with no room carries eleven rows of material, and
+    // the line above it turns the opening off when the row does not fit -- so the
+    // material floor rejects it first whichever way it came in. The check is
+    // redundant rather than wrong, and a test for it would pass with it deleted.
+
+    // PAST THE OPENING, material at or above the floor is nothing to raise for.
+    var deep = [[2, 3, 4, 5, 3, 2], [3, 4, 5, 2, 4, 3], [4, 5, 2, 3, 5, 4],
+                [5, 2, 3, 4, 2, 5], [1, 1, 2, 1, 4, 5]];
+    var e2 = botOn(deep);
+    e2.bot._opening = false;
+    ok(e2.bot.raiseMode(e2.info, e2.base) === null,
+       'raise trigger: raised for material on a board that already has plenty');
+
+    // GARBAGE ON THE BOARD: the answer is to dig, and a row only buries it deeper.
+    var dirty = botOn([[-1, -1, -1, -1, -1, -1], [1, 1, 2, 1, 4, 5]]);
+    dirty.bot._opening = true;
+    ok(dirty.bot.raiseMode(dirty.info, dirty.base) === null,
+       'raise trigger: raised with garbage on the board, where the row buries what ' +
+       'has to be broken');
+
+    // NOTHING TO FIRE: the row must not land on a board with no answer on it.
+    var dead = botOn([[1, 2, 3, 4, 5, 6]]);
+    dead.bot._opening = true;
+    ok(dead.bot.raiseMode(dead.info, dead.base) === null,
+       'raise trigger: raised onto a board with no clear anywhere, which is the ' +
+       'board that must not be filled');
+}());
+
+console.log('survival: 39 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');
