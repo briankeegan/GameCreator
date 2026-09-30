@@ -594,9 +594,22 @@ function hostile() {
        'refusals: a three that neither sends nor breaks was allowed -- it spends the ' +
        'structure a chain is made of and the engine pays nothing for it');
 
-    ok(thin.bot.refuses(cand(PLAIN), thin.info, thin.base, false) === 'starving',
+    // AND THE RULE HAS A CONDITION: a break has to be on the table for it to
+    // refuse a clear in favour of one. Breaking comes first, but a board that
+    // CANNOT break still needs stop time -- that is what buys the moves to reach a
+    // break at all, and the clock is the one thing that cannot be earned back.
+    ok(thin.bot.refuses(cand(PLAIN), thin.info, thin.base, false, true) === 'starving',
        'refusals: a plain clear was allowed on a board under the working floor, ' +
        'where every panel spent elsewhere is spent on never digging out');
+
+    ok(thin.bot.refuses(cand(PLAIN), thin.info, thin.base, false, false) === null,
+       'refusals: a clear was refused on a thin board with NO break available. ' +
+       'Refusing it does not save the panels for digging -- there is nothing to ' +
+       'dig with -- it spends the clock instead, and 17 held-floor clears went ' +
+       'that way on a board that died of time');
+    ok(thin.bot.refuses(cand(BREAK), thin.info, thin.base, false, true) === null,
+       'refusals: a break was refused on a thin board, which is the one move the ' +
+       'rule exists to protect');
 
     ok(fat.bot.refuses(cand(PLAIN), fat.info, fat.base, false) === null,
        'refusals: the same sending clear was refused on a board with material to ' +
@@ -1239,6 +1252,6 @@ function hostile() {
        'being read and the freeze is undervalued exactly when it is survival');
 }());
 
-console.log('survival: 103 invariants checked without playing a game');
+console.log('survival: 105 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');

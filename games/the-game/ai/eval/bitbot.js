@@ -1786,6 +1786,15 @@
         // stake and nothing else is.
         var survivalNeeded = mode.name === 'DEFEND';
         this._lastSurvivalNeeded = survivalNeeded;
+        // IS A BREAK ON THE TABLE AT ALL -- what `starving` is allowed to refuse a
+        // clear in favour of. One pass, before the pool is filtered, because a
+        // break refused by something else is still a break the board could play.
+        var breakOnPool = false;
+        for (var bo = 0; bo < pool.length; bo++) {
+            var br = pool[bo].resolved;
+            if (br && br.brokeGarbage) { breakOnPool = true; break; }
+        }
+        this._lastBreakOnPool = breakOnPool;
         var here = signature(base);
         var allowed = [];
         for (var i = 0; i < pool.length; i++) {
@@ -1839,7 +1848,7 @@
             // COUNTED BY NAME, NOT BY STRING ARITHMETIC. `counts['refused' + why]`
             // turns a renamed reason into `undefined + 1` and the counter reads NaN
             // for the rest of the game without anything failing.
-            var why = this.refuses(pool[i], info, base, survivalNeeded);
+            var why = this.refuses(pool[i], info, base, survivalNeeded, breakOnPool);
             if (why) {
                 if (why === 'payless') this.counts.refusedPayless++;
                 else if (why === 'starving') this.counts.refusedStarving++;
@@ -2972,7 +2981,7 @@
     // than they saved. What is left for the two-position figure in
     // progress.test.js is something that changes what the bot PREFERS.
 
-    BitBot.prototype.refuses = function (cand, info, base, survivalNeeded) {
+    BitBot.prototype.refuses = function (cand, info, base, survivalNeeded, breakAvailable) {
         if (!cand || cand.kind !== 'swap' || !cand.resolved) return null;
         // Survival is exempt from all of them: a board that needs the clock takes
         // whatever buys it.
@@ -2985,8 +2994,20 @@
         // thing that takes garbage off the board and it needs three panels
         // against the slab; a board under the floor cannot reach one, so every
         // panel spent there is spent on never digging out.
+        //
+        // AND ONLY WHILE A BREAK IS ACTUALLY ON THE TABLE. Breaking comes first,
+        // but a board that CANNOT break still needs stop time -- that is what buys
+        // the moves to reach a break at all. Refusing every non-break clear on a
+        // board with no break available does not save the panels for digging; it
+        // spends the clock instead, which is the one thing that cannot be earned
+        // back. Measured on seed 103 rand1: 17 clears declined that would have held
+        // the floor, one of them for 62 frames, on a board that died of time with
+        // 28 cells of garbage on it.
+        //
+        // Gated on a break existing, the refusal can never take the last thing
+        // worth playing -- the break is still on the list.
         if (cand.resolved.total > 0 && !cand.resolved.brokeGarbage &&
-            materialRows(base) < WORKING_ROWS) return 'starving';
+            materialRows(base) < WORKING_ROWS && breakAvailable) return 'starving';
         // EMPTYING A COLUMN IS NOT REFUSED HERE, AND THE NUMBERS ARE WHY.
         //
         // A column at zero holds no vertical match, breaks the adjacency a
@@ -3062,12 +3083,12 @@
                 pk.swap[1] === d.move[1] && pk.masks) { picked = pk; break; }
         }
         if (picked && !ARITHMETIC[d.via] &&
-            this.refuses(picked, info, base, this._lastSurvivalNeeded)) {
+            this.refuses(picked, info, base, this._lastSurvivalNeeded, this._lastBreakOnPool)) {
             var sub = null;
             for (i = 0; i < pool.length; i++) {
                 var sc0 = pool[i];
                 if (sc0 === picked || sc0.kind !== 'swap' || !sc0.masks) continue;
-                if (this.refuses(sc0, info, base, this._lastSurvivalNeeded)) continue;
+                if (this.refuses(sc0, info, base, this._lastSurvivalNeeded, this._lastBreakOnPool)) continue;
                 if ((sc0.moveFrames || 0) > this._lastDeadline) continue;
                 if (this.deadly(sc0.masks, sc0.resolved, info,
                                 Math.max((sc0.moveFrames || 0) + this.reaction,
