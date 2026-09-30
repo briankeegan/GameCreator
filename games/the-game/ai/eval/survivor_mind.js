@@ -31,7 +31,7 @@ wt.parentPort.on('message', function (m) {
   var view = PA.toPanelEngine(board, PE);
   try {
     if (!bot) {
-      bot = new P(view, { weights: weights, reaction: cfg.reaction, depth: 2, beam: 0, rise: true, allowRaise: true, modes: true,
+      bot = new P(view, { weights: weights, reaction: cfg.reaction, depth: 2, beam: 0, rise: true, allowRaise: true, modes: cfg.modes !== false,
                           engine: true, native: true, threads: cfg.threads, cursorMoveFrames: cfg.cursorMoveFrames });
     }
     // A decision that was never played is taken back, as Mind.think does.

@@ -2,7 +2,7 @@
 --
 --   (in a panel-game checkout that has bot/SurvivalLink.lua, with its LUA_PATH;
 --    survivor.js listening)
---   luajit GameCreator/games/the-game/ai/eval/lua/survivorDuel.lua SEED FRAMES [GARBAGE_EVERY] [PACE]
+--   luajit GameCreator/games/the-game/ai/eval/lua/survivorDuel.lua SEED FRAMES [GARBAGE_EVERY] [PACE] [SOLO]
 --
 -- A VS match as the server sets one up (TWO_PLAYER_VS, level 10, shock on),
 -- played on panel-game's own Lua engine: side 1 is WasmSurvivor through the
@@ -29,6 +29,8 @@ local SEED = tonumber(arg[1]) or 1
 local FRAMES = tonumber(arg[2]) or 21600
 local GARBAGE_EVERY = tonumber(arg[3]) or 0
 local PACE = (tonumber(arg[4]) or 1) ~= 0
+-- SOLO 1: no garbage either way, so side 1 plays the rise alone.
+local SOLO = (tonumber(arg[5]) or 0) ~= 0
 
 local state = SEED * 2654435761 % 4294967296
 local function rand(n)
@@ -41,7 +43,7 @@ local match = Match(GeneratorSource(SEED, true), mode.matchRules)
 local a = match:createStackWithSettings(LevelPresets.getModern(10), true, "controller")
 local b = match:createStackWithSettings(LevelPresets.getModern(10), true, "controller")
 a:setMaxRunsPerFrame(1); b:setMaxRunsPerFrame(1)
-match:addTarget(a, b); match:addTarget(b, a)
+if not SOLO then match:addTarget(a, b); match:addTarget(b, a) end
 match:start()
 
 local link = SurvivalLink.new({})

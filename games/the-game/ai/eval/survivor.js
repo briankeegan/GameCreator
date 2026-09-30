@@ -26,7 +26,8 @@ var PA = require(path.join(__dirname, 'pa-engine.js'));
 
 var args = process.argv.slice(2), opt = { port: 47777, threads: 3 };
 for (var i = 0; i < args.length; i += 2) opt[args[i].replace(/^--/, '')] = Number(args[i + 1]);
-var CFG = { reaction: 12, cursorMoveFrames: 4, threads: opt.threads, weights: 'trained.pbt.pbt-r22-s322.0926-142336.g03120.json' };
+var CFG = { reaction: 12, cursorMoveFrames: 4, threads: opt.threads, weights: 'trained.pbt.pbt-r22-s322.0926-142336.g03120.json',
+            modes: process.env.GC_SURVIVOR_MODES !== '0' };
 var IN = PA.IN;
 
 // ---------------------------------------------------------------- garbage on its way
@@ -159,10 +160,37 @@ function differ(want, got) {
   return null;
 }
 
+// ---------------------------------------------------------------- the death record
+// GC_SURVIVOR_DUMP=file: when this side dies, the last HISTORY frames (board,
+// keys pressed, garbage on its way) and the decisions made over them are
+// written there, a match per line.
+var HISTORY = 300;
+function gridOf(st) {
+  var rows = [];
+  for (var r = st.panels.length - 1; r >= 0; r--) {
+    var row = st.panels[r], line = '';
+    for (var c = 1; c <= PA.WIDTH; c++) {
+      var p = row && row[c];
+      line += !p || !p.color ? '.' : p.isGarbage ? (p.metal ? 'M' : 'G') : (p.color > 10 ? '?' : String(p.color));
+      line += !p || !p.color || p.state === 'normal' ? ' ' : p.state[0];
+    }
+    rows.push((r < 10 ? ' ' : '') + r + ' ' + line);
+  }
+  return rows;
+}
+
 // ---------------------------------------------------------------- the mind
 var mind = new wt.Worker(path.join(__dirname, 'survivor_mind.js'), { workerData: CFG });
 var mindReady = false, nextId = 1, pending = null, answers = [], thinking = [];
-mind.on('message', function (m) { if (m.ready) { mindReady = true; return; } answers.push(m); });
+// GC_SURVIVOR_SYNC=1: every decision is waited for, asked a frame ahead --
+// the bot as it plays with all the time it wants, for telling what it knows
+// from what it has time for.
+var SYNC = process.env.GC_SURVIVOR_SYNC === '1', resume = null;
+mind.on('message', function (m) {
+  if (m.ready) { mindReady = true; return; }
+  answers.push(m);
+  if (resume) { var r = resume; resume = null; setImmediate(r); }
+});
 mind.on('error', function (e) { console.error('mind: ' + (e && e.stack || e)); process.exit(1); });
 
 // ---------------------------------------------------------------- one match
@@ -175,13 +203,16 @@ function Match(level) {
   this.acted = true;       // whether the mind's last decision was played
   this.nextAt = 0;         // the frame the plan ends on
   this.arrivals = [];      // garbage on its way (arrivalsOf)
-  this.stats = { frames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0 };
+  this.stats = { frames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0 };
+  this.history = []; this.decided = []; this.asked = []; this.dumped = false;
   // A question from the last match is not this one's: its answer is dropped.
   pending = null;
   mind.postMessage({ type: 'reset' });
 }
 // How far ahead to ask: half again the slowest of the last few answers.
 Match.prototype.lead = function () {
+  if (process.env.GC_SURVIVOR_LEAD) return Number(process.env.GC_SURVIVOR_LEAD);
+  if (SYNC) return 1;
   var worst = thinking.length ? Math.max.apply(null, thinking) : 500;
   return Math.max(6, Math.min(600, Math.ceil(worst * 0.06 * 1.5)));
 };
@@ -201,6 +232,12 @@ Match.prototype.predict = function (board, at, hold) {
 Match.prototype.ask = function (at, board, hold) {
   var arrivals = this.arrivals.filter(function (a) { return a.at > board.stopWatch; });
   pending = { id: nextId++, epoch: this.epoch, at: at, board: board, hold: hold, arrivals: arrivals };
+  if (process.env.GC_SURVIVOR_DUMP) {
+    // The question as the mind got it, to be asked again offline (survivor_probe.js).
+    this.asked.push({ id: pending.id, at: at, hold: hold, arrivals: arrivals, acted: this.acted,
+                      board: require('v8').serialize(board).toString('base64') });
+    if (this.asked.length > 12) this.asked.shift();
+  }
   mind.postMessage({ id: pending.id, epoch: this.epoch, at: at, board: board, hold: hold, arrivals: arrivals, acted: this.acted });
   this.stats.decisions++;
 };
@@ -214,6 +251,8 @@ Match.prototype.take = function (now) {
     if (a.mem) this.stats.memMB = Math.round(a.mem.bytes / 1048576);
     if (process.env.GC_SURVIVOR_DEBUG && a.mem) console.error('decision ' + a.id + ' at ' + a.at + ': ' + a.ms + ' ms ' + a.kind + ' ' + JSON.stringify(a.move) + ' ' + JSON.stringify(a.diag) + ' ' + Math.round(a.mem.bytes / 1048576) + 'MB');
     if (a.error) { console.error('decision failed: ' + a.error); this.acted = false; pending = null; continue; }
+    this.decided.push({ id: a.id, at: a.at, now: now, kind: a.kind, move: a.move, ms: a.ms, diag: a.diag });
+    if (this.decided.length > 60) this.decided.shift();
     if (!pending || a.id !== pending.id) continue;
     var p = pending;
     pending = null;
@@ -249,7 +288,7 @@ Match.prototype.frame = function (truth, arrivals) {
   }
   var bits;
   if (planned) { bits = planned.bits; this.hold = { left: planned.hold.left, started: planned.hold.started }; delete this.plan[now]; }
-  else bits = raiseStep(this.hold, truth);
+  else { bits = raiseStep(this.hold, truth); this.stats.idle++; }
   // What this frame should make of the board.
   var next = truth.copy();
   next.setInput(bits & ~IN.swap);
@@ -257,7 +296,20 @@ Match.prototype.frame = function (truth, arrivals) {
   next.run();
   land(next, arrivals);
   this.expect = next;
+  if (process.env.GC_SURVIVOR_DUMP) this.record(truth, bits, arrivals);
   return bits;
+};
+
+Match.prototype.record = function (truth, bits, arrivals) {
+  this.history.push({ clock: truth.clock, stopWatch: truth.stopWatch, bits: bits, cursor: [truth.curRow, truth.curCol],
+                      incoming: truth.incoming, arrivals: arrivals.map(function (a) { return [a.at, a.g.width, a.g.height, !!a.g.isChain, !!a.g.isMetal]; }),
+                      grid: gridOf(truth) });
+  if (this.history.length > HISTORY) this.history.shift();
+};
+Match.prototype.dump = function () {
+  if (this.dumped || !process.env.GC_SURVIVOR_DUMP || !this.history.length) return;
+  this.dumped = true;
+  require('fs').appendFileSync(process.env.GC_SURVIVOR_DUMP, JSON.stringify({ stats: this.stats, decided: this.decided, asked: this.asked, history: this.history }) + '\n');
 };
 
 // ---------------------------------------------------------------- the link
@@ -265,16 +317,17 @@ var server = net.createServer(function (sock) {
   var buf = '', match = null;
   sock.setNoDelay(true);
   sock.on('error', function (e) { console.log('link: ' + e.message); });
-  sock.on('close', function () { if (match) console.log('match over: ' + JSON.stringify(match.stats)); match = null; });
-  sock.on('data', function (chunk) {
-    buf += chunk;
+  sock.on('close', function () { if (match) { console.log('match over: ' + JSON.stringify(match.stats)); match.dump(); } match = null; });
+  function pump() {
     var nl;
     while ((nl = buf.indexOf('\n')) >= 0) {
-      var line = buf.slice(0, nl); buf = buf.slice(nl + 1);
-      if (!line) continue;
+      var line = buf.slice(0, nl);
+      if (!line) { buf = buf.slice(nl + 1); continue; }
       var m = JSON.parse(line), reply;
+      if (SYNC && m.t === 'f' && match && pending && !answers.some(function (a) { return a.id === pending.id; })) { resume = pump; return; }
+      buf = buf.slice(nl + 1);
       if (m.t === 'match') {
-        if (match) console.log('match over: ' + JSON.stringify(match.stats));
+        if (match) { console.log('match over: ' + JSON.stringify(match.stats)); match.dump(); }
         match = new Match({ levelData: m.levelData, behaviours: m.behaviours, stackOverConditions: m.stackOverConditions });
         reply = { ok: true };
       } else if (m.t === 'f') {
@@ -283,11 +336,11 @@ var server = net.createServer(function (sock) {
           var truth = PA.fromLua(m.state, match.level, new PA.Unseen());
           reply = { clock: truth.clock, input: match.frame(truth, arrivalsOf(m.state)) };
         }
-      } else if (m.t === 'bye') { if (match) console.log('match over: ' + JSON.stringify(match.stats)); match = null; reply = { ok: true }; }
+      } else if (m.t === 'bye') { if (match) { console.log('match over: ' + JSON.stringify(match.stats)); match.dump(); } match = null; reply = { ok: true }; }
       sock.write(JSON.stringify(reply) + '\n');
     }
-  });
-  sock.on('close', function () { if (match) console.log('link closed: ' + JSON.stringify(match.stats)); });
+  }
+  sock.on('data', function (chunk) { buf += chunk; if (!resume) pump(); });
 });
 (function wait() {
   if (!mindReady) { setTimeout(wait, 20); return; }
