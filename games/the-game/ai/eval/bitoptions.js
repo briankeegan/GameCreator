@@ -323,7 +323,7 @@
             return { mask: reach, dig: dig };
         }
 
-        var flat = null, save = null, ready = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
+        var flat = null, flatReady = null, save = null, ready = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
         var readyBudget = 0;
         var FPR = (timing && timing.framesPerRow) || 112;
         var DEADLINE = (timing && timing.deadline) || 0;
@@ -454,6 +454,37 @@
                             var sh2 = shapeOf(res.settled);
                             if (sh2) {
                                 var dur = durationOf(seq, cost);
+                                // FLATTENING HAS TO CREATE SETUP WHILE IT DOES IT.
+                                //
+                                // Flatness and height were the whole value, and ways
+                                // -- the cells that would complete a line, which is
+                                // the measure of whether a board is set up at all --
+                                // only broke a tie between two routes scoring
+                                // EXACTLY equal, which never happens. So the search
+                                // walked to a perfectly level board with nothing on
+                                // it to fire: seed 103 died at 1,581 on columns
+                                // 5,4,4,4,4,4, bumpiness 1, four rows of material,
+                                // and no clear one swap away anywhere -- while a
+                                // three sat two swaps off, a 5 slid twice to the
+                                // right onto a pair already stacked in column 5.
+                                //
+                                // So ways are part of the number, priced at what the
+                                // clear they lead to holds.
+                                // A WAY IS NOT WORTH A CLEAR, SO IT IS NOT A TERM.
+                                //
+                                // Priced linearly at what a clear holds, ways
+                                // swamped everything: a real mid-game board carries
+                                // twenty of them, so a route gaining eight scored
+                                // 472 frames against 112 for a whole row of ceiling.
+                                // The form is wrong, not the constant -- the board
+                                // fires one clear at a time, so twenty ways do not
+                                // buy twenty clears' worth of held floor. They buy
+                                // the certainty that ONE is available, and that
+                                // value saturates after the first.
+                                //
+                                // So setup enters as a condition, below, not as a
+                                // number here.
+                                var ways2 = waysOf(res.settled);
                                 var val = (BASE.tall - sh2.tall) * FPR
                                         + (BASE.excess - sh2.excess) * FPR
                                         - dur;
@@ -496,9 +527,28 @@
                                 val += (sv - BASESAVE) * (DEADLINE / W) * W
                                      + (rr.dig - BASEDIG) * (DEADLINE / W);
                             }
+                                // TWO WINNERS: THE FLATTEST, AND THE FLATTEST THAT
+                                // LANDS ABLE TO FIRE.
+                                //
+                                // The caller refuses a route that lands with nothing
+                                // to fire -- but refusing the winner after the fact
+                                // means the route that IS ready and a shade less flat
+                                // was never in the running. Seed 103 levelled to
+                                // columns 5,4,4,4,4,4, bumpiness 1, and had no clear
+                                // one swap away anywhere on it; a three sat two swaps
+                                // off, a 5 slid twice right onto a pair already
+                                // stacked in column 5.
+                                //
+                                // So both are kept and the ready one is preferred.
+                                // readyOf is budgeted and only asked of a route that
+                                // would otherwise win, which is a handful a sweep.
                                 var take = !flat || val > flat.value;
-                                if (!take && flat && val === flat.value) {
-                                    take = waysOf(res.settled) > flat.ways;
+                                var takeReady = !flatReady || val > flatReady.value;
+                                if (takeReady && readyOf(res.settled)) {
+                                    flatReady = { swaps: seq, frames: cost, value: val,
+                                                  tall: sh2.tall, bumps: sh2.bumps,
+                                                  ways: ways2, duration: dur,
+                                                  lands: bit.copyState(res.settled) };
                                 }
                                 if (take) {
                                     // THE BOARD IT LANDS ON, CARRIED WITH THE PLAN.
@@ -508,7 +558,7 @@
                                     // a real board before committing to the route.
                                     flat = { swaps: seq, frames: cost, value: val,
                                              tall: sh2.tall, bumps: sh2.bumps,
-                                             ways: waysOf(res.settled), duration: dur,
+                                             ways: ways2, duration: dur,
                                              lands: bit.copyState(res.settled) };
                                 }
                             }
@@ -573,6 +623,11 @@
         // Worth naming only if it buys more frames than it costs. Standing still is
         // worth zero.
         if (flat && !(flat.value > 0)) flat = null;
+        if (flatReady && !(flatReady.value > 0)) flatReady = null;
+        // THE ONE THAT LANDS READY, WHEN THERE IS ONE. Both are worth more than they
+        // cost by the test above; between them, the board that can fire when it
+        // arrives is the one to arrive at.
+        if (flatReady) flat = flatReady;
 
         return { now: now, next: next, cheapest: cheapest, flatten: flat, save: save,
                  ready: ready,
