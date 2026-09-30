@@ -264,6 +264,66 @@ function hostile() {
     st.queuedSwapRow = 0;
 }());
 
-console.log('survival: 22 invariants checked without playing a game');
+// ------------------- 9. emptying a column is refused on every path, not one
+//
+// A column at zero holds no vertical match, breaks the adjacency a horizontal one
+// needs, and is where a slab bridges -- garbage rests on the tall columns and
+// spans the width, so the empty column is capped and nothing under the cap can
+// reach the slab. All three remaining deaths over seed 101 died on that board:
+// 7,3,2,1,3,4 at 1,446, 8,7,3,1,2,3 at 14,959, 7,3,4,1,5,7 at 19,371.
+//
+// opensHole already said this to bestAttack's ranking and FLOOR says it to the
+// weights, and the moves that emptied these columns came via `setup` and
+// `WEIGHTS`. So this checks the predicate at the exit, where every preference
+// path passes: a swap landing on a board with an empty column is refused when the
+// board it left had none, and is NOT refused when the board it left already did.
+(function () {
+    var bo = require('./bitoptions.js');
+    var st = new P.Stack({ level: 10, seed: 101, countdown: false });
+    var bot = new BitBot(st, { allowRaise: false });
+    var i;
+    for (i = 0; i < 300; i++) { bot.update(); st.run(); st.drainEvents(); }
+    var board = bot._snapshot();
+    var info = bot.info(board);
+    var base = bit.maskState(board.grid, board.blocks, W, board.height);
+
+    ok(bo.shapeOf(base) && bo.shapeOf(base).low > 0,
+       'the live board already has an empty column, so it cannot test the rule');
+
+    // A stub move whose landed board has a column emptied. The predicate reads
+    // cand.masks, so the landed board is what has to carry the hole.
+    function landing(low) {
+        var m = bit.copyState(base);
+        if (low) { m.occ[3] = 0; m.inert[3] = 0; m.garb[3] = 0;
+                   for (var a = 1; a <= m.N; a++) m.colour[a * (W + 2) + 3] = 0; }
+        return { kind: 'swap', swap: [1, 1], masks: m,
+                 resolved: { total: 0, garbage: 0, brokeGarbage: false, chain: null } };
+    }
+
+    ok(bot.refuses(landing(true), info, base, false) === 'hole',
+       'a move landing with column 3 emptied was not refused, so the rule that ' +
+       'kept it out of bestAttack still does not reach the other paths');
+    ok(bot.refuses(landing(false), info, base, false) !== 'hole',
+       'a move that empties nothing was refused as a hole, which would refuse ' +
+       'most of the board');
+
+    // AND IT DOES NOT FIRE WHEN THE HOLE WAS ALREADY THERE. Filling five columns
+    // from five is not opening a hole, and refusing it leaves the bot unable to
+    // play on the one board that most needs playing on.
+    var already = bit.copyState(base);
+    already.occ[5] = 0; already.inert[5] = 0; already.garb[5] = 0;
+    for (var a2 = 1; a2 <= already.N; a2++) already.colour[a2 * (W + 2) + 5] = 0;
+    ok(bo.shapeOf(already).low === 0, 'the stub base has no empty column to test with');
+    ok(bot.refuses(landing(true), info, already, false) !== 'hole',
+       'refused a hole on a board that already had one, which forbids playing at ' +
+       'all exactly where the bot has least room to stand still');
+
+    // And survival still overrules it, like every other preference rule.
+    ok(bot.refuses(landing(true), info, base, true) === null,
+       'the hole rule overruled survival, which is priced in frames and is not a ' +
+       'preference');
+}());
+
+console.log('survival: 27 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');

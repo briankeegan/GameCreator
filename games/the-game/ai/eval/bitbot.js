@@ -123,6 +123,8 @@
         // TWO FILTERS THAT ARE NOT WEIGHTS, both off only for the run that
         // measures what they are worth. See refuseReturn and deadly below.
         this.refuseReturn = opts.refuseReturn !== false;
+        // Off only for the run that measures what emptying a column costs.
+        this.refuseHole = opts.refuseHole !== false;
         // Off only for the run that measures what the rule is worth.
         this.refusePayless = opts.refusePayless !== false;
         // HOW MANY CANDIDATES GET THE EXPENSIVE SCORE. Scoring one runs a depth-2
@@ -2731,6 +2733,31 @@
         // panel spent there is spent on never digging out.
         if (cand.resolved.total > 0 && !cand.resolved.brokeGarbage &&
             materialRows(base) < WORKING_ROWS) return 'starving';
+        // AND IT MAY NOT EMPTY A COLUMN.
+        //
+        // A column at zero holds no vertical match and breaks the adjacency a
+        // horizontal one needs, and it is where a slab bridges: garbage rests on
+        // the tall columns and spans the width, so the empty one is capped and
+        // nothing under the cap can ever reach the slab. That is the board all
+        // three remaining deaths over seed 101 died on -- 7,3,2,1,3,4 at 1,446;
+        // 8,7,3,1,2,3 at 14,959; 7,3,4,1,5,7 at 19,371 -- each a tower beside a
+        // column at one, capped, with `alive` already at zero for the last fifty
+        // frames. The death is decided thousands of frames before it happens.
+        //
+        // The rule existed and reached one path. `opensHole` was wired into
+        // bestAttack's ranking, and score()'s bumpiness floor shapes the weights
+        // fallback; the moves that emptied these columns came via `setup` and
+        // `WEIGHTS`. Here it is a refusal at the exit, so it reaches every path
+        // that is preference rather than arithmetic -- which is the same place the
+        // payless three and the starving clear are decided, and for the same
+        // reason.
+        //
+        // Asked of the board the move LANDS on, and only when the board it left
+        // had no empty column already: filling six columns from five is not this.
+        if (this.refuseHole) {
+            var lands = bitoptions.shapeOf(cand.masks), from = bitoptions.shapeOf(base);
+            if (lands && from && lands.low === 0 && from.low > 0) return 'hole';
+        }
         return null;
     };
 

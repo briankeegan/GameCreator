@@ -634,5 +634,8 @@
                  swapsConsidered: swaps.length, refused: refused, unknown: unknown };
     }
 
-    return { options: options, kindOf: kindOf, sizeOf: sizeOf };
+    // Exposed so the exit gate asks the SAME question the option list asks.
+    // `low === 0 && baseLow > 0` is the whole of opensHole, and two copies of it
+    // is how the two lists come to disagree about what a hole is.
+    return { options: options, kindOf: kindOf, sizeOf: sizeOf, shapeOf: shapeOf };
 }));
