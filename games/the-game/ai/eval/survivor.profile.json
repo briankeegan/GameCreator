@@ -6,9 +6,5 @@
   "depth": 2,
   "modes": true,
   "ahead": 90,
-  "threat": {
-    "width": 6,
-    "height": 2,
-    "isChain": true
-  }
+  "threat": null
 }
