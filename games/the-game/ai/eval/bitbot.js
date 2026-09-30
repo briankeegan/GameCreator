@@ -179,8 +179,6 @@
         this._raiseStarted = false;
         this._walk = null;
         this._lastSwap = null;
-        this._slab = null;
-        this._slabTries = 0;
         this.decisions = 0;
         // WHERE EVERY FRAME WENT. Not diagnostics bolted on -- the bot could not
         // say what it did with a frame, so every question about its behaviour was
@@ -1997,66 +1995,6 @@
         // already throws away a flatten worth less than it costs, so a flatten plan
         // existing IS the answer and there is no threshold to choose here. Once the
         // board is level the plan stops appearing and the raise resumes on its own.
-        // ONE SAVE READY, THEN RAISE.
-        //
-        // The row is not the problem; raising with nothing set up for what comes
-        // back is. So before the row goes in, the bot makes the move that will
-        // break the slab when it lands, and it raises holding it. A held plan,
-        // played out like the others, because re-planning every decision starts a
-        // different route each time and finishes none.
-        //
-        // It never stalls: with no route available it falls through and raises,
-        // because no answer exists to wait for and a row beats standing still.
-        // BOUNDED, AND THE BOUND HAS NEVER BEEN SEEN TO BIND.
-        //
-        // The route is planned against withSlab, which rests the slab on the
-        // TALLEST column -- and a setup move can change which column that is, so a
-        // plan can run out with the board still not holding the break and the next
-        // decision plans again. The board changes every move, so nothing watching
-        // for a still board would see an opening spent entirely on preparing.
-        //
-        // In practice it cannot run long: `raising` is itself rarely sustained --
-        // stubbing readiness false and handing it a route every decision, the
-        // longest streak is 8 with the count and 8 without, over 1,200 frames that
-        // carried the raise intent on only 4 of them. So this is insurance against
-        // a case not yet observed, not a measured necessity, and there is no test
-        // for it because a test that passes either way is worse than none.
-        var SLAB_TRIES = 8;
-        if (!raising) this._slabTries = 0;
-        if (raising && !this.breaksLandingSlab(base) &&
-            (this._slabTries || 0) < SLAB_TRIES) {
-            var sn = null;
-            if (this._slab && this._slab.moves.length) sn = this._slab.moves[0];
-            else {
-                var sr = this.slabRoute(info, base, deadline, lookDepth);
-                if (sr) { this._slab = { moves: sr.swaps.slice(0), frames: sr.duration || 0,
-                                         startedAt: this.stack.clock }; sn = this._slab.moves[0]; }
-            }
-            if (sn) {
-                var sls = bit.legalSwapsOf(base), sok = false;
-                for (i = 0; i < sls.length; i++) {
-                    if (sls[i][0] === sn[0] && sls[i][1] === sn[1]) { sok = true; break; }
-                }
-                var sspent = Math.max(0, this.stack.clock - (this._slab.startedAt || 0));
-                if (sok && Math.max(0, this._slab.frames - sspent) <= deadline &&
-                    !returnsToSeen(sn)) {
-                    this._slab.moves = this._slab.moves.slice(1);
-                    if (!this._slab.moves.length) this._slab = null;
-                    this._wantRaise = false;
-                    this.raiseFrames = 0;
-                    this._slabTries = (this._slabTries || 0) + 1;
-                    this.counts.slabSetup = (this.counts.slabSetup || 0) + 1;
-                    return { kind: 'swap', move: sn, mode: mode, alive: alive,
-                             via: 'slabSetup' };
-                }
-                this._slab = null;
-            }
-        } else if (raising) {
-            // Holding the break, or out of tries: either way nothing is owed and
-            // the count starts again the next time one is needed.
-            this._slab = null;
-            if (this.breaksLandingSlab(base)) this._slabTries = 0;
-        }
         if (raising) {
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
                                                    lookDepth, base, this.timing(info, deadline), digging);
@@ -2084,9 +2022,6 @@
             if (rc) {
                 if (raising === 'opening') this.counts.openingRaises++;
                 else this.counts.raisedForMaterial++;
-                // THE BUDGET IS PER ROW, NOT PER OPENING. Spending it once must not
-                // leave every later row unprepared.
-                this._slabTries = 0;
                 return { kind: 'raise', mode: mode, alive: alive, via: 'raise:' + raising };
             }
             // WHILE THE RAISE IS HAPPENING, IT IS NOT SWAPPING.
@@ -2504,31 +2439,6 @@
         return false;
     };
 
-    // IS THERE A CLEAR THAT WOULD BREAK THE GARBAGE WHEN IT LANDS.
-    //
-    // Not "is there a clear". A raise adds a row the opponent can answer, and the
-    // answer lands on top -- so the question the board has to pass before it
-    // raises is whether something is set up to hit that slab the moment it
-    // arrives. withSlab lays the next one across the stack, and this asks for a
-    // single swap on that board that comes back `garbage-broke`.
-    //
-    // hasFireable accepts any clear and is the emergency valve -- a bare three
-    // holds the floor for 59 frames whether or not it touches garbage, which is
-    // what keeps a full board alive. This is the stricter question, asked only
-    // where raising is the choice being made.
-    BitBot.prototype.breaksLandingSlab = function (masks) {
-        var st = this.withSlab(this.restingBoard(masks));
-        if (!st) return false;
-        var sw = bit.legalSwapsOf(st), i, r;
-        for (i = 0; i < sw.length; i++) {
-            if (!bit.swapMasks(st, sw[i][0], sw[i][1])) continue;
-            r = bit.resolveFromMasks(st, false);
-            bit.swapMasks(st, sw[i][0], sw[i][1]);
-            if (r && r.scope === 'garbage-broke') return true;
-        }
-        return false;
-    };
-
     // THE BOARD WITH THE NEXT SLAB ON IT.
     //
     // Garbage rests on the tallest column and spans the width, so the row it
@@ -2671,20 +2581,6 @@
         // whole and adds a row beneath, so a clear that exists before the row still
         // exists after it -- this refuses only the board that had nothing to fire
         // in the first place, which is exactly the board that must not be filled.
-        // WHAT THE BOARD MUST BE HOLDING BEFORE IT RAISES IS NOT DECIDED HERE.
-        //
-        // A raise invites an answer and the answer lands on top, so the board has
-        // to be holding a clear that HITS THAT SLAB when it arrives -- flat enough
-        // that three adjacent columns reach the top, with a match among them.
-        // Asked here it is a veto, and a veto on the raise is how the opening
-        // starves: the board is refused the row it needs to build the very thing
-        // being demanded of it. Three rules of that shape have been measured and
-        // all three cost lives.
-        //
-        // So the readiness is a thing the bot GOES AND MAKES (see the raising
-        // branch in _decide, beside levelFirst), and what survives here is the
-        // emergency valve: some clear, so the row never lands on a board with
-        // nothing to fire at all.
         if (!this.hasFireable(this.restingBoard(base))) return null;
         return this._opening ? 'opening' : 'material';
     };
@@ -2702,45 +2598,6 @@
     // flatten worth less than it costs (`if (flat && !(flat.value > 0)) flat =
     // null`), so "is there levelling worth doing" is a question it has answered.
     // The route must also finish in the time there is, like every other plan.
-    // THE ROUTE TO A BREAK FOR THE SLAB THAT WILL LAND.
-    //
-    // The raise invites an answer and the answer lands on top, so the board wants
-    // one move ready that hits it -- not a flat board, one save. Asked as a veto
-    // this starves the opening, which is the one thing raising is for; so it is a
-    // PLAN, and the bot spends a move making the answer and then raises holding it.
-    //
-    // Solved on the hypothetical board rather than the real one: withSlab lays the
-    // next slab across the stack, and a route to breaking it is what the search
-    // already finds when DIG is on. The slab sits above the material, so every swap
-    // the route uses is legal on the real board too -- the board it is planned
-    // against differs only in rows nothing is being swapped in.
-    //
-    // Null when there is no route. The caller raises anyway then: no answer is
-    // available, and standing still is worse than a row.
-    BitBot.prototype.slabRoute = function (info, base, deadline, lookDepth) {
-        var rest = this.restingBoard(base);
-        if (!this.withSlab(rest)) return null;
-        var self = this;
-        // ONE GOAL, AND THE ROUTE INCLUDES WHATEVER IT TAKES.
-        //
-        // Not "flatten, then set up". The board wanted is one where a swap breaks
-        // the slab that will land, and levelling is only wanted insofar as it gets
-        // there -- the slab rests on the tallest column and spans the width, so a
-        // break needs three adjacent columns at that height, and making the top row
-        // wide enough is part of the route, not a separate errand before it.
-        //
-        // So the search is handed the goal and finds its own way. Its own value
-        // function still prices the moves; this only decides which board counts as
-        // arriving.
-        var o = bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
-                                   lookDepth, rest, this.timing(info, deadline), false,
-                                   function (settled) { return self.breaksLandingSlab(settled); });
-        var r = o && o.goal;
-        if (!r || !r.swaps.length) return null;
-        if ((r.duration || 0) > deadline) return null;
-        return r;
-    };
-
     BitBot.prototype.flattenFirst = function (options, deadline) {
         var f = options && options.flatten;
         if (!f || !f.swaps.length) return null;
@@ -3096,40 +2953,6 @@
                 pc.swap[1] === d.move[1] && pc.masks) { chosen = pc; break; }
         }
         if (!chosen) return d;
-
-        // A RESERVED BREAK IS NOT A REASON TO STOP PLAYING.
-        //
-        // Once the board holds the break the raise is waiting for, the bot keeps
-        // moving -- it just may not spend that break on the way. Standing still to
-        // protect it is the worse failure and it is measured: holding for a mode
-        // is a hundred frames per episode with nothing sent. So this takes moves
-        // away from nothing; it only chooses between moves that were already
-        // available, preferring one that lands with the break still there.
-        //
-        // Soft, like every rule at this exit: if no move preserves it, the move
-        // stands. The setup was spent, and the next decision plans another.
-        if (this._wantRaise && !ARITHMETIC[d.via] && this.breaksLandingSlab(base) &&
-            !this.breaksLandingSlab(chosen.masks)) {
-            var kept = null, keptScore = -Infinity;
-            for (i = 0; i < pool.length; i++) {
-                var rc2 = pool[i];
-                if (rc2 === chosen || rc2.kind !== 'swap' || !rc2.masks) continue;
-                if ((rc2.moveFrames || 0) > this._lastDeadline) continue;
-                if (this.deadly(rc2.masks, rc2.resolved, info,
-                                Math.max((rc2.moveFrames || 0) + this.reaction,
-                                         info.framesPerRow || 0))) continue;
-                if (this.refuses(rc2, info, base, false)) continue;
-                if (!this.breaksLandingSlab(rc2.masks)) continue;
-                var s2 = this.score(rc2.masks, rc2.moveFrames, rc2.resolved, info);
-                if (s2 > keptScore) { kept = rc2; keptScore = s2; }
-            }
-            if (kept) {
-                this.counts.keptSlabBreak = (this.counts.keptSlabBreak || 0) + 1;
-                d = { kind: 'swap', move: kept.swap, mode: d.mode, alive: d.alive,
-                      via: 'keepSlab' };
-                chosen = kept;
-            }
-        }
         // A BREAK THAT LEAVES ANOTHER BREAK IS FREE. That is the whole rule: the
         // save may be spent as long as spending it makes a new one.
         //

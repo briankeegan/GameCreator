@@ -145,7 +145,7 @@
     // clock is running.
     var OVERHEAD = 0, RESOLVE = null, DIG = false;
 
-    function options(board, W, H, cursor, depth, st, timing, dig, goal) {
+    function options(board, W, H, cursor, depth, st, timing, dig) {
         OVERHEAD = (timing && timing.overhead) || 0;
         RESOLVE = (timing && timing.resolve) || null;
         // DIGGING IS A GOAL, NOT A PREFERENCE. The caller sets it when the board
@@ -323,13 +323,8 @@
             return { mask: reach, dig: dig };
         }
 
-        var flat = null, flatReady = null, save = null, ready = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
-        // THE GOAL IS WHAT THE CALLER CAME FOR, so it is not budgeted like a
-        // side question. `ready` and `saves` are asked opportunistically while the
-        // search does something else; this IS the search when it is passed, and at
-        // 24 nodes it barely looked -- one route found over 3,000 frames.
-        var goalRoute = null, goalBudget = 400;
-        var readyBudget = 0;
+        var flat = null, flatReady = null, flatSlab = null, save = null, ready = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
+        var readyBudget = 0, slabBudget = 0;
         var FPR = (timing && timing.framesPerRow) || 112;
         var DEADLINE = (timing && timing.deadline) || 0;
 
@@ -343,6 +338,7 @@
             // whenever no route existed, which is exactly the board where the
             // whole sweep is already expensive: gate_bitbot went 11s to 40s.
             readyBudget = 24;
+            slabBudget = 24;
             BASESAVE = (DIG && BASEDIG > 0) ? savesOfRaw(state0) : 0;
             // The root has no reach mask: ply one stays exhaustive so an immediate
             // clear is never missed.
@@ -456,26 +452,6 @@
                                 ready = { swaps: seq, frames: cost,
                                           duration: durationOf(seq, cost) };
                             }
-                            // THE CHEAPEST ROUTE TO A BOARD THE CALLER IS ASKING FOR.
-                            //
-                            // `ready` asks a question this file owns -- can the board
-                            // fire. A caller can have a goal this file has no business
-                            // knowing: the raise wants a board holding a break for the
-                            // slab that will land on it, which is a question about
-                            // garbage that does not exist yet. Rather than teach the
-                            // search about slabs, it takes the predicate.
-                            //
-                            // Budgeted like the others, and asked only while no route
-                            // has been found. The frontier grows in cost order, so the
-                            // first node that answers is the cheapest way there.
-                            if (goal && !goalRoute && goalBudget > 0) {
-                                goalBudget--;
-                                if (goal(res.settled)) {
-                                    goalRoute = { swaps: seq, frames: cost,
-                                                  duration: durationOf(seq, cost),
-                                                  lands: bit.copyState(res.settled) };
-                                }
-                            }
                             var sh2 = shapeOf(res.settled);
                             if (sh2) {
                                 var dur = durationOf(seq, cost);
@@ -569,6 +545,24 @@
                                 // would otherwise win, which is a handful a sweep.
                                 var take = !flat || val > flat.value;
                                 var takeReady = !flatReady || val > flatReady.value;
+                                // A THIRD CLASS: the flattest that lands able to
+                                // break what comes down next. Its own winner, because
+                                // a clear that breaks the slab is still a clear -- so
+                                // `slabReady || ready` accepts what ready accepted and
+                                // prefers nothing. Its own budget, or it halves ready's.
+                                // AND THE BUDGET COMES BEFORE THE WORK.
+                                // slabReadyBoard sweeps every legal swap on a copy of
+                                // the board; asking it first and then deciding whether
+                                // the answer was affordable bounds nothing at all.
+                                var takeSlab = !flatSlab || val > flatSlab.value;
+                                if (takeSlab && slabBudget > 0 &&
+                                    slabReadyFast(res.settled)) {
+                                    slabBudget--;
+                                    flatSlab = { swaps: seq, frames: cost, value: val,
+                                                 tall: sh2.tall, bumps: sh2.bumps,
+                                                 ways: ways2, duration: dur,
+                                                 lands: bit.copyState(res.settled) };
+                                }
                                 if (takeReady && readyOf(res.settled)) {
                                     flatReady = { swaps: seq, frames: cost, value: val,
                                                   tall: sh2.tall, bumps: sh2.bumps,
@@ -652,15 +646,126 @@
         // THE ONE THAT LANDS READY, WHEN THERE IS ONE. Both are worth more than they
         // cost by the test above; between them, the board that can fire when it
         // arrives is the one to arrive at.
+        if (flatSlab && !(flatSlab.value > 0)) flatSlab = null;
         if (flatReady) flat = flatReady;
+        // AND READY FOR WHAT LANDS BEATS MERELY READY -- BUT NEVER AT A PRICE.
+        //
+        // Taken outright it measured worse: 10 deaths over 24 pairings with 2 among
+        // STARTER and ZERO, against 7 over 30 with none. The reason is in the shape
+        // of the override -- it took the slab-ready route however much flatter the
+        // alternative was, so readiness was bought with levelling the board needed.
+        // Bounded to routes that are not worse, it can only pick a different winner
+        // among equals.
+        if (flatSlab && (!flat || flatSlab.value >= flat.value)) flat = flatSlab;
 
         return { now: now, next: next, cheapest: cheapest, flatten: flat, save: save,
-                 ready: ready, goal: goalRoute,
+                 ready: ready,
                  swapsConsidered: swaps.length, refused: refused, unknown: unknown };
     }
 
     // Exposed so the exit gate asks the SAME question the option list asks.
     // `low === 0 && baseLow > 0` is the whole of opensHole, and two copies of it
     // is how the two lists come to disagree about what a hole is.
-    return { options: options, kindOf: kindOf, sizeOf: sizeOf, shapeOf: shapeOf };
+    // IS THIS BOARD ONE SWAP FROM A CLEAR THAT BREAKS WHAT LANDS ON IT.
+    //
+    // Garbage rests on the tallest column and spans the width, so the row that
+    // comes down next is one block at that height, and only a clear reaching the
+    // row beneath it touches that block. "Can this board fire" is a different
+    // question and accepts a three in the pocket that answers nothing.
+    //
+    // Nothing in the search reads this today. Preferring a levelling route that
+    // lands this way was measured and came back worse -- 10 deaths over 24
+    // pairings with 2 among STARTER and ZERO, against 7 over 30 with none. It is
+    // kept because the question is the right one and the unit tests pin its
+    // meaning; what has not been found is where the answer is worth acting on.
+    function slabReadyBoard(st) {
+        var t = 0, c, top, Wl = (st && st.W) || 6, Hl = (st && st.H) || 12;
+        for (c = 1; c <= Wl; c++) { top = 32 - Math.clz32(st.occ[c] >>> 0); if (top > t) t = top; }
+        if (t >= Hl) return false;
+        var s2 = bit.copyState(st), b = 1 << t, sm = new Int32Array(Wl + 2), i, r;
+        for (c = 1; c <= Wl; c++) { s2.occ[c] |= b; s2.inert[c] |= b; s2.garb[c] |= b; sm[c] = b; }
+        s2.slabs.push(sm);
+        var sw = bit.legalSwapsOf(s2);
+        for (i = 0; i < sw.length; i++) {
+            if (!bit.swapMasks(s2, sw[i][0], sw[i][1])) continue;
+            r = bit.resolveFromMasks(s2, false);
+            bit.swapMasks(s2, sw[i][0], sw[i][1]);
+            if (r && r.scope === 'garbage-broke') return true;
+        }
+        return false;
+    }
+
+    // THE SAME QUESTION AS ARITHMETIC.
+    //
+    // slabReadyBoard lays a slab on a copy, sweeps every legal swap on the board
+    // and resolves each one. Almost all of that work cannot matter: garbage lands
+    // as one row at the height of the tallest column, so a clear only touches it
+    // by lying IN the row beneath it, and only a swap in that row or the two below
+    // can put one there. Everything else is a resolve spent to learn nothing.
+    //
+    // So this looks at three rows and does the matching with bit operations. A
+    // swap exchanges two bits in one row; a horizontal three is three consecutive
+    // columns carrying a colour in the target row, and a vertical three is one
+    // column carrying it on three consecutive rows ending at the target.
+    //
+    // ONLY SWAPS BETWEEN TWO OCCUPIED CELLS. On a settled board those cannot make
+    // anything fall, so the board after the swap is the board with two bits
+    // exchanged and nothing else. A swap into an empty cell can drop a panel, and
+    // a dropped panel never rises into the target row -- it can only leave it, so
+    // the answer this gives is never a false yes.
+    function slabReadyFast(st) {
+        var Wl = (st && st.W) || 6, Hl = (st && st.H) || 12, stride = Wl + 2;
+        var t = 0, c, top, a, r;
+        for (c = 1; c <= Wl; c++) { top = 32 - Math.clz32(st.occ[c] >>> 0); if (top > t) t = top; }
+        if (t >= Hl || t < 1) return false;
+        var target = 1 << (t - 1);            // the row the slab rests on
+        var N = st.N;
+        // colour bits per column, copied so a swap can be applied and undone
+        var col = [];
+        for (a = 1; a <= N; a++) for (c = 1; c <= Wl; c++) col[a * stride + c] = st.colour[a * stride + c] >>> 0;
+
+        function colourAt(cc, bitv) {
+            for (var aa = 1; aa <= N; aa++) if (col[aa * stride + cc] & bitv) return aa;
+            return 0;
+        }
+        function matchesTarget() {
+            for (var aa = 1; aa <= N; aa++) {
+                // horizontal: three consecutive columns carrying aa in the target row
+                var runlen = 0;
+                for (var cc = 1; cc <= Wl; cc++) {
+                    if (col[aa * stride + cc] & target) { runlen++; if (runlen >= 3) return true; }
+                    else runlen = 0;
+                }
+                // vertical: aa on three consecutive rows ending at the target row
+                if (t >= 3) {
+                    for (var c2 = 1; c2 <= Wl; c2++) {
+                        var m = col[aa * stride + c2];
+                        if ((m & target) && (m & (target >> 1)) && (m & (target >> 2))) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        var rows = [t, t - 1, t - 2];
+        for (var ri = 0; ri < rows.length; ri++) {
+            r = rows[ri];
+            if (r < 1) continue;
+            var bitv = 1 << (r - 1);
+            for (c = 1; c < Wl; c++) {
+                var left = colourAt(c, bitv), right = colourAt(c + 1, bitv);
+                if (!left || !right || left === right) continue;   // empty or nothing to exchange
+                col[left * stride + c] &= ~bitv;  col[left * stride + c + 1] |= bitv;
+                col[right * stride + c + 1] &= ~bitv; col[right * stride + c] |= bitv;
+                var hit = matchesTarget();
+                col[left * stride + c] |= bitv;   col[left * stride + c + 1] &= ~bitv;
+                col[right * stride + c + 1] |= bitv; col[right * stride + c] &= ~bitv;
+                if (hit) return true;
+            }
+        }
+        return false;
+    }
+
+    return { options: options, kindOf: kindOf, sizeOf: sizeOf, shapeOf: shapeOf,
+             slabReadyBoard: slabReadyBoard, slabReadyFast: slabReadyFast };
 }));

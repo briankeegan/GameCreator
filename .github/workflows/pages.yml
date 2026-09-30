@@ -179,6 +179,10 @@ jobs:
       - name: Verify the rules a vector cannot reach
         run: source .github/scripts/gates.sh && GC_SURVIVAL_SEARCH=0 gate_bitbot_survival
 
+      # THE ONE CHECK THAT ASKS WHETHER THE BOARD MOVED, and the only one that can
+      # catch a cause of standing still that nobody has thought of yet. 25s of real
+      # duels, after the merge, where it costs nobody's time: a push waits on
+      # nothing, and this runs behind it.
       - name: Verify the bot moves the board
         run: source .github/scripts/gates.sh && GC_SURVIVAL_SEARCH=0 gate_bitbot_progress
 

@@ -29,6 +29,7 @@ var LogicalBoard = globalThis.PanelCpu.LogicalBoard;
 var EB = require('./engineboard.js');
 var travel = require('./travel.js');
 var opts = require('./bitoptions.js');
+var bit = require('./bitmatch.js');
 var W = 6, H = 12;
 
 function boardFromString(s) {
@@ -215,6 +216,106 @@ if (flatSpread !== 0) {
     console.error('FAIL prices still varied with the cost function stubbed flat');
     process.exit(1);
 }
+
+// ------------------------------------------------- THE GATING, AS UNIT TESTS
+//
+// slabReadyBoard answers one question: is this board one swap from a clear that
+// would break a slab landing on it. The levelling search prefers routes that
+// land on such a board, so if this answer is wrong the preference is wrong, and
+// nothing above would notice -- the sweeps check that options are real and
+// priced, never which one is chosen.
+//
+// The real function, not a copy: a test carrying its own implementation agrees
+// with itself. Hand-built boards, no games, milliseconds.
+(function () {
+    var gfails = 0;
+    function gok(cond, msg) { if (!cond) { console.error('FAIL ' + msg); gfails++; } }
+
+    // Rows bottom-first; 0 is empty.
+    function boardOf(rows) {
+        var g = [], r, c;
+        for (r = 0; r <= 12; r++) { g[r] = []; for (c = 1; c <= 6; c++) g[r][c] = 0; }
+        for (r = 0; r < rows.length; r++)
+            for (c = 1; c <= 6; c++) g[r + 1][c] = rows[r][c - 1];
+        return bit.maskState(g, {}, 6, 12);
+    }
+    var ready = opts.slabReadyBoard;
+
+    // Garbage lands as one row across the whole board, resting on the tallest
+    // column. Only a clear reaching the row directly beneath it touches it.
+
+    // TOP ROW, one swap from three: the slab lands on it and the clear breaks it.
+    gok(ready(boardOf([[3, 4, 5, 3, 4, 5],
+                       [1, 1, 2, 1, 1, 1]])) === true,
+        'slabReadyBoard: a three one swap away in the top row does not reach a slab ' +
+        'landing on that row');
+
+    // THE SAME THREE, ONE ROW DOWN. The board is a row taller, so the slab lands
+    // a row higher and the clear no longer touches it. This is the case that
+    // separates the question from "can this board fire" -- the board can fire.
+    gok(ready(boardOf([[1, 1, 2, 1, 1, 1],
+                       [3, 4, 5, 3, 4, 5]])) === false,
+        'slabReadyBoard: a three under a full row was counted as reaching the slab, ' +
+        'which rests on top of the stack, not on the panels below it');
+
+    // NOTHING ONE SWAP AWAY anywhere: no colour has two in reach of a third.
+    gok(ready(boardOf([[1, 2, 3, 1, 2, 3],
+                       [2, 3, 1, 2, 3, 1]])) === false,
+        'slabReadyBoard: a board with no clear one swap away was called ready');
+
+    // NO ROOM FOR A SLAB. A board at full height has nowhere for the row to land,
+    // so the question has no answer and must not be a yes.
+    var full = [], fr;
+    for (fr = 0; fr < 12; fr++) full.push([1, 2, 3, 1, 2, 3]);
+    gok(ready(boardOf(full)) === false,
+        'slabReadyBoard: a board with no room for a slab was called ready for one');
+
+    // AN EMPTY BOARD has nothing to break anything with.
+    gok(ready(boardOf([])) === false,
+        'slabReadyBoard: an empty board was called ready');
+
+    // THE SAME FIVE CASES AGAINST THE ARITHMETIC VERSION. slabReadyFast asks the
+    // question with bit operations over three rows instead of sweeping every legal
+    // swap and resolving each -- so it has to answer the same way on the cases that
+    // pin the meaning, or it is a different question wearing the same name.
+    var fast = opts.slabReadyFast;
+    gok(fast(boardOf([[3, 4, 5, 3, 4, 5], [1, 1, 2, 1, 1, 1]])) === true,
+        'slabReadyFast: missed a three one swap away in the top row');
+    gok(fast(boardOf([[1, 1, 2, 1, 1, 1], [3, 4, 5, 3, 4, 5]])) === false,
+        'slabReadyFast: counted a three that the slab lands above');
+    gok(fast(boardOf([[1, 2, 3, 1, 2, 3], [2, 3, 1, 2, 3, 1]])) === false,
+        'slabReadyFast: called a board with no clear one swap away ready');
+    var full2 = [], f2;
+    for (f2 = 0; f2 < 12; f2++) full2.push([1, 2, 3, 1, 2, 3]);
+    gok(fast(boardOf(full2)) === false,
+        'slabReadyFast: called a board with no room for a slab ready for one');
+    gok(fast(boardOf([])) === false, 'slabReadyFast: called an empty board ready');
+
+    // AND IT MAY NEVER SAY YES WHERE THE SWEEP SAYS NO.
+    //
+    // It looks at three rows and only at swaps between two occupied cells, so it
+    // misses a cascade, a panel dropped into an empty cell, and any match outside
+    // those rows. Every one of those is a missed yes, which costs an opportunity.
+    // A yes the sweep does not agree with would be the opposite: the search
+    // preferring a route to a board that cannot answer what lands on it.
+    var over = 0, checked = 0;
+    for (var bi = 0; bi < src.boards.length && checked < 120; bi++) {
+        var rb = boardFromString(src.boards[bi]);
+        var stb = bit.maskState(rb.grid, rb.blocks, W, H);
+        if (!stb) continue;
+        checked++;
+        if (fast(stb) && !ready(stb)) over++;
+    }
+    gok(checked > 20, 'slabReadyFast: too few real boards to compare against (' + checked + ')');
+    gok(over === 0,
+        'slabReadyFast said a board was ready for the slab on ' + over + ' of ' +
+        checked + ' real boards where the sweep says it is not -- it may be cheaper ' +
+        'than the sweep, never less careful');
+
+    console.log('  gating: ' + (gfails ? gfails + ' FAILED' :
+                'slabReadyBoard answers for the row that lands, and the bit version agrees'));
+    if (gfails) process.exit(1);
+}());
 
 console.log('bitoptions: ' + R.listed + ' options listed over ' + R.boards +
             ' boards, ' + R.played + ' played on the engine exactly, priced by the walk');

@@ -57,9 +57,13 @@ REPO="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}"
 [ -z "$REPO" ] && exit 0
 [ -f "$REPO/.github/scripts/gates.sh" ] || exit 0
 
-# THE GATES RUN AFTER THE PUSH, IN CI: pages.yml runs gate_all and
-# ai-checks.yml runs the slow ones. A push waits on none of them unless
-# GC_RUN_GATES=1 asks for the scoped list here first.
+# THE GATES RUN AFTER THE PUSH, IN CI: pages.yml names the fast ones and then
+# gate_fast runs every other one that is not in SLOW_GATES; the slow ones,
+# including the duels, run nightly in ai-slow-gates.yml. It does NOT run
+# gate_all -- a gate added to GATES alone used to run nowhere at all.
+#
+# A push waits on none of it unless GC_RUN_GATES=1 asks for the scoped list
+# here first. Committing and pushing stay instantaneous by default.
 if [ "${GC_RUN_GATES:-}" != "1" ]; then
   echo "guard-main-push: gates run in CI after this push (GC_RUN_GATES=1 runs them here first)" >&2
   exit 0

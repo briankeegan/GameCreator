@@ -312,6 +312,300 @@ function hostile() {
        'forms. It belongs in the ranking, not in the refusals');
 }());
 
-console.log('survival: 28 invariants checked without playing a game');
+// ------------ 10. every board produces a legal action, and no board produces
+//                  the same one forever
+//
+// The two ways the decision ladder fails are DOING NOTHING while something is
+// possible, and doing the same thing over and over. Both have happened: a bot
+// that spent five hundred of its last six hundred decisions on a board that
+// never changed, and a pair of swaps played back and forth for a whole freeze.
+//
+// The duel gate catches those after the fact over thousands of frames. This
+// catches the shapes they come from, instantly, on boards built to be awkward:
+// empty, one panel, a single colour with no clear anywhere, a full board, and a
+// board buried under garbage with its material out of reach. Each has to yield
+// an action that is legal on the board it was asked about.
+(function () {
+    var boards = {
+        empty:       [],
+        onePanel:    [[1, 0, 0, 0, 0, 0]],
+        oneColour:   [[1, 1, 1, 1, 1, 1]],   // resolves away; nothing to set up
+        noClear:     [[1, 2, 3, 1, 2, 3], [2, 3, 1, 2, 3, 1]],
+        nearlyFull:  [[1, 2, 3, 1, 2, 3], [2, 3, 1, 2, 3, 1], [3, 1, 2, 3, 1, 2],
+                      [1, 2, 3, 1, 2, 3], [2, 3, 1, 2, 3, 1], [3, 1, 2, 3, 1, 2],
+                      [1, 2, 3, 1, 2, 3], [2, 3, 1, 2, 3, 1], [3, 1, 2, 3, 1, 2],
+                      [1, 2, 3, 1, 2, 3], [2, 3, 1, 2, 3, 1]]
+    };
+    Object.keys(boards).forEach(function (name) {
+        var st = new P.Stack({ level: 10, seed: 101, countdown: false });
+        var r, c;
+        for (r = 1; r <= st.height; r++)
+            for (c = 1; c <= W; c++) { st.panels[r][c].color = 0; st.panels[r][c].isGarbage = false; }
+        boards[name].forEach(function (row, ri) {
+            for (c = 1; c <= W; c++) st.panels[ri + 1][c].color = row[c - 1];
+        });
+        var bot = new BitBot(st, { allowRaise: true });
+        var d = null, threw = null;
+        try { d = bot.decide(); } catch (e) { threw = e; }
+        ok(!threw, 'board "' + name + '" threw from decide(): ' + (threw && threw.message));
+        ok(d && (d.kind === 'swap' || d.kind === 'hold' || d.kind === 'raise'),
+           'board "' + name + '" produced no action at all -- the ladder must always ' +
+           'return, because doing nothing is the failure it exists to prevent');
+        if (d && d.kind === 'swap') {
+            var legal = bit.legalSwapsOf(bot._lastBase), i, found = false;
+            for (i = 0; i < legal.length; i++)
+                if (legal[i][0] === d.move[0] && legal[i][1] === d.move[1]) { found = true; break; }
+            ok(found, 'board "' + name + '" chose a swap the board does not allow, at r' +
+               d.move[0] + 'c' + d.move[1]);
+        }
+    });
+
+    // THE LOOP ITSELF CANNOT BE CHECKED HERE, and the numbers say so. Driving a
+    // solo board 3,000 frames, the longest run of one answer with the board
+    // unchanged is 3 -- and 1 with the swap-in-flight guard deliberately removed,
+    // which is the defect. It takes two boards trading garbage to produce a
+    // freeze long enough to wiggle inside, so the duel gate measures it
+    // (progress.test.js, `same swap`) and invariant 8 above checks the mechanism
+    // that caused it. A check here would pass either way.
+}());
+
+// ------------------- 10. the raise trigger, condition by condition
+//
+// raiseMode is where every gate this bot has got wrong tonight lived: a height
+// cap, a flatness cap, a material cap, a readiness veto. It is a pure function
+// of (info, base) and it decides one thing -- whether the bot is raising -- so
+// each condition is checkable on its own, instantly, with no game at all.
+//
+// The conditions, in the order the function applies them:
+//   allowRaise off, or topped out   -> never
+//   the row and everything queued must fit under the ceiling
+//   past the opening, material at or above the floor -> nothing to raise for
+//   any garbage on the board        -> dig instead
+//   nothing fireable                -> the row must not land on a dead board
+(function () {
+    function botOn(rows, opts) {
+        var st = new P.Stack({ level: 10, seed: 101, countdown: false });
+        var r, c;
+        for (r = 1; r <= st.height; r++)
+            for (c = 1; c <= W; c++) { st.panels[r][c].color = 0; st.panels[r][c].isGarbage = false; }
+        rows.forEach(function (row, ri) {
+            for (c = 1; c <= W; c++) {
+                st.panels[ri + 1][c].color = row[c - 1] < 0 ? 8 : row[c - 1];
+                st.panels[ri + 1][c].isGarbage = row[c - 1] < 0;
+            }
+        });
+        var bot = new BitBot(st, opts || { allowRaise: true });
+        var board = bot._snapshot();
+        return { bot: bot, st: st, info: bot.info(board),
+                 base: bit.maskState(board.grid, board.blocks, W, board.height) };
+    }
+    // Low, clean, and genuinely one swap from a clear -- swapping c3 and c4 in the
+    // bottom row makes 1,1,1. A board whose 1s are merely present but two swaps
+    // apart is refused, correctly, and reads as the opening being broken.
+    var OPEN = [[1, 1, 2, 1, 4, 5],
+                [2, 3, 4, 5, 3, 2]];
+
+    var a = botOn(OPEN);
+    a.bot._opening = true;
+    ok(a.bot.raiseMode(a.info, a.base) === 'opening',
+       'raise trigger: a low clean board with a clear in hand did not open, so the ' +
+       'opening cannot happen at all');
+
+    var b = botOn(OPEN, { allowRaise: false });
+    b.bot._opening = true;
+    ok(b.bot.raiseMode(b.info, b.base) === null,
+       'raise trigger: allowRaise false still raised');
+
+    var c2 = botOn(OPEN);
+    c2.bot._opening = true;
+    var infoTop = {}; Object.keys(c2.info).forEach(function (k) { infoTop[k] = c2.info[k]; });
+    infoTop.toppedOut = true;
+    ok(c2.bot.raiseMode(infoTop, c2.base) === null,
+       'raise trigger: raised while topped out, which is the one board a row kills');
+    ok(c2.bot._opening === false,
+       'raise trigger: topped out did not end the opening, so it resumes raising ' +
+       'the moment the board comes down');
+
+    // NO ROOM. The row lands under the stack and lifts everything, so a board
+    // filled to the ceiling has nowhere to put it.
+    // EVERY NEGATIVE CASE PASSES EVERY OTHER CONDITION, or removing the one under
+    // test changes nothing and the check cannot fail. So each carries the same
+    // one-swap clear the opening board has.
+    //
+    // NO CASE FOR "no room for the row", because there is no board that only that
+    // condition rejects. A board with no room carries eleven rows of material, and
+    // the line above it turns the opening off when the row does not fit -- so the
+    // material floor rejects it first whichever way it came in. The check is
+    // redundant rather than wrong, and a test for it would pass with it deleted.
+
+    // PAST THE OPENING, material at or above the floor is nothing to raise for.
+    var deep = [[2, 3, 4, 5, 3, 2], [3, 4, 5, 2, 4, 3], [4, 5, 2, 3, 5, 4],
+                [5, 2, 3, 4, 2, 5], [1, 1, 2, 1, 4, 5]];
+    var e2 = botOn(deep);
+    e2.bot._opening = false;
+    ok(e2.bot.raiseMode(e2.info, e2.base) === null,
+       'raise trigger: raised for material on a board that already has plenty');
+
+    // GARBAGE ON THE BOARD: the answer is to dig, and a row only buries it deeper.
+    var dirty = botOn([[-1, -1, -1, -1, -1, -1], [1, 1, 2, 1, 4, 5]]);
+    dirty.bot._opening = true;
+    ok(dirty.bot.raiseMode(dirty.info, dirty.base) === null,
+       'raise trigger: raised with garbage on the board, where the row buries what ' +
+       'has to be broken');
+
+    // NOTHING TO FIRE: the row must not land on a board with no answer on it.
+    var dead = botOn([[1, 2, 3, 4, 5, 6]]);
+    dead.bot._opening = true;
+    ok(dead.bot.raiseMode(dead.info, dead.base) === null,
+       'raise trigger: raised onto a board with no clear anywhere, which is the ' +
+       'board that must not be filled');
+}());
+
+// --------------------- 11. the order of the ladder, with the paths stubbed
+//
+// Which branch wins when more than one could fire. Every bug in this area has
+// been an ordering one: levelFirst placed where `delivering` had already
+// returned, so it fired zero times; the slab setup placed before levelling, so
+// it searched for a break on a board too lumpy to hold one. Neither shows up in
+// a test of the branches themselves -- both were correct in isolation.
+//
+// Stubbed rather than played, so it is the ORDER being checked and nothing else.
+(function () {
+    function freshBot() {
+        var st = new P.Stack({ level: 10, seed: 101, countdown: false });
+        var r, c;
+        for (r = 1; r <= st.height; r++)
+            for (c = 1; c <= W; c++) { st.panels[r][c].color = 0; st.panels[r][c].isGarbage = false; }
+        [[1, 1, 2, 1, 4, 5], [2, 3, 4, 5, 3, 2]].forEach(function (row, ri) {
+            for (c = 1; c <= W; c++) st.panels[ri + 1][c].color = row[c - 1];
+        });
+        return { bot: new BitBot(st, { allowRaise: true }), st: st };
+    }
+
+    // LEVELLING COMES BEFORE THE ROW. A raise carries the surface it has upward,
+    // so a board with levelling worth doing levels first -- and the way it stops
+    // the row is by dropping the intent, not by being asked later.
+    var a = freshBot();
+    a.bot.raiseMode = function () { return 'material'; };
+    a.bot.flattenFirst = function () { return { swaps: [[1, 2]], duration: 4 }; };
+    var da = a.bot.decide();
+    ok(da && da.via === 'levelFirst',
+       'ladder: with levelling available the bot did not level before raising -- it ' +
+       'came back via `' + (da && da.via) + '`');
+    ok(a.bot._wantRaise === false,
+       'ladder: levelling ran but left the raise intent on, so update() keeps the ' +
+       'button held and the row arrives during the levelling');
+
+    // AND IT FIRES WHEN THE ENGINE IS NOT OFFERING A ROW YET, which is the whole
+    // of the historical bug: gated on `delivering` -- the engine handing a row
+    // over right now -- levelling fired zero times, because by then the row is
+    // already coming and the shape it carries up is fixed. preventManualRaise
+    // takes the raise out of the pool, so the intent is on and the offer is not.
+    var a2 = freshBot();
+    a2.st.preventManualRaise = true;
+    a2.bot.raiseMode = function () { return 'material'; };
+    a2.bot.flattenFirst = function () { return { swaps: [[1, 2]], duration: 4 }; };
+    var da2 = a2.bot.decide();
+    ok(da2 && da2.via === 'levelFirst',
+       'ladder: levelling did not fire while the raise was wanted but not yet being ' +
+       'handed over -- came back via `' + (da2 && da2.via) + '`. Gated on the offer ' +
+       'instead of the intent, it fires zero times');
+
+    // WITH NOTHING TO LEVEL, the raise is what happens.
+    var b = freshBot();
+    b.bot.raiseMode = function () { return 'opening'; };
+    b.bot.flattenFirst = function () { return null; };
+    var db = b.bot.decide();
+    ok(db && (db.kind === 'raise' || db.via === 'raising'),
+       'ladder: raising with nothing to level came back via `' + (db && db.via) +
+       '` instead of taking or waiting for the row');
+
+    // AND WITH THE RAISE OFF, neither fires and the board is played normally.
+    var c3 = freshBot();
+    c3.bot.raiseMode = function () { return null; };
+    var stubbed = false;
+    c3.bot.flattenFirst = function () { stubbed = true; return { swaps: [[1, 2]], duration: 4 }; };
+    var dc = c3.bot.decide();
+    ok(dc && dc.via !== 'levelFirst',
+       'ladder: levelled before a raise that is not happening -- levelFirst is the ' +
+       'raise preparing itself, not a move in its own right');
+    ok(!stubbed,
+       'ladder: the flatten route was searched for with the raise off, which is work ' +
+       'done for a branch that cannot fire');
+}());
+
+// ------------------ 12. the exit gate's refusals, one rule at a time
+//
+// refuses() is the other half of the gating: raiseMode decides what the bot is
+// doing, this decides what it may not play, and it is applied at the exit to
+// whatever any path chose. Two live rules and one exemption, each checkable on
+// its own because it is a pure function of (candidate, info, base, survival).
+//
+//   payless   a three that neither sends nor breaks spends the vertical
+//             structure a chain is made of and the engine pays nothing for it
+//   starving  under the working floor, only a break may clear: every panel spent
+//             elsewhere is spent on never digging out
+//   survival  exempt from both -- a board that needs the clock takes whatever
+//             buys it, and that exemption was measured at 15 deaths in 30 when
+//             it was removed
+(function () {
+    function setup(rows) {
+        var st = new P.Stack({ level: 10, seed: 101, countdown: false });
+        var r, c;
+        for (r = 1; r <= st.height; r++)
+            for (c = 1; c <= W; c++) { st.panels[r][c].color = 0; st.panels[r][c].isGarbage = false; }
+        rows.forEach(function (row, ri) {
+            for (c = 1; c <= W; c++) st.panels[ri + 1][c].color = row[c - 1];
+        });
+        var bot = new BitBot(st, { allowRaise: true });
+        var board = bot._snapshot();
+        return { bot: bot, info: bot.info(board),
+                 base: bit.maskState(board.grid, board.blocks, W, board.height) };
+    }
+    function cand(resolved) {
+        return { kind: 'swap', swap: [1, 2], masks: null, resolved: resolved };
+    }
+    // A three, no chain, no garbage broken: the engine's table pays nothing for
+    // three panels, so this sends nothing and takes nothing off the board.
+    var PAYLESS = { total: 3, chain: 1, brokeGarbage: false, garbage: 0 };
+    // A clear that DOES send, so the payless rule does not catch it first and the
+    // starving rule is the only thing that can refuse it. A bare three here passes
+    // the test either way, which is no test at all.
+    var PLAIN   = { total: 5, chain: 1, brokeGarbage: false, garbage: 0 };
+    var BREAK   = { total: 3, chain: 1, brokeGarbage: true,  garbage: 6 };
+
+    var thin = setup([[1, 2, 3, 1, 2, 3], [2, 3, 1, 2, 3, 1]]);          // 2 rows
+    var fat  = setup([[1, 2, 3, 1, 2, 3], [2, 3, 1, 2, 3, 1],
+                      [3, 1, 2, 3, 1, 2], [1, 2, 3, 1, 2, 3],
+                      [2, 3, 1, 2, 3, 1], [3, 1, 2, 3, 1, 2]]);          // 6 rows
+
+    ok(fat.bot.refuses(cand(PAYLESS), fat.info, fat.base, false) === 'payless',
+       'refusals: a three that neither sends nor breaks was allowed -- it spends the ' +
+       'structure a chain is made of and the engine pays nothing for it');
+
+    ok(thin.bot.refuses(cand(PLAIN), thin.info, thin.base, false) === 'starving',
+       'refusals: a plain clear was allowed on a board under the working floor, ' +
+       'where every panel spent elsewhere is spent on never digging out');
+
+    ok(fat.bot.refuses(cand(PLAIN), fat.info, fat.base, false) === null,
+       'refusals: the same sending clear was refused on a board with material to ' +
+       'spare, where there is no dig to starve');
+
+    ok(thin.bot.refuses(cand(BREAK), thin.info, thin.base, false) !== 'starving',
+       'refusals: a BREAK was refused for starving the board -- breaking is the only ' +
+       'thing that takes garbage off it, and it is the exemption the rule is built ' +
+       'around');
+
+    ok(fat.bot.refuses(cand(PAYLESS), fat.info, fat.base, true) === null,
+       'refusals: survival was refused a move. A board that needs the clock takes ' +
+       'whatever buys it, and removing that exemption measured 15 deaths in 30');
+
+    ok(fat.bot.refuses({ kind: 'hold' }, fat.info, fat.base, false) === null &&
+       fat.bot.refuses(null, fat.info, fat.base, false) === null,
+       'refusals: something other than a swap was put to the rules, which are about ' +
+       'what a swap spends');
+}());
+
+console.log('survival: 50 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');

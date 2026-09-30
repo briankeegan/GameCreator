@@ -27,6 +27,7 @@ var BF = require('./bitfeatures.js');
 var P = globalThis.PanelEngine, W = 6;
 
 var fails = 0;
+var VIAS = {};
 function ok(cond, msg) { if (!cond) { console.log('FAIL: ' + msg); fails++; } }
 
 // A vector is a vector; what matters is that the two boards differ, so each one
@@ -79,6 +80,7 @@ function run(seed, weightsA, weightsB, frames) {
             var d = real();
             var s = stat[side];
             s.decisions++;
+            if (d && d.via) VIAS[d.via] = (VIAS[d.via] || 0) + 1;
             // SWAPS ONLY. A hold repeated is what raising IS -- update() sends the
             // button on the mode and the bot keeps its hands off the swap button
             // while the engine hands the row over -- so counting holds here would
@@ -244,6 +246,36 @@ GAMES.forEach(function (g) {
            s.sameSwapMax + ' times in a row via ' + s.worstVia + ' WITH THE BOARD UNCHANGED (budget ' + SAME_ANSWER_MAX +
            ') -- an answer replayed is a swap undone');
     });
+});
+
+// EVERY DECISION PATH HAS TO BE REACHABLE.
+//
+// The ladder has one branch per way of choosing a move, and a branch that can
+// never execute is not a safe branch, it is a dead one that looks like coverage.
+// Three of them have shipped in that state: levelFirst gated on `delivering`
+// fired zero times, the slab setup fired zero times, and the break reservation
+// gated on _wantRaise -- which the paths that prepare clear on purpose -- fired
+// on none of the ten swaps a game it saw. Each was found by hand, late, after a
+// measurement went the wrong way.
+//
+// So the duels above are asked what they used. Counted while they run, free,
+// because decide() is already wrapped to watch for the wiggle.
+//
+// The list is the paths that fire reliably over these three duels. `ruled`,
+// `planSave`, `lineup` and `raise:material` are real and do fire, but only a
+// handful of times in far longer games, so asserting them here would be
+// asserting the seeds.
+var MUST_FIRE = ['digPlan', 'survivalPlan', 'bestAttack', 'flatten', 'raising',
+                 'setup', 'attackPlan', 'levelFirst', 'keepSave', 'break',
+                 'raise:opening', 'WEIGHTS'];
+console.log('  paths taken: ' + Object.keys(VIAS).sort(function (a, b) {
+    return VIAS[b] - VIAS[a];
+}).map(function (k) { return k + ' ' + VIAS[k]; }).join(', '));
+MUST_FIRE.forEach(function (v) {
+    ok((VIAS[v] || 0) > 0,
+       'no decision came back via `' + v + '` in ' + GAMES.length + ' duels -- that ' +
+       'branch is unreachable, which is how levelFirst, the slab setup and the ' +
+       'break reservation each shipped firing zero times');
 });
 
 console.log('progress: worst over ' + GAMES.length + ' duels of ' + FRAMES +
