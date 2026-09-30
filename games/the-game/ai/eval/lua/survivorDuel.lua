@@ -28,7 +28,11 @@ local SurvivalLink = require("bot.SurvivalLink")
 local SEED = tonumber(arg[1]) or 1
 local FRAMES = tonumber(arg[2]) or 21600
 local GARBAGE_EVERY = tonumber(arg[3]) or 0
-local PACE = (tonumber(arg[4]) or 1) ~= 0
+-- PACE: game speed against the wall clock (1 = 60 frames a second, as the
+-- server; 0.5 = half speed, each of two bots on one machine thinking as fast
+-- as one bot on its own; 0 = as fast as it goes).
+local RATE = tonumber(arg[4]) or 1
+local PACE = RATE > 0
 -- SOLO 1: no garbage either way, so side 1 plays the rise alone.
 local SOLO = (tonumber(arg[5]) or 0) ~= 0
 -- STREAM: what the extra garbage is. "wild" (the default): chains up to 6
@@ -123,7 +127,7 @@ while frame < FRAMES and not a:game_ended() and not b:game_ended() do
     q.garbageInTransit[tt[tt.first]] = nil; tt[tt.first] = nil; tt.first = tt.first + 1
   end
   if PACE then
-    local due = t0 + frame / 60
+    local due = t0 + frame / (60 * RATE)
     local now = socket.gettime()
     if due > now then socket.sleep(due - now) end
   end
