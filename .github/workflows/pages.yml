@@ -179,9 +179,6 @@ jobs:
       - name: Verify the rules a vector cannot reach
         run: source .github/scripts/gates.sh && GC_SURVIVAL_SEARCH=0 gate_bitbot_survival
 
-      - name: Verify the bot moves the board
-        run: source .github/scripts/gates.sh && GC_SURVIVAL_SEARCH=0 gate_bitbot_progress
-
       - name: Verify the bot's frame arithmetic matches the engine
         run: source .github/scripts/gates.sh && GC_SURVIVAL_SEARCH=0 gate_bitbot_timing
 

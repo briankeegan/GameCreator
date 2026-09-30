@@ -853,7 +853,8 @@ SLOW_GATES=(
   gate_features_live        # 37s
   gate_chips_real_boards    # 26s
   gate_bitbot               # 25s
-  gate_bitbot_progress      # 24s: three duels of 3000 frames
+  gate_bitbot_progress      # 25s: three duels of 3000 frames. Off the push path
+                            # on purpose: a push must not wait on games being played.
   gate_bitbot_timing        # 3s
   gate_bitmatch             # 18s
   gate_chips_decidable      # 17s
