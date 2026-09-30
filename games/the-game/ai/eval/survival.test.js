@@ -461,6 +461,79 @@ function hostile() {
        'board that must not be filled');
 }());
 
-console.log('survival: 39 invariants checked without playing a game');
+// --------------------- 11. the order of the ladder, with the paths stubbed
+//
+// Which branch wins when more than one could fire. Every bug in this area has
+// been an ordering one: levelFirst placed where `delivering` had already
+// returned, so it fired zero times; the slab setup placed before levelling, so
+// it searched for a break on a board too lumpy to hold one. Neither shows up in
+// a test of the branches themselves -- both were correct in isolation.
+//
+// Stubbed rather than played, so it is the ORDER being checked and nothing else.
+(function () {
+    function freshBot() {
+        var st = new P.Stack({ level: 10, seed: 101, countdown: false });
+        var r, c;
+        for (r = 1; r <= st.height; r++)
+            for (c = 1; c <= W; c++) { st.panels[r][c].color = 0; st.panels[r][c].isGarbage = false; }
+        [[1, 1, 2, 1, 4, 5], [2, 3, 4, 5, 3, 2]].forEach(function (row, ri) {
+            for (c = 1; c <= W; c++) st.panels[ri + 1][c].color = row[c - 1];
+        });
+        return { bot: new BitBot(st, { allowRaise: true }), st: st };
+    }
+
+    // LEVELLING COMES BEFORE THE ROW. A raise carries the surface it has upward,
+    // so a board with levelling worth doing levels first -- and the way it stops
+    // the row is by dropping the intent, not by being asked later.
+    var a = freshBot();
+    a.bot.raiseMode = function () { return 'material'; };
+    a.bot.flattenFirst = function () { return { swaps: [[1, 2]], duration: 4 }; };
+    var da = a.bot.decide();
+    ok(da && da.via === 'levelFirst',
+       'ladder: with levelling available the bot did not level before raising -- it ' +
+       'came back via `' + (da && da.via) + '`');
+    ok(a.bot._wantRaise === false,
+       'ladder: levelling ran but left the raise intent on, so update() keeps the ' +
+       'button held and the row arrives during the levelling');
+
+    // AND IT FIRES WHEN THE ENGINE IS NOT OFFERING A ROW YET, which is the whole
+    // of the historical bug: gated on `delivering` -- the engine handing a row
+    // over right now -- levelling fired zero times, because by then the row is
+    // already coming and the shape it carries up is fixed. preventManualRaise
+    // takes the raise out of the pool, so the intent is on and the offer is not.
+    var a2 = freshBot();
+    a2.st.preventManualRaise = true;
+    a2.bot.raiseMode = function () { return 'material'; };
+    a2.bot.flattenFirst = function () { return { swaps: [[1, 2]], duration: 4 }; };
+    var da2 = a2.bot.decide();
+    ok(da2 && da2.via === 'levelFirst',
+       'ladder: levelling did not fire while the raise was wanted but not yet being ' +
+       'handed over -- came back via `' + (da2 && da2.via) + '`. Gated on the offer ' +
+       'instead of the intent, it fires zero times');
+
+    // WITH NOTHING TO LEVEL, the raise is what happens.
+    var b = freshBot();
+    b.bot.raiseMode = function () { return 'opening'; };
+    b.bot.flattenFirst = function () { return null; };
+    var db = b.bot.decide();
+    ok(db && (db.kind === 'raise' || db.via === 'raising'),
+       'ladder: raising with nothing to level came back via `' + (db && db.via) +
+       '` instead of taking or waiting for the row');
+
+    // AND WITH THE RAISE OFF, neither fires and the board is played normally.
+    var c3 = freshBot();
+    c3.bot.raiseMode = function () { return null; };
+    var stubbed = false;
+    c3.bot.flattenFirst = function () { stubbed = true; return { swaps: [[1, 2]], duration: 4 }; };
+    var dc = c3.bot.decide();
+    ok(dc && dc.via !== 'levelFirst',
+       'ladder: levelled before a raise that is not happening -- levelFirst is the ' +
+       'raise preparing itself, not a move in its own right');
+    ok(!stubbed,
+       'ladder: the flatten route was searched for with the raise off, which is work ' +
+       'done for a branch that cannot fire');
+}());
+
+console.log('survival: 44 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');
