@@ -1246,6 +1246,73 @@
         };
     };
 
+    // ===================================================================
+    // THE ORDER OF THE WHOLE DECISION, AND WHAT EACH STAGE MAY LOOK AT.
+    //
+    // Read this before moving a rule. Every bug worth finding in here has been
+    // the same shape: a rule written into the stage that does not feed the path
+    // that picks the move. Four of them in one day -- the beam cutting breaks
+    // before the break-priority rule saw them, the save rule shaping only the
+    // fallback, the break priority never reaching bestAttack, and the stranded
+    // test applied to a cash.
+    //
+    // 1  READ THE BOARD. Nothing is decided here.
+    //    pool      every legal swap, plus hold, plus a raise if the engine would
+    //              grant one -- each carrying the board it lands on and what it
+    //              resolves to. EVERY move any path can play is in here, which is
+    //              what lets the exit gate check all of them (stage 6).
+    //    deadline  framesToDeath: the clock, plus the rows between the stack and
+    //              the ceiling MINUS the rows of garbage already queued.
+    //    raising   raiseMode: the opening, or material under the floor. Never with
+    //              garbage on the board -- there the answer is to dig.
+    //    delivering  raising AND the engine is handing a row over right now.
+    //
+    // 2  PLAN. Skipped entirely while `delivering` -- a plan made then is about a
+    //    board one row from changing. Otherwise the held survival plan continues,
+    //    or bestPlan makes one. Plans are stamped with stack.clock, NOT
+    //    stack.frames, which is the level's timing table (see below).
+    //    Then `mode`: BUILD, ATTACK or DEFEND.
+    //
+    // 3  NARROW THE CANDIDATE LIST. ** THIS FEEDS THE WEIGHTS FALLBACK ONLY. **
+    //    The attack, the survival plan and the flatten plan all read the OPTION
+    //    list instead, so a rule written here reaches the path that runs least.
+    //    Write rules in refuses() and they are enforced again at stage 6.
+    //    In order: hold dropped outside BUILD; refuses(); a cash that adds no stop
+    //    time while the clock runs, breaks exempt; too slow for the deadline; the
+    //    escape hatch (empty -> the whole pool); the no-return filter LAST, and it
+    //    stands aside rather than empty the list; sends-and-breaks dominates;
+    //    breaking is the priority under six rows; then the beam cuts to twelve.
+    //
+    // 4  SCORE WHAT SURVIVES. deadly() per candidate; the stranded test for
+    //    setups only; a fail-safe preference for keeping something fireable.
+    //
+    // 5  PICK, IN THIS ORDER. Earlier wins, and every branch is a `return`:
+    //       delivering   -> take the row, or hold so riseLock can clear
+    //       digging      -> a break in hand, then the held dig route, then a new
+    //                       route to a break. NOT behind `survival`: a break holds
+    //                       the floor AND converts the slab AND hands back rows.
+    //       no plan      -> attack: the held attack plan, then bestAttack
+    //       plan         -> play it
+    //       flatten      -> when nothing clears, or inside a freeze where the
+    //                       floor is held. Budgeted by the CLOCK, not the
+    //                       deadline, and its landing board is checked first.
+    //       reveal       -> the window, if one is open
+    //       fallback     -> the weights, over `allowed` from stage 3
+    //
+    // 6  THE EXIT GATE (decide(), below). Every move from every path passes here.
+    //    refuses() is re-applied to whatever was chosen and a substitute played if
+    //    it is forbidden -- except for the paths in ARITHMETIC, which are already
+    //    priced in frames and must not be overruled by a weights ranking. Then the
+    //    save invariant: with nothing to fire, take the route to something; with
+    //    something to fire, do not spend it for nothing.
+    //
+    // TWO THINGS THAT MUST NEVER HAPPEN, and where they were made impossible:
+    //    DO NOTHING while something is possible -- every filter that can empty a
+    //    list stands aside instead (stage 3's hatch, the no-return filter, the
+    //    all-dead fallback, the soft exit gate).
+    //    PLAY WHAT A RULE FORBIDS -- stage 6 sees every path, because stage 1's
+    //    pool holds every legal move with its landed board.
+    // ===================================================================
     BitBot.prototype._decide = function () {
         var board = this._snapshot();
         var info = this.info(board);
