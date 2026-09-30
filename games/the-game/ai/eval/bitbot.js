@@ -2428,15 +2428,13 @@
     // A break is still the better save and the rest of the bot still chases it:
     // it converts the slab, which is the only way ceiling comes back. This is the
     // floor under that, not a replacement for it.
+    //
+    // ONE IMPLEMENTATION, IN bitmatch. bitoptions asked the same question with its
+    // own copy of the same sweep, which is two places for one rule to drift.
+    // Callers pass a settled board -- restingBoard here, res.settled there -- which
+    // is what anyOneSwapClear needs to be exact.
     BitBot.prototype.hasFireable = function (masks) {
-        var sw = bit.legalSwapsOf(masks), i, r;
-        for (i = 0; i < sw.length; i++) {
-            if (!bit.swapMasks(masks, sw[i][0], sw[i][1])) continue;
-            r = bit.resolveFromMasks(masks, false);
-            bit.swapMasks(masks, sw[i][0], sw[i][1]);
-            if (r.scope === 'garbage-broke' || r.total > 0) return true;
-        }
-        return false;
+        return bit.anyOneSwapClear(masks);
     };
 
     // THE BOARD WITH THE NEXT SLAB ON IT.

@@ -291,14 +291,9 @@
         function readyOf(state) {
             if (readyBudget <= 0) return 0;
             readyBudget--;
-            var sw = bit.legalSwapsOf(state), i, r;
-            for (i = 0; i < sw.length; i++) {
-                if (!bit.swapMasks(state, sw[i][0], sw[i][1])) continue;
-                r = bit.resolveFromMasks(state, false);
-                bit.swapMasks(state, sw[i][0], sw[i][1]);
-                if (r.total > 0 || r.scope === 'garbage-broke') return 1;
-            }
-            return 0;
+            // ONE IMPLEMENTATION OF THIS QUESTION, IN bitmatch. hasFireable in
+            // bitbot asked it too, with its own copy of the same sweep.
+            return bit.anyOneSwapClear(state) ? 1 : 0;
         }
 
         function savesOfRaw(state) {

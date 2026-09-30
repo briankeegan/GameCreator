@@ -279,6 +279,87 @@
     return out;
   }
 
+  // IS ANY SINGLE SWAP A CLEAR, WITHOUT RESOLVING ANYTHING.
+  //
+  // The question is asked in four places and answered the same way in each: apply
+  // every legal swap, run a full resolve, look at the result. A resolve allocates
+  // a scratch board the size of the stack, so that is one allocation per swap per
+  // call, to learn one bit.
+  //
+  // A swap exchanges two cells and nothing else moves except a panel pushed into
+  // an empty column, which falls straight down. So the only matches that can
+  // appear are lines through the two cells' final positions, and a line is three
+  // of a colour running from that cell in one of two directions.
+  //
+  // Cascades are not considered and do not need to be: a cascade begins with a
+  // match, and this returns on the first one it finds.
+  function anyOneSwapClear(st) {
+    var W = st.W, H = st.H, N = st.N, stride = W + 2;
+    var sw = legalSwapsOf(st), i, a;
+
+    function colourAt(c, bitv) {
+      for (var aa = 1; aa <= N; aa++) if (st.colour[aa * stride + c] & bitv) return aa;
+      return 0;
+    }
+    // Where a panel pushed into column c at row r comes to rest: the lowest row
+    // at or below r whose cell is empty and whose support is solid.
+    function restRow(c, r, ignoreBit) {
+      var rr = r;
+      while (rr > 1) {
+        var below = 1 << (rr - 2);
+        if ((st.occ[c] & below) && !(ignoreBit && below === ignoreBit)) break;
+        rr--;
+      }
+      return rr;
+    }
+    // Three of colour `a` in a line through (r,c), reading the board as it is
+    // except for the two cells the swap moved.
+    function lineThrough(r, c, a, over) {
+      function at(rr, cc) {
+        if (rr < 1 || rr > H || cc < 1 || cc > W) return -1;
+        for (var k = 0; k < over.length; k++)
+          if (over[k][0] === rr && over[k][1] === cc) return over[k][2];
+        return colourAt(cc, 1 << (rr - 1));
+      }
+      var run = 1, k;
+      for (k = c - 1; k >= 1 && at(r, k) === a; k--) run++;
+      for (k = c + 1; k <= W && at(r, k) === a; k++) run++;
+      if (run >= 3) return true;
+      run = 1;
+      for (k = r - 1; k >= 1 && at(k, c) === a; k--) run++;
+      for (k = r + 1; k <= H && at(k, c) === a; k++) run++;
+      return run >= 3;
+    }
+
+    // A SWAP INTO AN EMPTY CELL IS NOT TWO CELLS CHANGING.
+    //
+    // It leaves a hole, so everything above it in that column drops, and a match
+    // can form among panels this never looked at. Modelling that is modelling
+    // gravity, which resolveFromMasks already does -- so those swaps take the slow
+    // path and the rest, which are most of them, take the arithmetic. Measured on
+    // settled boards from real play: with the empty-cell case waved through as
+    // arithmetic it missed 48 of 981, and every one of those was this.
+    var slow = null;
+    for (i = 0; i < sw.length; i++) {
+      var r = sw[i][0], c = sw[i][1], bitv = 1 << (r - 1);
+      var left = colourAt(c, bitv), right = colourAt(c + 1, bitv);
+      if (!left || !right) {
+        if (!slow) slow = copyState(st);
+        if (!swapMasks(slow, r, c)) continue;
+        var rz = resolveFromMasks(slow, false);
+        swapMasks(slow, r, c);
+        if (rz && (rz.total > 0 || rz.scope === 'garbage-broke')) return true;
+        continue;
+      }
+      // Both occupied: nothing falls, so the board after the swap is the board
+      // with two cells exchanged and a line can only run through one of them.
+      var over = [[r, c, right], [r, c + 1, left]];
+      if (lineThrough(r, c + 1, left, over)) return true;
+      if (lineThrough(r, c, right, over)) return true;
+    }
+    return false;
+  }
+
   // WHERE A SETUP COULD POSSIBLY MATTER.
   //
   // A clear is three of a colour in a line, so a swap that is not within reach of
@@ -613,6 +694,7 @@
     maskState: maskState,
     swapMasks: swapMasks,
     legalSwapsOf: legalSwapsOf,
+    anyOneSwapClear: anyOneSwapClear,
     reachMask: reachMask,
     copyState: copyState,
     resolveFromMasks: resolveFromMasks,
