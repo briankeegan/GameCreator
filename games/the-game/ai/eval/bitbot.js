@@ -179,6 +179,7 @@
         this._raiseStarted = false;
         this._walk = null;
         this._lastSwap = null;
+        this._slab = null;
         this.decisions = 0;
         // WHERE EVERY FRAME WENT. Not diagnostics bolted on -- the bot could not
         // say what it did with a frame, so every question about its behaviour was
@@ -1995,6 +1996,45 @@
         // already throws away a flatten worth less than it costs, so a flatten plan
         // existing IS the answer and there is no threshold to choose here. Once the
         // board is level the plan stops appearing and the raise resumes on its own.
+        // ONE SAVE READY, THEN RAISE.
+        //
+        // The row is not the problem; raising with nothing set up for what comes
+        // back is. So before the row goes in, the bot makes the move that will
+        // break the slab when it lands, and it raises holding it. A held plan,
+        // played out like the others, because re-planning every decision starts a
+        // different route each time and finishes none.
+        //
+        // It never stalls: with no route available it falls through and raises,
+        // because no answer exists to wait for and a row beats standing still.
+        if (raising && !this.breaksLandingSlab(base)) {
+            var sn = null;
+            if (this._slab && this._slab.moves.length) sn = this._slab.moves[0];
+            else {
+                var sr = this.slabRoute(info, base, deadline, lookDepth);
+                if (sr) { this._slab = { moves: sr.swaps.slice(0), frames: sr.duration || 0,
+                                         startedAt: this.stack.clock }; sn = this._slab.moves[0]; }
+            }
+            if (sn) {
+                var sls = bit.legalSwapsOf(base), sok = false;
+                for (i = 0; i < sls.length; i++) {
+                    if (sls[i][0] === sn[0] && sls[i][1] === sn[1]) { sok = true; break; }
+                }
+                var sspent = Math.max(0, this.stack.clock - (this._slab.startedAt || 0));
+                if (sok && Math.max(0, this._slab.frames - sspent) <= deadline &&
+                    !returnsToSeen(sn)) {
+                    this._slab.moves = this._slab.moves.slice(1);
+                    if (!this._slab.moves.length) this._slab = null;
+                    this._wantRaise = false;
+                    this.raiseFrames = 0;
+                    this.counts.slabSetup = (this.counts.slabSetup || 0) + 1;
+                    return { kind: 'swap', move: sn, mode: mode, alive: alive,
+                             via: 'slabSetup' };
+                }
+                this._slab = null;
+            }
+        } else if (raising) {
+            this._slab = null;
+        }
         if (raising) {
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
                                                    lookDepth, base, this.timing(info, deadline), digging);
@@ -2576,23 +2616,6 @@
         // which takes the raise out of the pool, so reading the pool for this
         // ended the opening after a single row.
         if (this._opening && (info.incoming || !fits)) this._opening = false;
-        // AND IT KEEPS MORE HEADROOM THAN A MID-GAME RAISE DOES.
-        //
-        // `fits` asks for two empty rows, which is the right question for a raise
-        // that answers something -- garbage queued, material under the floor. The
-        // opening answers nothing, so filling to the same limit walks the board to
-        // one row under the lid before the game starts: seed 101 rand4 opened on
-        // 5,6,5,4,5,5 and was at 11,10,10,7,11,11 by frame 235 with nothing
-        // incoming and no garbage down, `alive` already 0 with every option fatal,
-        // then failed to dig out for twelve hundred frames and died at 1,446. Seed
-        // 103 rand4 is the same board at frame 169, dead at 2,307.
-        //
-        // HEIGHT, NOT MATERIAL, IS WHAT WAS WRONG. Capping the opening at six rows
-        // of material instead fixed those two and cost four elsewhere: STARTER and
-        // ZERO died four times between them over 60 boards having died none, because
-        // the material the opening lays down is what they build with. So the limit
-        // is on how close it may fill to the lid, and the panels are left alone.
-        if (this._opening && this.raiseRoom() <= 3 + rows) this._opening = false;
         if (!fits) return null;
         if (!this._opening && materialRows(base) >= WORKING_ROWS) return null;
         // WITH GARBAGE ON THE BOARD, THE ANSWER IS TO DIG, NOT TO RAISE.
@@ -2623,24 +2646,21 @@
         // whole and adds a row beneath, so a clear that exists before the row still
         // exists after it -- this refuses only the board that had nothing to fire
         // in the first place, which is exactly the board that must not be filled.
-        // TWO THINGS BEFORE IT RAISES: FLAT ENOUGH, AND HOLDING A BREAK FOR WHAT
-        // LANDS ON IT.
+        // WHAT THE BOARD MUST BE HOLDING BEFORE IT RAISES IS NOT DECIDED HERE.
         //
-        // A raise lifts the board whole and lays a flat row underneath, so the
-        // surface it has is the surface it keeps, one row higher -- a lumpy board
-        // raises into a lumpier one, and the short columns are where a slab
-        // bridges and seals whatever is under it.
+        // A raise invites an answer and the answer lands on top, so the board has
+        // to be holding a clear that HITS THAT SLAB when it arrives -- flat enough
+        // that three adjacent columns reach the top, with a match among them.
+        // Asked here it is a veto, and a veto on the raise is how the opening
+        // starves: the board is refused the row it needs to build the very thing
+        // being demanded of it. Three rules of that shape have been measured and
+        // all three cost lives.
         //
-        // The second is the one that matters. The row invites an answer and the
-        // answer lands on top, so what the board must be holding is not a clear
-        // but a clear that HITS THAT SLAB when it arrives. Seed 101 rand4 raised
-        // to 11,10,10,7,11,11 by frame 235 with something fireable at every step
-        // and `alive` already 0: every one of those clears was a clear on the
-        // board it had, and none of them answered the garbage that followed.
-        var rest = this.restingBoard(base);
-        var sh = bitoptions.shapeOf(rest);
-        if (sh && (sh.bumps || 0) > W) return null;
-        if (!this.breaksLandingSlab(rest)) return null;
+        // So the readiness is a thing the bot GOES AND MAKES (see the raising
+        // branch in _decide, beside levelFirst), and what survives here is the
+        // emergency valve: some clear, so the row never lands on a board with
+        // nothing to fire at all.
+        if (!this.hasFireable(this.restingBoard(base))) return null;
         return this._opening ? 'opening' : 'material';
     };
 
@@ -2657,6 +2677,32 @@
     // flatten worth less than it costs (`if (flat && !(flat.value > 0)) flat =
     // null`), so "is there levelling worth doing" is a question it has answered.
     // The route must also finish in the time there is, like every other plan.
+    // THE ROUTE TO A BREAK FOR THE SLAB THAT WILL LAND.
+    //
+    // The raise invites an answer and the answer lands on top, so the board wants
+    // one move ready that hits it -- not a flat board, one save. Asked as a veto
+    // this starves the opening, which is the one thing raising is for; so it is a
+    // PLAN, and the bot spends a move making the answer and then raises holding it.
+    //
+    // Solved on the hypothetical board rather than the real one: withSlab lays the
+    // next slab across the stack, and a route to breaking it is what the search
+    // already finds when DIG is on. The slab sits above the material, so every swap
+    // the route uses is legal on the real board too -- the board it is planned
+    // against differs only in rows nothing is being swapped in.
+    //
+    // Null when there is no route. The caller raises anyway then: no answer is
+    // available, and standing still is worse than a row.
+    BitBot.prototype.slabRoute = function (info, base, deadline, lookDepth) {
+        var slab = this.withSlab(this.restingBoard(base));
+        if (!slab) return null;
+        var o = bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
+                                   lookDepth, slab, this.timing(info, deadline), true);
+        var r = o && o.save;
+        if (!r || !r.swaps.length) return null;
+        if ((r.duration || 0) > deadline) return null;
+        return r;
+    };
+
     BitBot.prototype.flattenFirst = function (options, deadline) {
         var f = options && options.flatten;
         if (!f || !f.swaps.length) return null;
