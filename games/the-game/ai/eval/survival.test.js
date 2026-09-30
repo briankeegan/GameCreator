@@ -534,6 +534,78 @@ function hostile() {
        'done for a branch that cannot fire');
 }());
 
-console.log('survival: 44 invariants checked without playing a game');
+// ------------------ 12. the exit gate's refusals, one rule at a time
+//
+// refuses() is the other half of the gating: raiseMode decides what the bot is
+// doing, this decides what it may not play, and it is applied at the exit to
+// whatever any path chose. Two live rules and one exemption, each checkable on
+// its own because it is a pure function of (candidate, info, base, survival).
+//
+//   payless   a three that neither sends nor breaks spends the vertical
+//             structure a chain is made of and the engine pays nothing for it
+//   starving  under the working floor, only a break may clear: every panel spent
+//             elsewhere is spent on never digging out
+//   survival  exempt from both -- a board that needs the clock takes whatever
+//             buys it, and that exemption was measured at 15 deaths in 30 when
+//             it was removed
+(function () {
+    function setup(rows) {
+        var st = new P.Stack({ level: 10, seed: 101, countdown: false });
+        var r, c;
+        for (r = 1; r <= st.height; r++)
+            for (c = 1; c <= W; c++) { st.panels[r][c].color = 0; st.panels[r][c].isGarbage = false; }
+        rows.forEach(function (row, ri) {
+            for (c = 1; c <= W; c++) st.panels[ri + 1][c].color = row[c - 1];
+        });
+        var bot = new BitBot(st, { allowRaise: true });
+        var board = bot._snapshot();
+        return { bot: bot, info: bot.info(board),
+                 base: bit.maskState(board.grid, board.blocks, W, board.height) };
+    }
+    function cand(resolved) {
+        return { kind: 'swap', swap: [1, 2], masks: null, resolved: resolved };
+    }
+    // A three, no chain, no garbage broken: the engine's table pays nothing for
+    // three panels, so this sends nothing and takes nothing off the board.
+    var PAYLESS = { total: 3, chain: 1, brokeGarbage: false, garbage: 0 };
+    // A clear that DOES send, so the payless rule does not catch it first and the
+    // starving rule is the only thing that can refuse it. A bare three here passes
+    // the test either way, which is no test at all.
+    var PLAIN   = { total: 5, chain: 1, brokeGarbage: false, garbage: 0 };
+    var BREAK   = { total: 3, chain: 1, brokeGarbage: true,  garbage: 6 };
+
+    var thin = setup([[1, 2, 3, 1, 2, 3], [2, 3, 1, 2, 3, 1]]);          // 2 rows
+    var fat  = setup([[1, 2, 3, 1, 2, 3], [2, 3, 1, 2, 3, 1],
+                      [3, 1, 2, 3, 1, 2], [1, 2, 3, 1, 2, 3],
+                      [2, 3, 1, 2, 3, 1], [3, 1, 2, 3, 1, 2]]);          // 6 rows
+
+    ok(fat.bot.refuses(cand(PAYLESS), fat.info, fat.base, false) === 'payless',
+       'refusals: a three that neither sends nor breaks was allowed -- it spends the ' +
+       'structure a chain is made of and the engine pays nothing for it');
+
+    ok(thin.bot.refuses(cand(PLAIN), thin.info, thin.base, false) === 'starving',
+       'refusals: a plain clear was allowed on a board under the working floor, ' +
+       'where every panel spent elsewhere is spent on never digging out');
+
+    ok(fat.bot.refuses(cand(PLAIN), fat.info, fat.base, false) === null,
+       'refusals: the same sending clear was refused on a board with material to ' +
+       'spare, where there is no dig to starve');
+
+    ok(thin.bot.refuses(cand(BREAK), thin.info, thin.base, false) !== 'starving',
+       'refusals: a BREAK was refused for starving the board -- breaking is the only ' +
+       'thing that takes garbage off it, and it is the exemption the rule is built ' +
+       'around');
+
+    ok(fat.bot.refuses(cand(PAYLESS), fat.info, fat.base, true) === null,
+       'refusals: survival was refused a move. A board that needs the clock takes ' +
+       'whatever buys it, and removing that exemption measured 15 deaths in 30');
+
+    ok(fat.bot.refuses({ kind: 'hold' }, fat.info, fat.base, false) === null &&
+       fat.bot.refuses(null, fat.info, fat.base, false) === null,
+       'refusals: something other than a swap was put to the rules, which are about ' +
+       'what a swap spends');
+}());
+
+console.log('survival: 50 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');
