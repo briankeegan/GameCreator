@@ -109,6 +109,66 @@
     throw new Error('Native: engine.c sends a field this file does not know: ' + name);
   }
 
+  // ---------------------------------------------------------------- the server's rules
+  // native/pa.c, the panel-game server's engine (pa-engine.js), under the same
+  // wire: its own panel fields, and a head whose names are pa-engine.js's own
+  // property paths (NaN for Lua nil).
+  function PA() { return G0.PAEngine || (typeof require === 'function' ? require('./pa-engine.js') : null); }
+  var PA_FIELDS = [
+    ['row', 'int'], ['col', 'int'], ['id', 'int'], ['color', 'int'], ['chaining', 'nbool'], ['matching', 'nbool'], ['timer', 'int'],
+    ['initialTime', 'nint'], ['popTime', 'nint'], ['popIndex', 'nint'], ['xOffset', 'nint'], ['yOffset', 'nint'], ['gWidth', 'nint'],
+    ['gHeight', 'nint'], ['shakeTime', 'nint'], ['isGarbage', 'bool'], ['state', 'pstate'], ['comboIndex', 'nint'], ['comboSize', 'nint'],
+    ['swapFromLeft', 'nbool'], ['dontSwap', 'nbool'], ['queuedHover', 'nbool'], ['fellFromGarbage', 'nint'], ['stateChanged', 'bool'],
+    ['propagatesChaining', 'bool'], ['matchAnyway', 'bool'], ['propagatesFalling', 'nbool'], ['garbageId', 'nint'], ['metal', 'nbool']
+  ];
+  var PA_STATES = STATES.concat(['dead']);
+  var PA_BOOLS = { stopWatchIsRunning: 1, inCountdown: 1, riseLock: 1, hasRisen: 1, manualRaise: 1, manualRaiseYet: 1, preventManualRaise: 1,
+                   swapThisFrame: 1, wasToppedOut: 1, gameOver: 1, pressSwap: 1, swapDeniedThisFrame: 1 };
+  function paIn(v, type, k) {
+    switch (type) {
+      case 'int': if (typeof v === 'number' && (v | 0) === v) return v; break;
+      case 'bool': if (v === true || v === false) return v ? 1 : 0; break;
+      case 'nint': if (v === null) return NUL; if (typeof v === 'number' && (v | 0) === v) return v; break;
+      case 'nbool': if (v === null) return NUL; if (v === true || v === false) return v ? 1 : 0; break;
+      case 'pstate': var s = PA_STATES.indexOf(v); if (s >= 0) return s; break;
+    }
+    return refuse('panel field ' + k, v);
+  }
+  function paOut(v, type) {
+    if (type === 'pstate') return PA_STATES[v];
+    if (v === NUL) return null;
+    if (type === 'bool' || type === 'nbool') return v === 1;
+    return v;
+  }
+  function path(o, p) { var parts = p.split('.'); for (var i = 0; i < parts.length; i++) o = o[parts[i]]; return o; }
+  function paField(name) {
+    switch (name) {
+      case 'riseTimer': return [function (s) { if (typeof s.riseTimer !== 'number') refuse('riseTimer', s.riseTimer); return s.riseTimer; },
+                                function (s, v) { s.riseTimer = v; }];
+      case 'nrows': return [function (s) { return s.panels.length; }, null];
+      case 'cursorDirection':
+        return [function (s) { var d = s.cursorDirection; if (d === null) return -1; var i = DIRS.indexOf(d); return i >= 0 ? i : refuse(name, d); },
+                function (s, v) { s.cursorDirection = v === -1 ? null : DIRS[v]; }];
+      case 'err': return [function () { return 0; }, null];
+      case 'ninc': return [function (s) { return s.incoming.length; }, null];
+      case 'nstall': return [function (s) { return s.swapStallBacklog.length; }, null];
+      case 'nlanded': return [function (s) { return s.garbageLandedThisFrame.length; }, null];
+      case 'unseenRows': case 'unseenBreaks':
+        return [function (s) { return s[name] || 0; }, function (s, v) { s[name] = v; }];
+    }
+    if (name.indexOf('.') >= 0) {
+      return [function (s) { var v = path(s, name); return v === true ? 1 : v === false ? 0 : int(v, name); }, null];
+    }
+    return [function (s) {
+      var v = s[name];
+      if (v === null || v === undefined) return NaN;
+      if (v === true || v === false) { if (!PA_BOOLS[name]) refuse(name, v); return v ? 1 : 0; }
+      return int(v, name);
+    }, function (s, v) { s[name] = PA_BOOLS[name] ? v === 1 : (v !== v ? null : v); }];
+  }
+
+  function make(KIND) {
+  var SERVER = KIND === 'server';
   var ABORT = null;   // the running loop's `should I stop` (Mind.abort)
   var MEM = null, THREADS = 1, WORKERS = [];
   var X = null, HEAD = null, BODY = null, NAMES = null, FIELDSOF = null, AT = {};
@@ -128,14 +188,14 @@
       NAMES.push(String.fromCharCode.apply(null, m.subarray(p, e)));
     }
     NAMES.forEach(function (nm, j) { AT[nm] = j; });
-    FIELDSOF = NAMES.map(field);
+    FIELDSOF = NAMES.map(SERVER ? paField : field);
   }
   // The module is compiled once per process (or page, or worker): from bytes
   // where there is no file system, from native/engine.wasm beside this file
   // in node.
   function init(bytes) {
     if (X) return Native;
-    if (!bytes) bytes = require('fs').readFileSync(require('path').join(__dirname, 'native', 'engine.wasm'));
+    if (!bytes) bytes = require('fs').readFileSync(require('path').join(__dirname, 'native', SERVER ? 'pa.wasm' : 'engine.wasm'));
     var inst = new WebAssembly.Instance(new WebAssembly.Module(bytes), imports(null));
     X = inst.exports; MEM = X.memory;
     readNames();
@@ -156,7 +216,7 @@
     n = Math.max(1, n | 0);
     if (X) { if (THREADS === n || (THREADS > 1 && n > 1)) return Native; throw new Error('Native: already running on ' + THREADS + ' thread(s)'); }
     var fs = require('fs'), path = require('path'), wt = require('worker_threads');
-    var mod = new WebAssembly.Module(fs.readFileSync(path.join(__dirname, 'native', 'engine-mt.wasm')));
+    var mod = new WebAssembly.Module(fs.readFileSync(path.join(__dirname, 'native', SERVER ? 'pa-mt.wasm' : 'engine-mt.wasm')));
     MEM = new WebAssembly.Memory({ initial: 256, maximum: 65536, shared: true });
     X = new WebAssembly.Instance(mod, imports(MEM)).exports;
     X.ns_thread_init(0);
@@ -195,11 +255,74 @@
   function fromStack(st, into) {
     init();
     if (typeof st.toStack === 'function') st = st.toStack();
-    fromStackWire(st);
+    wire(st);
     var h = into || X.nb_new();
     var err = X.nb_load(h);
     if (err) throw new Error('Native: board does not fit the engine (err ' + err + ')');
     return h;
+  }
+  function wire(st) { if (SERVER) paWire(st); else fromStackWire(st); }
+  function bodyLen(st) {
+    return SERVER ? st.panels.length * W * PA_FIELDS.length + 6 * st.incoming.length + 5 * st.swapStallBacklog.length +
+                    st.garbageLandedThisFrame.length + 6 : bodyLength(st);
+  }
+  function paWire(st) {
+    if (!(st instanceof PA().Stack)) throw new Error('Native: the server engine takes a pa-engine.js Stack');
+    views();
+    var i, r, c, f, x = 0, NFP = PA_FIELDS.length;
+    for (i = 0; i < NAMES.length; i++) HEAD[i] = FIELDSOF[i][0](st);
+    for (r = 0; r < st.panels.length; r++) {
+      if (st.panels[r][0] !== null) refuse('panels[' + r + '][0]', st.panels[r][0]);
+      for (c = 1; c <= W; c++) {
+        var p = st.panels[r][c];
+        for (f = 0; f < NFP; f++) BODY[x++] = paIn(p[PA_FIELDS[f][0]], PA_FIELDS[f][1], PA_FIELDS[f][0]);
+      }
+    }
+    st.incoming.forEach(function (g) {
+      BODY[x++] = int(g.width, 'incoming'); BODY[x++] = int(g.height, 'incoming'); BODY[x++] = bool(g.isChain, 'incoming');
+      BODY[x++] = bool(g.isMetal, 'incoming'); BODY[x++] = int(g.frameEarned, 'incoming');
+      BODY[x++] = g.finalized === null ? NUL : bool(g.finalized, 'incoming');
+    });
+    st.swapStallBacklog.forEach(function (g) {
+      BODY[x++] = int(g.leftId, 'stall'); BODY[x++] = int(g.rightId, 'stall'); BODY[x++] = int(g.row, 'stall');
+      BODY[x++] = int(g.col, 'stall'); BODY[x++] = int(g.clock, 'stall');
+    });
+    st.garbageLandedThisFrame.forEach(function (id) { BODY[x++] = int(id, 'garbageLandedThisFrame'); });
+    for (i = 0; i < 6; i++) BODY[x++] = int(st.dropColumnIndex[i], 'dropColumnIndex');
+    if (x !== bodyLen(st)) throw new Error('Native: wrote ' + x + ' body ints, expected ' + bodyLen(st));
+  }
+  function paToStack(h, template) {
+    var err = X.nb_save(h);
+    views();
+    if (HEAD[AT.err]) throw new Error('Native: the engine refused this board (err ' + HEAD[AT.err] + ')');
+    var PAE = PA(), s = Object.create(PAE.Stack.prototype), k, i, r, c, f, x = 0, NFP = PA_FIELDS.length;
+    for (k in template) if (Object.prototype.hasOwnProperty.call(template, k) && k !== 'panels') s[k] = template[k];
+    for (i = 0; i < NAMES.length; i++) if (FIELDSOF[i][1]) FIELDSOF[i][1](s, HEAD[i]);
+    var num = function (nm) { return HEAD[AT[nm]]; }, nrows = num('nrows'), rows = new Array(nrows);
+    for (r = 0; r < nrows; r++) {
+      var row = [null];
+      for (c = 1; c <= W; c++) {
+        var p = Object.create(PAE.Panel.prototype);
+        for (f = 0; f < NFP; f++) p[PA_FIELDS[f][0]] = paOut(BODY[x++], PA_FIELDS[f][1]);
+        row[c] = p;
+      }
+      rows[r] = row;
+    }
+    s.panels = rows;
+    s.incoming = [];
+    for (i = 0; i < num('ninc'); i++, x += 6) {
+      s.incoming.push({ width: BODY[x], height: BODY[x + 1], isChain: BODY[x + 2] === 1, isMetal: BODY[x + 3] === 1,
+                        frameEarned: BODY[x + 4], finalized: BODY[x + 5] === NUL ? null : BODY[x + 5] === 1 });
+    }
+    s.swapStallBacklog = [];
+    for (i = 0; i < num('nstall'); i++, x += 5) s.swapStallBacklog.push({ leftId: BODY[x], rightId: BODY[x + 1], row: BODY[x + 2], col: BODY[x + 3], clock: BODY[x + 4] });
+    s.garbageLandedThisFrame = [];
+    for (i = 0; i < num('nlanded'); i++) s.garbageLandedThisFrame.push(BODY[x++]);
+    s.dropColumnIndex = [];
+    for (i = 0; i < 6; i++) s.dropColumnIndex.push(BODY[x++]);
+    if (x !== err) throw new Error('Native: read ' + x + ' body ints, engine wrote ' + err);
+    s.events = [];
+    return s;
   }
   function bodyLength(st) {
     return st.panels.length * W * NF + 3 * st.incoming.length + 7 * st.outgoing.length + 2 * st.swapStallBacklog.length +
@@ -237,6 +360,7 @@
   // search copied.
   function toStack(h, template) {
     init();
+    if (SERVER) return paToStack(h, template);
     var err = X.nb_save(h);
     views();
     if (HEAD[AT.err]) throw new Error('Native: the engine refused this board (err ' + HEAD[AT.err] + ')');
@@ -288,7 +412,7 @@
   // b with grid, key and legalSwaps(); its st is the board as a Stack, read
   // back only when something asks for it. Nodes last until reset(), which a
   // bot calls once per decision; a node read after that throws.
-  var NODEOFF = null, KEYCH = ['n', 'd', 's', 'm', 'p', 'h', 'f', 'l'];
+  var NODEOFF = null, KEYCH = ['n', 'd', 's', 'm', 'p', 'h', 'f', 'l', 'x'];
   function nodeFields() {
     if (NODEOFF) return NODEOFF;
     NODEOFF = {};
@@ -321,11 +445,12 @@
   Search.prototype.root = function (st, hold, arrivals, fresh) {
     if (typeof st.toStack === 'function') st = st.toStack();
     this.template = st;
-    fromStackWire(st);
-    var body = new Int32Array(MEM.buffer, X.nb_io_body()), used = bodyLength(st);
+    wire(st);
+    var body = new Int32Array(MEM.buffer, X.nb_io_body()), used = bodyLen(st);
     arrivals.forEach(function (a, i) {
-      body[used + 4 * i] = int(a.at, 'arrival'); body[used + 4 * i + 1] = int(a.width, 'arrival');
-      body[used + 4 * i + 2] = int(a.height, 'arrival'); body[used + 4 * i + 3] = bool(!!a.isChain, 'arrival');
+      body[used + 5 * i] = int(a.at, 'arrival'); body[used + 5 * i + 1] = int(a.width, 'arrival');
+      body[used + 5 * i + 2] = int(a.height, 'arrival'); body[used + 5 * i + 3] = bool(!!a.isChain, 'arrival');
+      body[used + 5 * i + 4] = bool(!!a.isMetal, 'arrival');
     });
     var r = X.ns_root(this.ctx, int(hold.left, 'hold.left'), bool(!!hold.started, 'hold.started'), arrivals.length, fresh ? 1 : 0);
     if (r < 0) throw new Error('Native: root refused (' + r + ')');
@@ -344,11 +469,15 @@
     function g(k) { return v[o[k] >> 2]; }
     function live() { if (S.gen !== gen) throw new Error('Native: a node from an earlier decision was read'); }
     var arr = [], a0 = o.arr >> 2;
-    for (var k = 0; k < g('narr'); k++) arr.push({ at: v[a0 + 4 * k], width: v[a0 + 4 * k + 1], height: v[a0 + 4 * k + 2], isChain: v[a0 + 4 * k + 3] === 1 });
+    for (var k = 0; k < g('narr'); k++) {
+      var ar = { at: v[a0 + 5 * k], width: v[a0 + 5 * k + 1], height: v[a0 + 5 * k + 2], isChain: v[a0 + 5 * k + 3] === 1 };
+      if (v[a0 + 5 * k + 4]) ar.isMetal = true;
+      arr.push(ar);
+    }
     var keyn = g('keyn'), k0 = o.key >> 2, key = '';
     for (k = 0; k < keyn; k++) {
       var c = v[k0 + k], col = c & 255;
-      key += (col === 255 ? '#' : col) + KEYCH[(c >> 8) & 15] + ((c >> 12) || '') + ',';
+      key += (col === 255 ? '#' : col === 254 ? '%' : col) + KEYCH[(c >> 8) & 15] + ((c >> 12) || '') + ',';
     }
     var rise = new Float64Array(MEM.buffer, base + o.riseTimer, 1)[0], height = S.template.height, st = null, grid = null;
     var n = {
@@ -478,7 +607,7 @@
     run: function (h) { var e = X.nb_run(h); if (e) throw new Error('Native: board out of room (err ' + e + ')'); },
     tryQueueSwap: function (h, r, c) { return X.nb_try_queue_swap(h, r, c) === 1; },
     canSwap: function (h, r, c) { return X.nb_can_swap(h, r, c) === 1; },
-    pushIncoming: function (h, g) { X.nb_push_incoming(h, g.width, g.height, g.isChain ? 1 : 0); },
+    pushIncoming: function (h, g) { X.nb_push_incoming(h, g.width, g.height, g.isChain ? 1 : 0, g.isMetal ? 1 : 0); },
     takeDeliverable: function (h) {
       var n = X.nb_take_deliverable(h), o = [];
       views();
@@ -494,4 +623,8 @@
     exports: function () { init(); return X; }
   };
   return Native;
+  }
+  var game = make('game');
+  game.server = make('server');
+  return game;
 }));
