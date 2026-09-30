@@ -679,5 +679,49 @@ if (flatSpread !== 0) {
     if (bfails) process.exit(1);
 }());
 
+(function () {
+    // AND THE FLATTEN CARRIES WHAT ITS DESTINATION IS WORTH, IN FRAMES. The
+    // route used to be chosen by whether the landing could fire; `landStop` is
+    // what firing there holds the floor for, which is the number that separates a
+    // bare three from a chain.
+    var lsFails = 0;
+    function lok(cond, msg) { if (!cond) { console.log('FAIL: ' + msg); lsFails++; } }
+    function price(r) {
+        var isChain = r.chain >= 2;
+        return opts.sizeOf && isChain ? 56 + 2 * Math.min(r.chain, 13)
+             : (r.total > 3 ? 22 + 2 * r.total : 0);
+    }
+    var withStop = 0, seenBoards = 0, anyFlatten = 0;
+    for (var li = 0; li < src.boards.length && seenBoards < 60; li++) {
+        var lb = boardFromString(src.boards[li]);
+        if (Object.keys(lb.blocks).length) continue;
+        seenBoards++;
+        var lbo = new LogicalBoard(W, H, 6, lb.grid, lb.blocks);
+        var ll = opts.options(lbo, W, H, CURSOR, 2, null,
+                              { framesPerRow: 120, deadline: 600, stopPrice: price }, false);
+        if (!ll.flatten) continue;
+        anyFlatten++;
+        if ((ll.flatten.landStop || 0) > 0) withStop++;
+    }
+    lok(anyFlatten > 5,
+        '`landStop`: only ' + anyFlatten + ' boards offered a flatten at all, so this ' +
+        'checks nothing');
+    lok(withStop > 0,
+        '`landStop`: not one flatten on ' + anyFlatten + ' boards carried a priced ' +
+        'destination, so the search is still choosing where to stand by a boolean');
+
+    // AND WITHOUT A PRICE IT MUST STILL WORK. The caller may not hand one over,
+    // and a search that needs it is a search that breaks its own callers.
+    var noPrice = opts.options(new LogicalBoard(W, H, 6,
+        boardFromString(src.boards[0]).grid, {}), W, H, CURSOR, 2);
+    lok(!!noPrice && !!noPrice.now,
+        '`landStop`: the search failed when handed no price for a landing');
+
+    console.log('  landStop: ' + (lsFails ? lsFails + ' FAILED' :
+                withStop + ' of ' + anyFlatten + ' flattens carry what their destination is worth'));
+    if (lsFails) process.exit(1);
+
+}());
+
 console.log('bitoptions: ' + R.listed + ' options listed over ' + R.boards +
             ' boards, ' + R.played + ' played on the engine exactly, priced by the walk');

@@ -594,9 +594,22 @@ function hostile() {
        'refusals: a three that neither sends nor breaks was allowed -- it spends the ' +
        'structure a chain is made of and the engine pays nothing for it');
 
-    ok(thin.bot.refuses(cand(PLAIN), thin.info, thin.base, false) === 'starving',
+    // AND THE RULE HAS A CONDITION: a break has to be on the table for it to
+    // refuse a clear in favour of one. Breaking comes first, but a board that
+    // CANNOT break still needs stop time -- that is what buys the moves to reach a
+    // break at all, and the clock is the one thing that cannot be earned back.
+    ok(thin.bot.refuses(cand(PLAIN), thin.info, thin.base, false, true) === 'starving',
        'refusals: a plain clear was allowed on a board under the working floor, ' +
        'where every panel spent elsewhere is spent on never digging out');
+
+    ok(thin.bot.refuses(cand(PLAIN), thin.info, thin.base, false, false) === null,
+       'refusals: a clear was refused on a thin board with NO break available. ' +
+       'Refusing it does not save the panels for digging -- there is nothing to ' +
+       'dig with -- it spends the clock instead, and 17 held-floor clears went ' +
+       'that way on a board that died of time');
+    ok(thin.bot.refuses(cand(BREAK), thin.info, thin.base, false, true) === null,
+       'refusals: a break was refused on a thin board, which is the one move the ' +
+       'rule exists to protect');
 
     ok(fat.bot.refuses(cand(PLAIN), fat.info, fat.base, false) === null,
        'refusals: the same sending clear was refused on a board with material to ' +
@@ -1137,6 +1150,209 @@ function hostile() {
        'every digGain is zero and this term may not change anything');
 }());
 
-console.log('survival: 92 invariants checked without playing a game');
+// ----- 21. within a working floor of the ceiling, keep a break alive
+//
+// H - WORKING_ROWS is eight of twelve. Above it there is no room left to build a
+// way out and the only move that hands ceiling back is a break: a garbage cell
+// comes off the board one way and a panel comes off many. Below that line the
+// ordinary ranking is right, which is why this is gated -- refused everywhere,
+// `breakReady === false` cost three deaths among STARTER and ZERO in thirteen
+// pairings by flagging nearly every option on a healthy buried board.
+(function () {
+    var engine = P, FT = { FLASH: 28, FACE: 10, POP: 7 }, WV = {};
+    BF.keys().forEach(function (k) { WV[k] = 0; });
+    var HIGH = 12 - BitBot.WORKING_ROWS;                 // the line, from the constants
+    function o(over) {
+        var x = { kind: 'combo', swaps: [[1, 1]], frames: 10, duration: 10, chain: 0,
+                  total: 4, size: 4, garbage: 0, tall: HIGH, bumps: 2, mat: 5, low: 2,
+                  matNow: 5, levels: true, opensHole: false, breakReady: true,
+                  closesBreak: false, digGain: 0 };
+        for (var k in over) x[k] = over[k];
+        return x;
+    }
+    // AT the line: the bigger clear leaves the board unable to break and loses.
+    var deadA = o({ total: 8, size: 8, breakReady: false });
+    var liveA = o({ total: 4, size: 4, breakReady: true, swaps: [[1, 3]] });
+    ok(BitBot.bestAttackOf({ now: [deadA, liveA], next: [] }, WV, engine, 600, FT, 18.7)
+         .option === liveA,
+       'attack: within a working floor of the ceiling it took the bigger clear that ' +
+       'leaves the board unable to break, and a break is the only move that hands ' +
+       'ceiling back up there');
+    ok(BitBot.bestPlanOf({ now: [deadA, liveA], next: [] }, 0, 600, engine, false, 112, FT, 5)
+         .option === liveA,
+       'survival plan: within a working floor of the ceiling it took the route that ' +
+       'leaves the board unable to break');
+
+    // ONE ROW BELOW THE LINE it must not speak: there is still room to build, and
+    // this rule refused everywhere is the one that cost three STARTER/ZERO deaths.
+    var lowDead = o({ total: 8, size: 8, breakReady: false, tall: HIGH - 1 });
+    var lowLive = o({ total: 4, size: 4, breakReady: true, tall: HIGH - 1, swaps: [[1, 3]] });
+    ok(BitBot.bestAttackOf({ now: [lowDead, lowLive], next: [] }, WV, engine, 600, FT, 18.7)
+         .option === lowDead,
+       'attack: the break rule fired a row BELOW the working floor, where there is ' +
+       'still room to build and the ordinary ranking is right');
+    ok(BitBot.bestPlanOf({ now: [lowDead, lowLive], next: [] }, 0, 600, engine, false, 112, FT, 5)
+         .option === lowDead,
+       'survival plan: the break rule fired a row below the working floor');
+
+    // AND IT STANDS ASIDE when nothing up there keeps a break: it was going
+    // whatever was played, so the better move is the better move.
+    var bothDead = o({ total: 8, size: 8, breakReady: false });
+    var bothDead2 = o({ total: 4, size: 4, breakReady: false, swaps: [[1, 3]] });
+    ok(BitBot.bestAttackOf({ now: [bothDead, bothDead2], next: [] }, WV, engine, 600, FT, 18.7)
+         .option === bothDead,
+       'attack: with nothing keeping a break it took the smaller clear, so the ' +
+       'narrowing empties the list instead of standing aside');
+
+    // AND A BREAK IS NOT NARROWED OUT BY IT, nor a clean board: both carry null.
+    var brk = o({ total: 3, size: 3, garbage: 4, breaks: true, breakReady: null,
+                  mat: null, low: null, bumps: null, swaps: [[1, 5]] });
+    var other = o({ total: 4, size: 4, frames: 300, duration: 300, swaps: [[1, 3]] });
+    ok(BitBot.bestAttackOf({ now: [brk, other], next: [] }, WV, engine, 600, FT, 18.7)
+         .option === brk,
+       'attack: a break was narrowed out by a rule about keeping breaks alive');
+}());
+
+// ------ 22. the search is handed the price of a freeze, not a boolean
+//
+// The flatten used to choose its destination by `hasFireable` -- can the board
+// it lands on fire at all. That is a boolean where the answer is a number: a
+// bare three holds the floor for 0 frames, a combo 4 for 60 topped out, a chain
+// 4 for 94, against a framesPerRow of 120. Ranking landings by the boolean
+// scores those three the same.
+(function () {
+    var st = new P.Stack({ level: 10, seed: 101, countdown: false });
+    var bot = new BitBot(st, { allowRaise: true });
+    var info = bot.info(bot._snapshot());
+    var t = bot.timing(info, 600);
+    ok(typeof t.stopPrice === 'function',
+       'the search is handed no way to price a landing, so it is still choosing ' +
+       'its destination by whether one exists');
+
+    // A BARE THREE BUYS NOTHING. It clears, and the engine's table pays zero for
+    // it -- which is exactly the case a boolean gets wrong.
+    ok(t.stopPrice({ chain: 1, total: 3 }) === 0,
+       'a bare three priced at ' + t.stopPrice({ chain: 1, total: 3 }) + ' frames. ' +
+       'The engine pays nothing for it and telling that apart from a chain is the ' +
+       'whole point of the number');
+    // AND A CHAIN BUYS A LOT. Not a threshold -- the engine's own table, whose
+    // chainConstant is 56 before any coefficient.
+    ok(t.stopPrice({ chain: 4, total: 12 }) >= 56,
+       'a 4-chain priced at ' + t.stopPrice({ chain: 4, total: 12 }) + ' frames, ' +
+       'under the engine chainConstant of 56');
+    ok(t.stopPrice({ chain: 4, total: 12 }) > t.stopPrice({ chain: 2, total: 6 }),
+       'a 4-chain is not priced above a 2-chain, so the number does not rank the ' +
+       'thing it exists to rank');
+
+    // AND IT FOLLOWS THE BOARD: topped out pays more, which is when it matters.
+    var top = Object.create(info); top.toppedOut = true;
+    var tt = bot.timing(top, 600);
+    ok(tt.stopPrice({ chain: 4, total: 12 }) > t.stopPrice({ chain: 4, total: 12 }),
+       'a chain is priced the same topped out as not, so the danger table is not ' +
+       'being read and the freeze is undervalued exactly when it is survival');
+}());
+
+// ---- 23. with nothing to fire, dropping the stack and reaching the slab count
+//
+// The slab rests on the TALLEST column, so only the tallest touches it: one
+// panel of height on one column puts the garbage out of reach of the other five.
+// The board that died at 2,261 was FLAT -- spread 3, bumpiness 3 -- with c1 a
+// single panel above the rest and 40 cells of garbage nobody could reach.
+//
+// This branch ranked `-bumpiness * 10000 + matchWays * 100`, a lexicographic
+// sort on flatness in which one step of bumpiness outweighs a hundred ways and a
+// real board carries twenty. Neither dropping the stack nor reaching the slab
+// was in it.
+(function () {
+    // A BURIED BOARD, because that is the case this exists for -- and the case a
+    // clean fixture cannot fail. Measuring the tallest CELL instead of the
+    // tallest material column reads the slab at r12, which no panel move changes,
+    // so the term is zero exactly where it is needed. On a clean board the two
+    // numbers agree and the bug is invisible.
+    var st = new P.Stack({ level: 10, seed: 101, countdown: false });
+    var r, c;
+    for (r = 1; r <= st.height; r++)
+        for (c = 1; c <= W; c++) { st.panels[r][c].color = 0; st.panels[r][c].isGarbage = false; }
+    // cols 5,2,3,4,4,4 under five rows of garbage: the shape that died at 2,261,
+    // flat by every measure and sealed because c1 stands one panel proud.
+    var cols = [[3, 3, 5, 1, 4], [1, 5], [2, 3, 4], [1, 4, 1, 3], [1, 5, 2, 3], [3, 4, 4, 6]];
+    for (c = 1; c <= W; c++)
+        for (r = 1; r <= cols[c - 1].length; r++) st.panels[r][c].color = cols[c - 1][r - 1];
+    for (r = 6; r <= 10; r++)
+        for (c = 1; c <= W; c++) { st.panels[r][c].color = 8; st.panels[r][c].isGarbage = true; }
+    var bot = new BitBot(st, { allowRaise: true });
+    var board = bot._snapshot();
+    var info = bot.info(board);
+    var base = bit.maskState(board.grid, board.blocks, W, board.height);
+    ok(bitoptions.shapeOf(base).high === 5,
+       'idle: the fixture is not the shape it is meant to be -- tallest material ' +
+       'column reads ' + bitoptions.shapeOf(base).high + ', wanted 5');
+
+    function candOf(masks) { return { kind: 'swap', swap: [1, 1], masks: masks, moveFrames: 0 }; }
+    ok(typeof bot.idleScore === 'function', 'no idle ranking to check');
+
+    // DROPPING THE STACK IS WORTH A ROW OF RISE. The slab rests on the tallest
+    // column, so taking c1 down brings the garbage onto the rest of the board.
+    var tallB = bit.copyState(base), shortB = bit.copyState(base);
+    var topRow = 5, topCol = 1, bitv = 1 << (topRow - 1);
+    shortB.occ[topCol] &= ~bitv;
+    for (var a = 1; a <= shortB.N; a++) shortB.colour[a * (W + 2) + topCol] &= ~bitv;
+    ok(bitoptions.shapeOf(shortB).high === 4,
+       'idle: the shortened board still reads tallest ' + bitoptions.shapeOf(shortB).high);
+    var tallScore = bot.idleScore(candOf(tallB), base, info);
+    var shortScore = bot.idleScore(candOf(shortB), base, info);
+    ok(shortScore > tallScore,
+       'idle: taking the top panel off the tallest column scored no better than ' +
+       'leaving it. The slab rests on that column -- one panel there puts the ' +
+       'garbage out of reach of every other column on the board');
+    ok(shortScore - tallScore >= info.framesPerRow * 0.5,
+       'idle: dropping the stack was worth only ' + (shortScore - tallScore).toFixed(0) +
+       ' frames against a row of rise at ' + info.framesPerRow + '. Measured on the ' +
+       'tallest CELL this reads zero on a buried board, because the slab is the ' +
+       'tallest cell and no panel move touches it');
+
+    // AND REACHING THE SLAB COUNTS. A surface that can put three panels against
+    // the garbage is worth the break it unlocks, and slabReadyFast is the
+    // question. Stubbed, because two boards differing ONLY in slab-readiness
+    // cannot be built by hand -- and a term nothing separates is a term nothing
+    // checks.
+    var realSlab = bitoptions.slabReadyFast;
+    var yes, no;
+    try {
+        bitoptions.slabReadyFast = function () { return true; };
+        yes = bot.idleScore(candOf(base), base, info);
+        bitoptions.slabReadyFast = function () { return false; };
+        no = bot.idleScore(candOf(base), base, info);
+    } finally { bitoptions.slabReadyFast = realSlab; }
+    ok(yes > no,
+       'idle: a board that can put three against the slab scored no higher than ' +
+       'one that cannot. That question already existed and reached one place -- ' +
+       'the flatten\'s third winner -- and never the branch that plays when the ' +
+       'board is dying');
+    ok(yes - no >= info.framesPerRow * 0.5,
+       'idle: reaching the slab was worth ' + (yes - no).toFixed(0) + ' frames ' +
+       'against a row of rise at ' + info.framesPerRow);
+
+    // AND FLATNESS STILL COUNTS, JUST NOT AT A HUNDRED TO ONE. Made lumpier by
+    // taking a panel off a SHORT column, so the tallest is untouched and only
+    // the roughness term can separate the two.
+    var lumpy = bit.copyState(base);
+    var lb = 1 << (2 - 1);                       // c2 tops at 2
+    lumpy.occ[2] &= ~lb;
+    for (var a2 = 1; a2 <= lumpy.N; a2++) lumpy.colour[a2 * (W + 2) + 2] &= ~lb;
+    ok(bitoptions.shapeOf(lumpy).high === bitoptions.shapeOf(base).high,
+       'idle: the lumpy fixture changed the tallest column, so the height term ' +
+       'is what separates them and this checks nothing');
+    var flatScore = bot.idleScore(candOf(base), base, info);
+    var lumpyScore = bot.idleScore(candOf(lumpy), base, info);
+    ok(flatScore > lumpyScore,
+       'idle: a lumpier board scored at or above the smoother one');
+    ok((flatScore - lumpyScore) < info.framesPerRow * 10,
+       'idle: roughness is worth ' + (flatScore - lumpyScore).toFixed(0) + ' frames ' +
+       'against a row of rise at ' + info.framesPerRow + '. At that ratio it is a ' +
+       'lexicographic sort again and nothing else in the ranking can ever matter');
+}());
+
+console.log('survival: 112 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');

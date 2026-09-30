@@ -165,7 +165,7 @@
     // fires this move, 2 also lists what a setup opens up.
     // Set per call by the caller, which knows its own reaction and whether the
     // clock is running.
-    var OVERHEAD = 0, RESOLVE = null, DIG = false;
+    var OVERHEAD = 0, RESOLVE = null, DIG = false, stopPrice = null;
 
     function options(board, W, H, cursor, depth, st, timing, dig) {
         OVERHEAD = (timing && timing.overhead) || 0;
@@ -412,15 +412,17 @@
         }
 
         var flat = null, flatReady = null, flatSlab = null, save = null, ready = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
-        var slabBudget = 0;
+        var slabBudget = 0, stopBudget = 0;
         var FPR = (timing && timing.framesPerRow) || 112;
         var DEADLINE = (timing && timing.deadline) || 0;
+        stopPrice = (timing && timing.stopPrice) || null;
 
         function expandAll(state0, depth) {
             BASE = shapeOf(state0);
             BASEDIG = DIG ? reachOf(state0).dig : 0;
             saveBudget = 192;
             slabBudget = 24;
+            stopBudget = 24;
             BASESAVE = (DIG && BASEDIG > 0) ? savesOfRaw(state0) : 0;
             // The root has no reach mask: ply one stays exhaustive so an immediate
             // clear is never missed.
@@ -587,8 +589,28 @@
                                 // So setup enters as a condition, below, not as a
                                 // number here.
                                 var ways2 = waysOf(res.settled);
+                                // AND WHAT THE BOARD IT LANDS ON CAN BUY, IN THE SAME
+                                // FRAMES. Height and evenness are priced at FPR a row;
+                                // a freeze is priced in frames outright, so it adds.
+                                //
+                                // Measured before this was a term: of 150 real boards,
+                                // 72 offered a flatten and 69 of those landed somewhere
+                                // worth ZERO frames. They could fire -- what they could
+                                // fire was a payless three. Flatness chose every one of
+                                // them, and a route landing on a chain lost to a route
+                                // landing on nothing because the chain was not in the
+                                // number.
+                                //
+                                // Budgeted, and a route that runs out of budget simply
+                                // does not get the credit: it is never charged for one.
+                                var landStop = 0;
+                                if (stopPrice && stopBudget > 0) {
+                                    stopBudget--;
+                                    landStop = bit.bestOneSwapStop(res.settled, stopPrice);
+                                }
                                 var val = (BASE.tall - sh2.tall) * FPR
                                         + (BASE.excess - sh2.excess) * FPR
+                                        + landStop
                                         - dur;
                                 // UNDER A SLAB, FLAT AND LOW IS THE WRONG GOAL.
                                 //
@@ -758,6 +780,19 @@
         // Bounded to routes that are not worse, it can only pick a different winner
         // among equals.
         if (flatSlab && (!flat || flatSlab.value >= flat.value)) flat = flatSlab;
+        // AND THE BIGGEST FREEZE AT THE FAR END BEATS MERELY LANDING ABLE TO FIRE,
+        // ON THE SAME TERMS THE SLAB OVERRIDE IS ON: never at the price of a
+        // flatter board. Taken outright, the slab version of this measured 10
+        // deaths over 24 pairings against 7 over 30 -- readiness bought with
+        // levelling the board needed. Bounded to routes that are not worse, it can
+        // only pick a different winner among equals.
+        // AND WHATEVER WINS CARRIES WHAT ITS DESTINATION IS WORTH. One call on the
+        // route actually chosen, not one per contender: the caller decides whether
+        // to commit to a flatten by what it can do on arrival, and a route that
+        // lands on a bare three and one that lands on a chain are 94 frames apart.
+        if (stopPrice && flat && flat.lands && flat.landStop === undefined) {
+            flat.landStop = bit.bestOneSwapStop(flat.lands, stopPrice);
+        }
 
         return { now: now, next: next, cheapest: cheapest, flatten: flat, save: save,
                  ready: ready,

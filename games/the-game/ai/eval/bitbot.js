@@ -1062,6 +1062,31 @@
         var level = [];
         for (i = 0; i < all.length; i++) if (all[i].levels) level.push(all[i]);
         if (level.length) all = level;
+        // WITHIN A WORKING FLOOR OF THE CEILING, KEEP A BREAK ALIVE.
+        //
+        // H - WORKING_ROWS is eight of twelve. Above it there is no room left to
+        // build a way out, and the only move that hands ceiling back is a break --
+        // a garbage cell comes off the board one way and a panel comes off many,
+        // so below this line the ordinary ranking is right and above it it is not.
+        //
+        // `tall` is the whole board, garbage and all, because that is what reaches
+        // the ceiling and what the engine kills on.
+        //
+        // A NARROWING, NOT A REFUSAL, and gated. `breakReady === false` refused
+        // outright cost three deaths among STARTER and ZERO in thirteen pairings:
+        // on a healthy buried board it flags nearly everything and takes the list
+        // away. Gated here it can only speak where the board is already dying, and
+        // it stands aside when nothing keeps a break, because then the break was
+        // going whatever was played. null is an exemption on both counts -- a
+        // break's landed board is unknowable, and a clean board has none to keep.
+        var keep = [];
+        for (i = 0; i < all.length; i++) {
+            var ot = all[i].tall;
+            if (ot !== null && ot !== undefined && ot >= H - WORKING_ROWS &&
+                all[i].breakReady === false) continue;
+            keep.push(all[i]);
+        }
+        if (keep.length) all = keep;
         for (i = 0; i < all.length; i++) {
             var o = all[i];
             if (!o.swaps || !o.swaps.length) continue;
@@ -1220,6 +1245,31 @@
         var lvl = [];
         for (i = 0; i < all.length; i++) if (all[i].levels) lvl.push(all[i]);
         if (lvl.length) all = lvl;
+        // WITHIN A WORKING FLOOR OF THE CEILING, KEEP A BREAK ALIVE.
+        //
+        // H - WORKING_ROWS is eight of twelve. Above it there is no room left to
+        // build a way out, and the only move that hands ceiling back is a break --
+        // a garbage cell comes off the board one way and a panel comes off many,
+        // so below this line the ordinary ranking is right and above it it is not.
+        //
+        // `tall` is the whole board, garbage and all, because that is what reaches
+        // the ceiling and what the engine kills on.
+        //
+        // A NARROWING, NOT A REFUSAL, and gated. `breakReady === false` refused
+        // outright cost three deaths among STARTER and ZERO in thirteen pairings:
+        // on a healthy buried board it flags nearly everything and takes the list
+        // away. Gated here it can only speak where the board is already dying, and
+        // it stands aside when nothing keeps a break, because then the break was
+        // going whatever was played. null is an exemption on both counts -- a
+        // break's landed board is unknowable, and a clean board has none to keep.
+        var keep = [];
+        for (i = 0; i < all.length; i++) {
+            var ot = all[i].tall;
+            if (ot !== null && ot !== undefined && ot >= H - WORKING_ROWS &&
+                all[i].breakReady === false) continue;
+            keep.push(all[i]);
+        }
+        if (keep.length) all = keep;
         // ONE PANEL REMOVED IS framesPerRow / W FRAMES OF LIFE -- 18.7 at level 10.
         // Panels and stop time are the same currency and this is the exchange rate.
         var perPanel = (framesPerRow || 0) / W;
@@ -1413,6 +1463,17 @@
             overhead: travel.MOVE_FRAMES + (frozen ? 0 : this.reaction),
             resolve: function (size, garbage) {
                 return BF.resolveFramesOf(PanelEngine(), size, garbage);
+            },
+            // WHAT A CLEAR WOULD HOLD THE FLOOR FOR, in frames, from the engine's
+            // own stop table. Handed to the search so it can price the board a
+            // route LANDS on rather than asking whether that board can fire at
+            // all: a bare three holds 0, a combo 4 holds 60 topped out, a chain 4
+            // holds 94, and a boolean scores the three of them the same.
+            stopPrice: function (r) {
+                var isChain = r.chain >= 2;
+                return BF.stopTimeOf(PanelEngine(), isChain,
+                                     isChain ? 0 : bitoptions.sizeOf(r.chain, r.total),
+                                     isChain ? r.chain : 0, !!info.toppedOut);
             }
         };
     };
@@ -1725,6 +1786,15 @@
         // stake and nothing else is.
         var survivalNeeded = mode.name === 'DEFEND';
         this._lastSurvivalNeeded = survivalNeeded;
+        // IS A BREAK ON THE TABLE AT ALL -- what `starving` is allowed to refuse a
+        // clear in favour of. One pass, before the pool is filtered, because a
+        // break refused by something else is still a break the board could play.
+        var breakOnPool = false;
+        for (var bo = 0; bo < pool.length; bo++) {
+            var br = pool[bo].resolved;
+            if (br && br.brokeGarbage) { breakOnPool = true; break; }
+        }
+        this._lastBreakOnPool = breakOnPool;
         var here = signature(base);
         var allowed = [];
         for (var i = 0; i < pool.length; i++) {
@@ -1778,7 +1848,7 @@
             // COUNTED BY NAME, NOT BY STRING ARITHMETIC. `counts['refused' + why]`
             // turns a renamed reason into `undefined + 1` and the counter reads NaN
             // for the rest of the game without anything failing.
-            var why = this.refuses(pool[i], info, base, survivalNeeded);
+            var why = this.refuses(pool[i], info, base, survivalNeeded, breakOnPool);
             if (why) {
                 if (why === 'payless') this.counts.refusedPayless++;
                 else if (why === 'starving') this.counts.refusedStarving++;
@@ -2036,7 +2106,7 @@
             for (i = 0; i < spare.length; i++) {
                 var sc = spare[i];
                 var ss = noneClear
-                       ? -bumpiness(sc.masks) * 10000 + matchWays(sc.masks) * 100 - (sc.moveFrames || 0)
+                       ? this.idleScore(sc, base, info)
                        : this.score(sc.masks, sc.moveFrames, sc.resolved, info);
                 if (!best || ss > best.score) best = { cand: sc, score: ss };
             }
@@ -2605,6 +2675,50 @@
     // shapeOf counts only the panels BELOW the lowest garbage cell, so material
     // stranded above a slab is not a tower -- it is in another pocket and nothing
     // the bot plays can spread it.
+    // WHAT A MOVE IS WORTH WHEN NOTHING CLEARS, IN FRAMES.
+    //
+    // This branch used to rank `-bumpiness * 10000 + matchWays * 100`, which is a
+    // lexicographic sort on flatness: one step of bumpiness outweighs a hundred
+    // ways, and a real board carries about twenty, so the ways term never broke a
+    // tie and nothing else was consulted at all. Every board that died today died
+    // in this branch, and both of them died FLAT -- bumpiness 3, spread 3.
+    //
+    // Frames, like the rest of the file, so the terms can be compared:
+    //
+    //   dropping the stack   The slab rests on the TALLEST column, so only the
+    //                        tallest touches it. One panel of height on one column
+    //                        puts the slab out of reach of the other five. Taking
+    //                        it down brings the garbage DOWN onto the rest of the
+    //                        board, where three adjacent columns can reach it --
+    //                        and a row of height is a row of rise, framesPerRow.
+    //
+    //   reaching the slab    A surface that can put three against the garbage is
+    //                        worth the break it unlocks. slabReadyFast asks
+    //                        exactly that and reached only the flatten's third
+    //                        winner.
+    //
+    //   ways and flatness    Both in panels of life -- framesPerRow / W -- which
+    //                        is the atom this file converts with everywhere else.
+    //                        Still there, no longer at a hundred to one.
+    //
+    // NOT CALIBRATED beyond the conversions being real ones.
+    BitBot.prototype.idleScore = function (cand, base, info) {
+        var m = cand.masks;
+        if (!m) return -(cand.moveFrames || 0);
+        var fpr = info.framesPerRow || 0, perPanel = fpr / W;
+        // THE TALLEST MATERIAL COLUMN, NOT THE TALLEST CELL. tallestBoard counts
+        // garbage, and on a buried board that is the slab -- 12 on the board this
+        // was written for -- so it does not move when a panel does, and the term
+        // reads zero on exactly the boards that need it. shapeOf measures the
+        // pocket under the lowest slab, which is the surface the garbage rests on.
+        var was = bitoptions.shapeOf(base), now = bitoptions.shapeOf(m);
+        var s = ((was ? was.high : 0) - (now ? now.high : 0)) * fpr;
+        if (bitoptions.slabReadyFast(m)) s += fpr;
+        s += matchWays(m) * perPanel;
+        s -= bumpiness(m) * perPanel;
+        return s - (cand.moveFrames || 0);
+    };
+
     BitBot.prototype.towering = function (base) {
         var shp = base && bitoptions.shapeOf(base);
         return !!shp && (shp.spread || 0) >= WORKING_ROWS;
@@ -2911,7 +3025,7 @@
     // than they saved. What is left for the two-position figure in
     // progress.test.js is something that changes what the bot PREFERS.
 
-    BitBot.prototype.refuses = function (cand, info, base, survivalNeeded) {
+    BitBot.prototype.refuses = function (cand, info, base, survivalNeeded, breakAvailable) {
         if (!cand || cand.kind !== 'swap' || !cand.resolved) return null;
         // Survival is exempt from all of them: a board that needs the clock takes
         // whatever buys it.
@@ -2924,8 +3038,20 @@
         // thing that takes garbage off the board and it needs three panels
         // against the slab; a board under the floor cannot reach one, so every
         // panel spent there is spent on never digging out.
+        //
+        // AND ONLY WHILE A BREAK IS ACTUALLY ON THE TABLE. Breaking comes first,
+        // but a board that CANNOT break still needs stop time -- that is what buys
+        // the moves to reach a break at all. Refusing every non-break clear on a
+        // board with no break available does not save the panels for digging; it
+        // spends the clock instead, which is the one thing that cannot be earned
+        // back. Measured on seed 103 rand1: 17 clears declined that would have held
+        // the floor, one of them for 62 frames, on a board that died of time with
+        // 28 cells of garbage on it.
+        //
+        // Gated on a break existing, the refusal can never take the last thing
+        // worth playing -- the break is still on the list.
         if (cand.resolved.total > 0 && !cand.resolved.brokeGarbage &&
-            materialRows(base) < WORKING_ROWS) return 'starving';
+            materialRows(base) < WORKING_ROWS && breakAvailable) return 'starving';
         // EMPTYING A COLUMN IS NOT REFUSED HERE, AND THE NUMBERS ARE WHY.
         //
         // A column at zero holds no vertical match, breaks the adjacency a
@@ -3001,12 +3127,12 @@
                 pk.swap[1] === d.move[1] && pk.masks) { picked = pk; break; }
         }
         if (picked && !ARITHMETIC[d.via] &&
-            this.refuses(picked, info, base, this._lastSurvivalNeeded)) {
+            this.refuses(picked, info, base, this._lastSurvivalNeeded, this._lastBreakOnPool)) {
             var sub = null;
             for (i = 0; i < pool.length; i++) {
                 var sc0 = pool[i];
                 if (sc0 === picked || sc0.kind !== 'swap' || !sc0.masks) continue;
-                if (this.refuses(sc0, info, base, this._lastSurvivalNeeded)) continue;
+                if (this.refuses(sc0, info, base, this._lastSurvivalNeeded, this._lastBreakOnPool)) continue;
                 if ((sc0.moveFrames || 0) > this._lastDeadline) continue;
                 if (this.deadly(sc0.masks, sc0.resolved, info,
                                 Math.max((sc0.moveFrames || 0) + this.reaction,
