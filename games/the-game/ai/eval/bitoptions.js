@@ -248,6 +248,29 @@
         // are built before that runs, and a base of zero makes every gain look
         // like progress.
         BASEDIG = DIG ? reachOf(st).dig : 0;
+        // THE MOVE JUST PLAYED, WHEN REPLAYING IT WOULD SIMPLY UNDO IT.
+        //
+        // Measured over one duel: 219 decisions repeated the previous move, 177 of
+        // them with a panel in BOTH cells -- a true exchange, so the board came back
+        // to exactly where it had been. 42 had one cell empty, which is a panel
+        // sliding along and is ordinary play. The 177 are decisions spent going
+        // nowhere while the floor keeps rising.
+        //
+        // The repeats came from every route -- bestAttack 47, levelFirst 31,
+        // survivalPlan 28, flatten 28, digPlan 24, attackPlan 22 -- so a rule that
+        // narrows one route's list cannot reach them. Excluded HERE, where all of
+        // them get their options, so each picks its own next best and there is
+        // nothing to substitute and nothing to reconcile.
+        //
+        // A move that CASHES is never excluded: swap, let a stack drop, swap the
+        // same cells again is how a board reaches a slab it could not touch.
+        var AVOID = (timing && timing.avoidSwap) || null;
+        function undoesLast(row, col, res) {
+            if (!AVOID || row !== AVOID[0] || col !== AVOID[1]) return false;
+            if (res && (res.total > 0 || res.scope === 'garbage-broke')) return false;
+            var b = 1 << (row - 1);
+            return !!(st.occ[col] & b) && !!(st.occ[col + 1] & b);
+        }
         var swaps = board ? board.legalSwaps() : bit.legalSwapsOf(st);
         var refused = 0, unknown = 0;
 
@@ -262,6 +285,7 @@
             // Discarding these made every digging option invisible.
             var broke = r.scope === 'garbage-broke';
             if (r.scope !== 'ok' && !broke) { unknown++; continue; }
+            if (undoesLast(swaps[i][0], swaps[i][1], r)) { refused++; continue; }
             if (r.total === 0 && !broke) continue;           // clears nothing: a setup, not an option
             var opt = optionOf([swaps[i]], travel.cost(cursor[0], cursor[1], swaps[i][0], swaps[i][1]), r);
             opt.breaks = broke;
@@ -561,6 +585,11 @@
                         var cost = node.spent + travel.cost(node.from[0], node.from[1], sw[0], sw[1]);
                         var broke = res.scope === 'garbage-broke';
                         if (res.scope !== 'ok' && !broke) continue;
+                        // AND NOT THE UNDO, when it is the move that would be PLAYED.
+                        // Only ply one is played; a repeat deeper in a sequence is a
+                        // hypothetical continuation off a board that has already
+                        // changed, which is not an undo of anything.
+                        if (ply === 1 && undoesLast(sw[0], sw[1], res)) continue;
                         if (res.total > 0 || broke) {
                             // A CASH ENDS THE LINE. Recorded only when something was
                             // set up first -- a cash with an empty chain is a depth-1
