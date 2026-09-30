@@ -1137,6 +1137,69 @@ function hostile() {
        'every digGain is zero and this term may not change anything');
 }());
 
-console.log('survival: 92 invariants checked without playing a game');
+// ----- 21. within a working floor of the ceiling, keep a break alive
+//
+// H - WORKING_ROWS is eight of twelve. Above it there is no room left to build a
+// way out and the only move that hands ceiling back is a break: a garbage cell
+// comes off the board one way and a panel comes off many. Below that line the
+// ordinary ranking is right, which is why this is gated -- refused everywhere,
+// `breakReady === false` cost three deaths among STARTER and ZERO in thirteen
+// pairings by flagging nearly every option on a healthy buried board.
+(function () {
+    var engine = P, FT = { FLASH: 28, FACE: 10, POP: 7 }, WV = {};
+    BF.keys().forEach(function (k) { WV[k] = 0; });
+    var HIGH = 12 - BitBot.WORKING_ROWS;                 // the line, from the constants
+    function o(over) {
+        var x = { kind: 'combo', swaps: [[1, 1]], frames: 10, duration: 10, chain: 0,
+                  total: 4, size: 4, garbage: 0, tall: HIGH, bumps: 2, mat: 5, low: 2,
+                  matNow: 5, levels: true, opensHole: false, breakReady: true,
+                  closesBreak: false, digGain: 0 };
+        for (var k in over) x[k] = over[k];
+        return x;
+    }
+    // AT the line: the bigger clear leaves the board unable to break and loses.
+    var deadA = o({ total: 8, size: 8, breakReady: false });
+    var liveA = o({ total: 4, size: 4, breakReady: true, swaps: [[1, 3]] });
+    ok(BitBot.bestAttackOf({ now: [deadA, liveA], next: [] }, WV, engine, 600, FT, 18.7)
+         .option === liveA,
+       'attack: within a working floor of the ceiling it took the bigger clear that ' +
+       'leaves the board unable to break, and a break is the only move that hands ' +
+       'ceiling back up there');
+    ok(BitBot.bestPlanOf({ now: [deadA, liveA], next: [] }, 0, 600, engine, false, 112, FT, 5)
+         .option === liveA,
+       'survival plan: within a working floor of the ceiling it took the route that ' +
+       'leaves the board unable to break');
+
+    // ONE ROW BELOW THE LINE it must not speak: there is still room to build, and
+    // this rule refused everywhere is the one that cost three STARTER/ZERO deaths.
+    var lowDead = o({ total: 8, size: 8, breakReady: false, tall: HIGH - 1 });
+    var lowLive = o({ total: 4, size: 4, breakReady: true, tall: HIGH - 1, swaps: [[1, 3]] });
+    ok(BitBot.bestAttackOf({ now: [lowDead, lowLive], next: [] }, WV, engine, 600, FT, 18.7)
+         .option === lowDead,
+       'attack: the break rule fired a row BELOW the working floor, where there is ' +
+       'still room to build and the ordinary ranking is right');
+    ok(BitBot.bestPlanOf({ now: [lowDead, lowLive], next: [] }, 0, 600, engine, false, 112, FT, 5)
+         .option === lowDead,
+       'survival plan: the break rule fired a row below the working floor');
+
+    // AND IT STANDS ASIDE when nothing up there keeps a break: it was going
+    // whatever was played, so the better move is the better move.
+    var bothDead = o({ total: 8, size: 8, breakReady: false });
+    var bothDead2 = o({ total: 4, size: 4, breakReady: false, swaps: [[1, 3]] });
+    ok(BitBot.bestAttackOf({ now: [bothDead, bothDead2], next: [] }, WV, engine, 600, FT, 18.7)
+         .option === bothDead,
+       'attack: with nothing keeping a break it took the smaller clear, so the ' +
+       'narrowing empties the list instead of standing aside');
+
+    // AND A BREAK IS NOT NARROWED OUT BY IT, nor a clean board: both carry null.
+    var brk = o({ total: 3, size: 3, garbage: 4, breaks: true, breakReady: null,
+                  mat: null, low: null, bumps: null, swaps: [[1, 5]] });
+    var other = o({ total: 4, size: 4, frames: 300, duration: 300, swaps: [[1, 3]] });
+    ok(BitBot.bestAttackOf({ now: [brk, other], next: [] }, WV, engine, 600, FT, 18.7)
+         .option === brk,
+       'attack: a break was narrowed out by a rule about keeping breaks alive');
+}());
+
+console.log('survival: 98 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');

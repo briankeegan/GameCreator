@@ -1062,6 +1062,31 @@
         var level = [];
         for (i = 0; i < all.length; i++) if (all[i].levels) level.push(all[i]);
         if (level.length) all = level;
+        // WITHIN A WORKING FLOOR OF THE CEILING, KEEP A BREAK ALIVE.
+        //
+        // H - WORKING_ROWS is eight of twelve. Above it there is no room left to
+        // build a way out, and the only move that hands ceiling back is a break --
+        // a garbage cell comes off the board one way and a panel comes off many,
+        // so below this line the ordinary ranking is right and above it it is not.
+        //
+        // `tall` is the whole board, garbage and all, because that is what reaches
+        // the ceiling and what the engine kills on.
+        //
+        // A NARROWING, NOT A REFUSAL, and gated. `breakReady === false` refused
+        // outright cost three deaths among STARTER and ZERO in thirteen pairings:
+        // on a healthy buried board it flags nearly everything and takes the list
+        // away. Gated here it can only speak where the board is already dying, and
+        // it stands aside when nothing keeps a break, because then the break was
+        // going whatever was played. null is an exemption on both counts -- a
+        // break's landed board is unknowable, and a clean board has none to keep.
+        var keep = [];
+        for (i = 0; i < all.length; i++) {
+            var ot = all[i].tall;
+            if (ot !== null && ot !== undefined && ot >= H - WORKING_ROWS &&
+                all[i].breakReady === false) continue;
+            keep.push(all[i]);
+        }
+        if (keep.length) all = keep;
         for (i = 0; i < all.length; i++) {
             var o = all[i];
             if (!o.swaps || !o.swaps.length) continue;
@@ -1220,6 +1245,31 @@
         var lvl = [];
         for (i = 0; i < all.length; i++) if (all[i].levels) lvl.push(all[i]);
         if (lvl.length) all = lvl;
+        // WITHIN A WORKING FLOOR OF THE CEILING, KEEP A BREAK ALIVE.
+        //
+        // H - WORKING_ROWS is eight of twelve. Above it there is no room left to
+        // build a way out, and the only move that hands ceiling back is a break --
+        // a garbage cell comes off the board one way and a panel comes off many,
+        // so below this line the ordinary ranking is right and above it it is not.
+        //
+        // `tall` is the whole board, garbage and all, because that is what reaches
+        // the ceiling and what the engine kills on.
+        //
+        // A NARROWING, NOT A REFUSAL, and gated. `breakReady === false` refused
+        // outright cost three deaths among STARTER and ZERO in thirteen pairings:
+        // on a healthy buried board it flags nearly everything and takes the list
+        // away. Gated here it can only speak where the board is already dying, and
+        // it stands aside when nothing keeps a break, because then the break was
+        // going whatever was played. null is an exemption on both counts -- a
+        // break's landed board is unknowable, and a clean board has none to keep.
+        var keep = [];
+        for (i = 0; i < all.length; i++) {
+            var ot = all[i].tall;
+            if (ot !== null && ot !== undefined && ot >= H - WORKING_ROWS &&
+                all[i].breakReady === false) continue;
+            keep.push(all[i]);
+        }
+        if (keep.length) all = keep;
         // ONE PANEL REMOVED IS framesPerRow / W FRAMES OF LIFE -- 18.7 at level 10.
         // Panels and stop time are the same currency and this is the exchange rate.
         var perPanel = (framesPerRow || 0) / W;
