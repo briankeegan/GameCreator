@@ -121,16 +121,6 @@ jobs:
       - name: Sprite draw scale
         run: node games/the-game/sprite-scale.test.mjs
 
-  # The gates too slow for the push hook (SLOW_GATES in gates.sh). The hook
-  # defers them to here, so a push to main is not held up by them; a red
-  # run here is the signal.
-  slow-gates:
-    runs-on: ubuntu-latest
-    timeout-minutes: 330
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Slow gates
-        run: source .github/scripts/gates.sh && gate_slow
+  # SLOW_GATES RUN IN ai-slow-gates.yml, ON A SCHEDULE, NOT HERE. A job that
+  # takes hours cannot survive this workflow's cancel-in-progress, so it never
+  # concluded and never reported.

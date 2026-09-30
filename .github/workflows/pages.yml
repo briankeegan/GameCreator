@@ -156,6 +156,55 @@ jobs:
       - name: Verify characters keep one size while walking
         run: source .github/scripts/gates.sh && gate_sprite_scale_consistency
 
+      # THE BOT'S GATES RUN HERE BECAUSE THIS IS THE WORKFLOW THAT FINISHES.
+      #
+      # ai-checks.yml cancels in progress on every push and its slow-gates job
+      # takes hours, so a gate that lives only there reports nothing: 99
+      # consecutive runs concluded `cancelled`, and `cancelled` is not a failure,
+      # so nothing went red while this workflow was green on every commit.
+      # ~89s for the six of them, measured.
+      #
+      # STILL UNREPORTED, and not fixed here: the hours-long AI gates
+      # (gate_live_fidelity, gate_no_self_death, gate_training_harness,
+      # gate_snapshot_pipe, gate_puyo_cpu) exist only in ai-checks.yml. They need
+      # a schedule rather than a push trigger; a per-push job long enough to be
+      # cancelled cannot check anything.
+      #
+      # GC_SURVIVAL_SEARCH=0 for the reason _gate_exec sets it: the search costs
+      # seconds per decision and trips bench.js's timing guard. Only SEARCH_GATES
+      # want it and none of these is one.
+      - name: Verify the bot plays what it picks
+        run: source .github/scripts/gates.sh && GC_SURVIVAL_SEARCH=0 gate_bitbot
+
+      - name: Verify the rules a vector cannot reach
+        run: source .github/scripts/gates.sh && GC_SURVIVAL_SEARCH=0 gate_bitbot_survival
+
+      - name: Verify the bot moves the board
+        run: source .github/scripts/gates.sh && GC_SURVIVAL_SEARCH=0 gate_bitbot_progress
+
+      - name: Verify the bot's frame arithmetic matches the engine
+        run: source .github/scripts/gates.sh && GC_SURVIVAL_SEARCH=0 gate_bitbot_timing
+
+      - name: Verify every option listed is real and priced
+        run: source .github/scripts/gates.sh && GC_SURVIVAL_SEARCH=0 gate_bitoptions
+
+      - name: Verify the bit arithmetic answers what the simulation answers
+        run: source .github/scripts/gates.sh && GC_SURVIVAL_SEARCH=0 gate_bitmatch
+
+      # EVERY REMAINING GATE THAT IS NOT SLOW, IN ONE STEP.
+      #
+      # The steps above name gates individually because each carries the comment
+      # explaining what it is for. Naming them is not how they get RUN, though --
+      # gate_fast iterates GATES, skips SLOW_GATES and skips anything already
+      # named above, so a gate added to GATES runs here whether or not anyone
+      # remembers to add a step. 35 gates, ~83s.
+      #
+      # The ten that need the panel-game checkout are skipped by name
+      # (PANEL_GAME_GATES in gates.sh) so a second repository is not on the
+      # deploy path; gate_all still runs them where that checkout exists.
+      - name: Run every remaining fast gate
+        run: source .github/scripts/gates.sh && gate_fast
+
       - name: Verify the gates actually reject defects
         run: source .github/scripts/gates.sh && gate_gates_reject_defects
 
