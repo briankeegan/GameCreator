@@ -919,6 +919,21 @@
     // THEY OVERLAP, SO IT IS A MAX AND NOT A SUM. A clear that takes 100 frames to
     // play out while 60 of stop time is running holds the floor for 100, not 160.
     //
+    // stack.frames IS THE LEVEL'S FRAME TABLE, NOT A FRAME COUNTER.
+    //
+    // It is {HOVER, GARBAGE_HOVER, FLASH, FACE, POP}. The counter is stack.clock.
+    // Every plan in here stamped startedAt with the TABLE and then computed
+    // `stack.frames - startedAt`, which is object minus object: NaN. `remains`
+    // came out NaN, `NaN <= deadline` is false, and so every plan -- survival, dig
+    // and flatten alike -- was dropped on the decision after the one that made it.
+    // No plan could run past its first move, so the bot re-planned from scratch
+    // every decision: on seed 101 it spent frames 271 to 348 alternating
+    // attackPlan and bestAttack seven frames apart with material, height,
+    // bumpiness and every column count unchanged, and died at 814.
+    //
+    // Pass the table where a table is wanted -- bestPlan's and bestAttack's
+    // framesTable, bitlineup's `frames` -- and stack.clock where a time is.
+    //
     // WHAT A CLEAR HOLDS, from the engine's own frame table via stack.frames:
     // every matched panel runs FLASH then FACE then POP per panel, and garbage
     // pops alongside its own cells -- matchGarbagePanels gives each garbage panel
@@ -1398,7 +1413,7 @@
                 // The engine's own frame counter is the clock, so the plan stamps
                 // it when it starts and the frames since are subtracted. What is
                 // left is what has to fit.
-                var spent = Math.max(0, this.stack.frames - (this._plan.startedAt || 0));
+                var spent = Math.max(0, this.stack.clock - (this._plan.startedAt || 0));
                 var remains = Math.max(0, this._plan.frames - spent);
                 if (stillLegal && remains <= deadline) {
                     survival = { move: nx, gain: this._plan.gain, frames: remains, rate: this._plan.rate };
@@ -1418,7 +1433,7 @@
                 if (plan && plan.rate > 0) {
                     this._plan = { moves: plan.option.swaps.slice(1), frames: plan.frames,
                                    gain: plan.gain, rate: plan.rate,
-                                   startedAt: this.stack.frames };
+                                   startedAt: this.stack.clock };
                     if (!this._plan.moves.length) this._plan = null;
                     survival = { move: plan.move, gain: plan.gain, frames: plan.frames, rate: plan.rate };
                 }
@@ -1969,7 +1984,7 @@
                 for (i = 0; i < dnl.length; i++) {
                     if (dnl[i][0] === dn[0] && dnl[i][1] === dn[1]) { dnOk = true; break; }
                 }
-                var dspent = Math.max(0, this.stack.frames - (this._dig.startedAt || 0));
+                var dspent = Math.max(0, this.stack.clock - (this._dig.startedAt || 0));
                 if (dnOk && Math.max(0, this._dig.frames - dspent) <= deadline) {
                     this._dig.moves = this._dig.moves.slice(1);
                     if (!this._dig.moves.length) this._dig = null;
@@ -1991,7 +2006,7 @@
                     }
                     if (dok && !returnsToSeen(dm)) {
                         this._dig = { moves: dp.swaps.slice(1), frames: dp.duration || 0,
-                                      startedAt: this.stack.frames };
+                                      startedAt: this.stack.clock };
                         if (!this._dig.moves.length) this._dig = null;
                         this.counts.dugFor++;
                         return { kind: 'swap', move: dm, mode: mode, alive: alive, via: 'digPlan' };
@@ -2199,7 +2214,7 @@
                 // played once a slab has landed on the board it was drawn for.
                 this._flatten = { moves: options.flatten.swaps.slice(),
                                   frames: options.flatten.duration,
-                                  startedAt: this.stack.frames,
+                                  startedAt: this.stack.clock,
                                   blind: !digging };
             }
         }
@@ -2217,7 +2232,7 @@
             // when it was made: the plan is priced once and played over several
             // decisions, and the clock drains the whole time.
             if (fok) {
-                var fspent = Math.max(0, this.stack.frames - (this._flatten.startedAt || 0));
+                var fspent = Math.max(0, this.stack.clock - (this._flatten.startedAt || 0));
                 if (Math.max(0, (this._flatten.frames || 0) - fspent) > deadline) fok = false;
             }
             if (fok) {
