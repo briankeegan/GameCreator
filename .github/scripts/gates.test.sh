@@ -116,6 +116,16 @@ run "gate wiring: a script hardcodes the path of the machine it was written on" 
     "node .github/scripts/check_gate_wiring.mjs"
 cp "$work/cre.orig" .github/scripts/check_room_exits.mjs
 
+# THE BOT STANDING STILL IS A DEFECT LIKE ANY OTHER, and the mutation is the real
+# one: drop the clause that holds the reaction lift off while the bot's own swap is
+# still landing, and it re-decides mid-swap, replays the answer, and restarts the
+# animation on the same pair. That is what it did in the game it was found in --
+# fifty-one frames on one swap inside a sixty-two-frame freeze -- so this is the
+# defect reproduced, not an invented one.
+run "the bot moves the board: the reaction lift interrupts its own swap" \
+    "sed -i 's/ \&\& !this.swapLanding();/;/' games/the-game/ai/eval/bitbot.js" \
+    "node games/the-game/ai/eval/progress.test.js"
+
 echo
 echo "== and the checks must STAY QUIET on the untouched repo =="
 rm -rf games; cp -r "$OLDPWD_SAVE/games" .

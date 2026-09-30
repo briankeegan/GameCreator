@@ -778,6 +778,17 @@ gate_bitbot_timing() {
   node games/the-game/ai/eval/timing.test.js
 }
 
+# WHETHER ANYTHING HAPPENED, which no other gate asked. Every one of them checks
+# that a decision was correct; a bot that spent five hundred of its last six
+# hundred decisions on a board that never changed passed all of them. This plays
+# real duels and measures the symptom -- stillness on a settled board, time confined
+# to two positions, the same answer replayed -- so the next cause of it is caught
+# without anyone having to think of that cause first. Budgets are the measured
+# numbers with the figures recorded beside them.
+gate_bitbot_progress() {
+  node games/the-game/ai/eval/progress.test.js
+}
+
 gate_bitbot_survival() {
   node games/the-game/ai/eval/survival.test.js
 }
@@ -842,6 +853,7 @@ SLOW_GATES=(
   gate_features_live        # 37s
   gate_chips_real_boards    # 26s
   gate_bitbot               # 25s
+  gate_bitbot_progress      # 24s: three duels of 3000 frames
   gate_bitbot_timing        # 3s
   gate_bitmatch             # 18s
   gate_chips_decidable      # 17s
@@ -938,6 +950,7 @@ GATES=(
   "the bot plays what it picks and cannot be killed:gate_bitbot:games/the-game/ai/"
   "the bot's frame arithmetic matches the engine:gate_bitbot_timing:games/the-game/ai/"
   "the rules a vector cannot reach:gate_bitbot_survival:games/the-game/ai/"
+  "the bot moves the board:gate_bitbot_progress:games/the-game/ai/"
   "the simulation resolves like the game:gate_resolve_fidelity:games/the-game/ai/"
   "that fidelity check fires:gate_resolve_fidelity_fires:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"

@@ -236,6 +236,9 @@ function hostile() {
     st.stopTime = 60;
     bot.cooldown = 5;
     st.queuedSwapRow = 0; st.swappingCount = 0;
+    // A COMMITTED WALK OWNS THE FRAME and returns above the cooldown block, so
+    // each case starts with none in progress or it measures the walk instead.
+    bot._walk = null;
     var before = bot.spend.decided;
     bot.update();
     ok(bot.spend.decided > before,
@@ -245,6 +248,7 @@ function hostile() {
     st.stopTime = 60;
     bot.cooldown = 5;
     st.swappingCount = 2;
+    bot._walk = null;
     before = bot.spend.decided;
     var cd = bot.cooldown;
     bot.update();
@@ -256,6 +260,7 @@ function hostile() {
 
     st.swappingCount = 0; st.queuedSwapRow = 3;
     bot.cooldown = 5;
+    bot._walk = null;
     before = bot.spend.decided;
     bot.update();
     ok(bot.spend.decided === before,
