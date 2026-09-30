@@ -27,6 +27,15 @@ on:
       profile:
         description: 'The WasmSurvivor profile, relative to games/the-game/ai/eval (empty = survivor.profile.json)'
         default: ''
+      opponent:
+        description: 'beverly (the Lua bot) or survivor (a second WasmSurvivor on this runner)'
+        default: 'beverly'
+      profile2:
+        description: 'With opponent survivor: its profile (empty = survivor.profile.json)'
+        default: ''
+      rate:
+        description: 'Game speed against the wall clock (1 = real time; 0.5 = half, so two bots on one runner each think as fast as one alone)'
+        default: '1'
       panel_ref:
         description: 'The panel-game branch with bot/SurvivalLink.lua'
         default: 'claude/newsey-game-ask-qa8u5e'
@@ -34,7 +43,7 @@ on:
 jobs:
   duel:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -66,26 +75,32 @@ jobs:
         run: |
           set -eu
           if [ -n '${{ inputs.profile }}' ]; then export GC_SURVIVOR_PROFILE="$GITHUB_WORKSPACE/games/the-game/ai/eval/${{ inputs.profile }}"; fi
-          GC_SURVIVOR_DUMP="$GITHUB_WORKSPACE/death.jsonl" nohup node games/the-game/ai/eval/survivor.js --port 47777 --threads 3 > "$GITHUB_WORKSPACE/survivor.log" 2>&1 &
-          for i in $(seq 1 300); do grep -q listening survivor.log && break; sleep 0.2; done
+          threads=3; [ '${{ inputs.opponent }}' = survivor ] && threads=2
+          GC_SURVIVOR_DUMP="$GITHUB_WORKSPACE/death.jsonl" nohup node games/the-game/ai/eval/survivor.js --port 47777 --threads $threads > "$GITHUB_WORKSPACE/survivor.log" 2>&1 &
+          if [ '${{ inputs.opponent }}' = survivor ]; then
+            ( if [ -n '${{ inputs.profile2 }}' ]; then export GC_SURVIVOR_PROFILE="$GITHUB_WORKSPACE/games/the-game/ai/eval/${{ inputs.profile2 }}"; else unset GC_SURVIVOR_PROFILE; fi
+              GC_SURVIVOR_DUMP="$GITHUB_WORKSPACE/death2.jsonl" nohup node games/the-game/ai/eval/survivor.js --port 47778 --threads 2 > "$GITHUB_WORKSPACE/survivor2.log" 2>&1 & )
+          fi
+          for i in $(seq 1 300); do grep -q listening survivor.log && { [ '${{ inputs.opponent }}' != survivor ] || grep -q listening survivor2.log 2>/dev/null; } && break; sleep 0.2; done
           cat survivor.log
           grep -q listening survivor.log || { echo "WasmSurvivor did not start"; exit 1; }
       - name: Play seed ${{ matrix.seed }}
         id: play
-        timeout-minutes: 30
+        timeout-minutes: 60
         working-directory: panel-game
         run: |
           eval "$(luarocks path --local --lua-version 5.1)"
           export LUA_PATH="./?.lua;./common/lib/?.lua;$LUA_PATH"
           export LUA_CPATH="./common/lib/?.so;./common/lib/?/?.so;$LUA_CPATH"
           set -o pipefail
-          luajit "$GITHUB_WORKSPACE/games/the-game/ai/eval/lua/survivorDuel.lua" ${{ matrix.seed }} ${{ inputs.frames }} ${{ inputs.garbage_every }} 1 ${{ inputs.solo }} ${{ inputs.stream }} 2>&1 | tee "$GITHUB_WORKSPACE/duel.log"
+          luajit "$GITHUB_WORKSPACE/games/the-game/ai/eval/lua/survivorDuel.lua" ${{ matrix.seed }} ${{ inputs.frames }} ${{ inputs.garbage_every }} ${{ inputs.rate }} ${{ inputs.solo }} ${{ inputs.stream }} ${{ inputs.opponent }} 2>&1 | tee "$GITHUB_WORKSPACE/duel.log"
           grep -q '^RESULT' "$GITHUB_WORKSPACE/duel.log"
       - name: Summary
         if: always()
         run: |
           grep '^RESULT' duel.log >> "$GITHUB_STEP_SUMMARY" || echo "no result: the game did not finish" >> "$GITHUB_STEP_SUMMARY"
           grep 'match over' survivor.log >> "$GITHUB_STEP_SUMMARY" || true
+          grep 'match over' survivor2.log >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -93,7 +108,9 @@ jobs:
           path: |
             duel.log
             survivor.log
+            survivor2.log
             death.jsonl
+            death2.jsonl
           if-no-files-found: warn
       - name: Fail if WasmSurvivor died
         run: |
