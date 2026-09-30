@@ -1,0 +1,100 @@
+name: Survivor duels
+
+# WasmSurvivor (games/the-game/ai/eval/survivor.js) playing the panel-game
+# server's own Lua engine in real time, one game per runner, so a batch
+# takes the wall-clock time of one game. lua/survivorDuel.lua runs the
+# match in a panel-game checkout: side 1 is WasmSurvivor through
+# bot/SurvivalLink.lua, side 2 the Lua bot. A job goes red when WasmSurvivor
+# dies; its artifact holds the death record (GC_SURVIVOR_DUMP) and the logs.
+on:
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: 'JSON array of seeds'
+        default: '[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]'
+      frames:
+        description: 'Frames per game (21600 = six minutes)'
+        default: '21600'
+      garbage_every:
+        description: 'Extra garbage for WasmSurvivor about once in this many frames (0 = none)'
+        default: '0'
+      stream:
+        description: 'The extra garbage: human (chains 1-3 tall and combos, through a telegraph) or wild (chains to 6 tall and metal, unannounced)'
+        default: 'human'
+      solo:
+        description: '1 = no garbage between the two sides (WasmSurvivor plays the rise and the extra garbage alone)'
+        default: '0'
+      profile:
+        description: 'The WasmSurvivor profile, relative to games/the-game/ai/eval (empty = survivor.profile.json)'
+        default: ''
+      panel_ref:
+        description: 'The panel-game branch with bot/SurvivalLink.lua'
+        default: 'claude/newsey-game-ask-qa8u5e'
+
+jobs:
+  duel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: ${{ fromJSON(inputs.seeds) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: briankeegan/panel-game
+          ref: ${{ inputs.panel_ref }}
+          path: panel-game
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install luajit + luarocks
+        timeout-minutes: 10
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y luajit luarocks liblua5.1-0-dev build-essential unzip libreadline-dev
+      - name: Install lua rocks (luasocket, luafilesystem, luautf8)
+        timeout-minutes: 10
+        run: |
+          luarocks install --local luasocket --lua-version 5.1
+          luarocks install --local luafilesystem --lua-version 5.1
+          luarocks install --local luautf8 --lua-version 5.1
+      - name: Start WasmSurvivor
+        timeout-minutes: 2
+        run: |
+          set -eu
+          if [ -n '${{ inputs.profile }}' ]; then export GC_SURVIVOR_PROFILE="$GITHUB_WORKSPACE/games/the-game/ai/eval/${{ inputs.profile }}"; fi
+          GC_SURVIVOR_DUMP="$GITHUB_WORKSPACE/death.jsonl" nohup node games/the-game/ai/eval/survivor.js --port 47777 --threads 3 > "$GITHUB_WORKSPACE/survivor.log" 2>&1 &
+          for i in $(seq 1 300); do grep -q listening survivor.log && break; sleep 0.2; done
+          cat survivor.log
+          grep -q listening survivor.log || { echo "WasmSurvivor did not start"; exit 1; }
+      - name: Play seed ${{ matrix.seed }}
+        id: play
+        timeout-minutes: 30
+        working-directory: panel-game
+        run: |
+          eval "$(luarocks path --local --lua-version 5.1)"
+          export LUA_PATH="./?.lua;./common/lib/?.lua;$LUA_PATH"
+          export LUA_CPATH="./common/lib/?.so;./common/lib/?/?.so;$LUA_CPATH"
+          set -o pipefail
+          luajit "$GITHUB_WORKSPACE/games/the-game/ai/eval/lua/survivorDuel.lua" ${{ matrix.seed }} ${{ inputs.frames }} ${{ inputs.garbage_every }} 1 ${{ inputs.solo }} ${{ inputs.stream }} 2>&1 | tee "$GITHUB_WORKSPACE/duel.log"
+          grep -q '^RESULT' "$GITHUB_WORKSPACE/duel.log"
+      - name: Summary
+        if: always()
+        run: |
+          grep '^RESULT' duel.log >> "$GITHUB_STEP_SUMMARY" || echo "no result: the game did not finish" >> "$GITHUB_STEP_SUMMARY"
+          grep 'match over' survivor.log >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: survivor-duel-${{ matrix.seed }}
+          path: |
+            duel.log
+            survivor.log
+            death.jsonl
+          if-no-files-found: warn
+      - name: Fail if WasmSurvivor died
+        run: |
+          if grep -q '"died":"WasmSurvivor"' duel.log; then echo "WasmSurvivor died"; exit 1; fi
