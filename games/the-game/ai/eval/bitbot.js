@@ -2551,22 +2551,23 @@
         // which takes the raise out of the pool, so reading the pool for this
         // ended the opening after a single row.
         if (this._opening && (info.incoming || !fits)) this._opening = false;
-        // AND IT ENDS WHEN THERE IS ENOUGH TO PLAY WITH.
+        // AND IT KEEPS MORE HEADROOM THAN A MID-GAME RAISE DOES.
         //
-        // It had no material ceiling at all, so the only thing that stopped it was
-        // running out of room: `fits` needs two empty rows, so the opening raised
-        // until the stack was one row under the lid. Seed 101 rand4 opened on
+        // `fits` asks for two empty rows, which is the right question for a raise
+        // that answers something -- garbage queued, material under the floor. The
+        // opening answers nothing, so filling to the same limit walks the board to
+        // one row under the lid before the game starts: seed 101 rand4 opened on
         // 5,6,5,4,5,5 and was at 11,10,10,7,11,11 by frame 235 with nothing
-        // incoming and no garbage on the board -- `alive` already 0, every option
-        // fatal -- then spent the next twelve hundred frames failing to dig out of
-        // it and died at 1,446. Seed 103 rand4 is the same board: 9.5 rows and
-        // tall 11 by frame 169, dead at 2,307. Both of the early deaths.
+        // incoming and no garbage down, `alive` already 0 with every option fatal,
+        // then failed to dig out for twelve hundred frames and died at 1,446. Seed
+        // 103 rand4 is the same board at frame 169, dead at 2,307.
         //
-        // Six rows is the number the rest of the bot already means by "not short
-        // of material" (the dig branch and the raise-or-break branch both turn on
-        // it). The floor below is WORKING_ROWS, which is when material has to be
-        // found; this is when there is enough and the filling stops.
-        if (this._opening && materialRows(base) >= 6) this._opening = false;
+        // HEIGHT, NOT MATERIAL, IS WHAT WAS WRONG. Capping the opening at six rows
+        // of material instead fixed those two and cost four elsewhere: STARTER and
+        // ZERO died four times between them over 60 boards having died none, because
+        // the material the opening lays down is what they build with. So the limit
+        // is on how close it may fill to the lid, and the panels are left alone.
+        if (this._opening && this.raiseRoom() <= 3 + rows) this._opening = false;
         if (!fits) return null;
         if (!this._opening && materialRows(base) >= WORKING_ROWS) return null;
         // WITH GARBAGE ON THE BOARD, THE ANSWER IS TO DIG, NOT TO RAISE.
