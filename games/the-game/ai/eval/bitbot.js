@@ -198,7 +198,7 @@
                         openingRaises: 0, waitedToRaise: 0, saveKept: 0, saveUnkeepable: 0, savePlanned: 0, heldTheBreak: 0, forcedBreak: 0, forcedBoth: 0, refusedEarly: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
                         revealWindows: 0, digging: 0, flattened: 0, flattenDropped: 0,
-                        refusedStranded: 0, refusedNoFailsafe: 0 };
+                        refusedStranded: 0, refusedNoFailsafe: 0, refusedSameSwap: 0 };
     }
 
     // WHAT THE ENGINE KNOWS, shared by every candidate in the decision. None of
@@ -1956,6 +1956,38 @@
                 kept.push(allowed[i]);
             }
             if (kept.length) allowed = kept;
+            // AND NOT THE SAME TWO CELLS AGAIN, WHEN IT CASHES NOTHING.
+            //
+            // The signature test only catches an EXACT repeat, and a swap where one
+            // cell is empty is not one: the panel moves across and falls to a new
+            // depth, so the board is technically new every time while nothing
+            // happens. Seed 103 played row 4 of columns 1-2 eight times running,
+            // four frames apart, heights alternating, `seen` reading new/3 on all
+            // of them, and the rise killed it at 27,739.
+            //
+            // ONLY WHEN IT CASHES NOTHING. Swap, let a stack drop, swap again is how
+            // the board reaches a slab it could not touch before -- that is a real
+            // manoeuvre and this must not forbid it. A clear or a break is progress
+            // by definition; a repeat that clears nothing is the loop.
+            //
+            // Narrowing, so it stands aside rather than freeze. It never had to
+            // here: every one of those decisions had twenty other candidates.
+            var ls = this._lastSwap;
+            if (ls) {
+                var notSame = [];
+                for (i = 0; i < allowed.length; i++) {
+                    var ac = allowed[i];
+                    var cashesA = ac.resolved &&
+                                  (ac.resolved.total > 0 || ac.resolved.brokeGarbage);
+                    if (!cashesA && ac.kind === 'swap' && ac.swap &&
+                        ac.swap[0] === ls[0] && ac.swap[1] === ls[1]) {
+                        this.counts.refusedSameSwap++;
+                        continue;
+                    }
+                    notSame.push(ac);
+                }
+                if (notSame.length) allowed = notSame;
+            }
         }
 
         // SENDS AND BREAKS BEATS SENDS, and that is not a preference.
@@ -3102,7 +3134,17 @@
     //
     // Soft: if nothing keeps a save, the original move stands. This narrows the
     // choice, it never refuses to move.
+    // THE MOVE THAT WAS ACTUALLY PLAYED, RECORDED ONCE. Every route and every
+    // substitution below funnels through here, so this is the only place that can
+    // know what the bot really did last. `_lastSwap` was declared and never
+    // assigned, and the rule it was for never existed.
     BitBot.prototype.decide = function () {
+        var d = this._decideGated();
+        this._lastSwap = (d && d.kind === 'swap' && d.move) ? [d.move[0], d.move[1]] : null;
+        return d;
+    };
+
+    BitBot.prototype._decideGated = function () {
         var d = this._decide();
         var info = this._lastInfo, pool = this._lastPool, base = this._lastBase;
         if (!d || d.kind !== 'swap' || !d.move || !info || !pool || !base) return d;

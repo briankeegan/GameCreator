@@ -166,6 +166,8 @@
     // Set per call by the caller, which knows its own reaction and whether the
     // clock is running.
     var OVERHEAD = 0, RESOLVE = null, DIG = false, stopPrice = null, PREPARE = false;
+    // The base board's own readiness, kept for breakReadyBoard below.
+    var LASTBREAKREADY = null;
 
     function options(board, W, H, cursor, depth, st, timing, dig) {
         OVERHEAD = (timing && timing.overhead) || 0;
@@ -195,6 +197,9 @@
         // board, so neither list can ask it of everything. Declared here and reset
         // in expandAll, so the beam gets the same cap the depth-1 list does.
         var prepBudget = 24;
+        // The drop test is a sweep inside a sweep, so it gets the tightest
+        // budget of any of them.
+        dropBudget = 8;
         var now = [], next = [], i, j;
         if (!st) st = bit.maskState(board.grid, board.blocks, W, H);
         // THE EMPTIEST COLUMN BEFORE ANY MOVE, so an option can be asked whether
@@ -208,6 +213,7 @@
         // whether it merely lands on a board that has none. False when there is no
         // garbage, and then nothing can close what was never open.
         var BASEBREAK = breakReadyOf(st) === true;
+        LASTBREAKREADY = BASEBREAK;
         // AND HOW MANY WAYS THERE ARE TO REACH THE GARBAGE BEFORE ANY MOVE.
         //
         // THE SLOPE THE FLAG DOES NOT HAVE. `breakReady` is a cliff: on a buried
@@ -413,9 +419,47 @@
         // apply, and a null is not a no. Being ready for the slab that has not
         // landed yet is a different question and flatSlab already asks it.
         function breakReadyOf(state) {
-            var c;
-            for (c = 1; c <= W; c++) if (state.garb[c]) return savesOfRaw(state) > 0;
-            return null;
+            var c, any = false;
+            for (c = 1; c <= W; c++) if (state.garb[c]) { any = true; break; }
+            if (!any) return null;
+            if (savesOfRaw(state) > 0) return true;
+            // ONE SWAP IS NOT THE QUESTION. A board with no swap that breaks the
+            // slab outright is not a sealed board: a clear underneath drops what
+            // was resting on it, the slab comes down onto the material, and the
+            // break is there on the board after. Asked one swap deep, most buried
+            // boards read sealed -- and every rule built on this then treats a
+            // position with a way out as a position without one.
+            return breakAfterDropOf(state);
+        }
+
+        // THE BREAK ON THE OTHER SIDE OF A DROP.
+        //
+        // Each clearing swap is resolved to where the board SETTLES -- which is
+        // the engine's own gravity, so the slab falling is not a guess -- and the
+        // settled board is asked the one-swap question. Two swaps deep, no more:
+        // the first makes room, the second reaches what came down.
+        //
+        // Budgeted, because this is a sweep inside a sweep. Out of budget returns
+        // false, which is the same answer the one-swap test gave on its own, so
+        // running short can only make this less informed, never wrong in a new way.
+        function breakAfterDropOf(state) {
+            if (dropBudget <= 0) return false;
+            dropBudget--;
+            var sw = bit.legalSwapsOf(state), i, r;
+            for (i = 0; i < sw.length; i++) {
+                if (!bit.swapMasks(state, sw[i][0], sw[i][1])) continue;
+                r = bit.resolveFromMasks(state, true);
+                bit.swapMasks(state, sw[i][0], sw[i][1]);
+                if (r.scope === 'garbage-broke') return true;
+                if (r.scope !== 'ok' || r.total === 0 || !r.settled) continue;
+                // ASKED EXACTLY, on the board the drop leaves. `dig` is not a
+                // cheaper form of this question: it counts cells that COMPLETE a
+                // line and sit next to the slab, which is most of the answer
+                // already, so gating on it threw away the landings this exists for
+                // and the board died on its original frame. The sweep is the price.
+                if (savesOfRaw(r.settled) > 0) return true;
+            }
+            return false;
         }
 
         function savesOfRaw(state) {
@@ -441,7 +485,7 @@
         }
 
         var flat = null, flatReady = null, flatSlab = null, save = null, ready = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
-        var slabBudget = 0, stopBudget = 0;
+        var slabBudget = 0, stopBudget = 0, dropBudget = 0;
 
         function expandAll(state0, depth) {
             BASE = shapeOf(state0);
@@ -966,6 +1010,14 @@
         return false;
     }
 
+    // EXPOSED SO THE GATE ASKS THE SAME QUESTION THE SEARCH ASKS. The drop test
+    // inside it is what separates a sealed board from one that only looks sealed
+    // one swap deep, and a gate that cannot call it cannot check that.
+    function breakReadyBoard(st) {
+        options(null, st.W, st.H, [1, 1], 1, st, null, true);
+        return LASTBREAKREADY;
+    }
     return { options: options, kindOf: kindOf, sizeOf: sizeOf, shapeOf: shapeOf,
-             slabReadyBoard: slabReadyBoard, slabReadyFast: slabReadyFast };
+             slabReadyBoard: slabReadyBoard, slabReadyFast: slabReadyFast,
+             breakReadyBoard: breakReadyBoard };
 }));

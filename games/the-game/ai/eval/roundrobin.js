@@ -89,9 +89,29 @@ if (ONE) {
                 gar += popc(g);
                 var t = 32 - Math.clz32(m.occ[c] >>> 0); if (t > tall) tall = t;
             }
+            // AND THE MOVE ITSELF, plus whether the return guard could have seen
+            // it. A trace of board shapes shows a bot stuck flipping one pair back
+            // and forth but not WHY the guard let it: `seen` is where the landing
+            // sits in the bot's own history, and `cands` is how much choice it had.
+            var mv = d && d.move ? (d.move[0] + '-' + d.move[1]) : (d ? d.kind : '?');
+            var seenAt = '-';
+            if (d && d.kind === 'swap' && d.move && bots[side]._lastPool) {
+                var pl = bots[side]._lastPool;
+                for (var pi = 0; pi < pl.length; pi++) {
+                    var pc = pl[pi];
+                    if (pc.swap && pc.swap[0] === d.move[0] && pc.swap[1] === d.move[1] && pc.masks) {
+                        var sg = Bot.signatureOf(pc.masks);
+                        var ix = bots[side]._seen.indexOf(sg);
+                        seenAt = (ix < 0 ? 'new' : String(ix)) + '/' + bots[side]._seen.length;
+                        break;
+                    }
+                }
+            }
             ring[side].push({ f: st[side].clock, via: d && d.via, alive: d && d.alive,
                               mode: d && d.mode && d.mode.name, cols: h.join(','),
-                              sp: sh ? sh.spread : 0, gar: gar, tall: tall });
+                              sp: sh ? sh.spread : 0, gar: gar, tall: tall,
+                              mv: mv, seen: seenAt,
+                              cands: bots[side]._lastPool ? bots[side]._lastPool.length : 0 });
             if (ring[side].length > 14) ring[side].shift();
             return d;
         };
@@ -115,12 +135,14 @@ if (ONE) {
     var D = st[0].gameOver ? 0 : (st[1].gameOver ? 1 : -1);
     if (D >= 0) {
         console.log('  --- ' + [A, Bn][D] + ' died. last decisions:');
-        console.log('   frame alive mode    via           tall gar spread cols');
+        console.log('   frame alive mode    via           tall gar spread cols          move  seen cands');
         ring[D].forEach(function (r) {
             console.log('  ' + String(r.f).padStart(6) + String(r.alive).padStart(5) + '  ' +
                         String(r.mode).padEnd(7) + ' ' + String(r.via).padEnd(13) +
                         String(r.tall).padStart(4) + String(r.gar).padStart(4) +
-                        String(r.sp).padStart(6) + '  ' + r.cols);
+                        String(r.sp).padStart(6) + '  ' + String(r.cols).padEnd(12) +
+                        ' ' + String(r.mv).padStart(6) + String(r.seen).padStart(5) +
+                        String(r.cands).padStart(6));
         });
         for (var rr = st[D].height; rr >= 1; rr--) {
             var line = '  r' + String(rr).padStart(2) + ' ';
