@@ -202,14 +202,7 @@ Match.prototype.frame = function (truth, arrivals) {
     if (process.env.GC_SURVIVOR_DEBUG) console.error('clock ' + now + ' (stopWatch ' + truth.stopWatch + '): ' + d + ' arrivals before ' + JSON.stringify(before.map(function (a) { return a.at; })));
   }
   this.take(truth);
-  // The next decision is asked a lead before it is due, on the board
-  // predicted from this one: the plan never runs further ahead than that, so
-  // every decision sees the rows that have come up since.
   var planned = this.plan[now];
-  if (!pending && truth.gameOverClock <= 0) {
-    var at = this.nextAt > now ? this.nextAt : now + this.soon();
-    if (at - now <= this.ahead()) { var pr = this.predict(truth, at, this.hold); this.ask(at, pr.board, pr.hold); }
-  }
   var bits;
   if (planned) { bits = planned.bits; this.hold = { left: planned.hold.left, started: planned.hold.started }; delete this.plan[now]; }
   else { var id = HANDS.idle(truth, this.hold, arrivals); bits = id.bits; this.hold = id.hold; this.stats.idle++; }
@@ -222,6 +215,18 @@ Match.prototype.frame = function (truth, arrivals) {
   this.expect = next;
   if (process.env.GC_SURVIVOR_DUMP) this.record(truth, bits, arrivals);
   return bits;
+};
+// After the frame's keys are sent: the next decision is asked, a lead before
+// it is due, on the board predicted from the one this frame makes. The plan
+// never runs further ahead than that, so every decision sees the rows that
+// have come up since.
+Match.prototype.afterFrame = function () {
+  var now = this.now, next = this.expect;
+  if (pending || !next || next.gameOverClock > 0) return;
+  var at = this.nextAt > now ? this.nextAt : now + this.soon();
+  if (at - now > this.ahead()) return;
+  var pr = this.predict(next, at, this.hold);
+  this.ask(at, pr.board, pr.hold);
 };
 
 Match.prototype.record = function (truth, bits, arrivals) {
@@ -262,6 +267,7 @@ var server = net.createServer(function (sock) {
         }
       } else if (m.t === 'bye') { if (match) { console.log('match over: ' + JSON.stringify(match.stats)); match.dump(); } match = null; reply = { ok: true }; }
       sock.write(JSON.stringify(reply) + '\n');
+      if (match && m.t === 'f') match.afterFrame();
     }
   }
   sock.on('data', function (chunk) { buf += chunk; if (!resume) pump(); });
