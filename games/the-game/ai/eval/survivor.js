@@ -78,7 +78,9 @@ function gridOf(st) {
 }
 
 // ---------------------------------------------------------------- the mind
-var mind = new wt.Worker(path.join(__dirname, 'survivor_mind.js'), { workerData: { profile: PROFILE, threads: opt.threads } });
+// ABORT[0]: the id of a question the mind should stop working on.
+var ABORT = new Int32Array(new SharedArrayBuffer(4));
+var mind = new wt.Worker(path.join(__dirname, 'survivor_mind.js'), { workerData: { profile: PROFILE, threads: opt.threads, abort: ABORT } });
 var mindReady = false, nextId = 1, pending = null, answers = [], thinking = [];
 // GC_SURVIVOR_SYNC=1: every decision is waited for, asked a frame ahead --
 // the bot as it plays with all the time it wants, for telling what it knows
@@ -102,7 +104,8 @@ function Match(level) {
   this.acted = true;       // whether the mind's last decision was played
   this.nextAt = 0;         // the frame the plan ends on
   this.arrivals = [];      // garbage on its way (arrivalsOf)
-  this.stats = { frames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0 };
+  this.line = null;        // the proven line after the plan: { steps, at } (follow)
+  this.stats = { frames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0 };
   this.history = []; this.decided = []; this.asked = []; this.dumped = false;
   // A question from the last match is not this one's: its answer is dropped.
   pending = null;
@@ -164,6 +167,7 @@ Match.prototype.take = function (truth) {
   var now = truth.clock;
   while (answers.length) {
     var a = answers.shift();
+    if (a.aborted) continue;
     thinking.push(a.ms); if (thinking.length > 8) thinking.shift();
     this.stats.maxMs = Math.max(this.stats.maxMs, a.ms);
     if (a.mem) this.stats.memMB = Math.round(a.mem.bytes / 1048576);
@@ -188,6 +192,8 @@ Match.prototype.take = function (truth) {
     // Each planned frame carries the raise held after it.
     for (var i = 0; i < step.inputs.length; i++) this.plan[at + i] = { bits: step.inputs[i], hold: step.holds[i] };
     this.nextAt = at + step.inputs.length;
+    // The line behind the move holds from where the move ends, played as decided.
+    this.line = a.line && a.lineAt === this.nextAt && at === a.at ? { steps: a.line.slice(), at: a.lineAt } : null;
   }
 };
 Match.prototype.frame = function (truth, arrivals) {
@@ -197,7 +203,7 @@ Match.prototype.frame = function (truth, arrivals) {
   this.stats.frames++;
   if (this.expect && (d = differ(this.expect, truth))) {
     // Not the board predicted: every plan and question made before is void.
-    this.epoch++; this.plan = {}; this.nextAt = 0; pending = null; this.acted = false;
+    this.epoch++; this.plan = {}; this.nextAt = 0; this.line = null; pending = null; this.acted = false;
     this.stats.diverged++;
     if (process.env.GC_SURVIVOR_DEBUG) console.error('clock ' + now + ' (stopWatch ' + truth.stopWatch + '): ' + d + ' arrivals before ' + JSON.stringify(before.map(function (a) { return a.at; })));
   }
@@ -222,7 +228,11 @@ Match.prototype.frame = function (truth, arrivals) {
 // have come up since.
 Match.prototype.afterFrame = function () {
   var now = this.now, next = this.expect;
-  if (pending || !next || next.gameOverClock > 0) return;
+  if (!next || next.gameOverClock > 0) return;
+  if (pending && this.nextAt - now === 1 && !answers.some(function (a) { return a.id === pending.id; })) {
+    if (this.line) this.follow(); else this.stats.noLine++;
+  }
+  if (pending) return;
   var at = this.nextAt > now ? this.nextAt : now + this.soon();
   if (at - now > this.ahead()) return;
   var pr = this.predict(next, at, this.hold);
@@ -239,6 +249,29 @@ Match.prototype.dump = function () {
   if (this.dumped || !process.env.GC_SURVIVOR_DUMP || !this.history.length) return;
   this.dumped = true;
   require('fs').appendFileSync(process.env.GC_SURVIVOR_DUMP, JSON.stringify({ stats: this.stats, decided: this.decided, asked: this.asked, history: this.history }) + '\n');
+};
+
+// THE PLAN RUNS OUT BEFORE THE ANSWER: the next step of the line the last
+// decision was proven by is played instead of holding, and the question --
+// about a board that will not now be reached -- is stopped; the next one is
+// asked for where the step ends.
+Match.prototype.follow = function () {
+  var st = this.line.steps[0], kind, move = null, frames = 0;
+  if (st === null) kind = 'hold';
+  else if (st === 'raise') kind = 'raise';
+  else if (Array.isArray(st)) { kind = 'swap'; move = st; }
+  else if (st && st.long !== undefined) { kind = 'long'; frames = -Math.max(1, st.long - (this.nextAt - this.line.at)); }
+  else { this.line = null; return; }
+  var pr = this.predict(this.expect, this.nextAt, this.hold);
+  var k = HANDS.keys(pr.board, pr.hold, kind, move, this.arrivals, frames);
+  if (!k) { this.line = null; return; }
+  Atomics.store(ABORT, 0, pending.id);
+  pending = null; this.acted = false;
+  for (var i = 0; i < k.inputs.length; i++) this.plan[this.nextAt + i] = { bits: k.inputs[i], hold: k.holds[i] };
+  this.nextAt += k.inputs.length;
+  this.line.steps.shift();
+  if (!this.line.steps.length) this.line = null;
+  this.stats.followed++;
 };
 
 // ---------------------------------------------------------------- the link

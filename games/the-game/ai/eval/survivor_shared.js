@@ -20,7 +20,13 @@ function profile() {
 }
 // What PuyoCpu is built with for a profile.
 function botOptions(p, threads) {
-  return { weights: JSON.parse(fs.readFileSync(path.join(__dirname, p.weights), 'utf8')).weights,
+  var weights = JSON.parse(fs.readFileSync(path.join(__dirname, p.weights), 'utf8')).weights;
+  // overrides: weights set by the profile over the trained ones.
+  Object.keys(p.overrides || {}).forEach(function (k) {
+    if (!(k in weights)) throw new Error('survivor profile: override ' + k + ' is not a weight');
+    weights[k] = p.overrides[k];
+  });
+  return { weights: weights,
            reaction: p.reaction, cursorMoveFrames: p.cursorMoveFrames, depth: p.depth, beam: 0, rise: true, allowRaise: true,
            modes: p.modes, engine: true, native: true, threads: threads };
 }

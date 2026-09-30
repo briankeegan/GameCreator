@@ -46,12 +46,21 @@ wt.parentPort.on('message', function (m) {
     bot.opponent = null;
     bot._predArr = [];
     bot.decisions = (bot.decisions || 0) + 1;
-    var d = bot._decide();
+    // The frame loop stops a question it no longer needs (cfg.abort holds its id).
+    bot._abort = cfg.abort ? function () { return Atomics.load(cfg.abort, 0) === m.id; } : null;
+    var d;
+    try { d = bot._decide(); } finally { bot._abort = null; }
+    // The rest of the proven line behind the move, for the frame loop to play
+    // on while the next decision is late: steps as the search played them
+    // ([row, col], 'raise', null for a hold, { long: until }), from lineAt.
+    var fl = bot._following, line = fl && !fl.hold && fl.steps && fl.steps.length ? fl.steps : null;
     out = { id: m.id, epoch: m.epoch, at: m.at, kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, ms: Date.now() - t0,
+          line: line, lineAt: line ? fl.at : null,
           mem: NativeMem(),
           diag: { doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped } };
   } catch (e) {
-    out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e), ms: Date.now() - t0 };
+    if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
+    else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e), ms: Date.now() - t0 };
   }
   wt.parentPort.postMessage(out);
 });

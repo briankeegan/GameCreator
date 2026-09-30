@@ -251,12 +251,13 @@ static int advance(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
 // _engineStep: a wait to `until` in whole beats (reaction + 1), a raise, a
 // hold or a swap. A wait that dies after the horizon is a dead end on the
 // parent's board.
+// A wait to `until` from node pi, in whole beats (reaction + 1).
+static int32_t longFrames(Ctx *x, int pi, int32_t until) {
+  int32_t beat = x->reaction + 1, fr = imax(1, until - NODE(x, pi)->t);
+  return ((fr + beat - 1) / beat) * beat;
+}
 static int lineStep(Ctx *x, int pi, int kind, int mr, int mc, int32_t until) {
-  int32_t frames = 0;
-  if (kind == MK_LONG) {
-    int32_t beat = x->reaction + 1, fr = imax(1, until - NODE(x, pi)->t);
-    frames = ((fr + beat - 1) / beat) * beat;
-  }
+  int32_t frames = kind == MK_LONG ? longFrames(x, pi, until) : 0;
   int r = advance(x, pi, kind, mr, mc, frames);
   if (r != STEP_DEAD) return r;
   if (kind == MK_LONG && deadAt >= x->surviveFrames) {
@@ -323,6 +324,8 @@ EXPORT(ns_dead_at) int ns_dead_at(void) { return deadAt; }
 // raise started] per frame. Returns the frames written, or advance's refusal
 // (STEP_NULL, STEP_ERR); a line that dies still gives the keys up to it.
 EXPORT(ns_keys) int ns_keys(Ctx *x, int pi, int kind, int mr, int mc, int frames) {
+  // a wait given as frames < 0 waits to -frames, as the search's line step does
+  if (kind == MK_LONG && frames < 0) frames = longFrames(x, pi, -frames);
   tape = ioBody; tapeN = 0; tapeCap = (int32_t)(sizeof ioBody / sizeof ioBody[0]) / 3;
   int r = advance(x, pi, kind, mr, mc, frames);
   tape = 0;
