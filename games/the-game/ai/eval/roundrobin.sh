@@ -16,7 +16,15 @@ set -euo pipefail
 # THE BOARDS THAT HAVE DIED, in one place rather than in a shell history. Add
 # to this when a new one dies; that is what makes the next run comparable.
 KNOWN=(101:rand2:rand3 101:rand2:rand4 103:rand2:rand3 103:STARTER:rand3
-       103:rand1:rand2 103:rand1:rand4 103:STARTER:rand1)
+       103:rand1:rand2 103:rand1:rand4 103:STARTER:rand1
+       # THE REFERENCE VECTORS ON BOTH SEEDS, whether or not they have failed.
+       # A set collected only from boards that already died is the wrong sample
+       # for catching new breakage: seed 101 STARTER and ZERO both went to
+       # ten-second deaths, six pairings out of six with no garbage broken at
+       # all, and ten rounds of this list reported "1 death, 93%" while it was
+       # happening. A STARTER or ZERO death is the one result that is never
+       # acceptable, so they are checked every run.
+       101:STARTER:rand1 101:ZERO:rand3 101:STARTER:ZERO 103:STARTER:ZERO)
 
 SET="${1:-known}"
 REF="${2:-HEAD}"
