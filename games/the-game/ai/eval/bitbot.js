@@ -179,8 +179,6 @@
         this._raiseStarted = false;
         this._walk = null;
         this._lastSwap = null;
-        this._slab = null;
-        this._slabTries = 0;
         this.decisions = 0;
         // WHERE EVERY FRAME WENT. Not diagnostics bolted on -- the bot could not
         // say what it did with a frame, so every question about its behaviour was
@@ -1054,18 +1052,6 @@
             // on a board that already has one is not this move's doing. A break is
             // exempt -- its settled board is unknowable, so `low` is null.
             if (o.opensHole) continue;
-            // AND IT MAY NOT SPEND THE BREAK THE RAISE IS WAITING ON.
-            //
-            // A constraint, not an override: the attack still picks by its own
-            // ranking, among the options that leave the reserved break where it
-            // is. Substituting the chosen move for a break-keeping one was
-            // measured instead -- 25 substitutions a game, and the raises arriving
-            // with the break went DOWN, because the substitute was ranked by the
-            // weights and knew nothing about why the attack wanted its move.
-            //
-            // `keepsGoal` is undefined when the option was never asked, and
-            // undefined is unknown, never no.
-            if (o.keepsGoal === false) continue;
             var isChain = o.kind === 'chain';
             var cells = cellsSent(engine, o.kind, o.size, o.chain);
             // A BREAK IS AN ATTACK ON YOUR OWN BOARD. It sends nothing, and it is
@@ -1398,31 +1384,6 @@
         // being played, it is being filled.
         var raising = this.raiseMode(info, base);
         this._wantRaise = !!raising;
-        // THE RESERVED BREAK, HANDED TO THE SEARCH THAT BUILDS THE OPTIONS.
-        //
-        // Every path that picks a move reads that list, so the constraint goes in
-        // where the list is made rather than into any one path -- a rule written
-        // into one consumer reaches one consumer, which is how the last four of
-        // these went wrong. The list is built once and memoised, so all the call
-        // sites below pass the same goal or the tagging depends on which path got
-        // there first.
-        //
-        // Null unless the raise is on AND the board has a break to lose: the
-        // predicate sweeps every legal swap, so it is not asked for nothing.
-        var selfG = this;
-        var goalFn = null;
-        // THE MODE, KEPT SEPARATELY FROM THE BUTTON.
-        //
-        // The paths that prepare -- slabSetup, levelFirst -- clear _wantRaise on
-        // purpose, because dropping the intent is how they stop the row while they
-        // work. So _wantRaise is false for the whole of the preparation, and a rule
-        // that reads it to mean "raising" is switched off exactly when it matters:
-        // gated that way the exit gate's reservation saw 10 swaps a game and fired
-        // on none of them.
-        this._raisingNow = raising;
-        if (raising && this.breaksLandingSlab(base)) {
-            goalFn = function (settled) { return selfG.breaksLandingSlab(settled); };
-        }
         // AND WHETHER IT IS HAPPENING, which is not the same as wanting it.
         //
         // The engine is offering the row now, or it is part-way through handing
@@ -1575,7 +1536,7 @@
             }
             if (!survival) {
                 options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
-                                                   this.timing(info, deadline), digging, goalFn);
+                                                   this.timing(info, deadline), digging);
                 var plan = bestPlan(options, info.stopTime || 0, deadline, PanelEngine(),
                                     !!info.toppedOut, info.framesPerRow, this.stack.frames,
                                     tallestOf(pool));
@@ -2034,69 +1995,9 @@
         // already throws away a flatten worth less than it costs, so a flatten plan
         // existing IS the answer and there is no threshold to choose here. Once the
         // board is level the plan stops appearing and the raise resumes on its own.
-        // ONE SAVE READY, THEN RAISE.
-        //
-        // The row is not the problem; raising with nothing set up for what comes
-        // back is. So before the row goes in, the bot makes the move that will
-        // break the slab when it lands, and it raises holding it. A held plan,
-        // played out like the others, because re-planning every decision starts a
-        // different route each time and finishes none.
-        //
-        // It never stalls: with no route available it falls through and raises,
-        // because no answer exists to wait for and a row beats standing still.
-        // BOUNDED, AND THE BOUND HAS NEVER BEEN SEEN TO BIND.
-        //
-        // The route is planned against withSlab, which rests the slab on the
-        // TALLEST column -- and a setup move can change which column that is, so a
-        // plan can run out with the board still not holding the break and the next
-        // decision plans again. The board changes every move, so nothing watching
-        // for a still board would see an opening spent entirely on preparing.
-        //
-        // In practice it cannot run long: `raising` is itself rarely sustained --
-        // stubbing readiness false and handing it a route every decision, the
-        // longest streak is 8 with the count and 8 without, over 1,200 frames that
-        // carried the raise intent on only 4 of them. So this is insurance against
-        // a case not yet observed, not a measured necessity, and there is no test
-        // for it because a test that passes either way is worse than none.
-        var SLAB_TRIES = 8;
-        if (!raising) this._slabTries = 0;
-        if (raising && !this.breaksLandingSlab(base) &&
-            (this._slabTries || 0) < SLAB_TRIES) {
-            var sn = null;
-            if (this._slab && this._slab.moves.length) sn = this._slab.moves[0];
-            else {
-                var sr = this.slabRoute(info, base, deadline, lookDepth);
-                if (sr) { this._slab = { moves: sr.swaps.slice(0), frames: sr.duration || 0,
-                                         startedAt: this.stack.clock }; sn = this._slab.moves[0]; }
-            }
-            if (sn) {
-                var sls = bit.legalSwapsOf(base), sok = false;
-                for (i = 0; i < sls.length; i++) {
-                    if (sls[i][0] === sn[0] && sls[i][1] === sn[1]) { sok = true; break; }
-                }
-                var sspent = Math.max(0, this.stack.clock - (this._slab.startedAt || 0));
-                if (sok && Math.max(0, this._slab.frames - sspent) <= deadline &&
-                    !returnsToSeen(sn)) {
-                    this._slab.moves = this._slab.moves.slice(1);
-                    if (!this._slab.moves.length) this._slab = null;
-                    this._wantRaise = false;
-                    this.raiseFrames = 0;
-                    this._slabTries = (this._slabTries || 0) + 1;
-                    this.counts.slabSetup = (this.counts.slabSetup || 0) + 1;
-                    return { kind: 'swap', move: sn, mode: mode, alive: alive,
-                             via: 'slabSetup' };
-                }
-                this._slab = null;
-            }
-        } else if (raising) {
-            // Holding the break, or out of tries: either way nothing is owed and
-            // the count starts again the next time one is needed.
-            this._slab = null;
-            if (this.breaksLandingSlab(base)) this._slabTries = 0;
-        }
         if (raising) {
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
-                                                   lookDepth, base, this.timing(info, deadline), digging, goalFn);
+                                                   lookDepth, base, this.timing(info, deadline), digging);
             var lvl = this.flattenFirst(options, deadline);
             if (lvl && !returnsToSeen(lvl.swaps[0])) {
                 var lm = lvl.swaps[0], lls = bit.legalSwapsOf(base), lok = false;
@@ -2121,9 +2022,6 @@
             if (rc) {
                 if (raising === 'opening') this.counts.openingRaises++;
                 else this.counts.raisedForMaterial++;
-                // THE BUDGET IS PER ROW, NOT PER OPENING. Spending it once must not
-                // leave every later row unprepared.
-                this._slabTries = 0;
                 return { kind: 'raise', mode: mode, alive: alive, via: 'raise:' + raising };
             }
             // WHILE THE RAISE IS HAPPENING, IT IS NOT SWAPPING.
@@ -2249,7 +2147,7 @@
             }
             if (!haveBreak) {
                 options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
-                                                       lookDepth, base, this.timing(info, deadline), digging, goalFn);
+                                                       lookDepth, base, this.timing(info, deadline), digging);
                 var dp = options.save;
                 if (dp && dp.swaps.length && (dp.duration || 0) <= deadline) {
                     var dm = dp.swaps[0], dls = bit.legalSwapsOf(base), dok = false;
@@ -2285,7 +2183,7 @@
                 this.counts.attackDropped++;
             }
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
-                                                   this.timing(info, deadline), digging, goalFn);
+                                                   this.timing(info, deadline), digging);
             var atk = bestAttack(options, this.weights, PanelEngine(), deadline,
                                  this.stack.frames, (info.framesPerRow || 0) / W);
             if (atk && atk.move && returnsToSeen(atk.move)) {
@@ -2421,7 +2319,7 @@
         var shapeTime = noneClear || (info.stopTime || 0) > 0;
         if (shapeTime && (!this._flatten || !this._flatten.moves.length)) {
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
-                                                    lookDepth, base, this.timing(info, deadline), digging, goalFn);
+                                                    lookDepth, base, this.timing(info, deadline), digging);
         }
         // AND IT HAS TO FIT IN THE TIME THERE IS. The plan is priced in frames like
         // every other -- the walk to each swap, the swap, and the cooldown when one
@@ -2537,31 +2435,6 @@
             r = bit.resolveFromMasks(masks, false);
             bit.swapMasks(masks, sw[i][0], sw[i][1]);
             if (r.scope === 'garbage-broke' || r.total > 0) return true;
-        }
-        return false;
-    };
-
-    // IS THERE A CLEAR THAT WOULD BREAK THE GARBAGE WHEN IT LANDS.
-    //
-    // Not "is there a clear". A raise adds a row the opponent can answer, and the
-    // answer lands on top -- so the question the board has to pass before it
-    // raises is whether something is set up to hit that slab the moment it
-    // arrives. withSlab lays the next one across the stack, and this asks for a
-    // single swap on that board that comes back `garbage-broke`.
-    //
-    // hasFireable accepts any clear and is the emergency valve -- a bare three
-    // holds the floor for 59 frames whether or not it touches garbage, which is
-    // what keeps a full board alive. This is the stricter question, asked only
-    // where raising is the choice being made.
-    BitBot.prototype.breaksLandingSlab = function (masks) {
-        var st = this.withSlab(this.restingBoard(masks));
-        if (!st) return false;
-        var sw = bit.legalSwapsOf(st), i, r;
-        for (i = 0; i < sw.length; i++) {
-            if (!bit.swapMasks(st, sw[i][0], sw[i][1])) continue;
-            r = bit.resolveFromMasks(st, false);
-            bit.swapMasks(st, sw[i][0], sw[i][1]);
-            if (r && r.scope === 'garbage-broke') return true;
         }
         return false;
     };
@@ -2708,20 +2581,6 @@
         // whole and adds a row beneath, so a clear that exists before the row still
         // exists after it -- this refuses only the board that had nothing to fire
         // in the first place, which is exactly the board that must not be filled.
-        // WHAT THE BOARD MUST BE HOLDING BEFORE IT RAISES IS NOT DECIDED HERE.
-        //
-        // A raise invites an answer and the answer lands on top, so the board has
-        // to be holding a clear that HITS THAT SLAB when it arrives -- flat enough
-        // that three adjacent columns reach the top, with a match among them.
-        // Asked here it is a veto, and a veto on the raise is how the opening
-        // starves: the board is refused the row it needs to build the very thing
-        // being demanded of it. Three rules of that shape have been measured and
-        // all three cost lives.
-        //
-        // So the readiness is a thing the bot GOES AND MAKES (see the raising
-        // branch in _decide, beside levelFirst), and what survives here is the
-        // emergency valve: some clear, so the row never lands on a board with
-        // nothing to fire at all.
         if (!this.hasFireable(this.restingBoard(base))) return null;
         return this._opening ? 'opening' : 'material';
     };
@@ -2739,45 +2598,6 @@
     // flatten worth less than it costs (`if (flat && !(flat.value > 0)) flat =
     // null`), so "is there levelling worth doing" is a question it has answered.
     // The route must also finish in the time there is, like every other plan.
-    // THE ROUTE TO A BREAK FOR THE SLAB THAT WILL LAND.
-    //
-    // The raise invites an answer and the answer lands on top, so the board wants
-    // one move ready that hits it -- not a flat board, one save. Asked as a veto
-    // this starves the opening, which is the one thing raising is for; so it is a
-    // PLAN, and the bot spends a move making the answer and then raises holding it.
-    //
-    // Solved on the hypothetical board rather than the real one: withSlab lays the
-    // next slab across the stack, and a route to breaking it is what the search
-    // already finds when DIG is on. The slab sits above the material, so every swap
-    // the route uses is legal on the real board too -- the board it is planned
-    // against differs only in rows nothing is being swapped in.
-    //
-    // Null when there is no route. The caller raises anyway then: no answer is
-    // available, and standing still is worse than a row.
-    BitBot.prototype.slabRoute = function (info, base, deadline, lookDepth) {
-        var rest = this.restingBoard(base);
-        if (!this.withSlab(rest)) return null;
-        var self = this;
-        // ONE GOAL, AND THE ROUTE INCLUDES WHATEVER IT TAKES.
-        //
-        // Not "flatten, then set up". The board wanted is one where a swap breaks
-        // the slab that will land, and levelling is only wanted insofar as it gets
-        // there -- the slab rests on the tallest column and spans the width, so a
-        // break needs three adjacent columns at that height, and making the top row
-        // wide enough is part of the route, not a separate errand before it.
-        //
-        // So the search is handed the goal and finds its own way. Its own value
-        // function still prices the moves; this only decides which board counts as
-        // arriving.
-        var o = bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
-                                   lookDepth, rest, this.timing(info, deadline), false,
-                                   function (settled) { return self.breaksLandingSlab(settled); });
-        var r = o && o.goal;
-        if (!r || !r.swaps.length) return null;
-        if ((r.duration || 0) > deadline) return null;
-        return r;
-    };
-
     BitBot.prototype.flattenFirst = function (options, deadline) {
         var f = options && options.flatten;
         if (!f || !f.swaps.length) return null;
@@ -3133,23 +2953,6 @@
                 pc.swap[1] === d.move[1] && pc.masks) { chosen = pc; break; }
         }
         if (!chosen) return d;
-
-        // KEEPING THE RESERVED BREAK BY SUBSTITUTING THE MOVE DOES NOT PAY.
-        //
-        // The board holds a break for the slab that will land, the chosen move
-        // spends it, and another move in the pool would not -- so swap them. It
-        // works and it costs: 25 substitutions a game on seed 101, and the raises
-        // that arrived holding the break went from 3 of 4 down to 1 of 3.
-        //
-        // The reason is the one this gate already knows about the save rule. The
-        // substitute is ranked by the weights alone, so it overrules whatever the
-        // attack or the setup path chose it for, and being right about the break
-        // does not make it right about the rest. A constraint on which move to
-        // play is not the same as a licence to pick a different one.
-        //
-        // What is left is the search, which plans the setup as a goal and does not
-        // need protecting from the bot afterwards.
-
         // A BREAK THAT LEAVES ANOTHER BREAK IS FREE. That is the whole rule: the
         // save may be spent as long as spending it makes a new one.
         //
