@@ -198,7 +198,7 @@
                         openingRaises: 0, waitedToRaise: 0, saveKept: 0, saveUnkeepable: 0, savePlanned: 0, heldTheBreak: 0, forcedBreak: 0, forcedBoth: 0, refusedEarly: 0,
                         raises: 0, holds: 0, swaps: 0, revealSwaps: 0,
                         revealWindows: 0, digging: 0, flattened: 0, flattenDropped: 0,
-                        refusedStranded: 0, refusedNoFailsafe: 0, refusedSameSwap: 0 };
+                        refusedStranded: 0, refusedNoFailsafe: 0, refusedSameSwap: 0, refusedLoop: 0 };
     }
 
     // WHAT THE ENGINE KNOWS, shared by every candidate in the decision. None of
@@ -3168,8 +3168,90 @@
     // assigned, and the rule it was for never existed.
     BitBot.prototype.decide = function () {
         var d = this._decideGated();
+        d = this.notALoop(d);
         this._lastSwap = (d && d.kind === 'swap' && d.move) ? [d.move[0], d.move[1]] : null;
         return d;
+    };
+
+    // THE CYCLE GUARD, AT THE EXIT, FOR EVERY ROUTE.
+    //
+    // `returnsToSeen` is asked at five route sites and not at keepSave, planSave
+    // or survivalPlan; the `allowed` narrowing that carries it reaches only the
+    // routes that rank candidates, and the save routes pick from the option list
+    // instead. So seed 103 played 5-1 twice running with the guard reporting the
+    // landing at index 1 of its own history -- it saw the return and the move went
+    // out anyway.
+    //
+    // Six copies of one rule with two missing is the bug, not the two. The rule
+    // belongs at the gate every decision leaves by, where a route cannot be added
+    // without it.
+    //
+    // NOT A PREFERENCE. Overruling a frames-priced route with a weights ranking is
+    // measured at 15 deaths in 30 and is why those routes are exempt from
+    // `refuses`. This is not that: a swap that cashes nothing and puts the board
+    // somewhere it has just been buys no frames for any route to have priced.
+    //
+    // Soft, like every other rule at this gate: with nothing better to play the
+    // original stands.
+    BitBot.prototype.notALoop = function (d) {
+        if (!d || d.kind !== 'swap' || !d.move || !this.refuseReturn) return d;
+        var pool = this._lastPool, info = this._lastInfo, base = this._lastBase;
+        if (!pool || !info || !base) return d;
+        var i, picked = null;
+        for (i = 0; i < pool.length; i++) {
+            var pc = pool[i];
+            if (pc.kind === 'swap' && pc.swap && pc.swap[0] === d.move[0] &&
+                pc.swap[1] === d.move[1] && pc.masks) { picked = pc; break; }
+        }
+        if (!picked) return d;
+        var self = this;
+        function cashes(c) {
+            return !!(c.resolved && (c.resolved.total > 0 || c.resolved.brokeGarbage));
+        }
+        function loops(c) {
+            if (cashes(c)) return false;
+            var ls = self._lastSwap;
+            if (ls && c.swap && c.swap[0] === ls[0] && c.swap[1] === ls[1]) return true;
+            return !!c.masks && self._seen.indexOf(signature(c.masks)) >= 0;
+        }
+        if (!loops(picked)) return d;
+        // WHAT THE REPLACEMENT IS RANKED BY, AND WHY IT IS NOT `score`.
+        //
+        // The move being refused buys ZERO frames: it cashes nothing and puts the
+        // board where it has already been. So the replacement has to be measured in
+        // frames, against zero. `score` is the weighted vector in its own units --
+        // it cannot be compared to zero frames, and ranking a substitution by it is
+        // overruling a frames-priced route with a preference, which this file
+        // measures at 15 deaths in 30. Ranked that way the guard fired four times
+        // in one duel and the four were enough: columns 3,4,1,3,4,9, a nine-high
+        // tower, dead at 1,211.
+        //
+        // A CLEAR IS THE EXCEPTION, because a clear buys frames outright -- the
+        // resolve holds the floor and the stop time is awarded. Those are ranked by
+        // `score` as they always were. Everything else is ranked by idleScore,
+        // which is in frames and has no weight in it.
+        var sub = null, cash = null;
+        for (i = 0; i < pool.length; i++) {
+            var sc = pool[i];
+            if (sc === picked || sc.kind !== 'swap' || !sc.masks || !sc.swap) continue;
+            if (loops(sc)) continue;
+            if ((sc.moveFrames || 0) > this._lastDeadline) continue;
+            if (this.deadly(sc.masks, sc.resolved, info,
+                            Math.max((sc.moveFrames || 0) + this.reaction,
+                                     info.framesPerRow || 0))) continue;
+            if (cashes(sc)) {
+                var cv = this.score(sc.masks, sc.moveFrames, sc.resolved, info);
+                if (!cash || cv > cash.score) cash = { cand: sc, score: cv };
+            } else {
+                var sv = this.idleScore(sc, base, info);
+                if (!sub || sv > sub.score) sub = { cand: sc, score: sv };
+            }
+        }
+        if (cash) sub = cash;
+        if (!sub) return d;
+        this.counts.refusedLoop++;
+        return { kind: 'swap', move: sub.cand.swap, mode: d.mode,
+                 alive: d.alive, via: 'unlooped' };
     };
 
     BitBot.prototype._decideGated = function () {
