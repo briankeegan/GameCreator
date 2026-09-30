@@ -160,6 +160,9 @@
         var START = shapeOf(st);
         var BASELOW = START ? START.low : 0;
         var BASEBUMPS = START ? START.bumps : 0;
+        // WHETHER THE BOARD ALREADY HOLDS WHAT THE CALLER RESERVED, and so whether
+        // an option has anything to spend. Asked once, before any move.
+        var BASEGOAL = goal ? !!goal(st) : false, keepBudget = 60;
         var swaps = board ? board.legalSwaps() : bit.legalSwapsOf(st);
         var refused = 0, unknown = 0;
 
@@ -184,6 +187,16 @@
             // which it is -- the landed board's bumpiness says it outright.
             opt.levels = opt.bumps !== null && opt.bumps <= BASEBUMPS;
             opt.opensHole = opt.low === 0 && BASELOW > 0;
+            // DOES PLAYING THIS LEAVE WHAT THE CALLER RESERVED.
+            //
+            // Only when the board has it to lose, and only while the budget lasts
+            // -- the predicate is a sweep of every legal swap, so it is not free.
+            // Undefined means not asked, which a caller must read as "unknown",
+            // never as "no".
+            if (goal && BASEGOAL && keepBudget > 0) {
+                keepBudget--;
+                opt.keepsGoal = !!goal(r.settled);
+            }
             now.push(opt);
         }
 
@@ -329,6 +342,9 @@
         // search does something else; this IS the search when it is passed, and at
         // 24 nodes it barely looked -- one route found over 3,000 frames.
         var goalRoute = null, goalBudget = 400;
+        // WHETHER THE BOARD ALREADY HAS WHAT THE CALLER WANTS, and so whether
+        // there is anything for an option to spend. Asked once.
+
         var readyBudget = 0;
         var FPR = (timing && timing.framesPerRow) || 112;
         var DEADLINE = (timing && timing.deadline) || 0;

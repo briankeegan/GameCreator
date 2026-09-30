@@ -1054,6 +1054,18 @@
             // on a board that already has one is not this move's doing. A break is
             // exempt -- its settled board is unknowable, so `low` is null.
             if (o.opensHole) continue;
+            // AND IT MAY NOT SPEND THE BREAK THE RAISE IS WAITING ON.
+            //
+            // A constraint, not an override: the attack still picks by its own
+            // ranking, among the options that leave the reserved break where it
+            // is. Substituting the chosen move for a break-keeping one was
+            // measured instead -- 25 substitutions a game, and the raises arriving
+            // with the break went DOWN, because the substitute was ranked by the
+            // weights and knew nothing about why the attack wanted its move.
+            //
+            // `keepsGoal` is undefined when the option was never asked, and
+            // undefined is unknown, never no.
+            if (o.keepsGoal === false) continue;
             var isChain = o.kind === 'chain';
             var cells = cellsSent(engine, o.kind, o.size, o.chain);
             // A BREAK IS AN ATTACK ON YOUR OWN BOARD. It sends nothing, and it is
@@ -1386,6 +1398,19 @@
         // being played, it is being filled.
         var raising = this.raiseMode(info, base);
         this._wantRaise = !!raising;
+        // THE RESERVED BREAK, HANDED TO THE SEARCH THAT BUILDS THE OPTIONS.
+        //
+        // Every path that picks a move reads that list, so the constraint goes in
+        // where the list is made rather than into any one path -- a rule written
+        // into one consumer reaches one consumer, which is how the last four of
+        // these went wrong. The list is built once and memoised, so all the call
+        // sites below pass the same goal or the tagging depends on which path got
+        // there first.
+        //
+        // Null unless the raise is on AND the board has a break to lose: the
+        // predicate sweeps every legal swap, so it is not asked for nothing.
+        var selfG = this;
+        var goalFn = null;
         // THE MODE, KEPT SEPARATELY FROM THE BUTTON.
         //
         // The paths that prepare -- slabSetup, levelFirst -- clear _wantRaise on
@@ -1395,6 +1420,9 @@
         // gated that way the exit gate's reservation saw 10 swaps a game and fired
         // on none of them.
         this._raisingNow = raising;
+        if (raising && this.breaksLandingSlab(base)) {
+            goalFn = function (settled) { return selfG.breaksLandingSlab(settled); };
+        }
         // AND WHETHER IT IS HAPPENING, which is not the same as wanting it.
         //
         // The engine is offering the row now, or it is part-way through handing
@@ -1547,7 +1575,7 @@
             }
             if (!survival) {
                 options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
-                                                   this.timing(info, deadline), digging);
+                                                   this.timing(info, deadline), digging, goalFn);
                 var plan = bestPlan(options, info.stopTime || 0, deadline, PanelEngine(),
                                     !!info.toppedOut, info.framesPerRow, this.stack.frames,
                                     tallestOf(pool));
@@ -2068,7 +2096,7 @@
         }
         if (raising) {
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
-                                                   lookDepth, base, this.timing(info, deadline), digging);
+                                                   lookDepth, base, this.timing(info, deadline), digging, goalFn);
             var lvl = this.flattenFirst(options, deadline);
             if (lvl && !returnsToSeen(lvl.swaps[0])) {
                 var lm = lvl.swaps[0], lls = bit.legalSwapsOf(base), lok = false;
@@ -2221,7 +2249,7 @@
             }
             if (!haveBreak) {
                 options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
-                                                       lookDepth, base, this.timing(info, deadline), digging);
+                                                       lookDepth, base, this.timing(info, deadline), digging, goalFn);
                 var dp = options.save;
                 if (dp && dp.swaps.length && (dp.duration || 0) <= deadline) {
                     var dm = dp.swaps[0], dls = bit.legalSwapsOf(base), dok = false;
@@ -2257,7 +2285,7 @@
                 this.counts.attackDropped++;
             }
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
-                                                   this.timing(info, deadline), digging);
+                                                   this.timing(info, deadline), digging, goalFn);
             var atk = bestAttack(options, this.weights, PanelEngine(), deadline,
                                  this.stack.frames, (info.framesPerRow || 0) / W);
             if (atk && atk.move && returnsToSeen(atk.move)) {
@@ -2393,7 +2421,7 @@
         var shapeTime = noneClear || (info.stopTime || 0) > 0;
         if (shapeTime && (!this._flatten || !this._flatten.moves.length)) {
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
-                                                    lookDepth, base, this.timing(info, deadline), digging);
+                                                    lookDepth, base, this.timing(info, deadline), digging, goalFn);
         }
         // AND IT HAS TO FIT IN THE TIME THERE IS. The plan is priced in frames like
         // every other -- the walk to each swap, the swap, and the cooldown when one
