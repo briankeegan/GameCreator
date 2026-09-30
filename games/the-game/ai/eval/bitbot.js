@@ -1009,6 +1009,43 @@
     // `options`, so attacking walked past it: on seed 101 the board sat between
     // half a row and one and a half rows of material for three thousand frames
     // firing threes off six panels, and a 31-cell slab landed on nothing.
+    // THE SHAPE RULES BOTH PATHS OBEY, IN ONE PLACE.
+    //
+    // Each of these lived as two copies in two currencies, and copies drift --
+    // that is the documented history of this file. `levels` reached bestAttack
+    // only, and the move that built the tower it was written for came via the
+    // survival plan. `opensHole` reached bestAttack only, through seven more
+    // deaths. Both were found late because there was nothing that could notice.
+    // One predicate, two callers, and a test that the two refuse the same set.
+    //
+    // REFUSALS, NOT PRICES. Each is a transition that ends something the board
+    // cannot get back: a column that can no longer hold a vertical match, a slab
+    // that can no longer be reached. Two ways to break down to one is ordinary
+    // and a rate can weigh it; one down to none ends the game and a rate cannot.
+    function ruinsShape(o) {
+        // The move that empties a column. A column at zero holds no vertical
+        // match, breaks the adjacency a horizontal one needs, and is where a slab
+        // bridges -- garbage rests on the tall columns and spans the width, so
+        // the empty column is sealed and nothing under it can reach the slab.
+        if (o.opensHole) return true;
+        // The move that takes the last way to break. A garbage cell comes off the
+        // board one way, three panels in a line against it, and a cell that never
+        // comes off is a row of ceiling gone for good.
+        if (o.closesBreak) return true;
+        return false;
+    }
+
+    // HOW FAR UNDER THE WORKING FLOOR THE BOARD THIS LANDS ON WOULD BE, in rows.
+    // Both paths charge for it, each in its own currency: bestAttack at W cells a
+    // row, bestPlan at framesPerRow. Same number, two conversions.
+    //
+    // A break is exempt without being excused -- it ADDS material, and its settled
+    // board is unknowable so `mat` is null anyway.
+    function shortfallOf(o) {
+        return (o.mat === null || o.mat === undefined)
+             ? 0 : Math.max(0, WORKING_ROWS - o.mat);
+    }
+
     function bestAttack(list, weights, engine, deadline, framesTable, perPanelFrames) {
         var best = null, all = list.now.concat(list.next), i;
         // THE ATTACKS THAT DO NOT COST SHAPE, IF THERE ARE ANY.
@@ -1051,7 +1088,7 @@
             // can weigh away. Only the move that OPENS the hole is refused; playing
             // on a board that already has one is not this move's doing. A break is
             // exempt -- its settled board is unknowable, so `low` is null.
-            if (o.opensHole) continue;
+            if (ruinsShape(o)) continue;
             var isChain = o.kind === 'chain';
             var cells = cellsSent(engine, o.kind, o.size, o.chain);
             // A BREAK IS AN ATTACK ON YOUR OWN BOARD. It sends nothing, and it is
@@ -1083,8 +1120,7 @@
             // cells of garbage and no way to put three of them against the slab.
             // A break is exempt without being excused -- its settled board is
             // unknowable so `mat` is null, and it ADDS material besides.
-            var short = (o.mat === null || o.mat === undefined)
-                      ? 0 : Math.max(0, WORKING_ROWS - o.mat);
+            var short = shortfallOf(o);
             cells -= short * W;
             if (cells <= 0) continue;                       // sends nothing, holds nothing
             // The vector's taste for this shape, read off the same buckets the
@@ -1242,8 +1278,22 @@
             // unknowable so `mat` is null anyway.
             if (o.mat !== null && o.mat !== undefined && o.mat < WORKING_ROWS &&
                 !o.breaks && (o.total || 0) > 0) continue;
-            var shortfall = (o.mat === null || o.mat === undefined)
-                          ? 0 : Math.max(0, WORKING_ROWS - o.mat);
+            // AND A PLAN MAY NOT BE THE MOVE THAT OPENS A HOLE, EITHER.
+            //
+            // The rule bestAttack has had for a while, on the path that picks most
+            // of the moves. A column at zero holds no vertical match, breaks the
+            // adjacency a horizontal one needs, and is where a slab bridges --
+            // garbage rests on the tall columns and spans the width, so the empty
+            // column is sealed and nothing under it can reach the slab. Seven
+            // deaths measured over two builds, every one of them a column at zero,
+            // one or two standing beside a tower.
+            //
+            // Only the move that OPENS the hole, as in bestAttack: playing on a
+            // board that already has one is not this move's doing. A break is
+            // exempt without being excused -- its settled board is unknowable, so
+            // `low` is null and `opensHole` is false.
+            if (ruinsShape(o)) continue;
+            var shortfall = shortfallOf(o);
             // AND WHAT THE CLEAR HOLDS WHILE IT RESOLVES, WHICH IS A DIFFERENT
             // THING FROM THE PANELS IT REMOVES.
             //
@@ -3195,6 +3245,7 @@
     // testable on its own, and a test that plays a game to reach it is not a test
     // of the choice.
     BitBot.bestPlanOf = bestPlan;
+    BitBot.ruinsShapeOf = ruinsShape;
     BitBot.WORKING_ROWS = WORKING_ROWS;
     BitBot.STARTER = STARTER;
     return BitBot;

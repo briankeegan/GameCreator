@@ -182,6 +182,11 @@
         var START = shapeOf(st);
         var BASELOW = START ? START.low : 0;
         var BASEBUMPS = START ? START.bumps : 0;
+        // AND WHETHER THE BOARD CAN BREAK AT ALL BEFORE ANY MOVE, for the same
+        // reason: an option is asked whether IT takes the last way to break, not
+        // whether it merely lands on a board that has none. False when there is no
+        // garbage, and then nothing can close what was never open.
+        var BASEBREAK = breakReadyOf(st) === true;
         var swaps = board ? board.legalSwaps() : bit.legalSwapsOf(st);
         var refused = 0, unknown = 0;
 
@@ -207,6 +212,26 @@
             opt.levels = opt.bumps !== null && opt.bumps <= BASEBUMPS;
             opt.opensHole = opt.low === 0 && BASELOW > 0;
             opt.breakReady = r.settled ? breakReadyOf(r.settled) : null;
+            // THE MOVE THAT TAKES THE LAST WAY TO BREAK.
+            //
+            // A TRANSITION, THE WAY opensHole IS, AND NOT A STATE. `breakReady`
+            // false on its own says the landed board cannot break -- which is just
+            // as true of a board that already could not, so refusing on it punishes
+            // a position rather than the move that made it, and on a board with no
+            // break left it throws every option away. Measured that way: three
+            // deaths among STARTER and ZERO in thirteen pairings against none in
+            // sixty. `low === 0 && BASELOW > 0` is the shape that works and this is
+            // the same shape.
+            //
+            // It can never empty the list: silent when the base board cannot break,
+            // and when it can, the move that KEEPS the break is by definition still
+            // on it. And it is a cliff rather than a slope -- two ways to break
+            // down to one is ordinary, one down to none ends the game -- which is
+            // why a price was the wrong instrument for it.
+            //
+            // null on a break stays null: a break's settled board is unknowable and
+            // a null is not a no.
+            opt.closesBreak = BASEBREAK && opt.breakReady === false;
             now.push(opt);
         }
 
@@ -428,6 +453,7 @@
                                 opt.levels = opt.bumps !== null && opt.bumps <= BASEBUMPS;
                                 opt.opensHole = opt.low === 0 && BASELOW > 0;
                                 opt.breakReady = res.settled ? breakReadyOf(res.settled) : null;
+                                opt.closesBreak = BASEBREAK && opt.breakReady === false;
                                 next.push(opt);
                             }
                             continue;

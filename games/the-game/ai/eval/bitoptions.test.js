@@ -587,6 +587,48 @@ if (flatSpread !== 0) {
         ' rather than null -- a false there narrows the one move that takes ' +
         'garbage off the board straight out of both paths');
 
+    // AND `closesBreak` IS THE TRANSITION, NOT THE STATE. The move that takes the
+    // LAST way to break, the way opensHole is the move that empties a column.
+    // `breakReady === false` on its own is just as true of a board that already
+    // could not break, so a rule built on it punishes a position instead of the
+    // move that made it -- and on a board with no break left it flags every
+    // option at once, which is how the absolute form cost three deaths among
+    // STARTER and ZERO in thirteen pairings.
+    //
+    // On a board that CAN break, some option has to close it and the flag has to
+    // track breakReady exactly.
+    var shut = apart.filter(function (x) { return x.closesBreak; });
+    bok(shut.length > 0,
+        '`closesBreak`: not one option on a breakable board takes the last break, ' +
+        'so this checks nothing');
+    bok(apart.every(function (x) { return x.closesBreak === (x.breakReady === false); }),
+        '`closesBreak`: disagrees with `breakReady` on a board that can break -- on ' +
+        'such a board the two are the same question and the transition is the state');
+
+    // ON A BOARD THAT ALREADY CANNOT BREAK, NOTHING CLOSES ANYTHING. This is the
+    // case the absolute form got wrong and the one that matters: every option
+    // there carries breakReady false, so a rule built on the state flags all of
+    // them at once and both paths lose their whole list. Three deaths among
+    // STARTER and ZERO in thirteen pairings, against none in sixty.
+    //
+    // Three rows under a full slab with no one-swap break anywhere on it.
+    var sealed = listOf([[4, 5, 1, 'G'], [4, 3, 3, 'G'], [2, 5, 1, 'G'],
+                         [5, 1, 3, 'G'], [1, 3, 2, 'G'], [1, 3, 3, 'G']]);
+    bok(sealed.length > 0, '`closesBreak`: the sealed board offered no options at all');
+    bok(sealed.some(function (x) { return x.breakReady === false; }),
+        '`closesBreak`: no option on the sealed board lands unable to break, so the ' +
+        'state and the transition cannot be told apart here and this checks nothing');
+    bok(sealed.every(function (x) { return x.closesBreak === false; }),
+        '`closesBreak`: flagged an option on a board that ALREADY cannot break. ' +
+        'Nothing can close a door that is shut, and flagging them takes the whole ' +
+        'option list away from both paths -- which is the measured regression');
+
+    // AND A CLEAN BOARD CLOSES NOTHING EITHER: with no garbage there is no break
+    // to lose, so the flag must be off on every option.
+    bok(clean.every(function (x) { return x.closesBreak === false; }),
+        '`closesBreak`: flagged an option on a board with no garbage on it, where ' +
+        'there is no break to take away');
+
     console.log('  breakReady: ' + (bfails ? bfails + ' FAILED' :
                 'every option says whether the board it lands on can still break'));
     if (bfails) process.exit(1);
