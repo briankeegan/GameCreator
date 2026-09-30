@@ -192,7 +192,21 @@
         // that is one swap from the break rather than holding it counts at 1/W --
         // the same fraction a save (DEADLINE/W * W) and a dig cell one step from
         // one (DEADLINE/W) are already counted at.
-        var PREPWORTH = FPR / W;
+        // WHAT READINESS IS WORTH, DERIVED, AND WHY BREAKING OUTRANKS FIRING.
+        //
+        // Holding a clear you can fire on demand buys the floor held for its own
+        // resolve -- holdWorth, the engine's number, carried in because there is no
+        // engine here. Breaking buys that hold AND a row of ceiling handed back, so
+        // it is worth FPR more.
+        //
+        // Both are NEAR, not held: one swap away, and for the slab not even landed.
+        // The file's rate for near-versus-holding is 1/W -- a save counts at
+        // (DEADLINE/W)*W and a dig cell one step from one at DEADLINE/W -- so both
+        // take it. Breaking then outranks firing by arithmetic rather than by a
+        // precedence rule someone wrote.
+        var HOLD = (timing && timing.holdWorth) || 0;
+        var READYWORTH = HOLD / W;
+        var PREPWORTH = (FPR + HOLD) / W;
         // THE MATERIAL FLOOR. bestAttack and bestPlan each refuse a move that
         // spends the board below it; none of the routes ranked in here did, and
         // they are the ones that pick the move on a dying board. Seed 103 walked
@@ -234,6 +248,33 @@
         // are built before that runs, and a base of zero makes every gain look
         // like progress.
         BASEDIG = DIG ? reachOf(st).dig : 0;
+        // THE MOVE JUST PLAYED, WHEN REPLAYING IT WOULD SIMPLY UNDO IT.
+        //
+        // Measured over one duel: 219 decisions repeated the previous move, 177 of
+        // them with a panel in BOTH cells -- a true exchange, so the board came back
+        // to exactly where it had been. 42 had one cell empty, which is a panel
+        // sliding along and is ordinary play. The 177 are decisions spent going
+        // nowhere while the floor keeps rising.
+        //
+        // The repeats came from every route -- bestAttack 47, levelFirst 31,
+        // survivalPlan 28, flatten 28, digPlan 24, attackPlan 22 -- so a rule that
+        // narrows one route's list cannot reach them. Excluded HERE, where all of
+        // them get their options, so each picks its own next best and there is
+        // nothing to substitute and nothing to reconcile.
+        //
+        // A move that CASHES is never excluded: swap, let a stack drop, swap the
+        // same cells again is how a board reaches a slab it could not touch.
+        var AVOID = (timing && timing.avoidSwap) || null;
+        function undoesLast(row, col, res) {
+            if (!AVOID || !AVOID.length) return false;
+            if (res && (res.total > 0 || res.scope === 'garbage-broke')) return false;
+            var b = 1 << (row - 1);
+            if (!(st.occ[col] & b) || !(st.occ[col + 1] & b)) return false;
+            for (var q = 0; q < AVOID.length; q++) {
+                if (AVOID[q][0] === row && AVOID[q][1] === col) return true;
+            }
+            return false;
+        }
         var swaps = board ? board.legalSwaps() : bit.legalSwapsOf(st);
         var refused = 0, unknown = 0;
 
@@ -248,6 +289,7 @@
             // Discarding these made every digging option invisible.
             var broke = r.scope === 'garbage-broke';
             if (r.scope !== 'ok' && !broke) { unknown++; continue; }
+            if (undoesLast(swaps[i][0], swaps[i][1], r)) { refused++; continue; }
             if (r.total === 0 && !broke) continue;           // clears nothing: a setup, not an option
             var opt = optionOf([swaps[i]], travel.cost(cursor[0], cursor[1], swaps[i][0], swaps[i][1]), r);
             opt.breaks = broke;
@@ -426,7 +468,7 @@
         //
         // null when the landed board carries no garbage -- the question does not
         // apply, and a null is not a no. Being ready for the slab that has not
-        // landed yet is a different question and flatSlab already asks it.
+        // landed yet is a different question and the readiness credit already asks it.
         function breakReadyOf(state) {
             var c, any = false;
             for (c = 1; c <= W; c++) if (state.garb[c]) { any = true; break; }
@@ -493,7 +535,7 @@
             return { mask: reach, dig: dig };
         }
 
-        var flat = null, flatReady = null, flatSlab = null, save = null, ready = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
+        var flat = null, save = null, ready = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
         var slabBudget = 0, stopBudget = 0, dropBudget = 0;
 
         function expandAll(state0, depth) {
@@ -547,6 +589,11 @@
                         var cost = node.spent + travel.cost(node.from[0], node.from[1], sw[0], sw[1]);
                         var broke = res.scope === 'garbage-broke';
                         if (res.scope !== 'ok' && !broke) continue;
+                        // AND NOT THE UNDO, when it is the move that would be PLAYED.
+                        // Only ply one is played; a repeat deeper in a sequence is a
+                        // hypothetical continuation off a board that has already
+                        // changed, which is not an undo of anything.
+                        if (ply === 1 && undoesLast(sw[0], sw[1], res)) continue;
                         if (res.total > 0 || broke) {
                             // A CASH ENDS THE LINE. Recorded only when something was
                             // set up first -- a cash with an empty chain is a depth-1
@@ -750,32 +797,43 @@
                                 // So both are kept and the ready one is preferred.
                                 // readyOf is budgeted and only asked of a route that
                                 // would otherwise win, which is a handful a sweep.
-                                var take = !flat || val > flat.value;
-                                var takeReady = !flatReady || val > flatReady.value;
-                                // A THIRD CLASS: the flattest that lands able to
-                                // break what comes down next. Its own winner, because
-                                // a clear that breaks the slab is still a clear -- so
-                                // `slabReady || ready` accepts what ready accepted and
-                                // prefers nothing. Its own budget, or it halves ready's.
-                                // AND THE BUDGET COMES BEFORE THE WORK.
-                                // slabReadyBoard sweeps every legal swap on a copy of
-                                // the board; asking it first and then deciding whether
-                                // the answer was affordable bounds nothing at all.
-                                var takeSlab = !flatSlab || val > flatSlab.value;
-                                if (takeSlab && slabBudget > 0 &&
-                                    slabReadyFast(res.settled)) {
+                                // ONE WINNER, WITH READINESS IN THE NUMBER.
+                                //
+                                // There were three -- the flattest, the flattest that
+                                // lands able to fire, the flattest that lands able to
+                                // break -- all ranked by this same `val` and differing
+                                // only in which landings they would accept, then
+                                // reconciled afterwards by hand: the firing one taken
+                                // outright, the breaking one only on a tie. Those two
+                                // lines WERE the ordering, and they had firing above
+                                // breaking, which is backwards -- firing is how a board
+                                // breaks and breaking is how it stops dying.
+                                //
+                                // Priced instead, there is one argmax and nothing to
+                                // reconcile. It also answers the measurement that
+                                // bounded the old override to ties: taken outright it
+                                // cost 10 deaths over 24 pairings against 7 over 30,
+                                // because it bought readiness at ANY loss of flatness.
+                                // A credit cannot do that -- it is worth what it is
+                                // worth and the flatter board still wins when it is
+                                // worth more.
+                                //
+                                // THE PREDICATES ARE SWEEPS, so each is asked only of a
+                                // landing that could win once credited. That is the
+                                // bound the old budgets were protecting, stated exactly
+                                // rather than as a quota.
+                                var credit = 0;
+                                var floor2 = flat ? flat.value : -Infinity;
+                                if (slabBudget > 0 && val + PREPWORTH > floor2) {
                                     slabBudget--;
-                                    flatSlab = { swaps: seq, frames: cost, value: val,
-                                                 tall: sh2.tall, bumps: sh2.bumps,
-                                                 ways: ways2, duration: dur,
-                                                 lands: bit.copyState(res.settled) };
+                                    if (slabReadyFast(res.settled)) credit = PREPWORTH;
                                 }
-                                if (takeReady && readyOf(res.settled)) {
-                                    flatReady = { swaps: seq, frames: cost, value: val,
-                                                  tall: sh2.tall, bumps: sh2.bumps,
-                                                  ways: ways2, duration: dur,
-                                                  lands: bit.copyState(res.settled) };
+                                if (!credit && val + READYWORTH > floor2 &&
+                                    readyOf(res.settled)) {
+                                    credit = READYWORTH;
                                 }
+                                val += credit;
+                                var take = !flat || val > flat.value;
                                 // AND THE TWO FALLBACK ROUTES, ON THE SAME NUMBER.
                                 //
                                 // `save` is the route back to holding a break and
@@ -879,12 +937,10 @@
         // Worth naming only if it buys more frames than it costs. Standing still is
         // worth zero.
         if (flat && !(flat.value > 0)) flat = null;
-        if (flatReady && !(flatReady.value > 0)) flatReady = null;
         // THE ONE THAT LANDS READY, WHEN THERE IS ONE. Both are worth more than they
         // cost by the test above; between them, the board that can fire when it
         // arrives is the one to arrive at.
-        if (flatSlab && !(flatSlab.value > 0)) flatSlab = null;
-        if (flatReady) flat = flatReady;
+
         // AND READY FOR WHAT LANDS BEATS MERELY READY -- BUT NEVER AT A PRICE.
         //
         // Taken outright it measured worse: 10 deaths over 24 pairings with 2 among
@@ -893,7 +949,7 @@
         // alternative was, so readiness was bought with levelling the board needed.
         // Bounded to routes that are not worse, it can only pick a different winner
         // among equals.
-        if (flatSlab && (!flat || flatSlab.value >= flat.value)) flat = flatSlab;
+
         // AND THE BIGGEST FREEZE AT THE FAR END BEATS MERELY LANDING ABLE TO FIRE,
         // ON THE SAME TERMS THE SLAB OVERRIDE IS ON: never at the price of a
         // flatter board. Taken outright, the slab version of this measured 10
@@ -908,12 +964,8 @@
             flat.landStop = bit.bestOneSwapStop(flat.lands, stopPrice);
         }
 
-        // `flattenReady` is the flatten winner restricted to landings that can
-        // fire. Returned beside the others so the gate can check that `ready`,
-        // which accepts exactly the same landings, agrees with it on value --
-        // which it only does while both are ranked by `val`.
         return { now: now, next: next, cheapest: cheapest, flatten: flat, save: save,
-                 ready: ready, flattenReady: flatReady,
+                 ready: ready,
                  swapsConsidered: swaps.length, refused: refused, unknown: unknown };
     }
 
