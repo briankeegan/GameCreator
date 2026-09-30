@@ -138,6 +138,26 @@
                  tall: sh ? sh.tall : null, bumps: sh ? sh.bumps : null,
                  mat: sh ? sh.mat : null, low: sh ? sh.low : null,
                  spread: sh ? sh.spread : null,
+                 // THE VOID THE SLAB SEALS OVER, IN ROWS.
+                 //
+                 // Garbage rests on the TALLEST column and spans the width, so every
+                 // column shorter than it has the difference in empty rows sealed
+                 // underneath. Summed:
+                 //
+                 //   void = SUM(high - h[c]) = W*high - SUM(h) = W * (high - mat)
+                 //
+                 // so in rows it is (high - mat), and a row of void is a row of
+                 // ceiling gone -- framesPerRow, like height.
+                 //
+                 // Nothing else sees it. `tall` does not move when a SHORT column
+                 // drops, and `excess` is deviation about the mean, not a deficit
+                 // against the column the slab rests on. Seed 103 reached 7,4,2,3,3,4
+                 // -- 19 panels of void -- and by then every clear on the board
+                 // emptied one of the short columns and made the seal worse, while
+                 // nothing in the tower could be cleared at all. It has to be priced
+                 // while the board is still healthy, which is why it is on the option
+                 // and not in one route's value.
+                 voidRows: sh ? (sh.high - sh.mat) : null,
                  // CAN THE BOARD THIS LANDS ON STILL FIRE.
                  //
                  // Firing anything holds the floor for its resolve, and at
@@ -235,6 +255,7 @@
         // reason: an option is asked whether IT takes the last way to break, not
         // whether it merely lands on a board that has none. False when there is no
         // garbage, and then nothing can close what was never open.
+        var BASEVOID = START ? (START.high - START.mat) : 0;
         var BASEBREAK = breakReadyOf(st) === true;
         LASTBREAKREADY = BASEBREAK;
         // AND HOW MANY WAYS THERE ARE TO REACH THE GARBAGE BEFORE ANY MOVE.
@@ -332,6 +353,10 @@
             // Zero off the slab: with no garbage there is nothing to dig toward. Zero on
             // a break too -- its settled board is unknowable.
             opt.digGain = (DIG && r.settled) ? reachOf(r.settled).dig - BASEDIG : 0;
+            // AND THE CHANGE IN THAT VOID, a delta for the same reason digGain is
+            // one: an absolute count is a fact about the position, not the move.
+            opt.voidGain = (opt.voidRows === null || opt.voidRows === undefined)
+                             ? 0 : (BASEVOID - opt.voidRows);
             // AND WHETHER THE BOARD IT LANDS ON COULD ANSWER THE NEXT SLAB.
             //
             // slabReadyFast asks whether a three can be put against the row the next
@@ -622,6 +647,10 @@
                                 // Zero off the slab: with no garbage there is nothing to dig toward. Zero on
                                 // a break too -- its settled board is unknowable.
                                 opt.digGain = (DIG && res.settled) ? reachOf(res.settled).dig - BASEDIG : 0;
+                                // AND THE CHANGE IN THAT VOID, a delta for the same reason digGain is
+                                // one: an absolute count is a fact about the position, not the move.
+                                opt.voidGain = (opt.voidRows === null || opt.voidRows === undefined)
+                                                 ? 0 : (BASEVOID - opt.voidRows);
                                 // AND WHETHER THE BOARD IT LANDS ON COULD ANSWER THE NEXT SLAB.
                                 //
                                 // slabReadyFast asks whether a three can be put against the row the next

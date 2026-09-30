@@ -1160,6 +1160,9 @@
             // unknowable so `mat` is null, and it ADDS material besides.
             var short = shortfallOf(o);
             cells -= short * W;
+            // AND THE VOID THE SLAB WOULD SEAL, in this ranking's currency: a row of
+            // void is a row of ceiling, and a row is W panels.
+            cells += (o.voidGain || 0) * W;
             // AND BEING READY FOR THE SLAB THAT IS COMING. Worth a row of rise,
             // converted to this ranking's currency. Zero unless there is a slab
             // to be ready for, so it cannot speak on a clean board.
@@ -1442,6 +1445,9 @@
             var bought = o.total * perPanel + holds + (o.garbage || 0) * perCell
                        + lowered * (framesPerRow || 0) + gain
                        - shortfall * (framesPerRow || 0)
+                       // AND THE VOID THE SLAB WOULD SEAL -- a row of it is a row of
+                       // ceiling, so framesPerRow, as height is.
+                       + (o.voidGain || 0) * (framesPerRow || 0)
                        + digs
                        // AND BEING READY FOR THE SLAB THAT IS COMING -- already in
                        // frames, which is this ranking's currency. See bestAttack.
