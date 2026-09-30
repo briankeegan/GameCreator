@@ -194,6 +194,9 @@
     var envOn = function (k) { return typeof process !== 'undefined' && process.env && process.env[k] === '1'; };
     this.engineCheck = !!opts.engineCheck || envOn('GC_ENGINE_CHECK');
     this.fastEngine = !!opts.fastEngine || envOn('GC_FAST_ENGINE') || this.engineCheck;
+    // The survival search's order: breadth first (the default) or 'best'
+    // (opts.surviveSearch or GC_SURVIVE_SEARCH; experimental).
+    this.surviveSearch = opts.surviveSearch || (typeof process !== 'undefined' && process.env && process.env.GC_SURVIVE_SEARCH) || null;
     // Worker threads for the survival search: opts.threads or GC_THREADS, a
     // number or 'auto' (one per core). The main thread only coordinates.
     // In a browser the page must be cross-origin isolated for shared memory.
@@ -2451,6 +2454,7 @@
   PuyoCpu.prototype.SURVIVE_SEEDS = 30;
   PuyoCpu.prototype.SURVIVE_SEARCH_BUDGET = 60000;
   PuyoCpu.prototype.SURVIVE_SEARCH_BUDGET_CHEAP = 4000;
+  PuyoCpu.prototype.SURVIVE_BEST_CAP = 64;
   PuyoCpu.prototype.FOLLOW_FAST = 540;
   // The followed line replayed from this board, or null when it is not
   // followed here or no longer reaches FOLLOW_FAST frames alive.
@@ -2603,11 +2607,53 @@
     function better(x, y) {
       return ((y.t + self._heldFor(y.carry)) - (x.t + self._heldFor(x.carry))) || (garb(x.b) - garb(y.b)) || (top(x.b) - top(y.b));
     }
+    // BEST FIRST (surviveSearch 'best', experimental): each move keeps its
+    // own boards, and in turn each open move expands the one of them that
+    // lives longest; a move stops at its first line to the horizon, and dies
+    // when it has no board left.
+    if (this.surviveSearch === 'best') {
+      var heaps = {}, seenT = {}, order = [], CAP = this.SURVIVE_BEST_CAP;
+      for (i = 0; i < level.length; i++) {
+        var lt = level[i].tag;
+        if (!heaps[lt]) { heaps[lt] = []; seenT[lt] = {}; order.push(lt); }
+        heaps[lt].push(level[i]);
+      }
+      order.sort(function (a, b) { return a - b; });
+      var anyOpen = true;
+      while (anyOpen && budget > 0) {
+        anyOpen = false;
+        for (var oi = 0; oi < order.length && budget > 0; oi++) {
+          var tg = order[oi], hp = heaps[tg];
+          if (verdict[tg] || !hp.length) continue;
+          anyOpen = true;
+          hp.sort(function (x, y) { return (x.seed ? 0 : 1) - (y.seed ? 0 : 1) || better(x, y); });
+          n = hp.shift();
+          var mv = [ 'long', null ].concat(n.b.legalSwaps());
+          for (j = 0; j < mv.length && budget > 0; j++) {
+            budget--;
+            c = mv[j] === 'long' ? this._lineStep(n, null, true) : this._lineStep(n, mv[j], false);
+            if (!c) continue;
+            c.tag = tg; c.prev = n; c.m = mv[j]; c.seed = n.seed;
+            note(tg, c);
+            if (c.t >= FULL && !c.dead) { verdict[tg] = 'proven'; proofs[tg] = c; if (this._proofs) this._proofs[tg] = c; break; }
+            if (c.t >= this.SURVIVE_FRAMES && !weak[tg]) weak[tg] = c;
+            if (c.dead) continue;
+            var hk = (c.b.key || JSON.stringify(c.b.grid)) + '|' + this._heldFor(c.carry) + '|' + c.pos;
+            if (seenT[tg][hk]) continue;
+            seenT[tg][hk] = 1;
+            hp.push(c);
+          }
+          if (hp.length > CAP) { hp.sort(better); hp.length = CAP; }
+        }
+      }
+      level = [];
+      for (i = 0; i < order.length; i++) if (!verdict[order[i]]) level = level.concat(heaps[order[i]]);
+    }
     // ON THREADS every board of the level is played on the workers, which
     // keep them; what comes back is what this loop reads of each, and the
     // loop is the same one.
-    var par = real && this.threads > 1 && this.fastEngine && FastStack ? this._svBegin() : null;
-    while (level.length && budget > 0) {
+    var par = real && this.surviveSearch !== 'best' && this.threads > 1 && this.fastEngine && FastStack ? this._svBegin() : null;
+    while (this.surviveSearch !== 'best' && level.length && budget > 0) {
       if (this.threads && !par) { this._curLevel = level; this._curVerdict = verdict; }
       var next = [], seen = {}, kids = par ? this._svLevel(par, level, verdict, budget) : null;
       for (i = 0; i < level.length && budget > 0; i++) {

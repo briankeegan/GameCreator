@@ -25,6 +25,9 @@ on:
       survive_budget:
         description: 'The survival search step budget (empty = the bot''s own)'
         default: ''
+      survive_search:
+        description: 'The survival search order: empty = breadth first (the bot''s own), best = best first (experimental)'
+        default: ''
       threads:
         description: 'Worker threads for the search (0 = none, auto = one per core)'
         default: 'auto'
@@ -52,7 +55,7 @@ jobs:
         timeout-minutes: 345
         run: |
           set -o pipefail
-          GC_REALTIME=${{ inputs.realtime }} GC_REALTIME_STEPS=${{ inputs.realtime_steps }} GC_QUICK=${{ inputs.quick }} GC_SURVIVE_BUDGET=${{ inputs.survive_budget }} GC_THREADS=${{ inputs.threads }} GC_FAST_ENGINE=${{ inputs.fast_engine }} GC_ENGINE_CHECK=${{ inputs.engine_check }} node games/the-game/ai/eval/survival_game.js ${{ matrix.seed }} ${{ inputs.frames }} | tee game.log
+          GC_REALTIME=${{ inputs.realtime }} GC_REALTIME_STEPS=${{ inputs.realtime_steps }} GC_QUICK=${{ inputs.quick }} GC_SURVIVE_BUDGET=${{ inputs.survive_budget }} GC_SURVIVE_SEARCH=${{ inputs.survive_search }} GC_THREADS=${{ inputs.threads }} GC_FAST_ENGINE=${{ inputs.fast_engine }} GC_ENGINE_CHECK=${{ inputs.engine_check }} node games/the-game/ai/eval/survival_game.js ${{ matrix.seed }} ${{ inputs.frames }} | tee game.log
       - name: Summary
         if: always()
         run: |
