@@ -2109,7 +2109,22 @@
             // panels a chain is made of are locked inside the slab, and every row
             // of slab is a row of ceiling gone. It still has to survive its own
             // cost like any other move.
-            if (haveBreak && materialRows(base) < 6) {
+            // A BREAK IN HAND IS PLAYED. NOT ONLY WHEN SHORT OF MATERIAL.
+            //
+            // It used to wait for the board to drop under six rows, inherited from
+            // "breaking is the priority under six rows" -- a rule about which
+            // candidate to prefer, borrowed as a condition on whether to play a
+            // break at all. So with material in hand the bot could hold a break and
+            // attack instead, and the slab stayed.
+            //
+            // Nothing outranks it. A break holds the floor for its whole resolve
+            // exactly as any clear does, AND converts the slab's cells into panels,
+            // AND hands back the rows it was occupying -- and a garbage cell can
+            // never come off the board any other way. The boards that die are the
+            // ones where the garbage was never broken: seed 101 rand4 took 26 cells
+            // and broke none of them, and by the end the slab had bridged on a lone
+            // tower and sealed every column under it.
+            if (haveBreak) {
                 var bk = null;
                 for (i = 0; i < pool.length; i++) {
                     var bc = pool[i];
