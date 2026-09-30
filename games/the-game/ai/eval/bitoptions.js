@@ -182,6 +182,22 @@
         var START = shapeOf(st);
         var BASELOW = START ? START.low : 0;
         var BASEBUMPS = START ? START.bumps : 0;
+        // AND WHETHER THE BOARD CAN BREAK AT ALL BEFORE ANY MOVE, for the same
+        // reason: an option is asked whether IT takes the last way to break, not
+        // whether it merely lands on a board that has none. False when there is no
+        // garbage, and then nothing can close what was never open.
+        var BASEBREAK = breakReadyOf(st) === true;
+        // AND HOW MANY WAYS THERE ARE TO REACH THE GARBAGE BEFORE ANY MOVE.
+        //
+        // THE SLOPE THE FLAG DOES NOT HAVE. `breakReady` is a cliff: on a buried
+        // board it is false on nearly everything -- 7,863 of 8,653 landings over
+        // one duel -- so it says the board is sealed and never says which way is
+        // out. `dig` counts the cells that would finish a line against the slab,
+        // so it moves one at a time and a move can be judged on whether it got
+        // closer. Set here rather than in expandAll because the depth-1 options
+        // are built before that runs, and a base of zero makes every gain look
+        // like progress.
+        BASEDIG = DIG ? reachOf(st).dig : 0;
         var swaps = board ? board.legalSwaps() : bit.legalSwapsOf(st);
         var refused = 0, unknown = 0;
 
@@ -207,6 +223,43 @@
             opt.levels = opt.bumps !== null && opt.bumps <= BASEBUMPS;
             opt.opensHole = opt.low === 0 && BASELOW > 0;
             opt.breakReady = r.settled ? breakReadyOf(r.settled) : null;
+            // THE MOVE THAT TAKES THE LAST WAY TO BREAK.
+            //
+            // A TRANSITION, THE WAY opensHole IS, AND NOT A STATE. `breakReady`
+            // false on its own says the landed board cannot break -- which is just
+            // as true of a board that already could not, so refusing on it punishes
+            // a position rather than the move that made it, and on a board with no
+            // break left it throws every option away. Measured that way: three
+            // deaths among STARTER and ZERO in thirteen pairings against none in
+            // sixty. `low === 0 && BASELOW > 0` is the shape that works and this is
+            // the same shape.
+            //
+            // It can never empty the list: silent when the base board cannot break,
+            // and when it can, the move that KEEPS the break is by definition still
+            // on it. And it is a cliff rather than a slope -- two ways to break
+            // down to one is ordinary, one down to none ends the game -- which is
+            // why a price was the wrong instrument for it.
+            //
+            // null on a break stays null: a break's settled board is unknowable and
+            // a null is not a no.
+            opt.closesBreak = BASEBREAK && opt.breakReady === false;
+            // WHETHER IT GOT CLOSER TO A BREAK, OR FURTHER AWAY.
+            //
+            // Priced by both callers at the deadline/W a dig cell is already worth in
+            // the flatten value below -- "being NEAR one is worth a fraction of it".
+            // That pricing existed and was asked only of routes that CLEAR NOTHING, so
+            // every combo and every chain was ranked without anyone asking what it did
+            // to the board's way out from under the slab.
+            //
+            // Zero off the slab: with no garbage there is nothing to dig toward. Zero on
+            // a break too -- its settled board is unknowable.
+            opt.digGain = (DIG && r.settled) ? reachOf(r.settled).dig - BASEDIG : 0;
+            // AND WHAT THE BOARD HELD BEFORE THE MOVE, in rows of material. Whether the
+            // board is BURIED AND SHORT is a fact about the position and not about the
+            // move, so it cannot be read off the landing -- and `mat` is null on a break,
+            // which is exactly the move that matters here. The threshold stays with the
+            // caller: this carries the number, WORKING_ROWS lives in bitbot.
+            opt.matNow = START ? START.mat : null;
             now.push(opt);
         }
 
@@ -428,6 +481,24 @@
                                 opt.levels = opt.bumps !== null && opt.bumps <= BASEBUMPS;
                                 opt.opensHole = opt.low === 0 && BASELOW > 0;
                                 opt.breakReady = res.settled ? breakReadyOf(res.settled) : null;
+                                opt.closesBreak = BASEBREAK && opt.breakReady === false;
+                                // WHETHER IT GOT CLOSER TO A BREAK, OR FURTHER AWAY.
+                                //
+                                // Priced by both callers at the deadline/W a dig cell is already worth in
+                                // the flatten value below -- "being NEAR one is worth a fraction of it".
+                                // That pricing existed and was asked only of routes that CLEAR NOTHING, so
+                                // every combo and every chain was ranked without anyone asking what it did
+                                // to the board's way out from under the slab.
+                                //
+                                // Zero off the slab: with no garbage there is nothing to dig toward. Zero on
+                                // a break too -- its settled board is unknowable.
+                                opt.digGain = (DIG && res.settled) ? reachOf(res.settled).dig - BASEDIG : 0;
+                                // AND WHAT THE BOARD HELD BEFORE THE MOVE, in rows of material. Whether the
+                                // board is BURIED AND SHORT is a fact about the position and not about the
+                                // move, so it cannot be read off the landing -- and `mat` is null on a break,
+                                // which is exactly the move that matters here. The threshold stays with the
+                                // caller: this carries the number, WORKING_ROWS lives in bitbot.
+                                opt.matNow = START ? START.mat : null;
                                 next.push(opt);
                             }
                             continue;

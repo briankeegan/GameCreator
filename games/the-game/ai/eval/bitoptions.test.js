@@ -530,6 +530,23 @@ if (flatSpread !== 0) {
         var l = opts.options(base, W, H, [1, 1], 2);
         return l.now.concat(l.next);
     }
+    // THE SAME BOARD WITH THE DIGGING GOAL SET, which is what the bot passes
+    // whenever there is garbage on the board. `dig` is only counted under it, so
+    // a list built without it reads digGain zero everywhere and says nothing.
+    function diggingListOf(cols) {
+        var grid = [], cells = [], r, c;
+        for (r = 0; r <= H; r++) { grid[r] = []; for (c = 1; c <= W; c++) grid[r][c] = 0; }
+        for (c = 1; c <= W; c++)
+            for (r = 1; r <= cols[c - 1].length; r++) {
+                var v = cols[c - 1][r - 1];
+                if (v === 'G') { grid[r][c] = -2; cells.push([r, c]); }
+                else grid[r][c] = v;
+            }
+        var blocks = cells.length ? { s: { cells: cells } } : {};
+        var base = new LogicalBoard(W, H, 6, grid, blocks);
+        var l = opts.options(base, W, H, [1, 1], 2, null, null, true);
+        return l.now.concat(l.next);
+    }
 
     // NO GARBAGE ON THE LANDED BOARD: the question does not apply, so null. A
     // false here would narrow every option out of both paths on a clean board.
@@ -586,6 +603,76 @@ if (flatSpread !== 0) {
         '`breakReady`: a break came back ' + (brs[0] && brs[0].breakReady) +
         ' rather than null -- a false there narrows the one move that takes ' +
         'garbage off the board straight out of both paths');
+
+    // AND `closesBreak` IS THE TRANSITION, NOT THE STATE. The move that takes the
+    // LAST way to break, the way opensHole is the move that empties a column.
+    // `breakReady === false` on its own is just as true of a board that already
+    // could not break, so a rule built on it punishes a position instead of the
+    // move that made it -- and on a board with no break left it flags every
+    // option at once, which is how the absolute form cost three deaths among
+    // STARTER and ZERO in thirteen pairings.
+    //
+    // On a board that CAN break, some option has to close it and the flag has to
+    // track breakReady exactly.
+    var shut = apart.filter(function (x) { return x.closesBreak; });
+    bok(shut.length > 0,
+        '`closesBreak`: not one option on a breakable board takes the last break, ' +
+        'so this checks nothing');
+    bok(apart.every(function (x) { return x.closesBreak === (x.breakReady === false); }),
+        '`closesBreak`: disagrees with `breakReady` on a board that can break -- on ' +
+        'such a board the two are the same question and the transition is the state');
+
+    // ON A BOARD THAT ALREADY CANNOT BREAK, NOTHING CLOSES ANYTHING. This is the
+    // case the absolute form got wrong and the one that matters: every option
+    // there carries breakReady false, so a rule built on the state flags all of
+    // them at once and both paths lose their whole list. Three deaths among
+    // STARTER and ZERO in thirteen pairings, against none in sixty.
+    //
+    // Three rows under a full slab with no one-swap break anywhere on it.
+    var sealed = listOf([[4, 5, 1, 'G'], [4, 3, 3, 'G'], [2, 5, 1, 'G'],
+                         [5, 1, 3, 'G'], [1, 3, 2, 'G'], [1, 3, 3, 'G']]);
+    bok(sealed.length > 0, '`closesBreak`: the sealed board offered no options at all');
+    bok(sealed.some(function (x) { return x.breakReady === false; }),
+        '`closesBreak`: no option on the sealed board lands unable to break, so the ' +
+        'state and the transition cannot be told apart here and this checks nothing');
+    bok(sealed.every(function (x) { return x.closesBreak === false; }),
+        '`closesBreak`: flagged an option on a board that ALREADY cannot break. ' +
+        'Nothing can close a door that is shut, and flagging them takes the whole ' +
+        'option list away from both paths -- which is the measured regression');
+
+    // AND A CLEAN BOARD CLOSES NOTHING EITHER: with no garbage there is no break
+    // to lose, so the flag must be off on every option.
+    bok(clean.every(function (x) { return x.closesBreak === false; }),
+        '`closesBreak`: flagged an option on a board with no garbage on it, where ' +
+        'there is no break to take away');
+
+    // `digGain` IS A DELTA AND IT HAS A SIGN. `dig` counts the cells that would
+    // finish a line against the garbage -- the board's way out from under the
+    // slab. A move can add to it or spend it, and only the change matters: the
+    // absolute count is a property of the position, not of the move.
+    //
+    // Both signs have to occur on a buried board, or the term ranks nothing. And
+    // a NEGATIVE one has to occur, because an absolute count is never negative --
+    // that is what catches a base of zero, where every clear looks like progress.
+    var buried = diggingListOf([[1, 2, 1, 5, 'G'], [1, 1, 1, 3, 'G'], [1, 2, 3, 1, 'G'],
+                                [1, 5, 3, 3, 'G'], [5, 4, 4, 5, 'G'], [2, 1, 2, 3, 'G']]);
+    bok(buried.length > 0, '`digGain`: the buried board offered no options at all');
+    var gains = buried.filter(function (x) { return (x.digGain || 0) > 0; });
+    var spends = buried.filter(function (x) { return (x.digGain || 0) < 0; });
+    bok(gains.length > 0,
+        '`digGain`: no option on a buried board moves the board TOWARD a break, so ' +
+        'the term has no upside to rank and is dead weight');
+    bok(spends.length > 0,
+        '`digGain`: no option on a buried board reads negative. An absolute dig ' +
+        'count never can, so the base is not being subtracted and every clear ' +
+        'looks like progress');
+
+    // AND OFF THE SLAB IT IS SILENT. With no garbage there is nothing to dig
+    // toward, so the term must not move a ranking it has no business in.
+    bok(diggingListOf([[1, 3, 3], [1, 4, 5], [2, 5, 4], [1, 3, 4], [1, 5, 3], [4, 3, 5]])
+           .every(function (x) { return (x.digGain || 0) === 0; }),
+        '`digGain`: nonzero on a board with no garbage on it, where there is no ' +
+        'way out to move toward and this term may not change anything');
 
     console.log('  breakReady: ' + (bfails ? bfails + ' FAILED' :
                 'every option says whether the board it lands on can still break'));

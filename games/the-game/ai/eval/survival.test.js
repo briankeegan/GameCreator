@@ -832,6 +832,311 @@ function hostile() {
 
 
 
-console.log('survival: 68 invariants checked without playing a game');
+// -------- 17. neither path plays the move that empties a column
+//
+// A column at zero holds no vertical match, breaks the adjacency a horizontal
+// one needs, and is where a slab bridges: garbage rests on the tall columns and
+// spans the width, so the empty column is sealed and nothing under it can reach
+// the slab. Seven deaths measured over two builds, every one a column at zero,
+// one or two beside a tower.
+//
+// bestAttack has refused it for a while. bestPlan is the path that picks most of
+// the moves and had no equivalent -- the same drift as `levels`, caught later.
+// So it is checked on each path, because reaching one is not reaching another.
+(function () {
+    var engine = P, FT = { FLASH: 28, FACE: 10, POP: 7 }, WV = {};
+    BF.keys().forEach(function (k) { WV[k] = 0; });
+    function o(over) {
+        var x = { kind: 'combo', swaps: [[1, 1]], frames: 10, duration: 10, chain: 0,
+                  total: 4, size: 4, garbage: 0, tall: 5, bumps: 2, mat: 5, low: 2,
+                  levels: true, opensHole: false };
+        for (var k in over) x[k] = over[k];
+        return x;
+    }
+    // The hole-opener is the BETTER move on rate -- more cells for the same
+    // frames -- so if shape is not consulted it wins, which is the defect.
+    var holeA = o({ total: 8, size: 8, opensHole: true, low: 0 });
+    var keepA = o({ total: 4, size: 4, opensHole: false, swaps: [[1, 3]] });
+    var pickA = BitBot.bestAttackOf({ now: [holeA, keepA], next: [] }, WV, engine, 600, FT, 18.7);
+    ok(pickA && pickA.option === keepA,
+       'attack: took the move that empties a column over one that does not');
+
+    var holeP = o({ total: 8, size: 8, opensHole: true, low: 0 });
+    var keepP = o({ total: 4, size: 4, opensHole: false, swaps: [[1, 3]] });
+    var pickP = BitBot.bestPlanOf({ now: [holeP, keepP], next: [] },
+                                  0, 600, engine, false, 112, FT, 5);
+    ok(pickP && pickP.option === keepP,
+       'survival plan: took the move that empties a column over one that does not. ' +
+       'bestAttack has refused this for a while and this is the path that picks ' +
+       'most of the moves -- the same drift `levels` had');
+
+    // AND A BREAK IS NOT REFUSED BY IT. Its settled board is unknowable, so `low`
+    // is null and opensHole is false -- exempt without being excused.
+    var brk = o({ total: 3, size: 3, garbage: 4, breaks: true, opensHole: false,
+                  mat: null, low: null, bumps: null, swaps: [[1, 5]] });
+    var pickB = BitBot.bestPlanOf({ now: [brk], next: [] },
+                                  0, 600, engine, false, 112, FT, 5);
+    ok(pickB && pickB.option === brk,
+       'survival plan: a break was refused by the hole rule -- `low` is null on a ' +
+       'break and a null is not a zero');
+
+    // AND IT IS A REFUSAL, NOT A NARROWING: with every plan opening a hole the
+    // list does not empty, because `low === 0 && BASELOW > 0` is already the
+    // transition. A board that already has the hole offers options that do not
+    // carry the flag, so there is always something left.
+    var onlyHoles = BitBot.bestPlanOf(
+        { now: [o({ total: 8, size: 8, opensHole: true, low: 0 }),
+                o({ total: 4, size: 4, opensHole: true, low: 0, swaps: [[1, 3]] })], next: [] },
+        0, 600, engine, false, 112, FT, 5);
+    ok(onlyHoles === null,
+       'survival plan: returned a plan when every plan on offer opens a hole -- ' +
+       'this is a refusal, and a board where every move empties a column is a ' +
+       'board the weights fallback has to answer for');
+}());
+
+// ---- 18. neither path takes the LAST way to break
+//
+// A garbage cell comes off the board one way -- three panels in a line against
+// it -- and a cell that never comes off is a row of ceiling gone for good. Seven
+// deaths over two builds, every one a board that could still FIRE and could no
+// longer BREAK.
+//
+// A TRANSITION, NOT A STATE, which is the whole of why this works and
+// `breakReady === false` did not. Refusing the state punishes a position rather
+// than the move that made it, and empties the list on a board that has already
+// lost its break: measured at three deaths among STARTER and ZERO in thirteen
+// pairings against none in sixty.
+(function () {
+    var engine = P, FT = { FLASH: 28, FACE: 10, POP: 7 }, WV = {};
+    BF.keys().forEach(function (k) { WV[k] = 0; });
+    function o(over) {
+        var x = { kind: 'combo', swaps: [[1, 1]], frames: 10, duration: 10, chain: 0,
+                  total: 4, size: 4, garbage: 0, tall: 5, bumps: 2, mat: 5, low: 2,
+                  levels: true, opensHole: false, breakReady: true, closesBreak: false };
+        for (var k in over) x[k] = over[k];
+        return x;
+    }
+    // The bigger move shuts the door. Both can fire afterwards -- that is a
+    // different question and not the one that killed these boards.
+    var shutA = o({ total: 8, size: 8, breakReady: false, closesBreak: true });
+    var keepA = o({ total: 4, size: 4, swaps: [[1, 3]] });
+    var pickA = BitBot.bestAttackOf({ now: [shutA, keepA], next: [] }, WV, engine, 600, FT, 18.7);
+    ok(pickA && pickA.option === keepA,
+       'attack: took the bigger attack that leaves the board unable to break. It ' +
+       'can still fire, which is not the same question');
+
+    var shutP = o({ total: 8, size: 8, breakReady: false, closesBreak: true });
+    var keepP = o({ total: 4, size: 4, swaps: [[1, 3]] });
+    var pickP = BitBot.bestPlanOf({ now: [shutP, keepP], next: [] },
+                                  0, 600, engine, false, 112, FT, 5);
+    ok(pickP && pickP.option === keepP,
+       'survival plan: took the route that leaves the board unable to break. This ' +
+       'is the path that picked the move on nearly every frame of all seven boards');
+
+    // A BOARD THAT ALREADY CANNOT BREAK IS NOT PUNISHED FOR IT. closesBreak is
+    // false on every option there -- nothing can close what was never open -- so
+    // the list stands and the best move is played. This is the case that made the
+    // absolute form cost three deaths among STARTER and ZERO.
+    var goneA = o({ total: 8, size: 8, breakReady: false, closesBreak: false });
+    var goneB = o({ total: 4, size: 4, breakReady: false, closesBreak: false, swaps: [[1, 3]] });
+    var pickG = BitBot.bestAttackOf({ now: [goneA, goneB], next: [] }, WV, engine, 600, FT, 18.7);
+    ok(pickG && pickG.option === goneA,
+       'attack: a board that had already lost its break was refused its best move ' +
+       '-- the rule is a transition and nothing can close a door already shut');
+    var pickG2 = BitBot.bestPlanOf({ now: [goneA, goneB], next: [] },
+                                   0, 600, engine, false, 112, FT, 5);
+    ok(pickG2 && pickG2.option === goneA,
+       'survival plan: a board that had already lost its break was refused its best ' +
+       'move');
+
+    // AND A BREAK IS NEVER REFUSED BY THE BREAK RULE. Its settled board is
+    // unknowable, so breakReady is null, so closesBreak is false.
+    var brk = o({ total: 3, size: 3, garbage: 4, breaks: true, breakReady: null,
+                  closesBreak: false, mat: null, low: null, bumps: null, swaps: [[1, 5]] });
+    var pickB = BitBot.bestPlanOf({ now: [brk], next: [] },
+                                  0, 600, engine, false, 112, FT, 5);
+    ok(pickB && pickB.option === brk,
+       'survival plan: a break was refused by a rule about keeping breaks alive -- ' +
+       '`breakReady` is null on a break and a null is not a no');
+}());
+
+// ------- 19. the two paths refuse the same things
+//
+// Every shape rule in this file has been written twice, once per path, and every
+// one of them has drifted: `levels` reached bestAttack only and the move that
+// built the tower it was written for came via the survival plan; `opensHole`
+// reached bestAttack only, through seven more deaths. Both were found on a death
+// board because nothing here could notice.
+//
+// This notices. It puts the SAME option to both paths and requires them to agree
+// about whether it is playable, so a rule added to one and not the other fails
+// here rather than in a duel three hours later.
+(function () {
+    var engine = P, FT = { FLASH: 28, FACE: 10, POP: 7 }, WV = {};
+    BF.keys().forEach(function (k) { WV[k] = 0; });
+    function o(over) {
+        var x = { kind: 'combo', swaps: [[1, 1]], frames: 10, duration: 10, chain: 0,
+                  total: 4, size: 4, garbage: 0, tall: 5, bumps: 2, mat: 5, low: 2,
+                  levels: true, opensHole: false, breakReady: true, closesBreak: false };
+        for (var k in over) x[k] = over[k];
+        return x;
+    }
+    // A plain option beside the one under test, so each path always has something
+    // to fall back to and "refused" means refused rather than "nothing offered".
+    var plain = o({ total: 3, size: 3, frames: 400, duration: 400, swaps: [[1, 3]] });
+    function attackTakes(x) {
+        var p = BitBot.bestAttackOf({ now: [x, plain], next: [] }, WV, engine, 600, FT, 18.7);
+        return !!(p && p.option === x);
+    }
+    function planTakes(x) {
+        var p = BitBot.bestPlanOf({ now: [x, plain], next: [] }, 0, 600, engine, false, 112, FT, 5);
+        return !!(p && p.option === x);
+    }
+
+    // Each case is the SAME option, strong enough on rate that only a refusal can
+    // keep it from being chosen.
+    var cases = [
+        ['a clean big combo',            o({ total: 8, size: 8 })],
+        ['one that empties a column',    o({ total: 8, size: 8, opensHole: true, low: 0 })],
+        ['one that takes the last break',o({ total: 8, size: 8, breakReady: false, closesBreak: true })],
+        ['one on a board already sealed',o({ total: 8, size: 8, breakReady: false, closesBreak: false })],
+        ['a break',                      o({ total: 3, size: 3, garbage: 4, breaks: true,
+                                             breakReady: null, closesBreak: false,
+                                             mat: null, low: null, bumps: null })]
+    ];
+    cases.forEach(function (c) {
+        var a = attackTakes(c[1]), b = planTakes(c[1]);
+        ok(a === b,
+           'the two paths disagree about ' + c[0] + ': bestAttack ' +
+           (a ? 'plays' : 'refuses') + ' it and bestPlan ' + (b ? 'plays' : 'refuses') +
+           ' it. Every shape rule here has been written twice and every one has ' +
+           'drifted -- this is the drift');
+    });
+
+    // AND THE SHARED PREDICATE IS WHAT BOTH READ, so a rule added to it lands on
+    // both at once rather than on whichever caller the author was looking at.
+    ok(BitBot.ruinsShapeOf(o({ opensHole: true })) === true &&
+       BitBot.ruinsShapeOf(o({ closesBreak: true })) === true &&
+       BitBot.ruinsShapeOf(o({})) === false,
+       'the shared shape predicate does not answer for both rules, so the two ' +
+       'paths are reading separate copies again');
+}());
+
+// ---------- 20. a clear is asked what it did to the way out
+//
+// `dig` counts the cells that would finish a line against the garbage -- the
+// board's way out from under the slab, measured one cell at a time. bitoptions
+// has priced it at deadline/W for a while and asked it only of routes that CLEAR
+// NOTHING, so every combo and every chain was ranked without anyone asking
+// whether it spent the panels that were the way out.
+//
+// This is the slope `breakReady` does not have. On the board it was written from
+// 7,863 of 8,653 landings could not break at all: the flag said "sealed" on
+// nearly everything and never said which way was out.
+(function () {
+    var engine = P, FT = { FLASH: 28, FACE: 10, POP: 7 }, WV = {};
+    BF.keys().forEach(function (k) { WV[k] = 0; });
+    function o(over) {
+        // matNow BELOW THE WORKING FLOOR: buried and short is the case this term
+        // is for, and the only one it is allowed to speak in. `mat` stays above
+        // it so bestPlan's starving refusal is not what decides these.
+        var x = { kind: 'combo', swaps: [[1, 1]], frames: 10, duration: 10, chain: 0,
+                  total: 4, size: 4, garbage: 0, tall: 5, bumps: 2, mat: 5, low: 2,
+                  matNow: 2, levels: true, opensHole: false, breakReady: false,
+                  closesBreak: false, digGain: 0 };
+        for (var k in over) x[k] = over[k];
+        return x;
+    }
+    // BOTH land on a board that cannot break, which is the normal state of a
+    // buried board -- so `breakReady` cannot separate them and only the slope can.
+    // The bigger clear takes the board FURTHER from a break.
+    var awayA = o({ total: 6, size: 6, digGain: -4 });
+    var towardA = o({ total: 4, size: 4, digGain: +4, swaps: [[1, 3]] });
+    var pickA = BitBot.bestAttackOf({ now: [awayA, towardA], next: [] },
+                                    WV, engine, 600, FT, 18.7);
+    ok(pickA && pickA.option === towardA,
+       'attack: took the bigger clear that spends the way out from under the slab. ' +
+       'Both land unable to break, so the flag cannot tell them apart and the ' +
+       'gradient is the only thing that can');
+
+    var awayP = o({ total: 6, size: 6, digGain: -4 });
+    var towardP = o({ total: 4, size: 4, digGain: +4, swaps: [[1, 3]] });
+    var pickP = BitBot.bestPlanOf({ now: [awayP, towardP], next: [] },
+                                  0, 600, engine, false, 112, FT, 5);
+    ok(pickP && pickP.option === towardP,
+       'survival plan: took the route that spends the way out from under the slab. ' +
+       'This is the path that picks most of the moves and it was never asked');
+
+    // AND IT IS A PRICE, NOT A REFUSAL: a big enough clear still outranks a small
+    // gain, because a dig cell is worth a FRACTION of a break and not a break.
+    var bigA = o({ total: 40, size: 6, digGain: -1 });
+    var tinyA = o({ total: 3, size: 3, digGain: +1, swaps: [[1, 3]] });
+    var pickBig = BitBot.bestAttackOf({ now: [bigA, tinyA], next: [] },
+                                      WV, engine, 600, FT, 18.7);
+    ok(pickBig && pickBig.option === bigA,
+       'attack: a one-cell loss of dig outranked a clear more than ten times the ' +
+       'size, so this is a refusal wearing a price and the bot will not cash');
+
+    // AND THE LOSS IS NOT CHARGED TWICE. Clearing removes panels, so nearly every
+    // clear drops `dig` -- and those panels are already paid for, as cells sent
+    // here and as o.total * perPanel in the plan. Charging again for the reach
+    // they carried is the same panels twice, and it lands as a blanket tax on
+    // cashing while buried: seed 103 STARTER sat on two rows of material under
+    // thirty-three cells of garbage playing setups, dead at 2,319.
+    //
+    // Two options identical but for the reach they spend, so only a charge for
+    // the loss can separate them. Equal rates go to the first seen.
+    var spendsA = o({ total: 6, size: 6, digGain: -5 });
+    var evenA = o({ total: 6, size: 6, digGain: 0, swaps: [[1, 3]] });
+    var pickSpend = BitBot.bestAttackOf({ now: [spendsA, evenA], next: [] },
+                                        WV, engine, 600, FT, 18.7);
+    ok(pickSpend && pickSpend.option === spendsA,
+       'attack: a clear was ranked below an identical one because it spent reach. ' +
+       'Those panels are already paid for as cells sent -- this charges for them ' +
+       'twice and taxes cashing on exactly the boards that need it');
+    var spendsP = o({ total: 6, size: 6, digGain: -5 });
+    var evenP = o({ total: 6, size: 6, digGain: 0, swaps: [[1, 3]] });
+    var pickSpendP = BitBot.bestPlanOf({ now: [spendsP, evenP], next: [] },
+                                       0, 600, engine, false, 112, FT, 5);
+    ok(pickSpendP && pickSpendP.option === spendsP,
+       'survival plan: a plan was ranked below an identical one because it spent ' +
+       'reach, which o.total * perPanel has already paid for');
+
+    // AND IT IS SILENT WHILE THE BOARD STILL HAS MATERIAL. `digging` is set by
+    // ANY garbage cell, so priced on that alone this spoke on healthy boards
+    // carrying one row of it -- and that is every board it killed: STARTER
+    // against ZERO on both seeds and rand2 on 101, all three alive without it,
+    // all three dead with it. The board it helps carried two rows of material
+    // under thirty-three cells of garbage.
+    //
+    // Reaching the slab is the goal when there is nothing else left to play for.
+    // With material in hand the ordinary ranking decides, which is the file's own
+    // rule for the dig goal: widen the search, do not move the preference.
+    var richAway = o({ total: 6, size: 6, digGain: -4, matNow: 9 });
+    var richToward = o({ total: 4, size: 4, digGain: +4, matNow: 9, swaps: [[1, 3]] });
+    var pickRich = BitBot.bestAttackOf({ now: [richAway, richToward], next: [] },
+                                       WV, engine, 600, FT, 18.7);
+    ok(pickRich && pickRich.option === richAway,
+       'attack: the way out outranked a clear half again as big on a board holding ' +
+       'nine rows of material. This term is for a board with nothing else left to ' +
+       'play for, and priced on any garbage at all it killed three pairings');
+    var pickRichP = BitBot.bestPlanOf({ now: [richAway, richToward], next: [] },
+                                      0, 600, engine, false, 112, FT, 5);
+    ok(pickRichP && pickRichP.option === richAway,
+       'survival plan: the way out outranked a bigger clear on a board holding ' +
+       'nine rows of material');
+
+    // AND OFF THE SLAB IT IS SILENT: with no garbage there is nothing to dig
+    // toward, digGain is zero everywhere, and the ranking is untouched.
+    var cleanBig = o({ total: 8, size: 8, digGain: 0 });
+    var cleanSmall = o({ total: 4, size: 4, digGain: 0, swaps: [[1, 3]] });
+    var pickClean = BitBot.bestAttackOf({ now: [cleanBig, cleanSmall], next: [] },
+                                        WV, engine, 600, FT, 18.7);
+    ok(pickClean && pickClean.option === cleanBig,
+       'attack: the bigger clear lost on a board with no garbage on it, where ' +
+       'every digGain is zero and this term may not change anything');
+}());
+
+console.log('survival: 92 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');

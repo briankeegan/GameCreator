@@ -1009,6 +1009,43 @@
     // `options`, so attacking walked past it: on seed 101 the board sat between
     // half a row and one and a half rows of material for three thousand frames
     // firing threes off six panels, and a 31-cell slab landed on nothing.
+    // THE SHAPE RULES BOTH PATHS OBEY, IN ONE PLACE.
+    //
+    // Each of these lived as two copies in two currencies, and copies drift --
+    // that is the documented history of this file. `levels` reached bestAttack
+    // only, and the move that built the tower it was written for came via the
+    // survival plan. `opensHole` reached bestAttack only, through seven more
+    // deaths. Both were found late because there was nothing that could notice.
+    // One predicate, two callers, and a test that the two refuse the same set.
+    //
+    // REFUSALS, NOT PRICES. Each is a transition that ends something the board
+    // cannot get back: a column that can no longer hold a vertical match, a slab
+    // that can no longer be reached. Two ways to break down to one is ordinary
+    // and a rate can weigh it; one down to none ends the game and a rate cannot.
+    function ruinsShape(o) {
+        // The move that empties a column. A column at zero holds no vertical
+        // match, breaks the adjacency a horizontal one needs, and is where a slab
+        // bridges -- garbage rests on the tall columns and spans the width, so
+        // the empty column is sealed and nothing under it can reach the slab.
+        if (o.opensHole) return true;
+        // The move that takes the last way to break. A garbage cell comes off the
+        // board one way, three panels in a line against it, and a cell that never
+        // comes off is a row of ceiling gone for good.
+        if (o.closesBreak) return true;
+        return false;
+    }
+
+    // HOW FAR UNDER THE WORKING FLOOR THE BOARD THIS LANDS ON WOULD BE, in rows.
+    // Both paths charge for it, each in its own currency: bestAttack at W cells a
+    // row, bestPlan at framesPerRow. Same number, two conversions.
+    //
+    // A break is exempt without being excused -- it ADDS material, and its settled
+    // board is unknowable so `mat` is null anyway.
+    function shortfallOf(o) {
+        return (o.mat === null || o.mat === undefined)
+             ? 0 : Math.max(0, WORKING_ROWS - o.mat);
+    }
+
     function bestAttack(list, weights, engine, deadline, framesTable, perPanelFrames) {
         var best = null, all = list.now.concat(list.next), i;
         // THE ATTACKS THAT DO NOT COST SHAPE, IF THERE ARE ANY.
@@ -1051,7 +1088,7 @@
             // can weigh away. Only the move that OPENS the hole is refused; playing
             // on a board that already has one is not this move's doing. A break is
             // exempt -- its settled board is unknowable, so `low` is null.
-            if (o.opensHole) continue;
+            if (ruinsShape(o)) continue;
             var isChain = o.kind === 'chain';
             var cells = cellsSent(engine, o.kind, o.size, o.chain);
             // A BREAK IS AN ATTACK ON YOUR OWN BOARD. It sends nothing, and it is
@@ -1083,9 +1120,56 @@
             // cells of garbage and no way to put three of them against the slab.
             // A break is exempt without being excused -- its settled board is
             // unknowable so `mat` is null, and it ADDS material besides.
-            var short = (o.mat === null || o.mat === undefined)
-                      ? 0 : Math.max(0, WORKING_ROWS - o.mat);
+            var short = shortfallOf(o);
             cells -= short * W;
+            // AND WHAT IT DID TO THE WAY OUT FROM UNDER THE SLAB.
+            //
+            // `dig` is the count of cells that would finish a line against the
+            // garbage, so it is the board's way out measured one cell at a time.
+            // bitoptions has priced it at deadline/W for a while -- "being NEAR
+            // [a break] is worth a fraction of it" -- and asked it only of routes
+            // that CLEAR NOTHING. So every combo and every chain was ranked
+            // without anyone asking whether it spent the panels that were the way
+            // out. On the board this was written from, 7,863 of 8,653 landings
+            // could not break at all: the bot was not losing its break, it never
+            // had one, and nothing pointed it back toward one.
+            //
+            // ONE CELL OF THE WAY OUT IS WORTH ONE PANEL OF LIFE, which in this
+            // ranking's currency is one cell sent. Not the deadline/W bitoptions
+            // prices a dig cell at when comparing whole routes -- at a deadline of
+            // 600 that is 100 frames, near a whole row of ceiling, and one cell
+            // that MIGHT finish a line against the slab outweighed a six-combo.
+            // perPanel is the atom this file converts with everywhere else.
+            // NOT CALIBRATED; written here so the next measurement can move it.
+            //
+            // THE GAIN ONLY, BECAUSE THE LOSS IS ALREADY PAID FOR. `dig` counts
+            // cells that would finish a line against the slab, and clearing
+            // REMOVES panels, so nearly every clear drops it -- 5 of 15 options on
+            // a buried board spend reach against 2 that gain it. Those panels are
+            // already valued: this ranking pays for them as cells sent and the
+            // plan's as o.total * perPanel. Charging again for the reach they
+            // carried is the same panels twice, and it comes out as a blanket tax
+            // on cashing while buried. Measured on seed 103 STARTER: two rows of
+            // material under thirty-three cells of garbage, playing setups, dead
+            // at 2,319 where the same board without the tax lives.
+            //
+            // A clear that OPENS new reach is information nothing else carries, so
+            // that half stays.
+            //
+            // AND ONLY WHILE THE BOARD IS SHORT UNDER THE SLAB. `digging` is set
+            // by ANY garbage cell, so this was pricing the way out on healthy
+            // boards carrying one row of it -- which is every board it killed:
+            // STARTER against ZERO on both seeds, and rand2, all of them alive
+            // without it. The board it helps carried two rows of material under
+            // thirty-three cells of garbage.
+            //
+            // The file's own note on the dig goal says why: "BURIED AND SHORT:
+            // WIDEN THE SEARCH, NOT THE PREFERENCE... finding is not preferring".
+            // Reaching the slab is the goal when there is nothing else left to
+            // play for; with material in hand the ordinary ranking decides.
+            // `short` is the same WORKING_ROWS measure starving and raiseMode use.
+            if (o.matNow !== null && o.matNow !== undefined &&
+                o.matNow < WORKING_ROWS) cells += Math.max(0, o.digGain || 0);
             if (cells <= 0) continue;                       // sends nothing, holds nothing
             // The vector's taste for this shape, read off the same buckets the
             // features use, floored so it can only ever scale the rate down to a
@@ -1242,8 +1326,22 @@
             // unknowable so `mat` is null anyway.
             if (o.mat !== null && o.mat !== undefined && o.mat < WORKING_ROWS &&
                 !o.breaks && (o.total || 0) > 0) continue;
-            var shortfall = (o.mat === null || o.mat === undefined)
-                          ? 0 : Math.max(0, WORKING_ROWS - o.mat);
+            // AND A PLAN MAY NOT BE THE MOVE THAT OPENS A HOLE, EITHER.
+            //
+            // The rule bestAttack has had for a while, on the path that picks most
+            // of the moves. A column at zero holds no vertical match, breaks the
+            // adjacency a horizontal one needs, and is where a slab bridges --
+            // garbage rests on the tall columns and spans the width, so the empty
+            // column is sealed and nothing under it can reach the slab. Seven
+            // deaths measured over two builds, every one of them a column at zero,
+            // one or two standing beside a tower.
+            //
+            // Only the move that OPENS the hole, as in bestAttack: playing on a
+            // board that already has one is not this move's doing. A break is
+            // exempt without being excused -- its settled board is unknowable, so
+            // `low` is null and `opensHole` is false.
+            if (ruinsShape(o)) continue;
+            var shortfall = shortfallOf(o);
             // AND WHAT THE CLEAR HOLDS WHILE IT RESOLVES, WHICH IS A DIFFERENT
             // THING FROM THE PANELS IT REMOVES.
             //
@@ -1259,9 +1357,25 @@
             // the two cannot disagree about what a clear is worth.
             var holds = (o.total > 0 || (o.garbage || 0) > 0)
                       ? BF.resolveFramesOf(engine, o.total || 0, o.garbage || 0) : 0;
+            // AND WHAT IT DID TO THE WAY OUT FROM UNDER THE SLAB, in frames,
+            // which is already this ranking's currency. The same deadline/W a dig
+            // cell is worth in bitoptions, on the path that picks most of the
+            // moves -- where it was never asked at all.
+            // One cell of the way out is worth one panel of life -- perPanel, the
+            // atom this ranking already converts everything else with. NOT
+            // CALIBRATED. See bestAttack for why it is not bitoptions' deadline/W,
+            // and for why only the GAIN counts: the panels a clear spends are
+            // already priced as o.total * perPanel just above, so charging for the
+            // reach they carried is the same panels twice.
+            // AND ONLY WHILE THE BOARD IS SHORT UNDER THE SLAB -- see bestAttack.
+            // `digging` is any garbage at all, which is not the case this is for.
+            var digs = (o.matNow !== null && o.matNow !== undefined &&
+                        o.matNow < WORKING_ROWS)
+                     ? Math.max(0, o.digGain || 0) * perPanel : 0;
             var bought = o.total * perPanel + holds + (o.garbage || 0) * perCell
                        + lowered * (framesPerRow || 0) + gain
-                       - shortfall * (framesPerRow || 0);
+                       - shortfall * (framesPerRow || 0)
+                       + digs;
             var rate = bought / Math.max(1, took);
             var cur = fits ? best : over;
             // Between two plans buying life at the same rate, the one leaving the
@@ -3195,6 +3309,7 @@
     // testable on its own, and a test that plays a game to reach it is not a test
     // of the choice.
     BitBot.bestPlanOf = bestPlan;
+    BitBot.ruinsShapeOf = ruinsShape;
     BitBot.WORKING_ROWS = WORKING_ROWS;
     BitBot.STARTER = STARTER;
     return BitBot;
