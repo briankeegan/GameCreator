@@ -780,6 +780,42 @@ if (flatSpread !== 0) {
         'breaks the slab outright. Looking two swaps deep can only add answers, so ' +
         'this is the search losing a break it already had');
 
+    // A ROUTE THAT STARVES THE BOARD PAYS FOR IT.
+    //
+    // bestAttack and bestPlan each refuse a move that spends the board below the
+    // material floor. None of the routes ranked in here did, and they are the ones
+    // that pick the move on a dying board -- so `val` now carries the same price,
+    // which reaches the flatten, both its variants, and the two fallback routes at
+    // once.
+    //
+    // Checked by asking the SAME board twice, once with the floor and once with it
+    // at zero. A starved landing has to be worth less when the floor exists, or the
+    // term is not in the number.
+    var floored = 0, unfloored = 0, compared = 0;
+    for (var wi = 0; wi < src.boards.length && compared < 60; wi++) {
+        var wb = boardFromString(src.boards[wi]);
+        if (Object.keys(wb.blocks).length) continue;
+        var args = [new LogicalBoard(W, H, 6, wb.grid, wb.blocks), W, H, CURSOR, 2, null];
+        var withFloor = opts.options.apply(null, args.concat(
+            [{ framesPerRow: 120, deadline: 600, workingRows: 4 }, false]));
+        var without = opts.options.apply(null, args.concat(
+            [{ framesPerRow: 120, deadline: 600, workingRows: 0 }, false]));
+        if (!withFloor.flatten || !without.flatten) continue;
+        compared++;
+        if (withFloor.flatten.value < without.flatten.value) floored++;
+        else if (withFloor.flatten.value > without.flatten.value) unfloored++;
+    }
+    bok(compared > 10,
+        '`workingRows`: only ' + compared + ' boards offered a flatten both ways, so ' +
+        'the floor is not being compared against anything');
+    bok(floored > 0,
+        '`workingRows`: not one of ' + compared + ' boards valued its flatten lower ' +
+        'with the material floor than without it, so the floor is not in `val` and ' +
+        'every route ranked by it can still starve the board');
+    bok(unfloored === 0,
+        '`workingRows`: ' + unfloored + ' boards valued a flatten HIGHER with the ' +
+        'floor than without. The floor is a cost; it can only ever subtract');
+
     // AND OFF THE SLAB IT IS SILENT. With no garbage there is nothing to dig
     // toward, so the term must not move a ranking it has no business in.
     bok(diggingListOf([[1, 3, 3], [1, 4, 5], [2, 5, 4], [1, 3, 4], [1, 5, 3], [4, 3, 5]])

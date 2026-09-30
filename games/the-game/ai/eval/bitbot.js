@@ -1467,6 +1467,9 @@
         var frozen = (info.stopTime || 0) > 0 || !!info.toppedOut;
         return {
             framesPerRow: info.framesPerRow || 0,
+            // THE MATERIAL FLOOR, carried rather than duplicated: the number lives
+            // here and the search prices it in its own currency.
+            workingRows: WORKING_ROWS,
             deadline: deadline || 0,
             overhead: travel.MOVE_FRAMES + (frozen ? 0 : this.reaction),
             resolve: function (size, garbage) {
