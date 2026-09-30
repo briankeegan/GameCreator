@@ -65,6 +65,16 @@ function arrivalsFrom(board, arrivals) {
   return out.slice(0, 16);
 }
 
+// THE THREAT: garbage not yet in any telegraph cannot land sooner than
+// STAGING + LAND frames from now. The profile's `threat` ({ width, height,
+// isChain }, or null) is a piece assumed to land then, so the survival
+// search keeps room for what could still be sent. `lead`: how far the board
+// asked about is ahead of now.
+function threat(p, lead) {
+  if (!p.threat) return null;
+  return { at: Math.max(1, STAGING + LAND - lead), width: p.threat.width, height: p.threat.height, isChain: !!p.threat.isChain, isMetal: false };
+}
+
 // ---------------------------------------------------------------- the hands
 // Hands(p): keys(board, hold, kind, move, arrivals) is the decision played
 // from `board` as { inputs, holds } per frame, or null when it is refused.
@@ -84,4 +94,4 @@ Hands.prototype.idle = function (board, hold, arrivals) {
   return { bits: k.inputs[0], hold: k.holds[0] };
 };
 
-module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, land: land, arrivalsFrom: arrivalsFrom, Hands: Hands };
+module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, land: land, arrivalsFrom: arrivalsFrom, threat: threat, Hands: Hands };

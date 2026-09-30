@@ -25,6 +25,8 @@ wt.parentPort.on('message', function (m) {
   var t0 = Date.now(), board = PA.revive(m.board), arrivals = [], out;
   // Garbage on its way arrives that many frames on (search.h runFrame).
   arrivals = SH.arrivalsFrom(board, m.arrivals || []);
+  var th = SH.threat(cfg.profile, m.lead || 0);
+  if (th && arrivals.length < 16) arrivals.push(th);
   var view = PA.toPanelEngine(board, PE);
   try {
     if (!bot) {

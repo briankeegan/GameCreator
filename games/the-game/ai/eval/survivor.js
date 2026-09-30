@@ -143,7 +143,7 @@ Match.prototype.ask = function (at, board, hold) {
                       board: require('v8').serialize(board).toString('base64') });
     if (this.asked.length > 12) this.asked.shift();
   }
-  mind.postMessage({ id: pending.id, epoch: this.epoch, at: at, board: board, hold: hold, arrivals: arrivals, acted: this.acted });
+  mind.postMessage({ id: pending.id, epoch: this.epoch, at: at, lead: at - this.now, board: board, hold: hold, arrivals: arrivals, acted: this.acted });
   this.stats.decisions++;
 };
 // The answer: its keys go in the plan, and the next decision is due on the
