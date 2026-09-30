@@ -778,6 +778,17 @@ gate_bitbot_timing() {
   node games/the-game/ai/eval/timing.test.js
 }
 
+# WHETHER ANYTHING HAPPENED, which no other gate asked. Every one of them checks
+# that a decision was correct; a bot that spent five hundred of its last six
+# hundred decisions on a board that never changed passed all of them. This plays
+# real duels and measures the symptom -- stillness on a settled board, time confined
+# to two positions, the same answer replayed -- so the next cause of it is caught
+# without anyone having to think of that cause first. Budgets are the measured
+# numbers with the figures recorded beside them.
+gate_bitbot_progress() {
+  node games/the-game/ai/eval/progress.test.js
+}
+
 gate_bitbot_survival() {
   node games/the-game/ai/eval/survival.test.js
 }
@@ -842,6 +853,7 @@ SLOW_GATES=(
   gate_features_live        # 37s
   gate_chips_real_boards    # 26s
   gate_bitbot               # 25s
+  gate_bitbot_progress      # 24s: three duels of 3000 frames
   gate_bitbot_timing        # 3s
   gate_bitmatch             # 18s
   gate_chips_decidable      # 17s
@@ -938,6 +950,7 @@ GATES=(
   "the bot plays what it picks and cannot be killed:gate_bitbot:games/the-game/ai/"
   "the bot's frame arithmetic matches the engine:gate_bitbot_timing:games/the-game/ai/"
   "the rules a vector cannot reach:gate_bitbot_survival:games/the-game/ai/"
+  "the bot moves the board:gate_bitbot_progress:games/the-game/ai/"
   "the simulation resolves like the game:gate_resolve_fidelity:games/the-game/ai/"
   "that fidelity check fires:gate_resolve_fidelity_fires:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"
@@ -1044,6 +1057,54 @@ gate_changed() {
     return $?
   fi
   GC_CHANGED_PATHS="$changed" gate_all
+}
+
+# EVERY GATE THAT IS NOT SLOW, IN ONE STEP.
+#
+# pages.yml names gates one per step and does NOT call gate_all, so a gate added
+# to GATES alone ran in no workflow at all: 41 of 82 were in that position, each
+# one under SLOW_SECONDS and none of them checking anything on a push. Adding a
+# step per gate leaves the same hole open for the next one, so this closes the
+# class -- anything not in SLOW_GATES runs here whether or not someone remembers.
+#
+# Gates pages.yml already names are skipped rather than run twice; those steps
+# carry the comments explaining what each one is for, which is why they stay.
+# NEEDS THE panel-game CHECKOUT BESIDE THIS ONE, which only the training
+# workflows clone. Each of these reads Puzzles.json or the training dir out of
+# it and fails with ENOENT anywhere else, so they are skipped on the deploy path
+# rather than given a second repo to depend on -- a panel-game outage must not
+# block every game's deploy. They still run under gate_all, locally and in the
+# autopilot pre-flight, where the checkout is present.
+PANEL_GAME_GATES=(
+  gate_chain_measure gate_versus_loop gate_rise_scoring gate_density_scoring
+  gate_chaining gate_opponent gate_earned_features_arrive gate_chain_depth
+  gate_features gate_normalise
+)
+_gate_needs_panel_game() {
+  local g
+  for g in "${PANEL_GAME_GATES[@]}"; do [ "$g" = "$1" ] && return 0; done
+  return 1
+}
+
+gate_fast() {
+  local named overall=0 entry fn skipped=""
+  named=$(grep -oE '\bgate_[a-z0-9_]+' .github/workflows/pages.yml | sort -u)
+  for entry in "${GATES[@]}"; do
+    fn="${entry#*:}"; fn="${fn%%:*}"
+    if _gate_is_slow "$fn"; then continue; fi
+    if printf '%s\n' "$named" | grep -qx "$fn"; then continue; fi
+    if [ "${GC_SKIP_PANEL_GAME:-1}" = "1" ] && _gate_needs_panel_game "$fn"; then
+      skipped="${skipped} ${fn}"; continue
+    fi
+    echo "=== GATE: $fn ==="
+    if ! _gate_exec "$fn"; then overall=1; echo "FAILED: $fn"; fi
+  done
+  if [ -n "$skipped" ]; then
+    echo
+    echo "gate_fast: skipped (need the panel-game checkout):${skipped}"
+  fi
+  if [ "$overall" -ne 0 ]; then echo; echo "gate_fast: one or more gates failed"; fi
+  return $overall
 }
 
 gate_all() {

@@ -25,13 +25,19 @@ don't fork it per-game.
 - **Always merge to `main`.** Pages deploys only from `main` (`pages.yml`),
   so work on a branch is invisible. Resolve conflicts and say in the commit
   message which side won.
-- **The gates run after the push, in CI.** `pages.yml` runs `gate_all`;
-  `ai-checks.yml`'s `slow-gates` job runs `SLOW_GATES` (each over 10 s,
-  measured). A push waits on none of them; `GC_RUN_GATES=1` makes
-  `.claude/hooks/guard-main-push.sh` run the scoped list first
-  (`GC_FULL_GATES=1` adds the slow ones). Only `SEARCH_GATES` run the
-  survival search; the rest run with `GC_SURVIVAL_SEARCH=0`. Check CI after
-  pushing and fix what it finds.
+- **The gates run after the push, in CI.** `pages.yml` names the ones worth
+  their own step, then `gate_fast` runs every other gate that is not in
+  `SLOW_GATES` — so a gate added to `GATES` is covered without a step of its
+  own. `SLOW_GATES` run nightly in `ai-slow-gates.yml`: they take hours, and
+  a job that long never survives a `cancel-in-progress` workflow to reach a
+  conclusion. `check_gate_wiring.mjs` fails if the set of gates no workflow
+  runs grows past its recorded count. The ten in `PANEL_GAME_GATES` need the
+  `panel-game` checkout and stay off the deploy path. A push waits on none of
+  it; `GC_RUN_GATES=1` makes `.claude/hooks/guard-main-push.sh` run the
+  scoped list first (`GC_FULL_GATES=1` adds the slow ones). Only
+  `SEARCH_GATES` run the survival search; the rest run with
+  `GC_SURVIVAL_SEARCH=0`. Check CI after pushing — and check the run
+  CONCLUDED, because `cancelled` turns nothing red.
 - Every rule that matters needs three pieces: a plain-English rule where
   someone would be editing, a script that decides it mechanically, and a
   gate that runs the script on every push.

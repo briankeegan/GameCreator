@@ -123,8 +123,6 @@
         // TWO FILTERS THAT ARE NOT WEIGHTS, both off only for the run that
         // measures what they are worth. See refuseReturn and deadly below.
         this.refuseReturn = opts.refuseReturn !== false;
-        // Off only for the run that measures what emptying a column costs.
-        this.refuseHole = opts.refuseHole !== false;
         // Off only for the run that measures what the rule is worth.
         this.refusePayless = opts.refusePayless !== false;
         // HOW MANY CANDIDATES GET THE EXPENSIVE SCORE. Scoring one runs a depth-2
@@ -181,6 +179,7 @@
         this._raiseStarted = false;
         this._walk = null;
         this._lastSwap = null;
+        this._slab = null;
         this.decisions = 0;
         // WHERE EVERY FRAME WENT. Not diagnostics bolted on -- the bot could not
         // say what it did with a frame, so every question about its behaviour was
@@ -1997,6 +1996,45 @@
         // already throws away a flatten worth less than it costs, so a flatten plan
         // existing IS the answer and there is no threshold to choose here. Once the
         // board is level the plan stops appearing and the raise resumes on its own.
+        // ONE SAVE READY, THEN RAISE.
+        //
+        // The row is not the problem; raising with nothing set up for what comes
+        // back is. So before the row goes in, the bot makes the move that will
+        // break the slab when it lands, and it raises holding it. A held plan,
+        // played out like the others, because re-planning every decision starts a
+        // different route each time and finishes none.
+        //
+        // It never stalls: with no route available it falls through and raises,
+        // because no answer exists to wait for and a row beats standing still.
+        if (raising && !this.breaksLandingSlab(base)) {
+            var sn = null;
+            if (this._slab && this._slab.moves.length) sn = this._slab.moves[0];
+            else {
+                var sr = this.slabRoute(info, base, deadline, lookDepth);
+                if (sr) { this._slab = { moves: sr.swaps.slice(0), frames: sr.duration || 0,
+                                         startedAt: this.stack.clock }; sn = this._slab.moves[0]; }
+            }
+            if (sn) {
+                var sls = bit.legalSwapsOf(base), sok = false;
+                for (i = 0; i < sls.length; i++) {
+                    if (sls[i][0] === sn[0] && sls[i][1] === sn[1]) { sok = true; break; }
+                }
+                var sspent = Math.max(0, this.stack.clock - (this._slab.startedAt || 0));
+                if (sok && Math.max(0, this._slab.frames - sspent) <= deadline &&
+                    !returnsToSeen(sn)) {
+                    this._slab.moves = this._slab.moves.slice(1);
+                    if (!this._slab.moves.length) this._slab = null;
+                    this._wantRaise = false;
+                    this.raiseFrames = 0;
+                    this.counts.slabSetup = (this.counts.slabSetup || 0) + 1;
+                    return { kind: 'swap', move: sn, mode: mode, alive: alive,
+                             via: 'slabSetup' };
+                }
+                this._slab = null;
+            }
+        } else if (raising) {
+            this._slab = null;
+        }
         if (raising) {
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
                                                    lookDepth, base, this.timing(info, deadline), digging);
@@ -2441,6 +2479,31 @@
         return false;
     };
 
+    // IS THERE A CLEAR THAT WOULD BREAK THE GARBAGE WHEN IT LANDS.
+    //
+    // Not "is there a clear". A raise adds a row the opponent can answer, and the
+    // answer lands on top -- so the question the board has to pass before it
+    // raises is whether something is set up to hit that slab the moment it
+    // arrives. withSlab lays the next one across the stack, and this asks for a
+    // single swap on that board that comes back `garbage-broke`.
+    //
+    // hasFireable accepts any clear and is the emergency valve -- a bare three
+    // holds the floor for 59 frames whether or not it touches garbage, which is
+    // what keeps a full board alive. This is the stricter question, asked only
+    // where raising is the choice being made.
+    BitBot.prototype.breaksLandingSlab = function (masks) {
+        var st = this.withSlab(this.restingBoard(masks));
+        if (!st) return false;
+        var sw = bit.legalSwapsOf(st), i, r;
+        for (i = 0; i < sw.length; i++) {
+            if (!bit.swapMasks(st, sw[i][0], sw[i][1])) continue;
+            r = bit.resolveFromMasks(st, false);
+            bit.swapMasks(st, sw[i][0], sw[i][1]);
+            if (r && r.scope === 'garbage-broke') return true;
+        }
+        return false;
+    };
+
     // THE BOARD WITH THE NEXT SLAB ON IT.
     //
     // Garbage rests on the tallest column and spans the width, so the row it
@@ -2583,6 +2646,20 @@
         // whole and adds a row beneath, so a clear that exists before the row still
         // exists after it -- this refuses only the board that had nothing to fire
         // in the first place, which is exactly the board that must not be filled.
+        // WHAT THE BOARD MUST BE HOLDING BEFORE IT RAISES IS NOT DECIDED HERE.
+        //
+        // A raise invites an answer and the answer lands on top, so the board has
+        // to be holding a clear that HITS THAT SLAB when it arrives -- flat enough
+        // that three adjacent columns reach the top, with a match among them.
+        // Asked here it is a veto, and a veto on the raise is how the opening
+        // starves: the board is refused the row it needs to build the very thing
+        // being demanded of it. Three rules of that shape have been measured and
+        // all three cost lives.
+        //
+        // So the readiness is a thing the bot GOES AND MAKES (see the raising
+        // branch in _decide, beside levelFirst), and what survives here is the
+        // emergency valve: some clear, so the row never lands on a board with
+        // nothing to fire at all.
         if (!this.hasFireable(this.restingBoard(base))) return null;
         return this._opening ? 'opening' : 'material';
     };
@@ -2600,6 +2677,32 @@
     // flatten worth less than it costs (`if (flat && !(flat.value > 0)) flat =
     // null`), so "is there levelling worth doing" is a question it has answered.
     // The route must also finish in the time there is, like every other plan.
+    // THE ROUTE TO A BREAK FOR THE SLAB THAT WILL LAND.
+    //
+    // The raise invites an answer and the answer lands on top, so the board wants
+    // one move ready that hits it -- not a flat board, one save. Asked as a veto
+    // this starves the opening, which is the one thing raising is for; so it is a
+    // PLAN, and the bot spends a move making the answer and then raises holding it.
+    //
+    // Solved on the hypothetical board rather than the real one: withSlab lays the
+    // next slab across the stack, and a route to breaking it is what the search
+    // already finds when DIG is on. The slab sits above the material, so every swap
+    // the route uses is legal on the real board too -- the board it is planned
+    // against differs only in rows nothing is being swapped in.
+    //
+    // Null when there is no route. The caller raises anyway then: no answer is
+    // available, and standing still is worse than a row.
+    BitBot.prototype.slabRoute = function (info, base, deadline, lookDepth) {
+        var slab = this.withSlab(this.restingBoard(base));
+        if (!slab) return null;
+        var o = bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
+                                   lookDepth, slab, this.timing(info, deadline), true);
+        var r = o && o.save;
+        if (!r || !r.swaps.length) return null;
+        if ((r.duration || 0) > deadline) return null;
+        return r;
+    };
+
     BitBot.prototype.flattenFirst = function (options, deadline) {
         var f = options && options.flatten;
         if (!f || !f.swaps.length) return null;
@@ -2718,6 +2821,26 @@
     // any path can be found in it and put to the same question. That is what
     // makes the exit gate an enforcement point rather than a fourth place to
     // write a rule and be bypassed. Add rules HERE.
+    // REFUSING THE REPLAY OF A SWAP IS MEASURED AND REJECTED.
+    //
+    // The wiggle it was aimed at is real: inside a freeze the pool is read off
+    // panels still in motion, resolveFromMasks finds matches the engine cannot see
+    // yet, so the board a swap RESOLVES to looks like somewhere new and the existing
+    // return filters let a two-cycle run. Seed 103 played one swap sixteen decisions
+    // in a row at four-frame intervals, the board alternating between two positions.
+    //
+    // Refusing it -- even in the narrowest form, the same swap onto the exact board
+    // it was played from, which has no legitimate reading -- costs the game. Measured
+    // on one pairing in isolation, seed 103 rand1 vs rand3, the only difference being
+    // that clause: rand3 survives to 28,345 and breaks 311 of 329 garbage cells
+    // without it, and dies at 1,235 having broken 5 of 47 with it. The wasted frames
+    // it saves (118 down to 93 over three duels) are not worth that.
+    //
+    // Three rules have now been tried that work by taking a move away from the bot
+    // -- this, and the empty-column refusal in two forms -- and all three cost more
+    // than they saved. What is left for the two-position figure in
+    // progress.test.js is something that changes what the bot PREFERS.
+
     BitBot.prototype.refuses = function (cand, info, base, survivalNeeded) {
         if (!cand || cand.kind !== 'swap' || !cand.resolved) return null;
         // Survival is exempt from all of them: a board that needs the clock takes
@@ -2733,31 +2856,27 @@
         // panel spent there is spent on never digging out.
         if (cand.resolved.total > 0 && !cand.resolved.brokeGarbage &&
             materialRows(base) < WORKING_ROWS) return 'starving';
-        // AND IT MAY NOT EMPTY A COLUMN.
+        // EMPTYING A COLUMN IS NOT REFUSED HERE, AND THE NUMBERS ARE WHY.
         //
-        // A column at zero holds no vertical match and breaks the adjacency a
-        // horizontal one needs, and it is where a slab bridges: garbage rests on
-        // the tall columns and spans the width, so the empty one is capped and
-        // nothing under the cap can ever reach the slab. That is the board all
-        // three remaining deaths over seed 101 died on -- 7,3,2,1,3,4 at 1,446;
-        // 8,7,3,1,2,3 at 14,959; 7,3,4,1,5,7 at 19,371 -- each a tower beside a
-        // column at one, capped, with `alive` already at zero for the last fifty
-        // frames. The death is decided thousands of frames before it happens.
+        // A column at zero holds no vertical match, breaks the adjacency a
+        // horizontal one needs, and is where a slab bridges -- garbage rests on the
+        // tall columns and spans the width, so the empty column is sealed and
+        // nothing under it can reach the slab. All three deaths this was written
+        // from are that board: 7,3,2,1,3,4 at 1,446; 8,7,3,1,2,3 at 14,959;
+        // 7,3,4,1,5,7 at 19,371, each a tower beside a column at one, capped, with
+        // `alive` already at zero for the last fifty frames.
         //
-        // The rule existed and reached one path. `opensHole` was wired into
-        // bestAttack's ranking, and score()'s bumpiness floor shapes the weights
-        // fallback; the moves that emptied these columns came via `setup` and
-        // `WEIGHTS`. Here it is a refusal at the exit, so it reaches every path
-        // that is preference rather than arithmetic -- which is the same place the
-        // payless three and the starving clear are decided, and for the same
-        // reason.
+        // The reading is right and the refusal is the wrong instrument. Measured
+        // over 60 boards: 7 deaths without it, 9 refusing the hole everywhere, 14
+        // refusing it only on a board with garbage on it -- the narrowing that
+        // should have cost less cost twice as much. Taking the move away puts the
+        // bot somewhere worse than the hole does.
         //
-        // Asked of the board the move LANDS on, and only when the board it left
-        // had no empty column already: filling six columns from five is not this.
-        if (this.refuseHole) {
-            var lands = bitoptions.shapeOf(cand.masks), from = bitoptions.shapeOf(base);
-            if (lands && from && lands.low === 0 && from.low > 0) return 'hole';
-        }
+        // So it stays where it already was and already measured well: a PREFERENCE.
+        // `opensHole` ranks it out of bestAttack (survival invariant 7) and score()
+        // clamps bumpiness and tallest to a floor no vector can undo. A rule that
+        // shapes the choice is not the same as one that forbids it, and this is a
+        // case where only the first pays.
         return null;
     };
 

@@ -1,0 +1,39 @@
+# THE GATES TOO SLOW TO FINISH BETWEEN PUSHES.
+#
+# SLOW_GATES in gates.sh — each measured over SLOW_SECONDS, the longest
+# (gate_live_fidelity) plays whole duels and takes over an hour. On a push
+# trigger they reported nothing: ai-checks.yml cancels in progress so a newer
+# commit can supersede an older one, and a job that takes hours never survives
+# to a conclusion. `cancelled` is not a failure, so nothing went red.
+#
+# A schedule is the fix rather than dropping the cancellation: runner use stays
+# bounded at one run a night instead of one per push, and the run is never
+# racing a newer commit, so it concludes. The trade is that a break is caught
+# within a day rather than on the push that caused it — which is a day sooner
+# than the alternative these gates were actually getting.
+name: AI slow gates
+
+on:
+  schedule:
+    # 04:17 UTC. Off the hour because scheduled runs bunch up there and get
+    # delayed; the minute is arbitrary and only has to be its own.
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+# NOT cancel-in-progress. Two nightly runs never overlap, and a dispatched run
+# asking for an answer must not be killed by the next schedule.
+concurrency:
+  group: ai-slow-gates
+  cancel-in-progress: false
+
+jobs:
+  slow-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Slow gates
+        run: source .github/scripts/gates.sh && gate_slow
