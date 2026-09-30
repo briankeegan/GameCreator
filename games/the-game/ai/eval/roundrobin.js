@@ -17,6 +17,7 @@ var path = require('path');
 var cp = require('child_process');
 var os = require('os');
 
+var fs = require('fs');
 var args = process.argv.slice(2), ROOT = null, JOBS = 0, want = [], ONE = null;
 for (var i = 0; i < args.length; i++) {
     if (args[i] === '--root') ROOT = args[++i];
@@ -25,6 +26,17 @@ for (var i = 0; i < args.length; i++) {
     else want.push(args[i]);
 }
 ROOT = ROOT || path.join(__dirname, '..', '..');
+// THE ROOT IS CHECKED HERE, ONCE. A wrong one makes every child die on a
+// require, and a tally built from children that never ran reads as a clean
+// sweep. Fail before fanning out, not fourteen times in the output.
+['panel-engine.js', 'panel-cpu.js', path.join('ai', 'eval', 'bitbot.js')]
+    .forEach(function (f) {
+        if (!fs.existsSync(path.join(ROOT, f))) {
+            console.error('roundrobin: --root ' + ROOT + ' has no ' + f +
+                          '. Point it at the GAME directory (games/the-game).');
+            process.exit(2);
+        }
+    });
 JOBS = JOBS || os.cpus().length;
 
 function vectors(BF) {
@@ -132,7 +144,7 @@ if (!jobs.length) {
     });
 }
 console.log(jobs.length + ' pairings, ' + Math.min(JOBS, jobs.length) + ' at a time, root ' + ROOT);
-var next = 0, live = 0, done = 0, deaths = 0, hard = 0, lines = [];
+var next = 0, live = 0, done = 0, deaths = 0, hard = 0, broken = 0, lines = [];
 function pump() {
     while (live < JOBS && next < jobs.length) {
         // ONE CLOSURE PER CHILD. `var` is function-scoped, so a buffer declared
@@ -147,10 +159,18 @@ function spawnOne(job) {
         [__filename, '--root', ROOT, '--one', job], { stdio: ['ignore', 'pipe', 'inherit'] });
     var buf = '';
     ch.stdout.on('data', function (d) { buf += d; });
-    ch.on('close', function () {
+    ch.on('close', function (code) {
         live--; done++;
         var line = buf.trim();
-        if (line) {
+        // A CHILD THAT DID NOT RUN IS NOT A CHILD THAT SURVIVED. A non-zero exit
+        // or stdout with no result line in it means this pairing was never
+        // played, and counting it as zero deaths turns a broken harness into a
+        // clean sweep. Counted apart and the tally refuses to stand on it.
+        if (code !== 0 || !/^seed \d+/m.test(line)) {
+            broken++;
+            console.log('  [' + done + '/' + jobs.length + '] ' + job +
+                        ' DID NOT RUN (exit ' + code + ')');
+        } else {
             lines.push(line);
             var n = (line.match(/DEAD@/g) || []).length;
             deaths += n;
@@ -158,7 +178,13 @@ function spawnOne(job) {
             console.log('  [' + done + '/' + jobs.length + '] ' + line);
         }
         if (done === jobs.length) {
-            console.log('\n' + deaths + ' deaths / ' + (jobs.length * 2) + ' boards' +
+            var played = jobs.length - broken;
+            if (broken) {
+                console.log('\nNO RESULT: ' + broken + ' of ' + jobs.length +
+                            ' pairings did not run. Nothing is measured.');
+                process.exit(2);
+            }
+            console.log('\n' + deaths + ' deaths / ' + (played * 2) + ' boards' +
                         '   STARTER or ZERO: ' + hard);
             process.exit(hard ? 1 : 0);
         }
