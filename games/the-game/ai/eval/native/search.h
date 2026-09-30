@@ -169,6 +169,13 @@ static LOCAL int32_t deadAt;   // the frame a STEP_DEAD died on
 #ifndef PUSH_ARRIVAL
 static void pushArrival(Board *b, const Arr *a) { nb_push_incoming(b, a->width, a->height, a->isChain, a->isMetal); }
 #endif
+// THE KEY TAPE: with tape set, advance writes every frame it plays -- the
+// keys sent (SENT_KEYS: with the swap an engine presses for itself) and the
+// raise held after it -- so a caller can press what the search played.
+#ifndef SENT_KEYS
+#define SENT_KEYS(st, input) (input)
+#endif
+static LOCAL int32_t *tape, tapeN, tapeCap;
 static int runFrame(Board *st, Arr *arr, int32_t *narr, int32_t input, int32_t *f) {
   st->input = input;
   run(st);
@@ -202,7 +209,10 @@ static int advance(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
   else if (kind == MK_HOLD) bot.cooldown = x->reaction;
 #define REFUSED (kind == MK_SWAP && !bot.w.active && !bot.lastSwap)
 #define GIVE(code) do { nb_free(st); return (code); } while (0)
-#define FRAME() do { int over_ = runFrame(st, arr, &narr, input, &f); if (st->err) GIVE(STEP_ERR); \
+#define FRAME() do { if (tape) { if (tapeN >= tapeCap) GIVE(STEP_ERR); \
+                        tape[3 * tapeN] = SENT_KEYS(st, input); tape[3 * tapeN + 1] = bot.raiseFrames; \
+                        tape[3 * tapeN + 2] = bot.raiseStarted; tapeN++; } \
+                      int over_ = runFrame(st, arr, &narr, input, &f); if (st->err) GIVE(STEP_ERR); \
                       if (SWAP_PRESSED && kind == MK_SWAP && st->swapDenied) GIVE(STEP_NULL); \
                       if (over_) { deadAt = t0 + f; GIVE(STEP_DEAD); } } while (0)
   if (REFUSED || (bot.w.active && bot.w.retries)) GIVE(STEP_NULL);
@@ -309,6 +319,16 @@ EXPORT(ns_root) int ns_root(Ctx *x, int holdLeft, int holdStarted, int narr, int
 EXPORT(ns_step) int ns_step(Ctx *x, int pi, int kind, int mr, int mc, int until) { x->steps++; return lineStep(x, pi, kind, mr, mc, until); }
 EXPORT(ns_advance) int ns_advance(Ctx *x, int pi, int kind, int mr, int mc, int frames) { return advance(x, pi, kind, mr, mc, frames); }
 EXPORT(ns_dead_at) int ns_dead_at(void) { return deadAt; }
+// One decision from node pi as keys: the io body gets [keys, raise held,
+// raise started] per frame. Returns the frames written, or advance's refusal
+// (STEP_NULL, STEP_ERR); a line that dies still gives the keys up to it.
+EXPORT(ns_keys) int ns_keys(Ctx *x, int pi, int kind, int mr, int mc, int frames) {
+  tape = ioBody; tapeN = 0; tapeCap = (int32_t)(sizeof ioBody / sizeof ioBody[0]) / 3;
+  int r = advance(x, pi, kind, mr, mc, frames);
+  tape = 0;
+  if (r == STEP_NULL || r == STEP_ERR) return r;
+  return tapeN;
+}
 EXPORT(ns_node) Node *ns_node(Ctx *x, int i) { return NODE(x, i); }
 EXPORT(ns_board) Board *ns_board(Ctx *x, int i) { return ensureBoard(x, i); }
 EXPORT(ns_legal) int ns_legal(Ctx *x, int i) { Board *b = ensureBoard(x, i); return b ? legalSwaps(b, ioBody) : -1; }

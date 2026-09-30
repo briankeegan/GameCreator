@@ -534,6 +534,22 @@
     if (k === undefined) throw new Error('Native: step kind ' + kind);
     return unstep(this, X.ns_advance(this.ctx, node._i, k, k === 3 ? m[0] : 0, k === 3 ? m[1] : 0, frames | 0));
   };
+  // The same decision as keys: { inputs, holds } per frame (holds: the raise
+  // still held after it), or null when the move is refused. What the search
+  // played is what a caller presses.
+  Search.prototype.keys = function (node, kind, m, frames) {
+    var k = KIND[kind];
+    if (k === undefined) throw new Error('Native: step kind ' + kind);
+    var n = X.ns_keys(this.ctx, node._i, k, k === 3 ? m[0] : 0, k === 3 ? m[1] : 0, frames | 0);
+    if (n === -1) return null;
+    if (n < 0) throw new Error('Native: the keys ran out of room (' + n + ')');
+    var body = new Int32Array(MEM.buffer, (X.nb_io_body() >>> 0), 3 * n), out = { inputs: [], holds: [] };
+    for (var i = 0; i < n; i++) {
+      out.inputs.push(body[3 * i]);
+      out.holds.push({ left: body[3 * i + 1], started: body[3 * i + 2] === 1 });
+    }
+    return out;
+  };
   Search.prototype.steps = function () { return X.ns_steps(this.ctx); };
   // A node the level loop made: its move, its parent and its line's tag, as
   // the JS loop would have written them on it.

@@ -83,7 +83,7 @@ function check(js, h, where) {
 
 // ---- side by side
 var BIT = { right: 1, left: 2, down: 4, up: 8, swap: 16, raise: 32 };
-var frames = 0, runs = 0, deaths = 0, presses = 0, denied = 0, garbage = 0, metal = 0, copies = 0, rowsRisen = 0, matches = 0;
+var quiet = 0, frames = 0, runs = 0, deaths = 0, presses = 0, denied = 0, garbage = 0, metal = 0, copies = 0, rowsRisen = 0, matches = 0;
 while (frames < FRAMES) {
   var b = boards[runs++ % boards.length];
   var js = b.copy(), h = N.fromStack(js), dir = null, held = 0, raise = 0;
@@ -112,6 +112,7 @@ while (frames < FRAMES) {
     js.run();
     var err = X.nb_run(h);
     if (err) { console.log('C engine error ' + err + ' at frame ' + frames); process.exit(1); }
+    if (X.nb_quiet(h)) quiet++;
     js.events.forEach(function (e) { if (e.type === 'newRow') rowsRisen++; if (e.type === 'match') matches++; });
     js.events.length = 0;
     if (js.swapDeniedThisFrame) denied++;
@@ -126,5 +127,7 @@ while (frames < FRAMES) {
   }
   X.nb_free(h);
 }
-console.log('ok: ' + frames + ' frames identical over ' + runs + ' runs (' + deaths + ' deaths, ' + matches + ' matches, ' + rowsRisen +
+// pa.c QUIET frames skip the panel passes: the frames above must have held some.
+if (!quiet) { console.log('FAIL: no quiet frame was played, so the shortcut went untested'); process.exit(1); }
+console.log('ok: ' + frames + ' frames identical over ' + runs + ' runs (' + quiet + ' quiet, ' + deaths + ' deaths, ' + matches + ' matches, ' + rowsRisen +
             ' rows, ' + presses + ' swaps pressed, ' + denied + ' refused, ' + garbage + ' garbage (' + metal + ' shock), ' + copies + ' copies)');

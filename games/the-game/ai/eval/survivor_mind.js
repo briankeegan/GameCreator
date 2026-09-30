@@ -11,9 +11,9 @@ var DIR = __dirname;
 require(path.join(DIR, '..', '..', 'panel-engine.js'));
 require(path.join(DIR, '..', '..', 'panel-cpu.js'));
 var P = require(path.join(DIR, 'puyocpu.js')), PA = require(path.join(DIR, 'pa-engine.js')), PE = globalThis.PanelEngine;
-var cfg = wt.workerData;
-var weights = JSON.parse(fs.readFileSync(path.join(DIR, cfg.weights), 'utf8')).weights;
-var bot = null, snap = null;
+var SH = require(path.join(DIR, 'survivor_shared.js'));
+var cfg = wt.workerData, OPTS = SH.botOptions(cfg.profile, cfg.threads);
+var bot = null, snap = null, nat = null;   // nat: the search's C context, kept from match to match
 var NativeMem = function () {
   var N = require(path.join(DIR, 'native.js')).server, X = N.exports(), free = [];
   for (var k = 0; k < 4; k++) free.push(X.nb_pool_stat(k));
@@ -21,18 +21,15 @@ var NativeMem = function () {
 };
 
 wt.parentPort.on('message', function (m) {
-  if (m.type === 'reset') { bot = null; snap = null; return; }
+  if (m.type === 'reset') { if (bot && bot._nat) nat = bot._nat; bot = null; snap = null; return; }
   var t0 = Date.now(), board = PA.revive(m.board), arrivals = [], out;
-  // Garbage on its way arrives that many frames on (search.h runFrame
-  // receives it once the frame before has run, as the server does).
-  (m.arrivals || []).forEach(function (a) {
-    if (a.at > board.stopWatch) arrivals.push({ at: a.at - board.stopWatch, width: a.g.width, height: a.g.height, isChain: !!a.g.isChain, isMetal: !!a.g.isMetal });
-  });
+  // Garbage on its way arrives that many frames on (search.h runFrame).
+  arrivals = SH.arrivalsFrom(board, m.arrivals || []);
   var view = PA.toPanelEngine(board, PE);
   try {
     if (!bot) {
-      bot = new P(view, { weights: weights, reaction: cfg.reaction, depth: 2, beam: 0, rise: true, allowRaise: true, modes: cfg.modes !== false,
-                          engine: true, native: true, threads: cfg.threads, cursorMoveFrames: cfg.cursorMoveFrames });
+      bot = new P(view, OPTS);
+      if (nat) bot._nat = nat;
     }
     // A decision that was never played is taken back, as Mind.think does.
     if (snap && !m.acted) {
@@ -42,7 +39,7 @@ wt.parentPort.on('message', function (m) {
     snap = Object.assign({}, bot);
     bot.stack = view;
     bot.serverStack = board;
-    bot.serverArrivals = arrivals.slice(0, 16);   // search.h MAXARR
+    bot.serverArrivals = arrivals;
     bot.raiseFrames = m.hold.left; bot._raiseStarted = m.hold.started;
     bot.opponent = null;
     bot._predArr = [];
