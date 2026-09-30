@@ -1152,6 +1152,24 @@
             // instead died at 6,936 frames where the engine's own arithmetic
             // survives, because a three is genuinely the move when nothing else
             // is there.
+            // AND UNDER THE FLOOR IT IS A REFUSAL, NOT A PRICE.
+            //
+            // As a price it never bites: clearing three panels is worth 3*perPanel
+            // plus the frames the resolve holds -- about 115 at level 10 -- against
+            // a shortfall charge of half a row, 56. So spending always won, and the
+            // survival plan is exempt from the candidate-list rule that says the
+            // same thing, because it is priced arithmetic rather than preference.
+            //
+            // Seed 101 reached a flat board of 24 panels at frame 2,248 with no
+            // garbage on it and nothing incoming, and ground itself to 7 panels by
+            // 3,420 through this path. Twenty-four cells landed at 3,589 and it was
+            // dead at 4,377. Nothing was threatening it; it simply cashed the board
+            // away.
+            //
+            // A break is exempt: it ADDS material, and its settled board is
+            // unknowable so `mat` is null anyway.
+            if (o.mat !== null && o.mat !== undefined && o.mat < WORKING_ROWS &&
+                !o.breaks && (o.total || 0) > 0) continue;
             var shortfall = (o.mat === null || o.mat === undefined)
                           ? 0 : Math.max(0, WORKING_ROWS - o.mat);
             // AND WHAT THE CLEAR HOLDS WHILE IT RESOLVES, WHICH IS A DIFFERENT
@@ -2125,6 +2143,14 @@
         // it: the board the bot died on had columns 4,2,2,4,5,6 under the slab,
         // two deep in the middle, and no match it could put against the garbage
         // anywhere. Levelling the pocket IS reaching the slab.
+        // FLATTEN A LITTLE WHILE DOING THE REST, WHICH IS WHERE THIS ALREADY SITS.
+        //
+        // Death takes priority and this does not compete with it: the branch order
+        // is raise, then break, then the attack, then the survival plan, and only
+        // then this. So flattening in a freeze never displaces the move the board
+        // needs -- it replaces the weights fallback on frames where every path
+        // above it passed, and while the clock runs those frames are free, because
+        // the floor is held.
         var shapeTime = noneClear || (info.stopTime || 0) > 0;
         if (shapeTime && (!this._flatten || !this._flatten.moves.length)) {
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
