@@ -696,32 +696,6 @@
                                 }
                                 var val = (BASE.tall - sh2.tall) * FPR
                                         + (BASE.excess - sh2.excess) * FPR
-                                        // AND THE ROWS THE SLAB WOULD SEAL.
-                                        //
-                                        // Garbage rests on the TALLEST column and
-                                        // spans the width, so every column shorter
-                                        // than that one gets the difference in
-                                        // empty rows underneath it -- sealed, out
-                                        // of reach, holding whatever is below. That
-                                        // is a row of ceiling gone exactly as
-                                        // height is, so it is priced at FPR like
-                                        // height is.
-                                        //
-                                        // Neither of the two terms above sees it.
-                                        // `tall` does not move when a SHORT column
-                                        // drops, and `excess` is a mean deviation,
-                                        // so seed 103 took column one from six to
-                                        // two, sealed four rows, and paid a third
-                                        // of a row for it: 6,6,6,5,4,3 to
-                                        // 2,6,6,5,4,3, dead at 15,854.
-                                        //
-                                        // A PRICE, NOT A REFUSAL. Forbidding the
-                                        // shape outright is measured worse -- seven
-                                        // deaths in sixty without it, nine refusing
-                                        // it everywhere -- because taking the move
-                                        // away puts the bot somewhere worse than the
-                                        // shape does. See refuses().
-                                        + (BASE.spread - sh2.spread) * FPR
                                         + landStop
                                         - Math.max(0, WORK - sh2.mat) * FPR
                                         - dur;
