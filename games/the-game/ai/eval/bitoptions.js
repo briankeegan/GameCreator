@@ -288,6 +288,41 @@
         // Cheap because it stops at the first one and is only asked while no
         // route has been found yet: the frontier grows in cost order, so the
         // first node that answers is the cheapest way to a board that can fire.
+        // READY FOR WHAT LANDS, not merely able to fire.
+        //
+        // Garbage rests on the tallest column and spans the width, so the row that
+        // lands next is one block across the board at that height. A clear that
+        // touches it breaks it; a clear anywhere else does not. Asking "can this
+        // board fire" accepts a three in the pocket that answers nothing when the
+        // slab arrives, which is the difference between a board that survives an
+        // attack and one that is merely tidy.
+        //
+        // The slab is laid on a copy and taken off with it. Nothing else in the
+        // search sees it.
+        function slabReadyOf(state) {
+            if (slabBudget <= 0) return 0;
+            slabBudget--;
+            var t = 0, c, top;
+            for (c = 1; c <= W; c++) {
+                top = 32 - Math.clz32(state.occ[c] >>> 0);
+                if (top > t) t = top;
+            }
+            if (t >= H) return 0;
+            var st2 = bit.copyState(state), b = 1 << t, sm = new Int32Array(W + 2);
+            for (c = 1; c <= W; c++) {
+                st2.occ[c] |= b; st2.inert[c] |= b; st2.garb[c] |= b; sm[c] = b;
+            }
+            st2.slabs.push(sm);
+            var sw = bit.legalSwapsOf(st2), i, r;
+            for (i = 0; i < sw.length; i++) {
+                if (!bit.swapMasks(st2, sw[i][0], sw[i][1])) continue;
+                r = bit.resolveFromMasks(st2, false);
+                bit.swapMasks(st2, sw[i][0], sw[i][1]);
+                if (r && r.scope === 'garbage-broke') return 1;
+            }
+            return 0;
+        }
+
         function readyOf(state) {
             if (readyBudget <= 0) return 0;
             readyBudget--;
@@ -323,8 +358,8 @@
             return { mask: reach, dig: dig };
         }
 
-        var flat = null, flatReady = null, save = null, ready = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
-        var readyBudget = 0;
+        var flat = null, flatReady = null, flatSlab = null, save = null, ready = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
+        var readyBudget = 0, slabBudget = 0;
         var FPR = (timing && timing.framesPerRow) || 112;
         var DEADLINE = (timing && timing.deadline) || 0;
 
@@ -338,6 +373,7 @@
             // whenever no route existed, which is exactly the board where the
             // whole sweep is already expensive: gate_bitbot went 11s to 40s.
             readyBudget = 24;
+            slabBudget = 24;
             BASESAVE = (DIG && BASEDIG > 0) ? savesOfRaw(state0) : 0;
             // The root has no reach mask: ply one stays exhaustive so an immediate
             // clear is never missed.
@@ -544,6 +580,22 @@
                                 // would otherwise win, which is a handful a sweep.
                                 var take = !flat || val > flat.value;
                                 var takeReady = !flatReady || val > flatReady.value;
+                                // PREFERRED IN ORDER: ready for the slab that lands,
+                                // then merely able to fire. Both are cheap to ask only
+                                // because they are asked of a route that would
+                                // otherwise win.
+                                // A CLASS OF ITS OWN, NOT AN ALTERNATIVE TO READY.
+                                // A clear that breaks the slab is still a clear, so
+                                // `slabReady || ready` accepts exactly what `ready`
+                                // already accepted and prefers nothing. It has to be
+                                // its own winner to be preferred over one.
+                                var takeSlab = !flatSlab || val > flatSlab.value;
+                                if (takeSlab && slabReadyOf(res.settled)) {
+                                    flatSlab = { swaps: seq, frames: cost, value: val,
+                                                 tall: sh2.tall, bumps: sh2.bumps,
+                                                 ways: ways2, duration: dur,
+                                                 lands: bit.copyState(res.settled) };
+                                }
                                 if (takeReady && readyOf(res.settled)) {
                                     flatReady = { swaps: seq, frames: cost, value: val,
                                                   tall: sh2.tall, bumps: sh2.bumps,
@@ -624,10 +676,16 @@
         // worth zero.
         if (flat && !(flat.value > 0)) flat = null;
         if (flatReady && !(flatReady.value > 0)) flatReady = null;
-        // THE ONE THAT LANDS READY, WHEN THERE IS ONE. Both are worth more than they
-        // cost by the test above; between them, the board that can fire when it
+        if (flatSlab && !(flatSlab.value > 0)) flatSlab = null;
+        // THE ONE THAT LANDS READY, WHEN THERE IS ONE. All are worth more than they
+        // cost by the test above; between them, the board that can answer what
         // arrives is the one to arrive at.
+        //
+        // Least specific first, so the most specific wins: able to fire beats
+        // merely flat, and ready for the slab that lands beats able to fire. A
+        // three in the pocket answers nothing when the row comes down on top.
         if (flatReady) flat = flatReady;
+        if (flatSlab) flat = flatSlab;
 
         return { now: now, next: next, cheapest: cheapest, flatten: flat, save: save,
                  ready: ready,
