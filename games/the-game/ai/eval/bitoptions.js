@@ -119,7 +119,15 @@
         // one can never reach it.
         var low = h[1];
         for (c = 2; c <= w2; c++) if (h[c] < low) low = h[c];
-        return { tall: tall, bumps: bumps, excess: dev / w2, mat: mean, low: low };
+        // THE SPREAD IS WHAT A SLAB SEALS. Garbage rests on the TALLEST column and
+        // spans the width, so every column shorter than that one ends up with the
+        // difference in empty rows under the slab -- sealed, out of reach, and
+        // holding whatever material was beneath. Bumpiness counts neighbour
+        // differences and stays small while one column towers: the board that died
+        // read 4,2,2,2,3,6, bumpiness 6, spread 4, with four rows sealed under
+        // columns 2 to 4 and nothing able to reach the slab but column 6.
+        return { tall: tall, bumps: bumps, excess: dev / w2, mat: mean, low: low,
+                 high: mx, spread: mx - low };
     }
 
     function optionOf(swaps, frames, r) {
@@ -128,7 +136,21 @@
                  swaps: swaps, frames: frames, chain: r.chain, total: r.total,
                  garbage: r.garbage || 0, duration: durationOf(swaps, frames),
                  tall: sh ? sh.tall : null, bumps: sh ? sh.bumps : null,
-                 mat: sh ? sh.mat : null, low: sh ? sh.low : null };
+                 mat: sh ? sh.mat : null, low: sh ? sh.low : null,
+                 spread: sh ? sh.spread : null,
+                 // CAN THE BOARD THIS LANDS ON STILL FIRE.
+                 //
+                 // Firing anything holds the floor for its resolve, and at
+                 // maxHealth 1 that hold is the whole difference between living
+                 // and not -- so a board with no clear anywhere on it is a board
+                 // one row from dying, whatever it just sent. It is the same
+                 // question `ready` asks of a route and readyOf asks of a node,
+                 // asked of every option, because the paths that pick the move
+                 // rank options and never look at either of those.
+                 //
+                 // null, not false, for a break: its settled board is unknowable,
+                 // the way `low` is, and a null must not be read as "cannot fire".
+                 ready: r.settled ? !!bit.anyOneSwapClear(r.settled) : null };
     }
 
     // Cheapest first, then bigger — the order a caller wants to read.
@@ -289,8 +311,6 @@
         // route has been found yet: the frontier grows in cost order, so the
         // first node that answers is the cheapest way to a board that can fire.
         function readyOf(state) {
-            if (readyBudget <= 0) return 0;
-            readyBudget--;
             // ONE IMPLEMENTATION OF THIS QUESTION, IN bitmatch. hasFireable in
             // bitbot asked it too, with its own copy of the same sweep.
             return bit.anyOneSwapClear(state) ? 1 : 0;
@@ -319,7 +339,7 @@
         }
 
         var flat = null, flatReady = null, flatSlab = null, save = null, ready = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
-        var readyBudget = 0, slabBudget = 0;
+        var slabBudget = 0;
         var FPR = (timing && timing.framesPerRow) || 112;
         var DEADLINE = (timing && timing.deadline) || 0;
 
@@ -327,12 +347,6 @@
             BASE = shapeOf(state0);
             BASEDIG = DIG ? reachOf(state0).dig : 0;
             saveBudget = 192;
-            // TWENTY-FOUR, because the frontier grows in cost order and the
-            // cheapest route is found in the first few nodes or not at all. At 96
-            // this swept up to thirty swaps on each of ninety-six landed boards
-            // whenever no route existed, which is exactly the board where the
-            // whole sweep is already expensive: gate_bitbot went 11s to 40s.
-            readyBudget = 24;
             slabBudget = 24;
             BASESAVE = (DIG && BASEDIG > 0) ? savesOfRaw(state0) : 0;
             // The root has no reach mask: ply one stays exhaustive so an immediate

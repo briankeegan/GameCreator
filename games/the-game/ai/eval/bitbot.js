@@ -1025,6 +1025,23 @@
         var level = [];
         for (i = 0; i < all.length; i++) if (all[i].levels) level.push(all[i]);
         if (level.length) all = level;
+        // AND THE ONES THAT LEAVE THE BOARD ABLE TO ANSWER.
+        //
+        // Firing anything holds the floor for its resolve, and at maxHealth 1 that
+        // hold is the difference between living and not -- so a board with no clear
+        // anywhere on it is one row from dying however much the move that made it
+        // just sent. The question already existed and reached two paths: raiseMode
+        // will not raise into a board that cannot fire, and a flatten route must
+        // land somewhere that can. Neither is the path that picks most moves.
+        //
+        // A NARROWING, NOT A WEIGHT, and it stands aside when nothing leaves the
+        // board able to answer: then it was going to be unanswerable whatever was
+        // played, and the best attack is the right one. A break carries `ready` null --
+        // its settled board is unknowable, the way `low` is -- and a null is not a
+        // no, so breaks are never narrowed out.
+        var rdy = [];
+        for (i = 0; i < all.length; i++) if (all[i].ready !== false) rdy.push(all[i]);
+        if (rdy.length) all = rdy;
         for (i = 0; i < all.length; i++) {
             var o = all[i];
             if (!o.swaps || !o.swaps.length) continue;
@@ -1116,6 +1133,43 @@
 
     function bestPlan(list, clock, deadline, engine, toppedOut, framesPerRow, framesTable, tallNow) {
         var best = null, over = null, all = list.now.concat(list.next), i;
+        // THE PLANS THAT DO NOT COST SHAPE, IF THERE ARE ANY.
+        //
+        // The same narrowing bestAttack makes, on the path that actually fires: a
+        // vertical three takes three panels out of ONE column and drops it three
+        // below its neighbours, a horizontal three takes one from each of three and
+        // leaves the surface where it was. Same frames bought, different board
+        // after, so there is nothing here for a rate to weigh.
+        //
+        // It is what this bot dies of. Seed 101 rand4 went from 8,5,3,5,5,9 to
+        // 8,5,0,5,2,9 in thirty frames -- two columns each dropping by exactly
+        // three, two vertical threes -- and from there to a lone tower seven high
+        // that a four-row slab bridged on and sealed every column under. `levels`
+        // is the rule for that and it reached bestAttack only; the move that made
+        // this board came via survivalPlan.
+        //
+        // A narrowing, not a weight, and it stands aside when every plan costs
+        // shape: then the shape was going to be paid whatever was played.
+        var lvl = [];
+        for (i = 0; i < all.length; i++) if (all[i].levels) lvl.push(all[i]);
+        if (lvl.length) all = lvl;
+        // AND THE ONES THAT LEAVE THE BOARD ABLE TO ANSWER.
+        //
+        // Firing anything holds the floor for its resolve, and at maxHealth 1 that
+        // hold is the difference between living and not -- so a board with no clear
+        // anywhere on it is one row from dying however much the move that made it
+        // just sent. The question already existed and reached two paths: raiseMode
+        // will not raise into a board that cannot fire, and a flatten route must
+        // land somewhere that can. Neither is the path that picks most moves.
+        //
+        // A NARROWING, NOT A WEIGHT, and it stands aside when nothing leaves the
+        // board able to answer: then it was going to be unanswerable whatever was
+        // played, and the best plan is the right one. A break carries `ready` null --
+        // its settled board is unknowable, the way `low` is -- and a null is not a
+        // no, so breaks are never narrowed out.
+        var rdy = [];
+        for (i = 0; i < all.length; i++) if (all[i].ready !== false) rdy.push(all[i]);
+        if (rdy.length) all = rdy;
         // ONE PANEL REMOVED IS framesPerRow / W FRAMES OF LIFE -- 18.7 at level 10.
         // Panels and stop time are the same currency and this is the exchange rate.
         var perPanel = (framesPerRow || 0) / W;
@@ -2109,7 +2163,22 @@
             // panels a chain is made of are locked inside the slab, and every row
             // of slab is a row of ceiling gone. It still has to survive its own
             // cost like any other move.
-            if (haveBreak && materialRows(base) < 6) {
+            // A BREAK IN HAND IS PLAYED. NOT ONLY WHEN SHORT OF MATERIAL.
+            //
+            // It used to wait for the board to drop under six rows, inherited from
+            // "breaking is the priority under six rows" -- a rule about which
+            // candidate to prefer, borrowed as a condition on whether to play a
+            // break at all. So with material in hand the bot could hold a break and
+            // attack instead, and the slab stayed.
+            //
+            // Nothing outranks it. A break holds the floor for its whole resolve
+            // exactly as any clear does, AND converts the slab's cells into panels,
+            // AND hands back the rows it was occupying -- and a garbage cell can
+            // never come off the board any other way. The boards that die are the
+            // ones where the garbage was never broken: seed 101 rand4 took 26 cells
+            // and broke none of them, and by the end the slab had bridged on a lone
+            // tower and sealed every column under it.
+            if (haveBreak) {
                 var bk = null;
                 for (i = 0; i < pool.length; i++) {
                     var bc = pool[i];
@@ -2316,7 +2385,14 @@
         // needs -- it replaces the weights fallback on frames where every path
         // above it passed, and while the clock runs those frames are free, because
         // the floor is held.
-        var shapeTime = noneClear || (info.stopTime || 0) > 0;
+        // A TOWER IS URGENT, NOT IDLE WORK.
+        //
+        // Without towering() this is "nothing to fire, or the clock is already
+        // running" -- the bot puts its shape right only once it is already in
+        // trouble. Every other shape rule is "do not make it worse" (levels,
+        // opensHole, score()'s floor); this is the one that goes and fixes it
+        // while there are still moves to play. towering() says what counts.
+        var shapeTime = noneClear || (info.stopTime || 0) > 0 || this.towering(base);
         if (shapeTime && (!this._flatten || !this._flatten.moves.length)) {
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
                                                     lookDepth, base, this.timing(info, deadline), digging);
@@ -2433,6 +2509,27 @@
     // own copy of the same sweep, which is two places for one rule to drift.
     // Callers pass a settled board -- restingBoard here, res.settled there -- which
     // is what anyOneSwapClear needs to be exact.
+    // IS ONE COLUMN RUNNING AWAY FROM THE REST.
+    //
+    // The spread of the material -- the fullest column minus the emptiest -- and
+    // not the bumpiness. Garbage rests on the TALLEST column and spans the whole
+    // width, so every shorter column is sealed under the slab by exactly that
+    // difference, holding whatever material was beneath it. Bumpiness sums
+    // neighbour steps and so stays small while one column towers: the board the
+    // bot died on read 4,2,2,2,3,6 -- bumpiness 6, spread 4 -- with four rows
+    // sealed under columns 2 to 4 and only column 6 able to touch the slab.
+    //
+    // WORKING_ROWS is the anchor: at that spread a whole working floor of rows
+    // goes under the slab the moment a load lands.
+    //
+    // shapeOf counts only the panels BELOW the lowest garbage cell, so material
+    // stranded above a slab is not a tower -- it is in another pocket and nothing
+    // the bot plays can spread it.
+    BitBot.prototype.towering = function (base) {
+        var shp = base && bitoptions.shapeOf(base);
+        return !!shp && (shp.spread || 0) >= WORKING_ROWS;
+    };
+
     BitBot.prototype.hasFireable = function (masks) {
         return bit.anyOneSwapClear(masks);
     };
@@ -3128,6 +3225,11 @@
     // playing games: survival.test.js asserts that an option flagged as opening a
     // hole is refused here, and that an unflagged one still plays.
     BitBot.bestAttackOf = bestAttack;
+    // Exposed for the same reason bestAttack is: the choice between plans is
+    // testable on its own, and a test that plays a game to reach it is not a test
+    // of the choice.
+    BitBot.bestPlanOf = bestPlan;
+    BitBot.WORKING_ROWS = WORKING_ROWS;
     BitBot.STARTER = STARTER;
     return BitBot;
 }));

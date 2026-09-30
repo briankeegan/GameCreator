@@ -317,5 +317,193 @@ if (flatSpread !== 0) {
     if (gfails) process.exit(1);
 }());
 
+// --------------------------------------------------------------------------
+// SPREAD: THE NUMBER A SLAB IS MEASURED IN.
+//
+// Garbage rests on the TALLEST column and spans the whole width, so every
+// shorter column ends up with the difference in dead rows under the slab,
+// holding whatever material was beneath it. `spread` is that difference --
+// fullest material column minus emptiest -- and it is a different number from
+// `bumps`, which is what the board was judged by before.
+//
+// Arithmetic only, on boards built by hand: no engine, no search.
+(function () {
+    var sfails = 0;
+    function sok(cond, msg) { if (!cond) { console.log('FAIL: ' + msg); sfails++; } }
+
+    // Columns given bottom-up as colours; 'G' is a garbage cell.
+    function shapeOfColumns(cols) {
+        var grid = [], blocks = { g: { cells: [] } }, r, c;
+        for (r = 0; r <= H; r++) { grid[r] = []; for (c = 1; c <= W; c++) grid[r][c] = 0; }
+        for (c = 1; c <= W; c++) {
+            for (r = 1; r <= cols[c - 1].length; r++) {
+                var v = cols[c - 1][r - 1];
+                if (v === 'G') { grid[r][c] = -2; blocks.g.cells.push([r, c]); }
+                else grid[r][c] = v;
+            }
+        }
+        if (!blocks.g.cells.length) blocks = {};
+        return opts.shapeOf(bit.maskState(grid, blocks, W, H));
+    }
+    // Heights alone, coloured so nothing matches: enough for a shape.
+    function shapeOfHeights(h) {
+        var cols = [], c, r;
+        for (c = 1; c <= W; c++) {
+            cols[c - 1] = [];
+            for (r = 1; r <= h[c - 1]; r++) cols[c - 1].push(1 + ((r + c) % 3));
+        }
+        return shapeOfColumns(cols);
+    }
+
+    // A LEVEL BOARD HAS NO SPREAD. Nothing is sealed when a slab lands flat.
+    var level = shapeOfHeights([3, 3, 3, 3, 3, 3]);
+    sok(level.spread === 0,
+        'a level board read spread ' + level.spread + ', so a slab landing on it ' +
+        'would be scored as sealing rows that do not exist');
+    sok(level.high === 3 && level.low === 3,
+        'a level board read high ' + level.high + ' low ' + level.low);
+
+    // THE BOARD THAT DIED: 4,2,2,2,3,6. Four rows go under the slab in columns
+    // 2 to 4 the moment a load lands, and only column 6 can touch it.
+    var died = shapeOfHeights([4, 2, 2, 2, 3, 6]);
+    sok(died.spread === 4,
+        'the board the bot died on read spread ' + died.spread + ' instead of 4 -- ' +
+        'six minus two is what goes under the slab');
+    sok(died.high === 6 && died.low === 2,
+        'spread is high minus low and they disagree: high ' + died.high +
+        ' low ' + died.low + ' spread ' + died.spread);
+
+    // AND BUMPINESS CANNOT SEE IT. These two are the whole reason for the number:
+    // a smooth ramp seals four rows and reads calm by neighbour steps, while a
+    // sawtooth seals one and reads alarming. Judged by bumps the bot fixes the
+    // wrong board.
+    var ramp = shapeOfHeights([1, 2, 3, 4, 5, 5]);       // bumps 4, spread 4
+    var saw  = shapeOfHeights([1, 3, 1, 3, 1, 3]);       // bumps 10, spread 2
+    sok(ramp.spread === 4 && saw.spread === 2,
+        'ramp spread ' + ramp.spread + ' saw spread ' + saw.spread +
+        ' -- expected 4 and 2');
+    sok(saw.bumps > ramp.bumps,
+        'the sawtooth did not read bumpier than the ramp (' + saw.bumps + ' vs ' +
+        ramp.bumps + '), so this pair no longer separates the two measures');
+    sok(ramp.spread > saw.spread,
+        'the ramp seals four rows under a slab and the sawtooth two, but spread ' +
+        'ranked them ' + ramp.spread + ' and ' + saw.spread + ' -- bumpiness is ' +
+        'what ranks them the other way round, and it is the one that is wrong');
+
+    // MATERIAL ABOVE A SLAB IS NOT A TOWER. It is in another pocket: nothing the
+    // bot plays can spread it sideways into the columns beside it, and the slab
+    // it would be measured against is already below it. shapeOf counts only the
+    // panels under the lowest garbage cell, so a column carrying five panels on
+    // top of garbage must read as the empty column it is.
+    var stranded = shapeOfColumns([
+        [1, 2, 'G', 3, 1, 2, 3],   // one panel in the pocket, five stranded above
+        [1, 2, 'G'],
+        [1, 2, 'G'],
+        [1, 2, 'G'],
+        [1, 2, 'G'],
+        [1, 2, 'G']
+    ]);
+    sok(stranded.spread === 0,
+        'panels stranded above a slab were counted as a tower (spread ' +
+        stranded.spread + ') -- they are in another pocket and cannot be spread');
+    sok(stranded.high === 2,
+        'the pocket holds two rows in every column but high read ' + stranded.high);
+
+    console.log('  spread: ' + (sfails ? sfails + ' FAILED' :
+                'measured as the rows a slab seals, and it is not bumpiness'));
+    if (sfails) process.exit(1);
+}());
+
+// --------------------------------------------------------------------------
+// `ready` ON EVERY OPTION: CAN THE BOARD THIS LANDS ON STILL FIRE.
+//
+// Firing anything holds the floor for its resolve, and at maxHealth 1 that hold
+// is the difference between living and not. bestAttack and bestPlan narrow on
+// this field, so it has to be BOTH values on the boards that deserve them --
+// a field that is always true narrows nothing and every check on those paths
+// passes anyway.
+(function () {
+    var rfails = 0;
+    function rok(cond, msg) { if (!cond) { console.log('FAIL: ' + msg); rfails++; } }
+    function listOf(cols) {
+        var grid = [], r, c;
+        for (r = 0; r <= H; r++) { grid[r] = []; for (c = 1; c <= W; c++) grid[r][c] = 0; }
+        for (c = 1; c <= W; c++)
+            for (r = 1; r <= cols[c - 1].length; r++) grid[r][c] = cols[c - 1][r - 1];
+        var base = new LogicalBoard(W, H, 6, grid, {});
+        var l = opts.options(base, W, H, [1, 1], 2);
+        return l.now.concat(l.next);
+    }
+
+    // A BOARD THAT SPENDS ITSELF EMPTY. One row, `1 1 2 1 1`: the swap in the
+    // middle puts three 1s together and what is left behind is a 2 and a 1 with
+    // nothing any swap can do to them.
+    var spent = listOf([[1], [1], [2], [1], [1], []]);
+    var cleared = spent.filter(function (o) { return o.total > 0; });
+    rok(cleared.length > 0, '`ready`: the spend-itself-empty board offered no clear at all');
+    rok(cleared.every(function (o) { return o.ready === false; }),
+        '`ready`: a clear that leaves two panels and no swap between them came back ' +
+        'ready -- the field is not being computed, and both paths that narrow on it ' +
+        'are narrowing on nothing');
+
+    // THE SAME CLEAR WITH THE BOARD STILL HOLDING ONE. Another pair of 3s under
+    // it, so after the clear a swap still puts three together.
+    var keeps = listOf([[1, 3, 3], [1, 4, 5], [2, 5, 4], [1, 3, 4], [1, 5, 3], [4, 3, 5]]);
+    var kc = keeps.filter(function (o) { return o.total > 0; });
+    rok(kc.length > 0, '`ready`: the board that keeps a clear offered none');
+    rok(kc.some(function (o) { return o.ready === true; }),
+        '`ready`: no option on a board that still holds a clear after firing came ' +
+        'back ready, so the field is stuck false and the narrowing throws the list away');
+
+    // AND IT IS SET ON EVERY OPTION OF A REAL BOARD, both values occurring.
+    var seen = { true: 0, false: 0, other: 0 }, n = 0;
+    for (var bi = 0; bi < src.boards.length && n < 60; bi++) {
+        var rb = boardFromString(src.boards[bi]);
+        if (Object.keys(rb.blocks).length) continue;
+        var lb = new LogicalBoard(W, H, 6, rb.grid, rb.blocks);
+        var ll = opts.options(lb, W, H, CURSOR, 2), aa = ll.now.concat(ll.next);
+        if (!aa.length) continue;
+        n++;
+        aa.forEach(function (o) {
+            if (o.ready === true) seen['true']++;
+            else if (o.ready === false) seen['false']++;
+            else seen.other++;
+        });
+    }
+    rok(seen.other === 0,
+        '`ready`: ' + seen.other + ' options on real boards came back neither true nor ' +
+        'false, so the paths that narrow on it read undefined and keep everything');
+    rok(seen['false'] > 0,
+        '`ready`: over ' + n + ' real boards not one option landed on a board that ' +
+        'cannot fire, so a field stuck true would pass every check there is');
+
+    // A BREAK CARRIES null, NOT false. Its settled board is unknowable -- the
+    // engine decides what the slab turns into -- so `ready` is null the way `low`
+    // and `mat` already are, and the paths that narrow on it must see a null
+    // rather than a no. A break is the only thing that takes garbage off the
+    // board, so narrowing one out is the expensive mistake here.
+    var gg = [], rr2, cc2;
+    for (rr2 = 0; rr2 <= H; rr2++) { gg[rr2] = []; for (cc2 = 1; cc2 <= W; cc2++) gg[rr2][cc2] = 0; }
+    var rows6 = [[2, 3, 4, 5, 3, 2], [3, 4, 5, 2, 4, 3], [4, 5, 2, 3, 5, 4],
+                 [5, 2, 3, 4, 2, 5], [2, 3, 4, 5, 3, 2], [1, 1, 2, 1, 4, 5]];
+    rows6.forEach(function (row, ri) { for (cc2 = 1; cc2 <= W; cc2++) gg[ri + 1][cc2] = row[cc2 - 1]; });
+    var gcells = [];
+    for (cc2 = 1; cc2 <= W; cc2++) { gg[7][cc2] = -2; gcells.push([7, cc2]); }
+    var gb = new LogicalBoard(W, H, 6, gg, { s: { cells: gcells } });
+    var gl = opts.options(gb, W, H, [1, 1], 2), ga = gl.now.concat(gl.next);
+    var breaks = ga.filter(function (o) { return o.breaks; });
+    rok(breaks.length > 0,
+        '`ready`: the board with a three one swap under a slab offered no break, so ' +
+        'this cannot check what a break carries');
+    rok(breaks.every(function (o) { return o.ready === null; }),
+        '`ready`: a break came back ' + (breaks[0] && breaks[0].ready) + ' rather than ' +
+        'null -- its settled board is unknowable, and a false there narrows the one ' +
+        'move that takes garbage off the board straight out of both paths');
+
+    console.log('  ready: ' + (rfails ? rfails + ' FAILED' :
+                'every option says whether the board it lands on can still fire'));
+    if (rfails) process.exit(1);
+}());
+
 console.log('bitoptions: ' + R.listed + ' options listed over ' + R.boards +
             ' boards, ' + R.played + ' played on the engine exactly, priced by the walk');

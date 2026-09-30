@@ -14,9 +14,20 @@ require(path.join(ROOT, 'panel-cpu.js'));
 var BitBot = require('./bitbot.js');
 var BF = require('./bitfeatures.js');
 var bit = require('./bitmatch.js');
+var bitoptions = require('./bitoptions.js');
 var P = globalThis.PanelEngine, W = 6;
 
 var fails = 0;
+function materialRowsOf(st) {
+    var n = 0, c;
+    for (c = 1; c <= W; c++) {
+        var g = st.garb[c] >>> 0, fl = g ? (g & -g) : 0, bel = fl ? (fl - 1) : 0xffffffff;
+        var m = (st.occ[c] & ~g & bel) >>> 0, k = 0;
+        while (m) { m &= m - 1; k++; }
+        n += k;
+    }
+    return n / W;
+}
 function ok(cond, msg) { if (!cond) { console.log('FAIL: ' + msg); fails++; } }
 function hostile() {
     var w = {};
@@ -606,6 +617,317 @@ function hostile() {
        'what a swap spends');
 }());
 
-console.log('survival: 50 invariants checked without playing a game');
+// -------------- 13. shape is not something a rate gets to weigh, in EITHER path
+//
+// A vertical three takes three panels out of one column and drops it three below
+// its neighbours; a horizontal three takes one from each of three and leaves the
+// surface where it was. Same cells, different board after.
+//
+// bestAttack has narrowed to the shape-preserving options for a while. bestPlan
+// -- the survival plan, the path that fires most -- ranked on frames bought per
+// frame spent and had no shape awareness at all. That is the move that built the
+// tower on the board this bot dies on: 8,5,3,5,5,9 to 8,5,0,5,2,9 in thirty
+// frames, two columns each dropping by exactly three.
+//
+// Put to the functions directly with hand-built option lists, because the choice
+// between two plans is what is being checked, not a game that reaches it.
+(function () {
+    var engine = P;
+    function plan(o) {
+        return { swaps: [[1, 1]], frames: o.frames, duration: o.frames,
+                 total: o.total, chain: 1, garbage: 0, kind: 'combo',
+                 size: o.total, levels: o.levels, bumps: o.levels ? 2 : 9,
+                 tall: 5, mat: 4, low: 2, opensHole: false };
+    }
+    // The shape-costing plan is the BETTER one on rate: more cells for the same
+    // frames. If shape is not consulted it wins, which is the defect.
+    var costsShape = plan({ frames: 10, total: 6, levels: false });
+    var keepsShape = plan({ frames: 10, total: 4, levels: true });
+
+    var both = BitBot.bestPlanOf({ now: [costsShape, keepsShape], next: [] },
+                                 0, 600, engine, false, 112, { FLASH: 28, FACE: 10, POP: 7 }, 5);
+    ok(both && both.option === keepsShape,
+       'survival plan: took the plan that costs shape over one that does not -- a ' +
+       'vertical three empties a column by three and that is what a slab bridges on');
+
+    // AND IT STANDS ASIDE WHEN EVERY PLAN COSTS SHAPE: the shape was going to be
+    // paid whatever was played, so the better plan is the better plan.
+    var worse = plan({ frames: 10, total: 3, levels: false });
+    var onlyCosting = BitBot.bestPlanOf({ now: [costsShape, worse], next: [] },
+                                        0, 600, engine, false, 112, { FLASH: 28, FACE: 10, POP: 7 }, 5);
+    ok(onlyCosting && onlyCosting.option === costsShape,
+       'survival plan: with every plan costing shape it did not take the best one, ' +
+       'so the narrowing empties the list instead of standing aside');
+}());
+
+// ------------------------- 14. a break in hand is played, whatever the material
+//
+// It used to wait for the board to drop under six rows -- a rule about which
+// candidate to prefer, borrowed as a condition on whether to play a break at
+// all. So with material in hand the bot could hold a break and attack instead,
+// and the slab stayed. A garbage cell comes off the board no other way.
+(function () {
+    var st = new P.Stack({ level: 10, seed: 101, countdown: false });
+    var r, c;
+    for (r = 1; r <= st.height; r++)
+        for (c = 1; c <= W; c++) { st.panels[r][c].color = 0; st.panels[r][c].isGarbage = false; }
+    // Six rows of material -- comfortably over the old threshold -- with a three
+    // one swap away in the row directly under a slab, so the swap breaks it.
+    var rows = [[2, 3, 4, 5, 3, 2], [3, 4, 5, 2, 4, 3], [4, 5, 2, 3, 5, 4],
+                [5, 2, 3, 4, 2, 5], [2, 3, 4, 5, 3, 2], [1, 1, 2, 1, 4, 5]];
+    rows.forEach(function (row, ri) {
+        for (c = 1; c <= W; c++) st.panels[ri + 1][c].color = row[c - 1];
+    });
+    for (c = 1; c <= W; c++) { st.panels[7][c].color = 8; st.panels[7][c].isGarbage = true; }
+
+    var bot = new BitBot(st, { allowRaise: false });
+    var board = bot._snapshot();
+    var base = bit.maskState(board.grid, board.blocks, W, board.height);
+    ok(materialRowsOf(base) >= 6,
+       'break in hand: the board carries ' + materialRowsOf(base).toFixed(1) + ' rows, ' +
+       'under the six the old rule waited for, so this cannot test it');
+
+    var d = bot.decide();
+    ok(d && d.via === 'break',
+       'break in hand: a break was available with six rows of material and the bot ' +
+       'came back via `' + (d && d.via) + '` instead. Nothing outranks taking the ' +
+       'garbage off the board');
+}());
+
+// -------------- 15. a tower is urgent, and a tower is a SPREAD
+//
+// towering() is the trigger that sends the bot to fix its shape while it still
+// has moves to play. Two things have to hold, and neither is visible from a
+// death count: it fires at WORKING_ROWS and not before, and it measures the rows
+// a slab would seal rather than how bumpy the surface looks.
+(function () {
+    function masksOfHeights(h) {
+        var st = new P.Stack({ level: 10, seed: 101, countdown: false }), r, c;
+        for (r = 1; r <= st.height; r++)
+            for (c = 1; c <= W; c++) { st.panels[r][c].color = 0; st.panels[r][c].isGarbage = false; }
+        for (c = 1; c <= W; c++)
+            for (r = 1; r <= h[c - 1]; r++) st.panels[r][c].color = 1 + ((r + c) % 3);
+        var bot = new BitBot(st, { allowRaise: true }), b = bot._snapshot();
+        return { bot: bot, masks: bit.maskState(b.grid, b.blocks, W, b.height) };
+    }
+    var N = BitBot.WORKING_ROWS;
+
+    // THE BOUNDARY IS WORKING_ROWS, both sides of it. One row short is a board the
+    // bot can still work in; at WORKING_ROWS a whole working floor goes under the
+    // slab the moment a load lands.
+    var under = masksOfHeights([N, 1, 1, 1, 1, 1]);          // spread N-1
+    var at = masksOfHeights([N + 1, 1, 1, 1, 1, 1]);         // spread N
+    ok(bitoptions.shapeOf(under.masks).spread === N - 1 &&
+       bitoptions.shapeOf(at.masks).spread === N,
+       'the boundary boards no longer read one either side of WORKING_ROWS (' +
+       bitoptions.shapeOf(under.masks).spread + ' and ' +
+       bitoptions.shapeOf(at.masks).spread + '), so this pair checks nothing');
+    ok(!under.bot.towering(under.masks),
+       'towering at spread ' + (N - 1) + ', one row inside the working floor -- the ' +
+       'shape path then runs on boards that are still workable and there is nothing ' +
+       'left between "fine" and "urgent"');
+    ok(at.bot.towering(at.masks),
+       'not towering at spread ' + N + ', which is a whole working floor sealed by ' +
+       'the next slab');
+
+    // AND IT IS THE SPREAD, NOT THE BUMPINESS. A smooth ramp seals four rows and
+    // reads calm by neighbour steps; a sawtooth seals two and reads alarming.
+    // Judged by bumps the bot goes and fixes the wrong board.
+    var ramp = masksOfHeights([1, 2, 3, 4, 5, 5]);           // bumps 4, spread 4
+    var saw = masksOfHeights([1, 3, 1, 3, 1, 3]);            // bumps 10, spread 2
+    ok(bitoptions.shapeOf(saw.masks).bumps > bitoptions.shapeOf(ramp.masks).bumps,
+       'the sawtooth no longer reads bumpier than the ramp, so this pair no longer ' +
+       'separates the two measures');
+    ok(ramp.bot.towering(ramp.masks),
+       'the ramp seals four rows under the next slab and towering() called it fine ' +
+       '-- bumpiness is what calls it fine, and it is the measure that is wrong');
+    ok(!saw.bot.towering(saw.masks),
+       'the sawtooth is lumpy but seals two rows, and towering() called it urgent ' +
+       '-- the trigger is reading bumpiness');
+
+    // MATERIAL ABOVE A SLAB IS NOT A TOWER. It is in another pocket: nothing the
+    // bot plays spreads it sideways, and the slab it would be measured against is
+    // already underneath it.
+    var st2 = new P.Stack({ level: 10, seed: 101, countdown: false }), r2, c2;
+    for (r2 = 1; r2 <= st2.height; r2++)
+        for (c2 = 1; c2 <= W; c2++) { st2.panels[r2][c2].color = 0; st2.panels[r2][c2].isGarbage = false; }
+    for (c2 = 1; c2 <= W; c2++) {
+        st2.panels[1][c2].color = 1 + (c2 % 3);
+        st2.panels[2][c2].color = 1 + ((c2 + 1) % 3);
+        st2.panels[3][c2].color = 8; st2.panels[3][c2].isGarbage = true;
+    }
+    for (r2 = 4; r2 <= 8; r2++) st2.panels[r2][1].color = 1 + (r2 % 3);
+    var sb = new BitBot(st2, { allowRaise: true }), sm0 = sb._snapshot();
+    var sm = bit.maskState(sm0.grid, sm0.blocks, W, sm0.height);
+    ok(!sb.towering(sm),
+       'five panels stranded above a slab were called a tower -- they are in another ' +
+       'pocket and no swap the bot plays can spread them');
+}());
+
+// ------------- 16. the tower reaches the move, and it only ADDS to the rule
+//
+// The recurring bug in this ladder is a rule written into a stage that does not
+// feed the path that picks the move. So: the same board twice, differing only in
+// whether one column runs away from the rest -- and what comes back has to
+// differ with it.
+//
+// The option list is stubbed to one flatten route and nothing else, so the paths
+// above cannot answer and the question is purely whether the shape branch
+// opened; the raise is stubbed off for the same reason. Both boards have a clear
+// available and the clock stopped, which is exactly the case the old rule shut
+// the shape branch on.
+(function () {
+    var real = bitoptions.options;
+    function via(cols, stopTime) {
+        var st = new P.Stack({ level: 10, seed: 101, countdown: false }), r, c;
+        for (r = 1; r <= st.height; r++)
+            for (c = 1; c <= W; c++) { st.panels[r][c].color = 0; st.panels[r][c].isGarbage = false; }
+        for (c = 1; c <= W; c++)
+            for (r = 1; r <= cols[c - 1].length; r++) st.panels[r][c].color = cols[c - 1][r - 1];
+        if (stopTime) st.stopTime = stopTime;
+        var bot = new BitBot(st, { allowRaise: true });
+        var b = bot._snapshot(), m = bit.maskState(b.grid, b.blocks, W, b.height);
+        var ls = bit.legalSwapsOf(m), pick = null, i;
+        for (i = 0; i < ls.length; i++) if (ls[i][0] === 1) { pick = ls[i]; break; }
+        bitoptions.options = function () {
+            return { now: [], next: [], cheapest: null, save: null, ready: 0,
+                     flatten: { swaps: [pick], duration: 4, lands: null, value: 1 },
+                     swapsConsidered: 0, refused: 0, unknown: 0 };
+        };
+        bot.raiseMode = function () { return null; };
+        var d;
+        try { d = bot.decide(); } finally { bitoptions.options = real; }
+        return { via: d && d.via, clear: bit.anyOneSwapClear(m), towering: bot.towering(m) };
+    }
+    //          one column five deep, the rest one -- spread 4
+    var TOWER = [[1, 2, 1, 2, 1], [2], [3], [2], [2], [3]];
+    //          the same bottom row with the tower taken off -- spread 0
+    var LEVEL = [[1], [2], [3], [2], [2], [3]];
+    //          level, and nothing any single swap can fire
+    var QUIET = [[1], [2], [3], [4], [5], [1]];
+
+    var t = via(TOWER, 0), l = via(LEVEL, 0);
+    ok(t.clear && l.clear && t.towering && !l.towering,
+       'the two boards no longer differ in the tower alone (tower: clear ' + t.clear +
+       ' towering ' + t.towering + ', level: clear ' + l.clear + ' towering ' +
+       l.towering + '), so the comparison below proves nothing');
+    ok(t.via === 'flatten',
+       'a board with a column four rows clear of the rest came back via `' + t.via +
+       '` with a clear in hand -- the tower rule does not reach the move, which is ' +
+       'the shape of every other bug in this ladder');
+    ok(l.via !== 'flatten',
+       'a level board with a clear in hand and the clock stopped came back via ' +
+       '`flatten` -- the shape branch is open on every board, so the tower is not ' +
+       'what opened it and nothing is being triggered on');
+
+    // AND THE TWO LEGS IT WAS ADDED TO STILL CARRY. A tower is one more reason to
+    // fix the shape, not a replacement for the two already there.
+    ok(via(LEVEL, 60).via === 'flatten',
+       'a freeze no longer opens the shape branch -- while the clock runs the floor ' +
+       'is held and shape work costs nothing it needs back');
+    ok(via(QUIET, 0).via === 'flatten',
+       'a board with nothing to fire no longer opens the shape branch, which is the ' +
+       'leg the whole flatten path was built on');
+}());
+
+// ------ 17. every path that picks a move leaves the board able to answer
+//
+// Firing anything holds the floor for its resolve, and at maxHealth 1 that hold
+// is the difference between living and not -- so a board with no clear anywhere
+// on it is one row from dying however much the move that made it just sent.
+//
+// The rule existed and reached two paths: raiseMode will not raise into a board
+// that cannot fire, and a flatten route must land somewhere that can. Neither is
+// the path that picks most moves -- the 103 death played survivalPlan, digPlan,
+// bestAttack and WEIGHTS for nineteen thousand frames, and none of them asked.
+//
+// Put to the functions directly with hand-built option lists, and to each path
+// separately, because reaching one is not reaching another.
+(function () {
+    var engine = P, FT = { FLASH: 28, FACE: 10, POP: 7 }, WV = {};
+    BF.keys().forEach(function (k) { WV[k] = 0; });
+    // Options identical but for the board they land on. `mat` sits on the working
+    // floor so nothing is docked for a thin board, and `levels` is true on both so
+    // the shape narrowing above cannot be what decides it.
+    function o(over) {
+        var x = { kind: 'combo', swaps: [[1, 1]], frames: 10, duration: 10, chain: 0,
+                  total: 4, size: 4, garbage: 0, tall: 5, bumps: 2, mat: 5, low: 2,
+                  spread: 1, levels: true, opensHole: false, ready: true };
+        for (var k in over) x[k] = over[k];
+        return x;
+    }
+
+    // ---- bestAttack. The bigger attack is the better rate, and it leaves the
+    // board with nothing to fire.
+    var deadA = o({ total: 8, size: 8, ready: false });
+    var liveA = o({ total: 4, size: 4, ready: true, swaps: [[1, 3]] });
+    var pickA = BitBot.bestAttackOf({ now: [deadA, liveA], next: [] }, WV, engine, 600, FT, 18.7);
+    ok(pickA && pickA.option === liveA,
+       'attack: took the bigger attack that leaves the board with nothing to fire. ' +
+       'The rule reaches raiseMode and the flatten route and not the path that ' +
+       'picks the attack, which is where it is needed');
+
+    // AND IT STANDS ASIDE when nothing leaves an answer: then the board was going
+    // to be unanswerable whatever was played, and the bigger attack is right.
+    var deadB = o({ total: 8, size: 8, ready: false });
+    var deadC = o({ total: 4, size: 4, ready: false, swaps: [[1, 3]] });
+    var pickB = BitBot.bestAttackOf({ now: [deadB, deadC], next: [] }, WV, engine, 600, FT, 18.7);
+    ok(pickB && pickB.option === deadB,
+       'attack: with no option leaving an answer it took the smaller one, so the ' +
+       'narrowing empties the list instead of standing aside');
+
+    // AND A BREAK IS NEVER NARROWED OUT. Its settled board is unknowable, so it
+    // carries `ready` null the way it carries `low` and `mat` null -- and a null
+    // is not a no. A garbage cell comes off the board no other way.
+    //
+    // Alongside an option that IS ready, so the narrowing actually happens: with
+    // the break on its own the list empties and the stand-aside hides the defect.
+    var brk = o({ total: 3, size: 3, garbage: 4, breaks: true, ready: null,
+                  mat: null, low: null, bumps: null, swaps: [[1, 5]] });
+    var weak = o({ total: 4, size: 4, frames: 200, duration: 200, ready: true,
+                   swaps: [[1, 3]] });
+    var pickC = BitBot.bestAttackOf({ now: [brk, weak], next: [] }, WV, engine, 600, FT, 18.7);
+    ok(pickC && pickC.option === brk,
+       'attack: a break was narrowed out by a question it cannot answer -- `ready` ' +
+       'is null on a break, and a null must not read as "cannot fire"');
+
+    // ---- bestPlan, the path that fires most often and the one the 103 board
+    // played into its tower.
+    var deadP = o({ total: 8, size: 8, ready: false });
+    var liveP = o({ total: 4, size: 4, ready: true, swaps: [[1, 3]] });
+    var pickP = BitBot.bestPlanOf({ now: [deadP, liveP], next: [] },
+                                  0, 600, engine, false, 112, FT, 5);
+    ok(pickP && pickP.option === liveP,
+       'survival plan: took the route that leaves the board with nothing to fire. ' +
+       'This is the path that picked the move on nearly every frame of the board ' +
+       'that died at 19,135');
+
+    var deadQ = o({ total: 8, size: 8, ready: false });
+    var deadR = o({ total: 4, size: 4, ready: false, swaps: [[1, 3]] });
+    var pickQ = BitBot.bestPlanOf({ now: [deadQ, deadR], next: [] },
+                                  0, 600, engine, false, 112, FT, 5);
+    ok(pickQ && pickQ.option === deadQ,
+       'survival plan: with no plan leaving an answer it took the smaller one, so ' +
+       'the narrowing empties the list instead of standing aside');
+
+    // ---- AND THE LIST HAS TO CARRY THE ANSWER, ON EVERY OPTION. The two
+    // narrowings above read a field; a field that is not there narrows nothing
+    // and every case above would pass on a list that never sets it.
+    var st3 = new P.Stack({ level: 10, seed: 101, countdown: false });
+    var bot3 = new BitBot(st3, { allowRaise: true });
+    var board3 = bot3._snapshot();
+    var base3 = bit.maskState(board3.grid, board3.blocks, W, board3.height);
+    var list = bitoptions.options(null, W, 12, [1, 1], 2, base3,
+                                  bot3.timing(bot3.info(board3), 600), false);
+    var all = list.now.concat(list.next), missing = 0, i;
+    for (i = 0; i < all.length; i++) if (all[i].ready === undefined) missing++;
+    ok(all.length > 0,
+       'the option list came back empty, so this checks nothing');
+    ok(missing === 0,
+       missing + ' of ' + all.length + ' options came back without `ready`, so both ' +
+       'paths above are narrowing on a field that is not set and the rule is off');
+}());
+
+console.log('survival: 76 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');
