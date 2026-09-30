@@ -680,3 +680,89 @@ console.log('bitmatch: ' + cases + ' cases agree with _findMatches, ' + ruleCase
                 yes + ', disagreements ' + over + ' over / ' + under + ' under');
     if (bad) process.exit(1);
 }());
+
+var P = globalThis.PanelEngine, W = 6;
+var BF = require('./bitfeatures.js');
+var opts = require('./bitoptions.js');
+var BitBot = require('./bitbot.js');
+
+// ---- bestOneSwapStop: the freeze a board can buy, in frames
+//
+// anyOneSwapClear answers whether a board can fire, which is a boolean where the
+// answer is a number: a bare three buys 0 held frames, a combo 4 buys 60 topped
+// out, a chain 4 buys 94. A caller ranking landings by "can it fire" scores
+// those the same, and the gap between them is most of a row of ceiling.
+(function () {
+    var bfails = 0;
+    function bok(cond, msg) { if (!cond) { console.log('FAIL: ' + msg); bfails++; } }
+    // The same pricing the features use, so this and stopReachable cannot drift.
+    function priceOf(toppedOut) {
+        return function (r) {
+            var isChain = r.chain >= 2;
+            return BF.stopTimeOf(P, isChain, isChain ? 0 : opts.sizeOf(r.chain, r.total),
+                                 isChain ? r.chain : 0, toppedOut);
+        };
+    }
+    // EXACT, CHECKED AGAINST BRUTE FORCE on real boards. Not "cheaper and close":
+    // a landing ranked on a number that is sometimes wrong is a landing chosen
+    // for a freeze that does not arrive.
+    function brute(st, price) {
+        var sw = bit.legalSwapsOf(st), best = 0, i;
+        for (i = 0; i < sw.length; i++) {
+            var cp = bit.copyState(st);
+            if (!bit.swapMasks(cp, sw[i][0], sw[i][1])) continue;
+            var r = bit.resolveFromMasks(cp, false);
+            if (r && r.total > 0) { var p = price(r) || 0; if (p > best) best = p; }
+        }
+        return best;
+    }
+    var checked = 0, wrong = 0, nonzero = 0, seen = {};
+    var st0 = new P.Stack({ level: 10, seed: 101, countdown: false });
+    var probe = new BitBot(st0, { allowRaise: true });
+    for (var f = 0; f < 2500 && !st0.gameOver; f++) {
+        probe.update(); st0.run();
+        if (f % 150 === 0 && f > 0) st0.receiveGarbage([{ width: 6, height: 1, isMetal: false }]);
+        st0.drainEvents();
+        if (f % 11) continue;
+        var b = probe._snapshot();
+        var m = bit.maskState(b.grid, b.blocks, W, b.height);
+        [false, true].forEach(function (top) {
+            var price = priceOf(top);
+            var got = bit.bestOneSwapStop(m, price), want = brute(m, price);
+            checked++;
+            if (got !== want) wrong++;
+            if (got > 0) { nonzero++; seen[got] = (seen[got] || 0) + 1; }
+        });
+    }
+    bok(checked > 100, 'bestOneSwapStop: only ' + checked + ' boards checked');
+    bok(wrong === 0,
+        'bestOneSwapStop: disagreed with brute force on ' + wrong + ' of ' + checked +
+        ' real boards -- a landing ranked on a number that is sometimes wrong is a ' +
+        'landing chosen for a freeze that never arrives');
+    bok(nonzero > 0,
+        'bestOneSwapStop: returned 0 on every one of ' + checked + ' boards, so it ' +
+        'ranks nothing');
+    bok(Object.keys(seen).length > 1,
+        'bestOneSwapStop: every board that can fire returned the SAME number (' +
+        Object.keys(seen)[0] + '), which is the boolean it exists to replace');
+
+    // AND A BARE THREE IS WORTH NOTHING, which is the case the boolean got wrong.
+    // Three in a row on an otherwise empty board: it clears, and it buys no freeze.
+    var st1 = new P.Stack({ level: 10, seed: 101, countdown: false });
+    var r2, c2;
+    for (r2 = 1; r2 <= st1.height; r2++)
+        for (c2 = 1; c2 <= W; c2++) { st1.panels[r2][c2].color = 0; st1.panels[r2][c2].isGarbage = false; }
+    // c3 <-> c4 puts three 1s together: a clear that buys no freeze at all.
+    [1, 1, 2, 1, 4, 5].forEach(function (v, i2) { st1.panels[1][i2 + 1].color = v; });
+    var bot1 = new BitBot(st1, { allowRaise: false }), s1 = bot1._snapshot();
+    var m1 = bit.maskState(s1.grid, s1.blocks, W, s1.height);
+    bok(bit.anyOneSwapClear(m1) === true,
+        'bestOneSwapStop: the bare-three board offers no clear, so this checks nothing');
+    bok(bit.bestOneSwapStop(m1, priceOf(true)) === 0,
+        'bestOneSwapStop: a bare three was priced above zero. It clears and it buys ' +
+        'no freeze, and telling those apart is the whole point of the number');
+
+    console.log('  bestOneSwapStop: ' + (bfails ? bfails + ' FAILED' :
+                'the freeze a board can buy, exact against brute force over ' + checked + ' boards'));
+    if (bfails) process.exit(1);
+}());

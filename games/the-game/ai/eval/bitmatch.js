@@ -360,6 +360,37 @@
     return false;
   }
 
+  // THE BIGGEST FREEZE ANY SINGLE SWAP CAN BUY, in frames.
+  //
+  // `anyOneSwapClear` answers whether a board can fire. That is a boolean where
+  // the answer is a NUMBER: a bare three buys 0 held frames, a combo 4 buys 60
+  // topped out, a chain 4 buys 94. A caller ranking landings by "can it fire"
+  // scores those three the same, and the difference between them is most of a
+  // row of ceiling.
+  //
+  // Stop time is a MAX, not a sum -- one freeze runs at a time -- so this is the
+  // best single swap, not the total of them.
+  //
+  // ENGINE-FREE: `price` is handed each resolve and returns its frames, so the
+  // engine's stop table stays in bitfeatures and this stays board arithmetic.
+  // Requires a SETTLED board, as anyOneSwapClear does.
+  //
+  // Every clearing swap is resolved, because size and chain are not readable off
+  // the arithmetic -- only whether a line exists. The swaps that clear are a
+  // handful; resolveFromMasks does not mutate, and swapMasks is its own undo.
+  function bestOneSwapStop(st, price) {
+    var sw = legalSwapsOf(st), best = 0, i, r, pays;
+    for (i = 0; i < sw.length; i++) {
+      if (!swapMasks(st, sw[i][0], sw[i][1])) continue;
+      r = resolveFromMasks(st, false);
+      swapMasks(st, sw[i][0], sw[i][1]);
+      if (!r || !(r.total > 0)) continue;
+      pays = price(r) || 0;
+      if (pays > best) best = pays;
+    }
+    return best;
+  }
+
   // WHERE A SETUP COULD POSSIBLY MATTER.
   //
   // A clear is three of a colour in a line, so a swap that is not within reach of
@@ -695,6 +726,7 @@
     swapMasks: swapMasks,
     legalSwapsOf: legalSwapsOf,
     anyOneSwapClear: anyOneSwapClear,
+    bestOneSwapStop: bestOneSwapStop,
     reachMask: reachMask,
     copyState: copyState,
     resolveFromMasks: resolveFromMasks,
