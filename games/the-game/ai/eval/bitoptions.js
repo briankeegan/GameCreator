@@ -288,23 +288,6 @@
         // Cheap because it stops at the first one and is only asked while no
         // route has been found yet: the frontier grows in cost order, so the
         // first node that answers is the cheapest way to a board that can fire.
-        // READY FOR WHAT LANDS, not merely able to fire.
-        //
-        // Garbage rests on the tallest column and spans the width, so the row that
-        // lands next is one block across the board at that height. A clear that
-        // touches it breaks it; a clear anywhere else does not. Asking "can this
-        // board fire" accepts a three in the pocket that answers nothing when the
-        // slab arrives, which is the difference between a board that survives an
-        // attack and one that is merely tidy.
-        //
-        // The slab is laid on a copy and taken off with it. Nothing else in the
-        // search sees it.
-        function slabReadyOf(state) {
-            if (slabBudget <= 0) return 0;
-            slabBudget--;
-            return slabReadyBoard(state) ? 1 : 0;
-        }
-
         function readyOf(state) {
             if (readyBudget <= 0) return 0;
             readyBudget--;
@@ -562,17 +545,15 @@
                                 // would otherwise win, which is a handful a sweep.
                                 var take = !flat || val > flat.value;
                                 var takeReady = !flatReady || val > flatReady.value;
-                                // PREFERRED IN ORDER: ready for the slab that lands,
-                                // then merely able to fire. Both are cheap to ask only
-                                // because they are asked of a route that would
-                                // otherwise win.
-                                // A CLASS OF ITS OWN, NOT AN ALTERNATIVE TO READY.
-                                // A clear that breaks the slab is still a clear, so
-                                // `slabReady || ready` accepts exactly what `ready`
-                                // already accepted and prefers nothing. It has to be
-                                // its own winner to be preferred over one.
+                                // A THIRD CLASS: the flattest that lands able to
+                                // break what comes down next. Its own winner, because
+                                // a clear that breaks the slab is still a clear -- so
+                                // `slabReady || ready` accepts what ready accepted and
+                                // prefers nothing. Its own budget, or it halves ready's.
                                 var takeSlab = !flatSlab || val > flatSlab.value;
-                                if (takeSlab && slabReadyOf(res.settled)) {
+                                if (takeSlab && slabReadyBoard(res.settled) &&
+                                    slabBudget > 0) {
+                                    slabBudget--;
                                     flatSlab = { swaps: seq, frames: cost, value: val,
                                                  tall: sh2.tall, bumps: sh2.bumps,
                                                  ways: ways2, duration: dur,
@@ -658,16 +639,20 @@
         // worth zero.
         if (flat && !(flat.value > 0)) flat = null;
         if (flatReady && !(flatReady.value > 0)) flatReady = null;
-        if (flatSlab && !(flatSlab.value > 0)) flatSlab = null;
-        // THE ONE THAT LANDS READY, WHEN THERE IS ONE. All are worth more than they
-        // cost by the test above; between them, the board that can answer what
+        // THE ONE THAT LANDS READY, WHEN THERE IS ONE. Both are worth more than they
+        // cost by the test above; between them, the board that can fire when it
         // arrives is the one to arrive at.
-        //
-        // Least specific first, so the most specific wins: able to fire beats
-        // merely flat, and ready for the slab that lands beats able to fire. A
-        // three in the pocket answers nothing when the row comes down on top.
+        if (flatSlab && !(flatSlab.value > 0)) flatSlab = null;
         if (flatReady) flat = flatReady;
-        if (flatSlab) flat = flatSlab;
+        // AND READY FOR WHAT LANDS BEATS MERELY READY -- BUT NEVER AT A PRICE.
+        //
+        // Taken outright it measured worse: 10 deaths over 24 pairings with 2 among
+        // STARTER and ZERO, against 7 over 30 with none. The reason is in the shape
+        // of the override -- it took the slab-ready route however much flatter the
+        // alternative was, so readiness was bought with levelling the board needed.
+        // Bounded to routes that are not worse, it can only pick a different winner
+        // among equals.
+        if (flatSlab && (!flat || flatSlab.value >= flat.value)) flat = flatSlab;
 
         return { now: now, next: next, cheapest: cheapest, flatten: flat, save: save,
                  ready: ready,
@@ -677,9 +662,18 @@
     // Exposed so the exit gate asks the SAME question the option list asks.
     // `low === 0 && baseLow > 0` is the whole of opensHole, and two copies of it
     // is how the two lists come to disagree about what a hole is.
-    // Exposed so a test asks the REAL question rather than a copy of it. A test
-    // carrying its own implementation of a rule agrees with itself and catches
-    // nothing.
+    // IS THIS BOARD ONE SWAP FROM A CLEAR THAT BREAKS WHAT LANDS ON IT.
+    //
+    // Garbage rests on the tallest column and spans the width, so the row that
+    // comes down next is one block at that height, and only a clear reaching the
+    // row beneath it touches that block. "Can this board fire" is a different
+    // question and accepts a three in the pocket that answers nothing.
+    //
+    // Nothing in the search reads this today. Preferring a levelling route that
+    // lands this way was measured and came back worse -- 10 deaths over 24
+    // pairings with 2 among STARTER and ZERO, against 7 over 30 with none. It is
+    // kept because the question is the right one and the unit tests pin its
+    // meaning; what has not been found is where the answer is worth acting on.
     function slabReadyBoard(st) {
         var t = 0, c, top, Wl = (st && st.W) || 6, Hl = (st && st.H) || 12;
         for (c = 1; c <= Wl; c++) { top = 32 - Math.clz32(st.occ[c] >>> 0); if (top > t) t = top; }
