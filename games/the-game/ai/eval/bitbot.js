@@ -3163,6 +3163,10 @@
     // playing games: survival.test.js asserts that an option flagged as opening a
     // hole is refused here, and that an unflagged one still plays.
     BitBot.bestAttackOf = bestAttack;
+    // Exposed for the same reason bestAttack is: the choice between plans is
+    // testable on its own, and a test that plays a game to reach it is not a test
+    // of the choice.
+    BitBot.bestPlanOf = bestPlan;
     BitBot.STARTER = STARTER;
     return BitBot;
 }));

@@ -17,6 +17,16 @@ var bit = require('./bitmatch.js');
 var P = globalThis.PanelEngine, W = 6;
 
 var fails = 0;
+function materialRowsOf(st) {
+    var n = 0, c;
+    for (c = 1; c <= W; c++) {
+        var g = st.garb[c] >>> 0, fl = g ? (g & -g) : 0, bel = fl ? (fl - 1) : 0xffffffff;
+        var m = (st.occ[c] & ~g & bel) >>> 0, k = 0;
+        while (m) { m &= m - 1; k++; }
+        n += k;
+    }
+    return n / W;
+}
 function ok(cond, msg) { if (!cond) { console.log('FAIL: ' + msg); fails++; } }
 function hostile() {
     var w = {};
@@ -606,6 +616,83 @@ function hostile() {
        'what a swap spends');
 }());
 
-console.log('survival: 50 invariants checked without playing a game');
+// -------------- 13. shape is not something a rate gets to weigh, in EITHER path
+//
+// A vertical three takes three panels out of one column and drops it three below
+// its neighbours; a horizontal three takes one from each of three and leaves the
+// surface where it was. Same cells, different board after.
+//
+// bestAttack has narrowed to the shape-preserving options for a while. bestPlan
+// -- the survival plan, the path that fires most -- ranked on frames bought per
+// frame spent and had no shape awareness at all. That is the move that built the
+// tower on the board this bot dies on: 8,5,3,5,5,9 to 8,5,0,5,2,9 in thirty
+// frames, two columns each dropping by exactly three.
+//
+// Put to the functions directly with hand-built option lists, because the choice
+// between two plans is what is being checked, not a game that reaches it.
+(function () {
+    var engine = P;
+    function plan(o) {
+        return { swaps: [[1, 1]], frames: o.frames, duration: o.frames,
+                 total: o.total, chain: 1, garbage: 0, kind: 'combo',
+                 size: o.total, levels: o.levels, bumps: o.levels ? 2 : 9,
+                 tall: 5, mat: 4, low: 2, opensHole: false };
+    }
+    // The shape-costing plan is the BETTER one on rate: more cells for the same
+    // frames. If shape is not consulted it wins, which is the defect.
+    var costsShape = plan({ frames: 10, total: 6, levels: false });
+    var keepsShape = plan({ frames: 10, total: 4, levels: true });
+
+    var both = BitBot.bestPlanOf({ now: [costsShape, keepsShape], next: [] },
+                                 0, 600, engine, false, 112, { FLASH: 28, FACE: 10, POP: 7 }, 5);
+    ok(both && both.option === keepsShape,
+       'survival plan: took the plan that costs shape over one that does not -- a ' +
+       'vertical three empties a column by three and that is what a slab bridges on');
+
+    // AND IT STANDS ASIDE WHEN EVERY PLAN COSTS SHAPE: the shape was going to be
+    // paid whatever was played, so the better plan is the better plan.
+    var worse = plan({ frames: 10, total: 3, levels: false });
+    var onlyCosting = BitBot.bestPlanOf({ now: [costsShape, worse], next: [] },
+                                        0, 600, engine, false, 112, { FLASH: 28, FACE: 10, POP: 7 }, 5);
+    ok(onlyCosting && onlyCosting.option === costsShape,
+       'survival plan: with every plan costing shape it did not take the best one, ' +
+       'so the narrowing empties the list instead of standing aside');
+}());
+
+// ------------------------- 14. a break in hand is played, whatever the material
+//
+// It used to wait for the board to drop under six rows -- a rule about which
+// candidate to prefer, borrowed as a condition on whether to play a break at
+// all. So with material in hand the bot could hold a break and attack instead,
+// and the slab stayed. A garbage cell comes off the board no other way.
+(function () {
+    var st = new P.Stack({ level: 10, seed: 101, countdown: false });
+    var r, c;
+    for (r = 1; r <= st.height; r++)
+        for (c = 1; c <= W; c++) { st.panels[r][c].color = 0; st.panels[r][c].isGarbage = false; }
+    // Six rows of material -- comfortably over the old threshold -- with a three
+    // one swap away in the row directly under a slab, so the swap breaks it.
+    var rows = [[2, 3, 4, 5, 3, 2], [3, 4, 5, 2, 4, 3], [4, 5, 2, 3, 5, 4],
+                [5, 2, 3, 4, 2, 5], [2, 3, 4, 5, 3, 2], [1, 1, 2, 1, 4, 5]];
+    rows.forEach(function (row, ri) {
+        for (c = 1; c <= W; c++) st.panels[ri + 1][c].color = row[c - 1];
+    });
+    for (c = 1; c <= W; c++) { st.panels[7][c].color = 8; st.panels[7][c].isGarbage = true; }
+
+    var bot = new BitBot(st, { allowRaise: false });
+    var board = bot._snapshot();
+    var base = bit.maskState(board.grid, board.blocks, W, board.height);
+    ok(materialRowsOf(base) >= 6,
+       'break in hand: the board carries ' + materialRowsOf(base).toFixed(1) + ' rows, ' +
+       'under the six the old rule waited for, so this cannot test it');
+
+    var d = bot.decide();
+    ok(d && d.via === 'break',
+       'break in hand: a break was available with six rows of material and the bot ' +
+       'came back via `' + (d && d.via) + '` instead. Nothing outranks taking the ' +
+       'garbage off the board');
+}());
+
+console.log('survival: 54 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');
