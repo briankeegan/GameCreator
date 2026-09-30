@@ -667,6 +667,60 @@ if (flatSpread !== 0) {
         'count never can, so the base is not being subtracted and every clear ' +
         'looks like progress');
 
+    // THE TWO FALLBACK ROUTES ARE RANKED BY THE SAME NUMBER AS THE WINNERS.
+    //
+    // `ready` and `flattenReady` accept exactly the same landings -- the ones
+    // readyOf says can fire. One is the caller's fallback route, the other the
+    // flatten winner restricted the same way. So while both are ranked by `val`
+    // they must land on the same value, every time. They disagree the moment
+    // `ready` goes back to being chosen by what the walk costs.
+    //
+    // `save` has no twin to compare against, so it is checked structurally: a
+    // route ranked by cost carries no value at all.
+    var agreed = 0, disagreed = 0, savesSeen = 0, unvalued = 0;
+    var DIGBOARDS = [
+        [[1, 2, 1, 5, 'G'], [1, 1, 1, 3, 'G'], [1, 2, 3, 1, 'G'],
+         [1, 5, 3, 3, 'G'], [5, 4, 4, 5, 'G'], [2, 1, 2, 3, 'G']],
+        [[3, 2, 4, 'G'], [1, 1, 5, 'G'], [4, 2, 3, 'G'],
+         [2, 5, 1, 'G'], [5, 3, 2, 'G'], [1, 4, 4, 'G']],
+        [[2, 6, 1, 3, 2, 'G'], [4, 4, 5, 1, 6, 'G'], [1, 3, 3, 2, 4, 'G'],
+         [5, 1, 2, 6, 3, 'G'], [3, 5, 4, 4, 1, 'G'], [6, 2, 6, 5, 5, 'G']]
+    ];
+    DIGBOARDS.forEach(function (cols) {
+        var grid = [], cells = [], r, c;
+        for (r = 0; r <= H; r++) { grid[r] = []; for (c = 1; c <= W; c++) grid[r][c] = 0; }
+        for (c = 1; c <= W; c++)
+            for (r = 1; r <= cols[c - 1].length; r++) {
+                var v = cols[c - 1][r - 1];
+                if (v === 'G') { grid[r][c] = -2; cells.push([r, c]); }
+                else grid[r][c] = v;
+            }
+        var lb = new LogicalBoard(W, H, 6, grid, { s: { cells: cells } });
+        var l = opts.options(lb, W, H, CURSOR, 2, null,
+                             { framesPerRow: 120, deadline: 600 }, true);
+        if (l.ready && l.flattenReady) {
+            if (l.ready.value === l.flattenReady.value) agreed++; else disagreed++;
+        }
+        if (l.save) {
+            savesSeen++;
+            if (typeof l.save.value !== 'number') unvalued++;
+        }
+    });
+    bok(agreed + disagreed > 0,
+        '`ready`: no buried board produced both a fallback route and a flatten ' +
+        'winner that can fire, so nothing here is compared');
+    bok(disagreed === 0,
+        '`ready`: ' + disagreed + ' of ' + (agreed + disagreed) + ' boards chose a ' +
+        'different fallback route than the flatten winner over the same landings. ' +
+        'Both rank readyOf landings, so they can only differ if one of them is ' +
+        'ranking by what the walk costs instead of what it lands on');
+    bok(savesSeen > 0,
+        '`save`: no buried board offered a route back to holding a break, so the ' +
+        'save route is unchecked here');
+    bok(unvalued === 0,
+        '`save`: ' + unvalued + ' of ' + savesSeen + ' save routes carry no value. ' +
+        'A route chosen by cost has nothing to carry -- that is the shape of the bug');
+
     // AND OFF THE SLAB IT IS SILENT. With no garbage there is nothing to dig
     // toward, so the term must not move a ranking it has no business in.
     bok(diggingListOf([[1, 3, 3], [1, 4, 5], [2, 5, 4], [1, 3, 4], [1, 5, 3], [4, 3, 5]])
@@ -709,6 +763,57 @@ if (flatSpread !== 0) {
     lok(withStop > 0,
         '`landStop`: not one flatten on ' + anyFlatten + ' boards carried a priced ' +
         'destination, so the search is still choosing where to stand by a boolean');
+
+    // AND READINESS FOR THE NEXT SLAB IS WORTH ONE PANEL OF LIFE, not a row.
+    // A row converts to 6.4 cells in bestAttack -- a whole combo -- for a slab
+    // that has not landed, and at that size it overturns clears ten times bigger.
+    //
+    // AND IT IS PRICED AT PLY ONE TOO. The depth-1 options are built near the top
+    // of `options`, before the beam runs, so anything they read that is assigned
+    // beside the beam is undefined when they read it -- a price off it comes out
+    // NaN, and NaN fails `> 0` silently, which is exactly what a count of priced
+    // options cannot see. Counted per ply, and every option checked for a number.
+    var FPR = 120, prepped = 0, wrongSize = 0, notANumber = 0;
+    var preppedNow = 0, preppedNext = 0;
+    for (var pi = 0; pi < src.boards.length && prepped < 400; pi++) {
+        var pb = boardFromString(src.boards[pi]);
+        if (Object.keys(pb.blocks).length) continue;
+        // WITH THE FLAG OFF FIRST. `PREPARE` is module state, so a second call
+        // inherits the first one's value: read it too late and ply one still sees
+        // a true left over from the call before, and the bug hides behind its own
+        // history. One call with the flag off leaves a false there to be caught.
+        opts.options(new LogicalBoard(W, H, 6, pb.grid, pb.blocks), W, H, CURSOR, 2,
+                     null, { framesPerRow: FPR, deadline: 600, prepare: false }, false);
+        var pl = opts.options(new LogicalBoard(W, H, 6, pb.grid, pb.blocks), W, H, CURSOR, 2,
+                              null, { framesPerRow: FPR, deadline: 600, prepare: true }, false);
+        [['now', pl.now], ['next', pl.next]].forEach(function (pair) {
+            pair[1].forEach(function (x) {
+                if (typeof x.slabWorth !== 'number' || !isFinite(x.slabWorth)) {
+                    notANumber++;
+                    return;
+                }
+                if (!(x.slabWorth > 0)) return;
+                prepped++;
+                if (pair[0] === 'now') preppedNow++; else preppedNext++;
+                if (Math.abs(x.slabWorth - FPR / W) > 0.001) wrongSize++;
+            });
+        });
+    }
+    lok(notANumber === 0,
+        '`slabWorth`: ' + notANumber + ' options carry a slabWorth that is not a finite ' +
+        'number, so they are poisoning whatever ranks them and no count of priced ' +
+        'options can see it');
+    lok(preppedNow > 0 && preppedNext > 0,
+        '`slabWorth`: priced on ' + preppedNow + ' depth-1 options and ' + preppedNext +
+        ' depth-2 ones. Both plies must see the price -- the depth-1 list is built ' +
+        'before the beam, so it is the one that reads a timing value too early');
+    lok(prepped > 0,
+        '`slabWorth`: not one option on ' + 400 + ' real boards was priced for slab ' +
+        'readiness, so the term is dead and nothing checks its size');
+    lok(wrongSize === 0,
+        '`slabWorth`: ' + wrongSize + ' of ' + prepped + ' priced options are not one ' +
+        'panel of life (' + (FPR / W) + ' frames). A row is 6.4 cells in bestAttack, ' +
+        'a whole combo, for a slab that has not landed yet');
 
     // AND WITHOUT A PRICE IT MUST STILL WORK. The caller may not hand one over,
     // and a search that needs it is a search that breaks its own callers.

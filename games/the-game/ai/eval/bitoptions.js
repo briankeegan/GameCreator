@@ -165,7 +165,7 @@
     // fires this move, 2 also lists what a setup opens up.
     // Set per call by the caller, which knows its own reaction and whether the
     // clock is running.
-    var OVERHEAD = 0, RESOLVE = null, DIG = false, stopPrice = null;
+    var OVERHEAD = 0, RESOLVE = null, DIG = false, stopPrice = null, PREPARE = false;
 
     function options(board, W, H, cursor, depth, st, timing, dig) {
         OVERHEAD = (timing && timing.overhead) || 0;
@@ -174,6 +174,27 @@
         // is buried and short of material, and it changes what the beam keeps --
         // see expandAll. Nothing else in here reads it.
         DIG = !!dig;
+        // THE CLOCK, READ OFF THE ENGINE. framesPerRow is riseTime(speed) * 16 --
+        // the engine's own rise, not a number typed here -- and deadline is how
+        // long the board has before it tops out. Set here rather than beside the
+        // beam because the depth-1 options below are built first, and `var` reads
+        // as undefined until its statement runs: any price they took from these
+        // came out NaN.
+        var FPR = (timing && timing.framesPerRow) || 112;
+        var DEADLINE = (timing && timing.deadline) || 0;
+        stopPrice = (timing && timing.stopPrice) || null;
+        PREPARE = !!(timing && timing.prepare);
+        // ONE ROW OF CEILING, AT THE RATE THIS FILE PAYS FOR BEING NEAR A THING.
+        // Breaking a row of slab hands the board back a row, which is FPR frames;
+        // the hold that break also earns is priced separately, as `holds`. A board
+        // that is one swap from the break rather than holding it counts at 1/W --
+        // the same fraction a save (DEADLINE/W * W) and a dig cell one step from
+        // one (DEADLINE/W) are already counted at.
+        var PREPWORTH = FPR / W;
+        // A CAP ON HOW MANY LANDINGS GET ASKED. slabReadyFast walks the landed
+        // board, so neither list can ask it of everything. Declared here and reset
+        // in expandAll, so the beam gets the same cap the depth-1 list does.
+        var prepBudget = 24;
         var now = [], next = [], i, j;
         if (!st) st = bit.maskState(board.grid, board.blocks, W, H);
         // THE EMPTIEST COLUMN BEFORE ANY MOVE, so an option can be asked whether
@@ -254,6 +275,14 @@
             // Zero off the slab: with no garbage there is nothing to dig toward. Zero on
             // a break too -- its settled board is unknowable.
             opt.digGain = (DIG && r.settled) ? reachOf(r.settled).dig - BASEDIG : 0;
+            // AND WHETHER THE BOARD IT LANDS ON COULD ANSWER THE NEXT SLAB.
+            //
+            // slabReadyFast asks whether a three can be put against the row the next
+            // slab will rest on. Only asked when there IS a slab to be ready for, on
+            // the board or queued, and only while the budget holds; zero otherwise,
+            // never a charge. PREPWORTH is derived where it is declared.
+            opt.slabWorth = (PREPARE && prepBudget > 0 && r.settled &&
+                             (prepBudget--, slabReadyFast(r.settled))) ? PREPWORTH : 0;
             // AND WHAT THE BOARD HELD BEFORE THE MOVE, in rows of material. Whether the
             // board is BURIED AND SHORT is a fact about the position and not about the
             // move, so it cannot be read off the landing -- and `mat` is null on a break,
@@ -413,9 +442,6 @@
 
         var flat = null, flatReady = null, flatSlab = null, save = null, ready = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
         var slabBudget = 0, stopBudget = 0;
-        var FPR = (timing && timing.framesPerRow) || 112;
-        var DEADLINE = (timing && timing.deadline) || 0;
-        stopPrice = (timing && timing.stopPrice) || null;
 
         function expandAll(state0, depth) {
             BASE = shapeOf(state0);
@@ -423,6 +449,7 @@
             saveBudget = 192;
             slabBudget = 24;
             stopBudget = 24;
+            prepBudget = 24;
             BASESAVE = (DIG && BASEDIG > 0) ? savesOfRaw(state0) : 0;
             // The root has no reach mask: ply one stays exhaustive so an immediate
             // clear is never missed.
@@ -495,6 +522,14 @@
                                 // Zero off the slab: with no garbage there is nothing to dig toward. Zero on
                                 // a break too -- its settled board is unknowable.
                                 opt.digGain = (DIG && res.settled) ? reachOf(res.settled).dig - BASEDIG : 0;
+                                // AND WHETHER THE BOARD IT LANDS ON COULD ANSWER THE NEXT SLAB.
+                                //
+                                // slabReadyFast asks whether a three can be put against the row the next
+                                // slab will rest on. Only asked when there IS a slab to be ready for, on
+                                // the board or queued, and only while the budget holds; zero otherwise,
+                                // never a charge. PREPWORTH is derived where it is declared.
+                                opt.slabWorth = (PREPARE && prepBudget > 0 && res.settled &&
+                                                 (prepBudget--, slabReadyFast(res.settled))) ? PREPWORTH : 0;
                                 // AND WHAT THE BOARD HELD BEFORE THE MOVE, in rows of material. Whether the
                                 // board is BURIED AND SHORT is a fact about the position and not about the
                                 // move, so it cannot be read off the landing -- and `mat` is null on a break,
@@ -548,14 +583,12 @@
                             // One number. Ties go to the board offering more ways to
                             // finish a line, and there is no tier for the arithmetic
                             // to be outvoted by.
-                            // THE CHEAPEST ROUTE TO A BOARD THAT CAN FIRE. Not
-                            // gated on digging: a board with nothing to fire is
-                            // in danger whether or not there is garbage on it.
-                            if (!ready && readyOf(res.settled)) {
-                                ready = { swaps: seq, frames: cost,
-                                          duration: durationOf(seq, cost) };
-                            }
+                            // `ready` and `save` -- the two routes the caller falls
+                            // back on -- are chosen below, once `val` exists. Picking
+                            // them here, by cost, was picking them before anyone had
+                            // asked what board they land on.
                             var sh2 = shapeOf(res.settled);
+                            var svNow = 0;
                             if (sh2) {
                                 var dur = durationOf(seq, cost);
                                 // FLATTENING HAS TO CREATE SETUP WHILE IT DOES IT.
@@ -644,10 +677,7 @@
                                 // there is almost never another move that keeps
                                 // one -- 2 of 100 -- so it has to be planned over
                                 // several.
-                                if (sv > 0 && (!save || cost < save.frames)) {
-                                    save = { swaps: seq, frames: cost,
-                                             duration: durationOf(seq, cost) };
-                                }
+                                svNow = sv;
                                 val += (sv - BASESAVE) * (DEADLINE / W) * W
                                      + (rr.dig - BASEDIG) * (DEADLINE / W);
                             }
@@ -691,6 +721,36 @@
                                                   tall: sh2.tall, bumps: sh2.bumps,
                                                   ways: ways2, duration: dur,
                                                   lands: bit.copyState(res.settled) };
+                                }
+                                // AND THE TWO FALLBACK ROUTES, ON THE SAME NUMBER.
+                                //
+                                // `save` is the route back to holding a break and
+                                // `ready` the route back to having anything to fire.
+                                // Both were chosen by what the WALK cost, with no
+                                // term for the board at the end of it, while the
+                                // three winners above were chosen by `val` -- which
+                                // prices height, evenness, what the landing can fire
+                                // and what it digs. So the cheapest save could be the
+                                // one that empties a column, and planSave plays the
+                                // route it is handed: seed 103 walked its columns
+                                // 5,5,5,2,2,3 -> 5,5,1,1,1,3 through four of them and
+                                // the slab went from sealing three rows to four.
+                                //
+                                // Nothing here is new arithmetic. `val` is already
+                                // computed for this landing a few lines up; these two
+                                // were simply decided before it existed. Cost stays as
+                                // the tiebreak, so between two landings worth the same
+                                // the shorter walk still wins.
+                                if (svNow > 0 && (!save || val > save.value ||
+                                                  (val === save.value && cost < save.frames))) {
+                                    save = { swaps: seq, frames: cost, value: val,
+                                             duration: durationOf(seq, cost) };
+                                }
+                                if ((!ready || val > ready.value ||
+                                     (val === ready.value && cost < ready.frames)) &&
+                                    readyOf(res.settled)) {
+                                    ready = { swaps: seq, frames: cost, value: val,
+                                              duration: durationOf(seq, cost) };
                                 }
                                 if (take) {
                                     // THE BOARD IT LANDS ON, CARRIED WITH THE PLAN.
@@ -794,8 +854,12 @@
             flat.landStop = bit.bestOneSwapStop(flat.lands, stopPrice);
         }
 
+        // `flattenReady` is the flatten winner restricted to landings that can
+        // fire. Returned beside the others so the gate can check that `ready`,
+        // which accepts exactly the same landings, agrees with it on value --
+        // which it only does while both are ranked by `val`.
         return { now: now, next: next, cheapest: cheapest, flatten: flat, save: save,
-                 ready: ready,
+                 ready: ready, flattenReady: flatReady,
                  swapsConsidered: swaps.length, refused: refused, unknown: unknown };
     }
 

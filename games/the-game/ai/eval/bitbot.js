@@ -1147,6 +1147,10 @@
             // unknowable so `mat` is null, and it ADDS material besides.
             var short = shortfallOf(o);
             cells -= short * W;
+            // AND BEING READY FOR THE SLAB THAT IS COMING. Worth a row of rise,
+            // converted to this ranking's currency. Zero unless there is a slab
+            // to be ready for, so it cannot speak on a clean board.
+            if (perPanelFrames > 0) cells += (o.slabWorth || 0) / perPanelFrames;
             // AND WHAT IT DID TO THE WAY OUT FROM UNDER THE SLAB.
             //
             // `dig` is the count of cells that would finish a line against the
@@ -1425,7 +1429,10 @@
             var bought = o.total * perPanel + holds + (o.garbage || 0) * perCell
                        + lowered * (framesPerRow || 0) + gain
                        - shortfall * (framesPerRow || 0)
-                       + digs;
+                       + digs
+                       // AND BEING READY FOR THE SLAB THAT IS COMING -- already in
+                       // frames, which is this ranking's currency. See bestAttack.
+                       + (o.slabWorth || 0);
             var rate = bought / Math.max(1, took);
             var cur = fits ? best : over;
             // Between two plans buying life at the same rate, the one leaving the
@@ -1455,7 +1462,8 @@
     //
     // The resolve time is the engine's own preStop and depends on the match, so
     // it is a function rather than a number.
-    BitBot.prototype.timing = function (info, deadline) {
+    BitBot.prototype.timing = function (info, deadline, base) {
+        if (base) info._base = base;
         var frozen = (info.stopTime || 0) > 0 || !!info.toppedOut;
         return {
             framesPerRow: info.framesPerRow || 0,
@@ -1469,6 +1477,15 @@
             // route LANDS on rather than asking whether that board can fire at
             // all: a bare three holds 0, a combo 4 holds 60 topped out, a chain 4
             // holds 94, and a boolean scores the three of them the same.
+            // IS THERE A SLAB TO BE READY FOR -- on the board, or queued against
+            // it. Preparation has to happen BEFORE the garbage lands, so incoming
+            // counts: framesToDeath already treats the queue as ceiling gone.
+            prepare: ((info.incoming || 0) > 0) || (function () {
+                var b = info._base;
+                if (!b) return false;
+                for (var c = 1; c <= W; c++) if (b.garb[c]) return true;
+                return false;
+            }()),
             stopPrice: function (r) {
                 var isChain = r.chain >= 2;
                 return BF.stopTimeOf(PanelEngine(), isChain,
@@ -1731,7 +1748,7 @@
             }
             if (!survival) {
                 options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
-                                                   this.timing(info, deadline), digging);
+                                                   this.timing(info, deadline, base), digging);
                 var plan = bestPlan(options, info.stopTime || 0, deadline, PanelEngine(),
                                     !!info.toppedOut, info.framesPerRow, this.stack.frames,
                                     tallestOf(pool));
@@ -2201,7 +2218,7 @@
         // board is level the plan stops appearing and the raise resumes on its own.
         if (raising) {
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
-                                                   lookDepth, base, this.timing(info, deadline), digging);
+                                                   lookDepth, base, this.timing(info, deadline, base), digging);
             var lvl = this.flattenFirst(options, deadline);
             if (lvl && !returnsToSeen(lvl.swaps[0])) {
                 var lm = lvl.swaps[0], lls = bit.legalSwapsOf(base), lok = false;
@@ -2366,7 +2383,7 @@
             }
             if (!haveBreak) {
                 options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
-                                                       lookDepth, base, this.timing(info, deadline), digging);
+                                                       lookDepth, base, this.timing(info, deadline, base), digging);
                 var dp = options.save;
                 if (dp && dp.swaps.length && (dp.duration || 0) <= deadline) {
                     var dm = dp.swaps[0], dls = bit.legalSwapsOf(base), dok = false;
@@ -2402,7 +2419,7 @@
                 this.counts.attackDropped++;
             }
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
-                                                   this.timing(info, deadline), digging);
+                                                   this.timing(info, deadline, base), digging);
             var atk = bestAttack(options, this.weights, PanelEngine(), deadline,
                                  this.stack.frames, (info.framesPerRow || 0) / W);
             if (atk && atk.move && returnsToSeen(atk.move)) {
@@ -2545,7 +2562,7 @@
         var shapeTime = noneClear || (info.stopTime || 0) > 0 || this.towering(base);
         if (shapeTime && (!this._flatten || !this._flatten.moves.length)) {
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
-                                                    lookDepth, base, this.timing(info, deadline), digging);
+                                                    lookDepth, base, this.timing(info, deadline, base), digging);
         }
         // AND IT HAS TO FIT IN THE TIME THERE IS. The plan is priced in frames like
         // every other -- the walk to each swap, the swap, and the cooldown when one
