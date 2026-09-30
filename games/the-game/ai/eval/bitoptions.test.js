@@ -721,6 +721,65 @@ if (flatSpread !== 0) {
         '`save`: ' + unvalued + ' of ' + savesSeen + ' save routes carry no value. ' +
         'A route chosen by cost has nothing to carry -- that is the shape of the bug');
 
+    // A BOARD IS NOT SEALED BECAUSE ONE SWAP CANNOT BREAK IT.
+    //
+    // A clear underneath drops what was resting on it, the slab comes down onto
+    // the material, and the break is on the board after. Asked one swap deep most
+    // buried boards read sealed, and every rule built on breakReady then treats a
+    // position with a way out as a position without one.
+    //
+    // Checked against a one-swap reference written here, over buried boards built
+    // with real garbage blocks -- setting isGarbage by hand makes a cell that no
+    // swap can ever break, which would make this pass for the wrong reason.
+    //
+    // TWO CLAIMS. It has to find breaks the one-swap test misses, or the drop is
+    // not being modelled; and it must never MISS one the one-swap test finds,
+    // because looking further can only add answers. The second is the invariant --
+    // the first is only evidence the code runs.
+    function oneSwapBreak(st) {
+        var sw = bit.legalSwapsOf(st), i, r;
+        for (i = 0; i < sw.length; i++) {
+            if (!bit.swapMasks(st, sw[i][0], sw[i][1])) continue;
+            r = bit.resolveFromMasks(st, false);
+            bit.swapMasks(st, sw[i][0], sw[i][1]);
+            if (r.scope === 'garbage-broke') return true;
+        }
+        return false;
+    }
+    var dseed = 12345;
+    function drnd() { dseed = (dseed * 1103515245 + 12345) & 0x7fffffff; return dseed / 0x7fffffff; }
+    var deeper = 0, lost = 0, agreed2 = 0, boardsTried = 0;
+    for (var bt = 0; bt < 400; bt++) {
+        var dg = [], dcells = [], dr, dc;
+        for (dr = 0; dr <= H; dr++) { dg[dr] = []; for (dc = 1; dc <= W; dc++) dg[dr][dc] = 0; }
+        var mh = 2 + Math.floor(drnd() * 4);
+        for (dc = 1; dc <= W; dc++)
+            for (dr = 1; dr <= mh + Math.floor(drnd() * 2); dr++)
+                dg[dr][dc] = 1 + Math.floor(drnd() * 5);
+        var gs = mh + 3;
+        for (dr = gs; dr < gs + 3 && dr <= H; dr++)
+            for (dc = 1; dc <= W; dc++) { dg[dr][dc] = -2; dcells.push([dr, dc]); }
+        var dst = bit.maskState(dg, { s: { cells: dcells } }, W, H);
+        if (dst.bad) continue;
+        boardsTried++;
+        var shallow = oneSwapBreak(dst);
+        var deep = opts.breakReadyBoard(dst);
+        if (deep && !shallow) deeper++;
+        else if (shallow && !deep) lost++;
+        else agreed2++;
+    }
+    bok(boardsTried > 100,
+        '`breakReady`: only ' + boardsTried + ' buried boards were built, so this ' +
+        'checks almost nothing');
+    bok(deeper > 0,
+        '`breakReady`: not one of ' + boardsTried + ' buried boards found a break ' +
+        'past a drop that one swap could not reach. The drop is not being modelled, ' +
+        'and every board with a way out still reads sealed');
+    bok(lost === 0,
+        '`breakReady`: ' + lost + ' boards report NO break where a single swap ' +
+        'breaks the slab outright. Looking two swaps deep can only add answers, so ' +
+        'this is the search losing a break it already had');
+
     // AND OFF THE SLAB IT IS SILENT. With no garbage there is nothing to dig
     // toward, so the term must not move a ranking it has no business in.
     bok(diggingListOf([[1, 3, 3], [1, 4, 5], [2, 5, 4], [1, 3, 4], [1, 5, 3], [4, 3, 5]])
