@@ -7,7 +7,7 @@
 -- A VS match as the server sets one up (TWO_PLAYER_VS, level 10, shock on),
 -- played on panel-game's own Lua engine: side 1 is WasmSurvivor through the
 -- link (bot/SurvivalLink.lua -> survivor.js), side 2 the live Lua bot
--- (WeightedBrain). GARBAGE_EVERY hands side 1 extra garbage now and then
+-- (WeightedBrain), whose thinking is left out of the pace. GARBAGE_EVERY hands side 1 extra garbage now and then
 -- (0: none). PACE 1 runs at 60 frames a second, as the server does, so the
 -- survival bot has the time it would have there (0: as fast as it goes).
 -- Prints one RESULT line.
@@ -59,8 +59,11 @@ while frame < FRAMES and not a:game_ended() and not b:game_ended() do
   local ca = link:input(a, match.garbageSources[a])
   local cb
   if b.clock > 190 then
+    -- The opponent thinks on its own machine: its time is not the frame's.
+    local t1 = socket.gettime()
     local st = BoardState.extract(b)
     cb = controller:nextInput(st, controller:isBusy() and WAIT or brain:decide(st, b, match))
+    t0 = t0 + (socket.gettime() - t1)
   else
     cb = KeyDataEncoding.base64encode[1]
   end

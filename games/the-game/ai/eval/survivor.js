@@ -86,6 +86,7 @@ var mindReady = false, nextId = 1, pending = null, answers = [], thinking = [];
 var SYNC = process.env.GC_SURVIVOR_SYNC === '1', resume = null;
 mind.on('message', function (m) {
   if (m.ready) { mindReady = true; return; }
+  m.got = Date.now();
   answers.push(m);
   if (resume) { var r = resume; resume = null; setImmediate(r); }
 });
@@ -135,7 +136,7 @@ Match.prototype.predict = function (board, at, hold) {
 };
 Match.prototype.ask = function (at, board, hold) {
   var arrivals = this.arrivals.filter(function (a) { return a.at > board.stopWatch; });
-  pending = { id: nextId++, epoch: this.epoch, at: at, board: board, hold: hold, arrivals: arrivals };
+  pending = { id: nextId++, epoch: this.epoch, at: at, board: board, hold: hold, arrivals: arrivals, askedAt: this.now, sent: Date.now() };
   if (process.env.GC_SURVIVOR_DUMP) {
     // The question as the mind got it, to be asked again offline (survivor_probe.js).
     this.asked.push({ id: pending.id, at: at, hold: hold, arrivals: arrivals, acted: this.acted,
@@ -168,7 +169,8 @@ Match.prototype.take = function (truth) {
     if (a.mem) this.stats.memMB = Math.round(a.mem.bytes / 1048576);
     if (process.env.GC_SURVIVOR_DEBUG && a.mem) console.error('decision ' + a.id + ' at ' + a.at + ': ' + a.ms + ' ms ' + a.kind + ' ' + JSON.stringify(a.move) + ' ' + JSON.stringify(a.diag) + ' ' + Math.round(a.mem.bytes / 1048576) + 'MB');
     if (a.error) { console.error('decision failed: ' + a.error); this.acted = false; pending = null; continue; }
-    this.decided.push({ id: a.id, at: a.at, now: now, kind: a.kind, move: a.move, ms: a.ms, diag: a.diag });
+    this.decided.push({ id: a.id, at: a.at, now: now, kind: a.kind, move: a.move, ms: a.ms, diag: a.diag,
+                       asked: pending && pending.id === a.id ? pending.askedAt : null, trip: pending && pending.id === a.id ? a.got - pending.sent : null });
     if (this.decided.length > 60) this.decided.shift();
     if (!pending || a.id !== pending.id) continue;
     var p = pending, board = p.board, hold = p.hold, at = a.at, arrivals = p.arrivals, move = a.move;
@@ -190,6 +192,7 @@ Match.prototype.take = function (truth) {
 };
 Match.prototype.frame = function (truth, arrivals) {
   var now = truth.clock, d, before = this.arrivals;
+  this.now = now;
   this.arrivals = arrivals;
   this.stats.frames++;
   if (this.expect && (d = differ(this.expect, truth))) {
