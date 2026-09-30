@@ -3192,13 +3192,32 @@
     BitBot.prototype.decide = function () {
         var d = this._decideGated();
         this._lastSwap = (d && d.kind === 'swap' && d.move) ? [d.move[0], d.move[1]] : null;
-        // THE LAST TWO, NOT THE LAST ONE. Excluding only the immediate repeat turns a
-        // 1-cycle into a 2-cycle: seed 103 rand1 went 1-3, 1-4, 1-3, 1-4, 1-5, 1-4,
-        // 1-5 with the pocket frozen at 2,2,2,2,3,4 and died at 2,051. One move of
-        // memory can only ever push the loop out by one.
+        // HOW FAR BACK TO REMEMBER, DERIVED.
+        //
+        // One move of memory can only push a loop out by one step: excluding the
+        // immediate repeat turned 1-cycles into 2-cycles, and seed 103 rand1 went
+        // 1-3, 1-4, 1-3, 1-4, 1-5, 1-4, 1-5 with its pocket frozen at 2,2,2,2,3,4,
+        // dead at 2,051. Memory k blocks cycles up to length k, so the question is
+        // which k.
+        //
+        // A cycle is only a loop if it can go round before the board changes under
+        // it, and the board changes when a row rises. The decisions that fit in a
+        // row are
+        //
+        //     D = framesPerRow / reaction
+        //
+        // which is 120/12 = 10 at level 10. A cycle shorter than D repeats inside a
+        // single row and costs real frames; one longer completes at most once before
+        // the rise makes it a different position, so it is not a loop at all.
+        //
+        // Both numbers are the engine's -- framesPerRow is riseTime(speed) * 16 --
+        // so this tightens on its own as the level speeds up: fewer decisions fit
+        // in a row, and only shorter cycles can still repeat.
         if (this._lastSwap) {
+            var fprNow = (this._lastInfo && this._lastInfo.framesPerRow) || 0;
+            var depth = Math.max(1, Math.floor(fprNow / Math.max(1, this.reaction)));
             this._recentSwaps = [this._lastSwap].concat(this._recentSwaps || []);
-            if (this._recentSwaps.length > 2) this._recentSwaps.length = 2;
+            if (this._recentSwaps.length > depth) this._recentSwaps.length = depth;
         }
         return d;
     };
