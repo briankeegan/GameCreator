@@ -2,7 +2,7 @@
 --
 --   (in a panel-game checkout that has bot/SurvivalLink.lua, with its LUA_PATH;
 --    survivor.js listening)
---   luajit GameCreator/games/the-game/ai/eval/lua/survivorDuel.lua SEED FRAMES [GARBAGE_EVERY] [PACE] [SOLO]
+--   luajit GameCreator/games/the-game/ai/eval/lua/survivorDuel.lua SEED FRAMES [GARBAGE_EVERY] [PACE] [SOLO] [STREAM]
 --
 -- A VS match as the server sets one up (TWO_PLAYER_VS, level 10, shock on),
 -- played on panel-game's own Lua engine: side 1 is WasmSurvivor through the
@@ -31,6 +31,10 @@ local GARBAGE_EVERY = tonumber(arg[3]) or 0
 local PACE = (tonumber(arg[4]) or 1) ~= 0
 -- SOLO 1: no garbage either way, so side 1 plays the rise alone.
 local SOLO = (tonumber(arg[5]) or 0) ~= 0
+-- STREAM: what the extra garbage is. "wild" (the default): chains up to 6
+-- tall and full-width metal among the combos. "human": chains 1-3 tall and
+-- combos, no metal -- what a strong player sends.
+local STREAM = arg[6] or "wild"
 
 local state = SEED * 2654435761 % 4294967296
 local function rand(n)
@@ -72,7 +76,10 @@ while frame < FRAMES and not a:game_ended() and not b:game_ended() do
   if a.clock > 188 and GARBAGE_EVERY > 0 and rand(GARBAGE_EVERY) == 0 then
     local k = rand(4)
     local g
-    if k == 0 then g = { width = 6, height = 1 + rand(6), isChain = true, isMetal = false }
+    if STREAM == "human" then
+      if k <= 1 then g = { width = 6, height = 1 + rand(3), isChain = true, isMetal = false }
+      else g = { width = 3 + rand(4), height = 1, isChain = false, isMetal = false } end
+    elseif k == 0 then g = { width = 6, height = 1 + rand(6), isChain = true, isMetal = false }
     elseif k == 1 then g = { width = 6, height = 1, isChain = false, isMetal = true }
     else g = { width = 3 + rand(4), height = 1, isChain = false, isMetal = false } end
     g.frameEarned = a.stopWatch; g.rowEarned = 1; g.colEarned = 1; g.finalized = true
