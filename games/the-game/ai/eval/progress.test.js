@@ -188,8 +188,13 @@ var SAME_ANSWER_MAX = 8;
 // between two positions is two seconds of not playing, and this number is here to
 // be driven down -- the budget is set above what the build does so the gate catches
 // a REGRESSION today, and it should be lowered every time the figure improves.
-// Refusing the undo outright was tried and measured: it took the worst case from
-// 118 to 93 and killed a board that had survived, so it is not in yet.
+// REFUSING THE UNDO OUTRIGHT IS NOT THE INSTRUMENT, and it has been measured so
+// nobody has to measure it again. Refusing a swap that replays onto the board it
+// came from -- the narrow form, the only one with no legitimate case -- took the
+// worst figure from 118 to 93 and cost two boards: 9 deaths in 60 against 7 in the
+// same 60 without it. The diagnosis is right and the lever is wrong. Whatever
+// drives this number down has to do it without taking moves away from the bot,
+// because the board it leaves it standing on is worse than the frames it saves.
 var CYCLE_MAX = 140;
 
 var GAMES = [
