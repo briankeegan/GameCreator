@@ -2485,6 +2485,20 @@
         // 30 and 3 in 30. Not raising there at all is what is left, and the
         // condition needs no answer test because there is nothing to answer for.
         for (var gc = 1; gc <= W; gc++) if (base.garb[gc]) return null;
+        // AND THE RAISE FACES THE SAVE INVARIANT LIKE EVERY OTHER MOVE.
+        //
+        // The exit gate returns early on anything that is not a swap, so the raise
+        // is the one path that changes the board without having to leave something
+        // fireable. It filled a board to one row of headroom and handed the rest of
+        // the game a position with nothing to knock: seed 101 raised to columns
+        // 10,11,6,6,9,9 by frame 264 and was dead at 1,172.
+        //
+        // This is the readiness condition as it was always meant to be, and it does
+        // not defeat itself the way the old one did. A raise shifts the board up
+        // whole and adds a row beneath, so a clear that exists before the row still
+        // exists after it -- this refuses only the board that had nothing to fire
+        // in the first place, which is exactly the board that must not be filled.
+        if (!this.hasFireable(this.restingBoard(base))) return null;
         return this._opening ? 'opening' : 'material';
     };
 
