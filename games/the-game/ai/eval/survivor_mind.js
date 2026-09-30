@@ -22,7 +22,13 @@ var NativeMem = function () {
 
 wt.parentPort.on('message', function (m) {
   if (m.type === 'reset') { bot = null; snap = null; return; }
-  var t0 = Date.now(), board = PA.revive(m.board), view = PA.toPanelEngine(board, PE), out;
+  var t0 = Date.now(), board = PA.revive(m.board), arrivals = [], out;
+  // Garbage on its way arrives that many frames on (search.h runFrame
+  // receives it once the frame before has run, as the server does).
+  (m.arrivals || []).forEach(function (a) {
+    if (a.at > board.stopWatch) arrivals.push({ at: a.at - board.stopWatch, width: a.g.width, height: a.g.height, isChain: !!a.g.isChain, isMetal: !!a.g.isMetal });
+  });
+  var view = PA.toPanelEngine(board, PE);
   try {
     if (!bot) {
       bot = new P(view, { weights: weights, reaction: cfg.reaction, depth: 2, beam: 0, rise: true, allowRaise: true, modes: true,
@@ -36,6 +42,7 @@ wt.parentPort.on('message', function (m) {
     snap = Object.assign({}, bot);
     bot.stack = view;
     bot.serverStack = board;
+    bot.serverArrivals = arrivals.slice(0, 16);   // search.h MAXARR
     bot.raiseFrames = m.hold.left; bot._raiseStarted = m.hold.started;
     bot.opponent = null;
     bot._predArr = [];

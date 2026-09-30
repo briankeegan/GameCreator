@@ -18,7 +18,9 @@
 // compared with the one predicted for it; anything the prediction could not
 // know (a row or a break's colours) aside, a difference -- garbage arriving,
 // above all -- drops every plan and prediction made before it, and the bot
-// holds until it has decided again on the board as it is.
+// holds until it has decided again on the board as it is. Garbage on its
+// way, as the senders' telegraphs show it, is played into every prediction
+// and handed to the search.
 var net = require('net'), path = require('path'), wt = require('worker_threads');
 var PA = require(path.join(__dirname, 'pa-engine.js'));
 
@@ -26,6 +28,37 @@ var args = process.argv.slice(2), opt = { port: 47777, threads: 3 };
 for (var i = 0; i < args.length; i += 2) opt[args[i].replace(/^--/, '')] = Number(args[i + 1]);
 var CFG = { reaction: 12, cursorMoveFrames: 4, threads: opt.threads, weights: 'trained.pbt.pbt-r22-s322.0926-142336.g03120.json' };
 var IN = PA.IN;
+
+// ---------------------------------------------------------------- garbage on its way
+// What the senders' telegraphs show (bot/SurvivalLink.lua telegraph), as the
+// garbage this board will receive and the stopWatch it arrives on: garbage
+// due at T is received once the frame before T has run, so the board sent
+// for frame T already holds it. A sender stages garbage for STAGING frames, then it lands
+// LAND frames later; the staged are shipped highest priority first (the
+// end of the list) and an unfinished chain holds back everything behind it,
+// so nothing past one is counted on.
+var STAGING = 45 + 45 + 1, LAND = 60;
+function arrivalsOf(state) {
+  var out = [], mine = state.stack.stopWatch;
+  PA.list(state.telegraph).forEach(function (src) {
+    var offset = mine - src.stopWatch;
+    PA.list(src.transit).forEach(function (t) {
+      PA.list(t.garbage).forEach(function (g) { out.push({ at: t.at + offset, g: g }); });
+    });
+    var staged = PA.list(src.staged), ship = src.stopWatch;
+    for (var i = staged.length - 1; i >= 0; i--) {
+      var g = staged[i];
+      if (g.isChain && !g.finalized) break;
+      ship = Math.max(ship, g.frameEarned + STAGING);
+      out.push({ at: ship + LAND + offset, g: g });
+    }
+  });
+  return out.sort(function (x, y) { return x.at - y.at; });
+}
+// Garbage due on the frame just reached, received as the server receives it.
+function land(st, arrivals) {
+  for (var i = 0; i < arrivals.length; i++) if (arrivals[i].at === st.stopWatch) st.receiveGarbage([arrivals[i].g]);
+}
 
 // ---------------------------------------------------------------- the hands
 // search.h's walk, swap, raise and reaction on a pa-engine.js board: the
@@ -41,7 +74,7 @@ function raiseStep(h, st) {
 }
 // Returns { inputs, end, hold } or null when the move is refused. `end` is
 // the board at the decision after this one; `hold` the raise still held.
-function playStep(board, hold, kind, move) {
+function playStep(board, hold, kind, move, arrivals) {
   var st = board.copy(), h = { left: hold.left, started: hold.started }, inputs = [], holds = [];
   var walk = null, cooldown = 0, lastSwap = false, reaction = CFG.reaction;
   function driveWalk() {
@@ -67,6 +100,7 @@ function playStep(board, hold, kind, move) {
     var sent = bits | (st.pressSwap ? IN.swap : 0);
     st.setInput(bits);
     st.run();
+    land(st, arrivals);
     inputs.push(sent);
     holds.push({ left: h.left, started: h.started });
     if (kind === 'swap' && st.swapDeniedThisFrame) return false;
@@ -111,7 +145,7 @@ function unseen(c) { return (c >= 11 && c <= 16) || (c >= 21 && c <= 26); }
 function differ(want, got) {
   var k, i;
   for (i = 0; i < STACK_KEYS.length; i++) { k = STACK_KEYS[i]; if (!Object.is(want[k], got[k])) return 'stack.' + k + ' ' + want[k] + ' vs ' + got[k]; }
-  if (JSON.stringify(want.incoming) !== JSON.stringify(got.incoming)) return 'incoming';
+  if (JSON.stringify(want.incoming) !== JSON.stringify(got.incoming)) return 'incoming ' + JSON.stringify(want.incoming) + ' vs ' + JSON.stringify(got.incoming);
   if (JSON.stringify(want.swapStallBacklog) !== JSON.stringify(got.swapStallBacklog)) return 'swap-stall log';
   if (want.panels.length !== got.panels.length) return 'rows';
   for (var r = 0; r < want.panels.length; r++) for (var c = 1; c <= 6; c++) {
@@ -140,7 +174,10 @@ function Match(level) {
   this.hold = { left: 0, started: false };
   this.acted = true;       // whether the mind's last decision was played
   this.nextAt = 0;         // the frame the plan ends on
+  this.arrivals = [];      // garbage on its way (arrivalsOf)
   this.stats = { frames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0 };
+  // A question from the last match is not this one's: its answer is dropped.
+  pending = null;
   mind.postMessage({ type: 'reset' });
 }
 // How far ahead to ask: half again the slowest of the last few answers.
@@ -150,19 +187,21 @@ Match.prototype.lead = function () {
 };
 // The board at `at`, from `board` now, pressing what is planned till then.
 Match.prototype.predict = function (board, at, hold) {
-  var st = board.copy(), h = { left: hold.left, started: hold.started };
+  var st = board.copy(), h = { left: hold.left, started: hold.started }, arrivals = this.arrivals;
   while (st.clock < at && st.gameOverClock <= 0) {
     var planned = this.plan[st.clock], bits = planned !== undefined ? planned.bits : raiseStep(h, st);
     if (planned !== undefined) h = { left: planned.hold.left, started: planned.hold.started };
     st.setInput(bits & ~IN.swap);
     if (bits & IN.swap) st.pressSwap = true;
     st.run();
+    land(st, arrivals);
   }
   return { board: st, hold: h };
 };
 Match.prototype.ask = function (at, board, hold) {
-  pending = { id: nextId++, epoch: this.epoch, at: at, board: board, hold: hold };
-  mind.postMessage({ id: pending.id, epoch: this.epoch, at: at, board: board, hold: hold, acted: this.acted });
+  var arrivals = this.arrivals.filter(function (a) { return a.at > board.stopWatch; });
+  pending = { id: nextId++, epoch: this.epoch, at: at, board: board, hold: hold, arrivals: arrivals };
+  mind.postMessage({ id: pending.id, epoch: this.epoch, at: at, board: board, hold: hold, arrivals: arrivals, acted: this.acted });
   this.stats.decisions++;
 };
 // The answer, if it is for a board still to come: its keys go in the plan,
@@ -179,7 +218,7 @@ Match.prototype.take = function (now) {
     var p = pending;
     pending = null;
     if (a.epoch !== this.epoch || a.at < now) { this.stats.late++; this.acted = false; continue; }
-    var step = playStep(p.board, p.hold, a.kind, a.move);
+    var step = playStep(p.board, p.hold, a.kind, a.move, p.arrivals);
     if (!step) { this.stats.refused++; this.acted = false; continue; }
     this.acted = true;
     this.stats.played++;
@@ -189,14 +228,15 @@ Match.prototype.take = function (now) {
     this.nextAt = a.at + step.inputs.length;
   }
 };
-Match.prototype.frame = function (truth) {
-  var now = truth.clock, d;
+Match.prototype.frame = function (truth, arrivals) {
+  var now = truth.clock, d, before = this.arrivals;
+  this.arrivals = arrivals;
   this.stats.frames++;
   if (this.expect && (d = differ(this.expect, truth))) {
     // Not the board predicted: every plan and question made before is void.
     this.epoch++; this.plan = {}; this.nextAt = 0; pending = null; this.acted = false;
     this.stats.diverged++;
-    if (process.env.GC_SURVIVOR_DEBUG) console.error('clock ' + now + ': ' + d);
+    if (process.env.GC_SURVIVOR_DEBUG) console.error('clock ' + now + ' (stopWatch ' + truth.stopWatch + '): ' + d + ' arrivals before ' + JSON.stringify(before.map(function (a) { return a.at; })));
   }
   this.take(now);
   // The next decision is asked a lead before it is due, on the board
@@ -215,6 +255,7 @@ Match.prototype.frame = function (truth) {
   next.setInput(bits & ~IN.swap);
   if (bits & IN.swap) next.pressSwap = true;
   next.run();
+  land(next, arrivals);
   this.expect = next;
   return bits;
 };
@@ -223,6 +264,8 @@ Match.prototype.frame = function (truth) {
 var server = net.createServer(function (sock) {
   var buf = '', match = null;
   sock.setNoDelay(true);
+  sock.on('error', function (e) { console.log('link: ' + e.message); });
+  sock.on('close', function () { if (match) console.log('match over: ' + JSON.stringify(match.stats)); match = null; });
   sock.on('data', function (chunk) {
     buf += chunk;
     var nl;
@@ -238,7 +281,7 @@ var server = net.createServer(function (sock) {
         if (!match) { reply = { input: 0 }; }
         else {
           var truth = PA.fromLua(m.state, match.level, new PA.Unseen());
-          reply = { clock: truth.clock, input: match.frame(truth) };
+          reply = { clock: truth.clock, input: match.frame(truth, arrivalsOf(m.state)) };
         }
       } else if (m.t === 'bye') { if (match) console.log('match over: ' + JSON.stringify(match.stats)); match = null; reply = { ok: true }; }
       sock.write(JSON.stringify(reply) + '\n');

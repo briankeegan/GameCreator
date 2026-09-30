@@ -2147,8 +2147,9 @@
     var arr = this._inFlight().map(function (a) { return { at: a.at, width: a.width, height: a.height, isChain: a.isChain }; });
     this._carry = saved;
     if (this.native && this.serverStack) {
-      // Garbage in flight is the server's to deliver: nothing is known of it here.
-      return this._natSearch().root(this.serverStack.copy(), { left: this.raiseFrames || 0, started: !!this._raiseStarted }, [], false);
+      // Garbage in flight on the server's rules is what its caller read off the
+      // senders' telegraphs (serverArrivals: at in frames from this board).
+      return this._natSearch().root(this.serverStack.copy(), { left: this.raiseFrames || 0, started: !!this._raiseStarted }, this.serverArrivals || [], false);
     }
     if (this.native) return this._natSearch().root(cloneStack(this.stack), { left: this.raiseFrames || 0, started: !!this._raiseStarted }, arr, true);
     return this._engineNode(cloneStack(this.stack), 0,

@@ -54,7 +54,7 @@ local t0 = socket.gettime()
 local frame, handed = 0, 0
 while frame < FRAMES and not a:game_ended() and not b:game_ended() do
   frame = frame + 1
-  local ca = link:input(a)
+  local ca = link:input(a, match.garbageSources[a])
   local cb
   if b.clock > 190 then
     local st = BoardState.extract(b)
