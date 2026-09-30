@@ -1122,6 +1122,26 @@
             // unknowable so `mat` is null, and it ADDS material besides.
             var short = shortfallOf(o);
             cells -= short * W;
+            // AND WHAT IT DID TO THE WAY OUT FROM UNDER THE SLAB.
+            //
+            // `dig` is the count of cells that would finish a line against the
+            // garbage, so it is the board's way out measured one cell at a time.
+            // bitoptions has priced it at deadline/W for a while -- "being NEAR
+            // [a break] is worth a fraction of it" -- and asked it only of routes
+            // that CLEAR NOTHING. So every combo and every chain was ranked
+            // without anyone asking whether it spent the panels that were the way
+            // out. On the board this was written from, 7,863 of 8,653 landings
+            // could not break at all: the bot was not losing its break, it never
+            // had one, and nothing pointed it back toward one.
+            //
+            // ONE CELL OF THE WAY OUT IS WORTH ONE PANEL OF LIFE, which in this
+            // ranking's currency is one cell sent. Not the deadline/W bitoptions
+            // prices a dig cell at when comparing whole routes -- at a deadline of
+            // 600 that is 100 frames, near a whole row of ceiling, and one cell
+            // that MIGHT finish a line against the slab outweighed a six-combo.
+            // perPanel is the atom this file converts with everywhere else.
+            // NOT CALIBRATED; written here so the next measurement can move it.
+            cells += (o.digGain || 0);
             if (cells <= 0) continue;                       // sends nothing, holds nothing
             // The vector's taste for this shape, read off the same buckets the
             // features use, floored so it can only ever scale the rate down to a
@@ -1309,9 +1329,18 @@
             // the two cannot disagree about what a clear is worth.
             var holds = (o.total > 0 || (o.garbage || 0) > 0)
                       ? BF.resolveFramesOf(engine, o.total || 0, o.garbage || 0) : 0;
+            // AND WHAT IT DID TO THE WAY OUT FROM UNDER THE SLAB, in frames,
+            // which is already this ranking's currency. The same deadline/W a dig
+            // cell is worth in bitoptions, on the path that picks most of the
+            // moves -- where it was never asked at all.
+            // One cell of the way out is worth one panel of life -- perPanel, the
+            // atom this ranking already converts everything else with. NOT
+            // CALIBRATED. See bestAttack for why it is not bitoptions' deadline/W.
+            var digs = (o.digGain || 0) * perPanel;
             var bought = o.total * perPanel + holds + (o.garbage || 0) * perCell
                        + lowered * (framesPerRow || 0) + gain
-                       - shortfall * (framesPerRow || 0);
+                       - shortfall * (framesPerRow || 0)
+                       + digs;
             var rate = bought / Math.max(1, took);
             var cur = fits ? best : over;
             // Between two plans buying life at the same rate, the one leaving the

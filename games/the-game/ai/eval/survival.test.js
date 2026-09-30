@@ -1022,6 +1022,69 @@ function hostile() {
        'paths are reading separate copies again');
 }());
 
-console.log('survival: 84 invariants checked without playing a game');
+// ---------- 20. a clear is asked what it did to the way out
+//
+// `dig` counts the cells that would finish a line against the garbage -- the
+// board's way out from under the slab, measured one cell at a time. bitoptions
+// has priced it at deadline/W for a while and asked it only of routes that CLEAR
+// NOTHING, so every combo and every chain was ranked without anyone asking
+// whether it spent the panels that were the way out.
+//
+// This is the slope `breakReady` does not have. On the board it was written from
+// 7,863 of 8,653 landings could not break at all: the flag said "sealed" on
+// nearly everything and never said which way was out.
+(function () {
+    var engine = P, FT = { FLASH: 28, FACE: 10, POP: 7 }, WV = {};
+    BF.keys().forEach(function (k) { WV[k] = 0; });
+    function o(over) {
+        var x = { kind: 'combo', swaps: [[1, 1]], frames: 10, duration: 10, chain: 0,
+                  total: 4, size: 4, garbage: 0, tall: 5, bumps: 2, mat: 5, low: 2,
+                  levels: true, opensHole: false, breakReady: false,
+                  closesBreak: false, digGain: 0 };
+        for (var k in over) x[k] = over[k];
+        return x;
+    }
+    // BOTH land on a board that cannot break, which is the normal state of a
+    // buried board -- so `breakReady` cannot separate them and only the slope can.
+    // The bigger clear takes the board FURTHER from a break.
+    var awayA = o({ total: 6, size: 6, digGain: -4 });
+    var towardA = o({ total: 4, size: 4, digGain: +4, swaps: [[1, 3]] });
+    var pickA = BitBot.bestAttackOf({ now: [awayA, towardA], next: [] },
+                                    WV, engine, 600, FT, 18.7);
+    ok(pickA && pickA.option === towardA,
+       'attack: took the bigger clear that spends the way out from under the slab. ' +
+       'Both land unable to break, so the flag cannot tell them apart and the ' +
+       'gradient is the only thing that can');
+
+    var awayP = o({ total: 6, size: 6, digGain: -4 });
+    var towardP = o({ total: 4, size: 4, digGain: +4, swaps: [[1, 3]] });
+    var pickP = BitBot.bestPlanOf({ now: [awayP, towardP], next: [] },
+                                  0, 600, engine, false, 112, FT, 5);
+    ok(pickP && pickP.option === towardP,
+       'survival plan: took the route that spends the way out from under the slab. ' +
+       'This is the path that picks most of the moves and it was never asked');
+
+    // AND IT IS A PRICE, NOT A REFUSAL: a big enough clear still outranks a small
+    // gain, because a dig cell is worth a FRACTION of a break and not a break.
+    var bigA = o({ total: 40, size: 6, digGain: -1 });
+    var tinyA = o({ total: 3, size: 3, digGain: +1, swaps: [[1, 3]] });
+    var pickBig = BitBot.bestAttackOf({ now: [bigA, tinyA], next: [] },
+                                      WV, engine, 600, FT, 18.7);
+    ok(pickBig && pickBig.option === bigA,
+       'attack: a one-cell loss of dig outranked a clear more than ten times the ' +
+       'size, so this is a refusal wearing a price and the bot will not cash');
+
+    // AND OFF THE SLAB IT IS SILENT: with no garbage there is nothing to dig
+    // toward, digGain is zero everywhere, and the ranking is untouched.
+    var cleanBig = o({ total: 8, size: 8, digGain: 0 });
+    var cleanSmall = o({ total: 4, size: 4, digGain: 0, swaps: [[1, 3]] });
+    var pickClean = BitBot.bestAttackOf({ now: [cleanBig, cleanSmall], next: [] },
+                                        WV, engine, 600, FT, 18.7);
+    ok(pickClean && pickClean.option === cleanBig,
+       'attack: the bigger clear lost on a board with no garbage on it, where ' +
+       'every digGain is zero and this term may not change anything');
+}());
+
+console.log('survival: 88 invariants checked without playing a game');
 if (fails) { console.log(fails + ' FAILURES'); process.exit(1); }
 console.log('survival: OK');

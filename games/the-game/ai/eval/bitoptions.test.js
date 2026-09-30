@@ -530,6 +530,23 @@ if (flatSpread !== 0) {
         var l = opts.options(base, W, H, [1, 1], 2);
         return l.now.concat(l.next);
     }
+    // THE SAME BOARD WITH THE DIGGING GOAL SET, which is what the bot passes
+    // whenever there is garbage on the board. `dig` is only counted under it, so
+    // a list built without it reads digGain zero everywhere and says nothing.
+    function diggingListOf(cols) {
+        var grid = [], cells = [], r, c;
+        for (r = 0; r <= H; r++) { grid[r] = []; for (c = 1; c <= W; c++) grid[r][c] = 0; }
+        for (c = 1; c <= W; c++)
+            for (r = 1; r <= cols[c - 1].length; r++) {
+                var v = cols[c - 1][r - 1];
+                if (v === 'G') { grid[r][c] = -2; cells.push([r, c]); }
+                else grid[r][c] = v;
+            }
+        var blocks = cells.length ? { s: { cells: cells } } : {};
+        var base = new LogicalBoard(W, H, 6, grid, blocks);
+        var l = opts.options(base, W, H, [1, 1], 2, null, null, true);
+        return l.now.concat(l.next);
+    }
 
     // NO GARBAGE ON THE LANDED BOARD: the question does not apply, so null. A
     // false here would narrow every option out of both paths on a clean board.
@@ -628,6 +645,34 @@ if (flatSpread !== 0) {
     bok(clean.every(function (x) { return x.closesBreak === false; }),
         '`closesBreak`: flagged an option on a board with no garbage on it, where ' +
         'there is no break to take away');
+
+    // `digGain` IS A DELTA AND IT HAS A SIGN. `dig` counts the cells that would
+    // finish a line against the garbage -- the board's way out from under the
+    // slab. A move can add to it or spend it, and only the change matters: the
+    // absolute count is a property of the position, not of the move.
+    //
+    // Both signs have to occur on a buried board, or the term ranks nothing. And
+    // a NEGATIVE one has to occur, because an absolute count is never negative --
+    // that is what catches a base of zero, where every clear looks like progress.
+    var buried = diggingListOf([[1, 2, 1, 5, 'G'], [1, 1, 1, 3, 'G'], [1, 2, 3, 1, 'G'],
+                                [1, 5, 3, 3, 'G'], [5, 4, 4, 5, 'G'], [2, 1, 2, 3, 'G']]);
+    bok(buried.length > 0, '`digGain`: the buried board offered no options at all');
+    var gains = buried.filter(function (x) { return (x.digGain || 0) > 0; });
+    var spends = buried.filter(function (x) { return (x.digGain || 0) < 0; });
+    bok(gains.length > 0,
+        '`digGain`: no option on a buried board moves the board TOWARD a break, so ' +
+        'the term has no upside to rank and is dead weight');
+    bok(spends.length > 0,
+        '`digGain`: no option on a buried board reads negative. An absolute dig ' +
+        'count never can, so the base is not being subtracted and every clear ' +
+        'looks like progress');
+
+    // AND OFF THE SLAB IT IS SILENT. With no garbage there is nothing to dig
+    // toward, so the term must not move a ranking it has no business in.
+    bok(diggingListOf([[1, 3, 3], [1, 4, 5], [2, 5, 4], [1, 3, 4], [1, 5, 3], [4, 3, 5]])
+           .every(function (x) { return (x.digGain || 0) === 0; }),
+        '`digGain`: nonzero on a board with no garbage on it, where there is no ' +
+        'way out to move toward and this term may not change anything');
 
     console.log('  breakReady: ' + (bfails ? bfails + ' FAILED' :
                 'every option says whether the board it lands on can still break'));
