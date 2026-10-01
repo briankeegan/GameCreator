@@ -533,6 +533,24 @@
             // each of three and leaves the surface where it was. No need to detect
             // which it is -- the landed board's bumpiness says it outright.
             opt.levels = opt.bumps !== null && opt.bumps <= BASEBUMPS;
+            // AND THE STEP IT ADDS OR TAKES OUT, as a delta.
+            //
+            // `bumps` is the total step between neighbouring columns -- the one number
+            // here that sees a CLIFF, where a column sits rows below the one beside it.
+            // Both rankers already had it and both used it only as a TIEBREAK between
+            // plans buying life at the same rate, which is the trap this file records
+            // for `ways` in the flatten value: two plans never score exactly equal, so
+            // the tiebreak never fires and the term is decoration.
+            //
+            // Seed 103 STARTER died holding 8,9,6,6,6,9 for forty decisions -- two
+            // three-row cliffs -- and nothing in the route that chose those moves
+            // priced them.
+            //
+            // A unit of step is a CELL, so perPanel, not a row of the board. Pricing a
+            // local shape measure at framesPerRow a row was what made `wells` worth 360
+            // to 840 frames and bury every other term.
+            opt.bumpGain = (opt.bumps === null || opt.bumps === undefined)
+                             ? 0 : (BASEBUMPS - opt.bumps);
             opt.opensHole = opt.low === 0 && BASELOW > 0;
             opt.breakReady = r.settled ? breakReadyOf(r.settled) : null;
             // THE MOVE THAT TAKES THE LAST WAY TO BREAK.
@@ -902,6 +920,24 @@
                                 // each of three and leaves the surface where it was. No need to detect
                                 // which it is -- the landed board's bumpiness says it outright.
                                 opt.levels = opt.bumps !== null && opt.bumps <= BASEBUMPS;
+            // AND THE STEP IT ADDS OR TAKES OUT, as a delta.
+            //
+            // `bumps` is the total step between neighbouring columns -- the one number
+            // here that sees a CLIFF, where a column sits rows below the one beside it.
+            // Both rankers already had it and both used it only as a TIEBREAK between
+            // plans buying life at the same rate, which is the trap this file records
+            // for `ways` in the flatten value: two plans never score exactly equal, so
+            // the tiebreak never fires and the term is decoration.
+            //
+            // Seed 103 STARTER died holding 8,9,6,6,6,9 for forty decisions -- two
+            // three-row cliffs -- and nothing in the route that chose those moves
+            // priced them.
+            //
+            // A unit of step is a CELL, so perPanel, not a row of the board. Pricing a
+            // local shape measure at framesPerRow a row was what made `wells` worth 360
+            // to 840 frames and bury every other term.
+            opt.bumpGain = (opt.bumps === null || opt.bumps === undefined)
+                             ? 0 : (BASEBUMPS - opt.bumps);
                                 opt.opensHole = opt.low === 0 && BASELOW > 0;
                                 opt.breakReady = res.settled ? breakReadyOf(res.settled) : null;
                                 opt.closesBreak = BASEBREAK && opt.breakReady === false;
