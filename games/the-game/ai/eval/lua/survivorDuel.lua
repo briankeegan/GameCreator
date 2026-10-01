@@ -59,6 +59,16 @@ a:setMaxRunsPerFrame(1); b:setMaxRunsPerFrame(1)
 if not SOLO then match:addTarget(a, b); match:addTarget(b, a) end
 match:start()
 
+-- GARBAGE EACH SIDE GOT FROM THE OTHER, in cells (the extra stream, sender 0, not counted).
+local got = { [a] = 0, [b] = 0 }
+for _, st in ipairs({ a, b }) do
+  local receive = st.receiveGarbage
+  st.receiveGarbage = function(self, delivery, senderId)
+    if senderId ~= 0 then for _, g in ipairs(delivery) do got[self] = got[self] + (g.width or 6) * (g.height or 1) end end
+    return receive(self, delivery, senderId)
+  end
+end
+
 local link = SurvivalLink.new({})
 link:startMatch(a)
 local link2
@@ -135,5 +145,5 @@ end
 link:endMatch()
 if link2 then link2:endMatch() end
 local died = a:game_ended() and "WasmSurvivor" or (b:game_ended() and "opponent" or "nobody")
-print(string.format('RESULT {"seed":%d,"frames":%d,"clock":%d,"died":"%s","late":%d,"late2":%d,"handed":%d,"seconds":%.0f}',
-  SEED, frame, a.clock, died, link.late, link2 and link2.late or 0, handed, socket.gettime() - t0))
+print(string.format('RESULT {"seed":%d,"frames":%d,"clock":%d,"died":"%s","late":%d,"late2":%d,"handed":%d,"sent":%d,"sent2":%d,"seconds":%.0f}',
+  SEED, frame, a.clock, died, link.late, link2 and link2.late or 0, handed, got[b], got[a], socket.gettime() - t0))
