@@ -3300,7 +3300,19 @@
         // the rule that it must have a clear in hand before it fills the board.
         var rsh = bitoptions.shapeOf(base);
         var room = H - (rsh ? rsh.high : 0);
-        if (!this._opening && materialRows(base) >= room) return null;
+        // AND THE OPENING IS NOT EXEMPT FROM IT. THAT WAS THE HOLE.
+        //
+        // The exemption is inherited from when this read `materialRows >= WORKING_ROWS`
+        // -- a flat floor of four, which an empty board has to be allowed past, so the
+        // opening skipped it. A COMPARISON NEEDS NO EXEMPTION: an empty board has no
+        // material and twelve rows of room, so `material < room` already says raise.
+        // Exempting the opening from it meant nothing bounded the opening at all, and
+        // the opening only ends when garbage arrives or the raise stops fitting.
+        //
+        // Seed 103 rand3 raised five times in its first four seconds -- 4,5,5,5,6,5 to
+        // 9,10,10,10,11,10 -- with zero garbage on the board and nothing queued, and
+        // was dead at 1,100 frames having broken 3 cells. It filled its own board.
+        if (materialRows(base) >= room) return null;
         // AND THE RAISE FACES THE SAVE INVARIANT LIKE EVERY OTHER MOVE.
         //
         // The exit gate returns early on anything that is not a swap, so the raise
