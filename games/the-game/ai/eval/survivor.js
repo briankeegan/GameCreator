@@ -67,12 +67,22 @@ function differ(want, got) {
   }
   return null;
 }
+// A broken slab's colours shown: a panel predicted with a garbage row's
+// unseen colour (Unseen.garbageRow, 21..26) that the game now shows.
+function revealed(want, got) {
+  for (var r = 0; r < want.panels.length && r < got.panels.length; r++) for (var c = 1; c <= 6; c++) {
+    var p = want.panels[r] && want.panels[r][c], q = got.panels[r] && got.panels[r][c];
+    if (p && q && p.color >= 21 && p.color <= 26 && q.color >= 1 && q.color <= 10) return true;
+  }
+  return false;
+}
 
 // ---------------------------------------------------------------- the death record
 // GC_SURVIVOR_DUMP=file: when this side dies, the last HISTORY frames (board,
 // keys pressed, garbage on its way) and the decisions made over them are
 // written there, a match per line.
-var HISTORY = 300, SNAP_EVERY = 600;   // and the board every SNAP_EVERY frames of the match (snaps)
+var KEEP = Number(process.env.GC_SURVIVOR_KEEP) || 1;   // how many times the default the dump keeps
+var HISTORY = 300 * KEEP, SNAP_EVERY = 600;   // and the board every SNAP_EVERY frames of the match (snaps)
 function gridOf(st) {
   var rows = [];
   for (var r = st.panels.length - 1; r >= 0; r--) {
@@ -116,7 +126,7 @@ function Match(level) {
   this.arrivals = [];      // garbage on its way (arrivalsOf)
   this.line = null;        // the proven line after the plan: { steps, at } (follow)
   this.knew = [];          // the garbage on its way the plan was decided knowing
-  this.stats = { frames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0, unforeseen: 0, reasked: 0, unasked: 0, rewalked: 0, break1: 0, took1: 0, break2: 0, took2: 0, break3: 0, took3: 0 };
+  this.stats = { frames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0, unforeseen: 0, reasked: 0, revealed: 0, unasked: 0, rewalked: 0, break1: 0, took1: 0, break2: 0, took2: 0, break3: 0, took3: 0 };
   this.history = []; this.decided = []; this.asked = []; this.snaps = []; this.dumped = false;
   this.msPerFrame = 1000 / 60; this.wall = 0;   // how fast frames come (soon)
   // A question from the last match is not this one's: its answer is dropped.
@@ -159,7 +169,7 @@ Match.prototype.ask = function (at, board, hold, pend) {
     // The question as the mind got it, to be asked again offline (survivor_probe.js).
     this.asked.push({ id: pending.id, at: at, hold: hold, arrivals: arrivals, acted: this.acted,
                       board: require('v8').serialize(board).toString('base64') });
-    if (this.asked.length > 40) this.asked.shift();
+    if (this.asked.length > 40 * KEEP) this.asked.shift();
   }
   mind.postMessage({ id: pending.id, epoch: this.epoch, at: at, lead: at - this.now, ms: SYNC ? 0 : (at - this.now) * this.msPerFrame,
                     board: board, hold: hold, arrivals: arrivals, acted: this.acted });
@@ -204,7 +214,7 @@ Match.prototype.take = function (truth) {
     if (a.breaks) { this.stats['break' + a.breaks.offered]++; if (a.breaks.took) this.stats['took' + a.breaks.offered]++; }
     this.decided.push({ id: a.id, at: a.at, now: now, kind: a.kind, move: a.move, ms: a.ms, diag: a.diag,
                        asked: pending && pending.id === a.id ? pending.askedAt : null, trip: pending && pending.id === a.id ? a.got - pending.sent : null });
-    if (this.decided.length > 60) this.decided.shift();
+    if (this.decided.length > 60 * KEEP) this.decided.shift();
     if (!pending || a.id !== pending.id) { this.stats.unasked++; continue; }
     var p = pending, board = p.board, hold = p.hold, at = a.at, arrivals = p.arrivals, move = a.move, knew = p.knew;
     pending = null;
@@ -252,6 +262,15 @@ Match.prototype.frame = function (truth, arrivals) {
       this.stats.rewalked++;
     }
     if (process.env.GC_SURVIVOR_DEBUG) console.error('clock ' + now + ' (stopWatch ' + truth.stopWatch + '): ' + d + ' arrivals before ' + JSON.stringify(before.map(function (a) { return a.at; })));
+  }
+  // A BROKEN SLAB SHOWS ITS COLOURS: every plan and question made before
+  // was made without them, while there is still time to line up under the
+  // panels before they drop. They are void, and the next question is asked
+  // on the board as it is now.
+  if (!d && this.expect && revealed(this.expect, truth)) {
+    if (pending) Atomics.store(ABORT, 0, pending.id);
+    this.epoch++; this.plan = {}; this.nextAt = 0; this.line = null; pending = null; this.acted = false;
+    this.stats.revealed++;
   }
   // GARBAGE THE PLAN DID NOT KNOW OF: one landing before the plan ends voids
   // it, as a board not predicted does, and one landing before the frame a
