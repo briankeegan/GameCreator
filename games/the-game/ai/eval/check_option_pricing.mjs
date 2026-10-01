@@ -24,7 +24,6 @@ const BOT = readFileSync(new URL('./bitbot.js', import.meta.url), 'utf8');
 const EXEMPT = new Map([
     ['voidRows', 'the absolute void; only the voidGain delta is ranked, as with dig'],
     ['slabGap', 'the absolute setup distance; only the slabGain delta is ranked, and only while the clock affords it'],
-    ['wells', 'the absolute hole depth; only the wellGain delta is ranked, as with the void and the dig'],
     ['mat', 'read through shortfallOf, which both rankers call'],
     ['matNow', 'a gate on digGain and starving, not a price'],
     ['low', 'read through ruinsShape, which both rankers call'],

@@ -1241,16 +1241,6 @@
             // it as the prize a finished setup pays discounted by the time the rest
             // of the work costs -- see slabGain in bitoptions.
             if (perPanelFrames > 0) cells += (o.slabGain || 0) / perPanelFrames;
-            // AND THE HOLES IT DIGS, IN CELLS, WHICH IS WHAT A WELL IS.
-            //
-            // This was priced at a row of the board per row of DEPTH, as the void is.
-            // That is six times too much: a well three deep in one column is three
-            // CELLS of unusable space, not three rows of the board. A normal board
-            // carries three to seven of them, so the term was worth 360 to 840 frames
-            // and buried every other number in the ranking. Measured over the known
-            // boards at that price: three pairings that had been alive died, one death
-            // was fixed. This ranking's currency is one cell sent, so a cell is 1.
-            cells += (o.wellGain || 0);
             // AND BEING READY FOR THE SLAB THAT IS COMING. Worth a row of rise,
             // converted to this ranking's currency. Zero unless there is a slab
             // to be ready for, so it cannot speak on a clean board.
@@ -1539,11 +1529,6 @@
                        // AND WHAT IT DID TO THE SETUP FOR A BREAK -- already in
                        // frames, which is this ranking's currency. See bestAttack.
                        + (o.slabGain || 0)
-                       // AND THE HOLES IT DIGS, in cells: a well three deep in one
-                       // column is three CELLS of space only that column can fill,
-                       // so perPanel each. See bestAttack for what pricing it as
-                       // rows of the board cost.
-                       + (o.wellGain || 0) * perPanel
                        + digs
                        // AND BEING READY FOR THE SLAB THAT IS COMING -- already in
                        // frames, which is this ranking's currency. See bestAttack.

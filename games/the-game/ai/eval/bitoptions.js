@@ -243,36 +243,8 @@
             }
             if (!isFinite(gap)) gap = 0;
         }
-        // THE WELLS: HOW FAR A COLUMN SITS BELOW ITS NEIGHBOURS.
-        //
-        // Nothing else in here can see a hole. `excess` is mean deviation, so a
-        // column dug three rows below the stack around it reads half a row across
-        // six columns. `void` is high - mat, an average, and read the same move at
-        // 0.5 rows. `slabRowGap` is a MINIMUM over three-column windows, so damage
-        // to a column outside the cheapest window reads as exactly zero -- it did,
-        // on the board this was written for. And `spread` is high - low, which falls
-        // when the TALLEST column is pulled down, and the tallest column is the one
-        // touching the slab: priced, it bought the one move that makes a break
-        // impossible, and killed STARTER at 2,424.
-        //
-        // A well is none of those. For each column it is how far below the lower of
-        // its two neighbours it sits -- the rows of space that only a panel landing
-        // in THAT column can fill, which is what a hole actually is. Lowering the
-        // tallest column creates no well, so this cannot reward the move spread was
-        // thrown out for. Edge columns have one neighbour and are measured against it.
-        //
-        // Seed 103 rand1 went 7,6,5,5,8,9 -> 7,6,2,5,8,9 on one vertical clear:
-        // wells 0 -> 3, while void moved 0.5 and slabRowGap did not move at all. It
-        // died at 20,273 with 46 panels in four columns and a seven-deep hole.
-        var wells = 0;
-        for (c = 1; c <= w2; c++) {
-            var ln = c > 1 ? h[c - 1] : h[c + 1];
-            var rn = c < w2 ? h[c + 1] : h[c - 1];
-            if (ln === undefined || rn === undefined) continue;
-            wells += Math.max(0, Math.min(ln, rn) - h[c]);
-        }
         return { tall: tall, bumps: bumps, excess: dev / w2, mat: mean, low: low,
-                 high: mx, spread: mx - low, slabRowGap: gap, wells: wells };
+                 high: mx, spread: mx - low, slabRowGap: gap };
     }
 
     function optionOf(swaps, frames, r) {
@@ -307,9 +279,6 @@
                  // shapeOf already computes it, colour feasibility included, so this
                  // costs nothing: see slabRowGap where it is derived.
                  slabGap: sh ? (sh.slabRowGap || 0) : null,
-                 // AND THE HOLES IT LEAVES. shapeOf derives it; see `wells` there for
-                 // why none of the other shape numbers can see one.
-                 wells: sh ? (sh.wells || 0) : null,
                  // CAN THE BOARD THIS LANDS ON STILL FIRE.
                  //
                  // Firing anything holds the floor for its resolve, and at
@@ -412,6 +381,12 @@
         // Priced the way bestPlan prices it, at a row of rise per row short, so a
         // route that starves the board pays what the starving costs.
         var WORK = (timing && timing.workingRows) || 0;
+        // THE MOST A LANDING'S STOP TIME CAN BE WORTH, off the engine's own table
+        // rather than guessed: the chain stop at the counter where it saturates.
+        // Used only as a BOUND -- it decides which landings are worth the sweep that
+        // measures them, never what one is worth.
+        var MAXSTOP = stopPrice ? Math.max(stopPrice({ chain: 13, total: 3 }),
+                                           stopPrice({ chain: 1, total: W * 2 })) : 0;
         // HOW MUCH SETUP THERE IS TIME FOR, which is the only question about a
         // setup worth asking.
         //
@@ -494,10 +469,6 @@
         // reason the void has a base: the panels a board still needs to reach its
         // slab are a fact about the position, and only the CHANGE is about the move.
         var BASEGAP = START ? (START.slabRowGap || 0) : 0;
-        // AND THE HOLES BEFORE ANY MOVE, so an option is judged on the hole IT digs
-        // rather than on landing on a board that already had one -- the same reason
-        // the void and the dig count have a base.
-        var BASEWELLS = START ? (START.wells || 0) : 0;
         var BASEBREAK = breakReadyOf(st) === true;
         LASTBREAKREADY = BASEBREAK;
         // AND HOW MANY WAYS THERE ARE TO REACH THE GARBAGE BEFORE ANY MOVE.
@@ -620,29 +591,42 @@
             opt.slabGain = setupWorth(opt.slabGap, DEADLINE - (opt.duration || 0))
                              - setupWorth(BASEGAP, DEADLINE);
             // AND THE HOLES IT DIGS, as a delta for the same reason.
-            // AND THE HOLES IT DIGS -- CHARGED, NEVER CREDITED.
+            // NO GEOMETRIC HOLE TERM. THREE OF THEM WERE MEASURED AND ALL WERE WORSE.
             //
-            // A WELL FALLS TWO WAYS AND ONLY ONE OF THEM IS PROGRESS. Raising the
-            // hole column fills it; lowering the hole's NEIGHBOURS also makes the
-            // number fall, and that is tearing down the walls around it. Credited
-            // both ways, this paid the bot to clear the columns beside its own
-            // holes -- and a vertical clear takes three panels out of one column,
-            // which drops a neighbour below the hole and "closes" the well by
-            // wrecking the board. It is the same trap `spread` was removed for:
-            // high - low falls when the tallest column is pulled down.
+            // `wells` was the depth of each column below the lower of its neighbours
+            // -- the one shape number that can see a hole, since `excess` and the void
+            // are averages, `slabRowGap` is a minimum over windows and read the move
+            // that dug one as zero, and `spread` falls when the tallest column (the
+            // one touching the slab) is pulled down.
             //
-            // Measured both ways round. At a row of rise per row of depth, three
-            // pairings that had been alive died and one death was fixed. At the
-            // right size, in cells, two of the first two pairings died. Not the
-            // magnitude: the sign.
+            // Credited as a delta at a row of rise per row of depth: 101 rand2 v
+            // rand3, 101 rand2 v rand4 and 103 rand1 v rand4, all three alive before,
+            // died; one death fixed. Repriced in cells, which is what a well actually
+            // is: two of the first two pairings died, at 4,229 and 24,415. Made
+            // one-sided -- charged for digging, never credited for filling, so that
+            // lowering a hole's neighbours could not be paid for: FOUR deaths in eight
+            // boards, two of them at 1,805 frames, which is the signature of a bot
+            // that will not clear, because on an awkward board most clears deepen some
+            // column somewhere.
             //
-            // So it is one-sided. Digging a hole costs; removing one earns nothing.
-            // Lowering a neighbour can then only ever reduce `wells`, which is
-            // worth zero, so the exploit has nothing to pay it. Same shape as
-            // `opensHole`, which refuses a transition rather than rewarding its
-            // reverse.
-            opt.wellGain = (opt.wells === null)
-                         ? 0 : -Math.max(0, opt.wells - BASEWELLS);
+            // AND THE DEEPER REASON IT CANNOT WORK: A STEP IS WHAT A CHAIN IS MADE OF.
+            //
+            // A chain needs panels to FALL into place -- clear low, the stack above
+            // drops, the drop completes the next group. The steps and dips in the
+            // surface are that mechanism; a flat board cannot chain at all. So a term
+            // charging for a column sitting below its neighbours is charging for the
+            // structure combos and chains are built out of, which is why no price and
+            // no sign for it came out ahead.
+            //
+            // THE GEOMETRY IS THE WRONG INSTRUMENT. A hole matters only if it costs
+            // the board what it can DO, and that question is already asked by
+            // lookahead rather than by shape: slabReadyFast on the landing (priced as
+            // slabWorth), slabRowGap through the depth-2 beam (priced as slabGain),
+            // waysOf, readyOf, breakReadyOf, and nextBestChain/nextBestCombo in the
+            // vector. A hole that costs capability shows up in those; one that does
+            // not is not worth charging for. And the board this chain started from
+            // died holding 43 panels in FOUR columns -- height, which `tallest` and
+            // bestPlan's `lowered` already price.
             // AND WHETHER THE BOARD IT LANDS ON COULD ANSWER THE NEXT SLAB.
             //
             // slabReadyFast asks whether a three can be put against the row the next
@@ -847,14 +831,13 @@
         }
 
         var flat = null, save = null, ready = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
-        var slabBudget = 0, stopBudget = 0, dropBudget = 0;
+        var slabBudget = 0, dropBudget = 0;
 
         function expandAll(state0, depth) {
             BASE = shapeOf(state0);
             BASEDIG = DIG ? reachOf(state0).dig : 0;
             saveBudget = 192;
             slabBudget = 24;
-            stopBudget = 24;
             prepBudget = 24;
             BASESAVE = (DIG && BASEDIG > 0) ? savesOfRaw(state0) : 0;
             // The root has no reach mask: ply one stays exhaustive so an immediate
@@ -957,10 +940,6 @@
                                 opt.slabGain = setupWorth(opt.slabGap, DEADLINE - (opt.duration || 0))
                              - setupWorth(BASEGAP, DEADLINE);
             // AND THE HOLES IT DIGS, as a delta for the same reason.
-            // AND THE HOLES IT DIGS -- CHARGED, NEVER CREDITED. See the depth-1
-            // site for why a credit was exploitable and what it measured.
-            opt.wellGain = (opt.wells === null)
-                         ? 0 : -Math.max(0, opt.wells - BASEWELLS);
                                 // AND WHETHER THE BOARD IT LANDS ON COULD ANSWER THE NEXT SLAB.
                                 //
                                 // slabReadyFast asks whether a three can be put against the row the next
@@ -1073,18 +1052,38 @@
                                 // landing on nothing because the chain was not in the
                                 // number.
                                 //
-                                // Budgeted, and a route that runs out of budget simply
-                                // does not get the credit: it is never charged for one.
+                                // A QUOTA MADE THE COMPARISON ARBITRARY, so it is a
+                                // bound instead.
+                                //
+                                // bestOneSwapStop is a sweep inside a sweep, so it
+                                // cannot be asked of every landing -- it used to be
+                                // capped at 24 a decision, first come first served.
+                                // That is worse than not having it: two landings that
+                                // can both fire a chain are compared as 94 against 0
+                                // because the quota ran out between them, and the
+                                // file's own test reports only 14 of 48 flattens
+                                // carrying the term at all. The post-hoc fill at the
+                                // bottom of this function then puts the number on the
+                                // WINNER, after `val` has already chosen it, so the
+                                // term reported rather than decided.
+                                //
+                                // Asked instead of any landing that could win if the
+                                // credit were as large as the credit can get -- MAXSTOP
+                                // off the engine's own table, the chain stop at the
+                                // counter where it saturates. Every landing that could
+                                // still win is asked, nothing that cannot is, and the
+                                // comparison between the ones that matter is consistent.
+                                // Same shape as the readiness credits below.
+                                var base2 = (BASE.tall - sh2.tall) * FPR
+                                          + (BASE.excess - sh2.excess) * FPR
+                                          - Math.max(0, WORK - sh2.mat) * FPR
+                                          - dur;
                                 var landStop = 0;
-                                if (stopPrice && stopBudget > 0) {
-                                    stopBudget--;
+                                if (stopPrice &&
+                                    (!flat || base2 + MAXSTOP > flat.value)) {
                                     landStop = bit.bestOneSwapStop(res.settled, stopPrice);
                                 }
-                                var val = (BASE.tall - sh2.tall) * FPR
-                                        + (BASE.excess - sh2.excess) * FPR
-                                        + landStop
-                                        - Math.max(0, WORK - sh2.mat) * FPR
-                                        - dur;
+                                var val = base2 + landStop;
                                 // UNDER A SLAB, FLAT AND LOW IS THE WRONG GOAL.
                                 //
                                 // A slab is not only a threat, it is panels and a
