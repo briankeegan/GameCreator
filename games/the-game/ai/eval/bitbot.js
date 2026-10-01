@@ -1749,6 +1749,32 @@
         for (i = 0; i < pool.length; i++) {
             if (pool[i].resolved && pool[i].resolved.brokeGarbage) { poolBreak = true; break; }
         }
+        // HOW DEEP THERE IS TIME TO SEARCH, hoisted above the raise branch because the
+        // option list is now built there. Read below its own `var` it was undefined, and
+        // a depth of undefined is the same class of silent wrong as the NaN prices.
+        var lookDepth = Math.min(this.maxDepth, depthFor(deadline, this.reaction, tallestOf(pool)));
+        // AND A BREAK AT ANY DEPTH STANDS THE RAISE DOWN, NOT ONLY A ONE-SWAP ONE.
+        //
+        // `poolBreak` is the single-swap pool, so a break two or three swaps out was
+        // invisible here -- and the raise branch is the FIRST route, so it ran straight
+        // over them. Measured on seed 101 rand2 v rand3: of 681 decisions with a break
+        // on the option list, 314 played levelFirst -- the flatten that precedes a
+        // raise -- against 160 that broke and 88 that reached for one. Fifty of those
+        // 314 were in DEFEND: flattening to set up a raise with death imminent and a
+        // break on the board.
+        //
+        // The option list is built here rather than three routes later. It was already
+        // being built on nearly every decision, and `_lastOptions` means it is built
+        // once either way.
+        options = this._lastOptions = options || bitoptions.options(null, W, H,
+            [info.cursorRow, info.cursorCol], lookDepth, base,
+            this.timing(info, deadline, base), digging);
+        if (!poolBreak && options && options.now) {
+            var pile0 = options.now.concat(options.next || []);
+            for (i = 0; i < pile0.length; i++) {
+                if (pile0[i].breaks && (pile0[i].duration || 0) <= deadline) { poolBreak = true; break; }
+            }
+        }
         var raising = this.raiseMode(info, base, poolBreak);
         this._wantRaise = !!raising;
         // AND WHETHER IT IS HAPPENING, which is not the same as wanting it.
@@ -1830,7 +1856,6 @@
         var options = null;
         // Spent once for the decision, so both halves search the same board at the
         // same depth and cannot disagree about what is on offer.
-        var lookDepth = Math.min(this.maxDepth, depthFor(deadline, this.reaction, tallestOf(pool)));
         // BURIED AND SHORT: WIDEN THE SEARCH, NOT THE PREFERENCE.
         //
         // This says where to LOOK, and nothing about what to play. Ranked by price
@@ -2699,6 +2724,15 @@
                         // stands aside only for its own.
                         this._digIsBreak = !!this._dig;
                         this.counts.brokeReached = (this.counts.brokeReached || 0) + 1;
+                        // COUNTED APART: a break found with no plan in flight is the
+                        // ordinary case; one that INTERRUPTED a dig plan is the
+                        // pre-emption, and a rule nobody can see fire is a rule that
+                        // might not be wired up. Two conditions measured identically
+                        // frame for frame on one board, which is what an unfired branch
+                        // looks like.
+                        if (digLeft !== Infinity) {
+                            this.counts.brokePreempt = (this.counts.brokePreempt || 0) + 1;
+                        }
                         return { kind: 'swap', move: rm, mode: mode, alive: alive,
                                  via: 'breakReach' };
                     }
@@ -2721,36 +2755,6 @@
                 this._digIsBreak = false;
                 this.counts.digDropped++;
             }
-            // AND A BREAK IS A BREAK AT WHATEVER DEPTH THE CLOCK AFFORDS.
-            //
-            // DERIVED ONCE AND PLAYED OUT, WHICH IS WHY IT SITS HERE RATHER THAN
-            // ABOVE THE RESUME. Placed before it, this re-derived a fresh break plan
-            // every decision and played only the first swap of each: seed 103 STARTER
-            // played the same swap five decisions running with the heights frozen at
-            // 7,8,8,5,7,7, and spent nine decisions in this route without breaking
-            // anything. That is the exact failure the comment above records for the
-            // save route -- a different route each decision and none of them
-            // finished. Below the resume, a plan in flight is played out first and
-            // this only runs when there is none.
-            //
-            // `pool` is single swaps, so the route below reached a break exactly one
-            // swap away and nothing else. A break two swaps out was not a route at
-            // all: it fell through to the dig plan, which is then played out move by
-            // move and is never re-compared against the break that arrived.
-            //
-            // Seed 103 rand2 died at 2,197 that way. Nine consecutive digPlan
-            // decisions on a healthy board -- tallest 8, eighteen cells of garbage,
-            // a five-row pocket, three clears in hand -- with a two-swap break on the
-            // board for every one of them. The nine moves were sideways swaps in rows
-            // one to three; the heights never moved off 3,4,4,4,4,5 and the break was
-            // still two swaps away at the end of them. By then it was buried under
-            // thirty-five cells and dead.
-            //
-            // The same error as "one ready" meaning one swap in saveAfter, and as
-            // hasFireable before it: a question about TIME asked as a question about
-            // distance. The option list already holds breaks out to lookDepth and
-            // every option carries what it costs, so the break that fits the frames
-            // this board has left is already enumerated -- it just was not looked at.
             if (!haveBreak) {
                 options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
                                                        lookDepth, base, this.timing(info, deadline, base), digging);
