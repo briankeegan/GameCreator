@@ -203,9 +203,42 @@
   // times for a board that did not change.
   //
   // colour is one mask per colour per column, flat: colour[a * (W + 2) + c].
-  function maskState(grid, blocks, W, H) {
+  // WHICH CELLS THE ENGINE WILL NOT SWAP. Stack.canSwap's own rule:
+  //
+  //     allowsSwap(p):  not dontSwap, not garbage, and state is one of
+  //                     normal | swapping | landing | falling
+  //     and not out from under a panel that is hovering
+  //
+  // doSwap sets dontSwap on a panel swapped over a hole or a falling panel, so the
+  // swap back is refused. `motion` is panel-cpu's snapshot of every unsettled panel,
+  // null where a panel is settled -- and a settled panel is swappable, so null is
+  // not busy. Only a root board has motion; a board resolveFromMasks settles has no
+  // panels in flight and nothing for this to say.
+  function busyMask(grid, motion, W, H) {
+    var busy = new Int32Array(W + 2);
+    if (!motion) return busy;
+    function allows(m) {
+      if (!m) return true;
+      if (m.dontSwap || m.isGarbage) return false;
+      return m.state === 'normal' || m.state === 'swapping' ||
+             m.state === 'landing' || m.state === 'falling';
+    }
+    for (var r = 1; r <= H; r++) {
+      var b = 1 << (r - 1);
+      for (var c = 1; c <= W; c++) {
+        var m = motion[r] && motion[r][c];
+        if (!allows(m)) { busy[c] |= b; continue; }
+        var up = (r < H) && motion[r + 1] && motion[r + 1][c];
+        if (up && up.state === 'hovering') busy[c] |= b;
+      }
+    }
+    return busy;
+  }
+
+  function maskState(grid, blocks, W, H, motion) {
     var st = { W: W, H: H, N: 0, occ: new Int32Array(W + 2), inert: new Int32Array(W + 2),
                garb: new Int32Array(W + 2), colour: new Int32Array(13 * (W + 2)),
+               busy: busyMask(grid, motion, W, H),
                slabs: [], bad: null };
     var r, c, row;
     for (r = 1; r <= H; r++) {
@@ -300,6 +333,7 @@
       var b = 1 << (r - 1);
       for (c = 1; c < st.W; c++) {
         if ((st.inert[c] & b) || (st.inert[c + 1] & b)) continue;
+        if (st.busy && ((st.busy[c] | st.busy[c + 1]) & b)) continue;   // engine declines
         if (!((st.occ[c] | st.occ[c + 1]) & b)) continue;
         var left = 0, right = 0;
         for (a = 1; a <= st.N; a++) {
@@ -470,6 +504,7 @@
   function swapMasks(st, r, c) {
     var W2 = st.W, b = 1 << (r - 1), o = c + 1;
     if ((st.inert[c] & b) || (st.inert[o] & b)) return false;
+    if (st.busy && ((st.busy[c] | st.busy[o]) & b)) return false;      // engine declines
     var stride = W2 + 2, a;
     var left = 0, right = 0;
     for (a = 1; a <= st.N; a++) {

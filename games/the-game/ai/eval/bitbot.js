@@ -647,7 +647,7 @@
     // without it the bot cannot build — but a mode may filter it out.
     BitBot.prototype.candidates = function (board, info) {
         var out = [], i, r, c;
-        var base = bit.maskState(board.grid, board.blocks, W, board.height);
+        var base = bit.maskState(board.grid, board.blocks, W, board.height, board.motion);
 
         out.push({ kind: 'hold', swap: null, board: board, masks: base,
                    moveFrames: 0, resolved: null });
@@ -660,7 +660,7 @@
         if (this.canRaise() && board.rise) {
             var risen = board.clone().rise(board.incoming);
             risen.incoming = false;
-            var rst = bit.maskState(risen.grid, risen.blocks, W, risen.height);
+            var rst = bit.maskState(risen.grid, risen.blocks, W, risen.height, risen.motion);
             var rres = bit.resolveFromMasks(rst, true);
             var rmasks = rres.settled || rst;
             var rres2 = summarise(rres);
@@ -1901,7 +1901,7 @@
         var board = this._snapshot();
         var info = this.info(board);
         var pool = this.candidates(board, info);
-        var base = pool.length ? pool[0].masks : bit.maskState(board.grid, board.blocks, W, board.height);
+        var base = pool.length ? pool[0].masks : bit.maskState(board.grid, board.blocks, W, board.height, board.motion);
         this._lastInfo = info; this._lastPool = pool; this._lastBase = base;
         this._incomingRow = board.incoming;
         this._lastOptions = null; this._lastDeadline = 0;
