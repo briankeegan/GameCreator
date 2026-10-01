@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // WASMSURVIVOR: the survival bot, playing on the panel-game server.
 //
-//   node survivor.js [--port 47777] [--threads 3]
+//   node survivor.js [--port 47777] [--host 127.0.0.1] [--threads 3]
+//   (or GC_SURVIVOR_PORT / GC_SURVIVOR_HOST; --host 0.0.0.0 listens on every interface)
 //
 // panel-game's live client (bot/SurvivalLink.lua, brain "survival") runs the
 // match on the server's own Lua engine and asks this, every frame, what to
@@ -24,8 +25,9 @@
 var net = require('net'), path = require('path'), wt = require('worker_threads');
 var PA = require(path.join(__dirname, 'pa-engine.js')), SH = require(path.join(__dirname, 'survivor_shared.js'));
 
-var args = process.argv.slice(2), opt = { port: 47777, threads: 3 };
-for (var i = 0; i < args.length; i += 2) opt[args[i].replace(/^--/, '')] = Number(args[i + 1]);
+var args = process.argv.slice(2), opt = { port: Number(process.env.GC_SURVIVOR_PORT) || 47777, host: process.env.GC_SURVIVOR_HOST || '127.0.0.1', threads: 3 };
+for (var i = 0; i < args.length; i += 2) { var key = args[i].replace(/^--/, ''); opt[key] = key === 'host' ? args[i + 1] : Number(args[i + 1]); }
+if (!(opt.port > 0 && opt.port < 65536)) throw new Error('survivor.js: no such port ' + opt.port);
 var PROFILE = SH.profile(), HANDS = new SH.Hands(PROFILE), land = SH.land, arrivalsOf = SH.arrivalsOf;
 var IN = PA.IN;
 
@@ -357,5 +359,5 @@ var server = net.createServer(function (sock) {
 });
 (function wait() {
   if (!mindReady) { setTimeout(wait, 20); return; }
-  server.listen(opt.port, '127.0.0.1', function () { console.log(PROFILE.name + ' listening on 127.0.0.1:' + opt.port + ' (' + opt.threads + ' threads, reaction ' + PROFILE.reaction + ', cursor ' + PROFILE.cursorMoveFrames + ')'); });
+  server.listen(opt.port, opt.host, function () { console.log(PROFILE.name + ' listening on ' + opt.host + ':' + opt.port + ' (' + opt.threads + ' threads, reaction ' + PROFILE.reaction + ', cursor ' + PROFILE.cursorMoveFrames + ')'); });
 })();
