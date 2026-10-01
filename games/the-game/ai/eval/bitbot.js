@@ -2592,6 +2592,110 @@
                 }
             }
             if (haveBreak) { this._dig = null; this._digIsBreak = false; }
+            // IT PRE-EMPTS A DIG PLAN ONLY WHEN IT IS WORTH MORE THAN FINISHING ONE.
+            //
+            // Interrupting on sight was measured and it cost: seed 101 rand2 v rand3
+            // went from 28,514 frames to 22,950, because the bot cashed every small
+            // break the moment it appeared and never finished the setup that would
+            // break more. Never interrupting is the other error -- the same board sat
+            // on a two-swap break for five decisions of digPlan and died during the
+            // resolve of the break it finally took.
+            //
+            // So it is a comparison, in frames, off numbers both sides already carry.
+            // A break hands back the rows the slab was occupying -- garbage/W rows at
+            // framesPerRow each -- and the plan in flight has a remaining cost, its
+            // own frames less what it has spent. Taking the break now is right when
+            // what it hands back beats what finishing still costs.
+            //
+            // A break plan of this route's own is never interrupted, whatever the
+            // comparison says: that is the re-derivation thrash fixed this morning,
+            // and `_digIsBreak` is how the route knows its own plan from a dig plan.
+            //
+            // The guard here was `!this._dig`, added this morning so the route would
+            // not re-derive a fresh plan every decision and finish none of them. It
+            // locked the route out whenever ANY plan was in flight -- and the dig plan
+            // is the one that is usually in flight, because its whole purpose is to
+            // work TOWARD a break. When a break became reachable the plan aimed at
+            // reaching one kept running instead.
+            //
+            // Seed 101 rand3 died at 28,514 that way: a two-swap break on the board
+            // from frame 28,409, five decisions of digPlan while it sat there, then a
+            // one-swap break appeared, was taken, and the board died during its
+            // resolve. The dig count is a PROXY for being able to break; an actual
+            // break is the thing itself, so it wins.
+            //
+            // The re-derivation it was guarding against is still guarded: a plan this
+            // route committed is tagged, and while one of those is in flight the route
+            // stands aside and lets it finish.
+            var digLeft = Infinity;
+            if (this._dig && this._dig.moves.length) {
+                var dspent0 = Math.max(0, this.stack.clock - (this._dig.startedAt || 0));
+                digLeft = Math.max(0, (this._dig.frames || 0) - dspent0);
+            }
+            if (!haveBreak && !(this._dig && this._digIsBreak)) {
+                options = this._lastOptions = options || bitoptions.options(null, W, H,
+                    [info.cursorRow, info.cursorCol], lookDepth, base,
+                    this.timing(info, deadline, base), digging);
+                var reach = null, pile = options.now.concat(options.next);
+                for (i = 0; i < pile.length; i++) {
+                    var ro = pile[i];
+                    if (!ro.breaks || !ro.swaps.length) continue;
+                    if ((ro.duration || 0) > deadline) continue;
+                    // MOST GARBAGE FIRST, then soonest -- the same order the
+                    // one-swap route picks by, which prefers the bigger break.
+                    if (!reach || (ro.garbage || 0) > (reach.garbage || 0) ||
+                        ((ro.garbage || 0) === (reach.garbage || 0) &&
+                         (ro.duration || 0) < (reach.duration || 0))) reach = ro;
+                }
+                if (reach) {
+                    // THE FIRST SWAP IS WHAT GETS PLAYED, so it is the one the death
+                    // filter is put to -- the rest is held as a plan the way the dig
+                    // and the save are, and dropped by the same rule.
+                    var rm = reach.swaps[0], rok = false, rls = bit.legalSwapsOf(base);
+                    for (i = 0; i < rls.length; i++) {
+                        if (rls[i][0] === rm[0] && rls[i][1] === rm[1]) { rok = true; break; }
+                    }
+                    var rdead = false;
+                    for (i = 0; rok && i < pool.length; i++) {
+                        var pc = pool[i];
+                        if (pc.kind !== 'swap' || !pc.swap ||
+                            pc.swap[0] !== rm[0] || pc.swap[1] !== rm[1]) continue;
+                        rdead = this.deadly(pc.masks, pc.resolved, info,
+                                            Math.max((pc.moveFrames || 0) + this.reaction,
+                                                     info.framesPerRow || 0));
+                        break;
+                    }
+                    // AND THE RIGHT TIME IS WHEN THE BOARD CANNOT AFFORD TO WAIT.
+                    //
+                    // A break is not worth taking at any price -- what it is worth is
+                    // the survival it buys, which is why it has a right time rather
+                    // than a standing priority. So the test is the clock, the same one
+                    // every other rule here runs on: if the plan in flight still needs
+                    // more frames than the board has left, it will not arrive, and the
+                    // break that is reachable now is what there is time for.
+                    //
+                    // digLeft is Infinity with no plan in flight, so the route behaves
+                    // as it always did when there is nothing to weigh against.
+                    //
+                    // Interrupting on cell counts was the wrong currency and was
+                    // measured as such: taking every break on sight cost seed 101
+                    // rand2 v rand3 5,500 frames, 28,514 down to 22,950, because the
+                    // bot cashed small breaks forever and finished no setup.
+                    if (rok && !rdead && !returnsToSeen(rm) && digLeft > deadline) {
+                        this._plan = null;
+                        this._dig = reach.swaps.length > 1
+                                  ? { moves: reach.swaps.slice(1), frames: reach.duration || 0,
+                                      startedAt: this.stack.clock }
+                                  : null;
+                        // Tagged, so the route knows its own plan from a dig plan and
+                        // stands aside only for its own.
+                        this._digIsBreak = !!this._dig;
+                        this.counts.brokeReached = (this.counts.brokeReached || 0) + 1;
+                        return { kind: 'swap', move: rm, mode: mode, alive: alive,
+                                 via: 'breakReach' };
+                    }
+                }
+            }
             if (!haveBreak && this._dig && this._dig.moves.length) {
                 var dn = this._dig.moves[0], dnOk = false, dnl = bit.legalSwapsOf(base);
                 for (i = 0; i < dnl.length; i++) {
@@ -2639,85 +2743,6 @@
             // distance. The option list already holds breaks out to lookDepth and
             // every option carries what it costs, so the break that fits the frames
             // this board has left is already enumerated -- it just was not looked at.
-            // AND IT DOES NOT PRE-EMPT A PLAN IN FLIGHT. THAT WAS MEASURED AND IT COST.
-            //
-            // Running this ABOVE the dig resume lets a reachable break interrupt a dig
-            // plan, which looks right -- the dig count is only a proxy for being able
-            // to break, and here is an actual break. Measured on seed 101 rand2 v
-            // rand3: 28,514 frames became 22,950. Interrupting a plan whenever a
-            // two-swap break appears means the bot cashes small breaks forever and
-            // never finishes the setup that would break more, which is the same thrash
-            // as re-deriving every decision wearing a different hat.
-            //
-            // So it sits below the resume: a plan in flight is played out, and this
-            // route looks only when there is none. The `_digIsBreak` tag is kept
-            // because it says which kind of plan is in flight, and the next person to
-            // try pre-empting will want it.
-            //
-            // The guard here was `!this._dig`, added this morning so the route would
-            // not re-derive a fresh plan every decision and finish none of them. It
-            // locked the route out whenever ANY plan was in flight -- and the dig plan
-            // is the one that is usually in flight, because its whole purpose is to
-            // work TOWARD a break. When a break became reachable the plan aimed at
-            // reaching one kept running instead.
-            //
-            // Seed 101 rand3 died at 28,514 that way: a two-swap break on the board
-            // from frame 28,409, five decisions of digPlan while it sat there, then a
-            // one-swap break appeared, was taken, and the board died during its
-            // resolve. The dig count is a PROXY for being able to break; an actual
-            // break is the thing itself, so it wins.
-            //
-            // The re-derivation it was guarding against is still guarded: a plan this
-            // route committed is tagged, and while one of those is in flight the route
-            // stands aside and lets it finish.
-            if (!haveBreak && !(this._dig && this._digIsBreak)) {
-                options = this._lastOptions = options || bitoptions.options(null, W, H,
-                    [info.cursorRow, info.cursorCol], lookDepth, base,
-                    this.timing(info, deadline, base), digging);
-                var reach = null, pile = options.now.concat(options.next);
-                for (i = 0; i < pile.length; i++) {
-                    var ro = pile[i];
-                    if (!ro.breaks || !ro.swaps.length) continue;
-                    if ((ro.duration || 0) > deadline) continue;
-                    // MOST GARBAGE FIRST, then soonest -- the same order the
-                    // one-swap route picks by, which prefers the bigger break.
-                    if (!reach || (ro.garbage || 0) > (reach.garbage || 0) ||
-                        ((ro.garbage || 0) === (reach.garbage || 0) &&
-                         (ro.duration || 0) < (reach.duration || 0))) reach = ro;
-                }
-                if (reach) {
-                    // THE FIRST SWAP IS WHAT GETS PLAYED, so it is the one the death
-                    // filter is put to -- the rest is held as a plan the way the dig
-                    // and the save are, and dropped by the same rule.
-                    var rm = reach.swaps[0], rok = false, rls = bit.legalSwapsOf(base);
-                    for (i = 0; i < rls.length; i++) {
-                        if (rls[i][0] === rm[0] && rls[i][1] === rm[1]) { rok = true; break; }
-                    }
-                    var rdead = false;
-                    for (i = 0; rok && i < pool.length; i++) {
-                        var pc = pool[i];
-                        if (pc.kind !== 'swap' || !pc.swap ||
-                            pc.swap[0] !== rm[0] || pc.swap[1] !== rm[1]) continue;
-                        rdead = this.deadly(pc.masks, pc.resolved, info,
-                                            Math.max((pc.moveFrames || 0) + this.reaction,
-                                                     info.framesPerRow || 0));
-                        break;
-                    }
-                    if (rok && !rdead && !returnsToSeen(rm)) {
-                        this._plan = null;
-                        this._dig = reach.swaps.length > 1
-                                  ? { moves: reach.swaps.slice(1), frames: reach.duration || 0,
-                                      startedAt: this.stack.clock }
-                                  : null;
-                        // Tagged, so the route knows its own plan from a dig plan and
-                        // stands aside only for its own.
-                        this._digIsBreak = !!this._dig;
-                        this.counts.brokeReached = (this.counts.brokeReached || 0) + 1;
-                        return { kind: 'swap', move: rm, mode: mode, alive: alive,
-                                 via: 'breakReach' };
-                    }
-                }
-            }
             if (!haveBreak) {
                 options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
                                                        lookDepth, base, this.timing(info, deadline, base), digging);
