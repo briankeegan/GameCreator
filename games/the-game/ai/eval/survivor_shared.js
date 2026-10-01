@@ -109,11 +109,19 @@ function lowestGarbageRow(board) {
   }
   return 0;
 }
-// The highest row holding a panel that is not garbage.
-function panelTop(board) {
+// The highest row holding anything, on the server's board (top) and on a
+// panel-engine board's grid (gridTop: 0 is empty).
+function top(board) {
   for (var r = board.panels.length - 1; r >= 1; r--) {
     var row = board.panels[r];
-    if (row) for (var c = 1; c <= 6; c++) if (row[c] && row[c].color && !row[c].isGarbage) return r;
+    if (row) for (var c = 1; c <= 6; c++) if (row[c] && row[c].color) return r;
+  }
+  return 0;
+}
+function gridTop(b) {
+  for (var r = b.grid.length - 1; r >= 1; r--) {
+    var row = b.grid[r];
+    if (row) for (var c = 1; c <= b.width; c++) if (row[c]) return r;
   }
   return 0;
 }
@@ -173,4 +181,4 @@ Hands.prototype.idle = function (board, hold, arrivals) {
   return { bits: k.inputs[0], hold: k.holds[0] };
 };
 
-module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, arrivalsFrom: arrivalsFrom, threat: threat, panelTop: panelTop, breakMoves: breakMoves, Hands: Hands };
+module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, arrivalsFrom: arrivalsFrom, threat: threat, top: top, gridTop: gridTop, breakMoves: breakMoves, Hands: Hands };
