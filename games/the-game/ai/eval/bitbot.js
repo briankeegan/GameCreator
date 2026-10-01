@@ -910,7 +910,13 @@
         // of life, and seed 101 took eighteen cells at frame 658 and died at
         // 1,293. When the queue is more than the room the answer is the clock and
         // nothing else, which is what being topped out is worth.
-        var queued = Math.ceil((info.incoming || 0) / W);
+        // WHAT LANDS BEFORE THE BOT CAN ACT, NOT THE WHOLE QUEUE. shouldDropGarbage
+        // delivers one slab at a time and not at all while garbage is falling, so the
+        // queue arrives at the engine's pace, not at once. Subtracting all of it made
+        // the deadline zero under a flood -- 749 queued slabs is ~500 rows -- and every
+        // plan toward a break has to fit inside the deadline, so none was ever allowed
+        // to start: comboStorm played `setup` on every decision to the end.
+        var queued = Math.ceil((info.nextSlab || 0) / W);
         // THE RISE BEGINS AFTER THE STOP TIME RUNS OUT, and the speed table has moved
         // on by then -- see framesToRise. `clock` here is the stop time, info.clock is
         // the engine's.
