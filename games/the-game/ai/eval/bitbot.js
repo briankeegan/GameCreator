@@ -2584,13 +2584,14 @@
                 }
                 if (bk) {
                     this._dig = null;
+                    this._digIsBreak = false;
                     this._plan = null;
                     this.counts.brokeNow++;
                     return { kind: 'swap', move: bk.swap, mode: mode, alive: alive,
                              via: 'break' };
                 }
             }
-            if (haveBreak) this._dig = null;
+            if (haveBreak) { this._dig = null; this._digIsBreak = false; }
             if (!haveBreak && this._dig && this._dig.moves.length) {
                 var dn = this._dig.moves[0], dnOk = false, dnl = bit.legalSwapsOf(base);
                 for (i = 0; i < dnl.length; i++) {
@@ -2599,12 +2600,13 @@
                 var dspent = Math.max(0, this.stack.clock - (this._dig.startedAt || 0));
                 if (dnOk && Math.max(0, this._dig.frames - dspent) <= deadline) {
                     this._dig.moves = this._dig.moves.slice(1);
-                    if (!this._dig.moves.length) this._dig = null;
+                    if (!this._dig.moves.length) { this._dig = null; this._digIsBreak = false; }
                     this._plan = null;
                     this.counts.dugFor++;
                     return { kind: 'swap', move: dn, mode: mode, alive: alive, via: 'digPlan' };
                 }
                 this._dig = null;
+                this._digIsBreak = false;
                 this.counts.digDropped++;
             }
             // AND A BREAK IS A BREAK AT WHATEVER DEPTH THE CLOCK AFFORDS.
@@ -2637,7 +2639,25 @@
             // distance. The option list already holds breaks out to lookDepth and
             // every option carries what it costs, so the break that fits the frames
             // this board has left is already enumerated -- it just was not looked at.
-            if (!haveBreak && !this._dig) {
+            // A REACHABLE BREAK PRE-EMPTS A DIG PLAN, BUT NOT A BREAK PLAN.
+            //
+            // The guard here was `!this._dig`, added this morning so the route would
+            // not re-derive a fresh plan every decision and finish none of them. It
+            // locked the route out whenever ANY plan was in flight -- and the dig plan
+            // is the one that is usually in flight, because its whole purpose is to
+            // work TOWARD a break. When a break became reachable the plan aimed at
+            // reaching one kept running instead.
+            //
+            // Seed 101 rand3 died at 28,514 that way: a two-swap break on the board
+            // from frame 28,409, five decisions of digPlan while it sat there, then a
+            // one-swap break appeared, was taken, and the board died during its
+            // resolve. The dig count is a PROXY for being able to break; an actual
+            // break is the thing itself, so it wins.
+            //
+            // The re-derivation it was guarding against is still guarded: a plan this
+            // route committed is tagged, and while one of those is in flight the route
+            // stands aside and lets it finish.
+            if (!haveBreak && !(this._dig && this._digIsBreak)) {
                 options = this._lastOptions = options || bitoptions.options(null, W, H,
                     [info.cursorRow, info.cursorCol], lookDepth, base,
                     this.timing(info, deadline, base), digging);
@@ -2676,6 +2696,9 @@
                                   ? { moves: reach.swaps.slice(1), frames: reach.duration || 0,
                                       startedAt: this.stack.clock }
                                   : null;
+                        // Tagged, so the route knows its own plan from a dig plan and
+                        // stands aside only for its own.
+                        this._digIsBreak = !!this._dig;
                         this.counts.brokeReached = (this.counts.brokeReached || 0) + 1;
                         return { kind: 'swap', move: rm, mode: mode, alive: alive,
                                  via: 'breakReach' };
@@ -2692,9 +2715,10 @@
                         if (dls[i][0] === dm[0] && dls[i][1] === dm[1]) { dok = true; break; }
                     }
                     if (dok && !returnsToSeen(dm)) {
+                        this._digIsBreak = false;
                         this._dig = { moves: dp.swaps.slice(1), frames: dp.duration || 0,
                                       startedAt: this.stack.clock };
-                        if (!this._dig.moves.length) this._dig = null;
+                        if (!this._dig.moves.length) { this._dig = null; this._digIsBreak = false; }
                         this.counts.dugFor++;
                         return { kind: 'swap', move: dm, mode: mode, alive: alive, via: 'digPlan' };
                     }
