@@ -154,6 +154,7 @@ function gridTop(b) {
   return 0;
 }
 var BREAK_BUDGET = 2500;   // steps past the first level: the search stops there
+var LINEUP_BUDGET = 400;   // pairs of swaps tried for a lineup
 // LINING UP: while a broken slab pops (popLeft, frames) its new row cannot
 // move, but what is under it can; once the pop ends the row matches what it
 // rests on, and a match there touches the slab again. A first swap after
@@ -178,8 +179,24 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait) {
   firsts.forEach(function (f) { f.n = S.advance(root, 'swap', f.m, 0); if (breaks(f.n)) { found[f.key] = true; any = true; } });
   if (any) return { depth: 1, moves: found };
   if (wait > 0 && !breaks(S.advance(root, 'long', null, wait))) {
-    firsts.forEach(function (f) { if (f.n && !f.n.dead && breaks(S.advance(f.n, 'long', null, wait))) { found[f.key] = true; any = true; } });
+    // till the pop is over, from wherever a line has got to
+    var end = root.t + wait;
+    function lined(n) { return n && !n.dead && breaks(S.advance(n, 'long', null, Math.max(1, end - n.t))); }
+    firsts.forEach(function (f) { if (lined(f.n)) { found[f.key] = true; any = true; } });
     if (any) return { depth: 1, moves: found, lineup: true };
+    // a pop is long enough for two swaps: the first of a pair that lines up
+    var tries = 0;
+    for (i = 0; i < firsts.length && tries < LINEUP_BUDGET; i++) {
+      var f = firsts[i];
+      if (!f.n || f.n.dead || f.n.t >= end) continue;
+      var ms = swapsOf(f.n);
+      for (j = 0; j < ms.length && tries < LINEUP_BUDGET; j++) {
+        tries++;
+        var n2 = S.advance(f.n, 'swap', ms[j], 0);
+        if (n2 && n2.t < end && lined(n2)) { found[f.key] = true; any = true; break; }
+      }
+    }
+    if (any) return { depth: 1, moves: found, lineup: 2 };
   }
   if (maxDepth < 2) return { depth: 0, moves: {} };
   firsts.push({ key: 'hold', n: S.advance(root, 'hold', null, 0) });

@@ -90,6 +90,7 @@ wt.parentPort.on('message', function (m) {
     // break TALL_RANK + h frames away. Six-wide garbage lands on the tallest
     // column, so that column is the board's height.
     bot.preferRank = null; bot.preferProven = null;
+    var popping = !!(cfg.profile.conserve && SH.popLeft(board));
     var br = null, brMs = 0, want = {}, tall = cfg.profile.tallRow && SH.top(board) >= cfg.profile.tallRow;
     if (cfg.profile.breakFirst) {
       bot._natSearch();   // the engine, on this bot's threads, before a second context is made on it
@@ -100,6 +101,10 @@ wt.parentPort.on('message', function (m) {
       want = br.depth ? br.moves : {};
       bot.preferRank = function (c, i) {
         if (want[c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[1] : c.kind]) return 0;
+        // While a slab pops nothing can die, so a line breaking garbage later
+        // earns no place over keeping panels (conserve): only a break now or a
+        // lineup outranks it.
+        if (popping) return Infinity;
         var t = i >= 0 && this._nat ? this._nat.breakAt(i) : -1;
         return t >= 0 ? t : Infinity;
       };
