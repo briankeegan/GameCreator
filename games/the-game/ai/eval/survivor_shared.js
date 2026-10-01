@@ -48,15 +48,23 @@ function arrivalsOf(state) {
     var offset = mine - src.stopWatch;
     // Garbage due already but not on the board is held back (an attack
     // engine's waits while 72 are queued: GarbageDelivery): it lands next
-    // frame at the soonest.
+    // frame at the soonest. An attack engine's is let in a batch a frame, so
+    // each of its batches is due a frame after the one ahead of it.
+    var capped = !!src.capped, floor = mine + 1, last = null, lastAt = 0;
+    function due(at, batch) {
+      if (batch !== last) { last = batch; lastAt = Math.max(at, floor); if (capped) floor = lastAt + 1; }
+      return lastAt;
+    }
     PA.list(src.transit).forEach(function (t) {
-      PA.list(t.garbage).forEach(function (g) { out.push({ at: Math.max(t.at + offset, mine + 1), g: g }); });
+      var at = due(t.at + offset, 't' + t.at);
+      PA.list(t.garbage).forEach(function (g) { out.push({ at: at, g: g, capped: capped }); });
     });
     var staged = PA.list(src.staged), ship = src.stopWatch;
+    if (!capped) floor = -Infinity;
     for (var i = staged.length - 1; i >= 0; i--) {
       var g = staged[i];
       ship = Math.max(ship, g.frameEarned + STAGING, g.isChain && !g.finalized ? src.stopWatch + 1 : 0);
-      out.push({ at: ship + LAND + offset, g: g });
+      out.push({ at: due(ship + LAND + offset, 's' + ship), g: g, capped: capped });
     }
   });
   return out.sort(function (x, y) { return x.at - y.at; });
@@ -74,16 +82,33 @@ function unforeseen(knew, now) {
     return true;
   });
 }
-// Garbage due on the frame just reached, received as the server receives it.
-function land(st, arrivals) {
-  for (var i = 0; i < arrivals.length; i++) if (arrivals[i].at === st.stopWatch) st.receiveGarbage([arrivals[i].g]);
+// Garbage due by the frame just reached, received as the server receives it:
+// an attack engine's (capped) only while fewer than CAP are queued, the
+// earliest due of it a frame (search.h runFrame does the same). `pend` is
+// the caller's own copy (pending()): what lands is taken out of it.
+var CAP = 72;
+function pending(arrivals) { return arrivals.map(function (a) { return { at: a.at, g: a.g, capped: !!a.capped }; }); }
+function land(st, pend) {
+  var first = Infinity, i;
+  for (i = 0; i < pend.length; i++) if (pend[i].capped && pend[i].at <= st.stopWatch && pend[i].at < first) first = pend[i].at;
+  var open = first < Infinity && (st.incoming || []).length < CAP;
+  for (i = 0; i < pend.length; i++) {
+    var a = pend[i];
+    if (a.at > st.stopWatch || (a.capped && !(open && a.at === first))) continue;
+    st.receiveGarbage([a.g]); pend.splice(i--, 1);
+  }
 }
 // The same, as the search takes it: frames from this board (search.h
 // runFrame), at most MAXARR (native/search.h).
 function arrivalsFrom(board, arrivals) {
-  var out = [];
+  var out = [], rel = 0, prev = null;
+  // A capped piece already due is still held: it lands next frame at the
+  // soonest, and each batch held a frame after the one ahead of it.
   arrivals.forEach(function (a) {
-    if (a.at > board.stopWatch) out.push({ at: a.at - board.stopWatch, width: a.g.width, height: a.g.height, isChain: !!a.g.isChain, isMetal: !!a.g.isMetal });
+    if (a.at <= board.stopWatch && !a.capped) return;
+    var r = a.at - board.stopWatch;
+    if (a.capped) { r = a.at === prev ? rel : Math.max(r, rel + 1); rel = r; prev = a.at; }
+    out.push({ at: Math.max(1, r), width: a.g.width, height: a.g.height, isChain: !!a.g.isChain, isMetal: !!a.g.isMetal, capped: !!a.capped });
   });
   return out.slice(0, 64);
 }
@@ -184,4 +209,4 @@ Hands.prototype.idle = function (board, hold, arrivals) {
   return { bits: k.inputs[0], hold: k.holds[0] };
 };
 
-module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, arrivalsFrom: arrivalsFrom, threat: threat, top: top, gridTop: gridTop, breakMoves: breakMoves, Hands: Hands };
+module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, pending: pending, arrivalsFrom: arrivalsFrom, threat: threat, top: top, gridTop: gridTop, breakMoves: breakMoves, Hands: Hands };

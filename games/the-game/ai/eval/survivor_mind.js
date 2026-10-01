@@ -94,7 +94,7 @@ wt.parentPort.on('message', function (m) {
           diag: { doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped } };
   } catch (e) {
     if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
-    else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e), ms: Date.now() - t0 };
+    else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e) + ' [inc ' + (m.board && m.board.incoming ? m.board.incoming.length : '?') + ', arr ' + (m.arrivals ? m.arrivals.length : '?') + ']', ms: Date.now() - t0 };
   }
   wt.parentPort.postMessage(out);
 });

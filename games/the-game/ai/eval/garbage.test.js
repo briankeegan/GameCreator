@@ -213,6 +213,35 @@ check('a decision that counted a piece as soon and as big is not stale; a taller
     assert.strictEqual(bot._stale(pt, 100), true, 'a chain grown taller than counted did not make the answer stale');
 });
 
+// AN ATTACK ENGINE'S GARBAGE IS LET IN A BATCH A FRAME, and none while 72
+// are queued (GarbageDelivery). Batches held past their landing frame are due
+// one a frame, in order, and the search's frames keep them apart.
+var SH = require('./survivor_shared.js');
+function piece(earned) { return { width: 4, height: 1, isChain: false, isMetal: false, frameEarned: earned, finalized: true }; }
+function telegraphOf(capped) {
+    return { stack: { stopWatch: 500 }, telegraph: [{ stopWatch: 500, capped: capped, staged: [],
+        transit: [{ at: 400, garbage: [piece(1), piece(2)] }, { at: 401, garbage: [piece(3)] }, { at: 402, garbage: [piece(4)] }] }] };
+}
+check('held batches of an attack engine are due a frame apart, a batch together', function () {
+    var a = SH.arrivalsOf(telegraphOf(true));
+    assert.deepStrictEqual(a.map(function (x) { return x.at; }), [501, 501, 502, 503]);
+    var rel = SH.arrivalsFrom({ stopWatch: 505 }, a);
+    assert.deepStrictEqual(rel.map(function (x) { return x.at; }), [1, 1, 2, 3], 'the search saw held batches land together');
+    var b = SH.arrivalsOf(telegraphOf(false));
+    assert.deepStrictEqual(b.map(function (x) { return x.at; }), [501, 501, 501, 501], 'a player\'s overdue garbage was spread out');
+});
+check('the model lets in one held batch a frame, and none while 72 are queued', function () {
+    var pend = SH.pending(SH.arrivalsOf(telegraphOf(true))), st = { stopWatch: 503, incoming: [] };
+    st.receiveGarbage = function (gs) { st.incoming.push.apply(st.incoming, gs); };
+    SH.land(st, pend);
+    assert.strictEqual(st.incoming.length, 2, 'more than the first batch was let in');
+    SH.land(st, pend);
+    assert.strictEqual(st.incoming.length, 3);
+    st.incoming.length = 72;
+    SH.land(st, pend);
+    assert.strictEqual(pend.length, 1, 'a batch was let in with 72 queued');
+});
+
 console.log('');
 if (failures.length) { console.log(failures.length + ' failed.'); process.exit(1); }
 console.log('Garbage breaks stop the resolve, and everything up to them is exact.');

@@ -136,9 +136,11 @@ Match.prototype.ahead = function () {
   if (process.env.GC_SURVIVOR_LEAD) return Number(process.env.GC_SURVIVOR_LEAD);
   return SYNC ? 1 : Math.max(PROFILE.ahead, this.soon());
 };
-// The board at `at`, from `board` now, pressing what is planned till then.
-Match.prototype.predict = function (board, at, hold) {
-  var st = board.copy(), h = { left: hold.left, started: hold.started }, arrivals = this.arrivals;
+// The board at `at`, from `board` now, pressing what is planned till then,
+// and the garbage still to land after it (SH.land: what the game holds back
+// is still pending).
+Match.prototype.predict = function (board, at, hold, from) {
+  var st = board.copy(), h = { left: hold.left, started: hold.started }, arrivals = SH.pending(from || this.arrivals);
   while (st.clock < at && st.gameOverClock <= 0) {
     var planned = this.plan[st.clock], bits;
     if (planned !== undefined) { bits = planned.bits; h = { left: planned.hold.left, started: planned.hold.started }; }
@@ -148,10 +150,10 @@ Match.prototype.predict = function (board, at, hold) {
     st.run();
     land(st, arrivals);
   }
-  return { board: st, hold: h };
+  return { board: st, hold: h, pending: arrivals };
 };
-Match.prototype.ask = function (at, board, hold) {
-  var arrivals = this.arrivals.filter(function (a) { return a.at > board.stopWatch; });
+Match.prototype.ask = function (at, board, hold, pend) {
+  var arrivals = (pend || this.arrivals).filter(function (a) { return a.at > board.stopWatch || a.capped; });
   pending = { id: nextId++, epoch: this.epoch, at: at, board: board, hold: hold, arrivals: arrivals, knew: this.arrivals, askedAt: this.now, sent: Date.now() };
   if (process.env.GC_SURVIVOR_DUMP) {
     // The question as the mind got it, to be asked again offline (survivor_probe.js).
@@ -274,8 +276,9 @@ Match.prototype.frame = function (truth, arrivals) {
   next.setInput(bits & ~IN.swap);
   if (bits & IN.swap) next.pressSwap = true;
   next.run();
-  land(next, arrivals);
-  this.expect = next;
+  var pend = SH.pending(arrivals);
+  land(next, pend);
+  this.expect = next; this.nextPending = pend;   // the garbage still to land after it
   if (process.env.GC_SURVIVOR_DUMP) this.record(truth, bits, arrivals);
   return bits;
 };
@@ -292,11 +295,11 @@ Match.prototype.afterFrame = function () {
   if (pending) return;
   var at = this.nextAt > now ? this.nextAt : now + this.soon();
   if (at - now > this.ahead()) return;
-  var pr = this.predict(next, at, this.hold);
+  var pr = this.predict(next, at, this.hold, this.nextPending);
   // Dead by then on what is planned: the question is the next frame's board,
   // answered late and played from the board it reaches.
-  if (pr.board.gameOverClock > 0) { at = now + 1; pr = { board: next, hold: this.hold }; }
-  this.ask(at, pr.board, pr.hold);
+  if (pr.board.gameOverClock > 0) { at = now + 1; pr = { board: next, hold: this.hold, pending: this.nextPending }; }
+  this.ask(at, pr.board, pr.hold, pr.pending);
 };
 
 // The keys planned from frame `from` on, at most n, up to the first frame
@@ -332,8 +335,8 @@ Match.prototype.follow = function () {
   else if (Array.isArray(st)) { kind = 'swap'; move = st; }
   else if (st && st.long !== undefined) { kind = 'long'; frames = -Math.max(1, st.long - (this.nextAt - this.line.at)); }
   else { this.line = null; return; }
-  var pr = this.predict(this.expect, this.nextAt, this.hold);
-  var k = HANDS.keys(pr.board, pr.hold, kind, move, this.arrivals, frames);
+  var pr = this.predict(this.expect, this.nextAt, this.hold, this.nextPending);
+  var k = HANDS.keys(pr.board, pr.hold, kind, move, pr.pending, frames);
   if (!k) { this.line = null; return; }
   Atomics.store(ABORT, 0, pending.id);
   pending = null; this.acted = false;

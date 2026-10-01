@@ -450,10 +450,10 @@
     arrivals.forEach(function (a, i) {
       body[used + 5 * i] = int(a.at, 'arrival'); body[used + 5 * i + 1] = int(a.width, 'arrival');
       body[used + 5 * i + 2] = int(a.height, 'arrival'); body[used + 5 * i + 3] = bool(!!a.isChain, 'arrival');
-      body[used + 5 * i + 4] = bool(!!a.isMetal, 'arrival');
+      body[used + 5 * i + 4] = (a.isMetal ? 1 : 0) | (a.capped ? 2 : 0);   // search.h: bit 2 is capped
     });
     var r = X.ns_root(this.ctx, int(hold.left, 'hold.left'), bool(!!hold.started, 'hold.started'), arrivals.length, fresh ? 1 : 0);
-    if (r < 0) throw new Error('Native: root refused (' + r + ')');
+    if (r < 0) throw new Error('Native: root refused (' + r + (X.ns_root_why ? ', why ' + X.ns_root_why() : '') + ')');
     return this.wrap(r);
   };
   function moveOf(n) {
@@ -471,7 +471,8 @@
     var arr = [], a0 = o.arr >> 2;
     for (var k = 0; k < g('narr'); k++) {
       var ar = { at: v[a0 + 5 * k], width: v[a0 + 5 * k + 1], height: v[a0 + 5 * k + 2], isChain: v[a0 + 5 * k + 3] === 1 };
-      if (v[a0 + 5 * k + 4]) ar.isMetal = true;
+      if (v[a0 + 5 * k + 4] & 1) ar.isMetal = true;
+      if (v[a0 + 5 * k + 4] & 2) ar.capped = true;
       arr.push(ar);
     }
     var keyn = g('keyn'), k0 = o.key >> 2, key = '';
