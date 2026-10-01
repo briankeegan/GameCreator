@@ -1285,7 +1285,12 @@
             cells -= short * W;
             // AND THE VOID THE SLAB WOULD SEAL, in this ranking's currency: a row of
             // void is a row of ceiling, and a row is W panels.
-            cells += (o.voidGain || 0) * W;
+            // The same rate bestPlan pays, in this ranking's currency: W cells to the
+            // row, each worth what an unsealed cell is worth. See bestPlan's voidGain.
+            if (perPanelFrames > 0) {
+                cells += (o.voidGain || 0) * W *
+                         Math.max(perPanelFrames, (deadline || 0) / W) / perPanelFrames;
+            }
             // AND WHAT IT DID TO THE SETUP FOR A BREAK, IN FRAMES, converted to this
             // ranking's currency the same way slabWorth above is. setupWorth prices
             // it as the prize a finished setup pays discounted by the time the rest
@@ -1613,9 +1618,24 @@
             var bought = o.total * perPanel + holds + (o.converts || 0) * perCell
                        + lowered * (framesPerRow || 0) + gain
                        - shortfall * (framesPerRow || 0)
-                       // AND THE VOID THE SLAB WOULD SEAL -- a row of it is a row of
-                       // ceiling, so framesPerRow, as height is.
-                       + (o.voidGain || 0) * (framesPerRow || 0)
+                       // AND THE VOID THE SLAB WOULD SEAL, AT THE SAME RATE A CELL
+                       // UNSEALED IS PAID.
+                       //
+                       // This was framesPerRow a row -- perPanel a cell, about 20 frames
+                       // -- on the reading that a row of void is a row of ceiling. But a
+                       // sealed cell is not a row of rise, which is paid once and gone.
+                       // It is space that can only be recovered by BREAKING, which is
+                       // exactly what this expression says four lines up about a
+                       // converted garbage cell: "a garbage cell can never come off the
+                       // board and a panel can, so converting one is worth clearing it,
+                       // deferred", priced at perCell = max(perPanel, deadline/W), up to
+                       // 100 frames early in a game.
+                       //
+                       // Sealing a cell and converting one are the same event in opposite
+                       // directions, and they were priced five times apart in terms four
+                       // lines from each other. Same rate now, and no new constant: W
+                       // cells to the row, perCell each.
+                       + (o.voidGain || 0) * W * perCell
                        // AND WHAT IT DID TO THE SETUP FOR A BREAK -- already in
                        // frames, which is this ranking's currency. See bestAttack.
                        + (o.slabGain || 0)
