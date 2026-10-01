@@ -2820,6 +2820,29 @@
             // ones where the garbage was never broken: seed 101 rand4 took 26 cells
             // and broke none of them, and by the end the slab had bridged on a lone
             // tower and sealed every column under it.
+            // AND IT IS FIRED WHEN THE GARBAGE HAS ALL LANDED, NOT BEFORE.
+            //
+            // Two engine facts decide the moment. getConnectedGarbagePanels clears
+            // every slab connected to the one the match touches, block to block, so
+            // one break takes everything that has landed. And shouldDropGarbage holds
+            // combo garbage while any panel is active -- "combo garbage waits for
+            // calm" -- so a break fired early clears the slabs that are down, and then
+            // the rest of the queue lands on the board afterwards. Waiting for the last
+            // of it and firing in the moment after it lands clears all of it in one
+            // swap.
+            //
+            // So with a break in hand: while more is queued and the next slab still
+            // fits above the stack, HOLD. Not a clear and not a setup -- a clear makes
+            // panels active, which stalls the very landing being waited for, and any
+            // swap can spoil the line under the slab. Fire when nothing more is queued,
+            // or when the next slab would not fit, which is the deadline.
+            var stillComing = (info.incoming || 0) > 0;
+            var nextRows = Math.ceil((info.nextSlab || 0) / W);
+            var nextFits = this.raiseRoom() > nextRows;
+            if (haveBreak && stillComing && nextFits && !info.toppedOut) {
+                this.counts.heldForLanding = (this.counts.heldForLanding || 0) + 1;
+                return { kind: 'hold', mode: mode, alive: alive, via: 'awaitLanding' };
+            }
             if (haveBreak) {
                 var bk = null;
                 for (i = 0; i < pool.length; i++) {
