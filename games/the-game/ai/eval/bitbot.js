@@ -2193,8 +2193,20 @@
             // bot stacked columns 1-3 five and six high with columns 5-6 empty and
             // a hole in the bottom row. The same panels spread across six columns
             // offer more lines anyway and are not against the ceiling.
+            // ONE NOTHING-CLEARS RANKING, NOT THREE.
+            //
+            // This was -bumpiness*10000 + matchWays*100 - moveFrames: a lexicographic
+            // rule with no height, no material floor and no void in it, while the
+            // spare and allDead branches below already rank by idleScore, which has
+            // all three and is denominated in frames. This is the busiest of the
+            // three by far -- 2,889 of 3,799 decisions on the duel this was written
+            // from -- and it was the one that could not see the seal.
+            //
+            // Bumpiness cannot stand in for the void. It counts neighbour steps, so
+            // 2,2,2,2,6,7 and the smooth ramp 2,3,4,5,6,7 both read 5 while their
+            // voids are 21 panels and 15. The board that died was the first of those.
             var s = noneClear
-                  ? -bumpiness(cand.masks) * 10000 + matchWays(cand.masks) * 100 - (cand.moveFrames || 0)
+                  ? this.idleScore(cand, base, info)
                   : this.score(cand.masks, cand.moveFrames, cand.resolved, info);
             if (!best || s > best.score) best = { cand: cand, score: s };
         }
