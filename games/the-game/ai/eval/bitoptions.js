@@ -186,12 +186,34 @@
         // move -- it pays for gathering material where it can reach rather than
         // spreading it thin across columns that cannot.
         if (floorRow > 1) {
-            var need = floorRow - 1;
+            var need = floorRow - 1, stride2 = w2 + 2;
             gap = Infinity;
+            // THE HORIZONTAL ROUTE: three adjacent columns up at the slab's floor row,
+            // after which any colour matching across them clears against the slab.
             for (c = 1; c + 2 <= w2; c++) {
                 var win = Math.max(0, need - h[c]) + Math.max(0, need - h[c + 1]) +
                           Math.max(0, need - h[c + 2]);
                 if (win < gap) gap = win;
+            }
+            // AND THE VERTICAL ROUTE, WITH ITS REAL COST. A column touching the slab
+            // is not a column that can break it: on the board this was written for,
+            // column six sat exactly at the floor and its top three read 6,1,6. Height
+            // alone says zero and the board had no break at all. The honest cost is
+            // the climb PLUS the panels missing from a run of three at the top, so
+            // that column reads 0 + 2 = 2.
+            for (c = 1; c <= w2; c++) {
+                var climb = Math.max(0, need - h[c]);
+                var run = 0;
+                if (h[c] > 0) {
+                    var topBit = 1 << (h[c] - 1), col = 0, a;
+                    for (a = 1; a <= 12; a++) if (st2.colour[a * stride2 + c] & topBit) { col = a; break; }
+                    if (col) {
+                        var mask = st2.colour[col * stride2 + c] >>> 0;
+                        for (var r2 = h[c]; r2 >= 1 && (mask & (1 << (r2 - 1))); r2--) run++;
+                    }
+                }
+                var vert = climb + Math.max(0, 3 - run);
+                if (vert < gap) gap = vert;
             }
             if (!isFinite(gap)) gap = 0;
         }
