@@ -256,6 +256,9 @@ exports.SEEDS = [1, 2, 3, 4, 5, 6, 7, 8];
 exports.LEVEL = LEVEL;
 
 exports.SCENARIOS = SCENARIOS;
+// The burst schedule itself, so another harness runs THE SAME DRILL rather than a
+// copy of it that can drift. drill.js uses this to put bitbot on these scenarios.
+exports.burstFires = burstFires;
 
 // One run. `weights` null means the SHIPPED scoring, untouched — that is
 // the control arm, and it must go through this identical code path or the
