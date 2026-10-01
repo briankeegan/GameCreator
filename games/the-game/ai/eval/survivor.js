@@ -105,17 +105,20 @@ function Match(level) {
   this.nextAt = 0;         // the frame the plan ends on
   this.arrivals = [];      // garbage on its way (arrivalsOf)
   this.line = null;        // the proven line after the plan: { steps, at } (follow)
-  this.stats = { frames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0, break1: 0, took1: 0, break2: 0, took2: 0, break3: 0, took3: 0 };
+  this.knew = [];          // the garbage on its way the plan was decided knowing
+  this.stats = { frames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0, unforeseen: 0, rewalked: 0, break1: 0, took1: 0, break2: 0, took2: 0, break3: 0, took3: 0 };
   this.history = []; this.decided = []; this.asked = []; this.dumped = false;
+  this.msPerFrame = 1000 / 60; this.wall = 0;   // how fast frames come (soon)
   // A question from the last match is not this one's: its answer is dropped.
   pending = null;
   mind.postMessage({ type: 'reset' });
 }
-// How soon an answer can be had: half again the slowest of the last few.
+// How soon an answer can be had, in frames: half again the slowest of the
+// last few, at the rate frames are coming in (msPerFrame).
 Match.prototype.soon = function () {
   if (SYNC) return 1;
   var worst = thinking.length ? Math.max.apply(null, thinking) : 300;
-  return Math.max(6, Math.min(600, Math.ceil(worst * 0.06 * 1.5)));
+  return Math.max(6, Math.min(600, Math.ceil(worst / this.msPerFrame * 1.5)));
 };
 // How far ahead a decision may be asked (the profile's `ahead`, frames): a
 // long move's frames are spent deciding the next, which a short one needs.
@@ -139,7 +142,7 @@ Match.prototype.predict = function (board, at, hold) {
 };
 Match.prototype.ask = function (at, board, hold) {
   var arrivals = this.arrivals.filter(function (a) { return a.at > board.stopWatch; });
-  pending = { id: nextId++, epoch: this.epoch, at: at, board: board, hold: hold, arrivals: arrivals, askedAt: this.now, sent: Date.now() };
+  pending = { id: nextId++, epoch: this.epoch, at: at, board: board, hold: hold, arrivals: arrivals, knew: this.arrivals, askedAt: this.now, sent: Date.now() };
   if (process.env.GC_SURVIVOR_DUMP) {
     // The question as the mind got it, to be asked again offline (survivor_probe.js).
     this.asked.push({ id: pending.id, at: at, hold: hold, arrivals: arrivals, acted: this.acted,
@@ -163,6 +166,18 @@ function moved(from, to, move) {
   }
   return null;
 }
+// The keys from `truth` to the first swap the plan has yet to press (each
+// planned frame of a swap carries it: { move, board }), the move found again
+// by its panels.
+Match.prototype.rewalk = function (truth) {
+  var now = truth.clock, first = Infinity, t;
+  for (t in this.plan) if (+t >= now && +t < first && (this.plan[t].bits & IN.swap) && this.plan[t].swap) first = +t;
+  if (first === Infinity) return null;
+  var sw = this.plan[first].swap, move = moved(sw.board, truth, sw.move);
+  var k = move && HANDS.keys(truth, this.hold, 'swap', move, this.arrivals);
+  if (k) k.swap = { move: move, board: truth };
+  return k;
+};
 Match.prototype.take = function (truth) {
   var now = truth.clock;
   while (answers.length) {
@@ -178,12 +193,12 @@ Match.prototype.take = function (truth) {
                        asked: pending && pending.id === a.id ? pending.askedAt : null, trip: pending && pending.id === a.id ? a.got - pending.sent : null });
     if (this.decided.length > 60) this.decided.shift();
     if (!pending || a.id !== pending.id) continue;
-    var p = pending, board = p.board, hold = p.hold, at = a.at, arrivals = p.arrivals, move = a.move;
+    var p = pending, board = p.board, hold = p.hold, at = a.at, arrivals = p.arrivals, move = a.move, knew = p.knew;
     pending = null;
     if (a.epoch !== this.epoch) { this.stats.late++; this.acted = false; continue; }
     if (at < now) {
       if (a.kind === 'swap' && !(move = moved(p.board, truth, a.move))) { this.stats.late++; this.acted = false; continue; }
-      board = truth; hold = this.hold; at = now; arrivals = this.arrivals;
+      board = truth; hold = this.hold; at = now; arrivals = this.arrivals; knew = this.arrivals;
       this.stats.lateTaken++;
     }
     var step = HANDS.keys(board, hold, a.kind, move, arrivals);
@@ -191,8 +206,10 @@ Match.prototype.take = function (truth) {
     this.acted = true;
     this.stats.played++;
     // Each planned frame carries the raise held after it.
-    for (var i = 0; i < step.inputs.length; i++) this.plan[at + i] = { bits: step.inputs[i], hold: step.holds[i] };
+    var sw = a.kind === 'swap' ? { move: move, board: board } : null;
+    for (var i = 0; i < step.inputs.length; i++) this.plan[at + i] = { bits: step.inputs[i], hold: step.holds[i], swap: sw };
     this.nextAt = at + step.inputs.length;
+    this.knew = knew;
     // The line behind the move holds from where the move ends, played as decided.
     this.line = a.line && a.lineAt === this.nextAt && at === a.at ? { steps: a.line.slice(), at: a.lineAt } : null;
   }
@@ -202,12 +219,37 @@ Match.prototype.frame = function (truth, arrivals) {
   this.now = now;
   this.arrivals = arrivals;
   this.stats.frames++;
+  var wall = Date.now();
+  if (this.wall) this.msPerFrame += (Math.min(100, wall - this.wall) - this.msPerFrame) / 60;
+  this.wall = wall;
   if (this.expect && (d = differ(this.expect, truth))) {
-    // Not the board predicted: every plan and question made before is void.
+    // Not the board predicted (a key that never reached the game, a row
+    // come up): every plan and question made before is void -- but a swap
+    // not yet made is walked to again from this board, so a lost key costs
+    // a frame, not the decision.
+    var again = this.rewalk(truth), asking = !!pending;
+    if (pending) Atomics.store(ABORT, 0, pending.id);
     this.epoch++; this.plan = {}; this.nextAt = 0; this.line = null; pending = null; this.acted = false;
     this.stats.diverged++;
+    if (again) {
+      for (var i = 0; i < again.inputs.length; i++) this.plan[now + i] = { bits: again.inputs[i], hold: again.holds[i], swap: again.swap };
+      this.nextAt = now + again.inputs.length;
+      this.acted = !asking;
+      this.stats.rewalked++;
+    }
     if (process.env.GC_SURVIVOR_DEBUG) console.error('clock ' + now + ' (stopWatch ' + truth.stopWatch + '): ' + d + ' arrivals before ' + JSON.stringify(before.map(function (a) { return a.at; })));
   }
+  // GARBAGE THE PLAN DID NOT KNOW OF: one landing before the plan ends voids
+  // it, as a board not predicted does; the question asked without it is
+  // stopped either way, and asked again.
+  var off = truth.clock - truth.stopWatch, end = this.nextAt;
+  if (end > now && SH.unforeseen(this.knew, arrivals).some(function (a) { return a.at + off <= end; })) {
+    this.epoch++; this.plan = {}; this.nextAt = 0; this.line = null; this.acted = false;
+    if (pending) Atomics.store(ABORT, 0, pending.id);
+    pending = null;
+    this.stats.unforeseen++;
+  }
+  if (pending && SH.unforeseen(pending.knew, arrivals).length) { Atomics.store(ABORT, 0, pending.id); pending = null; this.acted = false; }
   this.take(truth);
   var planned = this.plan[now];
   var bits;
@@ -268,7 +310,8 @@ Match.prototype.follow = function () {
   if (!k) { this.line = null; return; }
   Atomics.store(ABORT, 0, pending.id);
   pending = null; this.acted = false;
-  for (var i = 0; i < k.inputs.length; i++) this.plan[this.nextAt + i] = { bits: k.inputs[i], hold: k.holds[i] };
+  var sw = kind === 'swap' ? { move: move, board: pr.board } : null;
+  for (var i = 0; i < k.inputs.length; i++) this.plan[this.nextAt + i] = { bits: k.inputs[i], hold: k.holds[i], swap: sw };
   this.nextAt += k.inputs.length;
   this.line.steps.shift();
   if (!this.line.steps.length) this.line = null;

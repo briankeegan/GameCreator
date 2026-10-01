@@ -37,8 +37,10 @@ function botOptions(p, threads) {
 // due at T is received once the frame before T has run, so the board sent
 // for frame T already holds it. A sender stages garbage for STAGING frames,
 // then it lands LAND frames later; the staged are shipped highest priority
-// first (the end of the list) and an unfinished chain holds back everything
-// behind it, so nothing past one is counted on.
+// first (the end of the list), none before the one ahead of it. A chain
+// still going ships once it ends, which can be the next frame, at the
+// height it has now or taller: it is counted at that height, at the
+// soonest it can land, and so is everything behind it.
 var STAGING = 45 + 45 + 1, LAND = 60;
 function arrivalsOf(state) {
   var out = [], mine = state.stack.stopWatch;
@@ -50,12 +52,24 @@ function arrivalsOf(state) {
     var staged = PA.list(src.staged), ship = src.stopWatch;
     for (var i = staged.length - 1; i >= 0; i--) {
       var g = staged[i];
-      if (g.isChain && !g.finalized) break;
-      ship = Math.max(ship, g.frameEarned + STAGING);
+      ship = Math.max(ship, g.frameEarned + STAGING, g.isChain && !g.finalized ? src.stopWatch + 1 : 0);
       out.push({ at: ship + LAND + offset, g: g });
     }
   });
   return out.sort(function (x, y) { return x.at - y.at; });
+}
+// The garbage of `now` that a decision made knowing `knew` did not count on:
+// each piece of `knew` accounts for one no bigger, due no sooner.
+function unforeseen(knew, now) {
+  var used = [];
+  return now.filter(function (a) {
+    for (var i = 0; i < knew.length; i++) {
+      var b = knew[i];
+      if (!used[i] && b.at <= a.at && b.g.width === a.g.width && b.g.height >= a.g.height &&
+          !!b.g.isChain === !!a.g.isChain && !!b.g.isMetal === !!a.g.isMetal) { used[i] = true; return false; }
+    }
+    return true;
+  });
 }
 // Garbage due on the frame just reached, received as the server receives it.
 function land(st, arrivals) {
@@ -151,4 +165,4 @@ Hands.prototype.idle = function (board, hold, arrivals) {
   return { bits: k.inputs[0], hold: k.holds[0] };
 };
 
-module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, land: land, arrivalsFrom: arrivalsFrom, threat: threat, breakMoves: breakMoves, Hands: Hands };
+module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, arrivalsFrom: arrivalsFrom, threat: threat, breakMoves: breakMoves, Hands: Hands };
