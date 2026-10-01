@@ -2855,7 +2855,12 @@
                 if (qc.kind === 'swap' && qc.resolved && qc.resolved.brokeGarbage &&
                     (qc.moveFrames || 0) < quickest) quickest = qc.moveFrames || 0;
             }
-            var timeToSpare = deadline > quickest + this.reaction;
+            // AND THE TIME TO SPARE IS COUNTED, NOT GUESSED: everything queued arrives
+            // back to back while the board is held calm, so the limit is the frame row
+            // 12 fills, not the next slab. Fire when one more decision plus the walk to
+            // the break would not finish before it.
+            var timeToSpare = this.framesToTopOut(tallestOf(pool), info) >
+                              quickest + this.reaction;
             if (haveBreak && stillComing && !info.toppedOut && timeToSpare) {
                 this.counts.heldForLanding = (this.counts.heldForLanding || 0) + 1;
                 return { kind: 'hold', mode: mode, alive: alive, via: 'awaitLanding' };
@@ -3532,6 +3537,53 @@
     //
     // Falling garbage is not counted, the same way isToppedOut does not count
     // it: it has not landed and it is not what the row would be stacked on.
+    // HOW MANY FRAMES UNTIL ROW 12 FILLS IF THE BOT DOES NOTHING, counted the way the
+    // engine plays it out rather than estimated.
+    //
+    //   the slab in the air   falls one row a frame (updateFalling) and lands the frame
+    //                         it is supported
+    //   the queue             spawns at row height + 1 (dropGarbage) the moment nothing
+    //                         is falling -- a held board is calm, so combo garbage is not
+    //                         kept waiting -- and each one falls the same way
+    //   the rise              a row every framesPerRow once stop time has run out
+    //
+    // Topped out is row `height` occupied by a panel or by LANDED garbage
+    // (isToppedOut), which is the number this returns -- health is not counted. Each
+    // slab is taken to land on the tallest column, which tops the board out no later
+    // than the engine does, so the answer is never longer than the truth.
+    BitBot.prototype.framesToTopOut = function (tallest, info) {
+        var s = this.stack, Hh = s.height, f = 0, t = tallest;
+        var fpr = info.framesPerRow || 0;
+        var stop = info.stopTime || 0;
+        var rise = (info.framesToNextRow > 0) ? info.framesToNextRow : fpr;
+        var q = s.incoming || [], qi = 0;
+        var falling = 0, h = 0;
+        // the slab already in the air: its lowest row and its height, off the panels
+        for (var r = 1; r < s.panels.length && !falling; r++) {
+            for (var c = 1; c <= W; c++) {
+                var p = s.panels[r] && s.panels[r][c];
+                if (p && p.isGarbage && p.state === 'falling') {
+                    falling = Math.max(1, r - t);
+                    h = p.gHeight || 1;
+                    break;
+                }
+            }
+        }
+        while (t < Hh && f < 4000) {
+            f++;
+            if (stop > 0) stop--;
+            else if (fpr > 0 && --rise <= 0) { t++; rise += fpr; }
+            if (falling > 0) {
+                if (--falling === 0) { t += h; h = 0; }
+            } else if (qi < q.length) {
+                h = q[qi].height || 1;
+                qi++;
+                falling = Math.max(1, Hh + 1 - t);
+            }
+        }
+        return f;
+    };
+
     BitBot.prototype.raiseRoom = function () {
         var stack = this.stack, top = stack.height, r, c, p;
         for (r = top; r >= 1; r--) {
