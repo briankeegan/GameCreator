@@ -2865,8 +2865,23 @@
         // only through `high`: landing a panel on the tallest column costs W panels,
         // a whole row, 120 frames at level 10, for a move that clears nothing.
         //
-        // Priced at fpr a row, as height and the material floor are.
-        s -= ((now ? (now.high - now.mat) : 0)) * fpr;
+        // MEASURED AGAINST THE SLAB, NOT AGAINST THE TALLEST COLUMN.
+        //
+        // void = W*(high - mat) falls two ways: raise the short columns, or pull the
+        // tall one down. Only the first keeps the reach -- breaking needs three
+        // panels in a line TOUCHING the garbage, and the tallest column is the only
+        // one that touches it. And the term above already pays a row for lowering
+        // `high`, so a void priced this way paid twice for the one move that makes a
+        // break impossible.
+        //
+        // reachGap counts the panels still needed to bring every column to the slab's
+        // floor. The slab does not move when material leaves, so pulling the tall
+        // column down cannot improve it: on the board that died, 7,6,5,5,5,2, void
+        // and reachGap both read 12 panels, but dropping column one to 5 takes void
+        // to 8 -- an apparent gain -- while reachGap goes to 14, which is the truth.
+        //
+        // A panel of gap is a panel of life, fpr/W, the conversion used throughout.
+        s -= ((now ? (now.reachGap || 0) : 0)) * perPanel;
         return s - (cand.moveFrames || 0);
     };
 

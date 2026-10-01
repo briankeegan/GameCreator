@@ -126,8 +126,34 @@
         // differences and stays small while one column towers: the board that died
         // read 4,2,2,2,3,6, bumpiness 6, spread 4, with four rows sealed under
         // columns 2 to 4 and nothing able to reach the slab but column 6.
+        // AND HOW MANY PANELS SHORT OF THE SLAB THE BOARD IS -- the setup deficit.
+        //
+        // Breaking needs three panels in a line touching the garbage, so every
+        // column below the slab's floor is a column that cannot take part. Summed
+        // over the board that is the panels still needed to reach it:
+        //
+        //     reachGap = SUM over c of max(0, (slabFloorRow - 1) - h[c])
+        //
+        // THE REFERENCE IS THE SLAB, NOT THE TALLEST COLUMN, and that is the whole
+        // point. `spread` and the void both measure against `high`, so they can be
+        // improved two ways -- raise the short columns, or pull the tall one down --
+        // and only the first keeps the reach. Pulling the tall column down cannot
+        // improve this, because the slab does not move when material leaves.
+        //
+        // Zero with no garbage on the board: nothing to reach.
+        var gap = 0, floorRow = 0;
+        for (c = 1; c <= w2; c++) {
+            var gm = st2.garb[c] >>> 0;
+            if (!gm) continue;
+            var lowBit = gm & -gm, fr = 0;
+            while (lowBit >>> fr) fr++;              // row index of the lowest garbage cell
+            if (!floorRow || fr < floorRow) floorRow = fr;
+        }
+        if (floorRow > 1) {
+            for (c = 1; c <= w2; c++) gap += Math.max(0, (floorRow - 1) - h[c]);
+        }
         return { tall: tall, bumps: bumps, excess: dev / w2, mat: mean, low: low,
-                 high: mx, spread: mx - low };
+                 high: mx, spread: mx - low, reachGap: gap };
     }
 
     function optionOf(swaps, frames, r) {
