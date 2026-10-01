@@ -147,7 +147,7 @@ Match.prototype.ask = function (at, board, hold) {
     // The question as the mind got it, to be asked again offline (survivor_probe.js).
     this.asked.push({ id: pending.id, at: at, hold: hold, arrivals: arrivals, acted: this.acted,
                       board: require('v8').serialize(board).toString('base64') });
-    if (this.asked.length > 12) this.asked.shift();
+    if (this.asked.length > 40) this.asked.shift();
   }
   mind.postMessage({ id: pending.id, epoch: this.epoch, at: at, lead: at - this.now, board: board, hold: hold, arrivals: arrivals, acted: this.acted });
   this.stats.decisions++;
@@ -207,6 +207,7 @@ Match.prototype.take = function (truth) {
     this.stats.played++;
     // Each planned frame carries the raise held after it.
     var sw = a.kind === 'swap' ? { move: move, board: board } : null;
+    for (var t in this.plan) if (+t >= at) delete this.plan[t];
     for (var i = 0; i < step.inputs.length; i++) this.plan[at + i] = { bits: step.inputs[i], hold: step.holds[i], swap: sw };
     this.nextAt = at + step.inputs.length;
     this.knew = knew;
@@ -279,6 +280,9 @@ Match.prototype.afterFrame = function () {
   var at = this.nextAt > now ? this.nextAt : now + this.soon();
   if (at - now > this.ahead()) return;
   var pr = this.predict(next, at, this.hold);
+  // Dead by then on what is planned: the question is the next frame's board,
+  // answered late and played from the board it reaches.
+  if (pr.board.gameOverClock > 0) { at = now + 1; pr = { board: next, hold: this.hold }; }
   this.ask(at, pr.board, pr.hold);
 };
 
