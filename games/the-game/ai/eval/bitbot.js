@@ -1607,6 +1607,15 @@
             // real frames, and the scaling devalues every good clear to reach the few
             // bad ones.
             //
+            // MEASURED AGAIN AFTER THE ARITHMETIC WAS CORRECTED, because the first
+            // measurement was taken against a slab overvalued by its height and a
+            // deadline that ignored the speed-up. It is still a swap, not a fix:
+            // 103 rand1 v rand2 goes DEAD@9,487 to alive, and 101 rand2 v rand3 goes
+            // alive to DEAD@4,543 -- the second one rising 5,5,5,5,5,5 to 8,8,8,8,8,8
+            // over 25 decisions holding one three, nothing on the board and nothing
+            // incoming. Halving what a clear is worth on a half-full board stops the
+            // bot cashing on exactly the board where cashing is the whole job.
+            //
             // The clear that dug the cliff on 103 rand3 -- flat 6,6,6,6,6,6 to
             // 7,7,7,4,4,7 at frame 22,700 -- was bought by 80 frames of material plus
             // 60 to 94 of stop time against 120 for the row of void it opened. Every
