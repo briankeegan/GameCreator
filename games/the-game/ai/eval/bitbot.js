@@ -1753,28 +1753,29 @@
         // option list is now built there. Read below its own `var` it was undefined, and
         // a depth of undefined is the same class of silent wrong as the NaN prices.
         var lookDepth = Math.min(this.maxDepth, depthFor(deadline, this.reaction, tallestOf(pool)));
-        // AND A BREAK AT ANY DEPTH STANDS THE RAISE DOWN, NOT ONLY A ONE-SWAP ONE.
+        // A BREAK AT ANY DEPTH DOES NOT STAND THE RAISE DOWN. MEASURED, AND IT COST
+        // BOTH BOARDS.
         //
-        // `poolBreak` is the single-swap pool, so a break two or three swaps out was
-        // invisible here -- and the raise branch is the FIRST route, so it ran straight
-        // over them. Measured on seed 101 rand2 v rand3: of 681 decisions with a break
-        // on the option list, 314 played levelFirst -- the flatten that precedes a
-        // raise -- against 160 that broke and 88 that reached for one. Fifty of those
-        // 314 were in DEFEND: flattening to set up a raise with death imminent and a
-        // break on the board.
+        // why_died.js said this looked like the whole problem: of 681 decisions with a
+        // break on the option list, 314 played levelFirst -- the flatten that precedes
+        // a raise, and the FIRST route in the order -- against 160 that broke and 88
+        // that reached for one, with fifty of the 314 in DEFEND. `poolBreak` is the
+        // single-swap pool, so multi-swap breaks were invisible to the raise branch and
+        // it ran straight over them.
         //
-        // The option list is built here rather than three routes later. It was already
-        // being built on nearly every decision, and `_lastOptions` means it is built
-        // once either way.
+        // Extending poolBreak to any break on the list WORKED, mechanically: levelFirst
+        // with a break available fell from 46% of those decisions to 6.5%. Both boards
+        // got worse. 101 rand2 v rand3 had been alive on both sides and died at 15,621;
+        // 103 STARTER v rand3 went from 23,209 to 14,732.
+        //
+        // So a route winning while a break is available is NOT evidence that the route
+        // is wrong. Flattening before a raise is how the board gets into the shape where
+        // breaks keep existing; take 300 of them away and the breaks stop coming. The
+        // raise stands down for a break in hand, which is measured, and for nothing
+        // else.
         options = this._lastOptions = options || bitoptions.options(null, W, H,
             [info.cursorRow, info.cursorCol], lookDepth, base,
             this.timing(info, deadline, base), digging);
-        if (!poolBreak && options && options.now) {
-            var pile0 = options.now.concat(options.next || []);
-            for (i = 0; i < pile0.length; i++) {
-                if (pile0[i].breaks && (pile0[i].duration || 0) <= deadline) { poolBreak = true; break; }
-            }
-        }
         var raising = this.raiseMode(info, base, poolBreak);
         this._wantRaise = !!raising;
         // AND WHETHER IT IS HAPPENING, which is not the same as wanting it.
