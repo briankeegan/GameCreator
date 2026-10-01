@@ -888,14 +888,16 @@
       // including the ones above a slab that bridges a gap beneath it.
       var fell = false;
       for (c = 1; c <= W; c++) {
-        var fixed = inert[c] | popping[c] | (timed ? held(c) : 0);
-        var holds2 = 0;
-        for (var rb = 0; rb < H + 20 && rb < 31; rb++) {
-          var bb = 1 << rb;
-          if (!(occ[c] & bb)) continue;
-          if ((fixed & bb) || rb === 0 || (holds2 & (bb >>> 1))) holds2 |= bb;
+        // what holds: the run on the floor, and the run above each fixed cell -- adding
+        // the fixed bit carries through exactly the occupied bits above it
+        var o2 = occ[c], fixed = (inert[c] | popping[c] | (timed ? held(c) : 0)) & o2;
+        var holds2 = o2 & (((~o2) & (o2 + 1)) - 1), seeds2 = fixed & ~holds2;
+        while (seeds2) {
+          var sd = seeds2 & -seeds2, x2 = o2 & ~(sd - 1), run2 = x2 & ~(x2 + sd);
+          holds2 |= run2;
+          seeds2 &= ~run2;
         }
-        var movable = occ[c] & ~holds2;
+        var movable = o2 & ~holds2;
         if (!movable) continue;
         fell = true;
         var keepPut = occ[c] & ~movable;

@@ -229,6 +229,8 @@
             cursorRow: board.cursor ? board.cursor.row : (s.curRow || 1),
             cursorCol: board.cursor ? board.cursor.col : (s.curCol || 1),
             health: s.health,
+            // THE FIRST RUN THAT CAN TAKE HEALTH, read off the stack (drainBound).
+            drainRun: (s.panels && s.height) ? this.drainBound() : 1,
             // THE ENGINE'S OWN DANGER SIGNAL, not a reimplementation of it.
             // fillRatio is what the renderer paints the danger state from and what
             // the reference CPU panics on: the highest occupied row over the board
@@ -910,11 +912,12 @@
 
     function framesToDeath(info, tallest, framesPerRow) {
         var clock = info.stopTime || 0;
-        // TOPPED OUT, THE ENGINE ENDS THE GAME AT HEALTH 0. This is the limit a move is
-        // refused against, so it is the engine's number: the clear that un-tops the
-        // board must stay playable while health lasts. Plans never wait on health --
-        // the break hold fires at the top-out, parked on the break.
-        if (info.toppedOut) return clock + (info.health || 0);
+        // TOPPED OUT, HEALTH IS NEVER SPENT, so the time there is is the frames before the
+        // first run that would take it: a swap walked for w frames is queued before run
+        // w + 1 and locks the rise in it, so w may be up to drainRun - 1. The clear that
+        // un-tops the board when even that is too short is the health guard's, not a
+        // plan's.
+        if (info.toppedOut) return Math.max(0, (info.drainRun || 1) - 1);
         // EVERY QUEUED CELL LANDS ON THIS BOARD, so it is ceiling already gone --
         // the engine holds a slab only while there is nowhere to put it, and then
         // puts it there. This is the clock the whole bot runs on: the plans are
@@ -4069,7 +4072,7 @@
         return this._waitForDrain(this._decideRuled());
     };
 
-    // UNDER A SLAB, HEALTH IS NEVER SPENT.
+    // TOPPED OUT, HEALTH IS NEVER SPENT.
     //
     // The engine refills health only on a frame the board is not topped out
     // (`if (!wasToppedOut && !hasFallingGarbage()) health = maxHealth`), and under a
@@ -4096,9 +4099,8 @@
     BitBot.prototype._waitForDrain = function (d) {
         var info = this._lastInfo, pool = this._lastPool, base = this._lastBase;
         if (!d || !info || !pool || !base || !info.toppedOut) return d;
-        var c, i, buried = false;
-        for (c = 1; c <= W; c++) if (base.garb[c]) { buried = true; break; }
-        if (!buried || ENDS_IN_A_BREAK[d.via]) return d;
+        var i;
+        if (ENDS_IN_A_BREAK[d.via]) return d;
         var clears = [], picked = null;
         for (i = 0; i < pool.length; i++) {
             var pc = pool[i];
