@@ -3299,7 +3299,16 @@
         // and not the top of a slab; and before the readiness gate below, which is
         // the rule that it must have a clear in hand before it fills the board.
         var rsh = bitoptions.shapeOf(base);
-        var room = H - (rsh ? rsh.high : 0);
+        // THE QUEUE IS CEILING ALREADY GONE, so it comes off the room before the room
+        // is spent. framesToDeath says exactly this about the same quantity: every
+        // queued cell lands on this board, so it counts against the ceiling like one
+        // already there.
+        //
+        // Without it the raise rode its own ceiling up: measured over one game, 621
+        // raises, carrying material to 6.7 rows with four rows of room left, while the
+        // garbage in that matchup arrives in slabs of 24 to 37 cells -- four to six
+        // rows. The bot raised itself into a position the next attack could not fit in.
+        var room = H - (rsh ? rsh.high : 0) - Math.ceil((info.incoming || 0) / W);
         // AND THE OPENING IS NOT EXEMPT FROM IT. THAT WAS THE HOLE.
         //
         // The exemption is inherited from when this read `materialRows >= WORKING_ROWS`
