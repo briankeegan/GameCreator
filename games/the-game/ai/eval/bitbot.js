@@ -1957,7 +1957,10 @@
         // HOW DEEP THERE IS TIME TO SEARCH, hoisted above the raise branch because the
         // option list is now built there. Read below its own `var` it was undefined, and
         // a depth of undefined is the same class of silent wrong as the NaN prices.
-        var lookDepth = Math.min(this.maxDepth, depthFor(deadline, this.reaction, tallestOf(pool)));
+        // TOPPED OUT, A PLAN RUNS ON ITS OWN CLEARS' LOCKS, so the search looks at least a
+        // clear's resolve ahead; planFits decides which plans can be played.
+        var lookDepth = Math.min(this.maxDepth, depthFor(info.toppedOut
+            ? Math.max(deadline, BF.resolveFramesOf(PanelEngine(), 3, 0)) : deadline, this.reaction, tallestOf(pool)));
         // A BREAK AT ANY DEPTH DOES NOT STAND THE RAISE DOWN. MEASURED, AND IT COST
         // BOTH BOARDS.
         //
@@ -2948,7 +2951,7 @@
                 for (i = 0; i < pile.length; i++) {
                     var ro = pile[i];
                     if (!ro.breaks || !ro.swaps.length) continue;
-                    if ((ro.duration || 0) > deadline) continue;
+                    if (info.toppedOut ? !this.planFits(ro.swaps, base, info) : (ro.duration || 0) > deadline) continue;
                     // MOST GARBAGE FIRST, then soonest -- the same order the
                     // one-swap route picks by, which prefers the bigger break.
                     if (!reach || (ro.converts || 0) > (reach.converts || 0) ||
@@ -3022,7 +3025,8 @@
                     if (dnl[i][0] === dn[0] && dnl[i][1] === dn[1]) { dnOk = true; break; }
                 }
                 var dspent = Math.max(0, this.stack.clock - (this._dig.startedAt || 0));
-                if (dnOk && Math.max(0, this._dig.frames - dspent) <= deadline) {
+                if (dnOk && (info.toppedOut ? this.planFits(this._dig.moves, base, info)
+                                            : Math.max(0, this._dig.frames - dspent) <= deadline)) {
                     this._dig.moves = this._dig.moves.slice(1);
                     if (!this._dig.moves.length) { this._dig = null; this._digIsBreak = false; }
                     this._plan = null;
@@ -3037,7 +3041,8 @@
                 options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
                                                        lookDepth, base, this.timing(info, deadline, base), digging);
                 var dp = options.save;
-                if (dp && dp.swaps.length && (dp.duration || 0) <= deadline) {
+                if (dp && dp.swaps.length && (info.toppedOut ? this.planFits(dp.swaps, base, info)
+                                                             : (dp.duration || 0) <= deadline)) {
                     var dm = dp.swaps[0], dls = bit.legalSwapsOf(base), dok = false;
                     for (i = 0; i < dls.length; i++) {
                         if (dls[i][0] === dm[0] && dls[i][1] === dm[1]) { dok = true; break; }
@@ -3587,6 +3592,29 @@
     //
     // Falling garbage is not counted, the same way isToppedOut does not count
     // it: it has not landed and it is not what the row would be stacked on.
+    // CAN THIS PLAN BE PLAYED WITHOUT SPENDING HEALTH, step by step. Topped out the
+    // time there is runs to the first draining run, but every clear on the way locks
+    // the rise for its own resolve -- FLASH + FACE + POP * size, resolveFramesOf -- so a
+    // dig whose clears each land inside the last one's lock never spends any. Each step
+    // is the walk to it and a frame to decide; its clear starts 5 runs after the swap is
+    // queued (the swap's 4 and the match); a break is what the plan was for.
+    BitBot.prototype.planFits = function (swaps, base, info) {
+        var st = bit.copyState(base), at = [info.cursorRow, info.cursorCol];
+        var t = 0, lock = Math.max(0, (info.drainRun || 1) - 1), eng = PanelEngine();
+        for (var i = 0; i < swaps.length; i++) {
+            t += travel.cost(at[0], at[1], swaps[i][0], swaps[i][1]) + (i ? 1 : 0);
+            if (t > lock) return false;
+            if (!bit.swapMasks(st, swaps[i][0], swaps[i][1])) return false;
+            var r = bit.resolveFromMasks(st, true);
+            if (r.scope === 'garbage-broke') return true;
+            if (r.scope !== 'ok' || !r.settled) return false;
+            if (r.total > 0) lock = Math.max(lock, t + 5 + BF.resolveFramesOf(eng, r.total, 0));
+            st = r.settled;
+            at = swaps[i];
+        }
+        return true;
+    };
+
     BitBot.prototype.raiseRoom = function () {
         var stack = this.stack, top = stack.height, r, c, p;
         for (r = top; r >= 1; r--) {
