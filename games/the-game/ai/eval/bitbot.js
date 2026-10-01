@@ -1110,30 +1110,27 @@
              ? 0 : Math.max(0, WORKING_ROWS - o.mat);
     }
 
-    // AND THE OTHER END OF IT: THE BOARD THAT IS TOO FULL.
+    // THERE IS NO MATERIAL CEILING, AND THE ATTEMPT AT ONE IS RECORDED HERE.
     //
-    // WORKING_ROWS is a floor -- below it the bot stops cashing small change,
-    // because a board with nothing on it has nothing to play with. There was no
-    // ceiling at all, so nothing ever said the board was holding too much, and it
-    // hoarded: seed 103 rand1 stacked to 8,7,3,6,9,10 with a clear available on
-    // every decision through the whole window, 46 panels and 9 garbage cells in 72
-    // squares, and topped out from sheer height with three survivable moves on the
-    // board. No move saves that; the moves it needed were two hundred frames back.
+    // WORKING_ROWS is a floor with no counterpart, and seed 103 rand1 looked like
+    // it wanted one: it stacked to 8,7,3,6,9,10 with a clear available on every
+    // decision and topped out. So "too full" was written as the raise's own
+    // comparison read backwards -- material against the room above the stack,
+    // max(0, mat - (H - tall)), priced like the shortfall.
     //
-    // THE SAME COMPARISON THE RAISE USES, READ THE OTHER WAY. A raise is worth
-    // making while material is scarcer than room; by the same measure the board is
-    // too full once material exceeds the room above it. Both in rows off the same
-    // board, so there is no second constant and no threshold to calibrate -- and
-    // `tall` is the top of the stack with garbage in it, because the garbage is
-    // what the room is for.
+    // It measures the wrong room. `tall` includes the garbage, so a buried board is
+    // charged for holding the material it needs to break out: 4 rows under 6 rows of
+    // garbage reads a surplus of 2, a 240-frame penalty for being exactly at the
+    // floor. Worse, at 3 rows of material under 7 of garbage the shortfall reads 1.00
+    // and the surplus reads 1.00 -- they cancel, so the starvation floor is silently
+    // switched off on the boards it exists for. Measured: seed 103 rand2, alive
+    // before, died at 10,683.
     //
-    // Priced exactly as the shortfall is, a row of rise per row, and zero whenever
-    // the board is not full -- so on a healthy board this term does not exist.
-    function surplusOf(o) {
-        if (o.mat === null || o.mat === undefined ||
-            o.tall === null || o.tall === undefined) return 0;
-        return Math.max(0, o.mat - (H - o.tall));
-    }
+    // And the board that prompted it was not dying of too many panels. It held 43 of
+    // them in FOUR columns with a seven-deep hole. Height is already priced -- the
+    // `tallest` feature and bestPlan's `lowered` -- and the hole is what nothing
+    // could see. That is `wells`, below. Garbage eating the room is a reason to
+    // break, never a reason to spend panels.
 
     function bestAttack(list, weights, engine, deadline, framesTable, perPanelFrames) {
         var best = null, all = list.now.concat(list.next), i;
@@ -1236,8 +1233,6 @@
             // unknowable so `mat` is null, and it ADDS material besides.
             var short = shortfallOf(o);
             cells -= short * W;
-            // AND THE BOARD THAT IS TOO FULL, the same price the other way.
-            cells -= surplusOf(o) * W;
             // AND THE VOID THE SLAB WOULD SEAL, in this ranking's currency: a row of
             // void is a row of ceiling, and a row is W panels.
             cells += (o.voidGain || 0) * W;
@@ -1532,10 +1527,6 @@
             var bought = o.total * perPanel + holds + (o.garbage || 0) * perCell
                        + lowered * (framesPerRow || 0) + gain
                        - shortfall * (framesPerRow || 0)
-                       // AND THE BOARD THAT IS TOO FULL, the same price the other
-                       // way. See surplusOf: zero unless material exceeds the room
-                       // above the stack, which is the comparison the raise uses.
-                       - surplusOf(o) * (framesPerRow || 0)
                        // AND THE VOID THE SLAB WOULD SEAL -- a row of it is a row of
                        // ceiling, so framesPerRow, as height is.
                        + (o.voidGain || 0) * (framesPerRow || 0)
