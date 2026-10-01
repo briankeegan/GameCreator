@@ -871,6 +871,25 @@
         return frames;
     }
 
+    // THE TALLEST SLAB ON THE BOARD, IN ROWS. A slab's mask carries the same rows in
+    // every column it spans, so its height is the popcount of any one of them.
+    function slabRows(masks) {
+        if (!masks || !masks.slabs || !masks.slabs.length) return 0;
+        var best = 0;
+        for (var i = 0; i < masks.slabs.length; i++) {
+            var sm = masks.slabs[i];
+            if (!sm) continue;
+            for (var c = 1; c <= W; c++) {
+                var m = sm[c] >>> 0;
+                if (!m) continue;
+                var n = bit.popcount(m);
+                if (n > best) best = n;
+                break;
+            }
+        }
+        return best;
+    }
+
     function framesToDeath(info, tallest, framesPerRow) {
         var clock = info.stopTime || 0;
         if (info.toppedOut) return clock + (info.health === undefined ? 0 : info.health);
@@ -1892,6 +1911,28 @@
         // of the question -- it says what this opponent hits with, and it adapts
         // rather than being a constant someone picked.
         var queued = Math.ceil((info.incoming || 0) / W);
+        // LEARNED FROM WHAT LANDED, NOT FROM WHAT QUEUED.
+        //
+        // `incoming` cannot see the slabs that matter. shouldDropGarbage ends with
+        //
+        //     if (!this.hasActivePanels()) return true;
+        //     // Tall chain garbage lands even mid-action; combo garbage waits for calm.
+        //     return garbage.height > 1;
+        //
+        // so a slab taller than one row drops the frame it arrives and never sits in
+        // the queue at all. Measured over 101 rand2 v rand4: 5 chain slabs landed,
+        // mean 14.4 cells, mean 0.0 frames queued, 100% of them within one frame --
+        // against 53 combo slabs, mean 5.2 cells, mean 43 frames queued. `incoming`
+        // was non-zero on 222 of 2,093 decisions, 10.6%, and the largest it ever read
+        // was 12 cells while the slab that killed the board was 18.
+        //
+        // So a running maximum of the QUEUE is not "the biggest slab this opponent has
+        // actually sent" -- it is the biggest slab this opponent has sent SLOWLY, and
+        // the ones it hits with are invisible to it by construction. The slabs on the
+        // board are the honest record: one is there because it was sent, and its
+        // height in rows is what the next one will want room for.
+        var landed = slabRows(base);
+        if (landed > (this._maxSlab || 0)) this._maxSlab = landed;
         if (queued > (this._maxSlab || 0)) this._maxSlab = queued;
         // DECIDED BEFORE ANYTHING IS PLANNED, because while it is on there is
         // nothing to plan: the raise outranks the attack and the board is not
