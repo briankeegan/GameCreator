@@ -669,11 +669,45 @@
           // takes getConnectedGarbagePanels(matching), so touching one cell of a
           // slab pops a row of all of it.
           var touched = 0, converts = 0;
-          for (var sl = 0; sl < st.slabs.length; sl++) {
-            var sm2 = st.slabs[sl], hit = false, cc;
-            for (cc = 1; cc <= W && !hit; cc++) {
-              if (k[cc] & ((sm2[cc] >> 1) | (sm2[cc] << 1) | sm2[cc - 1] | sm2[cc + 1])) hit = true;
+          // THE WHOLE CONNECTED GROUP, BLOCK TO BLOCK, as getConnectedGarbagePanels
+          // does it: seed with every slab 4-adjacent to the match, then add every slab
+          // 4-adjacent to any slab already in, until nothing new joins. A slab is
+          // eligible only if its bottom row is on the board (`p.row - p.yOffset <=
+          // height` in the engine). Seeding alone priced a staircase of touching slabs
+          // as the one slab the match reached, when the engine clears all of them.
+          var inGroup = [], sl, sk, cc;
+          function lowestRow(m) {
+            var lo = 32;
+            for (var c0 = 1; c0 <= W; c0++) {
+              var v = m[c0] >>> 0;
+              if (v) { var b0 = 32 - Math.clz32(v & -v); if (b0 < lo) lo = b0; }
             }
+            return lo;
+          }
+          function nextTo(a, b) {          // any cell of b 4-adjacent to any cell of a
+            for (var c1 = 1; c1 <= W; c1++) {
+              if (b[c1] & ((a[c1] >> 1) | (a[c1] << 1) | a[c1 - 1] | a[c1 + 1])) return true;
+            }
+            return false;
+          }
+          for (sl = 0; sl < st.slabs.length; sl++) {
+            inGroup[sl] = false;
+            if (lowestRow(st.slabs[sl]) > st.H) continue;
+            if (nextTo(k, st.slabs[sl])) inGroup[sl] = true;
+          }
+          for (var grew = true; grew; ) {
+            grew = false;
+            for (sl = 0; sl < st.slabs.length; sl++) {
+              if (inGroup[sl] || lowestRow(st.slabs[sl]) > st.H) continue;
+              for (sk = 0; sk < st.slabs.length; sk++) {
+                if (inGroup[sk] && nextTo(st.slabs[sk], st.slabs[sl])) {
+                  inGroup[sl] = true; grew = true; break;
+                }
+              }
+            }
+          }
+          for (sl = 0; sl < st.slabs.length; sl++) {
+            var sm2 = st.slabs[sl], hit = inGroup[sl];
             // TWO DIFFERENT NUMBERS, BECAUSE THE ENGINE USES TWO.
             //
             //   touched   every on-screen cell of the connected slab. This is the
