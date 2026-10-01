@@ -223,6 +223,9 @@
             stopTime: s.stopTime || 0,
             incoming: incoming,
             nextSlab: nextSlab,
+            // A SLAB STILL IN THE AIR HAS NOT LANDED, so "it has all landed" needs this
+            // as well as an empty queue. The engine's own test, not a reconstruction.
+            fallingGarbage: typeof s.hasFallingGarbage === 'function' && s.hasFallingGarbage(),
             cursorRow: board.cursor ? board.cursor.row : (s.curRow || 1),
             cursorCol: board.cursor ? board.cursor.col : (s.curCol || 1),
             health: s.health,
@@ -900,7 +903,11 @@
 
     function framesToDeath(info, tallest, framesPerRow) {
         var clock = info.stopTime || 0;
-        if (info.toppedOut) return clock + (info.health === undefined ? 0 : info.health);
+        // HEALTH IS NOT TIME TO SPEND. It drains whenever the board is topped out and
+        // nothing is resolving, and under steady pressure a board is short of it
+        // constantly -- so a plan that counts on it is a plan to arrive with none. Topped
+        // out, what the bot has is the stop time, and that is all.
+        if (info.toppedOut) return clock;
         // EVERY QUEUED CELL LANDS ON THIS BOARD, so it is ceiling already gone --
         // the engine holds a slab only while there is nowhere to put it, and then
         // puts it there. This is the clock the whole bot runs on: the plans are
@@ -2841,7 +2848,7 @@
             // drain while nothing is resolving. That is the moment to fire. The only
             // reason to fire sooner is that waiting would leave too little time to walk
             // to the break and play it, which is `deadline` against the walk.
-            var stillComing = (info.incoming || 0) > 0;
+            var stillComing = (info.incoming || 0) > 0 || !!info.fallingGarbage;
             var quickest = Infinity;
             for (i = 0; i < pool.length; i++) {
                 var qc = pool[i];
