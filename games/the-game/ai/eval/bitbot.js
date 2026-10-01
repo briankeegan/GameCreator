@@ -2661,6 +2661,33 @@
         if (raising) {
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
                                                    lookDepth, base, this.timing(info, deadline, base), digging);
+            // READY THE TOP ROW BEFORE BUYING ANOTHER, THEN RAISE.
+            //
+            // A slab rests on the TALLEST column and spans the width, so the only
+            // panels that can break it are three in a line in the row it lands on. A
+            // setup in the pocket cannot reach it -- the slab bridges the tall columns
+            // and seals everything shorter. 103 STARTER v rand3 filled to a pocket of
+            // 6,4,3,2,3,6, high 6 at columns one and six which are not adjacent, and
+            // the slab landed across them with no swap able to touch it.
+            //
+            // slabReadyFast asks that question of the row the slab would rest on.
+            // `options.ready` is the costed route to a board that can fire. So an
+            // unready top row does not REFUSE the raise -- the board gets ready and
+            // raises after, which is the same shape as levelling first below: the
+            // button comes off for this decision and the mode brings it back.
+            if (!bitoptions.slabReadyFast(base) && options.ready &&
+                options.ready.swaps.length &&
+                (options.ready.duration || 0) <= deadline) {
+                var rm0 = options.ready.swaps[0];
+                if (!returnsToSeen(rm0) && bit.swapMasks(base, rm0[0], rm0[1])) {
+                    bit.swapMasks(base, rm0[0], rm0[1]);          // put it back
+                    this._wantRaise = false;
+                    this.raiseFrames = 0;
+                    this.counts.readiedFirst = (this.counts.readiedFirst || 0) + 1;
+                    return { kind: 'swap', move: rm0, mode: mode, alive: alive,
+                             via: 'readyFirst' };
+                }
+            }
             var lvl = this.flattenFirst(options, deadline, info);
             if (lvl && !returnsToSeen(lvl.swaps[0])) {
                 var lm = lvl.swaps[0], lls = bit.legalSwapsOf(base), lok = false;
