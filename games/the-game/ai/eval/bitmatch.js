@@ -601,6 +601,9 @@
         moved = false;
         for (var si = 0; si < slabs.length; si++) {
           if (falling[si]) continue;
+          // A LOCKED SLAB DOES NOT FALL: garbage falls only from 'normal', and a matched
+          // slab stays where it is until its timer runs out.
+          if (locked[si]) continue;
           var sm2 = slabs[si], held = false;
           for (var cc3 = 1; cc3 <= W && !held; cc3++) {
             if (!sm2[cc3]) continue;
