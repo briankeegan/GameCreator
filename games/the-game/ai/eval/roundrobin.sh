@@ -44,8 +44,14 @@ git -C "$REPO" worktree add -q --detach "$WT" "$SHA"
 
 GAME="$WT/games/the-game"
 echo "roundrobin: $SET at $SHA"
+# NOT `exec`. It replaces this shell, so the EXIT trap above never runs and every
+# run leaks its worktree -- fifty-one of them, fourteen gigabytes, and the disk at
+# 99% with a run failing on "No space left on device" rather than on anything the
+# bot did. Run it as a child and let the trap clean up.
 case "$SET" in
-    all)   exec node "$GAME/ai/eval/roundrobin.js" --root "$GAME" ;;
-    known) exec node "$GAME/ai/eval/roundrobin.js" --root "$GAME" "${KNOWN[@]}" ;;
+    all)   node "$GAME/ai/eval/roundrobin.js" --root "$GAME" ;;
+    known) node "$GAME/ai/eval/roundrobin.js" --root "$GAME" "${KNOWN[@]}" ;;
     *)     echo "roundrobin: unknown set '$SET' (known|all)" >&2; exit 2 ;;
 esac
+RC=$?
+exit $RC

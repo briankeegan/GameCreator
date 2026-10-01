@@ -111,15 +111,33 @@ if (ONE) {
             // AND WHAT WAS ON THE TABLE, not only what was played. A board that
             // dies with a chain sitting on it is a different failure from a board
             // with nothing to fire, and the trace could not tell them apart.
-            var clr = 0, chainBest = 0, sws = bit.legalSwapsOf(m);
+            // AND WHETHER A BREAK WAS AVAILABLE, counted apart from a plain clear.
+            // "It should have broken sooner" cannot be answered from a clear count:
+            // a board with four clears and no break is a board with no way out, and
+            // the two read the same here until they are split.
+            var clr = 0, chainBest = 0, brk = 0, sws = bit.legalSwapsOf(m);
             for (var si = 0; si < sws.length; si++) {
                 if (!bit.swapMasks(m, sws[si][0], sws[si][1])) continue;
                 var rz = bit.resolveFromMasks(m, true);
                 bit.swapMasks(m, sws[si][0], sws[si][1]);
+                if (rz.scope === 'garbage-broke') brk++;
                 if (rz.total > 0 || rz.scope === 'garbage-broke') {
                     clr++;
                     if ((rz.chain || 0) > chainBest) chainBest = rz.chain;
                 }
+            }
+            // AND THE POCKET'S DEPTH -- the rows between the floor and the lowest
+            // garbage, which is the room the bot actually has. Nothing in the bot
+            // measures it: `mat` is how much MATERIAL is there and `tallest` counts
+            // the garbage. A three-row pocket under thirty-seven cells is the state
+            // that kills, and it was invisible.
+            var depth = 12;
+            for (var dc = 1; dc <= 6; dc++) {
+                var dg = m.garb[dc] >>> 0;
+                if (!dg) continue;
+                var lb = dg & -dg, dr = 0;
+                while (lb >>> dr) dr++;
+                if (dr - 1 < depth) depth = dr - 1;
             }
             // GARBAGE CELLS TAKEN OFF THE BOARD.
             //
@@ -139,13 +157,16 @@ if (ONE) {
             // not counted.
             if (lastGar[side] !== null && gar < lastGar[side]) broke[side] += lastGar[side] - gar;
             lastGar[side] = gar;
-            ring[side].push({ clr: clr, ch: chainBest,
+            ring[side].push({ clr: clr, ch: chainBest, brk: brk, dep: depth,
                               f: st[side].clock, via: d && d.via, alive: d && d.alive,
                               mode: d && d.mode && d.mode.name, cols: h.join(','),
                               sp: sh ? sh.spread : 0, gar: gar, tall: tall,
                               mv: mv, seen: seenAt,
                               cands: bots[side]._lastPool ? bots[side]._lastPool.length : 0 });
-            if (ring[side].length > 14) ring[side].shift();
+            // SIXTY DECISIONS, not fourteen. The mistake that kills is made
+            // hundreds of frames before the death -- fourteen covers about a
+            // hundred frames and showed only the shuffling at the end.
+            if (ring[side].length > 60) ring[side].shift();
             return d;
         };
     });
@@ -177,7 +198,8 @@ if (ONE) {
                         String(r.sp).padStart(6) + '  ' + String(r.cols).padEnd(12) +
                         ' ' + String(r.mv).padStart(6) + String(r.seen).padStart(5) +
                         String(r.cands).padStart(6) +
-                        String(r.clr).padStart(7) + String(r.ch).padStart(6));
+                        String(r.clr).padStart(7) + String(r.ch).padStart(6) +
+                        String(r.brk).padStart(4) + String(r.dep).padStart(7));
         });
         for (var rr = st[D].height; rr >= 1; rr--) {
             var line = '  r' + String(rr).padStart(2) + ' ';
