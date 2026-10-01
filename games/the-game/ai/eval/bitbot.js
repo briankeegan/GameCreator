@@ -23,12 +23,12 @@
         require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
         module.exports = factory(require('./bitmatch.js'), require('./bitfeatures.js'),
                                  require('./bitlineup.js'), require('./travel.js'),
-                                 require('./bitoptions.js'), require('./puyocpu.js'));
+                                 require('./bitoptions.js'));
     } else {
         root.BitBot = factory(root.BitMatch, root.BitFeatures, root.BitLineup,
-                              root.PanelEval.travel, root.BitOptions, root.PanelEval.PuyoCpu);
+                              root.PanelEval.travel, root.BitOptions);
     }
-}(typeof globalThis !== 'undefined' ? globalThis : this, function (bit, BF, lineup, travel, bitoptions, PuyoCpu) {
+}(typeof globalThis !== 'undefined' ? globalThis : this, function (bit, BF, lineup, travel, bitoptions) {
     'use strict';
 
     var W = 6, H = 12;
@@ -913,7 +913,7 @@
         // TOPPED OUT, THE ENGINE ENDS THE GAME AT HEALTH 0. This is the limit a move is
         // refused against, so it is the engine's number: the clear that un-tops the
         // board must stay playable while health lasts. Plans never wait on health --
-        // the break hold is timed by framesToTopOut, which stops at the top.
+        // the break hold fires at the top-out, parked on the break.
         if (info.toppedOut) return clock + (info.health || 0);
         // EVERY QUEUED CELL LANDS ON THIS BOARD, so it is ceiling already gone --
         // the engine holds a slab only while there is nowhere to put it, and then
@@ -2868,20 +2868,13 @@
                 var cv = bc.resolved.converts || 0, kv = bk ? (bk.resolved.converts || 0) : -1;
                 if (!bk || cv > kv || (cv === kv && (bc.moveFrames || 0) < (bk.moveFrames || 0))) bk = bc;
             }
-            // AND THE TIME TO SPARE IS THE ENGINE'S. A hold sets the cooldown, so the
-            // next decision is `reaction + 1` frames away -- or at the top-out, where
-            // update() lifts the cooldown. The walk to the target then queues the swap
-            // `moveFrames` later, and a queued swap locks the rise in that same run, so
-            // the break costs no health exactly when it is queued no later than the
-            // first run that drains it. Hold while that is still true after one more
-            // hold.
+            // AND WAITED FOR WITH THE CURSOR ALREADY THERE. Topped out, update() lifts the
+            // cooldown on that frame, and the landing that topped it out shakes the board
+            // -- the rise and with it health locked for the shake. A cursor parked on the
+            // break makes the walk zero, so it fires the frame the board tops out.
             if (bk && stillComing && !info.toppedOut) {
-                var walk = bk.moveFrames || 0, next = this.reaction + 1;
-                var fut = this.framesToTopOut(next + walk + 1);
-                if (Math.min(next, fut.top) + walk <= fut.drain) {
-                    this.counts.heldForLanding = (this.counts.heldForLanding || 0) + 1;
-                    return { kind: 'hold', mode: mode, alive: alive, via: 'awaitLanding' };
-                }
+                this.counts.heldForLanding = (this.counts.heldForLanding || 0) + 1;
+                return { kind: 'hold', mode: mode, alive: alive, via: 'awaitLanding', park: bk.swap };
             }
             if (bk) {
                 this._dig = null;
@@ -3542,30 +3535,40 @@
         return (r && r.settled) || masks;
     };
 
-    // WHAT HAPPENS IF THE BOT DOES NOTHING: the engine itself, run forward on a copy
-    // with no input. The queue, the drop column, the shake that locks the rise after
-    // every landing, combo garbage waiting for calm, stop time and the rise are all
-    // the engine's own code, so both numbers are the engine's.
+    // THE FIRST RUN THAT CAN TAKE HEALTH, read off the stack -- nothing is simulated.
     //
-    //   top     runs until isToppedOut -- the frame update() sees it and lifts the
-    //           cooldown
-    //   drain   the first run in which health falls. Shake and stop time hold the
-    //           rise, and health with it, so this is later than `top` by whatever
-    //           the last landing bought.
+    // advancePassiveRaise takes health on a run where the board is topped out, the rise
+    // is not locked and stopTime is 0. In that run decrementTimers has already spent one
+    // frame (preStopTime first, stopTime only once it is 0, shakeTime with it) and
+    // updateRiseLock locks on a queued swap, shakeTime > 0 or hasActivePanels(). So,
+    // counting runs from the next one as 1:
     //
-    // `limit` caps the run; either number is `limit` when it lies beyond it.
-    // topout.test.js holds both to the real board.
-    BitBot.prototype.framesToTopOut = function (limit) {
-        var sim = PuyoCpu.cloneStack(this.stack), n = 0, top = limit, hp = sim.health;
-        while (n < limit && !sim.gameOver) {
-            if (top === limit && sim.isToppedOut()) top = n;
-            sim.setInput({});
-            sim.run();
-            if (sim.health < hp || sim.gameOver) return { top: Math.min(top, n), drain: n };
-            hp = sim.health;
-            n++;
+    //   stop time    stopTime reaches 0 on run preStopTime + stopTime; with none
+    //                running it is already 0
+    //   shake        shakeTime reaches 0 on run shakeTime
+    //   in the air   an active panel stays active for its timer; hasActivePanels reads
+    //                this frame's count and the one before it
+    //
+    // The largest of the three. Exact when nothing is in the air; with panels in the
+    // air it is a floor -- a landing can start more -- and the bot decides again every
+    // frame while topped out, so a floor is all it needs.
+    BitBot.prototype.drainBound = function () {
+        var s = this.stack, pre = s.preStopTime || 0, stop = s.stopTime || 0;
+        var k = stop > 0 ? pre + stop : 1;
+        k = Math.max(k, s.shakeTime || 0);
+        var air = 0, active = (s.nActive || 0) > 0 || (s.nPrevActive || 0) > 0;
+        for (var r = 1; r <= s.height; r++) {
+            for (var c = 1; c <= W; c++) {
+                var p = s.panels[r][c];
+                if (p.color === 0) continue;
+                var busy = p.isGarbage ? p.state !== 'normal' : (p.state !== 'normal' && p.state !== 'landing');
+                if (!busy) continue;
+                active = true;
+                if ((p.timer || 0) > air) air = p.timer || 0;
+            }
         }
-        return { top: top, drain: limit };
+        if (active) k = Math.max(k, 1 + Math.max(1, air));
+        return k;
     };
 
     // HOW MANY EMPTY ROWS ARE ABOVE THE STACK, ON THE BOARD AS IT IS NOW.
@@ -4072,26 +4075,23 @@
     // (`if (!wasToppedOut && !hasFallingGarbage()) health = maxHealth`), and under a
     // slab it is topped out for as long as the slab stands. So every frame it drains
     // there is gone for the rest of the slab -- the whole of it is maxHealth frames.
-    // Health drains only on a run with no rise lock and no stop time, and a queued
-    // swap locks the rise in that run, so the rule is exact: a clear or a break is
-    // queued no later than framesToTopOut's first draining run, every time the lock
-    // runs out.
+    // A queued swap locks the rise in the run it is queued for, so the rule is exact:
+    // a clear or a break is queued no later than drainBound's run, every time.
     //
-    // Topped out, update() lifts the cooldown every frame, so the bot can leave the
-    // clear to the last frame that keeps health -- but not while it walks: a swap's
-    // walk is frames with no decision in them. So, with garbage on the board:
+    // A swap whose walk is w frames is queued before run w + 1, so it is in time while
+    // w + 1 <= k, and waiting one more frame is safe while w + 2 <= k. Topped out,
+    // update() lifts the cooldown every frame, so the bot can wait to the last safe
+    // frame -- parked on the clear, so the walk is nothing when it goes.
     //
-    //   a clear that breaks nothing waits while `drain > moveFrames`. Nothing rises,
-    //     the panels are all the material there is until a break converts a row, and
-    //     three of them buy FLASH + FACE + POP * 3 frames that are only needed when
-    //     the drain is due. Routes that end in a break are exempt: they gain a row.
-    //   anything else -- a setup, a flatten, a hold -- stands only while its walk, the
-    //     swap and the walk back to a clear still beat the drain, and a clear is still
-    //     on the board after it.
-    //   when nothing else stands, the clear is played: a break first, else the clear
-    //     that buys the most frames per panel it spends, the engine's preStop and
-    //     stop time.
-    var ENDS_IN_A_BREAK = { digPlan: 1, breakReach: 1, 'break': 1, lineup: 1 };
+    //   a clear that breaks nothing waits, parked, until it must go. Nothing rises
+    //     under a slab, the panels are all the material there is until a break
+    //     converts a row, and three of them buy FLASH + FACE + POP * 3 frames that are
+    //     only needed when the drain is due. Routes that end in a break are exempt.
+    //   anything else -- a setup, a flatten, a hold -- stands while its walk, the swap
+    //     and the walk back to a clear still fit, and a clear is on the board after it.
+    //   otherwise: a break, else the clear that buys the most frames per panel it
+    //     spends (the engine's preStop and stop time), parked on while that is safe.
+    var ENDS_IN_A_BREAK = { digPlan: 1, breakReach: 1, 'break': 1, lineup: 1, lineupHold: 1 };
     var SWAP_FRAMES = 4;
     BitBot.prototype._waitForDrain = function (d) {
         var info = this._lastInfo, pool = this._lastPool, base = this._lastBase;
@@ -4099,38 +4099,38 @@
         var c, i, buried = false;
         for (c = 1; c <= W; c++) if (base.garb[c]) { buried = true; break; }
         if (!buried || ENDS_IN_A_BREAK[d.via]) return d;
-        var clears = [], picked = null, longest = 0;
+        var clears = [], picked = null;
         for (i = 0; i < pool.length; i++) {
             var pc = pool[i];
             if (pc.kind !== 'swap' || !pc.resolved) continue;
             if (d.kind === 'swap' && d.move && pc.swap[0] === d.move[0] && pc.swap[1] === d.move[1]) picked = pc;
             if (pc.resolved.total > 0 || pc.resolved.brokeGarbage) clears.push(pc);
-            if ((pc.moveFrames || 0) > longest) longest = pc.moveFrames || 0;
         }
         if (!clears.length) return d;
-        var drain = this.framesToTopOut(2 * longest + SWAP_FRAMES + 2).drain;
-        var pr = picked && picked.resolved;
+        var k = this.drainBound(), pr = picked && picked.resolved;
         if (pr && pr.brokeGarbage) return d;
+        function hold(at) { return { kind: 'hold', mode: d.mode, alive: d.alive, via: 'awaitDrain', park: at }; }
         if (pr && pr.total > 0) {
-            if (drain === (picked.moveFrames || 0)) return d;
-        } else {
-            var at = picked ? picked.swap : [info.cursorRow, info.cursorCol];
-            var spend = picked ? (picked.moveFrames || 0) + SWAP_FRAMES : 0;
+            if ((picked.moveFrames || 0) + 2 > k) return d;
+            this.counts.waitedForDrain = (this.counts.waitedForDrain || 0) + 1;
+            return hold(picked.swap);
+        }
+        var nearest = Infinity;
+        for (i = 0; i < clears.length; i++) nearest = Math.min(nearest, clears[i].moveFrames || 0);
+        if (picked) {
             var back = Infinity;
             for (i = 0; i < clears.length; i++) {
-                var bk = travel.cost(at[0], at[1], clears[i].swap[0], clears[i].swap[1]);
-                if (bk < back) back = bk;
+                back = Math.min(back, travel.cost(picked.swap[0], picked.swap[1], clears[i].swap[0], clears[i].swap[1]));
             }
-            var stillClears = !picked || bit.anyOneSwapClear(picked.masks);
-            if (stillClears && spend + back < drain) return d;
+            if ((picked.moveFrames || 0) + SWAP_FRAMES + back + 1 <= k && bit.anyOneSwapClear(picked.masks)) return d;
+        } else if (nearest + 2 <= k) {
+            return d;
         }
         this.counts.keptHealth = (this.counts.keptHealth || 0) + 1;
-        // THE CLEAR TO PLAY NOW, or a setup that still leaves one in time
-        var breakNow = null, clearNow = null, setup = null;
-        var f = this.stack.frames, eng = PanelEngine();
+        var breakNow = null, clearNow = null, f = this.stack.frames, eng = PanelEngine();
         for (i = 0; i < clears.length; i++) {
             var cl = clears[i], r = cl.resolved;
-            if ((cl.moveFrames || 0) > drain) continue;
+            if ((cl.moveFrames || 0) + 1 > k) continue;
             if (r.brokeGarbage) {
                 if (!breakNow || (r.converts || 0) > (breakNow.resolved.converts || 0) ||
                     ((r.converts || 0) === (breakNow.resolved.converts || 0) &&
@@ -4138,36 +4138,17 @@
                 continue;
             }
             var isCh = r.chain >= 2;
-            var bought = f.FLASH + f.FACE + f.POP * r.total +
-                         BF.stopTimeOf(eng, isCh, isCh ? 0 : r.total, isCh ? r.chain : 0, true);
-            var rate = bought / r.total;
+            var rate = (f.FLASH + f.FACE + f.POP * r.total +
+                        BF.stopTimeOf(eng, isCh, isCh ? 0 : r.total, isCh ? r.chain : 0, true)) / r.total;
             if (!clearNow || rate > clearNow.rate) clearNow = { cand: cl, rate: rate };
         }
         if (breakNow) return { kind: 'swap', move: breakNow.swap, mode: d.mode, alive: d.alive, via: 'break' };
-        // WAITING IS STILL POSSIBLE: a setup that keeps a clear on the board and leaves
-        // the walk back to it inside the drain, else a hold, which decides again next
-        // frame -- if the nearest clear can still be reached from there.
-        var nearest = Infinity;
-        for (i = 0; i < clears.length; i++) nearest = Math.min(nearest, clears[i].moveFrames || 0);
-        for (i = 0; i < pool.length; i++) {
-            var cand = pool[i];
-            if (cand.kind !== 'swap' || !cand.resolved || cand.resolved.total > 0 || cand === picked) continue;
-            var back2 = Infinity;
-            for (var j = 0; j < clears.length; j++) {
-                back2 = Math.min(back2, travel.cost(cand.swap[0], cand.swap[1], clears[j].swap[0], clears[j].swap[1]));
-            }
-            if ((cand.moveFrames || 0) + SWAP_FRAMES + back2 >= drain) continue;
-            if (!bit.anyOneSwapClear(cand.masks)) continue;
-            var sc = this.idleScore(cand, base, info);
-            if (!setup || sc > setup.score) setup = { cand: cand, score: sc };
+        var esc = clearNow ? clearNow.cand : null;
+        if (!esc) {
+            for (i = 0; i < clears.length; i++) if (!esc || (clears[i].moveFrames || 0) < (esc.moveFrames || 0)) esc = clears[i];
         }
-        if (setup) return { kind: 'swap', move: setup.cand.swap, mode: d.mode, alive: d.alive, via: 'awaitDrain' };
-        if (nearest + 1 <= drain && !(d.kind === 'hold')) {
-            return { kind: 'hold', mode: d.mode, alive: d.alive, via: 'awaitDrain' };
-        }
-        if (nearest + 1 <= drain) return d;
-        if (!clearNow) return d;
-        return { kind: 'swap', move: clearNow.cand.swap, mode: d.mode, alive: d.alive, via: 'keepHealth' };
+        if ((esc.moveFrames || 0) + 2 <= k) return hold(esc.swap);
+        return { kind: 'swap', move: esc.swap, mode: d.mode, alive: d.alive, via: 'keepHealth' };
     };
 
     BitBot.prototype._decideRuled = function () {
@@ -4433,6 +4414,7 @@
             this.spend.walking++; if (froz) this.frozen.walking++;
             this._driveWalk(input); stack.setInput(input); return;
         }
+        if (this._park) this._parkStep(input);
         stack.setInput(input);
         // THE COOLDOWN DOES NOT GET TO SLEEP THROUGH A REVEAL WINDOW. The window
         // is 21 frames and the bot decides every 12, so on cooldown it misses
@@ -4494,8 +4476,11 @@
             if (froz) this.frozen.hold++;
             this.counts.holds++;
             this.cooldown = this.reaction;
+            this._park = d.park ? { row: d.park[0], col: d.park[1], timer: 0,
+                                    disp: stack.displacement } : null;
             return;
         }
+        this._park = null;
         this.counts.swaps++;
         if (froz) this.frozen.swap++;
         this._beginWalk(d.move[0], d.move[1], this.reaction);
@@ -4510,6 +4495,25 @@
     // is the canonical answer to "how close to the top is this board". The two
     // must agree: when they did not, every height decision in the bot was wrong
     // and the bot stood at the ceiling believing it had room.
+    // A HOLD THAT WAITS WITH THE CURSOR ON THE CELL IT WILL SWAP. The cursor moves the
+    // way a walk moves it -- one axis at a time, a tap every cursorMoveFrames, the
+    // target carried up with a rising row -- and stops there without swapping, so when
+    // the moment comes the walk is nothing.
+    BitBot.prototype._parkStep = function (input) {
+        var stack = this.stack, pk = this._park;
+        if (stack.displacement > pk.disp) pk.row++;
+        pk.disp = stack.displacement;
+        var row = Math.max(1, Math.min(pk.row, stack.topCurRow));
+        var col = Math.max(1, Math.min(pk.col, W - 1));
+        if (stack.curRow === row && stack.curCol === col) return;
+        if (pk.timer > 0) { pk.timer--; return; }
+        if (stack.curCol < col) input.right = true;
+        else if (stack.curCol > col) input.left = true;
+        else if (stack.curRow < row) input.up = true;
+        else input.down = true;
+        pk.timer = this.cursorMoveFrames - 1;
+    };
+
     BitBot.tallestOfMasks = tallestBoard;
     BitBot.signatureOf = signature;
     // Exposed so the attack ranking can be checked as a property rather than by

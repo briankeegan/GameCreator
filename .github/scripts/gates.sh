@@ -766,13 +766,6 @@ gate_deadline_rise() {
   node games/the-game/ai/eval/deadline_rise.test.js
 }
 
-# WHEN THE BOARD TOPS OUT, AND WHEN HEALTH FIRST FALLS, IF THE BOT DOES NOTHING. The
-# break hold fires by these two numbers. framesToTopOut runs a copy of the engine; this
-# replays the bot's own inputs onto a real Stack and requires both to match to the frame.
-gate_topout() {
-  node games/the-game/ai/eval/topout.test.js
-}
-
 # A SLAB THE ENGINE WILL NOT TAKE IS NOT BROKEN. getConnectedGarbagePanels takes only
 # colour-9 garbage in state 'normal', so a slab still matched from the last break is no
 # part of the next one. Every swap on real mid-break boards, against the engine.
@@ -1010,7 +1003,6 @@ GATES=(
   "every option listed is real and priced:gate_bitoptions:games/the-game/ai/"
   "every option field is priced by both rankers:gate_option_pricing:games/the-game/ai/"
   "the deadline keeps time with the engine through a freeze:gate_deadline_rise:games/the-game/ai/"
-  "the break hold knows the top-out and the first drain to the frame:gate_topout:games/the-game/ai/"
   "a slab mid-break is not broken again:gate_breaklive:games/the-game/ai/"
   "a landing the lineup says breaks, breaks:gate_landing:games/the-game/ai/"
   "a swap is answered without applying it:gate_bitswap:games/the-game/ai/"
