@@ -903,11 +903,11 @@
 
     function framesToDeath(info, tallest, framesPerRow) {
         var clock = info.stopTime || 0;
-        // HEALTH IS NOT TIME TO SPEND. It drains whenever the board is topped out and
-        // nothing is resolving, and under steady pressure a board is short of it
-        // constantly -- so a plan that counts on it is a plan to arrive with none. Topped
-        // out, what the bot has is the stop time, and that is all.
-        if (info.toppedOut) return clock;
+        // TOPPED OUT, THE ENGINE ENDS THE GAME AT HEALTH 0. This is the limit a move is
+        // refused against, so it is the engine's number: the clear that un-tops the
+        // board must stay playable while health lasts. Plans never wait on health --
+        // the break hold is timed by framesToTopOut, which stops at the top.
+        if (info.toppedOut) return clock + (info.health || 0);
         // EVERY QUEUED CELL LANDS ON THIS BOARD, so it is ceiling already gone --
         // the engine holds a slab only while there is nowhere to put it, and then
         // puts it there. This is the clock the whole bot runs on: the plans are
