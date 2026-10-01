@@ -335,14 +335,36 @@
         STOPS.set(key, v);
         return v;
     }
+    // Two independent 32-bit hashes of every array the answers read: a collision needs
+    // both to agree, about one in 10^10 at these cache sizes.
     function boardKey(st) {
-        var k = Array.prototype.join.call(st.occ, ',') + '|' + Array.prototype.join.call(st.inert, ',') +
-                '|' + Array.prototype.join.call(st.garb, ',') + '|' + Array.prototype.join.call(st.colour, ',');
-        for (var i = 0; st.slabs && i < st.slabs.length; i++) {
-            k += '|' + Array.prototype.join.call(st.slabs[i], ',') + (st.slabLocked && st.slabLocked[i] ? 'L' : '');
+        var h1 = 0x811c9dc5 | 0, h2 = 0x9747b28c | 0;
+        function eat(v) {
+            v = v | 0;
+            h1 = Math.imul(h1 ^ v, 0x01000193);
+            h2 = Math.imul(h2 ^ (v + 0x5bd1e995), 0x5bd1e995) ^ (h2 >>> 13);
         }
-        if (st.busy) k += '|b' + Array.prototype.join.call(st.busy, ',');
-        return k;
+        function arr(a) { for (var i = 0; i < a.length; i++) eat(a[i]); eat(-1); }
+        arr(st.occ); arr(st.inert); arr(st.garb); arr(st.colour);
+        for (var i = 0; st.slabs && i < st.slabs.length; i++) {
+            arr(st.slabs[i]);
+            eat(st.slabLocked && st.slabLocked[i] ? 7 : 3);
+        }
+        if (st.busy) arr(st.busy);
+        return (h1 >>> 0).toString(36) + ':' + (h2 >>> 0).toString(36);
+    }
+
+    // WHAT A BOARD SETTLES TO, BY BOARD: resolveFromMasks with the settled state,
+    // asked of every swap the beam expands, and of the same boards again on the next
+    // decision. The settled state is shared, so its users only swap and swap back.
+    var SETTLES = new Map();
+    function settleOf(st) {
+        var key = boardKey(st), hit = SETTLES.get(key);
+        if (hit !== undefined) return hit;
+        var r = bit.resolveFromMasks(st, true);
+        if (SETTLES.size >= SAVES_MAX) SETTLES.clear();
+        SETTLES.set(key, r);
+        return r;
     }
 
     function options(board, W, H, cursor, depth, st, timing, dig) {
@@ -947,7 +969,7 @@
                             if (!((reach[sw[1]] | reach[sw[1] + 1]) & rb)) continue;
                         }
                         if (!bit.swapMasks(state, sw[0], sw[1])) continue;
-                        var res = bit.resolveFromMasks(state, true);
+                        var res = settleOf(state);
                         bit.swapMasks(state, sw[0], sw[1]);
                         var cost = node.spent + travel.cost(node.from[0], node.from[1], sw[0], sw[1]);
                         var broke = res.scope === 'garbage-broke';
