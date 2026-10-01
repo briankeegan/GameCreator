@@ -289,6 +289,15 @@ Match.prototype.afterFrame = function () {
   this.ask(at, pr.board, pr.hold);
 };
 
+// The keys planned from frame `from` on, at most n, up to the first frame
+// with nothing planned: sent with each answer, so a frame whose answer comes
+// too late presses what was planned for it rather than nothing.
+var NEXT = 30;
+Match.prototype.planned = function (from, n) {
+  var out = [];
+  for (var t = from; t < from + n && this.plan[t]; t++) out.push(this.plan[t].bits);
+  return out;
+};
 Match.prototype.record = function (truth, bits, arrivals) {
   this.history.push({ clock: truth.clock, stopWatch: truth.stopWatch, bits: bits, cursor: [truth.curRow, truth.curCol],
                       incoming: truth.incoming, arrivals: arrivals.map(function (a) { return [a.at, a.g.width, a.g.height, !!a.g.isChain, !!a.g.isMetal]; }),
@@ -348,7 +357,7 @@ var server = net.createServer(function (sock) {
         if (!match) { reply = { input: 0 }; }
         else {
           var truth = PA.fromLua(m.state, match.level, new PA.Unseen());
-          reply = { clock: truth.clock, input: match.frame(truth, arrivalsOf(m.state)) };
+          reply = { clock: truth.clock, input: match.frame(truth, arrivalsOf(m.state)), next: match.planned(truth.clock + 1, NEXT) };
         }
       } else if (m.t === 'bye') { if (match) { console.log('match over: ' + JSON.stringify(match.stats)); match.dump(); } match = null; reply = { ok: true }; }
       sock.write(JSON.stringify(reply) + '\n');
