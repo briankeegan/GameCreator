@@ -1283,10 +1283,9 @@
             // unknowable so `mat` is null, and it ADDS material besides.
             var short = shortfallOf(o);
             cells -= short * W;
-            // AND THE VOID THE SLAB WOULD SEAL, in this ranking's currency: a row of
-            // void is a row of ceiling, and a row is W panels.
-            // The same rate bestPlan pays, in this ranking's currency: W cells to the
-            // row, each worth what an unsealed cell is worth. See bestPlan's voidGain.
+            // AND THE VOID THE SLAB WOULD SEAL, at the same rate bestPlan pays and
+            // in this ranking's currency: W cells to the row, each worth what an
+            // unsealed cell is worth. See bestPlan's voidGain.
             if (perPanelFrames > 0) {
                 cells += (o.voidGain || 0) * W *
                          Math.max(perPanelFrames, (deadline || 0) / W) / perPanelFrames;
