@@ -2839,6 +2839,22 @@
         // The floor priced into the search's own `val` does not reach here: these
         // decisions come through the weights path, which ranks candidates itself.
         s -= Math.max(0, WORKING_ROWS - (now ? now.mat : 0)) * fpr;
+        // AND THE VOID THE SLAB SEALS OVER, which is what a nothing-clears decision
+        // actually moves.
+        //
+        // Measured over the duel this was written from: the decisions that CLEAR are
+        // ranked where voidGain is priced and they improve the seal, 35 panels over
+        // 910 of them. The 2,889 that clear nothing are ranked here and by the
+        // weights, where the void was not priced at all, and they put 44 panels of it
+        // back -- to a peak of 22 panels, 3.67 rows, 440 frames of ceiling the board
+        // no longer had when it died at 22,112.
+        //
+        // A non-clearing swap leaves sum(h) alone, so void = W*high - sum(h) moves
+        // only through `high`: landing a panel on the tallest column costs W panels,
+        // a whole row, 120 frames at level 10, for a move that clears nothing.
+        //
+        // Priced at fpr a row, as height and the material floor are.
+        s -= ((now ? (now.high - now.mat) : 0)) * fpr;
         return s - (cand.moveFrames || 0);
     };
 
