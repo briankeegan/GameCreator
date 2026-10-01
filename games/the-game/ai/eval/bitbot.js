@@ -2193,8 +2193,20 @@
             // bot stacked columns 1-3 five and six high with columns 5-6 empty and
             // a hole in the bottom row. The same panels spread across six columns
             // offer more lines anyway and are not against the ceiling.
+            // ONE NOTHING-CLEARS RANKING, NOT THREE.
+            //
+            // This was -bumpiness*10000 + matchWays*100 - moveFrames: a lexicographic
+            // rule with no height, no material floor and no void in it, while the
+            // spare and allDead branches below already rank by idleScore, which has
+            // all three and is denominated in frames. This is the busiest of the
+            // three by far -- 2,889 of 3,799 decisions on the duel this was written
+            // from -- and it was the one that could not see the seal.
+            //
+            // Bumpiness cannot stand in for the void. It counts neighbour steps, so
+            // 2,2,2,2,6,7 and the smooth ramp 2,3,4,5,6,7 both read 5 while their
+            // voids are 21 panels and 15. The board that died was the first of those.
             var s = noneClear
-                  ? -bumpiness(cand.masks) * 10000 + matchWays(cand.masks) * 100 - (cand.moveFrames || 0)
+                  ? this.idleScore(cand, base, info)
                   : this.score(cand.masks, cand.moveFrames, cand.resolved, info);
             if (!best || s > best.score) best = { cand: cand, score: s };
         }
@@ -2839,6 +2851,37 @@
         // The floor priced into the search's own `val` does not reach here: these
         // decisions come through the weights path, which ranks candidates itself.
         s -= Math.max(0, WORKING_ROWS - (now ? now.mat : 0)) * fpr;
+        // AND THE VOID THE SLAB SEALS OVER, which is what a nothing-clears decision
+        // actually moves.
+        //
+        // Measured over the duel this was written from: the decisions that CLEAR are
+        // ranked where voidGain is priced and they improve the seal, 35 panels over
+        // 910 of them. The 2,889 that clear nothing are ranked here and by the
+        // weights, where the void was not priced at all, and they put 44 panels of it
+        // back -- to a peak of 22 panels, 3.67 rows, 440 frames of ceiling the board
+        // no longer had when it died at 22,112.
+        //
+        // A non-clearing swap leaves sum(h) alone, so void = W*high - sum(h) moves
+        // only through `high`: landing a panel on the tallest column costs W panels,
+        // a whole row, 120 frames at level 10, for a move that clears nothing.
+        //
+        // MEASURED AGAINST THE SLAB, NOT AGAINST THE TALLEST COLUMN.
+        //
+        // void = W*(high - mat) falls two ways: raise the short columns, or pull the
+        // tall one down. Only the first keeps the reach -- breaking needs three
+        // panels in a line TOUCHING the garbage, and the tallest column is the only
+        // one that touches it. And the term above already pays a row for lowering
+        // `high`, so a void priced this way paid twice for the one move that makes a
+        // break impossible.
+        //
+        // reachGap counts the panels still needed to bring every column to the slab's
+        // floor. The slab does not move when material leaves, so pulling the tall
+        // column down cannot improve it: on the board that died, 7,6,5,5,5,2, void
+        // and reachGap both read 12 panels, but dropping column one to 5 takes void
+        // to 8 -- an apparent gain -- while reachGap goes to 14, which is the truth.
+        //
+        // A panel of gap is a panel of life, fpr/W, the conversion used throughout.
+        s -= ((now ? (now.reachGap || 0) : 0)) * perPanel;
         return s - (cand.moveFrames || 0);
     };
 
