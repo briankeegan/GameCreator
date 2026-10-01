@@ -1804,6 +1804,8 @@
             // setup was not done, and in a duel there is no state where preparing is
             // wasted, because the opponent is always about to send.
             prepare: true,
+            // what stopPrice reads besides the resolve, so its answers can be kept by board
+            stopKey: info.toppedOut ? 'top' : 'free',
             stopPrice: function (r) {
                 var isChain = r.chain >= 2;
                 return BF.stopTimeOf(PanelEngine(), isChain,

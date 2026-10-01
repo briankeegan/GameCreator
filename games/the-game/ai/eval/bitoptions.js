@@ -316,6 +316,35 @@
     // The base board's own readiness, kept for breakReadyBoard below.
     var LASTBREAKREADY = null;
 
+    // HOW MANY SWAPS BREAK A SLAB, BY BOARD. A pure function of the masks, asked of
+    // every option the beam lands on and of the same boards again on the next decision,
+    // which differs by one swap. Keyed on everything the answer reads: occupancy,
+    // colours, garbage, the slabs and whether each is locked, and the cells busy enough
+    // to refuse a swap.
+    var SAVES = new Map(), SAVES_MAX = 50000;
+    // THE FREEZE ONE SWAP CAN BUY, BY BOARD, the same way: bestOneSwapStop is a pure
+    // function of the masks and of stopPrice, which reads only whether the board is
+    // topped out -- timing.stopKey.
+    var STOPS = new Map(), STOPKEY = '';
+    function landStopOf(st) {
+        if (!STOPKEY) return bit.bestOneSwapStop(st, stopPrice);
+        var key = STOPKEY + boardKey(st), hit = STOPS.get(key);
+        if (hit !== undefined) return hit;
+        var v = bit.bestOneSwapStop(st, stopPrice);
+        if (STOPS.size >= SAVES_MAX) STOPS.clear();
+        STOPS.set(key, v);
+        return v;
+    }
+    function boardKey(st) {
+        var k = Array.prototype.join.call(st.occ, ',') + '|' + Array.prototype.join.call(st.inert, ',') +
+                '|' + Array.prototype.join.call(st.garb, ',') + '|' + Array.prototype.join.call(st.colour, ',');
+        for (var i = 0; st.slabs && i < st.slabs.length; i++) {
+            k += '|' + Array.prototype.join.call(st.slabs[i], ',') + (st.slabLocked && st.slabLocked[i] ? 'L' : '');
+        }
+        if (st.busy) k += '|b' + Array.prototype.join.call(st.busy, ',');
+        return k;
+    }
+
     function options(board, W, H, cursor, depth, st, timing, dig) {
         // THE CLOCK IS NOT OPTIONAL, because every price in here is read off it.
         //
@@ -356,6 +385,7 @@
         var FPR = (timing && timing.framesPerRow) || 0;
         var DEADLINE = (timing && timing.deadline) || 0;
         stopPrice = (timing && timing.stopPrice) || null;
+        STOPKEY = (timing && timing.stopKey) || '';
         PREPARE = !!(timing && timing.prepare);
         // ONE ROW OF CEILING, AT THE RATE THIS FILE PAYS FOR BEING NEAR A THING.
         // Breaking a row of slab hands the board back a row, which is FPR frames;
@@ -844,6 +874,8 @@
         }
 
         function savesOfRaw(state) {
+            var key = boardKey(state), hit = SAVES.get(key);
+            if (hit !== undefined) return hit;
             var sw = bit.legalSwapsOf(state), n = 0, i, r;
             for (i = 0; i < sw.length; i++) {
                 if (!bit.swapMasks(state, sw[i][0], sw[i][1])) continue;
@@ -851,6 +883,8 @@
                 bit.swapMasks(state, sw[i][0], sw[i][1]);
                 if (r.scope === 'garbage-broke') n++;
             }
+            if (SAVES.size >= SAVES_MAX) SAVES.clear();
+            SAVES.set(key, n);
             return n;
         }
 
@@ -1109,7 +1143,7 @@
                                 var landStop = 0;
                                 if (stopPrice &&
                                     (!flat || base2 + MAXSTOP > flat.value)) {
-                                    landStop = bit.bestOneSwapStop(res.settled, stopPrice);
+                                    landStop = landStopOf(res.settled);
                                 }
                                 var val = base2 + landStop;
                                 // UNDER A SLAB, FLAT AND LOW IS THE WRONG GOAL.
@@ -1327,7 +1361,7 @@
         // to commit to a flatten by what it can do on arrival, and a route that
         // lands on a bare three and one that lands on a chain are 94 frames apart.
         if (stopPrice && flat && flat.lands && flat.landStop === undefined) {
-            flat.landStop = bit.bestOneSwapStop(flat.lands, stopPrice);
+            flat.landStop = landStopOf(flat.lands);
         }
 
         return { now: now, next: next, cheapest: cheapest, flatten: flat, save: save,
