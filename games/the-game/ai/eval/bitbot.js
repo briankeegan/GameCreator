@@ -826,15 +826,36 @@
     // and `speed` is startingSpeed + k, so the interval is
     // nextSpeedUp / (speed - startingSpeed + 1). Nothing here is a constant typed from
     // the engine, so a change to the schedule moves this with it.
-    function framesToRise(rows, info, framesPerRow) {
+    //
+    // AND IT STARTS WHEN THE RISE STARTS, NOT WHEN THE CLOCK IS READ. The engine
+    // runs `this.clock++` every frame and updateSpeed() fires on clock equality, so
+    // SPEED GOES UP DURING STOP TIME -- while advancePassiveRaise only moves the
+    // board when stopTime is 0, so the board does NOT. A deadline of stopTime plus
+    // the rise therefore spends its first stretch frozen at a speed the board will
+    // not still be at when it starts moving, and integrating from the clock as read
+    // applies today's slower rate to it. The error runs in the dangerous direction,
+    // which is the whole reason this function exists: the bot believing it has
+    // longer than it has. `startClock` is the clock the rise begins on, and any
+    // speed-up already passed by then is applied before integrating.
+    function framesToRise(rows, info, framesPerRow, startClock) {
         var e = PanelEngine();
         if (!e || !e.riseTime || !(rows > 0)) return Math.max(0, rows) * (framesPerRow || 0);
-        var speed = info.speed, up = info.nextSpeedUp, clock = info.clock;
-        if (!(speed > 0) || !(up > clock)) return rows * (framesPerRow || 0);
+        var speed = info.speed, up = info.nextSpeedUp;
+        var clock = (startClock === undefined || startClock === null)
+                  ? info.clock : startClock;
+        if (!(speed > 0) || !(up > info.clock)) return rows * (framesPerRow || 0);
         var steps = Math.max(1, speed - (info.startingSpeed || speed) + 1);
         var every = up / steps;
         if (!(every > 0)) return rows * (framesPerRow || 0);
         var frames = 0, left = rows, guard = 0;
+        // THE STEPS THAT HAPPEN WHILE THE BOARD IS STILL FROZEN. At level 10 the
+        // interval is 900 frames and stop time peaks at 98, so this is at most one --
+        // written as a loop because neither number is this function's to assume.
+        while (up <= clock && guard++ < 128) {
+            speed = Math.min(speed + 1, 99);
+            up += every;
+        }
+        guard = 0;
         while (left > 0 && guard++ < 128) {
             var fpr = e.riseTime(speed) * 16;
             if (!(fpr > 0)) return frames + left * (framesPerRow || 0);
@@ -863,7 +884,11 @@
         // 1,293. When the queue is more than the room the answer is the clock and
         // nothing else, which is what being topped out is worth.
         var queued = Math.ceil((info.incoming || 0) / W);
-        return clock + framesToRise(Math.max(0, H - tallest - queued), info, framesPerRow);
+        // THE RISE BEGINS AFTER THE STOP TIME RUNS OUT, and the speed table has moved
+        // on by then -- see framesToRise. `clock` here is the stop time, info.clock is
+        // the engine's.
+        return clock + framesToRise(Math.max(0, H - tallest - queued), info, framesPerRow,
+                                    (info.clock || 0) + clock);
     }
 
     // IS A REVEAL WINDOW OPEN, read straight off the live stack.
@@ -4230,6 +4255,11 @@
     // of the choice.
     BitBot.bestPlanOf = bestPlan;
     BitBot.ruinsShapeOf = ruinsShape;
+    // Exposed so the deadline can be checked against a frame-by-frame run of the
+    // engine's own rise and speed schedule rather than against a restatement of it:
+    // see deadline_rise.test.js. The whole bot is priced off this number.
+    BitBot.framesToRiseOf = framesToRise;
+    BitBot.framesToDeathOf = framesToDeath;
     BitBot.WORKING_ROWS = WORKING_ROWS;
     BitBot.STARTER = STARTER;
     return BitBot;
