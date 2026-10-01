@@ -14,7 +14,39 @@ var P = require(path.join(DIR, 'puyocpu.js')), PA = require(path.join(DIR, 'pa-e
 var SH = require(path.join(DIR, 'survivor_shared.js'));
 var cfg = wt.workerData, OPTS = SH.botOptions(cfg.profile, cfg.threads);
 var rates = [], SPEND = 0.6;   // budget searched per millisecond over the last decisions, and the share of the time there is spent searching
-var TALL_RANK = 30;   // frames: a break sooner than this outranks lowering a tall board
+var TALL_RANK = 30;
+var LINEUP_AFTER = 30;   // frames past a pop's end a lined-up row has to have matched by
+// A SLAB HANGING over a gap cannot be touched from the columns under the gap.
+// With the profile's lowerSlab, of the moves proven to live and none breaking
+// garbage, the ones leaving the lowest garbage lowest are played: clearing
+// the columns it rests on brings it down to where it can be broken.
+var HANG_RANK = 1e6;
+function slabRow(b) {
+  if (!b || !b.grid) return 0;
+  for (var r = 1; r < b.grid.length; r++) { var row = b.grid[r]; if (row) for (var c = 1; c <= b.width; c++) if (row[c] < 0) return r; }
+  return 0;
+}
+// WHILE A SLAB POPS the stack cannot rise, so a panel cleared then is one
+// fewer to break the next slab with. With the profile's conserve, of the
+// moves proven to live and none breaking garbage, the ones leaving the most
+// panels are played.
+var KEEP_RANK = 2e6;
+function panelsOf(b) {
+  var n = 0;
+  if (b && b.grid) for (var r = 1; r < b.grid.length; r++) { var row = b.grid[r]; if (row) for (var c = 1; c <= b.width; c++) if (row[c] > 0) n++; }
+  return n;
+}
+function hanging(board) {
+  var g = 0, r, c;
+  for (r = 1; r < board.panels.length && !g; r++) { var row = board.panels[r]; if (row) for (c = 1; c <= 6; c++) if (row[c] && row[c].isGarbage) { g = r; break; } }
+  if (!g) return false;
+  for (c = 1; c <= 6; c++) {
+    var h = 0;
+    for (r = 1; r < g; r++) if (board.panels[r] && board.panels[r][c] && board.panels[r][c].color) h = r;
+    if (h < g - 1) return true;
+  }
+  return false;
+}   // frames: a break sooner than this outranks lowering a tall board
 var bot = null, snap = null, nat = null, BS = null;   // BS: a search context of its own for breakMoves   // nat: the search's C context, kept from match to match
 var NativeMem = function () {
   var N = require(path.join(DIR, 'native.js')).server, X = N.exports(), free = [];
@@ -56,11 +88,13 @@ wt.parentPort.on('message', function (m) {
     // break TALL_RANK + h frames away. Six-wide garbage lands on the tallest
     // column, so that column is the board's height.
     bot.preferRank = null; bot.preferProven = null;
-    var br = null, want = {}, tall = cfg.profile.tallRow && SH.top(board) >= cfg.profile.tallRow;
+    var br = null, brMs = 0, want = {}, tall = cfg.profile.tallRow && SH.top(board) >= cfg.profile.tallRow;
     if (cfg.profile.breakFirst) {
       bot._natSearch();   // the engine, on this bot's threads, before a second context is made on it
       if (!BS) BS = new (require(path.join(DIR, 'native.js')).server.Search)({ reaction: OPTS.reaction, cursorMoveFrames: OPTS.cursorMoveFrames, threads: OPTS.threads || 1 });
-      br = SH.breakMoves(BS, board, { left: m.hold.left, started: m.hold.started }, arrivals, cfg.profile.breakDepth);
+      var tb = Date.now();
+      br = SH.breakMoves(BS, board, { left: m.hold.left, started: m.hold.started }, arrivals, cfg.profile.breakDepth, cfg.profile.lineup && SH.popLeft(board) ? SH.popLeft(board) + LINEUP_AFTER : 0);
+      brMs = Date.now() - tb;
       want = br.depth ? br.moves : {};
       bot.preferRank = function (c, i) {
         if (want[c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[1] : c.kind]) return 0;
@@ -69,6 +103,8 @@ wt.parentPort.on('message', function (m) {
       };
     }
     if (tall) bot.preferProven = function (c) { return c.settled ? TALL_RANK + SH.gridTop(c.settled) : Infinity; };
+    else if (cfg.profile.conserve && SH.popLeft(board)) bot.preferProven = function (c) { var b = this._settledOf(c); return b && b.grid ? KEEP_RANK - panelsOf(b) : Infinity; };
+    else if (cfg.profile.lowerSlab && hanging(board)) bot.preferProven = function (c) { var b = this._settledOf(c); return b && b.grid ? HANG_RANK + slabRow(b) : Infinity; };
     // THE TIME THERE IS: the survival search's budget is what can be searched
     // in the milliseconds before the answer is due (m.ms; 0 waits for the
     // whole budget), at the slowest rate of the last few decisions: a tall
@@ -87,10 +123,10 @@ wt.parentPort.on('message', function (m) {
     // on while the next decision is late: steps as the search played them
     // ([row, col], 'raise', null for a hold, { long: until }), from lineAt.
     var fl = bot._following, line = fl && !fl.hold && fl.steps && fl.steps.length ? fl.steps : null;
-    out = { id: m.id, epoch: m.epoch, at: m.at, kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, ms: Date.now() - t0,
+    out = { id: m.id, epoch: m.epoch, at: m.at, kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, ms: Date.now() - t0, brMs: brMs,
           line: line, lineAt: line ? fl.at : null,
           mem: NativeMem(),
-          breaks: br && br.depth ? { offered: br.depth, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
+          breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
           diag: { doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped } };
   } catch (e) {
     if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };

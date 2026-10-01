@@ -154,7 +154,16 @@ function gridTop(b) {
   return 0;
 }
 var BREAK_BUDGET = 2500;   // steps past the first level: the search stops there
-function breakMoves(S, board, hold, arrivals, maxDepth) {
+// LINING UP: while a broken slab pops (popLeft, frames) its new row cannot
+// move, but what is under it can; once the pop ends the row matches what it
+// rests on, and a match there touches the slab again. A first swap after
+// which waiting `wait` frames breaks garbage is a break at depth 1.
+function popLeft(board) {
+  var t = 0;
+  board.panels.forEach(function (row) { if (row) for (var c = 1; c <= 6; c++) { var p = row[c]; if (p && p.isGarbage && p.state === 'matched' && p.timer > t) t = p.timer; } });
+  return t;
+}
+function breakMoves(S, board, hold, arrivals, maxDepth, wait) {
   maxDepth = maxDepth || 3;
   var g = lowestGarbageRow(board);
   if (!g) return { depth: 0, moves: {} };
@@ -168,6 +177,10 @@ function breakMoves(S, board, hold, arrivals, maxDepth) {
   var firsts = swapsOf(root).map(function (m) { return { key: m[0] + ',' + m[1], m: m }; }), found = {}, any = false;
   firsts.forEach(function (f) { f.n = S.advance(root, 'swap', f.m, 0); if (breaks(f.n)) { found[f.key] = true; any = true; } });
   if (any) return { depth: 1, moves: found };
+  if (wait > 0 && !breaks(S.advance(root, 'long', null, wait))) {
+    firsts.forEach(function (f) { if (f.n && !f.n.dead && breaks(S.advance(f.n, 'long', null, wait))) { found[f.key] = true; any = true; } });
+    if (any) return { depth: 1, moves: found, lineup: true };
+  }
   if (maxDepth < 2) return { depth: 0, moves: {} };
   firsts.push({ key: 'hold', n: S.advance(root, 'hold', null, 0) });
   var live = firsts.filter(function (f) { return f.n && !f.n.dead; });
@@ -209,4 +222,4 @@ Hands.prototype.idle = function (board, hold, arrivals) {
   return { bits: k.inputs[0], hold: k.holds[0] };
 };
 
-module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, pending: pending, arrivalsFrom: arrivalsFrom, threat: threat, top: top, gridTop: gridTop, breakMoves: breakMoves, Hands: Hands };
+module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, pending: pending, arrivalsFrom: arrivalsFrom, threat: threat, top: top, gridTop: gridTop, popLeft: popLeft, breakMoves: breakMoves, Hands: Hands };
