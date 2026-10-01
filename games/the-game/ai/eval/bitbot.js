@@ -228,7 +228,15 @@
             // floor is already part way up. displacement is the pixels left and
             // riseTimer the frames left of the current pixel, both read off the
             // engine, so nothing here is a constant.
-            framesToNextRow: framesToNextRow(s)
+            framesToNextRow: framesToNextRow(s),
+            // THE SPEED SCHEDULE, so the clock can count the rise the board will
+            // ACTUALLY do rather than the rise it is doing now. The engine steps speed
+            // up on a fixed interval and riseTime falls with it, so a deadline
+            // measured at today's rate is optimistic -- see framesToRise.
+            speed: s.speed,
+            nextSpeedUp: s.nextSpeedIncreaseClock,
+            startingSpeed: s.levelData ? s.levelData.startingSpeed : s.speed,
+            clock: s.clock
         };
     };
 
@@ -800,6 +808,48 @@
         return last ? [last[0], last[1]] : [info.cursorRow, info.cursorCol];
     }
 
+    // HOW LONG `rows` ROWS OF RISE REALLY TAKE, with the speed-up counted.
+    //
+    // The board does not rise at today's rate for the rest of the game. The engine
+    // steps `speed` up on a fixed interval and riseTime falls with it -- at level 10
+    // a row is 120 frames at the start and 47 once the table flattens, so the board
+    // ends up rising two and a half times faster than it begins. Multiplying rows by
+    // the CURRENT framesPerRow therefore overstates the time left, always in the
+    // dangerous direction: the bot believes it has longer than it has.
+    //
+    // Measured on the engine's own table: 5 rows at clock 5,000 is 430 frames naive
+    // against 429 real, and 10 rows is 860 against 839 -- under 3%, because a deadline
+    // spans at most a step or two, and nothing after the table flattens. Small, but
+    // it is an approximation where an exact answer is available.
+    //
+    // THE INTERVAL IS DERIVED, NOT COPIED. nextSpeedIncreaseClock is (k+1) intervals
+    // and `speed` is startingSpeed + k, so the interval is
+    // nextSpeedUp / (speed - startingSpeed + 1). Nothing here is a constant typed from
+    // the engine, so a change to the schedule moves this with it.
+    function framesToRise(rows, info, framesPerRow) {
+        var e = PanelEngine();
+        if (!e || !e.riseTime || !(rows > 0)) return Math.max(0, rows) * (framesPerRow || 0);
+        var speed = info.speed, up = info.nextSpeedUp, clock = info.clock;
+        if (!(speed > 0) || !(up > clock)) return rows * (framesPerRow || 0);
+        var steps = Math.max(1, speed - (info.startingSpeed || speed) + 1);
+        var every = up / steps;
+        if (!(every > 0)) return rows * (framesPerRow || 0);
+        var frames = 0, left = rows, guard = 0;
+        while (left > 0 && guard++ < 128) {
+            var fpr = e.riseTime(speed) * 16;
+            if (!(fpr > 0)) return frames + left * (framesPerRow || 0);
+            var until = up - clock;                   // frames until the next step up
+            var canDo = until / fpr;                  // rows that fit before it
+            if (canDo >= left) return frames + left * fpr;
+            frames += until;
+            left -= canDo;
+            clock = up;
+            up += every;
+            speed = Math.min(speed + 1, 99);
+        }
+        return frames;
+    }
+
     function framesToDeath(info, tallest, framesPerRow) {
         var clock = info.stopTime || 0;
         if (info.toppedOut) return clock + (info.health === undefined ? 0 : info.health);
@@ -813,7 +863,7 @@
         // 1,293. When the queue is more than the room the answer is the clock and
         // nothing else, which is what being topped out is worth.
         var queued = Math.ceil((info.incoming || 0) / W);
-        return clock + Math.max(0, H - tallest - queued) * (framesPerRow || 0);
+        return clock + framesToRise(Math.max(0, H - tallest - queued), info, framesPerRow);
     }
 
     // IS A REVEAL WINDOW OPEN, read straight off the live stack.
@@ -1520,29 +1570,35 @@
             var digs = (o.matNow !== null && o.matNow !== undefined &&
                         o.matNow < WORKING_ROWS)
                      ? Math.max(0, o.digGain || 0) * perPanel : 0;
-            // A PANEL REMOVED IS A PANEL OF LIFE ONLY WHILE THE STACK IS THE PROBLEM.
+            // `o.total * perPanel` AND `lowered` ARE DIFFERENT QUANTITIES. BOTH TRIED
+            // AND BOTH ATTEMPTS MEASURED WORSE.
             //
-            // This paid perPanel for every panel cleared, unconditionally. The premise
-            // is that removing a panel delays the top-out by framesPerRow/W, which is
-            // true when the board is near the ceiling and false when it is half empty:
-            // at six rows of twelve nothing is being postponed, and the credit is
-            // frames the board was never going to lose.
+            // The pair looks like a double count -- framesPerRow/W a panel cleared, and
+            // framesPerRow a row the tallest column dropped, both claiming to pay for
+            // ceiling. They are not the same:
             //
-            // Seed 103 rand3 was perfectly flat at 6,6,6,6,6,6 with eleven garbage
-            // cells at frame 22,700 -- an ideal board -- and one decision later it was
-            // 7,7,7,4,4,7, a three-row cliff it died on 500 frames afterwards. What
-            // bought that clear: 80 frames for four panels and 60 to 94 for the stop
-            // time it banked, against 120 for the row of void it opened. It won by
-            // about thirty, and eighty of its credit was for emptying a board that had
-            // six rows of room.
+            //   o.total * perPanel   MATERIAL REMOVED. Clearing W panels takes a row's
+            //                        worth of mass off the board, which is a row of
+            //                        rise that will never have to be paid. Amortised.
+            //   lowered * FPR        THE TALLEST COLUMN DROPPING NOW. Immediate, and
+            //                        zero when the clear came off a shorter column.
             //
-            // Scaled by how much of the board the stack actually occupies -- tall over
-            // H, both the engine's -- so the credit is full when the stack is at the
-            // ceiling and small when it is not. No new constant: it is the same
-            // framesPerRow/W, weighted by whether the board is in the state that makes
-            // it true.
-            var press = Math.min(1, (tallNow || 0) / H);
-            var bought = o.total * perPanel * press + holds + (o.garbage || 0) * perCell
+            // A clear in the middle of a flat board makes the board lighter even though
+            // the top does not move, and that is real. Removing the first term because
+            // `lowered` reads zero left the bot with almost no reason to clear at all:
+            // 101 rand2 v rand3, alive on both sides, died at 6,900.
+            //
+            // Scaling the first by how full the board is (tall/H, on the premise that
+            // frames are only worth having when the ceiling is scarce) also measured
+            // worse: 103 STARTER v rand3, 23,209 to 14,799. Unscarce frames are still
+            // real frames, and the scaling devalues every good clear to reach the few
+            // bad ones.
+            //
+            // The clear that dug the cliff on 103 rand3 -- flat 6,6,6,6,6,6 to
+            // 7,7,7,4,4,7 at frame 22,700 -- was bought by 80 frames of material plus
+            // 60 to 94 of stop time against 120 for the row of void it opened. Every
+            // one of those numbers is right. What it cost is not in this expression.
+            var bought = o.total * perPanel + holds + (o.garbage || 0) * perCell
                        + lowered * (framesPerRow || 0) + gain
                        - shortfall * (framesPerRow || 0)
                        // AND THE VOID THE SLAB WOULD SEAL -- a row of it is a row of

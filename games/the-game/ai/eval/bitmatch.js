@@ -639,7 +639,31 @@
             for (cc = 1; cc <= W && !hit; cc++) {
               if (k[cc] & ((sm2[cc] >> 1) | (sm2[cc] << 1) | sm2[cc - 1] | sm2[cc + 1])) hit = true;
             }
-            if (hit) for (cc = 1; cc <= W; cc++) touched += popcount(sm2[cc]);
+            // ONLY THE BOTTOM ROW OF THE SLAB CONVERTS, so only the bottom row is
+            // counted. This summed the WHOLE connected slab, which is what the engine
+            // POPS, not what it hands back: Stack.convertGarbagePanels turns the row
+            // with yOffset === -1 into real panels and leaves the rest garbage -- that
+            // is what makes garbage chains possible, and it is written at the top of
+            // panel-engine.js.
+            //
+            // A 6-wide, 3-tall slab therefore reported 18 cells where 6 convert. The
+            // callers price this: bestPlan pays `garbage * perCell` with perCell up to
+            // deadline/W, about 100 frames early in a game, so that break was valued
+            // near 1,800 frames instead of 600 -- overstated by the slab's HEIGHT, so
+            // the taller the slab the larger the error.
+            if (hit) {
+              var low = 32, lm;
+              for (cc = 1; cc <= W; cc++) {
+                lm = sm2[cc] >>> 0;
+                if (!lm) continue;
+                var lb = 32 - Math.clz32(lm & -lm);
+                if (lb < low) low = lb;
+              }
+              if (low < 32) {
+                var lowBit = 1 << (low - 1);
+                for (cc = 1; cc <= W; cc++) if (sm2[cc] & lowBit) touched++;
+              }
+            }
           }
           // NOTHING PAST HERE IS KNOWABLE. Touching a slab pops a row of it and
           // the engine colours that row from its own rng, so what those panels
