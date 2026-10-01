@@ -647,7 +647,7 @@
     // without it the bot cannot build — but a mode may filter it out.
     BitBot.prototype.candidates = function (board, info) {
         var out = [], i, r, c;
-        var base = bit.maskState(board.grid, board.blocks, W, board.height);
+        var base = bit.maskState(board.grid, board.blocks, W, board.height, board.motion);
 
         out.push({ kind: 'hold', swap: null, board: board, masks: base,
                    moveFrames: 0, resolved: null });
@@ -660,7 +660,7 @@
         if (this.canRaise() && board.rise) {
             var risen = board.clone().rise(board.incoming);
             risen.incoming = false;
-            var rst = bit.maskState(risen.grid, risen.blocks, W, risen.height);
+            var rst = bit.maskState(risen.grid, risen.blocks, W, risen.height, risen.motion);
             var rres = bit.resolveFromMasks(rst, true);
             var rmasks = rres.settled || rst;
             var rres2 = summarise(rres);
@@ -869,22 +869,6 @@
             speed = Math.min(speed + 1, 99);
         }
         return frames;
-    }
-
-    // THE TWO COLOURS A SWAP WOULD EXCHANGE, as one comparable value.
-    //
-    // Read exactly the way swapMasks reads them -- colour[a * stride + c] -- because
-    // the question is whether THAT function's work got done. 0 for an empty cell, so
-    // an empty-to-full swap is visible too. See `_stuckSwap`.
-    function pairAt(masks, r, c) {
-        if (!masks || !masks.colour) return null;
-        var stride = (masks.W || W) + 2, b = 1 << (r - 1), o = c + 1, a;
-        var left = 0, right = 0;
-        for (a = 1; a <= (masks.N || 12); a++) {
-            if (masks.colour[a * stride + c] & b) left = a;
-            if (masks.colour[a * stride + o] & b) right = a;
-        }
-        return left * 16 + right;
     }
 
     // THE TALLEST SLAB ON THE BOARD, IN ROWS. A slab's mask carries the same rows in
@@ -1901,7 +1885,7 @@
         var board = this._snapshot();
         var info = this.info(board);
         var pool = this.candidates(board, info);
-        var base = pool.length ? pool[0].masks : bit.maskState(board.grid, board.blocks, W, board.height);
+        var base = pool.length ? pool[0].masks : bit.maskState(board.grid, board.blocks, W, board.height, board.motion);
         this._lastInfo = info; this._lastPool = pool; this._lastBase = base;
         this._incomingRow = board.incoming;
         this._lastOptions = null; this._lastDeadline = 0;
@@ -2210,50 +2194,6 @@
         }
         this._lastBreakOnPool = breakOnPool;
         var here = signature(base);
-        // DID THE LAST SWAP ACTUALLY HAPPEN?
-        //
-        // Both loop rules test the MODELLED landed board, and both exempt a move that
-        // cashes: this file's candidate filter skips a cashing candidate outright, and
-        // the signature test cannot see one because the model of the swap contains the
-        // clear, so the landing looks like somewhere new. When the model says a swap
-        // clears and the ENGINE does not do it, every rule meant to stop a loop steps
-        // aside and the bot replays that pair until the rise kills it.
-        //
-        // 103 rand2 v rand3 played swap 4-3 twelve times between frames 27,153 and
-        // 27,237, alternating flatten and the weights, the board signature IDENTICAL
-        // before and after every one of them, 33 candidates each time, both filters
-        // refusing nothing -- dead 120 frames later at ten tall. The engine will not
-        // swap a panel that is not in `normal`, and inside a freeze the bot decides
-        // every seven frames on a board mid-cascade, so the model and the engine
-        // disagree about that one pair for as long as the cascade lasts.
-        //
-        // PROGRESS IS OBSERVABLE, NOT MODELLED: the board says which it was. `_seen`
-        // holds the boards this bot has decided ON, newest last, and it is pushed
-        // below -- so its last entry is the previous decision's board, and an
-        // unchanged one means the swap between them moved nothing. Computed here,
-        // before the push, and read by both rules.
-        //
-        // ASKED OF THE TWO CELLS, NOT OF THE WHOLE BOARD. An unchanged signature finds
-        // this on a settled board and misses it completely inside a freeze, which is
-        // where it happens: the bot decides every five to seven frames mid-cascade, so
-        // panels are landing elsewhere and the signature moves while the swap still is
-        // not being done. 103 rand2 v rand3 played `4-3` eight times running from frame
-        // 13,553 to 13,604 on heights that never changed, every signature new, and died
-        // at 13,836.
-        //
-        // The exact question is whether swapMasks' work got done, so it is asked of
-        // what swapMasks reads: the two colours at (r, c) and (r, c + 1). If they are
-        // still the same pair in the same order, that swap did not happen.
-        var stuck = null;
-        if (this._lastSwap) {
-            if (this._seen.length && this._seen[this._seen.length - 1] === here) {
-                stuck = this._lastSwap;
-            } else if (this._lastPair !== null && this._lastPair !== undefined &&
-                       pairAt(base, this._lastSwap[0], this._lastSwap[1]) === this._lastPair) {
-                stuck = this._lastSwap;
-            }
-        }
-        this._stuckSwap = stuck;
         var allowed = [];
         for (var i = 0; i < pool.length; i++) {
             // HOLD IS NOT AN OPTION WHILE THE CLOCK IS BURNING.
@@ -2430,15 +2370,12 @@
             //
             // Narrowing, so it stands aside rather than freeze. It never had to
             // here: every one of those decisions had twenty other candidates.
-            // AND THE CASH EXEMPTION HOLDS ONLY WHILE THE CASH HAPPENS -- see
-            // `_stuckSwap` above. A clear the engine did not carry out is not progress,
-            // so it does not earn the exemption.
             var ls = this._lastSwap;
             if (ls) {
                 var notSame = [];
                 for (i = 0; i < allowed.length; i++) {
                     var ac = allowed[i];
-                    var cashesA = !this._stuckSwap && ac.resolved &&
+                    var cashesA = ac.resolved &&
                                   (ac.resolved.total > 0 || ac.resolved.brokeGarbage);
                     if (!cashesA && ac.kind === 'swap' && ac.swap &&
                         ac.swap[0] === ls[0] && ac.swap[1] === ls[1]) {
@@ -2698,15 +2635,9 @@
         //
         // The candidate loop already refuses these, but it filters `allowed` and
         // the attack path reads `pool`, so it walked straight past the guard.
-        // AND A SWAP THE ENGINE DID NOT CARRY OUT IS A RETURN, whatever the model says
-        // its landing looks like -- see `_stuckSwap` in candidates(). This is the test
-        // every route that reads `pool` goes through, flatten and levelFirst among
-        // them, and the loop it was read from alternated flatten with the weights.
         var self = this;
         function returnsToSeen(mv) {
             if (!self.refuseReturn || !mv) return false;
-            var st = self._stuckSwap;
-            if (st && mv[0] === st[0] && mv[1] === st[1]) return true;
             for (var q = 0; q < pool.length; q++) {
                 var pc = pool[q];
                 if (pc.kind === 'swap' && pc.swap[0] === mv[0] &&
@@ -3974,11 +3905,6 @@
     BitBot.prototype.decide = function () {
         var d = this._decideGated();
         this._lastSwap = (d && d.kind === 'swap' && d.move) ? [d.move[0], d.move[1]] : null;
-        // AND THE PAIR IT WAS SUPPOSED TO EXCHANGE, off the board the decision was made
-        // on, so the next decision can ask whether the engine did it. See `_stuckSwap`.
-        this._lastPair = (this._lastSwap && this._lastBase)
-                       ? pairAt(this._lastBase, this._lastSwap[0], this._lastSwap[1])
-                       : null;
         // HOW FAR BACK TO REMEMBER, DERIVED.
         //
         // One move of memory can only push a loop out by one step: excluding the
