@@ -871,6 +871,22 @@
         return frames;
     }
 
+    // THE TWO COLOURS A SWAP WOULD EXCHANGE, as one comparable value.
+    //
+    // Read exactly the way swapMasks reads them -- colour[a * stride + c] -- because
+    // the question is whether THAT function's work got done. 0 for an empty cell, so
+    // an empty-to-full swap is visible too. See `_stuckSwap`.
+    function pairAt(masks, r, c) {
+        if (!masks || !masks.colour) return null;
+        var stride = (masks.W || W) + 2, b = 1 << (r - 1), o = c + 1, a;
+        var left = 0, right = 0;
+        for (a = 1; a <= (masks.N || 12); a++) {
+            if (masks.colour[a * stride + c] & b) left = a;
+            if (masks.colour[a * stride + o] & b) right = a;
+        }
+        return left * 16 + right;
+    }
+
     // THE TALLEST SLAB ON THE BOARD, IN ROWS. A slab's mask carries the same rows in
     // every column it spans, so its height is the popcount of any one of them.
     function slabRows(masks) {
@@ -2216,9 +2232,28 @@
         // below -- so its last entry is the previous decision's board, and an
         // unchanged one means the swap between them moved nothing. Computed here,
         // before the push, and read by both rules.
-        this._stuckSwap = (this._seen.length &&
-                           this._seen[this._seen.length - 1] === here)
-                        ? this._lastSwap : null;
+        //
+        // ASKED OF THE TWO CELLS, NOT OF THE WHOLE BOARD. An unchanged signature finds
+        // this on a settled board and misses it completely inside a freeze, which is
+        // where it happens: the bot decides every five to seven frames mid-cascade, so
+        // panels are landing elsewhere and the signature moves while the swap still is
+        // not being done. 103 rand2 v rand3 played `4-3` eight times running from frame
+        // 13,553 to 13,604 on heights that never changed, every signature new, and died
+        // at 13,836.
+        //
+        // The exact question is whether swapMasks' work got done, so it is asked of
+        // what swapMasks reads: the two colours at (r, c) and (r, c + 1). If they are
+        // still the same pair in the same order, that swap did not happen.
+        var stuck = null;
+        if (this._lastSwap) {
+            if (this._seen.length && this._seen[this._seen.length - 1] === here) {
+                stuck = this._lastSwap;
+            } else if (this._lastPair !== null && this._lastPair !== undefined &&
+                       pairAt(base, this._lastSwap[0], this._lastSwap[1]) === this._lastPair) {
+                stuck = this._lastSwap;
+            }
+        }
+        this._stuckSwap = stuck;
         var allowed = [];
         for (var i = 0; i < pool.length; i++) {
             // HOLD IS NOT AN OPTION WHILE THE CLOCK IS BURNING.
@@ -3919,6 +3954,11 @@
     BitBot.prototype.decide = function () {
         var d = this._decideGated();
         this._lastSwap = (d && d.kind === 'swap' && d.move) ? [d.move[0], d.move[1]] : null;
+        // AND THE PAIR IT WAS SUPPOSED TO EXCHANGE, off the board the decision was made
+        // on, so the next decision can ask whether the engine did it. See `_stuckSwap`.
+        this._lastPair = (this._lastSwap && this._lastBase)
+                       ? pairAt(this._lastBase, this._lastSwap[0], this._lastSwap[1])
+                       : null;
         // HOW FAR BACK TO REMEMBER, DERIVED.
         //
         // One move of memory can only push a loop out by one step: excluding the
