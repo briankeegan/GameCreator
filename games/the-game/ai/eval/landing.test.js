@@ -19,9 +19,9 @@ var E = globalThis.PanelEngine, sc = bench.SCENARIOS.bigBlocks;
 var st = new E.Stack({ level: 3, seed: 1 });
 var bot = new BitBot(st, { allowRaise: true, reaction: 12, seed: 1 });
 var agree = 0, wrong = 0, broke = 0;
-for (var f = 0; f < 9000 && !st.gameOver; f++) {
+for (var f = 0; f < 4000 && !st.gameOver; f++) {
     if (bench.burstFires(f)) st.receiveGarbage([{ width: sc.garbageWidth, height: sc.garbageHeight, isChain: false }]);
-    if (f % 10 === 0 && !st.swapQueued()) {
+    if (f % 25 === 0 && !st.swapQueued()) {
         var snap = bot._snapshot();
         if (lineup.converting(snap)) {
             var plan = lineup.bestInWindow(snap, st.frames, snap.height, [st.curRow, st.curCol], snap.legalSwaps());

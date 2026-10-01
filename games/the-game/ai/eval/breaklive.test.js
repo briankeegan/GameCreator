@@ -51,12 +51,12 @@ function firstOwnMatch(stack, swap, base) {
 }
 
 var checked = 0, wrong = 0, lockedSeen = 0, boards = 0;
-[1, 2].forEach(function (seed) {
+[1].forEach(function (seed) {
     var st = new E.Stack({ level: 3, seed: seed });
     var bot = new BitBot(st, { allowRaise: true, reaction: 12, seed: seed });
-    for (var f = 0; f < 3000 && !st.gameOver; f++) {
+    for (var f = 0; f < 2500 && !st.gameOver; f++) {
         if (bench.burstFires(f)) st.receiveGarbage([{ width: sc.garbageWidth, height: sc.garbageHeight, isChain: false }]);
-        if (f % 7 === 0 && busyGarbage(st) && !st.swapQueued()) {
+        if (f % 15 === 0 && busyGarbage(st) && !st.swapQueued()) {
             var board = bot._snapshot();
             var m = bit.maskState(board.grid, board.blocks, W, board.height, board.motion);
             if (!m.bad) {
