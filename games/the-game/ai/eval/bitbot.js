@@ -2665,23 +2665,26 @@
                                                      info.framesPerRow || 0));
                         break;
                     }
-                    // AND THE RIGHT TIME IS WHEN THE BOARD CANNOT AFFORD TO WAIT.
+                    // THE ONLY REASON TO INTERRUPT A PLAN IS IMMINENT DEATH, AND THEN
+                    // THE ANSWER IS LIFE.
                     //
-                    // A break is not worth taking at any price -- what it is worth is
-                    // the survival it buys, which is why it has a right time rather
-                    // than a standing priority. So the test is the clock, the same one
-                    // every other rule here runs on: if the plan in flight still needs
-                    // more frames than the board has left, it will not arrive, and the
-                    // break that is reachable now is what there is time for.
+                    // Three other conditions were measured on seed 101 rand2 v rand3
+                    // and all three were worse than never interrupting at 28,514
+                    // frames: on sight, 22,950 -- the bot cashes every small break the
+                    // moment it appears and finishes no setup. Cells handed back
+                    // against the plan's remaining cost: the wrong currency, since what
+                    // a break is worth is the survival it buys and not its size. The
+                    // plan not arriving inside the deadline, 21,662 -- that fires on a
+                    // healthy board whenever a plan is long, which is not an emergency.
                     //
-                    // digLeft is Infinity with no plan in flight, so the route behaves
-                    // as it always did when there is nothing to weigh against.
-                    //
-                    // Interrupting on cell counts was the wrong currency and was
-                    // measured as such: taking every break on sight cost seed 101
-                    // rand2 v rand3 5,500 frames, 28,514 down to 22,950, because the
-                    // bot cashed small breaks forever and finished no setup.
-                    if (rok && !rdead && !returnsToSeen(rm) && digLeft > deadline) {
+                    // DEFEND is the engine's own answer to "is death imminent": it opens
+                    // when the deadline is inside the escape plus a reaction, meaning the
+                    // board cannot get out in the frames it has. That is the one moment
+                    // a plan is worth abandoning, and then what it is abandoned for is
+                    // the thing that hands ceiling back. Everywhere else the plan is
+                    // played out, because a plan interrupted is a plan wasted.
+                    if (rok && !rdead && !returnsToSeen(rm) &&
+                        (digLeft === Infinity || mode.name === 'DEFEND')) {
                         this._plan = null;
                         this._dig = reach.swaps.length > 1
                                   ? { moves: reach.swaps.slice(1), frames: reach.duration || 0,
