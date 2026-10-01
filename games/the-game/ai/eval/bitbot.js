@@ -3242,9 +3242,30 @@
         if (!this.allowRaise || info.toppedOut) { this._opening = false; return null; }
         // Every queued cell lands on this board, so it counts against the
         // ceiling exactly like one already there.
+        // THE ROOM A RAISE MUST LEAVE, IN ROWS, AND raiseFits ALREADY HAS THE
+        // ARITHMETIC: raiseRoom() > 1 + rows is tall + 1 + rows < H, which is the
+        // tallest column after the raise plus the slab that lands still fitting under
+        // the ceiling. DEATH COMES AT THE TALLEST COLUMN, so that is the quantity --
+        // a rule comparing MEAN material against room let a board at mat 5 and high 10
+        // raise, because the mean looked thin while the tower was already at the
+        // ceiling. Material is the REASON to raise, never the bound on it.
+        //
+        // What it reserved was only the queue. The queue is what has been sent, not
+        // what is coming, so three sources and the largest wins:
+        //
+        //   queued      every cell already on its way, framesToDeath's own rule
+        //   seen        the biggest slab this opponent has actually landed, observed
+        //   own aim     what THIS bot's aim would send, from the engine's garbage
+        //               table -- the opponent runs the same engine at the same level,
+        //               so what the bot can send is a fair estimate of what it will
+        //               receive, and it is non-zero from frame one, before any attack
+        //               has landed to be observed
         var rows = Math.ceil((info.incoming || 0) / W);
         this._wantRows = rows;
-        var fits = this.raiseFits(rows);
+        var goal = this.aim();
+        var mine = Math.ceil(cellsSent(PanelEngine(), 'chain', 3, goal.links) / W);
+        var reserve = Math.max(rows, this._maxSlab || 0, mine);
+        var fits = this.raiseFits(reserve);
         // THE OPENING ENDS WHEN THE GAME STARTS HAPPENING TO THE BOARD: garbage
         // on the way, or no room for the row. It does not end because a raise is
         // momentarily unavailable -- update() holds the button for twenty frames,
@@ -3323,48 +3344,35 @@
         // under a slab must still be able to raise, and with a six-row slab reserved
         // the room alone would refuse it forever.
         if (materialRows(base) >= Math.max(WORKING_ROWS, room)) return null;
-        // AND THE OPENING IS NOT EXEMPT FROM IT. THAT WAS THE HOLE.
+        // THE MEAN-MATERIAL RULE IS GONE: IT MEASURED THE WRONG QUANTITY.
         //
-        // The exemption is inherited from when this read `materialRows >= WORKING_ROWS`
-        // -- a flat floor of four, which an empty board has to be allowed past, so the
-        // opening skipped it. A COMPARISON NEEDS NO EXEMPTION: an empty board has no
-        // material and twelve rows of room, so `material < room` already says raise.
-        // Exempting the opening from it meant nothing bounded the opening at all, and
-        // the opening only ends when garbage arrives or the raise stops fitting.
+        // It read `materialRows >= H - high - reserve`, and went through four shapes
+        // today -- stop at four rows, stop at the room, stop at room minus the queue,
+        // and exempt the opening -- each of which moved the death to another board or
+        // the other side of the same one. All four compared MEAN material against room
+        // when the board dies at its TALLEST column: at mat 5 with high 10 the mean
+        // looks thin and the tower is already at the ceiling, and the rule said raise.
         //
-        // Seed 103 rand3 raised five times in its first four seconds -- 4,5,5,5,6,5 to
-        // 9,10,10,10,11,10 -- with zero garbage on the board and nothing queued, and
-        // was dead at 1,100 frames having broken 3 cells. It filled its own board.
+        // raiseFits above is the same test done on the right quantity, and it was
+        // always there. Material's role is to say when a raise is NEEDED -- below the
+        // working floor a chain has nothing to stand in -- not how much room it may
+        // spend.
+        // AND THE READINESS GATE IS GONE. ROOM IS WHAT IT WAS STANDING IN FOR.
+        //
+        // It refused a raise unless the resting board could fire something. The board
+        // it was written for is one filled to a row of headroom -- raised to
+        // 10,11,6,6,9,9 by frame 264, dead at 1,172 -- and that is a FILLING failure,
+        // which the material-against-room rule above now refuses directly, with the
+        // slab this opponent sends reserved out of the room first.
+        //
+        // What it did instead was refuse the cure: a board with nothing to fire usually
+        // has nothing to fire WITH, and raising is the only thing that makes panels.
+        // Measured on the side that was dying: 577 raises refused by this test in one
+        // game, more than any other reason, while it starved.
+        //
+        // Exempting it below the floor was not enough -- at four or five rows with
+        // nothing to fire, raising is still the answer.
 
-        // AND THE RAISE FACES THE SAVE INVARIANT LIKE EVERY OTHER MOVE.
-        //
-        // The exit gate returns early on anything that is not a swap, so the raise
-        // is the one path that changes the board without having to leave something
-        // fireable. It filled a board to one row of headroom and handed the rest of
-        // the game a position with nothing to knock: seed 101 raised to columns
-        // 10,11,6,6,9,9 by frame 264 and was dead at 1,172.
-        //
-        // This is the readiness condition as it was always meant to be, and it does
-        // not defeat itself the way the old one did. A raise shifts the board up
-        // whole and adds a row beneath, so a clear that exists before the row still
-        // exists after it -- this refuses only the board that had nothing to fire
-        // in the first place, which is exactly the board that must not be filled.
-        // AND BELOW THE FLOOR THIS GATE IS SELF-DEFEATING, so it does not apply there.
-        //
-        // A board under WORKING_ROWS has nothing to fire BECAUSE it has no panels, and
-        // a raise is what gives it panels -- so refusing the raise for want of a clear
-        // refuses the cure on the grounds that the patient is sick. Seed 103 rand1 sat
-        // on 2.17 rows under 28 garbage cells with nothing to fire and nothing to fire
-        // WITH.
-        //
-        // The failure this gate was written for is a different board: raised to
-        // 10,11,6,6,9,9 by frame 264 and dead at 1,172 -- a board filled to one row of
-        // headroom, which is plenty of material and no room. That is now refused by the
-        // material-against-room rule above, which is the honest statement of it, so
-        // the gate is only needed from the floor upwards.
-        if (materialRows(base) >= WORKING_ROWS &&
-            !this.hasFireable(this.restingBoard(base), info,
-                              [info.cursorRow, info.cursorCol])) return null;
         return this._opening ? 'opening' : 'material';
     };
 
