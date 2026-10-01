@@ -1612,15 +1612,20 @@
             // route LANDS on rather than asking whether that board can fire at
             // all: a bare three holds 0, a combo 4 holds 60 topped out, a chain 4
             // holds 94, and a boolean scores the three of them the same.
-            // IS THERE A SLAB TO BE READY FOR -- on the board, or queued against
-            // it. Preparation has to happen BEFORE the garbage lands, so incoming
-            // counts: framesToDeath already treats the queue as ceiling gone.
-            prepare: ((info.incoming || 0) > 0) || (function () {
-                var b = info._base;
-                if (!b) return false;
-                for (var c = 1; c <= W; c++) if (b.garb[c]) return true;
-                return false;
-            }()),
+            // PREPARATION IS NOT A REACTION. THE NEXT SLAB IS ALWAYS COMING.
+            //
+            // This was `incoming > 0 || garbage already on the board`, so a healthy
+            // board did no setup for a slab at all -- and then the slab landed on a
+            // board that had not prepared for it, and the bot started digging. That is
+            // the whole shape of the deaths: not a search that cannot find a break, but
+            // a board that was never built to have one. Measured on seed 101 rand2 v
+            // rand3, the search HAS a break on the option list on 1,717 of 3,775 buried
+            // decisions and never misses a one-swap break, and the board still dies.
+            //
+            // You dig for setup. Digging to survive is what it looks like when the
+            // setup was not done, and in a duel there is no state where preparing is
+            // wasted, because the opponent is always about to send.
+            prepare: true,
             stopPrice: function (r) {
                 var isChain = r.chain >= 2;
                 return BF.stopTimeOf(PanelEngine(), isChain,
