@@ -2117,6 +2117,31 @@
         }
         this._lastBreakOnPool = breakOnPool;
         var here = signature(base);
+        // DID THE LAST SWAP ACTUALLY HAPPEN?
+        //
+        // Both loop rules test the MODELLED landed board, and both exempt a move that
+        // cashes: this file's candidate filter skips a cashing candidate outright, and
+        // the signature test cannot see one because the model of the swap contains the
+        // clear, so the landing looks like somewhere new. When the model says a swap
+        // clears and the ENGINE does not do it, every rule meant to stop a loop steps
+        // aside and the bot replays that pair until the rise kills it.
+        //
+        // 103 rand2 v rand3 played swap 4-3 twelve times between frames 27,153 and
+        // 27,237, alternating flatten and the weights, the board signature IDENTICAL
+        // before and after every one of them, 33 candidates each time, both filters
+        // refusing nothing -- dead 120 frames later at ten tall. The engine will not
+        // swap a panel that is not in `normal`, and inside a freeze the bot decides
+        // every seven frames on a board mid-cascade, so the model and the engine
+        // disagree about that one pair for as long as the cascade lasts.
+        //
+        // PROGRESS IS OBSERVABLE, NOT MODELLED: the board says which it was. `_seen`
+        // holds the boards this bot has decided ON, newest last, and it is pushed
+        // below -- so its last entry is the previous decision's board, and an
+        // unchanged one means the swap between them moved nothing. Computed here,
+        // before the push, and read by both rules.
+        this._stuckSwap = (this._seen.length &&
+                           this._seen[this._seen.length - 1] === here)
+                        ? this._lastSwap : null;
         var allowed = [];
         for (var i = 0; i < pool.length; i++) {
             // HOLD IS NOT AN OPTION WHILE THE CLOCK IS BURNING.
@@ -2293,12 +2318,15 @@
             //
             // Narrowing, so it stands aside rather than freeze. It never had to
             // here: every one of those decisions had twenty other candidates.
+            // AND THE CASH EXEMPTION HOLDS ONLY WHILE THE CASH HAPPENS -- see
+            // `_stuckSwap` above. A clear the engine did not carry out is not progress,
+            // so it does not earn the exemption.
             var ls = this._lastSwap;
             if (ls) {
                 var notSame = [];
                 for (i = 0; i < allowed.length; i++) {
                     var ac = allowed[i];
-                    var cashesA = ac.resolved &&
+                    var cashesA = !this._stuckSwap && ac.resolved &&
                                   (ac.resolved.total > 0 || ac.resolved.brokeGarbage);
                     if (!cashesA && ac.kind === 'swap' && ac.swap &&
                         ac.swap[0] === ls[0] && ac.swap[1] === ls[1]) {
@@ -2558,9 +2586,15 @@
         //
         // The candidate loop already refuses these, but it filters `allowed` and
         // the attack path reads `pool`, so it walked straight past the guard.
+        // AND A SWAP THE ENGINE DID NOT CARRY OUT IS A RETURN, whatever the model says
+        // its landing looks like -- see `_stuckSwap` in candidates(). This is the test
+        // every route that reads `pool` goes through, flatten and levelFirst among
+        // them, and the loop it was read from alternated flatten with the weights.
         var self = this;
         function returnsToSeen(mv) {
             if (!self.refuseReturn || !mv) return false;
+            var st = self._stuckSwap;
+            if (st && mv[0] === st[0] && mv[1] === st[1]) return true;
             for (var q = 0; q < pool.length; q++) {
                 var pc = pool[q];
                 if (pc.kind === 'swap' && pc.swap[0] === mv[0] &&
