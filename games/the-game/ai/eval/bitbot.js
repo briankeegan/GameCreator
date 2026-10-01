@@ -1981,7 +1981,24 @@
             // Seed 104 held eight decisions running at tallest 8 with 202 frames
             // in hand and no clear anywhere on the board. By the time it acted the
             // deadline was 47, then 1.
-            if (pool[i].kind === 'hold' && (mode.name !== 'BUILD' || !this.inFlight())) continue;
+            // AND WAITING OUT A CASCADE IS NOT A REASON EITHER: THE FREEZE IS FREE
+            // SETUP TIME.
+            //
+            // This kept the hold while panels were in flight, on the grounds that the
+            // cascade is doing the work. But while it resolves the engine holds
+            // riseLock, so THE FLOOR DOES NOT MOVE -- a swap made in that window costs
+            // no rise at all. It is the cheapest setup time in the game and holding
+            // spends it on nothing. Measured on seed 103 rand1: 81 holds in a game, 78
+            // of them with a cascade in flight, against 2,256 moves.
+            //
+            // The one real reason to wait is timing a swap so a falling panel lands
+            // into the next link, and that is a question about WHICH swap, not about
+            // holding -- nothing here encoded it, the hold simply stayed in the pool
+            // and won whenever nothing else scored higher.
+            //
+            // The lost-position fallback at the end still returns a hold when nothing
+            // survives, so the bot can never be left with no answer.
+            if (pool[i].kind === 'hold') continue;
             // A PAYLESS CLEAR IS NOT PROGRESS, IT IS UNBUILDING.
             //
             // A bare three sends no garbage and earns no stop time -- the engine's
