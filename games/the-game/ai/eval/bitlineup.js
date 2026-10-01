@@ -1,18 +1,22 @@
 // LINING UP WITH WHAT HAS JUST BEEN REVEALED.
 //
-// A slab breaks. Its bottom row takes REAL COLOURS at the match and keeps them
-// through the matched timer, then hovers and drops. Those colours are on the
-// board — nothing is predicted — and until they land there is time to move what
-// is underneath and beside them, so that the landing completes a chain, or
-// breaks the slab above, instead of just filling the hole.
+// A slab breaks. Its bottom row takes REAL COLOURS and then hovers for a while
+// before it drops. Those colours are on the board — nothing is predicted — and
+// for as long as the panels are in the air there is time to move what is
+// underneath and beside them, so that the landing completes a chain instead of
+// just filling the hole.
 //
-// IT IS BIT LOGIC, NOT A RUN. The window is the timers already on the board:
-// the converting row's matched timer, or the hover left on panels already out
-// of a slab. The outcome is the board in masks with the swap made and the row
-// turned into the panels it is about to be, handed to resolveFromMasks, which
-// drops them and the slab above and resolves what they land into. A swap costs
-// travel.cost() to reach; one that cannot be reached in time is never
-// considered. landing.test.js holds the outcome to the engine.
+// THE WINDOW IS THE WHOLE POINT. It is measured, not assumed: the planner runs
+// the position forward until nothing is in flight, and that many frames is what
+// there is to spend. A swap costs travel.cost() to reach plus the frames it
+// takes to settle, so most windows buy one swap near the cursor and a wide one
+// buys two. A swap that cannot be reached in time is never considered.
+//
+// WHY IT PAYS. On 120 positions caught the moment a slab's colours appeared,
+// doing nothing left 91 with no chain at all. One reachable swap turned 18 of
+// them into something better, including one that went from nothing to a
+// 7-chain. That is the information arriving being used while it is still worth
+// something.
 //
 // A panel cannot be pulled out from under a hovering one — canSwap says so, and
 // that is precisely the situation here, so every candidate is asked rather than
@@ -21,11 +25,11 @@
 // bitbot reads this through revealPick, which plays the answer as `lineup`.
 (function (root, factory) {
     if (typeof module === 'object' && module.exports) {
-        module.exports = factory(require('./travel.js'), require('./bitmatch.js'));
+        module.exports = factory(require('./bitframes.js'), require('./travel.js'));
     } else {
-        root.BitLineup = factory(root.PanelEval.travel, root.BitMatch);
+        root.BitLineup = factory(root.BitFrames, root.PanelEval.travel);
     }
-}(typeof globalThis !== 'undefined' ? globalThis : this, function (travel, bit) {
+}(typeof globalThis !== 'undefined' ? globalThis : this, function (BF, travel) {
     'use strict';
 
     var W = 6;
@@ -45,38 +49,43 @@
         return { flying: flying, converted: converted, open: flying > 0 && converted > 0 };
     }
 
-    // HOW LONG THERE IS TO MOVE, off the timers already on the board. The row a break
-    // is converting turns to panels when its matched timer runs out; panels already out
-    // of a slab drop when their hover runs out. The shortest of those is the window:
-    // a swap made inside it is down before anything lands. Nothing is run.
-    function windowFrames(snapshot, frames, H) {
-        var conv = converting(snapshot);
-        if (conv) return conv.timer;
-        var t = Infinity;
-        for (var r = 1; r <= H; r++) {
-            if (!snapshot.motion || !snapshot.motion[r]) continue;
-            for (var c = 1; c <= W; c++) {
-                var m = snapshot.motion[r][c];
-                if (m && m.fellFromGarbage && m.state === 'hovering' && (m.timer || 0) < t) t = m.timer || 0;
-            }
+    // How many frames until everything has landed. Run a throwaway copy
+    // forward; the board is what it is, so this is measurement, not a guess.
+    function windowFrames(snapshot, frames, H, cap) {
+        var probe = BF.build(snapshot, frames, H), n = 0, limit = cap || 600;
+        while (n < limit) {
+            BF.step(probe);
+            n++;
+            if (probe.brokeGarbage) break;     // past here the colours are not ours to know
+            if (!BF.anyBusy(probe)) break;
         }
-        return t === Infinity ? 0 : t;
+        return n;
     }
 
     function score(chain, total) { return chain * 1000 + total; }
 
-    // WHAT THE LANDING DOES, in masks: the board off the snapshot, the swap if there is
-    // one, the converting row turned into the panels it is about to be, and then
-    // resolveFromMasks -- which drops the panels and the slab above them and resolves
-    // whatever they land into, a match touching a live slab being a break. Same shape
-    // of answer as before: scope, chain, total. null when the swap cannot be made.
-    function play(snapshot, frames, H, swap) {
-        var st = bit.maskState(snapshot.grid, snapshot.blocks, W, H, snapshot.motion);
-        if (st.bad) return null;
-        if (swap && !bit.swapMasks(st, swap[0], swap[1])) return null;
-        var conv = converting(snapshot);
-        var r = bit.resolveFromMasks(conv ? landed(st, conv.cells) : st, false);
-        return { scope: r.scope, chain: r.chain, total: r.total };
+    // Run a position to rest, optionally playing one swap once `at` frames have
+    // passed. Returns the deepest chain reached, not the counter at the end —
+    // the engine zeroes it when the chain finishes.
+    function play(snapshot, frames, H, swap, at, cap) {
+        var st = BF.build(snapshot, frames, H), peak = 0, n = 0, limit = cap || 900, played = !swap;
+        while (n < limit) {
+            if (!played && n >= at) {
+                if (!BF.canSwap(st, swap[0], swap[1])) return null;   // not legal by then
+                BF.doSwap(st, swap[0], swap[1]);
+                played = true;
+            }
+            BF.step(st);
+            n++;
+            if (st.chainCounter > peak) peak = st.chainCounter;
+            if (st.brokeGarbage) {
+                return { scope: 'garbage-broke', chain: Math.max(peak, st.rounds ? 1 : 0),
+                         total: st.panelsCleared, frames: n };
+            }
+            if (played && !BF.anyBusy(st)) break;
+        }
+        return { scope: 'ok', chain: st.rounds ? Math.max(peak, 1) : 0,
+                 total: st.panelsCleared, frames: n };
     }
 
     // THE PLAN: every swap reachable before the board settles, scored on what
@@ -94,10 +103,10 @@
             return spendLeast ? -total * 1000 + chain : score(chain, total);
         }
         var state = revealed(snapshot, H);
-        if (!state.open && !converting(snapshot)) return null;
+        if (!state.open) return null;
 
         var window = api.windowFrames(snapshot, frames, H);
-        var doNothing = api.play(snapshot, frames, H, null);
+        var doNothing = api.play(snapshot, frames, H, null, 0);
         var baseKnown = doNothing && doNothing.scope === 'ok';
         var best = { swap: null, cost: 0, chain: baseKnown ? doNothing.chain : 0,
                      total: baseKnown ? doNothing.total : 0 };
@@ -116,7 +125,7 @@
             var cost = travel.cost(cursor[0], cursor[1], sw[0], sw[1]);
             if (cost > window) continue;                 // cannot get there in time
             reachable++;
-            var out = api.play(snapshot, frames, H, sw);
+            var out = api.play(snapshot, frames, H, sw, cost);
             if (!out) continue;                          // the swap was refused by then
             // A SECOND SLAB BREAKING MID-RUN IS NOT A SCORE. The run stops
             // there with whatever had finished popping, which is usually
@@ -208,60 +217,10 @@
         return { plans: plans, reveals: plans.length };
     }
 
-    // THE ROW A BREAK IS CONVERTING, off the snapshot. convertGarbagePanels deals its
-    // colours at the match, while the cells are still garbage, so they are on the board
-    // for the whole of the matched timer: [row, col, colour], and the frames left.
-    function converting(snapshot) {
-        var cells = [], timer = Infinity, m, r, c;
-        for (r = 1; snapshot.motion && r < snapshot.motion.length; r++) {
-            if (!snapshot.motion[r]) continue;
-            for (c = 1; c <= W; c++) {
-                m = snapshot.motion[r][c];
-                if (!m || !m.isGarbage || m.state !== 'matched' || !(m.color > 0) || m.color === 9) continue;
-                cells.push([r, c, m.color]);
-                if ((m.timer || 0) < timer) timer = m.timer || 0;
-            }
-        }
-        return cells.length ? { cells: cells, timer: timer } : null;
-    }
-
-    // THE BOARD WHEN THAT ROW HAS BECOME PANELS, in masks. Its cells leave the slab and
-    // the garbage and take their colours; the slab they came from is live again, since
-    // updateMatched returns its other rows to 'normal' on the same frame. Handed to
-    // resolveFromMasks, the panels drop, the slab drops with them, and whatever they
-    // land into matches -- a match touching the slab is a break.
-    function landed(st, conv) {
-        var W2 = st.W, stride = W2 + 2, N = st.N, i, c;
-        for (i = 0; i < conv.length; i++) if (conv[i][2] > N) N = conv[i][2];
-        var out = bit.copyState(st);
-        if (N > out.N) {
-            var col = new Int32Array((N + 1) * stride);
-            col.set(out.colour);
-            out.colour = col;
-            out.N = N;
-        }
-        for (i = 0; i < conv.length; i++) {
-            var r = conv[i][0], cc = conv[i][1], b = 1 << (r - 1);
-            out.inert[cc] &= ~b;
-            out.garb[cc] &= ~b;
-            out.colour[conv[i][2] * stride + cc] |= b;
-            for (var k = 0; k < out.slabs.length; k++) {
-                if (out.slabs[k][cc] & b) { out.slabs[k][cc] &= ~b; out.slabLocked[k] = false; }
-            }
-        }
-        for (c = 0; c < out.slabs.length; c++) {
-            var any = false;
-            for (i = 1; i <= W2; i++) if (out.slabs[c][i]) { any = true; break; }
-            if (!any) { out.slabs.splice(c, 1); out.slabLocked.splice(c, 1); c--; }
-        }
-        return out;
-    }
-
     // Calls go through this object so a test can replace one step with a
     // broken one and prove the check notices.
     var api = { bestInWindow: bestInWindow, revealed: revealed,
                 windowFrames: windowFrames, play: play,
-                planAsTheyAppear: planAsTheyAppear,
-                converting: converting, landed: landed };
+                planAsTheyAppear: planAsTheyAppear };
     return api;
 }));
