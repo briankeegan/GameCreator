@@ -1520,7 +1520,29 @@
             var digs = (o.matNow !== null && o.matNow !== undefined &&
                         o.matNow < WORKING_ROWS)
                      ? Math.max(0, o.digGain || 0) * perPanel : 0;
-            var bought = o.total * perPanel + holds + (o.garbage || 0) * perCell
+            // A PANEL REMOVED IS A PANEL OF LIFE ONLY WHILE THE STACK IS THE PROBLEM.
+            //
+            // This paid perPanel for every panel cleared, unconditionally. The premise
+            // is that removing a panel delays the top-out by framesPerRow/W, which is
+            // true when the board is near the ceiling and false when it is half empty:
+            // at six rows of twelve nothing is being postponed, and the credit is
+            // frames the board was never going to lose.
+            //
+            // Seed 103 rand3 was perfectly flat at 6,6,6,6,6,6 with eleven garbage
+            // cells at frame 22,700 -- an ideal board -- and one decision later it was
+            // 7,7,7,4,4,7, a three-row cliff it died on 500 frames afterwards. What
+            // bought that clear: 80 frames for four panels and 60 to 94 for the stop
+            // time it banked, against 120 for the row of void it opened. It won by
+            // about thirty, and eighty of its credit was for emptying a board that had
+            // six rows of room.
+            //
+            // Scaled by how much of the board the stack actually occupies -- tall over
+            // H, both the engine's -- so the credit is full when the stack is at the
+            // ceiling and small when it is not. No new constant: it is the same
+            // framesPerRow/W, weighted by whether the board is in the state that makes
+            // it true.
+            var press = Math.min(1, (tallNow || 0) / H);
+            var bought = o.total * perPanel * press + holds + (o.garbage || 0) * perCell
                        + lowered * (framesPerRow || 0) + gain
                        - shortfall * (framesPerRow || 0)
                        // AND THE VOID THE SLAB WOULD SEAL -- a row of it is a row of
