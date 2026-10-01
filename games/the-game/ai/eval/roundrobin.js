@@ -191,7 +191,9 @@ if (ONE) {
                 st[side].clock >= WINDOW.from && st[side].clock <= WINDOW.to) {
                 console.log('  --- frame ' + st[side].clock + '  ' +
                             (d && d.via) + '  move ' + mv + '  cols ' + h.join(',') +
-                            '  gar ' + gar + '  clears ' + clr + '  brk ' + brk + '/' + brk2);
+                            '  gar ' + gar + '  in ' + (incomingOf(side)) +
+                            '  raise ' + (bots[side]._wantRaise ? String(bots[side]._wantRaise) : 'no') +
+                            '  clears ' + clr + '  brk ' + brk + '/' + brk2);
                 boardOf(side).forEach(function (l) { console.log(l); });
             }
             return d;
@@ -222,6 +224,19 @@ if (ONE) {
         st[0].drainEvents(); st[1].drainEvents();
     }
     function died(k) { return st[k].gameOver ? 'DEAD@' + st[k].clock : 'alive'; }
+    // WHAT IS QUEUED AGAINST THIS BOARD, which is what closes the raise and what
+    // framesToDeath counts as ceiling already gone. Not on the board, so the `gar`
+    // column cannot show it.
+    function incomingOf(k) {
+        var q = st[k].incomingGarbage || st[k].garbageQueue || null;
+        if (!q || !q.length) return 0;
+        var n = 0;
+        for (var i = 0; i < q.length; i++) {
+            var b = q[i];
+            n += (b.width || 0) * (b.height || 0);
+        }
+        return n;
+    }
     function boardOf(k) {
         var out = [];
         for (var rr = st[k].height; rr >= 1; rr--) {

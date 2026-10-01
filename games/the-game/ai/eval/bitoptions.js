@@ -410,9 +410,34 @@
         // playing it credits a setup out of frames the option has already spent,
         // which is the same error as scoring a landed board by this frame's
         // deadline.
-        var REACT = (timing && timing.reaction) || 0;
-        function setupSwaps(spent) {
-            return Math.floor(Math.max(0, DEADLINE - (spent || 0)) / Math.max(1, REACT));
+        // WHAT ONE SETUP SWAP COSTS, and it is not the cooldown alone. A decision is
+        // a walk to the cell, the swap, and the cooldown before the next one -- which
+        // is exactly `overhead`, already built by the caller as
+        // travel.MOVE_FRAMES + reaction and already carried in here. Sixteen frames
+        // at level 10, not twelve. Reusing it rather than dividing by `reaction`
+        // means there is one answer in this file to "what does a move cost".
+        var SWAP = OVERHEAD || ((timing && timing.reaction) || 0);
+        //
+        // AND WHAT THE SETUP IS WORTH, WHICH IS WHAT FINISHING IT BUYS.
+        //
+        // Finishing it is a break: a row of ceiling handed back, FPR, plus the floor
+        // held for the clear's own resolve, HOLD. Both are the engine's numbers and
+        // both are already here. That is the prize, so a setup `g` panels from done
+        // is worth the prize discounted by the share of the remaining time it still
+        // costs -- g swaps at SWAP frames each.
+        //
+        //     worth(g, left) = (FPR + HOLD) * (1 - g * SWAP / left)
+        //
+        // Full prize when there is nothing left to play, falling smoothly to zero as
+        // the work grows to fill the time, and zero past that. No per-panel rate is
+        // chosen: a panel is worth its share of the prize, so one of three done is
+        // worth more than one of ten, which is the truth about setups. And no cliff
+        // at the boundary -- the credit arrives at zero rather than dropping to it.
+        function setupWorth(g, left) {
+            if (g === null || g === undefined || !(left > 0)) return 0;
+            var cost = g * Math.max(1, SWAP);
+            if (cost >= left) return 0;
+            return (FPR + HOLD) * (1 - cost / left);
         }
         // A CAP ON HOW MANY LANDINGS GET ASKED. slabReadyFast walks the landed
         // board, so neither list can ask it of everything. Declared here and reset
@@ -543,22 +568,22 @@
             //
             // Two halves, and the second is the one that was missing. `slabGap` is how
             // many panels the landing still needs before three in a line can touch the
-            // slab; the GAIN is how many of them this move supplied. Priced like the
-            // void and like a dig cell -- a panel of gap closed is a panel of life,
-            // framesPerRow/W -- by both rankers, in each one's own currency.
+            // slab; setupWorth turns that into the frames a finished setup pays --
+            // a row of ceiling plus the hold -- discounted by the share of the time
+            // left that the remaining work costs. This is its DELTA, read by both
+            // rankers, each against its own clock: the option spends its own duration
+            // before any setup swap can follow it.
             //
-            // SILENT WHEN THERE IS NO TIME FOR THE SETUP. A landing still further from
-            // its slab than the deadline affords swaps earns nothing for having
-            // narrowed it, because the board will not be there to spend it. That is
+            // NO CLIFF AT THE BOUNDARY: the credit ARRIVES at zero as the work grows to
+            // fill the time, rather than being cut off at a threshold. That is
             // what makes this a clock and not a distance: with four hundred frames of
             // ceiling a four-swap setup is worth starting, and with thirty frames left
             // the same setup is not.
             //
             // Zero off the slab -- slabGap is 0 with no garbage, so gain is 0 too -- and
             // zero on a break, whose settled board is unknowable.
-            opt.slabGain = (opt.slabGap === null ||
-                            opt.slabGap > setupSwaps(opt.duration))
-                             ? 0 : (BASEGAP - opt.slabGap);
+            opt.slabGain = setupWorth(opt.slabGap, DEADLINE - (opt.duration || 0))
+                             - setupWorth(BASEGAP, DEADLINE);
             // AND WHETHER THE BOARD IT LANDS ON COULD ANSWER THE NEXT SLAB.
             //
             // slabReadyFast asks whether a three can be put against the row the next
@@ -857,22 +882,21 @@
                                 //
                                 // Two halves, and the second is the one that was missing. `slabGap` is how
                                 // many panels the landing still needs before three in a line can touch the
-                                // slab; the GAIN is how many of them this move supplied. Priced like the
-                                // void and like a dig cell -- a panel of gap closed is a panel of life,
-                                // framesPerRow/W -- by both rankers, in each one's own currency.
+                                // slab; setupWorth turns that into the frames a finished setup pays --
+                                // a row of ceiling plus the hold -- discounted by the share of the time
+                                // left that the remaining work costs. This is its DELTA, read by both
+                                // rankers, each against its own clock.
                                 //
-                                // SILENT WHEN THERE IS NO TIME FOR THE SETUP. A landing still further from
-                                // its slab than the deadline affords swaps earns nothing for having
-                                // narrowed it, because the board will not be there to spend it. That is
+                                // NO CLIFF AT THE BOUNDARY: the credit ARRIVES at zero as the work grows to
+                                // fill the time, rather than being cut off at a threshold. That is
                                 // what makes this a clock and not a distance: with four hundred frames of
                                 // ceiling a four-swap setup is worth starting, and with thirty frames left
                                 // the same setup is not.
                                 //
                                 // Zero off the slab -- slabGap is 0 with no garbage, so gain is 0 too -- and
                                 // zero on a break, whose settled board is unknowable.
-                                opt.slabGain = (opt.slabGap === null ||
-                            opt.slabGap > setupSwaps(opt.duration))
-                                                 ? 0 : (BASEGAP - opt.slabGap);
+                                opt.slabGain = setupWorth(opt.slabGap, DEADLINE - (opt.duration || 0))
+                             - setupWorth(BASEGAP, DEADLINE);
                                 // AND WHETHER THE BOARD IT LANDS ON COULD ANSWER THE NEXT SLAB.
                                 //
                                 // slabReadyFast asks whether a three can be put against the row the next

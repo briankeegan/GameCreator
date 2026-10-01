@@ -1214,11 +1214,11 @@
             // AND THE VOID THE SLAB WOULD SEAL, in this ranking's currency: a row of
             // void is a row of ceiling, and a row is W panels.
             cells += (o.voidGain || 0) * W;
-            // AND THE PANELS IT SUPPLIED TOWARD A SETUP THERE IS TIME FOR. A panel
-            // of gap closed is a panel of life; this ranking's currency is one cell
-            // sent, and a row is W of each, so a panel is a cell. Zero when the
-            // setup does not fit the clock -- see slabGain in bitoptions.
-            cells += (o.slabGain || 0);
+            // AND WHAT IT DID TO THE SETUP FOR A BREAK, IN FRAMES, converted to this
+            // ranking's currency the same way slabWorth above is. setupWorth prices
+            // it as the prize a finished setup pays discounted by the time the rest
+            // of the work costs -- see slabGain in bitoptions.
+            if (perPanelFrames > 0) cells += (o.slabGain || 0) / perPanelFrames;
             // AND BEING READY FOR THE SLAB THAT IS COMING. Worth a row of rise,
             // converted to this ranking's currency. Zero unless there is a slab
             // to be ready for, so it cannot speak on a clean board.
@@ -1504,10 +1504,9 @@
                        // AND THE VOID THE SLAB WOULD SEAL -- a row of it is a row of
                        // ceiling, so framesPerRow, as height is.
                        + (o.voidGain || 0) * (framesPerRow || 0)
-                       // AND THE PANELS IT SUPPLIED TOWARD A SETUP THERE IS TIME
-                       // FOR, at the per-panel rate the void is paid a row of --
-                       // framesPerRow/W. Same number as bestAttack's, converted.
-                       + (o.slabGain || 0) * perPanel
+                       // AND WHAT IT DID TO THE SETUP FOR A BREAK -- already in
+                       // frames, which is this ranking's currency. See bestAttack.
+                       + (o.slabGain || 0)
                        + digs
                        // AND BEING READY FOR THE SLAB THAT IS COMING -- already in
                        // frames, which is this ranking's currency. See bestAttack.
@@ -3190,7 +3189,6 @@
         // ended the opening after a single row.
         if (this._opening && (info.incoming || !fits)) this._opening = false;
         if (!fits) return null;
-        if (!this._opening && materialRows(base) >= WORKING_ROWS) return null;
         // WITH GARBAGE ON THE BOARD, THE ANSWER IS TO DIG, NOT TO RAISE.
         //
         // Raising is a start-of-game event and it stays one. Both sources of
@@ -3206,6 +3204,30 @@
         // 30 and 3 in 30. Not raising there at all is what is left, and the
         // condition needs no answer test because there is nothing to answer for.
         for (var gc = 1; gc <= W; gc++) if (base.garb[gc]) return null;
+        // FOUR ROWS IS A MINIMUM, NOT A TARGET.
+        //
+        // This read `materialRows(base) >= WORKING_ROWS`, which closed the raise the
+        // moment the board held four rows. But WORKING_ROWS is the floor the board
+        // must not be spent BELOW -- it is what stops the bot cashing small change
+        // when it is thin -- and reading a floor as a target makes four rows the most
+        // material the bot will ever hold. Seed 103 rand2 sat at 4.67 rows with seven
+        // rows of room, nothing on the board and nothing queued, and was refused a
+        // raise by two thirds of a row.
+        //
+        // More panels is better: a chain is built out of them, breaking a slab needs
+        // three in a line, and both get easier the more there are. What bounds it is
+        // the other side of the trade -- a raise buys a row of material with a row of
+        // ceiling, and the ceiling is what the garbage lands in. So it raises while
+        // material is the SCARCER of the two and stops when they cross. Both are
+        // rows, measured off this board, so there is no second constant: on a 12-row
+        // board the crossing is about six rows and it moves with the board.
+        //
+        // Asked AFTER the garbage guard above, so `high` is the top of the material
+        // and not the top of a slab; and before the readiness gate below, which is
+        // the rule that it must have a clear in hand before it fills the board.
+        var rsh = bitoptions.shapeOf(base);
+        var room = H - (rsh ? rsh.high : 0);
+        if (!this._opening && materialRows(base) >= room) return null;
         // AND THE RAISE FACES THE SAVE INVARIANT LIKE EVERY OTHER MOVE.
         //
         // The exit gate returns early on anything that is not a swap, so the raise
