@@ -2846,45 +2846,43 @@
             // board, so topping out means everything that can land has landed. Health is
             // never spent: the walk has to be in before the engine would drain it.
             var stillComing = (info.incoming || 0) > 0 || !!info.fallingGarbage;
-            var quickest = Infinity;
+            // THE BREAK THAT WILL BE FIRED, chosen once so the hold is timed by the walk
+            // that is actually made: the most slab converted, and the shorter walk
+            // between equals -- one break takes every connected slab, so equals are
+            // common.
+            var bk = null;
             for (i = 0; i < pool.length; i++) {
-                var qc = pool[i];
-                if (qc.kind === 'swap' && qc.resolved && qc.resolved.brokeGarbage &&
-                    (qc.moveFrames || 0) < quickest) quickest = qc.moveFrames || 0;
+                var bc = pool[i];
+                if (bc.kind !== 'swap' || !bc.resolved || !bc.resolved.brokeGarbage) continue;
+                if ((bc.moveFrames || 0) > deadline) continue;
+                if (this.deadly(bc.masks, bc.resolved, info,
+                                Math.max((bc.moveFrames || 0) + this.reaction,
+                                         info.framesPerRow || 0))) continue;
+                var cv = bc.resolved.converts || 0, kv = bk ? (bk.resolved.converts || 0) : -1;
+                if (!bk || cv > kv || (cv === kv && (bc.moveFrames || 0) < (bk.moveFrames || 0))) bk = bc;
             }
             // AND THE TIME TO SPARE IS THE ENGINE'S. A hold sets the cooldown, so the
             // next decision is `reaction + 1` frames away -- or at the top-out, where
-            // update() lifts the cooldown. The walk then queues the swap `moveFrames`
-            // later, and a queued swap locks the rise in that same run, so the break
-            // costs no health exactly when it is queued no later than the first run that
-            // drains it. Hold while that is still true after one more hold.
-            var next = this.reaction + 1;
-            var fut = this.framesToTopOut(next + quickest + 1);
-            var timeToSpare = Math.min(next, fut.top) + quickest <= fut.drain;
-            if (haveBreak && stillComing && !info.toppedOut && timeToSpare) {
-                this.counts.heldForLanding = (this.counts.heldForLanding || 0) + 1;
-                return { kind: 'hold', mode: mode, alive: alive, via: 'awaitLanding' };
+            // update() lifts the cooldown. The walk to the target then queues the swap
+            // `moveFrames` later, and a queued swap locks the rise in that same run, so
+            // the break costs no health exactly when it is queued no later than the
+            // first run that drains it. Hold while that is still true after one more
+            // hold.
+            if (bk && stillComing && !info.toppedOut) {
+                var walk = bk.moveFrames || 0, next = this.reaction + 1;
+                var fut = this.framesToTopOut(next + walk + 1);
+                if (Math.min(next, fut.top) + walk <= fut.drain) {
+                    this.counts.heldForLanding = (this.counts.heldForLanding || 0) + 1;
+                    return { kind: 'hold', mode: mode, alive: alive, via: 'awaitLanding' };
+                }
             }
-            if (haveBreak) {
-                var bk = null;
-                for (i = 0; i < pool.length; i++) {
-                    var bc = pool[i];
-                    if (bc.kind !== 'swap' || !bc.resolved || !bc.resolved.brokeGarbage) continue;
-                    if ((bc.moveFrames || 0) > deadline) continue;
-                    if (this.deadly(bc.masks, bc.resolved, info,
-                                    Math.max((bc.moveFrames || 0) + this.reaction,
-                                             info.framesPerRow || 0))) continue;
-                    // BIGGER BY WHAT IT HANDS BACK, which is the converting row.
-                    if (!bk || (bc.resolved.converts || 0) > (bk.resolved.converts || 0)) bk = bc;
-                }
-                if (bk) {
-                    this._dig = null;
-                    this._digIsBreak = false;
-                    this._plan = null;
-                    this.counts.brokeNow++;
-                    return { kind: 'swap', move: bk.swap, mode: mode, alive: alive,
-                             via: 'break' };
-                }
+            if (bk) {
+                this._dig = null;
+                this._digIsBreak = false;
+                this._plan = null;
+                this.counts.brokeNow++;
+                return { kind: 'swap', move: bk.swap, mode: mode, alive: alive,
+                         via: 'break' };
             }
             if (haveBreak) { this._dig = null; this._digIsBreak = false; }
             // IT PRE-EMPTS A DIG PLAN ONLY WHEN IT IS WORTH MORE THAN FINISHING ONE.
