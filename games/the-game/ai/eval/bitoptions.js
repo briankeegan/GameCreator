@@ -533,24 +533,30 @@
             // each of three and leaves the surface where it was. No need to detect
             // which it is -- the landed board's bumpiness says it outright.
             opt.levels = opt.bumps !== null && opt.bumps <= BASEBUMPS;
-            // AND THE STEP IT ADDS OR TAKES OUT, as a delta.
+            // THE STEP IS NOT PRICED, AND SIX ATTEMPTS AT A SHAPE TERM SAY WHY NOT.
             //
-            // `bumps` is the total step between neighbouring columns -- the one number
-            // here that sees a CLIFF, where a column sits rows below the one beside it.
-            // Both rankers already had it and both used it only as a TIEBREAK between
-            // plans buying life at the same rate, which is the trap this file records
-            // for `ways` in the flatten value: two plans never score exactly equal, so
-            // the tiebreak never fires and the term is decoration.
+            // `bumps` is the total step between neighbouring columns, the one number here
+            // that sees a CLIFF. Both rankers carry it and both use it only as a tiebreak
+            // between plans buying life at the same rate -- which, as this file says of
+            // `ways`, never happens. On a board that died holding 8,9,6,6,6,9 for forty
+            // decisions that looked like dead decoration worth fixing.
             //
-            // Seed 103 STARTER died holding 8,9,6,6,6,9 for forty decisions -- two
-            // three-row cliffs -- and nothing in the route that chose those moves
-            // priced them.
+            // Priced as a delta at the per-cell rate, read by both rankers -- every lesson
+            // from the day's earlier failures applied -- it cost both boards: 103 STARTER
+            // v rand3 went 23,209 to 11,387, and 101 rand2 v rand3 went from alive on both
+            // sides to dead at 19,201.
             //
-            // A unit of step is a CELL, so perPanel, not a row of the board. Pricing a
-            // local shape measure at framesPerRow a row was what made `wells` worth 360
-            // to 840 frames and bury every other term.
-            opt.bumpGain = (opt.bumps === null || opt.bumps === undefined)
-                             ? 0 : (BASEBUMPS - opt.bumps);
+            // THAT IS SIX FOR SIX. wells as a credit per row, wells per cell, wells charged
+            // and never credited, the material ceiling, the raise stand-down, and this.
+            // Every local geometry term added to the frames-priced rankers made boards
+            // worse, at every size and sign tried. What those rankers already have -- the
+            // void, the setup distance, the ceiling given back, the material floor -- is
+            // what they can use, and a new shape term does not add information so much as
+            // displace them.
+            //
+            // The one change that worked all day was not geometry: making preparation
+            // unconditional, so the board is built for the slab before it lands instead of
+            // reshaped after. Anticipation, not shape.
             opt.opensHole = opt.low === 0 && BASELOW > 0;
             opt.breakReady = r.settled ? breakReadyOf(r.settled) : null;
             // THE MOVE THAT TAKES THE LAST WAY TO BREAK.
@@ -920,24 +926,6 @@
                                 // each of three and leaves the surface where it was. No need to detect
                                 // which it is -- the landed board's bumpiness says it outright.
                                 opt.levels = opt.bumps !== null && opt.bumps <= BASEBUMPS;
-            // AND THE STEP IT ADDS OR TAKES OUT, as a delta.
-            //
-            // `bumps` is the total step between neighbouring columns -- the one number
-            // here that sees a CLIFF, where a column sits rows below the one beside it.
-            // Both rankers already had it and both used it only as a TIEBREAK between
-            // plans buying life at the same rate, which is the trap this file records
-            // for `ways` in the flatten value: two plans never score exactly equal, so
-            // the tiebreak never fires and the term is decoration.
-            //
-            // Seed 103 STARTER died holding 8,9,6,6,6,9 for forty decisions -- two
-            // three-row cliffs -- and nothing in the route that chose those moves
-            // priced them.
-            //
-            // A unit of step is a CELL, so perPanel, not a row of the board. Pricing a
-            // local shape measure at framesPerRow a row was what made `wells` worth 360
-            // to 840 frames and bury every other term.
-            opt.bumpGain = (opt.bumps === null || opt.bumps === undefined)
-                             ? 0 : (BASEBUMPS - opt.bumps);
                                 opt.opensHole = opt.low === 0 && BASELOW > 0;
                                 opt.breakReady = res.settled ? breakReadyOf(res.settled) : null;
                                 opt.closesBreak = BASEBREAK && opt.breakReady === false;
