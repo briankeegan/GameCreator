@@ -43,10 +43,18 @@ var STACK_KEYS = ['clock', 'speed', 'displacement', 'riseTimer', 'riseLock', 'ha
                   'curCol', 'topCurRow', 'queuedSwapRow', 'queuedSwapCol', 'curTimer', 'cursorDirection', 'metalPanelsQueued',
                   'garbageCreatedCount', 'highestGarbageIdMatched', 'gameOverClock', 'panelsCleared', 'swapCount'];
 function unseen(c) { return (c >= 11 && c <= 16) || (c >= 21 && c <= 26); }
+// The queue the game has is the one predicted less pieces it has not let in
+// yet (GarbageDelivery holds an attack engine's back while 72 are queued):
+// a plan made with them is made with more garbage than there is.
+function heldBack(want, got) {
+  if (!got || !want || got.length >= want.length) return false;
+  var left = want.map(function (g) { return JSON.stringify(g); });
+  return got.every(function (g) { var i = left.indexOf(JSON.stringify(g)); if (i < 0) return false; left.splice(i, 1); return true; });
+}
 function differ(want, got) {
   var k, i;
   for (i = 0; i < STACK_KEYS.length; i++) { k = STACK_KEYS[i]; if (!Object.is(want[k], got[k])) return 'stack.' + k + ' ' + want[k] + ' vs ' + got[k]; }
-  if (JSON.stringify(want.incoming) !== JSON.stringify(got.incoming)) return 'incoming ' + JSON.stringify(want.incoming) + ' vs ' + JSON.stringify(got.incoming);
+  if (JSON.stringify(want.incoming) !== JSON.stringify(got.incoming) && !heldBack(want.incoming, got.incoming)) return 'incoming ' + JSON.stringify(want.incoming) + ' vs ' + JSON.stringify(got.incoming);
   if (JSON.stringify(want.swapStallBacklog) !== JSON.stringify(got.swapStallBacklog)) return 'swap-stall log';
   if (want.panels.length !== got.panels.length) return 'rows';
   for (var r = 0; r < want.panels.length; r++) for (var c = 1; c <= 6; c++) {
