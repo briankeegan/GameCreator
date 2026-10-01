@@ -2835,7 +2835,8 @@
     if (!proven.length) proven = weakly;
     // The caller's moves first (preferRank, see _decide): of those proven to
     // live, before the proven ones are narrowed to the line that lives longest.
-    if (this.preferRank && proven.length) proven = this._preferred(proven, proven);
+    // preferProven ranks the same way, but only here, among the proven.
+    if ((this.preferRank || this.preferProven) && proven.length) proven = this._preferred(proven, proven, true);
     // A move the search ran out of budget on is a guess. When any move is
     // proven to live, the guesses are dropped.
     var live = proven.length ? proven : unproven;
@@ -3779,10 +3780,16 @@
   };
 
   // Pick a move. Greedy at depth 1; at depth 2 hand off to _lookahead.
-  // The moves of `list` preferRank puts first, or `none` when it ranks none.
-  PuyoCpu.prototype._preferred = function (list, none) {
+  // The moves of `list` preferRank puts first, or `none` when it ranks none;
+  // `proven`: the list is moves proven to live, which preferProven ranks too.
+  PuyoCpu.prototype._preferred = function (list, none, proven) {
     var sp = this._searchProofs, self = this, best = Infinity;
-    var ranks = list.map(function (c) { var r = self.preferRank(c, sp ? sp.cands.indexOf(c) : -1); if (r < best) best = r; return r; });
+    var ranks = list.map(function (c) {
+      var i = sp ? sp.cands.indexOf(c) : -1;
+      var r = self.preferRank ? self.preferRank(c, i) : Infinity;
+      if (proven && self.preferProven) r = Math.min(r, self.preferProven(c, i));
+      if (r < best) best = r; return r;
+    });
     return best < Infinity ? list.filter(function (c, i) { return ranks[i] === best; }) : none;
   };
   PuyoCpu.prototype._decide = function () {

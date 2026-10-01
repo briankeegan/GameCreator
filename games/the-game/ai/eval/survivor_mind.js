@@ -54,22 +54,20 @@ wt.parentPort.on('message', function (m) {
     // that leaves its top lowest: a move leaving the top at row h ranks as a
     // break TALL_RANK + h frames away. Six-wide garbage lands on the tallest
     // column, so that column is the board's height.
-    bot.preferRank = null;
-    var br = null, want = null, tall = cfg.profile.tallRow && SH.top(board) >= cfg.profile.tallRow;
-    if (cfg.profile.breakFirst || tall) {
-      if (cfg.profile.breakFirst) {
-        bot._natSearch();   // the engine, on this bot's threads, before a second context is made on it
-        if (!BS) BS = new (require(path.join(DIR, 'native.js')).server.Search)({ reaction: OPTS.reaction, cursorMoveFrames: OPTS.cursorMoveFrames, threads: OPTS.threads || 1 });
-        br = SH.breakMoves(BS, board, { left: m.hold.left, started: m.hold.started }, arrivals, cfg.profile.breakDepth);
-      }
-      want = br && br.depth ? br.moves : {};
+    bot.preferRank = null; bot.preferProven = null;
+    var br = null, want = {}, tall = cfg.profile.tallRow && SH.top(board) >= cfg.profile.tallRow;
+    if (cfg.profile.breakFirst) {
+      bot._natSearch();   // the engine, on this bot's threads, before a second context is made on it
+      if (!BS) BS = new (require(path.join(DIR, 'native.js')).server.Search)({ reaction: OPTS.reaction, cursorMoveFrames: OPTS.cursorMoveFrames, threads: OPTS.threads || 1 });
+      br = SH.breakMoves(BS, board, { left: m.hold.left, started: m.hold.started }, arrivals, cfg.profile.breakDepth);
+      want = br.depth ? br.moves : {};
       bot.preferRank = function (c, i) {
         if (want[c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[1] : c.kind]) return 0;
-        var t = cfg.profile.breakFirst && i >= 0 && this._nat ? this._nat.breakAt(i) : -1;
-        if (tall && c.settled) { var h = TALL_RANK + SH.gridTop(c.settled); t = t >= 0 ? Math.min(t, h) : h; }
+        var t = i >= 0 && this._nat ? this._nat.breakAt(i) : -1;
         return t >= 0 ? t : Infinity;
       };
     }
+    if (tall) bot.preferProven = function (c) { return c.settled ? TALL_RANK + SH.gridTop(c.settled) : Infinity; };
     // The frame loop stops a question it no longer needs (cfg.abort holds its id).
     bot._abort = cfg.abort ? function () { return Atomics.load(cfg.abort, 0) === m.id; } : null;
     var d;
