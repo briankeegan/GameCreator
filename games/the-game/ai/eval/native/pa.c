@@ -21,7 +21,7 @@ typedef struct { int32_t f[NF]; } Panel;
 typedef struct { int32_t width, height, isChain, isMetal, frameEarned, finalized; } Incoming;   // finalized: NUL/0/1
 typedef struct { int32_t leftId, rightId, row, col, clock; } Stall;
 
-#define MAXINC 32
+#define MAXINC 256   // a training volley queues fifty at once, and an unbroken queue keeps the last ones
 #define MAXSTALL 64
 #define MAXLANDED 16
 #define MAXMATCH 160
@@ -947,7 +947,7 @@ static int canSwap(Board *b, int row, int col) {
   X(unseenRows, unseenRows) X(unseenBreaks, unseenBreaks) X(err, err) X(ninc, ninc) X(nstall, nstall) X(nlanded, nlanded)
 #define COUNT1(f, n) + 1
 #define NHEAD (1 HEAD(COUNT1))
-#define NBODY (MAXROWS * W * NF + MAXINC * 6 + MAXSTALL * 5 + MAXLANDED + 6)
+#define NBODY (MAXROWS * W * NF + MAXINC * 6 + MAXSTALL * 5 + MAXLANDED + 6 + 64 * 5)   // and the arrivals after the board (search.h MAXARR)
 static double ioHead[NHEAD];
 static int32_t ioBody[NBODY];
 EXPORT(nb_io_head) double *nb_io_head(void) { return ioHead; }

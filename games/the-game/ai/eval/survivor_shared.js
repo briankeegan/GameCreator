@@ -76,13 +76,13 @@ function land(st, arrivals) {
   for (var i = 0; i < arrivals.length; i++) if (arrivals[i].at === st.stopWatch) st.receiveGarbage([arrivals[i].g]);
 }
 // The same, as the search takes it: frames from this board (search.h
-// runFrame), at most MAXARR.
+// runFrame), at most MAXARR (native/search.h).
 function arrivalsFrom(board, arrivals) {
   var out = [];
   arrivals.forEach(function (a) {
     if (a.at > board.stopWatch) out.push({ at: a.at - board.stopWatch, width: a.g.width, height: a.g.height, isChain: !!a.g.isChain, isMetal: !!a.g.isMetal });
   });
-  return out.slice(0, 16);
+  return out.slice(0, 64);
 }
 
 // THE THREAT: garbage not yet in any telegraph cannot land sooner than
