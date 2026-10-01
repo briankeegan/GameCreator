@@ -109,6 +109,14 @@ function lowestGarbageRow(board) {
   }
   return 0;
 }
+// The highest row holding a panel that is not garbage.
+function panelTop(board) {
+  for (var r = board.panels.length - 1; r >= 1; r--) {
+    var row = board.panels[r];
+    if (row) for (var c = 1; c <= 6; c++) if (row[c] && row[c].color && !row[c].isGarbage) return r;
+  }
+  return 0;
+}
 var BREAK_BUDGET = 2500;   // steps past the first level: the search stops there
 function breakMoves(S, board, hold, arrivals, maxDepth) {
   maxDepth = maxDepth || 3;
@@ -165,4 +173,4 @@ Hands.prototype.idle = function (board, hold, arrivals) {
   return { bits: k.inputs[0], hold: k.holds[0] };
 };
 
-module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, arrivalsFrom: arrivalsFrom, threat: threat, breakMoves: breakMoves, Hands: Hands };
+module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, arrivalsFrom: arrivalsFrom, threat: threat, panelTop: panelTop, breakMoves: breakMoves, Hands: Hands };
