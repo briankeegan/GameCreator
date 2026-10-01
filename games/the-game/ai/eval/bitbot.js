@@ -2831,15 +2831,25 @@
             // of it and firing in the moment after it lands clears all of it in one
             // swap.
             //
-            // So with a break in hand: while more is queued and the next slab still
-            // fits above the stack, HOLD. Not a clear and not a setup -- a clear makes
-            // panels active, which stalls the very landing being waited for, and any
-            // swap can spoil the line under the slab. Fire when nothing more is queued,
-            // or when the next slab would not fit, which is the deadline.
+            // So with a break in hand: while more is queued, HOLD. Not a clear and not a
+            // setup -- a clear makes panels active, which stalls the very landing being
+            // waited for, and any swap can spoil the line under the slab.
+            //
+            // TOPPING OUT IS NOT THE LIMIT; THE DEADLINE IS. shouldDropGarbage refuses
+            // to drop on a topped-out board, so topping out means everything that can
+            // land has landed -- and the engine then gives `health` frames, which only
+            // drain while nothing is resolving. That is the moment to fire. The only
+            // reason to fire sooner is that waiting would leave too little time to walk
+            // to the break and play it, which is `deadline` against the walk.
             var stillComing = (info.incoming || 0) > 0;
-            var nextRows = Math.ceil((info.nextSlab || 0) / W);
-            var nextFits = this.raiseRoom() > nextRows;
-            if (haveBreak && stillComing && nextFits && !info.toppedOut) {
+            var quickest = Infinity;
+            for (i = 0; i < pool.length; i++) {
+                var qc = pool[i];
+                if (qc.kind === 'swap' && qc.resolved && qc.resolved.brokeGarbage &&
+                    (qc.moveFrames || 0) < quickest) quickest = qc.moveFrames || 0;
+            }
+            var timeToSpare = deadline > quickest + this.reaction;
+            if (haveBreak && stillComing && !info.toppedOut && timeToSpare) {
                 this.counts.heldForLanding = (this.counts.heldForLanding || 0) + 1;
                 return { kind: 'hold', mode: mode, alive: alive, via: 'awaitLanding' };
             }
