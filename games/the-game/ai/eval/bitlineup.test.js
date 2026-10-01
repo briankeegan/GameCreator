@@ -92,7 +92,7 @@ function gridOf(stack) {
 var src = JSON.parse(fs.readFileSync(path.join(__dirname, 'realboards.json'), 'utf8'));
 var HOW_MANY = 100;
 var R = { positions: 0, planned: 0, improved: 0, verified: 0, wrong: 0,
-          refused: 0, gains: {}, worst: null };
+          refused: 0, gains: {}, worst: null, verifiedBroke: 0 };
 
 outer:
 for (var i = 0; i < src.boards.length && R.positions < HOW_MANY; i++) {
@@ -154,7 +154,16 @@ for (var i = 0; i < src.boards.length && R.positions < HOW_MANY; i++) {
         // up. Compared in the resolvers' units.
         var engineCleared = (real.panelsCleared || 0) - clearedBefore;
         var engineChain = peak >= 2 ? peak : (engineCleared > 0 ? 1 : 0);
-        if (engineChain === plan.best.chain) { R.verified++; continue outer; }
+        // A BREAK CANNOT BE CLAIMED EXACTLY, AND MUST NOT BE OVERCLAIMED.
+        //
+        // play() stops the moment a slab breaks, because past that point the converted
+        // row's colours come from the engine's own rng. So a break plan's chain is a
+        // LOWER BOUND, not a prediction, and the engine carrying on past it is the safe
+        // direction. What is never allowed is the model claiming more than the engine
+        // delivers. Exactness still holds for every plan that plays out.
+        if (plan.best.broke) {
+            if (engineChain >= plan.best.chain) { R.verifiedBroke++; continue outer; }
+        } else if (engineChain === plan.best.chain) { R.verified++; continue outer; }
         R.wrong++;
         if (!R.worst) {
             R.worst = { board: i, swap: plan.best.swap, cost: plan.best.cost,
@@ -169,6 +178,7 @@ for (var i = 0; i < src.boards.length && R.positions < HOW_MANY; i++) {
 console.log('  positions in the window ' + String(R.positions).padStart(4));
 console.log('  a swap beat standing still ' + String(R.improved).padStart(3) +
             '   deeper by ' + JSON.stringify(R.gains));
+console.log('  breaks preferred, none overclaimed ' + String(R.verifiedBroke).padStart(3));
 console.log('  played on the engine       ' + String(R.verified).padStart(3) + ' correct' +
             (R.wrong ? ', ' + R.wrong + ' WRONG' : '') +
             (R.refused ? ', ' + R.refused + ' no longer legal' : ''));

@@ -1649,19 +1649,10 @@
             // real frames, and the scaling devalues every good clear to reach the few
             // bad ones.
             //
-            // MEASURED AGAIN AFTER THE ARITHMETIC WAS CORRECTED, because the first
-            // measurement was taken against a slab overvalued by its height and a
-            // deadline that ignored the speed-up. It is still a swap, not a fix:
-            // 103 rand1 v rand2 goes DEAD@9,487 to alive, and 101 rand2 v rand3 goes
-            // alive to DEAD@4,543 -- the second one rising 5,5,5,5,5,5 to 8,8,8,8,8,8
-            // over 25 decisions holding one three, nothing on the board and nothing
-            // incoming. Halving what a clear is worth on a half-full board stops the
-            // bot cashing on exactly the board where cashing is the whole job.
-            //
-            // The clear that dug the cliff on 103 rand3 -- flat 6,6,6,6,6,6 to
-            // 7,7,7,4,4,7 at frame 22,700 -- was bought by 80 frames of material plus
-            // 60 to 94 of stop time against 120 for the row of void it opened. Every
-            // one of those numbers is right. What it cost is not in this expression.
+            // Re-measured against the corrected arithmetic and still a swap, not a
+            // fix: halving what a clear is worth on a half-full board stops the bot
+            // cashing on the board where cashing is the whole job -- 101 rand2 v rand3
+            // rose 5,5,5,5,5,5 to 8,8,8,8,8,8 over 25 decisions holding one three.
             // THE CELLS A BREAK HANDS BACK ARE ITS BOTTOM ROW, not the whole slab.
             // `holds` above wants the whole slab, because that is what the engine pops
             // and what sets the resolve time; this wants what becomes panels.
@@ -1671,33 +1662,16 @@
                        // AND THE VOID THE SLAB WOULD SEAL -- a row of it is a row of
                        // ceiling, so framesPerRow, as height is.
                        //
-                       // IT IS NOT PRICED AT WHAT A SEALED CELL IS WORTH, and the
-                       // argument that it should be was wrong about which board this
-                       // measures. That argument ran: a converted garbage cell is paid
-                       // perCell = max(perPanel, deadline/W) because "a garbage cell can
-                       // never come off the board and a panel can", sealing a cell and
-                       // converting one are the same event in opposite directions, so the
-                       // two should be paid the same.
-                       //
-                       // They are not the same event. `voidRows` is high - mat: the void
-                       // a slab WOULD seal if one arrived, which is why it is on the
-                       // option and priced while the board is still healthy. Until the
-                       // slab lands that space is not sealed -- it is ordinary ceiling and
-                       // the bot can play into it. Only cells actually under a slab can
-                       // be recovered by breaking alone, and that is a different quantity
-                       // from this one.
-                       //
-                       // Measured: at perCell the term is five times the ceiling it
-                       // stands for, and on a board with no garbage voidGain goes NEGATIVE
-                       // for any clear that does not lower `high` -- clearing drops `mat`
-                       // -- so a three cost about 300 frames of void against 60 of
-                       // material, bestPlan returned rate <= 0, and no arithmetic route
-                       // claimed the move. 103 STARTER v ZERO: ZERO ran 32 consecutive
-                       // DEFEND/WEIGHTS decisions from frame 1,411 to 1,848 with one to
-                       // three clears available on every one of them, no garbage on the
-                       // board and none incoming, rising 6,6,4,4,4,6 to 8,8,6,6,6,8
-                       // without cashing once. DEAD@19,826 before the repricing and
-                       // DEAD@2,184 after it.
+                       // NOT the perCell a CONVERTED cell is paid. `voidRows` is
+                       // high - mat: the void a slab WOULD seal if one arrived, which is
+                       // why it is on the option and priced while the board is healthy.
+                       // Until the slab lands that space is ordinary ceiling and the bot
+                       // can play into it; only cells actually under a slab are
+                       // recoverable by breaking alone, which this does not measure.
+                       // At perCell it is five times the ceiling it stands for, and with
+                       // no garbage on the board it goes NEGATIVE for any clear that does
+                       // not lower `high` -- so bestPlan returns rate <= 0 and no
+                       // arithmetic route claims the move at all.
                        + (o.voidGain || 0) * (framesPerRow || 0)
                        // AND WHAT IT DID TO THE SETUP FOR A BREAK -- already in
                        // frames, which is this ranking's currency. See bestAttack.

@@ -22,7 +22,7 @@
 // that is precisely the situation here, so every candidate is asked rather than
 // assumed legal.
 //
-// Nothing in the bot's decision path imports this.
+// bitbot reads this through revealPick, which plays the answer as `lineup`.
 (function (root, factory) {
     if (typeof module === 'object' && module.exports) {
         module.exports = factory(require('./bitframes.js'), require('./travel.js'));
@@ -104,7 +104,7 @@
         var best = { swap: null, cost: 0, chain: baseKnown ? doNothing.chain : 0,
                      total: baseKnown ? doNothing.total : 0 };
         best.score = score(best.chain, best.total);
-        var considered = 0, reachable = 0, unknown = 0;
+        var considered = 0, reachable = 0, unknown = 0, bestBroke = null;
 
         for (var i = 0; i < legalSwaps.length; i++) {
             var sw = legalSwaps[i];
@@ -118,12 +118,32 @@
             // nothing — ranking that against a finished run compares a
             // part-played position with a played-out one. Such a candidate is
             // unknown, and unknown is not a number to sort by.
+            // BREAKING GARBAGE IS A TIER, NOT A SCORE, so it is not thrown away for
+            // being unrankable. A run that reaches a break stops there, and its chain
+            // number is a part-played position -- that is why it cannot be SORTED
+            // against a finished one. It can still be PREFERRED: a break converts the
+            // slab's bottom row into panels and holds the floor while it pops, and
+            // bitbot states the same domination as a rule rather than a taste --
+            // "sends and breaks beats sends, and that is not a preference".
+            //
+            // Only breaks are compared with each other, and only on what had finished
+            // popping when the run stopped, so no part-played number is ever ranked
+            // against a played-out one.
+            if (out.scope === 'garbage-broke') {
+                var bs = score(out.chain, out.total);
+                if (!bestBroke || bs > bestBroke.score) {
+                    bestBroke = { swap: sw, cost: cost, chain: out.chain,
+                                  total: out.total, score: bs, broke: true };
+                }
+                continue;
+            }
             if (out.scope !== 'ok') { unknown++; continue; }
             considered++;
             var sc = score(out.chain, out.total);
             if (sc <= best.score) continue;
             best = { swap: sw, cost: cost, chain: out.chain, total: out.total, score: sc };
         }
+        if (bestBroke) best = bestBroke;
         return { best: best, window: window, reachable: reachable, considered: considered,
                  unknown: unknown, doNothing: doNothing, converted: state.converted };
     }
