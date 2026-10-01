@@ -1756,6 +1756,14 @@
         // A BREAK AT ANY DEPTH DOES NOT STAND THE RAISE DOWN. MEASURED, AND IT COST
         // BOTH BOARDS.
         //
+        // AND THE OPTION LIST IS NOT BUILT HERE, which was how the stand-down asked.
+        // `digging` is assigned further down, so a build at this point passed dig as
+        // UNDEFINED -- and `_lastOptions` caches it, so every later route then read a
+        // list built with digging off, which is the list that does not widen the beam
+        // toward the slab. Two boards swapped their outcomes on that alone. Same class
+        // as the lookDepth read below its own var, and as the NaN prices: a value read
+        // before it exists is silently wrong rather than loudly.
+        //
         // why_died.js said this looked like the whole problem: of 681 decisions with a
         // break on the option list, 314 played levelFirst -- the flatten that precedes
         // a raise, and the FIRST route in the order -- against 160 that broke and 88
@@ -1773,9 +1781,6 @@
         // breaks keep existing; take 300 of them away and the breaks stop coming. The
         // raise stands down for a break in hand, which is measured, and for nothing
         // else.
-        options = this._lastOptions = options || bitoptions.options(null, W, H,
-            [info.cursorRow, info.cursorCol], lookDepth, base,
-            this.timing(info, deadline, base), digging);
         var raising = this.raiseMode(info, base, poolBreak);
         this._wantRaise = !!raising;
         // AND WHETHER IT IS HAPPENING, which is not the same as wanting it.
