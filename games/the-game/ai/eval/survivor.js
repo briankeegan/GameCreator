@@ -313,8 +313,9 @@ Match.prototype.afterFrame = function () {
   }
   if (pending) return;
   // A question due sooner than an answer can come is asked further on: the
-  // line behind the move is played till then.
-  while (this.line && this.nextAt > now && this.nextAt - now < this.soon() && this.follow()) {}
+  // line behind the move is played till then -- but never a long wait of
+  // it, which would leave the frames after it undecided.
+  while (this.line && this.nextAt > now && this.nextAt - now < this.soon() && !isWait(this.line.steps[0]) && this.follow()) {}
   var at = this.nextAt > now ? this.nextAt : now + this.soon();
   if (at - now > this.ahead()) return;
   var pr = this.predict(next, at, this.hold, this.nextPending);
@@ -350,6 +351,7 @@ Match.prototype.dump = function () {
 // decision was proven by is played instead of holding, and the question --
 // about a board that will not now be reached -- is stopped; the next one is
 // asked for where the step ends.
+function isWait(st) { return !!st && typeof st === 'object' && !Array.isArray(st) && st.long !== undefined; }
 Match.prototype.follow = function () {
   var st = this.line.steps[0], kind, move = null, frames = 0;
   if (st === null) kind = 'hold';
