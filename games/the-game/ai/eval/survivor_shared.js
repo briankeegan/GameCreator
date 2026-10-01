@@ -155,6 +155,7 @@ function gridTop(b) {
 }
 var BREAK_BUDGET = 2500;   // steps past the first level: the search stops there
 var LINEUP_BUDGET = 400;   // pairs of swaps tried for a lineup
+var LINEUP_DEPTH = 4, LINEUP_BEAM = 6;   // the aimed lineup's swaps and lines kept
 // LINING UP: while a broken slab pops (popLeft, frames) its new row cannot
 // move, but what is under it can; once the pop ends the row matches what it
 // rests on, and a match there touches the slab again. A first swap after
@@ -163,6 +164,31 @@ function popLeft(board) {
   var t = 0;
   board.panels.forEach(function (row) { if (row) for (var c = 1; c <= 6; c++) { var p = row[c]; if (p && p.isGarbage && p.state === 'matched' && p.timer > t) t = p.timer; } });
   return t;
+}
+// The colours the row a popping slab converts has dealt, per column (0
+// where none), from the board as the game shows it; null when none is known.
+function converting(board) {
+  for (var r = 1; r < board.panels.length; r++) {
+    var row = board.panels[r], out = [0], any = false;
+    if (!row) continue;
+    for (var c = 1; c <= 6; c++) { var p = row[c]; if (p && p.isGarbage && p.state === 'matched' && p.color >= 1 && p.color <= 8) { out[c] = p.color; any = true; } else out[c] = 0; }
+    if (any) return out;
+  }
+  return null;
+}
+// How far a grid is toward lining up with `want`: per column, its top panel
+// below the lowest garbage of that colour, and the one under it too.
+var PAIR = 5;
+function pairs(grid, want) {
+  var G = grid.length, r, c, s = 0;
+  for (r = 1; r < grid.length && G === grid.length; r++) if (grid[r]) for (c = 1; c <= 6; c++) if (grid[r][c] < 0) { G = r; break; }
+  for (c = 1; c <= 6; c++) {
+    if (!want[c]) continue;
+    var t = 0;
+    for (r = 1; r < G; r++) if (grid[r] && grid[r][c] > 0) t = r;
+    if (t && grid[t][c] === want[c]) s += t > 1 && grid[t - 1][c] === want[c] ? PAIR : 1;
+  }
+  return s;
 }
 function breakMoves(S, board, hold, arrivals, maxDepth, wait) {
   maxDepth = maxDepth || 3;
@@ -200,6 +226,33 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait) {
       }
     }
     if (any) return { depth: 1, moves: found, lineup: 2 };
+    // Further, aimed: the colours the row turns into are known from the
+    // pop's start, and two of a column's colour on top of that column make
+    // three with the panel landing there, under the slab. A beam of lines up
+    // to LINEUP_DEPTH swaps, kept by how many such pairs they stand up.
+    var want = converting(board);
+    if (want) {
+      var level = firsts.filter(function (f) { return f.n && !f.n.dead && f.n.t < end; }).map(function (f) { return { key: f.key, n: f.n }; });
+      for (var dpt = 2; dpt <= LINEUP_DEPTH && level.length && !any; dpt++) {
+        level.forEach(function (x) { x.s = pairs(x.n.b.grid, want); });
+        level.sort(function (a, b) { return b.s - a.s; });
+        level = level.slice(0, LINEUP_BEAM);
+        var next = [];
+        for (i = 0; i < level.length && !any && tries < 3 * LINEUP_BUDGET; i++) {
+          var ms2 = swapsOf(level[i].n);
+          for (j = 0; j < ms2.length && tries < 3 * LINEUP_BUDGET; j++) {
+            tries++;
+            var n3 = S.advance(level[i].n, 'swap', ms2[j], 0);
+            if (!n3 || n3.dead || n3.t >= end) continue;
+            var sc = pairs(n3.b.grid, want);
+            if (sc >= PAIR && lined(n3)) { found[level[i].key] = true; any = true; break; }
+            next.push({ key: level[i].key, n: n3, s: sc });
+          }
+        }
+        level = next;
+      }
+      if (any) return { depth: 1, moves: found, lineup: 'aimed' };
+    }
     // failing that, a first swap leaving a break one swap away when the pop ends
     for (i = 0; i < firsts.length && tries < 2 * LINEUP_BUDGET; i++) {
       var r = firsts[i].n, w = r && !r.dead ? S.advance(r, 'long', null, Math.max(1, end - r.t)) : null;

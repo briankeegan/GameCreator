@@ -32,11 +32,26 @@ function slabRow(b) {
 // while garbage is on the board or on its way, of the moves proven to live
 // and none breaking garbage, the ones leaving the most panels are played --
 // a raise, which brings a row, among them.
-var KEEP_RANK = 2e6;
+var KEEP_RANK = 1e7;
 function panelsOf(b) {
   var n = 0;
   if (b && b.grid) for (var r = 1; r < b.grid.length; r++) { var row = b.grid[r]; if (row) for (var c = 1; c <= b.width; c++) if (row[c] > 0) n++; }
   return n;
+}
+// Of those, the flattest under the garbage: the cells between each column's
+// top and the lowest garbage (or, none landed yet, the tallest column). Garbage
+// rests on the tallest column, and only a column it rests on can touch it.
+function gapOf(b) {
+  var g = 0, r, c, tops = [], hi = 0, gap = 0;
+  for (r = 1; r < b.grid.length && !g; r++) { var row = b.grid[r]; if (row) for (c = 1; c <= b.width; c++) if (row[c] < 0) { g = r; break; } }
+  for (c = 1; c <= b.width; c++) {
+    var t = 0;
+    for (r = 1; r < (g || b.grid.length); r++) if (b.grid[r] && b.grid[r][c] > 0) t = r;
+    tops.push(t); if (t > hi) hi = t;
+  }
+  var under = g ? g - 1 : hi;
+  tops.forEach(function (t) { gap += Math.max(0, under - t); });
+  return gap;
 }
 function hanging(board) {
   var g = 0, r, c;
@@ -110,7 +125,7 @@ wt.parentPort.on('message', function (m) {
       };
     }
     if (tall) bot.preferProven = function (c) { return c.settled ? TALL_RANK + SH.gridTop(c.settled) : Infinity; };
-    else if (cfg.profile.conserve && (board.incoming.length || SH.lowestGarbageRow(board))) bot.preferProven = function (c) { var b = this._settledOf(c); return b && b.grid ? KEEP_RANK - panelsOf(b) : Infinity; };
+    else if (cfg.profile.conserve && (board.incoming.length || SH.lowestGarbageRow(board))) bot.preferProven = function (c) { var b = this._settledOf(c); return b && b.grid ? KEEP_RANK - 100 * panelsOf(b) + gapOf(b) : Infinity; };
     else if (cfg.profile.lowerSlab && hanging(board)) bot.preferProven = function (c) { var b = this._settledOf(c); return b && b.grid ? HANG_RANK + slabRow(b) : Infinity; };
     // THE TIME THERE IS: the survival search's budget is what can be searched
     // in the milliseconds before the answer is due (m.ms; 0 waits for the
@@ -123,14 +138,29 @@ wt.parentPort.on('message', function (m) {
     bot._abort = cfg.abort ? function () { return Atomics.load(cfg.abort, 0) === m.id; } : null;
     var d;
     var t1 = Date.now();
+    var ranked = [], key = function (c) { return c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[1] : c.kind; };
+    if (process.env.GC_SURVIVOR_WHY && bot.preferRank) { var pr0 = bot.preferRank; bot.preferRank = function (c, i) { var r = pr0.call(this, c, i); ranked.push(key(c) + '=' + r); return r; }; }
     try { d = bot._decide(); } finally { bot._abort = null; }
+    var why = null;
+    if (process.env.GC_SURVIVOR_WHY && br && br.depth) {
+      var sp = bot._searchProofs;
+      why = { ranked: ranked.join(' '), want: Object.keys(want), cands: sp ? sp.cands.map(key) : null, proven: sp ? sp.cands.filter(function (c, i) { return sp.proofs[i]; }).map(key) : null };
+    }
+    // A LINEUP WHILE A SLAB POPS IS PLAYED. Nothing can die before the pop
+    // ends and the lineup breaks the slab when it does; the bot's own stages
+    // (the lookahead, the modes) do not know what the pop's end brings.
+    var overruled = false;
+    if (popping && br && br.lineup && !want[key(d)]) {
+      var lk = Object.keys(want).filter(function (k) { return /^\d+,\d+$/.test(k); })[0];
+      if (lk) { d = { kind: 'swap', move: lk.split(',').map(Number) }; overruled = true; }
+    }
     var took = Date.now() - t1;
     if (took > 20) { rates.push(bot.SURVIVE_SEARCH_BUDGET / took); if (rates.length > 8) rates.shift(); }
     // The rest of the proven line behind the move, for the frame loop to play
     // on while the next decision is late: steps as the search played them
     // ([row, col], 'raise', null for a hold, { long: until }), from lineAt.
-    var fl = bot._following, line = fl && !fl.hold && fl.steps && fl.steps.length ? fl.steps : null;
-    out = { id: m.id, epoch: m.epoch, at: m.at, kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, ms: Date.now() - t0, brMs: brMs,
+    var fl = overruled ? null : bot._following, line = fl && !fl.hold && fl.steps && fl.steps.length ? fl.steps : null;
+    out = { id: m.id, epoch: m.epoch, at: m.at, kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, ms: Date.now() - t0, brMs: brMs, why: why,
           line: line, lineAt: line ? fl.at : null,
           mem: NativeMem(),
           breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
