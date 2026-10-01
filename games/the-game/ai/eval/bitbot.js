@@ -1283,13 +1283,11 @@
             // unknowable so `mat` is null, and it ADDS material besides.
             var short = shortfallOf(o);
             cells -= short * W;
-            // AND THE VOID THE SLAB WOULD SEAL, at the same rate bestPlan pays and
-            // in this ranking's currency: W cells to the row, each worth what an
-            // unsealed cell is worth. See bestPlan's voidGain.
-            if (perPanelFrames > 0) {
-                cells += (o.voidGain || 0) * W *
-                         Math.max(perPanelFrames, (deadline || 0) / W) / perPanelFrames;
-            }
+            // AND THE VOID THE SLAB WOULD SEAL, in this ranking's currency: a row of
+            // void is a row of ceiling, and a row is W panels. NOT the perCell a
+            // sealed cell is paid -- see bestPlan's voidGain for which board this
+            // measures and what pricing it that way cost.
+            cells += (o.voidGain || 0) * W;
             // AND WHAT IT DID TO THE SETUP FOR A BREAK, IN FRAMES, converted to this
             // ranking's currency the same way slabWorth above is. setupWorth prices
             // it as the prize a finished setup pays discounted by the time the rest
@@ -1626,24 +1624,37 @@
             var bought = o.total * perPanel + holds + (o.converts || 0) * perCell
                        + lowered * (framesPerRow || 0) + gain
                        - shortfall * (framesPerRow || 0)
-                       // AND THE VOID THE SLAB WOULD SEAL, AT THE SAME RATE A CELL
-                       // UNSEALED IS PAID.
+                       // AND THE VOID THE SLAB WOULD SEAL -- a row of it is a row of
+                       // ceiling, so framesPerRow, as height is.
                        //
-                       // This was framesPerRow a row -- perPanel a cell, about 20 frames
-                       // -- on the reading that a row of void is a row of ceiling. But a
-                       // sealed cell is not a row of rise, which is paid once and gone.
-                       // It is space that can only be recovered by BREAKING, which is
-                       // exactly what this expression says four lines up about a
-                       // converted garbage cell: "a garbage cell can never come off the
-                       // board and a panel can, so converting one is worth clearing it,
-                       // deferred", priced at perCell = max(perPanel, deadline/W), up to
-                       // 100 frames early in a game.
+                       // IT IS NOT PRICED AT WHAT A SEALED CELL IS WORTH, and the
+                       // argument that it should be was wrong about which board this
+                       // measures. That argument ran: a converted garbage cell is paid
+                       // perCell = max(perPanel, deadline/W) because "a garbage cell can
+                       // never come off the board and a panel can", sealing a cell and
+                       // converting one are the same event in opposite directions, so the
+                       // two should be paid the same.
                        //
-                       // Sealing a cell and converting one are the same event in opposite
-                       // directions, and they were priced five times apart in terms four
-                       // lines from each other. Same rate now, and no new constant: W
-                       // cells to the row, perCell each.
-                       + (o.voidGain || 0) * W * perCell
+                       // They are not the same event. `voidRows` is high - mat: the void
+                       // a slab WOULD seal if one arrived, which is why it is on the
+                       // option and priced while the board is still healthy. Until the
+                       // slab lands that space is not sealed -- it is ordinary ceiling and
+                       // the bot can play into it. Only cells actually under a slab can
+                       // be recovered by breaking alone, and that is a different quantity
+                       // from this one.
+                       //
+                       // Measured: at perCell the term is five times the ceiling it
+                       // stands for, and on a board with no garbage voidGain goes NEGATIVE
+                       // for any clear that does not lower `high` -- clearing drops `mat`
+                       // -- so a three cost about 300 frames of void against 60 of
+                       // material, bestPlan returned rate <= 0, and no arithmetic route
+                       // claimed the move. 103 STARTER v ZERO: ZERO ran 32 consecutive
+                       // DEFEND/WEIGHTS decisions from frame 1,411 to 1,848 with one to
+                       // three clears available on every one of them, no garbage on the
+                       // board and none incoming, rising 6,6,4,4,4,6 to 8,8,6,6,6,8
+                       // without cashing once. DEAD@19,826 before the repricing and
+                       // DEAD@2,184 after it.
+                       + (o.voidGain || 0) * (framesPerRow || 0)
                        // AND WHAT IT DID TO THE SETUP FOR A BREAK -- already in
                        // frames, which is this ranking's currency. See bestAttack.
                        + (o.slabGain || 0)
