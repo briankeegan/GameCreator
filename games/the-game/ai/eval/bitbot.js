@@ -767,7 +767,8 @@
             plan = lineup.bestInWindow(board, this.stack.frames, board.height,
                                        [board.cursor ? board.cursor.row : 1,
                                         board.cursor ? board.cursor.col : 1],
-                                       board.legalSwaps());
+                                       board.legalSwaps(),
+                                       { spendLeast: this.stack.isToppedOut() });
         } catch (e) { return null; }                 // an unreadable window is not a move
         if (!plan) return null;
         this.counts.revealWindows++;
@@ -4062,6 +4063,54 @@
     };
 
     BitBot.prototype._decideGated = function () {
+        return this._waitForDrain(this._decideRuled());
+    };
+
+    // UNDER A SLAB, A CLEAR THAT BREAKS NOTHING WAITS FOR THE DRAIN.
+    //
+    // Topped out, nothing rises, so the panels on the board are all the material there
+    // will be until a break converts a row. A clear that breaks nothing spends three
+    // of them for FLASH + FACE + POP * 3 frames of hold, and that hold is only worth
+    // having when the engine is about to take health. Topped out, update() lifts the
+    // cooldown every frame, and a queued swap locks the rise in that run, so the clear
+    // can wait while `drain > moveFrames` -- framesToTopOut's first draining run -- and
+    // be played on the last frame that still keeps health.
+    //
+    // Routes that end in a break are not this: spending three to make a break gains
+    // a row. Waiting is not idling -- a swap that clears nothing and still leaves the
+    // walk back in time is played instead, ranked the way setups are.
+    var ENDS_IN_A_BREAK = { digPlan: 1, breakReach: 1, 'break': 1, lineup: 1 };
+    BitBot.prototype._waitForDrain = function (d) {
+        var info = this._lastInfo, pool = this._lastPool, base = this._lastBase;
+        if (!d || d.kind !== 'swap' || !d.move || !info || !pool || !base) return d;
+        if (!info.toppedOut || ENDS_IN_A_BREAK[d.via]) return d;
+        var c, buried = false;
+        for (c = 1; c <= W; c++) if (base.garb[c]) { buried = true; break; }
+        if (!buried) return d;
+        var picked = null, i;
+        for (i = 0; i < pool.length; i++) {
+            var pk = pool[i];
+            if (pk.kind === 'swap' && pk.swap[0] === d.move[0] && pk.swap[1] === d.move[1]) { picked = pk; break; }
+        }
+        if (!picked || !picked.resolved || !(picked.resolved.total > 0) || picked.resolved.brokeGarbage) return d;
+        var walk = picked.moveFrames || 0, SWAP = 4;
+        var drain = this.framesToTopOut(walk + 4 * (W + H) + SWAP + 2).drain;
+        if (drain <= walk) return d;
+        this.counts.waitedForDrain = (this.counts.waitedForDrain || 0) + 1;
+        var best = null;
+        for (i = 0; i < pool.length; i++) {
+            var cand = pool[i];
+            if (cand.kind !== 'swap' || !cand.resolved || cand.resolved.total > 0) continue;
+            var back = travel.cost(cand.swap[0], cand.swap[1], picked.swap[0], picked.swap[1]);
+            if ((cand.moveFrames || 0) + SWAP + back >= drain) continue;
+            var sc = this.idleScore(cand, base, info);
+            if (!best || sc > best.score) best = { cand: cand, score: sc };
+        }
+        if (!best) return { kind: 'hold', mode: d.mode, alive: d.alive, via: 'awaitDrain' };
+        return { kind: 'swap', move: best.cand.swap, mode: d.mode, alive: d.alive, via: 'awaitDrain' };
+    };
+
+    BitBot.prototype._decideRuled = function () {
         var d = this._decide();
         var info = this._lastInfo, pool = this._lastPool, base = this._lastBase;
         if (!d || d.kind !== 'swap' || !d.move || !info || !pool || !base) return d;

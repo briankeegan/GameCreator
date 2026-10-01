@@ -113,7 +113,14 @@
     // cursor is [row, col]; legalSwaps is the board's own list of swappable
     // cells. Returns null when nothing is in flight — that is bitmatch's job,
     // not this one's.
-    function bestInWindow(snapshot, frames, H, cursor, legalSwaps) {
+    // opts.spendLeast: among breaks, the one that clears the fewest panels on the way
+    // wins, chain only between equals. Topped out the panels are all the material there
+    // is, and a break converts the same row whatever it spent to get there.
+    function bestInWindow(snapshot, frames, H, cursor, legalSwaps, opts) {
+        var spendLeast = !!(opts && opts.spendLeast);
+        function breakScore(chain, total) {
+            return spendLeast ? -total * 1000 + chain : score(chain, total);
+        }
         var state = revealed(snapshot, H);
         if (!state.open) return null;
 
@@ -129,7 +136,7 @@
         // break tier and a swap has to break better to replace it.
         if (doNothing && doNothing.scope === 'garbage-broke') {
             bestBroke = { swap: null, cost: 0, chain: doNothing.chain, total: doNothing.total,
-                          score: score(doNothing.chain, doNothing.total), broke: true };
+                          score: breakScore(doNothing.chain, doNothing.total), broke: true };
         }
 
         for (var i = 0; i < legalSwaps.length; i++) {
@@ -156,7 +163,7 @@
             // popping when the run stopped, so no part-played number is ever ranked
             // against a played-out one.
             if (out.scope === 'garbage-broke') {
-                var bs = score(out.chain, out.total);
+                var bs = breakScore(out.chain, out.total);
                 if (!bestBroke || bs > bestBroke.score) {
                     bestBroke = { swap: sw, cost: cost, chain: out.chain,
                                   total: out.total, score: bs, broke: true };
