@@ -13,9 +13,13 @@ var BitBot = require(path.join(__dirname, 'bitbot.js'));
 var bench = require(path.join(__dirname, 'bench.js'));
 var E = globalThis.PanelEngine;
 
-var want = process.argv.slice(2);
+// Names pick scenarios, numbers pick seeds, so `drill.js comboStorm 3` runs the one
+// failure being worked on and nothing else.
+var args = process.argv.slice(2);
+var want = args.filter(function (a) { return !/^[0-9]+$/.test(a); });
+var SEEDS = args.filter(function (a) { return /^[0-9]+$/.test(a); }).map(Number);
 if (!want.length) want = ['comboStorm', 'factory', 'bigBlocks'];
-var SEEDS = [1, 2, 3, 4];
+if (!SEEDS.length) SEEDS = [1, 2, 3, 4];
 
 function play(name, seed) {
     var sc = bench.SCENARIOS[name];
