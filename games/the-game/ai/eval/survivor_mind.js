@@ -13,6 +13,7 @@ require(path.join(DIR, '..', '..', 'panel-cpu.js'));
 var P = require(path.join(DIR, 'puyocpu.js')), PA = require(path.join(DIR, 'pa-engine.js')), PE = globalThis.PanelEngine;
 var SH = require(path.join(DIR, 'survivor_shared.js'));
 var cfg = wt.workerData, OPTS = SH.botOptions(cfg.profile, cfg.threads);
+var rates = [], SPEND = 0.6;   // budget searched per millisecond over the last decisions, and the share of the time there is spent searching
 var TALL_RANK = 30;   // frames: a break sooner than this outranks lowering a tall board
 var bot = null, snap = null, nat = null, BS = null;   // BS: a search context of its own for breakMoves   // nat: the search's C context, kept from match to match
 var NativeMem = function () {
@@ -68,10 +69,20 @@ wt.parentPort.on('message', function (m) {
       };
     }
     if (tall) bot.preferProven = function (c) { return c.settled ? TALL_RANK + SH.gridTop(c.settled) : Infinity; };
+    // THE TIME THERE IS: the survival search's budget is what can be searched
+    // in the milliseconds before the answer is due (m.ms; 0 waits for the
+    // whole budget), at the slowest rate of the last few decisions: a tall
+    // board searches several times slower than an empty one.
+    var nodesPerMs = rates.length ? Math.min.apply(null, rates) : 30;
+    var FULL = P.prototype.SURVIVE_SEARCH_BUDGET, CHEAP = P.prototype.SURVIVE_SEARCH_BUDGET_CHEAP;
+    bot.SURVIVE_SEARCH_BUDGET = m.ms > 0 ? Math.max(CHEAP, Math.min(FULL, Math.round(m.ms * nodesPerMs * SPEND))) : FULL;
     // The frame loop stops a question it no longer needs (cfg.abort holds its id).
     bot._abort = cfg.abort ? function () { return Atomics.load(cfg.abort, 0) === m.id; } : null;
     var d;
+    var t1 = Date.now();
     try { d = bot._decide(); } finally { bot._abort = null; }
+    var took = Date.now() - t1;
+    if (took > 20) { rates.push(bot.SURVIVE_SEARCH_BUDGET / took); if (rates.length > 8) rates.shift(); }
     // The rest of the proven line behind the move, for the frame loop to play
     // on while the next decision is late: steps as the search played them
     // ([row, col], 'raise', null for a hold, { long: until }), from lineAt.
