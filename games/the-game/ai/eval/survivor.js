@@ -62,7 +62,7 @@ function differ(want, got) {
 // GC_SURVIVOR_DUMP=file: when this side dies, the last HISTORY frames (board,
 // keys pressed, garbage on its way) and the decisions made over them are
 // written there, a match per line.
-var HISTORY = 300;
+var HISTORY = 300, SNAP_EVERY = 600;   // and the board every SNAP_EVERY frames of the match (snaps)
 function gridOf(st) {
   var rows = [];
   for (var r = st.panels.length - 1; r >= 0; r--) {
@@ -107,7 +107,7 @@ function Match(level) {
   this.line = null;        // the proven line after the plan: { steps, at } (follow)
   this.knew = [];          // the garbage on its way the plan was decided knowing
   this.stats = { frames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0, unforeseen: 0, rewalked: 0, break1: 0, took1: 0, break2: 0, took2: 0, break3: 0, took3: 0 };
-  this.history = []; this.decided = []; this.asked = []; this.dumped = false;
+  this.history = []; this.decided = []; this.asked = []; this.snaps = []; this.dumped = false;
   this.msPerFrame = 1000 / 60; this.wall = 0;   // how fast frames come (soon)
   // A question from the last match is not this one's: its answer is dropped.
   pending = null;
@@ -291,11 +291,12 @@ Match.prototype.record = function (truth, bits, arrivals) {
                       incoming: truth.incoming, arrivals: arrivals.map(function (a) { return [a.at, a.g.width, a.g.height, !!a.g.isChain, !!a.g.isMetal]; }),
                       grid: gridOf(truth) });
   if (this.history.length > HISTORY) this.history.shift();
+  if (truth.clock % SNAP_EVERY === 0) this.snaps.push({ clock: truth.clock, grid: gridOf(truth) });
 };
 Match.prototype.dump = function () {
   if (this.dumped || !process.env.GC_SURVIVOR_DUMP || !this.history.length) return;
   this.dumped = true;
-  require('fs').appendFileSync(process.env.GC_SURVIVOR_DUMP, JSON.stringify({ stats: this.stats, decided: this.decided, asked: this.asked, history: this.history }) + '\n');
+  require('fs').appendFileSync(process.env.GC_SURVIVOR_DUMP, JSON.stringify({ stats: this.stats, decided: this.decided, asked: this.asked, history: this.history, snaps: this.snaps }) + '\n');
 };
 
 // THE PLAN RUNS OUT BEFORE THE ANSWER: the next step of the line the last
