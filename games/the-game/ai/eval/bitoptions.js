@@ -126,13 +126,22 @@
         // differences and stays small while one column towers: the board that died
         // read 4,2,2,2,3,6, bumpiness 6, spread 4, with four rows sealed under
         // columns 2 to 4 and nothing able to reach the slab but column 6.
-        // AND HOW MANY PANELS SHORT OF THE SLAB THE BOARD IS -- the setup deficit.
+        // AND HOW MANY PANELS SHORT THE BOARD IS OF A HORIZONTAL THREE AT THE
+        // SLAB'S FLOOR ROW -- the setup deficit.
+        //
+        // Named for what it measures and not for "distance to a break", which it is
+        // not. Relaxed to the rule's true minimum -- the cheapest of a horizontal
+        // three below the slab, a vertical three below it, or a cell reaching
+        // alongside a partial slab -- it reads ZERO on the board it was written for,
+        // because column six already touched the garbage there and still had no
+        // break. The faithful measure is the inert one; this is the stricter target
+        // that moves.
         //
         // Breaking needs three panels in a line touching the garbage, so every
         // column below the slab's floor is a column that cannot take part. Summed
         // over the board that is the panels still needed to reach it:
         //
-        //     reachGap = SUM over c of max(0, (slabFloorRow - 1) - h[c])
+        //     slabRowGap = SUM over c of max(0, (slabFloorRow - 1) - h[c])
         //
         // THE REFERENCE IS THE SLAB, NOT THE TALLEST COLUMN, and that is the whole
         // point. `spread` and the void both measure against `high`, so they can be
@@ -149,11 +158,67 @@
             while (lowBit >>> fr) fr++;              // row index of the lowest garbage cell
             if (!floorRow || fr < floorRow) floorRow = fr;
         }
+        // THE BEST THREE ADJACENT COLUMNS, NOT THE BOARD TOTAL.
+        //
+        // The total is invariant under the moves it was meant to steer. A swap that
+        // clears nothing moves one panel sideways, so one column's deficit rises by
+        // one and another's falls by one and the sum does not move at all -- it was
+        // constant across nearly every candidate, and adding it changed not one
+        // decision on the board it was written for.
+        //
+        // WHY THREE, WHEN THE RULE NEEDS ONLY ONE CELL. bitmatch breaks a slab when
+        // any cleared cell is 4-way adjacent to any slab cell -- above, below or
+        // beside (see the `hit` test in resolveFromMasks). So one column touching is
+        // enough IN PRINCIPLE, and on the board this was written for column six was
+        // already at the floor: the board touched the slab and still could not break
+        // it, because its top three read 6,1,6.
+        //
+        // The two shapes are not equally available. A vertical three touching from
+        // below needs three of the SAME colour stacked in one column. A horizontal
+        // three along the slab's floor row needs three adjacent columns at that
+        // height, and then any colour that matches across them will do. This measures
+        // the distance to the second, which is the cheaper of the two to arrange --
+        // not a claim that a break requires three columns.
+        //
+        // On heights 4,4,5,5,5,8 with the floor at r9 the windows read 11, 10, 9 and
+        // 6: six panels short in columns four to six. Moving a panel from column
+        // three into column four takes it to five, so unlike the total it ranks the
+        // move -- it pays for gathering material where it can reach rather than
+        // spreading it thin across columns that cannot.
         if (floorRow > 1) {
-            for (c = 1; c <= w2; c++) gap += Math.max(0, (floorRow - 1) - h[c]);
+            var need = floorRow - 1, stride2 = w2 + 2;
+            gap = Infinity;
+            // THE HORIZONTAL ROUTE: three adjacent columns up at the slab's floor row,
+            // after which any colour matching across them clears against the slab.
+            for (c = 1; c + 2 <= w2; c++) {
+                var win = Math.max(0, need - h[c]) + Math.max(0, need - h[c + 1]) +
+                          Math.max(0, need - h[c + 2]);
+                if (win < gap) gap = win;
+            }
+            // AND THE VERTICAL ROUTE, WITH ITS REAL COST. A column touching the slab
+            // is not a column that can break it: on the board this was written for,
+            // column six sat exactly at the floor and its top three read 6,1,6. Height
+            // alone says zero and the board had no break at all. The honest cost is
+            // the climb PLUS the panels missing from a run of three at the top, so
+            // that column reads 0 + 2 = 2.
+            for (c = 1; c <= w2; c++) {
+                var climb = Math.max(0, need - h[c]);
+                var run = 0;
+                if (h[c] > 0) {
+                    var topBit = 1 << (h[c] - 1), col = 0, a;
+                    for (a = 1; a <= 12; a++) if (st2.colour[a * stride2 + c] & topBit) { col = a; break; }
+                    if (col) {
+                        var mask = st2.colour[col * stride2 + c] >>> 0;
+                        for (var r2 = h[c]; r2 >= 1 && (mask & (1 << (r2 - 1))); r2--) run++;
+                    }
+                }
+                var vert = climb + Math.max(0, 3 - run);
+                if (vert < gap) gap = vert;
+            }
+            if (!isFinite(gap)) gap = 0;
         }
         return { tall: tall, bumps: bumps, excess: dev / w2, mat: mean, low: low,
-                 high: mx, spread: mx - low, reachGap: gap };
+                 high: mx, spread: mx - low, slabRowGap: gap };
     }
 
     function optionOf(swaps, frames, r) {
