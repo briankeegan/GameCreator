@@ -1241,10 +1241,6 @@
             // it as the prize a finished setup pays discounted by the time the rest
             // of the work costs -- see slabGain in bitoptions.
             if (perPanelFrames > 0) cells += (o.slabGain || 0) / perPanelFrames;
-            // AND THE STEP IT TAKES OUT OR ADDS. A unit of step is a cell, and a cell
-            // is this ranking's unit. See bumpGain in bitoptions for why a tiebreak was
-            // not enough.
-            cells += (o.bumpGain || 0);
             // AND BEING READY FOR THE SLAB THAT IS COMING. Worth a row of rise,
             // converted to this ranking's currency. Zero unless there is a slab
             // to be ready for, so it cannot speak on a clean board.
@@ -1533,10 +1529,6 @@
                        // AND WHAT IT DID TO THE SETUP FOR A BREAK -- already in
                        // frames, which is this ranking's currency. See bestAttack.
                        + (o.slabGain || 0)
-                       // AND THE STEP IT TAKES OUT OR ADDS, at the per-cell rate. A
-                       // cliff is where the slab lands high and seals everything under
-                       // it, and this was a tiebreak that never fired.
-                       + (o.bumpGain || 0) * perPanel
                        + digs
                        // AND BEING READY FOR THE SLAB THAT IS COMING -- already in
                        // frames, which is this ranking's currency. See bestAttack.
