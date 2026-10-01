@@ -38,9 +38,11 @@ function panelsOf(b) {
   if (b && b.grid) for (var r = 1; r < b.grid.length; r++) { var row = b.grid[r]; if (row) for (var c = 1; c <= b.width; c++) if (row[c] > 0) n++; }
   return n;
 }
-// Of those, the flattest under the garbage: the cells between each column's
-// top and the lowest garbage (or, none landed yet, the tallest column). Garbage
-// rests on the tallest column, and only a column it rests on can touch it.
+// Of those, the flattest under the garbage: each column's shortfall from the
+// tallest below it. Garbage rests on the tallest column and only a column it
+// rests on can touch it; and a converted row lands flush only on a flat top.
+// (The gap up to the garbage itself is no measure: every move that clears
+// nothing leaves the same.)
 function gapOf(b) {
   var g = 0, r, c, tops = [], hi = 0, gap = 0;
   for (r = 1; r < b.grid.length && !g; r++) { var row = b.grid[r]; if (row) for (c = 1; c <= b.width; c++) if (row[c] < 0) { g = r; break; } }
@@ -49,8 +51,7 @@ function gapOf(b) {
     for (r = 1; r < (g || b.grid.length); r++) if (b.grid[r] && b.grid[r][c] > 0) t = r;
     tops.push(t); if (t > hi) hi = t;
   }
-  var under = g ? g - 1 : hi;
-  tops.forEach(function (t) { gap += Math.max(0, under - t); });
+  tops.forEach(function (t) { gap += hi - t; });
   return gap;
 }
 function hanging(board) {
