@@ -53,6 +53,26 @@ function paintBlocks(bl) { var o = {}; for (var k in bl) o[k] = bl[k].cells; ret
 var src = JSON.parse(fs.readFileSync(path.join(__dirname, 'realboards.json'), 'utf8'));
 var CURSOR = [1, 1];
 
+// THE CLOCK THESE CHECKS RUN ON, and there is no running without one.
+//
+// options() requires it: every price in there is read off the rise, the deadline
+// and the cooldown, and a call that handed none over used to be priced at a rise
+// of 112 frames -- a number that is in no engine -- with no deadline and no
+// cooldown, so the setup gate silently refused every setup. The rise here is the
+// engine's own, riseTime * 16 at the speed the game runs at; the cooldown is the
+// bot's default; the deadline is a full board of ceiling, so nothing on a list is
+// refused here for want of time.
+// LEVEL, NOT SPEED -- and the engine converts. A level-10 stack runs at speed 32
+// and riseTime(32) * 16 is 120 frames a row; riseTime(10) is a different number
+// entirely, for a speed no level sets. Built here rather than typed, so the day
+// the level table moves this moves with it.
+var LEVEL = 10, REACTION = 12;
+var FPROW = (function () {
+    var st = new globalThis.PanelEngine.Stack({ level: LEVEL });
+    return globalThis.PanelEngine.riseTime(st.speed) * 16;
+}());
+var CLOCK = { framesPerRow: FPROW, reaction: REACTION, deadline: H * FPROW };
+
 // --------------------------------------------------------------------------
 // 1. Every option, played on the engine.
 var R = { boards: 0, listed: 0, played: 0, wrong: 0, refused: 0,
@@ -64,7 +84,7 @@ for (var i = 0; i < src.boards.length && R.boards < CHECK_BOARDS; i++) {
     var b = boardFromString(src.boards[i]);
     if (Object.keys(b.blocks).length) continue;      // garbage has its own gates
     var base = new LogicalBoard(W, H, 6, b.grid, b.blocks);
-    var list = opts.options(base, W, H, CURSOR, 2);
+    var list = opts.options(base, W, H, CURSOR, 2, null, CLOCK);
     var all = list.now.concat(list.next);
     if (!all.length) continue;
     R.boards++;
@@ -199,7 +219,7 @@ for (var z = 0; z < 60 && z < src.boards.length; z++) {
     var zb = boardFromString(src.boards[z]);
     if (Object.keys(zb.blocks).length) continue;
     var zbase = new LogicalBoard(W, H, 6, zb.grid, zb.blocks);
-    var zl = opts.options(zbase, W, H, CURSOR, 2);
+    var zl = opts.options(zbase, W, H, CURSOR, 2, null, CLOCK);
     if (!zl.now.length) continue;
     flatBoards++;
     // WITHIN ONE LIST. A two-swap option pays two travels, so `now` and `next`
@@ -431,7 +451,7 @@ if (flatSpread !== 0) {
         for (c = 1; c <= W; c++)
             for (r = 1; r <= cols[c - 1].length; r++) grid[r][c] = cols[c - 1][r - 1];
         var base = new LogicalBoard(W, H, 6, grid, {});
-        var l = opts.options(base, W, H, [1, 1], 2);
+        var l = opts.options(base, W, H, [1, 1], 2, null, CLOCK);
         return l.now.concat(l.next);
     }
 
@@ -461,7 +481,7 @@ if (flatSpread !== 0) {
         var rb = boardFromString(src.boards[bi]);
         if (Object.keys(rb.blocks).length) continue;
         var lb = new LogicalBoard(W, H, 6, rb.grid, rb.blocks);
-        var ll = opts.options(lb, W, H, CURSOR, 2), aa = ll.now.concat(ll.next);
+        var ll = opts.options(lb, W, H, CURSOR, 2, null, CLOCK), aa = ll.now.concat(ll.next);
         if (!aa.length) continue;
         n++;
         aa.forEach(function (o) {
@@ -490,7 +510,7 @@ if (flatSpread !== 0) {
     var gcells = [];
     for (cc2 = 1; cc2 <= W; cc2++) { gg[7][cc2] = -2; gcells.push([7, cc2]); }
     var gb = new LogicalBoard(W, H, 6, gg, { s: { cells: gcells } });
-    var gl = opts.options(gb, W, H, [1, 1], 2), ga = gl.now.concat(gl.next);
+    var gl = opts.options(gb, W, H, [1, 1], 2, null, CLOCK), ga = gl.now.concat(gl.next);
     var breaks = ga.filter(function (o) { return o.breaks; });
     rok(breaks.length > 0,
         '`ready`: the board with a three one swap under a slab offered no break, so ' +
@@ -527,7 +547,7 @@ if (flatSpread !== 0) {
             }
         var blocks = cells.length ? { s: { cells: cells } } : {};
         var base = new LogicalBoard(W, H, 6, grid, blocks);
-        var l = opts.options(base, W, H, [1, 1], 2);
+        var l = opts.options(base, W, H, [1, 1], 2, null, CLOCK);
         return l.now.concat(l.next);
     }
     // THE SAME BOARD WITH THE DIGGING GOAL SET, which is what the bot passes
@@ -544,7 +564,7 @@ if (flatSpread !== 0) {
             }
         var blocks = cells.length ? { s: { cells: cells } } : {};
         var base = new LogicalBoard(W, H, 6, grid, blocks);
-        var l = opts.options(base, W, H, [1, 1], 2, null, null, true);
+        var l = opts.options(base, W, H, [1, 1], 2, null, CLOCK, true);
         return l.now.concat(l.next);
     }
 
@@ -698,7 +718,7 @@ if (flatSpread !== 0) {
             }
         var lb = new LogicalBoard(W, H, 6, grid, { s: { cells: cells } });
         var l = opts.options(lb, W, H, CURSOR, 2, null,
-                             { framesPerRow: 120, deadline: 600, holdWorth: 59 }, true);
+                             { framesPerRow: FPROW, deadline: 600, reaction: REACTION, holdWorth: 59 }, true);
         if (l.save) { savesSeen++; if (typeof l.save.value !== 'number') unvalued++; }
     });
     bok(savesSeen > 0,
@@ -739,7 +759,7 @@ if (flatSpread !== 0) {
         seenBoards++;
         var lbo = new LogicalBoard(W, H, 6, lb.grid, lb.blocks);
         var ll = opts.options(lbo, W, H, CURSOR, 2, null,
-                              { framesPerRow: 120, deadline: 600, stopPrice: price }, false);
+                              { framesPerRow: FPROW, deadline: 600, reaction: REACTION, stopPrice: price }, false);
         if (!ll.flatten) continue;
         anyFlatten++;
         if ((ll.flatten.landStop || 0) > 0) withStop++;
@@ -760,7 +780,7 @@ if (flatSpread !== 0) {
     // beside the beam is undefined when they read it -- a price off it comes out
     // NaN, and NaN fails `> 0` silently, which is exactly what a count of priced
     // options cannot see. Counted per ply, and every option checked for a number.
-    var FPR = 120, prepped = 0, wrongSize = 0, notANumber = 0;
+    var FPR = FPROW, prepped = 0, wrongSize = 0, notANumber = 0;
     var preppedNow = 0, preppedNext = 0;
     for (var pi = 0; pi < src.boards.length && prepped < 400; pi++) {
         var pb = boardFromString(src.boards[pi]);
@@ -770,9 +790,9 @@ if (flatSpread !== 0) {
         // a true left over from the call before, and the bug hides behind its own
         // history. One call with the flag off leaves a false there to be caught.
         opts.options(new LogicalBoard(W, H, 6, pb.grid, pb.blocks), W, H, CURSOR, 2,
-                     null, { framesPerRow: FPR, deadline: 600, prepare: false }, false);
+                     null, { framesPerRow: FPR, deadline: 600, reaction: 12, prepare: false }, false);
         var pl = opts.options(new LogicalBoard(W, H, 6, pb.grid, pb.blocks), W, H, CURSOR, 2,
-                              null, { framesPerRow: FPR, deadline: 600, prepare: true }, false);
+                              null, { framesPerRow: FPR, deadline: 600, reaction: 12, prepare: true }, false);
         [['now', pl.now], ['next', pl.next]].forEach(function (pair) {
             pair[1].forEach(function (x) {
                 if (typeof x.slabWorth !== 'number' || !isFinite(x.slabWorth)) {
@@ -802,12 +822,94 @@ if (flatSpread !== 0) {
         'panel of life (' + (FPR / W) + ' frames). A row is 6.4 cells in bestAttack, ' +
         'a whole combo, for a slab that has not landed yet');
 
-    // AND WITHOUT A PRICE IT MUST STILL WORK. The caller may not hand one over,
-    // and a search that needs it is a search that breaks its own callers.
-    var noPrice = opts.options(new LogicalBoard(W, H, 6,
-        boardFromString(src.boards[0]).grid, {}), W, H, CURSOR, 2);
-    lok(!!noPrice && !!noPrice.now,
-        '`landStop`: the search failed when handed no price for a landing');
+    // AND THE SETUP IS DECIDED BY THE CLOCK, NOT BY A DISTANCE.
+    //
+    // `slabGain` is the panels a landing supplied toward three in a line against
+    // the slab. Its gate is time: one swap places one panel and costs one reaction
+    // cooldown, so the setup fits when slabGap <= deadline/reaction. The same
+    // board, the same options, ranked with a long clock and with a short one must
+    // therefore disagree -- and they must disagree THIS WAY ROUND. A test that only
+    // counted nonzero gains would pass on a gate wired backwards, and one that read
+    // a single deadline would pass with no gate at all.
+    var roomy = 0, pressed = 0, backwards = 0, sawGarbage = 0;
+    for (var ci = 0; ci < src.boards.length && sawGarbage < 120; ci++) {
+        var cb = boardFromString(src.boards[ci]);
+        if (!Object.keys(cb.blocks).length) continue;      // no slab, nothing to reach
+        var cst = bit.maskState(cb.grid, cb.blocks, W, H);
+        var base = opts.shapeOf(cst);
+        if (!base || !base.slabRowGap) continue;           // already against the slab
+        sawGarbage++;
+        function gainsAt(dl) {
+            var pl = opts.options(new LogicalBoard(W, H, 6, cb.grid, cb.blocks), W, H,
+                                  CURSOR, 2, null,
+                                  { framesPerRow: FPR, deadline: dl, reaction: REACTION,
+                                    prepare: true }, false);
+            var out = {};
+            pl.now.concat(pl.next).forEach(function (x) {
+                if (typeof x.slabGain !== 'number' || !isFinite(x.slabGain)) {
+                    notANumber++;
+                    return;
+                }
+                // keyed by the swaps, so the SAME option is compared across clocks
+                out[JSON.stringify(x.swaps)] = { gain: x.slabGain, gap: x.slabGap };
+            });
+            return out;
+        }
+        // A clock with room for every panel the board is short, and one with room
+        // for none of it. Both read off the same division the search uses.
+        var wide = gainsAt((base.slabRowGap + 2) * REACTION);
+        var tight = gainsAt(REACTION - 1);
+        for (var k in wide) {
+            // A LANDING ALREADY AGAINST THE SLAB IS CREDITED ON ANY CLOCK, and that
+            // is the rule rather than an exception to it: nothing is left to play,
+            // so there is nothing the deadline has to afford. What the tight clock
+            // must refuse is an UNFINISHED setup -- gap still above zero.
+            var wg = wide[k], tg = tight[k];
+            if (wg.gain !== 0 && wg.gap > 0) roomy++;
+            if (tg && tg.gain !== 0 && tg.gap > 0) pressed++;
+            if (wg.gain === 0 && tg && tg.gain !== 0) backwards++;
+        }
+    }
+    lok(sawGarbage > 0,
+        '`slabGain`: no board in the fixture carries a slab it is short of, so the ' +
+        'clock gate was never exercised');
+    lok(roomy > 0,
+        '`slabGain`: not one option on ' + sawGarbage + ' buried boards gained ' +
+        'anything with a clock wide enough for the whole setup, so the term is dead ' +
+        'and the credit cannot be reached at any deadline');
+    lok(pressed === 0,
+        '`slabGain`: ' + pressed + ' options with setup still to play were credited ' +
+        'for it with less than one reaction cooldown of life left. The gate is the ' +
+        'clock -- a board that cannot play the swap cannot be paid for being near it');
+    lok(backwards === 0,
+        '`slabGain`: ' + backwards + ' options are credited on the short clock and ' +
+        'not on the long one, which is the gate wired backwards');
+
+    // AND A CALLER HAS TO HAND THE CLOCK OVER. This read the other way round --
+    // the search must work with no price -- and that is what made a forgotten
+    // clock invisible: with no deadline and no cooldown every price reads zero and
+    // the setup gate refuses every setup, on a list that still looks complete. A
+    // caller that prices nothing says so with UNPRICED; one that forgets throws.
+    var threw = null;
+    try {
+        opts.options(new LogicalBoard(W, H, 6,
+            boardFromString(src.boards[0]).grid, {}), W, H, CURSOR, 2);
+    } catch (e) { threw = e; }
+    lok(!!threw, 'the search accepted a call with no clock at all, so a caller that ' +
+        'forgets one gets every price silently zeroed instead of an error');
+    var halfThrew = null;
+    try {
+        opts.options(new LogicalBoard(W, H, 6,
+            boardFromString(src.boards[0]).grid, {}), W, H, CURSOR, 2, null,
+            { framesPerRow: FPROW, deadline: 600 });   // no reaction
+    } catch (e) { halfThrew = e; }
+    lok(!!halfThrew, 'the search accepted a clock with no reaction in it -- the ' +
+        'cooldown the setup gate divides by, so a setup is refused rather than ' +
+        'measured');
+    var clocked = opts.options(new LogicalBoard(W, H, 6,
+        boardFromString(src.boards[0]).grid, {}), W, H, CURSOR, 2, null, CLOCK);
+    lok(!!clocked && !!clocked.now,
+        'the search failed on a complete clock, which is the only way it is called');
 
     console.log('  landStop: ' + (lsFails ? lsFails + ' FAILED' :
                 withStop + ' of ' + anyFlatten + ' flattens carry what their destination is worth'));

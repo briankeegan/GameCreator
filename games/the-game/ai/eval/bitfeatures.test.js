@@ -31,6 +31,22 @@ var LogicalBoard = globalThis.PanelCpu.LogicalBoard;
 var PE = globalThis.PanelEngine;
 var BF = require('./bitfeatures.js');
 var W = 6, H = 12;
+// THE CLOCK EVERY features() CALL HANDS OVER. bitoptions requires one -- the
+// depth-2 half of its list is beam-ranked in frames -- and the rise is the
+// engine's own at the level the game runs: a level-10 stack's speed through
+// riseTime, times 16. The cooldown is the bot's default.
+var T_LEVEL = 10, T_REACTION = 12;
+var T_FPROW = (function () {
+    var st = new globalThis.PanelEngine.Stack({ level: T_LEVEL });
+    return globalThis.PanelEngine.riseTime(st.speed) * 16;
+}());
+function CLOCKOF(info) {
+    return { framesPerRow: T_FPROW, reaction: T_REACTION,
+             // A full board of ceiling, so nothing on a list is refused here
+             // for want of time, plus whatever the clock already holds.
+             deadline: 12 * T_FPROW + ((info && info.stopTime) || 0) };
+}
+
 
 function boardFromString(s) {
     var grid = [], blocks = {}, r, c;
@@ -102,7 +118,7 @@ for (var i = 0; i < src.boards.length; i += 2) {
     var resolved = (i % 3) === 0
         ? { chain: 1 + (i % 4), total: 3 + (i % 6), brokeGarbage: (i % 7) === 0 ? 6 : 0 }
         : null;
-    var out = BF.features(lb, [1, 1], moveFrames, resolved, info, PE);
+    var out = BF.features(lb, [1, 1], moveFrames, resolved, info, PE, null, CLOCKOF(info));
     boards++;
     var row = [];
     for (var k = 0; k < KEYS.length; k++) {
@@ -161,6 +177,8 @@ if (strong.length) {
 // 5. The deep bucket, on boards that HOLD deep chains. The chips are staged by
 // verify_chips.js, borrowed rather than copied.
 var V = require('./verify_chips.js');
+
+
 var deepSeen = {}, staged = 0, deepest = 0;
 V.chips.forEach(function (chip) {
     if (chip.swaps.length > 2) return;
@@ -174,7 +192,7 @@ V.chips.forEach(function (chip) {
         board.swap(r, c);
     }
     board._applyGravity();
-    var out = BF.features(board, [1, 1], 0, null, { stopTime: 50, toppedOut: false }, PE);
+    var out = BF.features(board, [1, 1], 0, null, { stopTime: 50, toppedOut: false }, PE, null, CLOCKOF({ stopTime: 50 }));
     staged++;
     deepSeen[Math.round(out.f.chain5plus * 1000)] = 1;
     var best = BF.bestSize(out.options.now.concat(out.options.next), 'chain');
@@ -191,7 +209,7 @@ if (Object.keys(deepSeen).length < 2) {
 // --------------------------------------------------------------------------
 // WITHOUT THE ENGINE STATE, NOTHING IS GUESSED.
 var noInfo = BF.features(new LogicalBoard(W, H, 6, boardFromString(src.boards[0]).grid, {}),
-                         [1, 1], 0, null, null, PE);
+                         [1, 1], 0, null, null, PE, null, CLOCKOF(null));
 ['stopEarned', 'stopReachable'].forEach(function (k) {
     if (noInfo.f[k] !== undefined) {
         console.error('FAIL ' + k + ' was computed with no clock to compute it from');
@@ -212,7 +230,7 @@ var flatSeen = { bumpiness: {}, spread: {}, tallest: {} };
 for (var z = 0; z < 400 && z < src.boards.length; z++) {
     var zb = boardFromString(src.boards[z]);
     var zo = BF.features(new LogicalBoard(W, H, 6, zb.grid, zb.blocks), [1, 1], 10, null,
-                         { stopTime: 50, toppedOut: false }, PE);
+                         { stopTime: 50, toppedOut: false }, PE, null, CLOCKOF({ stopTime: 50 }));
     Object.keys(flatSeen).forEach(function (k) { flatSeen[k][Math.round(zo.f[k] * 1000)] = 1; });
 }
 BF.surface = realSurface;
@@ -238,7 +256,7 @@ var cumRows = [];
 for (var y = 0; y < 900 && y < src.boards.length; y += 2) {
     var yb = boardFromString(src.boards[y]);
     var yo = BF.features(new LogicalBoard(W, H, 6, yb.grid, yb.blocks), [1, 1], 10, null,
-                         { stopTime: 50, toppedOut: false }, PE);
+                         { stopTime: 50, toppedOut: false }, PE, null, CLOCKOF({ stopTime: 50 }));
     cumRows.push(KEYS.map(function (k) { return yo.f[k] || 0; }));
 }
 BF.ways = realWays;

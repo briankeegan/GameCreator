@@ -275,6 +275,10 @@
                  // while the board is still healthy, which is why it is on the option
                  // and not in one route's value.
                  voidRows: sh ? (sh.high - sh.mat) : null,
+                 // AND THE PANELS THE LANDED BOARD STILL NEEDS TO REACH ITS SLAB.
+                 // shapeOf already computes it, colour feasibility included, so this
+                 // costs nothing: see slabRowGap where it is derived.
+                 slabGap: sh ? (sh.slabRowGap || 0) : null,
                  // CAN THE BOARD THIS LANDS ON STILL FIRE.
                  //
                  // Firing anything holds the floor for its resolve, and at
@@ -307,6 +311,30 @@
     var LASTBREAKREADY = null;
 
     function options(board, W, H, cursor, depth, st, timing, dig) {
+        // THE CLOCK IS NOT OPTIONAL, because every price in here is read off it.
+        //
+        // It used to be: `framesPerRow || 112`, `deadline || 0`, `reaction || 0`.
+        // A caller that forgot got a board priced at a made-up rise, no deadline
+        // and no cooldown -- and the setup gate below divides by the cooldown, so
+        // the omission did not fail, it silently refused every setup on the board.
+        // That is the same defect as the NaN this file already carries a test for,
+        // with a number in place of the NaN, which is worse: it survives every
+        // check that only asks for a finite number.
+        // PRESENT, not merely truthy. A zero rise or a zero cooldown is a thing an
+        // engine can say and a missing one is not, and `|| default` could not tell
+        // them apart -- which is the whole defect being closed here.
+        //
+        // NOTHING IS UNPRICED. There is no caller that gets the list without the
+        // clock: a list whose prices all read zero is a list with no ordering in
+        // it, and every consumer of this -- the search, the feature vector, the
+        // readiness gate -- is ranking or counting something off a board that has
+        // a rise and a deadline whether or not the caller bothered to look them up.
+        if (!timing || typeof timing.framesPerRow !== 'number' ||
+            typeof timing.reaction !== 'number') {
+            throw new Error('bitoptions.options: timing is required and needs ' +
+                            'framesPerRow and reaction -- the rise and the cooldown ' +
+                            'every price and the setup gate are derived from');
+        }
         OVERHEAD = (timing && timing.overhead) || 0;
         RESOLVE = (timing && timing.resolve) || null;
         // DIGGING IS A GOAL, NOT A PREFERENCE. The caller sets it when the board
@@ -319,7 +347,7 @@
         // beam because the depth-1 options below are built first, and `var` reads
         // as undefined until its statement runs: any price they took from these
         // came out NaN.
-        var FPR = (timing && timing.framesPerRow) || 112;
+        var FPR = (timing && timing.framesPerRow) || 0;
         var DEADLINE = (timing && timing.deadline) || 0;
         stopPrice = (timing && timing.stopPrice) || null;
         PREPARE = !!(timing && timing.prepare);
@@ -353,6 +381,39 @@
         // Priced the way bestPlan prices it, at a row of rise per row short, so a
         // route that starves the board pays what the starving costs.
         var WORK = (timing && timing.workingRows) || 0;
+        // HOW MUCH SETUP THERE IS TIME FOR, which is the only question about a
+        // setup worth asking.
+        //
+        // A break needs three panels in a line touching the slab. On a buried
+        // board that is rarely one swap away, and the readiness credits above ask
+        // exactly one -- slabReadyFast exchanges a single pair. So a break three
+        // swaps out was priced the same as no break at all, on a board with four
+        // hundred frames of ceiling and time for twenty swaps.
+        //
+        // DISTANCE IS NOT THE TEST. TIME IS. One decision costs one reaction
+        // cooldown -- the bot issues a swap, waits it out, issues the next -- so
+        // the decisions that fit before the board tops out are deadline/reaction.
+        // That is the same division depthFor uses to pick the plan depth, read off
+        // the same two engine numbers, so the search and the plan agree on how
+        // much future there is.
+        //
+        // slabRowGap is the setup measured in panels and a swap places one, so a
+        // setup of g panels is g decisions and fits when g <= setupSwaps. At a
+        // deadline of several hundred that is most of them; with thirty frames
+        // left it is none, which is right -- a board about to die cannot spend
+        // four swaps building.
+        //
+        // AND IT IS THE CLOCK AT THE TIME THE SETUP WOULD BE PLAYED, not the clock
+        // now. An option costs its own duration before any setup swap can follow it
+        // -- the walk, the swap, the resolve -- and a depth-2 option costs two of
+        // those. Measuring its setup against the frames the board has BEFORE
+        // playing it credits a setup out of frames the option has already spent,
+        // which is the same error as scoring a landed board by this frame's
+        // deadline.
+        var REACT = (timing && timing.reaction) || 0;
+        function setupSwaps(spent) {
+            return Math.floor(Math.max(0, DEADLINE - (spent || 0)) / Math.max(1, REACT));
+        }
         // A CAP ON HOW MANY LANDINGS GET ASKED. slabReadyFast walks the landed
         // board, so neither list can ask it of everything. Declared here and reset
         // in expandAll, so the beam gets the same cap the depth-1 list does.
@@ -373,6 +434,10 @@
         // whether it merely lands on a board that has none. False when there is no
         // garbage, and then nothing can close what was never open.
         var BASEVOID = START ? (START.high - START.mat) : 0;
+        // AND HOW FAR THE SETUP FOR A BREAK IS BEFORE ANY MOVE, for the same
+        // reason the void has a base: the panels a board still needs to reach its
+        // slab are a fact about the position, and only the CHANGE is about the move.
+        var BASEGAP = START ? (START.slabRowGap || 0) : 0;
         var BASEBREAK = breakReadyOf(st) === true;
         LASTBREAKREADY = BASEBREAK;
         // AND HOW MANY WAYS THERE ARE TO REACH THE GARBAGE BEFORE ANY MOVE.
@@ -474,6 +539,26 @@
             // one: an absolute count is a fact about the position, not the move.
             opt.voidGain = (opt.voidRows === null || opt.voidRows === undefined)
                              ? 0 : (BASEVOID - opt.voidRows);
+            // AND HOW MUCH CLOSER IT GOT TO A SETUP THERE IS TIME FOR.
+            //
+            // Two halves, and the second is the one that was missing. `slabGap` is how
+            // many panels the landing still needs before three in a line can touch the
+            // slab; the GAIN is how many of them this move supplied. Priced like the
+            // void and like a dig cell -- a panel of gap closed is a panel of life,
+            // framesPerRow/W -- by both rankers, in each one's own currency.
+            //
+            // SILENT WHEN THERE IS NO TIME FOR THE SETUP. A landing still further from
+            // its slab than the deadline affords swaps earns nothing for having
+            // narrowed it, because the board will not be there to spend it. That is
+            // what makes this a clock and not a distance: with four hundred frames of
+            // ceiling a four-swap setup is worth starting, and with thirty frames left
+            // the same setup is not.
+            //
+            // Zero off the slab -- slabGap is 0 with no garbage, so gain is 0 too -- and
+            // zero on a break, whose settled board is unknowable.
+            opt.slabGain = (opt.slabGap === null ||
+                            opt.slabGap > setupSwaps(opt.duration))
+                             ? 0 : (BASEGAP - opt.slabGap);
             // AND WHETHER THE BOARD IT LANDS ON COULD ANSWER THE NEXT SLAB.
             //
             // slabReadyFast asks whether a three can be put against the row the next
@@ -768,6 +853,26 @@
                                 // one: an absolute count is a fact about the position, not the move.
                                 opt.voidGain = (opt.voidRows === null || opt.voidRows === undefined)
                                                  ? 0 : (BASEVOID - opt.voidRows);
+                                // AND HOW MUCH CLOSER IT GOT TO A SETUP THERE IS TIME FOR.
+                                //
+                                // Two halves, and the second is the one that was missing. `slabGap` is how
+                                // many panels the landing still needs before three in a line can touch the
+                                // slab; the GAIN is how many of them this move supplied. Priced like the
+                                // void and like a dig cell -- a panel of gap closed is a panel of life,
+                                // framesPerRow/W -- by both rankers, in each one's own currency.
+                                //
+                                // SILENT WHEN THERE IS NO TIME FOR THE SETUP. A landing still further from
+                                // its slab than the deadline affords swaps earns nothing for having
+                                // narrowed it, because the board will not be there to spend it. That is
+                                // what makes this a clock and not a distance: with four hundred frames of
+                                // ceiling a four-swap setup is worth starting, and with thirty frames left
+                                // the same setup is not.
+                                //
+                                // Zero off the slab -- slabGap is 0 with no garbage, so gain is 0 too -- and
+                                // zero on a break, whose settled board is unknowable.
+                                opt.slabGain = (opt.slabGap === null ||
+                            opt.slabGap > setupSwaps(opt.duration))
+                                                 ? 0 : (BASEGAP - opt.slabGap);
                                 // AND WHETHER THE BOARD IT LANDS ON COULD ANSWER THE NEXT SLAB.
                                 //
                                 // slabReadyFast asks whether a three can be put against the row the next
@@ -1221,8 +1326,8 @@
     // EXPOSED SO THE GATE ASKS THE SAME QUESTION THE SEARCH ASKS. The drop test
     // inside it is what separates a sealed board from one that only looks sealed
     // one swap deep, and a gate that cannot call it cannot check that.
-    function breakReadyBoard(st) {
-        options(null, st.W, st.H, [1, 1], 1, st, null, true);
+    function breakReadyBoard(st, timing) {
+        options(null, st.W, st.H, [1, 1], 1, st, timing, true);
         return LASTBREAKREADY;
     }
     return { options: options, kindOf: kindOf, sizeOf: sizeOf, shapeOf: shapeOf,
