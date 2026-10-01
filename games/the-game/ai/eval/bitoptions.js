@@ -620,7 +620,29 @@
             opt.slabGain = setupWorth(opt.slabGap, DEADLINE - (opt.duration || 0))
                              - setupWorth(BASEGAP, DEADLINE);
             // AND THE HOLES IT DIGS, as a delta for the same reason.
-            opt.wellGain = (opt.wells === null) ? 0 : (BASEWELLS - opt.wells);
+            // AND THE HOLES IT DIGS -- CHARGED, NEVER CREDITED.
+            //
+            // A WELL FALLS TWO WAYS AND ONLY ONE OF THEM IS PROGRESS. Raising the
+            // hole column fills it; lowering the hole's NEIGHBOURS also makes the
+            // number fall, and that is tearing down the walls around it. Credited
+            // both ways, this paid the bot to clear the columns beside its own
+            // holes -- and a vertical clear takes three panels out of one column,
+            // which drops a neighbour below the hole and "closes" the well by
+            // wrecking the board. It is the same trap `spread` was removed for:
+            // high - low falls when the tallest column is pulled down.
+            //
+            // Measured both ways round. At a row of rise per row of depth, three
+            // pairings that had been alive died and one death was fixed. At the
+            // right size, in cells, two of the first two pairings died. Not the
+            // magnitude: the sign.
+            //
+            // So it is one-sided. Digging a hole costs; removing one earns nothing.
+            // Lowering a neighbour can then only ever reduce `wells`, which is
+            // worth zero, so the exploit has nothing to pay it. Same shape as
+            // `opensHole`, which refuses a transition rather than rewarding its
+            // reverse.
+            opt.wellGain = (opt.wells === null)
+                         ? 0 : -Math.max(0, opt.wells - BASEWELLS);
             // AND WHETHER THE BOARD IT LANDS ON COULD ANSWER THE NEXT SLAB.
             //
             // slabReadyFast asks whether a three can be put against the row the next
@@ -935,7 +957,10 @@
                                 opt.slabGain = setupWorth(opt.slabGap, DEADLINE - (opt.duration || 0))
                              - setupWorth(BASEGAP, DEADLINE);
             // AND THE HOLES IT DIGS, as a delta for the same reason.
-            opt.wellGain = (opt.wells === null) ? 0 : (BASEWELLS - opt.wells);
+            // AND THE HOLES IT DIGS -- CHARGED, NEVER CREDITED. See the depth-1
+            // site for why a credit was exploitable and what it measured.
+            opt.wellGain = (opt.wells === null)
+                         ? 0 : -Math.max(0, opt.wells - BASEWELLS);
                                 // AND WHETHER THE BOARD IT LANDS ON COULD ANSWER THE NEXT SLAB.
                                 //
                                 // slabReadyFast asks whether a three can be put against the row the next
