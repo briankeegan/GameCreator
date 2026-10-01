@@ -169,8 +169,11 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait) {
   var g = lowestGarbageRow(board);
   if (!g) return { depth: 0, moves: {} };
   S.reset();
-  var root = S.root(board.copy(), hold, arrivals, false), base = S.breaks(root), i, j, k, steps = 0;
-  function breaks(n) { return n && !n.dead && S.breaks(n) > base; }
+  var root = S.root(board.copy(), hold, arrivals, false), i, j, k, steps = 0, idle = {};
+  // A break is one standing still would not have made by the same frame: a
+  // popping slab goes on converting whatever is pressed.
+  function still(t) { if (!(t in idle)) { var w = t > root.t ? S.advance(root, 'long', null, t - root.t) : root; idle[t] = w ? S.breaks(w) : S.breaks(root); } return idle[t]; }
+  function breaks(n) { return n && !n.dead && S.breaks(n) > still(n.t); }
   function swapsOf(n, near) {
     var ms = n.b.legalSwaps();
     return near ? ms.filter(function (m) { return m[0] >= g - 3 && m[0] <= g + 1; }) : ms;
@@ -197,6 +200,14 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait) {
       }
     }
     if (any) return { depth: 1, moves: found, lineup: 2 };
+    // failing that, a first swap leaving a break one swap away when the pop ends
+    for (i = 0; i < firsts.length && tries < 2 * LINEUP_BUDGET; i++) {
+      var r = firsts[i].n, w = r && !r.dead ? S.advance(r, 'long', null, Math.max(1, end - r.t)) : null;
+      if (!w || w.dead) continue;
+      var ws = swapsOf(w);
+      for (j = 0; j < ws.length && tries < 2 * LINEUP_BUDGET; j++) { tries++; if (breaks(S.advance(w, 'swap', ws[j], 0))) { found[firsts[i].key] = true; any = true; break; } }
+    }
+    if (any) return { depth: 1, moves: found, lineup: 'ready' };
   }
   if (maxDepth < 2) return { depth: 0, moves: {} };
   firsts.push({ key: 'hold', n: S.advance(root, 'hold', null, 0) });
