@@ -135,5 +135,5 @@ end
 link:endMatch()
 if link2 then link2:endMatch() end
 local died = a:game_ended() and "WasmSurvivor" or (b:game_ended() and "opponent" or "nobody")
-print(string.format('RESULT {"seed":%d,"frames":%d,"clock":%d,"died":"%s","late":%d,"handed":%d,"seconds":%.0f}',
-  SEED, frame, a.clock, died, link.late, handed, socket.gettime() - t0))
+print(string.format('RESULT {"seed":%d,"frames":%d,"clock":%d,"died":"%s","late":%d,"late2":%d,"handed":%d,"seconds":%.0f}',
+  SEED, frame, a.clock, died, link.late, link2 and link2.late or 0, handed, socket.gettime() - t0))
