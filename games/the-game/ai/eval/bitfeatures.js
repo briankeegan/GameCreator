@@ -167,10 +167,19 @@
     // board and no masks; where both exist the masks win, because a grid built
     // from masks and then parsed back into masks is a round trip that can only
     // lose information (slab identity, most of all).
-    function features(board, cursor, moveFrames, resolved, info, engine, masks) {
+    function features(board, cursor, moveFrames, resolved, info, engine, masks, timing) {
         var st = masks || bit.maskState(board.grid, board.blocks, W, H);
         var surf = api.surface(st);
-        var list = bitoptions.options(masks ? null : board, W, H, cursor || [1, 1], 2, st);
+        // THE CLOCK IS THE CALLER'S TO HAND OVER, and it is the clock of THIS board.
+        //
+        // The depth-2 half of the list is beam-ranked, and the beam's value is
+        // priced in frames -- rise, deadline, what a landing holds -- so nextWays,
+        // nextBestChain and nextBestCombo are all read off a list the clock
+        // selected. This call used to pass none, which meant a rise of 112 frames
+        // and a deadline of zero: a guess, and a guess in here is a guess in every
+        // weight ever trained against it.
+        var list = bitoptions.options(masks ? null : board, W, H, cursor || [1, 1], 2, st,
+                                      timing);
         var f = {}, i;
 
         f.bumpiness = share(surf.bumpiness, NORM.bumpiness);

@@ -540,8 +540,35 @@
     var FLOOR = { bumpiness: -20, tallest: -40, spread: -10 };
 
     BitBot.prototype.score = function (st, moveFrames, resolved, info) {
+        // THE CLOCK OF THE BOARD BEING SCORED, NOT OF THE BOARD NOW.
+        //
+        // `st` is the board the candidate LANDS on, a future state, and the options
+        // listed on it are priced against a deadline. Handing over this frame's
+        // deadline would price that future board by a ceiling it no longer has:
+        // the clear took panels out, so `tallest` moved, and the clear itself holds
+        // the floor for its own resolve, so the clock gained time. Both are read
+        // off the engine here rather than inherited.
+        //
+        //   stop earned  stopTimeOf for this candidate's own clear -- the engine's
+        //                table, the same call the search's stopPrice makes
+        //   tallest      the LANDED board's, so the rows left are its rows
+        //   base         `st` as well, so `prepare` asks whether THAT board has a
+        //                slab to be ready for rather than whether this one does
+        var isChain = !!resolved && resolved.chain >= 2;
+        // The same arguments bitfeatures' own stopEarned uses for this clear, so the
+        // feature and the deadline cannot disagree about what the clear bought.
+        var earned = resolved
+                   ? BF.stopTimeOf(PanelEngine(), isChain,
+                                   isChain ? 0 : resolved.total,
+                                   isChain ? resolved.chain : 0, !!info.toppedOut)
+                   : 0;
+        var after = {};
+        for (var ik in info) after[ik] = info[ik];
+        after.stopTime = (info.stopTime || 0) + earned;
+        var lands = framesToDeath(after, tallestBoard(st), info.framesPerRow);
         var out = BF.features(null, [info.cursorRow, info.cursorCol], moveFrames,
-                             resolved, info, PanelEngine(), st);
+                             resolved, info, PanelEngine(), st,
+                             this.clock(after, lands, st));
         var w = this.weights, total = 0, keys = BF.keys();
         for (var i = 0; i < keys.length; i++) {
             var k = keys[i], v = out.f[k];
@@ -766,6 +793,13 @@
     //
     // Both terms are the engine's own numbers, so this is a measurement and not a
     // budget invented here.
+    // WHERE A ROUTE LEAVES THE CURSOR. A swap happens at the cell the cursor is on,
+    // so after the last one that is where it is; with no swaps it has not moved.
+    function endsAt(swaps, info) {
+        var last = swaps && swaps.length ? swaps[swaps.length - 1] : null;
+        return last ? [last[0], last[1]] : [info.cursorRow, info.cursorCol];
+    }
+
     function framesToDeath(info, tallest, framesPerRow) {
         var clock = info.stopTime || 0;
         if (info.toppedOut) return clock + (info.health === undefined ? 0 : info.health);
@@ -1180,6 +1214,11 @@
             // AND THE VOID THE SLAB WOULD SEAL, in this ranking's currency: a row of
             // void is a row of ceiling, and a row is W panels.
             cells += (o.voidGain || 0) * W;
+            // AND THE PANELS IT SUPPLIED TOWARD A SETUP THERE IS TIME FOR. A panel
+            // of gap closed is a panel of life; this ranking's currency is one cell
+            // sent, and a row is W of each, so a panel is a cell. Zero when the
+            // setup does not fit the clock -- see slabGain in bitoptions.
+            cells += (o.slabGain || 0);
             // AND BEING READY FOR THE SLAB THAT IS COMING. Worth a row of rise,
             // converted to this ranking's currency. Zero unless there is a slab
             // to be ready for, so it cannot speak on a clean board.
@@ -1465,6 +1504,10 @@
                        // AND THE VOID THE SLAB WOULD SEAL -- a row of it is a row of
                        // ceiling, so framesPerRow, as height is.
                        + (o.voidGain || 0) * (framesPerRow || 0)
+                       // AND THE PANELS IT SUPPLIED TOWARD A SETUP THERE IS TIME
+                       // FOR, at the per-panel rate the void is paid a row of --
+                       // framesPerRow/W. Same number as bestAttack's, converted.
+                       + (o.slabGain || 0) * perPanel
                        + digs
                        // AND BEING READY FOR THE SLAB THAT IS COMING -- already in
                        // frames, which is this ranking's currency. See bestAttack.
@@ -1498,7 +1541,28 @@
     //
     // The resolve time is the engine's own preStop and depends on the match, so
     // it is a function rather than a number.
+    // THE CLOCK, AND THE MOVE MEMORY ON TOP OF IT.
+    //
+    // `clock` is everything the board's own physics say: the rise, the cooldown,
+    // the deadline, what a clear resolves for, what it holds the floor for. It is
+    // a fact about the position and nothing in it remembers anything.
+    //
+    // `timing` is that plus `avoidSwap` -- the swaps just played, so the search
+    // can leave out the one that would undo its own last move. That IS a memory,
+    // and it changes which options exist rather than what they are worth, so the
+    // feature vector takes the clock and not this: a board's features have to be a
+    // function of the board, or the same board scores two ways depending on how it
+    // was arrived at, and the Lua port -- which has no such memory -- drifts.
     BitBot.prototype.timing = function (info, deadline, base) {
+        var t = this.clock(info, deadline, base);
+        // THE MOVE JUST PLAYED, so the search can leave out the one that would
+        // undo it. Carried rather than consulted here: the search enumerates the
+        // options every route reads, so excluding it there covers all of them.
+        t.avoidSwap = this._recentSwaps;
+        return t;
+    };
+
+    BitBot.prototype.clock = function (info, deadline, base) {
         if (base) info._base = base;
         var frozen = (info.stopTime || 0) > 0 || !!info.toppedOut;
         return {
@@ -1506,10 +1570,6 @@
             // THE MATERIAL FLOOR, carried rather than duplicated: the number lives
             // here and the search prices it in its own currency.
             workingRows: WORKING_ROWS,
-            // THE MOVE JUST PLAYED, so the search can leave out the one that would
-            // undo it. Carried rather than consulted here: the search enumerates the
-            // options every route reads, so excluding it there covers all of them.
-            avoidSwap: this._recentSwaps,
             // WHAT A CLEAR IN HAND IS WORTH, IN FRAMES. The smallest clear is a
             // three, and what it buys is the floor held for its own resolve --
             // resolveFramesOf, the same function the death filter uses, so this is
@@ -1517,6 +1577,11 @@
             // the search prices readiness and has no engine to ask.
             holdWorth: BF.resolveFramesOf(PanelEngine(), 3, 0),
             deadline: deadline || 0,
+            // THE COOLDOWN BETWEEN DECISIONS, so the search can work out how many
+            // swaps fit in the deadline rather than being told a depth. depthFor
+            // divides by this for plan plies; the setup reach below divides by it
+            // for setup swaps. One number, both questions.
+            reaction: this.reaction,
             overhead: travel.MOVE_FRAMES + (frozen ? 0 : this.reaction),
             resolve: function (size, garbage) {
                 return BF.resolveFramesOf(PanelEngine(), size, garbage);
@@ -2328,7 +2393,7 @@
         if (raising) {
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
                                                    lookDepth, base, this.timing(info, deadline, base), digging);
-            var lvl = this.flattenFirst(options, deadline);
+            var lvl = this.flattenFirst(options, deadline, info);
             if (lvl && !returnsToSeen(lvl.swaps[0])) {
                 var lm = lvl.swaps[0], lls = bit.legalSwapsOf(base), lok = false;
                 for (i = 0; i < lls.length; i++) {
@@ -2704,7 +2769,8 @@
         // building and there is nothing to be ready for yet.
         var landsOk = true;
         if (options && options.flatten && options.flatten.lands && digging) {
-            landsOk = !!this.hasFireable(options.flatten.lands);
+            landsOk = !!this.hasFireable(options.flatten.lands, info,
+                                         endsAt(options.flatten.swaps, info));
             if (!landsOk) this.counts.flattenBlind++;
         }
         if (shapeTime && landsOk && options && options.flatten && options.flatten.swaps.length &&
@@ -2903,7 +2969,18 @@
         // to 8 -- an apparent gain -- while slabRowGap goes to 14, which is the truth.
         //
         // A panel of gap is a panel of life, fpr/W, the conversion used throughout.
-        s -= ((now ? (now.slabRowGap || 0) : 0)) * perPanel;
+        //
+        // AND ONLY WHILE THERE IS TIME TO CLOSE IT, which is the same test the
+        // search puts on slabGain: one swap places one panel and costs one reaction
+        // cooldown, so the panels the board can still supply are deadline/reaction
+        // -- framesToDeath and this.reaction, the two numbers depthFor already
+        // divides for plan plies. Past that the setup is not a thing the board can
+        // buy, and ranking by how near it is would spend the last frames walking
+        // toward it instead of staying flat and alive.
+        var left = framesToDeath(info, tallestBoard(m), fpr);
+        var affordable = Math.floor(left / Math.max(1, this.reaction));
+        var gapNow = now ? (now.slabRowGap || 0) : 0;
+        if (gapNow <= affordable) s -= gapNow * perPanel;
         return s - (cand.moveFrames || 0);
     };
 
@@ -2912,8 +2989,27 @@
         return !!shp && (shp.spread || 0) >= WORKING_ROWS;
     };
 
-    BitBot.prototype.hasFireable = function (masks) {
-        return bit.anyOneSwapClear(masks);
+    // CAN THIS BOARD FIRE -- IN THE TIME IT HAS, not in one swap.
+    //
+    // This was `anyOneSwapClear` alone, and that is the rule saveAfter already
+    // carries the correction for: "one ready" is not "one swap away", it is a
+    // clear that can be FIRED inside the frames this board has left, and depth is
+    // free as long as the frames fit. Depth 1 alone read 19% and 34% of decisions
+    // as having nothing while a two-swap answer was on the board -- and the three
+    // gates that call this REFUSE a route on the answer, so every one of those was
+    // a flatten or a raise thrown away for want of a swap there was time for.
+    //
+    // One swap first because it is a bitmask test and costs nothing; the clock only
+    // gets consulted when that says no. `at` is where the cursor ends up, because
+    // the walk is part of what the frames have to cover.
+    BitBot.prototype.hasFireable = function (masks, info, at) {
+        if (bit.anyOneSwapClear(masks)) return true;
+        if (!info || !at) {
+            throw new Error('hasFireable: needs the engine state and the cursor -- ' +
+                            'whether a board can fire is a question about time, and ' +
+                            'the one-swap answer on its own is the rule this replaced');
+        }
+        return this.saveAfter(masks, at[0], at[1], info, true) >= 1;
     };
 
     // THE BOARD WITH THE NEXT SLAB ON IT.
@@ -3058,7 +3154,8 @@
         // whole and adds a row beneath, so a clear that exists before the row still
         // exists after it -- this refuses only the board that had nothing to fire
         // in the first place, which is exactly the board that must not be filled.
-        if (!this.hasFireable(this.restingBoard(base))) return null;
+        if (!this.hasFireable(this.restingBoard(base), info,
+                              [info.cursorRow, info.cursorCol])) return null;
         return this._opening ? 'opening' : 'material';
     };
 
@@ -3075,7 +3172,7 @@
     // flatten worth less than it costs (`if (flat && !(flat.value > 0)) flat =
     // null`), so "is there levelling worth doing" is a question it has answered.
     // The route must also finish in the time there is, like every other plan.
-    BitBot.prototype.flattenFirst = function (options, deadline) {
+    BitBot.prototype.flattenFirst = function (options, deadline, info) {
         var f = options && options.flatten;
         if (!f || !f.swaps.length) return null;
         if ((f.duration || 0) > deadline) return null;
@@ -3087,7 +3184,7 @@
         // readiness rule exists to prevent. The route carries the board it lands on
         // and the physics are deterministic, so this is asked before committing, the
         // same way the other flatten path asks it.
-        if (f.lands && !this.hasFireable(f.lands)) return null;
+        if (f.lands && !this.hasFireable(f.lands, info, endsAt(f.swaps, info))) return null;
         return f;
     };
 

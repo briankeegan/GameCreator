@@ -231,6 +231,21 @@ var probe = { deadly: BitBot.prototype.deadly };
 // deadly() reads the masks now, not a grid -- the bot never holds a predicted
 // grid any more, so the unit cases build the state the same way it does.
 var bitm = require('./bitmatch.js');
+
+// THE CLOCK EVERY features() CALL HANDS OVER. bitoptions requires one -- the
+// depth-2 half of its list is beam-ranked in frames -- and the rise is the
+// engine's own at the level the game runs: a level-10 stack's speed through
+// riseTime, times 16. The cooldown is the bot's default.
+var T_LEVEL = 10, T_REACTION = 12;
+var T_FPROW = (function () {
+    var st = new globalThis.PanelEngine.Stack({ level: T_LEVEL });
+    return globalThis.PanelEngine.riseTime(st.speed) * 16;
+}());
+function CLOCKOF(info) {
+    return { framesPerRow: T_FPROW, reaction: T_REACTION,
+             deadline: (12 - 0) * T_FPROW + ((info && info.stopTime) || 0) };
+}
+
 function masksOf(b) { return bitm.maskState(b.grid, b.blocks, 6, 12); }
 ok(BitBot.prototype.deadly.call(probe, masksOf(full), null, { stopTime: 0 }) === true,
    'a full board with nothing banked should be refused');
@@ -495,7 +510,7 @@ ok(mirror.scores[0] === mirror.scores[1],
     for (var f = 0; f < 120; f++) { bot.update(); stack.run(); }
     var board = bot._snapshot();
     var info = bot.info(board);
-    var out = BF.features(board, [info.cursorRow, info.cursorCol], 0, null, info, PanelEngine);
+    var out = BF.features(board, [info.cursorRow, info.cursorCol], 0, null, info, PanelEngine, null, CLOCKOF(info));
     var missing = BF.keys().filter(function (k) { return out.f[k] === undefined; });
     ok(missing.length === 0, 'features never computed on a live board: ' + missing.join(', '));
     ok(BF.infoKeys().every(function (k) { return info[k] !== undefined; }),

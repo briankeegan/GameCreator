@@ -23,6 +23,7 @@ const BOT = readFileSync(new URL('./bitbot.js', import.meta.url), 'utf8');
 // is a claim that one ranker has no use for it -- not that nobody got round to it.
 const EXEMPT = new Map([
     ['voidRows', 'the absolute void; only the voidGain delta is ranked, as with dig'],
+    ['slabGap', 'the absolute setup distance; only the slabGain delta is ranked, and only while the clock affords it'],
     ['mat', 'read through shortfallOf, which both rankers call'],
     ['matNow', 'a gate on digGain and starving, not a price'],
     ['low', 'read through ruinsShape, which both rankers call'],
