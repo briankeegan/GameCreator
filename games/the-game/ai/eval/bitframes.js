@@ -179,11 +179,11 @@
         if (p.timer !== 0) return;
         if (p.isGarbage) {
             if (p.yOffset === -1) {
-                // THIS ROW IS ABOUT TO TAKE COLOURS FROM THE ENGINE'S RNG.
-                // They are not on the board and nothing here may invent them,
-                // so the run is marked and stops. A snapshot taken after the
-                // conversion carries them and runs to the end.
-                st.brokeGarbage = true;
+                // A ROW CONVERTED INSIDE THIS RUN HAS NO COLOURS -- the engine deals
+                // them from its rng at the match -- so the run is marked and stops. A
+                // row converted before the snapshot carries its colours (see build)
+                // and becomes panels like the engine's.
+                if (p.color === 9) st.brokeGarbage = true;
                 clearPanel(p, false, false);
                 p.chaining = true;
                 p.propagatesChaining = true;
@@ -535,6 +535,10 @@
                     if (m.yOffset !== undefined && m.yOffset !== null) p.yOffset = m.yOffset;
                     if (m.gWidth) p.gWidth = m.gWidth;
                     if (m.gHeight) p.gHeight = m.gHeight;
+                    // THE ROW A BREAK IS CONVERTING ALREADY HAS ITS COLOURS:
+                    // convertGarbagePanels deals them at the match, while the cells are
+                    // still garbage. The grid reads them as -2, the motion carries them.
+                    if (p.isGarbage && m.color > 0 && m.color !== 9) p.color = m.color;
                 }
                 if (snapshot.chaining && snapshot.chaining[r] && snapshot.chaining[r][c2]) p.chaining = true;
             }

@@ -43,16 +43,34 @@
                 var m = snapshot.motion[r][c];
                 if (!m) continue;
                 if (m.state && m.state !== 'normal') flying++;
-                if (m.fellFromGarbage) converted++;
+                // converted: panels just out of a slab, or a row a break is still
+                // converting -- its colours are dealt at the match, hundreds of frames
+                // before it drops, and that is the window
+                if (m.fellFromGarbage || (m.isGarbage && m.color > 0 && m.color !== 9)) converted++;
             }
         }
         return { flying: flying, converted: converted, open: flying > 0 && converted > 0 };
     }
 
+    // THE LONGEST TIMER ALREADY RUNNING. A big slab's break holds for FLASH + FACE +
+    // POP * (combo + onScreen) -- over 500 frames on a 6x12 -- so a fixed cap cut
+    // the run off before the converted row even dropped. The caps below are what
+    // comes AFTER whatever is already in flight.
+    function inFlight(snapshot, H) {
+        var t = 0;
+        for (var r = 1; r <= H; r++) {
+            if (!snapshot.motion || !snapshot.motion[r]) continue;
+            for (var c = 1; c <= W; c++) {
+                var m = snapshot.motion[r][c];
+                if (m && m.timer > t) t = m.timer;
+            }
+        }
+        return t;
+    }
     // How many frames until everything has landed. Run a throwaway copy
     // forward; the board is what it is, so this is measurement, not a guess.
     function windowFrames(snapshot, frames, H, cap) {
-        var probe = BF.build(snapshot, frames, H), n = 0, limit = cap || 600;
+        var probe = BF.build(snapshot, frames, H), n = 0, limit = (cap || 600) + inFlight(snapshot, H);
         while (n < limit) {
             BF.step(probe);
             n++;
@@ -68,7 +86,8 @@
     // passed. Returns the deepest chain reached, not the counter at the end —
     // the engine zeroes it when the chain finishes.
     function play(snapshot, frames, H, swap, at, cap) {
-        var st = BF.build(snapshot, frames, H), peak = 0, n = 0, limit = cap || 900, played = !swap;
+        var st = BF.build(snapshot, frames, H), peak = 0, n = 0, played = !swap;
+        var limit = (cap || 900) + inFlight(snapshot, H);
         while (n < limit) {
             if (!played && n >= at) {
                 if (!BF.canSwap(st, swap[0], swap[1])) return null;   // not legal by then
