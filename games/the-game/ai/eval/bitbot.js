@@ -1730,7 +1730,14 @@
         // DECIDED BEFORE ANYTHING IS PLANNED, because while it is on there is
         // nothing to plan: the raise outranks the attack and the board is not
         // being played, it is being filled.
-        var raising = this.raiseMode(info, base);
+        // THE BREAK IS LOOKED FOR BEFORE THE RAISE IS DECIDED. The raise route runs
+        // first, and a raise taken instead of a break is the measured disaster -- 11
+        // deaths in 13 pairings -- so raiseMode has to be able to ask.
+        var poolBreak = false;
+        for (i = 0; i < pool.length; i++) {
+            if (pool[i].resolved && pool[i].resolved.brokeGarbage) { poolBreak = true; break; }
+        }
+        var raising = this.raiseMode(info, base, poolBreak);
         this._wantRaise = !!raising;
         // AND WHETHER IT IS HAPPENING, which is not the same as wanting it.
         //
@@ -3207,7 +3214,7 @@
     // places, and they disagreed -- the button was held on decisions that
     // refused to raise, so the bot raised and built at the same time and the row
     // never came.
-    BitBot.prototype.raiseMode = function (info, base) {
+    BitBot.prototype.raiseMode = function (info, base, poolBreak) {
         if (!this.allowRaise || info.toppedOut) { this._opening = false; return null; }
         // Every queued cell lands on this board, so it counts against the
         // ceiling exactly like one already there.
@@ -3235,7 +3242,24 @@
         // landing-board fix made true 26% of the time instead of 1%: 10 deaths in
         // 30 and 3 in 30. Not raising there at all is what is left, and the
         // condition needs no answer test because there is nothing to answer for.
-        for (var gc = 1; gc <= W; gc++) if (base.garb[gc]) return null;
+        // GARBAGE ON THE BOARD IS NOT WHAT FORBIDS A RAISE. ROOM IS.
+        //
+        // This line read `any garbage on the board, never raise`. A raise costs a ROW
+        // OF CEILING and adds six panels, so what forbids it is having no ceiling to
+        // spend: being topped out, refused at the top of this function, and not
+        // fitting, refused just above. Garbage was standing in for both -- and it
+        // stood in front of the only thing a starving buried board can do. Seed 103
+        // rand1 sat on thirteen panels, 2.17 rows against a floor of four, under 28
+        // garbage cells with seven rows of room. This file's own words: a chain is
+        // built out of panels, raising ADDS them and breaking CONVERTS them, and
+        // below the band the bot puts panels on the board.
+        //
+        // ONE THING DOES OUTRANK IT AND IT IS MEASURED: raising INSTEAD OF breaking
+        // cost 11 deaths in 13 pairings. A break converts the slab's cells AND hands
+        // back the row the slab was occupying, where a raise spends a row to add six,
+        // so with one in the pool the raise stands aside. Answered by the caller,
+        // because the raise route runs before the break route.
+        if (poolBreak) return null;
         // FOUR ROWS IS A MINIMUM, NOT A TARGET.
         //
         // This read `materialRows(base) >= WORKING_ROWS`, which closed the raise the
