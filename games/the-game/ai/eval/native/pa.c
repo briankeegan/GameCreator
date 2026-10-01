@@ -346,7 +346,8 @@ static void startSwap(Panel *p, int fromLeft) {
 static int dangerous(const Panel *p) { return p->f[ISGARBAGE] ? p->f[STATE] != FALLING : p->f[COLOR] != 0; }
 static int canMatch(const Panel *p) {
   int32_t col = p->f[COLOR], st = p->f[STATE];
-  if (col == 0 || col == 9) return 0;
+  // colours past 10 are unseen (newRow, convertGarbagePanels): they match nothing
+  if (col == 0 || col == 9 || col > 10) return 0;
   return st == NORMAL || st == LANDING || (p->f[MATCHANYWAY] && st == HOVERING);
 }
 

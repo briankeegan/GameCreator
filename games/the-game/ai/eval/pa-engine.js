@@ -271,7 +271,8 @@
   }
   function dangerous(p) { return p.isGarbage ? p.state !== 'falling' : p.color !== 0; }
   function canMatch(p) {
-    if (p.color === 0 || p.color === 9) return false;
+    // colours past 10 are unseen (Unseen): they match nothing
+    if (p.color === 0 || p.color === 9 || p.color > 10) return false;
     return p.state === 'normal' || p.state === 'landing' || (p.matchAnyway && p.state === 'hovering');
   }
   function matchPanel(st, p, isChainLink, comboIndex, comboSize) {

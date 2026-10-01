@@ -126,7 +126,7 @@ function Match(level) {
   this.arrivals = [];      // garbage on its way (arrivalsOf)
   this.line = null;        // the proven line after the plan: { steps, at } (follow)
   this.knew = [];          // the garbage on its way the plan was decided knowing
-  this.stats = { frames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0, unforeseen: 0, reasked: 0, revealed: 0, unasked: 0, rewalked: 0, break1: 0, took1: 0, break2: 0, took2: 0, break3: 0, took3: 0 };
+  this.stats = { frames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0, unforeseen: 0, reasked: 0, revealed: 0, lineup: 0, tookLineup: 0, unasked: 0, rewalked: 0, break1: 0, took1: 0, break2: 0, took2: 0, break3: 0, took3: 0 };
   this.history = []; this.decided = []; this.asked = []; this.snaps = []; this.dumped = false;
   this.msPerFrame = 1000 / 60; this.wall = 0;   // how fast frames come (soon)
   // A question from the last match is not this one's: its answer is dropped.
@@ -211,7 +211,7 @@ Match.prototype.take = function (truth) {
     if (a.mem) this.stats.memMB = Math.round(a.mem.bytes / 1048576);
     if (process.env.GC_SURVIVOR_DEBUG && a.mem) console.error('decision ' + a.id + ' at ' + a.at + ': ' + a.ms + ' ms ' + a.kind + ' ' + JSON.stringify(a.move) + ' ' + JSON.stringify(a.diag) + ' ' + Math.round(a.mem.bytes / 1048576) + 'MB');
     if (a.error) { console.error('decision failed: ' + a.error); this.acted = false; pending = null; continue; }
-    if (a.breaks) { this.stats['break' + a.breaks.offered]++; if (a.breaks.took) this.stats['took' + a.breaks.offered]++; }
+    if (a.breaks) { this.stats['break' + a.breaks.offered]++; if (a.breaks.took) this.stats['took' + a.breaks.offered]++; if (a.breaks.lineup) { this.stats.lineup++; if (a.breaks.took) this.stats.tookLineup++; } }
     this.decided.push({ id: a.id, at: a.at, now: now, kind: a.kind, move: a.move, ms: a.ms, diag: a.diag,
                        asked: pending && pending.id === a.id ? pending.askedAt : null, trip: pending && pending.id === a.id ? a.got - pending.sent : null });
     if (this.decided.length > 60 * KEEP) this.decided.shift();
@@ -312,6 +312,10 @@ Match.prototype.afterFrame = function () {
     if (this.line) this.follow(); else this.stats.noLine++;
   }
   if (pending) return;
+  // A question due sooner than an answer can come is asked further on: the
+  // line behind the move is played till then -- but never a long wait of
+  // it, which would leave the frames after it undecided.
+  while (this.line && this.nextAt > now && this.nextAt - now < this.soon() && !isWait(this.line.steps[0]) && this.follow()) {}
   var at = this.nextAt > now ? this.nextAt : now + this.soon();
   if (at - now > this.ahead()) return;
   var pr = this.predict(next, at, this.hold, this.nextPending);
@@ -347,17 +351,18 @@ Match.prototype.dump = function () {
 // decision was proven by is played instead of holding, and the question --
 // about a board that will not now be reached -- is stopped; the next one is
 // asked for where the step ends.
+function isWait(st) { return !!st && typeof st === 'object' && !Array.isArray(st) && st.long !== undefined; }
 Match.prototype.follow = function () {
   var st = this.line.steps[0], kind, move = null, frames = 0;
   if (st === null) kind = 'hold';
   else if (st === 'raise') kind = 'raise';
   else if (Array.isArray(st)) { kind = 'swap'; move = st; }
   else if (st && st.long !== undefined) { kind = 'long'; frames = -Math.max(1, st.long - (this.nextAt - this.line.at)); }
-  else { this.line = null; return; }
+  else { this.line = null; return false; }
   var pr = this.predict(this.expect, this.nextAt, this.hold, this.nextPending);
   var k = HANDS.keys(pr.board, pr.hold, kind, move, pr.pending, frames);
-  if (!k) { this.line = null; return; }
-  Atomics.store(ABORT, 0, pending.id);
+  if (!k) { this.line = null; return false; }
+  if (pending) Atomics.store(ABORT, 0, pending.id);
   pending = null; this.acted = false;
   var sw = kind === 'swap' ? { move: move, board: pr.board } : null;
   for (var i = 0; i < k.inputs.length; i++) this.plan[this.nextAt + i] = { bits: k.inputs[i], hold: k.holds[i], swap: sw };
@@ -365,6 +370,7 @@ Match.prototype.follow = function () {
   this.line.steps.shift();
   if (!this.line.steps.length) this.line = null;
   this.stats.followed++;
+  return true;
 };
 
 // ---------------------------------------------------------------- the link
