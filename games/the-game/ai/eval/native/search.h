@@ -16,7 +16,10 @@
 #ifndef NODE_BREAKS
 #define NODE_BREAKS(b) 0   // an engine that counts breaks says how
 #endif
+// isMetal: bit 1 metal, bit 2 capped -- an attack engine's garbage, which the
+// game holds back while CAPPED_AT are queued, the earliest due of it a frame.
 typedef struct { int32_t at, width, height, isChain, isMetal; } Arr;
+#define CAPPED_AT 72
 #define MAXARR 64   // pa.c / engine.c NBODY leave room for this many after the board
 #define KEYMAX (16 * W)
 enum { MK_LONG, MK_HOLD, MK_RAISE, MK_SWAP };
@@ -87,8 +90,10 @@ static void readBoard(Node *n, Board *b) {
     for (c = 1; c <= W; c++) {
       const int32_t *f = b->p[r][c].f;
       if (f[COLOR] != 0) { top = r; if (f[ISGARBAGE]) g++; }
+      // The key holds 19 bits of timer: one outside them is clamped, which
+      // only lets two boards that differ there share a key.
       int32_t tm = f[TIMER];
-      if (tm < 0 || tm >= (1 << 19)) n->err |= 1;
+      if (tm < 0) tm = 0; else if (tm >= (1 << 19)) tm = (1 << 19) - 1;
       int32_t v = KEY_COLOR(f) | (STATE_KEY[f[STATE]] << 8) | (tm << 12);
       if (k < KEYMAX) n->key[k++] = v;
       h = (h ^ (uint32_t)v) * 16777619u;
@@ -173,7 +178,7 @@ static void raiseStep(Bot *h, Board *st, int32_t *input) {
 #define STEP_ERR (-3)
 static LOCAL int32_t deadAt;   // the frame a STEP_DEAD died on
 #ifndef PUSH_ARRIVAL
-static void pushArrival(Board *b, const Arr *a) { nb_push_incoming(b, a->width, a->height, a->isChain, a->isMetal); }
+static void pushArrival(Board *b, const Arr *a) { nb_push_incoming(b, a->width, a->height, a->isChain, a->isMetal & 1); }
 #endif
 // THE KEY TAPE: with tape set, advance writes every frame it plays -- the
 // keys sent (SENT_KEYS: with the swap an engine presses for itself) and the
@@ -186,9 +191,11 @@ static int runFrame(Board *st, Arr *arr, int32_t *narr, int32_t input, int32_t *
   st->input = input;
   run(st);
   (*f)++;
-  int k = 0;
+  int k = 0, first = 0x7fffffff;
+  for (int i = 0; i < *narr; i++) if ((arr[i].isMetal & 2) && arr[i].at <= *f && arr[i].at < first) first = arr[i].at;
+  int open = first != 0x7fffffff && st->ninc < CAPPED_AT;
   for (int i = 0; i < *narr; i++) {
-    if (arr[i].at <= *f) pushArrival(st, &arr[i]);
+    if (arr[i].at <= *f && (!(arr[i].isMetal & 2) || (open && arr[i].at == first))) pushArrival(st, &arr[i]);
     else arr[k++] = arr[i];
   }
   *narr = k;
@@ -308,13 +315,18 @@ static void dropBoard(Ctx *x, int i) {
 // ---- nodes from JS
 // The root: the board in the io buffers (nb_load's wire), a raise in hand,
 // garbage on its way (io body after the board: at, width, height, isChain).
+// rootWhy: why the last root was refused -- 1000 + the board's err flags
+// (nb_load), 2 no node, 3 too many arrivals, 4 a panel the key cannot hold.
+static int32_t rootWhy;
+EXPORT(ns_root_why) int ns_root_why(void) { return rootWhy; }
 EXPORT(ns_root) int ns_root(Ctx *x, int holdLeft, int holdStarted, int narr, int fresh) {
   Board *b = nb_new();
-  if (!b || nb_load(b)) { if (b) nb_free(b); return STEP_ERR; }
+  int le = b ? nb_load(b) : -1;
+  if (!b || le) { if (b) nb_free(b); rootWhy = 1000 + le; return STEP_ERR; }
   Node *n = newNode(x);
-  if (!n) return STEP_ERR;
+  if (!n) { rootWhy = 2; return STEP_ERR; }
   int32_t used = nb_save(b);   // the body's length, to find the arrivals after it
-  if (narr > MAXARR) return STEP_ERR;
+  if (narr > MAXARR) { rootWhy = 3; return STEP_ERR; }
   n->st = b; n->t = 0; n->holdLeft = holdLeft; n->holdStarted = holdStarted; n->fresh = fresh; n->narr = narr;
   for (int i = 0; i < narr; i++) {
     const int32_t *a = ioBody + used + 5 * i;
@@ -324,6 +336,7 @@ EXPORT(ns_root) int ns_root(Ctx *x, int holdLeft, int holdStarted, int narr, int
   // A new search: no line of it has broken garbage yet.
   x->rootBrk = n->brk;
   for (int i = 0; i < x->tagCap; i++) x->brkAt[i] = -1;
+  if (n->err) rootWhy = 4;
   return n->err ? STEP_ERR : (int)(n - x->nodes);
 }
 EXPORT(ns_step) int ns_step(Ctx *x, int pi, int kind, int mr, int mc, int until) { x->steps++; return lineStep(x, pi, kind, mr, mc, until); }
