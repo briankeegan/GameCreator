@@ -780,6 +780,13 @@ gate_breaklive() {
   node games/the-game/ai/eval/breaklive.test.js
 }
 
+# A LANDING THE LINEUP SAYS BREAKS, BREAKS. Topped out, the bot lines up only a landing
+# that breaks the slab above, so bitframes' run of the in-flight board is the decision.
+# Compared with a copy of the engine on every open reveal window of a real game.
+gate_landing() {
+  node games/the-game/ai/eval/landing.test.js
+}
+
 # WHAT A SWAP CLEARS, WITHOUT APPLYING IT. On a settled board every column is a
 # packed run from the floor, so a swap does two things to it and both are shifts:
 # the panel crosses and lands on top of the run it joins, and the hole it left
@@ -1005,6 +1012,7 @@ GATES=(
   "the deadline keeps time with the engine through a freeze:gate_deadline_rise:games/the-game/ai/"
   "the break hold knows the top-out and the first drain to the frame:gate_topout:games/the-game/ai/"
   "a slab mid-break is not broken again:gate_breaklive:games/the-game/ai/"
+  "a landing the lineup says breaks, breaks:gate_landing:games/the-game/ai/"
   "a swap is answered without applying it:gate_bitswap:games/the-game/ai/"
   "the options are features that vary:gate_bitfeatures:games/the-game/ai/"
   "the bot plays what it picks and cannot be killed:gate_bitbot:games/the-game/ai/"
