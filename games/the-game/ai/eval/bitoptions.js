@@ -381,6 +381,12 @@
         // Priced the way bestPlan prices it, at a row of rise per row short, so a
         // route that starves the board pays what the starving costs.
         var WORK = (timing && timing.workingRows) || 0;
+        // THE MOST A LANDING'S STOP TIME CAN BE WORTH, off the engine's own table
+        // rather than guessed: the chain stop at the counter where it saturates.
+        // Used only as a BOUND -- it decides which landings are worth the sweep that
+        // measures them, never what one is worth.
+        var MAXSTOP = stopPrice ? Math.max(stopPrice({ chain: 13, total: 3 }),
+                                           stopPrice({ chain: 1, total: W * 2 })) : 0;
         // HOW MUCH SETUP THERE IS TIME FOR, which is the only question about a
         // setup worth asking.
         //
@@ -825,14 +831,13 @@
         }
 
         var flat = null, save = null, ready = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
-        var slabBudget = 0, stopBudget = 0, dropBudget = 0;
+        var slabBudget = 0, dropBudget = 0;
 
         function expandAll(state0, depth) {
             BASE = shapeOf(state0);
             BASEDIG = DIG ? reachOf(state0).dig : 0;
             saveBudget = 192;
             slabBudget = 24;
-            stopBudget = 24;
             prepBudget = 24;
             BASESAVE = (DIG && BASEDIG > 0) ? savesOfRaw(state0) : 0;
             // The root has no reach mask: ply one stays exhaustive so an immediate
@@ -1047,18 +1052,38 @@
                                 // landing on nothing because the chain was not in the
                                 // number.
                                 //
-                                // Budgeted, and a route that runs out of budget simply
-                                // does not get the credit: it is never charged for one.
+                                // A QUOTA MADE THE COMPARISON ARBITRARY, so it is a
+                                // bound instead.
+                                //
+                                // bestOneSwapStop is a sweep inside a sweep, so it
+                                // cannot be asked of every landing -- it used to be
+                                // capped at 24 a decision, first come first served.
+                                // That is worse than not having it: two landings that
+                                // can both fire a chain are compared as 94 against 0
+                                // because the quota ran out between them, and the
+                                // file's own test reports only 14 of 48 flattens
+                                // carrying the term at all. The post-hoc fill at the
+                                // bottom of this function then puts the number on the
+                                // WINNER, after `val` has already chosen it, so the
+                                // term reported rather than decided.
+                                //
+                                // Asked instead of any landing that could win if the
+                                // credit were as large as the credit can get -- MAXSTOP
+                                // off the engine's own table, the chain stop at the
+                                // counter where it saturates. Every landing that could
+                                // still win is asked, nothing that cannot is, and the
+                                // comparison between the ones that matter is consistent.
+                                // Same shape as the readiness credits below.
+                                var base2 = (BASE.tall - sh2.tall) * FPR
+                                          + (BASE.excess - sh2.excess) * FPR
+                                          - Math.max(0, WORK - sh2.mat) * FPR
+                                          - dur;
                                 var landStop = 0;
-                                if (stopPrice && stopBudget > 0) {
-                                    stopBudget--;
+                                if (stopPrice &&
+                                    (!flat || base2 + MAXSTOP > flat.value)) {
                                     landStop = bit.bestOneSwapStop(res.settled, stopPrice);
                                 }
-                                var val = (BASE.tall - sh2.tall) * FPR
-                                        + (BASE.excess - sh2.excess) * FPR
-                                        + landStop
-                                        - Math.max(0, WORK - sh2.mat) * FPR
-                                        - dur;
+                                var val = base2 + landStop;
                                 // UNDER A SLAB, FLAT AND LOW IS THE WRONG GOAL.
                                 //
                                 // A slab is not only a threat, it is panels and a
