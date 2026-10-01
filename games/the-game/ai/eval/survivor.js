@@ -108,7 +108,7 @@ function Match(level) {
   this.arrivals = [];      // garbage on its way (arrivalsOf)
   this.line = null;        // the proven line after the plan: { steps, at } (follow)
   this.knew = [];          // the garbage on its way the plan was decided knowing
-  this.stats = { frames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0, unforeseen: 0, rewalked: 0, break1: 0, took1: 0, break2: 0, took2: 0, break3: 0, took3: 0 };
+  this.stats = { frames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0, unforeseen: 0, reasked: 0, unasked: 0, rewalked: 0, break1: 0, took1: 0, break2: 0, took2: 0, break3: 0, took3: 0 };
   this.history = []; this.decided = []; this.asked = []; this.snaps = []; this.dumped = false;
   this.msPerFrame = 1000 / 60; this.wall = 0;   // how fast frames come (soon)
   // A question from the last match is not this one's: its answer is dropped.
@@ -195,7 +195,7 @@ Match.prototype.take = function (truth) {
     this.decided.push({ id: a.id, at: a.at, now: now, kind: a.kind, move: a.move, ms: a.ms, diag: a.diag,
                        asked: pending && pending.id === a.id ? pending.askedAt : null, trip: pending && pending.id === a.id ? a.got - pending.sent : null });
     if (this.decided.length > 60) this.decided.shift();
-    if (!pending || a.id !== pending.id) continue;
+    if (!pending || a.id !== pending.id) { this.stats.unasked++; continue; }
     var p = pending, board = p.board, hold = p.hold, at = a.at, arrivals = p.arrivals, move = a.move, knew = p.knew;
     pending = null;
     if (a.epoch !== this.epoch) { this.stats.late++; this.acted = false; continue; }
@@ -244,8 +244,10 @@ Match.prototype.frame = function (truth, arrivals) {
     if (process.env.GC_SURVIVOR_DEBUG) console.error('clock ' + now + ' (stopWatch ' + truth.stopWatch + '): ' + d + ' arrivals before ' + JSON.stringify(before.map(function (a) { return a.at; })));
   }
   // GARBAGE THE PLAN DID NOT KNOW OF: one landing before the plan ends voids
-  // it, as a board not predicted does; the question asked without it is
-  // stopped either way, and asked again.
+  // it, as a board not predicted does, and one landing before the frame a
+  // question is about stops the question, which is asked again. Garbage due
+  // later is the next question's: a volley shows a new piece every frame,
+  // and stopping on each would never let an answer finish.
   var off = truth.clock - truth.stopWatch, end = this.nextAt;
   if (end > now && SH.unforeseen(this.knew, arrivals).some(function (a) { return a.at + off <= end; })) {
     this.epoch++; this.plan = {}; this.nextAt = 0; this.line = null; this.acted = false;
@@ -253,7 +255,7 @@ Match.prototype.frame = function (truth, arrivals) {
     pending = null;
     this.stats.unforeseen++;
   }
-  if (pending && SH.unforeseen(pending.knew, arrivals).length) { Atomics.store(ABORT, 0, pending.id); pending = null; this.acted = false; }
+  if (pending && SH.unforeseen(pending.knew, arrivals).some(function (a) { return a.at + off <= pending.at; })) { Atomics.store(ABORT, 0, pending.id); pending = null; this.acted = false; this.stats.reasked++; }
   this.take(truth);
   var planned = this.plan[now];
   var bits;

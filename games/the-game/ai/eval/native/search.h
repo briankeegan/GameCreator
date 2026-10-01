@@ -17,7 +17,7 @@
 #define NODE_BREAKS(b) 0   // an engine that counts breaks says how
 #endif
 typedef struct { int32_t at, width, height, isChain, isMetal; } Arr;
-#define MAXARR 16
+#define MAXARR 64   // pa.c / engine.c NBODY leave room for this many after the board
 #define KEYMAX (16 * W)
 enum { MK_LONG, MK_HOLD, MK_RAISE, MK_SWAP };
 typedef struct Node {

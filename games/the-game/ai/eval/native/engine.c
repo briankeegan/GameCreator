@@ -963,7 +963,7 @@ static void run(Board *b) {
   X(ninc) X(nout) X(nstall) X(nlanded)
 #define COUNT1(f) + 1
 #define NHEAD (1 HEAD(COUNT1))
-#define NBODY (MAXROWS * W * NF + MAXINC * 3 + MAXOUT * 7 + MAXSTALL * 2 + MAXLANDED + 6)
+#define NBODY (MAXROWS * W * NF + MAXINC * 3 + MAXOUT * 7 + MAXSTALL * 2 + MAXLANDED + 6 + 64 * 5)   // and the arrivals after the board (search.h MAXARR)
 static double ioHead[NHEAD];
 static int32_t ioBody[NBODY];
 EXPORT(nb_io_head) double *nb_io_head(void) { return ioHead; }

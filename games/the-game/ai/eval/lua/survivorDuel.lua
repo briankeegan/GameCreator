@@ -39,15 +39,13 @@ local SOLO = (tonumber(arg[5]) or 0) ~= 0
 -- tall and full-width metal among the combos. "human": chains 1-3 tall and
 -- combos, no metal -- what a strong player sends, through a telegraph.
 local STREAM = arg[6] or "wild"
--- Or one of bench.js's burst drills (comboStorm, factory, bigBlocks): a
--- 50-frame burst every 950 frames after a 150-frame lead-in, a slab landing
--- unannounced on every frame of a burst. GARBAGE_EVERY is not used.
-local DRILLS = { comboStorm = { 4, 1 }, factory = { 6, 2 }, bigBlocks = { 6, 12 } }
+-- Or one of the game's training modes (client/src/scenes/TrainingMenu.lua):
+-- combo_storm, factory, large_garbage -- side 2 is then the game's own
+-- simulated attacker (SimulatedStack + AttackEngine), sending fifty slabs a
+-- volley through its garbage queue, the volley 150 frames in and again
+-- every 900 after; OPPONENT and GARBAGE_EVERY are not used.
+local DRILLS = { combo_storm = { 4, 1 }, factory = { 6, 2 }, large_garbage = { 6, 12 } }
 local DRILL = DRILLS[STREAM]
-local function burstFires(f)
-  if f < 151 then return false end
-  return (f - 151) % 950 < 50
-end
 -- OPPONENT: "beverly" (the Lua bot, the default) or "survivor": a second
 -- WasmSurvivor, through its own link to a survivor.js on PA_SURVIVOR_PORT2
 -- (default 47778) -- the bot against itself, or against a variation of
@@ -60,12 +58,21 @@ local function rand(n)
   return math.floor(state / 65536) % n
 end
 
-local mode = GameModes.getPreset(GameModes.IDs.TWO_PLAYER_VS)
+local mode = GameModes.getPreset(DRILL and GameModes.IDs.ONE_PLAYER_TRAINING or GameModes.IDs.TWO_PLAYER_VS)
 local match = Match(GeneratorSource(SEED, true), mode.matchRules)
 local a = match:createStackWithSettings(LevelPresets.getModern(10), true, "controller")
-local b = match:createStackWithSettings(LevelPresets.getModern(10), true, "controller")
+local b
+if DRILL then
+  local volley = {}
+  for i = 1, 50 do volley[i] = { width = DRILL[1], height = DRILL[2], startTime = i, metal = false, chain = false, endsChain = false } end
+  b = match:createSimulatedStackWithSettings({ delayBeforeStart = 150, delayBeforeRepeat = 900, attackPatterns = volley })
+  match:addTarget(b, a)
+  OPPONENT = "drill"
+else
+  b = match:createStackWithSettings(LevelPresets.getModern(10), true, "controller")
+  if not SOLO then match:addTarget(a, b); match:addTarget(b, a) end
+end
 a:setMaxRunsPerFrame(1); b:setMaxRunsPerFrame(1)
-if not SOLO then match:addTarget(a, b); match:addTarget(b, a) end
 match:start()
 
 -- GARBAGE EACH SIDE GOT FROM THE OTHER, in cells (the extra stream, sender 0, not counted).
@@ -106,7 +113,9 @@ while frame < FRAMES and not a:game_ended() and not b:game_ended() do
   sources[#sources + 1] = extra
   local ca = link:input(a, sources)
   local cb
-  if link2 then
+  if DRILL then
+    cb = nil   -- the simulated attacker takes no input
+  elseif link2 then
     cb = link2:input(b, match.garbageSources[b])
   elseif b.clock > 190 then
     -- The opponent thinks on its own machine: its time is not the frame's.
@@ -118,13 +127,8 @@ while frame < FRAMES and not a:game_ended() and not b:game_ended() do
     cb = KeyDataEncoding.base64encode[1]
   end
   a:receiveConfirmedInput(ca)
-  b:receiveConfirmedInput(cb)
-  if DRILL then
-    if a.stopWatch > 0 and burstFires(a.stopWatch) then
-      a:receiveGarbage({ { width = DRILL[1], height = DRILL[2], isChain = false, isMetal = false, frameEarned = a.stopWatch, rowEarned = 1, colEarned = 1, finalized = true } }, 0)
-      handed = handed + 1
-    end
-  elseif a.clock > 188 and GARBAGE_EVERY > 0 and rand(GARBAGE_EVERY) == 0 then
+  if cb then b:receiveConfirmedInput(cb) end
+  if not DRILL and a.clock > 188 and GARBAGE_EVERY > 0 and rand(GARBAGE_EVERY) == 0 then
     local k = rand(4)
     local g
     if STREAM == "human" then
