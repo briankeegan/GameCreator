@@ -120,7 +120,9 @@ wt.parentPort.on('message', function (m) {
         // While a slab pops nothing can die, so a line breaking garbage later
         // earns no place over keeping panels (conserve): only a break now or a
         // lineup outranks it.
-        if (popping) return Infinity;
+        // The survival search is not run on a board with nothing to fear,
+        // so conserve's order is applied here too.
+        if (popping) { var sb = this._settledOf(c); return sb && sb.grid ? KEEP_RANK - 100 * panelsOf(sb) + gapOf(sb) : Infinity; }
         var t = i >= 0 && this._nat ? this._nat.breakAt(i) : -1;
         return t >= 0 ? t : Infinity;
       };
