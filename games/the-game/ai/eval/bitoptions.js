@@ -251,7 +251,13 @@
         var sh = shapeOf(r.settled);
         return { kind: kindOf(r.chain), size: sizeOf(r.chain, r.total),
                  swaps: swaps, frames: frames, chain: r.chain, total: r.total,
-                 garbage: r.garbage || 0, duration: durationOf(swaps, frames),
+                 garbage: r.garbage || 0,
+                 // AND THE CELLS THAT ACTUALLY COME BACK. `garbage` is every on-screen
+                 // cell of the slab, which is what the engine pops and what sets the
+                 // resolve time; `converts` is its bottom row, the only part that
+                 // becomes panels. See bitmatch for why both exist.
+                 converts: r.converts || 0,
+                 duration: durationOf(swaps, frames),
                  tall: sh ? sh.tall : null, bumps: sh ? sh.bumps : null,
                  mat: sh ? sh.mat : null, low: sh ? sh.low : null,
                  spread: sh ? sh.spread : null,

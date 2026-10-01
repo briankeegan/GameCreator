@@ -633,25 +633,33 @@
           // The whole connected slab, not the cells beside the match: the engine
           // takes getConnectedGarbagePanels(matching), so touching one cell of a
           // slab pops a row of all of it.
-          var touched = 0;
+          var touched = 0, converts = 0;
           for (var sl = 0; sl < st.slabs.length; sl++) {
             var sm2 = st.slabs[sl], hit = false, cc;
             for (cc = 1; cc <= W && !hit; cc++) {
               if (k[cc] & ((sm2[cc] >> 1) | (sm2[cc] << 1) | sm2[cc - 1] | sm2[cc + 1])) hit = true;
             }
-            // ONLY THE BOTTOM ROW OF THE SLAB CONVERTS, so only the bottom row is
-            // counted. This summed the WHOLE connected slab, which is what the engine
-            // POPS, not what it hands back: Stack.convertGarbagePanels turns the row
-            // with yOffset === -1 into real panels and leaves the rest garbage -- that
-            // is what makes garbage chains possible, and it is written at the top of
-            // panel-engine.js.
+            // TWO DIFFERENT NUMBERS, BECAUSE THE ENGINE USES TWO.
             //
-            // A 6-wide, 3-tall slab therefore reported 18 cells where 6 convert. The
-            // callers price this: bestPlan pays `garbage * perCell` with perCell up to
-            // deadline/W, about 100 frames early in a game, so that break was valued
-            // near 1,800 frames instead of 600 -- overstated by the slab's HEIGHT, so
-            // the taller the slab the larger the error.
+            //   touched   every on-screen cell of the connected slab. This is the
+            //             engine's `onScreen`, and it sets the RESOLVE time:
+            //             preStop = FLASH + FACE + POP * (comboSize + onScreen).
+            //             The whole slab pops, so the whole slab is counted.
+            //
+            //   converts  the slab's BOTTOM ROW. Only that row becomes real panels --
+            //             convertGarbagePanels takes the row with yOffset === -1 and
+            //             leaves the rest garbage, which is what makes garbage chains
+            //             possible. This is what a break actually hands back.
+            //
+            // They were one field, and the callers want different ones: the resolve
+            // time wants `touched`, the value of a break wants `converts`. Collapsing
+            // them to the bottom row made the resolve time too short; leaving them as
+            // the whole slab made a 6-wide 3-tall slab worth 18 converted cells where 6
+            // convert, and bestPlan prices those at up to deadline/W -- about 100
+            // frames early in a game -- so that break was valued near 1,800 frames
+            // instead of 600, overstated by the slab's HEIGHT.
             if (hit) {
+              for (cc = 1; cc <= W; cc++) touched += popcount(sm2[cc]);
               var low = 32, lm;
               for (cc = 1; cc <= W; cc++) {
                 lm = sm2[cc] >>> 0;
@@ -661,7 +669,7 @@
               }
               if (low < 32) {
                 var lowBit = 1 << (low - 1);
-                for (cc = 1; cc <= W; cc++) if (sm2[cc] & lowBit) touched++;
+                for (cc = 1; cc <= W; cc++) if (sm2[cc] & lowBit) converts++;
               }
             }
           }
@@ -671,7 +679,8 @@
           // reported and the scope says which kind of answer this is, so a
           // caller cannot read a stopped cascade as a finished one.
           return { scope: 'garbage-broke', chain: Math.max(counter, 1),
-                   total: total, rounds: rounds, garbage: touched };
+                   total: total, rounds: rounds, garbage: touched,
+                   converts: converts };
         }
         continue;
       }

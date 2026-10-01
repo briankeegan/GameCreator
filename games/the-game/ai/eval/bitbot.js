@@ -1291,6 +1291,15 @@
             // it as the prize a finished setup pays discounted by the time the rest
             // of the work costs -- see slabGain in bitoptions.
             if (perPanelFrames > 0) cells += (o.slabGain || 0) / perPanelFrames;
+            // AND THE CELLS THE BREAK HANDS BACK -- its bottom row, the part that
+            // becomes panels. bestPlan prices these at max(perPanel, deadline/W), the
+            // rate a converted cell is worth for the rest of the game; this is the same
+            // number in this ranking's currency. The resolve hold above is a different
+            // thing and keeps the whole slab, which is what the engine pops.
+            if (perPanelFrames > 0) {
+                cells += (o.converts || 0) *
+                         Math.max(perPanelFrames, (deadline || 0) / W) / perPanelFrames;
+            }
             // AND BEING READY FOR THE SLAB THAT IS COMING. Worth a row of rise,
             // converted to this ranking's currency. Zero unless there is a slab
             // to be ready for, so it cannot speak on a clean board.
@@ -1598,7 +1607,10 @@
             // 7,7,7,4,4,7 at frame 22,700 -- was bought by 80 frames of material plus
             // 60 to 94 of stop time against 120 for the row of void it opened. Every
             // one of those numbers is right. What it cost is not in this expression.
-            var bought = o.total * perPanel + holds + (o.garbage || 0) * perCell
+            // THE CELLS A BREAK HANDS BACK ARE ITS BOTTOM ROW, not the whole slab.
+            // `holds` above wants the whole slab, because that is what the engine pops
+            // and what sets the resolve time; this wants what becomes panels.
+            var bought = o.total * perPanel + holds + (o.converts || 0) * perCell
                        + lowered * (framesPerRow || 0) + gain
                        - shortfall * (framesPerRow || 0)
                        // AND THE VOID THE SLAB WOULD SEAL -- a row of it is a row of
@@ -2694,7 +2706,8 @@
                     if (this.deadly(bc.masks, bc.resolved, info,
                                     Math.max((bc.moveFrames || 0) + this.reaction,
                                              info.framesPerRow || 0))) continue;
-                    if (!bk || (bc.resolved.garbage || 0) > (bk.resolved.garbage || 0)) bk = bc;
+                    // BIGGER BY WHAT IT HANDS BACK, which is the converting row.
+                    if (!bk || (bc.resolved.converts || 0) > (bk.resolved.converts || 0)) bk = bc;
                 }
                 if (bk) {
                     this._dig = null;
@@ -2757,8 +2770,8 @@
                     if ((ro.duration || 0) > deadline) continue;
                     // MOST GARBAGE FIRST, then soonest -- the same order the
                     // one-swap route picks by, which prefers the bigger break.
-                    if (!reach || (ro.garbage || 0) > (reach.garbage || 0) ||
-                        ((ro.garbage || 0) === (reach.garbage || 0) &&
+                    if (!reach || (ro.converts || 0) > (reach.converts || 0) ||
+                        ((ro.converts || 0) === (reach.converts || 0) &&
                          (ro.duration || 0) < (reach.duration || 0))) reach = ro;
                 }
                 if (reach) {
