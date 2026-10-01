@@ -126,13 +126,22 @@
         // differences and stays small while one column towers: the board that died
         // read 4,2,2,2,3,6, bumpiness 6, spread 4, with four rows sealed under
         // columns 2 to 4 and nothing able to reach the slab but column 6.
-        // AND HOW MANY PANELS SHORT OF A BREAK THE BOARD IS -- the setup deficit.
+        // AND HOW MANY PANELS SHORT THE BOARD IS OF A HORIZONTAL THREE AT THE
+        // SLAB'S FLOOR ROW -- the setup deficit.
+        //
+        // Named for what it measures and not for "distance to a break", which it is
+        // not. Relaxed to the rule's true minimum -- the cheapest of a horizontal
+        // three below the slab, a vertical three below it, or a cell reaching
+        // alongside a partial slab -- it reads ZERO on the board it was written for,
+        // because column six already touched the garbage there and still had no
+        // break. The faithful measure is the inert one; this is the stricter target
+        // that moves.
         //
         // Breaking needs three panels in a line touching the garbage, so every
         // column below the slab's floor is a column that cannot take part. Summed
         // over the board that is the panels still needed to reach it:
         //
-        //     reachGap = SUM over c of max(0, (slabFloorRow - 1) - h[c])
+        //     slabRowGap = SUM over c of max(0, (slabFloorRow - 1) - h[c])
         //
         // THE REFERENCE IS THE SLAB, NOT THE TALLEST COLUMN, and that is the whole
         // point. `spread` and the void both measure against `high`, so they can be
@@ -157,13 +166,25 @@
         // constant across nearly every candidate, and adding it changed not one
         // decision on the board it was written for.
         //
-        // Breaking needs three panels in a LINE touching the garbage, so what matters
-        // is whether three ADJACENT columns can reach it. On heights 4,4,5,5,5,8 with
-        // the floor at r9 the windows read 11, 10, 9 and 6: six panels short of a
-        // break, in columns four to six. Moving a panel from column three into column
-        // four takes that to five, so unlike the total this ranks the move -- it pays
-        // for gathering material where it can touch the slab instead of spreading it
-        // thin across six columns that cannot.
+        // WHY THREE, WHEN THE RULE NEEDS ONLY ONE CELL. bitmatch breaks a slab when
+        // any cleared cell is 4-way adjacent to any slab cell -- above, below or
+        // beside (see the `hit` test in resolveFromMasks). So one column touching is
+        // enough IN PRINCIPLE, and on the board this was written for column six was
+        // already at the floor: the board touched the slab and still could not break
+        // it, because its top three read 6,1,6.
+        //
+        // The two shapes are not equally available. A vertical three touching from
+        // below needs three of the SAME colour stacked in one column. A horizontal
+        // three along the slab's floor row needs three adjacent columns at that
+        // height, and then any colour that matches across them will do. This measures
+        // the distance to the second, which is the cheaper of the two to arrange --
+        // not a claim that a break requires three columns.
+        //
+        // On heights 4,4,5,5,5,8 with the floor at r9 the windows read 11, 10, 9 and
+        // 6: six panels short in columns four to six. Moving a panel from column
+        // three into column four takes it to five, so unlike the total it ranks the
+        // move -- it pays for gathering material where it can reach rather than
+        // spreading it thin across columns that cannot.
         if (floorRow > 1) {
             var need = floorRow - 1;
             gap = Infinity;
@@ -175,7 +196,7 @@
             if (!isFinite(gap)) gap = 0;
         }
         return { tall: tall, bumps: bumps, excess: dev / w2, mat: mean, low: low,
-                 high: mx, spread: mx - low, reachGap: gap };
+                 high: mx, spread: mx - low, slabRowGap: gap };
     }
 
     function optionOf(swaps, frames, r) {

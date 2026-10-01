@@ -2874,14 +2874,14 @@
         // `high`, so a void priced this way paid twice for the one move that makes a
         // break impossible.
         //
-        // reachGap counts the panels still needed to bring every column to the slab's
+        // slabRowGap counts the panels still needed to bring every column to the slab's
         // floor. The slab does not move when material leaves, so pulling the tall
         // column down cannot improve it: on the board that died, 7,6,5,5,5,2, void
-        // and reachGap both read 12 panels, but dropping column one to 5 takes void
-        // to 8 -- an apparent gain -- while reachGap goes to 14, which is the truth.
+        // and slabRowGap both read 12 panels, but dropping column one to 5 takes void
+        // to 8 -- an apparent gain -- while slabRowGap goes to 14, which is the truth.
         //
         // A panel of gap is a panel of life, fpr/W, the conversion used throughout.
-        s -= ((now ? (now.reachGap || 0) : 0)) * perPanel;
+        s -= ((now ? (now.slabRowGap || 0) : 0)) * perPanel;
         return s - (cand.moveFrames || 0);
     };
 
