@@ -25,11 +25,12 @@
 // bitbot reads this through revealPick, which plays the answer as `lineup`.
 (function (root, factory) {
     if (typeof module === 'object' && module.exports) {
-        module.exports = factory(require('./bitframes.js'), require('./travel.js'));
+        module.exports = factory(require('./bitframes.js'), require('./travel.js'),
+                                 require('./bitmatch.js'));
     } else {
-        root.BitLineup = factory(root.BitFrames, root.PanelEval.travel);
+        root.BitLineup = factory(root.BitFrames, root.PanelEval.travel, root.BitMatch);
     }
-}(typeof globalThis !== 'undefined' ? globalThis : this, function (BF, travel) {
+}(typeof globalThis !== 'undefined' ? globalThis : this, function (BF, travel, bit) {
     'use strict';
 
     var W = 6;
@@ -102,6 +103,8 @@
         function breakScore(chain, total) {
             return spendLeast ? -total * 1000 + chain : score(chain, total);
         }
+        var conv = converting(snapshot);
+        if (conv) return inMasks(snapshot, frames, H, cursor, legalSwaps, conv, breakScore);
         var state = revealed(snapshot, H);
         if (!state.open) return null;
 
@@ -217,10 +220,116 @@
         return { plans: plans, reveals: plans.length };
     }
 
+    // THE ROW A BREAK IS CONVERTING, off the snapshot. convertGarbagePanels deals its
+    // colours at the match, while the cells are still garbage, so they are on the board
+    // for the whole of the matched timer: [row, col, colour], and the frames left.
+    function converting(snapshot) {
+        var cells = [], timer = Infinity, m, r, c;
+        for (r = 1; snapshot.motion && r < snapshot.motion.length; r++) {
+            if (!snapshot.motion[r]) continue;
+            for (c = 1; c <= W; c++) {
+                m = snapshot.motion[r][c];
+                if (!m || !m.isGarbage || m.state !== 'matched' || !(m.color > 0) || m.color === 9) continue;
+                cells.push([r, c, m.color]);
+                if ((m.timer || 0) < timer) timer = m.timer || 0;
+            }
+        }
+        return cells.length ? { cells: cells, timer: timer } : null;
+    }
+
+    // THE BOARD WHEN THAT ROW HAS BECOME PANELS, in masks. Its cells leave the slab and
+    // the garbage and take their colours; the slab they came from is live again, since
+    // updateMatched returns its other rows to 'normal' on the same frame.
+    function landed(st, cells) {
+        var W2 = st.W, stride = W2 + 2, N = st.N, i, c;
+        for (i = 0; i < cells.length; i++) if (cells[i][2] > N) N = cells[i][2];
+        var out = bit.copyState(st);
+        if (N > out.N) {
+            var col = new Int32Array((N + 1) * stride);
+            col.set(out.colour);
+            out.colour = col;
+            out.N = N;
+        }
+        for (i = 0; i < cells.length; i++) {
+            var r = cells[i][0], cc = cells[i][1], b = 1 << (r - 1);
+            out.inert[cc] &= ~b;
+            out.garb[cc] &= ~b;
+            out.colour[cells[i][2] * stride + cc] |= b;
+            for (var k = 0; k < out.slabs.length; k++) {
+                if (out.slabs[k][cc] & b) { out.slabs[k][cc] &= ~b; out.slabLocked[k] = false; }
+            }
+        }
+        for (c = 0; c < out.slabs.length; c++) {
+            var any = false;
+            for (i = 1; i <= W2; i++) if (out.slabs[c][i]) { any = true; break; }
+            if (!any) { out.slabs.splice(c, 1); out.slabLocked.splice(c, 1); c--; }
+        }
+        return out;
+    }
+
+    // THE CONVERTING WINDOW, IN MASKS. The row's colours are on the board for the whole
+    // matched timer, and that is long -- FLASH + FACE + POP * (combo + onScreen) -- so a
+    // swap made inside it finishes its own cascade with the slab still locked, and only
+    // then does the row come down. Both halves are resolveFromMasks: the swap on the
+    // board as it is, then the row turned into panels on the board that left. A swap
+    // counts only if its walk and its own cascade -- FLASH + FACE + HOVER a round and POP
+    // a panel, the engine's frames -- are over before the timer is. landing.test.js
+    // holds the landing to the engine. Nothing is run.
+    function inMasks(snapshot, frames, H, cursor, legalSwaps, conv, breakScore) {
+        var st = bit.maskState(snapshot.grid, snapshot.blocks, W, H, snapshot.motion);
+        if (st.bad) return null;
+        function outcome(swap) {
+            var s1 = bit.copyState(st);
+            s1.busy = st.busy;
+            if (swap && !bit.swapMasks(s1, swap[0], swap[1])) return null;
+            var first = bit.resolveFromMasks(s1, true);
+            if (first.scope === 'garbage-broke') {
+                return { scope: 'garbage-broke', chain: first.chain, total: first.total, own: first };
+            }
+            if (first.scope !== 'ok' || !first.settled) return null;
+            var r = bit.resolveFromMasks(landed(first.settled, conv.cells), false);
+            return { scope: r.scope, chain: r.chain, total: first.total + r.total, own: first };
+        }
+        var doNothing = outcome(null);
+        var best = { swap: null, cost: 0, chain: doNothing && doNothing.scope === 'ok' ? doNothing.chain : 0,
+                     total: doNothing && doNothing.scope === 'ok' ? doNothing.total : 0 };
+        best.score = score(best.chain, best.total);
+        var bestBroke = null, reachable = 0, considered = 0;
+        if (doNothing && doNothing.scope === 'garbage-broke') {
+            bestBroke = { swap: null, cost: 0, chain: doNothing.chain, total: doNothing.total,
+                          score: breakScore(doNothing.chain, doNothing.total), broke: true };
+        }
+        for (var i = 0; i < legalSwaps.length; i++) {
+            var sw = legalSwaps[i], cost = travel.cost(cursor[0], cursor[1], sw[0], sw[1]);
+            if (cost > conv.timer) continue;
+            var out = outcome(sw);
+            if (!out) continue;
+            var own = out.own, busyFor = own.rounds
+                ? own.rounds * (frames.FLASH + frames.FACE + frames.HOVER) + frames.POP * own.total : 0;
+            if (cost + busyFor > conv.timer) continue;
+            reachable++;
+            if (out.scope === 'garbage-broke') {
+                var bs = breakScore(out.chain, out.total);
+                if (!bestBroke || bs > bestBroke.score) {
+                    bestBroke = { swap: sw, cost: cost, chain: out.chain, total: out.total, score: bs, broke: true };
+                }
+                continue;
+            }
+            if (out.scope !== 'ok') continue;
+            considered++;
+            var sc = score(out.chain, out.total);
+            if (sc > best.score) best = { swap: sw, cost: cost, chain: out.chain, total: out.total, score: sc };
+        }
+        if (bestBroke) best = bestBroke;
+        return { best: best, window: conv.timer, reachable: reachable, considered: considered,
+                 unknown: 0, doNothing: doNothing, converted: conv.cells.length };
+    }
+
     // Calls go through this object so a test can replace one step with a
     // broken one and prove the check notices.
     var api = { bestInWindow: bestInWindow, revealed: revealed,
                 windowFrames: windowFrames, play: play,
-                planAsTheyAppear: planAsTheyAppear };
+                planAsTheyAppear: planAsTheyAppear,
+                converting: converting, landed: landed };
     return api;
 }));
