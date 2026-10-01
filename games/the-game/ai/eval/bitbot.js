@@ -3575,19 +3575,22 @@
         var mine = Math.ceil(cellsSent(PanelEngine(), 'chain', 3, goal.links) / W);
         var reserve = Math.max(rows, this._maxSlab || 0, mine);
         var fits = this.raiseFits(reserve);
-        // AND update() RE-CHECKS AGAINST THE SAME RESERVE THIS DECIDED ON.
+        // AND update() RE-CHECKS AGAINST THE QUEUE, NOT AGAINST THIS RESERVE. THE TWO
+        // ASK DIFFERENT QUESTIONS AND THAT IS NOT THE DUPLICATION THIS FUNCTION'S
+        // OPENING PARAGRAPH IS ABOUT.
         //
-        // `_wantRows` is what update() tests the held button against on every frame --
-        // "the row is allowed on THIS frame's board, not on the decision's" -- and it
-        // was set to `rows`, the queue alone, two lines before `reserve` existed. So
-        // the decision reserved three rows and the guard that keeps the button down
-        // while they arrive reserved none, because `incoming` is zero on about ninety
-        // per cent of decisions and cannot see a slab over one row high at all.
+        //   here       should the bot be raising at all -- so the row has to leave room
+        //              for the row AND for the slab that follows it, which is `reserve`
+        //   update()   is THIS row still allowed on THIS frame's board, as the rows
+        //              arrive and raiseRoom() shrinks under them. Room for the row,
+        //              with the queue counted because queued cells land here.
         //
-        // That is the disagreement the paragraph above this function is about: four
-        // copies of the rule in four places, and the button held on decisions that
-        // would not have raised. One number, decided once.
-        this._wantRows = reserve;
+        // Setting `_wantRows` to `reserve` releases the button three rows earlier than
+        // the row itself needs, and starves the board it was meant to protect: 101
+        // rand2 v rand4 goes from alive on both sides to DEAD@15,772. The opening
+        // paragraph is about the raise MODE being decided in four places, not about
+        // these two bounds.
+        this._wantRows = rows;
         // THE OPENING ENDS WHEN THE GAME STARTS HAPPENING TO THE BOARD: garbage
         // on the way, or no room for the row. It does not end because a raise is
         // momentarily unavailable -- update() holds the button for twenty frames,
