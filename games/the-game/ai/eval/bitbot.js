@@ -2592,23 +2592,6 @@
                 }
             }
             if (haveBreak) { this._dig = null; this._digIsBreak = false; }
-            if (!haveBreak && this._dig && this._dig.moves.length) {
-                var dn = this._dig.moves[0], dnOk = false, dnl = bit.legalSwapsOf(base);
-                for (i = 0; i < dnl.length; i++) {
-                    if (dnl[i][0] === dn[0] && dnl[i][1] === dn[1]) { dnOk = true; break; }
-                }
-                var dspent = Math.max(0, this.stack.clock - (this._dig.startedAt || 0));
-                if (dnOk && Math.max(0, this._dig.frames - dspent) <= deadline) {
-                    this._dig.moves = this._dig.moves.slice(1);
-                    if (!this._dig.moves.length) { this._dig = null; this._digIsBreak = false; }
-                    this._plan = null;
-                    this.counts.dugFor++;
-                    return { kind: 'swap', move: dn, mode: mode, alive: alive, via: 'digPlan' };
-                }
-                this._dig = null;
-                this._digIsBreak = false;
-                this.counts.digDropped++;
-            }
             // AND A BREAK IS A BREAK AT WHATEVER DEPTH THE CLOCK AFFORDS.
             //
             // DERIVED ONCE AND PLAYED OUT, WHICH IS WHY IT SITS HERE RATHER THAN
@@ -2704,6 +2687,23 @@
                                  via: 'breakReach' };
                     }
                 }
+            }
+            if (!haveBreak && this._dig && this._dig.moves.length) {
+                var dn = this._dig.moves[0], dnOk = false, dnl = bit.legalSwapsOf(base);
+                for (i = 0; i < dnl.length; i++) {
+                    if (dnl[i][0] === dn[0] && dnl[i][1] === dn[1]) { dnOk = true; break; }
+                }
+                var dspent = Math.max(0, this.stack.clock - (this._dig.startedAt || 0));
+                if (dnOk && Math.max(0, this._dig.frames - dspent) <= deadline) {
+                    this._dig.moves = this._dig.moves.slice(1);
+                    if (!this._dig.moves.length) { this._dig = null; this._digIsBreak = false; }
+                    this._plan = null;
+                    this.counts.dugFor++;
+                    return { kind: 'swap', move: dn, mode: mode, alive: alive, via: 'digPlan' };
+                }
+                this._dig = null;
+                this._digIsBreak = false;
+                this.counts.digDropped++;
             }
             if (!haveBreak) {
                 options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
