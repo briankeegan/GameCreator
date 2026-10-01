@@ -8,5 +8,7 @@
   "ahead": 90,
   "threat": null,
   "breakFirst": true,
-  "breakDepth": 1
+  "breakDepth": 1,
+  "lineup": true,
+  "conserve": true
 }
