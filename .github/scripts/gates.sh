@@ -754,6 +754,18 @@ gate_option_pricing() {
   node games/the-game/ai/eval/check_option_pricing.mjs
 }
 
+# THE DEADLINE, AGAINST THE ENGINE RUNNING. Every price in the bot is denominated in
+# the frames this number says the board has left, so an error in it is an error in all
+# of them -- and both errors found in it ran the same way, the bot believing it had
+# longer than it had. Two engine facts have to hold together: the clock advances and
+# updateSpeed fires during stop time, so SPEED rises while frozen, and
+# advancePassiveRaise only moves the board while stopTime is 0, so the BOARD does not.
+# Checked by stepping a model of those three lines one frame at a time rather than by
+# restating the arithmetic.
+gate_deadline_rise() {
+  node games/the-game/ai/eval/deadline_rise.test.js
+}
+
 # WHAT A SWAP CLEARS, WITHOUT APPLYING IT. On a settled board every column is a
 # packed run from the floor, so a swap does two things to it and both are shifts:
 # the panel crosses and lands on top of the run it joins, and the hole it left
@@ -976,6 +988,7 @@ GATES=(
   "lining up with colours as they appear:gate_bitlineup:games/the-game/ai/"
   "every option listed is real and priced:gate_bitoptions:games/the-game/ai/"
   "every option field is priced by both rankers:gate_option_pricing:games/the-game/ai/"
+  "the deadline keeps time with the engine through a freeze:gate_deadline_rise:games/the-game/ai/"
   "a swap is answered without applying it:gate_bitswap:games/the-game/ai/"
   "the options are features that vary:gate_bitfeatures:games/the-game/ai/"
   "the bot plays what it picks and cannot be killed:gate_bitbot:games/the-game/ai/"

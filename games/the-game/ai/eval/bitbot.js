@@ -826,15 +826,36 @@
     // and `speed` is startingSpeed + k, so the interval is
     // nextSpeedUp / (speed - startingSpeed + 1). Nothing here is a constant typed from
     // the engine, so a change to the schedule moves this with it.
-    function framesToRise(rows, info, framesPerRow) {
+    //
+    // AND IT STARTS WHEN THE RISE STARTS, NOT WHEN THE CLOCK IS READ. The engine
+    // runs `this.clock++` every frame and updateSpeed() fires on clock equality, so
+    // SPEED GOES UP DURING STOP TIME -- while advancePassiveRaise only moves the
+    // board when stopTime is 0, so the board does NOT. A deadline of stopTime plus
+    // the rise therefore spends its first stretch frozen at a speed the board will
+    // not still be at when it starts moving, and integrating from the clock as read
+    // applies today's slower rate to it. The error runs in the dangerous direction,
+    // which is the whole reason this function exists: the bot believing it has
+    // longer than it has. `startClock` is the clock the rise begins on, and any
+    // speed-up already passed by then is applied before integrating.
+    function framesToRise(rows, info, framesPerRow, startClock) {
         var e = PanelEngine();
         if (!e || !e.riseTime || !(rows > 0)) return Math.max(0, rows) * (framesPerRow || 0);
-        var speed = info.speed, up = info.nextSpeedUp, clock = info.clock;
-        if (!(speed > 0) || !(up > clock)) return rows * (framesPerRow || 0);
+        var speed = info.speed, up = info.nextSpeedUp;
+        var clock = (startClock === undefined || startClock === null)
+                  ? info.clock : startClock;
+        if (!(speed > 0) || !(up > info.clock)) return rows * (framesPerRow || 0);
         var steps = Math.max(1, speed - (info.startingSpeed || speed) + 1);
         var every = up / steps;
         if (!(every > 0)) return rows * (framesPerRow || 0);
         var frames = 0, left = rows, guard = 0;
+        // THE STEPS THAT HAPPEN WHILE THE BOARD IS STILL FROZEN. At level 10 the
+        // interval is 900 frames and stop time peaks at 98, so this is at most one --
+        // written as a loop because neither number is this function's to assume.
+        while (up <= clock && guard++ < 128) {
+            speed = Math.min(speed + 1, 99);
+            up += every;
+        }
+        guard = 0;
         while (left > 0 && guard++ < 128) {
             var fpr = e.riseTime(speed) * 16;
             if (!(fpr > 0)) return frames + left * (framesPerRow || 0);
@@ -863,7 +884,11 @@
         // 1,293. When the queue is more than the room the answer is the clock and
         // nothing else, which is what being topped out is worth.
         var queued = Math.ceil((info.incoming || 0) / W);
-        return clock + framesToRise(Math.max(0, H - tallest - queued), info, framesPerRow);
+        // THE RISE BEGINS AFTER THE STOP TIME RUNS OUT, and the speed table has moved
+        // on by then -- see framesToRise. `clock` here is the stop time, info.clock is
+        // the engine's.
+        return clock + framesToRise(Math.max(0, H - tallest - queued), info, framesPerRow,
+                                    (info.clock || 0) + clock);
     }
 
     // IS A REVEAL WINDOW OPEN, read straight off the live stack.
@@ -1283,13 +1308,11 @@
             // unknowable so `mat` is null, and it ADDS material besides.
             var short = shortfallOf(o);
             cells -= short * W;
-            // AND THE VOID THE SLAB WOULD SEAL, at the same rate bestPlan pays and
-            // in this ranking's currency: W cells to the row, each worth what an
-            // unsealed cell is worth. See bestPlan's voidGain.
-            if (perPanelFrames > 0) {
-                cells += (o.voidGain || 0) * W *
-                         Math.max(perPanelFrames, (deadline || 0) / W) / perPanelFrames;
-            }
+            // AND THE VOID THE SLAB WOULD SEAL, in this ranking's currency: a row of
+            // void is a row of ceiling, and a row is W panels. NOT the perCell a
+            // sealed cell is paid -- see bestPlan's voidGain for which board this
+            // measures and what pricing it that way cost.
+            cells += (o.voidGain || 0) * W;
             // AND WHAT IT DID TO THE SETUP FOR A BREAK, IN FRAMES, converted to this
             // ranking's currency the same way slabWorth above is. setupWorth prices
             // it as the prize a finished setup pays discounted by the time the rest
@@ -1607,6 +1630,15 @@
             // real frames, and the scaling devalues every good clear to reach the few
             // bad ones.
             //
+            // MEASURED AGAIN AFTER THE ARITHMETIC WAS CORRECTED, because the first
+            // measurement was taken against a slab overvalued by its height and a
+            // deadline that ignored the speed-up. It is still a swap, not a fix:
+            // 103 rand1 v rand2 goes DEAD@9,487 to alive, and 101 rand2 v rand3 goes
+            // alive to DEAD@4,543 -- the second one rising 5,5,5,5,5,5 to 8,8,8,8,8,8
+            // over 25 decisions holding one three, nothing on the board and nothing
+            // incoming. Halving what a clear is worth on a half-full board stops the
+            // bot cashing on exactly the board where cashing is the whole job.
+            //
             // The clear that dug the cliff on 103 rand3 -- flat 6,6,6,6,6,6 to
             // 7,7,7,4,4,7 at frame 22,700 -- was bought by 80 frames of material plus
             // 60 to 94 of stop time against 120 for the row of void it opened. Every
@@ -1617,24 +1649,37 @@
             var bought = o.total * perPanel + holds + (o.converts || 0) * perCell
                        + lowered * (framesPerRow || 0) + gain
                        - shortfall * (framesPerRow || 0)
-                       // AND THE VOID THE SLAB WOULD SEAL, AT THE SAME RATE A CELL
-                       // UNSEALED IS PAID.
+                       // AND THE VOID THE SLAB WOULD SEAL -- a row of it is a row of
+                       // ceiling, so framesPerRow, as height is.
                        //
-                       // This was framesPerRow a row -- perPanel a cell, about 20 frames
-                       // -- on the reading that a row of void is a row of ceiling. But a
-                       // sealed cell is not a row of rise, which is paid once and gone.
-                       // It is space that can only be recovered by BREAKING, which is
-                       // exactly what this expression says four lines up about a
-                       // converted garbage cell: "a garbage cell can never come off the
-                       // board and a panel can, so converting one is worth clearing it,
-                       // deferred", priced at perCell = max(perPanel, deadline/W), up to
-                       // 100 frames early in a game.
+                       // IT IS NOT PRICED AT WHAT A SEALED CELL IS WORTH, and the
+                       // argument that it should be was wrong about which board this
+                       // measures. That argument ran: a converted garbage cell is paid
+                       // perCell = max(perPanel, deadline/W) because "a garbage cell can
+                       // never come off the board and a panel can", sealing a cell and
+                       // converting one are the same event in opposite directions, so the
+                       // two should be paid the same.
                        //
-                       // Sealing a cell and converting one are the same event in opposite
-                       // directions, and they were priced five times apart in terms four
-                       // lines from each other. Same rate now, and no new constant: W
-                       // cells to the row, perCell each.
-                       + (o.voidGain || 0) * W * perCell
+                       // They are not the same event. `voidRows` is high - mat: the void
+                       // a slab WOULD seal if one arrived, which is why it is on the
+                       // option and priced while the board is still healthy. Until the
+                       // slab lands that space is not sealed -- it is ordinary ceiling and
+                       // the bot can play into it. Only cells actually under a slab can
+                       // be recovered by breaking alone, and that is a different quantity
+                       // from this one.
+                       //
+                       // Measured: at perCell the term is five times the ceiling it
+                       // stands for, and on a board with no garbage voidGain goes NEGATIVE
+                       // for any clear that does not lower `high` -- clearing drops `mat`
+                       // -- so a three cost about 300 frames of void against 60 of
+                       // material, bestPlan returned rate <= 0, and no arithmetic route
+                       // claimed the move. 103 STARTER v ZERO: ZERO ran 32 consecutive
+                       // DEFEND/WEIGHTS decisions from frame 1,411 to 1,848 with one to
+                       // three clears available on every one of them, no garbage on the
+                       // board and none incoming, rising 6,6,4,4,4,6 to 8,8,6,6,6,8
+                       // without cashing once. DEAD@19,826 before the repricing and
+                       // DEAD@2,184 after it.
+                       + (o.voidGain || 0) * (framesPerRow || 0)
                        // AND WHAT IT DID TO THE SETUP FOR A BREAK -- already in
                        // frames, which is this ranking's currency. See bestAttack.
                        + (o.slabGain || 0)
@@ -2108,6 +2153,31 @@
         }
         this._lastBreakOnPool = breakOnPool;
         var here = signature(base);
+        // DID THE LAST SWAP ACTUALLY HAPPEN?
+        //
+        // Both loop rules test the MODELLED landed board, and both exempt a move that
+        // cashes: this file's candidate filter skips a cashing candidate outright, and
+        // the signature test cannot see one because the model of the swap contains the
+        // clear, so the landing looks like somewhere new. When the model says a swap
+        // clears and the ENGINE does not do it, every rule meant to stop a loop steps
+        // aside and the bot replays that pair until the rise kills it.
+        //
+        // 103 rand2 v rand3 played swap 4-3 twelve times between frames 27,153 and
+        // 27,237, alternating flatten and the weights, the board signature IDENTICAL
+        // before and after every one of them, 33 candidates each time, both filters
+        // refusing nothing -- dead 120 frames later at ten tall. The engine will not
+        // swap a panel that is not in `normal`, and inside a freeze the bot decides
+        // every seven frames on a board mid-cascade, so the model and the engine
+        // disagree about that one pair for as long as the cascade lasts.
+        //
+        // PROGRESS IS OBSERVABLE, NOT MODELLED: the board says which it was. `_seen`
+        // holds the boards this bot has decided ON, newest last, and it is pushed
+        // below -- so its last entry is the previous decision's board, and an
+        // unchanged one means the swap between them moved nothing. Computed here,
+        // before the push, and read by both rules.
+        this._stuckSwap = (this._seen.length &&
+                           this._seen[this._seen.length - 1] === here)
+                        ? this._lastSwap : null;
         var allowed = [];
         for (var i = 0; i < pool.length; i++) {
             // HOLD IS NOT AN OPTION WHILE THE CLOCK IS BURNING.
@@ -2284,12 +2354,15 @@
             //
             // Narrowing, so it stands aside rather than freeze. It never had to
             // here: every one of those decisions had twenty other candidates.
+            // AND THE CASH EXEMPTION HOLDS ONLY WHILE THE CASH HAPPENS -- see
+            // `_stuckSwap` above. A clear the engine did not carry out is not progress,
+            // so it does not earn the exemption.
             var ls = this._lastSwap;
             if (ls) {
                 var notSame = [];
                 for (i = 0; i < allowed.length; i++) {
                     var ac = allowed[i];
-                    var cashesA = ac.resolved &&
+                    var cashesA = !this._stuckSwap && ac.resolved &&
                                   (ac.resolved.total > 0 || ac.resolved.brokeGarbage);
                     if (!cashesA && ac.kind === 'swap' && ac.swap &&
                         ac.swap[0] === ls[0] && ac.swap[1] === ls[1]) {
@@ -2549,9 +2622,15 @@
         //
         // The candidate loop already refuses these, but it filters `allowed` and
         // the attack path reads `pool`, so it walked straight past the guard.
+        // AND A SWAP THE ENGINE DID NOT CARRY OUT IS A RETURN, whatever the model says
+        // its landing looks like -- see `_stuckSwap` in candidates(). This is the test
+        // every route that reads `pool` goes through, flatten and levelFirst among
+        // them, and the loop it was read from alternated flatten with the weights.
         var self = this;
         function returnsToSeen(mv) {
             if (!self.refuseReturn || !mv) return false;
+            var st = self._stuckSwap;
+            if (st && mv[0] === st[0] && mv[1] === st[1]) return true;
             for (var q = 0; q < pool.length; q++) {
                 var pc = pool[q];
                 if (pc.kind === 'swap' && pc.swap[0] === mv[0] &&
@@ -4176,6 +4255,11 @@
     // of the choice.
     BitBot.bestPlanOf = bestPlan;
     BitBot.ruinsShapeOf = ruinsShape;
+    // Exposed so the deadline can be checked against a frame-by-frame run of the
+    // engine's own rise and speed schedule rather than against a restatement of it:
+    // see deadline_rise.test.js. The whole bot is priced off this number.
+    BitBot.framesToRiseOf = framesToRise;
+    BitBot.framesToDeathOf = framesToDeath;
     BitBot.WORKING_ROWS = WORKING_ROWS;
     BitBot.STARTER = STARTER;
     return BitBot;

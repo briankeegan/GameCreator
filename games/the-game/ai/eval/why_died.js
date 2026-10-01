@@ -90,6 +90,37 @@ bo.options = function (board, W, H, cursor, depth, st, timing, dig) {
     return out;
 };
 
+// AND THE THIRD QUESTION, WHICH IS NOT ABOUT BREAKS: WITH A CLEAR ON THE BOARD,
+// DID IT CASH? Two deaths read the same way -- the stack rising a row at a time with
+// `clr` 1 on every decision and the move clearing nothing. 101 rand2 v rand3 went
+// 5,5,5,5,5,5 to 8,8,8,8,8,8 over 25 decisions and 450 frames holding one three, no
+// garbage on the board and none incoming, and died at 4,543.
+//
+// Counted per height band, because "held a clear" is correct play on a low board and
+// is how a board dies on a high one. A route that appears only in the tall bands is
+// the one refusing to cash when cashing is the job.
+var passed = {}, byBand = {};
+function bandOf(t) {
+    return t <= 4 ? ' 0-4' : t <= 6 ? ' 5-6' : t <= 8 ? ' 7-8' : t <= 10 ? ' 9-10' : '11-12';
+}
+function bestClearOf(st) {
+    var sw = bit.legalSwapsOf(st), best = 0, i, r;
+    for (i = 0; i < sw.length; i++) {
+        if (!bit.swapMasks(st, sw[i][0], sw[i][1])) continue;
+        r = bit.resolveFromMasks(st, true);
+        bit.swapMasks(st, sw[i][0], sw[i][1]);
+        if (r.total > best) best = r.total;
+        if (r.scope === 'garbage-broke' && best < 1) best = 1;
+    }
+    return best;
+}
+function clearsOf(st, mv) {
+    if (!bit.swapMasks(st, mv[0], mv[1])) return 0;
+    var r = bit.resolveFromMasks(st, true);
+    bit.swapMasks(st, mv[0], mv[1]);
+    return (r.total || 0) + (r.scope === 'garbage-broke' ? 1 : 0);
+}
+
 var realDecide = BitBot.prototype.decide;
 BitBot.prototype.decide = function () {
     hadBreak = false;
@@ -97,6 +128,27 @@ BitBot.prototype.decide = function () {
     if (hadBreak && d) {
         var k = (d.mode && d.mode.name ? d.mode.name : '?') + ' / ' + (d.via || '?');
         chose[k] = (chose[k] || 0) + 1;
+    }
+    var st = this._lastBase;
+    if (d && st) {
+        var tall = 0, c;
+        for (c = 1; c <= 6; c++) {
+            var t = 32 - Math.clz32(st.occ[c] >>> 0);
+            if (t > tall) tall = t;
+        }
+        var avail = bestClearOf(st);
+        if (avail > 0) {
+            var took = d.kind === 'swap' && d.move ? clearsOf(st, d.move) : 0;
+            var band = bandOf(tall);
+            var b = byBand[band] || (byBand[band] = { had: 0, took: 0 });
+            b.had++;
+            if (took > 0) b.took++;
+            else {
+                var kk = band + '  ' + (d.mode && d.mode.name ? d.mode.name : '?') +
+                         ' / ' + (d.via || '?');
+                passed[kk] = (passed[kk] || 0) + 1;
+            }
+        }
     }
     return d;
 };
@@ -116,6 +168,20 @@ process.on('exit', function () {
     console.log('CHOSE -- with a break on the list, what played? (' + tot + ' decisions)');
     keys.slice(0, 16).forEach(function (k) {
         console.log('  ' + String(chose[k]).padStart(6) + '  ' + k);
+    });
+    console.log('');
+    console.log('CASHED -- with a clear available, did the move clear?');
+    Object.keys(byBand).sort().forEach(function (b) {
+        var v = byBand[b];
+        console.log('  tall ' + b + '   had a clear ' + String(v.had).padStart(5) +
+                    '   cashed ' + String(v.took).padStart(5) +
+                    '   (' + Math.round(100 * v.took / v.had) + '%)');
+    });
+    var pk = Object.keys(passed).sort(function (a, b) { return passed[b] - passed[a]; });
+    console.log('');
+    console.log('PASSED -- a clear was there and the move cleared nothing, by band and route');
+    pk.slice(0, 20).forEach(function (k) {
+        console.log('  ' + String(passed[k]).padStart(6) + '  ' + k);
     });
     console.log('');
 });
