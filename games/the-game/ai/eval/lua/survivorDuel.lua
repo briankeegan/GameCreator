@@ -39,6 +39,15 @@ local SOLO = (tonumber(arg[5]) or 0) ~= 0
 -- tall and full-width metal among the combos. "human": chains 1-3 tall and
 -- combos, no metal -- what a strong player sends, through a telegraph.
 local STREAM = arg[6] or "wild"
+-- Or one of bench.js's burst drills (comboStorm, factory, bigBlocks): a
+-- 50-frame burst every 950 frames after a 150-frame lead-in, a slab landing
+-- unannounced on every frame of a burst. GARBAGE_EVERY is not used.
+local DRILLS = { comboStorm = { 4, 1 }, factory = { 6, 2 }, bigBlocks = { 6, 12 } }
+local DRILL = DRILLS[STREAM]
+local function burstFires(f)
+  if f < 151 then return false end
+  return (f - 151) % 950 < 50
+end
 -- OPPONENT: "beverly" (the Lua bot, the default) or "survivor": a second
 -- WasmSurvivor, through its own link to a survivor.js on PA_SURVIVOR_PORT2
 -- (default 47778) -- the bot against itself, or against a variation of
@@ -110,7 +119,12 @@ while frame < FRAMES and not a:game_ended() and not b:game_ended() do
   end
   a:receiveConfirmedInput(ca)
   b:receiveConfirmedInput(cb)
-  if a.clock > 188 and GARBAGE_EVERY > 0 and rand(GARBAGE_EVERY) == 0 then
+  if DRILL then
+    if a.stopWatch > 0 and burstFires(a.stopWatch) then
+      a:receiveGarbage({ { width = DRILL[1], height = DRILL[2], isChain = false, isMetal = false, frameEarned = a.stopWatch, rowEarned = 1, colEarned = 1, finalized = true } }, 0)
+      handed = handed + 1
+    end
+  elseif a.clock > 188 and GARBAGE_EVERY > 0 and rand(GARBAGE_EVERY) == 0 then
     local k = rand(4)
     local g
     if STREAM == "human" then
