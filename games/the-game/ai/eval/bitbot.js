@@ -3697,7 +3697,27 @@
         // garbage in that matchup arrives in slabs of 24 to 37 cells -- four to six
         // rows. The bot raised itself into a position the next attack could not fit in.
         var reserve = Math.max(Math.ceil((info.incoming || 0) / W), this._maxSlab || 0);
-        var room = H - (rsh ? rsh.high : 0) - reserve;
+        // THE SLAB'S ROOM IS RESERVED ONCE, NOT TWICE.
+        //
+        // This read `H - high - reserve`, and raiseFits(reserve) above is already
+        // exactly that reservation: raiseRoom() > 1 + reserve is room for the row AND
+        // for the slab that follows it, done on the tallest column, which is where the
+        // board dies. Taking the reserve off again here charges the same slab to the
+        // material crossing as well, and that crossing is what stops the raise.
+        //
+        // What it cost is how high the board gets filled. The owner's report from
+        // playing it is that the bot does not raise high enough and should go close to
+        // the top -- and it became more visible, not less, when _maxSlab was corrected
+        // to read the slab that actually LANDS: reserve went from two rows to three,
+        // which tightened the double-counted copy by a further row and pulled the stop
+        // down to about `high` 5 of 12.
+        //
+        // What the crossing is actually about is the trade this comment already
+        // describes: a raise buys a row of material with a row of CEILING, so material
+        // is compared against the ceiling it is spending. That is H - high. The slab
+        // keeps its reservation in raiseFits, where it belongs and where it is measured
+        // on the right quantity.
+        var room = H - (rsh ? rsh.high : 0);
         // AND FOUR ROWS IS REACHABLE WHATEVER THE RESERVE SAYS. The floor is the
         // material a board needs to do anything at all, so the reserve may bound how
         // far ABOVE it the bot builds, never whether it gets there: a board starving
