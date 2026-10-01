@@ -4455,8 +4455,15 @@
         // 62-frame freeze, then 107 on `swap r4c4`, the board alternating between
         // exactly two positions the whole time, and dead at 2,063. Roughly five
         // hundred of its last six hundred decisions were spent this way.
+        // AND ONLY WHEN SOMETHING HAS CHANGED, OR THE DRAIN IS DUE. A decision is a
+        // function of the board, so on the board the last one was made on it gives the
+        // same answer; the clock moves the answer only through the drain, and that is
+        // drainBound against the walk to the nearest clear, one read of the stack. The
+        // cooldown itself still runs out on an unchanged board.
         if (this.cooldown > 0) {
             var lift = (urgent || (this.reveal && this.windowOpen())) && !this.swapLanding();
+            if (lift && !(this.reveal && this.windowOpen()) && this._boardKey() === this._decidedOn &&
+                this.drainBound() > this._escapeWalk + 2) lift = false;
             if (!lift) {
                 this.spend.cooling++; if (froz) this.frozen.cooling++;
                 this.cooldown--; return;
@@ -4465,7 +4472,16 @@
         }
 
         this.spend.decided++;
+        this._decidedOn = this._boardKey();
         var d = this.decide();
+        this._escapeWalk = Infinity;
+        var ep = this._lastPool || [];
+        for (var ei = 0; ei < ep.length; ei++) {
+            var er = ep[ei].resolved;
+            if (ep[ei].kind === 'swap' && er && (er.total > 0 || er.brokeGarbage)) {
+                this._escapeWalk = Math.min(this._escapeWalk, ep[ei].moveFrames || 0);
+            }
+        }
         if (d.kind === 'raise') {
             if (froz) this.frozen.raise++;
             this.counts.raises++;
@@ -4514,6 +4530,20 @@
         else if (stack.curRow < row) input.up = true;
         else input.down = true;
         pk.timer = this.cursorMoveFrames - 1;
+    };
+
+    // THE BOARD AS THE DECISION SAW IT: every cell's colour, whether it is garbage, and
+    // its state -- timers left out, since a timer counting down changes no answer but
+    // the drain's, and that is asked separately -- and whether anything is queued.
+    BitBot.prototype._boardKey = function () {
+        var s = this.stack, out = '', r, c, p, top = Math.min(s.panels.length - 1, s.height + 2);
+        for (r = 1; r <= top; r++) {
+            for (c = 1; c <= W; c++) {
+                p = s.panels[r][c];
+                out += p.color + (p.isGarbage ? 'g' : '') + (p.state ? p.state.charAt(0) : '') + ',';
+            }
+        }
+        return out + (s.incoming && s.incoming.length ? 'q' : '');
     };
 
     BitBot.tallestOfMasks = tallestBoard;
