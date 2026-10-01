@@ -2592,6 +2592,23 @@
                 }
             }
             if (haveBreak) { this._dig = null; this._digIsBreak = false; }
+            if (!haveBreak && this._dig && this._dig.moves.length) {
+                var dn = this._dig.moves[0], dnOk = false, dnl = bit.legalSwapsOf(base);
+                for (i = 0; i < dnl.length; i++) {
+                    if (dnl[i][0] === dn[0] && dnl[i][1] === dn[1]) { dnOk = true; break; }
+                }
+                var dspent = Math.max(0, this.stack.clock - (this._dig.startedAt || 0));
+                if (dnOk && Math.max(0, this._dig.frames - dspent) <= deadline) {
+                    this._dig.moves = this._dig.moves.slice(1);
+                    if (!this._dig.moves.length) { this._dig = null; this._digIsBreak = false; }
+                    this._plan = null;
+                    this.counts.dugFor++;
+                    return { kind: 'swap', move: dn, mode: mode, alive: alive, via: 'digPlan' };
+                }
+                this._dig = null;
+                this._digIsBreak = false;
+                this.counts.digDropped++;
+            }
             // AND A BREAK IS A BREAK AT WHATEVER DEPTH THE CLOCK AFFORDS.
             //
             // DERIVED ONCE AND PLAYED OUT, WHICH IS WHY IT SITS HERE RATHER THAN
@@ -2622,7 +2639,20 @@
             // distance. The option list already holds breaks out to lookDepth and
             // every option carries what it costs, so the break that fits the frames
             // this board has left is already enumerated -- it just was not looked at.
-            // A REACHABLE BREAK PRE-EMPTS A DIG PLAN, BUT NOT A BREAK PLAN.
+            // AND IT DOES NOT PRE-EMPT A PLAN IN FLIGHT. THAT WAS MEASURED AND IT COST.
+            //
+            // Running this ABOVE the dig resume lets a reachable break interrupt a dig
+            // plan, which looks right -- the dig count is only a proxy for being able
+            // to break, and here is an actual break. Measured on seed 101 rand2 v
+            // rand3: 28,514 frames became 22,950. Interrupting a plan whenever a
+            // two-swap break appears means the bot cashes small breaks forever and
+            // never finishes the setup that would break more, which is the same thrash
+            // as re-deriving every decision wearing a different hat.
+            //
+            // So it sits below the resume: a plan in flight is played out, and this
+            // route looks only when there is none. The `_digIsBreak` tag is kept
+            // because it says which kind of plan is in flight, and the next person to
+            // try pre-empting will want it.
             //
             // The guard here was `!this._dig`, added this morning so the route would
             // not re-derive a fresh plan every decision and finish none of them. It
@@ -2687,23 +2717,6 @@
                                  via: 'breakReach' };
                     }
                 }
-            }
-            if (!haveBreak && this._dig && this._dig.moves.length) {
-                var dn = this._dig.moves[0], dnOk = false, dnl = bit.legalSwapsOf(base);
-                for (i = 0; i < dnl.length; i++) {
-                    if (dnl[i][0] === dn[0] && dnl[i][1] === dn[1]) { dnOk = true; break; }
-                }
-                var dspent = Math.max(0, this.stack.clock - (this._dig.startedAt || 0));
-                if (dnOk && Math.max(0, this._dig.frames - dspent) <= deadline) {
-                    this._dig.moves = this._dig.moves.slice(1);
-                    if (!this._dig.moves.length) { this._dig = null; this._digIsBreak = false; }
-                    this._plan = null;
-                    this.counts.dugFor++;
-                    return { kind: 'swap', move: dn, mode: mode, alive: alive, via: 'digPlan' };
-                }
-                this._dig = null;
-                this._digIsBreak = false;
-                this.counts.digDropped++;
             }
             if (!haveBreak) {
                 options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
