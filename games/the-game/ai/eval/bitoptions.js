@@ -212,7 +212,33 @@
                         for (var r2 = h[c]; r2 >= 1 && (mask & (1 << (r2 - 1))); r2--) run++;
                     }
                 }
-                var vert = climb + Math.max(0, 3 - run);
+                // AND THE COLOUR HAS TO EXIST TO BE BROUGHT. A missing panel of HEIGHT
+                // is any panel; a missing panel of a RUN is a specific colour that has
+                // to be somewhere in the pocket and reachable. Counting them the same
+                // undercounts badly: on the bowl 5,1,1,1,1,5 the horizontal route costs
+                // 8 and this route claimed 2, so the board read two panels from a break
+                // while it was really eight, and it sat in that shape for 560 frames
+                // with no break available on a single decision.
+                //
+                // So the run is only worth continuing if the colour is actually there
+                // in the pocket, three of them or more counting the ones already
+                // stacked. Otherwise the route is not available and the horizontal one
+                // governs.
+                // IN THIS COLUMN OR BESIDE IT, not anywhere on the board. A run lives
+                // in ONE column and a panel enters a column only from a horizontal
+                // neighbour, so three of the colour scattered across columns one, two
+                // and six are not three the run can use. Counting the whole pocket
+                // still read the bowl at 2.
+                var have = 0;
+                if (col) {
+                    for (var cc2 = Math.max(1, c - 1); cc2 <= Math.min(w2, c + 1); cc2++) {
+                        var gm2 = st2.garb[cc2] >>> 0;
+                        var fl2 = gm2 ? (gm2 & -gm2) : 0;
+                        var bl2 = fl2 ? (fl2 - 1) : 0xffffffff;
+                        have += bit.popcount((st2.colour[col * stride2 + cc2] & bl2) >>> 0);
+                    }
+                }
+                var vert = (col && have >= 3) ? climb + Math.max(0, 3 - run) : Infinity;
                 if (vert < gap) gap = vert;
             }
             if (!isFinite(gap)) gap = 0;
