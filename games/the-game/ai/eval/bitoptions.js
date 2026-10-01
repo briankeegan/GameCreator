@@ -587,11 +587,16 @@
             opt.closesBreak = BASEBREAK && opt.breakReady === false;
             // WHETHER IT GOT CLOSER TO A BREAK, OR FURTHER AWAY.
             //
-            // Priced by both callers at the deadline/W a dig cell is already worth in
-            // the flatten value below -- "being NEAR one is worth a fraction of it".
-            // That pricing existed and was asked only of routes that CLEAR NOTHING, so
-            // every combo and every chain was ranked without anyone asking what it did
-            // to the board's way out from under the slab.
+            // Priced by both rankers at one panel of life a cell -- perPanel in
+            // bestPlan, one cell sent in bestAttack -- and NOT at the deadline/W the
+            // flatten value below pays a dig cell ("being NEAR one is worth a fraction
+            // of it"). At a deadline of 600 that is 100 frames, near a whole row of
+            // ceiling, and one cell that MIGHT finish a line outweighed a six-combo.
+            // See bestAttack for the measurement. NOT CALIBRATED.
+            //
+            // The flatten pricing existed and was asked only of routes that CLEAR
+            // NOTHING, so every combo and every chain was ranked without anyone asking
+            // what it did to the board's way out from under the slab.
             //
             // Zero off the slab: with no garbage there is nothing to dig toward. Zero on
             // a break too -- its settled board is unknowable.
@@ -936,15 +941,8 @@
                                 opt.breakReady = res.settled ? breakReadyOf(res.settled) : null;
                                 opt.closesBreak = BASEBREAK && opt.breakReady === false;
                                 // WHETHER IT GOT CLOSER TO A BREAK, OR FURTHER AWAY.
-                                //
-                                // Priced by both callers at the deadline/W a dig cell is already worth in
-                                // the flatten value below -- "being NEAR one is worth a fraction of it".
-                                // That pricing existed and was asked only of routes that CLEAR NOTHING, so
-                                // every combo and every chain was ranked without anyone asking what it did
-                                // to the board's way out from under the slab.
-                                //
-                                // Zero off the slab: with no garbage there is nothing to dig toward. Zero on
-                                // a break too -- its settled board is unknowable.
+                                // See the one-swap path above for what it is and what
+                                // it is priced at.
                                 opt.digGain = (DIG && res.settled) ? reachOf(res.settled).dig - BASEDIG : 0;
                                 // AND THE CHANGE IN THAT VOID, a delta for the same reason digGain is
                                 // one: an absolute count is a fact about the position, not the move.
