@@ -4066,48 +4066,108 @@
         return this._waitForDrain(this._decideRuled());
     };
 
-    // UNDER A SLAB, A CLEAR THAT BREAKS NOTHING WAITS FOR THE DRAIN.
+    // UNDER A SLAB, HEALTH IS NEVER SPENT.
     //
-    // Topped out, nothing rises, so the panels on the board are all the material there
-    // will be until a break converts a row. A clear that breaks nothing spends three
-    // of them for FLASH + FACE + POP * 3 frames of hold, and that hold is only worth
-    // having when the engine is about to take health. Topped out, update() lifts the
-    // cooldown every frame, and a queued swap locks the rise in that run, so the clear
-    // can wait while `drain > moveFrames` -- framesToTopOut's first draining run -- and
-    // be played on the last frame that still keeps health.
+    // The engine refills health only on a frame the board is not topped out
+    // (`if (!wasToppedOut && !hasFallingGarbage()) health = maxHealth`), and under a
+    // slab it is topped out for as long as the slab stands. So every frame it drains
+    // there is gone for the rest of the slab -- the whole of it is maxHealth frames.
+    // Health drains only on a run with no rise lock and no stop time, and a queued
+    // swap locks the rise in that run, so the rule is exact: a clear or a break is
+    // queued no later than framesToTopOut's first draining run, every time the lock
+    // runs out.
     //
-    // Routes that end in a break are not this: spending three to make a break gains
-    // a row. Waiting is not idling -- a swap that clears nothing and still leaves the
-    // walk back in time is played instead, ranked the way setups are.
+    // Topped out, update() lifts the cooldown every frame, so the bot can leave the
+    // clear to the last frame that keeps health -- but not while it walks: a swap's
+    // walk is frames with no decision in them. So, with garbage on the board:
+    //
+    //   a clear that breaks nothing waits while `drain > moveFrames`. Nothing rises,
+    //     the panels are all the material there is until a break converts a row, and
+    //     three of them buy FLASH + FACE + POP * 3 frames that are only needed when
+    //     the drain is due. Routes that end in a break are exempt: they gain a row.
+    //   anything else -- a setup, a flatten, a hold -- stands only while its walk, the
+    //     swap and the walk back to a clear still beat the drain, and a clear is still
+    //     on the board after it.
+    //   when nothing else stands, the clear is played: a break first, else the clear
+    //     that buys the most frames per panel it spends, the engine's preStop and
+    //     stop time.
     var ENDS_IN_A_BREAK = { digPlan: 1, breakReach: 1, 'break': 1, lineup: 1 };
+    var SWAP_FRAMES = 4;
     BitBot.prototype._waitForDrain = function (d) {
         var info = this._lastInfo, pool = this._lastPool, base = this._lastBase;
-        if (!d || d.kind !== 'swap' || !d.move || !info || !pool || !base) return d;
-        if (!info.toppedOut || ENDS_IN_A_BREAK[d.via]) return d;
-        var c, buried = false;
+        if (!d || !info || !pool || !base || !info.toppedOut) return d;
+        var c, i, buried = false;
         for (c = 1; c <= W; c++) if (base.garb[c]) { buried = true; break; }
-        if (!buried) return d;
-        var picked = null, i;
+        if (!buried || ENDS_IN_A_BREAK[d.via]) return d;
+        var clears = [], picked = null, longest = 0;
         for (i = 0; i < pool.length; i++) {
-            var pk = pool[i];
-            if (pk.kind === 'swap' && pk.swap[0] === d.move[0] && pk.swap[1] === d.move[1]) { picked = pk; break; }
+            var pc = pool[i];
+            if (pc.kind !== 'swap' || !pc.resolved) continue;
+            if (d.kind === 'swap' && d.move && pc.swap[0] === d.move[0] && pc.swap[1] === d.move[1]) picked = pc;
+            if (pc.resolved.total > 0 || pc.resolved.brokeGarbage) clears.push(pc);
+            if ((pc.moveFrames || 0) > longest) longest = pc.moveFrames || 0;
         }
-        if (!picked || !picked.resolved || !(picked.resolved.total > 0) || picked.resolved.brokeGarbage) return d;
-        var walk = picked.moveFrames || 0, SWAP = 4;
-        var drain = this.framesToTopOut(walk + 4 * (W + H) + SWAP + 2).drain;
-        if (drain <= walk) return d;
-        this.counts.waitedForDrain = (this.counts.waitedForDrain || 0) + 1;
-        var best = null;
+        if (!clears.length) return d;
+        var drain = this.framesToTopOut(2 * longest + SWAP_FRAMES + 2).drain;
+        var pr = picked && picked.resolved;
+        if (pr && pr.brokeGarbage) return d;
+        if (pr && pr.total > 0) {
+            if (drain === (picked.moveFrames || 0)) return d;
+        } else {
+            var at = picked ? picked.swap : [info.cursorRow, info.cursorCol];
+            var spend = picked ? (picked.moveFrames || 0) + SWAP_FRAMES : 0;
+            var back = Infinity;
+            for (i = 0; i < clears.length; i++) {
+                var bk = travel.cost(at[0], at[1], clears[i].swap[0], clears[i].swap[1]);
+                if (bk < back) back = bk;
+            }
+            var stillClears = !picked || bit.anyOneSwapClear(picked.masks);
+            if (stillClears && spend + back < drain) return d;
+        }
+        this.counts.keptHealth = (this.counts.keptHealth || 0) + 1;
+        // THE CLEAR TO PLAY NOW, or a setup that still leaves one in time
+        var breakNow = null, clearNow = null, setup = null;
+        var f = this.stack.frames, eng = PanelEngine();
+        for (i = 0; i < clears.length; i++) {
+            var cl = clears[i], r = cl.resolved;
+            if ((cl.moveFrames || 0) > drain) continue;
+            if (r.brokeGarbage) {
+                if (!breakNow || (r.converts || 0) > (breakNow.resolved.converts || 0) ||
+                    ((r.converts || 0) === (breakNow.resolved.converts || 0) &&
+                     (cl.moveFrames || 0) < (breakNow.moveFrames || 0))) breakNow = cl;
+                continue;
+            }
+            var isCh = r.chain >= 2;
+            var bought = f.FLASH + f.FACE + f.POP * r.total +
+                         BF.stopTimeOf(eng, isCh, isCh ? 0 : r.total, isCh ? r.chain : 0, true);
+            var rate = bought / r.total;
+            if (!clearNow || rate > clearNow.rate) clearNow = { cand: cl, rate: rate };
+        }
+        if (breakNow) return { kind: 'swap', move: breakNow.swap, mode: d.mode, alive: d.alive, via: 'break' };
+        // WAITING IS STILL POSSIBLE: a setup that keeps a clear on the board and leaves
+        // the walk back to it inside the drain, else a hold, which decides again next
+        // frame -- if the nearest clear can still be reached from there.
+        var nearest = Infinity;
+        for (i = 0; i < clears.length; i++) nearest = Math.min(nearest, clears[i].moveFrames || 0);
         for (i = 0; i < pool.length; i++) {
             var cand = pool[i];
-            if (cand.kind !== 'swap' || !cand.resolved || cand.resolved.total > 0) continue;
-            var back = travel.cost(cand.swap[0], cand.swap[1], picked.swap[0], picked.swap[1]);
-            if ((cand.moveFrames || 0) + SWAP + back >= drain) continue;
+            if (cand.kind !== 'swap' || !cand.resolved || cand.resolved.total > 0 || cand === picked) continue;
+            var back2 = Infinity;
+            for (var j = 0; j < clears.length; j++) {
+                back2 = Math.min(back2, travel.cost(cand.swap[0], cand.swap[1], clears[j].swap[0], clears[j].swap[1]));
+            }
+            if ((cand.moveFrames || 0) + SWAP_FRAMES + back2 >= drain) continue;
+            if (!bit.anyOneSwapClear(cand.masks)) continue;
             var sc = this.idleScore(cand, base, info);
-            if (!best || sc > best.score) best = { cand: cand, score: sc };
+            if (!setup || sc > setup.score) setup = { cand: cand, score: sc };
         }
-        if (!best) return { kind: 'hold', mode: d.mode, alive: d.alive, via: 'awaitDrain' };
-        return { kind: 'swap', move: best.cand.swap, mode: d.mode, alive: d.alive, via: 'awaitDrain' };
+        if (setup) return { kind: 'swap', move: setup.cand.swap, mode: d.mode, alive: d.alive, via: 'awaitDrain' };
+        if (nearest + 1 <= drain && !(d.kind === 'hold')) {
+            return { kind: 'hold', mode: d.mode, alive: d.alive, via: 'awaitDrain' };
+        }
+        if (nearest + 1 <= drain) return d;
+        if (!clearNow) return d;
+        return { kind: 'swap', move: clearNow.cand.swap, mode: d.mode, alive: d.alive, via: 'keepHealth' };
     };
 
     BitBot.prototype._decideRuled = function () {
