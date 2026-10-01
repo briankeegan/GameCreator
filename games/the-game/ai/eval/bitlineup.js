@@ -124,6 +124,13 @@
                      total: baseKnown ? doNothing.total : 0 };
         best.score = score(best.chain, best.total);
         var considered = 0, reachable = 0, unknown = 0, bestBroke = null;
+        // DOING NOTHING CAN BE THE BREAK. The landing itself touches the slab, and a
+        // swap that only makes a chain would spoil it, so standing still enters the
+        // break tier and a swap has to break better to replace it.
+        if (doNothing && doNothing.scope === 'garbage-broke') {
+            bestBroke = { swap: null, cost: 0, chain: doNothing.chain, total: doNothing.total,
+                          score: score(doNothing.chain, doNothing.total), broke: true };
+        }
 
         for (var i = 0; i < legalSwaps.length; i++) {
             var sw = legalSwaps[i];

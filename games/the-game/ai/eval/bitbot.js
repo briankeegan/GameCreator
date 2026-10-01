@@ -771,6 +771,12 @@
         } catch (e) { return null; }                 // an unreadable window is not a move
         if (!plan) return null;
         this.counts.revealWindows++;
+        // TOPPED OUT, ONLY A LANDING THAT BREAKS IS WORTH LINING UP. Nothing rises
+        // there, so the panels on the board are all the material there is, and a
+        // chain that touches no slab spends them while the rise is already locked by
+        // what is in the air. A break converts the slab's bottom row and holds the
+        // board for the whole break; that is the one outcome that pays.
+        if (this.stack.isToppedOut()) return plan.best && plan.best.broke ? plan : null;
         return plan.best && plan.best.swap ? plan : null;
     };
 
@@ -2885,6 +2891,16 @@
                          via: 'break' };
             }
             if (haveBreak) { this._dig = null; this._digIsBreak = false; }
+            // A LANDING THAT BREAKS GOES NEXT. While a break is converting its slab is
+            // locked, so nothing above is in hand; what is in hand is the row coming
+            // down, and lining it up so it lands into a match makes the next break as
+            // a chain. When standing still already does that, any swap risks it.
+            if (rev && rev.best && rev.best.broke) {
+                this.counts.revealSwaps++;
+                if (!rev.best.swap) return { kind: 'hold', mode: mode, alive: alive, via: 'lineupHold' };
+                return { kind: 'swap', move: rev.best.swap, mode: mode, alive: alive, reveal: true,
+                         via: 'lineup' };
+            }
             // IT PRE-EMPTS A DIG PLAN ONLY WHEN IT IS WORTH MORE THAN FINISHING ONE.
             //
             // Interrupting on sight was measured and it cost: seed 101 rand2 v rand3
