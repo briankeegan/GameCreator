@@ -126,7 +126,7 @@
         // differences and stays small while one column towers: the board that died
         // read 4,2,2,2,3,6, bumpiness 6, spread 4, with four rows sealed under
         // columns 2 to 4 and nothing able to reach the slab but column 6.
-        // AND HOW MANY PANELS SHORT OF THE SLAB THE BOARD IS -- the setup deficit.
+        // AND HOW MANY PANELS SHORT OF A BREAK THE BOARD IS -- the setup deficit.
         //
         // Breaking needs three panels in a line touching the garbage, so every
         // column below the slab's floor is a column that cannot take part. Summed
@@ -149,8 +149,30 @@
             while (lowBit >>> fr) fr++;              // row index of the lowest garbage cell
             if (!floorRow || fr < floorRow) floorRow = fr;
         }
+        // THE BEST THREE ADJACENT COLUMNS, NOT THE BOARD TOTAL.
+        //
+        // The total is invariant under the moves it was meant to steer. A swap that
+        // clears nothing moves one panel sideways, so one column's deficit rises by
+        // one and another's falls by one and the sum does not move at all -- it was
+        // constant across nearly every candidate, and adding it changed not one
+        // decision on the board it was written for.
+        //
+        // Breaking needs three panels in a LINE touching the garbage, so what matters
+        // is whether three ADJACENT columns can reach it. On heights 4,4,5,5,5,8 with
+        // the floor at r9 the windows read 11, 10, 9 and 6: six panels short of a
+        // break, in columns four to six. Moving a panel from column three into column
+        // four takes that to five, so unlike the total this ranks the move -- it pays
+        // for gathering material where it can touch the slab instead of spreading it
+        // thin across six columns that cannot.
         if (floorRow > 1) {
-            for (c = 1; c <= w2; c++) gap += Math.max(0, (floorRow - 1) - h[c]);
+            var need = floorRow - 1;
+            gap = Infinity;
+            for (c = 1; c + 2 <= w2; c++) {
+                var win = Math.max(0, need - h[c]) + Math.max(0, need - h[c + 1]) +
+                          Math.max(0, need - h[c + 2]);
+                if (win < gap) gap = win;
+            }
+            if (!isFinite(gap)) gap = 0;
         }
         return { tall: tall, bumps: bumps, excess: dev / w2, mat: mean, low: low,
                  high: mx, spread: mx - low, reachGap: gap };
