@@ -26,10 +26,12 @@ function slabRow(b) {
   for (var r = 1; r < b.grid.length; r++) { var row = b.grid[r]; if (row) for (var c = 1; c <= b.width; c++) if (row[c] < 0) return r; }
   return 0;
 }
-// WHILE A SLAB POPS the stack cannot rise, so a panel cleared then is one
-// fewer to break the next slab with. With the profile's conserve, of the
-// moves proven to live and none breaking garbage, the ones leaving the most
-// panels are played.
+// PANELS ARE WHAT GARBAGE IS BROKEN WITH. A break turns a row of it into
+// panels; a clear that touches no garbage only spends them, and while a slab
+// pops the stack cannot rise to replace them. With the profile's conserve,
+// while garbage is on the board or on its way, of the moves proven to live
+// and none breaking garbage, the ones leaving the most panels are played --
+// a raise, which brings a row, among them.
 var KEEP_RANK = 2e6;
 function panelsOf(b) {
   var n = 0;
@@ -103,7 +105,7 @@ wt.parentPort.on('message', function (m) {
       };
     }
     if (tall) bot.preferProven = function (c) { return c.settled ? TALL_RANK + SH.gridTop(c.settled) : Infinity; };
-    else if (cfg.profile.conserve && SH.popLeft(board)) bot.preferProven = function (c) { var b = this._settledOf(c); return b && b.grid ? KEEP_RANK - panelsOf(b) : Infinity; };
+    else if (cfg.profile.conserve && (board.incoming.length || SH.lowestGarbageRow(board))) bot.preferProven = function (c) { var b = this._settledOf(c); return b && b.grid ? KEEP_RANK - panelsOf(b) : Infinity; };
     else if (cfg.profile.lowerSlab && hanging(board)) bot.preferProven = function (c) { var b = this._settledOf(c); return b && b.grid ? HANG_RANK + slabRow(b) : Infinity; };
     // THE TIME THERE IS: the survival search's budget is what can be searched
     // in the milliseconds before the answer is due (m.ms; 0 waits for the

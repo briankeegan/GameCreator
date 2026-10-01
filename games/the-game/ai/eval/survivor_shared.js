@@ -222,4 +222,4 @@ Hands.prototype.idle = function (board, hold, arrivals) {
   return { bits: k.inputs[0], hold: k.holds[0] };
 };
 
-module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, pending: pending, arrivalsFrom: arrivalsFrom, threat: threat, top: top, gridTop: gridTop, popLeft: popLeft, breakMoves: breakMoves, Hands: Hands };
+module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, pending: pending, arrivalsFrom: arrivalsFrom, threat: threat, top: top, gridTop: gridTop, popLeft: popLeft, lowestGarbageRow: lowestGarbageRow, breakMoves: breakMoves, Hands: Hands };
