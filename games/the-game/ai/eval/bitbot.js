@@ -205,16 +205,24 @@
     // WHAT THE ENGINE KNOWS, shared by every candidate in the decision. None of
     // it is weighted: it picks the mode and gates the pool.
     BitBot.prototype.info = function (board) {
-        var s = this.stack, incoming = 0;
+        // THE QUEUE AS A SUM, AND THE SLAB THAT LANDS NEXT. shouldDropGarbage delivers
+        // ONE slab at a time and not at all while garbage is falling, so "how much is
+        // coming in total" and "how much lands on me next" are different numbers. The
+        // deadline wants the first; the raise wants the second.
+        var s = this.stack, incoming = 0, nextSlab = 0;
         if (s.incoming) {
             for (var i = 0; i < s.incoming.length; i++) {
                 incoming += (s.incoming[i].width || 0) * (s.incoming[i].height || 1);
+            }
+            if (s.incoming.length) {
+                nextSlab = (s.incoming[0].width || 0) * (s.incoming[0].height || 1);
             }
         }
         return {
             toppedOut: (typeof s.isToppedOut === 'function' && s.isToppedOut()) || !!s.wasToppedOut,
             stopTime: s.stopTime || 0,
             incoming: incoming,
+            nextSlab: nextSlab,
             cursorRow: board.cursor ? board.cursor.row : (s.curRow || 1),
             cursorCol: board.cursor ? board.cursor.col : (s.curCol || 1),
             health: s.health,
@@ -1905,9 +1913,12 @@
         // the ones it hits with are invisible to it by construction. The slabs on the
         // board are the honest record: one is there because it was sent, and its
         // height in rows is what the next one will want room for.
+        // A RUNNING MAXIMUM MUST ONLY BE FED SLAB SIZES. This also took
+        // ceil(incoming / W), which is the whole QUEUE -- so under a flood it ratcheted
+        // to 8, 20, 33, 88, 119 rows and never came down, and the raise was dead for
+        // the rest of the game. The queue is not a slab; the slabs on the board are.
         var landed = slabRows(base);
         if (landed > (this._maxSlab || 0)) this._maxSlab = landed;
-        if (queued > (this._maxSlab || 0)) this._maxSlab = queued;
         // DECIDED BEFORE ANYTHING IS PLANNED, because while it is on there is
         // nothing to plan: the raise outranks the attack and the board is not
         // being played, it is being filled.
@@ -3510,10 +3521,21 @@
         //               so what the bot can send is a fair estimate of what it will
         //               receive, and it is non-zero from frame one, before any attack
         //               has landed to be observed
-        var rows = Math.ceil((info.incoming || 0) / W);
-        var goal = this.aim();
-        var mine = Math.ceil(cellsSent(PanelEngine(), 'chain', 3, goal.links) / W);
-        var reserve = Math.max(rows, this._maxSlab || 0, mine);
+        // WHAT THE ROW MUST LEAVE ROOM FOR IS THE SLAB THAT LANDS NEXT.
+        //
+        // Two sources, both about slabs that are real: the one queued to land next, and
+        // the biggest this opponent has actually landed. Not the queue's sum -- the
+        // engine delivers one slab at a time, so a 621-row queue is not 621 rows of
+        // ceiling gone before the next decision.
+        //
+        // AND NOT THE BOT'S OWN AIM. `mine` was ceil(cellsSent(chain, 3, aim) / W):
+        // what THIS bot would send if its chain landed, used as the size of what will
+        // land on IT. They are different boards. On a fresh board with no garbage
+        // anywhere it reads 4, and raiseFits(4) asks raiseRoom() > 5 of a board that has
+        // exactly 5 -- so the opening raise, the first thing a player does here, was
+        // refused on frame 0 of every game.
+        var rows = Math.ceil((info.nextSlab || 0) / W);
+        var reserve = Math.max(rows, this._maxSlab || 0);
         var fits = this.raiseFits(reserve);
         // AND update() RE-CHECKS AGAINST THE QUEUE, NOT AGAINST THIS RESERVE. THE TWO
         // ASK DIFFERENT QUESTIONS AND THAT IS NOT THE DUPLICATION THIS FUNCTION'S
