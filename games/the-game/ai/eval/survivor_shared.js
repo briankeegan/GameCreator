@@ -46,8 +46,11 @@ function arrivalsOf(state) {
   var out = [], mine = state.stack.stopWatch;
   PA.list(state.telegraph).forEach(function (src) {
     var offset = mine - src.stopWatch;
+    // Garbage due already but not on the board is held back (an attack
+    // engine's waits while 72 are queued: GarbageDelivery): it lands next
+    // frame at the soonest.
     PA.list(src.transit).forEach(function (t) {
-      PA.list(t.garbage).forEach(function (g) { out.push({ at: t.at + offset, g: g }); });
+      PA.list(t.garbage).forEach(function (g) { out.push({ at: Math.max(t.at + offset, mine + 1), g: g }); });
     });
     var staged = PA.list(src.staged), ship = src.stopWatch;
     for (var i = staged.length - 1; i >= 0; i--) {
