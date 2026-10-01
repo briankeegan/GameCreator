@@ -2480,6 +2480,71 @@
             for (i = 0; i < pool.length; i++) {
                 if (pool[i].resolved && pool[i].resolved.brokeGarbage) { haveBreak = true; break; }
             }
+            // AND A BREAK IS A BREAK AT WHATEVER DEPTH THE CLOCK AFFORDS.
+            //
+            // `pool` is single swaps, so the route below reached a break exactly one
+            // swap away and nothing else. A break two swaps out was not a route at
+            // all: it fell through to the dig plan, which is then played out move by
+            // move and is never re-compared against the break that arrived.
+            //
+            // Seed 103 rand2 died at 2,197 that way. Nine consecutive digPlan
+            // decisions on a healthy board -- tallest 8, eighteen cells of garbage,
+            // a five-row pocket, three clears in hand -- with a two-swap break on the
+            // board for every one of them. The nine moves were sideways swaps in rows
+            // one to three; the heights never moved off 3,4,4,4,4,5 and the break was
+            // still two swaps away at the end of them. By then it was buried under
+            // thirty-five cells and dead.
+            //
+            // The same error as "one ready" meaning one swap in saveAfter, and as
+            // hasFireable before it: a question about TIME asked as a question about
+            // distance. The option list already holds breaks out to lookDepth and
+            // every option carries what it costs, so the break that fits the frames
+            // this board has left is already enumerated -- it just was not looked at.
+            if (!haveBreak) {
+                options = this._lastOptions = options || bitoptions.options(null, W, H,
+                    [info.cursorRow, info.cursorCol], lookDepth, base,
+                    this.timing(info, deadline, base), digging);
+                var reach = null, pile = options.now.concat(options.next);
+                for (i = 0; i < pile.length; i++) {
+                    var ro = pile[i];
+                    if (!ro.breaks || !ro.swaps.length) continue;
+                    if ((ro.duration || 0) > deadline) continue;
+                    // MOST GARBAGE FIRST, then soonest -- the same order the
+                    // one-swap route picks by, which prefers the bigger break.
+                    if (!reach || (ro.garbage || 0) > (reach.garbage || 0) ||
+                        ((ro.garbage || 0) === (reach.garbage || 0) &&
+                         (ro.duration || 0) < (reach.duration || 0))) reach = ro;
+                }
+                if (reach) {
+                    // THE FIRST SWAP IS WHAT GETS PLAYED, so it is the one the death
+                    // filter is put to -- the rest is held as a plan the way the dig
+                    // and the save are, and dropped by the same rule.
+                    var rm = reach.swaps[0], rok = false, rls = bit.legalSwapsOf(base);
+                    for (i = 0; i < rls.length; i++) {
+                        if (rls[i][0] === rm[0] && rls[i][1] === rm[1]) { rok = true; break; }
+                    }
+                    var rdead = false;
+                    for (i = 0; rok && i < pool.length; i++) {
+                        var pc = pool[i];
+                        if (pc.kind !== 'swap' || !pc.swap ||
+                            pc.swap[0] !== rm[0] || pc.swap[1] !== rm[1]) continue;
+                        rdead = this.deadly(pc.masks, pc.resolved, info,
+                                            Math.max((pc.moveFrames || 0) + this.reaction,
+                                                     info.framesPerRow || 0));
+                        break;
+                    }
+                    if (rok && !rdead && !returnsToSeen(rm)) {
+                        this._plan = null;
+                        this._dig = reach.swaps.length > 1
+                                  ? { moves: reach.swaps.slice(1), frames: reach.duration || 0,
+                                      startedAt: this.stack.clock }
+                                  : null;
+                        this.counts.brokeReached = (this.counts.brokeReached || 0) + 1;
+                        return { kind: 'swap', move: rm, mode: mode, alive: alive,
+                                 via: 'breakReach' };
+                    }
+                }
+            }
             // HELD AND PLAYED OUT, LIKE EVERY OTHER PLAN.
             //
             // A route to a break is two or three swaps. Re-planning every decision
