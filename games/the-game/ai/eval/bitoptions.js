@@ -251,7 +251,13 @@
         var sh = shapeOf(r.settled);
         return { kind: kindOf(r.chain), size: sizeOf(r.chain, r.total),
                  swaps: swaps, frames: frames, chain: r.chain, total: r.total,
-                 garbage: r.garbage || 0, duration: durationOf(swaps, frames),
+                 garbage: r.garbage || 0,
+                 // AND THE CELLS THAT ACTUALLY COME BACK. `garbage` is every on-screen
+                 // cell of the slab, which is what the engine pops and what sets the
+                 // resolve time; `converts` is its bottom row, the only part that
+                 // becomes panels. See bitmatch for why both exist.
+                 converts: r.converts || 0,
+                 duration: durationOf(swaps, frames),
                  tall: sh ? sh.tall : null, bumps: sh ? sh.bumps : null,
                  mat: sh ? sh.mat : null, low: sh ? sh.low : null,
                  spread: sh ? sh.spread : null,
@@ -533,6 +539,30 @@
             // each of three and leaves the surface where it was. No need to detect
             // which it is -- the landed board's bumpiness says it outright.
             opt.levels = opt.bumps !== null && opt.bumps <= BASEBUMPS;
+            // THE STEP IS NOT PRICED, AND SIX ATTEMPTS AT A SHAPE TERM SAY WHY NOT.
+            //
+            // `bumps` is the total step between neighbouring columns, the one number here
+            // that sees a CLIFF. Both rankers carry it and both use it only as a tiebreak
+            // between plans buying life at the same rate -- which, as this file says of
+            // `ways`, never happens. On a board that died holding 8,9,6,6,6,9 for forty
+            // decisions that looked like dead decoration worth fixing.
+            //
+            // Priced as a delta at the per-cell rate, read by both rankers -- every lesson
+            // from the day's earlier failures applied -- it cost both boards: 103 STARTER
+            // v rand3 went 23,209 to 11,387, and 101 rand2 v rand3 went from alive on both
+            // sides to dead at 19,201.
+            //
+            // THAT IS SIX FOR SIX. wells as a credit per row, wells per cell, wells charged
+            // and never credited, the material ceiling, the raise stand-down, and this.
+            // Every local geometry term added to the frames-priced rankers made boards
+            // worse, at every size and sign tried. What those rankers already have -- the
+            // void, the setup distance, the ceiling given back, the material floor -- is
+            // what they can use, and a new shape term does not add information so much as
+            // displace them.
+            //
+            // The one change that worked all day was not geometry: making preparation
+            // unconditional, so the board is built for the slab before it lands instead of
+            // reshaped after. Anticipation, not shape.
             opt.opensHole = opt.low === 0 && BASELOW > 0;
             opt.breakReady = r.settled ? breakReadyOf(r.settled) : null;
             // THE MOVE THAT TAKES THE LAST WAY TO BREAK.
@@ -557,11 +587,16 @@
             opt.closesBreak = BASEBREAK && opt.breakReady === false;
             // WHETHER IT GOT CLOSER TO A BREAK, OR FURTHER AWAY.
             //
-            // Priced by both callers at the deadline/W a dig cell is already worth in
-            // the flatten value below -- "being NEAR one is worth a fraction of it".
-            // That pricing existed and was asked only of routes that CLEAR NOTHING, so
-            // every combo and every chain was ranked without anyone asking what it did
-            // to the board's way out from under the slab.
+            // Priced by both rankers at one panel of life a cell -- perPanel in
+            // bestPlan, one cell sent in bestAttack -- and NOT at the deadline/W the
+            // flatten value below pays a dig cell ("being NEAR one is worth a fraction
+            // of it"). At a deadline of 600 that is 100 frames, near a whole row of
+            // ceiling, and one cell that MIGHT finish a line outweighed a six-combo.
+            // See bestAttack for the measurement. NOT CALIBRATED.
+            //
+            // The flatten pricing existed and was asked only of routes that CLEAR
+            // NOTHING, so every combo and every chain was ranked without anyone asking
+            // what it did to the board's way out from under the slab.
             //
             // Zero off the slab: with no garbage there is nothing to dig toward. Zero on
             // a break too -- its settled board is unknowable.
@@ -906,15 +941,8 @@
                                 opt.breakReady = res.settled ? breakReadyOf(res.settled) : null;
                                 opt.closesBreak = BASEBREAK && opt.breakReady === false;
                                 // WHETHER IT GOT CLOSER TO A BREAK, OR FURTHER AWAY.
-                                //
-                                // Priced by both callers at the deadline/W a dig cell is already worth in
-                                // the flatten value below -- "being NEAR one is worth a fraction of it".
-                                // That pricing existed and was asked only of routes that CLEAR NOTHING, so
-                                // every combo and every chain was ranked without anyone asking what it did
-                                // to the board's way out from under the slab.
-                                //
-                                // Zero off the slab: with no garbage there is nothing to dig toward. Zero on
-                                // a break too -- its settled board is unknowable.
+                                // See the one-swap path above for what it is and what
+                                // it is priced at.
                                 opt.digGain = (DIG && res.settled) ? reachOf(res.settled).dig - BASEDIG : 0;
                                 // AND THE CHANGE IN THAT VOID, a delta for the same reason digGain is
                                 // one: an absolute count is a fact about the position, not the move.
