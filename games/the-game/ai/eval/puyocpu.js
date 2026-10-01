@@ -537,11 +537,11 @@
     var out = [], prev = 0, i, g, at;
     for (i = 0; i < opp.outgoing.length; i++) {
       g = opp.outgoing[i];
-      // A chain still running sends when it ends, taller than it is now, and
-      // everything behind it waits for it: when it lands is not known, so no
-      // line may count on it. Once finished it has a time and is read then.
-      if (g.finalized === false) break;
-      at = (g.frameEarned || 0) + flight - (opp.clock || 0);
+      // A chain still running sends when it ends, which can be the next
+      // frame, at the height it has now or taller: it is counted at that
+      // height, at the soonest it can land, and everything behind it waits
+      // for it.
+      at = g.finalized === false ? flight + 1 : (g.frameEarned || 0) + flight - (opp.clock || 0);
       if (at < prev) at = prev;
       if (at < 0) at = 0;
       out.push({ at: at, width: g.width, height: g.height, isChain: !!g.isChain });
@@ -4454,16 +4454,18 @@
   // AN ANSWER THAT CAN NO LONGER BE PLAYED IS NOT WAITED FOR: its frame has
   // passed, or garbage the board it was made on did not have is in the air
   // and will still be in the air on its frame. The brain stops on it and is
-  // asked again at once.
+  // asked again at once. A piece the board had as soon or sooner, and as big
+  // or bigger, is one it had: a running chain's soonest landing moves later
+  // every frame it goes on.
   PuyoCpu.prototype._stale = function (pt, now) {
     if (pt.at < now) return true;
-    var real = this._inFlight(), ahead = pt.at - now, want = pt.arrivals || [], i, j;
+    var real = this._inFlight(), ahead = pt.at - now, want = pt.arrivals || [], used = [], i, j;
     for (i = 0; i < real.length; i++) {
       var e = real[i], at = e.at - ahead;
       if (at <= 0) continue;
       for (j = 0; j < want.length; j++) {
         var w = want[j];
-        if (w.at === at && w.width === e.width && w.height === e.height && !!w.isChain === !!e.isChain) break;
+        if (!used[j] && w.at <= at && w.width === e.width && w.height >= e.height && !!w.isChain === !!e.isChain) { used[j] = true; break; }
       }
       if (j === want.length) return true;
     }

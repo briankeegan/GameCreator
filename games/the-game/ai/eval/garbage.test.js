@@ -187,6 +187,32 @@ check('up to the break, the simulation agrees with the engine exactly', function
         eng.clearedPanels + ') — it resolved past the break it cannot see');
 });
 
+// A CHAIN STILL RUNNING IS GARBAGE ON ITS WAY. It ships when it ends, which
+// can be the next frame, so the bot counts it at the height it has now at
+// the soonest it can land, and everything queued behind it no sooner.
+var PuyoCpu = require('./puyocpu.js'), FLIGHT = globalThis.PanelEngine.GARBAGE_FLIGHT;
+function flightOf(outgoing, clock) {
+    var bot = Object.create(PuyoCpu.prototype);
+    bot.opponent = { outgoing: outgoing, clock: clock };
+    return bot._inFlight();
+}
+check('a running chain is counted at its height now, landing FLIGHT + 1 frames on', function () {
+    var f = flightOf([{ width: 6, height: 2, isChain: true, finalized: false, frameEarned: 90 },
+                      { width: 4, height: 1, isChain: false, finalized: true, frameEarned: 50 }], 100);
+    assert.strictEqual(f.length, 2, 'the running chain, or what waits behind it, was left out');
+    assert.deepStrictEqual([f[0].at, f[0].height, f[0].isChain], [FLIGHT + 1, 2, true]);
+    assert.ok(f[1].at >= f[0].at, 'a piece behind the running chain lands before it');
+});
+check('a decision that counted a piece as soon and as big is not stale; a taller chain makes it stale', function () {
+    var bot = Object.create(PuyoCpu.prototype), out = [{ width: 6, height: 2, isChain: true, finalized: false, frameEarned: 90 }];
+    bot.opponent = { outgoing: out, clock: 100 };
+    bot.stack = { clock: 100 };
+    var pt = { at: 110, arrivals: [{ at: FLIGHT + 1 - 10 - 5, width: 6, height: 2, isChain: true }] };
+    assert.strictEqual(bot._stale(pt, 100), false, 'a chain landing later than counted made the answer stale');
+    out[0].height = 3;
+    assert.strictEqual(bot._stale(pt, 100), true, 'a chain grown taller than counted did not make the answer stale');
+});
+
 console.log('');
 if (failures.length) { console.log(failures.length + ' failed.'); process.exit(1); }
 console.log('Garbage breaks stop the resolve, and everything up to them is exact.');
