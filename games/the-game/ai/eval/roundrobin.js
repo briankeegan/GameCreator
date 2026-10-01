@@ -182,9 +182,35 @@ if (ONE) {
             // hundreds of frames before the death -- fourteen covers about a
             // hundred frames and showed only the shuffling at the end.
             if (ring[side].length > 60) ring[side].shift();
+            // THE BOARD, NOT ONLY THE MOVE. The ring says what was played and what
+            // the heights were after; it cannot say what the panels were, and the
+            // mistake that kills is a mistake about colours as often as about
+            // heights. GC_TRACE_BOARDS=from-to[:side] prints the board a decision
+            // was made ON, so a window can be read the way the death board is.
+            if (WINDOW && side === WINDOW.side &&
+                st[side].clock >= WINDOW.from && st[side].clock <= WINDOW.to) {
+                console.log('  --- frame ' + st[side].clock + '  ' +
+                            (d && d.via) + '  move ' + mv + '  cols ' + h.join(',') +
+                            '  gar ' + gar + '  in ' + (incomingOf(side)) +
+                            '  raise ' + (bots[side]._wantRaise ? String(bots[side]._wantRaise) : 'no') +
+                            '  clears ' + clr + '  brk ' + brk + '/' + brk2);
+                boardOf(side).forEach(function (l) { console.log(l); });
+            }
             return d;
         };
     });
+    // GC_TRACE_BOARDS=from-to[:side]. Side 0 is the first name in the pairing,
+    // which is the one the death dump reports on; default 0.
+    var WINDOW = (function () {
+        var v = process.env.GC_TRACE_BOARDS;
+        if (!v) return null;
+        var m = /^(\d+)-(\d+)(?::([01]))?$/.exec(v.trim());
+        if (!m) {
+            console.error('GC_TRACE_BOARDS: want from-to[:side], got ' + v);
+            process.exit(2);
+        }
+        return { from: Number(m[1]), to: Number(m[2]), side: m[3] ? Number(m[3]) : 0 };
+    }());
     var sent = [0, 0], f;
     for (f = 0; f < 30000 && !st[0].gameOver && !st[1].gameOver; f++) {
         bots[0].update(); bots[1].update(); st[0].run(); st[1].run();
@@ -198,6 +224,31 @@ if (ONE) {
         st[0].drainEvents(); st[1].drainEvents();
     }
     function died(k) { return st[k].gameOver ? 'DEAD@' + st[k].clock : 'alive'; }
+    // WHAT IS QUEUED AGAINST THIS BOARD, which is what closes the raise and what
+    // framesToDeath counts as ceiling already gone. Not on the board, so the `gar`
+    // column cannot show it.
+    function incomingOf(k) {
+        var q = st[k].incomingGarbage || st[k].garbageQueue || null;
+        if (!q || !q.length) return 0;
+        var n = 0;
+        for (var i = 0; i < q.length; i++) {
+            var b = q[i];
+            n += (b.width || 0) * (b.height || 0);
+        }
+        return n;
+    }
+    function boardOf(k) {
+        var out = [];
+        for (var rr = st[k].height; rr >= 1; rr--) {
+            var line = '  r' + String(rr).padStart(2) + ' ';
+            for (var cc = 1; cc <= 6; cc++) {
+                var pp = st[k].panels[rr][cc];
+                line += pp.color === 0 ? ' . ' : (pp.isGarbage ? '[#]' : ' ' + pp.color + ' ');
+            }
+            out.push(line);
+        }
+        return out;
+    }
     console.log('seed ' + seed + '  ' + A.padEnd(8) + died(0).padEnd(11) +
                 ' vs ' + Bn.padEnd(8) + died(1).padEnd(11) +
                 '  [sent ' + sent[0] + '/' + sent[1] + ']  frames ' + f +
@@ -217,14 +268,7 @@ if (ONE) {
                         String(r.brk).padStart(4) + String(r.brk2).padStart(5) +
                         String(r.dep).padStart(7));
         });
-        for (var rr = st[D].height; rr >= 1; rr--) {
-            var line = '  r' + String(rr).padStart(2) + ' ';
-            for (var cc = 1; cc <= 6; cc++) {
-                var pp = st[D].panels[rr][cc];
-                line += pp.color === 0 ? ' . ' : (pp.isGarbage ? '[#]' : ' ' + pp.color + ' ');
-            }
-            console.log(line);
-        }
+        boardOf(D).forEach(function (l) { console.log(l); });
     }
     process.exit(0);
 }

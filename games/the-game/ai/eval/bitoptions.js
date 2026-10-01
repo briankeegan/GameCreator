@@ -243,8 +243,36 @@
             }
             if (!isFinite(gap)) gap = 0;
         }
+        // THE WELLS: HOW FAR A COLUMN SITS BELOW ITS NEIGHBOURS.
+        //
+        // Nothing else in here can see a hole. `excess` is mean deviation, so a
+        // column dug three rows below the stack around it reads half a row across
+        // six columns. `void` is high - mat, an average, and read the same move at
+        // 0.5 rows. `slabRowGap` is a MINIMUM over three-column windows, so damage
+        // to a column outside the cheapest window reads as exactly zero -- it did,
+        // on the board this was written for. And `spread` is high - low, which falls
+        // when the TALLEST column is pulled down, and the tallest column is the one
+        // touching the slab: priced, it bought the one move that makes a break
+        // impossible, and killed STARTER at 2,424.
+        //
+        // A well is none of those. For each column it is how far below the lower of
+        // its two neighbours it sits -- the rows of space that only a panel landing
+        // in THAT column can fill, which is what a hole actually is. Lowering the
+        // tallest column creates no well, so this cannot reward the move spread was
+        // thrown out for. Edge columns have one neighbour and are measured against it.
+        //
+        // Seed 103 rand1 went 7,6,5,5,8,9 -> 7,6,2,5,8,9 on one vertical clear:
+        // wells 0 -> 3, while void moved 0.5 and slabRowGap did not move at all. It
+        // died at 20,273 with 46 panels in four columns and a seven-deep hole.
+        var wells = 0;
+        for (c = 1; c <= w2; c++) {
+            var ln = c > 1 ? h[c - 1] : h[c + 1];
+            var rn = c < w2 ? h[c + 1] : h[c - 1];
+            if (ln === undefined || rn === undefined) continue;
+            wells += Math.max(0, Math.min(ln, rn) - h[c]);
+        }
         return { tall: tall, bumps: bumps, excess: dev / w2, mat: mean, low: low,
-                 high: mx, spread: mx - low, slabRowGap: gap };
+                 high: mx, spread: mx - low, slabRowGap: gap, wells: wells };
     }
 
     function optionOf(swaps, frames, r) {
@@ -279,6 +307,9 @@
                  // shapeOf already computes it, colour feasibility included, so this
                  // costs nothing: see slabRowGap where it is derived.
                  slabGap: sh ? (sh.slabRowGap || 0) : null,
+                 // AND THE HOLES IT LEAVES. shapeOf derives it; see `wells` there for
+                 // why none of the other shape numbers can see one.
+                 wells: sh ? (sh.wells || 0) : null,
                  // CAN THE BOARD THIS LANDS ON STILL FIRE.
                  //
                  // Firing anything holds the floor for its resolve, and at
@@ -410,9 +441,34 @@
         // playing it credits a setup out of frames the option has already spent,
         // which is the same error as scoring a landed board by this frame's
         // deadline.
-        var REACT = (timing && timing.reaction) || 0;
-        function setupSwaps(spent) {
-            return Math.floor(Math.max(0, DEADLINE - (spent || 0)) / Math.max(1, REACT));
+        // WHAT ONE SETUP SWAP COSTS, and it is not the cooldown alone. A decision is
+        // a walk to the cell, the swap, and the cooldown before the next one -- which
+        // is exactly `overhead`, already built by the caller as
+        // travel.MOVE_FRAMES + reaction and already carried in here. Sixteen frames
+        // at level 10, not twelve. Reusing it rather than dividing by `reaction`
+        // means there is one answer in this file to "what does a move cost".
+        var SWAP = OVERHEAD || ((timing && timing.reaction) || 0);
+        //
+        // AND WHAT THE SETUP IS WORTH, WHICH IS WHAT FINISHING IT BUYS.
+        //
+        // Finishing it is a break: a row of ceiling handed back, FPR, plus the floor
+        // held for the clear's own resolve, HOLD. Both are the engine's numbers and
+        // both are already here. That is the prize, so a setup `g` panels from done
+        // is worth the prize discounted by the share of the remaining time it still
+        // costs -- g swaps at SWAP frames each.
+        //
+        //     worth(g, left) = (FPR + HOLD) * (1 - g * SWAP / left)
+        //
+        // Full prize when there is nothing left to play, falling smoothly to zero as
+        // the work grows to fill the time, and zero past that. No per-panel rate is
+        // chosen: a panel is worth its share of the prize, so one of three done is
+        // worth more than one of ten, which is the truth about setups. And no cliff
+        // at the boundary -- the credit arrives at zero rather than dropping to it.
+        function setupWorth(g, left) {
+            if (g === null || g === undefined || !(left > 0)) return 0;
+            var cost = g * Math.max(1, SWAP);
+            if (cost >= left) return 0;
+            return (FPR + HOLD) * (1 - cost / left);
         }
         // A CAP ON HOW MANY LANDINGS GET ASKED. slabReadyFast walks the landed
         // board, so neither list can ask it of everything. Declared here and reset
@@ -438,6 +494,10 @@
         // reason the void has a base: the panels a board still needs to reach its
         // slab are a fact about the position, and only the CHANGE is about the move.
         var BASEGAP = START ? (START.slabRowGap || 0) : 0;
+        // AND THE HOLES BEFORE ANY MOVE, so an option is judged on the hole IT digs
+        // rather than on landing on a board that already had one -- the same reason
+        // the void and the dig count have a base.
+        var BASEWELLS = START ? (START.wells || 0) : 0;
         var BASEBREAK = breakReadyOf(st) === true;
         LASTBREAKREADY = BASEBREAK;
         // AND HOW MANY WAYS THERE ARE TO REACH THE GARBAGE BEFORE ANY MOVE.
@@ -543,22 +603,46 @@
             //
             // Two halves, and the second is the one that was missing. `slabGap` is how
             // many panels the landing still needs before three in a line can touch the
-            // slab; the GAIN is how many of them this move supplied. Priced like the
-            // void and like a dig cell -- a panel of gap closed is a panel of life,
-            // framesPerRow/W -- by both rankers, in each one's own currency.
+            // slab; setupWorth turns that into the frames a finished setup pays --
+            // a row of ceiling plus the hold -- discounted by the share of the time
+            // left that the remaining work costs. This is its DELTA, read by both
+            // rankers, each against its own clock: the option spends its own duration
+            // before any setup swap can follow it.
             //
-            // SILENT WHEN THERE IS NO TIME FOR THE SETUP. A landing still further from
-            // its slab than the deadline affords swaps earns nothing for having
-            // narrowed it, because the board will not be there to spend it. That is
+            // NO CLIFF AT THE BOUNDARY: the credit ARRIVES at zero as the work grows to
+            // fill the time, rather than being cut off at a threshold. That is
             // what makes this a clock and not a distance: with four hundred frames of
             // ceiling a four-swap setup is worth starting, and with thirty frames left
             // the same setup is not.
             //
             // Zero off the slab -- slabGap is 0 with no garbage, so gain is 0 too -- and
             // zero on a break, whose settled board is unknowable.
-            opt.slabGain = (opt.slabGap === null ||
-                            opt.slabGap > setupSwaps(opt.duration))
-                             ? 0 : (BASEGAP - opt.slabGap);
+            opt.slabGain = setupWorth(opt.slabGap, DEADLINE - (opt.duration || 0))
+                             - setupWorth(BASEGAP, DEADLINE);
+            // AND THE HOLES IT DIGS, as a delta for the same reason.
+            // AND THE HOLES IT DIGS -- CHARGED, NEVER CREDITED.
+            //
+            // A WELL FALLS TWO WAYS AND ONLY ONE OF THEM IS PROGRESS. Raising the
+            // hole column fills it; lowering the hole's NEIGHBOURS also makes the
+            // number fall, and that is tearing down the walls around it. Credited
+            // both ways, this paid the bot to clear the columns beside its own
+            // holes -- and a vertical clear takes three panels out of one column,
+            // which drops a neighbour below the hole and "closes" the well by
+            // wrecking the board. It is the same trap `spread` was removed for:
+            // high - low falls when the tallest column is pulled down.
+            //
+            // Measured both ways round. At a row of rise per row of depth, three
+            // pairings that had been alive died and one death was fixed. At the
+            // right size, in cells, two of the first two pairings died. Not the
+            // magnitude: the sign.
+            //
+            // So it is one-sided. Digging a hole costs; removing one earns nothing.
+            // Lowering a neighbour can then only ever reduce `wells`, which is
+            // worth zero, so the exploit has nothing to pay it. Same shape as
+            // `opensHole`, which refuses a transition rather than rewarding its
+            // reverse.
+            opt.wellGain = (opt.wells === null)
+                         ? 0 : -Math.max(0, opt.wells - BASEWELLS);
             // AND WHETHER THE BOARD IT LANDS ON COULD ANSWER THE NEXT SLAB.
             //
             // slabReadyFast asks whether a three can be put against the row the next
@@ -857,22 +941,26 @@
                                 //
                                 // Two halves, and the second is the one that was missing. `slabGap` is how
                                 // many panels the landing still needs before three in a line can touch the
-                                // slab; the GAIN is how many of them this move supplied. Priced like the
-                                // void and like a dig cell -- a panel of gap closed is a panel of life,
-                                // framesPerRow/W -- by both rankers, in each one's own currency.
+                                // slab; setupWorth turns that into the frames a finished setup pays --
+                                // a row of ceiling plus the hold -- discounted by the share of the time
+                                // left that the remaining work costs. This is its DELTA, read by both
+                                // rankers, each against its own clock.
                                 //
-                                // SILENT WHEN THERE IS NO TIME FOR THE SETUP. A landing still further from
-                                // its slab than the deadline affords swaps earns nothing for having
-                                // narrowed it, because the board will not be there to spend it. That is
+                                // NO CLIFF AT THE BOUNDARY: the credit ARRIVES at zero as the work grows to
+                                // fill the time, rather than being cut off at a threshold. That is
                                 // what makes this a clock and not a distance: with four hundred frames of
                                 // ceiling a four-swap setup is worth starting, and with thirty frames left
                                 // the same setup is not.
                                 //
                                 // Zero off the slab -- slabGap is 0 with no garbage, so gain is 0 too -- and
                                 // zero on a break, whose settled board is unknowable.
-                                opt.slabGain = (opt.slabGap === null ||
-                            opt.slabGap > setupSwaps(opt.duration))
-                                                 ? 0 : (BASEGAP - opt.slabGap);
+                                opt.slabGain = setupWorth(opt.slabGap, DEADLINE - (opt.duration || 0))
+                             - setupWorth(BASEGAP, DEADLINE);
+            // AND THE HOLES IT DIGS, as a delta for the same reason.
+            // AND THE HOLES IT DIGS -- CHARGED, NEVER CREDITED. See the depth-1
+            // site for why a credit was exploitable and what it measured.
+            opt.wellGain = (opt.wells === null)
+                         ? 0 : -Math.max(0, opt.wells - BASEWELLS);
                                 // AND WHETHER THE BOARD IT LANDS ON COULD ANSWER THE NEXT SLAB.
                                 //
                                 // slabReadyFast asks whether a three can be put against the row the next

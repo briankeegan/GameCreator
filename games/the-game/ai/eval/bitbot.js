@@ -1110,6 +1110,28 @@
              ? 0 : Math.max(0, WORKING_ROWS - o.mat);
     }
 
+    // THERE IS NO MATERIAL CEILING, AND THE ATTEMPT AT ONE IS RECORDED HERE.
+    //
+    // WORKING_ROWS is a floor with no counterpart, and seed 103 rand1 looked like
+    // it wanted one: it stacked to 8,7,3,6,9,10 with a clear available on every
+    // decision and topped out. So "too full" was written as the raise's own
+    // comparison read backwards -- material against the room above the stack,
+    // max(0, mat - (H - tall)), priced like the shortfall.
+    //
+    // It measures the wrong room. `tall` includes the garbage, so a buried board is
+    // charged for holding the material it needs to break out: 4 rows under 6 rows of
+    // garbage reads a surplus of 2, a 240-frame penalty for being exactly at the
+    // floor. Worse, at 3 rows of material under 7 of garbage the shortfall reads 1.00
+    // and the surplus reads 1.00 -- they cancel, so the starvation floor is silently
+    // switched off on the boards it exists for. Measured: seed 103 rand2, alive
+    // before, died at 10,683.
+    //
+    // And the board that prompted it was not dying of too many panels. It held 43 of
+    // them in FOUR columns with a seven-deep hole. Height is already priced -- the
+    // `tallest` feature and bestPlan's `lowered` -- and the hole is what nothing
+    // could see. That is `wells`, below. Garbage eating the room is a reason to
+    // break, never a reason to spend panels.
+
     function bestAttack(list, weights, engine, deadline, framesTable, perPanelFrames) {
         var best = null, all = list.now.concat(list.next), i;
         // THE ATTACKS THAT DO NOT COST SHAPE, IF THERE ARE ANY.
@@ -1214,11 +1236,21 @@
             // AND THE VOID THE SLAB WOULD SEAL, in this ranking's currency: a row of
             // void is a row of ceiling, and a row is W panels.
             cells += (o.voidGain || 0) * W;
-            // AND THE PANELS IT SUPPLIED TOWARD A SETUP THERE IS TIME FOR. A panel
-            // of gap closed is a panel of life; this ranking's currency is one cell
-            // sent, and a row is W of each, so a panel is a cell. Zero when the
-            // setup does not fit the clock -- see slabGain in bitoptions.
-            cells += (o.slabGain || 0);
+            // AND WHAT IT DID TO THE SETUP FOR A BREAK, IN FRAMES, converted to this
+            // ranking's currency the same way slabWorth above is. setupWorth prices
+            // it as the prize a finished setup pays discounted by the time the rest
+            // of the work costs -- see slabGain in bitoptions.
+            if (perPanelFrames > 0) cells += (o.slabGain || 0) / perPanelFrames;
+            // AND THE HOLES IT DIGS, IN CELLS, WHICH IS WHAT A WELL IS.
+            //
+            // This was priced at a row of the board per row of DEPTH, as the void is.
+            // That is six times too much: a well three deep in one column is three
+            // CELLS of unusable space, not three rows of the board. A normal board
+            // carries three to seven of them, so the term was worth 360 to 840 frames
+            // and buried every other number in the ranking. Measured over the known
+            // boards at that price: three pairings that had been alive died, one death
+            // was fixed. This ranking's currency is one cell sent, so a cell is 1.
+            cells += (o.wellGain || 0);
             // AND BEING READY FOR THE SLAB THAT IS COMING. Worth a row of rise,
             // converted to this ranking's currency. Zero unless there is a slab
             // to be ready for, so it cannot speak on a clean board.
@@ -1504,10 +1536,14 @@
                        // AND THE VOID THE SLAB WOULD SEAL -- a row of it is a row of
                        // ceiling, so framesPerRow, as height is.
                        + (o.voidGain || 0) * (framesPerRow || 0)
-                       // AND THE PANELS IT SUPPLIED TOWARD A SETUP THERE IS TIME
-                       // FOR, at the per-panel rate the void is paid a row of --
-                       // framesPerRow/W. Same number as bestAttack's, converted.
-                       + (o.slabGain || 0) * perPanel
+                       // AND WHAT IT DID TO THE SETUP FOR A BREAK -- already in
+                       // frames, which is this ranking's currency. See bestAttack.
+                       + (o.slabGain || 0)
+                       // AND THE HOLES IT DIGS, in cells: a well three deep in one
+                       // column is three CELLS of space only that column can fill,
+                       // so perPanel each. See bestAttack for what pricing it as
+                       // rows of the board cost.
+                       + (o.wellGain || 0) * perPanel
                        + digs
                        // AND BEING READY FOR THE SLAB THAT IS COMING -- already in
                        // frames, which is this ranking's currency. See bestAttack.
@@ -2555,6 +2591,81 @@
                 this._dig = null;
                 this.counts.digDropped++;
             }
+            // AND A BREAK IS A BREAK AT WHATEVER DEPTH THE CLOCK AFFORDS.
+            //
+            // DERIVED ONCE AND PLAYED OUT, WHICH IS WHY IT SITS HERE RATHER THAN
+            // ABOVE THE RESUME. Placed before it, this re-derived a fresh break plan
+            // every decision and played only the first swap of each: seed 103 STARTER
+            // played the same swap five decisions running with the heights frozen at
+            // 7,8,8,5,7,7, and spent nine decisions in this route without breaking
+            // anything. That is the exact failure the comment above records for the
+            // save route -- a different route each decision and none of them
+            // finished. Below the resume, a plan in flight is played out first and
+            // this only runs when there is none.
+            //
+            // `pool` is single swaps, so the route below reached a break exactly one
+            // swap away and nothing else. A break two swaps out was not a route at
+            // all: it fell through to the dig plan, which is then played out move by
+            // move and is never re-compared against the break that arrived.
+            //
+            // Seed 103 rand2 died at 2,197 that way. Nine consecutive digPlan
+            // decisions on a healthy board -- tallest 8, eighteen cells of garbage,
+            // a five-row pocket, three clears in hand -- with a two-swap break on the
+            // board for every one of them. The nine moves were sideways swaps in rows
+            // one to three; the heights never moved off 3,4,4,4,4,5 and the break was
+            // still two swaps away at the end of them. By then it was buried under
+            // thirty-five cells and dead.
+            //
+            // The same error as "one ready" meaning one swap in saveAfter, and as
+            // hasFireable before it: a question about TIME asked as a question about
+            // distance. The option list already holds breaks out to lookDepth and
+            // every option carries what it costs, so the break that fits the frames
+            // this board has left is already enumerated -- it just was not looked at.
+            if (!haveBreak && !this._dig) {
+                options = this._lastOptions = options || bitoptions.options(null, W, H,
+                    [info.cursorRow, info.cursorCol], lookDepth, base,
+                    this.timing(info, deadline, base), digging);
+                var reach = null, pile = options.now.concat(options.next);
+                for (i = 0; i < pile.length; i++) {
+                    var ro = pile[i];
+                    if (!ro.breaks || !ro.swaps.length) continue;
+                    if ((ro.duration || 0) > deadline) continue;
+                    // MOST GARBAGE FIRST, then soonest -- the same order the
+                    // one-swap route picks by, which prefers the bigger break.
+                    if (!reach || (ro.garbage || 0) > (reach.garbage || 0) ||
+                        ((ro.garbage || 0) === (reach.garbage || 0) &&
+                         (ro.duration || 0) < (reach.duration || 0))) reach = ro;
+                }
+                if (reach) {
+                    // THE FIRST SWAP IS WHAT GETS PLAYED, so it is the one the death
+                    // filter is put to -- the rest is held as a plan the way the dig
+                    // and the save are, and dropped by the same rule.
+                    var rm = reach.swaps[0], rok = false, rls = bit.legalSwapsOf(base);
+                    for (i = 0; i < rls.length; i++) {
+                        if (rls[i][0] === rm[0] && rls[i][1] === rm[1]) { rok = true; break; }
+                    }
+                    var rdead = false;
+                    for (i = 0; rok && i < pool.length; i++) {
+                        var pc = pool[i];
+                        if (pc.kind !== 'swap' || !pc.swap ||
+                            pc.swap[0] !== rm[0] || pc.swap[1] !== rm[1]) continue;
+                        rdead = this.deadly(pc.masks, pc.resolved, info,
+                                            Math.max((pc.moveFrames || 0) + this.reaction,
+                                                     info.framesPerRow || 0));
+                        break;
+                    }
+                    if (rok && !rdead && !returnsToSeen(rm)) {
+                        this._plan = null;
+                        this._dig = reach.swaps.length > 1
+                                  ? { moves: reach.swaps.slice(1), frames: reach.duration || 0,
+                                      startedAt: this.stack.clock }
+                                  : null;
+                        this.counts.brokeReached = (this.counts.brokeReached || 0) + 1;
+                        return { kind: 'swap', move: rm, mode: mode, alive: alive,
+                                 via: 'breakReach' };
+                    }
+                }
+            }
             if (!haveBreak) {
                 options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
                                                        lookDepth, base, this.timing(info, deadline, base), digging);
@@ -3125,7 +3236,6 @@
         // ended the opening after a single row.
         if (this._opening && (info.incoming || !fits)) this._opening = false;
         if (!fits) return null;
-        if (!this._opening && materialRows(base) >= WORKING_ROWS) return null;
         // WITH GARBAGE ON THE BOARD, THE ANSWER IS TO DIG, NOT TO RAISE.
         //
         // Raising is a start-of-game event and it stays one. Both sources of
@@ -3141,6 +3251,30 @@
         // 30 and 3 in 30. Not raising there at all is what is left, and the
         // condition needs no answer test because there is nothing to answer for.
         for (var gc = 1; gc <= W; gc++) if (base.garb[gc]) return null;
+        // FOUR ROWS IS A MINIMUM, NOT A TARGET.
+        //
+        // This read `materialRows(base) >= WORKING_ROWS`, which closed the raise the
+        // moment the board held four rows. But WORKING_ROWS is the floor the board
+        // must not be spent BELOW -- it is what stops the bot cashing small change
+        // when it is thin -- and reading a floor as a target makes four rows the most
+        // material the bot will ever hold. Seed 103 rand2 sat at 4.67 rows with seven
+        // rows of room, nothing on the board and nothing queued, and was refused a
+        // raise by two thirds of a row.
+        //
+        // More panels is better: a chain is built out of them, breaking a slab needs
+        // three in a line, and both get easier the more there are. What bounds it is
+        // the other side of the trade -- a raise buys a row of material with a row of
+        // ceiling, and the ceiling is what the garbage lands in. So it raises while
+        // material is the SCARCER of the two and stops when they cross. Both are
+        // rows, measured off this board, so there is no second constant: on a 12-row
+        // board the crossing is about six rows and it moves with the board.
+        //
+        // Asked AFTER the garbage guard above, so `high` is the top of the material
+        // and not the top of a slab; and before the readiness gate below, which is
+        // the rule that it must have a clear in hand before it fills the board.
+        var rsh = bitoptions.shapeOf(base);
+        var room = H - (rsh ? rsh.high : 0);
+        if (!this._opening && materialRows(base) >= room) return null;
         // AND THE RAISE FACES THE SAVE INVARIANT LIKE EVERY OTHER MOVE.
         //
         // The exit gate returns early on anything that is not a swap, so the raise
