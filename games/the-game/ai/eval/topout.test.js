@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // framesToTopOut AGAINST THE ENGINE ACTUALLY RUNNING.
 //
-// The break hold fires by this number. Play the drill with the bot to a frame, ask
-// how long until the board tops out if the bot does nothing, then stop the bot and
-// run the real stack -- with the queue it already has and no input -- until
-// isToppedOut. The two must agree to the frame. Only boards with garbage queued or
-// in the air are checked: that is the case the hold is for.
+// The break hold fires by these numbers. Play the drill with the bot to a frame, ask
+// when the board tops out and when health would first fall if the bot does nothing,
+// then stop the bot and run the real stack -- with the queue it already has and no
+// input. Both must agree to the frame. Only boards with garbage queued or in the air
+// are checked: that is the case the hold is for.
 var path = require('path');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
@@ -28,13 +28,18 @@ var LIMIT = 4000, checked = 0, wrong = 0;
         if (st.isToppedOut()) return;
         if (!(st.incoming && st.incoming.length) && !st.hasFallingGarbage()) return;
         var said = bot.framesToTopOut(LIMIT);
-        var n = 0;
-        while (n < LIMIT && !st.isToppedOut() && !st.gameOver) { st.setInput({}); st.run(); n++; }
+        var n = 0, top = LIMIT, drain = LIMIT, hp = st.health;
+        while (n < LIMIT && !st.gameOver) {
+            if (top === LIMIT && st.isToppedOut()) top = n;
+            st.setInput({}); st.run();
+            if (st.health < hp || st.gameOver) { drain = n; top = Math.min(top, n); break; }
+            hp = st.health; n++;
+        }
         checked++;
-        if (said !== n) {
+        if (said.top !== top || said.drain !== drain) {
             wrong++;
-            console.log('  seed ' + seed + ' f' + String(at).padStart(5) + '  predicted ' +
-                        String(said).padStart(4) + '  engine ' + String(n).padStart(4));
+            console.log('  seed ' + seed + ' f' + String(at).padStart(5) + '  predicted top ' +
+                        said.top + ' drain ' + said.drain + '  engine top ' + top + ' drain ' + drain);
         }
     });
 });

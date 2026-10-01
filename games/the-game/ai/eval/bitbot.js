@@ -2842,12 +2842,9 @@
             // setup -- a clear makes panels active, which stalls the very landing being
             // waited for, and any swap can spoil the line under the slab.
             //
-            // TOPPING OUT IS NOT THE LIMIT; THE DEADLINE IS. shouldDropGarbage refuses
-            // to drop on a topped-out board, so topping out means everything that can
-            // land has landed -- and the engine then gives `health` frames, which only
-            // drain while nothing is resolving. That is the moment to fire. The only
-            // reason to fire sooner is that waiting would leave too little time to walk
-            // to the break and play it, which is `deadline` against the walk.
+            // FIRE AT THE TOP-OUT. shouldDropGarbage refuses to drop on a topped-out
+            // board, so topping out means everything that can land has landed. Health is
+            // never spent: the walk has to be in before the engine would drain it.
             var stillComing = (info.incoming || 0) > 0 || !!info.fallingGarbage;
             var quickest = Infinity;
             for (i = 0; i < pool.length; i++) {
@@ -2855,11 +2852,15 @@
                 if (qc.kind === 'swap' && qc.resolved && qc.resolved.brokeGarbage &&
                     (qc.moveFrames || 0) < quickest) quickest = qc.moveFrames || 0;
             }
-            // AND THE TIME TO SPARE IS THE ENGINE'S: the limit is the frame the board
-            // tops out, not the next slab. Fire when one more decision plus the walk to
-            // the break would not finish before it.
-            var need = quickest + this.reaction;
-            var timeToSpare = this.framesToTopOut(need + 1) > need;
+            // AND THE TIME TO SPARE IS THE ENGINE'S. A hold sets the cooldown, so the
+            // next decision is `reaction + 1` frames away -- or at the top-out, where
+            // update() lifts the cooldown. The walk then queues the swap `moveFrames`
+            // later, and a queued swap locks the rise in that same run, so the break
+            // costs no health exactly when it is queued no later than the first run that
+            // drains it. Hold while that is still true after one more hold.
+            var next = this.reaction + 1;
+            var fut = this.framesToTopOut(next + quickest + 1);
+            var timeToSpare = Math.min(next, fut.top) + quickest <= fut.drain;
             if (haveBreak && stillComing && !info.toppedOut && timeToSpare) {
                 this.counts.heldForLanding = (this.counts.heldForLanding || 0) + 1;
                 return { kind: 'hold', mode: mode, alive: alive, via: 'awaitLanding' };
@@ -3525,23 +3526,30 @@
         return (r && r.settled) || masks;
     };
 
-    // HOW MANY FRAMES UNTIL THE BOARD TOPS OUT IF THE BOT DOES NOTHING: the engine
-    // itself, run forward on a copy with no input until isToppedOut. The queue, the
-    // drop column, the shake that locks the rise after every landing, combo garbage
-    // waiting for calm, stop time and the rise are all the engine's own code, so the
-    // answer is the engine's frame count. topout.test.js holds it to the real board.
+    // WHAT HAPPENS IF THE BOT DOES NOTHING: the engine itself, run forward on a copy
+    // with no input. The queue, the drop column, the shake that locks the rise after
+    // every landing, combo garbage waiting for calm, stop time and the rise are all
+    // the engine's own code, so both numbers are the engine's.
     //
-    // Health is not counted -- topped out is where this stops. `limit` caps the run:
-    // the caller only asks whether there is more time than it needs, and the answer
-    // is `limit` when there is at least that much.
+    //   top     runs until isToppedOut -- the frame update() sees it and lifts the
+    //           cooldown
+    //   drain   the first run in which health falls. Shake and stop time hold the
+    //           rise, and health with it, so this is later than `top` by whatever
+    //           the last landing bought.
+    //
+    // `limit` caps the run; either number is `limit` when it lies beyond it.
+    // topout.test.js holds both to the real board.
     BitBot.prototype.framesToTopOut = function (limit) {
-        var sim = PuyoCpu.cloneStack(this.stack), n = 0;
-        while (n < limit && !sim.isToppedOut() && !sim.gameOver) {
+        var sim = PuyoCpu.cloneStack(this.stack), n = 0, top = limit, hp = sim.health;
+        while (n < limit && !sim.gameOver) {
+            if (top === limit && sim.isToppedOut()) top = n;
             sim.setInput({});
             sim.run();
+            if (sim.health < hp || sim.gameOver) return { top: Math.min(top, n), drain: n };
+            hp = sim.health;
             n++;
         }
-        return n;
+        return { top: top, drain: limit };
     };
 
     // HOW MANY EMPTY ROWS ARE ABOVE THE STACK, ON THE BOARD AS IT IS NOW.
