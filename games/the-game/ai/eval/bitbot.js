@@ -4041,6 +4041,59 @@
             if (pk.kind === 'swap' && pk.swap[0] === d.move[0] &&
                 pk.swap[1] === d.move[1] && pk.masks) { picked = pk; break; }
         }
+
+        // AND THE SHAPE REFUSAL REACHES EVERY ROUTE, THE ARITHMETIC ONES INCLUDED.
+        //
+        // ruinsShape is a REFUSAL, not a price -- "a refusal, not a price: no threshold
+        // to choose and nothing a vector can weigh away" -- and it was applied in
+        // bestPlan and bestAttack and nowhere else. refuses() does not carry it, so the
+        // weights path, `setup` and keepSave could all play a move the two
+        // frames-priced rankers refuse outright.
+        //
+        // 103 rand2 v rand3, frame 21,637: pocket 5,4,4,2,4,5 under a two-row slab,
+        // WEIGHTS played 2-5, which swapped column 5's second row and left that column
+        // reading 3,3,3,3 -- a vertical four that cleared and emptied the column. Nine
+        // cells landed, then six, dead at 21,864. The file's own words for why that is
+        // fatal: a column at zero holds no vertical match, breaks the adjacency a
+        // horizontal one needs, and is where a slab bridges.
+        //
+        // EXEMPT WHEN IT BREAKS, for ruinsShape's own reason: a break has no settled
+        // board, so what it leaves is unknowable and `low` is null rather than zero.
+        //
+        // UNLIKE refuses(), THIS BINDS THE ARITHMETIC ROUTES TOO, and that is not the
+        // mistake measured at 15 deaths in 30. What must not overrule frames-priced
+        // arithmetic is a WEIGHTS RANKING. This is the same flat refusal those two
+        // rankers already apply to themselves, so it can only bind a route that was
+        // never entitled to the move.
+        //
+        // Narrowing: if nothing else survives, the original stands.
+        var bshape = bitoptions.shapeOf(base);
+        var baseLow = bshape ? (bshape.low || 0) : 0;
+        function emptiesColumn(cnd) {
+            if (!cnd || !cnd.masks || !(baseLow > 0)) return false;
+            if (cnd.resolved && cnd.resolved.brokeGarbage) return false;
+            var sh2 = bitoptions.shapeOf(cnd.masks);
+            return !!sh2 && (sh2.low || 0) === 0;
+        }
+        if (picked && emptiesColumn(picked)) {
+            var keepShape = null;
+            for (i = 0; i < pool.length; i++) {
+                var cs = pool[i];
+                if (cs === picked || cs.kind !== 'swap' || !cs.masks) continue;
+                if (emptiesColumn(cs)) continue;
+                if (this.deadly(cs.masks, cs.resolved, info,
+                                Math.max((cs.moveFrames || 0) + this.reaction,
+                                         info.framesPerRow || 0))) continue;
+                var ss2 = this.score(cs.masks, cs.moveFrames, cs.resolved, info);
+                if (!keepShape || ss2 > keepShape.score) keepShape = { cand: cs, score: ss2 };
+            }
+            if (keepShape) {
+                this.counts.refusedShape = (this.counts.refusedShape || 0) + 1;
+                d = { kind: 'swap', move: keepShape.cand.swap, mode: d.mode,
+                      alive: d.alive, via: d.via };
+                picked = keepShape.cand;
+            }
+        }
         if (picked && !ARITHMETIC[d.via] &&
             this.refuses(picked, info, base, this._lastSurvivalNeeded, this._lastBreakOnPool)) {
             var sub = null;
