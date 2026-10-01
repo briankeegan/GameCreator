@@ -1727,6 +1727,13 @@
         // nowhere else.
         var deadline = framesToDeath(info, tallestOf(pool), info.framesPerRow);
         this._lastDeadline = deadline;
+        // THE BIGGEST SLAB THIS OPPONENT HAS ACTUALLY SENT, in rows. Observed, never
+        // predicted: the raise has to leave room for what is coming, and `incoming`
+        // only shows what is already queued. A running maximum is the honest version
+        // of the question -- it says what this opponent hits with, and it adapts
+        // rather than being a constant someone picked.
+        var queued = Math.ceil((info.incoming || 0) / W);
+        if (queued > (this._maxSlab || 0)) this._maxSlab = queued;
         // DECIDED BEFORE ANYTHING IS PLANNED, because while it is on there is
         // nothing to plan: the raise outranks the attack and the board is not
         // being played, it is being filled.
@@ -3308,7 +3315,14 @@
         // raises, carrying material to 6.7 rows with four rows of room left, while the
         // garbage in that matchup arrives in slabs of 24 to 37 cells -- four to six
         // rows. The bot raised itself into a position the next attack could not fit in.
-        var room = H - (rsh ? rsh.high : 0) - Math.ceil((info.incoming || 0) / W);
+        var reserve = Math.max(Math.ceil((info.incoming || 0) / W), this._maxSlab || 0);
+        var room = H - (rsh ? rsh.high : 0) - reserve;
+        // AND FOUR ROWS IS REACHABLE WHATEVER THE RESERVE SAYS. The floor is the
+        // material a board needs to do anything at all, so the reserve may bound how
+        // far ABOVE it the bot builds, never whether it gets there: a board starving
+        // under a slab must still be able to raise, and with a six-row slab reserved
+        // the room alone would refuse it forever.
+        if (materialRows(base) >= Math.max(WORKING_ROWS, room)) return null;
         // AND THE OPENING IS NOT EXEMPT FROM IT. THAT WAS THE HOLE.
         //
         // The exemption is inherited from when this read `materialRows >= WORKING_ROWS`
@@ -3321,7 +3335,7 @@
         // Seed 103 rand3 raised five times in its first four seconds -- 4,5,5,5,6,5 to
         // 9,10,10,10,11,10 -- with zero garbage on the board and nothing queued, and
         // was dead at 1,100 frames having broken 3 cells. It filled its own board.
-        if (materialRows(base) >= room) return null;
+
         // AND THE RAISE FACES THE SAVE INVARIANT LIKE EVERY OTHER MOVE.
         //
         // The exit gate returns early on anything that is not a swap, so the raise
