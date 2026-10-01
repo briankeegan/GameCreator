@@ -1110,6 +1110,31 @@
              ? 0 : Math.max(0, WORKING_ROWS - o.mat);
     }
 
+    // AND THE OTHER END OF IT: THE BOARD THAT IS TOO FULL.
+    //
+    // WORKING_ROWS is a floor -- below it the bot stops cashing small change,
+    // because a board with nothing on it has nothing to play with. There was no
+    // ceiling at all, so nothing ever said the board was holding too much, and it
+    // hoarded: seed 103 rand1 stacked to 8,7,3,6,9,10 with a clear available on
+    // every decision through the whole window, 46 panels and 9 garbage cells in 72
+    // squares, and topped out from sheer height with three survivable moves on the
+    // board. No move saves that; the moves it needed were two hundred frames back.
+    //
+    // THE SAME COMPARISON THE RAISE USES, READ THE OTHER WAY. A raise is worth
+    // making while material is scarcer than room; by the same measure the board is
+    // too full once material exceeds the room above it. Both in rows off the same
+    // board, so there is no second constant and no threshold to calibrate -- and
+    // `tall` is the top of the stack with garbage in it, because the garbage is
+    // what the room is for.
+    //
+    // Priced exactly as the shortfall is, a row of rise per row, and zero whenever
+    // the board is not full -- so on a healthy board this term does not exist.
+    function surplusOf(o) {
+        if (o.mat === null || o.mat === undefined ||
+            o.tall === null || o.tall === undefined) return 0;
+        return Math.max(0, o.mat - (H - o.tall));
+    }
+
     function bestAttack(list, weights, engine, deadline, framesTable, perPanelFrames) {
         var best = null, all = list.now.concat(list.next), i;
         // THE ATTACKS THAT DO NOT COST SHAPE, IF THERE ARE ANY.
@@ -1211,6 +1236,8 @@
             // unknowable so `mat` is null, and it ADDS material besides.
             var short = shortfallOf(o);
             cells -= short * W;
+            // AND THE BOARD THAT IS TOO FULL, the same price the other way.
+            cells -= surplusOf(o) * W;
             // AND THE VOID THE SLAB WOULD SEAL, in this ranking's currency: a row of
             // void is a row of ceiling, and a row is W panels.
             cells += (o.voidGain || 0) * W;
@@ -1219,6 +1246,10 @@
             // it as the prize a finished setup pays discounted by the time the rest
             // of the work costs -- see slabGain in bitoptions.
             if (perPanelFrames > 0) cells += (o.slabGain || 0) / perPanelFrames;
+            // AND THE HOLES IT DIGS. A well is rows of space only a panel landing in
+            // that one column can fill, so it is ceiling the board owns and cannot
+            // use -- priced as the void is, a row being W cells here.
+            cells += (o.wellGain || 0) * W;
             // AND BEING READY FOR THE SLAB THAT IS COMING. Worth a row of rise,
             // converted to this ranking's currency. Zero unless there is a slab
             // to be ready for, so it cannot speak on a clean board.
@@ -1501,12 +1532,19 @@
             var bought = o.total * perPanel + holds + (o.garbage || 0) * perCell
                        + lowered * (framesPerRow || 0) + gain
                        - shortfall * (framesPerRow || 0)
+                       // AND THE BOARD THAT IS TOO FULL, the same price the other
+                       // way. See surplusOf: zero unless material exceeds the room
+                       // above the stack, which is the comparison the raise uses.
+                       - surplusOf(o) * (framesPerRow || 0)
                        // AND THE VOID THE SLAB WOULD SEAL -- a row of it is a row of
                        // ceiling, so framesPerRow, as height is.
                        + (o.voidGain || 0) * (framesPerRow || 0)
                        // AND WHAT IT DID TO THE SETUP FOR A BREAK -- already in
                        // frames, which is this ranking's currency. See bestAttack.
                        + (o.slabGain || 0)
+                       // AND THE HOLES IT DIGS -- a row of well is a row of ceiling
+                       // the board cannot use, so framesPerRow, as the void is.
+                       + (o.wellGain || 0) * (framesPerRow || 0)
                        + digs
                        // AND BEING READY FOR THE SLAB THAT IS COMING -- already in
                        // frames, which is this ranking's currency. See bestAttack.

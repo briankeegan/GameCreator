@@ -243,8 +243,36 @@
             }
             if (!isFinite(gap)) gap = 0;
         }
+        // THE WELLS: HOW FAR A COLUMN SITS BELOW ITS NEIGHBOURS.
+        //
+        // Nothing else in here can see a hole. `excess` is mean deviation, so a
+        // column dug three rows below the stack around it reads half a row across
+        // six columns. `void` is high - mat, an average, and read the same move at
+        // 0.5 rows. `slabRowGap` is a MINIMUM over three-column windows, so damage
+        // to a column outside the cheapest window reads as exactly zero -- it did,
+        // on the board this was written for. And `spread` is high - low, which falls
+        // when the TALLEST column is pulled down, and the tallest column is the one
+        // touching the slab: priced, it bought the one move that makes a break
+        // impossible, and killed STARTER at 2,424.
+        //
+        // A well is none of those. For each column it is how far below the lower of
+        // its two neighbours it sits -- the rows of space that only a panel landing
+        // in THAT column can fill, which is what a hole actually is. Lowering the
+        // tallest column creates no well, so this cannot reward the move spread was
+        // thrown out for. Edge columns have one neighbour and are measured against it.
+        //
+        // Seed 103 rand1 went 7,6,5,5,8,9 -> 7,6,2,5,8,9 on one vertical clear:
+        // wells 0 -> 3, while void moved 0.5 and slabRowGap did not move at all. It
+        // died at 20,273 with 46 panels in four columns and a seven-deep hole.
+        var wells = 0;
+        for (c = 1; c <= w2; c++) {
+            var ln = c > 1 ? h[c - 1] : h[c + 1];
+            var rn = c < w2 ? h[c + 1] : h[c - 1];
+            if (ln === undefined || rn === undefined) continue;
+            wells += Math.max(0, Math.min(ln, rn) - h[c]);
+        }
         return { tall: tall, bumps: bumps, excess: dev / w2, mat: mean, low: low,
-                 high: mx, spread: mx - low, slabRowGap: gap };
+                 high: mx, spread: mx - low, slabRowGap: gap, wells: wells };
     }
 
     function optionOf(swaps, frames, r) {
@@ -279,6 +307,9 @@
                  // shapeOf already computes it, colour feasibility included, so this
                  // costs nothing: see slabRowGap where it is derived.
                  slabGap: sh ? (sh.slabRowGap || 0) : null,
+                 // AND THE HOLES IT LEAVES. shapeOf derives it; see `wells` there for
+                 // why none of the other shape numbers can see one.
+                 wells: sh ? (sh.wells || 0) : null,
                  // CAN THE BOARD THIS LANDS ON STILL FIRE.
                  //
                  // Firing anything holds the floor for its resolve, and at
@@ -463,6 +494,10 @@
         // reason the void has a base: the panels a board still needs to reach its
         // slab are a fact about the position, and only the CHANGE is about the move.
         var BASEGAP = START ? (START.slabRowGap || 0) : 0;
+        // AND THE HOLES BEFORE ANY MOVE, so an option is judged on the hole IT digs
+        // rather than on landing on a board that already had one -- the same reason
+        // the void and the dig count have a base.
+        var BASEWELLS = START ? (START.wells || 0) : 0;
         var BASEBREAK = breakReadyOf(st) === true;
         LASTBREAKREADY = BASEBREAK;
         // AND HOW MANY WAYS THERE ARE TO REACH THE GARBAGE BEFORE ANY MOVE.
@@ -584,6 +619,8 @@
             // zero on a break, whose settled board is unknowable.
             opt.slabGain = setupWorth(opt.slabGap, DEADLINE - (opt.duration || 0))
                              - setupWorth(BASEGAP, DEADLINE);
+            // AND THE HOLES IT DIGS, as a delta for the same reason.
+            opt.wellGain = (opt.wells === null) ? 0 : (BASEWELLS - opt.wells);
             // AND WHETHER THE BOARD IT LANDS ON COULD ANSWER THE NEXT SLAB.
             //
             // slabReadyFast asks whether a three can be put against the row the next
@@ -897,6 +934,8 @@
                                 // zero on a break, whose settled board is unknowable.
                                 opt.slabGain = setupWorth(opt.slabGap, DEADLINE - (opt.duration || 0))
                              - setupWorth(BASEGAP, DEADLINE);
+            // AND THE HOLES IT DIGS, as a delta for the same reason.
+            opt.wellGain = (opt.wells === null) ? 0 : (BASEWELLS - opt.wells);
                                 // AND WHETHER THE BOARD IT LANDS ON COULD ANSWER THE NEXT SLAB.
                                 //
                                 // slabReadyFast asks whether a three can be put against the row the next
