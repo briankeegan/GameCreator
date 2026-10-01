@@ -249,6 +249,40 @@
   // the next call would otherwise overwrite -- the swapped board of a move that
   // breaks a slab, whose cascade has no knowable end and so has no settled state
   // to hand back.
+  // THE BOARD AFTER THE ROW THAT IS ALREADY DRAWN.
+  //
+  // The engine fills the incoming row a full row of time before it enters play and
+  // hands it to the bot as `board.incoming`. Every column shifts up one and that row
+  // takes row 1. Garbage rises with it. Anything pushed past H leaves, which is what
+  // topping out is; this answers "what will the board be", not "did it die".
+  //
+  // null when the row is not known -- `incoming` is false for the row behind the one
+  // being dealt, because that one comes from the match rng.
+  function risenMasks(st, incoming) {
+    if (!st || st.bad || !incoming) return null;
+    var W2 = st.W, c, v, top = (W2 + 2), lim = (1 << st.H) - 1;
+    for (c = 1; c <= W2; c++) { v = incoming[c]; if (!(v > 0) || v > 12) return null; }
+    var out = { W: st.W, H: st.H, N: st.N, occ: new Int32Array(top),
+                inert: new Int32Array(top), garb: new Int32Array(top),
+                colour: new Int32Array(13 * top), slabs: [], bad: null };
+    for (c = 1; c <= W2; c++) {
+      out.occ[c] = ((st.occ[c] << 1) | 1) & lim;
+      out.inert[c] = (st.inert[c] << 1) & lim;
+      out.garb[c] = (st.garb[c] << 1) & lim;
+      v = incoming[c];
+      if (v > out.N) out.N = v;
+      for (var k = 1; k <= 12; k++)
+        out.colour[k * top + c] = (st.colour[k * top + c] << 1) & lim;
+      out.colour[v * top + c] |= 1;
+    }
+    for (var i = 0; i < st.slabs.length; i++) {
+      var sm = new Int32Array(top);
+      for (c = 1; c <= W2; c++) sm[c] = (st.slabs[i][c] << 1) & lim;
+      out.slabs.push(sm);
+    }
+    return out;
+  }
+
   function copyState(st) {
     var stride = st.W + 2, out = { W: st.W, H: st.H, N: st.N, occ: [], inert: [], garb: [],
                                    colour: new Int32Array((st.N + 1) * stride), slabs: [],
@@ -729,6 +763,7 @@
     bestOneSwapStop: bestOneSwapStop,
     reachMask: reachMask,
     copyState: copyState,
+    risenMasks: risenMasks,
     resolveFromMasks: resolveFromMasks,
     clearedCells: clearedCells,
     resolveBits: resolveBits,

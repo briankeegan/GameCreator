@@ -1623,6 +1623,7 @@
         var pool = this.candidates(board, info);
         var base = pool.length ? pool[0].masks : bit.maskState(board.grid, board.blocks, W, board.height);
         this._lastInfo = info; this._lastPool = pool; this._lastBase = base;
+        this._incomingRow = board.incoming;
         this._lastOptions = null; this._lastDeadline = 0;
         var rev = this.revealPick(board);
         // ONLY OPTIONS IT CAN ACTUALLY FINISH IN THE TIME IT HAS LEFT.
@@ -2839,6 +2840,27 @@
         var was = bitoptions.shapeOf(base), now = bitoptions.shapeOf(m);
         var s = ((was ? was.high : 0) - (now ? now.high : 0)) * fpr;
         if (bitoptions.slabReadyFast(m)) s += fpr;
+        // AND READY FOR A BREAK ONCE THE ROW THAT IS ALREADY DRAWN LANDS.
+        //
+        // The engine fills the incoming row a full row of time before it enters play
+        // and hands it over as `board.incoming`, so the board after the auto-rise is
+        // known, not guessed. Until now the only thing that read it was the decision
+        // to raise ON PURPOSE -- which the measurements say is not the lever: offered
+        // 467 times in one duel, chosen 19, and not one of those 467 would have broken
+        // anything.
+        //
+        // The auto-rise is the lever, because it is coming regardless. On the board
+        // that died it brought the third 3 into column three and made a break worth
+        // ALL 37 garbage cells -- on the same frame it topped the board out. Arranged
+        // one row earlier, that break is free.
+        //
+        // Asked as "does it BREAK after the rise", not "does it still clear". The
+        // weaker question is almost always yes: it fired 5 times in 5,383 decisions
+        // and changed nothing.
+        if (this._incomingRow) {
+            var up = bit.risenMasks(m, this._incomingRow);
+            if (up && bitoptions.slabReadyFast(up)) s += fpr;
+        }
         s += matchWays(m) * perPanel;
         s -= bumpiness(m) * perPanel;
         // AND THE MATERIAL FLOOR, the same price bestPlan and the search both put
