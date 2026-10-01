@@ -3297,7 +3297,21 @@
         // whole and adds a row beneath, so a clear that exists before the row still
         // exists after it -- this refuses only the board that had nothing to fire
         // in the first place, which is exactly the board that must not be filled.
-        if (!this.hasFireable(this.restingBoard(base), info,
+        // AND BELOW THE FLOOR THIS GATE IS SELF-DEFEATING, so it does not apply there.
+        //
+        // A board under WORKING_ROWS has nothing to fire BECAUSE it has no panels, and
+        // a raise is what gives it panels -- so refusing the raise for want of a clear
+        // refuses the cure on the grounds that the patient is sick. Seed 103 rand1 sat
+        // on 2.17 rows under 28 garbage cells with nothing to fire and nothing to fire
+        // WITH.
+        //
+        // The failure this gate was written for is a different board: raised to
+        // 10,11,6,6,9,9 by frame 264 and dead at 1,172 -- a board filled to one row of
+        // headroom, which is plenty of material and no room. That is now refused by the
+        // material-against-room rule above, which is the honest statement of it, so
+        // the gate is only needed from the floor upwards.
+        if (materialRows(base) >= WORKING_ROWS &&
+            !this.hasFireable(this.restingBoard(base), info,
                               [info.cursorRow, info.cursorCol])) return null;
         return this._opening ? 'opening' : 'material';
     };
