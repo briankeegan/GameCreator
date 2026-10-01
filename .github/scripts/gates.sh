@@ -766,6 +766,13 @@ gate_deadline_rise() {
   node games/the-game/ai/eval/deadline_rise.test.js
 }
 
+# WHEN THE BOARD TOPS OUT, AND WHEN HEALTH FIRST FALLS, IF THE BOT DOES NOTHING. The
+# break hold fires by these two numbers. framesToTopOut runs a copy of the engine; this
+# replays the bot's own inputs onto a real Stack and requires both to match to the frame.
+gate_topout() {
+  node games/the-game/ai/eval/topout.test.js
+}
+
 # WHAT A SWAP CLEARS, WITHOUT APPLYING IT. On a settled board every column is a
 # packed run from the floor, so a swap does two things to it and both are shifts:
 # the panel crosses and lands on top of the run it joins, and the hole it left
@@ -989,6 +996,7 @@ GATES=(
   "every option listed is real and priced:gate_bitoptions:games/the-game/ai/"
   "every option field is priced by both rankers:gate_option_pricing:games/the-game/ai/"
   "the deadline keeps time with the engine through a freeze:gate_deadline_rise:games/the-game/ai/"
+  "the break hold knows the top-out and the first drain to the frame:gate_topout:games/the-game/ai/"
   "a swap is answered without applying it:gate_bitswap:games/the-game/ai/"
   "the options are features that vary:gate_bitfeatures:games/the-game/ai/"
   "the bot plays what it picks and cannot be killed:gate_bitbot:games/the-game/ai/"
