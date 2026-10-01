@@ -239,7 +239,7 @@
     var st = { W: W, H: H, N: 0, occ: new Int32Array(W + 2), inert: new Int32Array(W + 2),
                garb: new Int32Array(W + 2), colour: new Int32Array(13 * (W + 2)),
                busy: busyMask(grid, motion, W, H),
-               slabs: [], bad: null };
+               slabs: [], slabLocked: [], bad: null };
     var r, c, row;
     for (r = 1; r <= H; r++) {
       row = grid[r];
@@ -253,11 +253,19 @@
         st.colour[v * (W + 2) + c] |= b;
       }
     }
+    // A SLAB THE ENGINE WILL NOT BREAK RIGHT NOW. getConnectedGarbagePanels takes
+    // only garbage that is colour 9 and state 'normal', so a slab still matched from
+    // the last break, or one in the air, is not part of any break until it settles.
     if (blocks) {
       for (var id in blocks) {
-        var cells = blocks[id].cells, sm = new Int32Array(W + 2);
-        for (var i2 = 0; i2 < cells.length; i2++) sm[cells[i2][1]] |= (1 << (cells[i2][0] - 1));
+        var cells = blocks[id].cells, sm = new Int32Array(W + 2), locked = false;
+        for (var i2 = 0; i2 < cells.length; i2++) {
+          sm[cells[i2][1]] |= (1 << (cells[i2][0] - 1));
+          var mo = motion && motion[cells[i2][0]] && motion[cells[i2][0]][cells[i2][1]];
+          if (mo && !(mo.state === 'normal' && mo.color === 9)) locked = true;
+        }
         st.slabs.push(sm);
+        st.slabLocked.push(locked);
       }
     }
     return st;
@@ -297,7 +305,8 @@
     for (c = 1; c <= W2; c++) { v = incoming[c]; if (!(v > 0) || v > 12) return null; }
     var out = { W: st.W, H: st.H, N: st.N, occ: new Int32Array(top),
                 inert: new Int32Array(top), garb: new Int32Array(top),
-                colour: new Int32Array(13 * top), slabs: [], bad: null };
+                colour: new Int32Array(13 * top), slabs: [],
+                slabLocked: (st.slabLocked || []).slice(), bad: null };
     for (c = 1; c <= W2; c++) {
       out.occ[c] = ((st.occ[c] << 1) | 1) & lim;
       out.inert[c] = (st.inert[c] << 1) & lim;
@@ -319,7 +328,7 @@
   function copyState(st) {
     var stride = st.W + 2, out = { W: st.W, H: st.H, N: st.N, occ: [], inert: [], garb: [],
                                    colour: new Int32Array((st.N + 1) * stride), slabs: [],
-                                   bad: st.bad || null };
+                                   slabLocked: (st.slabLocked || []).slice(), bad: st.bad || null };
     var c, i;
     for (c = 0; c <= st.W + 1; c++) { out.occ[c] = st.occ[c]; out.inert[c] = st.inert[c]; out.garb[c] = st.garb[c]; }
     for (i = 0; i < out.colour.length && i < st.colour.length; i++) out.colour[i] = st.colour[i];
@@ -596,6 +605,46 @@
       return falling;
     }
 
+    // THE WHOLE CONNECTED GROUP, BLOCK TO BLOCK, as getConnectedGarbagePanels does
+    // it: seed with every slab 4-adjacent to the match, then add every slab
+    // 4-adjacent to one already in, until nothing new joins. On the slabs where they
+    // are NOW, since the cascade moves them. A slab is eligible only if its bottom
+    // row is on the board (`p.row - p.yOffset <= height`) and the engine would take
+    // it (see slabLocked in maskState).
+    var locked = st.slabLocked || [];
+    function lowestRow(m) {
+      var lo = 32;
+      for (var c0 = 1; c0 <= W; c0++) {
+        var v = m[c0] >>> 0;
+        if (v) { var b0 = 32 - Math.clz32(v & -v); if (b0 < lo) lo = b0; }
+      }
+      return lo;
+    }
+    function nextTo(a, b) {          // any cell of b 4-adjacent to any cell of a
+      for (var c1 = 1; c1 <= W; c1++) {
+        if (b[c1] & ((a[c1] >> 1) | (a[c1] << 1) | a[c1 - 1] | a[c1 + 1])) return true;
+      }
+      return false;
+    }
+    function connectedGroup(k) {
+      var inGroup = [], any = false, sl, sk;
+      function eligible(i) { return !locked[i] && lowestRow(slabs[i]) <= H; }
+      for (sl = 0; sl < slabs.length; sl++) {
+        inGroup[sl] = eligible(sl) && nextTo(k, slabs[sl]);
+        if (inGroup[sl]) any = true;
+      }
+      for (var grew = any; grew; ) {
+        grew = false;
+        for (sl = 0; sl < slabs.length; sl++) {
+          if (inGroup[sl] || !eligible(sl)) continue;
+          for (sk = 0; sk < slabs.length; sk++) {
+            if (inGroup[sk] && nextTo(slabs[sk], slabs[sl])) { inGroup[sl] = true; grew = true; break; }
+          }
+        }
+      }
+      return { inGroup: inGroup, any: any };
+    }
+
     // Landed cells. With no inert cell in the column this is one expression:
     // everything from the first hole up is in the air, so resting is the bits
     // below it.
@@ -659,6 +708,11 @@
           // is counted and the cascade stops — the same place resolve() stops.
           if (k[c] & ((garb[c] >> 1) | (garb[c] << 1) | garb[c - 1] | garb[c + 1])) brokeGarbage = true;
         }
+        // WITH THE SLABS KNOWN, A BREAK IS A LIVE SLAB IN THE GROUP: garbage beside
+        // the match that the engine will not take (still matched, or in the air) does
+        // not break, and the match is an ordinary clear.
+        var group = brokeGarbage && slabs.length ? connectedGroup(k) : null;
+        if (group && !group.any) brokeGarbage = false;
         if (brokeGarbage) {
           // HOW MANY GARBAGE PANELS THIS MATCH TOUCHES, because the engine's own
           // resolve time is FLASH + FACE + POP * (comboSize + onScreen) and
@@ -675,39 +729,9 @@
           // eligible only if its bottom row is on the board (`p.row - p.yOffset <=
           // height` in the engine). Seeding alone priced a staircase of touching slabs
           // as the one slab the match reached, when the engine clears all of them.
-          var inGroup = [], sl, sk, cc;
-          function lowestRow(m) {
-            var lo = 32;
-            for (var c0 = 1; c0 <= W; c0++) {
-              var v = m[c0] >>> 0;
-              if (v) { var b0 = 32 - Math.clz32(v & -v); if (b0 < lo) lo = b0; }
-            }
-            return lo;
-          }
-          function nextTo(a, b) {          // any cell of b 4-adjacent to any cell of a
-            for (var c1 = 1; c1 <= W; c1++) {
-              if (b[c1] & ((a[c1] >> 1) | (a[c1] << 1) | a[c1 - 1] | a[c1 + 1])) return true;
-            }
-            return false;
-          }
-          for (sl = 0; sl < st.slabs.length; sl++) {
-            inGroup[sl] = false;
-            if (lowestRow(st.slabs[sl]) > st.H) continue;
-            if (nextTo(k, st.slabs[sl])) inGroup[sl] = true;
-          }
-          for (var grew = true; grew; ) {
-            grew = false;
-            for (sl = 0; sl < st.slabs.length; sl++) {
-              if (inGroup[sl] || lowestRow(st.slabs[sl]) > st.H) continue;
-              for (sk = 0; sk < st.slabs.length; sk++) {
-                if (inGroup[sk] && nextTo(st.slabs[sk], st.slabs[sl])) {
-                  inGroup[sl] = true; grew = true; break;
-                }
-              }
-            }
-          }
-          for (sl = 0; sl < st.slabs.length; sl++) {
-            var sm2 = st.slabs[sl], hit = inGroup[sl];
+          var inGroup = group ? group.inGroup : [], sl, cc;
+          for (sl = 0; sl < slabs.length; sl++) {
+            var sm2 = slabs[sl], hit = !!inGroup[sl];
             // TWO DIFFERENT NUMBERS, BECAUSE THE ENGINE USES TWO.
             //
             //   touched   every on-screen cell of the connected slab. This is the
@@ -811,7 +835,7 @@
     }
     return { scope: 'ok', chain: rounds ? Math.max(counter, 1) : 0, total: total,
              rounds: rounds,
-             settled: wantSettled ? settledFrom(S2, W, H, N, slabs) : null };
+             settled: wantSettled ? settledFrom(S2, W, H, N, slabs, locked) : null };
   }
 
   // THE BOARD THE CASCADE LEFT, as a state of the same shape maskState builds.
@@ -825,9 +849,10 @@
   //
   // Only on the 'ok' path: a stopped cascade has no settled board to hand back,
   // which is what 'garbage-broke' means.
-  function settledFrom(S, W, H, N, slabs) {
+  function settledFrom(S, W, H, N, slabs, locked) {
     var stride = W + 2, out = { W: W, H: H, N: N, occ: [], inert: [], garb: [],
-                                colour: new Int32Array((N + 1) * stride), slabs: [], bad: null };
+                                colour: new Int32Array((N + 1) * stride), slabs: [],
+                                slabLocked: [], bad: null };
     var a, c, i;
     for (c = 0; c <= W + 1; c++) {
       out.occ[c] = S.occ[c]; out.inert[c] = S.inert[c]; out.garb[c] = S.garb[c];
@@ -845,7 +870,7 @@
     for (i = 0; slabs && i < slabs.length; i++) {
       var any = false;
       for (c = 0; c <= W + 1; c++) if (slabs[i][c]) { any = true; break; }
-      if (any) out.slabs.push(Int32Array.from(slabs[i]));
+      if (any) { out.slabs.push(Int32Array.from(slabs[i])); out.slabLocked.push(!!(locked && locked[i])); }
     }
     return out;
   }

@@ -1357,6 +1357,7 @@
         var s2 = bit.copyState(st), b = 1 << t, sm = new Int32Array(Wl + 2), i, r;
         for (c = 1; c <= Wl; c++) { s2.occ[c] |= b; s2.inert[c] |= b; s2.garb[c] |= b; sm[c] = b; }
         s2.slabs.push(sm);
+        s2.slabLocked.push(false);
         var sw = bit.legalSwapsOf(s2);
         for (i = 0; i < sw.length; i++) {
             if (!bit.swapMasks(s2, sw[i][0], sw[i][1])) continue;

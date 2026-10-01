@@ -3487,6 +3487,7 @@
         var st = bit.copyState(masks), b = 1 << t, sm = new Int32Array(W + 2), c;
         for (c = 1; c <= W; c++) { st.occ[c] |= b; st.inert[c] |= b; st.garb[c] |= b; sm[c] = b; }
         st.slabs.push(sm);
+        st.slabLocked.push(false);
         return st;
     };
 
