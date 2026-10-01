@@ -15,6 +15,15 @@ var BitBot = require('./bitbot.js');
 var BF = require('./bitfeatures.js');
 var bit = require('./bitmatch.js');
 var bitoptions = require('./bitoptions.js');
+
+// THE RISE, OFF THE ENGINE. These said 112 -- a number no engine produces. A
+// level-10 stack runs at speed 32 and riseTime(32) * 16 is 120 frames a row, so
+// every rate derived from FPROW here was 7% out, in the gate that counts deaths.
+var FPROW = (function () {
+    var st = new globalThis.PanelEngine.Stack({ level: 10 });
+    return globalThis.PanelEngine.riseTime(st.speed) * 16;
+}());
+
 var P = globalThis.PanelEngine, W = 6;
 
 var fails = 0;
@@ -115,7 +124,7 @@ function hostile() {
     var st = new P.Stack({ level: 10, seed: 101, countdown: false });
     var bot = new BitBot(st, { allowRaise: true });
     var info = { toppedOut: true, stopTime: 0, incoming: 0, health: 1,
-                 framesPerRow: 112, framesToNextRow: 112 };
+                 framesPerRow: FPROW, framesToNextRow: FPROW };
     var board = bot._snapshot();
     var full = bit.maskState(board.grid, board.blocks, W, board.height);
     for (var c = 1; c <= W; c++) full.occ[c] = (1 << 12) - 1;   // every row occupied
@@ -124,17 +133,17 @@ function hostile() {
     ok(BF.stopTimeOf(P, false, 3, 0, true) <= 0,
        'a bare three pays stop time on this level, so it is the wrong fixture for ' +
        'the rule that a resolve holds the board WITHOUT paying any');
-    ok(!bot.deadly(full, three, info, 112),
+    ok(!bot.deadly(full, three, info, FPROW),
        'a full board was called dead with a three ready to fire -- the resolve ' +
        'holds riseLock and the drain cannot run while it does');
-    ok(bot.deadly(full, nothing, info, 112),
+    ok(bot.deadly(full, nothing, info, FPROW),
        'a full board with an empty clock and nothing to fire was called survivable, ' +
        'so the filter accepts everything and refuses nothing');
     // A SHIELD SHORTER THAN AN ACTION IS NOT A SHIELD. puyocpu measured this on
     // its own deaths: 116 moves spared by banked stop time with four frames left
     // on average, and the board still topped out when it ran out.
     ok(bot.deadly(full, nothing, { toppedOut: true, stopTime: 3, incoming: 0,
-                                   health: 1, framesPerRow: 112, framesToNextRow: 112 }, 112),
+                                   health: 1, framesPerRow: FPROW, framesToNextRow: FPROW }, FPROW),
        'three frames of stop time counted as holding a full board, and nothing ' +
        'can be played in three frames');
 }());
@@ -206,7 +215,7 @@ function hostile() {
                    bit.maskState(board.grid, board.blocks, W, board.height),
                    bot.timing(info, 600), false);
         all = opts.now.concat(opts.next);
-        if (BitBot.bestAttackOf(opts, BitBot.STARTER, P, 600, st.frames, 112 / W)) break;
+        if (BitBot.bestAttackOf(opts, BitBot.STARTER, P, 600, st.frames, FPROW / W)) break;
     }
     ok(all && all.length > 0, 'no options found in 3,000 frames, so nothing can be compared');
     var reported = 0, i;
@@ -214,10 +223,10 @@ function hostile() {
     ok(reported === all.length,
        reported + ' of ' + all.length + ' options carry opensHole -- an option the ' +
        'attack cannot ask about is an option the rule cannot refuse');
-    ok(BitBot.bestAttackOf(opts, BitBot.STARTER, P, 600, st.frames, 112 / W) !== null,
+    ok(BitBot.bestAttackOf(opts, BitBot.STARTER, P, 600, st.frames, FPROW / W) !== null,
        'no board in 3,000 frames offered an attack, so this cannot test the refusal');
     for (i = 0; i < all.length; i++) all[i].opensHole = true;
-    ok(BitBot.bestAttackOf(opts, BitBot.STARTER, P, 600, st.frames, 112 / W) === null,
+    ok(BitBot.bestAttackOf(opts, BitBot.STARTER, P, 600, st.frames, FPROW / W) === null,
        'every option opens a hole and an attack was still chosen, so the refusal is ' +
        'not wired into the ranking');
 }());
@@ -658,7 +667,7 @@ function hostile() {
     var keepsShape = plan({ frames: 10, total: 4, levels: true });
 
     var both = BitBot.bestPlanOf({ now: [costsShape, keepsShape], next: [] },
-                                 0, 600, engine, false, 112, { FLASH: 28, FACE: 10, POP: 7 }, 5);
+                                 0, 600, engine, false, FPROW, { FLASH: 28, FACE: 10, POP: 7 }, 5);
     ok(both && both.option === keepsShape,
        'survival plan: took the plan that costs shape over one that does not -- a ' +
        'vertical three empties a column by three and that is what a slab bridges on');
@@ -667,7 +676,7 @@ function hostile() {
     // paid whatever was played, so the better plan is the better plan.
     var worse = plan({ frames: 10, total: 3, levels: false });
     var onlyCosting = BitBot.bestPlanOf({ now: [costsShape, worse], next: [] },
-                                        0, 600, engine, false, 112, { FLASH: 28, FACE: 10, POP: 7 }, 5);
+                                        0, 600, engine, false, FPROW, { FLASH: 28, FACE: 10, POP: 7 }, 5);
     ok(onlyCosting && onlyCosting.option === costsShape,
        'survival plan: with every plan costing shape it did not take the best one, ' +
        'so the narrowing empties the list instead of standing aside');
@@ -877,7 +886,7 @@ function hostile() {
     var holeP = o({ total: 8, size: 8, opensHole: true, low: 0 });
     var keepP = o({ total: 4, size: 4, opensHole: false, swaps: [[1, 3]] });
     var pickP = BitBot.bestPlanOf({ now: [holeP, keepP], next: [] },
-                                  0, 600, engine, false, 112, FT, 5);
+                                  0, 600, engine, false, FPROW, FT, 5);
     ok(pickP && pickP.option === keepP,
        'survival plan: took the move that empties a column over one that does not. ' +
        'bestAttack has refused this for a while and this is the path that picks ' +
@@ -888,7 +897,7 @@ function hostile() {
     var brk = o({ total: 3, size: 3, garbage: 4, breaks: true, opensHole: false,
                   mat: null, low: null, bumps: null, swaps: [[1, 5]] });
     var pickB = BitBot.bestPlanOf({ now: [brk], next: [] },
-                                  0, 600, engine, false, 112, FT, 5);
+                                  0, 600, engine, false, FPROW, FT, 5);
     ok(pickB && pickB.option === brk,
        'survival plan: a break was refused by the hole rule -- `low` is null on a ' +
        'break and a null is not a zero');
@@ -900,7 +909,7 @@ function hostile() {
     var onlyHoles = BitBot.bestPlanOf(
         { now: [o({ total: 8, size: 8, opensHole: true, low: 0 }),
                 o({ total: 4, size: 4, opensHole: true, low: 0, swaps: [[1, 3]] })], next: [] },
-        0, 600, engine, false, 112, FT, 5);
+        0, 600, engine, false, FPROW, FT, 5);
     ok(onlyHoles === null,
        'survival plan: returned a plan when every plan on offer opens a hole -- ' +
        'this is a refusal, and a board where every move empties a column is a ' +
@@ -941,7 +950,7 @@ function hostile() {
     var shutP = o({ total: 8, size: 8, breakReady: false, closesBreak: true });
     var keepP = o({ total: 4, size: 4, swaps: [[1, 3]] });
     var pickP = BitBot.bestPlanOf({ now: [shutP, keepP], next: [] },
-                                  0, 600, engine, false, 112, FT, 5);
+                                  0, 600, engine, false, FPROW, FT, 5);
     ok(pickP && pickP.option === keepP,
        'survival plan: took the route that leaves the board unable to break. This ' +
        'is the path that picked the move on nearly every frame of all seven boards');
@@ -957,7 +966,7 @@ function hostile() {
        'attack: a board that had already lost its break was refused its best move ' +
        '-- the rule is a transition and nothing can close a door already shut');
     var pickG2 = BitBot.bestPlanOf({ now: [goneA, goneB], next: [] },
-                                   0, 600, engine, false, 112, FT, 5);
+                                   0, 600, engine, false, FPROW, FT, 5);
     ok(pickG2 && pickG2.option === goneA,
        'survival plan: a board that had already lost its break was refused its best ' +
        'move');
@@ -967,7 +976,7 @@ function hostile() {
     var brk = o({ total: 3, size: 3, garbage: 4, breaks: true, breakReady: null,
                   closesBreak: false, mat: null, low: null, bumps: null, swaps: [[1, 5]] });
     var pickB = BitBot.bestPlanOf({ now: [brk], next: [] },
-                                  0, 600, engine, false, 112, FT, 5);
+                                  0, 600, engine, false, FPROW, FT, 5);
     ok(pickB && pickB.option === brk,
        'survival plan: a break was refused by a rule about keeping breaks alive -- ' +
        '`breakReady` is null on a break and a null is not a no');
@@ -1002,7 +1011,7 @@ function hostile() {
         return !!(p && p.option === x);
     }
     function planTakes(x) {
-        var p = BitBot.bestPlanOf({ now: [x, plain], next: [] }, 0, 600, engine, false, 112, FT, 5);
+        var p = BitBot.bestPlanOf({ now: [x, plain], next: [] }, 0, 600, engine, false, FPROW, FT, 5);
         return !!(p && p.option === x);
     }
 
@@ -1075,7 +1084,7 @@ function hostile() {
     var awayP = o({ total: 6, size: 6, digGain: -4 });
     var towardP = o({ total: 4, size: 4, digGain: +4, swaps: [[1, 3]] });
     var pickP = BitBot.bestPlanOf({ now: [awayP, towardP], next: [] },
-                                  0, 600, engine, false, 112, FT, 5);
+                                  0, 600, engine, false, FPROW, FT, 5);
     ok(pickP && pickP.option === towardP,
        'survival plan: took the route that spends the way out from under the slab. ' +
        'This is the path that picks most of the moves and it was never asked');
@@ -1110,7 +1119,7 @@ function hostile() {
     var spendsP = o({ total: 6, size: 6, digGain: -5 });
     var evenP = o({ total: 6, size: 6, digGain: 0, swaps: [[1, 3]] });
     var pickSpendP = BitBot.bestPlanOf({ now: [spendsP, evenP], next: [] },
-                                       0, 600, engine, false, 112, FT, 5);
+                                       0, 600, engine, false, FPROW, FT, 5);
     ok(pickSpendP && pickSpendP.option === spendsP,
        'survival plan: a plan was ranked below an identical one because it spent ' +
        'reach, which o.total * perPanel has already paid for');
@@ -1134,7 +1143,7 @@ function hostile() {
        'nine rows of material. This term is for a board with nothing else left to ' +
        'play for, and priced on any garbage at all it killed three pairings');
     var pickRichP = BitBot.bestPlanOf({ now: [richAway, richToward], next: [] },
-                                      0, 600, engine, false, 112, FT, 5);
+                                      0, 600, engine, false, FPROW, FT, 5);
     ok(pickRichP && pickRichP.option === richAway,
        'survival plan: the way out outranked a bigger clear on a board holding ' +
        'nine rows of material');
@@ -1178,7 +1187,7 @@ function hostile() {
        'attack: within a working floor of the ceiling it took the bigger clear that ' +
        'leaves the board unable to break, and a break is the only move that hands ' +
        'ceiling back up there');
-    ok(BitBot.bestPlanOf({ now: [deadA, liveA], next: [] }, 0, 600, engine, false, 112, FT, 5)
+    ok(BitBot.bestPlanOf({ now: [deadA, liveA], next: [] }, 0, 600, engine, false, FPROW, FT, 5)
          .option === liveA,
        'survival plan: within a working floor of the ceiling it took the route that ' +
        'leaves the board unable to break');
@@ -1191,7 +1200,7 @@ function hostile() {
          .option === lowDead,
        'attack: the break rule fired a row BELOW the working floor, where there is ' +
        'still room to build and the ordinary ranking is right');
-    ok(BitBot.bestPlanOf({ now: [lowDead, lowLive], next: [] }, 0, 600, engine, false, 112, FT, 5)
+    ok(BitBot.bestPlanOf({ now: [lowDead, lowLive], next: [] }, 0, 600, engine, false, FPROW, FT, 5)
          .option === lowDead,
        'survival plan: the break rule fired a row below the working floor');
 
@@ -1418,7 +1427,7 @@ function hostile() {
        'attack: took the bigger clear that leaves the board unable to answer the ' +
        'slab that is coming. Arranging for it has to happen while there is still ' +
        'room, and that is this path');
-    ok(BitBot.bestPlanOf({ now: [blindA, readyA], next: [] }, 0, 600, engine, false, 112, FT, 5)
+    ok(BitBot.bestPlanOf({ now: [blindA, readyA], next: [] }, 0, 600, engine, false, FPROW, FT, 5)
          .option === readyA,
        'survival plan: took the route that leaves the board unable to answer the ' +
        'slab that is coming');

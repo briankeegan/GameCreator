@@ -16,6 +16,13 @@ require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
 var BitBot = require('./bitbot.js');
 var BF = require('./bitfeatures.js');
 var versus = require('./versus.js');
+// THE RISE, OFF THE ENGINE. These said 112 -- a number no engine produces. A
+// level-10 stack runs at speed 32 and riseTime(32) * 16 is 120 frames a row, so
+// every rate derived from that here was 7% out, in the gate that counts deaths.
+var FPROW = (function () {
+    var st = new globalThis.PanelEngine.Stack({ level: 10 });
+    return globalThis.PanelEngine.riseTime(st.speed) * 16;
+}());
 var PanelEngine = globalThis.PanelEngine;
 
 var fails = 0;
@@ -173,12 +180,12 @@ ok(modesSeen.BUILD > 0, 'BUILD was never entered');
                  { kind: 'swap', resolved: { chain: goal.links, total: 12, biggest: 4 } }];
     var misses = [{ kind: 'hold', resolved: null, masks: lowMasks },
                   { kind: 'swap', resolved: { chain: 1, total: 3, biggest: 3 } }];
-    var info = { toppedOut: false, stopTime: 0, framesPerRow: 112, health: 100 };
+    var info = { toppedOut: false, stopTime: 0, framesPerRow: FPROW, health: 100 };
     ok(BitBot.prototype.mode.call(probeBot, info, meets, false).name === 'ATTACK',
        'a pool containing a clear that meets the aim did not open ATTACK');
     ok(BitBot.prototype.mode.call(probeBot, info, misses, false).name === 'BUILD',
        'a pool with nothing meeting the aim still opened ATTACK, so the aim decides nothing');
-    ok(BitBot.prototype.mode.call(probeBot, { toppedOut: true, stopTime: 0, framesPerRow: 112 },
+    ok(BitBot.prototype.mode.call(probeBot, { toppedOut: true, stopTime: 0, framesPerRow: FPROW },
                                   misses, false).name === 'DEFEND',
        'topped out did not open DEFEND');
 }());
@@ -231,19 +238,17 @@ var probe = { deadly: BitBot.prototype.deadly };
 // deadly() reads the masks now, not a grid -- the bot never holds a predicted
 // grid any more, so the unit cases build the state the same way it does.
 var bitm = require('./bitmatch.js');
-
 // THE CLOCK EVERY features() CALL HANDS OVER. bitoptions requires one -- the
 // depth-2 half of its list is beam-ranked in frames -- and the rise is the
 // engine's own at the level the game runs: a level-10 stack's speed through
 // riseTime, times 16. The cooldown is the bot's default.
-var T_LEVEL = 10, T_REACTION = 12;
-var T_FPROW = (function () {
-    var st = new globalThis.PanelEngine.Stack({ level: T_LEVEL });
-    return globalThis.PanelEngine.riseTime(st.speed) * 16;
-}());
+var T_REACTION = 12;
+var T_FPROW = FPROW;
 function CLOCKOF(info) {
     return { framesPerRow: T_FPROW, reaction: T_REACTION,
-             deadline: (12 - 0) * T_FPROW + ((info && info.stopTime) || 0) };
+             // A full board of ceiling, so nothing on a list is refused here
+             // for want of time, plus whatever the clock already holds.
+             deadline: 12 * T_FPROW + ((info && info.stopTime) || 0) };
 }
 
 function masksOf(b) { return bitm.maskState(b.grid, b.blocks, 6, 12); }
@@ -338,7 +343,7 @@ ok(BitBot.prototype.deadly.call(probe, masksOf(lowBoard), null, { stopTime: 0 })
 // An earlier version counted decisions taken on a board seen within the last
 // three. That was a proxy, and it broke the moment the bot got better: once it
 // plans whenever the clock is empty it makes five times as many decisions, and on
-// a board that rises one row per 112 frames the same position recurs harmlessly.
+// a board that rises one row per FPROW frames the same position recurs harmlessly.
 // 47 of 365 decisions, while survival went from 3,690 frames to 5,040 -- the proxy
 // called that a regression and the game called it an improvement.
 //

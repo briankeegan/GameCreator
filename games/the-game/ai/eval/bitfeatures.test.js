@@ -42,7 +42,9 @@ var T_FPROW = (function () {
 }());
 function CLOCKOF(info) {
     return { framesPerRow: T_FPROW, reaction: T_REACTION,
-             deadline: (12 - 0) * T_FPROW + ((info && info.stopTime) || 0) };
+             // A full board of ceiling, so nothing on a list is refused here
+             // for want of time, plus whatever the clock already holds.
+             deadline: 12 * T_FPROW + ((info && info.stopTime) || 0) };
 }
 
 
