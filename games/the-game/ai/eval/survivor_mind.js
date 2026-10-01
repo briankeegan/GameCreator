@@ -13,6 +13,7 @@ require(path.join(DIR, '..', '..', 'panel-cpu.js'));
 var P = require(path.join(DIR, 'puyocpu.js')), PA = require(path.join(DIR, 'pa-engine.js')), PE = globalThis.PanelEngine;
 var SH = require(path.join(DIR, 'survivor_shared.js'));
 var cfg = wt.workerData, OPTS = SH.botOptions(cfg.profile, cfg.threads);
+var CLEAR_RANK = 30;   // frames: a break sooner than this outranks a clear on a tall stack
 var bot = null, snap = null, nat = null, BS = null;   // BS: a search context of its own for breakMoves   // nat: the search's C context, kept from match to match
 var NativeMem = function () {
   var N = require(path.join(DIR, 'native.js')).server, X = N.exports(), free = [];
@@ -48,17 +49,22 @@ wt.parentPort.on('message', function (m) {
     bot.decisions = (bot.decisions || 0) + 1;
     // BREAK GARBAGE FIRST: of the moves proven to live, one that breaks
     // garbage now; failing that, the one whose lines in the survival search
-    // break it soonest (native Search.breakAt); only then the rest.
+    // break it soonest (native Search.breakAt); only then the rest. A stack
+    // whose panels reach the profile's tallRow clears what it can: a move
+    // that clears now ranks as a break CLEAR_RANK frames away.
     bot.preferRank = null;
-    var br = null, want = null;
-    if (cfg.profile.breakFirst) {
-      bot._natSearch();   // the engine, on this bot's threads, before a second context is made on it
-      if (!BS) BS = new (require(path.join(DIR, 'native.js')).server.Search)({ reaction: OPTS.reaction, cursorMoveFrames: OPTS.cursorMoveFrames, threads: OPTS.threads || 1 });
-      br = SH.breakMoves(BS, board, { left: m.hold.left, started: m.hold.started }, arrivals, cfg.profile.breakDepth);
-      want = br.depth ? br.moves : {};
+    var br = null, want = null, tall = cfg.profile.tallRow && SH.panelTop(board) >= cfg.profile.tallRow;
+    if (cfg.profile.breakFirst || tall) {
+      if (cfg.profile.breakFirst) {
+        bot._natSearch();   // the engine, on this bot's threads, before a second context is made on it
+        if (!BS) BS = new (require(path.join(DIR, 'native.js')).server.Search)({ reaction: OPTS.reaction, cursorMoveFrames: OPTS.cursorMoveFrames, threads: OPTS.threads || 1 });
+        br = SH.breakMoves(BS, board, { left: m.hold.left, started: m.hold.started }, arrivals, cfg.profile.breakDepth);
+      }
+      want = br && br.depth ? br.moves : {};
       bot.preferRank = function (c, i) {
         if (want[c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[1] : c.kind]) return 0;
-        var t = i >= 0 && this._nat ? this._nat.breakAt(i) : -1;
+        var t = cfg.profile.breakFirst && i >= 0 && this._nat ? this._nat.breakAt(i) : -1;
+        if (tall && c.resolved && (c.resolved.chainLength || (c.resolved.comboSizes && c.resolved.comboSizes.length))) t = t >= 0 ? Math.min(t, CLEAR_RANK) : CLEAR_RANK;
         return t >= 0 ? t : Infinity;
       };
     }
