@@ -13,8 +13,10 @@ for e in engine pa; do
   clang $FLAGS $e.c -o $e.wasm
   clang $FLAGS $MT $e.c -o $e-mt.wasm
 done
-clang $FLAGS -msimd128 bit.c -o bit.wasm
-clang $FLAGS $MT -msimd128 -Wl,--initial-memory=1073741824 bit.c -o bit-mt.wasm
+# bit.profdata: the branch profile pgo.sh records; the code it lays out is the same code.
+PGO="-fprofile-instr-use=bit.profdata -Wno-profile-instr-out-of-date -Wno-profile-instr-unprofiled"
+clang $FLAGS $PGO -msimd128 bit.c -o bit.wasm
+clang $FLAGS $MT $PGO -msimd128 -Wl,--initial-memory=1073741824 bit.c -o bit-mt.wasm
 h() { sha256sum "$1" | cut -c1-64; }
-for f in engine.c pa.c bit.c bot.c libc.h memory.h search.h engine.wasm engine-mt.wasm pa.wasm pa-mt.wasm bit.wasm bit-mt.wasm; do printf '%s %s\n' "$f" "$(h $f)"; done > BUILT
+for f in engine.c pa.c bit.c bot.c bit.profdata libc.h memory.h search.h engine.wasm engine-mt.wasm pa.wasm pa-mt.wasm bit.wasm bit-mt.wasm; do printf '%s %s\n' "$f" "$(h $f)"; done > BUILT
 cat BUILT
