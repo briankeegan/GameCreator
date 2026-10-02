@@ -929,7 +929,6 @@ static Dec mkSwap(int sr, int sc, int via, int mode, int alive) { Dec d = mk(K_S
 static Dec mkHold(int via, int mode, int alive, int hasPark, int pr, int pc) { Dec d = mk(K_HOLD, via, mode, alive); d.hasPark = hasPark; d.pr = pr; d.pc = pc; return d; }
 
 static int raiseMode(const int32_t *base, int poolBreak) {
-  (void)base;
   if (TFLAG(TF_RAISE)) return (int)BIN[IN_T + 3];
   int topped = BIN[IN_TOPPED] != 0;
   if (!opt(O_ALLOWRAISE) || topped) { BT->opening = 0; return 0; }
@@ -940,6 +939,7 @@ static int raiseMode(const int32_t *base, int poolBreak) {
   BT->wantRows = rows;
   if (BT->opening && (BIN[IN_INCOMING] || !fits)) BT->opening = 0;
   if (!fits) return 0;
+  if (!BT->opening && materialRows(base) >= 6) return 0;
   int stillComing = BIN[IN_INCOMING] > 0 || BIN[IN_FALLING];
   if (poolBreak && !stillComing) return 0;
   return BT->opening ? 1 : 2;
