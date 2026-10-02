@@ -155,6 +155,7 @@ function gridTop(b) {
 }
 var BREAK_BUDGET = 2500;   // steps past the first level: the search stops there
 var LINEUP_BUDGET = 400;   // pairs of swaps tried for a lineup
+var LINEUP_DEPTH = 8, LINEUP_BEAM = 8;   // the aimed lineup's swaps and lines kept
 // LINING UP: while a broken slab pops (popLeft, frames) its new row cannot
 // move, but what is under it can; once the pop ends the row matches what it
 // rests on, and a match there touches the slab again. A first swap after
@@ -164,8 +165,51 @@ function popLeft(board) {
   board.panels.forEach(function (row) { if (row) for (var c = 1; c <= 6; c++) { var p = row[c]; if (p && p.isGarbage && p.state === 'matched' && p.timer > t) t = p.timer; } });
   return t;
 }
-function breakMoves(S, board, hold, arrivals, maxDepth, wait) {
+// The colours the row a popping slab converts has dealt, per column (0
+// where none), from the board as the game shows it; null when none is known.
+function converting(board) {
+  for (var r = 1; r < board.panels.length; r++) {
+    var row = board.panels[r], out = [0], any = false;
+    if (!row) continue;
+    for (var c = 1; c <= 6; c++) { var p = row[c]; if (p && p.isGarbage && p.state === 'matched' && p.color >= 1 && p.color <= 8) { out[c] = p.color; any = true; } else out[c] = 0; }
+    if (any) return out;
+  }
+  return null;
+}
+// How far a grid is toward lining up with `want`: per column, its top panel
+// below the lowest garbage of that colour, and the one under it too.
+var PAIR = 5;
+function pairs(grid, want) {
+  var G = grid.length, r, c, s = 0;
+  for (r = 1; r < grid.length && G === grid.length; r++) if (grid[r]) for (c = 1; c <= 6; c++) if (grid[r][c] < 0) { G = r; break; }
+  for (c = 1; c <= 6; c++) {
+    if (!want[c]) continue;
+    var t = 0;
+    for (r = 1; r < G; r++) if (grid[r] && grid[r][c] > 0) t = r;
+    if (t && grid[t][c] === want[c]) s += t > 1 && grid[t - 1][c] === want[c] ? PAIR : 1;
+  }
+  return s;
+}
+// How near the row under the lowest garbage is to a match touching it: per
+// column resting on the garbage, a pair standing under it and a pair beside it
+// in that row; less the gap between the garbage and every column's top.
+var TOUCH_DEPTH = 6, TOUCH_BEAM = 8;
+function touchScore(grid) {
+  var G = 0, r, c, top = [0], s = 0;
+  for (r = 1; r < grid.length && !G; r++) if (grid[r]) for (c = 1; c <= 6; c++) if (grid[r][c] < 0) { G = r; break; }
+  if (!G) return 0;
+  for (c = 1; c <= 6; c++) { var t = 0; for (r = 1; r < G; r++) if (grid[r] && grid[r][c] > 0) t = r; top[c] = t; s -= G - 1 - t; }
+  var u = G - 1;
+  for (c = 1; c <= 6; c++) {
+    if (top[c] !== u) continue;
+    if (u > 1 && grid[u - 1][c] === grid[u][c]) s += 4;
+    if (c < 6 && top[c + 1] === u && grid[u][c + 1] === grid[u][c]) s += 3;
+  }
+  return s;
+}
+function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
   maxDepth = maxDepth || 3;
+  deadline = deadline || Infinity;
   var g = lowestGarbageRow(board);
   if (!g) return { depth: 0, moves: {} };
   S.reset();
@@ -181,6 +225,32 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait) {
   var firsts = swapsOf(root).map(function (m) { return { key: m[0] + ',' + m[1], m: m }; }), found = {}, any = false;
   firsts.forEach(function (f) { f.n = S.advance(root, 'swap', f.m, 0); if (breaks(f.n)) { found[f.key] = true; any = true; } });
   if (any) return { depth: 1, moves: found };
+  // GARBAGE RESTING, NOTHING POPPING: a break sooner rather than later. A
+  // beam of lines up to TOUCH_DEPTH swaps, kept by how near the row under the
+  // garbage is to a match (touchScore), for as long as `deadline` allows. A
+  // line is played on the engine with the stack rising as it does, so one the
+  // board would die on before its break is never offered.
+  if (!(wait > 0)) {
+    var tl = firsts.filter(function (f) { return f.n && !f.n.dead; }).map(function (f) { return { key: f.key, n: f.n, path: [f.m] }; }), tpath = null;
+    for (var td = 2; td <= TOUCH_DEPTH && tl.length && !tpath && Date.now() < deadline; td++) {
+      tl.forEach(function (x) { x.s = touchScore(x.n.b.grid); });
+      tl.sort(function (a, b) { return b.s - a.s; });
+      tl = tl.slice(0, TOUCH_BEAM);
+      var tn = [];
+      for (i = 0; i < tl.length && !tpath && Date.now() < deadline; i++) {
+        var tm = swapsOf(tl[i].n);
+        for (j = 0; j < tm.length && Date.now() < deadline; j++) {
+          var t3 = S.advance(tl[i].n, 'swap', tm[j], 0);
+          if (!t3 || t3.dead) continue;
+          var tp = tl[i].path.concat([tm[j]]);
+          if (breaks(t3)) { found[tl[i].key] = true; any = true; tpath = tp; break; }
+          tn.push({ key: tl[i].key, n: t3, path: tp });
+        }
+      }
+      tl = tn;
+    }
+    if (any) return { depth: 1, moves: found, touch: true, path: tpath };
+  }
   if (wait > 0 && !breaks(S.advance(root, 'long', null, wait))) {
     // till the pop is over, from wherever a line has got to
     var end = root.t + wait;
@@ -200,6 +270,34 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait) {
       }
     }
     if (any) return { depth: 1, moves: found, lineup: 2 };
+    // Further, aimed: the colours the row turns into are known from the
+    // pop's start, and two of a column's colour on top of that column make
+    // three with the panel landing there, under the slab. A beam of lines up
+    // to LINEUP_DEPTH swaps, kept by how many such pairs they stand up, for as
+    // long as `deadline` (ms since the epoch) allows; the line found is the
+    // path, every swap of it, for the frame loop to play on.
+    var want = converting(board);
+    if (want) {
+      var level = firsts.filter(function (f) { return f.n && !f.n.dead && f.n.t < end; }).map(function (f) { return { key: f.key, n: f.n, path: [f.m] }; }), path = null;
+      for (var dpt = 2; dpt <= LINEUP_DEPTH && level.length && !path && Date.now() < deadline; dpt++) {
+        level.forEach(function (x) { x.s = pairs(x.n.b.grid, want); });
+        level.sort(function (a, b) { return b.s - a.s; });
+        level = level.slice(0, LINEUP_BEAM);
+        var next = [];
+        for (i = 0; i < level.length && !path && Date.now() < deadline; i++) {
+          var ms2 = swapsOf(level[i].n);
+          for (j = 0; j < ms2.length && Date.now() < deadline; j++) {
+            var n3 = S.advance(level[i].n, 'swap', ms2[j], 0);
+            if (!n3 || n3.dead || n3.t >= end) continue;
+            var sc = pairs(n3.b.grid, want), p3 = level[i].path.concat([ms2[j]]);
+            if (sc >= PAIR && lined(n3)) { found[level[i].key] = true; any = true; path = p3; break; }
+            next.push({ key: level[i].key, n: n3, s: sc, path: p3 });
+          }
+        }
+        level = next;
+      }
+      if (any) return { depth: 1, moves: found, lineup: 'aimed', path: path };
+    }
     // failing that, a first swap leaving a break one swap away when the pop ends
     for (i = 0; i < firsts.length && tries < 2 * LINEUP_BUDGET; i++) {
       var r = firsts[i].n, w = r && !r.dead ? S.advance(r, 'long', null, Math.max(1, end - r.t)) : null;
