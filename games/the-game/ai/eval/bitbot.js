@@ -1790,6 +1790,20 @@
         // undo it. Carried rather than consulted here: the search enumerates the
         // options every route reads, so excluding it there covers all of them.
         t.avoidSwap = this._recentSwaps;
+        // AND, TOPPED OUT, ROUTES THROUGH A CLEAR: the lock holds only while
+        // something resolves, so a route to a break longer than the lock buys
+        // time on the way. Only the route search asks for it; the features'
+        // count of what a board offers does not.
+        t.throughClears = !!info.toppedOut;
+        // AND THE LOCK THOSE ROUTES RUN ON, in planFits' own arithmetic, so a route
+        // that cannot be played in time is never built: the first run that can take
+        // health, extended by each clear to its resolve (FLASH + FACE + POP * n).
+        if (info.toppedOut) {
+            var fr0 = PanelEngine().LEVELS[9].frames;
+            t.lock = Math.max(0, (info.drainRun || 1) - 1);
+            t.resolveBase = 5 + fr0.FLASH + fr0.FACE;
+            t.resolvePop = fr0.POP;
+        }
         return t;
     };
 
@@ -3582,18 +3596,34 @@
     // dig whose clears each land inside the last one's lock never spends any. Each step
     // is the walk to it and a frame to decide; its clear starts 5 runs after the swap is
     // queued (the swap's 4 and the match); a break is what the plan was for.
+    // EACH PREFIX ONCE. The routes a search hands back share their opening swaps, so
+    // the board, clock and lock after a prefix are kept on the base board of this
+    // decision and every route that starts the same way starts from there.
     BitBot.prototype.planFits = function (swaps, base, info) {
-        var st = bit.copyState(base), at = [info.cursorRow, info.cursorCol];
-        var t = 0, lock = Math.max(0, (info.drainRun || 1) - 1), eng = PanelEngine();
+        var memo = base._fits || (base._fits = new Map());
+        var st = base, at = [info.cursorRow, info.cursorCol];
+        var t = 0, lock = Math.max(0, (info.drainRun || 1) - 1), eng = PanelEngine(), key = '';
         for (var i = 0; i < swaps.length; i++) {
-            t += travel.cost(at[0], at[1], swaps[i][0], swaps[i][1]) + (i ? 1 : 0);
-            if (t > lock) return false;
-            if (!bit.swapMasks(st, swaps[i][0], swaps[i][1])) return false;
-            var r = bit.resolveFromMasks(st, true);
-            if (r.scope === 'garbage-broke') return true;
-            if (r.scope !== 'ok' || !r.settled) return false;
-            if (r.total > 0) lock = Math.max(lock, t + 5 + BF.resolveFramesOf(eng, r.total, 0));
-            st = r.settled;
+            key += swaps[i][0] + ',' + swaps[i][1] + ';';
+            var hit = memo.get(key);
+            if (hit === undefined) {
+                var t2 = t + travel.cost(at[0], at[1], swaps[i][0], swaps[i][1]) + (i ? 1 : 0);
+                if (t2 > lock) hit = false;
+                else {
+                    var s2 = bit.copyState(st);
+                    if (!bit.swapMasks(s2, swaps[i][0], swaps[i][1])) hit = false;
+                    else {
+                        var r = bit.resolveFromMasks(s2, true);
+                        if (r.scope === 'garbage-broke') hit = true;
+                        else if (r.scope !== 'ok' || !r.settled) hit = false;
+                        else hit = { st: r.settled, t: t2,
+                                     lock: r.total > 0 ? Math.max(lock, t2 + 5 + BF.resolveFramesOf(eng, r.total, 0)) : lock };
+                    }
+                }
+                memo.set(key, hit);
+            }
+            if (hit === true || hit === false) return hit;
+            st = hit.st; t = hit.t; lock = hit.lock;
             at = swaps[i];
         }
         return true;

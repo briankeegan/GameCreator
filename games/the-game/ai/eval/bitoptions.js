@@ -325,7 +325,7 @@
     // THE FREEZE ONE SWAP CAN BUY, BY BOARD, the same way: bestOneSwapStop is a pure
     // function of the masks and of stopPrice, which reads only whether the board is
     // topped out -- timing.stopKey.
-    var STOPS = new Map(), STOPKEY = '';
+    var STOPS = new Map(), STOPKEY = '', THROUGH = false, LOCK = Infinity, RBASE = 0, RPOP = 0;
     function landStopOf(st) {
         if (!STOPKEY) return bit.bestOneSwapStop(st, stopPrice);
         var key = STOPKEY + boardKey(st), hit = STOPS.get(key);
@@ -408,6 +408,10 @@
         var DEADLINE = (timing && timing.deadline) || 0;
         stopPrice = (timing && timing.stopPrice) || null;
         STOPKEY = (timing && timing.stopKey) || '';
+        THROUGH = !!(timing && timing.throughClears);
+        LOCK = (THROUGH && timing.lock !== undefined) ? timing.lock : Infinity;
+        RBASE = (timing && timing.resolveBase) || 0;
+        RPOP = (timing && timing.resolvePop) || 0;
         PREPARE = !!(timing && timing.prepare);
         // ONE ROW OF CEILING, AT THE RATE THIS FILE PAYS FOR BEING NEAR A THING.
         // Breaking a row of slab hands the board back a row, which is FPR frames;
@@ -934,7 +938,7 @@
             BASESAVE = (DIG && BASEDIG > 0) ? savesOfRaw(state0) : 0;
             // The root has no reach mask: ply one stays exhaustive so an immediate
             // clear is never missed.
-            var frontier = [{ st: state0, chain: [], from: cursor, spent: 0, reach: null, dig: 0 }], ply;
+            var frontier = [{ st: state0, chain: [], from: cursor, spent: 0, reach: null, dig: 0, lock: LOCK }], ply;
             // depth LEVELS, not depth-1. The first level's cashes belong to `now`
             // (they are one swap from the board as it stands) and are skipped here;
             // the levels after it are what this exists to find.
@@ -973,6 +977,9 @@
                         var res = settleOf(state);
                         bit.swapMasks(state, sw[0], sw[1]);
                         var cost = node.spent + travel.cost(node.from[0], node.from[1], sw[0], sw[1]);
+                        // planFits' clock: the walk plus a frame for each swap after the first.
+                        var tPlan = cost + ply - 1;
+                        if (tPlan > node.lock) continue;
                         var broke = res.scope === 'garbage-broke';
                         if (res.scope !== 'ok' && !broke) continue;
                         // AND NOT THE UNDO, when it is the move that would be PLAYED.
@@ -985,7 +992,9 @@
                             // set up first -- a cash with an empty chain is a depth-1
                             // option and `now` already holds it, so pushing it here
                             // would list every immediate clear twice.
-                            if (node.chain.length) {
+                            // A route that already fired a clear to buy time is a route to a
+                            // break: it is an option when it breaks, and a node until then.
+                            if (node.chain.length && (broke || !(node.cleared > 0))) {
                                 var opt = optionOf(node.chain.concat([sw]), cost, res);
                                 opt.breaks = broke;
                                 // HORIZONTAL AND VERTICAL ARE NOT THE SAME MOVE, AND THE DIFFERENCE IS
@@ -1043,16 +1052,17 @@
                                 next.push(opt);
                             }
                             // TOPPED OUT, A CLEAR THAT DOES NOT BREAK IS HOW THE ROUTE BUYS
-                            // TIME. The lock holds only while something resolves, so a route
+                            // TIME (timing.throughClears). The lock holds only while something resolves, so a route
                             // to a break longer than the lock has to fire a clear on the way
                             // -- and the board that clear settles into is built on like any
                             // setup. `cleared` carries the panels spent getting there.
-                            if (!broke && STOPKEY === 'top' && res.settled) {
+                            if (!broke && THROUGH && res.settled) {
                                 var rrc = DIG ? reachOf(res.settled) : null;
                                 born.push({ st: res.settled, chain: node.chain.concat([sw]),
                                             from: sw, spent: cost,
                                             cleared: (node.cleared || 0) + (res.total || 0),
-                                            reach: rrc && rrc.mask, dig: rrc ? rrc.dig : 0 });
+                                            reach: rrc && rrc.mask, dig: rrc ? rrc.dig : 0,
+                                            lock: Math.max(node.lock, tPlan + RBASE + RPOP * (res.total || 0)) });
                             }
                             continue;
                         }
@@ -1323,7 +1333,7 @@
                             }
                             born.push({ st: res.settled, chain: seq,
                                         from: sw, spent: cost, cleared: node.cleared || 0,
-                                        reach: rr && rr.mask, dig: rr ? rr.dig : 0 });
+                                        reach: rr && rr.mask, dig: rr ? rr.dig : 0, lock: node.lock });
                         }
                     }
                 }
