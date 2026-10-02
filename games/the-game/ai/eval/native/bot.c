@@ -28,7 +28,7 @@ enum { C_REFUSEDDEADLY, C_ALLDEAD, C_REFUSEDRETURN, C_REFUSEDTOOSLOW, C_PLANNED,
        C_BROKESPENDING, C_WAITEDFORDRAIN, C_KEPTHEALTH, C_DECISIONS, C_BYMODE, NCOUNT = C_BYMODE + 3 };
 
 typedef struct { int scope, chain, total, rounds, biggest, broke, converts, voidAfter, garbage; } Rs;
-typedef struct { int kind, sr, sc, moveFrames, future; const int32_t *masks; Rs res; } Cand;
+struct Cand { int kind, sr, sc, moveFrames, future; const int32_t *masks; Rs res; };
 typedef struct { int N; uint32_t occ[WMAX], garb[WMAX], col[NCOL][WMAX]; } Sig;
 typedef struct { int has, n; int32_t mv[2 * MAXD]; double frames, gain, rate, startedAt; int spend, blind; } Route;
 typedef struct {
@@ -40,7 +40,7 @@ typedef struct {
   double counts[NCOUNT];
 } Bot;
 
-static int nScore, nLook, nSave, rScore, rMain, rLook, rSave, rCand;
+static LOCAL int nScore, nLook, nSave, rScore, rMain, rLook, rSave, rCand;
 #define MAXBOT 2048
 static Bot BOTS[MAXBOT];
 static int nBots = 0;
@@ -240,8 +240,8 @@ static Ahead lookahead(const int32_t *st0, double horizon) {
   return out;
 }
 
-static double PSCR[128];
-static int priceTopped = -1;
+static LOCAL double PSCR[128];
+static LOCAL int priceTopped = -1;
 __attribute__((export_name("bit_price_dirty"))) void bit_price_dirty(void) { priceTopped = -1; }
 static void timingParams(double *P, double fpr, double deadline, double stopTime, int toppedOut) {
   for (int i = 0; i < 128; i++) P[i] = 0;
@@ -288,12 +288,13 @@ static double score(const int32_t *st, int moveFrames, const Rs *res) {
   double lands = framesToDeathS(afterStop, tallestBoard(st), fpr);
   timingParams(PSCR, fpr, lands, afterStop, topped);
   PSCR[4] = 1; PSCR[11] = 2;
-  OD = ODSCR; LD = LANDSCR;
+  double *keepOD = OD; int32_t *keepLD = LD;
+  OD = ODS; LD = LDS;
   if (optionsRun(st, PSCR, 0, 0)) botFailed = 1;
-  OD = ODATA; LD = LANDS;
+  OD = keepOD; LD = keepLD;
   rScore += nRes - r0;
-  int nNow = (int)ODSCR[1], nNext = (int)ODSCR[2];
-  double *base = ODSCR + 64 + 4 * REC;
+  int nNow = (int)ODS[1], nNext = (int)ODS[2];
+  double *base = ODS + 64 + 4 * REC;
   double f[20], bump, spread, tallest;
   surface(st, &bump, &spread, &tallest);
   f[0] = share(bump, 20); f[1] = share(spread, 7); f[2] = share(tallest, 12);
@@ -1018,9 +1019,11 @@ static void routeShift(Route *rt) {
 }
 
 static Cand *ALLOWED[MAXCAND], *TMPC[MAXCAND], *RANKED[MAXCAND], *SPARE[MAXCAND];
+static void scoreTask(int i) { Cand *c = pool.cands[i]; pool.out[i] = score(c->masks, c->moveFrames, &c->res); }
 static void scoreAll(Cand **cs, int n, double *out, int idle, const int32_t *base) {
   if (idle) { for (int i = 0; i < n; i++) out[i] = idleScore(cs[i], base); return; }
-  for (int i = 0; i < n; i++) out[i] = score(cs[i]->masks, cs[i]->moveFrames, &cs[i]->res);
+  pool.cands = cs; pool.out = out;
+  parRun(1, n);
 }
 typedef struct { Cand *c; double cheap; } Cheap;
 
@@ -1644,6 +1647,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   botFailed = 0;
   clearRaiseFrames = 0;
   memoRoom();
+  nSettle = nLandR = nFireR = nSavesR = nAnyR = 0;
   nRes = 0; nOptRuns = 0; nOptDepth = 0; nScore = 0; nLook = 0; nSave = 0; rScore = rMain = rLook = rSave = rCand = 0;
   Dec d = onePlan(waitForDrain(decideRuled()));
   if (d.kind == K_SWAP && d.hasMove) {
@@ -1666,7 +1670,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   for (int i = 0; i < nPool; i++) if (POOL[i].kind == K_SWAP && POOL[i].res.broke) { if (!pb) { o[17] = POOL[i].sr; o[18] = POOL[i].sc; } pb++; }
   o[16] = pb;
   o[19] = optsBuilt;
-  o[100] = nRes; o[101] = rMain; o[102] = nScore; o[103] = rScore; o[104] = nLook; o[105] = rLook; o[106] = nPool;
+  o[100] = nRes; o[101] = rMain; o[102] = nSettle; o[103] = nLandR; o[104] = nFireR; o[105] = nSavesR; o[106] = nAnyR;
   if (optsBuilt) {
     int lines = 0;
     for (int i = 0; i < nPile; i++) {

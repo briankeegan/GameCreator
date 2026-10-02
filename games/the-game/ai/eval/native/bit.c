@@ -1,5 +1,25 @@
 #include "libc.h"
 typedef unsigned long long u64;
+#ifdef THREADS
+#define LOCAL _Thread_local
+#else
+#define LOCAL
+#endif
+extern unsigned char __heap_base;
+static unsigned long heapTop;
+static int32_t heapLock;
+static void *grab(unsigned long n) {
+  while (__atomic_exchange_n(&heapLock, 1, __ATOMIC_ACQUIRE)) {}
+  if (!heapTop) heapTop = ((unsigned long)&__heap_base + 15) & ~15ul;
+  n = (n + 15) & ~15ul;
+  unsigned long at = heapTop, end = at + n, have = __builtin_wasm_memory_size(0) * 65536ul;
+  void *r = (void *)at;
+  if (end < at) r = 0;
+  else if (end > have && __builtin_wasm_memory_grow(0, (end - have + 65535) / 65536) == (unsigned long)-1) r = 0;
+  else heapTop = end;
+  __atomic_store_n(&heapLock, 0, __ATOMIC_RELEASE);
+  return r;
+}
 
 #define WMAX 8
 #define NCOL 13
@@ -36,7 +56,9 @@ typedef struct {
   uint32_t slab[MAXSLAB][WMAX];
   int32_t locked[MAXSLAB], air[MAXSLAB], falling[MAXSLAB];
 } R;
-static R S;
+
+static int nSettle, nLandR, nFireR, nSavesR, nAnyR;
+static LOCAL R S;
 
 static void restingOf(R *s) {
   for (int c = 1; c <= s->W; c++) {
@@ -52,25 +74,32 @@ static void restingOf(R *s) {
   }
 }
 static void slabsThatFall(R *s) {
+  int n = s->nslab;
+  if (!n) return;
+  int nu[MAXSLAB], uo[MAXSLAB][WMAX], ground[MAXSLAB];
+  for (int si = 0; si < n; si++) {
+    s->falling[si] = 0; nu[si] = 0; ground[si] = 0;
+    if (s->locked[si]) continue;
+    for (int c = 1; c <= s->W; c++) {
+      uint32_t v = s->slab[si][c];
+      if (!v) continue;
+      uint32_t lowBit = lowb(v);
+      if (lowBit == 1) { ground[si] = 1; break; }
+      uint32_t under = lowBit >> 1;
+      if (!(s->occ[c] & under)) continue;
+      int owner = -1;
+      for (int sj = 0; sj < n; sj++) if (s->slab[sj][c] & under) owner = sj;
+      if (owner < 0) { ground[si] = 1; break; }
+      uo[si][nu[si]++] = owner;
+    }
+  }
   int moved = 1, pass = 0;
-  for (int i = 0; i < s->nslab; i++) s->falling[i] = 0;
-  while (moved && pass++ <= s->nslab + 1) {
+  while (moved && pass++ <= n + 1) {
     moved = 0;
-    for (int si = 0; si < s->nslab; si++) {
-      if (s->falling[si] || s->locked[si]) continue;
+    for (int si = 0; si < n; si++) {
+      if (s->falling[si] || s->locked[si] || ground[si]) continue;
       int held = 0;
-      for (int c = 1; c <= s->W && !held; c++) {
-        uint32_t v = s->slab[si][c];
-        if (!v) continue;
-        uint32_t lowBit = lowb(v);
-        if (lowBit == 1) { held = 1; break; }
-        uint32_t under = lowBit >> 1;
-        if (!(s->occ[c] & under)) continue;
-        int owner = -1;
-        for (int sj = 0; sj < s->nslab; sj++) if (s->slab[sj][c] & under) owner = sj;
-        if (owner >= 0 && s->falling[owner]) continue;
-        held = 1;
-      }
+      for (int j = 0; j < nu[si]; j++) if (!s->falling[uo[si][j]]) { held = 1; break; }
       if (!held) { s->falling[si] = 1; moved = 1; }
     }
   }
@@ -141,13 +170,13 @@ static void save(R *s, int32_t *o) {
 typedef struct { uint32_t m[WMAX]; int until, swap; } Hold;
 #define MAXHOLD 16
 #define NEVER 0x3fffffff
-static Hold HOLDS[MAXHOLD]; static int nHolds;
+static LOCAL Hold HOLDS[MAXHOLD]; static LOCAL int nHolds;
 static uint32_t heldAt(int c) { uint32_t h = 0; for (int i = 0; i < nHolds; i++) h |= HOLDS[i].m[c]; return h; }
 static int nextRelease(void) { int u = NEVER; for (int i = 0; i < nHolds; i++) if (HOLDS[i].until < u) u = HOLDS[i].until; return u; }
 static int resolveT(const int32_t *st, int32_t *r, int wantSettled, const Timed *tm);
 static void resolveM(const int32_t *st, int32_t *r, int wantSettled);
 static void resolve(const int32_t *st, int32_t *r, int wantSettled) { resolveM(st, r, wantSettled); }
-static int tmFailed = 0;
+static LOCAL int tmFailed = 0;
 static void pushHold(const uint32_t *m, int until, int swap) {
   if (nHolds >= MAXHOLD) { tmFailed = 1; return; }
   Hold *h = &HOLDS[nHolds++];
@@ -162,7 +191,7 @@ static void hoveringOf(R *s, uint32_t *hv) {
   }
   hv[0] = 0; hv[s->W + 1] = 0;
 }
-static int nRes;
+static LOCAL int nRes;
 static int resolveT(const int32_t *st, int32_t *r, int wantSettled, const Timed *tm) {
   nRes++;
   for (int i = 0; i < R_INTS; i++) r[i] = 0;
@@ -171,7 +200,8 @@ static int resolveT(const int32_t *st, int32_t *r, int wantSettled, const Timed 
   load(s, st);
   int W = s->W, H = s->H, N = s->N;
   int counter = 0, rounds = 0, total = 0, guard = 0, LIMIT = W * H * H, T = 0, moved = 0;
-  uint32_t B[NCOL][WMAX], k[WMAX], freeM[WMAX];
+  uint32_t B[NCOL][WMAX], k[WMAX], freeM[WMAX], prevRest[WMAX], prevInert[WMAX];
+  int quietRest = 0;
   int32_t inGroup[MAXSLAB];
   int sweepAt = 0, hoverUntil = 0, made = 1, refused = 0;
   nHolds = 0;
@@ -222,6 +252,11 @@ static int resolveT(const int32_t *st, int32_t *r, int wantSettled, const Timed 
       if (!made && T >= tm->at) { MAKESWAP(); if (refused) continue; }
     }
     restingOf(s);
+    if (!tm && quietRest) {
+      int same = 1;
+      for (c = 1; c <= W && same; c++) if (s->rest[c] != prevRest[c] || s->inert[c] != prevInert[c]) same = 0;
+      if (same) goto noMatch;
+    }
     for (c = 1; c <= W; c++) freeM[c] = s->rest[c] & ~s->popping[c] & ~s->inert[c] & (tm ? ~heldAt(c) : ~0u);
     for (a = 1; a <= N; a++) for (c = 1; c <= W; c++) B[a][c] = s->colour[a][c] & freeM[c];
     for (c = 0; c < WMAX; c++) k[c] = 0;
@@ -237,6 +272,9 @@ static int resolveT(const int32_t *st, int32_t *r, int wantSettled, const Timed 
     }
     for (c = 1; c <= W; c++) { if (k[c]) any = 1; if (k[c] & s->chaining[c]) link = 1; }
     if (tm) for (c = 1; c <= W; c++) s->chaining[c] &= ~(s->rest[c] & ~k[c] & ~s->popping[c] & ~s->inert[c] & ~heldAt(c));
+    if (!any) { quietRest = 1; for (c = 1; c <= W; c++) { prevRest[c] = s->rest[c]; prevInert[c] = s->inert[c]; } }
+    else quietRest = 0;
+  noMatch:
     if (any) {
       rounds++;
       if (link) counter = counter == 0 ? 2 : counter + 1;
@@ -340,6 +378,7 @@ static int resolveT(const int32_t *st, int32_t *r, int wantSettled, const Timed 
       s->popping[c] = 0;
     }
     if (swept) {
+      quietRest = 0;
       if (tm) {
         hoverUntil = T + tm->HOVER;
         if (!made && tm->at <= hoverUntil && tm->at < nextRelease() - 1) { if (tm->at > T) T = tm->at; MAKESWAP(); }
@@ -407,6 +446,7 @@ __attribute__((export_name("bit_legal"))) int32_t bit_legal(void) { return legal
 
 static int32_t SW[2 * 128], RR[R_INTS + ST_INTS];
 __attribute__((export_name("bit_scan"))) int32_t bit_scan(void) {
+  memoRoom();
   int n = legal(IN, SW);
   for (int i = 0; i < n; i++) {
     int r = SW[2 * i], c = SW[2 * i + 1];
@@ -440,7 +480,7 @@ static int atRest(const int32_t *st) {
   }
   return 1;
 }
-static int sccR, sccC, sccL, sccRt;
+static LOCAL int sccR, sccC, sccL, sccRt;
 static int sccAt(const int32_t *st, int rr, int cc) {
   if (rr < 1 || rr > st[O_H] || cc < 1 || cc > st[O_W]) return -1;
   if (rr == sccR && cc == sccC) return sccRt;
@@ -490,8 +530,8 @@ static int otLine(const int32_t *st, int r, int c, int a) {
   for (k = r + 1; k <= st[O_H] && otAt(st, k, c) == a; k++) run++;
   return run >= 3;
 }
-static ST SLOW;
-static int32_t SWB[2 * 128], RB[R_INTS + ST_INTS];
+static LOCAL ST SLOW;
+static LOCAL int32_t SWB[2 * 128], RB[R_INTS + ST_INTS];
 static int anyOneSwapClear(const int32_t *st) {
   int n = legal(st, SWB), haveSlow = 0;
   for (int i = 0; i < n; i++) {
@@ -501,7 +541,7 @@ static int anyOneSwapClear(const int32_t *st) {
     if (!left || !right) {
       if (!haveSlow) { stcpy(SLOW, st); haveSlow = 1; }
       if (!swapIn(SLOW, r, c)) continue;
-      resolve(SLOW, RB, 0);
+      nFireR++, resolve(SLOW, RB, 0);
       swapIn(SLOW, r, c);
       if (RB[R_TOTAL] > 0 || RB[R_SCOPE] == SC_BROKE) return 1;
       continue;
@@ -542,7 +582,9 @@ static int reachOf(const int32_t *st, uint32_t *reach) {
   return dig;
 }
 typedef struct { double tall, bumps, excess, mat, low, high, spread, slabRowGap; } Shape;
-static void shapeOf(const int32_t *st, Shape *sh) {
+static void shapeOfG(const int32_t *st, Shape *sh, int withGap);
+static void shapeOf(const int32_t *st, Shape *sh) { shapeOfG(st, sh, 1); }
+static void shapeOfG(const int32_t *st, Shape *sh, int withGap) {
   int W = st[O_W], c, h[WMAX], tall = 0, bumps = 0, mx = 0, low;
   double sum = 0;
   for (c = 1; c <= W; c++) {
@@ -560,7 +602,7 @@ static void shapeOf(const int32_t *st, Shape *sh) {
   for (c = 2; c <= W; c++) if (h[c] < low) low = h[c];
   double gap = 0;
   int floorRow = 0;
-  for (c = 1; c <= W; c++) {
+  for (c = 1; withGap && c <= W; c++) {
     uint32_t gm = U(st, GARB + c);
     if (!gm) continue;
     uint32_t lowBit = lowb(gm);
@@ -659,7 +701,8 @@ static u64 hashOf(const int32_t *st) {
 }
 #define TCAP (1 << 17)
 typedef struct { u64 key; double v; } Slot;
-typedef struct { Slot s[TCAP]; int n; } Table;
+typedef struct { Slot *s; int n; } Table;
+static Slot TABLE_MAIN[4][TCAP];
 static int tget(Table *t, u64 k, double *v) {
   uint32_t i = (uint32_t)(k ^ (k >> 32)) & (TCAP - 1);
   while (t->s[i].key) { if (t->s[i].key == k) { *v = t->s[i].v; return 1; } i = (i + 1) & (TCAP - 1); }
@@ -671,58 +714,166 @@ static void tput(Table *t, u64 k, double v) {
   while (t->s[i].key) { if (t->s[i].key == k) { t->s[i].v = v; return; } i = (i + 1) & (TCAP - 1); }
   t->s[i].key = k; t->s[i].v = v; t->n++;
 }
-static Table SAVES, ANYB, STOPS_T, FIRE;
+static LOCAL Table SAVES, ANYB, STOPS_T, FIRE;
+static void threadInit(void);
 
-#define MCAP (1 << 19)
 #define ARENA_INTS (40 << 20)
-typedef struct { u64 key; int32_t at, settled; } MSlot;
-static MSlot MEMO[MCAP];
-static int32_t ARENA[ARENA_INTS];
-static int arenaN = 0, memoN = 0;
-static int failed = 0;
-static void memoClear(void) { for (int i = 0; i < MCAP; i++) MEMO[i].key = 0; memoN = 0; arenaN = 0; }
-static void memoRoom(void) { if (arenaN > ARENA_INTS / 2 || memoN > MCAP / 2) memoClear(); }
-static MSlot *memoFind(u64 k) {
-  uint32_t i = (uint32_t)(k ^ (k >> 32)) & (MCAP - 1);
-  while (MEMO[i].key) { if (MEMO[i].key == k) return &MEMO[i]; i = (i + 1) & (MCAP - 1); }
-  return &MEMO[i];
-}
-static int32_t *memoStore(MSlot *sl, u64 k, const int32_t *r, int withSettled) {
-  int len = R_INTS + (withSettled && r[R_SCOPE] == SC_OK ? stlen(r + R_INTS) : 0);
-  if (arenaN + len > ARENA_INTS || memoN >= MCAP * 3 / 4) return 0;
-  int32_t *at = ARENA + arenaN;
-  __builtin_memcpy(at, r, (unsigned long)len * 4);
-  if (!sl->key) memoN++;
-  sl->key = k; sl->at = arenaN; sl->settled = withSettled || r[R_SCOPE] != SC_OK;
-  arenaN += len;
-  return at;
-}
-#define NOMEMO 0
-static void resolveRaw(const int32_t *st, int32_t *r, int wantSettled) { resolveT(st, r, wantSettled, 0); }
-static void resolveM(const int32_t *st, int32_t *r, int wantSettled) {
-  if (NOMEMO) { resolveRaw(st, r, wantSettled); return; }
-  if (st[O_BAD]) { resolveRaw(st, r, wantSettled); return; }
-  u64 k = hashOf(st);
-  MSlot *sl = memoFind(k);
-  if (sl->key && (sl->settled || !wantSettled)) {
-    const int32_t *e = ARENA + sl->at;
-    __builtin_memcpy(r, e, R_INTS * 4);
-    if (wantSettled && r[R_SCOPE] == SC_OK) stcpy(r + R_INTS, e + R_INTS);
-    return;
+static int32_t ARENA_MAIN[ARENA_INTS];
+static LOCAL int32_t *ARENA;
+static LOCAL int arenaN = 0, arenaCap = ARENA_INTS;
+static LOCAL int failed = 0;
+static void threadInit(void);
+static void memoRoom(void) { threadInit(); }
+static int resolveU(const int32_t *st, int32_t *r, int wantSettled) {
+  nRes++;
+  for (int i = 0; i < R_INTS; i++) r[i] = 0;
+  if (st[O_BAD]) { r[R_SCOPE] = SC_BAD; return 0; }
+  R *s = &S;
+  load(s, st);
+  int W = s->W, H = s->H, N = s->N, c, a;
+  int counter = 0, rounds = 0, total = 0, guard = 0, LIMIT = W * H * H, T = 0, moved = 0;
+  int scan = 1, anyPop = 0;
+  uint32_t k[WMAX];
+  int32_t inGroup[MAXSLAB];
+  while (guard++ <= LIMIT) {
+    restingOf(s);
+    if (scan) {
+      int any = 0, link = 0;
+      uint32_t freeM[WMAX];
+      for (c = 0; c < WMAX; c++) k[c] = 0;
+      for (c = 1; c <= W; c++) freeM[c] = s->rest[c] & ~s->popping[c] & ~s->inert[c];
+      for (a = 1; a <= N; a++) {
+        uint32_t *col = s->colour[a], b0 = col[1] & freeM[1], b1 = col[2] & freeM[2];
+        uint32_t cv = b0 & (b0 >> 1) & (b0 >> 2); k[1] |= cv | (cv << 1) | (cv << 2);
+        cv = b1 & (b1 >> 1) & (b1 >> 2); k[2] |= cv | (cv << 1) | (cv << 2);
+        for (c = 3; c <= W; c++) {
+          uint32_t b2 = col[c] & freeM[c];
+          cv = b2 & (b2 >> 1) & (b2 >> 2); k[c] |= cv | (cv << 1) | (cv << 2);
+          uint32_t hc = b0 & b1 & b2;
+          k[c - 2] |= hc; k[c - 1] |= hc; k[c] |= hc;
+          b0 = b1; b1 = b2;
+        }
+      }
+      for (c = 1; c <= W; c++) { if (k[c]) any = 1; if (k[c] & s->chaining[c]) link = 1; }
+      scan = 0;
+      if (any) {
+        rounds++;
+        if (link) counter = counter == 0 ? 2 : counter + 1;
+        int broke = 0;
+        for (c = 1; c <= W; c++) {
+          total += popc(k[c]);
+          s->popping[c] |= k[c];
+          uint32_t gl = c > 1 ? s->garb[c - 1] : 0, gr = c < W ? s->garb[c + 1] : 0;
+          if (k[c] & ((s->garb[c] >> 1) | (s->garb[c] << 1) | gl | gr)) broke = 1;
+        }
+        anyPop = 1;
+        int haveGroup = broke && s->nslab;
+        if (haveGroup && !connectedGroup(s, k, T + (moved ? 2 : 1), inGroup)) broke = 0;
+        if (broke) {
+          int touched = 0, converts = 0, convCol[WMAX] = {0};
+          for (int sl = 0; sl < s->nslab; sl++) {
+            if (!(haveGroup && inGroup[sl])) continue;
+            uint32_t *sm = s->slab[sl];
+            for (c = 1; c <= W; c++) touched += popc(sm[c]);
+            int low = 32;
+            for (c = 1; c <= W; c++) if (sm[c]) { int lb = topRow(lowb(sm[c])); if (lb < low) low = lb; }
+            if (low < 32) {
+              uint32_t lowBit = 1u << (low - 1);
+              for (c = 1; c <= W; c++) if (sm[c] & lowBit) { converts++; convCol[c] = 1; }
+            }
+          }
+          int hMax = 0, hs[WMAX], vAfter = 0;
+          for (c = 1; c <= W; c++) {
+            uint32_t gc = s->garb[c], fl = gc ? lowb(gc) : 0;
+            uint32_t under = s->occ[c] & ~gc & ~s->popping[c] & (fl ? fl - 1u : 0xffffffffu);
+            hs[c] = popc(under) + convCol[c];
+            if (convCol[c] && hs[c] > hMax) hMax = hs[c];
+          }
+          for (c = 1; c <= W; c++) if (convCol[c]) vAfter += hMax - hs[c];
+          r[R_SCOPE] = SC_BROKE; r[R_CHAIN] = counter > 1 ? counter : 1; r[R_TOTAL] = total;
+          r[R_ROUNDS] = rounds; r[R_FRAMES] = T; r[R_GARBAGE] = touched; r[R_CONVERTS] = converts; r[R_VOID] = vAfter;
+          return 0;
+        }
+        continue;
+      }
+    }
+    int fell = 0;
+    for (c = 1; c <= W; c++) {
+      uint32_t o2 = s->occ[c], holds2;
+      if (!anyPop) holds2 = s->rest[c];
+      else {
+        uint32_t fixed = (s->inert[c] | s->popping[c]) & o2, seeds2;
+        holds2 = o2 & (((~o2) & (o2 + 1u)) - 1u); seeds2 = fixed & ~holds2;
+        while (seeds2) {
+          uint32_t sd = lowb(seeds2), x2 = o2 & ~(sd - 1u), run2 = x2 & ~(x2 + sd);
+          holds2 |= run2;
+          seeds2 &= ~run2;
+        }
+      }
+      uint32_t movable = o2 & ~holds2;
+      if (!movable) continue;
+      fell = 1;
+      uint32_t keepPut = o2 & ~movable;
+      for (a = 1; a <= N; a++) s->colour[a][c] = (s->colour[a][c] & keepPut) | ((s->colour[a][c] & movable) >> 1);
+      s->chaining[c] = (s->chaining[c] & keepPut) | ((s->chaining[c] & movable) >> 1);
+      s->occ[c] = keepPut | (movable >> 1);
+    }
+    slabsThatFall(s);
+    for (int sk = 0; sk < s->nslab; sk++) {
+      if (!s->falling[sk]) continue;
+      fell = 1;
+      for (c = 1; c <= W; c++) {
+        uint32_t sb = s->slab[sk][c];
+        if (!sb) continue;
+        s->occ[c] &= ~sb; s->inert[c] &= ~sb; s->garb[c] &= ~sb;
+        s->slab[sk][c] = sb >> 1;
+        s->occ[c] |= s->slab[sk][c]; s->inert[c] |= s->slab[sk][c]; s->garb[c] |= s->slab[sk][c];
+      }
+    }
+    if (fell) {
+      T++;
+      for (int sk = 0; sk < s->nslab; sk++) if (s->falling[sk]) s->air[sk] = T + 2;
+      moved = 1;
+      uint32_t old[WMAX], oldI[WMAX];
+      for (c = 1; c <= W; c++) { old[c] = s->rest[c]; oldI[c] = s->inert[c]; }
+      restingOf(s);
+      for (c = 1; c <= W; c++) if (s->rest[c] != old[c] || s->inert[c] != oldI[c]) { scan = 1; break; }
+      if (!scan) {
+        for (c = 1; c <= W; c++) s->rest[c] = old[c];
+      }
+      continue;
+    }
+    moved = 0;
+    int swept = 0;
+    for (c = 1; c <= W; c++) {
+      if (!s->popping[c]) continue;
+      swept = 1;
+      uint32_t lowest = lowb(s->popping[c]), keep = s->occ[c] & ~s->popping[c];
+      s->chaining[c] = (s->chaining[c] | (keep & ~(lowest - 1u))) & keep;
+      for (a = 1; a <= N; a++) s->colour[a][c] &= keep;
+      s->inert[c] &= keep;
+      s->occ[c] = keep;
+      s->popping[c] = 0;
+    }
+    if (swept) { anyPop = 0; scan = 1; continue; }
+    break;
   }
-  resolveRaw(st, r, wantSettled);
-  memoStore(sl, k, r, wantSettled);
+  r[R_SCOPE] = SC_OK; r[R_CHAIN] = rounds ? (counter > 1 ? counter : 1) : 0; r[R_TOTAL] = total;
+  r[R_ROUNDS] = rounds; r[R_FRAMES] = T;
+  if (wantSettled) save(s, r + R_INTS);
+  return 0;
 }
+static void resolveRaw(const int32_t *st, int32_t *r, int wantSettled) { resolveU(st, r, wantSettled); }
+static void resolveM(const int32_t *st, int32_t *r, int wantSettled) { resolveRaw(st, r, wantSettled); }
 typedef struct { int32_t r[R_INTS]; ST st; } Res;
-static Res SETTLE_SPILL;
+static LOCAL Res SETTLE_SPILL;
 static Res *settleOf(const int32_t *st) {
-  u64 k = hashOf(st);
-  MSlot *sl = memoFind(k);
-  if (sl->key && sl->settled) return (Res *)(ARENA + sl->at);
-  resolveRaw(st, SETTLE_SPILL.r, 1);
-  int32_t *at = memoStore(sl, k, SETTLE_SPILL.r, 1);
-  if (!at) { failed = 1; return &SETTLE_SPILL; }
-  return (Res *)at;
+  if (arenaN + R_INTS + ST_INTS > arenaCap) { failed = 1; return &SETTLE_SPILL; }
+  Res *out = (Res *)(ARENA + arenaN);
+  nSettle++;
+  resolveRaw(st, out->r, 1);
+  arenaN += R_INTS + (out->r[R_SCOPE] == SC_OK ? stlen(out->st) : 0);
+  return out;
 }
 
 static int canFireOf(const int32_t *st) {
@@ -732,8 +883,8 @@ static int canFireOf(const int32_t *st) {
   tput(&FIRE, k, f);
   return f;
 }
-static ST SCR;
-static int32_t SWS[2 * 128], RS[R_INTS + ST_INTS];
+static LOCAL ST SCR;
+static LOCAL int32_t SWS[2 * 128], RS[R_INTS + ST_INTS];
 static int anyBreakOf(const int32_t *st0) {
   u64 k = hashOf(st0); double v;
   if (tget(&SAVES, k, &v)) return v > 0;
@@ -743,7 +894,7 @@ static int anyBreakOf(const int32_t *st0) {
   for (int i = 0; i < n && !any; i++) {
     if (!swapCanClear(SCR, rest, SWS[2 * i], SWS[2 * i + 1])) continue;
     if (!swapIn(SCR, SWS[2 * i], SWS[2 * i + 1])) continue;
-    resolve(SCR, RS, 0);
+    nAnyR++, resolve(SCR, RS, 0);
     swapIn(SCR, SWS[2 * i], SWS[2 * i + 1]);
     if (RS[R_SCOPE] == SC_BROKE) any = 1;
   }
@@ -758,20 +909,20 @@ static int savesOfRaw(const int32_t *st0) {
   for (int i = 0; i < n; i++) {
     if (!swapCanClear(SCR, rest, SWS[2 * i], SWS[2 * i + 1])) continue;
     if (!swapIn(SCR, SWS[2 * i], SWS[2 * i + 1])) continue;
-    resolve(SCR, RS, 0);
+    nSavesR++, resolve(SCR, RS, 0);
     swapIn(SCR, SWS[2 * i], SWS[2 * i + 1]);
     if (RS[R_SCOPE] == SC_BROKE) cnt++;
   }
   tput(&SAVES, k, cnt);
   return cnt;
 }
-static double PCHAIN[64], PCOMBO[256];
+static LOCAL double PCHAIN[64], PCOMBO[256];
 static double priceOf(int chain, int total) {
   if (chain >= 2) return PCHAIN[chain < 63 ? chain : 63];
   return PCOMBO[total < 255 ? total : 255];
 }
-static ST SCS;
-static int32_t SWL[2 * 128], RL[R_INTS + ST_INTS];
+static LOCAL ST SCS;
+static LOCAL int32_t SWL[2 * 128], RL[R_INTS + ST_INTS];
 static double bestOneSwapStop(const int32_t *st0) {
   stcpy(SCS, st0);
   int n = legal(SCS, SWL), rest = atRest(SCS);
@@ -779,7 +930,7 @@ static double bestOneSwapStop(const int32_t *st0) {
   for (int i = 0; i < n; i++) {
     if (!swapCanClear(SCS, rest, SWL[2 * i], SWL[2 * i + 1])) continue;
     if (!swapIn(SCS, SWL[2 * i], SWL[2 * i + 1])) continue;
-    resolve(SCS, RL, 0);
+    nLandR++, resolve(SCS, RL, 0);
     swapIn(SCS, SWL[2 * i], SWL[2 * i + 1]);
     if (!(RL[R_TOTAL] > 0)) continue;
     double pays = priceOf(RL[R_CHAIN], RL[R_TOTAL]);
@@ -788,7 +939,7 @@ static double bestOneSwapStop(const int32_t *st0) {
   }
   return best;
 }
-static int stopKeyId = 0, hasStopPrice = 0;
+static LOCAL int stopKeyId = 0, hasStopPrice = 0;
 static double landStopOf(const int32_t *st) {
   if (!stopKeyId) return bestOneSwapStop(st);
   u64 k = hashOf(st) ^ ((u64)stopKeyId * 0x9e3779b97f4a7c15ull); double v;
@@ -799,11 +950,11 @@ static double landStopOf(const int32_t *st) {
 }
 
 // ---------------------------------------------------------------- the search
-static double FPR, DEADLINE, LOCKP, OVERHEAD, SWAPP, HOLD, WORK, MAXSTOP, READYWORTH, PREPWORTH;
-static int SPEND, LEAN, PREPARE, DIG, PRESS, Wd;
-static int dropBudget, saveBudget, slabBudget, prepBudget;
-static int nAvoid; static int32_t AVOID[2 * 40];
-static ST BASEST;
+static LOCAL double FPR, DEADLINE, LOCKP, OVERHEAD, SWAPP, HOLD, WORK, MAXSTOP, READYWORTH, PREPWORTH;
+static LOCAL int SPEND, LEAN, PREPARE, DIG, PRESS, Wd;
+static LOCAL int dropBudget, saveBudget, slabBudget, prepBudget;
+static LOCAL int nAvoid; static LOCAL int32_t AVOID[2 * 40];
+static LOCAL ST BASEST;
 
 static int travelCost(int r0, int c0, int r1, int c1) {
   int steps = (r1 > r0 ? r1 - r0 : r0 - r1) + (c1 > c0 ? c1 - c0 : c0 - c1);
@@ -816,9 +967,9 @@ static int breakReadyOf(const int32_t *st) {
   if (anyBreakOf(st)) return 1;
   return breakAfterDropOf(st);
 }
-static ST SCD;
-static int32_t SWD[2 * 128];
-static Res RDROP;
+static LOCAL ST SCD;
+static LOCAL int32_t SWD[2 * 128];
+static LOCAL Res RDROP;
 static int breakAfterDropOf(const int32_t *st0) {
   if (dropBudget <= 0) return 0;
   dropBudget--;
@@ -858,8 +1009,9 @@ enum { F_KIND, F_SIZE, F_FRAMES, F_CHAIN, F_TOTAL, F_GARBAGE, F_CONVERTS, F_VOID
 #define MAXOPT 54000
 static double ODATA[(MAXOPT + 4) * REC + 64], ODSCR[(MAXOPT + 4) * REC + 64];
 static int32_t LANDS[ST_INTS], LANDSCR[ST_INTS];
-static double *OD = ODATA;
-static int32_t *LD = LANDS;
+static LOCAL double *OD = ODATA, *ODS = ODSCR;
+static LOCAL int32_t *LD = LANDS, *LDS = LANDSCR;
+static LOCAL int odCap = MAXOPT;
 __attribute__((export_name("bit_odata"))) double *bit_odata(void) { return ODATA; }
 __attribute__((export_name("bit_lands"))) int32_t *bit_lands(void) { return LANDS; }
 static double PARAM[128];
@@ -872,18 +1024,18 @@ __attribute__((export_name("bit_layout"))) int32_t bit_layout(int32_t i) {
   return v[i];
 }
 static double *recAt(int i) { return OD + 64 + i * REC; }
-static int nNow, nNext;
-static int startOpt, nOpt;
+static LOCAL int nNow, nNext;
+static LOCAL int startOpt, nOpt;
 static double *newOpt(void) {
-  if (startOpt + nOpt >= MAXOPT) { failed = 1; return recAt(MAXOPT - 1); }
+  if (startOpt + nOpt >= odCap) { failed = 1; return recAt(odCap - 1); }
   double *o = recAt(4 + startOpt + nOpt);
   nOpt++;
   return o;
 }
-static Shape START;
-static double BASELOW, BASEBUMPS, BASEVOID, BASEGAP;
-static int BASEBREAK;
-static int BASEDIG, BASESAVE;
+static LOCAL Shape START;
+static LOCAL double BASELOW, BASEBUMPS, BASEVOID, BASEGAP;
+static LOCAL int BASEBREAK;
+static LOCAL int BASEDIG, BASESAVE;
 static void fillOption(double *o, const int32_t *seq, int nseq, int frames, const int32_t *r, const int32_t *settled) {
   int chain = r[R_CHAIN], total = r[R_TOTAL];
   o[F_KIND] = chain >= 2 ? 1 : 0;
@@ -930,22 +1082,24 @@ typedef struct { const int32_t *st; int nchain; int32_t chain[2 * MAXD]; int fr,
 typedef struct { const int32_t *st; int parent, sr, sc, spent, hasReach, dig; uint32_t reach[WMAX]; double lock; } Born;
 #define MAXFRONT 48
 #define MAXBORN 4096
-static Node FRONT[MAXFRONT], FRONT2[MAXFRONT];
-static Res QUIET[2][MAXBORN];
-static int nQuiet[2], qside;
-static Born BORN[MAXBORN];
-static int ORD[MAXBORN], ORD2[MAXBORN];
-static int32_t SWE[2 * 128];
-static ST WORK_ST[MAXFRONT];
+static LOCAL Node FRONT[MAXFRONT], FRONT2[MAXFRONT];
+static Res QUIET_MAIN[2 * MAXBORN];
+static LOCAL Res *QUIET;
+static LOCAL int qcap = MAXBORN;
+static LOCAL int nQuiet[2], qside;
+static LOCAL Born BORN[MAXBORN];
+static LOCAL int ORD[MAXBORN], ORD2[MAXBORN];
+static LOCAL int32_t SWE[2 * 128];
+static LOCAL ST WORK_ST[MAXFRONT];
 // flat, save, ready, trigger: records 0..3
-static int haveRec[4];
+static LOCAL int haveRec[4];
 static void takeRec(int which, const int32_t *seq, int nseq, int frames, double value, double dur) {
   double *o = recAt(which);
   haveRec[which] = 1;
   o[F_FRAMES] = frames; o[F_VALUE] = value; o[F_DURATION] = dur; o[F_NSW] = nseq;
   for (int i = 0; i < 2 * nseq; i++) o[F_SW + i] = seq[i];
 }
-static int TMPI[MAXBORN];
+static LOCAL int TMPI[MAXBORN];
 static void msortI(int *a, int n, int (*cmp)(int, int)) {
   for (int w = 1; w < n; w *= 2) {
     for (int lo = 0; lo < n; lo += 2 * w) {
@@ -967,6 +1121,171 @@ static void sortBorn(int n) {
   msortI(ORD, n, bySpent);
 }
 
+static LOCAL int threadReady;
+static void threadInit(void) {
+  if (threadReady) return;
+  threadReady = 1;
+  ARENA = ARENA_MAIN; QUIET = QUIET_MAIN;
+  SAVES.s = TABLE_MAIN[0]; ANYB.s = TABLE_MAIN[1]; STOPS_T.s = TABLE_MAIN[2]; FIRE.s = TABLE_MAIN[3];
+}
+#define MAXSET 4096
+#define SOUT (R_INTS + ST_INTS)
+#define TIXW 130
+static int32_t PSET[MAXSET * 4], PSOUT[2 * MAXSET * SOUT], TASKIX[MAXFRONT * TIXW], PEXTRA[MAXSET * 6];
+static LOCAL ST PSWAP;
+typedef struct Cand Cand;
+typedef struct { int32_t gen, next, n, kind, ack, nworkers, lean, dig; Cand **cands; double *out; const int32_t *front; int32_t *sout; } Pool;
+static Pool pool;
+
+static LOCAL int inPar;
+static void scoreTask(int i);
+static void savesTask(int i);
+static void runTask(int i) {
+  if (pool.kind == 1) { scoreTask(i); return; }
+  if (pool.kind == 3) { savesTask(i); return; }
+  int32_t *x = PEXTRA + 6 * i;
+  x[0] = 0; x[2] = 0;
+  stcpy(PSWAP, pool.front + PSET[4 * i] * ST_INTS);
+  swapIn(PSWAP, PSET[4 * i + 1], PSET[4 * i + 2]);
+  const int32_t *settled;
+  int32_t *r = pool.sout + i * SOUT;
+  if (PSET[4 * i + 3]) settled = PSWAP;
+  else {
+    resolveRaw(PSWAP, r, 1);
+    if (r[R_SCOPE] != SC_OK) return;
+    settled = r + R_INTS;
+    if (r[R_TOTAL] > 0) {
+      if (!pool.lean && hasGarb(settled)) { x[0] = 1; x[1] = anyBreakOf(settled); }
+      u64 h = hashOf(settled); x[4] = (int32_t)h; x[5] = (int32_t)(h >> 32);
+      return;
+    }
+  }
+  if (pool.dig && !pool.lean) {
+    uint32_t rm[WMAX];
+    x[2] = reachOf(settled, rm) > 0;
+  }
+  u64 h = hashOf(settled); x[4] = (int32_t)h; x[5] = (int32_t)(h >> 32);
+}
+static int32_t SAVEIX[MAXSET];
+static void savesTask(int i) {
+  int t = SAVEIX[i];
+  int32_t *x = PEXTRA + 6 * t;
+  const int32_t *settled;
+  if (PSET[4 * t + 3]) {
+    stcpy(PSWAP, pool.front + PSET[4 * t] * ST_INTS);
+    swapIn(PSWAP, PSET[4 * t + 1], PSET[4 * t + 2]);
+    settled = PSWAP;
+  } else settled = pool.sout + t * SOUT + R_INTS;
+  x[3] = savesOfRaw(settled);
+}
+static void runTasks(void) {
+  int i, n = pool.n, chunk = pool.kind == 1 ? 1 : 4;
+  inPar = 1;
+  while ((i = __atomic_fetch_add(&pool.next, chunk, __ATOMIC_SEQ_CST)) < n)
+    for (int j = i; j < i + chunk && j < n; j++) runTask(j);
+  inPar = 0;
+}
+static void parRun0(int kind, int n);
+static void parRun(int kind, int n) { parRun0(kind, n); }
+static void parRun0(int kind, int n) {
+  pool.kind = kind; pool.n = n; pool.next = 0;
+  if (!pool.nworkers || n < 2) { inPar = 1; for (int i = 0; i < n; i++) runTask(i); inPar = 0; return; }
+  __atomic_store_n(&pool.ack, 0, __ATOMIC_SEQ_CST);
+  __atomic_add_fetch(&pool.gen, 1, __ATOMIC_SEQ_CST);
+#ifdef THREADS
+  __builtin_wasm_memory_atomic_notify(&pool.gen, (unsigned)-1);
+#endif
+  runTasks();
+  int32_t a;
+  while ((a = __atomic_load_n(&pool.ack, __ATOMIC_SEQ_CST)) < pool.nworkers) {}
+}
+#ifdef THREADS
+extern void __wasm_init_tls(void *);
+__attribute__((export_name("bit_thread_init"))) void bit_thread_init(int32_t id) {
+  unsigned long a = __builtin_wasm_tls_align();
+  void *tls = grab(__builtin_wasm_tls_size() + a);
+  __wasm_init_tls((void *)(((unsigned long)tls + a - 1) & ~(a - 1)));
+  if (!id) return;
+  threadReady = 1;
+  arenaCap = 8 << 20; qcap = 2048; odCap = 2048;
+  SAVES.s = (Slot *)grab(TCAP * sizeof(Slot)); ANYB.s = (Slot *)grab(TCAP * sizeof(Slot));
+  STOPS_T.s = (Slot *)grab(TCAP * sizeof(Slot)); FIRE.s = (Slot *)grab(TCAP * sizeof(Slot));
+  ARENA = (int32_t *)grab((unsigned long)arenaCap * 4);
+  QUIET = (Res *)grab(2ul * qcap * sizeof(Res));
+  ODS = (double *)grab(((unsigned long)odCap + 4) * REC * 8 + 64 * 8);
+  LDS = (int32_t *)grab(ST_INTS * 4);
+  OD = ODS; LD = LDS;
+}
+__attribute__((export_name("bit_grab"))) void *bit_grab(int32_t n) { return grab((unsigned long)n); }
+__attribute__((export_name("bit_worker_loop"))) void bit_worker_loop(void) {
+  int32_t last = __atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST);
+  __atomic_add_fetch(&pool.nworkers, 1, __ATOMIC_SEQ_CST);
+  __builtin_wasm_memory_atomic_notify(&pool.nworkers, 1);
+  for (;;) {
+    for (int spin = 0; spin < 20000000 && __atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST) == last; spin++) {}
+    while (__atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST) == last) __builtin_wasm_memory_atomic_wait32(&pool.gen, last, -1);
+    last = __atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST);
+    memoRoom();
+    runTasks();
+    __atomic_add_fetch(&pool.ack, 1, __ATOMIC_SEQ_CST);
+    __builtin_wasm_memory_atomic_notify(&pool.ack, 1);
+  }
+}
+#endif
+__attribute__((export_name("bit_workers"))) int32_t bit_workers(void) { return __atomic_load_n(&pool.nworkers, __ATOMIC_SEQ_CST); }
+static int prefetchPly(int nf, int ply) {
+  int nt = 0;
+  for (int fi = 0; fi < nf; fi++) {
+    Node *node = &FRONT[fi];
+    int32_t *state = WORK_ST[fi];
+    stcpy(state, node->st);
+    int nl = legal(state, SWE);
+    int nodeRest = settledRest(state);
+    uint32_t reach[WMAX]; int haveReach = node->hasReach;
+    if (haveReach) for (int c = 0; c < WMAX; c++) reach[c] = node->reach[c];
+    if (!haveReach && node->nchain) { reachOf(state, reach); haveReach = 1; }
+    for (int k = 0; k < nl; k++) {
+      int sr = SWE[2 * k], sc = SWE[2 * k + 1];
+      TASKIX[fi * TIXW + k] = -1;
+      if (haveReach && !SPEND) {
+        uint32_t rb = 1u << (sr - 1);
+        if (!((reach[sc] | reach[sc + 1]) & rb)) continue;
+      }
+      int quiet = quietSwap(state, nodeRest, sr, sc);
+      if (quiet && !DIG) continue;
+      int cost = node->spent + travelCost(node->fr, node->fc, sr, sc);
+      if ((double)(cost + ply - 1) > node->lock + SPEND) continue;
+      if (nt >= MAXSET) continue;
+      if (!quiet) TASKIX[fi * TIXW + k] = nt;
+      PSET[4 * nt] = fi; PSET[4 * nt + 1] = sr; PSET[4 * nt + 2] = sc; PSET[4 * nt + 3] = quiet; nt++;
+    }
+  }
+  pool.front = (const int32_t *)WORK_ST;
+  pool.sout = PSOUT + qside * MAXSET * SOUT;
+  pool.lean = LEAN; pool.dig = DIG;
+  parRun(2, nt);
+  int ns = 0, budget = saveBudget;
+  for (int i = 0; i < nt; i++) {
+    int32_t *x = PEXTRA + 6 * i;
+    u64 h = (u64)(uint32_t)x[4] | ((u64)(uint32_t)x[5] << 32);
+    if (x[0]) tput(&ANYB, h, x[1]);
+    if (x[2] && budget > 0) {
+      int32_t *r = pool.sout + i * SOUT;
+      if (!PSET[4 * i + 3] && (r[R_SCOPE] != SC_OK || r[R_TOTAL] > 0)) continue;
+      budget--;
+      double v;
+      if (!tget(&SAVES, h, &v)) SAVEIX[ns++] = i;
+    }
+  }
+  if (ns) {
+    parRun(3, ns);
+    for (int j = 0; j < ns; j++) {
+      int32_t *x = PEXTRA + 6 * SAVEIX[j];
+      tput(&SAVES, (u64)(uint32_t)x[4] | ((u64)(uint32_t)x[5] << 32), x[3]);
+    }
+  }
+  return 1;
+}
 static void expandAll(int depth, int cr, int cc) {
   Shape BASE; shapeOf(BASEST, &BASE);
   uint32_t rm[WMAX];
@@ -981,6 +1300,7 @@ static void expandAll(int depth, int cr, int cc) {
   for (int ply = 1; ply <= depth && nf; ply++) {
     int nb = 0;
     qside ^= 1; nQuiet[qside] = 0;
+    int pf = pool.nworkers && !LEAN && !inPar && prefetchPly(nf, ply);
     for (int fi = 0; fi < nf; fi++) {
       Node *node = &FRONT[fi];
       int32_t *state = WORK_ST[fi];
@@ -998,12 +1318,14 @@ static void expandAll(int depth, int cr, int cc) {
         }
         Res *res;
         if (quietSwap(state, nodeRest, sr, sc)) {
-          if (nQuiet[qside] >= MAXBORN) { failed = 1; continue; }
-          res = &QUIET[qside][nQuiet[qside]++];
+          if (nQuiet[qside] >= qcap) { failed = 1; continue; }
+          res = &QUIET[qside * qcap + nQuiet[qside]++];
           for (int i = 0; i < R_INTS; i++) res->r[i] = 0;
           swapIn(state, sr, sc);
           stcpy(res->st, state);
           swapIn(state, sr, sc);
+        } else if (pf && TASKIX[fi * TIXW + k] >= 0) {
+          res = (Res *)(PSOUT + (qside * MAXSET + TASKIX[fi * TIXW + k]) * SOUT);
         } else {
           if (!swapIn(state, sr, sc)) continue;
           res = settleOf(state);
@@ -1034,10 +1356,8 @@ static void expandAll(int depth, int cr, int cc) {
         if (DIG) { rrDig = reachOf(settled, rr); haveRR = 1; }
         int svNow = 0;
         if (!LEAN) {
-          Shape sh2; shapeOf(settled, &sh2);
+          Shape sh2; shapeOfG(settled, &sh2, 0);
           double dur = cost + nseq * OVERHEAD;
-          uint32_t wm[WMAX]; reachMask(settled, wm);
-          int ways2 = 0; for (int c = 1; c <= Wd; c++) ways2 += popc(wm[c]);
           double base2 = (BASE.tall - sh2.tall) * FPR + (BASE.excess - sh2.excess) * FPR
                        - (WORK - sh2.mat > 0 ? WORK - sh2.mat : 0) * FPR - dur;
           double landStop = 0;
@@ -1067,6 +1387,8 @@ static void expandAll(int depth, int cr, int cc) {
           if (take) {
             takeRec(0, seq, nseq, cost, val, dur);
             double *fl = recAt(0);
+            uint32_t wm[WMAX]; reachMask(settled, wm);
+            int ways2 = 0; for (int c = 1; c <= Wd; c++) ways2 += popc(wm[c]);
             fl[F_TALL] = sh2.tall; fl[F_BUMPS] = sh2.bumps; fl[F_WAYS] = ways2;
             fv = val;
             stcpy(LD, settled);
@@ -1106,12 +1428,13 @@ static void expandAll(int depth, int cr, int cc) {
   }
 }
 
-static int32_t SW1[2 * 128];
-static ST ST1;
-static Res R1;
+static LOCAL int32_t SW1[2 * 128];
+static LOCAL ST ST1;
+static LOCAL Res R1;
 // The whole search. Returns 0, or -1 when a fixed size was exceeded (a bug).
-static int nOptRuns, nOptDepth;
+static LOCAL int nOptRuns, nOptDepth;
 static int optionsRun(const int32_t *st0, const double *P, const int32_t *first, int nfirst) {
+  threadInit(); arenaN = 0;
   nOptRuns++; nOptDepth += (int)P[11];
   failed = 0;
   FPR = P[0]; DEADLINE = P[1]; LOCKP = P[2]; SPEND = (int)P[3]; LEAN = (int)P[4];
