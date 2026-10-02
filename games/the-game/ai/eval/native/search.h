@@ -213,8 +213,6 @@ static int runFrame(Board *st, Arr *arr, int32_t *narr, int32_t input, int32_t *
 static Board *ensureBoard(Ctx *x, int i);
 // _engineAdvanceOn + _runFrom. Returns the child's index, STEP_NULL (refused)
 // or STEP_DEAD (deadAt set).
-// Frames played and steps made, per step kind, on every thread (ns_frame_stats).
-static int32_t framesOf[8], stepsOf[8];
 static int advance(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
   Board *pb = ensureBoard(x, pi);
   if (!pb) return STEP_ERR;
@@ -245,7 +243,7 @@ static int advance(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
                         tape[3 * tapeN + 2] = bot.raiseStarted; tapeN++; } \
                       int over_ = runFrame(st, arr, &narr, input, &f); if (st->err) GIVE(STEP_ERR); \
                       if (SWAP_PRESSED && swapping && st->swapDenied) GIVE(STEP_NULL); \
-                      if (over_) { deadAt = t0 + f; __atomic_add_fetch(&framesOf[kind & 7], f, __ATOMIC_RELAXED); __atomic_add_fetch(&stepsOf[kind & 7], 1, __ATOMIC_RELAXED); GIVE(STEP_DEAD); } } while (0)
+                      if (over_) { deadAt = t0 + f; STAT(kind & 7) += f; STAT(8 + (kind & 7))++; GIVE(STEP_DEAD); } } while (0)
   if (REFUSED || (bot.w.active && bot.w.retries)) GIVE(STEP_NULL);
   FRAME();
   for (int guard = 0; guard < 4000; guard++) {
@@ -281,7 +279,7 @@ static int advance(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
   }
 #undef FRAME
   if (st->err) GIVE(STEP_ERR);
-  __atomic_add_fetch(&framesOf[kind & 7], f, __ATOMIC_RELAXED); __atomic_add_fetch(&stepsOf[kind & 7], 1, __ATOMIC_RELAXED);
+  STAT(kind & 7) += f; STAT(8 + (kind & 7))++;
   Node *n = newNode(x);
   if (!n) GIVE(STEP_ERR);
   par = NODE(x, pi);   // nodes may have moved
@@ -393,12 +391,10 @@ EXPORT(ns_root) int ns_root(Ctx *x, int holdLeft, int holdStarted, int narr, int
 EXPORT(ns_step) int ns_step(Ctx *x, int pi, int kind, int mr, int mc, int until) { x->steps++; return lineStep(x, pi, kind, mr, mc, until); }
 EXPORT(ns_advance) int ns_advance(Ctx *x, int pi, int kind, int mr, int mc, int frames) { return advance(x, pi, kind, mr, mc, frames); }
 EXPORT(ns_dead_at) int ns_dead_at(void) { return deadAt; }
-EXPORT(ns_frame_stats) int ns_frame_stats(int kind, int steps) {
-#ifdef COUNTDOWN
-  if (kind >= 5) { int32_t *c = kind == 5 ? &fullFrames : kind == 6 ? &quietFrames : kind == 7 ? &jumpedFrames : &lightFrames, v = *c; *c = 0; return v; }
-#endif
-  int32_t v = steps ? stepsOf[kind & 7] : framesOf[kind & 7]; if (steps) stepsOf[kind & 7] = 0; else framesOf[kind & 7] = 0; return v;
-}
+// Frames played (steps 0) or steps made per step kind 0..4, on every thread;
+// kinds 5..8 the frames played full, quiet, jumped and as countdown frames.
+// Reading a count resets it.
+EXPORT(ns_frame_stats) int ns_frame_stats(int kind, int steps) { return statTake(kind >= 5 ? 16 + ((kind - 5) & 3) : (steps ? 8 : 0) + (kind & 7)); }
 // One decision from node pi as keys: the io body gets [keys, raise held,
 // raise started] per frame. Returns the frames written, or advance's refusal
 // (STEP_NULL, STEP_ERR); a line that dies still gives the keys up to it.
@@ -552,6 +548,9 @@ static struct {
   int32_t gen, next, ntasks, ack, nworkers;
   Ctx *ctx; int32_t *tasks, *res, *deadAt;   // deadAt: per step, the frame a death was (settles only)
 } pool;
+#ifndef SPIN
+#define SPIN 200000
+#endif
 #define REPLAY_TASK (-3)   // a task's move: play node t[0]'s board again from its parent (replayBoard)
 #define ADVANCE_TASK (-1000)   // a task's move at or below: ns_advance_many's, ((row << 3 | col) << 3 | kind) = ADVANCE_TASK - mv
 static void runTasks(void) {
@@ -594,6 +593,8 @@ EXPORT(ns_worker_loop) void ns_worker_loop(void) {
   __atomic_add_fetch(&pool.nworkers, 1, __ATOMIC_SEQ_CST);
   __builtin_wasm_memory_atomic_notify(&pool.nworkers, 1);
   for (;;) {
+    // A phase follows a phase closely: look for it a while before sleeping.
+    for (int spin = 0; spin < SPIN && __atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST) == last; spin++) {}
     while (__atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST) == last) __builtin_wasm_memory_atomic_wait32(&pool.gen, last, -1);
     last = __atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST);
     runTasks();
@@ -613,6 +614,18 @@ static int reserveNodes(Ctx *x, int32_t more) {
   x->nodes = nn; x->cap = cap;
   return 1;
 }
+#define TASK_COST(c_, k_) ((k_)[1] == -1 ? (k_)[2] - NODE(c_, (k_)[0])->t : (k_)[1] == REPLAY_TASK ? NODE(c_, (k_)[0])->t - NODE(c_, NODE(c_, (k_)[0])->prev)->t : 0)
+// A phase's tasks, longest first, so no thread is left with a long one at the
+// end: a wait runs to `until`, a replay as long as its step did. Results go to
+// each task's own slot, so the order changes nothing else.
+static void longestFirst(Ctx *x, Vec *tasks) {
+  int32_t n = tasks->n / 4, *a = tasks->a;
+  for (int32_t i = 1; i < n; i++) {
+    int32_t t[4] = { a[4 * i], a[4 * i + 1], a[4 * i + 2], a[4 * i + 3] }, c = TASK_COST(x, t), j = i;
+    while (j > 0) { int32_t *p = a + 4 * (j - 1); if (TASK_COST(x, p) >= c) break; for (int q = 0; q < 4; q++) p[4 + q] = p[q]; j--; }
+    for (int q = 0; q < 4; q++) a[4 * j + q] = t[q];
+  }
+}
 // Runs the phase's steps on every thread; back when all are done.
 static int runPhase(Ctx *x, Vec *tasks, int32_t *res) {
   int32_t n = tasks->n / 4, w = pool.nworkers;
@@ -621,9 +634,9 @@ static int runPhase(Ctx *x, Vec *tasks, int32_t *res) {
   // Boards for the workers, from this thread's spares, so memory goes round.
   int32_t each = n / (w + 1) + 4;
   for (int k = 1; k <= w && k < MAXTHREADS; k++)
-    while (freeCount[k] < each && freeOf[0]) {
-      Board *b = freeOf[0]; freeOf[0] = *(Board **)b; freeCount[0]--;
-      *(Board **)b = freeOf[k]; freeOf[k] = b; freeCount[k]++;
+    while (freeCount(k) < each && freeOf(0)) {
+      Board *b = freeOf(0); freeOf(0) = *(Board **)b; freeCount(0)--;
+      *(Board **)b = freeOf(k); freeOf(k) = b; freeCount(k)++;
     }
   pool.ctx = x; pool.tasks = tasks->a; pool.res = res; pool.ntasks = n; pool.ack = 0;
   x->par = 1;
@@ -632,6 +645,7 @@ static int runPhase(Ctx *x, Vec *tasks, int32_t *res) {
   __builtin_wasm_memory_atomic_notify(&pool.gen, (unsigned)-1);
   runTasks();
   int32_t a;
+  for (int spin = 0; spin < SPIN && __atomic_load_n(&pool.ack, __ATOMIC_SEQ_CST) < w; spin++) {}
   while ((a = __atomic_load_n(&pool.ack, __ATOMIC_SEQ_CST)) < w) __builtin_wasm_memory_atomic_wait32(&pool.ack, a, -1);
   x->par = 0;
   if (x->n > x->cap) x->n = x->cap;
@@ -716,6 +730,7 @@ EXPORT(ns_loop) int ns_loop(Ctx *x, int budget, int until, int full, int beam, i
           int32_t t[4] = { x->level.a[at + k], -1, until, poff.a[k] };
           for (j = 0; j < 4; j++) if (!vpush(&tasks, t[j])) return LOOP_ERR;
         }
+        longestFirst(x, &tasks);
         if (!runPhase(x, &tasks, res.a)) return LOOP_ERR;
         tasks.n = 0;
         for (i = 0; i < x->ntags; i++) proven.a[i] = verdict[i];
@@ -815,6 +830,7 @@ EXPORT(ns_loop) int ns_loop(Ctx *x, int budget, int until, int full, int beam, i
         int32_t t[4] = { keep[j], REPLAY_TASK, 0, j };
         for (int q = 0; q < 4; q++) if (!vpush(&tasks, t[q])) return LOOP_ERR;
       }
+      longestFirst(x, &tasks);
       if (!vreserve(&res, nk) || !runPhase(x, &tasks, res.a)) return LOOP_ERR;
       keep = x->keep.a;
     }
