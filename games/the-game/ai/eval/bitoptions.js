@@ -87,7 +87,14 @@
     // slab is not material and cannot be spread.
     //
     // `bumps` is the same panel counts as a sum of steps, kept for tie-breaks.
+    // CARRIED WITH THE BOARD: a board's shape is worked out once and kept on it;
+    // swapMasks, the one thing that changes a board in place, drops it.
     function shapeOf(st2) {
+        if (!st2) return null;
+        if (st2._shape !== undefined) return st2._shape;
+        return (st2._shape = shapeOfRaw(st2));
+    }
+    function shapeOfRaw(st2) {
         var h = [], c, tall = 0, bumps = 0, sum = 0, mx = 0, w2 = st2 && (st2.W || 6);
         if (!st2) return null;
         for (c = 1; c <= w2; c++) {
@@ -298,7 +305,7 @@
                  //
                  // null, not false, for a break: its settled board is unknowable,
                  // the way `low` is, and a null must not be read as "cannot fire".
-                 ready: r.settled ? !!bit.anyOneSwapClear(r.settled) : null };
+                 ready: r.settled ? canFireOf(r.settled) : null };
     }
 
     // Cheapest first, then bigger — the order a caller wants to read.
@@ -329,7 +336,7 @@
     var STOPS = new Map(), STOPKEY = '', LOCK = Infinity, SPEND = 0, SWAP_RUNS = 4;
     function landStopOf(st) {
         if (!STOPKEY) return bit.bestOneSwapStop(st, stopPrice);
-        var key = STOPKEY + boardKey(st), hit = STOPS.get(key);
+        var key = STOPKEY + ':' + boardKey(st), hit = STOPS.get(key);
         if (hit !== undefined) return hit;
         var v = bit.bestOneSwapStop(st, stopPrice);
         if (STOPS.size >= SAVES_MAX) STOPS.clear();
@@ -338,21 +345,47 @@
     }
     // Two independent 32-bit hashes of every array the answers read: a collision needs
     // both to agree, about one in 10^10 at these cache sizes.
+    // A NUMBER, NOT A STRING: the two hashes folded into 53 bits, built without a
+    // closure or a string per call -- this runs for every node the beam expands.
     function boardKey(st) {
-        var h1 = 0x811c9dc5 | 0, h2 = 0x9747b28c | 0;
-        function eat(v) {
-            v = v | 0;
-            h1 = Math.imul(h1 ^ v, 0x01000193);
-            h2 = Math.imul(h2 ^ (v + 0x5bd1e995), 0x5bd1e995) ^ (h2 >>> 13);
+        var h1 = 0x811c9dc5 | 0, h2 = 0x9747b28c | 0, a, i, v;
+        var arrs = BK_ARRS;
+        arrs[0] = st.occ; arrs[1] = st.inert; arrs[2] = st.garb; arrs[3] = st.colour;
+        for (var k = 0; k < 4; k++) {
+            a = arrs[k];
+            for (i = 0; i < a.length; i++) {
+                v = a[i] | 0;
+                h1 = Math.imul(h1 ^ v, 0x01000193);
+                h2 = Math.imul(h2 ^ (v + 0x5bd1e995), 0x5bd1e995) ^ (h2 >>> 13);
+            }
+            h1 = Math.imul(h1 ^ -1, 0x01000193);
+            h2 = Math.imul(h2 ^ (-1 + 0x5bd1e995), 0x5bd1e995) ^ (h2 >>> 13);
         }
-        function arr(a) { for (var i = 0; i < a.length; i++) eat(a[i]); eat(-1); }
-        arr(st.occ); arr(st.inert); arr(st.garb); arr(st.colour);
-        for (var i = 0; st.slabs && i < st.slabs.length; i++) {
-            arr(st.slabs[i]);
-            eat(st.slabLocked && st.slabLocked[i] ? 7 : 3);
+        for (var j = 0; st.slabs && j < st.slabs.length; j++) {
+            a = st.slabs[j];
+            for (i = 0; i <= a.length; i++) {
+                v = i < a.length ? a[i] | 0 : (st.slabLocked && st.slabLocked[j] ? 7 : 3);
+                h1 = Math.imul(h1 ^ v, 0x01000193);
+                h2 = Math.imul(h2 ^ (v + 0x5bd1e995), 0x5bd1e995) ^ (h2 >>> 13);
+            }
         }
-        if (st.busy) arr(st.busy);
-        return (h1 >>> 0).toString(36) + ':' + (h2 >>> 0).toString(36);
+        if (st.busy) {
+            a = st.busy;
+            for (i = 0; i < a.length; i++) {
+                v = a[i] | 0;
+                h1 = Math.imul(h1 ^ v, 0x01000193);
+                h2 = Math.imul(h2 ^ (v + 0x5bd1e995), 0x5bd1e995) ^ (h2 >>> 13);
+            }
+        }
+        return (h1 >>> 0) * 2097152 + (h2 >>> 11);
+    }
+    var BK_ARRS = [null, null, null, null];
+
+    // WHETHER A SETTLED BOARD CAN FIRE: anyOneSwapClear, a pure function of the masks
+    // that every option the search lists asks of its landing -- carried with the board.
+    function canFireOf(st) {
+        if (st._fire !== undefined) return st._fire;
+        return (st._fire = !!bit.anyOneSwapClear(st));
     }
 
     // WHAT A BOARD SETTLES TO, BY BOARD: resolveFromMasks with the settled state,
@@ -840,7 +873,7 @@
         function readyOf(state) {
             // ONE IMPLEMENTATION OF THIS QUESTION, IN bitmatch. hasFireable in
             // bitbot asked it too, with its own copy of the same sweep.
-            return bit.anyOneSwapClear(state) ? 1 : 0;
+            return canFireOf(state) ? 1 : 0;
         }
 
         // CAN THE BOARD THIS LANDS ON BREAK ITS GARBAGE.

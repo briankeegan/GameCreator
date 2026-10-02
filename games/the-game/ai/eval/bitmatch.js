@@ -40,10 +40,10 @@
   function scratch(W, H, N) {
     if (!S || S.W !== W || S.N < N) {
       S = { W: W, H: H, N: Math.max(N, 8), occ: [], chaining: [], popping: [],
-            inert: [], garb: [], rest: [], k: [], colour: [], B: [] };
+            inert: [], garb: [], rest: [], k: [], free: [], colour: [], B: [] };
       for (var c = 0; c <= W + 1; c++) {
         S.occ[c] = 0; S.chaining[c] = 0; S.popping[c] = 0;
-        S.inert[c] = 0; S.garb[c] = 0; S.rest[c] = 0; S.k[c] = 0;
+        S.inert[c] = 0; S.garb[c] = 0; S.rest[c] = 0; S.k[c] = 0; S.free[c] = 0;
       }
       for (var a = 0; a <= S.N; a++) {
         S.colour[a] = []; S.B[a] = [];
@@ -527,6 +527,7 @@
       if (st.colour[a * stride + c] & b) left = a;
       if (st.colour[a * stride + o] & b) right = a;
     }
+    st._shape = undefined; st._fire = undefined;          // what was carried with the board
     if (left) { st.colour[left * stride + c] &= ~b; st.colour[left * stride + o] |= b; }
     if (right) { st.colour[right * stride + o] &= ~b; st.colour[right * stride + c] |= b; }
     if (left) st.occ[o] |= b; else st.occ[o] &= ~b;
@@ -608,8 +609,11 @@
       // landed; only a fall inside the cascade can leave one in the air.
       air.push(timed && st.slabAir ? (st.slabAir[si0] || 0) : 0);
     }
+    var fallingScratch = [];
     function slabsThatFall() {
-      var falling = new Array(slabs.length).fill(false), moved = true, pass = 0;
+      var falling = fallingScratch, moved = true, pass = 0;
+      falling.length = slabs.length;
+      for (var f0 = 0; f0 < slabs.length; f0++) falling[f0] = false;
       while (moved && pass++ <= slabs.length + 1) {
         moved = false;
         for (var si = 0; si < slabs.length; si++) {
@@ -779,13 +783,14 @@
         release();
         if (!made && T >= timed.at) { makeSwap(hoverMask()); if (refused) continue; }
       }
-      var rest = restingOf(), k = [], link = false, any = false;
-      var B = [];
+      // The scratch's own arrays, not new ones each step: this loop runs once per
+      // row anything falls, for every board the search settles.
+      var rest = restingOf(), k = S2.k, link = false, any = false;
+      var B = S2.B, free = S2.free;
+      for (c = 1; c <= W; c++) free[c] = rest[c] & ~popping[c] & ~inert[c] & (timed ? ~held(c) : ~0);
       for (a = 1; a <= N; a++) {
-        B[a] = [];
-        for (c = 1; c <= W; c++) {
-          B[a][c] = colour[a][c] & rest[c] & ~popping[c] & ~inert[c] & (timed ? ~held(c) : ~0);
-        }
+        var Ba = B[a], ca = colour[a];
+        for (c = 1; c <= W; c++) Ba[c] = ca[c] & free[c];
       }
       for (c = 0; c <= W + 1; c++) k[c] = 0;
       for (a = 1; a <= N; a++) {
