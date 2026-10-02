@@ -918,6 +918,7 @@
             dropBudget--;
             var sw = bit.legalSwapsOf(state), i, r;
             for (i = 0; i < sw.length; i++) {
+                if (!bit.swapCanClear(state, sw[i][0], sw[i][1])) continue;     // clears nothing: skipped below anyway
                 if (!bit.swapMasks(state, sw[i][0], sw[i][1])) continue;
                 r = bit.resolveFromMasks(state, true);
                 bit.swapMasks(state, sw[i][0], sw[i][1]);
@@ -938,6 +939,7 @@
             if (hit !== undefined) return hit;
             var sw = bit.legalSwapsOf(state), n = 0, i, r;
             for (i = 0; i < sw.length; i++) {
+                if (!bit.swapCanClear(state, sw[i][0], sw[i][1])) continue;     // breaks nothing: no line
                 if (!bit.swapMasks(state, sw[i][0], sw[i][1])) continue;
                 r = bit.resolveFromMasks(state, false);
                 bit.swapMasks(state, sw[i][0], sw[i][1]);

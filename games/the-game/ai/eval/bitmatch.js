@@ -444,6 +444,64 @@
     return false;
   }
 
+  // A BOARD AT REST: every panel resting, nothing busy, no line standing. On one,
+  // swapping two PANELS moves nothing else -- nothing falls -- so a line it makes
+  // runs through one of the two cells, and a swap with no line through either
+  // clears nothing: resolving it is known to give total 0. Carried with the board.
+  function atRest(st) {
+    if (st._rest !== undefined) return st._rest;
+    var W = st.W, stride = W + 2, c, a, rest = true;
+    if (st.busy) for (c = 1; c <= W; c++) if (st.busy[c]) rest = false;
+    for (c = 1; rest && c <= W; c++) {
+      var o = st.occ[c], m = o & (((~o) & (o + 1)) - 1), seeds = st.inert[c] & ~m;
+      while (seeds) {
+        var seed = seeds & -seeds, run = seed, probe = seed;
+        while ((probe <<= 1) && (o & probe)) run |= probe;
+        m |= run; seeds &= ~run;
+      }
+      if (m !== o) rest = false;
+    }
+    for (a = 1; rest && a <= st.N; a++) {
+      for (c = 1; c <= W; c++) {
+        var b = st.colour[a * stride + c] & ~st.inert[c];
+        if (b & (b >> 1) & (b >> 2)) { rest = false; break; }
+        if (c + 2 <= W && b & st.colour[a * stride + c + 1] & st.colour[a * stride + c + 2] & ~st.inert[c + 1] & ~st.inert[c + 2]) { rest = false; break; }
+      }
+    }
+    return (st._rest = rest);
+  }
+  // WHETHER THIS SWAP CAN CLEAR ANYTHING: false only when it is known not to -- the
+  // board at rest, both cells panels, and no line of three through either.
+  function swapCanClear(st, r, c) {
+    if (!atRest(st)) return true;
+    var W = st.W, H = st.H, N = st.N, stride = W + 2, bitv = 1 << (r - 1), a, left = 0, right = 0;
+    for (a = 1; a <= N; a++) {
+      if (st.colour[a * stride + c] & bitv) left = a;
+      if (st.colour[a * stride + c + 1] & bitv) right = a;
+    }
+    if (!left || !right) return true;
+    function colourAt(rr, cc) {
+      if (rr < 1 || rr > H || cc < 1 || cc > W) return -1;
+      if (rr === r && cc === c) return right;
+      if (rr === r && cc === c + 1) return left;
+      var bb = 1 << (rr - 1);
+      if (st.inert[cc] & bb) return 0;
+      for (var aa = 1; aa <= N; aa++) if (st.colour[aa * stride + cc] & bb) return aa;
+      return 0;
+    }
+    function line(rr, cc, col) {
+      var run = 1, k;
+      for (k = cc - 1; k >= 1 && colourAt(rr, k) === col; k--) run++;
+      for (k = cc + 1; k <= W && colourAt(rr, k) === col; k++) run++;
+      if (run >= 3) return true;
+      run = 1;
+      for (k = rr - 1; k >= 1 && colourAt(k, cc) === col; k--) run++;
+      for (k = rr + 1; k <= H && colourAt(k, cc) === col; k++) run++;
+      return run >= 3;
+    }
+    return line(r, c, right) || line(r, c + 1, left);
+  }
+
   // THE BIGGEST FREEZE ANY SINGLE SWAP CAN BUY, in frames.
   //
   // `anyOneSwapClear` answers whether a board can fire. That is a boolean where
@@ -465,6 +523,7 @@
   function bestOneSwapStop(st, price) {
     var sw = legalSwapsOf(st), best = 0, i, r, pays;
     for (i = 0; i < sw.length; i++) {
+      if (!swapCanClear(st, sw[i][0], sw[i][1])) continue;
       if (!swapMasks(st, sw[i][0], sw[i][1])) continue;
       r = resolveFromMasks(st, false);
       swapMasks(st, sw[i][0], sw[i][1]);
@@ -527,7 +586,7 @@
       if (st.colour[a * stride + c] & b) left = a;
       if (st.colour[a * stride + o] & b) right = a;
     }
-    st._shape = undefined; st._fire = undefined;          // what was carried with the board
+    st._shape = undefined; st._fire = undefined; st._rest = undefined;   // what was carried with the board
     if (left) { st.colour[left * stride + c] &= ~b; st.colour[left * stride + o] |= b; }
     if (right) { st.colour[right * stride + o] &= ~b; st.colour[right * stride + c] |= b; }
     if (left) st.occ[o] |= b; else st.occ[o] &= ~b;
@@ -1051,7 +1110,7 @@
     maskState: maskState,
     swapMasks: swapMasks,
     legalSwapsOf: legalSwapsOf,
-    anyOneSwapClear: anyOneSwapClear,
+    anyOneSwapClear: anyOneSwapClear, swapCanClear: swapCanClear, atRest: atRest,
     bestOneSwapStop: bestOneSwapStop,
     reachMask: reachMask,
     copyState: copyState,
