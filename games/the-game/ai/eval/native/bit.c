@@ -1538,7 +1538,7 @@ static void sortBorn(int n) {
 }
 
 static LOCAL int threadReady;
-struct CK { Res *res; int resPly, persist, hasRR, rrDig, hasSh, hasShG, sv, fire, slab, hasLand, anyB, bad; double land; Shape sh, shg; uint32_t rr[WMAX]; };
+struct CK { Res *res; int resPly, persist, quiet, hasRR, rrDig, hasSh, hasShG, sv, fire, slab, hasLand, anyB, bad; double land; Shape sh, shg; uint32_t rr[WMAX]; };
 #define NTCAP (1 << 12)
 typedef struct { u64 h; int32_t gen, at, n, nl, rest; CK *ck; int32_t *sw; } NT;
 static NT NT_MAIN[NTCAP];
@@ -1582,6 +1582,12 @@ static int settleSwap(const int32_t *st, int r, int c, Res *out) {
     for (int k = 0; k < nt->nl; k++) {
       if (nt->sw[2 * k] != r || nt->sw[2 * k + 1] != c) continue;
       Res *res = nt->ck[k].res;
+      if (res && nt->ck[k].quiet) {
+        for (int i = 0; i < R_INTS; i++) out->r[i] = 0;
+        stcpy(out->st, st);
+        swapIn(out->st, r, c);
+        return 1;
+      }
       if (res && nt->ck[k].persist) {
         int n = R_INTS + (res->r[R_SCOPE] == SC_OK ? stlen(res->st) : 0);
         for (int i = 0; i < n; i++) ((int32_t *)out)[i] = ((const int32_t *)res)[i];
@@ -1865,7 +1871,8 @@ static void expandAll(int depth, int cr, int cc) {
         }
         if (e) {
           e->res = res; e->resPly = ply;
-          e->persist = (res < QUIET || res >= QUIET + 2 * qcap) && ((int32_t *)res < PSOUT || (int32_t *)res >= PSOUT + 2 * MAXSET * SOUT);
+          e->quiet = res >= QUIET && res < QUIET + 2 * qcap;
+          e->persist = !e->quiet && ((int32_t *)res < PSOUT || (int32_t *)res >= PSOUT + 2 * MAXSET * SOUT);
         }
         int cost = node->spent + travelCost(node->fr, node->fc, sr, sc);
         int tPlan = cost + ply - 1;
