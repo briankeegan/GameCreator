@@ -1232,7 +1232,7 @@ static int anyBreakOf(const int32_t *st0) {
   if (tget(&SAVES, k, &v)) return v > 0;
   if (tget(&ANYB, k, &v)) return (int)v;
   stcpy(SCR, st0);
-  int n = legalG(SCR, SWS, &G), any = 0, rest = atRest(SCR);
+  int n = legalG(SCR, SWS, &G), any = 0, rest = atRest(SCR), nLater = 0, LATER[128];
   Drop D; int haveD = 0;
   for (int i = 0; i < n && !any; i++) {
     if (!swapCanClearG(SCR, &G, rest, SWS[2 * i], SWS[2 * i + 1])) continue;
@@ -1242,6 +1242,10 @@ static int anyBreakOf(const int32_t *st0) {
       if (!cas || DROPQ(SCR, SWS[2 * i], SWS[2 * i + 1], kq)) continue;
     }
     if (rest && !(G.g[SWS[2 * i]][SWS[2 * i + 1]] && G.g[SWS[2 * i]][SWS[2 * i + 1] + 1]) && DROPQ(SCR, SWS[2 * i], SWS[2 * i + 1], ZK)) continue;
+    LATER[nLater++] = i;
+  }
+  for (int j = 0; j < nLater && !any; j++) {
+    int i = LATER[j];
     if (!swapIn(SCR, SWS[2 * i], SWS[2 * i + 1])) continue;
     nAnyR++, resolve(SCR, RS, 0);
     swapIn(SCR, SWS[2 * i], SWS[2 * i + 1]);
