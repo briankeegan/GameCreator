@@ -38,6 +38,12 @@ function slabRow(b) {
 // a raise, which brings a row, among them.
 var KEEP_RANK = 1e7;
 var RESTING = 2;   // columns or fewer the lowest garbage rests on for it to be brought down first
+// Bringing it down is worth a row per 1000, and every panel spent 400: a clear's
+// three cost more than the row it lowers the slab, so the slab comes down by
+// panels moved off the columns it rests on, and by a clear only when nothing
+// else is proven to live.
+var DROP_ROW = 1000, DROP_PANEL = 400;
+var POP_FREE = 60;   // frames of a pop left past a decision for it to search the least
 // How many columns the lowest garbage rests on: those whose top panel is
 // right under it. Only those can touch it.
 function resting(board) {
@@ -169,7 +175,7 @@ wt.parentPort.on('message', function (m) {
       // can touch it from the columns it is not resting on, and the clear that drops it
       // costs the same panels now as when the bot is forced to it later.
       var drop = !popping && resting(board) <= RESTING;
-      bot.preferProven = function (c) { var b = this._settledOf(c); return b && b.grid ? KEEP_RANK + (drop ? 1000 * slabRow(b) : 0) - 100 * panelsOf(b) + gapOf(b) : Infinity; };
+      bot.preferProven = function (c) { var b = this._settledOf(c); return b && b.grid ? KEEP_RANK + (drop ? DROP_ROW * slabRow(b) - DROP_PANEL * panelsOf(b) : -100 * panelsOf(b)) + gapOf(b) : Infinity; };
     }
     else if (cfg.profile.lowerSlab && hanging(board)) bot.preferProven = function (c) { var b = this._settledOf(c); return b && b.grid ? HANG_RANK + slabRow(b) : Infinity; };
     // THE TIME THERE IS: the survival search's budget is what can be searched
@@ -179,6 +185,12 @@ wt.parentPort.on('message', function (m) {
     var nodesPerMs = rates.length ? Math.min.apply(null, rates) : 30;
     var FULL = P.prototype.SURVIVE_SEARCH_BUDGET, CHEAP = Number(process.env.GC_SURVIVOR_CHEAP) || P.prototype.SURVIVE_SEARCH_BUDGET_CHEAP;
     bot.SURVIVE_SEARCH_BUDGET = m.ms > 0 ? Math.max(CHEAP, Math.min(FULL, Math.round(m.ms * nodesPerMs * SPEND))) : FULL;
+    // WHILE A SLAB POPS NOTHING DIES, and the decisions still to come before
+    // it ends search in full. One with more than POP_FREE frames of the pop
+    // left past it searches the least, so the pop's frames go on moving.
+    // Its rate is not counted: a small search is mostly overhead.
+    var popFree = SH.popLeft(board) - (m.lead || 0) > POP_FREE;
+    if (popFree) bot.SURVIVE_SEARCH_BUDGET = CHEAP;
     // The frame loop stops a question it no longer needs (stale).
     bot._abort = cfg.abort ? stale : null;
     var d;
@@ -202,7 +214,7 @@ wt.parentPort.on('message', function (m) {
       if (lk) { d = { kind: 'swap', move: lk.split(',').map(Number) }; overruled = true; }
     }
     var took = Date.now() - t1;
-    if (took > 20) { rates.push(bot.SURVIVE_SEARCH_BUDGET / took); if (rates.length > 8) rates.shift(); }
+    if (took > 20 && !popFree) { rates.push(bot.SURVIVE_SEARCH_BUDGET / took); if (rates.length > 8) rates.shift(); }
     // The rest of the proven line behind the move, for the frame loop to play
     // on while the next decision is late: steps as the search played them
     // ([row, col], 'raise', null for a hold, { long: until }), from lineAt.
