@@ -1797,20 +1797,10 @@
         // undo it. Carried rather than consulted here: the search enumerates the
         // options every route reads, so excluding it there covers all of them.
         t.avoidSwap = this._recentSwaps;
-        // AND, TOPPED OUT, ROUTES THROUGH A CLEAR: the lock holds only while
-        // something resolves, so a route to a break longer than the lock buys
-        // time on the way. Only the route search asks for it; the features'
-        // count of what a board offers does not.
-        t.throughClears = !!info.toppedOut;
-        // AND THE LOCK THOSE ROUTES RUN ON, in planFits' own arithmetic, so a route
-        // that cannot be played in time is never built: the first run that can take
-        // health, extended by each clear to its resolve (FLASH + FACE + POP * n).
-        if (info.toppedOut) {
-            var fr0 = PanelEngine().LEVELS[9].frames;
-            t.lock = Math.max(0, (info.drainRun || 1) - 1);
-            t.resolveBase = 5 + fr0.FLASH + fr0.FACE;
-            t.resolvePop = fr0.POP;
-        }
+        // AND, TOPPED OUT, THE LOCK ROUTES RUN ON, in planFits' own arithmetic, so a
+        // route that cannot be played before health can drain is never built. Only the
+        // route search asks for it; the features' count of what a board offers does not.
+        if (info.toppedOut) t.lock = Math.max(0, (info.drainRun || 1) - 1);
         return t;
     };
 
@@ -2990,17 +2980,13 @@
                     if (!this.planInTime(ro.swaps, ro.duration, base, info, deadline)) continue;
                     // MOST GARBAGE FIRST, then soonest -- the same order the
                     // one-swap route picks by, which prefers the bigger break.
-                    // Topped out the panels are all the material there is, so
-                    // between equal breaks the one that spends fewest comes first.
-                    // Then the evenest surface left under the slab, as the one-swap
-                    // break is chosen.
+                    // Between equal breaks, the evenest surface left under the slab,
+                    // as the one-swap break is chosen.
                     var rc0 = ro.converts || 0, kc0 = reach ? (reach.converts || 0) : -1;
                     var rv0 = ro.voidAfter || 0, kv0 = reach ? (reach.voidAfter || 0) : 0;
-                    var rs0 = info.toppedOut ? (ro.cleared || 0) : 0;
-                    var ks0 = reach && info.toppedOut ? (reach.cleared || 0) : 0;
                     if (!reach || rc0 > kc0 ||
-                        (rc0 === kc0 && (rv0 < kv0 || (rv0 === kv0 && (rs0 < ks0 ||
-                         (rs0 === ks0 && (ro.duration || 0) < (reach.duration || 0))))))) reach = ro;
+                        (rc0 === kc0 && (rv0 < kv0 ||
+                         (rv0 === kv0 && (ro.duration || 0) < (reach.duration || 0))))) reach = ro;
                 }
                 if (reach) {
                     // THE FIRST SWAP IS WHAT GETS PLAYED, so it is the one the death
