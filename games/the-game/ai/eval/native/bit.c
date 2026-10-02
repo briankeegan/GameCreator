@@ -429,13 +429,16 @@ static int swapIn(int32_t *st, int r, int c) {
   if (right) st[OCC + c] |= b; else st[OCC + c] &= ~b;
   return 1;
 }
-typedef struct { uint8_t g[18][WMAX]; } Grid;
+typedef struct { uint8_t g[18][WMAX]; uint32_t m[NCOL][WMAX], pv[NCOL][WMAX]; } Grid;
 static void gridOf(const int32_t *st, Grid *G) {
   __builtin_memset(G, 0, sizeof(Grid));
-  int W = st[O_W];
+  int W = st[O_W], H = st[O_H];
+  uint32_t lim = (H < 17 ? (1u << H) - 1u : 0x1ffffu);
   for (int a = 1; a <= st[O_N]; a++)
     for (int c = 1; c <= W; c++) {
-      uint32_t bits = CL(st, a, c) & 0x1ffffu;
+      uint32_t bits = CL(st, a, c) & 0x1ffffu, m = bits & lim;
+      G->m[a][c] = m;
+      G->pv[a][c] = ((m >> 1) & (m >> 2)) | ((m << 1) & (m >> 1)) | ((m << 1) & (m << 2));
       while (bits) { G->g[__builtin_ctz(bits) + 1][c] = (uint8_t)a; bits &= bits - 1u; }
     }
 }
@@ -513,7 +516,11 @@ static int swapCanClearG(const int32_t *st, const Grid *G, int rest, int r, int 
   if (!rest) return 1;
   int left = G->g[r][c], right = G->g[r][c + 1];
   if (!left || !right) return 1;
-  return gLine(st, G, r, c, right, r, c, left, right) || gLine(st, G, r, c + 1, left, r, c, left, right);
+  if (left == right) return gLine(st, G, r, c, right, r, c, left, right) || gLine(st, G, r, c + 1, left, r, c, left, right);
+  uint32_t x = G->pv[right][c] | G->pv[left][c + 1];
+  if (c >= 3) x |= G->m[right][c - 1] & G->m[right][c - 2];
+  if (c + 3 <= st[O_W]) x |= G->m[left][c + 2] & G->m[left][c + 3];
+  return (x >> (r - 1)) & 1u;
 }
 static int settledRest(const int32_t *st) { return !st[O_BUSYF] && !st[O_BAD] && atRest(st); }
 static int quietSwapG(const int32_t *st, const Grid *G, int rest, int r, int c) {
@@ -596,8 +603,7 @@ static void shapeOfG(const int32_t *st, Shape *sh, int withGap) {
     uint32_t gm = U(st, GARB + c);
     if (!gm) continue;
     uint32_t lowBit = lowb(gm);
-    int fr = 0;
-    while (fr < 32 && (lowBit >> fr)) fr++;
+    int fr = __builtin_ctz(lowBit) + 1;
     if (!floorRow || fr < floorRow) floorRow = fr;
   }
   if (floorRow > 1) {
@@ -1036,13 +1042,30 @@ static int runOver(const Drop *D, int W, int y, int x, int r, int c, int L, int 
 static int dropQuiet(const int32_t *st, const Drop *D, int r, int c, const uint32_t *k, int32_t *out) {
   if (!D->ok) return 0;
   int W = st[O_W], ns = st[O_NSLAB];
-  if (!out && k == ZK) {
+  uint32_t b0 = 1u << (r - 1);
+  if (((D->occ[c] & b0) && !D->g[r][c]) || ((D->occ[c + 1] & b0) && !D->g[r][c + 1])) return 0;
+  if (D->g[r][c] && D->g[r][c] == D->g[r][c + 1]) return 0;
+  if (k == ZK) {
     int L0 = D->g[r][c], R0 = D->g[r][c + 1];
     if (!L0 != !R0) {
       int src = L0 ? c : c + 1, dst = L0 ? c + 1 : c;
       uint32_t bb = 1u << (r - 1);
-      if (!(D->occ[src] >> r) && (r == 1 || (D->occ[dst] & (bb >> 1))))
-        return !runOver(D, W, r, dst, r, c, L0, R0);
+      if (!(D->occ[src] >> r) && (r == 1 || (D->occ[dst] & (bb >> 1)))) {
+        if (runOver(D, W, r, dst, r, c, L0, R0)) return 0;
+        if (!out) return 1;
+        int32_t *ss = out + R_INTS;
+        for (int i = 0; i < R_INTS; i++) out[i] = 0;
+        out[R_SCOPE] = SC_OK;
+        stcpy(ss, st);
+        ss[O_BUSYF] = 0; ss[O_BAD] = 0; ss[6] = 0; ss[7] = 0;
+        for (int cc = 0; cc < WMAX; cc++) { ss[BUSY + cc] = 0; ss[COL + cc] = 0; }
+        for (int a = st[O_N] + 1; a < NCOL; a++) for (int cc = 0; cc < WMAX; cc++) ss[COL + a * WMAX + cc] = 0;
+        for (int i = 0; i < ns; i++) { ss[SLK(i)] = ss[SLK(i)] ? 1 : 0; ss[SAIR(i)] = 0; }
+        swapIn(ss, r, c);
+        for (int cc = c; cc <= c + 1; cc++)
+          for (int a = 1; a <= st[O_N]; a++) ss[COL + a * WMAX + cc] &= ss[OCC + cc] & ~ss[GARB + cc];
+        return 1;
+      }
     }
   }
   uint8_t g[18][WMAX];
@@ -1065,11 +1088,11 @@ static int dropQuiet(const int32_t *st, const Drop *D, int r, int c, const uint3
   }
   int anyMoved = 0;
   for (int pass = 0; pass < 64; pass++) {
-    int ch = 0;
+    int slabMoved = 0;
     for (int cc = 1; cc <= W; cc++) {
       uint32_t o = occ[cc], need = o & ~gar[cc] & ~((o << 1) | 1u);
       if (!need) continue;
-      ch = 1; dirty |= 1u << cc;
+      dirty |= 1u << cc;
       int y0 = __builtin_ctz(need), w = topRow(o & ((1u << y0) - 1u));
       for (int y = y0; y < 17; y++) {
         uint32_t bit = 1u << y;
@@ -1109,9 +1132,9 @@ static int dropQuiet(const int32_t *st, const Drop *D, int r, int c, const uint3
         occ[cc] = (occ[cc] & ~v) | (v >> d); gar[cc] = (gar[cc] & ~v) | (v >> d);
       }
       dd[i] += d;
-      ch = 1; anyMoved = 1;
+      anyMoved = 1; slabMoved = 1;
     }
-    if (!ch) break;
+    if (!slabMoved) break;
   }
   for (int cc = 1; cc <= W; cc++)
     for (uint32_t q = mv[cc]; q; q &= q - 1u) if (runAt(g, W, __builtin_ctz(q) + 1, cc)) return 0;
@@ -1155,8 +1178,9 @@ static int quietDrop(const int32_t *st, const Grid *G, const Drop *D, int r, int
   if (G->g[r][c] && G->g[r][c + 1]) {
     int t, cas;
     if (firstRoundK(st, G, r, c, &t, &cas, k)) return 0;
-  } else for (int i = 0; i < WMAX; i++) k[i] = 0;
-  return dropQuiet(st, D, r, c, k, out);
+    return dropQuiet(st, D, r, c, k, out);
+  }
+  return dropQuiet(st, D, r, c, ZK, out);
 }
 static LOCAL ST SWAPSCR;
 static int settleSwap(const int32_t *st, int r, int c, Res *out) {
