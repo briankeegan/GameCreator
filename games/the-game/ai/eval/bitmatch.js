@@ -239,7 +239,7 @@
     var st = { W: W, H: H, N: 0, occ: new Int32Array(W + 2), inert: new Int32Array(W + 2),
                garb: new Int32Array(W + 2), colour: new Int32Array(13 * (W + 2)),
                busy: busyMask(grid, motion, W, H),
-               slabs: [], slabLocked: [], bad: null };
+               slabs: [], slabLocked: [], slabAir: [], bad: null };
     var r, c, row;
     for (r = 1; r <= H; r++) {
       row = grid[r];
@@ -258,14 +258,19 @@
     // the last break, or one in the air, is not part of any break until it settles.
     if (blocks) {
       for (var id in blocks) {
-        var cells = blocks[id].cells, sm = new Int32Array(W + 2), locked = false;
+        var cells = blocks[id].cells, sm = new Int32Array(W + 2), locked = false, air = false;
         for (var i2 = 0; i2 < cells.length; i2++) {
           sm[cells[i2][1]] |= (1 << (cells[i2][0] - 1));
           var mo = motion && motion[cells[i2][0]] && motion[cells[i2][0]][cells[i2][1]];
           if (mo && ((mo.state !== 'normal' && mo.state !== 'falling') || (mo.color !== undefined && mo.color !== 9))) locked = true;
+          if (mo && mo.state === 'falling') air = true;
         }
         st.slabs.push(sm);
         st.slabLocked.push(locked);
+        // A FALLING SLAB FALLS BUT CANNOT BE BROKEN: getConnectedGarbagePanels takes
+        // only state 'normal'. One falling now lands on run 1's updatePanels at the
+        // earliest, so run 2 is the first whose checkMatches can take it.
+        st.slabAir.push(air ? 2 : 0);
       }
     }
     return st;
@@ -330,6 +335,7 @@
                                    colour: new Int32Array((st.N + 1) * stride), slabs: [],
                                    slabLocked: (st.slabLocked || []).slice(), bad: st.bad || null };
     if (st.busy) out.busy = Int32Array.from(st.busy);
+    if (st.slabAir) out.slabAir = st.slabAir.slice();
     var c, i;
     for (c = 0; c <= st.W + 1; c++) { out.occ[c] = st.occ[c]; out.inert[c] = st.inert[c]; out.garb[c] = st.garb[c]; }
     for (i = 0; i < out.colour.length && i < st.colour.length; i++) out.colour[i] = st.colour[i];
@@ -594,8 +600,11 @@
     // in one column, it spans the holes in the others and everything standing
     // on it rests. A slab resting on a falling slab is falling too, so the test
     // runs to a fixed point.
-    var slabs = [];
-    for (var si0 = 0; si0 < st.slabs.length; si0++) slabs.push(Int32Array.from(st.slabs[si0]));
+    var slabs = [], air = [];
+    for (var si0 = 0; si0 < st.slabs.length; si0++) {
+      slabs.push(Int32Array.from(st.slabs[si0]));
+      air.push((st.slabAir && st.slabAir[si0]) || 0);
+    }
     function slabsThatFall() {
       var falling = new Array(slabs.length).fill(false), moved = true, pass = 0;
       while (moved && pass++ <= slabs.length + 1) {
@@ -644,9 +653,11 @@
       }
       return false;
     }
-    function connectedGroup(k) {
+    // `run` is the run whose checkMatches sees the match: a slab that moved on run
+    // t is still 'falling' there until t + 2.
+    function connectedGroup(k, run) {
       var inGroup = [], any = false, sl, sk;
-      function eligible(i) { return !locked[i] && lowestRow(slabs[i]) <= H; }
+      function eligible(i) { return !locked[i] && lowestRow(slabs[i]) <= H && run >= air[i]; }
       for (sl = 0; sl < slabs.length; sl++) {
         inGroup[sl] = eligible(sl) && nextTo(k, slabs[sl]);
         if (inGroup[sl]) any = true;
@@ -815,7 +826,7 @@
         // WITH THE SLABS KNOWN, A BREAK IS A LIVE SLAB IN THE GROUP: garbage beside
         // the match that the engine will not take (still matched, or in the air) does
         // not break, and the match is an ordinary clear.
-        var group = brokeGarbage && slabs.length ? connectedGroup(k) : null;
+        var group = brokeGarbage && slabs.length ? connectedGroup(k, T + (moved ? 2 : 1)) : null;
         if (group && !group.any) brokeGarbage = false;
         if (brokeGarbage) {
           // HOW MANY GARBAGE PANELS THIS MATCH TOUCHES, because the engine's own
@@ -923,7 +934,13 @@
       }
       // A hovering panel falls on the run its timer reaches 0 (updateHovering calls
       // fall() there), so the first fall is run hoverUntil.
-      if (fell) { if (timed && T < hoverUntil - 1) T = hoverUntil - 1; T++; moved = true; continue; }
+      if (fell) {
+        if (timed && T < hoverUntil - 1) T = hoverUntil - 1;
+        T++;
+        // T is now the run of this move; a slab that made it is breakable from T + 2.
+        for (sk = 0; sk < slabs.length; sk++) if (slabFell[sk]) air[sk] = T + 2;
+        moved = true; continue;
+      }
       moved = false;
 
       // Still, and nothing new matched: the marked cells leave now, and
