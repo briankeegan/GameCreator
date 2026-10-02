@@ -146,8 +146,12 @@ wt.parentPort.on('message', function (m) {
         return t >= 0 ? t : Infinity;
       };
     }
+    // Before any lands, conserve applies while a lot is on its way (BANK_ROWS):
+    // the stack the first slab lands on is the one it is broken from.
+    var comingRows = 0;
+    (m.arrivals || []).forEach(function (a) { comingRows += a.g ? a.g.height : 0; });
     if (tall) bot.preferProven = function (c) { return c.settled ? TALL_RANK + SH.gridTop(c.settled) : Infinity; };
-    else if (cfg.profile.conserve && (board.incoming.length || SH.lowestGarbageRow(board))) {
+    else if (cfg.profile.conserve && (board.incoming.length || SH.lowestGarbageRow(board) || comingRows >= BANK_ROWS)) {
       // A SLAB HANGING over a well is brought down first: nothing can touch it
       // from the columns it is not resting on, and the clear that drops it
       // costs the same panels now as when the bot is forced to it later.
