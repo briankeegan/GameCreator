@@ -429,13 +429,16 @@ static int swapIn(int32_t *st, int r, int c) {
   if (right) st[OCC + c] |= b; else st[OCC + c] &= ~b;
   return 1;
 }
-typedef struct { uint8_t g[18][WMAX]; } Grid;
+typedef struct { uint8_t g[18][WMAX]; uint32_t m[NCOL][WMAX], pv[NCOL][WMAX]; } Grid;
 static void gridOf(const int32_t *st, Grid *G) {
   __builtin_memset(G, 0, sizeof(Grid));
-  int W = st[O_W];
+  int W = st[O_W], H = st[O_H];
+  uint32_t lim = (H < 17 ? (1u << H) - 1u : 0x1ffffu);
   for (int a = 1; a <= st[O_N]; a++)
     for (int c = 1; c <= W; c++) {
-      uint32_t bits = CL(st, a, c) & 0x1ffffu;
+      uint32_t bits = CL(st, a, c) & 0x1ffffu, m = bits & lim;
+      G->m[a][c] = m;
+      G->pv[a][c] = ((m >> 1) & (m >> 2)) | ((m << 1) & (m >> 1)) | ((m << 1) & (m << 2));
       while (bits) { G->g[__builtin_ctz(bits) + 1][c] = (uint8_t)a; bits &= bits - 1u; }
     }
 }
@@ -513,7 +516,11 @@ static int swapCanClearG(const int32_t *st, const Grid *G, int rest, int r, int 
   if (!rest) return 1;
   int left = G->g[r][c], right = G->g[r][c + 1];
   if (!left || !right) return 1;
-  return gLine(st, G, r, c, right, r, c, left, right) || gLine(st, G, r, c + 1, left, r, c, left, right);
+  if (left == right) return gLine(st, G, r, c, right, r, c, left, right) || gLine(st, G, r, c + 1, left, r, c, left, right);
+  uint32_t x = G->pv[right][c] | G->pv[left][c + 1];
+  if (c >= 3) x |= G->m[right][c - 1] & G->m[right][c - 2];
+  if (c + 3 <= st[O_W]) x |= G->m[left][c + 2] & G->m[left][c + 3];
+  return (x >> (r - 1)) & 1u;
 }
 static int settledRest(const int32_t *st) { return !st[O_BUSYF] && !st[O_BAD] && atRest(st); }
 static int quietSwapG(const int32_t *st, const Grid *G, int rest, int r, int c) {
