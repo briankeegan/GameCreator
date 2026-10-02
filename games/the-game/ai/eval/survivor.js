@@ -319,7 +319,11 @@ Match.prototype.afterFrame = function () {
   // it, which would leave the frames after it undecided.
   while (this.line && this.nextAt > now && this.nextAt - now < this.soon() && !isWait(this.line.steps[0]) && this.follow()) {}
   // Never sooner than an answer can come: the frames between are held.
-  var at = Math.max(this.nextAt > now ? this.nextAt : 0, now + this.soon());
+  // While a slab pops nothing can die, so with nothing planned the question
+  // is asked a quarter of the pop on (at most `ahead`): the lineup it needs
+  // has the time to be found and the pop's frames to be played in.
+  var lead = this.nextAt > now ? this.soon() : Math.max(this.soon(), Math.min(this.ahead(), Math.floor(SH.popLeft(next) / 4)));
+  var at = Math.max(this.nextAt > now ? this.nextAt : 0, now + lead);
   if (at - now > this.ahead()) return;
   var pr = this.predict(next, at, this.hold, this.nextPending);
   // Dead by then on what is planned: the question is the next frame's board,
