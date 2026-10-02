@@ -12,6 +12,11 @@
 // One line every 250 frames and one at the end, written as they happen:
 //   f<frame> panels <n> garb <n> top <0|1> {<decision kinds since the last line>}
 //   died <frame>  |  alive <frame>
+//   MISS <frame> <via> <kind> <move> -- a decision that counted on a break (break,
+//     breakReach, breakSpend, awaitLanding) and saw the engine break nothing in the
+//     next MISS_WINDOW frames: the bit engine predicted something pa-engine did not
+//     do. The stack as it was at that decision is written to GC_DUMP/<scenario><seed>
+//     .<frame>.json (PA.revive reads it), so a miss is checked without a replay.
 //
 // And every frame's board and every decision, from the first frame, so a
 // death is read off the run that died -- never a replay. GC_TRACE=<frame>
@@ -40,9 +45,14 @@ var pa = PA.create(sc.level, new PA.Seeded(new GEN.GeneratorSource(seed, true, l
 var bot = new BitBot(PA.view(pa, E), { allowRaise: true, reaction: 12, seed: seed });
 var trace = process.env.GC_TRACE ? Number(process.env.GC_TRACE) : 0;
 var via = {}, decide = bot.decide.bind(bot);
+var MISS_WINDOW = 240, watch = null, dumpDir = process.env.GC_DUMP || null;
+var BREAKS = { break: 1, breakReach: 1, breakSpend: 1, awaitLanding: 1 };
 bot.decide = function () {
   var t0 = process.hrtime.bigint();
   var d = decide();
+  // The board the decision read: deciding sets only the next input, never the board.
+  if (BREAKS[d.via] && !watch) watch = { f: f, via: d.via, kind: d.kind, move: d.move || d.park || null, until: f + MISS_WINDOW,
+                                         state: dumpDir ? JSON.stringify(pa) : null };
   var ms = Number(process.hrtime.bigint() - t0) / 1e6;
   via[d.via] = (via[d.via] || 0) + 1;
   if (pa.clock >= trace) {
@@ -85,6 +95,14 @@ for (var f = 0; f < frames; f++) {
   bot.stack = PA.view(pa, E);
   bot.update();
   pa.run();
+  if (watch) {
+    for (var ei = 0; ei < pa.events.length; ei++) if (pa.events[ei].type === 'match' && pa.events[ei].garbage > 0) { watch = null; break; }
+    if (watch && f >= watch.until) {
+      out('MISS ' + watch.f + ' ' + watch.via + ' ' + watch.kind + ' ' + JSON.stringify(watch.move));
+      if (dumpDir) fs.writeFileSync(path.join(dumpDir, name + seed + '.' + watch.f + '.json'), watch.state);
+      watch = null;
+    }
+  }
   pa.events.length = 0;
   if (pa.clock >= trace) {
     out('F ' + f + ' stop ' + pa.stopTime + ' shake ' + pa.shakeTime + ' health ' + pa.health + ' disp ' + pa.displacement + ' cur ' + pa.curRow + ',' + pa.curCol +
