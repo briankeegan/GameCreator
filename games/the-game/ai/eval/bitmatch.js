@@ -262,7 +262,7 @@
         for (var i2 = 0; i2 < cells.length; i2++) {
           sm[cells[i2][1]] |= (1 << (cells[i2][0] - 1));
           var mo = motion && motion[cells[i2][0]] && motion[cells[i2][0]][cells[i2][1]];
-          if (mo && (mo.state !== 'normal' || (mo.color !== undefined && mo.color !== 9))) locked = true;
+          if (mo && ((mo.state !== 'normal' && mo.state !== 'falling') || (mo.color !== undefined && mo.color !== 9))) locked = true;
         }
         st.slabs.push(sm);
         st.slabLocked.push(locked);
