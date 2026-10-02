@@ -305,7 +305,7 @@
                  //
                  // null, not false, for a break: its settled board is unknowable,
                  // the way `low` is, and a null must not be read as "cannot fire".
-                 ready: r.settled ? canFireOf(r.settled) : null };
+                 ready: (r.settled && !LEAN) ? canFireOf(r.settled) : null };
     }
 
     // Cheapest first, then bigger — the order a caller wants to read.
@@ -320,7 +320,7 @@
     // fires this move, 2 also lists what a setup opens up.
     // Set per call by the caller, which knows its own reaction and whether the
     // clock is running.
-    var OVERHEAD = 0, RESOLVE = null, DIG = false, stopPrice = null, PREPARE = false;
+    var OVERHEAD = 0, RESOLVE = null, DIG = false, stopPrice = null, PREPARE = false, LEAN = false;
     // The base board's own readiness, kept for breakReadyBoard below.
     var LASTBREAKREADY = null;
 
@@ -329,7 +329,7 @@
     // which differs by one swap. Keyed on everything the answer reads: occupancy,
     // colours, garbage, the slabs and whether each is locked, and the cells busy enough
     // to refuse a swap.
-    var SAVES = new Map(), SAVES_MAX = 50000;
+    var SAVES = new Map(), SAVES_MAX = 50000, ANYBREAK = new Map();
     // THE FREEZE ONE SWAP CAN BUY, BY BOARD, the same way: bestOneSwapStop is a pure
     // function of the masks and of stopPrice, which reads only whether the board is
     // topped out -- timing.stopKey.
@@ -446,6 +446,12 @@
         // AND THE HEALTH A ROUTE MAY SPEND past it: none, unless the caller is looking
         // for a last resort.
         SPEND = (timing && timing.spend) || 0;
+        // LEAN: THE LISTS ONLY. A caller that reads nothing but `now` and `next` --
+        // each option's kind, size, chain and frames -- asks for this, and none of
+        // what is worked out for the routes (break readiness, the flatten, the save,
+        // the trigger, the landing's stop) is. The lists are the same lists: the beam
+        // ranks setups by price and by nearness to a slab, neither of which is skipped.
+        LEAN = !!(timing && timing.lean);
         PREPARE = !!(timing && timing.prepare);
         // ONE ROW OF CEILING, AT THE RATE THIS FILE PAYS FOR BEING NEAR A THING.
         // Breaking a row of slab hands the board back a row, which is FPR frames;
@@ -565,8 +571,8 @@
         // reason the void has a base: the panels a board still needs to reach its
         // slab are a fact about the position, and only the CHANGE is about the move.
         var BASEGAP = START ? (START.slabRowGap || 0) : 0;
-        var BASEBREAK = breakReadyOf(st) === true;
-        LASTBREAKREADY = BASEBREAK;
+        var BASEBREAK = LEAN ? false : breakReadyOf(st) === true;
+        if (!LEAN) LASTBREAKREADY = BASEBREAK;
         // AND HOW MANY WAYS THERE ARE TO REACH THE GARBAGE BEFORE ANY MOVE.
         //
         // THE SLOPE THE FLAG DOES NOT HAVE. `breakReady` is a cliff: on a buried
@@ -654,118 +660,120 @@
             // unconditional, so the board is built for the slab before it lands instead of
             // reshaped after. Anticipation, not shape.
             opt.opensHole = opt.low === 0 && BASELOW > 0;
-            opt.breakReady = r.settled ? breakReadyOf(r.settled) : null;
-            // THE MOVE THAT TAKES THE LAST WAY TO BREAK.
-            //
-            // A TRANSITION, THE WAY opensHole IS, AND NOT A STATE. `breakReady`
-            // false on its own says the landed board cannot break -- which is just
-            // as true of a board that already could not, so refusing on it punishes
-            // a position rather than the move that made it, and on a board with no
-            // break left it throws every option away. Measured that way: three
-            // deaths among STARTER and ZERO in thirteen pairings against none in
-            // sixty. `low === 0 && BASELOW > 0` is the shape that works and this is
-            // the same shape.
-            //
-            // It can never empty the list: silent when the base board cannot break,
-            // and when it can, the move that KEEPS the break is by definition still
-            // on it. And it is a cliff rather than a slope -- two ways to break
-            // down to one is ordinary, one down to none ends the game -- which is
-            // why a price was the wrong instrument for it.
-            //
-            // null on a break stays null: a break's settled board is unknowable and
-            // a null is not a no.
-            opt.closesBreak = BASEBREAK && opt.breakReady === false;
-            // WHETHER IT GOT CLOSER TO A BREAK, OR FURTHER AWAY.
-            //
-            // Priced by both rankers at one panel of life a cell -- perPanel in
-            // bestPlan, one cell sent in bestAttack -- and NOT at the deadline/W the
-            // flatten value below pays a dig cell ("being NEAR one is worth a fraction
-            // of it"). At a deadline of 600 that is 100 frames, near a whole row of
-            // ceiling, and one cell that MIGHT finish a line outweighed a six-combo.
-            // See bestAttack for the measurement. NOT CALIBRATED.
-            //
-            // The flatten pricing existed and was asked only of routes that CLEAR
-            // NOTHING, so every combo and every chain was ranked without anyone asking
-            // what it did to the board's way out from under the slab.
-            //
-            // Zero off the slab: with no garbage there is nothing to dig toward. Zero on
-            // a break too -- its settled board is unknowable.
-            opt.digGain = (DIG && r.settled) ? reachOf(r.settled).dig - BASEDIG : 0;
-            // AND THE CHANGE IN THAT VOID, a delta for the same reason digGain is
-            // one: an absolute count is a fact about the position, not the move.
-            opt.voidGain = (opt.voidRows === null || opt.voidRows === undefined)
-                             ? 0 : (BASEVOID - opt.voidRows);
-            // AND HOW MUCH CLOSER IT GOT TO A SETUP THERE IS TIME FOR.
-            //
-            // Two halves, and the second is the one that was missing. `slabGap` is how
-            // many panels the landing still needs before three in a line can touch the
-            // slab; setupWorth turns that into the frames a finished setup pays --
-            // a row of ceiling plus the hold -- discounted by the share of the time
-            // left that the remaining work costs. This is its DELTA, read by both
-            // rankers, each against its own clock: the option spends its own duration
-            // before any setup swap can follow it.
-            //
-            // NO CLIFF AT THE BOUNDARY: the credit ARRIVES at zero as the work grows to
-            // fill the time, rather than being cut off at a threshold. That is
-            // what makes this a clock and not a distance: with four hundred frames of
-            // ceiling a four-swap setup is worth starting, and with thirty frames left
-            // the same setup is not.
-            //
-            // Zero off the slab -- slabGap is 0 with no garbage, so gain is 0 too -- and
-            // zero on a break, whose settled board is unknowable.
-            opt.slabGain = setupWorth(opt.slabGap, DEADLINE - (opt.duration || 0))
-                             - setupWorth(BASEGAP, DEADLINE);
-            // AND THE HOLES IT DIGS, as a delta for the same reason.
-            // NO GEOMETRIC HOLE TERM. THREE OF THEM WERE MEASURED AND ALL WERE WORSE.
-            //
-            // `wells` was the depth of each column below the lower of its neighbours
-            // -- the one shape number that can see a hole, since `excess` and the void
-            // are averages, `slabRowGap` is a minimum over windows and read the move
-            // that dug one as zero, and `spread` falls when the tallest column (the
-            // one touching the slab) is pulled down.
-            //
-            // Credited as a delta at a row of rise per row of depth: 101 rand2 v
-            // rand3, 101 rand2 v rand4 and 103 rand1 v rand4, all three alive before,
-            // died; one death fixed. Repriced in cells, which is what a well actually
-            // is: two of the first two pairings died, at 4,229 and 24,415. Made
-            // one-sided -- charged for digging, never credited for filling, so that
-            // lowering a hole's neighbours could not be paid for: FOUR deaths in eight
-            // boards, two of them at 1,805 frames, which is the signature of a bot
-            // that will not clear, because on an awkward board most clears deepen some
-            // column somewhere.
-            //
-            // AND THE DEEPER REASON IT CANNOT WORK: A STEP IS WHAT A CHAIN IS MADE OF.
-            //
-            // A chain needs panels to FALL into place -- clear low, the stack above
-            // drops, the drop completes the next group. The steps and dips in the
-            // surface are that mechanism; a flat board cannot chain at all. So a term
-            // charging for a column sitting below its neighbours is charging for the
-            // structure combos and chains are built out of, which is why no price and
-            // no sign for it came out ahead.
-            //
-            // THE GEOMETRY IS THE WRONG INSTRUMENT. A hole matters only if it costs
-            // the board what it can DO, and that question is already asked by
-            // lookahead rather than by shape: slabReadyFast on the landing (priced as
-            // slabWorth), slabRowGap through the depth-2 beam (priced as slabGain),
-            // waysOf, readyOf, breakReadyOf, and nextBestChain/nextBestCombo in the
-            // vector. A hole that costs capability shows up in those; one that does
-            // not is not worth charging for. And the board this chain started from
-            // died holding 43 panels in FOUR columns -- height, which `tallest` and
-            // bestPlan's `lowered` already price.
-            // AND WHETHER THE BOARD IT LANDS ON COULD ANSWER THE NEXT SLAB.
-            //
-            // slabReadyFast asks whether a three can be put against the row the next
-            // slab will rest on. Only asked when there IS a slab to be ready for, on
-            // the board or queued, and only while the budget holds; zero otherwise,
-            // never a charge. PREPWORTH is derived where it is declared.
-            opt.slabWorth = (PREPARE && prepBudget > 0 && r.settled &&
-                             (prepBudget--, slabReadyFast(r.settled))) ? PREPWORTH : 0;
-            // AND WHAT THE BOARD HELD BEFORE THE MOVE, in rows of material. Whether the
-            // board is BURIED AND SHORT is a fact about the position and not about the
-            // move, so it cannot be read off the landing -- and `mat` is null on a break,
-            // which is exactly the move that matters here. The threshold stays with the
-            // caller: this carries the number, WORKING_ROWS lives in bitbot.
-            opt.matNow = START ? START.mat : null;
+            if (!LEAN) {
+                opt.breakReady = r.settled ? breakReadyOf(r.settled) : null;
+                // THE MOVE THAT TAKES THE LAST WAY TO BREAK.
+                //
+                // A TRANSITION, THE WAY opensHole IS, AND NOT A STATE. `breakReady`
+                // false on its own says the landed board cannot break -- which is just
+                // as true of a board that already could not, so refusing on it punishes
+                // a position rather than the move that made it, and on a board with no
+                // break left it throws every option away. Measured that way: three
+                // deaths among STARTER and ZERO in thirteen pairings against none in
+                // sixty. `low === 0 && BASELOW > 0` is the shape that works and this is
+                // the same shape.
+                //
+                // It can never empty the list: silent when the base board cannot break,
+                // and when it can, the move that KEEPS the break is by definition still
+                // on it. And it is a cliff rather than a slope -- two ways to break
+                // down to one is ordinary, one down to none ends the game -- which is
+                // why a price was the wrong instrument for it.
+                //
+                // null on a break stays null: a break's settled board is unknowable and
+                // a null is not a no.
+                opt.closesBreak = BASEBREAK && opt.breakReady === false;
+                // WHETHER IT GOT CLOSER TO A BREAK, OR FURTHER AWAY.
+                //
+                // Priced by both rankers at one panel of life a cell -- perPanel in
+                // bestPlan, one cell sent in bestAttack -- and NOT at the deadline/W the
+                // flatten value below pays a dig cell ("being NEAR one is worth a fraction
+                // of it"). At a deadline of 600 that is 100 frames, near a whole row of
+                // ceiling, and one cell that MIGHT finish a line outweighed a six-combo.
+                // See bestAttack for the measurement. NOT CALIBRATED.
+                //
+                // The flatten pricing existed and was asked only of routes that CLEAR
+                // NOTHING, so every combo and every chain was ranked without anyone asking
+                // what it did to the board's way out from under the slab.
+                //
+                // Zero off the slab: with no garbage there is nothing to dig toward. Zero on
+                // a break too -- its settled board is unknowable.
+                opt.digGain = (DIG && r.settled) ? reachOf(r.settled).dig - BASEDIG : 0;
+                // AND THE CHANGE IN THAT VOID, a delta for the same reason digGain is
+                // one: an absolute count is a fact about the position, not the move.
+                opt.voidGain = (opt.voidRows === null || opt.voidRows === undefined)
+                                 ? 0 : (BASEVOID - opt.voidRows);
+                // AND HOW MUCH CLOSER IT GOT TO A SETUP THERE IS TIME FOR.
+                //
+                // Two halves, and the second is the one that was missing. `slabGap` is how
+                // many panels the landing still needs before three in a line can touch the
+                // slab; setupWorth turns that into the frames a finished setup pays --
+                // a row of ceiling plus the hold -- discounted by the share of the time
+                // left that the remaining work costs. This is its DELTA, read by both
+                // rankers, each against its own clock: the option spends its own duration
+                // before any setup swap can follow it.
+                //
+                // NO CLIFF AT THE BOUNDARY: the credit ARRIVES at zero as the work grows to
+                // fill the time, rather than being cut off at a threshold. That is
+                // what makes this a clock and not a distance: with four hundred frames of
+                // ceiling a four-swap setup is worth starting, and with thirty frames left
+                // the same setup is not.
+                //
+                // Zero off the slab -- slabGap is 0 with no garbage, so gain is 0 too -- and
+                // zero on a break, whose settled board is unknowable.
+                opt.slabGain = setupWorth(opt.slabGap, DEADLINE - (opt.duration || 0))
+                                 - setupWorth(BASEGAP, DEADLINE);
+                // AND THE HOLES IT DIGS, as a delta for the same reason.
+                // NO GEOMETRIC HOLE TERM. THREE OF THEM WERE MEASURED AND ALL WERE WORSE.
+                //
+                // `wells` was the depth of each column below the lower of its neighbours
+                // -- the one shape number that can see a hole, since `excess` and the void
+                // are averages, `slabRowGap` is a minimum over windows and read the move
+                // that dug one as zero, and `spread` falls when the tallest column (the
+                // one touching the slab) is pulled down.
+                //
+                // Credited as a delta at a row of rise per row of depth: 101 rand2 v
+                // rand3, 101 rand2 v rand4 and 103 rand1 v rand4, all three alive before,
+                // died; one death fixed. Repriced in cells, which is what a well actually
+                // is: two of the first two pairings died, at 4,229 and 24,415. Made
+                // one-sided -- charged for digging, never credited for filling, so that
+                // lowering a hole's neighbours could not be paid for: FOUR deaths in eight
+                // boards, two of them at 1,805 frames, which is the signature of a bot
+                // that will not clear, because on an awkward board most clears deepen some
+                // column somewhere.
+                //
+                // AND THE DEEPER REASON IT CANNOT WORK: A STEP IS WHAT A CHAIN IS MADE OF.
+                //
+                // A chain needs panels to FALL into place -- clear low, the stack above
+                // drops, the drop completes the next group. The steps and dips in the
+                // surface are that mechanism; a flat board cannot chain at all. So a term
+                // charging for a column sitting below its neighbours is charging for the
+                // structure combos and chains are built out of, which is why no price and
+                // no sign for it came out ahead.
+                //
+                // THE GEOMETRY IS THE WRONG INSTRUMENT. A hole matters only if it costs
+                // the board what it can DO, and that question is already asked by
+                // lookahead rather than by shape: slabReadyFast on the landing (priced as
+                // slabWorth), slabRowGap through the depth-2 beam (priced as slabGain),
+                // waysOf, readyOf, breakReadyOf, and nextBestChain/nextBestCombo in the
+                // vector. A hole that costs capability shows up in those; one that does
+                // not is not worth charging for. And the board this chain started from
+                // died holding 43 panels in FOUR columns -- height, which `tallest` and
+                // bestPlan's `lowered` already price.
+                // AND WHETHER THE BOARD IT LANDS ON COULD ANSWER THE NEXT SLAB.
+                //
+                // slabReadyFast asks whether a three can be put against the row the next
+                // slab will rest on. Only asked when there IS a slab to be ready for, on
+                // the board or queued, and only while the budget holds; zero otherwise,
+                // never a charge. PREPWORTH is derived where it is declared.
+                opt.slabWorth = (PREPARE && prepBudget > 0 && r.settled &&
+                                 (prepBudget--, slabReadyFast(r.settled))) ? PREPWORTH : 0;
+                // AND WHAT THE BOARD HELD BEFORE THE MOVE, in rows of material. Whether the
+                // board is BURIED AND SHORT is a fact about the position and not about the
+                // move, so it cannot be read off the landing -- and `mat` is null on a break,
+                // which is exactly the move that matters here. The threshold stays with the
+                // caller: this carries the number, WORKING_ROWS lives in bitbot.
+                opt.matNow = START ? START.mat : null;
+            }
             now.push(opt);
         }
 
@@ -893,7 +901,7 @@
             var c, any = false;
             for (c = 1; c <= W; c++) if (state.garb[c]) { any = true; break; }
             if (!any) return null;
-            if (savesOfRaw(state) > 0) return true;
+            if (anyBreakOf(state)) return true;
             // ONE SWAP IS NOT THE QUESTION. A board with no swap that breaks the
             // slab outright is not a sealed board: a clear underneath drops what
             // was resting on it, the slab comes down onto the material, and the
@@ -929,11 +937,28 @@
                 // line and sit next to the slab, which is most of the answer
                 // already, so gating on it threw away the landings this exists for
                 // and the board died on its original frame. The sweep is the price.
-                if (savesOfRaw(r.settled) > 0) return true;
+                if (anyBreakOf(r.settled)) return true;
             }
             return false;
         }
 
+        function anyBreakOf(state) {
+            var key = boardKey(state), n = SAVES.get(key);
+            if (n !== undefined) return n > 0;
+            var hit = ANYBREAK.get(key);
+            if (hit !== undefined) return hit;
+            var sw = bit.legalSwapsOf(state), i, r, any = false;
+            for (i = 0; i < sw.length && !any; i++) {
+                if (!bit.swapCanClear(state, sw[i][0], sw[i][1])) continue;
+                if (!bit.swapMasks(state, sw[i][0], sw[i][1])) continue;
+                r = bit.resolveFromMasks(state, false);
+                bit.swapMasks(state, sw[i][0], sw[i][1]);
+                if (r.scope === 'garbage-broke') any = true;
+            }
+            if (ANYBREAK.size >= SAVES_MAX) ANYBREAK.clear();
+            ANYBREAK.set(key, any);
+            return any;
+        }
         function savesOfRaw(state) {
             var key = boardKey(state), hit = SAVES.get(key);
             if (hit !== undefined) return hit;
@@ -970,7 +995,7 @@
             saveBudget = 192;
             slabBudget = 24;
             prepBudget = 24;
-            BASESAVE = (DIG && BASEDIG > 0) ? savesOfRaw(state0) : 0;
+            BASESAVE = (DIG && BASEDIG > 0 && !LEAN) ? savesOfRaw(state0) : 0;
             // The root has no reach mask: ply one stays exhaustive so an immediate
             // clear is never missed.
             var frontier = [{ st: state0, chain: [], from: cursor, spent: 0, reach: null, dig: 0, lock: LOCK }], ply;
@@ -1039,50 +1064,52 @@
                                 // which it is -- the landed board's bumpiness says it outright.
                                 opt.levels = opt.bumps !== null && opt.bumps <= BASEBUMPS;
                                 opt.opensHole = opt.low === 0 && BASELOW > 0;
-                                opt.breakReady = res.settled ? breakReadyOf(res.settled) : null;
-                                opt.closesBreak = BASEBREAK && opt.breakReady === false;
-                                // WHETHER IT GOT CLOSER TO A BREAK, OR FURTHER AWAY.
-                                // See the one-swap path above for what it is and what
-                                // it is priced at.
-                                opt.digGain = (DIG && res.settled) ? reachOf(res.settled).dig - BASEDIG : 0;
-                                // AND THE CHANGE IN THAT VOID, a delta for the same reason digGain is
-                                // one: an absolute count is a fact about the position, not the move.
-                                opt.voidGain = (opt.voidRows === null || opt.voidRows === undefined)
-                                                 ? 0 : (BASEVOID - opt.voidRows);
-                                // AND HOW MUCH CLOSER IT GOT TO A SETUP THERE IS TIME FOR.
-                                //
-                                // Two halves, and the second is the one that was missing. `slabGap` is how
-                                // many panels the landing still needs before three in a line can touch the
-                                // slab; setupWorth turns that into the frames a finished setup pays --
-                                // a row of ceiling plus the hold -- discounted by the share of the time
-                                // left that the remaining work costs. This is its DELTA, read by both
-                                // rankers, each against its own clock.
-                                //
-                                // NO CLIFF AT THE BOUNDARY: the credit ARRIVES at zero as the work grows to
-                                // fill the time, rather than being cut off at a threshold. That is
-                                // what makes this a clock and not a distance: with four hundred frames of
-                                // ceiling a four-swap setup is worth starting, and with thirty frames left
-                                // the same setup is not.
-                                //
-                                // Zero off the slab -- slabGap is 0 with no garbage, so gain is 0 too -- and
-                                // zero on a break, whose settled board is unknowable.
-                                opt.slabGain = setupWorth(opt.slabGap, DEADLINE - (opt.duration || 0))
-                             - setupWorth(BASEGAP, DEADLINE);
-            // AND THE HOLES IT DIGS, as a delta for the same reason.
-                                // AND WHETHER THE BOARD IT LANDS ON COULD ANSWER THE NEXT SLAB.
-                                //
-                                // slabReadyFast asks whether a three can be put against the row the next
-                                // slab will rest on. Only asked when there IS a slab to be ready for, on
-                                // the board or queued, and only while the budget holds; zero otherwise,
-                                // never a charge. PREPWORTH is derived where it is declared.
-                                opt.slabWorth = (PREPARE && prepBudget > 0 && res.settled &&
-                                                 (prepBudget--, slabReadyFast(res.settled))) ? PREPWORTH : 0;
-                                // AND WHAT THE BOARD HELD BEFORE THE MOVE, in rows of material. Whether the
-                                // board is BURIED AND SHORT is a fact about the position and not about the
-                                // move, so it cannot be read off the landing -- and `mat` is null on a break,
-                                // which is exactly the move that matters here. The threshold stays with the
-                                // caller: this carries the number, WORKING_ROWS lives in bitbot.
-                                opt.matNow = START ? START.mat : null;
+                                if (!LEAN) {
+                                    opt.breakReady = res.settled ? breakReadyOf(res.settled) : null;
+                                    opt.closesBreak = BASEBREAK && opt.breakReady === false;
+                                    // WHETHER IT GOT CLOSER TO A BREAK, OR FURTHER AWAY.
+                                    // See the one-swap path above for what it is and what
+                                    // it is priced at.
+                                    opt.digGain = (DIG && res.settled) ? reachOf(res.settled).dig - BASEDIG : 0;
+                                    // AND THE CHANGE IN THAT VOID, a delta for the same reason digGain is
+                                    // one: an absolute count is a fact about the position, not the move.
+                                    opt.voidGain = (opt.voidRows === null || opt.voidRows === undefined)
+                                                     ? 0 : (BASEVOID - opt.voidRows);
+                                    // AND HOW MUCH CLOSER IT GOT TO A SETUP THERE IS TIME FOR.
+                                    //
+                                    // Two halves, and the second is the one that was missing. `slabGap` is how
+                                    // many panels the landing still needs before three in a line can touch the
+                                    // slab; setupWorth turns that into the frames a finished setup pays --
+                                    // a row of ceiling plus the hold -- discounted by the share of the time
+                                    // left that the remaining work costs. This is its DELTA, read by both
+                                    // rankers, each against its own clock.
+                                    //
+                                    // NO CLIFF AT THE BOUNDARY: the credit ARRIVES at zero as the work grows to
+                                    // fill the time, rather than being cut off at a threshold. That is
+                                    // what makes this a clock and not a distance: with four hundred frames of
+                                    // ceiling a four-swap setup is worth starting, and with thirty frames left
+                                    // the same setup is not.
+                                    //
+                                    // Zero off the slab -- slabGap is 0 with no garbage, so gain is 0 too -- and
+                                    // zero on a break, whose settled board is unknowable.
+                                    opt.slabGain = setupWorth(opt.slabGap, DEADLINE - (opt.duration || 0))
+                                 - setupWorth(BASEGAP, DEADLINE);
+                // AND THE HOLES IT DIGS, as a delta for the same reason.
+                                    // AND WHETHER THE BOARD IT LANDS ON COULD ANSWER THE NEXT SLAB.
+                                    //
+                                    // slabReadyFast asks whether a three can be put against the row the next
+                                    // slab will rest on. Only asked when there IS a slab to be ready for, on
+                                    // the board or queued, and only while the budget holds; zero otherwise,
+                                    // never a charge. PREPWORTH is derived where it is declared.
+                                    opt.slabWorth = (PREPARE && prepBudget > 0 && res.settled &&
+                                                     (prepBudget--, slabReadyFast(res.settled))) ? PREPWORTH : 0;
+                                    // AND WHAT THE BOARD HELD BEFORE THE MOVE, in rows of material. Whether the
+                                    // board is BURIED AND SHORT is a fact about the position and not about the
+                                    // move, so it cannot be read off the landing -- and `mat` is null on a break,
+                                    // which is exactly the move that matters here. The threshold stays with the
+                                    // caller: this carries the number, WORKING_ROWS lives in bitbot.
+                                    opt.matNow = START ? START.mat : null;
+                                }
                                 next.push(opt);
                             }
                             continue;
@@ -1134,7 +1161,7 @@
                             // back on -- are chosen below, once `val` exists. Picking
                             // them here, by cost, was picking them before anyone had
                             // asked what board they land on.
-                            var sh2 = shapeOf(res.settled);
+                            var sh2 = LEAN ? null : shapeOf(res.settled);
                             var svNow = 0;
                             if (sh2) {
                                 var dur = durationOf(seq, cost);
