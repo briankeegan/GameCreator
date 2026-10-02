@@ -36,7 +36,7 @@
 }(this, function () {
   'use strict';
 
-  var DAS_DELAY = 20;          // panel-engine.js, frames a held direction repeats after
+  var DAS_DELAY = 20;          // panel-engine.js, frames a held direction repeats after (the Lua: 10)
   var MOVE_FRAMES = 4;         // panel-cpu.js CURSOR_MOVE_FRAMES — the tap cadence
 
   // Frames to walk `steps` cells at cadence `g`. The first press lands on
@@ -51,8 +51,17 @@
   // but at the same cadence throughout, so an L-shaped path costs exactly
   // its total step count — unlike the held-direction policy, where turning
   // a corner doubled the bill.
+  //
+  // THE SWAP ITSELF MAY COST A FRAME. panel-engine.js queues a swap the bot
+  // asks for before the frame's physics, so it starts that frame; the
+  // server's engine reads a pressed swap in the next frame's controls, so it
+  // starts one frame later. `press` is that frame: 0 on panel-engine, 1 on
+  // the server's rules (a stack says so with swapLatency; BitBot sets it).
+  // One engine per process.
+  var press = 0;
+  function setPress(n) { press = n || 0; }
   function cost(r0, c0, r1, c1, g) {
-    return walkCost(Math.abs(r1 - r0) + Math.abs(c1 - c0), g);
+    return walkCost(Math.abs(r1 - r0) + Math.abs(c1 - c0), g) + press;
   }
 
   // The cursor cannot go above the top of the stack: clampCursor caps
@@ -65,5 +74,5 @@
   }
 
   return { DAS_DELAY: DAS_DELAY, MOVE_FRAMES: MOVE_FRAMES,
-           walkCost: walkCost, cost: cost, reachable: reachable };
+           walkCost: walkCost, cost: cost, setPress: setPress, reachable: reachable };
 }));

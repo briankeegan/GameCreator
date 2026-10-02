@@ -1106,6 +1106,17 @@
     return s;
   }
 
+  // A bot written for panel-engine.js, playing this: the board as
+  // toPanelEngine reads it, with its input and swaps going to `s`. Built
+  // fresh every frame. A swap is pressed for the next frame's controls, and
+  // reported taken if the board allows it now.
+  function view(s, PE) {
+    var st = toPanelEngine(s, PE);
+    st.setInput = function (input) { PE.Stack.prototype.setInput.call(st, input); s.setInput(input); };
+    st.tryQueueSwap = function (row, col) { return s.canSwap(row, col) && s.tryQueueSwap(row, col); };
+    return st;
+  }
+
   // A board sent to another thread comes back a plain object: give it its
   // prototypes again (the source is unseen: a search's).
   function revive(o) {
@@ -1120,7 +1131,12 @@
   // engine's default, shock panels are the colour 8 they match as, shock
   // garbage is garbage. Nothing is played on this; searches play the Stack.
   function toPanelEngine(s, PE) {
-    var st = new PE.Stack({ level: 10, seed: 1, countdown: false });
+    var lv = 10;
+    for (var li = 0; li < PE.LEVELS.length; li++) {
+      var L = PE.LEVELS[li];
+      if (L.startingSpeed === s.levelData.startingSpeed && L.maxHealth === s.levelData.maxHealth && L.colors === s.levelData.colors) lv = li + 1;
+    }
+    var st = new PE.Stack({ level: lv, seed: 1, countdown: false });
     var ints = ['speed', 'nextSpeedIncreaseClock', 'clock', 'displacement', 'stopTime', 'preStopTime', 'shakeTime', 'shakeTimeOnFrame',
                 'peakShakeTime', 'health', 'chainCounter', 'nActive', 'nPrevActive', 'swappingCount', 'panelsCleared', 'score', 'curRow',
                 'curCol', 'topCurRow', 'queuedSwapRow', 'queuedSwapCol', 'garbageCreatedCount', 'highestGarbageIdMatched', 'panelIdCount'];
@@ -1160,12 +1176,13 @@
       rows.push(row);
     }
     st.panels = rows;
+    st.swapLatency = 1;
     st.input = { left: false, right: false, up: false, down: false, swap: false, raise: false };
     st.prevInput = st.input;
     st.events = [];
     return st;
   }
 
-  return { Stack: Stack, Panel: Panel, fromLua: fromLua, revive: revive, toPanelEngine: toPanelEngine, Unseen: Unseen, Recorded: Recorded, Seeded: Seeded, create: create, vsLevel: vsLevel, PANEL_FROM_LUA: PANEL_FROM_LUA,
+  return { Stack: Stack, Panel: Panel, fromLua: fromLua, revive: revive, toPanelEngine: toPanelEngine, view: view, Unseen: Unseen, Recorded: Recorded, Seeded: Seeded, create: create, vsLevel: vsLevel, PANEL_FROM_LUA: PANEL_FROM_LUA,
            STACK_FROM_LUA: STACK_FROM_LUA, IN: IN, list: list, WIDTH: W, HEIGHT: H };
 }));
