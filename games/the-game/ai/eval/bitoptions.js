@@ -298,7 +298,7 @@
                  //
                  // null, not false, for a break: its settled board is unknowable,
                  // the way `low` is, and a null must not be read as "cannot fire".
-                 ready: r.settled ? !!bit.anyOneSwapClear(r.settled) : null };
+                 ready: r.settled ? canFireOf(r.settled) : null };
     }
 
     // Cheapest first, then bigger — the order a caller wants to read.
@@ -373,6 +373,18 @@
         return (h1 >>> 0) * 2097152 + (h2 >>> 11);
     }
     var BK_ARRS = [null, null, null, null];
+
+    // WHETHER A SETTLED BOARD CAN FIRE, BY BOARD: anyOneSwapClear is a pure function
+    // of the masks, and every option the search lists asks it of its landing.
+    var READY = new Map();
+    function canFireOf(st) {
+        var key = boardKey(st), hit = READY.get(key);
+        if (hit !== undefined) return hit;
+        var v = !!bit.anyOneSwapClear(st);
+        if (READY.size >= SAVES_MAX) READY.clear();
+        READY.set(key, v);
+        return v;
+    }
 
     // WHAT A BOARD SETTLES TO, BY BOARD: resolveFromMasks with the settled state,
     // asked of every swap the beam expands, and of the same boards again on the next
@@ -859,7 +871,7 @@
         function readyOf(state) {
             // ONE IMPLEMENTATION OF THIS QUESTION, IN bitmatch. hasFireable in
             // bitbot asked it too, with its own copy of the same sweep.
-            return bit.anyOneSwapClear(state) ? 1 : 0;
+            return canFireOf(state) ? 1 : 0;
         }
 
         // CAN THE BOARD THIS LANDS ON BREAK ITS GARBAGE.
