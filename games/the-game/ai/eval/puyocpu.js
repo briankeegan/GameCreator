@@ -3421,10 +3421,12 @@
   PuyoCpu.prototype.REPLY_SETTLE = 180;
   PuyoCpu.prototype._nativeNodes = function (cands) {
     if (!this.nativeCands || !this.serverStack || !cands) return;
+    if (cands.natDone) return;
     if (!this._candNat) this._candNat = new (NativeMod().server.Search)({ reaction: this.reaction || 0, cursorMoveFrames: this.cursorMoveFrames, swapGap: this.swapGap, threads: this.threads || 1 });
     var S = this._candNat, i;
     S.reset();
     var root = S.root(this.serverStack.copy(), { left: this.raiseFrames || 0, started: !!this._raiseStarted }, this.serverArrivals || [], false);
+    this._candRoot = root;
     var steps = [], at = [], got = [];
     for (i = 0; i < cands.length; i++) {
       var c = cands[i];
@@ -3442,6 +3444,7 @@
       var n = got[i];
       cands[i].natNode = n && !n.dead ? n : null;
       cands[i].natDead = !!(n && n.dead);
+      cands[i].natDeadAt = n && n.dead ? n.t : null;
     }
   };
   // A settle step as a resolve: the board it leaves written into `board`, and
@@ -3673,8 +3676,28 @@
     this.allAboveCapNow = false;
     this.allCorneredNow = false;
 
+    // ON THE SERVER'S ENGINE (nativeCands): every first move is settled by the
+    // engine in C from the server's board, and its resolve read from that
+    // settle (_nativeResolved); a swap the engine refuses is no candidate.
+    var natural = this.nativeCands && this.serverStack && this.engine, nat = null;
+    if (natural) {
+      nat = [{ kind: 'hold' }];
+      if (this._canRaise()) nat.push({ kind: 'raise' });
+      board.legalSwaps().forEach(function (m) { nat.push({ kind: 'swap', move: m }); });
+      this._nativeNodes(nat);
+    }
+    var self = this;
+    function natOf(kind, m) {
+      for (var q = 0; q < nat.length; q++) if (nat[q].kind === kind && (!m || (nat[q].move[0] === m[0] && nat[q].move[1] === m[1]))) return nat[q];
+      return null;
+    }
+    function natResolved(x, b) {
+      if (!x || (!x.natNode && !x.natDead)) return { refused: true };
+      var n = x.natNode || { dead: true, t: x.natDeadAt };
+      return self._nativeResolved(n, self._candRoot, b);
+    }
     var holdBoard = board.clone();
-    var holdResolved = this._resolveCandidate(holdBoard, null, this.reaction);
+    var holdResolved = natural ? natResolved(natOf('hold'), holdBoard) : this._resolveCandidate(holdBoard, null, this.reaction);
     var cands = [{ kind: 'hold',
                    score: this._score(holdBoard, holdResolved, null),
                    board: this._scoredBoard,
@@ -3684,7 +3707,8 @@
                    travel: this._scoredTravel,
                    earnedStop: holdResolved.stopTimeEarned || 0 }];
 
-    if (this._canRaise()) {
+    var natRaise = natural ? natOf('raise') : null;
+    if (this._canRaise() && !(natural && !(natRaise && (natRaise.natNode || natRaise.natDead)))) {
       // The row the engine will actually deal, resolved, because a raise
       // can complete a match and that match is the reason to make it.
       var raiseBoard = board.clone().rise(this._incoming);
@@ -3697,7 +3721,7 @@
       // forbids the ones it will: measured over the same ten games, 23.1s
       // against 28.6s without it.
       raiseBoard.incoming = false;
-      var raiseResolved = this._resolveCandidate(raiseBoard);
+      var raiseResolved = natural ? natResolved(natOf('raise'), raiseBoard) : this._resolveCandidate(raiseBoard);
       // A MOVE THAT KILLS YOU IS NOT A MOVE. Raising is the one thing the
       // bot does that pushes its own stack up, and it is the only way it
       // can shorten its own clock on purpose -- so it is the only place
@@ -3748,7 +3772,8 @@
       // the bot really does wait that long before acting again.
       var delay = travel.cost(this.stack.curRow, this.stack.curCol, r, c);
       var resolved;
-      if (this.engine) {
+      if (natural) resolved = natResolved(natOf('swap', [r, c]), trial);
+      else if (this.engine) {
         // The engine ages the board and makes the swap itself.
         this._walkFrom = [this.stack.curRow, this.stack.curCol];
         resolved = this._resolveCandidate(trial, [r, c], delay);
@@ -3769,6 +3794,11 @@
                    risen: this._scoredResolved,
                    travel: this._scoredTravel,
                    earnedStop: resolved.stopTimeEarned || 0 });
+    }
+    if (natural) {
+      // the nodes already settled, carried over
+      cands.forEach(function (cd) { var x = natOf(cd.kind, cd.kind === 'swap' ? cd.move : null); cd.natNode = x ? x.natNode : null; cd.natDead = !!(x && x.natDead); });
+      cands.natDone = true;
     }
     this._nativeNodes(cands);
     var out = this._levelForSlab(this._flatten(this._towardBreak(
