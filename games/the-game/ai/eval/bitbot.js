@@ -4015,12 +4015,12 @@
         }
         if (!clears.length) return d;
         var k = this.drainBound(), pr = picked && picked.resolved;
-        // A BREAK, OR A ROUTE THAT ENDS IN ONE, STILL HAS TO GET THERE IN TIME. Its
-        // walk is checked against the first run that can take health like any other
-        // move's: one that arrives after the drain has begun spends health on the way.
-        if ((pr && pr.brokeGarbage) || ENDS_IN_A_BREAK[d.via]) {
-            if (!picked || (picked.moveFrames || 0) + 1 <= k) return d;
-        }
+        // A BREAK STILL HAS TO GET THERE IN TIME: its walk is checked against the first
+        // run that can take health like any other move's. A step of a route that ends in
+        // a break is a setup, and faces the way-back check below like one -- if the
+        // route's break fits the time left, it is the clear that check finds.
+        if (pr && pr.brokeGarbage && (picked.moveFrames || 0) + 1 <= k) return d;
+        if (!picked && ENDS_IN_A_BREAK[d.via]) return d;
         function hold(at) { return { kind: 'hold', mode: d.mode, alive: d.alive, via: 'awaitDrain', park: at }; }
         // A clear that arrives before the drain is held until the last moment and then
         // fired; one that cannot arrive in time is not a clear for this purpose, and the
@@ -4033,11 +4033,22 @@
         var nearest = Infinity;
         for (i = 0; i < clears.length; i++) nearest = Math.min(nearest, clears[i].moveFrames || 0);
         if (picked) {
+            // THE WAY BACK IS MEASURED ON THE BOARD THE MOVE LEAVES, to a clear that is
+            // on it. Measured to the clears of the board as it stands, a run of setups
+            // each passed against a clear the setup itself had moved or spent, and the
+            // cursor walked away from every clear there was.
             var back = Infinity;
-            for (i = 0; i < clears.length; i++) {
-                back = Math.min(back, travel.cost(picked.swap[0], picked.swap[1], clears[i].swap[0], clears[i].swap[1]));
+            if (picked.masks) {
+                var after = bit.copyState(picked.masks), sw2 = bit.legalSwapsOf(after);
+                for (i = 0; i < sw2.length; i++) {
+                    var cst = travel.cost(picked.swap[0], picked.swap[1], sw2[i][0], sw2[i][1]);
+                    if (cst >= back || !bit.swapMasks(after, sw2[i][0], sw2[i][1])) continue;
+                    var ra = bit.resolveFromMasks(after, false);
+                    bit.swapMasks(after, sw2[i][0], sw2[i][1]);
+                    if (ra.total > 0 || ra.scope === 'garbage-broke') back = cst;
+                }
             }
-            if ((picked.moveFrames || 0) + SWAP_FRAMES + back + 1 <= k && bit.anyOneSwapClear(picked.masks)) return d;
+            if ((picked.moveFrames || 0) + SWAP_FRAMES + back + 1 <= k) return d;
         } else if (nearest + 2 <= k) {
             return d;
         }
