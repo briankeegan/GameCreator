@@ -63,12 +63,24 @@ function cells() {
   }
   return 'panels ' + p + ' garb ' + g;
 }
+// GC_TAPE_OUT=file records every frame's input; GC_TAPE_IN=file with
+// GC_TAKEOVER=frame plays those inputs back and hands the board to the bot at
+// that frame, so a change is tried on the exact board an earlier bot reached.
+var tapeOut = process.env.GC_TAPE_OUT ? new Int32Array(2 * frames) : null;
+var tapeIn = process.env.GC_TAPE_IN ? new Int32Array(fs.readFileSync(process.env.GC_TAPE_IN).buffer.slice(0)) : null;
+var takeover = Number(process.env.GC_TAKEOVER || 0);
+process.on('exit', function () { if (tapeOut) fs.writeFileSync(process.env.GC_TAPE_OUT, Buffer.from(tapeOut.buffer, 0, 8 * f)); });
 for (var f = 0; f < frames; f++) {
   if (sc.burst && pa.stopWatchIsRunning && bench.burstFires(pa.stopWatch)) {
     pa.receiveGarbage([{ width: sc.garbageWidth, height: sc.garbageHeight, isChain: false, isMetal: false, frameEarned: pa.stopWatch, finalized: true }]);
   }
-  bot.stack = PA.view(pa, E);
-  bot.update();
+  if (tapeIn && f < takeover) {
+    pa.nextInput = tapeIn[2 * f]; pa.pressSwap = !!tapeIn[2 * f + 1];
+  } else {
+    bot.stack = PA.view(pa, E);
+    bot.update();
+  }
+  if (tapeOut) { tapeOut[2 * f] = pa.nextInput; tapeOut[2 * f + 1] = pa.pressSwap ? 1 : 0; }
   pa.run();
   if (watch) {
     for (var ei = 0; ei < pa.events.length; ei++) if (pa.events[ei].type === 'match' && pa.events[ei].garbage > 0) { watch = null; break; }
