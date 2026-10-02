@@ -51,11 +51,6 @@ function resting(board) {
   for (c = 1; c <= 6; c++) { var p = board.panels[g - 1] && board.panels[g - 1][c]; if (p && p.color && !p.isGarbage) n++; }
   return n;
 }
-function panelsOf(b) {
-  var n = 0;
-  if (b && b.grid) for (var r = 1; r < b.grid.length; r++) { var row = b.grid[r]; if (row) for (var c = 1; c <= b.width; c++) if (row[c] > 0) n++; }
-  return n;
-}
 // Of those, the flattest under the garbage: each column's shortfall from the
 // tallest below it, squared, so filling a well counts though the tallest
 // stays. Garbage rests on the tallest column and only a column it rests on
@@ -130,7 +125,7 @@ wt.parentPort.on('message', function (m) {
     // break TALL_RANK + h frames away. Six-wide garbage lands on the tallest
     // column, so that column is the board's height.
     bot.preferRank = null; bot.preferProven = null;
-    var popping = !!(cfg.profile.conserve && SH.popLeft(board));
+    var popping = !!(cfg.profile.conserve && SH.popLeft(board)), converting = popping ? SH.convertingOf(board) : 0;
     var br = null, brMs = 0, want = {}, tall = cfg.profile.tallRow && SH.top(board) >= cfg.profile.tallRow;
     if (cfg.profile.breakFirst) {
       bot._natSearch();   // the engine, on this bot's threads, before a second context is made on it
@@ -159,7 +154,7 @@ wt.parentPort.on('message', function (m) {
         // lineup outranks it.
         // The survival search is not run on a board with nothing to fear,
         // so conserve's order is applied here too.
-        if (popping) { var sb = this._settledOf(c); return sb && sb.grid ? KEEP_RANK - 100 * panelsOf(sb) + gapOf(sb) : Infinity; }
+        if (popping) { var sb = this._settledOf(c); return sb && sb.grid ? KEEP_RANK + SH.keepRank(sb, converting) + gapOf(sb) : Infinity; }
         var t = i >= 0 && this._nat ? this._nat.breakAt(i) : -1;
         return t >= 0 ? t : Infinity;
       };
@@ -174,7 +169,7 @@ wt.parentPort.on('message', function (m) {
       // can touch it from the columns it is not resting on, and the clear that drops it
       // costs the same panels now as when the bot is forced to it later.
       var drop = !popping && resting(board) <= RESTING;
-      bot.preferProven = function (c) { var b = this._settledOf(c); return b && b.grid ? KEEP_RANK + (drop ? DROP_ROW * slabRow(b) - DROP_PANEL * panelsOf(b) : -100 * panelsOf(b)) + gapOf(b) : Infinity; };
+      bot.preferProven = function (c) { var b = this._settledOf(c); return b && b.grid ? KEEP_RANK + (drop ? DROP_ROW * slabRow(b) - DROP_PANEL * SH.panelsOf(b) : SH.keepRank(b, converting)) + gapOf(b) : Infinity; };
     }
     else if (cfg.profile.lowerSlab && hanging(board)) bot.preferProven = function (c) { var b = this._settledOf(c); return b && b.grid ? HANG_RANK + slabRow(b) : Infinity; };
     // THE TIME THERE IS: the survival search's budget is what can be searched
