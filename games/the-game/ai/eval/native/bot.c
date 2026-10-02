@@ -1653,6 +1653,75 @@ static Dec waitForDrain(Dec d) {
   return mkSwap(esc->sr, esc->sc, V_KEEPHEALTH, d.mode, d.alive);
 #undef HOLDAT
 }
+// IT MUST NOT DIE. Living is any line that presses a clear or a break before
+// the time runs out: a break converts the garbage, a clear holds the lock and
+// earns stop. Every first swap is marked living if it cashes in time itself,
+// or if one more swap on the board it settles to does -- the walk to it, the
+// frames it takes, then the walk on. The bot's own choice stands whenever it
+// is living; a choice that is not is replaced by a living one.
+#define LIVEHORIZON 150
+static ST LVA, LVB;
+static int32_t LVR[R_INTS + ST_INTS], LVS[2 * 128], LVS2[2 * 128];
+static uint8_t LIVE[40][WMAX];
+static double LIVET[40][WMAX];
+static int liveAny;
+static int cashes(const int32_t *r) { return r[R_TOTAL] > 0 || r[R_SCOPE] == SC_BROKE; }
+static void livingSet(const int32_t *base, double left) {
+  int cr = (int)BIN[IN_CROW], cc = (int)BIN[IN_CCOL];
+  memset(LIVE, 0, sizeof LIVE); liveAny = 0;
+  stcpy(LVA, base);
+  int n = legal(LVA, LVS);
+  for (int i = 0; i < n; i++) {
+    int r1 = LVS[2 * i], c1 = LVS[2 * i + 1];
+    double t1 = travelCost(cr, cc, r1, c1);
+    if (t1 > left || r1 >= 40) continue;
+    if (!swapIn(LVA, r1, c1)) continue;
+    resolve(LVA, LVR, 1);
+    swapIn(LVA, r1, c1);
+    int sc = LVR[R_SCOPE];
+    if (sc != SC_OK && sc != SC_BROKE) continue;
+    if (cashes(LVR)) { LIVE[r1][c1] = 1; LIVET[r1][c1] = t1; liveAny = 1; continue; }
+    double settle = LVR[R_FRAMES] > 4 ? LVR[R_FRAMES] : 4;
+    stcpy(LVB, LVR + R_INTS);
+    int n2 = legal(LVB, LVS2);
+    for (int j = 0; j < n2; j++) {
+      int r2 = LVS2[2 * j], c2 = LVS2[2 * j + 1];
+      double t2 = t1 + settle + travelCost(r1, c1, r2, c2);
+      if (t2 > left) continue;
+      if (!swapIn(LVB, r2, c2)) continue;
+      resolve(LVB, LVR, 0);
+      swapIn(LVB, r2, c2);
+      if (cashes(LVR)) { LIVE[r1][c1] = 1; LIVET[r1][c1] = t2; liveAny = 1; break; }
+    }
+  }
+}
+static Dec stayAlive(Dec d) {
+  double k = BIN[IN_TOPPED] ? BIN[IN_DRAINBOUND] : DDEADLINE;
+  if (!(k < LIVEHORIZON)) return d;
+  if (d.kind == K_SWAP && d.hasMove) {
+    Cand *pc = poolSwap(d.sr, d.sc);
+    if (pc && (pc->res.total > 0 || pc->res.broke) && pc->moveFrames <= k) return d;
+  } else if (d.kind != K_HOLD) return d;
+  livingSet(DBASE, k);
+  if (!liveAny) return d;
+  if (d.kind == K_SWAP && d.hasMove) { if (d.sr < 40 && LIVE[d.sr][d.sc]) return d; }
+  else {
+    double wait = BIN[IN_TOPPED] ? 2 : REACT;
+    for (int r = 1; r < 40; r++) for (int c = 1; c < WMAX; c++)
+      if (LIVE[r][c] && LIVET[r][c] + wait <= k) return d;
+  }
+  // The choice dies. Take a living swap: a break first, then the earliest.
+  int br = 0, bc = 0, broke = 0; double bt = INF;
+  for (int r = 1; r < 40; r++) for (int c = 1; c < WMAX; c++) {
+    if (!LIVE[r][c]) continue;
+    Cand *pc = poolSwap(r, c);
+    int isBreak = pc && pc->res.broke;
+    if ((isBreak && !broke) || (isBreak == broke && LIVET[r][c] < bt)) { br = r; bc = c; bt = LIVET[r][c]; broke = isBreak; }
+  }
+  BT->counts[C_KEPTHEALTH]++;
+  BT->plan.has = 0; BT->attack.has = 0; BT->flatten.has = 0; BT->dig.has = 0; BT->digIsBreak = 0;
+  return mkSwap(br, bc, V_KEEPHEALTH, d.mode, d.alive);
+}
 static Dec onePlan(Dec d) {
   if (d.kind != K_SWAP) return d;
   int keep = 0;
@@ -1677,7 +1746,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   memoRoom();
   nSettle = nLandR = nFireR = nSavesR = nAnyR = 0;
   nRes = 0; nOptRuns = 0; nOptDepth = 0; nScore = 0; nLook = 0; nSave = 0; rScore = rMain = rLook = rSave = rCand = 0;
-  Dec d = onePlan(waitForDrain(decideRuled()));
+  Dec d = onePlan(stayAlive(waitForDrain(decideRuled())));
   if (d.kind == K_SWAP && d.hasMove) {
     BT->recent[2] = BT->nRecent ? BT->recent[0] : 0; BT->recent[3] = BT->nRecent ? BT->recent[1] : 0;
     BT->recent[0] = d.sr; BT->recent[1] = d.sc;
