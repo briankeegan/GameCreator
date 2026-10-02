@@ -1520,10 +1520,39 @@ static void sortBorn(int n) {
 }
 
 static LOCAL int threadReady;
+typedef struct { Res *res; int resPly, hasRR, rrDig, hasSh, sv, fire, slab, hasLand; double land; Shape sh; uint32_t rr[WMAX]; } CK;
+#define NTCAP (1 << 12)
+typedef struct { u64 h; int32_t gen, at, n; CK *ck; } NT;
+static NT NT_MAIN[NTCAP];
+static LOCAL NT *NTB;
+static LOCAL int32_t ntGen = 1, ntN;
+static CK *nodeCK(const int32_t *st, int nl) {
+  int n = stlen(st);
+  u64 h = stHash(st, n);
+  unsigned i = (unsigned)(h >> 32) & (NTCAP - 1);
+  for (; NTB[i].gen == ntGen; i = (i + 1) & (NTCAP - 1)) {
+    if (NTB[i].h != h || NTB[i].n != n) continue;
+    const int32_t *p = ARENA + NTB[i].at;
+    int j = 0;
+    while (j < n && p[j] == st[j]) j++;
+    if (j == n) return NTB[i].ck;
+  }
+  if (ntN >= NTCAP / 2) return 0;
+  int at = (arenaN + 1) & ~1, need = (int)((nl * sizeof(CK) + 3) / 4);
+  if (at + need + n + R_INTS + ST_INTS > arenaCap) return 0;
+  CK *ck = (CK *)(ARENA + at);
+  for (int k = 0; k < nl; k++) { ck[k].res = 0; ck[k].hasRR = 0; ck[k].hasSh = 0; ck[k].sv = -1; ck[k].fire = -1; ck[k].slab = -1; ck[k].hasLand = 0; }
+  int32_t *cp = ARENA + at + need;
+  for (int j = 0; j < n; j++) cp[j] = st[j];
+  arenaN = at + need + n;
+  NTB[i].h = h; NTB[i].gen = ntGen; NTB[i].at = (int32_t)(cp - ARENA); NTB[i].n = n; NTB[i].ck = ck;
+  ntN++;
+  return ck;
+}
 static void threadInit(void) {
   if (threadReady) return;
   threadReady = 1;
-  ARENA = ARENA_MAIN; QUIET = QUIET_MAIN; SMEMO = SMEMO_MAIN; smGen = 1;
+  ARENA = ARENA_MAIN; QUIET = QUIET_MAIN; SMEMO = SMEMO_MAIN; smGen = 1; NTB = NT_MAIN;
   __builtin_memset(ARENA_MAIN, 0, 16ul << 20);
   __builtin_memset(QUIET_MAIN, 0, sizeof(QUIET_MAIN));
   __builtin_memset(ODATA, 0, 8ul << 20);
@@ -1614,6 +1643,7 @@ __attribute__((export_name("bit_thread_init"))) void bit_thread_init(int32_t id)
   STOPS_T.s = (Slot *)grab(TCAP * sizeof(Slot)); FIRE.s = (Slot *)grab(TCAP * sizeof(Slot));
   ARENA = (int32_t *)grab((unsigned long)arenaCap * 4);
   SMEMO = (SMemo *)grab(SMCAP * sizeof(SMemo)); smGen = 1;
+  NTB = (NT *)grab(NTCAP * sizeof(NT));
   QUIET = (Res *)grab(2ul * qcap * sizeof(Res));
   ODS = (double *)grab(((unsigned long)odCap + 4) * REC * 8 + 64 * 8);
   LDS = (int32_t *)grab(ST_INTS * 4);
@@ -1690,9 +1720,6 @@ static int prefetchPly(int nf, int ply) {
   }
   return 1;
 }
-typedef struct { Res *res; int hasRR, rrDig, hasSh, sv, fire, slab, hasLand; double land; Shape sh; uint32_t rr[WMAX]; } CK;
-static LOCAL int DUPOF[MAXFRONT];
-static LOCAL CK *CKP[MAXFRONT];
 static void expandAll(int depth, int cr, int cc) {
   expanding = 1;
   Shape BASE; shapeOf(BASEST, &BASE);
@@ -1710,34 +1737,12 @@ static void expandAll(int depth, int cr, int cc) {
     qside ^= 1; nQuiet[qside] = 0;
     int pf = pool.nworkers && !LEAN && !inPar && prefetchPly(nf, ply);
     for (int fi = 0; fi < nf; fi++) {
-      DUPOF[fi] = -1; CKP[fi] = 0;
-      const int32_t *a = FRONT[fi].st;
-      int na = stlen(a);
-      for (int fj = 0; fj < fi && DUPOF[fi] < 0; fj++) {
-        if (DUPOF[fj] >= 0) continue;
-        const int32_t *b = FRONT[fj].st;
-        int j = 0;
-        if (b != a) { if (stlen(b) != na) continue; while (j < na && a[j] == b[j]) j++; if (j < na) continue; }
-        DUPOF[fi] = fj;
-        CKP[fj] = (CK *)1;
-      }
-    }
-    for (int fi = 0; fi < nf; fi++) {
       Node *node = &FRONT[fi];
       int32_t *state = WORK_ST[fi];
       stcpy(state, node->st);
       Grid G;
       int nl = legalG(state, SWE, &G);
-      CK *ck = 0;
-      if (DUPOF[fi] >= 0) ck = CKP[DUPOF[fi]];
-      else if (CKP[fi]) {
-        int at = (arenaN + 1) & ~1, need = (int)((nl * sizeof(CK) + 3) / 4);
-        if (at + need + R_INTS + ST_INTS <= arenaCap) {
-          ck = (CK *)(ARENA + at); arenaN = at + need;
-          for (int k = 0; k < nl; k++) { ck[k].res = 0; ck[k].hasRR = 0; ck[k].hasSh = 0; ck[k].sv = -1; ck[k].fire = -1; ck[k].slab = -1; ck[k].hasLand = 0; }
-        }
-        CKP[fi] = ck;
-      }
+      CK *ck = nodeCK(state, nl);
       int nodeRest = settledRest(state);
       Drop D; int haveD = 0;
       uint32_t reach[WMAX]; int haveReach = node->hasReach;
@@ -1751,7 +1756,8 @@ static void expandAll(int depth, int cr, int cc) {
         }
         Res *res;
         CK *e = ck ? &ck[k] : 0;
-        if (e && e->res) res = e->res;
+        if (e && e->res && (e->resPly == ply || ((e->res < QUIET || e->res >= QUIET + 2 * qcap) &&
+                                                  ((int32_t *)e->res < PSOUT || (int32_t *)e->res >= PSOUT + 2 * MAXSET * SOUT)))) res = e->res;
         else if (quietSwapG(state, &G, nodeRest, sr, sc)) {
           if (nQuiet[qside] >= qcap) { failed = 1; continue; }
           res = &QUIET[qside * qcap + nQuiet[qside]++];
@@ -1773,7 +1779,7 @@ static void expandAll(int depth, int cr, int cc) {
           res = settleOf(state);
           swapIn(state, sr, sc);
         }
-        if (e) e->res = res;
+        if (e) { e->res = res; e->resPly = ply; }
         int cost = node->spent + travelCost(node->fr, node->fc, sr, sc);
         int tPlan = cost + ply - 1;
         if ((double)tPlan > node->lock + SPEND) continue;
@@ -1910,7 +1916,7 @@ static LOCAL Res R1;
 // The whole search. Returns 0, or -1 when a fixed size was exceeded (a bug).
 static LOCAL int nOptRuns, nOptDepth;
 static int optionsRun(const int32_t *st0, const double *P, const int32_t *first, int nfirst) {
-  threadInit(); arenaN = 0; smGen++; smN = 0; expanding = 0;
+  threadInit(); arenaN = 0; smGen++; smN = 0; ntGen++; ntN = 0; expanding = 0;
   nOptRuns++; nOptDepth += (int)P[11];
   failed = 0;
   FPR = P[0]; DEADLINE = P[1]; LOCKP = P[2]; SPEND = (int)P[3]; LEAN = (int)P[4];
