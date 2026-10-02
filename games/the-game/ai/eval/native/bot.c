@@ -1682,13 +1682,13 @@ static Dec waitForDrain(Dec d) {
 #define LIVEHORIZON 60
 static ST LVA, LVB;
 static int32_t LVR[R_INTS + ST_INTS], LVS[2 * 128], LVS2[2 * 128];
-static uint8_t LIVE[40][WMAX];
+static uint8_t LIVE[40][WMAX], LIVE1[40][WMAX], LIVEB[40][WMAX];
 static double LIVET[40][WMAX];
 static int liveAny;
 static int cashes(const int32_t *r) { return r[R_TOTAL] > 0 || r[R_SCOPE] == SC_BROKE; }
 static void livingSet(const int32_t *base, double left) {
   int cr = (int)BIN[IN_CROW], cc = (int)BIN[IN_CCOL];
-  memset(LIVE, 0, sizeof LIVE); liveAny = 0;
+  memset(LIVE, 0, sizeof LIVE); memset(LIVE1, 0, sizeof LIVE1); memset(LIVEB, 0, sizeof LIVEB); liveAny = 0;
   stcpy(LVA, base);
   int n = legal(LVA, LVS);
   for (int i = 0; i < n; i++) {
@@ -1700,7 +1700,7 @@ static void livingSet(const int32_t *base, double left) {
     swapIn(LVA, r1, c1);
     int sc = LVR[R_SCOPE];
     if (sc != SC_OK && sc != SC_BROKE) continue;
-    if (cashes(LVR)) { LIVE[r1][c1] = 1; LIVET[r1][c1] = t1; liveAny = 1; continue; }
+    if (cashes(LVR)) { LIVE[r1][c1] = LIVE1[r1][c1] = 1; LIVEB[r1][c1] = sc == SC_BROKE; LIVET[r1][c1] = t1; liveAny = 1; continue; }
     double settle = quietSettle(LVA, r1, c1, LVR + R_INTS);
     stcpy(LVB, LVR + R_INTS);
     int n2 = legal(LVB, LVS2);
@@ -1711,7 +1711,10 @@ static void livingSet(const int32_t *base, double left) {
       if (!swapIn(LVB, r2, c2)) continue;
       resolve(LVB, LVR, 0);
       swapIn(LVB, r2, c2);
-      if (cashes(LVR)) { LIVE[r1][c1] = 1; LIVET[r1][c1] = t2; liveAny = 1; break; }
+      if (!cashes(LVR)) continue;
+      int brk = LVR[R_SCOPE] == SC_BROKE;
+      if (!LIVE[r1][c1] || (brk && !LIVEB[r1][c1])) { LIVE[r1][c1] = 1; LIVEB[r1][c1] = brk; LIVET[r1][c1] = t2; liveAny = 1; }
+      if (brk) break;
     }
   }
 }
@@ -1730,13 +1733,15 @@ static Dec stayAlive(Dec d) {
     for (int r = 1; r < 40; r++) for (int c = 1; c < WMAX; c++)
       if (LIVE[r][c] && LIVET[r][c] + wait <= k) return d;
   }
-  // The choice dies. Take a living swap: a break first, then the earliest.
-  int br = 0, bc = 0, broke = 0; double bt = INF;
+  // The choice dies. Take a living swap, breaking garbage first: a swap that
+  // breaks, the first of a two-swap line that breaks, a swap that clears, the
+  // first of a two-swap line that clears; the earliest within each.
+  int br = 0, bc = 0, rank = -1; double bt = INF;
   for (int r = 1; r < 40; r++) for (int c = 1; c < WMAX; c++) {
     if (!LIVE[r][c]) continue;
     Cand *pc = poolSwap(r, c);
-    int isBreak = pc && pc->res.broke;
-    if ((isBreak && !broke) || (isBreak == broke && LIVET[r][c] < bt)) { br = r; bc = c; bt = LIVET[r][c]; broke = isBreak; }
+    int rk = LIVEB[r][c] ? (LIVE1[r][c] ? 3 : 2) : LIVE1[r][c] ? 1 : 0;
+    if (rk > rank || (rk == rank && LIVET[r][c] < bt)) { br = r; bc = c; bt = LIVET[r][c]; rank = rk; }
   }
   BT->counts[C_KEPTHEALTH]++;
   BT->plan.has = 0; BT->attack.has = 0; BT->flatten.has = 0; BT->dig.has = 0; BT->digIsBreak = 0;
