@@ -177,7 +177,8 @@ function converting(board) {
   return null;
 }
 // How far a grid is toward lining up with `want`: per column, its top panel
-// below the lowest garbage of that colour, and the one under it too.
+// below the lowest garbage of that colour, and the one under it too, or two
+// of that colour beside the cell the column's panel lands in.
 var PAIR = 5;
 function pairs(grid, want) {
   var G = grid.length, r, c, s = 0;
@@ -186,7 +187,12 @@ function pairs(grid, want) {
     if (!want[c]) continue;
     var t = 0;
     for (r = 1; r < G; r++) if (grid[r] && grid[r][c] > 0) t = r;
-    if (t && grid[t][c] === want[c]) s += t > 1 && grid[t - 1][c] === want[c] ? PAIR : 1;
+    var v = t && grid[t][c] === want[c] ? (t > 1 && grid[t - 1][c] === want[c] ? PAIR : 1) : 0;
+    // or two of it beside the cell it lands in, t + 1
+    var L = t + 1, row = L < G ? grid[L] : null, h = 0;
+    function at(x) { return row && x >= 1 && x <= 6 && row[x] === want[c]; }
+    if (row && ((at(c - 2) && at(c - 1)) || (at(c - 1) && at(c + 1)) || (at(c + 1) && at(c + 2)))) h = PAIR;
+    s += Math.max(v, h);
   }
   return s;
 }

@@ -2876,10 +2876,10 @@
   // proven move's line is searched on from its proof, by the same level loop,
   // to LIFE_FRAMES: what a break, a pop, a clear or a swap buys is what the
   // engine plays out, not a price set beside it. Kept, in order: the moves
-  // whose line breaks garbage (a break is what keeps the board alive past
-  // the window), then those alive at its end, then those whose furthest
-  // board holds the most panels (what garbage is broken with), then the
-  // longest lived. The line found becomes the proof the bot follows. It
+  // whose line is alive at the window's end, then those whose line breaks
+  // garbage (a break is what keeps the board alive past the window), then
+  // those whose furthest board holds the most panels (what garbage is broken
+  // with), then the longest lived. The line found becomes the proof the bot follows. It
   // searches with what the survival search left of its budget, and never
   // less than a quarter of it.
   PuyoCpu.prototype.LIFE_FRAMES = 900;
@@ -2911,11 +2911,11 @@
       k = at[i];
       var alive = o.verdict[k] === 'proven', end = alive ? o.proofs[k] : o.far[k];
       var broke = end && end.b ? (S.breaks(end) > rootBrk ? 1 : 0) : 0;
-      key[k] = [broke, alive ? 1 : 0, panels(end), alive ? this.LIFE_FRAMES : Math.min(o.reach[k] || 0, this.LIFE_FRAMES)];
+      key[k] = [alive ? 1 : 0, broke, panels(end), alive ? this.LIFE_FRAMES : Math.min(o.reach[k] || 0, this.LIFE_FRAMES)];
       if (end && !end.dead && end.t > sp.proofs[k].t) sp.proofs[k] = end;
       if (!best || before(key[k], best)) best = key[k];
     }
-    this.lifeMeasured = { broke: best[0], alive: best[1], panels: best[2], life: best[3], of: at.length };
+    this.lifeMeasured = { alive: best[0], broke: best[1], panels: best[2], life: best[3], of: at.length };
     var out = live.filter(function (c) { var q = sp.cands.indexOf(c); return key[q] && key[q].join() === best.join(); });
     return out.length ? out : live;
   };
