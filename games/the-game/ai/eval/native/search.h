@@ -819,6 +819,11 @@ static int runPhase(Ctx *x, Vec *tasks, int32_t *res) {
       Board *b = freeOf(0); freeOf(0) = *(Board **)b; freeCount(0)--;
       *(Board **)b = freeOf(k); freeOf(k) = b; freeCount(k)++;
     }
+  // the rest past this thread's share are SPARES, for whichever thread runs short
+  while (freeCount(0) > each) {
+    Board *b = freeOf(0); freeOf(0) = *(Board **)b; freeCount(0)--;
+    *(Board **)b = spareOf; spareOf = b; spareCount++;
+  }
   pool.ctx = x; pool.tasks = tasks->a; pool.res = res; pool.ntasks = n; pool.ack = 0;
   x->par = 1;
   __atomic_store_n(&pool.next, 0, __ATOMIC_SEQ_CST);
@@ -829,6 +834,7 @@ static int runPhase(Ctx *x, Vec *tasks, int32_t *res) {
   for (int spin = 0; spin < SPIN && __atomic_load_n(&pool.ack, __ATOMIC_SEQ_CST) < w; spin++) {}
   while ((a = __atomic_load_n(&pool.ack, __ATOMIC_SEQ_CST)) < w) __builtin_wasm_memory_atomic_wait32(&pool.ack, a, -1);
   x->par = 0;
+  while (spareOf) { Board *b = spareOf; spareOf = *(Board **)b; spareCount--; *(Board **)b = freeOf(0); freeOf(0) = b; freeCount(0)++; }
   if (x->n > x->cap) x->n = x->cap;
   return 1;
 }

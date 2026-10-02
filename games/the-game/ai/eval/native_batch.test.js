@@ -73,6 +73,19 @@ boards.forEach(function (board, bj) {
   });
   });
 });
+// BOARDS GO ROUND. The same batches again and again, each let go, must not
+// grow the heap: boards one thread lets go that another made are handed back
+// (memory.h SPARES), or the heap grows a little every phase till it is out.
+var X = N.exports(), pages = [];
+for (var pass = 0; pass < 6; pass++) {
+  boards.slice(0, 12).forEach(function (board) {
+    A.reset();
+    var r = A.root(board.copy(), { left: 0, started: false }, [], false), made = A.advanceMany(stepsFrom(r), true);
+    A.advanceMany([].concat.apply([], made.filter(function (m) { return m && !m.dead; }).slice(0, 6).map(stepsFrom)), true);
+  });
+  pages.push(X.nb_pool_stat(-1));
+}
+if (pages[5] > pages[1]) { console.log('FAIL: the heap grew from ' + pages[1] + ' to ' + pages[5] + ' pages over the same batches'); process.exit(1); }
 if (underGarbage < 100) { console.log('FAIL: too few boards under garbage to test the touch score on'); process.exit(1); }
-console.log('ok: ' + played + ' steps on ' + boards.length + ' boards (' + ROOTS.length + ' ways each), batched on 3 threads, the same as one at a time; ' + touched + ' touch scores the same (' + underGarbage + ' under garbage)');
+console.log('ok: ' + played + ' steps on ' + boards.length + ' boards (' + ROOTS.length + ' ways each), batched on 3 threads, the same as one at a time; ' + touched + ' touch scores the same (' + underGarbage + ' under garbage); heap steady at ' + pages[5] + ' pages');
 process.exit(0);
