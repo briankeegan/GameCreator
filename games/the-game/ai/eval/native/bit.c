@@ -7,9 +7,9 @@ typedef unsigned long long u64;
 #define MAXD 24
 enum { O_W = 0, O_H, O_N, O_NSLAB, O_BUSYF, O_BAD,
        OCC = 8, INERT = 16, GARB = 24, BUSY = 32, COL = 40,
-       SLAB = COL + NCOL * WMAX, LOCK = SLAB + MAXSLAB * WMAX, ST_INTS = LOCK + MAXSLAB };
+       SLAB = COL + NCOL * WMAX, LOCK = SLAB + MAXSLAB * WMAX, AIR = LOCK + MAXSLAB, ST_INTS = AIR + MAXSLAB };
 enum { R_SCOPE = 0, R_CHAIN, R_TOTAL, R_ROUNDS, R_FRAMES, R_GARBAGE, R_CONVERTS, R_VOID, R_INTS = 8 };
-enum { SC_OK = 0, SC_BROKE = 1, SC_BAD = 2 };
+enum { SC_OK = 0, SC_BROKE = 1, SC_BAD = 2, SC_REFUSED = 3 };
 typedef int32_t ST[ST_INTS];
 
 static ST IN;
@@ -103,6 +103,8 @@ static int connectedGroup(R *s, uint32_t *k, int run, int32_t *inGroup) {
   }
   return any;
 }
+typedef struct { int popAt, hover, hasSwap, sr, sc, at, HOVER, FLASH, FACE, POP;
+                 uint32_t chaining[WMAX], popping[WMAX], hovering[WMAX]; } Timed;
 static void load(R *s, const int32_t *st) {
   s->W = st[O_W]; s->H = st[O_H]; s->N = st[O_N]; s->nslab = st[O_NSLAB];
   for (int c = 0; c < WMAX; c++) {
@@ -134,19 +136,88 @@ static void save(R *s, int32_t *o) {
   o[O_NSLAB] = n;
 }
 
-static void resolve(const int32_t *st, int32_t *r, int wantSettled) {
+typedef struct { uint32_t m[WMAX]; int until, swap; } Hold;
+#define MAXHOLD 16
+#define NEVER 0x3fffffff
+static Hold HOLDS[MAXHOLD]; static int nHolds;
+static uint32_t heldAt(int c) { uint32_t h = 0; for (int i = 0; i < nHolds; i++) h |= HOLDS[i].m[c]; return h; }
+static int nextRelease(void) { int u = NEVER; for (int i = 0; i < nHolds; i++) if (HOLDS[i].until < u) u = HOLDS[i].until; return u; }
+static int resolveT(const int32_t *st, int32_t *r, int wantSettled, const Timed *tm);
+static void resolve(const int32_t *st, int32_t *r, int wantSettled) { resolveT(st, r, wantSettled, 0); }
+static int tmFailed = 0;
+static void pushHold(const uint32_t *m, int until, int swap) {
+  if (nHolds >= MAXHOLD) { tmFailed = 1; return; }
+  Hold *h = &HOLDS[nHolds++];
+  for (int c = 0; c < WMAX; c++) h->m[c] = m[c];
+  h->until = until; h->swap = swap;
+}
+static void hoveringOf(R *s, uint32_t *hv) {
+  for (int c = 1; c <= s->W; c++) {
+    uint32_t hole = (~s->occ[c]) & (s->occ[c] + 1u), above = ~((hole << 1) - 1u);
+    uint32_t block = (s->inert[c] | s->popping[c]) & above, ceil = lowb(block);
+    hv[c] = s->occ[c] & above & (ceil ? (ceil - 1u) : ~0u);
+  }
+  hv[0] = 0; hv[s->W + 1] = 0;
+}
+static int resolveT(const int32_t *st, int32_t *r, int wantSettled, const Timed *tm) {
   for (int i = 0; i < R_INTS; i++) r[i] = 0;
-  if (st[O_BAD]) { r[R_SCOPE] = SC_BAD; return; }
+  if (st[O_BAD]) { r[R_SCOPE] = SC_BAD; return 0; }
   R *s = &S;
   load(s, st);
   int W = s->W, H = s->H, N = s->N;
   int counter = 0, rounds = 0, total = 0, guard = 0, LIMIT = W * H * H, T = 0, moved = 0;
   uint32_t B[NCOL][WMAX], k[WMAX], freeM[WMAX];
   int32_t inGroup[MAXSLAB];
+  int sweepAt = 0, hoverUntil = 0, made = 1, refused = 0;
+  nHolds = 0;
+  if (tm) {
+    for (int c = 0; c <= W + 1; c++) { s->chaining[c] = tm->chaining[c] & s->occ[c]; s->popping[c] = tm->popping[c] & s->occ[c]; }
+    for (int i = 0; i < s->nslab; i++) s->air[i] = st[AIR + i];
+    sweepAt = tm->popAt; made = !tm->hasSwap;
+    if (tm->hover > 0) {
+      uint32_t hm[WMAX] = {0};
+      for (int c = 1; c <= W; c++) hm[c] = tm->hovering[c] & s->occ[c];
+      pushHold(hm, tm->hover, 0);
+    }
+  }
+#define HOVERMASK(out) do { uint32_t hv_[WMAX]; hoveringOf(s, hv_); \
+    for (int c9 = 0; c9 <= W + 1; c9++) out[c9] = T < hoverUntil ? hv_[c9] : 0; \
+    for (int i9 = 0; i9 < nHolds; i9++) if (!HOLDS[i9].swap) for (int c9 = 1; c9 <= W; c9++) out[c9] |= HOLDS[i9].m[c9]; } while (0)
+#define MAKESWAP() do { uint32_t hv[WMAX]; HOVERMASK(hv); made = 1; \
+    int r5 = tm->sr, c5 = tm->sc, d5 = c5 + 1; uint32_t b5 = 1u << (r5 - 1); \
+    if ((s->popping[c5] | s->popping[d5] | s->inert[c5] | s->inert[d5]) & b5) refused = 1; \
+    else if (!((s->occ[c5] | s->occ[d5]) & b5)) refused = 1; \
+    else if ((hv[c5] | hv[d5]) & (b5 | (b5 << 1))) refused = 1; \
+    else { \
+      if (((s->occ[c5] & b5) != 0) != ((s->occ[d5] & b5) != 0)) { s->occ[c5] ^= b5; s->occ[d5] ^= b5; } \
+      if (((s->chaining[c5] & b5) != 0) != ((s->chaining[d5] & b5) != 0)) { s->chaining[c5] ^= b5; s->chaining[d5] ^= b5; } \
+      for (int a5 = 1; a5 <= N; a5++) if (((s->colour[a5][c5] & b5) != 0) != ((s->colour[a5][d5] & b5) != 0)) { s->colour[a5][c5] ^= b5; s->colour[a5][d5] ^= b5; } \
+      uint32_t sm5[WMAX] = {0}; sm5[c5] = s->occ[c5] & b5; sm5[d5] = s->occ[d5] & b5; \
+      pushHold(sm5, T + 4, 1); } } while (0)
   while (guard++ <= LIMIT) {
-    restingOf(s);
+    if (refused) { r[R_SCOPE] = SC_REFUSED; r[R_FRAMES] = T; return 0; }
     int any = 0, link = 0, c, a;
-    for (c = 1; c <= W; c++) freeM[c] = s->rest[c] & ~s->popping[c] & ~s->inert[c];
+    if (tm) {
+      if (!made && T >= tm->at && tm->at < nextRelease() - 1) { MAKESWAP(); if (refused) continue; }
+      int any7 = 0;
+      for (int i7 = 0; i7 < nHolds; i7++) {
+        Hold h8 = HOLDS[i7];
+        if (T < h8.until - 1) continue;
+        for (int j = i7; j + 1 < nHolds; j++) HOLDS[j] = HOLDS[j + 1];
+        nHolds--; i7--; any7 = 1;
+        if (!h8.swap) continue;
+        uint32_t again[WMAX] = {0}; int anyAgain = 0;
+        for (int c8 = 1; c8 <= W; c8++) {
+          uint32_t air = h8.m[c8] & ~(s->occ[c8] << 1) & ~1u;
+          if (air) { again[c8] = air; anyAgain = 1; }
+        }
+        if (anyAgain) pushHold(again, h8.until + tm->HOVER, 0);
+      }
+      if (any7) moved = 1;
+      if (!made && T >= tm->at) { MAKESWAP(); if (refused) continue; }
+    }
+    restingOf(s);
+    for (c = 1; c <= W; c++) freeM[c] = s->rest[c] & ~s->popping[c] & ~s->inert[c] & (tm ? ~heldAt(c) : ~0u);
     for (a = 1; a <= N; a++) for (c = 1; c <= W; c++) B[a][c] = s->colour[a][c] & freeM[c];
     for (c = 0; c < WMAX; c++) k[c] = 0;
     for (a = 1; a <= N; a++) {
@@ -160,9 +231,16 @@ static void resolve(const int32_t *st, int32_t *r, int wantSettled) {
       }
     }
     for (c = 1; c <= W; c++) { if (k[c]) any = 1; if (k[c] & s->chaining[c]) link = 1; }
+    if (tm) for (c = 1; c <= W; c++) s->chaining[c] &= ~(s->rest[c] & ~k[c] & ~s->popping[c] & ~s->inert[c] & ~heldAt(c));
     if (any) {
       rounds++;
       if (link) counter = counter == 0 ? 2 : counter + 1;
+      if (tm) {
+        int size = 0;
+        for (c = 1; c <= W; c++) size += popc(k[c]);
+        int mRun = T + (moved ? 2 : 1), sw2 = mRun + tm->FLASH + tm->FACE + tm->POP * size;
+        if (sw2 > sweepAt) sweepAt = sw2;
+      }
       int broke = 0;
       for (c = 1; c <= W; c++) {
         total += popc(k[c]);
@@ -195,13 +273,13 @@ static void resolve(const int32_t *st, int32_t *r, int wantSettled) {
         for (c = 1; c <= W; c++) if (convCol[c]) vAfter += hMax - hs[c];
         r[R_SCOPE] = SC_BROKE; r[R_CHAIN] = counter > 1 ? counter : 1; r[R_TOTAL] = total;
         r[R_ROUNDS] = rounds; r[R_FRAMES] = T; r[R_GARBAGE] = touched; r[R_CONVERTS] = converts; r[R_VOID] = vAfter;
-        return;
+        return 0;
       }
       continue;
     }
     int fell = 0;
     for (c = 1; c <= W; c++) {
-      uint32_t o2 = s->occ[c], fixed = (s->inert[c] | s->popping[c]) & o2;
+      uint32_t o2 = s->occ[c], fixed = (s->inert[c] | s->popping[c] | (tm ? heldAt(c) : 0)) & o2;
       uint32_t holds2 = o2 & (((~o2) & (o2 + 1u)) - 1u), seeds2 = fixed & ~holds2;
       while (seeds2) {
         uint32_t sd = lowb(seeds2), x2 = o2 & ~(sd - 1u), run2 = x2 & ~(x2 + sd);
@@ -229,11 +307,22 @@ static void resolve(const int32_t *st, int32_t *r, int wantSettled) {
       }
     }
     if (fell) {
+      if (tm && T < hoverUntil - 1) T = hoverUntil - 1;
       T++;
       for (int sk = 0; sk < s->nslab; sk++) if (s->falling[sk]) s->air[sk] = T + 2;
       moved = 1; continue;
     }
     moved = 0;
+    if (tm) {
+      int anyPopping = 0;
+      for (c = 1; c <= W; c++) if (s->popping[c]) { anyPopping = 1; break; }
+      if (anyPopping) {
+        int nr = nextRelease() - 1;
+        if (!made && tm->at < sweepAt && tm->at <= nr) { if (tm->at > T) T = tm->at; MAKESWAP(); continue; }
+        if (nr < sweepAt) { if (nr > T) T = nr; continue; }
+        if (sweepAt > T) T = sweepAt;
+      }
+    }
     int swept = 0;
     for (c = 1; c <= W; c++) {
       if (!s->popping[c]) continue;
@@ -245,14 +334,33 @@ static void resolve(const int32_t *st, int32_t *r, int wantSettled) {
       s->occ[c] = keep;
       s->popping[c] = 0;
     }
-    if (swept) continue;
+    if (swept) {
+      if (tm) {
+        hoverUntil = T + tm->HOVER;
+        if (!made && tm->at <= hoverUntil && tm->at < nextRelease() - 1) { if (tm->at > T) T = tm->at; MAKESWAP(); }
+      }
+      continue;
+    }
+    if (tm && nHolds) { int nr = nextRelease() - 1; if (nr > T) T = nr; continue; }
+    if (tm && !made) { int t2 = tm->at > hoverUntil ? tm->at : hoverUntil; if (t2 > T) T = t2; MAKESWAP(); if (!refused) continue; }
+    if (refused) { r[R_SCOPE] = SC_REFUSED; r[R_FRAMES] = T; return 0; }
     break;
   }
+#undef MAKESWAP
+#undef HOVERMASK
   r[R_SCOPE] = SC_OK; r[R_CHAIN] = rounds ? (counter > 1 ? counter : 1) : 0; r[R_TOTAL] = total;
   r[R_ROUNDS] = rounds; r[R_FRAMES] = T;
   if (wantSettled) save(s, r + R_INTS);
+  return 0;
 }
 __attribute__((export_name("bit_resolve"))) void bit_resolve(int32_t wantSettled) { resolve(IN, OUT, wantSettled); }
+static Timed TM;
+__attribute__((export_name("bit_timed"))) int32_t *bit_timed(void) { return (int32_t *)&TM; }
+__attribute__((export_name("bit_resolve_timed"))) int32_t bit_resolve_timed(int32_t wantSettled) {
+  tmFailed = 0;
+  resolveT(IN, OUT, wantSettled, &TM);
+  return tmFailed ? -1 : 0;
+}
 
 static int colourFirst(const int32_t *st, int c, uint32_t b) {
   for (int a = 1; a <= st[O_N]; a++) if (CL(st, a, c) & b) return a;
@@ -700,8 +808,10 @@ enum { F_KIND, F_SIZE, F_FRAMES, F_CHAIN, F_TOTAL, F_GARBAGE, F_CONVERTS, F_VOID
        F_EXTRAS, F_BREAKREADY, F_CLOSESBREAK, F_DIGGAIN, F_VOIDGAIN, F_SLABGAIN, F_SLABWORTH, F_MATNOW,
        F_VALUE, F_WAYS, F_LANDSTOP, F_NSW, F_SW, REC = F_SW + 2 * MAXD };
 #define MAXOPT MAXPER
-static double ODATA[(MAXOPT + 4) * REC + 64];
-static int32_t LANDS[ST_INTS];
+static double ODATA[(MAXOPT + 4) * REC + 64], ODSCR[(MAXOPT + 4) * REC + 64];
+static int32_t LANDS[ST_INTS], LANDSCR[ST_INTS];
+static double *OD = ODATA;
+static int32_t *LD = LANDS;
 __attribute__((export_name("bit_odata"))) double *bit_odata(void) { return ODATA; }
 __attribute__((export_name("bit_lands"))) int32_t *bit_lands(void) { return LANDS; }
 static double PARAM[128];
@@ -710,10 +820,10 @@ __attribute__((export_name("bit_pchain"))) double *bit_pchain(void) { return PCH
 __attribute__((export_name("bit_pcombo"))) double *bit_pcombo(void) { return PCOMBO; }
 
 __attribute__((export_name("bit_layout"))) int32_t bit_layout(int32_t i) {
-  int32_t v[] = { WMAX, NCOL, MAXSLAB, OCC, INERT, GARB, BUSY, COL, SLAB, LOCK, ST_INTS, R_INTS, REC, MAXD };
+  int32_t v[] = { WMAX, NCOL, MAXSLAB, OCC, INERT, GARB, BUSY, COL, SLAB, LOCK, ST_INTS, R_INTS, REC, MAXD, AIR };
   return v[i];
 }
-static double *recAt(int i) { return ODATA + 64 + i * REC; }
+static double *recAt(int i) { return OD + 64 + i * REC; }
 static int nNow, nNext;
 static int startOpt, nOpt;
 static double *newOpt(void) {
@@ -741,7 +851,9 @@ static void fillOption(double *o, const int32_t *seq, int nseq, int frames, cons
     o[F_SPREAD] = sh.spread; o[F_VOIDROWS] = sh.high - sh.mat; o[F_SLABGAP] = sh.slabRowGap;
     o[F_READY] = LEAN ? -1 : canFireOf(settled);
   } else {
+    double nan = 0.0 / 0.0;
     o[F_HASSHAPE] = 0; o[F_READY] = -1;
+    o[F_TALL] = nan; o[F_BUMPS] = nan; o[F_MAT] = nan; o[F_LOW] = nan; o[F_SPREAD] = nan; o[F_VOIDROWS] = nan; o[F_SLABGAP] = nan;
   }
   o[F_NSW] = nseq;
   for (int i = 0; i < 2 * nseq; i++) o[F_SW + i] = seq[i];
@@ -751,7 +863,11 @@ static void extras(double *o, const int32_t *settled) {
   o[F_LEVELS] = o[F_HASSHAPE] && o[F_BUMPS] <= BASEBUMPS;
   o[F_OPENSHOLE] = o[F_HASSHAPE] && o[F_LOW] == 0 && BASELOW > 0;
   o[F_EXTRAS] = !LEAN;
-  if (LEAN) return;
+  if (LEAN) {
+    o[F_BREAKREADY] = -1; o[F_CLOSESBREAK] = 0; o[F_DIGGAIN] = 0; o[F_VOIDGAIN] = 0; o[F_SLABGAIN] = 0; o[F_SLABWORTH] = 0;
+    o[F_MATNOW] = 0.0 / 0.0;
+    return;
+  }
   o[F_BREAKREADY] = settled ? breakReadyOf(settled) : -2;
   o[F_CLOSESBREAK] = BASEBREAK && o[F_BREAKREADY] == 0;
   uint32_t rm[WMAX];
@@ -878,7 +994,7 @@ static void expandAll(int depth, int cr, int cc) {
             double *fl = recAt(0);
             fl[F_TALL] = sh2.tall; fl[F_BUMPS] = sh2.bumps; fl[F_WAYS] = ways2;
             fv = val;
-            stcpy(LANDS, settled);
+            stcpy(LD, settled);
           }
         }
         if (nb >= MAXBORN) { failed = 1; continue; }
@@ -927,17 +1043,17 @@ static int32_t SW1[2 * 128];
 static ST ST1;
 static Res R1;
 // The whole search. Returns 0, or -1 when a fixed size was exceeded (a bug).
-__attribute__((export_name("bit_options"))) int32_t bit_options(void) {
+static int optionsRun(const int32_t *st0, const double *P, const int32_t *first, int nfirst) {
   failed = 0;
   if (storeN > SCAP - MAXPER) { storeN = 0; for (int i = 0; i < TCAP; i++) SETTLEIX.s[i].key = 0; SETTLEIX.n = 0; }
-  FPR = PARAM[0]; DEADLINE = PARAM[1]; LOCKP = PARAM[2]; SPEND = (int)PARAM[3]; LEAN = (int)PARAM[4];
-  PREPARE = (int)PARAM[5]; HOLD = PARAM[6]; WORK = PARAM[7]; OVERHEAD = PARAM[8]; SWAPP = PARAM[9];
-  DIG = (int)PARAM[10]; int depth = (int)PARAM[11], cr = (int)PARAM[12], cc = (int)PARAM[13];
-  PRESS = (int)PARAM[14]; hasStopPrice = (int)PARAM[15]; stopKeyId = (int)PARAM[16]; MAXSTOP = PARAM[17];
-  nAvoid = (int)PARAM[18];
+  FPR = P[0]; DEADLINE = P[1]; LOCKP = P[2]; SPEND = (int)P[3]; LEAN = (int)P[4];
+  PREPARE = (int)P[5]; HOLD = P[6]; WORK = P[7]; OVERHEAD = P[8]; SWAPP = P[9];
+  DIG = (int)P[10]; int depth = (int)P[11], cr = (int)P[12], cc = (int)P[13];
+  PRESS = (int)P[14]; hasStopPrice = (int)P[15]; stopKeyId = (int)P[16]; MAXSTOP = P[17];
+  nAvoid = (int)P[18];
   if (nAvoid > 40) { nAvoid = 40; failed = 1; }
-  for (int i = 0; i < 2 * nAvoid; i++) AVOID[i] = (int32_t)PARAM[19 + i];
-  stcpy(BASEST, IN);
+  for (int i = 0; i < 2 * nAvoid; i++) AVOID[i] = (int32_t)P[19 + i];
+  stcpy(BASEST, st0);
   Wd = BASEST[O_W];
   READYWORTH = HOLD / Wd; PREPWORTH = (FPR + HOLD) / Wd;
   prepBudget = 24; dropBudget = 8;
@@ -951,7 +1067,7 @@ __attribute__((export_name("bit_options"))) int32_t bit_options(void) {
   int refused = 0, unknown = 0;
   stcpy(ST1, BASEST);
   int ns;
-  if (PARAM[100] > 0) { ns = (int)PARAM[100]; for (int i = 0; i < 2 * ns; i++) SW1[i] = LIST[i]; }
+  if (nfirst > 0) { ns = nfirst; for (int i = 0; i < 2 * ns; i++) SW1[i] = first[i]; }
   else ns = legal(ST1, SW1);
   for (int i = 0; i < ns; i++) {
     int sr = SW1[2 * i], sc = SW1[2 * i + 1];
@@ -974,9 +1090,16 @@ __attribute__((export_name("bit_options"))) int32_t bit_options(void) {
   if ((depth ? depth : 1) >= 2) expandAll(depth ? depth : 1, cr, cc);
   double *fl = recAt(0);
   if (haveRec[0] && !(fl[F_VALUE] > 0)) haveRec[0] = 0;
-  ODATA[0] = failed ? -1 : 0; ODATA[1] = nNow; ODATA[2] = nNext; ODATA[3] = refused; ODATA[4] = unknown;
-  ODATA[5] = ns; ODATA[6] = LEAN ? -1 : BASEBREAK;
-  for (int i = 0; i < 4; i++) ODATA[7 + i] = haveRec[i];
-  ODATA[11] = (hasStopPrice && haveRec[0]) ? landStopOf(LANDS) : 0;
+  OD[0] = failed ? -1 : 0; OD[1] = nNow; OD[2] = nNext; OD[3] = refused; OD[4] = unknown;
+  OD[5] = ns; OD[6] = LEAN ? -1 : BASEBREAK;
+  for (int i = 0; i < 4; i++) OD[7 + i] = haveRec[i];
+  OD[11] = (hasStopPrice && haveRec[0]) ? landStopOf(LD) : 0;
   return failed ? -1 : 0;
 }
+
+__attribute__((export_name("bit_options"))) int32_t bit_options(void) {
+  OD = ODATA; LD = LANDS;
+  return optionsRun(IN, PARAM, LIST, PARAM[100] > 0 ? (int)PARAM[100] : 0);
+}
+
+#include "bot.c"

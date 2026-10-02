@@ -222,11 +222,11 @@ var refused = 0;
     var stack = new PanelEngine.Stack({ level: 10, seed: 701, countdown: false });
     var bot = new BitBot(stack, { weights: BitBot.STARTER, allowRaise: true });
     for (var f = 0; f < 200; f++) { bot.update(); stack.run(); }
-    var asked = 0, real = bot.deadly;
-    bot.deadly = function (st, res, info, horizon) { asked++; return real.call(this, st, res, info, horizon); };
     var board = bot._snapshot();
     var pool = bot.candidates(board, bot.info(board));
+    var before = require('./bitnative.js').deadlyCalls();
     bot.decide();
+    var asked = require('./bitnative.js').deadlyCalls() - before;
     ok(asked > 0, 'decide() never consulted the death filter, so the one rule that is ' +
                   'not a weight is not being applied at all');
     refused = asked;
@@ -271,7 +271,7 @@ ok(BitBot.prototype.deadly.call(probe, masksOf(lowBoard), null, { stopTime: 0 })
 (function () {
     var stack = new PanelEngine.Stack({ level: 10, seed: 701, countdown: false });
     var bot = new BitBot(stack, { weights: BitBot.STARTER });
-    bot.deadly = function () { return true; };
+    bot._test = { deadly: true };
     for (var f = 0; f < 200 && !stack.gameOver; f++) { bot.update(); stack.run(); }
     ok(bot.counts.allDead > 0, 'with every candidate refused the all-dead fallback never fired, ' +
                                'so the bot would freeze instead of playing its least bad move');
