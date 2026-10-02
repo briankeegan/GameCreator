@@ -655,6 +655,7 @@
         return { chain: res.chain || 0, total: res.total || 0,
                  biggest: res.rounds === 1 ? (res.total || 0) : 0,
                  brokeGarbage: res.scope === 'garbage-broke' ? 1 : 0,
+                 converts: res.converts || 0, voidAfter: res.voidAfter || 0,
                  scope: res.scope };
     }
 
@@ -931,19 +932,16 @@
 
     // THE TALLEST SLAB ON THE BOARD, IN ROWS. A slab's mask carries the same rows in
     // every column it spans, so its height is the popcount of any one of them.
-    function slabRows(masks) {
-        if (!masks || !masks.slabs || !masks.slabs.length) return 0;
+    // THE ROWS OF GARBAGE ON THE BOARD AT ONCE: the most garbage cells in any one
+    // column. Slabs pile -- a burst of one-row slabs stands as tall as one slab of that
+    // many rows -- so it is the pile, not the tallest slab in it, that the next raise
+    // has to leave room for.
+    function garbageRows(masks) {
+        if (!masks || !masks.garb) return 0;
         var best = 0;
-        for (var i = 0; i < masks.slabs.length; i++) {
-            var sm = masks.slabs[i];
-            if (!sm) continue;
-            for (var c = 1; c <= W; c++) {
-                var m = sm[c] >>> 0;
-                if (!m) continue;
-                var n = bit.popcount(m);
-                if (n > best) best = n;
-                break;
-            }
+        for (var c = 1; c <= W; c++) {
+            var n = bit.popcount(masks.garb[c] >>> 0);
+            if (n > best) best = n;
         }
         return best;
     }
@@ -1796,20 +1794,10 @@
         // undo it. Carried rather than consulted here: the search enumerates the
         // options every route reads, so excluding it there covers all of them.
         t.avoidSwap = this._recentSwaps;
-        // AND, TOPPED OUT, ROUTES THROUGH A CLEAR: the lock holds only while
-        // something resolves, so a route to a break longer than the lock buys
-        // time on the way. Only the route search asks for it; the features'
-        // count of what a board offers does not.
-        t.throughClears = !!info.toppedOut;
-        // AND THE LOCK THOSE ROUTES RUN ON, in planFits' own arithmetic, so a route
-        // that cannot be played in time is never built: the first run that can take
-        // health, extended by each clear to its resolve (FLASH + FACE + POP * n).
-        if (info.toppedOut) {
-            var fr0 = PanelEngine().LEVELS[9].frames;
-            t.lock = Math.max(0, (info.drainRun || 1) - 1);
-            t.resolveBase = 5 + fr0.FLASH + fr0.FACE;
-            t.resolvePop = fr0.POP;
-        }
+        // AND, TOPPED OUT, THE LOCK ROUTES RUN ON, in planFits' own arithmetic, so a
+        // route that cannot be played before health can drain is never built. Only the
+        // route search asks for it; the features' count of what a board offers does not.
+        if (info.toppedOut) t.lock = Math.max(0, (info.drainRun || 1) - 1);
         return t;
     };
 
@@ -1994,7 +1982,7 @@
         // ceil(incoming / W), which is the whole QUEUE -- so under a flood it ratcheted
         // to 8, 20, 33, 88, 119 rows and never came down, and the raise was dead for
         // the rest of the game. The queue is not a slab; the slabs on the board are.
-        var landed = slabRows(base);
+        var landed = garbageRows(base);
         if (landed > (this._maxSlab || 0)) this._maxSlab = landed;
         // DECIDED BEFORE ANYTHING IS PLANNED, because while it is on there is
         // nothing to plan: the raise outranks the attack and the board is not
@@ -2685,7 +2673,12 @@
             for (cc = mv[1]; cc <= mv[1] + 1; cc++) {
                 for (rr = 1; rr < P.length; rr++) {
                     var q = P[rr] && P[rr][cc];
-                    if (q && q.color !== 0 && q.state !== 'normal' && q.state !== 'landing') return true;
+                    // Only the short motions: a panel hovering, falling or mid-swap is
+                    // where it is going within frames. A match being cleared holds its
+                    // cells for the whole pop, and garbage being cleared does not move
+                    // until it converts; a plan blocked by either is replanned instead.
+                    if (q && q.color !== 0 && !q.isGarbage &&
+                        (q.state === 'hovering' || q.state === 'falling' || q.state === 'swapping')) return true;
                 }
             }
             return false;
@@ -2699,8 +2692,19 @@
         // on: a break converts six and its own match spends three, so no clear
         // bought on the way is paid back. Health is the one thing worth more:
         // _waitForDrain still fires a clear rather than let it drain.
+        // TOPPED OUT THE WHOLE BOARD IS THE RESERVE. Nothing lands while the board
+        // is topped out, so a clear that converts nothing buys only time, and the
+        // health guard is what buys time; every panel is kept for a break -- while
+        // there is garbage on the board to break. With none on screen the board is
+        // topped out by panels and the slab waits above it, out of reach: clearing is
+        // the only way it comes down, and the ordinary floor applies.
+        function slabOnScreen() {
+            for (var gc0 = 1; gc0 <= W; gc0++) if (base.garb[gc0]) return true;
+            return false;
+        }
         function spendsReserve(r, after) {
             if (!r || !(r.total > 0) || r.brokeGarbage) return false;
+            if (info.toppedOut && slabOnScreen()) return true;
             var sh = bitoptions.shapeOf(after);
             return !!sh && sh.mat < WORKING_ROWS;
         }
@@ -2893,8 +2897,13 @@
                 if (this.deadly(bc.masks, bc.resolved, info,
                                 Math.max((bc.moveFrames || 0) + this.reaction,
                                          info.framesPerRow || 0))) continue;
+                // MOST CONVERTED, THEN THE EVENEST SURFACE LEFT UNDER THE SLAB, THEN
+                // THE SHORTER WALK. A break that digs one column three deep leaves a
+                // gap the slab bridges, and the next break has fewer cells to use.
                 var cv = bc.resolved.converts || 0, kv = bk ? (bk.resolved.converts || 0) : -1;
-                if (!bk || cv > kv || (cv === kv && (bc.moveFrames || 0) < (bk.moveFrames || 0))) bk = bc;
+                var vv = bc.resolved.voidAfter || 0, kvv = bk ? (bk.resolved.voidAfter || 0) : 0;
+                if (!bk || cv > kv || (cv === kv && (vv < kvv ||
+                    (vv === kvv && (bc.moveFrames || 0) < (bk.moveFrames || 0))))) bk = bc;
             }
             // AND WAITED FOR WITH THE CURSOR ALREADY THERE. Topped out, update() lifts the
             // cooldown on that frame, and the landing that topped it out shakes the board
@@ -2975,14 +2984,13 @@
                     if (!this.planInTime(ro.swaps, ro.duration, base, info, deadline)) continue;
                     // MOST GARBAGE FIRST, then soonest -- the same order the
                     // one-swap route picks by, which prefers the bigger break.
-                    // Topped out the panels are all the material there is, so
-                    // between equal breaks the one that spends fewest comes first.
+                    // Between equal breaks, the evenest surface left under the slab,
+                    // as the one-swap break is chosen.
                     var rc0 = ro.converts || 0, kc0 = reach ? (reach.converts || 0) : -1;
-                    var rs0 = info.toppedOut ? (ro.cleared || 0) : 0;
-                    var ks0 = reach && info.toppedOut ? (reach.cleared || 0) : 0;
+                    var rv0 = ro.voidAfter || 0, kv0 = reach ? (reach.voidAfter || 0) : 0;
                     if (!reach || rc0 > kc0 ||
-                        (rc0 === kc0 && (rs0 < ks0 ||
-                         (rs0 === ks0 && (ro.duration || 0) < (reach.duration || 0))))) reach = ro;
+                        (rc0 === kc0 && (rv0 < kv0 ||
+                         (rv0 === kv0 && (ro.duration || 0) < (reach.duration || 0))))) reach = ro;
                 }
                 if (reach) {
                     // THE FIRST SWAP IS WHAT GETS PLAYED, so it is the one the death
@@ -3301,7 +3309,7 @@
 
         if (rev && rev.best && rev.best.swap && !rev.best.broke && (rev.best.total || 0) > 0) {
             var rsh = bitoptions.shapeOf(base);
-            if (rsh && rsh.mat - rev.best.total / W < WORKING_ROWS) rev = null;
+            if ((info.toppedOut && slabOnScreen()) || (rsh && rsh.mat - rev.best.total / W < WORKING_ROWS)) rev = null;
         }
         if (rev && rev.best && rev.best.swap) {
             this.counts.revealSwaps++;
@@ -4002,7 +4010,6 @@
         var info = this._lastInfo, pool = this._lastPool, base = this._lastBase;
         if (!d || !info || !pool || !base || !info.toppedOut) return d;
         var i;
-        if (ENDS_IN_A_BREAK[d.via]) return d;
         var clears = [], picked = null;
         for (i = 0; i < pool.length; i++) {
             var pc = pool[i];
@@ -4010,11 +4017,39 @@
             if (d.kind === 'swap' && d.move && pc.swap[0] === d.move[0] && pc.swap[1] === d.move[1]) picked = pc;
             if (pc.resolved.total > 0 || pc.resolved.brokeGarbage) clears.push(pc);
         }
+        // NONE YET IS NOT NONE. Panels still in the air land when the lock they hold
+        // ends, and the clears they make exist only from then: on the settled board.
+        // Those are the targets while the board is in motion -- the cursor is parked on
+        // one so its swap goes in the run the panels land, and a move that walks away
+        // from every one of them faces the same way-back check as any other.
+        if (!clears.length) {
+            var settled = bit.resolveFromMasks(base, true).settled;
+            if (settled) {
+                var sws = bit.legalSwapsOf(settled);
+                for (i = 0; i < sws.length; i++) {
+                    if (!bit.swapMasks(settled, sws[i][0], sws[i][1])) continue;
+                    var rs = bit.resolveFromMasks(settled, false);
+                    bit.swapMasks(settled, sws[i][0], sws[i][1]);
+                    if (!(rs.total > 0 || rs.scope === 'garbage-broke')) continue;
+                    clears.push({ kind: 'swap', swap: sws[i], future: true,
+                                  moveFrames: travel.cost(info.cursorRow, info.cursorCol, sws[i][0], sws[i][1]),
+                                  resolved: summarise(rs) });
+                }
+            }
+        }
         if (!clears.length) return d;
         var k = this.drainBound(), pr = picked && picked.resolved;
-        if (pr && pr.brokeGarbage) return d;
+        // A BREAK STILL HAS TO GET THERE IN TIME: its walk is checked against the first
+        // run that can take health like any other move's. A step of a route that ends in
+        // a break is a setup, and faces the way-back check below like one -- if the
+        // route's break fits the time left, it is the clear that check finds.
+        if (pr && pr.brokeGarbage && (picked.moveFrames || 0) + 1 <= k) return d;
+        if (!picked && ENDS_IN_A_BREAK[d.via]) return d;
         function hold(at) { return { kind: 'hold', mode: d.mode, alive: d.alive, via: 'awaitDrain', park: at }; }
-        if (pr && pr.total > 0) {
+        // A clear that arrives before the drain is held until the last moment and then
+        // fired; one that cannot arrive in time is not a clear for this purpose, and the
+        // guard's own reachable choice below replaces it.
+        if (pr && pr.total > 0 && !pr.brokeGarbage && (picked.moveFrames || 0) + 1 <= k) {
             if ((picked.moveFrames || 0) + 2 > k) return d;
             this.counts.waitedForDrain = (this.counts.waitedForDrain || 0) + 1;
             return hold(picked.swap);
@@ -4022,11 +4057,22 @@
         var nearest = Infinity;
         for (i = 0; i < clears.length; i++) nearest = Math.min(nearest, clears[i].moveFrames || 0);
         if (picked) {
+            // THE WAY BACK IS MEASURED ON THE BOARD THE MOVE LEAVES, to a clear that is
+            // on it. Measured to the clears of the board as it stands, a run of setups
+            // each passed against a clear the setup itself had moved or spent, and the
+            // cursor walked away from every clear there was.
             var back = Infinity;
-            for (i = 0; i < clears.length; i++) {
-                back = Math.min(back, travel.cost(picked.swap[0], picked.swap[1], clears[i].swap[0], clears[i].swap[1]));
+            if (picked.masks) {
+                var after = bit.copyState(picked.masks), sw2 = bit.legalSwapsOf(after);
+                for (i = 0; i < sw2.length; i++) {
+                    var cst = travel.cost(picked.swap[0], picked.swap[1], sw2[i][0], sw2[i][1]);
+                    if (cst >= back || !bit.swapMasks(after, sw2[i][0], sw2[i][1])) continue;
+                    var ra = bit.resolveFromMasks(after, false);
+                    bit.swapMasks(after, sw2[i][0], sw2[i][1]);
+                    if (ra.total > 0 || ra.scope === 'garbage-broke') back = cst;
+                }
             }
-            if ((picked.moveFrames || 0) + SWAP_FRAMES + back + 1 <= k && bit.anyOneSwapClear(picked.masks)) return d;
+            if ((picked.moveFrames || 0) + SWAP_FRAMES + back + 1 <= k) return d;
         } else if (nearest + 2 <= k) {
             return d;
         }
@@ -4041,17 +4087,26 @@
                      (cl.moveFrames || 0) < (breakNow.moveFrames || 0))) breakNow = cl;
                 continue;
             }
+            // THE CLEAR IS SPENT EITHER WAY, SO IT IS AIMED. The one that spends fewest
+            // panels, then the one that leaves the surface under the slab most even -- a
+            // slab resting on one tower has nothing to break against -- then the most
+            // frames held per panel.
             var isCh = r.chain >= 2;
             var rate = (f.FLASH + f.FACE + f.POP * r.total +
                         BF.stopTimeOf(eng, isCh, isCh ? 0 : r.total, isCh ? r.chain : 0, true)) / r.total;
-            if (!clearNow || rate > clearNow.rate) clearNow = { cand: cl, rate: rate };
+            var shc = cl.masks ? bitoptions.shapeOf(cl.masks) : null;
+            var vd = shc ? shc.high - shc.mat : 0;
+            var tn = r.total || 0;
+            if (!clearNow || tn < clearNow.tn || (tn === clearNow.tn && (vd < clearNow.vd ||
+                (vd === clearNow.vd && rate > clearNow.rate)))) clearNow = { cand: cl, rate: rate, vd: vd, tn: tn };
         }
-        if (breakNow) return { kind: 'swap', move: breakNow.swap, mode: d.mode, alive: d.alive, via: 'break' };
+        if (breakNow && !breakNow.future) return { kind: 'swap', move: breakNow.swap, mode: d.mode, alive: d.alive, via: 'break' };
+        if (breakNow) return hold(breakNow.swap);
         var esc = clearNow ? clearNow.cand : null;
         if (!esc) {
             for (i = 0; i < clears.length; i++) if (!esc || (clears[i].moveFrames || 0) < (esc.moveFrames || 0)) esc = clears[i];
         }
-        if ((esc.moveFrames || 0) + 2 <= k) return hold(esc.swap);
+        if (esc.future || (esc.moveFrames || 0) + 2 <= k) return hold(esc.swap);
         return { kind: 'swap', move: esc.swap, mode: d.mode, alive: d.alive, via: 'keepHealth' };
     };
 
@@ -4396,7 +4451,12 @@
             if (froz) this.frozen.hold++;
             this.counts.holds++;
             this.cooldown = this.reaction;
-            this._park = d.park ? { row: d.park[0], col: d.park[1], timer: 0,
+            // THE SAME TARGET KEEPS ITS WALK. A board in motion is decided on every frame,
+            // and a park rebuilt each time restarts its step timer, so the direction is
+            // held without a fresh press and the cursor never moves.
+            var pk0 = this._park;
+            if (d.park && pk0 && pk0.target && pk0.target[0] === d.park[0] && pk0.target[1] === d.park[1]) return;
+            this._park = d.park ? { row: d.park[0], col: d.park[1], timer: 0, target: [d.park[0], d.park[1]],
                                     disp: stack.displacement } : null;
             return;
         }

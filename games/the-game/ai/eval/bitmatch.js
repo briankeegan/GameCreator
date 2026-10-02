@@ -603,7 +603,10 @@
     var slabs = [], air = [];
     for (var si0 = 0; si0 < st.slabs.length; si0++) {
       slabs.push(Int32Array.from(st.slabs[si0]));
-      air.push((st.slabAir && st.slabAir[si0]) || 0);
+      // Untimed, the swap is already on the board and its match registers no sooner
+      // than the swap's own five runs, by which a slab falling at the snapshot has
+      // landed; only a fall inside the cascade can leave one in the air.
+      air.push(timed && st.slabAir ? (st.slabAir[si0] || 0) : 0);
     }
     function slabsThatFall() {
       var falling = new Array(slabs.length).fill(false), moved = true, pass = 0;
@@ -837,7 +840,7 @@
           // The whole connected slab, not the cells beside the match: the engine
           // takes getConnectedGarbagePanels(matching), so touching one cell of a
           // slab pops a row of all of it.
-          var touched = 0, converts = 0;
+          var touched = 0, converts = 0, convCol = [];
           // THE WHOLE CONNECTED GROUP, BLOCK TO BLOCK, as getConnectedGarbagePanels
           // does it: seed with every slab 4-adjacent to the match, then add every slab
           // 4-adjacent to any slab already in, until nothing new joins. A slab is
@@ -877,7 +880,7 @@
               }
               if (low < 32) {
                 var lowBit = 1 << (low - 1);
-                for (cc = 1; cc <= W; cc++) if (sm2[cc] & lowBit) converts++;
+                for (cc = 1; cc <= W; cc++) if (sm2[cc] & lowBit) { converts++; convCol[cc] = 1; }
               }
             }
           }
@@ -886,9 +889,22 @@
           // go on to do depends on the draw. The numbers up to the break are
           // reported and the scope says which kind of answer this is, so a
           // caller cannot read a stopped cascade as a finished one.
+          // THE SHAPE IT LEAVES IS KNOWABLE EVEN THOUGH THE COLOURS ARE NOT. Each
+          // column keeps the panels under its slab that are not being cleared, and
+          // the converted row adds one to each column it spans as it lands; the
+          // rest of the slab then rests on the tallest. `voidAfter` is the empty
+          // space that leaves under it, in cells -- the gap no line can reach.
+          var hMax = 0, hs = [], vAfter = 0;
+          for (cc = 1; cc <= W; cc++) {
+            var gc = garb[cc] >>> 0, fl = gc ? (gc & -gc) : 0;
+            var under = (occ[cc] & ~gc & ~popping[cc] & (fl ? fl - 1 : 0xffffffff)) >>> 0;
+            hs[cc] = popcount(under) + (convCol[cc] || 0);
+            if (convCol[cc] && hs[cc] > hMax) hMax = hs[cc];
+          }
+          for (cc = 1; cc <= W; cc++) if (convCol[cc]) vAfter += hMax - hs[cc];
           return { scope: 'garbage-broke', chain: Math.max(counter, 1),
                    total: total, rounds: rounds, garbage: touched,
-                   converts: converts, frames: T };
+                   converts: converts, frames: T, voidAfter: vAfter };
         }
         continue;
       }
