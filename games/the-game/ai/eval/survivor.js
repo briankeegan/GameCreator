@@ -357,7 +357,8 @@ Match.prototype.follow = function () {
   if (st === null) kind = 'hold';
   else if (st === 'raise') kind = 'raise';
   else if (Array.isArray(st)) { kind = 'swap'; move = st; }
-  else if (st && st.long !== undefined) { kind = 'long'; frames = -Math.max(1, st.long - (this.nextAt - this.line.at)); }
+  // A wait is not followed: the frames it holds are left to the next question.
+  else if (isWait(st)) { this.line = null; return false; }
   else { this.line = null; return false; }
   var pr = this.predict(this.expect, this.nextAt, this.hold, this.nextPending);
   var k = HANDS.keys(pr.board, pr.hold, kind, move, pr.pending, frames);

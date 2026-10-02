@@ -14,11 +14,12 @@ var P = require(path.join(DIR, 'puyocpu.js')), PA = require(path.join(DIR, 'pa-e
 var SH = require(path.join(DIR, 'survivor_shared.js'));
 var cfg = wt.workerData, OPTS = SH.botOptions(cfg.profile, cfg.threads);
 var rates = [], SPEND = 0.6;   // budget searched per millisecond over the last decisions, and the share of the time there is spent searching
-var TALL_RANK = 30;
-var LINEUP_AFTER = 30;
+var TALL_RANK = 30;   // frames: a break sooner than this outranks lowering a tall board
+var LINEUP_AFTER = 30;   // frames past a pop's end a lined-up row has to have matched by
+var BANK_ROWS = 12, BANK_TOP = 10;   // garbage rows on the way that make banking worth it, and the row it banks up to
 // The share of the time before an answer is due that the lineup search may
 // spend, and its floor; a question with no time given (m.ms 0) gets the most.
-var LINEUP_SHARE = 0.4, LINEUP_MIN_MS = 40, LINEUP_MAX_MS = 400;   // frames past a pop's end a lined-up row has to have matched by
+var LINEUP_SHARE = 0.4, LINEUP_MIN_MS = 40, LINEUP_MAX_MS = 400;
 // A SLAB HANGING over a gap cannot be touched from the columns under the gap.
 // With the profile's lowerSlab, of the moves proven to live and none breaking
 // garbage, the ones leaving the lowest garbage lowest are played: clearing
@@ -36,6 +37,7 @@ function slabRow(b) {
 // and none breaking garbage, the ones leaving the most panels are played --
 // a raise, which brings a row, among them.
 var KEEP_RANK = 1e7;
+var WELL = 2;   // rows a column falls short of the garbage for the garbage to be hanging over a well
 function panelsOf(b) {
   var n = 0;
   if (b && b.grid) for (var r = 1; r < b.grid.length; r++) { var row = b.grid[r]; if (row) for (var c = 1; c <= b.width; c++) if (row[c] > 0) n++; }
@@ -58,17 +60,18 @@ function gapOf(b) {
   tops.forEach(function (t) { gap += (hi - t) * (hi - t); });
   return gap;
 }
-function hanging(board) {
+function hanging(board, gap) {
+  gap = gap || 1;
   var g = 0, r, c;
   for (r = 1; r < board.panels.length && !g; r++) { var row = board.panels[r]; if (row) for (c = 1; c <= 6; c++) if (row[c] && row[c].isGarbage) { g = r; break; } }
   if (!g) return false;
   for (c = 1; c <= 6; c++) {
     var h = 0;
     for (r = 1; r < g; r++) if (board.panels[r] && board.panels[r][c] && board.panels[r][c].color) h = r;
-    if (h < g - 1) return true;
+    if (h < g - gap) return true;
   }
   return false;
-}   // frames: a break sooner than this outranks lowering a tall board
+}
 var bot = null, snap = null, nat = null, BS = null;   // BS: a search context of its own for breakMoves   // nat: the search's C context, kept from match to match
 var NativeMem = function () {
   var N = require(path.join(DIR, 'native.js')).server, X = N.exports(), free = [];
@@ -120,6 +123,17 @@ wt.parentPort.on('message', function (m) {
                          Date.now() + (m.ms > 0 ? Math.max(LINEUP_MIN_MS, m.ms * LINEUP_SHARE) : LINEUP_MAX_MS));
       brMs = Date.now() - tb;
       want = br.depth ? br.moves : {};
+      // BANK PANELS BEFORE THE GARBAGE LANDS: once a slab is on the board the
+      // stack is topped out and cannot rise, so the panels there are all
+      // there will be but what breaking brings. With the profile's bank,
+      // while garbage of BANK_ROWS rows or more is on its way and none has
+      // landed, a raise is played first, up to BANK_TOP.
+      if (cfg.profile.bank && !br.depth && !SH.lowestGarbageRow(board) && SH.top(board) < BANK_TOP) {
+        var coming = 0;
+        (m.arrivals || []).forEach(function (a) { coming += a.g ? a.g.height : 0; });
+        (board.incoming || []).forEach(function (g) { coming += g.height; });
+        if (coming >= BANK_ROWS) want = { raise: true };
+      }
       bot.preferRank = function (c, i) {
         if (want[c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[1] : c.kind]) return 0;
         // While a slab pops nothing can die, so a line breaking garbage later
@@ -132,8 +146,18 @@ wt.parentPort.on('message', function (m) {
         return t >= 0 ? t : Infinity;
       };
     }
+    // Before any lands, conserve applies while a lot is on its way (BANK_ROWS):
+    // the stack the first slab lands on is the one it is broken from.
+    var comingRows = 0;
+    (m.arrivals || []).forEach(function (a) { comingRows += a.g ? a.g.height : 0; });
     if (tall) bot.preferProven = function (c) { return c.settled ? TALL_RANK + SH.gridTop(c.settled) : Infinity; };
-    else if (cfg.profile.conserve && (board.incoming.length || SH.lowestGarbageRow(board))) bot.preferProven = function (c) { var b = this._settledOf(c); return b && b.grid ? KEEP_RANK - 100 * panelsOf(b) + gapOf(b) : Infinity; };
+    else if (cfg.profile.conserve && (board.incoming.length || SH.lowestGarbageRow(board) || comingRows >= BANK_ROWS)) {
+      // A SLAB HANGING over a well is brought down first: nothing can touch it
+      // from the columns it is not resting on, and the clear that drops it
+      // costs the same panels now as when the bot is forced to it later.
+      var drop = !popping && hanging(board, WELL);
+      bot.preferProven = function (c) { var b = this._settledOf(c); return b && b.grid ? KEEP_RANK + (drop ? 1000 * slabRow(b) : 0) - 100 * panelsOf(b) + gapOf(b) : Infinity; };
+    }
     else if (cfg.profile.lowerSlab && hanging(board)) bot.preferProven = function (c) { var b = this._settledOf(c); return b && b.grid ? HANG_RANK + slabRow(b) : Infinity; };
     // THE TIME THERE IS: the survival search's budget is what can be searched
     // in the milliseconds before the answer is due (m.ms; 0 waits for the
