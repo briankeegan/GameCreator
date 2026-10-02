@@ -97,7 +97,7 @@ wt.parentPort.on('message', function (m) {
     var br = null, brMs = 0, want = {}, tall = cfg.profile.tallRow && SH.top(board) >= cfg.profile.tallRow;
     if (cfg.profile.breakFirst) {
       bot._natSearch();   // the engine, on this bot's threads, before a second context is made on it
-      if (!BS) BS = new (require(path.join(DIR, 'native.js')).server.Search)({ reaction: OPTS.reaction, cursorMoveFrames: OPTS.cursorMoveFrames, threads: OPTS.threads || 1 });
+      if (!BS) BS = new (require(path.join(DIR, 'native.js')).server.Search)({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames, threads: OPTS.threads || 1 });
       var tb = Date.now();
       br = SH.breakMoves(BS, board, { left: m.hold.left, started: m.hold.started }, arrivals, cfg.profile.breakDepth, cfg.profile.lineup && SH.popLeft(board) ? SH.popLeft(board) + LINEUP_AFTER : 0,
                          Date.now() + (m.ms > 0 ? Math.max(LINEUP_MIN_MS, m.ms * LINEUP_SHARE) : LINEUP_MAX_MS));

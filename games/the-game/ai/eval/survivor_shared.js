@@ -27,7 +27,7 @@ function botOptions(p, threads) {
     weights[k] = p.overrides[k];
   });
   return { weights: weights,
-           reaction: p.reaction, cursorMoveFrames: p.cursorMoveFrames, depth: p.depth, beam: 0, rise: true, allowRaise: true,
+           reaction: p.reaction, swapGap: p.swapGap, cursorMoveFrames: p.cursorMoveFrames, depth: p.depth, beam: 0, rise: true, allowRaise: true,
            modes: p.modes, engine: true, native: true, nativeCands: !!p.nativeCands, threads: threads };
 }
 
@@ -369,7 +369,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
 // idle(board, hold) is a frame with nothing decided: the raise in hand goes
 // on being held.
 function Hands(p) {
-  this.S = new (require(path.join(__dirname, 'native.js')).server.Search)({ reaction: p.reaction, cursorMoveFrames: p.cursorMoveFrames, threads: 1 });
+  this.S = new (require(path.join(__dirname, 'native.js')).server.Search)({ reaction: p.reaction, swapGap: p.swapGap, cursorMoveFrames: p.cursorMoveFrames, threads: 1 });
 }
 Hands.prototype.keys = function (board, hold, kind, move, arrivals, frames) {
   this.S.reset();
