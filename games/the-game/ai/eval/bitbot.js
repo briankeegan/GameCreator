@@ -393,6 +393,7 @@
     BitBot.prototype.update = function () {
         var stack = this.stack;
         if (stack.gameOver) { this.spend.gameOver++; return; }
+        var held = this._held;
         var froz = (stack.stopTime || 0) > 0;
         var input = {};
 
@@ -414,10 +415,10 @@
 
         if (this._walk) {
             this.spend.walking++; if (froz) this.frozen.walking++;
-            this._driveWalk(input); stack.setInput(input); return;
+            this._driveWalk(input); this._send(input, held); return;
         }
         if (this._park) this._parkStep(input);
-        stack.setInput(input);
+        this._send(input, held);
         var urgent = (stack.stopTime || 0) > 0 ||
                      (typeof stack.isToppedOut === 'function' && stack.isToppedOut());
         if (this.cooldown > 0) {
@@ -457,7 +458,23 @@
         if (froz) this.frozen.swap++;
         this._beginWalk(d.move[0], d.move[1], this.reaction);
         this._driveWalk(input);
-        stack.setInput(input);
+        this._send(input, held);
+    };
+
+    // A DIRECTION HELD ON CONSECUTIVE FRAMES IS A HELD KEY: the engine moves
+    // the cursor on the first frame of a press and then only after its repeat
+    // wait. A park step on one frame and a walk step the same way on the next
+    // would cost the whole repeat wait instead of the one frame a release costs.
+    BitBot.prototype._send = function (input, held) {
+        var dir = input.up ? 'up' : input.down ? 'down' : input.left ? 'left' : input.right ? 'right' : null;
+        if (dir && dir === held) {
+            input.up = input.down = input.left = input.right = false;
+            if (this._walk) this._walk.timer = 0;
+            if (this._park) this._park.timer = 0;
+            dir = null;
+        }
+        this._held = dir;
+        this.stack.setInput(input);
     };
 
     BitBot.prototype._parkStep = function (input) {
