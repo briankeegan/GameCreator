@@ -1457,7 +1457,7 @@
         return best;
     }
 
-    function bestPlan(list, clock, deadline, engine, toppedOut, framesPerRow, framesTable, tallNow) {
+    function bestPlan(list, clock, deadline, engine, toppedOut, framesPerRow, framesTable, tallNow, fitsOf) {
         var best = null, over = null, all = list.now.concat(list.next), i;
         // THE PLANS THAT DO NOT COST SHAPE, IF THERE ARE ANY.
         //
@@ -1521,7 +1521,7 @@
             // how a vector ends up choosing a death. There is no board on which
             // the right answer is "no opinion": if nothing fits, the best of what
             // does not fit is what the bot plays, ranked by the same objective.
-            var fits = took <= deadline;
+            var fits = fitsOf ? fitsOf(o) : took <= deadline;
             var isChain = o.kind === 'chain';
             var pays = BF.stopTimeOf(engine, isChain, isChain ? 0 : o.size,
                                      isChain ? o.chain : 0, toppedOut);
@@ -2131,7 +2131,7 @@
                 // left is what has to fit.
                 var spent = Math.max(0, this.stack.clock - (this._plan.startedAt || 0));
                 var remains = Math.max(0, this._plan.frames - spent);
-                if (stillLegal && remains <= deadline) {
+                if (stillLegal && this.planInTime(this._plan.moves, remains, base, info, deadline)) {
                     survival = { move: nx, gain: this._plan.gain, frames: remains, rate: this._plan.rate };
                     this._plan.moves = this._plan.moves.slice(1);
                     if (!this._plan.moves.length) this._plan = null;
@@ -2143,9 +2143,12 @@
             if (!survival) {
                 options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
                                                    this.timing(info, deadline, base), digging);
+                var self0 = this;
                 var plan = bestPlan(options, info.stopTime || 0, deadline, PanelEngine(),
                                     !!info.toppedOut, info.framesPerRow, this.stack.frames,
-                                    tallestOf(pool));
+                                    tallestOf(pool), function (o) {
+                                        return self0.planInTime(o.swaps, o.duration || o.frames, base, info, deadline);
+                                    });
                 if (plan && plan.rate > 0) {
                     this._plan = { moves: plan.option.swaps.slice(1), frames: plan.frames,
                                    gain: plan.gain, rate: plan.rate,
@@ -2662,6 +2665,34 @@
             return false;
         }
 
+        // THE ROUTES. Everything above is context, computed once; from here each route is
+        // tried in order and the first that applies plays. A rule that has to hold for all
+        // of them goes here, ahead of the first, not inside one.
+        //
+        // READY FOR WHAT LANDS NEXT, BEFORE ANY ROUTE. A slab lands on the top row, and the
+        // moment to break it is when the last of it is down, so the break has to be
+        // standing there before it lands -- slabReadyFast asks whether one swap then
+        // breaks it. This is not a route: it is checked here, ahead of all of them, for
+        // as long as something is coming (queued, falling, or the raise that brings the
+        // next row) and no break is in hand already. Topped out nothing more lands; what
+        // is on the board is the dig's.
+        var coming = (info.incoming || 0) > 0 || !!info.fallingGarbage || !!raising;
+        if (coming && !poolBreak && !info.toppedOut && !bitoptions.slabReadyFast(base)) {
+            options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
+                                                   lookDepth, base, this.timing(info, deadline, base), digging);
+            var ready = options.ready;
+            if (ready && ready.swaps.length && this.planInTime(ready.swaps, ready.duration, base, info, deadline)) {
+                var rm0 = ready.swaps[0];
+                if (!returnsToSeen(rm0) && bit.swapMasks(base, rm0[0], rm0[1])) {
+                    bit.swapMasks(base, rm0[0], rm0[1]);          // put it back
+                    this._wantRaise = false;
+                    this.raiseFrames = 0;
+                    this.counts.readiedFirst = (this.counts.readiedFirst || 0) + 1;
+                    return { kind: 'swap', move: rm0, mode: mode, alive: alive, via: 'readyFirst' };
+                }
+            }
+        }
+
         // WHAT RAISING IS, ONCE THE MODE HAS SAID SO.
         //
         // The button is already held -- update() sends it on this same answer.
@@ -2689,33 +2720,6 @@
         if (raising) {
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
                                                    lookDepth, base, this.timing(info, deadline, base), digging);
-            // READY THE TOP ROW BEFORE BUYING ANOTHER, THEN RAISE.
-            //
-            // A slab rests on the TALLEST column and spans the width, so the only
-            // panels that can break it are three in a line in the row it lands on. A
-            // setup in the pocket cannot reach it -- the slab bridges the tall columns
-            // and seals everything shorter. 103 STARTER v rand3 filled to a pocket of
-            // 6,4,3,2,3,6, high 6 at columns one and six which are not adjacent, and
-            // the slab landed across them with no swap able to touch it.
-            //
-            // slabReadyFast asks that question of the row the slab would rest on.
-            // `options.ready` is the costed route to a board that can fire. So an
-            // unready top row does not REFUSE the raise -- the board gets ready and
-            // raises after, which is the same shape as levelling first below: the
-            // button comes off for this decision and the mode brings it back.
-            if (!bitoptions.slabReadyFast(base) && options.ready &&
-                options.ready.swaps.length &&
-                (options.ready.duration || 0) <= deadline) {
-                var rm0 = options.ready.swaps[0];
-                if (!returnsToSeen(rm0) && bit.swapMasks(base, rm0[0], rm0[1])) {
-                    bit.swapMasks(base, rm0[0], rm0[1]);          // put it back
-                    this._wantRaise = false;
-                    this.raiseFrames = 0;
-                    this.counts.readiedFirst = (this.counts.readiedFirst || 0) + 1;
-                    return { kind: 'swap', move: rm0, mode: mode, alive: alive,
-                             via: 'readyFirst' };
-                }
-            }
             var lvl = this.flattenFirst(options, deadline, info);
             if (lvl && !returnsToSeen(lvl.swaps[0])) {
                 var lm = lvl.swaps[0], lls = bit.legalSwapsOf(base), lok = false;
@@ -2951,7 +2955,7 @@
                 for (i = 0; i < pile.length; i++) {
                     var ro = pile[i];
                     if (!ro.breaks || !ro.swaps.length) continue;
-                    if (info.toppedOut ? !this.planFits(ro.swaps, base, info) : (ro.duration || 0) > deadline) continue;
+                    if (!this.planInTime(ro.swaps, ro.duration, base, info, deadline)) continue;
                     // MOST GARBAGE FIRST, then soonest -- the same order the
                     // one-swap route picks by, which prefers the bigger break.
                     if (!reach || (ro.converts || 0) > (reach.converts || 0) ||
@@ -3025,8 +3029,7 @@
                     if (dnl[i][0] === dn[0] && dnl[i][1] === dn[1]) { dnOk = true; break; }
                 }
                 var dspent = Math.max(0, this.stack.clock - (this._dig.startedAt || 0));
-                if (dnOk && (info.toppedOut ? this.planFits(this._dig.moves, base, info)
-                                            : Math.max(0, this._dig.frames - dspent) <= deadline)) {
+                if (dnOk && this.planInTime(this._dig.moves, Math.max(0, this._dig.frames - dspent), base, info, deadline)) {
                     this._dig.moves = this._dig.moves.slice(1);
                     if (!this._dig.moves.length) { this._dig = null; this._digIsBreak = false; }
                     this._plan = null;
@@ -3041,8 +3044,7 @@
                 options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
                                                        lookDepth, base, this.timing(info, deadline, base), digging);
                 var dp = options.save;
-                if (dp && dp.swaps.length && (info.toppedOut ? this.planFits(dp.swaps, base, info)
-                                                             : (dp.duration || 0) <= deadline)) {
+                if (dp && dp.swaps.length && this.planInTime(dp.swaps, dp.duration, base, info, deadline)) {
                     var dm = dp.swaps[0], dls = bit.legalSwapsOf(base), dok = false;
                     for (i = 0; i < dls.length; i++) {
                         if (dls[i][0] === dm[0] && dls[i][1] === dm[1]) { dok = true; break; }
@@ -3285,7 +3287,8 @@
             // decisions, and the clock drains the whole time.
             if (fok) {
                 var fspent = Math.max(0, this.stack.clock - (this._flatten.startedAt || 0));
-                if (Math.max(0, (this._flatten.frames || 0) - fspent) > deadline) fok = false;
+                if (!this.planInTime(this._flatten.moves, Math.max(0, (this._flatten.frames || 0) - fspent),
+                                     base, info, deadline)) fok = false;
             }
             if (fok) {
                 this._flatten.moves = this._flatten.moves.slice(1);
@@ -3615,6 +3618,13 @@
         return true;
     };
 
+    // DOES A PLAN FIT THE TIME THERE IS -- the one question every route that plays a plan
+    // asks, asked here. Topped out it is planFits, step by step against the lock each
+    // clear makes; otherwise the plan's frames against the deadline.
+    BitBot.prototype.planInTime = function (swaps, duration, base, info, deadline) {
+        return info.toppedOut ? this.planFits(swaps, base, info) : (duration || 0) <= deadline;
+    };
+
     BitBot.prototype.raiseRoom = function () {
         var stack = this.stack, top = stack.height, r, c, p;
         for (r = top; r >= 1; r--) {
@@ -3855,7 +3865,7 @@
     BitBot.prototype.flattenFirst = function (options, deadline, info) {
         var f = options && options.flatten;
         if (!f || !f.swaps.length) return null;
-        if ((f.duration || 0) > deadline) return null;
+        if (!this.planInTime(f.swaps, f.duration, info._base, info, deadline)) return null;
         // AND IT MUST LAND SOMEWHERE THE RAISE WOULD HAVE BEEN ALLOWED FROM.
         //
         // The raise itself is refused unless the board has something to fire, so a
