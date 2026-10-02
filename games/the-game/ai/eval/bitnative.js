@@ -10,10 +10,40 @@
     'VALUE', 'WAYS', 'LANDSTOP', 'NSW', 'SW'];
   FIELDS.forEach(function (n, i) { F[n] = i; });
   var WMAX, NCOL, MAXSLAB, OCC, INERT, GARB, BUSY, COL, SLAB, SL, ST_INTS, R_INTS, REC, MAXD, TIMED = 0;
-  var ex = null, mem = null, dmem = null, IN = 0, OUT = 0, LIST = 0, ODATA = 0, LANDS = 0, PARAM = 0, PCHAIN = 0, PCOMBO = 0;
-  function load(bytes) {
-    var inst = new WebAssembly.Instance(new WebAssembly.Module(bytes), { env: {} });
-    ex = inst.exports;
+  var ex = null, mem = null, dmem = null, MEMORY = null, IN = 0, OUT = 0, LIST = 0, ODATA = 0, LANDS = 0, PARAM = 0, PCHAIN = 0, PCOMBO = 0;
+  var WORKER_SRC = [
+    "var wt = require('worker_threads'), d = wt.workerData;",
+    "var X = new WebAssembly.Instance(d.mod, { env: { memory: d.mem } }).exports;",
+    "X.__stack_pointer.value = d.sp;",
+    "X.bit_thread_init(d.id);",
+    "X.bit_worker_loop();"
+  ].join('\n');
+  function threads() {
+    var v = typeof process !== 'undefined' && process.env && process.env.GC_BOT_THREADS;
+    return v !== undefined && v !== '' ? Math.max(1, Number(v) | 0) : 1;
+  }
+  function loadThreaded(bytes, n) {
+    var wt = require('worker_threads'), mod = new WebAssembly.Module(bytes);
+    MEMORY = new WebAssembly.Memory({ initial: 16384, maximum: 65536, shared: true });
+    ex = new WebAssembly.Instance(mod, { env: { memory: MEMORY } }).exports;
+    ex.bit_thread_init(0);
+    var STACK = 1 << 20;
+    for (var k = 1; k < n; k++) {
+      var sp = ex.bit_grab(STACK) >>> 0;
+      if (!sp) throw new Error('bitnative: no memory for a thread');
+      var w = new wt.Worker(WORKER_SRC, { eval: true, workerData: { mod: mod, mem: MEMORY, id: k, sp: sp + STACK } });
+      w.unref();
+      w.on('error', function (e) { console.error('bitnative worker: ' + (e && e.stack || e)); });
+    }
+    var nap = new Int32Array(new SharedArrayBuffer(4)), t0 = Date.now();
+    while (ex.bit_workers() < n - 1) {
+      if (Date.now() - t0 > 60000) throw new Error('bitnative: workers did not start');
+      Atomics.wait(nap, 0, 0, 2);
+    }
+  }
+  function load(bytes, n) {
+    if (n > 1) loadThreaded(bytes, n);
+    else { ex = new WebAssembly.Instance(new WebAssembly.Module(bytes), { env: {} }).exports; MEMORY = ex.memory; }
     var L = []; for (var i = 0; i < 15; i++) L.push(ex.bit_layout(i));
     WMAX = L[0]; NCOL = L[1]; MAXSLAB = L[2]; OCC = L[3]; INERT = L[4]; GARB = L[5]; BUSY = L[6]; COL = L[7];
     SLAB = L[8]; SL = L[9]; ST_INTS = L[10]; R_INTS = L[11]; REC = L[12]; MAXD = L[13];
@@ -22,9 +52,12 @@
     ODATA = ex.bit_odata() >> 3; PARAM = ex.bit_param() >> 3; PCHAIN = ex.bit_pchain() >> 3; PCOMBO = ex.bit_pcombo() >> 3;
     mem = dmem = null;
   }
-  if (fs) load(fs.readFileSync(path.join(__dirname, 'native', 'bit.wasm')));
-  function heap() { if (!mem || mem.buffer !== ex.memory.buffer) mem = new Int32Array(ex.memory.buffer); return mem; }
-  function dheap() { if (!dmem || dmem.buffer !== ex.memory.buffer) dmem = new Float64Array(ex.memory.buffer); return dmem; }
+  if (fs) {
+    var nThreads = threads();
+    load(fs.readFileSync(path.join(__dirname, 'native', nThreads > 1 ? 'bit-mt.wasm' : 'bit.wasm')), nThreads);
+  }
+  function heap() { if (!mem || mem.buffer !== MEMORY.buffer) mem = new Int32Array(MEMORY.buffer); return mem; }
+  function dheap() { if (!dmem || dmem.buffer !== MEMORY.buffer) dmem = new Float64Array(MEMORY.buffer); return dmem; }
   function fits(st) {
     return st.W <= 6 && st.N < NCOL && (!st.slabs || st.slabs.length <= MAXSLAB);
   }
@@ -244,7 +277,8 @@
       for (j = 0; j < sw.length && j < MAXD; j++) { d[b + F.SW + 2 * j] = sw[j][0]; d[b + F.SW + 2 * j + 1] = sw[j][1]; }
     }
   }
-  return { fits: fits, resolve: resolve, resolveTimed: resolveTimed, scan: scan, load: load, options: options,
+  function stat() { var d = dheap(), b = ex.bit_stat() >> 3; return Array.from(d.subarray(b, b + 8)); }
+  return { stat: stat, fits: fits, resolve: resolve, resolveTimed: resolveTimed, scan: scan, load: load, options: options,
            botNew: botNew, botIn: botIn, botStates: botStates, botDecide: botDecide, botTab: botTab, botPut: botPut, botTest: botTest,
            botPoolMasks: botPoolMasks, deadlyCalls: deadlyCalls, opening: opening, putRecords: putRecords };
 }));
