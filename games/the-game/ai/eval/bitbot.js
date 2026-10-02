@@ -655,6 +655,7 @@
         return { chain: res.chain || 0, total: res.total || 0,
                  biggest: res.rounds === 1 ? (res.total || 0) : 0,
                  brokeGarbage: res.scope === 'garbage-broke' ? 1 : 0,
+                 converts: res.converts || 0, voidAfter: res.voidAfter || 0,
                  scope: res.scope };
     }
 
@@ -2685,7 +2686,12 @@
             for (cc = mv[1]; cc <= mv[1] + 1; cc++) {
                 for (rr = 1; rr < P.length; rr++) {
                     var q = P[rr] && P[rr][cc];
-                    if (q && q.color !== 0 && q.state !== 'normal' && q.state !== 'landing') return true;
+                    // Only the short motions: a panel hovering, falling or mid-swap is
+                    // where it is going within frames. A match being cleared holds its
+                    // cells for the whole pop, and garbage being cleared does not move
+                    // until it converts; a plan blocked by either is replanned instead.
+                    if (q && q.color !== 0 && !q.isGarbage &&
+                        (q.state === 'hovering' || q.state === 'falling' || q.state === 'swapping')) return true;
                 }
             }
             return false;
@@ -2893,8 +2899,13 @@
                 if (this.deadly(bc.masks, bc.resolved, info,
                                 Math.max((bc.moveFrames || 0) + this.reaction,
                                          info.framesPerRow || 0))) continue;
+                // MOST CONVERTED, THEN THE EVENEST SURFACE LEFT UNDER THE SLAB, THEN
+                // THE SHORTER WALK. A break that digs one column three deep leaves a
+                // gap the slab bridges, and the next break has fewer cells to use.
                 var cv = bc.resolved.converts || 0, kv = bk ? (bk.resolved.converts || 0) : -1;
-                if (!bk || cv > kv || (cv === kv && (bc.moveFrames || 0) < (bk.moveFrames || 0))) bk = bc;
+                var vv = bc.resolved.voidAfter || 0, kvv = bk ? (bk.resolved.voidAfter || 0) : 0;
+                if (!bk || cv > kv || (cv === kv && (vv < kvv ||
+                    (vv === kvv && (bc.moveFrames || 0) < (bk.moveFrames || 0))))) bk = bc;
             }
             // AND WAITED FOR WITH THE CURSOR ALREADY THERE. Topped out, update() lifts the
             // cooldown on that frame, and the landing that topped it out shakes the board
@@ -2977,12 +2988,15 @@
                     // one-swap route picks by, which prefers the bigger break.
                     // Topped out the panels are all the material there is, so
                     // between equal breaks the one that spends fewest comes first.
+                    // Then the evenest surface left under the slab, as the one-swap
+                    // break is chosen.
                     var rc0 = ro.converts || 0, kc0 = reach ? (reach.converts || 0) : -1;
+                    var rv0 = ro.voidAfter || 0, kv0 = reach ? (reach.voidAfter || 0) : 0;
                     var rs0 = info.toppedOut ? (ro.cleared || 0) : 0;
                     var ks0 = reach && info.toppedOut ? (reach.cleared || 0) : 0;
                     if (!reach || rc0 > kc0 ||
-                        (rc0 === kc0 && (rs0 < ks0 ||
-                         (rs0 === ks0 && (ro.duration || 0) < (reach.duration || 0))))) reach = ro;
+                        (rc0 === kc0 && (rv0 < kv0 || (rv0 === kv0 && (rs0 < ks0 ||
+                         (rs0 === ks0 && (ro.duration || 0) < (reach.duration || 0))))))) reach = ro;
                 }
                 if (reach) {
                     // THE FIRST SWAP IS WHAT GETS PLAYED, so it is the one the death

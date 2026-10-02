@@ -257,6 +257,7 @@
                  // resolve time; `converts` is its bottom row, the only part that
                  // becomes panels. See bitmatch for why both exist.
                  converts: r.converts || 0,
+                 voidAfter: r.voidAfter || 0,
                  duration: durationOf(swaps, frames),
                  tall: sh ? sh.tall : null, bumps: sh ? sh.bumps : null,
                  mat: sh ? sh.mat : null, low: sh ? sh.low : null,
