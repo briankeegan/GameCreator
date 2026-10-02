@@ -79,7 +79,8 @@ function revealed(want, got) {
 
 // ---------------------------------------------------------------- the death record
 // GC_SURVIVOR_DUMP=file: when this side dies, the last HISTORY frames (board,
-// keys pressed, garbage on its way) and the decisions made over them are
+// keys pressed, health, stop and shake time, garbage on its way) and the
+// decisions made over them are
 // written there, a match per line.
 var KEEP = Number(process.env.GC_SURVIVOR_KEEP) || 1;   // how many times the default the dump keeps
 var HISTORY = 300 * KEEP, SNAP_EVERY = 600;   // and the board every SNAP_EVERY frames of the match (snaps)
@@ -338,6 +339,7 @@ Match.prototype.planned = function (from, n) {
 };
 Match.prototype.record = function (truth, bits, arrivals) {
   this.history.push({ clock: truth.clock, stopWatch: truth.stopWatch, bits: bits, cursor: [truth.curRow, truth.curCol],
+                      health: truth.health, stop: truth.stopTime + truth.preStopTime, shake: truth.shakeTime, lock: !!truth.riseLock,
                       incoming: truth.incoming, arrivals: arrivals.map(function (a) { return [a.at, a.g.width, a.g.height, !!a.g.isChain, !!a.g.isMetal]; }),
                       grid: gridOf(truth) });
   if (this.history.length > HISTORY) this.history.shift();
