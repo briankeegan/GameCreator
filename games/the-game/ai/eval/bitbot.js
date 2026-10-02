@@ -33,7 +33,7 @@
                FPR: 9, FTNR: 10, SPEED: 11, NEXTUP: 12, STARTSPEED: 13, CLOCK: 14, STACKCLOCK: 15, HASRISEN: 16,
                RAISEROOM: 17, INFLIGHT: 18, DRAINBOUND: 19, STACKTOPPED: 20, MOVING: 21, HASTIMED: 22,
                REVEALOPEN: 23, CONVN: 24, CONVTIMER: 25, BCROW: 26, BCCOL: 27, NLEGAL: 28, HASINROW: 29,
-               INROW: 30, HASLAST: 37, LASTR: 38, LASTC: 39, SETTLING: 40, SF: 50, CONV: 60, LEGAL: 300, T: 560, SLABW: 590, SLABH: 591, SLABC: 592, INROWS: 593, SIZE: 600 };
+               INROW: 30, HASLAST: 37, LASTR: 38, LASTC: 39, SETTLING: 40, SF: 50, CONV: 60, LEGAL: 300, T: 560, SLABW: 590, SLABH: 591, SLABC: 592, INROWS: 593, POPLOW: 593, SIZE: 600 };
     var T = { RISE: 0, COMBO: 100, STOP: 200, LF: 210, W: 220, OPT: 250, SIZE: 270 };
     var KINDS = ['hold', 'raise', 'swap'], MODES = ['BUILD', 'DEFEND', 'ATTACK'];
     var VIAS = [null, 'raise:opening', 'raise:material', 'raising', 'readyFirst', 'awaitLanding', 'break',
@@ -349,6 +349,13 @@
                     (q.state === 'hovering' || q.state === 'falling' || q.state === 'swapping')) { settling = 1; break; }
             }
             d[b + IN.SETTLING + c] = settling;
+            var popLow = 0;
+            for (r = 1; P && r < P.length && !popLow; r++) {
+                var pq = P[r] && P[r][c];
+                if (pq && pq.color !== 0 && !pq.isGarbage &&
+                    (pq.state === 'matched' || pq.state === 'popping' || pq.state === 'popped')) popLow = r;
+            }
+            d[b + IN.POPLOW + c] = popLow;
         }
         var f = s.frames || {};
         d[b + IN.SF] = num(f.HOVER); d[b + IN.SF + 1] = num(f.FLASH); d[b + IN.SF + 2] = num(f.FACE); d[b + IN.SF + 3] = num(f.POP);

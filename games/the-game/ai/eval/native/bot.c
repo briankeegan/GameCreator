@@ -7,7 +7,7 @@
 enum { IN_TOPPED, IN_STOP, IN_INCOMING, IN_NEXTSLAB, IN_FALLING, IN_CROW, IN_CCOL, IN_HEALTH, IN_DRAIN, IN_FPR,
        IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISEROOM, IN_INFLIGHT,
        IN_DRAINBOUND, IN_STACKTOPPED, IN_MOVING, IN_HASTIMED, IN_REVEALOPEN, IN_CONVN, IN_CONVTIMER, IN_BCROW, IN_BCCOL,
-       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_SF = 50, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_SIZE = 600 };
+       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_SF = 50, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_SIZE = 600 };
 enum { TF_DEADLY = 1, TF_FORCE = 2, TF_REFUSE = 4, TF_RAISE = 8, TF_STUB = 16, TF_SLAB = 32 };
 static int deadlyCalls;
 #define TFLAG(f) (((int)BIN[IN_T]) & (f))
@@ -1556,8 +1556,17 @@ static Res WD;
 static ST WDA;
 static int32_t WDSW[2 * 128], WDR[R_INTS + ST_INTS];
 static int endsInBreak(int via) { return via == V_DIGPLAN || via == V_BREAKREACH || via == V_BREAK || via == V_LINEUP || via == V_LINEUPHOLD; }
+// A SWAP HELD FOR LATER MUST STILL BE THERE LATER. A cell above one that is
+// clearing falls when the clear ends — the moment a held swap is wanted.
+static int steady(int r, int c) {
+  for (int cc = c; cc <= c + 1; cc++) { int low = (int)BIN[IN_POPLOW + cc]; if (low > 0 && low < r) return 0; }
+  return 1;
+}
 static Dec waitForDrain(Dec d) {
-  if (!BIN[IN_TOPPED]) return d;
+  // The time left is the drain bound once topped, and the death clock before:
+  // a queue that will top the board leaves no more time than the stop.
+  double k = BIN[IN_TOPPED] ? BIN[IN_DRAINBOUND] : DDEADLINE;
+  if (!(k < INF)) return d;
   int32_t *base = DBASE;
   int nc = 0;
   Cand *picked = 0;
@@ -1590,13 +1599,12 @@ static Dec waitForDrain(Dec d) {
   }
   if (!nc) return d;
   if (d.spends) return d;
-  double k = BIN[IN_DRAINBOUND];
   Rs *pr = picked ? &picked->res : 0;
   if (pr && pr->broke && picked->moveFrames + 1 <= k) return d;
   if (!picked && endsInBreak(d.via)) return d;
 #define HOLDAT(r, c) mkHold(V_AWAITDRAIN, d.mode, d.alive, 1, r, c)
   if (pr && pr->total > 0 && !pr->broke && picked->moveFrames + 1 <= k) {
-    if (picked->moveFrames + 2 > k) return d;
+    if (!BIN[IN_TOPPED] || picked->moveFrames + 2 > k || !steady(picked->sr, picked->sc)) return d;
     BT->counts[C_WAITEDFORDRAIN]++;
     return HOLDAT(picked->sr, picked->sc);
   }
@@ -1641,7 +1649,7 @@ static Dec waitForDrain(Dec d) {
   if (breakNow) return HOLDAT(breakNow->sr, breakNow->sc);
   Clr *esc = clearNow;
   if (!esc) for (int i = 0; i < nc; i++) if (!esc || CLEARS[i].moveFrames < esc->moveFrames) esc = &CLEARS[i];
-  if (esc->future || esc->moveFrames + 2 <= k) return HOLDAT(esc->sr, esc->sc);
+  if (esc->future || (esc->moveFrames + 2 <= k && steady(esc->sr, esc->sc))) return HOLDAT(esc->sr, esc->sc);
   return mkSwap(esc->sr, esc->sc, V_KEEPHEALTH, d.mode, d.alive);
 #undef HOLDAT
 }
