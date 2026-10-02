@@ -1529,11 +1529,11 @@ static void sortBorn(int n) {
 static LOCAL int threadReady;
 struct CK { Res *res; int resPly, hasRR, rrDig, hasSh, hasShG, sv, fire, slab, hasLand, anyB, bad; double land; Shape sh, shg; uint32_t rr[WMAX]; };
 #define NTCAP (1 << 12)
-typedef struct { u64 h; int32_t gen, at, n; CK *ck; } NT;
+typedef struct { u64 h; int32_t gen, at, n, nl, rest; CK *ck; int32_t *sw; } NT;
 static NT NT_MAIN[NTCAP];
 static LOCAL NT *NTB;
 static LOCAL int32_t ntGen = 1, ntN;
-static CK *nodeCK(const int32_t *st, int nl) {
+static NT *nodeFind(const int32_t *st, unsigned *slot) {
   int n = stlen(st);
   u64 h = stHash(st, n);
   unsigned i = (unsigned)(h >> 32) & (NTCAP - 1);
@@ -1542,17 +1542,24 @@ static CK *nodeCK(const int32_t *st, int nl) {
     const int32_t *p = ARENA + NTB[i].at;
     int j = 0;
     while (j < n && p[j] == st[j]) j++;
-    if (j == n) return NTB[i].ck;
+    if (j == n) return &NTB[i];
   }
+  NTB[i].h = h; NTB[i].n = n;
+  *slot = i;
+  return 0;
+}
+static CK *nodeAdd(unsigned i, const int32_t *st, int nl, const int32_t *sw, int rest) {
+  int n = NTB[i].n;
   if (ntN >= NTCAP / 2) return 0;
   int at = (arenaN + 1) & ~1, need = (int)((nl * sizeof(CK) + 3) / 4);
-  if (at + need + n + R_INTS + ST_INTS > arenaCap) return 0;
+  if (at + need + n + 2 * nl + R_INTS + ST_INTS > arenaCap) return 0;
   CK *ck = (CK *)(ARENA + at);
   for (int k = 0; k < nl; k++) { ck[k].res = 0; ck[k].hasRR = 0; ck[k].hasSh = 0; ck[k].hasShG = 0; ck[k].sv = -1; ck[k].fire = -1; ck[k].slab = -1; ck[k].hasLand = 0; ck[k].anyB = -1; ck[k].bad = -1; }
-  int32_t *cp = ARENA + at + need;
+  int32_t *cp = ARENA + at + need, *sp = cp + n;
   for (int j = 0; j < n; j++) cp[j] = st[j];
-  arenaN = at + need + n;
-  NTB[i].h = h; NTB[i].gen = ntGen; NTB[i].at = (int32_t)(cp - ARENA); NTB[i].n = n; NTB[i].ck = ck;
+  for (int j = 0; j < 2 * nl; j++) sp[j] = sw[j];
+  arenaN = at + need + n + 2 * nl;
+  NTB[i].gen = ntGen; NTB[i].at = (int32_t)(cp - ARENA); NTB[i].nl = nl; NTB[i].rest = rest; NTB[i].ck = ck; NTB[i].sw = sp;
   ntN++;
   return ck;
 }
@@ -1773,9 +1780,18 @@ static void expandAll(int depth, int cr, int cc) {
       int32_t *state = WORK_ST[fi];
       stcpy(state, node->st);
       Grid G;
-      int nl = legalG(state, SWE, &G);
-      CK *ck = nodeCK(state, nl);
-      int nodeRest = settledRest(state);
+      int nl, nodeRest, haveG = 0;
+      unsigned slot = 0;
+      NT *nt = nodeFind(state, &slot);
+      CK *ck;
+      if (nt) {
+        nl = nt->nl; nodeRest = nt->rest; ck = nt->ck;
+        for (int j = 0; j < 2 * nl; j++) SWE[j] = nt->sw[j];
+      } else {
+        nl = legalG(state, SWE, &G); haveG = 1;
+        nodeRest = settledRest(state);
+        ck = nodeAdd(slot, state, nl, SWE, nodeRest);
+      }
       Drop D; int haveD = 0;
       uint32_t reach[WMAX]; int haveReach = node->hasReach;
       if (haveReach) for (int c = 0; c < WMAX; c++) reach[c] = node->reach[c];
@@ -1790,7 +1806,7 @@ static void expandAll(int depth, int cr, int cc) {
         CK *e = ck ? &ck[k] : 0;
         if (e && e->res && (e->resPly == ply || ((e->res < QUIET || e->res >= QUIET + 2 * qcap) &&
                                                   ((int32_t *)e->res < PSOUT || (int32_t *)e->res >= PSOUT + 2 * MAXSET * SOUT)))) res = e->res;
-        else if (quietSwapG(state, &G, nodeRest, sr, sc)) {
+        else if ((haveG || (gridOf(state, &G), haveG = 1)) && quietSwapG(state, &G, nodeRest, sr, sc)) {
           if (nQuiet[qside] >= qcap) { failed = 1; continue; }
           res = &QUIET[qside * qcap + nQuiet[qside]++];
           for (int i = 0; i < R_INTS; i++) res->r[i] = 0;
