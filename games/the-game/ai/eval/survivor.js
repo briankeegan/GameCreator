@@ -235,7 +235,7 @@ Match.prototype.take = function (truth) {
     this.nextAt = at + step.inputs.length;
     this.knew = knew;
     // The line behind the move holds from where the move ends, played as decided.
-    this.line = a.line && a.lineAt === this.nextAt && at === a.at ? { steps: a.line.slice(), at: a.lineAt } : null;
+    this.line = a.line && (a.lineFree || a.lineAt === this.nextAt) && at === a.at ? { steps: a.line.slice(), at: this.nextAt } : null;
   }
 };
 Match.prototype.frame = function (truth, arrivals) {

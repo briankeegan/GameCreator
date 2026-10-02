@@ -155,7 +155,7 @@ function gridTop(b) {
 }
 var BREAK_BUDGET = 2500;   // steps past the first level: the search stops there
 var LINEUP_BUDGET = 400;   // pairs of swaps tried for a lineup
-var LINEUP_DEPTH = 4, LINEUP_BEAM = 6;   // the aimed lineup's swaps and lines kept
+var LINEUP_DEPTH = 8, LINEUP_BEAM = 8;   // the aimed lineup's swaps and lines kept
 // LINING UP: while a broken slab pops (popLeft, frames) its new row cannot
 // move, but what is under it can; once the pop ends the row matches what it
 // rests on, and a match there touches the slab again. A first swap after
@@ -190,8 +190,9 @@ function pairs(grid, want) {
   }
   return s;
 }
-function breakMoves(S, board, hold, arrivals, maxDepth, wait) {
+function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
   maxDepth = maxDepth || 3;
+  deadline = deadline || Infinity;
   var g = lowestGarbageRow(board);
   if (!g) return { depth: 0, moves: {} };
   S.reset();
@@ -229,29 +230,30 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait) {
     // Further, aimed: the colours the row turns into are known from the
     // pop's start, and two of a column's colour on top of that column make
     // three with the panel landing there, under the slab. A beam of lines up
-    // to LINEUP_DEPTH swaps, kept by how many such pairs they stand up.
+    // to LINEUP_DEPTH swaps, kept by how many such pairs they stand up, for as
+    // long as `deadline` (ms since the epoch) allows; the line found is the
+    // path, every swap of it, for the frame loop to play on.
     var want = converting(board);
     if (want) {
-      var level = firsts.filter(function (f) { return f.n && !f.n.dead && f.n.t < end; }).map(function (f) { return { key: f.key, n: f.n }; });
-      for (var dpt = 2; dpt <= LINEUP_DEPTH && level.length && !any; dpt++) {
+      var level = firsts.filter(function (f) { return f.n && !f.n.dead && f.n.t < end; }).map(function (f) { return { key: f.key, n: f.n, path: [f.m] }; }), path = null;
+      for (var dpt = 2; dpt <= LINEUP_DEPTH && level.length && !path && Date.now() < deadline; dpt++) {
         level.forEach(function (x) { x.s = pairs(x.n.b.grid, want); });
         level.sort(function (a, b) { return b.s - a.s; });
         level = level.slice(0, LINEUP_BEAM);
         var next = [];
-        for (i = 0; i < level.length && !any && tries < 3 * LINEUP_BUDGET; i++) {
+        for (i = 0; i < level.length && !path && Date.now() < deadline; i++) {
           var ms2 = swapsOf(level[i].n);
-          for (j = 0; j < ms2.length && tries < 3 * LINEUP_BUDGET; j++) {
-            tries++;
+          for (j = 0; j < ms2.length && Date.now() < deadline; j++) {
             var n3 = S.advance(level[i].n, 'swap', ms2[j], 0);
             if (!n3 || n3.dead || n3.t >= end) continue;
-            var sc = pairs(n3.b.grid, want);
-            if (sc >= PAIR && lined(n3)) { found[level[i].key] = true; any = true; break; }
-            next.push({ key: level[i].key, n: n3, s: sc });
+            var sc = pairs(n3.b.grid, want), p3 = level[i].path.concat([ms2[j]]);
+            if (sc >= PAIR && lined(n3)) { found[level[i].key] = true; any = true; path = p3; break; }
+            next.push({ key: level[i].key, n: n3, s: sc, path: p3 });
           }
         }
         level = next;
       }
-      if (any) return { depth: 1, moves: found, lineup: 'aimed' };
+      if (any) return { depth: 1, moves: found, lineup: 'aimed', path: path };
     }
     // failing that, a first swap leaving a break one swap away when the pop ends
     for (i = 0; i < firsts.length && tries < 2 * LINEUP_BUDGET; i++) {

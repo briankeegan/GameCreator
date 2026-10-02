@@ -15,7 +15,10 @@ var SH = require(path.join(DIR, 'survivor_shared.js'));
 var cfg = wt.workerData, OPTS = SH.botOptions(cfg.profile, cfg.threads);
 var rates = [], SPEND = 0.6;   // budget searched per millisecond over the last decisions, and the share of the time there is spent searching
 var TALL_RANK = 30;
-var LINEUP_AFTER = 30;   // frames past a pop's end a lined-up row has to have matched by
+var LINEUP_AFTER = 30;
+// The share of the time before an answer is due that the lineup search may
+// spend, and its floor; a question with no time given (m.ms 0) gets the most.
+var LINEUP_SHARE = 0.4, LINEUP_MIN_MS = 40, LINEUP_MAX_MS = 400;   // frames past a pop's end a lined-up row has to have matched by
 // A SLAB HANGING over a gap cannot be touched from the columns under the gap.
 // With the profile's lowerSlab, of the moves proven to live and none breaking
 // garbage, the ones leaving the lowest garbage lowest are played: clearing
@@ -112,7 +115,8 @@ wt.parentPort.on('message', function (m) {
       bot._natSearch();   // the engine, on this bot's threads, before a second context is made on it
       if (!BS) BS = new (require(path.join(DIR, 'native.js')).server.Search)({ reaction: OPTS.reaction, cursorMoveFrames: OPTS.cursorMoveFrames, threads: OPTS.threads || 1 });
       var tb = Date.now();
-      br = SH.breakMoves(BS, board, { left: m.hold.left, started: m.hold.started }, arrivals, cfg.profile.breakDepth, cfg.profile.lineup && SH.popLeft(board) ? SH.popLeft(board) + LINEUP_AFTER : 0);
+      br = SH.breakMoves(BS, board, { left: m.hold.left, started: m.hold.started }, arrivals, cfg.profile.breakDepth, cfg.profile.lineup && SH.popLeft(board) ? SH.popLeft(board) + LINEUP_AFTER : 0,
+                         Date.now() + (m.ms > 0 ? Math.max(LINEUP_MIN_MS, m.ms * LINEUP_SHARE) : LINEUP_MAX_MS));
       brMs = Date.now() - tb;
       want = br.depth ? br.moves : {};
       bot.preferRank = function (c, i) {
@@ -142,12 +146,14 @@ wt.parentPort.on('message', function (m) {
     var d;
     var t1 = Date.now();
     var ranked = [], key = function (c) { return c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[1] : c.kind; };
+    var provenRanked = [];
+    if (process.env.GC_SURVIVOR_WHY && bot.preferProven) { var pp0 = bot.preferProven; bot.preferProven = function (c, i) { var r = pp0.call(this, c, i); provenRanked.push(key(c) + '=' + r); return r; }; }
     if (process.env.GC_SURVIVOR_WHY && bot.preferRank) { var pr0 = bot.preferRank; bot.preferRank = function (c, i) { var r = pr0.call(this, c, i); ranked.push(key(c) + '=' + r); return r; }; }
     try { d = bot._decide(); } finally { bot._abort = null; }
     var why = null;
-    if (process.env.GC_SURVIVOR_WHY && br && br.depth) {
+    if (process.env.GC_SURVIVOR_WHY) {
       var sp = bot._searchProofs;
-      why = { ranked: ranked.join(' '), want: Object.keys(want), cands: sp ? sp.cands.map(key) : null, proven: sp ? sp.cands.filter(function (c, i) { return sp.proofs[i]; }).map(key) : null };
+      why = { proven: provenRanked.join(' '), ranked: ranked.join(' '), want: Object.keys(want), cands: sp ? sp.cands.map(key) : null, proven: sp ? sp.cands.filter(function (c, i) { return sp.proofs[i]; }).map(key) : null };
     }
     // A LINEUP WHILE A SLAB POPS IS PLAYED. Nothing can die before the pop
     // ends and the lineup breaks the slab when it does; the bot's own stages
@@ -163,8 +169,12 @@ wt.parentPort.on('message', function (m) {
     // on while the next decision is late: steps as the search played them
     // ([row, col], 'raise', null for a hold, { long: until }), from lineAt.
     var fl = overruled ? null : bot._following, line = fl && !fl.hold && fl.steps && fl.steps.length ? fl.steps : null;
+    // An aimed lineup is its whole path: the swaps after the first are the
+    // line, from wherever the first ends.
+    var lineFree = false;
+    if (br && br.path && d.kind === 'swap' && d.move && br.path[0][0] === d.move[0] && br.path[0][1] === d.move[1] && br.path.length > 1) { line = br.path.slice(1); lineFree = true; }
     out = { id: m.id, epoch: m.epoch, at: m.at, kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, ms: Date.now() - t0, brMs: brMs, why: why,
-          line: line, lineAt: line ? fl.at : null,
+          line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
           mem: NativeMem(),
           breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
           diag: { doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped } };
