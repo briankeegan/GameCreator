@@ -229,14 +229,14 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
   // A break is one standing still would not have made by the same frame: a
   // popping slab goes on converting whatever is pressed.
   function still(t) { if (!(t in idle)) { var w = t > root.t ? S.advance(root, 'long', null, t - root.t) : root; idle[t] = w ? S.breaks(w) : S.breaks(root); } return idle[t]; }
-  function breaks(n) { return n && !n.dead && S.breaks(n) > still(n.t); }
+  function breaks(n) { return n && !n.dead && (n.brk !== undefined ? n.brk : S.breaks(n)) > still(n.t); }
   function swapsOf(n, near) {
     var ms = n.b.legalSwaps();
     return near ? ms.filter(function (m) { return m[0] >= g - 3 && m[0] <= g + 1; }) : ms;
   }
   // Steps go to the engine a batch at a time, played on every thread; each is
   // read in the order the one-at-a-time loop would have read it.
-  function many(steps) { return steps.length ? S.advanceMany(steps) : []; }
+  function many(steps) { return steps.length ? S.advanceMany(steps, true) : []; }
   function swapsFrom(n, ms) { return many(ms.map(function (m) { return [n, 'swap', m, 0]; })); }
   var firsts = swapsOf(root).map(function (m) { return { key: m[0] + ',' + m[1], m: m }; }), found = {}, any = false;
   var made = swapsFrom(root, firsts.map(function (f) { return f.m; }));

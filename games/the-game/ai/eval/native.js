@@ -559,11 +559,12 @@
   // frames], as advance takes them. Each answer is what advance gives; only
   // the order the nodes are made in differs.
   var ADVANCE_CHUNK = 1000;   // steps one ns_advance_many takes (its records fill the io body)
-  Search.prototype.advanceMany = function (steps) {
+  // lite: each node as liteNode makes it.
+  Search.prototype.advanceMany = function (steps, lite) {
     if (!X.ns_advance_many) throw new Error('Native: this engine does not step in batches');
     if (steps.length > ADVANCE_CHUNK) {
       var all = [];
-      for (var at = 0; at < steps.length; at += ADVANCE_CHUNK) all = all.concat(this.advanceMany(steps.slice(at, at + ADVANCE_CHUNK)));
+      for (var at = 0; at < steps.length; at += ADVANCE_CHUNK) all = all.concat(this.advanceMany(steps.slice(at, at + ADVANCE_CHUNK), lite));
       return all;
     }
     var n = steps.length, io = new Int32Array(MEM.buffer, (X.nb_io_body() >>> 0), 5 * n), i;
@@ -574,11 +575,24 @@
     }
     var got = X.ns_advance_many(this.ctx, n);
     if (got !== n) throw new Error('Native: stepped ' + got + ' of ' + n);
-    var body = new Int32Array(MEM.buffer, (X.nb_io_body() >>> 0), 2 * n), rs = [], out = [];
-    for (i = 0; i < n; i++) rs.push([body[2 * i], body[2 * i + 1]]);
-    for (i = 0; i < n; i++) out.push(rs[i][0] === -2 ? { dead: true, t: rs[i][1] } : unstep(this, rs[i][0]));
+    var body = new Int32Array(MEM.buffer, (X.nb_io_body() >>> 0), 4 * n), rs = [], out = [], S = this;
+    for (i = 0; i < n; i++) rs.push([body[4 * i], body[4 * i + 1], body[4 * i + 2], body[4 * i + 3]]);
+    for (i = 0; i < n; i++) {
+      var r = rs[i][0];
+      if (r === -2) out.push({ dead: true, t: rs[i][1] });
+      else if (!lite || r < 0) out.push(unstep(this, r));
+      else out.push(liteNode(S, r, rs[i][2], rs[i][3]));
+    }
     return out;
   };
+  // A node as advanceMany's caller first reads one: its frame and the garbage
+  // rows broken by then (brk); the board and the rest are read when asked for.
+  function liteNode(S, i, t, brk) {
+    if (S.nodes[i]) return S.nodes[i];
+    var gen = S.gen, full = null;
+    function wrapped() { if (S.gen !== gen) throw new Error('Native: a node from an earlier decision was read'); return full || (full = S.wrap(i)); }
+    return { _nat: S, _i: i, t: t, brk: brk, get b() { return wrapped().b; }, get st() { return wrapped().st; } };
+  }
   // Settles from [node, move] pairs (move null: hold), at most `frames` each.
   Search.prototype.settleMany = function (steps, frames) {
     return this.advanceMany(steps.map(function (s) { return [s[0], 'settle', s[1], frames]; }));
