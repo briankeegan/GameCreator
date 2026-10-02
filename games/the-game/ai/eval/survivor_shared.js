@@ -193,7 +193,7 @@ function pairs(grid, want) {
 // How near the row under the lowest garbage is to a match touching it: per
 // column resting on the garbage, a pair standing under it and a pair beside it
 // in that row; less how uneven the stack under it is.
-var TOUCH_DEPTH = 6, TOUCH_BEAM = 8;
+var TOUCH_DEPTH = 8, TOUCH_BEAM = 30;
 // How uneven the stack under the lowest garbage is: each column's shortfall
 // from the tallest, squared, so a panel moved from a tall column into a well
 // counts though the tallest stays as it was. Garbage rests on the tallest column, so a well is a
@@ -366,19 +366,53 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
 // Hands(p): keys(board, hold, kind, move, arrivals) is the decision played
 // from `board` as { inputs, holds } per frame, or null when it is refused.
 // idle(board, hold) is a frame with nothing decided: the raise in hand goes
-// on being held.
+// on being held, or the board is kept busy (busyPair).
 function Hands(p) {
-  this.S = new (require(path.join(__dirname, 'native.js')).server.Search)({ reaction: p.reaction, cursorMoveFrames: p.cursorMoveFrames, threads: 1 });
+  var Search = require(path.join(__dirname, 'native.js')).server.Search;
+  this.S = new Search({ reaction: p.reaction, cursorMoveFrames: p.cursorMoveFrames, threads: 1 });
+  this.B = new Search({ reaction: 0, cursorMoveFrames: p.cursorMoveFrames, threads: 1 });   // busy walks: nothing to react to
 }
 Hands.prototype.keys = function (board, hold, kind, move, arrivals, frames) {
   this.S.reset();
   var root = this.S.root(board.copy(), hold, arrivalsFrom(board, arrivals), false);
   return this.S.keys(root, kind, move, frames || 0);
 };
+// A FRAME WITH NOTHING ACTIVE COSTS HEALTH while the board is topped out, and
+// on a board slabs keep topped out health is never given back. A frame with
+// nothing decided and no raise held goes toward swapping two panels of one
+// colour side by side, nearest the cursor first: the board is left as it
+// was, and a swap keeps it active for its frames. A pair the stall log
+// already holds is passed over (swapping it again costs health).
+function busyPair(board) {
+  if (board.gameOverClock > 0 || !board.isToppedOut() || board.stopTime || board.preStopTime || board.shakeTime) return null;
+  if (board.nActive - board.swappingCount !== 0) return null;
+  var best = null, bd = Infinity, top = Math.min(board.height, board.topCurRow || board.height), log = board.swapStallBacklog || [];
+  for (var r = 1; r <= top; r++) {
+    var row = board.panels[r], under = board.panels[r - 1];
+    if (!row) continue;
+    for (var c = 1; c < 6; c++) {
+      var a = row[c], b = row[c + 1];
+      if (!a || !b || a.isGarbage || b.isGarbage || !a.color || a.color !== b.color || a.state !== 'normal' || b.state !== 'normal') continue;
+      if (r > 1 && (!under || !under[c] || !under[c + 1] || !under[c].color || !under[c + 1].color || under[c].state === 'falling' || under[c + 1].state === 'falling')) continue;
+      if (log.some(function (o) { return o.leftId === a.id && o.rightId === b.id && o.row === r && o.col === c; })) continue;
+      var dd = Math.abs(r - board.curRow) + Math.abs(c - board.curCol);
+      if (dd < bd) { bd = dd; best = [r, c]; }
+    }
+  }
+  return best;
+}
 Hands.prototype.idle = function (board, hold, arrivals) {
-  if (!hold.left) return { bits: 0, hold: hold };
+  if (!hold.left) {
+    var m = busyPair(board);
+    if (m) {
+      this.B.reset();
+      var k = this.B.keys(this.B.root(board.copy(), hold, arrivalsFrom(board, arrivals), false), 'swap', m, 0);
+      if (k && k.inputs.length) return { bits: k.inputs[0], hold: k.holds[0] };
+    }
+    return { bits: 0, hold: hold };
+  }
   var k = this.keys(board, hold, 'long', null, arrivals, 1);
   return { bits: k.inputs[0], hold: k.holds[0] };
 };
 
-module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, pending: pending, arrivalsFrom: arrivalsFrom, threat: threat, top: top, gridTop: gridTop, popLeft: popLeft, lowestGarbageRow: lowestGarbageRow, breakMoves: breakMoves, Hands: Hands };
+module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, pending: pending, arrivalsFrom: arrivalsFrom, threat: threat, top: top, gridTop: gridTop, popLeft: popLeft, lowestGarbageRow: lowestGarbageRow, breakMoves: breakMoves, Hands: Hands, busyPair: busyPair };
