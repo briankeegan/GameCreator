@@ -209,6 +209,8 @@ static int runFrame(Board *st, Arr *arr, int32_t *narr, int32_t input, int32_t *
 static Board *ensureBoard(Ctx *x, int i);
 // _engineAdvanceOn + _runFrom. Returns the child's index, STEP_NULL (refused)
 // or STEP_DEAD (deadAt set).
+// Frames played and steps made, per step kind, on every thread (ns_frame_stats).
+static int32_t framesOf[8], stepsOf[8];
 static int advance(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
   Board *pb = ensureBoard(x, pi);
   if (!pb) return STEP_ERR;
@@ -239,7 +241,7 @@ static int advance(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
                         tape[3 * tapeN + 2] = bot.raiseStarted; tapeN++; } \
                       int over_ = runFrame(st, arr, &narr, input, &f); if (st->err) GIVE(STEP_ERR); \
                       if (SWAP_PRESSED && swapping && st->swapDenied) GIVE(STEP_NULL); \
-                      if (over_) { deadAt = t0 + f; GIVE(STEP_DEAD); } } while (0)
+                      if (over_) { deadAt = t0 + f; __atomic_add_fetch(&framesOf[kind & 7], f, __ATOMIC_RELAXED); __atomic_add_fetch(&stepsOf[kind & 7], 1, __ATOMIC_RELAXED); GIVE(STEP_DEAD); } } while (0)
   if (REFUSED || (bot.w.active && bot.w.retries)) GIVE(STEP_NULL);
   FRAME();
   for (int guard = 0; guard < 4000; guard++) {
@@ -263,6 +265,7 @@ static int advance(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
   }
 #undef FRAME
   if (st->err) GIVE(STEP_ERR);
+  __atomic_add_fetch(&framesOf[kind & 7], f, __ATOMIC_RELAXED); __atomic_add_fetch(&stepsOf[kind & 7], 1, __ATOMIC_RELAXED);
   Node *n = newNode(x);
   if (!n) GIVE(STEP_ERR);
   par = NODE(x, pi);   // nodes may have moved
@@ -358,6 +361,7 @@ EXPORT(ns_root) int ns_root(Ctx *x, int holdLeft, int holdStarted, int narr, int
 EXPORT(ns_step) int ns_step(Ctx *x, int pi, int kind, int mr, int mc, int until) { x->steps++; return lineStep(x, pi, kind, mr, mc, until); }
 EXPORT(ns_advance) int ns_advance(Ctx *x, int pi, int kind, int mr, int mc, int frames) { return advance(x, pi, kind, mr, mc, frames); }
 EXPORT(ns_dead_at) int ns_dead_at(void) { return deadAt; }
+EXPORT(ns_frame_stats) int ns_frame_stats(int kind, int steps) { int32_t v = steps ? stepsOf[kind & 7] : framesOf[kind & 7]; if (steps) stepsOf[kind & 7] = 0; else framesOf[kind & 7] = 0; return v; }
 // One decision from node pi as keys: the io body gets [keys, raise held,
 // raise started] per frame. Returns the frames written, or advance's refusal
 // (STEP_NULL, STEP_ERR); a line that dies still gives the keys up to it.
