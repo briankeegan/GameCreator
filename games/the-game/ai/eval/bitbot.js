@@ -932,19 +932,16 @@
 
     // THE TALLEST SLAB ON THE BOARD, IN ROWS. A slab's mask carries the same rows in
     // every column it spans, so its height is the popcount of any one of them.
-    function slabRows(masks) {
-        if (!masks || !masks.slabs || !masks.slabs.length) return 0;
+    // THE ROWS OF GARBAGE ON THE BOARD AT ONCE: the most garbage cells in any one
+    // column. Slabs pile -- a burst of one-row slabs stands as tall as one slab of that
+    // many rows -- so it is the pile, not the tallest slab in it, that the next raise
+    // has to leave room for.
+    function garbageRows(masks) {
+        if (!masks || !masks.garb) return 0;
         var best = 0;
-        for (var i = 0; i < masks.slabs.length; i++) {
-            var sm = masks.slabs[i];
-            if (!sm) continue;
-            for (var c = 1; c <= W; c++) {
-                var m = sm[c] >>> 0;
-                if (!m) continue;
-                var n = bit.popcount(m);
-                if (n > best) best = n;
-                break;
-            }
+        for (var c = 1; c <= W; c++) {
+            var n = bit.popcount(masks.garb[c] >>> 0);
+            if (n > best) best = n;
         }
         return best;
     }
@@ -1985,7 +1982,7 @@
         // ceil(incoming / W), which is the whole QUEUE -- so under a flood it ratcheted
         // to 8, 20, 33, 88, 119 rows and never came down, and the raise was dead for
         // the rest of the game. The queue is not a slab; the slabs on the board are.
-        var landed = slabRows(base);
+        var landed = garbageRows(base);
         if (landed > (this._maxSlab || 0)) this._maxSlab = landed;
         // DECIDED BEFORE ANYTHING IS PLANNED, because while it is on there is
         // nothing to plan: the raise outranks the attack and the board is not
