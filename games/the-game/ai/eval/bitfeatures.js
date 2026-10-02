@@ -179,7 +179,7 @@
         // and a deadline of zero: a guess, and a guess in here is a guess in every
         // weight ever trained against it.
         var list = bitoptions.options(masks ? null : board, W, H, cursor || [1, 1], 2, st,
-                                      timing);
+                                      timing && Object.assign({}, timing, { lean: true }));
         var f = {}, i;
 
         f.bumpiness = share(surf.bumpiness, NORM.bumpiness);
