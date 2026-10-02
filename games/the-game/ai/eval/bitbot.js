@@ -2728,10 +2728,10 @@
         // the branch left it firing zero times.
         //
         // So the intent itself is dropped while there is levelling to do, which is
-        // what actually stops the row. The search decides whether there is any: it
-        // already throws away a flatten worth less than it costs, so a flatten plan
-        // existing IS the answer and there is no threshold to choose here. Once the
-        // board is level the plan stops appearing and the raise resumes on its own.
+        // what actually stops the row. The search decides whether there is any:
+        // flattenFirst takes the plan only when its shape term, net of the walk, is
+        // positive, so there is no threshold to choose here. Once the board is
+        // level that term goes to zero and the raise resumes on its own.
         if (raising) {
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
                                                    lookDepth, base, this.timing(info, deadline, base), digging);
@@ -3848,6 +3848,13 @@
     BitBot.prototype.flattenFirst = function (options, deadline, info) {
         var f = options && options.flatten;
         if (!f || !f.swaps.length) return null;
+        // LEVELLING IS WHAT STOPS THE RAISE, SO THE LEVELLING HAS TO PAY.
+        //
+        // The plan's value also carries what its landing can fire and whether it
+        // lands ready -- credits the raised board earns just as well. `shape` is
+        // the height and evenness term alone, net of the walk; at or below zero
+        // the route is not levelling anything and the raise goes ahead.
+        if (!(f.shape > 0)) return null;
         if (!this.planInTime(f.swaps, f.duration, info._base, info, deadline)) return null;
         // AND IT MUST LAND SOMEWHERE THE RAISE WOULD HAVE BEEN ALLOWED FROM.
         //

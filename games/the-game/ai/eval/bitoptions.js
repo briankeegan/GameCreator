@@ -1293,6 +1293,7 @@
                                     // WILL be. A caller can ask it anything it would ask
                                     // a real board before committing to the route.
                                     flat = { swaps: seq, frames: cost, value: val,
+                                             shape: base2, landStop: landStop, credit: credit,
                                              tall: sh2.tall, bumps: sh2.bumps,
                                              ways: ways2, duration: dur,
                                              lands: bit.copyState(res.settled) };
