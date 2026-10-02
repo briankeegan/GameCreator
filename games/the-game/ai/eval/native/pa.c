@@ -69,6 +69,7 @@ typedef struct Board {
   int32_t quiet, noQuiet;   // see QUIET; not part of the board, never sent
   int32_t hi;               // see SETTLED ROWS; not part of the board, never sent
   int32_t cdLeft;           // see COUNTDOWN FRAMES; not part of the board, never sent
+  int32_t popSeen;          // garbage popping was updated this frame (updatePanels); not part of the board
   // WHAT A STEP DID (search.h MK_SETTLE): each clear's size and the chain
   // counter it reached, panels cleared, garbage cells converted and the most
   // stop time one clear paid. Counted since the step began; not part of the
@@ -262,6 +263,7 @@ static void updateSwapping(Board *b, Panel *p) {
   }
 }
 static void updateMatched(Board *b, Panel *p) {
+  if (p->f[ISGARBAGE]) b->popSeen = 1;
   decrementTimer(p);
   if (p->f[ISGARBAGE] && p->f[TIMER] == p->f[POPTIME]) onPop(b, p);
   if (p->f[TIMER] != 0) return;
@@ -861,6 +863,7 @@ static int poppingRow(Board *b, int r) {
     if (f[TIMER] <= 1 || f[TIMER] - 1 == f[POPTIME]) return 0;
   }
   for (int c = 1; c <= W; c++) row[c].f[TIMER]--;
+  b->popSeen = 1;
   return 1;
 }
 // A ROW AT REST: every cell normal with its flags clear, and each panel's cell
@@ -878,6 +881,7 @@ static int quietRow(const Board *b, int r) {
 }
 static void updatePanels(Board *b) {
   b->shakeTimeOnFrame = 0;
+  b->popSeen = 0;
   // A panel that falls moves to the cell below, already updated; the one it
   // trades with comes up into this cell, which is not visited again.
   int n = rowsTo(b), r, c;
@@ -942,7 +946,8 @@ static void runPhysics(Board *b) {
     if (b->chainCounter != 0 && !hasChainingPanels(b)) b->chainCounter = 0;
     removeExtraRows(b);
     b->quiet = !b->noQuiet && isQuiet(b);
-    b->cdLeft = !b->quiet && !b->noQuiet && b->nActive > 0 && !b->swappingCount && !swapQueued(b) ? countdownRoom(b) : 0;
+    // countdownRoom needs garbage popping, and every cell of it was updated just now
+    b->cdLeft = b->popSeen && !b->quiet && !b->noQuiet && b->nActive > 0 && !b->swappingCount && !swapQueued(b) ? countdownRoom(b) : 0;
   }
   if (checkDeath(b)) recordDeath(b);
 }
