@@ -9,6 +9,7 @@ var E = globalThis.PanelEngine;
 
 var name = process.argv[2], seed = Number(process.argv[3] || 1), sc = bench.SCENARIOS[name];
 if (!sc) { console.error('pa_drill: no scenario ' + name); process.exit(2); }
+if (sc.level !== 10) { console.error('pa_drill: drills run at level 10 only, not ' + sc.level + ' (unset GC_LEVEL)'); process.exit(2); }
 var frames = Number(process.argv[4] || sc.ceiling);
 var ld = PA.vsLevel(sc.level).levelData;
 var pa = PA.create(sc.level, new PA.Seeded(new GEN.GeneratorSource(seed, true, ld.colors, ld.adjacentDenialFrequency)));
