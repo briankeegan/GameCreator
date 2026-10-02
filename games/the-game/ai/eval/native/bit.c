@@ -740,21 +740,18 @@ static int resolveU(const int32_t *st, int32_t *r, int wantSettled) {
     restValid = 1;
     if (scan) {
       int any = 0, link = 0;
-      uint32_t freeM[WMAX];
-      for (c = 0; c < WMAX; c++) k[c] = 0;
-      for (c = 1; c <= W; c++) freeM[c] = s->rest[c] & ~s->popping[c] & ~s->inert[c];
+      v8u fv, rv, pv, iv, kv = { 0 }, z = { 0 }, lanes = { 0, 1, 2, 3, 4, 5, 6, 7 };
+      __builtin_memcpy(&rv, s->rest, sizeof(rv)); __builtin_memcpy(&pv, s->popping, sizeof(pv)); __builtin_memcpy(&iv, s->inert, sizeof(iv));
+      fv = rv & ~pv & ~iv & (v8u)(lanes >= 1) & (v8u)(lanes <= (uint32_t)W);
       for (a = 1; a <= N; a++) {
-        uint32_t *col = s->colour[a], b0 = col[1] & freeM[1], b1 = col[2] & freeM[2];
-        uint32_t cv = b0 & (b0 >> 1) & (b0 >> 2); k[1] |= cv | (cv << 1) | (cv << 2);
-        cv = b1 & (b1 >> 1) & (b1 >> 2); k[2] |= cv | (cv << 1) | (cv << 2);
-        for (c = 3; c <= W; c++) {
-          uint32_t b2 = col[c] & freeM[c];
-          cv = b2 & (b2 >> 1) & (b2 >> 2); k[c] |= cv | (cv << 1) | (cv << 2);
-          uint32_t hc = b0 & b1 & b2;
-          k[c - 2] |= hc; k[c - 1] |= hc; k[c] |= hc;
-          b0 = b1; b1 = b2;
-        }
+        v8u b;
+        __builtin_memcpy(&b, s->colour[a], sizeof(b));
+        b &= fv;
+        v8u cv = b & (b >> 1) & (b >> 2);
+        v8u hc = b & __builtin_shufflevector(z, b, 7, 8, 9, 10, 11, 12, 13, 14) & __builtin_shufflevector(z, b, 6, 7, 8, 9, 10, 11, 12, 13);
+        kv |= cv | (cv << 1) | (cv << 2) | hc | __builtin_shufflevector(hc, z, 1, 2, 3, 4, 5, 6, 7, 8) | __builtin_shufflevector(hc, z, 2, 3, 4, 5, 6, 7, 8, 9);
       }
+      __builtin_memcpy(k, &kv, sizeof(kv));
       for (c = 1; c <= W; c++) { if (k[c]) any = 1; if (k[c] & s->chaining[c]) link = 1; }
       scan = 0;
       if (any) {
