@@ -1741,8 +1741,10 @@ static Dec stayAlive(Dec d) {
     if (!LIVE[r][c]) continue;
     Cand *pc = poolSwap(r, c);
     int rk = LIVEB[r][c] ? (LIVE1[r][c] ? 3 : 2) : LIVE1[r][c] ? 1 : 0;
+    if (!LIVE1[r][c] && (returnsToSeen(r, c) || (BIN[IN_HASLAST] && r == (int)BIN[IN_LASTR] && c == (int)BIN[IN_LASTC]))) continue;
     if (rk > rank || (rk == rank && LIVET[r][c] < bt)) { br = r; bc = c; bt = LIVET[r][c]; rank = rk; }
   }
+  if (rank < 0) return d;
   BT->counts[C_KEPTHEALTH]++;
   BT->plan.has = 0; BT->attack.has = 0; BT->flatten.has = 0; BT->dig.has = 0; BT->digIsBreak = 0;
   return mkSwap(br, bc, V_KEEPHEALTH, d.mode, d.alive);
