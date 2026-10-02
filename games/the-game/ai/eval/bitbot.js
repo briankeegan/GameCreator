@@ -740,6 +740,12 @@
             }
         }
         var tm = moving ? lineup.timedOf(board, this.stack.frames, board.height) : null;
+        // AND HOLD IS RESOLVED LIKE EVERY OTHER CANDIDATE: the board as it stands may
+        // already hold a match the engine registers next run, and a swap now can take
+        // it apart. Standing still is then a move with an outcome, a break among them.
+        out[0].resolved = summarise(tm
+            ? bit.resolveFromMasks(bit.copyState(tm.st), false, tm.opts)
+            : bit.resolveFromMasks(base, false));
         var legal = bit.legalSwapsOf(base);
         for (i = 0; i < legal.length; i++) {
             r = legal[i][0]; c = legal[i][1];
@@ -2881,7 +2887,7 @@
             var bk = null;
             for (i = 0; i < pool.length; i++) {
                 var bc = pool[i];
-                if (bc.kind !== 'swap' || !bc.resolved || !bc.resolved.brokeGarbage) continue;
+                if ((bc.kind !== 'swap' && bc.kind !== 'hold') || !bc.resolved || !bc.resolved.brokeGarbage) continue;
                 if ((bc.moveFrames || 0) > deadline) continue;
                 if (this.deadly(bc.masks, bc.resolved, info,
                                 Math.max((bc.moveFrames || 0) + this.reaction,
@@ -2902,6 +2908,7 @@
                 this._digIsBreak = false;
                 this._plan = null;
                 this.counts.brokeNow++;
+                if (bk.kind === 'hold') return { kind: 'hold', mode: mode, alive: alive, via: 'break' };
                 return { kind: 'swap', move: bk.swap, mode: mode, alive: alive,
                          via: 'break' };
             }
