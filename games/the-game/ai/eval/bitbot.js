@@ -2688,11 +2688,12 @@
         // moment to break it is when the last of it is down, so the break has to be
         // standing there before it lands -- slabReadyFast asks whether one swap then
         // breaks it. This is not a route: it is checked here, ahead of all of them, for
-        // as long as something is coming (queued, falling, or the raise that brings the
-        // next row) and no break is in hand already. Topped out nothing more lands; what
-        // is on the board is the dig's.
-        var coming = (info.incoming || 0) > 0 || !!info.fallingGarbage || !!raising;
-        if (coming && !poolBreak && !info.toppedOut && !bitoptions.slabReadyFast(base)) {
+        // as long as garbage is coming (queued or falling) and no break is in hand
+        // already. Not while raising: the row is the blocks the setup is made of, so the
+        // raise levels and takes it first. Topped out nothing more lands; what is on the
+        // board is the dig's.
+        var coming = (info.incoming || 0) > 0 || !!info.fallingGarbage;
+        if (coming && !raising && !poolBreak && !info.toppedOut && !bitoptions.slabReadyFast(base)) {
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
                                                    lookDepth, base, this.timing(info, deadline, base), digging);
             var ready = options.ready;
@@ -4484,8 +4485,8 @@
         // cooldown itself still runs out on an unchanged board.
         if (this.cooldown > 0) {
             var lift = (urgent || (this.reveal && this.windowOpen())) && !this.swapLanding();
-            if (lift && !(this.reveal && this.windowOpen()) && this._boardKey() === this._decidedOn &&
-                this.drainBound() > this._escapeWalk + 2) lift = false;
+            if (lift && stack.isToppedOut() && !(this.reveal && this.windowOpen()) &&
+                this._boardKey() === this._decidedOn && this.drainBound() > this._escapeWalk + 2) lift = false;
             if (!lift) {
                 this.spend.cooling++; if (froz) this.frozen.cooling++;
                 this.cooldown--; return;
