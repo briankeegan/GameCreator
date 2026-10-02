@@ -1050,6 +1050,49 @@ static int dropQuiet(const int32_t *st, const Drop *D, int r, int c, const uint3
     if (!L0 != !R0) {
       int src = L0 ? c : c + 1, dst = L0 ? c + 1 : c;
       uint32_t bb = 1u << (r - 1);
+      uint32_t above = D->occ[src] & ~((bb << 1) - 1u);
+      int land = topRow(D->occ[dst] & (bb - 1u));
+      if ((above || land != r - 1) && !(above & D->gar[src])) {
+        int col = L0 ? L0 : R0;
+#define GS(yy, xx) ((xx) == dst ? ((yy) == land + 1 ? col : (yy) == r ? 0 : D->g[yy][xx]) : (xx) == src ? ((yy) >= r ? ((yy) < 17 ? D->g[(yy) + 1][xx] : 0) : D->g[yy][xx]) : D->g[yy][xx])
+        int hit = 0;
+        for (int pass = 0; pass < 2 && !hit; pass++) {
+          uint32_t cells = pass ? above >> 1 : 1u << land;
+          int x = pass ? src : dst;
+          for (; cells && !hit; cells &= cells - 1u) {
+            int y = __builtin_ctz(cells) + 1, a = GS(y, x), lo = x, hi = x, bo = y, tp = y;
+            while (lo > 1 && GS(y, lo - 1) == a) lo--;
+            while (hi < W && GS(y, hi + 1) == a) hi++;
+            if (hi - lo >= 2) { hit = 1; break; }
+            while (bo > 1 && GS(bo - 1, x) == a) bo--;
+            while (tp < 17 && GS(tp + 1, x) == a) tp++;
+            if (tp - bo >= 2) hit = 1;
+          }
+        }
+#undef GS
+        if (hit) return 0;
+        if (!out) return 1;
+        int32_t *ss = out + R_INTS;
+        for (int i = 0; i < R_INTS; i++) out[i] = 0;
+        out[R_SCOPE] = SC_OK;
+        stcpy(ss, st);
+        ss[O_BUSYF] = 0; ss[O_BAD] = 0; ss[6] = 0; ss[7] = 0;
+        for (int cc = 0; cc < WMAX; cc++) { ss[BUSY + cc] = 0; ss[COL + cc] = 0; }
+        for (int a = st[O_N] + 1; a < NCOL; a++) for (int cc = 0; cc < WMAX; cc++) ss[COL + a * WMAX + cc] = 0;
+        for (int i = 0; i < ns; i++) { ss[SLK(i)] = ss[SLK(i)] ? 1 : 0; ss[SAIR(i)] = 0; }
+        uint32_t keepLo = bb - 1u, lb = 1u << land;
+        ss[OCC + dst] |= lb;
+        ss[OCC + src] = (ss[OCC + src] & keepLo) | ((ss[OCC + src] >> 1) & ~keepLo);
+        for (int a = 1; a <= st[O_N]; a++) {
+          uint32_t ms = (uint32_t)ss[COL + a * WMAX + src];
+          ms = (ms & keepLo) | ((ms >> 1) & ~keepLo);
+          ss[COL + a * WMAX + src] = ms & ss[OCC + src] & ~ss[GARB + src];
+          uint32_t md = (uint32_t)ss[COL + a * WMAX + dst];
+          if (a == col) md |= lb;
+          ss[COL + a * WMAX + dst] = md & ss[OCC + dst] & ~ss[GARB + dst];
+        }
+        return 1;
+      }
       if (!(D->occ[src] >> r) && (r == 1 || (D->occ[dst] & (bb >> 1)))) {
         if (runOver(D, W, r, dst, r, c, L0, R0)) return 0;
         if (!out) return 1;
