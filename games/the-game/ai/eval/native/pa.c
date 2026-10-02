@@ -346,8 +346,7 @@ static void startSwap(Panel *p, int fromLeft) {
 static int dangerous(const Panel *p) { return p->f[ISGARBAGE] ? p->f[STATE] != FALLING : p->f[COLOR] != 0; }
 static int canMatch(const Panel *p) {
   int32_t col = p->f[COLOR], st = p->f[STATE];
-  // colours past 10 are unseen (newRow, convertGarbagePanels): they match nothing
-  if (col == 0 || col == 9 || col > 10) return 0;
+  if (col == 0 || col == 9) return 0;
   return st == NORMAL || st == LANDING || (p->f[MATCHANYWAY] && st == HOVERING);
 }
 
@@ -415,8 +414,10 @@ static int checkDeath(Board *b) {
 }
 static void recordDeath(Board *b) { if (b->gameOverClock > 0) return; b->gameOverClock = b->clock; b->gameOver = 1; }
 
-// ---- rows. The row dealt is unseen (pa-engine.js Unseen): colours 11..16,
-// never shock, since where shock may go is not known yet.
+// ---- rows. The row dealt is unseen (pa-engine.js Unseen): a colour of its own per
+// cell, 30..119, repeating only after fifteen rows, so it matches nothing; never shock,
+// since where shock may go is not known yet.
+#define UNSEEN_COLOUR(base, k, c) ((base) + ((W * (k) + (c) - 1) % 90))
 static void newRow(Board *b) {
   b->quiet = 0;
   b->hi = MAXROWS;
@@ -427,7 +428,7 @@ static void newRow(Board *b) {
   if (b->metalPanelsQueued > 3) b->metalPanelsQueued -= 2;
   else if (b->metalPanelsQueued > 0) b->metalPanelsQueued -= 1;
   int32_t k = ++b->unseenRows;
-  for (c = 1; c <= W; c++) { Panel *p = createPanelAt(b, top, c); p->f[COLOR] = 11 + ((c + 3 * k) % 6); p->f[STATE] = DIMMED; }
+  for (c = 1; c <= W; c++) { Panel *p = createPanelAt(b, top, c); p->f[COLOR] = UNSEEN_COLOUR(30, k, c); p->f[STATE] = DIMMED; }
   b->nrows = top + 1;
   // switched down a row at a time, top to bottom, right to left: the new row
   // ends up at 0 and every other row one higher
@@ -677,7 +678,7 @@ static int getConnectedGarbagePanels(Board *b, Cells *matching, Cells *out) {
   if (hi > b->highestGarbageIdMatched) b->highestGarbageIdMatched = hi;
   return 1;
 }
-// Colours a break turns into, unseen (pa-engine.js Unseen): per column.
+// Colours a break turns into, unseen (pa-engine.js Unseen): 130..219, as rows are.
 static void convertGarbagePanels(Board *b, int isChain) {
   for (int r = 1; r <= TOP(b); r++) {
     int32_t k = 0;
@@ -685,7 +686,7 @@ static void convertGarbagePanels(Board *b, int isChain) {
       Panel *p = P(b, r, c);
       if (p->f[YOFF] == -1 && p->f[COLOR] == 9) {
         if (!k) k = ++b->unseenBreaks;
-        p->f[COLOR] = 21 + ((c + 3 * k) % 6);
+        p->f[COLOR] = UNSEEN_COLOUR(130, k, c);
         if (isChain) p->f[CHAINING] = 1;
       }
     }

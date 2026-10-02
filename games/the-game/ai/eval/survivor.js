@@ -42,7 +42,7 @@ var STACK_KEYS = ['clock', 'speed', 'displacement', 'riseTimer', 'riseLock', 'ha
                   'stopTime', 'preStopTime', 'shakeTime', 'peakShakeTime', 'health', 'chainCounter', 'nActive', 'nPrevActive', 'curRow',
                   'curCol', 'topCurRow', 'queuedSwapRow', 'queuedSwapCol', 'curTimer', 'cursorDirection', 'metalPanelsQueued',
                   'garbageCreatedCount', 'highestGarbageIdMatched', 'gameOverClock', 'panelsCleared', 'swapCount'];
-function unseen(c) { return (c >= 11 && c <= 16) || (c >= 21 && c <= 26); }
+function unseen(c) { return (c >= 30 && c <= 119) || (c >= 130 && c <= 219); }
 // The queue the game has is the one predicted less pieces it has not let in
 // yet (GarbageDelivery holds an attack engine's back while 72 are queued):
 // a plan made with them is made with more garbage than there is.
@@ -68,11 +68,11 @@ function differ(want, got) {
   return null;
 }
 // A broken slab's colours shown: a panel predicted with a garbage row's
-// unseen colour (Unseen.garbageRow, 21..26) that the game now shows.
+// unseen colour (Unseen.garbageRow, 130..219) that the game now shows.
 function revealed(want, got) {
   for (var r = 0; r < want.panels.length && r < got.panels.length; r++) for (var c = 1; c <= 6; c++) {
     var p = want.panels[r] && want.panels[r][c], q = got.panels[r] && got.panels[r][c];
-    if (p && q && p.color >= 21 && p.color <= 26 && q.color >= 1 && q.color <= 10) return true;
+    if (p && q && p.color >= 130 && p.color <= 219 && q.color >= 1 && q.color <= 10) return true;
   }
   return false;
 }
