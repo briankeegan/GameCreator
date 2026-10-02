@@ -542,23 +542,23 @@ static int anyOneSwapClear(const int32_t *st) {
   }
   return 0;
 }
+typedef uint32_t v8u __attribute__((vector_size(32)));
 static void reachMask(const int32_t *st, uint32_t *out) {
   int W = st[O_W];
-  for (int c = 0; c < WMAX; c++) out[c] = 0;
+  v8u acc = { 0 }, cols = { 0, 1, 2, 3, 4, 5, 6, 7 }, z = { 0 };
+  v8u inW = (v8u)(cols >= 1) & (v8u)(cols <= (uint32_t)W), ge1 = (v8u)(cols >= 1), leW = (v8u)(cols <= (uint32_t)W);
   for (int a = 1; a <= st[O_N]; a++) {
-    for (int c = 1; c <= W; c++) {
-      uint32_t B = CL(st, a, c);
-      if (!B) continue;
-      uint32_t vp = B & (B >> 1);
-      if (vp) out[c] |= vp | (vp >> 1) | (vp << 2);
-      uint32_t hp = B & (c + 1 < WMAX ? CL(st, a, c + 1) : 0);
-      if (hp) {
-        out[c] |= hp; out[c + 1] |= hp;
-        if (c > 1) out[c - 1] |= hp;
-        if (c + 2 <= W) out[c + 2] |= hp;
-      }
-    }
+    v8u B;
+    __builtin_memcpy(&B, st + COL + a * WMAX, sizeof(B));
+    v8u Bm = B & inW;
+    v8u vp = Bm & (Bm >> 1);
+    acc |= vp | (vp >> 1) | (vp << 2);
+    v8u hp = Bm & __builtin_shufflevector(B, z, 1, 2, 3, 4, 5, 6, 7, 8);
+    acc |= hp | __builtin_shufflevector(z, hp, 7, 8, 9, 10, 11, 12, 13, 14)
+             | (__builtin_shufflevector(hp, z, 1, 2, 3, 4, 5, 6, 7, 8) & ge1)
+             | (__builtin_shufflevector(z, hp, 6, 7, 8, 9, 10, 11, 12, 13) & leW);
   }
+  __builtin_memcpy(out, &acc, sizeof(acc));
 }
 static int reachOf(const int32_t *st, uint32_t *reach) {
   int W = st[O_W], dig = 0;
