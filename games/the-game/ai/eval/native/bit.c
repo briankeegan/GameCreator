@@ -884,13 +884,17 @@ static SMemo SMEMO_MAIN[SMCAP];
 static LOCAL SMemo *SMEMO;
 static LOCAL int32_t smGen, smN;
 static u64 stHash(const int32_t *st, int n) {
-  u64 a = 0x9E3779B97F4A7C15ull, b = 0xC2B2AE3D27D4EB4Full;
-  int i = 0;
-  for (; i + 1 < n; i += 2) {
-    a = (a ^ (uint32_t)st[i]) * 0x100000001B3ull;
-    b = (b ^ (uint32_t)st[i + 1]) * 0x100000001B3ull;
+  u64 a = 0x9E3779B97F4A7C15ull ^ (u64)n, b = 0xC2B2AE3D27D4EB4Full;
+  int W = st[O_W], N = st[O_N];
+  for (int c = 1; c <= W; c++) {
+    a = (a ^ (uint32_t)st[OCC + c]) * 0x100000001B3ull;
+    b = (b ^ (uint32_t)st[GARB + c]) * 0x100000001B3ull;
   }
-  if (i < n) a = (a ^ (uint32_t)st[i]) * 0x100000001B3ull;
+  for (int x = 1; x <= N; x++)
+    for (int c = 1; c <= W; c += 2) {
+      a = (a ^ (uint32_t)st[COL + x * WMAX + c]) * 0x100000001B3ull;
+      b = (b ^ (uint32_t)st[COL + x * WMAX + c + 1]) * 0x100000001B3ull;
+    }
   a ^= b * 0x9E3779B97F4A7C15ull;
   return a ^ (a >> 31);
 }
