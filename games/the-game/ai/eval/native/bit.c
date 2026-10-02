@@ -1422,6 +1422,13 @@ static LOCAL Shape START;
 static LOCAL double BASELOW, BASEBUMPS, BASEVOID, BASEGAP;
 static LOCAL int BASEBREAK;
 static LOCAL int BASEDIG, BASESAVE;
+typedef struct CK CK;
+static LOCAL CK *CUR_E;
+static void shapeC(const int32_t *st, Shape *sh);
+static int fireC(const int32_t *st);
+static int reachC(const int32_t *st, uint32_t *rr);
+static int slabC(const int32_t *st);
+static int breakReadyC(const int32_t *st);
 static void fillOption(double *o, const int32_t *seq, int nseq, int frames, const int32_t *r, const int32_t *settled) {
   int chain = r[R_CHAIN], total = r[R_TOTAL];
   o[F_KIND] = chain >= 2 ? 1 : 0;
@@ -1432,10 +1439,10 @@ static void fillOption(double *o, const int32_t *seq, int nseq, int frames, cons
   o[F_VOID] = r[R_SCOPE] == SC_BROKE ? r[R_VOID] : 0;
   o[F_DURATION] = frames + nseq * OVERHEAD;
   if (settled) {
-    Shape sh; shapeOf(settled, &sh);
+    Shape sh; shapeC(settled, &sh);
     o[F_HASSHAPE] = 1; o[F_TALL] = sh.tall; o[F_BUMPS] = sh.bumps; o[F_MAT] = sh.mat; o[F_LOW] = sh.low;
     o[F_SPREAD] = sh.spread; o[F_VOIDROWS] = sh.high - sh.mat; o[F_SLABGAP] = sh.slabRowGap;
-    o[F_READY] = LEAN ? -1 : canFireOf(settled);
+    o[F_READY] = LEAN ? -1 : fireC(settled);
   } else {
     double nan = 0.0 / 0.0;
     o[F_HASSHAPE] = 0; o[F_READY] = -1;
@@ -1455,13 +1462,13 @@ static void extras(double *o, const int32_t *settled) {
     return;
   }
   if (lazyBreak && expanding && !BASEBREAK && !(o[F_HASSHAPE] && o[F_TALL] >= 8)) o[F_BREAKREADY] = -3;
-  else o[F_BREAKREADY] = settled ? breakReadyOf(settled) : -2;
+  else o[F_BREAKREADY] = settled ? breakReadyC(settled) : -2;
   o[F_CLOSESBREAK] = BASEBREAK && o[F_BREAKREADY] == 0;
   uint32_t rm[WMAX];
-  o[F_DIGGAIN] = (DIG && settled) ? reachOf(settled, rm) - BASEDIG : 0;
+  o[F_DIGGAIN] = (DIG && settled) ? reachC(settled, rm) - BASEDIG : 0;
   o[F_VOIDGAIN] = o[F_HASSHAPE] ? BASEVOID - o[F_VOIDROWS] : 0;
   o[F_SLABGAIN] = setupWorth(o[F_HASSHAPE] != 0, o[F_SLABGAP], DEADLINE - o[F_DURATION]) - setupWorth(1, BASEGAP, DEADLINE);
-  o[F_SLABWORTH] = (PREPARE && prepBudget > 0 && settled && (prepBudget--, slabReadyFast(settled))) ? PREPWORTH : 0;
+  o[F_SLABWORTH] = (PREPARE && prepBudget > 0 && settled && (prepBudget--, slabC(settled))) ? PREPWORTH : 0;
   o[F_MATNOW] = START.mat;
 }
 
@@ -1520,7 +1527,7 @@ static void sortBorn(int n) {
 }
 
 static LOCAL int threadReady;
-typedef struct { Res *res; int resPly, hasRR, rrDig, hasSh, sv, fire, slab, hasLand; double land; Shape sh; uint32_t rr[WMAX]; } CK;
+struct CK { Res *res; int resPly, hasRR, rrDig, hasSh, hasShG, sv, fire, slab, hasLand, anyB, bad; double land; Shape sh, shg; uint32_t rr[WMAX]; };
 #define NTCAP (1 << 12)
 typedef struct { u64 h; int32_t gen, at, n; CK *ck; } NT;
 static NT NT_MAIN[NTCAP];
@@ -1541,13 +1548,38 @@ static CK *nodeCK(const int32_t *st, int nl) {
   int at = (arenaN + 1) & ~1, need = (int)((nl * sizeof(CK) + 3) / 4);
   if (at + need + n + R_INTS + ST_INTS > arenaCap) return 0;
   CK *ck = (CK *)(ARENA + at);
-  for (int k = 0; k < nl; k++) { ck[k].res = 0; ck[k].hasRR = 0; ck[k].hasSh = 0; ck[k].sv = -1; ck[k].fire = -1; ck[k].slab = -1; ck[k].hasLand = 0; }
+  for (int k = 0; k < nl; k++) { ck[k].res = 0; ck[k].hasRR = 0; ck[k].hasSh = 0; ck[k].hasShG = 0; ck[k].sv = -1; ck[k].fire = -1; ck[k].slab = -1; ck[k].hasLand = 0; ck[k].anyB = -1; ck[k].bad = -1; }
   int32_t *cp = ARENA + at + need;
   for (int j = 0; j < n; j++) cp[j] = st[j];
   arenaN = at + need + n;
   NTB[i].h = h; NTB[i].gen = ntGen; NTB[i].at = (int32_t)(cp - ARENA); NTB[i].n = n; NTB[i].ck = ck;
   ntN++;
   return ck;
+}
+static void shapeC(const int32_t *st, Shape *sh) {
+  CK *e = CUR_E;
+  if (!e) { shapeOf(st, sh); return; }
+  if (!e->hasShG) { shapeOf(st, &e->shg); e->hasShG = 1; }
+  *sh = e->shg;
+}
+static int fireC(const int32_t *st) { CK *e = CUR_E; if (!e) return canFireOf(st); if (e->fire < 0) e->fire = canFireOf(st); return e->fire; }
+static int slabC(const int32_t *st) { CK *e = CUR_E; if (!e) return slabReadyFast(st); if (e->slab < 0) e->slab = slabReadyFast(st); return e->slab; }
+static int reachC(const int32_t *st, uint32_t *rr) {
+  CK *e = CUR_E;
+  if (!e) return reachOf(st, rr);
+  if (!e->hasRR) { e->rrDig = reachOf(st, e->rr); e->hasRR = 1; }
+  for (int c = 0; c < WMAX; c++) rr[c] = e->rr[c];
+  return e->rrDig;
+}
+static int breakReadyC(const int32_t *st) {
+  CK *e = CUR_E;
+  if (!e) return breakReadyOf(st);
+  if (!hasGarb(st)) return -1;
+  if (e->anyB < 0) e->anyB = anyBreakOf(st);
+  if (e->anyB) return 1;
+  if (dropBudget <= 0) return 0;
+  if (e->bad >= 0) { dropBudget--; return e->bad; }
+  return e->bad = breakAfterDropOf(st);
 }
 static void threadInit(void) {
   if (threadReady) return;
@@ -1793,8 +1825,10 @@ static void expandAll(int depth, int cr, int cc) {
         if (res->r[R_TOTAL] > 0 || broke) {
           if (node->nchain) {
             double *o = newOpt();
+            CUR_E = settled ? e : 0;
             fillOption(o, seq, nseq, cost, res->r, settled);
             extras(o, settled);
+            CUR_E = 0;
             o[F_BREAKS] = broke;
             nNext++;
           }
