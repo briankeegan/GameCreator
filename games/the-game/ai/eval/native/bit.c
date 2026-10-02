@@ -2120,6 +2120,11 @@ __attribute__((export_name("bit_options"))) int32_t bit_options(void) {
 }
 
 #include "bot.c"
+__attribute__((export_name("bit_slab_ready"))) int32_t bit_slab_ready(int32_t w, int32_t h, int32_t c) {
+  memoRoom(); threadInit();
+  SLABW = w; SLABH = h; SLABC = c;
+  return slabReady(IN);
+}
 __attribute__((export_name("bit_checkbf"))) int32_t bit_checkbf(void) {
   Grid G; static int32_t sw[256], rr[R_INTS + ST_INTS];
   int n = legalG(IN, sw, &G), rest = atRest(IN), bad = 0, hits = 0;
