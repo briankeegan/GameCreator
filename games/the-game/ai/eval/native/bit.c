@@ -640,37 +640,44 @@ static int slabReadyFast(const int32_t *st) {
   int Wl = st[O_W], Hl = st[O_H], N = st[O_N], t = 0, c, a;
   for (c = 1; c <= Wl; c++) { int top = topRow(U(st, OCC + c)); if (top > t) t = top; }
   if (t >= Hl || t < 1) return 0;
-  uint32_t target = 1u << (t - 1), col[NCOL][WMAX];
-  for (a = 1; a <= N; a++) for (c = 0; c < WMAX; c++) col[a][c] = CL(st, a, c);
-  int rows[3] = { t, t - 1, t - 2 };
+  uint32_t target = 1u << (t - 1), v3 = t >= 3 ? target | (target >> 1) | (target >> 2) : 0;
+  uint32_t rowT[NCOL], vcol[NCOL];
+  int base[NCOL], nBase = 0, rows[3] = { t, t - 1, t - 2 };
+  uint32_t rm = target | (target >> 1) | (target >> 2);
+  uint8_t first[3][WMAX];
+  __builtin_memset(first, 0, sizeof(first));
+  for (a = N; a >= 1; a--) {
+    rowT[a] = 0; vcol[a] = 0;
+    for (c = 1; c <= Wl; c++) {
+      uint32_t m = CL(st, a, c);
+      if (m & target) rowT[a] |= 1u << c;
+      if (v3 && (m & v3) == v3) vcol[a] |= 1u << c;
+      for (uint32_t q = m & rm; q; q &= q - 1u) first[t - 1 - __builtin_ctz(q)][c] = (uint8_t)a;
+    }
+    base[a] = (rowT[a] & (rowT[a] >> 1) & (rowT[a] >> 2)) || vcol[a];
+    nBase += base[a];
+  }
   for (int ri = 0; ri < 3; ri++) {
     int r = rows[ri];
     if (r < 1) continue;
     uint32_t bitv = 1u << (r - 1);
     for (c = 1; c < Wl; c++) {
-      int left = 0, right = 0;
-      for (a = 1; a <= N; a++) if (col[a][c] & bitv) { left = a; break; }
-      for (a = 1; a <= N; a++) if (col[a][c + 1] & bitv) { right = a; break; }
+      int left = first[ri][c], right = first[ri][c + 1];
       if (!left || !right || left == right) continue;
-      col[left][c] &= ~bitv; col[left][c + 1] |= bitv;
-      col[right][c + 1] &= ~bitv; col[right][c] |= bitv;
-      int hit = 0;
-      for (int aa = 1; aa <= N && !hit; aa++) {
-        int runlen = 0;
-        for (int cc = 1; cc <= Wl; cc++) {
-          if (col[aa][cc] & target) { runlen++; if (runlen >= 3) { hit = 1; break; } }
-          else runlen = 0;
-        }
-        if (!hit && t >= 3) {
-          for (int c2 = 1; c2 <= Wl; c2++) {
-            uint32_t m = col[aa][c2];
-            if ((m & target) && (m & (target >> 1)) && (m & (target >> 2))) { hit = 1; break; }
-          }
+      if (nBase - base[left] - base[right] > 0) return 1;
+      for (int side = 0; side < 2; side++) {
+        int x = side ? right : left, from = side ? c + 1 : c, to = side ? c : c + 1;
+        uint32_t row = rowT[x];
+        if (r == t) row = (row & ~(1u << from)) | (1u << to);
+        if (row & (row >> 1) & (row >> 2)) return 1;
+        if (v3) {
+          uint32_t vc = vcol[x] & ~((1u << from) | (1u << to));
+          uint32_t mf = CL(st, x, from) & ~bitv, mt = CL(st, x, to) | bitv;
+          if ((mf & v3) == v3) vc |= 1u << from;
+          if ((mt & v3) == v3) vc |= 1u << to;
+          if (vc) return 1;
         }
       }
-      col[left][c] |= bitv; col[left][c + 1] &= ~bitv;
-      col[right][c + 1] |= bitv; col[right][c] &= ~bitv;
-      if (hit) return 1;
     }
   }
   return 0;
