@@ -193,7 +193,7 @@ function pairs(grid, want) {
 // How near the row under the lowest garbage is to a match touching it: per
 // column resting on the garbage, a pair standing under it and a pair beside it
 // in that row; less how uneven the stack under it is.
-var TOUCH_DEPTH = 8, TOUCH_BEAM = 30, TOUCH_WIDER = [100, 300];
+var TOUCH_DEPTH = 8, TOUCH_BEAM = 30, TOUCH_WIDER = [100];
 // How uneven the stack under the lowest garbage is: each column's shortfall
 // from the tallest, squared, so a panel moved from a tall column into a well
 // counts though the tallest stays as it was. Garbage rests on the tallest column, so a well is a
