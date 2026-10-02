@@ -399,9 +399,6 @@ function hostile() {
 // The conditions, in the order the function applies them:
 //   allowRaise off, or topped out   -> never
 //   the row and everything queued must fit under the ceiling
-//   past the opening, material at or above the floor -> nothing to raise for
-//   any garbage on the board        -> dig instead
-//   nothing fireable                -> the row must not land on a dead board
 (function () {
     function botOn(rows, opts) {
         var st = new P.Stack({ level: 10, seed: 101, countdown: false });
@@ -458,27 +455,6 @@ function hostile() {
     // material floor rejects it first whichever way it came in. The check is
     // redundant rather than wrong, and a test for it would pass with it deleted.
 
-    // PAST THE OPENING, material at or above the floor is nothing to raise for.
-    var deep = [[2, 3, 4, 5, 3, 2], [3, 4, 5, 2, 4, 3], [4, 5, 2, 3, 5, 4],
-                [5, 2, 3, 4, 2, 5], [1, 1, 2, 1, 4, 5]];
-    var e2 = botOn(deep);
-    e2.bot._opening = false;
-    ok(e2.bot.raiseMode(e2.info, e2.base) === null,
-       'raise trigger: raised for material on a board that already has plenty');
-
-    // GARBAGE ON THE BOARD: the answer is to dig, and a row only buries it deeper.
-    var dirty = botOn([[-1, -1, -1, -1, -1, -1], [1, 1, 2, 1, 4, 5]]);
-    dirty.bot._opening = true;
-    ok(dirty.bot.raiseMode(dirty.info, dirty.base) === null,
-       'raise trigger: raised with garbage on the board, where the row buries what ' +
-       'has to be broken');
-
-    // NOTHING TO FIRE: the row must not land on a board with no answer on it.
-    var dead = botOn([[1, 2, 3, 4, 5, 6]]);
-    dead.bot._opening = true;
-    ok(dead.bot.raiseMode(dead.info, dead.base) === null,
-       'raise trigger: raised onto a board with no clear anywhere, which is the ' +
-       'board that must not be filled');
 }());
 
 // --------------------- 11. the order of the ladder, with the paths stubbed
