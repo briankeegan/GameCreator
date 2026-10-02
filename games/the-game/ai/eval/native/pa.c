@@ -945,6 +945,60 @@ static void run(Board *b) {
   b->stopWatch++;
   b->clock++;
 }
+// COUNTDOWN: frames on which only timers run. With nothing pressed and
+// nothing queued, every panel at rest with no flag set -- empty, a coloured
+// panel, garbage held up -- or garbage popping, no chain counting, the active
+// count steady, no landing shake this frame and no garbage able to drop, a
+// frame changes only the popping timers, the stop, pre-stop and shake time,
+// the cursor's timer and the clocks. countdown plays up to maxk such frames
+// at once and returns how many: never the frame a popping timer runs out,
+// the speed rises, or shake runs out with no health left. run() k times
+// leaves the board the same (native_countdown.test.js).
+static int countdown(Board *b, int32_t maxk) {
+  if (maxk <= 0 || b->gameOverClock > 0 || b->input || b->pressSwap || b->err || b->inCountdown || !b->stopWatchIsRunning) return 0;
+  if (swapQueued(b) || b->manualRaise || b->chainCounter || b->nActive != b->nPrevActive || b->shakeTimeOnFrame) return 0;
+  if (b->cursorDirection != CD_NULL || b->quiet || b->speedIncreaseMode != 1) return 0;
+  if (shouldDropGarbage(b)) return 0;
+  int32_t k = maxk, popping = 0;
+  if (b->nextSpeedIncreaseClock >= b->clock) k = imin(k, b->nextSpeedIncreaseClock - b->clock);
+  if (b->health <= 0) k = imin(k, b->shakeTime - 1);
+  int n = rowsTo(b), top = imin(n - 1, b->height + 2);
+  for (int r = 1; r < n; r++)
+    for (int c = 1; c <= W; c++) {
+      Panel *p = P(b, r, c);
+      const int32_t *f = p->f;
+      if (f[STATECHANGED] || f[PROPCHAIN] || f[PROPFALL] || f[MATCHING] || f[MATCHANYWAY] || SETB(f[QUEUEDHOVER])) return 0;
+      if (r <= top && SETB(f[CHAINING]) && (canMatch(p) || f[COLOR] == 9)) return 0;   // clearChainingFlags would clear it
+      if (f[ISGARBAGE]) {
+        if (f[STATE] == MATCHED) { if (f[TIMER] < 2) return 0; k = imin(k, f[TIMER] - 1); popping = 1; continue; }
+        if (f[STATE] != NORMAL || !supportedFromBelow(b, p)) return 0;
+        continue;
+      }
+      if (f[STATE] != NORMAL || SETN(f[FELL])) return 0;
+    }
+  if (!popping || k <= 0) return 0;   // with nothing popping the board is quiet, which run() already makes cheap
+  for (int r = 1; r < n; r++)
+    for (int c = 1; c <= W; c++) { int32_t *f = P(b, r, c)->f; if (f[ISGARBAGE] && f[STATE] == MATCHED) f[TIMER] -= k; }
+  // decrementInvincibilityTimers, k times
+  b->prevShakeTime = imax(b->shakeTime - (k - 1), 0);
+  b->shakeTime = imax(b->shakeTime - k, 0);
+  if (b->shakeTime == 0) b->peakShakeTime = 0;
+  int32_t d = imin(k, b->preStopTime);
+  b->preStopTime -= d;
+  b->stopTime = imax(b->stopTime - (k - d), 0);
+  // the rest of a frame, done once: each is the same every frame
+  b->nlanded = 0;
+  b->wasToppedOut = isToppedOut(b);
+  b->riseLock = 1;
+  if (!b->wasToppedOut && !hasFallingGarbage(b)) b->health = b->maxHealth;
+  if (b->displacement % 16 != 0) b->topCurRow = b->height - 1;
+  b->curTimer = imin(b->curWaitTime, b->curTimer + 2 * k);   // controls and applyCursorDirection each count it
+  b->curRow = bound(1, b->curRow, b->topCurRow);
+  b->swapThisFrame = 0; b->swapDenied = 0; b->inputBits = 0;
+  b->quiet = 0;
+  b->stopWatch += k; b->clock += k;
+  return k;
+}
 // What a bot calls: press swap on the next frame with the cursor at (r, c).
 static int tryQueueSwap(Board *b, int r, int c) {
   if (b->gameOverClock > 0) return 0;
@@ -1047,6 +1101,7 @@ EXPORT(nb_save) int nb_save(Board *b) {
 // ------------------------------------------------------------------ one call at a time
 EXPORT(nb_set_input) void nb_set_input(Board *b, int32_t bits) { b->input = bits; }
 EXPORT(nb_run) int nb_run(Board *b) { run(b); return b->err; }
+EXPORT(nb_countdown) int nb_countdown(Board *b, int maxk) { return countdown(b, maxk); }
 EXPORT(nb_try_queue_swap) int nb_try_queue_swap(Board *b, int r, int c) { return tryQueueSwap(b, r, c); }
 EXPORT(nb_can_swap) int nb_can_swap(Board *b, int r, int c) { return canSwap(b, r, c); }
 EXPORT(nb_push_incoming) void nb_push_incoming(Board *b, int32_t w, int32_t h, int32_t isChain, int32_t isMetal) {
@@ -1071,6 +1126,7 @@ EXPORT(nb_clone) void nb_clone(Board *dst, Board *src) { cloneBoard(dst, src); }
 #define SENT_KEYS(st, input) ((input) | ((st)->pressSwap ? IN_SWAP : 0))
 #define NODE_BREAKS(b) ((b)->unseenBreaks)
 #define STEP_STATS 1
+#define COUNTDOWN 1
 #define SETTLE_CAP 900   // frames a settle runs at most, as the bot's resolve (engineboard.js settle)
 #include "search.h"
 // What node i's step did (MK_SETTLE), into the io body: clears, panels
