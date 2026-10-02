@@ -24,6 +24,7 @@ typedef struct { int32_t leftId, rightId, row, col, clock; } Stall;
 #define MAXINC 256   // a training volley queues fifty at once, and an unbroken queue keeps the last ones
 #define MAXSTALL 64
 #define MAXLANDED 16
+#define MAXCOMBOS 16
 #define MAXMATCH 160
 #define MAXIDS 64
 
@@ -67,6 +68,11 @@ typedef struct Board {
   int32_t input, pressSwap, swapDenied, inputBits, unseenRows, unseenBreaks, err;
   int32_t quiet, noQuiet;   // see QUIET; not part of the board, never sent
   int32_t hi;               // see SETTLED ROWS; not part of the board, never sent
+  // WHAT A STEP DID (search.h MK_SETTLE): each clear's size and the chain
+  // counter it reached, panels cleared, garbage cells converted and the most
+  // stop time one clear paid. Counted since the step began; not part of the
+  // board, never sent.
+  int32_t sCombo[MAXCOMBOS], sChainAt[MAXCOMBOS], sNCombo, sCleared, sBroke, sEarned;
   int32_t ninc, nstall, nlanded;
   int32_t dropColumnIndex[7];     // [width], 1-based as the Lua keeps them
   Incoming inc[MAXINC];           // the next to drop last
@@ -699,6 +705,7 @@ static void matchGarbagePanels(Board *b, Cells *g, int32_t matchTime, int isChai
     p->f[YOFF] -= 1; p->f[GHEIGHT] -= 1; p->f[STATE] = MATCHED;
     p->f[TIMER] = matchTime + 1; p->f[INITIALTIME] = matchTime;
     p->f[POPTIME] = b->fPOP * (onScreen - (i + 1)); p->f[POPINDEX] = imin(i + 1, 10);
+    if (p->f[YOFF] == -1) b->sBroke++;
   }
   convertGarbagePanels(b, isChain);
 }
@@ -750,6 +757,9 @@ static void checkMatches(Board *b) {
     b->preStopTime = imax(b->preStopTime, b->fFLASH + b->fFACE + b->fPOP * (comboSize + onScreen));
     int32_t stopTime = calculateStopTime(b, comboSize, b->wasToppedOut, isChainLink, b->chainCounter);
     if (stopTime > b->stopTime) b->stopTime = stopTime;
+    if (b->sNCombo < MAXCOMBOS) { b->sCombo[b->sNCombo] = comboSize; b->sChainAt[b->sNCombo] = b->chainCounter; b->sNCombo++; }
+    b->sCleared += comboSize;
+    if (stopTime > b->sEarned) b->sEarned = stopTime;
     int32_t bonus = b->chainCounter > 13 ? 0 : b->chainCounter;
     addScore(b, SCORE_CHAIN_TA[bonus]);
     if (comboSize > 3) addScore(b, SCORE_COMBO_TA[imin(30, comboSize)]);
@@ -1030,6 +1040,19 @@ EXPORT(nb_clone) void nb_clone(Board *dst, Board *src) { cloneBoard(dst, src); }
 #define SWAP_PRESSED 1
 #define SENT_KEYS(st, input) ((input) | ((st)->pressSwap ? IN_SWAP : 0))
 #define NODE_BREAKS(b) ((b)->unseenBreaks)
+#define STEP_STATS 1
+#define SETTLE_CAP 900   // frames a settle runs at most, as the bot's resolve (engineboard.js settle)
 #include "search.h"
+// What node i's step did (MK_SETTLE), into the io body: clears, panels
+// cleared, garbage cells converted, the most stop time one clear paid, then
+// each clear's size and chain counter. Returns the words written, or -1.
+EXPORT(ns_step_stats) int ns_step_stats(Ctx *x, int i) {
+  Board *b = ensureBoard(x, i);
+  if (!b) return -1;
+  int32_t *o = ioBody, k = 0;
+  o[k++] = b->sNCombo; o[k++] = b->sCleared; o[k++] = b->sBroke; o[k++] = b->sEarned;
+  for (int j = 0; j < b->sNCombo; j++) { o[k++] = b->sCombo[j]; o[k++] = b->sChainAt[j]; }
+  return k;
+}
 // Garbage rows broken on node i's board since the game began (convertGarbagePanels).
 EXPORT(ns_breaks) int ns_breaks(Ctx *x, int i) { Board *b = ensureBoard(x, i); return b ? b->unseenBreaks : -1; }

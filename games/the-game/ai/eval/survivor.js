@@ -209,7 +209,7 @@ Match.prototype.take = function (truth) {
     thinking.push(a.ms); if (thinking.length > 8) thinking.shift();
     this.stats.maxMs = Math.max(this.stats.maxMs, a.ms);
     if (a.mem) this.stats.memMB = Math.round(a.mem.bytes / 1048576);
-    if (process.env.GC_SURVIVOR_DEBUG && a.mem) console.error('decision ' + a.id + ' at ' + a.at + ': ' + a.ms + ' ms ' + a.kind + ' ' + JSON.stringify(a.move) + ' ' + JSON.stringify(a.diag) + ' ' + Math.round(a.mem.bytes / 1048576) + 'MB');
+    if (process.env.GC_SURVIVOR_DEBUG && a.mem) console.error('decision ' + a.id + ' at ' + a.at + ': ' + a.ms + ' ms (break ' + a.brMs + ') ' + a.kind + ' ' + JSON.stringify(a.move) + ' ' + JSON.stringify(a.diag) + ' ' + Math.round(a.mem.bytes / 1048576) + 'MB');
     if (a.error) { console.error('decision failed: ' + a.error); this.acted = false; pending = null; continue; }
     if (a.breaks) { this.stats['break' + a.breaks.offered]++; if (a.breaks.took) this.stats['took' + a.breaks.offered]++; if (a.breaks.lineup) { this.stats.lineup++; if (a.breaks.took) this.stats.tookLineup++; } if (a.breaks.touch) { this.stats.touch++; if (a.breaks.took) this.stats.tookTouch++; } }
     this.decided.push({ id: a.id, at: a.at, now: now, kind: a.kind, move: a.move, ms: a.ms, diag: a.diag,
@@ -316,7 +316,8 @@ Match.prototype.afterFrame = function () {
   // line behind the move is played till then -- but never a long wait of
   // it, which would leave the frames after it undecided.
   while (this.line && this.nextAt > now && this.nextAt - now < this.soon() && !isWait(this.line.steps[0]) && this.follow()) {}
-  var at = this.nextAt > now ? this.nextAt : now + this.soon();
+  // Never sooner than an answer can come: the frames between are held.
+  var at = Math.max(this.nextAt > now ? this.nextAt : 0, now + this.soon());
   if (at - now > this.ahead()) return;
   var pr = this.predict(next, at, this.hold, this.nextPending);
   // Dead by then on what is planned: the question is the next frame's board,

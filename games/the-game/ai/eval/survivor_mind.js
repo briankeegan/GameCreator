@@ -37,7 +37,15 @@ function slabRow(b) {
 // and none breaking garbage, the ones leaving the most panels are played --
 // a raise, which brings a row, among them.
 var KEEP_RANK = 1e7;
-var WELL = 2;   // rows a column falls short of the garbage for the garbage to be hanging over a well
+var RESTING = 2;   // columns or fewer the lowest garbage rests on for it to be brought down first
+// How many columns the lowest garbage rests on: those whose top panel is
+// right under it. Only those can touch it.
+function resting(board) {
+  var g = SH.lowestGarbageRow(board), n = 0, c;
+  if (!g) return 6;
+  for (c = 1; c <= 6; c++) { var p = board.panels[g - 1] && board.panels[g - 1][c]; if (p && p.color && !p.isGarbage) n++; }
+  return n;
+}
 function panelsOf(b) {
   var n = 0;
   if (b && b.grid) for (var r = 1; r < b.grid.length; r++) { var row = b.grid[r]; if (row) for (var c = 1; c <= b.width; c++) if (row[c] > 0) n++; }
@@ -152,10 +160,10 @@ wt.parentPort.on('message', function (m) {
     (m.arrivals || []).forEach(function (a) { comingRows += a.g ? a.g.height : 0; });
     if (tall) bot.preferProven = function (c) { return c.settled ? TALL_RANK + SH.gridTop(c.settled) : Infinity; };
     else if (cfg.profile.conserve && (board.incoming.length || SH.lowestGarbageRow(board) || comingRows >= BANK_ROWS)) {
-      // A SLAB HANGING over a well is brought down first: nothing can touch it
-      // from the columns it is not resting on, and the clear that drops it
+      // A SLAB RESTING ON TWO COLUMNS OR FEWER is brought down first: nothing
+      // can touch it from the columns it is not resting on, and the clear that drops it
       // costs the same panels now as when the bot is forced to it later.
-      var drop = !popping && hanging(board, WELL);
+      var drop = !popping && resting(board) <= RESTING;
       bot.preferProven = function (c) { var b = this._settledOf(c); return b && b.grid ? KEEP_RANK + (drop ? 1000 * slabRow(b) : 0) - 100 * panelsOf(b) + gapOf(b) : Infinity; };
     }
     else if (cfg.profile.lowerSlab && hanging(board)) bot.preferProven = function (c) { var b = this._settledOf(c); return b && b.grid ? HANG_RANK + slabRow(b) : Infinity; };
@@ -164,7 +172,7 @@ wt.parentPort.on('message', function (m) {
     // whole budget), at the slowest rate of the last few decisions: a tall
     // board searches several times slower than an empty one.
     var nodesPerMs = rates.length ? Math.min.apply(null, rates) : 30;
-    var FULL = P.prototype.SURVIVE_SEARCH_BUDGET, CHEAP = P.prototype.SURVIVE_SEARCH_BUDGET_CHEAP;
+    var FULL = P.prototype.SURVIVE_SEARCH_BUDGET, CHEAP = Number(process.env.GC_SURVIVOR_CHEAP) || P.prototype.SURVIVE_SEARCH_BUDGET_CHEAP;
     bot.SURVIVE_SEARCH_BUDGET = m.ms > 0 ? Math.max(CHEAP, Math.min(FULL, Math.round(m.ms * nodesPerMs * SPEND))) : FULL;
     // The frame loop stops a question it no longer needs (cfg.abort holds its id).
     bot._abort = cfg.abort ? function () { return Atomics.load(cfg.abort, 0) === m.id; } : null;
@@ -178,7 +186,7 @@ wt.parentPort.on('message', function (m) {
     var why = null;
     if (process.env.GC_SURVIVOR_WHY) {
       var sp = bot._searchProofs;
-      why = { proven: provenRanked.join(' '), ranked: ranked.join(' '), want: Object.keys(want), cands: sp ? sp.cands.map(key) : null, proven: sp ? sp.cands.filter(function (c, i) { return sp.proofs[i]; }).map(key) : null };
+      why = { provenRanks: provenRanked.join(' '), ranked: ranked.join(' '), want: Object.keys(want), cands: sp ? sp.cands.map(key) : null, proven: sp ? sp.cands.filter(function (c, i) { return sp.proofs[i]; }).map(key) : null };
     }
     // A LINEUP WHILE A SLAB POPS IS PLAYED. Nothing can die before the pop
     // ends and the lineup breaks the slab when it does; the bot's own stages

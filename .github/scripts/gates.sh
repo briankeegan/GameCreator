@@ -393,10 +393,11 @@ gate_native_engine() {
 }
 # THE SERVER'S ENGINE: pa-engine.js replays real play on the panel-game
 # server's Lua engine (pa.record.jsonl.gz, made by lua/engineRecord.lua) and
-# must land on every recorded state; native/pa.c must match pa-engine.js
-# frame by frame.
+# must land on every recorded state; pa-generator.js deals what the Lua dealt;
+# native/pa.c must match pa-engine.js frame by frame.
 gate_server_engine() {
   node games/the-game/ai/eval/pa_engine.test.js &&
+  node games/the-game/ai/eval/pa_generator.test.js &&
   node games/the-game/ai/eval/native_pa.test.js 20000
 }
 gate_engine_check() {

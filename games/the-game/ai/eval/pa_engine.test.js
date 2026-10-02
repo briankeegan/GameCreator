@@ -12,7 +12,7 @@
 // stack and of every panel is compared with the Lua's. The first difference
 // fails with the frame, the field and both values.
 var fs = require('fs'), path = require('path'), cp = require('child_process');
-var PA = require(path.join(__dirname, 'pa-engine.js'));
+var PA = require(path.join(__dirname, 'pa-engine.js')), GEN = require(path.join(__dirname, 'pa-generator.js'));
 
 // Each source is a stream of record lines: a file, or panel-game's recorder
 // run as a child process (records are too big to keep: ~20KB a frame).
@@ -79,34 +79,72 @@ function compare(s, lua, where) {
   return null;
 }
 
-var seen = { compared: 0, metalGarbage: 0, shockPanels: 0, frames: 0, matches: 0, chains: 0, garbageDrops: 0, garbageClears: 0, shockRows: 0, metalDrops: 0, rows: 0, stalls: 0, deaths: 0 };
+function sorted(o) { if (!o || typeof o !== 'object') return o; var r = {}; Object.keys(o).sort().forEach(function (k) { r[k] = sorted(o[k]); }); return r; }
+var seen = { fromStart: 0, compared: 0, metalGarbage: 0, shockPanels: 0, frames: 0, matches: 0, chains: 0, garbageDrops: 0, garbageClears: 0, shockRows: 0, metalDrops: 0, rows: 0, stalls: 0, deaths: 0 };
+// The match's seed: a record carries it (SEED * 1000 + match); one written
+// before it did is found by trying SEED 1..99 against the recorded buffers.
+function seedOf(seed, fr, ld, match) {
+  var seeds = [], S;
+  if (seed !== undefined) seeds.push(seed); else for (S = 1; S < 100; S++) seeds.push(S * 1000 + match);
+  for (var i = 0; i < seeds.length; i++) {
+    var g = new GEN.GeneratorSource(seeds[i], true, ld.colors, ld.adjacentDenialFrequency);
+    if (g.catchUp(fr.state.panelBuffer, fr.state.garbagePanelBuffer)) return seeds[i];
+  }
+  return null;
+}
+// The match's generator, fresh or brought to a recorded state; every row and
+// garbage row it deals from then on is kept in `dealt`.
+function generator(seed, ld, fr) {
+  var g = new GEN.GeneratorSource(seed, true, ld.colors, ld.adjacentDenialFrequency);
+  if (fr) g.catchUp(fr.state.panelBuffer, fr.state.garbagePanelBuffer);
+  g.dealt = [];
+  var row = g.nextRowString, garbageRow = g.garbageRowString;
+  g.nextRowString = function () { var r = row.call(this); this.dealt.push(r); return r; };
+  g.garbageRowString = function () { var r = garbageRow.call(this); this.dealt.push(r); return r; };
+  return g;
+}
 // One match, a line at a time.
 function Replay(name) { this.name = name; this.s = null; this.src = null; this.lines = 0; this.done = false; this.level = null; }
 Replay.prototype.line = function (fr) {
   if (this.done) return;
   this.lines++;
-  if (!this.level) this.level = { levelData: fr.levelData, behaviours: fr.behaviours, stackOverConditions: fr.stackOverConditions };
+  if (!this.level) { this.level = { levelData: fr.levelData, behaviours: fr.behaviours, stackOverConditions: fr.stackOverConditions }; this.match = fr.match || 1; this.seed = fr.seed; }
   var d;
   if (!this.s) {
     // A record that writes the state only now and then starts where it does.
     if (!fr.state) return;
-    var st = fr.state.stack;
-    // Start on the first frame after the countdown.
-    if (!(st.stopWatchIsRunning && !st.in_countdown && st.clock > 190)) return;
-    this.src = new PA.Recorded([], []);
-    this.s = PA.fromLua(fr.state, this.level, this.src);
-    this.start = this.lines;
-    d = compare(this.s, fr.state, this.name + ' start (clock ' + this.s.clock + ')');
-    if (d) fail(d);
-    return;
+    var st = fr.state.stack, ld = this.level.levelData, seed = seedOf(this.seed, fr, ld, this.match);
+    if (seed === null) fail(this.name + ': no seed deals the recorded buffers');
+    if (st.clock === 1) {
+      // From the first frame: the stack Match:start makes from the seed, with
+      // rows and garbage colours from the seed, as on the server.
+      var lv = PA.vsLevel(10);
+      if (JSON.stringify(sorted(lv.levelData)) !== JSON.stringify(sorted(ld))) fail(this.name + ': levelData ' + JSON.stringify(ld) + ' is not modern level 10 ' + JSON.stringify(lv.levelData));
+      this.gen = generator(seed, ld, null);
+      this.src = new PA.Seeded(this.gen);
+      this.s = PA.create(this.level, this.src);
+      seen.fromStart++;
+      this.start = this.lines - 1;
+    } else {
+      // Otherwise from the first state past the countdown.
+      if (!(st.stopWatchIsRunning && !st.in_countdown && st.clock > 190)) return;
+      this.gen = generator(seed, ld, fr);
+      this.src = new PA.Seeded(this.gen);
+      this.s = PA.fromLua(fr.state, this.level, this.src);
+      this.start = this.lines;
+      d = compare(this.s, fr.state, this.name + ' start (clock ' + this.s.clock + ')');
+      if (d) fail(d);
+      return;
+    }
   }
   var s = this.s, before = s.clock;
-  // What the Lua dealt during this frame is what this frame deals.
-  this.src.rows = this.src.rows.concat(PA.list(fr.newRows)); this.src.garbageRows = this.src.garbageRows.concat(PA.list(fr.garbageRows));
+  var rowsBefore = this.gen.dealt.length;
   PA.list(fr.received).forEach(function (g) { if (g.clock === before) s.receiveGarbage([g]); });
   s.setInput(fr.input !== undefined ? fr.input : fr.state.input);
   s.run();
   PA.list(fr.received).forEach(function (g) { if (g.clock !== before) s.receiveGarbage([g]); });
+  var dealt = this.gen.dealt.slice(rowsBefore), want = PA.list(fr.newRows).concat(PA.list(fr.garbageRows));
+  if (dealt.join() !== want.join()) fail(this.name + ' line ' + this.lines + ': dealt ' + JSON.stringify(dealt) + ' vs Lua ' + JSON.stringify(want));
   s.events.forEach(function (e) {
     if (e.type === 'match') { seen.matches++; if (e.chain) seen.chains++; if (e.garbage) seen.garbageClears++; }
     if (e.type === 'garbageDrop') seen.garbageDrops++;

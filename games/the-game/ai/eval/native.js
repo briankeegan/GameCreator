@@ -425,7 +425,7 @@
     }
     return NODEOFF;
   }
-  var KIND = { long: 0, hold: 1, raise: 2, swap: 3 };
+  var KIND = { long: 0, hold: 1, raise: 2, swap: 3, settle: 4 };
   function Search(cfg) {
     if (cfg.threads > 1) initThreads(cfg.threads); else init();
     nodeFields();
@@ -533,7 +533,18 @@
   Search.prototype.advance = function (node, kind, m, frames) {
     var k = KIND[kind];
     if (k === undefined) throw new Error('Native: step kind ' + kind);
-    return unstep(this, X.ns_advance(this.ctx, node._i, k, k === 3 ? m[0] : 0, k === 3 ? m[1] : 0, frames | 0));
+    return unstep(this, X.ns_advance(this.ctx, node._i, k, k >= 3 && m ? m[0] : 0, k >= 3 && m ? m[1] : 0, frames | 0));
+  };
+  // What a settle step did (pa.c ns_step_stats), read straight after it:
+  // { comboSizes, chainAt (the chain counter each clear reached), cleared,
+  // broke (garbage cells converted), earned (the most stop time one clear paid) }.
+  Search.prototype.stepStats = function (node) {
+    if (!X.ns_step_stats) throw new Error('Native: this engine does not count a step');
+    var n = X.ns_step_stats(this.ctx, node._i);
+    if (n < 0) throw new Error('Native: board lost');
+    var b = new Int32Array(MEM.buffer, (X.nb_io_body() >>> 0), n), out = { comboSizes: [], chainAt: [], cleared: b[1], broke: b[2], earned: b[3] };
+    for (var i = 0; i < b[0]; i++) { out.comboSizes.push(b[4 + 2 * i]); out.chainAt.push(b[5 + 2 * i]); }
+    return out;
   };
   // The same decision as keys: { inputs, holds } per frame (holds: the raise
   // still held after it), or null when the move is refused. What the search
