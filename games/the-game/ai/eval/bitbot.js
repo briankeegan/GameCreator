@@ -4052,10 +4052,18 @@
                      (cl.moveFrames || 0) < (breakNow.moveFrames || 0))) breakNow = cl;
                 continue;
             }
+            // THE CLEAR IS SPENT EITHER WAY, SO IT IS AIMED. First the one that leaves a
+            // break in hand (saveAfter), then the one that leaves the surface under the
+            // slab most even -- a slab resting on one tower has nothing to break against
+            // -- and only then the most frames held per panel.
             var isCh = r.chain >= 2;
             var rate = (f.FLASH + f.FACE + f.POP * r.total +
                         BF.stopTimeOf(eng, isCh, isCh ? 0 : r.total, isCh ? r.chain : 0, true)) / r.total;
-            if (!clearNow || rate > clearNow.rate) clearNow = { cand: cl, rate: rate };
+            var sv = cl.masks ? this.saveAfter(cl.masks, cl.swap[0], cl.swap[1], info, false) : 0;
+            var shc = cl.masks ? bitoptions.shapeOf(cl.masks) : null;
+            var vd = shc ? shc.high - shc.mat : 0;
+            if (!clearNow || sv > clearNow.sv || (sv === clearNow.sv && (vd < clearNow.vd ||
+                (vd === clearNow.vd && rate > clearNow.rate)))) clearNow = { cand: cl, rate: rate, sv: sv, vd: vd };
         }
         if (breakNow) return { kind: 'swap', move: breakNow.swap, mode: d.mode, alive: d.alive, via: 'break' };
         var esc = clearNow ? clearNow.cand : null;
