@@ -749,7 +749,8 @@
                 {
                     var rt = bit.resolveFromMasks(bit.copyState(tm.st), false, {
                         frames: tm.opts.frames, hover: tm.opts.hover, hovering: tm.opts.hovering,
-                        chaining: tm.opts.chaining, swap: [r, c],
+                        chaining: tm.opts.chaining, popping: tm.opts.popping, popAt: tm.opts.popAt,
+                        swap: [r, c],
                         at: travel.cost(info.cursorRow, info.cursorCol, r, c) });
                     if (rt.scope === 'refused') { bit.swapMasks(base, r, c); continue; }
                     res = { scope: rt.scope, chain: rt.chain, total: rt.total, rounds: rt.rounds,

@@ -59,6 +59,14 @@
         var st = bit.maskState(snapshot.grid, snapshot.blocks, W, H, snapshot.motion);
         if (st.bad) return null;
         var hover = Infinity, chaining = new Int32Array(W + 2), hovering = new Int32Array(W + 2), r, c, m;
+        // A MATCH ALREADY IN FLIGHT LEAVES ON ITS OWN RUN. Every cell of a combo
+        // empties on the same run: matched for its timer, popping for index * POP,
+        // popped for (size - index) * POP. So from the snapshot that run is
+        //   matched  timer + size * POP
+        //   popping  timer + (size - index) * POP
+        //   popped   timer
+        // and the cells enter the resolve as popping until then.
+        var popping = new Int32Array(W + 2), popAt = 0;
         for (r = 1; r <= H; r++) {
             for (c = 1; c <= W; c++) {
                 if (snapshot.chaining && snapshot.chaining[r] && snapshot.chaining[r][c]) chaining[c] |= 1 << (r - 1);
@@ -67,10 +75,18 @@
                     hovering[c] |= 1 << (r - 1);
                     if ((m.timer || 0) < hover) hover = m.timer || 0;
                 }
+                if (m && !m.isGarbage && (m.state === 'matched' || m.state === 'popping' || m.state === 'popped')) {
+                    var size = m.comboSize || 0, idx = m.comboIndex || 0, t = m.timer || 0;
+                    var at = m.state === 'matched' ? t + size * frames.POP
+                           : m.state === 'popping' ? t + (size - idx) * frames.POP : t;
+                    popping[c] |= 1 << (r - 1);
+                    if (at > popAt) popAt = at;
+                }
             }
         }
         return { st: st, opts: { frames: frames, hover: hover === Infinity ? 0 : hover,
-                                 hovering: hovering, chaining: chaining } };
+                                 hovering: hovering, chaining: chaining,
+                                 popping: popping, popAt: popAt } };
     }
 
     // HOW LONG THERE IS TO MOVE: the clock when the board, left alone, comes to rest.
@@ -90,7 +106,8 @@
         if (!t) return null;
         var o = t.opts;
         var r = bit.resolveFromMasks(t.st, false, swap ? { frames: o.frames, hover: o.hover, hovering: o.hovering,
-                                                            chaining: o.chaining, at: at || 0, swap: swap } : o);
+                                                            chaining: o.chaining, popping: o.popping, popAt: o.popAt,
+                                                            at: at || 0, swap: swap } : o);
         if (r.scope === 'refused') return null;
         return { scope: r.scope, chain: r.chain, total: r.total, frames: r.frames };
     }

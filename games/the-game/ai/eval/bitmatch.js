@@ -589,7 +589,7 @@
     for (c = 0; c <= W + 1; c++) {
       occ[c] = st.occ[c]; inert[c] = st.inert[c]; garb[c] = st.garb[c];
       chaining[c] = timed && timed.chaining ? (timed.chaining[c] | 0) & occ[c] : 0;
-      popping[c] = 0;
+      popping[c] = timed && timed.popping ? (timed.popping[c] | 0) & occ[c] : 0;
     }
     for (a = 1; a <= N; a++) {
       for (c = 0; c <= W + 1; c++) colour[a][c] = st.colour[a * stride + c];
@@ -704,7 +704,7 @@
 
     var counter = 0, rounds = 0, total = 0, guard = 0, LIMIT = W * H * H;
     // THE CLOCK, only when asked for.
-    var T = 0, sweepAt = 0, hoverUntil = 0, made = !timed || !timed.swap, refused = false, moved = false;
+    var T = 0, sweepAt = (timed && timed.popAt) || 0, hoverUntil = 0, made = !timed || !timed.swap, refused = false, moved = false;
     // HELD CELLS: a panel still hovering out a timer, or still swapping. It cannot match,
     // does not fall, and holds up what stands on it, until run `until`; that run it
     // lands or starts to fall, so it is released when T reaches until - 1 and counts as
