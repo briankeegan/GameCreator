@@ -1089,11 +1089,11 @@ static int dropQuiet(const int32_t *st, const Drop *D, int r, int c, const uint3
   }
   int anyMoved = 0;
   for (int pass = 0; pass < 64; pass++) {
-    int ch = 0;
+    int slabMoved = 0;
     for (int cc = 1; cc <= W; cc++) {
       uint32_t o = occ[cc], need = o & ~gar[cc] & ~((o << 1) | 1u);
       if (!need) continue;
-      ch = 1; dirty |= 1u << cc;
+      dirty |= 1u << cc;
       int y0 = __builtin_ctz(need), w = topRow(o & ((1u << y0) - 1u));
       for (int y = y0; y < 17; y++) {
         uint32_t bit = 1u << y;
@@ -1133,9 +1133,9 @@ static int dropQuiet(const int32_t *st, const Drop *D, int r, int c, const uint3
         occ[cc] = (occ[cc] & ~v) | (v >> d); gar[cc] = (gar[cc] & ~v) | (v >> d);
       }
       dd[i] += d;
-      ch = 1; anyMoved = 1;
+      anyMoved = 1; slabMoved = 1;
     }
-    if (!ch) break;
+    if (!slabMoved) break;
   }
   for (int cc = 1; cc <= W; cc++)
     for (uint32_t q = mv[cc]; q; q &= q - 1u) if (runAt(g, W, __builtin_ctz(q) + 1, cc)) return 0;
