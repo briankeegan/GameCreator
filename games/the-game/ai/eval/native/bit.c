@@ -980,6 +980,122 @@ static int quietClear(const int32_t *st, const Grid *G, int r, int c, int32_t *o
   }
   return 1;
 }
+static const uint32_t ZK[WMAX];
+static int runAt(const uint8_t g[18][WMAX], int W, int y, int x) {
+  int a = g[y][x], lo = x, hi = x, bo = y, tp = y;
+  while (lo > 1 && g[y][lo - 1] == a) lo--;
+  while (hi < W && g[y][hi + 1] == a) hi++;
+  if (hi - lo >= 2) return 1;
+  while (bo > 1 && g[bo - 1][x] == a) bo--;
+  while (tp < 17 && g[tp + 1][x] == a) tp++;
+  return tp - bo >= 2;
+}
+static int dropQuiet(const int32_t *st, const Grid *G, int r, int c, const uint32_t *k, int32_t *out) {
+  int W = st[O_W], ns = st[O_NSLAB], L = G->g[r][c], Rt = G->g[r][c + 1];
+  uint8_t g[18][WMAX];
+  uint32_t occ[WMAX], gar[WMAX], fix[WMAX], mv[WMAX], sl[MAXSLAB][WMAX], b = 1u << (r - 1);
+  for (int i = 0; i < ns; i++) {
+    if (st[SAIR(i)]) return 0;
+    for (int cc = 0; cc < WMAX; cc++) sl[i][cc] = U(st, SM(i, cc));
+  }
+  __builtin_memcpy(g, G->g, sizeof(g));
+  g[r][c] = (uint8_t)Rt; g[r][c + 1] = (uint8_t)L;
+  for (int cc = 1; cc <= W; cc++) {
+    uint32_t o = U(st, OCC + cc), gb = U(st, GARB + cc), kk = k[cc], gu = 0;
+    if (U(st, INERT + cc) & ~gb) return 0;
+    for (int i = 0; i < ns; i++) gu |= sl[i][cc];
+    fix[cc] = gb & ~gu;
+    gar[cc] = gb;
+    if (cc == c) o = (o & ~b) | (Rt ? b : 0);
+    else if (cc == c + 1) o = (o & ~b) | (L ? b : 0);
+    o &= ~kk;
+    for (uint32_t q = kk | gb; q; q &= q - 1u) g[__builtin_ctz(q) + 1][cc] = 0;
+    occ[cc] = o;
+    mv[cc] = (cc == c || cc == c + 1) ? (o & ~gb & b) : 0;
+  }
+  for (int pass = 0; pass < 64; pass++) {
+    int ch = 0;
+    for (int cc = 1; cc <= W; cc++) {
+      uint32_t o = occ[cc], need = o & ~gar[cc] & ~((o << 1) | 1u);
+      if (!need) continue;
+      ch = 1;
+      int y0 = __builtin_ctz(need), w = topRow(o & ((1u << y0) - 1u));
+      for (int y = y0; y < 17; y++) {
+        uint32_t bit = 1u << y;
+        if (!(o & bit)) continue;
+        if (gar[cc] & bit) { w = y + 1; continue; }
+        if (w != y) {
+          g[w + 1][cc] = g[y + 1][cc]; g[y + 1][cc] = 0;
+          o = (o & ~bit) | (1u << w);
+          mv[cc] = (mv[cc] & ~bit) | (1u << w);
+        }
+        w++;
+      }
+      occ[cc] = o;
+    }
+    for (int i = 0; i < ns; i++) {
+      if (st[SLK(i)]) continue;
+      int d = 0, any = 0;
+      for (;;) {
+        int ok = 1;
+        for (int cc = 1; cc <= W && ok; cc++) {
+          uint32_t v = sl[i][cc];
+          if (!v) continue;
+          any = 1;
+          if (v & ((2u << d) - 1u)) ok = 0;
+          else if ((v >> (d + 1)) & occ[cc] & ~v) ok = 0;
+        }
+        if (!ok || !any) break;
+        d++;
+      }
+      if (!d) continue;
+      for (int cc = 1; cc <= W; cc++) {
+        uint32_t v = sl[i][cc];
+        if (!v) continue;
+        occ[cc] = (occ[cc] & ~v) | (v >> d); gar[cc] = (gar[cc] & ~v) | (v >> d);
+        sl[i][cc] = v >> d;
+      }
+      ch = 1;
+    }
+    if (!ch) break;
+  }
+  for (int cc = 1; cc <= W; cc++)
+    for (uint32_t q = mv[cc]; q; q &= q - 1u) if (runAt(g, W, __builtin_ctz(q) + 1, cc)) return 0;
+  if (!out) return 1;
+  int32_t *res = out, *ss = out + R_INTS, t = 0, N = st[O_N];
+  for (int cc = 1; cc <= W; cc++) t += popc(k[cc]);
+  for (int i = 0; i < R_INTS; i++) res[i] = 0;
+  res[R_SCOPE] = SC_OK;
+  if (t) { res[R_CHAIN] = 1; res[R_TOTAL] = t; res[R_ROUNDS] = 1; }
+  stcpy(ss, st);
+  ss[O_BUSYF] = 0; ss[O_BAD] = 0; ss[6] = 0; ss[7] = 0;
+  for (int cc = 0; cc < WMAX; cc++) { ss[BUSY + cc] = 0; ss[COL + cc] = 0; }
+  for (int a = N + 1; a < NCOL; a++) for (int cc = 0; cc < WMAX; cc++) ss[COL + a * WMAX + cc] = 0;
+  for (int i = 0; i < ns; i++) {
+    ss[SLK(i)] = ss[SLK(i)] ? 1 : 0; ss[SAIR(i)] = 0;
+    int moved = 0;
+    for (int cc = 1; cc <= W; cc++) if (sl[i][cc] != U(st, SM(i, cc))) moved = 1;
+    if (!moved) continue;
+    for (int cc = 1; cc <= W; cc++) { ss[INERT + cc] &= ~U(st, SM(i, cc)); ss[SM(i, cc)] = sl[i][cc]; }
+    for (int cc = 1; cc <= W; cc++) ss[INERT + cc] |= sl[i][cc];
+  }
+  for (int cc = 1; cc <= W; cc++) {
+    ss[OCC + cc] = occ[cc]; ss[GARB + cc] = gar[cc];
+    for (int a = 1; a <= N; a++) ss[COL + a * WMAX + cc] = 0;
+    for (int y = 1; y < 18; y++) if (g[y][cc]) ss[COL + g[y][cc] * WMAX + cc] |= 1u << (y - 1);
+  }
+  return 1;
+}
+static int settlesQuiet(const int32_t *st, const Grid *G, int r, int c, const uint32_t *k) { return dropQuiet(st, G, r, c, k, 0); }
+static int quietDrop(const int32_t *st, const Grid *G, int r, int c, int32_t *out) {
+  uint32_t b = 1u << (r - 1), k[WMAX];
+  if ((U(st, INERT + c) | U(st, INERT + c + 1)) & b) return 0;
+  if (G->g[r][c] && G->g[r][c + 1]) {
+    int t, cas;
+    if (firstRoundK(st, G, r, c, &t, &cas, k)) return 0;
+  } else for (int i = 0; i < WMAX; i++) k[i] = 0;
+  return dropQuiet(st, G, r, c, k, out);
+}
 static int breaksFirst(const int32_t *st, const Grid *G, int r, int c) { int t, cs; return firstRound(st, G, r, c, &t, &cs); }
 static int anyBreakOf(const int32_t *st0) {
   Grid G;
@@ -991,10 +1107,11 @@ static int anyBreakOf(const int32_t *st0) {
   for (int i = 0; i < n && !any; i++) {
     if (!swapCanClearG(SCR, &G, rest, SWS[2 * i], SWS[2 * i + 1])) continue;
     if (rest && G.g[SWS[2 * i]][SWS[2 * i + 1]] && G.g[SWS[2 * i]][SWS[2 * i + 1] + 1]) {
-      int t, cas;
-      if (firstRound(SCR, &G, SWS[2 * i], SWS[2 * i + 1], &t, &cas)) { any = 1; break; }
-      if (!cas) continue;
+      int t, cas; uint32_t kq[WMAX];
+      if (firstRoundK(SCR, &G, SWS[2 * i], SWS[2 * i + 1], &t, &cas, kq)) { any = 1; break; }
+      if (!cas || settlesQuiet(SCR, &G, SWS[2 * i], SWS[2 * i + 1], kq)) continue;
     }
+    if (rest && !(G.g[SWS[2 * i]][SWS[2 * i + 1]] && G.g[SWS[2 * i]][SWS[2 * i + 1] + 1]) && settlesQuiet(SCR, &G, SWS[2 * i], SWS[2 * i + 1], ZK)) continue;
     if (!swapIn(SCR, SWS[2 * i], SWS[2 * i + 1])) continue;
     nAnyR++, resolve(SCR, RS, 0);
     swapIn(SCR, SWS[2 * i], SWS[2 * i + 1]);
@@ -1012,10 +1129,11 @@ static int savesOfRaw(const int32_t *st0) {
   for (int i = 0; i < n; i++) {
     if (!swapCanClearG(SCR, &G, rest, SWS[2 * i], SWS[2 * i + 1])) continue;
     if (rest && G.g[SWS[2 * i]][SWS[2 * i + 1]] && G.g[SWS[2 * i]][SWS[2 * i + 1] + 1]) {
-      int t, cas;
-      if (firstRound(SCR, &G, SWS[2 * i], SWS[2 * i + 1], &t, &cas)) { cnt++; continue; }
-      if (!cas) continue;
+      int t, cas; uint32_t kq[WMAX];
+      if (firstRoundK(SCR, &G, SWS[2 * i], SWS[2 * i + 1], &t, &cas, kq)) { cnt++; continue; }
+      if (!cas || settlesQuiet(SCR, &G, SWS[2 * i], SWS[2 * i + 1], kq)) continue;
     }
+    if (rest && !(G.g[SWS[2 * i]][SWS[2 * i + 1]] && G.g[SWS[2 * i]][SWS[2 * i + 1] + 1]) && settlesQuiet(SCR, &G, SWS[2 * i], SWS[2 * i + 1], ZK)) continue;
     if (!swapIn(SCR, SWS[2 * i], SWS[2 * i + 1])) continue;
     nSavesR++, resolve(SCR, RS, 0);
     swapIn(SCR, SWS[2 * i], SWS[2 * i + 1]);
@@ -1039,8 +1157,9 @@ static double bestOneSwapStop(const int32_t *st0) {
   for (int i = 0; i < n; i++) {
     if (!swapCanClearG(SCS, &G, rest, SWL[2 * i], SWL[2 * i + 1])) continue;
     if (rest && G.g[SWL[2 * i]][SWL[2 * i + 1]] && G.g[SWL[2 * i]][SWL[2 * i + 1] + 1]) {
-      int t, cas, br = firstRound(SCS, &G, SWL[2 * i], SWL[2 * i + 1], &t, &cas);
-      if (br || !cas) {
+      int t, cas; uint32_t kq[WMAX];
+      int br = firstRoundK(SCS, &G, SWL[2 * i], SWL[2 * i + 1], &t, &cas, kq);
+      if (br || !cas || settlesQuiet(SCS, &G, SWL[2 * i], SWL[2 * i + 1], kq)) {
         if (!(t > 0)) continue;
         double pays = priceOf(1, t);
         if (pays != pays) pays = 0;
@@ -1048,6 +1167,7 @@ static double bestOneSwapStop(const int32_t *st0) {
         continue;
       }
     }
+    if (rest && !(G.g[SWL[2 * i]][SWL[2 * i + 1]] && G.g[SWL[2 * i]][SWL[2 * i + 1] + 1]) && settlesQuiet(SCS, &G, SWL[2 * i], SWL[2 * i + 1], ZK)) continue;
     if (!swapIn(SCS, SWL[2 * i], SWL[2 * i + 1])) continue;
     nLandR++, resolve(SCS, RL, 0);
     swapIn(SCS, SWL[2 * i], SWL[2 * i + 1]);
@@ -1468,6 +1588,9 @@ static void expandAll(int depth, int cr, int cc) {
           swapIn(state, sr, sc);
         } else if (nodeRest && G.g[sr][sc] && G.g[sr][sc + 1] && arenaN + R_INTS + ST_INTS <= arenaCap &&
                    quietClear(state, &G, sr, sc, ARENA + arenaN)) {
+          res = (Res *)(ARENA + arenaN);
+          arenaN += R_INTS + stlen(res->st);
+        } else if (nodeRest && arenaN + R_INTS + ST_INTS <= arenaCap && quietDrop(state, &G, sr, sc, ARENA + arenaN)) {
           res = (Res *)(ARENA + arenaN);
           arenaN += R_INTS + stlen(res->st);
         } else if (pf && TASKIX[fi * TIXW + k] >= 0) {
