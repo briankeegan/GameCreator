@@ -1225,18 +1225,6 @@ static int quietDrop(const int32_t *st, const Grid *G, const Drop *D, int r, int
   }
   return dropQuiet(st, D, r, c, ZK, out);
 }
-static LOCAL ST SWAPSCR;
-static int settleSwap(const int32_t *st, int r, int c, Res *out) {
-  if (settledRest(st)) {
-    Grid G; Drop D;
-    gridOf(st, &G); dropOf(st, &G, &D);
-    if (quietDrop(st, &G, &D, r, c, (int32_t *)out)) return 1;
-  }
-  stcpy(SWAPSCR, st);
-  if (!swapIn(SWAPSCR, r, c)) return 0;
-  resolve(SWAPSCR, out->r, 1);
-  return 1;
-}
 static int breaksFirst(const int32_t *st, const Grid *G, int r, int c) { int t, cs; return firstRound(st, G, r, c, &t, &cs); }
 static int anyBreakOf(const int32_t *st0) {
   Grid G;
@@ -1422,6 +1410,13 @@ static LOCAL Shape START;
 static LOCAL double BASELOW, BASEBUMPS, BASEVOID, BASEGAP;
 static LOCAL int BASEBREAK;
 static LOCAL int BASEDIG, BASESAVE;
+typedef struct CK CK;
+static LOCAL CK *CUR_E;
+static void shapeC(const int32_t *st, Shape *sh);
+static int fireC(const int32_t *st);
+static int reachC(const int32_t *st, uint32_t *rr);
+static int slabC(const int32_t *st);
+static int breakReadyC(const int32_t *st);
 static void fillOption(double *o, const int32_t *seq, int nseq, int frames, const int32_t *r, const int32_t *settled) {
   int chain = r[R_CHAIN], total = r[R_TOTAL];
   o[F_KIND] = chain >= 2 ? 1 : 0;
@@ -1432,10 +1427,10 @@ static void fillOption(double *o, const int32_t *seq, int nseq, int frames, cons
   o[F_VOID] = r[R_SCOPE] == SC_BROKE ? r[R_VOID] : 0;
   o[F_DURATION] = frames + nseq * OVERHEAD;
   if (settled) {
-    Shape sh; shapeOf(settled, &sh);
+    Shape sh; shapeC(settled, &sh);
     o[F_HASSHAPE] = 1; o[F_TALL] = sh.tall; o[F_BUMPS] = sh.bumps; o[F_MAT] = sh.mat; o[F_LOW] = sh.low;
     o[F_SPREAD] = sh.spread; o[F_VOIDROWS] = sh.high - sh.mat; o[F_SLABGAP] = sh.slabRowGap;
-    o[F_READY] = LEAN ? -1 : canFireOf(settled);
+    o[F_READY] = LEAN ? -1 : fireC(settled);
   } else {
     double nan = 0.0 / 0.0;
     o[F_HASSHAPE] = 0; o[F_READY] = -1;
@@ -1455,13 +1450,13 @@ static void extras(double *o, const int32_t *settled) {
     return;
   }
   if (lazyBreak && expanding && !BASEBREAK && !(o[F_HASSHAPE] && o[F_TALL] >= 8)) o[F_BREAKREADY] = -3;
-  else o[F_BREAKREADY] = settled ? breakReadyOf(settled) : -2;
+  else o[F_BREAKREADY] = settled ? breakReadyC(settled) : -2;
   o[F_CLOSESBREAK] = BASEBREAK && o[F_BREAKREADY] == 0;
   uint32_t rm[WMAX];
-  o[F_DIGGAIN] = (DIG && settled) ? reachOf(settled, rm) - BASEDIG : 0;
+  o[F_DIGGAIN] = (DIG && settled) ? reachC(settled, rm) - BASEDIG : 0;
   o[F_VOIDGAIN] = o[F_HASSHAPE] ? BASEVOID - o[F_VOIDROWS] : 0;
   o[F_SLABGAIN] = setupWorth(o[F_HASSHAPE] != 0, o[F_SLABGAP], DEADLINE - o[F_DURATION]) - setupWorth(1, BASEGAP, DEADLINE);
-  o[F_SLABWORTH] = (PREPARE && prepBudget > 0 && settled && (prepBudget--, slabReadyFast(settled))) ? PREPWORTH : 0;
+  o[F_SLABWORTH] = (PREPARE && prepBudget > 0 && settled && (prepBudget--, slabC(settled))) ? PREPWORTH : 0;
   o[F_MATNOW] = START.mat;
 }
 
@@ -1520,13 +1515,13 @@ static void sortBorn(int n) {
 }
 
 static LOCAL int threadReady;
-typedef struct { Res *res; int resPly, hasRR, rrDig, hasSh, sv, fire, slab, hasLand; double land; Shape sh; uint32_t rr[WMAX]; } CK;
+struct CK { Res *res; int resPly, persist, hasRR, rrDig, hasSh, hasShG, sv, fire, slab, hasLand, anyB, bad; double land; Shape sh, shg; uint32_t rr[WMAX]; };
 #define NTCAP (1 << 12)
-typedef struct { u64 h; int32_t gen, at, n; CK *ck; } NT;
+typedef struct { u64 h; int32_t gen, at, n, nl, rest; CK *ck; int32_t *sw; } NT;
 static NT NT_MAIN[NTCAP];
 static LOCAL NT *NTB;
 static LOCAL int32_t ntGen = 1, ntN;
-static CK *nodeCK(const int32_t *st, int nl) {
+static NT *nodeFind(const int32_t *st, unsigned *slot) {
   int n = stlen(st);
   u64 h = stHash(st, n);
   unsigned i = (unsigned)(h >> 32) & (NTCAP - 1);
@@ -1535,19 +1530,77 @@ static CK *nodeCK(const int32_t *st, int nl) {
     const int32_t *p = ARENA + NTB[i].at;
     int j = 0;
     while (j < n && p[j] == st[j]) j++;
-    if (j == n) return NTB[i].ck;
+    if (j == n) return &NTB[i];
   }
+  NTB[i].h = h; NTB[i].n = n;
+  *slot = i;
+  return 0;
+}
+static CK *nodeAdd(unsigned i, const int32_t *st, int nl, const int32_t *sw, int rest) {
+  int n = NTB[i].n;
   if (ntN >= NTCAP / 2) return 0;
   int at = (arenaN + 1) & ~1, need = (int)((nl * sizeof(CK) + 3) / 4);
-  if (at + need + n + R_INTS + ST_INTS > arenaCap) return 0;
+  if (at + need + n + 2 * nl + R_INTS + ST_INTS > arenaCap) return 0;
   CK *ck = (CK *)(ARENA + at);
-  for (int k = 0; k < nl; k++) { ck[k].res = 0; ck[k].hasRR = 0; ck[k].hasSh = 0; ck[k].sv = -1; ck[k].fire = -1; ck[k].slab = -1; ck[k].hasLand = 0; }
-  int32_t *cp = ARENA + at + need;
+  for (int k = 0; k < nl; k++) { ck[k].res = 0; ck[k].hasRR = 0; ck[k].hasSh = 0; ck[k].hasShG = 0; ck[k].sv = -1; ck[k].fire = -1; ck[k].slab = -1; ck[k].hasLand = 0; ck[k].anyB = -1; ck[k].bad = -1; }
+  int32_t *cp = ARENA + at + need, *sp = cp + n;
   for (int j = 0; j < n; j++) cp[j] = st[j];
-  arenaN = at + need + n;
-  NTB[i].h = h; NTB[i].gen = ntGen; NTB[i].at = (int32_t)(cp - ARENA); NTB[i].n = n; NTB[i].ck = ck;
+  for (int j = 0; j < 2 * nl; j++) sp[j] = sw[j];
+  arenaN = at + need + n + 2 * nl;
+  NTB[i].gen = ntGen; NTB[i].at = (int32_t)(cp - ARENA); NTB[i].nl = nl; NTB[i].rest = rest; NTB[i].ck = ck; NTB[i].sw = sp;
   ntN++;
   return ck;
+}
+static LOCAL ST SWAPSCR;
+static int settleSwap(const int32_t *st, int r, int c, Res *out) {
+  unsigned slot;
+  NT *nt = NTB ? nodeFind(st, &slot) : 0;
+  if (nt && nt->ck) {
+    for (int k = 0; k < nt->nl; k++) {
+      if (nt->sw[2 * k] != r || nt->sw[2 * k + 1] != c) continue;
+      Res *res = nt->ck[k].res;
+      if (res && nt->ck[k].persist) {
+        int n = R_INTS + (res->r[R_SCOPE] == SC_OK ? stlen(res->st) : 0);
+        for (int i = 0; i < n; i++) ((int32_t *)out)[i] = ((const int32_t *)res)[i];
+        return 1;
+      }
+      break;
+    }
+  }
+  if (settledRest(st)) {
+    Grid G; Drop D;
+    gridOf(st, &G); dropOf(st, &G, &D);
+    if (quietDrop(st, &G, &D, r, c, (int32_t *)out)) return 1;
+  }
+  stcpy(SWAPSCR, st);
+  if (!swapIn(SWAPSCR, r, c)) return 0;
+  resolve(SWAPSCR, out->r, 1);
+  return 1;
+}
+static void shapeC(const int32_t *st, Shape *sh) {
+  CK *e = CUR_E;
+  if (!e) { shapeOf(st, sh); return; }
+  if (!e->hasShG) { shapeOf(st, &e->shg); e->hasShG = 1; }
+  *sh = e->shg;
+}
+static int fireC(const int32_t *st) { CK *e = CUR_E; if (!e) return canFireOf(st); if (e->fire < 0) e->fire = canFireOf(st); return e->fire; }
+static int slabC(const int32_t *st) { CK *e = CUR_E; if (!e) return slabReadyFast(st); if (e->slab < 0) e->slab = slabReadyFast(st); return e->slab; }
+static int reachC(const int32_t *st, uint32_t *rr) {
+  CK *e = CUR_E;
+  if (!e) return reachOf(st, rr);
+  if (!e->hasRR) { e->rrDig = reachOf(st, e->rr); e->hasRR = 1; }
+  for (int c = 0; c < WMAX; c++) rr[c] = e->rr[c];
+  return e->rrDig;
+}
+static int breakReadyC(const int32_t *st) {
+  CK *e = CUR_E;
+  if (!e) return breakReadyOf(st);
+  if (!hasGarb(st)) return -1;
+  if (e->anyB < 0) e->anyB = anyBreakOf(st);
+  if (e->anyB) return 1;
+  if (dropBudget <= 0) return 0;
+  if (e->bad >= 0) { dropBudget--; return e->bad; }
+  return e->bad = breakAfterDropOf(st);
 }
 static void threadInit(void) {
   if (threadReady) return;
@@ -1741,9 +1794,18 @@ static void expandAll(int depth, int cr, int cc) {
       int32_t *state = WORK_ST[fi];
       stcpy(state, node->st);
       Grid G;
-      int nl = legalG(state, SWE, &G);
-      CK *ck = nodeCK(state, nl);
-      int nodeRest = settledRest(state);
+      int nl, nodeRest, haveG = 0;
+      unsigned slot = 0;
+      NT *nt = nodeFind(state, &slot);
+      CK *ck;
+      if (nt) {
+        nl = nt->nl; nodeRest = nt->rest; ck = nt->ck;
+        for (int j = 0; j < 2 * nl; j++) SWE[j] = nt->sw[j];
+      } else {
+        nl = legalG(state, SWE, &G); haveG = 1;
+        nodeRest = settledRest(state);
+        ck = nodeAdd(slot, state, nl, SWE, nodeRest);
+      }
       Drop D; int haveD = 0;
       uint32_t reach[WMAX]; int haveReach = node->hasReach;
       if (haveReach) for (int c = 0; c < WMAX; c++) reach[c] = node->reach[c];
@@ -1756,9 +1818,8 @@ static void expandAll(int depth, int cr, int cc) {
         }
         Res *res;
         CK *e = ck ? &ck[k] : 0;
-        if (e && e->res && (e->resPly == ply || ((e->res < QUIET || e->res >= QUIET + 2 * qcap) &&
-                                                  ((int32_t *)e->res < PSOUT || (int32_t *)e->res >= PSOUT + 2 * MAXSET * SOUT)))) res = e->res;
-        else if (quietSwapG(state, &G, nodeRest, sr, sc)) {
+        if (e && e->res && (e->resPly == ply || e->persist)) res = e->res;
+        else if ((haveG || (gridOf(state, &G), haveG = 1)) && quietSwapG(state, &G, nodeRest, sr, sc)) {
           if (nQuiet[qside] >= qcap) { failed = 1; continue; }
           res = &QUIET[qside * qcap + nQuiet[qside]++];
           for (int i = 0; i < R_INTS; i++) res->r[i] = 0;
@@ -1779,7 +1840,10 @@ static void expandAll(int depth, int cr, int cc) {
           res = settleOf(state);
           swapIn(state, sr, sc);
         }
-        if (e) { e->res = res; e->resPly = ply; }
+        if (e) {
+          e->res = res; e->resPly = ply;
+          e->persist = (res < QUIET || res >= QUIET + 2 * qcap) && ((int32_t *)res < PSOUT || (int32_t *)res >= PSOUT + 2 * MAXSET * SOUT);
+        }
         int cost = node->spent + travelCost(node->fr, node->fc, sr, sc);
         int tPlan = cost + ply - 1;
         if ((double)tPlan > node->lock + SPEND) continue;
@@ -1793,8 +1857,10 @@ static void expandAll(int depth, int cr, int cc) {
         if (res->r[R_TOTAL] > 0 || broke) {
           if (node->nchain) {
             double *o = newOpt();
+            CUR_E = settled ? e : 0;
             fillOption(o, seq, nseq, cost, res->r, settled);
             extras(o, settled);
+            CUR_E = 0;
             o[F_BREAKS] = broke;
             nNext++;
           }
