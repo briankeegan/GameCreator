@@ -21,7 +21,7 @@
 // checked — cheaply, on tiny runs, so this file costs seconds rather than
 // the half hour a real round takes.
 // LEVEL 10 BEFORE ANYTHING LOADS bench.js, which reads GC_LEVEL ONCE at
-// require time (`var LEVEL = Number(process.env.GC_LEVEL || 3)`). Setting it
+// require time (`var LEVEL = Number(process.env.GC_LEVEL || 10)`). Setting it
 // inside a test is too late: the module is already loaded at level 3 and the
 // test silently measures a different game from the one it names. The rise
 // test below did exactly that, and its own assertion could not see it.

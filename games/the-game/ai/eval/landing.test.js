@@ -22,11 +22,11 @@ var agree = 0, wrong = 0, broke = 0, onServer = 0;
 [false, true].forEach(function (server) {
     var st, view;
     if (server) {
-        var ld = PA.vsLevel(3).levelData;
-        st = PA.create(3, new PA.Seeded(new GEN.GeneratorSource(1, true, ld.colors, ld.adjacentDenialFrequency)));
+        var ld = PA.vsLevel(10).levelData;
+        st = PA.create(10, new PA.Seeded(new GEN.GeneratorSource(1, true, ld.colors, ld.adjacentDenialFrequency)));
         view = function () { return PA.view(st, E); };
     } else {
-        st = new E.Stack({ level: 3, seed: 1 });
+        st = new E.Stack({ level: 10, seed: 1 });
         view = function () { return st; };
     }
     var bot = new BitBot(view(), { allowRaise: true, reaction: 12, seed: 1 });

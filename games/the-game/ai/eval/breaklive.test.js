@@ -58,9 +58,9 @@ var checked = 0, wrong = 0, lockedSeen = 0, boards = 0, onServer = 0;
 // The stack the bot plays: panel-engine's own, or a pa-engine stack it reads through
 // PA.view (rebuilt every frame).
 function game(server, seed) {
-    if (!server) { var st = new E.Stack({ level: 3, seed: seed }); return { st: st, view: function () { return st; } }; }
-    var ld = PA.vsLevel(3).levelData;
-    var pa = PA.create(3, new PA.Seeded(new GEN.GeneratorSource(seed, true, ld.colors, ld.adjacentDenialFrequency)));
+    if (!server) { var st = new E.Stack({ level: 10, seed: seed }); return { st: st, view: function () { return st; } }; }
+    var ld = PA.vsLevel(10).levelData;
+    var pa = PA.create(10, new PA.Seeded(new GEN.GeneratorSource(seed, true, ld.colors, ld.adjacentDenialFrequency)));
     return { st: pa, view: function () { return PA.view(pa, E); } };
 }
 [false, true].forEach(function (server) {
