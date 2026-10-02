@@ -2721,6 +2721,20 @@
             return !self.deadly(pc0.masks, pc0.resolved, info,
                                 Math.max((pc0.moveFrames || 0) + self.reaction, info.framesPerRow || 0));
         }
+        // PLAYABLE WHEN THE HEALTH IT COSTS IS ALREADY PRICED: a step of a break bought
+        // with health answers to planSpend, which counts every run it leaves unlocked,
+        // so the death filter's horizon -- which reads any unlocked run topped out as
+        // death -- is not asked.
+        function playableSpending(mv) {
+            if (!mv) return false;
+            for (var q0 = 0; q0 < pool.length; q0++) {
+                var pc0 = pool[q0];
+                if (pc0.kind === 'swap' && pc0.swap[0] === mv[0] && pc0.swap[1] === mv[1]) {
+                    return !!pc0.masks && !returnsToSeen(mv) && !spendsReserve(pc0.resolved, pc0.masks);
+                }
+            }
+            return false;
+        }
         function returnsToSeen(mv) {
             if (!self.refuseReturn || !mv) return false;
             for (var q = 0; q < pool.length; q++) {
@@ -3040,19 +3054,50 @@
                                  via: 'breakReach' };
                     }
                 }
+                // THE LAST RESORT: A BREAK THAT COSTS HEALTH. Topped out with no break
+                // that can be played inside the lock, the board only shrinks -- each
+                // clear that holds the rise eats the material a break would be built
+                // from -- and the slab never comes off. So, when nothing free exists,
+                // the break that spends the least, provided health is left after it.
+                // Searched apart, with its own budget, so the free search above is the
+                // same search it always was.
+                if (!reach && info.toppedOut && (info.health || 0) > 1 && digLeft === Infinity) {
+                    var tm2 = this.timing(info, deadline, base);
+                    tm2.spend = info.health - 1;
+                    var last = bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base, tm2, digging);
+                    var pile2 = last.now.concat(last.next), lr = null, lrSpend = Infinity;
+                    for (i = 0; i < pile2.length; i++) {
+                        var lo = pile2[i];
+                        if (!lo.breaks || !lo.swaps.length) continue;
+                        var sp = this.planSpend(lo.swaps, base, info);
+                        if (sp < lrSpend || (sp === lrSpend && (lo.converts || 0) > (lr.converts || 0))) { lr = lo; lrSpend = sp; }
+                    }
+                    if (lr && lrSpend < info.health && playableSpending(lr.swaps[0])) {
+                        this._plan = null;
+                        this._dig = lr.swaps.length > 1
+                                  ? { moves: lr.swaps.slice(1), frames: lr.duration || 0, startedAt: this.stack.clock, spend: true }
+                                  : null;
+                        this._digIsBreak = !!this._dig;
+                        this.counts.brokeSpending = (this.counts.brokeSpending || 0) + 1;
+                        return { kind: 'swap', move: lr.swaps[0], mode: mode, alive: alive, via: 'breakSpend', spends: true };
+                    }
+                }
             }
             if (!haveBreak && this._dig && this._dig.moves.length) {
-                var dn = this._dig.moves[0], dnOk = playable(dn);
+                var dn = this._dig.moves[0], dnOk = this._dig.spend ? playableSpending(dn) : playable(dn);
                 var dspent = Math.max(0, this.stack.clock - (this._dig.startedAt || 0));
-                if (dnOk && this.planInTime(this._dig.moves, Math.max(0, this._dig.frames - dspent), base, info, deadline)) {
+                // A plan bought with health is held to what it costs, not to the lock.
+                var digOk = this._dig.spend ? this.planSpend(this._dig.moves, base, info) < (info.health || 0)
+                                            : this.planInTime(this._dig.moves, Math.max(0, this._dig.frames - dspent), base, info, deadline);
+                if (dnOk && digOk) {
+                    var digSpends = !!this._dig.spend;
                     this._dig.moves = this._dig.moves.slice(1);
                     if (!this._dig.moves.length) { this._dig = null; this._digIsBreak = false; }
                     this._plan = null;
                     this.counts.dugFor++;
-                    return { kind: 'swap', move: dn, mode: mode, alive: alive, via: 'digPlan' };
+                    return { kind: 'swap', move: dn, mode: mode, alive: alive, via: 'digPlan', spends: digSpends };
                 }
-                if (!dnOk && settling(dn) &&
-                    this.planInTime(this._dig.moves, Math.max(0, this._dig.frames - dspent), base, info, deadline)) {
+                if (!dnOk && settling(dn) && digOk) {
                     return waitFor(dn, 'digWait');
                 }
                 this._dig = null;
@@ -3607,44 +3652,50 @@
     //
     // Falling garbage is not counted, the same way isToppedOut does not count
     // it: it has not landed and it is not what the row would be stacked on.
-    // CAN THIS PLAN BE PLAYED WITHOUT SPENDING HEALTH, step by step. Topped out the
-    // time there is runs to the first draining run, but every clear on the way locks
-    // the rise for its own resolve -- FLASH + FACE + POP * size, resolveFramesOf -- so a
-    // dig whose clears each land inside the last one's lock never spends any. Each step
-    // is the walk to it and a frame to decide; its clear starts 5 runs after the swap is
-    // queued (the swap's 4 and the match); a break is what the plan was for.
+    // WHAT THIS PLAN SPENDS IN HEALTH, step by step. Topped out, the rise drains a
+    // point of health on every run nothing locks it -- updateRiseLock locks it on a
+    // queued swap, a shake, or any panel in motion. So the time there is runs to the
+    // first draining run, and everything the plan does pushes that further out:
+    // a swap locks it for its own SWAP_RUNS, and a clear for its whole resolve --
+    // FLASH + FACE + POP * size, resolveFramesOf -- starting 5 runs after the swap
+    // is queued (the swap's 4 and the match). A step is the walk to it and a frame
+    // to decide; each of its runs past the lock is a point spent. A break is what
+    // the plan was for, so the count stops there. Infinity for a plan that cannot
+    // be played at all.
     // EACH PREFIX ONCE. The routes a search hands back share their opening swaps, so
-    // the board, clock and lock after a prefix are kept on the base board of this
-    // decision and every route that starts the same way starts from there.
-    BitBot.prototype.planFits = function (swaps, base, info) {
+    // the board, clock, lock and spend after a prefix are kept on the base board of
+    // this decision and every route that starts the same way starts from there.
+    var SWAP_RUNS = 4;
+    BitBot.prototype.planSpend = function (swaps, base, info) {
         var memo = base._fits || (base._fits = new Map());
         var st = base, at = [info.cursorRow, info.cursorCol];
-        var t = 0, lock = Math.max(0, (info.drainRun || 1) - 1), eng = PanelEngine(), key = '';
+        var t = 0, lock = Math.max(0, (info.drainRun || 1) - 1), spend = 0, eng = PanelEngine(), key = '';
         for (var i = 0; i < swaps.length; i++) {
             key += swaps[i][0] + ',' + swaps[i][1] + ';';
             var hit = memo.get(key);
             if (hit === undefined) {
                 var t2 = t + travel.cost(at[0], at[1], swaps[i][0], swaps[i][1]) + (i ? 1 : 0);
-                if (t2 > lock) hit = false;
+                var paid = spend + Math.max(0, t2 - lock), from = Math.max(lock, t2);
+                var s2 = bit.copyState(st);
+                if (!bit.swapMasks(s2, swaps[i][0], swaps[i][1])) hit = Infinity;
                 else {
-                    var s2 = bit.copyState(st);
-                    if (!bit.swapMasks(s2, swaps[i][0], swaps[i][1])) hit = false;
-                    else {
-                        var r = bit.resolveFromMasks(s2, true);
-                        if (r.scope === 'garbage-broke') hit = true;
-                        else if (r.scope !== 'ok' || !r.settled) hit = false;
-                        else hit = { st: r.settled, t: t2,
-                                     lock: r.total > 0 ? Math.max(lock, t2 + 5 + BF.resolveFramesOf(eng, r.total, 0)) : lock };
-                    }
+                    var r = bit.resolveFromMasks(s2, true);
+                    if (r.scope === 'garbage-broke') hit = paid;
+                    else if (r.scope !== 'ok' || !r.settled) hit = Infinity;
+                    else hit = { st: r.settled, t: t2, spend: paid,
+                                 lock: Math.max(from, t2 + SWAP_RUNS,
+                                                r.total > 0 ? t2 + 5 + BF.resolveFramesOf(eng, r.total, 0) : 0) };
                 }
                 memo.set(key, hit);
             }
-            if (hit === true || hit === false) return hit;
-            st = hit.st; t = hit.t; lock = hit.lock;
+            if (typeof hit === 'number') return hit;
+            st = hit.st; t = hit.t; lock = hit.lock; spend = hit.spend;
             at = swaps[i];
         }
-        return true;
+        return spend;
     };
+    // CAN IT BE PLAYED WITHOUT SPENDING HEALTH.
+    BitBot.prototype.planFits = function (swaps, base, info) { return this.planSpend(swaps, base, info) === 0; };
 
     // DOES A PLAN FIT THE TIME THERE IS -- the one question every route that plays a plan
     // asks, asked here. Topped out it is planFits, step by step against the lock each
@@ -4039,6 +4090,9 @@
             }
         }
         if (!clears.length) return d;
+        // A STEP OF A BREAK BOUGHT WITH HEALTH has been priced already (planSpend):
+        // what it spends is what it was chosen knowing.
+        if (d.spends) return d;
         var k = this.drainBound(), pr = picked && picked.resolved;
         // A BREAK STILL HAS TO GET THERE IN TIME: its walk is checked against the first
         // run that can take health like any other move's. A step of a route that ends in

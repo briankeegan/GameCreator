@@ -726,7 +726,7 @@
       this.preStopTime = Math.max(this.preStopTime, f.FLASH + f.FACE + f.POP * (comboSize + onScreen));
       var stopTime = this.calculateStopTime(comboSize, this.wasToppedOut, isChainLink, this.chainCounter);
       if (stopTime > this.stopTime) this.stopTime = stopTime;
-      this.events.push({ type: 'match', chain: isChainLink, size: comboSize, garbage: gps ? gps.length : 0 });
+      this.events.push({ type: 'match', chain: isChainLink, size: comboSize, garbage: gps ? gps.length : 0, row: matching[0].row, col: matching[0].col });
       var bonus = this.chainCounter > 13 ? 0 : this.chainCounter;
       this.addScore(SCORE_CHAIN_TA[bonus]);
       if (comboSize > 3) this.addScore(SCORE_COMBO_TA[Math.min(30, comboSize)]);

@@ -326,7 +326,7 @@
     // THE FREEZE ONE SWAP CAN BUY, BY BOARD, the same way: bestOneSwapStop is a pure
     // function of the masks and of stopPrice, which reads only whether the board is
     // topped out -- timing.stopKey.
-    var STOPS = new Map(), STOPKEY = '', LOCK = Infinity;
+    var STOPS = new Map(), STOPKEY = '', LOCK = Infinity, SPEND = 0, SWAP_RUNS = 4;
     function landStopOf(st) {
         if (!STOPKEY) return bit.bestOneSwapStop(st, stopPrice);
         var key = STOPKEY + boardKey(st), hit = STOPS.get(key);
@@ -410,6 +410,9 @@
         stopPrice = (timing && timing.stopPrice) || null;
         STOPKEY = (timing && timing.stopKey) || '';
         LOCK = (timing && timing.lock !== undefined) ? timing.lock : Infinity;
+        // AND THE HEALTH A ROUTE MAY SPEND past it: none, unless the caller is looking
+        // for a last resort.
+        SPEND = (timing && timing.spend) || 0;
         PREPARE = !!(timing && timing.prepare);
         // ONE ROW OF CEILING, AT THE RATE THIS FILE PAYS FOR BEING NEAR A THING.
         // Breaking a row of slab hands the board back a row, which is FPR frames;
@@ -768,7 +771,7 @@
         // Setups are ranked by price, because a setup clears nothing by
         // definition and cost is the only thing separating two of them. The cheap
         // ones leave the most frames for the cash at the end.
-        var BEAM = 12, DIG_BEAM = 6;
+        var BEAM = 12, DIG_BEAM = SPEND ? 24 : 6;
 
         // HOW UNEVEN A LANDED BOARD IS: the sum of the steps between neighbouring
         // column heights. Zero is flat. Death comes at the TALLEST column while
@@ -966,7 +969,9 @@
                     if (!reach && node.chain.length) reach = reachOf(state).mask;
                     for (k = 0; k < list.length; k++) {
                         var sw = list[k];
-                        if (reach) {
+                        // A LAST RESORT LOOKS AT EVERYTHING: a setup whose point is two
+                        // moves away completes no pair yet, and that is the line it needs.
+                        if (reach && !SPEND) {
                             var rb = 1 << (sw[0] - 1);
                             if (!((reach[sw[1]] | reach[sw[1] + 1]) & rb)) continue;
                         }
@@ -976,7 +981,7 @@
                         var cost = node.spent + travel.cost(node.from[0], node.from[1], sw[0], sw[1]);
                         // planFits' clock: the walk plus a frame for each swap after the first.
                         var tPlan = cost + ply - 1;
-                        if (tPlan > node.lock) continue;
+                        if (tPlan > node.lock + SPEND) continue;
                         var broke = res.scope === 'garbage-broke';
                         if (res.scope !== 'ok' && !broke) continue;
                         // AND NOT THE UNDO, when it is the move that would be PLAYED.
@@ -1312,9 +1317,12 @@
                                              lands: bit.copyState(res.settled) };
                                 }
                             }
+                            // A SWAP LOCKS THE RISE WHILE IT RUNS, so a setup carries the
+                            // lock to its own end (planSpend's arithmetic).
                             born.push({ st: res.settled, chain: seq,
                                         from: sw, spent: cost,
-                                        reach: rr && rr.mask, dig: rr ? rr.dig : 0, lock: node.lock });
+                                        reach: rr && rr.mask, dig: rr ? rr.dig : 0,
+                                        lock: Math.max(node.lock, tPlan + SWAP_RUNS) });
                         }
                     }
                 }
