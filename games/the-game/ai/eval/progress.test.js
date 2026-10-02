@@ -28,6 +28,11 @@ var P = globalThis.PanelEngine, W = 6;
 
 var fails = 0;
 var VIAS = {};
+// DECISIONS MADE WHILE THE BOT'S OWN SWAP IS STILL LANDING. The reaction lift is held
+// off until the swap lands (swapLanding); without that the bot re-decides mid-swap and
+// can replay the answer on the same pair. Counted at the decision, so the defect is
+// seen whatever it goes on to do.
+var MIDSWAP = 0;
 function ok(cond, msg) { if (!cond) { console.log('FAIL: ' + msg); fails++; } }
 
 // A vector is a vector; what matters is that the two boards differ, so each one
@@ -77,6 +82,7 @@ function run(seed, weightsA, weightsB, frames) {
     [0, 1].forEach(function (side) {
         var real = bots[side].decide.bind(bots[side]);
         bots[side].decide = function () {
+            if (bots[side].swapLanding()) MIDSWAP++;
             var d = real();
             var s = stat[side];
             s.decisions++;
@@ -265,6 +271,7 @@ GAMES.forEach(function (g) {
 // `planSave`, `lineup` and `raise:material` are real and do fire, but only a
 // handful of times in far longer games, so asserting them here would be
 // asserting the seeds.
+ok(MIDSWAP === 0, MIDSWAP + ' decisions were made while the bot\'s own swap was still landing');
 var MUST_FIRE = ['digPlan', 'survivalPlan', 'bestAttack', 'flatten', 'raising',
                  'setup', 'attackPlan', 'keepSave', 'break',
                  'raise:opening', 'WEIGHTS'];
