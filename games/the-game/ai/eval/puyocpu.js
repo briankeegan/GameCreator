@@ -197,6 +197,12 @@
     // The search's steps on the engine in C (native.js; opts.native or
     // GC_NATIVE=1), each checked against the real engine under engineCheck.
     this.native = !!opts.native || envOn('GC_NATIVE');
+    // THE REPLIES ON THE ENGINE IN C TOO (opts.nativeCands, with serverStack):
+    // every first-ply candidate also gets a node in a search context of its
+    // own, settled from the server's board, and the second ply and the walk
+    // toward a break step from those nodes (MK_SETTLE) instead of painting a
+    // board into the JS engine for each reply -- most of a decision's time.
+    this.nativeCands = !!opts.nativeCands;
     // The survival search's order: breadth first (the default) or 'best'
     // (opts.surviveSearch or GC_SURVIVE_SEARCH; experimental).
     this.surviveSearch = opts.surviveSearch || (typeof process !== 'undefined' && process.env && process.env.GC_SURVIVE_SEARCH) || null;
@@ -3352,6 +3358,41 @@
   // as the shortest found; a line cut off by the budget is not claimed.
   PuyoCpu.prototype.TOWARD_DEPTH = 2;
   PuyoCpu.prototype.TOWARD_BUDGET = 3000;
+  // Each candidate's node, settled from the server's board on the engine in C
+  // (nativeCands); one context for the decision, reset at its start.
+  PuyoCpu.prototype._nativeNodes = function (cands) {
+    if (!this.nativeCands || !this.serverStack || !cands) return;
+    if (!this._candNat) this._candNat = new (NativeMod().server.Search)({ reaction: this.reaction || 0, cursorMoveFrames: this.cursorMoveFrames, threads: this.threads || 1 });
+    var S = this._candNat, i;
+    S.reset();
+    var root = S.root(this.serverStack.copy(), { left: this.raiseFrames || 0, started: !!this._raiseStarted }, this.serverArrivals || [], false);
+    for (i = 0; i < cands.length; i++) {
+      var c = cands[i], n = null;
+      if (c.kind === 'swap') n = S.advance(root, 'settle', c.move, 0);
+      else if (c.kind === 'hold') n = S.advance(root, 'settle', null, 0);
+      else if (c.kind === 'raise') { var up = S.advance(root, 'raise', null, 0); n = up && !up.dead ? S.advance(up, 'settle', null, 0) : up; }
+      c.natNode = n && !n.dead ? n : null;
+      c.natDead = !!(n && n.dead);
+    }
+  };
+  // A settle step as a resolve: the board it leaves written into `board`, and
+  // what it did in the shape engineboard.js settle reports it.
+  PuyoCpu.prototype._nativeResolved = function (n, from, board) {
+    // A step that dies has no board: the reply is scored as one that dies.
+    if (n.dead && !n.b) return { comboSizes: [], chainLength: 0, clearedPanels: 0, brokeGarbage: 0, stopTimeEarned: 0,
+                                  garbage: [], died: true, elapsed: n.t - from.t, stopTime: 0, shakeTime: 0 };
+    var g = n.b.grid, r, c;
+    board.grid = [];
+    for (r = 0; r < g.length; r++) { board.grid[r] = [0]; for (c = 1; c <= board.width; c++) board.grid[r][c] = g[r] ? g[r][c] || 0 : 0; }
+    if (board.grid.length < board.height + 1) for (r = board.grid.length; r <= board.height; r++) { board.grid[r] = [0]; for (c = 1; c <= board.width; c++) board.grid[r][c] = 0; }
+    board.blocks = {}; board.motion = null; board.chaining = null; board.queuedSwap = null;
+    var st = this._candNat.stepStats(n), chain = 0;
+    for (var i = 0; i < st.chainAt.length; i++) if (st.chainAt[i] > chain) chain = st.chainAt[i];
+    return { comboSizes: st.comboSizes, chainLength: st.comboSizes.length ? Math.max(chain, 1) : 0,
+             clearedPanels: st.cleared, brokeGarbage: st.broke, stopTimeEarned: st.earned,
+             garbage: st.broke > 0 ? [[st.broke, 1]] : [], died: !!n.dead, elapsed: n.t - from.t,
+             stopTime: n.carry ? n.carry.stopTime : 0, shakeTime: n.carry ? n.carry.shakeTime : 0 };
+  };
   PuyoCpu.prototype._towardBreak = function (cands) {
     if (!this.towardBreak || !cands || cands.length < 2 || !this._board) return cands;
     if (!this._garbageOn(this._board) && !(this.stack && this.stack.incoming && this.stack.incoming.length)) return cands;
@@ -3359,10 +3400,10 @@
     var cur = this.stack ? [this.stack.curRow, this.stack.curCol] : null;
     for (i = 0; i < cands.length; i++) {
       var res = cands[i].resolved;
-      if (!res || res.died || res.diedInWalk) continue;
+      if (!res || res.died || res.diedInWalk || cands[i].natDead) continue;
       if ((res.brokeGarbage || 0) > 0) { hit[i] = true; any = true; continue; }
       level.push({ root: i, board: this._settledOf(cands[i]), carry: res.carry || null,
-                   pos: cands[i].move || cur });
+                   pos: cands[i].move || cur, nat: cands[i].natNode && this._candNat ? cands[i].natNode : null });
     }
     var budget = this.TOWARD_BUDGET, saved = this._carry;
     for (var d = 2; !any && d <= this.TOWARD_DEPTH && level.length && budget > 0; d++) {
@@ -3370,6 +3411,18 @@
       for (i = 0; i < level.length && budget > 0; i++) {
         var node = level[i];
         if (hit[node.root]) continue;
+        if (node.nat) {
+          // On the engine in C: the walk, the swap and the settle in one step.
+          var ns = node.nat.b.legalSwaps();
+          for (j = 0; j < ns.length && budget > 0; j++) {
+            var nn = this._candNat.advance(node.nat, 'settle', ns[j], 0);
+            budget--;
+            if (!nn || nn.dead) continue;
+            if (this._candNat.stepStats(nn).broke > 0) { hit[node.root] = true; any = true; break; }
+            if (d < this.TOWARD_DEPTH) next.push({ root: node.root, nat: nn });
+          }
+          continue;
+        }
         var swaps = node.board.legalSwaps();
         for (j = 0; j < swaps.length && budget > 0; j++) {
           var t = node.board.clone();
@@ -3646,6 +3699,7 @@
                    travel: this._scoredTravel,
                    earnedStop: resolved.stopTimeEarned || 0 });
     }
+    this._nativeNodes(cands);
     var out = this._levelForSlab(this._flatten(this._towardBreak(
         this._notAnUndo(this._heightCap(this._doomed(this._survivors(cands)))))));
     return this._lastResort(out);
@@ -4083,7 +4137,9 @@
   // candidate's own score), and a raise — except after a raise, which the
   // engine will not serve twice in a row.
   PuyoCpu.prototype._value = function (cand) {
-    var next = cand.board.legalSwaps();
+    var nat = cand.natNode && this._candNat ? cand.natNode : null;
+    // A move whose own settle dies on the server's rules has no replies.
+    var next = cand.natDead ? [] : nat ? nat.b.legalSwaps() : cand.board.legalSwaps();
     var from = cand.kind === 'swap' ? cand.move : null;   // hold and raise move nothing
     // THE CANDIDATE'S OWN VALUE, and it is where reach belongs: reach* says
     // what the board this move LEAVES could fire next move, which is a
@@ -4113,9 +4169,15 @@
     var anyReplyLives = false;
     var j, f;
     for (j = 0; j < next.length; j++) {
-      var child = cand.board.clone();
-      child.swap(next[j][0], next[j][1]);
-      var childResolved = this._resolveCandidate(child);
+      var child = cand.board.clone(), childResolved;
+      if (nat) {
+        var n2 = this._candNat.advance(nat, 'settle', next[j], 0);
+        if (!n2) continue;   // the engine refuses this swap from there
+        childResolved = this._nativeResolved(n2, nat, child);
+      } else {
+        child.swap(next[j][0], next[j][1]);
+        childResolved = this._resolveCandidate(child);
+      }
       if (!this._boardToppedOut(child)) anyReplyLives = true;
       if (childResolved && childResolved.garbage && childResolved.garbage.length) reach.breaks = 1;
       var cp = modes.payout(childResolved);
