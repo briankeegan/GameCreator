@@ -16,7 +16,11 @@
 // GC_TRACE=<frame> also writes, from that frame on, every frame's board and
 // every decision (the run is the same run every time from the same seed):
 //   F <frame> stop <n> shake <n> health <n> disp <n> cur <r>,<c> queue <w>x<h>,... | <row 12> ... <row 1>
-//   D <frame> <kind> <via> <move>
+//   D <frame> <kind> <via> <move> | breaks <n> <best> | lines <n> <best break line>
+//     breaks: the one-swap breaks in the decision's pool, and the first of them;
+//     lines: the multi-swap breaks its option list held (when it built one), and
+//     the first, with what planSpend prices it at. What it COULD have done is in
+//     the log beside what it did, so a death is read off the run.
 // A cell is its colour digit, '.' empty, 'g' garbage; upper-case X is a cell in motion.
 var path = require('path'), fs = require('fs');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
@@ -37,7 +41,15 @@ var via = {}, decide = bot.decide.bind(bot);
 bot.decide = function () {
   var d = decide();
   via[d.via] = (via[d.via] || 0) + 1;
-  if (pa.clock >= trace) out('D ' + f + ' ' + d.kind + ' ' + d.via + ' ' + JSON.stringify(d.move || d.park || null));
+  if (pa.clock >= trace) {
+    var pool = bot._lastPool || [], ob = bot._lastOptions, pb = [], lb = [];
+    for (var i = 0; i < pool.length; i++) if (pool[i].kind === 'swap' && pool[i].resolved && pool[i].resolved.brokeGarbage) pb.push(pool[i].swap);
+    if (ob) ob.now.concat(ob.next).forEach(function (o) { if (o.breaks && o.swaps.length) lb.push(o); });
+    var lbest = lb.length ? JSON.stringify(lb[0].swaps) + ' spend ' + bot.planSpend(lb[0].swaps, bot._lastBase, bot._lastInfo) : '-';
+    out('D ' + f + ' ' + d.kind + ' ' + d.via + ' ' + JSON.stringify(d.move || d.park || null) +
+        ' | breaks ' + pb.length + ' ' + (pb.length ? JSON.stringify(pb[0]) : '-') +
+        ' | lines ' + (ob ? lb.length : 'unbuilt') + ' ' + lbest);
+  }
   return d;
 };
 function board() {
