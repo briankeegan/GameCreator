@@ -226,6 +226,10 @@
             // A SLAB STILL IN THE AIR HAS NOT LANDED, so "it has all landed" needs this
             // as well as an empty queue. The engine's own test, not a reconstruction.
             fallingGarbage: typeof s.hasFallingGarbage === 'function' && s.hasFallingGarbage(),
+            // FRAMES UNTIL THE NEXT SLAB LANDS: garbage falls a row a frame and lands the
+            // run it is supported; a queued slab drops on the next calm frame at row
+            // height+1. Infinity when nothing is falling or queued.
+            landIn: landInOf(s),
             cursorRow: board.cursor ? board.cursor.row : (s.curRow || 1),
             cursorCol: board.cursor ? board.cursor.col : (s.curCol || 1),
             health: s.health,
@@ -366,6 +370,26 @@
     // breaking needs panels beside it -- so a board can be twelve rows tall and
     // have nothing to play with. Seed 101 died under seven rows of garbage
     // holding eighteen panels, two of them in the row beneath the slab.
+    function landInOf(s) {
+        if (!s.panels || !s.height) return Infinity;
+        var best = Infinity, c, r, top = 0;
+        for (c = 1; c <= W; c++) {
+            var support = 0;
+            for (r = 1; r < s.panels.length; r++) {
+                var p = s.panels[r] && s.panels[r][c];
+                if (!p || p.color === 0) continue;
+                if (p.isGarbage && p.state === 'falling') {
+                    best = Math.min(best, r - support);
+                    break;
+                }
+                support = r;
+                if (r <= s.height && r > top) top = r;
+            }
+        }
+        if (best === Infinity && s.incoming && s.incoming.length) best = 1 + (s.height + 1 - top);
+        return best;
+    }
+
     function materialRows(st) {
         var n = 0;
         for (var c = 1; c <= W; c++) n += bit.popcount((st.occ[c] & ~st.garb[c]) >>> 0);
@@ -2653,12 +2677,13 @@
         // standing there before it lands -- slabReadyFast asks whether one swap then
         // breaks it. This is not a route: it is checked here, ahead of all of them,
         // whether or not garbage is coming, whenever no break is in hand, and played
-        // only while it fits in the time there is. A raise runs to its end first unless
-        // garbage is on its way -- the row lifts the trigger with it, so the raise
-        // resumes once it stands. Topped out nothing more lands; what is on the board
-        // is the dig's.
-        var coming = (info.incoming || 0) > 0 || !!info.fallingGarbage;
-        if ((!raising || coming) && !poolBreak && !info.toppedOut && !bitoptions.slabReadyFast(base)) {
+        // only while it is done in time: it fires when the last slab is down
+        // (awaitLanding holds it until then). A raise runs to its end first unless a
+        // slab is landing (info.landIn) -- the row lifts the trigger with it, so the
+        // raise resumes once it stands. Topped out nothing more lands; what is on the
+        // board is the dig's.
+        var landing = info.landIn < Infinity;
+        if ((!raising || landing) && !poolBreak && !info.toppedOut && !bitoptions.slabReadyFast(base)) {
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
                                                    lookDepth, base, this.timing(info, deadline, base), digging);
             var ready = options.trigger;
