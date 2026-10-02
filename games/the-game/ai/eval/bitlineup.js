@@ -65,8 +65,10 @@
         //   matched  timer + size * POP
         //   popping  timer + (size - index) * POP
         //   popped   timer
-        // and the cells enter the resolve as popping until then.
-        var popping = new Int32Array(W + 2), popAt = 0;
+        // and the cells enter the resolve as popping until then. The board's grid
+        // reads them empty -- what they are once the cascade is over -- so they are
+        // put back here: until that run they hold up what stands on them.
+        var popping = new Int32Array(W + 2), popAt = 0, stride = W + 2;
         for (r = 1; r <= H; r++) {
             for (c = 1; c <= W; c++) {
                 if (snapshot.chaining && snapshot.chaining[r] && snapshot.chaining[r][c]) chaining[c] |= 1 << (r - 1);
@@ -80,6 +82,11 @@
                     var at = m.state === 'matched' ? t + size * frames.POP
                            : m.state === 'popping' ? t + (size - idx) * frames.POP : t;
                     popping[c] |= 1 << (r - 1);
+                    st.occ[c] |= 1 << (r - 1);
+                    if (m.color > 0) {
+                        st.colour[m.color * stride + c] |= 1 << (r - 1);
+                        if (m.color > st.N) st.N = m.color;
+                    }
                     if (at > popAt) popAt = at;
                 }
             }
