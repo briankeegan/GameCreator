@@ -193,7 +193,7 @@ function pairs(grid, want) {
 // How near the row under the lowest garbage is to a match touching it: per
 // column resting on the garbage, a pair standing under it and a pair beside it
 // in that row; less how uneven the stack under it is.
-var TOUCH_DEPTH = 8, TOUCH_BEAM = 30;
+var TOUCH_DEPTH = 8, TOUCH_BEAM = 30, TOUCH_WIDER = [100, 300];
 // How uneven the stack under the lowest garbage is: each column's shortfall
 // from the tallest, squared, so a panel moved from a tall column into a well
 // counts though the tallest stays as it was. Garbage rests on the tallest column, so a well is a
@@ -248,34 +248,47 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
   // line is played on the engine with the stack rising as it does, so one the
   // board would die on before its break is never offered.
   if (!(wait > 0)) {
-    var tl = firsts.filter(function (f) { return f.n && !f.n.dead; }).map(function (f) { return { key: f.key, n: f.n, path: [f.m] }; }), tpath = null;
-    for (var td = 2; td <= TOUCH_DEPTH && tl.length && !tpath && Date.now() < deadline; td++) {
-      tl.forEach(function (x) { x.s = touchScore(x.n.b.grid); });
-      tl.sort(function (a, b) { return b.s - a.s; });
-      // Swaps made in another order often leave the same board: each board
-      // is kept once, its best-scoring line.
-      var kept = [], boards = {};
-      for (i = 0; i < tl.length && kept.length < TOUCH_BEAM; i++) {
-        var bk = tl[i].n.b.key;
-        if (boards[bk]) continue;
-        boards[bk] = true; kept.push(tl[i]);
-      }
-      tl = kept;
-      // The level's swaps in one batch, read in the order the beam keeps.
-      var tms = tl.map(function (x) { return swapsOf(x.n); }), all = [], tn = [];
-      tl.forEach(function (x, q) { tms[q].forEach(function (m) { all.push([x.n, 'swap', m, 0]); }); });
-      var made = many(all), at = 0;
-      for (i = 0; i < tl.length && !tpath; i++) {
-        for (j = 0; j < tms[i].length; j++) {
-          var t3 = made[at + j];
-          if (!t3 || t3.dead) continue;
-          var tp = tl[i].path.concat([tms[i][j]]);
-          if (breaks(t3)) { found[tl[i].key] = true; any = true; tpath = tp; break; }
-          tn.push({ key: tl[i].key, n: t3, path: tp });
+    var tl0 = firsts.filter(function (f) { return f.n && !f.n.dead; }).map(function (f) { return { key: f.key, n: f.n, path: [f.m] }; }), tpath = null;
+    // TOUCH_BEAM first; finding nothing, wider (TOUCH_WIDER) while time is left.
+    for (var tb = 0; tb < TOUCH_WIDER.length + 1 && !tpath && Date.now() < deadline; tb++) {
+      var beam = tb ? TOUCH_WIDER[tb - 1] : TOUCH_BEAM, tl = tl0;
+      for (var td = 2; td <= TOUCH_DEPTH && tl.length && !tpath && Date.now() < deadline; td++) {
+        var ts = S.touchScores ? S.touchScores(tl.map(function (x) { return x.n; })) : null;
+        tl.forEach(function (x, q) { x.s = ts ? ts.score[q] : touchScore(x.n.b.grid); x.h = ts ? ts.hash[q] : 0; });
+        tl.sort(function (a, b) { return b.s - a.s; });
+        // Swaps made in another order often leave the same board: each board
+        // is kept once, its best-scoring line. Equal boards have equal hashes,
+        // so only boards whose hashes meet are told apart by key.
+        var kept = [], boards = {}, byHash = {};
+        for (i = 0; i < tl.length && kept.length < beam; i++) {
+          var x = tl[i];
+          if (!ts) { var bk = x.n.b.key; if (boards[bk]) continue; boards[bk] = true; kept.push(x); continue; }
+          var list = byHash[x.h];
+          if (list) {
+            var xk = x.n.b.key, dup = false;
+            for (k = 0; k < list.length && !dup; k++) dup = list[k].n.b.key === xk;
+            if (dup) continue;
+            list.push(x);
+          } else byHash[x.h] = [x];
+          kept.push(x);
         }
-        at += tms[i].length;
+        tl = kept;
+        // The level's swaps in one batch, read in the order the beam keeps.
+        var tms = tl.map(function (x) { return swapsOf(x.n); }), all = [], tn = [];
+        tl.forEach(function (x, q) { tms[q].forEach(function (m) { all.push([x.n, 'swap', m, 0]); }); });
+        var made = many(all), at = 0;
+        for (i = 0; i < tl.length && !tpath; i++) {
+          for (j = 0; j < tms[i].length; j++) {
+            var t3 = made[at + j];
+            if (!t3 || t3.dead) continue;
+            var tp = tl[i].path.concat([tms[i][j]]);
+            if (breaks(t3)) { found[tl[i].key] = true; any = true; tpath = tp; break; }
+            tn.push({ key: tl[i].key, n: t3, path: tp });
+          }
+          at += tms[i].length;
+        }
+        tl = tn;
       }
-      tl = tn;
     }
     if (any) return { depth: 1, moves: found, touch: true, path: tpath };
   }
@@ -414,4 +427,4 @@ Hands.prototype.idle = function (board, hold, arrivals) {
   return { bits: k.inputs[0], hold: k.holds[0] };
 };
 
-module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, pending: pending, arrivalsFrom: arrivalsFrom, threat: threat, top: top, gridTop: gridTop, popLeft: popLeft, lowestGarbageRow: lowestGarbageRow, breakMoves: breakMoves, Hands: Hands, convertingOf: convertingOf, keepRank: keepRank, panelsOf: panelsOf, ROOM: ROOM };
+module.exports = { touchScore: touchScore, profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, pending: pending, arrivalsFrom: arrivalsFrom, threat: threat, top: top, gridTop: gridTop, popLeft: popLeft, lowestGarbageRow: lowestGarbageRow, breakMoves: breakMoves, Hands: Hands, convertingOf: convertingOf, keepRank: keepRank, panelsOf: panelsOf, ROOM: ROOM };

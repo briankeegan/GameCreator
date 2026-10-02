@@ -633,6 +633,21 @@
     if (!X.ns_breaks) throw new Error('Native: this engine does not count breaks');
     return X.ns_breaks(this.ctx, node._i);
   };
+  // The server's engine: survivor_shared.js touchScore of each node's board,
+  // and its key's hash (equal keys, equal hashes), as { score: [], hash: [] }.
+  Search.prototype.touchScores = function (nodes) {
+    if (!X.ns_touch) throw new Error('Native: this engine does not score a touch');
+    var out = { score: [], hash: [] };
+    for (var at = 0; at < nodes.length; at += ADVANCE_CHUNK) {
+      var part = nodes.slice(at, at + ADVANCE_CHUNK), body = new Int32Array(MEM.buffer, (X.nb_io_body() >>> 0), 2 * part.length);
+      part.forEach(function (n, q) { body[q] = n._i; });
+      var got = X.ns_touch(this.ctx, part.length);
+      if (got !== part.length) throw new Error('Native: touch scores for ' + got + ' of ' + part.length + ' nodes');
+      body = new Int32Array(MEM.buffer, (X.nb_io_body() >>> 0), 2 * part.length);
+      for (var q = 0; q < part.length; q++) { out.score.push(body[2 * q]); out.hash.push(body[2 * q + 1]); }
+    }
+    return out;
+  };
   // A node the level loop made: its move, its parent and its line's tag, as
   // the JS loop would have written them on it.
   Search.prototype.wrapLoop = function (i) {

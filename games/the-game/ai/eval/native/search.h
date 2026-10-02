@@ -543,6 +543,43 @@ EXPORT(ns_field_off) int ns_field_off(int i) { return nodeOffs[i]; }
 EXPORT(ns_field_name) const char *ns_field_name(int i) { return nodeNames[i]; }
 // The node's grid (puyocpu.js engineGrid): rows 0..height+1, columns 0..6,
 // 0 empty, -2 garbage, else the colour; into the io body.
+#ifdef TOUCH_SCORE
+// survivor_shared.js touchScore on node boards, from ns_grid's cells: the io
+// body holds n node indices; out, per node, its score and its key's hash.
+// Returns n, or -1 for a board lost.
+static int32_t gridCell(const Board *b, int r, int c) {
+  if (r >= b->nrows) return 0;
+  const int32_t *f = b->p[r][c].f;
+  return f[COLOR] == 0 ? 0 : f[ISGARBAGE] ? -2 : f[COLOR];
+}
+static int vreserve(Vec *v, int32_t n);
+EXPORT(ns_touch) int ns_touch(Ctx *x, int n) {
+  static Vec ids;
+  if (n < 0 || 2 * n > NBODY || !vreserve(&ids, n)) return -1;
+  for (int i = 0; i < n; i++) ids.a[i] = ioBody[i];
+  for (int i = 0; i < n; i++) {
+    int k = ids.a[i];
+    if (k < 0 || k >= x->n) return -1;
+    Board *b = ensureBoard(x, k);
+    if (!b) return -1;
+    int R = b->height + 2, G = 0, r, c, top[W + 2], hi = 0;
+    int32_t s = 0;
+    for (r = 1; r < R && !G; r++) for (c = 1; c <= W; c++) if (gridCell(b, r, c) < 0) { G = r; break; }
+    if (G) {
+      for (c = 1; c <= W; c++) { int t = 0; for (r = 1; r < G; r++) if (gridCell(b, r, c) > 0) t = r; top[c] = t; if (t > hi) hi = t; }
+      for (c = 1; c <= W; c++) s -= (hi - top[c]) * (hi - top[c]);
+      int u = G - 1;
+      for (c = 1; c <= W; c++) {
+        if (top[c] != u) continue;
+        if (u > 1 && gridCell(b, u - 1, c) == gridCell(b, u, c)) s += 4;
+        if (c < W && top[c + 1] == u && gridCell(b, u, c + 1) == gridCell(b, u, c)) s += 3;
+      }
+    }
+    ioBody[2 * i] = s; ioBody[2 * i + 1] = (int32_t)NODE(x, k)->hash;
+  }
+  return n;
+}
+#endif
 EXPORT(ns_grid) int ns_grid(Ctx *x, int i) {
   Board *b = ensureBoard(x, i);
   if (!b) return -1;
