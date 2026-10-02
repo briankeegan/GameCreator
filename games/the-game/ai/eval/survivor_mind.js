@@ -13,7 +13,7 @@ require(path.join(DIR, '..', '..', 'panel-cpu.js'));
 var P = require(path.join(DIR, 'puyocpu.js')), PA = require(path.join(DIR, 'pa-engine.js')), PE = globalThis.PanelEngine;
 var SH = require(path.join(DIR, 'survivor_shared.js'));
 var cfg = wt.workerData, OPTS = SH.botOptions(cfg.profile, cfg.threads);
-var rates = [], SPEND = 0.6;   // budget searched per millisecond over the last decisions, and the share of the time there is spent searching
+var rates = [], SPEND = Number(process.env.GC_SURVIVOR_SPEND) || 0.6;   // budget searched per millisecond over the last decisions, and the share of the time there is spent searching
 var TALL_RANK = 30;   // frames: a break sooner than this outranks lowering a tall board
 var LINEUP_AFTER = 30;   // frames past a pop's end a lined-up row has to have matched by
 var BANK_ROWS = 12, BANK_TOP = 10;   // garbage rows on the way that make banking worth it, and the row it banks up to
@@ -43,7 +43,6 @@ var RESTING = 2;   // columns or fewer the lowest garbage rests on for it to be 
 // panels moved off the columns it rests on, and by a clear only when nothing
 // else is proven to live.
 var DROP_ROW = 1000, DROP_PANEL = 400;
-var POP_FREE = 60;   // frames of a pop left past a decision for it to search the least
 // How many columns the lowest garbage rests on: those whose top panel is
 // right under it. Only those can touch it.
 function resting(board) {
@@ -181,16 +180,11 @@ wt.parentPort.on('message', function (m) {
     // THE TIME THERE IS: the survival search's budget is what can be searched
     // in the milliseconds before the answer is due (m.ms; 0 waits for the
     // whole budget), at the slowest rate of the last few decisions: a tall
-    // board searches several times slower than an empty one.
+    // board searches several times slower than an empty one. GC_SURVIVOR_FULL,
+    // _CHEAP and _SPEND override the most, the least and the share.
     var nodesPerMs = rates.length ? Math.min.apply(null, rates) : 30;
-    var FULL = P.prototype.SURVIVE_SEARCH_BUDGET, CHEAP = Number(process.env.GC_SURVIVOR_CHEAP) || P.prototype.SURVIVE_SEARCH_BUDGET_CHEAP;
+    var FULL = Number(process.env.GC_SURVIVOR_FULL) || P.prototype.SURVIVE_SEARCH_BUDGET, CHEAP = Number(process.env.GC_SURVIVOR_CHEAP) || P.prototype.SURVIVE_SEARCH_BUDGET_CHEAP;
     bot.SURVIVE_SEARCH_BUDGET = m.ms > 0 ? Math.max(CHEAP, Math.min(FULL, Math.round(m.ms * nodesPerMs * SPEND))) : FULL;
-    // WHILE A SLAB POPS NOTHING DIES, and the decisions still to come before
-    // it ends search in full. One with more than POP_FREE frames of the pop
-    // left past it searches the least, so the pop's frames go on moving.
-    // Its rate is not counted: a small search is mostly overhead.
-    var popFree = SH.popLeft(board) - (m.lead || 0) > POP_FREE;
-    if (popFree) bot.SURVIVE_SEARCH_BUDGET = CHEAP;
     // The frame loop stops a question it no longer needs (stale).
     bot._abort = cfg.abort ? stale : null;
     var d;
@@ -214,7 +208,7 @@ wt.parentPort.on('message', function (m) {
       if (lk) { d = { kind: 'swap', move: lk.split(',').map(Number) }; overruled = true; }
     }
     var took = Date.now() - t1;
-    if (took > 20 && !popFree) { rates.push(bot.SURVIVE_SEARCH_BUDGET / took); if (rates.length > 8) rates.shift(); }
+    if (took > 20) { rates.push(bot.SURVIVE_SEARCH_BUDGET / took); if (rates.length > 8) rates.shift(); }
     // The rest of the proven line behind the move, for the frame loop to play
     // on while the next decision is late: steps as the search played them
     // ([row, col], 'raise', null for a hold, { long: until }), from lineAt.
