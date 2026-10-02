@@ -329,7 +329,7 @@
     // which differs by one swap. Keyed on everything the answer reads: occupancy,
     // colours, garbage, the slabs and whether each is locked, and the cells busy enough
     // to refuse a swap.
-    var SAVES = new Map(), SAVES_MAX = 50000;
+    var SAVES = new Map(), SAVES_MAX = 50000, ANYBREAK = new Map();
     // THE FREEZE ONE SWAP CAN BUY, BY BOARD, the same way: bestOneSwapStop is a pure
     // function of the masks and of stopPrice, which reads only whether the board is
     // topped out -- timing.stopKey.
@@ -901,7 +901,7 @@
             var c, any = false;
             for (c = 1; c <= W; c++) if (state.garb[c]) { any = true; break; }
             if (!any) return null;
-            if (savesOfRaw(state) > 0) return true;
+            if (anyBreakOf(state)) return true;
             // ONE SWAP IS NOT THE QUESTION. A board with no swap that breaks the
             // slab outright is not a sealed board: a clear underneath drops what
             // was resting on it, the slab comes down onto the material, and the
@@ -937,11 +937,28 @@
                 // line and sit next to the slab, which is most of the answer
                 // already, so gating on it threw away the landings this exists for
                 // and the board died on its original frame. The sweep is the price.
-                if (savesOfRaw(r.settled) > 0) return true;
+                if (anyBreakOf(r.settled)) return true;
             }
             return false;
         }
 
+        function anyBreakOf(state) {
+            var key = boardKey(state), n = SAVES.get(key);
+            if (n !== undefined) return n > 0;
+            var hit = ANYBREAK.get(key);
+            if (hit !== undefined) return hit;
+            var sw = bit.legalSwapsOf(state), i, r, any = false;
+            for (i = 0; i < sw.length && !any; i++) {
+                if (!bit.swapCanClear(state, sw[i][0], sw[i][1])) continue;
+                if (!bit.swapMasks(state, sw[i][0], sw[i][1])) continue;
+                r = bit.resolveFromMasks(state, false);
+                bit.swapMasks(state, sw[i][0], sw[i][1]);
+                if (r.scope === 'garbage-broke') any = true;
+            }
+            if (ANYBREAK.size >= SAVES_MAX) ANYBREAK.clear();
+            ANYBREAK.set(key, any);
+            return any;
+        }
         function savesOfRaw(state) {
             var key = boardKey(state), hit = SAVES.get(key);
             if (hit !== undefined) return hit;
