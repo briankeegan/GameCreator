@@ -2053,7 +2053,7 @@
         var digging = false;
         for (i = 1; i <= W; i++) if (base.garb[i]) { digging = true; break; }
         if (digging) this.counts.digging++;
-        var survival = null;
+        var survival = null, planWait = null, planWaitEscape = Infinity;
         var swept = false;
         if (raising) {
             // THE ROW IS ON ITS WAY, so there is nothing to plan: a plan made now
@@ -2095,16 +2095,20 @@
                 // left is what has to fit.
                 var spent = Math.max(0, this.stack.clock - (this._plan.startedAt || 0));
                 var remains = Math.max(0, this._plan.frames - spent);
-                if (stillLegal && this.planInTime(this._plan.moves, remains, base, info, deadline)) {
+                var planFits = this.planInTime(this._plan.moves, remains, base, info, deadline);
+                if (stillLegal && planFits) {
                     survival = { move: nx, gain: this._plan.gain, frames: remains, rate: this._plan.rate };
                     this._plan.moves = this._plan.moves.slice(1);
                     if (!this._plan.moves.length) this._plan = null;
+                } else if (planFits && settling(nx)) {
+                    planWait = nx;
+                    planWaitEscape = this._plan.rate >= 1 ? remains : Infinity;
                 } else {
                     this._plan = null;
                     this.counts.planDropped++;
                 }
             }
-            if (!survival) {
+            if (!survival && !planWait) {
                 options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
                                                    this.timing(info, deadline, base), digging);
                 var self0 = this;
@@ -2141,6 +2145,7 @@
         // nothing.
         var escape = null;
         if (swept) escape = (survival && survival.rate >= 1) ? survival.frames : Infinity;
+        if (swept && planWait) escape = planWaitEscape;
         var mode = this.mode(info, pool, !!rev, deadline, escape);
         // THE TIMING THE DECISION WAS MADE ON, so a death can be read back off the
         // bot rather than reconstructed from the board afterwards.
@@ -2620,6 +2625,24 @@
         // a legal swap on this board, it does not put the board back where it was, and the
         // board it leaves is not dead before the next decision (deadly, over the walk and a
         // reaction, or a row of rise, whichever is longer).
+        // A PLAN WAITS FOR ITS BOARD. Each move after the first is planned on the board
+        // the ones before it settle into, so it can come due while panels in its two
+        // columns are still hovering, falling or clearing: illegal now, legal once they
+        // land. That is a hold parked on the move, not a reason to drop the plan.
+        function settling(mv) {
+            if (!mv) return false;
+            var P = self.stack.panels, cc, rr;
+            for (cc = mv[1]; cc <= mv[1] + 1; cc++) {
+                for (rr = 1; rr < P.length; rr++) {
+                    var q = P[rr] && P[rr][cc];
+                    if (q && q.color !== 0 && q.state !== 'normal' && q.state !== 'landing') return true;
+                }
+            }
+            return false;
+        }
+        function waitFor(mv, via) {
+            return { kind: 'hold', mode: mode, alive: alive, via: via, park: mv };
+        }
         function playable(mv) {
             if (!mv) return false;
             var pc0 = null;
@@ -2951,6 +2974,10 @@
                     this.counts.dugFor++;
                     return { kind: 'swap', move: dn, mode: mode, alive: alive, via: 'digPlan' };
                 }
+                if (!dnOk && settling(dn) &&
+                    this.planInTime(this._dig.moves, Math.max(0, this._dig.frames - dspent), base, info, deadline)) {
+                    return waitFor(dn, 'digWait');
+                }
                 this._dig = null;
                 this._digIsBreak = false;
                 this.counts.digDropped++;
@@ -2977,9 +3004,10 @@
             if (this._attack && this._attack.moves.length) {
                 var an = this._attack.moves[0];
                 var aspent = Math.max(0, this.stack.clock - (this._attack.startedAt || 0));
-                var okNext = playable(an) &&
-                             this.planInTime(this._attack.moves, Math.max(0, (this._attack.frames || 0) - aspent),
-                                             base, info, deadline);
+                var aFits = this.planInTime(this._attack.moves, Math.max(0, (this._attack.frames || 0) - aspent),
+                                            base, info, deadline);
+                var okNext = aFits && playable(an);
+                if (!okNext && aFits && settling(an)) return waitFor(an, 'attackWait');
                 if (okNext) {
                     this._attack.moves = this._attack.moves.slice(1);
                     if (!this._attack.moves.length) this._attack = null;
@@ -3068,6 +3096,7 @@
         // to oscillating -- 48 decisions on a board it had been on within the last
         // three, against the 8 the prediction gap accounts for. A plan that walks
         // the board in a circle is not a plan, it is the loop with extra steps.
+        if (planWait) return waitFor(planWait, 'planWait');
         if (survival && survival.move) {
             if (!playable(survival.move)) {
                 this._plan = null;
@@ -3187,11 +3216,11 @@
             // WHAT IS LEFT OF IT AGAINST THE CLOCK AS IT IS NOW, not what it cost
             // when it was made: the plan is priced once and played over several
             // decisions, and the clock drains the whole time.
-            if (fok) {
-                var fspent = Math.max(0, this.stack.clock - (this._flatten.startedAt || 0));
-                if (!this.planInTime(this._flatten.moves, Math.max(0, (this._flatten.frames || 0) - fspent),
-                                     base, info, deadline)) fok = false;
-            }
+            var fspent = Math.max(0, this.stack.clock - (this._flatten.startedAt || 0));
+            var fFits = this.planInTime(this._flatten.moves, Math.max(0, (this._flatten.frames || 0) - fspent),
+                                        base, info, deadline);
+            if (!fok && fFits && settling(fm)) return waitFor(fm, 'flattenWait');
+            fok = fok && fFits;
             if (fok) {
                 this._flatten.moves = this._flatten.moves.slice(1);
                 if (!this._flatten.moves.length) this._flatten = null;
