@@ -84,6 +84,7 @@ typedef struct Board {
 } Board;
 #define BOARD_HEAD ((unsigned long)&((Board *)0)->p)
 #define BOARD_BYTES(b) (BOARD_HEAD + (unsigned long)(b)->nrows * sizeof(Panel) * (W + 1))
+#include "memory.h"
 
 static int32_t imax(int32_t a, int32_t b) { return a > b ? a : b; }
 static int32_t imin(int32_t a, int32_t b) { return a < b ? a : b; }
@@ -902,8 +903,6 @@ static int isQuiet(Board *b) {
 }
 static int32_t countdownRoom(Board *b);
 static void countdownFrame(Board *b);
-// Frames played in full, quiet, jumped by countdown and as countdown frames (ns_frame_stats 5..8).
-static int32_t fullFrames, quietFrames, jumpedFrames, lightFrames;
 static void runPhysics(Board *b) {
   b->nlanded = 0;
   b->wasToppedOut = isToppedOut(b);
@@ -915,14 +914,14 @@ static void runPhysics(Board *b) {
   if (b->displacement % 16 != 0) b->topCurRow = b->height - 1;
   if (swapQueued(b)) { doSwap(b, b->queuedSwapRow, b->queuedSwapCol); b->queuedSwapCol = 0; b->queuedSwapRow = 0; }
   if (b->quiet && !b->noQuiet) {
-    __atomic_add_fetch(&quietFrames, 1, __ATOMIC_RELAXED);
+    STAT(17)++;
     b->shakeTimeOnFrame = 0;
     b->nPrevActive = b->nActive;
   } else if (b->cdLeft > 0 && !b->noQuiet) {
-    __atomic_add_fetch(&lightFrames, 1, __ATOMIC_RELAXED);
+    STAT(19)++;
     countdownFrame(b);
   } else {
-    __atomic_add_fetch(&fullFrames, 1, __ATOMIC_RELAXED);
+    STAT(16)++;
     checkMatches(b);
     updatePanels(b);
     updateActivePanelCount(b);
@@ -1033,7 +1032,7 @@ static int countdown(Board *b, int32_t maxk) {
   b->quiet = 0;
   b->stopWatch += k; b->clock += k;
   b->cdLeft = imax(0, b->cdLeft - k);
-  __atomic_add_fetch(&jumpedFrames, k, __ATOMIC_RELAXED);
+  STAT(18) += k;
   return k;
 }
 // What a bot calls: press swap on the next frame with the cursor at (r, c).
@@ -1049,7 +1048,6 @@ static int canSwap(Board *b, int row, int col) {
   return canSwapPanels(b, P(b, row, col), P(b, row, col + 1), &cost);
 }
 
-#include "memory.h"
 
 // ------------------------------------------------------------------ the wire
 // HEAD (float64) holds the stack's scalars under pa-engine.js's own names --
@@ -1164,6 +1162,7 @@ EXPORT(nb_clone) void nb_clone(Board *dst, Board *src) { cloneBoard(dst, src); }
 #define NODE_BREAKS(b) ((b)->unseenBreaks)
 #define STEP_STATS 1
 #define COUNTDOWN 1
+#define SHARED_WALK 1
 #define SETTLE_CAP 900   // frames a settle runs at most, as the bot's resolve (engineboard.js settle)
 #include "search.h"
 // What node i's step did (MK_SETTLE), into the io body: clears, panels

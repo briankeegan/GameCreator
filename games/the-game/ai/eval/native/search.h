@@ -213,31 +213,11 @@ static int runFrame(Board *st, Arr *arr, int32_t *narr, int32_t input, int32_t *
 static Board *ensureBoard(Ctx *x, int i);
 // _engineAdvanceOn + _runFrom. Returns the child's index, STEP_NULL (refused)
 // or STEP_DEAD (deadAt set).
-// Frames played and steps made, per step kind, on every thread (ns_frame_stats).
-static int32_t framesOf[8], stepsOf[8];
-static int advance(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
-  Board *pb = ensureBoard(x, pi);
-  if (!pb) return STEP_ERR;
-  Node *par = NODE(x, pi);
-  Board *st = nb_new();
-  if (!st) return STEP_ERR;
-  cloneBoard(st, pb);
-  Bot bot; memset(&bot, 0, sizeof bot);
-  bot.raiseFrames = par->holdLeft; bot.raiseStarted = par->holdStarted;
-  Arr arr[MAXARR]; int32_t narr = par->narr;
-  for (int i = 0; i < narr; i++) arr[i] = par->arr[i];
-  int32_t input = par->fresh ? st->input : 0, f = 0, t0 = par->t;
-  if (!par->fresh) raiseStep(&bot, st, &input);
-  int swapping = kind == MK_SWAP || (kind == MK_SETTLE && mr > 0);
-#define GIVE0(code) do { nb_free(st); return (code); } while (0)
-#ifdef STEP_STATS
-  st->sNCombo = 0; st->sCleared = 0; st->sBroke = 0; st->sEarned = 0;
-#else
-  if (kind == MK_SETTLE) GIVE0(STEP_ERR);
-#endif
-  if (swapping) { beginWalk(&bot, mr, mc, x->swapGap); driveWalk(x, &bot, st, &input); }
-  else if (kind == MK_RAISE) { bot.raiseFrames = 20; bot.raiseStarted = 0; bot.cooldown = x->reaction; }
-  else if (kind == MK_HOLD || kind == MK_SETTLE) bot.cooldown = x->reaction;
+// The rest of a step, from the frame its walk (if any) has got to: st, bot,
+// the garbage on its way, the keys this frame and the frames played so far.
+static int advanceRest(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames, Board *st, Bot *botp, Arr *arr, int32_t narr,
+                       int32_t input, int32_t f, int32_t t0, int swapping, int guard0) {
+  Bot bot = *botp;
 #define REFUSED (swapping && !bot.w.active && !bot.lastSwap)
 #define GIVE(code) do { nb_free(st); return (code); } while (0)
 #define FRAME() do { if (tape) { if (tapeN >= tapeCap) GIVE(STEP_ERR); \
@@ -245,10 +225,10 @@ static int advance(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
                         tape[3 * tapeN + 2] = bot.raiseStarted; tapeN++; } \
                       int over_ = runFrame(st, arr, &narr, input, &f); if (st->err) GIVE(STEP_ERR); \
                       if (SWAP_PRESSED && swapping && st->swapDenied) GIVE(STEP_NULL); \
-                      if (over_) { deadAt = t0 + f; __atomic_add_fetch(&framesOf[kind & 7], f, __ATOMIC_RELAXED); __atomic_add_fetch(&stepsOf[kind & 7], 1, __ATOMIC_RELAXED); GIVE(STEP_DEAD); } } while (0)
+                      if (over_) { deadAt = t0 + f; STAT(kind & 7) += f; STAT(8 + (kind & 7))++; GIVE(STEP_DEAD); } } while (0)
   if (REFUSED || (bot.w.active && bot.w.retries)) GIVE(STEP_NULL);
   FRAME();
-  for (int guard = 0; guard < 4000; guard++) {
+  for (int guard = guard0; guard < 4000; guard++) {
     if (kind == MK_LONG && f >= frames) break;
     input = 0;
     raiseStep(&bot, st, &input);
@@ -281,10 +261,9 @@ static int advance(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
   }
 #undef FRAME
   if (st->err) GIVE(STEP_ERR);
-  __atomic_add_fetch(&framesOf[kind & 7], f, __ATOMIC_RELAXED); __atomic_add_fetch(&stepsOf[kind & 7], 1, __ATOMIC_RELAXED);
+  STAT(kind & 7) += f; STAT(8 + (kind & 7))++;
   Node *n = newNode(x);
   if (!n) GIVE(STEP_ERR);
-  par = NODE(x, pi);   // nodes may have moved
   n->st = st; n->t = t0 + f; n->holdLeft = bot.raiseFrames; n->holdStarted = bot.raiseStarted; n->fresh = 0;
   n->narr = narr;
   for (int i = 0; i < narr; i++) { n->arr[i] = arr[i]; n->arr[i].at -= f; }
@@ -294,8 +273,147 @@ static int advance(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
   return (int)(n - x->nodes);
 #undef REFUSED
 #undef GIVE
+}
+static int advance(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
+  Board *pb = ensureBoard(x, pi);
+  if (!pb) return STEP_ERR;
+  Node *par = NODE(x, pi);
+  Board *st = nb_new();
+  if (!st) return STEP_ERR;
+  cloneBoard(st, pb);
+  Bot bot; memset(&bot, 0, sizeof bot);
+  bot.raiseFrames = par->holdLeft; bot.raiseStarted = par->holdStarted;
+  Arr arr[MAXARR]; int32_t narr = par->narr;
+  for (int i = 0; i < narr; i++) arr[i] = par->arr[i];
+  int32_t input = par->fresh ? st->input : 0, f = 0, t0 = par->t;
+  if (!par->fresh) raiseStep(&bot, st, &input);
+  int swapping = kind == MK_SWAP || (kind == MK_SETTLE && mr > 0);
+#define GIVE0(code) do { nb_free(st); return (code); } while (0)
+#ifdef STEP_STATS
+  st->sNCombo = 0; st->sCleared = 0; st->sBroke = 0; st->sEarned = 0;
+#else
+  if (kind == MK_SETTLE) GIVE0(STEP_ERR);
+#endif
+  if (swapping) { beginWalk(&bot, mr, mc, x->swapGap); driveWalk(x, &bot, st, &input); }
+  else if (kind == MK_RAISE) { bot.raiseFrames = 20; bot.raiseStarted = 0; bot.cooldown = x->reaction; }
+  else if (kind == MK_HOLD || kind == MK_SETTLE) bot.cooldown = x->reaction;
+  return advanceRest(x, pi, kind, mr, mc, frames, st, &bot, arr, narr, input, f, t0, swapping, 0);
 #undef GIVE0
 }
+#ifdef SHARED_WALK
+// SHARED WALKS. A swap's walk presses only cursor keys and nothing but the
+// cursor reads them, so every swap from one parent plays the same board until
+// its own swap is pressed. advanceSwaps plays that board once, moves each
+// swap's cursor along it as the engine does (controls, a new row, then
+// applyCursorDirection) and at each press goes on from a copy of it with that
+// cursor (advanceRest). out[i] is what advance(x, pi, MK_SWAP, CR(mv[i]),
+// CC(mv[i]), 0) returns, dead[i] its deadAt. A walk the engine would turn
+// aside (a refused press), a swap already pressed and the key tape are left
+// to advance.
+#define MAXWALK 128
+#define WALKING (-98)   // out[i] while swap i walks
+typedef struct { int32_t row, col, dir, timer; } Cur;
+static void curControls(Cur *c, const Board *b, int32_t in) {
+  int dir = CD_NULL;
+  if (in & IN_UP) dir = DIR_UP;
+  else if (in & IN_DOWN) dir = DIR_DOWN;
+  else if (in & IN_LEFT) dir = DIR_LEFT;
+  else if (in & IN_RIGHT) dir = DIR_RIGHT;
+  if (dir == c->dir) { if (c->timer != b->curWaitTime) c->timer++; }
+  else { c->dir = dir; c->timer = 0; }
+}
+// After the frame: rows new rows rose (newRow, the top row then b->height), then applyCursorDirection.
+static void curAfter(Cur *c, const Board *b, int32_t rows) {
+  for (int k = 0; k < rows; k++) if (c->row != 0) c->row = bound(1, c->row + 1, b->height);
+  if (c->dir != CD_NULL && (c->timer == 0 || c->timer == b->curWaitTime) && !SETB(b->cursorLock)) {
+    c->row = bound(1, c->row + DIR_ROW[c->dir], b->topCurRow);
+    c->col = bound(1, c->col + DIR_COL[c->dir], W - 1);
+  } else c->row = bound(1, c->row, b->topCurRow);
+  if (c->timer != b->curWaitTime) c->timer++;
+}
+// driveWalk with the cursor at c: 1 when it presses swap, -1 when the press
+// would be refused.
+static int driveWalkC(Ctx *x, Bot *bot, const Board *b, const Cur *c, int32_t *input) {
+  Walk *w = &bot->w;
+  if (w->disp != UND && b->displacement > w->disp) w->row++;
+  w->disp = b->displacement;
+  int row = imax(1, imin(w->row, b->topCurRow)), col = imax(1, imin(w->col, W - 1));
+  if (c->row != row || c->col != col) {
+    if (w->timer > 0) { w->timer--; return 0; }
+    if (c->col < col) *input |= IN_RIGHT;
+    else if (c->col > col) *input |= IN_LEFT;
+    else if (c->row < row) *input |= IN_UP;
+    else *input |= IN_DOWN;
+    w->timer = x->cursorMoveFrames - 1;
+    return 0;
+  }
+  if (b->gameOverClock > 0) return -1;   // tryQueueSwap
+  w->active = 0; bot->lastSwap = 1; bot->cooldown = w->cooldown;
+  return 1;
+}
+static void advanceSwaps(Ctx *x, int pi, int n, const int32_t *mv, int32_t *out, int32_t *dead) {
+  int i;
+  Board *pb = ensureBoard(x, pi), *T = 0;
+  Node *par = NODE(x, pi);
+  int alone = !pb || tape || n > MAXWALK || pb->pressSwap || ((par->fresh ? pb->input : 0) & IN_SWAP) || !(T = nb_new());
+  if (alone) {
+    for (i = 0; i < n; i++) { out[i] = advance(x, pi, MK_SWAP, CR(mv[i]), CC(mv[i]), 0); dead[i] = out[i] == STEP_DEAD ? deadAt : 0; }
+    return;
+  }
+  cloneBoard(T, pb);
+  Bot tb; memset(&tb, 0, sizeof tb);
+  tb.raiseFrames = par->holdLeft; tb.raiseStarted = par->holdStarted;
+  Arr arr[MAXARR]; int32_t narr = par->narr;
+  for (i = 0; i < narr; i++) arr[i] = par->arr[i];
+  int32_t input = par->fresh ? T->input : 0, f = 0, t0 = par->t, walking = n;
+  if (!par->fresh) raiseStep(&tb, T, &input);
+#ifdef STEP_STATS
+  T->sNCombo = 0; T->sCleared = 0; T->sBroke = 0; T->sEarned = 0;
+#endif
+  Bot mb[MAXWALK]; Cur cu[MAXWALK]; int32_t in[MAXWALK];
+  for (i = 0; i < n; i++) {
+    memset(&mb[i], 0, sizeof mb[i]);
+    beginWalk(&mb[i], CR(mv[i]), CC(mv[i]), x->swapGap);
+    Cur c = { T->curRow, T->curCol, T->cursorDirection, T->curTimer };
+    cu[i] = c; out[i] = WALKING; dead[i] = 0;
+  }
+  for (int it = -1; walking > 0; it++) {
+    if (it >= 0) { input = 0; raiseStep(&tb, T, &input); }
+    for (i = 0; i < n; i++) {
+      if (out[i] != WALKING) continue;
+      int32_t k = input;
+      int r = driveWalkC(x, &mb[i], T, &cu[i], &k);
+      if (r < 0) { out[i] = advance(x, pi, MK_SWAP, CR(mv[i]), CC(mv[i]), 0); dead[i] = out[i] == STEP_DEAD ? deadAt : 0; walking--; continue; }
+      if (r > 0) {
+        Board *st = nb_new();
+        walking--;
+        if (!st) { out[i] = STEP_ERR; continue; }
+        cloneBoard(st, T);
+        st->curRow = cu[i].row; st->curCol = cu[i].col; st->cursorDirection = cu[i].dir; st->curTimer = cu[i].timer;
+        st->pressSwap = 1;   // tryQueueSwap
+        Bot b = mb[i]; b.raiseFrames = tb.raiseFrames; b.raiseStarted = tb.raiseStarted;
+        Arr a2[MAXARR];
+        for (int q = 0; q < narr; q++) a2[q] = arr[q];
+        out[i] = advanceRest(x, pi, MK_SWAP, CR(mv[i]), CC(mv[i]), 0, st, &b, a2, narr, k, f, t0, 1, it < 0 ? 0 : it + 1);
+        dead[i] = out[i] == STEP_DEAD ? deadAt : 0;
+        continue;
+      }
+      in[i] = k;
+    }
+    if (!walking) break;
+    int32_t rows = T->unseenRows, over = runFrame(T, arr, &narr, input, &f);
+    rows = T->unseenRows - rows;
+    for (i = 0; i < n; i++) {
+      if (out[i] != WALKING) continue;
+      if (T->err) { out[i] = STEP_ERR; continue; }
+      if (over) { out[i] = STEP_DEAD; dead[i] = t0 + f; STAT(MK_SWAP) += f; STAT(8 + MK_SWAP)++; continue; }
+      curControls(&cu[i], T, in[i]); curAfter(&cu[i], T, rows);
+    }
+    if (T->err || over) break;
+  }
+  nb_free(T);
+}
+#endif
 // _engineStep: a wait to `until` in whole beats (reaction + 1), a raise, a
 // hold or a swap. A wait that dies after the horizon is a dead end on the
 // parent's board.
@@ -393,12 +511,10 @@ EXPORT(ns_root) int ns_root(Ctx *x, int holdLeft, int holdStarted, int narr, int
 EXPORT(ns_step) int ns_step(Ctx *x, int pi, int kind, int mr, int mc, int until) { x->steps++; return lineStep(x, pi, kind, mr, mc, until); }
 EXPORT(ns_advance) int ns_advance(Ctx *x, int pi, int kind, int mr, int mc, int frames) { return advance(x, pi, kind, mr, mc, frames); }
 EXPORT(ns_dead_at) int ns_dead_at(void) { return deadAt; }
-EXPORT(ns_frame_stats) int ns_frame_stats(int kind, int steps) {
-#ifdef COUNTDOWN
-  if (kind >= 5) { int32_t *c = kind == 5 ? &fullFrames : kind == 6 ? &quietFrames : kind == 7 ? &jumpedFrames : &lightFrames, v = *c; *c = 0; return v; }
-#endif
-  int32_t v = steps ? stepsOf[kind & 7] : framesOf[kind & 7]; if (steps) stepsOf[kind & 7] = 0; else framesOf[kind & 7] = 0; return v;
-}
+// Frames played (steps 0) or steps made per step kind 0..4, on every thread;
+// kinds 5..8 the frames played full, quiet, jumped and as countdown frames.
+// Reading a count resets it.
+EXPORT(ns_frame_stats) int ns_frame_stats(int kind, int steps) { return statTake(kind >= 5 ? 16 + ((kind - 5) & 3) : (steps ? 8 : 0) + (kind & 7)); }
 // One decision from node pi as keys: the io body gets [keys, raise held,
 // raise started] per frame. Returns the frames written, or advance's refusal
 // (STEP_NULL, STEP_ERR); a line that dies still gives the keys up to it.
@@ -551,8 +667,13 @@ static void clearSeen(Ctx *x) { for (int32_t k = 0; k < x->seenCap; k++) x->seen
 static struct {
   int32_t gen, next, ntasks, ack, nworkers;
   Ctx *ctx; int32_t *tasks, *res, *deadAt;   // deadAt: per step, the frame a death was (settles only)
+  const int32_t *moves;   // SWAPS_TASK's moves, by slot
 } pool;
+#ifndef SPIN
+#define SPIN 200000
+#endif
 #define REPLAY_TASK (-3)   // a task's move: play node t[0]'s board again from its parent (replayBoard)
+#define SWAPS_TASK (-4)    // a task's move: node t[0]'s t[2] swaps, moves and slots from t[3] (advanceSwaps)
 #define ADVANCE_TASK (-1000)   // a task's move at or below: ns_advance_many's, ((row << 3 | col) << 3 | kind) = ADVANCE_TASK - mv
 static void runTasks(void) {
   Ctx *x = pool.ctx;
@@ -563,6 +684,20 @@ static void runTasks(void) {
     const int32_t *t = pool.tasks + 4 * i;
     int32_t mv = t[1];
     if (mv == REPLAY_TASK) { pool.res[t[3]] = replayBoard(x, t[0]) ? 0 : -1; continue; }
+#ifdef SHARED_WALK
+    if (mv == SWAPS_TASK) {
+      int32_t outs[MAXWALK], deads[MAXWALK], o = t[3];
+      advanceSwaps(x, t[0], t[2], pool.moves + o, outs, deads);
+      for (int q = 0; q < t[2]; q++) {
+        int32_t r = outs[q];
+        if (pool.deadAt) { pool.res[o + q] = r; pool.deadAt[o + q] = r == STEP_DEAD ? deads[q] : 0; continue; }   // ns_advance_many: kept
+        if (r == STEP_DEAD) r = STEP_NULL;   // lineStep: a swap that dies is no move
+        if (r >= 0) dropBoard(x, r);
+        pool.res[o + q] = r;
+      }
+      continue;
+    }
+#endif
     if (mv <= ADVANCE_TASK) {
       // ns_advance_many: the step's board is read straight after, so kept.
       int32_t m = ADVANCE_TASK - mv, r = advance(x, t[0], m & 7, CR(m >> 3), CC(m >> 3), t[2]);
@@ -594,6 +729,8 @@ EXPORT(ns_worker_loop) void ns_worker_loop(void) {
   __atomic_add_fetch(&pool.nworkers, 1, __ATOMIC_SEQ_CST);
   __builtin_wasm_memory_atomic_notify(&pool.nworkers, 1);
   for (;;) {
+    // A phase follows a phase closely: look for it a while before sleeping.
+    for (int spin = 0; spin < SPIN && __atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST) == last; spin++) {}
     while (__atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST) == last) __builtin_wasm_memory_atomic_wait32(&pool.gen, last, -1);
     last = __atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST);
     runTasks();
@@ -613,17 +750,30 @@ static int reserveNodes(Ctx *x, int32_t more) {
   x->nodes = nn; x->cap = cap;
   return 1;
 }
+#define TASK_COST(c_, k_) ((k_)[1] == -1 ? (k_)[2] - NODE(c_, (k_)[0])->t : (k_)[1] == REPLAY_TASK ? NODE(c_, (k_)[0])->t - NODE(c_, NODE(c_, (k_)[0])->prev)->t : (k_)[1] == SWAPS_TASK ? 12 * (k_)[2] : 0)
+// A phase's tasks, longest first, so no thread is left with a long one at the
+// end: a wait runs to `until`, a replay as long as its step did. Results go to
+// each task's own slot, so the order changes nothing else.
+static void longestFirst(Ctx *x, Vec *tasks) {
+  int32_t n = tasks->n / 4, *a = tasks->a;
+  for (int32_t i = 1; i < n; i++) {
+    int32_t t[4] = { a[4 * i], a[4 * i + 1], a[4 * i + 2], a[4 * i + 3] }, c = TASK_COST(x, t), j = i;
+    while (j > 0) { int32_t *p = a + 4 * (j - 1); if (TASK_COST(x, p) >= c) break; for (int q = 0; q < 4; q++) p[4 + q] = p[q]; j--; }
+    for (int q = 0; q < 4; q++) a[4 * j + q] = t[q];
+  }
+}
 // Runs the phase's steps on every thread; back when all are done.
 static int runPhase(Ctx *x, Vec *tasks, int32_t *res) {
-  int32_t n = tasks->n / 4, w = pool.nworkers;
+  int32_t n = tasks->n / 4, w = pool.nworkers, need = 0;
   if (!n) return 1;
-  if (!reserveNodes(x, n)) return 0;
+  for (int32_t i = 0; i < n; i++) need += tasks->a[4 * i + 1] == SWAPS_TASK ? tasks->a[4 * i + 2] : 1;   // a node a move
+  if (!reserveNodes(x, need)) return 0;
   // Boards for the workers, from this thread's spares, so memory goes round.
-  int32_t each = n / (w + 1) + 4;
+  int32_t each = need / (w + 1) + 4;
   for (int k = 1; k <= w && k < MAXTHREADS; k++)
-    while (freeCount[k] < each && freeOf[0]) {
-      Board *b = freeOf[0]; freeOf[0] = *(Board **)b; freeCount[0]--;
-      *(Board **)b = freeOf[k]; freeOf[k] = b; freeCount[k]++;
+    while (freeCount(k) < each && freeOf(0)) {
+      Board *b = freeOf(0); freeOf(0) = *(Board **)b; freeCount(0)--;
+      *(Board **)b = freeOf(k); freeOf(k) = b; freeCount(k)++;
     }
   pool.ctx = x; pool.tasks = tasks->a; pool.res = res; pool.ntasks = n; pool.ack = 0;
   x->par = 1;
@@ -632,6 +782,7 @@ static int runPhase(Ctx *x, Vec *tasks, int32_t *res) {
   __builtin_wasm_memory_atomic_notify(&pool.gen, (unsigned)-1);
   runTasks();
   int32_t a;
+  for (int spin = 0; spin < SPIN && __atomic_load_n(&pool.ack, __ATOMIC_SEQ_CST) < w; spin++) {}
   while ((a = __atomic_load_n(&pool.ack, __ATOMIC_SEQ_CST)) < w) __builtin_wasm_memory_atomic_wait32(&pool.ack, a, -1);
   x->par = 0;
   if (x->n > x->cap) x->n = x->cap;
@@ -642,17 +793,28 @@ static int runPhase(Ctx *x, Vec *tasks, int32_t *res) {
 // body, per step: the node, or -1 refused, or -2; the frame it died on; the
 // node's frame; its garbage rows broken. Returns n, or -3 for no room.
 EXPORT(ns_advance_many) int ns_advance_many(Ctx *x, int n) {
-  static Vec tasks, res, dead;
-  if (n < 0 || 5 * n > NBODY || !vreserve(&tasks, 4 * n) || !vreserve(&res, n) || !vreserve(&dead, n)) return -3;
+  static Vec tasks, res, dead, mvs;
+  if (n < 0 || 5 * n > NBODY || !vreserve(&tasks, 4 * n) || !vreserve(&res, n) || !vreserve(&dead, n) || !vreserve(&mvs, n)) return -3;
   tasks.n = 0;
   for (int i = 0; i < n; i++) {
     const int32_t *a = ioBody + 5 * i;
     // Parents first, here: two threads must not replay one board.
     if (a[0] < 0 || a[0] >= x->n || a[1] < 0 || a[1] > MK_SETTLE || a[2] < 0 || a[2] > 255 || a[3] < 0 || a[3] > 7 || !ensureBoard(x, a[0])) return -3;
+    mvs.a[i] = (a[2] << 3) | a[3];
+#ifdef SHARED_WALK
+    // a parent's swaps in a row, one task (advanceSwaps)
+    int32_t *g = tasks.n ? tasks.a + tasks.n - 4 : 0;
+    if (a[1] == MK_SWAP && a[4] == 0 && i > 0 && ioBody[5 * (i - 1) + 4] == 0 && ioBody[5 * (i - 1)] == a[0] && ioBody[5 * (i - 1) + 1] == MK_SWAP && g && g[0] == a[0] && g[3] + (g[1] == SWAPS_TASK ? g[2] : 1) == i
+        && (g[1] == SWAPS_TASK ? g[2] < MAXWALK : 1)) {
+      if (g[1] != SWAPS_TASK) { g[1] = SWAPS_TASK; g[2] = 1; }
+      g[2]++;
+      continue;
+    }
+#endif
     tasks.a[tasks.n++] = a[0]; tasks.a[tasks.n++] = ADVANCE_TASK - ((((a[2] << 3) | a[3]) << 3) | a[1]);
     tasks.a[tasks.n++] = a[4]; tasks.a[tasks.n++] = i;
   }
-  pool.deadAt = dead.a;
+  pool.deadAt = dead.a; pool.moves = mvs.a;
   int ok = runPhase(x, &tasks, res.a);
   pool.deadAt = 0;
   if (!ok) return -3;
@@ -716,6 +878,7 @@ EXPORT(ns_loop) int ns_loop(Ctx *x, int budget, int until, int full, int beam, i
           int32_t t[4] = { x->level.a[at + k], -1, until, poff.a[k] };
           for (j = 0; j < 4; j++) if (!vpush(&tasks, t[j])) return LOOP_ERR;
         }
+        longestFirst(x, &tasks);
         if (!runPhase(x, &tasks, res.a)) return LOOP_ERR;
         tasks.n = 0;
         for (i = 0; i < x->ntags; i++) proven.a[i] = verdict[i];
@@ -727,11 +890,21 @@ EXPORT(ns_loop) int ns_loop(Ctx *x, int budget, int until, int full, int beam, i
           int32_t r = res.a[o];
           if (r >= 0 && NODE(x, r)->t >= full && !NODE(x, r)->dead) { proven.a[tag] = 1; continue; }
           for (j = 1; j < nm; j++) {
+#ifdef SHARED_WALK
+            // the parent's swaps, one task (advanceSwaps)
+            if (j == 2 && nm - 2 <= MAXWALK) {
+              int32_t t[4] = { x->level.a[at + k], SWAPS_TASK, nm - 2, o + 2 };
+              for (int q = 0; q < 4; q++) if (!vpush(&tasks, t[q])) return LOOP_ERR;
+              break;
+            }
+#endif
             int32_t t[4] = { x->level.a[at + k], x->moves.a[o + j], 0, o + j };
             for (int q = 0; q < 4; q++) if (!vpush(&tasks, t[q])) return LOOP_ERR;
           }
           cum += nm - 1;
         }
+        longestFirst(x, &tasks);
+        pool.moves = x->moves.a;
         if (!runPhase(x, &tasks, res.a)) return LOOP_ERR;
       }
       for (int k = 0; k < e - at && budget > 0; k++) {
@@ -815,6 +988,7 @@ EXPORT(ns_loop) int ns_loop(Ctx *x, int budget, int until, int full, int beam, i
         int32_t t[4] = { keep[j], REPLAY_TASK, 0, j };
         for (int q = 0; q < 4; q++) if (!vpush(&tasks, t[q])) return LOOP_ERR;
       }
+      longestFirst(x, &tasks);
       if (!vreserve(&res, nk) || !runPhase(x, &tasks, res.a)) return LOOP_ERR;
       keep = x->keep.a;
     }

@@ -29,25 +29,26 @@ static void *grab(unsigned long n) {
 #define LOCAL
 #endif
 static LOCAL int32_t thId;          // 0 on the thread that runs the search
-static Board *freeOf[MAXTHREADS];
-static int32_t freeCount[MAXTHREADS];
+// Each thread's spare boards, on a cache line of its own: no thread writes
+// another's line on a step.
+static struct { Board *free; int32_t count; int32_t pad[14]; } __attribute__((aligned(64))) pool_[MAXTHREADS];
+// Counters, per thread (ns_frame_stats sums them): frames per step kind
+// 0..7, steps per kind 8..15, frames full, quiet, jumped, countdown 16..19.
+static struct { int32_t v[32]; } __attribute__((aligned(64))) stat_[MAXTHREADS];
+#define STAT(i) stat_[thId].v[i]
+static int32_t statTake(int i) { int32_t v = 0; for (int k = 0; k < MAXTHREADS; k++) { v += stat_[k].v[i]; stat_[k].v[i] = 0; } return v; }
+#define freeOf(k) pool_[k].free
+#define freeCount(k) pool_[k].count
 #define EXPORT(name) __attribute__((export_name(#name)))
-static int32_t liveBoards, peakBoards;   // boards out of the pool, now and at most
 EXPORT(nb_new) Board *nb_new(void) {
-  Board *b = freeOf[thId];
-  if (b) { freeOf[thId] = *(Board **)b; freeCount[thId]--; }
+  Board *b = freeOf(thId);
+  if (b) { freeOf(thId) = *(Board **)b; freeCount(thId)--; }
   else b = (Board *)grab(sizeof(Board));
-  if (b) {
-    int32_t n = __atomic_add_fetch(&liveBoards, 1, __ATOMIC_RELAXED), p;
-    while (n > (p = __atomic_load_n(&peakBoards, __ATOMIC_RELAXED)) && !__atomic_compare_exchange_n(&peakBoards, &p, n, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {}
-  }
   return b;
 }
-EXPORT(nb_free) void nb_free(Board *b) { *(Board **)b = freeOf[thId]; freeOf[thId] = b; freeCount[thId]++; __atomic_sub_fetch(&liveBoards, 1, __ATOMIC_RELAXED); }
-// Boards out of the pool: k = 0 now, 1 the most since the last reset (k = 2 resets it).
-EXPORT(nb_boards) int nb_boards(int k) { if (k == 2) { peakBoards = liveBoards; return 0; } return k ? peakBoards : liveBoards; }
+EXPORT(nb_free) void nb_free(Board *b) { *(Board **)b = freeOf(thId); freeOf(thId) = b; freeCount(thId)++; }
 // Spare boards on thread k's list; k = -1: the heap's top, in 64 KiB pages.
-EXPORT(nb_pool_stat) int nb_pool_stat(int k) { return k < 0 ? (int)(heapTop >> 16) : k < MAXTHREADS ? freeCount[k] : 0; }
+EXPORT(nb_pool_stat) int nb_pool_stat(int k) { return k < 0 ? (int)(heapTop >> 16) : k < MAXTHREADS ? freeCount(k) : 0; }
 static void copyBoard(Board *dst, const Board *src) { memcpy(dst, src, BOARD_BYTES(src)); }
 EXPORT(nb_copy) void nb_copy(Board *dst, Board *src) { copyBoard(dst, src); }
 
