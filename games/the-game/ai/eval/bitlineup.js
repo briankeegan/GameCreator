@@ -333,7 +333,7 @@
     // Calls go through this object so a test can replace one step with a
     // broken one and prove the check notices.
     var api = { bestInWindow: bestInWindow, revealed: revealed,
-                windowFrames: windowFrames, play: play,
+                windowFrames: windowFrames, play: play, timedOf: timedOf,
                 planAsTheyAppear: planAsTheyAppear,
                 converting: converting, landed: landed };
     return api;

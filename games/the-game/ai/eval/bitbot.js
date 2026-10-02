@@ -723,11 +723,40 @@
         // it, and a prediction that disagrees is a decision made about a board the
         // game will not produce -- measured as 26 decisions revisiting a position
         // the no-return filter had already refused.
+        //
+        // ON A BOARD IN MOTION, THE TIMED RESOLVE DECIDES WHAT THE SWAP DOES. The
+        // untimed one settles the board first, so a clear already flashing and the
+        // panels above it count as gone before the swap lands -- a break read off
+        // that board is a break the engine never makes. The timed one plays the
+        // swap at the frame the cursor reaches it, against the pops and falls in
+        // flight, and is held frame-exact to the engine by gate_breaklive.
+        var moving = false;
+        if (board.motion) {
+            for (r = 1; r <= board.height && !moving; r++) {
+                for (c = 1; c <= W; c++) {
+                    var mo = board.motion[r] && board.motion[r][c];
+                    if (mo && mo.state && mo.state !== 'normal') { moving = true; break; }
+                }
+            }
+        }
+        var fr = this.stack.frames;
         var legal = bit.legalSwapsOf(base);
         for (i = 0; i < legal.length; i++) {
             r = legal[i][0]; c = legal[i][1];
             if (!bit.swapMasks(base, r, c)) continue;       // refused: not a move
             var res = bit.resolveFromMasks(base, true);
+            if (moving) {
+                var tm = lineup.timedOf(board, fr, board.height);
+                if (tm) {
+                    var rt = bit.resolveFromMasks(tm.st, false, {
+                        frames: tm.opts.frames, hover: tm.opts.hover, hovering: tm.opts.hovering,
+                        chaining: tm.opts.chaining, swap: [r, c],
+                        at: travel.cost(info.cursorRow, info.cursorCol, r, c) });
+                    if (rt.scope === 'refused') { bit.swapMasks(base, r, c); continue; }
+                    res = { scope: rt.scope, chain: rt.chain, total: rt.total, rounds: rt.rounds,
+                            settled: res.scope === rt.scope ? res.settled : null };
+                }
+            }
             // A MOVE THAT BREAKS A SLAB HAS NO SETTLED BOARD. The engine draws the
             // converted row's colours from its own rng, so the cascade past the
             // break is unknowable and the resolver refuses to invent it. The BREAK
