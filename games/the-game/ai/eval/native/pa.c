@@ -910,7 +910,7 @@ static void runPhysics(Board *b) {
   updateRiseLock(b);
   updateSpeed(b);
   if (b->passiveRaise || b->preventManualRaise) { if (advancePassiveRaise(b)) { if (checkDeath(b)) recordDeath(b); } }
-  if (!b->wasToppedOut && !hasFallingGarbage(b)) b->health = b->maxHealth;
+  if (!b->wasToppedOut && b->health != b->maxHealth && !hasFallingGarbage(b)) b->health = b->maxHealth;
   if (b->displacement % 16 != 0) b->topCurRow = b->height - 1;
   if (swapQueued(b)) { doSwap(b, b->queuedSwapRow, b->queuedSwapCol); b->queuedSwapCol = 0; b->queuedSwapRow = 0; }
   if (b->quiet && !b->noQuiet) {
@@ -971,7 +971,7 @@ static void run(Board *b) {
 static int32_t countdownRoom(Board *b) {
   int32_t k = 0x7fffffff, popping = 0;
   int n = rowsTo(b), top = imin(n - 1, b->height + 2);
-  for (int r = 1; r < n; r++)
+  for (int r = n - 1; r >= 1; r--)   // from the top, where what moves usually is
     for (int c = 1; c <= W; c++) {
       Panel *p = P(b, r, c);
       const int32_t *f = p->f;
@@ -1024,7 +1024,7 @@ static int countdown(Board *b, int32_t maxk) {
   b->nlanded = 0;
   b->wasToppedOut = isToppedOut(b);
   b->riseLock = 1;
-  if (!b->wasToppedOut && !hasFallingGarbage(b)) b->health = b->maxHealth;
+  if (!b->wasToppedOut && b->health != b->maxHealth && !hasFallingGarbage(b)) b->health = b->maxHealth;
   if (b->displacement % 16 != 0) b->topCurRow = b->height - 1;
   b->curTimer = imin(b->curWaitTime, b->curTimer + 2 * k);   // controls and applyCursorDirection each count it
   b->curRow = bound(1, b->curRow, b->topCurRow);
