@@ -2705,8 +2705,12 @@
         // on: a break converts six and its own match spends three, so no clear
         // bought on the way is paid back. Health is the one thing worth more:
         // _waitForDrain still fires a clear rather than let it drain.
+        // TOPPED OUT THE WHOLE BOARD IS THE RESERVE. Nothing lands while the board
+        // is topped out, so a clear that converts nothing buys only time, and the
+        // health guard is what buys time; every panel is kept for a break.
         function spendsReserve(r, after) {
             if (!r || !(r.total > 0) || r.brokeGarbage) return false;
+            if (info.toppedOut) return true;
             var sh = bitoptions.shapeOf(after);
             return !!sh && sh.mat < WORKING_ROWS;
         }
@@ -3315,7 +3319,7 @@
 
         if (rev && rev.best && rev.best.swap && !rev.best.broke && (rev.best.total || 0) > 0) {
             var rsh = bitoptions.shapeOf(base);
-            if (rsh && rsh.mat - rev.best.total / W < WORKING_ROWS) rev = null;
+            if (info.toppedOut || (rsh && rsh.mat - rev.best.total / W < WORKING_ROWS)) rev = null;
         }
         if (rev && rev.best && rev.best.swap) {
             this.counts.revealSwaps++;
