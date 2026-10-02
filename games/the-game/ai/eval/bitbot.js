@@ -4092,7 +4092,24 @@
     };
 
     BitBot.prototype._decideGated = function () {
-        return this._waitForDrain(this._decideRuled());
+        return this._onePlan(this._waitForDrain(this._decideRuled()));
+    };
+
+    // ONE PLAN AT A TIME. Each route that plays a plan keeps it in its own field, and
+    // with more than one in flight two routes take turns -- each playing the next move of
+    // its own plan, each undoing the other's. So the move actually played decides which
+    // plan is live: the route that played it keeps its plan and every other is dropped.
+    // A hold or a raise moves no panel and leaves the plan where it was.
+    var PLAN_OF = { digPlan: '_dig', breakReach: '_dig', attackPlan: '_attack', bestAttack: '_attack',
+                    survivalPlan: '_plan', flatten: '_flatten', levelFirst: '_flatten' };
+    BitBot.prototype._onePlan = function (d) {
+        if (!d || d.kind !== 'swap') return d;
+        var keep = PLAN_OF[d.via] || null;
+        if (keep !== '_dig') { this._dig = null; this._digIsBreak = false; }
+        if (keep !== '_attack') this._attack = null;
+        if (keep !== '_plan') this._plan = null;
+        if (keep !== '_flatten') this._flatten = null;
+        return d;
     };
 
     // TOPPED OUT, HEALTH IS NEVER SPENT.
