@@ -468,25 +468,35 @@
     var v = new Int32Array(MEM.buffer, base, o.size >> 2);
     function g(k) { return v[o[k] >> 2]; }
     function live() { if (S.gen !== gen) throw new Error('Native: a node from an earlier decision was read'); }
-    var arr = [], a0 = o.arr >> 2;
-    for (var k = 0; k < g('narr'); k++) {
-      var ar = { at: v[a0 + 5 * k], width: v[a0 + 5 * k + 1], height: v[a0 + 5 * k + 2], isChain: v[a0 + 5 * k + 3] === 1 };
-      if (v[a0 + 5 * k + 4] & 1) ar.isMetal = true;
-      if (v[a0 + 5 * k + 4] & 2) ar.capped = true;
-      arr.push(ar);
+    // The node's garbage on its way and its board's key, read when first
+    // asked for: most nodes are never asked. Read from the node where it is
+    // then, since the node array moves as it grows.
+    function fresh() { live(); return new Int32Array(MEM.buffer, (X.ns_node(S.ctx, i) >>> 0), o.size >> 2); }
+    function readArrivals() {
+      var w = fresh(), out = [], a0 = o.arr >> 2;
+      for (var k = 0; k < w[o.narr >> 2]; k++) {
+        var ar = { at: w[a0 + 5 * k], width: w[a0 + 5 * k + 1], height: w[a0 + 5 * k + 2], isChain: w[a0 + 5 * k + 3] === 1 };
+        if (w[a0 + 5 * k + 4] & 1) ar.isMetal = true;
+        if (w[a0 + 5 * k + 4] & 2) ar.capped = true;
+        out.push(ar);
+      }
+      return out;
     }
-    var keyn = g('keyn'), k0 = o.key >> 2, key = '';
-    for (k = 0; k < keyn; k++) {
-      var c = v[k0 + k], col = c & 255;
-      key += (col === 255 ? '#' : col === 254 ? '%' : col) + KEYCH[(c >> 8) & 15] + ((c >> 12) || '') + ',';
+    function readKey() {
+      var w = fresh(), keyn = w[o.keyn >> 2], k0 = o.key >> 2, key = '';
+      for (var k = 0; k < keyn; k++) {
+        var c = w[k0 + k], col = c & 255;
+        key += (col === 255 ? '#' : col === 254 ? '%' : col) + KEYCH[(c >> 8) & 15] + ((c >> 12) || '') + ',';
+      }
+      return key;
     }
     var rise = new Float64Array(MEM.buffer, base + o.riseTimer, 1)[0], height = S.template.height, st = null, grid = null;
     var n = {
-      _nat: S, _i: i, t: g('t'), hold: { left: g('holdLeft'), started: g('holdStarted') === 1 }, arrivals: arr, fresh: g('fresh') === 1,
+      _nat: S, _i: i, t: g('t'), hold: { left: g('holdLeft'), started: g('holdStarted') === 1 }, fresh: g('fresh') === 1,
       pos: [g('pos0'), g('pos1')],
       carry: { stopTime: g('stopTime'), preStopTime: g('preStopTime'), shakeTime: g('shakeTime'), displacement: g('displacement'),
                riseTimer: rise, speed: g('speed') },
-      b: { key: key, height: height, width: 6, _garb: g('garb'), _top: g('top'),
+      b: { height: height, width: 6, _garb: g('garb'), _top: g('top'),
            legalSwaps: function () {
              live();
              var m = X.ns_legal(S.ctx, i), body = new Int32Array(MEM.buffer, (X.nb_io_body() >>> 0), Math.max(0, m)), out = [];
@@ -496,6 +506,9 @@
            } }
     };
     if (g('dead')) n.dead = true;
+    var arrivals = null, key = null;
+    Object.defineProperty(n, 'arrivals', { enumerable: true, configurable: true, get: function () { return arrivals || (arrivals = readArrivals()); }, set: function (x) { arrivals = x; } });
+    Object.defineProperty(n.b, 'key', { enumerable: true, configurable: true, get: function () { return key !== null ? key : (key = readKey()); }, set: function (x) { key = x; } });
     Object.defineProperty(n.b, 'grid', { enumerable: true, configurable: true, get: function () {
       if (grid) return grid;
       live();
