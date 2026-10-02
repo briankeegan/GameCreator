@@ -98,7 +98,8 @@ function gridOf(st) {
 }
 
 // ---------------------------------------------------------------- the mind
-// ABORT[0]: the id of a question the mind should stop working on.
+// ABORT[0]: the newest question the mind should stop working on; every one
+// before it is stopped too.
 var ABORT = new Int32Array(new SharedArrayBuffer(4));
 var mind = new wt.Worker(path.join(__dirname, 'survivor_mind.js'), { workerData: { profile: PROFILE, threads: opt.threads, abort: ABORT } });
 var mindReady = false, nextId = 1, pending = null, answers = [], thinking = [];

@@ -89,6 +89,10 @@ var NativeMem = function () {
 
 wt.parentPort.on('message', function (m) {
   if (m.type === 'reset') { if (bot && bot._nat) nat = bot._nat; bot = null; snap = null; return; }
+  // A question at or before the one the frame loop stopped is not wanted:
+  // ids only grow, and only the newest is ever waited on.
+  function stale() { return !!cfg.abort && Atomics.load(cfg.abort, 0) >= m.id; }
+  if (stale()) { wt.parentPort.postMessage({ id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: 0 }); return; }
   var t0 = Date.now(), board = PA.revive(m.board), arrivals = [], out;
   // Garbage on its way arrives that many frames on (search.h runFrame).
   arrivals = SH.arrivalsFrom(board, m.arrivals || []);
@@ -130,6 +134,7 @@ wt.parentPort.on('message', function (m) {
       br = SH.breakMoves(BS, board, { left: m.hold.left, started: m.hold.started }, arrivals, cfg.profile.breakDepth, cfg.profile.lineup && SH.popLeft(board) ? SH.popLeft(board) + LINEUP_AFTER : 0,
                          Date.now() + (m.ms > 0 ? Math.max(LINEUP_MIN_MS, m.ms * LINEUP_SHARE) : LINEUP_MAX_MS));
       brMs = Date.now() - tb;
+      if (stale()) throw P.ABORTED;
       want = br.depth ? br.moves : {};
       // BANK PANELS BEFORE THE GARBAGE LANDS: once a slab is on the board the
       // stack is topped out and cannot rise, so the panels there are all
@@ -174,8 +179,8 @@ wt.parentPort.on('message', function (m) {
     var nodesPerMs = rates.length ? Math.min.apply(null, rates) : 30;
     var FULL = P.prototype.SURVIVE_SEARCH_BUDGET, CHEAP = Number(process.env.GC_SURVIVOR_CHEAP) || P.prototype.SURVIVE_SEARCH_BUDGET_CHEAP;
     bot.SURVIVE_SEARCH_BUDGET = m.ms > 0 ? Math.max(CHEAP, Math.min(FULL, Math.round(m.ms * nodesPerMs * SPEND))) : FULL;
-    // The frame loop stops a question it no longer needs (cfg.abort holds its id).
-    bot._abort = cfg.abort ? function () { return Atomics.load(cfg.abort, 0) === m.id; } : null;
+    // The frame loop stops a question it no longer needs (stale).
+    bot._abort = cfg.abort ? stale : null;
     var d;
     var t1 = Date.now();
     var ranked = [], key = function (c) { return c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[1] : c.kind; };

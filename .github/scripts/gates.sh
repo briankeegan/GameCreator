@@ -183,7 +183,8 @@ gate_resolve_breaks() {
 # cut on that. They move fine — that script had no garbage, no cursor and no
 # live game.
 gate_garbage_rules() {
-  node games/the-game/ai/eval/garbage.test.js
+  node games/the-game/ai/eval/garbage.test.js &&
+  node games/the-game/ai/eval/survivor_mind.test.js
 }
 
 # EVERY FEATURE IS A SHARE, NOT A COUNT.
