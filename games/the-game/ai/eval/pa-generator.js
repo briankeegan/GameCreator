@@ -1,24 +1,9 @@
-// THE SERVER'S PANEL GENERATOR: what rows and garbage colours a seed deals.
-//
-// common/lib/LoveRandom.lua (LÖVE's RandomGenerator: xorshift64*, seeded by
-// Wang's 64-bit hash), common/engine/PanelGenerator.lua and
-// common/engine/GeneratorSource.lua, line for line. One GeneratorSource per
-// stack; every stack in a match gets the match's seed. Two streams that never
-// share a draw: rows from `seed` (adjacentDenialFrequency of the level),
-// garbage colours from floor((seed + 5) / 2) (always deny a horizontal pair).
-//
-// adjacentDenialFrequency must be the double the Lua holds: %.14g of k/7
-// (JsonSafePrecision), never k/7 itself; safeFraction gives it.
-//
-// pa_generator.test.js holds it to the Lua's own asserted boards and to every
-// buffer a recorded match dealt.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.PAGenerator = factory();
 }(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  // LoveRandom.lua. BigInt only to seed; a draw is 32-bit halves.
   function wangHash64(k) {
     var M = (BigInt(1) << BigInt(64)) - BigInt(1), b = function (n) { return BigInt(n); };
     k = ((~k) + (k << b(21))) & M; k = k ^ (k >> b(24));
@@ -51,7 +36,6 @@
   LoveRng.prototype.random = function (min, max) { return Math.floor(this.random01() * (max - min + 1)) + min; };
   LoveRng.prototype.copy = function () { var r = new LoveRng(); r.hi = this.hi; r.lo = this.lo; return r; };
 
-  // PanelGenerator.lua. A shock letter counts as its colour; '0' never blocks.
   var TO_NUM = { J: 0, j: 0 }, UP = '0ABCDEFGHI', LO = '0abcdefghi', i;
   for (i = 0; i <= 9; i++) { TO_NUM[String(i)] = i; if (i) { TO_NUM[UP[i]] = i; TO_NUM[LO[i]] = i; } }
   function isDigit(ch) { return ch >= '0' && ch <= '9'; }   // Lua tonumber(one char) ~= nil
@@ -96,7 +80,6 @@
     var g = new PanelGenerator(); g.rng = this.rng.copy(); g.adf = this.adf; g.accepted = this.accepted; g.denied = this.denied; return g;
   };
 
-  // GeneratorSource.lua: every colour count 0 or 2 is a bad row.
   function isBadRow(r) {
     var c = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], k;
     for (k = 0; k < r.length; k++) c[+r[k]]++;
@@ -118,7 +101,6 @@
     if (this.shockEnabled) p = this.panelGenerator.assignMetalLocations(p, last);
     this.panelBuffer += p;
   };
-  // Seven rows, then 2W cells taken off the tops of random columns.
   GeneratorSource.prototype.generateStartingBoard = function () {
     var w = this.width, k;
     for (k = 0; k < 7; k++) this.growPanelBuffer();
@@ -131,7 +113,6 @@
     }
     return a.join('').slice(w);
   };
-  // createNewRow's take: the raw row, letters and all (the stack converts shock).
   GeneratorSource.prototype.nextRowString = function () {
     var w = this.width;
     if (this.panelBuffer.length <= 2 * w) this.growPanelBuffer();
@@ -139,7 +120,6 @@
     this.panelBuffer = this.panelBuffer.slice(w);
     return r;
   };
-  // getGarbagePanelRowString: a converting cell at column c takes r[c-1].
   GeneratorSource.prototype.garbageRowString = function () {
     var w = this.width;
     if (this.garbagePanelBuffer.length <= 10 * w) {
@@ -161,9 +141,6 @@
     g.panelBuffer = this.panelBuffer; g.garbagePanelBuffer = this.garbagePanelBuffer;
     return g;
   };
-  // A fresh source brought to a recorded stack's buffers: the eight rows
-  // starting_state deals, then rows and garbage rows until each buffer is the
-  // recorded one. False if no count of takes gets there.
   GeneratorSource.prototype.catchUp = function (panelBuffer, garbagePanelBuffer) {
     var k;
     for (k = 0; k < 8; k++) this.nextRowString();
@@ -172,7 +149,6 @@
     for (k = 0; this.garbagePanelBuffer !== garbagePanelBuffer; k++) { if (k > 2000) return false; this.garbageRowString(); }
     return true;
   };
-  // JsonSafePrecision.fractionToSafePrecision.
   function safeFraction(n, d) { var v = n / d; return Math.floor(v) === v ? v : Number(v.toPrecision(14)); }
 
   return { LoveRng: LoveRng, PanelGenerator: PanelGenerator, GeneratorSource: GeneratorSource, isBadRow: isBadRow, safeFraction: safeFraction };

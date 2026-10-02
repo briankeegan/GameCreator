@@ -1,22 +1,3 @@
-// THE SERVER'S ENGINE, IN JS. The Panel Attack server (panel-game, bramp
-// branch) plays VS on common/engine/{Stack,Panel,checkMatches,WigglePay}.lua.
-// panel-engine.js is this game's own engine and differs from it in ways a
-// live match reaches (shock panels, garbage queued by priority, input read
-// before physics, the cursor's repeat, swap stalling by panel id), so a bot
-// that plays on that server searches on this: the Lua, line for line, for one
-// stack from Match:start (create) or from a recorded state (fromLua), with
-// the names panel-engine.js uses so puyocpu.js can drive it.
-//
-// Lua nil is null here, and Lua truthiness is kept where the Lua relies on it
-// (0 is true in Lua: a fell_from_garbage or shake_time of 0 is still "set").
-// Garbage this stack sends goes nowhere: nothing on this stack's own board
-// depends on it.
-//
-// Rows and garbage colours come from a SOURCE: `unseen` deals the colours no
-// player can know yet (as puyocpu.js's search does); `Seeded` deals what the
-// server's generator deals from the match seed (pa-generator.js);
-// `Recorded` deals a list. pa_engine.test.js holds all of it to recordings
-// lua/engineRecord.lua makes in a panel-game checkout.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.PAEngine = factory();
@@ -47,7 +28,6 @@
   function wrap(a, b, c) { return ((b - a) % (c - a + 1) + (c - a + 1)) % (c - a + 1) + a; }
   function set(v) { return v !== null && v !== undefined && v !== false; }   // Lua truthiness
 
-  // ----------------------------------------------------------------- panels
   function clearFlags(p, clearChaining) {
     p.state = 'normal';
     p.comboIndex = null; p.comboSize = null; p.swapFromLeft = null; p.dontSwap = null; p.queuedHover = null;
@@ -290,13 +270,6 @@
     p.comboSize = comboSize;
   }
 
-  // ----------------------------------------------------------------- sources
-  // Rows the search cannot see yet, and the colours a break it cannot see
-  // yet turns into (puyocpu.js unseenRow / unseenBreak, per column).
-  // AN UNSEEN CELL IS A COLOUR OF ITS OWN, so it can match nothing under the Lua's own
-  // canMatch: rows take 30..119 and breaks 130..219, each repeating only after
-  // fifteen rows, so no three in a line are ever equal. Below 254, where the native
-  // search's board key keeps a colour's low byte apart from garbage's.
   var UNSEEN_ROWS = 30, UNSEEN_BREAKS = 130, UNSEEN_SPAN = 90;
   function unseenColour(base, k, c) { return base + ((W * k + c - 1) % UNSEEN_SPAN); }
   function Unseen() {}
@@ -311,7 +284,6 @@
     return o;
   };
   Unseen.prototype.copy = function () { return this; };
-  // What a recording says was dealt, in order.
   function Recorded(rows, garbageRows) { this.rows = rows; this.garbageRows = garbageRows; this.r = 0; this.g = 0; }
   Recorded.prototype.row = function () {
     if (this.r >= this.rows.length) throw new Error('PAEngine: the recording dealt no more rows');
@@ -324,7 +296,6 @@
     return o;
   };
   Recorded.prototype.copy = function () { var x = new Recorded(this.rows, this.garbageRows); x.r = this.r; x.g = this.g; return x; };
-  // What a seed deals (pa-generator.js's GeneratorSource, the server's).
   function Seeded(generator) { this.gen = generator; }
   Seeded.prototype.row = function () { return this.gen.nextRowString(); };
   Seeded.prototype.garbageRow = function () {
@@ -333,8 +304,6 @@
     return o;
   };
   Seeded.prototype.copy = function () { return new Seeded(this.gen.copy()); };
-  // GeneratorSource convertMetalPanels. An unseen row comes as colours (Unseen):
-  // never shock, since where shock may go is not known yet.
   function rowColours(s, metal) {
     if (Array.isArray(s)) return s.slice();               // unseen: colours already, never shock
     var out = [];
@@ -348,7 +317,6 @@
     return out;
   }
 
-  // ----------------------------------------------------------------- stack
   function Stack() {}
   Stack.prototype.frameTimes = null;
   Stack.prototype.idOf = function () { return ++this.panelIdCount; };
@@ -508,7 +476,6 @@
     if (raise && !this.preventManualRaise) { this.manualRaise = true; this.manualRaiseYet = false; }
   };
 
-  // ---- WigglePay
   Stack.prototype.wiggleActive = function () {
     var bh = this.behaviours;
     if (bh.swapStallingMode === 0 || bh.swapStallingPunish === 0) return false;
@@ -536,7 +503,6 @@
     } else if (this.swapStallBacklog.length > 0) this.swapStallBacklog = [];
   };
 
-  // ---- swapping
   Stack.prototype.canSwapPanels = function (p1, p2) {
     if (Math.abs(p1.col - p2.col) !== 1 || p1.row !== p2.row) return [false];
     if (this.inCountdown || this.clock <= 1) return [false];
@@ -586,7 +552,6 @@
     this.events.push({ type: 'swap', row: row, col: col });
   };
 
-  // ---- matches (checkMatches.lua)
   Stack.prototype.getMatchingPanels = function () {
     var panels = this.panels, cands = [], matching = [], row, col, p, i, j;
     for (row = 1; row <= this.height; row++) for (col = 1; col <= W; col++) {
@@ -607,7 +572,6 @@
     return matching;
   };
   function sortByPopOrder(list, garbage) {
-    // Positions are distinct, so the order is total and any sort agrees with table.sort.
     return list.sort(function (a, b) {
       if (a.row === b.row) return garbage ? b.col - a.col : a.col - b.col;
       return garbage ? a.row - b.row : b.row - a.row;
@@ -648,8 +612,6 @@
       }
     }
     if (!matchedIds.length) return null;
-    // Contact between pieces, both ways (Lua reads garbageMatching[a][b] with
-    // pairs, whose order does not change which ids are reached).
     var contact = {};
     for (i = 0; i < ids.length; i++) {
       contact[ids[i]] = {};
@@ -745,7 +707,6 @@
     }
   };
 
-  // ---- rows and garbage
   Stack.prototype.removeExtraRows = function () {
     for (var row = this.top(); row >= this.height + 1; row--) {
       for (var col = 1; col <= W; col++) if (this.panels[row][col].color !== 0) return;
@@ -802,7 +763,6 @@
     }
     this.events.push({ type: 'garbageDrop', width: width, height: height });
   };
-  // GarbageQueue order: priority rising with index, the next to drop last.
   function orderBefore(a, b) {
     if (a.isChain === b.isChain) {
       if (a.isChain) {
@@ -817,8 +777,6 @@
     }
     return !a.isChain;
   }
-  // BaseStack:receiveGarbage: every piece pushed, the queue re-ordered after
-  // each. (Pieces the order cannot tell apart are the same garbage.)
   Stack.prototype.receiveGarbage = function (list) {
     for (var i = 0; i < list.length; i++) {
       var g = list[i];
@@ -834,7 +792,6 @@
     }
   };
 
-  // ---- the frame
   Stack.prototype.updatePanels = function () {
     this.shakeTimeOnFrame = 0;
     for (var row = 1; row <= this.top(); row++) for (var col = 1; col <= W; col++) updatePanel(this, this.panels[row][col]);
@@ -861,8 +818,6 @@
     this.removeExtraRows();
     if (this.checkDeath()) this.recordDeath();
   };
-  // Stack:runCountdown, controller input, engine "049" (no cursorLock). The
-  // timer is tested against nil: 0 is true in Lua.
   Stack.prototype.runCountdown = function () {
     this.inCountdown = true;
     this.riseLock = true;
@@ -883,7 +838,6 @@
       if (set(this.countdownTimer)) this.countdownTimer--;
     }
   };
-  // Stack:run.
   Stack.prototype.run = function () {
     if (this.gameOverClock > 0 && this.clock >= this.gameOverClock) return;
     var pressed = this.pressSwap || !!(this.nextInput & IN.swap), before = this.swapCount;
@@ -899,8 +853,6 @@
     else if (this.behaviours.delaySimulationUntil === 'firstInput' || this.behaviours.delaySimulationUntil === 'firstSwap') throw new Error('PAEngine: delaySimulationUntil ' + this.behaviours.delaySimulationUntil);
     this.applyCursorDirection(this.cursorDirection);
     if (this.swapThisFrame) this.tryQueueSwapPanels(this.panels[this.curRow][this.curCol], this.panels[this.curRow][this.curCol + 1]);
-    // A swap pressed and not taken, for whatever reason (not allowed, or one
-    // already queued), is a swap refused.
     if (pressed && this.swapCount === before) this.swapDeniedThisFrame = true;
     this.handleManualRaise();
     if (this.stopWatchIsRunning) {
@@ -914,25 +866,19 @@
     this.prevInput = this.input;
   };
 
-  // ---- what a bot calls (panel-engine.js's names)
   function bitsOf(i) {
     if (typeof i === 'number') return i;
     var b = 0;
     if (i) for (var k in IN) if (i[k]) b |= IN[k];
     return b;
   }
-  // The input the next frame runs with.
   Stack.prototype.setInput = function (input) { this.nextInput = bitsOf(input); this.input = input; };
-  // Press swap on the next frame, with the cursor at (row, col). Whether the
-  // swap is taken is up to that frame (Stack:run queues it after physics,
-  // at the cursor as it then is); swapDeniedThisFrame says it was not.
   Stack.prototype.tryQueueSwap = function (row, col) {
     if (this.gameOverClock > 0) return false;
     if (row !== this.curRow || col !== this.curCol) return false;
     this.pressSwap = true;
     return true;
   };
-  // Whether a swap at (row, col) would be allowed on the board as it is now.
   Stack.prototype.canSwap = function (row, col) {
     if (row < 1 || row > this.height || col < 1 || col >= W) return false;
     return this.canSwapPanels(this.panels[row][col], this.panels[row][col + 1])[0];
@@ -943,7 +889,6 @@
     return 0;
   };
 
-  // ---- copies
   function copyPanel(p) { var q = Object.create(Panel.prototype); for (var k in p) if (Object.prototype.hasOwnProperty.call(p, k)) q[k] = p[k]; return q; }
   Stack.prototype.copy = function () {
     var s = Object.create(Stack.prototype), k;
@@ -960,7 +905,6 @@
     return s;
   };
 
-  // ---- from the Lua (lua/engineRecord.lua's state)
   var PANEL_FROM_LUA = { row: 'row', column: 'col', id: 'id', color: 'color', chaining: 'chaining', matching: 'matching',
     timer: 'timer', initial_time: 'initialTime', pop_time: 'popTime', pop_index: 'popIndex', x_offset: 'xOffset',
     y_offset: 'yOffset', width: 'gWidth', height: 'gHeight', shake_time: 'shakeTime', isGarbage: 'isGarbage', state: 'state',
@@ -981,9 +925,6 @@
     stopWatch: 'stopWatch', stopWatchIsRunning: 'stopWatchIsRunning', game_over_clock: 'gameOverClock', in_countdown: 'inCountdown',
     cursorLock: 'cursorLock', height: 'height', width: 'width', countdown_timer: 'countdownTimer',
     animatingCursorDuringCountdown: 'animatingCursorDuringCountdown', countdownOffsetFrames: 'countdownOffsetFrames' };
-  // A stack from a recorded state. `level` is the recording's levelData,
-  // behaviours and stackOverConditions; `source` deals its rows.
-  // Lua writes an empty table as {}.
   function list(x) { return Array.isArray(x) ? x : []; }
   function fromLua(state, level, source) {
     var s = Object.create(Stack.prototype), k, lua = state.stack;
@@ -1026,11 +967,6 @@
     return s;
   }
 
-  // common/data/LevelPresets.lua's modern levels: startingSpeed, shockFrequency,
-  // shockCap, colors, adjacentDenialFrequency (k/7 at %.14g, as
-  // JsonSafePrecision holds it), maxHealth, stop combo/chain/danger constants,
-  // coefficient, danger coefficient, HOVER, GARBAGE_HOVER, FLASH, FACE, POP.
-  // Every one rises by time and stops by the modern formula.
   function f7(k) { return Number((k / 7).toPrecision(14)); }
   var MODERN = [null,
     [1, 12, 21, 5, 0, 121, -20, 80, 160, 20, 20, 12, 41, 44, 20, 9],
@@ -1044,7 +980,6 @@
     [27, 37, 6, 6, 1, 11, 17, 58, 96, 4, 4, 6, 7, 30, 11, 7],
     [32, 41, 3, 6, 1, 1, 22, 56, 88, 2, 2, 6, 4, 28, 10, 7],
     [45, 18, 3, 6, 1, 1, 27, 53, 80, 1, 0, 3, 3, 22, 8, 6]];
-  // A two-player VS level: its levelData, the VS behaviours, HEALTH = 0.
   function vsLevel(n) {
     var m = MODERN[n];
     if (!m) throw new Error('PAEngine: no modern level ' + n);
@@ -1055,10 +990,6 @@
       behaviours: { allowManualRaise: true, passiveRaise: true, swapStallingMode: 1, swapStallingPunish: 4 },
       stackOverConditions: { HEALTH: 0 } };
   }
-  // A stack as Match:start leaves it: the Stack constructor, setCountdown(true),
-  // starting_state (eight new_rows, the cursor held at row 7), removeExtraRows.
-  // `level` is a modern level number or a {levelData, behaviours,
-  // stackOverConditions}; `source` deals rows (Seeded, for the server's).
   function create(level, source) {
     var lv = typeof level === 'number' ? vsLevel(level) : level, ld = lv.levelData, s = Object.create(Stack.prototype), r, c;
     if (!lv.stackOverConditions || lv.stackOverConditions.HEALTH !== 0 || Object.keys(lv.stackOverConditions).length !== 1) {
@@ -1094,21 +1025,16 @@
     s.events = [];
     s.nextInput = 0; s.pressSwap = false; s.inputBits = 0; s.swapDeniedThisFrame = false;
     s.input = {}; s.prevInput = {};
-    // setCountdown(true)
     s.inCountdown = true;
     s.countdownOffsetFrames = COUNTDOWN_START + COUNTDOWN_LENGTH;
     s.behaviours.delaySimulationUntil = 'countdownEnded';
     s.stopWatchIsRunning = false;
-    // starting_state: the starting board's seven rows and the row under them.
     for (var i = 0; i < 8; i++) { s.newRow(); s.curRow--; }
     s.events.length = 0;
     s.removeExtraRows();
     return s;
   }
 
-  // A panel-engine.js board as a stack of this, past its countdown: the
-  // inverse of toPanelEngine, so a board a test paints on panel-engine can be
-  // played on the server's rules too. `source` deals its rows (Unseen if none).
   function fromPanelEngine(pe, source) {
     var s = create(pe.level || 10, source), r, c, k;
     ['speed', 'nextSpeedIncreaseClock', 'clock', 'displacement', 'stopTime', 'preStopTime', 'shakeTime', 'shakeTimeOnFrame',
@@ -1138,10 +1064,6 @@
     return s;
   }
 
-  // A bot written for panel-engine.js, playing this: the board as
-  // toPanelEngine reads it, with its input and swaps going to `s`. Built
-  // fresh every frame. A swap is pressed for the next frame's controls, and
-  // reported taken if the board allows it now.
   function view(s, PE) {
     var st = toPanelEngine(s, PE);
     st.setInput = function (input) { PE.Stack.prototype.setInput.call(st, input); s.setInput(input); };
@@ -1149,8 +1071,6 @@
     return st;
   }
 
-  // A board sent to another thread comes back a plain object: give it its
-  // prototypes again (the source is unseen: a search's).
   function revive(o) {
     Object.setPrototypeOf(o, Stack.prototype);
     for (var r = 0; r < o.panels.length; r++) for (var c = 1; c <= W; c++) Object.setPrototypeOf(o.panels[r][c], Panel.prototype);
@@ -1158,10 +1078,6 @@
     o.events = o.events || [];
     return o;
   }
-  // THE SAME BOARD AS panel-engine.js HOLDS ONE, for the parts of a bot that
-  // read a board rather than play it (candidates, their scores): nil is the
-  // engine's default, shock panels are the colour 8 they match as, shock
-  // garbage is garbage. Nothing is played on this; searches play the Stack.
   function toPanelEngine(s, PE) {
     var lv = 10;
     for (var li = 0; li < PE.LEVELS.length; li++) {
