@@ -739,16 +739,15 @@
                 }
             }
         }
-        var fr = this.stack.frames;
+        var tm = moving ? lineup.timedOf(board, this.stack.frames, board.height) : null;
         var legal = bit.legalSwapsOf(base);
         for (i = 0; i < legal.length; i++) {
             r = legal[i][0]; c = legal[i][1];
             if (!bit.swapMasks(base, r, c)) continue;       // refused: not a move
             var res = bit.resolveFromMasks(base, true);
-            if (moving) {
-                var tm = lineup.timedOf(board, fr, board.height);
-                if (tm) {
-                    var rt = bit.resolveFromMasks(tm.st, false, {
+            if (tm) {
+                {
+                    var rt = bit.resolveFromMasks(bit.copyState(tm.st), false, {
                         frames: tm.opts.frames, hover: tm.opts.hover, hovering: tm.opts.hovering,
                         chaining: tm.opts.chaining, swap: [r, c],
                         at: travel.cost(info.cursorRow, info.cursorCol, r, c) });
@@ -2672,7 +2671,18 @@
         function waitFor(mv, via) {
             return { kind: 'hold', mode: mode, alive: alive, via: via, park: mv };
         }
-        function playable(mv) {
+        // THE RESERVE. A board with plenty of panels can spend them; below
+        // WORKING_ROWS of material it keeps them for breaks. A clear that converts
+        // nothing and leaves less than that is not playable -- unless the route it
+        // belongs to ends in a break, where the clear is what buys the time to get
+        // there. Health is the one thing worth more: _waitForDrain still fires a
+        // clear rather than let it drain.
+        function spendsReserve(r, after) {
+            if (!r || !(r.total > 0) || r.brokeGarbage) return false;
+            var sh = bitoptions.shapeOf(after);
+            return !!sh && sh.mat < WORKING_ROWS;
+        }
+        function playable(mv, endsInBreak) {
             if (!mv) return false;
             var pc0 = null;
             for (var q0 = 0; q0 < pool.length; q0++) {
@@ -2680,6 +2690,7 @@
             }
             if (!pc0 || !pc0.masks) return false;
             if (returnsToSeen(mv)) return false;
+            if (!endsInBreak && spendsReserve(pc0.resolved, pc0.masks)) return false;
             return !self.deadly(pc0.masks, pc0.resolved, info,
                                 Math.max((pc0.moveFrames || 0) + self.reaction, info.framesPerRow || 0));
         }
@@ -2973,7 +2984,7 @@
                     // a plan is worth abandoning, and then what it is abandoned for is
                     // the thing that hands ceiling back. Everywhere else the plan is
                     // played out, because a plan interrupted is a plan wasted.
-                    if (playable(rm) &&
+                    if (playable(rm, true) &&
                         (digLeft === Infinity || mode.name === 'DEFEND')) {
                         this._plan = null;
                         this._dig = reach.swaps.length > 1
@@ -2999,7 +3010,7 @@
                 }
             }
             if (!haveBreak && this._dig && this._dig.moves.length) {
-                var dn = this._dig.moves[0], dnOk = playable(dn);
+                var dn = this._dig.moves[0], dnOk = playable(dn, true);
                 var dspent = Math.max(0, this.stack.clock - (this._dig.startedAt || 0));
                 if (dnOk && this.planInTime(this._dig.moves, Math.max(0, this._dig.frames - dspent), base, info, deadline)) {
                     this._dig.moves = this._dig.moves.slice(1);
@@ -3022,7 +3033,7 @@
                 var dp = options.save;
                 if (dp && dp.swaps.length && this.planInTime(dp.swaps, dp.duration, base, info, deadline)) {
                     var dm = dp.swaps[0];
-                    if (playable(dm)) {
+                    if (playable(dm, true)) {
                         this._digIsBreak = false;
                         this._dig = { moves: dp.swaps.slice(1), frames: dp.duration || 0,
                                       startedAt: this.stack.clock };
@@ -3265,6 +3276,10 @@
             this.counts.flattenDropped++;
         }
 
+        if (rev && rev.best && rev.best.swap && !rev.best.broke && (rev.best.total || 0) > 0) {
+            var rsh = bitoptions.shapeOf(base);
+            if (rsh && rsh.mat - rev.best.total / W < WORKING_ROWS) rev = null;
+        }
         if (rev && rev.best && rev.best.swap) {
             this.counts.revealSwaps++;
             return { kind: 'swap', move: rev.best.swap, mode: mode, alive: alive, reveal: true, via: 'lineup' };

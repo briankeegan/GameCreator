@@ -329,6 +329,7 @@
     var stride = st.W + 2, out = { W: st.W, H: st.H, N: st.N, occ: [], inert: [], garb: [],
                                    colour: new Int32Array((st.N + 1) * stride), slabs: [],
                                    slabLocked: (st.slabLocked || []).slice(), bad: st.bad || null };
+    if (st.busy) out.busy = Int32Array.from(st.busy);
     var c, i;
     for (c = 0; c <= st.W + 1; c++) { out.occ[c] = st.occ[c]; out.inert[c] = st.inert[c]; out.garb[c] = st.garb[c]; }
     for (i = 0; i < out.colour.length && i < st.colour.length; i++) out.colour[i] = st.colour[i];
