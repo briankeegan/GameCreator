@@ -603,8 +603,7 @@ static void shapeOfG(const int32_t *st, Shape *sh, int withGap) {
     uint32_t gm = U(st, GARB + c);
     if (!gm) continue;
     uint32_t lowBit = lowb(gm);
-    int fr = 0;
-    while (fr < 32 && (lowBit >> fr)) fr++;
+    int fr = __builtin_ctz(lowBit) + 1;
     if (!floorRow || fr < floorRow) floorRow = fr;
   }
   if (floorRow > 1) {
