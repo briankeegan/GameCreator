@@ -252,6 +252,18 @@ static int advance(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
     if (kind == MK_LONG && f >= frames) break;
     input = 0;
     raiseStep(&bot, st, &input);
+#ifdef COUNTDOWN
+    // Frames on which only timers run are played at once (countdown), up to
+    // the frame before the step ends or garbage on its way lands.
+    if (!tape && !input && !bot.w.active) {
+      int32_t room = kind == MK_LONG ? frames - f - 1
+                   : bot.cooldown > 0 ? bot.cooldown - 1
+                   : kind == MK_SETTLE && f >= 3 ? (frames > 0 ? frames : SETTLE_CAP) - f - 1 : 0;
+      for (int i = 0; i < narr; i++) room = imin(room, arr[i].at - f - 1);
+      int32_t k = countdown(st, room);
+      if (k > 0) { f += k; if (bot.cooldown > 0) bot.cooldown -= k; }
+    }
+#endif
     if (bot.w.active) {
       driveWalk(x, &bot, st, &input);
       if (REFUSED || (bot.w.active && bot.w.retries)) GIVE(STEP_NULL);

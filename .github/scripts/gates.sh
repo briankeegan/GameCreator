@@ -402,7 +402,8 @@ gate_server_engine() {
   node games/the-game/ai/eval/pa_engine.test.js &&
   node games/the-game/ai/eval/pa_generator.test.js &&
   node games/the-game/ai/eval/native_pa.test.js 20000 &&
-  node games/the-game/ai/eval/native_batch.test.js
+  node games/the-game/ai/eval/native_batch.test.js &&
+  node games/the-game/ai/eval/native_countdown.test.js
 }
 gate_engine_check() {
   node games/the-game/ai/eval/engine_check.test.js 600
