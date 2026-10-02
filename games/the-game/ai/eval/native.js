@@ -558,8 +558,14 @@
   // Many steps at once, on every thread: steps[i] is [node, kind, move,
   // frames], as advance takes them. Each answer is what advance gives; only
   // the order the nodes are made in differs.
+  var ADVANCE_CHUNK = 1000;   // steps one ns_advance_many takes (its records fill the io body)
   Search.prototype.advanceMany = function (steps) {
     if (!X.ns_advance_many) throw new Error('Native: this engine does not step in batches');
+    if (steps.length > ADVANCE_CHUNK) {
+      var all = [];
+      for (var at = 0; at < steps.length; at += ADVANCE_CHUNK) all = all.concat(this.advanceMany(steps.slice(at, at + ADVANCE_CHUNK)));
+      return all;
+    }
     var n = steps.length, io = new Int32Array(MEM.buffer, (X.nb_io_body() >>> 0), 5 * n), i;
     for (i = 0; i < n; i++) {
       var s = steps[i], k = KIND[s[1]], m = k >= 3 ? s[2] : null;

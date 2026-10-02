@@ -199,7 +199,7 @@ function pairs(grid, want) {
 // How near the row under the lowest garbage is to a match touching it: per
 // column resting on the garbage, a pair standing under it and a pair beside it
 // in that row; less how uneven the stack under it is.
-var TOUCH_DEPTH = 8, TOUCH_BEAM = 30;
+var TOUCH_DEPTH = 14, TOUCH_BEAM = 80;
 // How uneven the stack under the lowest garbage is: each column's shortfall
 // from the tallest, squared, so a panel moved from a tall column into a well
 // counts though the tallest stays as it was. Garbage rests on the tallest column, so a well is a
@@ -258,17 +258,28 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
     for (var td = 2; td <= TOUCH_DEPTH && tl.length && !tpath && Date.now() < deadline; td++) {
       tl.forEach(function (x) { x.s = touchScore(x.n.b.grid); });
       tl.sort(function (a, b) { return b.s - a.s; });
-      tl = tl.slice(0, TOUCH_BEAM);
-      var tn = [];
-      for (i = 0; i < tl.length && !tpath && Date.now() < deadline; i++) {
-        var tm = swapsOf(tl[i].n), tmade = swapsFrom(tl[i].n, tm);
-        for (j = 0; j < tm.length; j++) {
-          var t3 = tmade[j];
+      // Swaps made in another order often leave the same board: each board
+      // is kept once, its best-scoring line.
+      var kept = [], boards = {};
+      for (i = 0; i < tl.length && kept.length < TOUCH_BEAM; i++) {
+        var bk = tl[i].n.b.key;
+        if (boards[bk]) continue;
+        boards[bk] = true; kept.push(tl[i]);
+      }
+      tl = kept;
+      // The level's swaps in one batch, read in the order the beam keeps.
+      var tms = tl.map(function (x) { return swapsOf(x.n); }), all = [], tn = [];
+      tl.forEach(function (x, q) { tms[q].forEach(function (m) { all.push([x.n, 'swap', m, 0]); }); });
+      var made = many(all), at = 0;
+      for (i = 0; i < tl.length && !tpath; i++) {
+        for (j = 0; j < tms[i].length; j++) {
+          var t3 = made[at + j];
           if (!t3 || t3.dead) continue;
-          var tp = tl[i].path.concat([tm[j]]);
+          var tp = tl[i].path.concat([tms[i][j]]);
           if (breaks(t3)) { found[tl[i].key] = true; any = true; tpath = tp; break; }
           tn.push({ key: tl[i].key, n: t3, path: tp });
         }
+        at += tms[i].length;
       }
       tl = tn;
     }
