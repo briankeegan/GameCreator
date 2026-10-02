@@ -252,7 +252,8 @@
   function replay(id, rec) {
     var rg = regions(id), m = new Uint8Array(MEMORY.buffer);
     for (var i = 0; i < rg.length; i++) m.set(rec[i], rg[i][0]);
-    return ex.bot_decide(id);
+    ex.bot_decide(id);
+    return { d: dheap(), out: ex.bot_out() >> 3 };
   }
   function botDecide(id) {
     if (TAPE) TAPE.push(regions(id).map(function (r) { return region(r[0], r[1]); }));
