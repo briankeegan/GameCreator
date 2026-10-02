@@ -729,6 +729,10 @@ static struct {
 #endif
 #define REPLAY_TASK (-3)   // a task's move: play node t[0]'s board again from its parent (replayBoard)
 #define SWAPS_TASK (-4)    // a task's move: node t[0]'s t[2] swaps, moves and slots from t[3] (advanceSwaps)
+// The most swaps one SWAPS_TASK takes, of a phase of n steps: few enough that
+// the phase is four tasks a thread, so a phase of one parent's swaps still
+// goes to every thread.
+#define SWAPS_CAP(n) imin(MAXWALK, imax(4, (n) / (4 * (pool.nworkers + 1))))
 #define ADVANCE_TASK (-1000)   // a task's move at or below: ns_advance_many's, ((row << 3 | col) << 3 | kind) = ADVANCE_TASK - mv
 static void runTasks(void) {
   Ctx *x = pool.ctx;
@@ -857,6 +861,9 @@ EXPORT(ns_advance_many) int ns_advance_many(Ctx *x, int n) {
   static Vec tasks, res, dead, mvs;
   if (n < 0 || 5 * n > NBODY || !vreserve(&tasks, 4 * n) || !vreserve(&res, n) || !vreserve(&dead, n) || !vreserve(&mvs, n)) return -3;
   tasks.n = 0;
+#ifdef SHARED_WALK
+  int32_t cap = SWAPS_CAP(n);
+#endif
   for (int i = 0; i < n; i++) {
     const int32_t *a = ioBody + 5 * i;
     // Parents first, here: two threads must not replay one board.
@@ -866,7 +873,7 @@ EXPORT(ns_advance_many) int ns_advance_many(Ctx *x, int n) {
     // a parent's swaps in a row, one task (advanceSwaps)
     int32_t *g = tasks.n ? tasks.a + tasks.n - 4 : 0;
     if (a[1] == MK_SWAP && a[4] == 0 && i > 0 && ioBody[5 * (i - 1) + 4] == 0 && ioBody[5 * (i - 1)] == a[0] && ioBody[5 * (i - 1) + 1] == MK_SWAP && g && g[0] == a[0] && g[3] + (g[1] == SWAPS_TASK ? g[2] : 1) == i
-        && (g[1] == SWAPS_TASK ? g[2] < MAXWALK : 1)) {
+        && (g[1] == SWAPS_TASK ? g[2] < cap : 1)) {
       if (g[1] != SWAPS_TASK) { g[1] = SWAPS_TASK; g[2] = 1; }
       g[2]++;
       continue;
@@ -953,9 +960,11 @@ EXPORT(ns_loop) int ns_loop(Ctx *x, int budget, int until, int full, int beam, i
           for (j = 1; j < nm; j++) {
 #ifdef SHARED_WALK
             // the parent's swaps, one task (advanceSwaps)
-            if (j == 2 && nm - 2 <= MAXWALK) {
-              int32_t t[4] = { x->level.a[at + k], SWAPS_TASK, nm - 2, o + 2 };
-              for (int q = 0; q < 4; q++) if (!vpush(&tasks, t[q])) return LOOP_ERR;
+            if (j == 2) {
+              for (int32_t g = 2, cap = SWAPS_CAP(x->moves.n); g < nm; g += cap) {
+                int32_t t[4] = { x->level.a[at + k], SWAPS_TASK, imin(cap, nm - g), o + g };
+                for (int q = 0; q < 4; q++) if (!vpush(&tasks, t[q])) return LOOP_ERR;
+              }
               break;
             }
 #endif
