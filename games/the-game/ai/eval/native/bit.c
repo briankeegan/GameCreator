@@ -1639,6 +1639,21 @@ static void threadInit(void) {
   __builtin_memset(QUIET_MAIN, 0, sizeof(QUIET_MAIN));
   __builtin_memset(ODATA, 0, 8ul << 20);
   __builtin_memset(ODSCR, 0, 4ul << 20);
+#ifdef __wasm__
+  {
+    unsigned long skip[3][2] = {
+      { (unsigned long)ARENA_MAIN + (16ul << 20), (unsigned long)(ARENA_MAIN + ARENA_INTS) },
+      { (unsigned long)ODATA + (8ul << 20), (unsigned long)(ODATA + (MAXOPT + 4) * REC + 64) },
+      { (unsigned long)ODSCR + (4ul << 20), (unsigned long)(ODSCR + (MAXOPT + 4) * REC + 64) } };
+    for (unsigned long a = 4096; a < (unsigned long)&__heap_base; a += 4096) {
+      int s = 0;
+      for (int i = 0; i < 3; i++) if (a >= skip[i][0] && a < skip[i][1]) { a = skip[i][1] & ~4095ul; s = 1; }
+      if (s) continue;
+      volatile unsigned char *q = (volatile unsigned char *)a;
+      *q = *q;
+    }
+  }
+#endif
   SAVES.s = TABLE_MAIN[0]; ANYB.s = TABLE_MAIN[1]; STOPS_T.s = TABLE_MAIN[2]; FIRE.s = TABLE_MAIN[3];
 }
 #define MAXSET 4096
