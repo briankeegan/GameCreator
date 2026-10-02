@@ -312,16 +312,29 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
     if (any) return { depth: 1, moves: found, lineup: true };
     // a pop is long enough for two swaps: the first of a pair that lines up
     var tries = 0;
-    for (i = 0; i < firsts.length && tries < LINEUP_BUDGET; i++) {
-      var f = firsts[i];
-      if (!f.n || f.n.dead || f.n.t >= end) continue;
-      var ms = swapsOf(f.n).slice(0, LINEUP_BUDGET - tries), n2s = swapsFrom(f.n, ms);
-      var l2 = linedAll(n2s.map(function (n2) { return n2 && n2.t < end ? n2 : null; }));
-      for (j = 0; j < ms.length && tries < LINEUP_BUDGET; j++) {
-        tries++;
-        if (l2[j]) { found[f.key] = true; any = true; break; }
+    // Each parent's swaps in turn, as many as `cap` tries leave, till one of
+    // them hits (hitsOf, of the nodes made): a hit marks the parent's first
+    // move and the next parent goes on. Played a batch at a time from the
+    // parent the reading has got to, as if none hits; after a hit the rest
+    // is played again, with the tries it left.
+    function inTurn(parents, cap, hitsOf) {
+      var k = 0;
+      while (k < parents.length && tries < cap) {
+        var plan = [], left = cap - tries, st = [], at = 0, again = false;
+        for (var q = k; q < parents.length && left > 0; q++) { var mq = swapsOf(parents[q].n).slice(0, left); plan.push({ q: q, ms: mq }); left -= mq.length; }
+        plan.forEach(function (p) { p.ms.forEach(function (m) { st.push([parents[p.q].n, 'swap', m, 0]); }); });
+        var hit = hitsOf(many(st));
+        for (var x = 0; x < plan.length && !again; x++) {
+          var p = plan[x];
+          k = p.q + 1;
+          for (j = 0; j < p.ms.length && tries < cap; j++) { tries++; if (hit[at + j]) { found[parents[p.q].key] = true; any = true; again = true; break; } }
+          at += p.ms.length;
+        }
+        if (!again) break;
       }
     }
+    inTurn(firsts.filter(function (f) { return f.n && !f.n.dead && f.n.t < end; }), LINEUP_BUDGET,
+           function (n2s) { return linedAll(n2s.map(function (n2) { return n2 && n2.t < end ? n2 : null; })); });
     if (any) return { depth: 1, moves: found, lineup: 2 };
     // Further, aimed: the colours the row turns into are known from the
     // pop's start, and two of a column's colour on top of that column make
@@ -337,29 +350,31 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
         level.forEach(function (x) { x.s = 10 * pairs(x.n.b.grid, want) - uneven(x.n.b.grid); });
         level.sort(function (a, b) { return b.s - a.s; });
         level = level.slice(0, LINEUP_BEAM);
-        var next = [];
-        for (i = 0; i < level.length && !path && Date.now() < deadline; i++) {
-          var ms2 = swapsOf(level[i].n), n3s = swapsFrom(level[i].n, ms2), scs = [];
-          n3s.forEach(function (n3, q) { scs[q] = !n3 || n3.dead || n3.t >= end ? -1 : pairs(n3.b.grid, want); });
-          var l3 = linedAll(n3s.map(function (n3, q) { return scs[q] >= PAIR ? n3 : null; }));
-          for (j = 0; j < ms2.length; j++) {
-            var n3 = n3s[j];
-            if (scs[j] < 0) continue;
-            var sc = scs[j], p3 = level[i].path.concat([ms2[j]]);
-            if (l3[j]) { found[level[i].key] = true; any = true; path = p3; break; }
+        // the level's swaps in one batch and their waits to the pop's end in
+        // another, read in the order the beam keeps
+        var next = [], ms2s = level.map(function (x) { return swapsOf(x.n); }), all2 = [];
+        level.forEach(function (x, q) { ms2s[q].forEach(function (m) { all2.push([x.n, 'swap', m, 0]); }); });
+        var n3s = many(all2), scs = n3s.map(function (n3) { return !n3 || n3.dead || n3.t >= end ? -1 : pairs(n3.b.grid, want); });
+        var l3 = linedAll(n3s.map(function (n3, q) { return scs[q] >= PAIR ? n3 : null; })), at3 = 0;
+        for (i = 0; i < level.length && !path; i++) {
+          for (j = 0; j < ms2s[i].length; j++) {
+            var q3 = at3 + j, n3 = n3s[q3];
+            if (scs[q3] < 0) continue;
+            var sc = scs[q3], p3 = level[i].path.concat([ms2s[i][j]]);
+            if (l3[q3]) { found[level[i].key] = true; any = true; path = p3; break; }
             next.push({ key: level[i].key, n: n3, s: sc, path: p3 });
           }
+          at3 += ms2s[i].length;
         }
         level = next;
       }
       if (any) return { depth: 1, moves: found, lineup: 'aimed', path: path };
     }
     // failing that, a first swap leaving a break one swap away when the pop ends
-    for (i = 0; i < firsts.length && tries < 2 * LINEUP_BUDGET; i++) {
-      var r = firsts[i].n, w = r && !r.dead ? S.advance(r, 'long', null, Math.max(1, end - r.t)) : null;
-      if (!w || w.dead) continue;
-      var ws = swapsOf(w).slice(0, 2 * LINEUP_BUDGET - tries), wn = swapsFrom(w, ws);
-      for (j = 0; j < ws.length && tries < 2 * LINEUP_BUDGET; j++) { tries++; if (breaks(wn[j])) { found[firsts[i].key] = true; any = true; break; } }
+    if (tries < 2 * LINEUP_BUDGET) {
+      var rs = firsts.filter(function (f) { return f.n && !f.n.dead; }), ws = many(rs.map(function (f) { return [f.n, 'long', null, Math.max(1, end - f.n.t)]; }));
+      inTurn(rs.map(function (f, q) { return { key: f.key, n: ws[q] }; }).filter(function (x) { return x.n && !x.n.dead; }), 2 * LINEUP_BUDGET,
+             function (wn) { return wn.map(function (n) { return breaks(n); }); });
     }
     if (any) return { depth: 1, moves: found, lineup: 'ready' };
   }
