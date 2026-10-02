@@ -430,11 +430,18 @@
     if (cfg.threads > 1) initThreads(cfg.threads); else init();
     nodeFields();
     this.ctx = X.ns_ctx_new();
-    X.ns_ctx_set(this.ctx, cfg.reaction | 0, cfg.cursorMoveFrames | 0, cfg.surviveFrames | 0, cfg.surviveRest | 0);
+    this.swapGap = cfg.swapGap;
+    this.configure(cfg.reaction, cfg.cursorMoveFrames, cfg.surviveFrames, cfg.surviveRest);
     this.gen = 0; this.nodes = []; this.template = null;
   }
+  // swapGap (the frames after a swap before the bot acts again) is the
+  // reaction unless given.
   Search.prototype.configure = function (reaction, cursorMoveFrames, surviveFrames, surviveRest) {
     X.ns_ctx_set(this.ctx, reaction | 0, cursorMoveFrames | 0, surviveFrames | 0, surviveRest | 0);
+    if (this.swapGap !== undefined && this.swapGap !== null) {
+      if (!X.ns_ctx_gap) throw new Error('Native: this engine has no swap gap');
+      X.ns_ctx_gap(this.ctx, this.swapGap | 0);
+    }
   };
   Search.prototype.reset = function () {
     X.ns_reset(this.ctx);

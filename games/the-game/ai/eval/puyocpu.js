@@ -97,6 +97,9 @@
     // two is about the SCORING and not about which one acts more often.
     // Every frame of it is real: the bot does nothing while it counts down.
     this.reaction = opts.reaction === undefined ? 12 : opts.reaction;
+    // Frames after a swap before the bot acts again (the engine in C only);
+    // the reaction unless given. A hold or a wait still takes reaction + 1.
+    this.swapGap = opts.swapGap === undefined ? null : opts.swapGap;
     this.cooldown = Math.floor(this.reaction / 2);
     this.raiseFrames = 0;
     // Raising is a CONTROL, like swapping and moving the cursor, so it is on
@@ -2141,7 +2144,7 @@
     var mod = this.serverStack ? NativeMod().server : NativeMod();
     if (this._nat && this._nat.module !== mod) throw new Error('PuyoCpu: a bot searches on one engine');
     if (!this._nat) {
-      this._nat = new mod.Search({ reaction: this.reaction || 0, cursorMoveFrames: this.cursorMoveFrames, threads: this.threads || 1 });
+      this._nat = new mod.Search({ reaction: this.reaction || 0, cursorMoveFrames: this.cursorMoveFrames, swapGap: this.swapGap, threads: this.threads || 1 });
       this._nat.module = mod;
     }
     this._nat.configure(this.reaction || 0, this.cursorMoveFrames, this.SURVIVE_FRAMES, this.SURVIVE_REST);
@@ -3412,7 +3415,7 @@
   PuyoCpu.prototype.REPLY_SETTLE = 180;
   PuyoCpu.prototype._nativeNodes = function (cands) {
     if (!this.nativeCands || !this.serverStack || !cands) return;
-    if (!this._candNat) this._candNat = new (NativeMod().server.Search)({ reaction: this.reaction || 0, cursorMoveFrames: this.cursorMoveFrames, threads: this.threads || 1 });
+    if (!this._candNat) this._candNat = new (NativeMod().server.Search)({ reaction: this.reaction || 0, cursorMoveFrames: this.cursorMoveFrames, swapGap: this.swapGap, threads: this.threads || 1 });
     var S = this._candNat, i;
     S.reset();
     var root = S.root(this.serverStack.copy(), { left: this.raiseFrames || 0, started: !!this._raiseStarted }, this.serverArrivals || [], false);

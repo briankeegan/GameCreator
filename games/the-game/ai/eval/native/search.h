@@ -43,6 +43,7 @@ typedef struct { int32_t *a; int32_t n, cap; } Vec;
 typedef struct Ctx {
   Node *nodes; int32_t n, cap;
   int32_t reaction, cursorMoveFrames, surviveFrames, surviveRest;
+  int32_t swapGap;   // frames the bot waits after a swap before it acts again (ns_ctx_gap; reaction unless set)
   int32_t steps;
   // the level loop's own storage, kept from search to search
   Vec level, next, keep, tmp, moves;
@@ -78,8 +79,11 @@ static Node *newNode(Ctx *x) {
 EXPORT(ns_ctx_new) Ctx *ns_ctx_new(void) { Ctx *x = (Ctx *)grab(sizeof(Ctx)); memset(x, 0, sizeof(Ctx)); return x; }
 EXPORT(ns_ctx_set) void ns_ctx_set(Ctx *x, int reaction, int cursorMoveFrames, int surviveFrames, int surviveRest) {
   x->reaction = reaction; x->cursorMoveFrames = cursorMoveFrames; x->surviveFrames = surviveFrames; x->surviveRest = surviveRest;
+  x->swapGap = reaction;
 }
 EXPORT(ns_ctx_cap) int ns_ctx_cap(Ctx *x) { return x->cap; }
+// After a swap the bot acts again `gap` frames on; a hold or a wait is still reaction + 1.
+EXPORT(ns_ctx_gap) void ns_ctx_gap(Ctx *x, int gap) { x->swapGap = gap; }
 // Every node gone and every board back in the pool.
 EXPORT(ns_reset) void ns_reset(Ctx *x) {
   for (int i = 0; i < x->n; i++) if (x->nodes[i].st && !x->nodes[i].fromPrev) nb_free(x->nodes[i].st);
@@ -231,7 +235,7 @@ static int advance(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
 #else
   if (kind == MK_SETTLE) GIVE0(STEP_ERR);
 #endif
-  if (swapping) { beginWalk(&bot, mr, mc, x->reaction); driveWalk(x, &bot, st, &input); }
+  if (swapping) { beginWalk(&bot, mr, mc, x->swapGap); driveWalk(x, &bot, st, &input); }
   else if (kind == MK_RAISE) { bot.raiseFrames = 20; bot.raiseStarted = 0; bot.cooldown = x->reaction; }
   else if (kind == MK_HOLD || kind == MK_SETTLE) bot.cooldown = x->reaction;
 #define REFUSED (swapping && !bot.w.active && !bot.lastSwap)
