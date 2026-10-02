@@ -4022,7 +4022,10 @@
             if (!picked || (picked.moveFrames || 0) + 1 <= k) return d;
         }
         function hold(at) { return { kind: 'hold', mode: d.mode, alive: d.alive, via: 'awaitDrain', park: at }; }
-        if (pr && pr.total > 0 && !pr.brokeGarbage) {
+        // A clear that arrives before the drain is held until the last moment and then
+        // fired; one that cannot arrive in time is not a clear for this purpose, and the
+        // guard's own reachable choice below replaces it.
+        if (pr && pr.total > 0 && !pr.brokeGarbage && (picked.moveFrames || 0) + 1 <= k) {
             if ((picked.moveFrames || 0) + 2 > k) return d;
             this.counts.waitedForDrain = (this.counts.waitedForDrain || 0) + 1;
             return hold(picked.swap);
