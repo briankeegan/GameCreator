@@ -685,15 +685,17 @@ static int slabReadyFast(const int32_t *st) {
 
 // ---------------------------------------------------------------- caches by board
 static u64 hashOf(const int32_t *st) {
-  u64 h = 1469598103934665603ull;
+  u64 h0 = 1469598103934665603ull, h1 = 0x9E3779B97F4A7C15ull, h2 = 0xC2B2AE3D27D4EB4Full, h3 = 0x165667B19E3779F9ull;
   int W = st[O_W], N = st[O_N], c, a, i;
-#define MIX(v) (h = (h ^ (uint32_t)(v)) * 1099511628211ull)
-  MIX(W); MIX(st[O_H]); MIX(N); MIX(st[O_BAD]); MIX(st[O_BUSYF]);
-  for (c = 0; c <= W + 1; c++) { MIX(st[OCC + c]); MIX(st[INERT + c]); MIX(st[GARB + c]); if (st[O_BUSYF]) MIX(st[BUSY + c]); }
-  for (a = 1; a <= N; a++) for (c = 0; c <= W + 1; c++) MIX(st[COL + a * WMAX + c]);
-  MIX(st[O_NSLAB]);
-  for (i = 0; i < st[O_NSLAB]; i++) { for (c = 0; c <= W + 1; c++) MIX(st[SM(i, c)]); MIX(st[SLK(i)]); }
-#undef MIX
+#define MX(h, v) (h = (h ^ (uint32_t)(v)) * 1099511628211ull)
+  MX(h0, W); MX(h1, st[O_H]); MX(h2, N); MX(h3, st[O_BAD]); MX(h0, st[O_BUSYF]);
+  for (c = 0; c <= W + 1; c++) { MX(h1, st[OCC + c]); MX(h2, st[INERT + c]); MX(h3, st[GARB + c]); if (st[O_BUSYF]) MX(h0, st[BUSY + c]); }
+  for (a = 1; a <= N; a++) for (c = 0; c <= W + 1; c += 2) { MX(h0, st[COL + a * WMAX + c]); MX(h1, st[COL + a * WMAX + c + 1]); }
+  MX(h2, st[O_NSLAB]);
+  for (i = 0; i < st[O_NSLAB]; i++) { for (c = 0; c <= W + 1; c++) MX(h3, st[SM(i, c)]); MX(h2, st[SLK(i)]); }
+#undef MX
+  u64 h = h0 ^ (h1 * 0x9E3779B97F4A7C15ull) ^ (h2 * 0xC2B2AE3D27D4EB4Full) ^ (h3 * 0x165667B19E3779F9ull);
+  h ^= h >> 29;
   return h | 1ull;
 }
 #define TCAP (1 << 17)
@@ -1138,6 +1140,18 @@ static int quietDrop(const int32_t *st, const Grid *G, const Drop *D, int r, int
     if (firstRoundK(st, G, r, c, &t, &cas, k)) return 0;
   } else for (int i = 0; i < WMAX; i++) k[i] = 0;
   return dropQuiet(st, D, r, c, k, out);
+}
+static LOCAL ST SWAPSCR;
+static int settleSwap(const int32_t *st, int r, int c, Res *out) {
+  if (settledRest(st)) {
+    Grid G; Drop D;
+    gridOf(st, &G); dropOf(st, &G, &D);
+    if (quietDrop(st, &G, &D, r, c, (int32_t *)out)) return 1;
+  }
+  stcpy(SWAPSCR, st);
+  if (!swapIn(SWAPSCR, r, c)) return 0;
+  resolve(SWAPSCR, out->r, 1);
+  return 1;
 }
 static int breaksFirst(const int32_t *st, const Grid *G, int r, int c) { int t, cs; return firstRound(st, G, r, c, &t, &cs); }
 static int anyBreakOf(const int32_t *st0) {

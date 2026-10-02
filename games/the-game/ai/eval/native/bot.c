@@ -528,11 +528,9 @@ static double planSpend(const int32_t *swaps, int n, const int32_t *base) {
     if (!hit) {
       double t2 = t + travelCost(ar, ac, sr, sc) + (i ? 1 : 0);
       double paid = spend + dmax(0, t2 - lock), from = dmax(lock, t2);
-      stcpy(LK, st);
       tmp.key = key; tmp.st = -1;
-      if (!swapIn(LK, sr, sc)) { tmp.kind = 0; tmp.val = INF; }
+      if (!settleSwap(st, sr, sc, &PR)) { tmp.kind = 0; tmp.val = INF; }
       else {
-        resolve(LK, PR.r, 1);
         if (PR.r[R_SCOPE] == SC_BROKE) { tmp.kind = 0; tmp.val = paid; }
         else if (PR.r[R_SCOPE] != SC_OK) { tmp.kind = 0; tmp.val = INF; }
         else {
