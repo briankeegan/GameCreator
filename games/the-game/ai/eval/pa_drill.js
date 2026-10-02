@@ -64,7 +64,7 @@ function cells() {
   return 'panels ' + p + ' garb ' + g;
 }
 for (var f = 0; f < frames; f++) {
-  if (sc.burst && bench.burstFires(f)) {
+  if (sc.burst && pa.stopWatchIsRunning && bench.burstFires(pa.stopWatch)) {
     pa.receiveGarbage([{ width: sc.garbageWidth, height: sc.garbageHeight, isChain: false, isMetal: false, frameEarned: pa.stopWatch, finalized: true }]);
   }
   bot.stack = PA.view(pa, E);
