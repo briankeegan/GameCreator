@@ -4022,7 +4022,7 @@
     // its own plan, each undoing the other's. So the move actually played decides which
     // plan is live: the route that played it keeps its plan and every other is dropped.
     // A hold or a raise moves no panel and leaves the plan where it was.
-    var PLAN_OF = { digPlan: '_dig', breakReach: '_dig', attackPlan: '_attack', bestAttack: '_attack',
+    var PLAN_OF = { digPlan: '_dig', breakReach: '_dig', breakSpend: '_dig', attackPlan: '_attack', bestAttack: '_attack',
                     survivalPlan: '_plan', flatten: '_flatten' };
     BitBot.prototype._onePlan = function (d) {
         if (!d || d.kind !== 'swap') return d;
