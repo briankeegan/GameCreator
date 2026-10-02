@@ -36,6 +36,7 @@ const EXEMPT = new Map([
     ['spread', 'superseded by voidGain, which prices the same seal per panel'],
     ['breaks', 'a tier, read by tierOf'],
     ['tall', 'the ceiling rule, which is bestPlan-only by design'],
+    ['voidAfter', 'orders breaks among themselves, in the break routes; not a price against other options'],
 ]);
 
 function fieldsAssigned(src) {
