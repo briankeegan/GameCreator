@@ -1106,6 +1106,38 @@
     return s;
   }
 
+  // A panel-engine.js board as a stack of this, past its countdown: the
+  // inverse of toPanelEngine, so a board a test paints on panel-engine can be
+  // played on the server's rules too. `source` deals its rows (Unseen if none).
+  function fromPanelEngine(pe, source) {
+    var s = create(pe.level || 10, source), r, c, k;
+    ['speed', 'nextSpeedIncreaseClock', 'clock', 'displacement', 'stopTime', 'preStopTime', 'shakeTime', 'shakeTimeOnFrame',
+     'peakShakeTime', 'health', 'chainCounter', 'nActive', 'nPrevActive', 'swappingCount', 'panelsCleared', 'score', 'curRow',
+     'curCol', 'topCurRow', 'queuedSwapRow', 'queuedSwapCol', 'garbageCreatedCount', 'highestGarbageIdMatched', 'panelIdCount',
+     'riseTimer'].forEach(function (k) { if (pe[k] !== undefined) s[k] = pe[k]; });
+    ['riseLock', 'hasRisen', 'manualRaise', 'manualRaiseYet', 'preventManualRaise', 'wasToppedOut'].forEach(function (k) { s[k] = !!pe[k]; });
+    s.inCountdown = false; s.countdownTimer = null; s.stopWatchIsRunning = true; s.stopWatch = Math.max(0, s.clock - s.countdownOffsetFrames);
+    s.behaviours.delaySimulationUntil = null; s.animatingCursorDuringCountdown = null;
+    s.gameOverClock = -1; s.gameOver = false;
+    s.incoming = (pe.incoming || []).slice().reverse().map(function (g) {
+      return { width: g.width, height: g.height, isChain: !!g.isChain, isMetal: false, frameEarned: s.stopWatch, finalized: true };
+    });
+    for (var w = 1; w <= W; w++) if (pe.dropColumnIndex && pe.dropColumnIndex[w] !== undefined) s.dropColumnIndex[w - 1] = pe.dropColumnIndex[w] + 1;
+    s.panels = [];
+    for (r = 0; r < pe.panels.length; r++) {
+      s.panels[r] = [null];
+      for (c = 1; c <= W; c++) {
+        var q = pe.panels[r][c], p = new Panel(r, c, q.id);
+        for (k in p) if (Object.prototype.hasOwnProperty.call(q, k)) p[k] = q[k];
+        p.row = r; p.col = c;
+        if (q.isGarbage && q.garbageId === undefined) p.garbageId = null;
+        s.panels[r].push(p);
+      }
+    }
+    s.removeExtraRows();
+    return s;
+  }
+
   // A bot written for panel-engine.js, playing this: the board as
   // toPanelEngine reads it, with its input and swaps going to `s`. Built
   // fresh every frame. A swap is pressed for the next frame's controls, and
@@ -1183,6 +1215,6 @@
     return st;
   }
 
-  return { Stack: Stack, Panel: Panel, fromLua: fromLua, revive: revive, toPanelEngine: toPanelEngine, view: view, Unseen: Unseen, Recorded: Recorded, Seeded: Seeded, create: create, vsLevel: vsLevel, PANEL_FROM_LUA: PANEL_FROM_LUA,
+  return { Stack: Stack, Panel: Panel, fromLua: fromLua, revive: revive, toPanelEngine: toPanelEngine, fromPanelEngine: fromPanelEngine, view: view, Unseen: Unseen, Recorded: Recorded, Seeded: Seeded, create: create, vsLevel: vsLevel, PANEL_FROM_LUA: PANEL_FROM_LUA,
            STACK_FROM_LUA: STACK_FROM_LUA, IN: IN, list: list, WIDTH: W, HEIGHT: H };
 }));

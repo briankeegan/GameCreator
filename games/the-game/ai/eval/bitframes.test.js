@@ -5,9 +5,10 @@
 //
 // bitframes.js is a THIRD implementation of rules the engine and LogicalBoard
 // already have, which is only safe if drift cannot land quietly. So this does
-// not compare the answer at the end: it steps a real PanelEngine.Stack and
-// bitframes together, one frame at a time, and compares EVERY panel's colour,
-// state and timer after every frame. The frame they first differ on is the
+// not compare the answer at the end: it steps a real PanelEngine.Stack, the
+// same board on the server's rules (pa-engine.js), and bitframes together,
+// one frame at a time, and compares EVERY panel's colour, state and timer
+// after every frame. The frame they first differ on is the
 // frame the failure names.
 //
 // Three sweeps:
@@ -30,6 +31,7 @@ require(path.join(ROOT, 'panel-cpu.js'));
 var LogicalBoard = globalThis.PanelCpu.LogicalBoard;
 var EB = require('./engineboard.js');
 var BF = require('./bitframes.js');
+var PA = require('./pa-engine.js');
 var bit = require('./bitmatch.js');
 var W = 6, H = 12;
 
@@ -104,6 +106,16 @@ function cellsOf(get) {
 
 var src = JSON.parse(fs.readFileSync(path.join(__dirname, 'realboards.json'), 'utf8'));
 
+// THE SAME BOARD ON THE SERVER'S RULES. The Lua looks for a match only around a
+// panel whose state changed this frame (a swap ending, a landing, a new row);
+// a painted board is one where every panel has just arrived, so every panel is
+// flagged. panel-engine.js looks everywhere, which comes to the same thing.
+function serverOf(stack) {
+    var s = PA.fromPanelEngine(stack);
+    for (var r = 1; r < s.panels.length; r++) for (var c = 1; c <= W; c++) if (s.panels[r][c].color) s.panels[r][c].stateChanged = true;
+    return s;
+}
+
 // --------------------------------------------------------------------------
 // 1 and 2: lockstep from a settled board, with and without garbage.
 function lockstep(wantGarbage, howMany, frames) {
@@ -123,21 +135,26 @@ function lockstep(wantGarbage, howMany, frames) {
             var stack = EB.scratch(10);
             EB.paint(stack, post.grid, H, W, paintBlocks(b.blocks));
             var mine = BF.build(snapshot(stack), stack.frames, H);
+            var server = serverOf(stack);
             out.cases++;
             var refused = false, diverged = null;
             for (var f = 1; f <= frames; f++) {
                 stack.run();
+                server.run();
                 BF.step(mine);
                 if (mine.brokeGarbage) { refused = true; break; }
-                var a = cellsOf(function (r, c) { return stack.panels[r] && stack.panels[r][c]; });
                 var m = cellsOf(function (r, c) { return mine.panels[r][c]; });
-                for (var k = 0; k < a.length; k++) {
-                    if (a[k] === m[k]) continue;
-                    diverged = { board: i, swap: swaps[s], frame: f,
-                                 cell: 'r' + (Math.floor(k / W) + 1) + 'c' + (k % W + 1),
-                                 engine: a[k], mine: m[k] };
-                    break;
-                }
+                [['engine', stack], ['server', server]].forEach(function (e) {
+                    if (diverged) return;
+                    var a = cellsOf(function (r, c) { return e[1].panels[r] && e[1].panels[r][c]; });
+                    for (var k = 0; k < a.length; k++) {
+                        if (a[k] === m[k]) continue;
+                        diverged = { against: e[0], board: i, swap: swaps[s], frame: f,
+                                     cell: 'r' + (Math.floor(k / W) + 1) + 'c' + (k % W + 1),
+                                     engine: a[k], mine: m[k] };
+                        break;
+                    }
+                });
                 if (diverged) break;
             }
             if (refused) out.refused++;
@@ -196,7 +213,7 @@ for (var bi = 0; bi < src.boards.length && R.positions < MID; bi++) {
             if (!converted || !flying) continue;
 
             R.positions++;
-            var mine2 = BF.build(snapshot(st2), st2.frames, H);
+            var mine2 = BF.build(snapshot(st2), st2.frames, H), server2 = PA.fromPanelEngine(st2);  // mid-play: its flags are the engine's own
             var before = 0;
             for (rr = 1; rr <= H; rr++) for (cc = 1; cc <= W; cc++) {
                 pp = st2.panels[rr][cc];
@@ -205,17 +222,21 @@ for (var bi = 0; bi < src.boards.length && R.positions < MID; bi++) {
             var refused2 = false, diverged2 = null;
             for (var k2 = 0; k2 < 400; k2++) {
                 st2.run();
+                server2.run();
                 BF.step(mine2);
                 if (mine2.brokeGarbage) { refused2 = true; break; }
-                var a2 = cellsOf(function (r, c) { return st2.panels[r] && st2.panels[r][c]; });
                 var m2 = cellsOf(function (r, c) { return mine2.panels[r][c]; });
-                for (var j = 0; j < a2.length; j++) {
-                    if (a2[j] === m2[j]) continue;
-                    diverged2 = { board: bi, frame: k2,
-                                  cell: 'r' + (Math.floor(j / W) + 1) + 'c' + (j % W + 1),
-                                  engine: a2[j], mine: m2[j] };
-                    break;
-                }
+                [['engine', st2], ['server', server2]].forEach(function (e) {
+                    if (diverged2) return;
+                    var a2 = cellsOf(function (r, c) { return e[1].panels[r] && e[1].panels[r][c]; });
+                    for (var j = 0; j < a2.length; j++) {
+                        if (a2[j] === m2[j]) continue;
+                        diverged2 = { against: e[0], board: bi, frame: k2,
+                                      cell: 'r' + (Math.floor(j / W) + 1) + 'c' + (j % W + 1),
+                                      engine: a2[j], mine: m2[j] };
+                        break;
+                    }
+                });
                 if (diverged2) break;
             }
             if (refused2) { R.refused++; continue outer2; }
