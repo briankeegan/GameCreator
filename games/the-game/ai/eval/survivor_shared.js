@@ -272,6 +272,10 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
           } else byHash[x.h] = [x];
           kept.push(x);
         }
+        kept.forEach(function (x) { x.kept = true; });
+        // the lines the beam lets go are never read again: their boards go
+        var first = tl === tl0;   // the first swaps' boards stay: every beam starts from them
+        if (S.drop && !first) S.drop(tl.filter(function (x) { return !x.kept; }).map(function (x) { return x.n; }));
         tl = kept;
         // The level's swaps in one batch, read in the order the beam keeps.
         var tms = tl.map(function (x) { return swapsOf(x.n); }), all = [], tn = [];
@@ -287,6 +291,8 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
           }
           at += tms[i].length;
         }
+        // and the level expanded: its boards are its children's now
+        if (S.drop && !first) S.drop(tl.map(function (x) { return x.n; }));
         tl = tn;
       }
     }

@@ -648,6 +648,14 @@
     }
     return out;
   };
+  // Lets the nodes' boards go; one read again is played again from its parent.
+  Search.prototype.drop = function (nodes) {
+    for (var at = 0; at < nodes.length; at += ADVANCE_CHUNK) {
+      var part = nodes.slice(at, at + ADVANCE_CHUNK), body = new Int32Array(MEM.buffer, (X.nb_io_body() >>> 0), part.length);
+      part.forEach(function (n, q) { if (!(n._i >= 0)) throw new Error('Native: not a node'); body[q] = n._i; });
+      if (X.ns_drop(this.ctx, part.length) !== part.length) throw new Error('Native: boards not let go');
+    }
+  };
   // A node the level loop made: its move, its parent and its line's tag, as
   // the JS loop would have written them on it.
   Search.prototype.wrapLoop = function (i) {
