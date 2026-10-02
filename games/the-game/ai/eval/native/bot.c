@@ -1759,3 +1759,5 @@ __attribute__((export_name("bot_test"))) double bot_test(int32_t id, int32_t fn)
   }
   return 0;
 }
+__attribute__((export_name("bot_state"))) int32_t bot_state(int32_t id) { return (int32_t)(long)&BOTS[id]; }
+__attribute__((export_name("bot_state_size"))) int32_t bot_state_size(void) { return (int32_t)sizeof(Bot); }

@@ -722,11 +722,13 @@ static int resolveU(const int32_t *st, int32_t *r, int wantSettled) {
   load(s, st);
   int W = s->W, H = s->H, N = s->N, c, a;
   int counter = 0, rounds = 0, total = 0, guard = 0, LIMIT = W * H * H, T = 0, moved = 0;
-  int scan = 1, anyPop = 0;
+  int scan = 1, anyPop = 0, restValid = 0, slabQuiet = 0;
+  uint32_t supp[WMAX], suppOcc[WMAX];
   uint32_t k[WMAX];
   int32_t inGroup[MAXSLAB];
   while (guard++ <= LIMIT) {
-    restingOf(s);
+    if (!restValid) restingOf(s);
+    restValid = 1;
     if (scan) {
       int any = 0, link = 0;
       uint32_t freeM[WMAX];
@@ -808,7 +810,22 @@ static int resolveU(const int32_t *st, int32_t *r, int wantSettled) {
       s->chaining[c] = (s->chaining[c] & keepPut) | ((s->chaining[c] & movable) >> 1);
       s->occ[c] = keepPut | (movable >> 1);
     }
-    slabsThatFall(s);
+    int slabsFell = 0;
+    if (s->nslab) {
+      int skip = slabQuiet;
+      for (c = 1; c <= W && skip; c++) if ((s->occ[c] & supp[c]) != suppOcc[c]) skip = 0;
+      if (skip) { for (int sk = 0; sk < s->nslab; sk++) s->falling[sk] = 0; }
+      else {
+        slabsThatFall(s);
+        for (int sk = 0; sk < s->nslab; sk++) if (s->falling[sk]) { slabsFell = 1; break; }
+        if (!slabsFell) {
+          for (c = 0; c < WMAX; c++) supp[c] = 0;
+          for (int sk = 0; sk < s->nslab; sk++) for (c = 1; c <= W; c++) { uint32_t v = s->slab[sk][c]; if (v) supp[c] |= lowb(v) >> 1; }
+          for (c = 1; c <= W; c++) suppOcc[c] = s->occ[c] & supp[c];
+          slabQuiet = 1;
+        } else slabQuiet = 0;
+      }
+    }
     for (int sk = 0; sk < s->nslab; sk++) {
       if (!s->falling[sk]) continue;
       fell = 1;
@@ -828,9 +845,6 @@ static int resolveU(const int32_t *st, int32_t *r, int wantSettled) {
       for (c = 1; c <= W; c++) { old[c] = s->rest[c]; oldI[c] = s->inert[c]; }
       restingOf(s);
       for (c = 1; c <= W; c++) if (s->rest[c] != old[c] || s->inert[c] != oldI[c]) { scan = 1; break; }
-      if (!scan) {
-        for (c = 1; c <= W; c++) s->rest[c] = old[c];
-      }
       continue;
     }
     moved = 0;
@@ -845,7 +859,7 @@ static int resolveU(const int32_t *st, int32_t *r, int wantSettled) {
       s->occ[c] = keep;
       s->popping[c] = 0;
     }
-    if (swept) { anyPop = 0; scan = 1; continue; }
+    if (swept) { anyPop = 0; scan = 1; restValid = 0; continue; }
     break;
   }
   r[R_SCOPE] = SC_OK; r[R_CHAIN] = rounds ? (counter > 1 ? counter : 1) : 0; r[R_TOTAL] = total;
@@ -885,16 +899,23 @@ static void markLines(const int32_t *st, const Grid *G, int rr, int cc, int col,
   while (gAt(st, G, top + 1, cc, r, c, l, rt) == col) top++;
   if (top - bot >= 2) for (int y = bot; y <= top; y++) k[cc] |= 1u << (y - 1);
 }
-static int breaksFirst(const int32_t *st, const Grid *G, int r, int c) {
+static int firstRoundK(const int32_t *st, const Grid *G, int r, int c, int *total, int *cascade, uint32_t *k);
+static int firstRound(const int32_t *st, const Grid *G, int r, int c, int *total, int *cascade) { uint32_t k[WMAX]; return firstRoundK(st, G, r, c, total, cascade, k); }
+static int firstRoundK(const int32_t *st, const Grid *G, int r, int c, int *total, int *cascade, uint32_t *k) {
   int W = st[O_W], H = st[O_H], L = G->g[r][c], Rt = G->g[r][c + 1];
-  uint32_t k[WMAX] = {0};
+  for (int i = 0; i < WMAX; i++) k[i] = 0;
   markLines(st, G, r, c, Rt, r, c, L, Rt, k);
   markLines(st, G, r, c + 1, L, r, c, L, Rt, k);
-  int adj = 0;
-  for (int cc = 1; cc <= W && !adj; cc++) {
+  int adj = 0, t = 0, cas = 0;
+  for (int cc = 1; cc <= W; cc++) {
+    if (!k[cc]) continue;
+    t += popc(k[cc]);
+    uint32_t top = 1u << (topRow(k[cc]) - 1);
+    if (U(st, OCC + cc) & ~((top << 1) - 1u)) cas = 1;
     uint32_t g = U(st, GARB + cc), gl = cc > 1 ? U(st, GARB + cc - 1) : 0, gr = cc < W ? U(st, GARB + cc + 1) : 0;
     if (k[cc] & ((g >> 1) | (g << 1) | gl | gr)) adj = 1;
   }
+  *total = t; *cascade = cas;
   if (!adj) return 0;
   int n = st[O_NSLAB];
   if (!n) return 1;
@@ -910,6 +931,26 @@ static int breaksFirst(const int32_t *st, const Grid *G, int r, int c) {
   }
   return 0;
 }
+static int quietClear(const int32_t *st, const Grid *G, int r, int c, int32_t *out) {
+  int t, cas; uint32_t k[WMAX];
+  if (firstRoundK(st, G, r, c, &t, &cas, k) || cas) return 0;
+  int32_t *res = out, *ss = out + R_INTS;
+  for (int i = 0; i < R_INTS; i++) res[i] = 0;
+  res[R_SCOPE] = SC_OK; res[R_CHAIN] = 1; res[R_TOTAL] = t; res[R_ROUNDS] = 1;
+  stcpy(ss, st);
+  swapIn(ss, r, c);
+  ss[O_BUSYF] = 0; ss[O_BAD] = 0; ss[6] = 0; ss[7] = 0;
+  for (int cc = 0; cc < WMAX; cc++) { ss[BUSY + cc] = 0; ss[COL + cc] = 0; }
+  for (int a = st[O_N] + 1; a < NCOL; a++) for (int cc = 0; cc < WMAX; cc++) ss[COL + a * WMAX + cc] = 0;
+  for (int i = 0; i < st[O_NSLAB]; i++) { ss[SLK(i)] = ss[SLK(i)] ? 1 : 0; ss[SAIR(i)] = 0; }
+  for (int cc = 1; cc <= st[O_W]; cc++) {
+    if (!k[cc]) continue;
+    ss[OCC + cc] &= ~k[cc];
+    for (int a = 1; a <= st[O_N]; a++) ss[COL + a * WMAX + cc] &= ~k[cc];
+  }
+  return 1;
+}
+static int breaksFirst(const int32_t *st, const Grid *G, int r, int c) { int t, cs; return firstRound(st, G, r, c, &t, &cs); }
 static int anyBreakOf(const int32_t *st0) {
   Grid G;
   u64 k = hashOf(st0); double v;
@@ -919,7 +960,11 @@ static int anyBreakOf(const int32_t *st0) {
   int n = legalG(SCR, SWS, &G), any = 0, rest = atRest(SCR);
   for (int i = 0; i < n && !any; i++) {
     if (!swapCanClearG(SCR, &G, rest, SWS[2 * i], SWS[2 * i + 1])) continue;
-    if (rest && G.g[SWS[2 * i]][SWS[2 * i + 1]] && G.g[SWS[2 * i]][SWS[2 * i + 1] + 1] && breaksFirst(SCR, &G, SWS[2 * i], SWS[2 * i + 1])) { any = 1; break; }
+    if (rest && G.g[SWS[2 * i]][SWS[2 * i + 1]] && G.g[SWS[2 * i]][SWS[2 * i + 1] + 1]) {
+      int t, cas;
+      if (firstRound(SCR, &G, SWS[2 * i], SWS[2 * i + 1], &t, &cas)) { any = 1; break; }
+      if (!cas) continue;
+    }
     if (!swapIn(SCR, SWS[2 * i], SWS[2 * i + 1])) continue;
     nAnyR++, resolve(SCR, RS, 0);
     swapIn(SCR, SWS[2 * i], SWS[2 * i + 1]);
@@ -936,7 +981,11 @@ static int savesOfRaw(const int32_t *st0) {
   int n = legalG(SCR, SWS, &G), cnt = 0, rest = atRest(SCR);
   for (int i = 0; i < n; i++) {
     if (!swapCanClearG(SCR, &G, rest, SWS[2 * i], SWS[2 * i + 1])) continue;
-    if (rest && G.g[SWS[2 * i]][SWS[2 * i + 1]] && G.g[SWS[2 * i]][SWS[2 * i + 1] + 1] && breaksFirst(SCR, &G, SWS[2 * i], SWS[2 * i + 1])) { cnt++; continue; }
+    if (rest && G.g[SWS[2 * i]][SWS[2 * i + 1]] && G.g[SWS[2 * i]][SWS[2 * i + 1] + 1]) {
+      int t, cas;
+      if (firstRound(SCR, &G, SWS[2 * i], SWS[2 * i + 1], &t, &cas)) { cnt++; continue; }
+      if (!cas) continue;
+    }
     if (!swapIn(SCR, SWS[2 * i], SWS[2 * i + 1])) continue;
     nSavesR++, resolve(SCR, RS, 0);
     swapIn(SCR, SWS[2 * i], SWS[2 * i + 1]);
@@ -959,6 +1008,16 @@ static double bestOneSwapStop(const int32_t *st0) {
   double best = 0;
   for (int i = 0; i < n; i++) {
     if (!swapCanClearG(SCS, &G, rest, SWL[2 * i], SWL[2 * i + 1])) continue;
+    if (rest && G.g[SWL[2 * i]][SWL[2 * i + 1]] && G.g[SWL[2 * i]][SWL[2 * i + 1] + 1]) {
+      int t, cas, br = firstRound(SCS, &G, SWL[2 * i], SWL[2 * i + 1], &t, &cas);
+      if (br || !cas) {
+        if (!(t > 0)) continue;
+        double pays = priceOf(1, t);
+        if (pays != pays) pays = 0;
+        if (pays > best) best = pays;
+        continue;
+      }
+    }
     if (!swapIn(SCS, SWL[2 * i], SWL[2 * i + 1])) continue;
     nLandR++, resolve(SCS, RL, 0);
     swapIn(SCS, SWL[2 * i], SWL[2 * i + 1]);
@@ -1376,6 +1435,10 @@ static void expandAll(int depth, int cr, int cc) {
           swapIn(state, sr, sc);
           stcpy(res->st, state);
           swapIn(state, sr, sc);
+        } else if (nodeRest && G.g[sr][sc] && G.g[sr][sc + 1] && arenaN + R_INTS + ST_INTS <= arenaCap &&
+                   quietClear(state, &G, sr, sc, ARENA + arenaN)) {
+          res = (Res *)(ARENA + arenaN);
+          arenaN += R_INTS + stlen(res->st);
         } else if (pf && TASKIX[fi * TIXW + k] >= 0) {
           res = (Res *)(PSOUT + (qside * MAXSET + TASKIX[fi * TIXW + k]) * SOUT);
         } else {
@@ -1588,9 +1651,22 @@ __attribute__((export_name("bit_checkbf"))) int32_t bit_checkbf(void) {
   for (int i = 0; i < n; i++) {
     int r = sw[2 * i], c = sw[2 * i + 1];
     if (!rest || !G.g[r][c] || !G.g[r][c + 1] || !swapCanClearG(IN, &G, rest, r, c)) continue;
-    int bf = breaksFirst(IN, &G, r, c);
+    int t, cas, bf = firstRound(IN, &G, r, c, &t, &cas);
     swapIn(IN, r, c); resolveRaw(IN, rr, 0); swapIn(IN, r, c);
-    if (bf) { hits++; if (rr[R_SCOPE] != SC_BROKE || rr[R_ROUNDS] != 1) bad++; }
+    if (bf) { hits++; if (rr[R_SCOPE] != SC_BROKE || rr[R_ROUNDS] != 1 || rr[R_CHAIN] != 1 || rr[R_TOTAL] != t) bad++; }
+    else if (!cas) {
+      hits++;
+      if (rr[R_SCOPE] != SC_OK || rr[R_ROUNDS] != 1 || rr[R_CHAIN] != 1 || rr[R_TOTAL] != t) bad++;
+      static int32_t q[R_INTS + ST_INTS], full[R_INTS + ST_INTS];
+      if (!quietClear(IN, &G, r, c, q)) bad++;
+      else {
+        swapIn(IN, r, c); resolveRaw(IN, full, 1); swapIn(IN, r, c);
+        for (int j = 0; j < R_INTS; j++) if (q[j] != full[j]) { bad++; break; }
+        int len = stlen(full + R_INTS);
+        if (stlen(q + R_INTS) != len) bad++;
+        else for (int j = 0; j < len; j++) if (q[R_INTS + j] != full[R_INTS + j]) { bad++; break; }
+      }
+    }
     else if (rr[R_SCOPE] == SC_BROKE && rr[R_ROUNDS] == 1) bad += 1000;
   }
   return bad * 10000 + hits;

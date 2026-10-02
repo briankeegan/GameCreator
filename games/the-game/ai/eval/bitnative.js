@@ -241,7 +241,21 @@
     if (risen) putAt(ex.bot_risen() >> 2, risen);
     if (tmst) { putAt(ex.bot_tmst() >> 2, tmst); putTimed(timed, tmst.W); }
   }
+  var TAPE = null;
+  function region(at, bytes) { return new Uint8Array(MEMORY.buffer, at, bytes).slice(); }
+  function regions(id) {
+    return [[ex.bot_in(), 600 * 8], [IN * 4, ST_INTS * 4], [ex.bot_risen(), ST_INTS * 4], [ex.bot_tmst(), ST_INTS * 4],
+            [ex.bit_timed(), 64 * 4], [ex.bot_state(id), ex.bot_state_size()]];
+  }
+  function record(on) { TAPE = on ? [] : null; }
+  function recorded() { return TAPE; }
+  function replay(id, rec) {
+    var rg = regions(id), m = new Uint8Array(MEMORY.buffer);
+    for (var i = 0; i < rg.length; i++) m.set(rec[i], rg[i][0]);
+    return ex.bot_decide(id);
+  }
   function botDecide(id) {
+    if (TAPE) TAPE.push(regions(id).map(function (r) { return region(r[0], r[1]); }));
     var r = ex.bot_decide(id);
     priceKey = null;
     if (r !== 0) throw new Error('bitnative.botDecide: a fixed size was exceeded');
@@ -278,7 +292,7 @@
     }
   }
   function checkbf(st) { put(st); return ex.bit_checkbf(); }
-  return { _checkbf: checkbf, fits: fits, resolve: resolve, resolveTimed: resolveTimed, scan: scan, load: load, options: options,
+  return { record: record, recorded: recorded, replay: replay, _checkbf: checkbf, fits: fits, resolve: resolve, resolveTimed: resolveTimed, scan: scan, load: load, options: options,
            botNew: botNew, botIn: botIn, botStates: botStates, botDecide: botDecide, botTab: botTab, botPut: botPut, botTest: botTest,
            botPoolMasks: botPoolMasks, deadlyCalls: deadlyCalls, opening: opening, putRecords: putRecords };
 }));
