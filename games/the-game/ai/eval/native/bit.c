@@ -1232,7 +1232,7 @@ static int anyBreakOf(const int32_t *st0) {
   if (tget(&SAVES, k, &v)) return v > 0;
   if (tget(&ANYB, k, &v)) return (int)v;
   stcpy(SCR, st0);
-  int n = legalG(SCR, SWS, &G), any = 0, rest = atRest(SCR);
+  int n = legalG(SCR, SWS, &G), any = 0, rest = atRest(SCR), nLater = 0, LATER[128];
   Drop D; int haveD = 0;
   for (int i = 0; i < n && !any; i++) {
     if (!swapCanClearG(SCR, &G, rest, SWS[2 * i], SWS[2 * i + 1])) continue;
@@ -1242,6 +1242,10 @@ static int anyBreakOf(const int32_t *st0) {
       if (!cas || DROPQ(SCR, SWS[2 * i], SWS[2 * i + 1], kq)) continue;
     }
     if (rest && !(G.g[SWS[2 * i]][SWS[2 * i + 1]] && G.g[SWS[2 * i]][SWS[2 * i + 1] + 1]) && DROPQ(SCR, SWS[2 * i], SWS[2 * i + 1], ZK)) continue;
+    LATER[nLater++] = i;
+  }
+  for (int j = 0; j < nLater && !any; j++) {
+    int i = LATER[j];
     if (!swapIn(SCR, SWS[2 * i], SWS[2 * i + 1])) continue;
     nAnyR++, resolve(SCR, RS, 0);
     swapIn(SCR, SWS[2 * i], SWS[2 * i + 1]);
@@ -1250,27 +1254,47 @@ static int anyBreakOf(const int32_t *st0) {
   tput(&ANYB, k, any);
   return any;
 }
+static double priceOf(int chain, int total);
+static LOCAL int stopKeyId, hasStopPrice, expanding;
 static int savesOfRaw(const int32_t *st0) {
   Grid G;
   u64 k = hashOf(st0); double v;
   if (tget(&SAVES, k, &v)) return (int)v;
   stcpy(SCR, st0);
-  int n = legalG(SCR, SWS, &G), cnt = 0, rest = atRest(SCR);
+  int n = legalG(SCR, SWS, &G), cnt = 0, rest = atRest(SCR), fire = 0;
+  double best = 0;
   Drop D; int haveD = 0;
   for (int i = 0; i < n; i++) {
     if (!swapCanClearG(SCR, &G, rest, SWS[2 * i], SWS[2 * i + 1])) continue;
     if (rest && G.g[SWS[2 * i]][SWS[2 * i + 1]] && G.g[SWS[2 * i]][SWS[2 * i + 1] + 1]) {
       int t, cas; uint32_t kq[WMAX];
-      if (firstRoundK(SCR, &G, SWS[2 * i], SWS[2 * i + 1], &t, &cas, kq)) { cnt++; continue; }
-      if (!cas || DROPQ(SCR, SWS[2 * i], SWS[2 * i + 1], kq)) continue;
+      int br = firstRoundK(SCR, &G, SWS[2 * i], SWS[2 * i + 1], &t, &cas, kq);
+      if (br || !cas || DROPQ(SCR, SWS[2 * i], SWS[2 * i + 1], kq)) {
+        if (br) cnt++;
+        if (t > 0) {
+          fire = 1;
+          double pays = priceOf(1, t);
+          if (pays != pays) pays = 0;
+          if (pays > best) best = pays;
+        }
+        continue;
+      }
     }
     if (rest && !(G.g[SWS[2 * i]][SWS[2 * i + 1]] && G.g[SWS[2 * i]][SWS[2 * i + 1] + 1]) && DROPQ(SCR, SWS[2 * i], SWS[2 * i + 1], ZK)) continue;
     if (!swapIn(SCR, SWS[2 * i], SWS[2 * i + 1])) continue;
     nSavesR++, resolve(SCR, RS, 0);
     swapIn(SCR, SWS[2 * i], SWS[2 * i + 1]);
     if (RS[R_SCOPE] == SC_BROKE) cnt++;
+    if (RS[R_TOTAL] > 0 || RS[R_SCOPE] == SC_BROKE) fire = 1;
+    if (RS[R_TOTAL] > 0) {
+      double pays = priceOf(RS[R_CHAIN], RS[R_TOTAL]);
+      if (pays != pays) pays = 0;
+      if (pays > best) best = pays;
+    }
   }
   tput(&SAVES, k, cnt);
+  if (rest) tput(&FIRE, k, fire);
+  if (stopKeyId && expanding) tput(&STOPS_T, k ^ ((u64)stopKeyId * 0x9e3779b97f4a7c15ull), best);
   return cnt;
 }
 static LOCAL double PCHAIN[64], PCOMBO[256];
@@ -1310,7 +1334,6 @@ static double bestOneSwapStop(const int32_t *st0) {
   }
   return best;
 }
-static LOCAL int stopKeyId = 0, hasStopPrice = 0;
 static double landStopOf(const int32_t *st) {
   if (!stopKeyId) return bestOneSwapStop(st);
   u64 k = hashOf(st) ^ ((u64)stopKeyId * 0x9e3779b97f4a7c15ull); double v;
@@ -1322,7 +1345,7 @@ static double landStopOf(const int32_t *st) {
 
 // ---------------------------------------------------------------- the search
 static LOCAL double LMAX;
-static LOCAL int lazyBreak, expanding;
+static LOCAL int lazyBreak;
 static LOCAL double FPR, DEADLINE, LOCKP, OVERHEAD, SWAPP, HOLD, WORK, MAXSTOP, READYWORTH, PREPWORTH;
 static LOCAL int SPEND, LEAN, PREPARE, DIG, PRESS, Wd;
 static LOCAL int dropBudget, saveBudget, slabBudget, prepBudget;
