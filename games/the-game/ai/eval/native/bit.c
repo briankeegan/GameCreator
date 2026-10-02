@@ -1036,13 +1036,30 @@ static int runOver(const Drop *D, int W, int y, int x, int r, int c, int L, int 
 static int dropQuiet(const int32_t *st, const Drop *D, int r, int c, const uint32_t *k, int32_t *out) {
   if (!D->ok) return 0;
   int W = st[O_W], ns = st[O_NSLAB];
-  if (!out && k == ZK) {
+  uint32_t b0 = 1u << (r - 1);
+  if (((D->occ[c] & b0) && !D->g[r][c]) || ((D->occ[c + 1] & b0) && !D->g[r][c + 1])) return 0;
+  if (D->g[r][c] && D->g[r][c] == D->g[r][c + 1]) return 0;
+  if (k == ZK) {
     int L0 = D->g[r][c], R0 = D->g[r][c + 1];
     if (!L0 != !R0) {
       int src = L0 ? c : c + 1, dst = L0 ? c + 1 : c;
       uint32_t bb = 1u << (r - 1);
-      if (!(D->occ[src] >> r) && (r == 1 || (D->occ[dst] & (bb >> 1))))
-        return !runOver(D, W, r, dst, r, c, L0, R0);
+      if (!(D->occ[src] >> r) && (r == 1 || (D->occ[dst] & (bb >> 1)))) {
+        if (runOver(D, W, r, dst, r, c, L0, R0)) return 0;
+        if (!out) return 1;
+        int32_t *ss = out + R_INTS;
+        for (int i = 0; i < R_INTS; i++) out[i] = 0;
+        out[R_SCOPE] = SC_OK;
+        stcpy(ss, st);
+        ss[O_BUSYF] = 0; ss[O_BAD] = 0; ss[6] = 0; ss[7] = 0;
+        for (int cc = 0; cc < WMAX; cc++) { ss[BUSY + cc] = 0; ss[COL + cc] = 0; }
+        for (int a = st[O_N] + 1; a < NCOL; a++) for (int cc = 0; cc < WMAX; cc++) ss[COL + a * WMAX + cc] = 0;
+        for (int i = 0; i < ns; i++) { ss[SLK(i)] = ss[SLK(i)] ? 1 : 0; ss[SAIR(i)] = 0; }
+        swapIn(ss, r, c);
+        for (int cc = c; cc <= c + 1; cc++)
+          for (int a = 1; a <= st[O_N]; a++) ss[COL + a * WMAX + cc] &= ss[OCC + cc] & ~ss[GARB + cc];
+        return 1;
+      }
     }
   }
   uint8_t g[18][WMAX];
@@ -1155,8 +1172,9 @@ static int quietDrop(const int32_t *st, const Grid *G, const Drop *D, int r, int
   if (G->g[r][c] && G->g[r][c + 1]) {
     int t, cas;
     if (firstRoundK(st, G, r, c, &t, &cas, k)) return 0;
-  } else for (int i = 0; i < WMAX; i++) k[i] = 0;
-  return dropQuiet(st, D, r, c, k, out);
+    return dropQuiet(st, D, r, c, k, out);
+  }
+  return dropQuiet(st, D, r, c, ZK, out);
 }
 static LOCAL ST SWAPSCR;
 static int settleSwap(const int32_t *st, int r, int c, Res *out) {
