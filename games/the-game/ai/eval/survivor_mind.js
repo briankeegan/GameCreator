@@ -159,7 +159,7 @@ wt.parentPort.on('message', function (m) {
     // ends and the lineup breaks the slab when it does; the bot's own stages
     // (the lookahead, the modes) do not know what the pop's end brings.
     var overruled = false;
-    if (popping && br && br.lineup && !want[key(d)]) {
+    if (br && (popping && br.lineup || br.touch) && !want[key(d)]) {
       var lk = Object.keys(want).filter(function (k) { return /^\d+,\d+$/.test(k); })[0];
       if (lk) { d = { kind: 'swap', move: lk.split(',').map(Number) }; overruled = true; }
     }
@@ -176,7 +176,7 @@ wt.parentPort.on('message', function (m) {
     out = { id: m.id, epoch: m.epoch, at: m.at, kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, ms: Date.now() - t0, brMs: brMs, why: why,
           line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
           mem: NativeMem(),
-          breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
+          breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
           diag: { doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped } };
   } catch (e) {
     if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };

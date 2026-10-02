@@ -190,6 +190,23 @@ function pairs(grid, want) {
   }
   return s;
 }
+// How near the row under the lowest garbage is to a match touching it: per
+// column resting on the garbage, a pair standing under it and a pair beside it
+// in that row; less the gap between the garbage and every column's top.
+var TOUCH_DEPTH = 6, TOUCH_BEAM = 8;
+function touchScore(grid) {
+  var G = 0, r, c, top = [0], s = 0;
+  for (r = 1; r < grid.length && !G; r++) if (grid[r]) for (c = 1; c <= 6; c++) if (grid[r][c] < 0) { G = r; break; }
+  if (!G) return 0;
+  for (c = 1; c <= 6; c++) { var t = 0; for (r = 1; r < G; r++) if (grid[r] && grid[r][c] > 0) t = r; top[c] = t; s -= G - 1 - t; }
+  var u = G - 1;
+  for (c = 1; c <= 6; c++) {
+    if (top[c] !== u) continue;
+    if (u > 1 && grid[u - 1][c] === grid[u][c]) s += 4;
+    if (c < 6 && top[c + 1] === u && grid[u][c + 1] === grid[u][c]) s += 3;
+  }
+  return s;
+}
 function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
   maxDepth = maxDepth || 3;
   deadline = deadline || Infinity;
@@ -208,6 +225,32 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
   var firsts = swapsOf(root).map(function (m) { return { key: m[0] + ',' + m[1], m: m }; }), found = {}, any = false;
   firsts.forEach(function (f) { f.n = S.advance(root, 'swap', f.m, 0); if (breaks(f.n)) { found[f.key] = true; any = true; } });
   if (any) return { depth: 1, moves: found };
+  // GARBAGE RESTING, NOTHING POPPING: a break sooner rather than later. A
+  // beam of lines up to TOUCH_DEPTH swaps, kept by how near the row under the
+  // garbage is to a match (touchScore), for as long as `deadline` allows. A
+  // line is played on the engine with the stack rising as it does, so one the
+  // board would die on before its break is never offered.
+  if (!(wait > 0)) {
+    var tl = firsts.filter(function (f) { return f.n && !f.n.dead; }).map(function (f) { return { key: f.key, n: f.n, path: [f.m] }; }), tpath = null;
+    for (var td = 2; td <= TOUCH_DEPTH && tl.length && !tpath && Date.now() < deadline; td++) {
+      tl.forEach(function (x) { x.s = touchScore(x.n.b.grid); });
+      tl.sort(function (a, b) { return b.s - a.s; });
+      tl = tl.slice(0, TOUCH_BEAM);
+      var tn = [];
+      for (i = 0; i < tl.length && !tpath && Date.now() < deadline; i++) {
+        var tm = swapsOf(tl[i].n);
+        for (j = 0; j < tm.length && Date.now() < deadline; j++) {
+          var t3 = S.advance(tl[i].n, 'swap', tm[j], 0);
+          if (!t3 || t3.dead) continue;
+          var tp = tl[i].path.concat([tm[j]]);
+          if (breaks(t3)) { found[tl[i].key] = true; any = true; tpath = tp; break; }
+          tn.push({ key: tl[i].key, n: t3, path: tp });
+        }
+      }
+      tl = tn;
+    }
+    if (any) return { depth: 1, moves: found, touch: true, path: tpath };
+  }
   if (wait > 0 && !breaks(S.advance(root, 'long', null, wait))) {
     // till the pop is over, from wherever a line has got to
     var end = root.t + wait;
