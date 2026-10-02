@@ -622,8 +622,8 @@ static int runPhase(Ctx *x, Vec *tasks, int32_t *res) {
 }
 // Steps on every thread: the io body holds n records (parent, kind, row,
 // col, frames), each the step ns_advance would make from them. Out, in the io
-// body, per step: the node, or -1 refused, or -2 and then the frame it died
-// on. Returns n, or -3 for no room.
+// body, per step: the node, or -1 refused, or -2; the frame it died on; the
+// node's frame; its garbage rows broken. Returns n, or -3 for no room.
 EXPORT(ns_advance_many) int ns_advance_many(Ctx *x, int n) {
   static Vec tasks, res, dead;
   if (n < 0 || 5 * n > NBODY || !vreserve(&tasks, 4 * n) || !vreserve(&res, n) || !vreserve(&dead, n)) return -3;
@@ -639,7 +639,11 @@ EXPORT(ns_advance_many) int ns_advance_many(Ctx *x, int n) {
   int ok = runPhase(x, &tasks, res.a);
   pool.deadAt = 0;
   if (!ok) return -3;
-  for (int i = 0; i < n; i++) { ioBody[2 * i] = res.a[i]; ioBody[2 * i + 1] = dead.a[i]; }
+  for (int i = 0; i < n; i++) {
+    int32_t r = res.a[i];
+    ioBody[4 * i] = r; ioBody[4 * i + 1] = dead.a[i];
+    ioBody[4 * i + 2] = r >= 0 ? NODE(x, r)->t : 0; ioBody[4 * i + 3] = r >= 0 ? NODE(x, r)->brk : 0;
+  }
   return n;
 }
 #define CHUNK 96

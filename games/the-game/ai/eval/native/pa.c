@@ -725,7 +725,7 @@ static void clearChainingFlags(Board *b) {
   for (int r = 1; r <= top; r++)
     for (int c = 1; c <= W; c++) {
       Panel *p = P(b, r, c);
-      if (!SETB(p->f[MATCHING]) && SETB(p->f[CHAINING]) && !p->f[MATCHANYWAY] && (canMatch(p) || p->f[COLOR] == 9)) {
+      if (SETB(p->f[CHAINING]) && !SETB(p->f[MATCHING]) && !p->f[MATCHANYWAY] && (canMatch(p) || p->f[COLOR] == 9)) {
         if (r > 1) { if (P(b, r - 1, c)->f[STATE] != SWAPPING) p->f[CHAINING] = NUL; }
         else p->f[CHAINING] = NUL;
       }
@@ -834,13 +834,43 @@ static void receiveGarbage(Board *b, const Incoming *g) {
 }
 
 // ---- the frame
+// A ROW OF GARBAGE AT REST ON ITS OWN PIECE: every cell garbage, normal, its
+// flags clear, on a cell of its own piece's row below (already updated this
+// frame). updatePanel would clear flags already clear and find each cell
+// held up -- supportedFromBelow stops on that row -- so the row is skipped.
+static int restingRow(const Board *b, int r) {
+  const Panel *row = b->p[r], *under = b->p[r - 1];
+  for (int c = 1; c <= W; c++) {
+    const int32_t *f = row[c].f, *u = under[c].f;
+    if (!f[ISGARBAGE] || f[STATE] != NORMAL || f[STATECHANGED] || f[PROPCHAIN] || f[PROPFALL] || f[MATCHING]) return 0;
+    if (!u[ISGARBAGE] || u[COLOR] == 0 || u[GARBAGEID] != f[GARBAGEID] || u[YOFF] == f[YOFF]) return 0;
+  }
+  return 1;
+}
+// A ROW OF POPPING GARBAGE whose timers reach neither a pop nor their end
+// this frame: every cell garbage, matched, its flags clear, its timer past 1
+// and not one past its pop time. updatePanel would only count each timer
+// down, so that is all that is done.
+static int poppingRow(Board *b, int r) {
+  Panel *row = b->p[r];
+  for (int c = 1; c <= W; c++) {
+    const int32_t *f = row[c].f;
+    if (!f[ISGARBAGE] || f[STATE] != MATCHED || f[STATECHANGED] || f[PROPCHAIN] || f[PROPFALL] || f[MATCHING]) return 0;
+    if (f[TIMER] <= 1 || f[TIMER] - 1 == f[POPTIME]) return 0;
+  }
+  for (int c = 1; c <= W; c++) row[c].f[TIMER]--;
+  return 1;
+}
 static void updatePanels(Board *b) {
   b->shakeTimeOnFrame = 0;
   // A panel that falls moves to the cell below, already updated; the one it
   // trades with comes up into this cell, which is not visited again.
   int n = rowsTo(b), r, c;
-  for (r = 1; r < n; r++)
+  for (r = 1; r < n; r++) {
+    if (r > 1 && restingRow(b, r)) continue;
+    if (poppingRow(b, r)) continue;
     for (c = 1; c <= W; c++) updatePanel(b, P(b, r, c));
+  }
   for (r = n - 1; r >= 1; r--) {
     for (c = 1; c <= W; c++) if (!settled(P(b, r, c)->f)) break;
     if (c <= W) break;

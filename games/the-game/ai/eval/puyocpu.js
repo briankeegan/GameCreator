@@ -2836,7 +2836,8 @@
     if (!this.refuseSuicide || !this.deepSurvival || !cands || cands.length < 2) return cands;
     if (!this._board) return cands;
     var i, proven = [], weakly = [], unproven = [];
-    var verdict = this._survivalSearch(cands);
+    var svT = Date.now(), verdict = this._survivalSearch(cands);
+    this._svMs = (this._svMs || 0) + Date.now() - svT;   // the survival search's milliseconds, read and cleared by the caller
     for (i = 0; i < cands.length; i++) {
       if (verdict[i] === 'proven') proven.push(cands[i]);
       else if (verdict[i] === 'weak') weakly.push(cands[i]);
