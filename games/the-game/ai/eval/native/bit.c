@@ -1690,6 +1690,9 @@ static int prefetchPly(int nf, int ply) {
   }
   return 1;
 }
+typedef struct { Res *res; int hasRR, rrDig, hasSh, sv, fire, slab, hasLand; double land; Shape sh; uint32_t rr[WMAX]; } CK;
+static LOCAL int DUPOF[MAXFRONT];
+static LOCAL CK *CKP[MAXFRONT];
 static void expandAll(int depth, int cr, int cc) {
   expanding = 1;
   Shape BASE; shapeOf(BASEST, &BASE);
@@ -1707,11 +1710,34 @@ static void expandAll(int depth, int cr, int cc) {
     qside ^= 1; nQuiet[qside] = 0;
     int pf = pool.nworkers && !LEAN && !inPar && prefetchPly(nf, ply);
     for (int fi = 0; fi < nf; fi++) {
+      DUPOF[fi] = -1; CKP[fi] = 0;
+      const int32_t *a = FRONT[fi].st;
+      int na = stlen(a);
+      for (int fj = 0; fj < fi && DUPOF[fi] < 0; fj++) {
+        if (DUPOF[fj] >= 0) continue;
+        const int32_t *b = FRONT[fj].st;
+        int j = 0;
+        if (b != a) { if (stlen(b) != na) continue; while (j < na && a[j] == b[j]) j++; if (j < na) continue; }
+        DUPOF[fi] = fj;
+        CKP[fj] = (CK *)1;
+      }
+    }
+    for (int fi = 0; fi < nf; fi++) {
       Node *node = &FRONT[fi];
       int32_t *state = WORK_ST[fi];
       stcpy(state, node->st);
       Grid G;
       int nl = legalG(state, SWE, &G);
+      CK *ck = 0;
+      if (DUPOF[fi] >= 0) ck = CKP[DUPOF[fi]];
+      else if (CKP[fi]) {
+        int at = (arenaN + 1) & ~1, need = (int)((nl * sizeof(CK) + 3) / 4);
+        if (at + need + R_INTS + ST_INTS <= arenaCap) {
+          ck = (CK *)(ARENA + at); arenaN = at + need;
+          for (int k = 0; k < nl; k++) { ck[k].res = 0; ck[k].hasRR = 0; ck[k].hasSh = 0; ck[k].sv = -1; ck[k].fire = -1; ck[k].slab = -1; ck[k].hasLand = 0; }
+        }
+        CKP[fi] = ck;
+      }
       int nodeRest = settledRest(state);
       Drop D; int haveD = 0;
       uint32_t reach[WMAX]; int haveReach = node->hasReach;
@@ -1724,7 +1750,9 @@ static void expandAll(int depth, int cr, int cc) {
           if (!((reach[sc] | reach[sc + 1]) & rb)) continue;
         }
         Res *res;
-        if (quietSwapG(state, &G, nodeRest, sr, sc)) {
+        CK *e = ck ? &ck[k] : 0;
+        if (e && e->res) res = e->res;
+        else if (quietSwapG(state, &G, nodeRest, sr, sc)) {
           if (nQuiet[qside] >= qcap) { failed = 1; continue; }
           res = &QUIET[qside * qcap + nQuiet[qside]++];
           for (int i = 0; i < R_INTS; i++) res->r[i] = 0;
@@ -1745,6 +1773,7 @@ static void expandAll(int depth, int cr, int cc) {
           res = settleOf(state);
           swapIn(state, sr, sc);
         }
+        if (e) e->res = res;
         int cost = node->spent + travelCost(node->fr, node->fc, sr, sc);
         int tPlan = cost + ply - 1;
         if ((double)tPlan > node->lock + SPEND) continue;
@@ -1767,10 +1796,20 @@ static void expandAll(int depth, int cr, int cc) {
         }
         if (!settled) continue;
         uint32_t rr[WMAX]; int rrDig = 0, haveRR = 0;
-        if (DIG) { rrDig = reachOf(settled, rr); haveRR = 1; }
+        if (DIG) {
+          if (!e) rrDig = reachOf(settled, rr);
+          else {
+            if (!e->hasRR) { e->rrDig = reachOf(settled, e->rr); e->hasRR = 1; }
+            rrDig = e->rrDig;
+            for (int c = 0; c < WMAX; c++) rr[c] = e->rr[c];
+          }
+          haveRR = 1;
+        }
         int svNow = 0;
         if (!LEAN) {
-          Shape sh2; shapeOfG(settled, &sh2, 0);
+          Shape sh2;
+          if (!e) shapeOfG(settled, &sh2, 0);
+          else { if (!e->hasSh) { shapeOfG(settled, &e->sh, 0); e->hasSh = 1; } sh2 = e->sh; }
           double dur = cost + nseq * OVERHEAD;
           double base2 = (BASE.tall - sh2.tall) * FPR + (BASE.excess - sh2.excess) * FPR
                        - (WORK - sh2.mat > 0 ? WORK - sh2.mat : 0) * FPR - dur;
@@ -1778,7 +1817,7 @@ static void expandAll(int depth, int cr, int cc) {
           int haveTerm = 0; double term = 0;
           if (DIG && haveRR) {
             int sv = 0;
-            if (rrDig > 0) { if (saveBudget > 0) { saveBudget--; sv = savesOfRaw(settled); } }
+            if (rrDig > 0) { if (saveBudget > 0) { saveBudget--; sv = !e ? savesOfRaw(settled) : e->sv >= 0 ? e->sv : (e->sv = savesOfRaw(settled)); } }
             svNow = sv;
             haveTerm = 1;
             term = (sv - BASESAVE) * (DEADLINE / Wd) * Wd + (rrDig - BASEDIG) * (DEADLINE / Wd);
@@ -1796,29 +1835,29 @@ static void expandAll(int depth, int cr, int cc) {
             double *v1 = recAt(1), *v2 = recAt(2), *v3 = recAt(3);
             if (!exact && (!haveRec[0] || hi > fv)) exact = 1;
             if (!exact && svNow > 0 && (!haveRec[1] || hi > v1[F_VALUE] || (hi == v1[F_VALUE] && cost < v1[F_FRAMES]))) exact = 1;
-            if (!exact && (!haveRec[2] || hi > v2[F_VALUE] || (hi == v2[F_VALUE] && cost < v2[F_FRAMES])) && canFireOf(settled)) exact = 1;
-            if (!exact && (!haveRec[3] || hi > v3[F_VALUE] || (hi == v3[F_VALUE] && cost < v3[F_FRAMES])) && slabReadyFast(settled)) exact = 1;
+            if (!exact && (!haveRec[2] || hi > v2[F_VALUE] || (hi == v2[F_VALUE] && cost < v2[F_FRAMES])) && (!e ? canFireOf(settled) : e->fire >= 0 ? e->fire : (e->fire = canFireOf(settled)))) exact = 1;
+            if (!exact && (!haveRec[3] || hi > v3[F_VALUE] || (hi == v3[F_VALUE] && cost < v3[F_FRAMES])) && (!e ? slabReadyFast(settled) : e->slab >= 0 ? e->slab : (e->slab = slabReadyFast(settled)))) exact = 1;
             if (!exact) {
               if (slabYes) slabBudget--;
               goto born;
             }
           }
-          double landStop = needLand ? landStopOf(settled) : 0;
+          double landStop = needLand ? (!e ? landStopOf(settled) : e->hasLand ? e->land : (e->hasLand = 1, e->land = landStopOf(settled))) : 0;
           double val = base2 + landStop;
           if (haveTerm) val += term;
           if (slabBudget > 0 && val + PREPWORTH > floor2) {
             slabBudget--;
-            if (slabReadyFast(settled)) credit = PREPWORTH;
+            if ((!e ? slabReadyFast(settled) : e->slab >= 0 ? e->slab : (e->slab = slabReadyFast(settled)))) credit = PREPWORTH;
           }
-          if (!credit && val + READYWORTH > floor2 && canFireOf(settled)) credit = READYWORTH;
+          if (!credit && val + READYWORTH > floor2 && (!e ? canFireOf(settled) : e->fire >= 0 ? e->fire : (e->fire = canFireOf(settled)))) credit = READYWORTH;
           val += credit;
           int take = !haveRec[0] || val > fv;
           double *sv0 = recAt(1), *rd0 = recAt(2), *tg0 = recAt(3);
           if (svNow > 0 && (!haveRec[1] || val > sv0[F_VALUE] || (val == sv0[F_VALUE] && cost < sv0[F_FRAMES])))
             takeRec(1, seq, nseq, cost, val, cost + nseq * OVERHEAD);
-          if ((!haveRec[2] || val > rd0[F_VALUE] || (val == rd0[F_VALUE] && cost < rd0[F_FRAMES])) && canFireOf(settled))
+          if ((!haveRec[2] || val > rd0[F_VALUE] || (val == rd0[F_VALUE] && cost < rd0[F_FRAMES])) && (!e ? canFireOf(settled) : e->fire >= 0 ? e->fire : (e->fire = canFireOf(settled))))
             takeRec(2, seq, nseq, cost, val, cost + nseq * OVERHEAD);
-          if ((!haveRec[3] || val > tg0[F_VALUE] || (val == tg0[F_VALUE] && cost < tg0[F_FRAMES])) && slabReadyFast(settled))
+          if ((!haveRec[3] || val > tg0[F_VALUE] || (val == tg0[F_VALUE] && cost < tg0[F_FRAMES])) && (!e ? slabReadyFast(settled) : e->slab >= 0 ? e->slab : (e->slab = slabReadyFast(settled))))
             takeRec(3, seq, nseq, cost, val, cost + nseq * OVERHEAD);
           if (take) {
             takeRec(0, seq, nseq, cost, val, dur);
