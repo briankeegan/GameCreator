@@ -1056,7 +1056,11 @@
                             // to a break longer than the lock has to fire a clear on the way
                             // -- and the board that clear settles into is built on like any
                             // setup. `cleared` carries the panels spent getting there.
-                            if (!broke && THROUGH && res.settled) {
+                            // Only above the reserve: a clear costs at least three panels
+                            // and the break it buys converts six, three of which its own
+                            // match spends, so time bought with panels is never paid back.
+                            var shc = (!broke && THROUGH && res.settled) ? shapeOf(res.settled) : null;
+                            if (shc && shc.mat >= WORK) {
                                 var rrc = DIG ? reachOf(res.settled) : null;
                                 born.push({ st: res.settled, chain: node.chain.concat([sw]),
                                             from: sw, spent: cost,

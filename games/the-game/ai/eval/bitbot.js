@@ -2695,16 +2695,16 @@
         }
         // THE RESERVE. A board with plenty of panels can spend them; below
         // WORKING_ROWS of material it keeps them for breaks. A clear that converts
-        // nothing and leaves less than that is not playable -- unless the route it
-        // belongs to ends in a break, where the clear is what buys the time to get
-        // there. Health is the one thing worth more: _waitForDrain still fires a
-        // clear rather than let it drain.
+        // nothing and leaves less than that is not playable, whatever route it is
+        // on: a break converts six and its own match spends three, so no clear
+        // bought on the way is paid back. Health is the one thing worth more:
+        // _waitForDrain still fires a clear rather than let it drain.
         function spendsReserve(r, after) {
             if (!r || !(r.total > 0) || r.brokeGarbage) return false;
             var sh = bitoptions.shapeOf(after);
             return !!sh && sh.mat < WORKING_ROWS;
         }
-        function playable(mv, endsInBreak) {
+        function playable(mv) {
             if (!mv) return false;
             var pc0 = null;
             for (var q0 = 0; q0 < pool.length; q0++) {
@@ -2712,7 +2712,7 @@
             }
             if (!pc0 || !pc0.masks) return false;
             if (returnsToSeen(mv)) return false;
-            if (!endsInBreak && spendsReserve(pc0.resolved, pc0.masks)) return false;
+            if (spendsReserve(pc0.resolved, pc0.masks)) return false;
             return !self.deadly(pc0.masks, pc0.resolved, info,
                                 Math.max((pc0.moveFrames || 0) + self.reaction, info.framesPerRow || 0));
         }
@@ -3007,7 +3007,7 @@
                     // a plan is worth abandoning, and then what it is abandoned for is
                     // the thing that hands ceiling back. Everywhere else the plan is
                     // played out, because a plan interrupted is a plan wasted.
-                    if (playable(rm, true) &&
+                    if (playable(rm) &&
                         (digLeft === Infinity || mode.name === 'DEFEND')) {
                         this._plan = null;
                         this._dig = reach.swaps.length > 1
@@ -3033,7 +3033,7 @@
                 }
             }
             if (!haveBreak && this._dig && this._dig.moves.length) {
-                var dn = this._dig.moves[0], dnOk = playable(dn, true);
+                var dn = this._dig.moves[0], dnOk = playable(dn);
                 var dspent = Math.max(0, this.stack.clock - (this._dig.startedAt || 0));
                 if (dnOk && this.planInTime(this._dig.moves, Math.max(0, this._dig.frames - dspent), base, info, deadline)) {
                     this._dig.moves = this._dig.moves.slice(1);
@@ -3056,7 +3056,7 @@
                 var dp = options.save;
                 if (dp && dp.swaps.length && this.planInTime(dp.swaps, dp.duration, base, info, deadline)) {
                     var dm = dp.swaps[0];
-                    if (playable(dm, true)) {
+                    if (playable(dm)) {
                         this._digIsBreak = false;
                         this._dig = { moves: dp.swaps.slice(1), frames: dp.duration || 0,
                                       startedAt: this.stack.clock };
