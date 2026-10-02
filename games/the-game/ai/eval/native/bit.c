@@ -990,35 +990,56 @@ static int runAt(const uint8_t g[18][WMAX], int W, int y, int x) {
   while (tp < 17 && g[tp + 1][x] == a) tp++;
   return tp - bo >= 2;
 }
-static int dropQuiet(const int32_t *st, const Grid *G, int r, int c, const uint32_t *k, int32_t *out) {
-  int W = st[O_W], ns = st[O_NSLAB], L = G->g[r][c], Rt = G->g[r][c + 1];
-  uint8_t g[18][WMAX];
-  uint32_t occ[WMAX], gar[WMAX], fix[WMAX], mv[WMAX], sl[MAXSLAB][WMAX], b = 1u << (r - 1);
-  for (int i = 0; i < ns; i++) {
-    if (st[SAIR(i)]) return 0;
-    for (int cc = 0; cc < WMAX; cc++) sl[i][cc] = U(st, SM(i, cc));
-  }
-  __builtin_memcpy(g, G->g, sizeof(g));
-  g[r][c] = (uint8_t)Rt; g[r][c + 1] = (uint8_t)L;
+typedef struct { int ok, nc; uint8_t g[18][WMAX]; uint32_t occ[WMAX], gar[WMAX], sl[MAXSLAB][WMAX]; uint8_t cand[MAXSLAB]; } Drop;
+static void dropOf(const int32_t *st, const Grid *G, Drop *D) {
+  int W = st[O_W], ns = st[O_NSLAB];
+  D->ok = 1; D->nc = 0;
+  __builtin_memcpy(D->g, G->g, sizeof(D->g));
   for (int cc = 1; cc <= W; cc++) {
-    uint32_t o = U(st, OCC + cc), gb = U(st, GARB + cc), kk = k[cc], gu = 0;
-    if (U(st, INERT + cc) & ~gb) return 0;
-    for (int i = 0; i < ns; i++) gu |= sl[i][cc];
-    fix[cc] = gb & ~gu;
-    gar[cc] = gb;
+    uint32_t gb = U(st, GARB + cc);
+    if ((U(st, INERT + cc) & ~gb) || U(st, OCC + cc) >> 15) { D->ok = 0; return; }
+    D->occ[cc] = U(st, OCC + cc); D->gar[cc] = gb;
+    for (uint32_t q = gb; q; q &= q - 1u) D->g[__builtin_ctz(q) + 1][cc] = 0;
+  }
+  for (int i = 0; i < ns; i++) {
+    if (st[SAIR(i)]) { D->ok = 0; return; }
+    int any = 0, ground = 0;
+    for (int cc = 1; cc <= W; cc++) {
+      uint32_t v = U(st, SM(i, cc));
+      D->sl[i][cc] = v;
+      if (v) { any = 1; if (v & 1u) ground = 1; }
+    }
+    if (any && !ground && !st[SLK(i)]) D->cand[D->nc++] = (uint8_t)i;
+  }
+}
+static int dropQuiet(const int32_t *st, const Drop *D, int r, int c, const uint32_t *k, int32_t *out) {
+  if (!D->ok) return 0;
+  int W = st[O_W], ns = st[O_NSLAB];
+  uint8_t g[18][WMAX];
+  uint32_t occ[WMAX], gar[WMAX], mv[WMAX], b = 1u << (r - 1);
+  int dd[MAXSLAB];
+  uint32_t dirty = (1u << c) | (2u << c);
+  __builtin_memcpy(g, D->g, sizeof(g));
+  int L = g[r][c], Rt = g[r][c + 1];
+  g[r][c] = (uint8_t)Rt; g[r][c + 1] = (uint8_t)L;
+  for (int x = 0; x < D->nc; x++) dd[D->cand[x]] = 0;
+  for (int cc = 1; cc <= W; cc++) {
+    uint32_t o = D->occ[cc], kk = k[cc];
     if (cc == c) o = (o & ~b) | (Rt ? b : 0);
     else if (cc == c + 1) o = (o & ~b) | (L ? b : 0);
     o &= ~kk;
-    for (uint32_t q = kk | gb; q; q &= q - 1u) g[__builtin_ctz(q) + 1][cc] = 0;
-    occ[cc] = o;
-    mv[cc] = (cc == c || cc == c + 1) ? (o & ~gb & b) : 0;
+    for (uint32_t q = kk; q; q &= q - 1u) g[__builtin_ctz(q) + 1][cc] = 0;
+    occ[cc] = o; gar[cc] = D->gar[cc];
+    mv[cc] = (cc == c || cc == c + 1) ? (o & ~gar[cc] & b) : 0;
+    if (kk) dirty |= 1u << cc;
   }
+  int anyMoved = 0;
   for (int pass = 0; pass < 64; pass++) {
     int ch = 0;
     for (int cc = 1; cc <= W; cc++) {
       uint32_t o = occ[cc], need = o & ~gar[cc] & ~((o << 1) | 1u);
       if (!need) continue;
-      ch = 1;
+      ch = 1; dirty |= 1u << cc;
       int y0 = __builtin_ctz(need), w = topRow(o & ((1u << y0) - 1u));
       for (int y = y0; y < 17; y++) {
         uint32_t bit = 1u << y;
@@ -1033,29 +1054,32 @@ static int dropQuiet(const int32_t *st, const Grid *G, int r, int c, const uint3
       }
       occ[cc] = o;
     }
-    for (int i = 0; i < ns; i++) {
-      if (st[SLK(i)]) continue;
-      int d = 0, any = 0;
+    for (int x = 0; x < D->nc; x++) {
+      int i = D->cand[x], free = 1;
+      for (int cc = 1; cc <= W && free; cc++) {
+        uint32_t v = D->sl[i][cc] >> dd[i];
+        if (v && ((v & 1u) || ((lowb(v) >> 1) & occ[cc]))) free = 0;
+      }
+      if (!free) continue;
+      int d = 0;
       for (;;) {
         int ok = 1;
         for (int cc = 1; cc <= W && ok; cc++) {
-          uint32_t v = sl[i][cc];
+          uint32_t v = D->sl[i][cc] >> dd[i];
           if (!v) continue;
-          any = 1;
           if (v & ((2u << d) - 1u)) ok = 0;
           else if ((v >> (d + 1)) & occ[cc] & ~v) ok = 0;
         }
-        if (!ok || !any) break;
+        if (!ok) break;
         d++;
       }
-      if (!d) continue;
       for (int cc = 1; cc <= W; cc++) {
-        uint32_t v = sl[i][cc];
+        uint32_t v = D->sl[i][cc] >> dd[i];
         if (!v) continue;
         occ[cc] = (occ[cc] & ~v) | (v >> d); gar[cc] = (gar[cc] & ~v) | (v >> d);
-        sl[i][cc] = v >> d;
       }
-      ch = 1;
+      dd[i] += d;
+      ch = 1; anyMoved = 1;
     }
     if (!ch) break;
   }
@@ -1071,30 +1095,38 @@ static int dropQuiet(const int32_t *st, const Grid *G, int r, int c, const uint3
   ss[O_BUSYF] = 0; ss[O_BAD] = 0; ss[6] = 0; ss[7] = 0;
   for (int cc = 0; cc < WMAX; cc++) { ss[BUSY + cc] = 0; ss[COL + cc] = 0; }
   for (int a = N + 1; a < NCOL; a++) for (int cc = 0; cc < WMAX; cc++) ss[COL + a * WMAX + cc] = 0;
-  for (int i = 0; i < ns; i++) {
-    ss[SLK(i)] = ss[SLK(i)] ? 1 : 0; ss[SAIR(i)] = 0;
-    int moved = 0;
-    for (int cc = 1; cc <= W; cc++) if (sl[i][cc] != U(st, SM(i, cc))) moved = 1;
-    if (!moved) continue;
-    for (int cc = 1; cc <= W; cc++) { ss[INERT + cc] &= ~U(st, SM(i, cc)); ss[SM(i, cc)] = sl[i][cc]; }
-    for (int cc = 1; cc <= W; cc++) ss[INERT + cc] |= sl[i][cc];
+  for (int i = 0; i < ns; i++) { ss[SLK(i)] = ss[SLK(i)] ? 1 : 0; ss[SAIR(i)] = 0; }
+  if (anyMoved) {
+    for (int x = 0; x < D->nc; x++) {
+      int i = D->cand[x];
+      if (!dd[i]) continue;
+      for (int cc = 1; cc <= W; cc++) { ss[INERT + cc] &= ~D->sl[i][cc]; ss[SM(i, cc)] = D->sl[i][cc] >> dd[i]; }
+    }
+    for (int x = 0; x < D->nc; x++) {
+      int i = D->cand[x];
+      if (dd[i]) for (int cc = 1; cc <= W; cc++) ss[INERT + cc] |= D->sl[i][cc] >> dd[i];
+    }
   }
   for (int cc = 1; cc <= W; cc++) {
     ss[OCC + cc] = occ[cc]; ss[GARB + cc] = gar[cc];
+    if (!(dirty & (1u << cc))) continue;
     for (int a = 1; a <= N; a++) ss[COL + a * WMAX + cc] = 0;
-    for (int y = 1; y < 18; y++) if (g[y][cc]) ss[COL + g[y][cc] * WMAX + cc] |= 1u << (y - 1);
+    for (uint32_t q = occ[cc] & ~gar[cc]; q; q &= q - 1u) {
+      int y = __builtin_ctz(q);
+      ss[COL + g[y + 1][cc] * WMAX + cc] |= 1u << y;
+    }
   }
   return 1;
 }
-static int settlesQuiet(const int32_t *st, const Grid *G, int r, int c, const uint32_t *k) { return dropQuiet(st, G, r, c, k, 0); }
-static int quietDrop(const int32_t *st, const Grid *G, int r, int c, int32_t *out) {
+#define DROPQ(st, r, c, k) ((haveD || (dropOf(st, &G, &D), haveD = 1)) && dropQuiet(st, &D, r, c, k, 0))
+static int quietDrop(const int32_t *st, const Grid *G, const Drop *D, int r, int c, int32_t *out) {
   uint32_t b = 1u << (r - 1), k[WMAX];
   if ((U(st, INERT + c) | U(st, INERT + c + 1)) & b) return 0;
   if (G->g[r][c] && G->g[r][c + 1]) {
     int t, cas;
     if (firstRoundK(st, G, r, c, &t, &cas, k)) return 0;
   } else for (int i = 0; i < WMAX; i++) k[i] = 0;
-  return dropQuiet(st, G, r, c, k, out);
+  return dropQuiet(st, D, r, c, k, out);
 }
 static int breaksFirst(const int32_t *st, const Grid *G, int r, int c) { int t, cs; return firstRound(st, G, r, c, &t, &cs); }
 static int anyBreakOf(const int32_t *st0) {
@@ -1104,14 +1136,15 @@ static int anyBreakOf(const int32_t *st0) {
   if (tget(&ANYB, k, &v)) return (int)v;
   stcpy(SCR, st0);
   int n = legalG(SCR, SWS, &G), any = 0, rest = atRest(SCR);
+  Drop D; int haveD = 0;
   for (int i = 0; i < n && !any; i++) {
     if (!swapCanClearG(SCR, &G, rest, SWS[2 * i], SWS[2 * i + 1])) continue;
     if (rest && G.g[SWS[2 * i]][SWS[2 * i + 1]] && G.g[SWS[2 * i]][SWS[2 * i + 1] + 1]) {
       int t, cas; uint32_t kq[WMAX];
       if (firstRoundK(SCR, &G, SWS[2 * i], SWS[2 * i + 1], &t, &cas, kq)) { any = 1; break; }
-      if (!cas || settlesQuiet(SCR, &G, SWS[2 * i], SWS[2 * i + 1], kq)) continue;
+      if (!cas || DROPQ(SCR, SWS[2 * i], SWS[2 * i + 1], kq)) continue;
     }
-    if (rest && !(G.g[SWS[2 * i]][SWS[2 * i + 1]] && G.g[SWS[2 * i]][SWS[2 * i + 1] + 1]) && settlesQuiet(SCR, &G, SWS[2 * i], SWS[2 * i + 1], ZK)) continue;
+    if (rest && !(G.g[SWS[2 * i]][SWS[2 * i + 1]] && G.g[SWS[2 * i]][SWS[2 * i + 1] + 1]) && DROPQ(SCR, SWS[2 * i], SWS[2 * i + 1], ZK)) continue;
     if (!swapIn(SCR, SWS[2 * i], SWS[2 * i + 1])) continue;
     nAnyR++, resolve(SCR, RS, 0);
     swapIn(SCR, SWS[2 * i], SWS[2 * i + 1]);
@@ -1126,14 +1159,15 @@ static int savesOfRaw(const int32_t *st0) {
   if (tget(&SAVES, k, &v)) return (int)v;
   stcpy(SCR, st0);
   int n = legalG(SCR, SWS, &G), cnt = 0, rest = atRest(SCR);
+  Drop D; int haveD = 0;
   for (int i = 0; i < n; i++) {
     if (!swapCanClearG(SCR, &G, rest, SWS[2 * i], SWS[2 * i + 1])) continue;
     if (rest && G.g[SWS[2 * i]][SWS[2 * i + 1]] && G.g[SWS[2 * i]][SWS[2 * i + 1] + 1]) {
       int t, cas; uint32_t kq[WMAX];
       if (firstRoundK(SCR, &G, SWS[2 * i], SWS[2 * i + 1], &t, &cas, kq)) { cnt++; continue; }
-      if (!cas || settlesQuiet(SCR, &G, SWS[2 * i], SWS[2 * i + 1], kq)) continue;
+      if (!cas || DROPQ(SCR, SWS[2 * i], SWS[2 * i + 1], kq)) continue;
     }
-    if (rest && !(G.g[SWS[2 * i]][SWS[2 * i + 1]] && G.g[SWS[2 * i]][SWS[2 * i + 1] + 1]) && settlesQuiet(SCR, &G, SWS[2 * i], SWS[2 * i + 1], ZK)) continue;
+    if (rest && !(G.g[SWS[2 * i]][SWS[2 * i + 1]] && G.g[SWS[2 * i]][SWS[2 * i + 1] + 1]) && DROPQ(SCR, SWS[2 * i], SWS[2 * i + 1], ZK)) continue;
     if (!swapIn(SCR, SWS[2 * i], SWS[2 * i + 1])) continue;
     nSavesR++, resolve(SCR, RS, 0);
     swapIn(SCR, SWS[2 * i], SWS[2 * i + 1]);
@@ -1153,13 +1187,14 @@ static double bestOneSwapStop(const int32_t *st0) {
   Grid G;
   stcpy(SCS, st0);
   int n = legalG(SCS, SWL, &G), rest = atRest(SCS);
+  Drop D; int haveD = 0;
   double best = 0;
   for (int i = 0; i < n; i++) {
     if (!swapCanClearG(SCS, &G, rest, SWL[2 * i], SWL[2 * i + 1])) continue;
     if (rest && G.g[SWL[2 * i]][SWL[2 * i + 1]] && G.g[SWL[2 * i]][SWL[2 * i + 1] + 1]) {
       int t, cas; uint32_t kq[WMAX];
       int br = firstRoundK(SCS, &G, SWL[2 * i], SWL[2 * i + 1], &t, &cas, kq);
-      if (br || !cas || settlesQuiet(SCS, &G, SWL[2 * i], SWL[2 * i + 1], kq)) {
+      if (br || !cas || DROPQ(SCS, SWL[2 * i], SWL[2 * i + 1], kq)) {
         if (!(t > 0)) continue;
         double pays = priceOf(1, t);
         if (pays != pays) pays = 0;
@@ -1167,7 +1202,7 @@ static double bestOneSwapStop(const int32_t *st0) {
         continue;
       }
     }
-    if (rest && !(G.g[SWL[2 * i]][SWL[2 * i + 1]] && G.g[SWL[2 * i]][SWL[2 * i + 1] + 1]) && settlesQuiet(SCS, &G, SWL[2 * i], SWL[2 * i + 1], ZK)) continue;
+    if (rest && !(G.g[SWL[2 * i]][SWL[2 * i + 1]] && G.g[SWL[2 * i]][SWL[2 * i + 1] + 1]) && DROPQ(SCS, SWL[2 * i], SWL[2 * i + 1], ZK)) continue;
     if (!swapIn(SCS, SWL[2 * i], SWL[2 * i + 1])) continue;
     nLandR++, resolve(SCS, RL, 0);
     swapIn(SCS, SWL[2 * i], SWL[2 * i + 1]);
@@ -1569,6 +1604,7 @@ static void expandAll(int depth, int cr, int cc) {
       Grid G;
       int nl = legalG(state, SWE, &G);
       int nodeRest = settledRest(state);
+      Drop D; int haveD = 0;
       uint32_t reach[WMAX]; int haveReach = node->hasReach;
       if (haveReach) for (int c = 0; c < WMAX; c++) reach[c] = node->reach[c];
       if (!haveReach && node->nchain) { reachOf(state, reach); haveReach = 1; }
@@ -1590,7 +1626,7 @@ static void expandAll(int depth, int cr, int cc) {
                    quietClear(state, &G, sr, sc, ARENA + arenaN)) {
           res = (Res *)(ARENA + arenaN);
           arenaN += R_INTS + stlen(res->st);
-        } else if (nodeRest && arenaN + R_INTS + ST_INTS <= arenaCap && quietDrop(state, &G, sr, sc, ARENA + arenaN)) {
+        } else if (nodeRest && arenaN + R_INTS + ST_INTS <= arenaCap && (haveD || (dropOf(state, &G, &D), haveD = 1)) && quietDrop(state, &G, &D, sr, sc, ARENA + arenaN)) {
           res = (Res *)(ARENA + arenaN);
           arenaN += R_INTS + stlen(res->st);
         } else if (pf && TASKIX[fi * TIXW + k] >= 0) {
