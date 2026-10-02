@@ -13,7 +13,6 @@ require(path.join(DIR, '..', '..', 'panel-cpu.js'));
 var P = require(path.join(DIR, 'puyocpu.js')), PA = require(path.join(DIR, 'pa-engine.js')), PE = globalThis.PanelEngine;
 var SH = require(path.join(DIR, 'survivor_shared.js'));
 var cfg = wt.workerData, OPTS = SH.botOptions(cfg.profile, cfg.threads);
-var deep = [], deepMs = 300;   // the last few decisions at the profile's depth, ms, and the slowest
 var rates = [], SPEND = 0.6;   // budget searched per millisecond over the last decisions, and the share of the time there is spent searching
 var TALL_RANK = 30;   // frames: a break sooner than this outranks lowering a tall board
 var LINEUP_AFTER = 30;   // frames past a pop's end a lined-up row has to have matched by
@@ -174,11 +173,6 @@ wt.parentPort.on('message', function (m) {
     // board searches several times slower than an empty one.
     var nodesPerMs = rates.length ? Math.min.apply(null, rates) : 30;
     var FULL = P.prototype.SURVIVE_SEARCH_BUDGET, CHEAP = Number(process.env.GC_SURVIVOR_CHEAP) || P.prototype.SURVIVE_SEARCH_BUDGET_CHEAP;
-    // THE LOOKAHEAD FITS THE TIME TOO: a question due sooner than a decision
-    // at the profile's depth has been taking (deepMs, the slowest of the last
-    // few) is decided one move deep, whose cost is most of a deep one's less
-    // the second ply.
-    bot.depth = OPTS.depth > 1 && m.ms > 0 && m.ms < deepMs ? 1 : OPTS.depth;
     bot.SURVIVE_SEARCH_BUDGET = m.ms > 0 ? Math.max(CHEAP, Math.min(FULL, Math.round(m.ms * nodesPerMs * SPEND))) : FULL;
     // The frame loop stops a question it no longer needs (cfg.abort holds its id).
     bot._abort = cfg.abort ? function () { return Atomics.load(cfg.abort, 0) === m.id; } : null;
@@ -192,7 +186,7 @@ wt.parentPort.on('message', function (m) {
     var why = null;
     if (process.env.GC_SURVIVOR_WHY) {
       var sp = bot._searchProofs;
-      why = { proven: provenRanked.join(' '), ranked: ranked.join(' '), want: Object.keys(want), cands: sp ? sp.cands.map(key) : null, proven: sp ? sp.cands.filter(function (c, i) { return sp.proofs[i]; }).map(key) : null };
+      why = { provenRanks: provenRanked.join(' '), ranked: ranked.join(' '), want: Object.keys(want), cands: sp ? sp.cands.map(key) : null, proven: sp ? sp.cands.filter(function (c, i) { return sp.proofs[i]; }).map(key) : null };
     }
     // A LINEUP WHILE A SLAB POPS IS PLAYED. Nothing can die before the pop
     // ends and the lineup breaks the slab when it does; the bot's own stages
@@ -203,7 +197,6 @@ wt.parentPort.on('message', function (m) {
       if (lk) { d = { kind: 'swap', move: lk.split(',').map(Number) }; overruled = true; }
     }
     var took = Date.now() - t1;
-    if (bot.depth === OPTS.depth && OPTS.depth > 1) { deep.push(Date.now() - t0); if (deep.length > 8) deep.shift(); deepMs = Math.max.apply(null, deep); }
     if (took > 20) { rates.push(bot.SURVIVE_SEARCH_BUDGET / took); if (rates.length > 8) rates.shift(); }
     // The rest of the proven line behind the move, for the frame loop to play
     // on while the next decision is late: steps as the search played them
