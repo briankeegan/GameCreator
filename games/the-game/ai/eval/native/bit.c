@@ -1050,6 +1050,49 @@ static int dropQuiet(const int32_t *st, const Drop *D, int r, int c, const uint3
     if (!L0 != !R0) {
       int src = L0 ? c : c + 1, dst = L0 ? c + 1 : c;
       uint32_t bb = 1u << (r - 1);
+      uint32_t above = D->occ[src] & ~((bb << 1) - 1u);
+      int land = topRow(D->occ[dst] & (bb - 1u));
+      if ((above || land != r - 1) && !(above & D->gar[src])) {
+        int col = L0 ? L0 : R0;
+#define GS(yy, xx) ((xx) == dst ? ((yy) == land + 1 ? col : (yy) == r ? 0 : D->g[yy][xx]) : (xx) == src ? ((yy) >= r ? ((yy) < 17 ? D->g[(yy) + 1][xx] : 0) : D->g[yy][xx]) : D->g[yy][xx])
+        int hit = 0;
+        for (int pass = 0; pass < 2 && !hit; pass++) {
+          uint32_t cells = pass ? above >> 1 : 1u << land;
+          int x = pass ? src : dst;
+          for (; cells && !hit; cells &= cells - 1u) {
+            int y = __builtin_ctz(cells) + 1, a = GS(y, x), lo = x, hi = x, bo = y, tp = y;
+            while (lo > 1 && GS(y, lo - 1) == a) lo--;
+            while (hi < W && GS(y, hi + 1) == a) hi++;
+            if (hi - lo >= 2) { hit = 1; break; }
+            while (bo > 1 && GS(bo - 1, x) == a) bo--;
+            while (tp < 17 && GS(tp + 1, x) == a) tp++;
+            if (tp - bo >= 2) hit = 1;
+          }
+        }
+#undef GS
+        if (hit) return 0;
+        if (!out) return 1;
+        int32_t *ss = out + R_INTS;
+        for (int i = 0; i < R_INTS; i++) out[i] = 0;
+        out[R_SCOPE] = SC_OK;
+        stcpy(ss, st);
+        ss[O_BUSYF] = 0; ss[O_BAD] = 0; ss[6] = 0; ss[7] = 0;
+        for (int cc = 0; cc < WMAX; cc++) { ss[BUSY + cc] = 0; ss[COL + cc] = 0; }
+        for (int a = st[O_N] + 1; a < NCOL; a++) for (int cc = 0; cc < WMAX; cc++) ss[COL + a * WMAX + cc] = 0;
+        for (int i = 0; i < ns; i++) { ss[SLK(i)] = ss[SLK(i)] ? 1 : 0; ss[SAIR(i)] = 0; }
+        uint32_t keepLo = bb - 1u, lb = 1u << land;
+        ss[OCC + dst] |= lb;
+        ss[OCC + src] = (ss[OCC + src] & keepLo) | ((ss[OCC + src] >> 1) & ~keepLo);
+        for (int a = 1; a <= st[O_N]; a++) {
+          uint32_t ms = (uint32_t)ss[COL + a * WMAX + src];
+          ms = (ms & keepLo) | ((ms >> 1) & ~keepLo);
+          ss[COL + a * WMAX + src] = ms & ss[OCC + src] & ~ss[GARB + src];
+          uint32_t md = (uint32_t)ss[COL + a * WMAX + dst];
+          if (a == col) md |= lb;
+          ss[COL + a * WMAX + dst] = md & ss[OCC + dst] & ~ss[GARB + dst];
+        }
+        return 1;
+      }
       if (!(D->occ[src] >> r) && (r == 1 || (D->occ[dst] & (bb >> 1)))) {
         if (runOver(D, W, r, dst, r, c, L0, R0)) return 0;
         if (!out) return 1;
@@ -1477,10 +1520,39 @@ static void sortBorn(int n) {
 }
 
 static LOCAL int threadReady;
+typedef struct { Res *res; int resPly, hasRR, rrDig, hasSh, sv, fire, slab, hasLand; double land; Shape sh; uint32_t rr[WMAX]; } CK;
+#define NTCAP (1 << 12)
+typedef struct { u64 h; int32_t gen, at, n; CK *ck; } NT;
+static NT NT_MAIN[NTCAP];
+static LOCAL NT *NTB;
+static LOCAL int32_t ntGen = 1, ntN;
+static CK *nodeCK(const int32_t *st, int nl) {
+  int n = stlen(st);
+  u64 h = stHash(st, n);
+  unsigned i = (unsigned)(h >> 32) & (NTCAP - 1);
+  for (; NTB[i].gen == ntGen; i = (i + 1) & (NTCAP - 1)) {
+    if (NTB[i].h != h || NTB[i].n != n) continue;
+    const int32_t *p = ARENA + NTB[i].at;
+    int j = 0;
+    while (j < n && p[j] == st[j]) j++;
+    if (j == n) return NTB[i].ck;
+  }
+  if (ntN >= NTCAP / 2) return 0;
+  int at = (arenaN + 1) & ~1, need = (int)((nl * sizeof(CK) + 3) / 4);
+  if (at + need + n + R_INTS + ST_INTS > arenaCap) return 0;
+  CK *ck = (CK *)(ARENA + at);
+  for (int k = 0; k < nl; k++) { ck[k].res = 0; ck[k].hasRR = 0; ck[k].hasSh = 0; ck[k].sv = -1; ck[k].fire = -1; ck[k].slab = -1; ck[k].hasLand = 0; }
+  int32_t *cp = ARENA + at + need;
+  for (int j = 0; j < n; j++) cp[j] = st[j];
+  arenaN = at + need + n;
+  NTB[i].h = h; NTB[i].gen = ntGen; NTB[i].at = (int32_t)(cp - ARENA); NTB[i].n = n; NTB[i].ck = ck;
+  ntN++;
+  return ck;
+}
 static void threadInit(void) {
   if (threadReady) return;
   threadReady = 1;
-  ARENA = ARENA_MAIN; QUIET = QUIET_MAIN; SMEMO = SMEMO_MAIN; smGen = 1;
+  ARENA = ARENA_MAIN; QUIET = QUIET_MAIN; SMEMO = SMEMO_MAIN; smGen = 1; NTB = NT_MAIN;
   __builtin_memset(ARENA_MAIN, 0, 16ul << 20);
   __builtin_memset(QUIET_MAIN, 0, sizeof(QUIET_MAIN));
   __builtin_memset(ODATA, 0, 8ul << 20);
@@ -1571,6 +1643,7 @@ __attribute__((export_name("bit_thread_init"))) void bit_thread_init(int32_t id)
   STOPS_T.s = (Slot *)grab(TCAP * sizeof(Slot)); FIRE.s = (Slot *)grab(TCAP * sizeof(Slot));
   ARENA = (int32_t *)grab((unsigned long)arenaCap * 4);
   SMEMO = (SMemo *)grab(SMCAP * sizeof(SMemo)); smGen = 1;
+  NTB = (NT *)grab(NTCAP * sizeof(NT));
   QUIET = (Res *)grab(2ul * qcap * sizeof(Res));
   ODS = (double *)grab(((unsigned long)odCap + 4) * REC * 8 + 64 * 8);
   LDS = (int32_t *)grab(ST_INTS * 4);
@@ -1669,6 +1742,7 @@ static void expandAll(int depth, int cr, int cc) {
       stcpy(state, node->st);
       Grid G;
       int nl = legalG(state, SWE, &G);
+      CK *ck = nodeCK(state, nl);
       int nodeRest = settledRest(state);
       Drop D; int haveD = 0;
       uint32_t reach[WMAX]; int haveReach = node->hasReach;
@@ -1681,7 +1755,10 @@ static void expandAll(int depth, int cr, int cc) {
           if (!((reach[sc] | reach[sc + 1]) & rb)) continue;
         }
         Res *res;
-        if (quietSwapG(state, &G, nodeRest, sr, sc)) {
+        CK *e = ck ? &ck[k] : 0;
+        if (e && e->res && (e->resPly == ply || ((e->res < QUIET || e->res >= QUIET + 2 * qcap) &&
+                                                  ((int32_t *)e->res < PSOUT || (int32_t *)e->res >= PSOUT + 2 * MAXSET * SOUT)))) res = e->res;
+        else if (quietSwapG(state, &G, nodeRest, sr, sc)) {
           if (nQuiet[qside] >= qcap) { failed = 1; continue; }
           res = &QUIET[qside * qcap + nQuiet[qside]++];
           for (int i = 0; i < R_INTS; i++) res->r[i] = 0;
@@ -1702,6 +1779,7 @@ static void expandAll(int depth, int cr, int cc) {
           res = settleOf(state);
           swapIn(state, sr, sc);
         }
+        if (e) { e->res = res; e->resPly = ply; }
         int cost = node->spent + travelCost(node->fr, node->fc, sr, sc);
         int tPlan = cost + ply - 1;
         if ((double)tPlan > node->lock + SPEND) continue;
@@ -1724,10 +1802,20 @@ static void expandAll(int depth, int cr, int cc) {
         }
         if (!settled) continue;
         uint32_t rr[WMAX]; int rrDig = 0, haveRR = 0;
-        if (DIG) { rrDig = reachOf(settled, rr); haveRR = 1; }
+        if (DIG) {
+          if (!e) rrDig = reachOf(settled, rr);
+          else {
+            if (!e->hasRR) { e->rrDig = reachOf(settled, e->rr); e->hasRR = 1; }
+            rrDig = e->rrDig;
+            for (int c = 0; c < WMAX; c++) rr[c] = e->rr[c];
+          }
+          haveRR = 1;
+        }
         int svNow = 0;
         if (!LEAN) {
-          Shape sh2; shapeOfG(settled, &sh2, 0);
+          Shape sh2;
+          if (!e) shapeOfG(settled, &sh2, 0);
+          else { if (!e->hasSh) { shapeOfG(settled, &e->sh, 0); e->hasSh = 1; } sh2 = e->sh; }
           double dur = cost + nseq * OVERHEAD;
           double base2 = (BASE.tall - sh2.tall) * FPR + (BASE.excess - sh2.excess) * FPR
                        - (WORK - sh2.mat > 0 ? WORK - sh2.mat : 0) * FPR - dur;
@@ -1735,7 +1823,7 @@ static void expandAll(int depth, int cr, int cc) {
           int haveTerm = 0; double term = 0;
           if (DIG && haveRR) {
             int sv = 0;
-            if (rrDig > 0) { if (saveBudget > 0) { saveBudget--; sv = savesOfRaw(settled); } }
+            if (rrDig > 0) { if (saveBudget > 0) { saveBudget--; sv = !e ? savesOfRaw(settled) : e->sv >= 0 ? e->sv : (e->sv = savesOfRaw(settled)); } }
             svNow = sv;
             haveTerm = 1;
             term = (sv - BASESAVE) * (DEADLINE / Wd) * Wd + (rrDig - BASEDIG) * (DEADLINE / Wd);
@@ -1753,29 +1841,29 @@ static void expandAll(int depth, int cr, int cc) {
             double *v1 = recAt(1), *v2 = recAt(2), *v3 = recAt(3);
             if (!exact && (!haveRec[0] || hi > fv)) exact = 1;
             if (!exact && svNow > 0 && (!haveRec[1] || hi > v1[F_VALUE] || (hi == v1[F_VALUE] && cost < v1[F_FRAMES]))) exact = 1;
-            if (!exact && (!haveRec[2] || hi > v2[F_VALUE] || (hi == v2[F_VALUE] && cost < v2[F_FRAMES])) && canFireOf(settled)) exact = 1;
-            if (!exact && (!haveRec[3] || hi > v3[F_VALUE] || (hi == v3[F_VALUE] && cost < v3[F_FRAMES])) && slabReadyFast(settled)) exact = 1;
+            if (!exact && (!haveRec[2] || hi > v2[F_VALUE] || (hi == v2[F_VALUE] && cost < v2[F_FRAMES])) && (!e ? canFireOf(settled) : e->fire >= 0 ? e->fire : (e->fire = canFireOf(settled)))) exact = 1;
+            if (!exact && (!haveRec[3] || hi > v3[F_VALUE] || (hi == v3[F_VALUE] && cost < v3[F_FRAMES])) && (!e ? slabReadyFast(settled) : e->slab >= 0 ? e->slab : (e->slab = slabReadyFast(settled)))) exact = 1;
             if (!exact) {
               if (slabYes) slabBudget--;
               goto born;
             }
           }
-          double landStop = needLand ? landStopOf(settled) : 0;
+          double landStop = needLand ? (!e ? landStopOf(settled) : e->hasLand ? e->land : (e->hasLand = 1, e->land = landStopOf(settled))) : 0;
           double val = base2 + landStop;
           if (haveTerm) val += term;
           if (slabBudget > 0 && val + PREPWORTH > floor2) {
             slabBudget--;
-            if (slabReadyFast(settled)) credit = PREPWORTH;
+            if ((!e ? slabReadyFast(settled) : e->slab >= 0 ? e->slab : (e->slab = slabReadyFast(settled)))) credit = PREPWORTH;
           }
-          if (!credit && val + READYWORTH > floor2 && canFireOf(settled)) credit = READYWORTH;
+          if (!credit && val + READYWORTH > floor2 && (!e ? canFireOf(settled) : e->fire >= 0 ? e->fire : (e->fire = canFireOf(settled)))) credit = READYWORTH;
           val += credit;
           int take = !haveRec[0] || val > fv;
           double *sv0 = recAt(1), *rd0 = recAt(2), *tg0 = recAt(3);
           if (svNow > 0 && (!haveRec[1] || val > sv0[F_VALUE] || (val == sv0[F_VALUE] && cost < sv0[F_FRAMES])))
             takeRec(1, seq, nseq, cost, val, cost + nseq * OVERHEAD);
-          if ((!haveRec[2] || val > rd0[F_VALUE] || (val == rd0[F_VALUE] && cost < rd0[F_FRAMES])) && canFireOf(settled))
+          if ((!haveRec[2] || val > rd0[F_VALUE] || (val == rd0[F_VALUE] && cost < rd0[F_FRAMES])) && (!e ? canFireOf(settled) : e->fire >= 0 ? e->fire : (e->fire = canFireOf(settled))))
             takeRec(2, seq, nseq, cost, val, cost + nseq * OVERHEAD);
-          if ((!haveRec[3] || val > tg0[F_VALUE] || (val == tg0[F_VALUE] && cost < tg0[F_FRAMES])) && slabReadyFast(settled))
+          if ((!haveRec[3] || val > tg0[F_VALUE] || (val == tg0[F_VALUE] && cost < tg0[F_FRAMES])) && (!e ? slabReadyFast(settled) : e->slab >= 0 ? e->slab : (e->slab = slabReadyFast(settled))))
             takeRec(3, seq, nseq, cost, val, cost + nseq * OVERHEAD);
           if (take) {
             takeRec(0, seq, nseq, cost, val, dur);
@@ -1828,7 +1916,7 @@ static LOCAL Res R1;
 // The whole search. Returns 0, or -1 when a fixed size was exceeded (a bug).
 static LOCAL int nOptRuns, nOptDepth;
 static int optionsRun(const int32_t *st0, const double *P, const int32_t *first, int nfirst) {
-  threadInit(); arenaN = 0; smGen++; smN = 0; expanding = 0;
+  threadInit(); arenaN = 0; smGen++; smN = 0; ntGen++; ntN = 0; expanding = 0;
   nOptRuns++; nOptDepth += (int)P[11];
   failed = 0;
   FPR = P[0]; DEADLINE = P[1]; LOCKP = P[2]; SPEND = (int)P[3]; LEAN = (int)P[4];
