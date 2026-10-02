@@ -4006,7 +4006,6 @@
         var info = this._lastInfo, pool = this._lastPool, base = this._lastBase;
         if (!d || !info || !pool || !base || !info.toppedOut) return d;
         var i;
-        if (ENDS_IN_A_BREAK[d.via]) return d;
         var clears = [], picked = null;
         for (i = 0; i < pool.length; i++) {
             var pc = pool[i];
@@ -4016,9 +4015,14 @@
         }
         if (!clears.length) return d;
         var k = this.drainBound(), pr = picked && picked.resolved;
-        if (pr && pr.brokeGarbage) return d;
+        // A BREAK, OR A ROUTE THAT ENDS IN ONE, STILL HAS TO GET THERE IN TIME. Its
+        // walk is checked against the first run that can take health like any other
+        // move's: one that arrives after the drain has begun spends health on the way.
+        if ((pr && pr.brokeGarbage) || ENDS_IN_A_BREAK[d.via]) {
+            if (!picked || (picked.moveFrames || 0) + 1 <= k) return d;
+        }
         function hold(at) { return { kind: 'hold', mode: d.mode, alive: d.alive, via: 'awaitDrain', park: at }; }
-        if (pr && pr.total > 0) {
+        if (pr && pr.total > 0 && !pr.brokeGarbage) {
             if ((picked.moveFrames || 0) + 2 > k) return d;
             this.counts.waitedForDrain = (this.counts.waitedForDrain || 0) + 1;
             return hold(picked.swap);
