@@ -87,7 +87,14 @@
     // slab is not material and cannot be spread.
     //
     // `bumps` is the same panel counts as a sum of steps, kept for tie-breaks.
+    // CARRIED WITH THE BOARD: a board's shape is worked out once and kept on it;
+    // swapMasks, the one thing that changes a board in place, drops it.
     function shapeOf(st2) {
+        if (!st2) return null;
+        if (st2._shape !== undefined) return st2._shape;
+        return (st2._shape = shapeOfRaw(st2));
+    }
+    function shapeOfRaw(st2) {
         var h = [], c, tall = 0, bumps = 0, sum = 0, mx = 0, w2 = st2 && (st2.W || 6);
         if (!st2) return null;
         for (c = 1; c <= w2; c++) {
@@ -374,16 +381,11 @@
     }
     var BK_ARRS = [null, null, null, null];
 
-    // WHETHER A SETTLED BOARD CAN FIRE, BY BOARD: anyOneSwapClear is a pure function
-    // of the masks, and every option the search lists asks it of its landing.
-    var READY = new Map();
+    // WHETHER A SETTLED BOARD CAN FIRE: anyOneSwapClear, a pure function of the masks
+    // that every option the search lists asks of its landing -- carried with the board.
     function canFireOf(st) {
-        var key = boardKey(st), hit = READY.get(key);
-        if (hit !== undefined) return hit;
-        var v = !!bit.anyOneSwapClear(st);
-        if (READY.size >= SAVES_MAX) READY.clear();
-        READY.set(key, v);
-        return v;
+        if (st._fire !== undefined) return st._fire;
+        return (st._fire = !!bit.anyOneSwapClear(st));
     }
 
     // WHAT A BOARD SETTLES TO, BY BOARD: resolveFromMasks with the settled state,

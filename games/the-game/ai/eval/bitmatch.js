@@ -527,6 +527,7 @@
       if (st.colour[a * stride + c] & b) left = a;
       if (st.colour[a * stride + o] & b) right = a;
     }
+    st._shape = undefined; st._fire = undefined;          // what was carried with the board
     if (left) { st.colour[left * stride + c] &= ~b; st.colour[left * stride + o] |= b; }
     if (right) { st.colour[right * stride + o] &= ~b; st.colour[right * stride + c] |= b; }
     if (left) st.occ[o] |= b; else st.occ[o] &= ~b;
