@@ -68,6 +68,7 @@ typedef struct Board {
   int32_t input, pressSwap, swapDenied, inputBits, unseenRows, unseenBreaks, err;
   int32_t quiet, noQuiet;   // see QUIET; not part of the board, never sent
   int32_t hi;               // see SETTLED ROWS; not part of the board, never sent
+  int32_t cdLeft;           // see COUNTDOWN FRAMES; not part of the board, never sent
   // WHAT A STEP DID (search.h MK_SETTLE): each clear's size and the chain
   // counter it reached, panels cleared, garbage cells converted and the most
   // stop time one clear paid. Counted since the step began; not part of the
@@ -425,7 +426,7 @@ static void recordDeath(Board *b) { if (b->gameOverClock > 0) return; b->gameOve
 // since where shock may go is not known yet.
 #define UNSEEN_COLOUR(base, k, c) ((base) + ((W * (k) + (c) - 1) % 90))
 static void newRow(Board *b) {
-  b->quiet = 0;
+  b->quiet = 0; b->cdLeft = 0;
   b->hi = MAXROWS;
   if (b->curRow != 0) b->curRow = bound(1, b->curRow + 1, b->topCurRow);
   if (b->queuedSwapRow > 0) b->queuedSwapRow++;
@@ -570,7 +571,7 @@ static int tryQueueSwapPanels(Board *b, Panel *p1, Panel *p2) {
   return 0;
 }
 static void doSwap(Board *b, int row, int col) {
-  b->quiet = 0;
+  b->quiet = 0; b->cdLeft = 0;
   b->hi = imax(b->hi, row + 1);
   startSwap(P(b, row, col), 1);
   startSwap(P(b, row, col + 1), 0);
@@ -785,7 +786,7 @@ static int shouldDropGarbage(Board *b) {
   return g->height > 1;
 }
 static void dropGarbage(Board *b, int32_t width, int32_t height, int32_t isMetal) {
-  b->quiet = 0;
+  b->quiet = 0; b->cdLeft = 0;
   b->hi = MAXROWS;
   int32_t originRow = b->height + 1;
   if (width < 1 || width > 6) { b->err |= ERR_WIDTH; return; }
@@ -899,6 +900,10 @@ static int isQuiet(Board *b) {
     }
   return 1;
 }
+static int32_t countdownRoom(Board *b);
+static void countdownFrame(Board *b);
+// Frames played in full, quiet, jumped by countdown and as countdown frames (ns_frame_stats 5..8).
+static int32_t fullFrames, quietFrames, jumpedFrames, lightFrames;
 static void runPhysics(Board *b) {
   b->nlanded = 0;
   b->wasToppedOut = isToppedOut(b);
@@ -910,15 +915,21 @@ static void runPhysics(Board *b) {
   if (b->displacement % 16 != 0) b->topCurRow = b->height - 1;
   if (swapQueued(b)) { doSwap(b, b->queuedSwapRow, b->queuedSwapCol); b->queuedSwapCol = 0; b->queuedSwapRow = 0; }
   if (b->quiet && !b->noQuiet) {
+    __atomic_add_fetch(&quietFrames, 1, __ATOMIC_RELAXED);
     b->shakeTimeOnFrame = 0;
     b->nPrevActive = b->nActive;
+  } else if (b->cdLeft > 0 && !b->noQuiet) {
+    __atomic_add_fetch(&lightFrames, 1, __ATOMIC_RELAXED);
+    countdownFrame(b);
   } else {
+    __atomic_add_fetch(&fullFrames, 1, __ATOMIC_RELAXED);
     checkMatches(b);
     updatePanels(b);
     updateActivePanelCount(b);
     if (b->chainCounter != 0 && !hasChainingPanels(b)) b->chainCounter = 0;
     removeExtraRows(b);
     b->quiet = !b->noQuiet && isQuiet(b);
+    b->cdLeft = !b->quiet && !b->noQuiet && b->nActive > 0 && !b->swappingCount && !swapQueued(b) ? countdownRoom(b) : 0;
   }
   if (checkDeath(b)) recordDeath(b);
 }
@@ -954,14 +965,12 @@ static void run(Board *b) {
 // at once and returns how many: never the frame a popping timer runs out,
 // the speed rises, or shake runs out with no health left. run() k times
 // leaves the board the same (native_countdown.test.js).
-static int countdown(Board *b, int32_t maxk) {
-  if (maxk <= 0 || b->gameOverClock > 0 || b->input || b->pressSwap || b->err || b->inCountdown || !b->stopWatchIsRunning) return 0;
-  if (swapQueued(b) || b->manualRaise || b->chainCounter || b->nActive != b->nPrevActive || b->shakeTimeOnFrame) return 0;
-  if (b->cursorDirection != CD_NULL || b->quiet || b->speedIncreaseMode != 1) return 0;
-  if (shouldDropGarbage(b)) return 0;
-  int32_t k = maxk, popping = 0;
-  if (b->nextSpeedIncreaseClock >= b->clock) k = imin(k, b->nextSpeedIncreaseClock - b->clock);
-  if (b->health <= 0) k = imin(k, b->shakeTime - 1);
+// The panels' half of COUNTDOWN: the frames, from this one, on which every
+// panel is at rest or popping garbage, no flag is set and no popping timer
+// runs out -- the least popping timer less one; 0 if any panel would move,
+// match or change, or nothing pops.
+static int32_t countdownRoom(Board *b) {
+  int32_t k = 0x7fffffff, popping = 0;
   int n = rowsTo(b), top = imin(n - 1, b->height + 2);
   for (int r = 1; r < n; r++)
     for (int c = 1; c <= W; c++) {
@@ -976,7 +985,33 @@ static int countdown(Board *b, int32_t maxk) {
       }
       if (f[STATE] != NORMAL || SETN(f[FELL])) return 0;
     }
-  if (!popping || k <= 0) return 0;   // with nothing popping the board is quiet, which run() already makes cheap
+  return popping ? k : 0;
+}
+// COUNTDOWN FRAMES: after a frame played in full leaves the board in that
+// state, the next cdLeft frames skip the panel passes and count the popping
+// timers down, the rest of the frame (cursor, stop and shake time, clocks,
+// death) played as ever. A swap, a new row or a drop ends it.
+static void countdownFrame(Board *b) {
+  int n = rowsTo(b);
+  for (int r = 1; r < n; r++)
+    for (int c = 1; c <= W; c++) { int32_t *f = P(b, r, c)->f; if (f[ISGARBAGE] && f[STATE] == MATCHED) f[TIMER]--; }
+  b->shakeTimeOnFrame = 0;
+  b->nPrevActive = b->nActive;
+  if (b->chainCounter != 0 && !hasChainingPanels(b)) b->chainCounter = 0;
+  b->quiet = 0;
+  b->cdLeft--;
+}
+static int countdown(Board *b, int32_t maxk) {
+  if (maxk <= 0 || b->gameOverClock > 0 || b->input || b->pressSwap || b->err || b->inCountdown || !b->stopWatchIsRunning) return 0;
+  if (swapQueued(b) || b->manualRaise || b->chainCounter || b->nActive != b->nPrevActive || b->shakeTimeOnFrame) return 0;
+  if (b->cursorDirection != CD_NULL || b->quiet || b->speedIncreaseMode != 1) return 0;
+  if (shouldDropGarbage(b)) return 0;
+  int32_t k = maxk;
+  if (b->nextSpeedIncreaseClock >= b->clock) k = imin(k, b->nextSpeedIncreaseClock - b->clock);
+  if (b->health <= 0) k = imin(k, b->shakeTime - 1);
+  int n = rowsTo(b);
+  k = imin(k, countdownRoom(b));   // with nothing popping the board is quiet, which run() already makes cheap
+  if (k <= 0) return 0;
   for (int r = 1; r < n; r++)
     for (int c = 1; c <= W; c++) { int32_t *f = P(b, r, c)->f; if (f[ISGARBAGE] && f[STATE] == MATCHED) f[TIMER] -= k; }
   // decrementInvincibilityTimers, k times
@@ -997,6 +1032,8 @@ static int countdown(Board *b, int32_t maxk) {
   b->swapThisFrame = 0; b->swapDenied = 0; b->inputBits = 0;
   b->quiet = 0;
   b->stopWatch += k; b->clock += k;
+  b->cdLeft = imax(0, b->cdLeft - k);
+  __atomic_add_fetch(&jumpedFrames, k, __ATOMIC_RELAXED);
   return k;
 }
 // What a bot calls: press swap on the next frame with the cursor at (r, c).
@@ -1078,7 +1115,7 @@ EXPORT(nb_load) int nb_load(Board *b) {
   for (i = 0; i < b->nlanded; i++) b->landed[i] = *x++;
   b->dropColumnIndex[0] = 0;
   for (i = 1; i <= 6; i++) b->dropColumnIndex[i] = *x++;
-  b->quiet = 0; b->noQuiet = 0; b->hi = MAXROWS;
+  b->quiet = 0; b->noQuiet = 0; b->hi = MAXROWS; b->cdLeft = 0;
   return b->err;
 }
 EXPORT(nb_save) int nb_save(Board *b) {
