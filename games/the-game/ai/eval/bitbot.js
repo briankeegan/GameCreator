@@ -2490,7 +2490,7 @@
 
         var buried = false;
         for (i = 1; i <= W; i++) if (base.garb[i]) { buried = true; break; }
-        var best = null, alive = 0, spare = [];
+        var best = null, alive = 0, spare = [], ranked = [];
         for (i = 0; i < allowed.length; i++) {
             var cand = allowed[i];
             // WHAT THE HORIZON IS: the frames before this bot decides again --
@@ -2578,19 +2578,35 @@
             // Bumpiness cannot stand in for the void. It counts neighbour steps, so
             // 2,2,2,2,6,7 and the smooth ramp 2,3,4,5,6,7 both read 5 while their
             // voids are 21 panels and 15. The board that died was the first of those.
-            var s = noneClear
-                  ? this.idleScore(cand, base, info)
-                  : this.score(cand.masks, cand.moveFrames, cand.resolved, info);
-            if (!best || s > best.score) best = { cand: cand, score: s };
+            ranked.push(cand);
         }
+        // RANKED WHEN THE RANKING IS ASKED FOR. Every route before the last one plays
+        // without it, and scoring a candidate is a search of its landing board -- so
+        // the scores are worked out the first time `best` is read, in the same order,
+        // with the same ties, as when they were worked out here.
+        var bestDone = false;
+        function bestOf() {
+            if (bestDone) return best;
+            bestDone = true;
+            for (var ri = 0; ri < ranked.length; ri++) {
+                var rc0 = ranked[ri];
+                var rs0 = noneClear
+                        ? self.idleScore(rc0, base, info)
+                        : self.score(rc0.masks, rc0.moveFrames, rc0.resolved, info);
+                if (!best || rs0 > best.score) best = { cand: rc0, score: rs0 };
+            }
+            rankSpare();
+            return best;
+        }
+        function rankSpare() {
         // NOTHING KEPT A THREE: rank the ones that survive but spend it, which is
         // still better than the lost-position fallback below.
         if (!best && spare.length) {
             for (i = 0; i < spare.length; i++) {
                 var sc = spare[i];
                 var ss = noneClear
-                       ? this.idleScore(sc, base, info)
-                       : this.score(sc.masks, sc.moveFrames, sc.resolved, info);
+                       ? self.idleScore(sc, base, info)
+                       : self.score(sc.masks, sc.moveFrames, sc.resolved, info);
                 if (!best || ss > best.score) best = { cand: sc, score: ss };
             }
         }
@@ -2599,7 +2615,7 @@
         // move is played rather than freezing. Counted, because a bot reaching
         // here often is a bot about to die and the count is the warning.
         if (!best) {
-            this.counts.allDead++;
+            self.counts.allDead++;
             for (i = 0; i < allowed.length; i++) {
                 // RANKED THE WAY THE OTHER TWO BRANCHES RANK IT. With nothing to
                 // clear anywhere, `score` is the weighted vector applied to a
@@ -2615,11 +2631,12 @@
                 // to weigh, which is the point -- a lost position is exactly where
                 // the vector must not be deciding.
                 var s2 = noneClear
-                       ? this.idleScore(allowed[i], base, info)
-                       : this.score(allowed[i].masks, allowed[i].moveFrames,
+                       ? self.idleScore(allowed[i], base, info)
+                       : self.score(allowed[i].masks, allowed[i].moveFrames,
                                     allowed[i].resolved, info);
                 if (!best || s2 > best.score) best = { cand: allowed[i], score: s2 };
             }
+        }
         }
 
         // A REVEAL SWAP BEATS STANDING STILL, and only that. It is not ranked
@@ -3361,6 +3378,7 @@
             this.counts.revealSwaps++;
             return { kind: 'swap', move: rev.best.swap, mode: mode, alive: alive, reveal: true, via: 'lineup' };
         }
+        bestOf();
         if (!best) return { kind: 'hold', mode: mode, alive: alive, via: 'noBest' };
         return { kind: best.cand.kind, move: best.cand.swap, mode: mode, alive: alive, via: (noneClear ? 'setup' : 'WEIGHTS') };
     };
