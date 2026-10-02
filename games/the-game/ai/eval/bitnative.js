@@ -53,6 +53,7 @@
     mem = dmem = null;
   }
   if (fs) {
+    require('v8').setFlagsFromString('--no-liftoff --no-wasm-lazy-compilation');
     var nThreads = threads();
     load(fs.readFileSync(path.join(__dirname, 'native', nThreads > 1 ? 'bit-mt.wasm' : 'bit.wasm')), nThreads);
   }
