@@ -7,7 +7,7 @@
 enum { IN_TOPPED, IN_STOP, IN_INCOMING, IN_NEXTSLAB, IN_FALLING, IN_CROW, IN_CCOL, IN_HEALTH, IN_DRAIN, IN_FPR,
        IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISEROOM, IN_INFLIGHT,
        IN_DRAINBOUND, IN_STACKTOPPED, IN_MOVING, IN_HASTIMED, IN_REVEALOPEN, IN_CONVN, IN_CONVTIMER, IN_BCROW, IN_BCCOL,
-       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_SF = 50, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_SIZE = 600 };
+       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_SF = 50, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_SIZE = 600 };
 enum { TF_DEADLY = 1, TF_FORCE = 2, TF_REFUSE = 4, TF_RAISE = 8, TF_STUB = 16, TF_SLAB = 32 };
 static int deadlyCalls;
 #define TFLAG(f) (((int)BIN[IN_T]) & (f))
@@ -167,7 +167,9 @@ static double framesToRise(double rows, double fpr, double startClock) {
 static double framesToDeathS(double stopTime, int tallest, double fpr) {
   double clock = stopTime;
   if (BIN[IN_TOPPED]) return dmax(0, (BIN[IN_DRAIN] ? BIN[IN_DRAIN] : 1) - 1);
-  double queued = __builtin_ceil(BIN[IN_NEXTSLAB] / BW);
+  // Every queued slab drops as soon as the one before it lands, so the rows
+  // still coming are the whole queue's, not the next slab's.
+  double queued = dmax(__builtin_ceil(BIN[IN_NEXTSLAB] / BW), BIN[IN_INROWS]);
   return clock + framesToRise(dmax(0, BH - tallest - queued), fpr, nz(BIN[IN_CLOCK]) + clock);
 }
 static double framesToDeath(int tallest, double fpr) { return framesToDeathS(BIN[IN_STOP], tallest, fpr); }
@@ -986,9 +988,17 @@ static int returnsToSeen(int r, int c) {
   return 0;
 }
 static double horizonOf(const Cand *c) { return dmax(c->moveFrames + REACT, BIN[IN_FPR]); }
+// A BREAK IN HAND IS KEPT. While slabs are queued and the next one would
+// land on a break, a swap that is not itself the break must leave one.
+static int baseReady;
+static int unreadies(const Cand *pc) {
+  if (!baseReady || !pc || pc->kind != K_SWAP || pc->res.broke) return 0;
+  return !slabReadyHook(pc->masks);
+}
 static int playable(int r, int c) {
   Cand *pc = poolSwap(r, c);
   if (!pc) return 0;
+  if (unreadies(pc)) return 0;
   if (returnsToSeen(r, c)) return 0;
   if (spendsReserve(&pc->res, pc->masks)) return 0;
   return !deadly(pc->masks, &pc->res, horizonOf(pc));
@@ -996,7 +1006,7 @@ static int playable(int r, int c) {
 static int playableSpending(int r, int c) {
   Cand *pc = poolSwap(r, c);
   if (!pc) return 0;
-  return !returnsToSeen(r, c) && !spendsReserve(&pc->res, pc->masks);
+  return !unreadies(pc) && !returnsToSeen(r, c) && !spendsReserve(&pc->res, pc->masks);
 }
 static int settling(int r, int c) { (void)r; return BIN[IN_SETTLING + c] != 0 || BIN[IN_SETTLING + c + 1] != 0; }
 static int tierOf(const Cand *cand) {
@@ -1052,6 +1062,7 @@ static Dec decideCore(void) {
   int poolBreak = 0;
   for (int i = 0; i < nPool; i++) if (POOL[i].res.broke) { poolBreak = 1; break; }
   int topped = BIN[IN_TOPPED] != 0;
+  baseReady = BIN[IN_INCOMING] > 0 && slabReadyHook(base);
   double dl2 = topped ? dmax(deadline, resolveFramesOf(3, 0)) : deadline;
   int lookDepth = (int)dmin(opt(O_MAXDEPTH), dmax(1, __builtin_floor(dl2 / (REACT > 1 ? REACT : 1))));
   lookDepthLog = lookDepth;
@@ -1196,6 +1207,7 @@ static Dec decideCore(void) {
     double horizon = horizonOf(cand);
     if (cand->kind == K_SWAP && spendsReserve(&cand->res, cand->masks)) continue;
     if (deadly(cand->masks, &cand->res, horizon)) { BT->counts[C_REFUSEDDEADLY]++; continue; }
+    if (unreadies(cand)) { BT->counts[C_REFUSEDNOFAILSAFE]++; SPARE[nSpare++] = cand; continue; }
     int cashes = cand->res.total > 0 || cand->res.broke;
     Ahead ahead = { 0, 0, 0 };
     if (!cashes) ahead = lookahead(cand->masks, horizon);

@@ -33,7 +33,7 @@
                FPR: 9, FTNR: 10, SPEED: 11, NEXTUP: 12, STARTSPEED: 13, CLOCK: 14, STACKCLOCK: 15, HASRISEN: 16,
                RAISEROOM: 17, INFLIGHT: 18, DRAINBOUND: 19, STACKTOPPED: 20, MOVING: 21, HASTIMED: 22,
                REVEALOPEN: 23, CONVN: 24, CONVTIMER: 25, BCROW: 26, BCCOL: 27, NLEGAL: 28, HASINROW: 29,
-               INROW: 30, HASLAST: 37, LASTR: 38, LASTC: 39, SETTLING: 40, SF: 50, CONV: 60, LEGAL: 300, T: 560, SLABW: 590, SLABH: 591, SLABC: 592, SIZE: 600 };
+               INROW: 30, HASLAST: 37, LASTR: 38, LASTC: 39, SETTLING: 40, SF: 50, CONV: 60, LEGAL: 300, T: 560, SLABW: 590, SLABH: 591, SLABC: 592, INROWS: 593, SIZE: 600 };
     var T = { RISE: 0, COMBO: 100, STOP: 200, LF: 210, W: 220, OPT: 250, SIZE: 270 };
     var KINDS = ['hold', 'raise', 'swap'], MODES = ['BUILD', 'DEFEND', 'ATTACK'];
     var VIAS = [null, 'raise:opening', 'raise:material', 'raising', 'readyFirst', 'awaitLanding', 'break',
@@ -88,6 +88,7 @@
         d[b + IN.INCOMING] = info.incoming || 0;
         d[b + IN.NEXTSLAB] = info.nextSlab || 0;
         d[b + IN.SLABW] = info.slabWidth || 0; d[b + IN.SLABH] = info.slabHeight || 0; d[b + IN.SLABC] = info.slabCol || 0;
+        d[b + IN.INROWS] = info.inRows || 0;
         d[b + IN.FALLING] = info.fallingGarbage ? 1 : 0;
         d[b + IN.CROW] = num(info.cursorRow); d[b + IN.CCOL] = num(info.cursorCol);
         d[b + IN.HEALTH] = num(info.health);
@@ -177,10 +178,11 @@
     };
 
     BitBot.prototype.info = function (board) {
-        var s = this.stack, incoming = 0, nextSlab = 0, slab = null;
+        var s = this.stack, incoming = 0, inRows = 0, nextSlab = 0, slab = null;
         if (s.incoming) {
             for (var i = 0; i < s.incoming.length; i++) {
                 incoming += (s.incoming[i].width || 0) * (s.incoming[i].height || 1);
+                inRows += s.incoming[i].height || 1;
             }
             if (s.incoming.length) {
                 nextSlab = (s.incoming[0].width || 0) * (s.incoming[0].height || 1);
@@ -192,6 +194,7 @@
             stopTime: s.stopTime || 0,
             incoming: incoming,
             nextSlab: nextSlab,
+            inRows: inRows,
             slabWidth: slab ? slab.width || 0 : 0,
             slabHeight: slab ? slab.height || 1 : 0,
             slabCol: slab && typeof s.nextSpawnColumn === 'function' ? s.nextSpawnColumn(slab.width) : 0,
