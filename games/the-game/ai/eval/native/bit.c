@@ -1371,9 +1371,18 @@ static LOCAL int dropBudget, saveBudget, slabBudget, prepBudget;
 static LOCAL int nAvoid; static LOCAL int32_t AVOID[2 * 40];
 static LOCAL ST BASEST;
 
+// HELD is the direction pressed on the frame before the decision, at the
+// cursor it left there. A first step the same way waits one frame for the key
+// to be released, or the engine reads it as held.
+static LOCAL int HELDR, HELDC, HELDDIR;
 static int travelCost(int r0, int c0, int r1, int c1) {
   int steps = (r1 > r0 ? r1 - r0 : r0 - r1) + (c1 > c0 ? c1 - c0 : c0 - c1);
-  return (steps <= 0 ? 0 : 4 * (steps - 1) + 1) + PRESS;
+  int t = (steps <= 0 ? 0 : 4 * (steps - 1) + 1) + PRESS;
+  if (steps > 0 && HELDDIR && r0 == HELDR && c0 == HELDC) {
+    int dir = c1 > c0 ? 4 : c1 < c0 ? 3 : r1 > r0 ? 1 : 2;
+    if (dir == HELDDIR) t++;
+  }
+  return t;
 }
 static int hasGarb(const int32_t *st) { for (int c = 1; c <= st[O_W]; c++) if (st[GARB + c]) return 1; return 0; }
 static int breakAfterDropOf(const int32_t *st0);
@@ -2055,6 +2064,7 @@ static int optionsRun(const int32_t *st0, const double *P, const int32_t *first,
   PRESS = (int)P[14]; hasStopPrice = (int)P[15]; stopKeyId = (int)P[16]; MAXSTOP = P[17];
   lazyBreak = (int)P[101];
   SLABW = (int)P[102]; SLABH = (int)P[103]; SLABC = (int)P[104];
+  HELDR = (int)P[105]; HELDC = (int)P[106]; HELDDIR = (int)P[107];
   LMAX = 0;
   for (int i = 0; i < 64; i++) if (PCHAIN[i] > LMAX) LMAX = PCHAIN[i];
   for (int i = 0; i < 256; i++) if (PCOMBO[i] > LMAX) LMAX = PCOMBO[i];

@@ -7,7 +7,7 @@
 enum { IN_TOPPED, IN_STOP, IN_INCOMING, IN_NEXTSLAB, IN_FALLING, IN_CROW, IN_CCOL, IN_HEALTH, IN_DRAIN, IN_FPR,
        IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISEROOM, IN_INFLIGHT,
        IN_DRAINBOUND, IN_STACKTOPPED, IN_MOVING, IN_HASTIMED, IN_REVEALOPEN, IN_CONVN, IN_CONVTIMER, IN_BCROW, IN_BCCOL,
-       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_SF = 50, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_SIZE = 600 };
+       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_HELD = 49, IN_SF = 50, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_SIZE = 600 };
 enum { TF_DEADLY = 1, TF_FORCE = 2, TF_REFUSE = 4, TF_RAISE = 8, TF_STUB = 16, TF_SLAB = 32 };
 static int deadlyCalls;
 #define TFLAG(f) (((int)BIN[IN_T]) & (f))
@@ -610,6 +610,7 @@ static void buildOptions(const int32_t *base, double deadline, int lookDepth, in
   if (topped) OPTP[2] = lockNow();
   OPTP[3] = spend; OPTP[10] = digging; OPTP[11] = lookDepth; OPTP[101] = 1;
   OPTP[102] = BIN[IN_SLABW]; OPTP[103] = BIN[IN_SLABH]; OPTP[104] = BIN[IN_SLABC];
+  OPTP[105] = HELDR; OPTP[106] = HELDC; OPTP[107] = HELDDIR;
 }
 static void mainOptions(const int32_t *base, double deadline, int lookDepth, int digging) {
   if (optsBuilt) return;
@@ -1562,6 +1563,21 @@ static int steady(int r, int c) {
   for (int cc = c; cc <= c + 1; cc++) { int low = (int)BIN[IN_POPLOW + cc]; if (low > 0 && low < r) return 0; }
   return 1;
 }
+// FRAMES A QUIET SWAP HOLDS THE BOARD, from the engine: 5 when nothing
+// falls; when panels drop, the swap (4), the hover (6), one frame to start and
+// one per row fallen. base is the board before the swap, after the board it
+// settles to.
+static ST QSW;
+static double quietSettle(const int32_t *base, int r, int c, const int32_t *after) {
+  stcpy(QSW, base);
+  if (!swapIn(QSW, r, c)) return 5;
+  int fell = 0;
+  for (int cc = c; cc <= c + 1; cc++) {
+    int f = topRow(U(QSW, OCC + cc)) - topRow(U(after, OCC + cc));
+    if (f > fell) fell = f;
+  }
+  return fell > 0 ? 11 + fell : 5;
+}
 static Dec waitForDrain(Dec d) {
   // The time left is the drain bound once topped, and the death clock before:
   // a queue that will top the board leaves no more time than the stop.
@@ -1621,7 +1637,7 @@ static Dec waitForDrain(Dec d) {
       swapIn(WDA, WDSW[2 * i], WDSW[2 * i + 1]);
       if (WDR[R_TOTAL] > 0 || WDR[R_SCOPE] == SC_BROKE) back = cst;
     }
-    if (picked->moveFrames + 4 + back + 1 <= k) return d;
+    if (picked->moveFrames + quietSettle(base, picked->sr, picked->sc, picked->masks) + back + 1 <= k) return d;
   } else if (nearest + 2 <= k) {
     return d;
   }
@@ -1642,7 +1658,8 @@ static Dec waitForDrain(Dec d) {
     double rate = (f[1] + f[2] + f[3] * r->total + stopTimeOf(isCh, isCh ? 0 : r->total, isCh ? r->chain : 0, 1)) / r->total;
     double vd = 0;
     if (cl->masks) { Shape sh; shapeOf(cl->masks, &sh); vd = sh.high - sh.mat; }
-    int tn = r->total;
+    int tn = r->total, st = cl->future || steady(cl->sr, cl->sc), cnSt = clearNow && (clearNow->future || steady(clearNow->sr, clearNow->sc));
+    if (clearNow && st != cnSt) { if (st) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; } continue; }
     if (!clearNow || tn < cnTn || (tn == cnTn && (vd < cnVd || (vd == cnVd && rate > cnRate)))) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; }
   }
   if (breakNow && !breakNow->future) return mkSwap(breakNow->sr, breakNow->sc, V_BREAK, d.mode, d.alive);
@@ -1650,6 +1667,9 @@ static Dec waitForDrain(Dec d) {
   Clr *esc = clearNow;
   if (!esc) for (int i = 0; i < nc; i++) if (!esc || CLEARS[i].moveFrames < esc->moveFrames) esc = &CLEARS[i];
   if (esc->future || (esc->moveFrames + 2 <= k && steady(esc->sr, esc->sc))) return HOLDAT(esc->sr, esc->sc);
+  // No steady clear to hold: one that is falling apart is fired only when the
+  // time is up; before that the choice stands and stayAlive judges it.
+  if (esc->moveFrames + 2 <= k) return d;
   return mkSwap(esc->sr, esc->sc, V_KEEPHEALTH, d.mode, d.alive);
 #undef HOLDAT
 }
@@ -1659,7 +1679,7 @@ static Dec waitForDrain(Dec d) {
 // or if one more swap on the board it settles to does -- the walk to it, the
 // frames it takes, then the walk on. The bot's own choice stands whenever it
 // is living; a choice that is not is replaced by a living one.
-#define LIVEHORIZON 150
+#define LIVEHORIZON 60
 static ST LVA, LVB;
 static int32_t LVR[R_INTS + ST_INTS], LVS[2 * 128], LVS2[2 * 128];
 static uint8_t LIVE[40][WMAX];
@@ -1681,7 +1701,7 @@ static void livingSet(const int32_t *base, double left) {
     int sc = LVR[R_SCOPE];
     if (sc != SC_OK && sc != SC_BROKE) continue;
     if (cashes(LVR)) { LIVE[r1][c1] = 1; LIVET[r1][c1] = t1; liveAny = 1; continue; }
-    double settle = LVR[R_FRAMES] > 4 ? LVR[R_FRAMES] : 4;
+    double settle = quietSettle(LVA, r1, c1, LVR + R_INTS);
     stcpy(LVB, LVR + R_INTS);
     int n2 = legal(LVB, LVS2);
     for (int j = 0; j < n2; j++) {
@@ -1741,6 +1761,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   TB = BT->tab;
   REACT = (int)opt(O_REACTION);
   PRESS = (int)opt(O_PRESS);
+  HELDR = (int)BIN[IN_CROW]; HELDC = (int)BIN[IN_CCOL]; HELDDIR = (int)BIN[IN_HELD];
   botFailed = 0;
   clearRaiseFrames = 0;
   memoRoom();
@@ -1802,6 +1823,7 @@ __attribute__((export_name("bot_test"))) double bot_test(int32_t id, int32_t fn)
   TB = BT->tab;
   REACT = (int)opt(O_REACTION);
   PRESS = (int)opt(O_PRESS);
+  HELDDIR = 0;
   double *a = BIN + IN_T + 8;
   Rs r = argRes(IN_T + 16);
   int hasRes = (int)a[0];
