@@ -4013,6 +4013,26 @@
             if (d.kind === 'swap' && d.move && pc.swap[0] === d.move[0] && pc.swap[1] === d.move[1]) picked = pc;
             if (pc.resolved.total > 0 || pc.resolved.brokeGarbage) clears.push(pc);
         }
+        // NONE YET IS NOT NONE. Panels still in the air land when the lock they hold
+        // ends, and the clears they make exist only from then: on the settled board.
+        // Those are the targets while the board is in motion -- the cursor is parked on
+        // one so its swap goes in the run the panels land, and a move that walks away
+        // from every one of them faces the same way-back check as any other.
+        if (!clears.length) {
+            var settled = bit.resolveFromMasks(base, true).settled;
+            if (settled) {
+                var sws = bit.legalSwapsOf(settled);
+                for (i = 0; i < sws.length; i++) {
+                    if (!bit.swapMasks(settled, sws[i][0], sws[i][1])) continue;
+                    var rs = bit.resolveFromMasks(settled, false);
+                    bit.swapMasks(settled, sws[i][0], sws[i][1]);
+                    if (!(rs.total > 0 || rs.scope === 'garbage-broke')) continue;
+                    clears.push({ kind: 'swap', swap: sws[i], future: true,
+                                  moveFrames: travel.cost(info.cursorRow, info.cursorCol, sws[i][0], sws[i][1]),
+                                  resolved: summarise(rs) });
+                }
+            }
+        }
         if (!clears.length) return d;
         var k = this.drainBound(), pr = picked && picked.resolved;
         // A BREAK STILL HAS TO GET THERE IN TIME: its walk is checked against the first
@@ -4076,12 +4096,13 @@
             if (!clearNow || tn < clearNow.tn || (tn === clearNow.tn && (vd < clearNow.vd ||
                 (vd === clearNow.vd && rate > clearNow.rate)))) clearNow = { cand: cl, rate: rate, vd: vd, tn: tn };
         }
-        if (breakNow) return { kind: 'swap', move: breakNow.swap, mode: d.mode, alive: d.alive, via: 'break' };
+        if (breakNow && !breakNow.future) return { kind: 'swap', move: breakNow.swap, mode: d.mode, alive: d.alive, via: 'break' };
+        if (breakNow) return hold(breakNow.swap);
         var esc = clearNow ? clearNow.cand : null;
         if (!esc) {
             for (i = 0; i < clears.length; i++) if (!esc || (clears[i].moveFrames || 0) < (esc.moveFrames || 0)) esc = clears[i];
         }
-        if ((esc.moveFrames || 0) + 2 <= k) return hold(esc.swap);
+        if (esc.future || (esc.moveFrames || 0) + 2 <= k) return hold(esc.swap);
         return { kind: 'swap', move: esc.swap, mode: d.mode, alive: d.alive, via: 'keepHealth' };
     };
 
@@ -4426,7 +4447,12 @@
             if (froz) this.frozen.hold++;
             this.counts.holds++;
             this.cooldown = this.reaction;
-            this._park = d.park ? { row: d.park[0], col: d.park[1], timer: 0,
+            // THE SAME TARGET KEEPS ITS WALK. A board in motion is decided on every frame,
+            // and a park rebuilt each time restarts its step timer, so the direction is
+            // held without a fresh press and the cursor never moves.
+            var pk0 = this._park;
+            if (d.park && pk0 && pk0.target && pk0.target[0] === d.park[0] && pk0.target[1] === d.park[1]) return;
+            this._park = d.park ? { row: d.park[0], col: d.park[1], timer: 0, target: [d.park[0], d.park[1]],
                                     disp: stack.displacement } : null;
             return;
         }
