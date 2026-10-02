@@ -1225,18 +1225,6 @@ static int quietDrop(const int32_t *st, const Grid *G, const Drop *D, int r, int
   }
   return dropQuiet(st, D, r, c, ZK, out);
 }
-static LOCAL ST SWAPSCR;
-static int settleSwap(const int32_t *st, int r, int c, Res *out) {
-  if (settledRest(st)) {
-    Grid G; Drop D;
-    gridOf(st, &G); dropOf(st, &G, &D);
-    if (quietDrop(st, &G, &D, r, c, (int32_t *)out)) return 1;
-  }
-  stcpy(SWAPSCR, st);
-  if (!swapIn(SWAPSCR, r, c)) return 0;
-  resolve(SWAPSCR, out->r, 1);
-  return 1;
-}
 static int breaksFirst(const int32_t *st, const Grid *G, int r, int c) { int t, cs; return firstRound(st, G, r, c, &t, &cs); }
 static int anyBreakOf(const int32_t *st0) {
   Grid G;
@@ -1527,7 +1515,7 @@ static void sortBorn(int n) {
 }
 
 static LOCAL int threadReady;
-struct CK { Res *res; int resPly, hasRR, rrDig, hasSh, hasShG, sv, fire, slab, hasLand, anyB, bad; double land; Shape sh, shg; uint32_t rr[WMAX]; };
+struct CK { Res *res; int resPly, persist, hasRR, rrDig, hasSh, hasShG, sv, fire, slab, hasLand, anyB, bad; double land; Shape sh, shg; uint32_t rr[WMAX]; };
 #define NTCAP (1 << 12)
 typedef struct { u64 h; int32_t gen, at, n, nl, rest; CK *ck; int32_t *sw; } NT;
 static NT NT_MAIN[NTCAP];
@@ -1562,6 +1550,32 @@ static CK *nodeAdd(unsigned i, const int32_t *st, int nl, const int32_t *sw, int
   NTB[i].gen = ntGen; NTB[i].at = (int32_t)(cp - ARENA); NTB[i].nl = nl; NTB[i].rest = rest; NTB[i].ck = ck; NTB[i].sw = sp;
   ntN++;
   return ck;
+}
+static LOCAL ST SWAPSCR;
+static int settleSwap(const int32_t *st, int r, int c, Res *out) {
+  unsigned slot;
+  NT *nt = NTB ? nodeFind(st, &slot) : 0;
+  if (nt && nt->ck) {
+    for (int k = 0; k < nt->nl; k++) {
+      if (nt->sw[2 * k] != r || nt->sw[2 * k + 1] != c) continue;
+      Res *res = nt->ck[k].res;
+      if (res && nt->ck[k].persist) {
+        int n = R_INTS + (res->r[R_SCOPE] == SC_OK ? stlen(res->st) : 0);
+        for (int i = 0; i < n; i++) ((int32_t *)out)[i] = ((const int32_t *)res)[i];
+        return 1;
+      }
+      break;
+    }
+  }
+  if (settledRest(st)) {
+    Grid G; Drop D;
+    gridOf(st, &G); dropOf(st, &G, &D);
+    if (quietDrop(st, &G, &D, r, c, (int32_t *)out)) return 1;
+  }
+  stcpy(SWAPSCR, st);
+  if (!swapIn(SWAPSCR, r, c)) return 0;
+  resolve(SWAPSCR, out->r, 1);
+  return 1;
 }
 static void shapeC(const int32_t *st, Shape *sh) {
   CK *e = CUR_E;
@@ -1804,8 +1818,7 @@ static void expandAll(int depth, int cr, int cc) {
         }
         Res *res;
         CK *e = ck ? &ck[k] : 0;
-        if (e && e->res && (e->resPly == ply || ((e->res < QUIET || e->res >= QUIET + 2 * qcap) &&
-                                                  ((int32_t *)e->res < PSOUT || (int32_t *)e->res >= PSOUT + 2 * MAXSET * SOUT)))) res = e->res;
+        if (e && e->res && (e->resPly == ply || e->persist)) res = e->res;
         else if ((haveG || (gridOf(state, &G), haveG = 1)) && quietSwapG(state, &G, nodeRest, sr, sc)) {
           if (nQuiet[qside] >= qcap) { failed = 1; continue; }
           res = &QUIET[qside * qcap + nQuiet[qside]++];
@@ -1827,7 +1840,10 @@ static void expandAll(int depth, int cr, int cc) {
           res = settleOf(state);
           swapIn(state, sr, sc);
         }
-        if (e) { e->res = res; e->resPly = ply; }
+        if (e) {
+          e->res = res; e->resPly = ply;
+          e->persist = (res < QUIET || res >= QUIET + 2 * qcap) && ((int32_t *)res < PSOUT || (int32_t *)res >= PSOUT + 2 * MAXSET * SOUT);
+        }
         int cost = node->spent + travelCost(node->fr, node->fc, sr, sc);
         int tPlan = cost + ply - 1;
         if ((double)tPlan > node->lock + SPEND) continue;
