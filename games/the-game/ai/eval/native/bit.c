@@ -467,6 +467,13 @@ static int swapCanClear(const int32_t *st, int rest, int r, int c) {
   sccR = r; sccC = c; sccL = left; sccRt = right;
   return sccLine(st, r, c, right) || sccLine(st, r, c + 1, left);
 }
+static int settledRest(const int32_t *st) { return !st[O_BUSYF] && !st[O_BAD] && atRest(st); }
+static int quietSwap(const int32_t *st, int rest, int r, int c) {
+  if (!rest) return 0;
+  uint32_t b = 1u << (r - 1);
+  if (!colourLast(st, c, b) || !colourLast(st, c + 1, b)) return 0;
+  return !swapCanClear(st, 1, r, c);
+}
 static int otAt(const int32_t *st, int rr, int cc) {
   if (rr < 1 || rr > st[O_H] || cc < 1 || cc > st[O_W]) return -1;
   if (rr == sccR && cc == sccC) return sccRt;
@@ -690,8 +697,10 @@ static int32_t *memoStore(MSlot *sl, u64 k, const int32_t *r, int withSettled) {
   arenaN += len;
   return at;
 }
+#define NOMEMO 0
 static void resolveRaw(const int32_t *st, int32_t *r, int wantSettled) { resolveT(st, r, wantSettled, 0); }
 static void resolveM(const int32_t *st, int32_t *r, int wantSettled) {
+  if (NOMEMO) { resolveRaw(st, r, wantSettled); return; }
   if (st[O_BAD]) { resolveRaw(st, r, wantSettled); return; }
   u64 k = hashOf(st);
   MSlot *sl = memoFind(k);
@@ -922,6 +931,8 @@ typedef struct { const int32_t *st; int parent, sr, sc, spent, hasReach, dig; ui
 #define MAXFRONT 48
 #define MAXBORN 4096
 static Node FRONT[MAXFRONT], FRONT2[MAXFRONT];
+static Res QUIET[2][MAXBORN];
+static int nQuiet[2], qside;
 static Born BORN[MAXBORN];
 static int ORD[MAXBORN], ORD2[MAXBORN];
 static int32_t SWE[2 * 128];
@@ -934,13 +945,26 @@ static void takeRec(int which, const int32_t *seq, int nseq, int frames, double 
   o[F_FRAMES] = frames; o[F_VALUE] = value; o[F_DURATION] = dur; o[F_NSW] = nseq;
   for (int i = 0; i < 2 * nseq; i++) o[F_SW + i] = seq[i];
 }
+static int TMPI[MAXBORN];
+static void msortI(int *a, int n, int (*cmp)(int, int)) {
+  for (int w = 1; w < n; w *= 2) {
+    for (int lo = 0; lo < n; lo += 2 * w) {
+      int mid = lo + w < n ? lo + w : n, hi = lo + 2 * w < n ? lo + 2 * w : n, i = lo, j = mid, k = lo;
+      while (i < mid && j < hi) TMPI[k++] = cmp(a[i], a[j]) <= 0 ? a[i++] : a[j++];
+      while (i < mid) TMPI[k++] = a[i++];
+      while (j < hi) TMPI[k++] = a[j++];
+    }
+    for (int i = 0; i < n; i++) a[i] = TMPI[i];
+  }
+}
+static int bySpent(int x, int y) { return BORN[x].spent - BORN[y].spent; }
+static int byDig(int x, int y) {
+  int d = BORN[y].dig - BORN[x].dig;
+  return d ? d : BORN[x].spent - BORN[y].spent;
+}
 static void sortBorn(int n) {
   for (int i = 0; i < n; i++) ORD[i] = i;
-  for (int i = 1; i < n; i++) {
-    int x = ORD[i], j = i - 1;
-    while (j >= 0 && BORN[ORD[j]].spent > BORN[x].spent) { ORD[j + 1] = ORD[j]; j--; }
-    ORD[j + 1] = x;
-  }
+  msortI(ORD, n, bySpent);
 }
 
 static void expandAll(int depth, int cr, int cc) {
@@ -956,11 +980,13 @@ static void expandAll(int depth, int cr, int cc) {
   double fv = 0;
   for (int ply = 1; ply <= depth && nf; ply++) {
     int nb = 0;
+    qside ^= 1; nQuiet[qside] = 0;
     for (int fi = 0; fi < nf; fi++) {
       Node *node = &FRONT[fi];
       int32_t *state = WORK_ST[fi];
       stcpy(state, node->st);
       int nl = legal(state, SWE);
+      int nodeRest = settledRest(state);
       uint32_t reach[WMAX]; int haveReach = node->hasReach;
       if (haveReach) for (int c = 0; c < WMAX; c++) reach[c] = node->reach[c];
       if (!haveReach && node->nchain) { reachOf(state, reach); haveReach = 1; }
@@ -970,9 +996,19 @@ static void expandAll(int depth, int cr, int cc) {
           uint32_t rb = 1u << (sr - 1);
           if (!((reach[sc] | reach[sc + 1]) & rb)) continue;
         }
-        if (!swapIn(state, sr, sc)) continue;
-        Res *res = settleOf(state);
-        swapIn(state, sr, sc);
+        Res *res;
+        if (quietSwap(state, nodeRest, sr, sc)) {
+          if (nQuiet[qside] >= MAXBORN) { failed = 1; continue; }
+          res = &QUIET[qside][nQuiet[qside]++];
+          for (int i = 0; i < R_INTS; i++) res->r[i] = 0;
+          swapIn(state, sr, sc);
+          stcpy(res->st, state);
+          swapIn(state, sr, sc);
+        } else {
+          if (!swapIn(state, sr, sc)) continue;
+          res = settleOf(state);
+          swapIn(state, sr, sc);
+        }
         int cost = node->spent + travelCost(node->fr, node->fc, sr, sc);
         int tPlan = cost + ply - 1;
         if ((double)tPlan > node->lock + SPEND) continue;
@@ -1052,15 +1088,7 @@ static void expandAll(int depth, int cr, int cc) {
     if (DIG && nb > nf2) {
       int ns = 0;
       for (int i = nf2; i < nb; i++) ORD2[ns++] = ORD[i];
-      for (int i = 1; i < ns; i++) {
-        int x = ORD2[i], j = i - 1;
-        while (j >= 0) {
-          Born *p = &BORN[ORD2[j]], *q = &BORN[x];
-          int cmp = (q->dig - p->dig) ? (q->dig - p->dig) : (p->spent - q->spent);
-          if (cmp > 0) { ORD2[j + 1] = ORD2[j]; j--; } else break;
-        }
-        ORD2[j + 1] = x;
-      }
+      msortI(ORD2, ns, byDig);
       for (int k = 0; k < ns && k < digBeam; k++) if (BORN[ORD2[k]].dig) pick[np++] = ORD2[k];
     }
     for (int i = 0; i < np; i++) {
@@ -1109,8 +1137,14 @@ static int optionsRun(const int32_t *st0, const double *P, const int32_t *first,
   int ns;
   if (nfirst > 0) { ns = nfirst; for (int i = 0; i < 2 * ns; i++) SW1[i] = first[i]; }
   else ns = legal(ST1, SW1);
+  int rest1 = settledRest(ST1);
   for (int i = 0; i < ns; i++) {
     int sr = SW1[2 * i], sc = SW1[2 * i + 1];
+    if (quietSwap(ST1, rest1, sr, sc)) {
+      for (int j = 0; j < R_INTS; j++) R1.r[j] = 0;
+      if (undoesLast(sr, sc, R1.r)) refused++;
+      continue;
+    }
     if (!swapIn(ST1, sr, sc)) { refused++; continue; }
     resolve(ST1, R1.r, 1);
     swapIn(ST1, sr, sc);

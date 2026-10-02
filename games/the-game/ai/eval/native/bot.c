@@ -61,6 +61,7 @@ __attribute__((export_name("bot_new"))) int32_t bot_new(void) {
   return nBots++;
 }
 __attribute__((export_name("bot_tab"))) double *bot_tab(int32_t id) { return BOTS[id].tab; }
+__attribute__((export_name("bot_cur"))) int32_t bot_cur(void) { return (int32_t)(BT - BOTS); }
 __attribute__((export_name("bot_counts"))) double *bot_counts(int32_t id) { return BOTS[id].counts; }
 
 static double opt(int i) { return TB[T_OPT + i]; }
@@ -212,8 +213,18 @@ static Ahead lookahead(const int32_t *st0, double horizon) {
   int r0 = nRes;
   Ahead out = { 1, 0, 0 };
   stcpy(LK, st0);
-  int n = legal(LK, LKSW);
+  int n = legal(LK, LKSW), rest = settledRest(LK);
   for (int i = 0; i < n; i++) {
+    if (quietSwap(LK, rest, LKSW[2 * i], LKSW[2 * i + 1])) {
+      if (!out.stranded) continue;
+      Rs zero; memset(&zero, 0, sizeof zero);
+      swapIn(LK, LKSW[2 * i], LKSW[2 * i + 1]);
+      int dead = deadly(LK, &zero, horizon);
+      swapIn(LK, LKSW[2 * i], LKSW[2 * i + 1]);
+      if (!dead) out.stranded = 0;
+      if (out.hasBreak && !out.stranded) break;
+      continue;
+    }
     if (!swapIn(LK, LKSW[2 * i], LKSW[2 * i + 1])) continue;
     resolve(LK, LKR.r, 1);
     swapIn(LK, LKSW[2 * i], LKSW[2 * i + 1]);
@@ -427,11 +438,21 @@ static int saveAfter(const int32_t *masks0, int row, int col, int deep) {
   int frozen = BIN[IN_STOP] > 0 || BIN[IN_TOPPED];
   int step = MOVE_FRAMES + (frozen ? 0 : REACT);
   slabToAnswer(masks0, SAM);
-  int n = legal(SAM, SASW), best = 0, ns = 0;
+  int n = legal(SAM, SASW), best = 0, ns = 0, rest = settledRest(SAM);
   for (int i = 0; i < n; i++) {
     int sr = SASW[2 * i], sc = SASW[2 * i + 1];
     double walk = travelCost(row, col, sr, sc) + step;
     if (walk > deadline) continue;
+    if (quietSwap(SAM, rest, sr, sc)) {
+      if (deep && !best) {
+        swapIn(SAM, sr, sc);
+        stcpy(SETUPST[ns], SAM);
+        swapIn(SAM, sr, sc);
+        SETUPS[ns].sr = sr; SETUPS[ns].sc = sc; SETUPS[ns].spent = walk; SETUPS[ns].idx = ns;
+        ns++;
+      }
+      continue;
+    }
     if (!swapIn(SAM, sr, sc)) continue;
     int want = deep && !best;
     resolve(SAM, SAR.r, want);
@@ -455,10 +476,11 @@ static int saveAfter(const int32_t *masks0, int row, int col, int deep) {
     int32_t *st2 = SETUPST[SETUPS[i].idx];
     double left = deadline - SETUPS[i].spent;
     if (left <= 0) continue;
-    int n2 = legal(st2, SASW2);
+    int n2 = legal(st2, SASW2), rest2 = settledRest(st2);
     for (int j = 0; j < n2; j++) {
       int sr = SASW2[2 * j], sc = SASW2[2 * j + 1];
       if (travelCost(SETUPS[i].sr, SETUPS[i].sc, sr, sc) + step > left) continue;
+      if (quietSwap(st2, rest2, sr, sc)) continue;
       if (!swapIn(st2, sr, sc)) continue;
       resolve(st2, SAR2, 0);
       swapIn(st2, sr, sc);
@@ -541,16 +563,20 @@ static int planInTime(const int32_t *swaps, int n, double duration, const int32_
 
 static double *PILE[MAXOPT], *PILE2[MAXOPT];
 static int nPile, nPile2;
+static double *TMPR[MAXOPT];
+static int priceCmp(const double *x, const double *y) {
+  if (x[F_FRAMES] != y[F_FRAMES]) return x[F_FRAMES] < y[F_FRAMES] ? -1 : 1;
+  return x[F_SIZE] > y[F_SIZE] ? -1 : x[F_SIZE] < y[F_SIZE] ? 1 : 0;
+}
 static void sortRecs(double **a, int n) {
-  for (int i = 1; i < n; i++) {
-    double *x = a[i]; int j = i - 1;
-    while (j >= 0) {
-      double *y = a[j];
-      int after = y[F_FRAMES] != x[F_FRAMES] ? y[F_FRAMES] > x[F_FRAMES] : y[F_SIZE] < x[F_SIZE];
-      if (!after) break;
-      a[j + 1] = a[j]; j--;
+  for (int w = 1; w < n; w *= 2) {
+    for (int lo = 0; lo < n; lo += 2 * w) {
+      int mid = lo + w < n ? lo + w : n, hi = lo + 2 * w < n ? lo + 2 * w : n, i = lo, j = mid, k = lo;
+      while (i < mid && j < hi) TMPR[k++] = priceCmp(a[i], a[j]) <= 0 ? a[i++] : a[j++];
+      while (i < mid) TMPR[k++] = a[i++];
+      while (j < hi) TMPR[k++] = a[j++];
     }
-    a[j + 1] = x;
+    for (int i = 0; i < n; i++) a[i] = TMPR[i];
   }
 }
 static int pileOf(double *od, double **out) {
@@ -992,6 +1018,10 @@ static void routeShift(Route *rt) {
 }
 
 static Cand *ALLOWED[MAXCAND], *TMPC[MAXCAND], *RANKED[MAXCAND], *SPARE[MAXCAND];
+static void scoreAll(Cand **cs, int n, double *out, int idle, const int32_t *base) {
+  if (idle) { for (int i = 0; i < n; i++) out[i] = idleScore(cs[i], base); return; }
+  for (int i = 0; i < n; i++) out[i] = score(cs[i]->masks, cs[i]->moveFrames, &cs[i]->res);
+}
 typedef struct { Cand *c; double cheap; } Cheap;
 
 static Dec decideCore(void) {
@@ -1406,26 +1436,17 @@ static Dec decideCore(void) {
     BT->counts[C_REVEALSWAPS]++;
     Dec d = mkSwap(rev.sr, rev.sc, V_LINEUP, mode, alive); d.reveal = 1; return d;
   }
-  Cand *best = 0; double bestScore = 0;
-  for (int i = 0; i < nRanked; i++) {
-    Cand *c = RANKED[i];
-    double s = noneClear ? idleScore(c, base) : score(c->masks, c->moveFrames, &c->res);
-    if (!best || s > bestScore) { best = c; bestScore = s; }
-  }
+  Cand *best = 0; double bestScore = 0, sc[MAXCAND];
+  scoreAll(RANKED, nRanked, sc, noneClear, base);
+  for (int i = 0; i < nRanked; i++) if (!best || sc[i] > bestScore) { best = RANKED[i]; bestScore = sc[i]; }
   if (!best && nSpare) {
-    for (int i = 0; i < nSpare; i++) {
-      Cand *c = SPARE[i];
-      double s = noneClear ? idleScore(c, base) : score(c->masks, c->moveFrames, &c->res);
-      if (!best || s > bestScore) { best = c; bestScore = s; }
-    }
+    scoreAll(SPARE, nSpare, sc, noneClear, base);
+    for (int i = 0; i < nSpare; i++) if (!best || sc[i] > bestScore) { best = SPARE[i]; bestScore = sc[i]; }
   }
   if (!best) {
     BT->counts[C_ALLDEAD]++;
-    for (int i = 0; i < na; i++) {
-      Cand *c = ALLOWED[i];
-      double s = noneClear ? idleScore(c, base) : score(c->masks, c->moveFrames, &c->res);
-      if (!best || s > bestScore) { best = c; bestScore = s; }
-    }
+    scoreAll(ALLOWED, na, sc, noneClear, base);
+    for (int i = 0; i < na; i++) if (!best || sc[i] > bestScore) { best = ALLOWED[i]; bestScore = sc[i]; }
   }
   if (!best) return mkHold(V_NOBEST, mode, alive, 0, 0, 0);
   Dec d = mk(best->kind, noneClear ? V_SETUP : V_WEIGHTS, mode, alive);
@@ -1441,16 +1462,18 @@ static Dec decideRuled(void) {
   if (d.kind != K_SWAP || !d.hasMove) return d;
   Cand *picked = poolSwap(d.sr, d.sc);
   if (picked && !isArith(d.via) && refuses(picked, base, lastSurvivalNeeded, lastBreakOnPool)) {
-    Cand *sub = 0; double subScore = 0;
+    Cand *sub = 0; double subScore = 0, sv[MAXCAND];
+    int nq = 0;
     for (int i = 0; i < nPool; i++) {
       Cand *sc0 = &POOL[i];
       if (sc0 == picked || sc0->kind != K_SWAP) continue;
       if (refuses(sc0, base, lastSurvivalNeeded, lastBreakOnPool)) continue;
       if (sc0->moveFrames > DDEADLINE) continue;
       if (deadly(sc0->masks, &sc0->res, horizonOf(sc0))) continue;
-      double sv0 = score(sc0->masks, sc0->moveFrames, &sc0->res);
-      if (!sub || sv0 > subScore) { sub = sc0; subScore = sv0; }
+      TMPC[nq++] = sc0;
     }
+    scoreAll(TMPC, nq, sv, 0, base);
+    for (int i = 0; i < nq; i++) if (!sub || sv[i] > subScore) { sub = TMPC[i]; subScore = sv[i]; }
     if (sub) {
       BT->counts[C_REFUSEDATEXIT]++;
       d = mkSwap(sub->sr, sub->sc, V_RULED, d.mode, d.alive);
@@ -1485,15 +1508,19 @@ static Dec decideRuled(void) {
   } else if (saveAfter(chosen->masks, chosen->sr, chosen->sc, 1)) {
     return d;
   }
-  Cand *keep = 0; double keepScore = 0; int keepQ = 0;
+  Cand *keep = 0; double keepScore = 0, ks[MAXCAND]; int keepQ = 0, qs[MAXCAND], nk = 0;
   for (int i = 0; i < nPool; i++) {
     Cand *alt = &POOL[i];
     if (alt == chosen || alt->kind != K_SWAP) continue;
     if (deadly(alt->masks, &alt->res, horizonOf(alt))) continue;
     int q = saveAfter(alt->masks, alt->sr, alt->sc, 0);
     if (!q) continue;
-    double sc = score(alt->masks, alt->moveFrames, &alt->res);
-    if (!keep || q > keepQ || (q == keepQ && sc > keepScore)) { keep = alt; keepScore = sc; keepQ = q; }
+    qs[nk] = q; TMPC[nk++] = alt;
+  }
+  scoreAll(TMPC, nk, ks, 0, base);
+  for (int i = 0; i < nk; i++) {
+    int q = qs[i]; double sc = ks[i];
+    if (!keep || q > keepQ || (q == keepQ && sc > keepScore)) { keep = TMPC[i]; keepScore = sc; keepQ = q; }
   }
   if (!keep) { BT->counts[C_SAVEUNKEEPABLE]++; return d; }
   BT->counts[C_SAVEKEPT]++;
