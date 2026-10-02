@@ -13,8 +13,9 @@
 //   f<frame> panels <n> garb <n> top <0|1> {<decision kinds since the last line>}
 //   died <frame>  |  alive <frame>
 //
-// GC_TRACE=<frame> also writes, from that frame on, every frame's board and
-// every decision (the run is the same run every time from the same seed):
+// And every frame's board and every decision, from the first frame, so a
+// death is read off the run that died -- never a replay. GC_TRACE=<frame>
+// starts them later instead, for a run whose early frames are not wanted:
 //   F <frame> stop <n> shake <n> health <n> disp <n> cur <r>,<c> queue <w>x<h>,... | <row 12> ... <row 1>
 //   D <frame> <kind> <via> <move> | breaks <n> <best> | lines <n> <best break line>
 //     breaks: the one-swap breaks in the decision's pool, and the first of them;
@@ -36,7 +37,7 @@ var frames = Number(process.argv[4] || sc.ceiling);
 var ld = PA.vsLevel(sc.level).levelData;
 var pa = PA.create(sc.level, new PA.Seeded(new GEN.GeneratorSource(seed, true, ld.colors, ld.adjacentDenialFrequency)));
 var bot = new BitBot(PA.view(pa, E), { allowRaise: true, reaction: 12, seed: seed });
-var trace = process.env.GC_TRACE ? Number(process.env.GC_TRACE) : Infinity;
+var trace = process.env.GC_TRACE ? Number(process.env.GC_TRACE) : 0;
 var via = {}, decide = bot.decide.bind(bot);
 bot.decide = function () {
   var d = decide();
