@@ -659,9 +659,40 @@ static int better(Ctx *x, int32_t a, int32_t b) {
   if (p->garb != q->garb) return p->garb - q->garb;
   return p->top - q->top;
 }
-// Stable, as Array.prototype.sort is.
+// Stable, as Array.prototype.sort is: better's order, packed with each
+// node's place into one key -- t + held falling, then garb, then top, then
+// place, rising -- so the sort reads no node. Past what a key holds, better.
 static int sortBetter(Ctx *x, int32_t *a, int32_t n) {
   if (n < 2) return 1;
+  static LOCAL unsigned long long *k64, *t64; static LOCAL int32_t cap64;
+  static LOCAL int32_t *orig;
+  int packed = n < (1 << 20);
+  if (packed && n > cap64) {
+    int32_t c = n * 2;
+    k64 = (unsigned long long *)grab((unsigned long)c * 8); t64 = (unsigned long long *)grab((unsigned long)c * 8); orig = (int32_t *)grab((unsigned long)c * 4);
+    if (!k64 || !t64 || !orig) return 0;
+    cap64 = c;
+  }
+  for (int32_t i = 0; packed && i < n; i++) {
+    Node *p = NODE(x, a[i]);
+    int32_t th = p->t + p->held;
+    if (th < 0 || th >= (1 << 20) || p->garb < 0 || p->garb >= 1024 || p->top < 0 || p->top >= 64) { packed = 0; break; }
+    k64[i] = ((unsigned long long)((1 << 20) - 1 - th) << 36) | ((unsigned long long)p->garb << 26) | ((unsigned long long)p->top << 20) | (unsigned long long)i;
+    orig[i] = a[i];
+  }
+  if (packed) {
+    for (int32_t w = 1; w < n; w *= 2) {
+      for (int32_t lo = 0; lo < n; lo += 2 * w) {
+        int32_t mid = lo + w < n ? lo + w : n, hi = lo + 2 * w < n ? lo + 2 * w : n, i = lo, j = mid, k = lo;
+        while (i < mid && j < hi) t64[k++] = k64[j] < k64[i] ? k64[j++] : k64[i++];
+        while (i < mid) t64[k++] = k64[i++];
+        while (j < hi) t64[k++] = k64[j++];
+      }
+      unsigned long long *sw = k64; k64 = t64; t64 = sw;
+    }
+    for (int32_t i = 0; i < n; i++) a[i] = orig[k64[i] & ((1 << 20) - 1)];
+    return 1;
+  }
   if (!vreserve(&x->tmp, n)) return 0;
   int32_t *t = x->tmp.a;
   for (int32_t w = 1; w < n; w *= 2) {
