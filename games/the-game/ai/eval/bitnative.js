@@ -277,8 +277,8 @@
       for (j = 0; j < sw.length && j < MAXD; j++) { d[b + F.SW + 2 * j] = sw[j][0]; d[b + F.SW + 2 * j + 1] = sw[j][1]; }
     }
   }
-  function stat() { var d = dheap(), b = ex.bit_stat() >> 3; return Array.from(d.subarray(b, b + 8)); }
-  return { stat: stat, fits: fits, resolve: resolve, resolveTimed: resolveTimed, scan: scan, load: load, options: options,
+  function checkbf(st) { put(st); return ex.bit_checkbf(); }
+  return { _checkbf: checkbf, fits: fits, resolve: resolve, resolveTimed: resolveTimed, scan: scan, load: load, options: options,
            botNew: botNew, botIn: botIn, botStates: botStates, botDecide: botDecide, botTab: botTab, botPut: botPut, botTest: botTest,
            botPoolMasks: botPoolMasks, deadlyCalls: deadlyCalls, opening: opening, putRecords: putRecords };
 }));

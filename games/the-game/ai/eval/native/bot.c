@@ -40,7 +40,7 @@ typedef struct {
   double counts[NCOUNT];
 } Bot;
 
-static LOCAL int nScore, nLook, nSave, rScore, rMain, rLook, rSave, rCand;
+static LOCAL int nScore, nLook, nSave, rScore, rMain, rLook, rSave, rCand, lookDepthLog;
 #define MAXBOT 2048
 static Bot BOTS[MAXBOT];
 static int nBots = 0;
@@ -55,6 +55,7 @@ __attribute__((export_name("bot_risen"))) int32_t *bot_risen(void) { return RISE
 __attribute__((export_name("bot_tmst"))) int32_t *bot_tmst(void) { return TMST; }
 __attribute__((export_name("bot_new"))) int32_t bot_new(void) {
   if (nBots >= MAXBOT) return -1;
+  threadInit();
   Bot *b = &BOTS[nBots];
   memset(b, 0, sizeof(Bot));
   b->opening = 1;
@@ -213,9 +214,10 @@ static Ahead lookahead(const int32_t *st0, double horizon) {
   int r0 = nRes;
   Ahead out = { 1, 0, 0 };
   stcpy(LK, st0);
-  int n = legal(LK, LKSW), rest = settledRest(LK);
+  Grid G;
+  int n = legalG(LK, LKSW, &G), rest = settledRest(LK);
   for (int i = 0; i < n; i++) {
-    if (quietSwap(LK, rest, LKSW[2 * i], LKSW[2 * i + 1])) {
+    if (quietSwapG(LK, &G, rest, LKSW[2 * i], LKSW[2 * i + 1])) {
       if (!out.stranded) continue;
       Rs zero; memset(&zero, 0, sizeof zero);
       swapIn(LK, LKSW[2 * i], LKSW[2 * i + 1]);
@@ -439,12 +441,13 @@ static int saveAfter(const int32_t *masks0, int row, int col, int deep) {
   int frozen = BIN[IN_STOP] > 0 || BIN[IN_TOPPED];
   int step = MOVE_FRAMES + (frozen ? 0 : REACT);
   slabToAnswer(masks0, SAM);
-  int n = legal(SAM, SASW), best = 0, ns = 0, rest = settledRest(SAM);
+  Grid G;
+  int n = legalG(SAM, SASW, &G), best = 0, ns = 0, rest = settledRest(SAM);
   for (int i = 0; i < n; i++) {
     int sr = SASW[2 * i], sc = SASW[2 * i + 1];
     double walk = travelCost(row, col, sr, sc) + step;
     if (walk > deadline) continue;
-    if (quietSwap(SAM, rest, sr, sc)) {
+    if (quietSwapG(SAM, &G, rest, sr, sc)) {
       if (deep && !best) {
         swapIn(SAM, sr, sc);
         stcpy(SETUPST[ns], SAM);
@@ -477,11 +480,12 @@ static int saveAfter(const int32_t *masks0, int row, int col, int deep) {
     int32_t *st2 = SETUPST[SETUPS[i].idx];
     double left = deadline - SETUPS[i].spent;
     if (left <= 0) continue;
-    int n2 = legal(st2, SASW2), rest2 = settledRest(st2);
+    Grid G2;
+    int n2 = legalG(st2, SASW2, &G2), rest2 = settledRest(st2);
     for (int j = 0; j < n2; j++) {
       int sr = SASW2[2 * j], sc = SASW2[2 * j + 1];
       if (travelCost(SETUPS[i].sr, SETUPS[i].sc, sr, sc) + step > left) continue;
-      if (quietSwap(st2, rest2, sr, sc)) continue;
+      if (quietSwapG(st2, &G2, rest2, sr, sc)) continue;
       if (!swapIn(st2, sr, sc)) continue;
       resolve(st2, SAR2, 0);
       swapIn(st2, sr, sc);
@@ -600,7 +604,7 @@ static void buildOptions(const int32_t *base, double deadline, int lookDepth, in
   OPTP[18] = BT->nRecent;
   for (int i = 0; i < BT->nRecent; i++) { OPTP[19 + 2 * i] = BT->recent[2 * i]; OPTP[20 + 2 * i] = BT->recent[2 * i + 1]; }
   if (topped) OPTP[2] = lockNow();
-  OPTP[3] = spend; OPTP[10] = digging; OPTP[11] = lookDepth;
+  OPTP[3] = spend; OPTP[10] = digging; OPTP[11] = lookDepth; OPTP[101] = 1;
 }
 static void mainOptions(const int32_t *base, double deadline, int lookDepth, int digging) {
   if (optsBuilt) return;
@@ -1047,6 +1051,7 @@ static Dec decideCore(void) {
   int topped = BIN[IN_TOPPED] != 0;
   double dl2 = topped ? dmax(deadline, resolveFramesOf(3, 0)) : deadline;
   int lookDepth = (int)dmin(opt(O_MAXDEPTH), dmax(1, __builtin_floor(dl2 / (REACT > 1 ? REACT : 1))));
+  lookDepthLog = lookDepth;
   int raising = raiseMode(base, poolBreak);
   BT->wantRaise = raising != 0;
   int digging = hasGarbage(base);
@@ -1670,7 +1675,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   for (int i = 0; i < nPool; i++) if (POOL[i].kind == K_SWAP && POOL[i].res.broke) { if (!pb) { o[17] = POOL[i].sr; o[18] = POOL[i].sc; } pb++; }
   o[16] = pb;
   o[19] = optsBuilt;
-  o[100] = nRes; o[101] = rMain; o[102] = nSettle; o[103] = nLandR; o[104] = nFireR; o[105] = nSavesR; o[106] = nAnyR;
+  o[100] = nRes; o[101] = rMain; o[102] = nSettle; o[103] = nLandR; o[104] = nScore; o[105] = rScore; o[106] = lookDepthLog;
   if (optsBuilt) {
     int lines = 0;
     for (int i = 0; i < nPile; i++) {
