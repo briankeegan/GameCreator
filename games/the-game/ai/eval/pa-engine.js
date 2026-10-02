@@ -4,8 +4,8 @@
 // live match reaches (shock panels, garbage queued by priority, input read
 // before physics, the cursor's repeat, swap stalling by panel id), so a bot
 // that plays on that server searches on this: the Lua, line for line, for one
-// stack past its countdown, with the names panel-engine.js uses so puyocpu.js
-// can drive it.
+// stack from Match:start (create) or from a recorded state (fromLua), with
+// the names panel-engine.js uses so puyocpu.js can drive it.
 //
 // Lua nil is null here, and Lua truthiness is kept where the Lua relies on it
 // (0 is true in Lua: a fell_from_garbage or shake_time of 0 is still "set").
@@ -13,9 +13,10 @@
 // depends on it.
 //
 // Rows and garbage colours come from a SOURCE: `unseen` deals the colours no
-// player can know yet (as puyocpu.js's search does); a recording's source
-// deals what the Lua dealt, to check this against it (pa_engine.test.js, on
-// recordings lua/engineRecord.lua makes in a panel-game checkout).
+// player can know yet (as puyocpu.js's search does); `Seeded` deals what the
+// server's generator deals from the match seed (pa-generator.js);
+// `Recorded` deals a list. pa_engine.test.js holds all of it to recordings
+// lua/engineRecord.lua makes in a panel-game checkout.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.PAEngine = factory();
@@ -33,6 +34,7 @@
   var GARBAGE_SIZE_TO_SHAKE_FRAMES = [18, 18, 18, 18, 24, 42, 42, 42, 42, 42, 42, 66,
     66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 76];
   var DT_SPEED_INCREASE = 15 * 60;
+  var COUNTDOWN_START = 8, COUNTDOWN_LENGTH = 180, COUNTDOWN_CURSOR_SPEED = 4;   // consts.lua
   var SCORE_COMBO_TA = [0, 0, 0, 0, 20, 30, 50, 60, 70, 80, 100, 140, 170, 210, 250, 290, 340, 390, 440, 490, 550,
                         610, 680, 750, 820, 900, 980, 1060, 1150, 1240, 1330];
   var SCORE_CHAIN_TA = [0, 0, 50, 80, 150, 300, 400, 500, 700, 900, 1100, 1300, 1500, 1800];
@@ -85,6 +87,8 @@
     return panels[p.row - 1][p.col].color !== 0;
   }
   function switchPanels(panels, a, b) {
+    if (a.id !== panels[a.row][a.col].id || b.id !== panels[b.row][b.col].id ||
+        Math.abs((a.row - b.row) + (a.col - b.col)) !== 1) throw new Error('PAEngine: switch');   // Panel.lua:808-814
     var r = a.row, c = a.col;
     a.row = b.row; a.col = b.col; b.row = r; b.col = c;
     panels[b.row][b.col] = b; panels[a.row][a.col] = a;
@@ -172,6 +176,7 @@
         clearPanel(p, false, false);
         p.chaining = true;
         p.propagatesChaining = true;
+        if (st.frames.GARBAGE_HOVER === undefined || st.frames.GARBAGE_HOVER === null) throw new Error('PAEngine: no GARBAGE_HOVER');
         p.timer = st.frames.GARBAGE_HOVER;
         p.fellFromGarbage = 12;
         p.state = 'hovering';
@@ -242,6 +247,8 @@
     p.propagatesChaining = false;
     p.propagatesFalling = false;
     p.matching = false;
+    p.matchesMetal = false;
+    p.matchesGarbage = false;
     switch (p.state) {
       case 'normal': updateNormal(st, p); break;
       case 'swapping': updateSwapping(st, p); break;
@@ -271,8 +278,7 @@
   }
   function dangerous(p) { return p.isGarbage ? p.state !== 'falling' : p.color !== 0; }
   function canMatch(p) {
-    // colours past 10 are unseen (Unseen): they match nothing
-    if (p.color === 0 || p.color === 9 || p.color > 10) return false;
+    if (p.color === 0 || p.color === 9) return false;
     return p.state === 'normal' || p.state === 'landing' || (p.matchAnyway && p.state === 'hovering');
   }
   function matchPanel(st, p, isChainLink, comboIndex, comboSize) {
@@ -287,15 +293,21 @@
   // ----------------------------------------------------------------- sources
   // Rows the search cannot see yet, and the colours a break it cannot see
   // yet turns into (puyocpu.js unseenRow / unseenBreak, per column).
+  // AN UNSEEN CELL IS A COLOUR OF ITS OWN, so it can match nothing under the Lua's own
+  // canMatch: rows take 30..119 and breaks 130..219, each repeating only after
+  // fifteen rows, so no three in a line are ever equal. Below 254, where the native
+  // search's board key keeps a colour's low byte apart from garbage's.
+  var UNSEEN_ROWS = 30, UNSEEN_BREAKS = 130, UNSEEN_SPAN = 90;
+  function unseenColour(base, k, c) { return base + ((W * k + c - 1) % UNSEEN_SPAN); }
   function Unseen() {}
   Unseen.prototype.row = function (st) {
-    var k = (st.unseenRows = (st.unseenRows || 0) + 1), s = '';
-    for (var c = 1; c <= W; c++) s += String.fromCharCode(64 + 11 + ((c + 3 * k) % 6));   // not a digit: see rowColours
-    return s;
+    var k = (st.unseenRows = (st.unseenRows || 0) + 1), o = [];
+    for (var c = 1; c <= W; c++) o.push(unseenColour(UNSEEN_ROWS, k, c));
+    return o;
   };
   Unseen.prototype.garbageRow = function (st) {
     var k = (st.unseenBreaks = (st.unseenBreaks || 0) + 1), o = [];
-    for (var c = 1; c <= W; c++) o.push(21 + ((c + 3 * k) % 6));
+    for (var c = 1; c <= W; c++) o.push(unseenColour(UNSEEN_BREAKS, k, c));
     return o;
   };
   Unseen.prototype.copy = function () { return this; };
@@ -312,14 +324,23 @@
     return o;
   };
   Recorded.prototype.copy = function () { var x = new Recorded(this.rows, this.garbageRows); x.r = this.r; x.g = this.g; return x; };
-  // GeneratorSource convertMetalPanels. An unseen row's letters are past J
-  // (colours 11-16): never shock, since where shock may go is not known yet.
+  // What a seed deals (pa-generator.js's GeneratorSource, the server's).
+  function Seeded(generator) { this.gen = generator; }
+  Seeded.prototype.row = function () { return this.gen.nextRowString(); };
+  Seeded.prototype.garbageRow = function () {
+    var s = this.gen.garbageRowString(), o = [];
+    for (var c = 1; c <= W; c++) o.push(+s.charAt(c - 1));
+    return o;
+  };
+  Seeded.prototype.copy = function () { return new Seeded(this.gen.copy()); };
+  // GeneratorSource convertMetalPanels. An unseen row comes as colours (Unseen):
+  // never shock, since where shock may go is not known yet.
   function rowColours(s, metal) {
+    if (Array.isArray(s)) return s.slice();               // unseen: colours already, never shock
     var out = [];
     for (var i = 0; i < s.length; i++) {
       var ch = s.charAt(i), code = s.charCodeAt(i), color = 0;
       if (code >= 48 && code <= 57) color = code - 48;
-      else if (code >= 75 && code <= 90) color = code - 64;               // unseen: K.. = 11..
       else if (ch >= 'A' && ch <= 'Z') color = metal > 0 ? 8 : LETTER[ch];
       else if (ch >= 'a' && ch <= 'z') color = metal > 1 ? 8 : LETTER[ch];
       out.push(color);
@@ -337,6 +358,7 @@
     return p;
   };
   Stack.prototype.onPop = function (p) {
+    this.events.push({ type: 'panelPop', row: p.row, col: p.col, garbage: !!p.isGarbage });   // emitSignal("panelPop")
     if (!p.isGarbage) {
       this.addScore(10);
       this.panelsCleared++;
@@ -347,6 +369,7 @@
   };
   Stack.prototype.onPopped = function () {};
   Stack.prototype.onLand = function (p) {
+    this.events.push({ type: 'panelLanded', row: p.row, col: p.col, garbage: !!p.isGarbage });   // emitSignal("panelLanded")
     if (p.isGarbage && set(p.shakeTime) && p.row <= this.height) {
       if (this.garbageLandedThisFrame.indexOf(p.garbageId) < 0) {
         this.shakeTimeOnFrame = Math.max(this.shakeTimeOnFrame, p.shakeTime, this.peakShakeTime || 0);
@@ -838,27 +861,55 @@
     this.removeExtraRows();
     if (this.checkDeath()) this.recordDeath();
   };
-  // Stack:run, past the countdown.
+  // Stack:runCountdown, controller input, engine "049" (no cursorLock). The
+  // timer is tested against nil: 0 is true in Lua.
+  Stack.prototype.runCountdown = function () {
+    this.inCountdown = true;
+    this.riseLock = true;
+    if (this.clock === 0) {
+      this.animatingCursorDuringCountdown = true;
+      this.curRow = this.height - 1;
+      this.curCol = this.width - 1;
+    } else if (this.clock === COUNTDOWN_START) this.countdownTimer = COUNTDOWN_LENGTH;
+    if (set(this.countdownTimer)) {
+      var f = COUNTDOWN_LENGTH - this.countdownTimer;
+      if (f > 0 && f % COUNTDOWN_CURSOR_SPEED === 0) {
+        var move = Math.floor(f / COUNTDOWN_CURSOR_SPEED);
+        if (move <= 4) this.moveCursorInDirection('down');
+        else if (move <= 6) this.moveCursorInDirection('left');
+        else if (move === 10) this.animatingCursorDuringCountdown = null;
+      }
+      if (this.countdownTimer === 0) { this.inCountdown = false; this.countdownTimer = null; }
+      if (set(this.countdownTimer)) this.countdownTimer--;
+    }
+  };
+  // Stack:run.
   Stack.prototype.run = function () {
     if (this.gameOverClock > 0 && this.clock >= this.gameOverClock) return;
-    if (this.inCountdown || !this.stopWatchIsRunning) throw new Error('PAEngine: only a stack past its countdown');
     var pressed = this.pressSwap || !!(this.nextInput & IN.swap), before = this.swapCount;
     this.swapDeniedThisFrame = false;
     this.inputBits = this.nextInput | (this.pressSwap ? IN.swap : 0);
     this.nextInput = 0; this.pressSwap = false;
     this.controls();
-    this.runPhysics();
+    if (this.behaviours.delaySimulationUntil === 'countdownEnded' && this.clock <= COUNTDOWN_START + COUNTDOWN_LENGTH) {
+      this.runCountdown();
+      if (this.clock === COUNTDOWN_START + COUNTDOWN_LENGTH) this.stopWatchIsRunning = true;
+    }
+    if (this.stopWatchIsRunning) this.runPhysics();
+    else if (this.behaviours.delaySimulationUntil === 'firstInput' || this.behaviours.delaySimulationUntil === 'firstSwap') throw new Error('PAEngine: delaySimulationUntil ' + this.behaviours.delaySimulationUntil);
     this.applyCursorDirection(this.cursorDirection);
     if (this.swapThisFrame) this.tryQueueSwapPanels(this.panels[this.curRow][this.curCol], this.panels[this.curRow][this.curCol + 1]);
     // A swap pressed and not taken, for whatever reason (not allowed, or one
     // already queued), is a swap refused.
     if (pressed && this.swapCount === before) this.swapDeniedThisFrame = true;
     this.handleManualRaise();
-    if (this.shouldDropGarbage()) {
-      var g = this.incoming.pop();
-      this.dropGarbage(g.width, g.height, g.isMetal);
+    if (this.stopWatchIsRunning) {
+      if (this.shouldDropGarbage()) {
+        var g = this.incoming.pop();
+        this.dropGarbage(g.width, g.height, g.isMetal);
+      }
+      this.stopWatch++;
     }
-    this.stopWatch++;
     this.clock++;
     this.prevInput = this.input;
   };
@@ -928,7 +979,8 @@
     panels_cleared: 'panelsCleared', metalPanelsQueued: 'metalPanelsQueued', prev_shake_time: 'prevShakeTime',
     shake_time: 'shakeTime', shake_time_on_frame: 'shakeTimeOnFrame', peak_shake_time: 'peakShakeTime', clock: 'clock',
     stopWatch: 'stopWatch', stopWatchIsRunning: 'stopWatchIsRunning', game_over_clock: 'gameOverClock', in_countdown: 'inCountdown',
-    cursorLock: 'cursorLock', height: 'height', width: 'width' };
+    cursorLock: 'cursorLock', height: 'height', width: 'width', countdown_timer: 'countdownTimer',
+    animatingCursorDuringCountdown: 'animatingCursorDuringCountdown', countdownOffsetFrames: 'countdownOffsetFrames' };
   // A stack from a recorded state. `level` is the recording's levelData,
   // behaviours and stackOverConditions; `source` deals its rows.
   // Lua writes an empty table as {}.
@@ -974,6 +1026,97 @@
     return s;
   }
 
+  // common/data/LevelPresets.lua's modern levels: startingSpeed, shockFrequency,
+  // shockCap, colors, adjacentDenialFrequency (k/7 at %.14g, as
+  // JsonSafePrecision holds it), maxHealth, stop combo/chain/danger constants,
+  // coefficient, danger coefficient, HOVER, GARBAGE_HOVER, FLASH, FACE, POP.
+  // Every one rises by time and stops by the modern formula.
+  function f7(k) { return Number((k / 7).toPrecision(14)); }
+  var MODERN = [null,
+    [1, 12, 21, 5, 0, 121, -20, 80, 160, 20, 20, 12, 41, 44, 20, 9],
+    [5, 14, 18, 5, f7(1), 101, -16, 77, 152, 18, 18, 12, 36, 44, 18, 9],
+    [9, 16, 18, 5, f7(2), 81, -12, 74, 144, 16, 16, 11, 31, 42, 17, 8],
+    [13, 19, 15, 5, f7(3), 66, -8, 71, 136, 14, 14, 10, 26, 42, 16, 8],
+    [17, 23, 15, 5, f7(4), 51, -3, 68, 128, 12, 12, 9, 21, 38, 15, 8],
+    [21, 26, 12, 5, f7(5), 41, 2, 65, 120, 10, 10, 6, 16, 36, 14, 8],
+    [25, 29, 9, 5, f7(6), 31, 7, 62, 112, 8, 8, 5, 13, 34, 13, 8],
+    [29, 33, 6, 5, 1, 21, 12, 60, 104, 6, 6, 4, 10, 32, 12, 7],
+    [27, 37, 6, 6, 1, 11, 17, 58, 96, 4, 4, 6, 7, 30, 11, 7],
+    [32, 41, 3, 6, 1, 1, 22, 56, 88, 2, 2, 6, 4, 28, 10, 7],
+    [45, 18, 3, 6, 1, 1, 27, 53, 80, 1, 0, 3, 3, 22, 8, 6]];
+  // A two-player VS level: its levelData, the VS behaviours, HEALTH = 0.
+  function vsLevel(n) {
+    var m = MODERN[n];
+    if (!m) throw new Error('PAEngine: no modern level ' + n);
+    return {
+      levelData: { startingSpeed: m[0], speedIncreaseMode: 1, shockFrequency: m[1], shockCap: m[2], colors: m[3], adjacentDenialFrequency: m[4],
+                   maxHealth: m[5], stop: { formula: 1, comboConstant: m[6], chainConstant: m[7], dangerConstant: m[8], coefficient: m[9], dangerCoefficient: m[10] },
+                   frameConstants: { HOVER: m[11], GARBAGE_HOVER: m[12], FLASH: m[13], FACE: m[14], POP: m[15] } },
+      behaviours: { allowManualRaise: true, passiveRaise: true, swapStallingMode: 1, swapStallingPunish: 4 },
+      stackOverConditions: { HEALTH: 0 } };
+  }
+  // A stack as Match:start leaves it: the Stack constructor, setCountdown(true),
+  // starting_state (eight new_rows, the cursor held at row 7), removeExtraRows.
+  // `level` is a modern level number or a {levelData, behaviours,
+  // stackOverConditions}; `source` deals rows (Seeded, for the server's).
+  function create(level, source) {
+    var lv = typeof level === 'number' ? vsLevel(level) : level, ld = lv.levelData, s = Object.create(Stack.prototype), r, c;
+    if (!lv.stackOverConditions || lv.stackOverConditions.HEALTH !== 0 || Object.keys(lv.stackOverConditions).length !== 1) {
+      throw new Error('PAEngine: only the HEALTH = 0 end condition');
+    }
+    if (ld.speedIncreaseMode !== 1) throw new Error('PAEngine: speed increase mode ' + ld.speedIncreaseMode);
+    for (var k in STACK_FROM_LUA) s[STACK_FROM_LUA[k]] = null;
+    s.width = W; s.height = H;
+    s.levelData = { startingSpeed: ld.startingSpeed, colors: ld.colors, maxHealth: ld.maxHealth, shockFrequency: ld.shockFrequency,
+                    shockCap: ld.shockCap, speedIncreaseMode: ld.speedIncreaseMode, stop: ld.stop };
+    s.frames = ld.frameConstants;
+    s.behaviours = {};
+    for (k in lv.behaviours) s.behaviours[k] = lv.behaviours[k];
+    s.source = source || new Unseen();
+    s.clock = 0; s.stopWatch = 0; s.gameOverClock = -1; s.gameOver = false;
+    s.swapStallBacklog = [];
+    s.speed = ld.startingSpeed; s.nextSpeedIncreaseClock = DT_SPEED_INCREASE;
+    s.health = ld.maxHealth;
+    s.dropColumnIndex = [1, 1, 1, 1, 1, 1];
+    s.garbageCreatedCount = 0; s.garbageLandedThisFrame = []; s.highestGarbageIdMatched = 0; s.panelIdCount = 0;
+    s.panels = [];
+    for (r = 0; r <= s.height; r++) { s.panels[r] = [null]; for (c = 1; c <= W; c++) s.createPanelAt(r, c); }
+    s.displacement = 16; s.wasToppedOut = false; s.riseTimer = SPEED_TO_RISE_TIME[s.speed - 1]; s.riseLock = false; s.hasRisen = false;
+    s.stopTime = 0; s.preStopTime = 0; s.score = 0; s.chainCounter = 0;
+    s.nActive = 0; s.nPrevActive = 0; s.swappingCount = 0;
+    s.manualRaise = false; s.manualRaiseYet = false; s.preventManualRaise = false; s.swapThisFrame = false;
+    s.curWaitTime = 20; s.curTimer = 0; s.cursorDirection = null; s.curRow = 7; s.curCol = 3;
+    s.queuedSwapCol = 0; s.queuedSwapRow = 0;
+    s.topCurRow = s.behaviours.passiveRaise ? s.height - 1 : s.height;
+    s.swapCount = 0; s.panelsCleared = 0; s.metalPanelsQueued = 0;
+    s.prevShakeTime = 0; s.shakeTime = 0; s.shakeTimeOnFrame = 0; s.peakShakeTime = 0;
+    s.incoming = [];
+    s.events = [];
+    s.nextInput = 0; s.pressSwap = false; s.inputBits = 0; s.swapDeniedThisFrame = false;
+    s.input = {}; s.prevInput = {};
+    // setCountdown(true)
+    s.inCountdown = true;
+    s.countdownOffsetFrames = COUNTDOWN_START + COUNTDOWN_LENGTH;
+    s.behaviours.delaySimulationUntil = 'countdownEnded';
+    s.stopWatchIsRunning = false;
+    // starting_state: the starting board's seven rows and the row under them.
+    for (var i = 0; i < 8; i++) { s.newRow(); s.curRow--; }
+    s.events.length = 0;
+    s.removeExtraRows();
+    return s;
+  }
+
+  // A bot written for panel-engine.js, playing this: the board as
+  // toPanelEngine reads it, with its input and swaps going to `s`. Built
+  // fresh every frame. A swap is pressed for the next frame's controls, and
+  // reported taken if the board allows it now.
+  function view(s, PE) {
+    var st = toPanelEngine(s, PE);
+    st.setInput = function (input) { PE.Stack.prototype.setInput.call(st, input); s.setInput(input); };
+    st.tryQueueSwap = function (row, col) { return s.canSwap(row, col) && s.tryQueueSwap(row, col); };
+    return st;
+  }
+
   // A board sent to another thread comes back a plain object: give it its
   // prototypes again (the source is unseen: a search's).
   function revive(o) {
@@ -988,7 +1131,12 @@
   // engine's default, shock panels are the colour 8 they match as, shock
   // garbage is garbage. Nothing is played on this; searches play the Stack.
   function toPanelEngine(s, PE) {
-    var st = new PE.Stack({ level: 10, seed: 1, countdown: false });
+    var lv = 10;
+    for (var li = 0; li < PE.LEVELS.length; li++) {
+      var L = PE.LEVELS[li];
+      if (L.startingSpeed === s.levelData.startingSpeed && L.maxHealth === s.levelData.maxHealth && L.colors === s.levelData.colors) lv = li + 1;
+    }
+    var st = new PE.Stack({ level: lv, seed: 1, countdown: false });
     var ints = ['speed', 'nextSpeedIncreaseClock', 'clock', 'displacement', 'stopTime', 'preStopTime', 'shakeTime', 'shakeTimeOnFrame',
                 'peakShakeTime', 'health', 'chainCounter', 'nActive', 'nPrevActive', 'swappingCount', 'panelsCleared', 'score', 'curRow',
                 'curCol', 'topCurRow', 'queuedSwapRow', 'queuedSwapCol', 'garbageCreatedCount', 'highestGarbageIdMatched', 'panelIdCount'];
@@ -1028,12 +1176,13 @@
       rows.push(row);
     }
     st.panels = rows;
+    st.swapLatency = 1;
     st.input = { left: false, right: false, up: false, down: false, swap: false, raise: false };
     st.prevInput = st.input;
     st.events = [];
     return st;
   }
 
-  return { Stack: Stack, Panel: Panel, fromLua: fromLua, revive: revive, toPanelEngine: toPanelEngine, Unseen: Unseen, Recorded: Recorded, PANEL_FROM_LUA: PANEL_FROM_LUA,
+  return { Stack: Stack, Panel: Panel, fromLua: fromLua, revive: revive, toPanelEngine: toPanelEngine, view: view, Unseen: Unseen, Recorded: Recorded, Seeded: Seeded, create: create, vsLevel: vsLevel, PANEL_FROM_LUA: PANEL_FROM_LUA,
            STACK_FROM_LUA: STACK_FROM_LUA, IN: IN, list: list, WIDTH: W, HEIGHT: H };
 }));

@@ -231,7 +231,7 @@ while written < FRAMES do
     match:run()
     written = written + 1
     io.write('{"match":', matchNo, ',"received":', enc(received), ',"newRows":', enc(newRows), ',"garbageRows":', enc(garbageRows),
-             first and (',"levelData":' .. enc(a.levelData) .. ',"behaviours":' .. enc(a.behaviours) .. ',"stackOverConditions":' .. enc(a.stackOverConditions)) or '',
+             first and (',"seed":' .. seed .. ',"levelData":' .. enc(a.levelData) .. ',"behaviours":' .. enc(a.behaviours) .. ',"stackOverConditions":' .. enc(a.stackOverConditions)) or '',
              (first or a.clock % STATE_EVERY == 0 or a:game_ended()) and (',"state":' .. dump(a, va)) or '',
              ',"input":', va, ',"clock":', a.clock, '}\n')
     received = {}; newRows = {}; garbageRows = {}; first = false

@@ -108,6 +108,7 @@
     function BitBot(stack, opts) {
         opts = opts || {};
         this.stack = stack;
+        travel.setPress(stack.swapLatency);
         this.weights = opts.weights || STARTER;
         // FRAMES BETWEEN DECISIONS. 12 is the human-paced default PuyoCpu uses
         // and every duel is run at, so the two bots think equally often and the
