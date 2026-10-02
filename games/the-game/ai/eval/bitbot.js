@@ -3746,6 +3746,10 @@
     // never came.
     BitBot.prototype.raiseMode = function (info, base, poolBreak) {
         if (!this.allowRaise || info.toppedOut) { this._opening = false; return null; }
+        // NOT WHILE GARBAGE FALLS: handleManualRaise drops a raise while any garbage is
+        // falling, so the row never comes and a mode that waits for it only holds
+        // while the garbage lands.
+        if (info.fallingGarbage) return null;
         // AS HIGH AS IT CAN WITHOUT KILLING ITSELF.
         //
         // raiseFits(rows) is the tallest column after the row, plus the slab that
