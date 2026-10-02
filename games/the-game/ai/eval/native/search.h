@@ -481,6 +481,13 @@ static void dropBoard(Ctx *x, int i) {
   if (n->st) { nb_free(n->st); n->st = 0; }
 }
 
+// The boards of the n nodes in the io body let go: a node read again is
+// played again from its parent. Returns n, or -1.
+EXPORT(ns_drop) int ns_drop(Ctx *x, int n) {
+  if (n < 0 || n > NBODY) return -1;
+  for (int i = 0; i < n; i++) { int k = ioBody[i]; if (k < 0 || k >= x->n) return -1; dropBoard(x, k); }
+  return n;
+}
 // ---- nodes from JS
 // The root: the board in the io buffers (nb_load's wire), a raise in hand,
 // garbage on its way (io body after the board: at, width, height, isChain).
