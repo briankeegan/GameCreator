@@ -8,6 +8,8 @@
 // boards: play bigBlocks with the bot, and on every board with garbage in a state
 // other than normal, play each legal swap on a copy of the engine and read whether
 // the first match it makes took garbage. The bot's answer must agree on every one.
+// Played twice: on panel-engine.js, and on the server's rules (pa-engine.js, the
+// bot reading it through PA.view).
 var path = require('path');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
@@ -15,6 +17,7 @@ var BitBot = require(path.join(__dirname, 'bitbot.js'));
 var bit = require(path.join(__dirname, 'bitmatch.js'));
 var P = require(path.join(__dirname, 'puyocpu.js'));
 var bench = require(path.join(__dirname, 'bench.js'));
+var PA = require(path.join(__dirname, 'pa-engine.js')), GEN = require(path.join(__dirname, 'pa-generator.js'));
 var E = globalThis.PanelEngine, W = E.WIDTH;
 var sc = bench.SCENARIOS.bigBlocks;
 
@@ -29,7 +32,8 @@ function busyGarbage(st) {
 // matches happen without any swap; the one the swap makes is the first match that a
 // run without it does not have.
 function matches(stack, swap) {
-    var sim = P.cloneStack(stack), out = [];
+    var server = !!stack.source, sim = server ? stack.copy() : P.cloneStack(stack), out = [];
+    if (server && swap) { sim.curRow = swap[0]; sim.curCol = swap[1]; if (!sim.canSwap(swap[0], swap[1])) return null; }
     if (swap && !sim.tryQueueSwap(swap[0], swap[1])) return null;
     for (var f = 0; f < 20; f++) {
         var n = sim.events.length;
@@ -50,12 +54,21 @@ function firstOwnMatch(stack, swap, base) {
     return null;
 }
 
-var checked = 0, wrong = 0, lockedSeen = 0, boards = 0;
-[1].forEach(function (seed) {
-    var st = new E.Stack({ level: 3, seed: seed });
-    var bot = new BitBot(st, { allowRaise: true, reaction: 12, seed: seed });
-    for (var f = 0; f < 2500 && !st.gameOver; f++) {
-        if (bench.burstFires(f)) st.receiveGarbage([{ width: sc.garbageWidth, height: sc.garbageHeight, isChain: false }]);
+var checked = 0, wrong = 0, lockedSeen = 0, boards = 0, onServer = 0;
+// The stack the bot plays: panel-engine's own, or a pa-engine stack it reads through
+// PA.view (rebuilt every frame).
+function game(server, seed) {
+    if (!server) { var st = new E.Stack({ level: 3, seed: seed }); return { st: st, view: function () { return st; } }; }
+    var ld = PA.vsLevel(3).levelData;
+    var pa = PA.create(3, new PA.Seeded(new GEN.GeneratorSource(seed, true, ld.colors, ld.adjacentDenialFrequency)));
+    return { st: pa, view: function () { return PA.view(pa, E); } };
+}
+[false, true].forEach(function (server) {
+    var seed = 1, g = game(server, seed), st = g.st;
+    var bot = new BitBot(g.view(), { allowRaise: true, reaction: 12, seed: seed });
+    for (var f = 0; f < 2500 && !st.gameOver && !(st.gameOverClock > 0); f++) {
+        if (bench.burstFires(f)) st.receiveGarbage([{ width: sc.garbageWidth, height: sc.garbageHeight, isChain: false, isMetal: false, frameEarned: st.stopWatch, finalized: true }]);
+        bot.stack = g.view();
         if (f % 15 === 0 && busyGarbage(st) && !st.swapQueued()) {
             var board = bot._snapshot();
             var m = bit.maskState(board.grid, board.blocks, W, board.height, board.motion);
@@ -73,9 +86,10 @@ var checked = 0, wrong = 0, lockedSeen = 0, boards = 0;
                     var ev = firstOwnMatch(st, sw[s], base);
                     if (!ev) continue;
                     checked++;
+                    if (server) onServer++;
                     if (said !== (ev.garbage > 0)) {
                         wrong++;
-                        if (wrong <= 10) console.log('  seed ' + seed + ' f' + f + ' swap ' + sw[s].join('-') +
+                        if (wrong <= 10) console.log('  ' + (server ? 'server' : 'engine') + ' seed ' + seed + ' f' + f + ' swap ' + sw[s].join('-') +
                                                      '  bot says ' + (said ? 'breaks' : 'clears') +
                                                      ', engine took ' + ev.garbage + ' garbage');
                     }
@@ -83,8 +97,9 @@ var checked = 0, wrong = 0, lockedSeen = 0, boards = 0;
             }
         }
         bot.update(); st.run();
+        if (server) st.events.length = 0;
     }
 });
 console.log('breaklive: ' + boards + ' boards with garbage mid-break, ' + lockedSeen + ' locked slabs, ' +
-            checked + ' first matches, ' + wrong + ' disagree with the engine');
-process.exit(wrong || !checked || !lockedSeen ? 1 : 0);
+            checked + ' first matches (' + onServer + ' on the server\'s rules), ' + wrong + ' disagree with the engine');
+process.exit(wrong || !checked || !onServer || !lockedSeen ? 1 : 0);
