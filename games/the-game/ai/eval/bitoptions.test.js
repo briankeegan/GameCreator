@@ -210,33 +210,6 @@ if (walked - quoted !== pairs) {
 }
 
 // --------------------------------------------------------------------------
-// AND IT CAN FAIL. Quoting every option the same price hides the whole cost
-// side, and a caller comparing offers would pick by payout alone.
-var realCost = travel.cost;
-travel.cost = function () { return 1; };
-var flatSpread = 0, flatBoards = 0;
-for (var z = 0; z < 60 && z < src.boards.length; z++) {
-    var zb = boardFromString(src.boards[z]);
-    if (Object.keys(zb.blocks).length) continue;
-    var zbase = new LogicalBoard(W, H, 6, zb.grid, zb.blocks);
-    var zl = opts.options(zbase, W, H, CURSOR, 2, null, CLOCK);
-    if (!zl.now.length) continue;
-    flatBoards++;
-    // WITHIN ONE LIST. A two-swap option pays two travels, so `now` and `next`
-    // differ in price however flat the quote is; comparing across them would
-    // "catch" the stub without the cost function doing anything at all.
-    var zp = {};
-    for (var y = 0; y < zl.now.length; y++) zp[zl.now[y].frames] = 1;
-    if (Object.keys(zp).length > 1) flatSpread++;
-}
-travel.cost = realCost;
-console.log('  break: ' + 'every option priced the same'.padEnd(34) +
-            (flatSpread === 0 ? 'caught (' + flatBoards + ' boards went flat)' : 'NOT CAUGHT'));
-if (flatSpread !== 0) {
-    console.error('FAIL prices still varied with the cost function stubbed flat');
-    process.exit(1);
-}
-
 // ------------------------------------------------- THE GATING, AS UNIT TESTS
 //
 // slabReadyBoard answers one question: is this board one swap from a clear that

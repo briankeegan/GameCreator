@@ -14,6 +14,7 @@
 
   var press = 0;
   function setPress(n) { press = n || 0; }
+  function pressOf() { return press; }
   function cost(r0, c0, r1, c1, g) {
     return walkCost(Math.abs(r1 - r0) + Math.abs(c1 - c0), g) + press;
   }
@@ -23,5 +24,5 @@
   }
 
   return { DAS_DELAY: DAS_DELAY, MOVE_FRAMES: MOVE_FRAMES,
-           walkCost: walkCost, cost: cost, setPress: setPress, reachable: reachable };
+           walkCost: walkCost, cost: cost, setPress: setPress, pressOf: pressOf, reachable: reachable };
 }));
