@@ -1022,9 +1022,29 @@ static void dropOf(const int32_t *st, const Grid *G, Drop *D) {
     if (any && !ground && !st[SLK(i)]) D->cand[D->nc++] = (uint8_t)i;
   }
 }
+static int runOver(const Drop *D, int W, int y, int x, int r, int c, int L, int Rt) {
+#define GV(yy, xx) ((yy) == r && (xx) == c ? Rt : (yy) == r && (xx) == c + 1 ? L : D->g[yy][xx])
+  int a = GV(y, x), lo = x, hi = x, bo = y, tp = y;
+  while (lo > 1 && GV(y, lo - 1) == a) lo--;
+  while (hi < W && GV(y, hi + 1) == a) hi++;
+  if (hi - lo >= 2) return 1;
+  while (bo > 1 && GV(bo - 1, x) == a) bo--;
+  while (tp < 17 && GV(tp + 1, x) == a) tp++;
+#undef GV
+  return tp - bo >= 2;
+}
 static int dropQuiet(const int32_t *st, const Drop *D, int r, int c, const uint32_t *k, int32_t *out) {
   if (!D->ok) return 0;
   int W = st[O_W], ns = st[O_NSLAB];
+  if (!out && k == ZK) {
+    int L0 = D->g[r][c], R0 = D->g[r][c + 1];
+    if (!L0 != !R0) {
+      int src = L0 ? c : c + 1, dst = L0 ? c + 1 : c;
+      uint32_t bb = 1u << (r - 1);
+      if (!(D->occ[src] >> r) && (r == 1 || (D->occ[dst] & (bb >> 1))))
+        return !runOver(D, W, r, dst, r, c, L0, R0);
+    }
+  }
   uint8_t g[18][WMAX];
   uint32_t occ[WMAX], gar[WMAX], mv[WMAX], b = 1u << (r - 1);
   int dd[MAXSLAB];
