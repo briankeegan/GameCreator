@@ -723,11 +723,46 @@
         // it, and a prediction that disagrees is a decision made about a board the
         // game will not produce -- measured as 26 decisions revisiting a position
         // the no-return filter had already refused.
+        //
+        // ON A BOARD IN MOTION, THE TIMED RESOLVE DECIDES WHAT THE SWAP DOES. The
+        // untimed one settles the board first, so a clear already flashing and the
+        // panels above it count as gone before the swap lands -- a break read off
+        // that board is a break the engine never makes. The timed one plays the
+        // swap at the frame the cursor reaches it, against the pops and falls in
+        // flight, and is held frame-exact to the engine by gate_breaklive.
+        var moving = false;
+        if (board.motion) {
+            for (r = 1; r <= board.height && !moving; r++) {
+                for (c = 1; c <= W; c++) {
+                    var mo = board.motion[r] && board.motion[r][c];
+                    if (mo && mo.state && mo.state !== 'normal') { moving = true; break; }
+                }
+            }
+        }
+        var tm = moving ? lineup.timedOf(board, this.stack.frames, board.height) : null;
+        // AND HOLD IS RESOLVED LIKE EVERY OTHER CANDIDATE: the board as it stands may
+        // already hold a match the engine registers next run, and a swap now can take
+        // it apart. Standing still is then a move with an outcome, a break among them.
+        out[0].resolved = summarise(tm
+            ? bit.resolveFromMasks(bit.copyState(tm.st), false, tm.opts)
+            : bit.resolveFromMasks(base, false));
         var legal = bit.legalSwapsOf(base);
         for (i = 0; i < legal.length; i++) {
             r = legal[i][0]; c = legal[i][1];
             if (!bit.swapMasks(base, r, c)) continue;       // refused: not a move
             var res = bit.resolveFromMasks(base, true);
+            if (tm) {
+                {
+                    var rt = bit.resolveFromMasks(bit.copyState(tm.st), false, {
+                        frames: tm.opts.frames, hover: tm.opts.hover, hovering: tm.opts.hovering,
+                        chaining: tm.opts.chaining, popping: tm.opts.popping, popAt: tm.opts.popAt,
+                        swap: [r, c],
+                        at: travel.cost(info.cursorRow, info.cursorCol, r, c) });
+                    if (rt.scope === 'refused') { bit.swapMasks(base, r, c); continue; }
+                    res = { scope: rt.scope, chain: rt.chain, total: rt.total, rounds: rt.rounds,
+                            settled: res.scope === rt.scope ? res.settled : null };
+                }
+            }
             // A MOVE THAT BREAKS A SLAB HAS NO SETTLED BOARD. The engine draws the
             // converted row's colours from its own rng, so the cascade past the
             // break is unknowable and the resolver refuses to invent it. The BREAK
@@ -1761,6 +1796,20 @@
         // undo it. Carried rather than consulted here: the search enumerates the
         // options every route reads, so excluding it there covers all of them.
         t.avoidSwap = this._recentSwaps;
+        // AND, TOPPED OUT, ROUTES THROUGH A CLEAR: the lock holds only while
+        // something resolves, so a route to a break longer than the lock buys
+        // time on the way. Only the route search asks for it; the features'
+        // count of what a board offers does not.
+        t.throughClears = !!info.toppedOut;
+        // AND THE LOCK THOSE ROUTES RUN ON, in planFits' own arithmetic, so a route
+        // that cannot be played in time is never built: the first run that can take
+        // health, extended by each clear to its resolve (FLASH + FACE + POP * n).
+        if (info.toppedOut) {
+            var fr0 = PanelEngine().LEVELS[9].frames;
+            t.lock = Math.max(0, (info.drainRun || 1) - 1);
+            t.resolveBase = 5 + fr0.FLASH + fr0.FACE;
+            t.resolvePop = fr0.POP;
+        }
         return t;
     };
 
@@ -2053,7 +2102,7 @@
         var digging = false;
         for (i = 1; i <= W; i++) if (base.garb[i]) { digging = true; break; }
         if (digging) this.counts.digging++;
-        var survival = null;
+        var survival = null, planWait = null, planWaitEscape = Infinity;
         var swept = false;
         if (raising) {
             // THE ROW IS ON ITS WAY, so there is nothing to plan: a plan made now
@@ -2095,16 +2144,20 @@
                 // left is what has to fit.
                 var spent = Math.max(0, this.stack.clock - (this._plan.startedAt || 0));
                 var remains = Math.max(0, this._plan.frames - spent);
-                if (stillLegal && this.planInTime(this._plan.moves, remains, base, info, deadline)) {
+                var planFits = this.planInTime(this._plan.moves, remains, base, info, deadline);
+                if (stillLegal && planFits) {
                     survival = { move: nx, gain: this._plan.gain, frames: remains, rate: this._plan.rate };
                     this._plan.moves = this._plan.moves.slice(1);
                     if (!this._plan.moves.length) this._plan = null;
+                } else if (planFits && settling(nx)) {
+                    planWait = nx;
+                    planWaitEscape = this._plan.rate >= 1 ? remains : Infinity;
                 } else {
                     this._plan = null;
                     this.counts.planDropped++;
                 }
             }
-            if (!survival) {
+            if (!survival && !planWait) {
                 options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol], lookDepth, base,
                                                    this.timing(info, deadline, base), digging);
                 var self0 = this;
@@ -2141,6 +2194,7 @@
         // nothing.
         var escape = null;
         if (swept) escape = (survival && survival.rate >= 1) ? survival.frames : Infinity;
+        if (swept && planWait) escape = planWaitEscape;
         var mode = this.mode(info, pool, !!rev, deadline, escape);
         // THE TIMING THE DECISION WAS MADE ON, so a death can be read back off the
         // bot rather than reconstructed from the board afterwards.
@@ -2463,6 +2517,7 @@
             // actually happen.
             var horizon = Math.max((cand.moveFrames || 0) + this.reaction,
                                    info.framesPerRow || 0);
+            if (cand.kind === 'swap' && spendsReserve(cand.resolved, cand.masks)) continue;
             if (this.deadly(cand.masks, cand.resolved, info, horizon)) { this.counts.refusedDeadly++; continue; }
             // A CASH IS NEVER STRANDED. THE STRANDED TEST IS FOR SETUPS.
             //
@@ -2620,6 +2675,35 @@
         // a legal swap on this board, it does not put the board back where it was, and the
         // board it leaves is not dead before the next decision (deadly, over the walk and a
         // reaction, or a row of rise, whichever is longer).
+        // A PLAN WAITS FOR ITS BOARD. Each move after the first is planned on the board
+        // the ones before it settle into, so it can come due while panels in its two
+        // columns are still hovering, falling or clearing: illegal now, legal once they
+        // land. That is a hold parked on the move, not a reason to drop the plan.
+        function settling(mv) {
+            if (!mv) return false;
+            var P = self.stack.panels, cc, rr;
+            for (cc = mv[1]; cc <= mv[1] + 1; cc++) {
+                for (rr = 1; rr < P.length; rr++) {
+                    var q = P[rr] && P[rr][cc];
+                    if (q && q.color !== 0 && q.state !== 'normal' && q.state !== 'landing') return true;
+                }
+            }
+            return false;
+        }
+        function waitFor(mv, via) {
+            return { kind: 'hold', mode: mode, alive: alive, via: via, park: mv };
+        }
+        // THE RESERVE. A board with plenty of panels can spend them; below
+        // WORKING_ROWS of material it keeps them for breaks. A clear that converts
+        // nothing and leaves less than that is not playable, whatever route it is
+        // on: a break converts six and its own match spends three, so no clear
+        // bought on the way is paid back. Health is the one thing worth more:
+        // _waitForDrain still fires a clear rather than let it drain.
+        function spendsReserve(r, after) {
+            if (!r || !(r.total > 0) || r.brokeGarbage) return false;
+            var sh = bitoptions.shapeOf(after);
+            return !!sh && sh.mat < WORKING_ROWS;
+        }
         function playable(mv) {
             if (!mv) return false;
             var pc0 = null;
@@ -2628,6 +2712,7 @@
             }
             if (!pc0 || !pc0.masks) return false;
             if (returnsToSeen(mv)) return false;
+            if (spendsReserve(pc0.resolved, pc0.masks)) return false;
             return !self.deadly(pc0.masks, pc0.resolved, info,
                                 Math.max((pc0.moveFrames || 0) + self.reaction, info.framesPerRow || 0));
         }
@@ -2803,7 +2888,7 @@
             var bk = null;
             for (i = 0; i < pool.length; i++) {
                 var bc = pool[i];
-                if (bc.kind !== 'swap' || !bc.resolved || !bc.resolved.brokeGarbage) continue;
+                if ((bc.kind !== 'swap' && bc.kind !== 'hold') || !bc.resolved || !bc.resolved.brokeGarbage) continue;
                 if ((bc.moveFrames || 0) > deadline) continue;
                 if (this.deadly(bc.masks, bc.resolved, info,
                                 Math.max((bc.moveFrames || 0) + this.reaction,
@@ -2824,6 +2909,7 @@
                 this._digIsBreak = false;
                 this._plan = null;
                 this.counts.brokeNow++;
+                if (bk.kind === 'hold') return { kind: 'hold', mode: mode, alive: alive, via: 'break' };
                 return { kind: 'swap', move: bk.swap, mode: mode, alive: alive,
                          via: 'break' };
             }
@@ -2889,9 +2975,14 @@
                     if (!this.planInTime(ro.swaps, ro.duration, base, info, deadline)) continue;
                     // MOST GARBAGE FIRST, then soonest -- the same order the
                     // one-swap route picks by, which prefers the bigger break.
-                    if (!reach || (ro.converts || 0) > (reach.converts || 0) ||
-                        ((ro.converts || 0) === (reach.converts || 0) &&
-                         (ro.duration || 0) < (reach.duration || 0))) reach = ro;
+                    // Topped out the panels are all the material there is, so
+                    // between equal breaks the one that spends fewest comes first.
+                    var rc0 = ro.converts || 0, kc0 = reach ? (reach.converts || 0) : -1;
+                    var rs0 = info.toppedOut ? (ro.cleared || 0) : 0;
+                    var ks0 = reach && info.toppedOut ? (reach.cleared || 0) : 0;
+                    if (!reach || rc0 > kc0 ||
+                        (rc0 === kc0 && (rs0 < ks0 ||
+                         (rs0 === ks0 && (ro.duration || 0) < (reach.duration || 0))))) reach = ro;
                 }
                 if (reach) {
                     // THE FIRST SWAP IS WHAT GETS PLAYED, so it is the one the death
@@ -2951,6 +3042,10 @@
                     this.counts.dugFor++;
                     return { kind: 'swap', move: dn, mode: mode, alive: alive, via: 'digPlan' };
                 }
+                if (!dnOk && settling(dn) &&
+                    this.planInTime(this._dig.moves, Math.max(0, this._dig.frames - dspent), base, info, deadline)) {
+                    return waitFor(dn, 'digWait');
+                }
                 this._dig = null;
                 this._digIsBreak = false;
                 this.counts.digDropped++;
@@ -2977,9 +3072,10 @@
             if (this._attack && this._attack.moves.length) {
                 var an = this._attack.moves[0];
                 var aspent = Math.max(0, this.stack.clock - (this._attack.startedAt || 0));
-                var okNext = playable(an) &&
-                             this.planInTime(this._attack.moves, Math.max(0, (this._attack.frames || 0) - aspent),
-                                             base, info, deadline);
+                var aFits = this.planInTime(this._attack.moves, Math.max(0, (this._attack.frames || 0) - aspent),
+                                            base, info, deadline);
+                var okNext = aFits && playable(an);
+                if (!okNext && aFits && settling(an)) return waitFor(an, 'attackWait');
                 if (okNext) {
                     this._attack.moves = this._attack.moves.slice(1);
                     if (!this._attack.moves.length) this._attack = null;
@@ -3068,6 +3164,7 @@
         // to oscillating -- 48 decisions on a board it had been on within the last
         // three, against the 8 the prediction gap accounts for. A plan that walks
         // the board in a circle is not a plan, it is the loop with extra steps.
+        if (planWait) return waitFor(planWait, 'planWait');
         if (survival && survival.move) {
             if (!playable(survival.move)) {
                 this._plan = null;
@@ -3187,11 +3284,11 @@
             // WHAT IS LEFT OF IT AGAINST THE CLOCK AS IT IS NOW, not what it cost
             // when it was made: the plan is priced once and played over several
             // decisions, and the clock drains the whole time.
-            if (fok) {
-                var fspent = Math.max(0, this.stack.clock - (this._flatten.startedAt || 0));
-                if (!this.planInTime(this._flatten.moves, Math.max(0, (this._flatten.frames || 0) - fspent),
-                                     base, info, deadline)) fok = false;
-            }
+            var fspent = Math.max(0, this.stack.clock - (this._flatten.startedAt || 0));
+            var fFits = this.planInTime(this._flatten.moves, Math.max(0, (this._flatten.frames || 0) - fspent),
+                                        base, info, deadline);
+            if (!fok && fFits && settling(fm)) return waitFor(fm, 'flattenWait');
+            fok = fok && fFits;
             if (fok) {
                 this._flatten.moves = this._flatten.moves.slice(1);
                 if (!this._flatten.moves.length) this._flatten = null;
@@ -3202,6 +3299,10 @@
             this.counts.flattenDropped++;
         }
 
+        if (rev && rev.best && rev.best.swap && !rev.best.broke && (rev.best.total || 0) > 0) {
+            var rsh = bitoptions.shapeOf(base);
+            if (rsh && rsh.mat - rev.best.total / W < WORKING_ROWS) rev = null;
+        }
         if (rev && rev.best && rev.best.swap) {
             this.counts.revealSwaps++;
             return { kind: 'swap', move: rev.best.swap, mode: mode, alive: alive, reveal: true, via: 'lineup' };
@@ -3503,18 +3604,34 @@
     // dig whose clears each land inside the last one's lock never spends any. Each step
     // is the walk to it and a frame to decide; its clear starts 5 runs after the swap is
     // queued (the swap's 4 and the match); a break is what the plan was for.
+    // EACH PREFIX ONCE. The routes a search hands back share their opening swaps, so
+    // the board, clock and lock after a prefix are kept on the base board of this
+    // decision and every route that starts the same way starts from there.
     BitBot.prototype.planFits = function (swaps, base, info) {
-        var st = bit.copyState(base), at = [info.cursorRow, info.cursorCol];
-        var t = 0, lock = Math.max(0, (info.drainRun || 1) - 1), eng = PanelEngine();
+        var memo = base._fits || (base._fits = new Map());
+        var st = base, at = [info.cursorRow, info.cursorCol];
+        var t = 0, lock = Math.max(0, (info.drainRun || 1) - 1), eng = PanelEngine(), key = '';
         for (var i = 0; i < swaps.length; i++) {
-            t += travel.cost(at[0], at[1], swaps[i][0], swaps[i][1]) + (i ? 1 : 0);
-            if (t > lock) return false;
-            if (!bit.swapMasks(st, swaps[i][0], swaps[i][1])) return false;
-            var r = bit.resolveFromMasks(st, true);
-            if (r.scope === 'garbage-broke') return true;
-            if (r.scope !== 'ok' || !r.settled) return false;
-            if (r.total > 0) lock = Math.max(lock, t + 5 + BF.resolveFramesOf(eng, r.total, 0));
-            st = r.settled;
+            key += swaps[i][0] + ',' + swaps[i][1] + ';';
+            var hit = memo.get(key);
+            if (hit === undefined) {
+                var t2 = t + travel.cost(at[0], at[1], swaps[i][0], swaps[i][1]) + (i ? 1 : 0);
+                if (t2 > lock) hit = false;
+                else {
+                    var s2 = bit.copyState(st);
+                    if (!bit.swapMasks(s2, swaps[i][0], swaps[i][1])) hit = false;
+                    else {
+                        var r = bit.resolveFromMasks(s2, true);
+                        if (r.scope === 'garbage-broke') hit = true;
+                        else if (r.scope !== 'ok' || !r.settled) hit = false;
+                        else hit = { st: r.settled, t: t2,
+                                     lock: r.total > 0 ? Math.max(lock, t2 + 5 + BF.resolveFramesOf(eng, r.total, 0)) : lock };
+                    }
+                }
+                memo.set(key, hit);
+            }
+            if (hit === true || hit === false) return hit;
+            st = hit.st; t = hit.t; lock = hit.lock;
             at = swaps[i];
         }
         return true;
