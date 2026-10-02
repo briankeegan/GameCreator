@@ -234,8 +234,13 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
     var ms = n.b.legalSwaps();
     return near ? ms.filter(function (m) { return m[0] >= g - 3 && m[0] <= g + 1; }) : ms;
   }
+  // Steps go to the engine a batch at a time, played on every thread; each is
+  // read in the order the one-at-a-time loop would have read it.
+  function many(steps) { return steps.length ? S.advanceMany(steps) : []; }
+  function swapsFrom(n, ms) { return many(ms.map(function (m) { return [n, 'swap', m, 0]; })); }
   var firsts = swapsOf(root).map(function (m) { return { key: m[0] + ',' + m[1], m: m }; }), found = {}, any = false;
-  firsts.forEach(function (f) { f.n = S.advance(root, 'swap', f.m, 0); if (breaks(f.n)) { found[f.key] = true; any = true; } });
+  var made = swapsFrom(root, firsts.map(function (f) { return f.m; }));
+  firsts.forEach(function (f, q) { f.n = made[q]; if (breaks(f.n)) { found[f.key] = true; any = true; } });
   if (any) return { depth: 1, moves: found };
   // GARBAGE RESTING, NOTHING POPPING: a break sooner rather than later. A
   // beam of lines up to TOUCH_DEPTH swaps, kept by how near the row under the
@@ -250,9 +255,9 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
       tl = tl.slice(0, TOUCH_BEAM);
       var tn = [];
       for (i = 0; i < tl.length && !tpath && Date.now() < deadline; i++) {
-        var tm = swapsOf(tl[i].n);
-        for (j = 0; j < tm.length && Date.now() < deadline; j++) {
-          var t3 = S.advance(tl[i].n, 'swap', tm[j], 0);
+        var tm = swapsOf(tl[i].n), tmade = swapsFrom(tl[i].n, tm);
+        for (j = 0; j < tm.length; j++) {
+          var t3 = tmade[j];
           if (!t3 || t3.dead) continue;
           var tp = tl[i].path.concat([tm[j]]);
           if (breaks(t3)) { found[tl[i].key] = true; any = true; tpath = tp; break; }
@@ -266,19 +271,25 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
   if (wait > 0 && !breaks(S.advance(root, 'long', null, wait))) {
     // till the pop is over, from wherever a line has got to
     var end = root.t + wait;
-    function lined(n) { return n && !n.dead && breaks(S.advance(n, 'long', null, Math.max(1, end - n.t))); }
-    firsts.forEach(function (f) { if (lined(f.n)) { found[f.key] = true; any = true; } });
+    // whether each node breaks once the pop is over, all at once
+    function linedAll(ns) {
+      var at = [], st = [], out = ns.map(function () { return false; });
+      ns.forEach(function (n, q) { if (n && !n.dead) { at.push(q); st.push([n, 'long', null, Math.max(1, end - n.t)]); } });
+      many(st).forEach(function (w, q) { out[at[q]] = breaks(w); });
+      return out;
+    }
+    linedAll(firsts.map(function (f) { return f.n; })).forEach(function (l, q) { if (l) { found[firsts[q].key] = true; any = true; } });
     if (any) return { depth: 1, moves: found, lineup: true };
     // a pop is long enough for two swaps: the first of a pair that lines up
     var tries = 0;
     for (i = 0; i < firsts.length && tries < LINEUP_BUDGET; i++) {
       var f = firsts[i];
       if (!f.n || f.n.dead || f.n.t >= end) continue;
-      var ms = swapsOf(f.n);
+      var ms = swapsOf(f.n).slice(0, LINEUP_BUDGET - tries), n2s = swapsFrom(f.n, ms);
+      var l2 = linedAll(n2s.map(function (n2) { return n2 && n2.t < end ? n2 : null; }));
       for (j = 0; j < ms.length && tries < LINEUP_BUDGET; j++) {
         tries++;
-        var n2 = S.advance(f.n, 'swap', ms[j], 0);
-        if (n2 && n2.t < end && lined(n2)) { found[f.key] = true; any = true; break; }
+        if (l2[j]) { found[f.key] = true; any = true; break; }
       }
     }
     if (any) return { depth: 1, moves: found, lineup: 2 };
@@ -298,12 +309,14 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
         level = level.slice(0, LINEUP_BEAM);
         var next = [];
         for (i = 0; i < level.length && !path && Date.now() < deadline; i++) {
-          var ms2 = swapsOf(level[i].n);
-          for (j = 0; j < ms2.length && Date.now() < deadline; j++) {
-            var n3 = S.advance(level[i].n, 'swap', ms2[j], 0);
-            if (!n3 || n3.dead || n3.t >= end) continue;
-            var sc = pairs(n3.b.grid, want), p3 = level[i].path.concat([ms2[j]]);
-            if (sc >= PAIR && lined(n3)) { found[level[i].key] = true; any = true; path = p3; break; }
+          var ms2 = swapsOf(level[i].n), n3s = swapsFrom(level[i].n, ms2), scs = [];
+          n3s.forEach(function (n3, q) { scs[q] = !n3 || n3.dead || n3.t >= end ? -1 : pairs(n3.b.grid, want); });
+          var l3 = linedAll(n3s.map(function (n3, q) { return scs[q] >= PAIR ? n3 : null; }));
+          for (j = 0; j < ms2.length; j++) {
+            var n3 = n3s[j];
+            if (scs[j] < 0) continue;
+            var sc = scs[j], p3 = level[i].path.concat([ms2[j]]);
+            if (l3[j]) { found[level[i].key] = true; any = true; path = p3; break; }
             next.push({ key: level[i].key, n: n3, s: sc, path: p3 });
           }
         }
@@ -315,17 +328,24 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
     for (i = 0; i < firsts.length && tries < 2 * LINEUP_BUDGET; i++) {
       var r = firsts[i].n, w = r && !r.dead ? S.advance(r, 'long', null, Math.max(1, end - r.t)) : null;
       if (!w || w.dead) continue;
-      var ws = swapsOf(w);
-      for (j = 0; j < ws.length && tries < 2 * LINEUP_BUDGET; j++) { tries++; if (breaks(S.advance(w, 'swap', ws[j], 0))) { found[firsts[i].key] = true; any = true; break; } }
+      var ws = swapsOf(w).slice(0, 2 * LINEUP_BUDGET - tries), wn = swapsFrom(w, ws);
+      for (j = 0; j < ws.length && tries < 2 * LINEUP_BUDGET; j++) { tries++; if (breaks(wn[j])) { found[firsts[i].key] = true; any = true; break; } }
     }
     if (any) return { depth: 1, moves: found, lineup: 'ready' };
   }
   if (maxDepth < 2) return { depth: 0, moves: {} };
   firsts.push({ key: 'hold', n: S.advance(root, 'hold', null, 0) });
   var live = firsts.filter(function (f) { return f.n && !f.n.dead; });
+  var all = [];
   live.forEach(function (f) {
     if (steps >= BREAK_BUDGET) { f.seconds = []; return; }
-    f.seconds = swapsOf(f.n).map(function (m) { steps++; return S.advance(f.n, 'swap', m, 0); });
+    f.ms = swapsOf(f.n); steps += f.ms.length;
+    f.ms.forEach(function (m) { all.push([f.n, 'swap', m, 0]); });
+  });
+  var seconds = many(all), at = 0;
+  live.forEach(function (f) {
+    if (!f.ms) return;
+    f.seconds = seconds.slice(at, at += f.ms.length);
     if (f.seconds.some(breaks)) { found[f.key] = true; any = true; }
   });
   if (any) return { depth: 2, moves: found };
@@ -335,8 +355,8 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
     for (j = 0; j < f.seconds.length && !found[f.key] && steps < BREAK_BUDGET; j++) {
       var n2 = f.seconds[j];
       if (!n2 || n2.dead) continue;
-      var thirds = swapsOf(n2, true);
-      for (k = 0; k < thirds.length; k++) { steps++; if (breaks(S.advance(n2, 'swap', thirds[k], 0))) { found[f.key] = true; any = true; break; } }
+      var thirds = swapsOf(n2, true), n3m = swapsFrom(n2, thirds);
+      for (k = 0; k < thirds.length; k++) { steps++; if (breaks(n3m[k])) { found[f.key] = true; any = true; break; } }
     }
   }
   return { depth: any ? 3 : 0, moves: found };

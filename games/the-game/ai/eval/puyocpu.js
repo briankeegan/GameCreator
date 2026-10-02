@@ -3369,13 +3369,23 @@
     var S = this._candNat, i;
     S.reset();
     var root = S.root(this.serverStack.copy(), { left: this.raiseFrames || 0, started: !!this._raiseStarted }, this.serverArrivals || [], false);
+    var steps = [], at = [], got = [];
     for (i = 0; i < cands.length; i++) {
-      var c = cands[i], n = null;
-      if (c.kind === 'swap') n = S.advance(root, 'settle', c.move, 0);
-      else if (c.kind === 'hold') n = S.advance(root, 'settle', null, 0);
-      else if (c.kind === 'raise') { var up = S.advance(root, 'raise', null, 0); n = up && !up.dead ? S.advance(up, 'settle', null, 0) : up; }
-      c.natNode = n && !n.dead ? n : null;
-      c.natDead = !!(n && n.dead);
+      var c = cands[i];
+      got[i] = null;
+      if (c.kind === 'swap') { at.push(i); steps.push([root, c.move]); }
+      else if (c.kind === 'hold') { at.push(i); steps.push([root, null]); }
+      else if (c.kind === 'raise') {
+        var up = S.advance(root, 'raise', null, 0);
+        if (up && !up.dead) { at.push(i); steps.push([up, null]); } else got[i] = up;
+      }
+    }
+    var settled = S.settleMany(steps, 0);
+    for (i = 0; i < at.length; i++) got[at[i]] = settled[i];
+    for (i = 0; i < cands.length; i++) {
+      var n = got[i];
+      cands[i].natNode = n && !n.dead ? n : null;
+      cands[i].natDead = !!(n && n.dead);
     }
   };
   // A settle step as a resolve: the board it leaves written into `board`, and
@@ -3416,9 +3426,11 @@
         if (hit[node.root]) continue;
         if (node.nat) {
           // On the engine in C: the walk, the swap and the settle in one step.
-          var ns = node.nat.b.legalSwaps();
+          var ns = node.nat.b.legalSwaps(), batch = [];
+          for (j = 0; j < ns.length && j < budget; j++) batch.push([node.nat, ns[j]]);
+          var made = this._candNat.settleMany(batch, this.REPLY_SETTLE);
           for (j = 0; j < ns.length && budget > 0; j++) {
-            var nn = this._candNat.advance(node.nat, 'settle', ns[j], this.REPLY_SETTLE);
+            var nn = made[j];
             budget--;
             if (!nn || nn.dead) continue;
             if (this._candNat.stepStats(nn).broke > 0) { hit[node.root] = true; any = true; break; }
@@ -4170,11 +4182,16 @@
     // cornered -- for five to twelve consecutive decisions in most of them,
     // so the corner was entered long before it was fatal.
     var anyReplyLives = false;
-    var j, f;
+    var j, f, made = null;
+    if (nat) {
+      var batch = [];
+      for (j = 0; j < next.length; j++) batch.push([nat, next[j]]);
+      made = this._candNat.settleMany(batch, this.REPLY_SETTLE);
+    }
     for (j = 0; j < next.length; j++) {
       var child = cand.board.clone(), childResolved;
       if (nat) {
-        var n2 = this._candNat.advance(nat, 'settle', next[j], this.REPLY_SETTLE);
+        var n2 = made[j];
         if (!n2) continue;   // the engine refuses this swap from there
         childResolved = this._nativeResolved(n2, nat, child);
       } else {

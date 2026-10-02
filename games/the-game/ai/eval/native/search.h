@@ -509,8 +509,9 @@ static void clearSeen(Ctx *x) { for (int32_t k = 0; k < x->seenCap; k++) x->seen
 // thread made it or when.
 static struct {
   int32_t gen, next, ntasks, ack, nworkers;
-  Ctx *ctx; int32_t *tasks, *res;
+  Ctx *ctx; int32_t *tasks, *res, *deadAt;   // deadAt: per step, the frame a death was (settles only)
 } pool;
+#define ADVANCE_TASK (-1000)   // a task's move at or below: ns_advance_many's, ((row << 3 | col) << 3 | kind) = ADVANCE_TASK - mv
 static void runTasks(void) {
   Ctx *x = pool.ctx;
   int32_t n = pool.ntasks;
@@ -519,6 +520,13 @@ static void runTasks(void) {
     if (i >= n) break;
     const int32_t *t = pool.tasks + 4 * i;
     int32_t mv = t[1];
+    if (mv <= ADVANCE_TASK) {
+      // ns_advance_many: the step's board is read straight after, so kept.
+      int32_t m = ADVANCE_TASK - mv, r = advance(x, t[0], m & 7, CR(m >> 3), CC(m >> 3), t[2]);
+      pool.res[t[3]] = r;
+      if (pool.deadAt) pool.deadAt[t[3]] = r == STEP_DEAD ? deadAt : 0;
+      continue;
+    }
     int32_t r = mv == -1 ? lineStep(x, t[0], MK_LONG, 0, 0, t[2])
               : mv == -2 ? lineStep(x, t[0], MK_HOLD, 0, 0, 0)
               : lineStep(x, t[0], MK_SWAP, CR(mv), CC(mv), 0);
@@ -585,6 +593,28 @@ static int runPhase(Ctx *x, Vec *tasks, int32_t *res) {
   x->par = 0;
   if (x->n > x->cap) x->n = x->cap;
   return 1;
+}
+// Steps on every thread: the io body holds n records (parent, kind, row,
+// col, frames), each the step ns_advance would make from them. Out, in the io
+// body, per step: the node, or -1 refused, or -2 and then the frame it died
+// on. Returns n, or -3 for no room.
+EXPORT(ns_advance_many) int ns_advance_many(Ctx *x, int n) {
+  static Vec tasks, res, dead;
+  if (n < 0 || 5 * n > NBODY || !vreserve(&tasks, 4 * n) || !vreserve(&res, n) || !vreserve(&dead, n)) return -3;
+  tasks.n = 0;
+  for (int i = 0; i < n; i++) {
+    const int32_t *a = ioBody + 5 * i;
+    // Parents first, here: two threads must not replay one board.
+    if (a[0] < 0 || a[0] >= x->n || a[1] < 0 || a[1] > MK_SETTLE || a[2] < 0 || a[2] > 255 || a[3] < 0 || a[3] > 7 || !ensureBoard(x, a[0])) return -3;
+    tasks.a[tasks.n++] = a[0]; tasks.a[tasks.n++] = ADVANCE_TASK - ((((a[2] << 3) | a[3]) << 3) | a[1]);
+    tasks.a[tasks.n++] = a[4]; tasks.a[tasks.n++] = i;
+  }
+  pool.deadAt = dead.a;
+  int ok = runPhase(x, &tasks, res.a);
+  pool.deadAt = 0;
+  if (!ok) return -3;
+  for (int i = 0; i < n; i++) { ioBody[2 * i] = res.a[i]; ioBody[2 * i + 1] = dead.a[i]; }
+  return n;
 }
 #define CHUNK 96
 // The level loop. In: the level (ns_level), each level node's tag and seed

@@ -548,6 +548,28 @@
     if (k === undefined) throw new Error('Native: step kind ' + kind);
     return unstep(this, X.ns_advance(this.ctx, node._i, k, k >= 3 && m ? m[0] : 0, k >= 3 && m ? m[1] : 0, frames | 0));
   };
+  // Many steps at once, on every thread: steps[i] is [node, kind, move,
+  // frames], as advance takes them. Each answer is what advance gives; only
+  // the order the nodes are made in differs.
+  Search.prototype.advanceMany = function (steps) {
+    if (!X.ns_advance_many) throw new Error('Native: this engine does not step in batches');
+    var n = steps.length, io = new Int32Array(MEM.buffer, (X.nb_io_body() >>> 0), 5 * n), i;
+    for (i = 0; i < n; i++) {
+      var s = steps[i], k = KIND[s[1]], m = k >= 3 ? s[2] : null;
+      if (k === undefined) throw new Error('Native: step kind ' + s[1]);
+      io[5 * i] = s[0]._i; io[5 * i + 1] = k; io[5 * i + 2] = m ? m[0] : 0; io[5 * i + 3] = m ? m[1] : 0; io[5 * i + 4] = s[3] | 0;
+    }
+    var got = X.ns_advance_many(this.ctx, n);
+    if (got !== n) throw new Error('Native: stepped ' + got + ' of ' + n);
+    var body = new Int32Array(MEM.buffer, (X.nb_io_body() >>> 0), 2 * n), rs = [], out = [];
+    for (i = 0; i < n; i++) rs.push([body[2 * i], body[2 * i + 1]]);
+    for (i = 0; i < n; i++) out.push(rs[i][0] === -2 ? { dead: true, t: rs[i][1] } : unstep(this, rs[i][0]));
+    return out;
+  };
+  // Settles from [node, move] pairs (move null: hold), at most `frames` each.
+  Search.prototype.settleMany = function (steps, frames) {
+    return this.advanceMany(steps.map(function (s) { return [s[0], 'settle', s[1], frames]; }));
+  };
   // What a settle step did (pa.c ns_step_stats), read straight after it:
   // { comboSizes, chainAt (the chain counter each clear reached), cleared,
   // broke (garbage cells converted), earned (the most stop time one clear paid) }.
