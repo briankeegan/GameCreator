@@ -21,7 +21,8 @@
 //     breaks: the one-swap breaks in the decision's pool, and the first of them;
 //     lines: the multi-swap breaks its option list held (when it built one), and
 //     the first, with what planSpend prices it at. What it COULD have done is in
-//     the log beside what it did, so a death is read off the run.
+//     the log beside what it did, so a death is read off the run; ms: what the
+//     decision took, which a live match has 16.7 of per frame.
 // A cell is its colour digit, '.' empty, 'g' garbage; upper-case X is a cell in motion.
 var path = require('path'), fs = require('fs');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
@@ -40,7 +41,9 @@ var bot = new BitBot(PA.view(pa, E), { allowRaise: true, reaction: 12, seed: see
 var trace = process.env.GC_TRACE ? Number(process.env.GC_TRACE) : 0;
 var via = {}, decide = bot.decide.bind(bot);
 bot.decide = function () {
+  var t0 = process.hrtime.bigint();
   var d = decide();
+  var ms = Number(process.hrtime.bigint() - t0) / 1e6;
   via[d.via] = (via[d.via] || 0) + 1;
   if (pa.clock >= trace) {
     var pool = bot._lastPool || [], ob = bot._lastOptions, pb = [], lb = [];
@@ -49,7 +52,7 @@ bot.decide = function () {
     var lbest = lb.length ? JSON.stringify(lb[0].swaps) + ' spend ' + bot.planSpend(lb[0].swaps, bot._lastBase, bot._lastInfo) : '-';
     out('D ' + f + ' ' + d.kind + ' ' + d.via + ' ' + JSON.stringify(d.move || d.park || null) +
         ' | breaks ' + pb.length + ' ' + (pb.length ? JSON.stringify(pb[0]) : '-') +
-        ' | lines ' + (ob ? lb.length : 'unbuilt') + ' ' + lbest);
+        ' | lines ' + (ob ? lb.length : 'unbuilt') + ' ' + lbest + ' | ms ' + ms.toFixed(1));
   }
   return d;
 };

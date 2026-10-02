@@ -329,7 +329,7 @@
     var STOPS = new Map(), STOPKEY = '', LOCK = Infinity, SPEND = 0, SWAP_RUNS = 4;
     function landStopOf(st) {
         if (!STOPKEY) return bit.bestOneSwapStop(st, stopPrice);
-        var key = STOPKEY + boardKey(st), hit = STOPS.get(key);
+        var key = STOPKEY + ':' + boardKey(st), hit = STOPS.get(key);
         if (hit !== undefined) return hit;
         var v = bit.bestOneSwapStop(st, stopPrice);
         if (STOPS.size >= SAVES_MAX) STOPS.clear();
@@ -338,22 +338,41 @@
     }
     // Two independent 32-bit hashes of every array the answers read: a collision needs
     // both to agree, about one in 10^10 at these cache sizes.
+    // A NUMBER, NOT A STRING: the two hashes folded into 53 bits, built without a
+    // closure or a string per call -- this runs for every node the beam expands.
     function boardKey(st) {
-        var h1 = 0x811c9dc5 | 0, h2 = 0x9747b28c | 0;
-        function eat(v) {
-            v = v | 0;
-            h1 = Math.imul(h1 ^ v, 0x01000193);
-            h2 = Math.imul(h2 ^ (v + 0x5bd1e995), 0x5bd1e995) ^ (h2 >>> 13);
+        var h1 = 0x811c9dc5 | 0, h2 = 0x9747b28c | 0, a, i, v;
+        var arrs = BK_ARRS;
+        arrs[0] = st.occ; arrs[1] = st.inert; arrs[2] = st.garb; arrs[3] = st.colour;
+        for (var k = 0; k < 4; k++) {
+            a = arrs[k];
+            for (i = 0; i < a.length; i++) {
+                v = a[i] | 0;
+                h1 = Math.imul(h1 ^ v, 0x01000193);
+                h2 = Math.imul(h2 ^ (v + 0x5bd1e995), 0x5bd1e995) ^ (h2 >>> 13);
+            }
+            h1 = Math.imul(h1 ^ -1, 0x01000193);
+            h2 = Math.imul(h2 ^ (-1 + 0x5bd1e995), 0x5bd1e995) ^ (h2 >>> 13);
         }
-        function arr(a) { for (var i = 0; i < a.length; i++) eat(a[i]); eat(-1); }
-        arr(st.occ); arr(st.inert); arr(st.garb); arr(st.colour);
-        for (var i = 0; st.slabs && i < st.slabs.length; i++) {
-            arr(st.slabs[i]);
-            eat(st.slabLocked && st.slabLocked[i] ? 7 : 3);
+        for (var j = 0; st.slabs && j < st.slabs.length; j++) {
+            a = st.slabs[j];
+            for (i = 0; i <= a.length; i++) {
+                v = i < a.length ? a[i] | 0 : (st.slabLocked && st.slabLocked[j] ? 7 : 3);
+                h1 = Math.imul(h1 ^ v, 0x01000193);
+                h2 = Math.imul(h2 ^ (v + 0x5bd1e995), 0x5bd1e995) ^ (h2 >>> 13);
+            }
         }
-        if (st.busy) arr(st.busy);
-        return (h1 >>> 0).toString(36) + ':' + (h2 >>> 0).toString(36);
+        if (st.busy) {
+            a = st.busy;
+            for (i = 0; i < a.length; i++) {
+                v = a[i] | 0;
+                h1 = Math.imul(h1 ^ v, 0x01000193);
+                h2 = Math.imul(h2 ^ (v + 0x5bd1e995), 0x5bd1e995) ^ (h2 >>> 13);
+            }
+        }
+        return (h1 >>> 0) * 2097152 + (h2 >>> 11);
     }
+    var BK_ARRS = [null, null, null, null];
 
     // WHAT A BOARD SETTLES TO, BY BOARD: resolveFromMasks with the settled state,
     // asked of every swap the beam expands, and of the same boards again on the next
