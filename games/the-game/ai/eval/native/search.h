@@ -196,10 +196,13 @@ static void pushArrival(Board *b, const Arr *a) { nb_push_incoming(b, a->width, 
 #define SENT_KEYS(st, input) (input)
 #endif
 static LOCAL int32_t *tape, tapeN, tapeCap;
-static int runFrame(Board *st, Arr *arr, int32_t *narr, int32_t input, int32_t *f) {
+// The frame the earliest of the garbage on its way is due: none lands before it.
+static int32_t dueOf(const Arr *arr, int32_t narr) { int32_t d = 0x7fffffff; for (int i = 0; i < narr; i++) d = imin(d, arr[i].at); return d; }
+static int runFrame(Board *st, Arr *arr, int32_t *narr, int32_t input, int32_t *f, int32_t *due) {
   st->input = input;
   run(st);
   (*f)++;
+  if (*f < *due) return st->gameOver;
   int k = 0, first = 0x7fffffff;
   for (int i = 0; i < *narr; i++) if ((arr[i].isMetal & 2) && arr[i].at <= *f && arr[i].at < first) first = arr[i].at;
   int open = first != 0x7fffffff && st->ninc < CAPPED_AT;
@@ -207,7 +210,7 @@ static int runFrame(Board *st, Arr *arr, int32_t *narr, int32_t input, int32_t *
     if (arr[i].at <= *f && (!(arr[i].isMetal & 2) || (open && arr[i].at == first))) pushArrival(st, &arr[i]);
     else arr[k++] = arr[i];
   }
-  *narr = k;
+  *narr = k; *due = dueOf(arr, k);
   return st->gameOver;
 }
 static Board *ensureBoard(Ctx *x, int i);
@@ -218,12 +221,13 @@ static Board *ensureBoard(Ctx *x, int i);
 static int advanceRest(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames, Board *st, Bot *botp, Arr *arr, int32_t narr,
                        int32_t input, int32_t f, int32_t t0, int swapping, int guard0) {
   Bot bot = *botp;
+  int32_t due = dueOf(arr, narr);
 #define REFUSED (swapping && !bot.w.active && !bot.lastSwap)
 #define GIVE(code) do { nb_free(st); return (code); } while (0)
 #define FRAME() do { if (tape) { if (tapeN >= tapeCap) GIVE(STEP_ERR); \
                         tape[3 * tapeN] = SENT_KEYS(st, input); tape[3 * tapeN + 1] = bot.raiseFrames; \
                         tape[3 * tapeN + 2] = bot.raiseStarted; tapeN++; } \
-                      int over_ = runFrame(st, arr, &narr, input, &f); if (st->err) GIVE(STEP_ERR); \
+                      int over_ = runFrame(st, arr, &narr, input, &f, &due); if (st->err) GIVE(STEP_ERR); \
                       if (SWAP_PRESSED && swapping && st->swapDenied) GIVE(STEP_NULL); \
                       if (over_) { deadAt = t0 + f; STAT(kind & 7) += f; STAT(8 + (kind & 7))++; GIVE(STEP_DEAD); } } while (0)
   if (REFUSED || (bot.w.active && bot.w.retries)) GIVE(STEP_NULL);
@@ -239,7 +243,7 @@ static int advanceRest(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames,
       int32_t room = kind == MK_LONG ? frames - f - 1
                    : bot.cooldown > 0 ? bot.cooldown - 1
                    : kind == MK_SETTLE && f >= 3 ? (frames > 0 ? frames : SETTLE_CAP) - f - 1 : 0;
-      for (int i = 0; i < narr; i++) room = imin(room, arr[i].at - f - 1);
+      room = imin(room, due - f - 1);
       int32_t k = countdown(st, room);
       if (k > 0) { f += k; if (bot.cooldown > 0) bot.cooldown -= k; }
     }
@@ -365,7 +369,7 @@ static void advanceSwaps(Ctx *x, int pi, int n, const int32_t *mv, int32_t *out,
   tb.raiseFrames = par->holdLeft; tb.raiseStarted = par->holdStarted;
   Arr arr[MAXARR]; int32_t narr = par->narr;
   for (i = 0; i < narr; i++) arr[i] = par->arr[i];
-  int32_t input = par->fresh ? T->input : 0, f = 0, t0 = par->t, walking = n;
+  int32_t input = par->fresh ? T->input : 0, f = 0, t0 = par->t, walking = n, due = dueOf(arr, narr);
   if (!par->fresh) raiseStep(&tb, T, &input);
 #ifdef STEP_STATS
   T->sNCombo = 0; T->sCleared = 0; T->sBroke = 0; T->sEarned = 0;
@@ -401,7 +405,7 @@ static void advanceSwaps(Ctx *x, int pi, int n, const int32_t *mv, int32_t *out,
       in[i] = k;
     }
     if (!walking) break;
-    int32_t rows = T->unseenRows, over = runFrame(T, arr, &narr, input, &f);
+    int32_t rows = T->unseenRows, over = runFrame(T, arr, &narr, input, &f, &due);
     rows = T->unseenRows - rows;
     for (i = 0; i < n; i++) {
       if (out[i] != WALKING) continue;
