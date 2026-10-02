@@ -478,7 +478,10 @@
         // the board was still topped out when it ran out. This bot lifts its
         // cooldown while topped out, so what it still has to pay is the action
         // itself -- the engine's own tap cadence, travel.MOVE_FRAMES.
-        var held = banked;
+        // WHAT HOLDS IT: the stop time, the move's own clear, and -- topped out -- whatever
+        // already locks the rise: drainRun, the first run that can take health, read off
+        // the stack (drainBound). A board inside a slab's matched timer is not dead.
+        var held = Math.max(banked, info.toppedOut ? Math.max(0, (info.drainRun || 1) - 1) : 0);
         if (resolved && (resolved.total > 0 || resolved.garbage > 0)) {
             held += BF.resolveFramesOf(PanelEngine(), resolved.total || 0,
                                        resolved.garbage || 0);
@@ -1889,6 +1892,7 @@
     //    pool holds every legal move with its landed board.
     // ===================================================================
     BitBot.prototype._decide = function () {
+        var self = this;
         var board = this._snapshot();
         var info = this.info(board);
         var pool = this.candidates(board, info);
@@ -2113,11 +2117,7 @@
             // board still be there when they are done".
             if (this._plan && this._plan.moves.length) {
                 var nx = this._plan.moves[0];
-                var stillLegal = false;
-                var ls = bit.legalSwapsOf(base);
-                for (i = 0; i < ls.length; i++) {
-                    if (ls[i][0] === nx[0] && ls[i][1] === nx[1]) { stillLegal = true; break; }
-                }
+                var stillLegal = playable(nx);
                 // WHAT IS LEFT OF THE PLAN, NOT WHAT IT COST WHEN IT WAS MADE.
                 //
                 // The plan is priced once and then executed over several
@@ -2652,6 +2652,21 @@
         // The candidate loop already refuses these, but it filters `allowed` and
         // the attack path reads `pool`, so it walked straight past the guard.
         var self = this;
+        // CAN THIS MOVE BE PLAYED NOW -- the one check every route puts its move to: it is
+        // a legal swap on this board, it does not put the board back where it was, and the
+        // board it leaves is not dead before the next decision (deadly, over the walk and a
+        // reaction, or a row of rise, whichever is longer).
+        function playable(mv) {
+            if (!mv) return false;
+            var pc0 = null;
+            for (var q0 = 0; q0 < pool.length; q0++) {
+                if (pool[q0].kind === 'swap' && pool[q0].swap[0] === mv[0] && pool[q0].swap[1] === mv[1]) { pc0 = pool[q0]; break; }
+            }
+            if (!pc0 || !pc0.masks) return false;
+            if (returnsToSeen(mv)) return false;
+            return !self.deadly(pc0.masks, pc0.resolved, info,
+                                Math.max((pc0.moveFrames || 0) + self.reaction, info.framesPerRow || 0));
+        }
         function returnsToSeen(mv) {
             if (!self.refuseReturn || !mv) return false;
             for (var q = 0; q < pool.length; q++) {
@@ -2683,8 +2698,7 @@
             var ready = options.ready;
             if (ready && ready.swaps.length && this.planInTime(ready.swaps, ready.duration, base, info, deadline)) {
                 var rm0 = ready.swaps[0];
-                if (!returnsToSeen(rm0) && bit.swapMasks(base, rm0[0], rm0[1])) {
-                    bit.swapMasks(base, rm0[0], rm0[1]);          // put it back
+                if (playable(rm0)) {
                     this._wantRaise = false;
                     this.raiseFrames = 0;
                     this.counts.readiedFirst = (this.counts.readiedFirst || 0) + 1;
@@ -2722,10 +2736,7 @@
                                                    lookDepth, base, this.timing(info, deadline, base), digging);
             var lvl = this.flattenFirst(options, deadline, info);
             if (lvl && !returnsToSeen(lvl.swaps[0])) {
-                var lm = lvl.swaps[0], lls = bit.legalSwapsOf(base), lok = false;
-                for (i = 0; i < lls.length; i++) {
-                    if (lls[i][0] === lm[0] && lls[i][1] === lm[1]) { lok = true; break; }
-                }
+                var lm = lvl.swaps[0], lok = playable(lm);
                 if (lok) {
                     this._wantRaise = false;
                     this.raiseFrames = 0;
@@ -2966,20 +2977,7 @@
                     // THE FIRST SWAP IS WHAT GETS PLAYED, so it is the one the death
                     // filter is put to -- the rest is held as a plan the way the dig
                     // and the save are, and dropped by the same rule.
-                    var rm = reach.swaps[0], rok = false, rls = bit.legalSwapsOf(base);
-                    for (i = 0; i < rls.length; i++) {
-                        if (rls[i][0] === rm[0] && rls[i][1] === rm[1]) { rok = true; break; }
-                    }
-                    var rdead = false;
-                    for (i = 0; rok && i < pool.length; i++) {
-                        var pc = pool[i];
-                        if (pc.kind !== 'swap' || !pc.swap ||
-                            pc.swap[0] !== rm[0] || pc.swap[1] !== rm[1]) continue;
-                        rdead = this.deadly(pc.masks, pc.resolved, info,
-                                            Math.max((pc.moveFrames || 0) + this.reaction,
-                                                     info.framesPerRow || 0));
-                        break;
-                    }
+                    var rm = reach.swaps[0];
                     // THE ONLY REASON TO INTERRUPT A PLAN IS IMMINENT DEATH, AND THEN
                     // THE ANSWER IS LIFE.
                     //
@@ -2998,7 +2996,7 @@
                     // a plan is worth abandoning, and then what it is abandoned for is
                     // the thing that hands ceiling back. Everywhere else the plan is
                     // played out, because a plan interrupted is a plan wasted.
-                    if (rok && !rdead && !returnsToSeen(rm) &&
+                    if (playable(rm) &&
                         (digLeft === Infinity || mode.name === 'DEFEND')) {
                         this._plan = null;
                         this._dig = reach.swaps.length > 1
@@ -3024,10 +3022,7 @@
                 }
             }
             if (!haveBreak && this._dig && this._dig.moves.length) {
-                var dn = this._dig.moves[0], dnOk = false, dnl = bit.legalSwapsOf(base);
-                for (i = 0; i < dnl.length; i++) {
-                    if (dnl[i][0] === dn[0] && dnl[i][1] === dn[1]) { dnOk = true; break; }
-                }
+                var dn = this._dig.moves[0], dnOk = playable(dn);
                 var dspent = Math.max(0, this.stack.clock - (this._dig.startedAt || 0));
                 if (dnOk && this.planInTime(this._dig.moves, Math.max(0, this._dig.frames - dspent), base, info, deadline)) {
                     this._dig.moves = this._dig.moves.slice(1);
@@ -3045,11 +3040,8 @@
                                                        lookDepth, base, this.timing(info, deadline, base), digging);
                 var dp = options.save;
                 if (dp && dp.swaps.length && this.planInTime(dp.swaps, dp.duration, base, info, deadline)) {
-                    var dm = dp.swaps[0], dls = bit.legalSwapsOf(base), dok = false;
-                    for (i = 0; i < dls.length; i++) {
-                        if (dls[i][0] === dm[0] && dls[i][1] === dm[1]) { dok = true; break; }
-                    }
-                    if (dok && !returnsToSeen(dm)) {
+                    var dm = dp.swaps[0];
+                    if (playable(dm)) {
                         this._digIsBreak = false;
                         this._dig = { moves: dp.swaps.slice(1), frames: dp.duration || 0,
                                       startedAt: this.stack.clock };
@@ -3064,11 +3056,10 @@
         if (!survival) {
             if (this._attack && this._attack.moves.length) {
                 var an = this._attack.moves[0];
-                var okNext = false, als = bit.legalSwapsOf(base);
-                for (i = 0; i < als.length; i++) {
-                    if (als[i][0] === an[0] && als[i][1] === an[1]) { okNext = true; break; }
-                }
-                if (okNext && returnsToSeen(an)) { okNext = false; this.counts.refusedReturn++; }
+                var aspent = Math.max(0, this.stack.clock - (this._attack.startedAt || 0));
+                var okNext = playable(an) &&
+                             this.planInTime(this._attack.moves, Math.max(0, (this._attack.frames || 0) - aspent),
+                                             base, info, deadline);
                 if (okNext) {
                     this._attack.moves = this._attack.moves.slice(1);
                     if (!this._attack.moves.length) this._attack = null;
@@ -3082,13 +3073,14 @@
                                                    this.timing(info, deadline, base), digging);
             var atk = bestAttack(options, this.weights, PanelEngine(), deadline,
                                  this.stack.frames, (info.framesPerRow || 0) / W);
-            if (atk && atk.move && returnsToSeen(atk.move)) {
+            if (atk && atk.move && !playable(atk.move)) {
                 atk = null;
                 this._attack = null;
                 this.counts.refusedReturn++;
             }
             if (atk && atk.move) {
-                this._attack = { moves: atk.option.swaps.slice(1) };
+                this._attack = { moves: atk.option.swaps.slice(1), frames: atk.option.duration || 0,
+                                 startedAt: this.stack.clock };
                 if (!this._attack.moves.length) this._attack = null;
                 this.counts.attacked++;
                 this.counts.cellsPlanned += atk.cells;
@@ -3157,13 +3149,7 @@
         // three, against the 8 the prediction gap accounts for. A plan that walks
         // the board in a circle is not a plan, it is the loop with extra steps.
         if (survival && survival.move) {
-            var planSig = null;
-            for (i = 0; i < pool.length; i++) {
-                var pc = pool[i];
-                if (pc.kind === 'swap' && pc.swap[0] === survival.move[0] &&
-                    pc.swap[1] === survival.move[1] && pc.masks) { planSig = signature(pc.masks); break; }
-            }
-            if (this.refuseReturn && planSig && (planSig === here || this._seen.indexOf(planSig) >= 0)) {
+            if (!playable(survival.move)) {
                 this._plan = null;
                 this.counts.refusedReturn++;
                 survival = null;
@@ -3277,11 +3263,7 @@
             this.counts.flattenBlind++;
         }
         if (shapeTime && this._flatten && this._flatten.moves.length) {
-            var fm = this._flatten.moves[0], fok = false, fls = bit.legalSwapsOf(base);
-            for (i = 0; i < fls.length; i++) {
-                if (fls[i][0] === fm[0] && fls[i][1] === fm[1]) { fok = true; break; }
-            }
-            if (fok && returnsToSeen(fm)) fok = false;
+            var fm = this._flatten.moves[0], fok = playable(fm);
             // WHAT IS LEFT OF IT AGAINST THE CLOCK AS IT IS NOW, not what it cost
             // when it was made: the plan is priced once and played over several
             // decisions, and the clock drains the whole time.
