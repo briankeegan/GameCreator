@@ -2941,9 +2941,14 @@
                     if (!this.planInTime(ro.swaps, ro.duration, base, info, deadline)) continue;
                     // MOST GARBAGE FIRST, then soonest -- the same order the
                     // one-swap route picks by, which prefers the bigger break.
-                    if (!reach || (ro.converts || 0) > (reach.converts || 0) ||
-                        ((ro.converts || 0) === (reach.converts || 0) &&
-                         (ro.duration || 0) < (reach.duration || 0))) reach = ro;
+                    // Topped out the panels are all the material there is, so
+                    // between equal breaks the one that spends fewest comes first.
+                    var rc0 = ro.converts || 0, kc0 = reach ? (reach.converts || 0) : -1;
+                    var rs0 = info.toppedOut ? (ro.cleared || 0) : 0;
+                    var ks0 = reach && info.toppedOut ? (reach.cleared || 0) : 0;
+                    if (!reach || rc0 > kc0 ||
+                        (rc0 === kc0 && (rs0 < ks0 ||
+                         (rs0 === ks0 && (ro.duration || 0) < (reach.duration || 0))))) reach = ro;
                 }
                 if (reach) {
                     // THE FIRST SWAP IS WHAT GETS PLAYED, so it is the one the death

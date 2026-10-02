@@ -585,6 +585,7 @@
             if (r.total === 0 && !broke) continue;           // clears nothing: a setup, not an option
             var opt = optionOf([swaps[i]], travel.cost(cursor[0], cursor[1], swaps[i][0], swaps[i][1]), r);
             opt.breaks = broke;
+            opt.cleared = r.total || 0;
             // HORIZONTAL AND VERTICAL ARE NOT THE SAME MOVE, AND THE DIFFERENCE IS
             // THE SHAPE. A vertical three takes three panels out of ONE column and
             // drops it three below its neighbours; a horizontal three takes one from
@@ -1038,7 +1039,20 @@
                                 // which is exactly the move that matters here. The threshold stays with the
                                 // caller: this carries the number, WORKING_ROWS lives in bitbot.
                                 opt.matNow = START ? START.mat : null;
+                                opt.cleared = (node.cleared || 0) + (res.total || 0);
                                 next.push(opt);
+                            }
+                            // TOPPED OUT, A CLEAR THAT DOES NOT BREAK IS HOW THE ROUTE BUYS
+                            // TIME. The lock holds only while something resolves, so a route
+                            // to a break longer than the lock has to fire a clear on the way
+                            // -- and the board that clear settles into is built on like any
+                            // setup. `cleared` carries the panels spent getting there.
+                            if (!broke && STOPKEY === 'top' && res.settled) {
+                                var rrc = DIG ? reachOf(res.settled) : null;
+                                born.push({ st: res.settled, chain: node.chain.concat([sw]),
+                                            from: sw, spent: cost,
+                                            cleared: (node.cleared || 0) + (res.total || 0),
+                                            reach: rrc && rrc.mask, dig: rrc ? rrc.dig : 0 });
                             }
                             continue;
                         }
@@ -1308,7 +1322,7 @@
                                 }
                             }
                             born.push({ st: res.settled, chain: seq,
-                                        from: sw, spent: cost,
+                                        from: sw, spent: cost, cleared: node.cleared || 0,
                                         reach: rr && rr.mask, dig: rr ? rr.dig : 0 });
                         }
                     }
