@@ -36,7 +36,7 @@ bot.decide = function () {
     var lbest = L.line ? JSON.stringify(L.line) + ' spend ' + L.spend : '-';
     out('D ' + f + ' ' + d.kind + ' ' + d.via + ' ' + JSON.stringify(d.move || d.park || null) +
         ' | breaks ' + L.poolBreaks + ' ' + (L.firstBreak ? JSON.stringify(L.firstBreak) : '-') +
-        ' | lines ' + (L.built ? L.lines : 'unbuilt') + ' ' + lbest + ' | ms ' + ms.toFixed(1));
+        ' | lines ' + (L.built ? L.lines : 'unbuilt') + ' ' + lbest + ' | ms ' + ms.toFixed(1) + (L.work ? ' | work ' + L.work.join(' ') : ''));
   }
   return d;
 };

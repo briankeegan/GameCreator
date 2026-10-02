@@ -7,7 +7,10 @@ typedef unsigned long long u64;
 #define MAXD 24
 enum { O_W = 0, O_H, O_N, O_NSLAB, O_BUSYF, O_BAD,
        OCC = 8, INERT = 16, GARB = 24, BUSY = 32, COL = 40,
-       SLAB = COL + NCOL * WMAX, LOCK = SLAB + MAXSLAB * WMAX, AIR = LOCK + MAXSLAB, ST_INTS = AIR + MAXSLAB };
+       SLAB = COL + NCOL * WMAX, SL = WMAX + 2, ST_INTS = SLAB + MAXSLAB * SL };
+#define SM(i, c) (SLAB + (i) * SL + (c))
+#define SLK(i) (SLAB + (i) * SL + WMAX)
+#define SAIR(i) (SLAB + (i) * SL + WMAX + 1)
 enum { R_SCOPE = 0, R_CHAIN, R_TOTAL, R_ROUNDS, R_FRAMES, R_GARBAGE, R_CONVERTS, R_VOID, R_INTS = 8 };
 enum { SC_OK = 0, SC_BROKE = 1, SC_BAD = 2, SC_REFUSED = 3 };
 typedef int32_t ST[ST_INTS];
@@ -21,7 +24,8 @@ __attribute__((export_name("bit_list"))) int32_t *bit_list(void) { return LIST; 
 static inline int popc(uint32_t x) { return __builtin_popcount(x); }
 static inline uint32_t lowb(uint32_t x) { return x & (0u - x); }
 static inline int topRow(uint32_t x) { return x ? 32 - __builtin_clz(x) : 0; }
-static void stcpy(int32_t *d, const int32_t *s) { for (int i = 0; i < ST_INTS; i++) d[i] = s[i]; }
+static inline int stlen(const int32_t *s) { return SLAB + s[O_NSLAB] * SL; }
+static void stcpy(int32_t *d, const int32_t *s) { __builtin_memcpy(d, s, (unsigned long)stlen(s) * 4); }
 #define U(st, i) ((uint32_t)(st)[i])
 #define CL(st, a, c) U(st, COL + (a) * WMAX + (c))
 
@@ -110,27 +114,25 @@ static void load(R *s, const int32_t *st) {
   for (int c = 0; c < WMAX; c++) {
     s->occ[c] = U(st, OCC + c); s->inert[c] = U(st, INERT + c); s->garb[c] = U(st, GARB + c);
     s->chaining[c] = 0; s->popping[c] = 0;
-    for (int a = 0; a < NCOL; a++) s->colour[a][c] = CL(st, a, c);
   }
+  __builtin_memcpy(s->colour, st + COL, (unsigned long)(s->N + 1) * WMAX * 4);
   for (int i = 0; i < s->nslab; i++) {
-    for (int c = 0; c < WMAX; c++) s->slab[i][c] = U(st, SLAB + i * WMAX + c);
-    s->locked[i] = st[LOCK + i]; s->air[i] = 0;
+    for (int c = 0; c < WMAX; c++) s->slab[i][c] = U(st, SM(i, c));
+    s->locked[i] = st[SLK(i)]; s->air[i] = 0;
   }
 }
 static void save(R *s, int32_t *o) {
-  for (int i = 0; i < ST_INTS; i++) o[i] = 0;
+  __builtin_memset(o, 0, SLAB * 4);
   o[O_W] = s->W; o[O_H] = s->H; o[O_N] = s->N;
-  for (int c = 0; c < WMAX; c++) {
-    o[OCC + c] = s->occ[c]; o[INERT + c] = s->inert[c]; o[GARB + c] = s->garb[c];
-    for (int a = 1; a <= s->N; a++) o[COL + a * WMAX + c] = s->colour[a][c];
-  }
+  for (int c = 0; c < WMAX; c++) { o[OCC + c] = s->occ[c]; o[INERT + c] = s->inert[c]; o[GARB + c] = s->garb[c]; }
+  __builtin_memcpy(o + COL + WMAX, s->colour[1], (unsigned long)s->N * WMAX * 4);
   int n = 0;
   for (int i = 0; i < s->nslab; i++) {
     int any = 0;
     for (int c = 0; c < WMAX; c++) if (s->slab[i][c]) { any = 1; break; }
     if (!any) continue;
-    for (int c = 0; c < WMAX; c++) o[SLAB + n * WMAX + c] = s->slab[i][c];
-    o[LOCK + n] = s->locked[i] ? 1 : 0;
+    for (int c = 0; c < WMAX; c++) o[SM(n, c)] = s->slab[i][c];
+    o[SLK(n)] = s->locked[i] ? 1 : 0; o[SAIR(n)] = 0;
     n++;
   }
   o[O_NSLAB] = n;
@@ -143,7 +145,8 @@ static Hold HOLDS[MAXHOLD]; static int nHolds;
 static uint32_t heldAt(int c) { uint32_t h = 0; for (int i = 0; i < nHolds; i++) h |= HOLDS[i].m[c]; return h; }
 static int nextRelease(void) { int u = NEVER; for (int i = 0; i < nHolds; i++) if (HOLDS[i].until < u) u = HOLDS[i].until; return u; }
 static int resolveT(const int32_t *st, int32_t *r, int wantSettled, const Timed *tm);
-static void resolve(const int32_t *st, int32_t *r, int wantSettled) { resolveT(st, r, wantSettled, 0); }
+static void resolveM(const int32_t *st, int32_t *r, int wantSettled);
+static void resolve(const int32_t *st, int32_t *r, int wantSettled) { resolveM(st, r, wantSettled); }
 static int tmFailed = 0;
 static void pushHold(const uint32_t *m, int until, int swap) {
   if (nHolds >= MAXHOLD) { tmFailed = 1; return; }
@@ -159,7 +162,9 @@ static void hoveringOf(R *s, uint32_t *hv) {
   }
   hv[0] = 0; hv[s->W + 1] = 0;
 }
+static int nRes;
 static int resolveT(const int32_t *st, int32_t *r, int wantSettled, const Timed *tm) {
+  nRes++;
   for (int i = 0; i < R_INTS; i++) r[i] = 0;
   if (st[O_BAD]) { r[R_SCOPE] = SC_BAD; return 0; }
   R *s = &S;
@@ -172,7 +177,7 @@ static int resolveT(const int32_t *st, int32_t *r, int wantSettled, const Timed 
   nHolds = 0;
   if (tm) {
     for (int c = 0; c <= W + 1; c++) { s->chaining[c] = tm->chaining[c] & s->occ[c]; s->popping[c] = tm->popping[c] & s->occ[c]; }
-    for (int i = 0; i < s->nslab; i++) s->air[i] = st[AIR + i];
+    for (int i = 0; i < s->nslab; i++) s->air[i] = st[SAIR(i)];
     sweepAt = tm->popAt; made = !tm->hasSwap;
     if (tm->hover > 0) {
       uint32_t hm[WMAX] = {0};
@@ -353,7 +358,8 @@ static int resolveT(const int32_t *st, int32_t *r, int wantSettled, const Timed 
   if (wantSettled) save(s, r + R_INTS);
   return 0;
 }
-__attribute__((export_name("bit_resolve"))) void bit_resolve(int32_t wantSettled) { resolve(IN, OUT, wantSettled); }
+static void memoRoom(void);
+__attribute__((export_name("bit_resolve"))) void bit_resolve(int32_t wantSettled) { memoRoom(); resolve(IN, OUT, wantSettled); }
 static Timed TM;
 __attribute__((export_name("bit_timed"))) int32_t *bit_timed(void) { return (int32_t *)&TM; }
 __attribute__((export_name("bit_resolve_timed"))) int32_t bit_resolve_timed(int32_t wantSettled) {
@@ -636,11 +642,11 @@ static u64 hashOf(const int32_t *st) {
   u64 h = 1469598103934665603ull;
   int W = st[O_W], N = st[O_N], c, a, i;
 #define MIX(v) (h = (h ^ (uint32_t)(v)) * 1099511628211ull)
-  MIX(N); MIX(st[O_BAD]); MIX(st[O_BUSYF]);
+  MIX(W); MIX(st[O_H]); MIX(N); MIX(st[O_BAD]); MIX(st[O_BUSYF]);
   for (c = 0; c <= W + 1; c++) { MIX(st[OCC + c]); MIX(st[INERT + c]); MIX(st[GARB + c]); if (st[O_BUSYF]) MIX(st[BUSY + c]); }
   for (a = 1; a <= N; a++) for (c = 0; c <= W + 1; c++) MIX(st[COL + a * WMAX + c]);
   MIX(st[O_NSLAB]);
-  for (i = 0; i < st[O_NSLAB]; i++) { for (c = 0; c <= W + 1; c++) MIX(st[SLAB + i * WMAX + c]); MIX(st[LOCK + i]); }
+  for (i = 0; i < st[O_NSLAB]; i++) { for (c = 0; c <= W + 1; c++) MIX(st[SM(i, c)]); MIX(st[SLK(i)]); }
 #undef MIX
   return h | 1ull;
 }
@@ -658,23 +664,56 @@ static void tput(Table *t, u64 k, double v) {
   while (t->s[i].key) { if (t->s[i].key == k) { t->s[i].v = v; return; } i = (i + 1) & (TCAP - 1); }
   t->s[i].key = k; t->s[i].v = v; t->n++;
 }
-static Table SAVES, ANYB, STOPS_T, FIRE, SETTLEIX;
+static Table SAVES, ANYB, STOPS_T, FIRE;
 
-// settled results: an arena for this search, and a store kept across searches
-#define MAXPER 54000
-#define SCAP 81920
-typedef struct { int32_t r[R_INTS]; ST st; } Res;
-static Res STORE[SCAP]; static int storeN = 0;
+#define MCAP (1 << 19)
+#define ARENA_INTS (40 << 20)
+typedef struct { u64 key; int32_t at, settled; } MSlot;
+static MSlot MEMO[MCAP];
+static int32_t ARENA[ARENA_INTS];
+static int arenaN = 0, memoN = 0;
 static int failed = 0;
+static void memoClear(void) { for (int i = 0; i < MCAP; i++) MEMO[i].key = 0; memoN = 0; arenaN = 0; }
+static void memoRoom(void) { if (arenaN > ARENA_INTS / 2 || memoN > MCAP / 2) memoClear(); }
+static MSlot *memoFind(u64 k) {
+  uint32_t i = (uint32_t)(k ^ (k >> 32)) & (MCAP - 1);
+  while (MEMO[i].key) { if (MEMO[i].key == k) return &MEMO[i]; i = (i + 1) & (MCAP - 1); }
+  return &MEMO[i];
+}
+static int32_t *memoStore(MSlot *sl, u64 k, const int32_t *r, int withSettled) {
+  int len = R_INTS + (withSettled && r[R_SCOPE] == SC_OK ? stlen(r + R_INTS) : 0);
+  if (arenaN + len > ARENA_INTS || memoN >= MCAP * 3 / 4) return 0;
+  int32_t *at = ARENA + arenaN;
+  __builtin_memcpy(at, r, (unsigned long)len * 4);
+  if (!sl->key) memoN++;
+  sl->key = k; sl->at = arenaN; sl->settled = withSettled || r[R_SCOPE] != SC_OK;
+  arenaN += len;
+  return at;
+}
+static void resolveRaw(const int32_t *st, int32_t *r, int wantSettled) { resolveT(st, r, wantSettled, 0); }
+static void resolveM(const int32_t *st, int32_t *r, int wantSettled) {
+  if (st[O_BAD]) { resolveRaw(st, r, wantSettled); return; }
+  u64 k = hashOf(st);
+  MSlot *sl = memoFind(k);
+  if (sl->key && (sl->settled || !wantSettled)) {
+    const int32_t *e = ARENA + sl->at;
+    __builtin_memcpy(r, e, R_INTS * 4);
+    if (wantSettled && r[R_SCOPE] == SC_OK) stcpy(r + R_INTS, e + R_INTS);
+    return;
+  }
+  resolveRaw(st, r, wantSettled);
+  memoStore(sl, k, r, wantSettled);
+}
+typedef struct { int32_t r[R_INTS]; ST st; } Res;
+static Res SETTLE_SPILL;
 static Res *settleOf(const int32_t *st) {
   u64 k = hashOf(st);
-  double v;
-  if (tget(&SETTLEIX, k, &v)) return &STORE[(int)v];
-  Res *out;
-  if (storeN >= SCAP) { failed = 1; return &STORE[0]; }
-  out = &STORE[storeN]; tput(&SETTLEIX, k, storeN); storeN++;
-  resolve(st, out->r, 1);
-  return out;
+  MSlot *sl = memoFind(k);
+  if (sl->key && sl->settled) return (Res *)(ARENA + sl->at);
+  resolveRaw(st, SETTLE_SPILL.r, 1);
+  int32_t *at = memoStore(sl, k, SETTLE_SPILL.r, 1);
+  if (!at) { failed = 1; return &SETTLE_SPILL; }
+  return (Res *)at;
 }
 
 static int canFireOf(const int32_t *st) {
@@ -807,7 +846,7 @@ enum { F_KIND, F_SIZE, F_FRAMES, F_CHAIN, F_TOTAL, F_GARBAGE, F_CONVERTS, F_VOID
        F_TALL, F_BUMPS, F_MAT, F_LOW, F_SPREAD, F_VOIDROWS, F_SLABGAP, F_READY, F_BREAKS, F_LEVELS, F_OPENSHOLE,
        F_EXTRAS, F_BREAKREADY, F_CLOSESBREAK, F_DIGGAIN, F_VOIDGAIN, F_SLABGAIN, F_SLABWORTH, F_MATNOW,
        F_VALUE, F_WAYS, F_LANDSTOP, F_NSW, F_SW, REC = F_SW + 2 * MAXD };
-#define MAXOPT MAXPER
+#define MAXOPT 54000
 static double ODATA[(MAXOPT + 4) * REC + 64], ODSCR[(MAXOPT + 4) * REC + 64];
 static int32_t LANDS[ST_INTS], LANDSCR[ST_INTS];
 static double *OD = ODATA;
@@ -820,7 +859,7 @@ __attribute__((export_name("bit_pchain"))) double *bit_pchain(void) { return PCH
 __attribute__((export_name("bit_pcombo"))) double *bit_pcombo(void) { return PCOMBO; }
 
 __attribute__((export_name("bit_layout"))) int32_t bit_layout(int32_t i) {
-  int32_t v[] = { WMAX, NCOL, MAXSLAB, OCC, INERT, GARB, BUSY, COL, SLAB, LOCK, ST_INTS, R_INTS, REC, MAXD, AIR };
+  int32_t v[] = { WMAX, NCOL, MAXSLAB, OCC, INERT, GARB, BUSY, COL, SLAB, SL, ST_INTS, R_INTS, REC, MAXD, 0 };
   return v[i];
 }
 static double *recAt(int i) { return OD + 64 + i * REC; }
@@ -1043,9 +1082,10 @@ static int32_t SW1[2 * 128];
 static ST ST1;
 static Res R1;
 // The whole search. Returns 0, or -1 when a fixed size was exceeded (a bug).
+static int nOptRuns, nOptDepth;
 static int optionsRun(const int32_t *st0, const double *P, const int32_t *first, int nfirst) {
+  nOptRuns++; nOptDepth += (int)P[11];
   failed = 0;
-  if (storeN > SCAP - MAXPER) { storeN = 0; for (int i = 0; i < TCAP; i++) SETTLEIX.s[i].key = 0; SETTLEIX.n = 0; }
   FPR = P[0]; DEADLINE = P[1]; LOCKP = P[2]; SPEND = (int)P[3]; LEAN = (int)P[4];
   PREPARE = (int)P[5]; HOLD = P[6]; WORK = P[7]; OVERHEAD = P[8]; SWAPP = P[9];
   DIG = (int)P[10]; int depth = (int)P[11], cr = (int)P[12], cc = (int)P[13];
@@ -1098,6 +1138,7 @@ static int optionsRun(const int32_t *st0, const double *P, const int32_t *first,
 }
 
 __attribute__((export_name("bit_options"))) int32_t bit_options(void) {
+  memoRoom();
   OD = ODATA; LD = LANDS;
   return optionsRun(IN, PARAM, LIST, PARAM[100] > 0 ? (int)PARAM[100] : 0);
 }

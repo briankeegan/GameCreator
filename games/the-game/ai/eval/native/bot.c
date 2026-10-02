@@ -40,6 +40,7 @@ typedef struct {
   double counts[NCOUNT];
 } Bot;
 
+static int nScore, nLook, nSave, rScore, rMain, rLook, rSave, rCand;
 #define MAXBOT 2048
 static Bot BOTS[MAXBOT];
 static int nBots = 0;
@@ -207,6 +208,8 @@ static int32_t LKSW[2 * 128];
 static Res LKR;
 typedef struct { int stranded, hasClear, hasBreak; } Ahead;
 static Ahead lookahead(const int32_t *st0, double horizon) {
+  nLook++;
+  int r0 = nRes;
   Ahead out = { 1, 0, 0 };
   stcpy(LK, st0);
   int n = legal(LK, LKSW);
@@ -222,6 +225,7 @@ static Ahead lookahead(const int32_t *st0, double horizon) {
     if (out.stranded && !deadly(sc == SC_OK ? LKR.st : LK, &rr, horizon)) out.stranded = 0;
     if (out.hasBreak && !out.stranded) break;
   }
+  rLook += nRes - r0;
   return out;
 }
 
@@ -264,6 +268,8 @@ static const double FLOORW[20] = { -20, -10, -40, 1e300, 1e300, 1e300, 1e300, 1e
                                    1e300, 1e300, 1e300, 1e300, 1e300, 1e300, 1e300, 1e300, 1e300 };
 
 static double score(const int32_t *st, int moveFrames, const Rs *res) {
+  nScore++;
+  int r0 = nRes;
   int topped = BIN[IN_TOPPED] != 0;
   int isChain = res && res->chain >= 2;
   double earned = res ? stopTimeOf(isChain, isChain ? 0 : res->total, isChain ? res->chain : 0, topped) : 0;
@@ -274,6 +280,7 @@ static double score(const int32_t *st, int moveFrames, const Rs *res) {
   OD = ODSCR; LD = LANDSCR;
   if (optionsRun(st, PSCR, 0, 0)) botFailed = 1;
   OD = ODATA; LD = LANDS;
+  rScore += nRes - r0;
   int nNow = (int)ODSCR[1], nNext = (int)ODSCR[2];
   double *base = ODSCR + 64 + 4 * REC;
   double f[20], bump, spread, tallest;
@@ -344,7 +351,7 @@ static int risenMasks(const int32_t *st, int32_t *out) {
   int W2 = st[O_W];
   uint32_t lim = (1u << st[O_H]) - 1u;
   for (int c = 1; c <= W2; c++) { double v = BIN[IN_INROW + c]; if (!(v > 0) || v > 12) return 0; }
-  for (int i = 0; i < ST_INTS; i++) out[i] = 0;
+  for (int i = 0; i < SLAB; i++) out[i] = 0;
   out[O_W] = st[O_W]; out[O_H] = st[O_H]; out[O_N] = st[O_N];
   for (int c = 1; c <= W2; c++) {
     out[OCC + c] = ((U(st, OCC + c) << 1) | 1u) & lim;
@@ -357,8 +364,9 @@ static int risenMasks(const int32_t *st, int32_t *out) {
   }
   out[O_NSLAB] = st[O_NSLAB];
   for (int i = 0; i < st[O_NSLAB]; i++) {
-    for (int c = 1; c <= W2; c++) out[SLAB + i * WMAX + c] = (U(st, SLAB + i * WMAX + c) << 1) & lim;
-    out[LOCK + i] = st[LOCK + i];
+    for (int c = 0; c < WMAX; c++) out[SM(i, c)] = 0;
+    for (int c = 1; c <= W2; c++) out[SM(i, c)] = (U(st, SM(i, c)) << 1) & lim;
+    out[SLK(i)] = st[SLK(i)]; out[SAIR(i)] = 0;
   }
   return 1;
 }
@@ -390,9 +398,9 @@ static int withSlab(const int32_t *masks, int32_t *out) {
   stcpy(out, masks);
   uint32_t b = 1u << t;
   int n = out[O_NSLAB];
-  for (int c = 0; c < WMAX; c++) out[SLAB + n * WMAX + c] = 0;
-  for (int c = 1; c <= BW; c++) { out[OCC + c] |= b; out[INERT + c] |= b; out[GARB + c] |= b; out[SLAB + n * WMAX + c] = b; }
-  out[LOCK + n] = 0; out[AIR + n] = 0;
+  for (int c = 0; c < WMAX; c++) out[SM(n, c)] = 0;
+  for (int c = 1; c <= BW; c++) { out[OCC + c] |= b; out[INERT + c] |= b; out[GARB + c] |= b; out[SM(n, c)] = b; }
+  out[SLK(n)] = 0; out[SAIR(n)] = 0;
   out[O_NSLAB] = n + 1;
   return 1;
 }
@@ -414,6 +422,7 @@ static ST SETUPST[128];
 static Setup SETUPS[128];
 static int32_t SASW[2 * 128], SASW2[2 * 128], SAR2[R_INTS + ST_INTS];
 static int saveAfter(const int32_t *masks0, int row, int col, int deep) {
+  nSave++;
   double deadline = framesToDeath(tallestBoard(masks0), BIN[IN_FPR]);
   int frozen = BIN[IN_STOP] > 0 || BIN[IN_TOPPED];
   int step = MOVE_FRAMES + (frozen ? 0 : REACT);
@@ -570,7 +579,9 @@ static void mainOptions(const int32_t *base, double deadline, int lookDepth, int
   if (optsBuilt) return;
   buildOptions(base, deadline, lookDepth, digging, 0);
   OD = ODATA; LD = LANDS;
+  int r0 = nRes;
   if (optionsRun(base, OPTP, 0, 0)) botFailed = 1;
+  rMain += nRes - r0;
   nPile = pileOf(ODATA, PILE);
   optsBuilt = 1;
   if (TFLAG(TF_STUB)) {
@@ -793,17 +804,17 @@ static int outcomeConv(const int32_t *st, int has, int sr, int sc, int *scope, i
     uint32_t b = 1u << (r - 1);
     out[INERT + c] &= ~b; out[GARB + c] &= ~b;
     out[COL + col * WMAX + c] |= b;
-    for (int k = 0; k < out[O_NSLAB]; k++) if (out[SLAB + k * WMAX + c] & b) { out[SLAB + k * WMAX + c] &= ~b; out[LOCK + k] = 0; }
+    for (int k = 0; k < out[O_NSLAB]; k++) if (out[SM(k, c)] & b) { out[SM(k, c)] &= ~b; out[SLK(k)] = 0; }
   }
   int j = 0;
   for (int k = 0; k < out[O_NSLAB]; k++) {
     int any = 0;
-    for (int c = 1; c <= BW; c++) if (out[SLAB + k * WMAX + c]) { any = 1; break; }
+    for (int c = 1; c <= BW; c++) if (out[SM(k, c)]) { any = 1; break; }
     if (!any) continue;
-    if (j != k) { for (int c = 0; c < WMAX; c++) out[SLAB + j * WMAX + c] = out[SLAB + k * WMAX + c]; out[LOCK + j] = out[LOCK + k]; out[AIR + j] = out[AIR + k]; }
+    if (j != k) { for (int c = 0; c < SL; c++) out[SLAB + j * SL + c] = out[SLAB + k * SL + c]; }
     j++;
   }
-  for (int k = j; k < out[O_NSLAB]; k++) { for (int c = 0; c < WMAX; c++) out[SLAB + k * WMAX + c] = 0; out[LOCK + k] = 0; out[AIR + k] = 0; }
+  for (int k = j; k < out[O_NSLAB]; k++) for (int c = 0; c < SL; c++) out[SLAB + k * SL + c] = 0;
   out[O_NSLAB] = j;
   resolve(out, LR2.r, 0);
   *scope = LR2.r[R_SCOPE]; *chain = LR2.r[R_CHAIN]; *total = LR1.r[R_TOTAL] + LR2.r[R_TOTAL];
@@ -1605,6 +1616,8 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   PRESS = (int)opt(O_PRESS);
   botFailed = 0;
   clearRaiseFrames = 0;
+  memoRoom();
+  nRes = 0; nOptRuns = 0; nOptDepth = 0; nScore = 0; nLook = 0; nSave = 0; rScore = rMain = rLook = rSave = rCand = 0;
   Dec d = onePlan(waitForDrain(decideRuled()));
   if (d.kind == K_SWAP && d.hasMove) {
     BT->recent[2] = BT->nRecent ? BT->recent[0] : 0; BT->recent[3] = BT->nRecent ? BT->recent[1] : 0;
@@ -1612,7 +1625,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     BT->nRecent = BT->nRecent ? 2 : 1;
   }
   double *o = BOUT;
-  for (int i = 0; i < 64; i++) o[i] = 0;
+  for (int i = 0; i < 128; i++) o[i] = 0;
   o[0] = d.kind; o[1] = d.hasMove; o[2] = d.sr; o[3] = d.sc; o[4] = d.hasPark; o[5] = d.pr; o[6] = d.pc;
   o[7] = d.via; o[8] = d.spends; o[9] = d.reveal; o[10] = d.mode; o[11] = d.alive;
   o[12] = BT->wantRaise; o[13] = BT->wantRows; o[14] = clearRaiseFrames;
@@ -1626,6 +1639,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   for (int i = 0; i < nPool; i++) if (POOL[i].kind == K_SWAP && POOL[i].res.broke) { if (!pb) { o[17] = POOL[i].sr; o[18] = POOL[i].sc; } pb++; }
   o[16] = pb;
   o[19] = optsBuilt;
+  o[100] = nRes; o[101] = rMain; o[102] = nScore; o[103] = rScore; o[104] = nLook; o[105] = rLook; o[106] = nPool;
   if (optsBuilt) {
     int lines = 0;
     for (int i = 0; i < nPile; i++) {
@@ -1655,6 +1669,7 @@ static Rs argRes(int at) {
   return r;
 }
 __attribute__((export_name("bot_test"))) double bot_test(int32_t id, int32_t fn) {
+  memoRoom();
   BT = &BOTS[id];
   TB = BT->tab;
   REACT = (int)opt(O_REACTION);

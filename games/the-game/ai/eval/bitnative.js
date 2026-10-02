@@ -9,14 +9,14 @@
     'EXTRAS', 'BREAKREADY', 'CLOSESBREAK', 'DIGGAIN', 'VOIDGAIN', 'SLABGAIN', 'SLABWORTH', 'MATNOW',
     'VALUE', 'WAYS', 'LANDSTOP', 'NSW', 'SW'];
   FIELDS.forEach(function (n, i) { F[n] = i; });
-  var WMAX, NCOL, MAXSLAB, OCC, INERT, GARB, BUSY, COL, SLAB, LOCK, ST_INTS, R_INTS, REC, MAXD, AIR, TIMED = 0;
+  var WMAX, NCOL, MAXSLAB, OCC, INERT, GARB, BUSY, COL, SLAB, SL, ST_INTS, R_INTS, REC, MAXD, TIMED = 0;
   var ex = null, mem = null, dmem = null, IN = 0, OUT = 0, LIST = 0, ODATA = 0, LANDS = 0, PARAM = 0, PCHAIN = 0, PCOMBO = 0;
   function load(bytes) {
     var inst = new WebAssembly.Instance(new WebAssembly.Module(bytes), { env: {} });
     ex = inst.exports;
     var L = []; for (var i = 0; i < 15; i++) L.push(ex.bit_layout(i));
     WMAX = L[0]; NCOL = L[1]; MAXSLAB = L[2]; OCC = L[3]; INERT = L[4]; GARB = L[5]; BUSY = L[6]; COL = L[7];
-    SLAB = L[8]; LOCK = L[9]; ST_INTS = L[10]; R_INTS = L[11]; REC = L[12]; MAXD = L[13]; AIR = L[14];
+    SLAB = L[8]; SL = L[9]; ST_INTS = L[10]; R_INTS = L[11]; REC = L[12]; MAXD = L[13];
     TIMED = ex.bit_timed() >> 2;
     IN = ex.bit_in() >> 2; OUT = ex.bit_out() >> 2; LIST = ex.bit_list() >> 2; LANDS = ex.bit_lands() >> 2;
     ODATA = ex.bit_odata() >> 3; PARAM = ex.bit_param() >> 3; PCHAIN = ex.bit_pchain() >> 3; PCOMBO = ex.bit_pcombo() >> 3;
@@ -41,9 +41,9 @@
       for (a = 1; a <= st.N; a++) m[b + COL + a * WMAX + c] = st.colour[a * stride + c];
     }
     for (i = 0; st.slabs && i < st.slabs.length; i++) {
-      for (c = 0; c <= st.W + 1; c++) m[b + SLAB + i * WMAX + c] = st.slabs[i][c] | 0;
-      m[b + LOCK + i] = st.slabLocked && st.slabLocked[i] ? 1 : 0;
-      m[b + AIR + i] = st.slabAir ? (st.slabAir[i] || 0) : 0;
+      for (c = 0; c <= st.W + 1; c++) m[b + SLAB + i * SL + c] = st.slabs[i][c] | 0;
+      m[b + SLAB + i * SL + WMAX] = st.slabLocked && st.slabLocked[i] ? 1 : 0;
+      m[b + SLAB + i * SL + WMAX + 1] = st.slabAir ? (st.slabAir[i] || 0) : 0;
     }
   }
   function take(b, bad) {
@@ -58,8 +58,8 @@
     }
     for (i = 0; i < m[b + 3]; i++) {
       var sm = new Int32Array(W + 2);
-      for (c = 0; c <= W + 1; c++) sm[c] = m[b + SLAB + i * WMAX + c];
-      out.slabs.push(sm); out.slabLocked.push(!!m[b + LOCK + i]);
+      for (c = 0; c <= W + 1; c++) sm[c] = m[b + SLAB + i * SL + c];
+      out.slabs.push(sm); out.slabLocked.push(!!m[b + SLAB + i * SL + WMAX]);
     }
     return out;
   }

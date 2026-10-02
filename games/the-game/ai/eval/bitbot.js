@@ -374,6 +374,7 @@
             log.line = [];
             for (i = 0; i < o[at + 22]; i++) log.line.push([o[at + 24 + 2 * i], o[at + 25 + 2 * i]]);
         }
+        log.work = Array.from(o.subarray(at + 100, at + 107));
         this.lastLog = log;
         this._lastSwap = kind === 'swap' && out.move ? [out.move[0], out.move[1]] : null;
         for (i = 0; i < COUNTS.length; i++) {
