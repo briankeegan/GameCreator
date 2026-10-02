@@ -1,41 +1,6 @@
-// WHAT CLEARS ON A BOARD, AS BIT ARITHMETIC.
-//
-// The same answer _findMatches gives, computed without walking the grid for
-// runs. One 12-bit integer per (colour, column): bit (r - 1) is set when row r
-// of that column holds that colour. A match is then two AND expressions:
-//
-//   vertical    cv = B & (B>>1) & (B>>2)          three stacked in a column
-//               cleared = cv | cv<<1 | cv<<2      the core expanded to the run
-//   horizontal  hc = B[c] & B[c+1] & B[c+2]       three across at one height
-//               cleared: hc credited to c, c+1, c+2
-//
-// Combo size is popcount of the union. There is no notion of shape, run
-// length or combo size anywhere in it — a run of six clears because it
-// contains four overlapping cores, not because six is a case. That is the
-// point: one expression covers every size, and sizes nobody enumerated.
-//
-// WHAT CONSTRAINS IT
-//
-//   * The board must be a settled-or-not snapshot with its garbage blocks, and
-//     only RESTING cells may match. See restingMask.
-//   * Colours are 1..6. Garbage (-2), shock (8) and colourless (9) never join
-//     a match and are therefore never in a colour mask; they still occupy
-//     space, so they count for support.
-//   * Board height must be <= 31 for the masks to stay in one integer.
-//   * It answers ONE round. A cascade is this, then gravity, then this again.
-//
-// Nothing in the bot's decision path imports this. It is checked against
-// _findMatches by bitmatch.test.js over every legal swap on every real board.
 (function (root) {
   'use strict';
 
-  // SCRATCH, REUSED. Every one of these was a fresh array per call, and a
-  // couple of them per cascade round: on a 6x12 board the arithmetic itself is
-  // a few dozen integer ops and the allocation around it cost more than the
-  // work. Sized on first use and never grown down.
-  //
-  // NOT REENTRANT. resolveBits may not be called from inside resolveBits, and
-  // nothing does.
   var S = null;
   function scratch(W, H, N) {
     if (!S || S.W !== W || S.N < N) {
@@ -59,19 +24,6 @@
     return n;
   }
 
-  // WHICH CELLS HAVE LANDED.
-  //
-  // A panel matches only once it is resting, and "resting" is not "there is
-  // something directly below": a panel standing on a falling panel is falling
-  // too. Within a column that makes resting the run of occupied cells reaching
-  // the floor.
-  //
-  // A GARBAGE SLAB BRIDGES. A slab falls only if EVERY column beneath it is
-  // clear, so a slab held up in one column spans the holes in the others and
-  // everything standing on it rests — over a hole in its own column. So this
-  // cannot be read off a column's lowest gap; it is computed bottom-up with
-  // resting slab cells as extra floor, after settling the slabs to a fixed
-  // point (a slab resting on a falling slab is falling).
   function restingMask(grid, blocks, W, H) {
     var occ = [], c, r, i;
     for (c = 1; c <= W; c++) {
@@ -84,7 +36,6 @@
       var cells = blocks[ids[i]].cells;
       for (var j = 0; j < cells.length; j++) owner[cells[j][0] + ':' + cells[j][1]] = ids[i];
     }
-    // Bounded by the number of blocks: a pass can only ever mark more falling.
     var moved = true, guard = 0;
     while (moved && guard++ <= ids.length + 1) {
       moved = false;
@@ -135,11 +86,6 @@
     return rest;
   }
 
-  // HOW MANY COLOURS IS NOT A CONSTANT. The game plays 5 or 6, but a board
-  // staged for a chip fills the cells the shape does not care about with
-  // colours no real board uses, precisely so the filler cannot join a match.
-  // The arithmetic does not care how many there are — one mask per colour —
-  // so the count is read off the board rather than assumed.
   function topColour(grid, W, H) {
     var top = 0;
     for (var r = 1; r <= H; r++) {
@@ -148,7 +94,6 @@
     return top;
   }
 
-  // Resting cells only, one mask per colour per column.
   function colourMasks(grid, blocks, W, H, nColours) {
     var rest = api.restingMask(grid, blocks, W, H);
     var N = nColours || api.topColour(grid, W, H);
@@ -164,7 +109,6 @@
     return B;
   }
 
-  // The cleared cells as one mask per column, plus how many there are.
   function clears(grid, blocks, W, H, nColours) {
     var B = api.colourMasks(grid, blocks, W, H, nColours);
     var mask = [], a, c;
@@ -184,7 +128,6 @@
     return { mask: mask, total: total };
   }
 
-  // Same answer as an "r:c" -> true map, for comparing against _findMatches.
   function clearedCells(grid, blocks, W, H, nColours) {
     var out = {}, res = api.clears(grid, blocks, W, H, nColours);
     for (var c = 1; c <= W; c++) {
@@ -195,25 +138,6 @@
     return out;
   }
 
-  // THE BOARD AS MASKS, BUILT ONCE.
-  //
-  // Reading a grid costs 72 double-indexed reads and a branch each; a swap
-  // changes FOUR BITS. A caller scoring every legal swap on one board builds
-  // this once and then mutates it per swap, instead of rescanning the grid ~30
-  // times for a board that did not change.
-  //
-  // colour is one mask per colour per column, flat: colour[a * (W + 2) + c].
-  // WHICH CELLS THE ENGINE WILL NOT SWAP. Stack.canSwap's own rule:
-  //
-  //     allowsSwap(p):  not dontSwap, not garbage, and state is one of
-  //                     normal | swapping | landing | falling
-  //     and not out from under a panel that is hovering
-  //
-  // doSwap sets dontSwap on a panel swapped over a hole or a falling panel, so the
-  // swap back is refused. `motion` is panel-cpu's snapshot of every unsettled panel,
-  // null where a panel is settled -- and a settled panel is swappable, so null is
-  // not busy. Only a root board has motion; a board resolveFromMasks settles has no
-  // panels in flight and nothing for this to say.
   function busyMask(grid, motion, W, H) {
     var busy = new Int32Array(W + 2);
     if (!motion) return busy;
@@ -253,9 +177,6 @@
         st.colour[v * (W + 2) + c] |= b;
       }
     }
-    // A SLAB THE ENGINE WILL NOT BREAK RIGHT NOW. getConnectedGarbagePanels takes
-    // only garbage that is colour 9 and state 'normal', so a slab still matched from
-    // the last break, or one in the air, is not part of any break until it settles.
     if (blocks) {
       for (var id in blocks) {
         var cells = blocks[id].cells, sm = new Int32Array(W + 2), locked = false, air = false;
@@ -267,43 +188,12 @@
         }
         st.slabs.push(sm);
         st.slabLocked.push(locked);
-        // A FALLING SLAB FALLS BUT CANNOT BE BROKEN: getConnectedGarbagePanels takes
-        // only state 'normal'. One falling now lands on run 1's updatePanels at the
-        // earliest, so run 2 is the first whose checkMatches can take it.
         st.slabAir.push(air ? 2 : 0);
       }
     }
     return st;
   }
 
-  // Move one panel sideways in a mask state, or put it back: the swap and its
-  // undo are the same call. Returns false when the pair cannot be swapped as
-  // panels — an inert cell is not a panel and the game cannot move it.
-  // EVERY SWAP THE ENGINE WOULD ACCEPT, from the masks alone.
-  //
-  // ONE implementation, because two drift: this is LogicalBoard.legalSwaps's rule
-  // expressed in bits, and bitoptions.test.js asserts the two lists are equal.
-  // Its three exclusions, and the two that a bits-only version gets wrong if it is
-  // written by looking at swapMasks instead of at the rule:
-  //
-  //   garbage on either side   swapMasks already refuses this (inert)
-  //   BOTH CELLS EMPTY         nothing moves
-  //   BOTH THE SAME COLOUR     nothing changes -- and this is the one that bites,
-  //                            416 phantom swaps over 200 boards, each of them an
-  //                            "option" the engine answers by clearing nothing
-  // A DETACHED COPY OF A STATE. Needed where a caller must keep a position that
-  // the next call would otherwise overwrite -- the swapped board of a move that
-  // breaks a slab, whose cascade has no knowable end and so has no settled state
-  // to hand back.
-  // THE BOARD AFTER THE ROW THAT IS ALREADY DRAWN.
-  //
-  // The engine fills the incoming row a full row of time before it enters play and
-  // hands it to the bot as `board.incoming`. Every column shifts up one and that row
-  // takes row 1. Garbage rises with it. Anything pushed past H leaves, which is what
-  // topping out is; this answers "what will the board be", not "did it die".
-  //
-  // null when the row is not known -- `incoming` is false for the row behind the one
-  // being dealt, because that one comes from the match rng.
   function risenMasks(st, incoming) {
     if (!st || st.bad || !incoming) return null;
     var W2 = st.W, c, v, top = (W2 + 2), lim = (1 << st.H) - 1;
@@ -363,20 +253,6 @@
     return out;
   }
 
-  // IS ANY SINGLE SWAP A CLEAR, WITHOUT RESOLVING ANYTHING.
-  //
-  // The question is asked in four places and answered the same way in each: apply
-  // every legal swap, run a full resolve, look at the result. A resolve allocates
-  // a scratch board the size of the stack, so that is one allocation per swap per
-  // call, to learn one bit.
-  //
-  // A swap exchanges two cells and nothing else moves except a panel pushed into
-  // an empty column, which falls straight down. So the only matches that can
-  // appear are lines through the two cells' final positions, and a line is three
-  // of a colour running from that cell in one of two directions.
-  //
-  // Cascades are not considered and do not need to be: a cascade begins with a
-  // match, and this returns on the first one it finds.
   function anyOneSwapClear(st) {
     var W = st.W, H = st.H, N = st.N, stride = W + 2;
     var sw = legalSwapsOf(st), i, a;
@@ -385,8 +261,6 @@
       for (var aa = 1; aa <= N; aa++) if (st.colour[aa * stride + c] & bitv) return aa;
       return 0;
     }
-    // Where a panel pushed into column c at row r comes to rest: the lowest row
-    // at or below r whose cell is empty and whose support is solid.
     function restRow(c, r, ignoreBit) {
       var rr = r;
       while (rr > 1) {
@@ -396,8 +270,6 @@
       }
       return rr;
     }
-    // Three of colour `a` in a line through (r,c), reading the board as it is
-    // except for the two cells the swap moved.
     function lineThrough(r, c, a, over) {
       function at(rr, cc) {
         if (rr < 1 || rr > H || cc < 1 || cc > W) return -1;
@@ -415,14 +287,6 @@
       return run >= 3;
     }
 
-    // A SWAP INTO AN EMPTY CELL IS NOT TWO CELLS CHANGING.
-    //
-    // It leaves a hole, so everything above it in that column drops, and a match
-    // can form among panels this never looked at. Modelling that is modelling
-    // gravity, which resolveFromMasks already does -- so those swaps take the slow
-    // path and the rest, which are most of them, take the arithmetic. Measured on
-    // settled boards from real play: with the empty-cell case waved through as
-    // arithmetic it missed 48 of 981, and every one of those was this.
     var slow = null;
     for (i = 0; i < sw.length; i++) {
       var r = sw[i][0], c = sw[i][1], bitv = 1 << (r - 1);
@@ -435,8 +299,6 @@
         if (rz && (rz.total > 0 || rz.scope === 'garbage-broke')) return true;
         continue;
       }
-      // Both occupied: nothing falls, so the board after the swap is the board
-      // with two cells exchanged and a line can only run through one of them.
       var over = [[r, c, right], [r, c + 1, left]];
       if (lineThrough(r, c + 1, left, over)) return true;
       if (lineThrough(r, c, right, over)) return true;
@@ -444,10 +306,6 @@
     return false;
   }
 
-  // A BOARD AT REST: every panel resting, nothing busy, no line standing. On one,
-  // swapping two PANELS moves nothing else -- nothing falls -- so a line it makes
-  // runs through one of the two cells, and a swap with no line through either
-  // clears nothing: resolving it is known to give total 0. Carried with the board.
   function atRest(st) {
     if (st._rest !== undefined) return st._rest;
     var W = st.W, stride = W + 2, c, a, rest = true;
@@ -470,8 +328,6 @@
     }
     return (st._rest = rest);
   }
-  // WHETHER THIS SWAP CAN CLEAR ANYTHING: false only when it is known not to -- the
-  // board at rest, both cells panels, and no line of three through either.
   function swapCanClear(st, r, c) {
     if (!atRest(st)) return true;
     var W = st.W, H = st.H, N = st.N, stride = W + 2, bitv = 1 << (r - 1), a, left = 0, right = 0;
@@ -502,24 +358,6 @@
     return line(r, c, right) || line(r, c + 1, left);
   }
 
-  // THE BIGGEST FREEZE ANY SINGLE SWAP CAN BUY, in frames.
-  //
-  // `anyOneSwapClear` answers whether a board can fire. That is a boolean where
-  // the answer is a NUMBER: a bare three buys 0 held frames, a combo 4 buys 60
-  // topped out, a chain 4 buys 94. A caller ranking landings by "can it fire"
-  // scores those three the same, and the difference between them is most of a
-  // row of ceiling.
-  //
-  // Stop time is a MAX, not a sum -- one freeze runs at a time -- so this is the
-  // best single swap, not the total of them.
-  //
-  // ENGINE-FREE: `price` is handed each resolve and returns its frames, so the
-  // engine's stop table stays in bitfeatures and this stays board arithmetic.
-  // Requires a SETTLED board, as anyOneSwapClear does.
-  //
-  // Every clearing swap is resolved, because size and chain are not readable off
-  // the arithmetic -- only whether a line exists. The swaps that clear are a
-  // handful; resolveFromMasks does not mutate, and swapMasks is its own undo.
   function bestOneSwapStop(st, price) {
     var sw = legalSwapsOf(st), best = 0, i, r, pays;
     for (i = 0; i < sw.length; i++) {
@@ -534,24 +372,6 @@
     return best;
   }
 
-  // WHERE A SETUP COULD POSSIBLY MATTER.
-  //
-  // A clear is three of a colour in a line, so a swap that is not within reach of
-  // an existing PAIR cannot lead to one however many plies follow it. The pairs
-  // are one operation per colour:
-  //
-  //     vertical, in a column   P = B & (B >> 1)    completes at r-1 and r+2
-  //     horizontal, across two  B[c] & B[c+1]       completes in c-1 and c+2
-  //
-  // The union of those completion cells, plus the pair cells themselves (a swap
-  // can break a pair as easily as make one, and moving the blocker off a
-  // completion cell is a setup too), is where a setup can do anything at all.
-  //
-  // THIS IS WHY DEPTH IS AFFORDABLE. Enumerating every legal swap at every ply is
-  // 9 to 30 wide and compounds; the cells that can matter are a small fraction of
-  // the board, so the deeper plies get narrow instead of exponential. Nothing is
-  // lost at ply one, which stays exhaustive -- an immediate clear is never pruned,
-  // only the setups that could not have led anywhere.
   function reachMask(st) {
     var W2 = st.W, stride = W2 + 2, out = [], a, c;
     for (c = 0; c <= W2 + 1; c++) out[c] = 0;
@@ -559,12 +379,8 @@
       for (c = 1; c <= W2; c++) {
         var B = st.colour[a * stride + c];
         if (!B) continue;
-        // Vertical pair: rows r and r+1. The cells that would finish it are the
-        // row below the pair and the row above it.
         var vp = B & (B >> 1);
         if (vp) out[c] |= vp | (vp >> 1) | (vp << 2);
-        // Horizontal pair with the next column: the same rows, one column out on
-        // either side.
         var hp = B & st.colour[a * stride + c + 1];
         if (hp) {
           out[c] |= hp; out[c + 1] |= hp;
@@ -594,51 +410,10 @@
     return true;
   }
 
-  // A WHOLE CASCADE, AS BITS.
-  //
-  //   match -> mark -> fall a row -> match again -> sweep -> ...
-  //
-  // A MATCHED GROUP DOES NOT LEAVE YET. In the game a matched panel flashes
-  // and pops over dozens of frames, and it holds up whatever sits on it the
-  // whole time. Empty its cells the instant it matches and those panels drop
-  // early: a group that was about to complete its own match lands somewhere
-  // else and that match never happens. So a match is MARKED — still occupying,
-  // no longer matchable — and swept once the board has come to rest.
-  //
-  // THE BOARD FALLS ONE ROW BETWEEN LOOKS, because panels land at different
-  // times and a match fires the moment its own cells are down. Drop everything
-  // to its final place at once and two matches the game fires a beat apart
-  // merge into one.
-  //
-  // COUNTING ROUNDS IS NOT THE CHAIN COUNTER. A link counts only when a
-  // matched panel is CHAINING: it fell because something below it cleared.
-  // That flag is another mask, set on every survivor above a swept cell and
-  // carried through the fall. The first link of a chain is an x2.
-  //
-  // HOW MANY COLOURS IS READ OFF THE BOARD, never assumed — a board staged for
-  // a chip fills the cells its shape ignores with colours no real board uses,
-  // exactly so that filler cannot join a match.
   function resolveBits(grid, blocks, W, H) {
     return resolveFromMasks(maskState(grid, blocks, W, H));
   }
 
-  // `wantSettled` asks for the board the cascade left. OFF BY DEFAULT because it
-  // allocates, and the depth-2 option sweep calls this tens of thousands of times
-  // a decision where only the outcome is read -- building the state every time
-  // cost 214ms of a 374ms decision. The callers that need the position ask for it.
-  // `timed`, optional: the cascade on the engine's clock, with one swap made when the
-  // cursor gets there, and the chain flag dropped from a panel that rests unmatched as
-  // clearChainingFlags drops it. { frames, at, swap, hover, chaining }:
-  //   frames    the level's FLASH, FACE, POP and HOVER
-  //   hover     frames the panels now above a hole still hover before they fall
-  //   chaining  per-column mask of panels that carry the chain flag now
-  //   at, swap  the frame the swap is made, and [row, col]
-  // Each fall is one frame (updateFalling moves a row a frame). A match made at t is
-  // swept at t + FLASH + FACE + 1 + POP * size -- every panel of a group finishes
-  // together, comboIndex * POP popping and (size - comboIndex) * POP popped -- and
-  // what stood on it hovers HOVER before it falls. The swap is refused where canSwap
-  // refuses it: a popping or garbage cell, a hovering panel, or the panel under one.
-  // The answer carries `frames`, the clock when the board came to rest.
   function resolveFromMasks(st, wantSettled, timed) {
     var W = st.W, H = st.H, N = st.N;
     if (st.bad) return { scope: st.bad, chain: 0, total: 0, rounds: 0 };
@@ -655,17 +430,9 @@
       for (c = 0; c <= W + 1; c++) colour[a][c] = st.colour[a * stride + c];
     }
 
-    // A SLAB MOVES AS A UNIT, one mask per column it spans. It falls only when
-    // EVERY column beneath it is clear, which is also why it BRIDGES: held up
-    // in one column, it spans the holes in the others and everything standing
-    // on it rests. A slab resting on a falling slab is falling too, so the test
-    // runs to a fixed point.
     var slabs = [], air = [];
     for (var si0 = 0; si0 < st.slabs.length; si0++) {
       slabs.push(Int32Array.from(st.slabs[si0]));
-      // Untimed, the swap is already on the board and its match registers no sooner
-      // than the swap's own five runs, by which a slab falling at the snapshot has
-      // landed; only a fall inside the cascade can leave one in the air.
       air.push(timed && st.slabAir ? (st.slabAir[si0] || 0) : 0);
     }
     var fallingScratch = [];
@@ -677,8 +444,6 @@
         moved = false;
         for (var si = 0; si < slabs.length; si++) {
           if (falling[si]) continue;
-          // A LOCKED SLAB DOES NOT FALL: garbage falls only from 'normal', and a matched
-          // slab stays where it is until its timer runs out.
           if (locked[si]) continue;
           var sm2 = slabs[si], held = false;
           for (var cc3 = 1; cc3 <= W && !held; cc3++) {
@@ -698,12 +463,6 @@
       return falling;
     }
 
-    // THE WHOLE CONNECTED GROUP, BLOCK TO BLOCK, as getConnectedGarbagePanels does
-    // it: seed with every slab 4-adjacent to the match, then add every slab
-    // 4-adjacent to one already in, until nothing new joins. On the slabs where they
-    // are NOW, since the cascade moves them. A slab is eligible only if its bottom
-    // row is on the board (`p.row - p.yOffset <= height`) and the engine would take
-    // it (see slabLocked in maskState).
     var locked = st.slabLocked || [];
     function lowestRow(m) {
       var lo = 32;
@@ -719,8 +478,6 @@
       }
       return false;
     }
-    // `run` is the run whose checkMatches sees the match: a slab that moved on run
-    // t is still 'falling' there until t + 2.
     function connectedGroup(k, run) {
       var inGroup = [], any = false, sl, sk;
       function eligible(i) { return !locked[i] && lowestRow(slabs[i]) <= H && run >= air[i]; }
@@ -740,14 +497,6 @@
       return { inGroup: inGroup, any: any };
     }
 
-    // Landed cells. With no inert cell in the column this is one expression:
-    // everything from the first hole up is in the air, so resting is the bits
-    // below it.
-    //
-    // An inert cell never moves, so it rests on its own account and is a floor
-    // for whatever stands on it — which is how a slab bridges a hole in one of
-    // the columns it spans. Then the run is walked from each inert cell upward,
-    // over the inert cells only, rather than over all twelve rows.
     var rest = S2.rest;
     function restingOf() {
       for (var cc2 = 1; cc2 <= W; cc2++) {
@@ -757,7 +506,6 @@
         var seeds = inert[cc2] & ~m;
         while (seeds) {
           var seed = seeds & -seeds;
-          // the contiguous occupied run from this inert cell upward
           var run = seed, probe = seed;
           while ((probe <<= 1) && (o & probe)) run |= probe;
           m |= run;
@@ -769,12 +517,7 @@
     }
 
     var counter = 0, rounds = 0, total = 0, guard = 0, LIMIT = W * H * H;
-    // THE CLOCK, only when asked for.
     var T = 0, sweepAt = (timed && timed.popAt) || 0, hoverUntil = 0, made = !timed || !timed.swap, refused = false, moved = false;
-    // HELD CELLS: a panel still hovering out a timer, or still swapping. It cannot match,
-    // does not fall, and holds up what stands on it, until run `until`; that run it
-    // lands or starts to fall, so it is released when T reaches until - 1 and counts as
-    // having just moved. A swapped panel left over a hole hovers HOVER more.
     var holds = [];
     function held(c7) { var h7 = 0; for (var i7 = 0; i7 < holds.length; i7++) h7 |= holds[i7].m[c7]; return h7; }
     function nextRelease() { var u7 = Infinity; for (var i7 = 0; i7 < holds.length; i7++) u7 = Math.min(u7, holds[i7].until); return u7; }
@@ -828,8 +571,6 @@
       sm5[c5] = occ[c5] & b5; sm5[d5] = occ[d5] & b5;
       holds.push({ m: sm5, until: T + 4, swap: true });
     }
-    // The clock moves in jumps -- to a sweep, to the end of a hover -- and a swap made
-    // inside one stops it there, so its own match is checked before anything after it.
     if (timed && timed.hovering && timed.hover > 0) {
       var hm = new Int32Array(W + 2);
       for (c = 1; c <= W; c++) hm[c] = (timed.hovering[c] | 0) & occ[c];
@@ -842,8 +583,6 @@
         release();
         if (!made && T >= timed.at) { makeSwap(hoverMask()); if (refused) continue; }
       }
-      // The scratch's own arrays, not new ones each step: this loop runs once per
-      // row anything falls, for every board the search settles.
       var rest = restingOf(), k = S2.k, link = false, any = false;
       var B = S2.B, free = S2.free;
       for (c = 1; c <= W; c++) free[c] = rest[c] & ~popping[c] & ~inert[c] & (timed ? ~held(c) : ~0);
@@ -863,9 +602,6 @@
         }
       }
       for (c = 1; c <= W; c++) { if (k[c]) any = true; if (k[c] & chaining[c]) link = true; }
-      // ON THE CLOCK, A CHAIN FLAG THAT FINDS NO MATCH IS DROPPED -- clearChainingFlags:
-      // a panel that could match and did not loses the flag, so a later match with it
-      // is not a link.
       if (timed) for (c = 1; c <= W; c++) chaining[c] &= ~(rest[c] & ~k[c] & ~popping[c] & ~inert[c] & ~held(c));
 
       if (any) {
@@ -875,9 +611,6 @@
           var size = 0;
           for (c = 1; c <= W; c++) size += popcount(k[c]);
           var f6 = timed.frames;
-          // checkMatches runs before updatePanels: a panel that made its last move on run
-          // T lands on T + 1 and is matched on T + 2; one that was already resting, or was
-          // just swapped into place, is matched on T + 1.
           var mRun = T + (moved ? 2 : 1);
           sweepAt = Math.max(sweepAt, mRun + f6.FLASH + f6.FACE + f6.POP * size);
         }
@@ -885,54 +618,15 @@
         for (c = 1; c <= W; c++) {
           total += popcount(k[c]);
           popping[c] |= k[c];
-          // Touching a slab pops a row of it, and the engine colours that row
-          // from its own rng. Nothing past that point is knowable, so the pop
-          // is counted and the cascade stops — the same place resolve() stops.
           if (k[c] & ((garb[c] >> 1) | (garb[c] << 1) | garb[c - 1] | garb[c + 1])) brokeGarbage = true;
         }
-        // WITH THE SLABS KNOWN, A BREAK IS A LIVE SLAB IN THE GROUP: garbage beside
-        // the match that the engine will not take (still matched, or in the air) does
-        // not break, and the match is an ordinary clear.
         var group = brokeGarbage && slabs.length ? connectedGroup(k, T + (moved ? 2 : 1)) : null;
         if (group && !group.any) brokeGarbage = false;
         if (brokeGarbage) {
-          // HOW MANY GARBAGE PANELS THIS MATCH TOUCHES, because the engine's own
-          // resolve time is FLASH + FACE + POP * (comboSize + onScreen) and
-          // onScreen is exactly this count. A caller that only knows a slab was
-          // hit cannot price the move; the slabs are in the state, so count them.
-          //
-          // The whole connected slab, not the cells beside the match: the engine
-          // takes getConnectedGarbagePanels(matching), so touching one cell of a
-          // slab pops a row of all of it.
           var touched = 0, converts = 0, convCol = [];
-          // THE WHOLE CONNECTED GROUP, BLOCK TO BLOCK, as getConnectedGarbagePanels
-          // does it: seed with every slab 4-adjacent to the match, then add every slab
-          // 4-adjacent to any slab already in, until nothing new joins. A slab is
-          // eligible only if its bottom row is on the board (`p.row - p.yOffset <=
-          // height` in the engine). Seeding alone priced a staircase of touching slabs
-          // as the one slab the match reached, when the engine clears all of them.
           var inGroup = group ? group.inGroup : [], sl, cc;
           for (sl = 0; sl < slabs.length; sl++) {
             var sm2 = slabs[sl], hit = !!inGroup[sl];
-            // TWO DIFFERENT NUMBERS, BECAUSE THE ENGINE USES TWO.
-            //
-            //   touched   every on-screen cell of the connected slab. This is the
-            //             engine's `onScreen`, and it sets the RESOLVE time:
-            //             preStop = FLASH + FACE + POP * (comboSize + onScreen).
-            //             The whole slab pops, so the whole slab is counted.
-            //
-            //   converts  the slab's BOTTOM ROW. Only that row becomes real panels --
-            //             convertGarbagePanels takes the row with yOffset === -1 and
-            //             leaves the rest garbage, which is what makes garbage chains
-            //             possible. This is what a break actually hands back.
-            //
-            // They were one field, and the callers want different ones: the resolve
-            // time wants `touched`, the value of a break wants `converts`. Collapsing
-            // them to the bottom row made the resolve time too short; leaving them as
-            // the whole slab made a 6-wide 3-tall slab worth 18 converted cells where 6
-            // convert, and bestPlan prices those at up to deadline/W -- about 100
-            // frames early in a game -- so that break was valued near 1,800 frames
-            // instead of 600, overstated by the slab's HEIGHT.
             if (hit) {
               for (cc = 1; cc <= W; cc++) touched += popcount(sm2[cc]);
               var low = 32, lm;
@@ -948,16 +642,6 @@
               }
             }
           }
-          // NOTHING PAST HERE IS KNOWABLE. Touching a slab pops a row of it and
-          // the engine colours that row from its own rng, so what those panels
-          // go on to do depends on the draw. The numbers up to the break are
-          // reported and the scope says which kind of answer this is, so a
-          // caller cannot read a stopped cascade as a finished one.
-          // THE SHAPE IT LEAVES IS KNOWABLE EVEN THOUGH THE COLOURS ARE NOT. Each
-          // column keeps the panels under its slab that are not being cleared, and
-          // the converted row adds one to each column it spans as it lands; the
-          // rest of the slab then rests on the tallest. `voidAfter` is the empty
-          // space that leaves under it, in cells -- the gap no line can reach.
           var hMax = 0, hs = [], vAfter = 0;
           for (cc = 1; cc <= W; cc++) {
             var gc = garb[cc] >>> 0, fl = gc ? (gc & -gc) : 0;
@@ -973,15 +657,8 @@
         continue;
       }
 
-      // Nothing new matched. Fall one row: every panel that is not fixed -- garbage,
-      // a marked group still in place, a held panel -- and is not standing on something
-      // that holds, moves down one. A cell holds if it is fixed, on the floor, or a panel
-      // on a cell that holds; so a run of panels above ANY hole in the column falls,
-      // including the ones above a slab that bridges a gap beneath it.
       var fell = false;
       for (c = 1; c <= W; c++) {
-        // what holds: the run on the floor, and the run above each fixed cell -- adding
-        // the fixed bit carries through exactly the occupied bits above it
         var o2 = occ[c], fixed = (inert[c] | popping[c] | (timed ? held(c) : 0)) & o2;
         var holds2 = o2 & (((~o2) & (o2 + 1)) - 1), seeds2 = fixed & ~holds2;
         while (seeds2) {
@@ -999,7 +676,6 @@
         chaining[c] = (chaining[c] & keepPut) | ((chaining[c] & movable) >>> 1);
         occ[c] = keepPut | (movable >>> 1);
       }
-      // THEN THE SLABS, which is the order resolve() falls them in.
       var slabFell = slabsThatFall();
       for (var sk = 0; sk < slabs.length; sk++) {
         if (!slabFell[sk]) continue;
@@ -1012,19 +688,14 @@
           occ[c] |= slabs[sk][c]; inert[c] |= slabs[sk][c]; garb[c] |= slabs[sk][c];
         }
       }
-      // A hovering panel falls on the run its timer reaches 0 (updateHovering calls
-      // fall() there), so the first fall is run hoverUntil.
       if (fell) {
         if (timed && T < hoverUntil - 1) T = hoverUntil - 1;
         T++;
-        // T is now the run of this move; a slab that made it is breakable from T + 2.
         for (sk = 0; sk < slabs.length; sk++) if (slabFell[sk]) air[sk] = T + 2;
         moved = true; continue;
       }
       moved = false;
 
-      // Still, and nothing new matched: the marked cells leave now, and
-      // everything above one of them is falling BECAUSE of that.
       var anyPopping = false;
       for (c = 1; c <= W; c++) if (popping[c]) { anyPopping = true; break; }
       if (timed && anyPopping) {
@@ -1062,17 +733,6 @@
              settled: wantSettled ? settledFrom(S2, W, H, N, slabs, locked) : null };
   }
 
-  // THE BOARD THE CASCADE LEFT, as a state of the same shape maskState builds.
-  //
-  // The resolver worked on a scratch copy and reported only what happened, so a
-  // caller that needed the RESULTING position had no way to get it and went back
-  // to the simulation for it -- which is the one thing this module exists to
-  // replace. Returned rather than exposed as the scratch itself, because the
-  // scratch is reused by the next call and a caller holding it would watch its
-  // board change underneath it.
-  //
-  // Only on the 'ok' path: a stopped cascade has no settled board to hand back,
-  // which is what 'garbage-broke' means.
   function settledFrom(S, W, H, N, slabs, locked) {
     var stride = W + 2, out = { W: W, H: H, N: N, occ: [], inert: [], garb: [],
                                 colour: new Int32Array((N + 1) * stride), slabs: [],
@@ -1082,15 +742,6 @@
       out.occ[c] = S.occ[c]; out.inert[c] = S.inert[c]; out.garb[c] = S.garb[c];
     }
     for (a = 1; a <= N; a++) for (c = 0; c <= W + 1; c++) out.colour[a * stride + c] = S.colour[a][c];
-    // THE SLABS COME WITH IT. A slab is one mask per column it spans and it is
-    // what makes garbage BRIDGE -- held up in one column it spans the holes in
-    // the others. A settled state handed on without them is a state where every
-    // slab has silently become loose cells, so the next resolve lets garbage
-    // fall through gaps the game holds it over. Copied, not shared, because the
-    // resolver reuses its own arrays on the next call.
-    //
-    // A slab with nothing left in any column has been fully cleared and is
-    // dropped rather than carried as an empty.
     for (i = 0; slabs && i < slabs.length; i++) {
       var any = false;
       for (c = 0; c <= W + 1; c++) if (slabs[i][c]) { any = true; break; }
@@ -1099,8 +750,6 @@
     return out;
   }
 
-  // Calls go through this object so a test can swap one step for a broken one
-  // and prove the check notices.
   var api = {
     popcount: popcount,
     topColour: topColour,

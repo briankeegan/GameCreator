@@ -1,24 +1,3 @@
-// THE CLOCK, SO THE ARITHMETIC IS NEVER ASKED A QUESTION IT CANNOT ANSWER.
-//
-// bitmatch.js is exact on a board where everything has landed. It is not exact
-// on one where panels are still in the air, and that is not a flaw in the
-// arithmetic — it is missing input. A still picture of the board records where
-// each panel sits and not that it has yet to land, and what a hovering panel
-// does next depends on a FRAME COUNTDOWN that the picture does not carry.
-//
-// So this carries the countdown. It is the engine's panel loop, on the same
-// states and the same timers, run from a snapshot that includes them.
-//
-// A THIRD IMPLEMENTATION OF A RULE IS ONLY SAFE IF DRIFT CANNOT LAND. This one
-// is checked in LOCKSTEP against a real PanelEngine.Stack — every panel's
-// colour, state and timer compared on every frame, not just the answer at the
-// end — so the frame the two disagree on is the frame the gate names. And the
-// run rule itself is NOT copied: PanelRules.scanRuns decides a match here
-// exactly as it does for the engine and for LogicalBoard.
-//
-// What is deliberately absent, because none of it changes what a static
-// position resolves to: the rise, incoming garbage, input, score, health and
-// stop time.
 (function (root, factory) {
     if (typeof module === 'object' && module.exports) module.exports = factory(require('../../panel-rules.js'));
     else root.BitFrames = factory(root.PanelRules);
@@ -27,11 +6,6 @@
 
     var W = 6;
 
-    // The engine's clearFlags, all of it. It RESETS THE STATE — a panel that
-    // has finished popping goes back to being an ordinary empty cell — and
-    // clears the combo bookkeeping, the swap flags and the garbage-fall
-    // counter. Leaving any of it out strands a cell in the state it popped
-    // from, and nothing above it ever learns the cell went empty.
     function clearFlags(p, clearChaining) {
         p.state = 'normal';
         p.comboIndex = null;
@@ -75,10 +49,6 @@
     function supportedFromBelow(st, p) {
         if (p.row <= 1) return true;
         if (!p.isGarbage) return st.panels[p.row - 1][p.col].color !== 0;
-        // Garbage rests if ANY column under the WHOLE block is blocked — a
-        // 6-wide slab on one panel does not fall. An empty cell under it holds
-        // nothing up, so it keeps looking; only another row of the SAME block
-        // fails to count as support.
         var start = p.col - p.xOffset, end = start + p.gWidth - 1;
         for (var col = start; col <= end; col++) {
             var b = st.panels[p.row - 1][col];
@@ -179,10 +149,6 @@
         if (p.timer !== 0) return;
         if (p.isGarbage) {
             if (p.yOffset === -1) {
-                // A ROW CONVERTED INSIDE THIS RUN HAS NO COLOURS -- the engine deals
-                // them from its rng at the match -- so the run is marked and stops. A
-                // row converted before the snapshot carries its colours (see build)
-                // and becomes panels like the engine's.
                 if (p.color === 9) st.brokeGarbage = true;
                 clearPanel(p, false, false);
                 p.chaining = true;
@@ -289,9 +255,6 @@
         });
     }
 
-    // Every garbage panel the match touches, and every block those touch in
-    // turn. The two eligibility guards are the engine's: a block keeps colour 9
-    // for its whole clear animation, so one already clearing is not re-entered.
     function connectedGarbage(st, matching) {
         var seen = {}, queue = [], found = [];
         function addNeighbour(row, col) {
@@ -366,10 +329,6 @@
                 p.comboSize = comboSize;
             }
             var garbage = connectedGarbage(st, matching);
-            // A ROW OF A BROKEN SLAB TAKES COLOURS FROM THE ENGINE'S OWN RNG.
-            // Those are not on the board yet and nothing here may invent them,
-            // so the run stops and says so. A board snapshotted AFTER the
-            // conversion carries the colours already, and runs normally.
             if (garbage.length) st.brokeGarbage = true;
             if (garbage.length) {
                 var onScreen = 0;
@@ -414,9 +373,6 @@
                p.state === 'landing' || p.state === 'falling';
     }
 
-    // The engine's canSwap. The rule that matters here: a panel cannot be
-    // pulled out from under a HOVERING one, which is exactly the situation a
-    // broken slab creates — so a plan made in that window has to ask.
     function canSwap(st, row, col) {
         if (row < 1 || row > st.height || col < 1 || col >= W) return false;
         var left = st.panels[row][col], right = st.panels[row][col + 1];
@@ -453,9 +409,6 @@
         p.fellFromGarbage = 0;
     }
 
-    // A swap is not instant: both panels enter 'swapping' for four frames and
-    // only then settle or hover. A panel swapped over a hole cannot be swapped
-    // back, because it is already on its way down.
     function doSwap(st, row, col) {
         var panels = st.panels;
         var left = panels[row][col], right = panels[row][col + 1];
@@ -475,12 +428,7 @@
         }
     }
 
-    // snapshot: { grid, blocks, motion, chaining } as a planner reads the board.
-    // grid holds colours, -2 for garbage; motion[r][c] is the engine's own
-    // { state, timer, ... } for a panel it still has in flight.
     function build(snapshot, frames, height) {
-        // EVERY ROW THE SNAPSHOT HOLDS: a tall slab sits partly above the lid and
-        // falls back into view when what is under it goes.
         var H = height || 12, rows = Math.max(H + 4, (snapshot.grid ? snapshot.grid.length : 0) + 2);
         var st = { panels: [], height: H, frames: frames, chainCounter: 0,
                    panelsCleared: 0, rounds: 0, clock: 0 };
@@ -511,16 +459,11 @@
                 var v = snapshot.grid[r] ? snapshot.grid[r][c2] : 0;
                 var p = st.panels[r][c2];
                 var m0 = snapshot.motion && snapshot.motion[r] && snapshot.motion[r][c2];
-                // A PANEL THAT IS LEAVING IS STILL THERE. The grid writes matched,
-                // popping and popped cells as empty -- that is what they will be -- but
-                // until they pop they hold up everything above them, and the frame they
-                // go is when the column falls. The motion carries the panel; build it.
                 if ((v === 0 || v === undefined) && m0 && m0.state && m0.state !== 'normal') {
                     p.color = m0.color || 0;
                     p.state = 'normal';
                 } else if (v === 0 || v === undefined) continue;
                 if (v === 0 || v === undefined) {
-                    // built from its motion below
                 } else if (v === -2) {
                     var g = blockOf[r + ':' + c2];
                     p.color = 9; p.isGarbage = true;
@@ -547,9 +490,6 @@
                     if (m.yOffset !== undefined && m.yOffset !== null) p.yOffset = m.yOffset;
                     if (m.gWidth) p.gWidth = m.gWidth;
                     if (m.gHeight) p.gHeight = m.gHeight;
-                    // THE ROW A BREAK IS CONVERTING ALREADY HAS ITS COLOURS:
-                    // convertGarbagePanels deals them at the match, while the cells are
-                    // still garbage. The grid reads them as -2, the motion carries them.
                     if (p.isGarbage && m.color > 0 && m.color !== 9) p.color = m.color;
                 }
                 if (snapshot.chaining && snapshot.chaining[r] && snapshot.chaining[r][c2]) p.chaining = true;
@@ -558,7 +498,6 @@
         return st;
     }
 
-    // One frame, in the engine's own order.
     function step(st) {
         checkMatches(st);
         for (var row = 1; row < st.panels.length; row++) {
@@ -568,7 +507,6 @@
         st.clock++;
     }
 
-    // Run until nothing is in flight. The budget is a guard, not a schedule.
     function settle(st, budget) {
         var peakChain = 0, guard = budget || 2000;
         while (guard-- > 0) {

@@ -1,21 +1,3 @@
-// BITBOT — a second bot, beside PuyoCpu, not a change to it. Plan: BITBOT.md.
-//
-// Every decision is: read the info, build the pool, let the mode filter it,
-// throw out what dies, score what is left with the weights, play the winner.
-//
-// THE ONE RULE THAT IS NOT A WEIGHT: it cannot die. A candidate the engine
-// would kill is not offered, however well it scores. The weights are free to be
-// wrong about everything else.
-//
-// A MODE IS A FILTER ON THE POOL, NOT A SECOND WAY TO DECIDE. The evaluator
-// still picks, from whatever the mode allows. Borrowed from modes.js
-// deliberately: a mode that played a move directly would end the claim that
-// every decision goes through the same scoring.
-//
-// THE SAME SHAPE AS PuyoCpu, because versus.js drives both. update() takes no
-// argument, builds its own input object and calls stack.setInput itself; a
-// raise is held for 20 frames because setInput latches manualRaise on a rising
-// edge and the row takes frames to arrive.
 (function (root, factory) {
     if (typeof module === 'object' && module.exports) {
         var path = require('path');
@@ -44,28 +26,6 @@
     function PanelCpu() { return G().PanelCpu; }
     function PanelEngine() { return G().PanelEngine; }
 
-    // A STARTER VECTOR. Still not trained -- it is a hand-set guess with ONE
-    // number group measured -- so nothing about how well the bot plays should be
-    // read off a result it produces.
-    //
-    // WHY THE POTENTIAL WEIGHTS ARE HALF WHAT THEY WERE. The first guess made
-    // the bot refuse to clear at all: it found a 6-chain, scored it +1, and
-    // scored RAISING +54, because it was paid +45 for HAVING a big chain
-    // available against +34 for playing one. On seeds 701-704 capped at 4,000
-    // frames, halving this group and changing nothing else:
-    //
-    //   as first guessed   2,380 frames   57 matches   (one seed cleared nothing)
-    //   potential x0.5     4,000 frames  133 matches   (died on no seed)
-    //   potential x0.25    3,627 frames  104 matches
-    //   stopEarned x5      4,000 frames  119 matches
-    //
-    // IT IS A BALANCE, NOT A STRUCTURE. An earlier reading of this blamed the
-    // features for measuring a LEVEL of potential rather than a CHANGE in it.
-    // That is wrong and the test is in the history: within one decision the two
-    // differ by the potential of the board every candidate started from, which
-    // is the same constant for all of them, so they rank identically -- measured
-    // over 40 candidates, one distinct difference per feature. Rewriting them as
-    // changes would alter no decision. Do not retry it.
     var STARTER = {
         bumpiness: -20, spread: -10, tallest: -40,
         chain2: 5, chain3: 13, chain4: 20, chain5plus: 30,
@@ -76,10 +36,6 @@
         stopEarned: 50, stopReachable: 30
     };
 
-    // The engine rises one PIXEL at a time and a row is sixteen of them, so
-    // riseTime is frames per pixel. Rows do not move at all while stop time is
-    // running -- updateRise returns before the timer on any frame with
-    // stopTime above zero.
     function framesPerRow(s) {
         var e = PanelEngine();
         return e.riseTime ? e.riseTime(s.speed) * 16 : 0;
@@ -92,12 +48,6 @@
         return (s.riseTimer || 0) + Math.max(0, disp - 1) * perPixel;
     }
 
-    // THE BOARD AS A STRING, so "have we been here" is an exact question and not
-    // a similarity score. Straight off the masks: one integer per colour per
-    // column plus the occupancy, which IS the settled position. Built from the
-    // grid before, which meant a candidate's signature came from a board the old
-    // simulation had predicted -- so a return the engine actually made could go
-    // unrecognised.
     function signature(st) {
         var out = [], a, c, stride = st.W + 2;
         for (c = 1; c <= st.W; c++) out.push(st.occ[c] + ':' + st.garb[c]);
@@ -110,61 +60,16 @@
         this.stack = stack;
         travel.setPress(stack.swapLatency);
         this.weights = opts.weights || STARTER;
-        // FRAMES BETWEEN DECISIONS. 12 is the human-paced default PuyoCpu uses
-        // and every duel is run at, so the two bots think equally often and the
-        // bit that comes out is not about reaction time.
         this.reaction = opts.reaction === undefined ? 12 : opts.reaction;
         this.cursorMoveFrames = travel.MOVE_FRAMES;
-        // The reveal window needs bitframes to run the position forward, which
-        // is the one part of the pool that is not cheap. On by default because
-        // it is the reason bitlineup exists; off for a run measuring what it
-        // is worth.
         this.reveal = opts.reveal !== false;
         this.allowRaise = opts.allowRaise !== false;
-        // TWO FILTERS THAT ARE NOT WEIGHTS, both off only for the run that
-        // measures what they are worth. See refuseReturn and deadly below.
         this.refuseReturn = opts.refuseReturn !== false;
-        // Off only for the run that measures what the rule is worth.
         this.refusePayless = opts.refusePayless !== false;
-        // HOW MANY CANDIDATES GET THE EXPENSIVE SCORE. Scoring one runs a depth-2
-        // option sweep -- about 900 cascade resolves -- and there are ~30
-        // candidates, so a full decision is ~27,000 resolves and 171ms. A cheap
-        // pre-rank on the surface and the candidate's own clear costs nothing and
-        // orders them well enough that the winner is almost always in the top few.
-        // 0 disables the beam and scores everything, for a run measuring what the
-        // beam costs in quality.
         this.beam = opts.beam === undefined ? 8 : opts.beam;
-        // A CEILING ON HOW DEEP TO LOOK. depthFor spends rows of headroom, and a
-        // cap lets a run ask what the depth is actually worth -- measured in live
-        // duels rather than on static boards, because a board in play is fuller
-        // than a quiet one and offers more swaps a ply.
-        // FOUR, BECAUSE PRUNING CHANGED THE ANSWER.
-        //
-        // Unpruned, deeper measured WORSE -- 8,000-frame duels on two seeds:
-        //
-        //     depth 2     9s wall    sent 71
-        //     depth 3    20s wall    sent 47
-        //     depth 4    57s wall    sent 30
-        //
-        // That was the search drowning in setups that could not lead anywhere.
-        // With bit.reachMask pruning the deeper plies to cells that could complete
-        // a pair, the same duels give:
-        //
-        //     depth 2     7s wall    sent  90
-        //     depth 3     5s wall    sent  48
-        //     depth 4    17s wall    sent 101, and the only big pieces
-        //
-        // So depth is worth having and the naive expansion was what made it look
-        // like it was not: 3.4x cheaper than before and now the best attacker.
-        // Two seeds, so this is a direction and not a calibration.
         this.maxDepth = opts.maxDepth === undefined ? 20 : opts.maxDepth;
         this.horizonDeath = opts.horizonDeath !== false;
-        // The boards recent decisions were made on. Three, because a swap is an
-        // involution -- it can only walk back one step at a time -- and a
-        // longer memory starts refusing legitimate revisits of a position the
-        // rising stack has genuinely changed.
         this._seen = [];
-        // The plan being executed, if any. See the commitment note in decide().
         this._plan = null;
         this._flatten = null;
         this._opening = true;
@@ -182,15 +87,6 @@
         this._lastSwap = null;
         this._recentSwaps = [];
         this.decisions = 0;
-        // WHERE EVERY FRAME WENT. Not diagnostics bolted on -- the bot could not
-        // say what it did with a frame, so every question about its behaviour was
-        // answered by inference and three separate fixes landed in code paths that
-        // never ran. One counter per exit from update(), and they must sum to the
-        // frames played: a frame that is not in exactly one bucket is a frame
-        // nobody can account for.
-        //
-        // `frozen` is the same buckets restricted to frames with stop time
-        // running, because those are the frames that decide whether the bot lives.
         this.spend = { gameOver: 0, walking: 0, cooling: 0, decided: 0 };
         this.frozen = { walking: 0, cooling: 0, hold: 0, raise: 0, swap: 0 };
         this.counts = { refusedDeadly: 0, allDead: 0, byMode: {},
@@ -203,13 +99,7 @@
                         refusedStranded: 0, refusedNoFailsafe: 0, refusedSameSwap: 0 };
     }
 
-    // WHAT THE ENGINE KNOWS, shared by every candidate in the decision. None of
-    // it is weighted: it picks the mode and gates the pool.
     BitBot.prototype.info = function (board) {
-        // THE QUEUE AS A SUM, AND THE SLAB THAT LANDS NEXT. shouldDropGarbage delivers
-        // ONE slab at a time and not at all while garbage is falling, so "how much is
-        // coming in total" and "how much lands on me next" are different numbers. The
-        // deadline wants the first; the raise wants the second.
         var s = this.stack, incoming = 0, nextSlab = 0;
         if (s.incoming) {
             for (var i = 0; i < s.incoming.length; i++) {
@@ -224,29 +114,14 @@
             stopTime: s.stopTime || 0,
             incoming: incoming,
             nextSlab: nextSlab,
-            // A SLAB STILL IN THE AIR HAS NOT LANDED, so "it has all landed" needs this
-            // as well as an empty queue. The engine's own test, not a reconstruction.
             fallingGarbage: typeof s.hasFallingGarbage === 'function' && s.hasFallingGarbage(),
             cursorRow: board.cursor ? board.cursor.row : (s.curRow || 1),
             cursorCol: board.cursor ? board.cursor.col : (s.curCol || 1),
             health: s.health,
-            // THE FIRST RUN THAT CAN TAKE HEALTH, read off the stack (drainBound).
             drainRun: (s.panels && s.height) ? this.drainBound() : 1,
-            // THE ENGINE'S OWN DANGER SIGNAL, not a reimplementation of it.
-            // fillRatio is what the renderer paints the danger state from and what
-            // the reference CPU panics on: the highest occupied row over the board
-            // height. For the LIVE board there is no reason to derive it again.
             fillRatio: typeof s.fillRatio === 'function' ? s.fillRatio() : 0,
             framesPerRow: framesPerRow(s),
-            // FRAMES UNTIL THE NEXT ROW LANDS, not a whole row's worth: the
-            // floor is already part way up. displacement is the pixels left and
-            // riseTimer the frames left of the current pixel, both read off the
-            // engine, so nothing here is a constant.
             framesToNextRow: framesToNextRow(s),
-            // THE SPEED SCHEDULE, so the clock can count the rise the board will
-            // ACTUALLY do rather than the rise it is doing now. The engine steps speed
-            // up on a fixed interval and riseTime falls with it, so a deadline
-            // measured at today's rate is optimistic -- see framesToRise.
             speed: s.speed,
             nextSpeedUp: s.nextSpeedIncreaseClock,
             startingSpeed: s.levelData ? s.levelData.startingSpeed : s.speed,
@@ -254,10 +129,6 @@
         };
     };
 
-    // WHAT IS WORTH CASHING IN, READ OFF THE WEIGHTS — not a setting here.
-    // modes.aim's own argument: a bot that has learned to value a 5-chain above
-    // every other chain size IS a bot aiming at a 5-chain. The floor is what the
-    // engine pays anything at all for, 2 links and 4 wide.
     BitBot.prototype.aim = function () {
         var w = this.weights, best = 0, links = 0, wide = 0, i, v;
         var CH = [['chain2', 2], ['chain3', 3], ['chain4', 4], ['chain5plus', 5]];
@@ -268,71 +139,12 @@
         return { links: links || 2, wide: wide || 4 };
     };
 
-    // BUILD, ATTACK, DEFEND — and REVEAL alongside whichever of those applies,
-    // because REVEAL ADDS TO THE POOL RATHER THAN TAKING IT OVER.
-    //
-    // DEFEND IS modes.forced's OWN TRIGGER AND NOT A CLOCK. Opening the
-    // emergency on the danger clock as well was measured: FORCED went from 0.8%
-    // of decisions to 23.3% and the bot lost 8-16-16 to the same weights
-    // without it, because the emergency DISCARDS the build pool. The clock
-    // belongs in what is preferred, not in what is allowed — here that is
-    // stopReachable, a weight.
-    //
-    // ATTACK is derived, not triggered by a constant: if anything in the pool
-    // clears at or above the aim, there is something to cash and hold drops.
     BitBot.prototype.mode = function (info, pool, revealOpen, deadline, escape) {
         var name = 'BUILD';
-        // DEFEND OPENS WHEN THE FLOOR ARRIVES BEFORE AN ESCAPE CAN BE REACHED,
-        // not on topped out alone.
-        //
-        // Topped out is too late: by then health is already draining. The
-        // condition that matters is the one modes.warned states -- the room left
-        // measured in frames against the frames to the nearest move that banks
-        // time -- and it is arithmetic, not a threshold written here.
-        //
-        // WHY THIS IS SAFE HERE AND WAS NOT IN modes.js. Opening FORCED on the
-        // clock made PuyoCpu worse (8-16-16) because FORCED narrows the pool to
-        // moves that bank time and PuyoCpu usually had none: over the last
-        // fifteen seconds of ten deaths, 84% of its decisions had no such move at
-        // all, so narrowing left it with nothing. BitBot is the opposite case,
-        // measured on one duel -- of 53 decisions taken with an EMPTY clock, 50
-        // had a payout of 30 to 66 frames on the board and it declined 45 of
-        // them. Narrowing to those moves is narrowing to something.
         if (info.toppedOut) name = 'DEFEND';
-        // DEFENCE TIMING IS ARITHMETIC, NOT A ROW COUNT.
-        //
-        // The question is not "is the board tall" -- height is fine, and a tall
-        // board is where chains come from. It is whether the escape can still be
-        // reached before the floor arrives:
-        //
-        //     framesToDeath  <=  frames to play the cheapest plan that survives
-        //
-        // Both sides are measured. framesToDeath is the engine's own drain and
-        // rise; the plan's cost is travel.cost over its moves. Below that line
-        // there is no longer time to choose, so the weights stop choosing.
-        //
-        // `escape` is null when the caller has no plan to offer, and then there is
-        // nothing to be late for: topped out still opens DEFEND above.
         else if (escape !== null && escape !== undefined &&
                  deadline <= escape + this.reaction) name = 'DEFEND';
         else {
-            // THE BAR IS THE ENGINE'S TABLE, NOT A WEIGHT.
-            //
-            // This asked aim(), which reads the weights: whichever chain or combo
-            // weight is highest sets the shape that counts as worth cashing. A
-            // vector whose top chain weight is chain5plus therefore only enters
-            // ATTACK when a 5-chain exists -- the vector deciding WHETHER to
-            // attack, not which shape to build.
-            //
-            // Measured on seed 103: STARTER cashes 708 times and survives 30000
-            // frames; a random vector cashes FOUR times in the whole game and dies
-            // at 10163. It never sends, so it is never un-buried, so nothing
-            // clears, and its last twelve decisions are setups at tallest 12.
-            //
-            // A shape is worth cashing when it sends cells, which comboGarbage
-            // already answers: a 4-combo sends 3, a 6-chain sends 30, a bare three
-            // sends nothing. Every vector now attacks on the same trigger and
-            // chooses only among the shapes that pay.
             for (var i = 0; i < pool.length; i++) {
                 var r = pool[i].resolved;
                 if (!r || !r.total) continue;
@@ -343,60 +155,15 @@
         return { name: name, reveal: !!revealOpen };
     };
 
-    // A CANDIDATE IS DEAD WHEN THE ENGINE WOULD KILL IT, not when its top row is
-    // occupied. checkGameOver is `health <= 0 && shakeTime <= 0`, and health
-    // only drains on a frame where `!riseLock && stopTime === 0 &&
-    // isToppedOut()` — so a topped-out board holding stop time is alive, and
-    // chaining INTO the ceiling is how the position is meant to be played.
-    // Borrowed from PuyoCpu's own note, which records getting this wrong.
-    // HOW MUCH THIS BOARD CAN STILL BE MATCHED ON.
-    //
-    // reachMask marks every cell that would complete a vertical or horizontal
-    // pair, so its popcount is how many ways a clear can still be made. A board
-    // with none has no clear at any depth and dies whatever the clock says.
-    //
-    // This is the number a SETUP moves. Seed 104 spent eight decisions holding at
-    // tallest 8 with 202 frames in hand and no clear anywhere -- the moment to
-    // build one -- because nothing in the bot could tell a swap that improves the
-    // board from a swap that does nothing. bitoptions only names a setup when a
-    // cash follows it inside the search depth; with nothing to aim at it is
-    // silent, and that is exactly when the board most needs arranging.
-    // MATERIAL, IN FLAT ROWS: non-garbage panels over the width.
-    //
-    // GARBAGE DOES NOT COUNT. A slab is inert until something breaks it, and
-    // breaking needs panels beside it -- so a board can be twelve rows tall and
-    // have nothing to play with. Seed 101 died under seven rows of garbage
-    // holding eighteen panels, two of them in the row beneath the slab.
     function materialRows(st) {
         var n = 0;
         for (var c = 1; c <= W; c++) n += bit.popcount((st.occ[c] & ~st.garb[c]) >>> 0);
         return n / W;
     }
 
-    // HOW UNEVEN THE STACK IS: the total step between neighbouring columns.
-    //
-    // A tower is where it dies -- one column reaches the ceiling while the rest of
-    // the board still has room, and the game ends with half the board empty. It is
-    // never a reason to choose a worse move, but between two moves worth the same
-    // the flatter board is strictly better: more columns in reach of the cursor,
-    // no panel stranded on top of a spike, and a slab that lands sits level
-    // instead of bridging a gap.
-    // HOW UNEVENLY THE MATERIAL IS SPREAD, counted in PANELS PER COLUMN and not
-    // in column heights.
-    //
-    // Height is the wrong ruler on a buried board. Garbage caps every column at
-    // the same row, so six columns holding 6, 1, 1, 2, 2, 2 panels under a slab
-    // all measure the same height and the board reads as flat while one column
-    // hoards the material and the rest have nothing to build with. Panels per
-    // column sees that; height cannot.
-    //
-    // Garbage is excluded for the same reason it is excluded from materialRows:
-    // a slab is not material, and the bot cannot move it.
     function bumpiness(st) {
         var h = [], c, n = 0;
         for (c = 1; c <= W; c++) {
-            // Only the pocket under the lowest slab: a slab splits the board and
-            // panels above one cannot be spread into the surface below it.
             var g = st.garb[c] >>> 0;
             var floor = g ? (g & -g) : 0;
             var below = floor ? (floor - 1) : 0xffffffff;
@@ -407,21 +174,6 @@
     }
 
     function matchWays(st) {
-        // PAIRS, NOT MATCHES. reachMask marks every cell that would complete an
-        // adjacent same-colour pair, so its popcount is how much the board can
-        // still be built on.
-        //
-        // Counting the swaps that actually clear right now was tried and is the
-        // worst thing measured all day -- 8 deaths in 8. Maximising it maximises
-        // structure about to be SPENT: a board covered in ready triples has no
-        // vertical structure left, because every pair is one swap from being
-        // cashed and gone. A pair is a chain waiting to happen; a match is a chain
-        // about to stop existing.
-        //
-        // Restricting the mask to reachable cells was also worse, in both
-        // directions -- above the stack (6 deaths) and level with it (5). The
-        // unreachable pairs still count because the board moves: the floor rises
-        // under them and a slab above them breaks.
         var r = bit.reachMask(st), n = 0;
         for (var c = 1; c <= W; c++) n += bit.popcount(r[c] >>> 0);
         return n;
@@ -437,17 +189,6 @@
                                                     isChain ? resolved.chain : 0, true));
         }
 
-        // THE ROWS THAT LAND BEFORE THE BOT CAN ACT AGAIN COUNT AS HEIGHT.
-        //
-        // Without this the filter says "already dead", not "would die": it fired
-        // only once a board was FULL, which at stopTime 0 is the frame health
-        // starts draining. Measured on seed 701 -- twelve consecutive decisions
-        // at tallest 11 with nothing refused, then topped out and dead. The
-        // plan's rule is that a candidate the engine WOULD KILL is not offered,
-        // and one row is the granularity the engine rises at.
-        //
-        // Stop time freezes the floor, so what is banked is subtracted from the
-        // horizon before asking how much of it the floor gets.
         var rows = 0;
         if (this.horizonDeath && info.framesToNextRow !== undefined) {
             var spend = (horizon || 0) - banked;
@@ -458,30 +199,6 @@
         }
         if (tallest + rows < H) return false;                  // room left: not dead
 
-        // FULL. WHAT HOLDS A FULL BOARD IS THE CLOCK **OR PANELS IN MOTION**.
-        //
-        // The drain runs only while riseLock is clear, and riseLock is set for
-        // the whole of a resolve -- so a clear holds a full board for as long as
-        // it takes to resolve, whether or not it pays any stop time. Counting
-        // only the stop time refused the one move that saves this board: a bare
-        // three pays nothing and holds the floor for 59 frames, which is exactly
-        // the three the save is kept for. The engine's own arithmetic, via
-        // resolveFramesOf, not a restatement of it.
-        //
-        // At level 10 maxHealth is 1, so a full board that is settled and off
-        // the clock dies on that frame -- instrumented over three duels, every
-        // death was this and none was anything else. Nothing to hold it is the
-        // whole test.
-        // AND A SHIELD THAT EXPIRES BEFORE THE BOT CAN MOVE IS NOT A SHIELD.
-        // puyocpu's _resolvesDead makes the same point from its own measurements:
-        // of 178 moves judged safe on the last decision before 18 deaths, 116
-        // were spared by banked stop time with FOUR FRAMES left on average, and
-        // the board was still topped out when it ran out. This bot lifts its
-        // cooldown while topped out, so what it still has to pay is the action
-        // itself -- the engine's own tap cadence, travel.MOVE_FRAMES.
-        // WHAT HOLDS IT: the stop time, the move's own clear, and -- topped out -- whatever
-        // already locks the rise: drainRun, the first run that can take health, read off
-        // the stack (drainBound). A board inside a slab's matched timer is not dead.
         var held = Math.max(banked, info.toppedOut ? Math.max(0, (info.drainRun || 1) - 1) : 0);
         if (resolved && (resolved.total > 0 || resolved.garbage > 0)) {
             held += BF.resolveFramesOf(PanelEngine(), resolved.total || 0,
@@ -490,34 +207,6 @@
         return held <= travel.MOVE_FRAMES;                     // full, nothing holding it
     };
 
-    // A MOVE THAT LEAVES NOWHERE TO GO IS DEADLY, whatever the horizon says.
-    //
-    // deadly() asks one question: is there room for the rows that land before the
-    // bot acts again. A position that is lost in TWO rows passes it cleanly, and
-    // that is how every death in the tournament looks -- eight healthy options at
-    // tallest 10, then one row lands and `alive` is 0. The mistake was made
-    // several decisions earlier and nothing reported it.
-    //
-    // So a candidate has to leave a board that still has a move: at least one
-    // legal swap whose own result survives its own row. One more ply, applied to
-    // every candidate, which is what turns "would die now" into "would be
-    // stranded".
-    //
-    // THE CONTINUATION IS JUDGED ON THE SAME HORIZON, not a deeper one. Asking it
-    // to survive an EXTRA row means asking a board at tallest 10 to survive to
-    // 12, which is the ceiling, so every continuation read as fatal and every
-    // candidate was refused: `alive` was 0 from tallest 10 upward and the bot fell
-    // through to the fallback ranking for the rest of the game.
-    //
-    // The caller keeps its fallback: when nothing passes, the best-scoring move is
-    // played anyway. This narrows the choice, it never refuses to move.
-    // AND WHETHER THERE IS STILL A THREE IN HAND.
-    //
-    // The same pass answers both. A clear that can be fired the instant something
-    // lands is the only thing that buys stop time on demand, and a board with
-    // none has to build one first -- which is time it does not have when a slab
-    // arrives. So the sweep reports whether any legal swap on this board clears
-    // anything, and the caller keeps one.
     BitBot.prototype.lookahead = function (st, info, horizon) {
         var sw = bit.legalSwapsOf(st), i, r;
         var out = { stranded: true, hasClear: false, hasBreak: false };
@@ -536,52 +225,10 @@
         return out;
     };
 
-    // A TOWER IS WHERE THE BOARD DIES, so how much it minds one is not the
-    // vector's to choose. Death is the tallest column reaching the ceiling while
-    // the material is spread over all six, so an uneven board is holding rows of
-    // life it is not using. A vector that zeroes or reverses these two is a
-    // vector choosing to die, and that is not what the weights are for: they say
-    // how much MORE than this to care, never less.
-    //
-    // The numbers are STARTER's own, so the starting vector is unchanged and only
-    // the ones that went tower-friendly are clamped.
-    // AND SPREAD IS ON THE FLOOR WITH THEM, because it is survival and not a
-    // preference.
-    //
-    // Spread is the rows a slab seals: garbage rests on the tallest column and spans
-    // the width, so every column shorter than it has the difference sealed
-    // underneath, out of reach, holding whatever is below. A vector that zeroes or
-    // reverses that is choosing to bury its own board, which is the same argument
-    // that put bumpiness and tallest here.
-    //
-    // It was left out, and two of the four random vectors in the tournament carry a
-    // POSITIVE weight on it -- rand2 at +43.2 and rand4 at +55.4 -- so they actively
-    // prefer a sealed board and nothing stopped them. rand3 carries +75.0 on
-    // bumpiness and +85.4 on tallest and is held to -20 and -40 by this clamp; its
-    // spread was the one term it was free to get wrong.
-    //
-    // STARTER's own number, as the other two are, so the starting vector is
-    // unchanged and this only ever binds a vector that wanted less.
     var FLOOR = { bumpiness: -20, tallest: -40, spread: -10 };
 
     BitBot.prototype.score = function (st, moveFrames, resolved, info) {
-        // THE CLOCK OF THE BOARD BEING SCORED, NOT OF THE BOARD NOW.
-        //
-        // `st` is the board the candidate LANDS on, a future state, and the options
-        // listed on it are priced against a deadline. Handing over this frame's
-        // deadline would price that future board by a ceiling it no longer has:
-        // the clear took panels out, so `tallest` moved, and the clear itself holds
-        // the floor for its own resolve, so the clock gained time. Both are read
-        // off the engine here rather than inherited.
-        //
-        //   stop earned  stopTimeOf for this candidate's own clear -- the engine's
-        //                table, the same call the search's stopPrice makes
-        //   tallest      the LANDED board's, so the rows left are its rows
-        //   base         `st` as well, so `prepare` asks whether THAT board has a
-        //                slab to be ready for rather than whether this one does
         var isChain = !!resolved && resolved.chain >= 2;
-        // The same arguments bitfeatures' own stopEarned uses for this clear, so the
-        // feature and the deadline cannot disagree about what the clear bought.
         var earned = resolved
                    ? BF.stopTimeOf(PanelEngine(), isChain,
                                    isChain ? 0 : resolved.total,
@@ -606,52 +253,19 @@
         return total;
     };
 
-    // Can the engine act on a raise at all. Every clause is one the engine
-    // itself checks; a raise it refuses is not a move, and offering one means
-    // scoring a board that never arrives.
-    // A RAISE IS HELD FOR, NOT ASKED FOR ONCE.
-    //
-    // riseLock is set while a swap is queued or panels are still in motion, which
-    // for this bot is nearly every frame -- it swaps almost every decision. Asking
-    // "can I raise THIS INSTANT" therefore answers no almost always: measured over
-    // a duel, 2,402 of the 2,723 decisions taken under four rows of material were
-    // refused on riseLock alone, and the board starved to eight panels with nine
-    // rows of headroom going spare.
-    //
-    // A player does not ask once, they hold the button and the engine grants the
-    // row when the lock clears. update() already holds it for twenty frames, so
-    // the decision only has to say whether raising is WRONG, not whether it is
-    // possible this instant.
-    //
-    // These are the refusals that do not clear on their own: already raising, the
-    // engine refusing manual raises outright, topped out, or garbage still
-    // falling. riseLock, panels in motion and shake time all pass, because holding
-    // is exactly how those are waited out.
     BitBot.prototype.canRaise = function () {
         if (!this.allowRaise) return false;
-        // ONE RAISE AT A TIME. update() holds the input for twenty frames and the
-        // engine re-grants a row on every frame it is held, so one decision buys
-        // two or three rows. Re-arming the hold on the next decision holds it
-        // forever and walks the stack into the ceiling.
         if (this.raiseFrames > 0) return false;
         var s = this.stack;
         if (s.preventManualRaise || s.manualRaise) return false;
         if (typeof s.isToppedOut === 'function' && s.isToppedOut()) return false;
         if (typeof s.hasFallingGarbage === 'function' && s.hasFallingGarbage()) return false;
-        // AND NOT WHILE THE ENGINE IS BUSY. riseLock is set while a swap is queued
-        // or panels are still in motion, and a raise asked for then is not a move
-        // the engine will take. It clears on its own; the answer is to do
-        // something else this decision, not to hold the button through it.
         if (s.riseLock) return false;
         if (typeof s.hasActivePanels === 'function' && s.hasActivePanels()) return false;
         if ((s.shakeTime || 0) > 0) return false;
         return true;
     };
 
-    // What the mask resolver reports, in the shape the rest of the bot reads.
-    // `biggest` is the widest single clear, and for a cascade of one round that is
-    // the whole of it -- which is the only case the aim needs it for, since a
-    // chain is judged on its depth.
     function summarise(res) {
         return { chain: res.chain || 0, total: res.total || 0,
                  biggest: res.rounds === 1 ? (res.total || 0) : 0,
@@ -660,9 +274,6 @@
                  scope: res.scope };
     }
 
-    // THE POOL: hold, raise, every legal swap, and during a reveal window the
-    // lineup swaps as well. Hold is always built — that is what waiting is, and
-    // without it the bot cannot build — but a mode may filter it out.
     BitBot.prototype.candidates = function (board, info) {
         var out = [], i, r, c;
         var base = bit.maskState(board.grid, board.blocks, W, board.height, board.motion);
@@ -670,11 +281,6 @@
         out.push({ kind: 'hold', swap: null, board: board, masks: base,
                    moveFrames: 0, resolved: null });
 
-        // A raise is the one candidate that still needs the simulation, and for a
-        // reason that is not going away: the row being dealt is ENGINE data that no
-        // arithmetic here can produce. The row behind it comes from the match rng,
-        // so `incoming = false` says unknown rather than inventing matches the game
-        // will not deal.
         if (this.canRaise() && board.rise) {
             var risen = board.clone().rise(board.incoming);
             risen.incoming = false;
@@ -682,29 +288,6 @@
             var rres = bit.resolveFromMasks(rst, true);
             var rmasks = rres.settled || rst;
             var rres2 = summarise(rres);
-            // AND ONLY IF THE BOARD SURVIVES IT.
-            //
-            // canRaise() is the ENGINE's list of refusals and says nothing about
-            // whether the row kills. A raise that tops the board out is not an
-            // option any more than an illegal swap is, so it does not go in the
-            // pool -- otherwise every path that reads the pool can pick one and
-            // only the branch that happens to re-check is safe.
-            //
-            // Every queued cell lands, so it counts toward the height, and the
-            // risen board faces the death filter over a full row of rise like any
-            // other candidate.
-            // STOP TIME DOES NOT EXCUSE A RAISE.
-            //
-            // deadly() calls a full board survivable while the clock is running,
-            // because stop time freezes the rise. It does not freeze a row the bot
-            // adds itself: the raise lands now and the clock runs out later, so a
-            // raise at tallest 10 during a freeze passes the filter and tops the
-            // board out the moment it ends. That is how the board reached 11 with
-            // the death filter supposedly guarding it.
-            //
-            // So the row is judged on height alone, and the risen board has to
-            // leave room for the NEXT row as well -- every queued cell lands, and
-            // the floor keeps coming whatever the clock says.
             var inRows = Math.ceil((info.incoming || 0) / W);
             if (tallestBoard(rmasks) + inRows + 1 < H) {
                 out.push({ kind: 'raise', swap: null,
@@ -714,24 +297,6 @@
             }
         }
 
-        // EVERY SWAP, ANSWERED BY THE ARITHMETIC AND NOT BY A SECOND SIMULATION.
-        //
-        // swapMasks refuses what an engine swap cannot touch, so it is the legality
-        // test as well as the move -- no legalSwaps() call. resolveFromMasks says
-        // what the cascade does and now hands back the board it left, so the
-        // position every candidate is scored on comes from the same arithmetic that
-        // is checked frame-exact against the engine on 74,522 cases and 74,821
-        // swaps. LogicalBoard.resolve() was a different implementation predicting
-        // it, and a prediction that disagrees is a decision made about a board the
-        // game will not produce -- measured as 26 decisions revisiting a position
-        // the no-return filter had already refused.
-        //
-        // ON A BOARD IN MOTION, THE TIMED RESOLVE DECIDES WHAT THE SWAP DOES. The
-        // untimed one settles the board first, so a clear already flashing and the
-        // panels above it count as gone before the swap lands -- a break read off
-        // that board is a break the engine never makes. The timed one plays the
-        // swap at the frame the cursor reaches it, against the pops and falls in
-        // flight, and is held frame-exact to the engine by gate_breaklive.
         var moving = false;
         if (board.motion) {
             for (r = 1; r <= board.height && !moving; r++) {
@@ -742,9 +307,6 @@
             }
         }
         var tm = moving ? lineup.timedOf(board, this.stack.frames, board.height) : null;
-        // AND HOLD IS RESOLVED LIKE EVERY OTHER CANDIDATE: the board as it stands may
-        // already hold a match the engine registers next run, and a swap now can take
-        // it apart. Standing still is then a move with an outcome, a break among them.
         out[0].resolved = summarise(tm
             ? bit.resolveFromMasks(bit.copyState(tm.st), false, tm.opts)
             : bit.resolveFromMasks(base, false));
@@ -765,21 +327,8 @@
                             settled: res.scope === rt.scope ? res.settled : null };
                 }
             }
-            // A MOVE THAT BREAKS A SLAB HAS NO SETTLED BOARD. The engine draws the
-            // converted row's colours from its own rng, so the cascade past the
-            // break is unknowable and the resolver refuses to invent it. The BREAK
-            // is still the point of the move, so the candidate is scored on the
-            // position as swapped -- what is known up to the break -- rather than
-            // being dropped, which is how every digging option went invisible once
-            // before.
             var after = res.settled || bit.copyState(base);
             bit.swapMasks(base, r, c);                     // put it back
-            // A broken slab hands us colours the engine draws from its own rng, so
-            // there is no settled board to score. The BREAK is still the point of
-            // the move, so the candidate is kept with what is known up to it.
-            // THE UNDO IS NOT A CANDIDATE EITHER. The weights path ranks this pool
-            // rather than the option list, so it needs the same exclusion. Same test:
-            // the move just played, clearing nothing, with a panel in both cells.
             var rs0 = this._recentSwaps || [], skip0 = false;
             if (!(res && (res.total > 0 || res.scope === 'garbage-broke'))) {
                 for (var z0 = 0; z0 < rs0.length; z0++) {
@@ -798,10 +347,6 @@
         return out;
     };
 
-    // THE REVEAL WINDOW. Every feature assumes a SETTLED board, and this window
-    // is by definition unsettled, so the swap bitlineup names cannot be scored
-    // by the same 20 — it is priced by what it makes the landing do, which is
-    // what bitlineup measures, and it JOINS the pool rather than replacing it.
     BitBot.prototype.revealPick = function (board) {
         if (!this.reveal) return null;
         var plan;
@@ -814,30 +359,10 @@
         } catch (e) { return null; }                 // an unreadable window is not a move
         if (!plan) return null;
         this.counts.revealWindows++;
-        // TOPPED OUT, ONLY A LANDING THAT BREAKS IS WORTH LINING UP. Nothing rises
-        // there, so the panels on the board are all the material there is, and a
-        // chain that touches no slab spends them while the rise is already locked by
-        // what is in the air. A break converts the slab's bottom row and holds the
-        // board for the whole break; that is the one outcome that pays.
         if (this.stack.isToppedOut()) return plan.best && plan.best.broke ? plan : null;
         return plan.best && plan.best.swap ? plan : null;
     };
 
-    // THE TOPMOST OCCUPIED ROW, WHICH IS NOT A POPCOUNT.
-    //
-    // A popcount counts the cells in a column. That equals the height only while
-    // the column is a PACKED RUN from the floor, and garbage breaks that: a slab
-    // BRIDGES the columns it spans, so cells sit above holes and the top row runs
-    // ahead of the count.
-    //
-    // This read the popcount, and every height decision in the bot understated the
-    // danger by exactly the number of holes -- worst when the board is full of
-    // garbage, which is precisely when it matters. Seed 103 died with its top row
-    // at 11 while this reported 9, so framesToDeath thought there was room that was
-    // not there, DEFEND fired twice in 1,154 decisions and the death filter agreed.
-    // It stood at the ceiling refusing to clear and was eaten.
-    //
-    // The highest set bit, then. 32 - clz32 gives the 1-based row of the top cell.
     function tallestBoard(st) {
         if (!st) return H;                  // unknown position: treat as full
         var t = 0;
@@ -850,53 +375,11 @@
         return t;
     }
 
-    // HOW MANY FRAMES ARE LEFT BEFORE THIS BOARD IS DEAD.
-    //
-    // The engine drains health by one on every frame where it is topped out with
-    // no stop time (updateRise: `if (!riseLock && stopTime === 0)` then `if
-    // (isToppedOut()) this.health--`), and checkGameOver ends it at health 0. So:
-    //
-    //   topped out      stopTime + health      -- the freeze, then the drain
-    //   not topped out  stopTime + the rows still free, in frames
-    //
-    // Both terms are the engine's own numbers, so this is a measurement and not a
-    // budget invented here.
-    // WHERE A ROUTE LEAVES THE CURSOR. A swap happens at the cell the cursor is on,
-    // so after the last one that is where it is; with no swaps it has not moved.
     function endsAt(swaps, info) {
         var last = swaps && swaps.length ? swaps[swaps.length - 1] : null;
         return last ? [last[0], last[1]] : [info.cursorRow, info.cursorCol];
     }
 
-    // HOW LONG `rows` ROWS OF RISE REALLY TAKE, with the speed-up counted.
-    //
-    // The board does not rise at today's rate for the rest of the game. The engine
-    // steps `speed` up on a fixed interval and riseTime falls with it -- at level 10
-    // a row is 120 frames at the start and 47 once the table flattens, so the board
-    // ends up rising two and a half times faster than it begins. Multiplying rows by
-    // the CURRENT framesPerRow therefore overstates the time left, always in the
-    // dangerous direction: the bot believes it has longer than it has.
-    //
-    // Measured on the engine's own table: 5 rows at clock 5,000 is 430 frames naive
-    // against 429 real, and 10 rows is 860 against 839 -- under 3%, because a deadline
-    // spans at most a step or two, and nothing after the table flattens. Small, but
-    // it is an approximation where an exact answer is available.
-    //
-    // THE INTERVAL IS DERIVED, NOT COPIED. nextSpeedIncreaseClock is (k+1) intervals
-    // and `speed` is startingSpeed + k, so the interval is
-    // nextSpeedUp / (speed - startingSpeed + 1). Nothing here is a constant typed from
-    // the engine, so a change to the schedule moves this with it.
-    //
-    // AND IT STARTS WHEN THE RISE STARTS, NOT WHEN THE CLOCK IS READ. The engine
-    // runs `this.clock++` every frame and updateSpeed() fires on clock equality, so
-    // SPEED GOES UP DURING STOP TIME -- while advancePassiveRaise only moves the
-    // board when stopTime is 0, so the board does NOT. A deadline of stopTime plus
-    // the rise therefore spends its first stretch frozen at a speed the board will
-    // not still be at when it starts moving, and integrating from the clock as read
-    // applies today's slower rate to it. The error runs in the dangerous direction,
-    // which is the whole reason this function exists: the bot believing it has
-    // longer than it has. `startClock` is the clock the rise begins on, and any
-    // speed-up already passed by then is applied before integrating.
     function framesToRise(rows, info, framesPerRow, startClock) {
         var e = PanelEngine();
         if (!e || !e.riseTime || !(rows > 0)) return Math.max(0, rows) * (framesPerRow || 0);
@@ -908,9 +391,6 @@
         var every = up / steps;
         if (!(every > 0)) return rows * (framesPerRow || 0);
         var frames = 0, left = rows, guard = 0;
-        // THE STEPS THAT HAPPEN WHILE THE BOARD IS STILL FROZEN. At level 10 the
-        // interval is 900 frames and stop time peaks at 98, so this is at most one --
-        // written as a loop because neither number is this function's to assume.
         while (up <= clock && guard++ < 128) {
             speed = Math.min(speed + 1, 99);
             up += every;
@@ -931,12 +411,6 @@
         return frames;
     }
 
-    // THE TALLEST SLAB ON THE BOARD, IN ROWS. A slab's mask carries the same rows in
-    // every column it spans, so its height is the popcount of any one of them.
-    // THE ROWS OF GARBAGE ON THE BOARD AT ONCE: the most garbage cells in any one
-    // column. Slabs pile -- a burst of one-row slabs stands as tall as one slab of that
-    // many rows -- so it is the pile, not the tallest slab in it, that the next raise
-    // has to leave room for.
     function garbageRows(masks) {
         if (!masks || !masks.garb) return 0;
         var best = 0;
@@ -949,42 +423,12 @@
 
     function framesToDeath(info, tallest, framesPerRow) {
         var clock = info.stopTime || 0;
-        // TOPPED OUT, HEALTH IS NEVER SPENT, so the time there is is the frames before the
-        // first run that would take it: a swap walked for w frames is queued before run
-        // w + 1 and locks the rise in it, so w may be up to drainRun - 1. The clear that
-        // un-tops the board when even that is too short is the health guard's, not a
-        // plan's.
         if (info.toppedOut) return Math.max(0, (info.drainRun || 1) - 1);
-        // EVERY QUEUED CELL LANDS ON THIS BOARD, so it is ceiling already gone --
-        // the engine holds a slab only while there is nowhere to put it, and then
-        // puts it there. This is the clock the whole bot runs on: the plans are
-        // priced against it, moves too slow for it are refused, the save is
-        // reachable inside it and DEFEND opens on it. Without the queue in it, a
-        // board at tallest 9 with three rows on the way was told it had four rows
-        // of life, and seed 101 took eighteen cells at frame 658 and died at
-        // 1,293. When the queue is more than the room the answer is the clock and
-        // nothing else, which is what being topped out is worth.
-        // WHAT LANDS BEFORE THE BOT CAN ACT, NOT THE WHOLE QUEUE. shouldDropGarbage
-        // delivers one slab at a time and not at all while garbage is falling, so the
-        // queue arrives at the engine's pace, not at once. Subtracting all of it made
-        // the deadline zero under a flood -- 749 queued slabs is ~500 rows -- and every
-        // plan toward a break has to fit inside the deadline, so none was ever allowed
-        // to start: comboStorm played `setup` on every decision to the end.
         var queued = Math.ceil((info.nextSlab || 0) / W);
-        // THE RISE BEGINS AFTER THE STOP TIME RUNS OUT, and the speed table has moved
-        // on by then -- see framesToRise. `clock` here is the stop time, info.clock is
-        // the engine's.
         return clock + framesToRise(Math.max(0, H - tallest - queued), info, framesPerRow,
                                     (info.clock || 0) + clock);
     }
 
-    // IS A REVEAL WINDOW OPEN, read straight off the live stack.
-    //
-    // Cheap on purpose: this is asked on EVERY frame, so it cannot afford the
-    // snapshot that bestInWindow needs. A slab's converted row carries
-    // fellFromGarbage and something is still in the air -- the same two
-    // conditions bitlineup's own `revealed` tests, against the engine's panels
-    // instead of a copy of them.
     BitBot.prototype.windowOpen = function () {
         var s = this.stack, flying = 0, converted = 0;
         for (var r = 1; r <= s.height; r++) {
@@ -1001,77 +445,12 @@
         return false;
     };
 
-    // IS ANYTHING MOVING. A cascade in progress changes the board without the
-    // bot doing anything, so those frames are not idle even when it holds.
     BitBot.prototype.inFlight = function () {
         var s = this.stack;
         if (typeof s.hasActivePanels === 'function' && s.hasActivePanels()) return true;
         return (s.shakeTime || 0) > 0;
     };
 
-    // THE BEST PLAN THAT FINISHES IN TIME AND ARRIVES AT THE RIGHT MOMENT.
-    //
-    // A plan is a sequence of moves with a total frame cost -- bitoptions prices
-    // both plies, the walk to the setup and the walk from it to the cash. Three
-    // questions, all arithmetic:
-    //
-    //   how many frames does it take     o.frames
-    //   will the board still be alive     o.frames <= framesToDeath
-    //   how much time does it GAIN        max(0, pays - max(0, clock - o.frames))
-    //
-    // The third is the one that makes timing matter. awardStopTime is a MAX, so a
-    // payout only counts for what it adds ON TOP of what is still running -- and
-    // what is still running when the move LANDS is the clock now minus the frames
-    // spent getting there. Fire early and the gain is nothing; the same move a
-    // moment later is worth its full value. That is "hit it at the right moment",
-    // and it falls out of the subtraction rather than needing a rule.
-    //
-    // Ties go to the cheaper plan, because the frames not spent are frames still
-    // available for the plan after this one.
-    // HOW DEEP TO LOOK, GIVEN HOW MUCH TROUBLE THE BOARD IS IN.
-    //
-    // Looking costs time and time is what a threatened board does not have, so the
-    // depth is spent out of the same budget everything else is: rows of headroom.
-    // Calm board, look further; one row from the ceiling, answer now.
-    //
-    // WHAT EACH PLY COSTS, measured over 51 real mid-game boards with the bit
-    // arithmetic -- a resolve is 0.9 microseconds and a real board offers about
-    // nine legal swaps:
-    //
-    //     depth 2    0.4 ms      no chains found at all
-    //     depth 3    5.0 ms      2-chains start appearing
-    //     depth 4   95.1 ms      245 two-chains over the same boards
-    //
-    // AND NO DEPTH FOUND A 3-CHAIN, not once in 51 boards even at four plies. That
-    // is not the search running out of room, it is the board having no material:
-    // survival keeps it low and flat by clearing, and a low board cannot be chained
-    // from however long you stare at it. Depth is worth having and is not the
-    // answer to attacking.
-    //
-    // The thresholds are rows and are NOT calibrated -- halfway up the board is a
-    // landmark, not a measurement, and it is written here rather than implied.
-    // HOW DEEP THERE IS TIME TO SEARCH, off the engine rather than off the mode.
-    //
-    // A plan of d moves cannot be PLAYED in under d reaction cooldowns: the bot
-    // issues one swap, waits out `reaction`, then issues the next. So searching
-    // past `deadline / reaction` plies is searching for plans the board will not
-    // be there for.
-    //
-    // That replaces an arm keyed on the mode name reading DEFEND. The mode is
-    // downstream of this number now -- it is chosen from the timing -- so keying
-    // the depth on it would be circular, and the cooldown says the same thing
-    // without the constant.
-    // WHAT AN ACTION IS WORTH, from the engine's garbage table and nothing else.
-    // Lower is better.
-    //
-    //   0  sends and breaks -- attacks and digs in one move
-    //   1  sends
-    //   2  breaks but sends nothing -- a three into a slab, the last resort: it
-    //      pays no cells and spends the vertical structure a chain is made of,
-    //      but it turns an inert slab back into panels
-    //   3  clears nothing: building, holding, raising
-    //   4  clears something and neither sends nor breaks -- not an action at all
-    // The verdict a cash gets without asking: see the candidate loop.
     var NOT_STRANDED = { stranded: false, hasClear: false, hasBreak: false };
 
     function tierOf(cand) {
@@ -1084,91 +463,11 @@
 
     function depthFor(deadline, reaction, tallest) {
         var playable = Math.max(1, Math.floor(deadline / Math.max(1, reaction)));
-        // THE DEADLINE SETS THE DEPTH. The constant here capped the search at four
-        // plies -- about 80 frames of play against a deadline of several hundred.
-        // It was holding back an explosion that no longer exists: bitoptions beams
-        // across the ply rather than per node, so cost is BEAM * branching * depth
-        // and depth 20 measures the same as depth 4, 0.27ms a frame.
         return playable;
     }
 
-    // THE WORKING BAND: A BOARD TOO LOW HAS NOTHING TO PLAY WITH.
-    //
-    // Survival is a clear rate at or above 1.0 and the objective that delivers it
-    // maximises panels removed per frame -- which drives the board as low as it
-    // can go. That is what keeps it alive and it is also why it cannot attack:
-    // measured over 51 real mid-game boards, a 3-chain was on offer ZERO times,
-    // at two plies and at four. Not because the search ran out of room, but
-    // because a nearly empty board has no material to chain with.
-    //
-    // A chain is built out of panels. Raising ADDS material and breaking garbage
-    // CONVERTS it; clearing spends it. So below the band the bot stops cashing
-    // small change and puts panels on the board instead.
-    //
-    // ORDER: living, then material, then attacking. Nothing here outranks
-    // survival -- this only applies when survival is not at stake.
-    //
-    // FOUR ROWS IS NOT CALIBRATED. It is a third of the board and roughly what a
-    // chain needs to stand in, written here rather than implied so the next
-    // measurement can move it.
-    // How thin is too thin to have anything to play with. A third of the board,
-    // roughly what a chain needs to stand in. NOT calibrated.
     var WORKING_ROWS = 4;
 
-    // TRIED AND MEASURED WORSE, so the numbers are here rather than the code.
-    // Below four rows: refuse to cash anything under W cells, and raise instead to
-    // put panels on the board. Over four duels it went from 1 death, 510 cells and
-    // 7 big pieces to 2 DEATHS, 378 cells and 3 big pieces. Raising to build walks
-    // the stack up and the bot dies in the middle of building; withholding small
-    // attacks only cuts the output that was working.
-    //
-    // The REASONING still stands and this is the honest state of it: a board kept
-    // low by the survival objective has no material to chain with, and material is
-    // what raising and breaking garbage provide. What is wrong is doing it with a
-    // height threshold and a blanket refusal. It wants to be a property of the
-    // plan -- build toward a shape, spend only what the shape does not need --
-    // which is not a threshold at all.
-
-    // FRAMES THE FLOOR CANNOT MOVE. The one quantity all of this ever wanted.
-    //
-    // THE ENGINE HAS ONE RULE, NOT THREE. The floor rises, and health drains, only
-    // on a frame where `!riseLock && stopTime === 0`, and
-    //
-    //     riseLock = swapQueued || shakeTime > 0 || hasActivePanels()
-    //
-    // So stop time, shake time and panels-in-motion are not three mechanisms to be
-    // handled separately -- they are three ways of setting one bit. Anything that
-    // holds that bit buys exactly the same thing: frames in which the board cannot
-    // kill you. Measuring only stop time, which is what this did, sees one of the
-    // three and misses the two that digging earns.
-    //
-    // THEY OVERLAP, SO IT IS A MAX AND NOT A SUM. A clear that takes 100 frames to
-    // play out while 60 of stop time is running holds the floor for 100, not 160.
-    //
-    // stack.frames IS THE LEVEL'S FRAME TABLE, NOT A FRAME COUNTER.
-    //
-    // It is {HOVER, GARBAGE_HOVER, FLASH, FACE, POP}. The counter is stack.clock.
-    // Every plan in here stamped startedAt with the TABLE and then computed
-    // `stack.frames - startedAt`, which is object minus object: NaN. `remains`
-    // came out NaN, `NaN <= deadline` is false, and so every plan -- survival, dig
-    // and flatten alike -- was dropped on the decision after the one that made it.
-    // No plan could run past its first move, so the bot re-planned from scratch
-    // every decision: on seed 101 it spent frames 271 to 348 alternating
-    // attackPlan and bestAttack seven frames apart with material, height,
-    // bumpiness and every column count unchanged, and died at 814.
-    //
-    // Pass the table where a table is wanted -- bestPlan's and bestAttack's
-    // framesTable, bitlineup's `frames` -- and stack.clock where a time is.
-    //
-    // WHAT A CLEAR HOLDS, from the engine's own frame table via stack.frames:
-    // every matched panel runs FLASH then FACE then POP per panel, and garbage
-    // pops alongside its own cells -- matchGarbagePanels gives each garbage panel
-    // FLASH + FACE + POP * (size + onScreen). Read, never restated.
-    //
-    // WHY THIS IS NOT A PATCH. stopTimeOf answers "what did the clock get", and
-    // that is a real number the engine computes, so it stays. What changed is that
-    // nothing ranks on it directly any more: every objective asks how long the
-    // floor is held, and the clock is one of the three things that holds it.
     function heldFrames(frames, stopGain, cleared, garbagePanels) {
         if (!frames) return stopGain || 0;
         var popping = 0;
@@ -1179,17 +478,6 @@
         return Math.max(stopGain || 0, popping);
     }
 
-    // WHAT AN OPTION SENDS, from the engine's own tables and never restated here.
-    //
-    //   a combo of N panels   PanelEngine.comboGarbage(N), each piece 1 row tall
-    //   a chain of L links    ONE piece, full width, height L - 1
-    //
-    // The numbers are the reason the bot has to chain. A 4-combo sends 3 cells and
-    // the widest realistic combo sends 12; a 3-chain sends 12 and a 6-chain sends
-    // 30. A chain is worth up to TEN TIMES a combo, and nothing that ranks by
-    // panels cleared or by stop time can see that -- the deepest chain pays only
-    // 68 frames of stop time against a two-chain's 60, while sending five times
-    // the garbage.
     function cellsSent(engine, kind, size, chain) {
         var cells = 0, i;
         if (kind !== 'chain') {
@@ -1197,136 +485,25 @@
             for (i = 0; i < pieces.length; i++) cells += pieces[i];   // each one row tall
             return cells;
         }
-        // A chain also fires its opening combo, but the opener is what STARTS the
-        // chain and its size is not carried on the option -- so this counts the
-        // chain card alone and is a floor on what the move sends, never an
-        // overstatement.
         return chain > 1 ? W * (chain - 1) : 0;
     }
 
-    // THE BEST ATTACK, AND IT IS ARITHMETIC LIKE SURVIVAL IS.
-    //
-    // The bot is ALWAYS attacking. Whether to attack is not a preference and the
-    // weights get no vote on it -- exactly as they get no vote on whether to
-    // survive. What they steer is WHICH attack: a vector that likes deep chains
-    // holds out for one, a vector that likes wide combos takes them. That is what
-    // a feature is for here, and it is the only thing it does.
-    //
-    // This was the hole. Attacking had no plan at all: BUILD ranked single
-    // candidates by the weighted features and played the winner, so a vector that
-    // happened to prefer setups never cashed anything and the bot sent 93 cells in
-    // 15,000 frames. Nothing made it attack.
-    //
-    // RANKED BY CELLS PER FRAME, so a big attack that takes a long walk is
-    // compared fairly against a small one that is already under the cursor. The
-    // weight is a MULTIPLIER on that rate rather than an addition to it, so a
-    // preference can say "a chain is worth twice a combo to me" without being able
-    // to say "attack nothing at all" -- a zero or negative weight leaves the shape
-    // merely unloved, not forbidden.
-    // A BARE THREE IS THE ONE MOVE A SHORT BOARD CANNOT AFFORD.
-    //
-    // It sends nothing, breaks nothing and spends three of the panels a chain
-    // would have been built from. A break is always allowed, at any material
-    // level, and a break behind a combo or a chain is better still; combos and
-    // chains are always allowed because they send. Only the bare three is
-    // refused, and only below the working minimum.
-    //
-    // The pool filter says this already, but it narrows `allowed` and this reads
-    // `options`, so attacking walked past it: on seed 101 the board sat between
-    // half a row and one and a half rows of material for three thousand frames
-    // firing threes off six panels, and a 31-cell slab landed on nothing.
-    // THE SHAPE RULES BOTH PATHS OBEY, IN ONE PLACE.
-    //
-    // Each of these lived as two copies in two currencies, and copies drift --
-    // that is the documented history of this file. `levels` reached bestAttack
-    // only, and the move that built the tower it was written for came via the
-    // survival plan. `opensHole` reached bestAttack only, through seven more
-    // deaths. Both were found late because there was nothing that could notice.
-    // One predicate, two callers, and a test that the two refuse the same set.
-    //
-    // REFUSALS, NOT PRICES. Each is a transition that ends something the board
-    // cannot get back: a column that can no longer hold a vertical match, a slab
-    // that can no longer be reached. Two ways to break down to one is ordinary
-    // and a rate can weigh it; one down to none ends the game and a rate cannot.
     function ruinsShape(o) {
-        // The move that empties a column. A column at zero holds no vertical
-        // match, breaks the adjacency a horizontal one needs, and is where a slab
-        // bridges -- garbage rests on the tall columns and spans the width, so
-        // the empty column is sealed and nothing under it can reach the slab.
         if (o.opensHole) return true;
-        // The move that takes the last way to break. A garbage cell comes off the
-        // board one way, three panels in a line against it, and a cell that never
-        // comes off is a row of ceiling gone for good.
         if (o.closesBreak) return true;
         return false;
     }
 
-    // HOW FAR UNDER THE WORKING FLOOR THE BOARD THIS LANDS ON WOULD BE, in rows.
-    // Both paths charge for it, each in its own currency: bestAttack at W cells a
-    // row, bestPlan at framesPerRow. Same number, two conversions.
-    //
-    // A break is exempt without being excused -- it ADDS material, and its settled
-    // board is unknowable so `mat` is null anyway.
     function shortfallOf(o) {
         return (o.mat === null || o.mat === undefined)
              ? 0 : Math.max(0, WORKING_ROWS - o.mat);
     }
 
-    // THERE IS NO MATERIAL CEILING, AND THE ATTEMPT AT ONE IS RECORDED HERE.
-    //
-    // WORKING_ROWS is a floor with no counterpart, and seed 103 rand1 looked like
-    // it wanted one: it stacked to 8,7,3,6,9,10 with a clear available on every
-    // decision and topped out. So "too full" was written as the raise's own
-    // comparison read backwards -- material against the room above the stack,
-    // max(0, mat - (H - tall)), priced like the shortfall.
-    //
-    // It measures the wrong room. `tall` includes the garbage, so a buried board is
-    // charged for holding the material it needs to break out: 4 rows under 6 rows of
-    // garbage reads a surplus of 2, a 240-frame penalty for being exactly at the
-    // floor. Worse, at 3 rows of material under 7 of garbage the shortfall reads 1.00
-    // and the surplus reads 1.00 -- they cancel, so the starvation floor is silently
-    // switched off on the boards it exists for. Measured: seed 103 rand2, alive
-    // before, died at 10,683.
-    //
-    // And the board that prompted it was not dying of too many panels. It held 43 of
-    // them in FOUR columns with a seven-deep hole. Height is already priced -- the
-    // `tallest` feature and bestPlan's `lowered` -- and the hole is what nothing
-    // could see. That is `wells`, below. Garbage eating the room is a reason to
-    // break, never a reason to spend panels.
-
     function bestAttack(list, weights, engine, deadline, framesTable, perPanelFrames) {
         var best = null, all = list.now.concat(list.next), i;
-        // THE ATTACKS THAT DO NOT COST SHAPE, IF THERE ARE ANY.
-        //
-        // A vertical three takes three panels out of one column and leaves it three
-        // below its neighbours; a horizontal three takes one from each of three and
-        // leaves the surface alone. Same cells sent, different board afterwards --
-        // so between them there is nothing for a vector to weigh, the way sending
-        // AND breaking already beats sending.
-        //
-        // A NARROWING, NOT A WEIGHT, and it stands aside when every attack costs
-        // shape: then the shape was going to be paid whatever was played, and the
-        // biggest attack is the right one.
         var level = [];
         for (i = 0; i < all.length; i++) if (all[i].levels) level.push(all[i]);
         if (level.length) all = level;
-        // WITHIN A WORKING FLOOR OF THE CEILING, KEEP A BREAK ALIVE.
-        //
-        // H - WORKING_ROWS is eight of twelve. Above it there is no room left to
-        // build a way out, and the only move that hands ceiling back is a break --
-        // a garbage cell comes off the board one way and a panel comes off many,
-        // so below this line the ordinary ranking is right and above it it is not.
-        //
-        // `tall` is the whole board, garbage and all, because that is what reaches
-        // the ceiling and what the engine kills on.
-        //
-        // A NARROWING, NOT A REFUSAL, and gated. `breakReady === false` refused
-        // outright cost three deaths among STARTER and ZERO in thirteen pairings:
-        // on a healthy buried board it flags nearly everything and takes the list
-        // away. Gated here it can only speak where the board is already dying, and
-        // it stands aside when nothing keeps a break, because then the break was
-        // going whatever was played. null is an exemption on both counts -- a
-        // break's landed board is unknowable, and a clean board has none to keep.
         var keep = [];
         for (i = 0; i < all.length; i++) {
             var ot = all[i].tall;
@@ -1339,146 +516,30 @@
             var o = all[i];
             if (!o.swaps || !o.swaps.length) continue;
             if ((o.duration || o.frames) > deadline) continue;
-            // AN ATTACK MAY NOT BE THE MOVE THAT OPENS A HOLE.
-            //
-            // This ranking is cells sent over the frames it takes, and shape only
-            // breaks a tie at EXACTLY equal rate -- which two attacks essentially
-            // never have, so the flatness preference beside it has never fired.
-            // Meanwhile score() clamps bumpiness to a floor no vector can undo,
-            // and score() ranks the weights fallback only. So the floor exists and
-            // this path cannot see it.
-            //
-            // Read off two deaths on seed 101: columns 2,6,6,6,7,4 became
-            // 2,6,6,6,7,0 and then 2,6,6,6,2,1, all via bestAttack, bumpiness 8 to
-            // 12; and 6,4,2,1,6,8 became 6,0,1,4,5,7, bumpiness 13. Both boards
-            // died with one or two columns at zero while the rest stood at six to
-            // eight.
-            //
-            // A column at zero holds no vertical match and breaks the adjacency a
-            // horizontal one needs, and it is where a slab bridges -- garbage rests
-            // on the tall columns and the empty one can never reach it. So this is
-            // a refusal, not a price: no threshold to choose and nothing a vector
-            // can weigh away. Only the move that OPENS the hole is refused; playing
-            // on a board that already has one is not this move's doing. A break is
-            // exempt -- its settled board is unknowable, so `low` is null.
             if (ruinsShape(o)) continue;
             var isChain = o.kind === 'chain';
             var cells = cellsSent(engine, o.kind, o.size, o.chain);
-            // A BREAK IS AN ATTACK ON YOUR OWN BOARD. It sends nothing, and it is
-            // still one of the best moves in the game: it holds the floor while the
-            // slab comes apart, and it CONVERTS a garbage row into coloured panels.
-            // Material is what chains are built out of, and breaking is the only
-            // source of it once the opponent starts sending -- raising is the only
-            // other one, and that is unavailable under attack.
-            //
-            // Counted in the same units as the garbage it would otherwise send, so
-            // one number ranks both: the frames it holds, divided by the frames a
-            // panel of life is worth.
             if (o.breaks && perPanelFrames > 0) {
                 cells += heldFrames(framesTable, 0, o.total, o.garbage || W) / perPanelFrames;
             }
-            // AND WHAT IT COSTS TO SPEND THE BOARD BELOW THE WORKING FLOOR,
-            // WHICH THIS PATH WAS NOT PAYING.
-            //
-            // bestPlan prices it as `- shortfall * framesPerRow`: under the floor
-            // the panels have to be put back and a row of rise is the only way.
-            // In this function's currency a panel of life is perPanelFrames, so a
-            // row short is framesPerRow / perPanelFrames = W cells. Same price,
-            // same number, expressed in the units this ranking uses.
-            //
-            // It was priced in the survival plan and NOWHERE else, so the attack
-            // spent the board down freely: seed 101 went from 5.5 rows of
-            // material at frame 1,674 to 1.8 by 2,243 through attackPlan, WEIGHTS
-            // and flatten, and died at 2,630 with eleven panels under forty-seven
-            // cells of garbage and no way to put three of them against the slab.
-            // A break is exempt without being excused -- its settled board is
-            // unknowable so `mat` is null, and it ADDS material besides.
             var short = shortfallOf(o);
             cells -= short * W;
-            // AND THE VOID THE SLAB WOULD SEAL, in this ranking's currency: a row of
-            // void is a row of ceiling, and a row is W panels. NOT the perCell a
-            // sealed cell is paid -- see bestPlan's voidGain for which board this
-            // measures and what pricing it that way cost.
             cells += (o.voidGain || 0) * W;
-            // AND WHAT IT DID TO THE SETUP FOR A BREAK, IN FRAMES, converted to this
-            // ranking's currency the same way slabWorth above is. setupWorth prices
-            // it as the prize a finished setup pays discounted by the time the rest
-            // of the work costs -- see slabGain in bitoptions.
             if (perPanelFrames > 0) cells += (o.slabGain || 0) / perPanelFrames;
-            // AND THE CELLS THE BREAK HANDS BACK -- its bottom row, the part that
-            // becomes panels. bestPlan prices these at max(perPanel, deadline/W), the
-            // rate a converted cell is worth for the rest of the game; this is the same
-            // number in this ranking's currency. The resolve hold above is a different
-            // thing and keeps the whole slab, which is what the engine pops.
             if (perPanelFrames > 0) {
                 cells += (o.converts || 0) *
                          Math.max(perPanelFrames, (deadline || 0) / W) / perPanelFrames;
             }
-            // AND BEING READY FOR THE SLAB THAT IS COMING. Worth a row of rise,
-            // converted to this ranking's currency. Zero unless there is a slab
-            // to be ready for, so it cannot speak on a clean board.
             if (perPanelFrames > 0) cells += (o.slabWorth || 0) / perPanelFrames;
-            // AND WHAT IT DID TO THE WAY OUT FROM UNDER THE SLAB.
-            //
-            // `dig` is the count of cells that would finish a line against the
-            // garbage, so it is the board's way out measured one cell at a time.
-            // bitoptions has priced it at deadline/W for a while -- "being NEAR
-            // [a break] is worth a fraction of it" -- and asked it only of routes
-            // that CLEAR NOTHING. So every combo and every chain was ranked
-            // without anyone asking whether it spent the panels that were the way
-            // out. On the board this was written from, 7,863 of 8,653 landings
-            // could not break at all: the bot was not losing its break, it never
-            // had one, and nothing pointed it back toward one.
-            //
-            // ONE CELL OF THE WAY OUT IS WORTH ONE PANEL OF LIFE, which in this
-            // ranking's currency is one cell sent. Not the deadline/W bitoptions
-            // prices a dig cell at when comparing whole routes -- at a deadline of
-            // 600 that is 100 frames, near a whole row of ceiling, and one cell
-            // that MIGHT finish a line against the slab outweighed a six-combo.
-            // perPanel is the atom this file converts with everywhere else.
-            // NOT CALIBRATED; written here so the next measurement can move it.
-            //
-            // THE GAIN ONLY, BECAUSE THE LOSS IS ALREADY PAID FOR. `dig` counts
-            // cells that would finish a line against the slab, and clearing
-            // REMOVES panels, so nearly every clear drops it -- 5 of 15 options on
-            // a buried board spend reach against 2 that gain it. Those panels are
-            // already valued: this ranking pays for them as cells sent and the
-            // plan's as o.total * perPanel. Charging again for the reach they
-            // carried is the same panels twice, and it comes out as a blanket tax
-            // on cashing while buried. Measured on seed 103 STARTER: two rows of
-            // material under thirty-three cells of garbage, playing setups, dead
-            // at 2,319 where the same board without the tax lives.
-            //
-            // A clear that OPENS new reach is information nothing else carries, so
-            // that half stays.
-            //
-            // AND ONLY WHILE THE BOARD IS SHORT UNDER THE SLAB. `digging` is set
-            // by ANY garbage cell, so this was pricing the way out on healthy
-            // boards carrying one row of it -- which is every board it killed:
-            // STARTER against ZERO on both seeds, and rand2, all of them alive
-            // without it. The board it helps carried two rows of material under
-            // thirty-three cells of garbage.
-            //
-            // The file's own note on the dig goal says why: "BURIED AND SHORT:
-            // WIDEN THE SEARCH, NOT THE PREFERENCE... finding is not preferring".
-            // Reaching the slab is the goal when there is nothing else left to
-            // play for; with material in hand the ordinary ranking decides.
-            // `short` is the same WORKING_ROWS measure starving and raiseMode use.
             if (o.matNow !== null && o.matNow !== undefined &&
                 o.matNow < WORKING_ROWS) cells += Math.max(0, o.digGain || 0);
             if (cells <= 0) continue;                       // sends nothing, holds nothing
-            // The vector's taste for this shape, read off the same buckets the
-            // features use, floored so it can only ever scale the rate down to a
-            // tenth and never to nothing.
             var key = isChain
                 ? 'chain' + (o.chain >= 5 ? '5plus' : Math.max(2, Math.min(4, o.chain)))
                 : 'combo' + Math.max(4, Math.min(7, o.size));
             var taste = 1 + ((weights[key] || 0) / 100);
             if (taste < 0.1) taste = 0.1;
             var rate = (cells / Math.max(1, o.duration || o.frames)) * taste;
-            // AN ATTACK THAT ALSO FLATTENS IS THE BETTER ATTACK. Between two
-            // sending at the same rate, the one leaving the flatter board -- it
-            // costs nothing to prefer and a tower is where the board dies.
             var win = !best || rate > best.rate;
             if (!win && best && rate === best.rate) {
                 var ob = o.bumps === null || o.bumps === undefined ? 1e9 : o.bumps;
@@ -1496,43 +557,9 @@
 
     function bestPlan(list, clock, deadline, engine, toppedOut, framesPerRow, framesTable, tallNow, fitsOf) {
         var best = null, over = null, all = list.now.concat(list.next), i;
-        // THE PLANS THAT DO NOT COST SHAPE, IF THERE ARE ANY.
-        //
-        // The same narrowing bestAttack makes, on the path that actually fires: a
-        // vertical three takes three panels out of ONE column and drops it three
-        // below its neighbours, a horizontal three takes one from each of three and
-        // leaves the surface where it was. Same frames bought, different board
-        // after, so there is nothing here for a rate to weigh.
-        //
-        // It is what this bot dies of. Seed 101 rand4 went from 8,5,3,5,5,9 to
-        // 8,5,0,5,2,9 in thirty frames -- two columns each dropping by exactly
-        // three, two vertical threes -- and from there to a lone tower seven high
-        // that a four-row slab bridged on and sealed every column under. `levels`
-        // is the rule for that and it reached bestAttack only; the move that made
-        // this board came via survivalPlan.
-        //
-        // A narrowing, not a weight, and it stands aside when every plan costs
-        // shape: then the shape was going to be paid whatever was played.
         var lvl = [];
         for (i = 0; i < all.length; i++) if (all[i].levels) lvl.push(all[i]);
         if (lvl.length) all = lvl;
-        // WITHIN A WORKING FLOOR OF THE CEILING, KEEP A BREAK ALIVE.
-        //
-        // H - WORKING_ROWS is eight of twelve. Above it there is no room left to
-        // build a way out, and the only move that hands ceiling back is a break --
-        // a garbage cell comes off the board one way and a panel comes off many,
-        // so below this line the ordinary ranking is right and above it it is not.
-        //
-        // `tall` is the whole board, garbage and all, because that is what reaches
-        // the ceiling and what the engine kills on.
-        //
-        // A NARROWING, NOT A REFUSAL, and gated. `breakReady === false` refused
-        // outright cost three deaths among STARTER and ZERO in thirteen pairings:
-        // on a healthy buried board it flags nearly everything and takes the list
-        // away. Gated here it can only speak where the board is already dying, and
-        // it stands aside when nothing keeps a break, because then the break was
-        // going whatever was played. null is an exemption on both counts -- a
-        // break's landed board is unknowable, and a clean board has none to keep.
         var keep = [];
         for (i = 0; i < all.length; i++) {
             var ot = all[i].tall;
@@ -1541,217 +568,39 @@
             keep.push(all[i]);
         }
         if (keep.length) all = keep;
-        // ONE PANEL REMOVED IS framesPerRow / W FRAMES OF LIFE -- 18.7 at level 10.
-        // Panels and stop time are the same currency and this is the exchange rate.
         var perPanel = (framesPerRow || 0) / W;
         for (i = 0; i < all.length; i++) {
             var o = all[i];
             if (!o.swaps || !o.swaps.length) continue;
-            // CAN IT BE FINISHED IN THE TIME THERE IS. The duration, not the walk:
-            // the swap, the cooldown when one applies, and the frames the board is
-            // busy resolving the cash at the end of it.
             var took = o.duration || o.frames;
-            // A PLAN THAT DOES NOT FIT IS STILL THE ANSWER IF NOTHING DOES.
-            //
-            // Honest durations mean plans genuinely run past the deadline, and
-            // returning nothing then hands the board to the weights -- which is
-            // how a vector ends up choosing a death. There is no board on which
-            // the right answer is "no opinion": if nothing fits, the best of what
-            // does not fit is what the bot plays, ranked by the same objective.
             var fits = fitsOf ? fitsOf(o) : took <= deadline;
             var isChain = o.kind === 'chain';
             var pays = BF.stopTimeOf(engine, isChain, isChain ? 0 : o.size,
                                      isChain ? o.chain : 0, toppedOut);
-            // WHAT THE CLOCK GAINS, against the clock as it will be when the
-            // move LANDS, because it drains while the cursor walks.
             var stopGain = Math.max(0, pays - Math.max(0, clock - took));
-            // AND THEN THE WHOLE HOLD, of which that is only one part. A break
-            // holds the floor for as long as the slab takes to come apart and pays
-            // no stop time at all, which is why digging looked worthless.
-            // The real count, not W as a stand-in: the slab the match touches is
-            // what sets the resolve, and the resolver reports it now.
             var gain = heldFrames(framesTable, stopGain, o.total,
                                   o.garbage || (o.breaks ? W : 0));
-            // WHAT SURVIVAL ACTUALLY REQUIRES IS A CLEAR RATE OF 1.0, and ranking
-            // by the stop-time gain alone cannot see it. Measured over three duels:
-            // panels arriving 234, 147, 224 against panels cleared 225, 114, 195 --
-            // rates of 0.96, 0.78 and 0.87, and the only board that survived was
-            // the 0.96. The deficit is 9 to 33 panels a game, three to eight extra
-            // clears. TWO THIRDS OF THE INFLOW IS GARBAGE, not the rising floor, so
-            // the panels a move removes matter more than the freeze it buys.
-            //
-            // So the objective is frames of life bought per frame spent. A plan
-            // clearing 18 panels is worth 337 frames before any stop time; the
-            // deepest chain pays only 68. The panels were always the larger half and
-            // the gain-only ranking was reading the smaller one.
-            // AND THE CELLS A BREAK RETURNS TO THE BOARD, WHICH ARE WORTH FAR
-            // MORE THAN ONE CLEAR EACH.
-            //
-            // THIS IS NOT A PREFERENCE FOR DIGGING. A cleared panel buys perPanel
-            // frames ONCE. A garbage cell is a cell of board that can never be
-            // freed, so it costs perPanel EVERY TIME the board would have cycled
-            // through it -- for the whole of the rest of the game. Converting it
-            // hands all of that back.
-            //
-            // The rest of the game, in rows, is deadline / framesPerRow, so a
-            // converted cell is worth perPanel * that, which is deadline / W.
-            // Nothing is chosen here: it is the same exchange rate as a clear,
-            // multiplied by the number of times the board still gets to use the
-            // cell. It falls to one clear's worth as the deadline runs out, which
-            // is right -- one frame from death the immediate clear is the only
-            // thing that matters.
-            //
-            // Priced at one clear instead, a break stopped winning and rand2 went
-            // from 0 deaths in 4 to 3, converting 83% of the garbage that landed
-            // against 98%.
             var perCell = Math.max(perPanel, (deadline || 0) / W);
-            // AND THE CEILING IT GIVES BACK. Death comes at the TALLEST column, so
-            // the rows a clear takes off the top of the board are frames of life in
-            // the plainest sense -- one row is framesPerRow. The same clear taken
-            // off a short column gives none of them back, which is the difference
-            // between a move that works and a move that works AND flattens.
             var lowered = (tallNow && o.tall !== null && o.tall !== undefined)
                         ? Math.max(0, tallNow - o.tall) : 0;
-            // WHAT SPENDING THE PANELS COSTS, which is nothing until the board
-            // cannot afford it.
-            //
-            // A cleared panel buys perPanel frames once, and that is already
-            // counted above. Left on the board it would have bought the same
-            // later, so spending it early is free -- UNTIL the board drops below
-            // the material it needs to make any clear at all. Under that floor
-            // the panels have to be put back, and the only way to put them back
-            // is a row of rise: framesPerRow per row short.
-            //
-            // This is what makes a bare three a bad move on a healthy board and
-            // the right move on a dying one. It sends nothing and breaks nothing,
-            // so all it has is the panels it removes -- and when the board is
-            // short, removing them costs more than they buy. Banning it outright
-            // instead died at 6,936 frames where the engine's own arithmetic
-            // survives, because a three is genuinely the move when nothing else
-            // is there.
-            // AND UNDER THE FLOOR IT IS A REFUSAL, NOT A PRICE.
-            //
-            // As a price it never bites: clearing three panels is worth 3*perPanel
-            // plus the frames the resolve holds -- about 115 at level 10 -- against
-            // a shortfall charge of half a row, 56. So spending always won, and the
-            // survival plan is exempt from the candidate-list rule that says the
-            // same thing, because it is priced arithmetic rather than preference.
-            //
-            // Seed 101 reached a flat board of 24 panels at frame 2,248 with no
-            // garbage on it and nothing incoming, and ground itself to 7 panels by
-            // 3,420 through this path. Twenty-four cells landed at 3,589 and it was
-            // dead at 4,377. Nothing was threatening it; it simply cashed the board
-            // away.
-            //
-            // A break is exempt: it ADDS material, and its settled board is
-            // unknowable so `mat` is null anyway.
             if (o.mat !== null && o.mat !== undefined && o.mat < WORKING_ROWS &&
                 !o.breaks && (o.total || 0) > 0) continue;
-            // AND A PLAN MAY NOT BE THE MOVE THAT OPENS A HOLE, EITHER.
-            //
-            // The rule bestAttack has had for a while, on the path that picks most
-            // of the moves. A column at zero holds no vertical match, breaks the
-            // adjacency a horizontal one needs, and is where a slab bridges --
-            // garbage rests on the tall columns and spans the width, so the empty
-            // column is sealed and nothing under it can reach the slab. Seven
-            // deaths measured over two builds, every one of them a column at zero,
-            // one or two standing beside a tower.
-            //
-            // Only the move that OPENS the hole, as in bestAttack: playing on a
-            // board that already has one is not this move's doing. A break is
-            // exempt without being excused -- its settled board is unknowable, so
-            // `low` is null and `opensHole` is false.
             if (ruinsShape(o)) continue;
             var shortfall = shortfallOf(o);
-            // AND WHAT THE CLEAR HOLDS WHILE IT RESOLVES, WHICH IS A DIFFERENT
-            // THING FROM THE PANELS IT REMOVES.
-            //
-            // `o.total * perPanel` is the ceiling handed back: a panel off the
-            // board is framesPerRow / W of rise that no longer happens. The
-            // resolve is a freeze on top of that -- the floor is held for every
-            // frame panels are in motion (timing.test.js checks exactly this),
-            // and the two do not overlap, so they add.
-            //
-            // From the engine's table rather than a proxy for it: a resolve is
-            // FLASH + FACE + POP per panel, a fixed cost plus a per-panel one,
-            // and resolveFramesOf is the same function the death filter uses, so
-            // the two cannot disagree about what a clear is worth.
             var holds = (o.total > 0 || (o.garbage || 0) > 0)
                       ? BF.resolveFramesOf(engine, o.total || 0, o.garbage || 0) : 0;
-            // AND WHAT IT DID TO THE WAY OUT FROM UNDER THE SLAB, in frames,
-            // which is already this ranking's currency. The same deadline/W a dig
-            // cell is worth in bitoptions, on the path that picks most of the
-            // moves -- where it was never asked at all.
-            // One cell of the way out is worth one panel of life -- perPanel, the
-            // atom this ranking already converts everything else with. NOT
-            // CALIBRATED. See bestAttack for why it is not bitoptions' deadline/W,
-            // and for why only the GAIN counts: the panels a clear spends are
-            // already priced as o.total * perPanel just above, so charging for the
-            // reach they carried is the same panels twice.
-            // AND ONLY WHILE THE BOARD IS SHORT UNDER THE SLAB -- see bestAttack.
-            // `digging` is any garbage at all, which is not the case this is for.
             var digs = (o.matNow !== null && o.matNow !== undefined &&
                         o.matNow < WORKING_ROWS)
                      ? Math.max(0, o.digGain || 0) * perPanel : 0;
-            // `o.total * perPanel` AND `lowered` ARE DIFFERENT QUANTITIES. BOTH TRIED
-            // AND BOTH ATTEMPTS MEASURED WORSE.
-            //
-            // The pair looks like a double count -- framesPerRow/W a panel cleared, and
-            // framesPerRow a row the tallest column dropped, both claiming to pay for
-            // ceiling. They are not the same:
-            //
-            //   o.total * perPanel   MATERIAL REMOVED. Clearing W panels takes a row's
-            //                        worth of mass off the board, which is a row of
-            //                        rise that will never have to be paid. Amortised.
-            //   lowered * FPR        THE TALLEST COLUMN DROPPING NOW. Immediate, and
-            //                        zero when the clear came off a shorter column.
-            //
-            // A clear in the middle of a flat board makes the board lighter even though
-            // the top does not move, and that is real. Removing the first term because
-            // `lowered` reads zero left the bot with almost no reason to clear at all:
-            // 101 rand2 v rand3, alive on both sides, died at 6,900.
-            //
-            // Scaling the first by how full the board is (tall/H, on the premise that
-            // frames are only worth having when the ceiling is scarce) also measured
-            // worse: 103 STARTER v rand3, 23,209 to 14,799. Unscarce frames are still
-            // real frames, and the scaling devalues every good clear to reach the few
-            // bad ones.
-            //
-            // Re-measured against the corrected arithmetic and still a swap, not a
-            // fix: halving what a clear is worth on a half-full board stops the bot
-            // cashing on the board where cashing is the whole job -- 101 rand2 v rand3
-            // rose 5,5,5,5,5,5 to 8,8,8,8,8,8 over 25 decisions holding one three.
-            // THE CELLS A BREAK HANDS BACK ARE ITS BOTTOM ROW, not the whole slab.
-            // `holds` above wants the whole slab, because that is what the engine pops
-            // and what sets the resolve time; this wants what becomes panels.
             var bought = o.total * perPanel + holds + (o.converts || 0) * perCell
                        + lowered * (framesPerRow || 0) + gain
                        - shortfall * (framesPerRow || 0)
-                       // AND THE VOID THE SLAB WOULD SEAL -- a row of it is a row of
-                       // ceiling, so framesPerRow, as height is.
-                       //
-                       // NOT the perCell a CONVERTED cell is paid. `voidRows` is
-                       // high - mat: the void a slab WOULD seal if one arrived, which is
-                       // why it is on the option and priced while the board is healthy.
-                       // Until the slab lands that space is ordinary ceiling and the bot
-                       // can play into it; only cells actually under a slab are
-                       // recoverable by breaking alone, which this does not measure.
-                       // At perCell it is five times the ceiling it stands for, and with
-                       // no garbage on the board it goes NEGATIVE for any clear that does
-                       // not lower `high` -- so bestPlan returns rate <= 0 and no
-                       // arithmetic route claims the move at all.
                        + (o.voidGain || 0) * (framesPerRow || 0)
-                       // AND WHAT IT DID TO THE SETUP FOR A BREAK -- already in
-                       // frames, which is this ranking's currency. See bestAttack.
                        + (o.slabGain || 0)
                        + digs
-                       // AND BEING READY FOR THE SLAB THAT IS COMING -- already in
-                       // frames, which is this ranking's currency. See bestAttack.
                        + (o.slabWorth || 0);
             var rate = bought / Math.max(1, took);
             var cur = fits ? best : over;
-            // Between two plans buying life at the same rate, the one leaving the
-            // flatter board; between two of those, the cheaper.
             var better = !cur || rate > cur.rate;
             if (!better && cur && rate === cur.rate) {
                 var mb = o.bumps === null || o.bumps === undefined ? 1e9 : o.bumps;
@@ -1764,40 +613,12 @@
                 if (fits) best = cur; else over = cur;
             }
         }
-        // The best that fits, or if nothing fits, the best there is.
         return best || over;
     }
 
-    // WHAT A MOVE COSTS AT THIS MOMENT, which is not a constant.
-    //
-    // The reaction cooldown is skipped whenever stop time is running or the board
-    // is topped out -- see `urgent` in update() -- so an action inside a freeze
-    // costs the swap alone and one outside it also pays the reaction. Measured at
-    // 2.8 frames an action while frozen against 17 outside.
-    //
-    // The resolve time is the engine's own preStop and depends on the match, so
-    // it is a function rather than a number.
-    // THE CLOCK, AND THE MOVE MEMORY ON TOP OF IT.
-    //
-    // `clock` is everything the board's own physics say: the rise, the cooldown,
-    // the deadline, what a clear resolves for, what it holds the floor for. It is
-    // a fact about the position and nothing in it remembers anything.
-    //
-    // `timing` is that plus `avoidSwap` -- the swaps just played, so the search
-    // can leave out the one that would undo its own last move. That IS a memory,
-    // and it changes which options exist rather than what they are worth, so the
-    // feature vector takes the clock and not this: a board's features have to be a
-    // function of the board, or the same board scores two ways depending on how it
-    // was arrived at, and the Lua port -- which has no such memory -- drifts.
     BitBot.prototype.timing = function (info, deadline, base) {
         var t = this.clock(info, deadline, base);
-        // THE MOVE JUST PLAYED, so the search can leave out the one that would
-        // undo it. Carried rather than consulted here: the search enumerates the
-        // options every route reads, so excluding it there covers all of them.
         t.avoidSwap = this._recentSwaps;
-        // AND, TOPPED OUT, THE LOCK ROUTES RUN ON, in planFits' own arithmetic, so a
-        // route that cannot be played before health can drain is never built. Only the
-        // route search asks for it; the features' count of what a board offers does not.
         if (info.toppedOut) t.lock = Math.max(0, (info.drainRun || 1) - 1);
         return t;
     };
@@ -1807,45 +628,15 @@
         var frozen = (info.stopTime || 0) > 0 || !!info.toppedOut;
         return {
             framesPerRow: info.framesPerRow || 0,
-            // THE MATERIAL FLOOR, carried rather than duplicated: the number lives
-            // here and the search prices it in its own currency.
             workingRows: WORKING_ROWS,
-            // WHAT A CLEAR IN HAND IS WORTH, IN FRAMES. The smallest clear is a
-            // three, and what it buys is the floor held for its own resolve --
-            // resolveFramesOf, the same function the death filter uses, so this is
-            // the engine's number and not a restatement of it. Carried over because
-            // the search prices readiness and has no engine to ask.
             holdWorth: BF.resolveFramesOf(PanelEngine(), 3, 0),
             deadline: deadline || 0,
-            // THE COOLDOWN BETWEEN DECISIONS, so the search can work out how many
-            // swaps fit in the deadline rather than being told a depth. depthFor
-            // divides by this for plan plies; the setup reach below divides by it
-            // for setup swaps. One number, both questions.
             reaction: this.reaction,
             overhead: travel.MOVE_FRAMES + (frozen ? 0 : this.reaction),
             resolve: function (size, garbage) {
                 return BF.resolveFramesOf(PanelEngine(), size, garbage);
             },
-            // WHAT A CLEAR WOULD HOLD THE FLOOR FOR, in frames, from the engine's
-            // own stop table. Handed to the search so it can price the board a
-            // route LANDS on rather than asking whether that board can fire at
-            // all: a bare three holds 0, a combo 4 holds 60 topped out, a chain 4
-            // holds 94, and a boolean scores the three of them the same.
-            // PREPARATION IS NOT A REACTION. THE NEXT SLAB IS ALWAYS COMING.
-            //
-            // This was `incoming > 0 || garbage already on the board`, so a healthy
-            // board did no setup for a slab at all -- and then the slab landed on a
-            // board that had not prepared for it, and the bot started digging. That is
-            // the whole shape of the deaths: not a search that cannot find a break, but
-            // a board that was never built to have one. Measured on seed 101 rand2 v
-            // rand3, the search HAS a break on the option list on 1,717 of 3,775 buried
-            // decisions and never misses a one-swap break, and the board still dies.
-            //
-            // You dig for setup. Digging to survive is what it looks like when the
-            // setup was not done, and in a duel there is no state where preparing is
-            // wasted, because the opponent is always about to send.
             prepare: true,
-            // what stopPrice reads besides the resolve, so its answers can be kept by board
             stopKey: info.toppedOut ? 'top' : 'free',
             stopPrice: function (r) {
                 var isChain = r.chain >= 2;
@@ -1856,78 +647,6 @@
         };
     };
 
-    // ===================================================================
-    // THE ORDER OF THE WHOLE DECISION, AND WHAT EACH STAGE MAY LOOK AT.
-    //
-    // Read this before moving a rule. Every bug worth finding in here has been
-    // the same shape: a rule written into the stage that does not feed the path
-    // that picks the move. Four of them in one day -- the beam cutting breaks
-    // before the break-priority rule saw them, the save rule shaping only the
-    // fallback, the break priority never reaching bestAttack, and the stranded
-    // test applied to a cash.
-    //
-    // 1  READ THE BOARD. Nothing is decided here.
-    //    pool      every legal swap, plus hold, plus a raise if the engine would
-    //              grant one -- each carrying the board it lands on and what it
-    //              resolves to. EVERY move any path can play is in here, which is
-    //              what lets the exit gate check all of them (stage 6).
-    //    deadline  framesToDeath: the clock, plus the rows between the stack and
-    //              the ceiling MINUS the rows of garbage already queued.
-    //    raising   raiseMode: the opening, or material under the floor. Never with
-    //              garbage on the board -- there the answer is to dig.
-    //
-    // 2  PLAN. Skipped entirely while `raising` -- a plan made then is about a
-    //    board one row from changing. Otherwise the held survival plan continues,
-    //    or bestPlan makes one. Plans are stamped with stack.clock, NOT
-    //    stack.frames, which is the level's timing table (see below).
-    //    Then `mode`: BUILD, ATTACK or DEFEND.
-    //
-    // 3  NARROW THE CANDIDATE LIST. ** THIS FEEDS THE WEIGHTS FALLBACK ONLY. **
-    //    The attack, the survival plan and the flatten plan all read the OPTION
-    //    list instead, so a rule written here reaches the path that runs least.
-    //    Write rules in refuses() and they are enforced again at stage 6.
-    //    In order: hold dropped outside BUILD; refuses(); a cash that adds no stop
-    //    time while the clock runs, breaks exempt; too slow for the deadline; the
-    //    escape hatch (empty -> the whole pool); the no-return filter LAST, and it
-    //    stands aside rather than empty the list; sends-and-breaks dominates;
-    //    breaking is the priority under six rows; then the beam cuts to twelve.
-    //
-    // 4  SCORE WHAT SURVIVES. deadly() per candidate; the stranded test for
-    //    setups only; a fail-safe preference for keeping something fireable.
-    //
-    // 5  PICK, IN THIS ORDER. Earlier wins, and every branch is a `return`:
-    //       raising      -> take the row, or hold so riseLock can clear
-    //       digging      -> a break in hand, then the held dig route, then a new
-    //                       route to a break. NOT behind `survival`: a break holds
-    //                       the floor AND converts the slab AND hands back rows.
-    //       no plan      -> attack: the held attack plan, then bestAttack
-    //       plan         -> play it
-    //       flatten      -> when nothing clears, or inside a freeze where the
-    //                       floor is held. Budgeted by the CLOCK, not the
-    //                       deadline, and its landing board is checked first.
-    //       reveal       -> the window, if one is open
-    //       fallback     -> the weights, over `allowed` from stage 3
-    //
-    // 6  THE EXIT GATE (decide(), below). Every move from every path passes here.
-    //    refuses() is re-applied to whatever was chosen and a substitute played if
-    //    it is forbidden -- except for the paths in ARITHMETIC, which are already
-    //    priced in frames and must not be overruled by a weights ranking. Then the
-    //    save invariant: with nothing to fire, take the route to something; with
-    //    something to fire, do not spend it for nothing.
-    //
-    // AND BEFORE ANY OF IT: A SWAP ALREADY PLAYED HAS TO LAND. update() lifts the
-    // reaction inside a freeze and inside a reveal window, and a decision taken
-    // while the bot's own swap is still animating is taken on a board between two
-    // positions -- the answer comes back the same and playing it restarts the
-    // swap, so the match under it never fires. swapLanding() holds the lift off.
-    //
-    // TWO THINGS THAT MUST NEVER HAPPEN, and where they were made impossible:
-    //    DO NOTHING while something is possible -- every filter that can empty a
-    //    list stands aside instead (stage 3's hatch, the no-return filter, the
-    //    all-dead fallback, the soft exit gate).
-    //    PLAY WHAT A RULE FORBIDS -- stage 6 sees every path, because stage 1's
-    //    pool holds every legal move with its landed board.
-    // ===================================================================
     BitBot.prototype._decide = function () {
         var self = this;
         var board = this._snapshot();
@@ -1938,199 +657,34 @@
         this._incomingRow = board.incoming;
         this._lastOptions = null; this._lastDeadline = 0;
         var rev = this.revealPick(board);
-        // ONLY OPTIONS IT CAN ACTUALLY FINISH IN THE TIME IT HAS LEFT.
-        //
-        // Every candidate is already priced in frames -- travel.cost to the cell
-        // plus the swap -- and the frames before this board is dead are arithmetic
-        // off the engine's own health drain and rise rate. A move costing more
-        // than that cannot be completed before the game ends, so it is not a move,
-        // however well it scores. Measured on seed 101: the bot spent a 29-frame
-        // freeze walking toward something 60 frames away and died holding the
-        // cursor mid-walk.
-        //
-        // It almost never bites -- a walk is at most 64 frames and a healthy board
-        // has hundreds -- which is the point: it bites exactly in the spiral, and
-        // nowhere else.
         var deadline = framesToDeath(info, tallestOf(pool), info.framesPerRow);
         this._lastDeadline = deadline;
-        // THE BIGGEST SLAB THIS OPPONENT HAS ACTUALLY SENT, in rows. Observed, never
-        // predicted: the raise has to leave room for what is coming, and `incoming`
-        // only shows what is already queued. A running maximum is the honest version
-        // of the question -- it says what this opponent hits with, and it adapts
-        // rather than being a constant someone picked.
         var queued = Math.ceil((info.incoming || 0) / W);
-        // LEARNED FROM WHAT LANDED, NOT FROM WHAT QUEUED.
-        //
-        // `incoming` cannot see the slabs that matter. shouldDropGarbage ends with
-        //
-        //     if (!this.hasActivePanels()) return true;
-        //     // Tall chain garbage lands even mid-action; combo garbage waits for calm.
-        //     return garbage.height > 1;
-        //
-        // so a slab taller than one row drops the frame it arrives and never sits in
-        // the queue at all. Measured over 101 rand2 v rand4: 5 chain slabs landed,
-        // mean 14.4 cells, mean 0.0 frames queued, 100% of them within one frame --
-        // against 53 combo slabs, mean 5.2 cells, mean 43 frames queued. `incoming`
-        // was non-zero on 222 of 2,093 decisions, 10.6%, and the largest it ever read
-        // was 12 cells while the slab that killed the board was 18.
-        //
-        // So a running maximum of the QUEUE is not "the biggest slab this opponent has
-        // actually sent" -- it is the biggest slab this opponent has sent SLOWLY, and
-        // the ones it hits with are invisible to it by construction. The slabs on the
-        // board are the honest record: one is there because it was sent, and its
-        // height in rows is what the next one will want room for.
-        // A RUNNING MAXIMUM MUST ONLY BE FED SLAB SIZES. This also took
-        // ceil(incoming / W), which is the whole QUEUE -- so under a flood it ratcheted
-        // to 8, 20, 33, 88, 119 rows and never came down, and the raise was dead for
-        // the rest of the game. The queue is not a slab; the slabs on the board are.
         var landed = garbageRows(base);
         if (landed > (this._maxSlab || 0)) this._maxSlab = landed;
-        // DECIDED BEFORE ANYTHING IS PLANNED, because while it is on there is
-        // nothing to plan: the raise outranks the attack and the board is not
-        // being played, it is being filled.
-        // THE BREAK IS LOOKED FOR BEFORE THE RAISE IS DECIDED. The raise route runs
-        // first, and a raise taken instead of a break is the measured disaster -- 11
-        // deaths in 13 pairings -- so raiseMode has to be able to ask.
         var poolBreak = false;
         for (i = 0; i < pool.length; i++) {
             if (pool[i].resolved && pool[i].resolved.brokeGarbage) { poolBreak = true; break; }
         }
-        // HOW DEEP THERE IS TIME TO SEARCH, hoisted above the raise branch because the
-        // option list is now built there. Read below its own `var` it was undefined, and
-        // a depth of undefined is the same class of silent wrong as the NaN prices.
-        // TOPPED OUT, A PLAN RUNS ON ITS OWN CLEARS' LOCKS, so the search looks at least a
-        // clear's resolve ahead; planFits decides which plans can be played.
         var lookDepth = Math.min(this.maxDepth, depthFor(info.toppedOut
             ? Math.max(deadline, BF.resolveFramesOf(PanelEngine(), 3, 0)) : deadline, this.reaction, tallestOf(pool)));
-        // A BREAK AT ANY DEPTH DOES NOT STAND THE RAISE DOWN. MEASURED, AND IT COST
-        // BOTH BOARDS.
-        //
-        // AND THE OPTION LIST IS NOT BUILT HERE, which was how the stand-down asked.
-        // `digging` is assigned further down, so a build at this point passed dig as
-        // UNDEFINED -- and `_lastOptions` caches it, so every later route then read a
-        // list built with digging off, which is the list that does not widen the beam
-        // toward the slab. Two boards swapped their outcomes on that alone. Same class
-        // as the lookDepth read below its own var, and as the NaN prices: a value read
-        // before it exists is silently wrong rather than loudly.
-        //
-        // The raise stands down for a break in hand, and for nothing else.
         var raising = this.raiseMode(info, base, poolBreak);
         this._wantRaise = !!raising;
-        // DEFEND RANKS BY THE CLOCK, NOT BY THE WEIGHTS.
-        //
-        // The bot is always attacking -- the modes only change which shapes it
-        // prefers -- with ONE exception: when survival is on the line it does
-        // whatever survives, even against its own preferences. The weights score
-        // board quality, and board quality is not what matters one frame from
-        // death; the clock is. So among the moves that bank time, the MOST time
-        // wins, and that is the whole of DEFEND.
-        //
-        // If nothing banks anything the ordinary ranking stands, because then no
-        // move here is an escape and there is nothing for this to choose between.
-        // Borrowed from modes.js, whose FORCED does exactly this.
-        // SURVIVAL IS A PLAN THAT FINISHES IN TIME.
-        //
-        // Ranking single candidates could never express it: the move that saves
-        // the position is often the SETUP, which clears nothing and rates zero on
-        // any measure of what it does by itself. A plan is priced over both plies
-        // by bitoptions, so the setup is paid for by the cash it leads to.
-        //
-        // One call for the whole decision, not one per candidate -- the plans are
-        // a property of the position, not of the move being scored.
-        // AN EMPTY CLOCK IS ALWAYS LOSING GROUND, whatever the headroom.
-        //
-        // The plan arithmetic used to be gated behind DEFEND, so on a board with
-        // room it never ran and the weights decided instead.
-        // Measured on one duel: 103 decisions were taken with the clock at zero,
-        // 86 of them had a setup-then-cash plan worth 32 to 62 frames sitting on
-        // the board, and 81 were in BUILD where that plan was never consulted.
-        // That is the whole of the 455-to-873 frame gaps between payouts.
-        //
-        // While the clock runs the floor is held and there is time to build. While
-        // it is empty the floor is advancing every frame, so keeping it supplied
-        // comes first -- which is the constant supply this bot was asked for. The
-        // plan still has to gain time and finish in time, so on a board with
-        // nothing worth cashing this changes nothing.
-        // WHEN TO START THE NEXT PLAN, AND WHY IT IS NOT "SO IT LANDS AS THE CLOCK
-        // RUNS OUT".
-        //
-        // That refinement is the obvious one and it was tried. A plan costing
-        // `frames` looks like it should be STARTED when `clock <= frames`, so the
-        // cash lands exactly as the clock reaches zero -- no dead frames with the
-        // floor moving, and maximum value, since the gain is
-        // max(0, pays - max(0, clock - frames)) and a plan arriving at clock zero
-        // has nothing left to beat.
-        //
-        // It measures WORSE: 4,593 frames against 5,040, payouts 92 against 100,
-        // over the same six duels. Launching earlier wins continuity and loses
-        // building time, and the building time is worth more -- every frame spent
-        // walking toward a cash is a frame not spent assembling the bigger one.
-        //
-        // So the plan runs when the clock is EMPTY, which is the latest it can be
-        // started, and the frames the floor moves during execution are the price.
-        // Do not re-derive the earlier launch from the gain formula; the formula is
-        // right and the trade it misses is the cost of not building.
-        // ONE OPTION SWEEP FOR THE WHOLE DECISION. Survival and attack both read
-        // it and it is the expensive call in here -- two sweeps a decision would
-        // double the cost of every frame for an answer that cannot have changed.
         var options = null;
-        // Spent once for the decision, so both halves search the same board at the
-        // same depth and cannot disagree about what is on offer.
-        // BURIED AND SHORT: WIDEN THE SEARCH, NOT THE PREFERENCE.
-        //
-        // This says where to LOOK, and nothing about what to play. Ranked by price
-        // alone the beam keeps the twelve cheapest setups and a position one swap
-        // from a break falls out of it whenever twelve cheaper ones exist, so a
-        // break was something the search stumbled on rather than something it
-        // could see. Six more slots, ranked by how close the board is to a slab,
-        // make it visible; bestPlan then prices it against everything else and
-        // takes it only when it buys more life.
-        //
-        // Finding is not preferring, and the bot does not prefer digging. It
-        // prefers not dying, and under a slab those are usually the same move.
         var digging = false;
         for (i = 1; i <= W; i++) if (base.garb[i]) { digging = true; break; }
         if (digging) this.counts.digging++;
         var survival = null, planWait = null, planWaitEscape = Infinity;
         var swept = false;
         if (raising) {
-            // THE ROW IS ON ITS WAY, so there is nothing to plan: a plan made now
-            // is about a board one row from changing, and its opening move would
-            // take the row back.
             this._plan = null;
             this._attack = null;
             this._flatten = null;
         } else if (info.toppedOut || !(info.stopTime > 0)) {
             swept = true;
-            // A PLAN IS EXECUTED, NOT RE-CHOSEN EVERY FRAME.
-            //
-            // Re-planning each decision and playing the first move of whatever
-            // came back means starting plans and never finishing them: the setup
-            // is played, the board changes, a different plan now looks best, and
-            // its setup is played instead. The cash at the end of either one never
-            // arrives. Measured as wild variance -- one seed reached 5,397 frames
-            // and another 1,370, with 204 planned moves and the gaps between
-            // payouts unchanged.
-            //
-            // So the remaining moves are held and played in order. The plan is
-            // dropped the moment it stops being true: its next move must still be
-            // legal, and the whole thing must still fit inside the frames left.
-            // That is the arithmetic of "how many moves will it take, and will the
-            // board still be there when they are done".
             if (this._plan && this._plan.moves.length) {
                 var nx = this._plan.moves[0];
                 var stillLegal = playable(nx);
-                // WHAT IS LEFT OF THE PLAN, NOT WHAT IT COST WHEN IT WAS MADE.
-                //
-                // The plan is priced once and then executed over several
-                // decisions. Checking its original total against the current
-                // deadline compares a number that still includes the moves
-                // already played against a clock that has since drained -- both
-                // sides stale, in opposite directions.
-                //
-                // The engine's own frame counter is the clock, so the plan stamps
-                // it when it starts and the frames since are subtracted. What is
-                // left is what has to fit.
                 var spent = Math.max(0, this.stack.clock - (this._plan.startedAt || 0));
                 var remains = Math.max(0, this._plan.frames - spent);
                 var planFits = this.planInTime(this._plan.moves, remains, base, info, deadline);
@@ -2167,26 +721,10 @@
             this._plan = null;                    // clock running again: the plan is stale
         }
 
-        // WHAT THE MODE IS LATE AGAINST: the frames of the cheapest plan that HOLDS
-        // STATION. Survival is a clear rate of 1.0 -- a plan buying a frame of life
-        // per frame spent breaks even and anything under that loses ground, so
-        // `rate >= 1` is the whole test and there is no threshold to pick.
-        //
-        // A plan merely worth playing is not an escape. Ranked by `rate > 0` the
-        // cheapest one costs a frame or two, so `deadline <= escape + reaction`
-        // reads 52 <= 13 and DEFEND cannot open however close the ceiling is.
-        //
-        // NOTHING HOLDING STATION IS THE DANGEROUS CASE, NOT THE SAFE ONE, so it is
-        // Infinity rather than null: every deadline is inside it and DEFEND opens.
-        // null is reserved for not having looked -- while stop time runs the floor
-        // is held and the sweep does not run, and that is not the same as finding
-        // nothing.
         var escape = null;
         if (swept) escape = (survival && survival.rate >= 1) ? survival.frames : Infinity;
         if (swept && planWait) escape = planWaitEscape;
         var mode = this.mode(info, pool, !!rev, deadline, escape);
-        // THE TIMING THE DECISION WAS MADE ON, so a death can be read back off the
-        // bot rather than reconstructed from the board afterwards.
         this._last = { mode: mode.name, deadline: deadline, escape: escape,
                        pool: pool.length, tallest: tallestOf(pool),
                        stopTime: info.stopTime | 0, health: info.health,
@@ -2194,22 +732,8 @@
         this.decisions++;
         this.counts.byMode[mode.name] = (this.counts.byMode[mode.name] || 0) + 1;
 
-        // THE MODE FILTERS, IT DOES NOT PICK. ATTACK and DEFEND drop hold:
-        // there is something to cash, or idling is what kills us.
-        // Whether survival is at stake, decided before the pool is filtered so the
-        // payless rule knows when to stand aside.
-        //
-        // DEFEND AND ONLY DEFEND. An empty clock is not danger -- it is the normal
-        // state of a board with room, true on almost every frame -- so exempting
-        // on that made the rule stand aside always and changed nothing at all
-        // (identical histograms over 990 decisions). DEFEND opens when the floor
-        // arrives before the escape can be reached, which is survival being at
-        // stake and nothing else is.
         var survivalNeeded = mode.name === 'DEFEND';
         this._lastSurvivalNeeded = survivalNeeded;
-        // IS A BREAK ON THE TABLE AT ALL -- what `starving` is allowed to refuse a
-        // clear in favour of. One pass, before the pool is filtered, because a
-        // break refused by something else is still a break the board could play.
         var breakOnPool = false;
         for (var bo = 0; bo < pool.length; bo++) {
             var br = pool[bo].resolved;
@@ -2219,73 +743,7 @@
         var here = signature(base);
         var allowed = [];
         for (var i = 0; i < pool.length; i++) {
-            // HOLD IS NOT AN OPTION WHILE THE CLOCK IS BURNING.
-            //
-            // A freeze is a fixed number of frames in which the floor is held and
-            // the board can be changed for free. Holding through one spends a
-            // resource with a deadline and gets nothing for it. Measured after the
-            // reaction was lifted for freezes: 339 decisions on seed 101 and 526
-            // frozen frames on which the board did not change at all, because
-            // BUILD kept hold in the pool and holding kept winning.
-            //
-            // Only on a SETTLED board. With panels in the air the right move is
-            // often to let the cascade land, and that is not idling -- the board
-            // is changing without the bot touching it.
-            // HOLDING IS WAITING ONLY WHILE THE BOARD CHANGES ON ITS OWN.
-            //
-            // With panels in flight the cascade is doing the work and waiting for
-            // it is real. Settled, it is not: either the clock runs, and holding
-            // spends a freeze for nothing, or it does not, and the floor is
-            // advancing while holding buys zero frames. It is the one action that
-            // is never survival.
-            //
-            // Seed 104 held eight decisions running at tallest 8 with 202 frames
-            // in hand and no clear anywhere on the board. By the time it acted the
-            // deadline was 47, then 1.
-            // AND WAITING OUT A CASCADE IS NOT A REASON EITHER: THE FREEZE IS FREE
-            // SETUP TIME.
-            //
-            // This kept the hold while panels were in flight, on the grounds that the
-            // cascade is doing the work. But while it resolves the engine holds
-            // riseLock, so THE FLOOR DOES NOT MOVE -- a swap made in that window costs
-            // no rise at all. It is the cheapest setup time in the game and holding
-            // spends it on nothing. Measured on seed 103 rand1: 81 holds in a game, 78
-            // of them with a cascade in flight, against 2,256 moves.
-            //
-            // The one real reason to wait is timing a swap so a falling panel lands
-            // into the next link, and that is a question about WHICH swap, not about
-            // holding -- nothing here encoded it, the hold simply stayed in the pool
-            // and won whenever nothing else scored higher.
-            //
-            // The lost-position fallback at the end still returns a hold when nothing
-            // survives, so the bot can never be left with no answer.
             if (pool[i].kind === 'hold') continue;
-            // A PAYLESS CLEAR IS NOT PROGRESS, IT IS UNBUILDING.
-            //
-            // A bare three sends no garbage and earns no stop time -- the engine's
-            // own tables say so -- and it spends the vertical structure a chain is
-            // made of. Measured over 990 decisions: 5,176 of the options on offer
-            // were size-three combos and a 3-chain appeared twice. The bot was
-            // cashing threes constantly and then finding no chains, which is cause
-            // and effect, not coincidence.
-            //
-            // So when nothing is at stake the weights may not spend a three. They
-            // can still hold, raise, or play a swap that clears nothing -- which is
-            // what building IS. Survival is exempt: a board that needs the clock
-            // takes whatever buys it.
-            // A THREE THAT NEITHER SENDS NOR BREAKS IS NOT AN ACTION.
-            //
-            // It spends the vertical structure a chain is made of and the engine's
-            // table pays nothing for it. Measured over 990 decisions: 5,176 of the
-            // options on offer were size-three combos and a 3-chain appeared twice.
-            //
-            // Survival is exempt -- a board that needs the clock takes whatever
-            // buys it.
-            // THE ONE PREDICATE. Its rules are enforced again at the exit, on
-            // whatever move was actually chosen, so writing one here is enough.
-            // COUNTED BY NAME, NOT BY STRING ARITHMETIC. `counts['refused' + why]`
-            // turns a renamed reason into `undefined + 1` and the counter reads NaN
-            // for the rest of the game without anything failing.
             var why = this.refuses(pool[i], info, base, survivalNeeded, breakOnPool);
             if (why) {
                 if (why === 'payless') this.counts.refusedPayless++;
@@ -2293,38 +751,6 @@
                 else this.counts.refusedOther++;
                 continue;
             }
-            // A CASH THAT GAINS NOTHING IS NOT AN ACTION YET: FIRE AT THE LAST
-            // SECOND.
-            //
-            // awardStopTime takes a MAX, not a sum, so a payout only counts for
-            // what it adds on top of the clock still running:
-            //
-            //     gain = max(0, pays - max(0, clock - frames))
-            //
-            // Inside a 2-chain's 60-frame freeze, cashing a 4-combo 17 frames in
-            // pays 30 against 43 still on the clock and gains ZERO. The same combo
-            // fired as the clock reaches zero is worth the whole 30.
-            //
-            // A freeze is a fixed budget of free actions, and it is a large one:
-            // the reaction cooldown is skipped while the clock runs (see `urgent`
-            // in update), so an action costs travel plus the swap -- about 5
-            // frames adjacent, measured at 2.8 over a real game. Sixty frames of
-            // stop time buys roughly a dozen moves, not three. So there is room to
-            // build inside a window and still cash at the end of it. Refusing a zero-gain cash is
-            // what spends the window that way, and it is the engine's own formula
-            // deciding, not a preference.
-            // A BREAK IS NOT A CASH AND THIS RULE DOES NOT PRICE IT.
-            //
-            // The formula above is stop time and nothing else: gain = pays minus
-            // what is still on the clock. A break that sends nothing pays no stop
-            // time, so it read as gaining zero and was dropped -- on every
-            // decision with a freeze running, which is most of them, because the
-            // freeze is why the cooldown lifts in the first place.
-            //
-            // What a break is worth is not on that clock. It converts the slab's
-            // cells into panels and hands back the rows the slab was sitting in,
-            // and neither of those gets better by waiting. Deferring it only
-            // risks the match that makes it.
             if (info.stopTime > 0 && pool[i].kind === 'swap' && pool[i].resolved &&
                 pool[i].resolved.total > 0 && !pool[i].resolved.brokeGarbage) {
                 var pr3 = pool[i].resolved, isCh = pr3.chain >= 2;
@@ -2336,37 +762,9 @@
             if (pool[i].kind === 'swap' && (pool[i].moveFrames || 0) > deadline) {
                 this.counts.refusedTooSlow++; continue;
             }
-            // A MOVE THAT PUTS THE BOARD BACK WHERE IT WAS IS NOT A MOVE.
-            //
-            // The scoring is stateless, so if board X's best swap leads to Y and
-            // Y's best swap leads back to X, the bot plays that pair forever. It
-            // did: 56 of 76 decisions on seed 701 repeated the previous cell --
-            // (2,5) thirteen times running -- and a swap of the same cell twice
-            // is the identity, so ZERO matches were made in 1,093 frames while
-            // the floor climbed into the ceiling, with a 6-chain on the board
-            // throughout. ATTACK made it fatal by dropping hold, so the bot was
-            // forced to act and the only thing it would do was undo.
-            //
-            // Exact, not a heuristic: the resulting board is compared cell for
-            // cell against the boards recent decisions were made on. Hold is
-            // exempt -- waiting is not a failure to progress, it is the thing
-            // BUILD is for, and it is how the board legitimately stays put.
             allowed.push(pool[i]);
         }
         if (!allowed.length) allowed = pool;
-        // APPLIED LAST, AND ONLY WHILE IT LEAVES SOMETHING.
-        //
-        // `if (!allowed.length) allowed = pool` is the escape hatch for a board
-        // where every candidate is refused, and a filter that runs before it
-        // takes the whole pool down with it: refuse every candidate as a return
-        // and the escape hatch hands the returns straight back. On seed 101 the
-        // bot spent frames 1,548 to 1,614 playing an undo pair on an unchanged
-        // board, topped out, deciding every two frames because the cooldown lifts
-        // when it is.
-        //
-        // So this narrows what is already there, and stands aside when narrowing
-        // would leave nothing -- which is what it means for the position to have
-        // no move that is not a return.
         if (this.refuseReturn) {
             var kept = [];
             for (i = 0; i < allowed.length; i++) {
@@ -2377,22 +775,6 @@
                 kept.push(allowed[i]);
             }
             if (kept.length) allowed = kept;
-            // AND NOT THE SAME TWO CELLS AGAIN, WHEN IT CASHES NOTHING.
-            //
-            // The signature test only catches an EXACT repeat, and a swap where one
-            // cell is empty is not one: the panel moves across and falls to a new
-            // depth, so the board is technically new every time while nothing
-            // happens. Seed 103 played row 4 of columns 1-2 eight times running,
-            // four frames apart, heights alternating, `seen` reading new/3 on all
-            // of them, and the rise killed it at 27,739.
-            //
-            // ONLY WHEN IT CASHES NOTHING. Swap, let a stack drop, swap again is how
-            // the board reaches a slab it could not touch before -- that is a real
-            // manoeuvre and this must not forbid it. A clear or a break is progress
-            // by definition; a repeat that clears nothing is the loop.
-            //
-            // Narrowing, so it stands aside rather than freeze. It never had to
-            // here: every one of those decisions had twenty other candidates.
             var ls = this._lastSwap;
             if (ls) {
                 var notSame = [];
@@ -2411,16 +793,6 @@
             }
         }
 
-        // SENDS AND BREAKS BEATS SENDS, and that is not a preference.
-        //
-        // One move that attacks and digs at the same time does both jobs, and
-        // garbage is two thirds of what arrives. It dominates a plain clear of the
-        // same size on the axis that matters -- it pays the same cells and leaves
-        // less garbage on the board -- so there is nothing for a vector to weigh.
-        //
-        // Only this one domination is enforced. Forcing the best tier generally
-        // was measured at 7 deaths in 8: it cashes every clear the frame it
-        // appears and nothing survives long enough to become a chain.
         var both = [];
         for (var bi = 0; bi < allowed.length; bi++) if (tierOf(allowed[bi]) === 0) both.push(allowed[bi]);
         if (both.length) { this.counts.forcedBoth++; allowed = both; }
@@ -2428,23 +800,6 @@
         this._seen.push(here);
         if (this._seen.length > 3) this._seen.shift();
 
-
-        // SHORT OF MATERIAL: BREAKING GARBAGE IS THE PRIORITY.
-        //
-        // A slab is material already on the board, just inert, and breaking is the
-        // only thing that converts it. Below six flat rows the board cannot afford
-        // to leave it sitting there: the panels a chain is made of are locked
-        // inside it, and every row of slab is a row of ceiling gone.
-        //
-        // It costs almost nothing to say so. Material is under six rows for 98% of
-        // a game, but a break is only AVAILABLE on about 4% of decisions -- a
-        // match has to land beside a slab -- so this narrows the choice on one
-        // decision in twenty-five and leaves the rest alone.
-        //
-        // BEFORE THE BEAM, because the beam is a cost control and a cost control
-        // must not throw away what a later rule requires. Ranked after it, the
-        // break had to survive a cut of twelve made on a score that did not know
-        // what a break was, and on a buried board it usually did not.
         if (materialRows(base) < 6) {
             var digs = [];
             for (i = 0; i < allowed.length; i++) {
@@ -2452,19 +807,6 @@
             }
             if (digs.length) { this.counts.forcedBreak++; allowed = digs; }
         }
-        // THE BEAM: pre-rank cheaply, then pay for the top few only.
-        //
-        // The cheap score is the things that need no option sweep -- how much the
-        // move clears, how much slab it converts, and how flat and low it leaves
-        // the board. Candidates the survival objective will rank are exempt,
-        // because that objective is itself cheap and DEFEND is the one place a
-        // wrong cut is fatal.
-        //
-        // A CONVERTED GARBAGE CELL IS PRICED LIKE A CLEARED PANEL, which is the
-        // price the rest of the bot puts on one. Left out, the beam ranked a break
-        // by the panels it happened to clear -- three, usually -- so the one move
-        // that takes garbage off the board sorted below a dozen ordinary combos
-        // and was cut before anything that prefers breaks could see it.
         if (this.beam > 0 && allowed.length > this.beam) {
             var perPanel2 = (info.framesPerRow || 0) / W;
             var scored = [];
@@ -2481,8 +823,6 @@
             for (i = 0; i < scored.length && i < this.beam; i++) allowed.push(scored[i].cand);
         }
 
-        // Does anything on this board clear at all? If not, every option is a
-        // setup and they are judged as setups.
         var noneClear = true;
         for (i = 0; i < allowed.length; i++) {
             if (allowed[i].resolved && allowed[i].resolved.total > 0) { noneClear = false; break; }
@@ -2493,97 +833,22 @@
         var best = null, alive = 0, spare = [], ranked = [];
         for (i = 0; i < allowed.length; i++) {
             var cand = allowed[i];
-            // WHAT THE HORIZON IS: the frames before this bot decides again --
-            // the walk to the move, then the reaction cooldown. A candidate has
-            // to survive its own cost, which is why it is per candidate.
-            // THE HORIZON IS A ROW, NOT A WALK.
-            //
-            // Judging a candidate over the frames it takes to reach it -- about 70
-            // at most -- asks whether it kills immediately. A row of rise is 112
-            // frames, so a move that kills as the next row lands passes that test
-            // and gets offered as though it were survivable. It is the engine's
-            // own unit and it is the shortest horizon on which a death can
-            // actually happen.
             var horizon = Math.max((cand.moveFrames || 0) + this.reaction,
                                    info.framesPerRow || 0);
             if (cand.kind === 'swap' && spendsReserve(cand.resolved, cand.masks)) continue;
             if (this.deadly(cand.masks, cand.resolved, info, horizon)) { this.counts.refusedDeadly++; continue; }
-            // A CASH IS NEVER STRANDED. THE STRANDED TEST IS FOR SETUPS.
-            //
-            // It asks whether any follow-up survives, of the STATIC board this
-            // move settles to. For a setup that is the right question: a swap
-            // leading to a position with no way out leads nowhere. For a move that
-            // CLEARS it is the wrong board entirely -- the resolve holds the floor
-            // for its whole duration, panels fall into the gaps, the row rises, and
-            // the position the follow-up is played on is not the one being judged.
-            //
-            // It killed the bot. Seed 101, STARTER against rand1, the last three
-            // decisions before frame 21,514: 28 candidates, 27 refused as deadly,
-            // and the ONE that cleared -- a three at (2,4) -- refused as stranded.
-            // survived=0, so the decision fell through to the weights fallback and
-            // the three was still on the board when it died.
-            //
-            // Fourth time today a rule written for one kind of move was applied to
-            // another; see refuses() above for where that keeps coming from.
             var cashes = cand.resolved && (cand.resolved.total > 0 || cand.resolved.brokeGarbage);
-            // And the walk is not spent on it either: a cash needs neither the
-            // stranded verdict nor the failsafe below, and lookahead settles a
-            // board per legal swap.
             var ahead = cashes ? NOT_STRANDED : this.lookahead(cand.masks, info, horizon);
             if (ahead.stranded) { this.counts.refusedStranded++; continue; }
             alive++;
-            // KEEP A THREE IN HAND, IF THE BOARD CAN AFFORD ONE. A clear that can
-            // be fired the instant something lands is the only thing that buys
-            // stop time on demand; a board with none must build a match first,
-            // which is time it does not have when a slab arrives.
-            //
-            // A PREFERENCE THAT BECOMES A RULE WHEN IT CAN BE KEPT, not a veto.
-            // Most mid-game boards genuinely hold no immediate clear -- refusing
-            // those outright threw away 6,945 candidates in a duel and dropped the
-            // bot into its fallback 565 times. So these are set aside and used
-            // only if nothing that keeps a three survives.
-            // A GARBAGE BREAK IS WHAT IS WORTH HOLDING, when there is a slab to
-            // break. It converts the slab into panels and holds the floor for the
-            // whole of its resolve; a bare three buys 59 frames and takes three
-            // panels off the board. With no garbage on it there is nothing to
-            // break, so any clear is the fail-safe.
             var held = buried ? ahead.hasBreak : ahead.hasClear;
             if (!cashes && !held) {
                 this.counts.refusedNoFailsafe++;
                 spare.push(cand);
                 continue;
             }
-            // NOTHING CLEARS ANYWHERE: FLATTEN. Flattening IS the setup.
-            //
-            // LEXICOGRAPHIC, NOT A WEIGHTED SUM: the flatter board wins; between
-            // two equally flat ones, the one offering more ways to make a line;
-            // between two of those, the cheaper move. Each term is scaled past the
-            // next so it cannot be outvoted, and there is no weight here to get
-            // wrong.
-            //
-            // WAYS-TO-BUILD LED THIS AND IT BUILT TOWERS. Two boards rarely offer
-            // the same count, so flatness was a tiebreak that never fired, and the
-            // bot stacked columns 1-3 five and six high with columns 5-6 empty and
-            // a hole in the bottom row. The same panels spread across six columns
-            // offer more lines anyway and are not against the ceiling.
-            // ONE NOTHING-CLEARS RANKING, NOT THREE.
-            //
-            // This was -bumpiness*10000 + matchWays*100 - moveFrames: a lexicographic
-            // rule with no height, no material floor and no void in it, while the
-            // spare and allDead branches below already rank by idleScore, which has
-            // all three and is denominated in frames. This is the busiest of the
-            // three by far -- 2,889 of 3,799 decisions on the duel this was written
-            // from -- and it was the one that could not see the seal.
-            //
-            // Bumpiness cannot stand in for the void. It counts neighbour steps, so
-            // 2,2,2,2,6,7 and the smooth ramp 2,3,4,5,6,7 both read 5 while their
-            // voids are 21 panels and 15. The board that died was the first of those.
             ranked.push(cand);
         }
-        // RANKED WHEN THE RANKING IS ASKED FOR. Every route before the last one plays
-        // without it, and scoring a candidate is a search of its landing board -- so
-        // the scores are worked out the first time `best` is read, in the same order,
-        // with the same ties, as when they were worked out here.
         var bestDone = false;
         function bestOf() {
             if (bestDone) return best;
@@ -2599,8 +864,6 @@
             return best;
         }
         function rankSpare() {
-        // NOTHING KEPT A THREE: rank the ones that survive but spend it, which is
-        // still better than the lost-position fallback below.
         if (!best && spare.length) {
             for (i = 0; i < spare.length; i++) {
                 var sc = spare[i];
@@ -2611,25 +874,9 @@
             }
         }
 
-        // NOTHING SURVIVES: the position is lost either way, so the best-scoring
-        // move is played rather than freezing. Counted, because a bot reaching
-        // here often is a bot about to die and the count is the warning.
         if (!best) {
             self.counts.allDead++;
             for (i = 0; i < allowed.length; i++) {
-                // RANKED THE WAY THE OTHER TWO BRANCHES RANK IT. With nothing to
-                // clear anywhere, `score` is the weighted vector applied to a
-                // position that is already lost -- so what the bot does with its
-                // last frames is whatever that vector happens to like. Seed 103
-                // rand3 held its pocket at 6,6,4,3,3,3 for fourteen decisions,
-                // every move different, twenty-three candidates each time, and
-                // shuffled panels within rows until the rise killed it at 6,956.
-                //
-                // idleScore is the same lexicographic ranking the spare branch
-                // above already uses: height, then readiness for the slab, then
-                // ways to make a line, then flatness. None of it is the vector's
-                // to weigh, which is the point -- a lost position is exactly where
-                // the vector must not be deciding.
                 var s2 = noneClear
                        ? self.idleScore(allowed[i], base, info)
                        : self.score(allowed[i].masks, allowed[i].moveFrames,
@@ -2639,62 +886,13 @@
         }
         }
 
-        // A REVEAL SWAP BEATS STANDING STILL, and only that. It is not ranked
-        // against the settled candidates, because the two are not priced on the
-        // same scale — so it is taken when the ordinary decision was to wait,
-        // which is the case the window exists for.
-        // TAKEN WHENEVER ONE EXISTS, because bestInWindow has ALREADY established
-        // that it beats standing still -- it scores every reachable swap against
-        // doing nothing and returns a swap only when one wins. Requiring the
-        // settled decision to be `hold` too made this unreachable: ATTACK and
-        // DEFEND drop hold from the pool, so the branch needed a mode that had
-        // already been ruled out. Measured -- 4 windows over 9,510 frames of
-        // duelling and 0 lineup swaps ever played, so the module the window
-        // exists for had never once run in a game.
-        // A PLAN THAT GAINS TIME AND FINISHES IN TIME BEATS THE WEIGHTS. The one
-        // place preference is overruled, and it is overruled by arithmetic. Only
-        // the FIRST move is played: by the next decision the board has moved, and
-        // a plan committed to blind is a plan about a board that no longer exists.
-        // ATTACKING IS NOT A PREFERENCE EITHER.
-        //
-        // Survival comes first -- a board about to die has nothing to attack with
-        // -- and everything after that is an attack. The weights choose WHICH one
-        // inside bestAttack; they cannot choose not to.
-        //
-        // Committed like a survival plan, and for the same measured reason:
-        // re-choosing every frame plays the first move of a different plan each
-        // time and never finishes any of them, which was worth LESS than having no
-        // plans at all (2,521 frames against 2,892).
-        // AND AN ATTACK THAT PUTS THE BOARD BACK IS NOT AN ATTACK, IT IS THE LOOP.
-        //
-        // The survival plan has refused a move returning to a board it has just
-        // been on; the attack path did not, and it reaches the cursor first. On
-        // rand4 seed 101 the last seventeen decisions before the death alternate
-        // bestAttack and attackPlan one frame apart with the board unchanged
-        // throughout -- a whole freeze spent walking between two boards, under 45
-        // cells of garbage, and then it topped out.
-        //
-        // The candidate loop already refuses these, but it filters `allowed` and
-        // the attack path reads `pool`, so it walked straight past the guard.
         var self = this;
-        // CAN THIS MOVE BE PLAYED NOW -- the one check every route puts its move to: it is
-        // a legal swap on this board, it does not put the board back where it was, and the
-        // board it leaves is not dead before the next decision (deadly, over the walk and a
-        // reaction, or a row of rise, whichever is longer).
-        // A PLAN WAITS FOR ITS BOARD. Each move after the first is planned on the board
-        // the ones before it settle into, so it can come due while panels in its two
-        // columns are still hovering, falling or clearing: illegal now, legal once they
-        // land. That is a hold parked on the move, not a reason to drop the plan.
         function settling(mv) {
             if (!mv) return false;
             var P = self.stack.panels, cc, rr;
             for (cc = mv[1]; cc <= mv[1] + 1; cc++) {
                 for (rr = 1; rr < P.length; rr++) {
                     var q = P[rr] && P[rr][cc];
-                    // Only the short motions: a panel hovering, falling or mid-swap is
-                    // where it is going within frames. A match being cleared holds its
-                    // cells for the whole pop, and garbage being cleared does not move
-                    // until it converts; a plan blocked by either is replanned instead.
                     if (q && q.color !== 0 && !q.isGarbage &&
                         (q.state === 'hovering' || q.state === 'falling' || q.state === 'swapping')) return true;
                 }
@@ -2704,18 +902,6 @@
         function waitFor(mv, via) {
             return { kind: 'hold', mode: mode, alive: alive, via: via, park: mv };
         }
-        // THE RESERVE. A board with plenty of panels can spend them; below
-        // WORKING_ROWS of material it keeps them for breaks. A clear that converts
-        // nothing and leaves less than that is not playable, whatever route it is
-        // on: a break converts six and its own match spends three, so no clear
-        // bought on the way is paid back. Health is the one thing worth more:
-        // _waitForDrain still fires a clear rather than let it drain.
-        // TOPPED OUT THE WHOLE BOARD IS THE RESERVE. Nothing lands while the board
-        // is topped out, so a clear that converts nothing buys only time, and the
-        // health guard is what buys time; every panel is kept for a break -- while
-        // there is garbage on the board to break. With none on screen the board is
-        // topped out by panels and the slab waits above it, out of reach: clearing is
-        // the only way it comes down, and the ordinary floor applies.
         function slabOnScreen() {
             for (var gc0 = 1; gc0 <= W; gc0++) if (base.garb[gc0]) return true;
             return false;
@@ -2738,10 +924,6 @@
             return !self.deadly(pc0.masks, pc0.resolved, info,
                                 Math.max((pc0.moveFrames || 0) + self.reaction, info.framesPerRow || 0));
         }
-        // PLAYABLE WHEN THE HEALTH IT COSTS IS ALREADY PRICED: a step of a break bought
-        // with health answers to planSpend, which counts every run it leaves unlocked,
-        // so the death filter's horizon -- which reads any unlocked run topped out as
-        // death -- is not asked.
         function playableSpending(mv) {
             if (!mv) return false;
             for (var q0 = 0; q0 < pool.length; q0++) {
@@ -2765,19 +947,6 @@
             return false;
         }
 
-        // THE ROUTES. Everything above is context, computed once; from here each route is
-        // tried in order and the first that applies plays. A rule that has to hold for all
-        // of them goes here, ahead of the first, not inside one.
-        //
-        // READY FOR WHAT LANDS NEXT, BEFORE ANY ROUTE. A slab lands on the top row, and
-        // the moment to break it is when the last of it is down, so the break has to be
-        // standing there before it lands -- slabReadyFast asks whether one swap then
-        // breaks it. This is not a route: it is checked here, ahead of all of them,
-        // whether or not garbage is coming, whenever no break is in hand, and played
-        // only while it is done in time: it fires when the last slab is down
-        // (awaitLanding holds it until then). It comes before the raise: the row lifts
-        // the trigger with it, so the raise resumes once it stands. Topped out nothing
-        // more lands; what is on the board is the dig's.
         if (!poolBreak && !info.toppedOut && !bitoptions.slabReadyFast(base)) {
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
                                                    lookDepth, base, this.timing(info, deadline, base), digging);
@@ -2793,12 +962,6 @@
             }
         }
 
-        // A RAISE RUNS TO ITS END.
-        //
-        // raiseMode says when the board is high enough; until then the bot takes the
-        // row when the engine offers it and otherwise keeps its hands off the swap
-        // button, because a swap sets riseLock and takes the row back. A break in
-        // hand ends the mode (poolBreak), so the trigger fires the moment it exists.
         if (raising) {
             var rc = null;
             for (i = 0; i < pool.length; i++) if (pool[i].kind === 'raise') rc = pool[i];
@@ -2811,116 +974,12 @@
             return { kind: 'hold', mode: mode, alive: alive, via: 'raising' };
         }
 
-        // BREAKING IS THE PRIORITY, AND WHEN THERE IS NOTHING TO BREAK WITH,
-        // GETTING SOMETHING TO BREAK WITH IS.
-        //
-        // A slab can never come off the board on its own: raising is a non-event
-        // after the opening, so breaking is the only thing that converts garbage
-        // back into panels, and a board that stops breaking is a board filling up
-        // with cells it can never remove.
-        //
-        // The rule that keeps a break in hand only KEEPS one. Measured over a
-        // 6,000-frame duel: the board held a break on 14% of decisions, and on
-        // every single decision where the chosen move would have spent the last
-        // one, an alternative that kept it existed and was played -- 0
-        // unkeepable. The keeping half works. There was no making half, so 86% of
-        // the time there was nothing to keep and the rule stood aside.
-        //
-        // This is the making half. `options.save` is the search's cheapest route
-        // to a board that HOLDS a break -- it walks landed boards several moves
-        // out, which is the only way to find one, since at one ply a break is
-        // available on about 4% of boards. It outranks the attack because a board
-        // that cannot dig is a board that dies, and attacking off a board that
-        // cannot dig spends the panels the dig needs.
-        //
-        // Only when there is nothing to break RIGHT NOW: with a break in the pool
-        // the priority rule above has already narrowed to it, and planning a
-        // route to another one instead would be walking past the one in hand.
-        // BREAKING IS NOT BEHIND SURVIVAL, BECAUSE BREAKING IS SURVIVAL.
-        //
-        // This whole block used to be gated on `!survival`, and a survival plan
-        // exists whenever the clock is empty -- which is most decisions. So on
-        // most decisions the bot never looked at the break sitting in its own
-        // pool.
-        //
-        // There is nothing to weigh. A break holds the floor for the whole of its
-        // resolve, exactly as any clear does, AND converts the slab's cells into
-        // panels, AND hands back the rows it was occupying. A survival plan buys
-        // frames; a break buys frames and the material to buy more with. Nothing
-        // the plan can do is better, and without it the board runs out of panels
-        // and then out of clears: 116 and 102 of the decisions with nothing to
-        // fire had no clear on the board at all, with four hundred frames of
-        // deadline in hand.
-        //
-        // The plan is dropped when this fires, because the board it was priced
-        // against is about to come apart.
         if (digging) {
             var haveBreak = false;
             for (i = 0; i < pool.length; i++) {
                 if (pool[i].resolved && pool[i].resolved.brokeGarbage) { haveBreak = true; break; }
             }
-            // HELD AND PLAYED OUT, LIKE EVERY OTHER PLAN.
-            //
-            // A route to a break is two or three swaps. Re-planning every decision
-            // and playing the first move of whatever came back starts a different
-            // route each time and finishes none of them: measured, 143 of 943
-            // decisions were spent on this and the board held a break on 9% of
-            // buried decisions either way. The dropping rule is the same as the
-            // others -- the next move must still be legal, and what is LEFT of the
-            // plan must still fit the clock as it is now.
-            // A BREAK IN HAND IS PLAYED, NOT RANKED AGAINST AN ATTACK.
-            //
-            // "Short of material, breaking garbage is the priority" narrows
-            // `allowed` -- and `allowed` feeds the weights fallback only. The
-            // attack path reads the option list, so with a break sitting in the
-            // pool bestAttack picked an attack and the priority rule never fired.
-            // Same shape as the beam cutting breaks before that rule saw them,
-            // and as the save rule shaping only the fallback: a rule wired into
-            // the candidate list does not reach the paths that actually pick the
-            // move.
-            //
-            // Under six rows, which is where that rule already applies: the
-            // panels a chain is made of are locked inside the slab, and every row
-            // of slab is a row of ceiling gone. It still has to survive its own
-            // cost like any other move.
-            // A BREAK IN HAND IS PLAYED. NOT ONLY WHEN SHORT OF MATERIAL.
-            //
-            // It used to wait for the board to drop under six rows, inherited from
-            // "breaking is the priority under six rows" -- a rule about which
-            // candidate to prefer, borrowed as a condition on whether to play a
-            // break at all. So with material in hand the bot could hold a break and
-            // attack instead, and the slab stayed.
-            //
-            // Nothing outranks it. A break holds the floor for its whole resolve
-            // exactly as any clear does, AND converts the slab's cells into panels,
-            // AND hands back the rows it was occupying -- and a garbage cell can
-            // never come off the board any other way. The boards that die are the
-            // ones where the garbage was never broken: seed 101 rand4 took 26 cells
-            // and broke none of them, and by the end the slab had bridged on a lone
-            // tower and sealed every column under it.
-            // AND IT IS FIRED WHEN THE GARBAGE HAS ALL LANDED, NOT BEFORE.
-            //
-            // Two engine facts decide the moment. getConnectedGarbagePanels clears
-            // every slab connected to the one the match touches, block to block, so
-            // one break takes everything that has landed. And shouldDropGarbage holds
-            // combo garbage while any panel is active -- "combo garbage waits for
-            // calm" -- so a break fired early clears the slabs that are down, and then
-            // the rest of the queue lands on the board afterwards. Waiting for the last
-            // of it and firing in the moment after it lands clears all of it in one
-            // swap.
-            //
-            // So with a break in hand: while more is queued, HOLD. Not a clear and not a
-            // setup -- a clear makes panels active, which stalls the very landing being
-            // waited for, and any swap can spoil the line under the slab.
-            //
-            // FIRE AT THE TOP-OUT. shouldDropGarbage refuses to drop on a topped-out
-            // board, so topping out means everything that can land has landed. Health is
-            // never spent: the walk has to be in before the engine would drain it.
             var stillComing = (info.incoming || 0) > 0 || !!info.fallingGarbage;
-            // THE BREAK THAT WILL BE FIRED, chosen once so the hold is timed by the walk
-            // that is actually made: the most slab converted, and the shorter walk
-            // between equals -- one break takes every connected slab, so equals are
-            // common.
             var bk = null;
             for (i = 0; i < pool.length; i++) {
                 var bc = pool[i];
@@ -2929,18 +988,11 @@
                 if (this.deadly(bc.masks, bc.resolved, info,
                                 Math.max((bc.moveFrames || 0) + this.reaction,
                                          info.framesPerRow || 0))) continue;
-                // MOST CONVERTED, THEN THE EVENEST SURFACE LEFT UNDER THE SLAB, THEN
-                // THE SHORTER WALK. A break that digs one column three deep leaves a
-                // gap the slab bridges, and the next break has fewer cells to use.
                 var cv = bc.resolved.converts || 0, kv = bk ? (bk.resolved.converts || 0) : -1;
                 var vv = bc.resolved.voidAfter || 0, kvv = bk ? (bk.resolved.voidAfter || 0) : 0;
                 if (!bk || cv > kv || (cv === kv && (vv < kvv ||
                     (vv === kvv && (bc.moveFrames || 0) < (bk.moveFrames || 0))))) bk = bc;
             }
-            // AND WAITED FOR WITH THE CURSOR ALREADY THERE. Topped out, update() lifts the
-            // cooldown on that frame, and the landing that topped it out shakes the board
-            // -- the rise and with it health locked for the shake. A cursor parked on the
-            // break makes the walk zero, so it fires the frame the board tops out.
             if (bk && stillComing && !info.toppedOut) {
                 this.counts.heldForLanding = (this.counts.heldForLanding || 0) + 1;
                 return { kind: 'hold', mode: mode, alive: alive, via: 'awaitLanding', park: bk.swap };
@@ -2955,51 +1007,12 @@
                          via: 'break' };
             }
             if (haveBreak) { this._dig = null; this._digIsBreak = false; }
-            // A LANDING THAT BREAKS GOES NEXT. While a break is converting its slab is
-            // locked, so nothing above is in hand; what is in hand is the row coming
-            // down, and lining it up so it lands into a match makes the next break as
-            // a chain. When standing still already does that, any swap risks it.
             if (rev && rev.best && rev.best.broke) {
                 this.counts.revealSwaps++;
                 if (!rev.best.swap) return { kind: 'hold', mode: mode, alive: alive, via: 'lineupHold' };
                 return { kind: 'swap', move: rev.best.swap, mode: mode, alive: alive, reveal: true,
                          via: 'lineup' };
             }
-            // IT PRE-EMPTS A DIG PLAN ONLY WHEN IT IS WORTH MORE THAN FINISHING ONE.
-            //
-            // Interrupting on sight was measured and it cost: seed 101 rand2 v rand3
-            // went from 28,514 frames to 22,950, because the bot cashed every small
-            // break the moment it appeared and never finished the setup that would
-            // break more. Never interrupting is the other error -- the same board sat
-            // on a two-swap break for five decisions of digPlan and died during the
-            // resolve of the break it finally took.
-            //
-            // So it is a comparison, in frames, off numbers both sides already carry.
-            // A break hands back the rows the slab was occupying -- garbage/W rows at
-            // framesPerRow each -- and the plan in flight has a remaining cost, its
-            // own frames less what it has spent. Taking the break now is right when
-            // what it hands back beats what finishing still costs.
-            //
-            // A break plan of this route's own is never interrupted, whatever the
-            // comparison says: that is the re-derivation thrash fixed this morning,
-            // and `_digIsBreak` is how the route knows its own plan from a dig plan.
-            //
-            // The guard here was `!this._dig`, added this morning so the route would
-            // not re-derive a fresh plan every decision and finish none of them. It
-            // locked the route out whenever ANY plan was in flight -- and the dig plan
-            // is the one that is usually in flight, because its whole purpose is to
-            // work TOWARD a break. When a break became reachable the plan aimed at
-            // reaching one kept running instead.
-            //
-            // Seed 101 rand3 died at 28,514 that way: a two-swap break on the board
-            // from frame 28,409, five decisions of digPlan while it sat there, then a
-            // one-swap break appeared, was taken, and the board died during its
-            // resolve. The dig count is a PROXY for being able to break; an actual
-            // break is the thing itself, so it wins.
-            //
-            // The re-derivation it was guarding against is still guarded: a plan this
-            // route committed is tagged, and while one of those is in flight the route
-            // stands aside and lets it finish.
             var digLeft = Infinity;
             if (this._dig && this._dig.moves.length) {
                 var dspent0 = Math.max(0, this.stack.clock - (this._dig.startedAt || 0));
@@ -3014,10 +1027,6 @@
                     var ro = pile[i];
                     if (!ro.breaks || !ro.swaps.length) continue;
                     if (!this.planInTime(ro.swaps, ro.duration, base, info, deadline)) continue;
-                    // MOST GARBAGE FIRST, then soonest -- the same order the
-                    // one-swap route picks by, which prefers the bigger break.
-                    // Between equal breaks, the evenest surface left under the slab,
-                    // as the one-swap break is chosen.
                     var rc0 = ro.converts || 0, kc0 = reach ? (reach.converts || 0) : -1;
                     var rv0 = ro.voidAfter || 0, kv0 = reach ? (reach.voidAfter || 0) : 0;
                     if (!reach || rc0 > kc0 ||
@@ -3025,28 +1034,7 @@
                          (rv0 === kv0 && (ro.duration || 0) < (reach.duration || 0))))) reach = ro;
                 }
                 if (reach) {
-                    // THE FIRST SWAP IS WHAT GETS PLAYED, so it is the one the death
-                    // filter is put to -- the rest is held as a plan the way the dig
-                    // and the save are, and dropped by the same rule.
                     var rm = reach.swaps[0];
-                    // THE ONLY REASON TO INTERRUPT A PLAN IS IMMINENT DEATH, AND THEN
-                    // THE ANSWER IS LIFE.
-                    //
-                    // Three other conditions were measured on seed 101 rand2 v rand3
-                    // and all three were worse than never interrupting at 28,514
-                    // frames: on sight, 22,950 -- the bot cashes every small break the
-                    // moment it appears and finishes no setup. Cells handed back
-                    // against the plan's remaining cost: the wrong currency, since what
-                    // a break is worth is the survival it buys and not its size. The
-                    // plan not arriving inside the deadline, 21,662 -- that fires on a
-                    // healthy board whenever a plan is long, which is not an emergency.
-                    //
-                    // DEFEND is the engine's own answer to "is death imminent": it opens
-                    // when the deadline is inside the escape plus a reaction, meaning the
-                    // board cannot get out in the frames it has. That is the one moment
-                    // a plan is worth abandoning, and then what it is abandoned for is
-                    // the thing that hands ceiling back. Everywhere else the plan is
-                    // played out, because a plan interrupted is a plan wasted.
                     if (playable(rm) &&
                         (digLeft === Infinity || mode.name === 'DEFEND')) {
                         this._plan = null;
@@ -3054,16 +1042,8 @@
                                   ? { moves: reach.swaps.slice(1), frames: reach.duration || 0,
                                       startedAt: this.stack.clock }
                                   : null;
-                        // Tagged, so the route knows its own plan from a dig plan and
-                        // stands aside only for its own.
                         this._digIsBreak = !!this._dig;
                         this.counts.brokeReached = (this.counts.brokeReached || 0) + 1;
-                        // COUNTED APART: a break found with no plan in flight is the
-                        // ordinary case; one that INTERRUPTED a dig plan is the
-                        // pre-emption, and a rule nobody can see fire is a rule that
-                        // might not be wired up. Two conditions measured identically
-                        // frame for frame on one board, which is what an unfired branch
-                        // looks like.
                         if (digLeft !== Infinity) {
                             this.counts.brokePreempt = (this.counts.brokePreempt || 0) + 1;
                         }
@@ -3071,13 +1051,6 @@
                                  via: 'breakReach' };
                     }
                 }
-                // THE LAST RESORT: A BREAK THAT COSTS HEALTH. Topped out with no break
-                // that can be played inside the lock, the board only shrinks -- each
-                // clear that holds the rise eats the material a break would be built
-                // from -- and the slab never comes off. So, when nothing free exists,
-                // the break that spends the least, provided health is left after it.
-                // Searched apart, with its own budget, so the free search above is the
-                // same search it always was.
                 if (!reach && info.toppedOut && (info.health || 0) > 1 && digLeft === Infinity) {
                     var tm2 = this.timing(info, deadline, base);
                     tm2.spend = info.health - 1;
@@ -3103,7 +1076,6 @@
             if (!haveBreak && this._dig && this._dig.moves.length) {
                 var dn = this._dig.moves[0], dnOk = this._dig.spend ? playableSpending(dn) : playable(dn);
                 var dspent = Math.max(0, this.stack.clock - (this._dig.startedAt || 0));
-                // A plan bought with health is held to what it costs, not to the lock.
                 var digOk = this._dig.spend ? this.planSpend(this._dig.moves, base, info) < (info.health || 0)
                                             : this.planInTime(this._dig.moves, Math.max(0, this._dig.frames - dspent), base, info, deadline);
                 if (dnOk && digOk) {
@@ -3175,66 +1147,6 @@
             }
         }
 
-        // NOTHING TO PLAY WITH AND NOTHING COMING: PUT PANELS ON THE BOARD.
-        //
-        // A chain is built out of panels and an empty board has none. Material
-        // arrives two ways: raising, and breaking a slab -- which converts a
-        // garbage row into coloured panels. At the START there is no garbage,
-        // because the opponent has not attacked yet, so raising is the only source
-        // there is.
-        //
-        // NOTHING INCOMING IS THE CONDITION, not merely a thin board. An earlier
-        // version raised whenever the board was thin, at any point in the game,
-        // and it walked the stack up while under attack and died mid-build: 1
-        // death, 510 cells and 7 big pieces became 2 deaths, 378 and 3. With
-        // nothing queued against us the row costs nothing we need back.
-        //
-        // Survival has already had its turn above; this cannot preempt it.
-        // LOW ON MATERIAL: RAISE OR BREAK. Those two make panels and nothing else
-        // does -- a raise adds W of them, breaking a slab converts its cells. The
-        // board starts near empty, so this fires from the first decision.
-        //
-        // MATERIAL, NOT HEIGHT. The test was tallestOf(pool), so garbage counted
-        // as material and a buried board never raised while holding three flat
-        // rows of panels and no way to dig out.
-        //
-        // ONLY IF ABLE TO: canRaise() is the engine's own list of refusals, and
-        // the risen board still faces the death filter just below.
-        // AND SOMEWHERE TO PUT THE ROW. Material alone fires on nearly every
-        // decision -- a board with fewer than WORKING_ROWS * W non-garbage panels
-        // is the ordinary state -- so on its own it raises the stack into the
-        // ceiling: 8 deaths in 8, average life 10,369 frames.
-        //
-        // A raise adds a row and a chain needs WORKING_ROWS to stand in, so the
-        // row must leave that much. deadly() only refuses a raise once the board
-        // is FULL, which is far too late to be this guard.
-        // RAISE OR BREAK, AND WHICH ONE THE BOARD DECIDES. Both make panels and
-        // nothing else does. But a slab is material already on the board, just
-        // inert -- breaking converts it for free, while raising buys the same
-        // panels with a row of headroom. So raising is for a board with no
-        // garbage on it; buried, the answer is to dig.
-        //
-        // GARBAGE ON THE BOARD IS NOT A REASON NOT TO RAISE. Raise first, then
-        // break: both make panels and a board short of them needs whichever it can
-        // get. Refusing while buried starved the board that needed material most --
-        // on rand4 seed 101 it was holding 2 rows when a 24-cell slab landed, and
-        // died with 20 panels in four columns and no line left in them.
-        //
-        // The guards that matter are still every one of them: canRaise() is the
-        // engine's own list of refusals, the row has to leave WORKING_ROWS of
-        // headroom under the ceiling -- and garbage counts toward that height --
-        // and the risen board faces the death filter like any other move.
-        // NOR IS GARBAGE ON THE WAY. Same reasoning as the slab already on the
-        // board: under the floor the thing it is short of is panels, and the only
-        // two ways to get them are raising and breaking. Measured on seed 101, it
-        // sat at 3 rows for six straight decisions under the floor of 4, refusing
-        // to raise because a slab was queued, and died 150 frames later.
-
-        // A PLAN MOVE IS STILL A MOVE, so it faces the no-return rule like any
-        // other. Returning early with it skipped that check and the bot went back
-        // to oscillating -- 48 decisions on a board it had been on within the last
-        // three, against the 8 the prediction gap accounts for. A plan that walks
-        // the board in a circle is not a plan, it is the loop with extra steps.
         if (planWait) return waitFor(planWait, 'planWait');
         if (survival && survival.move) {
             if (!playable(survival.move)) {
@@ -3247,86 +1159,13 @@
             }
         }
 
-        // NOTHING CLEARS: FLATTEN, TO A PLAN.
-        //
-        // Ranking single swaps by the flatness they leave is greedy -- it takes
-        // the best step available this frame and has no idea where it is going, so
-        // it walks the board into a spike one locally-flattest swap at a time.
-        // Measured on seed 101: columns at heights 8,5,4,3,4,3 with the tall one
-        // pressed against the slab, and every decision that built it was a setup.
-        //
-        // bitoptions plans it instead. Every node it keeps IS a landed board --
-        // where the panels came to rest -- so it knows the shape each sequence
-        // arrives at and the swaps that get there, and it names the flattest one
-        // it can reach. The plan is then played in order like a survival or attack
-        // plan: re-choosing every frame is how the greedy version got here.
-        //
-        // Dropped the moment it stops being true -- the next move must still be
-        // legal and must not put the board back where it has just been.
-        // A FREEZE IS FREE SHAPE WORK, SO FLATTEN IN IT.
-        //
-        // While the clock runs the floor is HELD -- that is what stop time is --
-        // so a swap that only changes the shape costs nothing it needs back. The
-        // comment on the early-cash rule above already says this: "there is room
-        // to build inside a window and still cash at the end of it". Building is
-        // what flattening is, and it was never reached, because the whole flatten
-        // branch is gated on nothing clearing anywhere and during a freeze there
-        // is usually something.
-        //
-        // And under a slab it is the thing that matters most. Garbage rests on the
-        // tallest column and bridges the rest, so a ragged pocket can never reach
-        // it: the board the bot died on had columns 4,2,2,4,5,6 under the slab,
-        // two deep in the middle, and no match it could put against the garbage
-        // anywhere. Levelling the pocket IS reaching the slab.
-        // FLATTEN A LITTLE WHILE DOING THE REST, WHICH IS WHERE THIS ALREADY SITS.
-        //
-        // Death takes priority and this does not compete with it: the branch order
-        // is raise, then break, then the attack, then the survival plan, and only
-        // then this. So flattening in a freeze never displaces the move the board
-        // needs -- it replaces the weights fallback on frames where every path
-        // above it passed, and while the clock runs those frames are free, because
-        // the floor is held.
-        // A TOWER IS URGENT, NOT IDLE WORK.
-        //
-        // Without towering() this is "nothing to fire, or the clock is already
-        // running" -- the bot puts its shape right only once it is already in
-        // trouble. Every other shape rule is "do not make it worse" (levels,
-        // opensHole, score()'s floor); this is the one that goes and fixes it
-        // while there are still moves to play. towering() says what counts.
         var shapeTime = noneClear || (info.stopTime || 0) > 0 || this.towering(base);
         if (shapeTime && (!this._flatten || !this._flatten.moves.length)) {
             options = this._lastOptions = options || bitoptions.options(null, W, H, [info.cursorRow, info.cursorCol],
                                                     lookDepth, base, this.timing(info, deadline, base), digging);
         }
-        // AND IT HAS TO FIT IN THE TIME THERE IS. The plan is priced in frames like
-        // every other -- the walk to each swap, the swap, and the cooldown when one
-        // applies -- and a plan that runs past the deadline is not a plan, however
-        // flat the board at the end of it.
-        // AND IT KNOWS HOW LONG IT HAS: THE CLOCK IS THE BUDGET.
-        //
-        // Free shape work is only free while the floor is held, and the engine
-        // says exactly how long that is -- stopTime. A plan that runs past the end
-        // of the freeze stops being free partway through and finishes on a board
-        // that has started rising again, so during a freeze the budget is the
-        // freeze, and off the clock it is the deadline as before.
-        //
-        // The plan already knows what it LANDS as: bitoptions picks it from
-        // res.settled and ranks ties by waysOf, the number of ways to finish a
-        // line on that board. So it is shaping toward what it can build next, not
-        // just toward flat -- which is the other half of doing both at once.
         var shapeBudget = (info.stopTime || 0) > 0
                         ? Math.min(info.stopTime, deadline) : deadline;
-        // AND THE OUTCOME IS DETERMINISTIC, SO IT IS CHECKED BEFORE COMMITTING.
-        //
-        // The plan carries the board it lands on -- `lands` -- and that is not a
-        // prediction: the swaps and the physics are fixed, so it is where the board
-        // WILL be. So the question that matters can be asked of it now rather than
-        // discovered on arrival: does the board this route ends on have something to
-        // fire. A route that flattens into a position with no answer is a route into
-        // the state every death in the round-robin ends in.
-        //
-        // Only while the board has garbage on it. Clean, a flatten is ordinary
-        // building and there is nothing to be ready for yet.
         var landsOk = true;
         if (options && options.flatten && options.flatten.lands && digging) {
             landsOk = !!this.hasFireable(options.flatten.lands, info,
@@ -3336,10 +1175,6 @@
         if (shapeTime && landsOk && options && options.flatten && options.flatten.swaps.length &&
             (options.flatten.duration || 0) <= shapeBudget) {
             if (!this._flatten || !this._flatten.moves.length) {
-                // WHETHER IT WAS CHECKED AT ALL, carried with it. On a clean board
-                // there is nothing to be ready for, so the landing is not asked --
-                // and a route chosen under that exemption must not go on being
-                // played once a slab has landed on the board it was drawn for.
                 this._flatten = { moves: options.flatten.swaps.slice(),
                                   frames: options.flatten.duration,
                                   startedAt: this.stack.clock,
@@ -3352,9 +1187,6 @@
         }
         if (shapeTime && this._flatten && this._flatten.moves.length) {
             var fm = this._flatten.moves[0], fok = playable(fm);
-            // WHAT IS LEFT OF IT AGAINST THE CLOCK AS IT IS NOW, not what it cost
-            // when it was made: the plan is priced once and played over several
-            // decisions, and the clock drains the whole time.
             var fspent = Math.max(0, this.stack.clock - (this._flatten.startedAt || 0));
             var fFits = this.planInTime(this._flatten.moves, Math.max(0, (this._flatten.frames || 0) - fspent),
                                         base, info, deadline);
@@ -3383,162 +1215,20 @@
         return { kind: best.cand.kind, move: best.cand.swap, mode: mode, alive: alive, via: (noneClear ? 'setup' : 'WEIGHTS') };
     };
 
-    // A BREAK HAS TO SURVIVE THE MOVE, AND BE REACHABLE IN TIME.
-    //
-    // The bot may do whatever it likes -- attack, flatten, raise, set up -- as
-    // long as the board it leaves behind still holds a break it could get to.
-    // "Could get to" is the arithmetic used everywhere else: the walk from where
-    // the cursor ends up, plus the swap, against the frames that board has before
-    // it tops out. A break on the far side with twenty frames left is not a save.
-    // IS THERE A MOVE IN HAND ON THIS BOARD: ANY CLEAR, NOT ONLY A BREAK.
-    //
-    // THE EMERGENCY VALVE. Death is one frame with the board full, nothing
-    // moving and the clock at zero, and maxHealth is 1 at level 10, so there is
-    // no second frame. The only thing that prevents it is a clear it can fire on
-    // that frame -- and firing holds the floor for the whole resolve, 59 frames
-    // for a three, whether or not the three touches garbage.
-    //
-    // So a bare three IS the save. Demanding a break made the valve almost never
-    // present: a break needs a match landing beside a slab and is available on
-    // about 4% of boards, while some clear is available on most. All three deaths
-    // over seed 101 are a full board with no clear one swap away -- row 7 reading
-    // `4 2 2 3 5 5`, two pairs and no way to finish either in one swap -- so the
-    // rule was not failing to keep a save, it was never counting one.
-    //
-    // A break is still the better save and the rest of the bot still chases it:
-    // it converts the slab, which is the only way ceiling comes back. This is the
-    // floor under that, not a replacement for it.
-    //
-    // ONE IMPLEMENTATION, IN bitmatch. bitoptions asked the same question with its
-    // own copy of the same sweep, which is two places for one rule to drift.
-    // Callers pass a settled board -- restingBoard here, res.settled there -- which
-    // is what anyOneSwapClear needs to be exact.
-    // IS ONE COLUMN RUNNING AWAY FROM THE REST.
-    //
-    // The spread of the material -- the fullest column minus the emptiest -- and
-    // not the bumpiness. Garbage rests on the TALLEST column and spans the whole
-    // width, so every shorter column is sealed under the slab by exactly that
-    // difference, holding whatever material was beneath it. Bumpiness sums
-    // neighbour steps and so stays small while one column towers: the board the
-    // bot died on read 4,2,2,2,3,6 -- bumpiness 6, spread 4 -- with four rows
-    // sealed under columns 2 to 4 and only column 6 able to touch the slab.
-    //
-    // WORKING_ROWS is the anchor: at that spread a whole working floor of rows
-    // goes under the slab the moment a load lands.
-    //
-    // shapeOf counts only the panels BELOW the lowest garbage cell, so material
-    // stranded above a slab is not a tower -- it is in another pocket and nothing
-    // the bot plays can spread it.
-    // WHAT A MOVE IS WORTH WHEN NOTHING CLEARS, IN FRAMES.
-    //
-    // This branch used to rank `-bumpiness * 10000 + matchWays * 100`, which is a
-    // lexicographic sort on flatness: one step of bumpiness outweighs a hundred
-    // ways, and a real board carries about twenty, so the ways term never broke a
-    // tie and nothing else was consulted at all. Every board that died today died
-    // in this branch, and both of them died FLAT -- bumpiness 3, spread 3.
-    //
-    // Frames, like the rest of the file, so the terms can be compared:
-    //
-    //   dropping the stack   The slab rests on the TALLEST column, so only the
-    //                        tallest touches it. One panel of height on one column
-    //                        puts the slab out of reach of the other five. Taking
-    //                        it down brings the garbage DOWN onto the rest of the
-    //                        board, where three adjacent columns can reach it --
-    //                        and a row of height is a row of rise, framesPerRow.
-    //
-    //   reaching the slab    A surface that can put three against the garbage is
-    //                        worth the break it unlocks. slabReadyFast asks
-    //                        exactly that and reached only the flatten's third
-    //                        winner.
-    //
-    //   ways and flatness    Both in panels of life -- framesPerRow / W -- which
-    //                        is the atom this file converts with everywhere else.
-    //                        Still there, no longer at a hundred to one.
-    //
-    // NOT CALIBRATED beyond the conversions being real ones.
     BitBot.prototype.idleScore = function (cand, base, info) {
         var m = cand.masks;
         if (!m) return -(cand.moveFrames || 0);
         var fpr = info.framesPerRow || 0, perPanel = fpr / W;
-        // THE TALLEST MATERIAL COLUMN, NOT THE TALLEST CELL. tallestBoard counts
-        // garbage, and on a buried board that is the slab -- 12 on the board this
-        // was written for -- so it does not move when a panel does, and the term
-        // reads zero on exactly the boards that need it. shapeOf measures the
-        // pocket under the lowest slab, which is the surface the garbage rests on.
         var was = bitoptions.shapeOf(base), now = bitoptions.shapeOf(m);
         var s = ((was ? was.high : 0) - (now ? now.high : 0)) * fpr;
         if (bitoptions.slabReadyFast(m)) s += fpr;
-        // AND READY FOR A BREAK ONCE THE ROW THAT IS ALREADY DRAWN LANDS.
-        //
-        // The engine fills the incoming row a full row of time before it enters play
-        // and hands it over as `board.incoming`, so the board after the auto-rise is
-        // known, not guessed. Until now the only thing that read it was the decision
-        // to raise ON PURPOSE -- which the measurements say is not the lever: offered
-        // 467 times in one duel, chosen 19, and not one of those 467 would have broken
-        // anything.
-        //
-        // The auto-rise is the lever, because it is coming regardless. On the board
-        // that died it brought the third 3 into column three and made a break worth
-        // ALL 37 garbage cells -- on the same frame it topped the board out. Arranged
-        // one row earlier, that break is free.
-        //
-        // Asked as "does it BREAK after the rise", not "does it still clear". The
-        // weaker question is almost always yes: it fired 5 times in 5,383 decisions
-        // and changed nothing.
         if (this._incomingRow) {
             var up = bit.risenMasks(m, this._incomingRow);
             if (up && bitoptions.slabReadyFast(up)) s += fpr;
         }
         s += matchWays(m) * perPanel;
         s -= bumpiness(m) * perPanel;
-        // AND THE MATERIAL FLOOR, the same price bestPlan and the search both put
-        // on it -- a row of rise per row short.
-        //
-        // This is the ranking all three noneClear branches use, so without the
-        // floor here every one of them will flatten the board by spending it. Seed
-        // 103 rand3 went 5,3,1,1,1,1 to 4,3,2,1,1,1 under twenty-four cells of
-        // garbage -- twelve panels, four columns one high -- and died at 19,031.
-        // The floor priced into the search's own `val` does not reach here: these
-        // decisions come through the weights path, which ranks candidates itself.
         s -= Math.max(0, WORKING_ROWS - (now ? now.mat : 0)) * fpr;
-        // AND THE VOID THE SLAB SEALS OVER, which is what a nothing-clears decision
-        // actually moves.
-        //
-        // Measured over the duel this was written from: the decisions that CLEAR are
-        // ranked where voidGain is priced and they improve the seal, 35 panels over
-        // 910 of them. The 2,889 that clear nothing are ranked here and by the
-        // weights, where the void was not priced at all, and they put 44 panels of it
-        // back -- to a peak of 22 panels, 3.67 rows, 440 frames of ceiling the board
-        // no longer had when it died at 22,112.
-        //
-        // A non-clearing swap leaves sum(h) alone, so void = W*high - sum(h) moves
-        // only through `high`: landing a panel on the tallest column costs W panels,
-        // a whole row, 120 frames at level 10, for a move that clears nothing.
-        //
-        // MEASURED AGAINST THE SLAB, NOT AGAINST THE TALLEST COLUMN.
-        //
-        // void = W*(high - mat) falls two ways: raise the short columns, or pull the
-        // tall one down. Only the first keeps the reach -- breaking needs three
-        // panels in a line TOUCHING the garbage, and the tallest column is the only
-        // one that touches it. And the term above already pays a row for lowering
-        // `high`, so a void priced this way paid twice for the one move that makes a
-        // break impossible.
-        //
-        // slabRowGap counts the panels still needed to bring every column to the slab's
-        // floor. The slab does not move when material leaves, so pulling the tall
-        // column down cannot improve it: on the board that died, 7,6,5,5,5,2, void
-        // and slabRowGap both read 12 panels, but dropping column one to 5 takes void
-        // to 8 -- an apparent gain -- while slabRowGap goes to 14, which is the truth.
-        //
-        // A panel of gap is a panel of life, fpr/W, the conversion used throughout.
-        //
-        // AND ONLY WHILE THERE IS TIME TO CLOSE IT, which is the same test the
-        // search puts on slabGain: one swap places one panel and costs one reaction
-        // cooldown, so the panels the board can still supply are deadline/reaction
-        // -- framesToDeath and this.reaction, the two numbers depthFor already
-        // divides for plan plies. Past that the setup is not a thing the board can
-        // buy, and ranking by how near it is would spend the last frames walking
-        // toward it instead of staying flat and alive.
         var left = framesToDeath(info, tallestBoard(m), fpr);
         var affordable = Math.floor(left / Math.max(1, this.reaction));
         var gapNow = now ? (now.slabRowGap || 0) : 0;
@@ -3551,19 +1241,6 @@
         return !!shp && (shp.spread || 0) >= WORKING_ROWS;
     };
 
-    // CAN THIS BOARD FIRE -- IN THE TIME IT HAS, not in one swap.
-    //
-    // This was `anyOneSwapClear` alone, and that is the rule saveAfter already
-    // carries the correction for: "one ready" is not "one swap away", it is a
-    // clear that can be FIRED inside the frames this board has left, and depth is
-    // free as long as the frames fit. Depth 1 alone read 19% and 34% of decisions
-    // as having nothing while a two-swap answer was on the board -- and the three
-    // gates that call this REFUSE a route on the answer, so every one of those was
-    // a flatten or a raise thrown away for want of a swap there was time for.
-    //
-    // One swap first because it is a bitmask test and costs nothing; the clock only
-    // gets consulted when that says no. `at` is where the cursor ends up, because
-    // the walk is part of what the frames have to cover.
     BitBot.prototype.hasFireable = function (masks, info, at) {
         if (bit.anyOneSwapClear(masks)) return true;
         if (!info || !at) {
@@ -3574,11 +1251,6 @@
         return this.saveAfter(masks, at[0], at[1], info, true) >= 1;
     };
 
-    // THE BOARD WITH THE NEXT SLAB ON IT.
-    //
-    // Garbage rests on the tallest column and spans the width, so the row it
-    // lands on is one above the stack, in every column, as one block.
-    // Null when nothing can land, which is when the board is already full.
     BitBot.prototype.withSlab = function (masks) {
         var t = tallestBoard(masks);
         if (t >= H) return null;
@@ -3589,57 +1261,18 @@
         return st;
     };
 
-    // THE GARBAGE THE ANSWER IS FOR: the garbage that is ON the board, or, when
-    // there is none, the row that lands next.
-    //
-    // Adding a row unconditionally asked a stricter question than the one that
-    // matters -- on a buried board it wanted a break of a slab that has not
-    // arrived, at the very top surface, rather than of the forty cells already
-    // sitting there. The search solves for the second (savesOf counts breaks of
-    // the garbage on the board), so the gate and the search were answering
-    // different questions and the plan could never satisfy the rule.
     BitBot.prototype.slabToAnswer = function (masks) {
         masks = this.restingBoard(masks);
         for (var c = 1; c <= W; c++) if (masks.garb[c]) return masks;
         return this.withSlab(masks) || masks;
     };
 
-    // WHERE THE BOARD IS LANDING, NOT WHERE IT IS MID-AIR.
-    //
-    // Holding a break is a property of the board at rest: a match cannot be read
-    // off panels that are still falling, so resolveFromMasks finds nothing on a
-    // board in flight and the answer comes back "no break" whatever is really
-    // there. The bot decides mid-cascade nearly always -- the cooldown lifts
-    // while stop time runs, and stop time runs because something is resolving.
-    // Measured on seed 101: of 262 decisions with garbage on the board, ONE was
-    // on a settled board. The save rule was asking its question at the one
-    // moment it cannot be answered, and reading the answer as a missing break.
-    //
-    // The search has always worked on landed boards (every node it keeps is
-    // res.settled). This puts the rule on the same footing.
     BitBot.prototype.restingBoard = function (masks) {
         if (!this.inFlight()) return masks;
         var r = bit.resolveFromMasks(bit.copyState(masks), true);
         return (r && r.settled) || masks;
     };
 
-    // THE FIRST RUN THAT CAN TAKE HEALTH, read off the stack -- nothing is simulated.
-    //
-    // advancePassiveRaise takes health on a run where the board is topped out, the rise
-    // is not locked and stopTime is 0. In that run decrementTimers has already spent one
-    // frame (preStopTime first, stopTime only once it is 0, shakeTime with it) and
-    // updateRiseLock locks on a queued swap, shakeTime > 0 or hasActivePanels(). So,
-    // counting runs from the next one as 1:
-    //
-    //   stop time    stopTime reaches 0 on run preStopTime + stopTime; with none
-    //                running it is already 0
-    //   shake        shakeTime reaches 0 on run shakeTime
-    //   in the air   an active panel stays active for its timer; hasActivePanels reads
-    //                this frame's count and the one before it
-    //
-    // The largest of the three. Exact when nothing is in the air; with panels in the
-    // air it is a floor -- a landing can start more -- and the bot decides again every
-    // frame while topped out, so a floor is all it needs.
     BitBot.prototype.drainBound = function () {
         var s = this.stack, pre = s.preStopTime || 0, stop = s.stopTime || 0;
         var k = stop > 0 ? pre + stop : 1;
@@ -3659,30 +1292,6 @@
         return k;
     };
 
-    // HOW MANY EMPTY ROWS ARE ABOVE THE STACK, ON THE BOARD AS IT IS NOW.
-    //
-    // Read off the live stack rather than a decision's snapshot because the two
-    // run at different rates: a decision is up to `reaction` frames old, and a
-    // held raise delivers a row every sixteen. One decision's answer therefore
-    // covers more than one row, and by the second row the board it was made
-    // about is gone. Solo from three rows the bot held the button through six of
-    // them and topped out in 97 frames.
-    //
-    // Falling garbage is not counted, the same way isToppedOut does not count
-    // it: it has not landed and it is not what the row would be stacked on.
-    // WHAT THIS PLAN SPENDS IN HEALTH, step by step. Topped out, the rise drains a
-    // point of health on every run nothing locks it -- updateRiseLock locks it on a
-    // queued swap, a shake, or any panel in motion. So the time there is runs to the
-    // first draining run, and everything the plan does pushes that further out:
-    // a swap locks it for its own SWAP_RUNS, and a clear for its whole resolve --
-    // FLASH + FACE + POP * size, resolveFramesOf -- starting 5 runs after the swap
-    // is queued (the swap's 4 and the match). A step is the walk to it and a frame
-    // to decide; each of its runs past the lock is a point spent. A break is what
-    // the plan was for, so the count stops there. Infinity for a plan that cannot
-    // be played at all.
-    // EACH PREFIX ONCE. The routes a search hands back share their opening swaps, so
-    // the board, clock, lock and spend after a prefix are kept on the base board of
-    // this decision and every route that starts the same way starts from there.
     var SWAP_RUNS = 4;
     BitBot.prototype.planSpend = function (swaps, base, info) {
         var memo = base._fits || (base._fits = new Map());
@@ -3712,12 +1321,8 @@
         }
         return spend;
     };
-    // CAN IT BE PLAYED WITHOUT SPENDING HEALTH.
     BitBot.prototype.planFits = function (swaps, base, info) { return this.planSpend(swaps, base, info) === 0; };
 
-    // DOES A PLAN FIT THE TIME THERE IS -- the one question every route that plays a plan
-    // asks, asked here. Topped out it is planFits, step by step against the lock each
-    // clear makes; otherwise the plan's frames against the deadline.
     BitBot.prototype.planInTime = function (swaps, duration, base, info, deadline) {
         return info.toppedOut ? this.planFits(swaps, base, info) : (duration || 0) <= deadline;
     };
@@ -3733,124 +1338,34 @@
         return top;
     };
 
-    // THE ONE SAFETY CLAUSE OF THE RAISE, AND THE ONLY COPY OF IT.
-    //
-    // The row lands under the stack and lifts everything by one, and every cell
-    // already queued lands on top of that -- so the room needed is that row plus
-    // those. raiseMode asks it when it decides, update() asks it on every frame
-    // it would hold the button, and it is the same arithmetic both times.
     BitBot.prototype.raiseFits = function (rows) {
         return this.raiseRoom() > 1 + (rows || 0);
     };
 
-    // THE RAISE IS A MODE, NOT A MOVE AND NOT A PREFERENCE.
-    //
-    // Two things turn it on and nothing else does:
-    //   OPENING   the board is dealt nearly empty and there is nothing to play
-    //             with yet, so the first thing to do is fill it.
-    //   MATERIAL  the board has dropped under the working floor. A chain is made
-    //             of panels, and only two things make panels -- raising, and
-    //             breaking a slab.
-    //
-    // Over both, the row has to be one the board survives: the risen board with
-    // every queued cell counted still under the ceiling, not topped out, and a
-    // break or a clear already standing, so the row lands on an answer.
-    //
-    // ONE ANSWER PER DECISION, AND EVERYTHING READS IT. update() holds the
-    // button on it, the branch in _decide plays the raise on it, and declining
-    // to swap is the same answer. Four copies of this rule used to sit in four
-    // places, and they disagreed -- the button was held on decisions that
-    // refused to raise, so the bot raised and built at the same time and the row
-    // never came.
     BitBot.prototype.raiseMode = function (info, base, poolBreak) {
         if (!this.allowRaise || info.toppedOut) { this._opening = false; return null; }
-        // NOT WHILE GARBAGE FALLS: handleManualRaise drops a raise while any garbage is
-        // falling, so the row never comes and a mode that waits for it only holds
-        // while the garbage lands.
         if (info.fallingGarbage) return null;
-        // AS HIGH AS IT CAN WITHOUT KILLING ITSELF.
-        //
-        // raiseFits(rows) is the tallest column after the row, plus the slab that
-        // lands next, still under the ceiling. The slab reserved is the larger of
-        // the one queued and the biggest this opponent has landed.
-        //
-        // update() re-checks each row against `_wantRows`, the queued slab alone:
-        // that bound is whether THIS row may arrive on this frame's board, and the
-        // reserve is whether the bot should be raising at all.
         var rows = Math.ceil((info.nextSlab || 0) / W);
         var reserve = Math.max(rows, this._maxSlab || 0);
         var fits = this.raiseFits(reserve);
         this._wantRows = rows;
-        // The opening ends when garbage is on the way or the row no longer fits.
         if (this._opening && (info.incoming || !fits)) this._opening = false;
         if (!fits) return null;
-        // A break in hand rides the raise up -- the row lifts the board whole -- and
-        // ends it only when it fires: the garbage has all landed.
         var stillComing = (info.incoming || 0) > 0 || !!info.fallingGarbage;
         if (poolBreak && !stillComing) return null;
         return this._opening ? 'opening' : 'material';
     };
 
-    // FLATTEN BEFORE RAISING.
-    //
-    // A raise lifts the board whole and lays a flat row underneath, so it carries
-    // the lumps up with it -- the shape it raises FROM is the shape it ends up
-    // with, one row higher. Seed 101 opened on columns 5,6,5,4,5,5 and had raised
-    // to 10,10,5,5,8,9 by frame 288: two columns one row under the ceiling, two at
-    // five, and every decision after that played from there.
-    //
-    // Levelling first puts the same material at about eight everywhere, with room
-    // above it. And there is no threshold to pick: the search already discards a
-    // flatten worth less than it costs (`if (flat && !(flat.value > 0)) flat =
-    // null`), so "is there levelling worth doing" is a question it has answered.
-    // The route must also finish in the time there is, like every other plan.
-
-    // IS THE ANSWER STILL IN HAND AFTER THIS MOVE, and reachable in time?
-    //
-    // The same question hasFireable asks -- any clear, because any clear holds
-    // the floor -- put to the landed board, and to the row that lands next when
-    // the board is clean. "Reachable" is the arithmetic used everywhere else: the
-    // walk from where the cursor ends up plus the swap, against the frames that
-    // board has left. A clear on the far side with twenty frames to live is not a
-    // save.
     BitBot.prototype.saveAfter = function (masks, row, col, info, deep) {
         var deadline = framesToDeath(info, tallestBoard(masks), info.framesPerRow);
         var frozen = (info.stopTime || 0) > 0 || !!info.toppedOut;
         var step = travel.MOVE_FRAMES + (frozen ? 0 : this.reaction);
-        // TWO TIERS, BECAUSE THE SAVE IS AT THE TOP OF THE STACK.
-        //
-        // Garbage lands on the surface, so a clear whose cells sit at the top of
-        // the stack is the one touching the slab when it arrives -- firing it
-        // holds the floor AND takes the slab apart. A clear three rows down in
-        // the pocket only does the first.
-        //
-        //   2  breaks the garbage that is there, or the row that lands next --
-        //      the same thing seen before and after it arrives, and the only kind
-        //      that hands ceiling back
-        //   1  clears something, anywhere. Holds the floor for its resolve, which
-        //      at maxHealth 1 is the difference between living and not
-        //   0  nothing reachable in time
-        //
-        // One sweep for both: the board already has the next row on it when it is
-        // clean, so a clear that does not touch that row still scores 1.
-        // EITHER IT IS IN HAND, OR IT IS REACHABLE IN THE TIME THERE IS.
-        //
-        // "One ready" was read as "one swap away", and that is not the rule. The
-        // rule is that a clear can be FIRED inside the frames this board has
-        // left, and depth is free as long as the frames fit -- the same
-        // arithmetic every plan in here is priced by. One swap is only the
-        // cheapest case of it. Depth 1 alone read 19% and 34% of decisions as
-        // having nothing while a two-swap answer was on the board.
         masks = this.slabToAnswer(masks);
         var sw = bit.legalSwapsOf(masks), i, j, r, best = 0, setups = [];
         for (i = 0; i < sw.length; i++) {
             var walk = travel.cost(row, col, sw[i][0], sw[i][1]) + step;
             if (walk > deadline) continue;
             if (!bit.swapMasks(masks, sw[i][0], sw[i][1])) continue;
-            // SETTLING A BOARD COSTS SEVERAL TIMES WHAT RESOLVING ONE DOES, and
-            // the landed board is only wanted for the second ply. Asking for it
-            // regardless settled every swap of every board with nothing in hand
-            // and took gate_bitbot from 11s to 39s.
             var want = deep && !best;
             r = bit.resolveFromMasks(masks, want);
             bit.swapMasks(masks, sw[i][0], sw[i][1]);
@@ -3859,19 +1374,7 @@
             if (want && r.settled) setups.push({ st: r.settled, at: sw[i], spent: walk });
         }
         if (best) return best;
-        // SHALLOW WHERE THE ANSWER ONLY RANKS, DEEP WHERE IT DECIDES.
-        //
-        // The second ply costs a resolve sweep per setup, and the keeping half
-        // asks this of every alternative in the pool -- thirty of them on a
-        // decision. Run deep there and gate_bitbot goes 11s to 39s for an answer
-        // that is only choosing between moves that all keep something. It runs
-        // deep on the two questions that decide: does THIS board have an answer,
-        // and does the move the bot is about to play leave one.
         if (!deep) return best;
-        // THE SECOND PLY, AND THE DEADLINE PAYS FOR BOTH SWAPS. Cheapest setups
-        // first and a handful of them: this runs only on a board with nothing in
-        // hand, which is where the bot dies, and the cost is a resolve sweep over
-        // a board that was going to be settled anyway.
         setups.sort(function (a, b) { return a.spent - b.spent; });
         for (i = 0; i < setups.length && i < 6; i++) {
             var st2 = setups[i].st, from = setups[i].at, left = deadline - setups[i].spent;
@@ -3890,144 +1393,19 @@
         return best;
     };
 
-    // EVERY RULE THAT REFUSES A MOVE, IN ONE PLACE, ASKED OF ANY MOVE.
-    //
-    // Three paths pick the move -- the attack, the survival plan and the flatten
-    // plan -- and all three read the OPTION list. The candidate list is read by
-    // the weights fallback alone, which is the path that runs least. So a rule
-    // written into the candidate loop shapes the one path that matters least and
-    // the moves that actually get played walk past it.
-    //
-    // It has now happened three times. The beam cut breaks before the
-    // break-priority rule could see them. The save rule, wired into the loop,
-    // only ever narrowed the fallback. And "breaking garbage is the priority"
-    // left bestAttack free to attack with a break sitting in the pool.
-    //
-    // The pool holds every legal swap with the board it lands on, so a move from
-    // any path can be found in it and put to the same question. That is what
-    // makes the exit gate an enforcement point rather than a fourth place to
-    // write a rule and be bypassed. Add rules HERE.
-    // REFUSING THE REPLAY OF A SWAP IS MEASURED AND REJECTED.
-    //
-    // The wiggle it was aimed at is real: inside a freeze the pool is read off
-    // panels still in motion, resolveFromMasks finds matches the engine cannot see
-    // yet, so the board a swap RESOLVES to looks like somewhere new and the existing
-    // return filters let a two-cycle run. Seed 103 played one swap sixteen decisions
-    // in a row at four-frame intervals, the board alternating between two positions.
-    //
-    // Refusing it -- even in the narrowest form, the same swap onto the exact board
-    // it was played from, which has no legitimate reading -- costs the game. Measured
-    // on one pairing in isolation, seed 103 rand1 vs rand3, the only difference being
-    // that clause: rand3 survives to 28,345 and breaks 311 of 329 garbage cells
-    // without it, and dies at 1,235 having broken 5 of 47 with it. The wasted frames
-    // it saves (118 down to 93 over three duels) are not worth that.
-    //
-    // Three rules have now been tried that work by taking a move away from the bot
-    // -- this, and the empty-column refusal in two forms -- and all three cost more
-    // than they saved. What is left for the two-position figure in
-    // progress.test.js is something that changes what the bot PREFERS.
-
     BitBot.prototype.refuses = function (cand, info, base, survivalNeeded, breakAvailable) {
         if (!cand || cand.kind !== 'swap' || !cand.resolved) return null;
-        // Survival is exempt from all of them: a board that needs the clock takes
-        // whatever buys it.
         if (survivalNeeded) return null;
-        // A THREE THAT NEITHER SENDS NOR BREAKS IS NOT AN ACTION. It spends the
-        // vertical structure a chain is made of and the engine's table pays
-        // nothing for it.
         if (this.refusePayless && tierOf(cand) === 4) return 'payless';
-        // UNDER THE WORKING FLOOR, ONLY A BREAK MAY CLEAR. Breaking is the only
-        // thing that takes garbage off the board and it needs three panels
-        // against the slab; a board under the floor cannot reach one, so every
-        // panel spent there is spent on never digging out.
-        //
-        // AND ONLY WHILE A BREAK IS ACTUALLY ON THE TABLE. Breaking comes first,
-        // but a board that CANNOT break still needs stop time -- that is what buys
-        // the moves to reach a break at all. Refusing every non-break clear on a
-        // board with no break available does not save the panels for digging; it
-        // spends the clock instead, which is the one thing that cannot be earned
-        // back. Measured on seed 103 rand1: 17 clears declined that would have held
-        // the floor, one of them for 62 frames, on a board that died of time with
-        // 28 cells of garbage on it.
-        //
-        // Gated on a break existing, the refusal can never take the last thing
-        // worth playing -- the break is still on the list.
         if (cand.resolved.total > 0 && !cand.resolved.brokeGarbage &&
             materialRows(base) < WORKING_ROWS && breakAvailable) return 'starving';
-        // EMPTYING A COLUMN IS NOT REFUSED HERE, AND THE NUMBERS ARE WHY.
-        //
-        // A column at zero holds no vertical match, breaks the adjacency a
-        // horizontal one needs, and is where a slab bridges -- garbage rests on the
-        // tall columns and spans the width, so the empty column is sealed and
-        // nothing under it can reach the slab. All three deaths this was written
-        // from are that board: 7,3,2,1,3,4 at 1,446; 8,7,3,1,2,3 at 14,959;
-        // 7,3,4,1,5,7 at 19,371, each a tower beside a column at one, capped, with
-        // `alive` already at zero for the last fifty frames.
-        //
-        // The reading is right and the refusal is the wrong instrument. Measured
-        // over 60 boards: 7 deaths without it, 9 refusing the hole everywhere, 14
-        // refusing it only on a board with garbage on it -- the narrowing that
-        // should have cost less cost twice as much. Taking the move away puts the
-        // bot somewhere worse than the hole does.
-        //
-        // So it stays where it already was and already measured well: a PREFERENCE.
-        // `opensHole` ranks it out of bestAttack (survival invariant 7) and score()
-        // clamps bumpiness and tallest to a floor no vector can undo. A rule that
-        // shapes the choice is not the same as one that forbids it, and this is a
-        // case where only the first pays.
         return null;
     };
 
-    // THE GATE EVERY DECISION LEAVES BY.
-    //
-    // The rule belongs at the exit, not inside one of the paths that can pick a
-    // move: a filter wired into the candidate loop only ever shaped the fallback,
-    // and the moves that actually get played come from the attack and survival
-    // plans, which walked straight past it.
-    //
-    // Soft: if nothing keeps a save, the original move stands. This narrows the
-    // choice, it never refuses to move.
-    // THE MOVE THAT WAS ACTUALLY PLAYED, RECORDED ONCE. Every route and every
-    // substitution below funnels through here, so this is the only place that can
-    // know what the bot really did last. `_lastSwap` was declared and never
-    // assigned, and the rule it was for never existed.
     BitBot.prototype.decide = function () {
         var d = this._decideGated();
         this._lastSwap = (d && d.kind === 'swap' && d.move) ? [d.move[0], d.move[1]] : null;
-        // HOW FAR BACK TO REMEMBER, DERIVED.
-        //
-        // One move of memory can only push a loop out by one step: excluding the
-        // immediate repeat turned 1-cycles into 2-cycles, and seed 103 rand1 went
-        // 1-3, 1-4, 1-3, 1-4, 1-5, 1-4, 1-5 with its pocket frozen at 2,2,2,2,3,4,
-        // dead at 2,051. Memory k blocks cycles up to length k, so the question is
-        // which k.
-        //
-        // A cycle is only a loop if it can go round before the board changes under
-        // it, and the board changes when a row rises. The decisions that fit in a
-        // row are
-        //
-        //     D = framesPerRow / reaction
-        //
-        // which is 120/12 = 10 at level 10. A cycle shorter than D repeats inside a
-        // single row and costs real frames; one longer completes at most once before
-        // the rise makes it a different position, so it is not a loop at all.
-        //
-        // Both numbers are the engine's -- framesPerRow is riseTime(speed) * 16 --
-        // so this tightens on its own as the level speeds up: fewer decisions fit
-        // in a row, and only shorter cycles can still repeat.
         if (this._lastSwap) {
-            // TWO, AND THE DERIVATION THAT SAYS TEN IS ANSWERING A DIFFERENT
-            // QUESTION. framesPerRow / reaction is 10 at level 10, and it is the
-            // right number for "which cycle lengths can go round inside one row".
-            // It says nothing about how much of an option list can be deleted
-            // before the search starves, and that is the binding constraint: the
-            // lists here run 15 to 20 candidates, and at ten the bot lost a board
-            // it survives at two -- 103 rand1 v rand2, dead at 1,524 with no
-            // garbage broken at all, against 30,000 frames and 362 cells.
-            //
-            // One is not enough either: it can only push a loop out by a step, and
-            // turned 1-cycles into 2-cycles. Two blocks both, measured at 4 deaths
-            // over 22 boards and 90% of frames against 6 and 55% at one.
             var depth = 2;
             this._recentSwaps = [this._lastSwap].concat(this._recentSwaps || []);
             if (this._recentSwaps.length > depth) this._recentSwaps.length = depth;
@@ -4039,11 +1417,6 @@
         return this._onePlan(this._waitForDrain(this._decideRuled()));
     };
 
-    // ONE PLAN AT A TIME. Each route that plays a plan keeps it in its own field, and
-    // with more than one in flight two routes take turns -- each playing the next move of
-    // its own plan, each undoing the other's. So the move actually played decides which
-    // plan is live: the route that played it keeps its plan and every other is dropped.
-    // A hold or a raise moves no panel and leaves the plan where it was.
     var PLAN_OF = { digPlan: '_dig', breakReach: '_dig', breakSpend: '_dig', attackPlan: '_attack', bestAttack: '_attack',
                     survivalPlan: '_plan', flatten: '_flatten' };
     BitBot.prototype._onePlan = function (d) {
@@ -4056,28 +1429,6 @@
         return d;
     };
 
-    // TOPPED OUT, HEALTH IS NEVER SPENT.
-    //
-    // The engine refills health only on a frame the board is not topped out
-    // (`if (!wasToppedOut && !hasFallingGarbage()) health = maxHealth`), and under a
-    // slab it is topped out for as long as the slab stands. So every frame it drains
-    // there is gone for the rest of the slab -- the whole of it is maxHealth frames.
-    // A queued swap locks the rise in the run it is queued for, so the rule is exact:
-    // a clear or a break is queued no later than drainBound's run, every time.
-    //
-    // A swap whose walk is w frames is queued before run w + 1, so it is in time while
-    // w + 1 <= k, and waiting one more frame is safe while w + 2 <= k. Topped out,
-    // update() lifts the cooldown every frame, so the bot can wait to the last safe
-    // frame -- parked on the clear, so the walk is nothing when it goes.
-    //
-    //   a clear that breaks nothing waits, parked, until it must go. Nothing rises
-    //     under a slab, the panels are all the material there is until a break
-    //     converts a row, and three of them buy FLASH + FACE + POP * 3 frames that are
-    //     only needed when the drain is due. Routes that end in a break are exempt.
-    //   anything else -- a setup, a flatten, a hold -- stands while its walk, the swap
-    //     and the walk back to a clear still fit, and a clear is on the board after it.
-    //   otherwise: a break, else the clear that buys the most frames per panel it
-    //     spends (the engine's preStop and stop time), parked on while that is safe.
     var ENDS_IN_A_BREAK = { digPlan: 1, breakReach: 1, 'break': 1, lineup: 1, lineupHold: 1 };
     var SWAP_FRAMES = 4;
     BitBot.prototype._waitForDrain = function (d) {
@@ -4091,11 +1442,6 @@
             if (d.kind === 'swap' && d.move && pc.swap[0] === d.move[0] && pc.swap[1] === d.move[1]) picked = pc;
             if (pc.resolved.total > 0 || pc.resolved.brokeGarbage) clears.push(pc);
         }
-        // NONE YET IS NOT NONE. Panels still in the air land when the lock they hold
-        // ends, and the clears they make exist only from then: on the settled board.
-        // Those are the targets while the board is in motion -- the cursor is parked on
-        // one so its swap goes in the run the panels land, and a move that walks away
-        // from every one of them faces the same way-back check as any other.
         if (!clears.length) {
             var settled = bit.resolveFromMasks(base, true).settled;
             if (settled) {
@@ -4112,20 +1458,11 @@
             }
         }
         if (!clears.length) return d;
-        // A STEP OF A BREAK BOUGHT WITH HEALTH has been priced already (planSpend):
-        // what it spends is what it was chosen knowing.
         if (d.spends) return d;
         var k = this.drainBound(), pr = picked && picked.resolved;
-        // A BREAK STILL HAS TO GET THERE IN TIME: its walk is checked against the first
-        // run that can take health like any other move's. A step of a route that ends in
-        // a break is a setup, and faces the way-back check below like one -- if the
-        // route's break fits the time left, it is the clear that check finds.
         if (pr && pr.brokeGarbage && (picked.moveFrames || 0) + 1 <= k) return d;
         if (!picked && ENDS_IN_A_BREAK[d.via]) return d;
         function hold(at) { return { kind: 'hold', mode: d.mode, alive: d.alive, via: 'awaitDrain', park: at }; }
-        // A clear that arrives before the drain is held until the last moment and then
-        // fired; one that cannot arrive in time is not a clear for this purpose, and the
-        // guard's own reachable choice below replaces it.
         if (pr && pr.total > 0 && !pr.brokeGarbage && (picked.moveFrames || 0) + 1 <= k) {
             if ((picked.moveFrames || 0) + 2 > k) return d;
             this.counts.waitedForDrain = (this.counts.waitedForDrain || 0) + 1;
@@ -4134,10 +1471,6 @@
         var nearest = Infinity;
         for (i = 0; i < clears.length; i++) nearest = Math.min(nearest, clears[i].moveFrames || 0);
         if (picked) {
-            // THE WAY BACK IS MEASURED ON THE BOARD THE MOVE LEAVES, to a clear that is
-            // on it. Measured to the clears of the board as it stands, a run of setups
-            // each passed against a clear the setup itself had moved or spent, and the
-            // cursor walked away from every clear there was.
             var back = Infinity;
             if (picked.masks) {
                 var after = bit.copyState(picked.masks), sw2 = bit.legalSwapsOf(after);
@@ -4164,10 +1497,6 @@
                      (cl.moveFrames || 0) < (breakNow.moveFrames || 0))) breakNow = cl;
                 continue;
             }
-            // THE CLEAR IS SPENT EITHER WAY, SO IT IS AIMED. The one that spends fewest
-            // panels, then the one that leaves the surface under the slab most even -- a
-            // slab resting on one tower has nothing to break against -- then the most
-            // frames held per panel.
             var isCh = r.chain >= 2;
             var rate = (f.FLASH + f.FACE + f.POP * r.total +
                         BF.stopTimeOf(eng, isCh, isCh ? 0 : r.total, isCh ? r.chain : 0, true)) / r.total;
@@ -4192,36 +1521,8 @@
         var info = this._lastInfo, pool = this._lastPool, base = this._lastBase;
         if (!d || d.kind !== 'swap' || !d.move || !info || !pool || !base) return d;
         var i;
-        // THE PATHS THAT ARE ARITHMETIC, NOT PREFERENCE. Each is already priced
-        // in frames against the clock, or is the break the rest of this gate
-        // exists to reach. Nothing below may overrule or restart one.
         var ARITHMETIC = { survivalPlan: 1, planSave: 1, digPlan: 1, 'break': 1, keepSave: 1 };
 
-        // THE RULES, APPLIED TO THE MOVE THAT WAS ACTUALLY CHOSEN.
-        //
-        // Whichever path picked it. The pool holds every legal swap with the
-        // board it lands on, so the move is found there and put to the same
-        // predicate the candidate loop asks -- and when it is refused, the
-        // best-scoring move that is not refused and not deadly is played
-        // instead. Nothing gets to pick a move the rules forbid by reading a
-        // different list.
-        //
-        // Soft, like the save rule below it: if every move is refused the
-        // original stands. A rule that can leave the bot with nothing to play is
-        // not a rule, it is a freeze.
-        // WHAT THESE RULES BIND IS PREFERENCE, NOT ARITHMETIC.
-        //
-        // They exist to stop the bot spending the board on moves it merely likes
-        // -- a payless three, a clear that starves the dig. The survival plan,
-        // the planned save, the dig route and a break in hand are not preferences:
-        // each is priced in frames against the clock, and bestPlan already
-        // carries the material shortfall as `- shortfall * framesPerRow`. So the
-        // one path that has ALREADY paid this price was the one being overruled.
-        //
-        // Applied to all of them it is the failure the save rule measured at 6
-        // deaths in 16 boards, and worse: 15 deaths in 30 on both seeds, from
-        // frame 813, against 3 and 0 without it. Overruling frames-priced
-        // arithmetic with a weights ranking is how the bot dies.
         var picked = null;
         for (i = 0; i < pool.length; i++) {
             var pk = pool[i];
@@ -4248,75 +1549,9 @@
                       alive: d.alive, via: 'ruled' };
             }
         }
-        // AT ALL TIMES, not once the garbage has landed. The board is filled to
-        // the top on purpose and the thing that makes that safe is the answer
-        // standing ready when the slab arrives, which is before it arrives.
 
-        // ONLY WITH TIME TO SPARE. Keeping a save means playing something other
-        // than what the decision chose, and the substitute is ranked by the
-        // weights rather than by whatever objective picked the original -- so on
-        // a board that needs to survive, this trades a survival plan for a move
-        // whose only qualification is that it leaves a break standing. Measured:
-        // 6 deaths in 16 boards against 1 in 30.
-        //
-        // WHAT KEEPING MUST NOT OVERRULE IS THE SURVIVAL PLAN, AND SAYING SO
-        // DIRECTLY BEATS A CLOCK READING THAT MEANS IT.
-        //
-        // The substitute is ranked by the weights, so on a board that needs to
-        // survive this trades a plan priced in frames for a move whose only
-        // qualification is that it leaves a break standing -- measured at 6
-        // deaths in 16 boards against 1 in 30. Two rows of deadline stood in for
-        // that, and it was a proxy: once the deadline started counting queued
-        // garbage, "under two rows" became the ordinary state of any board under
-        // pressure and the rule switched itself off exactly where it is worth
-        // having. The plan is what it must not overrule, so that is the test.
-
-        // A SAVE IS KEPT, NOT CONJURED.
-        //
-        // If the board had no answer before the move, the move did not spend one
-        // -- and substituting a weights-ranked move because none exists is not
-        // keeping a save, it is a second objective running on every decision from
-        // frame 0. It fired on a fifth of them, over attack and survival plans
-        // alike, and the round-robin went to 13 deaths from 11 with the earliest
-        // at frame 1,293 against 4,205.
-        //
-        // The rule is that the last answer is not spent for nothing: it is okay
-        // to break it as long as breaking it leaves another. So the gate binds
-        // only where there is one to keep.
-        //
-        // NO ANSWER AT ALL IS THE OTHER CASE, AND IT IS THE DANGEROUS ONE.
-        // Topping out does not kill -- the engine holds a slab that has nowhere
-        // to land -- draining does, and the drain only runs on a board that is
-        // full, settled and off the clock. So at the ceiling the thing that keeps
-        // the bot alive is a clear to fire, and a board with none there is losing
-        // health every frame. Making one is then not a preference, and it is not
-        // ranked by the weights either: the search prices the cheapest route to a
-        // board that holds a save, and it is taken only when it finishes in time.
-        //
-        // Not over a survival plan. That plan buys frames outright, which is the
-        // same job done more directly, and overruling it here is what cost 6
-        // deaths in 16 boards when this rule outranked everything.
         if (!this.saveAfter(base, info.cursorRow, info.cursorCol, info, true)) {
-            // A ROUTE ALREADY UNDERWAY IS NOT RE-STARTED FROM ITS FIRST MOVE.
-            //
-            // The dig plan holds the route and plays it out; this branch hands
-            // back swaps[0]. Firing it over a decision that IS the route replaced
-            // move two with move one, every decision, so the route never advanced
-            // past its first step: 208 routes planned and a break in hand on 3 of
-            // 262 buried decisions, 1%.
-            //
-            // The same for the break it is meant to reach and for the plan that
-            // is already frames-priced -- this is the fallback for a decision
-            // that was about something else.
             if (ARITHMETIC[d.via]) return d;
-            // THE BETTER ROUTE FIRST, THEN ANY ROUTE.
-            //
-            // `save` is the cheapest way to a board that can break the slab --
-            // the save at the top of the stack. `ready` is the cheapest way to a
-            // board that can fire anything at all. The first hands ceiling back
-            // when it fires and the second only holds the floor, so the first
-            // wins when both exist; but with nothing to fire the board is one row
-            // from dying, and then the second is the whole difference.
             var route = null;
             if (this._lastOptions) {
                 if (this._lastOptions.save && this._lastOptions.save.swaps.length) {
@@ -4341,14 +1576,6 @@
         }
         if (d.via === 'survivalPlan') return d;
 
-        // THERE IS ALWAYS ONE READY. Not a preference and not a trade against the
-        // clock: the board can be full on any frame, maxHealth is 1, and a clear
-        // in hand is the only thing that answers it. So a move that leaves none,
-        // where another move leaves one, is not played.
-        //
-        // Ranked by tier below, so the one it keeps is the one at the top of the
-        // stack when there is a choice.
-
         var chosen = null;
         for (i = 0; i < pool.length; i++) {
             var pc = pool[i];
@@ -4356,18 +1583,6 @@
                 pc.swap[1] === d.move[1] && pc.masks) { chosen = pc; break; }
         }
         if (!chosen) return d;
-        // A BREAK THAT LEAVES ANOTHER BREAK IS FREE. That is the whole rule: the
-        // save may be spent as long as spending it makes a new one.
-        //
-        // Neither extreme works. Guarding a break on its result refuses the very
-        // move the save exists to enable and the board ends up buried on five
-        // times as many decisions. Exempting every break cashes the save the
-        // instant one appears, and the board holds one on 3% of decisions.
-        //
-        // So a break that leaves none is the save being CASHED, and that is for
-        // when the board needs it: short of material, where the garbage has to be
-        // prioritised because the panels are locked inside it. With material in
-        // hand there is something else to do and the break keeps.
         if (chosen.resolved && chosen.resolved.brokeGarbage) {
             if (materialRows(base) < 6) return d;
             if (this.saveAfter(chosen.masks, chosen.swap[0], chosen.swap[1], info, true)) return d;
@@ -4382,10 +1597,6 @@
             if (this.deadly(alt.masks, alt.resolved, info,
                             Math.max((alt.moveFrames || 0) + this.reaction,
                                      info.framesPerRow || 0))) continue;
-            // RANKED BY WHAT SAVE IT KEEPS FIRST, then by the weights. A clear
-            // at the top of the stack is worth more than one in the pocket and
-            // the difference is not something a vector should get to weigh: one
-            // hands ceiling back when it fires and the other does not.
             var q = this.saveAfter(alt.masks, alt.swap[0], alt.swap[1], info);
             if (!q) continue;
             var sc = this.score(alt.masks, alt.moveFrames, alt.resolved, info);
@@ -4393,22 +1604,12 @@
                 keep = { cand: alt, score: sc, q: q };
             }
         }
-        // NO SINGLE SWAP KEEPS ONE: the board is about to be without an answer,
-        // and the decision above is what handles that -- on the next decision,
-        // with the board it actually left. Planning a route to one from here
-        // would be planning from a board this move is about to replace.
         if (!keep) { this.counts.saveUnkeepable++; return d; }
         this.counts.saveKept++;
         return { kind: 'swap', move: keep.cand.swap, mode: d.mode,
                  alive: d.alive, via: 'keepSave' };
     };
 
-    // One call per frame from the match loop, the same shape PuyoCpu has.
-    // IS A SWAP OF THE BOT'S STILL LANDING.
-    //
-    // Queued but not yet executed, or executed and still animating. Either way
-    // the board is between two positions and a decision made on it is a decision
-    // about neither.
     BitBot.prototype.swapLanding = function () {
         var s = this.stack;
         return (s.queuedSwapRow || 0) > 0 || (s.swappingCount || 0) > 0;
@@ -4420,15 +1621,6 @@
         var froz = (stack.stopTime || 0) > 0;
         var input = {};
 
-        // ONE RAISE IS ONE ROW. The engine re-latches manualRaise on every frame
-        // the input is held while preventManualRaise is clear, so a fixed hold
-        // serves two or three rows for one decision. Released the frame the
-        // engine HANDS THE RAISE OFF, which always sets preventManualRaise.
-        // The standing intent, re-armed whenever the engine is free to take it.
-        // THE ROW IS ALLOWED ON THIS FRAME'S BOARD, NOT ON THE DECISION'S.
-        // The mode says the bot is raising; this says there is still room for
-        // the row. Holding through the answer of a decision several rows old is
-        // how the button topped the board out.
         if (this._wantRaise && !this.raiseFits(this._wantRows)) {
             this._wantRaise = false;
             this.raiseFrames = 0;
@@ -4445,55 +1637,14 @@
             else { this.raiseFrames--; input.raise = true; }
         }
 
-        // A committed move owns the frame — the cursor has to get there.
         if (this._walk) {
             this.spend.walking++; if (froz) this.frozen.walking++;
             this._driveWalk(input); stack.setInput(input); return;
         }
         if (this._park) this._parkStep(input);
         stack.setInput(input);
-        // THE COOLDOWN DOES NOT GET TO SLEEP THROUGH A REVEAL WINDOW. The window
-        // is 21 frames and the bot decides every 12, so on cooldown it misses
-        // most of them -- and a window missed is information that arrived and went
-        // unused, which is the whole thing bitlineup was built for. The reaction
-        // still applies everywhere else: this does not make the bot faster in
-        // general, it makes it awake for the one situation that is over before the
-        // next decision would have come round.
-        // FROZEN TIME IS FREE TIME, AND IT WAS BEING THROWN AWAY.
-        //
-        // Read off seed 101, the last 30 frames of a duel: topped out, 29 frames
-        // of stop time on the clock, and the board IDENTICAL on every one of
-        // them -- 31 panels and 23 garbage cells, unchanged -- until the clock hit
-        // 0 and health with it. The one thing stop time is FOR is acting while
-        // the floor is held, and the bot sat through all of it.
-        //
-        // The arithmetic: at reaction 12, a 29-frame freeze buys two decisions,
-        // and a walk can cost 60. So the reaction has to lift while the clock is
-        // running or while topped out -- the two states where an idle frame is a
-        // frame of life spent for nothing. Everywhere else it still applies.
         var urgent = (stack.stopTime || 0) > 0 ||
                      (typeof stack.isToppedOut === 'function' && stack.isToppedOut());
-        // AND NEITHER LIFT INTERRUPTS THE BOT'S OWN SWAP.
-        //
-        // A swap is not finished when it is queued. The engine switches the two
-        // panels immediately and leaves them in `swapping` for a few frames, and a
-        // match is only read off panels in `normal` -- so the board the next
-        // decision snapshots is mid-change, the answer comes back the same, and
-        // playing it again RESTARTS the animation on the same pair. It never
-        // completes, the match under it never fires, and the pair wiggles at one
-        // frame per swap for as long as the lift lasts.
-        //
-        // The no-return filter cannot see this: the model of the swap contains the
-        // clear, so the landed board looks like somewhere new rather than the board
-        // it just left. Read off seed 103, ZERO: 51 frames on `swap r6c2` inside a
-        // 62-frame freeze, then 107 on `swap r4c4`, the board alternating between
-        // exactly two positions the whole time, and dead at 2,063. Roughly five
-        // hundred of its last six hundred decisions were spent this way.
-        // AND ONLY WHEN SOMETHING HAS CHANGED, OR THE DRAIN IS DUE. A decision is a
-        // function of the board, so on the board the last one was made on it gives the
-        // same answer; the clock moves the answer only through the drain, and that is
-        // drainBound against the walk to the nearest clear, one read of the stack. The
-        // cooldown itself still runs out on an unchanged board.
         if (this.cooldown > 0) {
             var lift = (urgent || (this.reveal && this.windowOpen())) && !this.swapLanding();
             if (lift && stack.isToppedOut() && !(this.reveal && this.windowOpen()) &&
@@ -4528,9 +1679,6 @@
             if (froz) this.frozen.hold++;
             this.counts.holds++;
             this.cooldown = this.reaction;
-            // THE SAME TARGET KEEPS ITS WALK. A board in motion is decided on every frame,
-            // and a park rebuilt each time restarts its step timer, so the direction is
-            // held without a fresh press and the cursor never moves.
             var pk0 = this._park;
             if (d.park && pk0 && pk0.target && pk0.target[0] === d.park[0] && pk0.target[1] === d.park[1]) return;
             this._park = d.park ? { row: d.park[0], col: d.park[1], timer: 0, target: [d.park[0], d.park[1]],
@@ -4545,17 +1693,6 @@
         stack.setInput(input);
     };
 
-    // Exposed so a test can ask what the bot considers "the same position" rather
-    // than reimplementing it -- two implementations of a sameness rule is how a
-    // test ends up agreeing with itself.
-    // Exposed so the gate can hold it against the engine's own fillRatio, which
-    // is the canonical answer to "how close to the top is this board". The two
-    // must agree: when they did not, every height decision in the bot was wrong
-    // and the bot stood at the ceiling believing it had room.
-    // A HOLD THAT WAITS WITH THE CURSOR ON THE CELL IT WILL SWAP. The cursor moves the
-    // way a walk moves it -- one axis at a time, a tap every cursorMoveFrames, the
-    // target carried up with a rising row -- and stops there without swapping, so when
-    // the moment comes the walk is nothing.
     BitBot.prototype._parkStep = function (input) {
         var stack = this.stack, pk = this._park;
         if (stack.displacement > pk.disp) pk.row++;
@@ -4571,9 +1708,6 @@
         pk.timer = this.cursorMoveFrames - 1;
     };
 
-    // THE BOARD AS THE DECISION SAW IT: every cell's colour, whether it is garbage, and
-    // its state -- timers left out, since a timer counting down changes no answer but
-    // the drain's, and that is asked separately -- and whether anything is queued.
     BitBot.prototype._boardKey = function () {
         var s = this.stack, out = '', r, c, p, top = Math.min(s.panels.length - 1, s.height + 2);
         for (r = 1; r <= top; r++) {
@@ -4587,18 +1721,9 @@
 
     BitBot.tallestOfMasks = tallestBoard;
     BitBot.signatureOf = signature;
-    // Exposed so the attack ranking can be checked as a property rather than by
-    // playing games: survival.test.js asserts that an option flagged as opening a
-    // hole is refused here, and that an unflagged one still plays.
     BitBot.bestAttackOf = bestAttack;
-    // Exposed for the same reason bestAttack is: the choice between plans is
-    // testable on its own, and a test that plays a game to reach it is not a test
-    // of the choice.
     BitBot.bestPlanOf = bestPlan;
     BitBot.ruinsShapeOf = ruinsShape;
-    // Exposed so the deadline can be checked against a frame-by-frame run of the
-    // engine's own rise and speed schedule rather than against a restatement of it:
-    // see deadline_rise.test.js. The whole bot is priced off this number.
     BitBot.framesToRiseOf = framesToRise;
     BitBot.framesToDeathOf = framesToDeath;
     BitBot.WORKING_ROWS = WORKING_ROWS;

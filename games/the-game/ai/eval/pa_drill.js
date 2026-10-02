@@ -1,34 +1,4 @@
 #!/usr/bin/env node
-// A DRILL ON THE SERVER'S RULES: BitBot playing bench.js's scenario on
-// pa-engine.js, its rows and garbage colours dealt by the server's generator
-// from the seed.
-//
-//   node pa_drill.js SCENARIO SEED [FRAMES]     (FRAMES defaults to the scenario's ceiling)
-//
-// The bot reads the board through PA.view, a panel-engine board rebuilt every
-// frame, and its input and swaps go to the pa-engine stack. Garbage arrives
-// as bench.js sends it: on a burst frame, straight into the queue.
-//
-// One line every 250 frames and one at the end, written as they happen:
-//   f<frame> panels <n> garb <n> top <0|1> {<decision kinds since the last line>}
-//   died <frame>  |  alive <frame>
-//   MISS <frame> <via> <kind> <move> -- a decision that counted on a break (break,
-//     breakReach, breakSpend, awaitLanding) and saw the engine break nothing in the
-//     next MISS_WINDOW frames: the bit engine predicted something pa-engine did not
-//     do. The stack as it was at that decision is written to GC_DUMP/<scenario><seed>
-//     .<frame>.json (PA.revive reads it), so a miss is checked without a replay.
-//
-// And every frame's board and every decision, from the first frame, so a
-// death is read off the run that died -- never a replay. GC_TRACE=<frame>
-// starts them later instead, for a run whose early frames are not wanted:
-//   F <frame> stop <n> shake <n> health <n> disp <n> cur <r>,<c> queue <w>x<h>,... | <row 12> ... <row 1>
-//   D <frame> <kind> <via> <move> | breaks <n> <best> | lines <n> <best break line>
-//     breaks: the one-swap breaks in the decision's pool, and the first of them;
-//     lines: the multi-swap breaks its option list held (when it built one), and
-//     the first, with what planSpend prices it at. What it COULD have done is in
-//     the log beside what it did, so a death is read off the run; ms: what the
-//     decision took, which a live match has 16.7 of per frame.
-// A cell is its colour digit, '.' empty, 'g' garbage; upper-case X is a cell in motion.
 var path = require('path'), fs = require('fs');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
@@ -50,7 +20,6 @@ var BREAKS = { break: 1, breakReach: 1, breakSpend: 1, awaitLanding: 1 };
 bot.decide = function () {
   var t0 = process.hrtime.bigint();
   var d = decide();
-  // The board the decision read: deciding sets only the next input, never the board.
   if (BREAKS[d.via] && !watch) watch = { f: f, via: d.via, kind: d.kind, move: d.move || d.park || null, until: f + MISS_WINDOW,
                                          state: dumpDir ? JSON.stringify(pa) : null };
   var ms = Number(process.hrtime.bigint() - t0) / 1e6;
