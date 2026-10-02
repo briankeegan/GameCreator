@@ -3360,6 +3360,9 @@
   PuyoCpu.prototype.TOWARD_BUDGET = 3000;
   // Each candidate's node, settled from the server's board on the engine in C
   // (nativeCands); one context for the decision, reset at its start.
+  // A reply's settle runs this many frames at most: while a slab pops nothing
+  // is still until it is done, and the reply's own clears are long over by then.
+  PuyoCpu.prototype.REPLY_SETTLE = 180;
   PuyoCpu.prototype._nativeNodes = function (cands) {
     if (!this.nativeCands || !this.serverStack || !cands) return;
     if (!this._candNat) this._candNat = new (NativeMod().server.Search)({ reaction: this.reaction || 0, cursorMoveFrames: this.cursorMoveFrames, threads: this.threads || 1 });
@@ -3415,7 +3418,7 @@
           // On the engine in C: the walk, the swap and the settle in one step.
           var ns = node.nat.b.legalSwaps();
           for (j = 0; j < ns.length && budget > 0; j++) {
-            var nn = this._candNat.advance(node.nat, 'settle', ns[j], 0);
+            var nn = this._candNat.advance(node.nat, 'settle', ns[j], this.REPLY_SETTLE);
             budget--;
             if (!nn || nn.dead) continue;
             if (this._candNat.stepStats(nn).broke > 0) { hit[node.root] = true; any = true; break; }
@@ -4171,7 +4174,7 @@
     for (j = 0; j < next.length; j++) {
       var child = cand.board.clone(), childResolved;
       if (nat) {
-        var n2 = this._candNat.advance(nat, 'settle', next[j], 0);
+        var n2 = this._candNat.advance(nat, 'settle', next[j], this.REPLY_SETTLE);
         if (!n2) continue;   // the engine refuses this swap from there
         childResolved = this._nativeResolved(n2, nat, child);
       } else {

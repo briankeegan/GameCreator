@@ -10,5 +10,6 @@
   "breakFirst": true,
   "breakDepth": 1,
   "lineup": true,
-  "conserve": true
+  "conserve": true,
+  "nativeCands": true
 }

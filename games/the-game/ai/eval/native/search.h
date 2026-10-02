@@ -24,7 +24,8 @@ typedef struct { int32_t at, width, height, isChain, isMetal; } Arr;
 #define KEYMAX (16 * W)
 enum { MK_LONG, MK_HOLD, MK_RAISE, MK_SWAP, MK_SETTLE };
 // MK_SETTLE (engines with STEP_STATS): a swap at (mr, mc) -- or, with mr 0, a
-// hold -- and then the frames until nothing moves, SETTLE_CAP at most, as the
+// hold -- and then the frames until nothing moves, at most `frames` (or
+// SETTLE_CAP when that is 0), as the
 // bot's candidate resolve settles them; what the step did is read with
 // ns_step_stats.
 typedef struct Node {
@@ -254,7 +255,7 @@ static int advance(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
     if (kind != MK_LONG) {
       if (bot.cooldown > 0) { bot.cooldown--; FRAME(); continue; }
 #ifdef STEP_STATS
-      if (kind == MK_SETTLE && (f < 3 || !st->quiet) && f < SETTLE_CAP) { FRAME(); continue; }
+      if (kind == MK_SETTLE && (f < 3 || !st->quiet) && f < (frames > 0 ? frames : SETTLE_CAP)) { FRAME(); continue; }
 #endif
       break;
     }
