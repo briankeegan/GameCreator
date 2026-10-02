@@ -466,12 +466,14 @@
             if (d.park && pk0 && pk0.target && pk0.target[0] === d.park[0] && pk0.target[1] === d.park[1]) return;
             this._park = d.park ? { row: d.park[0], col: d.park[1], timer: 0, target: [d.park[0], d.park[1]],
                                     disp: stack.displacement } : null;
+            this._release(input, held);
             return;
         }
         this._park = null;
         this.counts.swaps++;
         if (froz) this.frozen.swap++;
         this._beginWalk(d.move[0], d.move[1], this.reaction);
+        this._release(input);
         this._driveWalk(input);
         this._send(input, held);
     };
@@ -480,6 +482,14 @@
     // the cursor on the first frame of a press and then only after its repeat
     // wait. A park step on one frame and a walk step the same way on the next
     // would cost the whole repeat wait instead of the one frame a release costs.
+    // A DECISION TAKES THE FRAME. It was made from the cursor before this
+    // frame's park step, so that step's press is withdrawn: the cursor stays
+    // where the decision measured from.
+    BitBot.prototype._release = function (input, held) {
+        input.up = input.down = input.left = input.right = false;
+        if (held !== undefined) this._send(input, held);
+    };
+
     BitBot.prototype._send = function (input, held) {
         var dir = input.up ? 'up' : input.down ? 'down' : input.left ? 'left' : input.right ? 'right' : null;
         if (dir && dir === held) {
