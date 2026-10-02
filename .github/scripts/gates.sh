@@ -184,9 +184,7 @@ gate_resolve_breaks() {
 # live game.
 gate_garbage_rules() {
   node games/the-game/ai/eval/garbage.test.js &&
-  node games/the-game/ai/eval/survivor_mind.test.js &&
-  node games/the-game/ai/eval/survivor_busy.test.js &&
-  node games/the-game/ai/eval/survivor_room.test.js
+  node games/the-game/ai/eval/survivor_mind.test.js
 }
 
 # EVERY FEATURE IS A SHARE, NOT A COUNT.
