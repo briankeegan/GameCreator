@@ -921,7 +921,7 @@
             return { mask: reach, dig: dig };
         }
 
-        var flat = null, save = null, ready = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
+        var flat = null, save = null, ready = null, trigger = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
         var slabBudget = 0, dropBudget = 0;
 
         function expandAll(state0, depth) {
@@ -1286,6 +1286,15 @@
                                     ready = { swaps: seq, frames: cost, value: val,
                                               duration: durationOf(seq, cost) };
                                 }
+                                // `trigger` is the route to a board holding the break
+                                // for what lands next: one swap that breaks a slab
+                                // resting on its top row.
+                                if ((!trigger || val > trigger.value ||
+                                     (val === trigger.value && cost < trigger.frames)) &&
+                                    slabReadyFast(res.settled)) {
+                                    trigger = { swaps: seq, frames: cost, value: val,
+                                                duration: durationOf(seq, cost) };
+                                }
                                 if (take) {
                                     // THE BOARD IT LANDS ON, CARRIED WITH THE PLAN.
                                     // The swaps and the physics are deterministic, so
@@ -1293,7 +1302,6 @@
                                     // WILL be. A caller can ask it anything it would ask
                                     // a real board before committing to the route.
                                     flat = { swaps: seq, frames: cost, value: val,
-                                             shape: base2, landStop: landStop, credit: credit,
                                              tall: sh2.tall, bumps: sh2.bumps,
                                              ways: ways2, duration: dur,
                                              lands: bit.copyState(res.settled) };
@@ -1388,7 +1396,7 @@
         }
 
         return { now: now, next: next, cheapest: cheapest, flatten: flat, save: save,
-                 ready: ready,
+                 ready: ready, trigger: trigger,
                  swapsConsidered: swaps.length, refused: refused, unknown: unknown };
     }
 

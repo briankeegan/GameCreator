@@ -457,15 +457,11 @@ function hostile() {
 
 }());
 
-// --------------------- 11. the order of the ladder, with the paths stubbed
+// --------------------- 11. a raise runs to its end
 //
-// Which branch wins when more than one could fire. Every bug in this area has
-// been an ordering one: levelFirst placed where `delivering` had already
-// returned, so it fired zero times; the slab setup placed before levelling, so
-// it searched for a break on a board too lumpy to hold one. Neither shows up in
-// a test of the branches themselves -- both were correct in isolation.
-//
-// Stubbed rather than played, so it is the ORDER being checked and nothing else.
+// While raiseMode says raise, the bot takes the row or holds for it -- a swap
+// sets riseLock and takes the row back. Stubbed rather than played, so it is the
+// order being checked and nothing else.
 (function () {
     function freshBot() {
         var st = new P.Stack({ level: 10, seed: 101, countdown: false });
@@ -478,56 +474,28 @@ function hostile() {
         return { bot: new BitBot(st, { allowRaise: true }), st: st };
     }
 
-    // LEVELLING COMES BEFORE THE ROW. A raise carries the surface it has upward,
-    // so a board with levelling worth doing levels first -- and the way it stops
-    // the row is by dropping the intent, not by being asked later.
     var a = freshBot();
     a.bot.raiseMode = function () { return 'material'; };
-    a.bot.flattenFirst = function () { return { swaps: [[1, 2]], duration: 4 }; };
     var da = a.bot.decide();
-    ok(da && da.via === 'levelFirst',
-       'ladder: with levelling available the bot did not level before raising -- it ' +
-       'came back via `' + (da && da.via) + '`');
-    ok(a.bot._wantRaise === false,
-       'ladder: levelling ran but left the raise intent on, so update() keeps the ' +
-       'button held and the row arrives during the levelling');
+    ok(da && (da.kind === 'raise' || da.via === 'raising'),
+       'ladder: raising came back via `' + (da && da.via) + '` instead of taking or ' +
+       'waiting for the row');
 
-    // AND IT FIRES WHEN THE ENGINE IS NOT OFFERING A ROW YET, which is the whole
-    // of the historical bug: gated on `delivering` -- the engine handing a row
-    // over right now -- levelling fired zero times, because by then the row is
-    // already coming and the shape it carries up is fixed. preventManualRaise
-    // takes the raise out of the pool, so the intent is on and the offer is not.
+    // AND WHILE THE ENGINE IS NOT OFFERING ONE, it holds rather than swaps.
     var a2 = freshBot();
     a2.st.preventManualRaise = true;
-    a2.bot.raiseMode = function () { return 'material'; };
-    a2.bot.flattenFirst = function () { return { swaps: [[1, 2]], duration: 4 }; };
+    a2.bot.raiseMode = function () { return 'opening'; };
     var da2 = a2.bot.decide();
-    ok(da2 && da2.via === 'levelFirst',
-       'ladder: levelling did not fire while the raise was wanted but not yet being ' +
-       'handed over -- came back via `' + (da2 && da2.via) + '`. Gated on the offer ' +
-       'instead of the intent, it fires zero times');
+    ok(da2 && da2.kind === 'hold' && da2.via === 'raising',
+       'ladder: with the row not on offer the raise played `' + (da2 && da2.kind) + '` via `' +
+       (da2 && da2.via) + '` -- a swap there takes the row back');
 
-    // WITH NOTHING TO LEVEL, the raise is what happens.
-    var b = freshBot();
-    b.bot.raiseMode = function () { return 'opening'; };
-    b.bot.flattenFirst = function () { return null; };
-    var db = b.bot.decide();
-    ok(db && (db.kind === 'raise' || db.via === 'raising'),
-       'ladder: raising with nothing to level came back via `' + (db && db.via) +
-       '` instead of taking or waiting for the row');
-
-    // AND WITH THE RAISE OFF, neither fires and the board is played normally.
+    // AND WITH THE RAISE OFF, the board is played normally.
     var c3 = freshBot();
     c3.bot.raiseMode = function () { return null; };
-    var stubbed = false;
-    c3.bot.flattenFirst = function () { stubbed = true; return { swaps: [[1, 2]], duration: 4 }; };
     var dc = c3.bot.decide();
-    ok(dc && dc.via !== 'levelFirst',
-       'ladder: levelled before a raise that is not happening -- levelFirst is the ' +
-       'raise preparing itself, not a move in its own right');
-    ok(!stubbed,
-       'ladder: the flatten route was searched for with the raise off, which is work ' +
-       'done for a branch that cannot fire');
+    ok(dc && dc.via !== 'raising' && dc.kind !== 'raise',
+       'ladder: raised with the raise off -- came back via `' + (dc && dc.via) + '`');
 }());
 
 // ------------------ 12. the exit gate's refusals, one rule at a time
