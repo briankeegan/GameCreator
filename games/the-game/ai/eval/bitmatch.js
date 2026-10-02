@@ -239,7 +239,7 @@
     var st = { W: W, H: H, N: 0, occ: new Int32Array(W + 2), inert: new Int32Array(W + 2),
                garb: new Int32Array(W + 2), colour: new Int32Array(13 * (W + 2)),
                busy: busyMask(grid, motion, W, H),
-               slabs: [], bad: null };
+               slabs: [], slabLocked: [], bad: null };
     var r, c, row;
     for (r = 1; r <= H; r++) {
       row = grid[r];
@@ -253,11 +253,19 @@
         st.colour[v * (W + 2) + c] |= b;
       }
     }
+    // A SLAB THE ENGINE WILL NOT BREAK RIGHT NOW. getConnectedGarbagePanels takes
+    // only garbage that is colour 9 and state 'normal', so a slab still matched from
+    // the last break, or one in the air, is not part of any break until it settles.
     if (blocks) {
       for (var id in blocks) {
-        var cells = blocks[id].cells, sm = new Int32Array(W + 2);
-        for (var i2 = 0; i2 < cells.length; i2++) sm[cells[i2][1]] |= (1 << (cells[i2][0] - 1));
+        var cells = blocks[id].cells, sm = new Int32Array(W + 2), locked = false;
+        for (var i2 = 0; i2 < cells.length; i2++) {
+          sm[cells[i2][1]] |= (1 << (cells[i2][0] - 1));
+          var mo = motion && motion[cells[i2][0]] && motion[cells[i2][0]][cells[i2][1]];
+          if (mo && ((mo.state !== 'normal' && mo.state !== 'falling') || (mo.color !== undefined && mo.color !== 9))) locked = true;
+        }
         st.slabs.push(sm);
+        st.slabLocked.push(locked);
       }
     }
     return st;
@@ -297,7 +305,8 @@
     for (c = 1; c <= W2; c++) { v = incoming[c]; if (!(v > 0) || v > 12) return null; }
     var out = { W: st.W, H: st.H, N: st.N, occ: new Int32Array(top),
                 inert: new Int32Array(top), garb: new Int32Array(top),
-                colour: new Int32Array(13 * top), slabs: [], bad: null };
+                colour: new Int32Array(13 * top), slabs: [],
+                slabLocked: (st.slabLocked || []).slice(), bad: null };
     for (c = 1; c <= W2; c++) {
       out.occ[c] = ((st.occ[c] << 1) | 1) & lim;
       out.inert[c] = (st.inert[c] << 1) & lim;
@@ -319,7 +328,7 @@
   function copyState(st) {
     var stride = st.W + 2, out = { W: st.W, H: st.H, N: st.N, occ: [], inert: [], garb: [],
                                    colour: new Int32Array((st.N + 1) * stride), slabs: [],
-                                   bad: st.bad || null };
+                                   slabLocked: (st.slabLocked || []).slice(), bad: st.bad || null };
     var c, i;
     for (c = 0; c <= st.W + 1; c++) { out.occ[c] = st.occ[c]; out.inert[c] = st.inert[c]; out.garb[c] = st.garb[c]; }
     for (i = 0; i < out.colour.length && i < st.colour.length; i++) out.colour[i] = st.colour[i];
@@ -550,7 +559,20 @@
   // allocates, and the depth-2 option sweep calls this tens of thousands of times
   // a decision where only the outcome is read -- building the state every time
   // cost 214ms of a 374ms decision. The callers that need the position ask for it.
-  function resolveFromMasks(st, wantSettled) {
+  // `timed`, optional: the cascade on the engine's clock, with one swap made when the
+  // cursor gets there, and the chain flag dropped from a panel that rests unmatched as
+  // clearChainingFlags drops it. { frames, at, swap, hover, chaining }:
+  //   frames    the level's FLASH, FACE, POP and HOVER
+  //   hover     frames the panels now above a hole still hover before they fall
+  //   chaining  per-column mask of panels that carry the chain flag now
+  //   at, swap  the frame the swap is made, and [row, col]
+  // Each fall is one frame (updateFalling moves a row a frame). A match made at t is
+  // swept at t + FLASH + FACE + 1 + POP * size -- every panel of a group finishes
+  // together, comboIndex * POP popping and (size - comboIndex) * POP popped -- and
+  // what stood on it hovers HOVER before it falls. The swap is refused where canSwap
+  // refuses it: a popping or garbage cell, a hovering panel, or the panel under one.
+  // The answer carries `frames`, the clock when the board came to rest.
+  function resolveFromMasks(st, wantSettled, timed) {
     var W = st.W, H = st.H, N = st.N;
     if (st.bad) return { scope: st.bad, chain: 0, total: 0, rounds: 0 };
     var S2 = scratch(W, H, Math.max(N, 12));
@@ -559,7 +581,8 @@
     var a, c, stride = W + 2;
     for (c = 0; c <= W + 1; c++) {
       occ[c] = st.occ[c]; inert[c] = st.inert[c]; garb[c] = st.garb[c];
-      chaining[c] = 0; popping[c] = 0;
+      chaining[c] = timed && timed.chaining ? (timed.chaining[c] | 0) & occ[c] : 0;
+      popping[c] = 0;
     }
     for (a = 1; a <= N; a++) {
       for (c = 0; c <= W + 1; c++) colour[a][c] = st.colour[a * stride + c];
@@ -578,6 +601,9 @@
         moved = false;
         for (var si = 0; si < slabs.length; si++) {
           if (falling[si]) continue;
+          // A LOCKED SLAB DOES NOT FALL: garbage falls only from 'normal', and a matched
+          // slab stays where it is until its timer runs out.
+          if (locked[si]) continue;
           var sm2 = slabs[si], held = false;
           for (var cc3 = 1; cc3 <= W && !held; cc3++) {
             if (!sm2[cc3]) continue;
@@ -594,6 +620,46 @@
         }
       }
       return falling;
+    }
+
+    // THE WHOLE CONNECTED GROUP, BLOCK TO BLOCK, as getConnectedGarbagePanels does
+    // it: seed with every slab 4-adjacent to the match, then add every slab
+    // 4-adjacent to one already in, until nothing new joins. On the slabs where they
+    // are NOW, since the cascade moves them. A slab is eligible only if its bottom
+    // row is on the board (`p.row - p.yOffset <= height`) and the engine would take
+    // it (see slabLocked in maskState).
+    var locked = st.slabLocked || [];
+    function lowestRow(m) {
+      var lo = 32;
+      for (var c0 = 1; c0 <= W; c0++) {
+        var v = m[c0] >>> 0;
+        if (v) { var b0 = 32 - Math.clz32(v & -v); if (b0 < lo) lo = b0; }
+      }
+      return lo;
+    }
+    function nextTo(a, b) {          // any cell of b 4-adjacent to any cell of a
+      for (var c1 = 1; c1 <= W; c1++) {
+        if (b[c1] & ((a[c1] >> 1) | (a[c1] << 1) | a[c1 - 1] | a[c1 + 1])) return true;
+      }
+      return false;
+    }
+    function connectedGroup(k) {
+      var inGroup = [], any = false, sl, sk;
+      function eligible(i) { return !locked[i] && lowestRow(slabs[i]) <= H; }
+      for (sl = 0; sl < slabs.length; sl++) {
+        inGroup[sl] = eligible(sl) && nextTo(k, slabs[sl]);
+        if (inGroup[sl]) any = true;
+      }
+      for (var grew = any; grew; ) {
+        grew = false;
+        for (sl = 0; sl < slabs.length; sl++) {
+          if (inGroup[sl] || !eligible(sl)) continue;
+          for (sk = 0; sk < slabs.length; sk++) {
+            if (inGroup[sk] && nextTo(slabs[sk], slabs[sl])) { inGroup[sl] = true; grew = true; break; }
+          }
+        }
+      }
+      return { inGroup: inGroup, any: any };
     }
 
     // Landed cells. With no inert cell in the column this is one expression:
@@ -625,13 +691,85 @@
     }
 
     var counter = 0, rounds = 0, total = 0, guard = 0, LIMIT = W * H * H;
+    // THE CLOCK, only when asked for.
+    var T = 0, sweepAt = 0, hoverUntil = 0, made = !timed || !timed.swap, refused = false, moved = false;
+    // HELD CELLS: a panel still hovering out a timer, or still swapping. It cannot match,
+    // does not fall, and holds up what stands on it, until run `until`; that run it
+    // lands or starts to fall, so it is released when T reaches until - 1 and counts as
+    // having just moved. A swapped panel left over a hole hovers HOVER more.
+    var holds = [];
+    function held(c7) { var h7 = 0; for (var i7 = 0; i7 < holds.length; i7++) h7 |= holds[i7].m[c7]; return h7; }
+    function nextRelease() { var u7 = Infinity; for (var i7 = 0; i7 < holds.length; i7++) u7 = Math.min(u7, holds[i7].until); return u7; }
+    function release() {
+      var any7 = false;
+      for (var i7 = 0; i7 < holds.length; i7++) {
+        var h8 = holds[i7];
+        if (T < h8.until - 1) continue;
+        holds.splice(i7, 1); i7--; any7 = true;
+        if (!h8.swap) continue;
+        var again = new Int32Array(W + 2), anyAgain = false;
+        for (var c8 = 1; c8 <= W; c8++) {
+          var air = h8.m[c8] & ~(occ[c8] << 1) & ~1;
+          if (air) { again[c8] = air; anyAgain = true; }
+        }
+        if (anyAgain) holds.push({ m: again, until: h8.until + timed.frames.HOVER, swap: false });
+      }
+      if (any7) moved = true;
+      return any7;
+    }
+    function hoverMask() {
+      var hv = hovering(), out9 = [];
+      for (var c9 = 0; c9 <= W + 1; c9++) out9[c9] = (T < hoverUntil ? (hv[c9] | 0) : 0);
+      for (var i9 = 0; i9 < holds.length; i9++) if (!holds[i9].swap) for (c9 = 1; c9 <= W; c9++) out9[c9] |= holds[i9].m[c9];
+      return out9;
+    }
+    function hovering() {
+      var hv = [];
+      for (var c4 = 1; c4 <= W; c4++) {
+        var hole4 = (~occ[c4]) & (occ[c4] + 1), above4 = ~((hole4 << 1) - 1);
+        var block4 = (inert[c4] | popping[c4]) & above4, ceil4 = block4 & -block4;
+        hv[c4] = occ[c4] & above4 & (ceil4 ? (ceil4 - 1) : ~0);
+      }
+      hv[0] = 0; hv[W + 1] = 0;
+      return hv;
+    }
+    function makeSwap(hv) {
+      made = true;
+      var r5 = timed.swap[0], c5 = timed.swap[1], b5 = 1 << (r5 - 1), d5 = c5 + 1;
+      if ((popping[c5] | popping[d5] | inert[c5] | inert[d5]) & b5) { refused = true; return; }
+      if (!((occ[c5] | occ[d5]) & b5)) { refused = true; return; }
+      if (hv && ((hv[c5] | hv[d5]) & (b5 | (b5 << 1)))) { refused = true; return; }
+      function trade(arr) {
+        var x = (arr[c5] & b5) ? 1 : 0, y = (arr[d5] & b5) ? 1 : 0;
+        if (x === y) return;
+        arr[c5] ^= b5; arr[d5] ^= b5;
+      }
+      trade(occ); trade(chaining);
+      for (var a5 = 1; a5 <= N; a5++) trade(colour[a5]);
+      var sm5 = new Int32Array(W + 2);
+      sm5[c5] = occ[c5] & b5; sm5[d5] = occ[d5] & b5;
+      holds.push({ m: sm5, until: T + 4, swap: true });
+    }
+    // The clock moves in jumps -- to a sweep, to the end of a hover -- and a swap made
+    // inside one stops it there, so its own match is checked before anything after it.
+    if (timed && timed.hovering && timed.hover > 0) {
+      var hm = new Int32Array(W + 2);
+      for (c = 1; c <= W; c++) hm[c] = (timed.hovering[c] | 0) & occ[c];
+      holds.push({ m: hm, until: timed.hover, swap: false });
+    }
     while (guard++ <= LIMIT) {
+      if (refused) return { scope: 'refused', chain: 0, total: 0, rounds: 0, frames: T };
+      if (timed) {
+        if (!made && T >= timed.at && timed.at < nextRelease() - 1) { makeSwap(hoverMask()); if (refused) continue; }
+        release();
+        if (!made && T >= timed.at) { makeSwap(hoverMask()); if (refused) continue; }
+      }
       var rest = restingOf(), k = [], link = false, any = false;
       var B = [];
       for (a = 1; a <= N; a++) {
         B[a] = [];
         for (c = 1; c <= W; c++) {
-          B[a][c] = colour[a][c] & rest[c] & ~popping[c] & ~inert[c];
+          B[a][c] = colour[a][c] & rest[c] & ~popping[c] & ~inert[c] & (timed ? ~held(c) : ~0);
         }
       }
       for (c = 0; c <= W + 1; c++) k[c] = 0;
@@ -646,10 +784,24 @@
         }
       }
       for (c = 1; c <= W; c++) { if (k[c]) any = true; if (k[c] & chaining[c]) link = true; }
+      // ON THE CLOCK, A CHAIN FLAG THAT FINDS NO MATCH IS DROPPED -- clearChainingFlags:
+      // a panel that could match and did not loses the flag, so a later match with it
+      // is not a link.
+      if (timed) for (c = 1; c <= W; c++) chaining[c] &= ~(rest[c] & ~k[c] & ~popping[c] & ~inert[c] & ~held(c));
 
       if (any) {
         rounds++;
         if (link) counter = counter === 0 ? 2 : counter + 1;
+        if (timed) {
+          var size = 0;
+          for (c = 1; c <= W; c++) size += popcount(k[c]);
+          var f6 = timed.frames;
+          // checkMatches runs before updatePanels: a panel that made its last move on run
+          // T lands on T + 1 and is matched on T + 2; one that was already resting, or was
+          // just swapped into place, is matched on T + 1.
+          var mRun = T + (moved ? 2 : 1);
+          sweepAt = Math.max(sweepAt, mRun + f6.FLASH + f6.FACE + f6.POP * size);
+        }
         var brokeGarbage = false;
         for (c = 1; c <= W; c++) {
           total += popcount(k[c]);
@@ -659,6 +811,11 @@
           // is counted and the cascade stops — the same place resolve() stops.
           if (k[c] & ((garb[c] >> 1) | (garb[c] << 1) | garb[c - 1] | garb[c + 1])) brokeGarbage = true;
         }
+        // WITH THE SLABS KNOWN, A BREAK IS A LIVE SLAB IN THE GROUP: garbage beside
+        // the match that the engine will not take (still matched, or in the air) does
+        // not break, and the match is an ordinary clear.
+        var group = brokeGarbage && slabs.length ? connectedGroup(k) : null;
+        if (group && !group.any) brokeGarbage = false;
         if (brokeGarbage) {
           // HOW MANY GARBAGE PANELS THIS MATCH TOUCHES, because the engine's own
           // resolve time is FLASH + FACE + POP * (comboSize + onScreen) and
@@ -669,11 +826,15 @@
           // takes getConnectedGarbagePanels(matching), so touching one cell of a
           // slab pops a row of all of it.
           var touched = 0, converts = 0;
-          for (var sl = 0; sl < st.slabs.length; sl++) {
-            var sm2 = st.slabs[sl], hit = false, cc;
-            for (cc = 1; cc <= W && !hit; cc++) {
-              if (k[cc] & ((sm2[cc] >> 1) | (sm2[cc] << 1) | sm2[cc - 1] | sm2[cc + 1])) hit = true;
-            }
+          // THE WHOLE CONNECTED GROUP, BLOCK TO BLOCK, as getConnectedGarbagePanels
+          // does it: seed with every slab 4-adjacent to the match, then add every slab
+          // 4-adjacent to any slab already in, until nothing new joins. A slab is
+          // eligible only if its bottom row is on the board (`p.row - p.yOffset <=
+          // height` in the engine). Seeding alone priced a staircase of touching slabs
+          // as the one slab the match reached, when the engine clears all of them.
+          var inGroup = group ? group.inGroup : [], sl, cc;
+          for (sl = 0; sl < slabs.length; sl++) {
+            var sm2 = slabs[sl], hit = !!inGroup[sl];
             // TWO DIFFERENT NUMBERS, BECAUSE THE ENGINE USES TWO.
             //
             //   touched   every on-screen cell of the connected slab. This is the
@@ -715,33 +876,36 @@
           // caller cannot read a stopped cascade as a finished one.
           return { scope: 'garbage-broke', chain: Math.max(counter, 1),
                    total: total, rounds: rounds, garbage: touched,
-                   converts: converts };
+                   converts: converts, frames: T };
         }
         continue;
       }
 
-      // Nothing new matched. Fall one row: a marked group is still in place and
-      // still holds up what stands on it, and an inert cell does not move, so
-      // only the panels between the hole and the first inert cell above it can
-      // slide down.
+      // Nothing new matched. Fall one row: every panel that is not fixed -- garbage,
+      // a marked group still in place, a held panel -- and is not standing on something
+      // that holds, moves down one. A cell holds if it is fixed, on the floor, or a panel
+      // on a cell that holds; so a run of panels above ANY hole in the column falls,
+      // including the ones above a slab that bridges a gap beneath it.
       var fell = false;
       for (c = 1; c <= W; c++) {
-        var hole = (~occ[c]) & (occ[c] + 1);
-        var above = ~((hole << 1) - 1);
-        var blockAbove = (inert[c] | popping[c]) & above;
-        var ceiling = blockAbove & -blockAbove;          // lowest immovable cell
-        var movable = occ[c] & above & (ceiling ? (ceiling - 1) : ~0);
+        // what holds: the run on the floor, and the run above each fixed cell -- adding
+        // the fixed bit carries through exactly the occupied bits above it
+        var o2 = occ[c], fixed = (inert[c] | popping[c] | (timed ? held(c) : 0)) & o2;
+        var holds2 = o2 & (((~o2) & (o2 + 1)) - 1), seeds2 = fixed & ~holds2;
+        while (seeds2) {
+          var sd = seeds2 & -seeds2, x2 = o2 & ~(sd - 1), run2 = x2 & ~(x2 + sd);
+          holds2 |= run2;
+          seeds2 &= ~run2;
+        }
+        var movable = o2 & ~holds2;
         if (!movable) continue;
         fell = true;
-        var below = hole - 1;
-        var keepPut = occ[c] & ~movable & ~below;        // above the ceiling
+        var keepPut = occ[c] & ~movable;
         for (a = 1; a <= N; a++) {
-          colour[a][c] = (colour[a][c] & below) | ((colour[a][c] & movable) >> 1) |
-                         (colour[a][c] & keepPut);
+          colour[a][c] = (colour[a][c] & keepPut) | ((colour[a][c] & movable) >>> 1);
         }
-        chaining[c] = (chaining[c] & below) | ((chaining[c] & movable) >> 1) | (chaining[c] & keepPut);
-        inert[c] = (inert[c] & below) | ((inert[c] & movable) >> 1) | (inert[c] & keepPut);
-        occ[c] = (occ[c] & below) | (movable >> 1) | keepPut;
+        chaining[c] = (chaining[c] & keepPut) | ((chaining[c] & movable) >>> 1);
+        occ[c] = keepPut | (movable >>> 1);
       }
       // THEN THE SLABS, which is the order resolve() falls them in.
       var slabFell = slabsThatFall();
@@ -756,10 +920,21 @@
           occ[c] |= slabs[sk][c]; inert[c] |= slabs[sk][c]; garb[c] |= slabs[sk][c];
         }
       }
-      if (fell) continue;
+      // A hovering panel falls on the run its timer reaches 0 (updateHovering calls
+      // fall() there), so the first fall is run hoverUntil.
+      if (fell) { if (timed && T < hoverUntil - 1) T = hoverUntil - 1; T++; moved = true; continue; }
+      moved = false;
 
       // Still, and nothing new matched: the marked cells leave now, and
       // everything above one of them is falling BECAUSE of that.
+      var anyPopping = false;
+      for (c = 1; c <= W; c++) if (popping[c]) { anyPopping = true; break; }
+      if (timed && anyPopping) {
+        var nr = nextRelease() - 1;
+        if (!made && timed.at < sweepAt && timed.at <= nr) { T = Math.max(T, timed.at); makeSwap(hoverMask()); continue; }
+        if (nr < sweepAt) { T = Math.max(T, nr); continue; }
+        T = Math.max(T, sweepAt);
+      }
       var swept = false;
       for (c = 1; c <= W; c++) {
         if (!popping[c]) continue;
@@ -772,12 +947,21 @@
         occ[c] = keep;
         popping[c] = 0;
       }
-      if (swept) continue;
+      if (swept) {
+        if (timed) {
+          hoverUntil = T + timed.frames.HOVER;
+          if (!made && timed.at <= hoverUntil && timed.at < nextRelease() - 1) { T = Math.max(T, timed.at); makeSwap(hoverMask()); }
+        }
+        continue;
+      }
+      if (timed && holds.length) { T = Math.max(T, nextRelease() - 1); continue; }
+      if (timed && !made) { T = Math.max(T, timed.at, hoverUntil); makeSwap(hoverMask()); if (!refused) continue; }
+      if (refused) return { scope: 'refused', chain: 0, total: 0, rounds: 0, frames: T };
       break;
     }
     return { scope: 'ok', chain: rounds ? Math.max(counter, 1) : 0, total: total,
-             rounds: rounds,
-             settled: wantSettled ? settledFrom(S2, W, H, N, slabs) : null };
+             rounds: rounds, frames: T,
+             settled: wantSettled ? settledFrom(S2, W, H, N, slabs, locked) : null };
   }
 
   // THE BOARD THE CASCADE LEFT, as a state of the same shape maskState builds.
@@ -791,9 +975,10 @@
   //
   // Only on the 'ok' path: a stopped cascade has no settled board to hand back,
   // which is what 'garbage-broke' means.
-  function settledFrom(S, W, H, N, slabs) {
+  function settledFrom(S, W, H, N, slabs, locked) {
     var stride = W + 2, out = { W: W, H: H, N: N, occ: [], inert: [], garb: [],
-                                colour: new Int32Array((N + 1) * stride), slabs: [], bad: null };
+                                colour: new Int32Array((N + 1) * stride), slabs: [],
+                                slabLocked: [], bad: null };
     var a, c, i;
     for (c = 0; c <= W + 1; c++) {
       out.occ[c] = S.occ[c]; out.inert[c] = S.inert[c]; out.garb[c] = S.garb[c];
@@ -811,7 +996,7 @@
     for (i = 0; slabs && i < slabs.length; i++) {
       var any = false;
       for (c = 0; c <= W + 1; c++) if (slabs[i][c]) { any = true; break; }
-      if (any) out.slabs.push(Int32Array.from(slabs[i]));
+      if (any) { out.slabs.push(Int32Array.from(slabs[i])); out.slabLocked.push(!!(locked && locked[i])); }
     }
     return out;
   }

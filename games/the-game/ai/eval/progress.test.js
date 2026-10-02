@@ -266,7 +266,7 @@ GAMES.forEach(function (g) {
 // handful of times in far longer games, so asserting them here would be
 // asserting the seeds.
 var MUST_FIRE = ['digPlan', 'survivalPlan', 'bestAttack', 'flatten', 'raising',
-                 'setup', 'attackPlan', 'levelFirst', 'keepSave', 'break',
+                 'setup', 'attackPlan', 'keepSave', 'break',
                  'raise:opening', 'WEIGHTS'];
 console.log('  paths taken: ' + Object.keys(VIAS).sort(function (a, b) {
     return VIAS[b] - VIAS[a];

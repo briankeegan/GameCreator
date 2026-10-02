@@ -179,11 +179,11 @@
         if (p.timer !== 0) return;
         if (p.isGarbage) {
             if (p.yOffset === -1) {
-                // THIS ROW IS ABOUT TO TAKE COLOURS FROM THE ENGINE'S RNG.
-                // They are not on the board and nothing here may invent them,
-                // so the run is marked and stops. A snapshot taken after the
-                // conversion carries them and runs to the end.
-                st.brokeGarbage = true;
+                // A ROW CONVERTED INSIDE THIS RUN HAS NO COLOURS -- the engine deals
+                // them from its rng at the match -- so the run is marked and stops. A
+                // row converted before the snapshot carries its colours (see build)
+                // and becomes panels like the engine's.
+                if (p.color === 9) st.brokeGarbage = true;
                 clearPanel(p, false, false);
                 p.chaining = true;
                 p.propagatesChaining = true;
@@ -479,7 +479,9 @@
     // grid holds colours, -2 for garbage; motion[r][c] is the engine's own
     // { state, timer, ... } for a panel it still has in flight.
     function build(snapshot, frames, height) {
-        var H = height || 12, rows = H + 4;
+        // EVERY ROW THE SNAPSHOT HOLDS: a tall slab sits partly above the lid and
+        // falls back into view when what is under it goes.
+        var H = height || 12, rows = Math.max(H + 4, (snapshot.grid ? snapshot.grid.length : 0) + 2);
         var st = { panels: [], height: H, frames: frames, chainCounter: 0,
                    panelsCleared: 0, rounds: 0, clock: 0 };
         for (var r = 0; r < rows; r++) {
@@ -504,12 +506,22 @@
             }
             gid++;
         }
-        for (r = 1; r <= H; r++) {
+        for (r = 1; r < rows; r++) {
             for (var c2 = 1; c2 <= W; c2++) {
                 var v = snapshot.grid[r] ? snapshot.grid[r][c2] : 0;
                 var p = st.panels[r][c2];
-                if (v === 0 || v === undefined) continue;
-                if (v === -2) {
+                var m0 = snapshot.motion && snapshot.motion[r] && snapshot.motion[r][c2];
+                // A PANEL THAT IS LEAVING IS STILL THERE. The grid writes matched,
+                // popping and popped cells as empty -- that is what they will be -- but
+                // until they pop they hold up everything above them, and the frame they
+                // go is when the column falls. The motion carries the panel; build it.
+                if ((v === 0 || v === undefined) && m0 && m0.state && m0.state !== 'normal') {
+                    p.color = m0.color || 0;
+                    p.state = 'normal';
+                } else if (v === 0 || v === undefined) continue;
+                if (v === 0 || v === undefined) {
+                    // built from its motion below
+                } else if (v === -2) {
                     var g = blockOf[r + ':' + c2];
                     p.color = 9; p.isGarbage = true;
                     p.garbageId = g ? g.id : 1;
@@ -535,6 +547,10 @@
                     if (m.yOffset !== undefined && m.yOffset !== null) p.yOffset = m.yOffset;
                     if (m.gWidth) p.gWidth = m.gWidth;
                     if (m.gHeight) p.gHeight = m.gHeight;
+                    // THE ROW A BREAK IS CONVERTING ALREADY HAS ITS COLOURS:
+                    // convertGarbagePanels deals them at the match, while the cells are
+                    // still garbage. The grid reads them as -2, the motion carries them.
+                    if (p.isGarbage && m.color > 0 && m.color !== 9) p.color = m.color;
                 }
                 if (snapshot.chaining && snapshot.chaining[r] && snapshot.chaining[r][c2]) p.chaining = true;
             }

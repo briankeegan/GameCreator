@@ -316,6 +316,57 @@
     // The base board's own readiness, kept for breakReadyBoard below.
     var LASTBREAKREADY = null;
 
+    // HOW MANY SWAPS BREAK A SLAB, BY BOARD. A pure function of the masks, asked of
+    // every option the beam lands on and of the same boards again on the next decision,
+    // which differs by one swap. Keyed on everything the answer reads: occupancy,
+    // colours, garbage, the slabs and whether each is locked, and the cells busy enough
+    // to refuse a swap.
+    var SAVES = new Map(), SAVES_MAX = 50000;
+    // THE FREEZE ONE SWAP CAN BUY, BY BOARD, the same way: bestOneSwapStop is a pure
+    // function of the masks and of stopPrice, which reads only whether the board is
+    // topped out -- timing.stopKey.
+    var STOPS = new Map(), STOPKEY = '';
+    function landStopOf(st) {
+        if (!STOPKEY) return bit.bestOneSwapStop(st, stopPrice);
+        var key = STOPKEY + boardKey(st), hit = STOPS.get(key);
+        if (hit !== undefined) return hit;
+        var v = bit.bestOneSwapStop(st, stopPrice);
+        if (STOPS.size >= SAVES_MAX) STOPS.clear();
+        STOPS.set(key, v);
+        return v;
+    }
+    // Two independent 32-bit hashes of every array the answers read: a collision needs
+    // both to agree, about one in 10^10 at these cache sizes.
+    function boardKey(st) {
+        var h1 = 0x811c9dc5 | 0, h2 = 0x9747b28c | 0;
+        function eat(v) {
+            v = v | 0;
+            h1 = Math.imul(h1 ^ v, 0x01000193);
+            h2 = Math.imul(h2 ^ (v + 0x5bd1e995), 0x5bd1e995) ^ (h2 >>> 13);
+        }
+        function arr(a) { for (var i = 0; i < a.length; i++) eat(a[i]); eat(-1); }
+        arr(st.occ); arr(st.inert); arr(st.garb); arr(st.colour);
+        for (var i = 0; st.slabs && i < st.slabs.length; i++) {
+            arr(st.slabs[i]);
+            eat(st.slabLocked && st.slabLocked[i] ? 7 : 3);
+        }
+        if (st.busy) arr(st.busy);
+        return (h1 >>> 0).toString(36) + ':' + (h2 >>> 0).toString(36);
+    }
+
+    // WHAT A BOARD SETTLES TO, BY BOARD: resolveFromMasks with the settled state,
+    // asked of every swap the beam expands, and of the same boards again on the next
+    // decision. The settled state is shared, so its users only swap and swap back.
+    var SETTLES = new Map();
+    function settleOf(st) {
+        var key = boardKey(st), hit = SETTLES.get(key);
+        if (hit !== undefined) return hit;
+        var r = bit.resolveFromMasks(st, true);
+        if (SETTLES.size >= SAVES_MAX) SETTLES.clear();
+        SETTLES.set(key, r);
+        return r;
+    }
+
     function options(board, W, H, cursor, depth, st, timing, dig) {
         // THE CLOCK IS NOT OPTIONAL, because every price in here is read off it.
         //
@@ -356,6 +407,7 @@
         var FPR = (timing && timing.framesPerRow) || 0;
         var DEADLINE = (timing && timing.deadline) || 0;
         stopPrice = (timing && timing.stopPrice) || null;
+        STOPKEY = (timing && timing.stopKey) || '';
         PREPARE = !!(timing && timing.prepare);
         // ONE ROW OF CEILING, AT THE RATE THIS FILE PAYS FOR BEING NEAR A THING.
         // Breaking a row of slab hands the board back a row, which is FPR frames;
@@ -844,6 +896,8 @@
         }
 
         function savesOfRaw(state) {
+            var key = boardKey(state), hit = SAVES.get(key);
+            if (hit !== undefined) return hit;
             var sw = bit.legalSwapsOf(state), n = 0, i, r;
             for (i = 0; i < sw.length; i++) {
                 if (!bit.swapMasks(state, sw[i][0], sw[i][1])) continue;
@@ -851,6 +905,8 @@
                 bit.swapMasks(state, sw[i][0], sw[i][1]);
                 if (r.scope === 'garbage-broke') n++;
             }
+            if (SAVES.size >= SAVES_MAX) SAVES.clear();
+            SAVES.set(key, n);
             return n;
         }
 
@@ -865,7 +921,7 @@
             return { mask: reach, dig: dig };
         }
 
-        var flat = null, save = null, ready = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
+        var flat = null, save = null, ready = null, trigger = null, BASE = null, BASEDIG = 0, BASESAVE = 0;
         var slabBudget = 0, dropBudget = 0;
 
         function expandAll(state0, depth) {
@@ -913,7 +969,7 @@
                             if (!((reach[sw[1]] | reach[sw[1] + 1]) & rb)) continue;
                         }
                         if (!bit.swapMasks(state, sw[0], sw[1])) continue;
-                        var res = bit.resolveFromMasks(state, true);
+                        var res = settleOf(state);
                         bit.swapMasks(state, sw[0], sw[1]);
                         var cost = node.spent + travel.cost(node.from[0], node.from[1], sw[0], sw[1]);
                         var broke = res.scope === 'garbage-broke';
@@ -1109,7 +1165,7 @@
                                 var landStop = 0;
                                 if (stopPrice &&
                                     (!flat || base2 + MAXSTOP > flat.value)) {
-                                    landStop = bit.bestOneSwapStop(res.settled, stopPrice);
+                                    landStop = landStopOf(res.settled);
                                 }
                                 var val = base2 + landStop;
                                 // UNDER A SLAB, FLAT AND LOW IS THE WRONG GOAL.
@@ -1230,6 +1286,15 @@
                                     ready = { swaps: seq, frames: cost, value: val,
                                               duration: durationOf(seq, cost) };
                                 }
+                                // `trigger` is the route to a board holding the break
+                                // for what lands next: one swap that breaks a slab
+                                // resting on its top row.
+                                if ((!trigger || val > trigger.value ||
+                                     (val === trigger.value && cost < trigger.frames)) &&
+                                    slabReadyFast(res.settled)) {
+                                    trigger = { swaps: seq, frames: cost, value: val,
+                                                duration: durationOf(seq, cost) };
+                                }
                                 if (take) {
                                     // THE BOARD IT LANDS ON, CARRIED WITH THE PLAN.
                                     // The swaps and the physics are deterministic, so
@@ -1327,11 +1392,11 @@
         // to commit to a flatten by what it can do on arrival, and a route that
         // lands on a bare three and one that lands on a chain are 94 frames apart.
         if (stopPrice && flat && flat.lands && flat.landStop === undefined) {
-            flat.landStop = bit.bestOneSwapStop(flat.lands, stopPrice);
+            flat.landStop = landStopOf(flat.lands);
         }
 
         return { now: now, next: next, cheapest: cheapest, flatten: flat, save: save,
-                 ready: ready,
+                 ready: ready, trigger: trigger,
                  swapsConsidered: swaps.length, refused: refused, unknown: unknown };
     }
 
@@ -1357,6 +1422,7 @@
         var s2 = bit.copyState(st), b = 1 << t, sm = new Int32Array(Wl + 2), i, r;
         for (c = 1; c <= Wl; c++) { s2.occ[c] |= b; s2.inert[c] |= b; s2.garb[c] |= b; sm[c] = b; }
         s2.slabs.push(sm);
+        s2.slabLocked.push(false);
         var sw = bit.legalSwapsOf(s2);
         for (i = 0; i < sw.length; i++) {
             if (!bit.swapMasks(s2, sw[i][0], sw[i][1])) continue;
