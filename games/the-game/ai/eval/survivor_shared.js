@@ -192,13 +192,25 @@ function pairs(grid, want) {
 }
 // How near the row under the lowest garbage is to a match touching it: per
 // column resting on the garbage, a pair standing under it and a pair beside it
-// in that row; less the gap between the garbage and every column's top.
+// in that row; less how uneven the stack under it is.
 var TOUCH_DEPTH = 6, TOUCH_BEAM = 8;
+// How uneven the stack under the lowest garbage is: each column's shortfall
+// from the tallest, squared, so a panel moved from a tall column into a well
+// counts though the tallest stays as it was. Garbage rests on the tallest column, so a well is a
+// column the next slab cannot be touched from.
+function uneven(grid) {
+  var G = grid.length, r, c, hi = 0, tops = [], u = 0;
+  for (r = 1; r < grid.length && G === grid.length; r++) if (grid[r]) for (c = 1; c <= 6; c++) if (grid[r][c] < 0) { G = r; break; }
+  for (c = 1; c <= 6; c++) { var t = 0; for (r = 1; r < G; r++) if (grid[r] && grid[r][c] > 0) t = r; tops.push(t); if (t > hi) hi = t; }
+  tops.forEach(function (t) { u += (hi - t) * (hi - t); });
+  return u;
+}
 function touchScore(grid) {
   var G = 0, r, c, top = [0], s = 0;
   for (r = 1; r < grid.length && !G; r++) if (grid[r]) for (c = 1; c <= 6; c++) if (grid[r][c] < 0) { G = r; break; }
   if (!G) return 0;
-  for (c = 1; c <= 6; c++) { var t = 0; for (r = 1; r < G; r++) if (grid[r] && grid[r][c] > 0) t = r; top[c] = t; s -= G - 1 - t; }
+  for (c = 1; c <= 6; c++) { var t = 0; for (r = 1; r < G; r++) if (grid[r] && grid[r][c] > 0) t = r; top[c] = t; }
+  s -= uneven(grid);
   var u = G - 1;
   for (c = 1; c <= 6; c++) {
     if (top[c] !== u) continue;
@@ -273,14 +285,15 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
     // Further, aimed: the colours the row turns into are known from the
     // pop's start, and two of a column's colour on top of that column make
     // three with the panel landing there, under the slab. A beam of lines up
-    // to LINEUP_DEPTH swaps, kept by how many such pairs they stand up, for as
+    // to LINEUP_DEPTH swaps, kept by how many such pairs they stand up and then
+    // how flat they leave the stack, for as
     // long as `deadline` (ms since the epoch) allows; the line found is the
     // path, every swap of it, for the frame loop to play on.
     var want = converting(board);
     if (want) {
       var level = firsts.filter(function (f) { return f.n && !f.n.dead && f.n.t < end; }).map(function (f) { return { key: f.key, n: f.n, path: [f.m] }; }), path = null;
       for (var dpt = 2; dpt <= LINEUP_DEPTH && level.length && !path && Date.now() < deadline; dpt++) {
-        level.forEach(function (x) { x.s = pairs(x.n.b.grid, want); });
+        level.forEach(function (x) { x.s = 10 * pairs(x.n.b.grid, want) - uneven(x.n.b.grid); });
         level.sort(function (a, b) { return b.s - a.s; });
         level = level.slice(0, LINEUP_BEAM);
         var next = [];

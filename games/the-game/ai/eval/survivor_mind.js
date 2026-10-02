@@ -42,8 +42,9 @@ function panelsOf(b) {
   return n;
 }
 // Of those, the flattest under the garbage: each column's shortfall from the
-// tallest below it. Garbage rests on the tallest column and only a column it
-// rests on can touch it; and a converted row lands flush only on a flat top.
+// tallest below it, squared, so filling a well counts though the tallest
+// stays. Garbage rests on the tallest column and only a column it rests on
+// can touch it; and a converted row lands flush only on a flat top.
 // (The gap up to the garbage itself is no measure: every move that clears
 // nothing leaves the same.)
 function gapOf(b) {
@@ -54,7 +55,7 @@ function gapOf(b) {
     for (r = 1; r < (g || b.grid.length); r++) if (b.grid[r] && b.grid[r][c] > 0) t = r;
     tops.push(t); if (t > hi) hi = t;
   }
-  tops.forEach(function (t) { gap += hi - t; });
+  tops.forEach(function (t) { gap += (hi - t) * (hi - t); });
   return gap;
 }
 function hanging(board) {
