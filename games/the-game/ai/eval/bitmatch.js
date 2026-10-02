@@ -603,7 +603,10 @@
     var slabs = [], air = [];
     for (var si0 = 0; si0 < st.slabs.length; si0++) {
       slabs.push(Int32Array.from(st.slabs[si0]));
-      air.push((st.slabAir && st.slabAir[si0]) || 0);
+      // Untimed, the swap is already on the board and its match registers no sooner
+      // than the swap's own five runs, by which a slab falling at the snapshot has
+      // landed; only a fall inside the cascade can leave one in the air.
+      air.push(timed && st.slabAir ? (st.slabAir[si0] || 0) : 0);
     }
     function slabsThatFall() {
       var falling = new Array(slabs.length).fill(false), moved = true, pass = 0;
