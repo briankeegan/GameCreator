@@ -7,7 +7,7 @@
 enum { IN_TOPPED, IN_STOP, IN_INCOMING, IN_NEXTSLAB, IN_FALLING, IN_CROW, IN_CCOL, IN_HEALTH, IN_DRAIN, IN_FPR,
        IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISEROOM, IN_INFLIGHT,
        IN_DRAINBOUND, IN_STACKTOPPED, IN_MOVING, IN_HASTIMED, IN_REVEALOPEN, IN_CONVN, IN_CONVTIMER, IN_BCROW, IN_BCCOL,
-       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_SF = 50, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SIZE = 600 };
+       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_HELD = 49, IN_SF = 50, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_SIZE = 600 };
 enum { TF_DEADLY = 1, TF_FORCE = 2, TF_REFUSE = 4, TF_RAISE = 8, TF_STUB = 16, TF_SLAB = 32 };
 static int deadlyCalls;
 #define TFLAG(f) (((int)BIN[IN_T]) & (f))
@@ -167,7 +167,9 @@ static double framesToRise(double rows, double fpr, double startClock) {
 static double framesToDeathS(double stopTime, int tallest, double fpr) {
   double clock = stopTime;
   if (BIN[IN_TOPPED]) return dmax(0, (BIN[IN_DRAIN] ? BIN[IN_DRAIN] : 1) - 1);
-  double queued = __builtin_ceil(BIN[IN_NEXTSLAB] / BW);
+  // Every queued slab drops as soon as the one before it lands, so the rows
+  // still coming are the whole queue's, not the next slab's.
+  double queued = dmax(__builtin_ceil(BIN[IN_NEXTSLAB] / BW), BIN[IN_INROWS]);
   return clock + framesToRise(dmax(0, BH - tallest - queued), fpr, nz(BIN[IN_CLOCK]) + clock);
 }
 static double framesToDeath(int tallest, double fpr) { return framesToDeathS(BIN[IN_STOP], tallest, fpr); }
@@ -385,7 +387,11 @@ static int risenMasks(const int32_t *st, int32_t *out) {
   return 1;
 }
 
-static int slabReadyHook(const int32_t *st) { return TFLAG(TF_SLAB) ? BIN[IN_T + 6] != 0 : slabReadyFast(st); }
+static int slabReadyHook(const int32_t *st) {
+  if (TFLAG(TF_SLAB)) return BIN[IN_T + 6] != 0;
+  SLABW = (int)BIN[IN_SLABW]; SLABH = (int)BIN[IN_SLABH]; SLABC = (int)BIN[IN_SLABC];
+  return slabReady(st);
+}
 static double idleScore(const Cand *cand, const int32_t *base) {
   const int32_t *m = cand->masks;
   double fpr = BIN[IN_FPR], perPanel = fpr / BW;
@@ -603,6 +609,8 @@ static void buildOptions(const int32_t *base, double deadline, int lookDepth, in
   for (int i = 0; i < BT->nRecent; i++) { OPTP[19 + 2 * i] = BT->recent[2 * i]; OPTP[20 + 2 * i] = BT->recent[2 * i + 1]; }
   if (topped) OPTP[2] = lockNow();
   OPTP[3] = spend; OPTP[10] = digging; OPTP[11] = lookDepth; OPTP[101] = 1;
+  OPTP[102] = BIN[IN_SLABW]; OPTP[103] = BIN[IN_SLABH]; OPTP[104] = BIN[IN_SLABC];
+  OPTP[105] = HELDR; OPTP[106] = HELDC; OPTP[107] = HELDDIR;
 }
 static void mainOptions(const int32_t *base, double deadline, int lookDepth, int digging) {
   if (optsBuilt) return;
@@ -929,7 +937,6 @@ static Dec mkSwap(int sr, int sc, int via, int mode, int alive) { Dec d = mk(K_S
 static Dec mkHold(int via, int mode, int alive, int hasPark, int pr, int pc) { Dec d = mk(K_HOLD, via, mode, alive); d.hasPark = hasPark; d.pr = pr; d.pc = pc; return d; }
 
 static int raiseMode(const int32_t *base, int poolBreak) {
-  (void)base;
   if (TFLAG(TF_RAISE)) return (int)BIN[IN_T + 3];
   int topped = BIN[IN_TOPPED] != 0;
   if (!opt(O_ALLOWRAISE) || topped) { BT->opening = 0; return 0; }
@@ -940,6 +947,7 @@ static int raiseMode(const int32_t *base, int poolBreak) {
   BT->wantRows = rows;
   if (BT->opening && (BIN[IN_INCOMING] || !fits)) BT->opening = 0;
   if (!fits) return 0;
+  if (!BT->opening && materialRows(base) >= 6) return 0;
   int stillComing = BIN[IN_INCOMING] > 0 || BIN[IN_FALLING];
   if (poolBreak && !stillComing) return 0;
   return BT->opening ? 1 : 2;
@@ -981,9 +989,17 @@ static int returnsToSeen(int r, int c) {
   return 0;
 }
 static double horizonOf(const Cand *c) { return dmax(c->moveFrames + REACT, BIN[IN_FPR]); }
+// A BREAK IN HAND IS KEPT. While slabs are queued and the next one would
+// land on a break, a swap that is not itself the break must leave one.
+static int baseReady;
+static int unreadies(const Cand *pc) {
+  if (!baseReady || !pc || pc->kind != K_SWAP || pc->res.broke) return 0;
+  return !slabReadyHook(pc->masks);
+}
 static int playable(int r, int c) {
   Cand *pc = poolSwap(r, c);
   if (!pc) return 0;
+  if (unreadies(pc)) return 0;
   if (returnsToSeen(r, c)) return 0;
   if (spendsReserve(&pc->res, pc->masks)) return 0;
   return !deadly(pc->masks, &pc->res, horizonOf(pc));
@@ -991,7 +1007,7 @@ static int playable(int r, int c) {
 static int playableSpending(int r, int c) {
   Cand *pc = poolSwap(r, c);
   if (!pc) return 0;
-  return !returnsToSeen(r, c) && !spendsReserve(&pc->res, pc->masks);
+  return !unreadies(pc) && !returnsToSeen(r, c) && !spendsReserve(&pc->res, pc->masks);
 }
 static int settling(int r, int c) { (void)r; return BIN[IN_SETTLING + c] != 0 || BIN[IN_SETTLING + c + 1] != 0; }
 static int tierOf(const Cand *cand) {
@@ -1047,6 +1063,7 @@ static Dec decideCore(void) {
   int poolBreak = 0;
   for (int i = 0; i < nPool; i++) if (POOL[i].res.broke) { poolBreak = 1; break; }
   int topped = BIN[IN_TOPPED] != 0;
+  baseReady = BIN[IN_INCOMING] > 0 && slabReadyHook(base);
   double dl2 = topped ? dmax(deadline, resolveFramesOf(3, 0)) : deadline;
   int lookDepth = (int)dmin(opt(O_MAXDEPTH), dmax(1, __builtin_floor(dl2 / (REACT > 1 ? REACT : 1))));
   lookDepthLog = lookDepth;
@@ -1191,6 +1208,7 @@ static Dec decideCore(void) {
     double horizon = horizonOf(cand);
     if (cand->kind == K_SWAP && spendsReserve(&cand->res, cand->masks)) continue;
     if (deadly(cand->masks, &cand->res, horizon)) { BT->counts[C_REFUSEDDEADLY]++; continue; }
+    if (unreadies(cand)) { BT->counts[C_REFUSEDNOFAILSAFE]++; SPARE[nSpare++] = cand; continue; }
     int cashes = cand->res.total > 0 || cand->res.broke;
     Ahead ahead = { 0, 0, 0 };
     if (!cashes) ahead = lookahead(cand->masks, horizon);
@@ -1539,8 +1557,32 @@ static Res WD;
 static ST WDA;
 static int32_t WDSW[2 * 128], WDR[R_INTS + ST_INTS];
 static int endsInBreak(int via) { return via == V_DIGPLAN || via == V_BREAKREACH || via == V_BREAK || via == V_LINEUP || via == V_LINEUPHOLD; }
+// A SWAP HELD FOR LATER MUST STILL BE THERE LATER. A cell above one that is
+// clearing falls when the clear ends — the moment a held swap is wanted.
+static int steady(int r, int c) {
+  for (int cc = c; cc <= c + 1; cc++) { int low = (int)BIN[IN_POPLOW + cc]; if (low > 0 && low < r) return 0; }
+  return 1;
+}
+// FRAMES A QUIET SWAP HOLDS THE BOARD, from the engine: 5 when nothing
+// falls; when panels drop, the swap (4), the hover (6), one frame to start and
+// one per row fallen. base is the board before the swap, after the board it
+// settles to.
+static ST QSW;
+static double quietSettle(const int32_t *base, int r, int c, const int32_t *after) {
+  stcpy(QSW, base);
+  if (!swapIn(QSW, r, c)) return 5;
+  int fell = 0;
+  for (int cc = c; cc <= c + 1; cc++) {
+    int f = topRow(U(QSW, OCC + cc)) - topRow(U(after, OCC + cc));
+    if (f > fell) fell = f;
+  }
+  return fell > 0 ? 11 + fell : 5;
+}
 static Dec waitForDrain(Dec d) {
-  if (!BIN[IN_TOPPED]) return d;
+  // The time left is the drain bound once topped, and the death clock before:
+  // a queue that will top the board leaves no more time than the stop.
+  double k = BIN[IN_TOPPED] ? BIN[IN_DRAINBOUND] : DDEADLINE;
+  if (!(k < INF)) return d;
   int32_t *base = DBASE;
   int nc = 0;
   Cand *picked = 0;
@@ -1573,13 +1615,12 @@ static Dec waitForDrain(Dec d) {
   }
   if (!nc) return d;
   if (d.spends) return d;
-  double k = BIN[IN_DRAINBOUND];
   Rs *pr = picked ? &picked->res : 0;
   if (pr && pr->broke && picked->moveFrames + 1 <= k) return d;
   if (!picked && endsInBreak(d.via)) return d;
 #define HOLDAT(r, c) mkHold(V_AWAITDRAIN, d.mode, d.alive, 1, r, c)
   if (pr && pr->total > 0 && !pr->broke && picked->moveFrames + 1 <= k) {
-    if (picked->moveFrames + 2 > k) return d;
+    if (!BIN[IN_TOPPED] || picked->moveFrames + 2 > k || !steady(picked->sr, picked->sc)) return d;
     BT->counts[C_WAITEDFORDRAIN]++;
     return HOLDAT(picked->sr, picked->sc);
   }
@@ -1596,7 +1637,7 @@ static Dec waitForDrain(Dec d) {
       swapIn(WDA, WDSW[2 * i], WDSW[2 * i + 1]);
       if (WDR[R_TOTAL] > 0 || WDR[R_SCOPE] == SC_BROKE) back = cst;
     }
-    if (picked->moveFrames + 4 + back + 1 <= k) return d;
+    if (picked->moveFrames + quietSettle(base, picked->sr, picked->sc, picked->masks) + back + 1 <= k) return d;
   } else if (nearest + 2 <= k) {
     return d;
   }
@@ -1617,16 +1658,89 @@ static Dec waitForDrain(Dec d) {
     double rate = (f[1] + f[2] + f[3] * r->total + stopTimeOf(isCh, isCh ? 0 : r->total, isCh ? r->chain : 0, 1)) / r->total;
     double vd = 0;
     if (cl->masks) { Shape sh; shapeOf(cl->masks, &sh); vd = sh.high - sh.mat; }
-    int tn = r->total;
+    int tn = r->total, st = cl->future || steady(cl->sr, cl->sc), cnSt = clearNow && (clearNow->future || steady(clearNow->sr, clearNow->sc));
+    if (clearNow && st != cnSt) { if (st) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; } continue; }
     if (!clearNow || tn < cnTn || (tn == cnTn && (vd < cnVd || (vd == cnVd && rate > cnRate)))) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; }
   }
   if (breakNow && !breakNow->future) return mkSwap(breakNow->sr, breakNow->sc, V_BREAK, d.mode, d.alive);
   if (breakNow) return HOLDAT(breakNow->sr, breakNow->sc);
   Clr *esc = clearNow;
   if (!esc) for (int i = 0; i < nc; i++) if (!esc || CLEARS[i].moveFrames < esc->moveFrames) esc = &CLEARS[i];
-  if (esc->future || esc->moveFrames + 2 <= k) return HOLDAT(esc->sr, esc->sc);
+  if (esc->future || (esc->moveFrames + 2 <= k && steady(esc->sr, esc->sc))) return HOLDAT(esc->sr, esc->sc);
+  // No steady clear to hold: one that is falling apart is fired only when the
+  // time is up; before that the choice stands and stayAlive judges it.
+  if (esc->moveFrames + 2 <= k) return d;
   return mkSwap(esc->sr, esc->sc, V_KEEPHEALTH, d.mode, d.alive);
 #undef HOLDAT
+}
+// IT MUST NOT DIE. Living is any line that presses a clear or a break before
+// the time runs out: a break converts the garbage, a clear holds the lock and
+// earns stop. Every first swap is marked living if it cashes in time itself,
+// or if one more swap on the board it settles to does -- the walk to it, the
+// frames it takes, then the walk on. The bot's own choice stands whenever it
+// is living; a choice that is not is replaced by a living one.
+#define LIVEHORIZON 60
+static ST LVA, LVB;
+static int32_t LVR[R_INTS + ST_INTS], LVS[2 * 128], LVS2[2 * 128];
+static uint8_t LIVE[40][WMAX];
+static double LIVET[40][WMAX];
+static int liveAny;
+static int cashes(const int32_t *r) { return r[R_TOTAL] > 0 || r[R_SCOPE] == SC_BROKE; }
+static void livingSet(const int32_t *base, double left) {
+  int cr = (int)BIN[IN_CROW], cc = (int)BIN[IN_CCOL];
+  memset(LIVE, 0, sizeof LIVE); liveAny = 0;
+  stcpy(LVA, base);
+  int n = legal(LVA, LVS);
+  for (int i = 0; i < n; i++) {
+    int r1 = LVS[2 * i], c1 = LVS[2 * i + 1];
+    double t1 = travelCost(cr, cc, r1, c1);
+    if (t1 > left || r1 >= 40) continue;
+    if (!swapIn(LVA, r1, c1)) continue;
+    resolve(LVA, LVR, 1);
+    swapIn(LVA, r1, c1);
+    int sc = LVR[R_SCOPE];
+    if (sc != SC_OK && sc != SC_BROKE) continue;
+    if (cashes(LVR)) { LIVE[r1][c1] = 1; LIVET[r1][c1] = t1; liveAny = 1; continue; }
+    double settle = quietSettle(LVA, r1, c1, LVR + R_INTS);
+    stcpy(LVB, LVR + R_INTS);
+    int n2 = legal(LVB, LVS2);
+    for (int j = 0; j < n2; j++) {
+      int r2 = LVS2[2 * j], c2 = LVS2[2 * j + 1];
+      double t2 = t1 + settle + travelCost(r1, c1, r2, c2);
+      if (t2 > left) continue;
+      if (!swapIn(LVB, r2, c2)) continue;
+      resolve(LVB, LVR, 0);
+      swapIn(LVB, r2, c2);
+      if (cashes(LVR)) { LIVE[r1][c1] = 1; LIVET[r1][c1] = t2; liveAny = 1; break; }
+    }
+  }
+}
+static Dec stayAlive(Dec d) {
+  double k = BIN[IN_TOPPED] ? BIN[IN_DRAINBOUND] : DDEADLINE;
+  if (!(k < LIVEHORIZON)) return d;
+  if (d.kind == K_SWAP && d.hasMove) {
+    Cand *pc = poolSwap(d.sr, d.sc);
+    if (pc && (pc->res.total > 0 || pc->res.broke) && pc->moveFrames <= k) return d;
+  } else if (d.kind != K_HOLD) return d;
+  livingSet(DBASE, k);
+  if (!liveAny) return d;
+  if (d.kind == K_SWAP && d.hasMove) { if (d.sr < 40 && LIVE[d.sr][d.sc]) return d; }
+  else {
+    double wait = BIN[IN_TOPPED] ? 2 : REACT;
+    for (int r = 1; r < 40; r++) for (int c = 1; c < WMAX; c++)
+      if (LIVE[r][c] && LIVET[r][c] + wait <= k) return d;
+  }
+  // The choice dies. Take a living swap: a break first, then the earliest.
+  int br = 0, bc = 0, broke = 0; double bt = INF;
+  for (int r = 1; r < 40; r++) for (int c = 1; c < WMAX; c++) {
+    if (!LIVE[r][c]) continue;
+    Cand *pc = poolSwap(r, c);
+    int isBreak = pc && pc->res.broke;
+    if ((isBreak && !broke) || (isBreak == broke && LIVET[r][c] < bt)) { br = r; bc = c; bt = LIVET[r][c]; broke = isBreak; }
+  }
+  BT->counts[C_KEPTHEALTH]++;
+  BT->plan.has = 0; BT->attack.has = 0; BT->flatten.has = 0; BT->dig.has = 0; BT->digIsBreak = 0;
+  return mkSwap(br, bc, V_KEEPHEALTH, d.mode, d.alive);
 }
 static Dec onePlan(Dec d) {
   if (d.kind != K_SWAP) return d;
@@ -1647,12 +1761,13 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   TB = BT->tab;
   REACT = (int)opt(O_REACTION);
   PRESS = (int)opt(O_PRESS);
+  HELDR = (int)BIN[IN_CROW]; HELDC = (int)BIN[IN_CCOL]; HELDDIR = (int)BIN[IN_HELD];
   botFailed = 0;
   clearRaiseFrames = 0;
   memoRoom();
   nSettle = nLandR = nFireR = nSavesR = nAnyR = 0;
   nRes = 0; nOptRuns = 0; nOptDepth = 0; nScore = 0; nLook = 0; nSave = 0; rScore = rMain = rLook = rSave = rCand = 0;
-  Dec d = onePlan(waitForDrain(decideRuled()));
+  Dec d = onePlan(stayAlive(waitForDrain(decideRuled())));
   if (d.kind == K_SWAP && d.hasMove) {
     BT->recent[2] = BT->nRecent ? BT->recent[0] : 0; BT->recent[3] = BT->nRecent ? BT->recent[1] : 0;
     BT->recent[0] = d.sr; BT->recent[1] = d.sc;
@@ -1708,6 +1823,7 @@ __attribute__((export_name("bot_test"))) double bot_test(int32_t id, int32_t fn)
   TB = BT->tab;
   REACT = (int)opt(O_REACTION);
   PRESS = (int)opt(O_PRESS);
+  HELDDIR = 0;
   double *a = BIN + IN_T + 8;
   Rs r = argRes(IN_T + 16);
   int hasRes = (int)a[0];

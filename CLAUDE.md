@@ -249,6 +249,8 @@ ways: a tool not listed, or a path listed that doesn't exist.
   `native/pa.c`, which `gate_server_engine` holds to recordings of the Lua
   (`lua/engineRecord.lua`, run in a panel-game checkout).
 - A test's scratch files go beside the test, never `os.tmpdir()`.
+- **BitBot drills run at level 10, nothing else.** `pa_drill.js` exits if a
+  scenario's level is not 10.
 
 ## Infrastructure
 

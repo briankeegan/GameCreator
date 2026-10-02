@@ -1207,6 +1207,12 @@
     6: [1]
   };
 
+  // The column the next slab of this width will spawn at, without using it up.
+  Stack.prototype.nextSpawnColumn = function (width) {
+    var columns = GARBAGE_DROP_COLUMN_MAPS[width] || [1];
+    return columns[this.dropColumnIndex[width] || 0];
+  };
+
   Stack.prototype.garbageSpawnColumn = function (width) {
     var columns = GARBAGE_DROP_COLUMN_MAPS[width] || [1];
     var index = this.dropColumnIndex[width] || 0;

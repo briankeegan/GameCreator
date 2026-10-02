@@ -1254,6 +1254,25 @@ static int anyBreakOf(const int32_t *st0) {
   tput(&ANYB, k, any);
   return any;
 }
+// THE NEXT SLAB WHERE IT WILL REST. A slab covers its own columns, not the
+// stack's top row: it lands on the tallest of them and touches only the cells
+// under and beside it. Ready means one swap breaks it there. SLABC is the
+// slab's left column, 0 when the caller does not know it.
+static LOCAL int SLABW, SLABH, SLABC;
+static LOCAL ST SLABST;
+static int slabReady(const int32_t *st) {
+  int c0 = SLABC, c1 = SLABC + SLABW - 1, bottom = 0, c;
+  if (!c0 || c1 > st[O_W] || st[O_NSLAB] >= MAXSLAB) return slabReadyFast(st);
+  for (c = c0; c <= c1; c++) { int t = topRow(U(st, OCC + c)); if (t > bottom) bottom = t; }
+  if (bottom >= st[O_H] || bottom + SLABH > 30) return 0;
+  stcpy(SLABST, st);
+  uint32_t m = ((1u << SLABH) - 1u) << bottom;
+  int i = SLABST[O_NSLAB]++;
+  for (c = 0; c < WMAX; c++) SLABST[SM(i, c)] = 0;
+  for (c = c0; c <= c1; c++) { SLABST[OCC + c] |= (int32_t)m; SLABST[INERT + c] |= (int32_t)m; SLABST[GARB + c] |= (int32_t)m; SLABST[SM(i, c)] = (int32_t)m; }
+  SLABST[SLK(i)] = 0; SLABST[SAIR(i)] = 0;
+  return anyBreakOf(SLABST);
+}
 static double priceOf(int chain, int total);
 static LOCAL int stopKeyId, hasStopPrice, expanding;
 static int savesOfRaw(const int32_t *st0) {
@@ -1352,9 +1371,18 @@ static LOCAL int dropBudget, saveBudget, slabBudget, prepBudget;
 static LOCAL int nAvoid; static LOCAL int32_t AVOID[2 * 40];
 static LOCAL ST BASEST;
 
+// HELD is the direction pressed on the frame before the decision, at the
+// cursor it left there. A first step the same way waits one frame for the key
+// to be released, or the engine reads it as held.
+static LOCAL int HELDR, HELDC, HELDDIR;
 static int travelCost(int r0, int c0, int r1, int c1) {
   int steps = (r1 > r0 ? r1 - r0 : r0 - r1) + (c1 > c0 ? c1 - c0 : c0 - c1);
-  return (steps <= 0 ? 0 : 4 * (steps - 1) + 1) + PRESS;
+  int t = (steps <= 0 ? 0 : 4 * (steps - 1) + 1) + PRESS;
+  if (steps > 0 && HELDDIR && r0 == HELDR && c0 == HELDC) {
+    int dir = c1 > c0 ? 4 : c1 < c0 ? 3 : r1 > r0 ? 1 : 2;
+    if (dir == HELDDIR) t++;
+  }
+  return t;
 }
 static int hasGarb(const int32_t *st) { for (int c = 1; c <= st[O_W]; c++) if (st[GARB + c]) return 1; return 0; }
 static int breakAfterDropOf(const int32_t *st0);
@@ -1613,7 +1641,7 @@ static void shapeC(const int32_t *st, Shape *sh) {
   *sh = e->shg;
 }
 static int fireC(const int32_t *st) { CK *e = CUR_E; if (!e) return canFireOf(st); if (e->fire < 0) e->fire = canFireOf(st); return e->fire; }
-static int slabC(const int32_t *st) { CK *e = CUR_E; if (!e) return slabReadyFast(st); if (e->slab < 0) e->slab = slabReadyFast(st); return e->slab; }
+static int slabC(const int32_t *st) { CK *e = CUR_E; if (!e) return slabReady(st); if (e->slab < 0) e->slab = slabReady(st); return e->slab; }
 static int reachC(const int32_t *st, uint32_t *rr) {
   CK *e = CUR_E;
   if (!e) return reachOf(st, rr);
@@ -1953,7 +1981,7 @@ static void expandAll(int depth, int cr, int cc) {
             if (!exact && (!haveRec[0] || hi > fv)) exact = 1;
             if (!exact && svNow > 0 && (!haveRec[1] || hi > v1[F_VALUE] || (hi == v1[F_VALUE] && cost < v1[F_FRAMES]))) exact = 1;
             if (!exact && (!haveRec[2] || hi > v2[F_VALUE] || (hi == v2[F_VALUE] && cost < v2[F_FRAMES])) && (!e ? canFireOf(settled) : e->fire >= 0 ? e->fire : (e->fire = canFireOf(settled)))) exact = 1;
-            if (!exact && (!haveRec[3] || hi > v3[F_VALUE] || (hi == v3[F_VALUE] && cost < v3[F_FRAMES])) && (!e ? slabReadyFast(settled) : e->slab >= 0 ? e->slab : (e->slab = slabReadyFast(settled)))) exact = 1;
+            if (!exact && (!haveRec[3] || hi > v3[F_VALUE] || (hi == v3[F_VALUE] && cost < v3[F_FRAMES])) && (!e ? slabReady(settled) : e->slab >= 0 ? e->slab : (e->slab = slabReady(settled)))) exact = 1;
             if (!exact) {
               if (slabYes) slabBudget--;
               goto born;
@@ -1964,7 +1992,7 @@ static void expandAll(int depth, int cr, int cc) {
           if (haveTerm) val += term;
           if (slabBudget > 0 && val + PREPWORTH > floor2) {
             slabBudget--;
-            if ((!e ? slabReadyFast(settled) : e->slab >= 0 ? e->slab : (e->slab = slabReadyFast(settled)))) credit = PREPWORTH;
+            if ((!e ? slabReady(settled) : e->slab >= 0 ? e->slab : (e->slab = slabReady(settled)))) credit = PREPWORTH;
           }
           if (!credit && val + READYWORTH > floor2 && (!e ? canFireOf(settled) : e->fire >= 0 ? e->fire : (e->fire = canFireOf(settled)))) credit = READYWORTH;
           val += credit;
@@ -1974,7 +2002,7 @@ static void expandAll(int depth, int cr, int cc) {
             takeRec(1, seq, nseq, cost, val, cost + nseq * OVERHEAD);
           if ((!haveRec[2] || val > rd0[F_VALUE] || (val == rd0[F_VALUE] && cost < rd0[F_FRAMES])) && (!e ? canFireOf(settled) : e->fire >= 0 ? e->fire : (e->fire = canFireOf(settled))))
             takeRec(2, seq, nseq, cost, val, cost + nseq * OVERHEAD);
-          if ((!haveRec[3] || val > tg0[F_VALUE] || (val == tg0[F_VALUE] && cost < tg0[F_FRAMES])) && (!e ? slabReadyFast(settled) : e->slab >= 0 ? e->slab : (e->slab = slabReadyFast(settled))))
+          if ((!haveRec[3] || val > tg0[F_VALUE] || (val == tg0[F_VALUE] && cost < tg0[F_FRAMES])) && (!e ? slabReady(settled) : e->slab >= 0 ? e->slab : (e->slab = slabReady(settled))))
             takeRec(3, seq, nseq, cost, val, cost + nseq * OVERHEAD);
           if (take) {
             takeRec(0, seq, nseq, cost, val, dur);
@@ -2035,6 +2063,8 @@ static int optionsRun(const int32_t *st0, const double *P, const int32_t *first,
   DIG = (int)P[10]; int depth = (int)P[11], cr = (int)P[12], cc = (int)P[13];
   PRESS = (int)P[14]; hasStopPrice = (int)P[15]; stopKeyId = (int)P[16]; MAXSTOP = P[17];
   lazyBreak = (int)P[101];
+  SLABW = (int)P[102]; SLABH = (int)P[103]; SLABC = (int)P[104];
+  HELDR = (int)P[105]; HELDC = (int)P[106]; HELDDIR = (int)P[107];
   LMAX = 0;
   for (int i = 0; i < 64; i++) if (PCHAIN[i] > LMAX) LMAX = PCHAIN[i];
   for (int i = 0; i < 256; i++) if (PCOMBO[i] > LMAX) LMAX = PCOMBO[i];
@@ -2100,6 +2130,11 @@ __attribute__((export_name("bit_options"))) int32_t bit_options(void) {
 }
 
 #include "bot.c"
+__attribute__((export_name("bit_slab_ready"))) int32_t bit_slab_ready(int32_t w, int32_t h, int32_t c) {
+  memoRoom(); threadInit();
+  SLABW = w; SLABH = h; SLABC = c;
+  return slabReady(IN);
+}
 __attribute__((export_name("bit_checkbf"))) int32_t bit_checkbf(void) {
   Grid G; static int32_t sw[256], rr[R_INTS + ST_INTS];
   int n = legalG(IN, sw, &G), rest = atRest(IN), bad = 0, hits = 0;

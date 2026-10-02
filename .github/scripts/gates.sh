@@ -846,6 +846,14 @@ gate_bitbot_progress() {
   node games/the-game/ai/eval/progress.test.js
 }
 
+# A SLAB IS READY ONLY IF THE ENGINE BREAKS IT. The bot keeps a break in hand
+# for the next slab, so "ready" decides what it may spend: native slabReady is
+# asked about settled drill boards and the engine drops the real slab and tries
+# every swap. A false ready has a budget of zero.
+gate_slabready() {
+  node games/the-game/ai/eval/slabready.test.js
+}
+
 gate_bitbot_survival() {
   node games/the-game/ai/eval/survival.test.js
 }
@@ -1016,6 +1024,7 @@ GATES=(
   "the bot plays what it picks and cannot be killed:gate_bitbot:games/the-game/ai/"
   "the bot's frame arithmetic matches the engine:gate_bitbot_timing:games/the-game/ai/"
   "the rules a vector cannot reach:gate_bitbot_survival:games/the-game/ai/"
+  "a slab is ready only if the engine breaks it:gate_slabready:games/the-game/ai/"
   "the bot moves the board:gate_bitbot_progress:games/the-game/ai/"
   "the simulation resolves like the game:gate_resolve_fidelity:games/the-game/ai/"
   "that fidelity check fires:gate_resolve_fidelity_fires:games/the-game/ai/"

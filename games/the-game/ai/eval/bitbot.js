@@ -33,7 +33,7 @@
                FPR: 9, FTNR: 10, SPEED: 11, NEXTUP: 12, STARTSPEED: 13, CLOCK: 14, STACKCLOCK: 15, HASRISEN: 16,
                RAISEROOM: 17, INFLIGHT: 18, DRAINBOUND: 19, STACKTOPPED: 20, MOVING: 21, HASTIMED: 22,
                REVEALOPEN: 23, CONVN: 24, CONVTIMER: 25, BCROW: 26, BCCOL: 27, NLEGAL: 28, HASINROW: 29,
-               INROW: 30, HASLAST: 37, LASTR: 38, LASTC: 39, SETTLING: 40, SF: 50, CONV: 60, LEGAL: 300, T: 560, SIZE: 600 };
+               INROW: 30, HASLAST: 37, LASTR: 38, LASTC: 39, SETTLING: 40, HELD: 49, SF: 50, CONV: 60, LEGAL: 300, T: 560, SLABW: 590, SLABH: 591, SLABC: 592, INROWS: 593, POPLOW: 593, SIZE: 600 };
     var T = { RISE: 0, COMBO: 100, STOP: 200, LF: 210, W: 220, OPT: 250, SIZE: 270 };
     var KINDS = ['hold', 'raise', 'swap'], MODES = ['BUILD', 'DEFEND', 'ATTACK'];
     var VIAS = [null, 'raise:opening', 'raise:material', 'raising', 'readyFirst', 'awaitLanding', 'break',
@@ -87,6 +87,9 @@
         d[b + IN.STOP] = info.stopTime || 0;
         d[b + IN.INCOMING] = info.incoming || 0;
         d[b + IN.NEXTSLAB] = info.nextSlab || 0;
+        d[b + IN.HELD] = ({ up: 1, down: 2, left: 3, right: 4 })[info.held] || 0;
+        d[b + IN.SLABW] = info.slabWidth || 0; d[b + IN.SLABH] = info.slabHeight || 0; d[b + IN.SLABC] = info.slabCol || 0;
+        d[b + IN.INROWS] = info.inRows || 0;
         d[b + IN.FALLING] = info.fallingGarbage ? 1 : 0;
         d[b + IN.CROW] = num(info.cursorRow); d[b + IN.CCOL] = num(info.cursorCol);
         d[b + IN.HEALTH] = num(info.health);
@@ -176,13 +179,15 @@
     };
 
     BitBot.prototype.info = function (board) {
-        var s = this.stack, incoming = 0, nextSlab = 0;
+        var s = this.stack, incoming = 0, inRows = 0, nextSlab = 0, slab = null;
         if (s.incoming) {
             for (var i = 0; i < s.incoming.length; i++) {
                 incoming += (s.incoming[i].width || 0) * (s.incoming[i].height || 1);
+                inRows += s.incoming[i].height || 1;
             }
             if (s.incoming.length) {
                 nextSlab = (s.incoming[0].width || 0) * (s.incoming[0].height || 1);
+                slab = s.incoming[0];
             }
         }
         return {
@@ -190,6 +195,11 @@
             stopTime: s.stopTime || 0,
             incoming: incoming,
             nextSlab: nextSlab,
+            held: this._heldBefore || null,
+            inRows: inRows,
+            slabWidth: slab ? slab.width || 0 : 0,
+            slabHeight: slab ? slab.height || 1 : 0,
+            slabCol: slab && typeof s.nextSpawnColumn === 'function' ? s.nextSpawnColumn(slab.width) : 0,
             fallingGarbage: typeof s.hasFallingGarbage === 'function' && s.hasFallingGarbage(),
             cursorRow: board.cursor ? board.cursor.row : (s.curRow || 1),
             cursorCol: board.cursor ? board.cursor.col : (s.curCol || 1),
@@ -341,6 +351,13 @@
                     (q.state === 'hovering' || q.state === 'falling' || q.state === 'swapping')) { settling = 1; break; }
             }
             d[b + IN.SETTLING + c] = settling;
+            var popLow = 0;
+            for (r = 1; P && r < P.length && !popLow; r++) {
+                var pq = P[r] && P[r][c];
+                if (pq && pq.color !== 0 && !pq.isGarbage &&
+                    (pq.state === 'matched' || pq.state === 'popping' || pq.state === 'popped')) popLow = r;
+            }
+            d[b + IN.POPLOW + c] = popLow;
         }
         var f = s.frames || {};
         d[b + IN.SF] = num(f.HOVER); d[b + IN.SF + 1] = num(f.FLASH); d[b + IN.SF + 2] = num(f.FACE); d[b + IN.SF + 3] = num(f.POP);
@@ -393,6 +410,8 @@
     BitBot.prototype.update = function () {
         var stack = this.stack;
         if (stack.gameOver) { this.spend.gameOver++; return; }
+        var held = this._held;
+        this._heldBefore = held;
         var froz = (stack.stopTime || 0) > 0;
         var input = {};
 
@@ -414,10 +433,10 @@
 
         if (this._walk) {
             this.spend.walking++; if (froz) this.frozen.walking++;
-            this._driveWalk(input); stack.setInput(input); return;
+            this._driveWalk(input); this._send(input, held); return;
         }
         if (this._park) this._parkStep(input);
-        stack.setInput(input);
+        this._send(input, held);
         var urgent = (stack.stopTime || 0) > 0 ||
                      (typeof stack.isToppedOut === 'function' && stack.isToppedOut());
         if (this.cooldown > 0) {
@@ -450,14 +469,40 @@
             if (d.park && pk0 && pk0.target && pk0.target[0] === d.park[0] && pk0.target[1] === d.park[1]) return;
             this._park = d.park ? { row: d.park[0], col: d.park[1], timer: 0, target: [d.park[0], d.park[1]],
                                     disp: stack.displacement } : null;
+            this._release(input, held);
             return;
         }
         this._park = null;
         this.counts.swaps++;
         if (froz) this.frozen.swap++;
         this._beginWalk(d.move[0], d.move[1], this.reaction);
+        this._release(input);
         this._driveWalk(input);
-        stack.setInput(input);
+        this._send(input, held);
+    };
+
+    // A DIRECTION HELD ON CONSECUTIVE FRAMES IS A HELD KEY: the engine moves
+    // the cursor on the first frame of a press and then only after its repeat
+    // wait. A park step on one frame and a walk step the same way on the next
+    // would cost the whole repeat wait instead of the one frame a release costs.
+    // A DECISION TAKES THE FRAME. It was made from the cursor before this
+    // frame's park step, so that step's press is withdrawn: the cursor stays
+    // where the decision measured from.
+    BitBot.prototype._release = function (input, held) {
+        input.up = input.down = input.left = input.right = false;
+        if (held !== undefined) this._send(input, held);
+    };
+
+    BitBot.prototype._send = function (input, held) {
+        var dir = input.up ? 'up' : input.down ? 'down' : input.left ? 'left' : input.right ? 'right' : null;
+        if (dir && dir === held) {
+            input.up = input.down = input.left = input.right = false;
+            if (this._walk) this._walk.timer = 0;
+            if (this._park) this._park.timer = 0;
+            dir = null;
+        }
+        this._held = dir;
+        this.stack.setInput(input);
     };
 
     BitBot.prototype._parkStep = function (input) {

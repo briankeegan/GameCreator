@@ -294,7 +294,8 @@
     }
   }
   function checkbf(st) { put(st); return ex.bit_checkbf(); }
-  return { record: record, recorded: recorded, replay: replay, _checkbf: checkbf, fits: fits, resolve: resolve, resolveTimed: resolveTimed, scan: scan, load: load, options: options,
+  function slabReady(st, w, h, c) { put(st); return ex.bit_slab_ready(w, h, c) !== 0; }
+  return { record: record, recorded: recorded, replay: replay, _checkbf: checkbf, slabReady: slabReady, fits: fits, resolve: resolve, resolveTimed: resolveTimed, scan: scan, load: load, options: options,
            botNew: botNew, botIn: botIn, botStates: botStates, botDecide: botDecide, botTab: botTab, botPut: botPut, botTest: botTest,
            botPoolMasks: botPoolMasks, deadlyCalls: deadlyCalls, opening: opening, putRecords: putRecords };
 }));
