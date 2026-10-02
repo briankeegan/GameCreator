@@ -362,78 +362,24 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
   return { depth: any ? 3 : 0, moves: found };
 }
 
-// PANELS UP TO THE ROOM ARE KEPT, PAST IT SPENT. A pop turns the bottom row
-// of every piece it holds into panels, so the stack it leaves is the panels
-// there now and those cells (convertingOf). Up to ROOM panels (eight rows)
-// each is worth 100; past it each costs 200, so a pop about to bury the stack
-// is met by clearing. A drill of one-row pieces converts them all at once.
-var ROOM = 48;
-function convertingOf(board) {
-  var n = 0;
-  board.panels.forEach(function (row) { if (row) for (var c = 1; c <= 6; c++) { var p = row[c]; if (p && p.isGarbage && p.state === 'matched' && p.yOffset === -1) n++; } });
-  return n;
-}
-function keepRank(b, converting) {
-  var total = panelsOf(b) + (converting || 0);
-  return -100 * Math.min(total, ROOM) + 200 * Math.max(0, total - ROOM);
-}
-function panelsOf(b) {
-  var n = 0;
-  if (b && b.grid) for (var r = 1; r < b.grid.length; r++) { var row = b.grid[r]; if (row) for (var c = 1; c <= b.width; c++) if (row[c] > 0) n++; }
-  return n;
-}
 
 // ---------------------------------------------------------------- the hands
 // Hands(p): keys(board, hold, kind, move, arrivals) is the decision played
 // from `board` as { inputs, holds } per frame, or null when it is refused.
 // idle(board, hold) is a frame with nothing decided: the raise in hand goes
-// on being held, or the board is kept busy (busyPair).
+// on being held.
 function Hands(p) {
-  var Search = require(path.join(__dirname, 'native.js')).server.Search;
-  this.S = new Search({ reaction: p.reaction, cursorMoveFrames: p.cursorMoveFrames, threads: 1 });
-  this.B = new Search({ reaction: 0, cursorMoveFrames: p.cursorMoveFrames, threads: 1 });   // busy walks: nothing to react to
+  this.S = new (require(path.join(__dirname, 'native.js')).server.Search)({ reaction: p.reaction, cursorMoveFrames: p.cursorMoveFrames, threads: 1 });
 }
 Hands.prototype.keys = function (board, hold, kind, move, arrivals, frames) {
   this.S.reset();
   var root = this.S.root(board.copy(), hold, arrivalsFrom(board, arrivals), false);
   return this.S.keys(root, kind, move, frames || 0);
 };
-// A FRAME WITH NOTHING ACTIVE COSTS HEALTH while the board is topped out, and
-// on a board slabs keep topped out health is never given back. A frame with
-// nothing decided and no raise held goes toward swapping two panels of one
-// colour side by side, nearest the cursor first: the board is left as it
-// was, and a swap keeps it active for its frames. A pair the stall log
-// already holds is passed over (swapping it again costs health).
-function busyPair(board) {
-  if (board.gameOverClock > 0 || !board.isToppedOut() || board.stopTime || board.preStopTime || board.shakeTime) return null;
-  if (board.nActive - board.swappingCount !== 0) return null;
-  var best = null, bd = Infinity, top = Math.min(board.height, board.topCurRow || board.height), log = board.swapStallBacklog || [];
-  for (var r = 1; r <= top; r++) {
-    var row = board.panels[r], under = board.panels[r - 1];
-    if (!row) continue;
-    for (var c = 1; c < 6; c++) {
-      var a = row[c], b = row[c + 1];
-      if (!a || !b || a.isGarbage || b.isGarbage || !a.color || a.color !== b.color || a.state !== 'normal' || b.state !== 'normal') continue;
-      if (r > 1 && (!under || !under[c] || !under[c + 1] || !under[c].color || !under[c + 1].color || under[c].state === 'falling' || under[c + 1].state === 'falling')) continue;
-      if (log.some(function (o) { return o.leftId === a.id && o.rightId === b.id && o.row === r && o.col === c; })) continue;
-      var dd = Math.abs(r - board.curRow) + Math.abs(c - board.curCol);
-      if (dd < bd) { bd = dd; best = [r, c]; }
-    }
-  }
-  return best;
-}
 Hands.prototype.idle = function (board, hold, arrivals) {
-  if (!hold.left) {
-    var m = busyPair(board);
-    if (m) {
-      this.B.reset();
-      var k = this.B.keys(this.B.root(board.copy(), hold, arrivalsFrom(board, arrivals), false), 'swap', m, 0);
-      if (k && k.inputs.length) return { bits: k.inputs[0], hold: k.holds[0] };
-    }
-    return { bits: 0, hold: hold };
-  }
+  if (!hold.left) return { bits: 0, hold: hold };
   var k = this.keys(board, hold, 'long', null, arrivals, 1);
   return { bits: k.inputs[0], hold: k.holds[0] };
 };
 
-module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, pending: pending, arrivalsFrom: arrivalsFrom, threat: threat, top: top, gridTop: gridTop, popLeft: popLeft, lowestGarbageRow: lowestGarbageRow, breakMoves: breakMoves, Hands: Hands, busyPair: busyPair, convertingOf: convertingOf, keepRank: keepRank, panelsOf: panelsOf, ROOM: ROOM };
+module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, pending: pending, arrivalsFrom: arrivalsFrom, threat: threat, top: top, gridTop: gridTop, popLeft: popLeft, lowestGarbageRow: lowestGarbageRow, breakMoves: breakMoves, Hands: Hands };

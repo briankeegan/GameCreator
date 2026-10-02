@@ -2839,6 +2839,9 @@
       else if (verdict[i] === 'unproven') unproven.push(cands[i]);
     }
     if (!proven.length) proven = weakly;
+    // measureLife: the proven moves the engine shows living longest, then
+    // keeping the most panels, before the caller's order is applied to them.
+    if (this.measureLife && proven.length > 1) proven = this._measureLife(proven);
     // The caller's moves first (preferRank, see _decide): of those proven to
     // live, before the proven ones are narrowed to the line that lives longest.
     // preferProven ranks the same way, but only here, among the proven.
@@ -2863,6 +2866,50 @@
     if (live.length === cands.length) return cands;
     this.doomedMovesDropped += cands.length - live.length;
     return live;
+  };
+
+  // HOW LONG EACH MOVE KEEPS THE BOARD ALIVE, MEASURED ON THE ENGINE. Each
+  // proven move's line is searched on from its proof, by the same level loop,
+  // to LIFE_FRAMES: what a break, a pop, a clear or a swap buys is what the
+  // engine plays out, not a price set beside it. The moves living longest
+  // are kept, then of those the ones whose furthest board holds the most
+  // panels; the line found becomes the proof the bot follows.
+  PuyoCpu.prototype.LIFE_FRAMES = 900;
+  PuyoCpu.prototype._measureLife = function (live) {
+    var sp = this._searchProofs, S = this._nat, i, k;
+    if (!sp || !S) return live;
+    var n = sp.cands.length, verdict = [], proofs = {}, weak = {}, reach = {}, far = {}, level = [], at = [];
+    for (i = 0; i < n; i++) verdict[i] = 'skip';
+    for (i = 0; i < live.length; i++) {
+      k = sp.cands.indexOf(live[i]);
+      var pf = k >= 0 ? sp.proofs[k] : null;
+      if (!pf || !pf._nat || pf.dead) continue;
+      verdict[k] = false; pf.tag = k; pf.seed = false; reach[k] = pf.t; far[k] = pf;
+      level.push(pf); at.push(k);
+    }
+    if (level.length < 2) return live;
+    var o = { ntags: n, verdict: verdict, proofs: proofs, weak: weak, reach: reach, far: far, level: level,
+              budget: this.SURVIVE_SEARCH_BUDGET, until: this.LIFE_FRAMES, full: this.LIFE_FRAMES, beam: this.SURVIVE_SEARCH_BEAM,
+              quota: this.SURVIVE_QUOTA, seeds: this.SURVIVE_SEEDS, newlyProven: [] };
+    S.loop(o, this._abort, ABORTED);
+    function panels(x) {
+      var g = x && x.b && x.b.grid, m = 0, r, c;
+      if (g) for (r = 1; r < g.length; r++) if (g[r]) for (c = 1; c <= 6; c++) if (g[r][c] > 0) m++;
+      return m;
+    }
+    var life = {}, kept = {}, best = -1, most = -1;
+    for (i = 0; i < at.length; i++) {
+      k = at[i];
+      var end = o.verdict[k] === 'proven' ? o.proofs[k] : o.far[k];
+      life[k] = o.verdict[k] === 'proven' ? this.LIFE_FRAMES : Math.min(o.reach[k] || 0, this.LIFE_FRAMES);
+      kept[k] = panels(end);
+      if (end && !end.dead && end.t > sp.proofs[k].t) sp.proofs[k] = end;
+      if (life[k] > best) best = life[k];
+    }
+    for (i = 0; i < at.length; i++) if (life[at[i]] === best && kept[at[i]] > most) most = kept[at[i]];
+    this.lifeMeasured = { best: best, panels: most, of: at.length };
+    var out = live.filter(function (c) { var q = sp.cands.indexOf(c); return life[q] === best && kept[q] === most; });
+    return out.length ? out : live;
   };
 
   // NOTHING REACHES THE HORIZON: PLAY THE MOVE THAT LIVES LONGEST. Its
