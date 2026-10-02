@@ -2517,6 +2517,7 @@
             // actually happen.
             var horizon = Math.max((cand.moveFrames || 0) + this.reaction,
                                    info.framesPerRow || 0);
+            if (cand.kind === 'swap' && spendsReserve(cand.resolved, cand.masks)) continue;
             if (this.deadly(cand.masks, cand.resolved, info, horizon)) { this.counts.refusedDeadly++; continue; }
             // A CASH IS NEVER STRANDED. THE STRANDED TEST IS FOR SETUPS.
             //
