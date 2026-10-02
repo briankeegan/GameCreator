@@ -22,7 +22,11 @@ typedef struct { int32_t at, width, height, isChain, isMetal; } Arr;
 #define CAPPED_AT 72
 #define MAXARR 64   // pa.c / engine.c NBODY leave room for this many after the board
 #define KEYMAX (16 * W)
-enum { MK_LONG, MK_HOLD, MK_RAISE, MK_SWAP };
+enum { MK_LONG, MK_HOLD, MK_RAISE, MK_SWAP, MK_SETTLE };
+// MK_SETTLE (engines with STEP_STATS): a swap at (mr, mc) -- or, with mr 0, a
+// hold -- and then the frames until nothing moves, SETTLE_CAP at most, as the
+// bot's candidate resolve settles them; what the step did is read with
+// ns_step_stats.
 typedef struct Node {
   Board *st;                   // 0 once freed: replayed from prev when asked for
   int32_t t, holdLeft, holdStarted, fresh, dead, fromPrev;   // fromPrev: a dead end, on its parent's board
@@ -217,16 +221,23 @@ static int advance(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
   for (int i = 0; i < narr; i++) arr[i] = par->arr[i];
   int32_t input = par->fresh ? st->input : 0, f = 0, t0 = par->t;
   if (!par->fresh) raiseStep(&bot, st, &input);
-  if (kind == MK_SWAP) { beginWalk(&bot, mr, mc, x->reaction); driveWalk(x, &bot, st, &input); }
+  int swapping = kind == MK_SWAP || (kind == MK_SETTLE && mr > 0);
+#define GIVE0(code) do { nb_free(st); return (code); } while (0)
+#ifdef STEP_STATS
+  st->sNCombo = 0; st->sCleared = 0; st->sBroke = 0; st->sEarned = 0;
+#else
+  if (kind == MK_SETTLE) GIVE0(STEP_ERR);
+#endif
+  if (swapping) { beginWalk(&bot, mr, mc, x->reaction); driveWalk(x, &bot, st, &input); }
   else if (kind == MK_RAISE) { bot.raiseFrames = 20; bot.raiseStarted = 0; bot.cooldown = x->reaction; }
-  else if (kind == MK_HOLD) bot.cooldown = x->reaction;
-#define REFUSED (kind == MK_SWAP && !bot.w.active && !bot.lastSwap)
+  else if (kind == MK_HOLD || kind == MK_SETTLE) bot.cooldown = x->reaction;
+#define REFUSED (swapping && !bot.w.active && !bot.lastSwap)
 #define GIVE(code) do { nb_free(st); return (code); } while (0)
 #define FRAME() do { if (tape) { if (tapeN >= tapeCap) GIVE(STEP_ERR); \
                         tape[3 * tapeN] = SENT_KEYS(st, input); tape[3 * tapeN + 1] = bot.raiseFrames; \
                         tape[3 * tapeN + 2] = bot.raiseStarted; tapeN++; } \
                       int over_ = runFrame(st, arr, &narr, input, &f); if (st->err) GIVE(STEP_ERR); \
-                      if (SWAP_PRESSED && kind == MK_SWAP && st->swapDenied) GIVE(STEP_NULL); \
+                      if (SWAP_PRESSED && swapping && st->swapDenied) GIVE(STEP_NULL); \
                       if (over_) { deadAt = t0 + f; GIVE(STEP_DEAD); } } while (0)
   if (REFUSED || (bot.w.active && bot.w.retries)) GIVE(STEP_NULL);
   FRAME();
@@ -242,6 +253,9 @@ static int advance(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
     }
     if (kind != MK_LONG) {
       if (bot.cooldown > 0) { bot.cooldown--; FRAME(); continue; }
+#ifdef STEP_STATS
+      if (kind == MK_SETTLE && (f < 3 || !st->quiet) && f < SETTLE_CAP) { FRAME(); continue; }
+#endif
       break;
     }
     FRAME();
@@ -260,6 +274,7 @@ static int advance(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
   return (int)(n - x->nodes);
 #undef REFUSED
 #undef GIVE
+#undef GIVE0
 }
 // _engineStep: a wait to `until` in whole beats (reaction + 1), a raise, a
 // hold or a swap. A wait that dies after the horizon is a dead end on the
