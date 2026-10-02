@@ -2,7 +2,7 @@
 var path = require('path'), fs = require('fs');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
-var BitBot = require(path.join(__dirname, 'bitbot.js'));
+var BitBot = require(path.join(__dirname, process.env.GC_BOT || 'bitbot.js'));
 var bench = require(path.join(__dirname, 'bench.js'));
 var PA = require(path.join(__dirname, 'pa-engine.js')), GEN = require(path.join(__dirname, 'pa-generator.js'));
 var E = globalThis.PanelEngine;
@@ -25,13 +25,18 @@ bot.decide = function () {
   var ms = Number(process.hrtime.bigint() - t0) / 1e6;
   via[d.via] = (via[d.via] || 0) + 1;
   if (pa.clock >= trace) {
-    var pool = bot._lastPool || [], ob = bot._lastOptions, pb = [], lb = [];
-    for (var i = 0; i < pool.length; i++) if (pool[i].kind === 'swap' && pool[i].resolved && pool[i].resolved.brokeGarbage) pb.push(pool[i].swap);
-    if (ob) ob.now.concat(ob.next).forEach(function (o) { if (o.breaks && o.swaps.length) lb.push(o); });
-    var lbest = lb.length ? JSON.stringify(lb[0].swaps) + ' spend ' + bot.planSpend(lb[0].swaps, bot._lastBase, bot._lastInfo) : '-';
+    var L = bot.lastLog;
+    if (!L) {
+      var pool = bot._lastPool || [], ob = bot._lastOptions, pb = [], lb = [];
+      for (var i = 0; i < pool.length; i++) if (pool[i].kind === 'swap' && pool[i].resolved && pool[i].resolved.brokeGarbage) pb.push(pool[i].swap);
+      if (ob) ob.now.concat(ob.next).forEach(function (o) { if (o.breaks && o.swaps.length) lb.push(o); });
+      L = { poolBreaks: pb.length, firstBreak: pb[0] || null, built: !!ob, lines: lb.length, line: lb.length ? lb[0].swaps : null,
+            spend: lb.length ? bot.planSpend(lb[0].swaps, bot._lastBase, bot._lastInfo) : 0 };
+    }
+    var lbest = L.line ? JSON.stringify(L.line) + ' spend ' + L.spend : '-';
     out('D ' + f + ' ' + d.kind + ' ' + d.via + ' ' + JSON.stringify(d.move || d.park || null) +
-        ' | breaks ' + pb.length + ' ' + (pb.length ? JSON.stringify(pb[0]) : '-') +
-        ' | lines ' + (ob ? lb.length : 'unbuilt') + ' ' + lbest + ' | ms ' + ms.toFixed(1));
+        ' | breaks ' + L.poolBreaks + ' ' + (L.firstBreak ? JSON.stringify(L.firstBreak) : '-') +
+        ' | lines ' + (L.built ? L.lines : 'unbuilt') + ' ' + lbest + ' | ms ' + ms.toFixed(1) + (L.work ? ' | work ' + L.work.join(' ') : ''));
   }
   return d;
 };

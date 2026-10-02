@@ -15,5 +15,5 @@ for e in engine pa; do
 done
 clang $FLAGS bit.c -o bit.wasm
 h() { sha256sum "$1" | cut -c1-64; }
-for f in engine.c pa.c bit.c libc.h memory.h search.h engine.wasm engine-mt.wasm pa.wasm pa-mt.wasm bit.wasm; do printf '%s %s\n' "$f" "$(h $f)"; done > BUILT
+for f in engine.c pa.c bit.c bot.c libc.h memory.h search.h engine.wasm engine-mt.wasm pa.wasm pa-mt.wasm bit.wasm; do printf '%s %s\n' "$f" "$(h $f)"; done > BUILT
 cat BUILT

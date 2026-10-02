@@ -163,22 +163,18 @@ function hostile() {
 (function () {
     var st = new P.Stack({ level: 10, seed: 101, countdown: false });
     var bot = new BitBot(st, { allowRaise: true });
-    var real = BitBot.prototype._decide, forced = null;
+    var forced = null;
     // Stand in for the attack path: pick some legal swap the ordinary decision
     // did not, and hand it back as though bestAttack had chosen it.
-    bot._decide = function () {
-        var d = real.call(this), i;
-        for (i = 0; i < this._lastPool.length; i++) {
-            var c = this._lastPool[i];
-            if (c.kind !== 'swap' || !c.masks) continue;
-            if (d.move && c.swap[0] === d.move[0] && c.swap[1] === d.move[1]) continue;
-            forced = c; break;
-        }
-        if (!forced) return d;
-        return { kind: 'swap', move: forced.swap, mode: d.mode, alive: d.alive,
-                 via: 'bestAttack' };
-    };
-    bot.refuses = function (cand) { return cand === forced ? 'test' : null; };
+    var twin = new BitBot(new P.Stack({ level: 10, seed: 101, countdown: false }), { allowRaise: true });
+    var plain = twin.decide(), board0 = bot._snapshot(), pool0 = bot.candidates(board0, bot.info(board0)), i;
+    for (i = 0; i < pool0.length; i++) {
+        var c = pool0[i];
+        if (c.kind !== 'swap' || !c.masks) continue;
+        if (plain.move && c.swap[0] === plain.move[0] && c.swap[1] === plain.move[1]) continue;
+        forced = c; break;
+    }
+    if (forced) bot._test = { force: forced.swap, refuse: forced.swap };
     var out = bot.decide();
     ok(forced, 'no second swap in the pool, so this proves nothing');
     ok(out && out.kind === 'swap' && out.move, 'the gate refused to move at all');
@@ -423,23 +419,23 @@ function hostile() {
                 [2, 3, 4, 5, 3, 2]];
 
     var a = botOn(OPEN);
-    a.bot._opening = true;
+    a.bot.setOpening(true);
     ok(a.bot.raiseMode(a.info, a.base) === 'opening',
        'raise trigger: a low clean board with a clear in hand did not open, so the ' +
        'opening cannot happen at all');
 
     var b = botOn(OPEN, { allowRaise: false });
-    b.bot._opening = true;
+    b.bot.setOpening(true);
     ok(b.bot.raiseMode(b.info, b.base) === null,
        'raise trigger: allowRaise false still raised');
 
     var c2 = botOn(OPEN);
-    c2.bot._opening = true;
+    c2.bot.setOpening(true);
     var infoTop = {}; Object.keys(c2.info).forEach(function (k) { infoTop[k] = c2.info[k]; });
     infoTop.toppedOut = true;
     ok(c2.bot.raiseMode(infoTop, c2.base) === null,
        'raise trigger: raised while topped out, which is the one board a row kills');
-    ok(c2.bot._opening === false,
+    ok(c2.bot.opening() === false,
        'raise trigger: topped out did not end the opening, so it resumes raising ' +
        'the moment the board comes down');
 
@@ -475,7 +471,7 @@ function hostile() {
     }
 
     var a = freshBot();
-    a.bot.raiseMode = function () { return 'material'; };
+    a.bot._test = { raise: 'material' };
     var da = a.bot.decide();
     ok(da && (da.kind === 'raise' || da.via === 'raising'),
        'ladder: raising came back via `' + (da && da.via) + '` instead of taking or ' +
@@ -484,7 +480,7 @@ function hostile() {
     // AND WHILE THE ENGINE IS NOT OFFERING ONE, it holds rather than swaps.
     var a2 = freshBot();
     a2.st.preventManualRaise = true;
-    a2.bot.raiseMode = function () { return 'opening'; };
+    a2.bot._test = { raise: 'opening' };
     var da2 = a2.bot.decide();
     ok(da2 && da2.kind === 'hold' && da2.via === 'raising',
        'ladder: with the row not on offer the raise played `' + (da2 && da2.kind) + '` via `' +
@@ -492,7 +488,7 @@ function hostile() {
 
     // AND WITH THE RAISE OFF, the board is played normally.
     var c3 = freshBot();
-    c3.bot.raiseMode = function () { return null; };
+    c3.bot._test = { raise: null };
     var dc = c3.bot.decide();
     ok(dc && dc.via !== 'raising' && dc.kind !== 'raise',
        'ladder: raised with the raise off -- came back via `' + (dc && dc.via) + '`');
@@ -743,7 +739,6 @@ function hostile() {
 // available and the clock stopped, which is exactly the case the old rule shut
 // the shape branch on.
 (function () {
-    var real = bitoptions.options;
     function via(cols, stopTime) {
         var st = new P.Stack({ level: 10, seed: 101, countdown: false }), r, c;
         for (r = 1; r <= st.height; r++)
@@ -755,14 +750,8 @@ function hostile() {
         var b = bot._snapshot(), m = bit.maskState(b.grid, b.blocks, W, b.height);
         var ls = bit.legalSwapsOf(m), pick = null, i;
         for (i = 0; i < ls.length; i++) if (ls[i][0] === 1) { pick = ls[i]; break; }
-        bitoptions.options = function () {
-            return { now: [], next: [], cheapest: null, save: null, ready: 0,
-                     flatten: { swaps: [pick], duration: 4, lands: null, value: 1 },
-                     swapsConsidered: 0, refused: 0, unknown: 0 };
-        };
-        bot.raiseMode = function () { return null; };
-        var d;
-        try { d = bot.decide(); } finally { bitoptions.options = real; }
+        bot._test = { flatten: pick, raise: null };
+        var d = bot.decide();
         return { via: d && d.via, clear: bit.anyOneSwapClear(m), towering: bot.towering(m) };
     }
     //          one column five deep, the rest one -- spread 4
@@ -1269,14 +1258,11 @@ function hostile() {
     // question. Stubbed, because two boards differing ONLY in slab-readiness
     // cannot be built by hand -- and a term nothing separates is a term nothing
     // checks.
-    var realSlab = bitoptions.slabReadyFast;
-    var yes, no;
-    try {
-        bitoptions.slabReadyFast = function () { return true; };
-        yes = bot.idleScore(candOf(base), base, info);
-        bitoptions.slabReadyFast = function () { return false; };
-        no = bot.idleScore(candOf(base), base, info);
-    } finally { bitoptions.slabReadyFast = realSlab; }
+    bot._test = { slabReady: true };
+    var yes = bot.idleScore(candOf(base), base, info);
+    bot._test = { slabReady: false };
+    var no = bot.idleScore(candOf(base), base, info);
+    bot._test = null;
     ok(yes > no,
        'idle: a board that can put three against the slab scored no higher than ' +
        'one that cannot. That question already existed and reached one place -- ' +

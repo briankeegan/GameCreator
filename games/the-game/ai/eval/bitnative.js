@@ -9,14 +9,15 @@
     'EXTRAS', 'BREAKREADY', 'CLOSESBREAK', 'DIGGAIN', 'VOIDGAIN', 'SLABGAIN', 'SLABWORTH', 'MATNOW',
     'VALUE', 'WAYS', 'LANDSTOP', 'NSW', 'SW'];
   FIELDS.forEach(function (n, i) { F[n] = i; });
-  var WMAX, NCOL, MAXSLAB, OCC, INERT, GARB, BUSY, COL, SLAB, LOCK, ST_INTS, R_INTS, REC, MAXD;
+  var WMAX, NCOL, MAXSLAB, OCC, INERT, GARB, BUSY, COL, SLAB, SL, ST_INTS, R_INTS, REC, MAXD, TIMED = 0;
   var ex = null, mem = null, dmem = null, IN = 0, OUT = 0, LIST = 0, ODATA = 0, LANDS = 0, PARAM = 0, PCHAIN = 0, PCOMBO = 0;
   function load(bytes) {
     var inst = new WebAssembly.Instance(new WebAssembly.Module(bytes), { env: {} });
     ex = inst.exports;
-    var L = []; for (var i = 0; i < 14; i++) L.push(ex.bit_layout(i));
+    var L = []; for (var i = 0; i < 15; i++) L.push(ex.bit_layout(i));
     WMAX = L[0]; NCOL = L[1]; MAXSLAB = L[2]; OCC = L[3]; INERT = L[4]; GARB = L[5]; BUSY = L[6]; COL = L[7];
-    SLAB = L[8]; LOCK = L[9]; ST_INTS = L[10]; R_INTS = L[11]; REC = L[12]; MAXD = L[13];
+    SLAB = L[8]; SL = L[9]; ST_INTS = L[10]; R_INTS = L[11]; REC = L[12]; MAXD = L[13];
+    TIMED = ex.bit_timed() >> 2;
     IN = ex.bit_in() >> 2; OUT = ex.bit_out() >> 2; LIST = ex.bit_list() >> 2; LANDS = ex.bit_lands() >> 2;
     ODATA = ex.bit_odata() >> 3; PARAM = ex.bit_param() >> 3; PCHAIN = ex.bit_pchain() >> 3; PCOMBO = ex.bit_pcombo() >> 3;
     mem = dmem = null;
@@ -27,9 +28,10 @@
   function fits(st) {
     return st.W <= 6 && st.N < NCOL && (!st.slabs || st.slabs.length <= MAXSLAB);
   }
-  function put(st) {
+  function put(st) { putAt(IN, st); }
+  function putAt(b, st) {
     if (!fits(st)) throw new Error('bitnative: board exceeds the native layout');
-    var m = heap(), b = IN, c, a, i, stride = st.W + 2;
+    var m = heap(), c, a, i, stride = st.W + 2;
     m.fill(0, b, b + ST_INTS);
     m[b] = st.W; m[b + 1] = st.H; m[b + 2] = st.N; m[b + 3] = st.slabs ? st.slabs.length : 0;
     m[b + 4] = st.busy ? 1 : 0; m[b + 5] = st.bad ? 1 : 0;
@@ -39,8 +41,9 @@
       for (a = 1; a <= st.N; a++) m[b + COL + a * WMAX + c] = st.colour[a * stride + c];
     }
     for (i = 0; st.slabs && i < st.slabs.length; i++) {
-      for (c = 0; c <= st.W + 1; c++) m[b + SLAB + i * WMAX + c] = st.slabs[i][c] | 0;
-      m[b + LOCK + i] = st.slabLocked && st.slabLocked[i] ? 1 : 0;
+      for (c = 0; c <= st.W + 1; c++) m[b + SLAB + i * SL + c] = st.slabs[i][c] | 0;
+      m[b + SLAB + i * SL + WMAX] = st.slabLocked && st.slabLocked[i] ? 1 : 0;
+      m[b + SLAB + i * SL + WMAX + 1] = st.slabAir ? (st.slabAir[i] || 0) : 0;
     }
   }
   function take(b, bad) {
@@ -55,14 +58,15 @@
     }
     for (i = 0; i < m[b + 3]; i++) {
       var sm = new Int32Array(W + 2);
-      for (c = 0; c <= W + 1; c++) sm[c] = m[b + SLAB + i * WMAX + c];
-      out.slabs.push(sm); out.slabLocked.push(!!m[b + LOCK + i]);
+      for (c = 0; c <= W + 1; c++) sm[c] = m[b + SLAB + i * SL + c];
+      out.slabs.push(sm); out.slabLocked.push(!!m[b + SLAB + i * SL + WMAX]);
     }
     return out;
   }
   function result(st, wantSettled) {
     var m = heap(), o = OUT, scope = m[o];
     if (scope === 2) return { scope: st.bad, chain: 0, total: 0, rounds: 0 };
+    if (scope === 3) return { scope: 'refused', chain: 0, total: 0, rounds: 0, frames: m[o + 4] };
     if (scope === 1) return { scope: 'garbage-broke', chain: m[o + 1], total: m[o + 2], rounds: m[o + 3], garbage: m[o + 5],
                               converts: m[o + 6], frames: m[o + 4], voidAfter: m[o + 7] };
     return { scope: 'ok', chain: m[o + 1], total: m[o + 2], rounds: m[o + 3], frames: m[o + 4],
@@ -71,6 +75,23 @@
   function resolve(st, wantSettled) {
     put(st);
     ex.bit_resolve(wantSettled ? 1 : 0);
+    return result(st, wantSettled);
+  }
+  function putTimed(t, W) {
+    var m = heap(), b = TIMED, c, f = t.frames;
+    m[b] = t.popAt || 0; m[b + 1] = t.hover > 0 ? t.hover : 0; m[b + 2] = t.swap ? 1 : 0;
+    m[b + 3] = t.swap ? t.swap[0] : 0; m[b + 4] = t.swap ? t.swap[1] : 0; m[b + 5] = t.at || 0;
+    m[b + 6] = f.HOVER; m[b + 7] = f.FLASH; m[b + 8] = f.FACE; m[b + 9] = f.POP;
+    for (c = 0; c < WMAX; c++) {
+      m[b + 10 + c] = c <= W + 1 && t.chaining ? t.chaining[c] | 0 : 0;
+      m[b + 10 + WMAX + c] = c <= W + 1 && t.popping ? t.popping[c] | 0 : 0;
+      m[b + 10 + 2 * WMAX + c] = c <= W + 1 && t.hovering ? t.hovering[c] | 0 : 0;
+    }
+  }
+  function resolveTimed(st, wantSettled, t) {
+    put(st);
+    putTimed(t, st.W);
+    if (ex.bit_resolve_timed(wantSettled ? 1 : 0) !== 0) throw new Error('bitnative.resolveTimed: a fixed size was exceeded');
     return result(st, wantSettled);
   }
   function scan(st) {
@@ -88,7 +109,7 @@
     return out;
   }
 
-  var STOPIDS = {}, nStopIds = 0, priceKey = null;
+  var STOPIDS = { top: 1, free: 2 }, nStopIds = 2, priceKey = null;
   function prices(stopPrice, stopKey) {
     var d = dheap(), i;
     if (stopKey && priceKey === stopKey) return;
@@ -133,7 +154,7 @@
     var d, i, stopPrice = timing.stopPrice || null, stopKey = timing.stopKey || '';
     var W = st.W, avoid = timing.avoidSwap || [];
     put(st);
-    if (stopPrice) prices(stopPrice, stopKey);
+    if (stopPrice) { prices(stopPrice, stopKey); ex.bit_price_dirty(); }
     if (stopKey && STOPIDS[stopKey] === undefined) STOPIDS[stopKey] = ++nStopIds;
     var overhead = timing.overhead || 0;
     d = dheap();
@@ -174,5 +195,56 @@
              swapsConsidered: d[o + 5], refused: d[o + 3], unknown: d[o + 4],
              baseBreak: d[o + 6] < 0 ? null : d[o + 6] === 1 };
   }
-  return { fits: fits, resolve: resolve, scan: scan, load: load, options: options };
+  function botNew(tab) {
+    var id = ex.bot_new();
+    if (id < 0) throw new Error('bitnative: too many bots');
+    var d = dheap(), b = ex.bot_tab(id) >> 3;
+    for (var i = 0; i < tab.length; i++) d[b + i] = tab[i];
+    return id;
+  }
+  function botIn() { return { d: dheap(), at: ex.bot_in() >> 3 }; }
+  function botStates(base, risen, tmst, timed) {
+    putAt(IN, base);
+    if (risen) putAt(ex.bot_risen() >> 2, risen);
+    if (tmst) { putAt(ex.bot_tmst() >> 2, tmst); putTimed(timed, tmst.W); }
+  }
+  function botDecide(id) {
+    var r = ex.bot_decide(id);
+    priceKey = null;
+    if (r !== 0) throw new Error('bitnative.botDecide: a fixed size was exceeded');
+    return { d: dheap(), out: ex.bot_out() >> 3, counts: ex.bot_counts(id) >> 3 };
+  }
+  function botTab(id) { return { d: dheap(), at: ex.bot_tab(id) >> 3 }; }
+  function botPut(which, st) { putAt(which === 'risen' ? ex.bot_risen() >> 2 : IN, st); }
+  function botTest(id, fn) {
+    var v = ex.bot_test(id, fn);
+    return { v: v, d: dheap(), out: ex.bot_out() >> 3 };
+  }
+  function botPoolMasks(i, bad) { return take(ex.bot_pool(i) >> 2, bad); }
+  function deadlyCalls() { return ex.bot_deadly_calls(); }
+  function opening(id, set) { return ex.bot_opening(id, set === undefined ? -1 : (set ? 1 : 0)); }
+  function nn(v) { return v === null || v === undefined ? NaN : Number(v); }
+  function putRecords(list) {
+    var d = dheap(), base = ODATA + 64 + 4 * REC, i, j;
+    for (i = 0; i < list.length; i++) {
+      var o = list[i], b = base + i * REC, sw = o.swaps || [];
+      d.fill(0, b, b + REC);
+      d[b + F.KIND] = o.kind === 'chain' ? 1 : 0; d[b + F.SIZE] = o.size || 0; d[b + F.FRAMES] = o.frames || 0;
+      d[b + F.CHAIN] = o.chain || 0; d[b + F.TOTAL] = o.total || 0; d[b + F.GARBAGE] = o.garbage || 0;
+      d[b + F.CONVERTS] = o.converts || 0; d[b + F.VOID] = o.voidAfter || 0; d[b + F.DURATION] = o.duration || 0;
+      d[b + F.TALL] = nn(o.tall); d[b + F.BUMPS] = nn(o.bumps); d[b + F.MAT] = nn(o.mat); d[b + F.LOW] = nn(o.low);
+      d[b + F.SPREAD] = nn(o.spread); d[b + F.VOIDROWS] = nn(o.voidRows); d[b + F.SLABGAP] = nn(o.slabGap);
+      d[b + F.HASSHAPE] = o.tall !== null && o.tall !== undefined ? 1 : 0;
+      d[b + F.BREAKS] = o.breaks ? 1 : 0; d[b + F.LEVELS] = o.levels ? 1 : 0; d[b + F.OPENSHOLE] = o.opensHole ? 1 : 0;
+      d[b + F.EXTRAS] = 1;
+      d[b + F.BREAKREADY] = o.breakReady === true ? 1 : o.breakReady === false ? 0 : -1;
+      d[b + F.CLOSESBREAK] = o.closesBreak ? 1 : 0; d[b + F.DIGGAIN] = o.digGain || 0; d[b + F.VOIDGAIN] = o.voidGain || 0;
+      d[b + F.SLABGAIN] = o.slabGain || 0; d[b + F.SLABWORTH] = o.slabWorth || 0; d[b + F.MATNOW] = nn(o.matNow);
+      d[b + F.NSW] = Math.min(sw.length, MAXD);
+      for (j = 0; j < sw.length && j < MAXD; j++) { d[b + F.SW + 2 * j] = sw[j][0]; d[b + F.SW + 2 * j + 1] = sw[j][1]; }
+    }
+  }
+  return { fits: fits, resolve: resolve, resolveTimed: resolveTimed, scan: scan, load: load, options: options,
+           botNew: botNew, botIn: botIn, botStates: botStates, botDecide: botDecide, botTab: botTab, botPut: botPut, botTest: botTest,
+           botPoolMasks: botPoolMasks, deadlyCalls: deadlyCalls, opening: opening, putRecords: putRecords };
 }));
