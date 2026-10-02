@@ -177,8 +177,7 @@ function converting(board) {
   return null;
 }
 // How far a grid is toward lining up with `want`: per column, its top panel
-// below the lowest garbage of that colour, and the one under it too, or two
-// of that colour beside the cell the column's panel lands in.
+// below the lowest garbage of that colour, and the one under it too.
 var PAIR = 5;
 function pairs(grid, want) {
   var G = grid.length, r, c, s = 0;
@@ -187,19 +186,14 @@ function pairs(grid, want) {
     if (!want[c]) continue;
     var t = 0;
     for (r = 1; r < G; r++) if (grid[r] && grid[r][c] > 0) t = r;
-    var v = t && grid[t][c] === want[c] ? (t > 1 && grid[t - 1][c] === want[c] ? PAIR : 1) : 0;
-    // or two of it beside the cell it lands in, t + 1
-    var L = t + 1, row = L < G ? grid[L] : null, h = 0;
-    function at(x) { return row && x >= 1 && x <= 6 && row[x] === want[c]; }
-    if (row && ((at(c - 2) && at(c - 1)) || (at(c - 1) && at(c + 1)) || (at(c + 1) && at(c + 2)))) h = PAIR;
-    s += Math.max(v, h);
+    if (t && grid[t][c] === want[c]) s += t > 1 && grid[t - 1][c] === want[c] ? PAIR : 1;
   }
   return s;
 }
 // How near the row under the lowest garbage is to a match touching it: per
 // column resting on the garbage, a pair standing under it and a pair beside it
 // in that row; less how uneven the stack under it is.
-var TOUCH_DEPTH = 14, TOUCH_BEAM = 80;
+var TOUCH_DEPTH = 8, TOUCH_BEAM = 30;
 // How uneven the stack under the lowest garbage is: each column's shortfall
 // from the tallest, squared, so a panel moved from a tall column into a well
 // counts though the tallest stays as it was. Garbage rests on the tallest column, so a well is a
@@ -380,6 +374,27 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
 }
 
 
+// PANELS UP TO THE ROOM ARE KEPT, PAST IT SPENT. A pop turns the bottom row
+// of every piece it holds into panels, so the stack it leaves is the panels
+// there now and those cells (convertingOf). Up to ROOM panels (eight rows)
+// each is worth 100; past it each costs 200, so a pop about to bury the stack
+// is met by clearing. A drill of one-row pieces converts them all at once.
+var ROOM = 48;
+function convertingOf(board) {
+  var n = 0;
+  board.panels.forEach(function (row) { if (row) for (var c = 1; c <= 6; c++) { var p = row[c]; if (p && p.isGarbage && p.state === 'matched' && p.yOffset === -1) n++; } });
+  return n;
+}
+function keepRank(b, converting) {
+  var total = panelsOf(b) + (converting || 0);
+  return -100 * Math.min(total, ROOM) + 200 * Math.max(0, total - ROOM);
+}
+function panelsOf(b) {
+  var n = 0;
+  if (b && b.grid) for (var r = 1; r < b.grid.length; r++) { var row = b.grid[r]; if (row) for (var c = 1; c <= b.width; c++) if (row[c] > 0) n++; }
+  return n;
+}
+
 // ---------------------------------------------------------------- the hands
 // Hands(p): keys(board, hold, kind, move, arrivals) is the decision played
 // from `board` as { inputs, holds } per frame, or null when it is refused.
@@ -399,4 +414,4 @@ Hands.prototype.idle = function (board, hold, arrivals) {
   return { bits: k.inputs[0], hold: k.holds[0] };
 };
 
-module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, pending: pending, arrivalsFrom: arrivalsFrom, threat: threat, top: top, gridTop: gridTop, popLeft: popLeft, lowestGarbageRow: lowestGarbageRow, breakMoves: breakMoves, Hands: Hands };
+module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, pending: pending, arrivalsFrom: arrivalsFrom, threat: threat, top: top, gridTop: gridTop, popLeft: popLeft, lowestGarbageRow: lowestGarbageRow, breakMoves: breakMoves, Hands: Hands, convertingOf: convertingOf, keepRank: keepRank, panelsOf: panelsOf, ROOM: ROOM };
