@@ -33,6 +33,7 @@ function same(a, b, what) {
   if (a.dead && !a.b) return assert(!b.b, what + ': a board one way only');
   assert.strictEqual(String(a.b.key), String(b.b.key), what + ': key');
   assert.deepStrictEqual(a.b.grid, b.b.grid, what + ': grid');
+  assert.deepStrictEqual(a.pos, b.pos, what + ': cursor');
 }
 function stepsFrom(node) {
   var out = node.b.legalSwaps().map(function (m) { return [node, 'swap', m, 0]; });
@@ -41,10 +42,20 @@ function stepsFrom(node) {
   out.push([node, 'settle', null, 0]);
   return out;
 }
+// Each board three ways: as it is; a raise held through the walks; garbage
+// landing while they walk. A swap's walk is played once for all a parent's
+// swaps (search.h SHARED WALKS), so whatever moves under it must move alike.
+var ROOTS = [
+  { hold: { left: 0, started: false }, arrivals: [] },
+  { hold: { left: 14, started: false }, arrivals: [] },
+  { hold: { left: 0, started: false }, arrivals: [{ at: 3, width: 6, height: 2, isChain: true }, { at: 9, width: 4, height: 1, isChain: false }] }
+];
 var played = 0;
-boards.forEach(function (board, bi) {
+boards.forEach(function (board, bj) {
+  ROOTS.forEach(function (R, ri) {
+  var bi = bj + '/' + ri;
   A.reset(); B.reset();
-  var ra = A.root(board.copy(), { left: 0, started: false }, [], false), rb = B.root(board.copy(), { left: 0, started: false }, [], false);
+  var ra = A.root(board.copy(), R.hold, R.arrivals, false), rb = B.root(board.copy(), R.hold, R.arrivals, false);
   var sa = stepsFrom(ra), got = A.advanceMany(sa), live = [];
   sa.forEach(function (s, i) {
     var want = B.advance(rb, s[1], s[2], s[3]), what = 'board ' + bi + ' ' + s[1] + ' ' + JSON.stringify(s[2]);
@@ -57,6 +68,7 @@ boards.forEach(function (board, bi) {
     var s2 = stepsFrom(p[0]), g2 = A.advanceMany(s2);
     s2.forEach(function (s, i) { same(g2[i], B.advance(p[1], s[1], s[2], s[3]), 'board ' + bi + ' line ' + li + ' ' + s[1] + ' ' + JSON.stringify(s[2])); played++; });
   });
+  });
 });
-console.log('ok: ' + played + ' steps on ' + boards.length + ' boards, batched on 3 threads, the same as one at a time');
+console.log('ok: ' + played + ' steps on ' + boards.length + ' boards (' + ROOTS.length + ' ways each), batched on 3 threads, the same as one at a time');
 process.exit(0);

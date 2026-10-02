@@ -1162,6 +1162,7 @@ EXPORT(nb_clone) void nb_clone(Board *dst, Board *src) { cloneBoard(dst, src); }
 #define NODE_BREAKS(b) ((b)->unseenBreaks)
 #define STEP_STATS 1
 #define COUNTDOWN 1
+#define SHARED_WALK 1
 #define SETTLE_CAP 900   // frames a settle runs at most, as the bot's resolve (engineboard.js settle)
 #include "search.h"
 // What node i's step did (MK_SETTLE), into the io body: clears, panels
