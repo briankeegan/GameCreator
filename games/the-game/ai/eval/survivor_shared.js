@@ -362,6 +362,27 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
   return { depth: any ? 3 : 0, moves: found };
 }
 
+// PANELS UP TO THE ROOM ARE KEPT, PAST IT SPENT. A pop turns the bottom row
+// of every piece it holds into panels, so the stack it leaves is the panels
+// there now and those cells (convertingOf). Up to ROOM panels (eight rows)
+// each is worth 100; past it each costs 200, so a pop about to bury the stack
+// is met by clearing. A drill of one-row pieces converts them all at once.
+var ROOM = 48;
+function convertingOf(board) {
+  var n = 0;
+  board.panels.forEach(function (row) { if (row) for (var c = 1; c <= 6; c++) { var p = row[c]; if (p && p.isGarbage && p.state === 'matched' && p.yOffset === -1) n++; } });
+  return n;
+}
+function keepRank(b, converting) {
+  var total = panelsOf(b) + (converting || 0);
+  return -100 * Math.min(total, ROOM) + 200 * Math.max(0, total - ROOM);
+}
+function panelsOf(b) {
+  var n = 0;
+  if (b && b.grid) for (var r = 1; r < b.grid.length; r++) { var row = b.grid[r]; if (row) for (var c = 1; c <= b.width; c++) if (row[c] > 0) n++; }
+  return n;
+}
+
 // ---------------------------------------------------------------- the hands
 // Hands(p): keys(board, hold, kind, move, arrivals) is the decision played
 // from `board` as { inputs, holds } per frame, or null when it is refused.
@@ -415,4 +436,4 @@ Hands.prototype.idle = function (board, hold, arrivals) {
   return { bits: k.inputs[0], hold: k.holds[0] };
 };
 
-module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, pending: pending, arrivalsFrom: arrivalsFrom, threat: threat, top: top, gridTop: gridTop, popLeft: popLeft, lowestGarbageRow: lowestGarbageRow, breakMoves: breakMoves, Hands: Hands, busyPair: busyPair };
+module.exports = { profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, pending: pending, arrivalsFrom: arrivalsFrom, threat: threat, top: top, gridTop: gridTop, popLeft: popLeft, lowestGarbageRow: lowestGarbageRow, breakMoves: breakMoves, Hands: Hands, busyPair: busyPair, convertingOf: convertingOf, keepRank: keepRank, panelsOf: panelsOf, ROOM: ROOM };
