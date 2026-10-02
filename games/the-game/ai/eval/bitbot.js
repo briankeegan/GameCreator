@@ -2694,10 +2694,17 @@
         // _waitForDrain still fires a clear rather than let it drain.
         // TOPPED OUT THE WHOLE BOARD IS THE RESERVE. Nothing lands while the board
         // is topped out, so a clear that converts nothing buys only time, and the
-        // health guard is what buys time; every panel is kept for a break.
+        // health guard is what buys time; every panel is kept for a break -- while
+        // there is garbage on the board to break. With none on screen the board is
+        // topped out by panels and the slab waits above it, out of reach: clearing is
+        // the only way it comes down, and the ordinary floor applies.
+        function slabOnScreen() {
+            for (var gc0 = 1; gc0 <= W; gc0++) if (base.garb[gc0]) return true;
+            return false;
+        }
         function spendsReserve(r, after) {
             if (!r || !(r.total > 0) || r.brokeGarbage) return false;
-            if (info.toppedOut) return true;
+            if (info.toppedOut && slabOnScreen()) return true;
             var sh = bitoptions.shapeOf(after);
             return !!sh && sh.mat < WORKING_ROWS;
         }
@@ -3302,7 +3309,7 @@
 
         if (rev && rev.best && rev.best.swap && !rev.best.broke && (rev.best.total || 0) > 0) {
             var rsh = bitoptions.shapeOf(base);
-            if (info.toppedOut || (rsh && rsh.mat - rev.best.total / W < WORKING_ROWS)) rev = null;
+            if ((info.toppedOut && slabOnScreen()) || (rsh && rsh.mat - rev.best.total / W < WORKING_ROWS)) rev = null;
         }
         if (rev && rev.best && rev.best.swap) {
             this.counts.revealSwaps++;
