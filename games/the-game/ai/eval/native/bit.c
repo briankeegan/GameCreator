@@ -871,12 +871,42 @@ static void resolveRaw(const int32_t *st, int32_t *r, int wantSettled) { resolve
 static void resolveM(const int32_t *st, int32_t *r, int wantSettled) { resolveRaw(st, r, wantSettled); }
 typedef struct { int32_t r[R_INTS]; ST st; } Res;
 static LOCAL Res SETTLE_SPILL;
+#define SMCAP (1 << 17)
+typedef struct { u64 h; int32_t gen, at; } SMemo;
+static SMemo SMEMO_MAIN[SMCAP];
+static LOCAL SMemo *SMEMO;
+static LOCAL int32_t smGen, smN;
+static u64 stHash(const int32_t *st, int n) {
+  u64 a = 0x9E3779B97F4A7C15ull, b = 0xC2B2AE3D27D4EB4Full;
+  int i = 0;
+  for (; i + 1 < n; i += 2) {
+    a = (a ^ (uint32_t)st[i]) * 0x100000001B3ull;
+    b = (b ^ (uint32_t)st[i + 1]) * 0x100000001B3ull;
+  }
+  if (i < n) a = (a ^ (uint32_t)st[i]) * 0x100000001B3ull;
+  a ^= b * 0x9E3779B97F4A7C15ull;
+  return a ^ (a >> 31);
+}
 static Res *settleOf(const int32_t *st) {
-  if (arenaN + R_INTS + ST_INTS > arenaCap) { failed = 1; return &SETTLE_SPILL; }
-  Res *out = (Res *)(ARENA + arenaN);
+  int n = stlen(st);
+  u64 h = stHash(st, n);
+  unsigned i = (unsigned)(h >> 32) & (SMCAP - 1);
+  for (; SMEMO[i].gen == smGen; i = (i + 1) & (SMCAP - 1)) {
+    if (SMEMO[i].h != h) continue;
+    const int32_t *p = ARENA + SMEMO[i].at;
+    int j = 0;
+    if (p[0] == n) while (j < n && p[1 + j] == st[j]) j++;
+    if (j == n && p[0] == n) return (Res *)(p + 1 + n);
+  }
+  if (arenaN + 1 + n + R_INTS + ST_INTS > arenaCap) { failed = 1; return &SETTLE_SPILL; }
+  int32_t *p = ARENA + arenaN;
+  p[0] = n;
+  for (int j = 0; j < n; j++) p[1 + j] = st[j];
+  Res *out = (Res *)(p + 1 + n);
   nSettle++;
   resolveRaw(st, out->r, 1);
-  arenaN += R_INTS + (out->r[R_SCOPE] == SC_OK ? stlen(out->st) : 0);
+  if (smN < SMCAP / 2) { SMEMO[i].gen = smGen; SMEMO[i].h = h; SMEMO[i].at = arenaN; smN++; }
+  arenaN += 1 + n + R_INTS + (out->r[R_SCOPE] == SC_OK ? stlen(out->st) : 0);
   return out;
 }
 
@@ -1229,7 +1259,7 @@ static LOCAL int threadReady;
 static void threadInit(void) {
   if (threadReady) return;
   threadReady = 1;
-  ARENA = ARENA_MAIN; QUIET = QUIET_MAIN;
+  ARENA = ARENA_MAIN; QUIET = QUIET_MAIN; SMEMO = SMEMO_MAIN; smGen = 1;
   __builtin_memset(ARENA_MAIN, 0, 16ul << 20);
   __builtin_memset(QUIET_MAIN, 0, sizeof(QUIET_MAIN));
   __builtin_memset(ODATA, 0, 8ul << 20);
@@ -1319,6 +1349,7 @@ __attribute__((export_name("bit_thread_init"))) void bit_thread_init(int32_t id)
   SAVES.s = (Slot *)grab(TCAP * sizeof(Slot)); ANYB.s = (Slot *)grab(TCAP * sizeof(Slot));
   STOPS_T.s = (Slot *)grab(TCAP * sizeof(Slot)); FIRE.s = (Slot *)grab(TCAP * sizeof(Slot));
   ARENA = (int32_t *)grab((unsigned long)arenaCap * 4);
+  SMEMO = (SMemo *)grab(SMCAP * sizeof(SMemo)); smGen = 1;
   QUIET = (Res *)grab(2ul * qcap * sizeof(Res));
   ODS = (double *)grab(((unsigned long)odCap + 4) * REC * 8 + 64 * 8);
   LDS = (int32_t *)grab(ST_INTS * 4);
@@ -1572,7 +1603,7 @@ static LOCAL Res R1;
 // The whole search. Returns 0, or -1 when a fixed size was exceeded (a bug).
 static LOCAL int nOptRuns, nOptDepth;
 static int optionsRun(const int32_t *st0, const double *P, const int32_t *first, int nfirst) {
-  threadInit(); arenaN = 0; expanding = 0;
+  threadInit(); arenaN = 0; smGen++; smN = 0; expanding = 0;
   nOptRuns++; nOptDepth += (int)P[11];
   failed = 0;
   FPR = P[0]; DEADLINE = P[1]; LOCKP = P[2]; SPEND = (int)P[3]; LEAN = (int)P[4];
