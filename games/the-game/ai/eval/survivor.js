@@ -128,7 +128,7 @@ function Match(level) {
   this.arrivals = [];      // garbage on its way (arrivalsOf)
   this.line = null;        // the proven line after the plan: { steps, at } (follow)
   this.knew = [];          // the garbage on its way the plan was decided knowing
-  this.stats = { frames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0, unforeseen: 0, reasked: 0, revealed: 0, lineup: 0, tookLineup: 0, touch: 0, tookTouch: 0, unasked: 0, rewalked: 0, break1: 0, took1: 0, break2: 0, took2: 0, break3: 0, took3: 0 };
+  this.stats = { frames: 0, frameMs: 0, slowFrames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0, unforeseen: 0, reasked: 0, revealed: 0, lineup: 0, tookLineup: 0, touch: 0, tookTouch: 0, unasked: 0, rewalked: 0, break1: 0, took1: 0, break2: 0, took2: 0, break3: 0, took3: 0 };
   this.history = []; this.decided = []; this.asked = []; this.snaps = []; this.dumped = false;
   this.msPerFrame = 1000 / 60; this.wall = 0;   // how fast frames come (soon)
   // A question from the last match is not this one's: its answer is dropped.
@@ -152,6 +152,43 @@ Match.prototype.ahead = function () {
 // and the garbage still to land after it (SH.land: what the game holds back
 // is still pending).
 Match.prototype.predict = function (board, at, hold, from) {
+  var fast = this.predictNative(board, at, hold, from);
+  if (fast && process.env.GC_SURVIVOR_CHECK_PREDICT) {
+    var slow = this.predictJS(board, at, hold, from), d = differ(slow.board, fast.board);
+    if (d || JSON.stringify(slow.hold) !== JSON.stringify(fast.hold) || JSON.stringify(slow.pending) !== JSON.stringify(fast.pending)) throw new Error('survivor: predicted natively, not as played: ' + (d || 'hold or pending'));
+  }
+  return fast || this.predictJS(board, at, hold, from);
+};
+// The same on the engine (native/pa.c): a frame the plan has nothing for
+// presses nothing, so a raise still held there leaves it to predictJS (null).
+var NB = null;
+Match.prototype.predictNative = function (board, at, hold, from) {
+  if (!NB) { NB = require(path.join(__dirname, 'native.js')).server; NB.init(); }
+  var X = NB.exports(), h = { left: hold.left, started: hold.started }, arrivals = SH.pending(from || this.arrivals), b = NB.fromStack(board);
+  for (var clock = board.clock; clock < at && X.nb_over_clock(b) <= 0; clock = X.nb_clock(b)) {
+    var planned = this.plan[clock], bits = 0;
+    if (planned !== undefined) { bits = planned.bits; h = { left: planned.hold.left, started: planned.hold.started }; }
+    else if (h.left) { X.nb_free(b); return null; }
+    X.nb_set_input(b, bits & ~IN.swap);
+    if (bits & IN.swap) X.nb_press_swap(b);
+    if (X.nb_run(b)) { X.nb_free(b); return null; }
+    // SH.land, on the engine's board
+    var sw = X.nb_stopwatch(b), first = Infinity, i;
+    for (i = 0; i < arrivals.length; i++) if (arrivals[i].capped && arrivals[i].at <= sw && arrivals[i].at < first) first = arrivals[i].at;
+    var open = first < Infinity && X.nb_ninc(b) < SH.CAP;
+    for (i = 0; i < arrivals.length; i++) {
+      var a = arrivals[i], g = a.g;
+      if (a.at > sw || (a.capped && !(open && a.at === first))) continue;
+      X.nb_receive(b, g.width, g.height, g.isChain ? 1 : 0, g.isMetal ? 1 : 0, g.frameEarned === undefined ? sw : g.frameEarned,
+                   g.finalized === undefined || g.finalized === null ? -2147483648 : g.finalized ? 1 : 0);
+      arrivals.splice(i--, 1);
+    }
+  }
+  var st = NB.toStack(b, board);
+  X.nb_free(b);
+  return { board: st, hold: h, pending: arrivals };
+};
+Match.prototype.predictJS = function (board, at, hold, from) {
   var st = board.copy(), h = { left: hold.left, started: hold.started }, arrivals = SH.pending(from || this.arrivals);
   while (st.clock < at && st.gameOverClock <= 0) {
     var planned = this.plan[st.clock], bits;
@@ -240,7 +277,7 @@ Match.prototype.take = function (truth) {
     this.line = a.line && (a.lineFree || a.lineAt === this.nextAt) && at === a.at ? { steps: a.line.slice(), at: this.nextAt } : null;
   }
 };
-Match.prototype.frame = function (truth, arrivals) {
+Match.prototype.frame = function (truth, arrivals, fresh) {
   var now = truth.clock, d, before = this.arrivals;
   this.now = now;
   this.arrivals = arrivals;
@@ -293,7 +330,10 @@ Match.prototype.frame = function (truth, arrivals) {
   if (planned) { bits = planned.bits; this.hold = { left: planned.hold.left, started: planned.hold.started }; delete this.plan[now]; }
   else { var id = HANDS.idle(truth, this.hold, arrivals); bits = id.bits; this.hold = id.hold; this.stats.idle++; }
   // What this frame should make of the board.
-  var next = truth.copy();
+  // truth as it came, to run on: made again from the state, which costs a
+  // seventh of a copy (fresh), or a copy when there is no state to make it from.
+  var next = fresh ? fresh() : truth.copy();
+  if (process.env.GC_SURVIVOR_CHECK_FRESH && fresh && JSON.stringify(next) !== JSON.stringify(truth)) throw new Error('survivor: the board made again is not the one that came');
   next.setInput(bits & ~IN.swap);
   if (bits & IN.swap) next.pressSwap = true;
   next.run();
@@ -401,14 +441,22 @@ var server = net.createServer(function (sock) {
         match = new Match({ levelData: m.levelData, behaviours: m.behaviours, stackOverConditions: m.stackOverConditions });
         reply = { ok: true };
       } else if (m.t === 'f') {
+        var t0 = process.hrtime.bigint();
         if (!match) { reply = { input: 0 }; }
         else {
-          var truth = PA.fromLua(m.state, match.level, new PA.Unseen());
-          reply = { clock: truth.clock, input: match.frame(truth, arrivalsOf(m.state)), next: match.planned(truth.clock + 1, NEXT) };
+          var truth = PA.fromLua(m.state, match.level, new PA.Unseen()), state = m.state;
+          reply = { clock: truth.clock, input: match.frame(truth, arrivalsOf(state), function () { return PA.fromLua(state, match.level, new PA.Unseen()); }), next: match.planned(truth.clock + 1, NEXT) };
         }
       } else if (m.t === 'bye') { if (match) { console.log('match over: ' + JSON.stringify(match.stats)); match.dump(); } match = null; reply = { ok: true }; }
       sock.write(JSON.stringify(reply) + '\n');
-      if (match && m.t === 'f') match.afterFrame();
+      if (match && m.t === 'f') {
+        match.afterFrame();
+        // A frame's time here, the answer and the question after it, is what
+        // the link waits on for the next (SurvivalLink waits 10 ms).
+        var fms = Number(process.hrtime.bigint() - t0) / 1e6;
+        if (fms > match.stats.frameMs) match.stats.frameMs = Math.round(fms * 10) / 10;
+        if (fms > 8) match.stats.slowFrames++;
+      }
     }
   }
   sock.on('data', function (chunk) { buf += chunk; if (!resume) pump(); });

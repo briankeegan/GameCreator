@@ -69,6 +69,7 @@ typedef struct Board {
   int32_t quiet, noQuiet;   // see QUIET; not part of the board, never sent
   int32_t hi;               // see SETTLED ROWS; not part of the board, never sent
   int32_t cdLeft;           // see COUNTDOWN FRAMES; not part of the board, never sent
+  int32_t popSeen;          // garbage popping was updated this frame (updatePanels); not part of the board
   // WHAT A STEP DID (search.h MK_SETTLE): each clear's size and the chain
   // counter it reached, panels cleared, garbage cells converted and the most
   // stop time one clear paid. Counted since the step began; not part of the
@@ -262,6 +263,7 @@ static void updateSwapping(Board *b, Panel *p) {
   }
 }
 static void updateMatched(Board *b, Panel *p) {
+  if (p->f[ISGARBAGE]) b->popSeen = 1;
   decrementTimer(p);
   if (p->f[ISGARBAGE] && p->f[TIMER] == p->f[POPTIME]) onPop(b, p);
   if (p->f[TIMER] != 0) return;
@@ -861,15 +863,31 @@ static int poppingRow(Board *b, int r) {
     if (f[TIMER] <= 1 || f[TIMER] - 1 == f[POPTIME]) return 0;
   }
   for (int c = 1; c <= W; c++) row[c].f[TIMER]--;
+  b->popSeen = 1;
+  return 1;
+}
+// A ROW AT REST: every cell normal with its flags clear, and each panel's cell
+// below unchanged this frame (that row was updated already). updatePanel
+// would clear flags already clear and find nothing below to react to.
+static int quietRow(const Board *b, int r) {
+  const Panel *row = b->p[r], *under = b->p[r - 1];
+  for (int c = 1; c <= W; c++) {
+    const int32_t *f = row[c].f;
+    if (f[STATE] != NORMAL || f[STATECHANGED] || f[PROPCHAIN] || f[PROPFALL] || f[MATCHING]) return 0;
+    if (f[COLOR] == 0) continue;
+    if (f[ISGARBAGE] || under[c].f[STATECHANGED]) return 0;
+  }
   return 1;
 }
 static void updatePanels(Board *b) {
   b->shakeTimeOnFrame = 0;
+  b->popSeen = 0;
   // A panel that falls moves to the cell below, already updated; the one it
   // trades with comes up into this cell, which is not visited again.
   int n = rowsTo(b), r, c;
   for (r = 1; r < n; r++) {
     if (r > 1 && restingRow(b, r)) continue;
+    if (quietRow(b, r)) continue;
     if (poppingRow(b, r)) continue;
     for (c = 1; c <= W; c++) updatePanel(b, P(b, r, c));
   }
@@ -928,7 +946,8 @@ static void runPhysics(Board *b) {
     if (b->chainCounter != 0 && !hasChainingPanels(b)) b->chainCounter = 0;
     removeExtraRows(b);
     b->quiet = !b->noQuiet && isQuiet(b);
-    b->cdLeft = !b->quiet && !b->noQuiet && b->nActive > 0 && !b->swappingCount && !swapQueued(b) ? countdownRoom(b) : 0;
+    // countdownRoom needs garbage popping, and every cell of it was updated just now
+    b->cdLeft = b->popSeen && !b->quiet && !b->noQuiet && b->nActive > 0 && !b->swappingCount && !swapQueued(b) ? countdownRoom(b) : 0;
   }
   if (checkDeath(b)) recordDeath(b);
 }
@@ -1152,6 +1171,12 @@ EXPORT(nb_game_over) int nb_game_over(Board *b) { return b->gameOver; }
 EXPORT(nb_no_quiet) void nb_no_quiet(Board *b, int off) { b->noQuiet = off; if (off) b->quiet = 0; }
 EXPORT(nb_quiet) int nb_quiet(Board *b) { return b->quiet; }
 EXPORT(nb_clock) int nb_clock(Board *b) { return b->clock; }
+// What survivor.js predict needs of a board it plays on: swap pressed as the
+// frame loop presses it, the garbage queued, the frame it ends and its stopwatch.
+EXPORT(nb_press_swap) void nb_press_swap(Board *b) { b->pressSwap = 1; }
+EXPORT(nb_ninc) int nb_ninc(Board *b) { return b->ninc; }
+EXPORT(nb_over_clock) int nb_over_clock(Board *b) { return b->gameOverClock; }
+EXPORT(nb_stopwatch) int nb_stopwatch(Board *b) { return b->stopWatch; }
 static void cloneBoard(Board *dst, const Board *src) { copyBoard(dst, src); }
 EXPORT(nb_clone) void nb_clone(Board *dst, Board *src) { cloneBoard(dst, src); }
 
