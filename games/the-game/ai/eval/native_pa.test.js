@@ -86,20 +86,22 @@ var BIT = { right: 1, left: 2, down: 4, up: 8, swap: 16, raise: 32 };
 var quiet = 0, frames = 0, runs = 0, deaths = 0, presses = 0, denied = 0, garbage = 0, metal = 0, copies = 0, rowsRisen = 0, matches = 0;
 while (frames < FRAMES) {
   var b = boards[runs++ % boards.length];
-  var js = b.copy(), h = N.fromStack(js), dir = null, held = 0, raise = 0;
+  var js = b.copy(), h = N.fromStack(js), dir = null, held = 0, raise = 0, calm = 0;
   check(js, h, 'round trip of board ' + (runs - 1));
   var len = 200 + rand(600);
   for (var f = 0; f < len && frames < FRAMES; f++, frames++) {
     if (held-- <= 0) { dir = [null, null, 'up', 'down', 'left', 'right'][rand(6)]; held = rand(3) ? rand(4) : 12 + rand(10); }
     if (raise > 0) raise--; else if (rand(90) === 0) raise = 1 + rand(30);
-    var bits = (dir ? BIT[dir] : 0) | (raise > 0 ? BIT.raise : 0) | (rand(12) === 0 ? BIT.swap : 0);
+    // Calm stretches, the cursor moving and nothing pressed, let pops run out (COUNTDOWN FRAMES).
+    if (calm > 0) calm--; else if (rand(40) === 0) calm = 40 + rand(120);
+    var bits = (dir ? BIT[dir] : 0) | (raise > 0 && !calm ? BIT.raise : 0) | (!calm && rand(12) === 0 ? BIT.swap : 0);
     js.setInput(bits); X.nb_set_input(h, bits);
-    if (rand(5) === 0) {
+    if (!calm && rand(5) === 0) {
       var r1 = js.tryQueueSwap(js.curRow, js.curCol), r2 = X.nb_try_queue_swap(h, js.curRow, js.curCol) === 1;
       assert.strictEqual(r2, r1, 'tryQueueSwap at frame ' + frames);
       presses++;
     }
-    if (rand(100) === 0) {
+    if (!calm && rand(100) === 0) {
       var k = rand(4), g;
       if (k === 0) g = { width: 6, height: 1 + rand(6), isChain: true, isMetal: false, finalized: true };
       else if (k === 1) { g = { width: 6, height: 1, isChain: false, isMetal: true, finalized: null }; metal++; }
@@ -129,5 +131,8 @@ while (frames < FRAMES) {
 }
 // pa.c QUIET frames skip the panel passes: the frames above must have held some.
 if (!quiet) { console.log('FAIL: no quiet frame was played, so the shortcut went untested'); process.exit(1); }
-console.log('ok: ' + frames + ' frames identical over ' + runs + ' runs (' + quiet + ' quiet, ' + deaths + ' deaths, ' + matches + ' matches, ' + rowsRisen +
+var light = X.ns_frame_stats ? X.ns_frame_stats(8, 0) : 0;
+// Garbage pops are rare in random play: 565 countdown frames at this seed.
+if (light < 300) { console.log('FAIL: ' + light + ' countdown frames were played, so the shortcut went untested'); process.exit(1); }
+console.log('ok: ' + frames + ' frames identical over ' + runs + ' runs (' + quiet + ' quiet, ' + light + ' countdown, ' + deaths + ' deaths, ' + matches + ' matches, ' + rowsRisen +
             ' rows, ' + presses + ' swaps pressed, ' + denied + ' refused, ' + garbage + ' garbage (' + metal + ' shock), ' + copies + ' copies)');

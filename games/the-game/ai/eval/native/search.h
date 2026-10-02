@@ -393,7 +393,12 @@ EXPORT(ns_root) int ns_root(Ctx *x, int holdLeft, int holdStarted, int narr, int
 EXPORT(ns_step) int ns_step(Ctx *x, int pi, int kind, int mr, int mc, int until) { x->steps++; return lineStep(x, pi, kind, mr, mc, until); }
 EXPORT(ns_advance) int ns_advance(Ctx *x, int pi, int kind, int mr, int mc, int frames) { return advance(x, pi, kind, mr, mc, frames); }
 EXPORT(ns_dead_at) int ns_dead_at(void) { return deadAt; }
-EXPORT(ns_frame_stats) int ns_frame_stats(int kind, int steps) { int32_t v = steps ? stepsOf[kind & 7] : framesOf[kind & 7]; if (steps) stepsOf[kind & 7] = 0; else framesOf[kind & 7] = 0; return v; }
+EXPORT(ns_frame_stats) int ns_frame_stats(int kind, int steps) {
+#ifdef COUNTDOWN
+  if (kind >= 5) { int32_t *c = kind == 5 ? &fullFrames : kind == 6 ? &quietFrames : kind == 7 ? &jumpedFrames : &lightFrames, v = *c; *c = 0; return v; }
+#endif
+  int32_t v = steps ? stepsOf[kind & 7] : framesOf[kind & 7]; if (steps) stepsOf[kind & 7] = 0; else framesOf[kind & 7] = 0; return v;
+}
 // One decision from node pi as keys: the io body gets [keys, raise held,
 // raise started] per frame. Returns the frames written, or advance's refusal
 // (STEP_NULL, STEP_ERR); a line that dies still gives the keys up to it.
