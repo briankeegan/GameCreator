@@ -542,23 +542,23 @@ static int anyOneSwapClear(const int32_t *st) {
   }
   return 0;
 }
+typedef uint32_t v8u __attribute__((vector_size(32)));
 static void reachMask(const int32_t *st, uint32_t *out) {
   int W = st[O_W];
-  for (int c = 0; c < WMAX; c++) out[c] = 0;
+  v8u acc = { 0 }, cols = { 0, 1, 2, 3, 4, 5, 6, 7 }, z = { 0 };
+  v8u inW = (v8u)(cols >= 1) & (v8u)(cols <= (uint32_t)W), ge1 = (v8u)(cols >= 1), leW = (v8u)(cols <= (uint32_t)W);
   for (int a = 1; a <= st[O_N]; a++) {
-    for (int c = 1; c <= W; c++) {
-      uint32_t B = CL(st, a, c);
-      if (!B) continue;
-      uint32_t vp = B & (B >> 1);
-      if (vp) out[c] |= vp | (vp >> 1) | (vp << 2);
-      uint32_t hp = B & (c + 1 < WMAX ? CL(st, a, c + 1) : 0);
-      if (hp) {
-        out[c] |= hp; out[c + 1] |= hp;
-        if (c > 1) out[c - 1] |= hp;
-        if (c + 2 <= W) out[c + 2] |= hp;
-      }
-    }
+    v8u B;
+    __builtin_memcpy(&B, st + COL + a * WMAX, sizeof(B));
+    v8u Bm = B & inW;
+    v8u vp = Bm & (Bm >> 1);
+    acc |= vp | (vp >> 1) | (vp << 2);
+    v8u hp = Bm & __builtin_shufflevector(B, z, 1, 2, 3, 4, 5, 6, 7, 8);
+    acc |= hp | __builtin_shufflevector(z, hp, 7, 8, 9, 10, 11, 12, 13, 14)
+             | (__builtin_shufflevector(hp, z, 1, 2, 3, 4, 5, 6, 7, 8) & ge1)
+             | (__builtin_shufflevector(z, hp, 6, 7, 8, 9, 10, 11, 12, 13) & leW);
   }
+  __builtin_memcpy(out, &acc, sizeof(acc));
 }
 static int reachOf(const int32_t *st, uint32_t *reach) {
   int W = st[O_W], dig = 0;
@@ -640,37 +640,44 @@ static int slabReadyFast(const int32_t *st) {
   int Wl = st[O_W], Hl = st[O_H], N = st[O_N], t = 0, c, a;
   for (c = 1; c <= Wl; c++) { int top = topRow(U(st, OCC + c)); if (top > t) t = top; }
   if (t >= Hl || t < 1) return 0;
-  uint32_t target = 1u << (t - 1), col[NCOL][WMAX];
-  for (a = 1; a <= N; a++) for (c = 0; c < WMAX; c++) col[a][c] = CL(st, a, c);
-  int rows[3] = { t, t - 1, t - 2 };
+  uint32_t target = 1u << (t - 1), v3 = t >= 3 ? target | (target >> 1) | (target >> 2) : 0;
+  uint32_t rowT[NCOL], vcol[NCOL];
+  int base[NCOL], nBase = 0, rows[3] = { t, t - 1, t - 2 };
+  uint32_t rm = target | (target >> 1) | (target >> 2);
+  uint8_t first[3][WMAX];
+  __builtin_memset(first, 0, sizeof(first));
+  for (a = N; a >= 1; a--) {
+    rowT[a] = 0; vcol[a] = 0;
+    for (c = 1; c <= Wl; c++) {
+      uint32_t m = CL(st, a, c);
+      if (m & target) rowT[a] |= 1u << c;
+      if (v3 && (m & v3) == v3) vcol[a] |= 1u << c;
+      for (uint32_t q = m & rm; q; q &= q - 1u) first[t - 1 - __builtin_ctz(q)][c] = (uint8_t)a;
+    }
+    base[a] = (rowT[a] & (rowT[a] >> 1) & (rowT[a] >> 2)) || vcol[a];
+    nBase += base[a];
+  }
   for (int ri = 0; ri < 3; ri++) {
     int r = rows[ri];
     if (r < 1) continue;
     uint32_t bitv = 1u << (r - 1);
     for (c = 1; c < Wl; c++) {
-      int left = 0, right = 0;
-      for (a = 1; a <= N; a++) if (col[a][c] & bitv) { left = a; break; }
-      for (a = 1; a <= N; a++) if (col[a][c + 1] & bitv) { right = a; break; }
+      int left = first[ri][c], right = first[ri][c + 1];
       if (!left || !right || left == right) continue;
-      col[left][c] &= ~bitv; col[left][c + 1] |= bitv;
-      col[right][c + 1] &= ~bitv; col[right][c] |= bitv;
-      int hit = 0;
-      for (int aa = 1; aa <= N && !hit; aa++) {
-        int runlen = 0;
-        for (int cc = 1; cc <= Wl; cc++) {
-          if (col[aa][cc] & target) { runlen++; if (runlen >= 3) { hit = 1; break; } }
-          else runlen = 0;
-        }
-        if (!hit && t >= 3) {
-          for (int c2 = 1; c2 <= Wl; c2++) {
-            uint32_t m = col[aa][c2];
-            if ((m & target) && (m & (target >> 1)) && (m & (target >> 2))) { hit = 1; break; }
-          }
+      if (nBase - base[left] - base[right] > 0) return 1;
+      for (int side = 0; side < 2; side++) {
+        int x = side ? right : left, from = side ? c + 1 : c, to = side ? c : c + 1;
+        uint32_t row = rowT[x];
+        if (r == t) row = (row & ~(1u << from)) | (1u << to);
+        if (row & (row >> 1) & (row >> 2)) return 1;
+        if (v3) {
+          uint32_t vc = vcol[x] & ~((1u << from) | (1u << to));
+          uint32_t mf = CL(st, x, from) & ~bitv, mt = CL(st, x, to) | bitv;
+          if ((mf & v3) == v3) vc |= 1u << from;
+          if ((mt & v3) == v3) vc |= 1u << to;
+          if (vc) return 1;
         }
       }
-      col[left][c] |= bitv; col[left][c + 1] &= ~bitv;
-      col[right][c + 1] |= bitv; col[right][c] &= ~bitv;
-      if (hit) return 1;
     }
   }
   return 0;
@@ -678,15 +685,17 @@ static int slabReadyFast(const int32_t *st) {
 
 // ---------------------------------------------------------------- caches by board
 static u64 hashOf(const int32_t *st) {
-  u64 h = 1469598103934665603ull;
+  u64 h0 = 1469598103934665603ull, h1 = 0x9E3779B97F4A7C15ull, h2 = 0xC2B2AE3D27D4EB4Full, h3 = 0x165667B19E3779F9ull;
   int W = st[O_W], N = st[O_N], c, a, i;
-#define MIX(v) (h = (h ^ (uint32_t)(v)) * 1099511628211ull)
-  MIX(W); MIX(st[O_H]); MIX(N); MIX(st[O_BAD]); MIX(st[O_BUSYF]);
-  for (c = 0; c <= W + 1; c++) { MIX(st[OCC + c]); MIX(st[INERT + c]); MIX(st[GARB + c]); if (st[O_BUSYF]) MIX(st[BUSY + c]); }
-  for (a = 1; a <= N; a++) for (c = 0; c <= W + 1; c++) MIX(st[COL + a * WMAX + c]);
-  MIX(st[O_NSLAB]);
-  for (i = 0; i < st[O_NSLAB]; i++) { for (c = 0; c <= W + 1; c++) MIX(st[SM(i, c)]); MIX(st[SLK(i)]); }
-#undef MIX
+#define MX(h, v) (h = (h ^ (uint32_t)(v)) * 1099511628211ull)
+  MX(h0, W); MX(h1, st[O_H]); MX(h2, N); MX(h3, st[O_BAD]); MX(h0, st[O_BUSYF]);
+  for (c = 0; c <= W + 1; c++) { MX(h1, st[OCC + c]); MX(h2, st[INERT + c]); MX(h3, st[GARB + c]); if (st[O_BUSYF]) MX(h0, st[BUSY + c]); }
+  for (a = 1; a <= N; a++) for (c = 0; c <= W + 1; c += 2) { MX(h0, st[COL + a * WMAX + c]); MX(h1, st[COL + a * WMAX + c + 1]); }
+  MX(h2, st[O_NSLAB]);
+  for (i = 0; i < st[O_NSLAB]; i++) { for (c = 0; c <= W + 1; c++) MX(h3, st[SM(i, c)]); MX(h2, st[SLK(i)]); }
+#undef MX
+  u64 h = h0 ^ (h1 * 0x9E3779B97F4A7C15ull) ^ (h2 * 0xC2B2AE3D27D4EB4Full) ^ (h3 * 0x165667B19E3779F9ull);
+  h ^= h >> 29;
   return h | 1ull;
 }
 #define TCAP (1 << 17)
@@ -731,21 +740,18 @@ static int resolveU(const int32_t *st, int32_t *r, int wantSettled) {
     restValid = 1;
     if (scan) {
       int any = 0, link = 0;
-      uint32_t freeM[WMAX];
-      for (c = 0; c < WMAX; c++) k[c] = 0;
-      for (c = 1; c <= W; c++) freeM[c] = s->rest[c] & ~s->popping[c] & ~s->inert[c];
+      v8u fv, rv, pv, iv, kv = { 0 }, z = { 0 }, lanes = { 0, 1, 2, 3, 4, 5, 6, 7 };
+      __builtin_memcpy(&rv, s->rest, sizeof(rv)); __builtin_memcpy(&pv, s->popping, sizeof(pv)); __builtin_memcpy(&iv, s->inert, sizeof(iv));
+      fv = rv & ~pv & ~iv & (v8u)(lanes >= 1) & (v8u)(lanes <= (uint32_t)W);
       for (a = 1; a <= N; a++) {
-        uint32_t *col = s->colour[a], b0 = col[1] & freeM[1], b1 = col[2] & freeM[2];
-        uint32_t cv = b0 & (b0 >> 1) & (b0 >> 2); k[1] |= cv | (cv << 1) | (cv << 2);
-        cv = b1 & (b1 >> 1) & (b1 >> 2); k[2] |= cv | (cv << 1) | (cv << 2);
-        for (c = 3; c <= W; c++) {
-          uint32_t b2 = col[c] & freeM[c];
-          cv = b2 & (b2 >> 1) & (b2 >> 2); k[c] |= cv | (cv << 1) | (cv << 2);
-          uint32_t hc = b0 & b1 & b2;
-          k[c - 2] |= hc; k[c - 1] |= hc; k[c] |= hc;
-          b0 = b1; b1 = b2;
-        }
+        v8u b;
+        __builtin_memcpy(&b, s->colour[a], sizeof(b));
+        b &= fv;
+        v8u cv = b & (b >> 1) & (b >> 2);
+        v8u hc = b & __builtin_shufflevector(z, b, 7, 8, 9, 10, 11, 12, 13, 14) & __builtin_shufflevector(z, b, 6, 7, 8, 9, 10, 11, 12, 13);
+        kv |= cv | (cv << 1) | (cv << 2) | hc | __builtin_shufflevector(hc, z, 1, 2, 3, 4, 5, 6, 7, 8) | __builtin_shufflevector(hc, z, 2, 3, 4, 5, 6, 7, 8, 9);
       }
+      __builtin_memcpy(k, &kv, sizeof(kv));
       for (c = 1; c <= W; c++) { if (k[c]) any = 1; if (k[c] & s->chaining[c]) link = 1; }
       scan = 0;
       if (any) {
@@ -877,13 +883,17 @@ static SMemo SMEMO_MAIN[SMCAP];
 static LOCAL SMemo *SMEMO;
 static LOCAL int32_t smGen, smN;
 static u64 stHash(const int32_t *st, int n) {
-  u64 a = 0x9E3779B97F4A7C15ull, b = 0xC2B2AE3D27D4EB4Full;
-  int i = 0;
-  for (; i + 1 < n; i += 2) {
-    a = (a ^ (uint32_t)st[i]) * 0x100000001B3ull;
-    b = (b ^ (uint32_t)st[i + 1]) * 0x100000001B3ull;
+  u64 a = 0x9E3779B97F4A7C15ull ^ (u64)n, b = 0xC2B2AE3D27D4EB4Full;
+  int W = st[O_W], N = st[O_N];
+  for (int c = 1; c <= W; c++) {
+    a = (a ^ (uint32_t)st[OCC + c]) * 0x100000001B3ull;
+    b = (b ^ (uint32_t)st[GARB + c]) * 0x100000001B3ull;
   }
-  if (i < n) a = (a ^ (uint32_t)st[i]) * 0x100000001B3ull;
+  for (int x = 1; x <= N; x++)
+    for (int c = 1; c <= W; c += 2) {
+      a = (a ^ (uint32_t)st[COL + x * WMAX + c]) * 0x100000001B3ull;
+      b = (b ^ (uint32_t)st[COL + x * WMAX + c + 1]) * 0x100000001B3ull;
+    }
   a ^= b * 0x9E3779B97F4A7C15ull;
   return a ^ (a >> 31);
 }
@@ -1012,9 +1022,29 @@ static void dropOf(const int32_t *st, const Grid *G, Drop *D) {
     if (any && !ground && !st[SLK(i)]) D->cand[D->nc++] = (uint8_t)i;
   }
 }
+static int runOver(const Drop *D, int W, int y, int x, int r, int c, int L, int Rt) {
+#define GV(yy, xx) ((yy) == r && (xx) == c ? Rt : (yy) == r && (xx) == c + 1 ? L : D->g[yy][xx])
+  int a = GV(y, x), lo = x, hi = x, bo = y, tp = y;
+  while (lo > 1 && GV(y, lo - 1) == a) lo--;
+  while (hi < W && GV(y, hi + 1) == a) hi++;
+  if (hi - lo >= 2) return 1;
+  while (bo > 1 && GV(bo - 1, x) == a) bo--;
+  while (tp < 17 && GV(tp + 1, x) == a) tp++;
+#undef GV
+  return tp - bo >= 2;
+}
 static int dropQuiet(const int32_t *st, const Drop *D, int r, int c, const uint32_t *k, int32_t *out) {
   if (!D->ok) return 0;
   int W = st[O_W], ns = st[O_NSLAB];
+  if (!out && k == ZK) {
+    int L0 = D->g[r][c], R0 = D->g[r][c + 1];
+    if (!L0 != !R0) {
+      int src = L0 ? c : c + 1, dst = L0 ? c + 1 : c;
+      uint32_t bb = 1u << (r - 1);
+      if (!(D->occ[src] >> r) && (r == 1 || (D->occ[dst] & (bb >> 1))))
+        return !runOver(D, W, r, dst, r, c, L0, R0);
+    }
+  }
   uint8_t g[18][WMAX];
   uint32_t occ[WMAX], gar[WMAX], mv[WMAX], b = 1u << (r - 1);
   int dd[MAXSLAB];
@@ -1127,6 +1157,18 @@ static int quietDrop(const int32_t *st, const Grid *G, const Drop *D, int r, int
     if (firstRoundK(st, G, r, c, &t, &cas, k)) return 0;
   } else for (int i = 0; i < WMAX; i++) k[i] = 0;
   return dropQuiet(st, D, r, c, k, out);
+}
+static LOCAL ST SWAPSCR;
+static int settleSwap(const int32_t *st, int r, int c, Res *out) {
+  if (settledRest(st)) {
+    Grid G; Drop D;
+    gridOf(st, &G); dropOf(st, &G, &D);
+    if (quietDrop(st, &G, &D, r, c, (int32_t *)out)) return 1;
+  }
+  stcpy(SWAPSCR, st);
+  if (!swapIn(SWAPSCR, r, c)) return 0;
+  resolve(SWAPSCR, out->r, 1);
+  return 1;
 }
 static int breaksFirst(const int32_t *st, const Grid *G, int r, int c) { int t, cs; return firstRound(st, G, r, c, &t, &cs); }
 static int anyBreakOf(const int32_t *st0) {
