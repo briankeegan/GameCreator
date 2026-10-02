@@ -149,10 +149,9 @@ function burstFires(f) {
     return ((f - BURST_LEAD_IN - 1) % BURST_CYCLE) < BURST_LEN;
 }
 
-// The tier every scenario runs at. GC_LEVEL picks it; 3 is what the first
-// rounds trained on and remains the default so an old command line means
-// what it meant.
-var LEVEL = Number(process.env.GC_LEVEL || 3);
+// The tier every scenario runs at: level 10, the level the game is played at.
+// GC_LEVEL picks another.
+var LEVEL = Number(process.env.GC_LEVEL || 10);
 
 // A FIXTURE-ONLY CAP on every scenario's game length. Plumbing tests
 // (checkpoint.test.sh) need generations that finish in seconds and do not
@@ -162,7 +161,7 @@ var CEILING_CAP = Number(process.env.GC_BENCH_CEILING || 0);
 
 var SCENARIOS = {
     build: {
-        level: 3,
+        level: LEVEL,
         garbageEvery: 120,
         garbageWidth: 6,
         garbageHeight: 3,

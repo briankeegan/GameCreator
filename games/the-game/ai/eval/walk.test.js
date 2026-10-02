@@ -45,7 +45,7 @@ var FRAMES = 1800;   // 30 seconds of real play per seed
 // two axes at once), how many single-cell steps happened, and every swap
 // that was queued away from the cursor.
 function watch(seed) {
-    var stack = new PanelEngine.Stack({ level: 3, seed: seed, countdown: false });
+    var stack = new PanelEngine.Stack({ level: 10, seed: seed, countdown: false });
     var cpu = new PuyoCpu(stack, {
         weights: require('./registry.js').keys.reduce(function (a, k) { a[k] = 1; return a; }, {}),
         reaction: 12, seed: seed + 55

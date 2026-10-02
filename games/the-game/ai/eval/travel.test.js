@@ -34,7 +34,7 @@ function test(name, fn) { tests.push({ name: name, fn: fn }); }
 var PROBE_WEIGHTS = { colourVariance: 168,
                       maxHeight: 136, travelCost: 10 };
 function observeWalks(seed, frames) {
-    var stack = new PanelEngine.Stack({ level: 3, seed: seed, countdown: false });
+    var stack = new PanelEngine.Stack({ level: 10, seed: seed, countdown: false });
     var cpu = new PuyoCpu(stack, { weights: PROBE_WEIGHTS, reaction: 12 });
     var walks = [], open = null, f = 0;
 
@@ -125,7 +125,7 @@ test('the model prices the walks the cpu actually makes', function () {
 });
 
 test('cells above the stack top are unreachable, not expensive', function () {
-    var stack = new PanelEngine.Stack({ level: 3, seed: 5, countdown: false });
+    var stack = new PanelEngine.Stack({ level: 10, seed: 5, countdown: false });
     for (var i = 0; i < 200; i++) stack.run();
     var top = stack.topCurRow, W = PanelEngine.WIDTH;
     assert.strictEqual(travel.reachable(top + 1, 2, top, W), false, 'above the top must be unreachable');

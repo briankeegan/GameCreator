@@ -30,9 +30,6 @@
 //     decision took, which a live match has 16.7 of per frame.
 // A cell is its colour digit, '.' empty, 'g' garbage; upper-case X is a cell in motion.
 var path = require('path'), fs = require('fs');
-// LEVEL 10, the level the server is played at (one health), unless GC_LEVEL says
-// otherwise; bench.js reads it when it is loaded.
-if (!process.env.GC_LEVEL) process.env.GC_LEVEL = '10';
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
 var BitBot = require(path.join(__dirname, 'bitbot.js'));
