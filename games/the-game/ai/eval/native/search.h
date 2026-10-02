@@ -328,6 +328,22 @@ static Board *ensureBoard(Ctx *x, int i) {
   o->st = b;
   return b;
 }
+// ensureBoard for the threads: the replay's node is left where it was made
+// (other threads are making theirs), its board moved to node i.
+static int replayBoard(Ctx *x, int i) {
+  Node *n = NODE(x, i);
+  if (n->fromPrev || n->st) return 1;
+  if (n->prev < 0) return 0;
+  int32_t t = n->t;
+  int r = advance(x, n->prev, n->mk, n->mr, n->mc, n->frames);
+  if (r < 0) return 0;
+  Node *m = NODE(x, r);
+  Board *b = m->st;
+  m->st = 0;
+  if (m->t != t) { nb_free(b); return 0; }
+  NODE(x, i)->st = b;
+  return 1;
+}
 static void dropBoard(Ctx *x, int i) {
   Node *n = NODE(x, i);
   if (n->prev < 0 || n->pins) return;          // the root and pinned nodes keep theirs
@@ -519,6 +535,7 @@ static struct {
   int32_t gen, next, ntasks, ack, nworkers;
   Ctx *ctx; int32_t *tasks, *res, *deadAt;   // deadAt: per step, the frame a death was (settles only)
 } pool;
+#define REPLAY_TASK (-3)   // a task's move: play node t[0]'s board again from its parent (replayBoard)
 #define ADVANCE_TASK (-1000)   // a task's move at or below: ns_advance_many's, ((row << 3 | col) << 3 | kind) = ADVANCE_TASK - mv
 static void runTasks(void) {
   Ctx *x = pool.ctx;
@@ -528,6 +545,7 @@ static void runTasks(void) {
     if (i >= n) break;
     const int32_t *t = pool.tasks + 4 * i;
     int32_t mv = t[1];
+    if (mv == REPLAY_TASK) { pool.res[t[3]] = replayBoard(x, t[0]) ? 0 : -1; continue; }
     if (mv <= ADVANCE_TASK) {
       // ns_advance_many: the step's board is read straight after, so kept.
       int32_t m = ADVANCE_TASK - mv, r = advance(x, t[0], m & 7, CR(m >> 3), CC(m >> 3), t[2]);
@@ -767,6 +785,18 @@ EXPORT(ns_loop) int ns_loop(Ctx *x, int budget, int until, int full, int beam, i
       if (!cn->kept) { cn->live = 0; release(x, x->next.a[j]); }
     }
     if (!sortBetter(x, keep + seeds, nk - seeds)) return LOOP_ERR;
+    // The kept nodes' boards, played again from their parents on every thread.
+    if (pool.nworkers && nk > 1) {
+      tasks.n = 0;
+      for (j = 0; j < nk; j++) {
+        Node *kn = NODE(x, keep[j]);
+        if (kn->st || kn->fromPrev) continue;
+        int32_t t[4] = { keep[j], REPLAY_TASK, 0, j };
+        for (int q = 0; q < 4; q++) if (!vpush(&tasks, t[q])) return LOOP_ERR;
+      }
+      if (!vreserve(&res, nk) || !runPhase(x, &tasks, res.a)) return LOOP_ERR;
+      keep = x->keep.a;
+    }
     for (j = 0; j < nk; j++) if (!ensureBoard(x, keep[j])) return LOOP_ERR;
     for (j = 0; j < parents.n; j++) release(x, parents.a[j]);
     if (!vreserve(&x->level, nk)) return LOOP_ERR;

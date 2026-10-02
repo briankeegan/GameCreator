@@ -2583,7 +2583,7 @@
     var root = real ? this._engineRoot()
                     : { b: this._board.clone(), carry: null, pos: [this.stack.curRow, this.stack.curCol], t: 0 };
     var open = 0;
-    this._searchProofs = { cands: cands, proofs: proofs, reach: reach, far: far };
+    this._searchProofs = { cands: cands, proofs: proofs, reach: reach, far: far, root: root };
     // A FOLLOWED LINE STILL ALIVE WELL PAST THE HORIZON IS THE ANSWER. Its
     // next move is played without searching the others; the full search runs
     // again once what is left of the line drops under FOLLOW_FAST frames.
@@ -2794,6 +2794,7 @@
       if (weak[i]) { verdict[i] = 'weak'; proofs[i] = weak[i]; if (this._proofs) this._proofs[i] = weak[i]; continue; }
       verdict[i] = alive[i] && budget <= 0 ? 'unproven' : 'dies';
     }
+    this._searchProofs.left = Math.max(0, budget);
     this._restNeeded = savedRest;
     return verdict;
   };
@@ -2874,9 +2875,13 @@
   // HOW LONG EACH MOVE KEEPS THE BOARD ALIVE, MEASURED ON THE ENGINE. Each
   // proven move's line is searched on from its proof, by the same level loop,
   // to LIFE_FRAMES: what a break, a pop, a clear or a swap buys is what the
-  // engine plays out, not a price set beside it. The moves living longest
-  // are kept, then of those the ones whose furthest board holds the most
-  // panels; the line found becomes the proof the bot follows.
+  // engine plays out, not a price set beside it. Kept, in order: the moves
+  // whose line is alive at the window's end, then those whose line breaks
+  // garbage (a break is what keeps the board alive past the window), then
+  // those whose furthest board holds the most panels (what garbage is broken
+  // with), then the longest lived. The line found becomes the proof the bot follows. It
+  // searches with what the survival search left of its budget, and never
+  // less than a quarter of it.
   PuyoCpu.prototype.LIFE_FRAMES = 900;
   PuyoCpu.prototype._measureLife = function (live) {
     var sp = this._searchProofs, S = this._nat, i, k;
@@ -2892,7 +2897,7 @@
     }
     if (level.length < 2) return live;
     var o = { ntags: n, verdict: verdict, proofs: proofs, weak: weak, reach: reach, far: far, level: level,
-              budget: this.SURVIVE_SEARCH_BUDGET, until: this.LIFE_FRAMES, full: this.LIFE_FRAMES, beam: this.SURVIVE_SEARCH_BEAM,
+              budget: Math.max(sp.left || 0, Math.round(this.SURVIVE_SEARCH_BUDGET / 4)), until: this.LIFE_FRAMES, full: this.LIFE_FRAMES, beam: this.SURVIVE_SEARCH_BEAM,
               quota: this.SURVIVE_QUOTA, seeds: this.SURVIVE_SEEDS, newlyProven: [] };
     S.loop(o, this._abort, ABORTED);
     function panels(x) {
@@ -2900,18 +2905,18 @@
       if (g) for (r = 1; r < g.length; r++) if (g[r]) for (c = 1; c <= 6; c++) if (g[r][c] > 0) m++;
       return m;
     }
-    var life = {}, kept = {}, best = -1, most = -1;
+    var rootBrk = sp.root && sp.root._nat ? S.breaks(sp.root) : 0, key = {}, best = null;
+    function before(a, b) { for (var q = 0; q < a.length; q++) if (a[q] !== b[q]) return a[q] > b[q]; return false; }
     for (i = 0; i < at.length; i++) {
       k = at[i];
-      var end = o.verdict[k] === 'proven' ? o.proofs[k] : o.far[k];
-      life[k] = o.verdict[k] === 'proven' ? this.LIFE_FRAMES : Math.min(o.reach[k] || 0, this.LIFE_FRAMES);
-      kept[k] = panels(end);
+      var alive = o.verdict[k] === 'proven', end = alive ? o.proofs[k] : o.far[k];
+      var broke = end && end.b ? (S.breaks(end) > rootBrk ? 1 : 0) : 0;
+      key[k] = [alive ? 1 : 0, broke, panels(end), alive ? this.LIFE_FRAMES : Math.min(o.reach[k] || 0, this.LIFE_FRAMES)];
       if (end && !end.dead && end.t > sp.proofs[k].t) sp.proofs[k] = end;
-      if (life[k] > best) best = life[k];
+      if (!best || before(key[k], best)) best = key[k];
     }
-    for (i = 0; i < at.length; i++) if (life[at[i]] === best && kept[at[i]] > most) most = kept[at[i]];
-    this.lifeMeasured = { best: best, panels: most, of: at.length };
-    var out = live.filter(function (c) { var q = sp.cands.indexOf(c); return life[q] === best && kept[q] === most; });
+    this.lifeMeasured = { alive: best[0], broke: best[1], panels: best[2], life: best[3], of: at.length };
+    var out = live.filter(function (c) { var q = sp.cands.indexOf(c); return key[q] && key[q].join() === best.join(); });
     return out.length ? out : live;
   };
 
