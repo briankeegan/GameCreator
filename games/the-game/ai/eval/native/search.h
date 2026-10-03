@@ -55,12 +55,19 @@ typedef struct Ctx {
 } Ctx;
 #define NODE(x, i) (&(x)->nodes[i])
 
+// A new node zeroed but for its garbage on its way, read only up to narr,
+// and its key, which readBoard writes.
+#define NODE_AT(f) ((unsigned long)&((Node *)0)->f)
+static void clearNode(Node *n) {
+  memset(n, 0, NODE_AT(arr));
+  memset((char *)n + NODE_AT(tag), 0, NODE_AT(key) - NODE_AT(tag));
+}
 static Node *newNode(Ctx *x) {
   if (x->par) {
     int32_t i = __atomic_fetch_add(&x->n, 1, __ATOMIC_SEQ_CST);
     if (i >= x->cap) return 0;   // reserved before the threads start: never here
     Node *n = &x->nodes[i];
-    memset(n, 0, sizeof(Node) - sizeof(n->key));
+    clearNode(n);
     n->prev = -1; n->tag = -1;
     return n;
   }
@@ -72,7 +79,7 @@ static Node *newNode(Ctx *x) {
     x->nodes = nn; x->cap = cap;   // the old block is left behind: nodes grow rarely
   }
   Node *n = &x->nodes[x->n++];
-  memset(n, 0, sizeof(Node) - sizeof(n->key));
+  clearNode(n);
   n->prev = -1; n->tag = -1;
   return n;
 }
