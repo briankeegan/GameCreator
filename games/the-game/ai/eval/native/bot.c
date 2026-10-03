@@ -1671,7 +1671,12 @@ static Clr CLEARS[MAXCAND + 128];
 static Res WD;
 static ST WDA;
 static int32_t WDSW[2 * 128], WDR[R_INTS + ST_INTS];
-static int endsInBreak(int via) { return via == V_DIGPLAN || via == V_BREAKREACH || via == V_BREAK || via == V_LINEUP || via == V_LINEUPHOLD; }
+static int breakLabel(int via) { return via == V_DIGPLAN || via == V_BREAKREACH || via == V_BREAK || via == V_LINEUP || via == V_LINEUPHOLD; }
+static int breaksOnEngine(Dec d);
+// A SWAP THAT ENDS IN A BREAK is one whose line breaks on the engine: a label
+// is the plan's claim, and the plan's masks do not know that garbage still
+// falling is not converted (getConnectedGarbagePanels takes only resting blocks).
+static int endsInBreak(Dec d) { return breakLabel(d.via) && breaksOnEngine(d); }
 // A SWAP HELD FOR LATER MUST STILL BE THERE LATER. A cell above one that is
 // clearing falls when the clear ends — the moment a held swap is wanted.
 // A CLEAR HELD IS ONE STILL THERE WHEN IT IS PRESSED. The engine holds the
@@ -1747,7 +1752,7 @@ static Dec waitForDrain(Dec d) {
   if (d.spends) return d;
   Rs *pr = picked ? &picked->res : 0;
   if (pr && pr->broke && picked->moveFrames + 1 <= k) return d;
-  if (!picked && endsInBreak(d.via)) return d;
+  if (!picked && endsInBreak(d)) return d;
 #define HOLDAT(r, c) mkHold(V_AWAITDRAIN, d.mode, d.alive, 1, r, c)
   if (pr && pr->total > 0 && !pr->broke && picked->moveFrames + 1 <= k) {
     if (picked->moveFrames + 2 > k || !steady(picked->sr, picked->sc, k - 2)) return d;
@@ -1887,6 +1892,23 @@ static int judged(LineC *l) {
 #endif
   }
   return l->verdict;
+}
+// The line a decision's swap belongs to, played on the engine: the swap and
+// what its plan or kept line has left; a press made while the slab lands is
+// tried again with its last press waiting for every block.
+static int breaksOnEngine(Dec d) {
+  if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA]) return 0;
+  int32_t ln[2 * LINEMAX]; int n = 0;
+  if (BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc) {
+    for (int k = 0; k < 2 * BT->nLine && n < LINEMAX; k += 2) { ln[2 * n] = BT->line[k]; ln[2 * n + 1] = BT->line[k + 1]; n++; }
+  } else {
+    ln[0] = d.sr; ln[1] = d.sc; n = 1;
+    if (d.via == V_DIGPLAN && BT->dig.has)
+      for (int k = 0; k < BT->dig.n && n < LINEMAX; k++) { ln[2 * n] = BT->dig.mv[2 * k]; ln[2 * n + 1] = BT->dig.mv[2 * k + 1]; n++; }
+  }
+  int v = lineJudge(ln, n, 0);
+  if ((v & LV_PAYS) && !(v & LV_BREAKS)) v = lineJudge(ln, n, 1);
+  return (v & LV_BREAKS) != 0;
 }
 // THE LINES, by the masks: every line of up to `depth` swaps whose last swap
 // clears or breaks (only those that break when `breaks`), its presses
@@ -2348,7 +2370,7 @@ static Dec breakFirst(Dec d) {
   if ((lineLast && !playing) || d.kind == K_RAISE || !hasGarbage(DBASE)) return d;
   if (d.kind == K_SWAP && d.hasMove && !playing) {
     Cand *pc = poolSwap(d.sr, d.sc);
-    if ((pc && pc->res.broke) || endsInBreak(d.via)) return d;
+    if ((pc && pc->res.broke) || endsInBreak(d)) return d;
   }
   linesFind(KEEPDEPTH, 1);
 #ifndef __wasm__
@@ -2446,7 +2468,7 @@ static Dec lineupFirst(Dec d) {
   if (lineLast || d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA] || BIN[IN_TOPPED]) return d;
   if (d.kind == K_SWAP && d.hasMove) {
     Cand *pc = poolSwap(d.sr, d.sc);
-    if ((pc && pc->res.broke) || endsInBreak(d.via)) return d;
+    if ((pc && pc->res.broke) || endsInBreak(d)) return d;
   }
   linesReset();
   int32_t st0[ST_INTS], cur[2], t;
@@ -2501,7 +2523,7 @@ static Dec batchBreak(Dec d) {
   if (BIN[IN_TOPPED] || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA] || d.kind != K_SWAP || !d.hasMove) return d;
   Cand *pc = poolSwap(d.sr, d.sc);
   int converts = pc && pc->res.broke ? pc->res.converts : 0;
-  if (!converts && (lineLast == 3 || endsInBreak(d.via))) converts = 1;   // a break line's step: its size is the line's
+  if (!converts && (lineLast == 3 || endsInBreak(d))) converts = 1;   // a break line's step: its size is the line's
   if (!converts) return d;
   if (pc && pc->res.broke && pc->res.converts >= BATCH) return d;
   if (tallestBoard(DBASE) > BH - ROOMLEFT) return d;   // the whole stack, garbage and panels
@@ -2516,7 +2538,7 @@ static Dec batchBreak(Dec d) {
 // pieces -- is played only if it breaks, buys time (GAINS), was chosen to live
 // (stayAlive) or is a step of a line that breaks; otherwise the bot holds.
 static Dec spendToBreak(Dec d) {
-  if (lineLast || d.kind != K_SWAP || !d.hasMove || endsInBreak(d.via)) return d;
+  if (lineLast || d.kind != K_SWAP || !d.hasMove || endsInBreak(d)) return d;
   if (!(hasGarbage(DBASE) || BIN[IN_INCOMING] > 0)) return d;
   // what the swap does, played on the engine against the board left alone
   int32_t sw[2] = { d.sr, d.sc };
@@ -2585,7 +2607,7 @@ static double breakTime(const int32_t *steps, int n) {
 static Dec breakSoon(Dec d) {
   if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;
   if (lineLast == 2 || d.kind == K_RAISE || !BIN[IN_HASPA] || !hasGarbage(DBASE)) return d;
-  if (d.kind == K_SWAP && endsInBreak(d.via)) return d;
+  if (d.kind == K_SWAP && endsInBreak(d)) return d;
   if (!aloneOnEngine()) return d;
   double aloneTime = LNA[0] ? LNA[0] : LINEHORIZON;
 #ifndef __wasm__
@@ -2624,7 +2646,7 @@ static Dec fillFirst(Dec d) {
   if (d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
   if (lineLast == 1 || lineLast == 3) return BT->lineKind == LINE_BREAK || lineLast == 3 ? fillBeforeBreak(d) : d;
   if (lineLast) return d;
-  if (d.kind == K_SWAP && endsInBreak(d.via)) return d;
+  if (d.kind == K_SWAP && endsInBreak(d)) return d;
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; aloneOnEngine(); fprintf(stderr, "FILL? alone hollow %d last %d via %d\n", LNA[10], lineLast, d.via); }
 #endif
