@@ -1874,7 +1874,41 @@ static int aloneOnEngine(void) {
 }
 static int fillJudges, fillMargins; static double fillJudgeMs, fillMarginMs;   // GC_FILLSTAT
 static int lineJudgeIn(const int32_t *sw, int n, int waitAll);
-static int lineJudge(const int32_t *sw, int n, int waitAll) { double t = NOWMS2(); int v = lineJudgeIn(sw, n, waitAll); fillJudges++; fillJudgeMs += NOWMS2() - t; return v; }
+// ONE JUDGEMENT PER LINE PER DECISION: a line's verdict, and what the engine
+// saw playing it (LNO), depend only on the line and this decision's board, so
+// every search that asks again is answered from the first asking.
+#define JMN 2048
+typedef struct { int dec, n, waitAll, v; int32_t sw[2 * LINEMAX], lno[12]; } JMemo;
+static JMemo JM[JMN];
+static int btDecisionJ;   // the decision the memo is for (set by bot_decide)
+static int lineJudge(const int32_t *sw, int n, int waitAll) {
+  if (n < 1 || n > LINEMAX) return lineJudgeIn(sw, n, waitAll);
+  unsigned h = 2166136261u ^ (unsigned)(n * 31 + waitAll);
+  for (int k = 0; k < 2 * n; k++) h = (h ^ (unsigned)sw[k]) * 16777619u;
+  for (int probe = 0; probe < 8; probe++) {
+    JMemo *m = &JM[(h + (unsigned)probe) & (JMN - 1)];
+    if (m->dec != btDecisionJ) {   // free: judge, and keep it unless the budget refused it
+      double t = NOWMS2();
+      int v = lineJudgeIn(sw, n, waitAll);
+      fillJudges++; fillJudgeMs += NOWMS2() - t;
+      extern int paBudgetOut(void);
+      if (!paBudgetOut()) {
+        m->dec = btDecisionJ; m->n = n; m->waitAll = waitAll; m->v = v;
+        for (int k = 0; k < 2 * n; k++) m->sw[k] = sw[k];
+        for (int k = 0; k < 12; k++) m->lno[k] = LNO[k];
+      }
+      return v;
+    }
+    if (m->n == n && m->waitAll == waitAll && !__builtin_memcmp(m->sw, sw, (unsigned long)n * 8)) {
+      for (int k = 0; k < 12; k++) LNO[k] = m->lno[k];
+      return m->v;
+    }
+  }
+  double t = NOWMS2();
+  int v = lineJudgeIn(sw, n, waitAll);
+  fillJudges++; fillJudgeMs += NOWMS2() - t;
+  return v;
+}
 static int lineJudgeIn(const int32_t *sw, int n, int waitAll) {
   if (!BIN[IN_HASPA]) return 0;
   if (!aloneOnEngine()) return 0;
@@ -2972,6 +3006,8 @@ static Dec breakSoon(Dec d) {
   int32_t pl[2 * MAXCAND]; int pn = 0, q;
   for (int k = 0; k < nPool && pn < MAXCAND; k++) if (POOL[k].kind == K_SWAP) { pl[2 * pn] = POOL[k].sr; pl[2 * pn + 1] = POOL[k].sc; pn++; }
   Out o; double far;
+  // first, a break in time: each swap's search bounded by its own time and by
+  // the soonest found (a tie still counts: it may win by its swaps)
   outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
   while (outNext(&o, &q, &far)) {
     // a break after a swap comes no sooner than the walk to it
@@ -2979,10 +3015,20 @@ static Dec breakSoon(Dec d) {
     int32_t sw[2] = { pl[2 * q], pl[2 * q + 1] };
     if (!(lineJudge(sw, 1, 0) & LV_LIVES)) continue;
     double time = LNO[0] ? LNO[0] : LINEHORIZON;
-    // only a break before this can be chosen: in time, or a better margin
-    double b = breakWithinT(sw, 1, margin.has ? (time > time - margin.score ? time : time - margin.score) : INF);
+    double lim = inTime.has && -inTime.score < time ? -inTime.score + 1e-9 : time;
+    double b = breakWithinT(sw, 1, lim);
     if (b < time) bestTake(&inTime, -b, 0, sw, 1);
-    if (b < INF) bestTake(&margin, time - b, 0, sw, 1);
+  }
+  // none in time: the margin, which only then decides
+  if (!inTime.has) {
+    outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
+    while (outNext(&o, &q, &far)) {
+      int32_t sw[2] = { pl[2 * q], pl[2 * q + 1] };
+      if (!(lineJudge(sw, 1, 0) & LV_LIVES)) continue;
+      double time = LNO[0] ? LNO[0] : LINEHORIZON;
+      double b = breakWithinT(sw, 1, margin.has ? (time > time - margin.score ? time : time - margin.score) : INF);
+      if (b < INF) bestTake(&margin, time - b, 0, sw, 1);
+    }
   }
   int pr = inTime.has ? inTime.sw[0] : 0, pc = inTime.has ? inTime.sw[1] : 0, mr = margin.has ? margin.sw[0] : 0, mc = margin.has ? margin.sw[1] : 0;
   double best = inTime.has ? -inTime.score : INF, bestMargin = margin.has ? margin.score : -INF;
@@ -3152,6 +3198,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // keeps what it found.
   { extern void paBudget(double, double); paBudget(BUDGETMS, WORKBUDGET); }
   btDecision++;
+  btDecisionJ = btDecision;
   memoRoom();
   nSettle = nLandR = nFireR = nSavesR = nAnyR = 0;
   nRes = 0; nOptRuns = 0; nOptDepth = 0; nScore = 0; nLook = 0; nSave = 0; rScore = rMain = rLook = rSave = rCand = 0;
