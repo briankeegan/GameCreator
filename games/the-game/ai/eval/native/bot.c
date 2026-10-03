@@ -2485,32 +2485,39 @@ static double breakTime(const int32_t *steps, int n) {
   return tTimeMin >= INF ? INF : t + tTimeMin;
 }
 // THE GOAL IS A BREAK IN THE TIME THERE IS. With garbage on the board and no
-// break being played, the move played is the one after which a break comes
-// soonest -- sooner than holding, sooner than the choice, a move that lives,
-// and a break that comes before the board left alone loses health.
+// break being played, every swap that lives is an option, and an option breaks
+// in time if the break the distance search finds after it comes before the
+// board left alone loses health. The choice, if it breaks in time, stands; a
+// lone option that does is taken; of several, the soonest. If none does, the
+// option that puts the loss of health furthest off buys the time a break needs.
 static Dec breakSoon(Dec d) {
   if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;
   if (lineLast == 2 || d.kind == K_RAISE || !BIN[IN_HASPA] || !hasGarbage(DBASE)) return d;
   if (d.kind == K_SWAP && endsInBreak(d.via)) return d;
   if (!aloneOnEngine()) return d;
   double left = LNA[0] ? LNA[0] : LINEHORIZON;
-  double best = breakTime(0, 0);
+  int dying = LNA[0] != 0;
   if (d.kind == K_SWAP && d.hasMove) {
     int32_t sw[2] = { d.sr, d.sc };
-    if (lineJudge(sw, 1, 0) & LV_LIVES) { double b = breakTime(sw, 1); if (b < best) best = b; }
+    if ((lineJudge(sw, 1, 0) & LV_LIVES) && breakTime(sw, 1) < left) return d;
   }
-  int pr = 0, pc = 0;
+  if (breakTime(0, 0) < left) return d;   // holding, a break still comes in time
+  int pr = 0, pc = 0, tr = 0, tc = 0;
+  double best = INF, bestDeath = LNA[0] ? LNA[0] : INF;
   for (int q = 0; q < nPool; q++) {
     Cand *k = &POOL[q];
     if (k->kind != K_SWAP) continue;
     int32_t sw[2] = { k->sr, k->sc };
-    if (!(lineJudge(sw, 1, 0) & LV_LIVES)) continue;
+    int v = lineJudge(sw, 1, 0);
+    if (!(v & LV_LIVES)) continue;
+    double death = LNO[0] ? LNO[0] : INF;
     double b = breakTime(sw, 1);
-    if (b < best && b < left) { best = b; pr = k->sr; pc = k->sc; }
+    if (b < left && b < best) { best = b; pr = k->sr; pc = k->sc; }
+    if (dying && death > bestDeath) { bestDeath = death; tr = k->sr; tc = k->sc; }
   }
-  if (!pr) return d;
-  lineLast = 7;
-  return mkSwap(pr, pc, V_SETUP, d.mode, d.alive);
+  if (pr) { lineLast = 7; return mkSwap(pr, pc, V_SETUP, d.mode, d.alive); }
+  if (tr) { lineLast = 7; return mkSwap(tr, tc, V_KEEPHEALTH, d.mode, d.alive); }
+  return d;
 }
 static Dec fillFirst(Dec d) {
   if (d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
