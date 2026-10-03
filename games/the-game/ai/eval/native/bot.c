@@ -1856,6 +1856,8 @@ static int lineJudge(const int32_t *sw, int n, int waitAll) {
   if (!aloneOnEngine()) return 0;
   if (lineOnEngine(sw, n, LINEHORIZON, waitAll, LNO) != 0 || LNO[1] < 0) return 0;
   if (LNO[0] && LNO[0] <= LNO[1] + NEXTMOVE) return 0;
+  // a line that ends on the board the board left alone ends on has done nothing
+  if (LNO[0] == LNA[0] && LNO[11] == LNA[11]) return 0;
   int v = LV_LIVES;
   if (LNO[2] > LNA[2]) v |= LV_PAYS | LV_BREAKS;
   else if (LNO[3] > LNA[3]) v |= LV_PAYS;
@@ -2397,6 +2399,8 @@ static Dec lineupFirst(Dec d) {
   }
   if (!bestN) return d;
   if (bestN == 1 && d.kind == K_SWAP && d.hasMove && d.sr == best[0] && d.sc == best[1]) return d;
+  // the masks propose the lineup, the engine judges it, as every line
+  if (!(lineJudge(best, bestN, 0) & LV_LIVES)) return d;
   lineupLast = bestRank;
   lineLast = 5;
   plansDrop();
