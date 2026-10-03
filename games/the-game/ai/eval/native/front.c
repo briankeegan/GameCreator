@@ -677,20 +677,34 @@ extern int pthread_create(gcThread *, const void *, void *(*)(void *), void *);
 extern int pthread_join(gcThread, void **);
 typedef struct { int32_t sw[2 * LINEMAX]; int n, waitAll, v; int32_t lno[12]; } PJob;
 static PJob PJ[256];
-static int pjCount, pjNext, pjLock, pjThreads = -1;
+static int pjLock, pjThreads = -1;
 static void (*pjTask)(int);
 extern void paOutcomeBoard(int make);
-static void pjRun(void) {
-  int k;
-  while ((k = __atomic_fetch_add(&pjNext, 1, __ATOMIC_SEQ_CST)) < pjCount) pjTask(k);
-}
 static int pjHeldR, pjHeldC, pjHeldDir, pjPress;   // the settings travelCost reads, from the main thread
+// A BATCH IS ONE WORD: generation, task count and the next task, taken
+// together by one atomic add, so a thread late from an earlier batch can
+// never take a task of this one by its count. The main thread takes tasks
+// too, and waits for the TASKS to finish, never for the workers: a napping
+// worker that wakes after the batch is done finds nothing left and naps again.
+#define PJ_IX 0xFFFFFull
+static unsigned long long pjWord;
+static int pjFinished, pjGen;
+static void pjRun(void) {
+  for (;;) {
+    unsigned long long w = __atomic_fetch_add(&pjWord, 1, __ATOMIC_ACQUIRE);
+    unsigned long long ix = w & PJ_IX, count = (w >> 20) & PJ_IX;
+    if (ix >= count) return;
+    HELDR = pjHeldR; HELDC = pjHeldC; HELDDIR = pjHeldDir; PRESS = pjPress;
+    pjTask((int)ix);
+    __atomic_add_fetch(&pjFinished, 1, __ATOMIC_RELEASE);
+  }
+}
 // PERSISTENT WORKERS, as the browser's: started once, each with its own
-// boards, waiting for the next batch (a generation), spinning a little and
-// then napping so an idle worker costs nothing.
+// boards, waiting for the next batch, spinning a little and then napping so
+// an idle worker costs nothing.
 struct gcSleep { long s, ns; };
 extern int nanosleep(const struct gcSleep *, struct gcSleep *);
-static int pjGen, pjDone, pjStarted;
+static int pjStarted;
 static void *pjWorker(void *arg) {
   (void)arg;
   inWorker = 1;
@@ -703,9 +717,7 @@ static void *pjWorker(void *arg) {
     for (int spin = 0; (g = __atomic_load_n(&pjGen, __ATOMIC_ACQUIRE)) == seen; spin++)
       if (spin > 20000) { struct gcSleep z = { 0, 20000 }; nanosleep(&z, 0); }
     seen = g;
-    HELDR = pjHeldR; HELDC = pjHeldC; HELDDIR = pjHeldDir; PRESS = pjPress;
     pjRun();
-    __atomic_add_fetch(&pjDone, 1, __ATOMIC_RELEASE);
   }
   return 0;
 }
@@ -721,14 +733,18 @@ static void parallelDo(int count, void (*task)(int)) {
     for (int t = 0; t < pjThreads; t++) pthread_create(&th, 0, pjWorker, 0);
     pjStarted = 1;
   }
-  pjTask = task; pjCount = count; pjNext = 0;
-  pjHeldR = HELDR; pjHeldC = HELDC; pjHeldDir = HELDDIR; pjPress = PRESS;
-  __atomic_store_n(&pjDone, 0, __ATOMIC_RELEASE);
-  __atomic_add_fetch(&pjGen, 1, __ATOMIC_RELEASE);
+  int heldR = HELDR, heldC = HELDC, heldDir = HELDDIR, press = PRESS;
+  pjTask = task;
+  pjHeldR = heldR; pjHeldC = heldC; pjHeldDir = heldDir; pjPress = press;
+  __atomic_store_n(&pjFinished, 0, __ATOMIC_RELAXED);
+  int g = __atomic_load_n(&pjGen, __ATOMIC_RELAXED) + 1;
+  __atomic_store_n(&pjWord, ((unsigned long long)(g & 0xFFFFF) << 40) | ((unsigned long long)count << 20), __ATOMIC_RELEASE);
+  __atomic_store_n(&pjGen, g, __ATOMIC_RELEASE);
   int wasIn = inWorker; inWorker = 1;
   pjRun();
   inWorker = wasIn;
-  while (__atomic_load_n(&pjDone, __ATOMIC_ACQUIRE) < pjThreads) {}
+  HELDR = heldR; HELDC = heldC; HELDDIR = heldDir; PRESS = press;
+  while (__atomic_load_n(&pjFinished, __ATOMIC_ACQUIRE) < count) {}
 }
 static void pjJudge(int k) {
   PJob *j = &PJ[k];
