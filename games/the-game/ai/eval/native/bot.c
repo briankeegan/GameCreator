@@ -682,7 +682,10 @@ static void rbTask(int t) {   // eight boards a task
   for (int j = 8 * t; j < 8 * t + 8 && j < rbN; j++) RBV[j] = anyBreakScan(OPTSET[(RBO[j] - (ODATA + 64)) / REC]);
 }
 static void readyBatch(double **opts, int count) {
-  int nj = 0;
+  // each distinct board scanned once: lines in another order often reach the same one
+  static double *same[RBN]; static int sameOf[RBN]; static int slot[2 * RBN];
+  int nj = 0, ns = 0;
+  for (int i = 0; i < 2 * RBN; i++) slot[i] = -1;
   for (int i = 0; i < count && nj < RBN; i++) {
     double *o = opts[i];
     if (o[F_BREAKREADY] != -4) continue;
@@ -690,12 +693,16 @@ static void readyBatch(double **opts, int count) {
     if (!hasGarb(st)) { o[F_BREAKREADY] = -1; continue; }
     u64 k = hashOf(st); double v;
     if (anyBreakKnown(st, k, &v)) { o[F_BREAKREADY] = v ? 1 : 0; continue; }
-    RBO[nj] = o; RBK[nj] = k; nj++;
+    unsigned h = (unsigned)(k ^ (k >> 32)) & (2 * RBN - 1);
+    while (slot[h] >= 0 && RBK[slot[h]] != k) h = (h + 1) & (2 * RBN - 1);
+    if (slot[h] >= 0) { same[ns] = o; sameOf[ns++] = slot[h]; continue; }
+    slot[h] = nj; RBO[nj] = o; RBK[nj] = k; nj++;
   }
-  if (nj < 2) return;
+  if (nj < 1) return;
   rbN = nj;
   parallelDo((nj + 7) / 8, rbTask);
   for (int j = 0; j < nj; j++) { tput(&ANYB, RBK[j], RBV[j]); RBO[j][F_BREAKREADY] = RBV[j] ? 1 : 0; }
+  for (int j = 0; j < ns; j++) same[j][F_BREAKREADY] = RBV[sameOf[j]] ? 1 : 0;
 }
 static int closesOf(double *o) {
   if (o[F_CLOSESBREAK] == -2) o[F_CLOSESBREAK] = readyOf(o) == 0;
