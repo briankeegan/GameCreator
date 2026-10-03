@@ -647,52 +647,64 @@ extern int pthread_join(gcThread, void **);
 typedef struct { int32_t sw[2 * LINEMAX]; int n, waitAll, v; int32_t lno[12]; } PJob;
 static PJob PJ[256];
 static int pjCount, pjNext, pjLock, pjThreads = -1;
+static void (*pjTask)(int);
+extern void paOutcomeBoard(int make);
 static void pjRun(void) {
   int k;
-  while ((k = __atomic_fetch_add(&pjNext, 1, __ATOMIC_SEQ_CST)) < pjCount) {
-    PJob *j = &PJ[k];
-    j->v = lineJudgeIn(j->sw, j->n, j->waitAll);
-    for (int i = 0; i < 12; i++) j->lno[i] = LNO[i];
-  }
+  while ((k = __atomic_fetch_add(&pjNext, 1, __ATOMIC_SEQ_CST)) < pjCount) pjTask(k);
 }
 static void *pjWorker(void *arg) {
   (void)arg;
   while (__atomic_exchange_n(&pjLock, 1, __ATOMIC_ACQUIRE)) {}
-  LNB = nb_new(); USB = nb_new();
+  LNB = nb_new(); USB = nb_new(); paOutcomeBoard(1);
   __atomic_store_n(&pjLock, 0, __ATOMIC_RELEASE);
   pjRun();
   while (__atomic_exchange_n(&pjLock, 1, __ATOMIC_ACQUIRE)) {}
-  nb_free(LNB); nb_free(USB); LNB = USB = 0;
+  nb_free(LNB); nb_free(USB); LNB = USB = 0; paOutcomeBoard(0);
   __atomic_store_n(&pjLock, 0, __ATOMIC_RELEASE);
   return 0;
 }
-static void prejudge(const int32_t *sws, int stride, int count, int n, int waitAll) {
+// count tasks, task(k) each, on GC_THREADS threads and this one (one by one without)
+static void parallelDo(int count, void (*task)(int)) {
   if (pjThreads < 0) pjThreads = getenv("GC_THREADS") ? atoi(getenv("GC_THREADS")) : 3;
-  if (pjThreads <= 0 || !BIN[IN_HASPA] || !aloneOnEngine()) return;
+  if (pjThreads <= 0 || count < 2) { for (int k = 0; k < count; k++) task(k); return; }
   if (!LNB) LNB = nb_new();
   if (!USB) USB = nb_new();
-  pjCount = 0;
-  for (int k = 0; k < count && pjCount < 256; k++) {
-    const int32_t *sw = sws + stride * k;
-    int v; int32_t lno[12];
-    if (jmFind(sw, n, waitAll, &v, lno)) continue;
-    PJob *j = &PJ[pjCount++];
-    for (int i = 0; i < 2 * n; i++) j->sw[i] = sw[i];
-    j->n = n; j->waitAll = waitAll;
-  }
-  if (pjCount < 2) return;
-  pjNext = 0;
-  int nt = pjThreads < pjCount - 1 ? pjThreads : pjCount - 1;
+  paOutcomeBoard(1);
+  pjTask = task; pjCount = count; pjNext = 0;
+  int nt = pjThreads < count - 1 ? pjThreads : count - 1;
+  if (nt > 16) nt = 16;
   gcThread th[16];
   for (int t = 0; t < nt; t++) pthread_create(&th[t], 0, pjWorker, 0);
   pjRun();
   for (int t = 0; t < nt; t++) pthread_join(th[t], 0);
+}
+static void pjJudge(int k) {
+  PJob *j = &PJ[k];
+  j->v = lineJudgeIn(j->sw, j->n, j->waitAll);
+  for (int i = 0; i < 12; i++) j->lno[i] = LNO[i];
+}
+static void prejudge(const int32_t *sws, int stride, int count, int n, int waitAll) {
+  if (pjThreads < 0) pjThreads = getenv("GC_THREADS") ? atoi(getenv("GC_THREADS")) : 3;
+  if (pjThreads <= 0 || !BIN[IN_HASPA] || !aloneOnEngine()) return;
+  int jobs = 0;
+  for (int k = 0; k < count && jobs < 256; k++) {
+    const int32_t *sw = sws + stride * k;
+    int v; int32_t lno[12];
+    if (jmFind(sw, n, waitAll, &v, lno)) continue;
+    PJob *j = &PJ[jobs++];
+    for (int i = 0; i < 2 * n; i++) j->sw[i] = sw[i];
+    j->n = n; j->waitAll = waitAll;
+  }
+  if (jobs < 2) return;
+  parallelDo(jobs, pjJudge);
   extern int paBudgetOut(void);
   if (paBudgetOut()) return;
-  for (int k = 0; k < pjCount; k++) jmPut(PJ[k].sw, PJ[k].n, PJ[k].waitAll, PJ[k].v, PJ[k].lno);
+  for (int k = 0; k < jobs; k++) jmPut(PJ[k].sw, PJ[k].n, PJ[k].waitAll, PJ[k].v, PJ[k].lno);
 }
 #else
 static void prejudge(const int32_t *sws, int stride, int count, int n, int waitAll) { (void)sws; (void)stride; (void)count; (void)n; (void)waitAll; }
+static void parallelDo(int count, void (*task)(int)) { for (int k = 0; k < count; k++) task(k); }
 #endif
 int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
   return lineStateAt(steps, n, 0, masks, can, wait, cur, t);

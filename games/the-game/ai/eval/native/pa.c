@@ -1236,7 +1236,14 @@ EXPORT(nb_rise_time) double nb_rise_time(int speed) { return (double)SPEED_TO_RI
 // until nothing moves -- cells matched, garbage cells converted, clears, the
 // highest chain counter reached, the most stop one clear paid, and the frames
 // it took. The board the bot is deciding on is loaded into paLibBoard().
-static Board *PAB, *PAT;
+static Board *PAB;
+// the outcome's scratch board, one per thread natively (the pool's outcomes are played in parallel)
+#ifndef __wasm__
+static _Thread_local Board *PAT;
+#else
+static Board *PAT;
+#endif
+void paOutcomeBoard(int make) { if (make) { if (!PAT) PAT = nb_new(); } else if (PAT) { nb_free(PAT); PAT = 0; } }
 EXPORT(pa_lib_board) Board *paLibBoard(void) { if (!PAB) PAB = nb_new(); return PAB; }
 int paOutcome(int r, int c, int at, int horizon, int32_t *out) {
   if (!PAB) return -1;

@@ -821,7 +821,11 @@ static Rs causedBy(Rs r, const Rs *alone) {
 // The engine's answer (pa.c paOutcome): out = cells matched, garbage cells
 // converted, clears, highest chain counter, most stop one clear paid, frames.
 int paOutcome(int r, int c, int at, int horizon, int32_t *out);
+static void parallelDo(int count, void (*task)(int));
+// the pool's outcomes, one per legal swap, played in parallel
+static int32_t PORC[128], POOUT[128][8]; static const int32_t *poLg; static int poCr, poCc;
 #define PAHORIZON 600
+static void poTask(int i) { PORC[i] = paOutcome(poLg[2 * i], poLg[2 * i + 1], travelCost(poCr, poCc, poLg[2 * i], poLg[2 * i + 1]), PAHORIZON, POOUT[i]); }
 static int32_t PALONE[8], PAOUT[8];
 static Rs paRes(const int32_t *o, const int32_t *alone) {
   Rs r; memset(&r, 0, sizeof r);
@@ -865,6 +869,8 @@ static void candidates(int32_t *base) {
   int32_t lg[2 * 128];
   int n = legal(base, lg);
   int cr = (int)BIN[IN_CROW], cc = (int)BIN[IN_CCOL];
+  // every swap's outcome on the engine, played together (parallelDo), then taken one by one
+  if (onEngine) { poLg = lg; poCr = cr; poCc = cc; parallelDo(n, poTask); }
   for (int i = 0; i < n; i++) {
     int r = lg[2 * i], c = lg[2 * i + 1];
     if (!swapIn(base, r, c)) continue;
@@ -872,7 +878,8 @@ static void candidates(int32_t *base) {
     int haveSettled = CR.r[R_SCOPE] == SC_OK;
     Rs res = summarise(CR.r);
     if (onEngine) {
-      int rc = paOutcome(r, c, travelCost(cr, cc, r, c), PAHORIZON, PAOUT);
+      int rc = PORC[i];
+      for (int k = 0; k < 8; k++) PAOUT[k] = POOUT[i][k];
 #ifndef __wasm__
       if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
         fprintf(stderr, "POOL %d,%d at %d rc %d cells %d conv %d clears %d chain %d stop %d frames %d | alone cells %d\n", r, c, travelCost(cr, cc, r, c), rc,
