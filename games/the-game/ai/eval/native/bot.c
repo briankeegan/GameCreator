@@ -2483,7 +2483,8 @@ static int breakDistance(const int32_t *steps, int n) {
   return tDistMin;
 }
 static Dec fillFirst(Dec d) {
-  { volatile int probe_ = breakDistance(0, 0); (void)probe_; }   // EXPERIMENT: measuring alone
+  { volatile int probe_ = breakDistance(0, 0); (void)probe_;   // EXPERIMENT: measuring alone
+    for (int q = 0; q < nPool; q++) if (POOL[q].kind == K_SWAP) { int32_t sw_[2] = { POOL[q].sr, POOL[q].sc }; probe_ = breakDistance(sw_, 1); } }
   if (d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
   if (lineLast == 1 || lineLast == 3) return BT->lineKind == LINE_BREAK || lineLast == 3 ? fillBeforeBreak(d) : d;
   if (lineLast) return d;
