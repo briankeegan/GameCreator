@@ -23,11 +23,8 @@
 // way, as the senders' telegraphs show it, is played into every prediction
 // and handed to the search.
 // THE FRAME LOOP STAYS OUT OF GC'S WAY: a young generation big enough that
-// it rarely fills mid-frame, and a minor collection in the slack after each
-// reply (afterGc), so a frame's reply is not the one a collection lands on.
+// it rarely fills mid-frame.
 require('v8').setFlagsFromString('--max-semi-space-size=64');
-require('v8').setFlagsFromString('--expose-gc');
-var minorGc = require('vm').runInNewContext('gc');
 var net = require('net'), path = require('path'), wt = require('worker_threads');
 // GC pauses on this thread: the longest, and how many passed 4 ms (match stats gcMs, slowGc).
 var GC = { max: 0, slow: 0 };
@@ -344,25 +341,33 @@ Match.prototype.frame = function (truth, arrivals, fresh) {
   var bits;
   if (planned) { bits = planned.bits; this.hold = { left: planned.hold.left, started: planned.hold.started }; delete this.plan[now]; }
   else { var id = HANDS.idle(truth, this.hold, arrivals); bits = id.bits; this.hold = id.hold; this.stats.idle++; }
-  // What this frame should make of the board.
-  // truth as it came, to run on: made again from the state, which costs a
-  // seventh of a copy (fresh), or a copy when there is no state to make it from.
-  var next = fresh ? fresh() : truth.copy();
-  if (process.env.GC_SURVIVOR_CHECK_FRESH && fresh && JSON.stringify(next) !== JSON.stringify(truth)) throw new Error('survivor: the board made again is not the one that came');
-  next.setInput(bits & ~IN.swap);
-  if (bits & IN.swap) next.pressSwap = true;
+  if (process.env.GC_SURVIVOR_DUMP) this.record(truth, bits, arrivals);
+  this.made = { truth: truth, bits: bits, arrivals: arrivals, fresh: fresh };   // what the frame makes, worked out after the reply (expectNext)
+  this.expect = null;
+  return bits;
+};
+// What this frame makes of the board, once its keys are sent: truth as it
+// came, made again from the state (fresh, a seventh of a copy) or copied, and
+// run on them.
+Match.prototype.expectNext = function () {
+  var m = this.made;
+  if (!m) return;
+  this.made = null;
+  var next = m.fresh ? m.fresh() : m.truth.copy();
+  if (process.env.GC_SURVIVOR_CHECK_FRESH && m.fresh && JSON.stringify(next) !== JSON.stringify(m.truth)) throw new Error('survivor: the board made again is not the one that came');
+  next.setInput(m.bits & ~IN.swap);
+  if (m.bits & IN.swap) next.pressSwap = true;
   next.run();
-  var pend = SH.pending(arrivals);
+  var pend = SH.pending(m.arrivals);
   land(next, pend);
   this.expect = next; this.nextPending = pend;   // the garbage still to land after it
-  if (process.env.GC_SURVIVOR_DUMP) this.record(truth, bits, arrivals);
-  return bits;
 };
 // After the frame's keys are sent: the next decision is asked, a lead before
 // it is due, on the board predicted from the one this frame makes. The plan
 // never runs further ahead than that, so every decision sees the rows that
 // have come up since.
 Match.prototype.afterFrame = function () {
+  this.expectNext();
   var now = this.now, next = this.expect;
   if (!next || next.gameOverClock > 0) return;
   if (pending && this.nextAt - now === 1 && !answers.some(function (a) { return a.id === pending.id; })) {
@@ -480,8 +485,6 @@ var server = net.createServer(function (sock) {
         var fms = Number(process.hrtime.bigint() - t0) / 1e6;
         if (fms > match.stats.frameMs) match.stats.frameMs = Math.round(fms * 10) / 10;
         if (fms > 8) match.stats.slowFrames++;
-        // the slack before the next frame (~16 ms at 60 a second) takes the young generation's collection
-        if (fms < 8) minorGc({ type: 'minor' });
       }
     }
   }
