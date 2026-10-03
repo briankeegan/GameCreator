@@ -17,10 +17,8 @@
 // survival-games.yml runs one seed per runner.
 var fs = require('fs'), path = require('path');
 var DIR = __dirname;
-require(path.join(DIR, '..', '..', 'panel-engine.js'));
 require(path.join(DIR, '..', '..', 'panel-cpu.js'));
 var PuyoCpu = require(path.join(DIR, 'puyocpu.js'));
-var PanelEngine = globalThis.PanelEngine;
 var PA = require(path.join(DIR, '..', '..', 'pa-engine.js'));
 
 var SEED = Number(process.argv[2]), FRAMES = Number(process.argv[3] || 21600);

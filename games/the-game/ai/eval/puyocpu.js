@@ -4320,8 +4320,9 @@
     // else, so "swap, then raise" was unthinkable. Holding was always here —
     // v starts at cand.score, which IS the value of stopping after one move.
     //
-    // Not after a raise: the engine will not serve two in a row.
-    if (cand.kind !== 'raise' && this._canRaise()) {
+    // Not after a raise: the engine will not serve two in a row. On the
+    // server's board a move the engine in C refused or died of has no replies.
+    if (cand.kind !== 'raise' && this._canRaise() && !(this.nativeCands && this.serverStack && !nat)) {
       var risen = cand.board.clone().rise(this._incoming), risenResolved;
       if (nat) {
         // On the engine in C, as the first ply raises: the raise, then the settle.

@@ -14,7 +14,6 @@
 // configuration from the islands it is judging.
 var fs = require('fs');
 var path = require('path');
-require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
 var versus = require('./versus.js');
 
