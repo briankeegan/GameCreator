@@ -502,9 +502,11 @@ static JLOCAL int LWAITALL;   // the line's last press waits for the whole board
 // last step, so no prefix carries it. Written by the main thread; a worker's
 // replay is kept in the slot the main thread gave its job.
 #define SNAPN 256
-typedef struct { int dec, n, f, cool, held, last, dropped; int32_t sw[2 * LINEMAX]; Board *b; } Snap;
+typedef struct { int dec, n, f, cool, held, last, dropped, hasSettle; int32_t sw[2 * LINEMAX]; Board *b; Settle settle; } Snap;
+// and the settle the next step starts from, the one the prefix's replay takes of the same board last
 static Snap SNAPS[SNAPN];
 static JLOCAL int snapTo = -1;   // the slot this thread's next prefix is kept in (-1: by its line)
+static JLOCAL Snap *snapLast;    // the prefix this thread kept last, for its settle
 static unsigned snapHash(const int32_t *sw, int n) {
   unsigned h = 2166136261u ^ (unsigned)n;
   for (int k = 0; k < 2 * n; k++) h = (h ^ (unsigned)sw[k]) * 16777619u;
@@ -521,7 +523,7 @@ static void snapKeep(const int32_t *sw, int n, Board *b, int f, int cool, int he
   Snap *s = &SNAPS[slot];
   if (!s->b) { if (inWorker) return; s->b = nb_new(); }
   nb_copy(s->b, b);
-  s->n = n; s->f = f; s->cool = cool; s->held = held; s->last = last; s->dropped = dropped;
+  s->n = n; s->f = f; s->cool = cool; s->held = held; s->last = last; s->dropped = dropped; s->hasSettle = 0; snapLast = s;
   for (int k = 0; k < 2 * n; k++) s->sw[k] = sw[k];
   if (snapTo < 0) s->dec = btDecision;   // a worker's is stamped by the main thread
 }
@@ -537,6 +539,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   int step = 0, walking = n > 0, timer = 0, held = LF ? LF->held : H_NONE, cool = 0, disp = b->displacement;
   int tr = n > 0 ? steps[0] : 0, tc = n > 0 ? steps[1] : 0, last = n > 0 ? -1 : 0, f, dropped = b->garbageCreatedCount, f0 = 0;
   if (from) { step = from->n; walking = 0; held = from->held; cool = from->cool; last = from->last; dropped = from->dropped; f0 = from->f; }
+  int snapSettle = from && from->hasSettle;
   int waitTo = n > 0 && LF ? (LWAITALL && n == 1 ? allWait(&LF->settle) : pairWait(&LF->settle, steps[0], steps[1])) : 0;
   int fs = 0, r0 = tr;   // the frame the step's settle was taken, its row then
 #ifndef __wasm__
@@ -562,7 +565,8 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
           out[1] = last; out[8] = f; return 1;
         }
         walking = 1; tr = steps[2 * step]; tc = steps[2 * step + 1]; timer = 0; disp = b->displacement;
-        { uint32_t still[W + 2]; unsettled(b, still, &LSET);
+        { uint32_t still[W + 2];
+          if (snapSettle && step == from->n) { LSET = from->settle; snapSettle = 0; } else unsettled(b, still, &LSET);
           waitTo = f + (LWAITALL && step == n - 1 ? allWait(&LSET) : pairWait(&LSET, tr, tc)); fs = f; r0 = tr; }
       }
     }
@@ -703,6 +707,7 @@ static int lineStateAt(const int32_t *steps, int n, int landing, int32_t *masks,
 }
 static int lineStateRun(const int32_t *steps, int n, int landing, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
   int32_t out[12];
+  snapLast = 0;
   int rc = n > 0 || landing ? linePlay(steps, n, 400, landing ? 2 : 1, out) : (nb_copy(LNB ? LNB : (LNB = nb_new()), paLibBoard()), out[0] = 0, out[8] = 0, 1);
   if (rc != 1 || out[0]) return -1;
   // the next step targets settled panels: the board once it has settled, each
@@ -710,6 +715,7 @@ static int lineStateRun(const int32_t *steps, int n, int landing, int32_t *masks
   { extern double paWork; paWork += 60; }   // the copies, the masks and the swap tests below
   uint32_t still[W + 2];
   unsettled(LNB, still, &LSET);
+  if (snapLast) { snapLast->settle = LSET; snapLast->hasSettle = 1; snapLast = 0; }
   Board *save = FB;
   FB = USB;
   fMasks(masks, 0);
