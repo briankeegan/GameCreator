@@ -2485,38 +2485,43 @@ static double breakTime(const int32_t *steps, int n) {
   return tTimeMin >= INF ? INF : t + tTimeMin;
 }
 // THE GOAL IS A BREAK IN THE TIME THERE IS. With garbage on the board and no
-// break being played, every swap that lives is an option, and an option breaks
-// in time if the break the distance search finds after it comes before the
-// board left alone loses health. The choice, if it breaks in time, stands; a
-// lone option that does is taken; of several, the soonest. If none does, the
-// option that puts the loss of health furthest off buys the time a break needs.
+// break being played, every swap that lives is an option. An option's time is
+// its own: the frame the engine, after it, finds the board loses health (none
+// within the horizon: the horizon). It breaks in time if the break the
+// distance search finds after it comes before then. The choice, if it breaks
+// in time, stands; a lone option that does is taken; of several, the soonest.
+// If none does, the time bought is time for a break: the option whose break
+// comes nearest to fitting inside its time.
 static Dec breakSoon(Dec d) {
   if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;
   if (lineLast == 2 || d.kind == K_RAISE || !BIN[IN_HASPA] || !hasGarbage(DBASE)) return d;
   if (d.kind == K_SWAP && endsInBreak(d.via)) return d;
   if (!aloneOnEngine()) return d;
-  double left = LNA[0] ? LNA[0] : LINEHORIZON;
-  int dying = LNA[0] != 0;
+  double aloneTime = LNA[0] ? LNA[0] : LINEHORIZON;
+  if (breakTime(0, 0) < aloneTime) return d;   // holding, a break still comes in time
   if (d.kind == K_SWAP && d.hasMove) {
     int32_t sw[2] = { d.sr, d.sc };
-    if ((lineJudge(sw, 1, 0) & LV_LIVES) && breakTime(sw, 1) < left) return d;
+    if (lineJudge(sw, 1, 0) & LV_LIVES) {
+      double time = LNO[0] ? LNO[0] : LINEHORIZON;
+      if (breakTime(sw, 1) < time) return d;
+    }
   }
-  if (breakTime(0, 0) < left) return d;   // holding, a break still comes in time
-  int pr = 0, pc = 0, tr = 0, tc = 0;
-  double best = INF, bestDeath = LNA[0] ? LNA[0] : INF;
+  int pr = 0, pc = 0, mr = 0, mc = 0;
+  double best = INF, bestMargin = -INF;
   for (int q = 0; q < nPool; q++) {
     Cand *k = &POOL[q];
     if (k->kind != K_SWAP) continue;
     int32_t sw[2] = { k->sr, k->sc };
-    int v = lineJudge(sw, 1, 0);
-    if (!(v & LV_LIVES)) continue;
-    double death = LNO[0] ? LNO[0] : INF;
+    if (!(lineJudge(sw, 1, 0) & LV_LIVES)) continue;
+    double time = LNO[0] ? LNO[0] : LINEHORIZON;
     double b = breakTime(sw, 1);
-    if (b < left && b < best) { best = b; pr = k->sr; pc = k->sc; }
-    if (dying && death > bestDeath) { bestDeath = death; tr = k->sr; tc = k->sc; }
+    if (b < time && b < best) { best = b; pr = k->sr; pc = k->sc; }
+    if (b < INF && time - b > bestMargin) { bestMargin = time - b; mr = k->sr; mc = k->sc; }
   }
   if (pr) { lineLast = 7; return mkSwap(pr, pc, V_SETUP, d.mode, d.alive); }
-  if (tr) { lineLast = 7; return mkSwap(tr, tc, V_KEEPHEALTH, d.mode, d.alive); }
+  if (mr && bestMargin > (breakTime(0, 0) < INF ? aloneTime - breakTime(0, 0) : -INF)) {
+    lineLast = 7; return mkSwap(mr, mc, V_KEEPHEALTH, d.mode, d.alive);
+  }
   return d;
 }
 static Dec fillFirst(Dec d) {
