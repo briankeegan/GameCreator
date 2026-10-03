@@ -642,7 +642,7 @@ static void buildOptions(const int32_t *base, double deadline, int lookDepth, in
   OPTP[3] = spend; OPTP[10] = digging; OPTP[11] = lookDepth; OPTP[101] = 1;
   OPTP[102] = BIN[IN_SLABW]; OPTP[103] = BIN[IN_SLABH]; OPTP[104] = BIN[IN_SLABC];
   OPTP[105] = HELDR; OPTP[106] = HELDC; OPTP[107] = HELDDIR;
-  OPTP[108] = optSkip;
+  OPTP[108] = optSkip; OPTP[109] = 1;
 }
 static void mainOptions(const int32_t *base, double deadline, int lookDepth, int digging) {
   if (optsBuilt) return;
@@ -665,35 +665,40 @@ static void mainOptions(const int32_t *base, double deadline, int lookDepth, int
   }
 }
 
-static int ruinsShape(const double *o) { return o[F_OPENSHOLE] == 1 || o[F_CLOSESBREAK] == 1; }
+// an option's break readiness, and whether it closes the break, asked of its board when first read
+static double readyOf(double *o) {
+  if (o[F_BREAKREADY] == -4) {
+    const int32_t *st = OPTSET[(o - (ODATA + 64)) / REC];
+    o[F_BREAKREADY] = !hasGarb(st) ? -1 : anyBreakOf(st) ? 1 : 0;
+  }
+  return o[F_BREAKREADY];
+}
+static int closesOf(double *o) {
+  if (o[F_CLOSESBREAK] == -2) o[F_CLOSESBREAK] = readyOf(o) == 0;
+  return o[F_CLOSESBREAK] == 1;
+}
+static int ruinsShape(double *o) { return o[F_OPENSHOLE] == 1 || closesOf(o); }
 static int has(double v) { return v == v; }
 static double shortfallOf(const double *o) { return !has(o[F_MAT]) ? 0 : dmax(0, WORKING_ROWS - o[F_MAT]); }
 static double durOf(const double *o) { return o[F_DURATION] ? o[F_DURATION] : o[F_FRAMES]; }
+// THE LEVELLING OPTIONS, when there are any; and, unless every option is a
+// tall one without a break, the tall ones without a break are not taken.
+// Which tall ones those are is asked only of one about to be taken (kept).
+static int dropTallUnready;
+static int tallOpt(const double *o) { return has(o[F_TALL]) && o[F_TALL] >= BH - WORKING_ROWS; }
 static void keepFilter(double **all, int n, double **out, int *nout) {
   int nl = 0;
   for (int i = 0; i < n; i++) if (all[i][F_LEVELS] == 1) nl++;
-  double *tmp[1];
-  (void)tmp;
   int k = 0;
   if (nl) { for (int i = 0; i < n; i++) if (all[i][F_LEVELS] == 1) out[k++] = all[i]; }
   else { for (int i = 0; i < n; i++) out[k++] = all[i]; }
   int nk = 0;
-  for (int i = 0; i < k; i++) {
-    double *o = out[i];
-    if (has(o[F_TALL]) && o[F_TALL] >= BH - WORKING_ROWS && o[F_BREAKREADY] == 0) continue;
-    nk++;
-  }
-  if (nk) {
-    int j = 0;
-    for (int i = 0; i < k; i++) {
-      double *o = out[i];
-      if (has(o[F_TALL]) && o[F_TALL] >= BH - WORKING_ROWS && o[F_BREAKREADY] == 0) continue;
-      out[j++] = o;
-    }
-    k = j;
-  }
+  for (int i = 0; i < k && !nk; i++) if (!tallOpt(out[i])) nk = 1;
+  for (int i = 0; i < k && !nk; i++) if (readyOf(out[i]) != 0) nk = 1;
+  dropTallUnready = nk;
   *nout = k;
 }
+static int kept(double *o) { return !(dropTallUnready && tallOpt(o) && readyOf(o) == 0); }
 static double *FILT[MAXOPT];
 typedef struct { double rate, cells, gain, frames; double *option; } Pick;
 static int bestAttack(double deadline, double ppf, Pick *best) {
@@ -703,7 +708,6 @@ static int bestAttack(double deadline, double ppf, Pick *best) {
     double *o = FILT[i];
     if (!o[F_NSW]) continue;
     if (durOf(o) > deadline) continue;
-    if (ruinsShape(o)) continue;
     int isChain = o[F_KIND] == 1;
     double cells = cellsSent(isChain, (int)o[F_SIZE], (int)o[F_CHAIN]);
     if (o[F_BREAKS] == 1 && ppf > 0) cells += heldFrames(0, o[F_TOTAL], o[F_GARBAGE] ? o[F_GARBAGE] : BW) / ppf;
@@ -724,7 +728,8 @@ static int bestAttack(double deadline, double ppf, Pick *best) {
       double ob = has(o[F_BUMPS]) ? o[F_BUMPS] : 1e9, bb = has(best->option[F_BUMPS]) ? best->option[F_BUMPS] : 1e9;
       win = ob < bb;
     }
-    if (win) { have = 1; best->rate = rate; best->cells = cells; best->frames = o[F_FRAMES]; best->option = o; }
+    // one that ruins the shape is never taken: asked only of one that would be
+    if (win && kept(o) && !ruinsShape(o)) { have = 1; best->rate = rate; best->cells = cells; best->frames = o[F_FRAMES]; best->option = o; }
   }
   return have;
 }
@@ -744,7 +749,9 @@ static int bestPlan(double clock, double deadline, int toppedOut, double fpr, in
     double perCell = dmax(perPanel, deadline / BW);
     double lowered = (tallNow && has(o[F_TALL])) ? dmax(0, tallNow - o[F_TALL]) : 0;
     if (has(o[F_MAT]) && o[F_MAT] < WORKING_ROWS && o[F_BREAKS] != 1 && o[F_TOTAL] > 0) continue;
-    if (ruinsShape(o)) continue;
+    // topped, whether it fits is a replay: a ruinous one is dropped first
+    int ruinAsked = BIN[IN_TOPPED] != 0;
+    if (ruinAsked && (!kept(o) || ruinsShape(o))) continue;
     int nsw = (int)o[F_NSW];
     int32_t sw[2 * MAXD];
     for (int j = 0; j < 2 * nsw; j++) sw[j] = (int32_t)o[F_SW + j];
@@ -767,6 +774,7 @@ static int bestPlan(double clock, double deadline, int toppedOut, double fpr, in
       double mb = has(o[F_BUMPS]) ? o[F_BUMPS] : 1e9, cb = has(cur->option[F_BUMPS]) ? cur->option[F_BUMPS] : 1e9;
       better = mb < cb || (mb == cb && took < cur->frames);
     }
+    if (better && !ruinAsked && (!kept(o) || ruinsShape(o))) better = 0;
     if (better) {
       cur->rate = rate; cur->gain = gain; cur->frames = took; cur->option = o;
       if (fits) haveB = 1; else haveO = 1;

@@ -1406,6 +1406,8 @@ static LOCAL int dropBudget, saveBudget, slabBudget, prepBudget, readyBudget;
 static LOCAL int nAvoid; static LOCAL int32_t AVOID[2 * 40];
 // records the caller will not read (P[108]: 4 the fire-ready, 8 the slab-ready), never checked
 static LOCAL int recSkip;
+// P[109]: whether an option closes the break is left for its reader (closesOf), the option's board kept here
+static LOCAL int lazyClose;
 static LOCAL ST BASEST;
 
 // HELD is the direction pressed on the frame before the decision, at the
@@ -1470,6 +1472,7 @@ enum { F_KIND, F_SIZE, F_FRAMES, F_CHAIN, F_TOTAL, F_GARBAGE, F_CONVERTS, F_VOID
        F_VALUE, F_WAYS, F_LANDSTOP, F_NSW, F_SW, REC = F_SW + 2 * MAXD };
 #define MAXOPT 54000
 static double ODATA[(MAXOPT + 4) * REC + 64], ODSCR[(MAXOPT + 4) * REC + 64];
+static const int32_t *OPTSET[MAXOPT + 4];   // a lazy option's board (lazyClose)
 static int32_t LANDS[ST_INTS], LANDSCR[ST_INTS];
 static LOCAL double *OD = ODATA, *ODS = ODSCR;
 static LOCAL int32_t *LD = LANDS, *LDS = LANDSCR;
@@ -1537,9 +1540,18 @@ static void extras(double *o, const int32_t *settled) {
     o[F_MATNOW] = 0.0 / 0.0;
     return;
   }
-  if (lazyBreak && expanding && !BASEBREAK && !(o[F_HASSHAPE] && o[F_TALL] >= 8)) o[F_BREAKREADY] = -3;
-  else o[F_BREAKREADY] = settled ? breakReadyC(settled) : -2;
-  o[F_CLOSESBREAK] = BASEBREAK && o[F_BREAKREADY] == 0;
+  if (lazyClose && expanding && settled) {
+    // left for the reader (readyOf, closesOf): expanding, no drop is asked
+    // (dropBudget 0), so it is the board's alone -- garbage, and a swap that breaks it
+    o[F_BREAKREADY] = -4;
+    o[F_CLOSESBREAK] = BASEBREAK ? -2 : 0;
+    OPTSET[(o - (OD + 64)) / REC] = settled;
+  } else if (lazyBreak && expanding && !BASEBREAK && !(o[F_HASSHAPE] && o[F_TALL] >= 8)) {
+    o[F_BREAKREADY] = -3; o[F_CLOSESBREAK] = 0;
+  } else {
+    o[F_BREAKREADY] = settled ? breakReadyC(settled) : -2;
+    o[F_CLOSESBREAK] = BASEBREAK && o[F_BREAKREADY] == 0;
+  }
   uint32_t rm[WMAX];
   o[F_DIGGAIN] = (DIG && settled) ? reachC(settled, rm) - BASEDIG : 0;
   o[F_VOIDGAIN] = o[F_HASSHAPE] ? BASEVOID - o[F_VOIDROWS] : 0;
@@ -2110,6 +2122,9 @@ static LOCAL Res R1;
 static LOCAL int nOptRuns, nOptDepth;
 static int optionsRun(const int32_t *st0, const double *P, const int32_t *first, int nfirst) {
   threadInit(); arenaN = 0; smGen++; smN = 0; ntGen++; ntN = 0; expanding = 0;
+  // the main search's boards are kept until the next main search: every
+  // other search on this thread settles in the arena's upper half
+  if (ARENA == ARENA_MAIN) { if (OD == ODATA) arenaCap = ARENA_INTS / 2; else { arenaN = ARENA_INTS / 2; arenaCap = ARENA_INTS; } }
   nOptRuns++; nOptDepth += (int)P[11];
   failed = 0;
   FPR = P[0]; DEADLINE = P[1]; LOCKP = P[2]; SPEND = (int)P[3]; LEAN = (int)P[4];
@@ -2119,7 +2134,7 @@ static int optionsRun(const int32_t *st0, const double *P, const int32_t *first,
   lazyBreak = (int)P[101];
   SLABW = (int)P[102]; SLABH = (int)P[103]; SLABC = (int)P[104];
   HELDR = (int)P[105]; HELDC = (int)P[106]; HELDDIR = (int)P[107];
-  recSkip = (int)P[108];
+  recSkip = (int)P[108]; lazyClose = (int)P[109] && OD == ODATA && ARENA == ARENA_MAIN;
   LMAX = 0;
   for (int i = 0; i < 64; i++) if (PCHAIN[i] > LMAX) LMAX = PCHAIN[i];
   for (int i = 0; i < 256; i++) if (PCOMBO[i] > LMAX) LMAX = PCOMBO[i];
