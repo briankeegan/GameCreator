@@ -3021,6 +3021,10 @@ static Dec breakSoon(Dec d) {
     // a break after a swap comes no sooner than the walk to it
     if (outPast(&inTime, -far, 0)) break;
     int32_t sw[2] = { pl[2 * q], pl[2 * q + 1] };
+    // the break first, within the horizon (a swap's time is no later): one
+    // with none there is never in time and is not judged
+    double lim0 = inTime.has && -inTime.score < LINEHORIZON ? -inTime.score + 1e-9 : LINEHORIZON;
+    if (breakWithinT(sw, 1, lim0) >= INF) continue;
     if (!(lineJudge(sw, 1, 0) & LV_LIVES)) continue;
     double time = LNO[0] ? LNO[0] : LINEHORIZON;
     double lim = inTime.has && -inTime.score < time ? -inTime.score + 1e-9 : time;
