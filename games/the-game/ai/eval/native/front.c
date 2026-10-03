@@ -510,9 +510,9 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
     fprintf(stderr, "  WAIT %d,%d to %d | first %d,%d last %d,%d\n", r, c, waitTo, LF->settle.first[r][c], LF->settle.first[r][c + 1], LF->settle.last[r][c], LF->settle.last[r][c + 1]); }
 #endif
   out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = b->ninc; out[8] = -1; out[9] = out[10] = out[11] = 0;
-  { extern double paWork, paWorkEnd; if (paWork >= paWorkEnd) return -1; }   // past the decision's budget: not played
+  { extern int paBudgetOut(void); if (paBudgetOut()) return -1; }   // past the decision's budget: not played
   for (f = 0; f < horizon; f++) {
-    { extern double paWork, paWorkEnd; if (paWork >= paWorkEnd) return -1; }   // past the budget mid-line: not played
+    { extern int paBudgetOut(void); if (paBudgetOut()) return -1; }   // past the budget mid-line: not played
     int input = 0;
     // stopAtNext 2: on until the next slab has dropped and landed
     if (stopAtNext == 2 && step == n && !walking && b->garbageCreatedCount > dropped && !nb_falling_garbage(b)) {
@@ -628,7 +628,7 @@ static int fDecide(Front *F, FDec *out) {
   LF = F;
   BOTS[F->id].tab[T_OPT + O_PRESS] = 1;
   int rc = bot_decide(F->id);
-  { extern double paWorkEnd; paWorkEnd = 1e300; }   // the budget is the decision's
+  { extern void paBudget(double, double); paBudget(1e300, 1e300); }   // the budget is the decision's
   if (rc != 0) return -1;
   double *o = BOUT;
   out->kind = (int)o[0]; out->hasMove = o[1] != 0; out->mr = (int)o[2]; out->mc = (int)o[3];

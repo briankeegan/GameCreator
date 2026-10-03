@@ -186,9 +186,10 @@ static int nextRelease(void) { int u = NEVER; for (int i = 0; i < nHolds; i++) i
 static int resolveT(const int32_t *st, int32_t *r, int wantSettled, const Timed *tm);
 static void resolveM(const int32_t *st, int32_t *r, int wantSettled);
 extern double paWork, paWorkEnd;
+int paBudgetOut(void);
 // past the decision's budget a resolve is refused: what it would find is not looked for
 static void resolve(const int32_t *st, int32_t *r, int wantSettled) {
-  if (paWork >= paWorkEnd) { for (int k = 0; k < R_INTS; k++) r[k] = 0; r[R_SCOPE] = SC_REFUSED; return; }
+  if (paBudgetOut()) { for (int k = 0; k < R_INTS; k++) r[k] = 0; r[R_SCOPE] = SC_REFUSED; return; }
   resolveM(st, r, wantSettled);
 }
 static LOCAL int tmFailed = 0;
@@ -210,7 +211,7 @@ static LOCAL int nRes;
 static int resolveT(const int32_t *st, int32_t *r, int wantSettled, const Timed *tm) {
   nRes++;
   for (int i = 0; i < R_INTS; i++) r[i] = 0;
-  if (paWork >= paWorkEnd) { r[R_SCOPE] = SC_REFUSED; return 0; }   // past the decision's budget
+  if (paBudgetOut()) { r[R_SCOPE] = SC_REFUSED; return 0; }   // past the decision's budget
   if (st[O_BAD]) { r[R_SCOPE] = SC_BAD; return 0; }
   R *s = &S;
   load(s, st);
@@ -757,7 +758,7 @@ static void memoRoom(void) { threadInit(); }
 static int resolveU(const int32_t *st, int32_t *r, int wantSettled) {
   nRes++;
   for (int i = 0; i < R_INTS; i++) r[i] = 0;
-  if (paWork >= paWorkEnd) { r[R_SCOPE] = SC_REFUSED; return 0; }   // past the decision's budget
+  if (paBudgetOut()) { r[R_SCOPE] = SC_REFUSED; return 0; }   // past the decision's budget
   if (st[O_BAD]) { r[R_SCOPE] = SC_BAD; return 0; }
   R *s = &S;
   load(s, st);

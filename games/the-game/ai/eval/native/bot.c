@@ -2603,7 +2603,8 @@ static Dec fillBeforeBreak(Dec d) {
 // THE FRAMES TO A BREAK AFTER `steps`: the steps played on the engine as the
 // front plays them, then the soonest break the distance search finds on the
 // board they leave, walked from where the cursor is (INF: none).
-#define WORKBUDGET 55000
+#define WORKBUDGET 55000   // GC_WORK_ONLY: the budget in units of work
+#define BUDGETMS 10.0   // the decision's budget: 10 ms of a 16.7 ms frame
 static int btAloneAt = -1; static double btAlone;
 static double breakTimeOf(const int32_t *steps, int n);
 // the board left alone is asked about several times a decision: once
@@ -2804,12 +2805,11 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   HELDR = (int)BIN[IN_CROW]; HELDC = (int)BIN[IN_CCOL]; HELDDIR = (int)BIN[IN_HELD];
   botFailed = 0;
   clearRaiseFrames = 0;
-  // EVERY DECISION WITHIN ITS BUDGET: WORKBUDGET units of search (paWork: an
-  // engine frame four, a resolve three; ~0.077-0.15 us a unit natively), at most about 8 ms,
-  // so a frame with a decision in it fits in one frame at 60 a second with
-  // room for the browser. Past it, resolves and engine lines are refused and
-  // every search keeps what it found.
-  { extern double paWork, paWorkEnd; paWorkEnd = paWork + WORKBUDGET; }
+  // EVERY DECISION WITHIN ITS BUDGET: BUDGETMS of a 16.7 ms frame, by the clock
+  // (paBudget; GC_WORK_ONLY counts WORKBUDGET units of work instead, so a run
+  // repeats). Past it, resolves and engine lines are refused and every search
+  // keeps what it found.
+  { extern void paBudget(double, double); paBudget(BUDGETMS, WORKBUDGET); }
   btDecision++;
   memoRoom();
   nSettle = nLandR = nFireR = nSavesR = nAnyR = 0;
@@ -2826,7 +2826,8 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
 #define NOWMS() 0.0
 #endif
   double t0 = NOWMS();
-#define SHARE(p) (paWorkEnd = paWork + WORKBUDGET * (p) / 100.0)
+  extern void paBudget(double, double); extern int paBudgetOut(void);
+#define SHARE(p) paBudget(BUDGETMS * (p) / 100.0, WORKBUDGET * (p) / 100.0)
   SHARE(25); Dec d = decideRuled(); ts[k] = NOWMS(); ws[k++] = paWork;
   SHARE(5); d = playOn(d); d = waitForDrain(d); d = raiseHold(d); ts[k] = NOWMS(); ws[k++] = paWork;
   SHARE(25); d = breakFirst(d); ts[k] = NOWMS(); ws[k++] = paWork;
@@ -2838,7 +2839,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
 #undef SHARE
 #ifndef __wasm__
   { extern char *getenv(const char *); extern int fprintf(void *, const char *, ...); extern void *stderr;
-    if (getenv("GC_WORKSTAT")) { fprintf(stderr, "STAGES%s", paWork >= paWorkEnd ? " OUT" : ""); for (int i = 0; i < k; i++) fprintf(stderr, " %.0f/%.3f", ws[i] - (i ? ws[i - 1] : w0), ts[i] - (i ? ts[i - 1] : t0)); fprintf(stderr, "\n"); } }
+    if (getenv("GC_WORKSTAT")) { fprintf(stderr, "STAGES%s", paBudgetOut() ? " OUT" : ""); for (int i = 0; i < k; i++) fprintf(stderr, " %.0f/%.3f", ws[i] - (i ? ws[i - 1] : w0), ts[i] - (i ? ts[i - 1] : t0)); fprintf(stderr, "\n"); } }
 #endif
   ENGINE_BASE = 0;
   if (d.kind == K_SWAP && d.hasMove) {

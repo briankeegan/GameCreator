@@ -914,6 +914,34 @@ static void runPhysics(Board *b) {
 // WORK: the search's cost in units of ~0.077 us natively, an engine frame four
 // (a resolve on the masks, bit.c, three); the bot's per-decision budget is counted in it.
 double paWork, paWorkEnd = 1e300, paEngFrames;   // paWorkEnd: where the decision's budget runs out
+// THE DECISION'S BUDGET IS TIME. Natively the clock is read every 32 checks
+// and the search stops at paDeadline (ms); nothing it does can hide from that.
+// GC_WORK_ONLY=1 (and the browser, which has no clock here) counts work
+// instead, so a run repeats exactly. paBudget(ms, units) opens a share.
+double paDeadline = 1e300;
+static int paOut, paTick, paWorkOnly = -1;
+#ifndef __wasm__
+struct paTs { long s, ns; };
+extern int clock_gettime(int, struct paTs *);
+extern char *getenv(const char *);
+double paNowMs(void) { struct paTs t; clock_gettime(1, &t); return t.s * 1e3 + t.ns / 1e6; }
+#endif
+void paBudget(double ms, double units) {
+  paOut = 0; paTick = 0;
+#ifndef __wasm__
+  if (paWorkOnly < 0) paWorkOnly = getenv("GC_WORK_ONLY") != 0;
+  if (!paWorkOnly) { paWorkEnd = 1e300; paDeadline = ms < 1e299 ? paNowMs() + ms : 1e300; return; }
+#endif
+  paWorkEnd = units < 1e299 ? paWork + units : 1e300; paDeadline = 1e300;
+}
+int paBudgetOut(void) {
+  if (paOut) return 1;
+  if (paWork >= paWorkEnd) return paOut = 1;
+#ifndef __wasm__
+  if (paDeadline < 1e299 && !(++paTick & 31) && paNowMs() >= paDeadline) return paOut = 1;
+#endif
+  return 0;
+}
 static void run(Board *b) {
   paWork += 4; paEngFrames++;
   if (b->gameOverClock > 0 && b->clock >= b->gameOverClock) return;
