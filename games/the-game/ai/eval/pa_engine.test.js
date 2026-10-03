@@ -143,6 +143,8 @@ Replay.prototype.line = function (fr) {
       this.gen = generator(seed, ld, null);
       this.src = new PA.Seeded(this.gen);
       this.s = PA.create(this.level, this.src);
+      // and the one PA.game makes from the seed, as Newsey does
+      this.game = PA.game({ level: 10, seed: seed });
       seen.fromStart++;
       this.start = this.lines - 1;
     } else {
@@ -165,6 +167,13 @@ Replay.prototype.line = function (fr) {
   PA.list(fr.received).forEach(function (g) { if (g.clock === before) s.receiveGarbage([g]); });
   s.setInput(fr.input !== undefined ? fr.input : fr.state.input);
   s.run();
+  if (this.game) {
+    this.game.setInput(fr.input !== undefined ? fr.input : fr.state.input);
+    this.game.run();
+    d = fr.state && compare(this.game, fr.state, this.name + ' PA.game line ' + this.lines);
+    if (d) fail(d);
+    this.game = null;
+  }
   PA.deliver(s, SINK);
   PA.list(fr.received).forEach(function (g) { if (g.clock !== before) s.receiveGarbage([g]); });
   var dealt = this.gen.dealt.slice(rowsBefore), want = PA.list(fr.newRows).concat(PA.list(fr.garbageRows));

@@ -831,7 +831,7 @@
       this.preStopTime = Math.max(this.preStopTime, f.FLASH + f.FACE + f.POP * (comboSize + onScreen));
       var stopTime = this.calculateStopTime(comboSize, this.wasToppedOut, isChainLink, this.chainCounter);
       if (stopTime > this.stopTime) this.stopTime = stopTime;
-      this.events.push({ type: 'match', chain: isChainLink, size: comboSize, garbage: gps ? gps.length : 0, row: matching[0].row, col: matching[0].col });
+      this.events.push({ type: 'match', chain: isChainLink, chainCounter: this.chainCounter, size: comboSize, garbage: gps ? gps.length : 0, row: matching[0].row, col: matching[0].col });
       var metalCount = 0;
       for (i = 0; i < matching.length; i++) if (matching[i].color === 8) metalCount++;
       if (isChainLink || comboSize > 3 || metalCount > 0) this.pushGarbage(origin, isChainLink, comboSize, metalCount);
@@ -1036,6 +1036,24 @@
     return this.canSwapPanels(this.panels[row][col], this.panels[row][col + 1])[0];
   };
   Stack.prototype.drainEvents = function () { var e = this.events; this.events = []; return e; };
+  // ---- what a game reads and does that the Lua leaves to its client
+  Stack.prototype.panelAt = function (row, col) {
+    if (row < 0 || row >= this.panels.length || col < 1 || col > W) return null;
+    return this.panels[row][col];
+  };
+  Stack.prototype.clampCursor = function () {
+    this.curRow = bound(1, this.curRow, this.topCurRow);
+    this.curCol = bound(1, this.curCol, W - 1);
+  };
+  // A tap on a pair: the cursor goes there and swap is pressed, as a
+  // controller would after walking there; the engine decides on the next
+  // frame whether the swap is made.
+  Stack.prototype.touchSwap = function (row, col) {
+    if (!this.canSwap(row, col)) return false;
+    this.curRow = row; this.curCol = col;
+    this.clampCursor();
+    return this.tryQueueSwap(this.curRow, this.curCol);
+  };
   Stack.prototype.fillRatio = function () {
     for (var row = this.height; row >= 1; row--) for (var col = 1; col <= W; col++) if (this.panels[row][col].color !== 0) return row / this.height;
     return 0;
@@ -1190,6 +1208,22 @@
     return s;
   }
 
+  // A VS stack as Match:start makes one: modern level `level`, its rows and
+  // garbage colours dealt from `seed` by the server's generator.
+  function GEN() {
+    if (typeof module === 'object' && module.exports) return require('./pa-generator.js');
+    var g = (typeof globalThis !== 'undefined' ? globalThis : this).PAGenerator;
+    if (!g) throw new Error('PAEngine: pa-generator.js is not loaded');
+    return g;
+  }
+  function game(opts) {
+    opts = opts || {};
+    var lv = vsLevel(opts.level || 10), ld = lv.levelData;
+    var s = create(lv, new Seeded(new (GEN().GeneratorSource)(opts.seed === undefined ? 1 : opts.seed, true, ld.colors, ld.adjacentDenialFrequency)));
+    s.name = opts.name || 'player';
+    s.level = opts.level || 10;
+    return s;
+  }
   function fromPanelEngine(pe, source) {
     var s = create(pe.level || 10, source), r, c, k;
     ['speed', 'nextSpeedIncreaseClock', 'clock', 'displacement', 'stopTime', 'preStopTime', 'shakeTime', 'shakeTimeOnFrame',
@@ -1290,6 +1324,6 @@
 
   return { Stack: Stack, Panel: Panel, fromLua: fromLua, revive: revive, toPanelEngine: toPanelEngine, fromPanelEngine: fromPanelEngine, view: view, Unseen: Unseen, Recorded: Recorded, Seeded: Seeded, create: create, vsLevel: vsLevel, PANEL_FROM_LUA: PANEL_FROM_LUA,
            STACK_FROM_LUA: STACK_FROM_LUA, IN: IN, list: list, WIDTH: W, HEIGHT: H,
-           GarbageQueue: GarbageQueue, deliver: deliver, COMBO_GARBAGE: COMBO_GARBAGE, STAGING_DURATION: STAGING_DURATION,
+           GarbageQueue: GarbageQueue, deliver: deliver, game: game, COUNTDOWN_TOTAL: COUNTDOWN_START + COUNTDOWN_LENGTH, COMBO_GARBAGE: COMBO_GARBAGE, STAGING_DURATION: STAGING_DURATION,
            GARBAGE_DELAY_LAND_TIME: GARBAGE_DELAY_LAND_TIME };
 }));
