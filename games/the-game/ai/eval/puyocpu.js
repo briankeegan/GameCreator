@@ -1368,8 +1368,10 @@
     var k = cand.resolved && cand.resolved.carry;
     if (depth === this.DOOMED_DEPTH && this._board && this.stack && cand.kind !== 'raise') {
       if (cand.resolved && (cand.resolved.died || cand.resolved.diedInWalk)) return false;
-      // The move itself at the same pace as the line after it.
-      var root = { b: this._board.clone(), carry: null, pos: [this.stack.curRow, this.stack.curCol], t: 0 };
+      // The move itself at the same pace as the line after it; on the
+      // server's board, from the decision's own root on the engine in C.
+      var root = this.nativeCands && this.serverStack && this._candRoot ? this._candRoot
+               : { b: this._board.clone(), carry: null, pos: [this.stack.curRow, this.stack.curCol], t: 0 };
       return this._lineSurvives(this._lineStep(root, cand.move || null, false), { n: this.SURVIVAL_BUDGET });
     }
     return this._survivesRise(this._settledOf(cand).clone(), depth, false, k || null,
@@ -3747,9 +3749,10 @@
                                    this._raiseWhileBroke(raiseBoard, raiseResolved) ||
                                    raiseResolved.died ||
                                    this._resolvesDead(raiseBoard, raiseResolved) ||
-                                   !this._lineSurvives({ b: raiseBoard.clone(), carry: raiseResolved.carry || null,
-                                                         pos: [this.stack.curRow, this.stack.curCol],
-                                                         t: raiseResolved.elapsed || 0 },
+                                   !this._lineSurvives(natural ? natOf('raise').natNode
+                                                       : { b: raiseBoard.clone(), carry: raiseResolved.carry || null,
+                                                           pos: [this.stack.curRow, this.stack.curCol],
+                                                           t: raiseResolved.elapsed || 0 },
                                                        { n: this.SURVIVAL_BUDGET })))) {
         cands.push({ kind: 'raise',
                      score: raiseScore,
@@ -4314,8 +4317,15 @@
     //
     // Not after a raise: the engine will not serve two in a row.
     if (cand.kind !== 'raise' && this._canRaise()) {
-      var risen = cand.board.clone().rise(this._incoming);
-      var risenResolved = this._resolveCandidate(risen);
+      var risen = cand.board.clone().rise(this._incoming), risenResolved;
+      if (nat) {
+        // On the engine in C, as the first ply raises: the raise, then the settle.
+        var up = this._candNat.advance(nat, 'raise', null, 0);
+        var upSettled = up && !up.dead ? this._candNat.settleMany([[up, null]], this.REPLY_SETTLE)[0] : up;
+        risenResolved = upSettled ? this._nativeResolved(upSettled, nat, risen)
+                                  : { comboSizes: [], chainLength: 0, clearedPanels: 0, brokeGarbage: 0, stopTimeEarned: 0,
+                                      garbage: [], died: true, elapsed: 0, stopTime: 0, shakeTime: 0 };
+      } else risenResolved = this._resolveCandidate(risen);
       if (!this._boardToppedOut(risen)) anyReplyLives = true;
       if (risenResolved && risenResolved.garbage && risenResolved.garbage.length) reach.breaks = 1;
       var rp = modes.payout(risenResolved);
