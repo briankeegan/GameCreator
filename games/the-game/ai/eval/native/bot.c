@@ -2062,10 +2062,68 @@ static int tGrid(const int32_t *st) {
     }
   return any;
 }
+// A SWAP AND WHAT FALLS AFTER IT: a panel pulled out of a column drops what
+// stood on it; a panel swapped into the air falls. On the grid: the swap, the
+// panels fallen to rest, then every run of three or more, either way, that
+// touches garbage and was not there before. However it forms, it breaks.
+static int tGarbRun(int g[][WMAX + 2], int h, int r, int c, int vert) {
+  int a = g[r][c], lo, hi;
+  if (a <= 0) return 0;
+  if (vert) {
+    lo = hi = r;
+    while (lo > 1 && g[lo - 1][c] == a) lo--;
+    while (hi < h && g[hi + 1][c] == a) hi++;
+    if (hi - lo + 1 < 3) return 0;
+    for (int k = lo; k <= hi; k++)
+      if ((c > 1 && g[k][c - 1] == -1) || (c < tW && g[k][c + 1] == -1) || g[k + 1][c] == -1 || (k == lo && k > 1 && g[k - 1][c] == -1)) return 1;
+  } else {
+    lo = hi = c;
+    while (lo > 1 && g[r][lo - 1] == a) lo--;
+    while (hi < tW && g[r][hi + 1] == a) hi++;
+    if (hi - lo + 1 < 3) return 0;
+    for (int k = lo; k <= hi; k++)
+      if (g[r + 1][k] == -1 || (r > 1 && g[r - 1][k] == -1) || (k == lo && k > 1 && g[r][k - 1] == -1) || (k == hi && k < tW && g[r][k + 1] == -1)) return 1;
+  }
+  return 0;
+}
+static void tDrops(int cr, int cc, double t0, double limit) {
+  static int g[TGRID + 2][WMAX + 2];
+  for (int r = 1; r <= tH; r++)
+    for (int c = 1; c < tW; c++) {
+      int x = tCell[r][c], y = tCell[r][c + 1];
+      if (x < 0 || y < 0 || x == y) continue;
+      // an empty cell under a hovering panel is not swapped into; one in the air is
+      if ((x == 0 && !tSupported(r, c) && tCell[r + 1][c] > 0) || (y == 0 && !tSupported(r, c + 1) && tCell[r + 1][c + 1] > 0)) continue;
+      for (int k = 1; k <= tH + 1; k++) for (int q = 0; q <= tW + 1; q++) g[k][q] = k <= tH && q <= tW ? tCell[k][q] : 0;
+      g[r][c] = y; g[r][c + 1] = x;
+      int moved = 0;
+      for (int q = c; q <= c + 1; q++)
+        for (int k = 2; k <= tH; k++) {
+          if (g[k][q] <= 0) continue;
+          int to = k;
+          while (to > 1 && g[to - 1][q] == 0) to--;
+          if (to != k) { g[to][q] = g[k][q]; g[k][q] = 0; moved = 1; }
+        }
+      int hit = 0;
+      for (int q = c; q <= c + 1 && !hit; q++)
+        for (int k = 1; k <= tH && !hit; k++) {
+          if (!moved && k != r) continue;
+          if (g[k][q] <= 0 || (g[k][q] == tCell[k][q] && k != r)) continue;
+          hit = tGarbRun(g, tH, k, q, 1) || tGarbRun(g, tH, k, q, 0);
+        }
+      if (!hit) continue;
+      int32_t sw[2] = { r, c };
+#ifndef __wasm__
+      if (botTraceOn && !tTimeMode) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  DROP %d,%d\n", r, c); }
+#endif
+      tPropose(sw, 1, cr, cc, t0, limit);
+    }
+}
 static void targetLines(const int32_t *st, int cr, int cc, double t0, double limit) {
   if (!tGrid(st)) return;
   int N = st[O_N];
   int32_t sw[2 * LINEMAX]; int row[WMAX + 1];
+  tDrops(cr, cc, t0, limit);
   for (int a = 1; a <= N; a++) {
     // three in a column: each row's nearest panel of the colour walked to it
     for (int c = 1; c <= tW; c++)
@@ -2566,6 +2624,9 @@ static Dec fillFirst(Dec d) {
   if (d.kind == K_SWAP && d.hasMove) {
     int32_t sw[2] = { d.sr, d.sc };
     if (lineJudge(sw, 1, 0) & LV_LIVES) best = LNO[10] < best ? LNO[10] : best;
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  choice %d,%d die %d last %d hollow %d | alone die %d\n", d.sr, d.sc, LNO[0], LNO[1], LNO[10], LNA[0]); }
+#endif
   }
   Cand *pick = 0;
   int surplus = materialRows(DBASE) >= 6;   // over six rows a clear may be spent to fill
