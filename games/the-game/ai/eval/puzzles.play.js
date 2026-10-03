@@ -26,12 +26,11 @@ var path = require('path');
 var fs = require('fs');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
-var LogicalBoard = globalThis.PanelCpu.LogicalBoard;
+var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
+var snapshot = globalThis.PanelCpu.snapshot;
 var PuyoCpu = require('./puyocpu.js');
 var switches = require('./switches.js');
 
-var engineBoard = require('./engineboard.js');
-var SCRATCH = null;
 var loaded = switches.load();
 console.log(switches.describe(loaded));
 
@@ -54,27 +53,9 @@ function puzzles() {
     return out;
 }
 
-// Same reading as puzzles.bench.js, and for the same reason: 8 (shock) and
-// 9 (colorless) are garbage, not colours — Panel.lua's colour arrays and
-// checkMatches.lua's canMatch, which returns false for 9 outright.
-function boardFrom(stack) {
-    var s = String(stack).replace(/\s+/g, '');
-    if (/[^0-9]/.test(s)) return null;
-    while (s.length % W) s = '0' + s;
-    var rows = [];
-    for (var i = 0; i < s.length; i += W) rows.push(s.slice(i, i + W));
-    var grid = [];
-    for (var r = 0; r <= H; r++) { grid[r] = []; for (var c = 1; c <= W; c++) grid[r][c] = 0; }
-    for (var k = 0; k < rows.length; k++) {
-        var row = rows.length - k;
-        if (row > H) continue;
-        for (var c2 = 1; c2 <= W; c2++) {
-            var d = Number(rows[k][c2 - 1]);
-            grid[row][c2] = (d === 8 || d === 9) ? -2 : d;
-        }
-    }
-    return new LogicalBoard(W, H, 9, grid, {});
-}
+// The puzzle's stack on the server's rules (PAEngine.puzzle), or null for one
+// with [====] garbage blocks.
+function boardFrom(stack) { return /[^0-9\s]/.test(String(stack)) ? null : PA.puzzle(stack); }
 
 // The least stack that _score and input.fromStack actually read. A puzzle
 // has no rising, no incoming garbage and no health, so every one of these is
@@ -103,30 +84,17 @@ function stubStack(getBoard) {
     return s;
 }
 
-// THE ENGINE IS THE BOARD. The bot only ever reads it.
-//
-// This used to keep a LogicalBoard alongside the engine — the bot planned and
-// moved on the simulation, and each turn the simulation's grid was PAINTED
-// onto a scratch Stack to ask the engine how deep the chain was. The two drift
-// the moment they are separate things, and they did: a probe over all 84
-// puzzles found the engine mid-`falling`/`landing` on 89 of 168 swaps, so
-// `canSwap` refused 39 of them and every one was recorded as "no chain" —
-// a third of the bot's moves scored blind, always in the direction of a
-// lower number.
-//
-// Repainting per move cannot be made safe, because paint writes a settled
-// grid onto a Stack that is still running its own physics. So there is one
-// board now and it is the engine's. Each turn:
-//   read the engine -> hand the bot that board -> apply the swap TO THE ENGINE
-//   -> let the engine settle -> take the chain depth FROM THE ENGINE.
-// Nothing is simulated twice, so nothing can disagree.
+// THE ENGINE IS THE BOARD. The bot only ever reads it: each turn the bot is
+// handed the server's board as it reads any board (PanelCpu.snapshot), the
+// swap is made ON the engine, the engine settles, and the chain depth is the
+// engine's. Nothing is simulated twice, so nothing can disagree.
+// A COLOURLESS panel (9) never matches (checkMatches.lua canMatch), so the
+// bot reads it as a cell that cannot match, as it reads garbage.
 function play(stack) {
-    // What the bot thinks with, rebuilt from the engine every turn. It is a
-    // VIEW of the real board, never a second copy that plays on alone.
     function view() {
-        return new LogicalBoard(W, H, 9,
-                                engineBoard.readGrid(stack, H, W),
-                                engineBoard.readBlocks(stack, H, W));
+        var b = snapshot.call({ stack: stack });
+        for (var r = 1; r < b.grid.length; r++) for (var c = 1; c <= W; c++) if (b.grid[r][c] === 9) b.grid[r][c] = -2;
+        return b;
     }
     var cur = view();
     var cpu = new PuyoCpu(stubStack(function () { return cur; }), {
@@ -134,11 +102,7 @@ function play(stack) {
         depth: loaded.switches.depth,
         beam: loaded.switches.beam,
         rise: loaded.switches.rise,
-        density: loaded.switches.density,
-        // GC_ENGINE=1 makes the bot think with panel-engine.js instead of
-        // LogicalBoard. A switch rather than a swap, because it is a
-        // different bot and every trained weight set describes the other one.
-        engine: process.env.GC_ENGINE === '1' || process.env.GC_ENGINE === 'true'
+        density: loaded.switches.density
     });
     cpu._snapshot = function () { return cur.clone(); };
 
@@ -146,21 +110,19 @@ function play(stack) {
     for (var i = 0; i < BUDGET; i++) {
         var d = cpu._decide();
         if (!d || d.kind !== 'swap') { why = 'held'; break; }
-        // The engine decides what is legal, here as everywhere else. A refusal
-        // is now a real disagreement worth counting rather than a silent zero,
-        // because the board the bot read came from this same Stack one line
-        // ago — there is no repaint in between to explain it away.
+        // The engine decides what is legal. The board the bot read came from
+        // this same stack one line ago, so a refusal is a real disagreement.
         if (!stack.canSwap(d.move[0], d.move[1])) { refused++; why = 'engine refused the swap'; break; }
         stack.curRow = d.move[0];
         stack.curCol = d.move[1];
-        stack.doSwap(d.move[0], d.move[1]);
-        var res = engineBoard.settle(stack, 900);
+        stack.tryQueueSwap(d.move[0], d.move[1]);
+        var res = stack.settle(900);
         swaps++;
         cpu.stack.curRow = d.move[0];
         cpu.stack.curCol = d.move[1];
-        if (res.chainLength > deepest) deepest = res.chainLength;
+        if (res.chain > deepest) deepest = res.chain;
         cur = view();
-        if (!cur.legalSwaps().length) { why = 'no legal swap'; break; }
+        if (!stack.legalSwaps().length) { why = 'no legal swap'; break; }
     }
     return { deepest: deepest, swaps: swaps, why: why, refused: refused };
 }
@@ -171,12 +133,7 @@ chains.forEach(function (x) {
     var board = boardFrom(x.p.Stack);
     if (!board) return;
     n++;
-    // One scratch Stack, repainted ONCE per puzzle to set the position up, and
-    // then left alone to be the game for the rest of that puzzle.
-    if (!SCRATCH) { SCRATCH = engineBoard.scratch(10); SCRATCH.speed = 0; }
-    engineBoard.paint(SCRATCH, board.grid, board.height, board.width);
-    engineBoard.settle(SCRATCH, 900);
-    var r = play(SCRATCH);
+    var r = play(board);
     if (r.deepest >= 2) { fired++; byDepth[r.deepest] = (byDepth[r.deepest] || 0) + 1; }
     if (r.why === 'held') stuck++;
     refused += r.refused;
@@ -188,9 +145,8 @@ console.log('  chain puzzles played           : ' + n);
 console.log('  FIRED A CHAIN (2+ links)       : ' + fired + ' / ' + n +
             ' (' + (n ? (fired / n * 100).toFixed(0) : 0) + '%)');
 console.log('  stopped early by CHOOSING HOLD : ' + stuck);
-// Was 39 of 168 swaps while the measure kept its own board and repainted it.
-// With the engine holding the game there is nothing to drift, so anything
-// here is a real legality disagreement and worth chasing, not noise.
+// The bot reads the engine's own board, so anything here is a real legality
+// disagreement and worth chasing, not noise.
 console.log('  swaps the ENGINE REFUSED         : ' + refused);
 console.log('\n  deepest chain reached, by count:');
 Object.keys(byDepth).sort(function (a, b) { return a - b; }).forEach(function (k) {
