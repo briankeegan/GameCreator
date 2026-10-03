@@ -4504,6 +4504,8 @@
     return { at: st.clock, enc: encodeStack(st), raiseFrames: h.raiseFrames, raiseStarted: h._raiseStarted,
              arrivals: n.arrivals };
   }
+  var pointOfStack = pointOf;
+
   // THE ROWS THE GAME WILL HAVE DEALT BY THEN ARE SEEN. A prediction runs on
   // a copy of the real board that keeps the game's own generator, so a row or
   // a break dealt before the frame predicted has the colours it will have --
@@ -4531,15 +4533,22 @@
     if (!n || n.dead) return n;
     return this._engineAdvanceOn(n.st, n, kind, m, frames, true);
   };
-  function paPointOf(n) {
+  // `seen`: the board's rows and breaks are the game's own (a prediction), so
+  // the point is exact. The point carries the server's board itself
+  // (`server`), for a brain that searches on the server's rules.
+  function paPointOf(n, unseen) {
     if (!n || n.dead || n.st.gameOver) return null;
     var PE = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
     var st = n.st.copy(), h = { raiseFrames: n.hold.left, _raiseStarted: n.hold.started }, input = {};
+    delete st.tryQueueSwap;
     var v = PAE().view(st, PE);
     raiseStep(h, v, input);
     v.setInput(input);
-    return exact({ at: v.clock, enc: encodeStack(v), raiseFrames: h.raiseFrames, raiseStarted: h._raiseStarted,
-                   arrivals: n.arrivals.map(copyArrival) });
+    var server = {};
+    for (var k in st) if (Object.prototype.hasOwnProperty.call(st, k) && k !== 'source' && typeof st[k] !== 'function') server[k] = st[k];
+    var pt = { at: v.clock, enc: encodeStack(v), raiseFrames: h.raiseFrames, raiseStarted: h._raiseStarted,
+               arrivals: n.arrivals.map(copyArrival), server: server };
+    return unseen ? pt : exact(pt);
   }
   PuyoCpu.prototype._seenRoot = function () {
     var root = this._engineRoot(), rng = this.stack.rng, PE = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
@@ -4735,7 +4744,8 @@
     var e = point.enc;
     return { enc: { meta: e.meta, rows: e.rows, row0: e.row0, buf: e.buf.slice() },
              raiseFrames: point.raiseFrames, raiseStarted: point.raiseStarted, arrivals: point.arrivals,
-             opp: bot.opponent ? encodeStack(bot.opponent) : null, acted: acted === true ? 'full' : acted || false };
+             opp: bot.opponent ? encodeStack(bot.opponent) : null, acted: acted === true ? 'full' : acted || false,
+             server: point.server || null };
   };
   // The brain's side: a bot of its own, deciding on the boards it is sent,
   // and answering with the move and the plan that proved it. A decision that
@@ -4765,6 +4775,15 @@
     bot.raiseFrames = m.raiseFrames; bot._raiseStarted = m.raiseStarted;
     bot.opponent = m.opp ? decodeStack(m.opp) : null;
     bot._predArr = m.arrivals;
+    // ON THE SERVER'S RULES: the board as the server holds it, searched on
+    // native/pa.c; garbage on its way lands that many frames on.
+    if (m.server) {
+      bot.serverStack = PAE().revive(m.server);
+      bot.serverArrivals = m.arrivals.map(function (a) { return { at: Math.max(1, a.at), width: a.width, height: a.height, isChain: !!a.isChain, isMetal: !!a.isMetal }; });
+      bot.native = true;
+      // native.js runs the server's engine on threads only in node
+      if (typeof require !== 'function') bot.threads = 0;
+    }
     bot._abort = this.abort;
     bot.decisions++;
     var d;
@@ -4776,6 +4795,7 @@
   // beat (the search rounds waits to whole beats).
   Mind.prototype._planOf = function (pl) {
     var plan = [], bot = this.bot, j, pt;
+    var pointOf = bot.serverStack ? function (n) { return paPointOf(n, true); } : pointOfStack;
     for (j = 0; pl && j + 1 < pl.line.length; j++) {
       var a = pl.line[j], b = pl.line[j + 1], nx = b.m;
       if (isLong(nx)) {
