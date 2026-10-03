@@ -113,7 +113,10 @@ static Panel *fall(Board *b, Panel *p) {
   b->rowActive[p->f[ROW]] = -1;        // ROWS COUNTED
   Panel *above = P(b, p->f[ROW] + 1, p->f[COL]);
   if (p->f[ISGARBAGE]) { above->f[PROPFALL] = 1; above->f[STATECHANGED] = 1; }
-  if (p->f[STATE] != FALLING) { p->f[STATE] = FALLING; p->f[TIMER] = 0; p->f[STATECHANGED] = 1; }
+  if (p->f[STATE] != FALLING) {
+    if (p->f[ISGARBAGE]) b->sFell++;
+    p->f[STATE] = FALLING; p->f[TIMER] = 0; p->f[STATECHANGED] = 1;
+  }
   return p;
 }
 static void land(Board *b, Panel *p) {

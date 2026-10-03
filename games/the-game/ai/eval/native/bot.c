@@ -1821,7 +1821,8 @@ int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_
 // clears more than the board left alone, BREAKS: converts more. GAINS: the
 // board left alone loses health within the horizon and the line loses it
 // later or not at all -- the only thing a clear that breaks nothing buys.
-enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8 };
+// DROPS: more garbage at rest starts to fall than left alone.
+enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8, LV_DROPS = 16 };
 
 typedef struct { int n, brk, ok, grown, waitAll; int32_t sw[2 * KEEPDEPTH]; double est; int verdict; } LineC;
 static LineC LINES[MAXLINES];
@@ -1845,6 +1846,7 @@ static int lineJudge(const int32_t *sw, int n, int waitAll) {
   if (LNO[2] > LNA[2]) v |= LV_PAYS | LV_BREAKS;
   else if (LNO[3] > LNA[3]) v |= LV_PAYS;
   if (LNA[0] && (!LNO[0] || LNO[0] > LNA[0])) v |= LV_GAINS;
+  if (LNO[9] > LNA[9]) v |= LV_DROPS;
   return v;
 }
 static int judged(LineC *l) {
@@ -2269,10 +2271,10 @@ static Dec batchBreak(Dec d) {
 }
 // MATERIAL IS SPENT ONLY TO BREAK OR TO LIVE. While garbage lies on the
 // board or waits to drop, the board's panels are what the next break is made
-// from, and broken garbage is where new ones come from. A clear that breaks
-// nothing is played only topped, to hold the lock, or when it was chosen to
-// live (stayAlive) or as a step of a line that breaks; otherwise the bot keeps
-// its panels for the break.
+// from, and broken garbage is where new ones come from. A swap that clears,
+// or that drops garbage lying at rest -- a pile split is a pile broken in
+// pieces -- is played only if it breaks, buys time (GAINS), was chosen to live
+// (stayAlive) or is a step of a line that breaks; otherwise the bot holds.
 static Dec spendToBreak(Dec d) {
   if (lineLast || d.kind != K_SWAP || !d.hasMove || endsInBreak(d.via)) return d;
   if (!(hasGarbage(DBASE) || BIN[IN_INCOMING] > 0)) return d;
@@ -2281,9 +2283,9 @@ static Dec spendToBreak(Dec d) {
   int v = lineJudge(sw, 1, 0);
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
-    fprintf(stderr, "SPEND %d,%d v%d | drain %d/%d last %d conv %d/%d match %d/%d\n", d.sr, d.sc, v, LNO[0], LNA[0], LNO[1], LNO[2], LNA[2], LNO[3], LNA[3]); }
+    fprintf(stderr, "SPEND %d,%d v%d | drain %d/%d last %d conv %d/%d match %d/%d fell %d/%d\n", d.sr, d.sc, v, LNO[0], LNA[0], LNO[1], LNO[2], LNA[2], LNO[3], LNA[3], LNO[9], LNA[9]); }
 #endif
-  if (!(v & LV_LIVES) || !(v & LV_PAYS) || (v & (LV_BREAKS | LV_GAINS))) return d;
+  if (!(v & LV_LIVES) || !(v & (LV_PAYS | LV_DROPS)) || (v & (LV_BREAKS | LV_GAINS))) return d;
   return mkHold(V_SETUP, d.mode, d.alive, 0, 0, 0);
 }
 // A SWAP THAT IS STILL MOVING WHEN THE LOCK ENDS TAKES THE ROW BACK: the
