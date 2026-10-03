@@ -20,7 +20,7 @@ static int comboCells(int size) {
 static const double STARTER_W[] = { -20, -10, -40, 5, 13, 20, 30, 4, 6, 8, 10, 10, 5, 15, 5, 5, 25, 5, 50, 30 };
 
 enum { H_NONE, H_UP, H_DOWN, H_LEFT, H_RIGHT };   // BIN[IN_HELD]
-typedef uint8_t Settle[32][W + 2];   // per cell, the frame it settles from (unsettled)
+typedef struct { uint8_t last[32][W + 2], first[32][W + 2], same[32][W + 2]; } Settle;   // per cell (unsettled): the frame it settles from, the frame it first changes, and whether it settles to what it holds now
 typedef struct {
   int id, reaction, reveal, allowRaise;
   int cooldown, raiseFrames, raiseStarted, wantRaise, wantRows, raiseLives;
@@ -31,7 +31,7 @@ typedef struct {
   u64 decidedOn;
   int lastKind, lastVia, lastMoveR, lastMoveC;
   Settle settle;   // the board's cells, when each settles (unsettled), at the last decision
-  int wWaitTo, wFrames, wWaitAll;   // a walk: the frame its swap's panels settle (every panel's: wWaitAll), the frames it has taken
+  int wWaitTo, wFrames, wWaitAll, wR0;   // a walk: the frame its swap's panels settle (every panel's: wWaitAll), the frames it has taken
 } Front;
 #define MAXFRONTS 16
 static Front FRONTS[MAXFRONTS];
@@ -236,17 +236,19 @@ static u64 boardKey(void) {
 #define UNSETTLEMOST 180
 static Board *USB;
 static int32_t usPrev[32][W + 2][3];
-static void unsettled(Board *b, uint32_t *out, Settle at) {
+static void unsettled(Board *b, uint32_t *out, Settle *S) {
   if (!USB) USB = nb_new();
   nb_copy(USB, b);
   USB->ninc = 0;   // what is on the board settling, not what is still to drop
   for (int c = 0; c < W + 2; c++) out[c] = 0;
-  for (int r = 0; r < 32; r++) for (int c = 0; c < W + 2; c++) at[r][c] = 0;
+  for (int r = 0; r < 32; r++) for (int c = 0; c < W + 2; c++) S->last[r][c] = S->first[r][c] = S->same[r][c] = 0;
+  static int32_t usNow[32][W + 2][3];
   int top = b->height < 31 ? b->height : 31;
   for (int r = 1; r <= top; r++)
     for (int c = 1; c <= W; c++) {
       const int32_t *x = b->p[r][c].f;
       usPrev[r][c][0] = x[COLOR]; usPrev[r][c][1] = x[ISGARBAGE]; usPrev[r][c][2] = x[STATE] == DEAD ? NORMAL : x[STATE];
+      for (int i = 0; i < 3; i++) usNow[r][c][i] = usPrev[r][c][i];
     }
   int risen = 0, disp = USB->displacement;
   for (int k = 0; k < UNSETTLEMOST; k++) {
@@ -264,24 +266,38 @@ static void unsettled(Board *b, uint32_t *out, Settle at) {
           y[0] = p[COLOR]; y[1] = p[ISGARBAGE]; y[2] = p[STATE] == DEAD ? NORMAL : p[STATE];
         }
         if (y[0] != usPrev[r][c][0] || y[1] != usPrev[r][c][1] || y[2] != usPrev[r][c][2]) {
-          at[r][c] = (uint8_t)(k + 1 < 255 ? k + 1 : 255);
+          S->last[r][c] = (uint8_t)(k + 1 < 255 ? k + 1 : 255);
+          if (!S->first[r][c]) S->first[r][c] = S->last[r][c];
           usPrev[r][c][0] = y[0]; usPrev[r][c][1] = y[1]; usPrev[r][c][2] = y[2];
         }
       }
     if (!moving) break;
   }
-  for (int r = 1; r <= top; r++) for (int c = 1; c <= W; c++) if (at[r][c]) out[c] |= 1u << (r - 1);
+  for (int r = 1; r <= top; r++) for (int c = 1; c <= W; c++) {
+    if (S->last[r][c]) out[c] |= 1u << (r - 1);
+    S->same[r][c] = usPrev[r][c][0] == usNow[r][c][0] && usPrev[r][c][1] == usNow[r][c][1] && usPrev[r][c][2] == usNow[r][c][2];
+  }
 }
 // The frame from which every cell is settled.
-static int allWait(Settle at) {
+static int allWait(const Settle *S) {
   int m = 0;
-  for (int r = 1; r < 32; r++) for (int c = 1; c <= W; c++) if (at[r][c] > m) m = at[r][c];
+  for (int r = 1; r < 32; r++) for (int c = 1; c <= W; c++) if (S->last[r][c] > m) m = S->last[r][c];
   return m;
 }
-// The frame from which a pair is settled (both its cells).
-static int pairWait(Settle at, int r, int c) {
+// A PAIR STILL NOW IS PRESSED NOW: both its cells hold what they settle to,
+// and nothing reaches either before the swap (SWAPSPAN frames from `f`) is
+// done. Panels that pass through it later are not panels moving under it.
+#define SWAPSPAN 5
+static int pairFree(const Settle *S, int r, int c, int f) {
   if (r < 1 || r > 31) return 0;
-  return at[r][c] > at[r][c + 1] ? at[r][c] : at[r][c + 1];
+  for (int k = c; k <= c + 1; k++)
+    if (!S->same[r][k] || (S->first[r][k] && f + SWAPSPAN >= S->first[r][k])) return 0;
+  return 1;
+}
+// The frame from which a pair is settled (both its cells).
+static int pairWait(const Settle *S, int r, int c) {
+  if (r < 1 || r > 31) return 0;
+  return S->last[r][c] > S->last[r][c + 1] ? S->last[r][c] : S->last[r][c + 1];
 }
 
 // ---------------------------------------------------------------- one decision (bitbot.js info, _prepare, decide)
@@ -381,7 +397,7 @@ static void fPrepare(Front *F) {
   // the pairs the bot may target: the engine would swap them now, and
   // neither panel is unsettled -- a bit per row, for columns 1..5
   uint32_t still[W + 2];
-  unsettled(FB, still, F->settle);
+  unsettled(FB, still, &F->settle);
   for (c = 1; c < W; c++) {
     uint32_t m = 0;
     for (r = 1; r <= FB->height && r <= 31; r++)
@@ -428,7 +444,7 @@ static int stepToward(int *timer, int row, int col, int input) {
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 static void beginWalk(Front *F, int r, int c, int cooldown) {
   F->walk = 1; F->wRow = r; F->wCol = c; F->wTimer = 0; F->wCooldown = cooldown; F->wRetries = 0; F->wHasDisp = 0;
-  F->wWaitTo = pairWait(F->settle, r, c); F->wFrames = 0; F->wWaitAll = 0;
+  F->wWaitTo = pairWait(&F->settle, r, c); F->wFrames = 0; F->wWaitAll = 0; F->wR0 = r;
 }
 static int driveWalk(Front *F, int input) {
   F->wFrames++;
@@ -440,7 +456,7 @@ static int driveWalk(Front *F, int input) {
     return stepToward(&F->wTimer, row, col, input);
   }
   // the swap's panels settle at a known frame: a walk that arrives first waits
-  if (F->wFrames < F->wWaitTo) {   // never pressed on panels still moving
+  if (F->wFrames < F->wWaitTo && (F->wWaitAll || !pairFree(&F->settle, F->wR0, col, F->wFrames))) {   // never pressed on panels still moving
     // a wait is not a plan: topped, or a reaction's worth of waiting, decide again
     if (!toppedNow() && F->wFrames % (F->reaction > 0 ? F->reaction : 12) != 0) return input;
     F->walk = 0; F->cooldown = 0;
@@ -486,7 +502,12 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   int32_t h0 = b->health;
   int step = 0, walking = n > 0, timer = 0, held = LF ? LF->held : H_NONE, cool = 0, disp = b->displacement;
   int tr = n > 0 ? steps[0] : 0, tc = n > 0 ? steps[1] : 0, last = n > 0 ? -1 : 0, f, dropped = b->garbageCreatedCount;
-  int waitTo = n > 0 && LF ? (LWAITALL && n == 1 ? allWait(LF->settle) : pairWait(LF->settle, steps[0], steps[1])) : 0;
+  int waitTo = n > 0 && LF ? (LWAITALL && n == 1 ? allWait(&LF->settle) : pairWait(&LF->settle, steps[0], steps[1])) : 0;
+  int fs = 0, r0 = tr;   // the frame the step's settle was taken, its row then
+#ifndef __wasm__
+  if (botTraceOn && n == 1 && waitTo > 60 && LF) { extern int fprintf(void *, const char *, ...); extern void *stderr; int r = steps[0], c = steps[1];
+    fprintf(stderr, "  WAIT %d,%d to %d | first %d,%d last %d,%d\n", r, c, waitTo, LF->settle.first[r][c], LF->settle.first[r][c + 1], LF->settle.last[r][c], LF->settle.last[r][c + 1]); }
+#endif
   out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = b->ninc; out[8] = -1; out[9] = out[10] = out[11] = 0;
   for (f = 0; f < horizon; f++) {
     int input = 0;
@@ -500,8 +521,8 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
       if (!landing && (cool == 0 || b->stopTime > 0 || nb_topped(b))) {
         if (step == n) { out[1] = last; out[8] = f; return 1; }   // the front decides again here
         walking = 1; tr = steps[2 * step]; tc = steps[2 * step + 1]; timer = 0; disp = b->displacement;
-        { uint32_t still[W + 2]; unsettled(b, still, LSET);
-          waitTo = f + (LWAITALL && step == n - 1 ? allWait(LSET) : pairWait(LSET, tr, tc)); }
+        { uint32_t still[W + 2]; unsettled(b, still, &LSET);
+          waitTo = f + (LWAITALL && step == n - 1 ? allWait(&LSET) : pairWait(&LSET, tr, tc)); fs = f; r0 = tr; }
       }
     }
     if (walking) {
@@ -509,7 +530,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
       disp = b->displacement;
       int row = clampi(tr, 1, b->topCurRow), col = clampi(tc, 1, W - 1);
       if (b->curRow == row && b->curCol == col) {
-        if (f < waitTo) { /* its panels settle at waitTo: never pressed on panels still moving */ }
+        if (f < waitTo && ((LWAITALL && step == n - 1) || !pairFree(step == 0 ? &LF->settle : &LSET, r0, col, f - fs))) { /* its panels settle at waitTo: never pressed on panels still moving */ }
         else if (!nb_can_swap(b, row, col) || !nb_try_queue_swap(b, row, col)) {
 #ifndef __wasm__
           if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
@@ -569,7 +590,7 @@ static int lineStateAt(const int32_t *steps, int n, int landing, int32_t *masks,
   // the next step targets settled panels: the board once it has settled, each
   // pair with the frame (from now) its panels settle
   uint32_t still[W + 2];
-  unsettled(LNB, still, LSET);
+  unsettled(LNB, still, &LSET);
   Board *save = FB;
   FB = USB;
   fMasks(masks, 0);
@@ -578,7 +599,7 @@ static int lineStateAt(const int32_t *steps, int n, int landing, int32_t *masks,
   for (int r = 0; r < 32; r++) for (int c = 0; c < WMAX; c++) wait[r][c] = 0;
   for (int c = 1; c < W; c++)
     for (int r = 1; r <= USB->height && r <= 31; r++)
-      if (nb_can_swap(USB, r, c)) { can[c] |= 1u << (r - 1); wait[r][c] = (uint8_t)pairWait(LSET, r, c); }
+      if (nb_can_swap(USB, r, c)) { can[c] |= 1u << (r - 1); wait[r][c] = (uint8_t)pairWait(&LSET, r, c); }
   cur[0] = LNB->curRow; cur[1] = LNB->curCol; *t = out[8];
   return masks[O_BAD] ? -1 : 0;
 }
@@ -665,7 +686,7 @@ EXPORT(front_frame) int front_frame(int fid, Board *b) {
   }
   F->park = 0;
   beginWalk(F, d.mr, d.mc, F->reaction);
-  if (d.waitAll) { F->wWaitTo = allWait(F->settle); F->wWaitAll = 1; }
+  if (d.waitAll) { F->wWaitTo = allWait(&F->settle); F->wWaitAll = 1; }
   return fSend(F, driveWalk(F, input & ~DIRS), held);
 }
 
