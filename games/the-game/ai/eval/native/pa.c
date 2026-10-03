@@ -21,6 +21,7 @@ typedef struct { int32_t f[NF]; } Panel;
 typedef struct { int32_t width, height, isChain, isMetal, frameEarned, finalized; } Incoming;   // finalized: NUL/0/1
 typedef struct { int32_t leftId, rightId, row, col, clock; } Stall;
 
+#define FEED 16
 #define MAXINC 256   // a training volley queues fifty at once, and an unbroken queue keeps the last ones
 #define MAXSTALL 64
 #define MAXLANDED 16
@@ -76,6 +77,12 @@ typedef struct Board {
   // stop time one clear paid. Counted since the step began; not part of the
   // board, never sent.
   int32_t sCombo[MAXCOMBOS], sChainAt[MAXCOMBOS], sNCombo, sCleared, sBroke, sEarned;
+  // FED ROWS: the real rows and break colours, from the game being played;
+  // empty, the unseen colours are dealt, as the search wants. A row
+  // cell is a digit, or 100 + n / 200 + n for a letter (upper / lower) that
+  // becomes shock with one / two shock panels queued. Not part of the board,
+  // never sent.
+  int32_t rowFeed[FEED][W], nRowFeed, rowFeedAt, brkFeed[FEED][W], nBrkFeed, brkFeedAt;
   int32_t ninc, nstall, nlanded;
   int32_t dropColumnIndex[7];     // [width], 1-based as the Lua keeps them
   Incoming inc[MAXINC];           // the next to drop last
@@ -442,10 +449,22 @@ static void newRow(Board *b) {
   if (b->queuedSwapRow > 0) b->queuedSwapRow++;
   int top = TOP(b) + 1, r, c;
   if (top >= MAXROWS) { b->err |= ERR_ROWS; return; }
-  if (b->metalPanelsQueued > 3) b->metalPanelsQueued -= 2;
-  else if (b->metalPanelsQueued > 0) b->metalPanelsQueued -= 1;
-  int32_t k = ++b->unseenRows;
-  for (c = 1; c <= W; c++) { Panel *p = createPanelAt(b, top, c); p->f[COLOR] = UNSEEN_COLOUR(30, k, c); p->f[STATE] = DIMMED; }
+  int metal = 0;
+  if (b->metalPanelsQueued > 3) { b->metalPanelsQueued -= 2; metal = 2; }
+  else if (b->metalPanelsQueued > 0) { b->metalPanelsQueued -= 1; metal = 1; }
+  if (b->nRowFeed > 0) {
+    // a fed row, dealt as the Lua deals it (GeneratorSource.lua: a letter is shock
+    // when shock panels are queued)
+    int32_t *f = b->rowFeed[b->rowFeedAt];
+    b->rowFeedAt = (b->rowFeedAt + 1) % FEED; b->nRowFeed--;
+    for (c = 1; c <= W; c++) {
+      int32_t v = f[c - 1], colour = v < 100 ? v : v < 200 ? (metal > 0 ? 8 : (v - 100 + 1) % 10) : (metal > 1 ? 8 : (v - 200 + 1) % 10);
+      Panel *p = createPanelAt(b, top, c); p->f[COLOR] = colour; p->f[STATE] = DIMMED;
+    }
+  } else {
+    int32_t k = ++b->unseenRows;
+    for (c = 1; c <= W; c++) { Panel *p = createPanelAt(b, top, c); p->f[COLOR] = UNSEEN_COLOUR(30, k, c); p->f[STATE] = DIMMED; }
+  }
   b->nrows = top + 1;
   // switched down a row at a time, top to bottom, right to left: the new row
   // ends up at 0 and every other row one higher
@@ -698,12 +717,16 @@ static int getConnectedGarbagePanels(Board *b, Cells *matching, Cells *out) {
 // Colours a break turns into, unseen (pa-engine.js Unseen): 130..219, as rows are.
 static void convertGarbagePanels(Board *b, int isChain) {
   for (int r = 1; r <= TOP(b); r++) {
-    int32_t k = 0;
+    int32_t k = 0, *fed = 0;
     for (int c = 1; c <= W; c++) {
       Panel *p = P(b, r, c);
       if (p->f[YOFF] == -1 && p->f[COLOR] == 9) {
-        if (!k) k = ++b->unseenBreaks;
-        p->f[COLOR] = UNSEEN_COLOUR(130, k, c);
+        if (!k) {
+          k = ++b->unseenBreaks;
+          if (b->nBrkFeed > 0) { fed = b->brkFeed[b->brkFeedAt]; b->brkFeedAt = (b->brkFeedAt + 1) % FEED; b->nBrkFeed--; }
+          else fed = 0;
+        }
+        p->f[COLOR] = fed ? fed[c - 1] : UNSEEN_COLOUR(130, k, c);
         if (isChain) p->f[CHAINING] = 1;
       }
     }
@@ -1119,6 +1142,7 @@ static double toD(int32_t v) { return v == NUL ? __builtin_nan("") : (double)v; 
 EXPORT(nb_load) int nb_load(Board *b) {
   int k = 0, i, r, c, f;
   const int32_t *x = ioBody;
+  b->nRowFeed = b->rowFeedAt = b->nBrkFeed = b->brkFeedAt = 0;
   b->riseTimer = ioHead[k++];
 #define LOAD1(fl, n) b->fl = fromD(ioHead[k++]);
   HEAD(LOAD1)
@@ -1189,6 +1213,20 @@ EXPORT(nb_stopwatch) int nb_stopwatch(Board *b) { return b->stopWatch; }
 EXPORT(nb_raise_state) int nb_raise_state(Board *b) { return (b->manualRaise ? 1 : 0) | (b->preventManualRaise ? 2 : 0); }
 static void cloneBoard(Board *dst, const Board *src) { copyBoard(dst, src); }
 EXPORT(nb_clone) void nb_clone(Board *dst, Board *src) { cloneBoard(dst, src); }
+// FED ROWS (see Board): the next row dealt, and the next break's colours.
+EXPORT(nb_feed_row) int nb_feed_row(Board *b, int32_t c1, int32_t c2, int32_t c3, int32_t c4, int32_t c5, int32_t c6) {
+  if (b->nRowFeed >= FEED) return 0;
+  int32_t *f = b->rowFeed[(b->rowFeedAt + b->nRowFeed) % FEED];
+  f[0] = c1; f[1] = c2; f[2] = c3; f[3] = c4; f[4] = c5; f[5] = c6; b->nRowFeed++;
+  return 1;
+}
+EXPORT(nb_feed_break) int nb_feed_break(Board *b, int32_t c1, int32_t c2, int32_t c3, int32_t c4, int32_t c5, int32_t c6) {
+  if (b->nBrkFeed >= FEED) return 0;
+  int32_t *f = b->brkFeed[(b->brkFeedAt + b->nBrkFeed) % FEED];
+  f[0] = c1; f[1] = c2; f[2] = c3; f[3] = c4; f[4] = c5; f[5] = c6; b->nBrkFeed++;
+  return 1;
+}
+EXPORT(nb_fed) int nb_fed(Board *b) { return b->nRowFeed * 100 + b->nBrkFeed; }
 
 #ifdef PA_LIB
 // THE ENGINE'S OWN ANSWER, for the bot (bot.c), which links this file in:
