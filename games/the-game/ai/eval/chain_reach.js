@@ -66,7 +66,7 @@ chains.forEach(function (x) {
 });
 if (deep) {
   console.log('Q1  ' + deep.set + ': swap ' + JSON.stringify(deep.m) + ' -> a ' + deep.r.chain + '-link chain, combos ' +
-              deep.r.combos.join('+') + ', ' + deep.r.garbage + ' garbage pieces earned, in ' + deep.r.frames + ' frames.');
+              deep.r.combos.join('+') + ', ' + deep.r.garbage.length + ' garbage pieces earned, in ' + deep.r.frames + ' frames.');
 }
 
 // ---- Q2: minimum swaps to make a chain appear, brute force ----

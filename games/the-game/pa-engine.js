@@ -1247,9 +1247,10 @@
     s.run(); s.run(); s.events.length = 0;
     return s;
   }
-  // Runs the stack with no input until nothing moves: what it did on the way.
+  // Runs the stack with no input until nothing moves: what it did on the way
+  // (garbage: [width, height] of each piece earned).
   Stack.prototype.settle = function (maxFrames) {
-    var out = { frames: 0, chain: 0, combos: [], garbage: 0 }, sent = this.outgoing.history.length, quiet = 0;
+    var out = { frames: 0, chain: 0, combos: [], garbage: [] }, sent = this.outgoing.history.length, quiet = 0;
     for (var f = 0; f < (maxFrames || 1200); f++) {
       this.setInput(0);
       this.run();
@@ -1264,7 +1265,7 @@
         if (++quiet === 2) break;
       } else quiet = 0;
     }
-    out.garbage = this.outgoing.history.length - sent;
+    out.garbage = this.outgoing.history.slice(sent).map(function (g) { return [g.width, g.height]; });
     return out;
   };
   // Every pair a swap can be made on and that changes the board.

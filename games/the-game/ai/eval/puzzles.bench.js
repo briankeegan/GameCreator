@@ -10,35 +10,24 @@
 // asking "how many of them does the bot fire?" is a pass/fail count that
 // runs in seconds with no noise floor at all.
 //
-// FORMAT, from common/engine/Puzzle.lua: the stack is a digit string, row
-// major, and "the last character is the bottom right panel" — so the string
-// is TOP ROW FIRST and our grid, which is bottom-row-first, reads it
-// backwards. [====] blocks are garbage and those puzzles are skipped rather
-// than half-understood.
-//
-// NOT EVERY DIGIT IS A COLOUR, and reading them as one made this whole
-// benchmark measure a game that cannot be played. Panel.lua:
-// regularColorsArray is 1-5, extendedRegularColorsArray adds 7, and
-// allPossibleColorsArray then adds 8 (SHOCK) and 9 (COLORLESS). Those last
-// two are garbage, not colours — checkMatches.lua's canMatch returns false
-// outright for colour 9. The puzzle files are full of 9s, so treating it as
-// an ordinary colour turned most boards into one enormous matchable blob:
-// the bot was offered 29-panel single clears worth more than any chain,
-// correctly took them, and was scored as having declined a chain. Both
-// halves of that were fiction. 8 and 9 map to -2, the grid's garbage value,
-// which blocks and falls but cannot match.
+// THE BOARDS ARE THE SERVER'S: PAEngine.puzzle sets each stack up as
+// Puzzle.lua does, and every swap is played on pa-engine.js until nothing
+// moves. 8 is SHOCK and 9 COLORLESS there, as in the game; puzzles with
+// [====] garbage blocks are skipped rather than half-understood. The bot
+// scores the board each swap settles to, read as it reads any board
+// (PanelCpu.snapshot).
 var path = require('path');
 var fs = require('fs');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
-var LogicalBoard = globalThis.PanelCpu.LogicalBoard;
+var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
+var snapshot = globalThis.PanelCpu.snapshot;
 var evaluator = require('./evaluator.js');
 var inputMod = require('./input.js');
 var registry = require('./registry.js');
 
 var PANEL_GAME = process.env.GC_PANEL_GAME || '/home/user/panel-game';
 var FILE = path.join(PANEL_GAME, 'client/assets/default_data/puzzles/Puzzles.json');
-var W = 6, H = 12;
 
 // A WEIGHT SET IS ONLY A BOT WHEN PAIRED WITH THE SWITCHES IT WAS FOUND
 // UNDER, so the density flag comes from wherever the weights came from
@@ -63,26 +52,15 @@ function puzzles() {
 }
 
 function boardFrom(stack) {
-    var s = String(stack).replace(/\s+/g, '');
-    if (/[^0-9]/.test(s)) return null;              // garbage blocks: not handled
-    while (s.length % W) s = '0' + s;
-    var rows = [];                                   // rows[0] = TOP row
-    for (var i = 0; i < s.length; i += W) rows.push(s.slice(i, i + W));
-    var grid = [];
-    for (var r = 0; r <= H; r++) {
-        grid[r] = [];
-        for (var c = 1; c <= W; c++) grid[r][c] = 0;
-    }
-    // rows is top-first; our row 1 is the bottom, so read it backwards.
-    for (var k = 0; k < rows.length; k++) {
-        var row = H === 0 ? 0 : rows.length - k;      // bottom row -> 1
-        if (row > H) continue;
-        for (var c2 = 1; c2 <= W; c2++) {
-            var d = Number(rows[k][c2 - 1]);
-            grid[row][c2] = (d === 8 || d === 9) ? -2 : d;
-        }
-    }
-    return new LogicalBoard(W, H, 9, grid, {});
+    return /[^0-9\s]/.test(String(stack)) ? null : PA.puzzle(stack);   // garbage blocks: not handled
+}
+// Swap m (null: hold) played on a copy until nothing moves: the board it
+// settles to, as the bot reads it, and what it earned on the way.
+function play(board, m) {
+    var t = board.copy();
+    if (m) { t.curRow = m[0]; t.curCol = m[1]; t.tryQueueSwap(m[0], m[1]); }
+    var r = t.settle();
+    return { board: snapshot.call({ stack: t }), res: { chainLength: r.chain, comboSizes: r.combos, garbage: r.garbage } };
 }
 
 // The bot's choice, without needing a live Stack: score the board each legal
@@ -95,25 +73,16 @@ function choose(board) {
     // out asks "given you must move, do you pick the chain?" — a different,
     // easier question than the one the game asks. The shipped bot answered
     // the first at 74% and the second by declining three chains in four.
-    if (!process.env.GC_NO_HOLD) {
-        var hb = board.clone(), hres = hb.resolve();
-        var hin = inputMod.normalize({ board: hb,
-            earned: { chainLength: hres.chainLength, comboSizes: hres.comboSizes,
-                      garbageSent: hres.garbage, garbageCleared: 0 } });
-        best = { score: evaluator.evaluate(hin, weights, { density: DENSITY }).score,
-                 move: null, res: hres, held: true };
-    }
-    for (var i = 0; i < legal.length; i++) {
-        var t = board.clone();
-        t.swap(legal[i][0], legal[i][1]);
-        var res = t.resolve();
+    var moves = process.env.GC_NO_HOLD ? legal : [null].concat(legal);
+    for (var i = 0; i < moves.length; i++) {
+        var got = play(board, moves[i]);
         var input = inputMod.normalize({
-            board: t,
-            earned: { chainLength: res.chainLength, comboSizes: res.comboSizes,
-                      garbageSent: res.garbage, garbageCleared: 0 }
+            board: got.board,
+            earned: { chainLength: got.res.chainLength, comboSizes: got.res.comboSizes,
+                      garbageSent: got.res.garbage, garbageCleared: 0 }
         });
         var s = evaluator.evaluate(input, weights, { density: DENSITY }).score;
-        if (!best || s > best.score) best = { score: s, move: legal[i], res: res };
+        if (!best || s > best.score) best = { score: s, move: moves[i], res: got.res, held: !moves[i] };
     }
     return best;
 }
@@ -129,9 +98,7 @@ chains.forEach(function (x) {
     // swap from this board — otherwise a miss says nothing about the bot.
     var legal = board.legalSwaps(), reachable = 0;
     for (var i = 0; i < legal.length; i++) {
-        var t = board.clone();
-        t.swap(legal[i][0], legal[i][1]);
-        var r = t.resolve();
+        var r = play(board, legal[i]).res;
         if (r.chainLength >= 2 && r.chainLength > reachable) reachable = r.chainLength;
     }
     if (!reachable) { skipped++; return; }
