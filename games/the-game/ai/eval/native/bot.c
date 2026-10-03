@@ -2642,6 +2642,19 @@ static Dec breakSoon(Dec d) {
   }
   return d;
 }
+// AN OPTION'S MARGIN: the frames between the break the distance search finds
+// after it and the frame it loses health (none within the horizon: the
+// horizon); negative when no break comes in time. Keeps the search's grid.
+static double marginAfter(const int32_t *sw, int n, int die) {
+  static int keep[TGRID + 2][WMAX + 1];
+  int kw = tW, kh = tH;
+  __builtin_memcpy(keep, tCell, sizeof keep);
+  double b = breakTime(sw, n);
+  __builtin_memcpy(tCell, keep, sizeof keep); tW = kw; tH = kh;
+  return (die ? die : LINEHORIZON) - b;
+}
+// in time (need 0): breaks in time; otherwise: no less time than the choice
+static int fillKeeps(double m, double need) { return need >= 0 ? m > 0 : m >= need; }
 static Dec fillFirst(Dec d) {
   if (d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
   if (lineLast == 1 || lineLast == 3) return BT->lineKind == LINE_BREAK || lineLast == 3 ? fillBeforeBreak(d) : d;
@@ -2652,13 +2665,18 @@ static Dec fillFirst(Dec d) {
 #endif
   if (!aloneOnEngine() || LNA[10] == 0) return d;
   int best = LNA[10];
+  // A FILL IS A MEANS TO A BREAK, so it may not cost one: if the choice
+  // breaks in time a fill must too; if not, a fill leaves at least as much
+  // time between its break and its loss of health
+  double need = marginAfter(0, 0, LNA[0]);
   if (d.kind == K_SWAP && d.hasMove) {
     int32_t sw[2] = { d.sr, d.sc };
-    if (lineJudge(sw, 1, 0) & LV_LIVES) best = LNO[10] < best ? LNO[10] : best;
+    if (lineJudge(sw, 1, 0) & LV_LIVES) { best = LNO[10] < best ? LNO[10] : best; double m = marginAfter(sw, 1, LNO[0]); if (m > need) need = m; }
 #ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  choice %d,%d die %d last %d hollow %d | alone die %d\n", d.sr, d.sc, LNO[0], LNO[1], LNO[10], LNA[0]); }
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  choice %d,%d die %d last %d hollow %d | alone die %d | break after choice %g alone %g\n", d.sr, d.sc, LNO[0], LNO[1], LNO[10], LNA[0], breakTime(sw, 1), breakTime(0, 0)); }
 #endif
   }
+  if (need > 0) need = 0;   // in time is in time
   Cand *pick = 0;
   int surplus = materialRows(DBASE) >= 6;   // over six rows a clear may be spent to fill
   for (int q = 0; q < nPool; q++) {
@@ -2667,7 +2685,10 @@ static Dec fillFirst(Dec d) {
     int32_t sw[2] = { pc->sr, pc->sc };
     int v = lineJudge(sw, 1, 0);
     if (!(v & LV_LIVES) || ((v & LV_DROPS) && !(v & LV_FILLS)) || ((v & LV_PAYS) && !surplus)) continue;
-    if (LNO[10] < best || (pick && LNO[10] == best && pc->moveFrames < pick->moveFrames)) { best = LNO[10]; pick = pc; }
+    if (!(LNO[10] < best || (pick && LNO[10] == best && pc->moveFrames < pick->moveFrames))) continue;
+    int h = LNO[10];
+    if (!fillKeeps(marginAfter(sw, 1, LNO[0]), need)) continue;
+    best = h; pick = pc;
   }
   // the top of every column walked along its row, a column a swap, until it
   // drops into a lower column or meets something it cannot pass
@@ -2696,12 +2717,16 @@ static Dec fillFirst(Dec d) {
       if (n == 0) continue;
       int v = lineJudge(fsw, n, 0);
 #ifndef __wasm__
-      if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  walk %d,%d dir %d n %d v %d hollow %d die %d last %d refused %d at %d\n", r, c, dir, n, v, LNO[10], LNO[0], LNO[1], LNO[5], LNO[6]); }
+      if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; { int h = LNO[10], dd = LNO[0], la = LNO[1]; static int keep[TGRID + 2][WMAX + 1]; int kw = tW, kh = tH; __builtin_memcpy(keep, tCell, sizeof keep);
+        double bt = v ? breakTime(fsw, n) : -1; __builtin_memcpy(tCell, keep, sizeof keep); tW = kw; tH = kh;
+        fprintf(stderr, "  walk %d,%d dir %d n %d v %d hollow %d die %d last %d break %g\n", r, c, dir, n, v, h, dd, la, bt); } }
 #endif
       if (!(v & LV_LIVES) || (v & LV_PAYS) || ((v & LV_DROPS) && !(v & LV_FILLS))) continue;
       double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
       if (LNO[10] < best || ((pick || first[0]) && LNO[10] == best && est < fest)) {
-        best = LNO[10]; pick = 0; first[0] = fsw[0]; first[1] = fsw[1]; fest = est;
+        int h = LNO[10];
+        if (!fillKeeps(marginAfter(fsw, n, LNO[0]), need)) continue;
+        best = h; pick = 0; first[0] = fsw[0]; first[1] = fsw[1]; fest = est;
       }
     }
   }
