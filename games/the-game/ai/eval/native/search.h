@@ -924,7 +924,7 @@ EXPORT(ns_advance_many) int ns_advance_many(Ctx *x, int n) {
   }
   return n;
 }
-#define CHUNK 96
+#define CHUNK 384   // parents a chunk: a level of the beam is one, so its phases are few
 // The level loop. In: the level (ns_level), each level node's tag and seed
 // (ns_set_tag), and per move (ns_tags): verdict (1 proven), proofs, weak,
 // reach/reachSet and far, nodes as indices, -1 for none. Out: the same, and
