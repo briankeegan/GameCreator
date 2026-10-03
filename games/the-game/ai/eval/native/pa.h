@@ -83,9 +83,9 @@ typedef struct Board {
   // WHAT A STEP DID (search.h MK_SETTLE): each clear's size and the chain
   // counter it reached, panels cleared, garbage cells converted, the most
   // stop time one clear paid, garbage cells at rest that started to fall, the
-  // empty cells under garbage as it landed (pa.c HOLLOW) and the rows risen.
+  // empty cells under garbage as it landed (pa.c HOLLOW).
   // Counted since the step began; not part of the board, never sent.
-  int32_t sCombo[MAXCOMBOS], sChainAt[MAXCOMBOS], sNCombo, sCleared, sBroke, sEarned, sFell, sHollow, sRows;
+  int32_t sCombo[MAXCOMBOS], sChainAt[MAXCOMBOS], sNCombo, sCleared, sBroke, sEarned, sFell, sHollow;
   // FED ROWS: the real rows and break colours, from the game being played;
   // empty, the unseen colours are dealt, as the search wants. A row
   // cell is a colour, or 100 + colour / 200 + colour for a letter (upper /
@@ -124,7 +124,6 @@ int nb_spawn_col(Board *b, int width);
 double nb_rise_time(int speed);
 int nb_shake_frames(int count);
 int nb_drain_in(Board *b, int most);
-int nb_raise_death(Board *b, int horizon);
 int nb_feed_row(Board *b, int32_t c1, int32_t c2, int32_t c3, int32_t c4, int32_t c5, int32_t c6);
 int nb_feed_break(Board *b, int32_t c1, int32_t c2, int32_t c3, int32_t c4, int32_t c5, int32_t c6);
 int nb_fed(Board *b);

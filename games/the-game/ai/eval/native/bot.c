@@ -5,7 +5,7 @@
 #define INF (1.0 / 0.0)
 
 enum { IN_TOPPED, IN_STOP, IN_INCOMING, IN_NEXTSLAB, IN_FALLING, IN_CROW, IN_CCOL, IN_HEALTH, IN_DRAIN, IN_FPR,
-       IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISELIVES, IN_INFLIGHT,
+       IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISING, IN_INFLIGHT,
        IN_DRAINBOUND, IN_STACKTOPPED, IN_MOVING, IN_HASTIMED, IN_REVEALOPEN, IN_CONVN, IN_CONVTIMER, IN_BCROW, IN_BCCOL,
        IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_SIZE = 600 };
 enum { TF_DEADLY = 1, TF_FORCE = 2, TF_REFUSE = 4, TF_RAISE = 8, TF_STUB = 16, TF_SLAB = 32 };
@@ -774,9 +774,24 @@ static Cand POOL[MAXCAND];
 static ST POOLST[MAXCAND];
 static int nPool;
 static Res CR, CR2;
-// A RAISE IS WANTED AND OFFERED ONLY IF IT LIVES: the front raises on the
-// engine and leaves the board alone over the horizon (pa.c nb_raise_lives);
-// raiseMode and the pool read the one answer, IN_RAISELIVES.
+// A RAISE IS WANTED AND OFFERED ONLY IF IT LIVES. A board loses health only
+// topped, with no stop time and nothing holding the rise lock; a manual raise
+// zeroes the stop time, and one pressed topped is game over (Stack.lua
+// handleManualRaise, checkDeath). So topped, never. Otherwise the passive rise
+// tops the raised board out in (free rows - queued garbage rows) rows, each
+// FPR frames, and the raise lives if the quickest clear the pool holds --
+// stop time earned, the rise held -- can be made before then.
+static int raiseSafe(const int32_t *base) {
+  if (BIN[IN_TOPPED] || BIN[IN_STACKTOPPED]) return 0;
+  int queued = (int)dmax(__builtin_ceil(BIN[IN_NEXTSLAB] / BW), BIN[IN_INROWS]);
+  // a raise already moving is a row the board does not show yet
+  int free = BH - tallestBoard(base) - 1 - queued - (BIN[IN_RAISING] != 0);
+  if (free <= 0) return 0;
+  double clear = INF;
+  for (int q = 0; q < nPool; q++)
+    if (POOL[q].kind == K_SWAP && POOL[q].res.total > 0 && POOL[q].moveFrames < clear) clear = POOL[q].moveFrames;
+  return free * BIN[IN_FPR] > clear + REACT;
+}
 // WHAT A SWAP CAUSES. On a board in motion the clear already resolving is in
 // every result the resolver gives, the board left alone included. A swap is
 // credited only with what it adds: the cells past the board's own, and a break
@@ -817,7 +832,7 @@ static void candidates(int32_t *base) {
   if (BIN[IN_HASRISEN]) {
     resolve(RISEN, CR.r, 1);
     const int32_t *rm = CR.r[R_SCOPE] == SC_OK ? CR.st : RISEN;
-    if (BIN[IN_RAISELIVES]) {
+    {
       Cand *rc = &POOL[nPool];
       memset(rc, 0, sizeof(Cand));
       stcpy(POOLST[nPool], rm);
@@ -1013,7 +1028,7 @@ static int raiseMode(const int32_t *base, int poolBreak) {
   if (!opt(O_ALLOWRAISE) || topped) { BT->opening = 0; return 0; }
   if (BIN[IN_FALLING]) return 0;
   int rows = (int)__builtin_ceil(BIN[IN_NEXTSLAB] / BW);
-  int fits = BIN[IN_RAISELIVES] != 0;   // the engine raised and lost no health
+  int fits = raiseSafe(base);
   BT->wantRows = rows;
   if (BT->opening && (BIN[IN_INCOMING] || !fits)) BT->opening = 0;
   if (!fits) return 0;
@@ -1141,6 +1156,10 @@ static Dec decideCore(void) {
   optsBuilt = 0;
   planReset(base);
   candidates(base);
+  // the raise the pool offers is one that lives
+  if (!raiseSafe(base))
+    for (int q = 0; q < nPool; q++)
+      if (POOL[q].kind == K_RAISE) { POOL[q] = POOL[--nPool]; break; }
   Line rev; memset(&rev, 0, sizeof rev);
   int haveRev = revealPick(base, &rev);
   double fpr = BIN[IN_FPR];
