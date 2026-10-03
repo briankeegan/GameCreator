@@ -768,6 +768,20 @@ static int raiseReserve(void) {
   if (BT->maxSlab > r) r = BT->maxSlab;
   return q > r ? q : r;
 }
+// WHAT A SWAP CAUSES. On a board in motion the clear already resolving is in
+// every result the resolver gives, the board left alone included. A swap is
+// credited only with what it adds: the cells past the board's own, and a break
+// the board was not already making. Every route reads the pool, so every
+// route sees what the swap does.
+static Rs causedBy(Rs r, const Rs *alone) {
+  if (!(alone->total > 0 || alone->broke)) return r;
+  r.total = r.total > alone->total ? r.total - alone->total : 0;
+  r.broke = r.broke && !alone->broke;
+  if (r.scope == SC_BROKE && !r.broke) r.scope = SC_OK;
+  if (!r.total && !r.broke) { r.chain = 0; r.rounds = 0; r.biggest = 0; r.converts = 0; r.garbage = 0; }
+  else r.biggest = r.rounds == 1 ? r.total : 0;
+  return r;
+}
 static ST TMC;
 static void candidates(int32_t *base) {
   nPool = 0;
@@ -811,6 +825,7 @@ static void candidates(int32_t *base) {
     if (nPool >= MAXCAND) { botFailed = 1; swapIn(base, r, c); continue; }
     if (haveSettled) stcpy(POOLST[nPool], CR.st); else stcpy(POOLST[nPool], base);
     swapIn(base, r, c);
+    res = causedBy(res, &h->res);
     if (!(res.total > 0 || res.broke)) {
       int skip = 0;
       for (int z = 0; z < BT->nRecent; z++) {
@@ -1743,6 +1758,8 @@ static void livingSet(const int32_t *base, double left) {
   left -= 2;
   memset(LIVE, 0, sizeof LIVE); memset(LIVE1, 0, sizeof LIVE1); memset(LIVEB, 0, sizeof LIVEB); liveAny = 0;
   stcpy(LVA, base);
+  resolve(LVA, LVR, 0);
+  Rs alone = summarise(LVR);
   int n = legal(LVA, LVS);
   for (int i = 0; i < n; i++) {
     int r1 = LVS[2 * i], c1 = LVS[2 * i + 1];
@@ -1753,7 +1770,9 @@ static void livingSet(const int32_t *base, double left) {
     swapIn(LVA, r1, c1);
     int sc = LVR[R_SCOPE];
     if (sc != SC_OK && sc != SC_BROKE) continue;
-    if (cashes(LVR)) {
+    Rs mine = causedBy(summarise(LVR), &alone);
+    sc = mine.broke ? SC_BROKE : SC_OK;
+    if (mine.total > 0 || mine.broke) {
       Cand *pc = sc == SC_BROKE ? 0 : poolSwap(r1, c1);
       if (pc && !clearLives(pc, left + 2)) continue;
       LIVE[r1][c1] = LIVE1[r1][c1] = 1; LIVEB[r1][c1] = sc == SC_BROKE; LIVET[r1][c1] = t1; liveAny = 1; continue;
