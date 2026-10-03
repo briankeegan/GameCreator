@@ -3068,6 +3068,7 @@ static Dec breakSoon(Dec d) {
   double b0[MAXCAND]; int32_t wb[2 * MAXCAND]; int nwb = 0;
   double bs0 = NOWMS2();
   prereplay(pl, pn);
+  double bsr = NOWMS2();
   for (int k = 0; k < pn; k++) {
     b0[k] = breakWithinT(pl + 2 * k, 1, LINEHORIZON);
     if (b0[k] < INF) { wb[2 * nwb] = pl[2 * k]; wb[2 * nwb + 1] = pl[2 * k + 1]; nwb++; }
@@ -3089,8 +3090,9 @@ static Dec breakSoon(Dec d) {
     if (b < time) bestTake(&inTime, -b, 0, sw, 1);
   }
 #ifndef __wasm__
-  if (getenv("GC_WORKSTAT")) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SOONT breaks %d %.2f ms | judge %d %.2f ms | loop %.2f ms | in time %d | replay %.2f search %.2f\n", pn, bs1 - bs0, nwb, bs2 - bs1, NOWMS2() - bs2, inTime.has, btReplayMs, btSearchMs); btReplayMs = btSearchMs = 0; }
+  if (getenv("GC_WORKSTAT")) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SOONT prereplay %.2f breaks %.2f judge %.2f loop %.2f\n", bsr - bs0, bs1 - bsr, bs2 - bs1, NOWMS2() - bs2); btReplayMs = btSearchMs = 0; }
 #endif
+  double bm0 = NOWMS2();
   // none in time: the margin, which only then decides
   if (!inTime.has) {
     outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
@@ -3100,10 +3102,15 @@ static Dec breakSoon(Dec d) {
       double time = LNO[0] ? LNO[0] : LINEHORIZON;
       // its break comes no sooner than the walk to it: a margin that cannot reach the best is not searched
       if (margin.has && time - far < margin.score) continue;
-      double b = breakWithinT(sw, 1, margin.has ? (time > time - margin.score ? time : time - margin.score) : INF);
+      double lim = margin.has ? (time > time - margin.score ? time : time - margin.score) : INF;
+      // the soonest within the horizon is known (b0); a search only for a later one the limit allows
+      double b = b0[q] < INF ? (b0[q] < lim ? b0[q] : INF) : lim > LINEHORIZON ? breakWithinT(sw, 1, lim) : INF;
       if (b < INF) bestTake(&margin, time - b, 0, sw, 1);
     }
   }
+#ifndef __wasm__
+  if (getenv("GC_WORKSTAT")) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SOONM margin %.2f ms\n", NOWMS2() - bm0); }
+#endif
   int pr = inTime.has ? inTime.sw[0] : 0, pc = inTime.has ? inTime.sw[1] : 0, mr = margin.has ? margin.sw[0] : 0, mc = margin.has ? margin.sw[1] : 0;
   double best = inTime.has ? -inTime.score : INF, bestMargin = margin.has ? margin.score : -INF;
 #ifndef __wasm__
