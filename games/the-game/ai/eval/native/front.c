@@ -636,7 +636,7 @@ static int lineStateAt(const int32_t *steps, int n, int landing, int32_t *masks,
   }
   int rc = lineStateRun(steps, n, landing, masks, can, wait, cur, t);
   extern int paBudgetOut(void);
-  if (!paBudgetOut()) {
+  if (!paBudgetOut() && !inWorker) {
     m->dec = btDecision; m->n = n; m->landing = landing; m->rc = rc;
     for (int k = 0; k < 2 * n; k++) m->sw[k] = steps[k];
     __builtin_memcpy(m->masks, masks, sizeof m->masks); __builtin_memcpy(m->can, can, sizeof m->can);
@@ -684,31 +684,51 @@ static void pjRun(void) {
   int k;
   while ((k = __atomic_fetch_add(&pjNext, 1, __ATOMIC_SEQ_CST)) < pjCount) pjTask(k);
 }
+static int pjHeldR, pjHeldC, pjHeldDir, pjPress;   // the settings travelCost reads, from the main thread
+// PERSISTENT WORKERS, as the browser's: started once, each with its own
+// boards, waiting for the next batch (a generation), spinning a little and
+// then napping so an idle worker costs nothing.
+struct gcSleep { long s, ns; };
+extern int nanosleep(const struct gcSleep *, struct gcSleep *);
+static int pjGen, pjDone, pjStarted;
 static void *pjWorker(void *arg) {
   (void)arg;
+  inWorker = 1;
   while (__atomic_exchange_n(&pjLock, 1, __ATOMIC_ACQUIRE)) {}
   LNB = nb_new(); USB = nb_new(); paOutcomeBoard(1);
   __atomic_store_n(&pjLock, 0, __ATOMIC_RELEASE);
-  pjRun();
-  while (__atomic_exchange_n(&pjLock, 1, __ATOMIC_ACQUIRE)) {}
-  nb_free(LNB); nb_free(USB); LNB = USB = 0; paOutcomeBoard(0);
-  __atomic_store_n(&pjLock, 0, __ATOMIC_RELEASE);
+  int seen = 0;
+  for (;;) {
+    int g;
+    for (int spin = 0; (g = __atomic_load_n(&pjGen, __ATOMIC_ACQUIRE)) == seen; spin++)
+      if (spin > 20000) { struct gcSleep z = { 0, 20000 }; nanosleep(&z, 0); }
+    seen = g;
+    HELDR = pjHeldR; HELDC = pjHeldC; HELDDIR = pjHeldDir; PRESS = pjPress;
+    pjRun();
+    __atomic_add_fetch(&pjDone, 1, __ATOMIC_RELEASE);
+  }
   return 0;
 }
-// count tasks, task(k) each, on GC_THREADS threads and this one (one by one without)
+// count tasks, task(k) each, on GC_THREADS workers and this thread (one by one without)
 static void parallelDo(int count, void (*task)(int)) {
-  if (pjThreads < 0) pjThreads = getenv("GC_THREADS") ? atoi(getenv("GC_THREADS")) : 3;
+  if (pjThreads < 0) { pjThreads = getenv("GC_THREADS") ? atoi(getenv("GC_THREADS")) : 3; if (pjThreads > 16) pjThreads = 16; }
   if (pjThreads <= 0 || count < 2) { for (int k = 0; k < count; k++) task(k); return; }
   if (!LNB) LNB = nb_new();
   if (!USB) USB = nb_new();
   paOutcomeBoard(1);
+  if (!pjStarted) {
+    gcThread th;
+    for (int t = 0; t < pjThreads; t++) pthread_create(&th, 0, pjWorker, 0);
+    pjStarted = 1;
+  }
   pjTask = task; pjCount = count; pjNext = 0;
-  int nt = pjThreads < count - 1 ? pjThreads : count - 1;
-  if (nt > 16) nt = 16;
-  gcThread th[16];
-  for (int t = 0; t < nt; t++) pthread_create(&th[t], 0, pjWorker, 0);
+  pjHeldR = HELDR; pjHeldC = HELDC; pjHeldDir = HELDDIR; pjPress = PRESS;
+  __atomic_store_n(&pjDone, 0, __ATOMIC_RELEASE);
+  __atomic_add_fetch(&pjGen, 1, __ATOMIC_RELEASE);
+  int wasIn = inWorker; inWorker = 1;
   pjRun();
-  for (int t = 0; t < nt; t++) pthread_join(th[t], 0);
+  inWorker = wasIn;
+  while (__atomic_load_n(&pjDone, __ATOMIC_ACQUIRE) < pjThreads) {}
 }
 static void pjJudge(int k) {
   PJob *j = &PJ[k];

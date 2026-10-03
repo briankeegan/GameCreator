@@ -1,6 +1,7 @@
 #include "libc.h"
 typedef unsigned long long u64;
-#ifdef THREADS
+// LOCAL: a search thread's own -- the browser's workers (THREADS) and, natively, parallelDo's
+#if defined(THREADS) || !defined(__wasm__)
 #define LOCAL _Thread_local
 #else
 #define LOCAL
@@ -470,8 +471,8 @@ static void gridOf(const int32_t *st, Grid *G) {
 // deciding on (ENGINE_BASE, or a copy of it handed in by its caller) a pair
 // is legal only if the engine would take it now (ENGINE_CAN, per column, a
 // bit per row) -- a panel still moving, a pair the swap stalling refuses.
-static const int32_t *ENGINE_BASE;
-static uint32_t ENGINE_CAN[WMAX];
+static JLOCAL const int32_t *ENGINE_BASE;
+static JLOCAL uint32_t ENGINE_CAN[WMAX];
 static int legalG(const int32_t *st, int32_t *out, Grid *G) {
   paWork += 4;   // a board's legal swaps: work, as a resolve's rounds are
   gridOf(st, G);

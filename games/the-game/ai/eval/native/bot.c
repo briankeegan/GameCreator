@@ -2005,13 +2005,13 @@ static int breaksOnEngine(Dec d) {
 // clears or breaks (only those that break when `breaks`), its presses
 // estimated in time: the walk to each, then (topped) the swap landing and the
 // lock held by what it sets falling, or (not topped) the board settling.
-static ST LS[KEEPDEPTH + 1];
-static int32_t LSR[R_INTS + ST_INTS], LSW[KEEPDEPTH][2 * 128], lsLine[2 * KEEPDEPTH];
-static int lsTopped, lsBreaks, lsDepth;
-static uint8_t (*ENGINE_WAITS)[WMAX];   // a grown board's pairs: the frame each settles
-static Rs lsAlone;
+static JLOCAL ST LS[KEEPDEPTH + 1];
+static JLOCAL int32_t LSR[R_INTS + ST_INTS], LSW[KEEPDEPTH][2 * 128], lsLine[2 * KEEPDEPTH];
+static JLOCAL int lsTopped, lsBreaks, lsDepth;
+static JLOCAL uint8_t (*ENGINE_WAITS)[WMAX];   // a grown board's pairs: the frame each settles
+static JLOCAL Rs lsAlone;
 // lines grown on the engine: the steps already played (pfx) and the frames they took
-static int32_t pfx[2 * KEEPDEPTH]; static int nPfx; static double pfxT;
+static JLOCAL int32_t pfx[2 * KEEPDEPTH]; static JLOCAL int nPfx; static JLOCAL double pfxT;
 // A STEP NEVER TARGETS PANELS STILL MOVING: the cells a swap disturbs -- the
 // pair, what falls, what clears -- are unsettled until it settles, and a next
 // step that touches one before then is not a step the engine will take.
@@ -2022,10 +2022,10 @@ static void disturbed(const int32_t *a, const int32_t *b, uint32_t *out) {
     out[c] = m;
   }
 }
-static uint32_t LSD[KEEPDEPTH + 1][WMAX];
-static double lsSettled[KEEPDEPTH + 1];
+static JLOCAL uint32_t LSD[KEEPDEPTH + 1][WMAX];
+static JLOCAL double lsSettled[KEEPDEPTH + 1];
 // time mode: the searches only note the soonest break (tTimeMin), proposing nothing
-static int tTimeMode; static double tTimeMin;
+static JLOCAL int tTimeMode; static JLOCAL double tTimeMin;
 // A SWAP THAT CHANGES NOTHING: on a board at rest, two filled cells swapped
 // (st already swapped) neither fall nor clear unless one now sits in a run of
 // three or more. Such a swap makes no line end, so it needs no resolve.
@@ -2034,7 +2034,7 @@ static int tTimeMode; static double tTimeMin;
 // a row, and nothing clears unless a run of three or more forms among the
 // panels that moved. Garbage over either column: not decided here.
 #define LQGRID 18
-static int lqG[LQGRID + 2][WMAX + 2], lqH, lqW, lqOk;
+static JLOCAL int lqG[LQGRID + 2][WMAX + 2], lqH, lqW, lqOk;
 static void leafGrid(const int32_t *st) {
   int N = st[O_N];
   lqW = st[O_W]; lqH = st[O_H] < LQGRID ? st[O_H] : LQGRID; lqOk = 1;
@@ -2087,7 +2087,7 @@ static int leafQuiet(int r, int c) {
   for (int k = 1; k <= lqH; k++) { lqG[k][p] = sp[k]; lqG[k][e] = se[k]; }
   return !run;
 }
-static int laRes[8], laSkip[8];
+static JLOCAL int laRes[8], laSkip[8];
 // GC_WORKSTAT: resolves and skipped leaves per level
 static int quietSwap(const int32_t *st, int r, int c) {
   int N = st[O_N], W = st[O_W];
@@ -2191,6 +2191,7 @@ static int outPast(const Best *b, double most, double t) {
 // it is worked out once -- whichever order of swaps reaches the board, and in
 // whichever later decision the board comes back. Per legal swap: done, broke,
 // cashed.
+static JLOCAL int inWorker;   // a parallelDo task: shared caches are read, never written
 #define LCN 16384
 typedef struct { u64 key; u64 done[2], brk[2], cash[2]; } LC;
 static LC LCT[LCN];
@@ -2203,7 +2204,7 @@ static LC *lcGet(const int32_t *st) {
 #define LBEAM 8   // children searched deeper per board: the work has a ceiling
 static void linesAt(int d, int pr, int pc, double t, double limit) {
   int n = legal(LS[d], LSW[d]);
-  LC *lc = (d > 0 && d + 1 >= lsDepth) ? lcGet(LS[d]) : 0;
+  LC *lc = (d > 0 && d + 1 >= lsDepth && !inWorker) ? lcGet(LS[d]) : 0;
   int haveLq = 0;
   // OUT FROM THE CURSOR: nearest first, so the first that cannot be reached in
   // time ends the level -- every one after it is further
@@ -2353,8 +2354,8 @@ static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const
 // add up to, however deep that is. Each is proposed, as the masks' lines are,
 // and the engine judges it.
 #define TGRID 18
-static int tCell[TGRID + 2][WMAX + 1];   // colour; 0 empty; -1 garbage; -2 a panel that cannot move
-static int tW, tH;
+static JLOCAL int tCell[TGRID + 2][WMAX + 1];   // colour; 0 empty; -1 garbage; -2 a panel that cannot move
+static JLOCAL int tW, tH;
 static int tSupported(int r, int c) { return r == 1 || tCell[r - 1][c] != 0; }
 static int tBeside(int r, int c) {
   return (r + 1 <= tH && tCell[r + 1][c] == -1) || (r > 1 && tCell[r - 1][c] == -1) ||
@@ -2430,7 +2431,7 @@ static int tGarbRun(int g[][WMAX + 2], int h, int r, int c, int vert) {
   return 0;
 }
 static void tDrops(int cr, int cc, double t0, double limit) {
-  static int g[TGRID + 2][WMAX + 2];
+  static JLOCAL int g[TGRID + 2][WMAX + 2];
   for (int r = 1; r <= tH; r++)
     for (int c = 1; c < tW; c++) {
       int x = tCell[r][c], y = tCell[r][c + 1];
@@ -3003,7 +3004,7 @@ static double breakTime(const int32_t *steps, int n) {
 // THE BREAK BEFORE `limit`, or INF: a question with a bound searches only
 // what could answer it -- every line past the bound is pruned
 static double breakWithinT(const int32_t *steps, int n, double limit) { return breakTimeOf(steps, n, limit); }
-static double btReplayMs, btSearchMs;   // GC_WORKSTAT
+static JLOCAL double btReplayMs, btSearchMs;   // GC_WORKSTAT
 static double breakTimeOf(const int32_t *steps, int n, double limit) {
   int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t w[32][WMAX];
   double bt0 = NOWMS2();
@@ -3038,6 +3039,9 @@ static double breakTimeOf(const int32_t *steps, int n, double limit) {
 // in time, stands; a lone option that does is taken; of several, the soonest.
 // If none does, the time bought is time for a break: the option whose break
 // comes nearest to fitting inside its time.
+// each swap's soonest break within the horizon, one task a swap
+static const int32_t *bsPl; static double *bsB0;
+static void bsTask(int k) { bsB0[k] = breakWithinT(bsPl + 2 * k, 1, LINEHORIZON); }
 static Dec breakSoon(Dec d) {
   if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;
   if (lineLast == 2 || d.kind == K_RAISE || !BIN[IN_HASPA] || !hasGarbage(DBASE)) return d;
@@ -3069,10 +3073,9 @@ static Dec breakSoon(Dec d) {
   double bs0 = NOWMS2();
   prereplay(pl, pn);
   double bsr = NOWMS2();
-  for (int k = 0; k < pn; k++) {
-    b0[k] = breakWithinT(pl + 2 * k, 1, LINEHORIZON);
-    if (b0[k] < INF) { wb[2 * nwb] = pl[2 * k]; wb[2 * nwb + 1] = pl[2 * k + 1]; nwb++; }
-  }
+  bsPl = pl; bsB0 = b0;
+  parallelDo(pn, bsTask);
+  for (int k = 0; k < pn; k++) if (b0[k] < INF) { wb[2 * nwb] = pl[2 * k]; wb[2 * nwb + 1] = pl[2 * k + 1]; nwb++; }
   double bs1 = NOWMS2();
   prejudge(wb, 2, nwb, 1, 0);
   double bs2 = NOWMS2();
@@ -3098,6 +3101,9 @@ static Dec breakSoon(Dec d) {
     outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
     while (outNext(&o, &q, &far)) {
       int32_t sw[2] = { pl[2 * q], pl[2 * q + 1] };
+      // no break within the horizon: its margin is at most 0 (time <= horizon <= break), so
+      // past a positive margin it cannot win and is not judged
+      if (b0[q] >= INF && margin.has && margin.score > 0) continue;
       if (!(lineJudge(sw, 1, 0) & LV_LIVES)) continue;
       double time = LNO[0] ? LNO[0] : LINEHORIZON;
       // its break comes no sooner than the walk to it: a margin that cannot reach the best is not searched
