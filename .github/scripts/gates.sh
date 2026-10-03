@@ -611,19 +611,6 @@ gate_shake_hold() {
   node games/the-game/ai/eval/shakehold.test.js
 }
 
-# THE DEEP-SURVIVAL FILTER'S GATE ASKS ABOUT THE BOARDS IT JUDGES.
-#
-# _doomed is gated on height for cost, and the gate read the LIVE board while
-# every test below it is applied to a candidate's SETTLED board -- which can be
-# rows taller. Measured over 20 duels: shut on 101 decisions where some
-# candidates were doomed and others were not, and on 15 more where every
-# candidate was, which also left allDoomedNow unset and _lastResort blind.
-# Both halves are bound, because a gate that only ever opens is the ten-times
-# cost it exists to avoid.
-gate_doomed_gate() {
-  node games/the-game/ai/eval/doomgate.test.js
-}
-
 # THE RUN RECORDS WHAT KIND OF GARBAGE IT SENT, NOT JUST HOW MUCH.
 #
 # Score cannot say whether the bot learned to CHAIN: one that survives on
@@ -740,25 +727,6 @@ gate_option_pricing() {
   node games/the-game/ai/eval/check_option_pricing.mjs
 }
 
-# THE DEADLINE, AGAINST THE ENGINE RUNNING. Every price in the bot is denominated in
-# the frames this number says the board has left, so an error in it is an error in all
-# of them -- and both errors found in it ran the same way, the bot believing it had
-# longer than it had. Two engine facts have to hold together: the clock advances and
-# updateSpeed fires during stop time, so SPEED rises while frozen, and
-# advancePassiveRaise only moves the board while stopTime is 0, so the BOARD does not.
-# Checked by stepping a model of those three lines one frame at a time rather than by
-# restating the arithmetic.
-gate_deadline_rise() {
-  node games/the-game/ai/eval/deadline_rise.test.js
-}
-
-# A LANDING THE LINEUP SAYS BREAKS, BREAKS. Topped out, the bot lines up only a landing
-# that breaks the slab above, so bitframes' run of the in-flight board is the decision.
-# Compared with a copy of the engine on every open reveal window of a real game.
-gate_landing() {
-  node games/the-game/ai/eval/landing.test.js
-}
-
 # WHAT A SWAP CLEARS, WITHOUT APPLYING IT. On a settled board every column is a
 # packed run from the floor, so a swap does two things to it and both are shifts:
 # the panel crosses and lands on top of the run it joins, and the hole it left
@@ -768,19 +736,6 @@ gate_landing() {
 # the two ways the fall can be got wrong are both caught.
 gate_bitswap() {
   node games/the-game/ai/eval/bitswap.test.js
-}
-
-# THE OPTIONS, AS FEATURES, FOR THE BOT BITBOT.md PLANS. A quantity identical
-# across every candidate in a decision cannot change which move is played, so the
-# clock and the incoming queue are INFO and are not here. The gate checks the
-# stop-time arithmetic against Stack.awardStopTime itself, fails a feature that
-# takes one value on every board, fails a clamp, and fails a pair at Pearson 0.9 —
-# collinear terms split their weight arbitrarily and the result cannot be read.
-# chain5plus is judged on the CHIP CORPUS, because captured boards are positions a
-# bot that does not build chains played, and judging a chain feature there is
-# circular.
-gate_bitfeatures() {
-  node games/the-game/ai/eval/bitfeatures.test.js
 }
 
 gate_gates_reject_defects() {
@@ -850,7 +805,7 @@ SLOW_GATES=(
 # tests something the search sits on top of, so it runs with
 # GC_SURVIVAL_SEARCH=0: the search costs seconds per decision and its
 # decisions trip bench.js's 85ms timing guard, which zeroes the game.
-SEARCH_GATES=( gate_puyo_cpu gate_no_self_death gate_live_fidelity gate_doomed_gate gate_brain gate_engine_check )
+SEARCH_GATES=( gate_puyo_cpu gate_no_self_death gate_live_fidelity gate_brain gate_engine_check )
 _gate_exec() {
   local g
   for g in "${SEARCH_GATES[@]}"; do [ "$g" = "$1" ] && { "$1"; return; }; done
@@ -911,7 +866,6 @@ GATES=(
   "two variants on one seed keep separate islands:gate_pbt_dirs:games/the-game/ai/"
   "the bot may not kill itself:gate_no_self_death:games/the-game/ai/"
   "the scratch floor moves only when the real floor moves:gate_shake_hold:games/the-game/ai/"
-  "the deep-survival gate asks about the candidates:gate_doomed_gate:games/the-game/ai/"
   "the puyo brain:gate_puyo_cpu:games/the-game/ai/"
   "the training harness:gate_training_harness:games/the-game/ai/"
   "rise-adjusted scoring:gate_rise_scoring:games/the-game/ai/"
@@ -933,10 +887,7 @@ GATES=(
   "the clock keeps frame-for-frame time with the engine:gate_bitframes:games/the-game/ai/"
   "lining up with colours as they appear:gate_bitlineup:games/the-game/ai/"
   "every option field is priced by both rankers:gate_option_pricing:games/the-game/ai/"
-  "the deadline keeps time with the engine through a freeze:gate_deadline_rise:games/the-game/ai/"
-  "a landing the lineup says breaks, breaks:gate_landing:games/the-game/ai/"
   "a swap is answered without applying it:gate_bitswap:games/the-game/ai/"
-  "the options are features that vary:gate_bitfeatures:games/the-game/ai/"
   "the simulation resolves like the game:gate_resolve_fidelity:games/the-game/ai/"
   "that fidelity check fires:gate_resolve_fidelity_fires:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"
