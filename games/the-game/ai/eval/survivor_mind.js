@@ -7,12 +7,18 @@
 // board through PAEngine.View (pa-engine.js toPanelEngine), and its
 // survival search plays the server's rules on native/pa.c (serverStack).
 var wt = require('worker_threads'), path = require('path'), fs = require('fs');
+// The frame loop must never wait for a core: on Linux a thread's nice is its
+// own, and the search threads this thread makes are born with it.
+// GC_SURVIVOR_NICE (default 10; 0 leaves it).
+try { require('os').setPriority(0, process.env.GC_SURVIVOR_NICE === undefined ? 10 : Number(process.env.GC_SURVIVOR_NICE)); } catch (e) {}
 var DIR = __dirname;
 require(path.join(DIR, '..', '..', 'panel-cpu.js'));
 var P = require(path.join(DIR, 'puyocpu.js')), PA = require(path.join(DIR, '..', '..', 'pa-engine.js'));
 var SH = require(path.join(DIR, 'survivor_shared.js'));
 var cfg = wt.workerData, OPTS = SH.botOptions(cfg.profile, cfg.threads);
 var rates = [], SPEND = Number(process.env.GC_SURVIVOR_SPEND) || 0.6;   // budget searched per millisecond over the last decisions, and the share of the time there is spent searching
+// The search ends this long before the answer is due, for the rest of the decision and its post.
+var DEADLINE_MARGIN_MS = Number(process.env.GC_SURVIVOR_MARGIN) || 30;
 var TALL_RANK = 30;   // frames: a break sooner than this outranks lowering a tall board
 var LINEUP_AFTER = 30;   // frames past a pop's end a lined-up row has to have matched by
 var BANK_ROWS = 12, BANK_TOP = 10;   // garbage rows on the way that make banking worth it, and the row it banks up to
@@ -86,6 +92,7 @@ var NativeMem = function () {
   return { bytes: N.memoryBytes(), heapMB: X.nb_pool_stat(-1) / 16, free: free, nodeCap: bot && bot._nat ? X.ns_ctx_cap(bot._nat.ctx) : 0 };
 };
 
+var failWritten = false;
 wt.parentPort.on('message', function (m) {
   if (m.type === 'reset') { if (bot && bot._nat) nat = bot._nat; bot = null; snap = null; return; }
   // A question at or before the one the frame loop stopped is not wanted:
@@ -93,6 +100,9 @@ wt.parentPort.on('message', function (m) {
   function stale() { return !!cfg.abort && Atomics.load(cfg.abort, 0) >= m.id; }
   if (stale()) { wt.parentPort.postMessage({ id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: 0 }); return; }
   var t0 = Date.now(), board = PA.revive(m.board), arrivals = [], out;
+  // When the answer is due: m.ms from when it was asked (m.posted), so the
+  // time a question waited behind the one before counts.
+  var due = m.ms > 0 ? (m.posted || t0) + m.ms : 0;
   // Garbage on its way arrives that many frames on (search.h runFrame).
   arrivals = SH.arrivalsFrom(board, m.arrivals || []);
   var th = SH.threat(cfg.profile, m.lead || 0);
@@ -131,7 +141,7 @@ wt.parentPort.on('message', function (m) {
       if (!BS) BS = new (require(path.join(DIR, 'native.js')).server.Search)({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames, threads: OPTS.threads || 1 });
       var tb = Date.now();
       br = SH.breakMoves(BS, board, { left: m.hold.left, started: m.hold.started }, arrivals, cfg.profile.breakDepth, cfg.profile.lineup && SH.popLeft(board) ? SH.popLeft(board) + LINEUP_AFTER : 0,
-                         Date.now() + (m.ms > 0 ? Math.max(LINEUP_MIN_MS, m.ms * LINEUP_SHARE) : LINEUP_MAX_MS));
+                         due ? Math.min(Date.now() + Math.max(LINEUP_MIN_MS, m.ms * LINEUP_SHARE), due - DEADLINE_MARGIN_MS) : Date.now() + LINEUP_MAX_MS);
       brMs = Date.now() - tb;
       if (stale()) throw P.ABORTED;
       want = br.depth ? br.moves : {};
@@ -178,9 +188,13 @@ wt.parentPort.on('message', function (m) {
     // _CHEAP and _SPEND override the most, the least and the share.
     var nodesPerMs = rates.length ? Math.min.apply(null, rates) : 30;
     var FULL = Number(process.env.GC_SURVIVOR_FULL) || P.prototype.SURVIVE_SEARCH_BUDGET, CHEAP = Number(process.env.GC_SURVIVOR_CHEAP) || P.prototype.SURVIVE_SEARCH_BUDGET_CHEAP;
-    bot.SURVIVE_SEARCH_BUDGET = m.ms > 0 ? Math.max(CHEAP, Math.min(FULL, Math.round(m.ms * nodesPerMs * SPEND))) : FULL;
-    // The frame loop stops a question it no longer needs (stale).
+    bot.SURVIVE_SEARCH_BUDGET = due ? Math.max(CHEAP, Math.min(FULL, Math.round((due - Date.now()) * nodesPerMs * SPEND))) : FULL;
+    // The frame loop stops a question it no longer needs (stale). A search
+    // still running DEADLINE_MARGIN_MS before the answer is due ends there
+    // with what it has proven, as if its budget had run out.
     bot._abort = cfg.abort ? stale : null;
+    var N = require(path.join(DIR, 'native.js')).server;
+    if (due) N.deadline(due - DEADLINE_MARGIN_MS);
     var d;
     var t1 = Date.now();
     bot._svMs = 0;
@@ -188,7 +202,7 @@ wt.parentPort.on('message', function (m) {
     var provenRanked = [];
     if (process.env.GC_SURVIVOR_WHY && bot.preferProven) { var pp0 = bot.preferProven; bot.preferProven = function (c, i) { var r = pp0.call(this, c, i); provenRanked.push(key(c) + '=' + r); return r; }; }
     if (process.env.GC_SURVIVOR_WHY && bot.preferRank) { var pr0 = bot.preferRank; bot.preferRank = function (c, i) { var r = pr0.call(this, c, i); ranked.push(key(c) + '=' + r); return r; }; }
-    try { d = bot._decide(); } finally { bot._abort = null; }
+    try { d = bot._decide(); } finally { bot._abort = null; N.deadline(0); }
     var why = null;
     if (process.env.GC_SURVIVOR_WHY) {
       var sp = bot._searchProofs;
@@ -212,7 +226,7 @@ wt.parentPort.on('message', function (m) {
     // line, from wherever the first ends.
     var lineFree = false;
     if (br && br.path && d.kind === 'swap' && d.move && br.path[0][0] === d.move[0] && br.path[0][1] === d.move[1] && br.path.length > 1) { line = br.path.slice(1); lineFree = true; }
-    out = { id: m.id, epoch: m.epoch, at: m.at, kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, ms: Date.now() - t0, brMs: brMs, why: why,
+    out = { id: m.id, epoch: m.epoch, at: m.at, kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, ms: Date.now() - t0, queued: m.posted ? t0 - m.posted : 0, brMs: brMs, why: why,
           line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
           mem: NativeMem(),
           breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
@@ -220,6 +234,12 @@ wt.parentPort.on('message', function (m) {
   } catch (e) {
     if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
     else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e) + ' [inc ' + (m.board && m.board.incoming ? m.board.incoming.length : '?') + ', arr ' + (m.arrivals ? m.arrivals.length : '?') + ']', ms: Date.now() - t0 };
+    // GC_SURVIVOR_FAILS=file: the first failed question, as survivor.js's dump writes one (asked), to be asked again offline
+    if (!(e === P.ABORTED) && process.env.GC_SURVIVOR_FAILS && !failWritten) {
+      failWritten = true;
+      require('fs').appendFileSync(process.env.GC_SURVIVOR_FAILS, JSON.stringify({ asked: [{ id: m.id, at: m.at, hold: m.hold, arrivals: m.arrivals, acted: m.acted,
+        board: require('v8').serialize(m.board).toString('base64') }] }) + '\n');
+    }
   }
   wt.parentPort.postMessage(out);
 });

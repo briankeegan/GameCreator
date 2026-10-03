@@ -3,7 +3,7 @@
 // sends (see ai/brain.js).
 importScripts('../panel-rules.js', '../panel-cpu.js', '../pa-generator.js', '../pa-engine.js', 'eval/native.js',
               'eval/features.js', 'eval/registry.js', 'eval/input.js', 'eval/travel.js', 'eval/evaluator.js',
-              'eval/engineboard.js', 'eval/modes.js', 'eval/puyocpu.js', 'trained-weights.js');
+              'eval/modes.js', 'eval/puyocpu.js', 'trained-weights.js');
 
 var mind = null, ready = null, queued = [], current = 0;
 
@@ -14,11 +14,9 @@ onmessage = function (e) {
     mind = new P.Mind(opts, null, !!m.quick);
     var stop = m.stop ? new Int32Array(m.stop) : null;
     if (stop) mind.abort = function () { return Atomics.load(stop, 0) === current; };
-    // Its search threads have to be running before it may wait on them.
     // The search plays the server's rules on native/pa.c.
-    var engine = fetch('eval/native/pa.wasm').then(function (r) { return r.arrayBuffer(); })
+    ready = fetch('eval/native/pa.wasm').then(function (r) { return r.arrayBuffer(); })
       .then(function (b) { self.PanelEval.Native.server.init(new Uint8Array(b)); });
-    ready = engine.then(function () { return opts.threads > 1 ? P.warmPool(opts.threads).then(function (n) { if (!n) opts.threads = 0; }) : null; });
     return;
   }
   if (m.type !== 'decide') return;

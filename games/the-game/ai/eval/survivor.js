@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // WASMSURVIVOR: the survival bot, playing on the panel-game server.
 //
-//   node survivor.js [--port 47777] [--host 127.0.0.1] [--threads N]   (N: the cores, at most 4)
+//   node survivor.js [--port 47777] [--host 127.0.0.1] [--threads N]   (N: the cores but one, at most 4)
 //   (or GC_SURVIVOR_PORT / GC_SURVIVOR_HOST; --host 0.0.0.0 listens on every interface)
 //
 // panel-game's live client (bot/SurvivalLink.lua, brain "survival") runs the
@@ -22,10 +22,22 @@
 // holds until it has decided again on the board as it is. Garbage on its
 // way, as the senders' telegraphs show it, is played into every prediction
 // and handed to the search.
+// THE FRAME LOOP STAYS OUT OF GC'S WAY: a young generation big enough that
+// it rarely fills mid-frame.
+require('v8').setFlagsFromString('--max-semi-space-size=64');
 var net = require('net'), path = require('path'), wt = require('worker_threads');
+// GC pauses on this thread: the longest, and how many passed 4 ms (match stats gcMs, slowGc).
+var GC = { max: 0, slow: 0 };
+// GC_SURVIVOR_TIMES=file: per frame, the clock, when its line was read (epoch s), the reply's and the frame's ms; written at the match's end.
+var TIMES = process.env.GC_SURVIVOR_TIMES ? [] : null, performance = require('perf_hooks').performance;
+// this thread's time on a cpu, waiting for one (ns) and slices (Linux schedstat)
+function schedstat() { try { return require('fs').readFileSync('/proc/thread-self/schedstat', 'utf8').split(' ').map(Number); } catch (e) { return [0, 0, 0]; } }
+new (require('perf_hooks').PerformanceObserver)(function (l) {
+  l.getEntries().forEach(function (e) { if (e.duration > GC.max) GC.max = e.duration; if (e.duration > 4) GC.slow++; if (TIMES && e.duration > 2) TIMES.push('gc ' + ((performance.timeOrigin + e.startTime) / 1000).toFixed(4) + ' ' + e.duration.toFixed(2) + ' ' + (e.detail ? e.detail.kind : e.kind)); });
+}).observe({ entryTypes: ['gc'] });
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js')), SH = require(path.join(__dirname, 'survivor_shared.js'));
 
-var args = process.argv.slice(2), opt = { port: Number(process.env.GC_SURVIVOR_PORT) || 47777, host: process.env.GC_SURVIVOR_HOST || '127.0.0.1', threads: Math.max(1, Math.min(4, require('os').cpus().length)) };
+var args = process.argv.slice(2), opt = { port: Number(process.env.GC_SURVIVOR_PORT) || 47777, host: process.env.GC_SURVIVOR_HOST || '127.0.0.1', threads: Math.max(1, Math.min(4, require('os').cpus().length - 1)) };
 for (var i = 0; i < args.length; i += 2) { var key = args[i].replace(/^--/, ''); opt[key] = key === 'host' ? args[i + 1] : Number(args[i + 1]); }
 if (!(opt.port > 0 && opt.port < 65536)) throw new Error('survivor.js: no such port ' + opt.port);
 var PROFILE = SH.profile(), HANDS = new SH.Hands(PROFILE), land = SH.land, arrivalsOf = SH.arrivalsOf;
@@ -214,7 +226,7 @@ Match.prototype.ask = function (at, board, hold, pend) {
                       board: require('v8').serialize(board).toString('base64') });
     if (this.asked.length > 40 * KEEP) this.asked.shift();
   }
-  mind.postMessage({ id: pending.id, epoch: this.epoch, at: at, lead: at - this.now, ms: SYNC ? 0 : (at - this.now) * this.msPerFrame,
+  mind.postMessage({ id: pending.id, epoch: this.epoch, at: at, lead: at - this.now, ms: SYNC ? 0 : (at - this.now) * this.msPerFrame, posted: Date.now(),
                     board: board, hold: hold, arrivals: arrivals, acted: this.acted });
   this.stats.decisions++;
 };
@@ -266,6 +278,9 @@ Match.prototype.take = function (truth) {
       if (a.kind === 'swap' && !(move = moved(p.board, truth, a.move))) { this.stats.late++; this.acted = false; continue; }
       board = truth; hold = this.hold; at = now; arrivals = this.arrivals; knew = this.arrivals;
       this.stats.lateTaken++;
+      // the latest answer taken: frames over, and where its time went
+      if (!this.stats.lateWorst || now - a.at > this.stats.lateWorst.over)
+        this.stats.lateWorst = { over: now - a.at, ms: a.ms, br: a.brMs, took: a.diag && a.diag.took, survive: a.diag && a.diag.survive, budget: a.diag && a.diag.budget, queued: a.queued };
     }
     var step = HANDS.keys(board, hold, a.kind, move, arrivals);
     if (!step) { this.stats.refused++; this.acted = false; continue; }
@@ -289,6 +304,7 @@ Match.prototype.frame = function (truth, arrivals, fresh) {
   var wall = Date.now();
   if (this.wall) this.msPerFrame += (Math.min(100, wall - this.wall) - this.msPerFrame) / 60;
   this.wall = wall;
+  var T = this.parts = [process.hrtime.bigint()];
   if (this.expect && (d = differ(this.expect, truth))) {
     // Not the board predicted (a key that never reached the game, a row
     // come up): every plan and question made before is void -- but a swap
@@ -310,6 +326,7 @@ Match.prototype.frame = function (truth, arrivals, fresh) {
   // was made without them, while there is still time to line up under the
   // panels before they drop. They are void, and the next question is asked
   // on the board as it is now.
+  T.push(process.hrtime.bigint());
   if (!d && this.expect && revealed(this.expect, truth)) {
     if (pending) Atomics.store(ABORT, 0, pending.id);
     this.epoch++; this.plan = {}; this.nextAt = 0; this.line = null; pending = null; this.acted = false;
@@ -328,30 +345,43 @@ Match.prototype.frame = function (truth, arrivals, fresh) {
     this.stats.unforeseen++;
   }
   if (pending && SH.unforeseen(pending.knew, arrivals).some(function (a) { return a.at + off <= pending.at; })) { Atomics.store(ABORT, 0, pending.id); pending = null; this.acted = false; this.stats.reasked++; }
+  T.push(process.hrtime.bigint());
   this.take(truth);
+  T.push(process.hrtime.bigint());
   var planned = this.plan[now];
   var bits;
   if (planned) { bits = planned.bits; this.hold = { left: planned.hold.left, started: planned.hold.started }; delete this.plan[now]; }
   else { var id = HANDS.idle(truth, this.hold, arrivals); bits = id.bits; this.hold = id.hold; this.stats.idle++; }
-  // What this frame should make of the board.
-  // truth as it came, to run on: made again from the state, which costs a
-  // seventh of a copy (fresh), or a copy when there is no state to make it from.
-  var next = fresh ? fresh() : truth.copy();
-  if (process.env.GC_SURVIVOR_CHECK_FRESH && fresh && JSON.stringify(next) !== JSON.stringify(truth)) throw new Error('survivor: the board made again is not the one that came');
-  next.setInput(bits & ~IN.swap);
-  if (bits & IN.swap) next.pressSwap = true;
+  T.push(process.hrtime.bigint());
+  if (process.env.GC_SURVIVOR_DUMP) this.record(truth, bits, arrivals);
+  this.made = { truth: truth, bits: bits, arrivals: arrivals, fresh: fresh };   // what the frame makes, worked out after the reply (expectNext)
+  this.expect = null;
+  return bits;
+};
+// What this frame makes of the board, once its keys are sent: truth as it
+// came, made again from the state (fresh, a seventh of a copy) or copied, and
+// run on them.
+Match.prototype.expectNext = function () {
+  var m = this.made;
+  if (!m) return;
+  this.made = null;
+  var next = m.fresh ? m.fresh() : m.truth.copy();
+  if (process.env.GC_SURVIVOR_CHECK_FRESH && m.fresh && JSON.stringify(next) !== JSON.stringify(m.truth)) throw new Error('survivor: the board made again is not the one that came');
+  next.setInput(m.bits & ~IN.swap);
+  if (m.bits & IN.swap) next.pressSwap = true;
   next.run();
-  var pend = SH.pending(arrivals);
+  var pend = SH.pending(m.arrivals);
   land(next, pend);
   this.expect = next; this.nextPending = pend;   // the garbage still to land after it
-  if (process.env.GC_SURVIVOR_DUMP) this.record(truth, bits, arrivals);
-  return bits;
 };
 // After the frame's keys are sent: the next decision is asked, a lead before
 // it is due, on the board predicted from the one this frame makes. The plan
 // never runs further ahead than that, so every decision sees the rows that
 // have come up since.
 Match.prototype.afterFrame = function () {
+  var A = this.aparts = [process.hrtime.bigint()];
+  this.expectNext();
+  A.push(process.hrtime.bigint());
   var now = this.now, next = this.expect;
   if (!next || next.gameOverClock > 0) return;
   if (pending && this.nextAt - now === 1 && !answers.some(function (a) { return a.id === pending.id; })) {
@@ -369,7 +399,9 @@ Match.prototype.afterFrame = function () {
   var lead = this.nextAt > now ? this.soon() : Math.max(this.soon(), Math.min(this.ahead(), Math.floor(SH.popLeft(next) / 4)));
   var at = Math.max(this.nextAt > now ? this.nextAt : 0, now + lead);
   if (at - now > this.ahead()) return;
+  A.push(process.hrtime.bigint());
   var pr = this.predict(next, at, this.hold, this.nextPending);
+  A.push(process.hrtime.bigint());
   // Dead by then on what is planned: the question is the next frame's board,
   // answered late and played from the board it reaches.
   if (pr.board.gameOverClock > 0) { at = now + 1; pr = { board: next, hold: this.hold, pending: this.nextPending }; }
@@ -426,40 +458,61 @@ Match.prototype.follow = function () {
   return true;
 };
 
+// The match's stats, with this thread's GC pauses since the last match.
+function overStats(match) {
+  match.stats.gcMs = Math.round(GC.max * 10) / 10; match.stats.slowGc = GC.slow; GC.max = 0; GC.slow = 0;
+  return JSON.stringify(match.stats);
+}
 // ---------------------------------------------------------------- the link
 var server = net.createServer(function (sock) {
   var buf = '', match = null;
   sock.setNoDelay(true);
   sock.on('error', function (e) { console.log('link: ' + e.message); });
-  sock.on('close', function () { if (match) { console.log('match over: ' + JSON.stringify(match.stats)); match.dump(); } match = null; });
+  sock.on('close', function () { if (TIMES && TIMES.length) { require('fs').appendFileSync(process.env.GC_SURVIVOR_TIMES, TIMES.join('\n') + '\n'); TIMES.length = 0; } if (match) { console.log('match over: ' + overStats(match)); match.dump(); } match = null; });
   function pump() {
     var nl;
     while ((nl = buf.indexOf('\n')) >= 0) {
       var line = buf.slice(0, nl);
       if (!line) { buf = buf.slice(nl + 1); continue; }
-      var m = JSON.parse(line), reply;
+      var sched0 = TIMES ? schedstat() : null;
+      var tp = process.hrtime.bigint(), tWall = TIMES ? performance.timeOrigin + performance.now() : 0, m = JSON.parse(line), reply, tParse = process.hrtime.bigint(), tBoard = tParse;
       if (SYNC && m.t === 'f' && match && pending && !answers.some(function (a) { return a.id === pending.id; })) { resume = pump; return; }
       buf = buf.slice(nl + 1);
       if (m.t === 'match') {
-        if (match) { console.log('match over: ' + JSON.stringify(match.stats)); match.dump(); }
+        if (match) { console.log('match over: ' + overStats(match)); match.dump(); }
         match = new Match({ levelData: m.levelData, behaviours: m.behaviours, stackOverConditions: m.stackOverConditions });
         reply = { ok: true };
       } else if (m.t === 'f') {
-        var t0 = process.hrtime.bigint();
+        var t0 = tp;   // from the line read: its parse is part of the reply
         if (!match) { reply = { input: 0 }; }
         else {
           var truth = PA.fromLua(m.state, match.level, new PA.Unseen()), state = m.state;
+          tBoard = process.hrtime.bigint();
           reply = { clock: truth.clock, input: match.frame(truth, arrivalsOf(state), function () { return PA.fromLua(state, match.level, new PA.Unseen()); }), next: match.planned(truth.clock + 1, NEXT) };
         }
-      } else if (m.t === 'bye') { if (match) { console.log('match over: ' + JSON.stringify(match.stats)); match.dump(); } match = null; reply = { ok: true }; }
+      } else if (m.t === 'bye') { if (match) { console.log('match over: ' + overStats(match)); match.dump(); } match = null; reply = { ok: true }; }
       sock.write(JSON.stringify(reply) + '\n');
       if (match && m.t === 'f') {
+        // what the link waits on: the frame's arrival to its reply
+        var rms = Number(process.hrtime.bigint() - t0) / 1e6;
+        if (rms > (match.stats.replyMs || 0)) match.stats.replyMs = Math.round(rms * 10) / 10;
+        if (rms > 8) {
+          match.stats.slowReplies = (match.stats.slowReplies || 0) + 1;
+          var ms = function (a, b) { return (Number(b - a) / 1e6).toFixed(1); };
+          console.error('slow reply ' + rms.toFixed(1) + ' ms at ' + match.now + ': parse ' + ms(tp, tParse) + ', board ' + ms(tParse, tBoard) + ', keys ' + ms(tBoard, process.hrtime.bigint()) + ' (differ ' + ms(match.parts[0], match.parts[1]) + ', checks ' + ms(match.parts[1], match.parts[2]) + ', take ' + ms(match.parts[2], match.parts[3]) + ', idle ' + ms(match.parts[3], match.parts[4]) + '), gc so far ' + GC.slow);
+        }
         match.afterFrame();
         // A frame's time here, the answer and the question after it, is what
         // the link waits on for the next (SurvivalLink waits 10 ms).
         var fms = Number(process.hrtime.bigint() - t0) / 1e6;
         if (fms > match.stats.frameMs) match.stats.frameMs = Math.round(fms * 10) / 10;
         if (fms > 8) match.stats.slowFrames++;
+        if (TIMES) TIMES.push(match.now + ' ' + (tWall / 1000).toFixed(4) + ' ' + rms.toFixed(2) + ' ' + fms.toFixed(2));
+        if (fms > 14) {
+          if (sched0) { var sc = schedstat(); console.error('  on cpu ' + ((sc[0] - sched0[0]) / 1e6).toFixed(1) + ' ms, waiting for one ' + ((sc[1] - sched0[1]) / 1e6).toFixed(1) + ' ms, ' + (sc[2] - sched0[2]) + ' slices'); }
+          var A = match.aparts || [], am = function (i) { return A[i] && A[i + 1] ? (Number(A[i + 1] - A[i]) / 1e6).toFixed(1) : '-'; };
+          console.error('slow frame ' + fms.toFixed(1) + ' ms at ' + match.now + ': reply ' + rms.toFixed(1) + ', next board ' + am(0) + ', plan ' + am(1) + ', predict ' + am(2) + ', gc so far ' + GC.slow);
+        }
       }
     }
   }

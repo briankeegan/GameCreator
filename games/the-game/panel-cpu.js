@@ -839,9 +839,7 @@
       // less distance to travel lands, matches and scores its own link before
       // a group still on its way down arrives.
     }
-    // REPORTED IN THE SAME UNITS engineboard.settle() uses, so the two are
-    // comparable without either caller knowing which board it came from: a
-    // plain combo (or several separate ones) is 1, a real 2-chain is 2.
+    // A plain combo (or several separate ones) is 1, a real 2-chain is 2.
     var depth = comboSizes.length ? Math.max(counter, 1) : 0;
     if (depth >= 2) garbage.push([this.width, Math.max(0, depth - 1)]);
     // `truncated` is a field rather than a silence: a caller that treats a
