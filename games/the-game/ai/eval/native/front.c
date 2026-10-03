@@ -193,7 +193,6 @@ static int drainBound(void) {
   if (active) k = imaxf(k, 1 + imaxf(1, air));
   return k;
 }
-#define RAISEHORIZON 240
 static int toppedNow(void) { return nb_topped(FB); }
 static int canRaise(Front *F) {
   if (!F->allowRaise || F->raiseFrames > 0) return 0;
@@ -339,15 +338,8 @@ static void fPrepare(Front *F) {
   int conv = F->reveal && nconv;
   int timed = (moving || open) && fTimed(TMST, &TM);
   d[IN_HASRISEN] = hasRisen;
-  // a raise is wanted only if the engine, raising, loses health no sooner than
-  // the board left alone does, over the horizon
-  F->raiseLives = 0;
-  if (F->allowRaise) {
-    int rd = nb_raise_death(FB, RAISEHORIZON);
-    if (rd == 0) F->raiseLives = 1;
-    else if (rd > 0) { int ad = nb_drain_in(FB, RAISEHORIZON); F->raiseLives = rd >= ad; }
-  }
-  d[IN_RAISELIVES] = F->raiseLives;
+  F->raiseLives = F->allowRaise && !topped;   // topped, never (bot.c raiseSafe)
+  d[IN_RAISING] = FB->manualRaise || FB->preventManualRaise;   // a row still coming up
   d[IN_INFLIGHT] = inFlight();
   d[IN_DRAINBOUND] = d[IN_TOPPED] ? drain : 0;
   d[IN_LOCKLEFT] = lockLeft();
@@ -616,13 +608,17 @@ EXPORT(front_frame) int front_frame(int fid, Board *b) {
   F->lastKind = -1;
   if (b->gameOverClock > 0) return 0;
   int held = F->held, input = 0;
+  // ONE PRESS, ONE ROW (Stack.lua): a held raise key starts the next row as
+  // soon as one is done, so the key is held only until the raise the bot
+  // decided on has started moving, and a decision arms one press. Topped,
+  // never: a raise pressed topped is game over (checkDeath).
   if (F->wantRaise && !F->raiseLives) { F->wantRaise = 0; F->raiseFrames = 0; }
   if (F->wantRaise && F->raiseFrames == 0 && !b->preventManualRaise && !b->manualRaise && !nb_falling_garbage(b)) {
-    F->raiseFrames = 20; F->raiseStarted = 0;
+    F->raiseFrames = 20; F->raiseStarted = 0; F->wantRaise = 0;
   }
   if (F->raiseFrames > 0) {
-    if (b->manualRaise) F->raiseStarted = 1;
-    if (b->preventManualRaise || (F->raiseStarted && !b->manualRaise)) F->raiseFrames = 0;
+    if (b->manualRaise && b->manualRaiseYet) F->raiseStarted = 1;
+    if (F->raiseStarted || b->preventManualRaise || nb_topped(b)) F->raiseFrames = 0;
     else { F->raiseFrames--; input |= IN_RAISE; }
   }
   if (F->walk) return fSend(F, driveWalk(F, input), held);
@@ -643,7 +639,7 @@ EXPORT(front_frame) int front_frame(int fid, Board *b) {
   if (fDecide(F, &d)) return -1;
   F->held = heldNow;
   if (d.kind == K_RAISE) {
-    F->raiseFrames = 20; F->raiseStarted = 0; F->cooldown = F->reaction;
+    F->raiseFrames = nb_topped(b) ? 0 : 20; F->raiseStarted = 0; F->wantRaise = 0; F->cooldown = F->reaction;
     return sent;
   }
   if (d.kind == K_HOLD || !d.hasMove) {

@@ -5,7 +5,7 @@
 #define INF (1.0 / 0.0)
 
 enum { IN_TOPPED, IN_STOP, IN_INCOMING, IN_NEXTSLAB, IN_FALLING, IN_CROW, IN_CCOL, IN_HEALTH, IN_DRAIN, IN_FPR,
-       IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISELIVES, IN_INFLIGHT,
+       IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISING, IN_INFLIGHT,
        IN_DRAINBOUND, IN_STACKTOPPED, IN_MOVING, IN_HASTIMED, IN_REVEALOPEN, IN_CONVN, IN_CONVTIMER, IN_BCROW, IN_BCCOL,
        IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_SIZE = 600 };
 enum { TF_DEADLY = 1, TF_FORCE = 2, TF_REFUSE = 4, TF_RAISE = 8, TF_STUB = 16, TF_SLAB = 32 };
@@ -774,9 +774,24 @@ static Cand POOL[MAXCAND];
 static ST POOLST[MAXCAND];
 static int nPool;
 static Res CR, CR2;
-// A RAISE IS WANTED AND OFFERED ONLY IF IT LIVES: the front raises on the
-// engine and leaves the board alone over the horizon (pa.c nb_raise_lives);
-// raiseMode and the pool read the one answer, IN_RAISELIVES.
+// A RAISE IS WANTED AND OFFERED ONLY IF IT LIVES. A board loses health only
+// topped, with no stop time and nothing holding the rise lock; a manual raise
+// zeroes the stop time, and one pressed topped is game over (Stack.lua
+// handleManualRaise, checkDeath). So topped, never. Otherwise the passive rise
+// tops the raised board out in (free rows - queued garbage rows) rows, each
+// FPR frames, and the raise lives if the quickest clear the pool holds --
+// stop time earned, the rise held -- can be made before then.
+static int raiseSafe(const int32_t *base) {
+  if (BIN[IN_TOPPED] || BIN[IN_STACKTOPPED]) return 0;
+  int queued = (int)dmax(__builtin_ceil(BIN[IN_NEXTSLAB] / BW), BIN[IN_INROWS]);
+  // a raise already moving is a row the board does not show yet
+  int free = BH - tallestBoard(base) - 1 - queued - (BIN[IN_RAISING] != 0);
+  if (free <= 0) return 0;
+  double clear = INF;
+  for (int q = 0; q < nPool; q++)
+    if (POOL[q].kind == K_SWAP && POOL[q].res.total > 0 && POOL[q].moveFrames < clear) clear = POOL[q].moveFrames;
+  return free * BIN[IN_FPR] > clear + REACT;
+}
 // WHAT A SWAP CAUSES. On a board in motion the clear already resolving is in
 // every result the resolver gives, the board left alone included. A swap is
 // credited only with what it adds: the cells past the board's own, and a break
@@ -817,7 +832,7 @@ static void candidates(int32_t *base) {
   if (BIN[IN_HASRISEN]) {
     resolve(RISEN, CR.r, 1);
     const int32_t *rm = CR.r[R_SCOPE] == SC_OK ? CR.st : RISEN;
-    if (BIN[IN_RAISELIVES]) {
+    {
       Cand *rc = &POOL[nPool];
       memset(rc, 0, sizeof(Cand));
       stcpy(POOLST[nPool], rm);
@@ -1013,7 +1028,7 @@ static int raiseMode(const int32_t *base, int poolBreak) {
   if (!opt(O_ALLOWRAISE) || topped) { BT->opening = 0; return 0; }
   if (BIN[IN_FALLING]) return 0;
   int rows = (int)__builtin_ceil(BIN[IN_NEXTSLAB] / BW);
-  int fits = BIN[IN_RAISELIVES] != 0;   // the engine raised and lost no health
+  int fits = raiseSafe(base);
   BT->wantRows = rows;
   if (BT->opening && (BIN[IN_INCOMING] || !fits)) BT->opening = 0;
   if (!fits) return 0;
@@ -1141,6 +1156,10 @@ static Dec decideCore(void) {
   optsBuilt = 0;
   planReset(base);
   candidates(base);
+  // the raise the pool offers is one that lives
+  if (!raiseSafe(base))
+    for (int q = 0; q < nPool; q++)
+      if (POOL[q].kind == K_RAISE) { POOL[q] = POOL[--nPool]; break; }
   Line rev; memset(&rev, 0, sizeof rev);
   int haveRev = revealPick(base, &rev);
   double fpr = BIN[IN_FPR];
@@ -1815,8 +1834,9 @@ int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_
 // clears more than the board left alone, BREAKS: converts more. GAINS: the
 // board left alone loses health within the horizon and the line loses it
 // later or not at all -- the only thing a clear that breaks nothing buys.
-// DROPS: more garbage at rest starts to fall than left alone.
-enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8, LV_DROPS = 16 };
+// DROPS: more garbage at rest starts to fall than left alone. FILLS: less
+// hollow under the garbage that lands than left alone (pa.c HOLLOW).
+enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8, LV_DROPS = 16, LV_FILLS = 32 };
 
 typedef struct { int n, brk, ok, grown, waitAll, hollow; int32_t sw[2 * LINEMAX]; double est; int verdict; } LineC;
 static LineC LINES[MAXLINES];
@@ -1841,6 +1861,7 @@ static int lineJudge(const int32_t *sw, int n, int waitAll) {
   else if (LNO[3] > LNA[3]) v |= LV_PAYS;
   if (LNA[0] && (!LNO[0] || LNO[0] > LNA[0])) v |= LV_GAINS;
   if (LNO[9] > LNA[9]) v |= LV_DROPS;
+  if (LNO[10] < LNA[10]) v |= LV_FILLS;
   return v;
 }
 static int judged(LineC *l) {
@@ -2413,6 +2434,9 @@ static Dec spendToBreak(Dec d) {
     fprintf(stderr, "SPEND %d,%d v%d | drain %d/%d last %d conv %d/%d match %d/%d fell %d/%d\n", d.sr, d.sc, v, LNO[0], LNA[0], LNO[1], LNO[2], LNA[2], LNO[3], LNA[3], LNO[9], LNA[9]); }
 #endif
   if (!(v & LV_LIVES) || !(v & (LV_PAYS | LV_DROPS)) || (v & (LV_BREAKS | LV_GAINS))) return d;
+  // over six rows of panels there is material to spare: a clear that leaves
+  // less hollow under what lands is spent
+  if ((v & LV_FILLS) && !(v & LV_DROPS) && materialRows(DBASE) >= 6) return d;
   return mkHold(V_SETUP, d.mode, d.alive, 0, 0, 0);
 }
 // WHAT LANDS IS WHAT IT WILL BREAK. A slab rests on the tallest column under
@@ -2422,8 +2446,33 @@ static Dec spendToBreak(Dec d) {
 // the one the engine finds leaves the least hollow under what lands (pa.c
 // HOLLOW) -- a move that clears nothing, drops no garbage at rest and lives --
 // if it leaves less than the choice and less than the board left alone.
+// While a break is being played, a fill swap goes first only if the break
+// still breaks after it and what lands is left less hollow.
+static Dec fillBeforeBreak(Dec d) {
+  int32_t ln[2 * LINEMAX + 2]; int n = BT->nLine;
+  if (n) for (int k = 0; k < 2 * n; k++) ln[2 + k] = BT->line[k];
+  else if (d.kind == K_SWAP && d.hasMove) { ln[2] = d.sr; ln[3] = d.sc; n = 1; }
+  if (!n || n >= LINEMAX) return d;
+  int need = LV_LIVES | LV_BREAKS;
+  if ((lineJudge(ln + 2, n, BT->lineWaitAll) & need) != need) return d;
+  int best = LNO[10];
+  if (best == 0) return d;
+  int pr = 0, pc = 0;
+  for (int q = 0; q < nPool; q++) {
+    Cand *k = &POOL[q];
+    if (k->kind != K_SWAP || k->res.total > 0) continue;
+    ln[0] = k->sr; ln[1] = k->sc;
+    int v = lineJudge(ln, n + 1, BT->lineWaitAll);
+    if ((v & need) != need || (v & LV_DROPS)) continue;
+    if (LNO[10] < best) { best = LNO[10]; pr = k->sr; pc = k->sc; }
+  }
+  if (!pr) return d;
+  return mkSwap(pr, pc, V_FILL, d.mode, d.alive);
+}
 static Dec fillFirst(Dec d) {
-  if (lineLast || d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
+  if (d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
+  if (lineLast == 1 || lineLast == 3) return BT->lineKind == LINE_BREAK || lineLast == 3 ? fillBeforeBreak(d) : d;
+  if (lineLast) return d;
   if (d.kind == K_SWAP && endsInBreak(d.via)) return d;
   if (!aloneOnEngine() || LNA[10] == 0) return d;
   int best = LNA[10];
@@ -2432,12 +2481,13 @@ static Dec fillFirst(Dec d) {
     if (lineJudge(sw, 1, 0) & LV_LIVES) best = LNO[10] < best ? LNO[10] : best;
   }
   Cand *pick = 0;
+  int surplus = materialRows(DBASE) >= 6;   // over six rows a clear may be spent to fill
   for (int q = 0; q < nPool; q++) {
     Cand *pc = &POOL[q];
-    if (pc->kind != K_SWAP || pc->res.total > 0) continue;
+    if (pc->kind != K_SWAP || (pc->res.total > 0 && !surplus)) continue;
     int32_t sw[2] = { pc->sr, pc->sc };
     int v = lineJudge(sw, 1, 0);
-    if (!(v & LV_LIVES) || (v & (LV_PAYS | LV_DROPS))) continue;
+    if (!(v & LV_LIVES) || (v & LV_DROPS) || ((v & LV_PAYS) && !surplus)) continue;
     if (LNO[10] < best || (pick && LNO[10] == best && pc->moveFrames < pick->moveFrames)) { best = LNO[10]; pick = pc; }
   }
   // the top of every column walked along its row, a column a swap, until it
