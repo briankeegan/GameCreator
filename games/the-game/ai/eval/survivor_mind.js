@@ -86,6 +86,7 @@ var NativeMem = function () {
   return { bytes: N.memoryBytes(), heapMB: X.nb_pool_stat(-1) / 16, free: free, nodeCap: bot && bot._nat ? X.ns_ctx_cap(bot._nat.ctx) : 0 };
 };
 
+var failWritten = false;
 wt.parentPort.on('message', function (m) {
   if (m.type === 'reset') { if (bot && bot._nat) nat = bot._nat; bot = null; snap = null; return; }
   // A question at or before the one the frame loop stopped is not wanted:
@@ -220,6 +221,12 @@ wt.parentPort.on('message', function (m) {
   } catch (e) {
     if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
     else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e) + ' [inc ' + (m.board && m.board.incoming ? m.board.incoming.length : '?') + ', arr ' + (m.arrivals ? m.arrivals.length : '?') + ']', ms: Date.now() - t0 };
+    // GC_SURVIVOR_FAILS=file: the first failed question, as survivor.js's dump writes one (asked), to be asked again offline
+    if (!(e === P.ABORTED) && process.env.GC_SURVIVOR_FAILS && !failWritten) {
+      failWritten = true;
+      require('fs').appendFileSync(process.env.GC_SURVIVOR_FAILS, JSON.stringify({ asked: [{ id: m.id, at: m.at, hold: m.hold, arrivals: m.arrivals, acted: m.acted,
+        board: require('v8').serialize(m.board).toString('base64') }] }) + '\n');
+    }
   }
   wt.parentPort.postMessage(out);
 });
