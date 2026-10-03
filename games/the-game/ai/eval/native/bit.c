@@ -2066,8 +2066,15 @@ static void expandAll(int depth, int cr, int cc) {
     if (DIG && nb > nf2) {
       int ns = 0;
       for (int i = nf2; i < nb; i++) ORD2[ns++] = ORD[i];
-      msortI(ORD2, ns, byDig);
-      for (int k = 0; k < ns && k < digBeam; k++) if (BORN[ORD2[k]].dig) pick[np++] = ORD2[k];
+      // the first digBeam of a stable sort by byDig, selected: the rest is never read
+      for (int k = 0; k < ns && k < digBeam; k++) {
+        int m = k;
+        for (int i = k + 1; i < ns; i++) if (byDig(ORD2[i], ORD2[m]) < 0) m = i;
+        int v = ORD2[m];
+        for (int i = m; i > k; i--) ORD2[i] = ORD2[i - 1];
+        ORD2[k] = v;
+        if (BORN[v].dig) pick[np++] = v;
+      }
     }
     for (int i = 0; i < np; i++) {
       Born *b = &BORN[pick[i]];
