@@ -23,6 +23,11 @@
 // way, as the senders' telegraphs show it, is played into every prediction
 // and handed to the search.
 var net = require('net'), path = require('path'), wt = require('worker_threads');
+// GC pauses on this thread: the longest, and how many passed 4 ms (match stats gcMs, slowGc).
+var GC = { max: 0, slow: 0 };
+new (require('perf_hooks').PerformanceObserver)(function (l) {
+  l.getEntries().forEach(function (e) { if (e.duration > GC.max) GC.max = e.duration; if (e.duration > 4) GC.slow++; });
+}).observe({ entryTypes: ['gc'] });
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js')), SH = require(path.join(__dirname, 'survivor_shared.js'));
 
 var args = process.argv.slice(2), opt = { port: Number(process.env.GC_SURVIVOR_PORT) || 47777, host: process.env.GC_SURVIVOR_HOST || '127.0.0.1', threads: Math.max(1, Math.min(4, require('os').cpus().length)) };
@@ -426,12 +431,17 @@ Match.prototype.follow = function () {
   return true;
 };
 
+// The match's stats, with this thread's GC pauses since the last match.
+function overStats(match) {
+  match.stats.gcMs = Math.round(GC.max * 10) / 10; match.stats.slowGc = GC.slow; GC.max = 0; GC.slow = 0;
+  return JSON.stringify(match.stats);
+}
 // ---------------------------------------------------------------- the link
 var server = net.createServer(function (sock) {
   var buf = '', match = null;
   sock.setNoDelay(true);
   sock.on('error', function (e) { console.log('link: ' + e.message); });
-  sock.on('close', function () { if (match) { console.log('match over: ' + JSON.stringify(match.stats)); match.dump(); } match = null; });
+  sock.on('close', function () { if (match) { console.log('match over: ' + overStats(match)); match.dump(); } match = null; });
   function pump() {
     var nl;
     while ((nl = buf.indexOf('\n')) >= 0) {
@@ -441,7 +451,7 @@ var server = net.createServer(function (sock) {
       if (SYNC && m.t === 'f' && match && pending && !answers.some(function (a) { return a.id === pending.id; })) { resume = pump; return; }
       buf = buf.slice(nl + 1);
       if (m.t === 'match') {
-        if (match) { console.log('match over: ' + JSON.stringify(match.stats)); match.dump(); }
+        if (match) { console.log('match over: ' + overStats(match)); match.dump(); }
         match = new Match({ levelData: m.levelData, behaviours: m.behaviours, stackOverConditions: m.stackOverConditions });
         reply = { ok: true };
       } else if (m.t === 'f') {
@@ -451,9 +461,13 @@ var server = net.createServer(function (sock) {
           var truth = PA.fromLua(m.state, match.level, new PA.Unseen()), state = m.state;
           reply = { clock: truth.clock, input: match.frame(truth, arrivalsOf(state), function () { return PA.fromLua(state, match.level, new PA.Unseen()); }), next: match.planned(truth.clock + 1, NEXT) };
         }
-      } else if (m.t === 'bye') { if (match) { console.log('match over: ' + JSON.stringify(match.stats)); match.dump(); } match = null; reply = { ok: true }; }
+      } else if (m.t === 'bye') { if (match) { console.log('match over: ' + overStats(match)); match.dump(); } match = null; reply = { ok: true }; }
       sock.write(JSON.stringify(reply) + '\n');
       if (match && m.t === 'f') {
+        // what the link waits on: the frame's arrival to its reply
+        var rms = Number(process.hrtime.bigint() - t0) / 1e6;
+        if (rms > (match.stats.replyMs || 0)) match.stats.replyMs = Math.round(rms * 10) / 10;
+        if (rms > 8) match.stats.slowReplies = (match.stats.slowReplies || 0) + 1;
         match.afterFrame();
         // A frame's time here, the answer and the question after it, is what
         // the link waits on for the next (SurvivalLink waits 10 ms).
