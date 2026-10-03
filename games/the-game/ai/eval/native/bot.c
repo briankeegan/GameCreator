@@ -1834,8 +1834,9 @@ int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_
 // clears more than the board left alone, BREAKS: converts more. GAINS: the
 // board left alone loses health within the horizon and the line loses it
 // later or not at all -- the only thing a clear that breaks nothing buys.
-// DROPS: more garbage at rest starts to fall than left alone.
-enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8, LV_DROPS = 16 };
+// DROPS: more garbage at rest starts to fall than left alone. FILLS: less
+// hollow under the garbage that lands than left alone (pa.c HOLLOW).
+enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8, LV_DROPS = 16, LV_FILLS = 32 };
 
 typedef struct { int n, brk, ok, grown, waitAll, hollow; int32_t sw[2 * LINEMAX]; double est; int verdict; } LineC;
 static LineC LINES[MAXLINES];
@@ -1860,6 +1861,7 @@ static int lineJudge(const int32_t *sw, int n, int waitAll) {
   else if (LNO[3] > LNA[3]) v |= LV_PAYS;
   if (LNA[0] && (!LNO[0] || LNO[0] > LNA[0])) v |= LV_GAINS;
   if (LNO[9] > LNA[9]) v |= LV_DROPS;
+  if (LNO[10] < LNA[10]) v |= LV_FILLS;
   return v;
 }
 static int judged(LineC *l) {
@@ -2432,6 +2434,9 @@ static Dec spendToBreak(Dec d) {
     fprintf(stderr, "SPEND %d,%d v%d | drain %d/%d last %d conv %d/%d match %d/%d fell %d/%d\n", d.sr, d.sc, v, LNO[0], LNA[0], LNO[1], LNO[2], LNA[2], LNO[3], LNA[3], LNO[9], LNA[9]); }
 #endif
   if (!(v & LV_LIVES) || !(v & (LV_PAYS | LV_DROPS)) || (v & (LV_BREAKS | LV_GAINS))) return d;
+  // over six rows of panels there is material to spare: a clear that leaves
+  // less hollow under what lands is spent
+  if ((v & LV_FILLS) && !(v & LV_DROPS) && materialRows(DBASE) >= 6) return d;
   return mkHold(V_SETUP, d.mode, d.alive, 0, 0, 0);
 }
 // WHAT LANDS IS WHAT IT WILL BREAK. A slab rests on the tallest column under
@@ -2451,12 +2456,13 @@ static Dec fillFirst(Dec d) {
     if (lineJudge(sw, 1, 0) & LV_LIVES) best = LNO[10] < best ? LNO[10] : best;
   }
   Cand *pick = 0;
+  int surplus = materialRows(DBASE) >= 6;   // over six rows a clear may be spent to fill
   for (int q = 0; q < nPool; q++) {
     Cand *pc = &POOL[q];
-    if (pc->kind != K_SWAP || pc->res.total > 0) continue;
+    if (pc->kind != K_SWAP || (pc->res.total > 0 && !surplus)) continue;
     int32_t sw[2] = { pc->sr, pc->sc };
     int v = lineJudge(sw, 1, 0);
-    if (!(v & LV_LIVES) || (v & (LV_PAYS | LV_DROPS))) continue;
+    if (!(v & LV_LIVES) || (v & LV_DROPS) || ((v & LV_PAYS) && !surplus)) continue;
     if (LNO[10] < best || (pick && LNO[10] == best && pc->moveFrames < pick->moveFrames)) { best = LNO[10]; pick = pc; }
   }
   // the top of every column walked along its row, a column a swap, until it
