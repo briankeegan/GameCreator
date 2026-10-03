@@ -76,7 +76,7 @@ jobs:
           set -eu
           if [ -n '${{ inputs.profile }}' ]; then export GC_SURVIVOR_PROFILE="$GITHUB_WORKSPACE/games/the-game/ai/eval/${{ inputs.profile }}"; fi
           threads=3; [ '${{ inputs.opponent }}' = survivor ] && threads=2
-          GC_SURVIVOR_DUMP="$GITHUB_WORKSPACE/death.jsonl" nohup node games/the-game/ai/eval/survivor.js --port 47777 --threads $threads > "$GITHUB_WORKSPACE/survivor.log" 2>&1 &
+          GC_SURVIVOR_TIMES="$GITHUB_WORKSPACE/times.txt" GC_SURVIVOR_DUMP="$GITHUB_WORKSPACE/death.jsonl" nohup node games/the-game/ai/eval/survivor.js --port 47777 --threads $threads > "$GITHUB_WORKSPACE/survivor.log" 2>&1 &
           if [ '${{ inputs.opponent }}' = survivor ]; then
             ( if [ -n '${{ inputs.profile2 }}' ]; then export GC_SURVIVOR_PROFILE="$GITHUB_WORKSPACE/games/the-game/ai/eval/${{ inputs.profile2 }}"; else unset GC_SURVIVOR_PROFILE; fi
               GC_SURVIVOR_DUMP="$GITHUB_WORKSPACE/death2.jsonl" nohup node games/the-game/ai/eval/survivor.js --port 47778 --threads 2 > "$GITHUB_WORKSPACE/survivor2.log" 2>&1 & )
@@ -93,6 +93,7 @@ jobs:
           export LUA_PATH="./?.lua;./common/lib/?.lua;$LUA_PATH"
           export LUA_CPATH="./common/lib/?.so;./common/lib/?/?.so;$LUA_CPATH"
           set -o pipefail
+          export PA_DUEL_TIMES=1
           luajit "$GITHUB_WORKSPACE/games/the-game/ai/eval/lua/survivorDuel.lua" ${{ matrix.seed }} ${{ inputs.frames }} ${{ inputs.garbage_every }} ${{ inputs.rate }} ${{ inputs.solo }} ${{ inputs.stream }} ${{ inputs.opponent }} 2>&1 | tee "$GITHUB_WORKSPACE/duel.log"
           grep -q '^RESULT' "$GITHUB_WORKSPACE/duel.log"
       - name: Summary
@@ -104,6 +105,14 @@ jobs:
           # the same lines as annotations, which the API serves (check-runs/<id>/annotations)
           grep -h '^RESULT' duel.log | sed 's/^/::notice title=duel::/' || true
           grep -h 'match over' survivor.log | sed 's/^/::notice title=survivor::/' || true
+          # each late frame: Lua's wait, when the sidecar read the line (ms after it was sent), its reply, GC near it
+          if grep -q '^LATE' duel.log && [ -f times.txt ]; then
+            awk 'FNR==NR { if ($1=="gc") gc[++ng]=$2" "$3" "$4; else { rd[$1]=$2; rp[$1]=$3 } ; next }
+                 $1=="LATE" { c=$3; s=$7; g=""; for (i=1;i<=ng;i++) { split(gc[i],a," "); if (a[1]>=s-0.05 && a[1]<=rd[c]) g=g" gc"a[3]":"a[2]"ms" }
+                              printf "%s dump %.1f wait %.1f read +%.1f reply %s%s%%0A", c, (s-$5)*1000, ($9-s)*1000, (rd[c]-s)*1000, rp[c], g }' times.txt duel.log \
+              | tr -d '\n' | sed 's/^/::notice title=late frames::/'; echo
+          fi
+          grep -h '^slow\|^  on cpu' survivor.log | head -40 | tr '\n' '|' | sed 's/^/::notice title=slow::/'; echo
       - uses: actions/upload-artifact@v4
         if: always()
         with:
