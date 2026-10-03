@@ -2015,7 +2015,8 @@ static int leafQuiet(int r, int c) {
   for (int k = 1; k <= lqH; k++) { lqG[k][p] = sp[k]; lqG[k][e] = se[k]; }
   return !run;
 }
-static int laRes[8], laSkip[8];   // GC_WORKSTAT: resolves and skipped leaves per level
+static int laRes[8], laSkip[8];
+static double lsRing = 1e300;   // the ring: three-swap lines no later than this (breakFirst)   // GC_WORKSTAT: resolves and skipped leaves per level
 static int quietSwap(const int32_t *st, int r, int c) {
   int N = st[O_N], W = st[O_W];
   uint32_t b = 1u << (r - 1);
@@ -2035,6 +2036,32 @@ static int quietSwap(const int32_t *st, int r, int c) {
     if (run >= 3) return 0;
   }
   return 1;
+}
+// OUT FROM THE CURSOR, every search alike: swaps (r, c pairs `stride` ints
+// apart) in order of the moves from (cr, cc), at the same distance up, right,
+// left, down; far[] the moves of each in that order. GC_NOORDER keeps the
+// order given, to check the order never changes an answer.
+static int nfNoOrder = -1;
+static void nearestFirst(const int32_t *sw, int stride, int n, int cr, int cc, int *ord, double *far) {
+#ifndef __wasm__
+  if (nfNoOrder < 0) nfNoOrder = getenv("GC_NOORDER") != 0;
+#else
+  nfNoOrder = 0;
+#endif
+  int dirOf[256];
+  for (int k = 0; k < n; k++) {
+    int r = sw[stride * k], c = sw[stride * k + 1];
+    double f = travelCost(cr, cc, r, c);
+    int dr = r > cr ? 0 : c > cc ? 1 : c < cc ? 2 : 3, j = k;
+    dirOf[k] = dr;
+    while (!nfNoOrder && j > 0 && (far[j - 1] > f || (far[j - 1] == f && dirOf[ord[j - 1]] > dr))) { far[j] = far[j - 1]; ord[j] = ord[j - 1]; j--; }
+    far[j] = f; ord[j] = k;
+  }
+}
+// a before b among equals: by the swaps themselves, so no answer depends on the order found
+static int swapsBefore(const int32_t *a, const int32_t *b, int n) {
+  for (int k = 0; k < 2 * n; k++) if (a[k] != b[k]) return a[k] < b[k];
+  return 0;
 }
 // LAST-LEVEL RESULTS BY BOARD, as the option search keeps its children: on a
 // resolved board a swap's outcome depends on the board and the swap alone, so
@@ -2057,24 +2084,15 @@ static void linesAt(int d, int pr, int pc, double t, double limit) {
   // OUT FROM THE CURSOR: nearest first, so the first that cannot be reached in
   // time ends the level -- every one after it is further
   int ord[128]; double far[128];
-  static int noOrder = -1;
-#ifndef __wasm__
-  if (noOrder < 0) noOrder = getenv("GC_NOORDER") != 0;   // the old order, to check the new finds the same
-#else
-  noOrder = 0;
-#endif
   if (n > 128) n = 128;
-  for (int k = 0; k < n; k++) {
-    double f = travelCost(pr, pc, LSW[d][2 * k], LSW[d][2 * k + 1]);
-    int j = k;
-    while (!noOrder && j > 0 && far[j - 1] > f) { far[j] = far[j - 1]; ord[j] = ord[j - 1]; j--; }
-    far[j] = f; ord[j] = k;
-  }
+  nearestFirst(LSW[d], 2, n, pr, pc, ord, far);
+  int noOrder = nfNoOrder;
   for (int oi = 0; oi < n && (tTimeMode || nLines < MAXLINES); oi++) {
     int i = ord[oi];
     int r = LSW[d][2 * i], c = LSW[d][2 * i + 1];
     double at = t + far[oi];
     if (at > limit) { if (noOrder) continue; break; }
+    if (nPfx + d + 1 == 3 && pfxT + at > lsRing) { if (noOrder) continue; break; }
     if (tTimeMode && pfxT + at >= tTimeMin) { if (noOrder) continue; break; }
     if (r >= 40) continue;
     if (tTimeMode && pfxT + at >= tTimeMin) continue;   // no sooner than the soonest found: it cannot be the answer
@@ -2359,8 +2377,10 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
     }
   }
 }
-// THE TIME THERE IS: topped, the drain
-static double linesLimit(int breaks) { (void)breaks; return lsTopped ? timeLeft() - 2 : INF; }
+// THE TIME THERE IS: topped, the drain; else the judge's horizon -- a line
+// whose last press comes later is one the engine never finishes playing, so
+// it can never be judged to live
+static double linesLimit(int breaks) { (void)breaks; return lsTopped ? timeLeft() - 2 : LINEHORIZON; }
 static void linesFind(int depth, int breaks) {
   // the same lines asked for twice in a decision are found once
   if (lfDecision == btDecision && lfDepth == depth && lfBreaks == breaks) return;
@@ -2420,7 +2440,7 @@ static LineC *bestLine(int need, int (*ok)(const LineC *)) { return bestLineAvoi
 // THE BREAK THAT TAKES THE MOST. Of the first LIVINGS breaks that live, by
 // rank, the one that converts the most garbage on the engine -- a pile broken
 // whole, not its bottom slab with the rest left propped above a gap.
-static int bbFound, bbLastN;   // bestBreak: how many living breaks it took, the last one's length
+static int bbFound, bbLastN; static double bbLastEst;   // bestBreak: how many living breaks it took, the last one's length and time
 static LineC *bestBreak(void) {
   static unsigned char taken[MAXLINES];
   const int need = LV_LIVES | LV_BREAKS;
@@ -2438,7 +2458,7 @@ static LineC *bestBreak(void) {
     taken[at] = 1;
     LineC *l = &LINES[at];
     if ((judged(l) & need) != need) continue;
-    found++; bbFound = found; bbLastN = l->n;
+    found++; bbFound = found; bbLastN = l->n; bbLastEst = l->est;
     if (!pick || l->conv > pick->conv) pick = l;
   }
   return pick;
@@ -2561,7 +2581,22 @@ static Dec breakFirst(Dec d) {
   // shortest first, so once LIVINGS are found no longer than this depth, a
   // deeper line cannot enter them and the answer is the deeper search's
   LineC *l = 0;
+  lsRing = 1e300;
   for (int depth = 1; depth <= KEEPDEPTH; depth++) {
+    // THREE SWAPS DEEP, IN RINGS: every shorter line is found whole; three-swap
+    // lines out to a ring of time. Once LIVINGS are had, the last no longer
+    // than three and inside the ring, a line outside it cannot enter them.
+    if (depth == 3) {
+      static const double RINGS[] = { 60, 120, 1e300 };
+      for (int ri = 0; ri < 3; ri++) {
+        lsRing = RINGS[ri]; lfDecision = -1;
+        linesFind(depth, 1);
+        l = bestBreak();
+        if (bbFound >= LIVINGS && bbLastN <= 3 && bbLastEst <= lsRing) break;
+      }
+      lsRing = 1e300;
+      break;
+    }
     growRootMs = growKidMs = growStateMs = 0; growKids = 0; for (int q = 0; q < 8; q++) laRes[q] = laSkip[q] = 0;
     double lf0 = NOWMS2();
     linesFind(depth, 1);
@@ -2701,18 +2736,25 @@ static Dec lineupFirst(Dec d) {
   luStates = luRanks = luReady = 0; luStateMs = luRankMs = luReadyMs = 0;
   int n = legal(st0, lg), bestRank = 0;
   double bestT = INF;
-  for (int i = 0; i < n; i++) {
+  int ord0[128]; double far0[128];
+  if (n > 128) n = 128;
+  nearestFirst(lg, 2, n, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], ord0, far0);
+  for (int oi = 0; oi < n; oi++) {
+    int i = ord0[oi];
     int r = lg[2 * i], c = lg[2 * i + 1];
+    // the best rank had, a swap no sooner -- and every one after it, further out -- cannot win
+    if (bestRank >= LUBEST && far0[oi] > bestT && !nfNoOrder) break;
     if (r > 31 || !(can0[c] & (1u << (r - 1))) || !lineupNear(st0, r, c)) continue;
     int32_t sw[4] = { r, c, 0, 0 };
-    double at = dmax(travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], r, c), waits0[r][c]);
-    // no sooner than the best, it must rank higher to count
+    double at = dmax(far0[oi], waits0[r][c]);
+    // no sooner than the best (or level with it, after it by its swaps), it must rank higher to count
+    int ahead = at < bestT || (at == bestT && swapsBefore(sw, best, bestN > 1 ? 2 : 1));
     double rk0 = NOWMS2();
-    int rank = lineupRank(st0, sw, 1, at < bestT ? bestRank : bestRank + 1);
+    int rank = lineupRank(st0, sw, 1, ahead ? bestRank : bestRank + 1);
     luRanks++; luRankMs += NOWMS2() - rk0;
-    if (rank > bestRank || (rank && rank == bestRank && at < bestT)) { bestRank = rank; bestT = at; bestN = 1; best[0] = r; best[1] = c; }
+    if (rank > bestRank || (rank && rank == bestRank && ahead)) { bestRank = rank; bestT = at; bestN = 1; best[0] = r; best[1] = c; best[2] = best[3] = 0; }
     if (rank >= 4) continue;
-    if (bestRank >= LUBEST && at >= bestT) continue;   // a second swap comes later still: it cannot win
+    if (bestRank >= LUBEST && at > bestT) continue;   // a second swap comes later still: it cannot win
     // a second swap, on the board the engine reaches after the first
     int32_t st1[ST_INTS], cur1[2], t1, lg1[2 * 128];
     uint32_t can1[WMAX];
@@ -2721,16 +2763,21 @@ static Dec lineupFirst(Dec d) {
     int lsr = lineState(sw, 1, st1, can1, waits1, cur1, &t1);
     luStates++; luStateMs += NOWMS2() - ls0;
     if (lsr != 0) continue;
-    int n1 = legal(st1, lg1);
-    for (int j = 0; j < n1; j++) {
+    int n1 = legal(st1, lg1), ord1[128]; double far1[128];
+    if (n1 > 128) n1 = 128;
+    nearestFirst(lg1, 2, n1, cur1[0], cur1[1], ord1, far1);   // from where the first swap leaves the cursor
+    for (int oj = 0; oj < n1; oj++) {
+      int j = ord1[oj];
       int r2 = lg1[2 * j], c2 = lg1[2 * j + 1];
+      if (bestRank >= LUBEST && t1 + far1[oj] > bestT && !nfNoOrder) break;
       if (r2 > 31 || !(can1[c2] & (1u << (r2 - 1))) || !lineupNear(st1, r2, c2)) continue;
       sw[2] = r2; sw[3] = c2;
-      double at2 = t1 + dmax(travelCost(cur1[0], cur1[1], r2, c2), waits1[r2][c2]);
+      double at2 = t1 + dmax(far1[oj], waits1[r2][c2]);
+      int ahead2 = at2 < bestT || (at2 == bestT && swapsBefore(sw, best, 2));
       double rk1 = NOWMS2();
-      int rank2 = lineupRank(st0, sw, 2, at2 < bestT ? bestRank : bestRank + 1);
+      int rank2 = lineupRank(st0, sw, 2, ahead2 ? bestRank : bestRank + 1);
       luRanks++; luRankMs += NOWMS2() - rk1;
-      if (rank2 > bestRank || (rank2 && rank2 == bestRank && at2 < bestT)) {
+      if (rank2 > bestRank || (rank2 && rank2 == bestRank && ahead2)) {
         bestRank = rank2; bestT = at2; bestN = 2; best[0] = r; best[1] = c; best[2] = r2; best[3] = c2;
       }
     }
@@ -2882,16 +2929,21 @@ static Dec breakSoon(Dec d) {
   }
   int pr = 0, pc = 0, mr = 0, mc = 0;
   double best = INF, bestMargin = -INF;
-  for (int q = 0; q < nPool; q++) {
-    Cand *k = &POOL[q];
-    if (k->kind != K_SWAP) continue;
-    int32_t sw[2] = { k->sr, k->sc };
+  int32_t pl[2 * MAXCAND]; int pn = 0, po[MAXCAND]; double pf[MAXCAND];
+  for (int q = 0; q < nPool && pn < MAXCAND; q++) if (POOL[q].kind == K_SWAP) { pl[2 * pn] = POOL[q].sr; pl[2 * pn + 1] = POOL[q].sc; pn++; }
+  nearestFirst(pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], po, pf);
+  for (int oq = 0; oq < pn; oq++) {
+    int32_t sw[2] = { pl[2 * po[oq]], pl[2 * po[oq] + 1] };
+    // a break after a swap comes no sooner than the walk to it: past the
+    // soonest in time, nothing further out can be chosen
+    if (pr && pf[oq] > best && !nfNoOrder) break;
     if (!(lineJudge(sw, 1, 0) & LV_LIVES)) continue;
     double time = LNO[0] ? LNO[0] : LINEHORIZON;
     // only a break before this can be chosen: in time, or a better margin
     double b = breakWithinT(sw, 1, bestMargin > -INF ? (time > time - bestMargin ? time : time - bestMargin) : INF);
-    if (b < time && b < best) { best = b; pr = k->sr; pc = k->sc; }
-    if (b < INF && time - b > bestMargin) { bestMargin = time - b; mr = k->sr; mc = k->sc; }
+    int32_t pb[2] = { pr, pc }, mb[2] = { mr, mc };
+    if (b < time && (b < best || (b == best && swapsBefore(sw, pb, 1)))) { best = b; pr = sw[0]; pc = sw[1]; }
+    if (b < INF && (time - b > bestMargin || (time - b == bestMargin && swapsBefore(sw, mb, 1)))) { bestMargin = time - b; mr = sw[0]; mc = sw[1]; }
   }
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SOON! in-time %d,%d at %g | margin %d,%d %g\n", pr, pc, best, mr, mc, bestMargin); }
@@ -2954,13 +3006,18 @@ static Dec fillFirstIn(Dec d) {
   if (need > 0) need = 0;   // in time is in time
   Cand *pick = 0;
   int surplus = materialRows(DBASE) >= 6;   // over six rows a clear may be spent to fill
-  for (int q = 0; q < nPool; q++) {
-    Cand *pc = &POOL[q];
-    if (pc->kind != K_SWAP || (pc->res.total > 0 && !surplus)) continue;
+  int32_t fl[2 * MAXCAND]; int fn = 0, fo[MAXCAND], fq[MAXCAND]; double ff[MAXCAND];
+  for (int q = 0; q < nPool && fn < MAXCAND; q++) if (POOL[q].kind == K_SWAP) { fl[2 * fn] = POOL[q].sr; fl[2 * fn + 1] = POOL[q].sc; fq[fn++] = q; }
+  nearestFirst(fl, 2, fn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], fo, ff);
+  for (int oq = 0; oq < fn; oq++) {
+    Cand *pc = &POOL[fq[fo[oq]]];
+    if (pc->res.total > 0 && !surplus) continue;
     int32_t sw[2] = { pc->sr, pc->sc };
     int v = lineJudge(sw, 1, 0);
     if (!(v & LV_LIVES) || ((v & LV_DROPS) && !(v & LV_FILLS)) || ((v & LV_PAYS) && !surplus)) continue;
-    if (!(LNO[10] < best || (pick && LNO[10] == best && pc->moveFrames < pick->moveFrames))) continue;
+    int32_t pk[2] = { pick ? pick->sr : 0, pick ? pick->sc : 0 };
+    if (!(LNO[10] < best || (pick && LNO[10] == best && (pc->moveFrames < pick->moveFrames ||
+          (pc->moveFrames == pick->moveFrames && swapsBefore(sw, pk, 1)))))) continue;
     int h = LNO[10];
     if (!fillKeeps(marginWithin(sw, 1, LNO[0], need), need)) continue;
     best = h; pick = pc;
@@ -2998,7 +3055,7 @@ static Dec fillFirstIn(Dec d) {
 #endif
       if (!(v & LV_LIVES) || (v & LV_PAYS) || ((v & LV_DROPS) && !(v & LV_FILLS))) continue;
       double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
-      if (LNO[10] < best || ((pick || first[0]) && LNO[10] == best && est < fest)) {
+      if (LNO[10] < best || ((pick || first[0]) && LNO[10] == best && (est < fest || (est == fest && first[0] && swapsBefore(fsw, first, 1))))) {
         int h = LNO[10];
         if (!fillKeeps(marginWithin(fsw, n, LNO[0], need), need)) continue;
         best = h; pick = 0; first[0] = fsw[0]; first[1] = fsw[1]; fest = est;
