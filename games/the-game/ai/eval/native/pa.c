@@ -1177,6 +1177,8 @@ EXPORT(nb_press_swap) void nb_press_swap(Board *b) { b->pressSwap = 1; }
 EXPORT(nb_ninc) int nb_ninc(Board *b) { return b->ninc; }
 EXPORT(nb_over_clock) int nb_over_clock(Board *b) { return b->gameOverClock; }
 EXPORT(nb_stopwatch) int nb_stopwatch(Board *b) { return b->stopWatch; }
+// The raise as search.h raiseStep reads it: 1 manualRaise, 2 preventManualRaise.
+EXPORT(nb_raise_state) int nb_raise_state(Board *b) { return (b->manualRaise ? 1 : 0) | (b->preventManualRaise ? 2 : 0); }
 static void cloneBoard(Board *dst, const Board *src) { copyBoard(dst, src); }
 EXPORT(nb_clone) void nb_clone(Board *dst, Board *src) { cloneBoard(dst, src); }
 

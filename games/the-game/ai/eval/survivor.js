@@ -159,8 +159,8 @@ Match.prototype.predict = function (board, at, hold, from) {
   }
   return fast || this.predictJS(board, at, hold, from);
 };
-// The same on the engine (native/pa.c): a frame the plan has nothing for
-// presses nothing, so a raise still held there leaves it to predictJS (null).
+// The same on the engine (native/pa.c). A frame the plan has nothing for is
+// HANDS.idle's: a raise still held goes on as search.h raiseStep plays it.
 var NB = null;
 Match.prototype.predictNative = function (board, at, hold, from) {
   if (!NB) { NB = require(path.join(__dirname, 'native.js')).server; NB.init(); }
@@ -168,7 +168,11 @@ Match.prototype.predictNative = function (board, at, hold, from) {
   for (var clock = board.clock; clock < at && X.nb_over_clock(b) <= 0; clock = X.nb_clock(b)) {
     var planned = this.plan[clock], bits = 0;
     if (planned !== undefined) { bits = planned.bits; h = { left: planned.hold.left, started: planned.hold.started }; }
-    else if (h.left) { X.nb_free(b); return null; }
+    else if (h.left > 0) {
+      var rs = X.nb_raise_state(b), started = h.started || !!(rs & 1);
+      if ((rs & 2) || (started && !(rs & 1))) h = { left: 0, started: started };
+      else { h = { left: h.left - 1, started: started }; bits = IN.raise; }
+    }
     X.nb_set_input(b, bits & ~IN.swap);
     if (bits & IN.swap) X.nb_press_swap(b);
     if (X.nb_run(b)) { X.nb_free(b); return null; }
