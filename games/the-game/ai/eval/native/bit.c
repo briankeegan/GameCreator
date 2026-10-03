@@ -5,6 +5,12 @@ typedef unsigned long long u64;
 #else
 #define LOCAL
 #endif
+// JLOCAL: the engine judge's scratch, one per thread natively (prejudge, front.c)
+#ifndef __wasm__
+#define JLOCAL _Thread_local
+#else
+#define JLOCAL
+#endif
 #ifdef __wasm__
 extern unsigned char __heap_base;
 static unsigned long heapTop;

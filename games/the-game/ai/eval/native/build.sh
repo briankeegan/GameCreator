@@ -16,9 +16,9 @@ PGO="-fprofile-instr-use=bit.profdata -Wno-profile-instr-out-of-date -Wno-profil
 clang $FLAGS $PGO -msimd128 -DPA_LIB bit.c pa.c -o bit.wasm
 clang $FLAGS $MT $PGO -msimd128 -DPA_LIB -Wl,--initial-memory=1073741824 bit.c pa.c -o bit-mt.wasm
 # drill: the bot on the server's engine, natively (drill.c; ../drill.sh runs it). Not tracked.
-clang -O3 -DPA_LIB -Wall -Wno-unused-function -Wno-unknown-attributes -Wno-ignored-attributes bit.c pa.c drill.c -lm -o drill
+clang -O3 -pthread -DPA_LIB -Wall -Wno-unused-function -Wno-unknown-attributes -Wno-ignored-attributes bit.c pa.c drill.c -lm -o drill
 # libbit.so: the bot and the engine for the Lua's training drill (../lua/train.lua, through luajit). Not tracked.
-clang -O3 -fPIC -shared -DPA_LIB -Wno-unknown-attributes -Wno-ignored-attributes -Wno-unused-function bit.c pa.c -lm -o libbit.so
+clang -O3 -pthread -fPIC -shared -DPA_LIB -Wno-unknown-attributes -Wno-ignored-attributes -Wno-unused-function bit.c pa.c -lm -o libbit.so
 h() { sha256sum "$1" | cut -c1-64; }
 for f in pa.c pa.h bit.c bot.c front.c bit.profdata libc.h memory.h search.h pa.wasm pa-mt.wasm bit.wasm bit-mt.wasm; do printf '%s %s\n' "$f" "$(h $f)"; done > BUILT
 cat BUILT

@@ -234,8 +234,8 @@ static u64 boardKey(void) {
 // stays as it is (0: it never changes). A row risen carries the cells up.
 // out: the unsettled cells now, a bit per row, per column.
 #define UNSETTLEMOST 180
-static Board *USB;
-static int32_t usPrev[32][W + 2][3];
+static JLOCAL Board *USB;
+static JLOCAL int32_t usPrev[32][W + 2][3];
 static void unsettled(Board *b, uint32_t *out, Settle *S) {
   if (!USB) USB = nb_new();
   nb_copy(USB, b);
@@ -490,10 +490,10 @@ static int parkStep(Front *F, int input) {
 // [1] the frame of the last press (-1: a step the engine refused), [2] garbage
 // cells converted, [3] panels matched, [4] frames from the last press to the
 // drain (horizon when none).
-static Board *LNB;
+static JLOCAL Board *LNB;
 static Front *LF;
-static Settle LSET;
-static int LWAITALL;   // the line's last press waits for the whole board to settle
+static JLOCAL Settle LSET;
+static JLOCAL int LWAITALL;   // the line's last press waits for the whole board to settle
 static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, int32_t *out) {
   if (!LNB) LNB = nb_new();
   nb_copy(LNB, paLibBoard());
@@ -635,6 +635,65 @@ static int lineStateRun(const int32_t *steps, int n, int landing, int32_t *masks
   return masks[O_BAD] ? -1 : 0;
 }
 
+// JUDGED IN PARALLEL (native): the lines a search is about to ask about, those
+// the decision has not judged, played on the engine by GC_THREADS threads (3
+// by default; 0: none) and the main one, each with its own scratch (JLOCAL);
+// the verdicts go into the decision's memo, so the search reads the same
+// answers it would have worked out one by one.
+#ifndef __wasm__
+typedef unsigned long gcThread;
+extern int pthread_create(gcThread *, const void *, void *(*)(void *), void *);
+extern int pthread_join(gcThread, void **);
+typedef struct { int32_t sw[2 * LINEMAX]; int n, waitAll, v; int32_t lno[12]; } PJob;
+static PJob PJ[256];
+static int pjCount, pjNext, pjLock, pjThreads = -1;
+static void pjRun(void) {
+  int k;
+  while ((k = __atomic_fetch_add(&pjNext, 1, __ATOMIC_SEQ_CST)) < pjCount) {
+    PJob *j = &PJ[k];
+    j->v = lineJudgeIn(j->sw, j->n, j->waitAll);
+    for (int i = 0; i < 12; i++) j->lno[i] = LNO[i];
+  }
+}
+static void *pjWorker(void *arg) {
+  (void)arg;
+  while (__atomic_exchange_n(&pjLock, 1, __ATOMIC_ACQUIRE)) {}
+  LNB = nb_new(); USB = nb_new();
+  __atomic_store_n(&pjLock, 0, __ATOMIC_RELEASE);
+  pjRun();
+  while (__atomic_exchange_n(&pjLock, 1, __ATOMIC_ACQUIRE)) {}
+  nb_free(LNB); nb_free(USB); LNB = USB = 0;
+  __atomic_store_n(&pjLock, 0, __ATOMIC_RELEASE);
+  return 0;
+}
+static void prejudge(const int32_t *sws, int stride, int count, int n, int waitAll) {
+  if (pjThreads < 0) pjThreads = getenv("GC_THREADS") ? atoi(getenv("GC_THREADS")) : 3;
+  if (pjThreads <= 0 || !BIN[IN_HASPA] || !aloneOnEngine()) return;
+  if (!LNB) LNB = nb_new();
+  if (!USB) USB = nb_new();
+  pjCount = 0;
+  for (int k = 0; k < count && pjCount < 256; k++) {
+    const int32_t *sw = sws + stride * k;
+    int v; int32_t lno[12];
+    if (jmFind(sw, n, waitAll, &v, lno)) continue;
+    PJob *j = &PJ[pjCount++];
+    for (int i = 0; i < 2 * n; i++) j->sw[i] = sw[i];
+    j->n = n; j->waitAll = waitAll;
+  }
+  if (pjCount < 2) return;
+  pjNext = 0;
+  int nt = pjThreads < pjCount - 1 ? pjThreads : pjCount - 1;
+  gcThread th[16];
+  for (int t = 0; t < nt; t++) pthread_create(&th[t], 0, pjWorker, 0);
+  pjRun();
+  for (int t = 0; t < nt; t++) pthread_join(th[t], 0);
+  extern int paBudgetOut(void);
+  if (paBudgetOut()) return;
+  for (int k = 0; k < pjCount; k++) jmPut(PJ[k].sw, PJ[k].n, PJ[k].waitAll, PJ[k].v, PJ[k].lno);
+}
+#else
+static void prejudge(const int32_t *sws, int stride, int count, int n, int waitAll) { (void)sws; (void)stride; (void)count; (void)n; (void)waitAll; }
+#endif
 int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
   return lineStateAt(steps, n, 0, masks, can, wait, cur, t);
 }

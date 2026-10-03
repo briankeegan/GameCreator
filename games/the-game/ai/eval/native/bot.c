@@ -58,6 +58,7 @@ extern int clock_gettime(int, struct gcTs *);
 #ifndef __wasm__
 static double NOWMS2(void) { struct gcTs q; clock_gettime(1, &q); return q.s * 1e3 + q.ns / 1e6; }
 extern char *getenv(const char *);
+extern int atoi(const char *);
 #else
 static double NOWMS2(void) { return 0; }
 #endif
@@ -1860,7 +1861,8 @@ enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8, LV_DROPS = 16, LV
 typedef struct { int n, brk, ok, grown, waitAll, hollow, conv; int32_t sw[2 * LINEMAX]; double est; int verdict; } LineC;
 static LineC LINES[MAXLINES];
 static int nLines, nJudged;
-static int32_t LNA[12], LNO[12];
+static int32_t LNA[12];
+static JLOCAL int32_t LNO[12];
 static int lnAlone;
 static int cashes(const int32_t *r) { return r[R_TOTAL] > 0 || r[R_SCOPE] == SC_BROKE; }
 static double timeLeft(void);
@@ -1881,6 +1883,35 @@ static int lineJudgeIn(const int32_t *sw, int n, int waitAll);
 typedef struct { int dec, n, waitAll, v; int32_t sw[2 * LINEMAX], lno[12]; } JMemo;
 static JMemo JM[JMN];
 static int btDecisionJ;   // the decision the memo is for (set by bot_decide)
+static unsigned jmHash(const int32_t *sw, int n, int waitAll) {
+  unsigned h = 2166136261u ^ (unsigned)(n * 31 + waitAll);
+  for (int k = 0; k < 2 * n; k++) h = (h ^ (unsigned)sw[k]) * 16777619u;
+  return h;
+}
+// the memo's entry for a line: 1 found (verdict in *v, LNO in lno), 0 not
+static int jmFind(const int32_t *sw, int n, int waitAll, int *v, int32_t *lno) {
+  unsigned h = jmHash(sw, n, waitAll);
+  for (int probe = 0; probe < 8; probe++) {
+    JMemo *m = &JM[(h + (unsigned)probe) & (JMN - 1)];
+    if (m->dec != btDecisionJ) return 0;
+    if (m->n == n && m->waitAll == waitAll && !__builtin_memcmp(m->sw, sw, (unsigned long)n * 8)) {
+      *v = m->v; for (int k = 0; k < 12; k++) lno[k] = m->lno[k];
+      return 1;
+    }
+  }
+  return 0;
+}
+static void jmPut(const int32_t *sw, int n, int waitAll, int v, const int32_t *lno) {
+  unsigned h = jmHash(sw, n, waitAll);
+  for (int probe = 0; probe < 8; probe++) {
+    JMemo *m = &JM[(h + (unsigned)probe) & (JMN - 1)];
+    if (m->dec == btDecisionJ && !(m->n == n && m->waitAll == waitAll && !__builtin_memcmp(m->sw, sw, (unsigned long)n * 8))) continue;
+    m->dec = btDecisionJ; m->n = n; m->waitAll = waitAll; m->v = v;
+    for (int k = 0; k < 2 * n; k++) m->sw[k] = sw[k];
+    for (int k = 0; k < 12; k++) m->lno[k] = lno[k];
+    return;
+  }
+}
 static int lineJudge(const int32_t *sw, int n, int waitAll) {
   if (n < 1 || n > LINEMAX) return lineJudgeIn(sw, n, waitAll);
   unsigned h = 2166136261u ^ (unsigned)(n * 31 + waitAll);
@@ -2954,6 +2985,7 @@ static Dec fillBeforeBreak(Dec d) {
 #define BUDGETMS 10.0   // the decision's budget: 10 ms of a 16.7 ms frame
 static int btAloneAt = -1; static double btAlone;
 static double breakTimeOf(const int32_t *steps, int n, double limit);
+static void prejudge(const int32_t *sws, int stride, int count, int n, int waitAll);
 // the board left alone is asked about several times a decision: once
 static double breakTime(const int32_t *steps, int n) {
   if (n > 0) return breakTimeOf(steps, n, INF);
@@ -3016,19 +3048,26 @@ static Dec breakSoon(Dec d) {
   Out o; double far;
   // first, a break in time: each swap's search bounded by its own time and by
   // the soonest found (a tie still counts: it may win by its swaps)
+  // each swap's soonest break within the horizon (a swap's time is no later):
+  // one with none is never in time and is not judged; those with one are
+  // judged together (prejudge), then taken as one by one
+  double b0[MAXCAND]; int32_t wb[2 * MAXCAND]; int nwb = 0;
+  for (int k = 0; k < pn; k++) {
+    b0[k] = breakWithinT(pl + 2 * k, 1, LINEHORIZON);
+    if (b0[k] < INF) { wb[2 * nwb] = pl[2 * k]; wb[2 * nwb + 1] = pl[2 * k + 1]; nwb++; }
+  }
+  prejudge(wb, 2, nwb, 1, 0);
   outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
   while (outNext(&o, &q, &far)) {
     // a break after a swap comes no sooner than the walk to it
     if (outPast(&inTime, -far, 0)) break;
     int32_t sw[2] = { pl[2 * q], pl[2 * q + 1] };
-    // the break first, within the horizon (a swap's time is no later): one
-    // with none there is never in time and is not judged
     double lim0 = inTime.has && -inTime.score < LINEHORIZON ? -inTime.score + 1e-9 : LINEHORIZON;
-    if (breakWithinT(sw, 1, lim0) >= INF) continue;
+    if (!(b0[q] < lim0)) continue;
     if (!(lineJudge(sw, 1, 0) & LV_LIVES)) continue;
     double time = LNO[0] ? LNO[0] : LINEHORIZON;
     double lim = inTime.has && -inTime.score < time ? -inTime.score + 1e-9 : time;
-    double b = breakWithinT(sw, 1, lim);
+    double b = b0[q] < lim ? b0[q] : INF;
     if (b < time) bestTake(&inTime, -b, 0, sw, 1);
   }
   // none in time: the margin, which only then decides
@@ -3111,7 +3150,8 @@ static Dec fillFirstIn(Dec d) {
   // nothing counts that does not leave less than the choice or the board alone
   Best P = { 0 };
   int32_t fl[2 * MAXCAND]; int fn = 0, fq[MAXCAND], q;
-  for (int k = 0; k < nPool && fn < MAXCAND; k++) if (POOL[k].kind == K_SWAP) { fl[2 * fn] = POOL[k].sr; fl[2 * fn + 1] = POOL[k].sc; fq[fn++] = k; }
+  for (int k = 0; k < nPool && fn < MAXCAND; k++) if (POOL[k].kind == K_SWAP && !(POOL[k].res.total > 0 && !surplus)) { fl[2 * fn] = POOL[k].sr; fl[2 * fn + 1] = POOL[k].sc; fq[fn++] = k; }
+  prejudge(fl, 2, fn, 1, 0);
   Out o; double far;
   outBegin(&o, fl, 2, fn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
   while (outNext(&o, &q, &far)) {
