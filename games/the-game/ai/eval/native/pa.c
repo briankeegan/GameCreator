@@ -931,10 +931,11 @@ void paBudget(double ms, double units) {
   paOut = 0; paTick = 0;
 #ifndef __wasm__
   if (paWorkOnly < 0) paWorkOnly = getenv("GC_WORK_ONLY") != 0;
-  // GC_BUDGET_MS scales the budget (0: none), for comparing runs the clock must not cut
-  static double scale = -1;
-  if (scale < 0) scale = getenv("GC_BUDGET_MS") ? atof(getenv("GC_BUDGET_MS")) / 10.0 : 1;
-  if (!paWorkOnly) { paWorkEnd = 1e300; paDeadline = ms < 1e299 && scale > 0 ? paNowMs() + ms * scale : 1e300; return; }
+  // GC_BUDGET_MS replaces the budget, in ms (0: none, for comparing runs the clock must not cut)
+  static double over = -2;
+  if (over == -2) over = getenv("GC_BUDGET_MS") ? atof(getenv("GC_BUDGET_MS")) : -1;
+  double use = over >= 0 ? over : ms;
+  if (!paWorkOnly) { paWorkEnd = 1e300; paDeadline = ms < 1e299 && use > 0 ? paNowMs() + use : 1e300; return; }
 #endif
   paWorkEnd = units < 1e299 ? paWork + units : 1e300; paDeadline = 1e300;
 }

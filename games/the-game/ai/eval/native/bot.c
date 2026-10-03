@@ -3167,7 +3167,7 @@ static Dec fillBeforeBreak(Dec d) {
 // front plays them, then the soonest break the distance search finds on the
 // board they leave, walked from where the cursor is (INF: none).
 #define WORKBUDGET 55000   // GC_WORK_ONLY: the budget in units of work
-#define BUDGETMS 10.0   // the decision's budget: 10 ms of a 16.7 ms frame
+#define BUDGETMS 15.0   // the decision's budget: the 16.7 ms frame less the frame's own work (0.9 ms at most, seed 4)
 static int btAloneAt = -1; static double btAlone;
 static double breakTimeOf(const int32_t *steps, int n, double limit);
 static void prejudge(const int32_t *sws, int stride, int count, int n, int waitAll);
