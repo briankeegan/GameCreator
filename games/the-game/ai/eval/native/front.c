@@ -449,8 +449,9 @@ static int driveWalk(Front *F, int input) {
   }
   // the swap's panels settle at a known frame: a walk that arrives first waits
   if (F->wFrames < F->wWaitTo) {   // never pressed on panels still moving
-    if (!toppedNow()) return input;
-    F->walk = 0; F->cooldown = 0;   // topped, a wait is not a plan: decide again
+    // a wait is not a plan: topped, or a reaction's worth of waiting, decide again
+    if (!toppedNow() && F->wFrames % (F->reaction > 0 ? F->reaction : 12) != 0) return input;
+    F->walk = 0; F->cooldown = 0;
     return input;
   }
   int ok = nb_can_swap(FB, FB->curRow, FB->curCol) && nb_try_queue_swap(FB, FB->curRow, FB->curCol);
