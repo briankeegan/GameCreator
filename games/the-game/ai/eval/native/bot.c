@@ -2026,13 +2026,17 @@ static int tWalk(int *row, int r, int s, int t, int32_t *sw, int *n) {
   }
   return 1;
 }
+// tTimeMode: the search only measures -- the frames to the soonest break it finds.
+static int tTimeMode; static double tTimeMin;
 static void tPropose(const int32_t *sw, int n, int cr, int cc, double t0, double limit) {
-  if (n < 1 || nLines >= MAXLINES) return;
-  for (int i = 0; i < nLines; i++)
-    if (LINES[i].n == n && !__builtin_memcmp(LINES[i].sw, sw, (unsigned long)n * 8)) return;
+  if (n < 1 || (!tTimeMode && nLines >= MAXLINES)) return;
+  if (!tTimeMode)
+    for (int i = 0; i < nLines; i++)
+      if (LINES[i].n == n && !__builtin_memcmp(LINES[i].sw, sw, (unsigned long)n * 8)) return;
   double at = t0;
   int pr = cr, pc = cc;
   for (int k = 0; k < n; k++) { at += travelCost(pr, pc, sw[2 * k], sw[2 * k + 1]) + (k ? 1 : 0); pr = sw[2 * k]; pc = sw[2 * k + 1]; }
+  if (tTimeMode) { if (at < tTimeMin) tTimeMin = at; return; }
   if (at > limit) return;
   LineC *l = &LINES[nLines++];
   l->n = n; l->brk = 1; l->est = at; l->verdict = -1; l->grown = 0; l->waitAll = 0;
@@ -2469,6 +2473,57 @@ static Dec fillBeforeBreak(Dec d) {
   if (!pr) return d;
   return mkSwap(pr, pc, V_FILL, d.mode, d.alive);
 }
+// THE FRAMES TO A BREAK AFTER `steps`: the steps played on the engine as the
+// front plays them, then the soonest break the distance search finds on the
+// board they leave, walked from where the cursor is (INF: none).
+static double breakTime(const int32_t *steps, int n) {
+  int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t w[32][WMAX];
+  if (lineState(steps, n, st, can, w, cur, &t) != 0) return INF;
+  tTimeMode = 1; tTimeMin = INF;
+  targetLines(st, cur[0], cur[1], 0, INF);
+  tTimeMode = 0;
+  return tTimeMin >= INF ? INF : t + tTimeMin;
+}
+// THE GOAL IS A BREAK IN THE TIME THERE IS. With garbage on the board and no
+// break being played, every swap that lives is an option. An option's time is
+// its own: the frame the engine, after it, finds the board loses health (none
+// within the horizon: the horizon). It breaks in time if the break the
+// distance search finds after it comes before then. The choice, if it breaks
+// in time, stands; a lone option that does is taken; of several, the soonest.
+// If none does, the time bought is time for a break: the option whose break
+// comes nearest to fitting inside its time.
+static Dec breakSoon(Dec d) {
+  if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;
+  if (lineLast == 2 || d.kind == K_RAISE || !BIN[IN_HASPA] || !hasGarbage(DBASE)) return d;
+  if (d.kind == K_SWAP && endsInBreak(d.via)) return d;
+  if (!aloneOnEngine()) return d;
+  double aloneTime = LNA[0] ? LNA[0] : LINEHORIZON;
+  if (breakTime(0, 0) < aloneTime) return d;   // holding, a break still comes in time
+  if (d.kind == K_SWAP && d.hasMove) {
+    int32_t sw[2] = { d.sr, d.sc };
+    if (lineJudge(sw, 1, 0) & LV_LIVES) {
+      double time = LNO[0] ? LNO[0] : LINEHORIZON;
+      if (breakTime(sw, 1) < time) return d;
+    }
+  }
+  int pr = 0, pc = 0, mr = 0, mc = 0;
+  double best = INF, bestMargin = -INF;
+  for (int q = 0; q < nPool; q++) {
+    Cand *k = &POOL[q];
+    if (k->kind != K_SWAP) continue;
+    int32_t sw[2] = { k->sr, k->sc };
+    if (!(lineJudge(sw, 1, 0) & LV_LIVES)) continue;
+    double time = LNO[0] ? LNO[0] : LINEHORIZON;
+    double b = breakTime(sw, 1);
+    if (b < time && b < best) { best = b; pr = k->sr; pc = k->sc; }
+    if (b < INF && time - b > bestMargin) { bestMargin = time - b; mr = k->sr; mc = k->sc; }
+  }
+  if (pr) { lineLast = 7; return mkSwap(pr, pc, V_SETUP, d.mode, d.alive); }
+  if (mr && bestMargin > (breakTime(0, 0) < INF ? aloneTime - breakTime(0, 0) : -INF)) {
+    lineLast = 7; return mkSwap(mr, mc, V_KEEPHEALTH, d.mode, d.alive);
+  }
+  return d;
+}
 static Dec fillFirst(Dec d) {
   if (d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
   if (lineLast == 1 || lineLast == 3) return BT->lineKind == LINE_BREAK || lineLast == 3 ? fillBeforeBreak(d) : d;
@@ -2559,7 +2614,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   nRes = 0; nOptRuns = 0; nOptDepth = 0; nScore = 0; nLook = 0; nSave = 0; rScore = rMain = rLook = rSave = rCand = 0;
   ENGINE_BASE = BIN[IN_HASPA] ? IN : 0;
   for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = c >= 1 && c < BW ? (uint32_t)BIN[IN_CANSWAP + c] : 0;
-  Dec d = onePlan(fillFirst(spendToBreak(batchBreak(lineupFirst(keepBreak(stayAlive(breakFirst(raiseHold(waitForDrain(playOn(decideRuled())))))))))));
+  Dec d = onePlan(fillFirst(breakSoon(spendToBreak(batchBreak(lineupFirst(keepBreak(stayAlive(breakFirst(raiseHold(waitForDrain(playOn(decideRuled()))))))))))));
   ENGINE_BASE = 0;
   if (d.kind == K_SWAP && d.hasMove) {
     BT->recent[2] = BT->nRecent ? BT->recent[0] : 0; BT->recent[3] = BT->nRecent ? BT->recent[1] : 0;
