@@ -19,6 +19,9 @@ enum { V_NONE, V_RAISE_OPENING, V_RAISE_MATERIAL, V_RAISING, V_READYFIRST, V_AWA
        V_PLANWAIT, V_SURVIVALPLAN, V_FLATTENWAIT, V_FLATTEN, V_NOBEST, V_SETUP, V_WEIGHTS, V_RULED, V_PLANSAVE,
        V_KEEPSAVE, V_AWAITDRAIN, V_KEEPHEALTH };
 enum { M_BUILD, M_DEFEND, M_ATTACK };
+// the line a bot plays (Bot.line): what it is for, and the most steps it holds
+enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
+#define LINEMAX 8
 enum { C_REFUSEDDEADLY, C_ALLDEAD, C_REFUSEDRETURN, C_REFUSEDTOOSLOW, C_PLANNED, C_PLANDROPPED, C_ATTACKED,
        C_ATTACKDROPPED, C_CELLSPLANNED, C_REFUSEDPAYLESS, C_REFUSEDSTARVING, C_REFUSEDOTHER, C_REFUSEDATEXIT,
        C_RAISEDFORMATERIAL, C_WAITEDTORAISE, C_DUGFOR, C_DIGDROPPED, C_BROKENOW, C_FLATTENBLIND, C_OPENINGRAISES,
@@ -36,7 +39,7 @@ typedef struct {
   Sig seen[4]; int nSeen;
   Route plan, dig, attack, flatten;
   int digIsBreak, opening, maxSlab, nRecent, wantRows, wantRaise;
-  int32_t line[6]; int nLine, lineKind, lineWaitAll;   // the line being played, its steps still to play: LINE_BREAK or LINE_CASH
+  int32_t line[2 * LINEMAX]; int nLine, lineKind, lineWaitAll;   // the line being played, its steps still to play: LINE_BREAK or LINE_CASH
   int32_t recent[4];
   double counts[NCOUNT];
 } Bot;
@@ -1612,6 +1615,10 @@ static Dec decideRuled(void) {
       for (int i = 0; i < n; i++) if (lg[2 * i] == r0 && lg[2 * i + 1] == c0) { ok0 = 1; break; }
       if (ok0 && route[F_DURATION] <= DDEADLINE) {
         BT->counts[C_SAVEPLANNED]++;
+        // the route is a line: kept and played on while it lives (playOn)
+        int n = (int)route[F_NSW] < LINEMAX ? (int)route[F_NSW] : LINEMAX;
+        for (int k = 0; k < 2 * n; k++) BT->line[k] = (int32_t)route[F_SW + k];
+        BT->nLine = n; BT->lineKind = LINE_PLAN; BT->lineWaitAll = 0;
         return mkSwap(r0, c0, V_PLANSAVE, d.mode, d.alive);
       }
     }
@@ -1811,7 +1818,7 @@ static Dec waitForDrain(Dec d) {
 int lineOnEngine(const int32_t *steps, int n, int horizon, int waitAll, int32_t *out);
 int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t);
 enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4 };
-enum { LINE_BREAK = 1, LINE_CASH = 2 };
+
 typedef struct { int n, brk, ok, grown, waitAll; int32_t sw[2 * KEEPDEPTH]; double est; int verdict; } LineC;
 static LineC LINES[MAXLINES];
 static int nLines, nJudged;
@@ -2030,11 +2037,12 @@ static Dec playOn(Dec d) {
   }
   if (!BT->nLine) return d;
   linesReset();
-  int v = lineJudge(BT->line, BT->nLine, BT->lineWaitAll), need = LV_LIVES | (BT->lineKind == LINE_BREAK ? LV_BREAKS : LV_PAYS);
+  int v = lineJudge(BT->line, BT->nLine, BT->lineWaitAll);
+  int need = LV_LIVES | (BT->lineKind == LINE_BREAK ? LV_BREAKS : BT->lineKind == LINE_CASH ? LV_PAYS : 0);
   if ((v & need) != need) { BT->nLine = 0; return d; }
   lineLast = 1;
   plansDrop();
-  Dec s = mkSwap(BT->line[0], BT->line[1], BT->lineKind == LINE_BREAK ? V_BREAKREACH : V_KEEPHEALTH, d.mode, d.alive);
+  Dec s = mkSwap(BT->line[0], BT->line[1], BT->lineKind == LINE_BREAK ? V_BREAKREACH : BT->lineKind == LINE_PLAN ? V_PLANSAVE : V_KEEPHEALTH, d.mode, d.alive);
   s.waitAll = BT->nLine == 1 && BT->lineWaitAll;
   return s;
 }
