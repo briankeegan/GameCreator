@@ -156,8 +156,9 @@ while f < FRAMES do
   a:receiveConfirmedInput(KeyDataEncoding.base64encode[bits + 1])
   match:run()
   if TRACE >= 0 and f >= TRACE then
-    print(string.format("F %d stop %d shake %d health %d cur %d,%d in %d | %s", f, a.stop_time, a.shake_time, a.health,
-                        a.cur_row, a.cur_col, #a.incomingGarbage.stagedGarbage, show()))
+    print(string.format("F %d keys %d stop %d shake %d lock %d raise %d health %d cur %d,%d in %d | %s", f, bits, a.stop_time,
+                        a.shake_time, a.rise_lock and 1 or 0, a.manual_raise and 1 or 0, a.health, a.cur_row, a.cur_col,
+                        #a.incomingGarbage.stagedGarbage, show()))
   end
   local dead = a.game_over_clock and a.game_over_clock > 0
   if f % 250 == 0 or dead then

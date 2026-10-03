@@ -1817,7 +1817,11 @@ static Dec waitForDrain(Dec d) {
 #define MAXJUDGED 96
 int lineOnEngine(const int32_t *steps, int n, int horizon, int waitAll, int32_t *out);
 int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t);
-enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4 };
+// LIVES: no health lost before the next decision after its last step. PAYS:
+// clears more than the board left alone, BREAKS: converts more. GAINS: the
+// board left alone loses health within the horizon and the line loses it
+// later or not at all -- the only thing a clear that breaks nothing buys.
+enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8 };
 
 typedef struct { int n, brk, ok, grown, waitAll; int32_t sw[2 * KEEPDEPTH]; double est; int verdict; } LineC;
 static LineC LINES[MAXLINES];
@@ -1827,14 +1831,20 @@ static int lnAlone;
 static int cashes(const int32_t *r) { return r[R_TOTAL] > 0 || r[R_SCOPE] == SC_BROKE; }
 static double timeLeft(void);
 static void linesReset(void) { nLines = 0; nJudged = 0; lnAlone = 0; }
+// The board left alone, on the engine: 0 if it cannot be played.
+static int aloneOnEngine(void) {
+  if (!lnAlone && BIN[IN_HASPA] && lineOnEngine(0, 0, LINEHORIZON, 0, LNA) == 0) lnAlone = 1;
+  return lnAlone;
+}
 static int lineJudge(const int32_t *sw, int n, int waitAll) {
   if (!BIN[IN_HASPA]) return 0;
-  if (!lnAlone) { if (lineOnEngine(0, 0, LINEHORIZON, 0, LNA) != 0) return 0; lnAlone = 1; }
+  if (!aloneOnEngine()) return 0;
   if (lineOnEngine(sw, n, LINEHORIZON, waitAll, LNO) != 0 || LNO[1] < 0) return 0;
   if (LNO[0] && LNO[0] <= LNO[1] + NEXTMOVE) return 0;
   int v = LV_LIVES;
   if (LNO[2] > LNA[2]) v |= LV_PAYS | LV_BREAKS;
   else if (LNO[3] > LNA[3]) v |= LV_PAYS;
+  if (LNA[0] && (!LNO[0] || LNO[0] > LNA[0])) v |= LV_GAINS;
   return v;
 }
 static int judged(LineC *l) {
@@ -2038,7 +2048,7 @@ static Dec playOn(Dec d) {
   if (!BT->nLine) return d;
   linesReset();
   int v = lineJudge(BT->line, BT->nLine, BT->lineWaitAll);
-  int need = LV_LIVES | (BT->lineKind == LINE_BREAK ? LV_BREAKS : BT->lineKind == LINE_CASH ? LV_PAYS : 0);
+  int need = LV_LIVES | (BT->lineKind == LINE_BREAK ? LV_BREAKS : BT->lineKind == LINE_CASH ? LV_GAINS : 0);
   if ((v & need) != need) { BT->nLine = 0; return d; }
   lineLast = 1;
   plansDrop();
@@ -2056,22 +2066,26 @@ static int notLastSwap(const LineC *l) {
 static int dR, dC;
 static int fromChoice(const LineC *l) { return l->sw[0] == dR && l->sw[1] == dC; }
 static Dec stayAlive(Dec d) {
-  double k = timeLeft();
-  if (!(k < LIVEHORIZON) || (d.kind != K_SWAP && d.kind != K_HOLD)) return d;
+  if (d.kind != K_SWAP && d.kind != K_HOLD) return d;
   if (d.kind == K_SWAP && !d.hasMove) return d;
   if (lineLast == 1) return d;
+  // the engine, not the estimate, says whether the board is dying: health
+  // lost within LIVEHORIZON frames, left alone
+  linesReset();
+  if (!aloneOnEngine() || !LNA[0] || LNA[0] > LIVEHORIZON) return d;
+  double k = LNA[0];
   linesFind(2, 0);
   if (d.kind == K_SWAP) {
     dR = d.sr; dC = d.sc;
-    LineC *mine = bestLine(LV_LIVES | LV_PAYS, fromChoice);
+    LineC *mine = bestLine(LV_LIVES | LV_GAINS, fromChoice);
     if (mine) { if (mine->n > 1) lineKeep(mine, LINE_CASH); return d; }
   } else {
     // a hold lives while a paying line can still be started after it
     double wait = BIN[IN_TOPPED] ? 2 : REACT;
     for (int i = 0; i < nLines; i++)
-      if (LINES[i].est + wait <= k - 2 && (judged(&LINES[i]) & (LV_LIVES | LV_PAYS)) == (LV_LIVES | LV_PAYS)) return d;
+      if (LINES[i].est + wait <= k - 2 && (judged(&LINES[i]) & (LV_LIVES | LV_GAINS)) == (LV_LIVES | LV_GAINS)) return d;
   }
-  LineC *l = bestLine(LV_LIVES | LV_PAYS, notLastSwap);
+  LineC *l = bestLine(LV_LIVES | LV_GAINS, notLastSwap);
   if (!l) return d;
   lineLast = 2;
   BT->counts[C_KEPTHEALTH]++;
@@ -2261,8 +2275,14 @@ static Dec spendToBreak(Dec d) {
   if (lineLast || d.kind != K_SWAP || !d.hasMove || endsInBreak(d.via)) return d;
   if (!(hasGarbage(DBASE) || BIN[IN_INCOMING] > 0)) return d;
   if (BIN[IN_TOPPED]) return d;
-  Cand *pc = poolSwap(d.sr, d.sc);
-  if (!pc || pc->res.broke || pc->res.total == 0) return d;
+  // what the swap does, played on the engine against the board left alone
+  int32_t sw[2] = { d.sr, d.sc };
+  int v = lineJudge(sw, 1, 0);
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
+    fprintf(stderr, "SPEND %d,%d v%d | drain %d/%d last %d conv %d/%d match %d/%d\n", d.sr, d.sc, v, LNO[0], LNA[0], LNO[1], LNO[2], LNA[2], LNO[3], LNA[3]); }
+#endif
+  if (!(v & LV_LIVES) || !(v & LV_PAYS) || (v & (LV_BREAKS | LV_GAINS))) return d;
   return mkHold(V_SETUP, d.mode, d.alive, 0, 0, 0);
 }
 // A SWAP THAT IS STILL MOVING WHEN THE LOCK ENDS TAKES THE ROW BACK: the
