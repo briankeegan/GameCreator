@@ -20,6 +20,7 @@ static int comboCells(int size) {
 static const double STARTER_W[] = { -20, -10, -40, 5, 13, 20, 30, 4, 6, 8, 10, 10, 5, 15, 5, 5, 25, 5, 50, 30 };
 
 enum { H_NONE, H_UP, H_DOWN, H_LEFT, H_RIGHT };   // BIN[IN_HELD]
+typedef uint8_t Settle[32][W + 2];   // per cell, the frame it settles from (unsettled)
 typedef struct {
   int id, reaction, reveal, allowRaise;
   int cooldown, raiseFrames, raiseStarted, wantRaise, wantRows;
@@ -29,6 +30,8 @@ typedef struct {
   double escapeWalk;
   u64 decidedOn;
   int lastKind, lastVia, lastMoveR, lastMoveC;
+  Settle settle;   // the board's cells, when each settles (unsettled), at the last decision
+  int wWaitTo, wFrames, wWaitAll;   // a walk: the frame its swap's panels settle (every panel's: wWaitAll), the frames it has taken
 } Front;
 #define MAXFRONTS 16
 static Front FRONTS[MAXFRONTS];
@@ -233,6 +236,63 @@ static u64 boardKey(void) {
   return (h ^ (u64)(FB->ninc ? 'q' : 0)) * 1099511628211ull;
 }
 
+// UNSETTLED PANELS, from the engine: a copy of the board runs on with nothing
+// pressed (and nothing more dropped) until nothing moves, UNSETTLEMOST frames
+// at most, and each cell's panel is watched frame to frame -- moved, landed,
+// matched, popped, converted. settleAt[r][c]: the frame from which the cell
+// stays as it is (0: it never changes). A row risen carries the cells up.
+// out: the unsettled cells now, a bit per row, per column.
+#define UNSETTLEMOST 180
+static Board *USB;
+static int32_t usPrev[32][W + 2][3];
+static void unsettled(Board *b, uint32_t *out, Settle at) {
+  if (!USB) USB = nb_new();
+  nb_copy(USB, b);
+  USB->ninc = 0;   // what is on the board settling, not what is still to drop
+  for (int c = 0; c < W + 2; c++) out[c] = 0;
+  for (int r = 0; r < 32; r++) for (int c = 0; c < W + 2; c++) at[r][c] = 0;
+  int top = b->height < 31 ? b->height : 31;
+  for (int r = 1; r <= top; r++)
+    for (int c = 1; c <= W; c++) {
+      const int32_t *x = b->p[r][c].f;
+      usPrev[r][c][0] = x[COLOR]; usPrev[r][c][1] = x[ISGARBAGE]; usPrev[r][c][2] = x[STATE] == DEAD ? NORMAL : x[STATE];
+    }
+  int risen = 0, disp = USB->displacement;
+  for (int k = 0; k < UNSETTLEMOST; k++) {
+    USB->input = 0; USB->pressSwap = 0;
+    nb_run(USB);
+    if (USB->err || USB->gameOverClock > 0) break;
+    if (USB->displacement > disp) risen++;
+    disp = USB->displacement;
+    int moving = USB->nActive > 0 || USB->nPrevActive > 0 || USB->shakeTime > 0 || nb_falling_garbage(USB);
+    for (int r = 1; r <= top; r++)
+      for (int c = 1; c <= W; c++) {
+        int y[3] = { 0, 0, NORMAL };
+        if (r + risen < USB->nrows) {
+          const int32_t *p = USB->p[r + risen][c].f;
+          y[0] = p[COLOR]; y[1] = p[ISGARBAGE]; y[2] = p[STATE] == DEAD ? NORMAL : p[STATE];
+        }
+        if (y[0] != usPrev[r][c][0] || y[1] != usPrev[r][c][1] || y[2] != usPrev[r][c][2]) {
+          at[r][c] = (uint8_t)(k + 1 < 255 ? k + 1 : 255);
+          usPrev[r][c][0] = y[0]; usPrev[r][c][1] = y[1]; usPrev[r][c][2] = y[2];
+        }
+      }
+    if (!moving) break;
+  }
+  for (int r = 1; r <= top; r++) for (int c = 1; c <= W; c++) if (at[r][c]) out[c] |= 1u << (r - 1);
+}
+// The frame from which every cell is settled.
+static int allWait(Settle at) {
+  int m = 0;
+  for (int r = 1; r < 32; r++) for (int c = 1; c <= W; c++) if (at[r][c] > m) m = at[r][c];
+  return m;
+}
+// The frame from which a pair is settled (both its cells).
+static int pairWait(Settle at, int r, int c) {
+  if (r < 1 || r > 31) return 0;
+  return at[r][c] > at[r][c + 1] ? at[r][c] : at[r][c + 1];
+}
+
 // ---------------------------------------------------------------- one decision (bitbot.js info, _prepare, decide)
 static void fPrepare(Front *F) {
   double *d = BIN;
@@ -293,7 +353,7 @@ static void fPrepare(Front *F) {
   d[IN_LOCKLEFT] = lockLeft();
   d[IN_STACKTOPPED] = topped;
   d[IN_MOVING] = moving;
-  if (moving) { nb_copy(paLibBoard(), FB); d[IN_HASPA] = 1; }
+  nb_copy(paLibBoard(), FB); d[IN_HASPA] = 1;   // the engine holds the board the bot decides on
   d[IN_HASTIMED] = timed;
   d[IN_REVEALOPEN] = open;
   if (conv) { d[IN_CONVN] = nconv; d[IN_CONVTIMER] = convTimer; }
@@ -326,6 +386,16 @@ static void fPrepare(Front *F) {
   }
   d[IN_SF] = FB->fHOVER; d[IN_SF + 1] = FB->fFLASH; d[IN_SF + 2] = FB->fFACE; d[IN_SF + 3] = FB->fPOP;
   d[IN_SF + 4] = next ? nb_shake_frames(next->width * next->height) : 0;   // the next slab's landing shake
+  // the pairs the bot may target: the engine would swap them now, and
+  // neither panel is unsettled -- a bit per row, for columns 1..5
+  uint32_t still[W + 2];
+  unsettled(FB, still, F->settle);
+  for (c = 1; c < W; c++) {
+    uint32_t m = 0;
+    for (r = 1; r <= FB->height && r <= 31; r++)
+      if (!((still[c] | still[c + 1]) & (1u << (r - 1))) && nb_can_swap(FB, r, c)) m |= 1u << (r - 1);
+    d[IN_CANSWAP + c] = m;
+  }
 }
 
 static void fTable(Front *F, double *tab) {
@@ -366,6 +436,7 @@ static int stepToward(int *timer, int row, int col, int input) {
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 static void beginWalk(Front *F, int r, int c, int cooldown) {
   F->walk = 1; F->wRow = r; F->wCol = c; F->wTimer = 0; F->wCooldown = cooldown; F->wRetries = 0; F->wHasDisp = 0;
+  F->wWaitTo = pairWait(F->settle, r, c); F->wFrames = 0; F->wWaitAll = 0;
 }
 static int nearestSwappable(int fromRow, int fromCol, int *br, int *bc) {
   int best = 0, bestD = 1 << 30;
@@ -379,6 +450,7 @@ static int nearestSwappable(int fromRow, int fromCol, int *br, int *bc) {
   return best;
 }
 static int driveWalk(Front *F, int input) {
+  F->wFrames++;
   if (F->wHasDisp && FB->displacement > F->wDisp) F->wRow++;
   F->wDisp = FB->displacement; F->wHasDisp = 1;
   int row = clampi(F->wRow, 1, FB->topCurRow), col = clampi(F->wCol, 1, W - 1);
@@ -386,6 +458,8 @@ static int driveWalk(Front *F, int input) {
     if (F->wTimer > 0) { F->wTimer--; return input; }
     return stepToward(&F->wTimer, row, col, input);
   }
+  // the swap's panels settle at a known frame: the walk that arrives first waits
+  if (F->wFrames <= F->wWaitTo && (!nb_can_swap(FB, FB->curRow, FB->curCol) || F->wWaitAll)) return input;
   int ok = nb_can_swap(FB, FB->curRow, FB->curCol) && nb_try_queue_swap(FB, FB->curRow, FB->curCol);
   F->walk = 0;
   if (ok) { F->hasLast = 1; F->lastR = FB->curRow; F->lastC = FB->curCol; F->cooldown = F->wCooldown; return input; }
@@ -409,15 +483,116 @@ static int parkStep(Front *F, int input) {
 }
 #define DIRS (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT)
 
+// A LINE PLAYED ON THE ENGINE, as this front plays it: from the board the bot
+// is deciding on (paLibBoard), the cursor walks to each step as driveWalk
+// walks -- a tap, then MOVE_FRAMES apart, a key held over two frames let go --
+// the swap is pressed on arrival, and the next step is walked to when the
+// front would decide again: the swap landed, and the cooldown over or lifted
+// (stop, or topped). The board then runs on, nothing pressed, to `horizon`.
+// out: [0] the frame the board first lost health (0: not within horizon),
+// [1] the frame of the last press (-1: a step the engine refused), [2] garbage
+// cells converted, [3] panels matched, [4] frames from the last press to the
+// drain (horizon when none).
+static Board *LNB;
+static Front *LF;
+static Settle LSET;
+static int LWAITALL;   // the line's last press waits for the whole board to settle
+static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, int32_t *out) {
+  if (!LNB) LNB = nb_new();
+  nb_copy(LNB, paLibBoard());
+  Board *b = LNB;
+  b->sNCombo = b->sCleared = b->sBroke = b->sEarned = 0;
+  int32_t h0 = b->health;
+  int step = 0, walking = n > 0, timer = 0, held = LF ? LF->held : H_NONE, cool = 0, disp = b->displacement;
+  int tr = n > 0 ? steps[0] : 0, tc = n > 0 ? steps[1] : 0, last = n > 0 ? -1 : 0, f;
+  int waitTo = n > 0 && LF ? (LWAITALL && n == 1 ? allWait(LF->settle) : pairWait(LF->settle, steps[0], steps[1])) : 0;
+  out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = b->ninc; out[8] = -1;
+  for (f = 0; f < horizon; f++) {
+    int input = 0;
+    if (!walking && (step < n || stopAtNext)) {
+      if (cool > 0) cool--;
+      int landing = b->queuedSwapRow > 0 || b->swappingCount > 0 || b->pressSwap;
+      if (!landing && (cool == 0 || b->stopTime > 0 || nb_topped(b))) {
+        if (step == n) { out[1] = last; out[8] = f; return 1; }   // the front decides again here
+        walking = 1; tr = steps[2 * step]; tc = steps[2 * step + 1]; timer = 0; disp = b->displacement;
+        { uint32_t still[W + 2]; unsettled(b, still, LSET);
+          waitTo = f + (LWAITALL && step == n - 1 ? allWait(LSET) : pairWait(LSET, tr, tc)); }
+      }
+    }
+    if (walking) {
+      if (b->displacement > disp) tr++;
+      disp = b->displacement;
+      int row = clampi(tr, 1, b->topCurRow), col = clampi(tc, 1, W - 1);
+      if (b->curRow == row && b->curCol == col) {
+        if (f <= waitTo && (!nb_can_swap(b, row, col) || (LWAITALL && step == n - 1))) { /* its panels settle by waitTo */ }
+        else if (!nb_can_swap(b, row, col) || !nb_try_queue_swap(b, row, col)) {
+#ifndef __wasm__
+          if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
+            Panel *p1 = &b->p[row][col], *p2 = &b->p[row][col + 1], *a1 = &b->p[row + 1][col], *a2 = &b->p[row + 1][col + 1];
+            fprintf(stderr, "REFUSE step %d f %d at %d,%d cur %d,%d clock %d | p1 c%d s%d ds%d g%d p2 c%d s%d ds%d g%d above s%d s%d canNow(fresh) %d\n", step, f, row, col,
+                    b->curRow, b->curCol, b->clock, p1->f[COLOR], p1->f[STATE], p1->f[DONTSWAP], p1->f[ISGARBAGE], p2->f[COLOR], p2->f[STATE], p2->f[DONTSWAP], p2->f[ISGARBAGE],
+                    a1->f[STATE], a2->f[STATE], nb_can_swap(paLibBoard(), row, col)); }
+#endif
+          out[1] = -1; out[5] = step; out[6] = f; out[7] = b->ninc; return -1;
+        }
+        else { last = f; step++; walking = 0; cool = LF ? LF->reaction : 12; }
+      } else if (timer > 0) timer--;
+      else {
+        if (b->curCol < col) input = IN_RIGHT; else if (b->curCol > col) input = IN_LEFT;
+        else if (b->curRow < row) input = IN_UP; else input = IN_DOWN;
+        timer = MOVE_FRAMES - 1;
+      }
+    }
+    int dir = input & IN_UP ? H_UP : input & IN_DOWN ? H_DOWN : input & IN_LEFT ? H_LEFT : input & IN_RIGHT ? H_RIGHT : H_NONE;
+    if (dir && dir == held) { input = 0; timer = 0; dir = H_NONE; }
+    held = dir;
+    b->input = input;
+    nb_run(b);
+    if (b->err) return -1;
+    if (b->health < h0 || b->gameOverClock > 0) { out[0] = f + 1; break; }
+  }
+  out[1] = step == n ? last : -1;
+  out[2] = b->sBroke; out[3] = b->sCleared;
+  out[4] = out[1] < 0 ? 0 : (out[0] ? out[0] : horizon) - out[1];
+  return 0;
+}
+
+int lineOnEngine(const int32_t *steps, int n, int horizon, int waitAll, int32_t *out) { LWAITALL = waitAll; int rc = linePlay(steps, n, horizon, 0, out); LWAITALL = 0; return rc < 0 ? -1 : 0; }
+// THE BOARD THE NEXT STEP IS CHOSEN ON: `steps` played on the engine as the
+// front plays them, up to the frame the front would decide again. Its masks,
+// the pairs the bot may target on it (swappable, settled), the cursor and the
+// frames it took. -1: a step refused, or the board lost health on the way.
+int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
+  int32_t out[10];
+  int rc = linePlay(steps, n, 240, 1, out);
+  if (rc != 1 || out[0]) return -1;
+  // the next step targets settled panels: the board once it has settled, each
+  // pair with the frame (from now) its panels settle
+  uint32_t still[W + 2];
+  unsettled(LNB, still, LSET);
+  Board *save = FB;
+  FB = USB;
+  fMasks(masks, 0);
+  FB = save;
+  for (int c = 0; c < WMAX; c++) can[c] = 0;
+  for (int r = 0; r < 32; r++) for (int c = 0; c < WMAX; c++) wait[r][c] = 0;
+  for (int c = 1; c < W; c++)
+    for (int r = 1; r <= USB->height && r <= 31; r++)
+      if (nb_can_swap(USB, r, c)) { can[c] |= 1u << (r - 1); wait[r][c] = (uint8_t)pairWait(LSET, r, c); }
+  cur[0] = LNB->curRow; cur[1] = LNB->curCol; *t = out[8];
+  return masks[O_BAD] ? -1 : 0;
+}
+
 // The decision, out of the bot: K_HOLD / K_RAISE / K_SWAP, the move, the park.
-typedef struct { int kind, hasMove, mr, mc, hasPark, pr, pc, via; } FDec;
+typedef struct { int kind, hasMove, mr, mc, hasPark, pr, pc, via, waitAll; } FDec;
 static int fDecide(Front *F, FDec *out) {
   fPrepare(F);
+  LF = F;
   BOTS[F->id].tab[T_OPT + O_PRESS] = 1;
   if (bot_decide(F->id) != 0) return -1;
   double *o = BOUT;
   out->kind = (int)o[0]; out->hasMove = o[1] != 0; out->mr = (int)o[2]; out->mc = (int)o[3];
-  out->hasPark = o[4] != 0; out->pr = (int)o[5]; out->pc = (int)o[6]; out->via = (int)o[7];
+  out->hasPark = o[4] != 0; out->pr = (int)o[5]; out->pc = (int)o[6]; out->via = (int)o[7]; out->waitAll = o[98] != 0;
   F->wantRaise = o[12] != 0;
   F->wantRows = (int)o[13];
   if (o[14]) F->raiseFrames = 0;
@@ -476,6 +651,7 @@ EXPORT(front_frame) int front_frame(int fid, Board *b) {
   }
   F->park = 0;
   beginWalk(F, d.mr, d.mc, F->reaction);
+  if (d.waitAll) { F->wWaitTo = allWait(F->settle); F->wWaitAll = 1; }
   return fSend(F, driveWalk(F, input & ~DIRS), held);
 }
 
@@ -501,6 +677,7 @@ EXPORT(front_prepare) int front_prepare(int fid, Board *b, int held, int hasLast
   FB = b;
   F->held = held; F->hasLast = hasLast; F->lastR = lastR; F->lastC = lastC;
   fPrepare(F);
+  LF = F;
   return 0;
 }
 // THE BREAKS WITHIN REACH, time aside: the shortest line of up to `depth`

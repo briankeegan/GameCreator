@@ -7,7 +7,7 @@
 enum { IN_TOPPED, IN_STOP, IN_INCOMING, IN_NEXTSLAB, IN_FALLING, IN_CROW, IN_CCOL, IN_HEALTH, IN_DRAIN, IN_FPR,
        IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISEROOM, IN_INFLIGHT,
        IN_DRAINBOUND, IN_STACKTOPPED, IN_MOVING, IN_HASTIMED, IN_REVEALOPEN, IN_CONVN, IN_CONVTIMER, IN_BCROW, IN_BCCOL,
-       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_SIZE = 600 };
+       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_SIZE = 600 };
 enum { TF_DEADLY = 1, TF_FORCE = 2, TF_REFUSE = 4, TF_RAISE = 8, TF_STUB = 16, TF_SLAB = 32 };
 static int deadlyCalls;
 #define TFLAG(f) (((int)BIN[IN_T]) & (f))
@@ -36,6 +36,7 @@ typedef struct {
   Sig seen[4]; int nSeen;
   Route plan, dig, attack, flatten;
   int digIsBreak, opening, maxSlab, nRecent, wantRows, wantRaise;
+  int32_t line[6]; int nLine, lineKind, lineWaitAll;   // the line being played, its steps still to play: LINE_BREAK or LINE_CASH
   int32_t recent[4];
   double counts[NCOUNT];
 } Bot;
@@ -1003,7 +1004,7 @@ static int revealPick(const int32_t *base, Line *best) {
   return best->swap;
 }
 
-typedef struct { int kind, sr, sc, hasMove, pr, pc, hasPark, via, spends, reveal, mode, alive; } Dec;
+typedef struct { int kind, sr, sc, hasMove, pr, pc, hasPark, via, spends, reveal, mode, alive, waitAll; } Dec;
 static Dec mk(int kind, int via, int mode, int alive) { Dec d; memset(&d, 0, sizeof d); d.kind = kind; d.via = via; d.mode = mode; d.alive = alive; return d; }
 static Dec mkSwap(int sr, int sc, int via, int mode, int alive) { Dec d = mk(K_SWAP, via, mode, alive); d.sr = sr; d.sc = sc; d.hasMove = 1; return d; }
 static Dec mkHold(int via, int mode, int alive, int hasPark, int pr, int pc) { Dec d = mk(K_HOLD, via, mode, alive); d.hasPark = hasPark; d.pr = pr; d.pc = pc; return d; }
@@ -1653,7 +1654,17 @@ static int32_t WDSW[2 * 128], WDR[R_INTS + ST_INTS];
 static int endsInBreak(int via) { return via == V_DIGPLAN || via == V_BREAKREACH || via == V_BREAK || via == V_LINEUP || via == V_LINEUPHOLD; }
 // A SWAP HELD FOR LATER MUST STILL BE THERE LATER. A cell above one that is
 // clearing falls when the clear ends — the moment a held swap is wanted.
-static int steady(int r, int c) {
+// A CLEAR HELD IS ONE STILL THERE WHEN IT IS PRESSED. The engine holds the
+// board (HASPA): the swap is pressed `at` frames from now on its copy, and
+// must still match. Without it, a clear is taken to stay while nothing below
+// its cells is popping.
+static int32_t STO[8], STA[8];
+static int steady(int r, int c, double at) {
+  if (BIN[IN_HASPA]) {
+    // the swap's own: more matched or converted than the board left alone
+    if (paOutcome(0, 0, 0, PAHORIZON, STA) != 0 || paOutcome(r, c, (int)at, PAHORIZON, STO) != 0) return 0;
+    return STO[0] > STA[0] || STO[1] > STA[1];
+  }
   for (int cc = c; cc <= c + 1; cc++) { int low = (int)BIN[IN_POPLOW + cc]; if (low > 0 && low < r) return 0; }
   return 1;
 }
@@ -1706,6 +1717,12 @@ static Dec waitForDrain(Dec d) {
       }
     }
   }
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
+    fprintf(stderr, "DRAIN k %g d kind %d via %d @%d,%d clears %d:", k, d.kind, d.via, d.sr, d.sc, nc);
+    for (int i = 0; i < nc; i++) fprintf(stderr, " %d,%d(mf %d tot %d brk %d fut %d)", CLEARS[i].sr, CLEARS[i].sc, (int)CLEARS[i].moveFrames, CLEARS[i].res.total, CLEARS[i].res.broke, CLEARS[i].future);
+    fprintf(stderr, "\n"); }
+#endif
   if (!nc) return d;
   if (d.spends) return d;
   Rs *pr = picked ? &picked->res : 0;
@@ -1713,7 +1730,7 @@ static Dec waitForDrain(Dec d) {
   if (!picked && endsInBreak(d.via)) return d;
 #define HOLDAT(r, c) mkHold(V_AWAITDRAIN, d.mode, d.alive, 1, r, c)
   if (pr && pr->total > 0 && !pr->broke && picked->moveFrames + 1 <= k) {
-    if (picked->moveFrames + 2 > k || !steady(picked->sr, picked->sc)) return d;
+    if (picked->moveFrames + 2 > k || !steady(picked->sr, picked->sc, k - 2)) return d;
     BT->counts[C_WAITEDFORDRAIN]++;
     return HOLDAT(picked->sr, picked->sc);
   }
@@ -1751,7 +1768,8 @@ static Dec waitForDrain(Dec d) {
     double rate = (f[1] + f[2] + f[3] * r->total + stopTimeOf(isCh, isCh ? 0 : r->total, isCh ? r->chain : 0, 1)) / r->total;
     double vd = 0;
     if (cl->masks) { Shape sh; shapeOf(cl->masks, &sh); vd = sh.high - sh.mat; }
-    int tn = r->total, st = cl->future || steady(cl->sr, cl->sc), cnSt = clearNow && (clearNow->future || steady(clearNow->sr, clearNow->sc));
+    int tn = r->total, st = cl->future || steady(cl->sr, cl->sc, dmax(cl->moveFrames, k - 2)),
+        cnSt = clearNow && (clearNow->future || steady(clearNow->sr, clearNow->sc, dmax(clearNow->moveFrames, k - 2)));
     if (clearNow && st != cnSt) { if (st) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; } continue; }
     if (!clearNow || tn < cnTn || (tn == cnTn && (vd < cnVd || (vd == cnVd && rate > cnRate)))) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; }
   }
@@ -1759,130 +1777,316 @@ static Dec waitForDrain(Dec d) {
   if (breakNow) return HOLDAT(breakNow->sr, breakNow->sc);
   Clr *esc = clearNow;
   if (!esc) for (int i = 0; i < nc; i++) if (!esc || CLEARS[i].moveFrames < esc->moveFrames) esc = &CLEARS[i];
-  if (esc->future || (esc->moveFrames + 2 <= k && steady(esc->sr, esc->sc))) return HOLDAT(esc->sr, esc->sc);
+  if (esc->future || (esc->moveFrames + 2 <= k && steady(esc->sr, esc->sc, k - 2))) return HOLDAT(esc->sr, esc->sc);
   // No steady clear to hold: one that is falling apart is fired only when the
   // time is up; before that the choice stands and stayAlive judges it.
   if (esc->moveFrames + 2 <= k) return d;
   return mkSwap(esc->sr, esc->sc, V_KEEPHEALTH, d.mode, d.alive);
 #undef HOLDAT
 }
-// IT MUST NOT DIE. Living is any line that presses a clear or a break before
-// the time runs out: a break converts the garbage, a clear holds the lock and
-// earns stop. Every first swap is marked living if it cashes in time itself,
-// or if one more swap on the board it settles to does -- the walk to it, the
-// frames it takes, then the walk on. The bot's own choice stands whenever it
-// is living; a choice that is not is replaced by a living one.
+// ---------------------------------------------------------------- lines
+// A LINE is up to KEEPDEPTH swaps, each played on the board the one before it
+// settles to. The masks find lines (fast, and with the time only estimated);
+// the ENGINE JUDGES them (lineOnEngine, front.c): the line played as the
+// front plays it -- walk, press, the swap landing, the next walk -- on a copy
+// of the board. A line LIVES if every step is taken and the board has not
+// lost health until NEXTMOVE frames after its last press, the time the next
+// decision needs; it PAYS if it matches more panels or converts more garbage
+// than the board left alone, and BREAKS if it converts more garbage.
+//
+// IT MUST NOT DIE: a choice that does not live, while the time is short
+// (LIVEHORIZON), is replaced by a line that lives and pays -- breaking first.
+// BREAKING COMES FIRST: a line that breaks and lives is played over a choice
+// that does not break. A BREAK IS KEPT IN REACH: topped, a choice that leaves
+// no break within KEEPDEPTH swaps is replaced by a living, paying line that
+// keeps one. And A LINE ONCE PLAYED IS PLAYED TO ITS END: the bot keeps the
+// line (BT->line) and plays its next step while the engine says it still
+// lives and still pays (breaks, for a break line) -- whatever chose it.
+#define KEEPDEPTH 3
 #define LIVEHORIZON 60
-static ST LVA, LVB;
-static int32_t LVR[R_INTS + ST_INTS], LVS[2 * 128], LVS2[2 * 128];
-static uint8_t LIVE[40][WMAX], LIVE1[40][WMAX], LIVEB[40][WMAX];
-static double LIVET[40][WMAX];
-static int liveAny;
+#define LINEHORIZON 240
+#define NEXTMOVE 6
+#define MAXLINES 512
+#define MAXJUDGED 96
+int lineOnEngine(const int32_t *steps, int n, int horizon, int waitAll, int32_t *out);
+int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t);
+enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4 };
+enum { LINE_BREAK = 1, LINE_CASH = 2 };
+typedef struct { int n, brk, ok, grown, waitAll; int32_t sw[2 * KEEPDEPTH]; double est; int verdict; } LineC;
+static LineC LINES[MAXLINES];
+static int nLines, nJudged;
+static int32_t LNA[10], LNO[10];
+static int lnAlone;
 static int cashes(const int32_t *r) { return r[R_TOTAL] > 0 || r[R_SCOPE] == SC_BROKE; }
-// A CLEAR LIVES IF THE NEXT ONE IS IN TIME. It holds the lock while it flashes
-// and pops, and earns stop on top; when both run out another clear must be
-// pressed, from the board it settles to, walking from where it was made.
-static ST CLA;
-static int32_t CLR[R_INTS + ST_INTS], CLS[2 * 128];
-static int clearLives(const Cand *pc, double k) {
-  const Rs *r = &pc->res;
-  int isCh = r->chain >= 2;
-  double lock = resolveFramesOf(r->total, 0) + stopTimeOf(isCh, isCh ? 0 : r->total, isCh ? r->chain : 0, BIN[IN_TOPPED] != 0);
-  double left = dmax(k, pc->moveFrames + lock) - pc->moveFrames - 2;
-  stcpy(CLA, pc->masks);
-  int n = legal(CLA, CLS);
-  for (int i = 0; i < n; i++) {
-    int r2 = CLS[2 * i], c2 = CLS[2 * i + 1];
-    if (travelCost(pc->sr, pc->sc, r2, c2) > left) continue;
-    if (!swapIn(CLA, r2, c2)) continue;
-    resolve(CLA, CLR, 0);
-    swapIn(CLA, r2, c2);
-    if (cashes(CLR)) return 1;
-  }
-  return 0;
+static double timeLeft(void);
+static void linesReset(void) { nLines = 0; nJudged = 0; lnAlone = 0; }
+static int lineJudge(const int32_t *sw, int n, int waitAll) {
+  if (!BIN[IN_HASPA]) return 0;
+  if (!lnAlone) { if (lineOnEngine(0, 0, LINEHORIZON, 0, LNA) != 0) return 0; lnAlone = 1; }
+  if (lineOnEngine(sw, n, LINEHORIZON, waitAll, LNO) != 0 || LNO[1] < 0) return 0;
+  if (LNO[0] && LNO[0] <= LNO[1] + NEXTMOVE) return 0;
+  int v = LV_LIVES;
+  if (LNO[2] > LNA[2]) v |= LV_PAYS | LV_BREAKS;
+  else if (LNO[3] > LNA[3]) v |= LV_PAYS;
+  return v;
 }
-static void livingSet(const int32_t *base, double left) {
-  int cr = (int)BIN[IN_CROW], cc = (int)BIN[IN_CCOL];
-  // A press protects from the frame after it, and the drain falls on the
-  // bound's last frame: a line lives if its press comes two frames before.
-  left -= 2;
-  memset(LIVE, 0, sizeof LIVE); memset(LIVE1, 0, sizeof LIVE1); memset(LIVEB, 0, sizeof LIVEB); liveAny = 0;
-  stcpy(LVA, base);
-  resolve(LVA, LVR, 0);
-  Rs alone = summarise(LVR);
-  int n = legal(LVA, LVS);
-  for (int i = 0; i < n; i++) {
-    int r1 = LVS[2 * i], c1 = LVS[2 * i + 1];
-    double t1 = travelCost(cr, cc, r1, c1);
-    if (t1 > left || r1 >= 40) continue;
-    if (!swapIn(LVA, r1, c1)) continue;
-    resolve(LVA, LVR, 1);
-    swapIn(LVA, r1, c1);
-    int sc = LVR[R_SCOPE];
-    if (sc != SC_OK && sc != SC_BROKE) continue;
-    Rs mine = causedBy(summarise(LVR), &alone);
-    sc = mine.broke ? SC_BROKE : SC_OK;
-    if (mine.total > 0 || mine.broke) {
-      Cand *pc = sc == SC_BROKE ? 0 : poolSwap(r1, c1);
-      if (pc && !clearLives(pc, left + 2)) continue;
-      LIVE[r1][c1] = LIVE1[r1][c1] = 1; LIVEB[r1][c1] = sc == SC_BROKE; LIVET[r1][c1] = t1; liveAny = 1; continue;
+static int judged(LineC *l) {
+  if (l->verdict < 0) {
+    l->verdict = nJudged < MAXJUDGED ? lineJudge(l->sw, l->n, 0) : 0; nJudged++;
+    // A BREAK PRESSED ONCE THE BOARD HAS SETTLED: a break needs garbage at
+    // rest beside the match, and a press made while the slab still lands
+    // matches beside it in vain. The last press then waits for every block.
+    if (l->brk && (l->verdict & LV_PAYS) && !(l->verdict & LV_BREAKS) && nJudged < MAXJUDGED) {
+      int v = lineJudge(l->sw, l->n, 1); nJudged++;
+      if (v & LV_BREAKS) { l->verdict = v; l->waitAll = 1; }
     }
-    double settle = quietSettle(LVA, r1, c1, LVR + R_INTS);
-    stcpy(LVB, LVR + R_INTS);
-    int n2 = legal(LVB, LVS2);
-    for (int j = 0; j < n2; j++) {
-      int r2 = LVS2[2 * j], c2 = LVS2[2 * j + 1];
-      double t2 = t1 + settle + travelCost(r1, c1, r2, c2);
-      if (t2 > left) continue;
-      if (!swapIn(LVB, r2, c2)) continue;
-      resolve(LVB, LVR, 0);
-      swapIn(LVB, r2, c2);
-      if (!cashes(LVR)) continue;
-      int brk = LVR[R_SCOPE] == SC_BROKE;
-      if (!LIVE[r1][c1] || (brk && !LIVEB[r1][c1])) { LIVE[r1][c1] = 1; LIVEB[r1][c1] = brk; LIVET[r1][c1] = t2; liveAny = 1; }
-      if (brk) break;
-    }
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
+      fprintf(stderr, "JUDGE n%d %d,%d", l->n, l->sw[0], l->sw[1]);
+      if (l->n > 1) fprintf(stderr, " %d,%d", l->sw[2], l->sw[3]);
+      if (l->n > 2) fprintf(stderr, " %d,%d", l->sw[4], l->sw[5]);
+      fprintf(stderr, " brk %d est %g -> v%d | drain %d last %d conv %d/%d match %d/%d k %g refused step %d at %d inc %d->%d\n", l->brk, l->est, l->verdict, LNO[0], LNO[1], LNO[2], LNA[2], LNO[3], LNA[3], timeLeft(), LNO[5], LNO[6], (int)BIN[IN_INCOMING] / 4, LNO[7]); }
+#endif
+  }
+  return l->verdict;
+}
+// THE LINES, by the masks: every line of up to `depth` swaps whose last swap
+// clears or breaks (only those that break when `breaks`), its presses
+// estimated in time: the walk to each, then (topped) the swap landing and the
+// lock held by what it sets falling, or (not topped) the board settling.
+static ST LS[KEEPDEPTH + 1];
+static int32_t LSR[R_INTS + ST_INTS], LSW[KEEPDEPTH][2 * 128], lsLine[2 * KEEPDEPTH];
+static int lsTopped, lsBreaks, lsDepth;
+static uint8_t (*ENGINE_WAITS)[WMAX];   // a grown board's pairs: the frame each settles
+static Rs lsAlone;
+// lines grown on the engine: the steps already played (pfx) and the frames they took
+static int32_t pfx[2 * KEEPDEPTH]; static int nPfx; static double pfxT;
+// A STEP NEVER TARGETS PANELS STILL MOVING: the cells a swap disturbs -- the
+// pair, what falls, what clears -- are unsettled until it settles, and a next
+// step that touches one before then is not a step the engine will take.
+static void disturbed(const int32_t *a, const int32_t *b, uint32_t *out) {
+  for (int c = 0; c < WMAX; c++) {
+    uint32_t m = (U(a, OCC + c) ^ U(b, OCC + c)) | (U(a, GARB + c) ^ U(b, GARB + c));
+    for (int k = 1; k < NCOL; k++) m |= CL(a, k, c) ^ CL(b, k, c);
+    out[c] = m;
   }
 }
+static uint32_t LSD[KEEPDEPTH + 1][WMAX];
+static double lsSettled[KEEPDEPTH + 1];
+static void linesAt(int d, int pr, int pc, double t, double limit) {
+  int n = legal(LS[d], LSW[d]);
+  for (int i = 0; i < n && nLines < MAXLINES; i++) {
+    int r = LSW[d][2 * i], c = LSW[d][2 * i + 1];
+    double at = t + travelCost(pr, pc, r, c);
+    if (at > limit || r >= 40) continue;
+    if (d > 0 && at < lsSettled[d] && ((LSD[d][c] | LSD[d][c + 1]) & (1u << (r - 1)))) continue;
+    if (d == 0 && ENGINE_BASE && !(ENGINE_CAN[c] & (1u << (r - 1)))) continue;
+    if (d == 0 && ENGINE_WAITS) at = dmax(at, t + ENGINE_WAITS[r][c]);   // pressed once its panels settle
+    stcpy(LS[d + 1], LS[d]);
+    if (!swapIn(LS[d + 1], r, c)) continue;
+    resolve(LS[d + 1], LSR, 1);
+    lsLine[2 * d] = r; lsLine[2 * d + 1] = c;
+    // the first swap is pressed on the board as it is, moving: what it does is
+    // what it adds to what the board does alone
+    int brk, cash;
+    if (d == 0) {
+      if (LSR[R_SCOPE] != SC_OK && LSR[R_SCOPE] != SC_BROKE) continue;
+      Rs mine = causedBy(summarise(LSR), &lsAlone);
+      brk = mine.broke; cash = mine.total > 0 || mine.broke;
+    } else { brk = LSR[R_SCOPE] == SC_BROKE; cash = cashes(LSR); }
+    if (brk || (!lsBreaks && cash)) {
+      LineC *l = &LINES[nLines++];
+      l->n = nPfx + d + 1; l->brk = brk; l->est = pfxT + at; l->verdict = -1; l->grown = nPfx; l->waitAll = 0;
+      for (int k = 0; k < 2 * nPfx; k++) l->sw[k] = pfx[k];
+      for (int k = 0; k < 2 * (d + 1); k++) l->sw[2 * nPfx + k] = lsLine[k];
+      continue;
+    }
+    if ((LSR[R_SCOPE] != SC_OK && !(d == 0 && LSR[R_SCOPE] == SC_BROKE)) || d + 1 >= lsDepth) continue;
+    double settle = LSR[R_TOTAL] > 0 ? LSR[R_FRAMES] : quietSettle(LS[d], r, c, LSR + R_INTS);
+    disturbed(LS[d], LSR + R_INTS, LSD[d + 1]);
+    lsSettled[d + 1] = at + settle;
+    stcpy(LS[d + 1], LSR + R_INTS);
+    linesAt(d + 1, r, c, lsTopped ? at + 5 : at + settle, lsTopped ? dmax(limit, at + settle - 2) : limit);
+  }
+}
+static double timeLeft(void) { return BIN[IN_TOPPED] ? BIN[IN_DRAINBOUND] : DDEADLINE; }
+// LINES GROWN ON THE ENGINE. The masks propose lines from the board as it
+// is; each proposed first step is then played on the engine up to the frame
+// the front would decide again (lineState), and the rest of the line is
+// chosen on that board -- the real one, with only the pairs the engine would
+// take there and whose panels have settled. A later step never targets a
+// panel the masks only guessed was still.
+#define GROWCAP 8
+static int lineBefore(const LineC *a, const LineC *b);
+static void linesFrom(const int32_t *st, int cr, int cc, int depth, double limit) {
+  stcpy(LS[0], st);
+  resolve(LS[0], LSR, 0);
+  lsAlone = summarise(LSR);
+  lsDepth = depth;
+  linesAt(0, cr, cc, 0, limit);
+}
+// Grow the lines that start with `pre` (np steps, played on the engine to
+// the board `st` the front next decides on): the masks propose up to
+// `depthLeft` more steps there, and each proposed next step that is not the
+// last is played on the engine in turn, to choose the one after it on the
+// board that gives.
+static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const int32_t *st, int cr, int cc,
+                   const uint32_t *can, uint8_t (*waits)[WMAX], double limit) {
+  int from = nLines;
+  for (int k = 0; k < 2 * np; k++) pfx[k] = pre[k];
+  nPfx = np; pfxT = preT;
+  ENGINE_BASE = st; ENGINE_WAITS = waits;
+  for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = can[c];
+  linesFrom(st, cr, cc, depthLeft, limit);
+  if (depthLeft < 2 || !BIN[IN_HASPA]) return;
+  int32_t nexts[2 * GROWCAP]; int nn = 0;
+  for (;;) {
+    LineC *best = 0;
+    for (int i = from; i < nLines; i++) {
+      LineC *l = &LINES[i];
+      if (l->n <= np + 1 || l->verdict == 0) continue;
+      if (!best || lineBefore(l, best)) best = l;
+    }
+    if (!best) break;
+    int r = best->sw[2 * np], c = best->sw[2 * np + 1], seen = 0;
+    for (int j = 0; j < nn; j++) if (nexts[2 * j] == r && nexts[2 * j + 1] == c) seen = 1;
+    if (!seen && nn < GROWCAP) { nexts[2 * nn] = r; nexts[2 * nn + 1] = c; nn++; }
+    best->verdict = 0;   // a guess: its grown form replaces it
+  }
+  int32_t pre2[2 * KEEPDEPTH], st2[ST_INTS], cur[2], t;
+  uint32_t can2[WMAX];
+  uint8_t waits2[32][WMAX];
+  for (int k = 0; k < 2 * np; k++) pre2[k] = pre[k];
+  for (int j = 0; j < nn; j++) {
+    pre2[2 * np] = nexts[2 * j]; pre2[2 * np + 1] = nexts[2 * j + 1];
+    if (lineState(pre2, np + 1, st2, can2, waits2, cur, &t) != 0) continue;
+    growAt(pre2, np + 1, t, depthLeft - 1, st2, cur[0], cur[1], can2, waits2, INF);
+  }
+}
+static void linesFind(int depth, int breaks) {
+  linesReset();
+  lsTopped = BIN[IN_TOPPED] != 0; lsBreaks = breaks;
+  const int32_t *saveBase = ENGINE_BASE;
+  uint32_t saveCan[WMAX];
+  for (int c = 0; c < WMAX; c++) saveCan[c] = ENGINE_CAN[c];
+  // the masks propose, the engine judges: only the lock (topped) bounds the
+  // proposals; the frames to death are an idle estimate the engine replaces
+  growAt(0, 0, 0, depth, DBASE, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], saveCan, 0, lsTopped ? timeLeft() - 2 : INF);
+  ENGINE_BASE = saveBase; ENGINE_WAITS = 0;
+  for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = saveCan[c];
+  nPfx = 0; pfxT = 0;
+}
+// A line's rank: a break before a clear, a short line before a long one, then the earliest.
+static int lineBefore(const LineC *a, const LineC *b) {
+  if (a->brk != b->brk) return a->brk;
+  if (a->n != b->n) return a->n < b->n;
+  return a->est < b->est;
+}
+static LineC *bestLine(int need, int (*ok)(const LineC *)) {
+  for (int i = 0; i < nLines; i++) LINES[i].ok = !ok || ok(&LINES[i]);
+  for (;;) {
+    LineC *cand = 0;
+    for (int i = 0; i < nLines; i++) {
+      LineC *l = &LINES[i];
+      if (!l->ok || (l->verdict >= 0 && (l->verdict & need) != need)) continue;
+      if (!cand || lineBefore(l, cand)) cand = l;
+    }
+    if (!cand) return 0;
+    if ((judged(cand) & need) == need) return cand;
+  }
+}
+static void lineKeep(const LineC *l, int kind) {
+  for (int k = 0; k < 2 * l->n; k++) BT->line[k] = l->sw[k];
+  BT->nLine = l->n; BT->lineKind = kind; BT->lineWaitAll = l->waitAll;
+}
+// The first step of a line, as a swap; its last waits for the board to settle when the line says.
+static Dec lineSwap(const LineC *l, int via, Dec d) {
+  Dec s = mkSwap(l->sw[0], l->sw[1], via, d.mode, d.alive);
+  s.waitAll = l->n == 1 && l->waitAll;
+  return s;
+}
+static void plansDrop(void) { BT->plan.has = 0; BT->attack.has = 0; BT->flatten.has = 0; BT->dig.has = 0; BT->digIsBreak = 0; }
+// lineLast: what the line rules last did, for the drill's trace: 1 played on
+// with the line kept, 2 a dying choice replaced, 3 a break line played, 4 a
+// choice that lost the break replaced.
+static int lineLast;
+__attribute__((export_name("bot_breakfirst"))) int32_t bot_breakfirst(void) { return lineLast; }
+__attribute__((export_name("bot_keepbreak"))) int32_t bot_keepbreak(void) { return 0; }
+
+// A LINE ONCE PLAYED IS PLAYED TO ITS END.
+static Dec playOn(Dec d) {
+  lineLast = 0;
+  if (!BT->nLine) return d;
+  if (BIN[IN_HASLAST] && (int)BIN[IN_LASTR] == BT->line[0] && (int)BIN[IN_LASTC] == BT->line[1]) {
+    for (int k = 2; k < 2 * BT->nLine; k++) BT->line[k - 2] = BT->line[k];
+    BT->nLine--;
+  }
+  if (!BT->nLine) return d;
+  linesReset();
+  int v = lineJudge(BT->line, BT->nLine, BT->lineWaitAll), need = LV_LIVES | (BT->lineKind == LINE_BREAK ? LV_BREAKS : LV_PAYS);
+  if ((v & need) != need) { BT->nLine = 0; return d; }
+  lineLast = 1;
+  plansDrop();
+  Dec s = mkSwap(BT->line[0], BT->line[1], BT->lineKind == LINE_BREAK ? V_BREAKREACH : V_KEEPHEALTH, d.mode, d.alive);
+  s.waitAll = BT->nLine == 1 && BT->lineWaitAll;
+  return s;
+}
+
+// IT MUST NOT DIE.
+static int notLastSwap(const LineC *l) {
+  if (l->n == 1) return 1;
+  int r = l->sw[0], c = l->sw[1];
+  return !(returnsToSeen(r, c) || (BIN[IN_HASLAST] && r == (int)BIN[IN_LASTR] && c == (int)BIN[IN_LASTC]));
+}
+static int dR, dC;
+static int fromChoice(const LineC *l) { return l->sw[0] == dR && l->sw[1] == dC; }
 static Dec stayAlive(Dec d) {
-  double k = BIN[IN_TOPPED] ? BIN[IN_DRAINBOUND] : DDEADLINE;
-  if (!(k < LIVEHORIZON)) return d;
+  double k = timeLeft();
+  if (!(k < LIVEHORIZON) || (d.kind != K_SWAP && d.kind != K_HOLD)) return d;
+  if (d.kind == K_SWAP && !d.hasMove) return d;
+  if (lineLast == 1) return d;
+  linesFind(2, 0);
+  if (d.kind == K_SWAP) {
+    dR = d.sr; dC = d.sc;
+    LineC *mine = bestLine(LV_LIVES | LV_PAYS, fromChoice);
+    if (mine) { if (mine->n > 1) lineKeep(mine, LINE_CASH); return d; }
+  } else {
+    // a hold lives while a paying line can still be started after it
+    double wait = BIN[IN_TOPPED] ? 2 : REACT;
+    for (int i = 0; i < nLines; i++)
+      if (LINES[i].est + wait <= k - 2 && (judged(&LINES[i]) & (LV_LIVES | LV_PAYS)) == (LV_LIVES | LV_PAYS)) return d;
+  }
+  LineC *l = bestLine(LV_LIVES | LV_PAYS, notLastSwap);
+  if (!l) return d;
+  lineLast = 2;
+  BT->counts[C_KEPTHEALTH]++;
+  plansDrop();
+  if (l->n > 1) lineKeep(l, l->brk ? LINE_BREAK : LINE_CASH); else BT->nLine = 0;
+  return lineSwap(l, V_KEEPHEALTH, d);
+}
+
+// BREAKING COMES FIRST.
+static Dec breakFirst(Dec d) {
+  if (lineLast || d.kind == K_RAISE || !hasGarbage(DBASE)) return d;
   if (d.kind == K_SWAP && d.hasMove) {
     Cand *pc = poolSwap(d.sr, d.sc);
-    if (pc && pc->res.broke && pc->moveFrames <= k) return d;
-    if (pc && pc->res.total > 0 && pc->moveFrames + 2 <= k && clearLives(pc, k)) return d;
-  } else if (d.kind != K_HOLD) return d;
-  livingSet(DBASE, k);
-  if (!liveAny) return d;
-  if (d.kind == K_SWAP && d.hasMove) { if (d.sr < 40 && LIVE[d.sr][d.sc]) return d; }
-  else {
-    double wait = BIN[IN_TOPPED] ? 2 : REACT;
-    for (int r = 1; r < 40; r++) for (int c = 1; c < WMAX; c++)
-      if (LIVE[r][c] && LIVET[r][c] + wait <= k) return d;
+    if ((pc && pc->res.broke) || endsInBreak(d.via)) return d;
   }
-  // The choice dies. Take a living swap, breaking garbage first: a swap that
-  // breaks, the first of a two-swap line that breaks, a swap that clears, the
-  // first of a two-swap line that clears; the earliest within each.
-  int br = 0, bc = 0, rank = -1; double bt = INF;
-  for (int r = 1; r < 40; r++) for (int c = 1; c < WMAX; c++) {
-    if (!LIVE[r][c]) continue;
-    Cand *pc = poolSwap(r, c);
-    int rk = LIVEB[r][c] ? (LIVE1[r][c] ? 3 : 2) : LIVE1[r][c] ? 1 : 0;
-    if (!LIVE1[r][c] && (returnsToSeen(r, c) || (BIN[IN_HASLAST] && r == (int)BIN[IN_LASTR] && c == (int)BIN[IN_LASTC]))) continue;
-    if (rk > rank || (rk == rank && LIVET[r][c] < bt)) { br = r; bc = c; bt = LIVET[r][c]; rank = rk; }
-  }
-  if (rank < 0) return d;
-  BT->counts[C_KEPTHEALTH]++;
-  BT->plan.has = 0; BT->attack.has = 0; BT->flatten.has = 0; BT->dig.has = 0; BT->digIsBreak = 0;
-  return mkSwap(br, bc, V_KEEPHEALTH, d.mode, d.alive);
+  linesFind(KEEPDEPTH, 1);
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; int g = 0, live = 0;
+    for (int i = 0; i < nLines; i++) { if (LINES[i].grown) g++; if (LINES[i].verdict != 0) live++; }
+    fprintf(stderr, "BREAKFIRST lines %d grown %d open %d k %g\n", nLines, g, live, timeLeft()); }
+#endif
+  LineC *l = bestLine(LV_LIVES | LV_BREAKS, 0);
+  if (!l) return d;
+  lineLast = 3;
+  plansDrop();
+  if (l->n > 1) lineKeep(l, LINE_BREAK); else BT->nLine = 0;
+  return lineSwap(l, V_BREAKREACH, d);
 }
-// A BREAK KEPT IN REACH. Topped, the bot buys time with clears, and a clear
-// that leaves no line to the garbage spends the material the break needs:
-// the board then has nothing left to break with. While a line of up to
-// KEEPDEPTH swaps breaks the garbage, a choice that loses every such line is
-// replaced by a living one that keeps one, breaking first. With none, the
-// choice stands: it must not die.
-#define KEEPDEPTH 3
+
+// A BREAK KEPT IN REACH.
 static ST KB[KEEPDEPTH + 1], KBA;
 static int32_t KBR[R_INTS + ST_INTS], KBSW[KEEPDEPTH][2 * 128];
 static int breakAt(int d, int depth) {
@@ -1912,90 +2116,17 @@ static int keepsBreak(int r, int c) {
   if (!swapIn(KBA, r, c)) return 0;
   return breakWithin(KBA, KEEPDEPTH);
 }
-// keepBreak's last step, for the drill's trace: 1 topped, 2 a break in reach,
-// 4 the choice loses it, 3 replaced.
-static int kbLast;
-__attribute__((export_name("bot_keepbreak"))) int32_t bot_keepbreak(void) { return kbLast; }
+static int keepsIt(const LineC *l) { return l->brk || (notLastSwap(l) && keepsBreak(l->sw[0], l->sw[1])); }
 static Dec keepBreak(Dec d) {
-  kbLast = 0;
-  if (!BIN[IN_TOPPED] || d.kind != K_SWAP || !d.hasMove) return d;
-  kbLast = 1;
-  if (!breakWithin(DBASE, KEEPDEPTH)) return d;
-  kbLast = 2;
-  if (keepsBreak(d.sr, d.sc)) return d;
-  kbLast = 4;
-  livingSet(DBASE, BIN[IN_DRAINBOUND]);
-  int br = 0, bc = 0, rank = -1; double bt = INF;
-  for (int r = 1; r < 40; r++) for (int c = 1; c < WMAX; c++) {
-    if (!LIVE[r][c] || (r == d.sr && c == d.sc)) continue;
-    if (!LIVE1[r][c] && (returnsToSeen(r, c) || (BIN[IN_HASLAST] && r == (int)BIN[IN_LASTR] && c == (int)BIN[IN_LASTC]))) continue;
-    if (!LIVEB[r][c] && !keepsBreak(r, c)) continue;
-    int rk = LIVEB[r][c] ? (LIVE1[r][c] ? 3 : 2) : LIVE1[r][c] ? 1 : 0;
-    if (rk > rank || (rk == rank && LIVET[r][c] < bt)) { br = r; bc = c; bt = LIVET[r][c]; rank = rk; }
-  }
-  if (rank < 0) return d;
-  kbLast = 3;
-  BT->plan.has = 0; BT->attack.has = 0; BT->flatten.has = 0; BT->dig.has = 0; BT->digIsBreak = 0;
-  return mkSwap(br, bc, V_KEEPHEALTH, d.mode, d.alive);
-}
-// BREAKING COMES FIRST. A line of up to KEEPDEPTH swaps that breaks the
-// garbage, each swap played on the board the last settles to, is played when
-// its break is pressed in time: the walk to each swap and the frames it takes
-// to settle, inside the time the board has (the drain bound topped, else the
-// frames to death). The shortest line, then the quickest. A choice that
-// already breaks, or is a step of a break line, stands.
-static ST BL[KEEPDEPTH + 1];
-static int32_t BLR[R_INTS + ST_INTS], BLSW[KEEPDEPTH][2 * 128], blLine[2 * KEEPDEPTH], blBest[2 * KEEPDEPTH];
-static int blLen; static double blTime;
-// Topped, the time is the lock: what holds it now (stop, shake, panels in
-// the air) and each swap with what it sets falling, so a line lives while
-// every press lands two frames before the later of the two ends (`limit`).
-// Not topped, the line's presses are counted against the frames to death.
-static int blTopped;
-static void breakLineAt(int d, int pr, int pc, double t, double limit) {
-  int n = legal(BL[d], BLSW[d]);
-  for (int i = 0; i < n; i++) {
-    int r = BLSW[d][2 * i], c = BLSW[d][2 * i + 1];
-    double at = t + travelCost(pr, pc, r, c);
-    if (at > limit || d + 1 > blLen) continue;
-    stcpy(BL[d + 1], BL[d]);
-    if (!swapIn(BL[d + 1], r, c)) continue;
-    resolve(BL[d + 1], BLR, 1);
-    blLine[2 * d] = r; blLine[2 * d + 1] = c;
-    if (BLR[R_SCOPE] == SC_BROKE) {
-      if (d + 1 < blLen || at < blTime) { blLen = d + 1; blTime = at; for (int k = 0; k < 2 * (d + 1); k++) blBest[k] = blLine[k]; }
-      continue;
-    }
-    if (BLR[R_SCOPE] != SC_OK || d + 1 >= KEEPDEPTH) continue;
-    double settle = BLR[R_TOTAL] > 0 ? BLR[R_FRAMES] : quietSettle(BL[d], r, c, BLR + R_INTS);
-    stcpy(BL[d + 1], BLR + R_INTS);
-    breakLineAt(d + 1, r, c, at, blTopped ? dmax(limit, at + settle - 2) : limit);
-  }
-}
-// breakFirst's last step, for the drill's trace: 3 searched, 4 played a line.
-static int blLast;
-__attribute__((export_name("bot_breakfirst"))) int32_t bot_breakfirst(void) { return blLast; }
-static Dec breakFirst(Dec d) {
-  blLast = 0;
-  if (d.kind == K_RAISE || !hasGarbage(DBASE)) return d;
-  blLast = 1;
-  if (d.kind == K_SWAP && d.hasMove) {
-    Cand *pc = poolSwap(d.sr, d.sc);
-    if ((pc && pc->res.broke) || endsInBreak(d.via)) return d;
-  }
-  blTopped = BIN[IN_TOPPED] != 0;
-  double limit = (blTopped ? BIN[IN_DRAINBOUND] : DDEADLINE) - 2;
-  blLast = 2;
-  resolve(DBASE, BLR, 1);
-  if (BLR[R_SCOPE] != SC_OK) return d;
-  blLast = 3;
-  stcpy(BL[0], BLR + R_INTS);
-  blLen = KEEPDEPTH + 1; blTime = INF;
-  breakLineAt(0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, limit);
-  if (blLen > KEEPDEPTH) return d;
-  blLast = 4;
-  BT->plan.has = 0; BT->attack.has = 0; BT->flatten.has = 0; BT->dig.has = 0; BT->digIsBreak = 0;
-  return mkSwap(blBest[0], blBest[1], V_BREAKREACH, d.mode, d.alive);
+  if (lineLast || !BIN[IN_TOPPED] || d.kind != K_SWAP || !d.hasMove) return d;
+  if (!breakWithin(DBASE, KEEPDEPTH) || keepsBreak(d.sr, d.sc)) return d;
+  linesFind(2, 0);
+  LineC *l = bestLine(LV_LIVES | LV_PAYS, keepsIt);
+  if (!l) return d;
+  lineLast = 4;
+  plansDrop();
+  if (l->n > 1) lineKeep(l, l->brk ? LINE_BREAK : LINE_CASH); else BT->nLine = 0;
+  return lineSwap(l, V_KEEPHEALTH, d);
 }
 // A SWAP THAT IS STILL MOVING WHEN THE LOCK ENDS TAKES THE ROW BACK: the
 // raise starts the frame nothing holds the rise lock, and a swap queued then
@@ -2033,7 +2164,10 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   memoRoom();
   nSettle = nLandR = nFireR = nSavesR = nAnyR = 0;
   nRes = 0; nOptRuns = 0; nOptDepth = 0; nScore = 0; nLook = 0; nSave = 0; rScore = rMain = rLook = rSave = rCand = 0;
-  Dec d = onePlan(keepBreak(breakFirst(stayAlive(raiseHold(waitForDrain(decideRuled()))))));
+  ENGINE_BASE = BIN[IN_HASPA] ? IN : 0;
+  for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = c >= 1 && c < BW ? (uint32_t)BIN[IN_CANSWAP + c] : 0;
+  Dec d = onePlan(keepBreak(breakFirst(stayAlive(raiseHold(waitForDrain(playOn(decideRuled())))))));
+  ENGINE_BASE = 0;
   if (d.kind == K_SWAP && d.hasMove) {
     BT->recent[2] = BT->nRecent ? BT->recent[0] : 0; BT->recent[3] = BT->nRecent ? BT->recent[1] : 0;
     BT->recent[0] = d.sr; BT->recent[1] = d.sc;
@@ -2044,6 +2178,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   o[0] = d.kind; o[1] = d.hasMove; o[2] = d.sr; o[3] = d.sc; o[4] = d.hasPark; o[5] = d.pr; o[6] = d.pc;
   o[7] = d.via; o[8] = d.spends; o[9] = d.reveal; o[10] = d.mode; o[11] = d.alive;
   o[12] = BT->wantRaise; o[13] = BT->wantRows; o[14] = clearRaiseFrames;
+  o[98] = d.waitAll;   // the swap waits for the board to settle (front.c)
   double ew = INF;
   for (int i = 0; i < nPool; i++) {
     Cand *c = &POOL[i];
