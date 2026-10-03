@@ -1597,10 +1597,9 @@ static double quietSettle(const int32_t *base, int r, int c, const int32_t *afte
   return fell > 0 ? 11 + fell : 5;
 }
 static Dec waitForDrain(Dec d) {
-  // The time left is the drain bound once topped, and the death clock before:
-  // a queue that will top the board leaves no more time than the stop.
-  double k = BIN[IN_TOPPED] ? BIN[IN_DRAINBOUND] : DDEADLINE;
-  if (!(k < INF)) return d;
+  // Topped only: before the board tops, stayAlive keeps the time.
+  if (!BIN[IN_TOPPED]) return d;
+  double k = BIN[IN_DRAINBOUND];
   int32_t *base = DBASE;
   int nc = 0;
   Cand *picked = 0;
@@ -1638,7 +1637,7 @@ static Dec waitForDrain(Dec d) {
   if (!picked && endsInBreak(d.via)) return d;
 #define HOLDAT(r, c) mkHold(V_AWAITDRAIN, d.mode, d.alive, 1, r, c)
   if (pr && pr->total > 0 && !pr->broke && picked->moveFrames + 1 <= k) {
-    if (!BIN[IN_TOPPED] || picked->moveFrames + 2 > k || !steady(picked->sr, picked->sc)) return d;
+    if (picked->moveFrames + 2 > k || !steady(picked->sr, picked->sc)) return d;
     BT->counts[C_WAITEDFORDRAIN]++;
     return HOLDAT(picked->sr, picked->sc);
   }
