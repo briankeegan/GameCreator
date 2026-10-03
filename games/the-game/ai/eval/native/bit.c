@@ -1402,7 +1402,7 @@ static LOCAL double LMAX;
 static LOCAL int lazyBreak;
 static LOCAL double FPR, DEADLINE, LOCKP, OVERHEAD, SWAPP, HOLD, WORK, MAXSTOP, READYWORTH, PREPWORTH;
 static LOCAL int SPEND, LEAN, PREPARE, DIG, PRESS, Wd;
-static LOCAL int dropBudget, saveBudget, slabBudget, prepBudget;
+static LOCAL int dropBudget, saveBudget, slabBudget, prepBudget, readyBudget;
 static LOCAL int nAvoid; static LOCAL int32_t AVOID[2 * 40];
 // records the caller will not read (P[108]: 4 the fire-ready, 8 the slab-ready), never checked
 static LOCAL int recSkip;
@@ -1882,12 +1882,22 @@ static int prefetchPly(int nf, int ply) {
   }
   return 1;
 }
+// the slab-ready record's question, asked of at most readyBudget boards a
+// search, nearest first (each is a scan of every swap on the board)
+static int readyAsk(CK *e, const int32_t *st) {
+  if (e && e->slab >= 0) return e->slab;
+  if (readyBudget <= 0) return 0;
+  readyBudget--;
+  int v = slabReady(st);
+  if (e) e->slab = v;
+  return v;
+}
 static void expandAll(int depth, int cr, int cc) {
   expanding = 1;
   Shape BASE; shapeOf(BASEST, &BASE);
   uint32_t rm[WMAX];
   BASEDIG = DIG ? reachOf(BASEST, rm) : 0;
-  saveBudget = 192; slabBudget = 24; prepBudget = 24;
+  saveBudget = 192; slabBudget = 24; prepBudget = 24; readyBudget = 192;
   BASESAVE = (DIG && BASEDIG > 0 && !LEAN) ? savesOfRaw(BASEST) : 0;
   int nf = 1;
   FRONT[0].st = BASEST; FRONT[0].nchain = 0; FRONT[0].fr = cr; FRONT[0].fc = cc; FRONT[0].spent = 0;
@@ -2018,7 +2028,7 @@ static void expandAll(int depth, int cr, int cc) {
             if (!exact && (!haveRec[0] || hi > fv)) exact = 1;
             if (!exact && svNow > 0 && (!haveRec[1] || hi > v1[F_VALUE] || (hi == v1[F_VALUE] && cost < v1[F_FRAMES]))) exact = 1;
             if (!exact && !(recSkip & 4) && (!haveRec[2] || hi > v2[F_VALUE] || (hi == v2[F_VALUE] && cost < v2[F_FRAMES])) && (!e ? canFireOf(settled) : e->fire >= 0 ? e->fire : (e->fire = canFireOf(settled)))) exact = 1;
-            if (!exact && !(recSkip & 8) && (!haveRec[3] || hi > v3[F_VALUE] || (hi == v3[F_VALUE] && cost < v3[F_FRAMES])) && (!e ? slabReady(settled) : e->slab >= 0 ? e->slab : (e->slab = slabReady(settled)))) exact = 1;
+            if (!exact && !(recSkip & 8) && (!haveRec[3] || hi > v3[F_VALUE] || (hi == v3[F_VALUE] && cost < v3[F_FRAMES])) && readyAsk(e, settled)) exact = 1;
             if (!exact) {
               if (slabYes) slabBudget--;
               goto born;
@@ -2039,7 +2049,7 @@ static void expandAll(int depth, int cr, int cc) {
             takeRec(1, seq, nseq, cost, val, cost + nseq * OVERHEAD);
           if (!(recSkip & 4) && (!haveRec[2] || val > rd0[F_VALUE] || (val == rd0[F_VALUE] && cost < rd0[F_FRAMES])) && (!e ? canFireOf(settled) : e->fire >= 0 ? e->fire : (e->fire = canFireOf(settled))))
             takeRec(2, seq, nseq, cost, val, cost + nseq * OVERHEAD);
-          if (!(recSkip & 8) && (!haveRec[3] || val > tg0[F_VALUE] || (val == tg0[F_VALUE] && cost < tg0[F_FRAMES])) && (!e ? slabReady(settled) : e->slab >= 0 ? e->slab : (e->slab = slabReady(settled))))
+          if (!(recSkip & 8) && (!haveRec[3] || val > tg0[F_VALUE] || (val == tg0[F_VALUE] && cost < tg0[F_FRAMES])) && readyAsk(e, settled))
             takeRec(3, seq, nseq, cost, val, cost + nseq * OVERHEAD);
           if (take) {
             takeRec(0, seq, nseq, cost, val, dur);
