@@ -2436,7 +2436,7 @@ static Dec spendToBreak(Dec d) {
   if (!(v & LV_LIVES) || !(v & (LV_PAYS | LV_DROPS)) || (v & (LV_BREAKS | LV_GAINS))) return d;
   // over six rows of panels there is material to spare: a clear that leaves
   // less hollow under what lands is spent
-  if (!(v & LV_DROPS) && materialRows(DBASE) >= 6) return d;
+  if ((v & LV_FILLS) && !(v & LV_DROPS) && materialRows(DBASE) >= 6) return d;
   return mkHold(V_SETUP, d.mode, d.alive, 0, 0, 0);
 }
 // WHAT LANDS IS WHAT IT WILL BREAK. A slab rests on the tallest column under
@@ -2487,7 +2487,7 @@ static Dec fillFirst(Dec d) {
     if (pc->kind != K_SWAP || (pc->res.total > 0 && !surplus)) continue;
     int32_t sw[2] = { pc->sr, pc->sc };
     int v = lineJudge(sw, 1, 0);
-    if (!(v & LV_LIVES) || (v & LV_DROPS) || ((v & LV_PAYS) && !surplus)) continue;
+    if (!(v & LV_LIVES) || ((v & LV_DROPS) && !(v & LV_FILLS)) || ((v & LV_PAYS) && !surplus)) continue;
     if (LNO[10] < best || (pick && LNO[10] == best && pc->moveFrames < pick->moveFrames)) { best = LNO[10]; pick = pc; }
   }
   // the top of every column walked along its row, a column a swap, until it
@@ -2510,7 +2510,7 @@ static Dec fillFirst(Dec d) {
       }
       if (n == 0) continue;
       int v = lineJudge(fsw, n, 0);
-      if (!(v & LV_LIVES) || (v & (LV_PAYS | LV_DROPS))) continue;
+      if (!(v & LV_LIVES) || (v & LV_PAYS) || ((v & LV_DROPS) && !(v & LV_FILLS))) continue;
       double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
       if (LNO[10] < best || ((pick || first[0]) && LNO[10] == best && est < fest)) {
         best = LNO[10]; pick = 0; first[0] = fsw[0]; first[1] = fsw[1]; fest = est;
