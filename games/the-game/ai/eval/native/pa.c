@@ -911,7 +911,11 @@ static void runPhysics(Board *b) {
 }
 // Stack:run, past the countdown. b->input is the frame's keys; pressSwap
 // adds swap (tryQueueSwap); swapDenied says a swap pressed was not taken.
+// WORK: the search's cost in units of ~0.077 us natively, an engine frame four
+// (a resolve on the masks, bit.c, three); the bot's per-decision budget is counted in it.
+double paWork, paWorkEnd = 1e300, paEngFrames;   // paWorkEnd: where the decision's budget runs out
 static void run(Board *b) {
+  paWork += 4; paEngFrames++;
   if (b->gameOverClock > 0 && b->clock >= b->gameOverClock) return;
   if (b->inCountdown || !b->stopWatchIsRunning) { b->err |= ERR_STATE; return; }
   int pressed = b->pressSwap || (b->input & IN_SWAP);

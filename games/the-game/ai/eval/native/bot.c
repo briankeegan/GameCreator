@@ -1933,12 +1933,15 @@ static void disturbed(const int32_t *a, const int32_t *b, uint32_t *out) {
 }
 static uint32_t LSD[KEEPDEPTH + 1][WMAX];
 static double lsSettled[KEEPDEPTH + 1];
+// time mode: the searches only note the soonest break (tTimeMin), proposing nothing
+static int tTimeMode; static double tTimeMin;
 static void linesAt(int d, int pr, int pc, double t, double limit) {
   int n = legal(LS[d], LSW[d]);
-  for (int i = 0; i < n && nLines < MAXLINES; i++) {
+  for (int i = 0; i < n && (tTimeMode || nLines < MAXLINES); i++) {
     int r = LSW[d][2 * i], c = LSW[d][2 * i + 1];
     double at = t + travelCost(pr, pc, r, c);
     if (at > limit || r >= 40) continue;
+    if (tTimeMode && pfxT + at >= tTimeMin) continue;   // no sooner than the soonest found: it cannot be the answer
     if (d > 0 && at < lsSettled[d] && ((LSD[d][c] | LSD[d][c + 1]) & (1u << (r - 1)))) continue;
     if (d == 0 && ENGINE_BASE && !(ENGINE_CAN[c] & (1u << (r - 1)))) continue;
     if (d == 0 && ENGINE_WAITS) at = dmax(at, t + ENGINE_WAITS[r][c]);   // pressed once its panels settle
@@ -1954,7 +1957,8 @@ static void linesAt(int d, int pr, int pc, double t, double limit) {
       Rs mine = causedBy(summarise(LSR), &lsAlone);
       brk = mine.broke; cash = mine.total > 0 || mine.broke;
     } else { brk = LSR[R_SCOPE] == SC_BROKE; cash = cashes(LSR); }
-    if (brk || (!lsBreaks && cash)) {
+    if (tTimeMode && brk) { if (pfxT + at < tTimeMin) tTimeMin = pfxT + at; continue; }
+    if (!tTimeMode && (brk || (!lsBreaks && cash))) {
       LineC *l = &LINES[nLines++];
       l->n = nPfx + d + 1; l->brk = brk; l->est = pfxT + at; l->verdict = -1; l->grown = nPfx; l->waitAll = 0;
       for (int k = 0; k < 2 * nPfx; k++) l->sw[k] = pfx[k];
@@ -2052,7 +2056,6 @@ static int tWalk(int *row, int r, int s, int t, int32_t *sw, int *n) {
   return 1;
 }
 // tTimeMode: the search only measures -- the frames to the soonest break it finds.
-static int tTimeMode; static double tTimeMin;
 static void tPropose(const int32_t *sw, int n, int cr, int cc, double t0, double limit) {
   if (n < 1 || (!tTimeMode && nLines >= MAXLINES)) return;
   if (!tTimeMode)
@@ -2586,13 +2589,30 @@ static Dec fillBeforeBreak(Dec d) {
 // THE FRAMES TO A BREAK AFTER `steps`: the steps played on the engine as the
 // front plays them, then the soonest break the distance search finds on the
 // board they leave, walked from where the cursor is (INF: none).
+#define WORKBUDGET 55000
+static int btDecision, btAloneAt = -1; static double btAlone;
+static double breakTimeOf(const int32_t *steps, int n);
+// the board left alone is asked about several times a decision: once
 static double breakTime(const int32_t *steps, int n) {
+  if (n > 0) return breakTimeOf(steps, n);
+  if (btAloneAt != btDecision) { btAlone = breakTimeOf(0, 0); btAloneAt = btDecision; }
+  return btAlone;
+}
+static double breakTimeOf(const int32_t *steps, int n) {
   int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t w[32][WMAX];
   if (lineState(steps, n, st, can, w, cur, &t) != 0) return INF;
   // garbage still to drop: the break is made against it once it has landed
   if (!hasGarbage(st) && BIN[IN_INCOMING] > 0 && lineLandedFull(steps, n, st, can, w, cur, &t) != 0) return INF;
   tTimeMode = 1; tTimeMin = INF;
   targetLines(st, cur[0], cur[1], 0, INF);
+  // and the masks' lines, KEEPDEPTH deep, on the same board
+  { const int32_t *sb = ENGINE_BASE; uint8_t (*sw8)[WMAX] = ENGINE_WAITS; uint32_t sc[WMAX]; int snp = nPfx, stp = lsTopped, sbr = lsBreaks; double spt = pfxT;
+    for (int c = 0; c < WMAX; c++) sc[c] = ENGINE_CAN[c];
+    ENGINE_BASE = st; ENGINE_WAITS = w; for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = can[c];
+    nPfx = 0; pfxT = 0; lsTopped = BIN[IN_TOPPED] != 0; lsBreaks = 1;
+    linesFrom(st, cur[0], cur[1], KEEPDEPTH, INF);
+    ENGINE_BASE = sb; ENGINE_WAITS = sw8; for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = sc[c];
+    nPfx = snp; pfxT = spt; lsTopped = stp; lsBreaks = sbr; }
   tTimeMode = 0;
   return tTimeMin >= INF ? INF : t + tTimeMin;
 }
@@ -2770,6 +2790,13 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   HELDR = (int)BIN[IN_CROW]; HELDC = (int)BIN[IN_CCOL]; HELDDIR = (int)BIN[IN_HELD];
   botFailed = 0;
   clearRaiseFrames = 0;
+  // EVERY DECISION WITHIN ITS BUDGET: WORKBUDGET units of search (paWork: an
+  // engine frame four, a resolve three; ~0.077-0.15 us a unit natively), at most about 8 ms,
+  // so a frame with a decision in it fits in one frame at 60 a second with
+  // room for the browser. Past it, resolves and engine lines are refused and
+  // every search keeps what it found.
+  { extern double paWork, paWorkEnd; paWorkEnd = paWork + WORKBUDGET; }
+  btDecision++;
   memoRoom();
   nSettle = nLandR = nFireR = nSavesR = nAnyR = 0;
   nRes = 0; nOptRuns = 0; nOptDepth = 0; nScore = 0; nLook = 0; nSave = 0; rScore = rMain = rLook = rSave = rCand = 0;

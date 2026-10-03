@@ -509,6 +509,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
     fprintf(stderr, "  WAIT %d,%d to %d | first %d,%d last %d,%d\n", r, c, waitTo, LF->settle.first[r][c], LF->settle.first[r][c + 1], LF->settle.last[r][c], LF->settle.last[r][c + 1]); }
 #endif
   out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = b->ninc; out[8] = -1; out[9] = out[10] = out[11] = 0;
+  { extern double paWork, paWorkEnd; if (paWork >= paWorkEnd) return -1; }   // past the decision's budget: not played
   for (f = 0; f < horizon; f++) {
     int input = 0;
     // stopAtNext 2: on until the next slab has dropped and landed
@@ -623,7 +624,9 @@ static int fDecide(Front *F, FDec *out) {
   fPrepare(F);
   LF = F;
   BOTS[F->id].tab[T_OPT + O_PRESS] = 1;
-  if (bot_decide(F->id) != 0) return -1;
+  int rc = bot_decide(F->id);
+  { extern double paWorkEnd; paWorkEnd = 1e300; }   // the budget is the decision's
+  if (rc != 0) return -1;
   double *o = BOUT;
   out->kind = (int)o[0]; out->hasMove = o[1] != 0; out->mr = (int)o[2]; out->mc = (int)o[3];
   out->hasPark = o[4] != 0; out->pr = (int)o[5]; out->pc = (int)o[6]; out->via = (int)o[7]; out->waitAll = o[98] != 0;
@@ -640,7 +643,38 @@ static int fDecide(Front *F, FDec *out) {
 
 // One frame: the keys to press (the server's bits), the swap queued on the
 // board itself as the walk arrives. -1: the bot failed.
+static int frontFrame(int fid, Board *b);
+// EVERY FRAME INSIDE ITS BUDGET: the game runs at 60 frames a second, so the
+// bot's work on one frame may take no longer than one frame (GC_FRAME_MS
+// overrides, in ms). Over it, the frame fails and the game stops: slow is
+// an error, never a result. Native only; the browser has its own clock.
+#ifndef __wasm__
+struct gcTs { long s, ns; };
+extern int clock_gettime(int, struct gcTs *);
+extern char *getenv(const char *);
+extern double atof(const char *);
+static double frameBudgetMs = -1;
+static double nowMs(void) { struct gcTs t; clock_gettime(1, &t); return t.s * 1e3 + t.ns / 1e6; }
+#endif
 EXPORT(front_frame) int front_frame(int fid, Board *b) {
+#ifndef __wasm__
+  if (frameBudgetMs < 0) frameBudgetMs = getenv("GC_FRAME_MS") ? atof(getenv("GC_FRAME_MS")) : 1000.0 / 60;
+  extern double paWork, paEngFrames;
+  double t0 = nowMs(), w0 = paWork, e0 = paEngFrames;
+  int bits = frontFrame(fid, b);
+  double took = nowMs() - t0;
+  if (getenv("GC_WORKSTAT") && paWork > w0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "WORK %d %.0f %.3f %.0f\n", b->clock, paWork - w0, took, paEngFrames - e0); }
+  if (bits >= 0 && frameBudgetMs > 0 && took > frameBudgetMs) {
+    extern int fprintf(void *, const char *, ...); extern void *stderr;
+    fprintf(stderr, "front: a frame took %.1f ms (work %.0f), over the %.1f ms budget (clock %d)\n", took, paWork - w0, frameBudgetMs, b->clock);
+    return -1;
+  }
+  return bits;
+#else
+  return frontFrame(fid, b);
+#endif
+}
+static int frontFrame(int fid, Board *b) {
   Front *F = &FRONTS[fid];
   FB = b;
   F->lastKind = -1;

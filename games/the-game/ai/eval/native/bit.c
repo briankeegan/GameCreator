@@ -185,7 +185,12 @@ static uint32_t heldAt(int c) { uint32_t h = 0; for (int i = 0; i < nHolds; i++)
 static int nextRelease(void) { int u = NEVER; for (int i = 0; i < nHolds; i++) if (HOLDS[i].until < u) u = HOLDS[i].until; return u; }
 static int resolveT(const int32_t *st, int32_t *r, int wantSettled, const Timed *tm);
 static void resolveM(const int32_t *st, int32_t *r, int wantSettled);
-static void resolve(const int32_t *st, int32_t *r, int wantSettled) { resolveM(st, r, wantSettled); }
+extern double paWork, paWorkEnd;
+// past the decision's budget a resolve is refused: what it would find is not looked for
+static void resolve(const int32_t *st, int32_t *r, int wantSettled) {
+  if (paWork >= paWorkEnd) { for (int k = 0; k < R_INTS; k++) r[k] = 0; r[R_SCOPE] = SC_REFUSED; return; }
+  paWork += 3; resolveM(st, r, wantSettled);
+}
 static LOCAL int tmFailed = 0;
 static void pushHold(const uint32_t *m, int until, int swap) {
   if (nHolds >= MAXHOLD) { tmFailed = 1; return; }
