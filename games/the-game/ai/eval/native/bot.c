@@ -2558,6 +2558,9 @@ static Dec fillFirst(Dec d) {
   if (lineLast == 1 || lineLast == 3) return BT->lineKind == LINE_BREAK || lineLast == 3 ? fillBeforeBreak(d) : d;
   if (lineLast) return d;
   if (d.kind == K_SWAP && endsInBreak(d.via)) return d;
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; aloneOnEngine(); fprintf(stderr, "FILL? alone hollow %d last %d via %d\n", LNA[10], lineLast, d.via); }
+#endif
   if (!aloneOnEngine() || LNA[10] == 0) return d;
   int best = LNA[10];
   if (d.kind == K_SWAP && d.hasMove) {
@@ -2601,6 +2604,9 @@ static Dec fillFirst(Dec d) {
       }
     }
   }
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "FILL! best %d walk %d,%d pool %d,%d\n", best, first[0], first[1], pick ? pick->sr : 0, pick ? pick->sc : 0); }
+#endif
   if (first[0]) return mkSwap(first[0], first[1], V_FILL, d.mode, d.alive);
   if (!pick) return d;
   return mkSwap(pick->sr, pick->sc, V_FILL, d.mode, d.alive);
