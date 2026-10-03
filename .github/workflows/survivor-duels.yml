@@ -101,6 +101,9 @@ jobs:
           grep '^RESULT' duel.log >> "$GITHUB_STEP_SUMMARY" || echo "no result: the game did not finish" >> "$GITHUB_STEP_SUMMARY"
           grep 'match over' survivor.log >> "$GITHUB_STEP_SUMMARY" || true
           grep 'match over' survivor2.log >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          # the same lines as annotations, which the API serves (check-runs/<id>/annotations)
+          grep -h '^RESULT' duel.log | sed 's/^/::notice title=duel::/' || true
+          grep -h 'match over' survivor.log | sed 's/^/::notice title=survivor::/' || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
