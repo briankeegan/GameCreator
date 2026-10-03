@@ -393,6 +393,7 @@ static void newRow(Board *b) {
     for (c = 1; c <= W; c++) { Panel *p = createPanelAt(b, top, c); p->f[COLOR] = UNSEEN_COLOUR(30, k, c); p->f[STATE] = DIMMED; }
   }
   b->nrows = top + 1;
+  b->sRows++;
   // switched down a row at a time, top to bottom, right to left: the new row
   // ends up at 0 and every other row one higher
   for (r = top; r >= 1; r--)
@@ -1181,6 +1182,26 @@ EXPORT(nb_drain_in) int nb_drain_in(Board *b, int most) {
     if (DRB->health < h || DRB->gameOverClock > 0) return k;
   }
   return most;
+}
+// THE BOARD RAISED: on a copy of the board, raise held until the row is in
+// (as soon as the lock allows), then the board left alone, to `horizon`
+// frames. The frame it first loses health (0: never), or -1 if the raise does
+// not happen first. nb_drain_in is the same board not raised.
+static Board *RLB;
+EXPORT(nb_raise_death) int nb_raise_death(Board *b, int horizon) {
+  if (!RLB) RLB = nb_new();
+  copyBoard(RLB, b);
+  RLB->noQuiet = 1; RLB->quiet = 0;
+  int32_t h = RLB->health, raised = 0;
+  RLB->sRows = 0;
+  for (int k = 1; k <= horizon; k++) {
+    RLB->input = !raised ? IN_RAISE : 0; RLB->pressSwap = 0;
+    run(RLB);
+    if (RLB->err) return -1;
+    if (RLB->health < h || RLB->gameOverClock > 0) return raised ? k : -1;
+    if (RLB->sRows > 0) raised = 1;
+  }
+  return raised ? 0 : -1;
 }
 // The shake a slab of `count` cells lands with (dropGarbage).
 EXPORT(nb_shake_frames) int nb_shake_frames(int count) { return count <= 0 ? 0 : count > 24 ? 76 : SHAKE_FRAMES[count - 1]; }
