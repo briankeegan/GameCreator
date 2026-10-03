@@ -1499,7 +1499,7 @@
     var rows = st.panels, R = rows.length, buf = new Int32Array(R * 6 * NF), meta = {}, k, i = 0;
     for (k in st) {
       if (!Object.prototype.hasOwnProperty.call(st, k) || typeof st[k] === 'function') continue;
-      if (k === 'panels' || k === 'levelData' || k === 'frames') continue;
+      if (k === 'panels' || k === 'levelData' || k === 'frames' || k === 'paStack') continue;
       meta[k] = st[k];
     }
     for (var r = 0; r < R; r++) {
@@ -2204,7 +2204,9 @@
         b = JSON.stringify([r.hold, r.arrivals, r.pos, r.carry, r.b.grid, r.b.key, r.b.legalSwaps(), r.fresh]);
     return a === b ? null : 'node: ' + a.slice(0, 400) + ' vs ' + b.slice(0, 400);
   }
-  PuyoCpu.prototype._engineAdvanceOn = function (st, node, kind, m, frames) {
+  // `plain`: the node is only the board, the frame, the raise in hand and the
+  // garbage on its way (a prediction on the server's rules, _paRoot).
+  PuyoCpu.prototype._engineAdvanceOn = function (st, node, kind, m, frames, plain) {
     var bot = { stack: st, cursorMoveFrames: this.cursorMoveFrames, _walk: null, cooldown: 0, _lastSwap: null,
                 _beginWalk: PanelCpu.beginWalk, _driveWalk: PanelCpu.driveWalk,
                 _nearestSwappable: PanelCpu.nearestSwappable,
@@ -2222,19 +2224,22 @@
     } else if (kind === 'hold') {
       bot.cooldown = this.reaction;
     }
-    return this._runFrom(st, bot, arr, 0, input, node, kind, frames);
+    return this._runFrom(st, bot, arr, 0, input, node, kind, frames, plain);
   };
   function copyArrival(a) { return { at: a.at, width: a.width, height: a.height, isChain: a.isChain }; }
   // The step from frame f on: `input` is that frame's, already driven.
-  PuyoCpu.prototype._runFrom = function (st, bot, arr, f, input, node, kind, frames) {
+  PuyoCpu.prototype._runFrom = function (st, bot, arr, f, input, node, kind, frames, plain) {
     function runFrame(input) {
       st.setInput(input);
       st.run();
       st.events.length = 0;
       f++;
       for (var i = 0; i < arr.length; ) {
-        if (arr[i].at <= f) { st.incoming.push({ width: arr[i].width, height: arr[i].height, isChain: arr[i].isChain }); arr.splice(i, 1); }
-        else i++;
+        if (arr[i].at <= f) {
+          var g = { width: arr[i].width, height: arr[i].height, isChain: arr[i].isChain };
+          if (plain) st.receiveGarbage([g]); else st.incoming.push(g);
+          arr.splice(i, 1);
+        } else i++;
       }
       return st.gameOver;
     }
@@ -2258,6 +2263,7 @@
       if (runFrame(input)) return { dead: true, t: node.t + f };
     }
     arr.forEach(function (a) { a.at -= f; });
+    if (plain) return { st: st, t: node.t + f, hold: { left: bot.raiseFrames, started: bot._raiseStarted }, arrivals: arr, fresh: false };
     return this._engineNode(st, node.t + f, { left: bot.raiseFrames, started: bot._raiseStarted }, arr, false);
   };
 
@@ -4504,6 +4510,37 @@
   // the colours the bot deciding on that frame would see. (The search itself
   // still cannot see past the board it is given.) Such a point is exact, and
   // an answer made on it is played only if the board matches it exactly.
+  // ON THE SERVER'S RULES. A bot whose stack is a view of a pa-engine.js board
+  // (PAEngine.view: stack.paStack) predicts on a copy of that board, which
+  // keeps the server's generator: every point is exact, and is the view of
+  // the board predicted, as the bot will read it on that frame.
+  function PAE() {
+    var g = typeof window !== 'undefined' ? window : globalThis;
+    return g.PAEngine || (typeof require === 'function' ? require('../../pa-engine.js') : null);
+  }
+  PuyoCpu.prototype._paRoot = function () {
+    var pa = this.stack && this.stack.paStack;
+    if (!pa) return null;
+    // the view refuses a swap the board cannot make (PAEngine.view), so the copy does
+    var st = pa.copy(), press = st.tryQueueSwap;
+    st.tryQueueSwap = function (row, col) { return this.canSwap(row, col) && press.call(this, row, col); };
+    return { st: st, t: 0, hold: { left: this.raiseFrames || 0, started: !!this._raiseStarted },
+             arrivals: this._inFlight().map(copyArrival), fresh: true };
+  };
+  PuyoCpu.prototype._paStep = function (n, kind, m, frames) {
+    if (!n || n.dead) return n;
+    return this._engineAdvanceOn(n.st, n, kind, m, frames, true);
+  };
+  function paPointOf(n) {
+    if (!n || n.dead || n.st.gameOver) return null;
+    var PE = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
+    var st = n.st.copy(), h = { raiseFrames: n.hold.left, _raiseStarted: n.hold.started }, input = {};
+    var v = PAE().view(st, PE);
+    raiseStep(h, v, input);
+    v.setInput(input);
+    return exact({ at: v.clock, enc: encodeStack(v), raiseFrames: h.raiseFrames, raiseStarted: h._raiseStarted,
+                   arrivals: n.arrivals.map(copyArrival) });
+  }
   PuyoCpu.prototype._seenRoot = function () {
     var root = this._engineRoot(), rng = this.stack.rng, PE = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
     if (!rng || rng.a === undefined) return null;
@@ -4516,6 +4553,8 @@
   function stepKind(step) { return Array.isArray(step) ? 'swap' : step === 'raise' ? 'raise' : 'hold'; }
   function exact(pt) { if (pt) pt.exact = true; return pt; }
   PuyoCpu.prototype._pointAfter = function (d) {
+    var pr = this._paRoot();
+    if (pr) return paPointOf(this._paStep(pr, d.kind, d.kind === 'swap' ? d.move : null, 0));
     var root = this._seenRoot();
     if (root) return exact(pointOf(this._engineAdvanceOn(root.st, root, d.kind, d.kind === 'swap' ? d.move : null, 0)));
     return pointOf(this._engineAdvance(this._engineRoot(), d.kind, d.kind === 'swap' ? d.move : null, 0));
@@ -4525,6 +4564,8 @@
       return exact({ at: this.stack.clock, enc: encodeStack(this.stack), raiseFrames: this.raiseFrames || 0,
                      raiseStarted: !!this._raiseStarted, arrivals: this._inFlight() });
     }
+    var pr = this._paRoot();
+    if (pr) return paPointOf(this._paStep(pr, 'long', null, frames));
     var root = this._seenRoot();
     if (root) return exact(pointOf(this._engineAdvanceOn(root.st, root, 'long', null, frames)));
     return pointOf(this._engineAdvance(this._engineRoot(), 'long', null, frames));
@@ -4582,20 +4623,23 @@
   // the plan goes on past it, to be played if that answer is not. Null when
   // d itself leads nowhere.
   PuyoCpu.prototype._replayPlan = function (d, pl, now, until) {
-    var n = this._seenRoot(), out = [], i = 0, pt, ask = null;
+    var pa = this._paRoot(), n = pa || this._seenRoot(), out = [], i = 0, pt, ask = null, self = this;
     if (!n || !d) return null;
-    n = this._engineAdvanceOn(n.st, n, d.kind, d.kind === 'swap' ? d.move : null, 0);
+    var point = pa ? paPointOf : function (x) { return exact(pointOf(x)); };
+    var step = pa ? function (x, k, m) { return self._paStep(x, k, m, 0); }
+                  : function (x, k, m) { return self._engineAdvanceOn(x.st, x, k, m, 0); };
+    n = step(n, d.kind, d.kind === 'swap' ? d.move : null);
     while (i < pl.length && pl[i].at <= now) i++;
     for (; n && !n.dead && i < pl.length; i++) {
-      pt = exact(pointOf(n));
+      pt = point(n);
       if (!pt) break;
       pt.step = pl[i].step;
       out.push(pt);
       if (!ask && pt.at >= until) ask = pt;
       // On the board itself: a copy would lose the game's generator.
-      n = this._engineAdvanceOn(n.st, n, stepKind(pt.step), Array.isArray(pt.step) ? pt.step : null, 0);
+      n = step(n, stepKind(pt.step), Array.isArray(pt.step) ? pt.step : null);
     }
-    if (!ask && n && !n.dead) ask = exact(pointOf(n));
+    if (!ask && n && !n.dead) ask = point(n);
     if (!ask) ask = out[out.length - 1];
     if (!ask) return null;
     var q = {}, k;

@@ -10,7 +10,7 @@ var wt = require('worker_threads'), path = require('path'), fs = require('fs');
 var DIR = __dirname;
 require(path.join(DIR, '..', '..', 'panel-engine.js'));
 require(path.join(DIR, '..', '..', 'panel-cpu.js'));
-var P = require(path.join(DIR, 'puyocpu.js')), PA = require(path.join(DIR, 'pa-engine.js')), PE = globalThis.PanelEngine;
+var P = require(path.join(DIR, 'puyocpu.js')), PA = require(path.join(DIR, '..', '..', 'pa-engine.js')), PE = globalThis.PanelEngine;
 var SH = require(path.join(DIR, 'survivor_shared.js'));
 var cfg = wt.workerData, OPTS = SH.botOptions(cfg.profile, cfg.threads);
 var rates = [], SPEND = Number(process.env.GC_SURVIVOR_SPEND) || 0.6;   // budget searched per millisecond over the last decisions, and the share of the time there is spent searching

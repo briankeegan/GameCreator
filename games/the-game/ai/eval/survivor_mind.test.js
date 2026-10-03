@@ -9,7 +9,7 @@
 // starting on it -- a queue of stopped questions each thought through in full
 // leaves the board unplayed for seconds -- and answer the next one in full.
 var path = require('path'), fs = require('fs'), assert = require('assert'), wt = require('worker_threads');
-var DIR = __dirname, PA = require(path.join(DIR, 'pa-engine.js')), SH = require(path.join(DIR, 'survivor_shared.js'));
+var DIR = __dirname, PA = require(path.join(DIR, '..', '..', 'pa-engine.js')), SH = require(path.join(DIR, 'survivor_shared.js'));
 var lines = require('zlib').gunzipSync(fs.readFileSync(path.join(DIR, 'pa.record.jsonl.gz'))).toString('utf8').trim().split('\n');
 var board = null, level = null;
 for (var i = 0; i < lines.length && !board; i++) {

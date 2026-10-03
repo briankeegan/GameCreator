@@ -4,7 +4,7 @@ require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
 var BitBot = require(path.join(__dirname, process.env.GC_BOT || 'bitbot.js'));
 var bench = require(path.join(__dirname, 'bench.js'));
-var PA = require(path.join(__dirname, 'pa-engine.js')), GEN = require(path.join(__dirname, 'pa-generator.js'));
+var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js')), GEN = require(path.join(__dirname, '..', '..', 'pa-generator.js'));
 var E = globalThis.PanelEngine;
 
 var name = process.argv[2], seed = Number(process.argv[3] || 1), sc = bench.SCENARIOS[name];

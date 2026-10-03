@@ -2,7 +2,7 @@
 // Two modes: CUTSCENE (tap-through intro) then WALK-AROUND (classic top-down
 // room; move with arrows/touch d-pad, walk up to an NPC, press interact to
 // talk). Talking to a duellist opens the DUEL: a full Panel Attack match on a
-// real board (duel.js + panel-engine.js, ported from the Lua reference).
+// real board (duel.js + pa-engine.js, the panel-game server's engine).
 // Everything has a canvas-drawn fallback so the game is fully playable with
 // zero generated art.
 (function () {

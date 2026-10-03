@@ -31,7 +31,7 @@ require(path.join(ROOT, 'panel-cpu.js'));
 var LogicalBoard = globalThis.PanelCpu.LogicalBoard;
 var EB = require('./engineboard.js');
 var BF = require('./bitframes.js');
-var PA = require('./pa-engine.js');
+var PA = require('../../pa-engine.js');
 var bit = require('./bitmatch.js');
 var W = 6, H = 12;
 

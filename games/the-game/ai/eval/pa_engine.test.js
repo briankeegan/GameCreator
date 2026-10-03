@@ -12,7 +12,7 @@
 // stack and of every panel is compared with the Lua's. The first difference
 // fails with the frame, the field and both values.
 var fs = require('fs'), path = require('path'), cp = require('child_process');
-var PA = require(path.join(__dirname, 'pa-engine.js')), GEN = require(path.join(__dirname, 'pa-generator.js'));
+var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js')), GEN = require(path.join(__dirname, '..', '..', 'pa-generator.js'));
 
 // Each source is a stream of record lines: a file, or panel-game's recorder
 // run as a child process (records are too big to keep: ~20KB a frame).

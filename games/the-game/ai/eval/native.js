@@ -113,7 +113,7 @@
   // native/pa.c, the panel-game server's engine (pa-engine.js), under the same
   // wire: its own panel fields, and a head whose names are pa-engine.js's own
   // property paths (NaN for Lua nil).
-  function PA() { return G0.PAEngine || (typeof require === 'function' ? require('./pa-engine.js') : null); }
+  function PA() { return G0.PAEngine || (typeof require === 'function' ? require('../../pa-engine.js') : null); }
   var PA_FIELDS = [
     ['row', 'int'], ['col', 'int'], ['id', 'int'], ['color', 'int'], ['chaining', 'nbool'], ['matching', 'nbool'], ['timer', 'int'],
     ['initialTime', 'nint'], ['popTime', 'nint'], ['popIndex', 'nint'], ['xOffset', 'nint'], ['yOffset', 'nint'], ['gWidth', 'nint'],

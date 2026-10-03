@@ -11,7 +11,7 @@
 // what a settle did. Then a second batch from the first's nodes, as the break
 // search plays them.
 var fs = require('fs'), path = require('path'), assert = require('assert');
-var DIR = __dirname, PA = require(path.join(DIR, 'pa-engine.js')), N = require(path.join(DIR, 'native.js')).server, SH = require(path.join(DIR, 'survivor_shared.js'));
+var DIR = __dirname, PA = require(path.join(DIR, '..', '..', 'pa-engine.js')), N = require(path.join(DIR, 'native.js')).server, SH = require(path.join(DIR, 'survivor_shared.js'));
 var MAX = Number(process.argv[2] || 40);
 var lines = require('zlib').gunzipSync(fs.readFileSync(path.join(DIR, 'pa.record.jsonl.gz'))).toString('utf8').trim().split('\n');
 var boards = [], level = null, n = 0;

@@ -53,8 +53,8 @@
         </div>
       </div>
 
-      <!-- DUEL: the real Panel Attack board (duel.js drives it, panel-engine.js
-           is the ported rules engine). Canvas sizes itself to this box, so it
+      <!-- DUEL: the real Panel Attack board (duel.js drives it, pa-engine.js
+           is the panel-game server's engine). Canvas sizes itself to this box, so it
            works in both the wide desktop stage and the tall phone one. -->
       <div class="duel-screen" id="duelScreen" hidden>
         <canvas id="duelCanvas"></canvas>
@@ -268,6 +268,10 @@
        it on first use, so it only has to be on the page before either runs —
        but it must BE on the page, or the first cascade throws. -->
   <script src="panel-rules.js"></script>
+  <!-- The rules: the panel-game server's engine, and its row generator. -->
+  <script src="pa-generator.js"></script>
+  <script src="pa-engine.js"></script>
+  <!-- The bot reads the board as panel-engine.js holds it (PAEngine.view). -->
   <script src="panel-engine.js"></script>
   <script src="panel-cpu.js"></script>
   <!-- THE TRAINED BOT, for the nightmare tier only (see duel.js makeCpu).

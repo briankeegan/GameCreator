@@ -19,7 +19,7 @@ var path = require('path');
 require('../../panel-engine.js'); require('../../panel-cpu.js');
 var BitBot = require('./bitbot.js'), bench = require('./bench.js'), bit = require('./bitmatch.js');
 var native = require('./bitnative.js');
-var PA = require('./pa-engine.js'), GEN = require('./pa-generator.js'), E = globalThis.PanelEngine;
+var PA = require('../../pa-engine.js'), GEN = require('../../pa-generator.js'), E = globalThis.PanelEngine;
 
 var SEED = 3, FRAMES = 5000, EVERY = 7, MISS_BUDGET = 1, MIN_BOARDS = 150;
 

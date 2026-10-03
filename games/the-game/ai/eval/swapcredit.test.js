@@ -18,7 +18,7 @@
 // was before causedBy, the same swaps give hundreds of false clears.
 require('../../panel-engine.js'); require('../../panel-cpu.js');
 var BitBot = require('./bitbot.js'), bench = require('./bench.js');
-var PA = require('./pa-engine.js'), GEN = require('./pa-generator.js'), E = globalThis.PanelEngine;
+var PA = require('../../pa-engine.js'), GEN = require('../../pa-generator.js'), E = globalThis.PanelEngine;
 
 var SEED = 13, FROM = 300, TO = 2500, EVERY = 29, FALSE_BUDGET = 2, MISS_BUDGET = 5, MIN_SWAPS = 800;
 
