@@ -3056,10 +3056,10 @@ static double breakTimeOf(const int32_t *steps, int n, double limit) {
 // in time, stands; a lone option that does is taken; of several, the soonest.
 // If none does, the time bought is time for a break: the option whose break
 // comes nearest to fitting inside its time.
-// each swap's soonest break, unbounded, one task a swap: the in-time
-// phase reads it against the horizon, the margin phase as it is
+// each swap's soonest break before bsLim, one task a swap
 static const int32_t *bsPl; static double *bsB0;
-static void bsTask(int k) { bsB0[k] = breakTime(bsPl + 2 * k, 1); }
+static double bsLim;
+static void bsTask(int k) { bsB0[k] = breakWithinT(bsPl + 2 * k, 1, bsLim); }
 #define SOONBATCH 8   // swaps taken together, out from the cursor
 static Dec breakSoon(Dec d) {
   if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;
@@ -3082,22 +3082,20 @@ static Dec breakSoon(Dec d) {
   Best inTime = { 0 }, margin = { 0 };
   int32_t pl[2 * MAXCAND]; int pn = 0, q;
   for (int k = 0; k < nPool && pn < MAXCAND; k++) if (POOL[k].kind == K_SWAP) { pl[2 * pn] = POOL[k].sr; pl[2 * pn + 1] = POOL[k].sc; pn++; }
-  Out o; double far;
-  // first, a break in time: each swap's search bounded by its own time and by
-  // the soonest found (a tie still counts: it may win by its swaps)
-  // each swap's soonest break within the horizon (a swap's time is no later):
-  // one with none is never in time and is not judged; those with one are
-  // judged together (prejudge), then taken as one by one
+  Out o;
   // OUT FROM THE CURSOR IN BATCHES: each batch's replays, break searches and
-  // judgements done together (in parallel natively), then taken one by one; a
-  // swap's break comes no sooner than the walk to it, so once the soonest in
-  // time is had, a batch all further out cannot win and the walk ends
+  // judgements done together (in parallel natively), then taken one by one.
+  // In time: the soonest break (a tie still counts: it may win by its swaps);
+  // a swap's break comes no sooner than the walk to it, so once the soonest in
+  // time is had, a batch all further out cannot win and the walk ends. Until
+  // one is, the margin is kept in the same order: a swap's time is within the
+  // horizon, so a break later than the horizon less the best margin cannot
+  // reach it, and no batch searches past that.
   double b0[MAXCAND];
   for (int k = 0; k < pn; k++) b0[k] = INF;
   int ordq[MAXCAND]; double ordf[MAXCAND], far0 = 0;
   outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
   int no = 0; while (outNext(&o, &q, &far0)) { ordq[no] = q; ordf[no] = far0; no++; }
-  double bs0 = NOWMS2(), bsr = bs0, bs1 = bs0, bs2 = bs0;
   int done = 0;
   for (int at = 0; at < no && !done; at += SOONBATCH) {
     int end = at + SOONBATCH < no ? at + SOONBATCH : no;
@@ -3105,8 +3103,9 @@ static Dec breakSoon(Dec d) {
     int32_t bl[2 * SOONBATCH], wb[2 * SOONBATCH]; int nb = 0, nwb = 0, bq[SOONBATCH];
     for (int k = at; k < end; k++) { bq[nb] = ordq[k]; bl[2 * nb] = pl[2 * ordq[k]]; bl[2 * nb + 1] = pl[2 * ordq[k] + 1]; nb++; }
     double tb[SOONBATCH];
+    bsLim = inTime.has ? -inTime.score + 1e-9 : margin.has ? LINEHORIZON - margin.score + 1e-9 : INF;
     prereplay(bl, nb); bsPl = bl; bsB0 = tb; parallelDo(nb, bsTask);
-    for (int k = 0; k < nb; k++) { b0[bq[k]] = tb[k]; if (tb[k] < LINEHORIZON) { wb[2 * nwb] = bl[2 * k]; wb[2 * nwb + 1] = bl[2 * k + 1]; nwb++; } }
+    for (int k = 0; k < nb; k++) { b0[bq[k]] = tb[k]; if (tb[k] < INF) { wb[2 * nwb] = bl[2 * k]; wb[2 * nwb + 1] = bl[2 * k + 1]; nwb++; } }
     prejudge(wb, 2, nwb, 1, 0);
     for (int k = at; k < end; k++) {
       q = ordq[k]; double far = ordf[k];
@@ -3121,19 +3120,13 @@ static Dec breakSoon(Dec d) {
       double b = b0[q] < lim ? b0[q] : INF;
       if (b < time) bestTake(&inTime, -b, 0, sw, 1);
     }
-  }
-#ifndef __wasm__
-  if (getenv("GC_WORKSTAT")) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SOONT prereplay %.2f breaks %.2f judge %.2f loop %.2f\n", bsr - bs0, bs1 - bsr, bs2 - bs1, NOWMS2() - bs2); btReplayMs = btSearchMs = 0; }
-#endif
-  double bm0 = NOWMS2(); int mjN = 0;
-  // none in time: the margin, which only then decides
-  if (!inTime.has) {
-    outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
-    while (outNext(&o, &q, &far)) {
+    if (inTime.has) continue;
+    // none in time yet: the margin, which only then decides
+    for (int k = at; k < end; k++) {
+      q = ordq[k]; double far = ordf[k];
       int32_t sw[2] = { pl[2 * q], pl[2 * q + 1] };
-      // no break at all: nothing to take, and not judged
+      // no break within the bound: nothing to take, and not judged
       if (b0[q] >= INF) continue;
-      mjN++;
       if (!(lineJudge(sw, 1, 0) & LV_LIVES)) continue;
       double time = LNO[0] ? LNO[0] : LINEHORIZON;
       // its break comes no sooner than the walk to it
@@ -3143,9 +3136,7 @@ static Dec breakSoon(Dec d) {
       if (b < INF) bestTake(&margin, time - b, 0, sw, 1);
     }
   }
-#ifndef __wasm__
-  if (getenv("GC_WORKSTAT")) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SOONM margin %.2f ms | judged %d | alone %g break %g | best %g\n", NOWMS2() - bm0, mjN, aloneTime, breakTime(0, 0), margin.has ? margin.score : -1e9); }
-#endif
+  if (inTime.has) margin.has = 0;
   int pr = inTime.has ? inTime.sw[0] : 0, pc = inTime.has ? inTime.sw[1] : 0, mr = margin.has ? margin.sw[0] : 0, mc = margin.has ? margin.sw[1] : 0;
   double best = inTime.has ? -inTime.score : INF, bestMargin = margin.has ? margin.score : -INF;
 #ifndef __wasm__
