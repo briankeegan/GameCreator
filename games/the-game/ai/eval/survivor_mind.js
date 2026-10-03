@@ -100,6 +100,9 @@ wt.parentPort.on('message', function (m) {
   function stale() { return !!cfg.abort && Atomics.load(cfg.abort, 0) >= m.id; }
   if (stale()) { wt.parentPort.postMessage({ id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: 0 }); return; }
   var t0 = Date.now(), board = PA.revive(m.board), arrivals = [], out;
+  // When the answer is due: m.ms from when it was asked (m.posted), so the
+  // time a question waited behind the one before counts.
+  var due = m.ms > 0 ? (m.posted || t0) + m.ms : 0;
   // Garbage on its way arrives that many frames on (search.h runFrame).
   arrivals = SH.arrivalsFrom(board, m.arrivals || []);
   var th = SH.threat(cfg.profile, m.lead || 0);
@@ -138,7 +141,7 @@ wt.parentPort.on('message', function (m) {
       if (!BS) BS = new (require(path.join(DIR, 'native.js')).server.Search)({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames, threads: OPTS.threads || 1 });
       var tb = Date.now();
       br = SH.breakMoves(BS, board, { left: m.hold.left, started: m.hold.started }, arrivals, cfg.profile.breakDepth, cfg.profile.lineup && SH.popLeft(board) ? SH.popLeft(board) + LINEUP_AFTER : 0,
-                         Date.now() + (m.ms > 0 ? Math.max(LINEUP_MIN_MS, m.ms * LINEUP_SHARE) : LINEUP_MAX_MS));
+                         due ? Math.min(Date.now() + Math.max(LINEUP_MIN_MS, m.ms * LINEUP_SHARE), due - DEADLINE_MARGIN_MS) : Date.now() + LINEUP_MAX_MS);
       brMs = Date.now() - tb;
       if (stale()) throw P.ABORTED;
       want = br.depth ? br.moves : {};
@@ -185,13 +188,13 @@ wt.parentPort.on('message', function (m) {
     // _CHEAP and _SPEND override the most, the least and the share.
     var nodesPerMs = rates.length ? Math.min.apply(null, rates) : 30;
     var FULL = Number(process.env.GC_SURVIVOR_FULL) || P.prototype.SURVIVE_SEARCH_BUDGET, CHEAP = Number(process.env.GC_SURVIVOR_CHEAP) || P.prototype.SURVIVE_SEARCH_BUDGET_CHEAP;
-    bot.SURVIVE_SEARCH_BUDGET = m.ms > 0 ? Math.max(CHEAP, Math.min(FULL, Math.round(m.ms * nodesPerMs * SPEND))) : FULL;
+    bot.SURVIVE_SEARCH_BUDGET = due ? Math.max(CHEAP, Math.min(FULL, Math.round((due - Date.now()) * nodesPerMs * SPEND))) : FULL;
     // The frame loop stops a question it no longer needs (stale). A search
     // still running DEADLINE_MARGIN_MS before the answer is due ends there
     // with what it has proven, as if its budget had run out.
     bot._abort = cfg.abort ? stale : null;
     var N = require(path.join(DIR, 'native.js')).server;
-    if (m.ms > 0) N.deadline(t0 + m.ms - DEADLINE_MARGIN_MS);
+    if (due) N.deadline(due - DEADLINE_MARGIN_MS);
     var d;
     var t1 = Date.now();
     bot._svMs = 0;
@@ -223,7 +226,7 @@ wt.parentPort.on('message', function (m) {
     // line, from wherever the first ends.
     var lineFree = false;
     if (br && br.path && d.kind === 'swap' && d.move && br.path[0][0] === d.move[0] && br.path[0][1] === d.move[1] && br.path.length > 1) { line = br.path.slice(1); lineFree = true; }
-    out = { id: m.id, epoch: m.epoch, at: m.at, kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, ms: Date.now() - t0, brMs: brMs, why: why,
+    out = { id: m.id, epoch: m.epoch, at: m.at, kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, ms: Date.now() - t0, queued: m.posted ? t0 - m.posted : 0, brMs: brMs, why: why,
           line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
           mem: NativeMem(),
           breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,

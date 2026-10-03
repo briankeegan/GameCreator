@@ -226,7 +226,7 @@ Match.prototype.ask = function (at, board, hold, pend) {
                       board: require('v8').serialize(board).toString('base64') });
     if (this.asked.length > 40 * KEEP) this.asked.shift();
   }
-  mind.postMessage({ id: pending.id, epoch: this.epoch, at: at, lead: at - this.now, ms: SYNC ? 0 : (at - this.now) * this.msPerFrame,
+  mind.postMessage({ id: pending.id, epoch: this.epoch, at: at, lead: at - this.now, ms: SYNC ? 0 : (at - this.now) * this.msPerFrame, posted: Date.now(),
                     board: board, hold: hold, arrivals: arrivals, acted: this.acted });
   this.stats.decisions++;
 };
@@ -278,6 +278,9 @@ Match.prototype.take = function (truth) {
       if (a.kind === 'swap' && !(move = moved(p.board, truth, a.move))) { this.stats.late++; this.acted = false; continue; }
       board = truth; hold = this.hold; at = now; arrivals = this.arrivals; knew = this.arrivals;
       this.stats.lateTaken++;
+      // the latest answer taken: frames over, and where its time went
+      if (!this.stats.lateWorst || now - a.at > this.stats.lateWorst.over)
+        this.stats.lateWorst = { over: now - a.at, ms: a.ms, br: a.brMs, took: a.diag && a.diag.took, survive: a.diag && a.diag.survive, budget: a.diag && a.diag.budget, queued: a.queued };
     }
     var step = HANDS.keys(board, hold, a.kind, move, arrivals);
     if (!step) { this.stats.refused++; this.acted = false; continue; }
