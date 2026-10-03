@@ -494,24 +494,58 @@ static JLOCAL Board *LNB;
 static Front *LF;
 static JLOCAL Settle LSET;
 static JLOCAL int LWAITALL;   // the line's last press waits for the whole board to settle
+// A LINE'S PREFIX, KEPT WHERE ITS NEXT STEP BEGINS. A line played to the
+// frame its next step would start (stopAtNext 1) leaves the engine exactly
+// where every longer line with that prefix stands then: the board, the frame,
+// the cooldown before that frame's tick, the key held, the last press and the
+// garbage dropped. A longer line resumes there. Wait-all touches only a line's
+// last step, so no prefix carries it. Written by the main thread; a worker's
+// replay is kept in the slot the main thread gave its job.
+#define SNAPN 256
+typedef struct { int dec, n, f, cool, held, last, dropped; int32_t sw[2 * LINEMAX]; Board *b; } Snap;
+static Snap SNAPS[SNAPN];
+static JLOCAL int snapTo = -1;   // the slot this thread's next prefix is kept in (-1: by its line)
+static unsigned snapHash(const int32_t *sw, int n) {
+  unsigned h = 2166136261u ^ (unsigned)n;
+  for (int k = 0; k < 2 * n; k++) h = (h ^ (unsigned)sw[k]) * 16777619u;
+  return h & (SNAPN - 1);
+}
+static Snap *snapFind(const int32_t *sw, int n) {
+  Snap *s = &SNAPS[snapHash(sw, n)];
+  return s->dec == btDecision && s->n == n && s->b && !__builtin_memcmp(s->sw, sw, (unsigned long)n * 8) ? s : 0;
+}
+static void snapKeep(const int32_t *sw, int n, Board *b, int f, int cool, int held, int last, int dropped) {
+  if (n < 1 || n >= LINEMAX || LWAITALL) return;
+  int slot = snapTo >= 0 ? snapTo : inWorker ? -1 : (int)snapHash(sw, n);
+  if (slot < 0) return;
+  Snap *s = &SNAPS[slot];
+  if (!s->b) { if (inWorker) return; s->b = nb_new(); }
+  nb_copy(s->b, b);
+  s->n = n; s->f = f; s->cool = cool; s->held = held; s->last = last; s->dropped = dropped;
+  for (int k = 0; k < 2 * n; k++) s->sw[k] = sw[k];
+  if (snapTo < 0) s->dec = btDecision;   // a worker's is stamped by the main thread
+}
 static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, int32_t *out) {
   if (!LNB) LNB = nb_new();
-  nb_copy(LNB, paLibBoard());
+  Snap *from = 0;
+  for (int k = n - 1; k >= 1 && !from; k--) from = snapFind(steps, k);
+  nb_copy(LNB, from ? from->b : paLibBoard());
   { extern double paWork; paWork += 10; }   // the copy
   Board *b = LNB;
-  b->sNCombo = b->sCleared = b->sBroke = b->sEarned = b->sFell = b->sHollow = 0;
-  int32_t h0 = b->health;
+  if (!from) b->sNCombo = b->sCleared = b->sBroke = b->sEarned = b->sFell = b->sHollow = 0;   // a prefix kept carries its counts
+  int32_t h0 = paLibBoard()->health;
   int step = 0, walking = n > 0, timer = 0, held = LF ? LF->held : H_NONE, cool = 0, disp = b->displacement;
-  int tr = n > 0 ? steps[0] : 0, tc = n > 0 ? steps[1] : 0, last = n > 0 ? -1 : 0, f, dropped = b->garbageCreatedCount;
+  int tr = n > 0 ? steps[0] : 0, tc = n > 0 ? steps[1] : 0, last = n > 0 ? -1 : 0, f, dropped = b->garbageCreatedCount, f0 = 0;
+  if (from) { step = from->n; walking = 0; held = from->held; cool = from->cool; last = from->last; dropped = from->dropped; f0 = from->f; }
   int waitTo = n > 0 && LF ? (LWAITALL && n == 1 ? allWait(&LF->settle) : pairWait(&LF->settle, steps[0], steps[1])) : 0;
   int fs = 0, r0 = tr;   // the frame the step's settle was taken, its row then
 #ifndef __wasm__
   if (botTraceOn && n == 1 && waitTo > 60 && LF) { extern int fprintf(void *, const char *, ...); extern void *stderr; int r = steps[0], c = steps[1];
     fprintf(stderr, "  WAIT %d,%d to %d | first %d,%d last %d,%d\n", r, c, waitTo, LF->settle.first[r][c], LF->settle.first[r][c + 1], LF->settle.last[r][c], LF->settle.last[r][c + 1]); }
 #endif
-  out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = b->ninc; out[8] = -1; out[9] = out[10] = out[11] = 0;
+  out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = 0;
   { extern int paBudgetOut(void); if (paBudgetOut()) return -1; }   // past the decision's budget: not played
-  for (f = 0; f < horizon; f++) {
+  for (f = f0; f < horizon; f++) {
     { extern int paBudgetOut(void); if (paBudgetOut()) return -1; }   // past the budget mid-line: not played
     int input = 0;
     // stopAtNext 2: on until the next slab has dropped and landed
@@ -519,10 +553,14 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
       out[1] = last; out[8] = f; return 1;
     }
     if (!walking && (step < n || stopAtNext == 1)) {
+      int coolIn = cool;
       if (cool > 0) cool--;
       int landing = b->queuedSwapRow > 0 || b->swappingCount > 0 || b->pressSwap;
       if (!landing && (cool == 0 || b->stopTime > 0 || nb_topped(b))) {
-        if (step == n) { out[1] = last; out[8] = f; return 1; }   // the front decides again here
+        if (step == n) {   // the front decides again here
+          if (stopAtNext == 1) snapKeep(steps, n, b, f, coolIn, held, last, dropped);
+          out[1] = last; out[8] = f; return 1;
+        }
         walking = 1; tr = steps[2 * step]; tc = steps[2 * step + 1]; timer = 0; disp = b->displacement;
         { uint32_t still[W + 2]; unsettled(b, still, &LSET);
           waitTo = f + (LWAITALL && step == n - 1 ? allWait(&LSET) : pairWait(&LSET, tr, tc)); fs = f; r0 = tr; }
@@ -607,9 +645,12 @@ static int lsmHas(const int32_t *steps, int n, int landing) {
 // boards they leave go into the decision's memo
 static LSMemo PRJ[128];
 static int prjN;
+static int prjSnap[128];
 static void prjTask(int k) {
   LSMemo *j = &PRJ[k];
+  snapTo = prjSnap[k];
   j->rc = lineStateRun(j->sw, j->n, 0, j->masks, j->can, j->wait, j->cur, &j->t);
+  snapTo = -1;
 }
 // count lines of n steps each, `stride` ints apart
 static void prereplayN(const int32_t *sws, int stride, int count, int n) {
@@ -622,7 +663,18 @@ static void prereplayN(const int32_t *sws, int stride, int count, int n) {
     j->n = n; j->landing = 0;
   }
   if (prjN < 2) return;
+  // each job's prefix kept in its line's slot, the slot cleared first; two jobs on one slot: the first keeps it
+  for (int k = 0; k < prjN; k++) {
+    int slot = PRJ[k].n < LINEMAX ? (int)snapHash(PRJ[k].sw, PRJ[k].n) : -1;
+    for (int q = 0; q < k && slot >= 0; q++) if (prjSnap[q] == slot) slot = -1;
+    prjSnap[k] = slot;
+    if (slot >= 0) { SNAPS[slot].dec = -1; if (!SNAPS[slot].b) SNAPS[slot].b = nb_new(); }
+  }
   parallelDo(prjN, prjTask);
+  for (int k = 0; k < prjN; k++) {
+    int slot = prjSnap[k];
+    if (slot >= 0 && PRJ[k].rc == 0 && SNAPS[slot].n == PRJ[k].n && !__builtin_memcmp(SNAPS[slot].sw, PRJ[k].sw, (unsigned long)PRJ[k].n * 8)) SNAPS[slot].dec = btDecision;
+  }
   extern int paBudgetOut(void);
   if (paBudgetOut()) return;
   for (int k = 0; k < prjN; k++) { LSMemo *m = lsmSlot(PRJ[k].sw, PRJ[k].n, 0); *m = PRJ[k]; m->dec = btDecision; }
