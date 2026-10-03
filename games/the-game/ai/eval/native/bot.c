@@ -7,7 +7,7 @@
 enum { IN_TOPPED, IN_STOP, IN_INCOMING, IN_NEXTSLAB, IN_FALLING, IN_CROW, IN_CCOL, IN_HEALTH, IN_DRAIN, IN_FPR,
        IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISEROOM, IN_INFLIGHT,
        IN_DRAINBOUND, IN_STACKTOPPED, IN_MOVING, IN_HASTIMED, IN_REVEALOPEN, IN_CONVN, IN_CONVTIMER, IN_BCROW, IN_BCCOL,
-       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HELD = 49, IN_SF = 50, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_SIZE = 600 };
+       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_SIZE = 600 };
 enum { TF_DEADLY = 1, TF_FORCE = 2, TF_REFUSE = 4, TF_RAISE = 8, TF_STUB = 16, TF_SLAB = 32 };
 static int deadlyCalls;
 #define TFLAG(f) (((int)BIN[IN_T]) & (f))
@@ -782,6 +782,23 @@ static Rs causedBy(Rs r, const Rs *alone) {
   else r.biggest = r.rounds == 1 ? r.total : 0;
   return r;
 }
+// The engine's answer (pa.c paOutcome): out = cells matched, garbage cells
+// converted, clears, highest chain counter, most stop one clear paid, frames.
+int paOutcome(int r, int c, int at, int horizon, int32_t *out);
+#define PAHORIZON 600
+static int32_t PALONE[8], PAOUT[8];
+static Rs paRes(const int32_t *o, const int32_t *alone) {
+  Rs r; memset(&r, 0, sizeof r);
+  int cells = o[0] - (alone ? alone[0] : 0), conv = o[1] - (alone ? alone[1] : 0);
+  r.total = cells > 0 ? cells : 0;
+  r.broke = conv > 0;
+  r.converts = conv > 0 ? conv : 0; r.garbage = r.converts;
+  r.chain = r.total || r.broke ? (o[3] > 1 ? o[3] : 1) : 0;
+  r.rounds = r.total || r.broke ? (o[2] - (alone ? alone[2] : 0) > 0 ? o[2] - (alone ? alone[2] : 0) : 1) : 0;
+  r.biggest = r.rounds == 1 ? r.total : 0;
+  r.scope = r.broke ? SC_BROKE : SC_OK;
+  return r;
+}
 static ST TMC;
 static void candidates(int32_t *base) {
   nPool = 0;
@@ -803,6 +820,12 @@ static void candidates(int32_t *base) {
   if (moving) { TM.hasSwap = 0; resolveT(TMST, CR.r, 0, &TM); }
   else resolve(base, CR.r, 0);
   h->res = summarise(CR.r);
+  // A BOARD IN MOTION IS PLAYED ON THE ENGINE. The server's engine (pa.c) is
+  // linked in and holds this board: each swap is pressed when the walk
+  // arrives and run until nothing moves, against the board left alone, so a
+  // swap's result is what the game does.
+  int onEngine = moving && BIN[IN_HASPA] != 0 && paOutcome(0, 0, 0, PAHORIZON, PALONE) == 0;
+  if (onEngine) h->res = paRes(PALONE, 0);
   int32_t lg[2 * 128];
   int n = legal(base, lg);
   int cr = (int)BIN[IN_CROW], cc = (int)BIN[IN_CCOL];
@@ -812,6 +835,17 @@ static void candidates(int32_t *base) {
     resolve(base, CR.r, 1);
     int haveSettled = CR.r[R_SCOPE] == SC_OK;
     Rs res = summarise(CR.r);
+    if (onEngine) {
+      int rc = paOutcome(r, c, travelCost(cr, cc, r, c), PAHORIZON, PAOUT);
+      if (rc == -2) { swapIn(base, r, c); continue; }
+      if (rc == 0) {
+        res = paRes(PAOUT, PALONE);
+        if (nPool >= MAXCAND) { botFailed = 1; swapIn(base, r, c); continue; }
+        if (haveSettled) stcpy(POOLST[nPool], CR.st); else stcpy(POOLST[nPool], base);
+        swapIn(base, r, c);
+        goto pooled;
+      }
+    }
     if (moving) {
       TM.hasSwap = 1; TM.sr = r; TM.sc = c; TM.at = travelCost(cr, cc, r, c);
       resolveT(TMST, CR2.r, 0, &TM);
@@ -826,6 +860,7 @@ static void candidates(int32_t *base) {
     if (haveSettled) stcpy(POOLST[nPool], CR.st); else stcpy(POOLST[nPool], base);
     swapIn(base, r, c);
     res = causedBy(res, &h->res);
+  pooled:
     if (!(res.total > 0 || res.broke)) {
       int skip = 0;
       for (int z = 0; z < BT->nRecent; z++) {

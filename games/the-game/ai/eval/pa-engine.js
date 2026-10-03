@@ -1066,6 +1066,7 @@
 
   function view(s, PE) {
     var st = toPanelEngine(s, PE);
+    st.paStack = s;   // the server's own state, for a bot that plays it on the engine
     st.setInput = function (input) { PE.Stack.prototype.setInput.call(st, input); s.setInput(input); };
     st.tryQueueSwap = function (row, col) { return s.canSwap(row, col) && s.tryQueueSwap(row, col); };
     return st;

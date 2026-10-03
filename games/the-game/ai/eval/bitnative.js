@@ -294,8 +294,18 @@
     }
   }
   function checkbf(st) { put(st); return ex.bit_checkbf(); }
+  // The server's engine is linked into the bot: the board a decision is made
+  // on loads into it (native.js wires it), so a board in motion is played on
+  // the game's own rules.
+  var engine = null;
+  function loadEngine(paStack) {
+    if (!ex.pa_lib_board) return false;
+    if (!engine) engine = require('./native.js').server.bind(ex);
+    engine.fromStack(paStack, ex.pa_lib_board());
+    return true;
+  }
   function slabReady(st, w, h, c) { put(st); return ex.bit_slab_ready(w, h, c) !== 0; }
-  return { record: record, recorded: recorded, replay: replay, _checkbf: checkbf, slabReady: slabReady, fits: fits, resolve: resolve, resolveTimed: resolveTimed, scan: scan, load: load, options: options,
+  return { record: record, recorded: recorded, replay: replay, _checkbf: checkbf, slabReady: slabReady, loadEngine: loadEngine, fits: fits, resolve: resolve, resolveTimed: resolveTimed, scan: scan, load: load, options: options,
            botNew: botNew, botIn: botIn, botStates: botStates, botDecide: botDecide, botTab: botTab, botPut: botPut, botTest: botTest,
            botPoolMasks: botPoolMasks, deadlyCalls: deadlyCalls, opening: opening, putRecords: putRecords };
 }));
