@@ -1224,6 +1224,58 @@
     s.level = opts.level || 10;
     return s;
   }
+  // A puzzle's stack as Puzzle.lua sets one up, starting immediately: no
+  // rise, no manual raise, no swap stalling. `stack` is the puzzle's digits,
+  // top row first (Puzzles.json "Stack"); 8 is shock, 9 colourless.
+  function puzzle(stack, level) {
+    var lv = vsLevel(level || 10);
+    lv.behaviours = { allowManualRaise: false, passiveRaise: false, swapStallingMode: 0, swapStallingPunish: 0 };
+    var s = create(lv, new Unseen()), digits = String(stack).replace(/\s+/g, ''), r, c;
+    if (/[^0-9]/.test(digits)) throw new Error('PAEngine: a puzzle stack is digits, not ' + JSON.stringify(stack));
+    while (digits.length % W) digits = '0' + digits;
+    var rows = digits.length / W;
+    if (rows > H) throw new Error('PAEngine: a puzzle stack of ' + rows + ' rows');
+    for (r = 1; r <= H; r++) for (c = 1; c <= W; c++) {
+      var p = s.panels[r][c], k = (rows - r) * W + (c - 1);
+      clearPanel(p, true, true);
+      if (r <= rows) p.color = +digits.charAt(k);
+    }
+    delete s.behaviours.delaySimulationUntil;
+    s.inCountdown = false; s.stopWatchIsRunning = true;
+    s.topCurRow = s.height;
+    // the two frames before a swap is taken (canSwapPanels: clock > 1)
+    s.run(); s.run(); s.events.length = 0;
+    return s;
+  }
+  // Runs the stack with no input until nothing moves: what it did on the way.
+  Stack.prototype.settle = function (maxFrames) {
+    var out = { frames: 0, chain: 0, combos: [], garbage: 0 }, sent = this.outgoing.history.length, quiet = 0;
+    for (var f = 0; f < (maxFrames || 1200); f++) {
+      this.setInput(0);
+      this.run();
+      out.frames++;
+      for (var i = 0; i < this.events.length; i++) {
+        var e = this.events[i];
+        if (e.type === 'match') { out.combos.push(e.size); if (e.chainCounter > out.chain) out.chain = e.chainCounter; }
+      }
+      this.events.length = 0;
+      // quiet twice running: a swap that has just ended is matched a frame later
+      if (this.nActive === 0 && this.swappingCount === 0 && this.chainCounter === 0 && !this.swapQueued() && !this.hasChainingPanels()) {
+        if (++quiet === 2) break;
+      } else quiet = 0;
+    }
+    out.garbage = this.outgoing.history.length - sent;
+    return out;
+  };
+  // Every pair a swap can be made on and that changes the board.
+  Stack.prototype.legalSwaps = function () {
+    var out = [];
+    for (var r = 1; r <= this.topCurRow; r++) for (var c = 1; c < W; c++) {
+      if (this.panels[r][c].color === this.panels[r][c + 1].color) continue;
+      if (this.canSwap(r, c)) out.push([r, c]);
+    }
+    return out;
+  };
   function fromPanelEngine(pe, source) {
     var s = create(pe.level || 10, source), r, c, k;
     ['speed', 'nextSpeedIncreaseClock', 'clock', 'displacement', 'stopTime', 'preStopTime', 'shakeTime', 'shakeTimeOnFrame',
@@ -1356,6 +1408,6 @@
 
   return { Stack: Stack, Panel: Panel, fromLua: fromLua, revive: revive, toPanelEngine: toPanelEngine, fromPanelEngine: fromPanelEngine, view: view, Unseen: Unseen, Recorded: Recorded, Seeded: Seeded, create: create, vsLevel: vsLevel, PANEL_FROM_LUA: PANEL_FROM_LUA,
            STACK_FROM_LUA: STACK_FROM_LUA, IN: IN, list: list, WIDTH: W, HEIGHT: H,
-           GarbageQueue: GarbageQueue, deliver: deliver, onTheWay: onTheWay, FLIGHT: FLIGHT, game: game, COUNTDOWN_TOTAL: COUNTDOWN_START + COUNTDOWN_LENGTH, COMBO_GARBAGE: COMBO_GARBAGE, STAGING_DURATION: STAGING_DURATION,
+           GarbageQueue: GarbageQueue, deliver: deliver, puzzle: puzzle, onTheWay: onTheWay, FLIGHT: FLIGHT, game: game, COUNTDOWN_TOTAL: COUNTDOWN_START + COUNTDOWN_LENGTH, COMBO_GARBAGE: COMBO_GARBAGE, STAGING_DURATION: STAGING_DURATION,
            GARBAGE_DELAY_LAND_TIME: GARBAGE_DELAY_LAND_TIME };
 }));
