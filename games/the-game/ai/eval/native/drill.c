@@ -173,7 +173,7 @@ int main(int argc, char **argv) {
       bits = tapeIn[2 * f];
       if (tapeIn[2 * f + 1]) b->pressSwap = 1;
     } else {
-      botTraceOn = getenv("GC_BOTLOG") && atoi(getenv("GC_BOTLOG")) == f;
+      botTraceOn = getenv("GC_BOTLOG") && f >= atoi(getenv("GC_BOTLOG")) && f < atoi(getenv("GC_BOTLOG")) + (getenv("GC_BOTLOG_N") ? atoi(getenv("GC_BOTLOG_N")) : 1);
       bits = front_frame(bot, b);
       if (bits < 0) { fprintf(stderr, "drill: the bot failed at frame %d\n", f); return 2; }
     }

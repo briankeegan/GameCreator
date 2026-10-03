@@ -450,12 +450,19 @@ static void gridOf(const int32_t *st, Grid *G) {
       while (bits) { G->g[__builtin_ctz(bits) + 1][c] = (uint8_t)a; bits &= bits - 1u; }
     }
 }
+// THE BOARD AS IT IS, SWAPPED AS THE ENGINE ALLOWS: on the board the bot is
+// deciding on (ENGINE_BASE, or a copy of it handed in by its caller) a pair
+// is legal only if the engine would take it now (ENGINE_CAN, per column, a
+// bit per row) -- a panel still moving, a pair the swap stalling refuses.
+static const int32_t *ENGINE_BASE;
+static uint32_t ENGINE_CAN[WMAX];
 static int legalG(const int32_t *st, int32_t *out, Grid *G) {
   gridOf(st, G);
-  int n = 0, W = st[O_W], busy = st[O_BUSYF];
+  int n = 0, W = st[O_W], busy = st[O_BUSYF], engine = st == ENGINE_BASE;
   for (int r = 1; r <= st[O_H]; r++) {
     uint32_t b = 1u << (r - 1);
     for (int c = 1; c < W; c++) {
+      if (engine && !(ENGINE_CAN[c] & b)) continue;
       if ((U(st, INERT + c) | U(st, INERT + c + 1)) & b) continue;
       if (busy && ((U(st, BUSY + c) | U(st, BUSY + c + 1)) & b)) continue;
       if (!((U(st, OCC + c) | U(st, OCC + c + 1)) & b)) continue;
