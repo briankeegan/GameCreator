@@ -14,7 +14,7 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 EVAL="$WORK/games/the-game/ai/eval"
 mkdir -p "$EVAL"
-cp "$HERE/../../panel-engine.js" "$HERE/../../panel-rules.js" "$HERE/../../panel-cpu.js" "$WORK/games/the-game/" || exit 2
+cp "$HERE/../../panel-engine.js" "$HERE/../../panel-rules.js" "$HERE/../../panel-cpu.js" "$HERE/../../pa-engine.js" "$HERE/../../pa-generator.js" "$WORK/games/the-game/" || exit 2
 cp "$HERE"/*.js "$HERE"/realboards.json "$EVAL/" || exit 2
 
 pass=0; missed=0

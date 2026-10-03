@@ -26,7 +26,7 @@ trap 'rm -rf "$WORK"' EXIT
 # nothing about chips.
 SANDBOX="$WORK/games/the-game/ai/eval"
 mkdir -p "$SANDBOX"
-cp "$HERE/../../panel-engine.js" "$HERE/../../panel-cpu.js" "$HERE/../../panel-rules.js" "$WORK/games/the-game/"
+cp "$HERE/../../panel-engine.js" "$HERE/../../panel-cpu.js" "$HERE/../../panel-rules.js" "$HERE/../../pa-engine.js" "$HERE/../../pa-generator.js" "$WORK/games/the-game/"
 mkdir -p "$WORK/games/the-game/ai"
 cp "$HERE/../trained-weights.js" "$WORK/games/the-game/ai/" 2>/dev/null
 cp "$HERE"/*.js "$HERE"/.chipbreak.py "$SANDBOX/" 2>/dev/null

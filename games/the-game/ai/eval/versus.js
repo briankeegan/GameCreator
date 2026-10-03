@@ -26,7 +26,6 @@ var path = require('path');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
 var PuyoCpu = require('./puyocpu.js');
-var BitBot = require('./bitbot.js');
 var report = require(path.join(__dirname, '..', 'experiments', 'report.js'));
 var PanelEngine = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
@@ -72,6 +71,9 @@ function makeCpu(stack, weights, opts) {
     // handed to each side are not comparable numbers -- which is exactly why
     // optsB exists and why a mixed duel must pass each side its own vector.
     if (opts.bot === 'bitbot') {
+        // Loaded only for a duel that asks for it: a duel of two PuyoCpus
+        // does not depend on BitBot's build.
+        var BitBot = require('./bitbot.js');
         return new BitBot(stack, {
             weights: weights || {},
             reaction: opts.reaction || 12,
