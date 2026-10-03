@@ -70,6 +70,7 @@ typedef struct Board {
   int32_t hi;               // see SETTLED ROWS; not part of the board, never sent
   int32_t cdLeft;           // see COUNTDOWN FRAMES; not part of the board, never sent
   int32_t popSeen;          // garbage popping was updated this frame (updatePanels); not part of the board
+  signed char rowActive[MAXROWS];   // ROWS COUNTED: a row's active panels, known by updatePanels; -1 unknown; not part of the board
   // WHAT A STEP DID (search.h MK_SETTLE): each clear's size and the chain
   // counter it reached, panels cleared, garbage cells converted and the most
   // stop time one clear paid. Counted since the step began; not part of the
@@ -192,6 +193,7 @@ static void onLand(Board *b, Panel *p) {
 static Panel *fall(Board *b, Panel *p) {
   Panel *q = below(b, p);
   p = switchPanels(b, p, q);           // p is now in the lower cell
+  b->rowActive[p->f[ROW]] = -1;        // ROWS COUNTED
   Panel *above = P(b, p->f[ROW] + 1, p->f[COL]);
   if (p->f[ISGARBAGE]) { above->f[PROPFALL] = 1; above->f[STATECHANGED] = 1; }
   if (p->f[STATE] != FALLING) { p->f[STATE] = FALLING; p->f[TIMER] = 0; p->f[STATECHANGED] = 1; }
@@ -389,15 +391,20 @@ static int hasChainingPanels(Board *b) {
     for (int c = 1; c <= W; c++) { Panel *p = P(b, r, c); if (SETB(p->f[CHAINING]) && p->f[COLOR] != 0) return 1; }
   return 0;
 }
+// ROWS COUNTED: a row updatePanels passed over -- at rest, garbage resting,
+// garbage popping -- has the active panels it was found with, swapping none,
+// unless a panel fell into it after (fall).
 static void updateActivePanelCount(Board *b) {
   b->nPrevActive = b->nActive;
   int32_t count = 0, swapping = 0;
-  for (int r = 1, top = imin(b->height, rowsTo(b) - 1); r <= top; r++)
+  for (int r = 1, top = imin(b->height, rowsTo(b) - 1); r <= top; r++) {
+    if (b->rowActive[r] >= 0) { count += b->rowActive[r]; continue; }
     for (int c = 1; c <= W; c++) {
       Panel *p = P(b, r, c);
       if (p->f[ISGARBAGE]) { if (p->f[STATE] != NORMAL) count++; }
       else if (p->f[COLOR] != 0 && p->f[STATE] != NORMAL && p->f[STATE] != LANDING) { count++; if (p->f[STATE] == SWAPPING) swapping++; }
     }
+  }
   b->nActive = count; b->swappingCount = swapping;
 }
 static void updateRiseLock(Board *b) {
@@ -885,10 +892,11 @@ static void updatePanels(Board *b) {
   // A panel that falls moves to the cell below, already updated; the one it
   // trades with comes up into this cell, which is not visited again.
   int n = rowsTo(b), r, c;
+  for (r = 1; r < n; r++) b->rowActive[r] = -1;
   for (r = 1; r < n; r++) {
-    if (r > 1 && restingRow(b, r)) continue;
-    if (quietRow(b, r)) continue;
-    if (poppingRow(b, r)) continue;
+    if (r > 1 && restingRow(b, r)) { b->rowActive[r] = 0; continue; }
+    if (quietRow(b, r)) { b->rowActive[r] = 0; continue; }
+    if (poppingRow(b, r)) { b->rowActive[r] = W; continue; }
     for (c = 1; c <= W; c++) updatePanel(b, P(b, r, c));
   }
   for (r = n - 1; r >= 1; r--) {
