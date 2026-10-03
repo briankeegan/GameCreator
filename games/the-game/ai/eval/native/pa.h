@@ -116,6 +116,7 @@ int nb_run(Board *b);
 int nb_can_swap(Board *b, int r, int c);
 int nb_try_queue_swap(Board *b, int r, int c);
 int nb_topped(Board *b);
+int nb_pressed(Board *b);
 int nb_falling_garbage(Board *b);
 int nb_active(Board *b);
 int nb_spawn_col(Board *b, int width);

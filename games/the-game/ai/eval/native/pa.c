@@ -1138,6 +1138,7 @@ EXPORT(nb_feed_break) int nb_feed_break(Board *b, int32_t c1, int32_t c2, int32_
 }
 EXPORT(nb_fed) int nb_fed(Board *b) { return b->nRowFeed * 100 + b->nBrkFeed; }
 // What the bot's front end asks of the board it plays (front.c).
+EXPORT(nb_pressed) int nb_pressed(Board *b) { return b->pressSwap; }   // the swap the front pressed this frame
 EXPORT(nb_topped) int nb_topped(Board *b) { return isToppedOut(b); }
 EXPORT(nb_falling_garbage) int nb_falling_garbage(Board *b) { return hasFallingGarbage(b); }
 EXPORT(nb_active) int nb_active(Board *b) { return hasActivePanels(b); }

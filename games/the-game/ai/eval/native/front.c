@@ -102,7 +102,8 @@ static void fMasks(int32_t *m, int rise) {
       if (v == 0) continue;
       m[OCC + c] |= (int32_t)b;
       if (v == -2) { m[INERT + c] |= (int32_t)b; m[GARB + c] |= (int32_t)b; continue; }
-      if (v < 0) { m[O_BAD] = 1; return; }
+      // dimmed, or a colour not yet dealt (pa.c UNSEEN_COLOUR): no masks for it
+      if (v < 0 || v >= NCOL) { m[O_BAD] = 1; return; }
       if (v > m[O_N]) m[O_N] = v;
       m[SCOL + v * WMAX + c] |= (int32_t)b;
     }
@@ -154,7 +155,7 @@ static int fTimed(int32_t *m, Timed *t) {
         int at = s == MATCHED ? tm + size * t->POP : s == POPPING ? tm + (size - idx) * t->POP : tm;
         t->popping[c] |= b;
         m[OCC + c] |= (int32_t)b;
-        if (f[COLOR] > 0) { m[SCOL + f[COLOR] * WMAX + c] |= (int32_t)b; if (f[COLOR] > m[O_N]) m[O_N] = f[COLOR]; }
+        if (f[COLOR] > 0 && f[COLOR] < NCOL) { m[SCOL + f[COLOR] * WMAX + c] |= (int32_t)b; if (f[COLOR] > m[O_N]) m[O_N] = f[COLOR]; }
         if (at > t->popAt) t->popAt = at;
       }
     }
