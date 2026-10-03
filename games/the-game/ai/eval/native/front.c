@@ -497,6 +497,7 @@ static int LWAITALL;   // the line's last press waits for the whole board to set
 static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, int32_t *out) {
   if (!LNB) LNB = nb_new();
   nb_copy(LNB, paLibBoard());
+  { extern double paWork; paWork += 10; }   // the copy
   Board *b = LNB;
   b->sNCombo = b->sCleared = b->sBroke = b->sEarned = b->sFell = b->sHollow = 0;
   int32_t h0 = b->health;
@@ -511,6 +512,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = b->ninc; out[8] = -1; out[9] = out[10] = out[11] = 0;
   { extern double paWork, paWorkEnd; if (paWork >= paWorkEnd) return -1; }   // past the decision's budget: not played
   for (f = 0; f < horizon; f++) {
+    { extern double paWork, paWorkEnd; if (paWork >= paWorkEnd) return -1; }   // past the budget mid-line: not played
     int input = 0;
     // stopAtNext 2: on until the next slab has dropped and landed
     if (stopAtNext == 2 && step == n && !walking && b->garbageCreatedCount > dropped && !nb_falling_garbage(b)) {
@@ -590,6 +592,7 @@ static int lineStateAt(const int32_t *steps, int n, int landing, int32_t *masks,
   if (rc != 1 || out[0]) return -1;
   // the next step targets settled panels: the board once it has settled, each
   // pair with the frame (from now) its panels settle
+  { extern double paWork; paWork += 60; }   // the copies, the masks and the swap tests below
   uint32_t still[W + 2];
   unsettled(LNB, still, &LSET);
   Board *save = FB;
@@ -649,8 +652,10 @@ static int frontFrame(int fid, Board *b);
 // overrides, in ms). Over it, the frame fails and the game stops: slow is
 // an error, never a result. Native only; the browser has its own clock.
 #ifndef __wasm__
+#ifndef GC_TS
 struct gcTs { long s, ns; };
 extern int clock_gettime(int, struct gcTs *);
+#endif
 extern char *getenv(const char *);
 extern double atof(const char *);
 static double frameBudgetMs = -1;

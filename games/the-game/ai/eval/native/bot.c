@@ -50,6 +50,11 @@ static Bot BOTS[MAXBOT];
 static int nBots = 0;
 static Bot *BT;
 static double BIN[IN_SIZE], BOUT[256];
+#ifndef __wasm__
+#define GC_TS 1
+struct gcTs { long s, ns; };   // the native clock (clock_gettime), for the budget
+extern int clock_gettime(int, struct gcTs *);
+#endif
 int botTraceOn;   // the native drill's GC_BOTLOG: the pool, as the engine plays it
 static ST RISEN, TMST;
 static double *TB;
@@ -1850,7 +1855,9 @@ static int32_t LNA[12], LNO[12];
 static int lnAlone;
 static int cashes(const int32_t *r) { return r[R_TOTAL] > 0 || r[R_SCOPE] == SC_BROKE; }
 static double timeLeft(void);
-static void linesReset(void) { nLines = 0; nJudged = 0; lnAlone = 0; }
+static int btDecision;   // counts decisions: what is cached is cached for one
+static int lfDecision = -1, lfDepth, lfBreaks;   // the lines linesFind last found, and for what
+static void linesReset(void) { nLines = 0; nJudged = 0; lnAlone = 0; lfDecision = -1; }
 // The board left alone, on the engine: 0 if it cannot be played.
 static int aloneOnEngine(void) {
   if (!lnAlone && BIN[IN_HASPA] && lineOnEngine(0, 0, LINEHORIZON, 0, LNA) == 0) lnAlone = 1;
@@ -2188,7 +2195,10 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
   }
 }
 static void linesFind(int depth, int breaks) {
+  // the same lines asked for twice in a decision are found once
+  if (lfDecision == btDecision && lfDepth == depth && lfBreaks == breaks) return;
   linesReset();
+  lfDecision = btDecision; lfDepth = depth; lfBreaks = breaks;
   lsTopped = BIN[IN_TOPPED] != 0; lsBreaks = breaks;
   const int32_t *saveBase = ENGINE_BASE;
   uint32_t saveCan[WMAX];
@@ -2457,6 +2467,7 @@ static int lineupNear(const int32_t *st, int r, int c) {
   land++;
   return r >= land - 2 && r <= land && c + 1 >= c0 - 1 && c <= c0 + w;
 }
+#define LUBEST 5   // a break that spends nothing
 static int lineupRank(const int32_t *sw, int n) {
   int v = lineJudge(sw, n, 0);
   if (!(v & LV_LIVES)) return 0;
@@ -2486,6 +2497,8 @@ static Dec lineupFirst(Dec d) {
     if (r > 31 || !(can0[c] & (1u << (r - 1))) || !lineupNear(st0, r, c)) continue;
     int32_t sw[4] = { r, c, 0, 0 };
     double at = dmax(travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], r, c), waits0[r][c]);
+    // the best rank is LUBEST: once one is had, a line no sooner cannot be better
+    if (bestRank >= LUBEST && at >= bestT) continue;
     int rank = lineupRank(sw, 1);
     if (rank > bestRank || (rank && rank == bestRank && at < bestT)) { bestRank = rank; bestT = at; bestN = 1; best[0] = r; best[1] = c; }
     if (rank >= 4) continue;
@@ -2499,8 +2512,9 @@ static Dec lineupFirst(Dec d) {
       int r2 = lg1[2 * j], c2 = lg1[2 * j + 1];
       if (r2 > 31 || !(can1[c2] & (1u << (r2 - 1))) || !lineupNear(st1, r2, c2)) continue;
       sw[2] = r2; sw[3] = c2;
-      int rank2 = lineupRank(sw, 2);
       double at2 = t1 + dmax(travelCost(cur1[0], cur1[1], r2, c2), waits1[r2][c2]);
+      if (bestRank >= LUBEST && at2 >= bestT) continue;
+      int rank2 = lineupRank(sw, 2);
       if (rank2 > bestRank || (rank2 && rank2 == bestRank && at2 < bestT)) {
         bestRank = rank2; bestT = at2; bestN = 2; best[0] = r; best[1] = c; best[2] = r2; best[3] = c2;
       }
@@ -2590,7 +2604,7 @@ static Dec fillBeforeBreak(Dec d) {
 // front plays them, then the soonest break the distance search finds on the
 // board they leave, walked from where the cursor is (INF: none).
 #define WORKBUDGET 55000
-static int btDecision, btAloneAt = -1; static double btAlone;
+static int btAloneAt = -1; static double btAlone;
 static double breakTimeOf(const int32_t *steps, int n);
 // the board left alone is asked about several times a decision: once
 static double breakTime(const int32_t *steps, int n) {
@@ -2802,7 +2816,30 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   nRes = 0; nOptRuns = 0; nOptDepth = 0; nScore = 0; nLook = 0; nSave = 0; rScore = rMain = rLook = rSave = rCand = 0;
   ENGINE_BASE = BIN[IN_HASPA] ? IN : 0;
   for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = c >= 1 && c < BW ? (uint32_t)BIN[IN_CANSWAP + c] : 0;
-  Dec d = onePlan(fillFirst(breakSoon(spendToBreak(batchBreak(lineupFirst(keepBreak(stayAlive(breakFirst(raiseHold(waitForDrain(playOn(decideRuled()))))))))))));
+  // EACH STAGE ITS SHARE of the decision's budget, so none starves the ones
+  // after it (in percent; they add to 100)
+  extern double paWork, paWorkEnd;
+  double w0 = paWork, ws[12], ts[12]; int k = 0;
+#ifndef __wasm__
+#define NOWMS() ({ struct gcTs q; clock_gettime(1, &q); q.s * 1e3 + q.ns / 1e6; })
+#else
+#define NOWMS() 0.0
+#endif
+  double t0 = NOWMS();
+#define SHARE(p) (paWorkEnd = paWork + WORKBUDGET * (p) / 100.0)
+  SHARE(25); Dec d = decideRuled(); ts[k] = NOWMS(); ws[k++] = paWork;
+  SHARE(5); d = playOn(d); d = waitForDrain(d); d = raiseHold(d); ts[k] = NOWMS(); ws[k++] = paWork;
+  SHARE(25); d = breakFirst(d); ts[k] = NOWMS(); ws[k++] = paWork;
+  SHARE(5); d = stayAlive(d); ts[k] = NOWMS(); ws[k++] = paWork;
+  SHARE(15); d = keepBreak(d); d = lineupFirst(d); ts[k] = NOWMS(); ws[k++] = paWork;
+  SHARE(5); d = batchBreak(d); d = spendToBreak(d); ts[k] = NOWMS(); ws[k++] = paWork;
+  SHARE(10); d = breakSoon(d); ts[k] = NOWMS(); ws[k++] = paWork;
+  SHARE(10); d = onePlan(fillFirst(d)); ts[k] = NOWMS(); ws[k++] = paWork;
+#undef SHARE
+#ifndef __wasm__
+  { extern char *getenv(const char *); extern int fprintf(void *, const char *, ...); extern void *stderr;
+    if (getenv("GC_WORKSTAT")) { fprintf(stderr, "STAGES%s", paWork >= paWorkEnd ? " OUT" : ""); for (int i = 0; i < k; i++) fprintf(stderr, " %.0f/%.3f", ws[i] - (i ? ws[i - 1] : w0), ts[i] - (i ? ts[i - 1] : t0)); fprintf(stderr, "\n"); } }
+#endif
   ENGINE_BASE = 0;
   if (d.kind == K_SWAP && d.hasMove) {
     BT->recent[2] = BT->nRecent ? BT->recent[0] : 0; BT->recent[3] = BT->nRecent ? BT->recent[1] : 0;

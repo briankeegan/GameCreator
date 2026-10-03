@@ -189,7 +189,7 @@ extern double paWork, paWorkEnd;
 // past the decision's budget a resolve is refused: what it would find is not looked for
 static void resolve(const int32_t *st, int32_t *r, int wantSettled) {
   if (paWork >= paWorkEnd) { for (int k = 0; k < R_INTS; k++) r[k] = 0; r[R_SCOPE] = SC_REFUSED; return; }
-  paWork += 3; resolveM(st, r, wantSettled);
+  resolveM(st, r, wantSettled);
 }
 static LOCAL int tmFailed = 0;
 static void pushHold(const uint32_t *m, int until, int swap) {
@@ -210,6 +210,7 @@ static LOCAL int nRes;
 static int resolveT(const int32_t *st, int32_t *r, int wantSettled, const Timed *tm) {
   nRes++;
   for (int i = 0; i < R_INTS; i++) r[i] = 0;
+  if (paWork >= paWorkEnd) { r[R_SCOPE] = SC_REFUSED; return 0; }   // past the decision's budget
   if (st[O_BAD]) { r[R_SCOPE] = SC_BAD; return 0; }
   R *s = &S;
   load(s, st);
@@ -245,6 +246,7 @@ static int resolveT(const int32_t *st, int32_t *r, int wantSettled, const Timed 
       uint32_t sm5[WMAX] = {0}; sm5[c5] = s->occ[c5] & b5; sm5[d5] = s->occ[d5] & b5; \
       pushHold(sm5, T + 4, 1); } } while (0)
   while (guard++ <= LIMIT) {
+    paWork += 1;   // a round of the resolve: the unit of work
     if (refused) { r[R_SCOPE] = SC_REFUSED; r[R_FRAMES] = T; return 0; }
     int any = 0, link = 0, c, a;
     if (tm) {
@@ -432,6 +434,7 @@ static int colourLast(const int32_t *st, int c, uint32_t b) {
   return at;
 }
 static int swapIn(int32_t *st, int r, int c) {
+  paWork += 0.5;
   uint32_t b = 1u << (r - 1);
   int o = c + 1;
   if ((U(st, INERT + c) & b) || (U(st, INERT + o) & b)) return 0;
@@ -463,6 +466,7 @@ static void gridOf(const int32_t *st, Grid *G) {
 static const int32_t *ENGINE_BASE;
 static uint32_t ENGINE_CAN[WMAX];
 static int legalG(const int32_t *st, int32_t *out, Grid *G) {
+  paWork += 4;   // a board's legal swaps: work, as a resolve's rounds are
   gridOf(st, G);
   int n = 0, W = st[O_W], busy = st[O_BUSYF], engine = st == ENGINE_BASE;
   for (int r = 1; r <= st[O_H]; r++) {
@@ -753,6 +757,7 @@ static void memoRoom(void) { threadInit(); }
 static int resolveU(const int32_t *st, int32_t *r, int wantSettled) {
   nRes++;
   for (int i = 0; i < R_INTS; i++) r[i] = 0;
+  if (paWork >= paWorkEnd) { r[R_SCOPE] = SC_REFUSED; return 0; }   // past the decision's budget
   if (st[O_BAD]) { r[R_SCOPE] = SC_BAD; return 0; }
   R *s = &S;
   load(s, st);
@@ -763,6 +768,7 @@ static int resolveU(const int32_t *st, int32_t *r, int wantSettled) {
   uint32_t k[WMAX];
   int32_t inGroup[MAXSLAB];
   while (guard++ <= LIMIT) {
+    paWork += 1;   // a round of the resolve: the unit of work
     if (!restValid) restingOf(s);
     restValid = 1;
     if (scan) {
