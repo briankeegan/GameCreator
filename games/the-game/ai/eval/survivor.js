@@ -458,7 +458,7 @@ var server = net.createServer(function (sock) {
     while ((nl = buf.indexOf('\n')) >= 0) {
       var line = buf.slice(0, nl);
       if (!line) { buf = buf.slice(nl + 1); continue; }
-      var m = JSON.parse(line), reply;
+      var tp = process.hrtime.bigint(), m = JSON.parse(line), reply, tParse = process.hrtime.bigint(), tBoard = tParse;
       if (SYNC && m.t === 'f' && match && pending && !answers.some(function (a) { return a.id === pending.id; })) { resume = pump; return; }
       buf = buf.slice(nl + 1);
       if (m.t === 'match') {
@@ -466,10 +466,11 @@ var server = net.createServer(function (sock) {
         match = new Match({ levelData: m.levelData, behaviours: m.behaviours, stackOverConditions: m.stackOverConditions });
         reply = { ok: true };
       } else if (m.t === 'f') {
-        var t0 = process.hrtime.bigint();
+        var t0 = tp;   // from the line read: its parse is part of the reply
         if (!match) { reply = { input: 0 }; }
         else {
           var truth = PA.fromLua(m.state, match.level, new PA.Unseen()), state = m.state;
+          tBoard = process.hrtime.bigint();
           reply = { clock: truth.clock, input: match.frame(truth, arrivalsOf(state), function () { return PA.fromLua(state, match.level, new PA.Unseen()); }), next: match.planned(truth.clock + 1, NEXT) };
         }
       } else if (m.t === 'bye') { if (match) { console.log('match over: ' + overStats(match)); match.dump(); } match = null; reply = { ok: true }; }
@@ -478,7 +479,11 @@ var server = net.createServer(function (sock) {
         // what the link waits on: the frame's arrival to its reply
         var rms = Number(process.hrtime.bigint() - t0) / 1e6;
         if (rms > (match.stats.replyMs || 0)) match.stats.replyMs = Math.round(rms * 10) / 10;
-        if (rms > 8) match.stats.slowReplies = (match.stats.slowReplies || 0) + 1;
+        if (rms > 8) {
+          match.stats.slowReplies = (match.stats.slowReplies || 0) + 1;
+          var ms = function (a, b) { return (Number(b - a) / 1e6).toFixed(1); };
+          console.error('slow reply ' + rms.toFixed(1) + ' ms at ' + match.now + ': parse ' + ms(tp, tParse) + ', board ' + ms(tParse, tBoard) + ', keys ' + ms(tBoard, process.hrtime.bigint()) + ', gc so far ' + GC.slow);
+        }
         match.afterFrame();
         // A frame's time here, the answer and the question after it, is what
         // the link waits on for the next (SurvivalLink waits 10 ms).
