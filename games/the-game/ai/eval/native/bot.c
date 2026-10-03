@@ -628,6 +628,10 @@ static int haveRecIn(double *od, int i) { return od[7 + i] != 0; }
 
 static double OPTP[128];
 static int optsBuilt;
+// the records this decision reads (OPTP[108] skips the rest): the fire-ready only
+// when no save holds and no saves record exists, so it is built on demand
+static int optSkip, optSkipBuilt;
+static const int32_t *moBase; static double moDeadline; static int moDepth, moDigging;
 static double saMs, moMs; static int saN;   // GC_WORKSTAT: scoring, the main option search
 static void buildOptions(const int32_t *base, double deadline, int lookDepth, int digging, double spend) {
   int topped = BIN[IN_TOPPED] != 0;
@@ -638,9 +642,11 @@ static void buildOptions(const int32_t *base, double deadline, int lookDepth, in
   OPTP[3] = spend; OPTP[10] = digging; OPTP[11] = lookDepth; OPTP[101] = 1;
   OPTP[102] = BIN[IN_SLABW]; OPTP[103] = BIN[IN_SLABH]; OPTP[104] = BIN[IN_SLABC];
   OPTP[105] = HELDR; OPTP[106] = HELDC; OPTP[107] = HELDDIR;
+  OPTP[108] = optSkip;
 }
 static void mainOptions(const int32_t *base, double deadline, int lookDepth, int digging) {
   if (optsBuilt) return;
+  moBase = base; moDeadline = deadline; moDepth = lookDepth; moDigging = digging; optSkipBuilt = optSkip;
   buildOptions(base, deadline, lookDepth, digging, 0);
   OD = ODATA; LD = LANDS;
   int r0 = nRes;
@@ -1198,6 +1204,8 @@ static Dec decideCore(void) {
   int poolBreak = 0;
   for (int i = 0; i < nPool; i++) if (POOL[i].res.broke) { poolBreak = 1; break; }
   int topped = BIN[IN_TOPPED] != 0;
+  int readyFirst = !poolBreak && !topped && !slabReadyHook(base);   // the slab-ready record is read
+  optSkip = 4 | (readyFirst ? 0 : 8);
   baseReady = BIN[IN_INCOMING] > 0 && slabReadyHook(base);
   baseLanding = landingOf(base);
   double dl2 = topped ? dmax(deadline, resolveFramesOf(3, 0)) : deadline;
@@ -1355,7 +1363,7 @@ static Dec decideCore(void) {
     RANKED[nRanked++] = cand;
   }
 
-  if (!poolBreak && !topped && !slabReadyHook(base)) {
+  if (readyFirst) {
     mainOptions(base, deadline, lookDepth, digging);
     if (haveRecIn(ODATA, 3)) {
       double *ready = recIn(ODATA, 3);
@@ -1644,6 +1652,10 @@ static Dec decideRuled(void) {
   if (!saveAfter(base, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 1)) {
     if (isArith(d.via)) return d;
     double *route = 0;
+    if (optsBuilt && (optSkipBuilt & 4) && !(haveRecIn(ODATA, 1) && recIn(ODATA, 1)[F_NSW])) {
+      optSkip = optSkipBuilt & ~4; optsBuilt = 0;
+      mainOptions(moBase, moDeadline, moDepth, moDigging);
+    }
     if (optsBuilt) {
       if (haveRecIn(ODATA, 1) && recIn(ODATA, 1)[F_NSW]) route = recIn(ODATA, 1);
       else if (haveRecIn(ODATA, 2) && recIn(ODATA, 2)[F_NSW]) route = recIn(ODATA, 2);
@@ -3415,7 +3427,7 @@ __attribute__((export_name("bot_test"))) double bot_test(int32_t id, int32_t fn)
     case 6: return framesToRise(a[1], a[2], a[3]);
     case 7: return framesToDeath((int)a[1], a[2]);
     case 8: {
-      DBASE = IN; optsBuilt = 0; planReset(IN);
+      DBASE = IN; optsBuilt = 0; optSkip = 0; planReset(IN);
       candidates(IN);
       for (int i = 0; i < nPool; i++) {
         Cand *c = &POOL[i]; double *o = BOUT + 8 * i;

@@ -1404,6 +1404,8 @@ static LOCAL double FPR, DEADLINE, LOCKP, OVERHEAD, SWAPP, HOLD, WORK, MAXSTOP, 
 static LOCAL int SPEND, LEAN, PREPARE, DIG, PRESS, Wd;
 static LOCAL int dropBudget, saveBudget, slabBudget, prepBudget;
 static LOCAL int nAvoid; static LOCAL int32_t AVOID[2 * 40];
+// records the caller will not read (P[108]: 4 the fire-ready, 8 the slab-ready), never checked
+static LOCAL int recSkip;
 static LOCAL ST BASEST;
 
 // HELD is the direction pressed on the frame before the decision, at the
@@ -2015,8 +2017,8 @@ static void expandAll(int depth, int cr, int cc) {
             double *v1 = recAt(1), *v2 = recAt(2), *v3 = recAt(3);
             if (!exact && (!haveRec[0] || hi > fv)) exact = 1;
             if (!exact && svNow > 0 && (!haveRec[1] || hi > v1[F_VALUE] || (hi == v1[F_VALUE] && cost < v1[F_FRAMES]))) exact = 1;
-            if (!exact && (!haveRec[2] || hi > v2[F_VALUE] || (hi == v2[F_VALUE] && cost < v2[F_FRAMES])) && (!e ? canFireOf(settled) : e->fire >= 0 ? e->fire : (e->fire = canFireOf(settled)))) exact = 1;
-            if (!exact && (!haveRec[3] || hi > v3[F_VALUE] || (hi == v3[F_VALUE] && cost < v3[F_FRAMES])) && (!e ? slabReady(settled) : e->slab >= 0 ? e->slab : (e->slab = slabReady(settled)))) exact = 1;
+            if (!exact && !(recSkip & 4) && (!haveRec[2] || hi > v2[F_VALUE] || (hi == v2[F_VALUE] && cost < v2[F_FRAMES])) && (!e ? canFireOf(settled) : e->fire >= 0 ? e->fire : (e->fire = canFireOf(settled)))) exact = 1;
+            if (!exact && !(recSkip & 8) && (!haveRec[3] || hi > v3[F_VALUE] || (hi == v3[F_VALUE] && cost < v3[F_FRAMES])) && (!e ? slabReady(settled) : e->slab >= 0 ? e->slab : (e->slab = slabReady(settled)))) exact = 1;
             if (!exact) {
               if (slabYes) slabBudget--;
               goto born;
@@ -2035,9 +2037,9 @@ static void expandAll(int depth, int cr, int cc) {
           double *sv0 = recAt(1), *rd0 = recAt(2), *tg0 = recAt(3);
           if (svNow > 0 && (!haveRec[1] || val > sv0[F_VALUE] || (val == sv0[F_VALUE] && cost < sv0[F_FRAMES])))
             takeRec(1, seq, nseq, cost, val, cost + nseq * OVERHEAD);
-          if ((!haveRec[2] || val > rd0[F_VALUE] || (val == rd0[F_VALUE] && cost < rd0[F_FRAMES])) && (!e ? canFireOf(settled) : e->fire >= 0 ? e->fire : (e->fire = canFireOf(settled))))
+          if (!(recSkip & 4) && (!haveRec[2] || val > rd0[F_VALUE] || (val == rd0[F_VALUE] && cost < rd0[F_FRAMES])) && (!e ? canFireOf(settled) : e->fire >= 0 ? e->fire : (e->fire = canFireOf(settled))))
             takeRec(2, seq, nseq, cost, val, cost + nseq * OVERHEAD);
-          if ((!haveRec[3] || val > tg0[F_VALUE] || (val == tg0[F_VALUE] && cost < tg0[F_FRAMES])) && (!e ? slabReady(settled) : e->slab >= 0 ? e->slab : (e->slab = slabReady(settled))))
+          if (!(recSkip & 8) && (!haveRec[3] || val > tg0[F_VALUE] || (val == tg0[F_VALUE] && cost < tg0[F_FRAMES])) && (!e ? slabReady(settled) : e->slab >= 0 ? e->slab : (e->slab = slabReady(settled))))
             takeRec(3, seq, nseq, cost, val, cost + nseq * OVERHEAD);
           if (take) {
             takeRec(0, seq, nseq, cost, val, dur);
@@ -2107,6 +2109,7 @@ static int optionsRun(const int32_t *st0, const double *P, const int32_t *first,
   lazyBreak = (int)P[101];
   SLABW = (int)P[102]; SLABH = (int)P[103]; SLABC = (int)P[104];
   HELDR = (int)P[105]; HELDC = (int)P[106]; HELDDIR = (int)P[107];
+  recSkip = (int)P[108];
   LMAX = 0;
   for (int i = 0; i < 64; i++) if (PCHAIN[i] > LMAX) LMAX = PCHAIN[i];
   for (int i = 0; i < 256; i++) if (PCOMBO[i] > LMAX) LMAX = PCOMBO[i];
