@@ -458,8 +458,8 @@ static int driveWalk(Front *F, int input) {
     if (F->wTimer > 0) { F->wTimer--; return input; }
     return stepToward(&F->wTimer, row, col, input);
   }
-  // the swap's panels settle at a known frame: the walk that arrives first waits
-  if (F->wFrames <= F->wWaitTo && (!nb_can_swap(FB, FB->curRow, FB->curCol) || F->wWaitAll)) return input;
+  // the swap's panels settle at a known frame: a walk that arrives first waits
+  if (F->wFrames < F->wWaitTo) return input;   // never pressed on panels still moving
   int ok = nb_can_swap(FB, FB->curRow, FB->curCol) && nb_try_queue_swap(FB, FB->curRow, FB->curCol);
   F->walk = 0;
   if (ok) { F->hasLast = 1; F->lastR = FB->curRow; F->lastC = FB->curCol; F->cooldown = F->wCooldown; return input; }
@@ -524,7 +524,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
       disp = b->displacement;
       int row = clampi(tr, 1, b->topCurRow), col = clampi(tc, 1, W - 1);
       if (b->curRow == row && b->curCol == col) {
-        if (f <= waitTo && (!nb_can_swap(b, row, col) || (LWAITALL && step == n - 1))) { /* its panels settle by waitTo */ }
+        if (f < waitTo) { /* its panels settle at waitTo: never pressed on panels still moving */ }
         else if (!nb_can_swap(b, row, col) || !nb_try_queue_swap(b, row, col)) {
 #ifndef __wasm__
           if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
@@ -564,7 +564,7 @@ int lineOnEngine(const int32_t *steps, int n, int horizon, int waitAll, int32_t 
 // frames it took. -1: a step refused, or the board lost health on the way.
 int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
   int32_t out[10];
-  int rc = linePlay(steps, n, 240, 1, out);
+  int rc = n > 0 ? linePlay(steps, n, 240, 1, out) : (nb_copy(LNB ? LNB : (LNB = nb_new()), paLibBoard()), out[0] = 0, out[8] = 0, 1);
   if (rc != 1 || out[0]) return -1;
   // the next step targets settled panels: the board once it has settled, each
   // pair with the frame (from now) its panels settle

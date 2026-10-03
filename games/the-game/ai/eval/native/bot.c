@@ -1969,9 +1969,16 @@ static void linesFind(int depth, int breaks) {
   const int32_t *saveBase = ENGINE_BASE;
   uint32_t saveCan[WMAX];
   for (int c = 0; c < WMAX; c++) saveCan[c] = ENGINE_CAN[c];
-  // the masks propose, the engine judges: only the lock (topped) bounds the
-  // proposals; the frames to death are an idle estimate the engine replaces
-  growAt(0, 0, 0, depth, DBASE, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], saveCan, 0, lsTopped ? timeLeft() - 2 : INF);
+  // Every step alike, the first too: proposed on the board the engine
+  // settles to, each pair pressed once its panels settle. The masks propose,
+  // the engine judges: only the lock (topped) bounds the proposals; the frames
+  // to death are an idle estimate the engine replaces.
+  int32_t st0[ST_INTS], cur[2], t;
+  uint32_t can0[WMAX];
+  uint8_t waits0[32][WMAX];
+  if (BIN[IN_HASPA] && lineState(0, 0, st0, can0, waits0, cur, &t) == 0)
+    growAt(0, 0, t, depth, st0, cur[0], cur[1], can0, waits0, lsTopped ? timeLeft() - 2 : INF);
+  else growAt(0, 0, 0, depth, DBASE, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], saveCan, 0, lsTopped ? timeLeft() - 2 : INF);
   ENGINE_BASE = saveBase; ENGINE_WAITS = 0;
   for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = saveCan[c];
   nPfx = 0; pfxT = 0;
