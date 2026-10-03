@@ -13,7 +13,7 @@
 //
 // WHAT IS EXACT HERE, and why nothing is estimated:
 //   - travel frames: travel.cost, already computed per candidate.
-//   - the rise rate: PanelEngine.riseTime(speed), the engine's own table,
+//   - the rise rate: PAEngine.riseTime(speed), the engine's own table,
 //     frames per pixel, 16 pixels to a row, counted from the live riseTimer
 //     and displacement.
 //   - the pause: advancePassiveRaise only rises inside
@@ -33,9 +33,8 @@
 // rise, which is the direction that hides the problem.
 var assert = require('assert');
 var path = require('path');
-require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
-var PanelEngine = globalThis.PanelEngine;
+var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
 var PuyoCpu = require('./puyocpu.js');
 
 var tests = [], failures = [];
@@ -44,17 +43,17 @@ function test(name, fn) { tests.push({ name: name, fn: fn }); }
 var W = { colourVariance: 168, maxHeight: 136, travelCost: 10 };
 
 function cpuAt(opts) {
-    var stack = new PanelEngine.Stack({ level: 10, seed: 7, countdown: false });
-    var guard = 0;
-    while (!stack.stopWatchIsRunning && guard++ < 1000) stack.run();
-    return new PuyoCpu(stack, Object.assign({ weights: W, reaction: 12, rise: true }, opts || {}));
+    var stack = PA.game({ level: 10, seed: 7, countdown: false });
+    var cpu = PuyoCpu.onPA(stack, Object.assign({ weights: W, reaction: 12, rise: true }, opts || {}));
+    cpu.paStack = stack;
+    return cpu;
 }
 // The frame at which the Nth pixel of rise lands, from the engine's own
 // table and the live timers. Used to choose test inputs, never as an
 // expected answer -- every assertion below is a relation, not a number.
 function framesForPixels(stack, pixels) {
     if (pixels <= 0) return 0;
-    return stack.riseTimer + (pixels - 1) * PanelEngine.riseTime(stack.speed);
+    return stack.riseTimer + (pixels - 1) * PA.riseTime(stack.speed);
 }
 
 test('no travel, no row: a move that lands instantly faces the board as it stands', function () {
@@ -169,7 +168,7 @@ test('WIRING: over a real game the walk sometimes costs an EXTRA row', function 
     // 2. All ones is the old rise with no clock in it; anything else means
     // the settle row went missing.
     var cpu = cpuAt();
-    var stack = cpu.stack;
+    var stack = cpu.paStack;
     var perScore = [], count = 0, decisions = 0;
     var orig = globalThis.PanelCpu.LogicalBoard.prototype.rise;
     var realScore = PuyoCpu.prototype._score;
@@ -182,7 +181,7 @@ test('WIRING: over a real game the walk sometimes costs an EXTRA row', function 
     globalThis.PanelCpu.LogicalBoard.prototype.rise = function (colors) { count++; return orig.call(this, colors); };
     try {
         for (var f = 0; f < 3000 && !stack.gameOver; f++) {
-            if (!cpu._walk && cpu.cooldown === 0) { cpu._decide(); decisions++; }
+            if (!cpu._walk && cpu.cooldown === 0) { cpu.onServer(stack); cpu._decide(); decisions++; }
             cpu.update(); stack.run(); stack.drainEvents();
         }
     } finally {

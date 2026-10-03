@@ -20,7 +20,6 @@
 var assert = require('assert');
 var fs = require('fs');
 var path = require('path');
-require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
 var LogicalBoard = globalThis.PanelCpu.LogicalBoard;
 var registry = require('./registry.js');

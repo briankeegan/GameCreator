@@ -108,27 +108,31 @@ test('a live stack that IS topped out stays topped out whatever ply 1 s board lo
 
 // ---- the wiring, through a real decision ----
 //
-// _resolveCandidate is STUBBED so exactly one candidate earns stop time.
-// That is deliberate: what is under test is whether ply 2 is scored against
-// ply 1's clock, not whether the engine awards the right number for a given
-// board -- input.fidelity.test.js's sweep owns that question, against the
-// real engine. A board hand-built to fire a real 4-combo would make this
-// test depend on both, and a failure would not say which.
-function taps(cpu, earner) {
+// The FIRST SWAP of the decision's pool is handed 90 frames of earned stop
+// time, and no other candidate earns any. That is deliberate: what is under
+// test is whether ply 2 is scored against ply 1's clock, not whether the
+// engine awards the right number for a given board -- input.fidelity.test.js's
+// sweep owns that question, against the real engine. A board hand-built to
+// fire a real 4-combo would make this test depend on both, and a failure
+// would not say which. The award goes on the candidate itself, the field
+// _plyClock reads, because on the server's board the resolves also run for
+// the survival search, so no count of resolves picks out one candidate.
+function taps(cpu) {
     var seen = [];
     var realEval = evaluator.evaluate;
     evaluator.evaluate = function (input, w, o) {
         seen.push(input.clock.stopTime);
         return realEval.call(this, input, w, o);
     };
-    var realResolve = cpu._resolveCandidate;
-    var n = 0;
-    cpu._resolveCandidate = function (board) {
-        var out = realResolve.call(this, board);
-        out.stopTimeEarned = (n++ === earner) ? 90 : 0;
-        return out;
+    var realCands = cpu._candidates;
+    cpu._candidates = function () {
+        var pool = realCands.apply(this, arguments);
+        for (var i = 0; i < pool.length; i++) {
+            if (pool[i].kind === 'swap') { pool[i].earnedStop = 90; break; }
+        }
+        return pool;
     };
-    return function () { evaluator.evaluate = realEval; cpu._resolveCandidate = realResolve; return seen; };
+    return function () { evaluator.evaluate = realEval; cpu._candidates = realCands; return seen; };
 }
 
 test('SETUP: the live stack has no stop time, so every 90 seen came from ply 1', function () {
@@ -139,7 +143,7 @@ test('SETUP: the live stack has no stop time, so every 90 seen came from ply 1',
 test('ply 2 is scored against the clock ply 1 leaves behind', function () {
     var cpu = freshCpu();
     cpu.stack.stopTime = 0;
-    var done = taps(cpu, 1);          // the FIRST SWAP earns; hold is index 0
+    var done = taps(cpu);
     cpu._decide();
     var seen = done();
     assert.ok(seen.length > 20, 'only ' + seen.length + ' evaluations — the search did not run');
@@ -155,7 +159,7 @@ test('and only the children of the candidate that EARNED it see it', function ()
     // pointless because the clock is full either way.
     var cpu = freshCpu();
     cpu.stack.stopTime = 0;
-    var done = taps(cpu, 1);
+    var done = taps(cpu);
     cpu._decide();
     var seen = done();
     var withStop = seen.filter(function (v) { return v === 90; }).length;
@@ -171,7 +175,7 @@ test('DEPTH 1 IS UNTOUCHED: with no lookahead, every evaluation sees the live cl
     // there and advancing it would be the bug in reverse.
     var cpu = freshCpu({ depth: 1 });
     cpu.stack.stopTime = 7;
-    var done = taps(cpu, 1);
+    var done = taps(cpu);
     cpu._decide();
     var seen = done();
     assert.ok(seen.length > 5, 'the search did not run');

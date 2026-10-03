@@ -22,7 +22,7 @@
 var assert = require('assert');
 var registry = require('./registry.js');
 var inputMod = require('./input.js');
-require(require('path').join(__dirname, '..', '..', 'panel-engine.js'));
+var PA = require(require('path').join(__dirname, '..', '..', 'pa-engine.js'));
 require(require('path').join(__dirname, '..', '..', 'panel-cpu.js'));
 var PanelCpu = globalThis.PanelCpu;
 var evaluator = require('./evaluator.js');
@@ -624,17 +624,14 @@ test('garbageOnBoard: a cell high up counts the SAME as a cell on the floor', fu
 
 // And the reason the old claim was not merely unimplemented but
 // UNIMPLEMENTABLE here: the board this feature reads is the visible one.
-// panel-engine.js allocates MAX_ROWS = 24 and lands garbage above the visible
-// board, but panel-cpu.js builds the LogicalBoard with stack.height = 12, so
+// PAEngine.view hands the bot a Stack whose panels run past the visible rows,
+// but panel-cpu.js builds the LogicalBoard with stack.height = 12, so
 // off-screen garbage never reaches any feature at all.
 test('garbageOnBoard: the board it reads is the VISIBLE board, 12 rows', function () {
-    var PanelEngine = globalThis.PanelEngine;
-    assert.ok(PanelEngine, 'this test needs the engine loaded');
-    assert.strictEqual(PanelEngine.HEIGHT, 12,
+    assert.strictEqual(PA.HEIGHT, 12,
         'the visible height changed; the note on garbageOnBoard needs rechecking');
-    // MAX_ROWS (24) is module-internal and deliberately not asserted here —
-    // a test cannot read it, and asserting on a number it cannot see would be
-    // a test of this file's memory rather than of the engine.
+    assert.strictEqual(PA.view(PA.game({ level: 10, seed: 1, countdown: false })).height, 12,
+        'the view the bot reads is not 12 rows high; the note on garbageOnBoard needs rechecking');
 });
 
 // ---- incomingGarbage ----
