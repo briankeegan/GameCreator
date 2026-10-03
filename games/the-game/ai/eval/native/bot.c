@@ -2483,58 +2483,59 @@ static int breakDistance(const int32_t *steps, int n) {
   return tDistMin;
 }
 static Dec fillFirst(Dec d) {
-  { volatile int probe_ = breakDistance(0, 0); (void)probe_;   // EXPERIMENT: measuring alone
-    for (int q = 0; q < nPool; q++) if (POOL[q].kind == K_SWAP) { int32_t sw_[2] = { POOL[q].sr, POOL[q].sc }; probe_ = breakDistance(sw_, 1); } }
   if (d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
   if (lineLast == 1 || lineLast == 3) return BT->lineKind == LINE_BREAK || lineLast == 3 ? fillBeforeBreak(d) : d;
   if (lineLast) return d;
   if (d.kind == K_SWAP && endsInBreak(d.via)) return d;
   if (!aloneOnEngine() || LNA[10] == 0) return d;
-  int best = LNA[10];
+  int baseH = LNA[10], baseD = breakDistance(0, 0);
   if (d.kind == K_SWAP && d.hasMove) {
     int32_t sw[2] = { d.sr, d.sc };
-    if (lineJudge(sw, 1, 0) & LV_LIVES) best = LNO[10] < best ? LNO[10] : best;
+    if (lineJudge(sw, 1, 0) & LV_LIVES) {
+      int h = LNO[10], k = breakDistance(sw, 1);
+      if (h < baseH || (h == baseH && k < baseD)) { baseH = h; baseD = k; }
+    }
   }
-  Cand *pick = 0;
-  int surplus = materialRows(DBASE) >= 6;   // over six rows a clear may be spent to fill
+  int bestH = baseH, bestD = baseD, pr = 0, pc = 0;
+  double bestT = INF;
+  int surplus = materialRows(DBASE) >= 6;
+  int32_t fsw[2 * LINEMAX];
+#define FILL_CONSIDER(SW, N, T, PAYS_OK) do { \
+    int v_ = lineJudge(SW, N, 0); \
+    if ((v_ & LV_LIVES) && !(v_ & LV_DROPS) && (!(v_ & LV_PAYS) || (PAYS_OK))) { \
+      int h_ = LNO[10]; \
+      if (h_ <= baseH) { \
+        int k_ = breakDistance(SW, N); \
+        if ((h_ < baseH || (h_ == baseH && k_ < baseD)) && (!pr || (h_ < bestH || (h_ == bestH && (k_ < bestD || (k_ == bestD && (T) < bestT)))))) { bestH = h_; bestD = k_; bestT = (T); pr = (SW)[0]; pc = (SW)[1]; } } } } while (0)
   for (int q = 0; q < nPool; q++) {
-    Cand *pc = &POOL[q];
-    if (pc->kind != K_SWAP || (pc->res.total > 0 && !surplus)) continue;
-    int32_t sw[2] = { pc->sr, pc->sc };
-    int v = lineJudge(sw, 1, 0);
-    if (!(v & LV_LIVES) || (v & LV_DROPS) || ((v & LV_PAYS) && !surplus)) continue;
-    if (LNO[10] < best || (pick && LNO[10] == best && pc->moveFrames < pick->moveFrames)) { best = LNO[10]; pick = pc; }
+    Cand *k = &POOL[q];
+    if (k->kind != K_SWAP || (k->res.total > 0 && !surplus)) continue;
+    fsw[0] = k->sr; fsw[1] = k->sc;
+    FILL_CONSIDER(fsw, 1, (double)k->moveFrames, surplus);
   }
-  // the top of every column walked along its row, a column a swap, until it
-  // drops into a lower column or meets something it cannot pass
-  int32_t fsw[2 * LINEMAX], first[2] = { 0, 0 };
-  double fest = 0;
   tGrid(DBASE);
   for (int c = 1; c <= tW; c++) {
+    tGrid(DBASE);
     int r = 0;
     for (int k = tH; k >= 1 && !r; k--) if (tCell[k][c] != 0) r = k;
     if (r < 1 || tCell[r][c] <= 0) continue;
     for (int dir = -1; dir <= 1; dir += 2) {
+      tGrid(DBASE);
       int n = 0, at = c;
       while (n < LINEMAX) {
         int to = at + dir;
         if (to < 1 || to > tW || tCell[r][to] != 0) break;
         fsw[2 * n] = r; fsw[2 * n + 1] = dir > 0 ? at : to; n++;
         at = to;
-        if (!tSupported(r, at)) break;   // it drops here
+        if (!tSupported(r, at)) break;
       }
       if (n == 0) continue;
-      int v = lineJudge(fsw, n, 0);
-      if (!(v & LV_LIVES) || (v & (LV_PAYS | LV_DROPS))) continue;
-      double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
-      if (LNO[10] < best || ((pick || first[0]) && LNO[10] == best && est < fest)) {
-        best = LNO[10]; pick = 0; first[0] = fsw[0]; first[1] = fsw[1]; fest = est;
-      }
+      FILL_CONSIDER(fsw, n, travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5.0 * n, 0);
     }
   }
-  if (first[0]) return mkSwap(first[0], first[1], V_FILL, d.mode, d.alive);
-  if (!pick) return d;
-  return mkSwap(pick->sr, pick->sc, V_FILL, d.mode, d.alive);
+#undef FILL_CONSIDER
+  if (!pr) return d;
+  return mkSwap(pr, pc, V_FILL, d.mode, d.alive);
 }
 // A SWAP THAT IS STILL MOVING WHEN THE LOCK ENDS TAKES THE ROW BACK: the
 // raise starts the frame nothing holds the rise lock, and a swap queued then
