@@ -2579,9 +2579,15 @@ static Dec fillFirst(Dec d) {
   }
   // the top of every column walked along its row, a column a swap, until it
   // drops into a lower column or meets something it cannot pass
+  // the walk is planned on the board the engine settles to: a clear under a
+  // column moves its top before the cursor gets there
   int32_t fsw[2 * LINEMAX], first[2] = { 0, 0 };
   double fest = 0;
-  tGrid(DBASE);
+  { int32_t st0[ST_INTS], cur[2], t; uint32_t can0[WMAX]; uint8_t waits0[32][WMAX];
+    tGrid(lineState(0, 0, st0, can0, waits0, cur, &t) == 0 ? st0 : DBASE); }
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  grid H %d:", tH); for (int r = tH; r >= 1; r--) { fprintf(stderr, " "); for (int c = 1; c <= tW; c++) fprintf(stderr, "%c", tCell[r][c] == 0 ? '.' : tCell[r][c] < 0 ? 'g' : '0' + tCell[r][c]); } fprintf(stderr, "\n"); }
+#endif
   for (int c = 1; c <= tW; c++) {
     int r = 0;
     for (int k = tH; k >= 1 && !r; k--) if (tCell[k][c] != 0) r = k;
@@ -2597,6 +2603,9 @@ static Dec fillFirst(Dec d) {
       }
       if (n == 0) continue;
       int v = lineJudge(fsw, n, 0);
+#ifndef __wasm__
+      if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  walk %d,%d dir %d n %d v %d hollow %d die %d last %d refused %d at %d\n", r, c, dir, n, v, LNO[10], LNO[0], LNO[1], LNO[5], LNO[6]); }
+#endif
       if (!(v & LV_LIVES) || (v & LV_PAYS) || ((v & LV_DROPS) && !(v & LV_FILLS))) continue;
       double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
       if (LNO[10] < best || ((pick || first[0]) && LNO[10] == best && est < fest)) {
