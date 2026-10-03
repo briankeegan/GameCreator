@@ -2446,8 +2446,33 @@ static Dec spendToBreak(Dec d) {
 // the one the engine finds leaves the least hollow under what lands (pa.c
 // HOLLOW) -- a move that clears nothing, drops no garbage at rest and lives --
 // if it leaves less than the choice and less than the board left alone.
+// While a break is being played, a fill swap goes first only if the break
+// still breaks after it and what lands is left less hollow.
+static Dec fillBeforeBreak(Dec d) {
+  int32_t ln[2 * LINEMAX + 2]; int n = BT->nLine;
+  if (n) for (int k = 0; k < 2 * n; k++) ln[2 + k] = BT->line[k];
+  else if (d.kind == K_SWAP && d.hasMove) { ln[2] = d.sr; ln[3] = d.sc; n = 1; }
+  if (!n || n >= LINEMAX) return d;
+  int need = LV_LIVES | LV_BREAKS;
+  if ((lineJudge(ln + 2, n, BT->lineWaitAll) & need) != need) return d;
+  int best = LNO[10];
+  if (best == 0) return d;
+  int pr = 0, pc = 0;
+  for (int q = 0; q < nPool; q++) {
+    Cand *k = &POOL[q];
+    if (k->kind != K_SWAP || k->res.total > 0) continue;
+    ln[0] = k->sr; ln[1] = k->sc;
+    int v = lineJudge(ln, n + 1, BT->lineWaitAll);
+    if ((v & need) != need || (v & LV_DROPS)) continue;
+    if (LNO[10] < best) { best = LNO[10]; pr = k->sr; pc = k->sc; }
+  }
+  if (!pr) return d;
+  return mkSwap(pr, pc, V_FILL, d.mode, d.alive);
+}
 static Dec fillFirst(Dec d) {
-  if (lineLast || d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
+  if (d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
+  if (lineLast == 1 || lineLast == 3) return BT->lineKind == LINE_BREAK || lineLast == 3 ? fillBeforeBreak(d) : d;
+  if (lineLast) return d;
   if (d.kind == K_SWAP && endsInBreak(d.via)) return d;
   if (!aloneOnEngine() || LNA[10] == 0) return d;
   int best = LNA[10];
