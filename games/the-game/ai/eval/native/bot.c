@@ -3350,6 +3350,25 @@ static Dec fillFirstIn(Dec d) {
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  grid H %d:", tH); for (int r = tH; r >= 1; r--) { fprintf(stderr, " "); for (int c = 1; c <= tW; c++) fprintf(stderr, "%c", tCell[r][c] == 0 ? '.' : tCell[r][c] < 0 ? 'g' : '0' + tCell[r][c]); } fprintf(stderr, "\n"); }
 #endif
+  // every walk judged together first (natively in parallel), then taken in order
+  { static LineC wl[2 * (WMAX + 1)]; LineC *wp[2 * (WMAX + 1)]; int nw = 0;
+    for (int c = 1; c <= tW; c++) {
+      int r = 0;
+      for (int k = tH; k >= 1 && !r; k--) if (tCell[k][c] != 0) r = k;
+      if (r < 1 || tCell[r][c] <= 0) continue;
+      for (int dir = -1; dir <= 1; dir += 2) {
+        int n = 0, at = c;
+        while (n < LINEMAX) {
+          int to = at + dir;
+          if (to < 1 || to > tW || tCell[r][to] != 0) break;
+          wl[nw].sw[2 * n] = r; wl[nw].sw[2 * n + 1] = dir > 0 ? at : to; n++;
+          at = to;
+          if (!tSupported(r, at)) break;
+        }
+        if (n) { wl[nw].n = n; wp[nw] = &wl[nw]; nw++; }
+      }
+    }
+    prejudgeLines(wp, nw); }
   for (int c = 1; c <= tW; c++) {
     int r = 0;
     for (int k = tH; k >= 1 && !r; k--) if (tCell[k][c] != 0) r = k;
