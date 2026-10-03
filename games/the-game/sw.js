@@ -26,6 +26,8 @@ GCRegisterServiceWorker("the-game-v115", [
   "./ai/eval/survival_worker.js",
   "./ai/brain.js",
   "./ai/brain-worker.js",
+  "./ai/eval/native.js",
+  "./ai/eval/native/pa.wasm",
   "./ai/trained-weights.js",
   "./duel.js",
   "./difficulty.js",

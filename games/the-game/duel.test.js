@@ -64,6 +64,7 @@ const PLAY_MS = Number(process.env.GC_DUEL_MS || 45000);
     }
     console.log("duel: " + JSON.stringify(seen));
     console.log("brain: " + JSON.stringify(await page.evaluate(() => { const d = window.NewseyDuel.debug(); return d && d.foeBrain; })));
+    console.log("pace: " + JSON.stringify(await page.evaluate(() => { const s = window.NewseyDuel.raw(); return s && [s.cpu.brain.pace.recent, s.cpu.brain.quickPace.recent, navigator.hardwareConcurrency]; })));
     if (errors.length) console.log("errors: " + errors.slice(0, 5).join("\n"));
     assert.ok(seen.clock > 1000, "the match ran (clock " + seen.clock + ")");
     assert.ok(seen.swaps[0] > 20 && seen.swaps[1] > 20, "both sides swap: " + seen.swaps);
