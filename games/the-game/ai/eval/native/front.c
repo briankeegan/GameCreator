@@ -323,6 +323,7 @@ static void fPrepare(Front *F) {
     d[IN_POPLOW + c] = popLow;
   }
   d[IN_SF] = FB->fHOVER; d[IN_SF + 1] = FB->fFLASH; d[IN_SF + 2] = FB->fFACE; d[IN_SF + 3] = FB->fPOP;
+  d[IN_SF + 4] = next ? nb_shake_frames(next->width * next->height) : 0;   // the next slab's landing shake
 }
 
 static void fTable(Front *F, double *tab) {
@@ -496,4 +497,45 @@ EXPORT(front_prepare) int front_prepare(int fid, Board *b, int held, int hasLast
   F->held = held; F->hasLast = hasLast; F->lastR = lastR; F->lastC = lastC;
   fPrepare(F);
   return 0;
+}
+// THE BREAKS WITHIN REACH, time aside: the shortest line of up to `depth`
+// swaps, each played on the board the last one settled to, that breaks
+// garbage. Returns its length (0: none) and writes it to out as row, column
+// pairs, out[0] the number of such lines at that length: drill.c GC_PROBE.
+#define PROBEMAX 4
+static int32_t PRB[PROBEMAX + 1][ST_INTS], PRR[R_INTS + ST_INTS], PRSW[PROBEMAX][2 * 128];
+static int prLine[2 * PROBEMAX], prBest, prCount, prBestLine[2 * PROBEMAX];
+static void probeAt(int d, int depth) {
+  int n = legal(PRB[d], PRSW[d]);
+  for (int i = 0; i < n; i++) {
+    int r = PRSW[d][2 * i], c = PRSW[d][2 * i + 1];
+    stcpy(PRB[d + 1], PRB[d]);
+    if (!swapIn(PRB[d + 1], r, c)) continue;
+    resolve(PRB[d + 1], PRR, 1);
+    prLine[2 * d] = r; prLine[2 * d + 1] = c;
+    if (PRR[R_SCOPE] == SC_BROKE) {
+      if (d + 1 < prBest) { prBest = d + 1; prCount = 0; for (int k = 0; k < 2 * (d + 1); k++) prBestLine[k] = prLine[k]; }
+      if (d + 1 == prBest) prCount++;
+      continue;
+    }
+    if (PRR[R_SCOPE] != SC_OK || d + 1 >= depth || d + 1 >= prBest) continue;
+    stcpy(PRB[d + 1], PRR + R_INTS);
+    probeAt(d + 1, depth);
+  }
+}
+EXPORT(front_probe) int front_probe(int fid, Board *b, int depth, int32_t *out) {
+  Front *F = &FRONTS[fid];
+  FB = b;
+  fPrepare(F);
+  if (depth > PROBEMAX) depth = PROBEMAX;
+  resolve(IN, PRR, 1);
+  if (PRR[R_SCOPE] == SC_BROKE) { out[0] = 1; return 0; }
+  if (PRR[R_SCOPE] != SC_OK) return -1;
+  stcpy(PRB[0], PRR + R_INTS);
+  prBest = depth + 1; prCount = 0;
+  probeAt(0, depth);
+  if (prBest > depth) return 0;
+  out[0] = prCount;
+  for (int k = 0; k < 2 * prBest; k++) out[1 + k] = prBestLine[k];
+  return prBest;
 }

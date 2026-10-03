@@ -170,6 +170,15 @@ static double framesToDeathS(double stopTime, int tallest, double fpr) {
   // Every queued slab drops as soon as the one before it lands, so the rows
   // still coming are the whole queue's, not the next slab's.
   double queued = dmax(__builtin_ceil(BIN[IN_NEXTSLAB] / BW), BIN[IN_INROWS]);
+  int room = BH - tallest;
+  if (queued >= room && room > 0) {
+    // THE QUEUE FILLS THE ROOM, one slab at a time: each drops at row BH + 1
+    // and falls a row a frame onto the last, and the next drops only once it
+    // has landed. Topped by the last, the board drains when its shake ends.
+    double fill = 0;
+    for (int i = 0; i < room; i++) fill += BH - (tallest + i) + 1;
+    return dmax(fill + BIN[IN_SF + 4], clock);
+  }
   return clock + framesToRise(dmax(0, BH - tallest - queued), fpr, nz(BIN[IN_CLOCK]) + clock);
 }
 static double framesToDeath(int tallest, double fpr) { return framesToDeathS(BIN[IN_STOP], tallest, fpr); }
@@ -1861,6 +1870,127 @@ static Dec stayAlive(Dec d) {
   BT->plan.has = 0; BT->attack.has = 0; BT->flatten.has = 0; BT->dig.has = 0; BT->digIsBreak = 0;
   return mkSwap(br, bc, V_KEEPHEALTH, d.mode, d.alive);
 }
+// A BREAK KEPT IN REACH. Topped, the bot buys time with clears, and a clear
+// that leaves no line to the garbage spends the material the break needs:
+// the board then has nothing left to break with. While a line of up to
+// KEEPDEPTH swaps breaks the garbage, a choice that loses every such line is
+// replaced by a living one that keeps one, breaking first. With none, the
+// choice stands: it must not die.
+#define KEEPDEPTH 3
+static ST KB[KEEPDEPTH + 1], KBA;
+static int32_t KBR[R_INTS + ST_INTS], KBSW[KEEPDEPTH][2 * 128];
+static int breakAt(int d, int depth) {
+  int n = legal(KB[d], KBSW[d]);
+  for (int i = 0; i < n; i++) {
+    int r = KBSW[d][2 * i], c = KBSW[d][2 * i + 1];
+    stcpy(KB[d + 1], KB[d]);
+    if (!swapIn(KB[d + 1], r, c)) continue;
+    resolve(KB[d + 1], KBR, 1);
+    if (KBR[R_SCOPE] == SC_BROKE) return 1;
+    if (KBR[R_SCOPE] != SC_OK || d + 1 >= depth) continue;
+    stcpy(KB[d + 1], KBR + R_INTS);
+    if (breakAt(d + 1, depth)) return 1;
+  }
+  return 0;
+}
+// A break within `depth` swaps of the board st settles to (st breaking counts).
+static int breakWithin(const int32_t *st, int depth) {
+  resolve(st, KBR, 1);
+  if (KBR[R_SCOPE] == SC_BROKE) return 1;
+  if (KBR[R_SCOPE] != SC_OK) return 0;
+  stcpy(KB[0], KBR + R_INTS);
+  return breakAt(0, depth);
+}
+static int keepsBreak(int r, int c) {
+  stcpy(KBA, DBASE);
+  if (!swapIn(KBA, r, c)) return 0;
+  return breakWithin(KBA, KEEPDEPTH);
+}
+// keepBreak's last step, for the drill's trace: 1 topped, 2 a break in reach,
+// 4 the choice loses it, 3 replaced.
+static int kbLast;
+__attribute__((export_name("bot_keepbreak"))) int32_t bot_keepbreak(void) { return kbLast; }
+static Dec keepBreak(Dec d) {
+  kbLast = 0;
+  if (!BIN[IN_TOPPED] || d.kind != K_SWAP || !d.hasMove) return d;
+  kbLast = 1;
+  if (!breakWithin(DBASE, KEEPDEPTH)) return d;
+  kbLast = 2;
+  if (keepsBreak(d.sr, d.sc)) return d;
+  kbLast = 4;
+  livingSet(DBASE, BIN[IN_DRAINBOUND]);
+  int br = 0, bc = 0, rank = -1; double bt = INF;
+  for (int r = 1; r < 40; r++) for (int c = 1; c < WMAX; c++) {
+    if (!LIVE[r][c] || (r == d.sr && c == d.sc)) continue;
+    if (!LIVE1[r][c] && (returnsToSeen(r, c) || (BIN[IN_HASLAST] && r == (int)BIN[IN_LASTR] && c == (int)BIN[IN_LASTC]))) continue;
+    if (!LIVEB[r][c] && !keepsBreak(r, c)) continue;
+    int rk = LIVEB[r][c] ? (LIVE1[r][c] ? 3 : 2) : LIVE1[r][c] ? 1 : 0;
+    if (rk > rank || (rk == rank && LIVET[r][c] < bt)) { br = r; bc = c; bt = LIVET[r][c]; rank = rk; }
+  }
+  if (rank < 0) return d;
+  kbLast = 3;
+  BT->plan.has = 0; BT->attack.has = 0; BT->flatten.has = 0; BT->dig.has = 0; BT->digIsBreak = 0;
+  return mkSwap(br, bc, V_KEEPHEALTH, d.mode, d.alive);
+}
+// BREAKING COMES FIRST. A line of up to KEEPDEPTH swaps that breaks the
+// garbage, each swap played on the board the last settles to, is played when
+// its break is pressed in time: the walk to each swap and the frames it takes
+// to settle, inside the time the board has (the drain bound topped, else the
+// frames to death). The shortest line, then the quickest. A choice that
+// already breaks, or is a step of a break line, stands.
+static ST BL[KEEPDEPTH + 1];
+static int32_t BLR[R_INTS + ST_INTS], BLSW[KEEPDEPTH][2 * 128], blLine[2 * KEEPDEPTH], blBest[2 * KEEPDEPTH];
+static int blLen; static double blTime;
+// Topped, the time is the lock: each swap and what it sets falling hold it,
+// so a line lives while every press lands before the board it follows comes
+// to rest (`limit` is then the room after the last press). Not topped, the
+// line's presses are counted against the frames to death.
+static int blTopped;
+static void breakLineAt(int d, int pr, int pc, double t, double limit) {
+  int n = legal(BL[d], BLSW[d]);
+  for (int i = 0; i < n; i++) {
+    int r = BLSW[d][2 * i], c = BLSW[d][2 * i + 1];
+    double walk = travelCost(pr, pc, r, c), at = t + walk;
+    if ((blTopped ? walk : at) > limit || d + 1 > blLen) continue;
+    stcpy(BL[d + 1], BL[d]);
+    if (!swapIn(BL[d + 1], r, c)) continue;
+    resolve(BL[d + 1], BLR, 1);
+    blLine[2 * d] = r; blLine[2 * d + 1] = c;
+    if (BLR[R_SCOPE] == SC_BROKE) {
+      if (d + 1 < blLen || at < blTime) { blLen = d + 1; blTime = at; for (int k = 0; k < 2 * (d + 1); k++) blBest[k] = blLine[k]; }
+      continue;
+    }
+    if (BLR[R_SCOPE] != SC_OK || d + 1 >= KEEPDEPTH) continue;
+    double settle = BLR[R_TOTAL] > 0 ? BLR[R_FRAMES] : quietSettle(BL[d], r, c, BLR + R_INTS);
+    stcpy(BL[d + 1], BLR + R_INTS);
+    breakLineAt(d + 1, r, c, at + settle, blTopped ? settle - 2 : limit);
+  }
+}
+// breakFirst's last step, for the drill's trace: 3 searched, 4 played a line.
+static int blLast;
+__attribute__((export_name("bot_breakfirst"))) int32_t bot_breakfirst(void) { return blLast; }
+static Dec breakFirst(Dec d) {
+  blLast = 0;
+  if (d.kind == K_RAISE || !hasGarbage(DBASE)) return d;
+  blLast = 1;
+  if (d.kind == K_SWAP && d.hasMove) {
+    Cand *pc = poolSwap(d.sr, d.sc);
+    if ((pc && pc->res.broke) || endsInBreak(d.via)) return d;
+  }
+  blTopped = BIN[IN_TOPPED] != 0;
+  double limit = (blTopped ? BIN[IN_DRAINBOUND] : DDEADLINE) - 2;
+  blLast = 2;
+  resolve(DBASE, BLR, 1);
+  if (BLR[R_SCOPE] != SC_OK) return d;
+  blLast = 3;
+  stcpy(BL[0], BLR + R_INTS);
+  blLen = KEEPDEPTH + 1; blTime = INF;
+  breakLineAt(0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, limit);
+  if (blLen > KEEPDEPTH) return d;
+  blLast = 4;
+  BT->plan.has = 0; BT->attack.has = 0; BT->flatten.has = 0; BT->dig.has = 0; BT->digIsBreak = 0;
+  return mkSwap(blBest[0], blBest[1], V_BREAKREACH, d.mode, d.alive);
+}
 // A SWAP THAT IS STILL MOVING WHEN THE LOCK ENDS TAKES THE ROW BACK: the
 // raise starts the frame nothing holds the rise lock, and a swap queued then
 // cancels it. While a raise waits, a swap is played only if its walk and its
@@ -1897,7 +2027,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   memoRoom();
   nSettle = nLandR = nFireR = nSavesR = nAnyR = 0;
   nRes = 0; nOptRuns = 0; nOptDepth = 0; nScore = 0; nLook = 0; nSave = 0; rScore = rMain = rLook = rSave = rCand = 0;
-  Dec d = onePlan(stayAlive(raiseHold(waitForDrain(decideRuled()))));
+  Dec d = onePlan(keepBreak(breakFirst(stayAlive(raiseHold(waitForDrain(decideRuled()))))));
   if (d.kind == K_SWAP && d.hasMove) {
     BT->recent[2] = BT->nRecent ? BT->recent[0] : 0; BT->recent[3] = BT->nRecent ? BT->recent[1] : 0;
     BT->recent[0] = d.sr; BT->recent[1] = d.sc;
