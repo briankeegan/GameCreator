@@ -18,7 +18,6 @@
 // chips/README.md.
 var path = require('path');
 var fs = require('fs');
-require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
 var LogicalBoard = globalThis.PanelCpu.LogicalBoard;
 var W = 6, H = 12;

@@ -1,15 +1,13 @@
 #!/bin/sh
-# Builds engine.wasm (one thread) and engine-mt.wasm (shared memory, for
-# threads) from engine.c, and pa.wasm / pa-mt.wasm from pa.c, and records
-# every hash in BUILT, which
-# native.test.js checks: a change to engine.c without a rebuild fails there.
+# Builds pa.wasm (one thread) and pa-mt.wasm (shared memory, for threads)
+# from pa.c, the server's rules (pa-engine.js), and BitBot's modules, and
+# records every hash in BUILT.
 # Needs clang with the wasm32 target (clang 18 here; no libc: libc.h has what is used).
 set -e
 cd "$(dirname "$0")"
 FLAGS="--target=wasm32 -O3 -matomics -mbulk-memory -nostdlib -Wall -Wno-unused-function -Wl,--no-entry -Wl,--allow-undefined"
 MT="-DTHREADS -Wl,--shared-memory -Wl,--import-memory -Wl,--max-memory=4294967296 -Wl,--export=__stack_pointer -Wl,-z,stack-size=1048576"
-# engine.c: this game's rules (panel-engine.js); pa.c: the server's (pa-engine.js)
-for e in engine pa; do
+for e in pa; do
   clang $FLAGS $e.c -o $e.wasm
   clang $FLAGS $MT $e.c -o $e-mt.wasm
 done
@@ -22,5 +20,5 @@ clang -O2 -DPA_LIB -Wall -Wno-unused-function -Wno-unknown-attributes -Wno-ignor
 # libbit.so: the bot and the engine for the Lua's training drill (../lua/train.lua, through luajit). Not tracked.
 clang -O2 -fPIC -shared -DPA_LIB -Wno-unknown-attributes -Wno-ignored-attributes -Wno-unused-function bit.c pa.c -lm -o libbit.so
 h() { sha256sum "$1" | cut -c1-64; }
-for f in engine.c pa.c pa.h bit.c bot.c front.c bit.profdata libc.h memory.h search.h engine.wasm engine-mt.wasm pa.wasm pa-mt.wasm bit.wasm bit-mt.wasm; do printf '%s %s\n' "$f" "$(h $f)"; done > BUILT
+for f in pa.c pa.h bit.c bot.c front.c bit.profdata libc.h memory.h search.h pa.wasm pa-mt.wasm bit.wasm bit-mt.wasm; do printf '%s %s\n' "$f" "$(h $f)"; done > BUILT
 cat BUILT

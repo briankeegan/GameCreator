@@ -15,7 +15,6 @@
 // expensive. 8 and 9 are SHOCK and COLORLESS — garbage, not colours — and are
 // read as garbage here for the same reason that bench does it.
 var path = require('path'), fs = require('fs');
-require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
 var LogicalBoard = globalThis.PanelCpu.LogicalBoard;
 var registry = require('./registry.js');

@@ -7,13 +7,13 @@
   var node = typeof importScripts !== 'function', PuyoCpu, ctl = null, slot = null;
   if (node) {
     var path = require('path');
-    require(path.join(__dirname, '..', '..', 'panel-engine.js'));
+    require(path.join(__dirname, '..', '..', 'pa-engine.js'));
     require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
     PuyoCpu = require(path.join(__dirname, 'puyocpu.js'));
   } else {
-    importScripts('../../panel-rules.js', '../../panel-engine.js', '../../panel-cpu.js',
+    importScripts('../../panel-rules.js', '../../pa-generator.js', '../../pa-engine.js', '../../panel-cpu.js',
                   'features.js', 'registry.js', 'input.js', 'travel.js', 'evaluator.js',
-                  'engineboard.js', 'modes.js', 'faststack.js', 'puyocpu.js');
+                  'engineboard.js', 'modes.js', 'puyocpu.js');
     PuyoCpu = self.PanelEval.PuyoCpu;
   }
   function handle(m) {

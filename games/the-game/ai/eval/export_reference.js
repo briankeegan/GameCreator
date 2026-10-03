@@ -40,7 +40,6 @@
 'use strict';
 var path = require('path');
 var fs = require('fs');
-require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
 var LogicalBoard = globalThis.PanelCpu.LogicalBoard;
 var registry = require('./registry.js');

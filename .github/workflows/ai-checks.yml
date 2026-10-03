@@ -7,11 +7,6 @@ name: AI checks
 # found by the owner playing the game, while the checks that would have
 # caught them sat in the repo unrun).
 #
-# ai/experiments/harness_fidelity.test.js says so in its own header: it is
-# the gate for two engine behaviours a harness got wrong twice, silently,
-# invalidating every benchmark beside it — and it asks to be wired into CI
-# "if/when this directory's tooling gets one". This is that.
-#
 # SEPARATE FROM pages.yml ON PURPOSE, the same split browser-checks.yml and
 # art-checks.yml already use: pages.yml builds ONE artifact for every game,
 # so a failure here would take the whole site down over one game's AI. The
@@ -25,13 +20,13 @@ on:
   push:
     paths:
       - 'games/the-game/ai/**'
-      - 'games/the-game/panel-engine.js'
+      - 'games/the-game/pa-engine.js'
       - 'games/the-game/panel-cpu.js'
       - '.github/workflows/ai-checks.yml'
   pull_request:
     paths:
       - 'games/the-game/ai/**'
-      - 'games/the-game/panel-engine.js'
+      - 'games/the-game/pa-engine.js'
       - 'games/the-game/panel-cpu.js'
   workflow_dispatch:
 
@@ -56,20 +51,6 @@ jobs:
       # the thing it exists for and stays quiet on the near-miss.
       - name: Feature unit tests
         run: node games/the-game/ai/eval/features.test.js
-
-      # Does the input agree with the REAL engine? A feature reading a field
-      # that is always 0 produces perfectly plausible numbers and tunes into
-      # nonsense, so fromStack is compared field by field against a live
-      # Stack, the match rule is swept against getMatchingPanels over 7 seeds
-      # and 6 colour counts, and framesToDeath is checked by actually killing
-      # a board and timing it.
-      - name: Evaluator/engine fidelity
-        run: node games/the-game/ai/eval/input.fidelity.test.js
-
-      # Does the adapter actually FEED every feature? The two suites above
-      # are structurally blind to this — one builds inputs by hand, the other
-      # checks fromStack — so a seam passing nothing would leave both green
-      # while every weighted feature read zero in the only place that ships.
 
       # DOES THE TRAINING HARNESS DO WHAT IT CLAIMS? The game code here was
       # built test-first and had no bugs; the harness around it was
@@ -104,14 +85,6 @@ jobs:
       # the formula was off by one while looking perfectly reasonable.
       - name: Cursor travel cost
         run: node games/the-game/ai/eval/travel.test.js
-
-      # Are the numbers right FOR THE BOARD BEING RANKED? Every other suite
-      # either builds the board by hand or checks a single call, so a stale
-      # board or a wrong candidate passes all of them. This intercepts real
-      # evaluations mid-game and recomputes each feature with a second,
-      # deliberately naive implementation.
-      - name: Experiment harness fidelity
-        run: node games/the-game/ai/experiments/harness_fidelity.test.js
 
       - name: Love RNG parity
         run: node games/the-game/ai/experiments/love_rng.test.js

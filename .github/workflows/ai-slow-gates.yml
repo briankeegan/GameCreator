@@ -1,7 +1,7 @@
 # THE GATES TOO SLOW TO FINISH BETWEEN PUSHES.
 #
-# SLOW_GATES in gates.sh — each measured over SLOW_SECONDS, the longest
-# (gate_live_fidelity) plays whole duels and takes over an hour. On a push
+# SLOW_GATES in gates.sh — each measured over SLOW_SECONDS; the longest play
+# whole duels and take over an hour. On a push
 # trigger they reported nothing: ai-checks.yml cancels in progress so a newer
 # commit can supersede an older one, and a job that takes hours never survives
 # to a conclusion. `cancelled` is not a failure, so nothing went red.

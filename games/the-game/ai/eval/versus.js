@@ -23,11 +23,9 @@
 // about them. (Two identical weight sets therefore mirror each other and
 // draw, which is correct and is asserted in versus.test.js.)
 var path = require('path');
-require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
 var PuyoCpu = require('./puyocpu.js');
 var report = require(path.join(__dirname, '..', 'experiments', 'report.js'));
-var PanelEngine = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
 
 var LEVEL = Number(process.env.GC_LEVEL || 10);
@@ -140,9 +138,7 @@ exports.duel = function (weightsA, weightsB, seed, opts, optsB) {
     // The countdown is the engine's and nobody plays in it.
     while (stacks[0].clock <= PA.COUNTDOWN_TOTAL) { stacks[0].run(); stacks[1].run(); }
     stacks[0].events.length = 0; stacks[1].events.length = 0;
-    // PuyoCpu reads PAEngine.View; BitBot a panel-engine.js Stack.
-    function viewFor(o, st) { return o.bot === 'bitbot' ? PA.view(st, PanelEngine) : PA.view(st); }
-    var cpus = [ makeCpu(viewFor(opts, stacks[0]), weightsA, opts), makeCpu(viewFor(optsB, stacks[1]), weightsB, optsB) ];
+    var cpus = [ makeCpu(PA.view(stacks[0]), weightsA, opts), makeCpu(PA.view(stacks[1]), weightsB, optsB) ];
     // EACH SIDE CAN SEE THE OTHER. Without this the opponent features are
     // wired all the way to the evaluator and then handed null, which reads as
     // a feature that is correct, registered and constant — the shape of dead
@@ -150,7 +146,7 @@ exports.duel = function (weightsA, weightsB, seed, opts, optsB) {
     function look() {
         for (var s = 0; s < 2; s++) {
             if (cpus[s].onServer) cpus[s].onServer(stacks[s], stacks[s ^ 1]);
-            else { cpus[s].stack = PA.view(stacks[s], PanelEngine); cpus[s].opponent = PA.view(stacks[s ^ 1], PanelEngine); }
+            else { cpus[s].stack = PA.view(stacks[s]); cpus[s].opponent = PA.view(stacks[s ^ 1]); }
         }
     }
     var sent = [0, 0];

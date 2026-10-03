@@ -31,7 +31,7 @@ don't fork it per-game.
   own. `SLOW_GATES` run nightly in `ai-slow-gates.yml`: they take hours, and
   a job that long never survives a `cancel-in-progress` workflow to reach a
   conclusion. `check_gate_wiring.mjs` fails if the set of gates no workflow
-  runs grows past its recorded count. The ten in `PANEL_GAME_GATES` need the
+  runs grows past its recorded count. The six in `PANEL_GAME_GATES` need the
   `panel-game` checkout and stay off the deploy path. A push waits on none of
   it; `GC_RUN_GATES=1` makes `.claude/hooks/guard-main-push.sh` run the
   scoped list first (`GC_FULL_GATES=1` adds the slow ones). Only
@@ -208,10 +208,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   a garbage cell can never come off the board and a panel can, so converting one
   is worth clearing it, deferred. Being buried and short widens the SEARCH (six
   beam slots ranked by closeness to a slab, added to the twelve price-ranked
-  ones) so the option is visible; finding is not preferring. `survival.test.js`
-  is the gate: six vectors over two seeds, counted by deaths against a measured
-  budget, plus a direct check that a vector asking for towers still scores the
-  flat board higher.
+  ones) so the option is visible; finding is not preferring.
 - **An explicit instruction beats a measurement.** Say the number once, then
   do what was asked.
 - **Never parse a tool's prose — make it emit data**, and have the consumer
@@ -243,11 +240,11 @@ ways: a tool not listed, or a path listed that doesn't exist.
   400 real boards, because agreeing on every feature is not the same as
   playing the same game. Change a feature or the search and re-export, or the
   two drift apart in silence.
-- **The bramp server plays by its own engine.** panel-engine.js is this game's
-  engine and differs from the panel-game server's Lua (shock, garbage order,
-  input before physics). A bot for that server searches on `pa-engine.js` /
-  `native/pa.c`, which `gate_server_engine` holds to recordings of the Lua
-  (`lua/engineRecord.lua`, run in a panel-game checkout).
+- **One engine: the server's.** The game and every JS tool run on
+  `pa-engine.js`, the panel-game server's Lua ported line for line; the bot
+  searches on `native/pa.c`. `gate_server_engine` holds both to recordings of
+  the Lua (`lua/engineRecord.lua`, run in a panel-game checkout). The Lua is
+  the reference. A bot is put on a board with `PuyoCpu.onPA(stack, opts, opp)`.
 - A test's scratch files go beside the test, never `os.tmpdir()`.
 - **BitBot drills run at level 10, nothing else.** `pa_drill.js` exits if a
   scenario's level is not 10.

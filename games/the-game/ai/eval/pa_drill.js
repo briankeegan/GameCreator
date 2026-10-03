@@ -1,11 +1,9 @@
 #!/usr/bin/env node
 var path = require('path'), fs = require('fs');
-require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
 var BitBot = require(path.join(__dirname, process.env.GC_BOT || 'bitbot.js'));
 var bench = require(path.join(__dirname, 'bench.js'));
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js')), GEN = require(path.join(__dirname, '..', '..', 'pa-generator.js'));
-var E = globalThis.PanelEngine;
 
 var name = process.argv[2], seed = Number(process.argv[3] || 1), sc = bench.SCENARIOS[name];
 if (!sc) { console.error('pa_drill: no scenario ' + name); process.exit(2); }
@@ -13,7 +11,7 @@ if (sc.level !== 10) { console.error('pa_drill: drills run at level 10 only, not
 var frames = Number(process.argv[4] || sc.ceiling);
 var ld = PA.vsLevel(sc.level).levelData;
 var pa = PA.create(sc.level, new PA.Seeded(new GEN.GeneratorSource(seed, true, ld.colors, ld.adjacentDenialFrequency)));
-var bot = new BitBot(PA.view(pa, E), { allowRaise: true, reaction: 12, seed: seed });
+var bot = new BitBot(PA.view(pa), { allowRaise: true, reaction: 12, seed: seed });
 var trace = process.env.GC_TRACE ? Number(process.env.GC_TRACE) : 0;
 var via = {}, decide = bot.decide.bind(bot);
 var MISS_WINDOW = 240, watch = null, dumpDir = process.env.GC_DUMP || null;
@@ -77,7 +75,7 @@ for (var f = 0; f < frames; f++) {
   if (tapeIn && f < takeover) {
     pa.nextInput = tapeIn[2 * f]; pa.pressSwap = !!tapeIn[2 * f + 1];
   } else {
-    bot.stack = PA.view(pa, E);
+    bot.stack = PA.view(pa);
     bot.update();
   }
   if (tapeOut) { tapeOut[2 * f] = pa.nextInput; tapeOut[2 * f + 1] = pa.pressSwap ? 1 : 0; }

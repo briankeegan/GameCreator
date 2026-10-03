@@ -12,13 +12,13 @@
 // candidate is worth the best of stopping there or any single reply. Every
 // one of those is a place the two implementations can drift apart silently.
 //
-// So this records the MOVE, on real boards from real games at level 10, with
-// the weight set the bot actually ships. bot/tests/decisionVerify.lua replays
-// each one and fails if Lua picks differently.
+// So this records the MOVE, on real boards from real games at level 10 on the
+// server's engine (pa-engine.js), with the weight set the bot actually ships.
+// bot/tests/decisionVerify.lua replays each one and fails if Lua picks
+// differently.
 var path = require('path'), fs = require('fs');
-require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
-var PanelEngine = globalThis.PanelEngine;
+var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
 var PuyoCpu = require('./puyocpu.js');
 
 // Same relative hop as export_reference.js uses: up out of GameCreator, then
@@ -74,11 +74,14 @@ var rows = [];
 
 SEEDS.forEach(function (seed) {
     if (rows.length >= LIMIT) return;
-    var stack = new PanelEngine.Stack({ level: 10, seed: seed, countdown: false });
-    var cpu = new PuyoCpu(stack, {
+    // The server's board past its countdown; the bot reads it through
+    // PAEngine.view, refreshed before every decision.
+    var stack = PA.game({ level: 10, seed: seed, countdown: false });
+    stack.drainEvents();
+    var cpu = PuyoCpu.onPA(stack, {
         weights: W, depth: DEPTH, beam: BEAM,
         rise: RISE, density: !!prof.density, level: 10, reaction: 12
-    });
+    }, null);
     // WHERE THE TWO MODELS STOP SEEING THE SAME BOARD. LogicalBoard cuts the
     // cascade off at the first garbage break, because the colours that row
     // turns into come off an RNG this side is not allowed to read. BoardSim
@@ -97,6 +100,7 @@ SEEDS.forEach(function (seed) {
             stack.receiveGarbage([{ width: 6, height: 3, isChain: false }]);
         }
         if (!cpu._walk && cpu.cooldown === 0 && !stack.gameOver) {
+            cpu.onServer(stack, null);
             var board = cpu._snapshot();
             var str = boardString(board);
             if (str) {
@@ -120,7 +124,7 @@ SEEDS.forEach(function (seed) {
                     // displacement is pixels still owed to the next row.
                     clock: {
                         riseTimer: stack.riseTimer,
-                        pixelFrames: PanelEngine.riseTime(stack.speed),
+                        pixelFrames: PA.riseTime(stack.speed),
                         displacement: stack.displacement,
                         stopTime: stack.stopTime || 0
                     },

@@ -281,11 +281,6 @@ jobs:
           node features.test.js
           node puyocpu.test.js
           node training.test.js
-          # rise.test.js needs GC_TRAINING_DIR (set above) — it refuses to
-          # run on a garbage-free board, where the effect it measures reads
-          # as a fifth of its real size.
-          node rise.test.js
-          node density.test.js
 
       - name: Crank
         working-directory: games/the-game/ai/eval

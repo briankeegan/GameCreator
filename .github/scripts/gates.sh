@@ -116,63 +116,6 @@ gate_chips_verify() {
   node games/the-game/ai/eval/verify_chips.js
 }
 
-# AND THE SAME CHIPS AGAINST THE GAME. LogicalBoard is the bot's simulation
-# of the board; panel-engine.js is the game. Measured on the cascade group
-# they disagree on 34 of 517 chips, so passing one is not passing the other
-# and a chip has to clear both before it can steer anything.
-gate_chips_verify_engine() {
-  node games/the-game/ai/eval/verify_chips_engine.js
-}
-
-# AND EVERY PORTED CHIP MUST BE INDIVIDUALLY DECIDABLE. The two gates above
-# prove the verifiers reject damage SOMEWHERE in a 4,380-chip batch; this one
-# corrupts every chip's own claim in turn and requires that chip to be
-# rejected. A chip that passes while claiming something untrue is carried by
-# the other 4,379 and checked by nothing.
-# THE ENGINE BRAIN IS WIRED AND NOT INERT. A switch that is plumbed but never
-# taken looks exactly like one that works: the bot keeps playing, every other
-# test stays green, and the 372 chips it exists for stay mispriced.
-# chips-engine-only/ must earn its name in BOTH directions: every chip there
-# fires on the real engine AND fails the simulation. Otherwise it is one
-# loosened rule away from being where a chip goes to dodge a gate.
-gate_engine_brain() {
-  node games/the-game/ai/eval/enginebrain.test.js
-}
-
-gate_chips_decidable() {
-  node games/the-game/ai/eval/chips.decidable.test.js
-}
-
-# A library nothing can read is worth the same as a library that is wrong,
-# and it looks considerably healthier. Two gates ask whether a chip is TRUE;
-# this one asks whether a consumer can find the shape and act on it.
-gate_chips_hookup() {
-  node games/the-game/ai/eval/chips.hookup.test.js
-}
-
-# Both verifiers stage a chip onto a board this repo BUILDS, choosing filler
-# that provably cannot take part. That staging is the right way to ask
-# whether a chip is true, and it is also the whole of the doubt — a live
-# board's don't-care cells hold real colours, and real colours can join a
-# match. This fires chips found on boards the bot actually played.
-gate_chips_real_boards() {
-  node games/the-game/ai/eval/chips.realboard.test.js
-}
-
-# THE SAME BOARD, BOTH ENGINES, ON EVERY CHIP. resolve_fidelity.js compares
-# them on real in-play positions, and real play does not throw up the deep
-# cascade shapes the library is made of — one of the four faults in resolve was
-# invisible across 50,797 real cases and showed on 28 chip templates. Chain
-# depth, panels cleared, and the final BOARD cell by cell.
-gate_chips_both_boards_agree() {
-  GC_COMPARE_SIM=1 node games/the-game/ai/eval/verify_chips_engine.js
-}
-
-# ...and that any of it can fail: four breaks, one per fault the simulation had.
-gate_resolve_breaks() {
-  bash games/the-game/ai/eval/resolve.breaks.test.sh
-}
-
 # EVERY FEATURE IS SCORED, AND EVERY FEATURE MOVES — in a real game, not in a
 # script. A feature that is never scored is unwired; one that is scored but
 # never varies cannot be learned, because every genome sees the same value and
@@ -252,19 +195,6 @@ gate_checkpoint_resume() {
   bash games/the-game/ai/eval/checkpoint.test.sh
 }
 
-# THE DEPTH-2 SEARCH ACTUALLY SEARCHES.
-#
-# Its first version had three defects at once — it expanded only the top
-# candidates by IMMEDIATE score, never expanded hold, and compared a
-# depth-1 incumbent against depth-2 challengers — and the test file beside
-# it passed 4/4, because every assertion asked whether lookahead was WIRED
-# and none asked whether it was RIGHT. Wired and correct look identical
-# from outside. This asserts the choice: on real level-10 decisions, no
-# candidate may have a better two-move future than the one it played.
-gate_lookahead() {
-  node games/the-game/ai/eval/lookahead.test.js
-}
-
 # NO POPULATION IS STRANDED AT A NAME NOTHING WILL OPEN.
 #
 # The checkpoint filename is a hash of the run's fingerprint, so changing
@@ -335,64 +265,10 @@ gate_flags() {
   node games/the-game/ai/eval/flags.test.js
 }
 
-# THE SIMULATION IS THE ENGINE, ON A BOARD THAT IS STILL MOVING.
-# resolve_fidelity.js asks this of 3,320 SETTLED positions and they agree.
-# The bot never decides on a settled position — panels are falling, a
-# cascade is running, garbage is breaking — and nothing asked there until
-# this. It plays real duels, and at every swap compares the board the
-# simulation predicts against the board the engine settles on, cell by cell.
-# THE SKIP CHANGES NOTHING BUT THE TIME IT TAKES. Stack.idleSkip jumps the
-# frames where only timers count down, which is most of a cascade. Three
-# separate couplings made it wrong before it was right — a clamp that
-# collapsed two matches into one, the stack counters running in sequence,
-# and matches firing on geometry that no timer predicts.
-gate_idle_skip() {
-  node games/the-game/ai/eval/idleskip.test.js
-}
-
-# THE RESOLVE AGAINST A FIXED SET OF REAL POSITIONS.
-#
-# live_fidelity measures against live play, so the sample moves whenever the
-# resolve changes: the bot plays differently and reaches different boards, and
-# two runs are not comparable. This replays positions whose answers the ENGINE
-# gave once, so a number from it means the same thing tomorrow. Regenerate with
-# capture_resolve_corpus.js only when the corpus is genuinely stale — a corpus
-# that moves is the thing this exists to avoid.
-gate_resolve_corpus() {
-  # ZERO, and it stays zero. The resolve agrees with the engine on every
-  # position in the corpus, at a swap and mid-flight alike. A budget above 0
-  # here would only be somewhere for a regression to hide.
-  GC_RESOLVE_WRONG_BUDGET=0 node games/the-game/ai/eval/verify_resolve_corpus.js
-}
-
-# TWO VARIANTS ON ONE SEED MUST NOT SHARE A POPULATION.
-#
-# The island files are keyed by the run's tag, not by ga_seed. Keyed by seed
-# alone, two variants dispatched on the same seed each load what the other
-# just wrote, and both keep committing snapshots, so nothing looks wrong from
-# outside: `default` and `r17` did it on seed 317 for a day. The test asks the
-# trainer itself, via GC_PBT_INIT_ONLY, and takes about a second.
-# THE BOT MAY NOT KILL ITSELF: no move it cannot survive while one it can is
-# on the list, seconds of warning before a death rather than frames, and the
-# refusals measurably lengthen the game. Real duels with trained weights, so
-# it is slow; GC_SELFDEATH_DUELS trades runtime for confidence.
-gate_no_self_death() {
-  node games/the-game/ai/eval/no_self_death.test.js
-}
-
 gate_pbt_dirs() {
   node games/the-game/ai/eval/pbt_dirs.test.js
 }
 
-gate_fast_engine() {
-  node games/the-game/ai/eval/faststack.test.js 20000
-}
-# THE ENGINE IN C IS THE ENGINE: native/engine.c against panel-engine.js,
-# frame by frame, as gate_fast_engine does for FastStack; and the module is
-# the one built from that source.
-gate_native_engine() {
-  node games/the-game/ai/eval/native.test.js 20000
-}
 # THE SERVER'S ENGINE: pa-engine.js replays real play on the panel-game
 # server's Lua engine (pa.record.jsonl.gz, made by lua/engineRecord.lua) and
 # must land on every recorded state; pa-generator.js deals what the Lua dealt;
@@ -404,16 +280,6 @@ gate_server_engine() {
   node games/the-game/ai/eval/native_pa.test.js 20000 &&
   node games/the-game/ai/eval/native_batch.test.js &&
   node games/the-game/ai/eval/native_countdown.test.js
-}
-gate_engine_check() {
-  node games/the-game/ai/eval/engine_check.test.js 600
-}
-gate_brain() {
-  node games/the-game/ai/eval/brain.test.js
-}
-gate_live_fidelity() {
-  node games/the-game/ai/eval/live_fidelity.js \
-    games/the-game/ai/eval/trained.pbt.pbt-m29-s301-s301.0920-205538.g01000.json 3
 }
 
 # THE TRAINING PRE-FLIGHT SUITES, WHICH gate_all DID NOT RUN.
@@ -466,13 +332,6 @@ gate_training_harness() {
   GC_TRAINING_DIR="$d" node games/the-game/ai/eval/training.test.js
 }
 
-# THE MODES NARROW THE POOL AND THE EVALUATOR STILL PICKS.
-#
-# modes.js is the only state the bot carries between decisions, so it is the
-# only place a plan can live. Two ways it can be wrong while every unit test
-# passes: wired to a field the candidates do not carry, so it filters nothing;
-# or FORCED open on most decisions, which is the unfiltered bot wearing
-# machinery. modes.test.js measures both against real play.
 # CAN THE BOT SEE A CHAIN CONTINUATION.
 #
 # The engine scores a match on an already-`chaining` panel as a chain link,
@@ -501,65 +360,12 @@ gate_opponent() {
 
 gate_modes() {
   local d; d="$(_gc_training_dir)" || return 1
-  GC_TRAINING_DIR="$d" node games/the-game/ai/eval/modes.test.js || return 1
   GC_TRAINING_DIR="$d" node games/the-game/ai/eval/goal.test.js
-}
-
-gate_rise_scoring() {
-  local d; d="$(_gc_training_dir)" || return 1
-  GC_TRAINING_DIR="$d" node games/the-game/ai/eval/rise.test.js
-}
-
-gate_density_scoring() {
-  local d; d="$(_gc_training_dir)" || return 1
-  GC_TRAINING_DIR="$d" node games/the-game/ai/eval/density.test.js
-}
-
-# THE "EARNED" FEATURES ARRIVE, rather than merely computing correctly.
-#
-# features.test.js proves the four earned features are right by HANDING them
-# an input -- stGain(TOPPED, {toppedOut:true}, {stopTimeEarned:60}) === 60 --
-# which says nothing about whether anything ever puts a 60 in there.
-# stopTimeEarned once read zero on all 2,450 candidates of a run because
-# resolve() did not report it: the feature was perfect, the plumbing was
-# missing, and every unit test passed throughout.
-#
-# So this plays real games in the scenarios that actually contain garbage and
-# asserts each of the four ARRIVES at the evaluator. Liveness, not a rate --
-# the real rates are 0.02% to 0.37%, and a threshold on those would be a
-# threshold on the bot's taste in moves, which fails on a correct tree every
-# time the weights change.
-gate_earned_features_arrive() {
-  local d; d="$(_gc_training_dir)" || return 1
-  GC_TRAINING_DIR="$d" node games/the-game/ai/eval/earned.test.js
 }
 
 # EVERY SUITE THE TRAINING PRE-FLIGHT RUNS IS ALSO A GATE.
 gate_preflight_gated() {
   node .github/scripts/check_preflight_gated.mjs
-}
-
-# A PLY THAT DOES NOT ADVANCE THE CLOCK CANNOT VALUE TIMING.
-#
-# Every clock field reaches a feature off the LIVE stack (input.js's
-# fromStack), read before any swap happens. At depth 1 that is right -- the
-# move is being made now. At depth 2 it was a lie: the second ply is a move
-# made AFTER the first, and it was scored against the clock as it stood
-# BEFORE the first. So "fire the chain now" and "hold, then fire it" scored
-# identically on stop time, and they are not the same move -- awardStopTime
-# takes a MAX, so firing under a full clock buys nothing and firing under an
-# empty one buys everything.
-#
-# Same argument _lookahead already makes about travel: a second ply that
-# treats it as free values a follow-up on the far side of the board exactly
-# like one under the cursor. Time was the other thing it treated as free.
-#
-# Both directions, because a clock advanced for EVERY child regardless of
-# which candidate it descends from would pass a wiring test and be wrong in
-# the more damaging direction -- it tells the search that waiting is
-# pointless because the clock is full either way.
-gate_ply_clock() {
-  node games/the-game/ai/eval/plyclock.test.js
 }
 
 # THE SEARCH JUDGES THE BOARD THE MOVE WILL LAND ON, NOT THE ONE IT STARTED
@@ -582,49 +388,6 @@ gate_elapsed_rise() {
   node games/the-game/ai/eval/elapsed.test.js
 }
 
-# RAISING IS A MOVE, AND THE BOT COULD NOT MAKE IT.
-#
-# `raiseFrames` was declared in PuyoCpu's constructor and decremented in
-# update(), and NOTHING EVER SET IT -- dead wiring that reads exactly like a
-# working feature. _decide returned 'hold' or 'swap' and nothing else, so
-# raise was never in the choice set and no weight could select it. On a low
-# board with nothing worth swapping the only options were to wait out the
-# passive rise (120 frames a row at level 10) or play a swap it did not want.
-#
-# It is a CANDIDATE, not a rule: scored on the board as it will be once the
-# row has landed and resolved, so the weights decide rather than a
-# hand-set threshold.
-gate_raise() {
-  node games/the-game/ai/eval/raise.test.js
-}
-
-# THE SCRATCH FLOOR MOVES ONLY WHEN THE REAL FLOOR MOVES.
-#
-# _resolveCandidate copies the live stack's rise state onto the scratch so a
-# candidate ages at the speed and phase the match is actually at. shakeTime
-# was not in that list and paint() zeroes it, so the scratch rose through the
-# window the engine spends standing still and handed the live board back
-# SHIFTED UP A ROW -- every candidate reading topped out, _survivors lifting
-# because nothing helped, and the bot choosing unfiltered with two empty rows
-# in hand.
-gate_shake_hold() {
-  node games/the-game/ai/eval/shakehold.test.js
-}
-
-# THE RUN RECORDS WHAT KIND OF GARBAGE IT SENT, NOT JUST HOW MUCH.
-#
-# Score cannot say whether the bot learned to CHAIN: one that survives on
-# small clears scores respectably and never fires a four-chain. Every chain
-# the current bot fires is 2-3 links and the 4-6 and 7+ buckets are empty, so
-# a batch of runs judged on score alone produces numbers that all rise while
-# that does not move. The breakdown must be the garbage the Stack actually
-# delivered — an object of zeroes satisfies "it exists" — and it must survive
-# the fork to train_worker.js, which is where depth and beam were silently
-# eaten before.
-gate_chain_depth() {
-  node games/the-game/ai/eval/chaindepth.test.js
-}
-
 # The four constraints a template carries, pinned directly. Two of them were
 # silently unenforced for the matcher's whole first life (Int8Array stamp
 # truncation) and the test nearest the defect could not see it.
@@ -632,45 +395,9 @@ gate_chip_matcher_constraints() {
   node games/the-game/ai/eval/chipmatch.test.js
 }
 
-# THE BOT PLANS WITH LogicalBoard AND THE GAME RUNS panel-engine.js. Nothing
-# compared them head-on until this: one real board, one legal swap, both
-# engines, and the FINAL GRID compared cell by cell rather than only the
-# totals. Two engines can agree on chain depth and panels cleared and still
-# leave the board in different states, and the next decision is made on the
-# board.
-gate_resolve_fidelity() {
-  GC_FIDELITY_FLOOR=1 node games/the-game/ai/eval/resolve_fidelity.js boards 99999
-}
-
-# ...AND THAT IT CAN FAIL. This check's whole value is catching the case where
-# the two engines are compared through a harness that is itself moving the
-# board. It used to have a break test in chips.test.sh, which stopped being
-# able to fail once the chip gates only compared counts — a rise preserves
-# counts. Broken here instead: let the stack rise while a candidate resolves,
-# and the fidelity floor must reject it.
-gate_resolve_fidelity_fires() {
-  local work
-  work="$(mktemp -d)"
-  trap 'rm -rf "$work"; trap - RETURN' RETURN
-  mkdir -p "$work/games/the-game/ai/eval"
-  cp games/the-game/panel-engine.js games/the-game/panel-cpu.js games/the-game/panel-rules.js games/the-game/pa-engine.js games/the-game/pa-generator.js "$work/games/the-game/" || return 1
-  cp games/the-game/ai/eval/*.js games/the-game/ai/eval/realboards.json "$work/games/the-game/ai/eval/" || return 1
-  sed -i 's/stack.riseTimer = 1e9;//' "$work/games/the-game/ai/eval/engineboard.js" || return 1
-  if ( cd "$work/games/the-game/ai/eval" && GC_FIDELITY_FLOOR=0.9993 node resolve_fidelity.js boards 300 ) >/dev/null 2>&1; then
-    echo "  NOT CAUGHT: the fidelity check passed a harness that lets the stack rise"
-    return 1
-  fi
-  echo "  caught:     a harness that lets the stack rise while a candidate resolves"
-  return 0
-}
-
 gate_features() {
   local d; d="$(_gc_training_dir)" || return 1
   GC_TRAINING_DIR="$d" node games/the-game/ai/eval/features.test.js
-}
-
-gate_chip_verifier_fires() {
-  bash games/the-game/ai/eval/chips.test.sh
 }
 
 # A PLAN THAT CLAIMS A CHAIN HAS TO PLAY ONE. bestSetup names a swap that clears
@@ -785,11 +512,6 @@ SLOW_SECONDS=10
 SLOW_GATES=(
   gate_gates_reject_defects # 90s
   gate_puyo_cpu             # plays whole games with the survival search
-  gate_no_self_death        # plays whole games with the survival search
-  gate_live_fidelity        # plays whole duels: over an hour
-  gate_fast_engine          # 20000 frames of both engines side by side
-  gate_native_engine        # the same, for the engine in C
-  gate_engine_check         # 30s: every search step on both engines
   gate_training_harness     # 156s
   gate_snapshot_pipe        # 154s
   gate_versus_duel          # 123s
@@ -797,15 +519,12 @@ SLOW_GATES=(
   gate_pbt_leg              # 64s
   gate_modes                # 53s
   gate_features_live        # 37s
-  gate_chips_real_boards    # 26s
-  gate_chips_decidable      # 17s
-  gate_chip_verifier_fires  # 12s
 )
 # ONLY THESE RUN THE SURVIVAL SEARCH. It is what they test. Every other gate
 # tests something the search sits on top of, so it runs with
 # GC_SURVIVAL_SEARCH=0: the search costs seconds per decision and its
 # decisions trip bench.js's 85ms timing guard, which zeroes the game.
-SEARCH_GATES=( gate_puyo_cpu gate_no_self_death gate_live_fidelity gate_brain gate_engine_check )
+SEARCH_GATES=( gate_puyo_cpu )
 _gate_exec() {
   local g
   for g in "${SEARCH_GATES[@]}"; do [ "$g" = "$1" ] && { "$1"; return; }; done
@@ -835,13 +554,6 @@ GATES=(
   "art references:gate_art_refs:art"
   "characters keep one size while walking:gate_sprite_scale_consistency:art"
   "chain chips fire in our engine:gate_chips_verify:games/the-game/ai/"
-  "chain chips fire in the real engine:gate_chips_verify_engine:games/the-game/ai/"
-  "the engine brain is wired, not inert:gate_engine_brain:games/the-game/ai/"
-  "every ported chip is individually decidable:gate_chips_decidable:games/the-game/ai/"
-  "the chip library can actually be used:gate_chips_hookup:games/the-game/ai/"
-  "chips hold up on boards nobody built for them:gate_chips_real_boards:games/the-game/ai/"
-  "both boards agree on every chip:gate_chips_both_boards_agree:games/the-game/ai/"
-  "a broken resolve is rejected:gate_resolve_breaks:games/the-game/ai/"
   "every feature is wired and moves:gate_features_live:games/the-game/ai/"
   "the chains-fired measure accepts and rejects:gate_chain_measure:games/the-game/ai/"
   "the status tool sees a duplicate run:gate_status_tool:games/the-game/ai/"
@@ -855,31 +567,15 @@ GATES=(
   "a slow run stops before the job kills it:gate_deadline_stop:games/the-game/ai/"
   "a run that trained nothing does not chain:gate_pbt_stop:games/the-game/ai/"
   "a switch means the same thing everywhere:gate_flags:games/the-game/ai/"
-  "the idle skip changes nothing:gate_idle_skip:games/the-game/ai/"
-  "the simulation is the engine mid-play:gate_live_fidelity:games/the-game/ai/"
-  "the bot through its brain is the same bot:gate_brain:games/the-game/ai/"
-  "the fast engine is the engine, frame by frame:gate_fast_engine:games/"
-  "the engine in C is the engine, frame by frame:gate_native_engine:games/"
   "the server's engine, in JS and in C, is the server's:gate_server_engine:games/"
-  "the search's steps are the same on both engines:gate_engine_check:games/the-game/ai/"
-  "the resolve answers what the engine answered:gate_resolve_corpus:games/the-game/ai/"
   "two variants on one seed keep separate islands:gate_pbt_dirs:games/the-game/ai/"
-  "the bot may not kill itself:gate_no_self_death:games/the-game/ai/"
-  "the scratch floor moves only when the real floor moves:gate_shake_hold:games/the-game/ai/"
   "the puyo brain:gate_puyo_cpu:games/the-game/ai/"
   "the training harness:gate_training_harness:games/the-game/ai/"
-  "rise-adjusted scoring:gate_rise_scoring:games/the-game/ai/"
-  "density scoring:gate_density_scoring:games/the-game/ai/"
   "the modes filter the pool and the evaluator still picks:gate_modes:games/the-game/ai/"
   "the bot can see a chain continuation:gate_chaining:games/the-game/"
   "the other board reaches the bot in a usable shape:gate_opponent:games/the-game/"
-  "the earned features arrive in a real game:gate_earned_features_arrive:games/the-game/ai/"
   "every training pre-flight suite is gated:gate_preflight_gated:games/the-game/ai/"
-  "the depth-2 search picks the best two-move future:gate_lookahead:games/the-game/ai/"
-  "the second ply knows what time it is:gate_ply_clock:games/the-game/ai/"
   "the board moves on while the bot walks:gate_elapsed_rise:games/the-game/ai/"
-  "raising is a move the weights can choose:gate_raise:games/the-game/ai/"
-  "a run records what kind of garbage it sent:gate_chain_depth:games/the-game/ai/"
   "a garbage break stops the resolve:gate_garbage_rules:games/the-game/ai/"
   "the chip matcher enforces every constraint:gate_chip_matcher_constraints:games/the-game/ai/"
   "a plan that claims a chain plays one:gate_bitplan:games/the-game/ai/"
@@ -888,11 +584,8 @@ GATES=(
   "lining up with colours as they appear:gate_bitlineup:games/the-game/ai/"
   "every option field is priced by both rankers:gate_option_pricing:games/the-game/ai/"
   "a swap is answered without applying it:gate_bitswap:games/the-game/ai/"
-  "the simulation resolves like the game:gate_resolve_fidelity:games/the-game/ai/"
-  "that fidelity check fires:gate_resolve_fidelity_fires:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"
   "every feature is a share, not a count:gate_normalise:games/the-game/ai/"
-  "that chip check fires:gate_chip_verifier_fires:games/the-game/ai/"
   "the shipped weights and the tools that measure them:gate_shipped_weights:games/the-game/ai/"
   "that check fires:gate_shipped_weights_check_fires:games/the-game/ai/"
   "the gates actually reject defects:gate_gates_reject_defects:"
@@ -1013,8 +706,7 @@ gate_changed() {
 # block every game's deploy. They still run under gate_all, locally and in the
 # autopilot pre-flight, where the checkout is present.
 PANEL_GAME_GATES=(
-  gate_chain_measure gate_versus_loop gate_rise_scoring gate_density_scoring
-  gate_chaining gate_opponent gate_earned_features_arrive gate_chain_depth
+  gate_chain_measure gate_versus_loop gate_chaining gate_opponent
   gate_features gate_normalise
 )
 _gate_needs_panel_game() {
