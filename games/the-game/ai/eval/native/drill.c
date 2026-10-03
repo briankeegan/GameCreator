@@ -161,7 +161,7 @@ int main(int argc, char **argv) {
   if (b->startingSpeed != 32 || b->colors != 6) die("drills run at level 10 only", 0);
   int bot = front_new(b, 12, 1);
   if (bot < 0) die("no bot", 0);
-  int via[64][3] = { { 0 } }, f;
+  int via[64][3] = { { 0 } }, f, lastPress = -100, bySwap = 0, byCascade = 0, converted = 0;
   char text[256];
   for (f = 0; f < frames; f++) {
     if (b->stopWatchIsRunning && b->stopWatch >= lead + 1 && (b->stopWatch - lead - 1) % cycle < len)
@@ -201,7 +201,15 @@ int main(int argc, char **argv) {
         printf("D %d %s %s @%d,%d kb%d bf%d\n", f, KINDS[k], v < NVIAS ? VIAS[v] : "?", front_move(bot) / 10, front_move(bot) % 10,
                bot_keepbreak(), bot_breakfirst());
     }
+    int cleared0 = b->sCleared, garb0 = 0, garb1 = 0;
+    for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) if (b->p[r][c].f[ISGARBAGE]) garb0++;
+    if (b->pressSwap || (bits & 16)) lastPress = f;
     if (nb_run(b)) { fprintf(stderr, "drill: the engine failed at frame %d (err %d)\n", f, b->err); return 2; }
+    for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) if (b->p[r][c].f[ISGARBAGE]) garb1++;
+    // where the panels go: matched within a swap's own clear, or by the board's cascades; garbage converted
+    int dc = b->sCleared - cleared0;
+    if (dc > 0) { if (f - lastPress <= 6) bySwap += dc; else byCascade += dc; }
+    if (garb1 < garb0) converted += garb0 - garb1;
     if (trace >= 0 && f >= trace) {
       board(b, text);
       printf("F %d stop %d shake %d health %d disp %d cur %d,%d in %d | %s\n", f, b->stopTime, b->shakeTime, b->health,
@@ -211,7 +219,7 @@ int main(int argc, char **argv) {
     if (f % 250 == 0 || dead) {
       int p, g;
       cells(b, &p, &g);
-      printf("f%d panels %d garb %d top %d", f, p, g, nb_topped(b));
+      printf("f%d panels %d garb %d top %d | cleared swap %d cascade %d converted %d |", f, p, g, nb_topped(b), bySwap, byCascade, converted);
       for (int v = 0; v < 64; v++)
         for (int k = 0; k < 3; k++)
           if (via[v][k]) { printf(" %s:%d", v < NVIAS ? VIAS[v] : "?", via[v][k]); via[v][k] = 0; }

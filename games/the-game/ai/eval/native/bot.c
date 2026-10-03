@@ -2080,6 +2080,14 @@ static Dec stayAlive(Dec d) {
   return lineSwap(l, V_KEEPHEALTH, d);
 }
 
+#define BATCH 8
+#define ROOMLEFT 4
+// The highest row garbage lies on (0: none).
+static int garbTop(const int32_t *st) {
+  int t = 0;
+  for (int c = 1; c <= BW; c++) { int top = topRow(U(st, GARB + c)); if (top > t) t = top; }
+  return t;
+}
 // BREAKING COMES FIRST.
 static Dec breakFirst(Dec d) {
   if (lineLast || d.kind == K_RAISE || !hasGarbage(DBASE)) return d;
@@ -2226,6 +2234,23 @@ static Dec lineupFirst(Dec d) {
   if (bestN == 2) { for (int k = 0; k < 4; k++) BT->line[k] = best[k]; BT->nLine = 2; BT->lineKind = LINE_PLAN; BT->lineWaitAll = 0; }
   return mkSwap(best[0], best[1], V_LINEUP, d.mode, d.alive);
 }
+// BREAK WHEN IT PAYS. A match beside a pile converts the whole pile, so a
+// pile let grow while there is room turns one match into many panels. A
+// break of fewer than BATCH cells is held while the stack's top leaves
+// ROOMLEFT rows, the board is not topped, and the engine says that, left
+// alone until the next slab lands, the board still has a break one swap away.
+static Dec batchBreak(Dec d) {
+  if (BIN[IN_TOPPED] || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA] || d.kind != K_SWAP || !d.hasMove) return d;
+  Cand *pc = poolSwap(d.sr, d.sc);
+  int converts = pc && pc->res.broke ? pc->res.converts : 0;
+  if (!converts && (lineLast == 3 || endsInBreak(d.via))) converts = 1;   // a break line's step: its size is the line's
+  if (!converts) return d;
+  if (pc && pc->res.broke && pc->res.converts >= BATCH) return d;
+  if (tallestBoard(DBASE) > BH - ROOMLEFT) return d;   // the whole stack, garbage and panels
+  if (!readyAfter(0, 0)) return d;
+  BT->nLine = 0; lineLast = 6;
+  return mkHold(V_LINEUPHOLD, d.mode, d.alive, 1, d.sr, d.sc);
+}
 // MATERIAL IS SPENT ONLY TO BREAK OR TO LIVE. While garbage lies on the
 // board or waits to drop, the board's panels are what the next break is made
 // from, and broken garbage is where new ones come from. A clear that breaks
@@ -2277,7 +2302,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   nRes = 0; nOptRuns = 0; nOptDepth = 0; nScore = 0; nLook = 0; nSave = 0; rScore = rMain = rLook = rSave = rCand = 0;
   ENGINE_BASE = BIN[IN_HASPA] ? IN : 0;
   for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = c >= 1 && c < BW ? (uint32_t)BIN[IN_CANSWAP + c] : 0;
-  Dec d = onePlan(spendToBreak(lineupFirst(keepBreak(breakFirst(stayAlive(raiseHold(waitForDrain(playOn(decideRuled())))))))));
+  Dec d = onePlan(spendToBreak(batchBreak(lineupFirst(keepBreak(breakFirst(stayAlive(raiseHold(waitForDrain(playOn(decideRuled()))))))))));
   ENGINE_BASE = 0;
   if (d.kind == K_SWAP && d.hasMove) {
     BT->recent[2] = BT->nRecent ? BT->recent[0] : 0; BT->recent[3] = BT->nRecent ? BT->recent[1] : 0;
