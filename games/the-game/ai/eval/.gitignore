@@ -55,3 +55,4 @@ crank.log
 # the native drill build.sh makes
 native/drill
 drill-deals/
+native/libbit.so

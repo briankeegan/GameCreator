@@ -40,7 +40,7 @@ int front_probe(int fid, Board *b, int depth, int32_t *out);
 static const char *VIAS[] = { "-", "raise:opening", "raise:material", "raising", "readyFirst", "awaitLanding", "break",
   "lineupHold", "lineup", "breakReach", "breakSpend", "digPlan", "digWait", "attackWait", "attackPlan", "bestAttack",
   "planWait", "survivalPlan", "flattenWait", "flatten", "noBest", "setup", "WEIGHTS", "ruled", "planSave", "keepSave",
-  "awaitDrain", "keepHealth" };
+  "awaitDrain", "keepHealth", "fill" };
 #define NVIAS ((int)(sizeof VIAS / sizeof VIAS[0]))
 static const char *KINDS[] = { "hold", "raise", "swap" };
 

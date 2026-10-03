@@ -113,12 +113,29 @@ static Panel *fall(Board *b, Panel *p) {
   b->rowActive[p->f[ROW]] = -1;        // ROWS COUNTED
   Panel *above = P(b, p->f[ROW] + 1, p->f[COL]);
   if (p->f[ISGARBAGE]) { above->f[PROPFALL] = 1; above->f[STATECHANGED] = 1; }
-  if (p->f[STATE] != FALLING) { p->f[STATE] = FALLING; p->f[TIMER] = 0; p->f[STATECHANGED] = 1; }
+  if (p->f[STATE] != FALLING) {
+    if (p->f[ISGARBAGE]) b->sFell++;
+    p->f[STATE] = FALLING; p->f[TIMER] = 0; p->f[STATECHANGED] = 1;
+  }
   return p;
+}
+// HOLLOW: the empty cells under a garbage cell as it lands, down to what its
+// column holds -- the slab rests on its tallest column, and every other
+// column under it is a gap a clear beside it cannot reach.
+static void countHollow(Board *b, const Panel *p) {
+  int c = p->f[COL];
+  for (int r = p->f[ROW] - 1; r >= 1; r--) {
+    const Panel *q = P(b, r, c);
+    if (q->f[COLOR] != 0) {
+      if (q->f[ISGARBAGE] && q->f[GARBAGEID] == p->f[GARBAGEID]) return;   // not the slab's bottom row
+      break;
+    }
+    b->sHollow++;
+  }
 }
 static void land(Board *b, Panel *p) {
   onLand(b, p);
-  if (p->f[ISGARBAGE]) p->f[STATE] = NORMAL;
+  if (p->f[ISGARBAGE]) { countHollow(b, p); p->f[STATE] = NORMAL; }
   else {
     if (SETN(p->f[FELL])) p->f[FELL] = NUL;
     p->f[STATE] = LANDING;
@@ -1138,6 +1155,7 @@ EXPORT(nb_feed_break) int nb_feed_break(Board *b, int32_t c1, int32_t c2, int32_
 }
 EXPORT(nb_fed) int nb_fed(Board *b) { return b->nRowFeed * 100 + b->nBrkFeed; }
 // What the bot's front end asks of the board it plays (front.c).
+EXPORT(nb_pressed) int nb_pressed(Board *b) { return b->pressSwap; }   // the swap the front pressed this frame
 EXPORT(nb_topped) int nb_topped(Board *b) { return isToppedOut(b); }
 EXPORT(nb_falling_garbage) int nb_falling_garbage(Board *b) { return hasFallingGarbage(b); }
 EXPORT(nb_active) int nb_active(Board *b) { return hasActivePanels(b); }

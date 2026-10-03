@@ -39,7 +39,7 @@
     var VIAS = [null, 'raise:opening', 'raise:material', 'raising', 'readyFirst', 'awaitLanding', 'break',
                 'lineupHold', 'lineup', 'breakReach', 'breakSpend', 'digPlan', 'digWait', 'attackWait', 'attackPlan',
                 'bestAttack', 'planWait', 'survivalPlan', 'flattenWait', 'flatten', 'noBest', 'setup', 'WEIGHTS',
-                'ruled', 'planSave', 'keepSave', 'awaitDrain', 'keepHealth'];
+                'ruled', 'planSave', 'keepSave', 'awaitDrain', 'keepHealth', 'fill'];
     var COUNTS = ['refusedDeadly', 'allDead', 'refusedReturn', 'refusedTooSlow', 'planned', 'planDropped', 'attacked',
                   'attackDropped', 'cellsPlanned', 'refusedPayless', 'refusedStarving', 'refusedOther', 'refusedAtExit',
                   'raisedForMaterial', 'waitedToRaise', 'dugFor', 'digDropped', 'brokeNow', 'flattenBlind',

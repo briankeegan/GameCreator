@@ -22,9 +22,10 @@ static void *grab(unsigned long n) {
   return r;
 }
 #else
-// Native (the drill, drill.c): the system's allocator, which never frees.
-void *malloc(unsigned long n);
-static void *grab(unsigned long n) { return malloc((n + 15) & ~15ul); }
+// Native (the drill, drill.c; libbit.so): the system's allocator, which never
+// frees, zeroed as wasm's fresh memory is.
+void *calloc(unsigned long n, unsigned long size);
+static void *grab(unsigned long n) { return calloc(1, (n + 15) & ~15ul); }
 #endif
 // The server's engine (pa.c, linked in) takes its boards from this heap.
 void *paHeap(unsigned long n) { return grab(n); }
