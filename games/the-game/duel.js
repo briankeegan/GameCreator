@@ -2,16 +2,20 @@
 //
 // Owns everything the engine deliberately doesn't: the canvas, the input, the
 // two-stack match loop and the presentation (attack animations, chain cards,
-// countdown, result). panel-engine.js is the rules; this is the game.
+// countdown, result). pa-engine.js is the rules -- the panel-game server's
+// engine, line for line; this is the game.
 //
 // The match loop is a fixed 60 Hz accumulator — the engine counts in frames,
 // exactly like the Lua original, so it must never be stepped by delta time.
 window.NewseyDuel = (function () {
   "use strict";
 
-  var E = window.PanelEngine;
+  var E = window.PAEngine;
+  // The bot reads a board as panel-engine.js holds it: E.view rebuilds that
+  // from the server's state each frame, and the bot's keys go to the server's.
+  var PE = window.PanelEngine;
   var FRAME = 1000 / 60;
-  // The countdown itself is entirely panel-engine.js's call (Stack:runCountdown,
+  // The countdown itself is entirely the engine's call (Stack:runCountdown,
   // 1:1 with the reference — riseLock held, cursor scripted, physics frozen
   // until clock reaches this many frames). state.countdown here is only a
   // derived readout for the overlay/input gating, never its own clock.
@@ -34,12 +38,19 @@ window.NewseyDuel = (function () {
     var opts = { weights: ev.trained.weights, reaction: 12, seed: seed };
     var sw = ev.trained.switches || {};
     Object.keys(sw).forEach(function (k) { opts[k] = sw[k]; });
-    var cpu = new ev.PuyoCpu(stack, opts);
-    if (opponentStack) cpu.opponent = opponentStack;
+    var cpu = new ev.PuyoCpu(E.view(stack, PE), opts);
+    cpu.board = stack;
+    cpu.opponentBoard = opponentStack || null;
     if (ev.Brain && ev.Brain.available()) cpu.brain = new ev.Brain(opts);
     return cpu;
   }
   function closeCpu(cpu) { if (cpu && cpu.brain) cpu.brain.close(); }
+  // One frame of the bot: it reads both boards as they are now.
+  function cpuUpdate(cpu) {
+    cpu.stack = E.view(cpu.board, PE);
+    if (cpu.opponentBoard) cpu.opponent = E.view(cpu.opponentBoard, PE);
+    cpu.update();
+  }
 
   // Panel colors. Each one also carries a shape, so panels stay tellable apart
   // when they flash, when the board goes red, and for anyone who reads shape
@@ -54,7 +65,10 @@ window.NewseyDuel = (function () {
       colors: [null, "#ff3b3b", "#ff8c42", "#ffe066", "#c04dff", "#4ea8ff", "#7bd648"]
     }
   };
-  var SHAPES = [null, "circle", "triangle", "diamond", "star", "square", "cross"];
+  // Colour 8 is the server's SHOCK panel: three or more of them matched send
+  // metal garbage. Steel in every palette, with a bolt.
+  var SHAPES = [null, "circle", "triangle", "diamond", "star", "square", "cross", null, "bolt"];
+  var SHOCK = "#8a93a6";
 
   var els = null;
   var state = null;
@@ -92,12 +106,12 @@ window.NewseyDuel = (function () {
     var opponent = opts.opponent || {};
     var seed = (Date.now() % 100000) + 1;
 
-    var player = new E.Stack({
+    var player = E.game({
       level: opts.playerLevel || 2,
       seed: seed,
       name: opts.playerName || "Nella"
     });
-    var foe = new E.Stack({
+    var foe = E.game({
       level: opponent.level || 3,
       seed: seed + 101,
       name: opponent.name || "Opponent"
@@ -374,9 +388,17 @@ window.NewseyDuel = (function () {
       right: on("right"),
       up: on("up"),
       down: on("down"),
-      swap: on("swap") || !!(pad && pad.interact),
+      // The engine swaps on every frame swap is down, as the server takes
+      // input: a press is sent once, on the frame it starts.
+      swap: pressedNow(on("swap") || !!(pad && pad.interact)),
       raise: on("raise")
     };
+  }
+
+  function pressedNow(down) {
+    var fresh = down && !state.swapHeld;
+    state.swapHeld = down;
+    return fresh;
   }
 
   function finish() {
@@ -438,15 +460,14 @@ window.NewseyDuel = (function () {
 
     // state.autopilot is only ever set by the debug hook below (headless
     // smoke tests need to be able to actually play a duel out).
-    if (s.autopilot) s.autopilot.update(); else s.player.setInput(readKeyboard());
-    s.cpu.update();
+    if (s.autopilot) cpuUpdate(s.autopilot); else s.player.setInput(readKeyboard());
+    cpuUpdate(s.cpu);
+    // Garbage changes hands as the server's Match:run has it: what each side
+    // has ready goes over before the stacks run, and again after.
+    E.deliver(s.player, s.foe); E.deliver(s.foe, s.player);
     s.player.run();
     s.foe.run();
-
-    var sent = s.player.takeDeliverableGarbage();
-    if (sent.length) s.foe.receiveGarbage(sent);
-    var received = s.foe.takeDeliverableGarbage();
-    if (received.length) s.player.receiveGarbage(received);
+    E.deliver(s.player, s.foe); E.deliver(s.foe, s.player);
 
     collectEvents(s.player, true);
     collectEvents(s.foe, false);
@@ -482,7 +503,7 @@ window.NewseyDuel = (function () {
           state.cheer = Math.min(1, state.cheer + 0.25 * ev.chainCounter);
         }
         else if (ev.size > 3) addCard(isPlayer, ev.row, ev.col, ev.size + " combo", "#7ee6ff");
-      } else if (ev.type === "pop") {
+      } else if (ev.type === "panelPop") {
         addSparks(isPlayer, ev.row, ev.col, ev.garbage ? "#c9a7ff" : null);
       } else if (ev.type === "swap" && isPlayer) {
         state.swapCount++;
@@ -547,8 +568,8 @@ window.NewseyDuel = (function () {
   function nextGame() {
     var s = state, o = s.opponent;
     s.seed = (s.seed + s.wins.player * 7919 + s.wins.foe * 104729 + 13) >>> 0;
-    s.player = new E.Stack({ level: s.playerLevel, seed: s.seed, name: s.player.name });
-    s.foe = new E.Stack({ level: o.level || 3, seed: s.seed + 101, name: s.foe.name });
+    s.player = E.game({ level: s.playerLevel, seed: s.seed, name: s.player.name });
+    s.foe = E.game({ level: o.level || 3, seed: s.seed + 101, name: s.foe.name });
     closeCpu(s.cpu);
     s.cpu = makeCpu(s.foe, o.difficulty, s.seed + 55, s.player);
     s.over = null;
@@ -962,7 +983,7 @@ window.NewseyDuel = (function () {
           y: bottom - row * cell - rise,
           w: cell, h: cell,
           vy: 0,
-          color: p.color,
+          color: p.color, metal: !!p.metal,
           garbage: !!p.isGarbage,
           garbageId: p.garbageId,
           face: face,
@@ -1109,7 +1130,7 @@ window.NewseyDuel = (function () {
       var gx = blk.x, gy = blk.y, gc = blk.w;
       var e = crushGarbageEdges(state.crush, blk);
       ctx.save();
-      ctx.fillStyle = blk.color === 9 ? "#4a2f6a" : "#6a4a2f";
+      ctx.fillStyle = blk.metal ? "#4b5160" : "#4a2f6a";
       ctx.fillRect(gx, gy, gc, gc);
       ctx.strokeStyle = "#c9a7ff";
       ctx.lineWidth = 2;
@@ -1133,7 +1154,7 @@ window.NewseyDuel = (function () {
     var cell = blk.w;
     var inset = Math.max(1, Math.round(cell * 0.06));
     var size = cell - inset * 2;
-    var color = pal.colors[blk.color] || "#888";
+    var color = blk.color === 8 ? SHOCK : pal.colors[blk.color] || "#888";
     ctx.save();
     ctx.translate(blk.x + inset, blk.y + inset);
     var grad = ctx.createLinearGradient(0, 0, 0, size);
@@ -1339,7 +1360,7 @@ window.NewseyDuel = (function () {
 
     if (p.isGarbage) { drawGarbagePanel(ctx, p, x, y, cell, stack); return; }
 
-    var color = pal.colors[p.color] || "#888";
+    var color = p.color === 8 ? SHOCK : pal.colors[p.color] || "#888";
     var alpha = 1;
     var scale = 1;
 
@@ -1383,7 +1404,7 @@ window.NewseyDuel = (function () {
     var matched = p.state === "matched";
     var flash = matched && p.timer % 8 < 4;
     ctx.save();
-    ctx.fillStyle = flash ? "#ffffff" : (p.color === 9 ? "#4a2f6a" : "#6a4a2f");
+    ctx.fillStyle = flash ? "#ffffff" : (p.metal ? "#4b5160" : "#4a2f6a");
     ctx.fillRect(x, y, cell, cell);
     // block edges: only draw a border where the neighbour isn't the same slab
     ctx.strokeStyle = flash ? "#ffffff" : "#c9a7ff";
@@ -1436,6 +1457,10 @@ window.NewseyDuel = (function () {
         break;
       case "square":
         ctx.rect(cx - r * 0.8, cy - r * 0.8, r * 1.6, r * 1.6);
+        break;
+      case "bolt":
+        ctx.moveTo(cx + r * 0.3, cy - r); ctx.lineTo(cx - r * 0.6, cy + r * 0.15); ctx.lineTo(cx - r * 0.05, cy + r * 0.15);
+        ctx.lineTo(cx - r * 0.3, cy + r); ctx.lineTo(cx + r * 0.6, cy - r * 0.15); ctx.lineTo(cx + r * 0.05, cy - r * 0.15);
         break;
       default: // cross
         ctx.rect(cx - r, cy - r * 0.34, r * 2, r * 0.68);
@@ -1530,10 +1555,11 @@ window.NewseyDuel = (function () {
 
   function drawAttacksFor(stack, from, to) {
     var ctx = els.ctx, L = state.layout, cell = L.cell;
-    for (var i = 0; i < stack.outgoing.length; i++) {
-      var g = stack.outgoing[i];
+    var flying = E.onTheWay(stack);
+    for (var i = 0; i < flying.length; i++) {
+      var g = flying[i];
       var sx = from.x + L.boardW / 2;
-      var sy = from.y + L.boardH - (g.origin ? g.origin.row : 6) * cell;
+      var sy = from.y + L.boardH - (g.row || 6) * cell;
       var tx = to.x + L.boardW / 2;
       var ty = to.y - cell * 0.6;
       var w = cell * Math.min(g.width, 6) * 0.5;
@@ -1545,7 +1571,7 @@ window.NewseyDuel = (function () {
         x = sx; y = from.y - cell * 0.7;
         alpha = 0.7 + 0.3 * Math.sin(stack.clock * 0.2);
       } else {
-        var p = Math.min(1, Math.max(0, (stack.clock - g.frameEarned) / E.GARBAGE_FLIGHT));
+        var p = Math.min(1, Math.max(0, 1 - g.at / E.FLIGHT));
         x = sx + (tx - sx) * p;
         y = sy + (ty - sy) * p - Math.sin(p * Math.PI) * L.boardH * 0.25;
       }

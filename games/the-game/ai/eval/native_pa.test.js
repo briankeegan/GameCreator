@@ -13,7 +13,7 @@
 // values.
 var fs = require('fs'), path = require('path'), cp = require('child_process'), assert = require('assert');
 var DIR = __dirname;
-var PA = require(path.join(DIR, 'pa-engine.js')), N = require(path.join(DIR, 'native.js')).server.init(), X = N.exports();
+var PA = require(path.join(DIR, '..', '..', 'pa-engine.js')), N = require(path.join(DIR, 'native.js')).server.init(), X = N.exports();
 var a = process.argv.slice(2), recordDir = null, file = path.join(DIR, 'pa.record.jsonl.gz');
 if (a[0] === '--record') { recordDir = a[1]; a = a.slice(2); } else if (a[0] && !/^\d+$/.test(a[0])) { file = a[0]; a = a.slice(1); }
 var FRAMES = Number(a[0] || 20000), SEED = Number(a[1] || 1);

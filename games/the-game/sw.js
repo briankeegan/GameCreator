@@ -1,12 +1,14 @@
 importScripts("../../shared/sw-core.js");
 
-GCRegisterServiceWorker("the-game-v114", [
+GCRegisterServiceWorker("the-game-v115", [
   "./",
   "./index.html",
   "./style.css",
   "./settings.js",
   "./story.js",
   "./panel-rules.js",
+  "./pa-generator.js",
+  "./pa-engine.js",
   "./panel-engine.js",
   "./panel-cpu.js",
   // The trained bot, loaded by index.html for the nightmare tier. Every one

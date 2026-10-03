@@ -9,7 +9,7 @@
 // (lua/engineRecord.lua: SEED * 1000 + match); one written before it did is
 // found by trying SEED 1..99.
 var fs = require('fs'), path = require('path'), zlib = require('zlib');
-var G = require(path.join(__dirname, 'pa-generator.js'));
+var G = require(path.join(__dirname, '..', '..', 'pa-generator.js'));
 var fails = 0;
 function fail(m) { console.log('FAIL: ' + m); fails++; }
 

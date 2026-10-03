@@ -3,7 +3,7 @@
 // way, and the bot's hands -- which are search.h's own walk (native/pa.c
 // ns_keys), so the keys pressed are the ones the search played.
 var fs = require('fs'), path = require('path');
-var PA = require(path.join(__dirname, 'pa-engine.js'));
+var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
 
 // ---------------------------------------------------------------- the profile
 // survivor.profile.json: the weights and the switches they play under, and

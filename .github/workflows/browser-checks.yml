@@ -32,7 +32,7 @@ permissions:
 jobs:
   doors:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 32
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -67,3 +67,10 @@ jobs:
           # collision rather than a static model of it.
           run_twice .github/scripts/check_door_reach.mjs games/the-game || status=1
           exit $status
+
+      # A duel played out in the page on the server's rules: the trained bot on
+      # both boards, garbage both ways, no page error.
+      - name: Duel check
+        if: success() || failure()
+        timeout-minutes: 6
+        run: node games/the-game/duel.test.js || { sleep 5; node games/the-game/duel.test.js; }

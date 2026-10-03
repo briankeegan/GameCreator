@@ -1,6 +1,6 @@
 // Puzzle Attack — the one game-wide difficulty setting.
 //
-// `level` (panel-engine.js's Stack level, 1-10) drives real mechanics: rise
+// `level` (the server's modern level, 1-10: pa-engine.js vsLevel) drives real mechanics: rise
 // speed, panel colors, health, and the stop-time constants. Every duel used
 // to set it per-NPC, with the opponent ALWAYS a level or two above the
 // player (2/1, 3/2, 5/3, 6/3, foe/player) — an asymmetry nobody had chosen

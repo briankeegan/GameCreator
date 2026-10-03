@@ -17,7 +17,7 @@ var BitBot = require(path.join(__dirname, 'bitbot.js'));
 var bit = require(path.join(__dirname, 'bitmatch.js'));
 var P = require(path.join(__dirname, 'puyocpu.js'));
 var bench = require(path.join(__dirname, 'bench.js'));
-var PA = require(path.join(__dirname, 'pa-engine.js')), GEN = require(path.join(__dirname, 'pa-generator.js'));
+var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js')), GEN = require(path.join(__dirname, '..', '..', 'pa-generator.js'));
 var E = globalThis.PanelEngine, W = E.WIDTH;
 var sc = bench.SCENARIOS.bigBlocks;
 

@@ -23,7 +23,7 @@
 // way, as the senders' telegraphs show it, is played into every prediction
 // and handed to the search.
 var net = require('net'), path = require('path'), wt = require('worker_threads');
-var PA = require(path.join(__dirname, 'pa-engine.js')), SH = require(path.join(__dirname, 'survivor_shared.js'));
+var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js')), SH = require(path.join(__dirname, 'survivor_shared.js'));
 
 var args = process.argv.slice(2), opt = { port: Number(process.env.GC_SURVIVOR_PORT) || 47777, host: process.env.GC_SURVIVOR_HOST || '127.0.0.1', threads: Math.max(1, Math.min(4, require('os').cpus().length)) };
 for (var i = 0; i < args.length; i += 2) { var key = args[i].replace(/^--/, ''); opt[key] = key === 'host' ? args[i + 1] : Number(args[i + 1]); }

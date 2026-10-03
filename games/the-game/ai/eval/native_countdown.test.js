@@ -12,7 +12,7 @@
 // every field. pa.c itself is held to pa-engine.js frame by frame
 // (native_pa.test.js); this holds the jump to pa.c.
 var fs = require('fs'), path = require('path'), assert = require('assert');
-var DIR = __dirname, PA = require(path.join(DIR, 'pa-engine.js')), N = require(path.join(DIR, 'native.js')).server.init(), X = N.exports();
+var DIR = __dirname, PA = require(path.join(DIR, '..', '..', 'pa-engine.js')), N = require(path.join(DIR, 'native.js')).server.init(), X = N.exports();
 var FRAMES = Number(process.argv[2] || 30000), SEED = Number(process.argv[3] || 1);
 var state = SEED * 2654435761 % 4294967296;
 function rand(n) { state = (state * 1103515245 + 12345) % 2147483648; return Math.floor(state / 65536) % n; }
