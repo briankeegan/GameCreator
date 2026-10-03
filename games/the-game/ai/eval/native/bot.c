@@ -676,11 +676,14 @@ static double readyOf(double *o) {
 // THE READINESS OF MANY OPTIONS, ASKED TOGETHER: those not yet known are
 // scanned in parallel natively and kept as readyOf would keep them.
 static void parallelDo(int count, void (*task)(int));
-static double *RBO[64]; static u64 RBK[64]; static int RBV[64];
-static void rbTask(int j) { RBV[j] = anyBreakScan(OPTSET[(RBO[j] - (ODATA + 64)) / REC]); }
+#define RBN 512
+static double *RBO[RBN]; static u64 RBK[RBN]; static int RBV[RBN], rbN;
+static void rbTask(int t) {   // eight boards a task
+  for (int j = 8 * t; j < 8 * t + 8 && j < rbN; j++) RBV[j] = anyBreakScan(OPTSET[(RBO[j] - (ODATA + 64)) / REC]);
+}
 static void readyBatch(double **opts, int count) {
   int nj = 0;
-  for (int i = 0; i < count && nj < 64; i++) {
+  for (int i = 0; i < count && nj < RBN; i++) {
     double *o = opts[i];
     if (o[F_BREAKREADY] != -4) continue;
     const int32_t *st = OPTSET[(o - (ODATA + 64)) / REC];
@@ -690,7 +693,8 @@ static void readyBatch(double **opts, int count) {
     RBO[nj] = o; RBK[nj] = k; nj++;
   }
   if (nj < 2) return;
-  parallelDo(nj, rbTask);
+  rbN = nj;
+  parallelDo((nj + 7) / 8, rbTask);
   for (int j = 0; j < nj; j++) { tput(&ANYB, RBK[j], RBV[j]); RBO[j][F_BREAKREADY] = RBV[j] ? 1 : 0; }
 }
 static int closesOf(double *o) {
@@ -714,8 +718,8 @@ static void keepFilter(double **all, int n, double **out, int *nout) {
   else { for (int i = 0; i < n; i++) out[k++] = all[i]; }
   int nk = 0;
   for (int i = 0; i < k && !nk; i++) if (!tallOpt(out[i])) nk = 1;
-  for (int at = 0; at < k && !nk; at += 64) {   // in batches, until one is ready
-    int end = at + 64 < k ? at + 64 : k;
+  for (int at = 0; at < k && !nk; at += RBN) {   // in batches, until one is ready
+    int end = at + RBN < k ? at + RBN : k;
     readyBatch(out + at, end - at);
     for (int i = at; i < end && !nk; i++) if (readyOf(out[i]) != 0) nk = 1;
   }
