@@ -103,7 +103,9 @@ local WAIT = { type = "WAIT" }
 local STAGING, LAND = 45 + 45 + 1, 60
 local extra = { stopWatch = 0, outgoingGarbage = { stagedGarbage = {}, transitTimers = { first = 0, last = -1 }, garbageInTransit = {} } }
 
+local TIMES = os.getenv("PA_DUEL_TIMES") == "1"
 local t0 = socket.gettime()
+if TIMES then local send0 = link.send; link.send = function(self, s) send0(self, s); self.sentAt = socket.gettime() end end
 local frame, handed = 0, 0
 while frame < FRAMES and not a:game_ended() and not b:game_ended() do
   frame = frame + 1
@@ -111,7 +113,10 @@ while frame < FRAMES and not a:game_ended() and not b:game_ended() do
   local sources = {}
   for i, src in ipairs(match.garbageSources[a]) do sources[i] = src end
   sources[#sources + 1] = extra
+  local lateBefore, sentAt = link.late, socket.gettime()
   local ca = link:input(a, sources)
+  -- PA_DUEL_TIMES=1: each late frame, with when its state was sent and when the wait gave up
+  if TIMES and link.late > lateBefore then print(string.format("LATE clock %d dump %.4f sent %.4f gaveup %.4f", a.clock, sentAt, link.sentAt or 0, socket.gettime())) end
   local cb
   if DRILL then
     cb = nil   -- the simulated attacker takes no input

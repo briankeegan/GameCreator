@@ -28,8 +28,12 @@ require('v8').setFlagsFromString('--max-semi-space-size=64');
 var net = require('net'), path = require('path'), wt = require('worker_threads');
 // GC pauses on this thread: the longest, and how many passed 4 ms (match stats gcMs, slowGc).
 var GC = { max: 0, slow: 0 };
+// GC_SURVIVOR_TIMES=file: per frame, the clock, when its line was read (epoch s), the reply's and the frame's ms; written at the match's end.
+var TIMES = process.env.GC_SURVIVOR_TIMES ? [] : null, performance = require('perf_hooks').performance;
+// this thread's time on a cpu, waiting for one (ns) and slices (Linux schedstat)
+function schedstat() { try { return require('fs').readFileSync('/proc/thread-self/schedstat', 'utf8').split(' ').map(Number); } catch (e) { return [0, 0, 0]; } }
 new (require('perf_hooks').PerformanceObserver)(function (l) {
-  l.getEntries().forEach(function (e) { if (e.duration > GC.max) GC.max = e.duration; if (e.duration > 4) GC.slow++; });
+  l.getEntries().forEach(function (e) { if (e.duration > GC.max) GC.max = e.duration; if (e.duration > 4) GC.slow++; if (TIMES && e.duration > 2) TIMES.push('gc ' + ((performance.timeOrigin + e.startTime) / 1000).toFixed(4) + ' ' + e.duration.toFixed(2) + ' ' + (e.detail ? e.detail.kind : e.kind)); });
 }).observe({ entryTypes: ['gc'] });
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js')), SH = require(path.join(__dirname, 'survivor_shared.js'));
 
@@ -372,7 +376,9 @@ Match.prototype.expectNext = function () {
 // never runs further ahead than that, so every decision sees the rows that
 // have come up since.
 Match.prototype.afterFrame = function () {
+  var A = this.aparts = [process.hrtime.bigint()];
   this.expectNext();
+  A.push(process.hrtime.bigint());
   var now = this.now, next = this.expect;
   if (!next || next.gameOverClock > 0) return;
   if (pending && this.nextAt - now === 1 && !answers.some(function (a) { return a.id === pending.id; })) {
@@ -390,7 +396,9 @@ Match.prototype.afterFrame = function () {
   var lead = this.nextAt > now ? this.soon() : Math.max(this.soon(), Math.min(this.ahead(), Math.floor(SH.popLeft(next) / 4)));
   var at = Math.max(this.nextAt > now ? this.nextAt : 0, now + lead);
   if (at - now > this.ahead()) return;
+  A.push(process.hrtime.bigint());
   var pr = this.predict(next, at, this.hold, this.nextPending);
+  A.push(process.hrtime.bigint());
   // Dead by then on what is planned: the question is the next frame's board,
   // answered late and played from the board it reaches.
   if (pr.board.gameOverClock > 0) { at = now + 1; pr = { board: next, hold: this.hold, pending: this.nextPending }; }
@@ -457,13 +465,14 @@ var server = net.createServer(function (sock) {
   var buf = '', match = null;
   sock.setNoDelay(true);
   sock.on('error', function (e) { console.log('link: ' + e.message); });
-  sock.on('close', function () { if (match) { console.log('match over: ' + overStats(match)); match.dump(); } match = null; });
+  sock.on('close', function () { if (TIMES && TIMES.length) { require('fs').appendFileSync(process.env.GC_SURVIVOR_TIMES, TIMES.join('\n') + '\n'); TIMES.length = 0; } if (match) { console.log('match over: ' + overStats(match)); match.dump(); } match = null; });
   function pump() {
     var nl;
     while ((nl = buf.indexOf('\n')) >= 0) {
       var line = buf.slice(0, nl);
       if (!line) { buf = buf.slice(nl + 1); continue; }
-      var tp = process.hrtime.bigint(), m = JSON.parse(line), reply, tParse = process.hrtime.bigint(), tBoard = tParse;
+      var sched0 = TIMES ? schedstat() : null;
+      var tp = process.hrtime.bigint(), tWall = TIMES ? performance.timeOrigin + performance.now() : 0, m = JSON.parse(line), reply, tParse = process.hrtime.bigint(), tBoard = tParse;
       if (SYNC && m.t === 'f' && match && pending && !answers.some(function (a) { return a.id === pending.id; })) { resume = pump; return; }
       buf = buf.slice(nl + 1);
       if (m.t === 'match') {
@@ -495,6 +504,12 @@ var server = net.createServer(function (sock) {
         var fms = Number(process.hrtime.bigint() - t0) / 1e6;
         if (fms > match.stats.frameMs) match.stats.frameMs = Math.round(fms * 10) / 10;
         if (fms > 8) match.stats.slowFrames++;
+        if (TIMES) TIMES.push(match.now + ' ' + (tWall / 1000).toFixed(4) + ' ' + rms.toFixed(2) + ' ' + fms.toFixed(2));
+        if (fms > 14) {
+          if (sched0) { var sc = schedstat(); console.error('  on cpu ' + ((sc[0] - sched0[0]) / 1e6).toFixed(1) + ' ms, waiting for one ' + ((sc[1] - sched0[1]) / 1e6).toFixed(1) + ' ms, ' + (sc[2] - sched0[2]) + ' slices'); }
+          var A = match.aparts || [], am = function (i) { return A[i] && A[i + 1] ? (Number(A[i + 1] - A[i]) / 1e6).toFixed(1) : '-'; };
+          console.error('slow frame ' + fms.toFixed(1) + ' ms at ' + match.now + ': reply ' + rms.toFixed(1) + ', next board ' + am(0) + ', plan ' + am(1) + ', predict ' + am(2) + ', gc so far ' + GC.slow);
+        }
       }
     }
   }

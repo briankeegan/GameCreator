@@ -52,6 +52,7 @@ typedef struct Ctx {
   int32_t *verdict, *proofs, *weak, *reach, *reachSet, *far, *per, *brkAt; int32_t tagCap;
   int32_t rootBrk;   // the root's rows broken: a line breaks garbage when a node's brk is past it
   int32_t par;   // threads are making nodes: newNode takes a reserved slot
+  Vec later;     // nodes let go while a phase ran, their boards freed at its end (release)
 } Ctx;
 #define NODE(x, i) (&(x)->nodes[i])
 
@@ -94,7 +95,7 @@ EXPORT(ns_ctx_gap) void ns_ctx_gap(Ctx *x, int gap) { x->swapGap = gap; }
 // Every node gone and every board back in the pool.
 EXPORT(ns_reset) void ns_reset(Ctx *x) {
   for (int i = 0; i < x->n; i++) if (x->nodes[i].st && !x->nodes[i].fromPrev) nb_free(x->nodes[i].st);
-  x->n = 0;
+  x->n = 0; x->later.n = 0;
 }
 
 // ---- what the search reads off a board (puyocpu.js _engineNode, FastStack.grid)
@@ -656,7 +657,14 @@ EXPORT(ns_set_tag) void ns_set_tag(Ctx *x, int i, int tag, int seed) { NODE(x, i
 // A node's board is let go when nothing holds it: not in the level being
 // expanded or the one being built, not the proof, the fallback or the
 // furthest line of its move.
-static void release(Ctx *x, int i) { Node *n = NODE(x, i); if (!n->pins && !n->live) dropBoard(x, i); }
+// While a phase runs a worker may be playing from the board, so it is freed
+// at the phase's end (finishPhase); with no room to note it, it is kept.
+static void release(Ctx *x, int i) {
+  Node *n = NODE(x, i);
+  if (n->pins || n->live) return;
+  if (x->par) { vpush(&x->later, i); return; }
+  dropBoard(x, i);
+}
 static void pin(Ctx *x, int32_t *slot, int i) {
   int old = *slot;
   *slot = i;
@@ -906,6 +914,8 @@ static void finishPhase(Ctx *x) {
   for (int spin = 0; spin < SPIN && __atomic_load_n(&pool.ack, __ATOMIC_SEQ_CST) < w; spin++) {}
   while ((a = __atomic_load_n(&pool.ack, __ATOMIC_SEQ_CST)) < w) __builtin_wasm_memory_atomic_wait32(&pool.ack, a, -1);
   x->par = 0;
+  for (int32_t q = 0; q < x->later.n; q++) release(x, x->later.a[q]);
+  x->later.n = 0;
   while (spareOf) { Board *b = spareOf; spareOf = *(Board **)b; spareCount--; *(Board **)b = freeOf(0); freeOf(0) = b; freeCount(0)++; }
   if (x->n > x->cap) x->n = x->cap;
 }
@@ -1059,7 +1069,8 @@ EXPORT(ns_loop) int ns_loop(Ctx *x, int budget, int until, int full, int beam, i
           async = 1;
         }
       }
-      for (int k = 0; k < e - at && budget > 0; k++) {
+      int k;
+      for (k = 0; k < e - at && budget > 0; k++) {
         int ni = x->level.a[at + k];
         int32_t tag = NODE(x, ni)->tag, o = poff.a[k], nm = poff.a[k + 1] - o;
         if (verdict[tag]) { NODE(x, ni)->live = 0; release(x, ni); continue; }
@@ -1098,6 +1109,8 @@ EXPORT(ns_loop) int ns_loop(Ctx *x, int budget, int until, int full, int beam, i
       if (async) { finishPhase(x); async = 0; }
 #undef LEAVE
       for (j = 0; j < x->moves.n; j++) if (res.a[j] >= 0) dropBoard(x, res.a[j]);
+      // the chunk's parents the budget did not reach
+      for (; k < e - at; k++) { NODE(x, x->level.a[at + k])->live = 0; release(x, x->level.a[at + k]); }
       at = e;
     }
     // Parents the budget did not reach are let go too.
