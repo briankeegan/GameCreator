@@ -772,42 +772,46 @@ static struct {
 // goes to every thread.
 #define SWAPS_CAP(n) imin(MAXWALK, imax(4, (n) / (4 * (pool.nworkers + 1))))
 #define ADVANCE_TASK (-1000)   // a task's move at or below: ns_advance_many's, ((row << 3 | col) << 3 | kind) = ADVANCE_TASK - mv
-static void runTasks(void) {
+// One task of the phase; each result is published (release) once its node is done.
+#define PUT(slot, v) __atomic_store_n(&pool.res[slot], (v), __ATOMIC_RELEASE)
+static void runTask(int32_t i) {
   Ctx *x = pool.ctx;
-  int32_t n = pool.ntasks;
-  for (;;) {
+  const int32_t *t = pool.tasks + 4 * i;
+  int32_t mv = t[1];
+  if (mv == REPLAY_TASK) { PUT(t[3], replayBoard(x, t[0]) ? 0 : -1); return; }
+#ifdef SHARED_WALK
+  if (mv == SWAPS_TASK) {
+    int32_t outs[MAXWALK], deads[MAXWALK], o = t[3];
+    advanceSwaps(x, t[0], t[2], pool.moves + o, outs, deads);
+    for (int q = 0; q < t[2]; q++) {
+      int32_t r = outs[q];
+      if (pool.deadAt) { pool.deadAt[o + q] = r == STEP_DEAD ? deads[q] : 0; PUT(o + q, r); continue; }   // ns_advance_many: kept
+      if (r == STEP_DEAD) r = STEP_NULL;   // lineStep: a swap that dies is no move
+      if (r >= 0) dropBoard(x, r);
+      PUT(o + q, r);
+    }
+    return;
+  }
+#endif
+  if (mv <= ADVANCE_TASK) {
+    // ns_advance_many: the step's board is read straight after, so kept.
+    int32_t m = ADVANCE_TASK - mv, r = advance(x, t[0], m & 7, CR(m >> 3), CC(m >> 3), t[2]);
+    if (pool.deadAt) pool.deadAt[t[3]] = r == STEP_DEAD ? deadAt : 0;
+    PUT(t[3], r);
+    return;
+  }
+  int32_t r = mv == -1 ? lineStep(x, t[0], MK_LONG, 0, 0, t[2])
+            : mv == -2 ? lineStep(x, t[0], MK_HOLD, 0, 0, 0)
+            : lineStep(x, t[0], MK_SWAP, CR(mv), CC(mv), 0);
+  // A step's board is not read till its node is expanded: replayed then.
+  if (r >= 0) dropBoard(x, r);
+  PUT(t[3], r);
+}
+static void runTasks(void) {
+  for (int32_t n = pool.ntasks;;) {
     int32_t i = __atomic_fetch_add(&pool.next, 1, __ATOMIC_SEQ_CST);
     if (i >= n) break;
-    const int32_t *t = pool.tasks + 4 * i;
-    int32_t mv = t[1];
-    if (mv == REPLAY_TASK) { pool.res[t[3]] = replayBoard(x, t[0]) ? 0 : -1; continue; }
-#ifdef SHARED_WALK
-    if (mv == SWAPS_TASK) {
-      int32_t outs[MAXWALK], deads[MAXWALK], o = t[3];
-      advanceSwaps(x, t[0], t[2], pool.moves + o, outs, deads);
-      for (int q = 0; q < t[2]; q++) {
-        int32_t r = outs[q];
-        if (pool.deadAt) { pool.res[o + q] = r; pool.deadAt[o + q] = r == STEP_DEAD ? deads[q] : 0; continue; }   // ns_advance_many: kept
-        if (r == STEP_DEAD) r = STEP_NULL;   // lineStep: a swap that dies is no move
-        if (r >= 0) dropBoard(x, r);
-        pool.res[o + q] = r;
-      }
-      continue;
-    }
-#endif
-    if (mv <= ADVANCE_TASK) {
-      // ns_advance_many: the step's board is read straight after, so kept.
-      int32_t m = ADVANCE_TASK - mv, r = advance(x, t[0], m & 7, CR(m >> 3), CC(m >> 3), t[2]);
-      pool.res[t[3]] = r;
-      if (pool.deadAt) pool.deadAt[t[3]] = r == STEP_DEAD ? deadAt : 0;
-      continue;
-    }
-    int32_t r = mv == -1 ? lineStep(x, t[0], MK_LONG, 0, 0, t[2])
-              : mv == -2 ? lineStep(x, t[0], MK_HOLD, 0, 0, 0)
-              : lineStep(x, t[0], MK_SWAP, CR(mv), CC(mv), 0);
-    // A step's board is not read till its node is expanded: replayed then.
-    if (r >= 0) dropBoard(x, r);
-    pool.res[t[3]] = r;
+    runTask(i);
   }
 }
 #ifdef THREADS
@@ -859,12 +863,14 @@ static void longestFirst(Ctx *x, Vec *tasks) {
     for (int q = 0; q < 4; q++) a[4 * j + q] = t[q];
   }
 }
-// Runs the phase's steps on every thread; back when all are done.
-static int runPhase(Ctx *x, Vec *tasks, int32_t *res) {
+// A phase: its steps handed to every thread (startPhase), this thread
+// joining in and back when all are done (finishPhase). `extra`: nodes past
+// the phase's own that this thread may make meanwhile.
+static int startPhase(Ctx *x, Vec *tasks, int32_t *res, int32_t extra) {
   int32_t n = tasks->n / 4, w = pool.nworkers, need = 0;
   if (!n) return 1;
   for (int32_t i = 0; i < n; i++) need += tasks->a[4 * i + 1] == SWAPS_TASK ? tasks->a[4 * i + 2] : 1;   // a node a move
-  if (!reserveNodes(x, need)) return 0;
+  if (!reserveNodes(x, need + extra)) return 0;
   // Boards for the workers, from this thread's spares, so memory goes round.
   int32_t each = need / (w + 1) + 4;
   for (int k = 1; k <= w && k < MAXTHREADS; k++)
@@ -882,14 +888,32 @@ static int runPhase(Ctx *x, Vec *tasks, int32_t *res) {
   __atomic_store_n(&pool.next, 0, __ATOMIC_SEQ_CST);
   __atomic_add_fetch(&pool.gen, 1, __ATOMIC_SEQ_CST);
   __builtin_wasm_memory_atomic_notify(&pool.gen, (unsigned)-1);
+  return 1;
+}
+static void finishPhase(Ctx *x) {
+  int32_t a, w = pool.nworkers;
   runTasks();
-  int32_t a;
   for (int spin = 0; spin < SPIN && __atomic_load_n(&pool.ack, __ATOMIC_SEQ_CST) < w; spin++) {}
   while ((a = __atomic_load_n(&pool.ack, __ATOMIC_SEQ_CST)) < w) __builtin_wasm_memory_atomic_wait32(&pool.ack, a, -1);
   x->par = 0;
   while (spareOf) { Board *b = spareOf; spareOf = *(Board **)b; spareCount--; *(Board **)b = freeOf(0); freeOf(0) = b; freeCount(0)++; }
   if (x->n > x->cap) x->n = x->cap;
+}
+static int runPhase(Ctx *x, Vec *tasks, int32_t *res) {
+  if (!tasks->n) return 1;
+  if (!startPhase(x, tasks, res, 0)) return 0;
+  finishPhase(x);
   return 1;
+}
+// A slot of a phase still running: this thread takes tasks till it is filled.
+#define PENDING (-98)
+static int32_t awaitSlot(int32_t *slot) {
+  int32_t v;
+  while ((v = __atomic_load_n(slot, __ATOMIC_ACQUIRE)) == PENDING) {
+    int32_t i = __atomic_fetch_add(&pool.next, 1, __ATOMIC_SEQ_CST);
+    if (i < pool.ntasks) runTask(i);
+  }
+  return v;
 }
 // Steps on every thread: the io body holds n records (parent, kind, row,
 // col, frames), each the step ns_advance would make from them. Out, in the io
@@ -977,6 +1001,8 @@ EXPORT(ns_loop) int ns_loop(Ctx *x, int budget, int until, int full, int beam, i
       }
       if (!vpush(&poff, x->moves.n) || !vreserve(&res, x->moves.n)) return LOOP_ERR;
       for (j = 0; j < x->moves.n; j++) res.a[j] = NOTRUN;
+      int async = 0;   // phase 2 still playing while the chunk is read
+#define LEAVE(code) do { if (async) finishPhase(x); return (code); } while (0)
       if (pool.nworkers) {
         tasks.n = 0;
         for (int k = 0; k < e - at; k++) {
@@ -1011,9 +1037,17 @@ EXPORT(ns_loop) int ns_loop(Ctx *x, int budget, int until, int full, int beam, i
           }
           cum += nm - 1;
         }
-        longestFirst(x, &tasks);
+        // Read while it plays: its tasks in the order they are read, each
+        // slot pending till its step is done (awaitSlot).
         pool.moves = x->moves.a;
-        if (!runPhase(x, &tasks, res.a)) return LOOP_ERR;
+        for (int32_t q = 0; q < tasks.n; q += 4) {
+          int32_t *t = tasks.a + q, cnt = t[1] == SWAPS_TASK ? t[2] : 1;
+          for (int32_t z = 0; z < cnt; z++) res.a[t[3] + z] = PENDING;
+        }
+        if (tasks.n) {
+          if (!startPhase(x, &tasks, res.a, x->moves.n)) return LOOP_ERR;
+          async = 1;
+        }
       }
       for (int k = 0; k < e - at && budget > 0; k++) {
         int ni = x->level.a[at + k];
@@ -1021,16 +1055,16 @@ EXPORT(ns_loop) int ns_loop(Ctx *x, int budget, int until, int full, int beam, i
         if (verdict[tag]) { NODE(x, ni)->live = 0; release(x, ni); continue; }
         for (j = 0; j < nm && budget > 0; j++) {
           budget--;
-          if (++polled >= 64) { polled = 0; if (abort_poll()) return LOOP_ABORTED; }
+          if (++polled >= 64) { polled = 0; if (abort_poll()) LEAVE(LOOP_ABORTED); }
           int32_t mv = x->moves.a[o + j];
-          int c = res.a[o + j];
+          int c = async ? awaitSlot(&res.a[o + j]) : res.a[o + j];
           if (c == NOTRUN)
             c = mv == -1 ? lineStep(x, ni, MK_LONG, 0, 0, until)
               : mv == -2 ? lineStep(x, ni, MK_HOLD, 0, 0, 0)
               : lineStep(x, ni, MK_SWAP, CR(mv), CC(mv), 0);
           res.a[o + j] = NOTRUN;   // read: nothing to drop
           if (c == STEP_NULL) continue;
-          if (c < 0) return LOOP_ERR;
+          if (c < 0) LEAVE(LOOP_ERR);
           Node *cn = NODE(x, c), *pn = NODE(x, ni);
           cn->tag = tag; cn->seed = pn->seed;
           if (!reachSet[tag] || cn->t > reach[tag]) { reach[tag] = cn->t; reachSet[tag] = 1; pin(x, &far[tag], c); }
@@ -1043,14 +1077,16 @@ EXPORT(ns_loop) int ns_loop(Ctx *x, int budget, int until, int full, int beam, i
           dropBoard(x, c);
           if (cn->dead) continue;
           int sb = seenBefore(x, c, &seenN);
-          if (sb < 0) return LOOP_ERR;
+          if (sb < 0) LEAVE(LOOP_ERR);
           if (sb) { release(x, c); continue; }
-          if (!vpush(&x->next, c)) return LOOP_ERR;
+          if (!vpush(&x->next, c)) LEAVE(LOOP_ERR);
           cn = NODE(x, c); cn->live = 1;
         }
         NODE(x, ni)->live = 0;
-        if (!vpush(&parents, ni)) return LOOP_ERR;
+        if (!vpush(&parents, ni)) LEAVE(LOOP_ERR);
       }
+      if (async) { finishPhase(x); async = 0; }
+#undef LEAVE
       for (j = 0; j < x->moves.n; j++) if (res.a[j] >= 0) dropBoard(x, res.a[j]);
       at = e;
     }
