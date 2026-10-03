@@ -14,7 +14,9 @@
 // GC_TAKEOVER=F plays a tape's keys and hands the board to the bot at frame F,
 // so a change is tried on the board an earlier bot reached. GC_PROBE=F (and
 // GC_PROBE_EVERY=N) prints the shortest line of up to 4 swaps that breaks
-// garbage, time aside, from frame F on.
+// garbage, time aside, from frame F on; GC_PROBE_CELLS adds every panel's
+// colour, state and timer. GC_BOTLOG=F prints the pool at frame F as the
+// engine plays it.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -29,6 +31,8 @@ int nb_load(Board *b);
 int front_new(Board *b, int reaction, int allowRaise);
 int front_frame(int fid, Board *b);
 int front_last(int fid);
+int front_move(int fid);
+extern int botTraceOn;
 int bot_keepbreak(void);
 int bot_breakfirst(void);
 int front_probe(int fid, Board *b, int depth, int32_t *out);
@@ -169,6 +173,7 @@ int main(int argc, char **argv) {
       bits = tapeIn[2 * f];
       if (tapeIn[2 * f + 1]) b->pressSwap = 1;
     } else {
+      botTraceOn = getenv("GC_BOTLOG") && atoi(getenv("GC_BOTLOG")) == f;
       bits = front_frame(bot, b);
       if (bits < 0) { fprintf(stderr, "drill: the bot failed at frame %d\n", f); return 2; }
     }
@@ -181,7 +186,7 @@ int main(int argc, char **argv) {
       else printf(pb == 0 && line[0] == 1 ? " breaking" : " no break in 4");
       printf("\n");
       if (getenv("GC_PROBE_CELLS"))
-        for (int r = 7; r >= 1; r--) {
+        for (int r = b->nrows - 1; r >= 1; r--) {
           printf("  r%d", r);
           for (int c = 1; c <= W; c++) { Panel *q = &b->p[r][c]; printf(" %d%s/s%d/t%d%s", q->f[COLOR], q->f[ISGARBAGE] ? "g" : "", q->f[STATE], q->f[TIMER], SETB(q->f[DONTSWAP]) ? "/D" : ""); }
           printf("\n");
@@ -193,7 +198,8 @@ int main(int argc, char **argv) {
       int k = last / 100, v = last % 100;
       if (v >= 0 && v < 64 && k >= 0 && k < 3) via[v][k]++;
       if (trace >= 0 && f >= trace)
-        printf("D %d %s %s kb%d bf%d\n", f, KINDS[k], v < NVIAS ? VIAS[v] : "?", bot_keepbreak(), bot_breakfirst());
+        printf("D %d %s %s @%d,%d kb%d bf%d\n", f, KINDS[k], v < NVIAS ? VIAS[v] : "?", front_move(bot) / 10, front_move(bot) % 10,
+               bot_keepbreak(), bot_breakfirst());
     }
     if (nb_run(b)) { fprintf(stderr, "drill: the engine failed at frame %d (err %d)\n", f, b->err); return 2; }
     if (trace >= 0 && f >= trace) {

@@ -121,6 +121,7 @@ int nb_active(Board *b);
 int nb_spawn_col(Board *b, int width);
 double nb_rise_time(int speed);
 int nb_shake_frames(int count);
+int nb_drain_in(Board *b, int most);
 int nb_feed_row(Board *b, int32_t c1, int32_t c2, int32_t c3, int32_t c4, int32_t c5, int32_t c6);
 int nb_feed_break(Board *b, int32_t c1, int32_t c2, int32_t c3, int32_t c4, int32_t c5, int32_t c6);
 int nb_fed(Board *b);

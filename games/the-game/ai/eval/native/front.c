@@ -28,7 +28,7 @@ typedef struct {
   int hasLast, lastR, lastC, held;
   double escapeWalk;
   u64 decidedOn;
-  int lastKind, lastVia;
+  int lastKind, lastVia, lastMoveR, lastMoveC;
 } Front;
 #define MAXFRONTS 16
 static Front FRONTS[MAXFRONTS];
@@ -255,7 +255,9 @@ static void fPrepare(Front *F) {
   d[IN_FALLING] = nb_falling_garbage(FB);
   d[IN_CROW] = FB->curRow; d[IN_CCOL] = FB->curCol;
   d[IN_HEALTH] = FB->health;
-  d[IN_DRAIN] = drainBound();
+  // topped, the drain is the engine's: a copy of the board left alone
+  int drain = topped || FB->wasToppedOut ? nb_drain_in(FB, 600) : drainBound();
+  d[IN_DRAIN] = drain;
   d[IN_FPR] = perPixel * 16;
   d[IN_FTNR] = FB->riseTimer + imaxf(0, FB->displacement - 1) * perPixel;
   d[IN_SPEED] = FB->speed; d[IN_NEXTUP] = FB->nextSpeedIncreaseClock;
@@ -287,7 +289,7 @@ static void fPrepare(Front *F) {
   d[IN_HASRISEN] = hasRisen;
   d[IN_RAISEROOM] = raiseRoom();
   d[IN_INFLIGHT] = inFlight();
-  d[IN_DRAINBOUND] = d[IN_TOPPED] ? drainBound() : 0;
+  d[IN_DRAINBOUND] = d[IN_TOPPED] ? drain : 0;
   d[IN_LOCKLEFT] = lockLeft();
   d[IN_STACKTOPPED] = topped;
   d[IN_MOVING] = moving;
@@ -423,6 +425,7 @@ static int fDecide(Front *F, FDec *out) {
   F->hasLast = out->kind == K_SWAP && out->hasMove;
   if (F->hasLast) { F->lastR = out->mr; F->lastC = out->mc; }
   F->lastKind = out->kind; F->lastVia = out->via;
+  F->lastMoveR = out->hasMove ? out->mr : out->hasPark ? out->pr : 0; F->lastMoveC = out->hasMove ? out->mc : out->hasPark ? out->pc : 0;
   return 0;
 }
 
@@ -488,6 +491,8 @@ EXPORT(front_new) int front_new(Board *b, int reaction, int allowRaise) {
   fTable(F, BOTS[F->id].tab);
   return nFronts++;
 }
+// The last decision's swap (or park) cell, row * 10 + column.
+EXPORT(front_move) int front_move(int fid) { return FRONTS[fid].lastMoveR * 10 + FRONTS[fid].lastMoveC; }
 EXPORT(front_last) int front_last(int fid) { Front *F = &FRONTS[fid]; return F->lastKind < 0 ? -1 : F->lastKind * 100 + F->lastVia; }
 // What the bot is handed on board `b` (BIN, the masks, the timed board), as if
 // the key `held` were down and (lastR, lastC) the last swap: front.test.js.

@@ -1147,6 +1147,23 @@ EXPORT(nb_spawn_col) int nb_spawn_col(Board *b, int width) {
   return DROP_COLUMNS[width][b->dropColumnIndex[width] - 1];
 }
 // Frames a row takes to rise one pixel at `speed` (the table is in sixteenths).
+// THE DRAIN, FROM THE ENGINE: the frames until the board, left alone, first
+// loses health (the frame it does), up to `most`. Topped, this is the time the
+// lock and the stop leave; it counts every panel still in the air.
+static Board *DRB;
+EXPORT(nb_drain_in) int nb_drain_in(Board *b, int most) {
+  if (!DRB) DRB = nb_new();
+  copyBoard(DRB, b);
+  DRB->noQuiet = 1; DRB->quiet = 0;
+  int32_t h = DRB->health;
+  for (int k = 1; k <= most; k++) {
+    DRB->input = 0; DRB->pressSwap = 0;
+    run(DRB);
+    if (DRB->err) return most;
+    if (DRB->health < h || DRB->gameOverClock > 0) return k;
+  }
+  return most;
+}
 // The shake a slab of `count` cells lands with (dropGarbage).
 EXPORT(nb_shake_frames) int nb_shake_frames(int count) { return count <= 0 ? 0 : count > 24 ? 76 : SHAKE_FRAMES[count - 1]; }
 EXPORT(nb_rise_time) double nb_rise_time(int speed) { return (double)SPEED_TO_RISE_TIME[bound(1, speed, 99) - 1] / 16.0; }

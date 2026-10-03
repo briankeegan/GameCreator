@@ -46,6 +46,7 @@ static Bot BOTS[MAXBOT];
 static int nBots = 0;
 static Bot *BT;
 static double BIN[IN_SIZE], BOUT[256];
+int botTraceOn;   // the native drill's GC_BOTLOG: the pool, as the engine plays it
 static ST RISEN, TMST;
 static double *TB;
 
@@ -846,6 +847,11 @@ static void candidates(int32_t *base) {
     Rs res = summarise(CR.r);
     if (onEngine) {
       int rc = paOutcome(r, c, travelCost(cr, cc, r, c), PAHORIZON, PAOUT);
+#ifndef __wasm__
+      if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
+        fprintf(stderr, "POOL %d,%d at %d rc %d cells %d conv %d clears %d chain %d stop %d frames %d | alone cells %d\n", r, c, travelCost(cr, cc, r, c), rc,
+                PAOUT[0], PAOUT[1], PAOUT[2], PAOUT[3], PAOUT[4], PAOUT[5], PALONE[0]); }
+#endif
       if (rc == -2) { swapIn(base, r, c); continue; }
       if (rc == 0) {
         res = paRes(PAOUT, PALONE);
@@ -1941,17 +1947,17 @@ static Dec keepBreak(Dec d) {
 static ST BL[KEEPDEPTH + 1];
 static int32_t BLR[R_INTS + ST_INTS], BLSW[KEEPDEPTH][2 * 128], blLine[2 * KEEPDEPTH], blBest[2 * KEEPDEPTH];
 static int blLen; static double blTime;
-// Topped, the time is the lock: each swap and what it sets falling hold it,
-// so a line lives while every press lands before the board it follows comes
-// to rest (`limit` is then the room after the last press). Not topped, the
-// line's presses are counted against the frames to death.
+// Topped, the time is the lock: what holds it now (stop, shake, panels in
+// the air) and each swap with what it sets falling, so a line lives while
+// every press lands two frames before the later of the two ends (`limit`).
+// Not topped, the line's presses are counted against the frames to death.
 static int blTopped;
 static void breakLineAt(int d, int pr, int pc, double t, double limit) {
   int n = legal(BL[d], BLSW[d]);
   for (int i = 0; i < n; i++) {
     int r = BLSW[d][2 * i], c = BLSW[d][2 * i + 1];
-    double walk = travelCost(pr, pc, r, c), at = t + walk;
-    if ((blTopped ? walk : at) > limit || d + 1 > blLen) continue;
+    double at = t + travelCost(pr, pc, r, c);
+    if (at > limit || d + 1 > blLen) continue;
     stcpy(BL[d + 1], BL[d]);
     if (!swapIn(BL[d + 1], r, c)) continue;
     resolve(BL[d + 1], BLR, 1);
@@ -1963,7 +1969,7 @@ static void breakLineAt(int d, int pr, int pc, double t, double limit) {
     if (BLR[R_SCOPE] != SC_OK || d + 1 >= KEEPDEPTH) continue;
     double settle = BLR[R_TOTAL] > 0 ? BLR[R_FRAMES] : quietSettle(BL[d], r, c, BLR + R_INTS);
     stcpy(BL[d + 1], BLR + R_INTS);
-    breakLineAt(d + 1, r, c, at + settle, blTopped ? settle - 2 : limit);
+    breakLineAt(d + 1, r, c, at, blTopped ? dmax(limit, at + settle - 2) : limit);
   }
 }
 // breakFirst's last step, for the drill's trace: 3 searched, 4 played a line.
