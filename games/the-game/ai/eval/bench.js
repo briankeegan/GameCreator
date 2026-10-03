@@ -53,6 +53,7 @@ var GAME = path.join(__dirname, '..', '..');
 require(path.join(GAME, 'panel-engine.js'));
 require(path.join(GAME, 'panel-cpu.js'));
 var PanelEngine = globalThis.PanelEngine;
+var PA = require(path.join(GAME, 'pa-engine.js'));
 var PanelCpu = globalThis.PanelCpu;
 var PuyoCpu = require('./puyocpu.js');
 var fs = require('fs');
@@ -323,13 +324,17 @@ exports.run = function (weights, seed, opts) {
     if (sc.file) {
         var files = endlessFiles();
         var raw = JSON.parse(fs.readFileSync(files[(seed - 1 + files.length * 100) % files.length], 'utf8'));
-        schedule = attackSchedule.buildEventSchedule(raw, PanelEngine.GARBAGE_FLIGHT);
+        schedule = attackSchedule.buildEventSchedule(raw, PA.FLIGHT);
     }
-    var stack = new PanelEngine.Stack({ level: sc.level, seed: seed, countdown: false });
+    // The server's engine, past its countdown; the bot reads it through
+    // PAEngine.view, rebuilt every frame.
+    var stack = PA.game({ level: sc.level, seed: seed });
+    while (stack.clock <= PA.COUNTDOWN_TOTAL) stack.run();
+    stack.events.length = 0;
 
     var cpu, detach = null;
     {
-        cpu = new PuyoCpu(stack, {
+        cpu = new PuyoCpu(PA.view(stack, PanelEngine), {
             weights: weights || {},
             reaction: 12,
             // Lookahead, when the caller asks for it. Absent means depth 1,
@@ -383,7 +388,14 @@ exports.run = function (weights, seed, opts) {
     }
     PuyoCpu.prototype._decide = timed(origDecide);
 
-    var f, sent = 0;
+    var f, sent = 0, sink = { incoming: [], receiveGarbage: function () {} };
+    function send() {
+        var out = PA.deliver(stack, sink);
+        if (out) for (var i = 0; i < out.length; i++) {
+            sent += out[i].width * out[i].height;
+            chainDepth[report.classify(out[i])]++;
+        }
+    }
     // WHAT KIND OF GARBAGE, not just how much. The records are right here
     // and were being reduced to a cell count on the next line — the same
     // "present, correct, quietly discarded one layer down" shape that lost
@@ -433,15 +445,12 @@ exports.run = function (weights, seed, opts) {
                 stack.receiveGarbage([{ width: sc.garbageWidth, height: sc.garbageHeight,
                                         isChain: false }]);
             }
+            cpu.onServer(stack, null);
             cpu.update();
+            // What it sends is handed over as GarbageDelivery hands it, to nobody.
+            send();
             stack.run();
-            var out = stack.takeDeliverableGarbage();
-            if (out && out.length) {
-                for (var i = 0; i < out.length; i++) {
-                    sent += out[i].width * out[i].height;
-                    chainDepth[report.classify(out[i])]++;
-                }
-            }
+            send();
             // THE ENGINE'S OWN ACCOUNT OF WHAT FIRED, not our resolve's.
             //
             // These were drained and thrown away. `chainDepth` above

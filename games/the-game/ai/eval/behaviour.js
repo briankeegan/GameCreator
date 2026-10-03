@@ -69,9 +69,9 @@ var forced = 0, chosen = 0, swapped = 0, gapSum = 0, contrib = {};
 // steps. These four lines are the difference between a bot that tidies and
 // a bot that plays.
 var matches = 0, sending = 0, chainLinks = 0, bySize = {}, deepest = 0;
-var PanelEngine = root.PanelEngine;
-var origDrain = PanelEngine.Stack.prototype.drainEvents;
-PanelEngine.Stack.prototype.drainEvents = function () {
+var PAStack = require(path.join(__dirname, '..', '..', 'pa-engine.js')).Stack;   // the engine bench.js plays on
+var origDrain = PAStack.prototype.drainEvents;
+PAStack.prototype.drainEvents = function () {
     var evs = origDrain.call(this);
     for (var i = 0; i < evs.length; i++) {
         var e = evs[i];

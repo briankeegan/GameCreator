@@ -22,7 +22,7 @@ if (!process.env.GC_TRAINING_DIR) {
 process.env.GC_LEVEL = process.env.GC_LEVEL || '10';
 
 var versus = require('./versus.js');
-var PanelEngine = globalThis.PanelEngine;   // versus.js loads the engine
+var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));   // the engine versus.js plays on
 var registry = require('./registry.js');
 
 var pass = 0, fail = 0;
@@ -150,14 +150,13 @@ check('chainDepth is the garbage the duel really sent, per side', function () {
     var mine = [ {}, {} ];
     report.CATEGORY_ORDER.forEach(function (c) { mine[0][c] = 0; mine[1][c] = 0; });
 
-    var proto = PanelEngine.Stack.prototype;
-    var orig = proto.takeDeliverableGarbage;
+    var orig = PA.deliver;
     var order = [];
-    proto.takeDeliverableGarbage = function () {
+    PA.deliver = function (from, to) {
         var out = orig.apply(this, arguments);
         if (out && out.length) {
-            var side = order.indexOf(this);
-            if (side < 0) { order.push(this); side = order.length - 1; }
+            var side = order.indexOf(from);
+            if (side < 0) { order.push(from); side = order.length - 1; }
             for (var i = 0; i < out.length; i++) mine[side][report.classify(out[i])]++;
         }
         return out;
@@ -168,7 +167,7 @@ check('chainDepth is the garbage the duel really sent, per side', function () {
     // guard — the guard is the point, since an empty breakdown would
     // otherwise pass. Seed 1 crosses garbage both ways, 15 and 3.
     try { r = versus.duel(TRAINED, FLAT, 1, {}); }
-    finally { proto.takeDeliverableGarbage = orig; }
+    finally { PA.deliver = orig; }
 
     assert.ok(r.chainDepth, 'the duel reported no chainDepth at all');
     var total = 0;
@@ -203,7 +202,7 @@ check('chainDepth is the garbage the duel really sent, per side', function () {
 // twelve 2-chains came out as twelve 1-chains, a thing that cannot exist.
 check('combo size and chain length come from the engine, unaltered', function () {
     var mine = [ { combo: {}, chain: {} }, { combo: {}, chain: {} } ];
-    var proto = PanelEngine.Stack.prototype;
+    var proto = PA.Stack.prototype;
     var orig = proto.drainEvents;
     var order = [];
     proto.drainEvents = function () {
@@ -254,37 +253,18 @@ check('combo size and chain length come from the engine, unaltered', function ()
 });
 
 
-// A CHAIN'S LENGTH COMES FROM THE CALLER, AND THE CALLER CAPTURES IT FIRST.
-//
-// runPhysics clears chainCounter and THEN finalises the chain. While
-// finalizeCurrentChain read this.chainCounter itself, every chainEnd event
-// said 0 links -- not a length a chain can have, since a chain starts at 2.
-// The duel-level check above only sees this when a duel happens to fire a
-// chain, so it passed locally and failed on the runner, taking 35 training
-// chains down with it. Neither assertion below needs a chain to fire.
-check('finalizeCurrentChain reports the length it is GIVEN, not the counter it reads', function () {
-    var stack = Object.create(PanelEngine.Stack.prototype);
-    stack.events = [];
-    stack.clock = 123;
-    stack.chainCounter = 0;                 // as runPhysics leaves it
-    stack.currentChain = { finalized: false, frameEarned: 0 };
-    stack.finalizeCurrentChain(5);
-    var ends = stack.events.filter(function (e) { return e.type === 'chainEnd'; });
-    assert.strictEqual(ends.length, 1, 'no chainEnd event was pushed');
-    assert.strictEqual(ends[0].length, 5,
-        'the length was read off the stack instead of taken from the caller');
-});
-
-check('runPhysics CAPTURES the chain length before it clears the counter', function () {
-    var fs = require('fs');
-    var src = fs.readFileSync(path.join(__dirname, '..', '..', 'panel-engine.js'), 'utf8');
-    var m = /if \(this\.chainCounter !== 0 && !this\.hasChainingPanels\(\)\)[\s\S]*?\n    }/.exec(src);
-    assert.ok(m, 'the chain-end block in runPhysics has moved or gone');
-    var body = m[0];
-    assert.ok(body.indexOf('this.chainCounter = 0') >= 0, 'the block no longer clears the counter');
-    assert.ok(/finalizeCurrentChain\(\s*[A-Za-z_$][\w$]*\s*\)/.test(body),
-        'finalizeCurrentChain is called with no length, so it falls back to a counter ' +
-        'cleared on the line above and every chain reports 0 links');
+// A CHAIN'S END CARRIES ITS LENGTH. The duel-level check above only sees
+// this when a duel happens to fire a chain; this one does not need luck: a
+// two-link chain set up on a puzzle board, played on the engine.
+check('the engine reports a finished chain with its length', function () {
+    var b = PA.puzzle('002000002000112120');
+    b.curRow = 1; b.curCol = 3; b.tryQueueSwap(1, 3);
+    var ends = [];
+    for (var f = 0; f < 400; f++) {
+        b.setInput(0); b.run();
+        b.drainEvents().forEach(function (e) { if (e.type === 'chainEnd') ends.push(e.length); });
+    }
+    assert.deepStrictEqual(ends, [2], 'a two-link chain ended as ' + JSON.stringify(ends));
 });
 
 check('a chain\'s OPENING match is not counted as a worthless clear', function () {

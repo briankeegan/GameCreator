@@ -13,8 +13,9 @@
 // what they sent, so attacking and defending are both paid for without
 // anyone weighting them against each other.
 //
-// This is that, for Panel Attack, using the real engine. Both boards run in
-// the same loop and hand each other garbage exactly as duel.js does.
+// This is that, for Panel Attack, on the server's engine (pa-engine.js). Both
+// boards run in the same loop and hand each other garbage exactly as duel.js
+// does; each bot reads its board and the other through PAEngine.view.
 //
 // SAME SEED FOR BOTH BOARDS. A duel where one side draws friendlier panels
 // measures the draw. Identical starting boards and identical panel sequences
@@ -28,6 +29,7 @@ var PuyoCpu = require('./puyocpu.js');
 var BitBot = require('./bitbot.js');
 var report = require(path.join(__dirname, '..', 'experiments', 'report.js'));
 var PanelEngine = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
+var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
 
 var LEVEL = Number(process.env.GC_LEVEL || 10);
 
@@ -132,17 +134,21 @@ exports.duel = function (weightsA, weightsB, seed, opts, optsB) {
     opts = opts || {};
     optsB = optsB || opts;
     var level = opts.level || LEVEL;
-    var stacks = [
-        new PanelEngine.Stack({ level: level, seed: seed, countdown: false }),
-        new PanelEngine.Stack({ level: level, seed: seed, countdown: false })
-    ];
-    var cpus = [ makeCpu(stacks[0], weightsA, opts), makeCpu(stacks[1], weightsB, optsB) ];
+    var stacks = [PA.game({ level: level, seed: seed }), PA.game({ level: level, seed: seed })];
+    // The countdown is the engine's and nobody plays in it.
+    while (stacks[0].clock <= PA.COUNTDOWN_TOTAL) { stacks[0].run(); stacks[1].run(); }
+    stacks[0].events.length = 0; stacks[1].events.length = 0;
+    var cpus = [ makeCpu(PA.view(stacks[0], PanelEngine), weightsA, opts), makeCpu(PA.view(stacks[1], PanelEngine), weightsB, optsB) ];
     // EACH SIDE CAN SEE THE OTHER. Without this the opponent features are
     // wired all the way to the evaluator and then handed null, which reads as
     // a feature that is correct, registered and constant — the shape of dead
     // feature this repo has produced more than once.
-    cpus[0].opponent = stacks[1];
-    cpus[1].opponent = stacks[0];
+    function look() {
+        for (var s = 0; s < 2; s++) {
+            if (cpus[s].onServer) cpus[s].onServer(stacks[s], stacks[s ^ 1]);
+            else { cpus[s].stack = PA.view(stacks[s], PanelEngine); cpus[s].opponent = PA.view(stacks[s ^ 1], PanelEngine); }
+        }
+    }
     var sent = [0, 0];
     // WHAT KIND OF GARBAGE, not just how much. A bot that sends 20 cells in
     // 3-wide combos and one that sends 20 cells in a 5-chain are the same
@@ -197,29 +203,32 @@ exports.duel = function (weightsA, weightsB, seed, opts, optsB) {
         pendingOpen[side] = [];
     }
 
+    function cross() {
+        for (var i = 0; i < 2; i++) {
+            var out = PA.deliver(stacks[i], stacks[i ^ 1]);
+            if (out) for (var k = 0; k < out.length; k++) {
+                sent[i] += (out[k].width || 0) * (out[k].height || 0);
+                chainDepth[i][report.classify(out[k])]++;
+            }
+        }
+    }
+
     var ceiling = opts.ceiling || CEILING;
     var f = 0;
     for (; f < ceiling; f++) {
+        look();
         cpus[0].update();
         cpus[1].update();
+        // Garbage crosses, exactly as duel.js does it: before the runs and after.
+        cross();
         stacks[0].run();
         stacks[1].run();
+        cross();
         for (var dg = 0; dg < 2; dg++) {
             if (inDanger(stacks[dg])) { if (dangerFrom[dg] === null) dangerFrom[dg] = f; }
             else dangerFrom[dg] = null;
         }
 
-        // Garbage crosses, exactly as duel.js does it.
-        for (var i = 0; i < 2; i++) {
-            var out = stacks[i].takeDeliverableGarbage();
-            if (out && out.length) {
-                for (var k = 0; k < out.length; k++) {
-                    sent[i] += (out[k].width || 0) * (out[k].height || 0);
-                    chainDepth[i][report.classify(out[k])]++;
-                }
-                stacks[i ^ 1].receiveGarbage(out);
-            }
-        }
         for (var e = 0; e < 2; e++) {
             var evs = stacks[e].drainEvents();
             for (var q = 0; q < evs.length; q++) {
