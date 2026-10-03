@@ -18,9 +18,8 @@
 //      "chains happen for free" mechanism could never appear.
 var assert = require('assert');
 var path = require('path');
-require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
-var PanelEngine = globalThis.PanelEngine;
+var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
 var PuyoCpu = require('./puyocpu.js');
 var registry = require('./registry.js');
 
@@ -41,8 +40,8 @@ function sample() {
 }
 
 function play(weights, seed, frames, opts) {
-    var stack = new PanelEngine.Stack({ level: LEVEL, seed: seed, countdown: false });
-    var cpu = new PuyoCpu(stack, Object.assign({ weights: weights }, opts || {}));
+    var stack = PA.game({ level: LEVEL, seed: seed, countdown: false });
+    var cpu = PuyoCpu.onPA(stack, Object.assign({ weights: weights }, opts || {}));
     var f;
     for (f = 0; f < (frames || 2000); f++) {
         if (f > 120 && f % 120 === 0) {
@@ -88,10 +87,11 @@ test('it scores EVERY legal move, not a shortlist', function () {
     // played until enough decisions have been seen.
     var mismatches = [], checked = 0, widths = {};
     for (var seed = 7; seed < 12 && checked < 40; seed++) {
-    var stack = new PanelEngine.Stack({ level: LEVEL, seed: seed, countdown: false });
-    var cpu = new PuyoCpu(stack, { weights: sample() });
+    var stack = PA.game({ level: LEVEL, seed: seed, countdown: false });
+    var cpu = PuyoCpu.onPA(stack, { weights: sample() });
     for (var f = 0; f < 1200; f++) {
         if (f > 120 && f % 120 === 0) stack.receiveGarbage([{ width: 6, height: 3, isChain: false }]);
+        cpu.onServer(stack, null);   // the board this frame's update() will read
         var before = cpu.evaluations;
         var willDecide = !cpu._walk && cpu.cooldown === 0;
         var expected = willDecide
@@ -156,9 +156,10 @@ test('it scores the board AFTER the cascade, not before', function () {
     // board the move results in", which is why chains need no special case.
     // If _score saw the pre-resolve board, a move that fires a chain would
     // look identical to one that does not.
-    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 11, countdown: false });
-    var cpu = new PuyoCpu(stack, { weights: sample() });
+    var stack = PA.game({ level: LEVEL, seed: 11, countdown: false });
+    var cpu = PuyoCpu.onPA(stack, { weights: sample() });
     for (var i = 0; i < 200; i++) { cpu.update(); stack.run(); stack.drainEvents(); }
+    cpu.onServer(stack, null);
     var board = cpu._snapshot();
     var seen = [];
     var origScore = cpu._score;
@@ -296,6 +297,13 @@ test('no feature is silently dead under this brain', function () {
 // it, because a weight applies to every raise equally and most raises are
 // fine. This is a rule, not a preference.
 
+// Garbage queued on the server's stack, and the bot's view of it read afresh.
+function queue(stack, cpu, list) {
+    stack.incoming = [];
+    stack.receiveGarbage(list);
+    cpu.onServer(stack, null);
+}
+
 function boardAt(height, width, topRow) {
     var g = [];
     for (var r = 0; r <= height; r++) {
@@ -306,25 +314,25 @@ function boardAt(height, width, topRow) {
 }
 
 test('a raise that tops the board out is not offered', function () {
-    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 7, countdown: false });
-    var cpu = new PuyoCpu(stack, { weights: sample() });
+    var stack = PA.game({ level: LEVEL, seed: 7, countdown: false });
+    var cpu = PuyoCpu.onPA(stack, { weights: sample() });
     // Filled to the top row: the engine's own second game-over condition is
     // holding raise on a board like this.
     assert.strictEqual(cpu._raiseIsSuicide(boardAt(stack.height, stack.width, stack.height)), true);
 });
 
 test('a raise the QUEUED GARBAGE has nowhere to land is not offered', function () {
-    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 7, countdown: false });
-    var cpu = new PuyoCpu(stack, { weights: sample() });
+    var stack = PA.game({ level: LEVEL, seed: 7, countdown: false });
+    var cpu = PuyoCpu.onPA(stack, { weights: sample() });
     var H = stack.height, W = stack.width;
     // Two rows of clear space after the raise...
     var board = boardAt(H, W, H - 2);
     assert.strictEqual(cpu._raiseIsSuicide(board), false, 'two clear rows and nothing queued is fine');
     // ...and two rows of garbage already on the way fills exactly all of it.
-    stack.incoming = [{ width: W, height: 2 }];
+    queue(stack, cpu, [{ width: W, height: 2 }]);
     assert.strictEqual(cpu._raiseIsSuicide(board), true);
     // One row queued still leaves somewhere to stand.
-    stack.incoming = [{ width: W, height: 1 }];
+    queue(stack, cpu, [{ width: W, height: 1 }]);
     assert.strictEqual(cpu._raiseIsSuicide(board), false);
 });
 
@@ -332,9 +340,9 @@ test('an ordinary raise on a low board is still offered', function () {
     // The rule must refuse suicide and nothing else. A bot that stopped
     // raising would be a different, worse bot, and it would pass a test
     // that only checked the refusals.
-    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 7, countdown: false });
-    var cpu = new PuyoCpu(stack, { weights: sample() });
-    stack.incoming = [{ width: stack.width, height: 2 }];
+    var stack = PA.game({ level: LEVEL, seed: 7, countdown: false });
+    var cpu = PuyoCpu.onPA(stack, { weights: sample() });
+    queue(stack, cpu, [{ width: stack.width, height: 2 }]);
     assert.strictEqual(cpu._raiseIsSuicide(boardAt(stack.height, stack.width, 3)), false);
 });
 
@@ -343,8 +351,8 @@ test('the refusal happens in the CANDIDATE LIST, not in the score', function () 
     // free to rank it back up, and 63% of trained champions weight
     // stopTimeEarned negative, so "the weights will handle it" is not a
     // thing this repo gets to assume.
-    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 7, countdown: false });
-    var cpu = new PuyoCpu(stack, { weights: sample(), allowRaise: true, engine: true });
+    var stack = PA.game({ level: LEVEL, seed: 7, countdown: false });
+    var cpu = PuyoCpu.onPA(stack, { weights: sample(), allowRaise: true, engine: true });
     var raiseIsSuicide = true;
     cpu._raiseIsSuicide = function () { return raiseIsSuicide; };
     for (var f = 0; f < 200; f++) { cpu.update(); stack.run(); }
@@ -353,7 +361,7 @@ test('the refusal happens in the CANDIDATE LIST, not in the score', function () 
         'a raise the bot cannot survive was still on the list');
     // And the same position with the rule switched off DOES offer it, so
     // the assertion above is about the rule and not about the position.
-    var loose = new PuyoCpu(stack, { weights: sample(), allowRaise: true, engine: true,
+    var loose = PuyoCpu.onPA(stack, { weights: sample(), allowRaise: true, engine: true,
                                      refuseSuicide: false });
     loose._raiseIsSuicide = function () { return true; };
     var offered = loose._candidates().some(function (c) { return c.kind === 'raise'; });
@@ -366,8 +374,8 @@ test('the refusal happens in the CANDIDATE LIST, not in the score', function () 
 test('WITH THE SURVIVAL SEARCH ON, ONLY THE SEARCH SAYS A MOVE DIES', function () {
     // A topped-out board on a short shield lives if a swap or a match holds
     // the stack; the search plays that out, so the grid test must not veto it.
-    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 11, countdown: false });
-    var cpu = new PuyoCpu(stack, { weights: sample() });
+    var stack = PA.game({ level: LEVEL, seed: 11, countdown: false });
+    var cpu = PuyoCpu.onPA(stack, { weights: sample() });
     var H = stack.height, W = stack.width;
     var toppedOut = { kind: 'swap', move: [2, 2], board: boardAt(H, W, H), resolved: { shakeTime: 8 } };
     var died = { kind: 'swap', move: [1, 1], board: boardAt(H, W, H), resolved: { died: true } };
@@ -378,8 +386,8 @@ test('WITH THE SURVIVAL SEARCH ON, ONLY THE SEARCH SAYS A MOVE DIES', function (
 });
 
 test('a fatal move is dropped when a survivable one exists', function () {
-    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 11, countdown: false });
-    var cpu = new PuyoCpu(stack, { weights: sample(), deepSurvival: false });
+    var stack = PA.game({ level: LEVEL, seed: 11, countdown: false });
+    var cpu = PuyoCpu.onPA(stack, { weights: sample(), deepSurvival: false });
     var H = stack.height, W = stack.width;
     var cands = [
         { kind: 'hold', board: boardAt(H, W, H) },      // topped out
@@ -396,8 +404,8 @@ test('WHEN EVERY MOVE IS FATAL THE FILTER LIFTS', function () {
     // Then it is not a choice, and an empty pool falls through to no bot at
     // all. Seven of twenty deaths had no survivable move by the last
     // decision -- those were lost earlier, not chosen here.
-    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 11, countdown: false });
-    var cpu = new PuyoCpu(stack, { weights: sample(), deepSurvival: false });
+    var stack = PA.game({ level: LEVEL, seed: 11, countdown: false });
+    var cpu = PuyoCpu.onPA(stack, { weights: sample(), deepSurvival: false });
     var H = stack.height, W = stack.width;
     var all = [{ kind: 'hold', board: boardAt(H, W, H) },
                { kind: 'swap', board: boardAt(H, W, H) }];
@@ -413,12 +421,12 @@ test('BUT THE LIFT IS GRADED: dying to the queue is not dying now', function () 
     // deaths with no idea which was which -- read off frame 1190 of seed 971,
     // where 22 of 23 candidates were not dead this instant and it played the
     // one that was.
-    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 11, countdown: false });
-    var cpu = new PuyoCpu(stack, { weights: sample(), deepSurvival: false });
+    var stack = PA.game({ level: LEVEL, seed: 11, countdown: false });
+    var cpu = PuyoCpu.onPA(stack, { weights: sample(), deepSurvival: false });
     var H = stack.height, W = stack.width;
     // Six rows on their way: anything standing above row 6 dies when they
     // land, so nothing survives the queue and the pool must lift.
-    stack.incoming = [{ width: W, height: 6 }];
+    queue(stack, cpu, [{ width: W, height: 6 }]);
     var deadNow = { kind: 'swap', move: [1, 1], board: boardAt(H, W, H) };
     var standing = { kind: 'hold', board: boardAt(H, W, 7) };
     assert.ok(cpu._diesToQueue(standing.board),
@@ -440,10 +448,10 @@ test('and it lifts ALL THE WAY when every move is dead this instant', function (
     // Then it really is not a choice, and an empty pool falls through to no
     // bot at all. A graded lift that narrowed here would be the empty-pool
     // defect wearing a new hat.
-    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 11, countdown: false });
-    var cpu = new PuyoCpu(stack, { weights: sample(), deepSurvival: false });
+    var stack = PA.game({ level: LEVEL, seed: 11, countdown: false });
+    var cpu = PuyoCpu.onPA(stack, { weights: sample(), deepSurvival: false });
     var H = stack.height, W = stack.width;
-    stack.incoming = [{ width: W, height: 6 }];
+    queue(stack, cpu, [{ width: W, height: 6 }]);
     var pool = [{ kind: 'hold', board: boardAt(H, W, H) },
                 { kind: 'swap', move: [1, 1], board: boardAt(H, W, H) }];
     assert.strictEqual(cpu._survivors(pool), pool);
@@ -453,16 +461,16 @@ test('and it lifts ALL THE WAY when every move is dead this instant', function (
 test('a board nobody is near the top of is left alone', function () {
     // The filter must bite only where it matters. Dropping nothing has to
     // return the SAME list, or every decision pays for a copy.
-    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 11, countdown: false });
-    var cpu = new PuyoCpu(stack, { weights: sample(), deepSurvival: false });
+    var stack = PA.game({ level: LEVEL, seed: 11, countdown: false });
+    var cpu = PuyoCpu.onPA(stack, { weights: sample(), deepSurvival: false });
     var low = [{ kind: 'hold', board: boardAt(stack.height, stack.width, 3) },
                { kind: 'swap', board: boardAt(stack.height, stack.width, 4) }];
     assert.strictEqual(cpu._survivors(low), low);
 });
 
 test('the rule can be switched off, so it can be shown to do something', function () {
-    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 11, countdown: false });
-    var cpu = new PuyoCpu(stack, { weights: sample(), refuseSuicide: false });
+    var stack = PA.game({ level: LEVEL, seed: 11, countdown: false });
+    var cpu = PuyoCpu.onPA(stack, { weights: sample(), refuseSuicide: false });
     var H = stack.height, W = stack.width;
     var mixed = [{ kind: 'hold', board: boardAt(H, W, H) },
                  { kind: 'swap', board: boardAt(H, W, H - 1) }];
@@ -472,8 +480,8 @@ test('the rule can be switched off, so it can be shown to do something', functio
 // ---- and a move into a corner is a move into death -------------------
 
 function cornerCpu(opts) {
-    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 11, countdown: false });
-    return new PuyoCpu(stack, Object.assign({ weights: sample() }, opts || {}));
+    var stack = PA.game({ level: LEVEL, seed: 11, countdown: false });
+    return PuyoCpu.onPA(stack, Object.assign({ weights: sample() }, opts || {}));
 }
 
 test('a move whose every reply is topped out is dropped', function () {

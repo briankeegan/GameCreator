@@ -2,22 +2,19 @@
 // THE BOT MAY ONLY KNOW WHAT THE ENGINE HAS SHOWN IT.
 //
 // When a match touches a garbage slab the engine pops ONE ROW of it and turns
-// that row into coloured panels — colours drawn from this.rng()
-// (Stack.garbageRowColors). A planner that predicted them would be reading
+// that row into coloured panels — colours dealt by the game's generator, which
+// the bot does not hold (pa-engine.js deals them as unseen). A planner that predicted them would be reading
 // dice it is not allowed to see, and every chain it "found" past that point
 // would be a chain it cannot actually play.
 //
 // So resolve() stops at a garbage break. These tests fix what it must get
 // right UP TO that point, and that it refuses to go past it. See
 // ../GARBAGE_PLAN.md.
-//
-// Written before the fix, and failing, on purpose.
 var assert = require('assert');
 var path = require('path');
-require(path.join(__dirname, '..', '..', 'panel-engine.js'));
+var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
 var LogicalBoard = globalThis.PanelCpu.LogicalBoard;
-var eb = require('./engineboard.js');
 var W = 6, H = 12;
 
 var failures = [];
@@ -48,7 +45,48 @@ function board(rows) {
     var b = build(rows);
     return new LogicalBoard(W, H, 9, b.grid, b.blocks);
 }
-function occupied(g, r, c) { return g[r][c] !== 0; }
+// The fixture on the server's engine (pa-engine.js): its panel rows as a
+// puzzle stack (no rise), and its slab, as wide and tall as the letters,
+// dropped onto them as real garbage and left to land.
+function onEngine(rows) {
+    var digits = '', w = 0, h = 0;
+    rows.forEach(function (row) {
+        if (/[a-z]/.test(row)) { h++; w = row.replace(/[^a-z]/g, '').length; }
+        else digits += row.replace(/\./g, '0');
+    });
+    var st = PA.puzzle(digits, 10);
+    st.receiveGarbage([{ width: w, height: h, isChain: h > 1, finalized: true }]);
+    for (var f = 0; f < 300 && (f < 2 || st.incoming.length || st.hasFallingGarbage() || st.hasActivePanels()); f++) {
+        st.setInput(0); st.run();
+    }
+    st.events.length = 0;
+    for (var k = 0; k < rows.length; k++) {
+        var r = rows.length - k;
+        for (var c = 1; c <= W; c++) {
+            var ch = rows[k][c - 1], p = st.panels[r][c];
+            var want = ch === '.' ? 'empty' : (ch >= 'a' && ch <= 'z') ? 'garbage' : 'colour ' + ch;
+            var got = p.isGarbage ? 'garbage' : p.color === 0 ? 'empty' : 'colour ' + p.color;
+            assert.strictEqual(got, want, 'the engine board differs from the fixture at r' + r + 'c' + c);
+        }
+    }
+    return st;
+}
+// Swap (r, c) on the engine and play `frames` frames: the size of each match,
+// and the most stop time the stack held at any point.
+function swapOnEngine(st, r, c, frames) {
+    assert.ok(st.canSwap(r, c), 'the engine refuses the fixture swap');
+    st.curRow = r; st.curCol = c;
+    assert.ok(st.tryQueueSwap(r, c), 'the engine did not take the swap');
+    var out = { comboSizes: [], cleared: 0, peak: 0 };
+    for (var f = 0; f < frames; f++) {
+        st.setInput(0); st.run();
+        if (st.stopTime > out.peak) out.peak = st.stopTime;
+        st.drainEvents().forEach(function (e) {
+            if (e.type === 'match') { out.comboSizes.push(e.size); out.cleared += e.size; }
+        });
+    }
+    return out;
+}
 function garbageCells(b) {
     var n = 0;
     for (var r = 1; r <= H; r++) for (var c = 1; c <= W; c++) if (b.grid[r][c] === -2) n++;
@@ -118,21 +156,7 @@ check('the stop time reported is the stop time the ENGINE awards', function () {
     var res = b.resolve();
     assert.strictEqual(typeof res.stopTimeEarned, 'number', 'stopTimeEarned is not reported at all');
 
-    var bi = build(ROWS), blocks = {};
-    for (var id in bi.blocks) blocks[id] = bi.blocks[id].cells;
-    var stack = eb.scratch(10);
-    stack.speed = 0;
-    eb.paint(stack, bi.grid, H, W, blocks);
-    eb.settle(stack, 60);
-    stack.stopTime = 0;
-    stack.curRow = 2; stack.curCol = 3;
-    stack.doSwap(2, 3);
-    var peak = 0;
-    for (var f = 0; f < 200; f++) {
-        stack.run();
-        if (stack.stopTime > peak) peak = stack.stopTime;
-        if (f >= 3 && !stack.hasActivePanels() && !stack.hasChainingPanels()) break;
-    }
+    var peak = swapOnEngine(onEngine(ROWS), 2, 3, 300).peak;
     assert.strictEqual(res.stopTimeEarned, peak,
         'reports ' + res.stopTimeEarned + ' frames of stop time, the engine awards ' + peak);
 });
@@ -147,6 +171,8 @@ check('a clear wide enough to earn stop time reports it', function () {
     assert.ok(res.brokeGarbage > 0, 'the fixture did not break garbage');
     assert.ok(res.stopTimeEarned > 0,
         'a four-panel clear broke garbage and reported no stop time');
+    var peak = swapOnEngine(onEngine(wide), 2, 4, 300).peak;
+    assert.ok(peak > 0, 'the engine awarded no stop time for a four: the fixture tests nothing');
 });
 
 check('a resolve that touches no garbage is NOT truncated', function () {
@@ -160,19 +186,7 @@ check('a resolve that touches no garbage is NOT truncated', function () {
 });
 
 check('up to the break, the simulation agrees with the engine exactly', function () {
-    var b = build(ROWS);
-    var stack = eb.scratch(10);
-    stack.speed = 0;
-    eb.paint(stack, b.grid, H, W, (function () {
-        var out = {};
-        for (var id in b.blocks) out[id] = b.blocks[id].cells;
-        return out;
-    })());
-    assert.strictEqual(eb.settle(stack, 60).comboSizes.length, 0, 'the fixture is not settled');
-    assert.ok(stack.canSwap(2, 3), 'the engine refuses the fixture swap');
-    stack.curRow = 2; stack.curCol = 3;
-    stack.doSwap(2, 3);
-    var eng = eb.settle(stack, 900);
+    var eng = swapOnEngine(onEngine(ROWS), 2, 3, 900);
 
     var lb = board(ROWS);
     lb.swap(2, 3);
@@ -182,15 +196,15 @@ check('up to the break, the simulation agrees with the engine exactly', function
     // The FIRST match is entirely before the break and must match exactly.
     assert.strictEqual(sim.comboSizes[0], eng.comboSizes[0],
         'the first combo differs: simulation ' + sim.comboSizes[0] + ', engine ' + eng.comboSizes[0]);
-    assert.ok(simCleared <= eng.clearedPanels,
+    assert.ok(simCleared <= eng.cleared,
         'the simulation cleared MORE than the engine (' + simCleared + ' vs ' +
-        eng.clearedPanels + ') — it resolved past the break it cannot see');
+        eng.cleared + ') — it resolved past the break it cannot see');
 });
 
 // A CHAIN STILL RUNNING IS GARBAGE ON ITS WAY. It ships when it ends, which
 // can be the next frame, so the bot counts it at the height it has now at
 // the soonest it can land, and everything queued behind it no sooner.
-var PuyoCpu = require('./puyocpu.js'), FLIGHT = globalThis.PanelEngine.GARBAGE_FLIGHT;
+var PuyoCpu = require('./puyocpu.js'), FLIGHT = PA.FLIGHT;
 function flightOf(outgoing, clock) {
     var bot = Object.create(PuyoCpu.prototype);
     bot.opponent = { outgoing: outgoing, clock: clock };

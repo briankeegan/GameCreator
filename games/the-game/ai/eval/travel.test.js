@@ -2,20 +2,18 @@
 //
 // travel.js prices cursor movement in frames and the evaluator weights a
 // feature on it. If that price is wrong, the search is trading against a
-// cost the game never charges — which is exactly what happened before
-// panel-cpu.js walked at all, when travel was priced and never billed.
+// cost the game never charges.
 //
 // So this does NOT re-implement the walk and compare two of my own
 // functions, which would agree with itself no matter how wrong it was. It
-// runs the REAL cpu on a REAL stack and times its REAL walks: where the
-// cursor was when a move was committed, where it went, and how many frames
-// passed before the swap was queued. The formula has to match that.
+// runs the REAL cpu on a REAL stack of the server's engine (pa-engine.js)
+// and times its REAL walks: where the cursor was when a move was committed,
+// where it went, and how many frames passed before the swap was queued.
+// The formula has to match that.
 var assert = require('assert');
 var path = require('path');
-require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
-var PanelEngine = globalThis.PanelEngine;
-var PanelCpu = globalThis.PanelCpu;
+var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
 var travel = require('./travel.js');
 var PuyoCpu = require('./puyocpu.js');
 
@@ -25,17 +23,13 @@ function test(name, fn) { tests.push({ name: name, fn: fn }); }
 // Every walk the cpu makes over a real game: the distance it covered and
 // the frames it took from committing to the move to queueing the swap.
 // THE REFERENCE BOT IS PuyoCpu, because it is the one that PAYS this cost.
-// travelCost is a feature of the Puyo evaluator and nothing else reads it.
-// This used to observe a different bot, which worked only while both walked
-// at the same cadence — and the moment that cadence changed (it had to: at 4
-// frames a cell the hardest tier was weaker than
-// diamond, see panel-cpu.js), this test failed for a bot whose walks the
-// model was never meant to price. A model should be pinned to its consumer.
+// travelCost is a feature of the Puyo evaluator and nothing else reads it,
+// and a model is pinned to its consumer.
 var PROBE_WEIGHTS = { colourVariance: 168,
                       maxHeight: 136, travelCost: 10 };
 function observeWalks(seed, frames) {
-    var stack = new PanelEngine.Stack({ level: 10, seed: seed, countdown: false });
-    var cpu = new PuyoCpu(stack, { weights: PROBE_WEIGHTS, reaction: 12 });
+    var stack = PA.game({ level: 10, seed: seed, countdown: false });
+    var cpu = PuyoCpu.onPA(stack, { weights: PROBE_WEIGHTS, reaction: 12 });
     var walks = [], open = null, f = 0;
 
     var origBegin = cpu._beginWalk;
@@ -48,10 +42,12 @@ function observeWalks(seed, frames) {
                  retry: open !== null, rises: 0 };
         return origBegin.call(this, row, col, cooldown);
     };
+    // Stack.copy() carries this own field into every copy the search plays
+    // forward; `this === stack` keeps those presses out of the count.
     var origQueue = stack.tryQueueSwap;
     stack.tryQueueSwap = function (row, col) {
         var ok = origQueue.call(this, row, col);
-        if (ok && open) {
+        if (ok && open && this === stack) {
             open.frames = f - open.start;
             open.arrivedAt = [row, col];
             walks.push(open);
@@ -65,13 +61,13 @@ function observeWalks(seed, frames) {
         cpu.update();
         stack.run();
         // A rising stack carries the cursor up with it for free
-        // (Stack.newRow: curRow++), so a walk that spans one covers a
+        // (Stack.newRow: curRow + 1), so a walk that spans one covers a
         // distance it never paid for. Counted, and those walks are left
         // out of the comparison rather than fudging the formula.
-        for (var e = 0; e < stack.events.length; e++) {
-            if (stack.events[e].type === 'newRow' && open) open.rises++;
+        var ev = stack.drainEvents();
+        for (var e = 0; e < ev.length; e++) {
+            if (ev[e].type === 'newRow' && open) open.rises++;
         }
-        stack.drainEvents();
         if (stack.gameOver) break;
     }
     return walks;
@@ -125,9 +121,9 @@ test('the model prices the walks the cpu actually makes', function () {
 });
 
 test('cells above the stack top are unreachable, not expensive', function () {
-    var stack = new PanelEngine.Stack({ level: 10, seed: 5, countdown: false });
+    var stack = PA.game({ level: 10, seed: 5, countdown: false });
     for (var i = 0; i < 200; i++) stack.run();
-    var top = stack.topCurRow, W = PanelEngine.WIDTH;
+    var top = stack.topCurRow, W = PA.WIDTH;
     assert.strictEqual(travel.reachable(top + 1, 2, top, W), false, 'above the top must be unreachable');
     assert.strictEqual(travel.reachable(top, 2, top, W), true, 'the top row itself is reachable');
     assert.strictEqual(travel.reachable(2, W, top, W), false,

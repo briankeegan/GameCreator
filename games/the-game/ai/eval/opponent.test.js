@@ -18,9 +18,8 @@
 // board.
 var assert = require('assert');
 var path = require('path');
-require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
-var PanelEngine = globalThis.PanelEngine;
+var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
 var PuyoCpu = require('./puyocpu.js');
 var features = require('./features.js');
 var registry = require('./registry.js');
@@ -105,20 +104,21 @@ test('both are in the registry, with a divisor', function () {
 
 test('the input carries the opponent when there is one', function () {
     var L = switches.load();
-    var a = new PanelEngine.Stack({ level: 10, seed: 1, countdown: false });
-    var b = new PanelEngine.Stack({ level: 10, seed: 2, countdown: false });
-    var cpu = new PuyoCpu(a, { weights: L.weights, depth: 1, opponent: b });
+    var a = PA.game({ level: 10, seed: 1, countdown: false });
+    var b = PA.game({ level: 10, seed: 2, countdown: false });
+    var cpu = PuyoCpu.onPA(a, { weights: L.weights, depth: 1 }, b);
     for (var f = 0; f < 300; f++) { cpu.update(); a.run(); b.run(); a.drainEvents(); b.drainEvents(); }
+    cpu.onServer(a, b);
     var board = cpu._snapshot();
-    var input = inputMod.fromStack(a, board, {}, null, 0, b);
+    var input = inputMod.fromStack(cpu.stack, board, {}, null, 0, cpu.opponent);
     assert.ok(input.opponent, 'no opponent on the input at all');
     assert.ok(input.opponent.headroomCells > 0, 'their headroom reads as zero on a fresh board');
 });
 
 test('no opponent is not a crash — solo play is still a thing', function () {
     var L = switches.load();
-    var a = new PanelEngine.Stack({ level: 10, seed: 1, countdown: false });
-    var cpu = new PuyoCpu(a, { weights: L.weights, depth: 1 });
+    var a = PA.game({ level: 10, seed: 1, countdown: false });
+    var cpu = PuyoCpu.onPA(a, { weights: L.weights, depth: 1 });
     for (var f = 0; f < 600; f++) { cpu.update(); a.run(); a.drainEvents(); if (a.gameOver) break; }
     assert.ok(cpu.decisions > 0);
 });

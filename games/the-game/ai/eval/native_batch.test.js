@@ -76,8 +76,11 @@ boards.forEach(function (board, bj) {
 // BOARDS GO ROUND. The same batches again and again, each let go, must not
 // grow the heap: boards one thread lets go that another made are handed back
 // (memory.h SPARES), or the heap grows a little every phase till it is out.
+// Which thread frees which board varies with timing, so a thread may take one
+// more chunk once; growth on more than one pass is the leak. Over 40 passes
+// three runs stayed flat at 516, 520, and 506 then 513 once at pass 31.
 var X = N.exports(), pages = [];
-for (var pass = 0; pass < 6; pass++) {
+for (var pass = 0; pass < 10; pass++) {
   boards.slice(0, 12).forEach(function (board) {
     A.reset();
     var r = A.root(board.copy(), { left: 0, started: false }, [], false), made = A.advanceMany(stepsFrom(r), true);
@@ -85,7 +88,9 @@ for (var pass = 0; pass < 6; pass++) {
   });
   pages.push(X.nb_pool_stat(-1));
 }
-if (pages[5] > pages[1]) { console.log('FAIL: the heap grew from ' + pages[1] + ' to ' + pages[5] + ' pages over the same batches'); process.exit(1); }
+var grew = 0;
+for (var q = 2; q < pages.length; q++) if (pages[q] > pages[q - 1]) grew++;
+if (grew > 1) { console.log('FAIL: the heap grew on ' + grew + ' passes of the same batches (' + pages.join(',') + ' pages)'); process.exit(1); }
 if (underGarbage < 100) { console.log('FAIL: too few boards under garbage to test the touch score on'); process.exit(1); }
-console.log('ok: ' + played + ' steps on ' + boards.length + ' boards (' + ROOTS.length + ' ways each), batched on 3 threads, the same as one at a time; ' + touched + ' touch scores the same (' + underGarbage + ' under garbage); heap steady at ' + pages[5] + ' pages');
+console.log('ok: ' + played + ' steps on ' + boards.length + ' boards (' + ROOTS.length + ' ways each), batched on 3 threads, the same as one at a time; ' + touched + ' touch scores the same (' + underGarbage + ' under garbage); heap steady at ' + pages[pages.length - 1] + ' pages');
 process.exit(0);

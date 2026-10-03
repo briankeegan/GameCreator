@@ -4,7 +4,7 @@
 }(this, function () {
   'use strict';
 
-  var DAS_DELAY = 20;          // panel-engine.js, frames a held direction repeats after (the Lua: 10)
+  var DAS_DELAY = 10;          // pa-engine.js, frames a held direction repeats after (curWaitTime 20, counted twice a frame)
   var MOVE_FRAMES = 4;         // panel-cpu.js CURSOR_MOVE_FRAMES — the tap cadence
 
   function walkCost(steps, g) {
