@@ -3245,6 +3245,7 @@ static Dec breakSoon(Dec d) {
   // one is, the margin is kept in the same order: a swap's time is within the
   // horizon, so a break later than the horizon less the best margin cannot
   // reach it, and no batch searches past that.
+  double aloneM = breakTime(0, 0) < INF ? aloneTime - breakTime(0, 0) : -INF;
   double b0[MAXCAND];
   for (int k = 0; k < pn; k++) b0[k] = INF;
   int ordq[MAXCAND]; double ordf[MAXCAND], far0 = 0;
@@ -3257,7 +3258,9 @@ static Dec breakSoon(Dec d) {
     int32_t bl[2 * SOONBATCH], wb[2 * SOONBATCH]; int nb = 0, nwb = 0, bq[SOONBATCH];
     for (int k = at; k < end; k++) { bq[nb] = ordq[k]; bl[2 * nb] = pl[2 * ordq[k]]; bl[2 * nb + 1] = pl[2 * ordq[k] + 1]; nb++; }
     double tb[SOONBATCH];
-    bsLim = inTime.has ? -inTime.score + 1e-9 : margin.has ? LINEHORIZON - margin.score + 1e-9 : INF;
+    // a margin is taken only past the board left alone's (aloneM), so no break later than that reaches it
+    double floorM = margin.has && margin.score > aloneM ? margin.score : aloneM;
+    bsLim = inTime.has ? -inTime.score + 1e-9 : floorM > -INF ? LINEHORIZON - floorM + 1e-9 : INF;
     prereplay(bl, nb); bsPl = bl; bsB0 = tb; parallelDo(nb, bsTask);
     for (int k = 0; k < nb; k++) { b0[bq[k]] = tb[k]; if (tb[k] < INF) { wb[2 * nwb] = bl[2 * k]; wb[2 * nwb + 1] = bl[2 * k + 1]; nwb++; } }
     prejudge(wb, 2, nwb, 1, 0);
