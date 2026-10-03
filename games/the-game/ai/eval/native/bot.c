@@ -2135,6 +2135,19 @@ static Dec keepBreak(Dec d) {
   if (l->n > 1) lineKeep(l, l->brk ? LINE_BREAK : LINE_CASH); else BT->nLine = 0;
   return lineSwap(l, V_KEEPHEALTH, d);
 }
+// MATERIAL IS SPENT ONLY TO BREAK OR TO LIVE. While garbage lies on the
+// board or waits to drop, the board's panels are what the next break is made
+// from, and broken garbage is where new ones come from. A clear that breaks
+// nothing is played only when the time is short (stayAlive judges it) or as a
+// step of a line that breaks; otherwise the bot holds what it has.
+static Dec spendToBreak(Dec d) {
+  if (lineLast || d.kind != K_SWAP || !d.hasMove || endsInBreak(d.via)) return d;
+  if (!(hasGarbage(DBASE) || BIN[IN_INCOMING] > 0)) return d;
+  if (timeLeft() < LIVEHORIZON) return d;
+  Cand *pc = poolSwap(d.sr, d.sc);
+  if (!pc || pc->res.broke || pc->res.total == 0) return d;
+  return mkHold(V_SETUP, d.mode, d.alive, 0, 0, 0);
+}
 // A SWAP THAT IS STILL MOVING WHEN THE LOCK ENDS TAKES THE ROW BACK: the
 // raise starts the frame nothing holds the rise lock, and a swap queued then
 // cancels it. While a raise waits, a swap is played only if its walk and its
@@ -2173,7 +2186,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   nRes = 0; nOptRuns = 0; nOptDepth = 0; nScore = 0; nLook = 0; nSave = 0; rScore = rMain = rLook = rSave = rCand = 0;
   ENGINE_BASE = BIN[IN_HASPA] ? IN : 0;
   for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = c >= 1 && c < BW ? (uint32_t)BIN[IN_CANSWAP + c] : 0;
-  Dec d = onePlan(keepBreak(breakFirst(stayAlive(raiseHold(waitForDrain(playOn(decideRuled())))))));
+  Dec d = onePlan(spendToBreak(keepBreak(breakFirst(stayAlive(raiseHold(waitForDrain(playOn(decideRuled()))))))));
   ENGINE_BASE = 0;
   if (d.kind == K_SWAP && d.hasMove) {
     BT->recent[2] = BT->nRecent ? BT->recent[0] : 0; BT->recent[3] = BT->nRecent ? BT->recent[1] : 0;
