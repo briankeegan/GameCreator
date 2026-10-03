@@ -1721,6 +1721,11 @@ static void threadInit(void) {
   threadReady = 1;
   ARENA = ARENA_MAIN; QUIET = QUIET_MAIN; SMEMO = SMEMO_MAIN; smGen = 1; NTB = NT_MAIN;
   __builtin_memset(ARENA_MAIN, 0, 16ul << 20);
+  // the hash tables are written at random: touched now, before the game, or
+  // their first thousands of writes each fault in a fresh page mid-decision
+  __builtin_memset(TABLE_MAIN, 0, sizeof TABLE_MAIN);
+  __builtin_memset(SMEMO_MAIN, 0, sizeof SMEMO_MAIN);
+  __builtin_memset(NT_MAIN, 0, sizeof NT_MAIN);
   __builtin_memset(QUIET_MAIN, 0, sizeof(QUIET_MAIN));
   __builtin_memset(ODATA, 0, 8ul << 20);
   __builtin_memset(ODSCR, 0, 4ul << 20);

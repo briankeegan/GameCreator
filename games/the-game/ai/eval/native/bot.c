@@ -2901,6 +2901,8 @@ static void parallelDo(int count, void (*task)(int));
 #define RAN 512
 typedef struct { int dec, n, v; int32_t sw[4]; } RAMemo;
 static RAMemo RAM[RAN];
+// the decision's memos, touched before the game (frontWarm)
+static void botWarm(void) { __builtin_memset(JM, 0, sizeof JM); __builtin_memset(RAM, 0, sizeof RAM); __builtin_memset(BWK, 0, sizeof BWK); __builtin_memset(BWV, 0, sizeof BWV); }
 static RAMemo *raSlot(const int32_t *sw, int n) {
   unsigned h = 2166136261u ^ (unsigned)n;
   for (int k = 0; k < 2 * n; k++) h = (h ^ (unsigned)sw[k]) * 16777619u;

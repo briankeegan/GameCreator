@@ -779,6 +779,7 @@ static void *pjWorker(void *arg) {
   inWorker = 1;
   while (__atomic_exchange_n(&pjLock, 1, __ATOMIC_ACQUIRE)) {}
   LNB = nb_new(); USB = nb_new(); paOutcomeBoard(1);
+  __builtin_memset(LNB, 0, sizeof(Board)); __builtin_memset(USB, 0, sizeof(Board));   // touched now, not mid-decision
   __atomic_store_n(&pjLock, 0, __ATOMIC_RELEASE);
   int seen = 0;
   for (;;) {
@@ -992,8 +993,30 @@ static int frontFrame(int fid, Board *b) {
 }
 
 // A bot for the board `b` (its level's constants go into the bot's table).
+// EVERY PAGE THE BOT WRITES, TOUCHED BEFORE THE GAME: its memos and tables
+// are written at random places, and a page's first write faults -- a
+// thousand faults in one decision are milliseconds of a frame.
+static void botWarm(void);
+static void parallelDo(int count, void (*task)(int));
+// a thread's stack, touched to the depth the searches reach (their frames hold whole boards)
+__attribute__((noinline)) static void stackWarm(void) { volatile char buf[1 << 20]; for (int i = 0; i < (int)sizeof buf; i += 4096) buf[i] = 0; }
+static void warmTask(int k) { (void)k; stackWarm(); }
+static void frontWarm(void) {
+  memoRoom();
+  __builtin_memset(LSM, 0, sizeof LSM);
+  for (int i = 0; i < SNAPN; i++) { if (!SNAPS[i].b) SNAPS[i].b = nb_new(); __builtin_memset(SNAPS[i].b, 0, sizeof(Board)); }
+  if (!LNB) LNB = nb_new();
+  if (!USB) USB = nb_new();
+  __builtin_memset(LNB, 0, sizeof(Board)); __builtin_memset(USB, 0, sizeof(Board));
+  botWarm();
+  stackWarm();
+  parallelDo(16, warmTask);   // the workers started, their boards and stacks touched, before the game
+}
 EXPORT(front_new) int front_new(Board *b, int reaction, int allowRaise) {
   if (nFronts >= MAXFRONTS) return -1;
+#ifndef __wasm__
+  frontWarm();
+#endif
   Front *F = &FRONTS[nFronts];
   memset(F, 0, sizeof *F);
   F->reaction = reaction; F->reveal = 1; F->allowRaise = allowRaise; F->escapeWalk = INF;
