@@ -1824,7 +1824,7 @@ int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_
 // DROPS: more garbage at rest starts to fall than left alone.
 enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8, LV_DROPS = 16 };
 
-typedef struct { int n, brk, ok, grown, waitAll; int32_t sw[2 * KEEPDEPTH]; double est; int verdict; } LineC;
+typedef struct { int n, brk, ok, grown, waitAll; int32_t sw[2 * LINEMAX]; double est; int verdict; } LineC;
 static LineC LINES[MAXLINES];
 static int nLines, nJudged;
 static int32_t LNA[12], LNO[12];
@@ -1982,6 +1982,100 @@ static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const
     growAt(pre2, np + 1, t, depthLeft - 1, st2, cur[0], cur[1], can2, waits2, INF);
   }
 }
+// BREAKS BY DISTANCE. A break is three of a colour in a line beside garbage,
+// and a panel moves along its row one swap a column. So for every colour and
+// every three cells in a row or a column beside garbage, on the board as it
+// settles, the swaps that make the match are the nearest panels of that
+// colour walked along their rows to it: a line as long as their distances
+// add up to, however deep that is. Each is proposed, as the masks' lines are,
+// and the engine judges it.
+#define TGRID 18
+static int tCell[TGRID + 2][WMAX + 1];   // colour; 0 empty; -1 garbage; -2 a panel that cannot move
+static int tW, tH;
+static int tSupported(int r, int c) { return r == 1 || tCell[r - 1][c] != 0; }
+static int tBeside(int r, int c) {
+  return (r + 1 <= tH && tCell[r + 1][c] == -1) || (r > 1 && tCell[r - 1][c] == -1) ||
+         (c > 1 && tCell[r][c - 1] == -1) || (c < tW && tCell[r][c + 1] == -1);
+}
+// Walk the panel at (r, s) to column t along row r in `row` (a copy of the
+// row), appending the swaps; 0 if something on the way cannot be passed.
+static int tWalk(int *row, int r, int s, int t, int32_t *sw, int *n) {
+  while (s != t) {
+    int a = s < t ? s : s - 1, b = a + 1;
+    if (row[a] < 0 || row[b] < 0 || *n >= LINEMAX) return 0;
+    if ((row[a] == 0 && !tSupported(r, a)) || (row[b] == 0 && !tSupported(r, b))) return 0;
+    int x = row[a]; row[a] = row[b]; row[b] = x;
+    sw[2 * *n] = r; sw[2 * *n + 1] = a; (*n)++;
+    s = s < t ? s + 1 : s - 1;
+  }
+  return 1;
+}
+static void tPropose(const int32_t *sw, int n, int cr, int cc, double t0, double limit) {
+  if (n < 1 || nLines >= MAXLINES) return;
+  for (int i = 0; i < nLines; i++)
+    if (LINES[i].n == n && !__builtin_memcmp(LINES[i].sw, sw, (unsigned long)n * 8)) return;
+  double at = t0;
+  int pr = cr, pc = cc;
+  for (int k = 0; k < n; k++) { at += travelCost(pr, pc, sw[2 * k], sw[2 * k + 1]) + (k ? 1 : 0); pr = sw[2 * k]; pc = sw[2 * k + 1]; }
+  if (at > limit) return;
+  LineC *l = &LINES[nLines++];
+  l->n = n; l->brk = 1; l->est = at; l->verdict = -1; l->grown = 0; l->waitAll = 0;
+  for (int k = 0; k < 2 * n; k++) l->sw[k] = sw[k];
+}
+static void targetLines(const int32_t *st, int cr, int cc, double t0, double limit) {
+  tW = st[O_W]; tH = st[O_H] < TGRID ? st[O_H] : TGRID;
+  int N = st[O_N], any = 0;
+  for (int r = 1; r <= tH + 1; r++)
+    for (int c = 0; c <= WMAX; c++) tCell[r][c] = 0;
+  for (int r = 1; r <= tH; r++)
+    for (int c = 1; c <= tW; c++) {
+      uint32_t b = 1u << (r - 1);
+      int v = 0;
+      if (U(st, GARB + c) & b) { v = -1; any = 1; }
+      else if (U(st, INERT + c) & b) v = -2;
+      else for (int a = 1; a <= N; a++) if (CL(st, a, c) & b) v = a;
+      tCell[r][c] = v;
+    }
+  if (!any) return;
+  int32_t sw[2 * LINEMAX]; int row[WMAX + 1];
+  for (int a = 1; a <= N; a++) {
+    // three in a column: each row's nearest panel of the colour walked to it
+    for (int c = 1; c <= tW; c++)
+      for (int r = 1; r + 2 <= tH; r++) {
+        if (!tSupported(r, c) && tCell[r][c] == 0) continue;
+        if (!tBeside(r, c) && !tBeside(r + 1, c) && !tBeside(r + 2, c)) continue;
+        int n = 0, ok = 1;
+        for (int i = 0; i < 3 && ok; i++) {
+          int rr = r + i, best = -1;
+          for (int s = 1; s <= tW; s++)
+            if (tCell[rr][s] == a && (best < 0 || (s > c ? s - c : c - s) < (best > c ? best - c : c - best))) best = s;
+          if (best < 0) { ok = 0; break; }
+          for (int x = 1; x <= tW; x++) row[x] = tCell[rr][x];
+          ok = tWalk(row, rr, best, c, sw, &n);
+        }
+        if (ok && n > 0) tPropose(sw, n, cr, cc, t0, limit);
+      }
+    // three in a row: the colour's panels in the row, the nearest three walked together
+    for (int r = 1; r <= tH; r++) {
+      int pos[WMAX], np = 0;
+      for (int s = 1; s <= tW; s++) if (tCell[r][s] == a) pos[np++] = s;
+      if (np < 3) continue;
+      for (int c = 1; c + 2 <= tW; c++) {
+        if (!tSupported(r, c) || !tSupported(r, c + 1) || !tSupported(r, c + 2)) continue;
+        if (!tBeside(r, c) && !tBeside(r, c + 1) && !tBeside(r, c + 2)) continue;
+        for (int j = 0; j + 2 < np; j++) {
+          int n = 0, ok = 1;
+          for (int x = 1; x <= tW; x++) row[x] = tCell[r][x];
+          int at[3] = { pos[j], pos[j + 1], pos[j + 2] };
+          // the panels left of their targets walk right, rightmost first; then the rest
+          for (int i = 2; i >= 0 && ok; i--) if (at[i] < c + i) { ok = tWalk(row, r, at[i], c + i, sw, &n); at[i] = c + i; }
+          for (int i = 0; i < 3 && ok; i++) if (at[i] > c + i) { ok = tWalk(row, r, at[i], c + i, sw, &n); at[i] = c + i; }
+          if (ok && n > 0) tPropose(sw, n, cr, cc, t0, limit);
+        }
+      }
+    }
+  }
+}
 static void linesFind(int depth, int breaks) {
   linesReset();
   lsTopped = BIN[IN_TOPPED] != 0; lsBreaks = breaks;
@@ -1995,9 +2089,13 @@ static void linesFind(int depth, int breaks) {
   int32_t st0[ST_INTS], cur[2], t;
   uint32_t can0[WMAX];
   uint8_t waits0[32][WMAX];
-  if (BIN[IN_HASPA] && lineState(0, 0, st0, can0, waits0, cur, &t) == 0)
+  if (BIN[IN_HASPA] && lineState(0, 0, st0, can0, waits0, cur, &t) == 0) {
     growAt(0, 0, t, depth, st0, cur[0], cur[1], can0, waits0, lsTopped ? timeLeft() - 2 : INF);
-  else growAt(0, 0, 0, depth, DBASE, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], saveCan, 0, lsTopped ? timeLeft() - 2 : INF);
+    if (breaks) targetLines(st0, cur[0], cur[1], t, lsTopped ? timeLeft() - 2 : INF);
+  } else {
+    growAt(0, 0, 0, depth, DBASE, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], saveCan, 0, lsTopped ? timeLeft() - 2 : INF);
+    if (breaks) targetLines(DBASE, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, lsTopped ? timeLeft() - 2 : INF);
+  }
   ENGINE_BASE = saveBase; ENGINE_WAITS = 0;
   for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = saveCan[c];
   nPfx = 0; pfxT = 0;
