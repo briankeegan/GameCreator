@@ -673,6 +673,26 @@ static double readyOf(double *o) {
   }
   return o[F_BREAKREADY];
 }
+// THE READINESS OF MANY OPTIONS, ASKED TOGETHER: those not yet known are
+// scanned in parallel natively and kept as readyOf would keep them.
+static void parallelDo(int count, void (*task)(int));
+static double *RBO[64]; static u64 RBK[64]; static int RBV[64];
+static void rbTask(int j) { RBV[j] = anyBreakScan(OPTSET[(RBO[j] - (ODATA + 64)) / REC]); }
+static void readyBatch(double **opts, int count) {
+  int nj = 0;
+  for (int i = 0; i < count && nj < 64; i++) {
+    double *o = opts[i];
+    if (o[F_BREAKREADY] != -4) continue;
+    const int32_t *st = OPTSET[(o - (ODATA + 64)) / REC];
+    if (!hasGarb(st)) { o[F_BREAKREADY] = -1; continue; }
+    u64 k = hashOf(st); double v;
+    if (anyBreakKnown(st, k, &v)) { o[F_BREAKREADY] = v ? 1 : 0; continue; }
+    RBO[nj] = o; RBK[nj] = k; nj++;
+  }
+  if (nj < 2) return;
+  parallelDo(nj, rbTask);
+  for (int j = 0; j < nj; j++) { tput(&ANYB, RBK[j], RBV[j]); RBO[j][F_BREAKREADY] = RBV[j] ? 1 : 0; }
+}
 static int closesOf(double *o) {
   if (o[F_CLOSESBREAK] == -2) o[F_CLOSESBREAK] = readyOf(o) == 0;
   return o[F_CLOSESBREAK] == 1;
@@ -694,7 +714,11 @@ static void keepFilter(double **all, int n, double **out, int *nout) {
   else { for (int i = 0; i < n; i++) out[k++] = all[i]; }
   int nk = 0;
   for (int i = 0; i < k && !nk; i++) if (!tallOpt(out[i])) nk = 1;
-  for (int i = 0; i < k && !nk; i++) if (readyOf(out[i]) != 0) nk = 1;
+  for (int at = 0; at < k && !nk; at += 64) {   // in batches, until one is ready
+    int end = at + 64 < k ? at + 64 : k;
+    readyBatch(out + at, end - at);
+    for (int i = at; i < end && !nk; i++) if (readyOf(out[i]) != 0) nk = 1;
+  }
   dropTallUnready = nk;
   *nout = k;
 }

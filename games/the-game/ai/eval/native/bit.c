@@ -1261,11 +1261,9 @@ static int quietDrop(const int32_t *st, const Grid *G, const Drop *D, int r, int
   return dropQuiet(st, D, r, c, ZK, out);
 }
 static int breaksFirst(const int32_t *st, const Grid *G, int r, int c) { int t, cs; return firstRound(st, G, r, c, &t, &cs); }
-static int anyBreakOf(const int32_t *st0) {
+// whether any one swap breaks garbage: the scan alone, no tables (a worker's)
+static int anyBreakScan(const int32_t *st0) {
   Grid G;
-  u64 k = hashOf(st0); double v;
-  if (tget(&SAVES, k, &v)) return v > 0;
-  if (tget(&ANYB, k, &v)) return (int)v;
   stcpy(SCR, st0);
   int n = legalG(SCR, SWS, &G), any = 0, rest = atRest(SCR), nLater = 0, LATER[128];
   Drop D; int haveD = 0;
@@ -1286,6 +1284,16 @@ static int anyBreakOf(const int32_t *st0) {
     swapIn(SCR, SWS[2 * i], SWS[2 * i + 1]);
     if (RS[R_SCOPE] == SC_BROKE) any = 1;
   }
+  return any;
+}
+static int anyBreakKnown(const int32_t *st0, u64 k, double *v) {
+  if (tget(&SAVES, k, v)) { *v = *v > 0; return 1; }
+  return tget(&ANYB, k, v);
+}
+static int anyBreakOf(const int32_t *st0) {
+  u64 k = hashOf(st0); double v;
+  if (anyBreakKnown(st0, k, &v)) return (int)v;
+  int any = anyBreakScan(st0);
   tput(&ANYB, k, any);
   return any;
 }
