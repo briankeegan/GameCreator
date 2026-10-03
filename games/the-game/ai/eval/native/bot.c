@@ -2414,6 +2414,7 @@ static Dec keepBreak(Dec d) {
 // the board it settles to. A lineup must live, and spends no panels when one
 // that spends none will do.
 int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);
+int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t);
 static ST LUM;
 static int lineupLast;
 static int readyAfter(const int32_t *sw, int n) {
@@ -2566,6 +2567,8 @@ static Dec fillBeforeBreak(Dec d) {
 static double breakTime(const int32_t *steps, int n) {
   int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t w[32][WMAX];
   if (lineState(steps, n, st, can, w, cur, &t) != 0) return INF;
+  // garbage still to drop: the break is made against it once it has landed
+  if (!hasGarbage(st) && BIN[IN_INCOMING] > 0 && lineLandedFull(steps, n, st, can, w, cur, &t) != 0) return INF;
   tTimeMode = 1; tTimeMin = INF;
   targetLines(st, cur[0], cur[1], 0, INF);
   tTimeMode = 0;
@@ -2585,6 +2588,9 @@ static Dec breakSoon(Dec d) {
   if (d.kind == K_SWAP && endsInBreak(d.via)) return d;
   if (!aloneOnEngine()) return d;
   double aloneTime = LNA[0] ? LNA[0] : LINEHORIZON;
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SOON alone %g break %g via %d\n", aloneTime, breakTime(0, 0), d.via); }
+#endif
   if (breakTime(0, 0) < aloneTime) return d;   // holding, a break still comes in time
   if (d.kind == K_SWAP && d.hasMove) {
     int32_t sw[2] = { d.sr, d.sc };
@@ -2605,6 +2611,9 @@ static Dec breakSoon(Dec d) {
     if (b < time && b < best) { best = b; pr = k->sr; pc = k->sc; }
     if (b < INF && time - b > bestMargin) { bestMargin = time - b; mr = k->sr; mc = k->sc; }
   }
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SOON! in-time %d,%d at %g | margin %d,%d %g\n", pr, pc, best, mr, mc, bestMargin); }
+#endif
   if (pr) { lineLast = 7; return mkSwap(pr, pc, V_SETUP, d.mode, d.alive); }
   if (mr && bestMargin > (breakTime(0, 0) < INF ? aloneTime - breakTime(0, 0) : -INF)) {
     lineLast = 7; return mkSwap(mr, mc, V_KEEPHEALTH, d.mode, d.alive);

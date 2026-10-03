@@ -609,6 +609,9 @@ int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_
 }
 // THE BOARD THE NEXT SLAB LANDS ON: `steps` played, then the board left alone
 // until the next slab has dropped and landed, then settled.
+int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
+  return lineStateAt(steps, n, 1, masks, can, wait, cur, t);
+}
 int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t) {
   uint32_t can[WMAX]; uint8_t wait[32][WMAX]; int32_t cur[2];
   return lineStateAt(steps, n, 1, masks, can, wait, cur, t);
