@@ -55,6 +55,12 @@ static double BIN[IN_SIZE], BOUT[256];
 struct gcTs { long s, ns; };   // the native clock (clock_gettime), for the budget
 extern int clock_gettime(int, struct gcTs *);
 #endif
+#ifndef __wasm__
+static double NOWMS2(void) { struct gcTs q; clock_gettime(1, &q); return q.s * 1e3 + q.ns / 1e6; }
+extern char *getenv(const char *);
+#else
+static double NOWMS2(void) { return 0; }
+#endif
 int botTraceOn;   // the native drill's GC_BOTLOG: the pool, as the engine plays it
 static ST RISEN, TMST;
 static double *TB;
@@ -1153,6 +1159,7 @@ static void scoreAll(Cand **cs, int n, double *out, int idle, const int32_t *bas
 typedef struct { Cand *c; double cheap; } Cheap;
 
 static int raiseWaiting;
+static double dcCandMs;   // GC_WORKSTAT: the pool's share of decideRuled
 static Dec decideCore(void) {
   raiseWaiting = 0;
   int32_t *base = IN;
@@ -1160,7 +1167,9 @@ static Dec decideCore(void) {
   hereSet = 0;
   optsBuilt = 0;
   planReset(base);
+  double dc0 = NOWMS2();
   candidates(base);
+  dcCandMs = NOWMS2() - dc0;
   // the raise the pool offers is one that lives
   if (!raiseSafe(base))
     for (int q = 0; q < nPool; q++)
@@ -1863,7 +1872,10 @@ static int aloneOnEngine(void) {
   if (!lnAlone && BIN[IN_HASPA] && lineOnEngine(0, 0, LINEHORIZON, 0, LNA) == 0) lnAlone = 1;
   return lnAlone;
 }
-static int lineJudge(const int32_t *sw, int n, int waitAll) {
+static int fillJudges, fillMargins; static double fillJudgeMs, fillMarginMs;   // GC_FILLSTAT
+static int lineJudgeIn(const int32_t *sw, int n, int waitAll);
+static int lineJudge(const int32_t *sw, int n, int waitAll) { double t = NOWMS2(); int v = lineJudgeIn(sw, n, waitAll); fillJudges++; fillJudgeMs += NOWMS2() - t; return v; }
+static int lineJudgeIn(const int32_t *sw, int n, int waitAll) {
   if (!BIN[IN_HASPA]) return 0;
   if (!aloneOnEngine()) return 0;
   if (lineOnEngine(sw, n, LINEHORIZON, waitAll, LNO) != 0 || LNO[1] < 0) return 0;
@@ -1942,28 +1954,175 @@ static uint32_t LSD[KEEPDEPTH + 1][WMAX];
 static double lsSettled[KEEPDEPTH + 1];
 // time mode: the searches only note the soonest break (tTimeMin), proposing nothing
 static int tTimeMode; static double tTimeMin;
+// A SWAP THAT CHANGES NOTHING: on a board at rest, two filled cells swapped
+// (st already swapped) neither fall nor clear unless one now sits in a run of
+// three or more. Such a swap makes no line end, so it needs no resolve.
+// THE SAME FOR A SWAP INTO AN EMPTY CELL, on the board's grid (built once a
+// board): the moved panel falls to rest, what stood on the emptied cell drops
+// a row, and nothing clears unless a run of three or more forms among the
+// panels that moved. Garbage over either column: not decided here.
+#define LQGRID 18
+static int lqG[LQGRID + 2][WMAX + 2], lqH, lqW, lqOk;
+static void leafGrid(const int32_t *st) {
+  int N = st[O_N];
+  lqW = st[O_W]; lqH = st[O_H] < LQGRID ? st[O_H] : LQGRID; lqOk = 1;
+  for (int r = 1; r <= lqH + 1; r++) for (int c = 0; c <= lqW + 1; c++) lqG[r][c] = 0;
+  for (int c = 1; c <= lqW; c++) {
+    if (U(st, BUSY + c)) lqOk = 0;
+    for (int r = 1; r <= lqH; r++) {
+      uint32_t b = 1u << (r - 1);
+      int v = 0;
+      if (U(st, GARB + c) & b) v = -1;
+      else if (U(st, INERT + c) & b) v = -2;
+      else for (int a = 1; a <= N; a++) if (CL(st, a, c) & b) v = a;
+      lqG[r][c] = v;
+    }
+  }
+}
+static int lqRun(int g[][WMAX + 2], int r, int c) {
+  int a = g[r][c], n;
+  if (a <= 0) return 0;
+  n = 1; for (int x = c - 1; x >= 1 && g[r][x] == a; x--) n++; for (int x = c + 1; x <= lqW && g[r][x] == a; x++) n++;
+  if (n >= 3) return 1;
+  n = 1; for (int y = r - 1; y >= 1 && g[y][c] == a; y--) n++; for (int y = r + 1; y <= lqH && g[y][c] == a; y++) n++;
+  return n >= 3;
+}
+// The last swap, decided on the grid in place: 1 when nothing can clear.
+// Two filled cells: swapped, a run looked for through either, swapped back.
+// One empty: the panel falls and its old column closes up, the two columns
+// restored after. Anything over garbage or a panel that cannot move: 0.
+static int leafQuiet(int r, int c) {
+  if (!lqOk || r > lqH) return 0;
+  int x = lqG[r][c], y = lqG[r][c + 1];
+  if (x < 0 || y < 0 || (!x && !y)) return 0;
+  if (x && y) {
+    lqG[r][c] = y; lqG[r][c + 1] = x;
+    int run = lqRun(lqG, r, c) || lqRun(lqG, r, c + 1);
+    lqG[r][c] = x; lqG[r][c + 1] = y;
+    return !run;
+  }
+  for (int k = r; k <= lqH; k++) if (lqG[k][c] < 0 || lqG[k][c + 1] < 0) return 0;
+  int p = x ? c : c + 1, e = x ? c + 1 : c, a = x ? x : y;
+  int sp[LQGRID + 2], se[LQGRID + 2];
+  for (int k = 1; k <= lqH; k++) { sp[k] = lqG[k][p]; se[k] = lqG[k][e]; }
+  int top = r; while (top < lqH && lqG[top + 1][p] > 0) top++;
+  for (int k = r; k < top; k++) lqG[k][p] = lqG[k + 1][p];
+  lqG[top][p] = 0;
+  int land = r; while (land > 1 && lqG[land - 1][e] == 0) land--;
+  lqG[land][e] = a;
+  int run = lqRun(lqG, land, e);
+  for (int k = r; k < top && !run; k++) run = lqRun(lqG, k, p);
+  for (int k = 1; k <= lqH; k++) { lqG[k][p] = sp[k]; lqG[k][e] = se[k]; }
+  return !run;
+}
+static int laRes[8], laSkip[8];   // GC_WORKSTAT: resolves and skipped leaves per level
+static int quietSwap(const int32_t *st, int r, int c) {
+  int N = st[O_N], W = st[O_W];
+  uint32_t b = 1u << (r - 1);
+  for (int cc = c; cc <= c + 1; cc++) {
+    if (!(U(st, OCC + cc) & b) || (U(st, BUSY + cc) & b)) return 0;
+    int a = 0;
+    for (int k = 1; k <= N && !a; k++) if (CL(st, k, cc) & b) a = k;
+    if (!a) return 0;
+    int run = 1;
+    for (int x = cc - 1; x >= 1 && (CL(st, a, x) & b); x--) run++;
+    for (int x = cc + 1; x <= W && (CL(st, a, x) & b); x++) run++;
+    if (run >= 3) return 0;
+    uint32_t m = CL(st, a, cc);
+    run = 1;
+    for (uint32_t q = b >> 1; q && (m & q); q >>= 1) run++;
+    for (uint32_t q = b << 1; q && (m & q); q <<= 1) run++;
+    if (run >= 3) return 0;
+  }
+  return 1;
+}
+// LAST-LEVEL RESULTS BY BOARD, as the option search keeps its children: on a
+// resolved board a swap's outcome depends on the board and the swap alone, so
+// it is worked out once -- whichever order of swaps reaches the board, and in
+// whichever later decision the board comes back. Per legal swap: done, broke,
+// cashed.
+#define LCN 16384
+typedef struct { u64 key; u64 done[2], brk[2], cash[2]; } LC;
+static LC LCT[LCN];
+static LC *lcGet(const int32_t *st) {
+  u64 k = hashOf(st) | 1;
+  LC *e = &LCT[k & (LCN - 1)];
+  if (e->key != k) { e->key = k; e->done[0] = e->done[1] = e->brk[0] = e->brk[1] = e->cash[0] = e->cash[1] = 0; }
+  return e;
+}
 static void linesAt(int d, int pr, int pc, double t, double limit) {
   int n = legal(LS[d], LSW[d]);
-  for (int i = 0; i < n && (tTimeMode || nLines < MAXLINES); i++) {
+  LC *lc = (d > 0 && d + 1 >= lsDepth) ? lcGet(LS[d]) : 0;
+  int haveLq = 0;
+  // OUT FROM THE CURSOR: nearest first, so the first that cannot be reached in
+  // time ends the level -- every one after it is further
+  int ord[128]; double far[128];
+  static int noOrder = -1;
+#ifndef __wasm__
+  if (noOrder < 0) noOrder = getenv("GC_NOORDER") != 0;   // the old order, to check the new finds the same
+#else
+  noOrder = 0;
+#endif
+  if (n > 128) n = 128;
+  for (int k = 0; k < n; k++) {
+    double f = travelCost(pr, pc, LSW[d][2 * k], LSW[d][2 * k + 1]);
+    int j = k;
+    while (!noOrder && j > 0 && far[j - 1] > f) { far[j] = far[j - 1]; ord[j] = ord[j - 1]; j--; }
+    far[j] = f; ord[j] = k;
+  }
+  for (int oi = 0; oi < n && (tTimeMode || nLines < MAXLINES); oi++) {
+    int i = ord[oi];
     int r = LSW[d][2 * i], c = LSW[d][2 * i + 1];
-    double at = t + travelCost(pr, pc, r, c);
-    if (at > limit || r >= 40) continue;
+    double at = t + far[oi];
+    if (at > limit) { if (noOrder) continue; break; }
+    if (tTimeMode && pfxT + at >= tTimeMin) { if (noOrder) continue; break; }
+    if (r >= 40) continue;
     if (tTimeMode && pfxT + at >= tTimeMin) continue;   // no sooner than the soonest found: it cannot be the answer
     if (d > 0 && at < lsSettled[d] && ((LSD[d][c] | LSD[d][c + 1]) & (1u << (r - 1)))) continue;
     if (d == 0 && ENGINE_BASE && !(ENGINE_CAN[c] & (1u << (r - 1)))) continue;
     if (d == 0 && ENGINE_WAITS) at = dmax(at, t + ENGINE_WAITS[r][c]);   // pressed once its panels settle
+    lsLine[2 * d] = r; lsLine[2 * d + 1] = c;
+    int brk, cash;
+    u64 bit = 1ull << (i & 63); int w = i >> 6;
+    if (lc && i < 128 && (lc->done[w] & bit)) {   // this board's swap, worked out before
+      brk = (lc->brk[w] & bit) != 0; cash = (lc->cash[w] & bit) != 0;
+      laSkip[d]++;
+      goto have;
+    }
+    // the last swap on a board at rest (every state past the first is resolved):
+    // tested in place -- a swap undoes itself -- and copied only to be resolved
+    if (d > 0 && d + 1 >= lsDepth) {
+      int quiet = (haveLq || (leafGrid(LS[d]), haveLq = 1)) && leafQuiet(r, c);
+      if (quiet) {
+        if (lc && i < 128) lc->done[w] |= bit;
+        laSkip[d]++; continue;
+      }
+    }
     stcpy(LS[d + 1], LS[d]);
     if (!swapIn(LS[d + 1], r, c)) continue;
+    laRes[d]++;
     resolve(LS[d + 1], LSR, 1);
-    lsLine[2 * d] = r; lsLine[2 * d + 1] = c;
     // the first swap is pressed on the board as it is, moving: what it does is
     // what it adds to what the board does alone
-    int brk, cash;
     if (d == 0) {
       if (LSR[R_SCOPE] != SC_OK && LSR[R_SCOPE] != SC_BROKE) continue;
       Rs mine = causedBy(summarise(LSR), &lsAlone);
       brk = mine.broke; cash = mine.total > 0 || mine.broke;
     } else { brk = LSR[R_SCOPE] == SC_BROKE; cash = cashes(LSR); }
+    if (lc && i < 128 && LSR[R_SCOPE] != SC_REFUSED) { lc->done[w] |= bit; if (brk) lc->brk[w] |= bit; if (cash) lc->cash[w] |= bit; }
+    if (lc) {   // the last level: nothing below it needs the resolved board
+      if (0) {
+      have:;
+      }
+      if (tTimeMode && brk) { if (pfxT + at < tTimeMin) tTimeMin = pfxT + at; continue; }
+      if (!tTimeMode && (brk || (!lsBreaks && cash))) {
+        LineC *l = &LINES[nLines++];
+        l->n = nPfx + d + 1; l->brk = brk; l->est = pfxT + at; l->verdict = -1; l->grown = nPfx; l->waitAll = 0;
+        for (int k = 0; k < 2 * nPfx; k++) l->sw[k] = pfx[k];
+        for (int k = 0; k < 2 * (d + 1); k++) l->sw[2 * nPfx + k] = lsLine[k];
+      }
+      continue;
+    }
     if (tTimeMode && brk) { if (pfxT + at < tTimeMin) tTimeMin = pfxT + at; continue; }
     if (!tTimeMode && (brk || (!lsBreaks && cash))) {
       LineC *l = &LINES[nLines++];
@@ -2001,6 +2160,7 @@ static void linesFrom(const int32_t *st, int cr, int cc, int depth, double limit
 // `depthLeft` more steps there, and each proposed next step that is not the
 // last is played on the engine in turn, to choose the one after it on the
 // board that gives.
+static double growRootMs, growKidMs, growStateMs; static int growKids;   // GC_WORKSTAT
 static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const int32_t *st, int cr, int cc,
                    const uint32_t *can, uint8_t (*waits)[WMAX], double limit) {
   int from = nLines;
@@ -2008,7 +2168,9 @@ static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const
   nPfx = np; pfxT = preT;
   ENGINE_BASE = st; ENGINE_WAITS = waits;
   for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = can[c];
+  double gt0 = NOWMS2();
   linesFrom(st, cr, cc, depthLeft, limit);
+  if (np == 0) growRootMs += NOWMS2() - gt0; else { growKidMs += NOWMS2() - gt0; growKids++; }
   if (depthLeft < 2 || !BIN[IN_HASPA]) return;
   int32_t nexts[2 * GROWCAP]; int nn = 0;
   for (;;) {
@@ -2030,7 +2192,10 @@ static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const
   for (int k = 0; k < 2 * np; k++) pre2[k] = pre[k];
   for (int j = 0; j < nn; j++) {
     pre2[2 * np] = nexts[2 * j]; pre2[2 * np + 1] = nexts[2 * j + 1];
-    if (lineState(pre2, np + 1, st2, can2, waits2, cur, &t) != 0) continue;
+    double st0t = NOWMS2();
+    int lsr = lineState(pre2, np + 1, st2, can2, waits2, cur, &t);
+    growStateMs += NOWMS2() - st0t;
+    if (lsr != 0) continue;
     growAt(pre2, np + 1, t, depthLeft - 1, st2, cur[0], cur[1], can2, waits2, INF);
   }
 }
@@ -2194,27 +2359,29 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
     }
   }
 }
+// THE TIME THERE IS: topped, the drain
+static double linesLimit(int breaks) { (void)breaks; return lsTopped ? timeLeft() - 2 : INF; }
 static void linesFind(int depth, int breaks) {
   // the same lines asked for twice in a decision are found once
   if (lfDecision == btDecision && lfDepth == depth && lfBreaks == breaks) return;
   linesReset();
   lfDecision = btDecision; lfDepth = depth; lfBreaks = breaks;
   lsTopped = BIN[IN_TOPPED] != 0; lsBreaks = breaks;
+  double lsLimit = linesLimit(breaks);
   const int32_t *saveBase = ENGINE_BASE;
   uint32_t saveCan[WMAX];
   for (int c = 0; c < WMAX; c++) saveCan[c] = ENGINE_CAN[c];
   // Every step alike, the first too: proposed on the board the engine
   // settles to, each pair pressed once its panels settle. The masks propose,
-  // the engine judges: only the lock (topped) bounds the proposals; the frames
-  // to death are an idle estimate the engine replaces.
+  // the engine judges: only the lock (topped) bounds the proposals.
   int32_t st0[ST_INTS], cur[2], t;
   uint32_t can0[WMAX];
   uint8_t waits0[32][WMAX];
   if (BIN[IN_HASPA] && lineState(0, 0, st0, can0, waits0, cur, &t) == 0) {
-    growAt(0, 0, t, depth, st0, cur[0], cur[1], can0, waits0, lsTopped ? timeLeft() - 2 : INF);
+    growAt(0, 0, t, depth, st0, cur[0], cur[1], can0, waits0, lsLimit);
     if (breaks) targetLines(st0, cur[0], cur[1], t, lsTopped ? timeLeft() - 2 : INF);
   } else {
-    growAt(0, 0, 0, depth, DBASE, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], saveCan, 0, lsTopped ? timeLeft() - 2 : INF);
+    growAt(0, 0, 0, depth, DBASE, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], saveCan, 0, lsLimit);
     if (breaks) targetLines(DBASE, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, lsTopped ? timeLeft() - 2 : INF);
   }
   ENGINE_BASE = saveBase; ENGINE_WAITS = 0;
@@ -2225,7 +2392,10 @@ static void linesFind(int depth, int breaks) {
 static int lineBefore(const LineC *a, const LineC *b) {
   if (a->brk != b->brk) return a->brk;
   if (a->n != b->n) return a->n < b->n;
-  return a->est < b->est;
+  if (a->est != b->est) return a->est < b->est;
+  // equal: by the swaps themselves, so the rank never depends on the order found
+  for (int k = 0; k < 2 * a->n; k++) if (a->sw[k] != b->sw[k]) return a->sw[k] < b->sw[k];
+  return 0;
 }
 // The first line, by rank, the engine finds does all of `need` and none of `avoid`.
 static LineC *bestLineAvoid(int need, int avoid, int (*ok)(const LineC *)) {
@@ -2250,10 +2420,12 @@ static LineC *bestLine(int need, int (*ok)(const LineC *)) { return bestLineAvoi
 // THE BREAK THAT TAKES THE MOST. Of the first LIVINGS breaks that live, by
 // rank, the one that converts the most garbage on the engine -- a pile broken
 // whole, not its bottom slab with the rest left propped above a gap.
+static int bbFound, bbLastN;   // bestBreak: how many living breaks it took, the last one's length
 static LineC *bestBreak(void) {
   static unsigned char taken[MAXLINES];
   const int need = LV_LIVES | LV_BREAKS;
   LineC *pick = 0;
+  bbFound = 0; bbLastN = 0;
   for (int i = 0; i < nLines; i++) taken[i] = 0;
   for (int found = 0; found < LIVINGS;) {
     int at = -1;
@@ -2266,7 +2438,7 @@ static LineC *bestBreak(void) {
     taken[at] = 1;
     LineC *l = &LINES[at];
     if ((judged(l) & need) != need) continue;
-    found++;
+    found++; bbFound = found; bbLastN = l->n;
     if (!pick || l->conv > pick->conv) pick = l;
   }
   return pick;
@@ -2385,13 +2557,25 @@ static Dec breakFirst(Dec d) {
     Cand *pc = poolSwap(d.sr, d.sc);
     if ((pc && pc->res.broke) || endsInBreak(d)) return d;
   }
-  linesFind(KEEPDEPTH, 1);
+  // ONE LEVEL AT A TIME: the first LIVINGS living breaks are taken by rank,
+  // shortest first, so once LIVINGS are found no longer than this depth, a
+  // deeper line cannot enter them and the answer is the deeper search's
+  LineC *l = 0;
+  for (int depth = 1; depth <= KEEPDEPTH; depth++) {
+    growRootMs = growKidMs = growStateMs = 0; growKids = 0; for (int q = 0; q < 8; q++) laRes[q] = laSkip[q] = 0;
+    double lf0 = NOWMS2();
+    linesFind(depth, 1);
+#ifndef __wasm__
+    if (getenv("GC_WORKSTAT")) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "LINESFIND depth %d %.2f ms | root %.2f kids %d %.2f states %.2f | lines %d | res %d %d %d skip %d %d %d\n", depth, NOWMS2() - lf0, growRootMs, growKids, growKidMs, growStateMs, nLines, laRes[0], laRes[1], laRes[2], laSkip[0], laSkip[1], laSkip[2]); }
+#endif
+    l = bestBreak();
+    if (bbFound >= LIVINGS && bbLastN <= depth) break;
+  }
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; int g = 0, live = 0;
     for (int i = 0; i < nLines; i++) { if (LINES[i].grown) g++; if (LINES[i].verdict != 0) live++; }
     fprintf(stderr, "BREAKFIRST lines %d grown %d open %d k %g\n", nLines, g, live, timeLeft()); }
 #endif
-  LineC *l = bestBreak();
   if (!l) return d;
   lineLast = 3;
   plansDrop();
@@ -2452,7 +2636,10 @@ int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);
 int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t);
 static ST LUM;
 static int lineupLast;
-static int readyAfter(const int32_t *sw, int n) {
+static int luStates, luRanks, luReady; static double luStateMs, luRankMs, luReadyMs;   // GC_WORKSTAT
+static int readyAfterIn(const int32_t *sw, int n);
+static int readyAfter(const int32_t *sw, int n) { double t0 = NOWMS2(); int v = readyAfterIn(sw, n); luReady++; luReadyMs += NOWMS2() - t0; return v; }
+static int readyAfterIn(const int32_t *sw, int n) {
   int32_t t;
   if (lineLanded(sw, n, LUM, &t) != 0) return 0;
   return breakWithin(LUM, 1);
@@ -2468,12 +2655,33 @@ static int lineupNear(const int32_t *st, int r, int c) {
   return r >= land - 2 && r <= land && c + 1 >= c0 - 1 && c <= c0 + w;
 }
 #define LUBEST 5   // a break that spends nothing
-static int lineupRank(const int32_t *sw, int n) {
+// the rank of a lineup, asked only for ranks of at least `need`: a lineup
+// that is only ready ranks 2 or 3, so past 3 readiness is not looked for
+// The masks propose, the engine judges: a lineup the masks show breaking
+// nothing is sent to the engine only if being ready could rank it, and then
+// readiness is asked before survival, as the cheaper of the two.
+static ST LUK; static int32_t LUKR[R_INTS + ST_INTS];
+static int maskBreaks(const int32_t *st, const int32_t *sw, int n) {
+  stcpy(LUK, st);
+  for (int k = 0; k < n; k++) {
+    if (!swapIn(LUK, sw[2 * k], sw[2 * k + 1])) return 0;
+    resolve(LUK, LUKR, 1);
+    if (LUKR[R_SCOPE] == SC_BROKE) return 1;
+    if (LUKR[R_SCOPE] != SC_OK) return 0;
+    stcpy(LUK, LUKR + R_INTS);
+  }
+  return 0;
+}
+static int lineupRank(const int32_t *st, const int32_t *sw, int n, int need) {
+  if (need > LUBEST) return 0;
+  int mb = maskBreaks(st, sw, n);
+  if (!mb && need > 3) return 0;
+  if (!mb && !readyAfter(sw, n)) return 0;
   int v = lineJudge(sw, n, 0);
   if (!(v & LV_LIVES)) return 0;
   int spends = LNO[3] > LNA[3];
   int rank = (v & LV_BREAKS) ? 4 : 0;
-  if (!rank && readyAfter(sw, n)) rank = 2;
+  if (!rank && need <= 3 && (!mb || readyAfter(sw, n))) rank = 2;
   return rank ? rank + !spends : 0;
 }
 static Dec lineupFirst(Dec d) {
@@ -2490,6 +2698,7 @@ static Dec lineupFirst(Dec d) {
   uint8_t waits0[32][WMAX];
   if (lineState(0, 0, st0, can0, waits0, cur, &t) != 0) return d;
   int32_t lg[2 * 128], best[4] = { 0 }, bestN = 0;
+  luStates = luRanks = luReady = 0; luStateMs = luRankMs = luReadyMs = 0;
   int n = legal(st0, lg), bestRank = 0;
   double bestT = INF;
   for (int i = 0; i < n; i++) {
@@ -2497,29 +2706,38 @@ static Dec lineupFirst(Dec d) {
     if (r > 31 || !(can0[c] & (1u << (r - 1))) || !lineupNear(st0, r, c)) continue;
     int32_t sw[4] = { r, c, 0, 0 };
     double at = dmax(travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], r, c), waits0[r][c]);
-    // the best rank is LUBEST: once one is had, a line no sooner cannot be better
-    if (bestRank >= LUBEST && at >= bestT) continue;
-    int rank = lineupRank(sw, 1);
+    // no sooner than the best, it must rank higher to count
+    double rk0 = NOWMS2();
+    int rank = lineupRank(st0, sw, 1, at < bestT ? bestRank : bestRank + 1);
+    luRanks++; luRankMs += NOWMS2() - rk0;
     if (rank > bestRank || (rank && rank == bestRank && at < bestT)) { bestRank = rank; bestT = at; bestN = 1; best[0] = r; best[1] = c; }
     if (rank >= 4) continue;
+    if (bestRank >= LUBEST && at >= bestT) continue;   // a second swap comes later still: it cannot win
     // a second swap, on the board the engine reaches after the first
     int32_t st1[ST_INTS], cur1[2], t1, lg1[2 * 128];
     uint32_t can1[WMAX];
     uint8_t waits1[32][WMAX];
-    if (lineState(sw, 1, st1, can1, waits1, cur1, &t1) != 0) continue;
+    double ls0 = NOWMS2();
+    int lsr = lineState(sw, 1, st1, can1, waits1, cur1, &t1);
+    luStates++; luStateMs += NOWMS2() - ls0;
+    if (lsr != 0) continue;
     int n1 = legal(st1, lg1);
     for (int j = 0; j < n1; j++) {
       int r2 = lg1[2 * j], c2 = lg1[2 * j + 1];
       if (r2 > 31 || !(can1[c2] & (1u << (r2 - 1))) || !lineupNear(st1, r2, c2)) continue;
       sw[2] = r2; sw[3] = c2;
       double at2 = t1 + dmax(travelCost(cur1[0], cur1[1], r2, c2), waits1[r2][c2]);
-      if (bestRank >= LUBEST && at2 >= bestT) continue;
-      int rank2 = lineupRank(sw, 2);
+      double rk1 = NOWMS2();
+      int rank2 = lineupRank(st0, sw, 2, at2 < bestT ? bestRank : bestRank + 1);
+      luRanks++; luRankMs += NOWMS2() - rk1;
       if (rank2 > bestRank || (rank2 && rank2 == bestRank && at2 < bestT)) {
         bestRank = rank2; bestT = at2; bestN = 2; best[0] = r; best[1] = c; best[2] = r2; best[3] = c2;
       }
     }
   }
+#ifndef __wasm__
+  if (getenv("GC_WORKSTAT")) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "LINEUP states %d %.2f ms | ranks %d %.2f ms (ready %d %.2f ms) | first %d\n", luStates, luStateMs, luRanks, luRankMs, luReady, luReadyMs, n); }
+#endif
   if (!bestN) return d;
   if (bestN == 1 && d.kind == K_SWAP && d.hasMove && d.sr == best[0] && d.sc == best[1]) return d;
   // the masks propose the lineup, the engine judges it, as every line
@@ -2606,30 +2824,36 @@ static Dec fillBeforeBreak(Dec d) {
 #define WORKBUDGET 55000   // GC_WORK_ONLY: the budget in units of work
 #define BUDGETMS 10.0   // the decision's budget: 10 ms of a 16.7 ms frame
 static int btAloneAt = -1; static double btAlone;
-static double breakTimeOf(const int32_t *steps, int n);
+static double breakTimeOf(const int32_t *steps, int n, double limit);
 // the board left alone is asked about several times a decision: once
 static double breakTime(const int32_t *steps, int n) {
-  if (n > 0) return breakTimeOf(steps, n);
-  if (btAloneAt != btDecision) { btAlone = breakTimeOf(0, 0); btAloneAt = btDecision; }
+  if (n > 0) return breakTimeOf(steps, n, INF);
+  if (btAloneAt != btDecision) { btAlone = breakTimeOf(0, 0, INF); btAloneAt = btDecision; }
   return btAlone;
 }
-static double breakTimeOf(const int32_t *steps, int n) {
+// THE BREAK BEFORE `limit`, or INF: a question with a bound searches only
+// what could answer it -- every line past the bound is pruned
+static double breakWithinT(const int32_t *steps, int n, double limit) { return breakTimeOf(steps, n, limit); }
+static double breakTimeOf(const int32_t *steps, int n, double limit) {
   int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t w[32][WMAX];
   if (lineState(steps, n, st, can, w, cur, &t) != 0) return INF;
   // garbage still to drop: the break is made against it once it has landed
   if (!hasGarbage(st) && BIN[IN_INCOMING] > 0 && lineLandedFull(steps, n, st, can, w, cur, &t) != 0) return INF;
-  tTimeMode = 1; tTimeMin = INF;
+  tTimeMode = 1; tTimeMin = limit < INF ? limit - t : INF;
+  if (tTimeMin <= 0) { tTimeMode = 0; return INF; }
+  double bound = tTimeMin;
   targetLines(st, cur[0], cur[1], 0, INF);
-  // and the masks' lines, KEEPDEPTH deep, on the same board
+  // and the masks' lines, two swaps deep, on the same board (longer lines are
+  // the distance search's; three deep is ~27,000 resolves, two ~900)
   { const int32_t *sb = ENGINE_BASE; uint8_t (*sw8)[WMAX] = ENGINE_WAITS; uint32_t sc[WMAX]; int snp = nPfx, stp = lsTopped, sbr = lsBreaks; double spt = pfxT;
     for (int c = 0; c < WMAX; c++) sc[c] = ENGINE_CAN[c];
     ENGINE_BASE = st; ENGINE_WAITS = w; for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = can[c];
     nPfx = 0; pfxT = 0; lsTopped = BIN[IN_TOPPED] != 0; lsBreaks = 1;
-    linesFrom(st, cur[0], cur[1], KEEPDEPTH, INF);
+    linesFrom(st, cur[0], cur[1], 2, INF);
     ENGINE_BASE = sb; ENGINE_WAITS = sw8; for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = sc[c];
     nPfx = snp; pfxT = spt; lsTopped = stp; lsBreaks = sbr; }
   tTimeMode = 0;
-  return tTimeMin >= INF ? INF : t + tTimeMin;
+  return tTimeMin >= bound ? INF : t + tTimeMin;
 }
 // THE GOAL IS A BREAK IN THE TIME THERE IS. With garbage on the board and no
 // break being played, every swap that lives is an option. An option's time is
@@ -2664,7 +2888,8 @@ static Dec breakSoon(Dec d) {
     int32_t sw[2] = { k->sr, k->sc };
     if (!(lineJudge(sw, 1, 0) & LV_LIVES)) continue;
     double time = LNO[0] ? LNO[0] : LINEHORIZON;
-    double b = breakTime(sw, 1);
+    // only a break before this can be chosen: in time, or a better margin
+    double b = breakWithinT(sw, 1, bestMargin > -INF ? (time > time - bestMargin ? time : time - bestMargin) : INF);
     if (b < time && b < best) { best = b; pr = k->sr; pc = k->sc; }
     if (b < INF && time - b > bestMargin) { bestMargin = time - b; mr = k->sr; mc = k->sc; }
   }
@@ -2680,17 +2905,32 @@ static Dec breakSoon(Dec d) {
 // AN OPTION'S MARGIN: the frames between the break the distance search finds
 // after it and the frame it loses health (none within the horizon: the
 // horizon); negative when no break comes in time. Keeps the search's grid.
-static double marginAfter(const int32_t *sw, int n, int die) {
+static double marginAfter(const int32_t *sw, int n, int die) { extern double marginWithin(const int32_t *, int, int, double); return marginWithin(sw, n, die, INF); }
+// the margin, searched only as far as `need` asks: a margin under it is -INF
+double marginWithinIn(const int32_t *sw, int n, int die, double need);
+double marginWithin(const int32_t *sw, int n, int die, double need) { double t = NOWMS2(); double m = marginWithinIn(sw, n, die, need); fillMargins++; fillMarginMs += NOWMS2() - t; return m; }
+double marginWithinIn(const int32_t *sw, int n, int die, double need) {
   static int keep[TGRID + 2][WMAX + 1];
   int kw = tW, kh = tH;
   __builtin_memcpy(keep, tCell, sizeof keep);
-  double b = breakTime(sw, n);
+  double time = die ? die : LINEHORIZON;
+  double b = (need >= INF || n == 0) ? breakTime(sw, n) : breakWithinT(sw, n, time - (need > 0 ? 0 : need) + 1e-9);
   __builtin_memcpy(tCell, keep, sizeof keep); tW = kw; tH = kh;
   return (die ? die : LINEHORIZON) - b;
 }
 // in time (need 0): breaks in time; otherwise: no less time than the choice
 static int fillKeeps(double m, double need) { return need >= 0 ? m > 0 : m >= need; }
+static Dec fillFirstIn(Dec d);
 static Dec fillFirst(Dec d) {
+  int j0 = fillJudges; double jm0 = fillJudgeMs; fillMargins = 0; fillMarginMs = 0;
+  double t0 = NOWMS2();
+  Dec r = fillFirstIn(d);
+#ifndef __wasm__
+  if (getenv("GC_FILLSTAT")) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "FILLSTAT %.2f ms | judges %d %.2f ms | margins %d %.2f ms | pool %d\n", NOWMS2() - t0, fillJudges - j0, fillJudgeMs - jm0, fillMargins, fillMarginMs, nPool); }
+#endif
+  return r;
+}
+static Dec fillFirstIn(Dec d) {
   if (d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
   if (lineLast == 1 || lineLast == 3) return BT->lineKind == LINE_BREAK || lineLast == 3 ? fillBeforeBreak(d) : d;
   if (lineLast) return d;
@@ -2722,7 +2962,7 @@ static Dec fillFirst(Dec d) {
     if (!(v & LV_LIVES) || ((v & LV_DROPS) && !(v & LV_FILLS)) || ((v & LV_PAYS) && !surplus)) continue;
     if (!(LNO[10] < best || (pick && LNO[10] == best && pc->moveFrames < pick->moveFrames))) continue;
     int h = LNO[10];
-    if (!fillKeeps(marginAfter(sw, 1, LNO[0]), need)) continue;
+    if (!fillKeeps(marginWithin(sw, 1, LNO[0], need), need)) continue;
     best = h; pick = pc;
   }
   // the top of every column walked along its row, a column a swap, until it
@@ -2760,7 +3000,7 @@ static Dec fillFirst(Dec d) {
       double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
       if (LNO[10] < best || ((pick || first[0]) && LNO[10] == best && est < fest)) {
         int h = LNO[10];
-        if (!fillKeeps(marginAfter(fsw, n, LNO[0]), need)) continue;
+        if (!fillKeeps(marginWithin(fsw, n, LNO[0], need), need)) continue;
         best = h; pick = 0; first[0] = fsw[0]; first[1] = fsw[1]; fest = est;
       }
     }
@@ -2816,30 +3056,40 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   nRes = 0; nOptRuns = 0; nOptDepth = 0; nScore = 0; nLook = 0; nSave = 0; rScore = rMain = rLook = rSave = rCand = 0;
   ENGINE_BASE = BIN[IN_HASPA] ? IN : 0;
   for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = c >= 1 && c < BW ? (uint32_t)BIN[IN_CANSWAP + c] : 0;
-  // EACH STAGE ITS SHARE of the decision's budget, so none starves the ones
-  // after it (in percent; they add to 100)
+  // the stages, timed; the budget is the whole decision's
   extern double paWork, paWorkEnd;
-  double w0 = paWork, ws[12], ts[12]; int k = 0;
+  double w0 = paWork, ws[12], ts[12], jm[12]; int k = 0, cutAt[12], js[12];
+  fillJudges = 0; fillJudgeMs = 0;
 #ifndef __wasm__
 #define NOWMS() ({ struct gcTs q; clock_gettime(1, &q); q.s * 1e3 + q.ns / 1e6; })
 #else
 #define NOWMS() 0.0
 #endif
   double t0 = NOWMS();
-  extern void paBudget(double, double); extern int paBudgetOut(void);
-#define SHARE(p) paBudget(BUDGETMS * (p) / 100.0, WORKBUDGET * (p) / 100.0)
-  SHARE(25); Dec d = decideRuled(); ts[k] = NOWMS(); ws[k++] = paWork;
-  SHARE(5); d = playOn(d); d = waitForDrain(d); d = raiseHold(d); ts[k] = NOWMS(); ws[k++] = paWork;
-  SHARE(25); d = breakFirst(d); ts[k] = NOWMS(); ws[k++] = paWork;
-  SHARE(5); d = stayAlive(d); ts[k] = NOWMS(); ws[k++] = paWork;
-  SHARE(15); d = keepBreak(d); d = lineupFirst(d); ts[k] = NOWMS(); ws[k++] = paWork;
-  SHARE(5); d = batchBreak(d); d = spendToBreak(d); ts[k] = NOWMS(); ws[k++] = paWork;
-  SHARE(10); d = breakSoon(d); ts[k] = NOWMS(); ws[k++] = paWork;
-  SHARE(10); d = onePlan(fillFirst(d)); ts[k] = NOWMS(); ws[k++] = paWork;
+  extern void paBudget(double, double); extern int paBudgetOut(void), paBudgetSpent(void);
+#define SHARE(p) ((void)(p))   // one budget for the whole decision, opened above
+  SHARE(25); Dec d = decideRuled(); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(5); d = playOn(d); d = waitForDrain(d); d = raiseHold(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(25); d = breakFirst(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(5); d = stayAlive(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(15); d = keepBreak(d); d = lineupFirst(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(5); d = batchBreak(d); d = spendToBreak(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(10); d = breakSoon(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(10); d = onePlan(fillFirst(d)); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
 #undef SHARE
+  // A CUT IS A FAILURE: a stage that reaches its share has not decided, it has
+  // been stopped. The decision fails and the game stops, naming the stage.
+  for (int i = 0; i < k; i++) if (cutAt[i]) {
+#ifndef __wasm__
+    extern int fprintf(void *, const char *, ...); extern void *stderr;
+    static const char *STAGE[] = { "decideRuled", "playOn/waitForDrain/raiseHold", "breakFirst", "stayAlive", "keepBreak/lineupFirst", "batchBreak/spendToBreak", "breakSoon", "fillFirst" };
+    fprintf(stderr, "budget: the decision was cut in %s (%.2f ms)\n", STAGE[i], ts[i] - (i ? ts[i - 1] : t0));
+#endif
+    botFailed = 1; break;
+  }
 #ifndef __wasm__
   { extern char *getenv(const char *); extern int fprintf(void *, const char *, ...); extern void *stderr;
-    if (getenv("GC_WORKSTAT")) { fprintf(stderr, "STAGES%s", paBudgetOut() ? " OUT" : ""); for (int i = 0; i < k; i++) fprintf(stderr, " %.0f/%.3f", ws[i] - (i ? ws[i - 1] : w0), ts[i] - (i ? ts[i - 1] : t0)); fprintf(stderr, "\n"); } }
+    if (getenv("GC_WORKSTAT")) { fprintf(stderr, "STAGES%s pool %.3f", paBudgetOut() ? " OUT" : "", dcCandMs); for (int i = 0; i < k; i++) fprintf(stderr, " %.0f/%.3f/%d/%.3f", ws[i] - (i ? ws[i - 1] : w0), ts[i] - (i ? ts[i - 1] : t0), js[i] - (i ? js[i - 1] : 0), jm[i] - (i ? jm[i - 1] : 0)); fprintf(stderr, "\n"); } }
 #endif
   ENGINE_BASE = 0;
   if (d.kind == K_SWAP && d.hasMove) {

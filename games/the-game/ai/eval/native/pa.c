@@ -924,15 +924,27 @@ static int paOut, paTick, paWorkOnly = -1;
 struct paTs { long s, ns; };
 extern int clock_gettime(int, struct paTs *);
 extern char *getenv(const char *);
+extern double atof(const char *);
 double paNowMs(void) { struct paTs t; clock_gettime(1, &t); return t.s * 1e3 + t.ns / 1e6; }
 #endif
 void paBudget(double ms, double units) {
   paOut = 0; paTick = 0;
 #ifndef __wasm__
   if (paWorkOnly < 0) paWorkOnly = getenv("GC_WORK_ONLY") != 0;
-  if (!paWorkOnly) { paWorkEnd = 1e300; paDeadline = ms < 1e299 ? paNowMs() + ms : 1e300; return; }
+  // GC_BUDGET_MS scales the budget (0: none), for comparing runs the clock must not cut
+  static double scale = -1;
+  if (scale < 0) scale = getenv("GC_BUDGET_MS") ? atof(getenv("GC_BUDGET_MS")) / 10.0 : 1;
+  if (!paWorkOnly) { paWorkEnd = 1e300; paDeadline = ms < 1e299 && scale > 0 ? paNowMs() + ms * scale : 1e300; return; }
 #endif
   paWorkEnd = units < 1e299 ? paWork + units : 1e300; paDeadline = 1e300;
+}
+// the share spent, read now: the clock every time, for the end of a stage
+int paBudgetSpent(void) {
+  if (paOut || paWork >= paWorkEnd) return 1;
+#ifndef __wasm__
+  if (paDeadline < 1e299 && paNowMs() >= paDeadline) return 1;
+#endif
+  return 0;
 }
 int paBudgetOut(void) {
   if (paOut) return 1;
