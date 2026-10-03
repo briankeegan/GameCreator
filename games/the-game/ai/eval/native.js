@@ -282,11 +282,21 @@
   };
   // The root: a board the search copied, the raise in hand, the garbage on
   // its way, and whether update() has already run this frame's raise step.
+  // The search holds MAXARR arrivals (search.h; the io body has room for no
+  // more after the board). Past that, the soonest are kept, in their order.
+  var MAXARR = 64;
+  function soonest(arrivals, k) {
+    if (arrivals.length <= k) return arrivals;
+    var idx = arrivals.map(function (a, i) { return i; });
+    idx.sort(function (i, j) { return arrivals[i].at - arrivals[j].at || i - j; });
+    return idx.slice(0, k).sort(function (i, j) { return i - j; }).map(function (i) { return arrivals[i]; });
+  }
   Search.prototype.root = function (st, hold, arrivals, fresh) {
     if (typeof st.toStack === 'function') st = st.toStack();
     this.template = st;
     wire(st);
     var body = new Int32Array(MEM.buffer, (X.nb_io_body() >>> 0)), used = bodyLen(st);
+    arrivals = soonest(arrivals, MAXARR);
     arrivals.forEach(function (a, i) {
       body[used + 5 * i] = int(a.at, 'arrival'); body[used + 5 * i + 1] = int(a.width, 'arrival');
       body[used + 5 * i + 2] = int(a.height, 'arrival'); body[used + 5 * i + 3] = bool(!!a.isChain, 'arrival');

@@ -279,7 +279,8 @@ gate_server_engine() {
   node games/the-game/ai/eval/pa_generator.test.js &&
   node games/the-game/ai/eval/native_pa.test.js 20000 &&
   node games/the-game/ai/eval/native_batch.test.js &&
-  node games/the-game/ai/eval/native_countdown.test.js
+  node games/the-game/ai/eval/native_countdown.test.js &&
+  node games/the-game/ai/eval/native_arrivals.test.js
 }
 
 # THE TRAINING PRE-FLIGHT SUITES, WHICH gate_all DID NOT RUN.
