@@ -12,7 +12,9 @@
 // GC_TRACE=F prints every decision from frame F on; GC_TAPE_OUT=file records
 // each frame's keys and swap press (two int32s); GC_TAPE_IN=file with
 // GC_TAKEOVER=F plays a tape's keys and hands the board to the bot at frame F,
-// so a change is tried on the board an earlier bot reached.
+// so a change is tried on the board an earlier bot reached. GC_PROBE=F (and
+// GC_PROBE_EVERY=N) prints the shortest line of up to 4 swaps that breaks
+// garbage, time aside, from frame F on.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,6 +29,9 @@ int nb_load(Board *b);
 int front_new(Board *b, int reaction, int allowRaise);
 int front_frame(int fid, Board *b);
 int front_last(int fid);
+int bot_keepbreak(void);
+int bot_breakfirst(void);
+int front_probe(int fid, Board *b, int depth, int32_t *out);
 
 static const char *VIAS[] = { "-", "raise:opening", "raise:material", "raising", "readyFirst", "awaitLanding", "break",
   "lineupHold", "lineup", "breakReach", "breakSpend", "digPlan", "digWait", "attackWait", "attackPlan", "bestAttack",
@@ -139,6 +144,7 @@ int main(int argc, char **argv) {
   int lead = argc > 5 ? atoi(argv[5]) : 150, cycle = argc > 6 ? atoi(argv[6]) : 950, len = argc > 7 ? atoi(argv[7]) : 50;
   int trace = getenv("GC_TRACE") ? atoi(getenv("GC_TRACE")) : -1;
   FILE *tape = getenv("GC_TAPE_OUT") ? fopen(getenv("GC_TAPE_OUT"), "wb") : 0;
+  int probe = getenv("GC_PROBE") ? atoi(getenv("GC_PROBE")) : -1, probeEvery = getenv("GC_PROBE_EVERY") ? atoi(getenv("GC_PROBE_EVERY")) : 1;
   int takeover = getenv("GC_TAKEOVER") ? atoi(getenv("GC_TAKEOVER")) : 0, nTape = 0;
   static int32_t tapeIn[2 * 200000];
   if (getenv("GC_TAPE_IN")) {
@@ -167,16 +173,30 @@ int main(int argc, char **argv) {
       if (bits < 0) { fprintf(stderr, "drill: the bot failed at frame %d\n", f); return 2; }
     }
     b->input = bits;
+    if (probe >= 0 && f >= probe && (f - probe) % probeEvery == 0) {
+      int32_t line[1 + 2 * 4];
+      int pb = front_probe(bot, b, 4, line);
+      printf("PROBE %d topped %d", f, nb_topped(b));
+      if (pb > 0) { printf(" break in %d (%d lines):", pb, line[0]); for (int k = 0; k < pb; k++) printf(" %d,%d", line[1 + 2 * k], line[2 + 2 * k]); }
+      else printf(pb == 0 && line[0] == 1 ? " breaking" : " no break in 4");
+      printf("\n");
+      if (getenv("GC_PROBE_CELLS"))
+        for (int r = 7; r >= 1; r--) {
+          printf("  r%d", r);
+          for (int c = 1; c <= W; c++) { Panel *q = &b->p[r][c]; printf(" %d%s/s%d/t%d%s", q->f[COLOR], q->f[ISGARBAGE] ? "g" : "", q->f[STATE], q->f[TIMER], SETB(q->f[DONTSWAP]) ? "/D" : ""); }
+          printf("\n");
+        }
+    }
     if (tape) { int32_t rec[2] = { bits, b->pressSwap }; fwrite(rec, 4, 2, tape); }
-    int last = front_last(bot);
+    int last = f < takeover ? -1 : front_last(bot);
     if (last >= 0) {
       int k = last / 100, v = last % 100;
       if (v >= 0 && v < 64 && k >= 0 && k < 3) via[v][k]++;
-      if (trace >= 0 && b->clock >= trace)
-        printf("D %d %s %s\n", f, KINDS[k], v < NVIAS ? VIAS[v] : "?");
+      if (trace >= 0 && f >= trace)
+        printf("D %d %s %s kb%d bf%d\n", f, KINDS[k], v < NVIAS ? VIAS[v] : "?", bot_keepbreak(), bot_breakfirst());
     }
     if (nb_run(b)) { fprintf(stderr, "drill: the engine failed at frame %d (err %d)\n", f, b->err); return 2; }
-    if (trace >= 0 && b->clock >= trace) {
+    if (trace >= 0 && f >= trace) {
       board(b, text);
       printf("F %d stop %d shake %d health %d disp %d cur %d,%d in %d | %s\n", f, b->stopTime, b->shakeTime, b->health,
              b->displacement, b->curRow, b->curCol, b->ninc, text);

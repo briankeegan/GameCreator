@@ -1147,6 +1147,8 @@ EXPORT(nb_spawn_col) int nb_spawn_col(Board *b, int width) {
   return DROP_COLUMNS[width][b->dropColumnIndex[width] - 1];
 }
 // Frames a row takes to rise one pixel at `speed` (the table is in sixteenths).
+// The shake a slab of `count` cells lands with (dropGarbage).
+EXPORT(nb_shake_frames) int nb_shake_frames(int count) { return count <= 0 ? 0 : count > 24 ? 76 : SHAKE_FRAMES[count - 1]; }
 EXPORT(nb_rise_time) double nb_rise_time(int speed) { return (double)SPEED_TO_RISE_TIME[bound(1, speed, 99) - 1] / 16.0; }
 
 #ifdef PA_LIB
