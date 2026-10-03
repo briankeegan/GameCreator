@@ -29,10 +29,10 @@ Delete `panel-engine.js` and its C copy `engine.c` (`engine*.wasm`).
    rest. Update `gates.sh`, the workflows and `check_gate_wiring`.
 4. **Delete** `panel-engine.js`, `engine.c`, `engine*.wasm`, and the parts of
    `native.js` that only served them.
-5. **The bot's drills** run on `pa.c` for iteration and on the Lua (luajit in
-   a panel-game checkout, the bot sending inputs each frame) to confirm.
-   The bot keeps thinking in C: a Lua call per prediction cannot fit the 10 ms
-   decision budget.
+5. **The bot's drills** run on `pa.c`: `ai/eval/drill.sh SEED` -- the Lua
+   deals the seed (`lua/deal.lua`), `native/drill` plays it, the bot reading
+   the C board directly (`native/front.c`). No JS engine is involved. The bot
+   thinks in C: a Lua call per prediction cannot fit the 10 ms budget.
 
 ## Watch for
 

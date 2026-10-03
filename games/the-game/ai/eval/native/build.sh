@@ -17,6 +17,8 @@ done
 PGO="-fprofile-instr-use=bit.profdata -Wno-profile-instr-out-of-date -Wno-profile-instr-unprofiled"
 clang $FLAGS $PGO -msimd128 -DPA_LIB bit.c pa.c -o bit.wasm
 clang $FLAGS $MT $PGO -msimd128 -DPA_LIB -Wl,--initial-memory=1073741824 bit.c pa.c -o bit-mt.wasm
+# drill: the bot on the server's engine, natively (drill.c; ../drill.sh runs it). Not tracked.
+clang -O2 -DPA_LIB -Wall -Wno-unused-function -Wno-unknown-attributes -Wno-ignored-attributes bit.c pa.c drill.c -lm -o drill
 h() { sha256sum "$1" | cut -c1-64; }
-for f in engine.c pa.c bit.c bot.c bit.profdata libc.h memory.h search.h engine.wasm engine-mt.wasm pa.wasm pa-mt.wasm bit.wasm bit-mt.wasm; do printf '%s %s\n' "$f" "$(h $f)"; done > BUILT
+for f in engine.c pa.c pa.h bit.c bot.c front.c bit.profdata libc.h memory.h search.h engine.wasm engine-mt.wasm pa.wasm pa-mt.wasm bit.wasm bit-mt.wasm; do printf '%s %s\n' "$f" "$(h $f)"; done > BUILT
 cat BUILT

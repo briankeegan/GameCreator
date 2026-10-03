@@ -4,102 +4,12 @@
 // past its countdown; rows and breaks dealt are the unseen colours; garbage
 // sent goes nowhere. native_pa.test.js plays it beside pa-engine.js and
 // compares every field after every frame.
-#include "libc.h"
-
-#define W 6
-#define MAXROWS 48
-#define NUL (-2147483647 - 1)   // Lua nil
-#define UND (-2147483647)
-
-// Panel fields: pa-engine.js's names, in this order (native.js reads them).
-enum { ROW, COL, ID, COLOR, CHAINING, MATCHING, TIMER, INITIALTIME, POPTIME, POPINDEX, XOFF, YOFF, GWIDTH,
-       GHEIGHT, SHAKETIME, ISGARBAGE, STATE, COMBOINDEX, COMBOSIZE, SWAPFROMLEFT, DONTSWAP, QUEUEDHOVER, FELL,
-       STATECHANGED, PROPCHAIN, MATCHANYWAY, PROPFALL, GARBAGEID, METAL, NF };
-enum { NORMAL, DIMMED, SWAPPING, MATCHED, POPPING, POPPED, HOVERING, FALLING, LANDING, DEAD };
-
-typedef struct { int32_t f[NF]; } Panel;
-typedef struct { int32_t width, height, isChain, isMetal, frameEarned, finalized; } Incoming;   // finalized: NUL/0/1
-typedef struct { int32_t leftId, rightId, row, col, clock; } Stall;
-
-#define FEED 16
-#define MAXINC 256   // a training volley queues fifty at once, and an unbroken queue keeps the last ones
-#define MAXSTALL 64
-#define MAXLANDED 16
-#define MAXCOMBOS 16
-#define MAXMATCH 160
-#define MAXIDS 64
-
-#define ERR_ROWS 1
-#define ERR_INC 2
-#define ERR_STALL 8
-#define ERR_LANDED 16
-#define ERR_MATCH 32
-#define ERR_WIDTH 64
-#define ERR_STATE 128
-
-#define CD_NULL (-1)
-#define DIR_UP 0
-#define DIR_DOWN 1
-#define DIR_LEFT 2
-#define DIR_RIGHT 3
-
-// The server's input bits (KeyDataEncoding).
-#define IN_RIGHT 1
-#define IN_LEFT 2
-#define IN_DOWN 4
-#define IN_UP 8
-#define IN_SWAP 16
-#define IN_RAISE 32
-
-typedef struct Board {
-  // the level and the stack's behaviours
-  int32_t colors, maxHealth, shockFrequency, shockCap, speedIncreaseMode;
-  int32_t fHOVER, fGARBAGE_HOVER, fFLASH, fFACE, fPOP;
-  int32_t sFormula, sComboConstant, sChainConstant, sDangerConstant, sCoefficient, sDangerCoefficient;
-  int32_t passiveRaise, allowManualRaise, swapStallingMode, swapStallingPunish;
-  int32_t height;
-  // state
-  double riseTimer;
-  int32_t nrows, panelIdCount, speed, nextSpeedIncreaseClock, clock, stopWatch, stopWatchIsRunning, inCountdown, displacement;
-  int32_t riseLock, hasRisen, manualRaise, manualRaiseYet, preventManualRaise, swapThisFrame;
-  int32_t stopTime, preStopTime, shakeTime, prevShakeTime, shakeTimeOnFrame, peakShakeTime, health, wasToppedOut;
-  int32_t chainCounter, nActive, nPrevActive, swappingCount, panelsCleared, metalPanelsQueued, score;
-  int32_t curRow, curCol, topCurRow, queuedSwapRow, queuedSwapCol, swapCount, curTimer, curWaitTime, cursorDirection, cursorLock;
-  int32_t garbageCreatedCount, highestGarbageIdMatched, gameOverClock, gameOver;
-  int32_t input, pressSwap, swapDenied, inputBits, unseenRows, unseenBreaks, err;
-  int32_t quiet, noQuiet;   // see QUIET; not part of the board, never sent
-  int32_t hi;               // see SETTLED ROWS; not part of the board, never sent
-  int32_t cdLeft;           // see COUNTDOWN FRAMES; not part of the board, never sent
-  int32_t popSeen;          // garbage popping was updated this frame (updatePanels); not part of the board
-  signed char rowActive[MAXROWS];   // ROWS COUNTED: a row's active panels, known by updatePanels; -1 unknown; not part of the board
-  // WHAT A STEP DID (search.h MK_SETTLE): each clear's size and the chain
-  // counter it reached, panels cleared, garbage cells converted and the most
-  // stop time one clear paid. Counted since the step began; not part of the
-  // board, never sent.
-  int32_t sCombo[MAXCOMBOS], sChainAt[MAXCOMBOS], sNCombo, sCleared, sBroke, sEarned;
-  // FED ROWS: the real rows and break colours, from the game being played;
-  // empty, the unseen colours are dealt, as the search wants. A row
-  // cell is a digit, or 100 + n / 200 + n for a letter (upper / lower) that
-  // becomes shock with one / two shock panels queued. Not part of the board,
-  // never sent.
-  int32_t rowFeed[FEED][W], nRowFeed, rowFeedAt, brkFeed[FEED][W], nBrkFeed, brkFeedAt;
-  int32_t ninc, nstall, nlanded;
-  int32_t dropColumnIndex[7];     // [width], 1-based as the Lua keeps them
-  Incoming inc[MAXINC];           // the next to drop last
-  Stall stall[MAXSTALL];
-  int32_t landed[MAXLANDED];
-  // panels last, so a copy can stop at nrows
-  Panel p[MAXROWS][W + 1];
-} Board;
-#define BOARD_HEAD ((unsigned long)&((Board *)0)->p)
-#define BOARD_BYTES(b) (BOARD_HEAD + (unsigned long)(b)->nrows * sizeof(Panel) * (W + 1))
+#include "pa.h"
 #include "memory.h"
 
 static int32_t imax(int32_t a, int32_t b) { return a > b ? a : b; }
 static int32_t imin(int32_t a, int32_t b) { return a < b ? a : b; }
 static int32_t bound(int32_t a, int32_t b, int32_t c) { return b < a ? a : b > c ? c : b; }
-#define SETB(v) ((v) != NUL && (v) != 0)   // Lua truthiness of a nil-or-boolean
-#define SETN(v) ((v) != NUL)               // of a nil-or-number: 0 is true
 
 
 static const int SPEED_TO_RISE_TIME[99] = {
@@ -458,7 +368,7 @@ static void newRow(Board *b) {
     int32_t *f = b->rowFeed[b->rowFeedAt];
     b->rowFeedAt = (b->rowFeedAt + 1) % FEED; b->nRowFeed--;
     for (c = 1; c <= W; c++) {
-      int32_t v = f[c - 1], colour = v < 100 ? v : v < 200 ? (metal > 0 ? 8 : (v - 100 + 1) % 10) : (metal > 1 ? 8 : (v - 200 + 1) % 10);
+      int32_t v = f[c - 1], colour = v < 100 ? v : v < 200 ? (metal > 0 ? 8 : v - 100) : (metal > 1 ? 8 : v - 200);
       Panel *p = createPanelAt(b, top, c); p->f[COLOR] = colour; p->f[STATE] = DIMMED;
     }
   } else {
@@ -1106,7 +1016,7 @@ static int canSwap(Board *b, int row, int col) {
 // incoming (6 each), the stall log (5 each), garbage landed this frame and
 // dropColumnIndex[1..6]. native.js reads the names from pa_head_name.
 #define HEAD(X) \
-  X(nrows, nrows) X(colors, levelData.colors) X(maxHealth, levelData.maxHealth) X(shockFrequency, levelData.shockFrequency) \
+  X(nrows, nrows) X(startingSpeed, levelData.startingSpeed) X(colors, levelData.colors) X(maxHealth, levelData.maxHealth) X(shockFrequency, levelData.shockFrequency) \
   X(shockCap, levelData.shockCap) X(speedIncreaseMode, levelData.speedIncreaseMode) \
   X(fHOVER, frames.HOVER) X(fGARBAGE_HOVER, frames.GARBAGE_HOVER) X(fFLASH, frames.FLASH) X(fFACE, frames.FACE) X(fPOP, frames.POP) \
   X(sFormula, levelData.stop.formula) X(sComboConstant, levelData.stop.comboConstant) X(sChainConstant, levelData.stop.chainConstant) \
@@ -1227,6 +1137,17 @@ EXPORT(nb_feed_break) int nb_feed_break(Board *b, int32_t c1, int32_t c2, int32_
   return 1;
 }
 EXPORT(nb_fed) int nb_fed(Board *b) { return b->nRowFeed * 100 + b->nBrkFeed; }
+// What the bot's front end asks of the board it plays (front.c).
+EXPORT(nb_topped) int nb_topped(Board *b) { return isToppedOut(b); }
+EXPORT(nb_falling_garbage) int nb_falling_garbage(Board *b) { return hasFallingGarbage(b); }
+EXPORT(nb_active) int nb_active(Board *b) { return hasActivePanels(b); }
+// The column the next slab `width` wide drops at (dropGarbage).
+EXPORT(nb_spawn_col) int nb_spawn_col(Board *b, int width) {
+  if (width < 1 || width > 6) return 0;
+  return DROP_COLUMNS[width][b->dropColumnIndex[width] - 1];
+}
+// Frames a row takes to rise one pixel at `speed` (the table is in sixteenths).
+EXPORT(nb_rise_time) double nb_rise_time(int speed) { return (double)SPEED_TO_RISE_TIME[bound(1, speed, 99) - 1] / 16.0; }
 
 #ifdef PA_LIB
 // THE ENGINE'S OWN ANSWER, for the bot (bot.c), which links this file in:
