@@ -1987,6 +1987,31 @@ static int lineJudgeIn(const int32_t *sw, int n, int waitAll) {
   if (LNO[10] < LNA[10]) v |= LV_FILLS;
   return v;
 }
+// THE NEXT LINES BY RANK, JUDGED TOGETHER: before a line is judged, it and
+// the unjudged lines ranked after it (not skipped) are judged at once, in
+// parallel natively, into the decision's memo judged() reads.
+#define AHEAD 8
+static void prejudgeLines(LineC *const *ls, int count);
+static int lineBefore(const LineC *a, const LineC *b);
+static void judgeAhead(LineC *first, const unsigned char *skip, int useOk) {
+  if (first->verdict >= 0 || nJudged >= MAXJUDGED) return;
+  LineC *sel[AHEAD]; int ns = 0, cap = MAXJUDGED - nJudged < AHEAD ? MAXJUDGED - nJudged : AHEAD;
+  sel[ns++] = first;
+  while (ns < cap) {
+    LineC *nx = 0;
+    for (int i = 0; i < nLines; i++) {
+      LineC *l = &LINES[i];
+      if (l->verdict >= 0 || (skip && skip[i]) || (useOk && !l->ok)) continue;
+      int in = 0;
+      for (int j = 0; j < ns && !in; j++) in = sel[j] == l;
+      if (in) continue;
+      if (!nx || lineBefore(l, nx)) nx = l;
+    }
+    if (!nx) break;
+    sel[ns++] = nx;
+  }
+  prejudgeLines(sel, ns);
+}
 static int judged(LineC *l) {
   if (l->verdict < 0) {
     l->verdict = nJudged < MAXJUDGED ? lineJudge(l->sw, l->n, 0) : 0; nJudged++;
@@ -2333,6 +2358,7 @@ static void linesFrom(const int32_t *st, int cr, int cc, int depth, double limit
 // last is played on the engine in turn, to choose the one after it on the
 // board that gives.
 static double growRootMs, growKidMs, growStateMs; static int growKids;   // GC_WORKSTAT
+static void prereplayN(const int32_t *sws, int stride, int count, int n);
 static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const int32_t *st, int cr, int cc,
                    const uint32_t *can, uint8_t (*waits)[WMAX], double limit) {
   int from = nLines;
@@ -2362,6 +2388,15 @@ static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const
   uint32_t can2[WMAX];
   uint8_t waits2[32][WMAX];
   for (int k = 0; k < 2 * np; k++) pre2[k] = pre[k];
+  // the next steps' boards, replayed together
+  if (nn > 1 && np + 1 <= KEEPDEPTH) {
+    int32_t all[GROWCAP][2 * KEEPDEPTH];
+    for (int j = 0; j < nn; j++) {
+      for (int k = 0; k < 2 * np; k++) all[j][k] = pre[k];
+      all[j][2 * np] = nexts[2 * j]; all[j][2 * np + 1] = nexts[2 * j + 1];
+    }
+    prereplayN(&all[0][0], 2 * KEEPDEPTH, nn, np + 1);
+  }
   for (int j = 0; j < nn; j++) {
     pre2[2 * np] = nexts[2 * j]; pre2[2 * np + 1] = nexts[2 * j + 1];
     double st0t = NOWMS2();
@@ -2582,6 +2617,7 @@ static LineC *bestLineAvoid(int need, int avoid, int (*ok)(const LineC *)) {
       if (!cand || lineBefore(l, cand)) cand = l;
     }
     if (!cand) return 0;
+    judgeAhead(cand, 0, 1);
     int v = judged(cand);
     if ((v & need) == need && !(v & avoid)) return cand;
   }
@@ -2611,6 +2647,7 @@ static LineC *bestBreak(void) {
     if (at < 0) break;
     taken[at] = 1;
     LineC *l = &LINES[at];
+    judgeAhead(l, taken, 0);
     if ((judged(l) & need) != need) continue;
     found++; bbFound = found; bbLastN = l->n; bbLastEst = l->est;
     if (!pick || l->conv > pick->conv) pick = l;
@@ -2632,6 +2669,7 @@ static LineC *bestLiving(int (*ok)(const LineC *)) {
     if (at < 0) break;
     taken[at] = 1;
     LineC *l = &LINES[at];
+    judgeAhead(l, taken, 0);
     if ((judged(l) & need) != need) continue;
     found++;
     int ld = (l->verdict & LV_DROPS) != 0, pd = pick && (pick->verdict & LV_DROPS) != 0;

@@ -242,7 +242,7 @@ static void unsettled(Board *b, uint32_t *out, Settle *S) {
   USB->ninc = 0;   // what is on the board settling, not what is still to drop
   for (int c = 0; c < W + 2; c++) out[c] = 0;
   for (int r = 0; r < 32; r++) for (int c = 0; c < W + 2; c++) S->last[r][c] = S->first[r][c] = S->same[r][c] = 0;
-  static int32_t usNow[32][W + 2][3];
+  static JLOCAL int32_t usNow[32][W + 2][3];   // per thread: parallel judges each settle their own board
   int top = b->height < 31 ? b->height : 31;
   for (int r = 1; r <= top; r++)
     for (int c = 1; c <= W; c++) {
@@ -609,20 +609,25 @@ static LSMemo PRJ[128];
 static int prjN;
 static void prjTask(int k) {
   LSMemo *j = &PRJ[k];
-  j->rc = lineStateRun(j->sw, 1, 0, j->masks, j->can, j->wait, j->cur, &j->t);
+  j->rc = lineStateRun(j->sw, j->n, 0, j->masks, j->can, j->wait, j->cur, &j->t);
 }
-static void prereplay(const int32_t *sws, int count) {
+// count lines of n steps each, `stride` ints apart
+static void prereplayN(const int32_t *sws, int stride, int count, int n) {
   prjN = 0;
+  if (n < 1 || n > LINEMAX) return;
   for (int k = 0; k < count && prjN < 128; k++) {
-    if (lsmHas(sws + 2 * k, 1, 0)) continue;
+    if (lsmHas(sws + stride * k, n, 0)) continue;
     LSMemo *j = &PRJ[prjN++];
-    j->sw[0] = sws[2 * k]; j->sw[1] = sws[2 * k + 1]; j->n = 1; j->landing = 0;
+    for (int i = 0; i < 2 * n; i++) j->sw[i] = sws[stride * k + i];
+    j->n = n; j->landing = 0;
   }
   if (prjN < 2) return;
   parallelDo(prjN, prjTask);
   extern int paBudgetOut(void);
   if (paBudgetOut()) return;
-  for (int k = 0; k < prjN; k++) { LSMemo *m = lsmSlot(PRJ[k].sw, 1, 0); *m = PRJ[k]; m->dec = btDecision; }
+  for (int k = 0; k < prjN; k++) { LSMemo *m = lsmSlot(PRJ[k].sw, PRJ[k].n, 0); *m = PRJ[k]; m->dec = btDecision; }
+}
+static void prereplay(const int32_t *sws, int count) { prereplayN(sws, 2, count, 1); 
 }
 static int lineStateAt(const int32_t *steps, int n, int landing, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
   if (n < 0 || n > LINEMAX) return lineStateRun(steps, n, landing, masks, can, wait, cur, t);
@@ -780,7 +785,27 @@ static void prejudge(const int32_t *sws, int stride, int count, int n, int waitA
   if (paBudgetOut()) return;
   for (int k = 0; k < jobs; k++) jmPut(PJ[k].sw, PJ[k].n, PJ[k].waitAll, PJ[k].v, PJ[k].lno);
 }
+// lines of their own lengths, judged as judged() first judges them
+static void prejudgeLines(LineC *const *ls, int count) {
+  if (pjThreads < 0) pjThreads = getenv("GC_THREADS") ? atoi(getenv("GC_THREADS")) : 3;
+  if (pjThreads <= 0 || !BIN[IN_HASPA] || !aloneOnEngine()) return;
+  int jobs = 0;
+  for (int k = 0; k < count && jobs < 256; k++) {
+    const LineC *l = ls[k];
+    int v; int32_t lno[12];
+    if (jmFind(l->sw, l->n, 0, &v, lno)) continue;
+    PJob *j = &PJ[jobs++];
+    for (int i = 0; i < 2 * l->n; i++) j->sw[i] = l->sw[i];
+    j->n = l->n; j->waitAll = 0;
+  }
+  if (jobs < 2) return;
+  parallelDo(jobs, pjJudge);
+  extern int paBudgetOut(void);
+  if (paBudgetOut()) return;
+  for (int k = 0; k < jobs; k++) jmPut(PJ[k].sw, PJ[k].n, PJ[k].waitAll, PJ[k].v, PJ[k].lno);
+}
 #else
+static void prejudgeLines(LineC *const *ls, int count) { (void)ls; (void)count; }
 static void prejudge(const int32_t *sws, int stride, int count, int n, int waitAll) { (void)sws; (void)stride; (void)count; (void)n; (void)waitAll; }
 static void parallelDo(int count, void (*task)(int)) { for (int k = 0; k < count; k++) task(k); }
 #endif
