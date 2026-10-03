@@ -119,9 +119,23 @@ static Panel *fall(Board *b, Panel *p) {
   }
   return p;
 }
+// HOLLOW: the empty cells under a garbage cell as it lands, down to what its
+// column holds -- the slab rests on its tallest column, and every other
+// column under it is a gap a clear beside it cannot reach.
+static void countHollow(Board *b, const Panel *p) {
+  int c = p->f[COL];
+  for (int r = p->f[ROW] - 1; r >= 1; r--) {
+    const Panel *q = P(b, r, c);
+    if (q->f[COLOR] != 0) {
+      if (q->f[ISGARBAGE] && q->f[GARBAGEID] == p->f[GARBAGEID]) return;   // not the slab's bottom row
+      break;
+    }
+    b->sHollow++;
+  }
+}
 static void land(Board *b, Panel *p) {
   onLand(b, p);
-  if (p->f[ISGARBAGE]) p->f[STATE] = NORMAL;
+  if (p->f[ISGARBAGE]) { countHollow(b, p); p->f[STATE] = NORMAL; }
   else {
     if (SETN(p->f[FELL])) p->f[FELL] = NUL;
     p->f[STATE] = LANDING;

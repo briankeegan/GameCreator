@@ -17,7 +17,7 @@ enum { K_HOLD = 0, K_RAISE = 1, K_SWAP = 2 };
 enum { V_NONE, V_RAISE_OPENING, V_RAISE_MATERIAL, V_RAISING, V_READYFIRST, V_AWAITLANDING, V_BREAK, V_LINEUPHOLD,
        V_LINEUP, V_BREAKREACH, V_BREAKSPEND, V_DIGPLAN, V_DIGWAIT, V_ATTACKWAIT, V_ATTACKPLAN, V_BESTATTACK,
        V_PLANWAIT, V_SURVIVALPLAN, V_FLATTENWAIT, V_FLATTEN, V_NOBEST, V_SETUP, V_WEIGHTS, V_RULED, V_PLANSAVE,
-       V_KEEPSAVE, V_AWAITDRAIN, V_KEEPHEALTH };
+       V_KEEPSAVE, V_AWAITDRAIN, V_KEEPHEALTH, V_FILL };
 enum { M_BUILD, M_DEFEND, M_ATTACK };
 // the line a bot plays (Bot.line): what it is for, and the most steps it holds
 enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
@@ -1827,7 +1827,7 @@ enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8, LV_DROPS = 16 };
 typedef struct { int n, brk, ok, grown, waitAll; int32_t sw[2 * KEEPDEPTH]; double est; int verdict; } LineC;
 static LineC LINES[MAXLINES];
 static int nLines, nJudged;
-static int32_t LNA[10], LNO[10];
+static int32_t LNA[12], LNO[12];
 static int lnAlone;
 static int cashes(const int32_t *r) { return r[R_TOTAL] > 0 || r[R_SCOPE] == SC_BROKE; }
 static double timeLeft(void);
@@ -2296,6 +2296,34 @@ static Dec spendToBreak(Dec d) {
   if (!(v & LV_LIVES) || !(v & (LV_PAYS | LV_DROPS)) || (v & (LV_BREAKS | LV_GAINS))) return d;
   return mkHold(V_SETUP, d.mode, d.alive, 0, 0, 0);
 }
+// WHAT LANDS IS WHAT IT WILL BREAK. A slab rests on the tallest column under
+// it; every lower column is a hollow a clear beside the slab cannot reach,
+// and the pile that settles into it later falls, unbroken, past the match.
+// While garbage is coming and no line is being played, the move played is
+// the one the engine finds leaves the least hollow under what lands (pa.c
+// HOLLOW) -- a move that clears nothing, drops no garbage at rest and lives --
+// if it leaves less than the choice and less than the board left alone.
+static Dec fillFirst(Dec d) {
+  if (lineLast || d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
+  if (d.kind == K_SWAP && endsInBreak(d.via)) return d;
+  if (!aloneOnEngine() || LNA[10] == 0) return d;
+  int best = LNA[10];
+  if (d.kind == K_SWAP && d.hasMove) {
+    int32_t sw[2] = { d.sr, d.sc };
+    if (lineJudge(sw, 1, 0) & LV_LIVES) best = LNO[10] < best ? LNO[10] : best;
+  }
+  Cand *pick = 0;
+  for (int q = 0; q < nPool; q++) {
+    Cand *pc = &POOL[q];
+    if (pc->kind != K_SWAP || pc->res.total > 0) continue;
+    int32_t sw[2] = { pc->sr, pc->sc };
+    int v = lineJudge(sw, 1, 0);
+    if (!(v & LV_LIVES) || (v & (LV_PAYS | LV_DROPS))) continue;
+    if (LNO[10] < best || (pick && LNO[10] == best && pc->moveFrames < pick->moveFrames)) { best = LNO[10]; pick = pc; }
+  }
+  if (!pick) return d;
+  return mkSwap(pick->sr, pick->sc, V_FILL, d.mode, d.alive);
+}
 // A SWAP THAT IS STILL MOVING WHEN THE LOCK ENDS TAKES THE ROW BACK: the
 // raise starts the frame nothing holds the rise lock, and a swap queued then
 // cancels it. While a raise waits, a swap is played only if its walk and its
@@ -2334,7 +2362,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   nRes = 0; nOptRuns = 0; nOptDepth = 0; nScore = 0; nLook = 0; nSave = 0; rScore = rMain = rLook = rSave = rCand = 0;
   ENGINE_BASE = BIN[IN_HASPA] ? IN : 0;
   for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = c >= 1 && c < BW ? (uint32_t)BIN[IN_CANSWAP + c] : 0;
-  Dec d = onePlan(spendToBreak(batchBreak(lineupFirst(keepBreak(stayAlive(breakFirst(raiseHold(waitForDrain(playOn(decideRuled()))))))))));
+  Dec d = onePlan(fillFirst(spendToBreak(batchBreak(lineupFirst(keepBreak(stayAlive(breakFirst(raiseHold(waitForDrain(playOn(decideRuled())))))))))));
   ENGINE_BASE = 0;
   if (d.kind == K_SWAP && d.hasMove) {
     BT->recent[2] = BT->nRecent ? BT->recent[0] : 0; BT->recent[3] = BT->nRecent ? BT->recent[1] : 0;

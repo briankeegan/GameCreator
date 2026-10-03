@@ -491,12 +491,12 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   if (!LNB) LNB = nb_new();
   nb_copy(LNB, paLibBoard());
   Board *b = LNB;
-  b->sNCombo = b->sCleared = b->sBroke = b->sEarned = b->sFell = 0;
+  b->sNCombo = b->sCleared = b->sBroke = b->sEarned = b->sFell = b->sHollow = 0;
   int32_t h0 = b->health;
   int step = 0, walking = n > 0, timer = 0, held = LF ? LF->held : H_NONE, cool = 0, disp = b->displacement;
   int tr = n > 0 ? steps[0] : 0, tc = n > 0 ? steps[1] : 0, last = n > 0 ? -1 : 0, f, dropped = b->garbageCreatedCount;
   int waitTo = n > 0 && LF ? (LWAITALL && n == 1 ? allWait(LF->settle) : pairWait(LF->settle, steps[0], steps[1])) : 0;
-  out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = b->ninc; out[8] = -1; out[9] = 0;
+  out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = b->ninc; out[8] = -1; out[9] = out[10] = 0;
   for (f = 0; f < horizon; f++) {
     int input = 0;
     // stopAtNext 2: on until the next slab has dropped and landed
@@ -546,7 +546,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
     if (b->health < h0 || b->gameOverClock > 0) { out[0] = f + 1; break; }
   }
   out[1] = step == n ? last : -1;
-  out[2] = b->sBroke; out[3] = b->sCleared; out[9] = b->sFell;
+  out[2] = b->sBroke; out[3] = b->sCleared; out[9] = b->sFell; out[10] = b->sHollow;
   out[4] = out[1] < 0 ? 0 : (out[0] ? out[0] : horizon) - out[1];
   return 0;
 }
@@ -558,7 +558,7 @@ int lineOnEngine(const int32_t *steps, int n, int horizon, int waitAll, int32_t 
 // frames it took. -1: a step refused, or the board lost health on the way.
 // landing: the board instead once the next slab has dropped and landed.
 static int lineStateAt(const int32_t *steps, int n, int landing, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
-  int32_t out[10];
+  int32_t out[12];
   int rc = n > 0 || landing ? linePlay(steps, n, 400, landing ? 2 : 1, out) : (nb_copy(LNB ? LNB : (LNB = nb_new()), paLibBoard()), out[0] = 0, out[8] = 0, 1);
   if (rc != 1 || out[0]) return -1;
   // the next step targets settled panels: the board once it has settled, each

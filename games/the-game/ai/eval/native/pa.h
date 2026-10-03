@@ -82,9 +82,10 @@ typedef struct Board {
   signed char rowActive[MAXROWS];   // ROWS COUNTED: a row's active panels, known by updatePanels; -1 unknown; not part of the board
   // WHAT A STEP DID (search.h MK_SETTLE): each clear's size and the chain
   // counter it reached, panels cleared, garbage cells converted, the most
-  // stop time one clear paid and garbage cells at rest that started to fall.
+  // stop time one clear paid, garbage cells at rest that started to fall and
+  // the empty cells under garbage as it landed (pa.c HOLLOW).
   // Counted since the step began; not part of the board, never sent.
-  int32_t sCombo[MAXCOMBOS], sChainAt[MAXCOMBOS], sNCombo, sCleared, sBroke, sEarned, sFell;
+  int32_t sCombo[MAXCOMBOS], sChainAt[MAXCOMBOS], sNCombo, sCleared, sBroke, sEarned, sFell, sHollow;
   // FED ROWS: the real rows and break colours, from the game being played;
   // empty, the unseen colours are dealt, as the search wants. A row
   // cell is a colour, or 100 + colour / 200 + colour for a letter (upper /
