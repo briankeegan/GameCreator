@@ -4532,6 +4532,7 @@
       return { at: Math.max(1, a.at), width: a.width, height: a.height, isChain: !!a.isChain, isMetal: !!a.isMetal };
     });
     this.native = true;
+    this.nativeCands = true;
   };
   PuyoCpu.prototype._paRoot = function () {
     var pa = this.stack && this.stack.paStack;
@@ -4794,6 +4795,7 @@
       bot.serverStack = PAE().revive(m.server);
       bot.serverArrivals = m.arrivals.map(function (a) { return { at: Math.max(1, a.at), width: a.width, height: a.height, isChain: !!a.isChain, isMetal: !!a.isMetal }; });
       bot.native = true;
+      bot.nativeCands = true;
       // native.js runs the server's engine on threads only in node
       if (typeof require !== 'function') bot.threads = 0;
     }

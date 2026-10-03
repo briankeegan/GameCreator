@@ -168,13 +168,8 @@ exports.duel = function (weightsA, weightsB, seed, opts, optsB) {
 
     // Matches that opened a cascade, waiting to learn what the cascade became.
     //
-    // A LIST, AND EACH ONE REMEMBERS ITS OWN CHAIN COUNTER. Holding a single
-    // opener and crediting it to the next chaining match that arrives credits
-    // the wrong one whenever a fresh match fires while a cascade is still
-    // running: the new opener takes the credit for the old chain's next link,
-    // and openedChain comes out ahead of the chains that actually finished.
-    // The engine stamps every match with chainCounter, so a link belongs to
-    // the opener one below it and to no other.
+    // A LIST: a fresh match can fire while a cascade is still running, and
+    // each opener is credited at most once.
     // HOW LONG THE BOARD WAS IN TROUBLE BEFORE IT DIED. A board that goes
     // from safe to dead inside one decision cannot be played out of; one
     // that sits in the top three rows for seconds could have been. Reset
@@ -191,12 +186,19 @@ exports.duel = function (weightsA, weightsB, seed, opts, optsB) {
     }
 
     var pendingOpen = [[], []];
+    // AN OPENER IS ALONE once its cascade has had time to link and has not.
+    // Two openers can be cascading at once, so a fresh one does not settle the
+    // ones before it. Opener to first link took at most 302 frames over seeds
+    // 1, 2, 3 and 7 at level 10 (a slab's pop is the long part).
+    var OPEN_WINDOW = 600;
     function settleOne(side, open) {
         if (open.size <= 3 && !open.garbage) exact[side].payless++;
     }
-    // Everything still held is alone: called when a fresh cascade begins,
-    // because the engine's counter has gone back to 0 and nothing older can
-    // be extended, and again at the end of the duel.
+    function settleOld(side) {
+        var list = pendingOpen[side];
+        while (list.length && f - list[0].at > OPEN_WINDOW) settleOne(side, list.shift());
+    }
+    // Everything still held at the end of the duel is alone.
     function settleOpener(side) {
         var list = pendingOpen[side];
         for (var i = 0; i < list.length; i++) settleOne(side, list[i]);
@@ -230,6 +232,7 @@ exports.duel = function (weightsA, weightsB, seed, opts, optsB) {
         }
 
         for (var e = 0; e < 2; e++) {
+            settleOld(e);
             var evs = stacks[e].drainEvents();
             for (var q = 0; q < evs.length; q++) {
                 var ev = evs[q];
@@ -249,19 +252,14 @@ exports.duel = function (weightsA, weightsB, seed, opts, optsB) {
                     // is improving.
                     //
                     // So an opener is HELD. A chaining match settles it as
-                    // paid; the next opener settles the one before it as
-                    // alone, since the engine emits chainEnd only when a
-                    // chain actually formed and a lone match announces
-                    // nothing at all. Anything still held when the duel ends
-                    // is flushed below.
+                    // paid; one held past OPEN_WINDOW is settled as alone,
+                    // since the engine emits chainEnd only when a chain
+                    // actually formed and a lone match announces nothing at
+                    // all. Anything still held when the duel ends is flushed
+                    // below.
                     if (!ev.chain) {
-                        // A MATCH OUTSIDE A CASCADE ENDS THE LAST ONE'S STORY.
-                        // Inside one (counter above 0) it is a separate combo
-                        // that the running chain's links must not be able to
-                        // claim, so it is held apart.
-                        if (!ev.chainCounter) settleOpener(e);
                         pendingOpen[e].push({ size: ev.size, garbage: !!ev.garbage,
-                                              counter: ev.chainCounter });
+                                              counter: ev.chainCounter, at: f });
                     } else if (ev.chainCounter === 2) {
                         // THE SECOND LINK, AND ONLY THE SECOND LINK.
                         // chainCounter goes 0 at the opener and straight to 2
