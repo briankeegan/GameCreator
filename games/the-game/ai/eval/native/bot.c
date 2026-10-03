@@ -5,7 +5,7 @@
 #define INF (1.0 / 0.0)
 
 enum { IN_TOPPED, IN_STOP, IN_INCOMING, IN_NEXTSLAB, IN_FALLING, IN_CROW, IN_CCOL, IN_HEALTH, IN_DRAIN, IN_FPR,
-       IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISEROOM, IN_INFLIGHT,
+       IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISELIVES, IN_INFLIGHT,
        IN_DRAINBOUND, IN_STACKTOPPED, IN_MOVING, IN_HASTIMED, IN_REVEALOPEN, IN_CONVN, IN_CONVTIMER, IN_BCROW, IN_BCCOL,
        IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_SIZE = 600 };
 enum { TF_DEADLY = 1, TF_FORCE = 2, TF_REFUSE = 4, TF_RAISE = 8, TF_STUB = 16, TF_SLAB = 32 };
@@ -774,14 +774,9 @@ static Cand POOL[MAXCAND];
 static ST POOLST[MAXCAND];
 static int nPool;
 static Res CR, CR2;
-// ROWS A RAISE MUST LEAVE FREE: the next slab's, the biggest slab yet, and
-// everything queued. raiseMode wants a raise and the pool offers one by this
-// one number, so a raise wanted is a raise offered.
-static int raiseReserve(void) {
-  int r = (int)__builtin_ceil(BIN[IN_NEXTSLAB] / BW), q = (int)__builtin_ceil(BIN[IN_INCOMING] / BW);
-  if (BT->maxSlab > r) r = BT->maxSlab;
-  return q > r ? q : r;
-}
+// A RAISE IS WANTED AND OFFERED ONLY IF IT LIVES: the front raises on the
+// engine and leaves the board alone over the horizon (pa.c nb_raise_lives);
+// raiseMode and the pool read the one answer, IN_RAISELIVES.
 // WHAT A SWAP CAUSES. On a board in motion the clear already resolving is in
 // every result the resolver gives, the board left alone included. A swap is
 // credited only with what it adds: the cells past the board's own, and a break
@@ -822,7 +817,7 @@ static void candidates(int32_t *base) {
   if (BIN[IN_HASRISEN]) {
     resolve(RISEN, CR.r, 1);
     const int32_t *rm = CR.r[R_SCOPE] == SC_OK ? CR.st : RISEN;
-    if (tallestBoard(rm) + raiseReserve() + 1 < BH) {
+    if (BIN[IN_RAISELIVES]) {
       Cand *rc = &POOL[nPool];
       memset(rc, 0, sizeof(Cand));
       stcpy(POOLST[nPool], rm);
@@ -1018,8 +1013,7 @@ static int raiseMode(const int32_t *base, int poolBreak) {
   if (!opt(O_ALLOWRAISE) || topped) { BT->opening = 0; return 0; }
   if (BIN[IN_FALLING]) return 0;
   int rows = (int)__builtin_ceil(BIN[IN_NEXTSLAB] / BW);
-  int reserve = raiseReserve();
-  int fits = BIN[IN_RAISEROOM] > 1 + reserve;
+  int fits = BIN[IN_RAISELIVES] != 0;   // the engine raised and lost no health
   BT->wantRows = rows;
   if (BT->opening && (BIN[IN_INCOMING] || !fits)) BT->opening = 0;
   if (!fits) return 0;
@@ -1824,7 +1818,7 @@ int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_
 // DROPS: more garbage at rest starts to fall than left alone.
 enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8, LV_DROPS = 16 };
 
-typedef struct { int n, brk, ok, grown, waitAll; int32_t sw[2 * LINEMAX]; double est; int verdict; } LineC;
+typedef struct { int n, brk, ok, grown, waitAll, hollow; int32_t sw[2 * LINEMAX]; double est; int verdict; } LineC;
 static LineC LINES[MAXLINES];
 static int nLines, nJudged;
 static int32_t LNA[12], LNO[12];
@@ -1852,12 +1846,13 @@ static int lineJudge(const int32_t *sw, int n, int waitAll) {
 static int judged(LineC *l) {
   if (l->verdict < 0) {
     l->verdict = nJudged < MAXJUDGED ? lineJudge(l->sw, l->n, 0) : 0; nJudged++;
+    l->hollow = l->verdict ? LNO[10] : 1 << 20;
     // A BREAK PRESSED ONCE THE BOARD HAS SETTLED: a break needs garbage at
     // rest beside the match, and a press made while the slab still lands
     // matches beside it in vain. The last press then waits for every block.
     if (l->brk && (l->verdict & LV_PAYS) && !(l->verdict & LV_BREAKS) && nJudged < MAXJUDGED) {
       int v = lineJudge(l->sw, l->n, 1); nJudged++;
-      if (v & LV_BREAKS) { l->verdict = v; l->waitAll = 1; }
+      if (v & LV_BREAKS) { l->verdict = v; l->waitAll = 1; l->hollow = LNO[10]; }
     }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
@@ -2022,7 +2017,8 @@ static void tPropose(const int32_t *sw, int n, int cr, int cc, double t0, double
   l->n = n; l->brk = 1; l->est = at; l->verdict = -1; l->grown = 0; l->waitAll = 0;
   for (int k = 0; k < 2 * n; k++) l->sw[k] = sw[k];
 }
-static void targetLines(const int32_t *st, int cr, int cc, double t0, double limit) {
+// The grid the distance searches read; 1 if it holds garbage.
+static int tGrid(const int32_t *st) {
   tW = st[O_W]; tH = st[O_H] < TGRID ? st[O_H] : TGRID;
   int N = st[O_N], any = 0;
   for (int r = 1; r <= tH + 1; r++)
@@ -2036,7 +2032,11 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
       else for (int a = 1; a <= N; a++) if (CL(st, a, c) & b) v = a;
       tCell[r][c] = v;
     }
-  if (!any) return;
+  return any;
+}
+static void targetLines(const int32_t *st, int cr, int cc, double t0, double limit) {
+  if (!tGrid(st)) return;
+  int N = st[O_N];
   int32_t sw[2 * LINEMAX]; int row[WMAX + 1];
   for (int a = 1; a <= N; a++) {
     // three in a column: each row's nearest panel of the colour walked to it
@@ -2123,9 +2123,30 @@ static LineC *bestLineAvoid(int need, int avoid, int (*ok)(const LineC *)) {
 }
 static LineC *bestLine(int need, int (*ok)(const LineC *)) { return bestLineAvoid(need, 0, ok); }
 // A line that lives, one that leaves the garbage at rest first.
+// A line that lives: of the first LIVINGS that do, by rank, the one that
+// drops no garbage at rest and leaves the least hollow under what lands.
+#define LIVINGS 12
 static LineC *bestLiving(int (*ok)(const LineC *)) {
-  LineC *l = bestLineAvoid(LV_LIVES | LV_GAINS, LV_DROPS, ok);
-  return l ? l : bestLine(LV_LIVES | LV_GAINS, ok);
+  static unsigned char taken[MAXLINES];
+  const int need = LV_LIVES | LV_GAINS;
+  LineC *pick = 0;
+  for (int i = 0; i < nLines; i++) taken[i] = ok && !ok(&LINES[i]);
+  for (int found = 0; found < LIVINGS;) {
+    int at = -1;
+    for (int i = 0; i < nLines; i++) {
+      LineC *l = &LINES[i];
+      if (taken[i] || (l->verdict >= 0 && (l->verdict & need) != need)) continue;
+      if (at < 0 || lineBefore(l, &LINES[at])) at = i;
+    }
+    if (at < 0) break;
+    taken[at] = 1;
+    LineC *l = &LINES[at];
+    if ((judged(l) & need) != need) continue;
+    found++;
+    int ld = (l->verdict & LV_DROPS) != 0, pd = pick && (pick->verdict & LV_DROPS) != 0;
+    if (!pick || ld < pd || (ld == pd && l->hollow < pick->hollow)) pick = l;
+  }
+  return pick;
 }
 static void lineKeep(const LineC *l, int kind) {
   for (int k = 0; k < 2 * l->n; k++) BT->line[k] = l->sw[k];
@@ -2419,6 +2440,34 @@ static Dec fillFirst(Dec d) {
     if (!(v & LV_LIVES) || (v & (LV_PAYS | LV_DROPS))) continue;
     if (LNO[10] < best || (pick && LNO[10] == best && pc->moveFrames < pick->moveFrames)) { best = LNO[10]; pick = pc; }
   }
+  // the top of every column walked along its row, a column a swap, until it
+  // drops into a lower column or meets something it cannot pass
+  int32_t fsw[2 * LINEMAX], first[2] = { 0, 0 };
+  double fest = 0;
+  tGrid(DBASE);
+  for (int c = 1; c <= tW; c++) {
+    int r = 0;
+    for (int k = tH; k >= 1 && !r; k--) if (tCell[k][c] != 0) r = k;
+    if (r < 1 || tCell[r][c] <= 0) continue;
+    for (int dir = -1; dir <= 1; dir += 2) {
+      int n = 0, at = c;
+      while (n < LINEMAX) {
+        int to = at + dir;
+        if (to < 1 || to > tW || tCell[r][to] != 0) break;
+        fsw[2 * n] = r; fsw[2 * n + 1] = dir > 0 ? at : to; n++;
+        at = to;
+        if (!tSupported(r, at)) break;   // it drops here
+      }
+      if (n == 0) continue;
+      int v = lineJudge(fsw, n, 0);
+      if (!(v & LV_LIVES) || (v & (LV_PAYS | LV_DROPS))) continue;
+      double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
+      if (LNO[10] < best || ((pick || first[0]) && LNO[10] == best && est < fest)) {
+        best = LNO[10]; pick = 0; first[0] = fsw[0]; first[1] = fsw[1]; fest = est;
+      }
+    }
+  }
+  if (first[0]) return mkSwap(first[0], first[1], V_FILL, d.mode, d.alive);
   if (!pick) return d;
   return mkSwap(pick->sr, pick->sc, V_FILL, d.mode, d.alive);
 }

@@ -23,7 +23,7 @@ enum { H_NONE, H_UP, H_DOWN, H_LEFT, H_RIGHT };   // BIN[IN_HELD]
 typedef uint8_t Settle[32][W + 2];   // per cell, the frame it settles from (unsettled)
 typedef struct {
   int id, reaction, reveal, allowRaise;
-  int cooldown, raiseFrames, raiseStarted, wantRaise, wantRows;
+  int cooldown, raiseFrames, raiseStarted, wantRaise, wantRows, raiseLives;
   int walk, wRow, wCol, wTimer, wCooldown, wRetries, wDisp, wHasDisp;
   int park, pRow, pCol, pTimer, pTr, pTc, pDisp;
   int hasLast, lastR, lastC, held;
@@ -193,16 +193,7 @@ static int drainBound(void) {
   if (active) k = imaxf(k, 1 + imaxf(1, air));
   return k;
 }
-static int raiseRoom(void) {
-  int top = FB->height;
-  for (int r = top; r >= 1; r--)
-    for (int c = 1; c <= W; c++) {
-      const int32_t *f = fp(r, c);
-      if (f[ISGARBAGE] ? fState(f) != FALLING : f[COLOR] != 0) return top - r;
-    }
-  return top;
-}
-static int raiseFits(int rows) { return raiseRoom() > 1 + rows; }
+#define RAISEHORIZON 240
 static int toppedNow(void) { return nb_topped(FB); }
 static int canRaise(Front *F) {
   if (!F->allowRaise || F->raiseFrames > 0) return 0;
@@ -348,7 +339,15 @@ static void fPrepare(Front *F) {
   int conv = F->reveal && nconv;
   int timed = (moving || open) && fTimed(TMST, &TM);
   d[IN_HASRISEN] = hasRisen;
-  d[IN_RAISEROOM] = raiseRoom();
+  // a raise is wanted only if the engine, raising, loses health no sooner than
+  // the board left alone does, over the horizon
+  F->raiseLives = 0;
+  if (F->allowRaise) {
+    int rd = nb_raise_death(FB, RAISEHORIZON);
+    if (rd == 0) F->raiseLives = 1;
+    else if (rd > 0) { int ad = nb_drain_in(FB, RAISEHORIZON); F->raiseLives = rd >= ad; }
+  }
+  d[IN_RAISELIVES] = F->raiseLives;
   d[IN_INFLIGHT] = inFlight();
   d[IN_DRAINBOUND] = d[IN_TOPPED] ? drain : 0;
   d[IN_LOCKLEFT] = lockLeft();
@@ -617,7 +616,7 @@ EXPORT(front_frame) int front_frame(int fid, Board *b) {
   F->lastKind = -1;
   if (b->gameOverClock > 0) return 0;
   int held = F->held, input = 0;
-  if (F->wantRaise && !raiseFits(F->wantRows)) { F->wantRaise = 0; F->raiseFrames = 0; }
+  if (F->wantRaise && !F->raiseLives) { F->wantRaise = 0; F->raiseFrames = 0; }
   if (F->wantRaise && F->raiseFrames == 0 && !b->preventManualRaise && !b->manualRaise && !nb_falling_garbage(b)) {
     F->raiseFrames = 20; F->raiseStarted = 0;
   }
