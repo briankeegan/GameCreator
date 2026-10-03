@@ -538,6 +538,14 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   }
   out[1] = step == n ? last : -1;
   out[2] = b->sBroke; out[3] = b->sCleared; out[9] = b->sFell; out[10] = b->sHollow;
+  // and the gaps under garbage as it stands on the board the line ends on: a
+  // pile propped above empty cells is hollow whether or not it just landed
+  for (int r = 2; r < b->nrows; r++)
+    for (int c = 1; c <= W; c++) {
+      const int32_t *g = b->p[r][c].f, *u = b->p[r - 1][c].f;
+      if (!g[ISGARBAGE] || u[COLOR] != 0) continue;
+      for (int k = r - 1; k >= 1 && b->p[k][c].f[COLOR] == 0; k--) out[10]++;
+    }
   // the board it ends on, as one number: a line that ends where the board left
   // alone ends has done nothing
   uint32_t fh = 2166136261u;
