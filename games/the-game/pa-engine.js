@@ -1223,6 +1223,8 @@
     var s = create(lv, new Seeded(new (GEN().GeneratorSource)(opts.seed === undefined ? 1 : opts.seed, true, ld.colors, ld.adjacentDenialFrequency)));
     s.name = opts.name || 'player';
     s.level = opts.level || 10;
+    // countdown: false, the board as it stands when the countdown ends
+    if (opts.countdown === false) while (s.clock <= COUNTDOWN_START + COUNTDOWN_LENGTH) s.run();
     return s;
   }
   // The combo garbage a clear of `size` sends (COMBO_GARBAGE), and the score

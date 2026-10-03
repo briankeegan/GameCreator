@@ -4550,6 +4550,13 @@
     this.native = true;
     this.nativeCands = true;
   };
+  // A bot on pa-engine.js stack `pa`, reading it afresh before every update.
+  PuyoCpu.onPA = function (pa, opts, opp) {
+    var cpu = new PuyoCpu(PAE().view(pa), opts), update = cpu.update;
+    cpu.update = function () { this.onServer(pa, opp); return update.apply(this, arguments); };
+    cpu.onServer(pa, opp);
+    return cpu;
+  };
   PuyoCpu.prototype._paRoot = function () {
     var pa = this.stack && this.stack.paStack;
     if (!pa) return null;
