@@ -3101,6 +3101,7 @@ static Dec spendToBreak(Dec d) {
 // if it leaves less than the choice and less than the board left alone.
 // While a break is being played, a fill swap goes first only if the break
 // still breaks after it and what lands is left less hollow.
+static void prejudge(const int32_t *sws, int stride, int count, int n, int waitAll);
 static Dec fillBeforeBreak(Dec d) {
   int32_t ln[2 * LINEMAX + 2]; int n = BT->nLine;
   if (n) for (int k = 0; k < 2 * n; k++) ln[2 + k] = BT->line[k];
@@ -3111,6 +3112,16 @@ static Dec fillBeforeBreak(Dec d) {
   int best = LNO[10];
   if (best == 0) return d;
   int pr = 0, pc = 0;
+  // each pool swap ahead of the line, judged together first
+  { static int32_t all[MAXCAND][2 * LINEMAX + 2]; int na = 0;
+    for (int q = 0; q < nPool; q++) {
+      Cand *k = &POOL[q];
+      if (k->kind != K_SWAP || k->res.total > 0) continue;
+      all[na][0] = k->sr; all[na][1] = k->sc;
+      for (int i = 2; i < 2 * n + 2; i++) all[na][i] = ln[i];
+      na++;
+    }
+    prejudge(&all[0][0], 2 * LINEMAX + 2, na, n + 1, BT->lineWaitAll); }
   for (int q = 0; q < nPool; q++) {
     Cand *k = &POOL[q];
     if (k->kind != K_SWAP || k->res.total > 0) continue;
