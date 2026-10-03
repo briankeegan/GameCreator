@@ -922,7 +922,12 @@ static void candidates(int32_t *base) {
   int n = legal(base, lg);
   int cr = (int)BIN[IN_CROW], cc = (int)BIN[IN_CCOL];
   // every swap's outcome on the engine, played together (parallelDo), then taken one by one
-  if (onEngine) { poLg = lg; poCr = cr; poCc = cc; parallelDo(n, poTask); }
+  if (onEngine) {
+    extern void paPrefix(const int *ats, int n, int horizon);
+    int ats[128]; for (int i = 0; i < n && i < 128; i++) ats[i] = travelCost(cr, cc, lg[2 * i], lg[2 * i + 1]);
+    paPrefix(ats, n < 128 ? n : 128, PAHORIZON);
+    poLg = lg; poCr = cr; poCc = cc; parallelDo(n, poTask);
+  }
   for (int i = 0; i < n; i++) {
     int r = lg[2 * i], c = lg[2 * i + 1];
     if (!swapIn(base, r, c)) continue;
