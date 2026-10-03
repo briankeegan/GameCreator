@@ -1838,7 +1838,7 @@ int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_
 // hollow under the garbage that lands than left alone (pa.c HOLLOW).
 enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8, LV_DROPS = 16, LV_FILLS = 32 };
 
-typedef struct { int n, brk, ok, grown, waitAll, hollow; int32_t sw[2 * LINEMAX]; double est; int verdict; } LineC;
+typedef struct { int n, brk, ok, grown, waitAll, hollow, conv; int32_t sw[2 * LINEMAX]; double est; int verdict; } LineC;
 static LineC LINES[MAXLINES];
 static int nLines, nJudged;
 static int32_t LNA[12], LNO[12];
@@ -1870,12 +1870,13 @@ static int judged(LineC *l) {
   if (l->verdict < 0) {
     l->verdict = nJudged < MAXJUDGED ? lineJudge(l->sw, l->n, 0) : 0; nJudged++;
     l->hollow = l->verdict ? LNO[10] : 1 << 20;
+    l->conv = l->verdict ? LNO[2] - LNA[2] : 0;
     // A BREAK PRESSED ONCE THE BOARD HAS SETTLED: a break needs garbage at
     // rest beside the match, and a press made while the slab still lands
     // matches beside it in vain. The last press then waits for every block.
     if (l->brk && (l->verdict & LV_PAYS) && !(l->verdict & LV_BREAKS) && nJudged < MAXJUDGED) {
       int v = lineJudge(l->sw, l->n, 1); nJudged++;
-      if (v & LV_BREAKS) { l->verdict = v; l->waitAll = 1; l->hollow = LNO[10]; }
+      if (v & LV_BREAKS) { l->verdict = v; l->waitAll = 1; l->hollow = LNO[10]; l->conv = LNO[2] - LNA[2]; }
     }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
@@ -2153,6 +2154,30 @@ static LineC *bestLine(int need, int (*ok)(const LineC *)) { return bestLineAvoi
 // A line that lives: of the first LIVINGS that do, by rank, the one that
 // drops no garbage at rest and leaves the least hollow under what lands.
 #define LIVINGS 12
+// THE BREAK THAT TAKES THE MOST. Of the first LIVINGS breaks that live, by
+// rank, the one that converts the most garbage on the engine -- a pile broken
+// whole, not its bottom slab with the rest left propped above a gap.
+static LineC *bestBreak(void) {
+  static unsigned char taken[MAXLINES];
+  const int need = LV_LIVES | LV_BREAKS;
+  LineC *pick = 0;
+  for (int i = 0; i < nLines; i++) taken[i] = 0;
+  for (int found = 0; found < LIVINGS;) {
+    int at = -1;
+    for (int i = 0; i < nLines; i++) {
+      LineC *l = &LINES[i];
+      if (taken[i] || (l->verdict >= 0 && (l->verdict & need) != need)) continue;
+      if (at < 0 || lineBefore(l, &LINES[at])) at = i;
+    }
+    if (at < 0) break;
+    taken[at] = 1;
+    LineC *l = &LINES[at];
+    if ((judged(l) & need) != need) continue;
+    found++;
+    if (!pick || l->conv > pick->conv) pick = l;
+  }
+  return pick;
+}
 static LineC *bestLiving(int (*ok)(const LineC *)) {
   static unsigned char taken[MAXLINES];
   const int need = LV_LIVES | LV_GAINS;
@@ -2273,7 +2298,7 @@ static Dec breakFirst(Dec d) {
     for (int i = 0; i < nLines; i++) { if (LINES[i].grown) g++; if (LINES[i].verdict != 0) live++; }
     fprintf(stderr, "BREAKFIRST lines %d grown %d open %d k %g\n", nLines, g, live, timeLeft()); }
 #endif
-  LineC *l = bestLine(LV_LIVES | LV_BREAKS, 0);
+  LineC *l = bestBreak();
   if (!l) return d;
   lineLast = 3;
   plansDrop();
