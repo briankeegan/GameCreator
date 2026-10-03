@@ -1,7 +1,7 @@
 (function (root, factory) {
     if (typeof module === 'object' && module.exports) {
         var path = require('path');
-        require(path.join(__dirname, '..', '..', 'panel-engine.js'));
+        require(path.join(__dirname, '..', '..', 'pa-engine.js'));
         require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
         module.exports = factory(require('./bitmatch.js'), require('./bitfeatures.js'),
                                  require('./bitlineup.js'), require('./travel.js'),
@@ -17,7 +17,16 @@
 
     function G() { return (typeof window !== 'undefined' ? window : globalThis); }
     function PanelCpu() { return G().PanelCpu; }
-    function PanelEngine() { return G().PanelEngine; }
+    // The server's level-10 rules (pa-engine.js): rise speed per level, and the
+    // stop-time and pop timings bitfeatures.js prices with.
+    var RULES = null;
+    function rules() {
+        if (RULES) return RULES;
+        var PA = G().PAEngine || require('../../pa-engine.js'), s = PA.game({ level: 10 });
+        RULES = { riseTime: PA.riseTime, LEVELS: [] };
+        RULES.LEVELS[9] = { frames: s.frames, stop: s.levelData.stop };
+        return RULES;
+    }
 
     var STARTER = {
         bumpiness: -20, spread: -10, tallest: -40,
@@ -50,11 +59,11 @@
     var C_DECISIONS = COUNTS.length, C_BYMODE = C_DECISIONS + 1;
 
     function framesPerRow(s) {
-        var e = PanelEngine();
+        var e = rules();
         return e.riseTime ? e.riseTime(s.speed) * 16 : 0;
     }
     function framesToNextRow(s) {
-        var e = PanelEngine();
+        var e = rules();
         if (!e.riseTime) return Infinity;
         var perPixel = e.riseTime(s.speed);
         var disp = s.displacement === undefined ? 16 : s.displacement;
@@ -149,7 +158,7 @@
     }
 
     BitBot.prototype.table = function () {
-        var e = PanelEngine(), tab = new Array(T.SIZE).fill(0), i, j, keys = BF.keys(), w = this.weights;
+        var e = rules(), tab = new Array(T.SIZE).fill(0), i, j, keys = BF.keys(), w = this.weights;
         for (i = 0; i < 99; i++) tab[T.RISE + i] = e.riseTime(i + 1);
         for (i = 0; i < 100; i++) {
             var pieces = e.comboGarbage(i) || [], cells = 0;
@@ -673,10 +682,10 @@
         var toppedOut = !!info.toppedOut;
         t.stopPrice = function (res) {
             var isChain = res.chain >= 2;
-            return BF.stopTimeOf(PanelEngine(), isChain, isChain ? 0 : (isChain ? res.chain : res.total),
+            return BF.stopTimeOf(rules(), isChain, isChain ? 0 : (isChain ? res.chain : res.total),
                                  isChain ? res.chain : 0, toppedOut);
         };
-        t.resolve = function (size, garbage) { return BF.resolveFramesOf(PanelEngine(), size, garbage); };
+        t.resolve = function (size, garbage) { return BF.resolveFramesOf(rules(), size, garbage); };
         if (info.toppedOut) t.lock = P[b + 2];
         return t;
     };

@@ -19,7 +19,6 @@
 // STARTER IS STILL ISLAND 0, as the control: a round where it wins is a round
 // that has measured nothing.
 var path = require('path');
-require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
 var duels = require('./duels.js');
 var BF = require('./bitfeatures.js');

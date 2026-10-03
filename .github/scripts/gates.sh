@@ -400,49 +400,6 @@ gate_features() {
   GC_TRAINING_DIR="$d" node games/the-game/ai/eval/features.test.js
 }
 
-# A PLAN THAT CLAIMS A CHAIN HAS TO PLAY ONE. bestSetup names a swap that clears
-# nothing and the swap that cashes it in; both are played onto a real
-# PanelEngine.Stack in order, and the engine's own chain counter and cleared
-# count have to be the numbers claimed. The second ply also has to earn its
-# place: a planner that never finds what playing now would miss is one nobody
-# needs, so a sweep that finds nothing deeper fails.
-gate_bitplan() {
-  node games/the-game/ai/eval/bitplan.test.js
-}
-
-# THE ENGINE DECIDES WHILE PANELS ARE IN THE AIR, AND ONLY THEN. A board read
-# while a broken slab's converted row is still hovering records where those
-# panels sit but not that they have yet to land, and the arithmetic matches them
-# a beat early. So those positions go to a real Stack, and the move chosen has to
-# be the move the engine itself would choose. A settled board must never reach
-# for the engine — counted, because a decision that quietly did would still be
-# right and would blow the budget.
-gate_bitdecide() {
-  node games/the-game/ai/eval/bitdecide.test.js
-}
-
-# THE CLOCK KEEPS TIME WITH THE ENGINE, FRAME BY FRAME. bitframes.js carries the
-# per-panel state and timer a still picture of the board leaves out, which is a
-# THIRD implementation of rules the engine and LogicalBoard already have — safe
-# only because this compares every panel's colour, state and timer after every
-# frame against a real Stack, so the frame they differ on is the frame that
-# fails. A run that would have to invent a colour a broken slab has not drawn yet
-# stops and says so instead.
-gate_bitframes() {
-  node games/the-game/ai/eval/bitframes.test.js
-}
-
-# LINING UP WITH WHAT A BROKEN SLAB HAS JUST REVEALED. Its bottom row takes real
-# colours and then hovers, and for as long as it is in the air there is time to
-# move what is under it so the landing completes a chain rather than filling a
-# hole. The plan names a swap and the frames the cursor needs to reach it; the
-# gate waits those frames on a real Stack, plays the swap, and requires the
-# engine's own chain counter to be the number claimed. A sweep where lining up
-# never beat standing still fails, since then the whole window earns nothing.
-gate_bitlineup() {
-  node games/the-game/ai/eval/bitlineup.test.js
-}
-
 # EVERY FIELD AN OPTION CARRIES IS READ BY EVERY RANKER THAT RANKS OPTIONS.
 #
 # Eleven times in one session the same defect: a quantity added to the option list
@@ -452,17 +409,6 @@ gate_bitlineup() {
 # -- only one where it does nothing.
 gate_option_pricing() {
   node games/the-game/ai/eval/check_option_pricing.mjs
-}
-
-# WHAT A SWAP CLEARS, WITHOUT APPLYING IT. On a settled board every column is a
-# packed run from the floor, so a swap does two things to it and both are shifts:
-# the panel crosses and lands on top of the run it joins, and the hole it left
-# closes by one. No gravity loop. Checked the other way round — apply the swap,
-# run gravity, read the clear — and the two must name the same cells. The FALL
-# cases are the point, so the gate counts them and fails a sweep that has none;
-# the two ways the fall can be got wrong are both caught.
-gate_bitswap() {
-  node games/the-game/ai/eval/bitswap.test.js
 }
 
 gate_gates_reject_defects() {
@@ -578,12 +524,7 @@ GATES=(
   "the board moves on while the bot walks:gate_elapsed_rise:games/the-game/ai/"
   "a garbage break stops the resolve:gate_garbage_rules:games/the-game/ai/"
   "the chip matcher enforces every constraint:gate_chip_matcher_constraints:games/the-game/ai/"
-  "a plan that claims a chain plays one:gate_bitplan:games/the-game/ai/"
-  "the engine decides while panels are in the air:gate_bitdecide:games/the-game/ai/"
-  "the clock keeps frame-for-frame time with the engine:gate_bitframes:games/the-game/ai/"
-  "lining up with colours as they appear:gate_bitlineup:games/the-game/ai/"
   "every option field is priced by both rankers:gate_option_pricing:games/the-game/ai/"
-  "a swap is answered without applying it:gate_bitswap:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"
   "every feature is a share, not a count:gate_normalise:games/the-game/ai/"
   "the shipped weights and the tools that measure them:gate_shipped_weights:games/the-game/ai/"

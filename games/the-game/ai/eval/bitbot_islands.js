@@ -25,7 +25,6 @@
 // measures nothing and the seed is what makes the repeat possible.
 var fs = require('fs');
 var path = require('path');
-require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
 var duels = require('./duels.js');
 var BF = require('./bitfeatures.js');
