@@ -2048,14 +2048,20 @@ static void nearestFirst(const int32_t *sw, int stride, int n, int cr, int cc, i
 #else
   nfNoOrder = 0;
 #endif
-  int dirOf[256];
+  // one integer each: the moves, the direction, the index -- sorted as integers
+  uint32_t key[256];
   for (int k = 0; k < n; k++) {
     int r = sw[stride * k], c = sw[stride * k + 1];
-    double f = travelCost(cr, cc, r, c);
-    int dr = r > cr ? 0 : c > cc ? 1 : c < cc ? 2 : 3, j = k;
-    dirOf[k] = dr;
-    while (!nfNoOrder && j > 0 && (far[j - 1] > f || (far[j - 1] == f && dirOf[ord[j - 1]] > dr))) { far[j] = far[j - 1]; ord[j] = ord[j - 1]; j--; }
-    far[j] = f; ord[j] = k;
+    uint32_t t = (uint32_t)travelCost(cr, cc, r, c);
+    uint32_t dr = r > cr ? 0 : c > cc ? 1 : c < cc ? 2 : 3;
+    uint32_t x = nfNoOrder ? (uint32_t)k : (t << 10) | (dr << 8) | (uint32_t)k;
+    int j = k;
+    while (j > 0 && key[j - 1] > x) { key[j] = key[j - 1]; j--; }
+    key[j] = x;
+  }
+  for (int k = 0; k < n; k++) {
+    int i = (int)(key[k] & 0xff);
+    ord[k] = i; far[k] = travelCost(cr, cc, sw[stride * i], sw[stride * i + 1]);
   }
 }
 // a before b among equals: by the swaps themselves, so no answer depends on the order found
@@ -2659,19 +2665,34 @@ static Dec breakFirst(Dec d) {
 // A BREAK KEPT IN REACH.
 static ST KB[KEEPDEPTH + 1], KBA;
 static int32_t KBR[R_INTS + ST_INTS], KBSW[KEEPDEPTH][2 * 128];
-static int breakAt(int d, int depth) {
-  int n = legal(KB[d], KBSW[d]);
-  for (int i = 0; i < n; i++) {
+// A BREAK WITHIN k SWAPS of a resolved board, by the one search: out from
+// the cursor (where the last swap leaves it), the last swap decided on the
+// grid where nothing can clear, and each board's answer kept -- it is the
+// board's alone, whichever way it was reached and in whichever decision.
+#define BWN 16384
+static u64 BWK[BWN]; static uint8_t BWV[BWN];
+static int breakAt(int d, int depth, int cr, int cc) {
+  int k = depth - d;
+  u64 key = (hashOf(KB[d]) ^ (0x9E3779B97F4A7C15ull * (u64)k)) | 1;
+  unsigned slot = (unsigned)(key & (BWN - 1));
+  if (BWK[slot] == key) return BWV[slot];
+  int n = legal(KB[d], KBSW[d]), i, found = 0, cut = 0, haveLq = 0;
+  Out o; double far;
+  outBegin(&o, KBSW[d], 2, n, cr, cc);
+  while (!found && outNext(&o, &i, &far)) {
     int r = KBSW[d][2 * i], c = KBSW[d][2 * i + 1];
+    if (k == 1 && (haveLq || (leafGrid(KB[d]), haveLq = 1)) && leafQuiet(r, c)) continue;
     stcpy(KB[d + 1], KB[d]);
     if (!swapIn(KB[d + 1], r, c)) continue;
     resolve(KB[d + 1], KBR, 1);
-    if (KBR[R_SCOPE] == SC_BROKE) return 1;
-    if (KBR[R_SCOPE] != SC_OK || d + 1 >= depth) continue;
+    if (KBR[R_SCOPE] == SC_REFUSED) { cut = 1; break; }
+    if (KBR[R_SCOPE] == SC_BROKE) { found = 1; break; }
+    if (KBR[R_SCOPE] != SC_OK || k <= 1) continue;
     stcpy(KB[d + 1], KBR + R_INTS);
-    if (breakAt(d + 1, depth)) return 1;
+    if (breakAt(d + 1, depth, r, c)) found = 1;
   }
-  return 0;
+  if (!cut) { BWK[slot] = key; BWV[slot] = (uint8_t)found; }
+  return found;
 }
 // A break within `depth` swaps of the board st settles to (st breaking counts).
 static int breakWithin(const int32_t *st, int depth) {
@@ -2679,7 +2700,7 @@ static int breakWithin(const int32_t *st, int depth) {
   if (KBR[R_SCOPE] == SC_BROKE) return 1;
   if (KBR[R_SCOPE] != SC_OK) return 0;
   stcpy(KB[0], KBR + R_INTS);
-  return breakAt(0, depth);
+  return breakAt(0, depth, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
 }
 static int keepsBreak(int r, int c) {
   stcpy(KBA, DBASE);
