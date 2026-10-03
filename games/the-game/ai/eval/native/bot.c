@@ -3026,6 +3026,8 @@ static Dec breakSoon(Dec d) {
       int32_t sw[2] = { pl[2 * q], pl[2 * q + 1] };
       if (!(lineJudge(sw, 1, 0) & LV_LIVES)) continue;
       double time = LNO[0] ? LNO[0] : LINEHORIZON;
+      // its break comes no sooner than the walk to it: a margin that cannot reach the best is not searched
+      if (margin.has && time - far < margin.score) continue;
       double b = breakWithinT(sw, 1, margin.has ? (time > time - margin.score ? time : time - margin.score) : INF);
       if (b < INF) bestTake(&margin, time - b, 0, sw, 1);
     }

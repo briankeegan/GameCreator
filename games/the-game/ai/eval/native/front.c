@@ -586,7 +586,34 @@ int lineOnEngine(const int32_t *steps, int n, int horizon, int waitAll, int32_t 
 // the pairs the bot may target on it (swappable, settled), the cursor and the
 // frames it took. -1: a step refused, or the board lost health on the way.
 // landing: the board instead once the next slab has dropped and landed.
+static int lineStateRun(const int32_t *steps, int n, int landing, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t);
+// ONE REPLAY PER LINE PER DECISION: the board a line leaves depends only on
+// the line and this decision's board, so every search that replays it again
+// is answered from the first replay.
+#define LSMN 256
+typedef struct { int dec, n, landing, rc; int32_t sw[2 * LINEMAX], masks[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t wait[32][WMAX]; } LSMemo;
+static LSMemo LSM[LSMN];
 static int lineStateAt(const int32_t *steps, int n, int landing, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
+  if (n < 0 || n > LINEMAX) return lineStateRun(steps, n, landing, masks, can, wait, cur, t);
+  unsigned h = 2166136261u ^ (unsigned)(n * 7 + landing);
+  for (int k = 0; k < 2 * n; k++) h = (h ^ (unsigned)steps[k]) * 16777619u;
+  LSMemo *m = &LSM[h & (LSMN - 1)];
+  if (m->dec == btDecision && m->n == n && m->landing == landing && (n == 0 || !__builtin_memcmp(m->sw, steps, (unsigned long)n * 8))) {
+    __builtin_memcpy(masks, m->masks, sizeof m->masks); __builtin_memcpy(can, m->can, sizeof m->can);
+    __builtin_memcpy(wait, m->wait, sizeof m->wait); cur[0] = m->cur[0]; cur[1] = m->cur[1]; *t = m->t;
+    return m->rc;
+  }
+  int rc = lineStateRun(steps, n, landing, masks, can, wait, cur, t);
+  extern int paBudgetOut(void);
+  if (!paBudgetOut()) {
+    m->dec = btDecision; m->n = n; m->landing = landing; m->rc = rc;
+    for (int k = 0; k < 2 * n; k++) m->sw[k] = steps[k];
+    __builtin_memcpy(m->masks, masks, sizeof m->masks); __builtin_memcpy(m->can, can, sizeof m->can);
+    __builtin_memcpy(m->wait, wait, sizeof m->wait); m->cur[0] = cur[0]; m->cur[1] = cur[1]; m->t = *t;
+  }
+  return rc;
+}
+static int lineStateRun(const int32_t *steps, int n, int landing, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
   int32_t out[12];
   int rc = n > 0 || landing ? linePlay(steps, n, 400, landing ? 2 : 1, out) : (nb_copy(LNB ? LNB : (LNB = nb_new()), paLibBoard()), out[0] = 0, out[8] = 0, 1);
   if (rc != 1 || out[0]) return -1;
