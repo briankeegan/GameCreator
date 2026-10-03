@@ -10,7 +10,9 @@
 // default). Prints "f<frame> panels P garb G top T" every 250 frames and the
 // decisions taken since, then "died F" or "alive F".
 // GC_TRACE=F prints every decision from frame F on; GC_TAPE_OUT=file records
-// each frame's keys and swap press (two int32s).
+// each frame's keys and swap press (two int32s); GC_TAPE_IN=file with
+// GC_TAKEOVER=F plays a tape's keys and hands the board to the bot at frame F,
+// so a change is tried on the board an earlier bot reached.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -137,6 +139,14 @@ int main(int argc, char **argv) {
   int lead = argc > 5 ? atoi(argv[5]) : 150, cycle = argc > 6 ? atoi(argv[6]) : 950, len = argc > 7 ? atoi(argv[7]) : 50;
   int trace = getenv("GC_TRACE") ? atoi(getenv("GC_TRACE")) : -1;
   FILE *tape = getenv("GC_TAPE_OUT") ? fopen(getenv("GC_TAPE_OUT"), "wb") : 0;
+  int takeover = getenv("GC_TAKEOVER") ? atoi(getenv("GC_TAKEOVER")) : 0, nTape = 0;
+  static int32_t tapeIn[2 * 200000];
+  if (getenv("GC_TAPE_IN")) {
+    FILE *ti = fopen(getenv("GC_TAPE_IN"), "rb");
+    if (!ti) die("cannot read ", getenv("GC_TAPE_IN"));
+    nTape = (int)fread(tapeIn, 4, 2 * 200000, ti);
+    fclose(ti);
+  }
   Board *b = deal(argv[1]);
   if (b->startingSpeed != 32 || b->colors != 6) die("drills run at level 10 only", 0);
   int bot = front_new(b, 12, 1);
@@ -147,8 +157,15 @@ int main(int argc, char **argv) {
     if (b->stopWatchIsRunning && b->stopWatch >= lead + 1 && (b->stopWatch - lead - 1) % cycle < len)
       nb_receive(b, gw, gh, 0, 0, b->stopWatch, 1);
     feed(b);
-    int bits = front_frame(bot, b);
-    if (bits < 0) { fprintf(stderr, "drill: the bot failed at frame %d\n", f); return 2; }
+    int bits;
+    if (f < takeover) {
+      if (2 * f + 1 >= nTape) die("the tape ends before the takeover", 0);
+      bits = tapeIn[2 * f];
+      if (tapeIn[2 * f + 1]) b->pressSwap = 1;
+    } else {
+      bits = front_frame(bot, b);
+      if (bits < 0) { fprintf(stderr, "drill: the bot failed at frame %d\n", f); return 2; }
+    }
     b->input = bits;
     if (tape) { int32_t rec[2] = { bits, b->pressSwap }; fwrite(rec, 4, 2, tape); }
     int last = front_last(bot);
