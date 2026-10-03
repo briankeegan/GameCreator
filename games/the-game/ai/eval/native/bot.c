@@ -2614,7 +2614,16 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   nRes = 0; nOptRuns = 0; nOptDepth = 0; nScore = 0; nLook = 0; nSave = 0; rScore = rMain = rLook = rSave = rCand = 0;
   ENGINE_BASE = BIN[IN_HASPA] ? IN : 0;
   for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = c >= 1 && c < BW ? (uint32_t)BIN[IN_CANSWAP + c] : 0;
-  Dec d = onePlan(fillFirst(breakSoon(spendToBreak(batchBreak(lineupFirst(keepBreak(stayAlive(breakFirst(raiseHold(waitForDrain(playOn(decideRuled()))))))))))));
+  Dec base = decideRuled();
+  Dec d = onePlan(fillFirst(breakSoon(spendToBreak(batchBreak(lineupFirst(keepBreak(stayAlive(breakFirst(raiseHold(waitForDrain(playOn(base))))))))))));
+  // NO STAGE UNDOES ANOTHER'S WORK. A swap that takes the board back to one
+  // of the last it was decided on is a cycle, whichever stage chose it: its
+  // line is dropped and the ruled choice, which never returns, is played.
+  // Staying alive is the one thing a cycle may serve.
+  if (d.kind == K_SWAP && d.hasMove && lineLast != 2 && returnsToSeen(d.sr, d.sc)) {
+    BT->nLine = 0;
+    d = onePlan(base);
+  }
   ENGINE_BASE = 0;
   if (d.kind == K_SWAP && d.hasMove) {
     BT->recent[2] = BT->nRecent ? BT->recent[0] : 0; BT->recent[3] = BT->nRecent ? BT->recent[1] : 0;
