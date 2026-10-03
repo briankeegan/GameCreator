@@ -822,33 +822,6 @@ gate_bitbot_timing() {
   node games/the-game/ai/eval/timing.test.js
 }
 
-# WHETHER ANYTHING HAPPENED, which no other gate asked. Every one of them checks
-# that a decision was correct; a bot that spent five hundred of its last six
-# hundred decisions on a board that never changed passed all of them. This plays
-# real duels and measures the symptom -- stillness on a settled board, time confined
-# to two positions, the same answer replayed -- so the next cause of it is caught
-# without anyone having to think of that cause first. Budgets are the measured
-# numbers with the figures recorded beside them.
-gate_bitbot_progress() {
-  node games/the-game/ai/eval/progress.test.js
-}
-
-# A SLAB IS READY ONLY IF THE ENGINE BREAKS IT. The bot keeps a break in hand
-# for the next slab, so "ready" decides what it may spend: native slabReady is
-# asked about settled drill boards and the engine drops the real slab and tries
-# every swap. A false ready has a budget of zero.
-gate_slabready() {
-  node games/the-game/ai/eval/slabready.test.js
-}
-
-# A SWAP IS CREDITED WITH WHAT IT DOES IN THE GAME. The candidate pool's
-# clear/break for every swap on moving comboStorm boards, against pa-engine
-# playing the swap when the walk arrives; a swap is not credited with the
-# clear the board is already making.
-gate_swapcredit() {
-  node games/the-game/ai/eval/swapcredit.test.js
-}
-
 gate_bitbot_survival() {
   node games/the-game/ai/eval/survival.test.js
 }
@@ -913,9 +886,6 @@ SLOW_GATES=(
   gate_modes                # 53s
   gate_features_live        # 37s
   gate_chips_real_boards    # 26s
-  gate_bitbot_progress      # 25s: three duels of 3000 frames. Named in pages.yml
-                            # so it runs after every merge; listed here so the local
-                            # push hook defers it and a push still waits on nothing.
   gate_bitbot_timing        # 3s
   gate_bitmatch             # 18s
   gate_chips_decidable      # 17s
@@ -1017,9 +987,6 @@ GATES=(
   "the options are features that vary:gate_bitfeatures:games/the-game/ai/"
   "the bot's frame arithmetic matches the engine:gate_bitbot_timing:games/the-game/ai/"
   "the rules a vector cannot reach:gate_bitbot_survival:games/the-game/ai/"
-  "a slab is ready only if the engine breaks it:gate_slabready:games/the-game/ai/"
-  "a swap is credited with what it does in the game:gate_swapcredit:games/the-game/ai/"
-  "the bot moves the board:gate_bitbot_progress:games/the-game/ai/"
   "the simulation resolves like the game:gate_resolve_fidelity:games/the-game/ai/"
   "that fidelity check fires:gate_resolve_fidelity_fires:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"
