@@ -989,11 +989,28 @@ static int returnsToSeen(int r, int c) {
   return 0;
 }
 static double horizonOf(const Cand *c) { return dmax(c->moveFrames + REACT, BIN[IN_FPR]); }
+// WHERE THE NEXT SLAB LANDS, as a number to raise. It rests on the tallest of
+// its columns and touches only the cells under it at that height and the
+// cells beside it, so a break for it can only use those. More of them, then a
+// lower resting row, is a landing a break is easier to build under.
+static int landingOf(const int32_t *st) {
+  int w = (int)BIN[IN_SLABW], c0 = (int)BIN[IN_SLABC], c1 = c0 + w - 1, W = st[O_W], bottom = 0, touch = 0;
+  if (!w || !c0 || c1 > W) return 0;
+  for (int c = c0; c <= c1; c++) { int t = topRow(U(st, OCC + c)); if (t > bottom) bottom = t; }
+  for (int c = c0; c <= c1; c++) if (bottom && topRow(U(st, OCC + c)) == bottom) touch++;
+  if (c0 > 1 && topRow(U(st, OCC + c0 - 1)) > bottom) touch++;
+  if (c1 < W && topRow(U(st, OCC + c1 + 1)) > bottom) touch++;
+  return touch * 32 - bottom;
+}
 // A BREAK IN HAND IS KEPT. While slabs are queued and the next one would
-// land on a break, a swap that is not itself the break must leave one.
+// land on a break, a swap that is not itself the break must leave one; and no
+// swap but a break may make the next slab's landing worse.
 static int baseReady;
+static int baseLanding;
 static int unreadies(const Cand *pc) {
-  if (!baseReady || !pc || pc->kind != K_SWAP || pc->res.broke) return 0;
+  if (!pc || pc->kind != K_SWAP || pc->res.broke) return 0;
+  if (BIN[IN_INCOMING] > 0 && landingOf(pc->masks) < baseLanding) return 1;
+  if (!baseReady) return 0;
   return !slabReadyHook(pc->masks);
 }
 static int playable(int r, int c) {
@@ -1064,6 +1081,7 @@ static Dec decideCore(void) {
   for (int i = 0; i < nPool; i++) if (POOL[i].res.broke) { poolBreak = 1; break; }
   int topped = BIN[IN_TOPPED] != 0;
   baseReady = BIN[IN_INCOMING] > 0 && slabReadyHook(base);
+  baseLanding = landingOf(base);
   double dl2 = topped ? dmax(deadline, resolveFramesOf(3, 0)) : deadline;
   int lookDepth = (int)dmin(opt(O_MAXDEPTH), dmax(1, __builtin_floor(dl2 / (REACT > 1 ? REACT : 1))));
   lookDepthLog = lookDepth;
@@ -1579,10 +1597,9 @@ static double quietSettle(const int32_t *base, int r, int c, const int32_t *afte
   return fell > 0 ? 11 + fell : 5;
 }
 static Dec waitForDrain(Dec d) {
-  // The time left is the drain bound once topped, and the death clock before:
-  // a queue that will top the board leaves no more time than the stop.
-  double k = BIN[IN_TOPPED] ? BIN[IN_DRAINBOUND] : DDEADLINE;
-  if (!(k < INF)) return d;
+  // Topped only: before the board tops, stayAlive keeps the time.
+  if (!BIN[IN_TOPPED]) return d;
+  double k = BIN[IN_DRAINBOUND];
   int32_t *base = DBASE;
   int nc = 0;
   Cand *picked = 0;
@@ -1620,7 +1637,7 @@ static Dec waitForDrain(Dec d) {
   if (!picked && endsInBreak(d.via)) return d;
 #define HOLDAT(r, c) mkHold(V_AWAITDRAIN, d.mode, d.alive, 1, r, c)
   if (pr && pr->total > 0 && !pr->broke && picked->moveFrames + 1 <= k) {
-    if (!BIN[IN_TOPPED] || picked->moveFrames + 2 > k || !steady(picked->sr, picked->sc)) return d;
+    if (picked->moveFrames + 2 > k || !steady(picked->sr, picked->sc)) return d;
     BT->counts[C_WAITEDFORDRAIN]++;
     return HOLDAT(picked->sr, picked->sc);
   }
@@ -1686,8 +1703,33 @@ static uint8_t LIVE[40][WMAX], LIVE1[40][WMAX], LIVEB[40][WMAX];
 static double LIVET[40][WMAX];
 static int liveAny;
 static int cashes(const int32_t *r) { return r[R_TOTAL] > 0 || r[R_SCOPE] == SC_BROKE; }
+// A CLEAR LIVES IF THE NEXT ONE IS IN TIME. It holds the lock while it flashes
+// and pops, and earns stop on top; when both run out another clear must be
+// pressed, from the board it settles to, walking from where it was made.
+static ST CLA;
+static int32_t CLR[R_INTS + ST_INTS], CLS[2 * 128];
+static int clearLives(const Cand *pc, double k) {
+  const Rs *r = &pc->res;
+  int isCh = r->chain >= 2;
+  double lock = resolveFramesOf(r->total, 0) + stopTimeOf(isCh, isCh ? 0 : r->total, isCh ? r->chain : 0, BIN[IN_TOPPED] != 0);
+  double left = dmax(k, pc->moveFrames + lock) - pc->moveFrames - 2;
+  stcpy(CLA, pc->masks);
+  int n = legal(CLA, CLS);
+  for (int i = 0; i < n; i++) {
+    int r2 = CLS[2 * i], c2 = CLS[2 * i + 1];
+    if (travelCost(pc->sr, pc->sc, r2, c2) > left) continue;
+    if (!swapIn(CLA, r2, c2)) continue;
+    resolve(CLA, CLR, 0);
+    swapIn(CLA, r2, c2);
+    if (cashes(CLR)) return 1;
+  }
+  return 0;
+}
 static void livingSet(const int32_t *base, double left) {
   int cr = (int)BIN[IN_CROW], cc = (int)BIN[IN_CCOL];
+  // A press protects from the frame after it, and the drain falls on the
+  // bound's last frame: a line lives if its press comes two frames before.
+  left -= 2;
   memset(LIVE, 0, sizeof LIVE); memset(LIVE1, 0, sizeof LIVE1); memset(LIVEB, 0, sizeof LIVEB); liveAny = 0;
   stcpy(LVA, base);
   int n = legal(LVA, LVS);
@@ -1700,7 +1742,11 @@ static void livingSet(const int32_t *base, double left) {
     swapIn(LVA, r1, c1);
     int sc = LVR[R_SCOPE];
     if (sc != SC_OK && sc != SC_BROKE) continue;
-    if (cashes(LVR)) { LIVE[r1][c1] = LIVE1[r1][c1] = 1; LIVEB[r1][c1] = sc == SC_BROKE; LIVET[r1][c1] = t1; liveAny = 1; continue; }
+    if (cashes(LVR)) {
+      Cand *pc = sc == SC_BROKE ? 0 : poolSwap(r1, c1);
+      if (pc && !clearLives(pc, left + 2)) continue;
+      LIVE[r1][c1] = LIVE1[r1][c1] = 1; LIVEB[r1][c1] = sc == SC_BROKE; LIVET[r1][c1] = t1; liveAny = 1; continue;
+    }
     double settle = quietSettle(LVA, r1, c1, LVR + R_INTS);
     stcpy(LVB, LVR + R_INTS);
     int n2 = legal(LVB, LVS2);
@@ -1723,7 +1769,8 @@ static Dec stayAlive(Dec d) {
   if (!(k < LIVEHORIZON)) return d;
   if (d.kind == K_SWAP && d.hasMove) {
     Cand *pc = poolSwap(d.sr, d.sc);
-    if (pc && (pc->res.total > 0 || pc->res.broke) && pc->moveFrames <= k) return d;
+    if (pc && pc->res.broke && pc->moveFrames <= k) return d;
+    if (pc && pc->res.total > 0 && pc->moveFrames + 2 <= k && clearLives(pc, k)) return d;
   } else if (d.kind != K_HOLD) return d;
   livingSet(DBASE, k);
   if (!liveAny) return d;
