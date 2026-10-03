@@ -33,7 +33,7 @@
                FPR: 9, FTNR: 10, SPEED: 11, NEXTUP: 12, STARTSPEED: 13, CLOCK: 14, STACKCLOCK: 15, HASRISEN: 16,
                RAISEROOM: 17, INFLIGHT: 18, DRAINBOUND: 19, STACKTOPPED: 20, MOVING: 21, HASTIMED: 22,
                REVEALOPEN: 23, CONVN: 24, CONVTIMER: 25, BCROW: 26, BCCOL: 27, NLEGAL: 28, HASINROW: 29,
-               INROW: 30, HASLAST: 37, LASTR: 38, LASTC: 39, SETTLING: 40, HELD: 49, SF: 50, CONV: 60, LEGAL: 300, T: 560, SLABW: 590, SLABH: 591, SLABC: 592, INROWS: 593, POPLOW: 593, SIZE: 600 };
+               INROW: 30, HASLAST: 37, LASTR: 38, LASTC: 39, SETTLING: 40, LOCKLEFT: 47, HELD: 49, SF: 50, CONV: 60, LEGAL: 300, T: 560, SLABW: 590, SLABH: 591, SLABC: 592, INROWS: 593, POPLOW: 593, SIZE: 600 };
     var T = { RISE: 0, COMBO: 100, STOP: 200, LF: 210, W: 220, OPT: 250, SIZE: 270 };
     var KINDS = ['hold', 'raise', 'swap'], MODES = ['BUILD', 'DEFEND', 'ATTACK'];
     var VIAS = [null, 'raise:opening', 'raise:material', 'raising', 'readyFirst', 'awaitLanding', 'break',
@@ -249,6 +249,23 @@
         return (s.shakeTime || 0) > 0;
     };
 
+    // Frames until nothing holds the rise lock: a manual raise cannot start
+    // before then.
+    BitBot.prototype.lockLeft = function () {
+        var s = this.stack, k = s.shakeTime || 0, air = 0, active = (s.nActive || 0) > 0 || (s.nPrevActive || 0) > 0;
+        for (var r = 1; r <= s.height; r++) {
+            for (var c = 1; c <= W; c++) {
+                var p = s.panels[r][c];
+                if (p.color === 0) continue;
+                var busy = p.isGarbage ? p.state !== 'normal' : (p.state !== 'normal' && p.state !== 'landing');
+                if (!busy) continue;
+                active = true;
+                if ((p.timer || 0) > air) air = p.timer || 0;
+            }
+        }
+        return active ? Math.max(k, 1 + Math.max(1, air)) : k;
+    };
+
     BitBot.prototype.drainBound = function () {
         var s = this.stack, pre = s.preStopTime || 0, stop = s.stopTime || 0;
         var k = stop > 0 ? pre + stop : 1;
@@ -310,6 +327,7 @@
         d[b + IN.RAISEROOM] = (s.panels && s.height) ? this.raiseRoom() : 0;
         d[b + IN.INFLIGHT] = this.inFlight() ? 1 : 0;
         d[b + IN.DRAINBOUND] = info.toppedOut ? this.drainBound() : 0;
+        d[b + IN.LOCKLEFT] = this.lockLeft();
         var t = this._test;
         if (t) {
             d[b + IN.T] = (t.deadly ? 1 : 0) | (t.force ? 2 : 0) | (t.refuse ? 4 : 0) | (t.raise !== undefined ? 8 : 0) |
