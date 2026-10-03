@@ -2796,8 +2796,9 @@ static Dec breakFirst(Dec d) {
 }
 
 // A BREAK KEPT IN REACH.
-static ST KB[KEEPDEPTH + 1], KBA;
-static int32_t KBR[R_INTS + ST_INTS], KBSW[KEEPDEPTH][2 * 128];
+static ST KBA;
+static JLOCAL ST KB[KEEPDEPTH + 1];   // per thread: lineup readiness is asked in parallel
+static JLOCAL int32_t KBR[R_INTS + ST_INTS], KBSW[KEEPDEPTH][2 * 128];
 // A BREAK WITHIN k SWAPS of a resolved board, by the one search: out from
 // the cursor (where the last swap leaves it), the last swap decided on the
 // grid where nothing can clear, and each board's answer kept -- it is the
@@ -2825,7 +2826,7 @@ static int breakAt(int d, int depth, int cr, int cc) {
     stcpy(KB[d + 1], KBR + R_INTS);
     if (breakAt(d + 1, depth, r, c)) found = 1;
   }
-  if (!cut) { BWK[slot] = key; BWV[slot] = (uint8_t)found; }
+  if (!cut && !inWorker) { BWK[slot] = key; BWV[slot] = (uint8_t)found; }
   return found;
 }
 // A break within `depth` swaps of the board st settles to (st breaking counts).
@@ -2866,11 +2867,59 @@ static ST LUM;
 static int lineupLast;
 static int luStates, luRanks, luReady; static double luStateMs, luRankMs, luReadyMs;   // GC_WORKSTAT
 static int readyAfterIn(const int32_t *sw, int n);
-static int readyAfter(const int32_t *sw, int n) { double t0 = NOWMS2(); int v = readyAfterIn(sw, n); luReady++; luReadyMs += NOWMS2() - t0; return v; }
+static int maskBreaks(const int32_t *st, const int32_t *sw, int n);
+static void parallelDo(int count, void (*task)(int));
+// a lineup's readiness, once a decision: asked ahead in parallel (readyAhead), read here
+#define RAN 512
+typedef struct { int dec, n, v; int32_t sw[4]; } RAMemo;
+static RAMemo RAM[RAN];
+static RAMemo *raSlot(const int32_t *sw, int n) {
+  unsigned h = 2166136261u ^ (unsigned)n;
+  for (int k = 0; k < 2 * n; k++) h = (h ^ (unsigned)sw[k]) * 16777619u;
+  return &RAM[h & (RAN - 1)];
+}
+static int raFind(const int32_t *sw, int n, int *v) {
+  RAMemo *m = raSlot(sw, n);
+  if (m->dec != btDecision || m->n != n || __builtin_memcmp(m->sw, sw, (unsigned long)n * 8)) return 0;
+  *v = m->v; return 1;
+}
+static void raPut(const int32_t *sw, int n, int v) {
+  RAMemo *m = raSlot(sw, n);
+  m->dec = btDecision; m->n = n; m->v = v;
+  for (int k = 0; k < 2 * n; k++) m->sw[k] = sw[k];
+}
+static int readyAfter(const int32_t *sw, int n) {
+  int v;
+  if (n >= 1 && n <= 2 && raFind(sw, n, &v)) return v;
+  double t0 = NOWMS2(); v = readyAfterIn(sw, n); luReady++; luReadyMs += NOWMS2() - t0;
+  extern int paBudgetOut(void);
+  if (n >= 1 && n <= 2 && !paBudgetOut()) raPut(sw, n, v);
+  return v;
+}
 static int readyAfterIn(const int32_t *sw, int n) {
-  int32_t t;
-  if (lineLanded(sw, n, LUM, &t) != 0) return 0;
-  return breakWithin(LUM, 1);
+  int32_t t; ST lum;
+  if (lineLanded(sw, n, lum, &t) != 0) return 0;
+  return breakWithin(lum, 1);
+}
+// LINEUPS ASKED TOGETHER: before a batch of lineups is ranked one by one,
+// those whose rank will ask their readiness (the masks show no break, and
+// readiness could still rank them) are asked at once.
+static int32_t RAJ[16][4]; static int raJn, raJv[16];
+static void raTask(int k) { raJv[k] = readyAfterIn(RAJ[k], raJn); }
+static void readyAhead(const int32_t *st, const int32_t *lines, int count, int n) {
+  int jobs = 0, v;
+  for (int k = 0; k < count && jobs < 16; k++) {
+    const int32_t *sw = lines + 4 * k;
+    if (raFind(sw, n, &v) || maskBreaks(st, sw, n)) continue;
+    for (int i = 0; i < 2 * n; i++) RAJ[jobs][i] = sw[i];
+    jobs++;
+  }
+  if (jobs < 2) return;
+  raJn = n;
+  parallelDo(jobs, raTask);
+  extern int paBudgetOut(void);
+  if (paBudgetOut()) return;
+  for (int k = 0; k < jobs; k++) raPut(RAJ[k], n, raJv[k]);
 }
 // Where a lineup can matter: the rows up to the one the next slab lands on,
 // in its columns and one either side.
@@ -2930,12 +2979,24 @@ static Dec lineupFirst(Dec d) {
   int n = legal(st0, lg), i, j;
   Best B = { 0 };
   Out o0; double far;
+  // in cursor order: the first swaps that can line up, and their distances
+  int ord0[128], no0 = 0; double far0[128];
   outBegin(&o0, lg, 2, n, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
-  while (outNext(&o0, &i, &far)) {
-    if (outPast(&B, LUBEST, far)) break;
+  while (outNext(&o0, &i, &far) && no0 < 128) {
     int r = lg[2 * i], c = lg[2 * i + 1];
     if (r > 31 || !(can0[c] & (1u << (r - 1))) || !lineupNear(st0, r, c)) continue;
+    ord0[no0] = i; far0[no0] = far; no0++;
+  }
+  for (int p0 = 0; p0 < no0; p0++) {
+    i = ord0[p0]; far = far0[p0];
+    if (outPast(&B, LUBEST, far)) break;
+    int r = lg[2 * i], c = lg[2 * i + 1];
     int32_t sw[4] = { r, c, 0, 0 };
+    if ((!B.has || B.score <= 3) && !raFind(sw, 1, &j)) {   // this and the next, asked together
+      int32_t ls[8][4]; int nls = 0;
+      for (int q = p0; q < no0 && nls < 8; q++) { ls[nls][0] = lg[2 * ord0[q]]; ls[nls][1] = lg[2 * ord0[q] + 1]; ls[nls][2] = ls[nls][3] = 0; nls++; }
+      readyAhead(st0, &ls[0][0], nls, 1);
+    }
     double at = dmax(far, waits0[r][c]);
     // it counts only at a rank that wins: level with the best if it comes ahead of it, else above
     double rk0 = NOWMS2();
@@ -2953,12 +3014,24 @@ static Dec lineupFirst(Dec d) {
     if (lsr != 0) continue;
     int n1 = legal(st1, lg1);
     Out o1; double far1;
+    int ord1[128], no1 = 0; double fr1[128];
     outBegin(&o1, lg1, 2, n1, cur1[0], cur1[1]);   // from where the first swap leaves the cursor
-    while (outNext(&o1, &j, &far1)) {
-      if (outPast(&B, LUBEST, t1 + far1)) break;
+    while (outNext(&o1, &j, &far1) && no1 < 128) {
       int r2 = lg1[2 * j], c2 = lg1[2 * j + 1];
       if (r2 > 31 || !(can1[c2] & (1u << (r2 - 1))) || !lineupNear(st1, r2, c2)) continue;
+      ord1[no1] = j; fr1[no1] = far1; no1++;
+    }
+    for (int p1 = 0; p1 < no1; p1++) {
+      j = ord1[p1]; far1 = fr1[p1];
+      if (outPast(&B, LUBEST, t1 + far1)) break;
+      int r2 = lg1[2 * j], c2 = lg1[2 * j + 1];
       sw[2] = r2; sw[3] = c2;
+      int vv;
+      if ((!B.has || B.score <= 3) && !raFind(sw, 2, &vv)) {
+        int32_t ls[8][4]; int nls = 0;
+        for (int q = p1; q < no1 && nls < 8; q++) { ls[nls][0] = r; ls[nls][1] = c; ls[nls][2] = lg1[2 * ord1[q]]; ls[nls][3] = lg1[2 * ord1[q] + 1]; nls++; }
+        readyAhead(st0, &ls[0][0], nls, 2);
+      }
       double at2 = t1 + dmax(far1, waits1[r2][c2]);
       double rk1 = NOWMS2();
       int rank2 = lineupRank(st0, sw, 2, !B.has ? 0 : bestBeats(&B, B.score, at2, sw, 2) ? (int)B.score : (int)B.score + 1);
