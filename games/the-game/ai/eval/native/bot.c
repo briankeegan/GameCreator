@@ -628,6 +628,7 @@ static int haveRecIn(double *od, int i) { return od[7 + i] != 0; }
 
 static double OPTP[128];
 static int optsBuilt;
+static double saMs, moMs; static int saN;   // GC_WORKSTAT: scoring, the main option search
 static void buildOptions(const int32_t *base, double deadline, int lookDepth, int digging, double spend) {
   int topped = BIN[IN_TOPPED] != 0;
   timingParams(OPTP, BIN[IN_FPR], deadline, BIN[IN_STOP], topped);
@@ -643,7 +644,9 @@ static void mainOptions(const int32_t *base, double deadline, int lookDepth, int
   buildOptions(base, deadline, lookDepth, digging, 0);
   OD = ODATA; LD = LANDS;
   int r0 = nRes;
+  double mo0 = NOWMS2();
   if (optionsRun(base, OPTP, 0, 0)) botFailed = 1;
+  moMs += NOWMS2() - mo0;
   rMain += nRes - r0;
   nPile = pileOf(ODATA, PILE);
   optsBuilt = 1;
@@ -1162,7 +1165,9 @@ static void scoreTask(int i) { Cand *c = pool.cands[i]; pool.out[i] = score(c->m
 static void scoreAll(Cand **cs, int n, double *out, int idle, const int32_t *base) {
   if (idle) { for (int i = 0; i < n; i++) out[i] = idleScore(cs[i], base); return; }
   pool.cands = cs; pool.out = out;
+  double t0 = NOWMS2();
   parRun(1, n);
+  saMs += NOWMS2() - t0; saN += n;
 }
 typedef struct { Cand *c; double cheap; } Cheap;
 
@@ -3042,6 +3047,7 @@ static double breakTimeOf(const int32_t *steps, int n, double limit) {
 // each swap's soonest break within the horizon, one task a swap
 static const int32_t *bsPl; static double *bsB0;
 static void bsTask(int k) { bsB0[k] = breakWithinT(bsPl + 2 * k, 1, LINEHORIZON); }
+#define SOONBATCH 8   // swaps taken together, out from the cursor
 static Dec breakSoon(Dec d) {
   if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;
   if (lineLast == 2 || d.kind == K_RAISE || !BIN[IN_HASPA] || !hasGarbage(DBASE)) return d;
@@ -3069,28 +3075,39 @@ static Dec breakSoon(Dec d) {
   // each swap's soonest break within the horizon (a swap's time is no later):
   // one with none is never in time and is not judged; those with one are
   // judged together (prejudge), then taken as one by one
-  double b0[MAXCAND]; int32_t wb[2 * MAXCAND]; int nwb = 0;
-  double bs0 = NOWMS2();
-  prereplay(pl, pn);
-  double bsr = NOWMS2();
-  bsPl = pl; bsB0 = b0;
-  parallelDo(pn, bsTask);
-  for (int k = 0; k < pn; k++) if (b0[k] < INF) { wb[2 * nwb] = pl[2 * k]; wb[2 * nwb + 1] = pl[2 * k + 1]; nwb++; }
-  double bs1 = NOWMS2();
-  prejudge(wb, 2, nwb, 1, 0);
-  double bs2 = NOWMS2();
+  // OUT FROM THE CURSOR IN BATCHES: each batch's replays, break searches and
+  // judgements done together (in parallel natively), then taken one by one; a
+  // swap's break comes no sooner than the walk to it, so once the soonest in
+  // time is had, a batch all further out cannot win and the walk ends
+  double b0[MAXCAND];
+  for (int k = 0; k < pn; k++) b0[k] = INF;
+  int ordq[MAXCAND]; double ordf[MAXCAND], far0 = 0;
   outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
-  while (outNext(&o, &q, &far)) {
-    // a break after a swap comes no sooner than the walk to it
-    if (outPast(&inTime, -far, 0)) break;
-    int32_t sw[2] = { pl[2 * q], pl[2 * q + 1] };
-    double lim0 = inTime.has && -inTime.score < LINEHORIZON ? -inTime.score + 1e-9 : LINEHORIZON;
-    if (!(b0[q] < lim0)) continue;
-    if (!(lineJudge(sw, 1, 0) & LV_LIVES)) continue;
-    double time = LNO[0] ? LNO[0] : LINEHORIZON;
-    double lim = inTime.has && -inTime.score < time ? -inTime.score + 1e-9 : time;
-    double b = b0[q] < lim ? b0[q] : INF;
-    if (b < time) bestTake(&inTime, -b, 0, sw, 1);
+  int no = 0; while (outNext(&o, &q, &far0)) { ordq[no] = q; ordf[no] = far0; no++; }
+  double bs0 = NOWMS2(), bsr = bs0, bs1 = bs0, bs2 = bs0;
+  int done = 0;
+  for (int at = 0; at < no && !done; at += SOONBATCH) {
+    int end = at + SOONBATCH < no ? at + SOONBATCH : no;
+    if (outPast(&inTime, -ordf[at], 0)) break;
+    int32_t bl[2 * SOONBATCH], wb[2 * SOONBATCH]; int nb = 0, nwb = 0, bq[SOONBATCH];
+    for (int k = at; k < end; k++) { bq[nb] = ordq[k]; bl[2 * nb] = pl[2 * ordq[k]]; bl[2 * nb + 1] = pl[2 * ordq[k] + 1]; nb++; }
+    double tb[SOONBATCH];
+    prereplay(bl, nb); bsPl = bl; bsB0 = tb; parallelDo(nb, bsTask);
+    for (int k = 0; k < nb; k++) { b0[bq[k]] = tb[k]; if (tb[k] < INF) { wb[2 * nwb] = bl[2 * k]; wb[2 * nwb + 1] = bl[2 * k + 1]; nwb++; } }
+    prejudge(wb, 2, nwb, 1, 0);
+    for (int k = at; k < end; k++) {
+      q = ordq[k]; double far = ordf[k];
+      // a break after a swap comes no sooner than the walk to it
+      if (outPast(&inTime, -far, 0)) { done = 1; break; }
+      int32_t sw[2] = { pl[2 * q], pl[2 * q + 1] };
+      double lim0 = inTime.has && -inTime.score < LINEHORIZON ? -inTime.score + 1e-9 : LINEHORIZON;
+      if (!(b0[q] < lim0)) continue;
+      if (!(lineJudge(sw, 1, 0) & LV_LIVES)) continue;
+      double time = LNO[0] ? LNO[0] : LINEHORIZON;
+      double lim = inTime.has && -inTime.score < time ? -inTime.score + 1e-9 : time;
+      double b = b0[q] < lim ? b0[q] : INF;
+      if (b < time) bestTake(&inTime, -b, 0, sw, 1);
+    }
   }
 #ifndef __wasm__
   if (getenv("GC_WORKSTAT")) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SOONT prereplay %.2f breaks %.2f judge %.2f loop %.2f\n", bsr - bs0, bs1 - bsr, bs2 - bs1, NOWMS2() - bs2); btReplayMs = btSearchMs = 0; }
@@ -3325,7 +3342,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   }
 #ifndef __wasm__
   { extern char *getenv(const char *); extern int fprintf(void *, const char *, ...); extern void *stderr;
-    if (getenv("GC_WORKSTAT")) { fprintf(stderr, "STAGES%s pool %.3f", paBudgetOut() ? " OUT" : "", dcCandMs); for (int i = 0; i < k; i++) fprintf(stderr, " %.0f/%.3f/%d/%.3f", ws[i] - (i ? ws[i - 1] : w0), ts[i] - (i ? ts[i - 1] : t0), js[i] - (i ? js[i - 1] : 0), jm[i] - (i ? jm[i - 1] : 0)); fprintf(stderr, "\n"); } }
+    if (getenv("GC_WORKSTAT")) { fprintf(stderr, "STAGES%s pool %.3f", paBudgetOut() ? " OUT" : "", dcCandMs); fprintf(stderr, " SA %.3f %d MO %.3f", saMs, saN, moMs); saMs = moMs = 0; saN = 0; for (int i = 0; i < k; i++) fprintf(stderr, " %.0f/%.3f/%d/%.3f", ws[i] - (i ? ws[i - 1] : w0), ts[i] - (i ? ts[i - 1] : t0), js[i] - (i ? js[i - 1] : 0), jm[i] - (i ? jm[i - 1] : 0)); fprintf(stderr, "\n"); } }
 #endif
   ENGINE_BASE = 0;
   if (d.kind == K_SWAP && d.hasMove) {
