@@ -2008,18 +2008,26 @@ static int lineBefore(const LineC *a, const LineC *b) {
   if (a->n != b->n) return a->n < b->n;
   return a->est < b->est;
 }
-static LineC *bestLine(int need, int (*ok)(const LineC *)) {
+// The first line, by rank, the engine finds does all of `need` and none of `avoid`.
+static LineC *bestLineAvoid(int need, int avoid, int (*ok)(const LineC *)) {
   for (int i = 0; i < nLines; i++) LINES[i].ok = !ok || ok(&LINES[i]);
   for (;;) {
     LineC *cand = 0;
     for (int i = 0; i < nLines; i++) {
       LineC *l = &LINES[i];
-      if (!l->ok || (l->verdict >= 0 && (l->verdict & need) != need)) continue;
+      if (!l->ok || (l->verdict >= 0 && ((l->verdict & need) != need || (l->verdict & avoid)))) continue;
       if (!cand || lineBefore(l, cand)) cand = l;
     }
     if (!cand) return 0;
-    if ((judged(cand) & need) == need) return cand;
+    int v = judged(cand);
+    if ((v & need) == need && !(v & avoid)) return cand;
   }
+}
+static LineC *bestLine(int need, int (*ok)(const LineC *)) { return bestLineAvoid(need, 0, ok); }
+// A line that lives, one that leaves the garbage at rest first.
+static LineC *bestLiving(int (*ok)(const LineC *)) {
+  LineC *l = bestLineAvoid(LV_LIVES | LV_GAINS, LV_DROPS, ok);
+  return l ? l : bestLine(LV_LIVES | LV_GAINS, ok);
 }
 static void lineKeep(const LineC *l, int kind) {
   for (int k = 0; k < 2 * l->n; k++) BT->line[k] = l->sw[k];
@@ -2079,7 +2087,7 @@ static Dec stayAlive(Dec d) {
   linesFind(2, 0);
   if (d.kind == K_SWAP) {
     dR = d.sr; dC = d.sc;
-    LineC *mine = bestLine(LV_LIVES | LV_GAINS, fromChoice);
+    LineC *mine = bestLineAvoid(LV_LIVES | LV_GAINS, LV_DROPS, fromChoice);
     if (mine) { if (mine->n > 1) lineKeep(mine, LINE_CASH); return d; }
   } else {
     // a hold lives while a paying line can still be started after it
@@ -2087,7 +2095,7 @@ static Dec stayAlive(Dec d) {
     for (int i = 0; i < nLines; i++)
       if (LINES[i].est + wait <= k - 2 && (judged(&LINES[i]) & (LV_LIVES | LV_GAINS)) == (LV_LIVES | LV_GAINS)) return d;
   }
-  LineC *l = bestLine(LV_LIVES | LV_GAINS, notLastSwap);
+  LineC *l = bestLiving(notLastSwap);
   if (!l) return d;
   lineLast = 2;
   BT->counts[C_KEPTHEALTH]++;
