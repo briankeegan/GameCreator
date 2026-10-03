@@ -297,6 +297,7 @@ Match.prototype.frame = function (truth, arrivals, fresh) {
   var wall = Date.now();
   if (this.wall) this.msPerFrame += (Math.min(100, wall - this.wall) - this.msPerFrame) / 60;
   this.wall = wall;
+  var T = this.parts = [process.hrtime.bigint()];
   if (this.expect && (d = differ(this.expect, truth))) {
     // Not the board predicted (a key that never reached the game, a row
     // come up): every plan and question made before is void -- but a swap
@@ -318,6 +319,7 @@ Match.prototype.frame = function (truth, arrivals, fresh) {
   // was made without them, while there is still time to line up under the
   // panels before they drop. They are void, and the next question is asked
   // on the board as it is now.
+  T.push(process.hrtime.bigint());
   if (!d && this.expect && revealed(this.expect, truth)) {
     if (pending) Atomics.store(ABORT, 0, pending.id);
     this.epoch++; this.plan = {}; this.nextAt = 0; this.line = null; pending = null; this.acted = false;
@@ -336,11 +338,14 @@ Match.prototype.frame = function (truth, arrivals, fresh) {
     this.stats.unforeseen++;
   }
   if (pending && SH.unforeseen(pending.knew, arrivals).some(function (a) { return a.at + off <= pending.at; })) { Atomics.store(ABORT, 0, pending.id); pending = null; this.acted = false; this.stats.reasked++; }
+  T.push(process.hrtime.bigint());
   this.take(truth);
+  T.push(process.hrtime.bigint());
   var planned = this.plan[now];
   var bits;
   if (planned) { bits = planned.bits; this.hold = { left: planned.hold.left, started: planned.hold.started }; delete this.plan[now]; }
   else { var id = HANDS.idle(truth, this.hold, arrivals); bits = id.bits; this.hold = id.hold; this.stats.idle++; }
+  T.push(process.hrtime.bigint());
   if (process.env.GC_SURVIVOR_DUMP) this.record(truth, bits, arrivals);
   this.made = { truth: truth, bits: bits, arrivals: arrivals, fresh: fresh };   // what the frame makes, worked out after the reply (expectNext)
   this.expect = null;
@@ -482,7 +487,7 @@ var server = net.createServer(function (sock) {
         if (rms > 8) {
           match.stats.slowReplies = (match.stats.slowReplies || 0) + 1;
           var ms = function (a, b) { return (Number(b - a) / 1e6).toFixed(1); };
-          console.error('slow reply ' + rms.toFixed(1) + ' ms at ' + match.now + ': parse ' + ms(tp, tParse) + ', board ' + ms(tParse, tBoard) + ', keys ' + ms(tBoard, process.hrtime.bigint()) + ', gc so far ' + GC.slow);
+          console.error('slow reply ' + rms.toFixed(1) + ' ms at ' + match.now + ': parse ' + ms(tp, tParse) + ', board ' + ms(tParse, tBoard) + ', keys ' + ms(tBoard, process.hrtime.bigint()) + ' (differ ' + ms(match.parts[0], match.parts[1]) + ', checks ' + ms(match.parts[1], match.parts[2]) + ', take ' + ms(match.parts[2], match.parts[3]) + ', idle ' + ms(match.parts[3], match.parts[4]) + '), gc so far ' + GC.slow);
         }
         match.afterFrame();
         // A frame's time here, the answer and the question after it, is what
