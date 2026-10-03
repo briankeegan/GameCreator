@@ -2063,6 +2063,46 @@ static int swapsBefore(const int32_t *a, const int32_t *b, int n) {
   for (int k = 0; k < 2 * n; k++) if (a[k] != b[k]) return a[k] < b[k];
   return 0;
 }
+// ONE SEARCH, EVERY SEARCH. The candidates are walked out from the cursor
+// (outBegin / outNext, in nearestFirst's order); the best is kept by one
+// order -- the higher score, then the sooner time, then the swaps
+// (bestTake); and the walk ends once nothing at this distance or beyond can
+// win (outPast: a candidate is never sooner than the walk to it, and no
+// better than `most`). Each search says only how it scores.
+typedef struct { int ord[256]; double far[256]; int n, k; } Out;
+static void outBegin(Out *o, const int32_t *sw, int stride, int n, int cr, int cc) {
+  if (n > 256) n = 256;
+  nearestFirst(sw, stride, n, cr, cc, o->ord, o->far);
+  o->n = n; o->k = 0;
+}
+static int outNext(Out *o, int *i, double *far) {
+  if (o->k >= o->n) return 0;
+  *i = o->ord[o->k]; *far = o->far[o->k]; o->k++;
+  return 1;
+}
+typedef struct { int has, n; double score, t; int32_t sw[2 * LINEMAX]; } Best;
+static int swapsBeforeN(const int32_t *a, int na, const int32_t *b, int nb) {
+  for (int k = 0; k < 2 * na && k < 2 * nb; k++) if (a[k] != b[k]) return a[k] < b[k];
+  return na < nb;
+}
+// would (score, t, sw) win over the best kept
+static int bestBeats(const Best *b, double score, double t, const int32_t *sw, int n) {
+  if (!b->has) return 1;
+  if (score != b->score) return score > b->score;
+  if (t != b->t) return t < b->t;
+  return swapsBeforeN(sw, n, b->sw, b->n);
+}
+static int bestTake(Best *b, double score, double t, const int32_t *sw, int n) {
+  if (!bestBeats(b, score, t, sw, n)) return 0;
+  b->has = 1; b->score = score; b->t = t; b->n = n;
+  for (int k = 0; k < 2 * n; k++) b->sw[k] = sw[k];
+  return 1;
+}
+// nothing arriving at `t` or later, scoring at most `most`, can win
+static int outPast(const Best *b, double most, double t) {
+  if (nfNoOrder || !b->has) return 0;
+  return most < b->score || (most == b->score && t > b->t);
+}
 // LAST-LEVEL RESULTS BY BOARD, as the option search keeps its children: on a
 // resolved board a swap's outcome depends on the board and the swap alone, so
 // it is worked out once -- whichever order of swaps reaches the board, and in
@@ -2083,14 +2123,12 @@ static void linesAt(int d, int pr, int pc, double t, double limit) {
   int haveLq = 0;
   // OUT FROM THE CURSOR: nearest first, so the first that cannot be reached in
   // time ends the level -- every one after it is further
-  int ord[128]; double far[128];
-  if (n > 128) n = 128;
-  nearestFirst(LSW[d], 2, n, pr, pc, ord, far);
+  Out o; double far; int i;
+  outBegin(&o, LSW[d], 2, n, pr, pc);
   int noOrder = nfNoOrder;
-  for (int oi = 0; oi < n && (tTimeMode || nLines < MAXLINES); oi++) {
-    int i = ord[oi];
+  while ((tTimeMode || nLines < MAXLINES) && outNext(&o, &i, &far)) {
     int r = LSW[d][2 * i], c = LSW[d][2 * i + 1];
-    double at = t + far[oi];
+    double at = t + far;
     if (at > limit) { if (noOrder) continue; break; }
     if (nPfx + d + 1 == 3 && pfxT + at > lsRing) { if (noOrder) continue; break; }
     if (tTimeMode && pfxT + at >= tTimeMin) { if (noOrder) continue; break; }
@@ -2732,29 +2770,24 @@ static Dec lineupFirst(Dec d) {
   uint32_t can0[WMAX];
   uint8_t waits0[32][WMAX];
   if (lineState(0, 0, st0, can0, waits0, cur, &t) != 0) return d;
-  int32_t lg[2 * 128], best[4] = { 0 }, bestN = 0;
+  int32_t lg[2 * 128];
   luStates = luRanks = luReady = 0; luStateMs = luRankMs = luReadyMs = 0;
-  int n = legal(st0, lg), bestRank = 0;
-  double bestT = INF;
-  int ord0[128]; double far0[128];
-  if (n > 128) n = 128;
-  nearestFirst(lg, 2, n, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], ord0, far0);
-  for (int oi = 0; oi < n; oi++) {
-    int i = ord0[oi];
+  int n = legal(st0, lg), i, j;
+  Best B = { 0 };
+  Out o0; double far;
+  outBegin(&o0, lg, 2, n, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
+  while (outNext(&o0, &i, &far)) {
+    if (outPast(&B, LUBEST, far)) break;
     int r = lg[2 * i], c = lg[2 * i + 1];
-    // the best rank had, a swap no sooner -- and every one after it, further out -- cannot win
-    if (bestRank >= LUBEST && far0[oi] > bestT && !nfNoOrder) break;
     if (r > 31 || !(can0[c] & (1u << (r - 1))) || !lineupNear(st0, r, c)) continue;
     int32_t sw[4] = { r, c, 0, 0 };
-    double at = dmax(far0[oi], waits0[r][c]);
-    // no sooner than the best (or level with it, after it by its swaps), it must rank higher to count
-    int ahead = at < bestT || (at == bestT && swapsBefore(sw, best, bestN > 1 ? 2 : 1));
+    double at = dmax(far, waits0[r][c]);
+    // it counts only at a rank that wins: level with the best if it comes ahead of it, else above
     double rk0 = NOWMS2();
-    int rank = lineupRank(st0, sw, 1, ahead ? bestRank : bestRank + 1);
+    int rank = lineupRank(st0, sw, 1, !B.has ? 0 : bestBeats(&B, B.score, at, sw, 1) ? (int)B.score : (int)B.score + 1);
     luRanks++; luRankMs += NOWMS2() - rk0;
-    if (rank > bestRank || (rank && rank == bestRank && ahead)) { bestRank = rank; bestT = at; bestN = 1; best[0] = r; best[1] = c; best[2] = best[3] = 0; }
-    if (rank >= 4) continue;
-    if (bestRank >= LUBEST && at > bestT) continue;   // a second swap comes later still: it cannot win
+    if (rank) bestTake(&B, rank, at, sw, 1);
+    if (rank >= 4 || outPast(&B, LUBEST, at)) continue;   // a second swap comes later still
     // a second swap, on the board the engine reaches after the first
     int32_t st1[ST_INTS], cur1[2], t1, lg1[2 * 128];
     uint32_t can1[WMAX];
@@ -2763,38 +2796,34 @@ static Dec lineupFirst(Dec d) {
     int lsr = lineState(sw, 1, st1, can1, waits1, cur1, &t1);
     luStates++; luStateMs += NOWMS2() - ls0;
     if (lsr != 0) continue;
-    int n1 = legal(st1, lg1), ord1[128]; double far1[128];
-    if (n1 > 128) n1 = 128;
-    nearestFirst(lg1, 2, n1, cur1[0], cur1[1], ord1, far1);   // from where the first swap leaves the cursor
-    for (int oj = 0; oj < n1; oj++) {
-      int j = ord1[oj];
+    int n1 = legal(st1, lg1);
+    Out o1; double far1;
+    outBegin(&o1, lg1, 2, n1, cur1[0], cur1[1]);   // from where the first swap leaves the cursor
+    while (outNext(&o1, &j, &far1)) {
+      if (outPast(&B, LUBEST, t1 + far1)) break;
       int r2 = lg1[2 * j], c2 = lg1[2 * j + 1];
-      if (bestRank >= LUBEST && t1 + far1[oj] > bestT && !nfNoOrder) break;
       if (r2 > 31 || !(can1[c2] & (1u << (r2 - 1))) || !lineupNear(st1, r2, c2)) continue;
       sw[2] = r2; sw[3] = c2;
-      double at2 = t1 + dmax(far1[oj], waits1[r2][c2]);
-      int ahead2 = at2 < bestT || (at2 == bestT && swapsBefore(sw, best, 2));
+      double at2 = t1 + dmax(far1, waits1[r2][c2]);
       double rk1 = NOWMS2();
-      int rank2 = lineupRank(st0, sw, 2, ahead2 ? bestRank : bestRank + 1);
+      int rank2 = lineupRank(st0, sw, 2, !B.has ? 0 : bestBeats(&B, B.score, at2, sw, 2) ? (int)B.score : (int)B.score + 1);
       luRanks++; luRankMs += NOWMS2() - rk1;
-      if (rank2 > bestRank || (rank2 && rank2 == bestRank && ahead2)) {
-        bestRank = rank2; bestT = at2; bestN = 2; best[0] = r; best[1] = c; best[2] = r2; best[3] = c2;
-      }
+      if (rank2) bestTake(&B, rank2, at2, sw, 2);
     }
   }
 #ifndef __wasm__
   if (getenv("GC_WORKSTAT")) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "LINEUP states %d %.2f ms | ranks %d %.2f ms (ready %d %.2f ms) | first %d\n", luStates, luStateMs, luRanks, luRankMs, luReady, luReadyMs, n); }
 #endif
-  if (!bestN) return d;
-  if (bestN == 1 && d.kind == K_SWAP && d.hasMove && d.sr == best[0] && d.sc == best[1]) return d;
+  if (!B.has) return d;
+  if (B.n == 1 && d.kind == K_SWAP && d.hasMove && d.sr == B.sw[0] && d.sc == B.sw[1]) return d;
   // the masks propose the lineup, the engine judges it, as every line
-  if (!(lineJudge(best, bestN, 0) & LV_LIVES)) return d;
-  lineupLast = bestRank;
+  if (!(lineJudge(B.sw, B.n, 0) & LV_LIVES)) return d;
+  lineupLast = (int)B.score;
   lineLast = 5;
   plansDrop();
   BT->nLine = 0;
-  if (bestN == 2) { for (int k = 0; k < 4; k++) BT->line[k] = best[k]; BT->nLine = 2; BT->lineKind = LINE_PLAN; BT->lineWaitAll = 0; }
-  return mkSwap(best[0], best[1], V_LINEUP, d.mode, d.alive);
+  if (B.n == 2) { for (int k = 0; k < 4; k++) BT->line[k] = B.sw[k]; BT->nLine = 2; BT->lineKind = LINE_PLAN; BT->lineWaitAll = 0; }
+  return mkSwap(B.sw[0], B.sw[1], V_LINEUP, d.mode, d.alive);
 }
 // BREAK WHEN IT PAYS. A match beside a pile converts the whole pile, so a
 // pile let grow while there is room turns one match into many panels. A
@@ -2927,24 +2956,25 @@ static Dec breakSoon(Dec d) {
       if (breakTime(sw, 1) < time) return d;
     }
   }
-  int pr = 0, pc = 0, mr = 0, mc = 0;
-  double best = INF, bestMargin = -INF;
-  int32_t pl[2 * MAXCAND]; int pn = 0, po[MAXCAND]; double pf[MAXCAND];
-  for (int q = 0; q < nPool && pn < MAXCAND; q++) if (POOL[q].kind == K_SWAP) { pl[2 * pn] = POOL[q].sr; pl[2 * pn + 1] = POOL[q].sc; pn++; }
-  nearestFirst(pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], po, pf);
-  for (int oq = 0; oq < pn; oq++) {
-    int32_t sw[2] = { pl[2 * po[oq]], pl[2 * po[oq] + 1] };
-    // a break after a swap comes no sooner than the walk to it: past the
-    // soonest in time, nothing further out can be chosen
-    if (pr && pf[oq] > best && !nfNoOrder) break;
+  // in time: the soonest break (score -b); else the most margin (score time - b)
+  Best inTime = { 0 }, margin = { 0 };
+  int32_t pl[2 * MAXCAND]; int pn = 0, q;
+  for (int k = 0; k < nPool && pn < MAXCAND; k++) if (POOL[k].kind == K_SWAP) { pl[2 * pn] = POOL[k].sr; pl[2 * pn + 1] = POOL[k].sc; pn++; }
+  Out o; double far;
+  outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
+  while (outNext(&o, &q, &far)) {
+    // a break after a swap comes no sooner than the walk to it
+    if (outPast(&inTime, -far, 0)) break;
+    int32_t sw[2] = { pl[2 * q], pl[2 * q + 1] };
     if (!(lineJudge(sw, 1, 0) & LV_LIVES)) continue;
     double time = LNO[0] ? LNO[0] : LINEHORIZON;
     // only a break before this can be chosen: in time, or a better margin
-    double b = breakWithinT(sw, 1, bestMargin > -INF ? (time > time - bestMargin ? time : time - bestMargin) : INF);
-    int32_t pb[2] = { pr, pc }, mb[2] = { mr, mc };
-    if (b < time && (b < best || (b == best && swapsBefore(sw, pb, 1)))) { best = b; pr = sw[0]; pc = sw[1]; }
-    if (b < INF && (time - b > bestMargin || (time - b == bestMargin && swapsBefore(sw, mb, 1)))) { bestMargin = time - b; mr = sw[0]; mc = sw[1]; }
+    double b = breakWithinT(sw, 1, margin.has ? (time > time - margin.score ? time : time - margin.score) : INF);
+    if (b < time) bestTake(&inTime, -b, 0, sw, 1);
+    if (b < INF) bestTake(&margin, time - b, 0, sw, 1);
   }
+  int pr = inTime.has ? inTime.sw[0] : 0, pc = inTime.has ? inTime.sw[1] : 0, mr = margin.has ? margin.sw[0] : 0, mc = margin.has ? margin.sw[1] : 0;
+  double best = inTime.has ? -inTime.score : INF, bestMargin = margin.has ? margin.score : -INF;
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SOON! in-time %d,%d at %g | margin %d,%d %g\n", pr, pc, best, mr, mc, bestMargin); }
 #endif
@@ -3006,28 +3036,31 @@ static Dec fillFirstIn(Dec d) {
   if (need > 0) need = 0;   // in time is in time
   Cand *pick = 0;
   int surplus = materialRows(DBASE) >= 6;   // over six rows a clear may be spent to fill
-  int32_t fl[2 * MAXCAND]; int fn = 0, fo[MAXCAND], fq[MAXCAND]; double ff[MAXCAND];
-  for (int q = 0; q < nPool && fn < MAXCAND; q++) if (POOL[q].kind == K_SWAP) { fl[2 * fn] = POOL[q].sr; fl[2 * fn + 1] = POOL[q].sc; fq[fn++] = q; }
-  nearestFirst(fl, 2, fn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], fo, ff);
-  for (int oq = 0; oq < fn; oq++) {
-    Cand *pc = &POOL[fq[fo[oq]]];
+  // the pool: the least hollow (score -hollow), then the shortest walk, then the swaps;
+  // nothing counts that does not leave less than the choice or the board alone
+  Best P = { 0 };
+  int32_t fl[2 * MAXCAND]; int fn = 0, fq[MAXCAND], q;
+  for (int k = 0; k < nPool && fn < MAXCAND; k++) if (POOL[k].kind == K_SWAP) { fl[2 * fn] = POOL[k].sr; fl[2 * fn + 1] = POOL[k].sc; fq[fn++] = k; }
+  Out o; double far;
+  outBegin(&o, fl, 2, fn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
+  while (outNext(&o, &q, &far)) {
+    Cand *pc = &POOL[fq[q]];
     if (pc->res.total > 0 && !surplus) continue;
     int32_t sw[2] = { pc->sr, pc->sc };
     int v = lineJudge(sw, 1, 0);
     if (!(v & LV_LIVES) || ((v & LV_DROPS) && !(v & LV_FILLS)) || ((v & LV_PAYS) && !surplus)) continue;
-    int32_t pk[2] = { pick ? pick->sr : 0, pick ? pick->sc : 0 };
-    if (!(LNO[10] < best || (pick && LNO[10] == best && (pc->moveFrames < pick->moveFrames ||
-          (pc->moveFrames == pick->moveFrames && swapsBefore(sw, pk, 1)))))) continue;
     int h = LNO[10];
+    if (P.has ? !bestBeats(&P, -h, pc->moveFrames, sw, 1) : h >= best) continue;
     if (!fillKeeps(marginWithin(sw, 1, LNO[0], need), need)) continue;
-    best = h; pick = pc;
+    bestTake(&P, -h, pc->moveFrames, sw, 1); pick = pc;
   }
+  if (P.has) best = (int)-P.score;
   // the top of every column walked along its row, a column a swap, until it
   // drops into a lower column or meets something it cannot pass
   // the walk is planned on the board the engine settles to: a clear under a
   // column moves its top before the cursor gets there
   int32_t fsw[2 * LINEMAX], first[2] = { 0, 0 };
-  double fest = 0;
+  Best W = { 0 };
   { int32_t st0[ST_INTS], cur[2], t; uint32_t can0[WMAX]; uint8_t waits0[32][WMAX];
     tGrid(lineState(0, 0, st0, can0, waits0, cur, &t) == 0 ? st0 : DBASE); }
 #ifndef __wasm__
@@ -3055,15 +3088,15 @@ static Dec fillFirstIn(Dec d) {
 #endif
       if (!(v & LV_LIVES) || (v & LV_PAYS) || ((v & LV_DROPS) && !(v & LV_FILLS))) continue;
       double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
-      if (LNO[10] < best || ((pick || first[0]) && LNO[10] == best && (est < fest || (est == fest && first[0] && swapsBefore(fsw, first, 1))))) {
-        int h = LNO[10];
-        if (!fillKeeps(marginWithin(fsw, n, LNO[0], need), need)) continue;
-        best = h; pick = 0; first[0] = fsw[0]; first[1] = fsw[1]; fest = est;
-      }
+      // a walk must leave less than the pool's best; among walks, the same order (time: its estimate)
+      int h = LNO[10];
+      if (W.has ? !bestBeats(&W, -h, est, fsw, n) : h >= best) continue;
+      if (!fillKeeps(marginWithin(fsw, n, LNO[0], need), need)) continue;
+      bestTake(&W, -h, est, fsw, n); first[0] = fsw[0]; first[1] = fsw[1];
     }
   }
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "FILL! best %d walk %d,%d pool %d,%d\n", best, first[0], first[1], pick ? pick->sr : 0, pick ? pick->sc : 0); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "FILL! best %d walk %d,%d pool %d,%d\n", W.has ? (int)-W.score : best, first[0], first[1], pick ? pick->sr : 0, pick ? pick->sc : 0); }
 #endif
   if (first[0]) return mkSwap(first[0], first[1], V_FILL, d.mode, d.alive);
   if (!pick) return d;
