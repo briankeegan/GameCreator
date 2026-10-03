@@ -167,7 +167,23 @@
     if (err) throw new Error('Native: board does not fit the engine (err ' + err + ')');
     return h;
   }
-  function wire(st) { paWire(st); }
+  // THE ENGINE'S ROOM (pa.h, as pa.wasm is built): rows, garbage queued,
+  // swap stalls, landed ids. The io body has room for that much and no more,
+  // so a board past it is never written: queued garbage past the room keeps
+  // the pieces that drop soonest (the queue drops from its end); anything
+  // else past it is refused.
+  var ROOM = { rows: 48, inc: 256, stall: 64, landed: 16 };
+  function fit(st) {
+    if (st.panels.length > ROOM.rows) refuse('rows', st.panels.length);
+    if (st.swapStallBacklog.length > ROOM.stall) refuse('swapStallBacklog', st.swapStallBacklog.length);
+    if (st.garbageLandedThisFrame.length > ROOM.landed) refuse('garbageLandedThisFrame', st.garbageLandedThisFrame.length);
+    if (st.incoming.length <= ROOM.inc) return st;
+    var o = Object.create(Object.getPrototypeOf(st));
+    for (var k in st) if (Object.prototype.hasOwnProperty.call(st, k)) o[k] = st[k];
+    o.incoming = st.incoming.slice(st.incoming.length - ROOM.inc);
+    return o;
+  }
+  function wire(st) { paWire(fit(st)); }
   function bodyLen(st) {
     return st.panels.length * W * PA_FIELDS.length + 6 * st.incoming.length + 5 * st.swapStallBacklog.length +
            st.garbageLandedThisFrame.length + 6;
