@@ -2026,7 +2026,10 @@ static int tWalk(int *row, int r, int s, int t, int32_t *sw, int *n) {
   }
   return 1;
 }
+// tDistMode: the search only measures -- the fewest swaps of any break it finds.
+static int tDistMode, tDistMin;
 static void tPropose(const int32_t *sw, int n, int cr, int cc, double t0, double limit) {
+  if (tDistMode) { if (n >= 1 && n < tDistMin) tDistMin = n; return; }
   if (n < 1 || nLines >= MAXLINES) return;
   for (int i = 0; i < nLines; i++)
     if (LINES[i].n == n && !__builtin_memcmp(LINES[i].sw, sw, (unsigned long)n * 8)) return;
@@ -2469,7 +2472,18 @@ static Dec fillBeforeBreak(Dec d) {
   if (!pr) return d;
   return mkSwap(pr, pc, V_FILL, d.mode, d.alive);
 }
+// The fewest swaps to a break on the board `steps` leave, as the front would
+// play them (99: none within LINEMAX).
+static int breakDistance(const int32_t *steps, int n) {
+  int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t w[32][WMAX];
+  if (lineState(steps, n, st, can, w, cur, &t) != 0) return 99;
+  tDistMode = 1; tDistMin = 99;
+  targetLines(st, cur[0], cur[1], 0, INF);
+  tDistMode = 0;
+  return tDistMin;
+}
 static Dec fillFirst(Dec d) {
+  { volatile int probe_ = breakDistance(0, 0); (void)probe_; }   // EXPERIMENT: measuring alone
   if (d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
   if (lineLast == 1 || lineLast == 3) return BT->lineKind == LINE_BREAK || lineLast == 3 ? fillBeforeBreak(d) : d;
   if (lineLast) return d;
