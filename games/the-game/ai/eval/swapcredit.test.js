@@ -8,10 +8,10 @@
 // would arrive -- against the same board left alone. A swap clears in the game
 // if it adds cleared cells or a garbage hit.
 //
-// Budgets are the measured counts (seed 13, frames 300-2500, every 29th, 1812
-// swaps): 9 predicted clears the game does not make, among them slabs that
-// land and convert while the bot walks; 48 clears the game makes that the pool
-// misses. Both are discrepancies to drive to zero; the budget stops them
+// A board in motion is played on the server's engine itself (pa.c, linked into
+// the bot). Budgets are the measured counts (seed 13, frames 300-2500, every
+// 29th, 1843 swaps): 2 predicted clears the game does not make, 5 it makes
+// that the pool misses. Both are to be driven to zero; the budget stops them
 // growing.
 //
 // The check fires: credited with the board's own clear as well, as the pool
@@ -20,12 +20,15 @@ require('../../panel-engine.js'); require('../../panel-cpu.js');
 var BitBot = require('./bitbot.js'), bench = require('./bench.js');
 var PA = require('./pa-engine.js'), GEN = require('./pa-generator.js'), E = globalThis.PanelEngine;
 
-var SEED = 13, FROM = 300, TO = 2500, EVERY = 29, FALSE_BUDGET = 9, MISS_BUDGET = 48, MIN_SWAPS = 800;
+var SEED = 13, FROM = 300, TO = 2500, EVERY = 29, FALSE_BUDGET = 2, MISS_BUDGET = 5, MIN_SWAPS = 800;
 
 function played(s, r, c, at) {
     var t = s.copy(); t.incoming = []; t.health = 1e9; t.stopTime = 999; t.events = [];
     var cells = 0, hits = 0, pressed = !r;
-    for (var k = 0; k < 300; k++) {
+    // Until nothing moves, as the engine in the bot runs it: a chain can
+    // outlast any fixed window (one here ran to frame 339).
+    for (var k = 0; k < 900; k++) {
+        if (pressed && k > at + 5 && !t.hasActivePanels() && !t.swapQueued()) break;
         if (!pressed && k >= at) {
             t.curRow = r; t.curCol = c;
             if (!t.canSwap(r, c) || !t.tryQueueSwap(r, c)) return null;

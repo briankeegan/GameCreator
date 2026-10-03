@@ -1190,6 +1190,38 @@ EXPORT(nb_raise_state) int nb_raise_state(Board *b) { return (b->manualRaise ? 1
 static void cloneBoard(Board *dst, const Board *src) { copyBoard(dst, src); }
 EXPORT(nb_clone) void nb_clone(Board *dst, Board *src) { cloneBoard(dst, src); }
 
+#ifdef PA_LIB
+// THE ENGINE'S OWN ANSWER, for the bot (bot.c), which links this file in:
+// what a swap pressed at frame `at` does, against the board left alone, run
+// until nothing moves -- cells matched, garbage cells converted, clears, the
+// highest chain counter reached, the most stop one clear paid, and the frames
+// it took. The board the bot is deciding on is loaded into paLibBoard().
+static Board *PAB, *PAT;
+EXPORT(pa_lib_board) Board *paLibBoard(void) { if (!PAB) PAB = nb_new(); return PAB; }
+int paOutcome(int r, int c, int at, int horizon, int32_t *out) {
+  if (!PAB) return -1;
+  if (!PAT) PAT = nb_new();
+  copyBoard(PAT, PAB);
+  PAT->ninc = 0; PAT->health = 1 << 20; PAT->noQuiet = 1; PAT->quiet = 0;
+  PAT->sNCombo = PAT->sCleared = PAT->sBroke = PAT->sEarned = 0;
+  int pressed = r == 0, k, chain = 0;
+  int frames = horizon < 0 ? -horizon : horizon;
+  for (k = 0; k < frames; k++) {
+    if (!pressed && k >= at) {
+      if (!canSwap(PAT, r, c)) return -2;
+      PAT->curRow = r; PAT->curCol = c; tryQueueSwap(PAT, r, c); pressed = 1;
+    }
+    PAT->input = 0;
+    run(PAT);
+    if (PAT->err) return -3;
+    if (horizon > 0 && pressed && k > at + 5 && !PAT->nActive && !PAT->nPrevActive && !PAT->pressSwap) break;
+  }
+  for (int j = 0; j < PAT->sNCombo; j++) if (PAT->sChainAt[j] > chain) chain = PAT->sChainAt[j];
+  out[0] = PAT->sCleared; out[1] = PAT->sBroke; out[2] = PAT->sNCombo; out[3] = chain; out[4] = PAT->sEarned; out[5] = k;
+  return 0;
+}
+EXPORT(pa_outcome) int pa_outcome(int r, int c, int at, int horizon) { return paOutcome(r, c, at, horizon, ioBody); }
+#else
 // ---- what the search needs from this engine (search.h)
 #define KEY_COLOR(f) ((f)[ISGARBAGE] ? (SETB((f)[METAL]) ? 254 : 255) : ((f)[COLOR] & 255))
 #define SWAP_PRESSED 1
@@ -1214,3 +1246,5 @@ EXPORT(ns_step_stats) int ns_step_stats(Ctx *x, int i) {
 }
 // Garbage rows broken on node i's board since the game began (convertGarbagePanels).
 EXPORT(ns_breaks) int ns_breaks(Ctx *x, int i) { Board *b = ensureBoard(x, i); return b ? b->unseenBreaks : -1; }
+
+#endif

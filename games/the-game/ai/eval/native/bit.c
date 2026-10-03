@@ -20,6 +20,8 @@ static void *grab(unsigned long n) {
   __atomic_store_n(&heapLock, 0, __ATOMIC_RELEASE);
   return r;
 }
+// The server's engine (pa.c, linked in) takes its boards from this heap.
+void *paHeap(unsigned long n) { return grab(n); }
 
 #define WMAX 8
 #define NCOL 13

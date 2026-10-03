@@ -715,8 +715,17 @@
     return left;
   };
 
+  // A module that links this engine in (bit.wasm links pa.c): boards load
+  // into its memory through the same nb_ exports.
+  function bind(exports) {
+    if (X === exports) return Native;
+    X = exports; MEM = X.memory;
+    readNames();
+    return Native;
+  }
   var Native = {
     init: init,
+    bind: bind,
     initThreads: initThreads,
     threads: function () { return THREADS; },
     memoryBytes: function () { return MEM ? MEM.buffer.byteLength : 0; },

@@ -6,6 +6,12 @@
 // _Thread_local here. Memory is taken under a lock; each thread keeps its own
 // free boards (a list per thread, so the main thread can hand boards over
 // while the others wait).
+#ifdef PA_LIB
+// Linked into the bot (bit.c): one heap, the bot's.
+void *paHeap(unsigned long n);
+static unsigned long heapTop;
+static void *grab(unsigned long n) { return paHeap(n); }
+#else
 extern unsigned char __heap_base;
 static unsigned long heapTop;
 static int32_t heapLock;
@@ -22,6 +28,7 @@ static void *grab(unsigned long n) {
   __atomic_store_n(&heapLock, 0, __ATOMIC_RELEASE);
   return r;
 }
+#endif
 #define MAXTHREADS 16
 #ifdef THREADS
 #define LOCAL _Thread_local
