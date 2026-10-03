@@ -193,6 +193,8 @@ static void raiseStep(Bot *h, Board *st, int32_t *input) {
 #define STEP_DEAD (-2)
 #define STEP_ERR (-3)
 static LOCAL int32_t deadAt;   // the frame a STEP_DEAD died on
+static int32_t stepErr;   // the engine's err bits of the last step that failed on them (ns_step_err)
+EXPORT(ns_step_err) int ns_step_err(void) { int e = stepErr; stepErr = 0; return e; }
 #ifndef PUSH_ARRIVAL
 static void pushArrival(Board *b, const Arr *a) { nb_push_incoming(b, a->width, a->height, a->isChain, a->isMetal & 1); }
 #endif
@@ -240,7 +242,7 @@ static int advanceRest(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames,
 #define FRAME() do { if (tape) { if (tapeN >= tapeCap) GIVE(STEP_ERR); \
                         tape[3 * tapeN] = SENT_KEYS(st, input); tape[3 * tapeN + 1] = bot.raiseFrames; \
                         tape[3 * tapeN + 2] = bot.raiseStarted; tapeN++; } \
-                      int over_ = runFrame(st, arr, &narr, input, &f, due); if (st->err) GIVE(STEP_ERR); \
+                      int over_ = runFrame(st, arr, &narr, input, &f, due); if (st->err) { stepErr = st->err; GIVE(STEP_ERR); } \
                       if (SWAP_PRESSED && swapping && st->swapDenied) GIVE(STEP_NULL); \
                       if (over_) { deadAt = t0 + f; STAT(kind & 7) += f; STAT(8 + (kind & 7))++; GIVE(STEP_DEAD); } } while (0)
   if (REFUSED || (bot.w.active && bot.w.retries)) GIVE(STEP_NULL);
