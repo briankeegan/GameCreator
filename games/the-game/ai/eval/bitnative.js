@@ -304,8 +304,15 @@
     engine.fromStack(paStack, ex.pa_lib_board());
     return true;
   }
+  // What the linked engine says a swap at (r, c) pressed at frame `at` does
+  // to the loaded board (r = 0: the board left alone).
+  function engineOutcome(r, c, at, horizon) {
+    var rc = ex.pa_outcome(r, c, at, horizon || 600);
+    var o = new Int32Array(MEMORY.buffer, ex.nb_io_body() >>> 0, 6);
+    return rc ? null : { cells: o[0], converted: o[1], clears: o[2], chain: o[3], stop: o[4], frames: o[5] };
+  }
   function slabReady(st, w, h, c) { put(st); return ex.bit_slab_ready(w, h, c) !== 0; }
-  return { record: record, recorded: recorded, replay: replay, _checkbf: checkbf, slabReady: slabReady, loadEngine: loadEngine, fits: fits, resolve: resolve, resolveTimed: resolveTimed, scan: scan, load: load, options: options,
+  return { record: record, recorded: recorded, replay: replay, _checkbf: checkbf, slabReady: slabReady, loadEngine: loadEngine, engineOutcome: engineOutcome, fits: fits, resolve: resolve, resolveTimed: resolveTimed, scan: scan, load: load, options: options,
            botNew: botNew, botIn: botIn, botStates: botStates, botDecide: botDecide, botTab: botTab, botPut: botPut, botTest: botTest,
            botPoolMasks: botPoolMasks, deadlyCalls: deadlyCalls, opening: opening, putRecords: putRecords };
 }));

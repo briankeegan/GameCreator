@@ -1205,7 +1205,8 @@ int paOutcome(int r, int c, int at, int horizon, int32_t *out) {
   PAT->ninc = 0; PAT->health = 1 << 20; PAT->noQuiet = 1; PAT->quiet = 0;
   PAT->sNCombo = PAT->sCleared = PAT->sBroke = PAT->sEarned = 0;
   int pressed = r == 0, k, chain = 0;
-  for (k = 0; k < horizon; k++) {
+  int frames = horizon < 0 ? -horizon : horizon;
+  for (k = 0; k < frames; k++) {
     if (!pressed && k >= at) {
       if (!canSwap(PAT, r, c)) return -2;
       PAT->curRow = r; PAT->curCol = c; tryQueueSwap(PAT, r, c); pressed = 1;
@@ -1213,7 +1214,7 @@ int paOutcome(int r, int c, int at, int horizon, int32_t *out) {
     PAT->input = 0;
     run(PAT);
     if (PAT->err) return -3;
-    if (pressed && k > at + 5 && !PAT->nActive && !PAT->nPrevActive && !PAT->pressSwap) break;
+    if (horizon > 0 && pressed && k > at + 5 && !PAT->nActive && !PAT->nPrevActive && !PAT->pressSwap) break;
   }
   for (int j = 0; j < PAT->sNCombo; j++) if (PAT->sChainAt[j] > chain) chain = PAT->sChainAt[j];
   out[0] = PAT->sCleared; out[1] = PAT->sBroke; out[2] = PAT->sNCombo; out[3] = chain; out[4] = PAT->sEarned; out[5] = k;
