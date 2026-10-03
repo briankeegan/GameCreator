@@ -69,6 +69,10 @@ EXPORT(nb_new) Board *nb_new(void) {
 EXPORT(nb_free) void nb_free(Board *b) { *(Board **)b = freeOf(thId); freeOf(thId) = b; freeCount(thId)++; }
 // Spare boards on thread k's list; k = -1: the heap's top, in 64 KiB pages; k = -2: SPARES.
 EXPORT(nb_pool_stat) int nb_pool_stat(int k) { return k == -2 ? spareCount : k < 0 ? (int)(heapTop >> 16) : k < MAXTHREADS ? freeCount(k) : 0; }
+#ifdef COPY_BOARD
+static void copyBoard(Board *dst, const Board *src) { COPY_BOARD(dst, src); }
+#else
 static void copyBoard(Board *dst, const Board *src) { memcpy(dst, src, BOARD_BYTES(src)); }
+#endif
 EXPORT(nb_copy) void nb_copy(Board *dst, Board *src) { copyBoard(dst, src); }
 

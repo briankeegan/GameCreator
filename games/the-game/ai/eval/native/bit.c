@@ -5,6 +5,7 @@ typedef unsigned long long u64;
 #else
 #define LOCAL
 #endif
+#ifdef __wasm__
 extern unsigned char __heap_base;
 static unsigned long heapTop;
 static int32_t heapLock;
@@ -20,6 +21,11 @@ static void *grab(unsigned long n) {
   __atomic_store_n(&heapLock, 0, __ATOMIC_RELEASE);
   return r;
 }
+#else
+// Native (the drill, drill.c): the system's allocator, which never frees.
+void *malloc(unsigned long n);
+static void *grab(unsigned long n) { return malloc((n + 15) & ~15ul); }
+#endif
 // The server's engine (pa.c, linked in) takes its boards from this heap.
 void *paHeap(unsigned long n) { return grab(n); }
 
@@ -28,8 +34,8 @@ void *paHeap(unsigned long n) { return grab(n); }
 #define MAXSLAB 24
 #define MAXD 24
 enum { O_W = 0, O_H, O_N, O_NSLAB, O_BUSYF, O_BAD,
-       OCC = 8, INERT = 16, GARB = 24, BUSY = 32, COL = 40,
-       SLAB = COL + NCOL * WMAX, SL = WMAX + 2, ST_INTS = SLAB + MAXSLAB * SL };
+       OCC = 8, INERT = 16, GARB = 24, BUSY = 32, SCOL = 40,
+       SLAB = SCOL + NCOL * WMAX, SL = WMAX + 2, ST_INTS = SLAB + MAXSLAB * SL };
 #define SM(i, c) (SLAB + (i) * SL + (c))
 #define SLK(i) (SLAB + (i) * SL + WMAX)
 #define SAIR(i) (SLAB + (i) * SL + WMAX + 1)
@@ -49,7 +55,7 @@ static inline int topRow(uint32_t x) { return x ? 32 - __builtin_clz(x) : 0; }
 static inline int stlen(const int32_t *s) { return SLAB + s[O_NSLAB] * SL; }
 static void stcpy(int32_t *d, const int32_t *s) { __builtin_memcpy(d, s, (unsigned long)stlen(s) * 4); }
 #define U(st, i) ((uint32_t)(st)[i])
-#define CL(st, a, c) U(st, COL + (a) * WMAX + (c))
+#define CL(st, a, c) U(st, SCOL + (a) * WMAX + (c))
 
 typedef struct {
   int W, H, N, nslab;
@@ -147,7 +153,7 @@ static void load(R *s, const int32_t *st) {
     s->occ[c] = U(st, OCC + c); s->inert[c] = U(st, INERT + c); s->garb[c] = U(st, GARB + c);
     s->chaining[c] = 0; s->popping[c] = 0;
   }
-  __builtin_memcpy(s->colour, st + COL, (unsigned long)(s->N + 1) * WMAX * 4);
+  __builtin_memcpy(s->colour, st + SCOL, (unsigned long)(s->N + 1) * WMAX * 4);
   for (int i = 0; i < s->nslab; i++) {
     for (int c = 0; c < WMAX; c++) s->slab[i][c] = U(st, SM(i, c));
     s->locked[i] = st[SLK(i)]; s->air[i] = 0;
@@ -157,7 +163,7 @@ static void save(R *s, int32_t *o) {
   __builtin_memset(o, 0, SLAB * 4);
   o[O_W] = s->W; o[O_H] = s->H; o[O_N] = s->N;
   for (int c = 0; c < WMAX; c++) { o[OCC + c] = s->occ[c]; o[INERT + c] = s->inert[c]; o[GARB + c] = s->garb[c]; }
-  __builtin_memcpy(o + COL + WMAX, s->colour[1], (unsigned long)s->N * WMAX * 4);
+  __builtin_memcpy(o + SCOL + WMAX, s->colour[1], (unsigned long)s->N * WMAX * 4);
   int n = 0;
   for (int i = 0; i < s->nslab; i++) {
     int any = 0;
@@ -425,8 +431,8 @@ static int swapIn(int32_t *st, int r, int c) {
   if ((U(st, INERT + c) & b) || (U(st, INERT + o) & b)) return 0;
   if (st[O_BUSYF] && ((U(st, BUSY + c) | U(st, BUSY + o)) & b)) return 0;
   int left = colourLast(st, c, b), right = colourLast(st, o, b);
-  if (left) { st[COL + left * WMAX + c] &= ~b; st[COL + left * WMAX + o] |= b; }
-  if (right) { st[COL + right * WMAX + o] &= ~b; st[COL + right * WMAX + c] |= b; }
+  if (left) { st[SCOL + left * WMAX + c] &= ~b; st[SCOL + left * WMAX + o] |= b; }
+  if (right) { st[SCOL + right * WMAX + o] &= ~b; st[SCOL + right * WMAX + c] |= b; }
   if (left) st[OCC + o] |= b; else st[OCC + o] &= ~b;
   if (right) st[OCC + c] |= b; else st[OCC + c] &= ~b;
   return 1;
@@ -558,7 +564,7 @@ static void reachMask(const int32_t *st, uint32_t *out) {
   v8u inW = (v8u)(cols >= 1) & (v8u)(cols <= (uint32_t)W), ge1 = (v8u)(cols >= 1), leW = (v8u)(cols <= (uint32_t)W);
   for (int a = 1; a <= st[O_N]; a++) {
     v8u B;
-    __builtin_memcpy(&B, st + COL + a * WMAX, sizeof(B));
+    __builtin_memcpy(&B, st + SCOL + a * WMAX, sizeof(B));
     v8u Bm = B & inW;
     v8u vp = Bm & (Bm >> 1);
     acc |= vp | (vp >> 1) | (vp << 2);
@@ -698,7 +704,7 @@ static u64 hashOf(const int32_t *st) {
 #define MX(h, v) (h = (h ^ (uint32_t)(v)) * 1099511628211ull)
   MX(h0, W); MX(h1, st[O_H]); MX(h2, N); MX(h3, st[O_BAD]); MX(h0, st[O_BUSYF]);
   for (c = 0; c <= W + 1; c++) { MX(h1, st[OCC + c]); MX(h2, st[INERT + c]); MX(h3, st[GARB + c]); if (st[O_BUSYF]) MX(h0, st[BUSY + c]); }
-  for (a = 1; a <= N; a++) for (c = 0; c <= W + 1; c += 2) { MX(h0, st[COL + a * WMAX + c]); MX(h1, st[COL + a * WMAX + c + 1]); }
+  for (a = 1; a <= N; a++) for (c = 0; c <= W + 1; c += 2) { MX(h0, st[SCOL + a * WMAX + c]); MX(h1, st[SCOL + a * WMAX + c + 1]); }
   MX(h2, st[O_NSLAB]);
   for (i = 0; i < st[O_NSLAB]; i++) { for (c = 0; c <= W + 1; c++) MX(h3, st[SM(i, c)]); MX(h2, st[SLK(i)]); }
 #undef MX
@@ -899,8 +905,8 @@ static u64 stHash(const int32_t *st, int n) {
   }
   for (int x = 1; x <= N; x++)
     for (int c = 1; c <= W; c += 2) {
-      a = (a ^ (uint32_t)st[COL + x * WMAX + c]) * 0x100000001B3ull;
-      b = (b ^ (uint32_t)st[COL + x * WMAX + c + 1]) * 0x100000001B3ull;
+      a = (a ^ (uint32_t)st[SCOL + x * WMAX + c]) * 0x100000001B3ull;
+      b = (b ^ (uint32_t)st[SCOL + x * WMAX + c + 1]) * 0x100000001B3ull;
     }
   a ^= b * 0x9E3779B97F4A7C15ull;
   return a ^ (a >> 31);
@@ -988,13 +994,13 @@ static int quietClear(const int32_t *st, const Grid *G, int r, int c, int32_t *o
   stcpy(ss, st);
   swapIn(ss, r, c);
   ss[O_BUSYF] = 0; ss[O_BAD] = 0; ss[6] = 0; ss[7] = 0;
-  for (int cc = 0; cc < WMAX; cc++) { ss[BUSY + cc] = 0; ss[COL + cc] = 0; }
-  for (int a = st[O_N] + 1; a < NCOL; a++) for (int cc = 0; cc < WMAX; cc++) ss[COL + a * WMAX + cc] = 0;
+  for (int cc = 0; cc < WMAX; cc++) { ss[BUSY + cc] = 0; ss[SCOL + cc] = 0; }
+  for (int a = st[O_N] + 1; a < NCOL; a++) for (int cc = 0; cc < WMAX; cc++) ss[SCOL + a * WMAX + cc] = 0;
   for (int i = 0; i < st[O_NSLAB]; i++) { ss[SLK(i)] = ss[SLK(i)] ? 1 : 0; ss[SAIR(i)] = 0; }
   for (int cc = 1; cc <= st[O_W]; cc++) {
     if (!k[cc]) continue;
     ss[OCC + cc] &= ~k[cc];
-    for (int a = 1; a <= st[O_N]; a++) ss[COL + a * WMAX + cc] &= ~k[cc];
+    for (int a = 1; a <= st[O_N]; a++) ss[SCOL + a * WMAX + cc] &= ~k[cc];
   }
   return 1;
 }
@@ -1079,19 +1085,19 @@ static int dropQuiet(const int32_t *st, const Drop *D, int r, int c, const uint3
         out[R_SCOPE] = SC_OK;
         stcpy(ss, st);
         ss[O_BUSYF] = 0; ss[O_BAD] = 0; ss[6] = 0; ss[7] = 0;
-        for (int cc = 0; cc < WMAX; cc++) { ss[BUSY + cc] = 0; ss[COL + cc] = 0; }
-        for (int a = st[O_N] + 1; a < NCOL; a++) for (int cc = 0; cc < WMAX; cc++) ss[COL + a * WMAX + cc] = 0;
+        for (int cc = 0; cc < WMAX; cc++) { ss[BUSY + cc] = 0; ss[SCOL + cc] = 0; }
+        for (int a = st[O_N] + 1; a < NCOL; a++) for (int cc = 0; cc < WMAX; cc++) ss[SCOL + a * WMAX + cc] = 0;
         for (int i = 0; i < ns; i++) { ss[SLK(i)] = ss[SLK(i)] ? 1 : 0; ss[SAIR(i)] = 0; }
         uint32_t keepLo = bb - 1u, lb = 1u << land;
         ss[OCC + dst] |= lb;
         ss[OCC + src] = (ss[OCC + src] & keepLo) | ((ss[OCC + src] >> 1) & ~keepLo);
         for (int a = 1; a <= st[O_N]; a++) {
-          uint32_t ms = (uint32_t)ss[COL + a * WMAX + src];
+          uint32_t ms = (uint32_t)ss[SCOL + a * WMAX + src];
           ms = (ms & keepLo) | ((ms >> 1) & ~keepLo);
-          ss[COL + a * WMAX + src] = ms & ss[OCC + src] & ~ss[GARB + src];
-          uint32_t md = (uint32_t)ss[COL + a * WMAX + dst];
+          ss[SCOL + a * WMAX + src] = ms & ss[OCC + src] & ~ss[GARB + src];
+          uint32_t md = (uint32_t)ss[SCOL + a * WMAX + dst];
           if (a == col) md |= lb;
-          ss[COL + a * WMAX + dst] = md & ss[OCC + dst] & ~ss[GARB + dst];
+          ss[SCOL + a * WMAX + dst] = md & ss[OCC + dst] & ~ss[GARB + dst];
         }
         return 1;
       }
@@ -1103,12 +1109,12 @@ static int dropQuiet(const int32_t *st, const Drop *D, int r, int c, const uint3
         out[R_SCOPE] = SC_OK;
         stcpy(ss, st);
         ss[O_BUSYF] = 0; ss[O_BAD] = 0; ss[6] = 0; ss[7] = 0;
-        for (int cc = 0; cc < WMAX; cc++) { ss[BUSY + cc] = 0; ss[COL + cc] = 0; }
-        for (int a = st[O_N] + 1; a < NCOL; a++) for (int cc = 0; cc < WMAX; cc++) ss[COL + a * WMAX + cc] = 0;
+        for (int cc = 0; cc < WMAX; cc++) { ss[BUSY + cc] = 0; ss[SCOL + cc] = 0; }
+        for (int a = st[O_N] + 1; a < NCOL; a++) for (int cc = 0; cc < WMAX; cc++) ss[SCOL + a * WMAX + cc] = 0;
         for (int i = 0; i < ns; i++) { ss[SLK(i)] = ss[SLK(i)] ? 1 : 0; ss[SAIR(i)] = 0; }
         swapIn(ss, r, c);
         for (int cc = c; cc <= c + 1; cc++)
-          for (int a = 1; a <= st[O_N]; a++) ss[COL + a * WMAX + cc] &= ss[OCC + cc] & ~ss[GARB + cc];
+          for (int a = 1; a <= st[O_N]; a++) ss[SCOL + a * WMAX + cc] &= ss[OCC + cc] & ~ss[GARB + cc];
         return 1;
       }
     }
@@ -1191,8 +1197,8 @@ static int dropQuiet(const int32_t *st, const Drop *D, int r, int c, const uint3
   if (t) { res[R_CHAIN] = 1; res[R_TOTAL] = t; res[R_ROUNDS] = 1; }
   stcpy(ss, st);
   ss[O_BUSYF] = 0; ss[O_BAD] = 0; ss[6] = 0; ss[7] = 0;
-  for (int cc = 0; cc < WMAX; cc++) { ss[BUSY + cc] = 0; ss[COL + cc] = 0; }
-  for (int a = N + 1; a < NCOL; a++) for (int cc = 0; cc < WMAX; cc++) ss[COL + a * WMAX + cc] = 0;
+  for (int cc = 0; cc < WMAX; cc++) { ss[BUSY + cc] = 0; ss[SCOL + cc] = 0; }
+  for (int a = N + 1; a < NCOL; a++) for (int cc = 0; cc < WMAX; cc++) ss[SCOL + a * WMAX + cc] = 0;
   for (int i = 0; i < ns; i++) { ss[SLK(i)] = ss[SLK(i)] ? 1 : 0; ss[SAIR(i)] = 0; }
   if (anyMoved) {
     for (int x = 0; x < D->nc; x++) {
@@ -1208,10 +1214,10 @@ static int dropQuiet(const int32_t *st, const Drop *D, int r, int c, const uint3
   for (int cc = 1; cc <= W; cc++) {
     ss[OCC + cc] = occ[cc]; ss[GARB + cc] = gar[cc];
     if (!(dirty & (1u << cc))) continue;
-    for (int a = 1; a <= N; a++) ss[COL + a * WMAX + cc] = 0;
+    for (int a = 1; a <= N; a++) ss[SCOL + a * WMAX + cc] = 0;
     for (uint32_t q = occ[cc] & ~gar[cc]; q; q &= q - 1u) {
       int y = __builtin_ctz(q);
-      ss[COL + g[y + 1][cc] * WMAX + cc] |= 1u << y;
+      ss[SCOL + g[y + 1][cc] * WMAX + cc] |= 1u << y;
     }
   }
   return 1;
@@ -1447,7 +1453,7 @@ __attribute__((export_name("bit_pchain"))) double *bit_pchain(void) { return PCH
 __attribute__((export_name("bit_pcombo"))) double *bit_pcombo(void) { return PCOMBO; }
 
 __attribute__((export_name("bit_layout"))) int32_t bit_layout(int32_t i) {
-  int32_t v[] = { WMAX, NCOL, MAXSLAB, OCC, INERT, GARB, BUSY, COL, SLAB, SL, ST_INTS, R_INTS, REC, MAXD, 0 };
+  int32_t v[] = { WMAX, NCOL, MAXSLAB, OCC, INERT, GARB, BUSY, SCOL, SLAB, SL, ST_INTS, R_INTS, REC, MAXD, 0 };
   return v[i];
 }
 static double *recAt(int i) { return OD + 64 + i * REC; }
@@ -2163,3 +2169,7 @@ __attribute__((export_name("bit_checkbf"))) int32_t bit_checkbf(void) {
   }
   return bad * 10000 + hits;
 }
+
+#ifdef PA_LIB
+#include "front.c"
+#endif

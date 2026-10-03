@@ -51,3 +51,7 @@ crank.log
 
 # The GA's crash-safety state: per-container, meaningless anywhere else.
 .train-checkpoint.*.json
+
+# the native drill build.sh makes
+native/drill
+drill-deals/

@@ -375,8 +375,8 @@ static int risenMasks(const int32_t *st, int32_t *out) {
     out[GARB + c] = (U(st, GARB + c) << 1) & lim;
     int v = (int)BIN[IN_INROW + c];
     if (v > out[O_N]) out[O_N] = v;
-    for (int k = 1; k <= 12; k++) out[COL + k * WMAX + c] = (k <= st[O_N] ? (U(st, COL + k * WMAX + c) << 1) : 0) & lim;
-    out[COL + v * WMAX + c] |= 1;
+    for (int k = 1; k <= 12; k++) out[SCOL + k * WMAX + c] = (k <= st[O_N] ? (U(st, SCOL + k * WMAX + c) << 1) : 0) & lim;
+    out[SCOL + v * WMAX + c] |= 1;
   }
   out[O_NSLAB] = st[O_NSLAB];
   for (int i = 0; i < st[O_NSLAB]; i++) {
@@ -897,7 +897,7 @@ static int outcomeConv(const int32_t *st, int has, int sr, int sc, int *scope, i
     int r = (int)BIN[IN_CONV + 3 * i], c = (int)BIN[IN_CONV + 3 * i + 1], col = (int)BIN[IN_CONV + 3 * i + 2];
     uint32_t b = 1u << (r - 1);
     out[INERT + c] &= ~b; out[GARB + c] &= ~b;
-    out[COL + col * WMAX + c] |= b;
+    out[SCOL + col * WMAX + c] |= b;
     for (int k = 0; k < out[O_NSLAB]; k++) if (out[SM(k, c)] & b) { out[SM(k, c)] &= ~b; out[SLK(k)] = 0; }
   }
   int j = 0;
