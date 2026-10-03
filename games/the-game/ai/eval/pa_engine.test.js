@@ -42,6 +42,8 @@ function sources() {
     } };
   });
 }
+// side 2 as far as side 1's outgoing garbage goes: it takes whatever is delivered
+var SINK = { incoming: [], receiveGarbage: function (g) { seen.delivered += g.length; } };
 function luaValue(v) { return v === undefined ? null : v; }
 function same(a, b) { return a === b || (typeof a === 'number' && typeof b === 'number' && Object.is(a, b)); }
 function compare(s, lua, where) {
@@ -70,6 +72,24 @@ function compare(s, lua, where) {
   });
   var mine = s.incoming.map(function (g) { return [g.width, g.height, g.isChain, g.isMetal, g.frameEarned, g.finalized]; });
   if (JSON.stringify(inc) !== JSON.stringify(mine)) return where + ': incoming ' + JSON.stringify(mine) + ' vs Lua ' + JSON.stringify(inc);
+  // what this stack's clears send (GarbageQueue): staged, in transit, the chain being built
+  function og(g) {
+    return [g.width, g.height, !!g.isChain, !!g.isMetal, g.frameEarned, g.finalized === undefined ? null : g.finalized,
+            g.finalizedClock === undefined ? null : g.finalizedClock, g.rowEarned === undefined ? null : g.rowEarned,
+            g.colEarned === undefined ? null : g.colEarned, g.linkTimes ? PA.list(g.linkTimes) : null];
+  }
+  var lo = lua.outgoing || {}, q = s.outgoing;
+  // in transit: every entry the queue has had (the Lua keeps them), by delivery
+  // frame; the pieces too where the record has them (it cuts deep tables short)
+  var lt = PA.list(lo.transit), deep = lt.some(function (t) { return PA.list(t.garbage).some(function (g) { return typeof g !== 'object'; }); });
+  var at = Object.keys(q.inTransit).map(Number).sort(function (x, y) { return x - y; });
+  var wantOut = { staged: PA.list(lo.staged).map(og), transit: lt.map(function (t) { return deep ? t.at : [t.at, PA.list(t.garbage).map(og)]; }),
+                  chainAt: lo.currentChainAt || null };
+  var gotOut = { staged: q.staged.map(og), transit: at.map(function (t) { return deep ? t : [t, q.inTransit[t].map(og)]; }),
+                 chainAt: q.currentChain ? q.staged.indexOf(q.currentChain) + 1 : null };
+  if (lo.pending !== undefined) { wantOut.pending = PA.list(lo.pending); gotOut.pending = q.transitTimers.slice(); }
+  if (JSON.stringify(wantOut) !== JSON.stringify(gotOut)) return where + ': outgoing ' + JSON.stringify(gotOut) + ' vs Lua ' + JSON.stringify(wantOut);
+  if (q.staged.length || q.transitTimers.length) seen.outgoing++;
   var log = PA.list(lua.swapStallingBackLog).map(function (x) { return [x.leftId, x.rightId, x.row, x.col, x.clock]; });
   var mylog = s.swapStallBacklog.map(function (x) { return [x.leftId, x.rightId, x.row, x.col, x.clock]; });
   if (JSON.stringify(log) !== JSON.stringify(mylog)) return where + ': swap-stall log ' + JSON.stringify(mylog) + ' vs Lua ' + JSON.stringify(log);
@@ -80,7 +100,7 @@ function compare(s, lua, where) {
 }
 
 function sorted(o) { if (!o || typeof o !== 'object') return o; var r = {}; Object.keys(o).sort().forEach(function (k) { r[k] = sorted(o[k]); }); return r; }
-var seen = { fromStart: 0, compared: 0, metalGarbage: 0, shockPanels: 0, frames: 0, matches: 0, chains: 0, garbageDrops: 0, garbageClears: 0, shockRows: 0, metalDrops: 0, rows: 0, stalls: 0, deaths: 0 };
+var seen = { outgoing: 0, delivered: 0, fromStart: 0, compared: 0, metalGarbage: 0, shockPanels: 0, frames: 0, matches: 0, chains: 0, garbageDrops: 0, garbageClears: 0, shockRows: 0, metalDrops: 0, rows: 0, stalls: 0, deaths: 0 };
 // The match's seed: a record carries it (SEED * 1000 + match); one written
 // before it did is found by trying SEED 1..99 against the recorded buffers.
 function seedOf(seed, fr, ld, match) {
@@ -123,6 +143,8 @@ Replay.prototype.line = function (fr) {
       this.gen = generator(seed, ld, null);
       this.src = new PA.Seeded(this.gen);
       this.s = PA.create(this.level, this.src);
+      // and the one PA.game makes from the seed, as Newsey does
+      this.game = PA.game({ level: 10, seed: seed });
       seen.fromStart++;
       this.start = this.lines - 1;
     } else {
@@ -139,9 +161,20 @@ Replay.prototype.line = function (fr) {
   }
   var s = this.s, before = s.clock;
   var rowsBefore = this.gen.dealt.length;
+  // the opponent takes what side 1 has ready (GarbageDelivery tickPreSim) before the
+  // stacks run and again after: Match:run's loop goes round once more once they have
+  PA.deliver(s, SINK);
   PA.list(fr.received).forEach(function (g) { if (g.clock === before) s.receiveGarbage([g]); });
   s.setInput(fr.input !== undefined ? fr.input : fr.state.input);
   s.run();
+  if (this.game) {
+    this.game.setInput(fr.input !== undefined ? fr.input : fr.state.input);
+    this.game.run();
+    d = fr.state && compare(this.game, fr.state, this.name + ' PA.game line ' + this.lines);
+    if (d) fail(d);
+    this.game = null;
+  }
+  PA.deliver(s, SINK);
   PA.list(fr.received).forEach(function (g) { if (g.clock !== before) s.receiveGarbage([g]); });
   var dealt = this.gen.dealt.slice(rowsBefore), want = PA.list(fr.newRows).concat(PA.list(fr.garbageRows));
   if (dealt.join() !== want.join()) fail(this.name + ' line ' + this.lines + ': dealt ' + JSON.stringify(dealt) + ' vs Lua ' + JSON.stringify(want));

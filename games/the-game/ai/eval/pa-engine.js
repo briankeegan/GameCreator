@@ -317,6 +317,138 @@
     return out;
   }
 
+  // ---- OUTGOING GARBAGE (common/engine/GarbageQueue.lua, checkMatches.lua
+  // Stack:pushGarbage, GarbageDelivery.lua): what a stack's clears send. A
+  // piece is staged, leaves STAGING_DURATION frames after it was earned (a
+  // chain only once finalized), and is in transit GARBAGE_DELAY_LAND_TIME
+  // more before the opponent can take it (deliver).
+  var GARBAGE_TRANSIT_TIME = 45, GARBAGE_TELEGRAPH_TIME = 45, GARBAGE_DELAY_LAND_TIME = 60;   // client/src/globals.lua
+  var STAGING_DURATION = GARBAGE_TRANSIT_TIME + GARBAGE_TELEGRAPH_TIME + 1;
+  var COMBO_GARBAGE = [[], [], [], [], [3], [4], [5], [6], [3, 4], [4, 4], [5, 5], [5, 6], [6, 6], [6, 6, 6], [6, 6, 6, 6]];
+  COMBO_GARBAGE[20] = [6, 6, 6, 6, 6, 6]; COMBO_GARBAGE[27] = [6, 6, 6, 6, 6, 6, 6, 6];
+  for (var ci = 1; ci <= 72; ci++) COMBO_GARBAGE[ci] = COMBO_GARBAGE[ci] || COMBO_GARBAGE[ci - 1];
+  function orderComboGarbage(a, b) { return a.width !== b.width ? a.width > b.width : a.frameEarned < b.frameEarned; }
+  function orderChainGarbage(a, b) { return a.finalized === b.finalized ? a.frameEarned > b.frameEarned : !a.finalized; }
+  // Lua's table.sort comparator: true when a goes before b.
+  function garbageBefore(q, a, b) {
+    if (a.isChain === b.isChain) {
+      if (a.isChain) return orderChainGarbage(a, b);
+      if (a.isMetal === b.isMetal || q.treatMetalAsCombo) return orderComboGarbage(a, b);
+      return a.isMetal;
+    }
+    return !a.isChain;
+  }
+  function GarbageQueue(allowIllegalStuff, treatMetalAsCombo) {
+    this.staged = []; this.inTransit = {}; this.transitTimers = []; this.history = []; this.currentChain = null;
+    this.illegalStuffIsAllowed = !!allowIllegalStuff; this.treatMetalAsCombo = !!treatMetalAsCombo; this.stuckChainWarned = false;
+  }
+  GarbageQueue.prototype.order = function () {
+    var q = this;
+    this.staged.sort(function (a, b) { return garbageBefore(q, a, b) ? -1 : garbageBefore(q, b, a) ? 1 : 0; });
+  };
+  GarbageQueue.prototype.push = function (g) {
+    if (g.height > 1 && this.illegalStuffIsAllowed) { g.isChain = true; g.finalized = true; }   // correctChainingFlag
+    this.staged.push(g); this.history.push(g);
+    this.order();
+  };
+  // Lua passes (stopWatch, column, row + offset) to (frameEarned, row, column): kept as the server has it.
+  GarbageQueue.prototype.addChainLink = function (frameEarned, row, column) {
+    var c = this.currentChain;
+    if (!c) {
+      c = this.currentChain = { width: 6, height: 1, isMetal: false, isChain: true, frameEarned: frameEarned, finalized: false,
+                                links: {}, linkTimes: [frameEarned] };
+      c.links[frameEarned] = { rowEarned: row, colEarned: column };
+      this.push(c);
+    } else {
+      c.height++; c.frameEarned = frameEarned;
+      c.links[frameEarned] = { rowEarned: row, colEarned: column };
+      c.linkTimes.push(frameEarned);
+    }
+  };
+  GarbageQueue.prototype.finalizeCurrentChain = function (clock) {
+    this.currentChain.finalized = true; this.currentChain.finalizedClock = clock;
+    this.currentChain = null;
+  };
+  GarbageQueue.prototype.processStagedGarbageForClock = function (clock) {
+    var popped = null;
+    for (var i = this.staged.length - 1; i >= 0; i--) {
+      var g = this.staged[i];
+      if (g.isChain) {
+        if (!g.finalized || g.frameEarned + STAGING_DURATION > clock) {
+          // an unfinalized chain stuck 600 frames is finalized, so the queue moves again
+          if (!g.finalized && g.frameEarned !== undefined && clock - g.frameEarned > 600) {
+            this.stuckChainWarned = true;
+            g.finalized = true; g.finalizedClock = clock;
+            if (this.currentChain === g) this.currentChain = null;
+          }
+          break;
+        }
+        (popped || (popped = [])).push(this.staged.pop());
+      } else {
+        if (g.frameEarned + STAGING_DURATION > clock) break;
+        (popped || (popped = [])).push(this.staged.pop());
+      }
+    }
+    if (popped) {
+      this.stuckChainWarned = false;
+      var at = clock + GARBAGE_DELAY_LAND_TIME;
+      this.inTransit[at] = popped;
+      this.transitTimers.push(at);
+    }
+  };
+  GarbageQueue.prototype.oldestFinishedTransitTime = function () { return this.transitTimers.length ? this.transitTimers[0] : undefined; };
+  GarbageQueue.prototype.popFinishedTransitsAt = function (clock) {
+    var t = this.oldestFinishedTransitTime();
+    if (t === undefined) return undefined;
+    // the entry stays, as in the Lua: only its timer goes
+    if (t === clock || (this.illegalStuffIsAllowed && t < clock)) { this.transitTimers.shift(); return this.inTransit[t]; }
+    return undefined;
+  };
+  function copyGarbage(g) {
+    var o = {};
+    for (var k in g) o[k] = k === 'links' ? JSON.parse(JSON.stringify(g.links)) : k === 'linkTimes' ? g.linkTimes.slice() : g[k];
+    return o;
+  }
+  GarbageQueue.prototype.copy = function () {
+    var q = new GarbageQueue(this.illegalStuffIsAllowed, this.treatMetalAsCombo), map = new Map(), self = this;
+    function c(g) { if (!map.has(g)) map.set(g, copyGarbage(g)); return map.get(g); }
+    q.staged = this.staged.map(c); q.history = this.history.map(c);
+    q.currentChain = this.currentChain ? c(this.currentChain) : null;
+    q.transitTimers = this.transitTimers.slice();
+    Object.keys(this.inTransit).forEach(function (t) { q.inTransit[t] = self.inTransit[t].map(c); });
+    q.stuckChainWarned = this.stuckChainWarned;
+    return q;
+  };
+  // A queue as engineRecord.lua writes one ({ staged, transit, currentChainAt }).
+  GarbageQueue.fromLua = function (o) {
+    var q = new GarbageQueue(false, false);
+    function g(x) {
+      var y = { width: x.width, height: x.height, isMetal: !!x.isMetal, isChain: !!x.isChain, frameEarned: x.frameEarned };
+      if (x.finalized !== undefined) y.finalized = x.finalized;
+      if (x.finalizedClock !== undefined) y.finalizedClock = x.finalizedClock;
+      if (x.rowEarned !== undefined) y.rowEarned = x.rowEarned;
+      if (x.colEarned !== undefined) y.colEarned = x.colEarned;
+      if (x.linkTimes !== undefined) { y.linkTimes = list(x.linkTimes).slice(); y.links = {}; }
+      return y;
+    }
+    q.staged = list(o && o.staged).map(g);
+    if (o && o.currentChainAt) q.currentChain = q.staged[o.currentChainAt - 1];
+    // a record lists every entry, delivered or not: those still due are the timers
+    list(o && o.transit).forEach(function (t) { q.inTransit[t.at] = list(t.garbage).map(g); if (o.pending === undefined || list(o.pending).indexOf(t.at) >= 0) q.transitTimers.push(t.at); });
+    q.history = q.staged.slice();
+    return q;
+  };
+  // GarbageDelivery _pushToRecipient for one sender: what `from` has ready
+  // goes to `to`, before either runs its frame.
+  function deliver(from, to) {
+    var q = from.outgoing, t = q.oldestFinishedTransitTime();
+    if (t === undefined || (q.illegalStuffIsAllowed && to.incoming.length >= 72)) return null;
+    if (from.stopWatch < t) return null;
+    var g = q.popFinishedTransitsAt(t);
+    if (g) to.receiveGarbage(g);
+    return g || null;
+  }
+
   function Stack() {}
   Stack.prototype.frameTimes = null;
   Stack.prototype.idOf = function () { return ++this.panelIdCount; };
@@ -670,6 +802,16 @@
     }
     return t;
   };
+  Stack.prototype.pushGarbage = function (coordinate, isChain, comboSize, metalCount) {
+    for (var i = 3; i <= metalCount; i++) {
+      this.outgoing.push({ width: 6, height: 1, isMetal: true, isChain: false, frameEarned: this.stopWatch, rowEarned: coordinate.row, colEarned: coordinate.column });
+    }
+    var pieces = COMBO_GARBAGE[comboSize] || COMBO_GARBAGE[72];
+    for (i = 0; i < pieces.length; i++) {
+      this.outgoing.push({ width: pieces[i], height: 1, isMetal: false, isChain: false, frameEarned: this.stopWatch, rowEarned: coordinate.row, colEarned: coordinate.column });
+    }
+    if (isChain) this.outgoing.addChainLink(this.stopWatch, coordinate.column, coordinate.row + (pieces.length > 0 ? 1 : 0));
+  };
   Stack.prototype.checkMatches = function () {
     var matching = this.getMatchingPanels(), comboSize = matching.length, i;
     if (comboSize > 0) {
@@ -680,6 +822,7 @@
       this.riseLock = true;
       sortByPopOrder(matching, false);
       for (i = 0; i < comboSize; i++) matchPanel(this, matching[i], isChainLink, i + 1, comboSize);
+      var origin = { row: matching[0].row, column: matching[0].col };   // applyMatchToPanels' firstCellToPop
       var gps = this.getConnectedGarbagePanels(matching), onScreen = 0;
       if (gps) {
         for (i = 0; i < gps.length; i++) if (gps[i].row <= this.height) onScreen++;
@@ -688,7 +831,10 @@
       this.preStopTime = Math.max(this.preStopTime, f.FLASH + f.FACE + f.POP * (comboSize + onScreen));
       var stopTime = this.calculateStopTime(comboSize, this.wasToppedOut, isChainLink, this.chainCounter);
       if (stopTime > this.stopTime) this.stopTime = stopTime;
-      this.events.push({ type: 'match', chain: isChainLink, size: comboSize, garbage: gps ? gps.length : 0, row: matching[0].row, col: matching[0].col });
+      this.events.push({ type: 'match', chain: isChainLink, chainCounter: this.chainCounter, size: comboSize, garbage: gps ? gps.length : 0, row: matching[0].row, col: matching[0].col });
+      var metalCount = 0;
+      for (i = 0; i < matching.length; i++) if (matching[i].color === 8) metalCount++;
+      if (isChainLink || comboSize > 3 || metalCount > 0) this.pushGarbage(origin, isChainLink, comboSize, metalCount);
       var bonus = this.chainCounter > 13 ? 0 : this.chainCounter;
       this.addScore(SCORE_CHAIN_TA[bonus]);
       if (comboSize > 3) this.addScore(SCORE_COMBO_TA[Math.min(30, comboSize)]);
@@ -814,7 +960,13 @@
     this.checkMatches();
     this.updatePanels();
     this.updateActivePanelCount();
-    if (this.chainCounter !== 0 && !this.hasChainingPanels()) this.chainCounter = 0;
+    // the chain ends with no panel chaining; an orphaned chain in the queue too
+    var chainQueued = !!(this.outgoing && this.outgoing.currentChain);
+    if ((this.chainCounter !== 0 || chainQueued) && !this.hasChainingPanels()) {
+      this.chainCounter = 0;
+      if (chainQueued) this.outgoing.finalizeCurrentChain(this.stopWatch);
+    }
+    if (this.outgoing) this.outgoing.processStagedGarbageForClock(this.stopWatch);
     this.removeExtraRows();
     if (this.checkDeath()) this.recordDeath();
   };
@@ -884,6 +1036,24 @@
     return this.canSwapPanels(this.panels[row][col], this.panels[row][col + 1])[0];
   };
   Stack.prototype.drainEvents = function () { var e = this.events; this.events = []; return e; };
+  // ---- what a game reads and does that the Lua leaves to its client
+  Stack.prototype.panelAt = function (row, col) {
+    if (row < 0 || row >= this.panels.length || col < 1 || col > W) return null;
+    return this.panels[row][col];
+  };
+  Stack.prototype.clampCursor = function () {
+    this.curRow = bound(1, this.curRow, this.topCurRow);
+    this.curCol = bound(1, this.curCol, W - 1);
+  };
+  // A tap on a pair: the cursor goes there and swap is pressed, as a
+  // controller would after walking there; the engine decides on the next
+  // frame whether the swap is made.
+  Stack.prototype.touchSwap = function (row, col) {
+    if (!this.canSwap(row, col)) return false;
+    this.curRow = row; this.curCol = col;
+    this.clampCursor();
+    return this.tryQueueSwap(this.curRow, this.curCol);
+  };
   Stack.prototype.fillRatio = function () {
     for (var row = this.height; row >= 1; row--) for (var col = 1; col <= W; col++) if (this.panels[row][col].color !== 0) return row / this.height;
     return 0;
@@ -897,6 +1067,7 @@
       var v = this[k];
       if (k === 'panels') s.panels = v.map(function (row) { return row.map(function (p) { return p ? copyPanel(p) : p; }); });
       else if (k === 'source') s.source = v.copy();
+      else if (k === 'outgoing') s.outgoing = v ? v.copy() : v;
       else if (k === 'levelData' || k === 'behaviours' || k === 'frames') s[k] = v;
       else if (Array.isArray(v)) s[k] = v.map(function (x) { return x && typeof x === 'object' ? Object.assign({}, x) : x; });
       else if (v && typeof v === 'object') s[k] = Object.assign({}, v);
@@ -960,6 +1131,7 @@
       return { width: g.width, height: g.height, isChain: !!g.isChain, isMetal: !!g.isMetal, frameEarned: g.frameEarned,
                finalized: g.finalized === undefined ? null : g.finalized };
     });
+    s.outgoing = GarbageQueue.fromLua(state.outgoing);
     s.source = source || new Unseen();
     s.events = [];
     s.nextInput = 0; s.pressSwap = false; s.inputBits = 0; s.swapDeniedThisFrame = false;
@@ -1022,6 +1194,7 @@
     s.swapCount = 0; s.panelsCleared = 0; s.metalPanelsQueued = 0;
     s.prevShakeTime = 0; s.shakeTime = 0; s.shakeTimeOnFrame = 0; s.peakShakeTime = 0;
     s.incoming = [];
+    s.outgoing = new GarbageQueue(false, false);
     s.events = [];
     s.nextInput = 0; s.pressSwap = false; s.inputBits = 0; s.swapDeniedThisFrame = false;
     s.input = {}; s.prevInput = {};
@@ -1035,6 +1208,22 @@
     return s;
   }
 
+  // A VS stack as Match:start makes one: modern level `level`, its rows and
+  // garbage colours dealt from `seed` by the server's generator.
+  function GEN() {
+    if (typeof module === 'object' && module.exports) return require('./pa-generator.js');
+    var g = (typeof globalThis !== 'undefined' ? globalThis : this).PAGenerator;
+    if (!g) throw new Error('PAEngine: pa-generator.js is not loaded');
+    return g;
+  }
+  function game(opts) {
+    opts = opts || {};
+    var lv = vsLevel(opts.level || 10), ld = lv.levelData;
+    var s = create(lv, new Seeded(new (GEN().GeneratorSource)(opts.seed === undefined ? 1 : opts.seed, true, ld.colors, ld.adjacentDenialFrequency)));
+    s.name = opts.name || 'player';
+    s.level = opts.level || 10;
+    return s;
+  }
   function fromPanelEngine(pe, source) {
     var s = create(pe.level || 10, source), r, c, k;
     ['speed', 'nextSpeedIncreaseClock', 'clock', 'displacement', 'stopTime', 'preStopTime', 'shakeTime', 'shakeTimeOnFrame',
@@ -1077,6 +1266,7 @@
     for (var r = 0; r < o.panels.length; r++) for (var c = 1; c <= W; c++) Object.setPrototypeOf(o.panels[r][c], Panel.prototype);
     o.source = new Unseen();
     o.events = o.events || [];
+    if (o.outgoing) Object.setPrototypeOf(o.outgoing, GarbageQueue.prototype);
     return o;
   }
   function toPanelEngine(s, PE) {
@@ -1133,5 +1323,7 @@
   }
 
   return { Stack: Stack, Panel: Panel, fromLua: fromLua, revive: revive, toPanelEngine: toPanelEngine, fromPanelEngine: fromPanelEngine, view: view, Unseen: Unseen, Recorded: Recorded, Seeded: Seeded, create: create, vsLevel: vsLevel, PANEL_FROM_LUA: PANEL_FROM_LUA,
-           STACK_FROM_LUA: STACK_FROM_LUA, IN: IN, list: list, WIDTH: W, HEIGHT: H };
+           STACK_FROM_LUA: STACK_FROM_LUA, IN: IN, list: list, WIDTH: W, HEIGHT: H,
+           GarbageQueue: GarbageQueue, deliver: deliver, game: game, COUNTDOWN_TOTAL: COUNTDOWN_START + COUNTDOWN_LENGTH, COMBO_GARBAGE: COMBO_GARBAGE, STAGING_DURATION: STAGING_DURATION,
+           GARBAGE_DELAY_LAND_TIME: GARBAGE_DELAY_LAND_TIME };
 }));

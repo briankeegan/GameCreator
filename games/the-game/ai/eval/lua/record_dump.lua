@@ -15,7 +15,7 @@ local function enc(v, depth)
   if t == "string" then return string.format("%q", v):gsub("\\\n", "\\n") end
   if t == "table" then
     depth = depth or 0
-    if depth > 4 then return '"<deep>"' end
+    if depth > 6 then return '"<deep>"' end
     -- arrays (1..n with no holes) as arrays, else objects with string keys
     local n = #v
     local isArray = n > 0 or next(v) == nil
@@ -64,7 +64,11 @@ local function queue(gq)
   local cur = gq.currentChain
   local curAt = nil
   if cur then for i = 1, #gq.stagedGarbage do if gq.stagedGarbage[i] == cur then curAt = i end end end
-  return { staged = garbageList(gq.stagedGarbage), transit = transit, currentChainAt = curAt }
+  -- the delivery frames still due (the Lua keeps every transit entry; its timers say which are pending)
+  local pending = {}
+  local tt = gq.transitTimers
+  if tt and tt.first then for i = tt.first, tt.last do pending[#pending + 1] = tt[i] end end
+  return { staged = garbageList(gq.stagedGarbage), transit = transit, currentChainAt = curAt, pending = pending }
 end
 local function dump(s, input)
   local panels = {}
