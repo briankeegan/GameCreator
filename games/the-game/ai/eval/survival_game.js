@@ -17,10 +17,8 @@
 // survival-games.yml runs one seed per runner.
 var fs = require('fs'), path = require('path');
 var DIR = __dirname;
-require(path.join(DIR, '..', '..', 'panel-engine.js'));
 require(path.join(DIR, '..', '..', 'panel-cpu.js'));
 var PuyoCpu = require(path.join(DIR, 'puyocpu.js'));
-var PanelEngine = globalThis.PanelEngine;
 var PA = require(path.join(DIR, '..', '..', 'pa-engine.js'));
 
 var SEED = Number(process.argv[2]), FRAMES = Number(process.argv[3] || 21600);
@@ -40,13 +38,13 @@ function opts(i) {
            engine: true, checkModel: true, threads: process.env.GC_THREADS || 0 };
 }
 // With a brain, the side's decisions are made by the brain's own bot (mind[i]).
-var mind = [0, 1].map(function (i) { return REALTIME ? new PuyoCpu(PA.view(st[i], PanelEngine), opts(i)) : null; });
+var mind = [0, 1].map(function (i) { return REALTIME ? new PuyoCpu(PA.view(st[i]), opts(i)) : null; });
 var cp = [0, 1].map(function (i) {
   var o = opts(i);
   if (REALTIME) o.brain = new PuyoCpu.LocalBrain(new PuyoCpu.Mind(opts(i), mind[i]), REALTIME,
                                                  process.env.GC_QUICK === '0' ? null : new PuyoCpu.Mind(opts(i), null, true),
                                                  Number(process.env.GC_REALTIME_STEPS || 0));
-  return new PuyoCpu(PA.view(st[i], PanelEngine), o);
+  return new PuyoCpu(PA.view(st[i]), o);
 });
 function cross() { PA.deliver(st[0], st[1]); PA.deliver(st[1], st[0]); }
 

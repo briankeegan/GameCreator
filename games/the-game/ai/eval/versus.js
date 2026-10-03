@@ -26,7 +26,6 @@ var path = require('path');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
 var PuyoCpu = require('./puyocpu.js');
-var BitBot = require('./bitbot.js');
 var report = require(path.join(__dirname, '..', 'experiments', 'report.js'));
 var PanelEngine = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
@@ -72,6 +71,9 @@ function makeCpu(stack, weights, opts) {
     // handed to each side are not comparable numbers -- which is exactly why
     // optsB exists and why a mixed duel must pass each side its own vector.
     if (opts.bot === 'bitbot') {
+        // Loaded only for a duel that asks for it: a duel of two PuyoCpus
+        // does not depend on BitBot's build.
+        var BitBot = require('./bitbot.js');
         return new BitBot(stack, {
             weights: weights || {},
             reaction: opts.reaction || 12,
@@ -138,7 +140,9 @@ exports.duel = function (weightsA, weightsB, seed, opts, optsB) {
     // The countdown is the engine's and nobody plays in it.
     while (stacks[0].clock <= PA.COUNTDOWN_TOTAL) { stacks[0].run(); stacks[1].run(); }
     stacks[0].events.length = 0; stacks[1].events.length = 0;
-    var cpus = [ makeCpu(PA.view(stacks[0], PanelEngine), weightsA, opts), makeCpu(PA.view(stacks[1], PanelEngine), weightsB, optsB) ];
+    // PuyoCpu reads PAEngine.View; BitBot a panel-engine.js Stack.
+    function viewFor(o, st) { return o.bot === 'bitbot' ? PA.view(st, PanelEngine) : PA.view(st); }
+    var cpus = [ makeCpu(viewFor(opts, stacks[0]), weightsA, opts), makeCpu(viewFor(optsB, stacks[1]), weightsB, optsB) ];
     // EACH SIDE CAN SEE THE OTHER. Without this the opponent features are
     // wired all the way to the evaluator and then handed null, which reads as
     // a feature that is correct, registered and constant — the shape of dead

@@ -541,8 +541,7 @@
     if (this._carry) return this._carry.arrivals || [];
     var opp = this.opponent;
     if (!opp || !opp.outgoing || !opp.outgoing.length) return [];
-    var PE = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
-    var flight = (PE && PE.GARBAGE_FLIGHT) || 151;
+    var flight = PAE().FLIGHT;
     var out = [], prev = 0, i, g, at;
     for (i = 0; i < opp.outgoing.length; i++) {
       g = opp.outgoing[i];
@@ -904,8 +903,7 @@
     // What this move CLEARS: garbage on the live board minus garbage left
     // on the candidate. Never negative — garbage arriving is
     // incomingGarbage's business.
-    var stack = this.stack, W = stack.constructor.WIDTH ||
-        (typeof window !== 'undefined' ? window : globalThis).PanelEngine.WIDTH;
+    var stack = this.stack, W = stack.constructor.WIDTH || PAE().WIDTH;
     // THE BASELINE IS THE BOARD THIS MOVE WAS MADE FROM, not always the live
     // stack. At ply 1 they are the same thing; at ply 2 they are not, because
     // the candidate is two moves ahead — so diffing it against the LIVE stack
@@ -1529,10 +1527,15 @@
   var levelConsts = {};
   function decodeStack(e) {
     if (!e.meta && e.metaText) e = { meta: parseText(e.metaText), rows: e.rows, row0: e.row0, buf: e.buf };
-    var PE = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
-    var lc = levelConsts[e.meta.level];
-    if (!lc) { var t = new PE.Stack({ level: e.meta.level, seed: 1, countdown: false }); lc = levelConsts[e.meta.level] = { levelData: t.levelData, frames: t.frames }; }
-    var o = Object.create(PE.Stack.prototype), k, i = 0, buf = e.buf;
+    // A view of the server's board (PAEngine.View) is rebuilt as one; any
+    // other board as a panel-engine.js Stack.
+    var PE = (typeof window !== 'undefined' ? window : globalThis).PanelEngine, isView = !!e.meta.paView;
+    var key = (isView ? 'v' : 'e') + e.meta.level, lc = levelConsts[key];
+    if (!lc) {
+      var t = isView ? PAE().view(PAE().game({ level: e.meta.level })) : new PE.Stack({ level: e.meta.level, seed: 1, countdown: false });
+      lc = levelConsts[key] = { levelData: t.levelData, frames: t.frames };
+    }
+    var o = Object.create(isView ? PAE().View.prototype : PE.Stack.prototype), k, i = 0, buf = e.buf;
     o.levelData = lc.levelData; o.frames = lc.frames;
     for (k in e.meta) o[k] = e.meta[k];
     var rows = new Array(e.rows);
@@ -2585,9 +2588,11 @@
     function note(tag, x) { if (x && (reach[tag] === undefined || x.t > reach[tag])) { reach[tag] = x.t; far[tag] = x; } }
     var FULL = this.SURVIVE_FRAMES + this.SURVIVE_REST, savedRest = this._restNeeded;
     this._restNeeded = true;
-    // A real engine Stack is copied and played; a harness's stand-in stack
-    // (puzzles.play.js) has no engine to copy and keeps the painted path.
-    var real = this.stack && typeof this.stack.run === 'function' && typeof this.stack.setInput === 'function' && this.stack.panels;
+    // A real engine Stack is copied and played, and so is the server's board
+    // behind a view; a harness's stand-in stack (puzzles.play.js) has no
+    // engine to copy and keeps the painted path.
+    var real = (this.native && this.serverStack) ||
+               (this.stack && typeof this.stack.run === 'function' && typeof this.stack.setInput === 'function' && this.stack.panels);
     var root = real ? this._engineRoot()
                     : { b: this._board.clone(), carry: null, pos: [this.stack.curRow, this.stack.curCol], t: 0 };
     var open = 0;
@@ -3995,7 +4000,7 @@
     var paused = plyClock ? plyClock.stopTime : (stack.stopTime || 0);
     var moving = frames - paused;
     if (moving <= 0) return 0;
-    var engine = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
+    var engine = PAE();
     var first = stack.riseTimer;
     if (moving < first) return 0;
     var pixels = 1 + Math.floor((moving - first) / engine.riseTime(stack.speed));
@@ -4194,7 +4199,7 @@
   PuyoCpu.prototype._dangerClock = function () {
     var stack = this.stack;
     if (!stack) return { headroom: null, framesPerRow: 0 };
-    var engine = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
+    var engine = PAE();
     var perPixel = engine && engine.riseTime ? engine.riseTime(stack.speed) : 0;
     var framesPerRow = perPixel * 16;
     // displacement counts the pixels left before the next row lands.
@@ -4315,8 +4320,9 @@
     // else, so "swap, then raise" was unthinkable. Holding was always here —
     // v starts at cand.score, which IS the value of stopping after one move.
     //
-    // Not after a raise: the engine will not serve two in a row.
-    if (cand.kind !== 'raise' && this._canRaise()) {
+    // Not after a raise: the engine will not serve two in a row. On the
+    // server's board a move the engine in C refused or died of has no replies.
+    if (cand.kind !== 'raise' && this._canRaise() && !(this.nativeCands && this.serverStack && !nat)) {
       var risen = cand.board.clone().rise(this._incoming), risenResolved;
       if (nat) {
         // On the engine in C, as the first ply raises: the raise, then the settle.
@@ -4534,9 +4540,9 @@
   // and its opponent's through PAEngine.view, and its search plays `pa` itself
   // on native/pa.c with the garbage on its way, as the game's brain does.
   PuyoCpu.prototype.onServer = function (pa, opp) {
-    var PE = (typeof window !== 'undefined' ? window : globalThis).PanelEngine, P = PAE();
-    this.stack = P.view(pa, PE);
-    this.opponent = opp ? P.view(opp, PE) : null;
+    var P = PAE();
+    this.stack = P.view(pa);
+    this.opponent = opp ? P.view(opp) : null;
     this.serverStack = pa;
     this.serverArrivals = this._inFlight().map(function (a) {
       return { at: Math.max(1, a.at), width: a.width, height: a.height, isChain: !!a.isChain, isMetal: !!a.isMetal };
@@ -4562,10 +4568,9 @@
   // (`server`), for a brain that searches on the server's rules.
   function paPointOf(n, unseen) {
     if (!n || n.dead || n.st.gameOver) return null;
-    var PE = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
     var st = n.st.copy(), h = { raiseFrames: n.hold.left, _raiseStarted: n.hold.started }, input = {};
     delete st.tryQueueSwap;
-    var v = PAE().view(st, PE);
+    var v = PAE().view(st);
     raiseStep(h, v, input);
     v.setInput(input);
     var server = {};
@@ -4576,6 +4581,7 @@
   }
   PuyoCpu.prototype._seenRoot = function () {
     var root = this._engineRoot(), rng = this.stack.rng, PE = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
+    if (!PE) return null;
     if (!rng || rng.a === undefined) return null;
     var S = PE.Stack.prototype;
     root.st.rng = PE.makeRng(0, rng.a);

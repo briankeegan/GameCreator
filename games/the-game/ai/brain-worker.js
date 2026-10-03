@@ -1,7 +1,7 @@
 // The bot's brain, off the page's thread: PuyoCpu.Mind, a PuyoCpu of its own
 // loaded from the same files as the page's, deciding on the boards the page
 // sends (see ai/brain.js).
-importScripts('../panel-rules.js', '../panel-engine.js', '../panel-cpu.js', '../pa-generator.js', '../pa-engine.js', 'eval/native.js',
+importScripts('../panel-rules.js', '../panel-cpu.js', '../pa-generator.js', '../pa-engine.js', 'eval/native.js',
               'eval/features.js', 'eval/registry.js', 'eval/input.js', 'eval/travel.js', 'eval/evaluator.js',
               'eval/engineboard.js', 'eval/modes.js', 'eval/faststack.js', 'eval/puyocpu.js', 'trained-weights.js');
 

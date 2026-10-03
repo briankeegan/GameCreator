@@ -50,9 +50,7 @@
 var path = require('path');
 var report = require('../experiments/report.js');
 var GAME = path.join(__dirname, '..', '..');
-require(path.join(GAME, 'panel-engine.js'));
 require(path.join(GAME, 'panel-cpu.js'));
-var PanelEngine = globalThis.PanelEngine;
 var PA = require(path.join(GAME, 'pa-engine.js'));
 var PanelCpu = globalThis.PanelCpu;
 var PuyoCpu = require('./puyocpu.js');
@@ -334,7 +332,7 @@ exports.run = function (weights, seed, opts) {
 
     var cpu, detach = null;
     {
-        cpu = new PuyoCpu(PA.view(stack, PanelEngine), {
+        cpu = new PuyoCpu(PA.view(stack), {
             weights: weights || {},
             reaction: 12,
             // Lookahead, when the caller asks for it. Absent means depth 1,

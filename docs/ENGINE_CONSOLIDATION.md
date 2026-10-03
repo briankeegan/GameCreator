@@ -36,15 +36,10 @@ Delete `panel-engine.js` and its C copy `engine.c` (`engine*.wasm`).
 
 ## Watch for
 
-- **The other session's survivor bot** (`survivor*.js`) runs on
-  `pa-engine.js` and `pa.c`; keep it working. It needs `pa.c` (`pa.wasm`,
-  `pa-mt.wasm`) and `native.js`'s server half: keep them. It does not run
-  `engine.c`. It still reads `panel-engine.js` through `puyocpu.js`: the board
-  view `PA.toPanelEngine` builds (`Stack.panelAt`, its construction:
-  `buildStartingBoard`, `fillNewRow`, `makeEmptyRow`, `generateRowColors`),
-  and `riseTime`, `comboGarbage`, `awardStopTime`, `isToppedOut`,
-  `hasFallingGarbage`. Those move to `pa-engine.js` before `panel-engine.js`
-  goes.
+- **The survivor bot** (`survivor*.js`) runs on `pa-engine.js` and `pa.c`;
+  keep it working. It needs `pa.c` (`pa.wasm`, `pa-mt.wasm`) and `native.js`'s
+  server half. Its bot reads the board through `PAEngine.View`, without
+  `panel-engine.js`.
 - **`pa.c` and `pa-engine.js` disagree on at least one board** (seed 13,
   frame 696, swap [9,1] pressed 10 frames later: 18 cells vs 21). Settle it
   against the Lua before trusting either.

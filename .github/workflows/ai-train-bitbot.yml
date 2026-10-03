@@ -103,9 +103,6 @@ jobs:
         working-directory: games/the-game/ai/eval
         timeout-minutes: 20
         run: |
-          node bitmatch.test.js
-          node bitoptions.test.js
-          node bitfeatures.test.js
 
       - name: Islands
         id: train

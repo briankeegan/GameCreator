@@ -18,7 +18,6 @@
 // (PanelCpu.snapshot).
 var path = require('path');
 var fs = require('fs');
-require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
 var snapshot = globalThis.PanelCpu.snapshot;

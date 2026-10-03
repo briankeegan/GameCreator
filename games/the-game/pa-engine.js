@@ -1225,6 +1225,18 @@
     s.level = opts.level || 10;
     return s;
   }
+  // The combo garbage a clear of `size` sends (COMBO_GARBAGE), and the score
+  // a cascade earns: each clear's combo bonus and each link's chain bonus.
+  function riseTime(speed) { return SPEED_TO_RISE_TIME[Math.min(SPEED_TO_RISE_TIME.length, Math.max(1, speed)) - 1]; }
+  function comboGarbage(size) { return COMBO_GARBAGE[Math.min(size, 72)] || []; }
+  function moveScore(comboSizes) {
+    var total = 0;
+    for (var i = 0; comboSizes && i < comboSizes.length; i++) {
+      if (comboSizes[i] > 3) total += SCORE_COMBO_TA[Math.min(SCORE_COMBO_TA.length - 1, comboSizes[i])];
+      if (i > 0 && i + 1 < SCORE_CHAIN_TA.length) total += SCORE_CHAIN_TA[i + 1];
+    }
+    return total;
+  }
   // A puzzle's stack as Puzzle.lua sets one up, starting immediately: no
   // rise, no manual raise, no swap stalling. `stack` is the puzzle's digits,
   // top row first (Puzzles.json "Stack"); 8 is shock, 9 colourless.
@@ -1336,13 +1348,61 @@
   // A panel-engine.js Stack of s for a bot that reads one. Its `outgoing` is
   // what s has on its way, each piece earned so that panel-engine.js's flight
   // (GARBAGE_FLIGHT from frameEarned) ends when the server hands it over.
+  // THE BOARD AS A BOT READS IT, with no panel-engine.js: a View carries the
+  // fields and panels of a panel-engine.js Stack and the few questions the
+  // bot asks of one, answered on the server's rules. It does not run.
+  function View() {}
+  View.prototype.panelAt = Stack.prototype.panelAt;
+  View.prototype.isToppedOut = Stack.prototype.isToppedOut;
+  View.prototype.hasChainingPanels = Stack.prototype.hasChainingPanels;
+  View.prototype.hasActivePanels = function () { return this.nActive > 0 || this.nPrevActive > 0; };
+  View.prototype.hasFallingGarbage = function () {
+    for (var row = Math.min(this.height + 3, this.panels.length - 1); row >= 1; row--) {
+      for (var col = 1; col <= W; col++) { var p = this.panels[row][col]; if (p.isGarbage && p.state === 'falling') return true; }
+    }
+    return false;
+  };
+  View.prototype.setInput = function (input) {
+    this.input = { left: !!input.left, right: !!input.right, up: !!input.up, down: !!input.down, swap: !!input.swap, raise: !!input.raise };
+  };
+  View.prototype.makeEmptyRow = function (row) {
+    var r = [null];
+    for (var c = 1; c <= W; c++) r[c] = viewPanel(row, c, ++this.panelIdCount);
+    return r;
+  };
+  View.prototype.canSwap = function (row, col) { return this.paStack ? this.paStack.canSwap(row, col) : false; };
+  View.prototype.calculateStopTime = Stack.prototype.calculateStopTime;
+  View.prototype.awardStopTime = function (isChain, comboSize) {
+    var t = this.calculateStopTime(comboSize, this.wasToppedOut, isChain, this.chainCounter);
+    if (t > this.stopTime) this.stopTime = t;
+  };
+  function viewPanel(r, c, id) {
+    return { row: r, col: c, id: id, color: 0, chaining: false, matching: false, timer: 0, initialTime: 0, popTime: 0,
+             popIndex: 0, xOffset: null, yOffset: null, gWidth: 0, gHeight: 0, shakeTime: 0, isGarbage: false, state: 'normal',
+             comboIndex: null, comboSize: null, swapFromLeft: null, dontSwap: false, queuedHover: false, fellFromGarbage: 0,
+             stateChanged: false, propagatesChaining: false, matchAnyway: false };
+  }
+  // The fields a panel-engine.js Stack is constructed with, for level `lv`.
+  function blankView(s, lv) {
+    var v = new View(), ld = s.levelData;
+    v.paView = true;
+    v.levelData = { startingSpeed: ld.startingSpeed, colors: ld.colors, maxHealth: ld.maxHealth, stop: ld.stop,
+                    adjacentDenialFrequency: ld.adjacentDenialFrequency, frames: s.frames };
+    v.level = lv; v.frames = s.frames; v.colors = ld.colors; v.maxHealth = ld.maxHealth;
+    v.width = W; v.height = H; v.name = s.name || 'player';
+    v.adjacentDenialFrequency = ld.adjacentDenialFrequency;
+    return v;
+  }
+  // `PE` (panel-engine.js) given: the view is a panel-engine.js Stack, for a
+  // bot that runs one. Absent: a View.
   function view(s, PE) {
-    var st = toPanelEngine(s, PE), flight = PE.GARBAGE_FLIGHT || FLIGHT;
+    var st = toPanelEngine(s, PE), flight = (PE && PE.GARBAGE_FLIGHT) || FLIGHT;
     st.outgoing = onTheWay(s).map(function (a) {
       return { width: a.width, height: a.height, isChain: a.isChain, isMetal: a.isMetal, finalized: true, frameEarned: st.clock + a.at - flight };
     });
     st.paStack = s;   // the server's own state, for a bot that plays it on the engine
-    st.setInput = function (input) { PE.Stack.prototype.setInput.call(st, input); s.setInput(input); };
+    var own = PE ? PE.Stack.prototype.setInput : View.prototype.setInput;
+    st.setInput = function (input) { own.call(st, input); s.setInput(input); };
     st.tryQueueSwap = function (row, col) { return s.canSwap(row, col) && s.tryQueueSwap(row, col); };
     return st;
   }
@@ -1355,13 +1415,23 @@
     if (o.outgoing) Object.setPrototypeOf(o.outgoing, GarbageQueue.prototype);
     return o;
   }
+  function levelOf(s) {
+    if (s.level) return s.level;
+    for (var n = 1; n <= 10; n++) {
+      var L = vsLevel(n).levelData;
+      if (L.startingSpeed === s.levelData.startingSpeed && L.maxHealth === s.levelData.maxHealth && L.colors === s.levelData.colors) return n;
+    }
+    return 10;
+  }
   function toPanelEngine(s, PE) {
     var lv = 10;
-    for (var li = 0; li < PE.LEVELS.length; li++) {
-      var L = PE.LEVELS[li];
-      if (L.startingSpeed === s.levelData.startingSpeed && L.maxHealth === s.levelData.maxHealth && L.colors === s.levelData.colors) lv = li + 1;
-    }
-    var st = new PE.Stack({ level: lv, seed: 1, countdown: false });
+    if (PE) {
+      for (var li = 0; li < PE.LEVELS.length; li++) {
+        var L = PE.LEVELS[li];
+        if (L.startingSpeed === s.levelData.startingSpeed && L.maxHealth === s.levelData.maxHealth && L.colors === s.levelData.colors) lv = li + 1;
+      }
+    } else lv = levelOf(s);
+    var st = PE ? new PE.Stack({ level: lv, seed: 1, countdown: false }) : blankView(s, lv);
     var ints = ['speed', 'nextSpeedIncreaseClock', 'clock', 'displacement', 'stopTime', 'preStopTime', 'shakeTime', 'shakeTimeOnFrame',
                 'peakShakeTime', 'health', 'chainCounter', 'nActive', 'nPrevActive', 'swappingCount', 'panelsCleared', 'score', 'curRow',
                 'curCol', 'topCurRow', 'queuedSwapRow', 'queuedSwapCol', 'garbageCreatedCount', 'highestGarbageIdMatched', 'panelIdCount'];
@@ -1410,6 +1480,6 @@
 
   return { Stack: Stack, Panel: Panel, fromLua: fromLua, revive: revive, toPanelEngine: toPanelEngine, fromPanelEngine: fromPanelEngine, view: view, Unseen: Unseen, Recorded: Recorded, Seeded: Seeded, create: create, vsLevel: vsLevel, PANEL_FROM_LUA: PANEL_FROM_LUA,
            STACK_FROM_LUA: STACK_FROM_LUA, IN: IN, list: list, WIDTH: W, HEIGHT: H,
-           GarbageQueue: GarbageQueue, deliver: deliver, puzzle: puzzle, onTheWay: onTheWay, FLIGHT: FLIGHT, game: game, COUNTDOWN_TOTAL: COUNTDOWN_START + COUNTDOWN_LENGTH, COMBO_GARBAGE: COMBO_GARBAGE, STAGING_DURATION: STAGING_DURATION,
+           GarbageQueue: GarbageQueue, deliver: deliver, puzzle: puzzle, View: View, riseTime: riseTime, comboGarbage: comboGarbage, moveScore: moveScore, onTheWay: onTheWay, FLIGHT: FLIGHT, game: game, COUNTDOWN_TOTAL: COUNTDOWN_START + COUNTDOWN_LENGTH, COMBO_GARBAGE: COMBO_GARBAGE, STAGING_DURATION: STAGING_DURATION,
            GARBAGE_DELAY_LAND_TIME: GARBAGE_DELAY_LAND_TIME };
 }));

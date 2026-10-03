@@ -1,6 +1,6 @@
 importScripts("../../shared/sw-core.js");
 
-GCRegisterServiceWorker("the-game-v115", [
+GCRegisterServiceWorker("the-game-v116", [
   "./",
   "./index.html",
   "./style.css",
@@ -9,7 +9,6 @@ GCRegisterServiceWorker("the-game-v115", [
   "./panel-rules.js",
   "./pa-generator.js",
   "./pa-engine.js",
-  "./panel-engine.js",
   "./panel-cpu.js",
   // The trained bot, loaded by index.html for the nightmare tier. Every one
   // of these has to be here: cache six of seven and the app installs, runs,

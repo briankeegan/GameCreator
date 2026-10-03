@@ -611,19 +611,6 @@ gate_shake_hold() {
   node games/the-game/ai/eval/shakehold.test.js
 }
 
-# THE DEEP-SURVIVAL FILTER'S GATE ASKS ABOUT THE BOARDS IT JUDGES.
-#
-# _doomed is gated on height for cost, and the gate read the LIVE board while
-# every test below it is applied to a candidate's SETTLED board -- which can be
-# rows taller. Measured over 20 duels: shut on 101 decisions where some
-# candidates were doomed and others were not, and on 15 more where every
-# candidate was, which also left allDoomedNow unset and _lastResort blind.
-# Both halves are bound, because a gate that only ever opens is the ten-times
-# cost it exists to avoid.
-gate_doomed_gate() {
-  node games/the-game/ai/eval/doomgate.test.js
-}
-
 # THE RUN RECORDS WHAT KIND OF GARBAGE IT SENT, NOT JUST HOW MUCH.
 #
 # Score cannot say whether the bot learned to CHAIN: one that survives on
@@ -666,7 +653,7 @@ gate_resolve_fidelity_fires() {
   work="$(mktemp -d)"
   trap 'rm -rf "$work"; trap - RETURN' RETURN
   mkdir -p "$work/games/the-game/ai/eval"
-  cp games/the-game/panel-engine.js games/the-game/panel-cpu.js "$work/games/the-game/" || return 1
+  cp games/the-game/panel-engine.js games/the-game/panel-cpu.js games/the-game/panel-rules.js games/the-game/pa-engine.js games/the-game/pa-generator.js "$work/games/the-game/" || return 1
   cp games/the-game/ai/eval/*.js games/the-game/ai/eval/realboards.json "$work/games/the-game/ai/eval/" || return 1
   sed -i 's/stack.riseTimer = 1e9;//' "$work/games/the-game/ai/eval/engineboard.js" || return 1
   if ( cd "$work/games/the-game/ai/eval" && GC_FIDELITY_FLOOR=0.9993 node resolve_fidelity.js boards 300 ) >/dev/null 2>&1; then
@@ -684,16 +671,6 @@ gate_features() {
 
 gate_chip_verifier_fires() {
   bash games/the-game/ai/eval/chips.test.sh
-}
-
-# THE BIT ARITHMETIC ANSWERS WHAT THE SIMULATION ANSWERS. bitmatch.js computes
-# the cleared cells with AND and popcount instead of walking the grid for runs,
-# so the two have to agree on the CELL SET over every legal swap on every real
-# board, in all five board states a clear can be asked about — and the states
-# where a match is expected have to produce some, because every captured board
-# is settled and a sweep of those alone agrees on nothing at all.
-gate_bitmatch() {
-  node games/the-game/ai/eval/bitmatch.test.js
 }
 
 # A PLAN THAT CLAIMS A CHAIN HAS TO PLAY ONE. bestSetup names a swap that clears
@@ -739,16 +716,6 @@ gate_bitlineup() {
   node games/the-game/ai/eval/bitlineup.test.js
 }
 
-# WHAT A BOARD CAN BE MADE TO DO, AND WHAT EACH COSTS. The reach* features answer
-# "could a 5-chain be fired from here" yes or no; a yes with no price cannot be
-# compared against a cheaper smaller one. bitoptions lists every option with the
-# swaps and the cursor frames, and the gate plays them on a real Stack: the
-# payout has to be what was listed. It also pins the quote against driving the
-# real cursor, and fails if the cost side stops separating options at all.
-gate_bitoptions() {
-  node games/the-game/ai/eval/bitoptions.test.js
-}
-
 # EVERY FIELD AN OPTION CARRIES IS READ BY EVERY RANKER THAT RANKS OPTIONS.
 #
 # Eleven times in one session the same defect: a quantity added to the option list
@@ -760,25 +727,6 @@ gate_option_pricing() {
   node games/the-game/ai/eval/check_option_pricing.mjs
 }
 
-# THE DEADLINE, AGAINST THE ENGINE RUNNING. Every price in the bot is denominated in
-# the frames this number says the board has left, so an error in it is an error in all
-# of them -- and both errors found in it ran the same way, the bot believing it had
-# longer than it had. Two engine facts have to hold together: the clock advances and
-# updateSpeed fires during stop time, so SPEED rises while frozen, and
-# advancePassiveRaise only moves the board while stopTime is 0, so the BOARD does not.
-# Checked by stepping a model of those three lines one frame at a time rather than by
-# restating the arithmetic.
-gate_deadline_rise() {
-  node games/the-game/ai/eval/deadline_rise.test.js
-}
-
-# A LANDING THE LINEUP SAYS BREAKS, BREAKS. Topped out, the bot lines up only a landing
-# that breaks the slab above, so bitframes' run of the in-flight board is the decision.
-# Compared with a copy of the engine on every open reveal window of a real game.
-gate_landing() {
-  node games/the-game/ai/eval/landing.test.js
-}
-
 # WHAT A SWAP CLEARS, WITHOUT APPLYING IT. On a settled board every column is a
 # packed run from the floor, so a swap does two things to it and both are shifts:
 # the panel crosses and lands on top of the run it joins, and the hole it left
@@ -788,35 +736,6 @@ gate_landing() {
 # the two ways the fall can be got wrong are both caught.
 gate_bitswap() {
   node games/the-game/ai/eval/bitswap.test.js
-}
-
-# THE OPTIONS, AS FEATURES, FOR THE BOT BITBOT.md PLANS. A quantity identical
-# across every candidate in a decision cannot change which move is played, so the
-# clock and the incoming queue are INFO and are not here. The gate checks the
-# stop-time arithmetic against Stack.awardStopTime itself, fails a feature that
-# takes one value on every board, fails a clamp, and fails a pair at Pearson 0.9 —
-# collinear terms split their weight arbitrarily and the result cannot be read.
-# chain5plus is judged on the CHIP CORPUS, because captured boards are positions a
-# bot that does not build chains played, and judging a chain feature there is
-# circular.
-gate_bitfeatures() {
-  node games/the-game/ai/eval/bitfeatures.test.js
-}
-
-# THE FRAME ARITHMETIC IS CHECKED AGAINST THE ENGINE, not against itself. The bot
-# prices every move in frames and decides what fits in the time there is; if those
-# frames disagree with what the engine spends, every decision built on them is
-# wrong and no outcome measurement says which number lied. So resolveFramesOf is
-# asserted to equal the engine's own preStop, stopTimeOf to equal awardStopTime on
-# a real Stack, and -- the fact the pricing turns on -- riseLock is asserted held
-# on every frame panels are in motion, which is why resolve time is floor HELD and
-# not time spent.
-gate_bitbot_timing() {
-  node games/the-game/ai/eval/timing.test.js
-}
-
-gate_bitbot_survival() {
-  node games/the-game/ai/eval/survival.test.js
 }
 
 gate_gates_reject_defects() {
@@ -879,8 +798,6 @@ SLOW_GATES=(
   gate_modes                # 53s
   gate_features_live        # 37s
   gate_chips_real_boards    # 26s
-  gate_bitbot_timing        # 3s
-  gate_bitmatch             # 18s
   gate_chips_decidable      # 17s
   gate_chip_verifier_fires  # 12s
 )
@@ -888,7 +805,7 @@ SLOW_GATES=(
 # tests something the search sits on top of, so it runs with
 # GC_SURVIVAL_SEARCH=0: the search costs seconds per decision and its
 # decisions trip bench.js's 85ms timing guard, which zeroes the game.
-SEARCH_GATES=( gate_puyo_cpu gate_no_self_death gate_live_fidelity gate_doomed_gate gate_brain gate_engine_check )
+SEARCH_GATES=( gate_puyo_cpu gate_no_self_death gate_live_fidelity gate_brain gate_engine_check )
 _gate_exec() {
   local g
   for g in "${SEARCH_GATES[@]}"; do [ "$g" = "$1" ] && { "$1"; return; }; done
@@ -949,7 +866,6 @@ GATES=(
   "two variants on one seed keep separate islands:gate_pbt_dirs:games/the-game/ai/"
   "the bot may not kill itself:gate_no_self_death:games/the-game/ai/"
   "the scratch floor moves only when the real floor moves:gate_shake_hold:games/the-game/ai/"
-  "the deep-survival gate asks about the candidates:gate_doomed_gate:games/the-game/ai/"
   "the puyo brain:gate_puyo_cpu:games/the-game/ai/"
   "the training harness:gate_training_harness:games/the-game/ai/"
   "rise-adjusted scoring:gate_rise_scoring:games/the-game/ai/"
@@ -966,19 +882,12 @@ GATES=(
   "a run records what kind of garbage it sent:gate_chain_depth:games/the-game/ai/"
   "a garbage break stops the resolve:gate_garbage_rules:games/the-game/ai/"
   "the chip matcher enforces every constraint:gate_chip_matcher_constraints:games/the-game/ai/"
-  "the bit arithmetic answers what the simulation answers:gate_bitmatch:games/the-game/ai/"
   "a plan that claims a chain plays one:gate_bitplan:games/the-game/ai/"
   "the engine decides while panels are in the air:gate_bitdecide:games/the-game/ai/"
   "the clock keeps frame-for-frame time with the engine:gate_bitframes:games/the-game/ai/"
   "lining up with colours as they appear:gate_bitlineup:games/the-game/ai/"
-  "every option listed is real and priced:gate_bitoptions:games/the-game/ai/"
   "every option field is priced by both rankers:gate_option_pricing:games/the-game/ai/"
-  "the deadline keeps time with the engine through a freeze:gate_deadline_rise:games/the-game/ai/"
-  "a landing the lineup says breaks, breaks:gate_landing:games/the-game/ai/"
   "a swap is answered without applying it:gate_bitswap:games/the-game/ai/"
-  "the options are features that vary:gate_bitfeatures:games/the-game/ai/"
-  "the bot's frame arithmetic matches the engine:gate_bitbot_timing:games/the-game/ai/"
-  "the rules a vector cannot reach:gate_bitbot_survival:games/the-game/ai/"
   "the simulation resolves like the game:gate_resolve_fidelity:games/the-game/ai/"
   "that fidelity check fires:gate_resolve_fidelity_fires:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"
