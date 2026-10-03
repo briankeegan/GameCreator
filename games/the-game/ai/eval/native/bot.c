@@ -2162,6 +2162,7 @@ static LC *lcGet(const int32_t *st) {
   if (e->key != k) { e->key = k; e->done[0] = e->done[1] = e->brk[0] = e->brk[1] = e->cash[0] = e->cash[1] = 0; }
   return e;
 }
+#define LBEAM 8   // children searched deeper per board: the work has a ceiling
 static void linesAt(int d, int pr, int pc, double t, double limit) {
   int n = legal(LS[d], LSW[d]);
   LC *lc = (d > 0 && d + 1 >= lsDepth) ? lcGet(LS[d]) : 0;
@@ -2169,7 +2170,11 @@ static void linesAt(int d, int pr, int pc, double t, double limit) {
   // OUT FROM THE CURSOR: nearest first, so the first that cannot be reached in
   // time ends the level -- every one after it is further
   Out o; double far; int i;
-  int bounded = tTimeMode || limit < LINEHORIZON;   // the only stops here: the time asked, a drain
+  // THE BEAM, as the option search keeps one: below a level only its LBEAM
+  // nearest children are searched deeper -- the soonest; every swap is still
+  // tried as a line's last
+  int deeper = d + 1 < lsDepth, expanded = 0;
+  int bounded = tTimeMode || limit < LINEHORIZON || deeper;
   outBeginB(&o, LSW[d], 2, n, pr, pc, bounded);
   int noOrder = nfNoOrder || !bounded;
   while ((tTimeMode || nLines < MAXLINES) && outNext(&o, &i, &far)) {
@@ -2233,6 +2238,8 @@ static void linesAt(int d, int pr, int pc, double t, double limit) {
       continue;
     }
     if ((LSR[R_SCOPE] != SC_OK && !(d == 0 && LSR[R_SCOPE] == SC_BROKE)) || d + 1 >= lsDepth) continue;
+    if (expanded >= LBEAM) continue;
+    expanded++;
     double settle = LSR[R_TOTAL] > 0 ? LSR[R_FRAMES] : quietSettle(LS[d], r, c, LSR + R_INTS);
     disturbed(LS[d], LSR + R_INTS, LSD[d + 1]);
     lsSettled[d + 1] = at + settle;
@@ -2700,7 +2707,7 @@ static int breakAt(int d, int depth, int cr, int cc) {
   u64 key = (hashOf(KB[d]) ^ (0x9E3779B97F4A7C15ull * (u64)k)) | 1;
   unsigned slot = (unsigned)(key & (BWN - 1));
   if (BWK[slot] == key) return BWV[slot];
-  int n = legal(KB[d], KBSW[d]), i, found = 0, cut = 0, haveLq = 0;
+  int n = legal(KB[d], KBSW[d]), i, found = 0, cut = 0, haveLq = 0, expanded = 0;
   Out o; double far;
   outBegin(&o, KBSW[d], 2, n, cr, cc);
   while (!found && outNext(&o, &i, &far)) {
@@ -2711,7 +2718,8 @@ static int breakAt(int d, int depth, int cr, int cc) {
     resolve(KB[d + 1], KBR, 1);
     if (KBR[R_SCOPE] == SC_REFUSED) { cut = 1; break; }
     if (KBR[R_SCOPE] == SC_BROKE) { found = 1; break; }
-    if (KBR[R_SCOPE] != SC_OK || k <= 1) continue;
+    if (KBR[R_SCOPE] != SC_OK || k <= 1 || expanded >= LBEAM) continue;
+    expanded++;
     stcpy(KB[d + 1], KBR + R_INTS);
     if (breakAt(d + 1, depth, r, c)) found = 1;
   }
