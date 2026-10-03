@@ -2254,12 +2254,13 @@ static Dec batchBreak(Dec d) {
 // MATERIAL IS SPENT ONLY TO BREAK OR TO LIVE. While garbage lies on the
 // board or waits to drop, the board's panels are what the next break is made
 // from, and broken garbage is where new ones come from. A clear that breaks
-// nothing is played only when the time is short (stayAlive judges it) or as a
-// step of a line that breaks; otherwise the bot holds what it has.
+// nothing is played only topped, to hold the lock, or when it was chosen to
+// live (stayAlive) or as a step of a line that breaks; otherwise the bot keeps
+// its panels for the break.
 static Dec spendToBreak(Dec d) {
   if (lineLast || d.kind != K_SWAP || !d.hasMove || endsInBreak(d.via)) return d;
   if (!(hasGarbage(DBASE) || BIN[IN_INCOMING] > 0)) return d;
-  if (timeLeft() < LIVEHORIZON) return d;
+  if (BIN[IN_TOPPED]) return d;
   Cand *pc = poolSwap(d.sr, d.sc);
   if (!pc || pc->res.broke || pc->res.total == 0) return d;
   return mkHold(V_SETUP, d.mode, d.alive, 0, 0, 0);
