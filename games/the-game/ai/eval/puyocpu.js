@@ -7,12 +7,12 @@
 
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory(require('./evaluator.js'), require('./input.js'), require('./travel.js'), require('./engineboard.js'), require('./modes.js'), null);
+    module.exports = factory(require('./evaluator.js'), require('./input.js'), require('./travel.js'), require('./modes.js'));
   } else {
     root.PanelEval = root.PanelEval || {};
-    root.PanelEval.PuyoCpu = factory(root.PanelEval.evaluator, root.PanelEval.input, root.PanelEval.travel, root.PanelEval.engineBoard, root.PanelEval.modes, root.PanelEval.FastStack);
+    root.PanelEval.PuyoCpu = factory(root.PanelEval.evaluator, root.PanelEval.input, root.PanelEval.travel, root.PanelEval.modes);
   }
-}(this, function (evaluator, inputMod, travel, engineBoard, modes, FastStack) {
+}(this, function (evaluator, inputMod, travel, modes) {
   'use strict';
 
   // Options: weights, depth (1 = greedy, 2 = one move of lookahead), beam
@@ -87,7 +87,6 @@
     // candidates at depth 1 is 38ms of an 85ms budget, so depth 1 fits and
     // depth 2 (229ms) does not.
     this.engine = opts.engine === true;
-    this._scratch = null;
     this.rise = opts.rise === true;
     // DENSITY SCORING, also off by default — see evaluator.js. Counts that
     // are made of panels (links, edgePenalty) become densities, so clearing
@@ -191,14 +190,9 @@
     // Where decisions come from when they cannot be made on the frame (see
     // REAL TIME). Absent, the bot decides on the frame.
     this.brain = opts.brain || null;
-    // The search's steps on faststack.js (opts.fastEngine or GC_FAST_ENGINE=1),
-    // each checked against the real engine with opts.engineCheck or
-    // GC_ENGINE_CHECK=1, which turns the fast engine on.
     var envOn = function (k) { return typeof process !== 'undefined' && process.env && process.env[k] === '1'; };
-    this.engineCheck = !!opts.engineCheck || envOn('GC_ENGINE_CHECK');
-    this.fastEngine = !!opts.fastEngine || envOn('GC_FAST_ENGINE') || this.engineCheck;
     // The search's steps on the engine in C (native.js; opts.native or
-    // GC_NATIVE=1), each checked against the real engine under engineCheck.
+    // GC_NATIVE=1).
     this.native = !!opts.native || envOn('GC_NATIVE');
     // THE REPLIES ON THE ENGINE IN C TOO (opts.nativeCands, with serverStack):
     // every first-ply candidate also gets a node in a search context of its
@@ -438,88 +432,6 @@
     }
   }
 
-  // Settle a candidate board: gravity, matches, cascades. Returns what the
-  // move earned — chain length, combo sizes, garbage sent, stop time.
-  // THE SWAP HAPPENS WHEN THE CURSOR ARRIVES, NOT WHEN THE BOT DECIDES.
-  //
-  // `move` and `delay` are the engine path only: the board is painted as it
-  // stands, run forward `delay` frames — the reaction plus the walk — and
-  // the swap is then made on whatever board is there, which is what the game
-  // does. Resolving a swap against the board at the moment of DECIDING is
-  // resolving it against a board that will not exist by the time it happens:
-  // panels land in those frames, and a move that cleared nothing then clears
-  // three now.
-  //
-  // A swap the aged board refuses is a swap that will really be refused —
-  // canSwap is the engine's own — and it resolves to nothing, which is the
-  // honest answer rather than a prediction made on a board that is gone.
-  // THE FLOOR MOVES AT THE SPEED AND PHASE THE MATCH IS ACTUALLY AT.
-  //
-  // riseLock is not copied because it is not state: updateRiseLock recomputes
-  // it from swapQueued, shakeTime and hasActivePanels on the first frame of
-  // run(), so setting it false here only stops a stale lock outliving its
-  // cause.
-  //
-  // SHAKE TIME IS THE PIECE THAT WAS MISSING. paint() zeroes it, and a stack
-  // with shakeTime 0 has a free floor while the real one is pinned -- so the
-  // resolve aged the board with the rise running through a window the game
-  // spends standing still, and handed back the live board SHIFTED UP A ROW.
-  // Read off the boards at frame 785 of seed 970: live rows 9/10/11 full and
-  // 12 empty, shakeTime 38, riseLock true; the candidate had the same panels
-  // in rows 10/11/12 and read topped out. All 28 candidates read topped out,
-  // so _survivors saw no survivor, lifted, and the bot chose unfiltered for
-  // three decisions with two empty rows in hand.
-  PuyoCpu.prototype._copyRiseState = function (st) {
-    // Inside a survival line the state is the ENGINE's, carried forward from
-    // the step before -- not the live stack's again, which would re-run a
-    // rise timer and a stop clock the line has already spent.
-    var live = this._carry || this.stack;
-    if (!live) {
-      st.riseLock = true; st.riseTimer = 1e9;
-      st.stopTime = 0; st.preStopTime = 0;
-      st.shakeTime = 0; st.peakShakeTime = 0; st.shakeTimeOnFrame = 0;
-      st.chainCounter = 0;
-      st.nextSpeedIncreaseClock = -1;
-      return;
-    }
-    st.riseLock = false;
-    st.riseTimer = live.riseTimer;
-    st.displacement = live.displacement;
-    st.speed = live.speed;
-    st.stopTime = live.stopTime || 0;
-    st.preStopTime = live.preStopTime || 0;
-    st.shakeTime = live.shakeTime || 0;
-    st.peakShakeTime = live.peakShakeTime || 0;
-    // A slab that landed on the last frame has not started shaking yet: the
-    // engine applies it on the next one. Without it the model drains a
-    // topped-out stack the game holds (seed 703 frame 611).
-    st.shakeTimeOnFrame = live.shakeTimeOnFrame || 0;
-    // A chain already running continues from its link, not from zero: the
-    // next clear is link 3 in the game and was link 2 here, paying less stop
-    // time and sending less (seed 703 frame 309).
-    st.chainCounter = live.chainCounter || 0;
-    st.highestGarbageIdMatched = live.highestGarbageIdMatched || 0;
-    st.manualRaise = !!live.manualRaise;
-    st.manualRaiseYet = !!live.manualRaiseYet;
-    st.preventManualRaise = !!live.preventManualRaise;
-    st.hasRisen = !!live.hasRisen;
-    st.garbageCreatedCount = Math.max(st.garbageCreatedCount || 0, live.garbageCreatedCount || 0);
-    st.swapStallBacklog = (live.swapStallBacklog || []).map(function (q) { return { row: q.row, col: q.col }; });
-    // Topped out as of the last frame, which the stalling rule reads: paint
-    // clears it, and a swap made before any frame runs would read "not topped
-    // out" and be allowed to repeat.
-    st.wasToppedOut = st.isToppedOut ? st.isToppedOut() : false;
-    // And last frame's count of moving panels: the floor stays locked for a
-    // frame after the last one stops (seed 701 frame 153).
-    if (live.nActive !== undefined) { st.nActive = live.nActive; st.nPrevActive = live.nPrevActive; }
-    // The next speed-up, counted from the match's clock, not the scratch's:
-    // the scratch has run millions of frames and would speed up wherever its
-    // own clock happened to land.
-    var toSpeed = this._carry ? this._carry.toSpeed
-                              : (live.nextSpeedIncreaseClock - (live.clock || 0));
-    // Zero is this frame: runPhysics checks the speed before the clock moves.
-    st.nextSpeedIncreaseClock = (toSpeed >= 0) ? (st.clock || 0) + toSpeed : -1;
-  };
 
   // GARBAGE ALREADY IN FLIGHT, AS THE ENGINE WILL DELIVER IT.
   //
@@ -565,323 +477,7 @@
       // behaviour: the caller has already applied the swap.
       return board.resolve();
     }
-    if (!this._scratch) this._scratch = engineBoard.scratch(10, true);
-    var st = this._scratch;
-    // WITH THE SLABS, not just the cells that read -2. The engine walks
-    // gWidth, gHeight and each cell's offset to decide whether a garbage block
-    // is supported and to pop it as a unit; painted without them it is a
-    // rectangle the engine cannot reason about, so every resolve involving
-    // garbage was answering about a board the game will never have. The board
-    // carries them from snapshot(); paint wants cells per id, not {cells}.
-    var slabs = null;
-    if (board.blocks) {
-      slabs = {};
-      for (var bid in board.blocks) {
-        if (!board.blocks.hasOwnProperty(bid)) continue;
-        var bc = board.blocks[bid];
-        var cells = bc && bc.cells ? bc.cells : bc;
-        if (cells && cells.length) slabs[bid] = cells;
-      }
-    }
-    // AND THE CHAINING FLAGS. A clear is a chain LINK because the panels
-    // carry the flag, not because of anything in the grid, so a board painted
-    // without them resolves a chain as a plain combo.
-    engineBoard.paint(st, board.grid, board.height, board.width, slabs,
-                      board.chaining || null, board.motion || null);
-    if (board.queuedSwap) { st.queuedSwapRow = board.queuedSwap[0]; st.queuedSwapCol = board.queuedSwap[1]; }
-    var wait = Math.max(0, delay || 0);
-    // AGE IT WITH THE FLOOR MOVING. paint() parks the rise — riseLock true and
-    // riseTimer at 1e9 — because a rise DURING THE SETTLE shifts the board out
-    // from under the read. But the wait below is not a settle: it is the walk
-    // to the square, and the rise is the one thing that moves the board while
-    // the cursor is travelling. Frozen, the search ages the board with nothing
-    // changing, so a three it lined up is still lined up when it swaps —
-    // in the scratch. On the real board it has climbed.
-    //
-    // Measured before this: of 980 swaps, 256 did not do what the search said,
-    // and the largest class by far was an attack that vanished — 88 swaps
-    // predicted a 4-combo and cleared nothing.
-    //
-    // The real stack's rise state is copied so the wait ages at the speed and
-    // phase the match is actually at, then the floor is parked again for the
-    // swap and the settle.
-    // THE GARBAGE ALREADY QUEUED. paint() clears stack.incoming as part of
-    // resetting the scratch, which is right for a board built from nothing and
-    // wrong for a board copied from a live match: that queue is garbage that
-    // has ALREADY ARRIVED and is waiting for a gap to drop into. The bot can
-    // see it coming and the resolve was throwing it away, so a slab that lands
-    // during the settle was a surprise to the simulation and not to the game.
-    var queue = this._carry ? this._carry.incoming : (this.stack && this.stack.incoming);
-    if (queue && queue.length && st.incoming) {
-      for (var q0 = 0; q0 < queue.length; q0++) {
-        var gq = queue[q0];
-        st.incoming.push({ width: gq.width, height: gq.height, isChain: gq.isChain });
-      }
-    }
-
-    // THE ROW THAT IS ARRIVING, painted whatever happens next. A rise can
-    // land during the wait OR during the settle, and either way the row that
-    // enters play is the dimmed one already on screen. Only the row BEHIND it
-    // is the game's own RNG, which nothing can know.
-    // The line's own next row first: the known row enters once. After it the
-    // engine's generator makes each row, as the match's own does.
-    var inc0 = (this._carry && this._carry.nextRow) ||
-               (board.incoming === false ? false : (board.incoming || (this._board && this._board.incoming)));
-    if (inc0 === false && st.panels[0] && st.fillNewRow) st.fillNewRow(0);
-    else if (inc0 && st.panels[0]) {
-      for (var i0 = 1; i0 <= board.width; i0++) {
-        var p0 = st.panels[0][i0];
-        if (!p0) continue;
-        var c0 = inc0[i0];
-        p0.color = (c0 && c0 > 0) ? c0 : 0;
-        p0.isGarbage = false; p0.state = 'normal'; p0.timer = 0;
-        p0.chaining = false; p0.matching = false; p0.dontSwap = false;
-        p0.gWidth = 0; p0.gHeight = 0; p0.xOffset = null; p0.yOffset = null;
-      }
-    }
-    // The floor's state is copied ONCE, before the walk, and then the walk
-    // and the settle both spend it. Copying it again after the walk threw the
-    // walk's time away: the rise came as though no frames had passed.
-    this._copyRiseState(st);
-    // The drop cycle too, before the walk: garbage can land during it.
-    st.dropColumnIndex = {};
-    var dsrc = (this._carry && this._carry.dropColumnIndex) ||
-               (this.stack && this.stack.dropColumnIndex) || null;
-    if (dsrc) {
-      for (var dw in dsrc) if (dsrc.hasOwnProperty(dw)) st.dropColumnIndex[dw] = dsrc[dw];
-    }
-    // DEAD BEFORE THE CURSOR ARRIVES IS NOT A MOVE IT CAN PLAY.
-    //
-    // The loop already knew: it breaks on gameOver. What followed did the
-    // swap anyway -- doSwap writes to the grid directly, not through run(),
-    // so the panels move on a stack whose game is over -- and readGrid handed
-    // back a board that cannot exist, with nothing on the result to say so.
-    // Three deaths read off the boards were this: the bot predicted a garbage
-    // break worth ten panels, walked to a square it never reached, and the
-    // engine's board was the live one shifted up a row with the swap never
-    // made. The score had picked the prettiest board in a future it died on
-    // the way to.
-    var arrivals = this._inFlight(), nextArr = 0;
-    var diedInWalk = false, rowsInWalk = 0;
-    // A RAISE THE BOT IS STILL HOLDING goes on being held, frame by frame,
-    // exactly as update() holds it: the engine raises fast while it is held,
-    // and a resolve that dropped it had the stack two pixels low within a
-    // frame (seed 703 side 1, raise at 737, swap at 750).
-    st.setInput({});
-    var hold = this._carry ? { left: this._carry.raiseLeft || 0, started: !!this._carry.raiseStarted, now: null }
-                           : { left: (this.raiseFrames || 0), started: !!this._raiseStarted, now: !!this._raiseNow };
-    var baseRun = st.run, ownRun = st.hasOwnProperty('run'), firstFrame = true;
-    if (hold.left > 0 || hold.now) {
-      st.run = function () {
-        var up = false;
-        if (firstFrame && hold.now !== null) up = hold.now;
-        else if (hold.left > 0) {
-          if (this.manualRaise) hold.started = true;
-          if (this.preventManualRaise || (hold.started && !this.manualRaise)) hold.left = 0;
-          else { hold.left--; up = true; }
-        }
-        firstFrame = false;
-        this.input.raise = up;
-        return baseRun.call(this);
-      };
-    }
-    // THE CURSOR IS THE ENGINE'S. Given where it starts, the walk is the bot's
-    // own driveWalk feeding the engine one input a frame, so rows rising under
-    // it, the clamp at the top and the step timing are the game's, and the
-    // walk ends when the cursor arrives, not after a formula's count.
-    var from = this._walkFrom || null, walker = null;
-    if (from) {
-      st.curRow = from[0]; st.curCol = from[1];
-      if (this.stack && this.stack.topCurRow) st.topCurRow = this.stack.topCurRow;
-      st.input = {}; st.prevInput = {}; st.cursorDirection = null; st.cursorTimer = 0;
-      if (move) {
-        walker = { stack: st, cursorMoveFrames: this.cursorMoveFrames,
-                   _walk: { row: move[0], col: move[1], timer: 0, cooldown: 0, retries: 2 },
-                   _beginWalk: PanelCpu.beginWalk, _nearestSwappable: function () { return null; } };
-        wait = 600;
-      }
-    }
-    for (var f = 0; f < wait; f++) {
-      while (nextArr < arrivals.length && arrivals[nextArr].at <= f) {
-        st.incoming.push({ width: arrivals[nextArr].width, height: arrivals[nextArr].height,
-                           isChain: arrivals[nextArr].isChain });
-        nextArr++;
-      }
-      if (walker) {
-        var inp = {};
-        PanelCpu.driveWalk.call(walker, inp);
-        if (!walker._walk) break;
-        st.setInput(inp);
-      }
-      st.events.length = 0;
-      st.run();
-      for (var we = 0; we < st.events.length; we++) if (st.events[we].type === 'newRow') rowsInWalk++;
-      if (st.gameOver) { diedInWalk = true; break; }
-    }
-    var walked = f;
-    var settleArrivals = [];
-    for (var ai = nextArr; ai < arrivals.length; ai++) {
-      settleArrivals.push({ at: Math.max(0, arrivals[ai].at - walked), width: arrivals[ai].width,
-                            height: arrivals[ai].height, isChain: arrivals[ai].isChain });
-    }
-    // THE FLOOR KEEPS MOVING THROUGH THE SETTLE TOO.
-    //
-    // A settle runs 60 to 90 frames and the stack climbs during them, so
-    // parking the rise here answers "what settles if the floor never moves" —
-    // a board the game never has. Eight of every fifteen positions the
-    // fidelity check threw away were thrown away for exactly this: a row rose
-    // and the simulation had not been told it could.
-    //
-    // Everything needed is on the stack: riseTimer, displacement and speed say
-    // when the next row lands, and board.incoming says what is in it. It was
-    // copied before the walk; the walk has already moved it on.
-    //
-    // A row that lands during the walk carries the target up with it, as it
-    // carries the cursor (newRow: curRow + 1).
-    if (move && rowsInWalk && !walker) move = [move[0] + rowsInWalk, move[1]];
-    var refusedInWalk = false;
-    if (walker) {
-      st.setInput({});
-      // driveWalk arrived and asked the engine: queued means canSwap and the
-      // stalling rule both let it through, on the cell the cursor reached.
-      move = null;
-      if (diedInWalk) { /* the walk is where it ended */ }
-      else if (walker._lastSwap && st.queuedSwapRow > 0) {
-        var qr = st.queuedSwapRow, qc = st.queuedSwapCol;
-        st.queuedSwapRow = 0; st.queuedSwapCol = 0;
-        st.doSwap(qr, qc);
-        if (st.countActivePanels) { st.countActivePanels(); st.countActivePanels(); }
-      } else refusedInWalk = true;
-    }
-    // A REFUSED SWAP IS NOT A QUIET NO-OP. canSwap and LogicalBoard.legalSwaps
-    // disagree on 3.5% of the moves the search is handed, and resolving the
-    // UNMOVED board scores the candidate as "this move changes nothing" —
-    // a phantom the bot then reasons about and sometimes plays.
-    var refused = false;
-    if (move) {
-      // THROUGH THE SAME DOOR AS A KEY PRESS: tryQueueSwap checks canSwap and
-      // then the stalling rule, which refuses the same pair again while
-      // topped out with nothing else moving. Skipping it, a line could wiggle
-      // one pair every five frames and hold the floor forever.
-      if (st.canSwap(move[0], move[1]) && (!st.applySwapStalling || st.applySwapStalling(move[0], move[1]))) {
-        st.doSwap(move[0], move[1]);
-        // A SWAP HOLDS THE FLOOR THE FRAME IT IS MADE. In the match the swap is
-        // queued first and updateRiseLock locks on swapQueued(); after that the
-        // swapping panels count as active. doSwap skips the queue, and the
-        // active count was taken before it -- so frame 1 had no lock and a
-        // board standing at the lid drained in the scratch while the engine
-        // held it and let the swap play. The engine's own count, taken again.
-        if (st.countActivePanels) { st.countActivePanels(); st.countActivePanels(); }
-      }
-      else refused = true;
-    }
-    // ONE RESOLVE, RUN AS THE MATCH RUNS IT.
-    //
-    // This is the bot's only model of what the game does to a board. It used
-    // to depart from the engine in three places: health forced back every
-    // frame, so the engine could never kill the board it was asked about; the
-    // garbage drop cycle left from whatever the previous candidate did; and a
-    // window so short that no row ever rose inside it -- 0 in 690,071 resolves
-    // in four duels. A second, survival-only mode was then bolted on to get
-    // the engine's answer where it mattered, and two answers to one question
-    // is how the bot came to certify moves the game killed.
-    //
-    // So there is one: the drain runs (maxHealth is 1 at level 10, and
-    // Stack.lua says a topped-out stack with nothing holding it "will
-    // instakill"), the rise runs on the live timing, the whole queue drops in
-    // the columns the engine's own cycle picks -- GARBAGE_DROP_COLUMN_MAPS
-    // indexed by dropColumnIndex, which paint() never touched -- and `died`
-    // is the engine's verdict. `untilRise` is only how far ahead to look.
-    //
-    // Read off frame 367 of seed 703: a rising row that completes a match
-    // locks the floor and pays stop time before any drain runs; the grid rule
-    // condemned all 35 candidates the engine let live. Read off seed 702
-    // frame 2777: queue [3x1, 6x6, 5x1, 5x1] on a stack at row 8, the check
-    // asked about the first slab only and certified 9 of 23 moves; the 6x6
-    // landed and the board it died on was garbage from row 7 to row 12.
-    st.health = st.maxHealth;
-    st.gameOver = false;
-    var out = engineBoard.settle(st, cap || (untilRise ? 1800 : 900), true, !!untilRise, settleArrivals, !!exact);
-    if (ownRun) st.run = baseRun; else delete st.run;
-    if (refused || refusedInWalk) out.refused = true;
-    if (diedInWalk) out.diedInWalk = true;
-    if (rowsInWalk) out.rose = true;
-    out.walked = walked;
-    if (from) out.cursor = [st.curRow, st.curCol];
-    // WHERE THE ENGINE LEFT OFF, so a survival line continues from the
-    // engine's state instead of re-running the live one.
-    out.carry = {
-      incoming: (st.incoming || []).map(function (g) {
-        return { width: g.width, height: g.height, isChain: g.isChain };
-      }),
-      dropColumnIndex: (function (d) { var o = {}; for (var k in d) if (d.hasOwnProperty(k)) o[k] = d[k]; return o; })(st.dropColumnIndex || {}),
-      nextRow: (function (p0, w) { var r = [0]; for (var c = 1; c <= w; c++) r[c] = p0 && p0[c] ? p0[c].color : 0; return r; })(st.panels[0], board.width),
-      riseTimer: st.riseTimer, displacement: st.displacement, speed: st.speed,
-      stopTime: st.stopTime || 0, preStopTime: st.preStopTime || 0,
-      toSpeed: st.nextSpeedIncreaseClock >= st.clock ? st.nextSpeedIncreaseClock - st.clock : -1,
-      shakeTime: st.shakeTime || 0, peakShakeTime: st.peakShakeTime || 0,
-      shakeTimeOnFrame: st.shakeTimeOnFrame || 0,
-      chainCounter: st.chainCounter || 0,
-      highestGarbageIdMatched: st.highestGarbageIdMatched || 0,
-      manualRaise: !!st.manualRaise, manualRaiseYet: !!st.manualRaiseYet,
-      preventManualRaise: !!st.preventManualRaise, hasRisen: !!st.hasRisen,
-      raiseLeft: hold.left, raiseStarted: hold.started,
-      garbageCreatedCount: st.garbageCreatedCount || 0,
-      swapStallBacklog: (st.swapStallBacklog || []).map(function (q) { return { row: q.row, col: q.col }; }),
-      nActive: st.nActive || 0, nPrevActive: st.nPrevActive || 0,
-      arrivals: (out.pending || []).map(function (a) {
-        return { at: Math.max(0, a.at - (out.elapsed || 0)), width: a.width,
-                 height: a.height, isChain: a.isChain };
-      })
-    };
-    // WHAT IS HOLDING THE BOARD UP WHEN THE DUST SETTLES.
-    //
-    // The engine does not kill you for being topped out. checkGameOver is
-    // `health <= 0 && shakeTime <= 0`, and health only drains on a frame where
-    // `!riseLock && stopTime === 0 && isToppedOut()`. So a topped-out board
-    // with stop time banked, a slab still shaking, or panels still in motion
-    // is a board that is alive -- and banking stop time by chaining INTO the
-    // ceiling is how the game is meant to be survived: a chain link cashed
-    // while topped out pays 88 to 98 frames.
-    //
-    // Read off 190 decisions where every move read fatal: only 14% were dead
-    // within a second and 36% were still alive twenty seconds later. The
-    // verdict was a proxy -- "row 12 holds a panel" -- and it was wrong most
-    // of the times it fired, which is what emptied _survivors and left the bot
-    // choosing unfiltered at exactly the decisions that decide the game.
-    out.toppedOut = st.isToppedOut ? !!st.isToppedOut() : false;
-    out.stopTime = st.stopTime || 0;
-    out.shakeTime = st.shakeTime || 0;
-    out.stillMoving = (typeof st.hasActivePanels === 'function')
-                      ? !!st.hasActivePanels() : false;
-    // Every row the engine left, including any above the lid; rows the old
-    // board had above it and the engine no longer does are dropped.
-    var settled = engineBoard.readGrid(st, board.height, board.width);
-    for (var r = 0; r < settled.length; r++) {
-      if (!board.grid[r]) board.grid[r] = [];
-      for (var c = 1; c <= board.width; c++) board.grid[r][c] = settled[r][c];
-    }
-    board.grid.length = Math.max(board.height + 1, settled.length);
-    // What is still in flight where the engine stopped, so the next step of a
-    // line starts from it rather than from the motion before this move.
-    board.motion = engineBoard.readMotion(st, board.height, board.width);
-    // The chain flags are the scratch's now: the per-panel record carries every
-    // panel still flagged, and the grid the board started with is stale (a
-    // resting row came back as chain panels at the next step of a line).
-    board.chaining = null;
-    board.queuedSwap = st.queuedSwapRow > 0 ? [st.queuedSwapRow, st.queuedSwapCol] : null;
-    // AND THE SLABS THE SETTLE LEFT. The grid goes back and the blocks did
-    // not, so the board handed to the second ply carried the garbage
-    // structure from BEFORE the swap — a slab that has just been broken, or
-    // fallen, or split, still described as it was. readBlocks exists for
-    // this and nothing called it, which is the same defect as painting
-    // without slabs, one ply deeper.
-    board.blocks = {};
-    var after = engineBoard.readBlocks(st, board.height, board.width);
-    for (var bk in after) {
-      if (after.hasOwnProperty(bk)) board.blocks[bk] = { cells: after[bk] };
-    }
-    return out;
+    throw new Error('PuyoCpu: the engine resolves candidates only on the server\'s board (nativeCands)');
   };
 
   // Score one candidate: build the feature input for the board this move
@@ -1463,7 +1059,6 @@
     return v;
   }
   function cloneStack(src) {
-    if (FastStack && src instanceof FastStack) return src.clone();
     var keys = [];
     for (var k in src) {
       if (!Object.prototype.hasOwnProperty.call(src, k) || typeof src[k] === 'function') continue;
@@ -1483,8 +1078,6 @@
     return new Make(src);
   }
   PuyoCpu.cloneStack = cloneStack;
-  if (FastStack) FastStack.register({ cloneStack: cloneStack, noRng: noRng, unseenRow: unseenRow, unseenBreak: unseenBreak });
-  PuyoCpu.FastStack = FastStack || null;
 
   // A BOARD AS NUMBERS, for handing to a worker thread. Every panel field is
   // an integer, a boolean, null, undefined or a state name; each gets its
@@ -1495,7 +1088,6 @@
   var STATES = ['normal', 'dimmed', 'swapping', 'matched', 'popping', 'popped', 'hovering', 'falling', 'landing'];
   var NF = PANEL_FIELDS.length;
   function encodeStack(st) {
-    if (FastStack && st instanceof FastStack) st = st.toStack();
     var rows = st.panels, R = rows.length, buf = new Int32Array(R * 6 * NF), meta = {}, k, i = 0;
     for (k in st) {
       if (!Object.prototype.hasOwnProperty.call(st, k) || typeof st[k] === 'function') continue;
@@ -1526,16 +1118,13 @@
   }
   var levelConsts = {};
   function decodeStack(e) {
-    if (!e.meta && e.metaText) e = { meta: parseText(e.metaText), rows: e.rows, row0: e.row0, buf: e.buf };
-    // A view of the server's board (PAEngine.View) is rebuilt as one; any
-    // other board as a panel-engine.js Stack.
-    var PE = (typeof window !== 'undefined' ? window : globalThis).PanelEngine, isView = !!e.meta.paView;
-    var key = (isView ? 'v' : 'e') + e.meta.level, lc = levelConsts[key];
+    // rebuilt as a view of the server's board (PAEngine.View)
+    var key = e.meta.level, lc = levelConsts[key];
     if (!lc) {
-      var t = isView ? PAE().view(PAE().game({ level: e.meta.level })) : new PE.Stack({ level: e.meta.level, seed: 1, countdown: false });
+      var t = PAE().view(PAE().game({ level: e.meta.level }));
       lc = levelConsts[key] = { levelData: t.levelData, frames: t.frames };
     }
-    var o = Object.create(isView ? PAE().View.prototype : PE.Stack.prototype), k, i = 0, buf = e.buf;
+    var o = Object.create(PAE().View.prototype), k, i = 0, buf = e.buf;
     o.levelData = lc.levelData; o.frames = lc.frames;
     for (k in e.meta) o[k] = e.meta[k];
     var rows = new Array(e.rows);
@@ -1558,537 +1147,6 @@
   PuyoCpu.encodeStack = encodeStack;
   PuyoCpu.decodeStack = decodeStack;
 
-  // WORKER THREADS FOR THE SEARCH (opt-in: opts.threads or
-  // GC_THREADS). Before a search level is expanded, every (node, move) step in
-  // it is computed on the workers; _lineStep then takes each result instead of
-  // computing it. Which steps are taken, in what order and against what
-  // budget is unchanged, so the search decides exactly what it decides
-  // without them.
-  // One pool per size, shared by every bot in the process. Tasks go out as
-  // messages; results come back through shared memory, one slot a worker, so
-  // the coordinator can block for them (Atomics.wait) and take them without
-  // returning to an event loop -- the only way there is in a browser.
-  var pools = {};
-  PuyoCpu.SLOT_BYTES = 8 << 20;
-  PuyoCpu.WORKER_URL = 'eval/survival_worker.js';
-  function isNode() { return typeof process !== 'undefined' && !!(process.versions && process.versions.node); }
-  function getPool(n) {
-    if (pools[n]) return pools[n];
-    var ctl = new Int32Array(new SharedArrayBuffer(4)), ws = [], i, w;
-    for (i = 0; i < n; i++) {
-      var sab = new SharedArrayBuffer(PuyoCpu.SLOT_BYTES);
-      if (isNode()) {
-        var wt = require('worker_threads'), path = require('path');
-        w = new wt.Worker(path.join(__dirname, 'survival_worker.js'));
-        w.unref();
-      } else w = new Worker(PuyoCpu.WORKER_URL);
-      w.postMessage({ type: 'init', ctl: ctl.buffer, slot: sab });
-      ws.push({ w: w, slot: slotViews(sab) });
-    }
-    return (pools[n] = { ws: ws, ctl: ctl });
-  }
-  // A browser starts a worker made by a worker only when its maker returns
-  // to its event loop, so a pool is started, and every worker heard from,
-  // before anything blocks on it. Resolves to the pool's size, 0 if a worker
-  // failed to load.
-  PuyoCpu.warmPool = function (n) {
-    var pool = getPool(n), left = pool.ws.length;
-    return new Promise(function (done) {
-      pool.ws.forEach(function (x) {
-        x.w.onmessage = function (e) { if (e.data && e.data.type === 'ready' && --left === 0) done(n); };
-        x.w.onerror = function () { done(0); };
-      });
-    });
-  };
-  PuyoCpu.closePools = function () {
-    Object.keys(pools).forEach(function (k) { pools[k].ws.forEach(function (x) { x.w.terminate(); }); delete pools[k]; });
-  };
-  // A slot: i32[0] is 0 empty, 1 full; i32[1..3] the JSON's length, the
-  // number of integer buffers and where the JSON starts; the buffers from
-  // i32[4], each as its length then its values; then the JSON, a UTF-16
-  // code unit each.
-  function slotViews(sab) { return { i32: new Int32Array(sab), u16: new Uint16Array(sab) }; }
-  PuyoCpu.slotViews = slotViews;
-  // Exact: undefined, NaN, the infinities, -0 and Int32Arrays are tagged, and
-  // put back by assignment, so a key that held undefined still exists.
-  // Text carried as UTF-16 code units and parsed only when read: a board's
-  // fields come back with every step, and most boards are never looked at.
-  function RawText(s) { this.s = s; }
-  // Counted, so a result with none (nearly all of them) is not walked to
-  // put them back.
-  var packSpecial = 0;
-  function tagged(k, v) {
-    if (v === undefined) { packSpecial++; return { $u: 1 }; }
-    if (v instanceof RawText) { packTexts.push(v.s); return { $t: packTexts.length - 1 }; }
-    if (typeof v === 'number') {
-      if (v === v && v !== Infinity && v !== -Infinity && (v !== 0 || 1 / v > 0)) return v;
-      packSpecial++;
-      return { $n: v !== v ? 'NaN' : v === Infinity ? '+' : v === -Infinity ? '-' : '-0' };
-    }
-    if (v instanceof Int32Array) { packBufs.push(v); return { $b: packBufs.length - 1 }; }
-    return v;
-  }
-  var packBufs = null, packTexts = null;
-  function putText(s, str, pos) {
-    s.i32[pos++] = str.length;
-    var at = pos * 2;
-    for (var k = 0; k < str.length; k++) s.u16[at + k] = str.charCodeAt(k);
-    return pos + ((str.length + 1) >> 1);
-  }
-  // `bufs` and `texts`, when given, are the result's own Int32Arrays and
-  // RawTexts, which it names by index; anything else found is tagged.
-  function pack(obj, s, bufs0, texts0) {
-    packBufs = bufs0 || []; packTexts = (texts0 || []).map(function (t) { return t.s; }); packSpecial = 0;
-    var json = JSON.stringify(obj, tagged), bufs = packBufs, texts = packTexts, need = 6 + ((json.length + 1) >> 1), pos = 6, i;
-    var walk = packSpecial > 0 || bufs.length > (bufs0 ? bufs0.length : 0) || texts.length > (texts0 ? texts0.length : 0);
-    packBufs = null; packTexts = null;
-    for (i = 0; i < bufs.length; i++) need += 1 + bufs[i].length;
-    for (i = 0; i < texts.length; i++) need += 1 + ((texts[i].length + 1) >> 1);
-    if (need * 4 > s.i32.byteLength) throw new Error('survival result of ' + need * 4 + ' bytes does not fit its slot');
-    for (i = 0; i < bufs.length; i++) { s.i32[pos++] = bufs[i].length; s.i32.set(bufs[i], pos); pos += bufs[i].length; }
-    for (i = 0; i < texts.length; i++) pos = putText(s, texts[i], pos);
-    s.i32[1] = bufs.length; s.i32[2] = texts.length; s.i32[3] = pos; s.i32[4] = walk ? 1 : 0;
-    putText(s, json, pos);
-  }
-  function untag(v, bufs, texts) {
-    if (!v || typeof v !== 'object') return v;
-    if (!Array.isArray(v)) {
-      var ks = Object.keys(v);
-      if (ks.length === 1) {
-        if (ks[0] === '$u') return undefined;
-        if (ks[0] === '$b') return bufs[v.$b];
-        if (ks[0] === '$t') return texts[v.$t];
-        if (ks[0] === '$n') return v.$n === 'NaN' ? NaN : v.$n === '+' ? Infinity : v.$n === '-' ? -Infinity : -0;
-      }
-    }
-    for (var k in v) v[k] = untag(v[k], bufs, texts);
-    return v;
-  }
-  function textOf(u16) {
-    var out = '', i;
-    for (i = 0; i < u16.length; i += 8192) out += String.fromCharCode.apply(null, u16.subarray(i, Math.min(u16.length, i + 8192)));
-    return out;
-  }
-  // A RawText's contents, parsed.
-  function parseText(u16) { return untag(JSON.parse(textOf(u16)), [], []); }
-  function unpack(s) {
-    var nb = s.i32[1], nt = s.i32[2], bufs = [], texts = [], pos = 6, i, len;
-    for (i = 0; i < nb; i++) { len = s.i32[pos++]; bufs.push(s.i32.slice(pos, pos + len)); pos += len; }
-    for (i = 0; i < nt; i++) { len = s.i32[pos++]; texts.push(s.u16.slice(pos * 2, pos * 2 + len)); pos += (len + 1) >> 1; }
-    len = s.i32[pos++];
-    var obj = JSON.parse(textOf(s.u16.subarray(pos * 2, pos * 2 + len)));
-    return { obj: s.i32[4] ? untag(obj, bufs, texts) : obj, bufs: bufs, texts: texts };
-  }
-  // The worker's side: wait for the slot to be read, fill it, say so.
-  PuyoCpu.sendResult = function (ctl, s, out, bufs, texts) {
-    while (Atomics.load(s.i32, 0) !== 0) Atomics.wait(s.i32, 0, 1);
-    pack(out, s, bufs, texts);
-    Atomics.store(s.i32, 0, 1);
-    Atomics.add(ctl, 0, 1);
-    Atomics.notify(ctl, 0);
-  };
-  // What a worker computes for one task: every step of the node's move list,
-  // with the bot's own _lineStep on a decoded copy of the node's board.
-  // Each board's integers and fields go in `bufs` and `texts`, named in the
-  // result by index.
-  PuyoCpu.runSteps = function (task, bufs, texts) {
-    var bot = Object.create(PuyoCpu.prototype);
-    bot.reaction = task.reaction;
-    bot.cursorMoveFrames = task.cursorMoveFrames;
-    bot._lineUntil = task.until || null;
-    bot._restNeeded = task.rest;
-    bot.fastEngine = !!task.fast;
-    bot.engineCheck = !!task.check;
-    var board = task.fpack ? FastStack.unpack(task.fpack, parseText) : decodeStack(task.enc);
-    var n = bot._engineNode(board, task.t, task.hold, task.arrivals, task.fresh), res = {};
-    for (var i = 0; i < task.moves.length; i++) {
-      var m = task.moves[i], long = m === 'long';
-      var r = long ? bot._lineStep(n, null, true) : bot._lineStep(n, m, false);
-      var k = moveKey(long ? null : m, long);
-      if (!r) res[k] = null;
-      else if (r.dead) res[k] = { dead: 1, t: r.t, parent: r.st === n.st };
-      else if (FastStack && r.st instanceof FastStack) {
-        // The board as numbers; its grid, key and legal swaps are read off
-        // them on the other side (FastStack.viewOf) rather than sent.
-        var pk = r.st.pack();
-        bufs.push(pk.D, pk.G, new Int32Array(pk.num.buffer));
-        texts.push(new RawText(JSON.stringify(pk.rest, tagged)));
-        res[k] = { t: r.t, hold: r.hold, arrivals: r.arrivals, pos: r.pos, carry: r.carry, clock: r.st.clock, height: r.st.height,
-                   fp: { kinds: pk.kinds, rest: texts.length - 1, D: bufs.length - 3, G: bufs.length - 2, num: bufs.length - 1,
-                         free: pk.free, top: pk.top, nrows: pk.nrows } };
-        // Names only when the other side does not have them already.
-        if (!task.fpack) res[k].fp.keys = pk.keys;
-      } else {
-        var e = encodeStack(r.st);
-        bufs.push(e.buf);
-        texts.push(new RawText(JSON.stringify(e.meta, tagged)));
-        res[k] = { t: r.t, hold: r.hold, arrivals: r.arrivals, pos: r.pos, carry: r.carry,
-                   grid: r.b.grid, key: r.b.key, height: r.b.height, legal: r.b.legalSwaps(),
-                   enc: { text: texts.length - 1, rows: e.rows, row0: e.row0, buf: bufs.length - 1 } };
-      }
-    }
-    return res;
-  };
-  function moveKey(m, long) { return long ? 'long' : m === null ? 'hold' : m === 'raise' ? 'raise' : m[0] + ',' + m[1]; }
-  // `partial`: only the first move of each node now (the wait, which usually
-  // settles a calm board on its own); the rest of the level's moves are
-  // fetched the first time the search asks for one of them.
-  PuyoCpu.prototype._prefetch = function (nodes, movesOf, partial) {
-    if (!this.threads || !nodes.length) return;
-    var pool = getPool(this.threads), until = this._lineUntil || 0, rest = !!this._restNeeded;
-    var tasks = [], i, j;
-    for (i = 0; i < nodes.length; i++) {
-      var n = nodes[i];
-      if ((n._pre && !n._pre.partial) || !(n._fpack || n._enc || n.st)) continue;
-      var moves = movesOf(n);
-      if (!moves.length) continue;
-      if (!n._pre) n._pre = { until: until, rest: rest, res: {} };
-      n._pre.partial = !!partial;
-      // The board as it is held: packed numbers, the old encoding, or live.
-      var fpack = n._fpack || (!n._enc && FastStack && n.st instanceof FastStack ? n.st.pack() : null);
-      tasks.push({ n: n, msg: { id: tasks.length, fpack: fpack, enc: fpack ? null : (n._enc || encodeStack(n.st)),
-                                t: n.t, hold: n.hold, arrivals: n.arrivals, fresh: !!n.fresh, fast: !!this.fastEngine, check: !!this.engineCheck,
-                                moves: moves, until: until, rest: rest, reaction: this.reaction, cursorMoveFrames: this.cursorMoveFrames } });
-    }
-    if (!tasks.length) return;
-    Atomics.store(pool.ctl, 0, 0);
-    for (i = 0; i < tasks.length; i++) pool.ws[i % pool.ws.length].w.postMessage(tasks[i].msg);
-    var sent = tasks.length, got = 0, seen = 0;
-    while (got < sent) {
-      Atomics.wait(pool.ctl, 0, seen, 60000);
-      seen = Atomics.load(pool.ctl, 0);
-      for (j = 0; j < pool.ws.length; j++) {
-        var s = pool.ws[j].slot;
-        if (Atomics.load(s.i32, 0) !== 1) continue;
-        var u = unpack(s), r = u.obj;
-        Atomics.store(s.i32, 0, 0);
-        Atomics.notify(s.i32, 0);
-        if (r.error) throw new Error('survival worker: ' + r.error);
-        var into = tasks[r.id].n._pre.res;
-        var task = tasks[r.id].msg, keys = task.fpack ? task.fpack.keys : null;
-        for (var rk in r.res) {
-          var x = r.res[rk], e = x && x.enc, fp = x && x.fp;
-          if (e) x.enc = { metaText: u.texts[e.text], rows: e.rows, row0: e.row0, buf: u.bufs[e.buf] };
-          if (fp) {
-            var nb = u.bufs[fp.num];
-            x.fpack = { keys: fp.keys || keys, num: new Float64Array(nb.buffer, nb.byteOffset, nb.length >> 1), kinds: fp.kinds,
-                        rest: u.texts[fp.rest], D: u.bufs[fp.D], G: u.bufs[fp.G], free: fp.free, top: fp.top, nrows: fp.nrows };
-            x.view = FastStack.viewOf(x.fpack, x.height, x.clock);
-            var g = x.view.grid();
-            x.grid = g.grid; x.key = g.key;
-            delete x.fp;
-          }
-          into[rk] = x;
-        }
-        got++;
-      }
-    }
-  };
-  // THE SURVIVAL SEARCH ON THREADS. Each worker holds the boards it made;
-  // a level is expanded where its boards are (a few are moved so every
-  // worker has as much to do), every move of every board is played there
-  // with the bot's own _lineStep, and what comes back is only what the
-  // search loop reads: the time, whether it died, the hold, the cursor, the
-  // grid's key, its garbage and its top, and how many moves it has. The
-  // nodes kept past the search (proofs, fallbacks, furthest lines) are
-  // played again here from the last board this thread holds, and any
-  // difference from what the worker reported throws.
-  PuyoCpu.prototype._svBegin = function () {
-    var pool = getPool(this.threads), cfg = { reaction: this.reaction, cursorMoveFrames: this.cursorMoveFrames,
-      until: this._lineUntil || 0, rest: !!this._restNeeded, check: !!this.engineCheck };
-    pool.ws.forEach(function (x) { x.w.postMessage({ type: 'sv-begin', cfg: cfg }); });
-    return { pool: pool, put: 0, at: null };
-  };
-  function svSend(pool, msgs) {
-    var sent = 0, got = 0, seen = 0, out = new Array(pool.ws.length), j;
-    Atomics.store(pool.ctl, 0, 0);
-    for (j = 0; j < msgs.length; j++) if (msgs[j]) { pool.ws[j].w.postMessage(msgs[j]); sent++; }
-    while (got < sent) {
-      Atomics.wait(pool.ctl, 0, seen, 60000);
-      seen = Atomics.load(pool.ctl, 0);
-      for (j = 0; j < pool.ws.length; j++) {
-        var s = pool.ws[j].slot;
-        if (Atomics.load(s.i32, 0) !== 1) continue;
-        var u = unpack(s);
-        Atomics.store(s.i32, 0, 0);
-        Atomics.notify(s.i32, 0);
-        if (u.obj.error) throw new Error('survival worker: ' + u.obj.error);
-        if (out[j]) throw new Error('survival worker ' + j + ': a second reply to one message ' + JSON.stringify(u.obj).slice(0, 200) + ' after ' + JSON.stringify(out[j].obj).slice(0, 200));
-        out[j] = u;
-        got++;
-      }
-    }
-    return out;
-  }
-  function svPacked(fp, u) {
-    var nb = u.bufs[fp.num];
-    return { keys: fp.keys, num: new Float64Array(nb.buffer, nb.byteOffset, nb.length >> 1), kinds: fp.kinds,
-             rest: u.texts[fp.rest], D: u.bufs[fp.D], G: u.bufs[fp.G], free: fp.free, top: fp.top, nrows: fp.nrows };
-  }
-  // A LEVEL: every board the loop may reach is placed on a worker (moved,
-  // if its worker has more than its share of the level's moves, or sent,
-  // if this thread holds it) and stays there for the level. Boards are then
-  // played in rounds from the loop's position -- as many as the budget left
-  // could reach if every move were read -- and when the loop reaches a board
-  // not yet played, the next round starts there. kids[i] is { moves, kids }
-  // for level[i], in the loop's own move order.
-  PuyoCpu.prototype._svLevel = function (par, level, verdict, budget) {
-    var pool = par.pool, k = pool.ws.length, all = [], total = 0, i, j, n;
-    for (i = 0; i < level.length; i++) {
-      n = level[i];
-      if (verdict[n.tag]) continue;
-      var nm = n._sv ? n._sv.nm : 2 + n.b.legalSwaps().length;
-      all.push({ i: i, n: n, nm: nm });
-      total += nm;
-    }
-    var load = [], keep = [], puts = [], exports = [], moved = [];
-    for (j = 0; j < k; j++) { load.push(0); keep.push([]); puts.push([]); exports.push(null); }
-    var cap = Math.ceil(total / k);
-    for (i = 0; i < all.length; i++) {
-      var x = all[i], to = 0;
-      for (j = 1; j < k; j++) if (load[j] < load[to]) to = j;
-      if (x.n._sv && load[x.n._sv.w] + x.nm <= cap) to = x.n._sv.w;
-      load[to] += x.nm;
-      x.w = to;
-      if (x.n._sv && x.n._sv.w === to) x.id = x.n._sv.id;
-      else {
-        x.id = -(++par.put);
-        if (x.n._sv) { (exports[x.n._sv.w] = exports[x.n._sv.w] || []).push(x.n._sv.id); moved.push(x); }
-        else {
-          var st = x.n.st instanceof FastStack ? x.n.st : FastStack.fromStack(x.n.st);
-          puts[to].push({ id: x.id, fpack: st.pack(), t: x.n.t, hold: x.n.hold, arrivals: x.n.arrivals, fresh: !!x.n.fresh });
-        }
-      }
-      keep[to].push(x.id);
-    }
-    if (moved.length) {
-      var got = svSend(pool, exports.map(function (ids) { return ids && { type: 'sv-export', ids: ids }; })), from = {};
-      got.forEach(function (u, w) {
-        if (u) u.obj.res.forEach(function (r) { from[w + ':' + r.id] = { r: r, fpack: svPacked(r.fp, u) }; });
-      });
-      moved.forEach(function (x) {
-        var f = from[x.n._sv.w + ':' + x.n._sv.id];
-        puts[x.w].push({ id: x.id, fpack: f.fpack, t: f.r.t, hold: f.r.hold, arrivals: f.r.arrivals, fresh: f.r.fresh });
-      });
-    }
-    pool.ws.forEach(function (x, w) { x.w.postMessage({ type: 'sv-level', keep: keep[w], put: puts[w] }); });
-    var at = [];
-    for (i = 0; i < all.length; i++) at[all[i].i] = all[i];
-    par.at = at;
-    var kids = [];
-    this._svRound(par, level, verdict, budget, 0, kids);
-    return kids;
-  };
-  PuyoCpu.prototype._svRound = function (par, level, verdict, budget, from, kids) {
-    if (this._abort && this._abort()) throw ABORTED;
-    var pool = par.pool, k = pool.ws.length, want = [], left = budget, i, j, n, x, FULL = this.SURVIVE_FRAMES + this.SURVIVE_REST;
-    for (i = from; i < level.length && left > 0; i++) {
-      n = level[i];
-      if (verdict[n.tag] || kids[i]) continue;
-      x = par.at[i];
-      if (!x) throw new Error('survival search on threads: board ' + i + ' of the level was not placed');
-      want.push(x);
-      left -= x.nm;
-    }
-    var items = [];
-    for (j = 0; j < k; j++) items.push([]);
-    want.forEach(function (x) { items[x.w].push(x); });
-    function read(res, pass, rows) {
-      rows.forEach(function (it, w) {
-        var u = res[w];
-        if (!u && !it.length) return;
-        if (u.obj.n !== it.length) throw new Error('survival worker: ' + u.obj.n + ' boards back for ' + it.length + ' sent');
-        var F = u.bufs[0], M = u.bufs[1], keys = textOf(u.texts[0]), f = 0, mi = 0, ko = 0;
-        it.forEach(function (x) {
-          var kx = kids[x.i], q, a, b;
-          if (pass === 1) {
-            var ns = M[mi++], moves = [ 'long', null ];
-            for (q = 0; q < ns; q++, mi += 2) moves.push([M[mi], M[mi + 1]]);
-            kx = kids[x.i] = { moves: moves, kids: [] };
-            a = 0; b = 1;
-          } else { a = 1; b = kx.moves.length; }
-          for (q = a; q < b; q++, f += SV_F) {
-            if (F[f] === 0) kx.kids[q] = null;
-            else if (F[f] === 1) kx.kids[q] = { dead: true, t: F[f + 1], _svp: true };
-            else {
-              var kl = F[f + 9];
-              kx.kids[q] = { t: F[f + 1], carry: { stopTime: F[f + 3] }, pos: [F[f + 4], F[f + 5]],
-                             b: { key: keys.substr(ko, kl), _garb: F[f + 6], _top: F[f + 7] }, _svp: true,
-                             _sv: { w: w, id: F[f + 2], nm: F[f + 8] } };
-              ko += kl;
-            }
-          }
-        });
-        if (f !== F.length || mi !== M.length || ko !== keys.length) throw new Error('survival worker: summaries do not add up');
-      });
-    }
-    var ids = function (it) { return it.map(function (x) { return x.id; }); };
-    var res = svSend(pool, items.map(function (it) { return { type: 'sv-expand', pass: 1, items: ids(it) }; }));
-    read(res, 1, items);
-    // The rest of a board's moves are wanted unless its own wait proves its
-    // move, or an earlier board's wait did: the loop never reads them.
-    var done = {}, rest = items.map(function () { return []; });
-    for (i = 0; i < want.length; i++) {
-      x = want[i];
-      var c = kids[x.i].kids[0];
-      if (done[x.n.tag]) continue;
-      if (c && !c.dead && c.t >= FULL) { done[x.n.tag] = true; continue; }
-      rest[x.w].push(x);
-    }
-    var res2 = svSend(pool, rest.map(function (it) { return it.length ? { type: 'sv-expand', pass: 2, items: ids(it) } : null; }));
-    read(res2, 2, rest);
-  };
-  // The nodes the search keeps, played again on this thread the first time
-  // one is read, as the search played them (its horizon and rest, one move
-  // from each board).
-  PuyoCpu.prototype._svEnd = function (par, proofs, weak, far) {
-    var self = this, until = this._lineUntil, rest = this._restNeeded;
-    par.pool.ws.forEach(function (x) { x.w.postMessage({ type: 'sv-end' }); });
-    function replay(x) {
-      if (!x || !x._svp) return x;
-      if (x._real) return x._real;
-      var parent = replay(x.prev), long = x.m === 'long';
-      var r = self._lineStep(parent, long ? null : x.m, long);
-      if (!r || r.t !== x.t || !!r.dead !== !!x.dead ||
-          (!r.dead && (r.b.key !== x.b.key || String(r.pos) !== String(x.pos) || self._heldFor(r.carry) !== x.carry.stopTime))) {
-        throw new Error('survival search on threads: a board played again here is not the one its worker reported');
-      }
-      r.prev = parent; r.m = x.m; r.tag = x.tag; r.seed = x.seed;
-      x._real = r;
-      return r;
-    }
-    function real(x) {
-      if (!x || !x._svp || x._real) return x && x._svp ? x._real : x;
-      var su = self._lineUntil, sr = self._restNeeded, so = self._oneMove;
-      self._lineUntil = until; self._restNeeded = rest; self._oneMove = true;
-      try { return replay(x); } finally { self._lineUntil = su; self._restNeeded = sr; self._oneMove = so; }
-    }
-    function lazy(o) {
-      if (!o) return;
-      Object.keys(o).forEach(function (k) {
-        var x = o[k];
-        if (!x || !x._svp) return;
-        var get = function () { var r = real(x); Object.defineProperty(o, k, { value: r, writable: true, enumerable: true, configurable: true }); return r; };
-        get.t = x.t;
-        Object.defineProperty(o, k, { enumerable: true, configurable: true, get: get,
-          set: function (v) { Object.defineProperty(o, k, { value: v, writable: true, enumerable: true, configurable: true }); } });
-      });
-    }
-    lazy(proofs); lazy(weak); lazy(far); lazy(this._proofs);
-  };
-  // The worker's side of it.
-  var SV = null, SV_F = 10;
-  PuyoCpu.svHandle = function (m, bufs, texts) {
-    if (m.type === 'sv-begin') {
-      var bot = Object.create(PuyoCpu.prototype), cfg = m.cfg;
-      bot.reaction = cfg.reaction; bot.cursorMoveFrames = cfg.cursorMoveFrames;
-      bot._lineUntil = cfg.until || null; bot._restNeeded = cfg.rest;
-      bot.fastEngine = true; bot.engineCheck = !!cfg.check;
-      SV = { bot: bot, made: new Map(), lvl: null, next: 1 };
-      return null;
-    }
-    if (m.type === 'sv-end') { SV = null; return null; }
-    // Boards to hand to another worker: the ones this one made last level.
-    if (m.type === 'sv-export') {
-      return { res: m.ids.map(function (id) {
-        var n = SV.made.get(id), pk = n.st.pack();
-        SV.made.delete(id);
-        bufs.push(pk.D, pk.G, new Int32Array(pk.num.buffer));
-        texts.push(new RawText(JSON.stringify(pk.rest, tagged)));
-        return { id: id, t: n.t, hold: n.hold, arrivals: n.arrivals, fresh: !!n.fresh,
-                 fp: { keys: pk.keys, kinds: pk.kinds, rest: texts.length - 1, D: bufs.length - 3, G: bufs.length - 2, num: bufs.length - 1,
-                       free: pk.free, top: pk.top, nrows: pk.nrows } };
-      }) };
-    }
-    // A new level: the boards kept of those made last level, and those sent.
-    if (m.type === 'sv-level') {
-      var lvl = new Map(), i;
-      for (i = 0; i < m.keep.length; i++) if (SV.made.has(m.keep[i])) lvl.set(m.keep[i], SV.made.get(m.keep[i]));
-      for (i = 0; i < m.put.length; i++) {
-        var p = m.put[i];
-        lvl.set(p.id, SV.bot._engineNode(FastStack.unpack(p.fpack, parseText), p.t, p.hold, p.arrivals, p.fresh));
-      }
-      for (i = 0; i < m.keep.length; i++) if (!lvl.has(m.keep[i])) throw new Error('no board ' + m.keep[i]);
-      SV.lvl = lvl; SV.made = new Map();
-      return null;
-    }
-    // Boards of the level played: pass 1 their wait, pass 2 their other moves.
-    if (m.type === 'sv-expand') {
-      var b = SV.bot, j, n, c, id, k;
-      // Per child, SV_F integers (kind 0 refused, 1 dead, 2 alive; time;
-      // board id; hold; cursor row and column; garbage; top; moves), and its
-      // key in one text; in pass 1, per board, its swap count and swaps.
-      var F = [], M = [], keys = [];
-      for (i = 0; i < m.items.length; i++) {
-        n = SV.lvl.get(m.items[i]);
-        if (!n) throw new Error('no board ' + m.items[i]);
-        var moves;
-        if (m.pass === 1) {
-          var sw = n.b.legalSwaps();
-          M.push(sw.length);
-          for (j = 0; j < sw.length; j++) M.push(sw[j][0], sw[j][1]);
-          moves = [ 'long' ];
-        } else moves = [ null ].concat(n.b.legalSwaps());
-        for (j = 0; j < moves.length; j++) {
-          c = moves[j] === 'long' ? b._lineStep(n, null, true) : b._lineStep(n, moves[j], false);
-          if (!c) { F.push(0, 0, 0, 0, 0, 0, 0, 0, 0, 0); continue; }
-          if (c.dead) { F.push(1, c.t, 0, 0, 0, 0, 0, 0, 0, 0); continue; }
-          id = SV.next++; k = c.b.key;
-          SV.made.set(id, c);
-          F.push(2, c.t, id, b._heldFor(c.carry), c.pos[0], c.pos[1], garbageCells(c.b), topRow(c.b), 2 + c.b.legalSwaps().length, k.length);
-          keys.push(k);
-        }
-      }
-      bufs.push(Int32Array.from(F), Int32Array.from(M));
-      texts.push(new RawText(keys.join('')));
-      return { n: m.items.length };
-    }
-    throw new Error('unknown message ' + m.type);
-  };
-  // The next boards the search will expand, from where it is: a few for each
-  // thread. Fetching the whole level ahead computed twice what the search
-  // used -- a board is skipped once its move is proven.
-  PuyoCpu.prototype._window = function (want) {
-    var lvl = this._curLevel, vd = this._curVerdict, out = [], i;
-    for (i = this._curIndex; i < lvl.length && out.length < this.threads * 2; i++) {
-      if (!vd[lvl[i].tag] && want(lvl[i])) out.push(lvl[i]);
-    }
-    return out;
-  };
-  PuyoCpu.prototype._fromPrefetch = function (node, m, long) {
-    var pre = node._pre;
-    if (!pre || !pre.res || pre.until !== (this._lineUntil || 0) || pre.rest !== !!this._restNeeded) return undefined;
-    var mk = moveKey(m, long), r = pre.res[mk];
-    if (r === undefined && pre.partial && this._curLevel) {
-      // The rest of the moves, for boards whose wait did not prove them: a
-      // wait that proves its board ends that board's turn.
-      var FULL = this.SURVIVE_FRAMES + this.SURVIVE_REST;
-      this._prefetch(this._window(function (x) {
-        var lg = x._pre && x._pre.partial && x._pre.res.long;
-        return x === node || (x._pre && x._pre.partial && !(lg && !lg.dead && lg.t >= FULL));
-      }), function (x) { return [ null ].concat(x.b.legalSwaps()); }, false);
-      r = pre.res[mk];
-    }
-    if (r === undefined) return undefined;
-    if (r === null) return null;
-    if (r.dead) return r.parent ? { st: node.st, b: node.b, carry: node.carry, pos: node.pos, hold: node.hold, arrivals: node.arrivals, t: r.t, dead: true }
-                                : { dead: true, t: r.t };
-    return lazyNode(r);
-  };
-  // What _engineNode would build, from the worker's summary, with the board
-  // itself left encoded until something reads node.st.
-  function lazyNode(r) {
-    var legal = r.legal, view = r.view;
-    var n = { _enc: r.enc, _fpack: r.fpack, t: r.t, hold: r.hold, arrivals: r.arrivals, fresh: false, pos: r.pos, carry: r.carry,
-              b: { grid: r.grid, key: r.key, height: r.height, width: 6,
-                   legalSwaps: function () { return legal ? legal.map(function (x) { return x.slice(); }) : view.legalSwaps(); } } };
-    var st = null;
-    Object.defineProperty(n, 'st', { enumerable: true, configurable: true,
-      get: function () { if (!st) st = n._fpack ? FastStack.unpack(n._fpack, parseText) : decodeStack(n._enc); return st; },
-      set: function (v) { st = v; } });
-    return n;
-  }
-  PuyoCpu.lazyNode = lazyNode;
   function engineGrid(st) {
     var H = st.height, grid = [], key = '', r, c;
     for (r = 0; r <= H + 1; r++) {
@@ -2104,16 +1162,6 @@
     return { grid: grid, key: key };
   }
   PuyoCpu.prototype._engineNode = function (st, t, hold, arrivals, fresh) {
-    if (FastStack && st instanceof FastStack) {
-      var fg = st.grid();
-      return {
-        st: st, t: t, hold: hold, arrivals: arrivals, fresh: !!fresh,
-        pos: [st.curRow, st.curCol],
-        carry: { stopTime: st.stopTime || 0, preStopTime: st.preStopTime || 0, shakeTime: st.shakeTime || 0,
-                 displacement: st.displacement, riseTimer: st.riseTimer, speed: st.speed },
-        b: { grid: fg.grid, key: fg.key, height: st.height, width: 6, legalSwaps: function () { return st.legalSwaps(); } }
-      };
-    }
     var g = engineGrid(st);
     return {
       st: st, t: t, hold: hold, arrivals: arrivals, fresh: !!fresh,
@@ -2143,15 +1191,10 @@
   // The engine in C's nodes for this bot, emptied at each decision.
   PuyoCpu.prototype._natSearch = function () {
     // On threads, this thread and threads - 1 workers share the level loop.
-    // A bot given serverStack (a pa-engine.js Stack: the panel-game server's
-    // rules) searches on native/pa.c from it; its own stack is then only the
-    // view of that board the rest of the bot reads.
-    var mod = this.serverStack ? NativeMod().server : NativeMod();
-    if (this._nat && this._nat.module !== mod) throw new Error('PuyoCpu: a bot searches on one engine');
-    if (!this._nat) {
-      this._nat = new mod.Search({ reaction: this.reaction || 0, cursorMoveFrames: this.cursorMoveFrames, swapGap: this.swapGap, threads: this.threads || 1 });
-      this._nat.module = mod;
-    }
+    // The search plays serverStack (a pa-engine.js Stack: the panel-game
+    // server's rules) on native/pa.c; the bot's own stack is the view of that
+    // board the rest of the bot reads.
+    if (!this._nat) this._nat = new (NativeMod().server.Search)({ reaction: this.reaction || 0, cursorMoveFrames: this.cursorMoveFrames, swapGap: this.swapGap, threads: this.threads || 1 });
     this._nat.configure(this.reaction || 0, this.cursorMoveFrames, this.SURVIVE_FRAMES, this.SURVIVE_REST);
     return this._nat;
   };
@@ -2165,7 +1208,6 @@
       // senders' telegraphs (serverArrivals: at in frames from this board).
       return this._natSearch().root(this.serverStack.copy(), { left: this.raiseFrames || 0, started: !!this._raiseStarted }, this.serverArrivals || [], false);
     }
-    if (this.native) return this._natSearch().root(cloneStack(this.stack), { left: this.raiseFrames || 0, started: !!this._raiseStarted }, arr, true);
     return this._engineNode(cloneStack(this.stack), 0,
                             { left: this.raiseFrames || 0, started: !!this._raiseStarted }, arr, true);
   };
@@ -2173,42 +1215,11 @@
   // node's frame: kind 'swap' (m), 'hold', 'raise', or 'long' (hold until
   // frames have passed). Returns the node at the bot's next decision, a dead
   // marker { dead: true, t }, or null when the swap is refused.
-  // THE SEARCH'S STEPS RUN ON FastStack when this.fastEngine is set (the
-  // numbers engine, faststack.js). With this.engineCheck every step is played
-  // on both engines and any difference in what comes out -- the board, the
-  // time, the raise in hand, the garbage in flight, what the search reads --
-  // throws.
   PuyoCpu.prototype._engineAdvance = function (node, kind, m, frames) {
     if (this._abort && this._abort()) throw ABORTED;
-    if (node._nat) {
-      var nr = node._nat.advance(node, kind, m, frames);
-      if (this.engineCheck) this._natCheck(node, nr, function (bot, js) { return bot._engineAdvanceOn(cloneStack(js.st), js, kind, m, frames); });
-      return nr;
-    }
-    if (!this.fastEngine || !FastStack) return this._engineAdvanceOn(cloneStack(node.st), node, kind, m, frames);
-    var r;
-    if (kind === 'swap' && node.st instanceof FastStack && !this._oneMove) r = this._swapShared(node, m);
-    if (r === undefined) r = this._engineAdvanceOn(node.st instanceof FastStack ? node.st.clone() : FastStack.fromStack(node.st), node, kind, m, frames);
-    if (this.engineCheck) {
-      var q = this._engineAdvanceOn(cloneStack(realStack(node.st)), node, kind, m, frames);
-      var d = sameStep(q, r);
-      if (d) throw new Error('ENGINE CHECK: ' + kind + ' ' + JSON.stringify(m) + ' ' + frames + ' from t=' + node.t + ': ' + d);
-      this.engineChecks = (this.engineChecks || 0) + 1;
-    }
-    return r;
+    if (node._nat) return node._nat.advance(node, kind, m, frames);
+    return this._engineAdvanceOn(cloneStack(node.st), node, kind, m, frames);
   };
-  function realStack(st) { return FastStack && st instanceof FastStack ? st.toStack() : st; }
-  // The first way two results of one step differ, or null.
-  function sameStep(q, r) {
-    if (!q || !r) return q === r ? null : 'refused on one engine only';
-    if (!!q.dead !== !!r.dead || q.t !== r.t) return 'dead ' + !!q.dead + '/' + !!r.dead + ' t ' + q.t + '/' + r.t;
-    if (q.dead) return null;
-    var d = FastStack.diff(q.st, r.st.toStack());
-    if (d) return 'board: ' + d;
-    var a = JSON.stringify([q.hold, q.arrivals, q.pos, q.carry, q.b.grid, q.b.key, q.b.legalSwaps(), q.fresh]),
-        b = JSON.stringify([r.hold, r.arrivals, r.pos, r.carry, r.b.grid, r.b.key, r.b.legalSwaps(), r.fresh]);
-    return a === b ? null : 'node: ' + a.slice(0, 400) + ' vs ' + b.slice(0, 400);
-  }
   // `plain`: the node is only the board, the frame, the raise in hand and the
   // garbage on its way (a prediction on the server's rules, _paRoot).
   PuyoCpu.prototype._engineAdvanceOn = function (st, node, kind, m, frames, plain) {
@@ -2272,131 +1283,14 @@
     return this._engineNode(st, node.t + f, { left: bot.raiseFrames, started: bot._raiseStarted }, arr, false);
   };
 
-  // A SWAP'S WALK IS SHARED. Until its swap is queued, a move plays its node
-  // exactly as holding does, except for the cursor, and nothing the board
-  // does reads the cursor. So each node's board is played forward once,
-  // holding, while every legal swap walks only its cursor alongside it, with
-  // the engine's own input code, against what that board does to cursors (a
-  // new row carries it up; topCurRow clamps it). The board is copied on the
-  // frames some walk arrives, and each move plays on from its copy with its
-  // own cursor. engineCheck compares every such step with the whole step
-  // played on panel-engine.js.
-  var WALKS = null, ARRIVED = {}, SP = null;
   // Thrown out of a search its brain was told to stop (Mind's `abort`).
   var ABORTED = PuyoCpu.ABORTED = { aborted: true };
-  function cursorOf(o) {
-    return { curRow: o.curRow, curCol: o.curCol, cursorDirection: o.cursorDirection, cursorTimer: o.cursorTimer,
-             input: Object.assign({}, o.input), prevInput: Object.assign({}, o.prevInput) };
-  }
-  PuyoCpu.prototype._walksOf = function (node) {
-    if (WALKS && WALKS.node === node) return WALKS;
-    SP = SP || (typeof window !== 'undefined' ? window : globalThis).PanelEngine.Stack.prototype;
-    var live = node.st.clone(), hold = { raiseFrames: node.hold.left, _raiseStarted: node.hold.started };
-    var arr = node.arrivals.map(copyArrival), out = { node: node, at: {}, copies: {} }, self = this;
-    var walks = node.b.legalSwaps().map(function (m) {
-      var px = { curRow: live.curRow, curCol: live.curCol, cursorDirection: live.cursorDirection, cursorTimer: live.cursorTimer,
-                 input: live.input, prevInput: live.prevInput, topCurRow: live.topCurRow, displacement: live.displacement,
-                 height: live.height, animatingCursorDuringCountdown: live.animatingCursorDuringCountdown,
-                 preventManualRaise: live.preventManualRaise, manualRaise: false, manualRaiseYet: false,
-                 moveCursor: SP.moveCursor, clampCursor: SP.clampCursor, tryQueueSwap: function () { throw ARRIVED; } };
-      var bot = { stack: px, cursorMoveFrames: self.cursorMoveFrames, _walk: null, cooldown: 0, _lastSwap: null,
-                  _beginWalk: PanelCpu.beginWalk, _driveWalk: PanelCpu.driveWalk, _nearestSwappable: PanelCpu.nearestSwappable };
-      bot._beginWalk(m[0], m[1], self.reaction);
-      return { key: m[0] + ',' + m[1], px: px, bot: bot, input: null };
-    });
-    for (var k = 0; walks.length && k < 4000; k++) {
-      // Frame k's input, before any walk adds to it.
-      var input = k === 0 && node.fresh ? Object.assign({}, live.input) : {};
-      if (!(k === 0 && node.fresh)) raiseStep(hold, live, input);
-      var held = { left: hold.raiseFrames, started: hold._raiseStarted }, going = [];
-      for (var i = 0; i < walks.length; i++) {
-        var w = walks[i], mine = Object.assign({}, input);
-        w.px.displacement = live.displacement; w.px.topCurRow = live.topCurRow;
-        try { w.bot._driveWalk(mine); }
-        catch (e) {
-          if (e !== ARRIVED) throw e;
-          if (!out.copies[k]) out.copies[k] = live.copy();
-          out.at[w.key] = { k: k, cursor: cursorOf(w.px), walk: Object.assign({}, w.bot._walk), input: mine, held: held };
-          continue;
-        }
-        w.input = mine;
-        going.push(w);
-      }
-      walks = going;
-      if (!walks.length) break;
-      // Frame k + 1: the board, holding; each cursor, as Stack.run moves it.
-      var stamp = live.rowStamp();
-      live.setInput(input);
-      live.run();
-      live.events.length = 0;
-      for (i = 0; i < arr.length; ) {
-        if (arr[i].at <= k + 1) { live.incoming.push({ width: arr[i].width, height: arr[i].height, isChain: arr[i].isChain }); arr.splice(i, 1); }
-        else i++;
-      }
-      if (live.gameOver) { walks.forEach(function (x) { out.at[x.key] = { dead: k + 1 }; }); break; }
-      var newRow = live.rowStamp() !== stamp;
-      for (i = 0; i < walks.length; i++) {
-        var q = walks[i].px;
-        SP.setInput.call(q, walks[i].input);
-        if (newRow && q.curRow !== 0) q.curRow = Math.min(q.curRow + 1, q.height);
-        q.topCurRow = live.topCurRow;
-        SP.applyInput.call(q);
-        SP.clampCursor.call(q);
-        q.prevInput = q.input;
-      }
-    }
-    return (WALKS = out);
-  };
-  // The swap m from node, on the shared walk; undefined when m was not one of
-  // the node's legal swaps (it is then played in full).
-  PuyoCpu.prototype._swapShared = function (node, m) {
-    var a = this._walksOf(node).at[m[0] + ',' + m[1]];
-    if (!a) return undefined;
-    if (a.dead) return { dead: true, t: node.t + a.dead };
-    var st = WALKS.copies[a.k].copy(), c = a.cursor;
-    st.curRow = c.curRow; st.curCol = c.curCol; st.cursorDirection = c.cursorDirection; st.cursorTimer = c.cursorTimer;
-    st.input = Object.assign({}, c.input); st.prevInput = Object.assign({}, c.prevInput);
-    var bot = { stack: st, cursorMoveFrames: this.cursorMoveFrames, _walk: Object.assign({}, a.walk), cooldown: 0, _lastSwap: null,
-                _beginWalk: PanelCpu.beginWalk, _driveWalk: PanelCpu.driveWalk, _nearestSwappable: PanelCpu.nearestSwappable,
-                raiseFrames: a.held.left, _raiseStarted: a.held.started };
-    var input = Object.assign({}, a.input);
-    bot._driveWalk(input);
-    var arr = node.arrivals.filter(function (x) { return x.at > a.k; }).map(copyArrival);
-    return this._runFrom(st, bot, arr, a.k, input, node, 'swap', 0);
-  };
-
-  // A step on the engine in C, played again on panel-engine.js: any
-  // difference in what comes out throws.
-  PuyoCpu.prototype._natCheck = function (node, r, play) {
-    var js = { st: realStack(node.st), t: node.t, hold: node.hold, arrivals: node.arrivals, fresh: node.fresh, b: node.b,
-               carry: node.carry, pos: node.pos };
-    var f = this.fastEngine, c = this.engineCheck, q;
-    this.fastEngine = false; this.engineCheck = false;
-    try { q = play(this, js); } finally { this.fastEngine = f; this.engineCheck = c; }
-    var d;
-    if (!q || !r) d = q === r ? null : 'refused on one engine only';
-    else if (!!q.dead !== !!r.dead || q.t !== r.t) d = 'dead ' + !!q.dead + '/' + !!r.dead + ' t ' + q.t + '/' + r.t;
-    else if (!q.dead) {
-      d = FastStack.diff(q.st, realStack(r.st));
-      if (d) d = 'board: ' + d;
-      else {
-        var qg = engineGrid(q.st);
-        var a = JSON.stringify([q.hold, q.arrivals, q.pos, q.carry, qg.grid, qg.key, q.b.legalSwaps(), q.fresh]),
-            b = JSON.stringify([r.hold, r.arrivals, r.pos, r.carry, r.b.grid, r.b.key, r.b.legalSwaps(), r.fresh]);
-        if (a !== b) d = 'node: ' + a.slice(0, 400) + ' vs ' + b.slice(0, 400);
-      }
-    }
-    if (d) throw new Error('ENGINE CHECK (native) from t=' + node.t + ': ' + d);
-    this.engineChecks = (this.engineChecks || 0) + 1;
-  };
   PuyoCpu.prototype._engineStep = function (node, m, long) {
     var r;
     if (node._nat) {
       if (this._abort && this._abort()) throw ABORTED;
       var until = long ? (this._lineUntil || (this.SURVIVE_FRAMES + (this._restNeeded ? this.SURVIVE_REST : 0))) : 0;
-      r = node._nat.step(node, m, long, until);
-      if (this.engineCheck) this._natCheck(node, r, function (bot, js) { return bot._engineStep(js, m, long); });
-      return r;
+      return node._nat.step(node, m, long, until);
     }
     if (long) {
       var until = this._lineUntil || (this.SURVIVE_FRAMES + (this._restNeeded ? this.SURVIVE_REST : 0));
@@ -2423,10 +1317,6 @@
   PuyoCpu.steps = 0;
   PuyoCpu.prototype._lineStep = function (node, m, long) {
     PuyoCpu.steps++;
-    if (node._pre) {
-      var pre = this._fromPrefetch(node, m, long);
-      if (pre !== undefined) return pre;
-    }
     if (node._nat || node.st) return this._engineStep(node, m, long);
     var t = node.b.clone(), r, used, saved = this._carry, savedFrom = this._walkFrom;
     t.incoming = (node.carry && node.carry.nextRow) ||
@@ -2472,7 +1362,7 @@
   PuyoCpu.prototype._checkModel = function (live, predicted) {
     this.modelChecks = (this.modelChecks || 0) + 1;
     if (predicted.st && live.st) {
-      var a = realStack(live.st), b = realStack(predicted.st), cells = [], rr, cc;
+      var a = live.st, b = predicted.st, cells = [], rr, cc;
       for (rr = 0; rr <= a.height + 1; rr++) for (cc = 1; cc <= 6; cc++) {
         var pa = a.panels[rr] && a.panels[rr][cc], pb = b.panels[rr] && b.panels[rr][cc];
         if (!pa || !pb) continue;
@@ -2750,23 +1640,15 @@
       budget = left; level = nl.level;
       if (this._proofs) for (i = 0; i < nl.newlyProven.length; i++) this._proofs[nl.newlyProven[i]] = proofs[nl.newlyProven[i]];
     }
-    var par = real && !root._nat && this.surviveSearch !== 'best' && this.threads > 1 && this.fastEngine && FastStack ? this._svBegin() : null;
     while (this.surviveSearch !== 'best' && level.length && budget > 0) {
-      if (this.threads && !par && !root._nat) { this._curLevel = level; this._curVerdict = verdict; }
-      var next = [], seen = {}, kids = par ? this._svLevel(par, level, verdict, budget) : null;
+      var next = [], seen = {};
       for (i = 0; i < level.length && budget > 0; i++) {
         n = level[i];
         if (verdict[n.tag]) continue;
-        if (kids && !kids[i]) this._svRound(par, level, verdict, budget, i, kids);
-        if (this.threads && !par && !root._nat) {
-          this._curIndex = i;
-          if (!n._pre) this._prefetch(this._window(function (x) { return !x._pre; }), function () { return [ 'long' ]; }, true);
-        }
-        var moves = kids ? kids[i].moves : [ 'long', null ].concat(n.b.legalSwaps());
+        var moves = [ 'long', null ].concat(n.b.legalSwaps());
         for (j = 0; j < moves.length && budget > 0; j++) {
           budget--;
-          c = kids ? kids[i].kids[j] : moves[j] === 'long' ? this._lineStep(n, null, true) : this._lineStep(n, moves[j], false);
-          if (c === undefined) throw new Error('survival search on threads: a move the loop reads was not played');
+          c = moves[j] === 'long' ? this._lineStep(n, null, true) : this._lineStep(n, moves[j], false);
           if (!c) continue;
           c.tag = n.tag; c.prev = n; c.m = moves[j]; c.seed = n.seed;
           note(n.tag, c);
@@ -2796,8 +1678,6 @@
       for (i = 0; i < next.length && keep.length < this.SURVIVE_SEARCH_BEAM; i++) if (!next[i].kept && !weak[next[i].tag]) keep.push(next[i]);
       level = keep.slice(0, seeds).concat(keep.slice(seeds).sort(better));
     }
-    this._curLevel = null; this._curVerdict = null; this._curIndex = 0;
-    if (par) this._svEnd(par, proofs, weak, far);
     // A move with lines still open when the budget ran out is not proven dead.
     var alive = {};
     for (i = 0; i < level.length; i++) alive[level[i].tag] = true;
@@ -2996,8 +1876,7 @@
     this._restNeeded = savedRest;
     return best;
   };
-  // A proof's time, without playing again a proof the threaded search left
-  // on its workers (_svEnd).
+  // A proof's time.
   function proofTime(o, k) {
     var d = Object.getOwnPropertyDescriptor(o, k);
     if (d && d.get && d.get.t !== undefined) return d.get.t;
@@ -3461,7 +2340,7 @@
     }
   };
   // A settle step as a resolve: the board it leaves written into `board`, and
-  // what it did in the shape engineboard.js settle reports it.
+  // what it did: chain depth, panels cleared, garbage sent.
   PuyoCpu.prototype._nativeResolved = function (n, from, board) {
     // A step that dies has no board: the reply is scored as one that dies.
     if (n.dead && !n.b) return { comboSizes: [], chainLength: 0, clearedPanels: 0, brokeGarbage: 0, stopTimeEarned: 0,
@@ -4586,23 +3465,11 @@
                arrivals: n.arrivals.map(copyArrival), server: server };
     return unseen ? pt : exact(pt);
   }
-  PuyoCpu.prototype._seenRoot = function () {
-    var root = this._engineRoot(), rng = this.stack.rng, PE = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
-    if (!PE) return null;
-    if (!rng || rng.a === undefined) return null;
-    var S = PE.Stack.prototype;
-    root.st.rng = PE.makeRng(0, rng.a);
-    root.st.generateRowColors = S.generateRowColors;
-    root.st.garbageRowColors = S.garbageRowColors;
-    return root;
-  };
   function stepKind(step) { return Array.isArray(step) ? 'swap' : step === 'raise' ? 'raise' : 'hold'; }
   function exact(pt) { if (pt) pt.exact = true; return pt; }
   PuyoCpu.prototype._pointAfter = function (d) {
     var pr = this._paRoot();
     if (pr) return paPointOf(this._paStep(pr, d.kind, d.kind === 'swap' ? d.move : null, 0));
-    var root = this._seenRoot();
-    if (root) return exact(pointOf(this._engineAdvanceOn(root.st, root, d.kind, d.kind === 'swap' ? d.move : null, 0)));
     return pointOf(this._engineAdvance(this._engineRoot(), d.kind, d.kind === 'swap' ? d.move : null, 0));
   };
   PuyoCpu.prototype._pointAhead = function (frames) {
@@ -4612,8 +3479,6 @@
     }
     var pr = this._paRoot();
     if (pr) return paPointOf(this._paStep(pr, 'long', null, frames));
-    var root = this._seenRoot();
-    if (root) return exact(pointOf(this._engineAdvanceOn(root.st, root, 'long', null, frames)));
     return pointOf(this._engineAdvance(this._engineRoot(), 'long', null, frames));
   };
   // Fields a prediction does not track and no decision reads.
@@ -4669,11 +3534,10 @@
   // the plan goes on past it, to be played if that answer is not. Null when
   // d itself leads nowhere.
   PuyoCpu.prototype._replayPlan = function (d, pl, now, until) {
-    var pa = this._paRoot(), n = pa || this._seenRoot(), out = [], i = 0, pt, ask = null, self = this;
+    var n = this._paRoot(), out = [], i = 0, pt, ask = null, self = this;
     if (!n || !d) return null;
-    var point = pa ? paPointOf : function (x) { return exact(pointOf(x)); };
-    var step = pa ? function (x, k, m) { return self._paStep(x, k, m, 0); }
-                  : function (x, k, m) { return self._engineAdvanceOn(x.st, x, k, m, 0); };
+    var point = paPointOf;
+    var step = function (x, k, m) { return self._paStep(x, k, m, 0); };
     n = step(n, d.kind, d.kind === 'swap' ? d.move : null);
     while (i < pl.length && pl[i].at <= now) i++;
     for (; n && !n.dead && i < pl.length; i++) {

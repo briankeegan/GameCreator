@@ -15,11 +15,6 @@
     var self = this, o = {}, k;
     for (k in opts) o[k] = opts[k];
     o.threads = Brain.threads();
-    // A question carrying the server's board (a bot on a PAEngine.view) is
-    // searched on native/pa.c; any other on faststack.js, the engine on
-    // numbers (faststack.test.js and GC_ENGINE_CHECK hold it to
-    // panel-engine.js).
-    o.fastEngine = true;
     this.threads = o.threads;
     // Shared with the workers: the id of the request to stop thinking about.
     this.stop = typeof SharedArrayBuffer === 'function' && root.crossOriginIsolated ? new Int32Array(new SharedArrayBuffer(4)) : null;

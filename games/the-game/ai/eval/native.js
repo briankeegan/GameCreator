@@ -1,113 +1,27 @@
-// THE ENGINE IN C, from JS. native/engine.c is panel-engine.js ported line
-// for line for the search's boards; this file moves a board across and back.
-//
-// A board goes over as the wire engine.c defines (nb_load / nb_save): a
-// float64 head whose field names engine.c itself reports, and an int32 body
-// of panels and lists. Only a board the search copied (cloneStack: unseen
-// rows and breaks, no rng, countdown over) is taken, and a field whose type
-// is not the one the engine gives it is refused, never coerced.
-// native.test.js plays the two engines side by side and compares every field
-// after every frame.
+// THE SERVER'S ENGINE IN C, from JS: native/pa.c, the panel-game server's
+// engine (pa-engine.js) for the search's boards. This file moves a board
+// across and back: a float64 head whose field names pa.c reports, and an int32
+// body of panels and lists. A field whose type is not the one the engine
+// gives it is refused, never coerced.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else (root.PanelEval = root.PanelEval || {}).Native = factory();
 }(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
   var G0 = typeof window !== 'undefined' ? window : typeof self !== 'undefined' ? self : globalThis;
-  function PE() { return G0.PanelEngine; }
 
   var W = 6;
-  // panel-engine.js's panel fields, in engine.c's order (faststack.js FIELDS).
-  var FIELDS = [
-    ['row', 'int'], ['col', 'int'], ['id', 'int'], ['color', 'int'], ['chaining', 'bool'], ['matching', 'bool'],
-    ['timer', 'int'], ['initialTime', 'int'], ['popTime', 'int'], ['popIndex', 'int'], ['xOffset', 'nint'],
-    ['yOffset', 'nint'], ['gWidth', 'int'], ['gHeight', 'int'], ['shakeTime', 'int'], ['isGarbage', 'bool'],
-    ['state', 'state'], ['comboIndex', 'nint'], ['comboSize', 'nint'], ['swapFromLeft', 'nbool'],
-    ['dontSwap', 'bool'], ['queuedHover', 'bool'], ['fellFromGarbage', 'int'], ['stateChanged', 'bool'],
-    ['propagatesChaining', 'bool'], ['matchAnyway', 'bool'], ['propagatesFalling', 'ubool'], ['garbageId', 'uint']
-  ];
-  var NF = FIELDS.length;
   var NUL = -2147483648, UND = -2147483647;
   var STATES = ['normal', 'dimmed', 'swapping', 'matched', 'popping', 'popped', 'hovering', 'falling', 'landing'];
   var DIRS = ['up', 'down', 'left', 'right'];
   var INPUT = ['left', 'right', 'up', 'down', 'swap', 'raise'];
 
   function refuse(what, v) { throw new Error('Native: ' + what + ' = ' + JSON.stringify(v) + ' is not what the engine gives it'); }
-  function inn(v, type, k) {
-    switch (type) {
-      case 'int': if (typeof v === 'number' && (v | 0) === v) return v; break;
-      case 'bool': if (v === true || v === false) return v ? 1 : 0; break;
-      case 'nint': if (v === null) return NUL; if (typeof v === 'number' && (v | 0) === v) return v; break;
-      case 'nbool': if (v === null) return NUL; if (v === true || v === false) return v ? 1 : 0; break;
-      case 'ubool': if (v === undefined) return UND; if (v === true || v === false) return v ? 1 : 0; break;
-      case 'uint': if (v === undefined) return UND; if (typeof v === 'number' && (v | 0) === v) return v; break;
-      case 'state': var s = STATES.indexOf(v); if (s >= 0) return s; break;
-    }
-    return refuse('panel field ' + k, v);
-  }
-  function out(v, type) {
-    if (type === 'state') return STATES[v];
-    if (v === NUL) return null;
-    if (v === UND) return undefined;
-    if (type === 'bool' || type === 'nbool' || type === 'ubool') return v === 1;
-    return v;
-  }
   function int(v, k) { if (typeof v === 'number' && (v | 0) === v) return v; return refuse(k, v); }
   function bool(v, k) { if (v === true || v === false) return v ? 1 : 0; return refuse(k, v); }
   function bits(i) { var b = 0; for (var n = 0; n < INPUT.length; n++) if (i[INPUT[n]]) b |= 1 << n; return b; }
   function unbits(b) { var o = {}; for (var n = 0; n < INPUT.length; n++) o[INPUT[n]] = !!(b & (1 << n)); return o; }
 
-  // What each head field is on a Stack: [read, write]. write is null for the
-  // level's constants, which a board never changes.
-  var INTS = ['panelIdCount', 'speed', 'nextSpeedIncreaseClock', 'clock', 'displacement', 'stopTime', 'preStopTime',
-              'shakeTime', 'shakeTimeOnFrame', 'peakShakeTime', 'health', 'chainCounter', 'nActive', 'nPrevActive',
-              'swappingCount', 'panelsCleared', 'score', 'curRow', 'curCol', 'topCurRow', 'queuedSwapRow', 'queuedSwapCol',
-              'garbageCreatedCount', 'highestGarbageIdMatched', 'cursorTimer', 'unseenRows', 'unseenBreaks'];
-  var BOOLS = ['riseLock', 'hasRisen', 'manualRaise', 'manualRaiseYet', 'preventManualRaise', 'wasToppedOut', 'gameOver',
-               'stopWatchIsRunning'];
-  var LEVEL = { colors: 'colors', maxHealth: 'maxHealth', height: 'height' };
-  var FRAMES = { fHOVER: 'HOVER', fGARBAGE_HOVER: 'GARBAGE_HOVER', fFLASH: 'FLASH', fFACE: 'FACE', fPOP: 'POP' };
-  var STOP = { sComboConstant: 'comboConstant', sChainConstant: 'chainConstant', sDangerConstant: 'dangerConstant',
-               sCoefficient: 'coefficient', sDangerCoefficient: 'dangerCoefficient' };
-  var CHAIN = { 'chain.width': 'width', 'chain.height': 'height', 'chain.isChain': 'isChain', 'chain.frameEarned': 'frameEarned',
-                'chain.finalized': 'finalized' };
-  function field(name) {
-    if (name === 'riseTimer') return [function (s) { if (typeof s.riseTimer !== 'number') refuse('riseTimer', s.riseTimer); return s.riseTimer; },
-                                      function (s, v) { s.riseTimer = v; }];
-    if (name === 'nrows') return [function (s) { return s.panels.length; }, null];
-    if (LEVEL[name]) return [function (s) { return int(s[LEVEL[name]], name); }, null];
-    if (FRAMES[name]) return [function (s) { return int(s.frames[FRAMES[name]], name); }, null];
-    if (STOP[name]) return [function (s) { return int(s.levelData.stop[STOP[name]], name); }, null];
-    if (INTS.indexOf(name) >= 0) return [function (s) { return int(s[name], name); }, function (s, v) { s[name] = v; }];
-    if (BOOLS.indexOf(name) >= 0) return [function (s) { return bool(s[name], name); }, function (s, v) { s[name] = v === 1; }];
-    switch (name) {
-      case 'animatingCursor':
-        return [function (s) { return bool(s.animatingCursorDuringCountdown, name); }, function (s, v) { s.animatingCursorDuringCountdown = v === 1; }];
-      case 'cursorDirection':
-        return [function (s) {
-          var d = s.cursorDirection;
-          if (d === undefined) return -2;
-          if (d === null) return -1;
-          var i = DIRS.indexOf(d); return i >= 0 ? i : refuse(name, d);
-        }, function (s, v) { s.cursorDirection = v === -2 ? undefined : v === -1 ? null : DIRS[v]; }];
-      case 'input': case 'prevInput':
-        return [function (s) { return bits(s[name]); }, null];   // put back with the lists
-      case 'hasChain': return [function (s) { return s.currentChain ? 1 : 0; }, null];
-      case 'chainAt': return [function (s) { return s.currentChain ? s.outgoing.indexOf(s.currentChain) : -1; }, null];
-      case 'err': return [function () { return 0; }, null];
-      case 'chain.orow': return [function (s) { return s.currentChain ? int(s.currentChain.origin.row, name) : 0; }, null];
-      case 'chain.ocol': return [function (s) { return s.currentChain ? int(s.currentChain.origin.col, name) : 0; }, null];
-      case 'ninc': return [function (s) { return s.incoming.length; }, null];
-      case 'nout': return [function (s) { return s.outgoing.length; }, null];
-      case 'nstall': return [function (s) { return s.swapStallBacklog.length; }, null];
-      case 'nlanded': return [function (s) { return s.garbageLandedThisFrame.length; }, null];
-    }
-    if (CHAIN[name]) {
-      var k = CHAIN[name], b = k === 'isChain' || k === 'finalized';
-      return [function (s) { return s.currentChain ? (b ? bool(s.currentChain[k], name) : int(s.currentChain[k], name)) : 0; }, null];
-    }
-    throw new Error('Native: engine.c sends a field this file does not know: ' + name);
-  }
 
   // ---------------------------------------------------------------- the server's rules
   // native/pa.c, the panel-game server's engine (pa-engine.js), under the same
@@ -167,13 +81,12 @@
     }, function (s, v) { s[name] = PA_BOOLS[name] ? v === 1 : (v !== v ? null : v); }];
   }
 
-  function make(KIND) {
-  var SERVER = KIND === 'server';
+  function make() {
   var ABORT = null;   // the running loop's `should I stop` (Mind.abort)
   var MEM = null, THREADS = 1, WORKERS = [];
   var X = null, HEAD = null, BODY = null, NAMES = null, FIELDSOF = null, AT = {};
   // The module is compiled once per thread: from bytes where there is no file
-  // system (a page, a worker), from native/engine.wasm beside this file in node.
+  // system (a page, a worker), from native/pa.wasm beside this file in node.
   function imports(memory) {
     var env = { abort_poll: function () { return ABORT && ABORT() ? 1 : 0; } };
     if (memory) env.memory = memory;
@@ -188,22 +101,22 @@
       NAMES.push(String.fromCharCode.apply(null, m.subarray(p, e)));
     }
     NAMES.forEach(function (nm, j) { AT[nm] = j; });
-    FIELDSOF = NAMES.map(SERVER ? paField : field);
+    FIELDSOF = NAMES.map(paField);
   }
   // The module is compiled once per process (or page, or worker): from bytes
-  // where there is no file system, from native/engine.wasm beside this file
+  // where there is no file system, from native/pa.wasm beside this file
   // in node.
   function init(bytes) {
     if (X) return Native;
-    if (!bytes) bytes = require('fs').readFileSync(require('path').join(__dirname, 'native', SERVER ? 'pa.wasm' : 'engine.wasm'));
+    if (!bytes) bytes = require('fs').readFileSync(require('path').join(__dirname, 'native', 'pa.wasm'));
     var inst = new WebAssembly.Instance(new WebAssembly.Module(bytes), imports(null));
     X = inst.exports; MEM = X.memory;
     readNames();
     return Native;
   }
-  // THREADS: engine-mt.wasm on one shared memory, this thread and n - 1
+  // THREADS: pa-mt.wasm on one shared memory, this thread and n - 1
   // workers (node worker_threads), each an instance with its own stack. The
-  // level loop hands them steps; see engine.c THREADS. Once per process, and
+  // level loop hands them steps; see search.h THREADS. Once per process, and
   // before init(): a process runs one kind or the other.
   var WORKER_SRC = [
     "var wt = require('worker_threads'), d = wt.workerData;",
@@ -216,7 +129,7 @@
     n = Math.max(1, n | 0);
     if (X) { if (THREADS === n || (THREADS > 1 && n > 1)) return Native; throw new Error('Native: already running on ' + THREADS + ' thread(s)'); }
     var fs = require('fs'), path = require('path'), wt = require('worker_threads');
-    var mod = new WebAssembly.Module(fs.readFileSync(path.join(__dirname, 'native', SERVER ? 'pa-mt.wasm' : 'engine-mt.wasm')));
+    var mod = new WebAssembly.Module(fs.readFileSync(path.join(__dirname, 'native', 'pa-mt.wasm')));
     MEM = new WebAssembly.Memory({ initial: 256, maximum: 65536, shared: true });
     X = new WebAssembly.Instance(mod, imports(MEM)).exports;
     X.ns_thread_init(0);
@@ -243,15 +156,8 @@
     HEAD = new Float64Array(MEM.buffer, (X.nb_io_head() >>> 0), NAMES.length);
     BODY = new Int32Array(MEM.buffer, (X.nb_io_body() >>> 0));
   }
-  function searchBoard(st) {
-    if (st.doCountdown || st.allowIdleSkip || !st.rng || st.rng.name !== 'noRng' ||
-        !st.generateRowColors || st.generateRowColors.name !== 'unseenRow' ||
-        !st.garbageRowColors || st.garbageRowColors.name !== 'unseenBreak') {
-      throw new Error('Native: not a board the search copied');
-    }
-  }
 
-  // A Stack (or FastStack) to a board in the engine's memory. Returns its handle.
+  // A pa-engine.js Stack to a board in the engine's memory. Returns its handle.
   function fromStack(st, into) {
     init();
     if (typeof st.toStack === 'function') st = st.toStack();
@@ -261,10 +167,10 @@
     if (err) throw new Error('Native: board does not fit the engine (err ' + err + ')');
     return h;
   }
-  function wire(st) { if (SERVER) paWire(st); else fromStackWire(st); }
+  function wire(st) { paWire(st); }
   function bodyLen(st) {
-    return SERVER ? st.panels.length * W * PA_FIELDS.length + 6 * st.incoming.length + 5 * st.swapStallBacklog.length +
-                    st.garbageLandedThisFrame.length + 6 : bodyLength(st);
+    return st.panels.length * W * PA_FIELDS.length + 6 * st.incoming.length + 5 * st.swapStallBacklog.length +
+           st.garbageLandedThisFrame.length + 6;
   }
   function paWire(st) {
     if (!(st instanceof PA().Stack)) throw new Error('Native: the server engine takes a pa-engine.js Stack');
@@ -324,86 +230,13 @@
     s.events = [];
     return s;
   }
-  function bodyLength(st) {
-    return st.panels.length * W * NF + 3 * st.incoming.length + 7 * st.outgoing.length + 2 * st.swapStallBacklog.length +
-           st.garbageLandedThisFrame.length + 6;
-  }
-  // The board into the io buffers.
-  function fromStackWire(st) {
-    searchBoard(st);
-    views();
-    var i, r, c, f, x = 0;
-    for (i = 0; i < NAMES.length; i++) HEAD[i] = FIELDSOF[i][0](st);
-    for (r = 0; r < st.panels.length; r++) {
-      if (st.panels[r][0] !== null) refuse('panels[' + r + '][0]', st.panels[r][0]);
-      for (c = 1; c <= W; c++) {
-        var p = st.panels[r][c];
-        for (f = 0; f < NF; f++) BODY[x++] = inn(p[FIELDS[f][0]], FIELDS[f][1], FIELDS[f][0]);
-      }
-    }
-    st.incoming.forEach(function (g) { BODY[x++] = int(g.width, 'incoming'); BODY[x++] = int(g.height, 'incoming'); BODY[x++] = bool(g.isChain, 'incoming'); });
-    st.outgoing.forEach(function (g) {
-      BODY[x++] = int(g.width, 'outgoing'); BODY[x++] = int(g.height, 'outgoing'); BODY[x++] = bool(g.isChain, 'outgoing');
-      BODY[x++] = int(g.frameEarned, 'outgoing'); BODY[x++] = bool(g.finalized, 'outgoing');
-      BODY[x++] = int(g.origin.row, 'outgoing'); BODY[x++] = int(g.origin.col, 'outgoing');
-    });
-    st.swapStallBacklog.forEach(function (g) { BODY[x++] = int(g.row, 'swapStallBacklog'); BODY[x++] = int(g.col, 'swapStallBacklog'); });
-    st.garbageLandedThisFrame.forEach(function (id) { BODY[x++] = int(id, 'garbageLandedThisFrame'); });
-    for (i = 1; i <= 6; i++) { var d = st.dropColumnIndex[i]; BODY[x++] = d === undefined ? -1 : int(d, 'dropColumnIndex'); }
-    for (var dk in st.dropColumnIndex) if (!(+dk >= 1 && +dk <= 6)) refuse('dropColumnIndex key', dk);
-    if (st.currentChain && st.currentChain.origin === undefined) refuse('currentChain', st.currentChain);
-    if (x !== bodyLength(st)) throw new Error('Native: wrote ' + x + ' body ints, expected ' + bodyLength(st));
-  }
 
   // The board as a Stack. `template` gives what a board never changes (the
   // level, its tables, the copy functions): a Stack of the same level the
   // search copied.
   function toStack(h, template) {
     init();
-    if (SERVER) return paToStack(h, template);
-    var err = X.nb_save(h);
-    views();
-    if (HEAD[AT.err]) throw new Error('Native: the engine refused this board (err ' + HEAD[AT.err] + ')');
-    var s = Object.create(PE().Stack.prototype), k;
-    for (k in template) {
-      if (!Object.prototype.hasOwnProperty.call(template, k) || k === 'panels') continue;
-      s[k] = template[k];
-    }
-    var i, r, c, f, x = 0, num = function (nm) { return HEAD[AT[nm]]; };
-    for (i = 0; i < NAMES.length; i++) if (FIELDSOF[i][1]) FIELDSOF[i][1](s, HEAD[i]);
-    var nrows = num('nrows'), rows = new Array(nrows);
-    for (r = 0; r < nrows; r++) {
-      var row = [null];
-      for (c = 1; c <= W; c++) {
-        var p = {};
-        for (f = 0; f < NF; f++) p[FIELDS[f][0]] = out(BODY[x++], FIELDS[f][1]);
-        row[c] = p;
-      }
-      rows[r] = row;
-    }
-    s.panels = rows;
-    s.incoming = [];
-    for (i = 0; i < num('ninc'); i++, x += 3) s.incoming.push({ width: BODY[x], height: BODY[x + 1], isChain: BODY[x + 2] === 1 });
-    s.outgoing = [];
-    for (i = 0; i < num('nout'); i++, x += 7) {
-      s.outgoing.push({ width: BODY[x], height: BODY[x + 1], isChain: BODY[x + 2] === 1, frameEarned: BODY[x + 3],
-                        finalized: BODY[x + 4] === 1, origin: { row: BODY[x + 5], col: BODY[x + 6] } });
-    }
-    s.swapStallBacklog = [];
-    for (i = 0; i < num('nstall'); i++, x += 2) s.swapStallBacklog.push({ row: BODY[x], col: BODY[x + 1] });
-    s.garbageLandedThisFrame = [];
-    for (i = 0; i < num('nlanded'); i++) s.garbageLandedThisFrame.push(BODY[x++]);
-    s.dropColumnIndex = {};
-    for (i = 1; i <= 6; i++, x++) if (BODY[x] >= 0) s.dropColumnIndex[i] = BODY[x];
-    if (x !== err) throw new Error('Native: read ' + x + ' body ints, engine wrote ' + err);
-    var at = num('chainAt');
-    s.currentChain = !num('hasChain') ? null : at >= 0 ? s.outgoing[at]
-      : { width: num('chain.width'), height: num('chain.height'), isChain: num('chain.isChain') === 1, frameEarned: num('chain.frameEarned'),
-          finalized: num('chain.finalized') === 1, origin: { row: num('chain.orow'), col: num('chain.ocol') } };
-    s.input = unbits(num('input'));
-    s.prevInput = num('prevInput') === num('input') ? s.input : unbits(num('prevInput'));
-    s.events = [];
-    return s;
+    return paToStack(h, template);
   }
 
   // ---------------------------------------------------------------- search
@@ -755,7 +588,5 @@
   };
   return Native;
   }
-  var game = make('game');
-  game.server = make('server');
-  return game;
+  return { server: make() };
 }));

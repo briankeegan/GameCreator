@@ -1,6 +1,6 @@
 importScripts("../../shared/sw-core.js");
 
-GCRegisterServiceWorker("the-game-v117", [
+GCRegisterServiceWorker("the-game-v118", [
   "./",
   "./index.html",
   "./style.css",
@@ -18,10 +18,8 @@ GCRegisterServiceWorker("the-game-v117", [
   "./ai/eval/input.js",
   "./ai/eval/travel.js",
   "./ai/eval/evaluator.js",
-  "./ai/eval/engineboard.js",
   "./ai/eval/modes.js",
   "./ai/eval/puyocpu.js",
-  "./ai/eval/survival_worker.js",
   "./ai/brain.js",
   "./ai/brain-worker.js",
   "./ai/eval/native.js",

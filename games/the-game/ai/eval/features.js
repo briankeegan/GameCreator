@@ -544,8 +544,6 @@ var MOVE_FRAMES = 4;
 
   // Colours with one or two panels left — a colour that can no longer form a match.
 
-  // The game's own points for this cascade, via PanelEngine.moveScore. Returns 0 if the engine is not loaded.
-
   // Total cells sent: width x height summed over the pieces this move sent.
 
   // Chain counter after the move.

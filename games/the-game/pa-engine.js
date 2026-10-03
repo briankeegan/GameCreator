@@ -1292,34 +1292,6 @@
     }
     return out;
   };
-  function fromPanelEngine(pe, source) {
-    var s = create(pe.level || 10, source), r, c, k;
-    ['speed', 'nextSpeedIncreaseClock', 'clock', 'displacement', 'stopTime', 'preStopTime', 'shakeTime', 'shakeTimeOnFrame',
-     'peakShakeTime', 'health', 'chainCounter', 'nActive', 'nPrevActive', 'swappingCount', 'panelsCleared', 'score', 'curRow',
-     'curCol', 'topCurRow', 'queuedSwapRow', 'queuedSwapCol', 'garbageCreatedCount', 'highestGarbageIdMatched', 'panelIdCount',
-     'riseTimer'].forEach(function (k) { if (pe[k] !== undefined) s[k] = pe[k]; });
-    ['riseLock', 'hasRisen', 'manualRaise', 'manualRaiseYet', 'preventManualRaise', 'wasToppedOut'].forEach(function (k) { s[k] = !!pe[k]; });
-    s.inCountdown = false; s.countdownTimer = null; s.stopWatchIsRunning = true; s.stopWatch = Math.max(0, s.clock - s.countdownOffsetFrames);
-    s.behaviours.delaySimulationUntil = null; s.animatingCursorDuringCountdown = null;
-    s.gameOverClock = -1; s.gameOver = false;
-    s.incoming = (pe.incoming || []).slice().reverse().map(function (g) {
-      return { width: g.width, height: g.height, isChain: !!g.isChain, isMetal: false, frameEarned: s.stopWatch, finalized: true };
-    });
-    for (var w = 1; w <= W; w++) if (pe.dropColumnIndex && pe.dropColumnIndex[w] !== undefined) s.dropColumnIndex[w - 1] = pe.dropColumnIndex[w] + 1;
-    s.panels = [];
-    for (r = 0; r < pe.panels.length; r++) {
-      s.panels[r] = [null];
-      for (c = 1; c <= W; c++) {
-        var q = pe.panels[r][c], p = new Panel(r, c, q.id);
-        for (k in p) if (Object.prototype.hasOwnProperty.call(q, k)) p[k] = q[k];
-        p.row = r; p.col = c;
-        if (q.isGarbage && q.garbageId === undefined) p.garbageId = null;
-        s.panels[r].push(p);
-      }
-    }
-    s.removeExtraRows();
-    return s;
-  }
 
   // Garbage on its way from s, first to be handed over first: each piece with
   // `at`, frames of s's stopWatch until GarbageDelivery hands it to the
@@ -1395,16 +1367,14 @@
     v.adjacentDenialFrequency = ld.adjacentDenialFrequency;
     return v;
   }
-  // `PE` (panel-engine.js) given: the view is a panel-engine.js Stack, for a
-  // bot that runs one. Absent: a View.
-  function view(s, PE) {
-    var st = toPanelEngine(s, PE), flight = (PE && PE.GARBAGE_FLIGHT) || FLIGHT;
+  // The board as the bot reads it: a View that forwards its input to s.
+  function view(s) {
+    var st = toPanelEngine(s), flight = FLIGHT;
     st.outgoing = onTheWay(s).map(function (a) {
       return { width: a.width, height: a.height, isChain: a.isChain, isMetal: a.isMetal, finalized: true, frameEarned: st.clock + a.at - flight };
     });
     st.paStack = s;   // the server's own state, for a bot that plays it on the engine
-    var own = PE ? PE.Stack.prototype.setInput : View.prototype.setInput;
-    st.setInput = function (input) { own.call(st, input); s.setInput(input); };
+    st.setInput = function (input) { View.prototype.setInput.call(st, input); s.setInput(input); };
     st.tryQueueSwap = function (row, col) { return s.canSwap(row, col) && s.tryQueueSwap(row, col); };
     return st;
   }
@@ -1425,15 +1395,8 @@
     }
     return 10;
   }
-  function toPanelEngine(s, PE) {
-    var lv = 10;
-    if (PE) {
-      for (var li = 0; li < PE.LEVELS.length; li++) {
-        var L = PE.LEVELS[li];
-        if (L.startingSpeed === s.levelData.startingSpeed && L.maxHealth === s.levelData.maxHealth && L.colors === s.levelData.colors) lv = li + 1;
-      }
-    } else lv = levelOf(s);
-    var st = PE ? new PE.Stack({ level: lv, seed: 1, countdown: false }) : blankView(s, lv);
+  function toPanelEngine(s) {
+    var lv = levelOf(s), st = blankView(s, lv);
     var ints = ['speed', 'nextSpeedIncreaseClock', 'clock', 'displacement', 'stopTime', 'preStopTime', 'shakeTime', 'shakeTimeOnFrame',
                 'peakShakeTime', 'health', 'chainCounter', 'nActive', 'nPrevActive', 'swappingCount', 'panelsCleared', 'score', 'curRow',
                 'curCol', 'topCurRow', 'queuedSwapRow', 'queuedSwapCol', 'garbageCreatedCount', 'highestGarbageIdMatched', 'panelIdCount'];
@@ -1480,7 +1443,7 @@
     return st;
   }
 
-  return { Stack: Stack, Panel: Panel, fromLua: fromLua, revive: revive, toPanelEngine: toPanelEngine, fromPanelEngine: fromPanelEngine, view: view, Unseen: Unseen, Recorded: Recorded, Seeded: Seeded, create: create, vsLevel: vsLevel, PANEL_FROM_LUA: PANEL_FROM_LUA,
+  return { Stack: Stack, Panel: Panel, fromLua: fromLua, revive: revive, toPanelEngine: toPanelEngine, view: view, Unseen: Unseen, Recorded: Recorded, Seeded: Seeded, create: create, vsLevel: vsLevel, PANEL_FROM_LUA: PANEL_FROM_LUA,
            STACK_FROM_LUA: STACK_FROM_LUA, IN: IN, list: list, WIDTH: W, HEIGHT: H,
            GarbageQueue: GarbageQueue, deliver: deliver, puzzle: puzzle, View: View, riseTime: riseTime, comboGarbage: comboGarbage, moveScore: moveScore, onTheWay: onTheWay, FLIGHT: FLIGHT, game: game, COUNTDOWN_TOTAL: COUNTDOWN_START + COUNTDOWN_LENGTH, COMBO_GARBAGE: COMBO_GARBAGE, STAGING_DURATION: STAGING_DURATION,
            GARBAGE_DELAY_LAND_TIME: GARBAGE_DELAY_LAND_TIME };
