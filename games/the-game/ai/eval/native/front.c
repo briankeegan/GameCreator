@@ -709,7 +709,7 @@ extern long syscall(long, ...);
 #else
 #define GC_NR_FUTEX 98
 #endif
-#define PJ_SPIN 2000
+#define PJ_SPIN 20000
 static int pjStarted, pjSleepers;
 static void *pjWorker(void *arg) {
   (void)arg;
