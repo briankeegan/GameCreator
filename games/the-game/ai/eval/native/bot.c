@@ -3214,7 +3214,7 @@ static double breakTimeOf(const int32_t *steps, int n, double limit) {
 static const int32_t *bsPl; static double *bsB0;
 static double bsLim;
 static void bsTask(int k) { bsB0[k] = breakWithinT(bsPl + 2 * k, 1, bsLim); }
-#define SOONBATCH 8   // swaps taken together, out from the cursor
+#define SOONBATCH 16   // swaps taken together, out from the cursor
 static Dec breakSoon(Dec d) {
   if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;
   if (lineLast == 2 || d.kind == K_RAISE || !BIN[IN_HASPA] || !hasGarbage(DBASE)) return d;
