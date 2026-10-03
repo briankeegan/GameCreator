@@ -2068,7 +2068,7 @@ static int fromChoice(const LineC *l) { return l->sw[0] == dR && l->sw[1] == dC;
 static Dec stayAlive(Dec d) {
   if (d.kind != K_SWAP && d.kind != K_HOLD) return d;
   if (d.kind == K_SWAP && !d.hasMove) return d;
-  if (lineLast == 1) return d;
+  if (lineLast == 1 || lineLast == 3) return d;   // a line played on, a break that lives
   // the engine, not the estimate, says whether the board is dying: health
   // lost within LIVEHORIZON frames, left alone
   linesReset();
@@ -2323,7 +2323,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   nRes = 0; nOptRuns = 0; nOptDepth = 0; nScore = 0; nLook = 0; nSave = 0; rScore = rMain = rLook = rSave = rCand = 0;
   ENGINE_BASE = BIN[IN_HASPA] ? IN : 0;
   for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = c >= 1 && c < BW ? (uint32_t)BIN[IN_CANSWAP + c] : 0;
-  Dec d = onePlan(spendToBreak(batchBreak(lineupFirst(keepBreak(breakFirst(stayAlive(raiseHold(waitForDrain(playOn(decideRuled()))))))))));
+  Dec d = onePlan(spendToBreak(batchBreak(lineupFirst(keepBreak(stayAlive(breakFirst(raiseHold(waitForDrain(playOn(decideRuled()))))))))));
   ENGINE_BASE = 0;
   if (d.kind == K_SWAP && d.hasMove) {
     BT->recent[2] = BT->nRecent ? BT->recent[0] : 0; BT->recent[3] = BT->nRecent ? BT->recent[1] : 0;
