@@ -561,7 +561,7 @@
     var left;
     try { left = X.ns_loop(this.ctx, o.budget, o.until, o.full, o.beam, o.quota, o.seeds); } finally { ABORT = null; }
     if (left === -10) throw abortValue;
-    if (left < 0) throw new Error('Native: the level loop failed (' + left + (X.ns_step_err ? ', engine err ' + X.ns_step_err() : '') + ')');
+    if (left < 0) throw new Error('Native: the level loop failed (' + left + (X.ns_step_err ? ', engine err ' + X.ns_step_err() : '') + (X.ns_loop_why ? ', search.h:' + X.ns_loop_why() + ' step ' + X.ns_loop_c() : '') + ')');
     T = new Int32Array(MEM.buffer, (X.ns_tags(this.ctx, n) >>> 0), stride * 7);
     for (i = 0; i < n; i++) {
       if (T[i] === 1 && !o.verdict[i]) { o.verdict[i] = 'proven'; o.newlyProven.push(i); }
