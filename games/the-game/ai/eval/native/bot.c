@@ -2022,7 +2022,7 @@ static Dec lineSwap(const LineC *l, int via, Dec d) {
 static void plansDrop(void) { BT->plan.has = 0; BT->attack.has = 0; BT->flatten.has = 0; BT->dig.has = 0; BT->digIsBreak = 0; }
 // lineLast: what the line rules last did, for the drill's trace: 1 played on
 // with the line kept, 2 a dying choice replaced, 3 a break line played, 4 a
-// choice that lost the break replaced.
+// choice that lost the break replaced, 5 a lineup played.
 static int lineLast;
 __attribute__((export_name("bot_breakfirst"))) int32_t bot_breakfirst(void) { return lineLast; }
 __attribute__((export_name("bot_keepbreak"))) int32_t bot_keepbreak(void) { return 0; }
@@ -2143,6 +2143,89 @@ static Dec keepBreak(Dec d) {
   if (l->n > 1) lineKeep(l, l->brk ? LINE_BREAK : LINE_CASH); else BT->nLine = 0;
   return lineSwap(l, V_KEEPHEALTH, d);
 }
+// LINE UP THE NEXT BREAK. With nothing to break now and garbage still to
+// drop, the bot arranges the board for the slab coming: a swap is played on
+// the engine, the board left alone until the next slab has dropped and
+// landed. Best is a lineup that breaks it -- the engine converts garbage the
+// board alone would not; next, one after which a single swap breaks it on
+// the board it settles to. A lineup must live, and spends no panels when one
+// that spends none will do.
+int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);
+static ST LUM;
+static int lineupLast;
+static int readyAfter(const int32_t *sw, int n) {
+  int32_t t;
+  if (lineLanded(sw, n, LUM, &t) != 0) return 0;
+  return breakWithin(LUM, 1);
+}
+// Where a lineup can matter: the rows up to the one the next slab lands on,
+// in its columns and one either side.
+static int lineupNear(const int32_t *st, int r, int c) {
+  int w = (int)BIN[IN_SLABW], c0 = (int)BIN[IN_SLABC];
+  if (w <= 0 || c0 <= 0) return 1;
+  int land = 0;
+  for (int cc = c0; cc < c0 + w && cc <= BW; cc++) { int top = topRow(U(st, OCC + cc)); if (top > land) land = top; }
+  land++;
+  return r >= land - 2 && r <= land && c + 1 >= c0 - 1 && c <= c0 + w;
+}
+static int lineupRank(const int32_t *sw, int n) {
+  int v = lineJudge(sw, n, 0);
+  if (!(v & LV_LIVES)) return 0;
+  int spends = LNO[3] > LNA[3];
+  int rank = (v & LV_BREAKS) ? 4 : 0;
+  if (!rank && readyAfter(sw, n)) rank = 2;
+  return rank ? rank + !spends : 0;
+}
+static Dec lineupFirst(Dec d) {
+  lineupLast = 0;
+  // a lineup is for a board with time; topped, staying alive comes first
+  if (lineLast || d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA] || BIN[IN_TOPPED]) return d;
+  if (d.kind == K_SWAP && d.hasMove) {
+    Cand *pc = poolSwap(d.sr, d.sc);
+    if ((pc && pc->res.broke) || endsInBreak(d.via)) return d;
+  }
+  linesReset();
+  int32_t st0[ST_INTS], cur[2], t;
+  uint32_t can0[WMAX];
+  uint8_t waits0[32][WMAX];
+  if (lineState(0, 0, st0, can0, waits0, cur, &t) != 0) return d;
+  int32_t lg[2 * 128], best[4] = { 0 }, bestN = 0;
+  int n = legal(st0, lg), bestRank = 0;
+  double bestT = INF;
+  for (int i = 0; i < n; i++) {
+    int r = lg[2 * i], c = lg[2 * i + 1];
+    if (r > 31 || !(can0[c] & (1u << (r - 1))) || !lineupNear(st0, r, c)) continue;
+    int32_t sw[4] = { r, c, 0, 0 };
+    double at = dmax(travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], r, c), waits0[r][c]);
+    int rank = lineupRank(sw, 1);
+    if (rank > bestRank || (rank && rank == bestRank && at < bestT)) { bestRank = rank; bestT = at; bestN = 1; best[0] = r; best[1] = c; }
+    if (rank >= 4) continue;
+    // a second swap, on the board the engine reaches after the first
+    int32_t st1[ST_INTS], cur1[2], t1, lg1[2 * 128];
+    uint32_t can1[WMAX];
+    uint8_t waits1[32][WMAX];
+    if (lineState(sw, 1, st1, can1, waits1, cur1, &t1) != 0) continue;
+    int n1 = legal(st1, lg1);
+    for (int j = 0; j < n1; j++) {
+      int r2 = lg1[2 * j], c2 = lg1[2 * j + 1];
+      if (r2 > 31 || !(can1[c2] & (1u << (r2 - 1))) || !lineupNear(st1, r2, c2)) continue;
+      sw[2] = r2; sw[3] = c2;
+      int rank2 = lineupRank(sw, 2);
+      double at2 = t1 + dmax(travelCost(cur1[0], cur1[1], r2, c2), waits1[r2][c2]);
+      if (rank2 > bestRank || (rank2 && rank2 == bestRank && at2 < bestT)) {
+        bestRank = rank2; bestT = at2; bestN = 2; best[0] = r; best[1] = c; best[2] = r2; best[3] = c2;
+      }
+    }
+  }
+  if (!bestN) return d;
+  if (bestN == 1 && d.kind == K_SWAP && d.hasMove && d.sr == best[0] && d.sc == best[1]) return d;
+  lineupLast = bestRank;
+  lineLast = 5;
+  plansDrop();
+  BT->nLine = 0;
+  if (bestN == 2) { for (int k = 0; k < 4; k++) BT->line[k] = best[k]; BT->nLine = 2; BT->lineKind = LINE_PLAN; BT->lineWaitAll = 0; }
+  return mkSwap(best[0], best[1], V_LINEUP, d.mode, d.alive);
+}
 // MATERIAL IS SPENT ONLY TO BREAK OR TO LIVE. While garbage lies on the
 // board or waits to drop, the board's panels are what the next break is made
 // from, and broken garbage is where new ones come from. A clear that breaks
@@ -2194,7 +2277,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   nRes = 0; nOptRuns = 0; nOptDepth = 0; nScore = 0; nLook = 0; nSave = 0; rScore = rMain = rLook = rSave = rCand = 0;
   ENGINE_BASE = BIN[IN_HASPA] ? IN : 0;
   for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = c >= 1 && c < BW ? (uint32_t)BIN[IN_CANSWAP + c] : 0;
-  Dec d = onePlan(spendToBreak(keepBreak(breakFirst(stayAlive(raiseHold(waitForDrain(playOn(decideRuled()))))))));
+  Dec d = onePlan(spendToBreak(lineupFirst(keepBreak(breakFirst(stayAlive(raiseHold(waitForDrain(playOn(decideRuled())))))))));
   ENGINE_BASE = 0;
   if (d.kind == K_SWAP && d.hasMove) {
     BT->recent[2] = BT->nRecent ? BT->recent[0] : 0; BT->recent[3] = BT->nRecent ? BT->recent[1] : 0;
