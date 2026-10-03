@@ -2104,8 +2104,10 @@ static int garbTop(const int32_t *st) {
 }
 // BREAKING COMES FIRST.
 static Dec breakFirst(Dec d) {
-  if (lineLast || d.kind == K_RAISE || !hasGarbage(DBASE)) return d;
-  if (d.kind == K_SWAP && d.hasMove) {
+  // a line played on is kept only if it is itself a break
+  int playing = lineLast == 1 && BT->lineKind != LINE_BREAK;
+  if ((lineLast && !playing) || d.kind == K_RAISE || !hasGarbage(DBASE)) return d;
+  if (d.kind == K_SWAP && d.hasMove && !playing) {
     Cand *pc = poolSwap(d.sr, d.sc);
     if ((pc && pc->res.broke) || endsInBreak(d.via)) return d;
   }
@@ -2274,7 +2276,6 @@ static Dec batchBreak(Dec d) {
 static Dec spendToBreak(Dec d) {
   if (lineLast || d.kind != K_SWAP || !d.hasMove || endsInBreak(d.via)) return d;
   if (!(hasGarbage(DBASE) || BIN[IN_INCOMING] > 0)) return d;
-  if (BIN[IN_TOPPED]) return d;
   // what the swap does, played on the engine against the board left alone
   int32_t sw[2] = { d.sr, d.sc };
   int v = lineJudge(sw, 1, 0);
