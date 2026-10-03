@@ -700,11 +700,17 @@ static void pjRun(void) {
   }
 }
 // PERSISTENT WORKERS, as the browser's: started once, each with its own
-// boards, waiting for the next batch, spinning a little and then napping so
-// an idle worker costs nothing.
-struct gcSleep { long s, ns; };
-extern int nanosleep(const struct gcSleep *, struct gcSleep *);
-static int pjStarted;
+// boards, waiting for the next batch: a brief spin, then asleep in the kernel
+// (a futex) until a batch wakes it. A worker that polls steals the core the
+// search runs on.
+extern long syscall(long, ...);
+#if defined(__x86_64__)
+#define GC_NR_FUTEX 202
+#else
+#define GC_NR_FUTEX 98
+#endif
+#define PJ_SPIN 2000
+static int pjStarted, pjSleepers;
 static void *pjWorker(void *arg) {
   (void)arg;
   inWorker = 1;
@@ -714,8 +720,12 @@ static void *pjWorker(void *arg) {
   int seen = 0;
   for (;;) {
     int g;
-    for (int spin = 0; (g = __atomic_load_n(&pjGen, __ATOMIC_ACQUIRE)) == seen; spin++)
-      if (spin > 20000) { struct gcSleep z = { 0, 20000 }; nanosleep(&z, 0); }
+    for (int spin = 0; (g = __atomic_load_n(&pjGen, __ATOMIC_SEQ_CST)) == seen; spin++)
+      if (spin > PJ_SPIN) {
+        __atomic_add_fetch(&pjSleepers, 1, __ATOMIC_SEQ_CST);
+        syscall(GC_NR_FUTEX, &pjGen, 128 /* FUTEX_WAIT_PRIVATE */, seen, 0, 0, 0);   // returns at once if pjGen moved
+        __atomic_sub_fetch(&pjSleepers, 1, __ATOMIC_SEQ_CST);
+      }
     seen = g;
     pjRun();
   }
@@ -739,7 +749,8 @@ static void parallelDo(int count, void (*task)(int)) {
   __atomic_store_n(&pjFinished, 0, __ATOMIC_RELAXED);
   int g = __atomic_load_n(&pjGen, __ATOMIC_RELAXED) + 1;
   __atomic_store_n(&pjWord, ((unsigned long long)(g & 0xFFFFF) << 40) | ((unsigned long long)count << 20), __ATOMIC_RELEASE);
-  __atomic_store_n(&pjGen, g, __ATOMIC_RELEASE);
+  __atomic_store_n(&pjGen, g, __ATOMIC_SEQ_CST);
+  if (__atomic_load_n(&pjSleepers, __ATOMIC_SEQ_CST)) syscall(GC_NR_FUTEX, &pjGen, 129 /* FUTEX_WAKE_PRIVATE */, 0x7fffffff, 0, 0, 0);
   int wasIn = inWorker; inWorker = 1;
   pjRun();
   inWorker = wasIn;
