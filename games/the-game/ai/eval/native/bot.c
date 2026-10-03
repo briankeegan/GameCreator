@@ -2993,6 +2993,7 @@ static Dec fillBeforeBreak(Dec d) {
 static int btAloneAt = -1; static double btAlone;
 static double breakTimeOf(const int32_t *steps, int n, double limit);
 static void prejudge(const int32_t *sws, int stride, int count, int n, int waitAll);
+static void prereplay(const int32_t *sws, int count);
 // the board left alone is asked about several times a decision: once
 static double breakTime(const int32_t *steps, int n) {
   if (n > 0) return breakTimeOf(steps, n, INF);
@@ -3002,11 +3003,16 @@ static double breakTime(const int32_t *steps, int n) {
 // THE BREAK BEFORE `limit`, or INF: a question with a bound searches only
 // what could answer it -- every line past the bound is pruned
 static double breakWithinT(const int32_t *steps, int n, double limit) { return breakTimeOf(steps, n, limit); }
+static double btReplayMs, btSearchMs;   // GC_WORKSTAT
 static double breakTimeOf(const int32_t *steps, int n, double limit) {
   int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t w[32][WMAX];
-  if (lineState(steps, n, st, can, w, cur, &t) != 0) return INF;
+  double bt0 = NOWMS2();
+  int lsr = lineState(steps, n, st, can, w, cur, &t);
+  btReplayMs += NOWMS2() - bt0;
+  if (lsr != 0) return INF;
   // garbage still to drop: the break is made against it once it has landed
   if (!hasGarbage(st) && BIN[IN_INCOMING] > 0 && lineLandedFull(steps, n, st, can, w, cur, &t) != 0) return INF;
+  double bt1 = NOWMS2();
   tTimeMode = 1; tTimeMin = limit < INF ? limit - t : INF;
   if (tTimeMin <= 0) { tTimeMode = 0; return INF; }
   double bound = tTimeMin;
@@ -3021,6 +3027,7 @@ static double breakTimeOf(const int32_t *steps, int n, double limit) {
     ENGINE_BASE = sb; ENGINE_WAITS = sw8; for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = sc[c];
     nPfx = snp; pfxT = spt; lsTopped = stp; lsBreaks = sbr; }
   tTimeMode = 0;
+  btSearchMs += NOWMS2() - bt1;
   return tTimeMin >= bound ? INF : t + tTimeMin;
 }
 // THE GOAL IS A BREAK IN THE TIME THERE IS. With garbage on the board and no
@@ -3059,11 +3066,15 @@ static Dec breakSoon(Dec d) {
   // one with none is never in time and is not judged; those with one are
   // judged together (prejudge), then taken as one by one
   double b0[MAXCAND]; int32_t wb[2 * MAXCAND]; int nwb = 0;
+  double bs0 = NOWMS2();
+  prereplay(pl, pn);
   for (int k = 0; k < pn; k++) {
     b0[k] = breakWithinT(pl + 2 * k, 1, LINEHORIZON);
     if (b0[k] < INF) { wb[2 * nwb] = pl[2 * k]; wb[2 * nwb + 1] = pl[2 * k + 1]; nwb++; }
   }
+  double bs1 = NOWMS2();
   prejudge(wb, 2, nwb, 1, 0);
+  double bs2 = NOWMS2();
   outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
   while (outNext(&o, &q, &far)) {
     // a break after a swap comes no sooner than the walk to it
@@ -3077,6 +3088,9 @@ static Dec breakSoon(Dec d) {
     double b = b0[q] < lim ? b0[q] : INF;
     if (b < time) bestTake(&inTime, -b, 0, sw, 1);
   }
+#ifndef __wasm__
+  if (getenv("GC_WORKSTAT")) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SOONT breaks %d %.2f ms | judge %d %.2f ms | loop %.2f ms | in time %d | replay %.2f search %.2f\n", pn, bs1 - bs0, nwb, bs2 - bs1, NOWMS2() - bs2, inTime.has, btReplayMs, btSearchMs); btReplayMs = btSearchMs = 0; }
+#endif
   // none in time: the margin, which only then decides
   if (!inTime.has) {
     outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);

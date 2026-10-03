@@ -38,7 +38,7 @@ static Front FRONTS[MAXFRONTS];
 static int nFronts;
 
 // ---------------------------------------------------------------- the board, read
-static Board *FB;
+static JLOCAL Board *FB;   // per thread: a replay borrows it for the masks (lineStateRun)
 static int fRows(void) { return FB->nrows; }
 static const int32_t *fp(int r, int c) {
   static const int32_t empty[NF];
@@ -593,6 +593,37 @@ static int lineStateRun(const int32_t *steps, int n, int landing, int32_t *masks
 #define LSMN 256
 typedef struct { int dec, n, landing, rc; int32_t sw[2 * LINEMAX], masks[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t wait[32][WMAX]; } LSMemo;
 static LSMemo LSM[LSMN];
+static LSMemo *lsmSlot(const int32_t *steps, int n, int landing) {
+  unsigned h = 2166136261u ^ (unsigned)(n * 7 + landing);
+  for (int k = 0; k < 2 * n; k++) h = (h ^ (unsigned)steps[k]) * 16777619u;
+  return &LSM[h & (LSMN - 1)];
+}
+static int lsmHas(const int32_t *steps, int n, int landing) {
+  LSMemo *m = lsmSlot(steps, n, landing);
+  return m->dec == btDecision && m->n == n && m->landing == landing && (n == 0 || !__builtin_memcmp(m->sw, steps, (unsigned long)n * 8));
+}
+// REPLAYED IN PARALLEL: the one-swap lines a search is about to replay, those
+// the decision has not, replayed on GC_THREADS threads and this one; the
+// boards they leave go into the decision's memo
+static LSMemo PRJ[128];
+static int prjN;
+static void prjTask(int k) {
+  LSMemo *j = &PRJ[k];
+  j->rc = lineStateRun(j->sw, 1, 0, j->masks, j->can, j->wait, j->cur, &j->t);
+}
+static void prereplay(const int32_t *sws, int count) {
+  prjN = 0;
+  for (int k = 0; k < count && prjN < 128; k++) {
+    if (lsmHas(sws + 2 * k, 1, 0)) continue;
+    LSMemo *j = &PRJ[prjN++];
+    j->sw[0] = sws[2 * k]; j->sw[1] = sws[2 * k + 1]; j->n = 1; j->landing = 0;
+  }
+  if (prjN < 2) return;
+  parallelDo(prjN, prjTask);
+  extern int paBudgetOut(void);
+  if (paBudgetOut()) return;
+  for (int k = 0; k < prjN; k++) { LSMemo *m = lsmSlot(PRJ[k].sw, 1, 0); *m = PRJ[k]; m->dec = btDecision; }
+}
 static int lineStateAt(const int32_t *steps, int n, int landing, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
   if (n < 0 || n > LINEMAX) return lineStateRun(steps, n, landing, masks, can, wait, cur, t);
   unsigned h = 2166136261u ^ (unsigned)(n * 7 + landing);
