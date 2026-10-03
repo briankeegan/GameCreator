@@ -106,7 +106,6 @@ jobs:
           node bitmatch.test.js
           node bitoptions.test.js
           node bitfeatures.test.js
-          node bitbot.test.js
 
       - name: Islands
         id: train

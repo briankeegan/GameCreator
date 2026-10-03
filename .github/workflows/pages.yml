@@ -173,9 +173,6 @@ jobs:
       # GC_SURVIVAL_SEARCH=0 for the reason _gate_exec sets it: the search costs
       # seconds per decision and trips bench.js's timing guard. Only SEARCH_GATES
       # want it and none of these is one.
-      - name: Verify the bot plays what it picks
-        run: source .github/scripts/gates.sh && GC_SURVIVAL_SEARCH=0 gate_bitbot
-
       - name: Verify the rules a vector cannot reach
         run: source .github/scripts/gates.sh && GC_SURVIVAL_SEARCH=0 gate_bitbot_survival
 

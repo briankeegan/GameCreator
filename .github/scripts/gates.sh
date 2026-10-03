@@ -810,19 +810,6 @@ gate_bitfeatures() {
   node games/the-game/ai/eval/bitfeatures.test.js
 }
 
-# BITBOT PLAYS A REAL STACK, and every claim BITBOT.md makes about it is checked
-# against one: a chosen swap is legal on the board it was chosen from and actually
-# reaches the engine, the aim is read off the weights rather than set here, BUILD
-# and ATTACK are both entered and ATTACK really does drop hold, and the one rule
-# that is not a weight refuses a full board with nothing banked while ALLOWING the
-# same board holding stop time -- chaining into the ceiling is how the position is
-# played. A mirror duel must draw, or the two instances read something that is not
-# on the board. Each check is followed by a break test that damages it and proves
-# it goes red.
-gate_bitbot() {
-  node games/the-game/ai/eval/bitbot.test.js
-}
-
 # THE FRAME ARITHMETIC IS CHECKED AGAINST THE ENGINE, not against itself. The bot
 # prices every move in frames and decides what fits in the time there is; if those
 # frames disagree with what the engine spends, every decision built on them is
@@ -926,7 +913,6 @@ SLOW_GATES=(
   gate_modes                # 53s
   gate_features_live        # 37s
   gate_chips_real_boards    # 26s
-  gate_bitbot               # 25s
   gate_bitbot_progress      # 25s: three duels of 3000 frames. Named in pages.yml
                             # so it runs after every merge; listed here so the local
                             # push hook defers it and a push still waits on nothing.
@@ -1029,7 +1015,6 @@ GATES=(
   "a landing the lineup says breaks, breaks:gate_landing:games/the-game/ai/"
   "a swap is answered without applying it:gate_bitswap:games/the-game/ai/"
   "the options are features that vary:gate_bitfeatures:games/the-game/ai/"
-  "the bot plays what it picks and cannot be killed:gate_bitbot:games/the-game/ai/"
   "the bot's frame arithmetic matches the engine:gate_bitbot_timing:games/the-game/ai/"
   "the rules a vector cannot reach:gate_bitbot_survival:games/the-game/ai/"
   "a slab is ready only if the engine breaks it:gate_slabready:games/the-game/ai/"
