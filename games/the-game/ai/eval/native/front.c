@@ -590,7 +590,7 @@ static int lineStateRun(const int32_t *steps, int n, int landing, int32_t *masks
 // ONE REPLAY PER LINE PER DECISION: the board a line leaves depends only on
 // the line and this decision's board, so every search that replays it again
 // is answered from the first replay.
-#define LSMN 256
+#define LSMN 4096
 typedef struct { int dec, n, landing, rc; int32_t sw[2 * LINEMAX], masks[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t wait[32][WMAX]; } LSMemo;
 static LSMemo LSM[LSMN];
 static LSMemo *lsmSlot(const int32_t *steps, int n, int landing) {
