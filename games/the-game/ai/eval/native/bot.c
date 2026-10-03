@@ -1263,9 +1263,8 @@ static Dec decideCore(void) {
       else BT->counts[C_RAISEDFORMATERIAL]++;
       return mk(K_RAISE, raising == 1 ? V_RAISE_OPENING : V_RAISE_MATERIAL, mode, alive);
     }
-    // The raise cannot happen yet: wantRaise stays set so it fires when it
-    // can, and the frames until then go to the board.
     BT->counts[C_WAITEDTORAISE]++;
+    return mkHold(V_RAISING, mode, alive, 0, 0, 0);
   }
 
   if (digging) {
