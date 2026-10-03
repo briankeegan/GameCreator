@@ -23,7 +23,7 @@ var registry = require('./registry.js');
 var path = require('path');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
-var PanelEngine = globalThis.PanelEngine;
+var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));   // the engine bench.js plays on
 var bench = require('./bench.js');
 var report = require(path.join(__dirname, '..', 'experiments', 'report.js'));
 
@@ -62,9 +62,8 @@ test('and it is the garbage the Stack actually delivered, not a plausible object
     // or not computed at all — disagrees.
     var mine = {};
     report.CATEGORY_ORDER.forEach(function (c) { mine[c] = 0; });
-    var proto = PanelEngine.Stack.prototype;
-    var orig = proto.takeDeliverableGarbage;
-    proto.takeDeliverableGarbage = function () {
+    var orig = PA.deliver;
+    PA.deliver = function () {
         var out = orig.apply(this, arguments);
         if (out && out.length) {
             for (var i = 0; i < out.length; i++) mine[report.classify(out[i])]++;
@@ -73,7 +72,7 @@ test('and it is the garbage the Stack actually delivered, not a plausible object
     };
     var r;
     try { r = bench.fitness(W, [7], OPTS); }
-    finally { proto.takeDeliverableGarbage = orig; }
+    finally { PA.deliver = orig; }
 
     var total = 0;
     report.CATEGORY_ORDER.forEach(function (c) { total += mine[c]; });

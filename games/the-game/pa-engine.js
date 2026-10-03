@@ -963,6 +963,7 @@
     // the chain ends with no panel chaining; an orphaned chain in the queue too
     var chainQueued = !!(this.outgoing && this.outgoing.currentChain);
     if ((this.chainCounter !== 0 || chainQueued) && !this.hasChainingPanels()) {
+      if (this.chainCounter >= 2) this.events.push({ type: 'chainEnd', length: this.chainCounter });
       this.chainCounter = 0;
       if (chainQueued) this.outgoing.finalizeCurrentChain(this.stopWatch);
     }

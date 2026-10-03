@@ -4520,6 +4520,19 @@
     var g = typeof window !== 'undefined' ? window : globalThis;
     return g.PAEngine || (typeof require === 'function' ? require('../../pa-engine.js') : null);
   }
+  // A FRAME ON THE SERVER'S RULES: the bot reads `pa` (a pa-engine.js stack)
+  // and its opponent's through PAEngine.view, and its search plays `pa` itself
+  // on native/pa.c with the garbage on its way, as the game's brain does.
+  PuyoCpu.prototype.onServer = function (pa, opp) {
+    var PE = (typeof window !== 'undefined' ? window : globalThis).PanelEngine, P = PAE();
+    this.stack = P.view(pa, PE);
+    this.opponent = opp ? P.view(opp, PE) : null;
+    this.serverStack = pa;
+    this.serverArrivals = this._inFlight().map(function (a) {
+      return { at: Math.max(1, a.at), width: a.width, height: a.height, isChain: !!a.isChain, isMetal: !!a.isMetal };
+    });
+    this.native = true;
+  };
   PuyoCpu.prototype._paRoot = function () {
     var pa = this.stack && this.stack.paStack;
     if (!pa) return null;

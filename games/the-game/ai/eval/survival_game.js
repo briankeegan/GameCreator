@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // ONE FULL DUEL, BOTH SIDES THE DEEP-SURVIVAL BOT. Run: node survival_game.js SEED [FRAMES]
 //
-// Level 10, the survival search on, garbage sent both ways. Ends when a side
+// Level 10 on the server's engine (pa-engine.js), the survival search on and
+// playing it on native/pa.c, garbage sent both ways. Ends when a side
 // dies or at FRAMES (default 21600, six minutes). A death prints the dying
 // side's last decisions and its board before and at the death. The last line
 // is data: RESULT {"seed":..,"frames":..,"died":null|0|1,"seconds":..}.
@@ -20,6 +21,7 @@ require(path.join(DIR, '..', '..', 'panel-engine.js'));
 require(path.join(DIR, '..', '..', 'panel-cpu.js'));
 var PuyoCpu = require(path.join(DIR, 'puyocpu.js'));
 var PanelEngine = globalThis.PanelEngine;
+var PA = require(path.join(DIR, '..', '..', 'pa-engine.js'));
 
 var SEED = Number(process.argv[2]), FRAMES = Number(process.argv[3] || 21600);
 if (!isFinite(SEED)) { console.error('usage: node survival_game.js SEED [FRAMES]'); process.exit(2); }
@@ -30,22 +32,23 @@ var WEIGHTS = ['trained.pbt.pbt-r22-s322.0926-142336.g03120.json',
 // GC_SURVIVE_BUDGET: the survival search's step budget (PuyoCpu
 // SURVIVE_SEARCH_BUDGET), for measuring what a smaller one costs.
 if (process.env.GC_SURVIVE_BUDGET) PuyoCpu.prototype.SURVIVE_SEARCH_BUDGET = Number(process.env.GC_SURVIVE_BUDGET);
-var st = [0, 1].map(function () { return new PanelEngine.Stack({ level: 10, seed: SEED, countdown: false }); });
+var st = [0, 1].map(function () { return PA.game({ level: 10, seed: SEED }); });
+while (st[0].clock <= PA.COUNTDOWN_TOTAL) { st[0].run(); st[1].run(); }
 var REALTIME = Number(process.env.GC_REALTIME || 0);
 function opts(i) {
   return { weights: WEIGHTS[i], reaction: 12, depth: 2, beam: 0, rise: true, allowRaise: true, modes: true,
            engine: true, checkModel: true, threads: process.env.GC_THREADS || 0 };
 }
 // With a brain, the side's decisions are made by the brain's own bot (mind[i]).
-var mind = [0, 1].map(function (i) { return REALTIME ? new PuyoCpu(PuyoCpu.cloneStack(st[i]), opts(i)) : null; });
+var mind = [0, 1].map(function (i) { return REALTIME ? new PuyoCpu(PA.view(st[i], PanelEngine), opts(i)) : null; });
 var cp = [0, 1].map(function (i) {
   var o = opts(i);
   if (REALTIME) o.brain = new PuyoCpu.LocalBrain(new PuyoCpu.Mind(opts(i), mind[i]), REALTIME,
                                                  process.env.GC_QUICK === '0' ? null : new PuyoCpu.Mind(opts(i), null, true),
                                                  Number(process.env.GC_REALTIME_STEPS || 0));
-  return new PuyoCpu(st[i], o);
+  return new PuyoCpu(PA.view(st[i], PanelEngine), o);
 });
-cp[0].opponent = st[1]; cp[1].opponent = st[0];
+function cross() { PA.deliver(st[0], st[1]); PA.deliver(st[1], st[0]); }
 
 function draw(s) {
   var o = [];
@@ -90,10 +93,10 @@ var log = [[], []];
 var trace = require('crypto').createHash('md5');
 var before = [[], []], t0 = Date.now(), died = null, mismatches = [0, 0], f;
 for (f = 0; f < FRAMES; f++) {
-  cp[0].update(); cp[1].update(); st[0].run(); st[1].run();
+  cp[0].onServer(st[0], st[1]); cp[1].onServer(st[1], st[0]);
+  cp[0].update(); cp[1].update();
+  cross(); st[0].run(); st[1].run(); cross();
   for (var i = 0; i < 2; i++) {
-    var out = st[i].takeDeliverableGarbage();
-    if (out && out.length) st[i ^ 1].receiveGarbage(out);
     st[i].drainEvents();
     before[i].push(draw(st[i])); if (before[i].length > 31) before[i].shift();
     trace.update(before[i][before[i].length - 1]);
