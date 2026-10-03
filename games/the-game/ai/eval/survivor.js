@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // WASMSURVIVOR: the survival bot, playing on the panel-game server.
 //
-//   node survivor.js [--port 47777] [--host 127.0.0.1] [--threads N]   (N: the cores, at most 4)
+//   node survivor.js [--port 47777] [--host 127.0.0.1] [--threads N]   (N: the cores but one, at most 4)
 //   (or GC_SURVIVOR_PORT / GC_SURVIVOR_HOST; --host 0.0.0.0 listens on every interface)
 //
 // panel-game's live client (bot/SurvivalLink.lua, brain "survival") runs the
@@ -22,6 +22,12 @@
 // holds until it has decided again on the board as it is. Garbage on its
 // way, as the senders' telegraphs show it, is played into every prediction
 // and handed to the search.
+// THE FRAME LOOP STAYS OUT OF GC'S WAY: a young generation big enough that
+// it rarely fills mid-frame, and a minor collection in the slack after each
+// reply (afterGc), so a frame's reply is not the one a collection lands on.
+require('v8').setFlagsFromString('--max-semi-space-size=64');
+require('v8').setFlagsFromString('--expose-gc');
+var minorGc = require('vm').runInNewContext('gc');
 var net = require('net'), path = require('path'), wt = require('worker_threads');
 // GC pauses on this thread: the longest, and how many passed 4 ms (match stats gcMs, slowGc).
 var GC = { max: 0, slow: 0 };
@@ -30,7 +36,7 @@ new (require('perf_hooks').PerformanceObserver)(function (l) {
 }).observe({ entryTypes: ['gc'] });
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js')), SH = require(path.join(__dirname, 'survivor_shared.js'));
 
-var args = process.argv.slice(2), opt = { port: Number(process.env.GC_SURVIVOR_PORT) || 47777, host: process.env.GC_SURVIVOR_HOST || '127.0.0.1', threads: Math.max(1, Math.min(4, require('os').cpus().length)) };
+var args = process.argv.slice(2), opt = { port: Number(process.env.GC_SURVIVOR_PORT) || 47777, host: process.env.GC_SURVIVOR_HOST || '127.0.0.1', threads: Math.max(1, Math.min(4, require('os').cpus().length - 1)) };
 for (var i = 0; i < args.length; i += 2) { var key = args[i].replace(/^--/, ''); opt[key] = key === 'host' ? args[i + 1] : Number(args[i + 1]); }
 if (!(opt.port > 0 && opt.port < 65536)) throw new Error('survivor.js: no such port ' + opt.port);
 var PROFILE = SH.profile(), HANDS = new SH.Hands(PROFILE), land = SH.land, arrivalsOf = SH.arrivalsOf;
@@ -474,6 +480,8 @@ var server = net.createServer(function (sock) {
         var fms = Number(process.hrtime.bigint() - t0) / 1e6;
         if (fms > match.stats.frameMs) match.stats.frameMs = Math.round(fms * 10) / 10;
         if (fms > 8) match.stats.slowFrames++;
+        // the slack before the next frame (~16 ms at 60 a second) takes the young generation's collection
+        if (fms < 8) minorGc({ type: 'minor' });
       }
     }
   }
