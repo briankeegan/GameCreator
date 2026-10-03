@@ -83,12 +83,13 @@
 
   function make() {
   var ABORT = null;   // the running loop's `should I stop` (Mind.abort)
+  var DEADLINE = 0;   // Date.now() past which a loop stops as if its budget ran out (Native.deadline)
   var MEM = null, THREADS = 1, WORKERS = [];
   var X = null, HEAD = null, BODY = null, NAMES = null, FIELDSOF = null, AT = {};
   // The module is compiled once per thread: from bytes where there is no file
   // system (a page, a worker), from native/pa.wasm beside this file in node.
   function imports(memory) {
-    var env = { abort_poll: function () { return ABORT && ABORT() ? 1 : 0; } };
+    var env = { abort_poll: function () { return ABORT && ABORT() ? 1 : DEADLINE && Date.now() > DEADLINE ? 2 : 0; } };
     if (memory) env.memory = memory;
     return { env: env };
   }
@@ -587,6 +588,8 @@
     bind: bind,
     initThreads: initThreads,
     threads: function () { return THREADS; },
+    // A search past this Date.now() ends as if its budget had run out (0: none).
+    deadline: function (t) { DEADLINE = t || 0; },
     memoryBytes: function () { return MEM ? MEM.buffer.byteLength : 0; },
     fromStack: fromStack,
     toStack: toStack,

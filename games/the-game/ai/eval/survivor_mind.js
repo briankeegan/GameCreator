@@ -13,6 +13,8 @@ var P = require(path.join(DIR, 'puyocpu.js')), PA = require(path.join(DIR, '..',
 var SH = require(path.join(DIR, 'survivor_shared.js'));
 var cfg = wt.workerData, OPTS = SH.botOptions(cfg.profile, cfg.threads);
 var rates = [], SPEND = Number(process.env.GC_SURVIVOR_SPEND) || 0.6;   // budget searched per millisecond over the last decisions, and the share of the time there is spent searching
+// The search ends this long before the answer is due, for the rest of the decision and its post.
+var DEADLINE_MARGIN_MS = Number(process.env.GC_SURVIVOR_MARGIN) || 30;
 var TALL_RANK = 30;   // frames: a break sooner than this outranks lowering a tall board
 var LINEUP_AFTER = 30;   // frames past a pop's end a lined-up row has to have matched by
 var BANK_ROWS = 12, BANK_TOP = 10;   // garbage rows on the way that make banking worth it, and the row it banks up to
@@ -180,8 +182,12 @@ wt.parentPort.on('message', function (m) {
     var nodesPerMs = rates.length ? Math.min.apply(null, rates) : 30;
     var FULL = Number(process.env.GC_SURVIVOR_FULL) || P.prototype.SURVIVE_SEARCH_BUDGET, CHEAP = Number(process.env.GC_SURVIVOR_CHEAP) || P.prototype.SURVIVE_SEARCH_BUDGET_CHEAP;
     bot.SURVIVE_SEARCH_BUDGET = m.ms > 0 ? Math.max(CHEAP, Math.min(FULL, Math.round(m.ms * nodesPerMs * SPEND))) : FULL;
-    // The frame loop stops a question it no longer needs (stale).
+    // The frame loop stops a question it no longer needs (stale). A search
+    // still running DEADLINE_MARGIN_MS before the answer is due ends there
+    // with what it has proven, as if its budget had run out.
     bot._abort = cfg.abort ? stale : null;
+    var N = require(path.join(DIR, 'native.js')).server;
+    if (m.ms > 0) N.deadline(t0 + m.ms - DEADLINE_MARGIN_MS);
     var d;
     var t1 = Date.now();
     bot._svMs = 0;
@@ -189,7 +195,7 @@ wt.parentPort.on('message', function (m) {
     var provenRanked = [];
     if (process.env.GC_SURVIVOR_WHY && bot.preferProven) { var pp0 = bot.preferProven; bot.preferProven = function (c, i) { var r = pp0.call(this, c, i); provenRanked.push(key(c) + '=' + r); return r; }; }
     if (process.env.GC_SURVIVOR_WHY && bot.preferRank) { var pr0 = bot.preferRank; bot.preferRank = function (c, i) { var r = pr0.call(this, c, i); ranked.push(key(c) + '=' + r); return r; }; }
-    try { d = bot._decide(); } finally { bot._abort = null; }
+    try { d = bot._decide(); } finally { bot._abort = null; N.deadline(0); }
     var why = null;
     if (process.env.GC_SURVIVOR_WHY) {
       var sp = bot._searchProofs;

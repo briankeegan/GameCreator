@@ -621,6 +621,8 @@ EXPORT(ns_grid) int ns_grid(Ctx *x, int i) {
 }
 
 // ---- the level loop (puyocpu.js _survivalSearch, breadth first)
+// 1: stop, the question is no longer wanted (LOOP_ABORTED); 2: out of time,
+// end as if the budget ran out.
 extern int abort_poll(void) __attribute__((import_module("env"), import_name("abort_poll")));
 static int vreserve(Vec *v, int32_t n) {
   if (n <= v->cap) return 1;
@@ -1057,7 +1059,7 @@ EXPORT(ns_loop) int ns_loop(Ctx *x, int budget, int until, int full, int beam, i
         if (verdict[tag]) { NODE(x, ni)->live = 0; release(x, ni); continue; }
         for (j = 0; j < nm && budget > 0; j++) {
           budget--;
-          if (++polled >= 64) { polled = 0; if (abort_poll()) LEAVE(LOOP_ABORTED); }
+          if (++polled >= 64) { polled = 0; int ap = abort_poll(); if (ap == 1) LEAVE(LOOP_ABORTED); if (ap == 2) budget = 0; }
           int32_t mv = x->moves.a[o + j];
           int c = async ? awaitSlot(&res.a[o + j]) : res.a[o + j];
           if (c == NOTRUN)
