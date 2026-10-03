@@ -7,7 +7,7 @@
 enum { IN_TOPPED, IN_STOP, IN_INCOMING, IN_NEXTSLAB, IN_FALLING, IN_CROW, IN_CCOL, IN_HEALTH, IN_DRAIN, IN_FPR,
        IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISEROOM, IN_INFLIGHT,
        IN_DRAINBOUND, IN_STACKTOPPED, IN_MOVING, IN_HASTIMED, IN_REVEALOPEN, IN_CONVN, IN_CONVTIMER, IN_BCROW, IN_BCCOL,
-       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_HELD = 49, IN_SF = 50, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_SIZE = 600 };
+       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HELD = 49, IN_SF = 50, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_SIZE = 600 };
 enum { TF_DEADLY = 1, TF_FORCE = 2, TF_REFUSE = 4, TF_RAISE = 8, TF_STUB = 16, TF_SLAB = 32 };
 static int deadlyCalls;
 #define TFLAG(f) (((int)BIN[IN_T]) & (f))
@@ -760,6 +760,28 @@ static Cand POOL[MAXCAND];
 static ST POOLST[MAXCAND];
 static int nPool;
 static Res CR, CR2;
+// ROWS A RAISE MUST LEAVE FREE: the next slab's, the biggest slab yet, and
+// everything queued. raiseMode wants a raise and the pool offers one by this
+// one number, so a raise wanted is a raise offered.
+static int raiseReserve(void) {
+  int r = (int)__builtin_ceil(BIN[IN_NEXTSLAB] / BW), q = (int)__builtin_ceil(BIN[IN_INCOMING] / BW);
+  if (BT->maxSlab > r) r = BT->maxSlab;
+  return q > r ? q : r;
+}
+// WHAT A SWAP CAUSES. On a board in motion the clear already resolving is in
+// every result the resolver gives, the board left alone included. A swap is
+// credited only with what it adds: the cells past the board's own, and a break
+// the board was not already making. Every route reads the pool, so every
+// route sees what the swap does.
+static Rs causedBy(Rs r, const Rs *alone) {
+  if (!(alone->total > 0 || alone->broke)) return r;
+  r.total = r.total > alone->total ? r.total - alone->total : 0;
+  r.broke = r.broke && !alone->broke;
+  if (r.scope == SC_BROKE && !r.broke) r.scope = SC_OK;
+  if (!r.total && !r.broke) { r.chain = 0; r.rounds = 0; r.biggest = 0; r.converts = 0; r.garbage = 0; }
+  else r.biggest = r.rounds == 1 ? r.total : 0;
+  return r;
+}
 static ST TMC;
 static void candidates(int32_t *base) {
   nPool = 0;
@@ -769,8 +791,7 @@ static void candidates(int32_t *base) {
   if (BIN[IN_HASRISEN]) {
     resolve(RISEN, CR.r, 1);
     const int32_t *rm = CR.r[R_SCOPE] == SC_OK ? CR.st : RISEN;
-    int inRows = (int)__builtin_ceil(BIN[IN_INCOMING] / BW);
-    if (tallestBoard(rm) + inRows + 1 < BH) {
+    if (tallestBoard(rm) + raiseReserve() + 1 < BH) {
       Cand *rc = &POOL[nPool];
       memset(rc, 0, sizeof(Cand));
       stcpy(POOLST[nPool], rm);
@@ -804,6 +825,7 @@ static void candidates(int32_t *base) {
     if (nPool >= MAXCAND) { botFailed = 1; swapIn(base, r, c); continue; }
     if (haveSettled) stcpy(POOLST[nPool], CR.st); else stcpy(POOLST[nPool], base);
     swapIn(base, r, c);
+    res = causedBy(res, &h->res);
     if (!(res.total > 0 || res.broke)) {
       int skip = 0;
       for (int z = 0; z < BT->nRecent; z++) {
@@ -942,7 +964,7 @@ static int raiseMode(const int32_t *base, int poolBreak) {
   if (!opt(O_ALLOWRAISE) || topped) { BT->opening = 0; return 0; }
   if (BIN[IN_FALLING]) return 0;
   int rows = (int)__builtin_ceil(BIN[IN_NEXTSLAB] / BW);
-  int reserve = rows > BT->maxSlab ? rows : BT->maxSlab;
+  int reserve = raiseReserve();
   int fits = BIN[IN_RAISEROOM] > 1 + reserve;
   BT->wantRows = rows;
   if (BT->opening && (BIN[IN_INCOMING] || !fits)) BT->opening = 0;
@@ -1062,7 +1084,9 @@ static void scoreAll(Cand **cs, int n, double *out, int idle, const int32_t *bas
 }
 typedef struct { Cand *c; double cheap; } Cheap;
 
+static int raiseWaiting;
 static Dec decideCore(void) {
+  raiseWaiting = 0;
   int32_t *base = IN;
   DBASE = base;
   hereSet = 0;
@@ -1263,8 +1287,10 @@ static Dec decideCore(void) {
       else BT->counts[C_RAISEDFORMATERIAL]++;
       return mk(K_RAISE, raising == 1 ? V_RAISE_OPENING : V_RAISE_MATERIAL, mode, alive);
     }
+    // The raise cannot happen yet: wantRaise stays set so it fires when it
+    // can, and the frames until the rise lock ends go to the board (raiseHold).
     BT->counts[C_WAITEDTORAISE]++;
-    return mkHold(V_RAISING, mode, alive, 0, 0, 0);
+    raiseWaiting = 1;
   }
 
   if (digging) {
@@ -1732,6 +1758,8 @@ static void livingSet(const int32_t *base, double left) {
   left -= 2;
   memset(LIVE, 0, sizeof LIVE); memset(LIVE1, 0, sizeof LIVE1); memset(LIVEB, 0, sizeof LIVEB); liveAny = 0;
   stcpy(LVA, base);
+  resolve(LVA, LVR, 0);
+  Rs alone = summarise(LVR);
   int n = legal(LVA, LVS);
   for (int i = 0; i < n; i++) {
     int r1 = LVS[2 * i], c1 = LVS[2 * i + 1];
@@ -1742,7 +1770,9 @@ static void livingSet(const int32_t *base, double left) {
     swapIn(LVA, r1, c1);
     int sc = LVR[R_SCOPE];
     if (sc != SC_OK && sc != SC_BROKE) continue;
-    if (cashes(LVR)) {
+    Rs mine = causedBy(summarise(LVR), &alone);
+    sc = mine.broke ? SC_BROKE : SC_OK;
+    if (mine.total > 0 || mine.broke) {
       Cand *pc = sc == SC_BROKE ? 0 : poolSwap(r1, c1);
       if (pc && !clearLives(pc, left + 2)) continue;
       LIVE[r1][c1] = LIVE1[r1][c1] = 1; LIVEB[r1][c1] = sc == SC_BROKE; LIVET[r1][c1] = t1; liveAny = 1; continue;
@@ -1796,6 +1826,17 @@ static Dec stayAlive(Dec d) {
   BT->plan.has = 0; BT->attack.has = 0; BT->flatten.has = 0; BT->dig.has = 0; BT->digIsBreak = 0;
   return mkSwap(br, bc, V_KEEPHEALTH, d.mode, d.alive);
 }
+// A SWAP THAT IS STILL MOVING WHEN THE LOCK ENDS TAKES THE ROW BACK: the
+// raise starts the frame nothing holds the rise lock, and a swap queued then
+// cancels it. While a raise waits, a swap is played only if its walk and its
+// five frames are done before the lock ends; otherwise the bot holds.
+static Dec raiseHold(Dec d) {
+  if (!raiseWaiting || d.kind != K_SWAP || !d.hasMove) return d;
+  Cand *pc = poolSwap(d.sr, d.sc);
+  double mf = pc ? pc->moveFrames : travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], d.sr, d.sc);
+  if (mf + 5 <= BIN[IN_LOCKLEFT]) return d;
+  return mkHold(V_RAISING, d.mode, d.alive, 0, 0, 0);
+}
 static Dec onePlan(Dec d) {
   if (d.kind != K_SWAP) return d;
   int keep = 0;
@@ -1821,7 +1862,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   memoRoom();
   nSettle = nLandR = nFireR = nSavesR = nAnyR = 0;
   nRes = 0; nOptRuns = 0; nOptDepth = 0; nScore = 0; nLook = 0; nSave = 0; rScore = rMain = rLook = rSave = rCand = 0;
-  Dec d = onePlan(stayAlive(waitForDrain(decideRuled())));
+  Dec d = onePlan(stayAlive(raiseHold(waitForDrain(decideRuled()))));
   if (d.kind == K_SWAP && d.hasMove) {
     BT->recent[2] = BT->nRecent ? BT->recent[0] : 0; BT->recent[3] = BT->nRecent ? BT->recent[1] : 0;
     BT->recent[0] = d.sr; BT->recent[1] = d.sc;

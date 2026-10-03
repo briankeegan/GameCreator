@@ -854,6 +854,14 @@ gate_slabready() {
   node games/the-game/ai/eval/slabready.test.js
 }
 
+# A SWAP IS CREDITED WITH WHAT IT DOES IN THE GAME. The candidate pool's
+# clear/break for every swap on moving comboStorm boards, against pa-engine
+# playing the swap when the walk arrives; a swap is not credited with the
+# clear the board is already making.
+gate_swapcredit() {
+  node games/the-game/ai/eval/swapcredit.test.js
+}
+
 gate_bitbot_survival() {
   node games/the-game/ai/eval/survival.test.js
 }
@@ -1025,6 +1033,7 @@ GATES=(
   "the bot's frame arithmetic matches the engine:gate_bitbot_timing:games/the-game/ai/"
   "the rules a vector cannot reach:gate_bitbot_survival:games/the-game/ai/"
   "a slab is ready only if the engine breaks it:gate_slabready:games/the-game/ai/"
+  "a swap is credited with what it does in the game:gate_swapcredit:games/the-game/ai/"
   "the bot moves the board:gate_bitbot_progress:games/the-game/ai/"
   "the simulation resolves like the game:gate_resolve_fidelity:games/the-game/ai/"
   "that fidelity check fires:gate_resolve_fidelity_fires:games/the-game/ai/"
