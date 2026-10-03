@@ -2016,7 +2016,7 @@ static int leafQuiet(int r, int c) {
   return !run;
 }
 static int laRes[8], laSkip[8];
-static double lsRing = 1e300;   // the ring: three-swap lines no later than this (breakFirst)   // GC_WORKSTAT: resolves and skipped leaves per level
+// GC_WORKSTAT: resolves and skipped leaves per level
 static int quietSwap(const int32_t *st, int r, int c) {
   int N = st[O_N], W = st[O_W];
   uint32_t b = 1u << (r - 1);
@@ -2075,12 +2075,17 @@ static int swapsBefore(const int32_t *a, const int32_t *b, int n) {
 // (bestTake); and the walk ends once nothing at this distance or beyond can
 // win (outPast: a candidate is never sooner than the walk to it, and no
 // better than `most`). Each search says only how it scores.
-typedef struct { int ord[256]; double far[256]; int n, k; } Out;
-static void outBegin(Out *o, const int32_t *sw, int stride, int n, int cr, int cc) {
+typedef struct { int ord[256]; double far[256]; int n, k, bounded; } Out;
+// `bounded`: the walk may stop on distance, so it is worth ordering; a walk
+// that visits every candidate whatever their distance takes them as they come
+// (the answer never depends on the order: every tie is broken by the swaps)
+static void outBeginB(Out *o, const int32_t *sw, int stride, int n, int cr, int cc, int bounded) {
   if (n > 256) n = 256;
-  nearestFirst(sw, stride, n, cr, cc, o->ord, o->far);
-  o->n = n; o->k = 0;
+  if (bounded) nearestFirst(sw, stride, n, cr, cc, o->ord, o->far);
+  else for (int k = 0; k < n; k++) { o->ord[k] = k; o->far[k] = travelCost(cr, cc, sw[stride * k], sw[stride * k + 1]); }
+  o->bounded = bounded; o->n = n; o->k = 0;
 }
+static void outBegin(Out *o, const int32_t *sw, int stride, int n, int cr, int cc) { outBeginB(o, sw, stride, n, cr, cc, 1); }
 static int outNext(Out *o, int *i, double *far) {
   if (o->k >= o->n) return 0;
   *i = o->ord[o->k]; *far = o->far[o->k]; o->k++;
@@ -2130,13 +2135,13 @@ static void linesAt(int d, int pr, int pc, double t, double limit) {
   // OUT FROM THE CURSOR: nearest first, so the first that cannot be reached in
   // time ends the level -- every one after it is further
   Out o; double far; int i;
-  outBegin(&o, LSW[d], 2, n, pr, pc);
-  int noOrder = nfNoOrder;
+  int bounded = tTimeMode || limit < LINEHORIZON;   // the only stops here: the time asked, a drain
+  outBeginB(&o, LSW[d], 2, n, pr, pc, bounded);
+  int noOrder = nfNoOrder || !bounded;
   while ((tTimeMode || nLines < MAXLINES) && outNext(&o, &i, &far)) {
     int r = LSW[d][2 * i], c = LSW[d][2 * i + 1];
     double at = t + far;
     if (at > limit) { if (noOrder) continue; break; }
-    if (nPfx + d + 1 == 3 && pfxT + at > lsRing) { if (noOrder) continue; break; }
     if (tTimeMode && pfxT + at >= tTimeMin) { if (noOrder) continue; break; }
     if (r >= 40) continue;
     if (tTimeMode && pfxT + at >= tTimeMin) continue;   // no sooner than the soonest found: it cannot be the answer
@@ -2625,22 +2630,7 @@ static Dec breakFirst(Dec d) {
   // shortest first, so once LIVINGS are found no longer than this depth, a
   // deeper line cannot enter them and the answer is the deeper search's
   LineC *l = 0;
-  lsRing = 1e300;
   for (int depth = 1; depth <= KEEPDEPTH; depth++) {
-    // THREE SWAPS DEEP, IN RINGS: every shorter line is found whole; three-swap
-    // lines out to a ring of time. Once LIVINGS are had, the last no longer
-    // than three and inside the ring, a line outside it cannot enter them.
-    if (depth == 3) {
-      static const double RINGS[] = { 60, 120, 1e300 };
-      for (int ri = 0; ri < 3; ri++) {
-        lsRing = RINGS[ri]; lfDecision = -1;
-        linesFind(depth, 1);
-        l = bestBreak();
-        if (bbFound >= LIVINGS && bbLastN <= 3 && bbLastEst <= lsRing) break;
-      }
-      lsRing = 1e300;
-      break;
-    }
     growRootMs = growKidMs = growStateMs = 0; growKids = 0; for (int q = 0; q < 8; q++) laRes[q] = laSkip[q] = 0;
     double lf0 = NOWMS2();
     linesFind(depth, 1);
