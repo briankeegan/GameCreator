@@ -11,9 +11,8 @@ window.NewseyDuel = (function () {
   "use strict";
 
   var E = window.PAEngine;
-  // The bot reads a board as panel-engine.js holds it: E.view rebuilds that
-  // from the server's state each frame, and the bot's keys go to the server's.
-  var PE = window.PanelEngine;
+  // The bot reads the board through E.view, rebuilt from the server's state
+  // each frame; its keys go to the server's.
   var FRAME = 1000 / 60;
   // The countdown itself is entirely the engine's call (Stack:runCountdown,
   // 1:1 with the reference — riseLock held, cursor scripted, physics frozen
@@ -38,7 +37,7 @@ window.NewseyDuel = (function () {
     var opts = { weights: ev.trained.weights, reaction: 12, seed: seed };
     var sw = ev.trained.switches || {};
     Object.keys(sw).forEach(function (k) { opts[k] = sw[k]; });
-    var cpu = new ev.PuyoCpu(E.view(stack, PE), opts);
+    var cpu = new ev.PuyoCpu(E.view(stack), opts);
     cpu.board = stack;
     cpu.opponentBoard = opponentStack || null;
     if (ev.Brain && ev.Brain.available()) cpu.brain = new ev.Brain(opts);
@@ -47,8 +46,8 @@ window.NewseyDuel = (function () {
   function closeCpu(cpu) { if (cpu && cpu.brain) cpu.brain.close(); }
   // One frame of the bot: it reads both boards as they are now.
   function cpuUpdate(cpu) {
-    cpu.stack = E.view(cpu.board, PE);
-    if (cpu.opponentBoard) cpu.opponent = E.view(cpu.opponentBoard, PE);
+    cpu.stack = E.view(cpu.board);
+    if (cpu.opponentBoard) cpu.opponent = E.view(cpu.opponentBoard);
     cpu.update();
   }
 

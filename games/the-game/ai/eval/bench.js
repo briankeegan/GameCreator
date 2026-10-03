@@ -334,7 +334,7 @@ exports.run = function (weights, seed, opts) {
 
     var cpu, detach = null;
     {
-        cpu = new PuyoCpu(PA.view(stack, PanelEngine), {
+        cpu = new PuyoCpu(PA.view(stack), {
             weights: weights || {},
             reaction: 12,
             // Lookahead, when the caller asks for it. Absent means depth 1,

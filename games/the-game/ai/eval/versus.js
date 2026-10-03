@@ -138,7 +138,9 @@ exports.duel = function (weightsA, weightsB, seed, opts, optsB) {
     // The countdown is the engine's and nobody plays in it.
     while (stacks[0].clock <= PA.COUNTDOWN_TOTAL) { stacks[0].run(); stacks[1].run(); }
     stacks[0].events.length = 0; stacks[1].events.length = 0;
-    var cpus = [ makeCpu(PA.view(stacks[0], PanelEngine), weightsA, opts), makeCpu(PA.view(stacks[1], PanelEngine), weightsB, optsB) ];
+    // PuyoCpu reads PAEngine.View; BitBot a panel-engine.js Stack.
+    function viewFor(o, st) { return o.bot === 'bitbot' ? PA.view(st, PanelEngine) : PA.view(st); }
+    var cpus = [ makeCpu(viewFor(opts, stacks[0]), weightsA, opts), makeCpu(viewFor(optsB, stacks[1]), weightsB, optsB) ];
     // EACH SIDE CAN SEE THE OTHER. Without this the opponent features are
     // wired all the way to the evaluator and then handed null, which reads as
     // a feature that is correct, registered and constant — the shape of dead

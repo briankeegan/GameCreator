@@ -19,6 +19,16 @@
     }
     return RULES;
   }
+  // THE SERVER'S ENGINE (pa-engine.js), for its board width, the garbage a
+  // combo sends and the stop time a clear earns. Resolved on first use too.
+  var PA = null;
+  function pa() {
+    if (!PA) {
+      PA = (typeof module === 'object' && module.exports) ? require('./pa-engine.js') : root.PAEngine;
+      if (!PA) throw new Error('pa-engine.js is not loaded');
+    }
+    return PA;
+  }
 
   "use strict";
 
@@ -626,7 +636,7 @@
     return null;
   };
 
-  // Stack.awardStopTime, the modern formula, for the case a planner can see:
+  // The engine's stop time award, the modern formula, for the case a planner can see:
   // not topped out. Breaking garbage buys frames, and frames are survival —
   // the real payoff for doing it, and invisible to the evaluator until now.
   // ASK THE ENGINE WHAT IT PAYS. Do not re-derive it.
@@ -639,12 +649,8 @@
   // a board out — the one situation where stop time matters most is the one
   // no check could see.
   //
-  // So the engine's own function decides, on a Stack kept for the purpose.
-  // The Stack is built once (construction runs a thousand frames of countdown)
-  // and only three fields are set per call, so this stays cheap enough for the
-  // per-candidate path. stopTime is zeroed first because awardStopTime only
-  // ever RAISES it — leaving a previous candidate's award in place would make
-  // every later one read at least as large.
+  // So the engine's own function decides: the server's calculateStopTime, on
+  // a level-10 stack built once and kept for the purpose.
   // Anything standing in the top row. Same test as the bot's own
   // _boardToppedOut and the engine's isToppedOut.
   LogicalBoard.prototype._toppedOutNow = function () {
@@ -657,16 +663,12 @@
   LogicalBoard.prototype._stopTimeFor = function (isChain, comboSize, chainCounter, toppedOut) {
     if (!LogicalBoard._stopStack) {
       try {
-        LogicalBoard._stopStack = new root.PanelEngine.Stack({ level: 10, seed: 1 });
+        LogicalBoard._stopStack = pa().create(10);
       } catch (e) { LogicalBoard._stopStack = null; }
     }
     var s = LogicalBoard._stopStack;
     if (!s) return 0;
-    s.stopTime = 0;
-    s.wasToppedOut = !!toppedOut;
-    s.chainCounter = chainCounter || 0;
-    s.awardStopTime(!!isChain, comboSize);
-    return s.stopTime;
+    return s.calculateStopTime(comboSize, !!toppedOut, !!isChain, chainCounter || 0);
   };
 
   LogicalBoard.prototype._connectedGarbage = function (matched) {
@@ -826,7 +828,7 @@
         brokeGarbage += poppedGarbage;
         truncated = true;
       }
-      var pieces = root.PanelEngine.comboGarbage(keys.length);
+      var pieces = pa().comboGarbage(keys.length);
       for (var i = 0; i < pieces.length; i++) garbage.push([pieces[i], 1]);
       // GARBAGE BROKE: apply this pop and stop. The pop still has to HAPPEN —
       // stopping before the sweep leaves the slab untouched and reports a
@@ -876,7 +878,7 @@
   }
 
   function driveWalk(input) {
-    var stack = this.stack, w = this._walk, width = root.PanelEngine.WIDTH;
+    var stack = this.stack, w = this._walk, width = pa().WIDTH;
     // A ROW THAT RISES MID-WALK CARRIES THE TARGET UP WITH IT, as it carries
     // the cursor: the move chosen was a pair of panels, not a cell. Without
     // this the bot swapped the pair a row below the one it had evaluated
@@ -928,7 +930,7 @@
   }
 
   function nearestSwappable(fromRow, fromCol) {
-    var stack = this.stack, width = root.PanelEngine.WIDTH;
+    var stack = this.stack, width = pa().WIDTH;
     var best = null, bestD = Infinity;
     for (var r = 1; r <= stack.topCurRow; r++) {
       for (var c = 1; c < width; c++) {
@@ -966,7 +968,7 @@
   }
 
   function snapshot() {
-    var stack = this.stack, width = root.PanelEngine.WIDTH;
+    var stack = this.stack, width = pa().WIDTH;
     var grid = [];
     var blocks = {};
     // The engine's chaining flag, panel by panel. It belongs to the PANEL,
