@@ -439,8 +439,9 @@ function Hands(p) {
 }
 Hands.prototype.keys = function (board, hold, kind, move, arrivals, frames) {
   this.S.reset();
-  var root = this.S.root(board.copy(), hold, arrivalsFrom(board, arrivals), false);
-  return this.S.keys(root, kind, move, frames || 0);
+  var root = this.S.root(board, hold, arrivalsFrom(board, arrivals), false), k = this.S.keys(root, kind, move, frames || 0);
+  this.S.reset();   // nothing of the board is held till the next call
+  return k;
 };
 Hands.prototype.idle = function (board, hold, arrivals) {
   if (!hold.left) return { bits: 0, hold: hold };
