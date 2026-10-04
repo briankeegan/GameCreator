@@ -136,7 +136,10 @@ wt.parentPort.on('message', function (m) {
     bot.preferRank = null; bot.preferProven = null;
     var popping = !!(cfg.profile.conserve && SH.popLeft(board)), converting = popping ? SH.convertingOf(board) : 0;
     var br = null, brMs = 0, want = {}, tall = cfg.profile.tallRow && SH.top(board) >= cfg.profile.tallRow;
-    if (cfg.profile.breakFirst) {
+    // No break search on a question due sooner than it could take (one asked
+    // for the next frame, the plan dying): the answer would come late.
+    var breakTime = !due || due - Date.now() >= DEADLINE_MARGIN_MS + LINEUP_MIN_MS;
+    if (cfg.profile.breakFirst && breakTime) {
       bot._natSearch();   // the engine, on this bot's threads, before a second context is made on it
       if (!BS) BS = new (require(path.join(DIR, 'native.js')).server.Search)({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames, threads: OPTS.threads || 1 });
       var tb = Date.now();
