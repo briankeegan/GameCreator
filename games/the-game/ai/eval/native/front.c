@@ -808,8 +808,55 @@ static int parAvailable(void) {
   return pjThreads > 0 && !inWorker;
 }
 // count tasks, task(k) each, on GC_THREADS workers and this thread (one by one without)
+// THE WORKERS ALONE: a batch handed out while this thread does serial work of
+// its own (parallelBg); parallelJoin ends it -- the tasks not yet started are
+// dropped, the ones started are waited for. A batch of either kind starts only
+// once the last background one has ended.
+static int pjBg, pjBgCount;
+static void pjFold(void) {
+  extern PATLS double paWork, paEngFrames;
+  for (int t = 1; t <= pjThreads; t++) { paWork += pjW[t].w; paEngFrames += pjW[t].e; pjW[t].w = pjW[t].e = 0; }
+}
+static void parallelJoin(void) {
+  if (!pjBg) return;
+  unsigned long long w = __atomic_load_n(&pjWord, __ATOMIC_ACQUIRE), ix;
+  for (;;) {
+    ix = w & PJ_IX;
+    if (ix >= (unsigned long long)pjBgCount) break;
+    if (__atomic_compare_exchange_n(&pjWord, &w, (w & ~PJ_IX) | (unsigned long long)pjBgCount, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) break;
+  }
+  int started = ix < (unsigned long long)pjBgCount ? (int)ix : pjBgCount;
+  while (__atomic_load_n(&pjFinished, __ATOMIC_ACQUIRE) < started) {}
+  pjFold();
+  pjBg = 0;
+}
+static void pjStart(int count, void (*task)(int)) {
+  if (!LNB) LNB = nb_new();
+  if (!USB) USB = nb_new();
+  paOutcomeBoard(1);
+  if (!pjStarted) {
+    gcThread th;
+    for (int t = 0; t < pjThreads; t++) pthread_create(&th, 0, pjWorker, 0);
+    pjStarted = 1;
+  }
+  pjTask = task;
+  pjHeldR = HELDR; pjHeldC = HELDC; pjHeldDir = HELDDIR; pjPress = PRESS;
+  __atomic_store_n(&pjFinished, 0, __ATOMIC_RELAXED);
+  int g = __atomic_load_n(&pjGen, __ATOMIC_RELAXED) + 1;
+  __atomic_store_n(&pjWord, ((unsigned long long)(g & 0xFFFFF) << 40) | ((unsigned long long)count << 20), __ATOMIC_RELEASE);
+  __atomic_store_n(&pjGen, g, __ATOMIC_SEQ_CST);
+  if (__atomic_load_n(&pjSleepers, __ATOMIC_SEQ_CST)) syscall(GC_NR_FUTEX, &pjGen, 129 /* FUTEX_WAKE_PRIVATE */, 0x7fffffff, 0, 0, 0);
+}
+// count tasks on the workers alone, now; this thread goes on with its own work
+static void parallelBg(int count, void (*task)(int)) {
+  if (!parAvailable() || count < 1) return;
+  parallelJoin();
+  pjStart(count, task);
+  pjBg = 1; pjBgCount = count;
+}
 static void parallelDo(int count, void (*task)(int)) {
   if (pjThreads < 0) { pjThreads = getenv("GC_THREADS") ? atoi(getenv("GC_THREADS")) : 3; if (pjThreads > 15) pjThreads = 15; }
+  parallelJoin();
   if (pjThreads <= 0 || count < 2) { for (int k = 0; k < count; k++) task(k); return; }
   if (!LNB) LNB = nb_new();
   if (!USB) USB = nb_new();
@@ -832,8 +879,7 @@ static void parallelDo(int count, void (*task)(int)) {
   inWorker = wasIn;
   HELDR = heldR; HELDC = heldC; HELDDIR = heldDir; PRESS = press;
   while (__atomic_load_n(&pjFinished, __ATOMIC_ACQUIRE) < count) {}
-  { extern PATLS double paWork, paEngFrames;
-    for (int t = 1; t <= pjThreads; t++) { paWork += pjW[t].w; paEngFrames += pjW[t].e; pjW[t].w = pjW[t].e = 0; } }
+  pjFold();
 }
 static void pjJudge(int k) {
   PJob *j = &PJ[k];
@@ -882,6 +928,8 @@ static void prejudgeLines(LineC *const *ls, int count) { (void)ls; (void)count; 
 static void prejudge(const int32_t *sws, int stride, int count, int n, int waitAll) { (void)sws; (void)stride; (void)count; (void)n; (void)waitAll; }
 static void parallelDo(int count, void (*task)(int)) { for (int k = 0; k < count; k++) task(k); }
 static int parAvailable(void) { return 0; }
+static void parallelBg(int count, void (*task)(int)) { (void)count; (void)task; }
+static void parallelJoin(void) {}
 #endif
 int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
   return lineStateAt(steps, n, 0, masks, can, wait, cur, t);
