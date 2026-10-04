@@ -685,6 +685,66 @@ static void prereplayN(const int32_t *sws, int stride, int count, int n) {
 }
 static void prereplay(const int32_t *sws, int count) { prereplayN(sws, 2, count, 1); 
 }
+// BREAK TIMES WORKED OUT AHEAD. While the main option search holds this
+// thread, the workers replay each pool swap, out from the cursor (as breakSoon
+// takes them), keep its board as prereplay does, and find its soonest break
+// with no bound (parallelBg). A swap's time under any bound is then that time
+// if it is within the bound, INF if not -- what a bounded search finds, since
+// a bound drops only what reaches no sooner than it. Those not started when
+// the search ends are dropped, and replayed and searched as before.
+static void parallelBg(int count, void (*task)(int));
+static int32_t BAQ[2 * MAXCAND]; static double BAV[MAXCAND]; static int BAD[MAXCAND], BASLOT[MAXCAND], baN, baDecision = -1;
+static LSMemo BAJ[MAXCAND];
+static void baTask(int k) {
+  LSMemo *j = &BAJ[k];
+  snapTo = BASLOT[k];
+  j->rc = lineStateRun(j->sw, 1, 0, j->masks, j->can, j->wait, j->cur, &j->t);
+  snapTo = -1;
+  int32_t st[ST_INTS], cur[2] = { j->cur[0], j->cur[1] }; uint32_t can[WMAX]; uint8_t w[32][WMAX];
+  __builtin_memcpy(st, j->masks, sizeof st); __builtin_memcpy(can, j->can, sizeof can); __builtin_memcpy(w, j->wait, sizeof w);
+  BAV[k] = j->rc != 0 ? INF : breakTimeAfter(j->sw, 1, INF, st, can, w, cur, j->t);
+  BAD[k] = 1;
+}
+static void breakAheadStart(void) {
+  if (baDecision == btDecision || !BIN[IN_HASPA] || !hasGarbage(DBASE) || !parAvailable()) return;
+  baDecision = btDecision; baN = 0;
+  int32_t pl[2 * MAXCAND]; int pn = 0, q; double far;
+  for (int k = 0; k < nPool && pn < MAXCAND; k++) if (POOL[k].kind == K_SWAP) { pl[2 * pn] = POOL[k].sr; pl[2 * pn + 1] = POOL[k].sc; pn++; }
+  Out o; outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
+  while (outNext(&o, &q, &far)) {
+    int32_t *sw = BAQ + 2 * baN;
+    sw[0] = pl[2 * q]; sw[1] = pl[2 * q + 1]; BAD[baN] = 0;
+    LSMemo *j = &BAJ[baN]; j->n = 1; j->landing = 0; j->sw[0] = sw[0]; j->sw[1] = sw[1];
+    // its board kept in its line's slot, cleared now; two on one slot: the first keeps it
+    int slot = (int)snapHash(sw, 1);
+    for (int i = 0; i < baN && slot >= 0; i++) if (BASLOT[i] == slot) slot = -1;
+    if (slot >= 0 && snapFind(sw, 1)) slot = -1;   // kept already
+    BASLOT[baN] = slot;
+    if (slot >= 0) { SNAPS[slot].dec = -1; if (!SNAPS[slot].b) SNAPS[slot].b = nb_new(); }
+    baN++;
+  }
+  parallelBg(baN, baTask);
+}
+// after the join: the boards kept and the replays memoised, as prereplay's
+static void breakAheadEnd(void) {
+  if (baDecision != btDecision) return;
+  extern int paBudgetOut(void);
+  for (int k = 0; k < baN; k++) {
+    if (!BAD[k]) continue;
+    LSMemo *j = &BAJ[k]; int slot = BASLOT[k];
+    if (slot >= 0 && j->rc == 0 && SNAPS[slot].n == 1 && SNAPS[slot].sw[0] == j->sw[0] && SNAPS[slot].sw[1] == j->sw[1]) SNAPS[slot].dec = btDecision;
+    if (!paBudgetOut() && !lsmHas(j->sw, 1, 0)) { LSMemo *m = lsmSlot(j->sw, 1, 0); *m = *j; m->dec = btDecision; }
+  }
+}
+static int breakAhead(const int32_t *sw, double lim, double *out) {
+  if (baDecision != btDecision) return 0;
+  for (int k = 0; k < baN; k++) if (BAQ[2 * k] == sw[0] && BAQ[2 * k + 1] == sw[1]) {
+    if (!BAD[k]) return 0;
+    *out = BAV[k] < lim ? BAV[k] : INF;
+    return 1;
+  }
+  return 0;
+}
 static int lineStateAt(const int32_t *steps, int n, int landing, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
   if (n < 0 || n > LINEMAX) return lineStateRun(steps, n, landing, masks, can, wait, cur, t);
   unsigned h = 2166136261u ^ (unsigned)(n * 7 + landing);

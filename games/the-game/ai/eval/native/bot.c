@@ -644,7 +644,7 @@ static void buildOptions(const int32_t *base, double deadline, int lookDepth, in
   OPTP[105] = HELDR; OPTP[106] = HELDC; OPTP[107] = HELDDIR;
   OPTP[108] = optSkip; OPTP[109] = 1;
 }
-static void breakAheadStart(void);
+static void breakAheadStart(void), breakAheadEnd(void);   // front.c
 static void parallelJoin(void);
 static void mainOptions(const int32_t *base, double deadline, int lookDepth, int digging) {
   if (optsBuilt) return;
@@ -655,7 +655,7 @@ static void mainOptions(const int32_t *base, double deadline, int lookDepth, int
   double mo0 = NOWMS2();
   breakAheadStart();   // the workers, idle while this search runs, find the pool's break times
   if (optionsRun(base, OPTP, 0, 0)) botFailed = 1;
-  parallelJoin();
+  parallelJoin(); breakAheadEnd();
   moMs += NOWMS2() - mo0;
   rMain += nRes - r0;
   nPile = pileOf(ODATA, PILE);
@@ -3198,12 +3198,17 @@ static double breakTime(const int32_t *steps, int n) {
 // what could answer it -- every line past the bound is pruned
 static double breakWithinT(const int32_t *steps, int n, double limit) { return breakTimeOf(steps, n, limit); }
 static JLOCAL double btReplayMs, btSearchMs;   // GC_WORKSTAT
+static double breakTimeAfter(const int32_t *steps, int n, double limit, int32_t *st, uint32_t *can, uint8_t (*w)[WMAX], int32_t *cur, int32_t t);
 static double breakTimeOf(const int32_t *steps, int n, double limit) {
   int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t w[32][WMAX];
   double bt0 = NOWMS2();
   int lsr = lineState(steps, n, st, can, w, cur, &t);
   btReplayMs += NOWMS2() - bt0;
   if (lsr != 0) return INF;
+  return breakTimeAfter(steps, n, limit, st, can, w, cur, t);
+}
+// the same, from the board `steps` leave (lineState's), replayed already
+static double breakTimeAfter(const int32_t *steps, int n, double limit, int32_t *st, uint32_t *can, uint8_t (*w)[WMAX], int32_t *cur, int32_t t) {
   // garbage still to drop: the break is made against it once it has landed
   if (!hasGarbage(st) && BIN[IN_INCOMING] > 0 && lineLandedFull(steps, n, st, can, w, cur, &t) != 0) return INF;
   double bt1 = NOWMS2();
@@ -3235,34 +3240,7 @@ static double breakTimeOf(const int32_t *steps, int n, double limit) {
 // each swap's soonest break before bsLim, one task a swap
 static const int32_t *bsPl; static double *bsB0;
 static double bsLim;
-// BREAK TIMES WORKED OUT AHEAD. While the main option search holds this
-// thread, the workers find each pool swap's soonest break with no bound
-// (parallelBg); a swap's time under any bound is then that time if it is
-// within the bound, INF if not -- what a bounded search finds, since a bound
-// only drops what reaches no further than it. Those not started when the
-// search ends are dropped and searched as before.
-static int32_t BAQ[2 * MAXCAND]; static double BAV[MAXCAND]; static int BAD[MAXCAND], baN, baDecision = -1;
-static void parallelBg(int count, void (*task)(int));
-static void baTask(int k) { BAV[k] = breakWithinT(BAQ + 2 * k, 1, INF); BAD[k] = 1; }
-static void breakAheadStart(void) {
-  if (baDecision == btDecision || !BIN[IN_HASPA] || !hasGarbage(DBASE)) return;
-  baDecision = btDecision; baN = 0;
-  int32_t pl[2 * MAXCAND]; int pn = 0, q; double far;
-  for (int k = 0; k < nPool && pn < MAXCAND; k++) if (POOL[k].kind == K_SWAP) { pl[2 * pn] = POOL[k].sr; pl[2 * pn + 1] = POOL[k].sc; pn++; }
-  // out from the cursor, as breakSoon takes them: what it reads first is found first
-  Out o; outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
-  while (outNext(&o, &q, &far)) { BAQ[2 * baN] = pl[2 * q]; BAQ[2 * baN + 1] = pl[2 * q + 1]; BAD[baN] = 0; baN++; }
-  parallelBg(baN, baTask);
-}
-static int breakAhead(const int32_t *sw, double lim, double *out) {
-  if (baDecision != btDecision) return 0;
-  for (int k = 0; k < baN; k++) if (BAQ[2 * k] == sw[0] && BAQ[2 * k + 1] == sw[1]) {
-    if (!BAD[k]) return 0;
-    *out = BAV[k] < lim ? BAV[k] : INF;
-    return 1;
-  }
-  return 0;
-}
+static int breakAhead(const int32_t *sw, double lim, double *out);   // front.c
 static void bsTask(int k) { double v; bsB0[k] = breakAhead(bsPl + 2 * k, bsLim, &v) ? v : breakWithinT(bsPl + 2 * k, 1, bsLim); }
 #define SOONBATCH 16   // swaps taken together, out from the cursor
 static Dec breakSoon(Dec d) {
