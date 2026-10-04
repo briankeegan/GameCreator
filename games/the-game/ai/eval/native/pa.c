@@ -911,7 +911,52 @@ static void runPhysics(Board *b) {
 }
 // Stack:run, past the countdown. b->input is the frame's keys; pressSwap
 // adds swap (tryQueueSwap); swapDenied says a swap pressed was not taken.
+// WORK: the search's cost in units of ~0.077 us natively, an engine frame four
+// (a resolve on the masks, bit.c, three); the bot's per-decision budget is counted in it.
+double paWork, paWorkEnd = 1e300, paEngFrames;   // paWorkEnd: where the decision's budget runs out
+// THE DECISION'S BUDGET IS TIME. Natively the clock is read every 32 checks
+// and the search stops at paDeadline (ms); nothing it does can hide from that.
+// GC_WORK_ONLY=1 (and the browser, which has no clock here) counts work
+// instead, so a run repeats exactly. paBudget(ms, units) opens a share.
+double paDeadline = 1e300;
+static int paOut, paTick, paWorkOnly = -1;
+#ifndef __wasm__
+struct paTs { long s, ns; };
+extern int clock_gettime(int, struct paTs *);
+extern char *getenv(const char *);
+extern double atof(const char *);
+double paNowMs(void) { struct paTs t; clock_gettime(1, &t); return t.s * 1e3 + t.ns / 1e6; }
+#endif
+void paBudget(double ms, double units) {
+  paOut = 0; paTick = 0;
+#ifndef __wasm__
+  if (paWorkOnly < 0) paWorkOnly = getenv("GC_WORK_ONLY") != 0;
+  // GC_BUDGET_MS replaces the budget, in ms (0: none, for comparing runs the clock must not cut)
+  static double over = -2;
+  if (over == -2) over = getenv("GC_BUDGET_MS") ? atof(getenv("GC_BUDGET_MS")) : -1;
+  double use = over >= 0 ? over : ms;
+  if (!paWorkOnly) { paWorkEnd = 1e300; paDeadline = ms < 1e299 && use > 0 ? paNowMs() + use : 1e300; return; }
+#endif
+  paWorkEnd = units < 1e299 ? paWork + units : 1e300; paDeadline = 1e300;
+}
+// the share spent, read now: the clock every time, for the end of a stage
+int paBudgetSpent(void) {
+  if (paOut || paWork >= paWorkEnd) return 1;
+#ifndef __wasm__
+  if (paDeadline < 1e299 && paNowMs() >= paDeadline) return 1;
+#endif
+  return 0;
+}
+int paBudgetOut(void) {
+  if (paOut) return 1;
+  if (paWork >= paWorkEnd) return paOut = 1;
+#ifndef __wasm__
+  if (paDeadline < 1e299 && !(++paTick & 31) && paNowMs() >= paDeadline) return paOut = 1;
+#endif
+  return 0;
+}
 static void run(Board *b) {
+  paWork += 4; paEngFrames++;
   if (b->gameOverClock > 0 && b->clock >= b->gameOverClock) return;
   if (b->inCountdown || !b->stopWatchIsRunning) { b->err |= ERR_STATE; return; }
   int pressed = b->pressSwap || (b->input & IN_SWAP);
@@ -1192,17 +1237,57 @@ EXPORT(nb_rise_time) double nb_rise_time(int speed) { return (double)SPEED_TO_RI
 // until nothing moves -- cells matched, garbage cells converted, clears, the
 // highest chain counter reached, the most stop one clear paid, and the frames
 // it took. The board the bot is deciding on is loaded into paLibBoard().
-static Board *PAB, *PAT;
+static Board *PAB;
+// the outcome's scratch board, one per thread natively (the pool's outcomes are played in parallel)
+#ifndef __wasm__
+static _Thread_local Board *PAT;
+#else
+static Board *PAT;
+#endif
+void paOutcomeBoard(int make) { if (make) { if (!PAT) PAT = nb_new(); } else if (PAT) { nb_free(PAT); PAT = 0; } }
 EXPORT(pa_lib_board) Board *paLibBoard(void) { if (!PAB) PAB = nb_new(); return PAB; }
+// THE BOARD LEFT ALONE, KEPT AT EACH PRESS FRAME. Until its swap is pressed,
+// every outcome's board runs on exactly as the board left alone does, so the
+// frames before the presses are run once (paPrefix, before the outcomes are
+// asked) and an outcome starts from the board as it stands at its press.
+#define PREN 128
+static Board *PRE[PREN]; static int preAt[PREN], preN; static Board *preOf;
+static void paOutcomeStart(Board *b) {
+  copyBoard(b, PAB);
+  b->ninc = 0; b->health = 1 << 20; b->noQuiet = 1; b->quiet = 0;
+  b->sNCombo = b->sCleared = b->sBroke = b->sEarned = 0;
+}
+void paPrefix(const int *ats, int n, int horizon) {
+  preN = 0; preOf = 0;
+  if (!PAB) return;
+  int want[PREN], nw = 0;
+  for (int i = 0; i < n; i++) {
+    int a = ats[i], seen = 0;
+    if (a <= 0 || a >= horizon) continue;
+    for (int j = 0; j < nw; j++) if (want[j] == a) seen = 1;
+    if (!seen && nw < PREN) want[nw++] = a;
+  }
+  for (int i = 1; i < nw; i++) { int x = want[i], j = i - 1; while (j >= 0 && want[j] > x) { want[j + 1] = want[j]; j--; } want[j + 1] = x; }
+  if (!nw) return;
+  if (!PAT) PAT = nb_new();
+  paOutcomeStart(PAT);
+  for (int k = 0, w = 0; w < nw; k++) {
+    if (k == want[w]) { if (!PRE[preN]) PRE[preN] = nb_new(); copyBoard(PRE[preN], PAT); preAt[preN++] = k; w++; continue; }
+    PAT->input = 0;
+    run(PAT);
+    if (PAT->err) break;
+  }
+  preOf = PAB;
+}
 int paOutcome(int r, int c, int at, int horizon, int32_t *out) {
   if (!PAB) return -1;
   if (!PAT) PAT = nb_new();
-  copyBoard(PAT, PAB);
-  PAT->ninc = 0; PAT->health = 1 << 20; PAT->noQuiet = 1; PAT->quiet = 0;
-  PAT->sNCombo = PAT->sCleared = PAT->sBroke = PAT->sEarned = 0;
-  int pressed = r == 0, k, chain = 0;
+  int pressed = r == 0, k, chain = 0, k0 = 0;
   int frames = horizon < 0 ? -horizon : horizon;
-  for (k = 0; k < frames; k++) {
+  if (!pressed && preOf == PAB)
+    for (int j = 0; j < preN; j++) if (preAt[j] == at) { copyBoard(PAT, PRE[j]); k0 = at; break; }
+  if (!k0) paOutcomeStart(PAT);
+  for (k = k0; k < frames; k++) {
     if (!pressed && k >= at) {
       if (!canSwap(PAT, r, c)) return -2;
       PAT->curRow = r; PAT->curCol = c; tryQueueSwap(PAT, r, c); pressed = 1;

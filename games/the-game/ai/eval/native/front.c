@@ -20,7 +20,7 @@ static int comboCells(int size) {
 static const double STARTER_W[] = { -20, -10, -40, 5, 13, 20, 30, 4, 6, 8, 10, 10, 5, 15, 5, 5, 25, 5, 50, 30 };
 
 enum { H_NONE, H_UP, H_DOWN, H_LEFT, H_RIGHT };   // BIN[IN_HELD]
-typedef uint8_t Settle[32][W + 2];   // per cell, the frame it settles from (unsettled)
+typedef struct { uint8_t last[32][W + 2], first[32][W + 2], same[32][W + 2]; } Settle;   // per cell (unsettled): the frame it settles from, the frame it first changes, and whether it settles to what it holds now
 typedef struct {
   int id, reaction, reveal, allowRaise;
   int cooldown, raiseFrames, raiseStarted, wantRaise, wantRows, raiseLives;
@@ -31,14 +31,14 @@ typedef struct {
   u64 decidedOn;
   int lastKind, lastVia, lastMoveR, lastMoveC;
   Settle settle;   // the board's cells, when each settles (unsettled), at the last decision
-  int wWaitTo, wFrames, wWaitAll;   // a walk: the frame its swap's panels settle (every panel's: wWaitAll), the frames it has taken
+  int wWaitTo, wFrames, wWaitAll, wR0;   // a walk: the frame its swap's panels settle (every panel's: wWaitAll), the frames it has taken
 } Front;
 #define MAXFRONTS 16
 static Front FRONTS[MAXFRONTS];
 static int nFronts;
 
 // ---------------------------------------------------------------- the board, read
-static Board *FB;
+static JLOCAL Board *FB;   // per thread: a replay borrows it for the masks (lineStateRun)
 static int fRows(void) { return FB->nrows; }
 static const int32_t *fp(int r, int c) {
   static const int32_t empty[NF];
@@ -234,19 +234,21 @@ static u64 boardKey(void) {
 // stays as it is (0: it never changes). A row risen carries the cells up.
 // out: the unsettled cells now, a bit per row, per column.
 #define UNSETTLEMOST 180
-static Board *USB;
-static int32_t usPrev[32][W + 2][3];
-static void unsettled(Board *b, uint32_t *out, Settle at) {
+static JLOCAL Board *USB;
+static JLOCAL int32_t usPrev[32][W + 2][3];
+static void unsettled(Board *b, uint32_t *out, Settle *S) {
   if (!USB) USB = nb_new();
   nb_copy(USB, b);
   USB->ninc = 0;   // what is on the board settling, not what is still to drop
   for (int c = 0; c < W + 2; c++) out[c] = 0;
-  for (int r = 0; r < 32; r++) for (int c = 0; c < W + 2; c++) at[r][c] = 0;
+  for (int r = 0; r < 32; r++) for (int c = 0; c < W + 2; c++) S->last[r][c] = S->first[r][c] = S->same[r][c] = 0;
+  static JLOCAL int32_t usNow[32][W + 2][3];   // per thread: parallel judges each settle their own board
   int top = b->height < 31 ? b->height : 31;
   for (int r = 1; r <= top; r++)
     for (int c = 1; c <= W; c++) {
       const int32_t *x = b->p[r][c].f;
       usPrev[r][c][0] = x[COLOR]; usPrev[r][c][1] = x[ISGARBAGE]; usPrev[r][c][2] = x[STATE] == DEAD ? NORMAL : x[STATE];
+      for (int i = 0; i < 3; i++) usNow[r][c][i] = usPrev[r][c][i];
     }
   int risen = 0, disp = USB->displacement;
   for (int k = 0; k < UNSETTLEMOST; k++) {
@@ -264,24 +266,38 @@ static void unsettled(Board *b, uint32_t *out, Settle at) {
           y[0] = p[COLOR]; y[1] = p[ISGARBAGE]; y[2] = p[STATE] == DEAD ? NORMAL : p[STATE];
         }
         if (y[0] != usPrev[r][c][0] || y[1] != usPrev[r][c][1] || y[2] != usPrev[r][c][2]) {
-          at[r][c] = (uint8_t)(k + 1 < 255 ? k + 1 : 255);
+          S->last[r][c] = (uint8_t)(k + 1 < 255 ? k + 1 : 255);
+          if (!S->first[r][c]) S->first[r][c] = S->last[r][c];
           usPrev[r][c][0] = y[0]; usPrev[r][c][1] = y[1]; usPrev[r][c][2] = y[2];
         }
       }
     if (!moving) break;
   }
-  for (int r = 1; r <= top; r++) for (int c = 1; c <= W; c++) if (at[r][c]) out[c] |= 1u << (r - 1);
+  for (int r = 1; r <= top; r++) for (int c = 1; c <= W; c++) {
+    if (S->last[r][c]) out[c] |= 1u << (r - 1);
+    S->same[r][c] = usPrev[r][c][0] == usNow[r][c][0] && usPrev[r][c][1] == usNow[r][c][1] && usPrev[r][c][2] == usNow[r][c][2];
+  }
 }
 // The frame from which every cell is settled.
-static int allWait(Settle at) {
+static int allWait(const Settle *S) {
   int m = 0;
-  for (int r = 1; r < 32; r++) for (int c = 1; c <= W; c++) if (at[r][c] > m) m = at[r][c];
+  for (int r = 1; r < 32; r++) for (int c = 1; c <= W; c++) if (S->last[r][c] > m) m = S->last[r][c];
   return m;
 }
-// The frame from which a pair is settled (both its cells).
-static int pairWait(Settle at, int r, int c) {
+// A PAIR STILL NOW IS PRESSED NOW: both its cells hold what they settle to,
+// and nothing reaches either before the swap (SWAPSPAN frames from `f`) is
+// done. Panels that pass through it later are not panels moving under it.
+#define SWAPSPAN 5
+static int pairFree(const Settle *S, int r, int c, int f) {
   if (r < 1 || r > 31) return 0;
-  return at[r][c] > at[r][c + 1] ? at[r][c] : at[r][c + 1];
+  for (int k = c; k <= c + 1; k++)
+    if (!S->same[r][k] || (S->first[r][k] && f + SWAPSPAN >= S->first[r][k])) return 0;
+  return 1;
+}
+// The frame from which a pair is settled (both its cells).
+static int pairWait(const Settle *S, int r, int c) {
+  if (r < 1 || r > 31) return 0;
+  return S->last[r][c] > S->last[r][c + 1] ? S->last[r][c] : S->last[r][c + 1];
 }
 
 // ---------------------------------------------------------------- one decision (bitbot.js info, _prepare, decide)
@@ -381,7 +397,7 @@ static void fPrepare(Front *F) {
   // the pairs the bot may target: the engine would swap them now, and
   // neither panel is unsettled -- a bit per row, for columns 1..5
   uint32_t still[W + 2];
-  unsettled(FB, still, F->settle);
+  unsettled(FB, still, &F->settle);
   for (c = 1; c < W; c++) {
     uint32_t m = 0;
     for (r = 1; r <= FB->height && r <= 31; r++)
@@ -428,7 +444,7 @@ static int stepToward(int *timer, int row, int col, int input) {
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 static void beginWalk(Front *F, int r, int c, int cooldown) {
   F->walk = 1; F->wRow = r; F->wCol = c; F->wTimer = 0; F->wCooldown = cooldown; F->wRetries = 0; F->wHasDisp = 0;
-  F->wWaitTo = pairWait(F->settle, r, c); F->wFrames = 0; F->wWaitAll = 0;
+  F->wWaitTo = pairWait(&F->settle, r, c); F->wFrames = 0; F->wWaitAll = 0; F->wR0 = r;
 }
 static int driveWalk(Front *F, int input) {
   F->wFrames++;
@@ -440,7 +456,7 @@ static int driveWalk(Front *F, int input) {
     return stepToward(&F->wTimer, row, col, input);
   }
   // the swap's panels settle at a known frame: a walk that arrives first waits
-  if (F->wFrames < F->wWaitTo) {   // never pressed on panels still moving
+  if (F->wFrames < F->wWaitTo && (F->wWaitAll || !pairFree(&F->settle, F->wR0, col, F->wFrames))) {   // never pressed on panels still moving
     // a wait is not a plan: topped, or a reaction's worth of waiting, decide again
     if (!toppedNow() && F->wFrames % (F->reaction > 0 ? F->reaction : 12) != 0) return input;
     F->walk = 0; F->cooldown = 0;
@@ -474,34 +490,84 @@ static int parkStep(Front *F, int input) {
 // [1] the frame of the last press (-1: a step the engine refused), [2] garbage
 // cells converted, [3] panels matched, [4] frames from the last press to the
 // drain (horizon when none).
-static Board *LNB;
+static JLOCAL Board *LNB;
 static Front *LF;
-static Settle LSET;
-static int LWAITALL;   // the line's last press waits for the whole board to settle
+static JLOCAL Settle LSET;
+static JLOCAL int LWAITALL;   // the line's last press waits for the whole board to settle
+// A LINE'S PREFIX, KEPT WHERE ITS NEXT STEP BEGINS. A line played to the
+// frame its next step would start (stopAtNext 1) leaves the engine exactly
+// where every longer line with that prefix stands then: the board, the frame,
+// the cooldown before that frame's tick, the key held, the last press and the
+// garbage dropped. A longer line resumes there. Wait-all touches only a line's
+// last step, so no prefix carries it. Written by the main thread; a worker's
+// replay is kept in the slot the main thread gave its job.
+#define SNAPN 256
+typedef struct { int dec, n, f, cool, held, last, dropped, hasSettle; int32_t sw[2 * LINEMAX]; Board *b; Settle settle; } Snap;
+// and the settle the next step starts from, the one the prefix's replay takes of the same board last
+static Snap SNAPS[SNAPN];
+static JLOCAL int snapTo = -1;   // the slot this thread's next prefix is kept in (-1: by its line)
+static JLOCAL Snap *snapLast;    // the prefix this thread kept last, for its settle
+static unsigned snapHash(const int32_t *sw, int n) {
+  unsigned h = 2166136261u ^ (unsigned)n;
+  for (int k = 0; k < 2 * n; k++) h = (h ^ (unsigned)sw[k]) * 16777619u;
+  return h & (SNAPN - 1);
+}
+static Snap *snapFind(const int32_t *sw, int n) {
+  Snap *s = &SNAPS[snapHash(sw, n)];
+  return s->dec == btDecision && s->n == n && s->b && !__builtin_memcmp(s->sw, sw, (unsigned long)n * 8) ? s : 0;
+}
+static void snapKeep(const int32_t *sw, int n, Board *b, int f, int cool, int held, int last, int dropped) {
+  if (n < 1 || n >= LINEMAX || LWAITALL) return;
+  int slot = snapTo >= 0 ? snapTo : inWorker ? -1 : (int)snapHash(sw, n);
+  if (slot < 0) return;
+  Snap *s = &SNAPS[slot];
+  if (!s->b) { if (inWorker) return; s->b = nb_new(); }
+  nb_copy(s->b, b);
+  s->n = n; s->f = f; s->cool = cool; s->held = held; s->last = last; s->dropped = dropped; s->hasSettle = 0; snapLast = s;
+  for (int k = 0; k < 2 * n; k++) s->sw[k] = sw[k];
+  if (snapTo < 0) s->dec = btDecision;   // a worker's is stamped by the main thread
+}
 static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, int32_t *out) {
   if (!LNB) LNB = nb_new();
-  nb_copy(LNB, paLibBoard());
+  Snap *from = 0;
+  for (int k = n - 1; k >= 1 && !from; k--) from = snapFind(steps, k);
+  nb_copy(LNB, from ? from->b : paLibBoard());
+  { extern double paWork; paWork += 10; }   // the copy
   Board *b = LNB;
-  b->sNCombo = b->sCleared = b->sBroke = b->sEarned = b->sFell = b->sHollow = 0;
-  int32_t h0 = b->health;
+  if (!from) b->sNCombo = b->sCleared = b->sBroke = b->sEarned = b->sFell = b->sHollow = 0;   // a prefix kept carries its counts
+  int32_t h0 = paLibBoard()->health;
   int step = 0, walking = n > 0, timer = 0, held = LF ? LF->held : H_NONE, cool = 0, disp = b->displacement;
-  int tr = n > 0 ? steps[0] : 0, tc = n > 0 ? steps[1] : 0, last = n > 0 ? -1 : 0, f, dropped = b->garbageCreatedCount;
-  int waitTo = n > 0 && LF ? (LWAITALL && n == 1 ? allWait(LF->settle) : pairWait(LF->settle, steps[0], steps[1])) : 0;
-  out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = b->ninc; out[8] = -1; out[9] = out[10] = 0;
-  for (f = 0; f < horizon; f++) {
+  int tr = n > 0 ? steps[0] : 0, tc = n > 0 ? steps[1] : 0, last = n > 0 ? -1 : 0, f, dropped = b->garbageCreatedCount, f0 = 0;
+  if (from) { step = from->n; walking = 0; held = from->held; cool = from->cool; last = from->last; dropped = from->dropped; f0 = from->f; }
+  int snapSettle = from && from->hasSettle;
+  int waitTo = n > 0 && LF ? (LWAITALL && n == 1 ? allWait(&LF->settle) : pairWait(&LF->settle, steps[0], steps[1])) : 0;
+  int fs = 0, r0 = tr;   // the frame the step's settle was taken, its row then
+#ifndef __wasm__
+  if (botTraceOn && n == 1 && waitTo > 60 && LF) { extern int fprintf(void *, const char *, ...); extern void *stderr; int r = steps[0], c = steps[1];
+    fprintf(stderr, "  WAIT %d,%d to %d | first %d,%d last %d,%d\n", r, c, waitTo, LF->settle.first[r][c], LF->settle.first[r][c + 1], LF->settle.last[r][c], LF->settle.last[r][c + 1]); }
+#endif
+  out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = 0;
+  { extern int paBudgetOut(void); if (paBudgetOut()) return -1; }   // past the decision's budget: not played
+  for (f = f0; f < horizon; f++) {
+    { extern int paBudgetOut(void); if (paBudgetOut()) return -1; }   // past the budget mid-line: not played
     int input = 0;
     // stopAtNext 2: on until the next slab has dropped and landed
     if (stopAtNext == 2 && step == n && !walking && b->garbageCreatedCount > dropped && !nb_falling_garbage(b)) {
       out[1] = last; out[8] = f; return 1;
     }
     if (!walking && (step < n || stopAtNext == 1)) {
+      int coolIn = cool;
       if (cool > 0) cool--;
       int landing = b->queuedSwapRow > 0 || b->swappingCount > 0 || b->pressSwap;
       if (!landing && (cool == 0 || b->stopTime > 0 || nb_topped(b))) {
-        if (step == n) { out[1] = last; out[8] = f; return 1; }   // the front decides again here
+        if (step == n) {   // the front decides again here
+          if (stopAtNext == 1) snapKeep(steps, n, b, f, coolIn, held, last, dropped);
+          out[1] = last; out[8] = f; return 1;
+        }
         walking = 1; tr = steps[2 * step]; tc = steps[2 * step + 1]; timer = 0; disp = b->displacement;
-        { uint32_t still[W + 2]; unsettled(b, still, LSET);
-          waitTo = f + (LWAITALL && step == n - 1 ? allWait(LSET) : pairWait(LSET, tr, tc)); }
+        { uint32_t still[W + 2];
+          if (snapSettle && step == from->n) { LSET = from->settle; snapSettle = 0; } else unsettled(b, still, &LSET);
+          waitTo = f + (LWAITALL && step == n - 1 ? allWait(&LSET) : pairWait(&LSET, tr, tc)); fs = f; r0 = tr; }
       }
     }
     if (walking) {
@@ -509,7 +575,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
       disp = b->displacement;
       int row = clampi(tr, 1, b->topCurRow), col = clampi(tc, 1, W - 1);
       if (b->curRow == row && b->curCol == col) {
-        if (f < waitTo) { /* its panels settle at waitTo: never pressed on panels still moving */ }
+        if (f < waitTo && ((LWAITALL && step == n - 1) || !pairFree(step == 0 ? &LF->settle : &LSET, r0, col, f - fs))) { /* its panels settle at waitTo: never pressed on panels still moving */ }
         else if (!nb_can_swap(b, row, col) || !nb_try_queue_swap(b, row, col)) {
 #ifndef __wasm__
           if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
@@ -538,6 +604,20 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   }
   out[1] = step == n ? last : -1;
   out[2] = b->sBroke; out[3] = b->sCleared; out[9] = b->sFell; out[10] = b->sHollow;
+  // and the gaps under garbage as it stands on the board the line ends on: a
+  // pile propped above empty cells is hollow whether or not it just landed
+  for (int r = 2; r < b->nrows; r++)
+    for (int c = 1; c <= W; c++) {
+      const int32_t *g = b->p[r][c].f, *u = b->p[r - 1][c].f;
+      if (!g[ISGARBAGE] || u[COLOR] != 0) continue;
+      for (int k = r - 1; k >= 1 && b->p[k][c].f[COLOR] == 0; k--) out[10]++;
+    }
+  // the board it ends on, as one number: a line that ends where the board left
+  // alone ends has done nothing
+  uint32_t fh = 2166136261u;
+  for (int r = 0; r < b->nrows; r++)
+    for (int c = 1; c <= W; c++) { fh = (fh ^ (uint32_t)(b->p[r][c].f[COLOR] * 2 + (b->p[r][c].f[ISGARBAGE] != 0))) * 16777619u; }
+  out[11] = (int32_t)fh;
   out[4] = out[1] < 0 ? 0 : (out[0] ? out[0] : horizon) - out[1];
   return 0;
 }
@@ -548,14 +628,94 @@ int lineOnEngine(const int32_t *steps, int n, int horizon, int waitAll, int32_t 
 // the pairs the bot may target on it (swappable, settled), the cursor and the
 // frames it took. -1: a step refused, or the board lost health on the way.
 // landing: the board instead once the next slab has dropped and landed.
+static int lineStateRun(const int32_t *steps, int n, int landing, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t);
+// ONE REPLAY PER LINE PER DECISION: the board a line leaves depends only on
+// the line and this decision's board, so every search that replays it again
+// is answered from the first replay.
+#define LSMN 4096
+typedef struct { int dec, n, landing, rc; int32_t sw[2 * LINEMAX], masks[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t wait[32][WMAX]; } LSMemo;
+static LSMemo LSM[LSMN];
+static LSMemo *lsmSlot(const int32_t *steps, int n, int landing) {
+  unsigned h = 2166136261u ^ (unsigned)(n * 7 + landing);
+  for (int k = 0; k < 2 * n; k++) h = (h ^ (unsigned)steps[k]) * 16777619u;
+  return &LSM[h & (LSMN - 1)];
+}
+static int lsmHas(const int32_t *steps, int n, int landing) {
+  LSMemo *m = lsmSlot(steps, n, landing);
+  return m->dec == btDecision && m->n == n && m->landing == landing && (n == 0 || !__builtin_memcmp(m->sw, steps, (unsigned long)n * 8));
+}
+// REPLAYED IN PARALLEL: the one-swap lines a search is about to replay, those
+// the decision has not, replayed on GC_THREADS threads and this one; the
+// boards they leave go into the decision's memo
+static LSMemo PRJ[128];
+static int prjN;
+static int prjSnap[128];
+static void prjTask(int k) {
+  LSMemo *j = &PRJ[k];
+  snapTo = prjSnap[k];
+  j->rc = lineStateRun(j->sw, j->n, 0, j->masks, j->can, j->wait, j->cur, &j->t);
+  snapTo = -1;
+}
+// count lines of n steps each, `stride` ints apart
+static void prereplayN(const int32_t *sws, int stride, int count, int n) {
+  prjN = 0;
+  if (n < 1 || n > LINEMAX) return;
+  for (int k = 0; k < count && prjN < 128; k++) {
+    if (lsmHas(sws + stride * k, n, 0)) continue;
+    LSMemo *j = &PRJ[prjN++];
+    for (int i = 0; i < 2 * n; i++) j->sw[i] = sws[stride * k + i];
+    j->n = n; j->landing = 0;
+  }
+  if (prjN < 2) return;
+  // each job's prefix kept in its line's slot, the slot cleared first; two jobs on one slot: the first keeps it
+  for (int k = 0; k < prjN; k++) {
+    int slot = PRJ[k].n < LINEMAX ? (int)snapHash(PRJ[k].sw, PRJ[k].n) : -1;
+    for (int q = 0; q < k && slot >= 0; q++) if (prjSnap[q] == slot) slot = -1;
+    prjSnap[k] = slot;
+    if (slot >= 0) { SNAPS[slot].dec = -1; if (!SNAPS[slot].b) SNAPS[slot].b = nb_new(); }
+  }
+  parallelDo(prjN, prjTask);
+  for (int k = 0; k < prjN; k++) {
+    int slot = prjSnap[k];
+    if (slot >= 0 && PRJ[k].rc == 0 && SNAPS[slot].n == PRJ[k].n && !__builtin_memcmp(SNAPS[slot].sw, PRJ[k].sw, (unsigned long)PRJ[k].n * 8)) SNAPS[slot].dec = btDecision;
+  }
+  extern int paBudgetOut(void);
+  if (paBudgetOut()) return;
+  for (int k = 0; k < prjN; k++) { LSMemo *m = lsmSlot(PRJ[k].sw, PRJ[k].n, 0); *m = PRJ[k]; m->dec = btDecision; }
+}
+static void prereplay(const int32_t *sws, int count) { prereplayN(sws, 2, count, 1); 
+}
 static int lineStateAt(const int32_t *steps, int n, int landing, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
+  if (n < 0 || n > LINEMAX) return lineStateRun(steps, n, landing, masks, can, wait, cur, t);
+  unsigned h = 2166136261u ^ (unsigned)(n * 7 + landing);
+  for (int k = 0; k < 2 * n; k++) h = (h ^ (unsigned)steps[k]) * 16777619u;
+  LSMemo *m = &LSM[h & (LSMN - 1)];
+  if (m->dec == btDecision && m->n == n && m->landing == landing && (n == 0 || !__builtin_memcmp(m->sw, steps, (unsigned long)n * 8))) {
+    __builtin_memcpy(masks, m->masks, sizeof m->masks); __builtin_memcpy(can, m->can, sizeof m->can);
+    __builtin_memcpy(wait, m->wait, sizeof m->wait); cur[0] = m->cur[0]; cur[1] = m->cur[1]; *t = m->t;
+    return m->rc;
+  }
+  int rc = lineStateRun(steps, n, landing, masks, can, wait, cur, t);
+  extern int paBudgetOut(void);
+  if (!paBudgetOut() && !inWorker) {
+    m->dec = btDecision; m->n = n; m->landing = landing; m->rc = rc;
+    for (int k = 0; k < 2 * n; k++) m->sw[k] = steps[k];
+    __builtin_memcpy(m->masks, masks, sizeof m->masks); __builtin_memcpy(m->can, can, sizeof m->can);
+    __builtin_memcpy(m->wait, wait, sizeof m->wait); m->cur[0] = cur[0]; m->cur[1] = cur[1]; m->t = *t;
+  }
+  return rc;
+}
+static int lineStateRun(const int32_t *steps, int n, int landing, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
   int32_t out[12];
+  snapLast = 0;
   int rc = n > 0 || landing ? linePlay(steps, n, 400, landing ? 2 : 1, out) : (nb_copy(LNB ? LNB : (LNB = nb_new()), paLibBoard()), out[0] = 0, out[8] = 0, 1);
   if (rc != 1 || out[0]) return -1;
   // the next step targets settled panels: the board once it has settled, each
   // pair with the frame (from now) its panels settle
+  { extern double paWork; paWork += 60; }   // the copies, the masks and the swap tests below
   uint32_t still[W + 2];
-  unsettled(LNB, still, LSET);
+  unsettled(LNB, still, &LSET);
+  if (snapLast) { snapLast->settle = LSET; snapLast->hasSettle = 1; snapLast = 0; }
   Board *save = FB;
   FB = USB;
   fMasks(masks, 0);
@@ -564,16 +724,158 @@ static int lineStateAt(const int32_t *steps, int n, int landing, int32_t *masks,
   for (int r = 0; r < 32; r++) for (int c = 0; c < WMAX; c++) wait[r][c] = 0;
   for (int c = 1; c < W; c++)
     for (int r = 1; r <= USB->height && r <= 31; r++)
-      if (nb_can_swap(USB, r, c)) { can[c] |= 1u << (r - 1); wait[r][c] = (uint8_t)pairWait(LSET, r, c); }
+      if (nb_can_swap(USB, r, c)) { can[c] |= 1u << (r - 1); wait[r][c] = (uint8_t)pairWait(&LSET, r, c); }
   cur[0] = LNB->curRow; cur[1] = LNB->curCol; *t = out[8];
   return masks[O_BAD] ? -1 : 0;
 }
 
+// JUDGED IN PARALLEL (native): the lines a search is about to ask about, those
+// the decision has not judged, played on the engine by GC_THREADS threads (3
+// by default; 0: none) and the main one, each with its own scratch (JLOCAL);
+// the verdicts go into the decision's memo, so the search reads the same
+// answers it would have worked out one by one.
+#ifndef __wasm__
+typedef unsigned long gcThread;
+extern int pthread_create(gcThread *, const void *, void *(*)(void *), void *);
+extern int pthread_join(gcThread, void **);
+typedef struct { int32_t sw[2 * LINEMAX]; int n, waitAll, v; int32_t lno[12]; } PJob;
+static PJob PJ[256];
+static int pjLock, pjThreads = -1;
+static void (*pjTask)(int);
+extern void paOutcomeBoard(int make);
+static int pjHeldR, pjHeldC, pjHeldDir, pjPress;   // the settings travelCost reads, from the main thread
+// A BATCH IS ONE WORD: generation, task count and the next task, taken
+// together by one atomic add, so a thread late from an earlier batch can
+// never take a task of this one by its count. The main thread takes tasks
+// too, and waits for the TASKS to finish, never for the workers: a napping
+// worker that wakes after the batch is done finds nothing left and naps again.
+#define PJ_IX 0xFFFFFull
+static unsigned long long pjWord;
+static int pjFinished, pjGen;
+static void pjRun(void) {
+  for (;;) {
+    unsigned long long w = __atomic_fetch_add(&pjWord, 1, __ATOMIC_ACQUIRE);
+    unsigned long long ix = w & PJ_IX, count = (w >> 20) & PJ_IX;
+    if (ix >= count) return;
+    HELDR = pjHeldR; HELDC = pjHeldC; HELDDIR = pjHeldDir; PRESS = pjPress;
+    pjTask((int)ix);
+    __atomic_add_fetch(&pjFinished, 1, __ATOMIC_RELEASE);
+  }
+}
+// PERSISTENT WORKERS, as the browser's: started once, each with its own
+// boards, waiting for the next batch: a brief spin, then asleep in the kernel
+// (a futex) until a batch wakes it. A worker that polls steals the core the
+// search runs on.
+extern long syscall(long, ...);
+#if defined(__x86_64__)
+#define GC_NR_FUTEX 202
+#else
+#define GC_NR_FUTEX 98
+#endif
+#define PJ_SPIN 20000
+static int pjStarted, pjSleepers;
+static void *pjWorker(void *arg) {
+  (void)arg;
+  inWorker = 1;
+  while (__atomic_exchange_n(&pjLock, 1, __ATOMIC_ACQUIRE)) {}
+  LNB = nb_new(); USB = nb_new(); paOutcomeBoard(1);
+  __builtin_memset(LNB, 0, sizeof(Board)); __builtin_memset(USB, 0, sizeof(Board));   // touched now, not mid-decision
+  __atomic_store_n(&pjLock, 0, __ATOMIC_RELEASE);
+  int seen = 0;
+  for (;;) {
+    int g;
+    for (int spin = 0; (g = __atomic_load_n(&pjGen, __ATOMIC_SEQ_CST)) == seen; spin++)
+      if (spin > PJ_SPIN) {
+        __atomic_add_fetch(&pjSleepers, 1, __ATOMIC_SEQ_CST);
+        syscall(GC_NR_FUTEX, &pjGen, 128 /* FUTEX_WAIT_PRIVATE */, seen, 0, 0, 0);   // returns at once if pjGen moved
+        __atomic_sub_fetch(&pjSleepers, 1, __ATOMIC_SEQ_CST);
+      }
+    seen = g;
+    pjRun();
+  }
+  return 0;
+}
+// count tasks, task(k) each, on GC_THREADS workers and this thread (one by one without)
+static void parallelDo(int count, void (*task)(int)) {
+  if (pjThreads < 0) { pjThreads = getenv("GC_THREADS") ? atoi(getenv("GC_THREADS")) : 3; if (pjThreads > 16) pjThreads = 16; }
+  if (pjThreads <= 0 || count < 2) { for (int k = 0; k < count; k++) task(k); return; }
+  if (!LNB) LNB = nb_new();
+  if (!USB) USB = nb_new();
+  paOutcomeBoard(1);
+  if (!pjStarted) {
+    gcThread th;
+    for (int t = 0; t < pjThreads; t++) pthread_create(&th, 0, pjWorker, 0);
+    pjStarted = 1;
+  }
+  int heldR = HELDR, heldC = HELDC, heldDir = HELDDIR, press = PRESS;
+  pjTask = task;
+  pjHeldR = heldR; pjHeldC = heldC; pjHeldDir = heldDir; pjPress = press;
+  __atomic_store_n(&pjFinished, 0, __ATOMIC_RELAXED);
+  int g = __atomic_load_n(&pjGen, __ATOMIC_RELAXED) + 1;
+  __atomic_store_n(&pjWord, ((unsigned long long)(g & 0xFFFFF) << 40) | ((unsigned long long)count << 20), __ATOMIC_RELEASE);
+  __atomic_store_n(&pjGen, g, __ATOMIC_SEQ_CST);
+  if (__atomic_load_n(&pjSleepers, __ATOMIC_SEQ_CST)) syscall(GC_NR_FUTEX, &pjGen, 129 /* FUTEX_WAKE_PRIVATE */, 0x7fffffff, 0, 0, 0);
+  int wasIn = inWorker; inWorker = 1;
+  pjRun();
+  inWorker = wasIn;
+  HELDR = heldR; HELDC = heldC; HELDDIR = heldDir; PRESS = press;
+  while (__atomic_load_n(&pjFinished, __ATOMIC_ACQUIRE) < count) {}
+}
+static void pjJudge(int k) {
+  PJob *j = &PJ[k];
+  j->v = lineJudgeIn(j->sw, j->n, j->waitAll);
+  for (int i = 0; i < 12; i++) j->lno[i] = LNO[i];
+}
+static void prejudge(const int32_t *sws, int stride, int count, int n, int waitAll) {
+  if (pjThreads < 0) pjThreads = getenv("GC_THREADS") ? atoi(getenv("GC_THREADS")) : 3;
+  if (pjThreads <= 0 || !BIN[IN_HASPA] || !aloneOnEngine()) return;
+  int jobs = 0;
+  for (int k = 0; k < count && jobs < 256; k++) {
+    const int32_t *sw = sws + stride * k;
+    int v; int32_t lno[12];
+    if (jmFind(sw, n, waitAll, &v, lno)) continue;
+    PJob *j = &PJ[jobs++];
+    for (int i = 0; i < 2 * n; i++) j->sw[i] = sw[i];
+    j->n = n; j->waitAll = waitAll;
+  }
+  if (jobs < 2) return;
+  parallelDo(jobs, pjJudge);
+  extern int paBudgetOut(void);
+  if (paBudgetOut()) return;
+  for (int k = 0; k < jobs; k++) jmPut(PJ[k].sw, PJ[k].n, PJ[k].waitAll, PJ[k].v, PJ[k].lno);
+}
+// lines of their own lengths, judged as judged() first judges them
+static void prejudgeLines(LineC *const *ls, int count) {
+  if (pjThreads < 0) pjThreads = getenv("GC_THREADS") ? atoi(getenv("GC_THREADS")) : 3;
+  if (pjThreads <= 0 || !BIN[IN_HASPA] || !aloneOnEngine()) return;
+  int jobs = 0;
+  for (int k = 0; k < count && jobs < 256; k++) {
+    const LineC *l = ls[k];
+    int v; int32_t lno[12];
+    if (jmFind(l->sw, l->n, 0, &v, lno)) continue;
+    PJob *j = &PJ[jobs++];
+    for (int i = 0; i < 2 * l->n; i++) j->sw[i] = l->sw[i];
+    j->n = l->n; j->waitAll = 0;
+  }
+  if (jobs < 2) return;
+  parallelDo(jobs, pjJudge);
+  extern int paBudgetOut(void);
+  if (paBudgetOut()) return;
+  for (int k = 0; k < jobs; k++) jmPut(PJ[k].sw, PJ[k].n, PJ[k].waitAll, PJ[k].v, PJ[k].lno);
+}
+#else
+static void prejudgeLines(LineC *const *ls, int count) { (void)ls; (void)count; }
+static void prejudge(const int32_t *sws, int stride, int count, int n, int waitAll) { (void)sws; (void)stride; (void)count; (void)n; (void)waitAll; }
+static void parallelDo(int count, void (*task)(int)) { for (int k = 0; k < count; k++) task(k); }
+#endif
 int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
   return lineStateAt(steps, n, 0, masks, can, wait, cur, t);
 }
 // THE BOARD THE NEXT SLAB LANDS ON: `steps` played, then the board left alone
 // until the next slab has dropped and landed, then settled.
+int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
+  return lineStateAt(steps, n, 1, masks, can, wait, cur, t);
+}
 int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t) {
   uint32_t can[WMAX]; uint8_t wait[32][WMAX]; int32_t cur[2];
   return lineStateAt(steps, n, 1, masks, can, wait, cur, t);
@@ -585,7 +887,9 @@ static int fDecide(Front *F, FDec *out) {
   fPrepare(F);
   LF = F;
   BOTS[F->id].tab[T_OPT + O_PRESS] = 1;
-  if (bot_decide(F->id) != 0) return -1;
+  int rc = bot_decide(F->id);
+  { extern void paBudget(double, double); paBudget(1e300, 1e300); }   // the budget is the decision's
+  if (rc != 0) return -1;
   double *o = BOUT;
   out->kind = (int)o[0]; out->hasMove = o[1] != 0; out->mr = (int)o[2]; out->mc = (int)o[3];
   out->hasPark = o[4] != 0; out->pr = (int)o[5]; out->pc = (int)o[6]; out->via = (int)o[7]; out->waitAll = o[98] != 0;
@@ -602,7 +906,40 @@ static int fDecide(Front *F, FDec *out) {
 
 // One frame: the keys to press (the server's bits), the swap queued on the
 // board itself as the walk arrives. -1: the bot failed.
+static int frontFrame(int fid, Board *b);
+// EVERY FRAME INSIDE ITS BUDGET: the game runs at 60 frames a second, so the
+// bot's work on one frame may take no longer than one frame (GC_FRAME_MS
+// overrides, in ms). Over it, the frame fails and the game stops: slow is
+// an error, never a result. Native only; the browser has its own clock.
+#ifndef __wasm__
+#ifndef GC_TS
+struct gcTs { long s, ns; };
+extern int clock_gettime(int, struct gcTs *);
+#endif
+extern char *getenv(const char *);
+extern double atof(const char *);
+static double frameBudgetMs = -1;
+static double nowMs(void) { struct gcTs t; clock_gettime(1, &t); return t.s * 1e3 + t.ns / 1e6; }
+#endif
 EXPORT(front_frame) int front_frame(int fid, Board *b) {
+#ifndef __wasm__
+  if (frameBudgetMs < 0) frameBudgetMs = getenv("GC_FRAME_MS") ? atof(getenv("GC_FRAME_MS")) : 1000.0 / 60;
+  extern double paWork, paEngFrames;
+  double t0 = nowMs(), w0 = paWork, e0 = paEngFrames;
+  int bits = frontFrame(fid, b);
+  double took = nowMs() - t0;
+  if (getenv("GC_WORKSTAT") && paWork > w0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "WORK %d %.0f %.3f %.0f\n", b->clock, paWork - w0, took, paEngFrames - e0); }
+  if (bits >= 0 && frameBudgetMs > 0 && took > frameBudgetMs) {
+    extern int fprintf(void *, const char *, ...); extern void *stderr;
+    fprintf(stderr, "front: a frame took %.1f ms (work %.0f), over the %.1f ms budget (clock %d)\n", took, paWork - w0, frameBudgetMs, b->clock);
+    return -1;
+  }
+  return bits;
+#else
+  return frontFrame(fid, b);
+#endif
+}
+static int frontFrame(int fid, Board *b) {
   Front *F = &FRONTS[fid];
   FB = b;
   F->lastKind = -1;
@@ -651,13 +988,35 @@ EXPORT(front_frame) int front_frame(int fid, Board *b) {
   }
   F->park = 0;
   beginWalk(F, d.mr, d.mc, F->reaction);
-  if (d.waitAll) { F->wWaitTo = allWait(F->settle); F->wWaitAll = 1; }
+  if (d.waitAll) { F->wWaitTo = allWait(&F->settle); F->wWaitAll = 1; }
   return fSend(F, driveWalk(F, input & ~DIRS), held);
 }
 
 // A bot for the board `b` (its level's constants go into the bot's table).
+// EVERY PAGE THE BOT WRITES, TOUCHED BEFORE THE GAME: its memos and tables
+// are written at random places, and a page's first write faults -- a
+// thousand faults in one decision are milliseconds of a frame.
+static void botWarm(void);
+static void parallelDo(int count, void (*task)(int));
+// a thread's stack, touched to the depth the searches reach (their frames hold whole boards)
+__attribute__((noinline)) static void stackWarm(void) { volatile char buf[1 << 20]; for (int i = 0; i < (int)sizeof buf; i += 4096) buf[i] = 0; }
+static void warmTask(int k) { (void)k; stackWarm(); }
+static void frontWarm(void) {
+  memoRoom();
+  __builtin_memset(LSM, 0, sizeof LSM);
+  for (int i = 0; i < SNAPN; i++) { if (!SNAPS[i].b) SNAPS[i].b = nb_new(); __builtin_memset(SNAPS[i].b, 0, sizeof(Board)); }
+  if (!LNB) LNB = nb_new();
+  if (!USB) USB = nb_new();
+  __builtin_memset(LNB, 0, sizeof(Board)); __builtin_memset(USB, 0, sizeof(Board));
+  botWarm();
+  stackWarm();
+  parallelDo(16, warmTask);   // the workers started, their boards and stacks touched, before the game
+}
 EXPORT(front_new) int front_new(Board *b, int reaction, int allowRaise) {
   if (nFronts >= MAXFRONTS) return -1;
+#ifndef __wasm__
+  frontWarm();
+#endif
   Front *F = &FRONTS[nFronts];
   memset(F, 0, sizeof *F);
   F->reaction = reaction; F->reveal = 1; F->allowRaise = allowRaise; F->escapeWalk = INF;

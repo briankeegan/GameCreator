@@ -248,6 +248,12 @@ ways: a tool not listed, or a path listed that doesn't exist.
 - A test's scratch files go beside the test, never `os.tmpdir()`.
 - **BitBot drills run at level 10, nothing else.** `pa_drill.js` exits if a
   scenario's level is not 10.
+- **Every decision fits the game's frame.** The bot plays at 60 fps:
+  `BUDGETMS` in `native/bot.c` (the 16.7 ms frame less the frame's own work)
+  is a decision's budget, and in a game the clock cuts one past it and the game
+  fails. After any change to `native/`, run `budget_check.sh`: it takes each
+  decision's least time over several runs (the machine stalls, the bot's work
+  does not) and fails if any is over.
 
 ## Infrastructure
 

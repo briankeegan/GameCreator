@@ -1,9 +1,16 @@
 #include "libc.h"
 typedef unsigned long long u64;
-#ifdef THREADS
+// LOCAL: a search thread's own -- the browser's workers (THREADS) and, natively, parallelDo's
+#if defined(THREADS) || !defined(__wasm__)
 #define LOCAL _Thread_local
 #else
 #define LOCAL
+#endif
+// JLOCAL: the engine judge's scratch, one per thread natively (prejudge, front.c)
+#ifndef __wasm__
+#define JLOCAL _Thread_local
+#else
+#define JLOCAL
 #endif
 #ifdef __wasm__
 extern unsigned char __heap_base;
@@ -185,7 +192,13 @@ static uint32_t heldAt(int c) { uint32_t h = 0; for (int i = 0; i < nHolds; i++)
 static int nextRelease(void) { int u = NEVER; for (int i = 0; i < nHolds; i++) if (HOLDS[i].until < u) u = HOLDS[i].until; return u; }
 static int resolveT(const int32_t *st, int32_t *r, int wantSettled, const Timed *tm);
 static void resolveM(const int32_t *st, int32_t *r, int wantSettled);
-static void resolve(const int32_t *st, int32_t *r, int wantSettled) { resolveM(st, r, wantSettled); }
+extern double paWork, paWorkEnd;
+int paBudgetOut(void);
+// past the decision's budget a resolve is refused: what it would find is not looked for
+static void resolve(const int32_t *st, int32_t *r, int wantSettled) {
+  if (paBudgetOut()) { for (int k = 0; k < R_INTS; k++) r[k] = 0; r[R_SCOPE] = SC_REFUSED; return; }
+  resolveM(st, r, wantSettled);
+}
 static LOCAL int tmFailed = 0;
 static void pushHold(const uint32_t *m, int until, int swap) {
   if (nHolds >= MAXHOLD) { tmFailed = 1; return; }
@@ -205,6 +218,7 @@ static LOCAL int nRes;
 static int resolveT(const int32_t *st, int32_t *r, int wantSettled, const Timed *tm) {
   nRes++;
   for (int i = 0; i < R_INTS; i++) r[i] = 0;
+  if (paBudgetOut()) { r[R_SCOPE] = SC_REFUSED; return 0; }   // past the decision's budget
   if (st[O_BAD]) { r[R_SCOPE] = SC_BAD; return 0; }
   R *s = &S;
   load(s, st);
@@ -240,6 +254,7 @@ static int resolveT(const int32_t *st, int32_t *r, int wantSettled, const Timed 
       uint32_t sm5[WMAX] = {0}; sm5[c5] = s->occ[c5] & b5; sm5[d5] = s->occ[d5] & b5; \
       pushHold(sm5, T + 4, 1); } } while (0)
   while (guard++ <= LIMIT) {
+    paWork += 1;   // a round of the resolve: the unit of work
     if (refused) { r[R_SCOPE] = SC_REFUSED; r[R_FRAMES] = T; return 0; }
     int any = 0, link = 0, c, a;
     if (tm) {
@@ -427,6 +442,7 @@ static int colourLast(const int32_t *st, int c, uint32_t b) {
   return at;
 }
 static int swapIn(int32_t *st, int r, int c) {
+  paWork += 0.5;
   uint32_t b = 1u << (r - 1);
   int o = c + 1;
   if ((U(st, INERT + c) & b) || (U(st, INERT + o) & b)) return 0;
@@ -455,9 +471,10 @@ static void gridOf(const int32_t *st, Grid *G) {
 // deciding on (ENGINE_BASE, or a copy of it handed in by its caller) a pair
 // is legal only if the engine would take it now (ENGINE_CAN, per column, a
 // bit per row) -- a panel still moving, a pair the swap stalling refuses.
-static const int32_t *ENGINE_BASE;
-static uint32_t ENGINE_CAN[WMAX];
+static JLOCAL const int32_t *ENGINE_BASE;
+static JLOCAL uint32_t ENGINE_CAN[WMAX];
 static int legalG(const int32_t *st, int32_t *out, Grid *G) {
+  paWork += 4;   // a board's legal swaps: work, as a resolve's rounds are
   gridOf(st, G);
   int n = 0, W = st[O_W], busy = st[O_BUSYF], engine = st == ENGINE_BASE;
   for (int r = 1; r <= st[O_H]; r++) {
@@ -748,6 +765,7 @@ static void memoRoom(void) { threadInit(); }
 static int resolveU(const int32_t *st, int32_t *r, int wantSettled) {
   nRes++;
   for (int i = 0; i < R_INTS; i++) r[i] = 0;
+  if (paBudgetOut()) { r[R_SCOPE] = SC_REFUSED; return 0; }   // past the decision's budget
   if (st[O_BAD]) { r[R_SCOPE] = SC_BAD; return 0; }
   R *s = &S;
   load(s, st);
@@ -758,6 +776,7 @@ static int resolveU(const int32_t *st, int32_t *r, int wantSettled) {
   uint32_t k[WMAX];
   int32_t inGroup[MAXSLAB];
   while (guard++ <= LIMIT) {
+    paWork += 1;   // a round of the resolve: the unit of work
     if (!restValid) restingOf(s);
     restValid = 1;
     if (scan) {
@@ -1242,11 +1261,9 @@ static int quietDrop(const int32_t *st, const Grid *G, const Drop *D, int r, int
   return dropQuiet(st, D, r, c, ZK, out);
 }
 static int breaksFirst(const int32_t *st, const Grid *G, int r, int c) { int t, cs; return firstRound(st, G, r, c, &t, &cs); }
-static int anyBreakOf(const int32_t *st0) {
+// whether any one swap breaks garbage: the scan alone, no tables (a worker's)
+static int anyBreakScan(const int32_t *st0) {
   Grid G;
-  u64 k = hashOf(st0); double v;
-  if (tget(&SAVES, k, &v)) return v > 0;
-  if (tget(&ANYB, k, &v)) return (int)v;
   stcpy(SCR, st0);
   int n = legalG(SCR, SWS, &G), any = 0, rest = atRest(SCR), nLater = 0, LATER[128];
   Drop D; int haveD = 0;
@@ -1267,6 +1284,16 @@ static int anyBreakOf(const int32_t *st0) {
     swapIn(SCR, SWS[2 * i], SWS[2 * i + 1]);
     if (RS[R_SCOPE] == SC_BROKE) any = 1;
   }
+  return any;
+}
+static int anyBreakKnown(const int32_t *st0, u64 k, double *v) {
+  if (tget(&SAVES, k, v)) { *v = *v > 0; return 1; }
+  return tget(&ANYB, k, v);
+}
+static int anyBreakOf(const int32_t *st0) {
+  u64 k = hashOf(st0); double v;
+  if (anyBreakKnown(st0, k, &v)) return (int)v;
+  int any = anyBreakScan(st0);
   tput(&ANYB, k, any);
   return any;
 }
@@ -1383,8 +1410,12 @@ static LOCAL double LMAX;
 static LOCAL int lazyBreak;
 static LOCAL double FPR, DEADLINE, LOCKP, OVERHEAD, SWAPP, HOLD, WORK, MAXSTOP, READYWORTH, PREPWORTH;
 static LOCAL int SPEND, LEAN, PREPARE, DIG, PRESS, Wd;
-static LOCAL int dropBudget, saveBudget, slabBudget, prepBudget;
+static LOCAL int dropBudget, saveBudget, slabBudget, prepBudget, readyBudget;
 static LOCAL int nAvoid; static LOCAL int32_t AVOID[2 * 40];
+// records the caller will not read (P[108]: 4 the fire-ready, 8 the slab-ready), never checked
+static LOCAL int recSkip;
+// P[109]: whether an option closes the break is left for its reader (closesOf), the option's board kept here
+static LOCAL int lazyClose;
 static LOCAL ST BASEST;
 
 // HELD is the direction pressed on the frame before the decision, at the
@@ -1449,6 +1480,7 @@ enum { F_KIND, F_SIZE, F_FRAMES, F_CHAIN, F_TOTAL, F_GARBAGE, F_CONVERTS, F_VOID
        F_VALUE, F_WAYS, F_LANDSTOP, F_NSW, F_SW, REC = F_SW + 2 * MAXD };
 #define MAXOPT 54000
 static double ODATA[(MAXOPT + 4) * REC + 64], ODSCR[(MAXOPT + 4) * REC + 64];
+static const int32_t *OPTSET[MAXOPT + 4];   // a lazy option's board (lazyClose)
 static int32_t LANDS[ST_INTS], LANDSCR[ST_INTS];
 static LOCAL double *OD = ODATA, *ODS = ODSCR;
 static LOCAL int32_t *LD = LANDS, *LDS = LANDSCR;
@@ -1516,9 +1548,18 @@ static void extras(double *o, const int32_t *settled) {
     o[F_MATNOW] = 0.0 / 0.0;
     return;
   }
-  if (lazyBreak && expanding && !BASEBREAK && !(o[F_HASSHAPE] && o[F_TALL] >= 8)) o[F_BREAKREADY] = -3;
-  else o[F_BREAKREADY] = settled ? breakReadyC(settled) : -2;
-  o[F_CLOSESBREAK] = BASEBREAK && o[F_BREAKREADY] == 0;
+  if (lazyClose && expanding && settled) {
+    // left for the reader (readyOf, closesOf): expanding, no drop is asked
+    // (dropBudget 0), so it is the board's alone -- garbage, and a swap that breaks it
+    o[F_BREAKREADY] = -4;
+    o[F_CLOSESBREAK] = BASEBREAK ? -2 : 0;
+    OPTSET[(o - (OD + 64)) / REC] = settled;
+  } else if (lazyBreak && expanding && !BASEBREAK && !(o[F_HASSHAPE] && o[F_TALL] >= 8)) {
+    o[F_BREAKREADY] = -3; o[F_CLOSESBREAK] = 0;
+  } else {
+    o[F_BREAKREADY] = settled ? breakReadyC(settled) : -2;
+    o[F_CLOSESBREAK] = BASEBREAK && o[F_BREAKREADY] == 0;
+  }
   uint32_t rm[WMAX];
   o[F_DIGGAIN] = (DIG && settled) ? reachC(settled, rm) - BASEDIG : 0;
   o[F_VOIDGAIN] = o[F_HASSHAPE] ? BASEVOID - o[F_VOIDROWS] : 0;
@@ -1680,6 +1721,11 @@ static void threadInit(void) {
   threadReady = 1;
   ARENA = ARENA_MAIN; QUIET = QUIET_MAIN; SMEMO = SMEMO_MAIN; smGen = 1; NTB = NT_MAIN;
   __builtin_memset(ARENA_MAIN, 0, 16ul << 20);
+  // the hash tables are written at random: touched now, before the game, or
+  // their first thousands of writes each fault in a fresh page mid-decision
+  __builtin_memset(TABLE_MAIN, 0, sizeof TABLE_MAIN);
+  __builtin_memset(SMEMO_MAIN, 0, sizeof SMEMO_MAIN);
+  __builtin_memset(NT_MAIN, 0, sizeof NT_MAIN);
   __builtin_memset(QUIET_MAIN, 0, sizeof(QUIET_MAIN));
   __builtin_memset(ODATA, 0, 8ul << 20);
   __builtin_memset(ODSCR, 0, 4ul << 20);
@@ -1861,12 +1907,22 @@ static int prefetchPly(int nf, int ply) {
   }
   return 1;
 }
+// the slab-ready record's question, asked of at most readyBudget boards a
+// search, nearest first (each is a scan of every swap on the board)
+static int readyAsk(CK *e, const int32_t *st) {
+  if (e && e->slab >= 0) return e->slab;
+  if (readyBudget <= 0) return 0;
+  readyBudget--;
+  int v = slabReady(st);
+  if (e) e->slab = v;
+  return v;
+}
 static void expandAll(int depth, int cr, int cc) {
   expanding = 1;
   Shape BASE; shapeOf(BASEST, &BASE);
   uint32_t rm[WMAX];
   BASEDIG = DIG ? reachOf(BASEST, rm) : 0;
-  saveBudget = 192; slabBudget = 24; prepBudget = 24;
+  saveBudget = 192; slabBudget = 24; prepBudget = 24; readyBudget = 192;
   BASESAVE = (DIG && BASEDIG > 0 && !LEAN) ? savesOfRaw(BASEST) : 0;
   int nf = 1;
   FRONT[0].st = BASEST; FRONT[0].nchain = 0; FRONT[0].fr = cr; FRONT[0].fc = cc; FRONT[0].spent = 0;
@@ -1996,8 +2052,8 @@ static void expandAll(int depth, int cr, int cc) {
             double *v1 = recAt(1), *v2 = recAt(2), *v3 = recAt(3);
             if (!exact && (!haveRec[0] || hi > fv)) exact = 1;
             if (!exact && svNow > 0 && (!haveRec[1] || hi > v1[F_VALUE] || (hi == v1[F_VALUE] && cost < v1[F_FRAMES]))) exact = 1;
-            if (!exact && (!haveRec[2] || hi > v2[F_VALUE] || (hi == v2[F_VALUE] && cost < v2[F_FRAMES])) && (!e ? canFireOf(settled) : e->fire >= 0 ? e->fire : (e->fire = canFireOf(settled)))) exact = 1;
-            if (!exact && (!haveRec[3] || hi > v3[F_VALUE] || (hi == v3[F_VALUE] && cost < v3[F_FRAMES])) && (!e ? slabReady(settled) : e->slab >= 0 ? e->slab : (e->slab = slabReady(settled)))) exact = 1;
+            if (!exact && !(recSkip & 4) && (!haveRec[2] || hi > v2[F_VALUE] || (hi == v2[F_VALUE] && cost < v2[F_FRAMES])) && (!e ? canFireOf(settled) : e->fire >= 0 ? e->fire : (e->fire = canFireOf(settled)))) exact = 1;
+            if (!exact && !(recSkip & 8) && (!haveRec[3] || hi > v3[F_VALUE] || (hi == v3[F_VALUE] && cost < v3[F_FRAMES])) && readyAsk(e, settled)) exact = 1;
             if (!exact) {
               if (slabYes) slabBudget--;
               goto born;
@@ -2016,9 +2072,9 @@ static void expandAll(int depth, int cr, int cc) {
           double *sv0 = recAt(1), *rd0 = recAt(2), *tg0 = recAt(3);
           if (svNow > 0 && (!haveRec[1] || val > sv0[F_VALUE] || (val == sv0[F_VALUE] && cost < sv0[F_FRAMES])))
             takeRec(1, seq, nseq, cost, val, cost + nseq * OVERHEAD);
-          if ((!haveRec[2] || val > rd0[F_VALUE] || (val == rd0[F_VALUE] && cost < rd0[F_FRAMES])) && (!e ? canFireOf(settled) : e->fire >= 0 ? e->fire : (e->fire = canFireOf(settled))))
+          if (!(recSkip & 4) && (!haveRec[2] || val > rd0[F_VALUE] || (val == rd0[F_VALUE] && cost < rd0[F_FRAMES])) && (!e ? canFireOf(settled) : e->fire >= 0 ? e->fire : (e->fire = canFireOf(settled))))
             takeRec(2, seq, nseq, cost, val, cost + nseq * OVERHEAD);
-          if ((!haveRec[3] || val > tg0[F_VALUE] || (val == tg0[F_VALUE] && cost < tg0[F_FRAMES])) && (!e ? slabReady(settled) : e->slab >= 0 ? e->slab : (e->slab = slabReady(settled))))
+          if (!(recSkip & 8) && (!haveRec[3] || val > tg0[F_VALUE] || (val == tg0[F_VALUE] && cost < tg0[F_FRAMES])) && readyAsk(e, settled))
             takeRec(3, seq, nseq, cost, val, cost + nseq * OVERHEAD);
           if (take) {
             takeRec(0, seq, nseq, cost, val, dur);
@@ -2047,8 +2103,15 @@ static void expandAll(int depth, int cr, int cc) {
     if (DIG && nb > nf2) {
       int ns = 0;
       for (int i = nf2; i < nb; i++) ORD2[ns++] = ORD[i];
-      msortI(ORD2, ns, byDig);
-      for (int k = 0; k < ns && k < digBeam; k++) if (BORN[ORD2[k]].dig) pick[np++] = ORD2[k];
+      // the first digBeam of a stable sort by byDig, selected: the rest is never read
+      for (int k = 0; k < ns && k < digBeam; k++) {
+        int m = k;
+        for (int i = k + 1; i < ns; i++) if (byDig(ORD2[i], ORD2[m]) < 0) m = i;
+        int v = ORD2[m];
+        for (int i = m; i > k; i--) ORD2[i] = ORD2[i - 1];
+        ORD2[k] = v;
+        if (BORN[v].dig) pick[np++] = v;
+      }
     }
     for (int i = 0; i < np; i++) {
       Born *b = &BORN[pick[i]];
@@ -2072,6 +2135,9 @@ static LOCAL Res R1;
 static LOCAL int nOptRuns, nOptDepth;
 static int optionsRun(const int32_t *st0, const double *P, const int32_t *first, int nfirst) {
   threadInit(); arenaN = 0; smGen++; smN = 0; ntGen++; ntN = 0; expanding = 0;
+  // the main search's boards are kept until the next main search: every
+  // other search on this thread settles in the arena's upper half
+  if (ARENA == ARENA_MAIN) { if (OD == ODATA) arenaCap = ARENA_INTS / 2; else { arenaN = ARENA_INTS / 2; arenaCap = ARENA_INTS; } }
   nOptRuns++; nOptDepth += (int)P[11];
   failed = 0;
   FPR = P[0]; DEADLINE = P[1]; LOCKP = P[2]; SPEND = (int)P[3]; LEAN = (int)P[4];
@@ -2081,6 +2147,7 @@ static int optionsRun(const int32_t *st0, const double *P, const int32_t *first,
   lazyBreak = (int)P[101];
   SLABW = (int)P[102]; SLABH = (int)P[103]; SLABC = (int)P[104];
   HELDR = (int)P[105]; HELDC = (int)P[106]; HELDDIR = (int)P[107];
+  recSkip = (int)P[108]; lazyClose = (int)P[109] && OD == ODATA && ARENA == ARENA_MAIN;
   LMAX = 0;
   for (int i = 0; i < 64; i++) if (PCHAIN[i] > LMAX) LMAX = PCHAIN[i];
   for (int i = 0; i < 256; i++) if (PCOMBO[i] > LMAX) LMAX = PCOMBO[i];
