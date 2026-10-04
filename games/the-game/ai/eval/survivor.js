@@ -41,7 +41,8 @@ var args = process.argv.slice(2), opt = { port: Number(process.env.GC_SURVIVOR_P
 for (var i = 0; i < args.length; i += 2) { var key = args[i].replace(/^--/, ''); opt[key] = key === 'host' ? args[i + 1] : Number(args[i + 1]); }
 if (!(opt.port > 0 && opt.port < 65536)) throw new Error('survivor.js: no such port ' + opt.port);
 var PROFILE = SH.profile(), HANDS = new SH.Hands(PROFILE), land = SH.land, arrivalsOf = SH.arrivalsOf;
-var IN = PA.IN;
+var IN = PA.IN, V8 = require('v8');
+function unpack(packed) { return PA.revive(V8.deserialize(packed)); }
 
 // ---------------------------------------------------------------- the board, as predicted
 // Two boards agree when every panel and every counter does, except the
@@ -219,15 +220,18 @@ Match.prototype.predictJS = function (board, at, hold, from) {
 };
 Match.prototype.ask = function (at, board, hold, pend) {
   var arrivals = (pend || this.arrivals).filter(function (a) { return a.at > board.stopWatch || a.capped; });
-  pending = { id: nextId++, epoch: this.epoch, at: at, board: board, hold: hold, arrivals: arrivals, knew: this.arrivals, askedAt: this.now, sent: Date.now() };
+  // The board goes and is kept as bytes, off this thread's heap: held till
+  // its answer comes, a board object would outlive the young generation.
+  var packed = V8.serialize(board);
+  pending = { id: nextId++, epoch: this.epoch, at: at, packed: packed, hold: hold, arrivals: arrivals, knew: this.arrivals, askedAt: this.now, sent: Date.now() };
   if (process.env.GC_SURVIVOR_DUMP) {
     // The question as the mind got it, to be asked again offline (survivor_probe.js).
     this.asked.push({ id: pending.id, at: at, hold: hold, arrivals: arrivals, acted: this.acted,
-                      board: require('v8').serialize(board).toString('base64') });
+                      board: packed.toString('base64') });
     if (this.asked.length > 40 * KEEP) this.asked.shift();
   }
   mind.postMessage({ id: pending.id, epoch: this.epoch, at: at, lead: at - this.now, ms: SYNC ? 0 : (at - this.now) * this.msPerFrame, posted: Date.now(),
-                    board: board, hold: hold, arrivals: arrivals, acted: this.acted });
+                    packed: packed, hold: hold, arrivals: arrivals, acted: this.acted });
   this.stats.decisions++;
 };
 // The answer: its keys go in the plan, and the next decision is due on the
@@ -235,12 +239,18 @@ Match.prototype.ask = function (at, board, hold, pend) {
 // frame's board if its move still stands -- the frames since were held, as
 // the board it was decided on assumed -- with the swap found again by its
 // panels, in case a row has come up since.
-function moved(from, to, move) {
-  var a = from.panels[move[0]] && from.panels[move[0]][move[1]], b = from.panels[move[0]] && from.panels[move[0]][move[1] + 1];
-  if (!a || !b) return null;
+// A swap as the plan keeps it: the move and the ids of its two panels on the
+// board it was decided on (not the board: a plan outlives many frames).
+function swapOf(board, move) {
+  var row = board.panels[move[0]], a = row && row[move[1]], b = row && row[move[1] + 1];
+  return { move: move, ids: a && b ? [a.id, b.id] : null };
+}
+function moved(sw, to) {
+  var ids = sw.ids, c = sw.move[1];
+  if (!ids) return null;
   for (var r = 1; r < to.panels.length; r++) {
     var row = to.panels[r];
-    if (row && row[move[1]] && row[move[1]].id === a.id) return row[move[1] + 1] && row[move[1] + 1].id === b.id ? [r, move[1]] : null;
+    if (row && row[c] && row[c].id === ids[0]) return row[c + 1] && row[c + 1].id === ids[1] ? [r, c] : null;
   }
   return null;
 }
@@ -251,9 +261,9 @@ Match.prototype.rewalk = function (truth) {
   var now = truth.clock, first = Infinity, t;
   for (t in this.plan) if (+t >= now && +t < first && (this.plan[t].bits & IN.swap) && this.plan[t].swap) first = +t;
   if (first === Infinity) return null;
-  var sw = this.plan[first].swap, move = moved(sw.board, truth, sw.move);
+  var move = moved(this.plan[first].swap, truth);
   var k = move && HANDS.keys(truth, this.hold, 'swap', move, this.arrivals);
-  if (k) k.swap = { move: move, board: truth };
+  if (k) k.swap = swapOf(truth, move);
   return k;
 };
 Match.prototype.take = function (truth) {
@@ -271,11 +281,11 @@ Match.prototype.take = function (truth) {
                        asked: pending && pending.id === a.id ? pending.askedAt : null, trip: pending && pending.id === a.id ? a.got - pending.sent : null });
     if (this.decided.length > 60 * KEEP) this.decided.shift();
     if (!pending || a.id !== pending.id) { this.stats.unasked++; continue; }
-    var p = pending, board = p.board, hold = p.hold, at = a.at, arrivals = p.arrivals, move = a.move, knew = p.knew;
+    var p = pending, board = unpack(p.packed), hold = p.hold, at = a.at, arrivals = p.arrivals, move = a.move, knew = p.knew;
     pending = null;
     if (a.epoch !== this.epoch) { this.stats.late++; this.acted = false; continue; }
     if (at < now) {
-      if (a.kind === 'swap' && !(move = moved(p.board, truth, a.move))) { this.stats.late++; this.acted = false; continue; }
+      if (a.kind === 'swap' && !(move = moved(swapOf(board, a.move), truth))) { this.stats.late++; this.acted = false; continue; }
       board = truth; hold = this.hold; at = now; arrivals = this.arrivals; knew = this.arrivals;
       this.stats.lateTaken++;
       // the latest answer taken: frames over, and where its time went
@@ -287,7 +297,7 @@ Match.prototype.take = function (truth) {
     this.acted = true;
     this.stats.played++;
     // Each planned frame carries the raise held after it.
-    var sw = a.kind === 'swap' ? { move: move, board: board } : null;
+    var sw = a.kind === 'swap' ? swapOf(board, move) : null;
     for (var t in this.plan) if (+t >= at) delete this.plan[t];
     for (var i = 0; i < step.inputs.length; i++) this.plan[at + i] = { bits: step.inputs[i], hold: step.holds[i], swap: sw };
     this.nextAt = at + step.inputs.length;
@@ -449,7 +459,7 @@ Match.prototype.follow = function () {
   if (!k) { this.line = null; return false; }
   if (pending) Atomics.store(ABORT, 0, pending.id);
   pending = null; this.acted = false;
-  var sw = kind === 'swap' ? { move: move, board: pr.board } : null;
+  var sw = kind === 'swap' ? swapOf(pr.board, move) : null;
   for (var i = 0; i < k.inputs.length; i++) this.plan[this.nextAt + i] = { bits: k.inputs[i], hold: k.holds[i], swap: sw };
   this.nextAt += k.inputs.length;
   this.line.steps.shift();

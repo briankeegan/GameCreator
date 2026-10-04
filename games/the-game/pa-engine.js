@@ -1097,6 +1097,13 @@
     stopWatch: 'stopWatch', stopWatchIsRunning: 'stopWatchIsRunning', game_over_clock: 'gameOverClock', in_countdown: 'inCountdown',
     cursorLock: 'cursorLock', height: 'height', width: 'width', countdown_timer: 'countdownTimer',
     animatingCursorDuringCountdown: 'animatingCursorDuringCountdown', countdownOffsetFrames: 'countdownOffsetFrames' };
+  // A panel from the Lua's, every field assigned in PANEL_FROM_LUA's order in
+  // one constructor, so the engine lays each out once instead of growing it
+  // field by field (a tenth of the memory; fromLua runs every frame).
+  var LuaPanel = new Function('lp', 'var v;\n' + Object.keys(PANEL_FROM_LUA).map(function (k) {
+    return 'this.' + PANEL_FROM_LUA[k] + ' = (v = lp.' + k + ') === undefined ? ' + (k === 'isGarbage' ? 'false' : 'null') + ' : v;';
+  }).join('\n'));
+  LuaPanel.prototype = Panel.prototype;
   function list(x) { return Array.isArray(x) ? x : []; }
   function fromLua(state, level, source) {
     var s = Object.create(Stack.prototype), k, lua = state.stack;
@@ -1118,10 +1125,7 @@
       for (var c = 0; c < W; c++) {
         var lp = row[c];
         if (!lp) throw new Error('PAEngine: missing panel ' + r + ',' + (c + 1));
-        var p = Object.create(Panel.prototype);
-        for (var key in PANEL_FROM_LUA) p[PANEL_FROM_LUA[key]] = lp[key] === undefined ? null : lp[key];
-        if (lp.isGarbage === undefined) p.isGarbage = false;
-        out.push(p);
+        out.push(new LuaPanel(lp));
       }
       return out;
     });

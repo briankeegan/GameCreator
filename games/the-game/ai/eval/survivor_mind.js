@@ -99,7 +99,7 @@ wt.parentPort.on('message', function (m) {
   // ids only grow, and only the newest is ever waited on.
   function stale() { return !!cfg.abort && Atomics.load(cfg.abort, 0) >= m.id; }
   if (stale()) { wt.parentPort.postMessage({ id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: 0 }); return; }
-  var t0 = Date.now(), board = PA.revive(m.board), arrivals = [], out;
+  var t0 = Date.now(), board = PA.revive(m.packed ? require('v8').deserialize(m.packed) : m.board), arrivals = [], out;
   // When the answer is due: m.ms from when it was asked (m.posted), so the
   // time a question waited behind the one before counts.
   var due = m.ms > 0 ? (m.posted || t0) + m.ms : 0;
@@ -233,12 +233,12 @@ wt.parentPort.on('message', function (m) {
           diag: { budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped } };
   } catch (e) {
     if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
-    else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e) + ' [inc ' + (m.board && m.board.incoming ? m.board.incoming.length : '?') + ', arr ' + (m.arrivals ? m.arrivals.length : '?') + ']', ms: Date.now() - t0 };
+    else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e) + ' [inc ' + (board && board.incoming ? board.incoming.length : '?') + ', arr ' + (m.arrivals ? m.arrivals.length : '?') + ']', ms: Date.now() - t0 };
     // GC_SURVIVOR_FAILS=file: the first failed question, as survivor.js's dump writes one (asked), to be asked again offline
     if (!(e === P.ABORTED) && process.env.GC_SURVIVOR_FAILS && !failWritten) {
       failWritten = true;
       require('fs').appendFileSync(process.env.GC_SURVIVOR_FAILS, JSON.stringify({ asked: [{ id: m.id, at: m.at, hold: m.hold, arrivals: m.arrivals, acted: m.acted,
-        board: require('v8').serialize(m.board).toString('base64') }] }) + '\n');
+        board: Buffer.from(m.packed || require('v8').serialize(m.board)).toString('base64') }] }) + '\n');
     }
   }
   wt.parentPort.postMessage(out);
