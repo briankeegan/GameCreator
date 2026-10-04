@@ -2039,7 +2039,8 @@ static int lineJudgeIn(const int32_t *sw, int n, int waitAll) {
 // the unjudged lines ranked after it (not skipped) are judged at once, in
 // parallel natively, into the decision's memo judged() reads.
 #define AHEAD 8
-static void prejudgeLines(LineC *const *ls, int count);
+static void prejudgeLinesW(LineC *const *ls, int count, int waitAll);
+static void prejudgeLines(LineC *const *ls, int count) { prejudgeLinesW(ls, count, 0); }
 static int lineBefore(const LineC *a, const LineC *b);
 static void judgeAhead(LineC *first, const unsigned char *skip, int useOk) {
   if (first->verdict >= 0 || nJudged >= MAXJUDGED) return;
@@ -2059,6 +2060,13 @@ static void judgeAhead(LineC *first, const unsigned char *skip, int useOk) {
     sel[ns++] = nx;
   }
   prejudgeLines(sel, ns);
+  // and the second judgement judged() makes of a break that pays but does not break: pressed once the board settles
+  LineC *wsel[AHEAD]; int nw = 0;
+  for (int j = 0; j < ns; j++) {
+    int v; int32_t lno[12];
+    if (sel[j]->brk && jmFind(sel[j]->sw, sel[j]->n, 0, &v, lno) && (v & LV_PAYS) && !(v & LV_BREAKS)) wsel[nw++] = sel[j];
+  }
+  if (nw) prejudgeLinesW(wsel, nw, 1);
 }
 static int judged(LineC *l) {
   if (l->verdict < 0) {

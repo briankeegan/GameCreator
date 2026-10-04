@@ -966,18 +966,18 @@ static void prejudge(const int32_t *sws, int stride, int count, int n, int waitA
   if (paBudgetOut()) return;
   for (int k = 0; k < jobs; k++) jmPut(PJ[k].sw, PJ[k].n, PJ[k].waitAll, PJ[k].v, PJ[k].lno);
 }
-// lines of their own lengths, judged as judged() first judges them
-static void prejudgeLines(LineC *const *ls, int count) {
+// lines of their own lengths, judged as judged() judges them (waitAll: its second judgement)
+static void prejudgeLinesW(LineC *const *ls, int count, int waitAll) {
   if (pjThreads < 0) pjThreads = getenv("GC_THREADS") ? atoi(getenv("GC_THREADS")) : 3;
   if (pjThreads <= 0 || !BIN[IN_HASPA] || !aloneOnEngine()) return;
   int jobs = 0;
   for (int k = 0; k < count && jobs < 256; k++) {
     const LineC *l = ls[k];
     int v; int32_t lno[12];
-    if (jmFind(l->sw, l->n, 0, &v, lno)) continue;
+    if (jmFind(l->sw, l->n, waitAll, &v, lno)) continue;
     PJob *j = &PJ[jobs++];
     for (int i = 0; i < 2 * l->n; i++) j->sw[i] = l->sw[i];
-    j->n = l->n; j->waitAll = 0;
+    j->n = l->n; j->waitAll = waitAll;
   }
   if (jobs < 2) return;
   parallelDo(jobs, pjJudge);
@@ -986,7 +986,7 @@ static void prejudgeLines(LineC *const *ls, int count) {
   for (int k = 0; k < jobs; k++) jmPut(PJ[k].sw, PJ[k].n, PJ[k].waitAll, PJ[k].v, PJ[k].lno);
 }
 #else
-static void prejudgeLines(LineC *const *ls, int count) { (void)ls; (void)count; }
+static void prejudgeLinesW(LineC *const *ls, int count, int waitAll) { (void)ls; (void)count; (void)waitAll; }
 static void prejudge(const int32_t *sws, int stride, int count, int n, int waitAll) { (void)sws; (void)stride; (void)count; (void)n; (void)waitAll; }
 static void parallelDo(int count, void (*task)(int)) { for (int k = 0; k < count; k++) task(k); }
 static int parAvailable(void) { return 0; }
