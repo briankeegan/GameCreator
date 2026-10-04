@@ -778,7 +778,7 @@ static void *pjWorker(void *arg) {
   (void)arg;
   inWorker = 1;
   while (__atomic_exchange_n(&pjLock, 1, __ATOMIC_ACQUIRE)) {}
-  LNB = nb_new(); USB = nb_new(); paOutcomeBoard(1);
+  LNB = nb_new(); USB = nb_new(); paOutcomeBoard(1); bitWorkerInit();
   __builtin_memset(LNB, 0, sizeof(Board)); __builtin_memset(USB, 0, sizeof(Board));   // touched now, not mid-decision
   __atomic_store_n(&pjLock, 0, __ATOMIC_RELEASE);
   int seen = 0;
@@ -794,6 +794,11 @@ static void *pjWorker(void *arg) {
     pjRun();
   }
   return 0;
+}
+// whether parallelDo has workers to hand tasks to from here
+static int parAvailable(void) {
+  if (pjThreads < 0) { pjThreads = getenv("GC_THREADS") ? atoi(getenv("GC_THREADS")) : 3; if (pjThreads > 16) pjThreads = 16; }
+  return pjThreads > 0 && !inWorker;
 }
 // count tasks, task(k) each, on GC_THREADS workers and this thread (one by one without)
 static void parallelDo(int count, void (*task)(int)) {
@@ -867,6 +872,7 @@ static void prejudgeLines(LineC *const *ls, int count) {
 static void prejudgeLines(LineC *const *ls, int count) { (void)ls; (void)count; }
 static void prejudge(const int32_t *sws, int stride, int count, int n, int waitAll) { (void)sws; (void)stride; (void)count; (void)n; (void)waitAll; }
 static void parallelDo(int count, void (*task)(int)) { for (int k = 0; k < count; k++) task(k); }
+static int parAvailable(void) { return 0; }
 #endif
 int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
   return lineStateAt(steps, n, 0, masks, can, wait, cur, t);
