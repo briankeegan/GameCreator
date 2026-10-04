@@ -659,6 +659,7 @@ static void prjTask(int k) {
 // count lines of n steps each, `stride` ints apart
 static void prereplayN(const int32_t *sws, int stride, int count, int n) {
   prjN = 0;
+  if (inWorker) return;   // a worker's task: its replays are its own, kept by no one
   if (n < 1 || n > LINEMAX) return;
   for (int k = 0; k < count && prjN < 128; k++) {
     if (lsmHas(sws + stride * k, n, 0)) continue;
@@ -916,6 +917,7 @@ static void parallelBg(int count, void (*task)(int)) {
 }
 static void parallelDo(int count, void (*task)(int)) {
   if (pjThreads < 0) { pjThreads = getenv("GC_THREADS") ? atoi(getenv("GC_THREADS")) : 3; if (pjThreads > 15) pjThreads = 15; }
+  if (inWorker) { for (int k = 0; k < count; k++) task(k); return; }   // a task's own: one by one
   parallelJoin();
   if (pjThreads <= 0 || count < 2) { for (int k = 0; k < count; k++) task(k); return; }
   if (!LNB) LNB = nb_new();

@@ -1935,8 +1935,12 @@ int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_
 enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8, LV_DROPS = 16, LV_FILLS = 32 };
 
 typedef struct { int n, brk, ok, grown, waitAll, hollow, conv; int32_t sw[2 * LINEMAX]; double est; int verdict; } LineC;
-static LineC LINES[MAXLINES];
-static int nLines, nJudged;
+// a thread's lines: the decision's, or a grown subtree's on a worker (growAt)
+static LineC LINES_MAIN[MAXLINES];
+static JLOCAL LineC *LNS = LINES_MAIN;
+#define LINES LNS
+static JLOCAL int nLines;
+static int nJudged;
 static int32_t LNA[12];
 static JLOCAL int32_t LNO[12];
 static int lnAlone;
@@ -2289,16 +2293,31 @@ static JLOCAL int inWorker;   // a parallelDo task: shared caches are read, neve
 #define LCN 16384
 typedef struct { u64 key; u64 done[2], brk[2], cash[2]; } LC;
 static LC LCT[LCN];
-static LC *lcGet(const int32_t *st) {
-  u64 k = hashOf(st) | 1;
+static LC *lcGetK(u64 k) {
   LC *e = &LCT[k & (LCN - 1)];
   if (e->key != k) { e->key = k; e->done[0] = e->done[1] = e->brk[0] = e->brk[1] = e->cash[0] = e->cash[1] = 0; }
   return e;
 }
+static LC *lcGet(const int32_t *st) { return lcGetK(hashOf(st) | 1); }
+// A TASK'S: the shared entry read into one of its own, never written; what it
+// works out is logged (lcLog) for the deciding thread to keep once the batch is done
+static JLOCAL LC lcOwn;
+static JLOCAL LC *lcLog; static JLOCAL int lcLogN, lcLogCap;
+static LC *lcPeek(const int32_t *st) {
+  u64 k = hashOf(st) | 1;
+  const LC *e = &LCT[k & (LCN - 1)];
+  if (e->key == k) lcOwn = *e;
+  else { lcOwn.key = k; lcOwn.done[0] = lcOwn.done[1] = lcOwn.brk[0] = lcOwn.brk[1] = lcOwn.cash[0] = lcOwn.cash[1] = 0; }
+  return &lcOwn;
+}
+static void lcKeep(const LC *x) {
+  LC *e = lcGetK(x->key);
+  for (int w = 0; w < 2; w++) { e->done[w] |= x->done[w]; e->brk[w] |= x->brk[w]; e->cash[w] |= x->cash[w]; }
+}
 #define LBEAM 8   // children searched deeper per board: the work has a ceiling
 static void linesAt(int d, int pr, int pc, double t, double limit) {
   int n = legal(LS[d], LSW[d]);
-  LC *lc = (d > 0 && d + 1 >= lsDepth && !inWorker) ? lcGet(LS[d]) : 0;
+  LC *lc = (d > 0 && d + 1 >= lsDepth) ? (inWorker ? lcPeek(LS[d]) : lcGet(LS[d])) : 0;
   int haveLq = 0;
   // OUT FROM THE CURSOR: nearest first, so the first that cannot be reached in
   // time ends the level -- every one after it is further
@@ -2379,6 +2398,7 @@ static void linesAt(int d, int pr, int pc, double t, double limit) {
     stcpy(LS[d + 1], LSR + R_INTS);
     linesAt(d + 1, r, c, lsTopped ? at + 5 : at + settle, lsTopped ? dmax(limit, at + settle - 2) : limit);
   }
+  if (lc == &lcOwn && lcLog && lcLogN < lcLogCap) lcLog[lcLogN++] = lcOwn;
 }
 static double timeLeft(void) { return BIN[IN_TOPPED] ? BIN[IN_DRAINBOUND] : DDEADLINE; }
 // LINES GROWN ON THE ENGINE. The masks propose lines from the board as it
@@ -2401,8 +2421,28 @@ static void linesFrom(const int32_t *st, int cr, int cc, int depth, double limit
 // `depthLeft` more steps there, and each proposed next step that is not the
 // last is played on the engine in turn, to choose the one after it on the
 // board that gives.
-static double growRootMs, growKidMs, growStateMs; static int growKids;   // GC_WORKSTAT
+static JLOCAL double growRootMs, growKidMs, growStateMs; static JLOCAL int growKids;   // GC_WORKSTAT
 static void prereplayN(const int32_t *sws, int stride, int count, int n);
+static int parAvailable(void);
+static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const int32_t *st, int cr, int cc,
+                   const uint32_t *can, uint8_t (*waits)[WMAX], double limit);
+// A NEXT STEP'S SUBTREE, GROWN ON A WORKER: replayed (from the memo
+// prereplay left) and grown into lines of its own, handed back in the order
+// the serial walk would have added them
+#define GKLOG 1024
+typedef struct { int32_t pre[2 * KEEPDEPTH]; int np, depthLeft, topped, breaks, n, nlog; LineC buf[MAXLINES]; LC log[GKLOG]; } GK;
+static GK GKS[GROWCAP];
+static void gkTask(int j) {
+  GK *g = &GKS[j];
+  LineC *keepL = LNS; int keepN = nLines, keepT = lsTopped, keepB = lsBreaks;
+  LNS = g->buf; nLines = 0; lsTopped = g->topped; lsBreaks = g->breaks;
+  lcLog = g->log; lcLogN = 0; lcLogCap = GKLOG;
+  int32_t st2[ST_INTS], cur[2], t; uint32_t can2[WMAX]; uint8_t waits2[32][WMAX];
+  if (lineState(g->pre, g->np, st2, can2, waits2, cur, &t) == 0)
+    growAt(g->pre, g->np, t, g->depthLeft, st2, cur[0], cur[1], can2, waits2, INF);
+  g->n = nLines; g->nlog = lcLogN; lcLog = 0;
+  LNS = keepL; nLines = keepN; lsTopped = keepT; lsBreaks = keepB;
+}
 static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const int32_t *st, int cr, int cc,
                    const uint32_t *can, uint8_t (*waits)[WMAX], double limit) {
   int from = nLines;
@@ -2440,6 +2480,21 @@ static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const
       all[j][2 * np] = nexts[2 * j]; all[j][2 * np + 1] = nexts[2 * j + 1];
     }
     prereplayN(&all[0][0], 2 * KEEPDEPTH, nn, np + 1);
+  }
+  if (nn > 1 && parAvailable()) {
+    // the subtrees together; their lines taken in order, up to the cap, as the walk below adds them
+    for (int j = 0; j < nn; j++) {
+      GK *g = &GKS[j];
+      for (int k = 0; k < 2 * np; k++) g->pre[k] = pre[k];
+      g->pre[2 * np] = nexts[2 * j]; g->pre[2 * np + 1] = nexts[2 * j + 1];
+      g->np = np + 1; g->depthLeft = depthLeft - 1; g->topped = lsTopped; g->breaks = lsBreaks; g->n = 0;
+    }
+    parallelDo(nn, gkTask);
+    for (int j = 0; j < nn; j++) {
+      for (int i = 0; i < GKS[j].n && nLines < MAXLINES; i++) LINES[nLines++] = GKS[j].buf[i];
+      for (int i = 0; i < GKS[j].nlog; i++) lcKeep(&GKS[j].log[i]);
+    }
+    return;
   }
   for (int j = 0; j < nn; j++) {
     pre2[2 * np] = nexts[2 * j]; pre2[2 * np + 1] = nexts[2 * j + 1];
