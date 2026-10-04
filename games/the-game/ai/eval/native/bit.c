@@ -1756,6 +1756,8 @@ typedef struct { int32_t gen, next, n, kind, ack, nworkers, lean, dig; Cand **ca
 static Pool pool;
 
 static LOCAL int inPar;
+static int parAvailable(void);
+static void parallelDo(int count, void (*task)(int));
 static void scoreTask(int i);
 static void savesTask(int i);
 static void runTask(int i) {
@@ -1807,6 +1809,8 @@ static void parRun0(int kind, int n);
 static void parRun(int kind, int n) { parRun0(kind, n); }
 static void parRun0(int kind, int n) {
   pool.kind = kind; pool.n = n; pool.next = 0;
+  // natively the scores go to parallelDo's workers, each searching in its own memory
+  if (!pool.nworkers && kind == 1 && n > 1 && parAvailable()) { parallelDo(n, runTask); return; }
   if (!pool.nworkers || n < 2) { inPar = 1; for (int i = 0; i < n; i++) runTask(i); inPar = 0; return; }
   __atomic_store_n(&pool.ack, 0, __ATOMIC_SEQ_CST);
   __atomic_add_fetch(&pool.gen, 1, __ATOMIC_SEQ_CST);
@@ -1850,6 +1854,26 @@ __attribute__((export_name("bit_worker_loop"))) void bit_worker_loop(void) {
     __atomic_add_fetch(&pool.ack, 1, __ATOMIC_SEQ_CST);
     __builtin_wasm_memory_atomic_notify(&pool.ack, 1);
   }
+}
+#endif
+#ifndef __wasm__
+// A NATIVE WORKER'S OWN SEARCH MEMORY, as bit_thread_init gives the
+// browser's, sized as the searching thread's own for any search but its main
+// one (so a search overflows on a worker exactly when it would there), each
+// page touched now rather than mid-decision.
+static void bitWorkerInit(void) {
+  threadReady = 1;
+  arenaCap = ARENA_INTS / 2; qcap = MAXBORN; odCap = MAXOPT;
+  unsigned long sz[8] = { TCAP * sizeof(Slot), TCAP * sizeof(Slot), TCAP * sizeof(Slot), TCAP * sizeof(Slot),
+                          (unsigned long)arenaCap * 4, SMCAP * sizeof(SMemo), NTCAP * sizeof(NT), 2ul * qcap * sizeof(Res) };
+  void *m[8];
+  for (int i = 0; i < 8; i++) { m[i] = grab(sz[i]); __builtin_memset(m[i], 0, sz[i]); }
+  SAVES.s = m[0]; ANYB.s = m[1]; STOPS_T.s = m[2]; FIRE.s = m[3];
+  ARENA = m[4]; SMEMO = m[5]; smGen = 1; NTB = m[6]; QUIET = m[7];
+  unsigned long od = ((unsigned long)odCap + 4) * REC * 8 + 64 * 8;
+  ODS = (double *)grab(od); __builtin_memset(ODS, 0, od);
+  LDS = (int32_t *)grab(ST_INTS * 4);
+  OD = ODS; LD = LDS;
 }
 #endif
 __attribute__((export_name("bit_workers"))) int32_t bit_workers(void) { return __atomic_load_n(&pool.nworkers, __ATOMIC_SEQ_CST); }
