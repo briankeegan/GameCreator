@@ -15,4 +15,11 @@ __attribute__((weak)) void *memset(void *d, int c, unsigned long n) { __builtin_
 void *memcpy(void *d, const void *s, unsigned long n);
 void *memset(void *d, int c, unsigned long n);
 #endif
+// PATLS: a counter every thread bumps on every frame or resolve, natively each
+// thread's own -- one shared line written from every core stalls them all
+#ifdef __wasm__
+#define PATLS
+#else
+#define PATLS _Thread_local
+#endif
 #endif

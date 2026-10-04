@@ -3507,7 +3507,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   ENGINE_BASE = BIN[IN_HASPA] ? IN : 0;
   for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = c >= 1 && c < BW ? (uint32_t)BIN[IN_CANSWAP + c] : 0;
   // the stages, timed; the budget is the whole decision's
-  extern double paWork, paWorkEnd;
+  extern PATLS double paWork;
   double w0 = paWork, ws[12], ts[12], jm[12]; int k = 0, cutAt[12], js[12];
   fillJudges = 0; fillJudgeMs = 0;
 #ifndef __wasm__

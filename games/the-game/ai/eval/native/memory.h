@@ -35,7 +35,11 @@ static void *grab(unsigned long n) {
 #else
 #define LOCAL
 #endif
-static LOCAL int32_t thId;          // 0 on the thread that runs the search
+#if defined(THREADS) || !defined(__wasm__)
+static _Thread_local int32_t thId;   // 0 on the thread that runs the search
+#else
+static int32_t thId;
+#endif
 // Each thread's spare boards, on a cache line of its own: no thread writes
 // another's line on a step.
 static struct { Board *free; int32_t count; int32_t pad[14]; } __attribute__((aligned(64))) pool_[MAXTHREADS];

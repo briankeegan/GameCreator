@@ -532,7 +532,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   Snap *from = 0;
   for (int k = n - 1; k >= 1 && !from; k--) from = snapFind(steps, k);
   nb_copy(LNB, from ? from->b : paLibBoard());
-  { extern double paWork; paWork += 10; }   // the copy
+  { extern PATLS double paWork; paWork += 10; }   // the copy
   Board *b = LNB;
   if (!from) b->sNCombo = b->sCleared = b->sBroke = b->sEarned = b->sFell = b->sHollow = 0;   // a prefix kept carries its counts
   int32_t h0 = paLibBoard()->health;
@@ -712,7 +712,7 @@ static int lineStateRun(const int32_t *steps, int n, int landing, int32_t *masks
   if (rc != 1 || out[0]) return -1;
   // the next step targets settled panels: the board once it has settled, each
   // pair with the frame (from now) its panels settle
-  { extern double paWork; paWork += 60; }   // the copies, the masks and the swap tests below
+  { extern PATLS double paWork; paWork += 60; }   // the copies, the masks and the swap tests below
   uint32_t still[W + 2];
   unsettled(LNB, still, &LSET);
   if (snapLast) { snapLast->settle = LSET; snapLast->hasSettle = 1; snapLast = 0; }
@@ -742,6 +742,10 @@ typedef struct { int32_t sw[2 * LINEMAX]; int n, waitAll, v; int32_t lno[12]; } 
 static PJob PJ[256];
 static int pjLock, pjThreads = -1;
 static void (*pjTask)(int);
+// A WORKER'S WORK, counted on a line of its own and added to the deciding
+// thread's once the batch is done (paWork is each thread's own)
+static struct { double w, e; char pad[48]; } __attribute__((aligned(64))) pjW[17];
+static JLOCAL int pjMe;   // 0 on the deciding thread, 1.. on a worker
 extern void paOutcomeBoard(int make);
 static int pjHeldR, pjHeldC, pjHeldDir, pjPress;   // the settings travelCost reads, from the main thread
 // A BATCH IS ONE WORD: generation, task count and the next task, taken
@@ -758,7 +762,9 @@ static void pjRun(void) {
     unsigned long long ix = w & PJ_IX, count = (w >> 20) & PJ_IX;
     if (ix >= count) return;
     HELDR = pjHeldR; HELDC = pjHeldC; HELDDIR = pjHeldDir; PRESS = pjPress;
-    pjTask((int)ix);
+    { extern PATLS double paWork, paEngFrames; double w0 = paWork, e0 = paEngFrames;
+      pjTask((int)ix);
+      if (pjMe) { pjW[pjMe].w += paWork - w0; pjW[pjMe].e += paEngFrames - e0; } }
     __atomic_add_fetch(&pjFinished, 1, __ATOMIC_RELEASE);
   }
 }
@@ -778,6 +784,7 @@ static void *pjWorker(void *arg) {
   (void)arg;
   inWorker = 1;
   while (__atomic_exchange_n(&pjLock, 1, __ATOMIC_ACQUIRE)) {}
+  { static int pjIds; extern void paThreadId(int); pjMe = ++pjIds; paThreadId(pjMe); }
   LNB = nb_new(); USB = nb_new(); paOutcomeBoard(1); bitWorkerInit();
   __builtin_memset(LNB, 0, sizeof(Board)); __builtin_memset(USB, 0, sizeof(Board));   // touched now, not mid-decision
   __atomic_store_n(&pjLock, 0, __ATOMIC_RELEASE);
@@ -797,12 +804,12 @@ static void *pjWorker(void *arg) {
 }
 // whether parallelDo has workers to hand tasks to from here
 static int parAvailable(void) {
-  if (pjThreads < 0) { pjThreads = getenv("GC_THREADS") ? atoi(getenv("GC_THREADS")) : 3; if (pjThreads > 16) pjThreads = 16; }
+  if (pjThreads < 0) { pjThreads = getenv("GC_THREADS") ? atoi(getenv("GC_THREADS")) : 3; if (pjThreads > 15) pjThreads = 15; }
   return pjThreads > 0 && !inWorker;
 }
 // count tasks, task(k) each, on GC_THREADS workers and this thread (one by one without)
 static void parallelDo(int count, void (*task)(int)) {
-  if (pjThreads < 0) { pjThreads = getenv("GC_THREADS") ? atoi(getenv("GC_THREADS")) : 3; if (pjThreads > 16) pjThreads = 16; }
+  if (pjThreads < 0) { pjThreads = getenv("GC_THREADS") ? atoi(getenv("GC_THREADS")) : 3; if (pjThreads > 15) pjThreads = 15; }
   if (pjThreads <= 0 || count < 2) { for (int k = 0; k < count; k++) task(k); return; }
   if (!LNB) LNB = nb_new();
   if (!USB) USB = nb_new();
@@ -825,6 +832,8 @@ static void parallelDo(int count, void (*task)(int)) {
   inWorker = wasIn;
   HELDR = heldR; HELDC = heldC; HELDDIR = heldDir; PRESS = press;
   while (__atomic_load_n(&pjFinished, __ATOMIC_ACQUIRE) < count) {}
+  { extern PATLS double paWork, paEngFrames;
+    for (int t = 1; t <= pjThreads; t++) { paWork += pjW[t].w; paEngFrames += pjW[t].e; pjW[t].w = pjW[t].e = 0; } }
 }
 static void pjJudge(int k) {
   PJob *j = &PJ[k];
@@ -930,7 +939,7 @@ static double nowMs(void) { struct gcTs t; clock_gettime(1, &t); return t.s * 1e
 EXPORT(front_frame) int front_frame(int fid, Board *b) {
 #ifndef __wasm__
   if (frameBudgetMs < 0) frameBudgetMs = getenv("GC_FRAME_MS") ? atof(getenv("GC_FRAME_MS")) : 1000.0 / 60;
-  extern double paWork, paEngFrames;
+  extern PATLS double paWork, paEngFrames;
   double t0 = nowMs(), w0 = paWork, e0 = paEngFrames;
   int bits = frontFrame(fid, b);
   double took = nowMs() - t0;

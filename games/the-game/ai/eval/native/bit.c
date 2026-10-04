@@ -73,7 +73,7 @@ typedef struct {
   int32_t locked[MAXSLAB], air[MAXSLAB], falling[MAXSLAB];
 } R;
 
-static int nSettle, nLandR, nFireR, nSavesR, nAnyR;
+static LOCAL int nSettle, nLandR, nFireR, nSavesR, nAnyR;
 static LOCAL R S;
 
 static void restingOf(R *s) {
@@ -192,7 +192,8 @@ static uint32_t heldAt(int c) { uint32_t h = 0; for (int i = 0; i < nHolds; i++)
 static int nextRelease(void) { int u = NEVER; for (int i = 0; i < nHolds; i++) if (HOLDS[i].until < u) u = HOLDS[i].until; return u; }
 static int resolveT(const int32_t *st, int32_t *r, int wantSettled, const Timed *tm);
 static void resolveM(const int32_t *st, int32_t *r, int wantSettled);
-extern double paWork, paWorkEnd;
+extern PATLS double paWork;
+extern double paWorkEnd;
 int paBudgetOut(void);
 // past the decision's budget a resolve is refused: what it would find is not looked for
 static void resolve(const int32_t *st, int32_t *r, int wantSettled) {

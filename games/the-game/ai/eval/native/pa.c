@@ -913,13 +913,18 @@ static void runPhysics(Board *b) {
 // adds swap (tryQueueSwap); swapDenied says a swap pressed was not taken.
 // WORK: the search's cost in units of ~0.077 us natively, an engine frame four
 // (a resolve on the masks, bit.c, three); the bot's per-decision budget is counted in it.
-double paWork, paWorkEnd = 1e300, paEngFrames;   // paWorkEnd: where the decision's budget runs out
+PATLS double paWork, paEngFrames;
+double paWorkEnd = 1e300;   // paWorkEnd: where the decision's budget runs out
 // THE DECISION'S BUDGET IS TIME. Natively the clock is read every 32 checks
 // and the search stops at paDeadline (ms); nothing it does can hide from that.
 // GC_WORK_ONLY=1 (and the browser, which has no clock here) counts work
 // instead, so a run repeats exactly. paBudget(ms, units) opens a share.
 double paDeadline = 1e300;
-static int paOut, paTick, paWorkOnly = -1;
+static int paOut, paWorkOnly = -1;
+#ifndef __wasm__
+void paThreadId(int id) { thId = id < MAXTHREADS ? id : MAXTHREADS - 1; }   // a worker's own counters and spare boards (memory.h)
+#endif
+static PATLS int paTick;
 #ifndef __wasm__
 struct paTs { long s, ns; };
 extern int clock_gettime(int, struct paTs *);
