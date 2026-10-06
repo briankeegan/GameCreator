@@ -3083,8 +3083,9 @@ static int lineupRank(const int32_t *st, const int32_t *sw, int n, int need) {
 }
 static Dec lineupFirst(Dec d) {
   lineupLast = 0;
-  // a lineup is for a board with time; topped, staying alive comes first
-  if (lineLast || d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA] || BIN[IN_TOPPED]) return d;
+  // a lineup is for a board with time: topped with death in sight, staying alive comes first
+  if (lineLast || d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA]) return d;
+  if (BIN[IN_TOPPED] && (!aloneOnEngine() || (LNA[0] && LNA[0] <= LIVEHORIZON))) return d;
   if (d.kind == K_SWAP && d.hasMove) {
     Cand *pc = poolSwap(d.sr, d.sc);
     if ((pc && pc->res.broke) || endsInBreak(d)) return d;
