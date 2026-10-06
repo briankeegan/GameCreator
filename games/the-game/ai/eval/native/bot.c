@@ -3047,6 +3047,7 @@ static int lineupNear(const int32_t *st, int r, int c) {
   return r >= land - 2 && r <= land && c + 1 >= c0 - 1 && c <= c0 + w;
 }
 #define LUBEST 5   // a break that spends nothing
+#define LUBEAM 6   // second swaps taken on to a third
 // the rank of a lineup, asked only for ranks of at least `need`: a lineup
 // that is only ready ranks 2 or 3, so past 3 readiness is not looked for
 // The masks propose, the engine judges: a lineup the masks show breaking
@@ -3152,6 +3153,31 @@ static Dec lineupFirst(Dec d) {
       int rank2 = lineupRank(st0, sw, 2, !B.has ? 0 : bestBeats(&B, B.score, at2, sw, 2) ? (int)B.score : (int)B.score + 1);
       luRanks++; luRankMs += NOWMS2() - rk1;
       if (rank2) bestTake(&B, rank2, at2, sw, 2);
+      // A THIRD SWAP, for a board two cannot line up: the nearest LUBEAM
+      // second swaps are taken on to the board the engine reaches after them,
+      // for a third that breaks the slab. Only while nothing is ready yet.
+      if (rank2 >= 4 || (B.has && B.score >= 2) || p1 >= LUBEAM || outPast(&B, LUBEST, at2)) continue;
+      int32_t st2[ST_INTS], cur2[2], t2, lg2[2 * 128];
+      uint32_t can2[WMAX];
+      uint8_t waits2[32][WMAX];
+      if (lineState(sw, 2, st2, can2, waits2, cur2, &t2) != 0) continue;
+      luStates++;
+      int n2 = legal(st2, lg2), k3;
+      Out o2; double far2;
+      outBegin(&o2, lg2, 2, n2, cur2[0], cur2[1]);
+      while (outNext(&o2, &k3, &far2)) {
+        int r3 = lg2[2 * k3], c3 = lg2[2 * k3 + 1];
+        if (r3 > 31 || !(can2[c3] & (1u << (r3 - 1))) || !lineupNear(st2, r3, c3)) continue;
+        double at3 = t2 + dmax(far2, waits2[r3][c3]);
+        if (outPast(&B, LUBEST, at3)) break;
+        int32_t sw3[6] = { sw[0], sw[1], sw[2], sw[3], r3, c3 };
+        // three deep, only a lineup the masks show breaking is judged: readiness costs a replay each
+        if (!maskBreaks(st0, sw3, 3)) continue;
+        int rank3 = lineupRank(st0, sw3, 3, !B.has ? 0 : bestBeats(&B, B.score, at3, sw3, 3) ? (int)B.score : (int)B.score + 1);
+        luRanks++;
+        if (rank3) bestTake(&B, rank3, at3, sw3, 3);
+        if (rank3 >= 2) break;
+      }
     }
   }
 #ifndef __wasm__
@@ -3165,7 +3191,7 @@ static Dec lineupFirst(Dec d) {
   lineLast = 5;
   plansDrop();
   BT->nLine = 0;
-  if (B.n == 2) { for (int k = 0; k < 4; k++) BT->line[k] = B.sw[k]; BT->nLine = 2; BT->lineKind = LINE_PLAN; BT->lineWaitAll = 0; }
+  if (B.n >= 2) { for (int k = 0; k < 2 * B.n; k++) BT->line[k] = B.sw[k]; BT->nLine = B.n; BT->lineKind = LINE_PLAN; BT->lineWaitAll = 0; }
   return mkSwap(B.sw[0], B.sw[1], V_LINEUP, d.mode, d.alive);
 }
 // BREAK WHEN IT PAYS. A match beside a pile converts the whole pile, so a
