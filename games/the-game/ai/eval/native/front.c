@@ -1063,7 +1063,7 @@ EXPORT(front_frame) int front_frame(int fid, Board *b) {
   int bits = frontFrame(fid, b);
   double took = nowMs() - t0;
   if (getenv("GC_WORKSTAT") && paWork > w0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "WORK %d %.0f %.3f %.0f\n", b->clock, paWork - w0, took, paEngFrames - e0); }
-  double limit = callMs > 0 ? callMs : frameBudgetMs;
+  double limit = frameBudgetMs == 0 ? 0 : callMs > 0 ? callMs : frameBudgetMs;   // GC_FRAME_MS=0: no limit at all
   if (bits >= 0 && limit > 0 && took > limit) {
     extern int fprintf(void *, const char *, ...); extern void *stderr;
     fprintf(stderr, "front: a frame took %.1f ms (work %.0f), over the %.1f ms budget (clock %d)\n", took, paWork - w0, limit, b->clock);
