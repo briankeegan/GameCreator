@@ -20,6 +20,15 @@ clang $FLAGS $MT $PGO -msimd128 -DPA_LIB -Wl,--initial-memory=1073741824 bit.c p
 clang -O3 -march=native -pthread -DPA_LIB -Wall -Wno-unused-function -Wno-unknown-attributes -Wno-ignored-attributes bit.c pa.c drill.c -lm -o drill
 # libbit.so: the bot and the engine for the Lua's training drill (../lua/train.lua, through luajit). Not tracked.
 clang -O3 -march=native -pthread -fPIC -shared -DPA_LIB -Wno-unknown-attributes -Wno-ignored-attributes -Wno-unused-function bit.c pa.c -lm -o libbit.so
+# --allow-undefined links a missing function as an import no loader provides, so
+# the module would fail only when instantiated: the only imports allowed are the
+# memory and abort_poll.
+node -e '
+var fs = require("fs"), bad = [];
+for (var f of ["pa.wasm", "pa-mt.wasm", "bit.wasm", "bit-mt.wasm"])
+  for (var i of WebAssembly.Module.imports(new WebAssembly.Module(fs.readFileSync(f))))
+    if (i.name !== "memory" && i.name !== "abort_poll") bad.push(f + " imports " + i.module + "." + i.name);
+if (bad.length) { console.error(bad.join("\n") + "\nno loader provides these: define them (libc.h)"); process.exit(1); }'
 h() { sha256sum "$1" | cut -c1-64; }
 for f in pa.c pa.h bit.c bot.c front.c bit.profdata libc.h memory.h search.h pa.wasm pa-mt.wasm bit.wasm bit-mt.wasm; do printf '%s %s\n' "$f" "$(h $f)"; done > BUILT
 cat BUILT

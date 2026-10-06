@@ -283,6 +283,12 @@ gate_server_engine() {
   node games/the-game/ai/eval/native_arrivals.test.js
 }
 
+# BitBot's search in C (native/bit.wasm) gives bitmatch.js's answer for every
+# legal swap of every real board, and the module loads at all.
+gate_bitnative() {
+  node games/the-game/ai/eval/bitnative.test.js
+}
+
 # THE TRAINING PRE-FLIGHT SUITES, WHICH gate_all DID NOT RUN.
 #
 # ai-train.yml runs five suites before it spends five hours -- features,
@@ -515,6 +521,7 @@ GATES=(
   "a run that trained nothing does not chain:gate_pbt_stop:games/the-game/ai/"
   "a switch means the same thing everywhere:gate_flags:games/the-game/ai/"
   "the server's engine, in JS and in C, is the server's:gate_server_engine:games/"
+  "BitBot's C search gives the JS search's answers:gate_bitnative:games/the-game/ai/"
   "two variants on one seed keep separate islands:gate_pbt_dirs:games/the-game/ai/"
   "the puyo brain:gate_puyo_cpu:games/the-game/ai/"
   "the training harness:gate_training_harness:games/the-game/ai/"
