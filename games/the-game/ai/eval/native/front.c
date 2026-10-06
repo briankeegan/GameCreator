@@ -1044,6 +1044,15 @@ extern int clock_gettime(int, struct gcTs *);
 extern char *getenv(const char *);
 extern double atof(const char *);
 static double frameBudgetMs = -1;
+// THE CALLER'S FRAME. A host whose own frame work varies (the server's Lua:
+// its engine, its garbage collector) says before each front_frame how much of
+// the frame is left for it; the decision gets that less the front's own work.
+static double callMs = 0;
+EXPORT(front_budget) void front_budget(double ms) {
+  extern double botBudgetMs;
+  callMs = ms > 0.5 ? ms : 0.5;
+  botBudgetMs = callMs - (1000.0 / 60 - BUDGETMS) > 0.25 ? callMs - (1000.0 / 60 - BUDGETMS) : 0.25;
+}
 static double nowMs(void) { struct gcTs t; clock_gettime(1, &t); return t.s * 1e3 + t.ns / 1e6; }
 #endif
 EXPORT(front_frame) int front_frame(int fid, Board *b) {
@@ -1054,9 +1063,10 @@ EXPORT(front_frame) int front_frame(int fid, Board *b) {
   int bits = frontFrame(fid, b);
   double took = nowMs() - t0;
   if (getenv("GC_WORKSTAT") && paWork > w0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "WORK %d %.0f %.3f %.0f\n", b->clock, paWork - w0, took, paEngFrames - e0); }
-  if (bits >= 0 && frameBudgetMs > 0 && took > frameBudgetMs) {
+  double limit = callMs > 0 ? callMs : frameBudgetMs;
+  if (bits >= 0 && limit > 0 && took > limit) {
     extern int fprintf(void *, const char *, ...); extern void *stderr;
-    fprintf(stderr, "front: a frame took %.1f ms (work %.0f), over the %.1f ms budget (clock %d)\n", took, paWork - w0, frameBudgetMs, b->clock);
+    fprintf(stderr, "front: a frame took %.1f ms (work %.0f), over the %.1f ms budget (clock %d)\n", took, paWork - w0, limit, b->clock);
     return -1;
   }
   return bits;

@@ -23,7 +23,7 @@
     function rules() {
         if (RULES) return RULES;
         var PA = G().PAEngine || require('../../pa-engine.js'), s = PA.game({ level: 10 });
-        RULES = { riseTime: PA.riseTime, LEVELS: [] };
+        RULES = { riseTime: PA.riseTime, comboGarbage: PA.comboGarbage, LEVELS: [] };
         RULES.LEVELS[9] = { frames: s.frames, stop: s.levelData.stop };
         return RULES;
     }

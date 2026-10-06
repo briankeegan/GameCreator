@@ -12,6 +12,12 @@
 -- MODE: combo_storm, factory or large_garbage, built as TrainingMenu.lua
 -- builds them. Prints "f<frame> panels P garb G queued Q top T" every 250
 -- frames, then "died F" or "alive F". GC_TRACE=F prints every frame from F.
+--
+-- EVERY FRAME IN 16.7 ms, the bot's decision and the Lua's own work together.
+-- The Lua's share varies (the engine, the JIT, the garbage collector), so the
+-- collector runs one step at the top of each frame, and the bot is told what
+-- is left of the frame less RUN_RESERVE for match:run (front_budget). The run
+-- ends by printing the frames over 16.7 ms and the slowest.
 require("bot.headlessBoot")
 do local l = require("common.lib.logger"); l.setLogLevel(l.levels.ERROR) end
 local ffi = require("ffi")
@@ -64,6 +70,9 @@ int nb_feed_break(Board *b, int32_t c1, int32_t c2, int32_t c3, int32_t c4, int3
 int nb_pressed(Board *b);
 int front_new(Board *b, int reaction, int allowRaise);
 int front_frame(int fid, Board *b);
+void front_budget(double ms);
+typedef struct { long tv_sec; long tv_nsec; } gc_timespec;
+int clock_gettime(int clk, gc_timespec *ts);
 ]]
 local C = ffi.load(here .. "../native/libbit.so")
 local NH = C.nb_nhead()
@@ -132,8 +141,15 @@ local function show()
   return table.concat(out, " ")
 end
 
--- the countdown, nothing pressed; then the bot
+local FRAME_MS, RUN_RESERVE = 1000 / 60, 3.0   -- RUN_RESERVE: match:run, 1.9 ms at p99.9 (combo_storm seed 1)
+local TS = ffi.new("gc_timespec")
+local function now() ffi.C.clock_gettime(1, TS); return tonumber(TS.tv_sec) * 1e3 + tonumber(TS.tv_nsec) / 1e6 end
+local over, slowest = 0, 0
+
+-- the countdown, nothing pressed; the bot is made during it, not on a live frame
+local fid = -1
 while a.in_countdown or not a.stopWatchIsRunning do
+  if fid < 0 then load(); fid = C.front_new(board, 12, 1) end
   a:receiveConfirmedInput(KeyDataEncoding.base64encode[1])
   match:run()
 end
@@ -146,15 +162,21 @@ do
   src.createNewRow = function(...) dealt.rows = dealt.rows + 1; return newRow(...) end
   src.getGarbagePanelRowString = function(...) dealt.brks = dealt.brks + 1; return brkRow(...) end
 end
-local fid, f = -1, 0
+collectgarbage("stop")
+local f = 0
 while f < FRAMES do
+  local t0 = now()
+  collectgarbage("step", 0)
   load()
-  if fid < 0 then fid = C.front_new(board, 12, 1) end
+  C.front_budget(FRAME_MS - (now() - t0) - RUN_RESERVE)
   local bits = os.getenv("GC_NOBOT") and 0 or C.front_frame(fid, board)
   if bits < 0 then io.stderr:write("train: the bot failed at frame " .. f .. "\n"); os.exit(2) end
   if C.nb_pressed(board) ~= 0 then bits = bit.bor(bits, 16) end
   a:receiveConfirmedInput(KeyDataEncoding.base64encode[bits + 1])
   match:run()
+  local took = now() - t0
+  if took > FRAME_MS then over = over + 1 end
+  if took > slowest then slowest = took end
   if TRACE >= 0 and f >= TRACE then
     print(string.format("F %d keys %d stop %d shake %d lock %d raise %d health %d cur %d,%d in %d | %s", f, bits, a.stop_time,
                         a.shake_time, a.rise_lock and 1 or 0, a.manual_raise and 1 or 0, a.health, a.cur_row, a.cur_col,
@@ -167,7 +189,8 @@ while f < FRAMES do
                         a:isToppedOut() and 1 or 0))
     io.stdout:flush()
   end
-  if dead then print("died " .. f); os.exit(1) end
+  if dead then print(string.format("frames over %.1f ms: %d, slowest %.1f ms", FRAME_MS, over, slowest)); print("died " .. f); os.exit(1) end
   f = f + 1
 end
+print(string.format("frames over %.1f ms: %d, slowest %.1f ms", FRAME_MS, over, slowest))
 print("alive " .. f)
