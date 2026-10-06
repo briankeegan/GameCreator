@@ -3125,6 +3125,7 @@ static Dec lineupFirst(Dec d) {
     luRanks++; luRankMs += NOWMS2() - rk0;
     if (rank) bestTake(&B, rank, at, sw, 1);
     if (rank >= 4 || outPast(&B, LUBEST, at)) continue;   // a second swap comes later still
+    if (BIN[IN_TOPPED]) continue;   // topped, one swap: the decision's frame is already the fullest
     // a second swap, on the board the engine reaches after the first
     int32_t st1[ST_INTS], cur1[2], t1, lg1[2 * 128];
     uint32_t can1[WMAX];
