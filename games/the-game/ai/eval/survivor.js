@@ -22,9 +22,27 @@
 // holds until it has decided again on the board as it is. Garbage on its
 // way, as the senders' telegraphs show it, is played into every prediction
 // and handed to the search.
+// THE HEAP IS LAID OUT AT START: a full collection mid-game stops this
+// thread for up to 10 ms, so the old space starts big enough that a game
+// never fills it and V8's memory reducer is off; the one collection is made
+// at a match's start, in the countdown (gc). Those flags are only read when
+// node starts, so survivor.js runs itself again with them.
+var HEAP_FLAGS = ['--initial-old-space-size=64', '--no-memory-reducer', '--expose-gc'];
+if (!process.env.GC_SURVIVOR_CHILD) {
+  var child = require('child_process').spawn(process.execPath, process.execArgv.concat(HEAP_FLAGS, [__filename], process.argv.slice(2)),
+                                             { stdio: 'inherit', env: Object.assign({}, process.env, { GC_SURVIVOR_CHILD: '1' }) });
+  ['SIGINT', 'SIGTERM', 'SIGHUP'].forEach(function (sig) { process.on(sig, function () { child.kill(sig); }); });
+  child.on('exit', function (code, sig) { process.exit(code === null ? 1 : code); });
+  return;
+}
 // THE FRAME LOOP STAYS OUT OF GC'S WAY: a young generation big enough that
-// it rarely fills mid-frame.
+// it rarely fills mid-frame, and collections done on the thread that needs
+// them -- V8's helper threads are the process's, and a collection here that
+// waits on them waits behind the mind's.
 require('v8').setFlagsFromString('--max-semi-space-size=64');
+require('v8').setFlagsFromString('--no-parallel-scavenge');
+require('v8').setFlagsFromString('--no-parallel-compaction');
+require('v8').setFlagsFromString('--no-parallel-pointer-update');
 var net = require('net'), path = require('path'), wt = require('worker_threads');
 // GC pauses on this thread: the longest, and how many passed 4 ms (match stats gcMs, slowGc).
 var GC = { max: 0, slow: 0 };
@@ -412,8 +430,14 @@ Match.prototype.afterFrame = function () {
   A.push(process.hrtime.bigint());
   var pr = this.predict(next, at, this.hold, this.nextPending);
   A.push(process.hrtime.bigint());
-  // Dead by then on what is planned: the question is the next frame's board,
-  // answered late and played from the board it reaches.
+  // Dead by then on what is planned: the question is about the latest of the
+  // next few frames the board is still alive on (an answer takes ~25 ms, a
+  // frame ~17), at worst the next frame's board, answered late and played
+  // from the board it reaches.
+  for (var soonAt = Math.min(at - 1, now + 3); pr.board.gameOverClock > 0 && soonAt > now + 1; soonAt--) {
+    pr = this.predict(next, soonAt, this.hold, this.nextPending);
+    if (pr.board.gameOverClock <= 0) at = soonAt;
+  }
   if (pr.board.gameOverClock > 0) { at = now + 1; pr = { board: next, hold: this.hold, pending: this.nextPending }; }
   this.ask(at, pr.board, pr.hold, pr.pending);
 };
@@ -491,6 +515,7 @@ var server = net.createServer(function (sock) {
       if (m.t === 'match') {
         if (match) { console.log('match over: ' + overStats(match)); match.dump(); }
         match = new Match({ levelData: m.levelData, behaviours: m.behaviours, stackOverConditions: m.stackOverConditions });
+        if (global.gc) global.gc();   // in the countdown: no frame is waiting on it
         reply = { ok: true };
       } else if (m.t === 'f') {
         var t0 = tp;   // from the line read: its parse is part of the reply
