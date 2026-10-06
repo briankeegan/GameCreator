@@ -3154,8 +3154,8 @@ static Dec lineupFirst(Dec d) {
       luRanks++; luRankMs += NOWMS2() - rk1;
       if (rank2) bestTake(&B, rank2, at2, sw, 2);
       // A THIRD SWAP, for a board two cannot line up: the nearest LUBEAM
-      // second swaps are taken on to the board the engine reaches after them.
-      // Only while nothing is ready yet: a ready lineup in two is enough.
+      // second swaps are taken on to the board the engine reaches after them,
+      // for a third that breaks the slab. Only while nothing is ready yet.
       if (rank2 >= 4 || (B.has && B.score >= 2) || p1 >= LUBEAM || outPast(&B, LUBEST, at2)) continue;
       int32_t st2[ST_INTS], cur2[2], t2, lg2[2 * 128];
       uint32_t can2[WMAX];
@@ -3171,6 +3171,8 @@ static Dec lineupFirst(Dec d) {
         double at3 = t2 + dmax(far2, waits2[r3][c3]);
         if (outPast(&B, LUBEST, at3)) break;
         int32_t sw3[6] = { sw[0], sw[1], sw[2], sw[3], r3, c3 };
+        // three deep, only a lineup the masks show breaking is judged: readiness costs a replay each
+        if (!maskBreaks(st0, sw3, 3)) continue;
         int rank3 = lineupRank(st0, sw3, 3, !B.has ? 0 : bestBeats(&B, B.score, at3, sw3, 3) ? (int)B.score : (int)B.score + 1);
         luRanks++;
         if (rank3) bestTake(&B, rank3, at3, sw3, 3);
