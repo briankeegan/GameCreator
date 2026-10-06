@@ -1022,8 +1022,6 @@ static int fDecide(Front *F, FDec *out) {
   F->wantRows = (int)o[13];
   if (o[14]) F->raiseFrames = 0;
   F->escapeWalk = o[15];
-  F->hasLast = out->kind == K_SWAP && out->hasMove;
-  if (F->hasLast) { F->lastR = out->mr; F->lastC = out->mc; }
   F->lastKind = out->kind; F->lastVia = out->via;
   F->lastMoveR = out->hasMove ? out->mr : out->hasPark ? out->pr : 0; F->lastMoveC = out->hasMove ? out->mc : out->hasPark ? out->pc : 0;
   return 0;
