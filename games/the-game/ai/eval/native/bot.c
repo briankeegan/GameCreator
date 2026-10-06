@@ -1934,7 +1934,7 @@ int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_
 // hollow under the garbage that lands than left alone (pa.c HOLLOW).
 enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8, LV_DROPS = 16, LV_FILLS = 32 };
 
-typedef struct { int n, brk, ok, grown, waitAll, hollow, conv; int32_t sw[2 * LINEMAX]; double est; int verdict; } LineC;
+typedef struct { int n, brk, ok, grown, waitAll, hollow, conv, die; int32_t sw[2 * LINEMAX]; double est; int verdict; } LineC;
 // a thread's lines: the decision's, or a grown subtree's on a worker (growAt)
 static LineC LINES_MAIN[MAXLINES];
 static JLOCAL LineC *LNS = LINES_MAIN;
@@ -2073,12 +2073,13 @@ static int judged(LineC *l) {
     l->verdict = nJudged < MAXJUDGED ? lineJudge(l->sw, l->n, 0) : 0; nJudged++;
     l->hollow = l->verdict ? LNO[10] : 1 << 20;
     l->conv = l->verdict ? LNO[2] - LNA[2] : 0;
+    l->die = l->verdict ? (LNO[0] ? LNO[0] : 1 << 20) : 0;   // the frame it loses health (1 << 20: not within the horizon)
     // A BREAK PRESSED ONCE THE BOARD HAS SETTLED: a break needs garbage at
     // rest beside the match, and a press made while the slab still lands
     // matches beside it in vain. The last press then waits for every block.
     if (l->brk && (l->verdict & LV_PAYS) && !(l->verdict & LV_BREAKS) && nJudged < MAXJUDGED) {
       int v = lineJudge(l->sw, l->n, 1); nJudged++;
-      if (v & LV_BREAKS) { l->verdict = v; l->waitAll = 1; l->hollow = LNO[10]; l->conv = LNO[2] - LNA[2]; }
+      if (v & LV_BREAKS) { l->verdict = v; l->waitAll = 1; l->hollow = LNO[10]; l->conv = LNO[2] - LNA[2]; l->die = LNO[0] ? LNO[0] : 1 << 20; }
     }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
@@ -2732,7 +2733,8 @@ static LineC *bestLineAvoid(int need, int avoid, int (*ok)(const LineC *)) {
 static LineC *bestLine(int need, int (*ok)(const LineC *)) { return bestLineAvoid(need, 0, ok); }
 // A line that lives, one that leaves the garbage at rest first.
 // A line that lives: of the first LIVINGS that do, by rank, the one that
-// drops no garbage at rest and leaves the least hollow under what lands.
+// loses health last; then the one that drops no garbage at rest, then the one
+// that leaves the least hollow under what lands.
 #define LIVINGS 12
 // THE BREAK THAT TAKES THE MOST. Of the first LIVINGS breaks that live, by
 // rank, the one that converts the most garbage on the engine -- a pile broken
@@ -2780,7 +2782,7 @@ static LineC *bestLiving(int (*ok)(const LineC *)) {
     if ((judged(l) & need) != need) continue;
     found++;
     int ld = (l->verdict & LV_DROPS) != 0, pd = pick && (pick->verdict & LV_DROPS) != 0;
-    if (!pick || ld < pd || (ld == pd && l->hollow < pick->hollow)) pick = l;
+    if (!pick || l->die > pick->die || (l->die == pick->die && (ld < pd || (ld == pd && l->hollow < pick->hollow)))) pick = l;
   }
   return pick;
 }
@@ -2840,17 +2842,18 @@ static Dec stayAlive(Dec d) {
   if (!aloneOnEngine() || !LNA[0] || LNA[0] > LIVEHORIZON) return d;
   double k = LNA[0];
   linesFind(2, 0);
+  // NEVER DYING FIRST: the choice is kept only if it lives as long as the line that lives longest
+  LineC *l = bestLiving(notLastSwap);
   if (d.kind == K_SWAP) {
     dR = d.sr; dC = d.sc;
     LineC *mine = bestLineAvoid(LV_LIVES | LV_GAINS, LV_DROPS, fromChoice);
-    if (mine) { if (mine->n > 1) lineKeep(mine, LINE_CASH); return d; }
+    if (mine && (!l || mine->die >= l->die)) { if (mine->n > 1) lineKeep(mine, LINE_CASH); return d; }
   } else {
     // a hold lives while a paying line can still be started after it
     double wait = BIN[IN_TOPPED] ? 2 : REACT;
     for (int i = 0; i < nLines; i++)
       if (LINES[i].est + wait <= k - 2 && (judged(&LINES[i]) & (LV_LIVES | LV_GAINS)) == (LV_LIVES | LV_GAINS)) return d;
   }
-  LineC *l = bestLiving(notLastSwap);
   if (!l) return d;
   lineLast = 2;
   BT->counts[C_KEPTHEALTH]++;
