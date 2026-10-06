@@ -1913,9 +1913,8 @@ static Dec waitForDrain(Dec d) {
 // decision needs; it PAYS if it matches more panels or converts more garbage
 // than the board left alone, and BREAKS if it converts more garbage.
 //
-// IT MUST NOT DIE: when the board left alone loses health within the
-// horizon, a choice that does not live as long as the line that lives longest
-// is replaced by that line.
+// IT MUST NOT DIE: a choice that does not live, while the time is short
+// (LIVEHORIZON), is replaced by a line that lives and pays -- breaking first.
 // BREAKING COMES FIRST: a line that breaks and lives is played over a choice
 // that does not break. A BREAK IS KEPT IN REACH: topped, a choice that leaves
 // no break within KEEPDEPTH swaps is replaced by a living, paying line that
@@ -1923,6 +1922,7 @@ static Dec waitForDrain(Dec d) {
 // line (BT->line) and plays its next step while the engine says it still
 // lives and still pays (breaks, for a break line) -- whatever chose it.
 #define KEEPDEPTH 3
+#define LIVEHORIZON 60
 #define LINEHORIZON 240
 #define NEXTMOVE 6
 #define MAXLINES 512
@@ -2840,9 +2840,9 @@ static Dec stayAlive(Dec d) {
   if (d.kind == K_SWAP && !d.hasMove) return d;
   if (lineLast == 1 || lineLast == 3) return d;   // a line played on, a break that lives
   // the engine, not the estimate, says whether the board is dying: health
-  // lost within the horizon its replays look, left alone
+  // lost within LIVEHORIZON frames, left alone
   linesReset();
-  if (!aloneOnEngine() || !LNA[0]) return d;
+  if (!aloneOnEngine() || !LNA[0] || LNA[0] > LIVEHORIZON) return d;
   double k = LNA[0];
   linesFind(2, 0);
   // NEVER DYING FIRST: the choice is kept only if it lives as long as the line that lives longest
@@ -2852,10 +2852,10 @@ static Dec stayAlive(Dec d) {
     LineC *mine = bestLineAvoid(LV_LIVES | LV_GAINS, LV_DROPS, fromChoice);
     if (mine && (!l || mine->die >= l->die)) { if (mine->n > 1) lineKeep(mine, LINE_CASH); return d; }
   } else {
-    // a hold lives while a line that lives as long as the longest can still be started after it
+    // a hold lives while a paying line can still be started after it
     double wait = BIN[IN_TOPPED] ? 2 : REACT;
     for (int i = 0; i < nLines; i++)
-      if (LINES[i].est + wait <= k - 2 && (judged(&LINES[i]) & (LV_LIVES | LV_GAINS)) == (LV_LIVES | LV_GAINS) && (!l || LINES[i].die >= l->die)) return d;
+      if (LINES[i].est + wait <= k - 2 && (judged(&LINES[i]) & (LV_LIVES | LV_GAINS)) == (LV_LIVES | LV_GAINS)) return d;
   }
   if (!l) return d;
   lineLast = 2;
