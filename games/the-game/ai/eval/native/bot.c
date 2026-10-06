@@ -2984,7 +2984,7 @@ static int maskBreaks(const int32_t *st, const int32_t *sw, int n);
 static void parallelDo(int count, void (*task)(int));
 // a lineup's readiness, once a decision: asked ahead in parallel (readyAhead), read here
 #define RAN 512
-typedef struct { int dec, n, v; int32_t sw[4]; } RAMemo;
+typedef struct { int dec, n, v; int32_t sw[6]; } RAMemo;
 static RAMemo RAM[RAN];
 // the decision's memos, touched before the game (frontWarm)
 static void botWarm(void) { __builtin_memset(JM, 0, sizeof JM); __builtin_memset(RAM, 0, sizeof RAM); __builtin_memset(BWK, 0, sizeof BWK); __builtin_memset(BWV, 0, sizeof BWV); }
@@ -3005,10 +3005,10 @@ static void raPut(const int32_t *sw, int n, int v) {
 }
 static int readyAfter(const int32_t *sw, int n) {
   int v;
-  if (n >= 1 && n <= 2 && raFind(sw, n, &v)) return v;
+  if (n >= 1 && n <= 3 && raFind(sw, n, &v)) return v;
   double t0 = NOWMS2(); v = readyAfterIn(sw, n); luReady++; luReadyMs += NOWMS2() - t0;
   extern int paBudgetOut(void);
-  if (n >= 1 && n <= 2 && !paBudgetOut()) raPut(sw, n, v);
+  if (n >= 1 && n <= 3 && !paBudgetOut()) raPut(sw, n, v);
   return v;
 }
 static int readyAfterIn(const int32_t *sw, int n) {
@@ -3046,6 +3046,12 @@ static int lineupNear(const int32_t *st, int r, int c) {
   land++;
   return r >= land - 2 && r <= land && c + 1 >= c0 - 1 && c <= c0 + w;
 }
+// THIRD SWAPS' READINESS, asked together: a batch of three-swap lineups'
+// replays to the landing run at once (in parallel natively), into the memo
+// lineupRank reads; LU3MAX of them a decision at most.
+#define LU3MAX 32
+static int32_t R3J[8][6]; static int r3n, r3v[8], lu3Asked;
+static void r3Task(int k) { r3v[k] = readyAfterIn(R3J[k], 3); }
 #define LUBEST 5   // a break that spends nothing
 #define LUBEAM 6   // second swaps taken on to a third
 // the rank of a lineup, asked only for ranks of at least `need`: a lineup
@@ -3078,7 +3084,7 @@ static int lineupRank(const int32_t *st, const int32_t *sw, int n, int need) {
   return rank ? rank + !spends : 0;
 }
 static Dec lineupFirst(Dec d) {
-  lineupLast = 0;
+  lineupLast = 0; lu3Asked = 0;
   // a lineup is for a board with time; topped, staying alive comes first
   if (lineLast || d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA] || BIN[IN_TOPPED]) return d;
   if (d.kind == K_SWAP && d.hasMove) {
@@ -3154,8 +3160,8 @@ static Dec lineupFirst(Dec d) {
       luRanks++; luRankMs += NOWMS2() - rk1;
       if (rank2) bestTake(&B, rank2, at2, sw, 2);
       // A THIRD SWAP, for a board two cannot line up: the nearest LUBEAM
-      // second swaps are taken on to the board the engine reaches after them,
-      // for a third that breaks the slab. Only while nothing is ready yet.
+      // second swaps are taken on to the board the engine reaches after them.
+      // Only while nothing is ready yet: a ready lineup in two is enough.
       if (rank2 >= 4 || (B.has && B.score >= 2) || p1 >= LUBEAM || outPast(&B, LUBEST, at2)) continue;
       int32_t st2[ST_INTS], cur2[2], t2, lg2[2 * 128];
       uint32_t can2[WMAX];
@@ -3164,18 +3170,36 @@ static Dec lineupFirst(Dec d) {
       luStates++;
       int n2 = legal(st2, lg2), k3;
       Out o2; double far2;
+      int32_t c3[8][6]; double a3[8]; int nc3 = 0;
       outBegin(&o2, lg2, 2, n2, cur2[0], cur2[1]);
-      while (outNext(&o2, &k3, &far2)) {
-        int r3 = lg2[2 * k3], c3 = lg2[2 * k3 + 1];
-        if (r3 > 31 || !(can2[c3] & (1u << (r3 - 1))) || !lineupNear(st2, r3, c3)) continue;
-        double at3 = t2 + dmax(far2, waits2[r3][c3]);
+      while (nc3 < 8 && outNext(&o2, &k3, &far2)) {
+        int r3 = lg2[2 * k3], c3c = lg2[2 * k3 + 1];
+        if (r3 > 31 || !(can2[c3c] & (1u << (r3 - 1))) || !lineupNear(st2, r3, c3c)) continue;
+        double at3 = t2 + dmax(far2, waits2[r3][c3c]);
         if (outPast(&B, LUBEST, at3)) break;
-        int32_t sw3[6] = { sw[0], sw[1], sw[2], sw[3], r3, c3 };
-        // three deep, only a lineup the masks show breaking is judged: readiness costs a replay each
-        if (!maskBreaks(st0, sw3, 3)) continue;
-        int rank3 = lineupRank(st0, sw3, 3, !B.has ? 0 : bestBeats(&B, B.score, at3, sw3, 3) ? (int)B.score : (int)B.score + 1);
+        int32_t sw3[6] = { sw[0], sw[1], sw[2], sw[3], r3, c3c };
+        for (int q = 0; q < 6; q++) c3[nc3][q] = sw3[q];
+        a3[nc3++] = at3;
+      }
+      // the ones whose masks show no break need their readiness: asked together, within LU3MAX
+      r3n = 0;
+      for (int q = 0; q < nc3 && lu3Asked < LU3MAX; q++) {
+        int vv;
+        if (raFind(c3[q], 3, &vv) || maskBreaks(st0, c3[q], 3)) continue;
+        for (int z = 0; z < 6; z++) R3J[r3n][z] = c3[q][z];
+        r3n++; lu3Asked++;
+      }
+      if (r3n) {
+        parallelDo(r3n, r3Task);
+        extern int paBudgetOut(void);
+        if (!paBudgetOut()) for (int q = 0; q < r3n; q++) raPut(R3J[q], 3, r3v[q]);
+      }
+      for (int q = 0; q < nc3; q++) {
+        int vv;
+        if (!maskBreaks(st0, c3[q], 3) && !raFind(c3[q], 3, &vv)) continue;   // not asked: past LU3MAX
+        int rank3 = lineupRank(st0, c3[q], 3, !B.has ? 0 : bestBeats(&B, B.score, a3[q], c3[q], 3) ? (int)B.score : (int)B.score + 1);
         luRanks++;
-        if (rank3) bestTake(&B, rank3, at3, sw3, 3);
+        if (rank3) bestTake(&B, rank3, a3[q], c3[q], 3);
         if (rank3 >= 2) break;
       }
     }
