@@ -1112,7 +1112,8 @@ static int frontFrame(int fid, Board *b) {
   int urgent = b->stopTime > 0 || toppedNow();
   if (F->cooldown > 0) {
     int lift = (urgent || (F->reveal && windowOpen())) && !swapLanding();
-    if (lift && toppedNow() && !(F->reveal && windowOpen()) && boardKey() == F->decidedOn && drainBound() > F->escapeWalk + 2) lift = 0;
+    // a line being played goes on to its next step as its replay does, the swap landed
+    if (lift && toppedNow() && !(F->reveal && windowOpen()) && boardKey() == F->decidedOn && drainBound() > F->escapeWalk + 2 && !BOTS[F->id].nLine) lift = 0;
     if (!lift) { F->cooldown--; return sent; }
     F->cooldown = 0;
   }

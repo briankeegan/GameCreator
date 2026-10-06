@@ -1799,9 +1799,12 @@ static double quietSettle(const int32_t *base, int r, int c, const int32_t *afte
   }
   return fell > 0 ? 11 + fell : 5;
 }
+static int lineLast;   // what the line rules last did (playOn below)
 static Dec waitForDrain(Dec d) {
   // Topped only: before the board tops, stayAlive keeps the time.
   if (!BIN[IN_TOPPED]) return d;
+  // a line played on lives by the engine's own replay, which this estimate does not override
+  if (lineLast == 1) return d;
   double k = BIN[IN_DRAINBOUND];
   int32_t *base = DBASE;
   int nc = 0;
