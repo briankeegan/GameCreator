@@ -1800,6 +1800,9 @@ static double quietSettle(const int32_t *base, int r, int c, const int32_t *afte
   return fell > 0 ? 11 + fell : 5;
 }
 static int lineLast;   // what the line rules last did (playOn below)
+enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8, LV_DROPS = 16, LV_FILLS = 32 };
+static int lineJudge(const int32_t *sw, int n, int waitAll);
+static JLOCAL int32_t LNO[12];
 static Dec waitForDrain(Dec d) {
   // Topped only: before the board tops, stayAlive keeps the time.
   if (!BIN[IN_TOPPED]) return d;
@@ -1850,6 +1853,8 @@ static Dec waitForDrain(Dec d) {
 #define HOLDAT(r, c) mkHold(V_AWAITDRAIN, d.mode, d.alive, 1, r, c)
   if (pr && pr->total > 0 && !pr->broke && picked->moveFrames + 1 <= k) {
     if (picked->moveFrames + 2 > k || !steady(picked->sr, picked->sc, k - 2)) return d;
+    // a clear that, played now, leaves a board that loses no health within the horizon is played, not held
+    { int32_t sw[2] = { picked->sr, picked->sc }; if ((lineJudge(sw, 1, 0) & LV_LIVES) && LNO[0] == 0) return d; }
     BT->counts[C_WAITEDFORDRAIN]++;
     return HOLDAT(picked->sr, picked->sc);
   }
@@ -1935,7 +1940,6 @@ int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_
 // later or not at all -- the only thing a clear that breaks nothing buys.
 // DROPS: more garbage at rest starts to fall than left alone. FILLS: less
 // hollow under the garbage that lands than left alone (pa.c HOLLOW).
-enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8, LV_DROPS = 16, LV_FILLS = 32 };
 
 typedef struct { int n, brk, ok, grown, waitAll, hollow, conv, die; int32_t sw[2 * LINEMAX]; double est; int verdict; } LineC;
 // a thread's lines: the decision's, or a grown subtree's on a worker (growAt)
