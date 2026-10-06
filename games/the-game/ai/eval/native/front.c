@@ -31,7 +31,7 @@ typedef struct {
   u64 decidedOn;
   int lastKind, lastVia, lastMoveR, lastMoveC;
   Settle settle;   // the board's cells, when each settles (unsettled), at the last decision
-  int wWaitTo, wFrames, wWaitAll, wR0;   // a walk: the frame its swap's panels settle (every panel's: wWaitAll), the frames it has taken
+  int wWaitTo, wFrames, wWaitAll;   // a walk: the frame its swap's panels settle (every panel's: wWaitAll), the frames it has taken
 } Front;
 #define MAXFRONTS 16
 static Front FRONTS[MAXFRONTS];
@@ -284,16 +284,6 @@ static int allWait(const Settle *S) {
   for (int r = 1; r < 32; r++) for (int c = 1; c <= W; c++) if (S->last[r][c] > m) m = S->last[r][c];
   return m;
 }
-// A PAIR STILL NOW IS PRESSED NOW: both its cells hold what they settle to,
-// and nothing reaches either before the swap (SWAPSPAN frames from `f`) is
-// done. Panels that pass through it later are not panels moving under it.
-#define SWAPSPAN 5
-static int pairFree(const Settle *S, int r, int c, int f) {
-  if (r < 1 || r > 31) return 0;
-  for (int k = c; k <= c + 1; k++)
-    if (!S->same[r][k] || (S->first[r][k] && f + SWAPSPAN >= S->first[r][k])) return 0;
-  return 1;
-}
 // The frame from which a pair is settled (both its cells).
 static int pairWait(const Settle *S, int r, int c) {
   if (r < 1 || r > 31) return 0;
@@ -444,7 +434,25 @@ static int stepToward(int *timer, int row, int col, int input) {
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 static void beginWalk(Front *F, int r, int c, int cooldown) {
   F->walk = 1; F->wRow = r; F->wCol = c; F->wTimer = 0; F->wCooldown = cooldown; F->wRetries = 0; F->wHasDisp = 0;
-  F->wWaitTo = pairWait(&F->settle, r, c); F->wFrames = 0; F->wWaitAll = 0; F->wR0 = r;
+  F->wWaitTo = pairWait(&F->settle, r, c); F->wFrames = 0; F->wWaitAll = 0;
+}
+// WHEN A SWAP IS PRESSED, decided by the board that frame alone, so a line
+// planned on any frame presses where the same line planned a frame later
+// does: the engine allows the swap, and both its cells are at rest -- a panel
+// standing, or empty with nothing falling or hovering into it. A wait-all
+// press waits for the whole board. Not pressable by PRESSWAIT frames past the
+// settle's estimate, it is not pressed.
+#define PRESSWAIT 60
+static int cellAtRest(Board *b, int r, int c) {
+  const int32_t *p = b->p[r][c].f;
+  if (p[COLOR] != 0) return p[STATE] == NORMAL;
+  if (r + 1 >= b->nrows) return 1;
+  int s = b->p[r + 1][c].f[STATE];
+  return s != FALLING && s != HOVERING;
+}
+static int pressable(Board *b, int r, int c, int all) {
+  if (all) return !nb_active(b) && !nb_falling_garbage(b) && nb_can_swap(b, r, c);
+  return nb_can_swap(b, r, c) && cellAtRest(b, r, c) && cellAtRest(b, r, c + 1);
 }
 static int driveWalk(Front *F, int input) {
   F->wFrames++;
@@ -455,8 +463,7 @@ static int driveWalk(Front *F, int input) {
     if (F->wTimer > 0) { F->wTimer--; return input; }
     return stepToward(&F->wTimer, row, col, input);
   }
-  // the swap's panels settle at a known frame: a walk that arrives first waits
-  if (F->wFrames < F->wWaitTo && (F->wWaitAll || !pairFree(&F->settle, F->wR0, col, F->wFrames))) {   // never pressed on panels still moving
+  if (!pressable(FB, FB->curRow, FB->curCol, F->wWaitAll) && F->wFrames <= F->wWaitTo + PRESSWAIT) {
     // a wait is not a plan: topped, or a reaction's worth of waiting, decide again
     if (!toppedNow() && F->wFrames % (F->reaction > 0 ? F->reaction : 12) != 0) return input;
     F->walk = 0; F->cooldown = 0;
@@ -541,7 +548,6 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   if (from) { step = from->n; walking = 0; held = from->held; cool = from->cool; last = from->last; dropped = from->dropped; f0 = from->f; }
   int snapSettle = from && from->hasSettle;
   int waitTo = n > 0 && LF ? (LWAITALL && n == 1 ? allWait(&LF->settle) : pairWait(&LF->settle, steps[0], steps[1])) : 0;
-  int fs = 0, r0 = tr;   // the frame the step's settle was taken, its row then
 #ifndef __wasm__
   if (botTraceOn && n == 1 && waitTo > 60 && LF) { extern int fprintf(void *, const char *, ...); extern void *stderr; int r = steps[0], c = steps[1];
     fprintf(stderr, "  WAIT %d,%d to %d | first %d,%d last %d,%d\n", r, c, waitTo, LF->settle.first[r][c], LF->settle.first[r][c + 1], LF->settle.last[r][c], LF->settle.last[r][c + 1]); }
@@ -567,7 +573,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
         walking = 1; tr = steps[2 * step]; tc = steps[2 * step + 1]; timer = 0; disp = b->displacement;
         { uint32_t still[W + 2];
           if (snapSettle && step == from->n) { LSET = from->settle; snapSettle = 0; } else unsettled(b, still, &LSET);
-          waitTo = f + (LWAITALL && step == n - 1 ? allWait(&LSET) : pairWait(&LSET, tr, tc)); fs = f; r0 = tr; }
+          waitTo = f + (LWAITALL && step == n - 1 ? allWait(&LSET) : pairWait(&LSET, tr, tc)); }
       }
     }
     if (walking) {
@@ -575,7 +581,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
       disp = b->displacement;
       int row = clampi(tr, 1, b->topCurRow), col = clampi(tc, 1, W - 1);
       if (b->curRow == row && b->curCol == col) {
-        if (f < waitTo && ((LWAITALL && step == n - 1) || !pairFree(step == 0 ? &LF->settle : &LSET, r0, col, f - fs))) { /* its panels settle at waitTo: never pressed on panels still moving */ }
+        if (!pressable(b, row, col, LWAITALL && step == n - 1) && f <= waitTo + PRESSWAIT) { /* not yet */ }
         else if (!nb_can_swap(b, row, col) || !nb_try_queue_swap(b, row, col)) {
 #ifndef __wasm__
           if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
