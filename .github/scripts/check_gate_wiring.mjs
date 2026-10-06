@@ -100,8 +100,7 @@ for (const name of readdirSync('.github/workflows')) {
 
 // A STEP POINTING AT A FILE THAT IS NOT THERE IS THE SAME FAILURE AGAIN.
 // `node games/x/deleted.test.js` exits 1 with "Cannot find module", which
-// reads as the suite failing rather than as the suite being gone. Four steps
-// in ai-checks.yml ran deleted files at once after a cull.
+// reads as the suite failing rather than as the suite being gone.
 //
 // REPO-ROOTED PATHS ONLY. A bare name is resolved against whatever directory
 // the step is standing in (a `cd`, a `working-directory:`), which is not
@@ -148,10 +147,9 @@ for (const name of readdirSync('.github/scripts')) {
 // A GATE ON A WORKFLOW THAT NEVER CONCLUDES CANNOT FAIL EITHER.
 //
 // pages.yml calls gate functions one step at a time; it does NOT call gate_all. So
-// a gate added to GATES alone runs nowhere on a push. And ai-checks.yml cancels in
-// progress on every push while its slow-gates job takes hours, so a gate reachable
-// only through SLOW_GATES reports nothing: 99 consecutive runs of it concluded
-// `cancelled`, and `cancelled` turns nothing red.
+// a gate added to GATES alone runs nowhere on a push. A push-triggered workflow
+// that cancels in progress never lets an hours-long job conclude, and `cancelled`
+// turns nothing red, so SLOW_GATES run nightly in ai-slow-gates.yml.
 //
 // Unambiguous, so it fails: a gate in GATES that pages.yml does not name and
 // SLOW_GATES does not list runs in no workflow at all. The slow ones are printed
@@ -169,8 +167,8 @@ for (const name of readdirSync('.github/scripts')) {
   const pages = readFileSync('.github/workflows/pages.yml', 'utf8');
   const named = new Set([...pages.matchAll(/\bgate_[a-z0-9_]+/g)].map((m) => m[0]));
 
-  // A GATE'S SCRIPT MAY BE RUN WITHOUT NAMING THE GATE. ai-checks.yml's evaluator
-  // job invokes several test files directly (`node .../features.test.js`) rather
+  // A GATE'S SCRIPT MAY BE RUN WITHOUT NAMING THE GATE. The training workflows'
+  // pre-flight invokes test files directly (`node .../features.test.js`) rather
   // than through the gate function, and that is a real verdict. So the question is
   // whether the WORK runs, not whether the name appears.
   const bodyOf = (g) => {
@@ -186,14 +184,10 @@ for (const name of readdirSync('.github/scripts')) {
     return files.length > 0 && files.some((f) => wf.includes(f));
   };
 
-  // A RATCHET, NOT A CLIFF. What is left unwired is the panel-game skip list: ten
-  // gates that read Puzzles.json or the training dir out of a second repository,
-  // kept off the deploy path so an outage there cannot block every game's deploy.
-  // Failing on them would do exactly what pages.yml's own header says not to do,
-  // so the count is recorded and only an increase fails -- no NEW gate may join
-  // the unwired set, and the set is printed on every run rather than being
-  // invisible.
-  const UNWIRED_BASELINE = 9;
+  // NONE MAY RUN NOWHERE. The panel-game skip list stays off the deploy path, so
+  // an outage in that second repository cannot block every game's deploy, and
+  // runs nightly through gate_panel_game. Any other gate in no workflow fails.
+  const UNWIRED_BASELINE = 0;
   // gate_fast runs every non-slow gate that pages.yml does not name, so its
   // presence there covers all of them bar the panel-game skip list.
   const fastWired = /\bgate_fast\b/.test(pages);
@@ -201,22 +195,23 @@ for (const name of readdirSync('.github/scripts')) {
     [...(gates.match(/PANEL_GAME_GATES=\(([\s\S]*?)\n\)/) || [, ''])[1]
       .matchAll(/\bgate_[a-z0-9_]+/g)].map((m) => m[0]),
   );
+  // gate_panel_game, where a workflow calls it, runs the panel-game skip list.
+  const panelWired = /\bgate_panel_game\b/.test(wf);
   const nowhere = all.filter((g) => !named.has(g) && !slow.has(g) && !runsSomewhere(g)
-    && !(fastWired && !skipped.has(g)));
+    && !(fastWired && !skipped.has(g)) && !(panelWired && skipped.has(g)));
   if (nowhere.length) {
     console.log(`Gates that run in NO workflow on a push (${nowhere.length}, baseline `
       + `${UNWIRED_BASELINE}). pages.yml names gates one per step and does not call `
       + 'gate_all, so being in GATES is not enough:');
     for (const g of nowhere) console.log(`  - ${g}`);
-    console.log('  These need the panel-game checkout; gate_all runs them where it exists.');
   }
   if (nowhere.length > UNWIRED_BASELINE) {
     problems.push(`${nowhere.length} gates run in no workflow on a push, up from a `
       + `recorded ${UNWIRED_BASELINE}. A gate added to GATES alone runs nowhere: name it `
-      + 'in pages.yml, add it to SLOW_GATES, or wire gate_fast in. If the increase is '
-      + 'deliberate, move the baseline in this file and say why.');
+      + 'in pages.yml, add it to SLOW_GATES, or wire gate_fast in.');
   }
-  const slowOnly = all.filter((g) => slow.has(g) && !named.has(g) && !runsSomewhere(g));
+  const slowOnly = all.filter((g) => (slow.has(g) || (panelWired && skipped.has(g)))
+    && !named.has(g) && !runsSomewhere(g));
   if (slowOnly.length) {
     console.log(`Gates with no verdict on a push (${slowOnly.length}), run nightly by `
       + 'ai-slow-gates.yml because they are too slow to finish between pushes:');

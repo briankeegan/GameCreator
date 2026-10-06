@@ -289,6 +289,27 @@ gate_bitnative() {
   node games/the-game/ai/eval/bitnative.test.js
 }
 
+# What a board can fire next move, size by size (modes.REACH).
+gate_reach() {
+  node games/the-game/ai/eval/reach.test.js
+}
+
+# The bot's cursor walks one cell a step and its travel is priced in frames.
+gate_cursor() {
+  node games/the-game/ai/eval/walk.test.js &&
+  node games/the-game/ai/eval/travel.test.js
+}
+
+# The LOVE RNG and panel generator give the real engine's own test vectors.
+gate_love_rng() {
+  node games/the-game/ai/experiments/love_rng.test.js
+}
+
+# The session hook that resumes a training run.
+gate_resume_hook() {
+  bash .claude/hooks/resume-training.test.sh
+}
+
 # THE TRAINING PRE-FLIGHT SUITES, WHICH gate_all DID NOT RUN.
 #
 # ai-train.yml runs five suites before it spends five hours -- features,
@@ -456,8 +477,8 @@ gate_character_spec_provenance() {
 # gate_* function above, one entry below) and both callers pick it up: a
 # gate added to only one caller only protects that caller.
 # SLOW GATES RUN IN CI, NOT IN THE PUSH HOOK. The hook sets GC_DEFER_SLOW=1
-# and gate_all skips these, printing each as DEFERRED; ai-checks.yml runs
-# gate_slow on every push that touches the AI, after the push. The list is
+# and gate_all skips these, printing each as DEFERRED; ai-slow-gates.yml runs
+# gate_slow nightly. The list is
 # measured, not guessed: each took over SLOW_SECONDS seconds on its own
 # (times beside them, 4 cores, 2026-09-28). gate_all prints its slowest
 # gates at the end of every run; move one here when it crosses the line.
@@ -522,6 +543,10 @@ GATES=(
   "a switch means the same thing everywhere:gate_flags:games/the-game/ai/"
   "the server's engine, in JS and in C, is the server's:gate_server_engine:games/"
   "BitBot's C search gives the JS search's answers:gate_bitnative:games/the-game/ai/"
+  "what a board can fire next move:gate_reach:games/the-game/ai/"
+  "the cursor walks and its travel is priced:gate_cursor:games/the-game/"
+  "the LOVE RNG matches the real engine:gate_love_rng:games/the-game/ai/"
+  "the training-resume hook:gate_resume_hook:.claude/"
   "two variants on one seed keep separate islands:gate_pbt_dirs:games/the-game/ai/"
   "the puyo brain:gate_puyo_cpu:games/the-game/ai/"
   "the training harness:gate_training_harness:games/the-game/ai/"
@@ -658,6 +683,16 @@ PANEL_GAME_GATES=(
   gate_chain_measure gate_versus_loop gate_chaining gate_opponent
   gate_features gate_normalise
 )
+# PANEL_GAME_GATES, run nightly by ai-slow-gates.yml beside a panel-game checkout.
+gate_panel_game() {
+  local overall=0 g
+  for g in "${PANEL_GAME_GATES[@]}"; do
+    echo "=== PANEL-GAME GATE: $g ==="
+    _gate_exec "$g" || { overall=1; echo "FAILED: $g"; }
+  done
+  return $overall
+}
+
 _gate_needs_panel_game() {
   local g
   for g in "${PANEL_GAME_GATES[@]}"; do [ "$g" = "$1" ] && return 0; done
@@ -738,7 +773,7 @@ gate_all() {
     fi
 
     if [ "${GC_DEFER_SLOW:-}" = "1" ] && _gate_is_slow "$fn"; then
-      echo "=== GATE: $name === DEFERRED to CI (slow; ai-checks.yml runs it after the push)"
+      echo "=== GATE: $name === DEFERRED to CI (slow; ai-slow-gates.yml runs it nightly)"
       skipped="${skipped}  ${name} (deferred to CI)"$'\n'
       continue
     fi

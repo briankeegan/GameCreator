@@ -1,16 +1,11 @@
 # THE GATES TOO SLOW TO FINISH BETWEEN PUSHES.
 #
 # SLOW_GATES in gates.sh — each measured over SLOW_SECONDS; the longest play
-# whole duels and take over an hour. On a push
-# trigger they reported nothing: ai-checks.yml cancels in progress so a newer
-# commit can supersede an older one, and a job that takes hours never survives
-# to a conclusion. `cancelled` is not a failure, so nothing went red.
-#
-# A schedule is the fix rather than dropping the cancellation: runner use stays
-# bounded at one run a night instead of one per push, and the run is never
-# racing a newer commit, so it concludes. The trade is that a break is caught
-# within a day rather than on the push that caused it — which is a day sooner
-# than the alternative these gates were actually getting.
+# whole duels and take over an hour. A push-triggered workflow that cancels in
+# progress never lets a job that long reach a conclusion, and `cancelled` turns
+# nothing red. On a schedule the run is never racing a newer commit, so it
+# concludes; a break is caught within a day rather than on the push that caused
+# it.
 name: AI slow gates
 
 on:
@@ -32,8 +27,24 @@ jobs:
     timeout-minutes: 330
     steps:
       - uses: actions/checkout@v4
+      # The real attack files and puzzles, which the slow gates and
+      # PANEL_GAME_GATES read; without them they fail on setup, not on the code.
+      - uses: actions/checkout@v4
+        with:
+          repository: briankeegan/panel-game
+          path: panel-game
+          fetch-depth: 1
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - name: Slow gates
+        env:
+          GC_TRAINING_DIR: ${{ github.workspace }}/panel-game/client/assets/default_data/training
+          GC_PANEL_GAME: ${{ github.workspace }}/panel-game
         run: source .github/scripts/gates.sh && gate_slow
+      - name: Gates that need panel-game
+        if: success() || failure()
+        env:
+          GC_TRAINING_DIR: ${{ github.workspace }}/panel-game/client/assets/default_data/training
+          GC_PANEL_GAME: ${{ github.workspace }}/panel-game
+        run: source .github/scripts/gates.sh && gate_panel_game

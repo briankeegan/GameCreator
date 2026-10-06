@@ -10,13 +10,14 @@ let fails=0; const ok=(n,c,x)=>{console.log((c?'  ok  ':'  FAIL')+'  '+n+(x===un
  const br=await chromium.launch();
  const pg=await (await br.newContext({viewport:{width:900,height:700}})).newPage();
  pg.on('pageerror',e=>{console.log('  PAGE ERROR',e.message);fails++;});
+ // a save past the intro, so the game is running when the test starts
  await pg.goto(`http://127.0.0.1:${PORT}/games/the-game/index.html`);
- await pg.waitForFunction(()=>!!window.__newseyDebug);
- await pg.click('#titleStart'); await pg.waitForTimeout(300);
+ await pg.waitForFunction(()=>!!window.NewseySaves);
+ await pg.evaluate(()=>{ const s=NewseySaves.blank(); s.introSeen=true; s.room='lounge'; NewseySaves.write(1,s); });
+ await pg.reload(); await pg.waitForFunction(()=>!!window.__newseyDebug);
+ await pg.click('#titleStart'); await pg.waitForTimeout(150);
  await pg.locator('.file-slot').first().click(); await pg.waitForTimeout(400);
- for(let i=0;i<40;i++) await pg.click('#cutscene',{force:true}).catch(()=>{});
- await pg.waitForTimeout(700);
- for(let i=0;i<12;i++){ await pg.keyboard.press('z'); await pg.waitForTimeout(50); }
+ if(!(await pg.evaluate(()=>__newseyDebug.running()))) { console.log('  FAIL  the game did not start; nothing below would be a verdict'); process.exit(1); }
  const room=()=>pg.evaluate(()=>__newseyDebug.room());
  const walk=async(key,ms)=>{ await pg.keyboard.down(key); await pg.waitForTimeout(ms); await pg.keyboard.up(key); await pg.waitForTimeout(1800); };
 

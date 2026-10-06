@@ -95,12 +95,14 @@ test('a test run does not touch the tracked checkpoint', function () {
     // commit_snapshot.sh so a runner can resume — on every single run. The
     // checkout came back dirty every time, and a run resuming from that file
     // would have resumed into a two-generation test population.
+    // A finished search deletes its checkpoint, so what is left to see is the
+    // directory: checkpointPath() creates GC_CHECKPOINT_DIR, and nothing else does.
+    fs.rmSync(SCRATCH, { recursive: true, force: true });
+    RUN = null;
     run();
-    var written = fs.existsSync(SCRATCH) ? fs.readdirSync(SCRATCH)
-        .filter(function (f) { return /^\.train-checkpoint\./.test(f); }) : [];
-    assert.ok(written.length > 0,
-        'GC_CHECKPOINT_DIR did not move the checkpoint — nothing landed in ' +
-        path.basename(SCRATCH) + ', so the run wrote it beside train.js instead');
+    assert.ok(fs.existsSync(SCRATCH),
+        'GC_CHECKPOINT_DIR did not move the checkpoint — the run never created ' +
+        path.basename(SCRATCH) + ', so it wrote the checkpoint beside train.js instead');
 
     var st = cp.spawnSync('git', ['status', '--porcelain', '--', '.train-checkpoint.*'],
         { cwd: __dirname, encoding: 'utf8' });
