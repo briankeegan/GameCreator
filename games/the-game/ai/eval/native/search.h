@@ -825,8 +825,17 @@ static void runTask(int32_t i) {
   if (r >= 0) dropBoard(x, r);
   PUT(t[3], r);
 }
+// OUT OF TIME (abort_poll 2) in a level loop's first phase (cutOK): the
+// searching thread takes no more of its tasks, nor does any other, and the
+// loop ends as if its budget ran out (cutHit). A task not run leaves its
+// slot as it was.
+static int cutOK, cutHit;
 static void runTasks(void) {
-  for (int32_t n = pool.ntasks;;) {
+  for (int32_t n = pool.ntasks, polled = 0;;) {
+    if (cutOK && thId == 0 && ++polled >= 16) {
+      polled = 0;
+      if (abort_poll() == 2) { cutHit = 1; __atomic_store_n(&pool.next, n, __ATOMIC_SEQ_CST); break; }
+    }
     int32_t i = __atomic_fetch_add(&pool.next, 1, __ATOMIC_SEQ_CST);
     if (i >= n) break;
     runTask(i);
@@ -1031,7 +1040,11 @@ EXPORT(ns_loop) int ns_loop(Ctx *x, int budget, int until, int full, int beam, i
           for (j = 0; j < 4; j++) if (!vpush(&tasks, t[j])) return LOOP_FAIL;
         }
         longestFirst(x, &tasks);
-        if (!runPhase(x, &tasks, res.a)) return LOOP_FAIL;
+        cutOK = 1; cutHit = 0;
+        int ran = runPhase(x, &tasks, res.a);
+        cutOK = 0;
+        if (!ran) return LOOP_FAIL;
+        if (cutHit) budget = 0;
         tasks.n = 0;
         for (i = 0; i < x->ntags; i++) proven.a[i] = verdict[i];
         int32_t cum = 0;
@@ -1076,7 +1089,7 @@ EXPORT(ns_loop) int ns_loop(Ctx *x, int budget, int until, int full, int beam, i
         if (verdict[tag]) { NODE(x, ni)->live = 0; release(x, ni); continue; }
         for (j = 0; j < nm && budget > 0; j++) {
           budget--;
-          if (++polled >= 64) { polled = 0; int ap = abort_poll(); if (ap == 1) LEAVE(LOOP_ABORTED); if (ap == 2) budget = 0; }
+          if (++polled >= 64) { polled = 0; int ap = abort_poll(); if (ap == 1) LEAVE(LOOP_ABORTED); if (ap == 2) { budget = 0; if (async) __atomic_store_n(&pool.next, pool.ntasks, __ATOMIC_SEQ_CST); break; } }
           int32_t mv = x->moves.a[o + j];
           int c = async ? awaitSlot(&res.a[o + j]) : res.a[o + j];
           if (c == NOTRUN)
