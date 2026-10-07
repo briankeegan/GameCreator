@@ -1124,9 +1124,10 @@ static int raiseMode(const int32_t *base, int poolBreak) {
   BT->wantRows = rows;
   if (BT->opening && (BIN[IN_INCOMING] || !fits)) BT->opening = 0;
   if (!fits) return 0;
-  // READY BEFORE IT RAISES: with garbage to come, the risen board must have
-  // the break ready for the slab that lands on it
-  if (BIN[IN_INCOMING] > 0 && !(risenMasks(base, RZ) && slabReadyHook(RZ))) return 0;
+  // READY BEFORE IT RAISES: with garbage to come, a raise may not cost the
+  // break ready for the slab that lands -- the risen board keeps it. A board
+  // with none ready loses nothing by rising, and gains the material to build one.
+  if (BIN[IN_INCOMING] > 0 && !(risenMasks(base, RZ) && slabReadyHook(RZ)) && slabReadyHook(base)) return 0;
   if (!BT->opening && materialRows(base) >= 6) return 0;
   int stillComing = BIN[IN_INCOMING] > 0 || BIN[IN_FALLING];
   if (poolBreak && !stillComing) return 0;
