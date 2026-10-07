@@ -4115,6 +4115,51 @@ static Dec readyWhenLands(Dec d) {
     tried++;
     if (readyInTime(l->sw, l->n, &r, &c)) { lineKeep(l, LINE_PLAN); lineLast = 8; return lineSwap(l, V_LINEUP, d); }
   }
+  // A CLEAR, THEN A STEP: a line ends at its first clear, so a board made
+  // ready by a step on what a clear leaves is never proposed above. Each
+  // clear of the pool, nearest first, is played on the engine; on the board
+  // it settles to, the swaps that clear nothing and leave the slab a break one
+  // swap away (slabReadyHook, on the masks) are the second steps, nearest the
+  // cursor first, and the engine says whether the slab lands with the break
+  // in reach (readyInTime)
+  if (spare) {
+    static ST RCS, RC1; static int32_t RCR[R_INTS + ST_INTS], RCL[2 * 128];
+    int32_t cl[2 * MAXCAND]; int cn = 0;
+    for (int k = 0; k < nPool && cn < MAXCAND; k++) {
+      Cand *cd = &POOL[k];
+      if (cd->kind != K_SWAP || cd->res.broke || !(cd->res.total > 0)) continue;
+      cl[2 * cn] = cd->sr; cl[2 * cn + 1] = cd->sc; cn++;
+    }
+    Out oc; double farc; int qc;
+    outBegin(&oc, cl, 2, cn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
+    for (tried = 0; tried < READYTRIES && outNext(&oc, &qc, &farc);) {
+      int32_t l2[4] = { cl[2 * qc], cl[2 * qc + 1], 0, 0 }, cur[2], t;
+      uint32_t can[WMAX]; uint8_t wt[32][WMAX];
+      if (lineState(l2, 1, RC1, can, wt, cur, &t) != 0) continue;
+      int nl = legal(RC1, RCL), nr = 0;
+      for (int i = 0; i < nl; i++) {
+        stcpy(RCS, RC1);
+        if (!swapIn(RCS, RCL[2 * i], RCL[2 * i + 1])) continue;
+        resolve(RCS, RCR, 1);
+        if (RCR[R_SCOPE] != SC_OK || RCR[R_TOTAL] > 0 || !slabReadyHook(RCR + R_INTS)) continue;
+        RCL[2 * nr] = RCL[2 * i]; RCL[2 * nr + 1] = RCL[2 * i + 1]; nr++;
+      }
+      Out os; double fars; int qs;
+      outBegin(&os, RCL, 2, nr, cur[0], cur[1]);
+      while (tried < READYTRIES && outNext(&os, &qs, &fars)) {
+        l2[2] = RCL[2 * qs]; l2[3] = RCL[2 * qs + 1];
+        tried++;
+        if (!(lineJudge(l2, 2, 0) & LV_LIVES) || (LNO[0] ? LNO[0] : 1 << 20) < dieRef) continue;
+        if (readyInTime(l2, 2, &r, &c)) {
+#ifndef __wasm__
+          if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "READYAFTER %d,%d then %d,%d: break %d,%d\n", l2[0], l2[1], l2[2], l2[3], r, c); }
+#endif
+          lineSet(l2, 2, LINE_PLAN, 0); lineLast = 8;
+          return mkSwap(l2[0], l2[1], V_LINEUP, d.mode, d.alive);
+        }
+      }
+    }
+  }
   // NOR TWO: the time to the landing is what bounds the setup, not a count of
   // swaps. The breaks by distance are found on the board as the slab lands
   // on it; a walk whose steps but the last are played now, before it lands,
