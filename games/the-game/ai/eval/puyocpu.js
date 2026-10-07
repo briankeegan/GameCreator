@@ -2346,6 +2346,21 @@
     }
     var settled = S.settleMany(steps, 0);
     for (i = 0; i < at.length; i++) got[at[i]] = settled[i];
+    // A SETTLE THAT DIES IDLE IS NOT A MOVE THAT DIES. The settle plays no key
+    // till the board is quiet, and a break keeps it busy for hundreds of
+    // frames: topped out, the board lives while anything moves and dies the
+    // frame it stops, so the move that buys the most life was the one judged
+    // dead. Such a move is settled again to the frame before that death; the
+    // survival search plays the move's own step and judges it.
+    var redo = [], ri = [];
+    for (i = 0; i < at.length; i++) {
+      var dn = settled[i], room = dn && dn.dead ? dn.t - steps[i][0].t - 1 : 0;
+      if (room >= 2) { redo.push([steps[i][0], 'settle', steps[i][1], room]); ri.push(at[i]); }
+    }
+    if (redo.length) {
+      var again = S.advanceMany(redo);
+      for (i = 0; i < ri.length; i++) if (again[i] && !again[i].dead) got[ri[i]] = again[i];
+    }
     for (i = 0; i < cands.length; i++) {
       var n = got[i];
       cands[i].natNode = n && !n.dead ? n : null;
