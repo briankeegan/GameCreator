@@ -3082,19 +3082,26 @@ static Dec stayAlive(Dec d) {
 }
 // IT NEVER CHOOSES TO DIE: a decision that is not what stayAlive chose, and
 // loses health sooner than it (the engine judges it: the line it plays, or the
-// board left alone for a hold), gives way to stayAlive's choice and its line
+// board left alone for a hold), gives way to stayAlive's choice and its line.
+// The judge stops pressing where the line ends, so a decision READY for the
+// slab -- its break in reach the frame the slab lands (readyInTime, on the
+// engine) -- is a line with that break still to press: it gives way only to a
+// choice ready too.
 static Dec surviveGuard(Dec d) {
   if (!saSet) return d;
   if (d.kind == saDec.kind && d.hasMove == saDec.hasMove && d.sr == saDec.sr && d.sc == saDec.sc) return d;
-  int die;
+  int die, ready = 0, r, c;
   if (d.kind == K_SWAP && d.hasMove) {
     int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
     int32_t sw[2] = { d.sr, d.sc };
     int v = playsLine ? lineJudge(BT->line, BT->nLine, BT->lineWaitAll) : lineJudge(sw, 1, 0);
     die = !(v & LV_LIVES) ? 0 : LNO[0] ? LNO[0] : 1 << 20;
+    if (die < saDie && (v & LV_LIVES) && BIN[IN_INCOMING] > 0)
+      ready = playsLine ? readyInTime(BT->line, BT->nLine, &r, &c) : readyInTime(sw, 1, &r, &c);
   } else if (d.kind == K_HOLD) die = aloneOnEngine() && LNA[0] ? LNA[0] : 1 << 20;
   else return d;   // a raise: raiseMode's own rules
   if (die >= saDie) return d;
+  if (ready && !(saDec.kind == K_SWAP && saDec.hasMove && (saN ? readyInTime(saLine, saN, &r, &c) : readyInTime((int32_t[2]){ saDec.sr, saDec.sc }, 1, &r, &c)))) return d;
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "GUARD via %d %d,%d dies %d before %d: stayAlive's %d,%d\n", d.via, d.sr, d.sc, die, saDie, saDec.sr, saDec.sc); }
 #endif
