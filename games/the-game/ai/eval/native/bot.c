@@ -22,7 +22,7 @@ enum { M_BUILD, M_DEFEND, M_ATTACK };
 // the line a bot plays (Bot.line): what it is for, and the most steps it holds
 enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
 #define LINEMAX 8
-#define LNOLEN 13
+#define LNOLEN 14
 int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);   // the engine judge's out: [0] die ... [11] end board hash, [12] panels it ends with
 #define WORKBUDGET 55000   // GC_WORK_ONLY: the budget in units of work
 // THE OPTIONAL SEARCHES' BUDGET IN WORK: BUDGETMS at the slow twentieth of
@@ -3940,6 +3940,10 @@ static int spendsLeaveSix(void) { return (double)LNO[12] / BW >= 6; }   // the p
 static int readyAfterSpend(const int32_t *sw, int n);
 static int nonSpendLives(void);
 int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);
+// THE HOLLOW A FILL FILLS: the gaps under garbage the line leaves (LNO[10])
+// and the gaps the slabs to come would leave over its towers (LNO[13]). A
+// tower lowered also lets a pile perched on it down onto panels it can break on.
+#define HOLLOW(a) ((a)[10] + (a)[13])
 static Dec fillFirstIn(Dec d) {
   if (d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
   if (lineLast == 1 || lineLast == 3) return BT->lineKind == LINE_BREAK || lineLast == 3 ? fillBeforeBreak(d) : d;
@@ -3948,18 +3952,18 @@ static Dec fillFirstIn(Dec d) {
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; aloneOnEngine(); fprintf(stderr, "FILL? alone hollow %d last %d via %d\n", LNA[10], lineLast, d.via); }
 #endif
-  if (!aloneOnEngine() || LNA[10] == 0) return d;
-  int best = LNA[10];
+  if (!aloneOnEngine() || HOLLOW(LNA) == 0) return d;
+  int best = HOLLOW(LNA);
   // A FILL IS A MEANS TO A BREAK, so it may not cost one: if the choice
   // breaks in time a fill must too; if not, a fill leaves at least as much
   // time between its break and its loss of health
   double need = marginAfter(0, 0, LNA[0]);
   fillUrgent = LNA[0] && need < 0;
-  double ref = fillScore(LNA[0], LNA[10]);   // what a fill must beat: the board left alone, and the choice
+  double ref = fillScore(LNA[0], HOLLOW(LNA));   // what a fill must beat: the board left alone, and the choice
   int refDie = LNA[0] ? LNA[0] : 1 << 20;   // the later loss of health of the two
   if (d.kind == K_SWAP && d.hasMove) {
     int32_t sw[2] = { d.sr, d.sc };
-    if (lineJudge(sw, 1, 0) & LV_LIVES) { best = LNO[10] < best ? LNO[10] : best; if ((LNO[0] ? LNO[0] : 1 << 20) > refDie) refDie = LNO[0] ? LNO[0] : 1 << 20; double cs = fillScore(LNO[0], LNO[10]); double m = marginAfter(sw, 1, LNO[0]); if (fillUrgent && m >= 0) cs += BREAKS_IN_TIME; if (cs > ref) ref = cs; if (m > need) need = m; }
+    if (lineJudge(sw, 1, 0) & LV_LIVES) { best = HOLLOW(LNO) < best ? HOLLOW(LNO) : best; if ((LNO[0] ? LNO[0] : 1 << 20) > refDie) refDie = LNO[0] ? LNO[0] : 1 << 20; double cs = fillScore(LNO[0], HOLLOW(LNO)); double m = marginAfter(sw, 1, LNO[0]); if (fillUrgent && m >= 0) cs += BREAKS_IN_TIME; if (cs > ref) ref = cs; if (m > need) need = m; }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  choice %d,%d die %d last %d hollow %d | alone die %d | break after choice %g alone %g\n", d.sr, d.sc, LNO[0], LNO[1], LNO[10], LNA[0], breakTime(sw, 1), breakTime(0, 0)); }
 #endif
@@ -3991,7 +3995,7 @@ static Dec fillFirstIn(Dec d) {
     int spend = (v & LV_PAYS) && !spendsLeaveSix();
     if (!(v & LV_LIVES) || (spend && !LIVES_LONGER()) || LNO[1] >= tLand) continue;
     int pdie = LNO[0];
-    double sc = fillScoreOf(sw, 1, pdie, LNO[10]);
+    double sc = fillScoreOf(sw, 1, pdie, HOLLOW(LNO));
     if (P.has ? !bestBeats(&P, sc, pc->moveFrames, sw, 1) : sc <= ref) continue;
     if (!fillKeeps(marginWithin(sw, 1, pdie, need), need)) continue;
     if (spend && !readyAfterSpend(sw, 1) && nonSpendLives()) continue;   // a move that spends nothing lives: a spend must leave a break ready
@@ -4051,7 +4055,7 @@ static Dec fillFirstIn(Dec d) {
       double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
       // a walk must beat the pool's best; among walks, the same order (time: its estimate)
       int wdie = LNO[0];
-      double sc = fillScoreOf(fsw, n, wdie, LNO[10]);
+      double sc = fillScoreOf(fsw, n, wdie, HOLLOW(LNO));
       if (W.has ? !bestBeats(&W, sc, est, fsw, n) : sc <= ref) continue;
       if (!fillKeeps(marginWithin(fsw, n, wdie, need), need)) continue;
       if (spend && !readyAfterSpend(fsw, n) && nonSpendLives()) continue;
@@ -4102,7 +4106,7 @@ static Dec fillFirstIn(Dec d) {
 #endif
         double beat = W.has && W.score > ref ? W.score : ref;
         // a line kept is played to its end: it must end before the next slab lands
-        int32_t tNext; ST lum; int last = LNO[1], vv = v, die = LNO[0], hol = LNO[10];
+        int32_t tNext; ST lum; int last = LNO[1], vv = v, die = LNO[0], hol = HOLLOW(LNO);
         int inTime = lineLanded(0, 0, lum, &tNext) == 0 && last < tNext;
         if (inTime && (vv & LV_LIVES) && !(vv & LV_PAYS) && fillScoreOf(sw, n, die, hol) > beat && fillKeeps(marginWithin(sw, n, die, need), need)) {
           for (int k = 0; k < 2 * n; k++) BT->line[k] = sw[k];
@@ -4116,6 +4120,7 @@ static Dec fillFirstIn(Dec d) {
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "FILL! best %.0f walk %d,%d pool %d,%d\n", W.has ? W.score : ref, first[0], first[1], pick ? pick->sr : 0, pick ? pick->sc : 0); }
 #endif
 #undef LIVES_LONGER
+#undef HOLLOW
   if (first[0]) return mkSwap(first[0], first[1], V_FILL, d.mode, d.alive);
   if (!pick) return d;
   return mkSwap(pick->sr, pick->sc, V_FILL, d.mode, d.alive);

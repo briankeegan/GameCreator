@@ -561,7 +561,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   if (botTraceOn && n == 1 && waitTo > 60 && LF) { extern int fprintf(void *, const char *, ...); extern void *stderr; int r = steps[0], c = steps[1];
     fprintf(stderr, "  WAIT %d,%d to %d | first %d,%d last %d,%d\n", r, c, waitTo, LF->settle.first[r][c], LF->settle.first[r][c + 1], LF->settle.last[r][c], LF->settle.last[r][c + 1]); }
 #endif
-  out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = 0;
+  out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = out[13] = 0;
   { extern int paBudgetOut(void); if (paBudgetOut()) return -1; }   // past the decision's budget: not played
   for (f = f0; f < horizon; f++) {
     { extern int paBudgetOut(void); if (paBudgetOut()) return -1; }   // past the budget mid-line: not played
@@ -639,6 +639,22 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
       const int32_t *g = b->p[r][c].f;
       if (g[COLOR] && !g[ISGARBAGE] && g[STATE] != MATCHED && g[STATE] != POPPING && g[STATE] != POPPED) out[12]++;
     }
+  // the hollow the slabs to come would leave on it: a slab four wide rests on
+  // the tallest column under it, and the slabs come over every four columns in
+  // turn -- each window's gap under its tallest column, summed
+  { int h[WMAX + 2];
+    for (int c = 1; c <= W; c++) {
+      h[c] = 0;
+      for (int r = b->nrows - 1; r >= 1 && !h[c]; r--) {
+        const int32_t *g = b->p[r][c].f;
+        if (g[COLOR] && g[STATE] != FALLING && g[STATE] != MATCHED && g[STATE] != POPPING && g[STATE] != POPPED) h[c] = r;
+      }
+    }
+    for (int w = 1; w + 3 <= W; w++) {
+      int top = 0;
+      for (int c = w; c < w + 4; c++) if (h[c] > top) top = h[c];
+      for (int c = w; c < w + 4; c++) out[13] += top - h[c];
+    } }
   out[4] = out[1] < 0 ? 0 : (out[0] ? out[0] : horizon) - out[1];
   return 0;
 }
