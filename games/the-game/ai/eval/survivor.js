@@ -502,6 +502,7 @@ function overStats(match) {
 var server = net.createServer(function (sock) {
   var buf = '', match = null;
   sock.setNoDelay(true);
+  sock.setEncoding('utf8');   // lines arrive as strings: no buffer made per read
   sock.on('error', function (e) { console.log('link: ' + e.message); });
   sock.on('close', function () { if (TIMES && TIMES.length) { require('fs').appendFileSync(process.env.GC_SURVIVOR_TIMES, TIMES.join('\n') + '\n'); TIMES.length = 0; } if (match) { console.log('match over: ' + overStats(match)); match.dump(); } match = null; });
   function pump() {
