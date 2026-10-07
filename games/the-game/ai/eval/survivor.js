@@ -193,8 +193,9 @@ Match.prototype.predict = function (board, at, hold, from) {
 // The same on the engine (native/pa.c). A frame the plan has nothing for is
 // HANDS.idle's: a raise still held goes on as search.h raiseStep plays it.
 var NB = null;
+function nativeNow() { if (!NB) { NB = require(path.join(__dirname, 'native.js')).server; NB.init(); } return NB; }
 Match.prototype.predictNative = function (board, at, hold, from) {
-  if (!NB) { NB = require(path.join(__dirname, 'native.js')).server; NB.init(); }
+  if (!NB) nativeNow();
   var X = NB.exports(), h = { left: hold.left, started: hold.started }, arrivals = SH.pending(from || this.arrivals), b = NB.fromStack(board);
   for (var clock = board.clock; clock < at && X.nb_over_clock(b) <= 0; clock = X.nb_clock(b)) {
     var planned = this.plan[clock], bits = 0;
@@ -517,6 +518,7 @@ var server = net.createServer(function (sock) {
       if (m.t === 'match') {
         if (match) { console.log('match over: ' + overStats(match)); match.dump(); }
         match = new Match({ levelData: m.levelData, behaviours: m.behaviours, stackOverConditions: m.stackOverConditions });
+        nativeNow();   // the engine compiled in the countdown, not on the first frame that predicts
         if (global.gc) global.gc();   // in the countdown: no frame is waiting on it
         reply = { ok: true };
       } else if (m.t === 'f') {
