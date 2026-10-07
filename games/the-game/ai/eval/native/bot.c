@@ -3006,8 +3006,9 @@ static LineC *bestBreak(void) {
   bbReady = !ask || pickReady;
   return pick;
 }
+static int blReady, blAlone;
 static LineC *bestLiving(int (*ok)(const LineC *)) {
-  static unsigned char taken[MAXLINES];
+  static unsigned char taken[MAXLINES]; int pickRdy = 0;
   const int need = LV_LIVES | LV_GAINS;
   LineC *pick = 0;
   for (int i = 0; i < nLines; i++) taken[i] = ok && !ok(&LINES[i]);
@@ -3024,7 +3025,12 @@ static LineC *bestLiving(int (*ok)(const LineC *)) {
     judgeAhead(l, taken, 0);
     if ((judged(l) & need) != need) continue;
     found++;
-    if (!pick || l->die > pick->die || (l->die == pick->die && l->hollow < pick->hollow)) pick = l;
+    // READY FIRST, WHEN ASKED (stayAlive): a line that outlives the board left
+    // alone and leaves a break in reach when the next slab lands is preferred
+    // to one that only dies later -- the slab it is ready for is what kills
+    int rdy = 0, r, c;
+    if (blReady && BIN[IN_INCOMING] > 0 && (!blAlone || l->die > blAlone)) rdy = readyInTime(l->sw, l->n, &r, &c);
+    if (!pick || rdy > pickRdy || (rdy == pickRdy && (l->die > pick->die || (l->die == pick->die && l->hollow < pick->hollow)))) { pick = l; pickRdy = rdy; }
   }
   return pick;
 }
@@ -3172,7 +3178,9 @@ static Dec stayAlive(Dec d) {
   if (!aloneOnEngine() || !LNA[0] || LNA[0] > LIVEHORIZON) return lineLast == 1 ? saKeep(d, playDie) : d;
   linesFind(2, 0);
   // NEVER DYING FIRST: the choice is kept only if it lives as long as the line that lives longest
+  blReady = 1; blAlone = LNA[0];
   LineC *l = bestLiving(notLastSwap);
+  blReady = 0;
   if (lineLast == 1) {
     if (!l || l->die <= playDie) return saKeep(d, playDie);
 #ifndef __wasm__
