@@ -3125,6 +3125,31 @@ static Dec stayAlive(Dec d) {
   if (l->n > 1) lineKeep(l, l->brk ? LINE_BREAK : LINE_CASH); else BT->nLine = 0;
   return saKeep(lineSwap(l, V_KEEPHEALTH, d), l->die);
 }
+// NO DIGGING UNDER A PILE: a clear that breaks nothing and leaves more hollow
+// under the garbage than the board left alone (HOLLOW: the gaps under it and
+// the level the slabs to come land on) takes the panels a break of that pile
+// needs from under it -- whatever the material, since what a pile touches,
+// not what the board holds, is what breaks it. It gives way to the hold,
+// unless it loses health later than the hold does: that is survival's, and
+// surviveGuard, after this, weighs it.
+static Dec perchGuard(Dec d) {
+  if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA] || !hasGarbage(DBASE)) return d;
+  if (lineLast == 3 || endsInBreak(d)) return d;
+  Cand *pc = poolSwap(d.sr, d.sc);
+  if (pc && pc->res.broke) return d;
+  int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
+  int32_t sw[2] = { d.sr, d.sc };
+  int v = playsLine ? lineJudge(BT->line, BT->nLine, BT->lineWaitAll) : lineJudge(sw, 1, 0);
+  if (!(v & LV_LIVES) || !(v & LV_PAYS) || (v & LV_BREAKS)) return d;
+  int h = HOLLOW(LNO), die = LNO[0];
+  if (!aloneOnEngine() || h <= HOLLOW(LNA)) return d;
+  if (LNA[0] && (!die || die > LNA[0])) return d;
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "PERCH via %d %d,%d hollow %d over the hold's %d\n", d.via, d.sr, d.sc, h, HOLLOW(LNA)); }
+#endif
+  BT->nLine = 0; lineLast = 0;
+  return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
+}
 // IT NEVER CHOOSES TO DIE: a decision that is not what stayAlive chose, and
 // loses health sooner than it (the engine judges it: the line it plays, or the
 // board left alone for a hold), gives way to stayAlive's choice and its line.
@@ -4798,6 +4823,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     if (l->n > 1) lineKeep(l, LINE_BREAK); else BT->nLine = 0;
     d = lineSwap(l, V_BREAKREACH, d);
   }
+  d = perchGuard(d);
   d = setupTwos(d);
   d = surviveGuard(d);
   cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
