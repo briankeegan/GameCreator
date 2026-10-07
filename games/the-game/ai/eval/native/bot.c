@@ -2906,6 +2906,7 @@ __attribute__((export_name("bot_keepbreak"))) int32_t bot_keepbreak(void) { retu
 // A LINE ONCE PLAYED IS PLAYED TO ITS END.
 static int readyAfterSpend(const int32_t *sw, int n);
 static int aloneOnEngine(void);
+static int nonSpendLives(void);
 static int spendsLeaveSixP(void) { return (double)LNO[12] / BW >= 6; }   // the panels the line ends with, as rows
 static Dec playOn(Dec d) {
   lineLast = 0;
@@ -2924,8 +2925,7 @@ static Dec playOn(Dec d) {
   // board left alone dies, when stop time is what it buys
   if (BT->lineKind == LINE_PLAN && (v & LV_PAYS) && !(v & LV_BREAKS) && !spendsLeaveSixP()) {
     int32_t keepO[LNOLEN]; for (int q = 0; q < LNOLEN; q++) keepO[q] = LNO[q];
-    int aloneDies = aloneOnEngine() && LNA[0];
-    int ok = aloneDies || readyAfterSpend(BT->line, BT->nLine);
+    int ok = readyAfterSpend(BT->line, BT->nLine) || !nonSpendLives();
     for (int q = 0; q < LNOLEN; q++) LNO[q] = keepO[q];
     if (!ok) { BT->nLine = 0; return d; }
   }
@@ -3872,6 +3872,7 @@ static double fillScoreOf(const int32_t *sw, int n, int die, int hollow) {
 // a clear judged (LNO) leaves six rows of material, read off the line's own matches
 static int spendsLeaveSix(void) { return (double)LNO[12] / BW >= 6; }   // the panels the line ends with, as rows
 static int readyAfterSpend(const int32_t *sw, int n);
+static int nonSpendLives(void);
 int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);
 static Dec fillFirstIn(Dec d) {
   if (d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
@@ -3926,7 +3927,7 @@ static Dec fillFirstIn(Dec d) {
     double sc = fillScoreOf(sw, 1, pdie, LNO[10]);
     if (P.has ? !bestBeats(&P, sc, pc->moveFrames, sw, 1) : sc <= ref) continue;
     if (!fillKeeps(marginWithin(sw, 1, pdie, need), need)) continue;
-    if (spend && refDie >= (1 << 20) && !readyAfterSpend(sw, 1)) continue;   // nothing dies: a spend must leave a break ready
+    if (spend && !readyAfterSpend(sw, 1) && nonSpendLives()) continue;   // a move that spends nothing lives: a spend must leave a break ready
     bestTake(&P, sc, pc->moveFrames, sw, 1); pick = pc;
   }
   if (P.has) ref = P.score;
@@ -3986,7 +3987,7 @@ static Dec fillFirstIn(Dec d) {
       double sc = fillScoreOf(fsw, n, wdie, LNO[10]);
       if (W.has ? !bestBeats(&W, sc, est, fsw, n) : sc <= ref) continue;
       if (!fillKeeps(marginWithin(fsw, n, wdie, need), need)) continue;
-      if (spend && refDie >= (1 << 20) && !readyAfterSpend(fsw, n)) continue;
+      if (spend && !readyAfterSpend(fsw, n) && nonSpendLives()) continue;
       bestTake(&W, sc, est, fsw, n); first[0] = fsw[0]; first[1] = fsw[1];
     }
   }
@@ -4069,6 +4070,28 @@ static int readyAfterSpend(const int32_t *sw, int n) {
   for (int k = 0; k < LNOLEN; k++) LNO[k] = keep[k];
   return ok;
 }
+// A MOVE THAT LIVES WITHOUT SPENDING: a swap of the pool that clears nothing,
+// nearest first, that the engine says lives. When one does, spending under
+// six rows buys nothing that moving does not.
+static int nonSpendLives(void) {
+  int32_t keepO[LNOLEN]; for (int k = 0; k < LNOLEN; k++) keepO[k] = LNO[k];
+  int32_t pl[2 * MAXCAND]; int pn = 0, q, found = 0, tried = 0;
+  for (int k = 0; k < nPool && pn < MAXCAND; k++) {
+    Cand *cd = &POOL[k];
+    if (cd->kind != K_SWAP || cd->res.total > 0 || cd->res.broke) continue;
+    pl[2 * pn] = cd->sr; pl[2 * pn + 1] = cd->sc; pn++;
+  }
+  Out o; double far;
+  outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
+  while (!found && tried < READYTRIES && outNext(&o, &q, &far)) {
+    int32_t s2[2] = { pl[2 * q], pl[2 * q + 1] };
+    tried++;
+    int v = lineJudge(s2, 1, 0);
+    if ((v & LV_LIVES) && !(v & LV_PAYS) && !LNO[0]) found = 1;
+  }
+  for (int k = 0; k < LNOLEN; k++) LNO[k] = keepO[k];
+  return found;
+}
 static Dec meanwhile(Dec d) {
   if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA]) return d;
   int32_t ln[2 * LINEMAX]; int n = 0, kind = LINE_PLAN, waitAll = 0;
@@ -4087,7 +4110,7 @@ static Dec meanwhile(Dec d) {
   // living longer by keeping the board busy is a stall: the queue lands after
   // it all the same, so under six rows the clear must leave a break ready for it
   // -- unless the line it goes before dies: then stop time is what buys the time to find the break
-#define SPENDS_OK(sw, n) ((double)LNO[12] / BW >= 6 || (urgent && (LNO[0] ? LNO[0] : 1 << 20) > die0Of && (die0 || readyAfterSpend(sw, n))))
+#define SPENDS_OK(sw, n) ((double)LNO[12] / BW >= 6 || (urgent && (LNO[0] ? LNO[0] : 1 << 20) > die0Of && (readyAfterSpend(sw, n) || !nonSpendLives())))
   for (int q = 0; q < nPool && tried < MEANWHILES; q++) {
     Cand *k = &POOL[q];
     if (k->kind != K_SWAP || !(k->res.total > 0) || k->res.broke || (k->sr == d.sr && k->sc == d.sc) || k->moveFrames + REACT > last0) continue;
