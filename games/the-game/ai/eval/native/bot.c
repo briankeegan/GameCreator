@@ -3221,23 +3221,31 @@ static Dec lineupFirst(Dec d) {
 // under what lands, so the frames bought are spent getting ready. A swap must
 // live as long as the choice, and spends no panels under six rows.
 #define READYTRIES 8
+// ROOM FOR WHAT A BREAK MAKES: broken, the garbage on the board and the next
+// slab turn into panels; ready needs the board to hold them and the slab after
+static int roomForBreak(const int32_t *st) {
+  int g = 0;
+  for (int c = 1; c <= BW; c++) g += popc(U(st, GARB + c));
+  return materialRows(st) + (g + BIN[IN_NEXTSLAB]) / BW + 1 <= BH;
+}
 static Dec readyOrDelay(Dec d) {
   if (d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA] || BIN[IN_TOPPED]) return d;
   if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;   // a break being played
   int32_t sw[2] = { d.sr, d.sc }, t0 = 0, t;
   ST lum;
-  int dieRef = 0;
+  int dieRef = 0, room = roomForBreak(DBASE);
   if (d.kind == K_SWAP && d.hasMove) {
     Cand *pc = poolSwap(d.sr, d.sc);
-    if ((pc && pc->res.broke) || endsInBreak(d) || readyAfter(sw, 1)) return d;
+    if ((pc && pc->res.broke) || endsInBreak(d) || (room && readyAfter(sw, 1))) return d;
     if (lineLanded(sw, 1, lum, &t0) != 0) t0 = 0;
     if (lineJudge(sw, 1, 0) & LV_LIVES) dieRef = LNO[0] ? LNO[0] : 1 << 20;
   } else {
-    if (readyAfter(0, 0)) return d;
+    if (room && readyAfter(0, 0)) return d;
     if (lineLanded(0, 0, lum, &t0) != 0) t0 = 0;
     if (aloneOnEngine()) dieRef = LNA[0] ? LNA[0] : 1 << 20;
   }
-  int spare = materialRows(DBASE) >= 6, br = 0, bc = 0, tried = 0, bh = 1 << 30;
+  // with no room, panels are spent: of the swaps that put the landing off, the most cleared
+  int spare = materialRows(DBASE) >= 6 || !room, br = 0, bc = 0, tried = 0, bh = 1 << 30;
   int32_t bt = t0;
   int32_t pl[2 * MAXCAND]; int pn = 0, q;
   for (int k = 0; k < nPool && pn < MAXCAND; k++) {
@@ -3251,13 +3259,13 @@ static Dec readyOrDelay(Dec d) {
     int32_t s2[2] = { pl[2 * q], pl[2 * q + 1] };
     if (!(lineJudge(s2, 1, 0) & LV_LIVES)) continue;
     if ((LNO[0] ? LNO[0] : 1 << 20) < dieRef) continue;
-    int h = LNO[10];
+    int h = room ? LNO[10] : -(LNO[3] - LNA[3]);
     tried++;
-    if (readyAfter(s2, 1)) { BT->nLine = 0; lineLast = 8; return mkSwap(s2[0], s2[1], V_LINEUP, d.mode, d.alive); }
+    if (room && readyAfter(s2, 1)) { BT->nLine = 0; lineLast = 8; return mkSwap(s2[0], s2[1], V_LINEUP, d.mode, d.alive); }
     if (lineLanded(s2, 1, lum, &t) == 0 && t > t0 && (h < bh || (h == bh && t > bt))) { bt = t; bh = h; br = s2[0]; bc = s2[1]; }
   }
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "READYORDELAY lands %d | tried %d delay %d,%d lands %d\n", t0, tried, br, bc, bt); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "READYORDELAY room %d lands %d | tried %d delay %d,%d lands %d\n", room, t0, tried, br, bc, bt); }
 #endif
   if (!br) return d;
   BT->nLine = 0; lineLast = 8;
