@@ -1800,6 +1800,9 @@ static double quietSettle(const int32_t *base, int r, int c, const int32_t *afte
   return fell > 0 ? 11 + fell : 5;
 }
 static int lineLast;   // what the line rules last did (playOn below)
+enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8, LV_DROPS = 16, LV_FILLS = 32 };
+static int lineJudge(const int32_t *sw, int n, int waitAll);
+static JLOCAL int32_t LNO[12];
 static Dec waitForDrain(Dec d) {
   // Topped only: before the board tops, stayAlive keeps the time.
   if (!BIN[IN_TOPPED]) return d;
@@ -1850,6 +1853,8 @@ static Dec waitForDrain(Dec d) {
 #define HOLDAT(r, c) mkHold(V_AWAITDRAIN, d.mode, d.alive, 1, r, c)
   if (pr && pr->total > 0 && !pr->broke && picked->moveFrames + 1 <= k) {
     if (picked->moveFrames + 2 > k || !steady(picked->sr, picked->sc, k - 2)) return d;
+    // a clear that, played now, leaves a board that loses no health within the horizon is played, not held
+    { int32_t sw[2] = { picked->sr, picked->sc }; if ((lineJudge(sw, 1, 0) & LV_LIVES) && LNO[0] == 0) return d; }
     BT->counts[C_WAITEDFORDRAIN]++;
     return HOLDAT(picked->sr, picked->sc);
   }
@@ -1935,7 +1940,6 @@ int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_
 // later or not at all -- the only thing a clear that breaks nothing buys.
 // DROPS: more garbage at rest starts to fall than left alone. FILLS: less
 // hollow under the garbage that lands than left alone (pa.c HOLLOW).
-enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8, LV_DROPS = 16, LV_FILLS = 32 };
 
 typedef struct { int n, brk, ok, grown, waitAll, hollow, conv, die; int32_t sw[2 * LINEMAX]; double est; int verdict; } LineC;
 // a thread's lines: the decision's, or a grown subtree's on a worker (growAt)
@@ -3079,8 +3083,9 @@ static int lineupRank(const int32_t *st, const int32_t *sw, int n, int need) {
 }
 static Dec lineupFirst(Dec d) {
   lineupLast = 0;
-  // a lineup is for a board with time; topped, staying alive comes first
-  if (lineLast || d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA] || BIN[IN_TOPPED]) return d;
+  // a lineup is for a board with time: topped with death in sight, staying alive comes first
+  if (lineLast || d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA]) return d;
+  if (BIN[IN_TOPPED] && (!aloneOnEngine() || (LNA[0] && LNA[0] <= LIVEHORIZON))) return d;
   if (d.kind == K_SWAP && d.hasMove) {
     Cand *pc = poolSwap(d.sr, d.sc);
     if ((pc && pc->res.broke) || endsInBreak(d)) return d;
@@ -3120,6 +3125,7 @@ static Dec lineupFirst(Dec d) {
     luRanks++; luRankMs += NOWMS2() - rk0;
     if (rank) bestTake(&B, rank, at, sw, 1);
     if (rank >= 4 || outPast(&B, LUBEST, at)) continue;   // a second swap comes later still
+    if (BIN[IN_TOPPED]) continue;   // topped, one swap: the decision's frame is already the fullest
     // a second swap, on the board the engine reaches after the first
     int32_t st1[ST_INTS], cur1[2], t1, lg1[2 * 128];
     uint32_t can1[WMAX];
