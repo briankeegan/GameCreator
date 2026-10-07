@@ -3463,6 +3463,12 @@ static Dec fillFirst(Dec d) {
 #endif
   return r;
 }
+// the panel a fill walks in column c: its highest. Garbage over it does not
+// hide it: walked out from under a perched slab, it lets the slab down.
+static int walkTop(int c) {
+  for (int k = tH; k >= 1; k--) if (tCell[k][c] > 0) return k;
+  return 0;
+}
 static Dec fillFirstIn(Dec d) {
   if (d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
   if (lineLast == 1 || lineLast == 3) return BT->lineKind == LINE_BREAK || lineLast == 3 ? fillBeforeBreak(d) : d;
@@ -3521,9 +3527,8 @@ static Dec fillFirstIn(Dec d) {
   // every walk judged together first (natively in parallel), then taken in order
   { static LineC wl[2 * (WMAX + 1)]; LineC *wp[2 * (WMAX + 1)]; int nw = 0;
     for (int c = 1; c <= tW; c++) {
-      int r = 0;
-      for (int k = tH; k >= 1 && !r; k--) if (tCell[k][c] != 0) r = k;
-      if (r < 1 || tCell[r][c] <= 0) continue;
+      int r = walkTop(c);
+      if (!r) continue;
       for (int dir = -1; dir <= 1; dir += 2) {
         int n = 0, at = c;
         while (n < LINEMAX) {
@@ -3538,9 +3543,8 @@ static Dec fillFirstIn(Dec d) {
     }
     prejudgeLines(wp, nw); }
   for (int c = 1; c <= tW; c++) {
-    int r = 0;
-    for (int k = tH; k >= 1 && !r; k--) if (tCell[k][c] != 0) r = k;
-    if (r < 1 || tCell[r][c] <= 0) continue;
+    int r = walkTop(c);
+    if (!r) continue;
     for (int dir = -1; dir <= 1; dir += 2) {
       int n = 0, at = c;
       while (n < LINEMAX) {
