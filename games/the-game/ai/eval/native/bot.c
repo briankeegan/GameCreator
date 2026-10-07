@@ -3546,12 +3546,31 @@ static Dec noStall(Dec d) {
   // over six rows the material is there to spend: shaping the board and
   // buying time with it is the six-row rule's to allow
   if ((double)LNO[12] / BW >= 6) return d;
-  // and a board not ready for the next slab needs the time: a quiet board
-  // takes the whole queue, a slab dropping as the last lands, and only a break
-  // as the first lands makes the board busy again -- so the clear buys the
-  // stop in which the break is found, pile on the board or none.
-  { int32_t k[LNOLEN]; for (int q = 0; q < LNOLEN; q++) k[q] = LNO[q]; int r, c, rdy = readyInTime(0, 0, &r, &c); for (int q = 0; q < LNOLEN; q++) LNO[q] = k[q]; if (!rdy) return d; }
+  // and a pile not yet broken with a board not ready for the next slab needs
+  // the time: the next slab would only stack on it, so the clear buys the
+  // stop in which the break is found. With nothing on the board the slab
+  // lands: a clear there spends material only broken garbage replaces.
+  if (hasGarbage(DBASE)) { int32_t k[LNOLEN]; for (int q = 0; q < LNOLEN; q++) k[q] = LNO[q]; int r, c, rdy = readyInTime(0, 0, &r, &c); for (int q = 0; q < LNOLEN; q++) LNO[q] = k[q]; if (!rdy) return d; }
   BT->nLine = 0;
+  // THE WAIT IS NOT IDLE: the swap nearest the cursor, of those that clear
+  // nothing, live as long as the board left alone and leave the slab less
+  // hollow to land on, is played while the landing is awaited
+  { int32_t pl[2 * MAXCAND]; int pn = 0, q, tried = 0, br = 0, bc = 0, hb = HOLLOW(LNA);
+    for (int k = 0; k < nPool && pn < MAXCAND; k++) {
+      Cand *cd = &POOL[k];
+      if (cd->kind != K_SWAP || cd->res.total > 0 || cd->res.broke) continue;
+      pl[2 * pn] = cd->sr; pl[2 * pn + 1] = cd->sc; pn++;
+    }
+    Out o; double far;
+    outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
+    while (tried < MEANWHILES && outNext(&o, &q, &far)) {
+      int32_t s2[2] = { pl[2 * q], pl[2 * q + 1] };
+      tried++;
+      int v2 = lineJudge(s2, 1, 0);
+      if (!(v2 & LV_LIVES) || (v2 & LV_PAYS) || (LNA[0] ? (LNO[0] && LNO[0] < LNA[0]) : LNO[0] != 0) || HOLLOW(LNO) >= hb) continue;
+      hb = HOLLOW(LNO); br = s2[0]; bc = s2[1];
+    }
+    if (br) return mkSwap(br, bc, V_FILL, d.mode, d.alive); }
   return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
 }
 static Dec readyWhenLands(Dec d) {
