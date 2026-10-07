@@ -4577,7 +4577,9 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     extern PATLS double paWork;
     int at = snprintf(lastStages, sizeof lastStages, "decision %d, work %.0f, judges declined %d:", btDecision, paWork - rdW0, budgetRefused);
     for (int i = 0; i < k && i < 8 && at < (int)sizeof lastStages; i++)
-      at += snprintf(lastStages + at, sizeof lastStages - at, " %s %.1f/%d", nm[i], ts[i] - (i ? ts[i - 1] : t0), js[i] - (i ? js[i - 1] : 0)); }
+      at += snprintf(lastStages + at, sizeof lastStages - at, " %s %.1f/%d", nm[i], ts[i] - (i ? ts[i - 1] : t0), js[i] - (i ? js[i - 1] : 0));
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;   // every decision's work, by stage, in the bot log
+      fprintf(stderr, "WORKS"); for (int i = 0; i < k && i < 8; i++) fprintf(stderr, " %s %.0f", nm[i], ws[i] - (i ? ws[i - 1] : w0)); fprintf(stderr, " | total %.0f, declined %d\n", paWork - rdW0, budgetRefused); } }
 #endif
   // the most the stages after breakFirst (and after lineup) have taken lately:
   // each decision's own, or the last most less a hundredth a decision -- one
