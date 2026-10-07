@@ -193,7 +193,7 @@ static int nextRelease(void) { int u = NEVER; for (int i = 0; i < nHolds; i++) i
 static int resolveT(const int32_t *st, int32_t *r, int wantSettled, const Timed *tm);
 static void resolveM(const int32_t *st, int32_t *r, int wantSettled);
 extern PATLS double paWork;
-extern double paWorkEnd;
+extern PATLS double paWorkEnd;
 int paBudgetOut(void);
 // past the decision's budget a resolve is refused: what it would find is not looked for
 static void resolve(const int32_t *st, int32_t *r, int wantSettled) {
