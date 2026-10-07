@@ -3620,32 +3620,40 @@ static void traceMasks(const int32_t *st) {
   }
 }
 #endif
+// READY ACROSS THE DUMP: on a quiet board the queue drops slab after slab,
+// each once the one before it has landed, until a break makes the board busy
+// -- so a break pressed as ANY of them lands stops the dump, and every slab
+// down gives the break more garbage to touch. The k-th landing is asked in
+// turn (lineLandedK) until one has a break in reach or the dump tops the board.
+int lineLandedK(const int32_t *steps, int n, int k, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t);
 static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc) {
   uint32_t can[WMAX]; uint8_t wt[32][WMAX]; int32_t cur[2], t;
-  if (lineLandedFull(sw, n, RBL, can, wt, cur, &t) != 0) return 0;
-  // a slab that tops the board out as it lands leaves no time for the break:
-  // topped with no stop, the board dies the next frame
-  if (tallestBoard(RBL) >= BH) return 0;
-  int last = 0;
-  if (n) { lineJudge(sw, n, 0); last = LNO[1] > 0 ? LNO[1] : 0; }
-  double avail = t - last;
-  int m = legal(RBL, RBSW), found = 0; double best = INF;
-  for (int i = 0; i < m; i++) {
-    int r = RBSW[2 * i], c = RBSW[2 * i + 1];
-    double cost = travelCost(cur[0], cur[1], r, c);
-    if (cost > avail || cost >= best) continue;
-    stcpy(RBS, RBL);
-    if (!swapIn(RBS, r, c)) continue;
-    resolve(RBS, RBR, 1);
-    if (RBR[R_SCOPE] == SC_BROKE) { best = cost; *br = r; *bc = c; found = 1; }
-  }
+  int last = -1, found = 0;
+  for (int k = 1; !found; k++) {
+    if (lineLandedK(sw, n, k, RBL, can, wt, cur, &t) != 0) return 0;
+    // a slab that tops the board out as it lands leaves no time for the break:
+    // topped with no stop, the board dies the next frame
+    if (tallestBoard(RBL) >= BH) return 0;
+    if (last < 0) { last = 0; if (n) { int32_t keep[LNOLEN]; for (int q = 0; q < LNOLEN; q++) keep[q] = LNO[q]; lineJudge(sw, n, 0); last = LNO[1] > 0 ? LNO[1] : 0; for (int q = 0; q < LNOLEN; q++) LNO[q] = keep[q]; } }
+    double avail = t - last;
+    int m = legal(RBL, RBSW); double best = INF;
+    for (int i = 0; i < m; i++) {
+      int r = RBSW[2 * i], c = RBSW[2 * i + 1];
+      double cost = travelCost(cur[0], cur[1], r, c);
+      if (cost > avail || cost >= best) continue;
+      stcpy(RBS, RBL);
+      if (!swapIn(RBS, r, c)) continue;
+      resolve(RBS, RBR, 1);
+      if (RBR[R_SCOPE] == SC_BROKE) { best = cost; *br = r; *bc = c; found = 1; }
+    }
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
-    fprintf(stderr, "  LANDS after");
-    for (int k = 0; k < n; k++) fprintf(stderr, " %d,%d", sw[2 * k], sw[2 * k + 1]);
-    fprintf(stderr, " at %d, cursor %d,%d, break %d,%d |", t, cur[0], cur[1], found ? *br : 0, found ? *bc : 0);
-    traceMasks(RBL); fprintf(stderr, "\n"); }
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
+      fprintf(stderr, "  LANDS after");
+      for (int q = 0; q < n; q++) fprintf(stderr, " %d,%d", sw[2 * q], sw[2 * q + 1]);
+      fprintf(stderr, " slab %d at %d, cursor %d,%d, break %d,%d |", k, t, cur[0], cur[1], found ? *br : 0, found ? *bc : 0);
+      traceMasks(RBL); fprintf(stderr, "\n"); }
 #endif
+  }
   return found;
 }
 // A PILE LET DOWN IS GARBAGE ARRIVING. A swap that sets garbage at rest

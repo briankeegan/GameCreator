@@ -546,6 +546,9 @@ static void snapKeep(const int32_t *sw, int n, Board *b, int f, int cool, int he
   for (int k = 0; k < 2 * n; k++) s->sw[k] = sw[k];
   if (snapTo < 0) s->dec = btDecision;   // a worker's is stamped by the main thread
 }
+// how many slabs a landing replay waits for (lineLandedK): the queue drops
+// slab after slab on a quiet board, each once the one before it has landed
+static JLOCAL int landK = 1;
 static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, int32_t *out) {
   if (!LNB) LNB = nb_new();
   Snap *from = 0;
@@ -578,8 +581,8 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   for (f = f0; f < horizon || (stopAtNext == 0 && f < horizon + UNSETTLEMOST && (b->nActive > 0 || nb_falling_garbage(b) || b->shakeTime > 0 || (b->stopTime > 0 && nb_topped(b)))); f++) {
     { extern int paBudgetOut(void); if (paBudgetOut()) return -1; }   // past the budget mid-line: not played
     int input = 0;
-    // stopAtNext 2: on until the next slab has dropped and landed
-    if (stopAtNext == 2 && step == n && !walking && b->garbageCreatedCount > dropped && !nb_falling_garbage(b)) {
+    // stopAtNext 2: on until the next landK slabs have dropped and landed
+    if (stopAtNext == 2 && step == n && !walking && b->garbageCreatedCount >= dropped + landK && !nb_falling_garbage(b)) {
       out[1] = last; out[8] = f; return 1;
     }
     if (!walking && (step < n || stopAtNext == 1)) {
@@ -854,7 +857,9 @@ static int lineStateAt(const int32_t *steps, int n, int landing, int32_t *masks,
 static int lineStateRun(const int32_t *steps, int n, int landing, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
   int32_t out[LNOLEN];
   snapLast = 0;
+  landK = landing > 0 ? landing : 1;
   int rc = n > 0 || landing ? linePlay(steps, n, 400, landing ? 2 : 1, out) : (nb_copy(LNB ? LNB : (LNB = nb_new()), paLibBoard()), out[0] = 0, out[8] = 0, 1);
+  landK = 1;
   if (rc != 1 || out[0]) return -1;
   // the next step targets settled panels: the board once it has settled, each
   // pair with the frame (from now) its panels settle
@@ -1102,6 +1107,10 @@ int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_
 // until the next slab has dropped and landed, then settled.
 int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
   return lineStateAt(steps, n, 1, masks, can, wait, cur, t);
+}
+// THE BOARD THE K-TH SLAB LANDS ON: as lineLandedFull, k slabs of the queue down
+int lineLandedK(const int32_t *steps, int n, int k, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
+  return lineStateAt(steps, n, k, masks, can, wait, cur, t);
 }
 int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t) {
   uint32_t can[WMAX]; uint8_t wait[32][WMAX]; int32_t cur[2];
