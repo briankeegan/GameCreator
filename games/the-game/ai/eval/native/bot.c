@@ -1826,6 +1826,7 @@ static double clearBack(Cand *pc) {
   }
   return back;
 }
+static int breakWithin(const int32_t *st, int depth);
 static Dec waitForDrain(Dec d) {
   // Topped only: before the board tops, stayAlive keeps the time.
   if (!BIN[IN_TOPPED]) return d;
@@ -1878,10 +1879,11 @@ static Dec waitForDrain(Dec d) {
     if (picked->moveFrames + 2 > k || !steady(picked->sr, picked->sc, k - 2)) return d;
     // a clear that, played now, leaves a board that loses no health within the horizon is played, not held
     { int32_t sw[2] = { picked->sr, picked->sc }; if ((lineJudge(sw, 1, 0) & LV_LIVES) && LNO[0] == 0) return d; }
-    // the stop does not run while panels clear: a clear played with another
-    // still in reach after it costs no time and lowers the board -- only the
-    // last one is held
-    if (picked->moveFrames + quietSettle(base, picked->sr, picked->sc, picked->masks) + clearBack(picked) + 1 <= k) return d;
+    // A CLEAR SETS THE STOP, IT DOES NOT ADD TO IT: played with k frames of
+    // stop left, those k are lost. So a clear is held to the drain -- unless
+    // the board after it has a break now or after one more move, which ends
+    // the wait it would buy.
+    if (breakWithin(picked->masks, 2)) return d;
     BT->counts[C_WAITEDFORDRAIN]++;
     return HOLDAT(picked->sr, picked->sc);
   }
@@ -3386,10 +3388,32 @@ static Dec dropReady(Dec d) {
   }
   return d;
 }
+// NO ROOM FOR A BREAK: the panels a break makes would top the board out, so
+// before the next slab is readied there must be room for it. Material is
+// spent then: a choice that clears less than the living clear that clears
+// most, and dies no sooner, gives way to it.
+static Dec makeRoom(Dec d) {
+  if (d.kind == K_SWAP && d.hasMove) { Cand *pc = poolSwap(d.sr, d.sc); if ((pc && pc->res.broke) || endsInBreak(d)) return d; }
+  int32_t sw[2] = { d.sr, d.sc };
+  int cells0 = 0, die0 = 1 << 20;
+  if (d.kind == K_SWAP && d.hasMove) { if (lineJudge(sw, 1, 0) & LV_LIVES) { cells0 = LNO[3]; die0 = LNO[0] ? LNO[0] : 1 << 20; } else die0 = 0; }
+  else if (aloneOnEngine()) { cells0 = LNA[3]; die0 = LNA[0] ? LNA[0] : 1 << 20; }
+  int br = 0, bc = 0, most = cells0;
+  for (int k = 0; k < nPool; k++) {
+    Cand *cd = &POOL[k];
+    if (cd->kind != K_SWAP || cd->res.broke || !(cd->res.total > 0)) continue;
+    int32_t s2[2] = { cd->sr, cd->sc };
+    if (!(lineJudge(s2, 1, 0) & LV_LIVES) || (LNO[0] ? LNO[0] : 1 << 20) < die0 || LNO[3] <= most) continue;
+    most = LNO[3]; br = cd->sr; bc = cd->sc;
+  }
+  if (!br) return d;
+  BT->nLine = 0; lineLast = 8;
+  return mkSwap(br, bc, V_KEEPHEALTH, d.mode, d.alive);
+}
 static Dec readyWhenLands(Dec d) {
   if (d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA] || BIN[IN_TOPPED]) return d;
   if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;   // a break being played
-  if (!roomForBreak(DBASE)) return d;
+  if (!roomForBreak(DBASE)) return makeRoom(d);
   int32_t sw[2] = { d.sr, d.sc };
   int dieRef = 0, r, c;
   if (d.kind == K_SWAP && d.hasMove) {
@@ -3820,7 +3844,7 @@ static Dec fillFirstIn(Dec d) {
     double sc = fillScoreOf(sw, 1, pdie, LNO[10]);
     if (P.has ? !bestBeats(&P, sc, pc->moveFrames, sw, 1) : sc <= ref) continue;
     if (!fillKeeps(marginWithin(sw, 1, pdie, need), need)) continue;
-    if (spend && !readyAfterSpend(sw, 1)) continue;
+    if (spend && refDie >= (1 << 20) && !readyAfterSpend(sw, 1)) continue;   // nothing dies: a spend must leave a break ready
     bestTake(&P, sc, pc->moveFrames, sw, 1); pick = pc;
   }
   if (P.has) ref = P.score;
@@ -3880,7 +3904,7 @@ static Dec fillFirstIn(Dec d) {
       double sc = fillScoreOf(fsw, n, wdie, LNO[10]);
       if (W.has ? !bestBeats(&W, sc, est, fsw, n) : sc <= ref) continue;
       if (!fillKeeps(marginWithin(fsw, n, wdie, need), need)) continue;
-      if (spend && !readyAfterSpend(fsw, n)) continue;
+      if (spend && refDie >= (1 << 20) && !readyAfterSpend(fsw, n)) continue;
       bestTake(&W, sc, est, fsw, n); first[0] = fsw[0]; first[1] = fsw[1];
     }
   }
@@ -3980,7 +4004,8 @@ static Dec meanwhile(Dec d) {
   int die0Of = die0 ? die0 : 1 << 20;
   // living longer by keeping the board busy is a stall: the queue lands after
   // it all the same, so under six rows the clear must leave a break ready for it
-#define SPENDS_OK(sw, n) (materialRows(DBASE) - (double)(LNO[3] - LNA[3]) / BW >= 6 || (urgent && (LNO[0] ? LNO[0] : 1 << 20) > die0Of && readyAfterSpend(sw, n)))
+  // -- unless the line it goes before dies: then stop time is what buys the time to find the break
+#define SPENDS_OK(sw, n) (materialRows(DBASE) - (double)(LNO[3] - LNA[3]) / BW >= 6 || (urgent && (LNO[0] ? LNO[0] : 1 << 20) > die0Of && (die0 || readyAfterSpend(sw, n))))
   for (int q = 0; q < nPool && tried < MEANWHILES; q++) {
     Cand *k = &POOL[q];
     if (k->kind != K_SWAP || !(k->res.total > 0) || k->res.broke || (k->sr == d.sr && k->sc == d.sc) || k->moveFrames + REACT > last0) continue;
