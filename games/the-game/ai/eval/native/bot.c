@@ -4342,19 +4342,21 @@ static Dec meanwhile(Dec d) {
   if (!mr && fr) { mr = fr; mc = fc; most = fmost; keep = 0; }
   // NOT ONLY CLEARS: the wait is time the board can use. A swap pressed now,
   // clearing nothing, that leaves the line its outcome and lowers the hollow
-  // the next slab lands on, goes first -- the line is kept.
+  // the next slab lands on -- or, as level, sets up more vertical twos
+  // (LNO[14]) -- goes first; the line is kept.
   if (!mr) {
     int32_t keepO[LNOLEN]; for (int k = 0; k < LNOLEN; k++) keepO[k] = LNO[k];
     lineJudge(ln + 2, n, waitAll);
-    int h0 = HOLLOW(LNO), hb = h0;
+    int h0 = HOLLOW(LNO), hb = h0, vb = LNO[14];
     for (int q = 0, t2 = 0; q < nPool && t2 < MEANWHILES; q++) {
       Cand *k = &POOL[q];
       if (k->kind != K_SWAP || k->res.total > 0 || k->res.broke || (k->sr == d.sr && k->sc == d.sc) || k->moveFrames + REACT > last0) continue;
       t2++;
       ln[0] = k->sr; ln[1] = k->sc;
       int v = lineJudge(ln, n + 1, waitAll);
-      if ((v & need) != need || LNO[1] > last0 || (die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0) || HOLLOW(LNO) >= hb) continue;
-      hb = HOLLOW(LNO); mr = k->sr; mc = k->sc;
+      if ((v & need) != need || LNO[1] > last0 || (die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0)) continue;
+      if (!(HOLLOW(LNO) < hb || (HOLLOW(LNO) == hb && LNO[14] > vb))) continue;
+      hb = HOLLOW(LNO); vb = LNO[14]; mr = k->sr; mc = k->sc;
     }
     for (int k = 0; k < LNOLEN; k++) LNO[k] = keepO[k];
   }
