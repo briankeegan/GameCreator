@@ -1812,6 +1812,20 @@ static int lineLast;   // what the line rules last did (playOn below)
 enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8, LV_DROPS = 16, LV_FILLS = 32 };
 static int lineJudge(const int32_t *sw, int n, int waitAll);
 static JLOCAL int32_t LNO[12];
+// FRAMES FROM A SWAP TO THE NEAREST CLEAR ON THE BOARD IT LEAVES (INF: none)
+static double clearBack(Cand *pc) {
+  double back = INF;
+  stcpy(WDA, pc->masks);
+  int n = legal(WDA, WDSW);
+  for (int i = 0; i < n; i++) {
+    double cst = travelCost(pc->sr, pc->sc, WDSW[2 * i], WDSW[2 * i + 1]);
+    if (cst >= back || !swapIn(WDA, WDSW[2 * i], WDSW[2 * i + 1])) continue;
+    resolve(WDA, WDR, 0);
+    swapIn(WDA, WDSW[2 * i], WDSW[2 * i + 1]);
+    if (WDR[R_TOTAL] > 0 || WDR[R_SCOPE] == SC_BROKE) back = cst;
+  }
+  return back;
+}
 static Dec waitForDrain(Dec d) {
   // Topped only: before the board tops, stayAlive keeps the time.
   if (!BIN[IN_TOPPED]) return d;
@@ -1864,22 +1878,17 @@ static Dec waitForDrain(Dec d) {
     if (picked->moveFrames + 2 > k || !steady(picked->sr, picked->sc, k - 2)) return d;
     // a clear that, played now, leaves a board that loses no health within the horizon is played, not held
     { int32_t sw[2] = { picked->sr, picked->sc }; if ((lineJudge(sw, 1, 0) & LV_LIVES) && LNO[0] == 0) return d; }
+    // the stop does not run while panels clear: a clear played with another
+    // still in reach after it costs no time and lowers the board -- only the
+    // last one is held
+    if (picked->moveFrames + quietSettle(base, picked->sr, picked->sc, picked->masks) + clearBack(picked) + 1 <= k) return d;
     BT->counts[C_WAITEDFORDRAIN]++;
     return HOLDAT(picked->sr, picked->sc);
   }
   double nearest = INF;
   for (int i = 0; i < nc; i++) nearest = dmin(nearest, CLEARS[i].moveFrames);
   if (picked) {
-    double back = INF;
-    stcpy(WDA, picked->masks);
-    int n = legal(WDA, WDSW);
-    for (int i = 0; i < n; i++) {
-      double cst = travelCost(picked->sr, picked->sc, WDSW[2 * i], WDSW[2 * i + 1]);
-      if (cst >= back || !swapIn(WDA, WDSW[2 * i], WDSW[2 * i + 1])) continue;
-      resolve(WDA, WDR, 0);
-      swapIn(WDA, WDSW[2 * i], WDSW[2 * i + 1]);
-      if (WDR[R_TOTAL] > 0 || WDR[R_SCOPE] == SC_BROKE) back = cst;
-    }
+    double back = clearBack(picked);
     if (picked->moveFrames + quietSettle(base, picked->sr, picked->sc, picked->masks) + back + 1 <= k) return d;
   } else if (nearest + 2 <= k) {
     return d;
