@@ -3620,18 +3620,22 @@ static Dec meanwhile(Dec d) {
   if (!(v0 & LV_LIVES) || LNO[1] <= MEANWHILE) return d;
   int last0 = LNO[1], die0 = LNO[0], need = LV_LIVES | (v0 & LV_BREAKS), mr = 0, mc = 0, most = 0, tried = 0, keep = 1;
   int fr = 0, fc = 0, fmost = 0;   // a clear on its own, the line dropped: decided again once it can be pressed
+  // MATERIAL IS SPENT ONLY TO BREAK OR TO LIVE: under six rows a clear goes
+  // first only while the board left alone loses health before its soonest break
+  int urgent = aloneOnEngine() && LNA[0] && marginAfter(0, 0, LNA[0]) < 0;
+#define SPENDS_OK() (urgent || materialRows(DBASE) - (double)(LNO[3] - LNA[3]) / BW >= 6)
   for (int q = 0; q < nPool && tried < MEANWHILES; q++) {
     Cand *k = &POOL[q];
     if (k->kind != K_SWAP || !(k->res.total > 0) || k->res.broke || (k->sr == d.sr && k->sc == d.sc) || k->moveFrames + REACT > last0) continue;
     tried++;
     ln[0] = k->sr; ln[1] = k->sc;
     int v = lineJudge(ln, n + 1, waitAll);
-    if ((v & need) == need && LNO[1] <= last0 && !(die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0)) {
+    if ((v & need) == need && LNO[1] <= last0 && !(die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0) && SPENDS_OK()) {
       if (LNO[3] > most) { most = LNO[3]; mr = k->sr; mc = k->sc; }
       continue;
     }
     v = lineJudge(ln, 1, 0);
-    if ((v & LV_LIVES) && !(die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0) && LNO[3] > fmost) { fmost = LNO[3]; fr = k->sr; fc = k->sc; }
+    if ((v & LV_LIVES) && !(die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0) && SPENDS_OK() && LNO[3] > fmost) { fmost = LNO[3]; fr = k->sr; fc = k->sc; }
   }
   if (!mr && fr) { mr = fr; mc = fc; most = fmost; keep = 0; }
   // no clear one swap away: the lines two deep, by rank, the first that pays and lives as long
@@ -3651,13 +3655,14 @@ static Dec meanwhile(Dec d) {
       if (at < 0) break;
       tk[at] = 1;
       LineC *l = &LINES[at];
-      if ((judged(l) & (LV_LIVES | LV_PAYS)) == (LV_LIVES | LV_PAYS) && l->die >= dieRef && notLastSwap(l)) two = l;
+      if ((judged(l) & (LV_LIVES | LV_PAYS)) == (LV_LIVES | LV_PAYS) && l->die >= dieRef && notLastSwap(l) && (lineJudge(l->sw, l->n, l->waitAll), SPENDS_OK())) two = l;
     }
     if (two) { mr = two->sw[0]; mc = two->sw[1]; keep = 0; }
   }
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "MEANWHILE %d,%d last %d die %d | tried %d clear %d,%d cells %d keep %d\n", d.sr, d.sc, last0, die0, tried, mr, mc, most, keep); }
 #endif
+#undef SPENDS_OK
   if (!mr) return d;
   if (keep) { for (int k = 0; k < 2 * n; k++) BT->line[k] = ln[2 + k]; BT->nLine = n; BT->lineKind = kind; BT->lineWaitAll = waitAll; }
   else if (two && two->n > 1) lineKeep(two, LINE_PLAN);
