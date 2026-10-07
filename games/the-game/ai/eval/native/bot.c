@@ -2985,11 +2985,12 @@ static int readyThenLater(int rdy, int die, int pickRdy, int pickDie) {
 }
 // whether a line counts as ready: asked only with garbage to come, and only of
 // a line that outlives the board left alone
+static int readyAtNext(const int32_t *sw, int n, int *br, int *bc);
 static int readyCounts(const LineC *l, int alone) {
   if (!(BIN[IN_INCOMING] > 0) || (alone && l->die <= alone)) return 0;
   int32_t keep[LNOLEN]; int r, c;
   for (int k = 0; k < LNOLEN; k++) keep[k] = LNO[k];
-  int rdy = readyInTime(l->sw, l->n, &r, &c);
+  int rdy = readyAtNext(l->sw, l->n, &r, &c);
   for (int k = 0; k < LNOLEN; k++) LNO[k] = keep[k];
   return rdy;
 }
@@ -3769,6 +3770,21 @@ static int readyInTime(const int32_t *sw, int n, int *br, int *bc) {
   }
   return ok;
 }
+// READY AT THE NEXT LANDING: a break in reach the frame the next slab lands,
+// pressed after the line's last step -- not one reached by letting the dump
+// come down first. What a choice is ranked by (readyCounts): a dump let down
+// is slabs piled on the board, however a break meets them after.
+static int rdNextOnly;   // readyAtNext: the first landing only
+static int readyAtNext(const int32_t *sw, int n, int *br, int *bc) {
+  extern PATLS double paWork;
+  if (paWork + rdCost > optLine()) return 0;
+  double w = paWork;
+  rdNextOnly = 1;
+  int ok = readyInTimeRaw(sw, n, br, bc);
+  rdNextOnly = 0;
+  if (paWork - w > rdCost) rdCost = paWork - w;
+  return ok;
+}
 #ifndef __wasm__
 // THE BOARD A PREDICTION RESTS ON, for the bot log: masks read, nothing
 // written, rows top to bottom as the trace prints them ('g' garbage)
@@ -3795,7 +3811,7 @@ int lineLandedK(const int32_t *steps, int n, int k, int32_t *masks, uint32_t *ca
 static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc) {
   uint32_t can[WMAX]; uint8_t wt[32][WMAX]; int32_t cur[2], t;
   int last = -1, found = 0;
-  for (int k = 1; !found; k++) {
+  for (int k = 1; !found && (k == 1 || !rdNextOnly); k++) {
     if (lineLandedK(sw, n, k, RBL, can, wt, cur, &t) != 0) return 0;
     // a slab that tops the board out as it lands leaves no time for the break:
     // topped with no stop, the board dies the next frame
