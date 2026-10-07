@@ -3488,6 +3488,23 @@ static Dec makeRoom(Dec d) {
   BT->nLine = 0; lineLast = 8;
   return mkSwap(br, bc, V_KEEPHEALTH, d.mode, d.alive);
 }
+// NO STALL: with nothing on the board to break, a clear only keeps the board
+// busy, and a busy board holds the queue off without making it any shorter
+// -- it lands later, all at once, on a board the clears have spent. So while
+// there is room for the next slab and the board is not topped, a clear that
+// breaks nothing is not played: the board goes quiet and the slab comes, to
+// a board readied for it.
+static Dec noStall(Dec d) {
+  if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0) || BIN[IN_TOPPED]) return d;
+  if (hasGarbage(DBASE) || !roomForBreak(DBASE) || endsInBreak(d)) return d;
+  Cand *pc = poolSwap(d.sr, d.sc);
+  if (pc && pc->res.broke) return d;
+  int32_t sw[2] = { d.sr, d.sc };
+  int v = lineJudge(sw, 1, 0);
+  if (!(v & LV_PAYS) || (v & LV_BREAKS)) return d;
+  BT->nLine = 0;
+  return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
+}
 static Dec readyWhenLands(Dec d) {
   if (d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA]) return d;
   if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;   // a break being played
@@ -4257,7 +4274,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   SHARE(15); d = keepBreak(d); d = lineupFirst(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(5); d = batchBreak(d); d = spendToBreak(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(10); d = breakSoon(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(10); d = dropReady(readyWhenLands(keepReady(meanwhile(onePlan(fillFirst(d)))))); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(10); d = noStall(dropReady(readyWhenLands(keepReady(meanwhile(onePlan(fillFirst(d))))))); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
 #undef SHARE
   // the most the stages after breakFirst (and after lineup) have taken lately:
   // each decision's own, or the last most less a hundredth a decision -- one
