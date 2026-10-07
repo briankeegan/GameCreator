@@ -1112,6 +1112,9 @@ static int raiseMode(const int32_t *base, int poolBreak) {
   BT->wantRows = rows;
   if (BT->opening && (BIN[IN_INCOMING] || !fits)) BT->opening = 0;
   if (!fits) return 0;
+  // READY BEFORE IT RAISES: with garbage to come, the risen board must have
+  // the break ready for the slab that lands on it
+  if (BIN[IN_INCOMING] > 0 && !(risenMasks(base, RZ) && slabReadyHook(RZ))) return 0;
   if (!BT->opening && materialRows(base) >= 6) return 0;
   int stillComing = BIN[IN_INCOMING] > 0 || BIN[IN_FALLING];
   if (poolBreak && !stillComing) return 0;
@@ -3669,6 +3672,24 @@ static Dec meanwhile(Dec d) {
   else BT->nLine = 0;
   return mkSwap(mr, mc, d.via, d.mode, d.alive);
 }
+// READY BEFORE IT LANDS: while garbage is to come and the board is ready
+// for the next slab (a single swap breaks it once it has landed), a swap
+// that leaves it unready is not played -- unless it breaks now, is a step of
+// a break or lineup line, or the board held loses health before the swap does.
+static Dec keepReady(Dec d) {
+  if (!(BIN[IN_INCOMING] > 0) || !baseReady || d.kind != K_SWAP || !d.hasMove) return d;
+  if (lineLast == 3 || lineLast == 5 || (lineLast == 1 && (BT->lineKind == LINE_BREAK || BT->lineKind == LINE_PLAN))) return d;
+  Cand *pc = poolSwap(d.sr, d.sc);
+  if (!pc || pc->res.broke || endsInBreak(d) || slabReadyHook(pc->masks)) return d;
+  int32_t sw[2] = { d.sr, d.sc };
+  int v = lineJudge(sw, 1, 0);
+  if (aloneOnEngine() && LNA[0] && (v & LV_LIVES) && (!LNO[0] || LNO[0] > LNA[0])) return d;
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "KEEPREADY held %d,%d via %d\n", d.sr, d.sc, d.via); }
+#endif
+  BT->nLine = 0;
+  return mkHold(V_SETUP, d.mode, d.alive, 0, 0, 0);
+}
 // A SWAP THAT IS STILL MOVING WHEN THE LOCK ENDS TAKES THE ROW BACK: the
 // raise starts the frame nothing holds the rise lock, and a swap queued then
 // cancels it. While a raise waits, a swap is played only if its walk and its
@@ -3733,7 +3754,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   SHARE(15); d = keepBreak(d); d = lineupFirst(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(5); d = batchBreak(d); d = spendToBreak(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(10); d = breakSoon(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(10); d = meanwhile(onePlan(fillFirst(d))); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(10); d = keepReady(meanwhile(onePlan(fillFirst(d)))); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
 #undef SHARE
   // A CUT IS A FAILURE: a stage that reaches its share has not decided, it has
   // been stopped. The decision fails and the game stops, naming the stage.
