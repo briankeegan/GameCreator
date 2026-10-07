@@ -3623,11 +3623,33 @@ static Dec meanwhile(Dec d) {
     if ((v & LV_LIVES) && !(die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0) && LNO[3] > fmost) { fmost = LNO[3]; fr = k->sr; fc = k->sc; }
   }
   if (!mr && fr) { mr = fr; mc = fc; most = fmost; keep = 0; }
+  // no clear one swap away: the lines two deep, by rank, the first that pays and lives as long
+  LineC *two = 0;
+  if (!mr) {
+    static unsigned char tk[MAXLINES];
+    int dieRef = die0 ? die0 : 1 << 20;
+    linesFind(2, 0);
+    for (int i = 0; i < nLines; i++) tk[i] = 0;
+    for (int seen = 0; seen < LIVINGS && !two; seen++) {
+      int at = -1;
+      for (int i = 0; i < nLines; i++) {
+        LineC *l = &LINES[i];
+        if (tk[i] || (l->verdict >= 0 && (l->verdict & (LV_LIVES | LV_PAYS)) != (LV_LIVES | LV_PAYS))) continue;
+        if (at < 0 || lineBefore(l, &LINES[at])) at = i;
+      }
+      if (at < 0) break;
+      tk[at] = 1;
+      LineC *l = &LINES[at];
+      if ((judged(l) & (LV_LIVES | LV_PAYS)) == (LV_LIVES | LV_PAYS) && l->die >= dieRef && notLastSwap(l)) two = l;
+    }
+    if (two) { mr = two->sw[0]; mc = two->sw[1]; keep = 0; }
+  }
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "MEANWHILE %d,%d last %d die %d | tried %d clear %d,%d cells %d keep %d\n", d.sr, d.sc, last0, die0, tried, mr, mc, most, keep); }
 #endif
   if (!mr) return d;
   if (keep) { for (int k = 0; k < 2 * n; k++) BT->line[k] = ln[2 + k]; BT->nLine = n; BT->lineKind = kind; BT->lineWaitAll = waitAll; }
+  else if (two && two->n > 1) lineKeep(two, LINE_PLAN);
   else BT->nLine = 0;
   return mkSwap(mr, mc, d.via, d.mode, d.alive);
 }
