@@ -1731,12 +1731,22 @@
     var i, proven = [], weakly = [], unproven = [];
     var svT = Date.now(), verdict = this._survivalSearch(cands);
     this._svMs = (this._svMs || 0) + Date.now() - svT;   // the survival search's milliseconds, read and cleared by the caller
+    var breakWeak = [];
     for (i = 0; i < cands.length; i++) {
       if (verdict[i] === 'proven') proven.push(cands[i]);
-      else if (verdict[i] === 'weak') weakly.push(cands[i]);
+      else if (verdict[i] === 'weak') {
+        weakly.push(cands[i]);
+        if (this.preferRank && this.preferRank(cands[i], i) === 0) breakWeak.push(cands[i]);
+      }
       else if (verdict[i] === 'unproven') unproven.push(cands[i]);
     }
     if (!proven.length) proven = weakly;
+    // A BREAK THE CALLER ASKS FOR (preferRank 0) THAT LIVES THE HORIZON STANDS
+    // with the moves proven past it. Under a stream every line dies a little
+    // past the horizon, and the ones dying last are the ones that wait, so
+    // proof past it picks waiting over breaking: seed 2 frame 11557, a break
+    // reaching 312 frames dropped for a wait reaching 372, dead 780 later.
+    else if (breakWeak.length) proven = proven.concat(breakWeak);
     // measureLife: the proven moves the engine shows living longest, then
     // keeping the most panels, before the caller's order is applied to them.
     if (this.measureLife && proven.length > 1) proven = this._measureLife(proven);
