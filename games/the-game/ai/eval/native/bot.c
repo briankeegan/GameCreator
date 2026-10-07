@@ -3517,17 +3517,20 @@ static Dec fillFirstIn(Dec d) {
   double need = marginAfter(0, 0, LNA[0]);
   fillUrgent = LNA[0] && need < 0;
   double ref = fillScore(LNA[0], LNA[10]);   // what a fill must beat: the board left alone, and the choice
+  int refDie = LNA[0] ? LNA[0] : 1 << 20;   // the later loss of health of the two
   if (d.kind == K_SWAP && d.hasMove) {
     int32_t sw[2] = { d.sr, d.sc };
-    if (lineJudge(sw, 1, 0) & LV_LIVES) { best = LNO[10] < best ? LNO[10] : best; if (fillScore(LNO[0], LNO[10]) > ref) ref = fillScore(LNO[0], LNO[10]); double m = marginAfter(sw, 1, LNO[0]); if (m > need) need = m; }
+    if (lineJudge(sw, 1, 0) & LV_LIVES) { best = LNO[10] < best ? LNO[10] : best; if ((LNO[0] ? LNO[0] : 1 << 20) > refDie) refDie = LNO[0] ? LNO[0] : 1 << 20; if (fillScore(LNO[0], LNO[10]) > ref) ref = fillScore(LNO[0], LNO[10]); double m = marginAfter(sw, 1, LNO[0]); if (m > need) need = m; }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  choice %d,%d die %d last %d hollow %d | alone die %d | break after choice %g alone %g\n", d.sr, d.sc, LNO[0], LNO[1], LNO[10], LNA[0], breakTime(sw, 1), breakTime(0, 0)); }
 #endif
   }
   if (need > 0) need = 0;   // in time is in time
   Cand *pick = 0;
-  // over six rows a clear may be spent to fill; under, only to live when the board dies before its break
-  int surplus = materialRows(DBASE) >= 6, urgent = fillUrgent;
+  // NOT TO DIE, BY ANY MEANS: over six rows a clear may be spent to fill;
+  // under, only by a fill that loses health later than the choice and the board left alone
+  int surplus = materialRows(DBASE) >= 6;
+#define LIVES_LONGER() ((LNO[0] ? LNO[0] : 1 << 20) > refDie)
   // the pool: by fillScore, then the shortest walk, then the swaps; nothing
   // counts that does not beat the choice and the board left alone
   Best P = { 0 };
@@ -3540,7 +3543,7 @@ static Dec fillFirstIn(Dec d) {
     Cand *pc = &POOL[fq[q]];
     int32_t sw[2] = { pc->sr, pc->sc };
     int v = lineJudge(sw, 1, 0);
-    if (!(v & LV_LIVES) || ((v & LV_PAYS) && !surplus && !(urgent && (v & LV_GAINS)))) continue;
+    if (!(v & LV_LIVES) || ((v & LV_PAYS) && !surplus && !LIVES_LONGER())) continue;
     double sc = fillScore(LNO[0], LNO[10]);
     if (P.has ? !bestBeats(&P, sc, pc->moveFrames, sw, 1) : sc <= ref) continue;
     if (!fillKeeps(marginWithin(sw, 1, LNO[0], need), need)) continue;
@@ -3595,7 +3598,7 @@ static Dec fillFirstIn(Dec d) {
         double bt = v ? breakTime(fsw, n) : -1; __builtin_memcpy(tCell, keep, sizeof keep); tW = kw; tH = kh;
         fprintf(stderr, "  walk %d,%d dir %d n %d v %d hollow %d die %d last %d break %g\n", r, c, dir, n, v, h, dd, la, bt); } }
 #endif
-      if (!(v & LV_LIVES) || ((v & LV_PAYS) && !(urgent && (v & LV_GAINS)))) continue;
+      if (!(v & LV_LIVES) || ((v & LV_PAYS) && !LIVES_LONGER())) continue;
       double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
       // a walk must beat the pool's best; among walks, the same order (time: its estimate)
       double sc = fillScore(LNO[0], LNO[10]);
@@ -3658,6 +3661,7 @@ static Dec fillFirstIn(Dec d) {
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "FILL! best %.0f walk %d,%d pool %d,%d\n", W.has ? W.score : ref, first[0], first[1], pick ? pick->sr : 0, pick ? pick->sc : 0); }
 #endif
+#undef LIVES_LONGER
   if (first[0]) return mkSwap(first[0], first[1], V_FILL, d.mode, d.alive);
   if (!pick) return d;
   return mkSwap(pick->sr, pick->sc, V_FILL, d.mode, d.alive);
@@ -3680,9 +3684,10 @@ static Dec meanwhile(Dec d) {
   int last0 = LNO[1], die0 = LNO[0], need = LV_LIVES | (v0 & LV_BREAKS), mr = 0, mc = 0, most = 0, tried = 0, keep = 1;
   int fr = 0, fc = 0, fmost = 0;   // a clear on its own, the line dropped: decided again once it can be pressed
   // MATERIAL IS SPENT ONLY TO BREAK OR TO LIVE: under six rows a clear goes
-  // first only while the board left alone loses health before its soonest break
-  int urgent = aloneOnEngine() && LNA[0] && marginAfter(0, 0, LNA[0]) < 0;
-#define SPENDS_OK() (urgent || materialRows(DBASE) - (double)(LNO[3] - LNA[3]) / BW >= 6)
+  // first only if it loses health later than the line it goes before
+  aloneOnEngine();
+  int die0Of = die0 ? die0 : 1 << 20;
+#define SPENDS_OK() ((LNO[0] ? LNO[0] : 1 << 20) > die0Of || materialRows(DBASE) - (double)(LNO[3] - LNA[3]) / BW >= 6)
   for (int q = 0; q < nPool && tried < MEANWHILES; q++) {
     Cand *k = &POOL[q];
     if (k->kind != K_SWAP || !(k->res.total > 0) || k->res.broke || (k->sr == d.sr && k->sc == d.sc) || k->moveFrames + REACT > last0) continue;
