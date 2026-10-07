@@ -3548,8 +3548,9 @@ static Dec fillFirstIn(Dec d) {
   // A TOWER TWO WIDE COMES DOWN IN TWO WALKS: a slab rests on the taller of
   // the two, so neither walk alone leaves less hollow. When the two highest
   // columns stand side by side, two rows over every other, both tops are
-  // walked off toward the lower side as one line, kept if it leaves less.
-  if (!first[0] && !pick) {
+  // walked off toward the lower side as one line, taken if it beats every
+  // other fill by the same score.
+  {
     int h[WMAX + 2], a = 0;
     for (int c = 1; c <= tW; c++) h[c] = walkTop(c);
     for (int c = 1; c < tW && !a; c++) {
@@ -3586,7 +3587,8 @@ static Dec fillFirstIn(Dec d) {
 #ifndef __wasm__
         if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  tower %d,%d dir %d n %d v %d hollow %d best %d\n", a, a + 1, dir, n, v, LNO[10], best); }
 #endif
-        if ((v & LV_LIVES) && !(v & LV_PAYS) && fillScore(LNO[0], LNO[10]) > ref && fillKeeps(marginWithin(sw, n, LNO[0], need), need)) {
+        double beat = W.has && W.score > ref ? W.score : ref;
+        if ((v & LV_LIVES) && !(v & LV_PAYS) && fillScore(LNO[0], LNO[10]) > beat && fillKeeps(marginWithin(sw, n, LNO[0], need), need)) {
           for (int k = 0; k < 2 * n; k++) BT->line[k] = sw[k];
           BT->nLine = n; BT->lineKind = LINE_PLAN; BT->lineWaitAll = 0;
           return mkSwap(sw[0], sw[1], V_FILL, d.mode, d.alive);
