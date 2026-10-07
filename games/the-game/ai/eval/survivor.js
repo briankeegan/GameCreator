@@ -585,5 +585,10 @@ var server = net.createServer(function (sock) {
 (function wait() {
   if (!mindReady) { setTimeout(wait, 20); return; }
   nativeNow();   // compiled before the first match is offered
+  // and the prediction run once, so the first frame that predicts runs it warm
+  var wm = Object.create(Match.prototype), wg = PA.game({ level: 10, seed: 1 });
+  while (wg.clock <= PA.COUNTDOWN_TOTAL) wg.run();
+  wm.plan = {}; wm.arrivals = [];
+  for (var wi = 0; wi < 5; wi++) wm.predict(wg, wg.clock + 90, { left: 0, started: false }, []);
   server.listen(opt.port, opt.host, function () { console.log(PROFILE.name + ' listening on ' + opt.host + ':' + opt.port + ' (' + opt.threads + ' threads, reaction ' + PROFILE.reaction + ', cursor ' + PROFILE.cursorMoveFrames + ')'); });
 })();
