@@ -1,6 +1,6 @@
 #!/bin/sh
 # EVERY DECISION FITS THE SERVER'S FRAME: the bot on the server's Lua training
-# (lua/train.lua), with the clock off so nothing is cut, RUNS times; each
+# (lua/train.lua), under the game's work budget, RUNS times; each
 # decision's LEAST time over the runs (the machine stalls, the bot's work does
 # not), against what the Lua frame leaves it: BUDGETMS (native/bot.c) less
 # RUN_RESERVE (lua/train.lua). Fails if any decision is over.
@@ -17,7 +17,7 @@ budget=${GC_CHECK_MS:-$budget}   # GC_CHECK_MS: a lower line, to see the check f
 tmp=$(mktemp -d "$here/.budget.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT
 for i in $(seq 1 "$runs"); do
-  GC_BUDGET_MS=0 GC_FRAME_MS=0 GC_WORKSTAT=1 "$here/train.sh" "$mode" "$seed" "$frames" 2>&1 >/dev/null | grep '^STAGES' > "$tmp/run.$i" || true
+  GC_WORKSTAT=1 "$here/train.sh" "$mode" "$seed" "$frames" 2>&1 >/dev/null | grep '^STAGES' > "$tmp/run.$i" || true
 done
 python3 - "$tmp" "$runs" "$budget" "$mode" "$seed" <<'PY'
 import sys

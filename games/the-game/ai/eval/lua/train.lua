@@ -13,11 +13,9 @@
 -- builds them. Prints "f<frame> panels P garb G queued Q top T" every 250
 -- frames, then "died F" or "alive F". GC_TRACE=F prints every frame from F.
 --
--- EVERY FRAME IN 16.7 ms, the bot's decision and the Lua's own work together.
--- The Lua's share varies (the engine, the JIT, the garbage collector), so the
--- collector runs one step at the top of each frame, and the bot is told what
--- is left of the frame less RUN_RESERVE for match:run (front_budget). The run
--- ends by printing the frames over 16.7 ms and the slowest.
+-- EVERY DECISION IN ITS BUDGET, counted in work as the browser counts it
+-- (native/bot.c WORKBUDGET); the collector runs one step at the top of each
+-- frame. The run ends by printing the frames over 16.7 ms and the slowest.
 require("bot.headlessBoot")
 do local l = require("common.lib.logger"); l.setLogLevel(l.levels.ERROR) end
 local ffi = require("ffi")
@@ -70,7 +68,6 @@ int nb_feed_break(Board *b, int32_t c1, int32_t c2, int32_t c3, int32_t c4, int3
 int nb_pressed(Board *b);
 int front_new(Board *b, int reaction, int allowRaise);
 int front_frame(int fid, Board *b);
-void front_budget(double ms);
 typedef struct { long tv_sec; long tv_nsec; } gc_timespec;
 int clock_gettime(int clk, gc_timespec *ts);
 ]]
@@ -141,7 +138,7 @@ local function show()
   return table.concat(out, " ")
 end
 
-local FRAME_MS, RUN_RESERVE = 1000 / 60, 3.0   -- RUN_RESERVE: match:run, 1.9 ms at p99.9 (combo_storm seed 1)
+local FRAME_MS, RUN_RESERVE = 1000 / 60, 3.0   -- RUN_RESERVE: match:run, 1.9 ms at p99.9 (combo_storm seed 1); lua_budget_check.sh holds each decision to the frame less it
 local TS = ffi.new("gc_timespec")
 local function now() ffi.C.clock_gettime(1, TS); return tonumber(TS.tv_sec) * 1e3 + tonumber(TS.tv_nsec) / 1e6 end
 local over, slowest = 0, 0
@@ -168,7 +165,6 @@ while f < FRAMES do
   local t0 = now()
   collectgarbage("step", 0)
   load()
-  C.front_budget(FRAME_MS - (now() - t0) - RUN_RESERVE)
   local bits = os.getenv("GC_NOBOT") and 0 or C.front_frame(fid, board)
   if bits < 0 then io.stderr:write("train: the bot failed at frame " .. f .. "\n"); os.exit(2) end
   if C.nb_pressed(board) ~= 0 then bits = bit.bor(bits, 16) end

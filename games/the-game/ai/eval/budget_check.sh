@@ -1,12 +1,12 @@
 #!/bin/sh
 # EVERY DECISION INSIDE THE FRAME. The bot plays the real game at 60 frames a
 # second, so a decision may take BUDGETMS (native/bot.c): the 16.7 ms frame
-# less the frame's own work. In a game the clock cuts a decision past it and
-# the game fails; this measures the margin before a change ships.
+# less the frame's own work. The budget is counted in work (WORKBUDGET); this
+# measures that the work fits the time before a change ships.
 #
 #   ./budget_check.sh [SEED] [FRAMES] [RUNS]   (4 11538 3 by default)
 #
-# The seed is played RUNS times with the cut off, and each decision's least
+# The seed is played RUNS times under the game's work budget, and each decision's least
 # time is kept: the bot's work is the same every run, the machine's stalls
 # are not (a 1 ms decision has taken 31 ms once on a cloud runner). Fails if
 # any decision's least time is over the budget, naming it and its stages.
@@ -19,7 +19,7 @@ budget=${GC_CHECK_MS:-$budget}   # GC_CHECK_MS: a lower line, to see the check f
 tmp=$(mktemp -d "$here/.budget.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT
 for i in $(seq 1 "$runs"); do
-  GC_BUDGET_MS=0 GC_FRAME_MS=0 GC_WORKSTAT=1 "$here/drill.sh" "$seed" "$frames" 2>&1 | grep '^STAGES' > "$tmp/run.$i"
+  GC_WORKSTAT=1 "$here/drill.sh" "$seed" "$frames" 2>&1 | grep '^STAGES' > "$tmp/run.$i"
 done
 python3 - "$tmp" "$runs" "$budget" <<'PY'
 import sys

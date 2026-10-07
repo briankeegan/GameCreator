@@ -1080,7 +1080,7 @@ static int fDecide(Front *F, FDec *out) {
   LF = F;
   BOTS[F->id].tab[T_OPT + O_PRESS] = 1;
   int rc = bot_decide(F->id);
-  { extern void paBudget(double, double); paBudget(1e300, 1e300); }   // the budget is the decision's
+  { extern void paBudget(double); paBudget(1e300); }   // the budget is the decision's
   if (rc != 0) return -1;
   double *o = BOUT;
   out->kind = (int)o[0]; out->hasMove = o[1] != 0; out->mr = (int)o[2]; out->mc = (int)o[3];
@@ -1097,27 +1097,15 @@ static int fDecide(Front *F, FDec *out) {
 // One frame: the keys to press (the server's bits), the swap queued on the
 // board itself as the walk arrives. -1: the bot failed.
 static int frontFrame(int fid, Board *b);
-// EVERY FRAME INSIDE ITS BUDGET: the game runs at 60 frames a second, so the
-// bot's work on one frame may take no longer than one frame (GC_FRAME_MS
-// overrides, in ms). Over it, the frame fails and the game stops: slow is
-// an error, never a result. Native only; the browser has its own clock.
+// THE FRAME'S TIME, measured: the budget is the decision's work (bot.c
+// WORKBUDGET), the same here as in the browser; the clock is reported
+// (front_took_ms), the machine's speed being no rule of the game's.
 #ifndef __wasm__
 #ifndef GC_TS
 struct gcTs { long s, ns; };
 extern int clock_gettime(int, struct gcTs *);
 #endif
 extern char *getenv(const char *);
-extern double atof(const char *);
-static double frameBudgetMs = -1;
-// THE CALLER'S FRAME. A host whose own frame work varies (the server's Lua:
-// its engine, its garbage collector) says before each front_frame how much of
-// the frame is left for it; the decision gets that less the front's own work.
-static double callMs = 0;
-EXPORT(front_budget) void front_budget(double ms) {
-  extern double botBudgetMs;
-  callMs = ms > 0.5 ? ms : 0.5;
-  botBudgetMs = callMs - (1000.0 / 60 - BUDGETMS) > 0.25 ? callMs - (1000.0 / 60 - BUDGETMS) : 0.25;
-}
 static double nowMs(void) { struct gcTs t; clock_gettime(1, &t); return t.s * 1e3 + t.ns / 1e6; }
 #endif
 // THE BOT'S OWN TIME FOR THE LAST FRAME, so a runner can report every frame
@@ -1126,19 +1114,12 @@ static double lastTookMs;
 EXPORT(front_took_ms) double front_took_ms(void) { return lastTookMs; }
 EXPORT(front_frame) int front_frame(int fid, Board *b) {
 #ifndef __wasm__
-  if (frameBudgetMs < 0) frameBudgetMs = getenv("GC_FRAME_MS") ? atof(getenv("GC_FRAME_MS")) : 1000.0 / 60;
   extern PATLS double paWork, paEngFrames;
   double t0 = nowMs(), w0 = paWork, e0 = paEngFrames;
   int bits = frontFrame(fid, b);
   double took = nowMs() - t0;
   lastTookMs = took;
   if (getenv("GC_WORKSTAT") && paWork > w0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "WORK %d %.0f %.3f %.0f\n", b->clock, paWork - w0, took, paEngFrames - e0); }
-  double limit = frameBudgetMs == 0 ? 0 : callMs > 0 ? callMs : frameBudgetMs;   // GC_FRAME_MS=0: no limit at all
-  if (bits >= 0 && limit > 0 && took > limit) {
-    extern int fprintf(void *, const char *, ...); extern void *stderr;
-    fprintf(stderr, "front: a frame took %.1f ms (work %.0f), over the %.1f ms budget (clock %d)\n", took, paWork - w0, limit, b->clock);
-    return -1;
-  }
   return bits;
 #else
   return frontFrame(fid, b);

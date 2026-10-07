@@ -33,7 +33,7 @@ int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);   // th
 // the native work rate, measured over 5,359 decisions of seed 9 (units per ms
 // p5 4,963, p10 6,413, p50 9,865, p90 13,089): 15.77 ms x 4,950. budget_check
 // measures the time it actually takes.
-#define WORKBUDGET 78000   // GC_WORK_ONLY (and the browser)
+#define WORKBUDGET 78000   // natively and in the browser alike
 // WHERE OPTIONAL WORK STOPS: the engine refuses work past it, and every judge,
 // replay, search and batch is declined that would not fit. What was under way
 // finishes past it: at most 6,688 units over 3,446 decisions of seed 16 (20,000
@@ -3804,7 +3804,6 @@ static Dec fillBeforeBreak(Dec d) {
 // front plays them, then the soonest break the distance search finds on the
 // board they leave, walked from where the cursor is (INF: none).
 #define BUDGETMS 15.0   // the decision's budget: the 16.7 ms frame less the frame's own work (0.9 ms at most, seed 4)
-double botBudgetMs = 0;   // front_budget: this decision's budget instead (0: BUDGETMS)
 static int btAloneAt = -1; static double btAlone;
 static double breakTimeOf(const int32_t *steps, int n, double limit);
 static void prejudge(const int32_t *sws, int stride, int count, int n, int waitAll);
@@ -4371,11 +4370,10 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   HELDR = (int)BIN[IN_CROW]; HELDC = (int)BIN[IN_CCOL]; HELDDIR = (int)BIN[IN_HELD];
   botFailed = 0;
   clearRaiseFrames = 0;
-  // EVERY DECISION WITHIN ITS BUDGET: BUDGETMS of a 16.7 ms frame, by the clock
-  // (paBudget; GC_WORK_ONLY counts WORKBUDGET units of work instead, so a run
-  // repeats). Past it, resolves and engine lines are refused and every search
-  // keeps what it found.
-  { extern void paBudget(double, double); paBudget(botBudgetMs > 0 ? botBudgetMs : BUDGETMS, OPTWORK); }
+  // EVERY DECISION WITHIN ITS BUDGET, in work (WORKBUDGET, OPTWORK): past
+  // OPTWORK resolves and engine lines are refused and every search keeps what
+  // it found; past WORKBUDGET the decision is cut and the game fails.
+  { extern void paBudget(double); paBudget(OPTWORK); }
   { extern PATLS double paWork; rdW0 = paWork; budgetRefused = 0; }
   btDecision++;
   btDecisionJ = btDecision;
@@ -4394,7 +4392,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
 #define NOWMS() 0.0
 #endif
   double t0 = NOWMS();
-  extern void paBudget(double, double); extern int paBudgetOut(void), paBudgetSpent(void), paCutPast(double);
+  extern int paBudgetOut(void), paBudgetSpent(void), paCutPast(double);
 #define SHARE(p) ((void)(p))   // one budget for the whole decision, opened above
   SHARE(25); Dec d = decideRuled(); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(5); d = playOn(d); d = waitForDrain(d); d = raiseHold(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;

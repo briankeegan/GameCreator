@@ -921,60 +921,32 @@ static void runPhysics(Board *b) {
 PATLS double paWork, paEngFrames;
 PATLS double paWorkEnd = 1e300;   // paWorkEnd: where the decision's budget runs out -- the deciding thread's own:
 // a worker's batch is bounded before it starts, and never by a counter that is not its own
-// THE DECISION'S BUDGET IS TIME. Natively the clock is read every 32 checks
-// and the search stops at paDeadline (ms); nothing it does can hide from that.
-// GC_WORK_ONLY=1 (and the browser, which has no clock here) counts work
-// instead, so a run repeats exactly. paBudget(ms, units) opens a share.
-double paDeadline = 1e300;
+// THE DECISION'S BUDGET IS WORK, natively as in the browser: the same units,
+// the same limit, no switch that lifts it -- so a run repeats exactly and a
+// run is the game. paBudget(units) opens a share.
 static PATLS int paOut;
-static int paWorkOnly = -1;
 #ifndef __wasm__
 void paThreadId(int id) { thId = id < MAXTHREADS ? id : MAXTHREADS - 1; }   // a worker's own counters and spare boards (memory.h)
 #endif
-static PATLS int paTick;
-#ifndef __wasm__
-struct paTs { long s, ns; };
-extern int clock_gettime(int, struct paTs *);
-extern char *getenv(const char *);
-extern double atof(const char *);
-double paNowMs(void) { struct paTs t; clock_gettime(1, &t); return t.s * 1e3 + t.ns / 1e6; }
-#endif
 static double paWorkStart;
-void paBudget(double ms, double units) {
-  paOut = 0; paTick = 0; paWorkStart = paWork;
-#ifndef __wasm__
-  if (paWorkOnly < 0) paWorkOnly = getenv("GC_WORK_ONLY") != 0;
-  // GC_BUDGET_MS replaces the budget, in ms (0: none, for comparing runs the clock must not cut)
-  static double over = -2;
-  if (over == -2) over = getenv("GC_BUDGET_MS") ? atof(getenv("GC_BUDGET_MS")) : -1;
-  double use = over >= 0 ? over : ms;
-  if (!paWorkOnly) { paWorkEnd = 1e300; paDeadline = ms < 1e299 && use > 0 ? paNowMs() + use : 1e300; return; }
-#endif
-  paWorkEnd = units < 1e299 ? paWork + units : 1e300; paDeadline = 1e300;
+void paBudget(double units) {
+  paOut = 0; paWorkStart = paWork;
+  paWorkEnd = units < 1e299 ? paWork + units : 1e300;
 }
-// the share spent, read now: the clock every time, for the end of a stage
+// the share spent, read now, for the end of a stage
 int paBudgetSpent(void) {
   if (paOut || paWork >= paWorkEnd) return 1;
-#ifndef __wasm__
-  if (paDeadline < 1e299 && paNowMs() >= paDeadline) return 1;
-#endif
   return 0;
 }
 // PAST THE CUT: the decision's work past `units` from its start (the engine
-// refuses work past paBudget's share before then), or the clock's deadline
+// refuses work past paBudget's share before then)
 int paCutPast(double units) {
   if (paWorkEnd < 1e299 && paWork - paWorkStart > units) return 1;
-#ifndef __wasm__
-  if (paDeadline < 1e299 && paNowMs() >= paDeadline) return 1;
-#endif
   return 0;
 }
 int paBudgetOut(void) {
   if (paOut) return 1;
   if (paWork >= paWorkEnd) return paOut = 1;
-#ifndef __wasm__
-  if (paDeadline < 1e299 && !(++paTick & 31) && paNowMs() >= paDeadline) return paOut = 1;
-#endif
   return 0;
 }
 static void run(Board *b) {
