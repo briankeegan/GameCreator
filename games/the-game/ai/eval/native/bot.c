@@ -58,7 +58,7 @@ typedef struct { int has, n; int32_t mv[2 * MAXD]; double frames, gain, rate, st
 typedef struct {
   double tab[T_SIZE];
   Sig seen[4]; int nSeen;
-  int prR[8], prC[8], prA[8], prB[8], nPr;   // the last presses, and the colours each left in its pair
+  int prR[8], prC[8], prA[8], prB[8], nPr; double prN[8], lineBorn, nNotes;   // each press's number in the bot's own count, and the count when the line was set   // the last presses, and the colours each left in its pair
   double linePresses;   // the front's press count when the line was set (IN_PRESSES): a step counts as made only by a press since
   Route plan, dig, attack, flatten;
   int digIsBreak, opening, maxSlab, nRecent, wantRows, wantRaise;
@@ -1234,7 +1234,7 @@ static int unreadies(const Cand *pc) {
   if (!baseReady) return 0;
   return !slabReadyHook(pc->masks);
 }
-static int undoesPress(int r, int c);
+static int undoesPress(int r, int c), undoesOld(int r, int c);
 // THE LINE IS SET IN ONE PLACE: every route that keeps a line to play on
 // writes it here, never by hand
 static void lineSet(const int32_t *sw, int n, int kind, int waitAll) {
@@ -3074,7 +3074,7 @@ static Dec playOn(Dec d) {
   if (!BT->nLine) return d;
   // NOR BY GOING BACK: a line whose next step undoes a press is dropped here,
   // where it is chosen, so the choice falls to the next best and not to a hold
-  if (undoesPress(BT->line[0], BT->line[1])) { BT->nLine = 0; return d; }
+  if (undoesOld(BT->line[0], BT->line[1])) { BT->nLine = 0; return d; }
   linesReset();
   int v = lineJudge(BT->line, BT->nLine, BT->lineWaitAll);
   int need = LV_LIVES | (BT->lineKind == LINE_BREAK ? LV_BREAKS : BT->lineKind == LINE_CASH ? LV_GAINS : 0);
@@ -3118,8 +3118,8 @@ static void notePresses(void) {
   if (!BIN[IN_HASLAST]) return;
   int r = (int)BIN[IN_LASTR], c = (int)BIN[IN_LASTC];
   if (BT->nPr && BT->prR[0] == r && BT->prC[0] == c) return;
-  for (int i = (BT->nPr < 8 ? BT->nPr : 7); i > 0; i--) { BT->prR[i] = BT->prR[i - 1]; BT->prC[i] = BT->prC[i - 1]; BT->prA[i] = BT->prA[i - 1]; BT->prB[i] = BT->prB[i - 1]; }
-  BT->prR[0] = r; BT->prC[0] = c; BT->prA[0] = pairColour(DBASE, r, c); BT->prB[0] = pairColour(DBASE, r, c + 1);
+  for (int i = (BT->nPr < 8 ? BT->nPr : 7); i > 0; i--) { BT->prR[i] = BT->prR[i - 1]; BT->prC[i] = BT->prC[i - 1]; BT->prA[i] = BT->prA[i - 1]; BT->prB[i] = BT->prB[i - 1]; BT->prN[i] = BT->prN[i - 1]; }
+  BT->prR[0] = r; BT->prC[0] = c; BT->prA[0] = pairColour(DBASE, r, c); BT->prB[0] = pairColour(DBASE, r, c + 1); BT->prN[0] = ++BT->nNotes;
   if (BT->nPr < 8) BT->nPr++;
 }
 static int undoesPress(int r, int c) {
@@ -3129,6 +3129,14 @@ static int undoesPress(int r, int c) {
   if (a == b) return 0;
   for (int i = 0; i < BT->nPr; i++) if (BT->prR[i] == r && BT->prC[i] == c && BT->prA[i] == a && BT->prB[i] == b) return i + 1;
   return 0;
+}
+// A LINE'S OWN PRESS IS ITS PLAN: the step of the line being played that
+// presses a pair back undoes a press only if that press came before the line
+// was set -- one the line made itself was judged with it, the line whole
+static int undoesOld(int r, int c) {
+  int back = undoesPress(r, c);
+  if (back && BT->nLine && BT->prN[back - 1] > BT->lineBorn) return 0;
+  return back;
 }
 // A LINE MAY NOT START BY GOING BACK: not by undoing a press, and (two deep)
 // not by repeating the last swap or returning to a board seen
@@ -3213,7 +3221,7 @@ static int landHollow(const int32_t *sw, int n) {
 // hold, which keeps the board that press made.
 static Dec returnGuard(Dec d) {
   if (d.kind != K_SWAP || !d.hasMove || lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;
-  int back = undoesPress(d.sr, d.sc);
+  int back = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc ? undoesOld(d.sr, d.sc) : undoesPress(d.sr, d.sc);
   if (!back) return d;
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RETURN via %d %d,%d undoes the press %d back\n", d.via, d.sr, d.sc, back); }
@@ -3838,7 +3846,7 @@ static Dec dropReady(Dec d) {
     LineC *l = &LINES[at];
     if (!(judged(l) & LV_LIVES) || (l->die ? l->die : 1 << 20) < dieRef) continue;
     tried++;
-    if (readyInTime(l->sw, l->n, &r, &c)) { lineKeep(l, LINE_PLAN); lineLast = 8; return mkSwap(l->sw[0], l->sw[1], V_LINEUP, d.mode, d.alive); }
+    if (readyInTime(l->sw, l->n, &r, &c)) { lineKeep(l, LINE_PLAN); lineLast = 8; return lineSwap(l, V_LINEUP, d); }
   }
   return d;
 }
@@ -4113,7 +4121,52 @@ static Dec readyWhenLands(Dec d) {
     LineC *l = &LINES[at];
     if (!(judged(l) & LV_LIVES) || (l->die ? l->die : 1 << 20) < dieRef) continue;
     tried++;
-    if (readyInTime(l->sw, l->n, &r, &c)) { lineKeep(l, LINE_PLAN); lineLast = 8; return mkSwap(l->sw[0], l->sw[1], V_LINEUP, d.mode, d.alive); }
+    if (readyInTime(l->sw, l->n, &r, &c)) { lineKeep(l, LINE_PLAN); lineLast = 8; return lineSwap(l, V_LINEUP, d); }
+  }
+  // A CLEAR, THEN A STEP: a line ends at its first clear, so a board made
+  // ready by a step on what a clear leaves is never proposed above. Each
+  // clear of the pool, nearest first, is played on the engine; on the board
+  // it settles to, the swaps that clear nothing and leave the slab a break one
+  // swap away (slabReadyHook, on the masks) are the second steps, nearest the
+  // cursor first, and the engine says whether the slab lands with the break
+  // in reach (readyInTime)
+  if (spare) {
+    static ST RCS, RC1; static int32_t RCR[R_INTS + ST_INTS], RCL[2 * 128];
+    int32_t cl[2 * MAXCAND]; int cn = 0;
+    for (int k = 0; k < nPool && cn < MAXCAND; k++) {
+      Cand *cd = &POOL[k];
+      if (cd->kind != K_SWAP || cd->res.broke || !(cd->res.total > 0)) continue;
+      cl[2 * cn] = cd->sr; cl[2 * cn + 1] = cd->sc; cn++;
+    }
+    Out oc; double farc; int qc;
+    outBegin(&oc, cl, 2, cn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
+    for (tried = 0; tried < READYTRIES && outNext(&oc, &qc, &farc);) {
+      int32_t l2[4] = { cl[2 * qc], cl[2 * qc + 1], 0, 0 }, cur[2], t;
+      uint32_t can[WMAX]; uint8_t wt[32][WMAX];
+      if (lineState(l2, 1, RC1, can, wt, cur, &t) != 0) continue;
+      int nl = legal(RC1, RCL), nr = 0;
+      for (int i = 0; i < nl; i++) {
+        stcpy(RCS, RC1);
+        if (!swapIn(RCS, RCL[2 * i], RCL[2 * i + 1])) continue;
+        resolve(RCS, RCR, 1);
+        if (RCR[R_SCOPE] != SC_OK || RCR[R_TOTAL] > 0 || !slabReadyHook(RCR + R_INTS)) continue;
+        RCL[2 * nr] = RCL[2 * i]; RCL[2 * nr + 1] = RCL[2 * i + 1]; nr++;
+      }
+      Out os; double fars; int qs;
+      outBegin(&os, RCL, 2, nr, cur[0], cur[1]);
+      while (tried < READYTRIES && outNext(&os, &qs, &fars)) {
+        l2[2] = RCL[2 * qs]; l2[3] = RCL[2 * qs + 1];
+        tried++;
+        if (!(lineJudge(l2, 2, 0) & LV_LIVES) || (LNO[0] ? LNO[0] : 1 << 20) < dieRef) continue;
+        if (readyInTime(l2, 2, &r, &c)) {
+#ifndef __wasm__
+          if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "READYAFTER %d,%d then %d,%d: break %d,%d\n", l2[0], l2[1], l2[2], l2[3], r, c); }
+#endif
+          lineSet(l2, 2, LINE_PLAN, 0); lineLast = 8;
+          return mkSwap(l2[0], l2[1], V_LINEUP, d.mode, d.alive);
+        }
+      }
+    }
   }
   // NOR TWO: the time to the landing is what bounds the setup, not a count of
   // swaps. The breaks by distance are found on the board as the slab lands
@@ -4833,6 +4886,7 @@ static Dec meanwhile(Dec d) {
   if (keep) lineSet(ln + 2, n, kind, waitAll);
   else if (two && two->n > 1) lineKeep(two, LINE_PLAN);
   else BT->nLine = 0;
+  if (two) return lineSwap(two, d.via, d);
   return mkSwap(mr, mc, d.via, d.mode, d.alive);
 }
 // READY BEFORE IT LANDS: while garbage is to come and the board is ready
@@ -4916,29 +4970,33 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // through -- so it is judged while the budget is whole, once
   aloneOnEngine();
   DBASE = IN; notePresses();
-  // A LINE ONCE PLAYED IS NOT REPLACED BY ONE THAT DIES SOONER: a route may
-  // set a line of its own over the one kept from the last decision; the kept
-  // line is played on instead while it lives longer than the route's
+  // A LINE ONCE PLAYED IS NOT REPLACED BY A CHOICE THAT DIES SOONER: a route
+  // may set a line of its own over the one kept from the last decision, or
+  // clear it and choose a swap or a hold; the kept line is played on instead
+  // while it lives longer than what the route chose
   int32_t keptLine[2 * LINEMAX]; int keptN = BT->nLine, keptKind = BT->lineKind, keptWait = BT->lineWaitAll;
   for (int q = 0; q < 2 * keptN; q++) keptLine[q] = BT->line[q];
   SHARE(25); Dec d = decideRuled(); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  if (keptN && BT->nLine && (BT->nLine != keptN || __builtin_memcmp(BT->line, keptLine, (unsigned long)keptN * 8))) {
+  if (keptN && d.kind != K_RAISE && (BT->nLine != keptN || __builtin_memcmp(BT->line, keptLine, (unsigned long)keptN * 8))) {
     int32_t routeLine[2 * LINEMAX]; int routeN = BT->nLine, routeKind = BT->lineKind, routeWait = BT->lineWaitAll;
     for (int q = 0; q < 2 * routeN; q++) routeLine[q] = BT->line[q];
     lineSet(keptLine, keptN, keptKind, keptWait);
     Dec dk = playOn(d);
     int keepIt = 0;
     if (BT->nLine) {
-      int keptDie = playDie;
-      int v = lineJudge(routeLine, routeN, routeWait);
-      int routeDie = (v & LV_LIVES) && !LNO[0] ? 1 << 20 : LNO[0] ? LNO[0] : 0;
+      int keptDie = playDie, routeDie;
+      if (routeN || (d.kind == K_SWAP && d.hasMove)) {
+        int32_t one[2] = { d.sr, d.sc };
+        int v = routeN ? lineJudge(routeLine, routeN, routeWait) : lineJudge(one, 1, d.waitAll);
+        routeDie = (v & LV_LIVES) && !LNO[0] ? 1 << 20 : LNO[0] ? LNO[0] : 0;
+      } else routeDie = !aloneOnEngine() ? 0 : LNA[0] ? LNA[0] : 1 << 20;
       keepIt = keptDie > routeDie;
 #ifndef __wasm__
-      if (botTraceOn && keepIt) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "KEPT %d,%d (dies %d) over the route's %d,%d (dies %d)\n", BT->line[0], BT->line[1], keptDie, routeLine[0], routeLine[1], routeDie); }
+      if (botTraceOn && keepIt) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "KEPT %d,%d (dies %d) over the route's %s %d,%d (dies %d)\n", BT->line[0], BT->line[1], keptDie, routeN ? "line" : d.kind == K_SWAP ? "swap" : "hold", d.sr, d.sc, routeDie); }
 #endif
     }
     if (keepIt) d = dk;
-    else { lineSet(routeLine, routeN, routeKind, routeWait); d = playOn(d); }
+    else { if (routeN) lineSet(routeLine, routeN, routeKind, routeWait); else BT->nLine = 0; d = playOn(d); }
   } else {
     SHARE(5); d = playOn(d);
   }
@@ -4963,12 +5021,16 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     if (l->n > 1) lineKeep(l, LINE_BREAK); else BT->nLine = 0;
     d = lineSwap(l, V_BREAKREACH, d);
   }
+  // A LINE IS PRESSED AS IT WAS JUDGED: a decision that plays the kept line's
+  // step takes the line's timing (a break waits for its panels to settle),
+  // whichever route returned it
+  if (d.kind == K_SWAP && BT->nLine == 1 && BT->line[0] == d.sr && BT->line[1] == d.sc) d.waitAll = BT->lineWaitAll;
   d = returnGuard(d);
   d = perchGuard(d);
   d = setupTwos(d);
   d = surviveGuard(d);
   // a line set this decision is stamped with the presses made before it
-  if (BT->nLine && (BT->nLine != nLineAfterPlay || __builtin_memcmp(BT->line, lineAfterPlay, (unsigned long)BT->nLine * 8))) BT->linePresses = BIN[IN_PRESSES];
+  if (BT->nLine && (BT->nLine != nLineAfterPlay || __builtin_memcmp(BT->line, lineAfterPlay, (unsigned long)BT->nLine * 8))) { BT->linePresses = BIN[IN_PRESSES]; BT->lineBorn = BT->nNotes; }
 #ifndef __wasm__
   // THE PRESS THE JUDGE EXPECTS, for the log: read from the judge's memo only
   // (the log does no work), set beside the PRESS line the front writes
@@ -4977,7 +5039,9 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc, v; int32_t lno[LNOLEN];
     int32_t sw1[2] = { d.sr, d.sc };
     if (playsLine ? jmFind(BT->line, BT->nLine, BT->lineWaitAll, &v, lno) : jmFind(sw1, 1, d.waitAll, &v, lno))
-      fprintf(stderr, "PLAN at %d,%d press at clock %d last %d die %d\n", d.sr, d.sc, lno[16], lno[1], lno[0]);
+      { fprintf(stderr, "PLAN at %d,%d press at clock %d last %d die %d | line", d.sr, d.sc, lno[16], lno[1], lno[0]);
+        for (int k = 0; k < BT->nLine; k++) fprintf(stderr, " %d,%d", BT->line[2 * k], BT->line[2 * k + 1]);
+        fprintf(stderr, " kind %d wait %d\n", BT->lineKind, BT->lineWaitAll); }
   }
 #endif
   cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
