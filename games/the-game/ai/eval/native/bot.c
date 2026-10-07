@@ -1466,7 +1466,10 @@ static Dec decideCore(void) {
   if (digging) {
     int haveBreak = 0;
     for (int i = 0; i < nPool; i++) if (POOL[i].res.broke) { haveBreak = 1; break; }
-    int stillComing = BIN[IN_INCOMING] > 0 || BIN[IN_FALLING];
+    // BREAK ONCE IT LANDS: the hold is for garbage in the air, landing now --
+    // not for the queue, which in a storm never empties, so waiting on it
+    // only grows the pile until the board tops out
+    int stillComing = BIN[IN_FALLING] != 0;
     Cand *bk = 0;
     for (int i = 0; i < nPool; i++) {
       Cand *bc = &POOL[i];
