@@ -3023,7 +3023,9 @@ static Dec breakFirst(Dec d) {
   // BREAK AT THE RIGHT TIME: a break after which the next slab lands with no
   // break in reach waits while the board left alone does not die -- the
   // other routes ready the board meanwhile, and the break is still there
-  if (!bbReady && aloneOnEngine() && !LNA[0]) return d;
+  // -- and only while the board can still hold what the break makes, the next
+  // slab on the pile included: past that, waiting only grows the pile
+  if (!bbReady && roomForBreak(DBASE) && aloneOnEngine() && !LNA[0]) return d;
   lineLast = 3;
   plansDrop();
   if (l->n > 1) lineKeep(l, LINE_BREAK); else BT->nLine = 0;
