@@ -3575,6 +3575,11 @@ static Dec makeRoom(Dec d) {
 // NOR A PERCH: a clear that breaks nothing and leaves more hollow under the
 // garbage that lands than the board left alone digs the gap a slab perches
 // over -- the board made less ready, not more.
+// THE LEVELLER FILL FOUND: of the swaps and walks fill judged this decision,
+// the one that clears nothing, loses health no sooner than the board left
+// alone and leaves the least hollow (fewer than left alone) -- what a wait
+// for the landing plays (noStall)
+static Best fillLevel; static int fillLevelDec = -1;
 static Dec noStall(Dec d) {
   if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0) || BIN[IN_TOPPED]) return d;
   if (!roomForBreak(DBASE) || endsInBreak(d)) return d;
@@ -3593,9 +3598,10 @@ static Dec noStall(Dec d) {
   // lands: a clear there spends material only broken garbage replaces.
   if (hasGarbage(DBASE)) { int32_t k[LNOLEN]; for (int q = 0; q < LNOLEN; q++) k[q] = LNO[q]; int r, c, rdy = readyInTime(0, 0, &r, &c); for (int q = 0; q < LNOLEN; q++) LNO[q] = k[q]; if (!rdy) return d; }
   BT->nLine = 0;
-  // THE WAIT IS NOT IDLE: the swap nearest the cursor, of those that clear
-  // nothing, live as long as the board left alone and leave the slab less
-  // hollow to land on, is played while the landing is awaited
+  // THE WAIT IS NOT IDLE: fill's leveller, if it found one; else the swap
+  // nearest the cursor, of those that clear nothing, live as long as the
+  // board left alone and leave the slab less hollow to land on
+  if (fillLevelDec == btDecision && fillLevel.has) return mkSwap(fillLevel.sw[0], fillLevel.sw[1], V_FILL, d.mode, d.alive);
   { int32_t pl[2 * MAXCAND]; int pn = 0, q, tried = 0, br = 0, bc = 0, hb = HOLLOW(LNA);
     for (int k = 0; k < nPool && pn < MAXCAND; k++) {
       Cand *cd = &POOL[k];
@@ -4021,7 +4027,9 @@ static int spendsLeaveSix(void) { return (double)LNO[12] / BW >= 6; }   // the p
 static int readyAfterSpend(const int32_t *sw, int n);
 static int nonSpendLives(void);
 int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);
+#define LEVELTAKE(swp, nn, t) do { if (!(v & LV_PAYS) && (LNA[0] ? (!LNO[0] || LNO[0] >= LNA[0]) : !LNO[0]) && HOLLOW(LNO) < HOLLOW(LNA)) bestTake(&fillLevel, -HOLLOW(LNO), (t), (swp), (nn)); } while (0)
 static Dec fillFirstIn(Dec d) {
+  fillLevel.has = 0; fillLevelDec = btDecision;
   if (d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
   if (lineLast == 1 || lineLast == 3) return BT->lineKind == LINE_BREAK || lineLast == 3 ? fillBeforeBreak(d) : d;
   if (lineLast) return d;
@@ -4077,6 +4085,7 @@ static Dec fillFirstIn(Dec d) {
     if (!(v & LV_LIVES)) { FILLWHY("dies"); continue; }
     if (spend && !LIVES_LONGER()) { FILLWHY("spends, lives no longer"); continue; }
     int pdie = LNO[0];
+    LEVELTAKE(sw, 1, pc->moveFrames);
     double sc = fillScoreOf(sw, 1, pdie, HOLLOW(LNO));
     if (P.has ? !bestBeats(&P, sc, pc->moveFrames, sw, 1) : sc <= ref) { FILLWHY("beaten"); continue; }
     if (!fillKeeps(marginWithin(sw, 1, pdie, need), need)) { FILLWHY("costs the break's time"); continue; }
@@ -4137,6 +4146,7 @@ static Dec fillFirstIn(Dec d) {
       double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
       // a walk must beat the pool's best; among walks, the same order (time: its estimate)
       int wdie = LNO[0];
+      LEVELTAKE(fsw, n, est);
       double sc = fillScoreOf(fsw, n, wdie, HOLLOW(LNO));
       if (W.has ? !bestBeats(&W, sc, est, fsw, n) : sc <= ref) continue;
       if (!fillKeeps(marginWithin(fsw, n, wdie, need), need)) continue;
