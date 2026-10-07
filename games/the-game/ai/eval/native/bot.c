@@ -3263,9 +3263,8 @@ static Dec spendToBreak(Dec d) {
 #endif
   // garbage let down is never held: it lowers the stack
   if (!(v & LV_LIVES) || !(v & LV_PAYS) || (v & (LV_BREAKS | LV_GAINS | LV_DROPS))) return d;
-  // over six rows of panels there is material to spare: a clear that leaves
-  // less hollow under what lands is spent
-  if ((v & LV_FILLS) && materialRows(DBASE) >= 6) return d;
+  // over six rows of panels there is material to spare: a clear is spent
+  if (materialRows(DBASE) >= 6) return d;
   return mkHold(V_SETUP, d.mode, d.alive, 0, 0, 0);
 }
 // WHAT LANDS IS WHAT IT WILL BREAK. A slab rests on the tallest column under
