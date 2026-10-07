@@ -3959,7 +3959,8 @@ static Dec fillFirstIn(Dec d) {
   if (need > 0) need = 0;   // in time is in time
   // A FILL PRESSED AFTER THE SLAB LANDS FILLS NOTHING UNDER IT: a fill whose
   // last press comes after the next slab lands is not one
-  int32_t tLand = 1 << 20; { static ST FLL; if (lineLanded(0, 0, FLL, &tLand) != 0) tLand = 1 << 20; }
+  // -- the next slab's: under garbage already on the board, a fill fills whenever it comes
+  int32_t tLand = 1 << 20; if (!hasGarbage(DBASE)) { static ST FLL; if (lineLanded(0, 0, FLL, &tLand) != 0) tLand = 1 << 20; }
   Cand *pick = 0;
   // NOT TO DIE: over six rows a clear may be spent to fill; under, only while
   // the board left alone loses health before its soonest break, and only by a
