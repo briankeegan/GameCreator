@@ -1235,6 +1235,13 @@ static int unreadies(const Cand *pc) {
   return !slabReadyHook(pc->masks);
 }
 static int undoesPress(int r, int c);
+// THE LINE IS SET IN ONE PLACE: every route that keeps a line to play on
+// writes it here, never by hand
+static void lineSet(const int32_t *sw, int n, int kind, int waitAll) {
+  if (n > LINEMAX) n = LINEMAX;
+  for (int k = 0; k < 2 * n; k++) BT->line[k] = sw[k];
+  BT->nLine = n; BT->lineKind = kind; BT->lineWaitAll = waitAll;
+}
 static int playable(int r, int c) {
   Cand *pc = poolSwap(r, c);
   if (!pc) return 0;
@@ -1791,12 +1798,13 @@ static Dec decideRuled(void) {
       int32_t lg[2 * 128];
       int n = legal(base, lg);
       for (int i = 0; i < n; i++) if (lg[2 * i] == r0 && lg[2 * i + 1] == c0) { ok0 = 1; break; }
-      if (ok0 && route[F_DURATION] <= DDEADLINE) {
+      if (ok0 && route[F_DURATION] <= DDEADLINE && !undoesPress(r0, c0)) {
         BT->counts[C_SAVEPLANNED]++;
         // the route is a line: kept and played on while it lives (playOn)
         int n = (int)route[F_NSW] < LINEMAX ? (int)route[F_NSW] : LINEMAX;
-        for (int k = 0; k < 2 * n; k++) BT->line[k] = (int32_t)route[F_SW + k];
-        BT->nLine = n; BT->lineKind = LINE_PLAN; BT->lineWaitAll = 0;
+        int32_t rl[2 * LINEMAX];
+        for (int k = 0; k < 2 * n; k++) rl[k] = (int32_t)route[F_SW + k];
+        lineSet(rl, n, LINE_PLAN, 0);
         return mkSwap(r0, c0, V_PLANSAVE, d.mode, d.alive);
       }
     }
@@ -3020,10 +3028,7 @@ static LineC *bestLiving(int (*ok)(const LineC *)) {
   }
   return pick;
 }
-static void lineKeep(const LineC *l, int kind) {
-  for (int k = 0; k < 2 * l->n; k++) BT->line[k] = l->sw[k];
-  BT->nLine = l->n; BT->lineKind = kind; BT->lineWaitAll = l->waitAll;
-}
+static void lineKeep(const LineC *l, int kind) { lineSet(l->sw, l->n, kind, l->waitAll); }
 // The first step of a line, as a swap; its last waits for the board to settle when the line says.
 static Dec lineSwap(const LineC *l, int via, Dec d) {
   Dec s = mkSwap(l->sw[0], l->sw[1], via, d.mode, d.alive);
@@ -3067,6 +3072,9 @@ static Dec playOn(Dec d) {
     BT->linePresses = BIN[IN_PRESSES];
   }
   if (!BT->nLine) return d;
+  // NOR BY GOING BACK: a line whose next step undoes a press is dropped here,
+  // where it is chosen, so the choice falls to the next best and not to a hold
+  if (undoesPress(BT->line[0], BT->line[1])) { BT->nLine = 0; return d; }
   linesReset();
   int v = lineJudge(BT->line, BT->nLine, BT->lineWaitAll);
   int need = LV_LIVES | (BT->lineKind == LINE_BREAK ? LV_BREAKS : BT->lineKind == LINE_CASH ? LV_GAINS : 0);
@@ -3285,8 +3293,7 @@ static Dec surviveGuard(Dec d) {
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "GUARD via %d %d,%d dies %d before %d: %s %d,%d\n", d.via, d.sr, d.sc, die, saDie, saSet ? "stayAlive's" : "the hold", saDec.sr, saDec.sc); }
 #endif
-  BT->nLine = saN; BT->lineKind = saKind; BT->lineWaitAll = saWait;
-  for (int k = 0; k < 2 * saN; k++) BT->line[k] = saLine[k];
+  lineSet(saLine, saN, saKind, saWait);
   return saDec;
 }
 
@@ -3683,7 +3690,7 @@ static Dec lineupFirst(Dec d) {
   lineLast = 5;
   plansDrop();
   BT->nLine = 0;
-  if (B.n >= 2) { for (int k = 0; k < 2 * B.n; k++) BT->line[k] = B.sw[k]; BT->nLine = B.n; BT->lineKind = LINE_PLAN; BT->lineWaitAll = 0; }
+  if (B.n >= 2) lineSet(B.sw, B.n, LINE_PLAN, 0);
   return mkSwap(B.sw[0], B.sw[1], V_LINEUP, d.mode, d.alive);
 }
 // READY WHEN IT LANDS: a slab one row high drops the first frame no panel
@@ -3996,8 +4003,7 @@ static Dec setupTwos(Dec d) {
       if (!(v & LV_LIVES) || (v & LV_PAYS) || (LNA[0] ? (LNO[0] && LNO[0] < LNA[0]) : LNO[0] != 0) || HOLLOW(LNO) > HOLLOW(LNA)) continue;
       double need = marginAfter(0, 0, LNA[0]);
       if (need >= 0 && marginAfter(two[at], 2, LNO[0]) < 0) continue;
-      for (int k = 0; k < 4; k++) BT->line[k] = two[at][k];
-      BT->nLine = 2; BT->lineKind = LINE_PLAN; BT->lineWaitAll = 0;
+      lineSet(two[at], 2, LINE_PLAN, 0);
       return mkSwap(two[at][0], two[at][1], V_SETUP, d.mode, d.alive);
     }
   }
@@ -4645,8 +4651,7 @@ static Dec fillFirstIn(Dec d) {
         // the judge plays the line through whatever lands while it is played
         int vv = v, die = LNO[0], hol = HOLLOW(LNO);
         if ((vv & LV_LIVES) && !(vv & LV_PAYS) && fillScoreOf(sw, n, die, hol) > beat && fillKeeps(marginWithin(sw, n, die, need), need)) {
-          for (int k = 0; k < 2 * n; k++) BT->line[k] = sw[k];
-          BT->nLine = n; BT->lineKind = LINE_PLAN; BT->lineWaitAll = 0;
+          lineSet(sw, n, LINE_PLAN, 0);
           return mkSwap(sw[0], sw[1], V_FILL, d.mode, d.alive);
         }
       }
@@ -4794,8 +4799,7 @@ static Dec meanwhile(Dec d) {
       int v = lineJudge(l2, n + 2, waitAll);
       if ((v & need) != need || LNO[1] > last0 || (die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0) || HOLLOW(LNO) > hl0) continue;
       for (int k = 0; k < LNOLEN; k++) LNO[k] = keepO[k];
-      for (int k = 0; k < 2 * (n + 1); k++) BT->line[k] = l2[2 + k];
-      BT->nLine = n + 1; BT->lineKind = kind; BT->lineWaitAll = waitAll;
+      lineSet(l2 + 2, n + 1, kind, waitAll);
       return mkSwap(l2[0], l2[1], V_SETUP, d.mode, d.alive);
     }
     for (int k = 0; k < LNOLEN; k++) LNO[k] = keepO[k];
@@ -4826,7 +4830,7 @@ static Dec meanwhile(Dec d) {
 #endif
 #undef SPENDS_OK
   if (!mr) return d;
-  if (keep) { for (int k = 0; k < 2 * n; k++) BT->line[k] = ln[2 + k]; BT->nLine = n; BT->lineKind = kind; BT->lineWaitAll = waitAll; }
+  if (keep) lineSet(ln + 2, n, kind, waitAll);
   else if (two && two->n > 1) lineKeep(two, LINE_PLAN);
   else BT->nLine = 0;
   return mkSwap(mr, mc, d.via, d.mode, d.alive);
