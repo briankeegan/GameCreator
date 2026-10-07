@@ -3852,6 +3852,7 @@ static double fillScoreOf(const int32_t *sw, int n, int die, int hollow) {
 // a clear judged (LNO) leaves six rows of material, read off the line's own matches
 static int spendsLeaveSix(void) { return materialRows(DBASE) - (double)(LNO[3] - LNA[3]) / BW >= 6; }
 static int readyAfterSpend(const int32_t *sw, int n);
+int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);
 static Dec fillFirstIn(Dec d) {
   if (d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
   if (lineLast == 1 || lineLast == 3) return BT->lineKind == LINE_BREAK || lineLast == 3 ? fillBeforeBreak(d) : d;
@@ -3877,6 +3878,9 @@ static Dec fillFirstIn(Dec d) {
 #endif
   }
   if (need > 0) need = 0;   // in time is in time
+  // A FILL PRESSED AFTER THE SLAB LANDS FILLS NOTHING UNDER IT: a fill whose
+  // last press comes after the next slab lands is not one
+  int32_t tLand = 1 << 20; { static ST FLL; if (lineLanded(0, 0, FLL, &tLand) != 0) tLand = 1 << 20; }
   Cand *pick = 0;
   // NOT TO DIE: over six rows a clear may be spent to fill; under, only while
   // the board left alone loses health before its soonest break, and only by a
@@ -3897,7 +3901,7 @@ static Dec fillFirstIn(Dec d) {
     int32_t sw[2] = { pc->sr, pc->sc };
     int v = lineJudge(sw, 1, 0);
     int spend = (v & LV_PAYS) && !spendsLeaveSix();
-    if (!(v & LV_LIVES) || (spend && !LIVES_LONGER())) continue;
+    if (!(v & LV_LIVES) || (spend && !LIVES_LONGER()) || LNO[1] >= tLand) continue;
     int pdie = LNO[0];
     double sc = fillScoreOf(sw, 1, pdie, LNO[10]);
     if (P.has ? !bestBeats(&P, sc, pc->moveFrames, sw, 1) : sc <= ref) continue;
@@ -3955,7 +3959,7 @@ static Dec fillFirstIn(Dec d) {
         fprintf(stderr, "  walk %d,%d dir %d n %d v %d hollow %d die %d last %d break %g\n", r, c, dir, n, v, h, dd, la, bt); } }
 #endif
       int spend = (v & LV_PAYS) && !spendsLeaveSix();
-      if (!(v & LV_LIVES) || (spend && !LIVES_LONGER())) continue;
+      if (!(v & LV_LIVES) || (spend && !LIVES_LONGER()) || LNO[1] >= tLand) continue;
       double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
       // a walk must beat the pool's best; among walks, the same order (time: its estimate)
       int wdie = LNO[0];
