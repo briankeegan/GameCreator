@@ -2079,11 +2079,6 @@ static int fitTasks(int count, double cost) {
   if (k < count) budgetRefused += count - k;
   return k < count ? k : count;
 }
-// and what a batch cost, a task: the most yet
-static void learnCost(double *cost, double w0, int count) {
-  extern PATLS double paWork;
-  if (count > 0 && (paWork - w0) / count > *cost) *cost = (paWork - w0) / count;
-}
 static double rpCost;   // a replay's (prereplay)
 static int lineJudgeIn2(const int32_t *sw, int n, int waitAll) {
   extern PATLS double paWork;
@@ -3871,8 +3866,9 @@ static double breakTimeAfter(const int32_t *steps, int n, double limit, int32_t 
 static const int32_t *bsPl; static double *bsB0;
 static double bsLim;
 static int breakAhead(const int32_t *sw, double lim, double *out);   // front.c
-static void bsTask(int k) { double v; bsB0[k] = breakAhead(bsPl + 2 * k, bsLim, &v) ? v : breakWithinT(bsPl + 2 * k, 1, bsLim); }
-#define SOONBATCH 16   // swaps taken together, out from the cursor
+static double bsWork[16];   // each task's own work (SOONBATCH)
+static void bsTask(int k) { double v, w0 = paWork; bsB0[k] = breakAhead(bsPl + 2 * k, bsLim, &v) ? v : breakWithinT(bsPl + 2 * k, 1, bsLim); bsWork[k] = paWork - w0; }
+#define SOONBATCH 16   // swaps taken together, out from the cursor (bsWork's size)
 static Dec breakSoon(Dec d) {
   if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;
   if (lineLast == 2 || d.kind == K_RAISE || !BIN[IN_HASPA] || !hasGarbage(DBASE)) return d;
@@ -3921,9 +3917,8 @@ static Dec breakSoon(Dec d) {
     bsLim = inTime.has ? -inTime.score + 1e-9 : floorM > -INF ? LINEHORIZON - floorM + 1e-9 : INF;
     nb = fitTasks(nb, btCost);
     if (!nb) break;
-    { extern PATLS double paWork; double w0 = paWork;
-      prereplay(bl, nb); bsPl = bl; bsB0 = tb; parallelDo(nb, bsTask);
-      learnCost(&btCost, w0, nb); }
+    prereplay(bl, nb); bsPl = bl; bsB0 = tb; parallelDo(nb, bsTask);
+    for (int k = 0; k < nb; k++) if (bsWork[k] > btCost) btCost = bsWork[k];   // the most one task cost
     for (int k = 0; k < nb; k++) { b0[bq[k]] = tb[k]; if (tb[k] < INF) { wb[2 * nwb] = bl[2 * k]; wb[2 * nwb + 1] = bl[2 * k + 1]; nwb++; } }
     prejudge(wb, 2, nwb, 1, 0);
     for (int k = at; k < end; k++) {

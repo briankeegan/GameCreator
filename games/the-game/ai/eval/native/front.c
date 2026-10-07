@@ -687,10 +687,13 @@ static int lsmHas(const int32_t *steps, int n, int landing) {
 static LSMemo PRJ[128];
 static int prjN;
 static int prjSnap[128];
+static double prjWork[128];   // each task's own work
 static void prjTask(int k) {
   LSMemo *j = &PRJ[k];
   snapTo = prjSnap[k];
+  double w0 = paWork;
   j->rc = lineStateRun(j->sw, j->n, 0, j->masks, j->can, j->wait, j->cur, &j->t);
+  prjWork[k] = paWork - w0;
   snapTo = -1;
 }
 // count lines of n steps each, `stride` ints apart
@@ -713,9 +716,8 @@ static void prereplayN(const int32_t *sws, int stride, int count, int n) {
     if (slot >= 0) { SNAPS[slot].dec = -1; if (!SNAPS[slot].b) SNAPS[slot].b = nb_new(); }
   }
   prjN = fitTasks(prjN, rpCost);
-  double w0 = paWork;
   parallelDo(prjN, prjTask);
-  learnCost(&rpCost, w0, prjN);
+  for (int k = 0; k < prjN; k++) if (prjWork[k] > rpCost) rpCost = prjWork[k];
   for (int k = 0; k < prjN; k++) {
     int slot = prjSnap[k];
     if (slot >= 0 && PRJ[k].rc == 0 && SNAPS[slot].n == PRJ[k].n && !__builtin_memcmp(SNAPS[slot].sw, PRJ[k].sw, (unsigned long)PRJ[k].n * 8)) SNAPS[slot].dec = btDecision;
@@ -847,7 +849,7 @@ static int lineStateRun(const int32_t *steps, int n, int landing, int32_t *masks
 typedef unsigned long gcThread;
 extern int pthread_create(gcThread *, const void *, void *(*)(void *), void *);
 extern int pthread_join(gcThread, void **);
-typedef struct { int32_t sw[2 * LINEMAX]; int n, waitAll, v; int32_t lno[LNOLEN]; } PJob;
+typedef struct { int32_t sw[2 * LINEMAX]; int n, waitAll, v; int32_t lno[LNOLEN]; double work; } PJob;   // work: the task's own
 static PJob PJ[256];
 static int pjLock, pjThreads = -1;
 static void (*pjTask)(int);
@@ -993,7 +995,9 @@ static void parallelDo(int count, void (*task)(int)) {
 }
 static void pjJudge(int k) {
   PJob *j = &PJ[k];
+  double w0 = paWork;
   j->v = lineJudgeIn(j->sw, j->n, j->waitAll);
+  j->work = paWork - w0;
   for (int i = 0; i < LNOLEN; i++) j->lno[i] = LNO[i];
 }
 static void prejudge(const int32_t *sws, int stride, int count, int n, int waitAll) {
@@ -1010,9 +1014,8 @@ static void prejudge(const int32_t *sws, int stride, int count, int n, int waitA
   }
   jobs = fitTasks(jobs, jdCost);
   if (jobs < 2) return;
-  double w0 = paWork;
   parallelDo(jobs, pjJudge);
-  learnCost(&jdCost, w0, jobs);
+  for (int k = 0; k < jobs; k++) if (PJ[k].work > jdCost) jdCost = PJ[k].work;   // the most one task cost
   extern int paBudgetOut(void);
   if (paBudgetOut()) return;
   for (int k = 0; k < jobs; k++) jmPut(PJ[k].sw, PJ[k].n, PJ[k].waitAll, PJ[k].v, PJ[k].lno);
@@ -1032,9 +1035,8 @@ static void prejudgeLinesW(LineC *const *ls, int count, int waitAll) {
   }
   jobs = fitTasks(jobs, jdCost);
   if (jobs < 2) return;
-  double w0 = paWork;
   parallelDo(jobs, pjJudge);
-  learnCost(&jdCost, w0, jobs);
+  for (int k = 0; k < jobs; k++) if (PJ[k].work > jdCost) jdCost = PJ[k].work;   // the most one task cost
   extern int paBudgetOut(void);
   if (paBudgetOut()) return;
   for (int k = 0; k < jobs; k++) jmPut(PJ[k].sw, PJ[k].n, PJ[k].waitAll, PJ[k].v, PJ[k].lno);
