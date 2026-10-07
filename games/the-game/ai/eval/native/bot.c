@@ -2746,7 +2746,8 @@ static void targetAfterDrops(const int32_t *st, double limit) {
     int ls = lineState(pf, 1, st1, can, wt, cur, &t), n0 = nLines;
     if (ls == 0 && t <= limit) { tPfx[0] = r; tPfx[1] = c; tPfxN = 1; targetLines(st1, cur[0], cur[1], t, limit); tPfxN = 0; }
 #ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  TAD %d,%d drops: state %d t %d limit %g lines +%d\n", r, c, ls, t, limit, nLines - n0); }
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  TAD %d,%d drops: state %d t %d limit %g lines +%d\n", r, c, ls, t, limit, nLines - n0);
+      for (int w = 0; w < 2; w++) { tGrid(w ? st1 : st); fprintf(stderr, "  TAD %s:", w ? "after" : "before"); for (int rr = tH; rr >= 1; rr--) { fprintf(stderr, " "); for (int cc = 1; cc <= tW; cc++) fprintf(stderr, "%c", tCell[rr][cc] == 0 ? '.' : tCell[rr][cc] == -1 ? 'g' : tCell[rr][cc] == -2 ? 'i' : '0' + tCell[rr][cc]); } fprintf(stderr, "\n"); } }
 #endif
   }
 }
