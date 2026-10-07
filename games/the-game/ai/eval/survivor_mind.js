@@ -209,7 +209,8 @@ wt.parentPort.on('message', function (m) {
     // A question due within TIGHT_MS is decided one move deep: the lookahead
     // has no clock, and its second ply is most of what is left.
     var depth0 = bot.depth;
-    if (due && due - Date.now() < TIGHT_MS) bot.depth = 1;
+    var tight = !!(due && due - Date.now() < TIGHT_MS);
+    if (tight) bot.depth = 1;
     try { d = bot._decide(); } finally { bot._abort = null; N.deadline(0); bot.depth = depth0; }
     var why = null;
     if (process.env.GC_SURVIVOR_WHY) {
@@ -238,7 +239,7 @@ wt.parentPort.on('message', function (m) {
           line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
           mem: NativeMem(),
           breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
-          diag: { budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped } };
+          diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped } };
   } catch (e) {
     if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
     else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e) + ' [inc ' + (board && board.incoming ? board.incoming.length : '?') + ', arr ' + (m.arrivals ? m.arrivals.length : '?') + ']', ms: Date.now() - t0 };

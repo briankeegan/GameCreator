@@ -294,6 +294,7 @@ Match.prototype.take = function (truth) {
     if (a.mem) this.stats.memMB = Math.round(a.mem.bytes / 1048576);
     if (process.env.GC_SURVIVOR_DEBUG && a.mem) console.error('decision ' + a.id + ' at ' + a.at + ': ' + a.ms + ' ms (break ' + a.brMs + ') ' + a.kind + ' ' + JSON.stringify(a.move) + ' ' + JSON.stringify(a.diag) + ' ' + Math.round(a.mem.bytes / 1048576) + 'MB');
     if (a.error) { console.error('decision failed: ' + a.error); this.acted = false; pending = null; continue; }
+    if (a.diag && a.diag.tight) this.stats.tight = (this.stats.tight || 0) + 1;
     if (a.breaks) { this.stats['break' + a.breaks.offered]++; if (a.breaks.took) this.stats['took' + a.breaks.offered]++; if (a.breaks.lineup) { this.stats.lineup++; if (a.breaks.took) this.stats.tookLineup++; } if (a.breaks.touch) { this.stats.touch++; if (a.breaks.took) this.stats.tookTouch++; } }
     this.decided.push({ id: a.id, at: a.at, now: now, kind: a.kind, move: a.move, ms: a.ms, diag: a.diag,
                        asked: pending && pending.id === a.id ? pending.askedAt : null, trip: pending && pending.id === a.id ? a.got - pending.sent : null });
