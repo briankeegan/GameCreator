@@ -58,6 +58,7 @@ typedef struct { int has, n; int32_t mv[2 * MAXD]; double frames, gain, rate, st
 typedef struct {
   double tab[T_SIZE];
   Sig seen[4]; int nSeen;
+  int prR[8], prC[8], prA[8], prB[8], nPr;   // the last presses, and the colours each left in its pair
   Route plan, dig, attack, flatten;
   int digIsBreak, opening, maxSlab, nRecent, wantRows, wantRaise;
   int32_t line[2 * LINEMAX]; int nLine, lineKind, lineWaitAll;   // the line being played, its steps still to play: LINE_BREAK or LINE_CASH
@@ -3153,19 +3154,35 @@ static int landHollow(const int32_t *sw, int n) {
   }
   return h;
 }
-// NO GOING BACK: a swap that clears and breaks nothing and leaves the board
-// as it was a decision or few ago (BT->seen) undoes what was just done -- two
-// such decisions in turn swap a pair back and forth while the board waits. It
-// gives way to the hold, which keeps the board that was itself the choice.
+// NO GOING BACK: a swap at a pair the bot pressed, whose two cells still hold
+// what that press left there, puts them back as they were -- an undo. Two
+// presses undone in turn swap the board around while it waits (seed 9: 3,2
+// and 4,1, each undone two presses later, for 110 frames). Unless it clears
+// or breaks, it gives way to the hold, which keeps the board that press made.
+static int pairColour(const int32_t *st, int r, int c) {
+  uint32_t b = 1u << (r - 1);
+  if (r < 1 || r > 31 || !(U(st, OCC + c) & b) || (U(st, GARB + c) & b)) return 0;
+  return colourFirst(st, c, b);
+}
 static Dec returnGuard(Dec d) {
+  // the presses, as they come: the last one pressed, and the colours it left
+  if (BIN[IN_HASLAST]) {
+    int r = (int)BIN[IN_LASTR], c = (int)BIN[IN_LASTC];
+    if (!BT->nPr || BT->prR[0] != r || BT->prC[0] != c) {
+      for (int i = (BT->nPr < 8 ? BT->nPr : 7); i > 0; i--) { BT->prR[i] = BT->prR[i - 1]; BT->prC[i] = BT->prC[i - 1]; BT->prA[i] = BT->prA[i - 1]; BT->prB[i] = BT->prB[i - 1]; }
+      BT->prR[0] = r; BT->prC[0] = c; BT->prA[0] = pairColour(DBASE, r, c); BT->prB[0] = pairColour(DBASE, r, c + 1);
+      if (BT->nPr < 8) BT->nPr++;
+    }
+  }
   if (d.kind != K_SWAP || !d.hasMove || lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;
   Cand *pc = poolSwap(d.sr, d.sc);
-  if (!pc || pc->res.total > 0 || pc->res.broke) return d;
-  Sig sg; sigOf(pc->masks, &sg);
-  for (int i = 0; i < BT->nSeen; i++) {
-    if (!sigEq(&sg, &BT->seen[i])) continue;
+  if (pc && (pc->res.total > 0 || pc->res.broke)) return d;
+  int a = pairColour(DBASE, d.sr, d.sc), b = pairColour(DBASE, d.sr, d.sc + 1);
+  if (a == b) return d;
+  for (int i = 0; i < BT->nPr; i++) {
+    if (BT->prR[i] != d.sr || BT->prC[i] != d.sc || BT->prA[i] != a || BT->prB[i] != b) continue;
 #ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RETURN via %d %d,%d to a board seen %d decisions ago\n", d.via, d.sr, d.sc, BT->nSeen - i); }
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RETURN via %d %d,%d undoes the press %d back\n", d.via, d.sr, d.sc, i + 1); }
 #endif
     BT->nLine = 0; lineLast = 0;
     return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
