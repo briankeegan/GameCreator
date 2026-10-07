@@ -3596,6 +3596,8 @@ static Dec fillFirstIn(Dec d) {
 // is still converting or falling) is preceded by a clear that does not put it
 // off -- the two live as long as the swap alone, break if it breaks, and its
 // line's last swap is pressed no later. The swap's line is kept, to play next.
+// If no clear keeps it, one that lives as long on its own is played and the
+// line is decided again -- unless the line breaks.
 static Dec meanwhile(Dec d) {
   if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA]) return d;
   int32_t ln[2 * LINEMAX]; int n = 0, kind = LINE_PLAN, waitAll = 0;
@@ -3604,22 +3606,29 @@ static Dec meanwhile(Dec d) {
   if (n >= LINEMAX) return d;
   int v0 = lineJudge(ln + 2, n, waitAll);
   if (!(v0 & LV_LIVES) || LNO[1] <= MEANWHILE) return d;
-  int last0 = LNO[1], die0 = LNO[0], need = LV_LIVES | (v0 & LV_BREAKS), mr = 0, mc = 0, most = 0, tried = 0;
+  int last0 = LNO[1], die0 = LNO[0], need = LV_LIVES | (v0 & LV_BREAKS), mr = 0, mc = 0, most = 0, tried = 0, keep = 1;
+  int fr = 0, fc = 0, fmost = 0;   // a clear on its own, the line dropped: decided again once it can be pressed
   for (int q = 0; q < nPool && tried < MEANWHILES; q++) {
     Cand *k = &POOL[q];
     if (k->kind != K_SWAP || !(k->res.total > 0) || k->res.broke || (k->sr == d.sr && k->sc == d.sc) || k->moveFrames + REACT > last0) continue;
     tried++;
     ln[0] = k->sr; ln[1] = k->sc;
     int v = lineJudge(ln, n + 1, waitAll);
-    if ((v & need) != need || LNO[1] > last0 || (die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0)) continue;
-    if (LNO[3] > most) { most = LNO[3]; mr = k->sr; mc = k->sc; }
+    if ((v & need) == need && LNO[1] <= last0 && !(die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0)) {
+      if (LNO[3] > most) { most = LNO[3]; mr = k->sr; mc = k->sc; }
+      continue;
+    }
+    if (v0 & LV_BREAKS) continue;   // a break is not given up for a clear
+    v = lineJudge(ln, 1, 0);
+    if ((v & LV_LIVES) && !(die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0) && LNO[3] > fmost) { fmost = LNO[3]; fr = k->sr; fc = k->sc; }
   }
+  if (!mr && fr) { mr = fr; mc = fc; most = fmost; keep = 0; }
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "MEANWHILE %d,%d last %d die %d | tried %d clear %d,%d cells %d\n", d.sr, d.sc, last0, die0, tried, mr, mc, most); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "MEANWHILE %d,%d last %d die %d | tried %d clear %d,%d cells %d keep %d\n", d.sr, d.sc, last0, die0, tried, mr, mc, most, keep); }
 #endif
   if (!mr) return d;
-  for (int k = 0; k < 2 * n; k++) BT->line[k] = ln[2 + k];
-  BT->nLine = n; BT->lineKind = kind; BT->lineWaitAll = waitAll;
+  if (keep) { for (int k = 0; k < 2 * n; k++) BT->line[k] = ln[2 + k]; BT->nLine = n; BT->lineKind = kind; BT->lineWaitAll = waitAll; }
+  else BT->nLine = 0;
   return mkSwap(mr, mc, d.via, d.mode, d.alive);
 }
 // A SWAP THAT IS STILL MOVING WHEN THE LOCK ENDS TAKES THE ROW BACK: the
