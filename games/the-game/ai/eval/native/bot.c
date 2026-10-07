@@ -3838,7 +3838,7 @@ static Dec dropReady(Dec d) {
     LineC *l = &LINES[at];
     if (!(judged(l) & LV_LIVES) || (l->die ? l->die : 1 << 20) < dieRef) continue;
     tried++;
-    if (readyInTime(l->sw, l->n, &r, &c)) { lineKeep(l, LINE_PLAN); lineLast = 8; return mkSwap(l->sw[0], l->sw[1], V_LINEUP, d.mode, d.alive); }
+    if (readyInTime(l->sw, l->n, &r, &c)) { lineKeep(l, LINE_PLAN); lineLast = 8; return lineSwap(l, V_LINEUP, d); }
   }
   return d;
 }
@@ -4113,7 +4113,7 @@ static Dec readyWhenLands(Dec d) {
     LineC *l = &LINES[at];
     if (!(judged(l) & LV_LIVES) || (l->die ? l->die : 1 << 20) < dieRef) continue;
     tried++;
-    if (readyInTime(l->sw, l->n, &r, &c)) { lineKeep(l, LINE_PLAN); lineLast = 8; return mkSwap(l->sw[0], l->sw[1], V_LINEUP, d.mode, d.alive); }
+    if (readyInTime(l->sw, l->n, &r, &c)) { lineKeep(l, LINE_PLAN); lineLast = 8; return lineSwap(l, V_LINEUP, d); }
   }
   // NOR TWO: the time to the landing is what bounds the setup, not a count of
   // swaps. The breaks by distance are found on the board as the slab lands
@@ -4833,6 +4833,7 @@ static Dec meanwhile(Dec d) {
   if (keep) lineSet(ln + 2, n, kind, waitAll);
   else if (two && two->n > 1) lineKeep(two, LINE_PLAN);
   else BT->nLine = 0;
+  if (two) return lineSwap(two, d.via, d);
   return mkSwap(mr, mc, d.via, d.mode, d.alive);
 }
 // READY BEFORE IT LANDS: while garbage is to come and the board is ready
@@ -4963,6 +4964,10 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     if (l->n > 1) lineKeep(l, LINE_BREAK); else BT->nLine = 0;
     d = lineSwap(l, V_BREAKREACH, d);
   }
+  // A LINE IS PRESSED AS IT WAS JUDGED: a decision that plays the kept line's
+  // step takes the line's timing (a break waits for its panels to settle),
+  // whichever route returned it
+  if (d.kind == K_SWAP && BT->nLine == 1 && BT->line[0] == d.sr && BT->line[1] == d.sc) d.waitAll = BT->lineWaitAll;
   d = returnGuard(d);
   d = perchGuard(d);
   d = setupTwos(d);
