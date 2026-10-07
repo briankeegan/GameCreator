@@ -3707,7 +3707,8 @@ static int twosOf(const int32_t *st) {
   int W = st[O_W], n = 0;
 #define VP(r, c) ((r) >= 1 && (U(st, OCC + (c)) & (1u << ((r) - 1))) && !(U(st, (GARB) + (c)) & (1u << ((r) - 1))) && !(U(st, INERT + (c)) & (1u << ((r) - 1))))
   for (int c = 1; c <= W; c++) {
-    int r = topRow(U(st, OCC + c));
+    uint32_t g = U(st, (GARB) + c);
+    int r = g ? __builtin_ctz(g) : topRow(U(st, OCC + c));   // under the lowest garbage, or the top
     if (r < 3 || !VP(r, c) || !VP(r - 1, c)) continue;
     int col = colourFirst(st, c, 1u << (r - 1));
     if (!col || colourFirst(st, c, 1u << (r - 2)) != col || (VP(r - 2, c) && colourFirst(st, c, 1u << (r - 3)) == col)) continue;
@@ -3751,31 +3752,47 @@ static Dec setupTwos(Dec d) {
   if (!br) {
     static ST TS2; static int32_t TR2[R_INTS + ST_INTS];
     int32_t two[SETUPTRIES][4]; int tv[SETUPTRIES]; double tf[SETUPTRIES]; int nt = 0;
-    int32_t lg[2 * 128];
+    int32_t lg[2 * 128], st1[ST_INTS], cur1[2], t1;
+    uint32_t can1[WMAX]; uint8_t waits1[32][WMAX];
+    // the twos are counted where the setup makes them: on the board the
+    // engine settles to, not where the judge's horizon ends (slabs landed on
+    // it, the stack risen) -- more than that board has now
+    if (lineState(0, 0, st1, can1, waits1, cur1, &t1) != 0) return d;
+    best = twosOf(st1);
     outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
     for (tried = 0; tried < SETUPTRIES && outNext(&o, &q, &far); tried++) {
-      Cand *pc = poolSwap(pl[2 * q], pl[2 * q + 1]);
-      if (!pc) continue;
-      int m = legal(pc->masks, lg), bv = 0, b2r = 0, b2c = 0; double bfar = INF;
+      // the second swap is proposed on the board the engine reaches after the
+      // first: the stack rises while the first is walked to and pressed
+      int32_t s1[2] = { pl[2 * q], pl[2 * q + 1] };
+      if (lineState(s1, 1, st1, can1, waits1, cur1, &t1) != 0) continue;
+      int m = legal(st1, lg), bv = 0, b2r = 0, b2c = 0; double bfar = INF;
       for (int i = 0; i < m; i++) {
-        stcpy(TS2, pc->masks);
-        if (!swapIn(TS2, lg[2 * i], lg[2 * i + 1])) continue;
+        int r2 = lg[2 * i], c2 = lg[2 * i + 1];
+        if (r2 > 31 || !(can1[c2] & (1u << (r2 - 1)))) continue;
+        stcpy(TS2, st1);
+        if (!swapIn(TS2, r2, c2)) continue;
         resolve(TS2, TR2, 1);
         if (TR2[R_SCOPE] != SC_OK || TR2[R_TOTAL] > 0) continue;
         int tw = twosOf(TR2 + R_INTS);
-        double f2 = far + travelCost(pl[2 * q], pl[2 * q + 1], lg[2 * i], lg[2 * i + 1]);
+        double f2 = t1 + dmax(travelCost(cur1[0], cur1[1], r2, c2), waits1[r2][c2]);
         if (tw > bv || (tw == bv && tw && f2 < bfar)) { bv = tw; bfar = f2; b2r = lg[2 * i]; b2c = lg[2 * i + 1]; }
       }
       if (bv <= best) continue;
       two[nt][0] = pl[2 * q]; two[nt][1] = pl[2 * q + 1]; two[nt][2] = b2r; two[nt][3] = b2c; tv[nt] = bv; tf[nt] = bfar; nt++;
     }
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SETUP2 first %d, lines %d, twos now %d, best line %d\n", tried, nt, best, nt ? tv[0] : 0); }
+#endif
     for (int done = 0; done < nt; done++) {
       int at = -1;
       for (int i = 0; i < nt; i++) if (tv[i] > 0 && (at < 0 || tv[i] > tv[at] || (tv[i] == tv[at] && tf[i] < tf[at]))) at = i;
       if (at < 0) break;
       tv[at] = 0;
       int v = lineJudge(two[at], 2, 0);
-      if (!(v & LV_LIVES) || (v & LV_PAYS) || (LNA[0] ? (LNO[0] && LNO[0] < LNA[0]) : LNO[0] != 0) || HOLLOW(LNO) > HOLLOW(LNA) || LNO[14] <= best) continue;
+#ifndef __wasm__
+      if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  SETUP2 %d,%d %d,%d | v %d die %d/%d hollow %d/%d last %d\n", two[at][0], two[at][1], two[at][2], two[at][3], v, LNO[0], LNA[0], HOLLOW(LNO), HOLLOW(LNA), LNO[1]); }
+#endif
+      if (!(v & LV_LIVES) || (v & LV_PAYS) || (LNA[0] ? (LNO[0] && LNO[0] < LNA[0]) : LNO[0] != 0) || HOLLOW(LNO) > HOLLOW(LNA)) continue;
       double need = marginAfter(0, 0, LNA[0]);
       if (need >= 0 && marginAfter(two[at], 2, LNO[0]) < 0) continue;
       for (int k = 0; k < 4; k++) BT->line[k] = two[at][k];
