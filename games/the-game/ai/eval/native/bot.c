@@ -2972,6 +2972,7 @@ static int spendsLeaveSixP(void) { return (double)LNO[12] / BW >= 6; }   // the 
 // while a raise for material waits on it, a spend under six rows with no break
 // ready may only if the board left alone loses health before the lock would
 // end -- the raise could not come in time to save it anyway
+static int playDie;   // the frame the line played on loses health (1 << 20: not within the horizon)
 static int spendKeepsRaiseOut(void) {
   if (!raiseWaiting || !aloneOnEngine()) return 0;
   return !(LNA[0] && LNA[0] <= BIN[IN_LOCKLEFT]);
@@ -2988,6 +2989,7 @@ static Dec playOn(Dec d) {
   int v = lineJudge(BT->line, BT->nLine, BT->lineWaitAll);
   int need = LV_LIVES | (BT->lineKind == LINE_BREAK ? LV_BREAKS : BT->lineKind == LINE_CASH ? LV_GAINS : 0);
   if ((v & need) != need) { BT->nLine = 0; return d; }
+  playDie = LNO[0] ? LNO[0] : 1 << 20;
   // A PLAN SPENDS AS EVERY CHOICE DOES: what is left of a plan line that
   // clears, leaves under six rows and no break ready is dropped -- unless the
   // board left alone dies and the line buys time: it loses health later. A
@@ -3017,7 +3019,9 @@ static int fromChoice(const LineC *l) { return l->sw[0] == dR && l->sw[1] == dC;
 static Dec stayAlive(Dec d) {
   if (d.kind != K_SWAP && d.kind != K_HOLD) return d;
   if (d.kind == K_SWAP && !d.hasMove) return d;
-  if (lineLast == 1 || lineLast == 3) return d;   // a line played on, a break that lives
+  // a break that lives, and a break line played on, are kept; a plan or cash
+  // line played on is kept only if no line lives longer (below)
+  if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;
   // the engine, not the estimate, says whether the board is dying: health
   // lost within LIVEHORIZON frames, left alone
   linesReset();
@@ -3025,6 +3029,7 @@ static Dec stayAlive(Dec d) {
   linesFind(2, 0);
   // NEVER DYING FIRST: the choice is kept only if it lives as long as the line that lives longest
   LineC *l = bestLiving(notLastSwap);
+  if (lineLast == 1) { if (!l || l->die <= playDie) return d; lineLast = 0; }
   if (d.kind == K_SWAP) {
     dR = d.sr; dC = d.sc;
     LineC *mine = bestLineAvoid(LV_LIVES | LV_GAINS, 0, fromChoice);
