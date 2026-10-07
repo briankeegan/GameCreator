@@ -3570,6 +3570,55 @@ static Dec fillFirstIn(Dec d) {
       bestTake(&W, -h, est, fsw, n); first[0] = fsw[0]; first[1] = fsw[1];
     }
   }
+  // A TOWER TWO WIDE COMES DOWN IN TWO WALKS: a slab rests on the taller of
+  // the two, so neither walk alone leaves less hollow. When the two highest
+  // columns stand side by side, two rows over every other, both tops are
+  // walked off toward the lower side as one line, kept if it leaves less.
+  if (!first[0] && !pick) {
+    int h[WMAX + 2], a = 0;
+    for (int c = 1; c <= tW; c++) h[c] = walkTop(c);
+    for (int c = 1; c < tW && !a; c++) {
+      int lo = h[c] < h[c + 1] ? h[c] : h[c + 1], other = 0;
+      for (int k = 1; k <= tW; k++) if (k != c && k != c + 1 && h[k] > other) other = h[k];
+      if (lo >= other + 2) a = c;
+    }
+    if (a) {
+      int dir = a == 1 ? 1 : a + 1 == tW ? -1 : (h[a - 1] <= h[a + 2] ? -1 : 1);
+      int cols[2] = { dir < 0 ? a : a + 1, dir < 0 ? a + 1 : a };
+      int32_t sw[2 * LINEMAX]; int n = 0, ok = 1;
+      int sr[2], sc[2], sv[2], nset = 0;   // cells changed for the second walk, restored after
+      for (int w = 0; w < 2 && ok; w++) {
+        int c = cols[w], r = walkTop(c), at = c, m = 0;
+        if (!r) { ok = 0; break; }
+        while (n < LINEMAX) {
+          int to = at + dir;
+          if (to < 1 || to > tW || tCell[r][to] != 0) break;
+          sw[2 * n] = r; sw[2 * n + 1] = dir > 0 ? at : to; n++; m++;
+          at = to;
+          if (!tSupported(r, at)) break;
+        }
+        if (!m) { ok = 0; break; }
+        if (w == 0) {
+          int land = r;
+          if (!tSupported(r, at)) { land = 0; for (int k = r - 1; k >= 1 && !land; k--) if (tCell[k][at] != 0) land = k + 1; if (!land) land = 1; }
+          sr[nset] = r; sc[nset] = c; sv[nset++] = tCell[r][c]; sr[nset] = land; sc[nset] = at; sv[nset++] = tCell[land][at];
+          tCell[land][at] = tCell[r][c]; tCell[r][c] = 0;
+        }
+      }
+      for (int k = nset - 1; k >= 0; k--) tCell[sr[k]][sc[k]] = sv[k];
+      if (ok && n >= 2) {
+        int v = lineJudge(sw, n, 0);
+#ifndef __wasm__
+        if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  tower %d,%d dir %d n %d v %d hollow %d best %d\n", a, a + 1, dir, n, v, LNO[10], best); }
+#endif
+        if ((v & LV_LIVES) && !(v & LV_PAYS) && LNO[10] < best && fillKeeps(marginWithin(sw, n, LNO[0], need), need)) {
+          for (int k = 0; k < 2 * n; k++) BT->line[k] = sw[k];
+          BT->nLine = n; BT->lineKind = LINE_PLAN; BT->lineWaitAll = 0;
+          return mkSwap(sw[0], sw[1], V_FILL, d.mode, d.alive);
+        }
+      }
+    }
+  }
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "FILL! best %d walk %d,%d pool %d,%d\n", W.has ? (int)-W.score : best, first[0], first[1], pick ? pick->sr : 0, pick ? pick->sc : 0); }
 #endif
