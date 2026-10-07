@@ -4916,8 +4916,32 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // through -- so it is judged while the budget is whole, once
   aloneOnEngine();
   DBASE = IN; notePresses();
+  // A LINE ONCE PLAYED IS NOT REPLACED BY ONE THAT DIES SOONER: a route may
+  // set a line of its own over the one kept from the last decision; the kept
+  // line is played on instead while it lives longer than the route's
+  int32_t keptLine[2 * LINEMAX]; int keptN = BT->nLine, keptKind = BT->lineKind, keptWait = BT->lineWaitAll;
+  for (int q = 0; q < 2 * keptN; q++) keptLine[q] = BT->line[q];
   SHARE(25); Dec d = decideRuled(); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(5); d = playOn(d);
+  if (keptN && BT->nLine && (BT->nLine != keptN || __builtin_memcmp(BT->line, keptLine, (unsigned long)keptN * 8))) {
+    int32_t routeLine[2 * LINEMAX]; int routeN = BT->nLine, routeKind = BT->lineKind, routeWait = BT->lineWaitAll;
+    for (int q = 0; q < 2 * routeN; q++) routeLine[q] = BT->line[q];
+    lineSet(keptLine, keptN, keptKind, keptWait);
+    Dec dk = playOn(d);
+    int keepIt = 0;
+    if (BT->nLine) {
+      int keptDie = playDie;
+      int v = lineJudge(routeLine, routeN, routeWait);
+      int routeDie = (v & LV_LIVES) && !LNO[0] ? 1 << 20 : LNO[0] ? LNO[0] : 0;
+      keepIt = keptDie > routeDie;
+#ifndef __wasm__
+      if (botTraceOn && keepIt) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "KEPT %d,%d (dies %d) over the route's %d,%d (dies %d)\n", BT->line[0], BT->line[1], keptDie, routeLine[0], routeLine[1], routeDie); }
+#endif
+    }
+    if (keepIt) d = dk;
+    else { lineSet(routeLine, routeN, routeKind, routeWait); d = playOn(d); }
+  } else {
+    SHARE(5); d = playOn(d);
+  }
   int32_t lineAfterPlay[2 * LINEMAX]; int nLineAfterPlay = BT->nLine;
   for (int q = 0; q < 2 * BT->nLine; q++) lineAfterPlay[q] = BT->line[q];
   d = waitForDrain(d); d = raiseHold(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
