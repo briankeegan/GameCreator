@@ -3441,6 +3441,38 @@ static Dec readyWhenLands(Dec d) {
     tried++;
     if (readyInTime(l->sw, l->n, &r, &c)) { lineKeep(l, LINE_PLAN); lineLast = 8; return mkSwap(l->sw[0], l->sw[1], V_LINEUP, d.mode, d.alive); }
   }
+  // NOR TWO: the time to the landing is what bounds the setup, not a count of
+  // swaps. The breaks by distance are found on the board as the slab lands
+  // on it; a walk whose steps but the last are played now, before it lands,
+  // leaves that last one in reach when it does.
+  {
+    static ST RWB; uint32_t can[WMAX]; uint8_t wt[32][WMAX]; int32_t cur[2], tl;
+    if (lineLandedFull(0, 0, RWB, can, wt, cur, &tl) != 0) return d;
+    int n0 = nLines;
+    targetLines(RWB, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, tl);
+    static unsigned char wk[MAXLINES];
+    for (int i = n0; i < nLines; i++) wk[i] = (char)(LINES[i].n < 2);
+    int got = -1;
+    for (tried = 0; tried < READYTRIES && got < 0;) {
+      int at = -1;
+      for (int i = n0; i < nLines; i++) if (!wk[i] && (at < 0 || LINES[i].est < LINES[at].est)) at = i;
+      if (at < 0) break;
+      wk[at] = 1;
+      LineC *l = &LINES[at];
+      if (!(lineJudge(l->sw, l->n - 1, 0) & LV_LIVES) || (LNO[0] ? LNO[0] : 1 << 20) < dieRef) continue;
+      tried++;
+      if (readyInTime(l->sw, l->n - 1, &r, &c)) got = at;
+    }
+    if (got >= 0) {
+      LineC l = LINES[got];
+      l.n--;
+      nLines = n0;
+      if (l.n > 1) lineKeep(&l, LINE_PLAN); else BT->nLine = 0;
+      lineLast = 8;
+      return mkSwap(l.sw[0], l.sw[1], V_LINEUP, d.mode, d.alive);
+    }
+    nLines = n0;
+  }
   return d;
 }
 // BREAK WHEN IT PAYS. A match beside a pile converts the whole pile, so a
