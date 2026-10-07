@@ -3050,8 +3050,6 @@ static int lineupNear(const int32_t *st, int r, int c) {
   return r >= land - 2 && r <= land && c + 1 >= c0 - 1 && c <= c0 + w;
 }
 #define LUBEST 5   // a break that spends nothing
-#define MEANWHILE 30   // frames before a swap is pressed, past which a clear may go first
-#define MEANWHILES 6   // clears asked, at most
 #define LUBEAM 6   // second swaps taken on to a third
 // the rank of a lineup, asked only for ranks of at least `need`: a lineup
 // that is only ready ranks 2 or 3, so past 3 readiness is not looked for
@@ -3236,8 +3234,9 @@ static Dec spendToBreak(Dec d) {
 #endif
   // garbage let down is never held: it lowers the stack
   if (!(v & LV_LIVES) || !(v & LV_PAYS) || (v & (LV_BREAKS | LV_GAINS | LV_DROPS))) return d;
-  // over six rows of panels there is material to spare: a clear is spent
-  if (materialRows(DBASE) >= 6) return d;
+  // over six rows of panels there is material to spare: a clear that leaves
+  // less hollow under what lands is spent
+  if ((v & LV_FILLS) && materialRows(DBASE) >= 6) return d;
   return mkHold(V_SETUP, d.mode, d.alive, 0, 0, 0);
 }
 // WHAT LANDS IS WHAT IT WILL BREAK. A slab rests on the tallest column under
@@ -3592,45 +3591,6 @@ static Dec fillFirstIn(Dec d) {
   if (!pick) return d;
   return mkSwap(pick->sr, pick->sc, V_FILL, d.mode, d.alive);
 }
-// MEANWHILE: a swap that cannot be pressed for a while (what it is made on
-// is still converting or falling) is preceded by a clear that does not put it
-// off -- the two live as long as the swap alone, break if it breaks, and its
-// line's last swap is pressed no later. The swap's line is kept, to play next.
-// If no clear keeps it, one that lives as long on its own is played and the
-// line is decided again -- unless the line breaks.
-static Dec meanwhile(Dec d) {
-  if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA]) return d;
-  int32_t ln[2 * LINEMAX]; int n = 0, kind = LINE_PLAN, waitAll = 0;
-  if (BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc) { n = BT->nLine; kind = BT->lineKind; waitAll = BT->lineWaitAll; for (int k = 0; k < 2 * n; k++) ln[2 + k] = BT->line[k]; }
-  else { n = 1; ln[2] = d.sr; ln[3] = d.sc; }
-  if (n >= LINEMAX) return d;
-  int v0 = lineJudge(ln + 2, n, waitAll);
-  if (!(v0 & LV_LIVES) || LNO[1] <= MEANWHILE) return d;
-  int last0 = LNO[1], die0 = LNO[0], need = LV_LIVES | (v0 & LV_BREAKS), mr = 0, mc = 0, most = 0, tried = 0, keep = 1;
-  int fr = 0, fc = 0, fmost = 0;   // a clear on its own, the line dropped: decided again once it can be pressed
-  for (int q = 0; q < nPool && tried < MEANWHILES; q++) {
-    Cand *k = &POOL[q];
-    if (k->kind != K_SWAP || !(k->res.total > 0) || k->res.broke || (k->sr == d.sr && k->sc == d.sc) || k->moveFrames + REACT > last0) continue;
-    tried++;
-    ln[0] = k->sr; ln[1] = k->sc;
-    int v = lineJudge(ln, n + 1, waitAll);
-    if ((v & need) == need && LNO[1] <= last0 && !(die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0)) {
-      if (LNO[3] > most) { most = LNO[3]; mr = k->sr; mc = k->sc; }
-      continue;
-    }
-    if (v0 & LV_BREAKS) continue;   // a break is not given up for a clear
-    v = lineJudge(ln, 1, 0);
-    if ((v & LV_LIVES) && !(die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0) && LNO[3] > fmost) { fmost = LNO[3]; fr = k->sr; fc = k->sc; }
-  }
-  if (!mr && fr) { mr = fr; mc = fc; most = fmost; keep = 0; }
-#ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "MEANWHILE %d,%d last %d die %d | tried %d clear %d,%d cells %d keep %d\n", d.sr, d.sc, last0, die0, tried, mr, mc, most, keep); }
-#endif
-  if (!mr) return d;
-  if (keep) { for (int k = 0; k < 2 * n; k++) BT->line[k] = ln[2 + k]; BT->nLine = n; BT->lineKind = kind; BT->lineWaitAll = waitAll; }
-  else BT->nLine = 0;
-  return mkSwap(mr, mc, d.via, d.mode, d.alive);
-}
 // A SWAP THAT IS STILL MOVING WHEN THE LOCK ENDS TAKES THE ROW BACK: the
 // raise starts the frame nothing holds the rise lock, and a swap queued then
 // cancels it. While a raise waits, a swap is played only if its walk and its
@@ -3695,7 +3655,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   SHARE(15); d = keepBreak(d); d = lineupFirst(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(5); d = batchBreak(d); d = spendToBreak(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(10); d = breakSoon(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(10); d = meanwhile(onePlan(fillFirst(d))); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(10); d = onePlan(fillFirst(d)); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
 #undef SHARE
   // A CUT IS A FAILURE: a stage that reaches its share has not decided, it has
   // been stopped. The decision fails and the game stops, naming the stage.
