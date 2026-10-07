@@ -22,11 +22,15 @@ enum { M_BUILD, M_DEFEND, M_ATTACK };
 // the line a bot plays (Bot.line): what it is for, and the most steps it holds
 enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
 #define LINEMAX 8
-#define LNOLEN 15
+#define LNOLEN 16
 // THE HOLLOW of a judged line: the gaps under garbage on the board it ends on
 // ([10]) and the gaps the slabs to come would leave over its towers ([13]). A
 // tower lowered also lets a pile perched on it down onto panels it can break on.
-#define HOLLOW(a) ((a)[10] + (a)[13])
+// THE HOLLOW THAT MATTERS: what the next slab perches over, read on the frame
+// it has landed (out[15]: the standing hollow under all garbage then); with no
+// slab landing within the horizon, the gaps under garbage and the level the
+// board ends on
+#define HOLLOW(a) ((a)[15] >= 0 ? (a)[15] : (a)[10] + (a)[13])
 int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);   // the engine judge's out: [0] die ... [11] end board hash, [12] panels it ends with
 // THE CUT, past which the decision fails and the game with it: the frame less
 // the frame's own work (1000/60 - 0.9 ms, BUDGETMS's) at the slow twentieth of

@@ -549,6 +549,18 @@ static void snapKeep(const int32_t *sw, int n, Board *b, int f, int cool, int he
 // how many slabs a landing replay waits for (lineLandedK): the queue drops
 // slab after slab on a quiet board, each once the one before it has landed
 static JLOCAL int landK = 1;
+// THE HOLLOW A SLAB PERCHES OVER: the empty cells under every garbage cell
+// that rests over nothing, down to what its column holds
+static int standingHollow(const Board *b) {
+  int h = 0;
+  for (int r = 2; r < b->nrows; r++)
+    for (int c = 1; c <= W; c++) {
+      const int32_t *g = b->p[r][c].f, *u = b->p[r - 1][c].f;
+      if (!g[ISGARBAGE] || u[COLOR] != 0) continue;
+      for (int k = r - 1; k >= 1 && b->p[k][c].f[COLOR] == 0; k--) h++;
+    }
+  return h;
+}
 static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, int32_t *out) {
   if (!LNB) LNB = nb_new();
   Snap *from = 0;
@@ -569,7 +581,8 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   if (botTraceOn && n == 1 && waitTo > 60 && LF) { extern int fprintf(void *, const char *, ...); extern void *stderr; int r = steps[0], c = steps[1];
     fprintf(stderr, "  WAIT %d,%d to %d | first %d,%d last %d,%d\n", r, c, waitTo, LF->settle.first[r][c], LF->settle.first[r][c + 1], LF->settle.last[r][c], LF->settle.last[r][c + 1]); }
 #endif
-  out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = out[13] = out[14] = 0;
+  out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = out[13] = out[14] = 0; out[15] = -1;
+  int32_t landedFrom = b->garbageCreatedCount;   // out[15]: read once the next slab has landed
   { extern int paBudgetOut(void); if (paBudgetOut()) return -1; }   // past the decision's budget: not played
   // A LINE IS JUDGED TO WHERE ITS CONSEQUENCE SHOWS: past the horizon the
   // judge plays on while the board is still busy -- a chain running, garbage
@@ -631,6 +644,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
     nb_run(b);
     if (b->err) return -1;
     if (b->health < h0 || b->gameOverClock > 0) { out[0] = f + 1; break; }
+    if (out[15] < 0 && b->garbageCreatedCount > landedFrom && !nb_falling_garbage(b)) out[15] = standingHollow(b);
   }
   out[1] = step == n ? last : -1;
   out[2] = b->sBroke; out[3] = b->sCleared; out[9] = b->sFell; out[10] = b->sHollow;
