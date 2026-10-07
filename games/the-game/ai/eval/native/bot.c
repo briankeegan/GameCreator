@@ -1129,11 +1129,11 @@ static int raiseMode(const int32_t *base, int poolBreak) {
   int fits = raiseSafe(base);
   // A QUEUE THAT FILLS THE ROOM KILLS A BOARD WITH NO BREAK READY, raised or
   // not: only material builds the break, and the raise costs its row -- it
-  // fits while the next slab still lands under the top -- and the stop time,
-  // which a manual raise ends: lost for nothing only while the queue takes
-  // longer to top the risen board than the stop has left
-  if (!fits && BIN[IN_INCOMING] > 0 && !BIN[IN_TOPPED] && !BIN[IN_STACKTOPPED] && !slabReadyHook(base)
-      && BIN[IN_STOP] <= framesToDeathS(0, tallestBoard(base) + 1, BIN[IN_FPR]))
+  // fits while the next slab still lands under the top. The stop time a
+  // manual raise ends only holds the queue off, and with no break ready a
+  // board under six rows readies nothing in it but by clearing, which spends
+  // the material the break needs and renews the stop that holds the raise off.
+  if (!fits && BIN[IN_INCOMING] > 0 && !BIN[IN_TOPPED] && !BIN[IN_STACKTOPPED] && !slabReadyHook(base))
     fits = BH - tallestBoard(base) - 1 - rows - (BIN[IN_RAISING] != 0) > 0;
   BT->wantRows = rows;
   if (BT->opening && (BIN[IN_INCOMING] || !fits)) BT->opening = 0;
