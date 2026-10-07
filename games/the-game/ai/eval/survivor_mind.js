@@ -20,6 +20,7 @@ var rates = [], SPEND = Number(process.env.GC_SURVIVOR_SPEND) || 0.6;   // budge
 // The search ends this long before the answer is due, for the rest of the decision and its post.
 var DEADLINE_MARGIN_MS = Number(process.env.GC_SURVIVOR_MARGIN) || 30;
 var TIGHT_MS = Number(process.env.GC_SURVIVOR_TIGHT) || 80;   // due sooner than this: one move deep
+var LOOKAHEAD_MARGIN_MS = 15;   // the second ply ends this long before the answer is due, for the rest and the post
 var TALL_RANK = 30;   // frames: a break sooner than this outranks lowering a tall board
 var LINEUP_AFTER = 30;   // frames past a pop's end a lined-up row has to have matched by
 var BANK_ROWS = 12, BANK_TOP = 10;   // garbage rows on the way that make banking worth it, and the row it banks up to
@@ -212,7 +213,8 @@ wt.parentPort.on('message', function (m) {
     var depth0 = bot.depth;
     var tight = !!(due && due - Date.now() < TIGHT_MS);
     if (tight) bot.depth = 1;
-    try { d = bot._decide(); } finally { bot._abort = null; N.deadline(0); bot.depth = depth0; }
+    bot._dueAt = due ? due - LOOKAHEAD_MARGIN_MS : 0;
+    try { d = bot._decide(); } finally { bot._abort = null; N.deadline(0); bot.depth = depth0; bot._dueAt = 0; }
     var why = null;
     if (process.env.GC_SURVIVOR_WHY) {
       var sp = bot._searchProofs;

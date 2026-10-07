@@ -2889,7 +2889,14 @@
     // others. It was the separate case, and that is how it ended up judged
     // one move deep while every swap was judged two -- waiting always
     // looked worse than acting, and waiting is how a chain gets built.
-    if (this.depth > 1) return this._lookahead(cands);
+    // THE SECOND PLY HAS NO CLOCK. With an answer due (_dueAt, Date.now()
+    // time, set by the caller), it is skipped when the slowest recent one
+    // (_lookMs, decaying) would not finish before then.
+    if (this.depth > 1 && !(this._dueAt && Date.now() + (this._lookMs || 0) > this._dueAt)) {
+      var lt = Date.now(), la = this._lookahead(cands);
+      this._lookMs = Math.max((this._lookMs || 0) * 0.95, Date.now() - lt);
+      return la;
+    }
 
     // Strictly greater, so a tie leaves the incumbent standing rather than
     // handing the decision to whichever candidate happened to be built
