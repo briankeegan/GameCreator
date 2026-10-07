@@ -22,6 +22,7 @@ enum { M_BUILD, M_DEFEND, M_ATTACK };
 // the line a bot plays (Bot.line): what it is for, and the most steps it holds
 enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
 #define LINEMAX 8
+#define WORKBUDGET 55000   // GC_WORK_ONLY: the budget in units of work
 enum { C_REFUSEDDEADLY, C_ALLDEAD, C_REFUSEDRETURN, C_REFUSEDTOOSLOW, C_PLANNED, C_PLANDROPPED, C_ATTACKED,
        C_ATTACKDROPPED, C_CELLSPLANNED, C_REFUSEDPAYLESS, C_REFUSEDSTARVING, C_REFUSEDOTHER, C_REFUSEDATEXIT,
        C_RAISEDFORMATERIAL, C_WAITEDTORAISE, C_DUGFOR, C_DIGDROPPED, C_BROKENOW, C_FLATTENBLIND, C_OPENINGRAISES,
@@ -2958,6 +2959,7 @@ static int garbTop(const int32_t *st) {
   return t;
 }
 // BREAKING COMES FIRST.
+static Dec breakDeeper(Dec d);
 static Dec breakFirst(Dec d) {
   // a line played on is kept only if it is itself a break
   int playing = lineLast == 1 && BT->lineKind != LINE_BREAK;
@@ -2985,7 +2987,7 @@ static Dec breakFirst(Dec d) {
     for (int i = 0; i < nLines; i++) { if (LINES[i].grown) g++; if (LINES[i].verdict != 0) live++; }
     fprintf(stderr, "BREAKFIRST lines %d grown %d open %d k %g\n", nLines, g, live, timeLeft()); }
 #endif
-  if (!l) return d;
+  if (!l) return breakDeeper(d);
   lineLast = 3;
   plansDrop();
   if (l->n > 1) lineKeep(l, LINE_BREAK); else BT->nLine = 0;
@@ -2994,8 +2996,10 @@ static Dec breakFirst(Dec d) {
 
 // A BREAK KEPT IN REACH.
 static ST KBA;
-static JLOCAL ST KB[KEEPDEPTH + 1];   // per thread: lineup readiness is asked in parallel
-static JLOCAL int32_t KBR[R_INTS + ST_INTS], KBSW[KEEPDEPTH][2 * 128];
+#define BREAKDEEP (KEEPDEPTH + 1)   // the one level the break search goes past the lines, when they find none
+static JLOCAL ST KB[BREAKDEEP + 1];   // per thread: lineup readiness is asked in parallel
+static JLOCAL int32_t KBR[R_INTS + ST_INTS], KBSW[BREAKDEEP][2 * 128];
+static JLOCAL int32_t KBP[2 * BREAKDEEP]; static JLOCAL int kbPath;   // the line found, when asked for it
 // A BREAK WITHIN k SWAPS of a resolved board, by the one search: out from
 // the cursor (where the last swap leaves it), the last swap decided on the
 // grid where nothing can clear, and each board's answer kept -- it is the
@@ -3006,7 +3010,7 @@ static int breakAt(int d, int depth, int cr, int cc) {
   int k = depth - d;
   u64 key = (hashOf(KB[d]) ^ (0x9E3779B97F4A7C15ull * (u64)k)) | 1;
   unsigned slot = (unsigned)(key & (BWN - 1));
-  if (BWK[slot] == key) return BWV[slot];
+  if (!kbPath && BWK[slot] == key) return BWV[slot];
   int n = legal(KB[d], KBSW[d]), i, found = 0, cut = 0, haveLq = 0, expanded = 0;
   Out o; double far;
   outBegin(&o, KBSW[d], 2, n, cr, cc);
@@ -3017,13 +3021,13 @@ static int breakAt(int d, int depth, int cr, int cc) {
     if (!swapIn(KB[d + 1], r, c)) continue;
     resolve(KB[d + 1], KBR, 1);
     if (KBR[R_SCOPE] == SC_REFUSED) { cut = 1; break; }
-    if (KBR[R_SCOPE] == SC_BROKE) { found = 1; break; }
+    if (KBR[R_SCOPE] == SC_BROKE) { found = 1; KBP[2 * d] = r; KBP[2 * d + 1] = c; break; }
     if (KBR[R_SCOPE] != SC_OK || k <= 1 || expanded >= LBEAM) continue;
     expanded++;
     stcpy(KB[d + 1], KBR + R_INTS);
-    if (breakAt(d + 1, depth, r, c)) found = 1;
+    if (breakAt(d + 1, depth, r, c)) { found = 1; KBP[2 * d] = r; KBP[2 * d + 1] = c; }
   }
-  if (!cut && !inWorker) { BWK[slot] = key; BWV[slot] = (uint8_t)found; }
+  if (!cut && !inWorker && !kbPath) { BWK[slot] = key; BWV[slot] = (uint8_t)found; }
   return found;
 }
 // A break within `depth` swaps of the board st settles to (st breaking counts).
@@ -3033,6 +3037,30 @@ static int breakWithin(const int32_t *st, int depth) {
   if (KBR[R_SCOPE] != SC_OK) return 0;
   stcpy(KB[0], KBR + R_INTS);
   return breakAt(0, depth, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
+}
+// ONE LEVEL PAST THE LINES: when none breaks within KEEPDEPTH, the break
+// search goes one swap deeper, out from the cursor, and the line it finds is
+// played if the engine says it lives and breaks -- in the time there is.
+static Dec breakDeeper(Dec d) {
+  if (!BIN[IN_HASPA]) return d;
+  resolve(DBASE, KBR, 1);
+  if (KBR[R_SCOPE] != SC_OK) return d;
+  stcpy(KB[0], KBR + R_INTS);
+  kbPath = 1;
+  int found = breakAt(0, BREAKDEEP, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
+  kbPath = 0;
+  if (!found) return d;
+  int n = 0;
+  while (n < BREAKDEEP && KBP[2 * n]) n++;
+  for (int k = n; k < BREAKDEEP; k++) KBP[2 * k] = 0;
+  int32_t sw[2 * BREAKDEEP]; for (int k = 0; k < 2 * n; k++) sw[k] = KBP[k];
+  for (int k = 0; k < 2 * BREAKDEEP; k++) KBP[k] = 0;
+  if ((lineJudge(sw, n, 0) & (LV_LIVES | LV_BREAKS)) != (LV_LIVES | LV_BREAKS)) return d;
+  LineC l = { 0 }; l.n = n; l.brk = 1; for (int k = 0; k < 2 * n; k++) l.sw[k] = sw[k];
+  lineLast = 3;
+  plansDrop();
+  lineKeep(&l, LINE_BREAK);
+  return mkSwap(sw[0], sw[1], V_BREAKREACH, d.mode, d.alive);
 }
 static int keepsBreak(int r, int c) {
   stcpy(KBA, DBASE);
@@ -3308,11 +3336,19 @@ int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, u
 static struct { int dec, n, ok, r, c; int32_t sw[2 * 3]; } RMEM[RMEMO];
 static int nRmem, rmemDec = -1;
 static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc);
+// A REPLAY ONLY WHERE THE BUDGET HOLDS ONE: the work the decision has spent
+// (from its start, rdW0) and what a replay costs (rdCost, the most one has
+// taken) must fit in WORKBUDGET; past that a board is not called ready.
+static double rdW0, rdCost;
 static int readyInTime(const int32_t *sw, int n, int *br, int *bc) {
+  extern PATLS double paWork;
   if (rmemDec != btDecision) { rmemDec = btDecision; nRmem = 0; }
   if (n <= 3) for (int i = 0; i < nRmem; i++)
     if (RMEM[i].n == n && (!n || !__builtin_memcmp(RMEM[i].sw, sw, (unsigned long)n * 8))) { *br = RMEM[i].r; *bc = RMEM[i].c; return RMEM[i].ok; }
+  if (paWork - rdW0 + rdCost > WORKBUDGET) return 0;
+  double w = paWork;
   int ok = readyInTimeRaw(sw, n, br, bc);
+  if (paWork - w > rdCost) rdCost = paWork - w;
   if (n <= 3 && nRmem < RMEMO) {
     RMEM[nRmem].n = n; RMEM[nRmem].ok = ok; RMEM[nRmem].r = ok ? *br : 0; RMEM[nRmem].c = ok ? *bc : 0;
     for (int k = 0; k < 2 * n; k++) RMEM[nRmem].sw[k] = sw[k];
@@ -3591,7 +3627,6 @@ static Dec fillBeforeBreak(Dec d) {
 // THE FRAMES TO A BREAK AFTER `steps`: the steps played on the engine as the
 // front plays them, then the soonest break the distance search finds on the
 // board they leave, walked from where the cursor is (INF: none).
-#define WORKBUDGET 55000   // GC_WORK_ONLY: the budget in units of work
 #define BUDGETMS 15.0   // the decision's budget: the 16.7 ms frame less the frame's own work (0.9 ms at most, seed 4)
 double botBudgetMs = 0;   // front_budget: this decision's budget instead (0: BUDGETMS)
 static int btAloneAt = -1; static double btAlone;
@@ -4125,6 +4160,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // repeats). Past it, resolves and engine lines are refused and every search
   // keeps what it found.
   { extern void paBudget(double, double); paBudget(botBudgetMs > 0 ? botBudgetMs : BUDGETMS, WORKBUDGET); }
+  { extern PATLS double paWork; rdW0 = paWork; }
   btDecision++;
   btDecisionJ = btDecision;
   memoRoom();
