@@ -22,6 +22,13 @@ enum { M_BUILD, M_DEFEND, M_ATTACK };
 // the line a bot plays (Bot.line): what it is for, and the most steps it holds
 enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
 #define LINEMAX 8
+#define LNOLEN 13   // the engine judge's out: [0] die ... [11] end board hash, [12] panels it ends with
+#define WORKBUDGET 55000   // GC_WORK_ONLY: the budget in units of work
+// THE OPTIONAL SEARCHES' BUDGET IN WORK: BUDGETMS at the slow twentieth of
+// the native work rate, measured over 5,359 decisions of seed 9 (units per ms
+// p5 4,963, p10 6,413, p50 9,865, p90 13,089): 15 ms x 4,950. budget_check
+// measures the time it actually takes (at p10, decision 219 of seed 4 ran 16.3 ms).
+#define OPTWORK 74000
 enum { C_REFUSEDDEADLY, C_ALLDEAD, C_REFUSEDRETURN, C_REFUSEDTOOSLOW, C_PLANNED, C_PLANDROPPED, C_ATTACKED,
        C_ATTACKDROPPED, C_CELLSPLANNED, C_REFUSEDPAYLESS, C_REFUSEDSTARVING, C_REFUSEDOTHER, C_REFUSEDATEXIT,
        C_RAISEDFORMATERIAL, C_WAITEDTORAISE, C_DUGFOR, C_DIGDROPPED, C_BROKENOW, C_FLATTENBLIND, C_OPENINGRAISES,
@@ -1459,7 +1466,10 @@ static Dec decideCore(void) {
   if (digging) {
     int haveBreak = 0;
     for (int i = 0; i < nPool; i++) if (POOL[i].res.broke) { haveBreak = 1; break; }
-    int stillComing = BIN[IN_INCOMING] > 0 || BIN[IN_FALLING];
+    // BREAK ONCE IT LANDS: the hold is for garbage in the air, landing now --
+    // not for the queue, which in a storm never empties, so waiting on it
+    // only grows the pile until the board tops out
+    int stillComing = BIN[IN_FALLING] != 0;
     Cand *bk = 0;
     for (int i = 0; i < nPool; i++) {
       Cand *bc = &POOL[i];
@@ -1811,7 +1821,7 @@ static double quietSettle(const int32_t *base, int r, int c, const int32_t *afte
 static int lineLast;   // what the line rules last did (playOn below)
 enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8, LV_DROPS = 16, LV_FILLS = 32 };
 static int lineJudge(const int32_t *sw, int n, int waitAll);
-static JLOCAL int32_t LNO[12];
+static JLOCAL int32_t LNO[LNOLEN];
 // FRAMES FROM A SWAP TO THE NEAREST CLEAR ON THE BOARD IT LEAVES (INF: none)
 static double clearBack(Cand *pc) {
   double back = INF;
@@ -1827,6 +1837,7 @@ static double clearBack(Cand *pc) {
   return back;
 }
 static int breakWithin(const int32_t *st, int depth);
+static int roomForBreak(const int32_t *st);
 static Dec waitForDrain(Dec d) {
   // Topped only: before the board tops, stayAlive keeps the time.
   if (!BIN[IN_TOPPED]) return d;
@@ -1883,7 +1894,9 @@ static Dec waitForDrain(Dec d) {
     // stop left, those k are lost. So a clear is held to the drain -- unless
     // the board after it has a break now or after one more move, which ends
     // the wait it would buy.
-    if (breakWithin(picked->masks, 2)) return d;
+    // Nor while there is no room for a break: time is worth nothing to a
+    // board that cannot take the next slab, and the clear makes the room.
+    if (breakWithin(picked->masks, 2) || !roomForBreak(base)) return d;
     BT->counts[C_WAITEDFORDRAIN]++;
     return HOLDAT(picked->sr, picked->sc);
   }
@@ -1968,8 +1981,8 @@ static JLOCAL LineC *LNS = LINES_MAIN;
 #define LINES LNS
 static JLOCAL int nLines;
 static int nJudged;
-static int32_t LNA[12];
-static JLOCAL int32_t LNO[12];
+static int32_t LNA[LNOLEN];
+static JLOCAL int32_t LNO[LNOLEN];
 static int lnAlone;
 static int cashes(const int32_t *r) { return r[R_TOTAL] > 0 || r[R_SCOPE] == SC_BROKE; }
 static double timeLeft(void);
@@ -1987,7 +2000,7 @@ static int lineJudgeIn(const int32_t *sw, int n, int waitAll);
 // saw playing it (LNO), depend only on the line and this decision's board, so
 // every search that asks again is answered from the first asking.
 #define JMN 2048
-typedef struct { int dec, n, waitAll, v; int32_t sw[2 * LINEMAX], lno[12]; } JMemo;
+typedef struct { int dec, n, waitAll, v; int32_t sw[2 * LINEMAX], lno[LNOLEN]; } JMemo;
 static JMemo JM[JMN];
 static int btDecisionJ;   // the decision the memo is for (set by bot_decide)
 static unsigned jmHash(const int32_t *sw, int n, int waitAll) {
@@ -2002,7 +2015,7 @@ static int jmFind(const int32_t *sw, int n, int waitAll, int *v, int32_t *lno) {
     JMemo *m = &JM[(h + (unsigned)probe) & (JMN - 1)];
     if (m->dec != btDecisionJ) return 0;
     if (m->n == n && m->waitAll == waitAll && !__builtin_memcmp(m->sw, sw, (unsigned long)n * 8)) {
-      *v = m->v; for (int k = 0; k < 12; k++) lno[k] = m->lno[k];
+      *v = m->v; for (int k = 0; k < LNOLEN; k++) lno[k] = m->lno[k];
       return 1;
     }
   }
@@ -2015,7 +2028,7 @@ static void jmPut(const int32_t *sw, int n, int waitAll, int v, const int32_t *l
     if (m->dec == btDecisionJ && !(m->n == n && m->waitAll == waitAll && !__builtin_memcmp(m->sw, sw, (unsigned long)n * 8))) continue;
     m->dec = btDecisionJ; m->n = n; m->waitAll = waitAll; m->v = v;
     for (int k = 0; k < 2 * n; k++) m->sw[k] = sw[k];
-    for (int k = 0; k < 12; k++) m->lno[k] = lno[k];
+    for (int k = 0; k < LNOLEN; k++) m->lno[k] = lno[k];
     return;
   }
 }
@@ -2033,12 +2046,12 @@ static int lineJudge(const int32_t *sw, int n, int waitAll) {
       if (!paBudgetOut()) {
         m->dec = btDecisionJ; m->n = n; m->waitAll = waitAll; m->v = v;
         for (int k = 0; k < 2 * n; k++) m->sw[k] = sw[k];
-        for (int k = 0; k < 12; k++) m->lno[k] = LNO[k];
+        for (int k = 0; k < LNOLEN; k++) m->lno[k] = LNO[k];
       }
       return v;
     }
     if (m->n == n && m->waitAll == waitAll && !__builtin_memcmp(m->sw, sw, (unsigned long)n * 8)) {
-      for (int k = 0; k < 12; k++) LNO[k] = m->lno[k];
+      for (int k = 0; k < LNOLEN; k++) LNO[k] = m->lno[k];
       return m->v;
     }
   }
@@ -2090,7 +2103,7 @@ static void judgeAhead(LineC *first, const unsigned char *skip, int useOk) {
   // and the second judgement judged() makes of a break that pays but does not break: pressed once the board settles
   LineC *wsel[AHEAD]; int nw = 0;
   for (int j = 0; j < ns; j++) {
-    int v; int32_t lno[12];
+    int v; int32_t lno[LNOLEN];
     if (sel[j]->brk && jmFind(sel[j]->sw, sel[j]->n, 0, &v, lno) && (v & LV_PAYS) && !(v & LV_BREAKS)) wsel[nw++] = sel[j];
   }
   if (nw) prejudgeLinesW(wsel, nw, 1);
@@ -2824,6 +2837,8 @@ static int bbFound, bbLastN; static double bbLastEst;   // bestBreak: how many l
 // is taken over one that leaves the pile it does not convert out of reach;
 // among the same, the one that converts the most.
 static int readyInTime(const int32_t *sw, int n, int *br, int *bc);
+static int bbReady;   // the break bestBreak picked leaves the board ready for the next slab
+static LineC bbDeferred; static int bbHasDeferred;   // a living break held for a better time, this decision
 static LineC *bestBreak(void) {
   static unsigned char taken[MAXLINES];
   const int need = LV_LIVES | LV_BREAKS;
@@ -2846,9 +2861,10 @@ static LineC *bestBreak(void) {
     found++; bbFound = found; bbLastN = l->n; bbLastEst = l->est;
     if (pick && pickReady && l->conv <= pick->conv) continue;
     int rdy = 0, r, c;
-    if (ask) { int32_t keep[12]; for (int k = 0; k < 12; k++) keep[k] = LNO[k]; rdy = readyInTime(l->sw, l->n, &r, &c); for (int k = 0; k < 12; k++) LNO[k] = keep[k]; }
+    if (ask) { int32_t keep[LNOLEN]; for (int k = 0; k < LNOLEN; k++) keep[k] = LNO[k]; rdy = readyInTime(l->sw, l->n, &r, &c); for (int k = 0; k < LNOLEN; k++) LNO[k] = keep[k]; }
     if (!pick || rdy > pickReady || (rdy == pickReady && l->conv > pick->conv)) { pick = l; pickReady = rdy; }
   }
+  bbReady = !ask || pickReady;
   return pick;
 }
 static LineC *bestLiving(int (*ok)(const LineC *)) {
@@ -2892,6 +2908,10 @@ __attribute__((export_name("bot_breakfirst"))) int32_t bot_breakfirst(void) { re
 __attribute__((export_name("bot_keepbreak"))) int32_t bot_keepbreak(void) { return 0; }
 
 // A LINE ONCE PLAYED IS PLAYED TO ITS END.
+static int readyAfterSpend(const int32_t *sw, int n);
+static int aloneOnEngine(void);
+static int nonSpendLives(void);
+static int spendsLeaveSixP(void) { return (double)LNO[12] / BW >= 6; }   // the panels the line ends with, as rows
 static Dec playOn(Dec d) {
   lineLast = 0;
   if (!BT->nLine) return d;
@@ -2904,6 +2924,15 @@ static Dec playOn(Dec d) {
   int v = lineJudge(BT->line, BT->nLine, BT->lineWaitAll);
   int need = LV_LIVES | (BT->lineKind == LINE_BREAK ? LV_BREAKS : BT->lineKind == LINE_CASH ? LV_GAINS : 0);
   if ((v & need) != need) { BT->nLine = 0; return d; }
+  // A PLAN SPENDS AS EVERY CHOICE DOES: what is left of a plan line that
+  // clears, leaves under six rows and no break ready is dropped -- unless the
+  // board left alone dies, when stop time is what it buys
+  if (BT->lineKind == LINE_PLAN && (v & LV_PAYS) && !(v & LV_BREAKS) && !spendsLeaveSixP()) {
+    int32_t keepO[LNOLEN]; for (int q = 0; q < LNOLEN; q++) keepO[q] = LNO[q];
+    int ok = readyAfterSpend(BT->line, BT->nLine) || !nonSpendLives();
+    for (int q = 0; q < LNOLEN; q++) LNO[q] = keepO[q];
+    if (!ok) { BT->nLine = 0; return d; }
+  }
   lineLast = 1;
   plansDrop();
   Dec s = mkSwap(BT->line[0], BT->line[1], BT->lineKind == LINE_BREAK ? V_BREAKREACH : BT->lineKind == LINE_PLAN ? V_PLANSAVE : V_KEEPHEALTH, d.mode, d.alive);
@@ -2958,7 +2987,11 @@ static int garbTop(const int32_t *st) {
   return t;
 }
 // BREAKING COMES FIRST.
+static Dec breakDeeper(Dec d);
+static Dec makeRoom(Dec d);
+static int roomForBreak(const int32_t *st);
 static Dec breakFirst(Dec d) {
+  bbHasDeferred = 0;
   // a line played on is kept only if it is itself a break
   int playing = lineLast == 1 && BT->lineKind != LINE_BREAK;
   if ((lineLast && !playing) || d.kind == K_RAISE || !hasGarbage(DBASE)) return d;
@@ -2985,7 +3018,19 @@ static Dec breakFirst(Dec d) {
     for (int i = 0; i < nLines; i++) { if (LINES[i].grown) g++; if (LINES[i].verdict != 0) live++; }
     fprintf(stderr, "BREAKFIRST lines %d grown %d open %d k %g\n", nLines, g, live, timeLeft()); }
 #endif
-  if (!l) return d;
+  if (!l) return breakDeeper(d);
+  // ROOM FIRST: a break whose panels the board cannot hold tops it out with
+  // them; while a clear can make the room and lives, it goes first
+  if (!roomForBreak(DBASE)) {
+    Dec m = makeRoom(d);
+    if (m.kind == K_SWAP && m.hasMove && !(d.kind == K_SWAP && m.sr == d.sr && m.sc == d.sc) && m.via == V_KEEPHEALTH) return m;
+  }
+  // BREAK AT THE RIGHT TIME: a break after which the next slab lands with no
+  // break in reach waits while the board left alone does not die -- the
+  // other routes ready the board meanwhile, and the break is still there
+  // -- and only while the board can still hold what the break makes, the next
+  // slab on the pile included: past that, waiting only grows the pile
+  if (!bbReady && roomForBreak(DBASE) && aloneOnEngine() && !LNA[0]) { bbDeferred = *l; bbHasDeferred = 1; return d; }
   lineLast = 3;
   plansDrop();
   if (l->n > 1) lineKeep(l, LINE_BREAK); else BT->nLine = 0;
@@ -2994,8 +3039,15 @@ static Dec breakFirst(Dec d) {
 
 // A BREAK KEPT IN REACH.
 static ST KBA;
-static JLOCAL ST KB[KEEPDEPTH + 1];   // per thread: lineup readiness is asked in parallel
-static JLOCAL int32_t KBR[R_INTS + ST_INTS], KBSW[KEEPDEPTH][2 * 128];
+#define BREAKDEEP (KEEPDEPTH + 1)   // the one level the break search goes past the lines, when they find none
+static JLOCAL ST KB[BREAKDEEP + 1];   // per thread: lineup readiness is asked in parallel
+static JLOCAL int32_t KBR[R_INTS + ST_INTS], KBSW[BREAKDEEP][2 * 128];
+static JLOCAL int32_t KBP[2 * BREAKDEEP]; static JLOCAL int kbPath;   // the line found, when asked for it
+// THE DEEPER SEARCH'S SHARE: what the decision has left once the stages
+// after it are given the most they have taken (laterMax, measured); the
+// search stops there with what it found
+static double kbEnd, laterMax, laterLu, rdW0;
+extern PATLS double paWork;
 // A BREAK WITHIN k SWAPS of a resolved board, by the one search: out from
 // the cursor (where the last swap leaves it), the last swap decided on the
 // grid where nothing can clear, and each board's answer kept -- it is the
@@ -3006,24 +3058,25 @@ static int breakAt(int d, int depth, int cr, int cc) {
   int k = depth - d;
   u64 key = (hashOf(KB[d]) ^ (0x9E3779B97F4A7C15ull * (u64)k)) | 1;
   unsigned slot = (unsigned)(key & (BWN - 1));
-  if (BWK[slot] == key) return BWV[slot];
+  if (!kbPath && BWK[slot] == key) return BWV[slot];
   int n = legal(KB[d], KBSW[d]), i, found = 0, cut = 0, haveLq = 0, expanded = 0;
   Out o; double far;
   outBegin(&o, KBSW[d], 2, n, cr, cc);
   while (!found && outNext(&o, &i, &far)) {
     int r = KBSW[d][2 * i], c = KBSW[d][2 * i + 1];
+    if (kbPath && paWork > kbEnd) { cut = 1; break; }
     if (k == 1 && (haveLq || (leafGrid(KB[d]), haveLq = 1)) && leafQuiet(r, c)) continue;
     stcpy(KB[d + 1], KB[d]);
     if (!swapIn(KB[d + 1], r, c)) continue;
     resolve(KB[d + 1], KBR, 1);
     if (KBR[R_SCOPE] == SC_REFUSED) { cut = 1; break; }
-    if (KBR[R_SCOPE] == SC_BROKE) { found = 1; break; }
+    if (KBR[R_SCOPE] == SC_BROKE) { found = 1; KBP[2 * d] = r; KBP[2 * d + 1] = c; break; }
     if (KBR[R_SCOPE] != SC_OK || k <= 1 || expanded >= LBEAM) continue;
     expanded++;
     stcpy(KB[d + 1], KBR + R_INTS);
-    if (breakAt(d + 1, depth, r, c)) found = 1;
+    if (breakAt(d + 1, depth, r, c)) { found = 1; KBP[2 * d] = r; KBP[2 * d + 1] = c; }
   }
-  if (!cut && !inWorker) { BWK[slot] = key; BWV[slot] = (uint8_t)found; }
+  if (!cut && !inWorker && !kbPath) { BWK[slot] = key; BWV[slot] = (uint8_t)found; }
   return found;
 }
 // A break within `depth` swaps of the board st settles to (st breaking counts).
@@ -3033,6 +3086,32 @@ static int breakWithin(const int32_t *st, int depth) {
   if (KBR[R_SCOPE] != SC_OK) return 0;
   stcpy(KB[0], KBR + R_INTS);
   return breakAt(0, depth, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
+}
+// ONE LEVEL PAST THE LINES: when none breaks within KEEPDEPTH, the break
+// search goes one swap deeper, out from the cursor, and the line it finds is
+// played if the engine says it lives and breaks -- in the time there is.
+static Dec breakDeeper(Dec d) {
+  if (!BIN[IN_HASPA]) return d;
+  resolve(DBASE, KBR, 1);
+  if (KBR[R_SCOPE] != SC_OK) return d;
+  stcpy(KB[0], KBR + R_INTS);
+  kbEnd = rdW0 + OPTWORK - laterMax;
+  if (paWork >= kbEnd) return d;
+  kbPath = 1;
+  int found = breakAt(0, BREAKDEEP, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
+  kbPath = 0;
+  if (!found) return d;
+  int n = 0;
+  while (n < BREAKDEEP && KBP[2 * n]) n++;
+  for (int k = n; k < BREAKDEEP; k++) KBP[2 * k] = 0;
+  int32_t sw[2 * BREAKDEEP]; for (int k = 0; k < 2 * n; k++) sw[k] = KBP[k];
+  for (int k = 0; k < 2 * BREAKDEEP; k++) KBP[k] = 0;
+  if ((lineJudge(sw, n, 0) & (LV_LIVES | LV_BREAKS)) != (LV_LIVES | LV_BREAKS)) return d;
+  LineC l = { 0 }; l.n = n; l.brk = 1; for (int k = 0; k < 2 * n; k++) l.sw[k] = sw[k];
+  lineLast = 3;
+  plansDrop();
+  lineKeep(&l, LINE_BREAK);
+  return mkSwap(sw[0], sw[1], V_BREAKREACH, d.mode, d.alive);
 }
 static int keepsBreak(int r, int c) {
   stcpy(KBA, DBASE);
@@ -3190,7 +3269,11 @@ static Dec lineupFirst(Dec d) {
     if (r > 31 || !(can0[c] & (1u << (r - 1))) || !lineupNear(st0, r, c)) continue;
     ord0[no0] = i; far0[no0] = far; no0++;
   }
+  // THE LINEUP'S SHARE: what the decision has left once the stages after it
+  // are given the most they have taken (laterLu, measured)
+  double luEnd = rdW0 + OPTWORK - laterLu;
   for (int p0 = 0; p0 < no0; p0++) {
+    if (paWork > luEnd) break;
     i = ord0[p0]; far = far0[p0];
     if (outPast(&B, LUBEST, far)) break;
     int r = lg[2 * i], c = lg[2 * i + 1];
@@ -3221,6 +3304,7 @@ static Dec lineupFirst(Dec d) {
     int ord1[128], no1 = 0; double fr1[128];
     outBegin(&o1, lg1, 2, n1, cur1[0], cur1[1]);   // from where the first swap leaves the cursor
     while (outNext(&o1, &j, &far1) && no1 < 128) {
+      if (paWork > luEnd) break;
       int r2 = lg1[2 * j], c2 = lg1[2 * j + 1];
       if (r2 > 31 || !(can1[c2] & (1u << (r2 - 1))) || !lineupNear(st1, r2, c2)) continue;
       ord1[no1] = j; fr1[no1] = far1; no1++;
@@ -3254,6 +3338,7 @@ static Dec lineupFirst(Dec d) {
       Out o2; double far2;
       outBegin(&o2, lg2, 2, n2, cur2[0], cur2[1]);
       while (outNext(&o2, &k3, &far2)) {
+        if (paWork > luEnd) break;
         int r3 = lg2[2 * k3], c3 = lg2[2 * k3 + 1];
         if (r3 > 31 || !(can2[c3] & (1u << (r3 - 1))) || !lineupNear(st2, r3, c3)) continue;
         double at3 = t2 + dmax(far2, waits2[r3][c3]);
@@ -3308,11 +3393,19 @@ int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, u
 static struct { int dec, n, ok, r, c; int32_t sw[2 * 3]; } RMEM[RMEMO];
 static int nRmem, rmemDec = -1;
 static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc);
+// A REPLAY ONLY WHERE THE BUDGET HOLDS ONE: the work the decision has spent
+// (from its start, rdW0) and what a replay costs (rdCost, the most one has
+// taken) must fit in OPTWORK; past that a board is not called ready.
+static double rdCost;
 static int readyInTime(const int32_t *sw, int n, int *br, int *bc) {
+  extern PATLS double paWork;
   if (rmemDec != btDecision) { rmemDec = btDecision; nRmem = 0; }
   if (n <= 3) for (int i = 0; i < nRmem; i++)
     if (RMEM[i].n == n && (!n || !__builtin_memcmp(RMEM[i].sw, sw, (unsigned long)n * 8))) { *br = RMEM[i].r; *bc = RMEM[i].c; return RMEM[i].ok; }
+  if (paWork - rdW0 + rdCost > OPTWORK) return 0;
+  double w = paWork;
   int ok = readyInTimeRaw(sw, n, br, bc);
+  if (paWork - w > rdCost) rdCost = paWork - w;
   if (n <= 3 && nRmem < RMEMO) {
     RMEM[nRmem].n = n; RMEM[nRmem].ok = ok; RMEM[nRmem].r = ok ? *br : 0; RMEM[nRmem].c = ok ? *bc : 0;
     for (int k = 0; k < 2 * n; k++) RMEM[nRmem].sw[k] = sw[k];
@@ -3410,10 +3503,35 @@ static Dec makeRoom(Dec d) {
   BT->nLine = 0; lineLast = 8;
   return mkSwap(br, bc, V_KEEPHEALTH, d.mode, d.alive);
 }
+// NO STALL: with nothing on the board to break, a clear only keeps the board
+// busy, and a busy board holds the queue off without making it any shorter
+// -- it lands later, all at once, on a board the clears have spent. So while
+// there is room for the next slab and the board is not topped, a clear that
+// breaks nothing is not played: the board goes quiet and the slab comes, to
+// a board readied for it.
+// NOR A PERCH: a clear that breaks nothing and leaves more hollow under the
+// garbage that lands than the board left alone digs the gap a slab perches
+// over -- the board made less ready, not more.
+static Dec noStall(Dec d) {
+  if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0) || BIN[IN_TOPPED]) return d;
+  if (!roomForBreak(DBASE) || endsInBreak(d)) return d;
+  Cand *pc = poolSwap(d.sr, d.sc);
+  if (pc && pc->res.broke) return d;
+  int32_t sw[2] = { d.sr, d.sc };
+  int v = lineJudge(sw, 1, 0);
+  if (!(v & LV_PAYS) || (v & LV_BREAKS)) return d;
+  if (hasGarbage(DBASE) && !(LNO[10] > LNA[10])) return d;
+  // over six rows the material is there to spend: shaping the board and
+  // buying time with it is the six-row rule's to allow
+  if ((double)LNO[12] / BW >= 6) return d;
+  BT->nLine = 0;
+  return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
+}
 static Dec readyWhenLands(Dec d) {
-  if (d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA] || BIN[IN_TOPPED]) return d;
+  if (d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA]) return d;
   if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;   // a break being played
   if (!roomForBreak(DBASE)) return makeRoom(d);
+  if (BIN[IN_TOPPED]) return d;
   int32_t sw[2] = { d.sr, d.sc };
   int dieRef = 0, r, c;
   if (d.kind == K_SWAP && d.hasMove) {
@@ -3508,8 +3626,21 @@ static Dec readyWhenLands(Dec d) {
 // break of fewer than BATCH cells is held while the stack's top leaves
 // ROOMLEFT rows, the board is not topped, and the engine says that, left
 // alone until the next slab lands, the board still has a break one swap away.
+// THE BOARD LEFT ALONE DIES -- BEFORE THE NEXT SLAB LANDS. The engine's
+// replay of the board left alone breaks nothing, so with a queue it always
+// dies in the end; that is the replay, not the board. A death counts as a
+// reason to act only if it comes before the next slab lands: past that, the
+// break readied for the slab is played.
+int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);
+static int aloneDiesBeforeLanding(void) {
+  if (!aloneOnEngine() || !LNA[0]) return 0;
+  static ST ADL; int32_t t;
+  if (lineLanded(0, 0, ADL, &t) != 0) return 1;
+  return LNA[0] <= t;
+}
 static Dec batchBreak(Dec d) {
   if (BIN[IN_TOPPED] || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA] || d.kind != K_SWAP || !d.hasMove) return d;
+  if (!BIN[IN_FALLING]) return d;   // break once it lands: held only for garbage in the air
   Cand *pc = poolSwap(d.sr, d.sc);
   int converts = pc && pc->res.broke ? pc->res.converts : 0;
   if (!converts && (lineLast == 3 || endsInBreak(d))) converts = 1;   // a break line's step: its size is the line's
@@ -3537,9 +3668,10 @@ static Dec spendToBreak(Dec d) {
     fprintf(stderr, "SPEND %d,%d v%d | drain %d/%d last %d conv %d/%d match %d/%d fell %d/%d\n", d.sr, d.sc, v, LNO[0], LNA[0], LNO[1], LNO[2], LNA[2], LNO[3], LNA[3], LNO[9], LNA[9]); }
 #endif
   // garbage let down is never held: it lowers the stack
-  if (!(v & LV_LIVES) || !(v & LV_PAYS) || (v & (LV_BREAKS | LV_GAINS | LV_DROPS))) return d;
+  if (!(v & LV_LIVES) || !(v & LV_PAYS) || (v & (LV_BREAKS | LV_DROPS))) return d;
+  if (v & LV_GAINS) { int32_t k[LNOLEN]; for (int q = 0; q < LNOLEN; q++) k[q] = LNO[q]; int dies = aloneDiesBeforeLanding(); for (int q = 0; q < LNOLEN; q++) LNO[q] = k[q]; if (dies) return d; }
   // over six rows of panels there is material to spare: a clear that leaves six is spent
-  if (materialRows(DBASE) - (double)(LNO[3] - LNA[3]) / BW >= 6) return d;
+  if ((double)LNO[12] / BW >= 6) return d;   // the panels the line ends with
   return mkHold(V_SETUP, d.mode, d.alive, 0, 0, 0);
 }
 // WHAT LANDS IS WHAT IT WILL BREAK. A slab rests on the tallest column under
@@ -3591,7 +3723,6 @@ static Dec fillBeforeBreak(Dec d) {
 // THE FRAMES TO A BREAK AFTER `steps`: the steps played on the engine as the
 // front plays them, then the soonest break the distance search finds on the
 // board they leave, walked from where the cursor is (INF: none).
-#define WORKBUDGET 55000   // GC_WORK_ONLY: the budget in units of work
 #define BUDGETMS 15.0   // the decision's budget: the 16.7 ms frame less the frame's own work (0.9 ms at most, seed 4)
 double botBudgetMs = 0;   // front_budget: this decision's budget instead (0: BUDGETMS)
 static int btAloneAt = -1; static double btAlone;
@@ -3792,8 +3923,10 @@ static double fillScoreOf(const int32_t *sw, int n, int die, int hollow) {
   return sc;
 }
 // a clear judged (LNO) leaves six rows of material, read off the line's own matches
-static int spendsLeaveSix(void) { return materialRows(DBASE) - (double)(LNO[3] - LNA[3]) / BW >= 6; }
+static int spendsLeaveSix(void) { return (double)LNO[12] / BW >= 6; }   // the panels the line ends with, as rows
 static int readyAfterSpend(const int32_t *sw, int n);
+static int nonSpendLives(void);
+int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);
 static Dec fillFirstIn(Dec d) {
   if (d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
   if (lineLast == 1 || lineLast == 3) return BT->lineKind == LINE_BREAK || lineLast == 3 ? fillBeforeBreak(d) : d;
@@ -3819,6 +3952,9 @@ static Dec fillFirstIn(Dec d) {
 #endif
   }
   if (need > 0) need = 0;   // in time is in time
+  // A FILL PRESSED AFTER THE SLAB LANDS FILLS NOTHING UNDER IT: a fill whose
+  // last press comes after the next slab lands is not one
+  int32_t tLand = 1 << 20; { static ST FLL; if (lineLanded(0, 0, FLL, &tLand) != 0) tLand = 1 << 20; }
   Cand *pick = 0;
   // NOT TO DIE: over six rows a clear may be spent to fill; under, only while
   // the board left alone loses health before its soonest break, and only by a
@@ -3839,12 +3975,12 @@ static Dec fillFirstIn(Dec d) {
     int32_t sw[2] = { pc->sr, pc->sc };
     int v = lineJudge(sw, 1, 0);
     int spend = (v & LV_PAYS) && !spendsLeaveSix();
-    if (!(v & LV_LIVES) || (spend && !LIVES_LONGER())) continue;
+    if (!(v & LV_LIVES) || (spend && !LIVES_LONGER()) || LNO[1] >= tLand) continue;
     int pdie = LNO[0];
     double sc = fillScoreOf(sw, 1, pdie, LNO[10]);
     if (P.has ? !bestBeats(&P, sc, pc->moveFrames, sw, 1) : sc <= ref) continue;
     if (!fillKeeps(marginWithin(sw, 1, pdie, need), need)) continue;
-    if (spend && refDie >= (1 << 20) && !readyAfterSpend(sw, 1)) continue;   // nothing dies: a spend must leave a break ready
+    if (spend && !readyAfterSpend(sw, 1) && nonSpendLives()) continue;   // a move that spends nothing lives: a spend must leave a break ready
     bestTake(&P, sc, pc->moveFrames, sw, 1); pick = pc;
   }
   if (P.has) ref = P.score;
@@ -3897,14 +4033,14 @@ static Dec fillFirstIn(Dec d) {
         fprintf(stderr, "  walk %d,%d dir %d n %d v %d hollow %d die %d last %d break %g\n", r, c, dir, n, v, h, dd, la, bt); } }
 #endif
       int spend = (v & LV_PAYS) && !spendsLeaveSix();
-      if (!(v & LV_LIVES) || (spend && !LIVES_LONGER())) continue;
+      if (!(v & LV_LIVES) || (spend && !LIVES_LONGER()) || LNO[1] >= tLand) continue;
       double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
       // a walk must beat the pool's best; among walks, the same order (time: its estimate)
       int wdie = LNO[0];
       double sc = fillScoreOf(fsw, n, wdie, LNO[10]);
       if (W.has ? !bestBeats(&W, sc, est, fsw, n) : sc <= ref) continue;
       if (!fillKeeps(marginWithin(fsw, n, wdie, need), need)) continue;
-      if (spend && refDie >= (1 << 20) && !readyAfterSpend(fsw, n)) continue;
+      if (spend && !readyAfterSpend(fsw, n) && nonSpendLives()) continue;
       bestTake(&W, sc, est, fsw, n); first[0] = fsw[0]; first[1] = fsw[1];
     }
   }
@@ -3981,11 +4117,33 @@ static Dec fillFirstIn(Dec d) {
 // the next slab lands after the line. The line's judgement (LNO) is kept.
 static int readyAfterSpend(const int32_t *sw, int n) {
   if (!(BIN[IN_INCOMING] > 0)) return 1;
-  int32_t keep[12]; int r, c;
-  for (int k = 0; k < 12; k++) keep[k] = LNO[k];
+  int32_t keep[LNOLEN]; int r, c;
+  for (int k = 0; k < LNOLEN; k++) keep[k] = LNO[k];
   int ok = readyInTime(sw, n, &r, &c);
-  for (int k = 0; k < 12; k++) LNO[k] = keep[k];
+  for (int k = 0; k < LNOLEN; k++) LNO[k] = keep[k];
   return ok;
+}
+// A MOVE THAT LIVES WITHOUT SPENDING: a swap of the pool that clears nothing,
+// nearest first, that the engine says lives. When one does, spending under
+// six rows buys nothing that moving does not.
+static int nonSpendLives(void) {
+  int32_t keepO[LNOLEN]; for (int k = 0; k < LNOLEN; k++) keepO[k] = LNO[k];
+  int32_t pl[2 * MAXCAND]; int pn = 0, q, found = 0, tried = 0;
+  for (int k = 0; k < nPool && pn < MAXCAND; k++) {
+    Cand *cd = &POOL[k];
+    if (cd->kind != K_SWAP || cd->res.total > 0 || cd->res.broke) continue;
+    pl[2 * pn] = cd->sr; pl[2 * pn + 1] = cd->sc; pn++;
+  }
+  Out o; double far;
+  outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
+  while (!found && tried < READYTRIES && outNext(&o, &q, &far)) {
+    int32_t s2[2] = { pl[2 * q], pl[2 * q + 1] };
+    tried++;
+    int v = lineJudge(s2, 1, 0);
+    if ((v & LV_LIVES) && !(v & LV_PAYS) && !LNO[0]) found = 1;
+  }
+  for (int k = 0; k < LNOLEN; k++) LNO[k] = keepO[k];
+  return found;
 }
 static Dec meanwhile(Dec d) {
   if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA]) return d;
@@ -4005,7 +4163,7 @@ static Dec meanwhile(Dec d) {
   // living longer by keeping the board busy is a stall: the queue lands after
   // it all the same, so under six rows the clear must leave a break ready for it
   // -- unless the line it goes before dies: then stop time is what buys the time to find the break
-#define SPENDS_OK(sw, n) (materialRows(DBASE) - (double)(LNO[3] - LNA[3]) / BW >= 6 || (urgent && (LNO[0] ? LNO[0] : 1 << 20) > die0Of && (die0 || readyAfterSpend(sw, n))))
+#define SPENDS_OK(sw, n) ((double)LNO[12] / BW >= 6 || (urgent && (LNO[0] ? LNO[0] : 1 << 20) > die0Of && (readyAfterSpend(sw, n) || !nonSpendLives())))
   for (int q = 0; q < nPool && tried < MEANWHILES; q++) {
     Cand *k = &POOL[q];
     if (k->kind != K_SWAP || !(k->res.total > 0) || k->res.broke || (k->sr == d.sr && k->sc == d.sc) || k->moveFrames + REACT > last0) continue;
@@ -4024,7 +4182,7 @@ static Dec meanwhile(Dec d) {
   // clearing nothing, that leaves the line its outcome and lowers the hollow
   // the next slab lands on, goes first -- the line is kept.
   if (!mr) {
-    int32_t keepO[12]; for (int k = 0; k < 12; k++) keepO[k] = LNO[k];
+    int32_t keepO[LNOLEN]; for (int k = 0; k < LNOLEN; k++) keepO[k] = LNO[k];
     lineJudge(ln + 2, n, waitAll);
     int h0 = LNO[10], hb = h0;
     for (int q = 0, t2 = 0; q < nPool && t2 < MEANWHILES; q++) {
@@ -4036,7 +4194,7 @@ static Dec meanwhile(Dec d) {
       if ((v & need) != need || LNO[1] > last0 || (die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0) || LNO[10] >= hb) continue;
       hb = LNO[10]; mr = k->sr; mc = k->sc;
     }
-    for (int k = 0; k < 12; k++) LNO[k] = keepO[k];
+    for (int k = 0; k < LNOLEN; k++) LNO[k] = keepO[k];
   }
   // no clear one swap away: the lines two deep, by rank, the first that pays and lives as long
   LineC *two = 0;
@@ -4080,7 +4238,7 @@ static Dec keepReady(Dec d) {
   if (!pc || pc->res.broke || endsInBreak(d) || slabReadyHook(pc->masks)) return d;
   int32_t sw[2] = { d.sr, d.sc };
   int v = lineJudge(sw, 1, 0);
-  if (aloneOnEngine() && LNA[0] && (v & LV_LIVES) && (!LNO[0] || LNO[0] > LNA[0])) return d;
+  if ((v & LV_LIVES) && aloneDiesBeforeLanding() && (!LNO[0] || LNO[0] > LNA[0])) return d;
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "KEEPREADY held %d,%d via %d\n", d.sr, d.sc, d.via); }
 #endif
@@ -4125,6 +4283,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // repeats). Past it, resolves and engine lines are refused and every search
   // keeps what it found.
   { extern void paBudget(double, double); paBudget(botBudgetMs > 0 ? botBudgetMs : BUDGETMS, WORKBUDGET); }
+  { extern PATLS double paWork; rdW0 = paWork; }
   btDecision++;
   btDecisionJ = btDecision;
   memoRoom();
@@ -4151,8 +4310,21 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   SHARE(15); d = keepBreak(d); d = lineupFirst(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(5); d = batchBreak(d); d = spendToBreak(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(10); d = breakSoon(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(10); d = dropReady(readyWhenLands(keepReady(meanwhile(onePlan(fillFirst(d)))))); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(10); d = noStall(dropReady(readyWhenLands(keepReady(meanwhile(onePlan(fillFirst(d)))))));
+  // A BREAK HELD FOR A BETTER TIME IS NOT HELD FOR NOTHING: if the decision
+  // comes to standing still, the break is played -- idle readies nothing
+  if (d.kind == K_HOLD && bbHasDeferred) {
+    LineC *l = &bbDeferred;
+    lineLast = 3; plansDrop();
+    if (l->n > 1) lineKeep(l, LINE_BREAK); else BT->nLine = 0;
+    d = lineSwap(l, V_BREAKREACH, d);
+  } cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
 #undef SHARE
+  // the most the stages after breakFirst (and after lineup) have taken lately:
+  // each decision's own, or the last most less a hundredth a decision -- one
+  // heavy decision does not shut the searches out for the rest of the game
+  laterMax *= 0.99; if (ws[k - 1] - ws[2] > laterMax) laterMax = ws[k - 1] - ws[2];
+  laterLu *= 0.99; if (ws[k - 1] - ws[4] > laterLu) laterLu = ws[k - 1] - ws[4];
   // A CUT IS A FAILURE: a stage that reaches its share has not decided, it has
   // been stopped. The decision fails and the game stops, naming the stage.
   for (int i = 0; i < k; i++) if (cutAt[i]) {

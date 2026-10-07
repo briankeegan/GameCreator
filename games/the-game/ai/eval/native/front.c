@@ -561,7 +561,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   if (botTraceOn && n == 1 && waitTo > 60 && LF) { extern int fprintf(void *, const char *, ...); extern void *stderr; int r = steps[0], c = steps[1];
     fprintf(stderr, "  WAIT %d,%d to %d | first %d,%d last %d,%d\n", r, c, waitTo, LF->settle.first[r][c], LF->settle.first[r][c + 1], LF->settle.last[r][c], LF->settle.last[r][c + 1]); }
 #endif
-  out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = 0;
+  out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = 0;
   { extern int paBudgetOut(void); if (paBudgetOut()) return -1; }   // past the decision's budget: not played
   for (f = f0; f < horizon; f++) {
     { extern int paBudgetOut(void); if (paBudgetOut()) return -1; }   // past the budget mid-line: not played
@@ -633,6 +633,12 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   for (int r = 0; r < b->nrows; r++)
     for (int c = 1; c <= W; c++) { fh = (fh ^ (uint32_t)(b->p[r][c].f[COLOR] * 2 + (b->p[r][c].f[ISGARBAGE] != 0))) * 16777619u; }
   out[11] = (int32_t)fh;
+  // the material it ends with: panels, not garbage, not already matched to go
+  for (int r = 1; r < b->nrows; r++)
+    for (int c = 1; c <= W; c++) {
+      const int32_t *g = b->p[r][c].f;
+      if (g[COLOR] && !g[ISGARBAGE] && g[STATE] != MATCHED && g[STATE] != POPPING && g[STATE] != POPPED) out[12]++;
+    }
   out[4] = out[1] < 0 ? 0 : (out[0] ? out[0] : horizon) - out[1];
   return 0;
 }
@@ -782,7 +788,7 @@ static int lineStateAt(const int32_t *steps, int n, int landing, int32_t *masks,
   return rc;
 }
 static int lineStateRun(const int32_t *steps, int n, int landing, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
-  int32_t out[12];
+  int32_t out[LNOLEN];
   snapLast = 0;
   int rc = n > 0 || landing ? linePlay(steps, n, 400, landing ? 2 : 1, out) : (nb_copy(LNB ? LNB : (LNB = nb_new()), paLibBoard()), out[0] = 0, out[8] = 0, 1);
   if (rc != 1 || out[0]) return -1;
@@ -814,7 +820,7 @@ static int lineStateRun(const int32_t *steps, int n, int landing, int32_t *masks
 typedef unsigned long gcThread;
 extern int pthread_create(gcThread *, const void *, void *(*)(void *), void *);
 extern int pthread_join(gcThread, void **);
-typedef struct { int32_t sw[2 * LINEMAX]; int n, waitAll, v; int32_t lno[12]; } PJob;
+typedef struct { int32_t sw[2 * LINEMAX]; int n, waitAll, v; int32_t lno[LNOLEN]; } PJob;
 static PJob PJ[256];
 static int pjLock, pjThreads = -1;
 static void (*pjTask)(int);
@@ -961,7 +967,7 @@ static void parallelDo(int count, void (*task)(int)) {
 static void pjJudge(int k) {
   PJob *j = &PJ[k];
   j->v = lineJudgeIn(j->sw, j->n, j->waitAll);
-  for (int i = 0; i < 12; i++) j->lno[i] = LNO[i];
+  for (int i = 0; i < LNOLEN; i++) j->lno[i] = LNO[i];
 }
 static void prejudge(const int32_t *sws, int stride, int count, int n, int waitAll) {
   if (pjThreads < 0) pjThreads = getenv("GC_THREADS") ? atoi(getenv("GC_THREADS")) : 3;
@@ -969,7 +975,7 @@ static void prejudge(const int32_t *sws, int stride, int count, int n, int waitA
   int jobs = 0;
   for (int k = 0; k < count && jobs < 256; k++) {
     const int32_t *sw = sws + stride * k;
-    int v; int32_t lno[12];
+    int v; int32_t lno[LNOLEN];
     if (jmFind(sw, n, waitAll, &v, lno)) continue;
     PJob *j = &PJ[jobs++];
     for (int i = 0; i < 2 * n; i++) j->sw[i] = sw[i];
@@ -988,7 +994,7 @@ static void prejudgeLinesW(LineC *const *ls, int count, int waitAll) {
   int jobs = 0;
   for (int k = 0; k < count && jobs < 256; k++) {
     const LineC *l = ls[k];
-    int v; int32_t lno[12];
+    int v; int32_t lno[LNOLEN];
     if (jmFind(l->sw, l->n, waitAll, &v, lno)) continue;
     PJob *j = &PJ[jobs++];
     for (int i = 0; i < 2 * l->n; i++) j->sw[i] = l->sw[i];
