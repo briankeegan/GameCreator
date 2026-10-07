@@ -4448,20 +4448,27 @@ static Dec meanwhile(Dec d) {
   // NOT ONLY CLEARS: the wait is time the board can use. A swap pressed now,
   // clearing nothing, that leaves the line its outcome and lowers the hollow
   // the next slab lands on -- or, as level, sets up more vertical twos
-  // (LNO[14]) -- goes first; the line is kept.
+  // (LNO[14]) -- goes first; the line is kept. The swaps are asked as
+  // setupTwos asks them: nearest the cursor first, SETUPTRIES of them.
   if (!mr) {
     int32_t keepO[LNOLEN]; for (int k = 0; k < LNOLEN; k++) keepO[k] = LNO[k];
     lineJudge(ln + 2, n, waitAll);
-    int h0 = HOLLOW(LNO), hb = h0, vb = LNO[14], v0b = vb, t2 = 0;
-    for (int q = 0; q < nPool && t2 < MEANWHILES; q++) {
-      Cand *k = &POOL[q];
-      if (k->kind != K_SWAP || k->res.total > 0 || k->res.broke || (k->sr == d.sr && k->sc == d.sc) || k->moveFrames + REACT > last0) continue;
+    int h0 = HOLLOW(LNO), hb = h0, vb = LNO[14], v0b = vb, t2 = 0, q;
+    int32_t pl[2 * MAXCAND]; int pn = 0;
+    for (int k = 0; k < nPool && pn < MAXCAND; k++) {
+      Cand *cd = &POOL[k];
+      if (cd->kind != K_SWAP || cd->res.total > 0 || cd->res.broke || (cd->sr == d.sr && cd->sc == d.sc) || cd->moveFrames + REACT > last0) continue;
+      pl[2 * pn] = cd->sr; pl[2 * pn + 1] = cd->sc; pn++;
+    }
+    Out o; double far;
+    outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
+    while (t2 < SETUPTRIES && outNext(&o, &q, &far)) {
       t2++;
-      ln[0] = k->sr; ln[1] = k->sc;
+      ln[0] = pl[2 * q]; ln[1] = pl[2 * q + 1];
       int v = lineJudge(ln, n + 1, waitAll);
       if ((v & need) != need || LNO[1] > last0 || (die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0)) continue;
       if (!(HOLLOW(LNO) < hb || (HOLLOW(LNO) == hb && LNO[14] > vb))) continue;
-      hb = HOLLOW(LNO); vb = LNO[14]; mr = k->sr; mc = k->sc;
+      hb = HOLLOW(LNO); vb = LNO[14]; mr = ln[0]; mc = ln[1];
     }
     for (int k = 0; k < LNOLEN; k++) LNO[k] = keepO[k];
 #ifndef __wasm__
