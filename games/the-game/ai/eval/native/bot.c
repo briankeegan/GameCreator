@@ -3352,6 +3352,28 @@ static Dec readyWhenLands(Dec d) {
     tried++;
     if (readyInTime(s2, 1, &r, &c)) { BT->nLine = 0; lineLast = 8; return mkSwap(s2[0], s2[1], V_LINEUP, d.mode, d.alive); }
   }
+  // no one swap readies it: the living lines two deep, nearest first, the
+  // first after which the slab lands with a break in reach. A line pressed
+  // after the slab lands readies nothing for it, so only those before are tried.
+  int32_t tLand; static ST RWL;
+  if (lineLanded(0, 0, RWL, &tLand) != 0) return d;
+  linesFind(2, 0);
+  static unsigned char rk[MAXLINES];
+  for (int i = 0; i < nLines; i++) rk[i] = (char)(LINES[i].n < 2);
+  for (tried = 0; tried < READYTRIES;) {
+    int at = -1;
+    for (int i = 0; i < nLines; i++) {
+      LineC *l = &LINES[i];
+      if (rk[i] || l->est >= tLand || (l->verdict >= 0 && !(l->verdict & LV_LIVES))) continue;
+      if (at < 0 || l->est < LINES[at].est) at = i;
+    }
+    if (at < 0) break;
+    rk[at] = 1;
+    LineC *l = &LINES[at];
+    if (!(judged(l) & LV_LIVES) || (l->die ? l->die : 1 << 20) < dieRef) continue;
+    tried++;
+    if (readyInTime(l->sw, l->n, &r, &c)) { lineKeep(l, LINE_PLAN); lineLast = 8; return mkSwap(l->sw[0], l->sw[1], V_LINEUP, d.mode, d.alive); }
+  }
   return d;
 }
 // BREAK WHEN IT PAYS. A match beside a pile converts the whole pile, so a
