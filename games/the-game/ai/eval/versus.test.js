@@ -41,7 +41,10 @@ function liveWeights(w) {
     registry.keys.forEach(function (k) { if (w[k]) out[k] = w[k]; });
     return out;
 }
-var TRAINED = liveWeights( require('./trained.replace.l10-puyo-puyo18-s11.0914-020835.g00274.json').weights);
+// THE TRAINED SET IS THE ONE IN PLAY: the weights the survivor profile names.
+// A snapshot from an older registry is missing most of today's features, and
+// with them zeroed it is a different, weaker bot than the one being tested.
+var TRAINED = liveWeights(require('./' + require('./survivor.profile.json').weights).weights);
 var FLAT = {};
 registry.keys.forEach(function (k) { FLAT[k] = 1; });
 
@@ -110,12 +113,15 @@ check('a real duel that reaches the ceiling alive has a winner', function () {
     // time the bot changes — a pinned seed reports "the ceiling is broken"
     // when all that happened is that someone died sooner. What is under test
     // is what happens AT the ceiling.
+    // TWO DIFFERENT BOTS CAN STILL SCORE THE SAME: a tie at the ceiling is a
+    // draw, which the mirror case below checks. What is under test here is a
+    // ceiling with different scores, so the search is for that.
     var r = null, seed = 0;
     for (var sd = 1; sd <= 12 && !r; sd++) {
         var d = versus.duel(TRAINED, other, sd, { ceiling: 1800 });
-        if (d.reason === 'ceiling') { r = d; seed = sd; }
+        if (d.reason === 'ceiling' && d.scores[0] !== d.scores[1]) { r = d; seed = sd; }
     }
-    assert.ok(r, 'no seed of 12 kept both sides alive to the ceiling');
+    assert.ok(r, 'no seed of 12 kept both sides alive to the ceiling with different scores');
     assert.notStrictEqual(r.winner, null,
         'a ceiling duel with scores ' + JSON.stringify(r.scores) + ' was still called a draw');
     assert.strictEqual(r.winner, r.scores[0] > r.scores[1] ? 0 : 1,
