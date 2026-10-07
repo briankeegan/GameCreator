@@ -147,9 +147,16 @@ static int tallestBoard(const int32_t *st) {
   for (int c = 1; c <= BW; c++) { int top = topRow(U(st, OCC + c)); if (top > t) t = top; }
   return t;
 }
+// MATERIAL: the panels, and the garbage already broken -- a broken slab (locked,
+// not falling) turns into panels cell for cell, so a board whose pile is
+// converting has the material it is about to have, not the stack under it
 static double materialRows(const int32_t *st) {
   int n = 0;
-  for (int c = 1; c <= BW; c++) n += popc(U(st, OCC + c) & ~U(st, GARB + c));
+  for (int c = 1; c <= BW; c++) {
+    uint32_t broken = 0;
+    for (int i = 0; i < st[O_NSLAB]; i++) if (st[SLK(i)] && !st[SAIR(i)]) broken |= U(st, SM(i, c));
+    n += popc((U(st, OCC + c) & ~U(st, GARB + c)) | broken);
+  }
   return (double)n / BW;
 }
 static int bumpinessOf(const int32_t *st) {
@@ -3554,9 +3561,9 @@ static Dec lineupFirst(Dec d) {
 // ROOM FOR WHAT A BREAK MAKES: broken, the garbage on the board and the next
 // slab turn into panels; ready needs the board to hold them and the slab after
 static int roomForBreak(const int32_t *st) {
-  int g = 0;
-  for (int c = 1; c <= BW; c++) g += popc(U(st, GARB + c));
-  return materialRows(st) + (g + BIN[IN_NEXTSLAB]) / BW + 1 <= BH;
+  int occ = 0;   // the panels and every garbage cell: all of it panels once broken
+  for (int c = 1; c <= BW; c++) occ += popc(U(st, OCC + c));
+  return (occ + BIN[IN_NEXTSLAB]) / BW + 1 <= BH;
 }
 // READY IN TIME: after `sw`, the slab lands, and a swap breaks it that the
 // cursor reaches by then -- from where the line leaves it, in the frames
