@@ -3464,16 +3464,15 @@ static Dec fillFirstIn(Dec d) {
   // nothing counts that does not leave less than the choice or the board alone
   Best P = { 0 };
   int32_t fl[2 * MAXCAND]; int fn = 0, fq[MAXCAND], q;
-  for (int k = 0; k < nPool && fn < MAXCAND; k++) if (POOL[k].kind == K_SWAP && !(POOL[k].res.total > 0 && !surplus)) { fl[2 * fn] = POOL[k].sr; fl[2 * fn + 1] = POOL[k].sc; fq[fn++] = k; }
+  for (int k = 0; k < nPool && fn < MAXCAND; k++) if (POOL[k].kind == K_SWAP) { fl[2 * fn] = POOL[k].sr; fl[2 * fn + 1] = POOL[k].sc; fq[fn++] = k; }
   prejudge(fl, 2, fn, 1, 0);
   Out o; double far;
   outBegin(&o, fl, 2, fn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
   while (outNext(&o, &q, &far)) {
     Cand *pc = &POOL[fq[q]];
-    if (pc->res.total > 0 && !surplus) continue;
     int32_t sw[2] = { pc->sr, pc->sc };
     int v = lineJudge(sw, 1, 0);
-    if (!(v & LV_LIVES) || ((v & LV_PAYS) && !surplus)) continue;
+    if (!(v & LV_LIVES) || ((v & LV_PAYS) && !surplus && !(v & LV_GAINS))) continue;   // material is spent to live
     int h = LNO[10];
     if (P.has ? !bestBeats(&P, -h, pc->moveFrames, sw, 1) : h >= best) continue;
     if (!fillKeeps(marginWithin(sw, 1, LNO[0], need), need)) continue;
@@ -3528,7 +3527,7 @@ static Dec fillFirstIn(Dec d) {
         double bt = v ? breakTime(fsw, n) : -1; __builtin_memcpy(tCell, keep, sizeof keep); tW = kw; tH = kh;
         fprintf(stderr, "  walk %d,%d dir %d n %d v %d hollow %d die %d last %d break %g\n", r, c, dir, n, v, h, dd, la, bt); } }
 #endif
-      if (!(v & LV_LIVES) || (v & LV_PAYS)) continue;
+      if (!(v & LV_LIVES) || ((v & LV_PAYS) && !(v & LV_GAINS))) continue;
       double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
       // a walk must leave less than the pool's best; among walks, the same order (time: its estimate)
       int h = LNO[10];
