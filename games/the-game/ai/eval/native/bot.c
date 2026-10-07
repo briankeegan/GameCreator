@@ -3518,6 +3518,9 @@ static Dec noStall(Dec d) {
   int v = lineJudge(sw, 1, 0);
   if (!(v & LV_PAYS) || (v & LV_BREAKS)) return d;
   if (hasGarbage(DBASE) && !(LNO[10] > LNA[10])) return d;
+  // over six rows the material is there to spend: shaping the board and
+  // buying time with it is the six-row rule's to allow
+  if ((double)LNO[12] / BW >= 6) return d;
   BT->nLine = 0;
   return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
 }
