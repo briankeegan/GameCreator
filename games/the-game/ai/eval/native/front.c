@@ -479,7 +479,7 @@ static int driveWalk(Front *F, int input) {
   // the swap's panels settle at a known frame: a walk that arrives first waits
   // a pair still now is pressed now, unless a plan has already fixed its frame
 #ifndef __wasm__
-  { extern int botTraceOn; if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "WALK clock %d at %d,%d frames %d waitTo %d pkAt %d kept %d waitAll %d free %d can %d topped %d\n", FB->clock, row, col, F->wFrames, F->wWaitTo, F->pkAt, F->wKept, F->wWaitAll, pairFree(&F->settle, F->wR0, col, F->wFrames), nb_can_swap(FB, FB->curRow, FB->curCol), toppedNow()); } }
+  { extern int botTraceOn; if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "WALK front %d clock %d at %d,%d (target %d,%d cursor %d,%d top %d) frames %d waitTo %d pkAt %d kept %d waitAll %d free %d can %d topped %d\n", F->id, FB->clock, row, col, F->wRow, F->wCol, FB->curRow, FB->curCol, FB->topCurRow, F->wFrames, F->wWaitTo, F->pkAt, F->wKept, F->wWaitAll, pairFree(&F->settle, F->wR0, col, F->wFrames), nb_can_swap(FB, FB->curRow, FB->curCol), toppedNow()); } }
 #endif
   if (F->wFrames < F->wWaitTo && (F->wWaitAll || F->wKept || !pairFree(&F->settle, F->wR0, col, F->wFrames))) {
     // a wait is not a plan: topped, or a reaction's worth of waiting, decide again
