@@ -28,8 +28,13 @@
 // at a match's start, in the countdown (gc). Those flags are only read when
 // node starts, so survivor.js runs itself again with them.
 var HEAP_FLAGS = ['--initial-old-space-size=64', '--heap-growing-percent=1000', '--no-memory-reducer', '--expose-gc'];
+// NO WASM IS COMPILED DURING PLAY. By default V8 compiles a wasm function
+// the first time it is called and recompiles hot ones in the background,
+// and either can hold the frame loop on V8's compile locks. Every function is
+// compiled optimized when the module is (~40 ms each, before the first match).
+var WASM_FLAGS = ['--no-wasm-lazy-compilation', '--no-liftoff'];
 if (!process.env.GC_SURVIVOR_CHILD) {
-  var child = require('child_process').spawn(process.execPath, process.execArgv.concat(HEAP_FLAGS, [__filename], process.argv.slice(2)),
+  var child = require('child_process').spawn(process.execPath, process.execArgv.concat(HEAP_FLAGS, WASM_FLAGS, [__filename], process.argv.slice(2)),
                                              { stdio: 'inherit', env: Object.assign({}, process.env, { GC_SURVIVOR_CHILD: '1' }) });
   ['SIGINT', 'SIGTERM', 'SIGHUP'].forEach(function (sig) { process.on(sig, function () { child.kill(sig); }); });
   child.on('exit', function (code, sig) { process.exit(code === null ? 1 : code); });
@@ -579,5 +584,6 @@ var server = net.createServer(function (sock) {
 });
 (function wait() {
   if (!mindReady) { setTimeout(wait, 20); return; }
+  nativeNow();   // compiled before the first match is offered
   server.listen(opt.port, opt.host, function () { console.log(PROFILE.name + ' listening on ' + opt.host + ':' + opt.port + ' (' + opt.threads + ' threads, reaction ' + PROFILE.reaction + ', cursor ' + PROFILE.cursorMoveFrames + ')'); });
 })();
