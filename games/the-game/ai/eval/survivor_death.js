@@ -16,13 +16,12 @@ function show(e) {
 }
 // the boards every BOARD_EVERY frames from FRAMES_BEFORE on, then every
 // decision answered in those frames
-var BOARD_EVERY = 40, out = [], from = last.clock - back;
+var BOARD_EVERY = 60, out = [], from = last.clock - back;
 for (var i = Math.max(0, h.length - 1 - back); i < h.length - 1; i += BOARD_EVERY) out = out.concat(show(h[i]), ['']);
-out = out.concat(show(last), ['', 'decisions from clock ' + from + ':']);
+out = out.concat(show(last), ['', 'decisions from clock ' + from + ' (id asked>for@answered kind ms budget survive-ms doomed):']);
 (d.decided || []).filter(function (x) { return x.now >= from; }).forEach(function (x) {
   var g = x.diag || {};
-  out.push('  #' + x.id + ' for ' + x.at + ' asked ' + x.asked + ' got ' + x.now + ': ' + x.kind + ' ' + JSON.stringify(x.move) + ' ' + x.ms + ' ms' +
-           ' | budget ' + g.budget + ' took ' + g.took + ' survive ' + g.survive + ' doomed ' + g.doomed + ' allDoomed ' + g.allDoomed +
-           ' unproven ' + g.unproven + (g.tight ? ' TIGHT' : ''));
+  out.push(x.id + ' ' + x.asked + '>' + x.at + '@' + x.now + ' ' + x.kind + (x.move ? x.move.join(',') : '') + ' ' + x.ms + 'ms b' + g.budget +
+           ' s' + g.survive + ' d' + g.doomed + (g.allDoomed ? ' ALLDOOMED' : '') + (g.tight ? ' TIGHT' : ''));
 });
 console.log(out.join('\n'));

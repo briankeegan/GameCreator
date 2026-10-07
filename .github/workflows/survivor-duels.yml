@@ -115,7 +115,9 @@ jobs:
           grep -h '^slow\|^  on cpu' survivor.log | head -40 | tr '\n' '|' | sed 's/^/::notice title=slow::/'; echo
           # the board it died on (survivor_death.js), one annotation
           if grep -q '"died":"WasmSurvivor"' duel.log && [ -s death.jsonl ]; then
-            node games/the-game/ai/eval/survivor_death.js death.jsonl | awk '{printf "%s%%0A", $0}' | sed 's/^/::notice title=death::/'; echo
+            node games/the-game/ai/eval/survivor_death.js death.jsonl > death.txt
+            split -C 3500 -d death.txt death.part.
+            for f in $(ls death.part.* | head -4); do awk '{printf "%s%%0A", $0}' "$f" | sed "s/^/::notice title=death $f::/"; echo; done
           fi
       - uses: actions/upload-artifact@v4
         if: always()
