@@ -2075,11 +2075,15 @@ static void jmPut(const int32_t *sw, int n, int waitAll, int v, const int32_t *l
 // not judged is no option -- the decision is never cut
 static double jdCost, btCost, rdW0;   // rdW0: the work done when the decision began
 static int budgetRefused;
+// THE LINE OPTIONAL WORK STOPS AT: the decision's (OPTWORK from its start), or
+// lower while a stage runs that must leave a later stage its share (stageEnd)
+static double stageEnd = 1e300;
+static double optLine(void) { double e = rdW0 + OPTWORK; return stageEnd < e ? stageEnd : e; }
 // A BATCH ONLY AS FAR AS THE BUDGET HOLDS IT: of `count` tasks costing at
 // most `cost` each, the number that fit in what is left; the rest are not done
 static int fitTasks(int count, double cost) {
   extern PATLS double paWork;
-  double left = OPTWORK - (paWork - rdW0);
+  double left = optLine() - paWork;
   int k = left <= 0 ? 0 : cost <= 0 ? count : (int)(left / cost);
   if (k < count) budgetRefused += count - k;
   return k < count ? k : count;
@@ -2087,7 +2091,7 @@ static int fitTasks(int count, double cost) {
 static double rpCost;   // a replay's (prereplay)
 static int lineJudgeIn2(const int32_t *sw, int n, int waitAll) {
   extern PATLS double paWork;
-  if (paWork - rdW0 + jdCost > OPTWORK) { budgetRefused++; return 0; }
+  if (paWork + jdCost > optLine()) { budgetRefused++; return 0; }
   double w = paWork;
   int v = lineJudgeIn(sw, n, waitAll);
   if (paWork - w > jdCost) jdCost = paWork - w;
@@ -3517,7 +3521,7 @@ static int readyInTime(const int32_t *sw, int n, int *br, int *bc) {
   if (rmemDec != btDecision) { rmemDec = btDecision; nRmem = 0; }
   if (n <= 3) for (int i = 0; i < nRmem; i++)
     if (RMEM[i].n == n && (!n || !__builtin_memcmp(RMEM[i].sw, sw, (unsigned long)n * 8))) { *br = RMEM[i].r; *bc = RMEM[i].c; return RMEM[i].ok; }
-  if (paWork - rdW0 + rdCost > OPTWORK) return 0;
+  if (paWork + rdCost > optLine()) return 0;
   double w = paWork;
   int ok = readyInTimeRaw(sw, n, br, bc);
   if (paWork - w > rdCost) rdCost = paWork - w;
@@ -3967,7 +3971,7 @@ static double breakTimeAfter(const int32_t *steps, int n, double limit, int32_t 
 // has taken); past that no break is found
 static double breakTimeOf(const int32_t *steps, int n, double limit) {
   int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t w[32][WMAX];
-  if (!inWorker && paWork - rdW0 + btCost > OPTWORK) { budgetRefused++; return INF; }
+  if (!inWorker && paWork + btCost > optLine()) { budgetRefused++; return INF; }
   double w0 = paWork, bt0 = NOWMS2();
   int lsr = lineState(steps, n, st, can, w, cur, &t);
   btReplayMs += NOWMS2() - bt0;
@@ -4012,7 +4016,17 @@ static int breakAhead(const int32_t *sw, double lim, double *out);   // front.c
 static double bsWork[16];   // each task's own work (SOONBATCH)
 static void bsTask(int k) { double v, w0 = paWork; bsB0[k] = breakAhead(bsPl + 2 * k, bsLim, &v) ? v : breakWithinT(bsPl + 2 * k, 1, bsLim); bsWork[k] = paWork - w0; }
 #define SOONBATCH 16   // swaps taken together, out from the cursor (bsWork's size)
+// BREAKSOON LEAVES FILL ITS SHARE: the most fill's stage has taken lately
+// (laterFill, decaying as the other reserves) is kept from breakSoon's searches
+static double laterFill;
+static Dec breakSoonIn(Dec d);
 static Dec breakSoon(Dec d) {
+  stageEnd = rdW0 + OPTWORK - laterFill;
+  Dec r = breakSoonIn(d);
+  stageEnd = 1e300;
+  return r;
+}
+static Dec breakSoonIn(Dec d) {
   if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;
   if (lineLast == 2 || d.kind == K_RAISE || !BIN[IN_HASPA] || !hasGarbage(DBASE)) return d;
   if (d.kind == K_SWAP && endsInBreak(d)) return d;
@@ -4588,6 +4602,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // the most a judge, a search, a replay has cost: lately, as the reserves -- one heavy one does not shut them out for the game
   jdCost *= 0.99; btCost *= 0.99; rpCost *= 0.99; rdCost *= 0.99;
   laterLu *= 0.99; if (ws[k - 1] - ws[4] > laterLu) laterLu = ws[k - 1] - ws[4];
+  laterFill *= 0.99; if (ws[k - 1] - ws[k - 2] > laterFill) laterFill = ws[k - 1] - ws[k - 2];
   // A CUT IS A FAILURE: a stage that reaches its share has not decided, it has
   // been stopped. The decision fails and the game stops, naming the stage.
   for (int i = 0; i < k; i++) if (cutAt[i]) {
