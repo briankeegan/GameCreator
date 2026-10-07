@@ -3438,6 +3438,9 @@ static int walkTop(int c) {
   for (int k = tH; k >= 1; k--) if (tCell[k][c] > 0) return k;
   return 0;
 }
+// NEVER DYING FIRST: a fill is ranked by the frame it loses health (later
+// first, none within the horizon best), then by the hollow it leaves
+static double fillScore(int die, int hollow) { return (die ? die : (1 << 20)) * 4096.0 - hollow; }
 static Dec fillFirstIn(Dec d) {
   if (d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
   if (lineLast) return d;
@@ -3447,13 +3450,14 @@ static Dec fillFirstIn(Dec d) {
 #endif
   if (!aloneOnEngine() || LNA[10] == 0) return d;
   int best = LNA[10];
+  double ref = fillScore(LNA[0], LNA[10]);   // what a fill must beat: the board left alone, and the choice
   // A FILL IS A MEANS TO A BREAK, so it may not cost one: if the choice
   // breaks in time a fill must too; if not, a fill leaves at least as much
   // time between its break and its loss of health
   double need = marginAfter(0, 0, LNA[0]);
   if (d.kind == K_SWAP && d.hasMove) {
     int32_t sw[2] = { d.sr, d.sc };
-    if (lineJudge(sw, 1, 0) & LV_LIVES) { best = LNO[10] < best ? LNO[10] : best; double m = marginAfter(sw, 1, LNO[0]); if (m > need) need = m; }
+    if (lineJudge(sw, 1, 0) & LV_LIVES) { best = LNO[10] < best ? LNO[10] : best; if (fillScore(LNO[0], LNO[10]) > ref) ref = fillScore(LNO[0], LNO[10]); double m = marginAfter(sw, 1, LNO[0]); if (m > need) need = m; }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  choice %d,%d die %d last %d hollow %d | alone die %d | break after choice %g alone %g\n", d.sr, d.sc, LNO[0], LNO[1], LNO[10], LNA[0], breakTime(sw, 1), breakTime(0, 0)); }
 #endif
@@ -3461,8 +3465,8 @@ static Dec fillFirstIn(Dec d) {
   if (need > 0) need = 0;   // in time is in time
   Cand *pick = 0;
   int surplus = materialRows(DBASE) >= 6;   // over six rows a clear may be spent to fill
-  // the pool: the least hollow (score -hollow), then the shortest walk, then the swaps;
-  // nothing counts that does not leave less than the choice or the board alone
+  // the pool: by fillScore, then the shortest walk, then the swaps; nothing
+  // counts that does not beat the choice and the board left alone
   Best P = { 0 };
   int32_t fl[2 * MAXCAND]; int fn = 0, fq[MAXCAND], q;
   for (int k = 0; k < nPool && fn < MAXCAND; k++) if (POOL[k].kind == K_SWAP) { fl[2 * fn] = POOL[k].sr; fl[2 * fn + 1] = POOL[k].sc; fq[fn++] = k; }
@@ -3474,12 +3478,12 @@ static Dec fillFirstIn(Dec d) {
     int32_t sw[2] = { pc->sr, pc->sc };
     int v = lineJudge(sw, 1, 0);
     if (!(v & LV_LIVES) || ((v & LV_PAYS) && !surplus && !(v & LV_GAINS))) continue;   // material is spent to live
-    int h = LNO[10];
-    if (P.has ? !bestBeats(&P, -h, pc->moveFrames, sw, 1) : h >= best) continue;
+    double sc = fillScore(LNO[0], LNO[10]);
+    if (P.has ? !bestBeats(&P, sc, pc->moveFrames, sw, 1) : sc <= ref) continue;
     if (!fillKeeps(marginWithin(sw, 1, LNO[0], need), need)) continue;
-    bestTake(&P, -h, pc->moveFrames, sw, 1); pick = pc;
+    bestTake(&P, sc, pc->moveFrames, sw, 1); pick = pc;
   }
-  if (P.has) best = (int)-P.score;
+  if (P.has) ref = P.score;
   // the top of every column walked along its row, a column a swap, until it
   // drops into a lower column or meets something it cannot pass
   // the walk is planned on the board the engine settles to: a clear under a
@@ -3530,11 +3534,11 @@ static Dec fillFirstIn(Dec d) {
 #endif
       if (!(v & LV_LIVES) || ((v & LV_PAYS) && !(v & LV_GAINS))) continue;
       double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
-      // a walk must leave less than the pool's best; among walks, the same order (time: its estimate)
-      int h = LNO[10];
-      if (W.has ? !bestBeats(&W, -h, est, fsw, n) : h >= best) continue;
+      // a walk must beat the pool's best; among walks, the same order (time: its estimate)
+      double sc = fillScore(LNO[0], LNO[10]);
+      if (W.has ? !bestBeats(&W, sc, est, fsw, n) : sc <= ref) continue;
       if (!fillKeeps(marginWithin(fsw, n, LNO[0], need), need)) continue;
-      bestTake(&W, -h, est, fsw, n); first[0] = fsw[0]; first[1] = fsw[1];
+      bestTake(&W, sc, est, fsw, n); first[0] = fsw[0]; first[1] = fsw[1];
     }
   }
   // A TOWER TWO WIDE COMES DOWN IN TWO WALKS: a slab rests on the taller of
@@ -3578,7 +3582,7 @@ static Dec fillFirstIn(Dec d) {
 #ifndef __wasm__
         if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  tower %d,%d dir %d n %d v %d hollow %d best %d\n", a, a + 1, dir, n, v, LNO[10], best); }
 #endif
-        if ((v & LV_LIVES) && !(v & LV_PAYS) && LNO[10] < best && fillKeeps(marginWithin(sw, n, LNO[0], need), need)) {
+        if ((v & LV_LIVES) && !(v & LV_PAYS) && fillScore(LNO[0], LNO[10]) > ref && fillKeeps(marginWithin(sw, n, LNO[0], need), need)) {
           for (int k = 0; k < 2 * n; k++) BT->line[k] = sw[k];
           BT->nLine = n; BT->lineKind = LINE_PLAN; BT->lineWaitAll = 0;
           return mkSwap(sw[0], sw[1], V_FILL, d.mode, d.alive);
@@ -3587,7 +3591,7 @@ static Dec fillFirstIn(Dec d) {
     }
   }
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "FILL! best %d walk %d,%d pool %d,%d\n", W.has ? (int)-W.score : best, first[0], first[1], pick ? pick->sr : 0, pick ? pick->sc : 0); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "FILL! best %.0f walk %d,%d pool %d,%d\n", W.has ? W.score : ref, first[0], first[1], pick ? pick->sr : 0, pick ? pick->sc : 0); }
 #endif
   if (first[0]) return mkSwap(first[0], first[1], V_FILL, d.mode, d.alive);
   if (!pick) return d;
