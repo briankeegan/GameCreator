@@ -4195,6 +4195,63 @@ static Dec readyWhenLands(Dec d) {
       }
     }
   }
+  // QUIET STEPS TO READY: up to three swaps that clear nothing -- a panel
+  // walked over a gap falls, which no line by rows proposes -- searched
+  // breadth first on the board the engine settles to, each board once; the
+  // first boards on which the slab has a break one swap away (slabReadyHook,
+  // on the masks), fewest steps first, are asked of the engine (readyInTime)
+  {
+#define RQMAX 400
+    static ST RQS[RQMAX]; static int32_t RQSEQ[RQMAX][6], RQR[R_INTS + ST_INTS], RQL[2 * 128]; static int RQN[RQMAX]; static u64 RQH[RQMAX];
+    int32_t cur0[2], t0; uint32_t can0[WMAX]; uint8_t wt0[32][WMAX];
+    if (lineState(0, 0, RQS[0], can0, wt0, cur0, &t0) == 0) {
+      int nq = 1, head = 0, nf = 0, found[READYTRIES];
+      // where the slab lands is what readies it: the swaps tried are those
+      // within three rows of a column's top, beside or under its columns
+      int lo = (int)BIN[IN_SLABC] - 1, hi = (int)BIN[IN_SLABC] + (int)BIN[IN_SLABW];
+      extern PATLS double paWork;
+      RQN[0] = 0; RQH[0] = hashOf(RQS[0]);
+      while (head < nq && nf < READYTRIES && nq < RQMAX && paWork < optLine()) {
+        int at = head++;
+        if (RQN[at] >= 3) continue;
+        int nl = legal(RQS[at], RQL);
+        for (int i = 0; i < nl && nq < RQMAX && nf < READYTRIES; i++) {
+          int sr = RQL[2 * i], sc = RQL[2 * i + 1];
+          if (sc + 1 < lo || sc > hi) continue;
+          int top = topRow(U(RQS[at], OCC + sc)), t2 = topRow(U(RQS[at], OCC + sc + 1));
+          if (t2 > top) top = t2;
+          if (sr < top - 2) continue;
+          stcpy(RQS[nq], RQS[at]);
+          if (!swapIn(RQS[nq], sr, sc)) continue;
+          resolve(RQS[nq], RQR, 1);
+          if (RQR[R_SCOPE] != SC_OK || RQR[R_TOTAL] > 0) continue;
+          stcpy(RQS[nq], RQR + R_INTS);
+          u64 h = hashOf(RQS[nq]); int dup = 0;
+          for (int j = 0; j < nq && !dup; j++) dup = RQH[j] == h;
+          if (dup) continue;
+          RQH[nq] = h; RQN[nq] = RQN[at] + 1;
+          for (int k = 0; k < 2 * RQN[at]; k++) RQSEQ[nq][k] = RQSEQ[at][k];
+          RQSEQ[nq][2 * RQN[at]] = sr; RQSEQ[nq][2 * RQN[at] + 1] = sc;
+          if (RQN[nq] > 1 && slabReadyHook(RQS[nq])) found[nf++] = nq;
+          nq++;
+        }
+      }
+#ifndef __wasm__
+      if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RWL quiet: %d boards, %d ready on the masks\n", nq, nf); }
+#endif
+      for (int i = 0; i < nf; i++) {
+        int q = found[i], n = RQN[q];
+        if (!(lineJudge(RQSEQ[q], n, 0) & LV_LIVES) || (LNO[0] ? LNO[0] : 1 << 20) < dieRef) continue;
+        if (readyInTime(RQSEQ[q], n, &r, &c)) {
+#ifndef __wasm__
+          if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RWL quiet ready:"); for (int k = 0; k < n; k++) fprintf(stderr, " %d,%d", RQSEQ[q][2 * k], RQSEQ[q][2 * k + 1]); fprintf(stderr, " break %d,%d\n", r, c); }
+#endif
+          lineSet(RQSEQ[q], n, LINE_PLAN, 0); lineLast = 8;
+          return mkSwap(RQSEQ[q][0], RQSEQ[q][1], V_LINEUP, d.mode, d.alive);
+        }
+      }
+    }
+  }
   // NOR TWO: the time to the landing is what bounds the setup, not a count of
   // swaps. The breaks by distance are found on the board as the slab lands
   // on it; a walk whose steps but the last are played now, before it lands,
@@ -4220,6 +4277,9 @@ static Dec readyWhenLands(Dec d) {
       tried++;
       if (readyInTime(l->sw, l->n - 1, &r, &c)) got = at;
     }
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RWL by distance: %d lines, %d tried, got %d\n", nLines - n0, tried, got); }
+#endif
     if (got >= 0) {
       LineC l = LINES[got];
       l.n--;
