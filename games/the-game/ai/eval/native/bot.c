@@ -2660,17 +2660,17 @@ static int tWalk(int *row, int r, int s, int t, int32_t *sw, int *n) {
   return 1;
 }
 // tTimeMode: the search only measures -- the frames to the soonest break it finds.
-// a swap played before the search's board (targetAfterDrops): every line found starts with it
-static JLOCAL int32_t tPfx[2]; static JLOCAL int tPfxN;
+// the swaps played before the search's board (targetAfterDrops): every line found starts with them
+static JLOCAL int32_t tPfx[4]; static JLOCAL int tPfxN;
 static void tProposeIn(const int32_t *sw, int n, int cr, int cc, double t0, double limit);
 static void tPropose(const int32_t *sw0, int n0, int cr, int cc, double t0, double limit) {
   if (!tPfxN) { tProposeIn(sw0, n0, cr, cc, t0, limit); return; }
-  if (n0 < 1 || n0 + 1 > LINEMAX) return;
+  if (n0 < 1 || n0 + tPfxN > LINEMAX) return;
   int32_t sw[2 * LINEMAX];
-  sw[0] = tPfx[0]; sw[1] = tPfx[1];
-  for (int k = 0; k < 2 * n0; k++) sw[2 + k] = sw0[k];
+  for (int k = 0; k < 2 * tPfxN; k++) sw[k] = tPfx[k];
+  for (int k = 0; k < 2 * n0; k++) sw[2 * tPfxN + k] = sw0[k];
   // the prefix's own time is in t0; the line's first step is costed from where it leaves the cursor
-  int n = n0 + 1;
+  int n = n0 + tPfxN;
   if (!tTimeMode && nLines >= MAXLINES) return;
   for (int i = 0; i < nLines; i++)
     if (LINES[i].n == n && !__builtin_memcmp(LINES[i].sw, sw, (unsigned long)n * 8)) return;
@@ -2818,12 +2818,16 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
 // swap that pulls its support lets it down onto the panels beside, and the
 // breaks by distance are searched again on the board it settles to, each
 // line starting with that swap.
-static ST TAD; static int32_t TADR[R_INTS + ST_INTS], TADSW[2 * 128];
+// A pile perched on two columns is let down by two swaps, not one: when no
+// single swap lets garbage fall, every second swap on the board the first
+// settles to is asked the same, as far as the decision's budget goes.
+static ST TAD, TAD1; static int32_t TADR[R_INTS + ST_INTS], TADSW[2 * 128], TADSW2[2 * 128];
 static double garbSum(const int32_t *st) { double g = 0; for (int c = 1; c <= BW; c++) g += U(st, GARB + c); return g; }
+static void targetAfterDrops2(const int32_t *st, double limit, double g0);
 static void targetAfterDrops(const int32_t *st, double limit) {
   if (tPfxN) return;
   double g0 = garbSum(st);
-  int n = legal(st, TADSW);
+  int n = legal(st, TADSW), drops = 0;
   for (int i = 0; i < n; i++) {
     int r = TADSW[2 * i], c = TADSW[2 * i + 1];
     stcpy(TAD, st);
@@ -2833,6 +2837,7 @@ static void targetAfterDrops(const int32_t *st, double limit) {
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  TAD %d,%d scope %d garb %g -> %g\n", r, c, TADR[R_SCOPE], g0, TADR[R_SCOPE] == SC_OK ? garbSum(TADR + R_INTS) : -1); }
 #endif
     if (TADR[R_SCOPE] != SC_OK || !(garbSum(TADR + R_INTS) < g0)) continue;
+    drops++;
     int32_t pf[2] = { r, c }, st1[ST_INTS], cur[2], t;
     uint32_t can[WMAX]; uint8_t wt[32][WMAX];
     int ls = lineState(pf, 1, st1, can, wt, cur, &t), n0 = nLines;
@@ -2842,6 +2847,37 @@ static void targetAfterDrops(const int32_t *st, double limit) {
       for (int w = 0; w < 2; w++) { tGrid(w ? st1 : st); fprintf(stderr, "  TAD %s:", w ? "after" : "before"); for (int rr = tH; rr >= 1; rr--) { fprintf(stderr, " "); for (int cc = 1; cc <= tW; cc++) fprintf(stderr, "%c", tCell[rr][cc] == 0 ? '.' : tCell[rr][cc] == -1 ? 'g' : tCell[rr][cc] == -2 ? 'i' : '0' + tCell[rr][cc]); } fprintf(stderr, "\n"); } }
 #endif
   }
+  if (!drops && g0 > 0) targetAfterDrops2(st, limit, g0);
+}
+static void targetAfterDrops2(const int32_t *st, double limit, double g0) {
+  extern PATLS double paWork;
+  int n = legal(st, TADSW), tried = 0, found = 0;
+  for (int i = 0; i < n; i++) {
+    if (paWork > optLine()) break;
+    int r = TADSW[2 * i], c = TADSW[2 * i + 1];
+    stcpy(TAD1, st);
+    if (!swapIn(TAD1, r, c)) continue;
+    resolve(TAD1, TADR, 1);
+    if (TADR[R_SCOPE] != SC_OK) continue;
+    stcpy(TAD1, TADR + R_INTS);
+    int m = legal(TAD1, TADSW2);
+    for (int j = 0; j < m; j++) {
+      int r2 = TADSW2[2 * j], c2 = TADSW2[2 * j + 1];
+      stcpy(TAD, TAD1);
+      if (!swapIn(TAD, r2, c2)) continue;
+      resolve(TAD, TADR, 1);
+      tried++;
+      if (TADR[R_SCOPE] != SC_OK || !(garbSum(TADR + R_INTS) < g0)) continue;
+      int32_t pf[4] = { r, c, r2, c2 }, st1[ST_INTS], cur[2], t;
+      uint32_t can[WMAX]; uint8_t wt[32][WMAX];
+      int ls = lineState(pf, 2, st1, can, wt, cur, &t), n0 = nLines;
+      if (ls == 0 && t <= limit) { for (int k = 0; k < 4; k++) tPfx[k] = pf[k]; tPfxN = 2; targetLines(st1, cur[0], cur[1], t, limit); tPfxN = 0; }
+      found += nLines - n0;
+    }
+  }
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  TAD2 tried %d, lines +%d\n", tried, found); }
+#endif
 }
 // THE TIME THERE IS: topped, the drain; else the judge's horizon -- a line
 // whose last press comes later is one the engine never finishes playing, so
