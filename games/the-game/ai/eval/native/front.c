@@ -568,7 +568,12 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
 #endif
   out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = out[13] = out[14] = 0;
   { extern int paBudgetOut(void); if (paBudgetOut()) return -1; }   // past the decision's budget: not played
-  for (f = f0; f < horizon; f++) {
+  // A LINE IS JUDGED TO WHERE ITS CONSEQUENCE SHOWS: past the horizon the
+  // judge plays on while the board is still busy -- a chain running, garbage
+  // converting or falling, a landing shaking -- for as long as a board settles
+  // (UNSETTLEMOST), so a break whose chain and conversion run past the horizon
+  // is seen to the quiet board the queue drops on
+  for (f = f0; f < horizon || (stopAtNext == 0 && f < horizon + UNSETTLEMOST && (b->nActive > 0 || nb_falling_garbage(b) || b->shakeTime > 0)); f++) {
     { extern int paBudgetOut(void); if (paBudgetOut()) return -1; }   // past the budget mid-line: not played
     int input = 0;
     // stopAtNext 2: on until the next slab has dropped and landed

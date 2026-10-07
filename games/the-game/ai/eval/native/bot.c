@@ -2888,10 +2888,11 @@ static LineC *bestLine(int need, int (*ok)(const LineC *)) { return bestLineAvoi
 // rank, the one that converts the most garbage on the engine -- a pile broken
 // whole, not its bottom slab with the rest left propped above a gap.
 static int bbFound, bbLastN; static double bbLastEst;   // bestBreak: how many living breaks it took, the last one's length and time
-// A BREAK THAT LEAVES THE BOARD READY: with more garbage to come, a living
-// break after which the next slab lands with a break in reach (readyInTime)
-// is taken over one that leaves the pile it does not convert out of reach;
-// among the same, the one that converts the most.
+// A BREAK THAT LEAVES THE BOARD READY: of the breaks that lose health
+// latest, with more garbage to come, a living break after which the next slab
+// lands with a break in reach (readyInTime) is taken over one that leaves the
+// pile it does not convert out of reach; among the same, the one that
+// converts the most.
 static int readyInTime(const int32_t *sw, int n, int *br, int *bc);
 static int bbReady;   // the break bestBreak picked leaves the board ready for the next slab
 static LineC bbDeferred; static int bbHasDeferred;   // a living break held for a better time, this decision
@@ -2915,10 +2916,12 @@ static LineC *bestBreak(void) {
     judgeAhead(l, taken, 0);
     if ((judged(l) & need) != need) continue;
     found++; bbFound = found; bbLastN = l->n; bbLastEst = l->est;
-    if (pick && pickReady && l->conv <= pick->conv) continue;
+    if (pick && pickReady && l->die <= pick->die && l->conv <= pick->conv) continue;
     int rdy = 0, r, c;
     if (ask) { int32_t keep[LNOLEN]; for (int k = 0; k < LNOLEN; k++) keep[k] = LNO[k]; rdy = readyInTime(l->sw, l->n, &r, &c); for (int k = 0; k < LNOLEN; k++) LNO[k] = keep[k]; }
-    if (!pick || rdy > pickReady || (rdy == pickReady && l->conv > pick->conv)) { pick = l; pickReady = rdy; }
+    // NEVER DYING FIRST: the break that loses health latest; then ready; then the most converted
+    if (!pick || l->die > pick->die || (l->die == pick->die && (rdy > pickReady || (rdy == pickReady && l->conv > pick->conv))))
+      { pick = l; pickReady = rdy; }
   }
   bbReady = !ask || pickReady;
   return pick;
