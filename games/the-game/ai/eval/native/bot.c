@@ -1120,7 +1120,11 @@ static Dec mk(int kind, int via, int mode, int alive) { Dec d; memset(&d, 0, siz
 static Dec mkSwap(int sr, int sc, int via, int mode, int alive) { Dec d = mk(K_SWAP, via, mode, alive); d.sr = sr; d.sc = sc; d.hasMove = 1; return d; }
 static Dec mkHold(int via, int mode, int alive, int hasPark, int pr, int pc) { Dec d = mk(K_HOLD, via, mode, alive); d.hasPark = hasPark; d.pr = pr; d.pc = pc; return d; }
 
+// THE FRAMES A WANTED RAISE STILL WAITS ON THE STOP (0: it waits on nothing
+// but the rise lock)
+static double raiseAfter;
 static int raiseMode(const int32_t *base, int poolBreak) {
+  raiseAfter = 0;
   if (TFLAG(TF_RAISE)) return (int)BIN[IN_T + 3];
   int topped = BIN[IN_TOPPED] != 0;
   if (!opt(O_ALLOWRAISE) || topped) { BT->opening = 0; return 0; }
@@ -1129,12 +1133,15 @@ static int raiseMode(const int32_t *base, int poolBreak) {
   int fits = raiseSafe(base);
   // A QUEUE THAT FILLS THE ROOM KILLS A BOARD WITH NO BREAK READY, raised or
   // not: only material builds the break, and the raise costs its row -- it
-  // fits while the next slab still lands under the top. The stop time a
-  // manual raise ends only holds the queue off, and with no break ready a
-  // board under six rows readies nothing in it but by clearing, which spends
-  // the material the break needs and renews the stop that holds the raise off.
-  if (!fits && BIN[IN_INCOMING] > 0 && !BIN[IN_TOPPED] && !BIN[IN_STACKTOPPED] && !slabReadyHook(base))
+  // fits while the next slab still lands under the top -- and the stop time,
+  // which a manual raise ends: lost for nothing once the stop left is no
+  // longer than the queue takes to top the risen board. Until then the raise
+  // waits on the stop (raiseAfter), as it waits on the rise lock.
+  double stopOver = 0;
+  if (!fits && BIN[IN_INCOMING] > 0 && !BIN[IN_TOPPED] && !BIN[IN_STACKTOPPED] && !slabReadyHook(base)) {
     fits = BH - tallestBoard(base) - 1 - rows - (BIN[IN_RAISING] != 0) > 0;
+    stopOver = BIN[IN_STOP] - framesToDeathS(0, tallestBoard(base) + 1, BIN[IN_FPR]);
+  }
   BT->wantRows = rows;
   if (BT->opening && (BIN[IN_INCOMING] || !fits)) BT->opening = 0;
   if (!fits) return 0;
@@ -1150,6 +1157,7 @@ static int raiseMode(const int32_t *base, int poolBreak) {
   if (materialRows(base) >= 6) { BT->opening = 0; return 0; }
   int stillComing = BIN[IN_INCOMING] > 0 || BIN[IN_FALLING];
   if (poolBreak && !stillComing) return 0;
+  raiseAfter = stopOver > 0 ? stopOver : 0;
   return BT->opening ? 1 : 2;
 }
 static int modeOf(int haveEscape, double escape, double deadline) {
@@ -1265,6 +1273,8 @@ static void scoreAll(Cand **cs, int n, double *out, int idle, const int32_t *bas
 typedef struct { Cand *c; double cheap; } Cheap;
 
 static int raiseWaiting;
+// the frames until a waiting raise can fire: the rise lock, or the stop it waits on
+static double raiseWaitLeft(void) { return dmax(BIN[IN_LOCKLEFT], raiseAfter); }
 static double dcCandMs;   // GC_WORKSTAT: the pool's share of decideRuled
 static Dec decideCore(void) {
   raiseWaiting = 0;
@@ -1299,7 +1309,9 @@ static Dec decideCore(void) {
   int lookDepth = (int)dmin(opt(O_MAXDEPTH), dmax(1, __builtin_floor(dl2 / (REACT > 1 ? REACT : 1))));
   lookDepthLog = lookDepth;
   int raising = raiseMode(base, poolBreak);
-  BT->wantRaise = raising != 0;
+  // a raise waiting on the stop is not pressed: the front presses a wanted
+  // raise as soon as nothing locks it, and the stop does not
+  BT->wantRaise = raising != 0 && !(raiseAfter > 0);
   int digging = hasGarbage(base);
   if (digging) BT->counts[C_DIGGING]++;
   int haveSurvival = 0, sMove[2] = {0, 0}, havePlanWait = 0, pwMove[2] = {0, 0};
@@ -1477,7 +1489,7 @@ static Dec decideCore(void) {
   if (raising) {
     int haveRc = 0;
     for (int i = 0; i < nPool; i++) if (POOL[i].kind == K_RAISE) haveRc = 1;
-    if (haveRc) {
+    if (haveRc && !(raiseAfter > 0)) {
       if (raising == 1) BT->counts[C_OPENINGRAISES]++;
       else BT->counts[C_RAISEDFORMATERIAL]++;
       return mk(K_RAISE, raising == 1 ? V_RAISE_OPENING : V_RAISE_MATERIAL, mode, alive);
@@ -2980,14 +2992,15 @@ static int readyAfterSpend(const int32_t *sw, int n);
 static int aloneOnEngine(void);
 static int nonSpendLives(void);
 static int spendsLeaveSixP(void) { return (double)LNO[12] / BW >= 6; }   // the panels the line ends with, as rows
-// A SPEND THAT KEEPS A WAITING RAISE OUT: a clear holds the rise lock, so
-// while a raise for material waits on it, a spend under six rows with no break
-// ready may only if the board left alone loses health before the lock would
-// end -- the raise could not come in time to save it anyway
+// A SPEND THAT KEEPS A WAITING RAISE OUT: a clear holds the rise lock and
+// renews the stop, so while a raise for material waits on either, a spend
+// under six rows with no break ready may only if the board left alone loses
+// health before the wait would end -- the raise could not come in time to
+// save it anyway
 static int playDie;   // the frame the line played on loses health (1 << 20: not within the horizon)
 static int spendKeepsRaiseOut(void) {
   if (!raiseWaiting || !aloneOnEngine()) return 0;
-  return !(LNA[0] && LNA[0] <= BIN[IN_LOCKLEFT]);
+  return !(LNA[0] && LNA[0] <= raiseWaitLeft());
 }
 static Dec playOn(Dec d) {
   lineLast = 0;
@@ -4509,7 +4522,7 @@ static Dec raiseHold(Dec d) {
   if (!raiseWaiting || d.kind != K_SWAP || !d.hasMove) return d;
   Cand *pc = poolSwap(d.sr, d.sc);
   double mf = pc ? pc->moveFrames : travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], d.sr, d.sc);
-  if (mf + 5 <= BIN[IN_LOCKLEFT]) return d;
+  if (mf + 5 <= raiseWaitLeft()) return d;
   lineLast = 0;   // a hold is no line played on: what follows judges the hold
   return mkHold(V_RAISING, d.mode, d.alive, 0, 0, 0);
 }
