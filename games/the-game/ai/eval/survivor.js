@@ -48,8 +48,22 @@ var net = require('net'), path = require('path'), wt = require('worker_threads')
 var GC = { max: 0, slow: 0 };
 // GC_SURVIVOR_TIMES=file: per frame, the clock, when its line was read (epoch s), the reply's and the frame's ms; written at the match's end.
 var TIMES = process.env.GC_SURVIVOR_TIMES ? [] : null, performance = require('perf_hooks').performance;
-// this thread's time on a cpu, waiting for one (ns) and slices (Linux schedstat)
-function schedstat() { try { return require('fs').readFileSync('/proc/thread-self/schedstat', 'utf8').split(' ').map(Number); } catch (e) { return [0, 0, 0]; } }
+// Where this thread's time went (Linux): on a cpu, waiting for one (ns) and
+// slices (schedstat); page faults, minor and major (stat); switches made
+// blocking and preempted (status); and the machine's stalls on cpu, memory
+// and io (pressure, total us of some task stalled).
+var SCHED_NAMES = ['on cpu', 'waiting for one', 'slices', 'minor faults', 'major faults', 'blocked', 'preempted', 'machine cpu stall', 'memory stall', 'io stall'];
+function readOr(f) { try { return require('fs').readFileSync(f, 'utf8'); } catch (e) { return ''; } }
+function schedstat() {
+  var ss = readOr('/proc/thread-self/schedstat').split(' ').map(Number), st = readOr('/proc/thread-self/stat'), stf = st.slice(st.lastIndexOf(')') + 2).split(' ');
+  var sts = readOr('/proc/thread-self/status'), sw = function (k) { var m = sts.match(new RegExp(k + ':\\s+(\\d+)')); return m ? Number(m[1]) : 0; };
+  var psi = function (r) { var m = readOr('/proc/pressure/' + r).match(/some .*total=(\d+)/); return m ? Number(m[1]) : 0; };
+  // stat after the name: state is field 3, minflt 10 and majflt 12
+  return [ss[0] || 0, ss[1] || 0, ss[2] || 0, Number(stf[7]) || 0, Number(stf[9]) || 0, sw('voluntary_ctxt_switches'), sw('nonvoluntary_ctxt_switches'), psi('cpu'), psi('memory'), psi('io')];
+}
+function schedDelta(a, b) {
+  return SCHED_NAMES.map(function (n, i) { var d = b[i] - a[i]; return n + ' ' + (i < 2 ? (d / 1e6).toFixed(1) + ' ms' : i >= 7 ? (d / 1e3).toFixed(1) + ' ms' : d); }).join(', ');
+}
 new (require('perf_hooks').PerformanceObserver)(function (l) {
   l.getEntries().forEach(function (e) { if (e.duration > GC.max) GC.max = e.duration; if (e.duration > 4) GC.slow++; if (TIMES && e.duration > 2) TIMES.push('gc ' + ((performance.timeOrigin + e.startTime) / 1000).toFixed(4) + ' ' + e.duration.toFixed(2) + ' ' + (e.detail ? e.detail.kind : e.kind)); });
 }).observe({ entryTypes: ['gc'] });
@@ -188,7 +202,8 @@ Match.prototype.predict = function (board, at, hold, from) {
     var slow = this.predictJS(board, at, hold, from), d = differ(slow.board, fast.board);
     if (d || JSON.stringify(slow.hold) !== JSON.stringify(fast.hold) || JSON.stringify(slow.pending) !== JSON.stringify(fast.pending)) throw new Error('survivor: predicted natively, not as played: ' + (d || 'hold or pending'));
   }
-  return fast || this.predictJS(board, at, hold, from);
+  if (!fast) throw new Error('survivor: the engine could not predict from clock ' + board.clock + ' to ' + at);
+  return fast;
 };
 // The same on the engine (native/pa.c). A frame the plan has nothing for is
 // HANDS.idle's: a raise still held goes on as search.h raiseStep plays it.
@@ -207,7 +222,8 @@ Match.prototype.predictNative = function (board, at, hold, from) {
     }
     X.nb_set_input(b, bits & ~IN.swap);
     if (bits & IN.swap) X.nb_press_swap(b);
-    if (X.nb_run(b)) { X.nb_free(b); return null; }
+    var err = X.nb_run(b);
+    if (err) { X.nb_free(b); throw new Error('survivor: the engine failed (err ' + err + ') at clock ' + clock + ', predicting ' + board.clock + ' to ' + at); }
     // SH.land, on the engine's board
     var sw = X.nb_stopwatch(b), first = Infinity, i;
     for (i = 0; i < arrivals.length; i++) if (arrivals[i].capped && arrivals[i].at <= sw && arrivals[i].at < first) first = arrivals[i].at;
@@ -552,7 +568,7 @@ var server = net.createServer(function (sock) {
         if (fms > 8) match.stats.slowFrames++;
         if (TIMES) TIMES.push(match.now + ' ' + (tWall / 1000).toFixed(4) + ' ' + rms.toFixed(2) + ' ' + fms.toFixed(2) + ' ' + line.length);
         if (fms > 14) {
-          if (sched0) { var sc = schedstat(); console.error('  on cpu ' + ((sc[0] - sched0[0]) / 1e6).toFixed(1) + ' ms, waiting for one ' + ((sc[1] - sched0[1]) / 1e6).toFixed(1) + ' ms, ' + (sc[2] - sched0[2]) + ' slices'); }
+          if (sched0) console.error('  ' + schedDelta(sched0, schedstat()));
           var A = match.aparts || [], am = function (i) { return A[i] && A[i + 1] ? (Number(A[i + 1] - A[i]) / 1e6).toFixed(1) : '-'; };
           console.error('slow frame ' + fms.toFixed(1) + ' ms at ' + match.now + ': reply ' + rms.toFixed(1) + ', next board ' + am(0) + ', plan ' + am(1) + ', predict ' + am(2) + ', gc so far ' + GC.slow);
         }

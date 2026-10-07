@@ -2889,13 +2889,14 @@
     // others. It was the separate case, and that is how it ended up judged
     // one move deep while every swap was judged two -- waiting always
     // looked worse than acting, and waiting is how a chain gets built.
-    // THE SECOND PLY HAS NO CLOCK. With an answer due (_dueAt, Date.now()
+    // THE SECOND PLY AND THE CLOCK. With an answer due (_dueAt, Date.now()
     // time, set by the caller), it is skipped when the slowest recent one
-    // (_lookMs, decaying) would not finish before then.
+    // (_lookMs, decaying) would not finish before then, and given up
+    // part-way (_lookahead returns null) when it is running past it.
     if (this.depth > 1 && !(this._dueAt && Date.now() + (this._lookMs || 0) > this._dueAt)) {
       var lt = Date.now(), la = this._lookahead(cands);
       this._lookMs = Math.max((this._lookMs || 0) * 0.95, Date.now() - lt);
-      return la;
+      if (la) return la;
     }
 
     // Strictly greater, so a tie leaves the incumbent standing rather than
@@ -3299,8 +3300,16 @@
       expand = cands.filter(function (c) { return c._keep; });
     }
 
-    var values = new Array(expand.length);
-    for (i = 0; i < expand.length; i++) values[i] = this._value(expand[i]);
+    // With an answer due (_dueAt), a candidate is valued only while the
+    // slowest one so far would still finish before then; otherwise the
+    // second ply is given up (null) and the move is chosen one deep.
+    var values = new Array(expand.length), slowest = 0;
+    for (i = 0; i < expand.length; i++) {
+      var vt = Date.now();
+      if (this._dueAt && vt + slowest > this._dueAt) return null;
+      values[i] = this._value(expand[i]);
+      slowest = Math.max(slowest, Date.now() - vt);
+    }
 
     // THE ESCAPE IS PICKED HERE, NOT AT FILTER TIME. _value is what attaches
     // `reach` to a candidate, so the board a move leaves is unknown until
