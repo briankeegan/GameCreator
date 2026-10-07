@@ -37,6 +37,11 @@ Items that are done have moved to **Done**; what is left is here.
    silhouettes bobbing along the stands behind the orb, brighter after a big
    chain. Procedural — no generated art. Needs 4 first.
 
+6. **BitBot plans the opening during the countdown.** The board is shown
+   for about three seconds before play starts, so the first decision has
+   that long, not one frame's budget, to plan its opening. Not urgent; it
+   may improve the start board.
+
 ## Loose ends worth knowing about
 
 - **`art-style.json` carries the camera, not the recipe.** It is prepended to
