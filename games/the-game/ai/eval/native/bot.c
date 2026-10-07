@@ -7,7 +7,7 @@
 enum { IN_TOPPED, IN_STOP, IN_INCOMING, IN_NEXTSLAB, IN_FALLING, IN_CROW, IN_CCOL, IN_HEALTH, IN_DRAIN, IN_FPR,
        IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISING, IN_INFLIGHT,
        IN_DRAINBOUND, IN_STACKTOPPED, IN_MOVING, IN_HASTIMED, IN_REVEALOPEN, IN_CONVN, IN_CONVTIMER, IN_BCROW, IN_BCCOL,
-       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_PRESSES = 594, IN_SIZE = 600 };
+       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_PRESSES = 600, IN_SIZE = 608 };   // IN_POPLOW + 1..W runs to 599
 enum { TF_DEADLY = 1, TF_FORCE = 2, TF_REFUSE = 4, TF_RAISE = 8, TF_STUB = 16, TF_SLAB = 32 };
 static int deadlyCalls;
 #define TFLAG(f) (((int)BIN[IN_T]) & (f))
@@ -58,7 +58,7 @@ typedef struct { int has, n; int32_t mv[2 * MAXD]; double frames, gain, rate, st
 typedef struct {
   double tab[T_SIZE];
   Sig seen[4]; int nSeen;
-  int prR[8], prC[8], prA[8], prB[8], nPr; double prN[8], lineBorn, nNotes;   // each press's number in the bot's own count, and the count when the line was set   // the last presses, and the colours each left in its pair
+  int prR[8], prC[8], prA[8], prB[8], nPr; double prN[8], lineBorn, nNotes, seenPresses;   // each press's number in the bot's own count, and the count when the line was set   // the last presses, and the colours each left in its pair
   double linePresses;   // the front's press count when the line was set (IN_PRESSES): a step counts as made only by a press since
   Route plan, dig, attack, flatten;
   int digIsBreak, opening, maxSlab, nRecent, wantRows, wantRaise;
@@ -3138,7 +3138,10 @@ static int pairColour(const int32_t *st, int r, int c) {
 static void notePresses(void) {
   if (!BIN[IN_HASLAST]) return;
   int r = (int)BIN[IN_LASTR], c = (int)BIN[IN_LASTC];
-  if (BT->nPr && BT->prR[0] == r && BT->prC[0] == c) return;
+  // a press is new by the front's count (IN_PRESSES), or, from a front that
+  // does not count, by a pair other than the last noted
+  if (BIN[IN_PRESSES] > 0 ? !(BIN[IN_PRESSES] > BT->seenPresses) : (BT->nPr && BT->prR[0] == r && BT->prC[0] == c)) return;
+  BT->seenPresses = BIN[IN_PRESSES];
   for (int i = (BT->nPr < 8 ? BT->nPr : 7); i > 0; i--) { BT->prR[i] = BT->prR[i - 1]; BT->prC[i] = BT->prC[i - 1]; BT->prA[i] = BT->prA[i - 1]; BT->prB[i] = BT->prB[i - 1]; BT->prN[i] = BT->prN[i - 1]; }
   BT->prR[0] = r; BT->prC[0] = c; BT->prA[0] = pairColour(DBASE, r, c); BT->prB[0] = pairColour(DBASE, r, c + 1); BT->prN[0] = ++BT->nNotes;
   if (BT->nPr < 8) BT->nPr++;
