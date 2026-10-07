@@ -1,0 +1,12 @@
+{
+  "about": "The weights WasmSurvivor's training may move. keep: zeroing the weight changed at least one move on real boards (moves changed: drill = 433 combo-storm boards, vs = 99 boards against Beverly). exclude: changed no move on either set, so it is held at 0. A kept weight stays only while every bounds profile (bounds_profiles.js) survives the drills.",
+  "keep": {
+    "travelCost": [25, 0], "stopTimeEarned": [19, 6], "colourVariance": [15, 4], "linksV": [14, 7],
+    "garbageAdjacency": [11, 0], "edgePenalty": [8, 1], "chainLayers": [7, 6], "material": [6, 1],
+    "linksH": [4, 2], "garbageCleared": [4, 0], "garbageOnBoard": [3, 0], "reach2chain": [2, 4],
+    "maxHeight": [0, 2], "reach4combo": [0, 2], "chainLength": [0, 2]
+  },
+  "exclude": ["breakPairs", "reachBreak", "brokeGarbage", "reach3chain", "reach4chain", "reach5chain", "reach6chain",
+              "reach7chain", "reach8chain", "reach5combo", "reach6combo", "reach7combo", "reach8combo", "reach9combo",
+              "reach10combo", "pressure", "overkill"]
+}
