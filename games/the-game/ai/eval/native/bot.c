@@ -7,7 +7,7 @@
 enum { IN_TOPPED, IN_STOP, IN_INCOMING, IN_NEXTSLAB, IN_FALLING, IN_CROW, IN_CCOL, IN_HEALTH, IN_DRAIN, IN_FPR,
        IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISING, IN_INFLIGHT,
        IN_DRAINBOUND, IN_STACKTOPPED, IN_MOVING, IN_HASTIMED, IN_REVEALOPEN, IN_CONVN, IN_CONVTIMER, IN_BCROW, IN_BCCOL,
-       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_SIZE = 600 };
+       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_PRESSES = 594, IN_SIZE = 600 };
 enum { TF_DEADLY = 1, TF_FORCE = 2, TF_REFUSE = 4, TF_RAISE = 8, TF_STUB = 16, TF_SLAB = 32 };
 static int deadlyCalls;
 #define TFLAG(f) (((int)BIN[IN_T]) & (f))
@@ -59,6 +59,7 @@ typedef struct {
   double tab[T_SIZE];
   Sig seen[4]; int nSeen;
   int prR[8], prC[8], prA[8], prB[8], nPr;   // the last presses, and the colours each left in its pair
+  double linePresses;   // the front's press count when the line was set (IN_PRESSES): a step counts as made only by a press since
   Route plan, dig, attack, flatten;
   int digIsBreak, opening, maxSlab, nRecent, wantRows, wantRaise;
   int32_t line[2 * LINEMAX]; int nLine, lineKind, lineWaitAll;   // the line being played, its steps still to play: LINE_BREAK or LINE_CASH
@@ -1233,11 +1234,12 @@ static int unreadies(const Cand *pc) {
   if (!baseReady) return 0;
   return !slabReadyHook(pc->masks);
 }
+static int undoesPress(int r, int c);
 static int playable(int r, int c) {
   Cand *pc = poolSwap(r, c);
   if (!pc) return 0;
   if (unreadies(pc)) return 0;
-  if (returnsToSeen(r, c)) return 0;
+  if (returnsToSeen(r, c) || undoesPress(r, c)) return 0;
   if (spendsReserve(&pc->res, pc->masks)) return 0;
   return !deadly(pc->masks, &pc->res, horizonOf(pc));
 }
@@ -1405,7 +1407,7 @@ static Dec decideCore(void) {
       Cand *ac = ALLOWED[i];
       if (ac->kind == K_SWAP) {
         Sig s; sigOf(ac->masks, &s);
-        int seen = sigEq(&s, &HERE);
+        int seen = sigEq(&s, &HERE) || undoesPress(ac->sr, ac->sc);
         for (int q = 0; !seen && q < BT->nSeen; q++) if (sigEq(&s, &BT->seen[q])) seen = 1;
         if (seen) { BT->counts[C_REFUSEDRETURN]++; continue; }
       }
@@ -3054,15 +3056,25 @@ static int spendKeepsRaiseOut(void) {
 static Dec playOn(Dec d) {
   lineLast = 0;
   if (!BT->nLine) return d;
-  if (BIN[IN_HASLAST] && (int)BIN[IN_LASTR] == BT->line[0] && (int)BIN[IN_LASTC] == BT->line[1]) {
+  // A STEP IS MADE BY A PRESS SINCE THE LINE WAS SET: the last swap pressed
+  // may be older than the line (seed 9: 5,2 pressed, then a line set starting
+  // 5,2 -- its first step taken as made, the rest judged without it, dropped).
+  // A front that counts its presses (IN_PRESSES) says which; one that does
+  // not is read as before.
+  if (BIN[IN_HASLAST] && (int)BIN[IN_LASTR] == BT->line[0] && (int)BIN[IN_LASTC] == BT->line[1] && (!(BIN[IN_PRESSES] > 0) || BIN[IN_PRESSES] > BT->linePresses)) {
     for (int k = 2; k < 2 * BT->nLine; k++) BT->line[k - 2] = BT->line[k];
     BT->nLine--;
+    BT->linePresses = BIN[IN_PRESSES];
   }
   if (!BT->nLine) return d;
   linesReset();
   int v = lineJudge(BT->line, BT->nLine, BT->lineWaitAll);
   int need = LV_LIVES | (BT->lineKind == LINE_BREAK ? LV_BREAKS : BT->lineKind == LINE_CASH ? LV_GAINS : 0);
-  if ((v & need) != need) { BT->nLine = 0; return d; }
+  if ((v & need) != need) {
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "DROPLINE kind %d n %d", BT->lineKind, BT->nLine); for (int k = 0; k < BT->nLine; k++) fprintf(stderr, " %d,%d", BT->line[2 * k], BT->line[2 * k + 1]); fprintf(stderr, " | v %d need %d die %d last %d refused step %d at %d\n", v, need, LNO[0], LNO[1], LNO[5], LNO[6]); }
+#endif
+    BT->nLine = 0; return d; }
   playDie = LNO[0] ? LNO[0] : 1 << 20;
   // A PLAN SPENDS AS EVERY CHOICE DOES: what is left of a plan line that
   // clears, leaves under six rows and no break ready is dropped -- unless the
@@ -3083,7 +3095,37 @@ static Dec playOn(Dec d) {
 }
 
 // IT MUST NOT DIE.
+// AN UNDO: a swap at a pair the bot pressed, whose two cells still hold what
+// that press left there, puts them back as they were. Two presses undone in
+// turn swap the board around while it waits (seed 9: 3,2 and 4,1; seed 4:
+// 6,5 and 4,5, each line the other's undo by two frames of life). A swap that
+// clears or breaks is no undo. Returns how many presses back (0: none).
+static int pairColour(const int32_t *st, int r, int c) {
+  uint32_t b = 1u << (r - 1);
+  if (r < 1 || r > 31 || !(U(st, OCC + c) & b) || (U(st, GARB + c) & b)) return 0;
+  return colourFirst(st, c, b);
+}
+// the presses, as they come: the last one pressed, and the colours it left
+static void notePresses(void) {
+  if (!BIN[IN_HASLAST]) return;
+  int r = (int)BIN[IN_LASTR], c = (int)BIN[IN_LASTC];
+  if (BT->nPr && BT->prR[0] == r && BT->prC[0] == c) return;
+  for (int i = (BT->nPr < 8 ? BT->nPr : 7); i > 0; i--) { BT->prR[i] = BT->prR[i - 1]; BT->prC[i] = BT->prC[i - 1]; BT->prA[i] = BT->prA[i - 1]; BT->prB[i] = BT->prB[i - 1]; }
+  BT->prR[0] = r; BT->prC[0] = c; BT->prA[0] = pairColour(DBASE, r, c); BT->prB[0] = pairColour(DBASE, r, c + 1);
+  if (BT->nPr < 8) BT->nPr++;
+}
+static int undoesPress(int r, int c) {
+  Cand *pc = poolSwap(r, c);
+  if (pc && (pc->res.total > 0 || pc->res.broke)) return 0;
+  int a = pairColour(DBASE, r, c), b = pairColour(DBASE, r, c + 1);
+  if (a == b) return 0;
+  for (int i = 0; i < BT->nPr; i++) if (BT->prR[i] == r && BT->prC[i] == c && BT->prA[i] == a && BT->prB[i] == b) return i + 1;
+  return 0;
+}
+// A LINE MAY NOT START BY GOING BACK: not by undoing a press, and (two deep)
+// not by repeating the last swap or returning to a board seen
 static int notLastSwap(const LineC *l) {
+  if (undoesPress(l->sw[0], l->sw[1])) return 0;
   if (l->n == 1) return 1;
   int r = l->sw[0], c = l->sw[1];
   return !(returnsToSeen(r, c) || (BIN[IN_HASLAST] && r == (int)BIN[IN_LASTR] && c == (int)BIN[IN_LASTC]));
@@ -3115,7 +3157,12 @@ static Dec stayAlive(Dec d) {
   linesFind(2, 0);
   // NEVER DYING FIRST: the choice is kept only if it lives as long as the line that lives longest
   LineC *l = bestLiving(notLastSwap);
-  if (lineLast == 1) { if (!l || l->die <= playDie) return saKeep(d, playDie); lineLast = 0; }
+  if (lineLast == 1) {
+    if (!l || l->die <= playDie) return saKeep(d, playDie);
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SA leaves the line played (dies %d) for", playDie); for (int k = 0; k < l->n; k++) fprintf(stderr, " %d,%d", l->sw[2 * k], l->sw[2 * k + 1]); fprintf(stderr, " (dies %d)\n", l->die); }
+#endif
+    lineLast = 0; }
   if (d.kind == K_SWAP) {
     dR = d.sr; dC = d.sc;
     LineC *mine = bestLineAvoid(LV_LIVES | LV_GAINS, 0, fromChoice);
@@ -3154,40 +3201,17 @@ static int landHollow(const int32_t *sw, int n) {
   }
   return h;
 }
-// NO GOING BACK: a swap at a pair the bot pressed, whose two cells still hold
-// what that press left there, puts them back as they were -- an undo. Two
-// presses undone in turn swap the board around while it waits (seed 9: 3,2
-// and 4,1, each undone two presses later, for 110 frames). Unless it clears
-// or breaks, it gives way to the hold, which keeps the board that press made.
-static int pairColour(const int32_t *st, int r, int c) {
-  uint32_t b = 1u << (r - 1);
-  if (r < 1 || r > 31 || !(U(st, OCC + c) & b) || (U(st, GARB + c) & b)) return 0;
-  return colourFirst(st, c, b);
-}
+// NO GOING BACK: a swap that undoes a press (undoesPress) gives way to the
+// hold, which keeps the board that press made.
 static Dec returnGuard(Dec d) {
-  // the presses, as they come: the last one pressed, and the colours it left
-  if (BIN[IN_HASLAST]) {
-    int r = (int)BIN[IN_LASTR], c = (int)BIN[IN_LASTC];
-    if (!BT->nPr || BT->prR[0] != r || BT->prC[0] != c) {
-      for (int i = (BT->nPr < 8 ? BT->nPr : 7); i > 0; i--) { BT->prR[i] = BT->prR[i - 1]; BT->prC[i] = BT->prC[i - 1]; BT->prA[i] = BT->prA[i - 1]; BT->prB[i] = BT->prB[i - 1]; }
-      BT->prR[0] = r; BT->prC[0] = c; BT->prA[0] = pairColour(DBASE, r, c); BT->prB[0] = pairColour(DBASE, r, c + 1);
-      if (BT->nPr < 8) BT->nPr++;
-    }
-  }
   if (d.kind != K_SWAP || !d.hasMove || lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;
-  Cand *pc = poolSwap(d.sr, d.sc);
-  if (pc && (pc->res.total > 0 || pc->res.broke)) return d;
-  int a = pairColour(DBASE, d.sr, d.sc), b = pairColour(DBASE, d.sr, d.sc + 1);
-  if (a == b) return d;
-  for (int i = 0; i < BT->nPr; i++) {
-    if (BT->prR[i] != d.sr || BT->prC[i] != d.sc || BT->prA[i] != a || BT->prB[i] != b) continue;
+  int back = undoesPress(d.sr, d.sc);
+  if (!back) return d;
 #ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RETURN via %d %d,%d undoes the press %d back\n", d.via, d.sr, d.sc, i + 1); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RETURN via %d %d,%d undoes the press %d back\n", d.via, d.sr, d.sc, back); }
 #endif
-    BT->nLine = 0; lineLast = 0;
-    return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
-  }
-  return d;
+  BT->nLine = 0; lineLast = 0;
+  return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
 }
 static Dec perchGuard(Dec d) {
   if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA]) return d;
@@ -4887,8 +4911,12 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // every decision to, and a guard with nothing to hold it to lets anything
   // through -- so it is judged while the budget is whole, once
   aloneOnEngine();
+  DBASE = IN; notePresses();
   SHARE(25); Dec d = decideRuled(); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(5); d = playOn(d); d = waitForDrain(d); d = raiseHold(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(5); d = playOn(d);
+  int32_t lineAfterPlay[2 * LINEMAX]; int nLineAfterPlay = BT->nLine;
+  for (int q = 0; q < 2 * BT->nLine; q++) lineAfterPlay[q] = BT->line[q];
+  d = waitForDrain(d); d = raiseHold(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(25); d = breakFirst(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(5); d = stayAlive(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(15); d = keepBreak(d); d = lineupFirst(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
@@ -4911,6 +4939,8 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   d = perchGuard(d);
   d = setupTwos(d);
   d = surviveGuard(d);
+  // a line set this decision is stamped with the presses made before it
+  if (BT->nLine && (BT->nLine != nLineAfterPlay || __builtin_memcmp(BT->line, lineAfterPlay, (unsigned long)BT->nLine * 8))) BT->linePresses = BIN[IN_PRESSES];
 #ifndef __wasm__
   // THE PRESS THE JUDGE EXPECTS, for the log: read from the judge's memo only
   // (the log does no work), set beside the PRESS line the front writes
