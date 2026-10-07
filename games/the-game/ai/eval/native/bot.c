@@ -58,7 +58,7 @@ typedef struct { int has, n; int32_t mv[2 * MAXD]; double frames, gain, rate, st
 typedef struct {
   double tab[T_SIZE];
   Sig seen[4]; int nSeen;
-  int prR[8], prC[8], prA[8], prB[8], nPr; double prN[8], lineBorn;   // the last presses, and the colours each left in its pair
+  int prR[8], prC[8], prA[8], prB[8], nPr; double prN[8], lineBorn, nNotes;   // each press's number in the bot's own count, and the count when the line was set   // the last presses, and the colours each left in its pair
   double linePresses;   // the front's press count when the line was set (IN_PRESSES): a step counts as made only by a press since
   Route plan, dig, attack, flatten;
   int digIsBreak, opening, maxSlab, nRecent, wantRows, wantRaise;
@@ -3119,7 +3119,7 @@ static void notePresses(void) {
   int r = (int)BIN[IN_LASTR], c = (int)BIN[IN_LASTC];
   if (BT->nPr && BT->prR[0] == r && BT->prC[0] == c) return;
   for (int i = (BT->nPr < 8 ? BT->nPr : 7); i > 0; i--) { BT->prR[i] = BT->prR[i - 1]; BT->prC[i] = BT->prC[i - 1]; BT->prA[i] = BT->prA[i - 1]; BT->prB[i] = BT->prB[i - 1]; BT->prN[i] = BT->prN[i - 1]; }
-  BT->prR[0] = r; BT->prC[0] = c; BT->prA[0] = pairColour(DBASE, r, c); BT->prB[0] = pairColour(DBASE, r, c + 1); BT->prN[0] = BIN[IN_PRESSES];
+  BT->prR[0] = r; BT->prC[0] = c; BT->prA[0] = pairColour(DBASE, r, c); BT->prB[0] = pairColour(DBASE, r, c + 1); BT->prN[0] = ++BT->nNotes;
   if (BT->nPr < 8) BT->nPr++;
 }
 static int undoesPress(int r, int c) {
@@ -3135,7 +3135,7 @@ static int undoesPress(int r, int c) {
 // was set -- one the line made itself was judged with it, the line whole
 static int undoesOld(int r, int c) {
   int back = undoesPress(r, c);
-  if (back && BT->nLine && BIN[IN_PRESSES] > 0 && BT->prN[back - 1] > BT->lineBorn) return 0;
+  if (back && BT->nLine && BT->prN[back - 1] > BT->lineBorn) return 0;
   return back;
 }
 // A LINE MAY NOT START BY GOING BACK: not by undoing a press, and (two deep)
@@ -4970,29 +4970,33 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // through -- so it is judged while the budget is whole, once
   aloneOnEngine();
   DBASE = IN; notePresses();
-  // A LINE ONCE PLAYED IS NOT REPLACED BY ONE THAT DIES SOONER: a route may
-  // set a line of its own over the one kept from the last decision; the kept
-  // line is played on instead while it lives longer than the route's
+  // A LINE ONCE PLAYED IS NOT REPLACED BY A CHOICE THAT DIES SOONER: a route
+  // may set a line of its own over the one kept from the last decision, or
+  // clear it and choose a swap or a hold; the kept line is played on instead
+  // while it lives longer than what the route chose
   int32_t keptLine[2 * LINEMAX]; int keptN = BT->nLine, keptKind = BT->lineKind, keptWait = BT->lineWaitAll;
   for (int q = 0; q < 2 * keptN; q++) keptLine[q] = BT->line[q];
   SHARE(25); Dec d = decideRuled(); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  if (keptN && BT->nLine && (BT->nLine != keptN || __builtin_memcmp(BT->line, keptLine, (unsigned long)keptN * 8))) {
+  if (keptN && d.kind != K_RAISE && (BT->nLine != keptN || __builtin_memcmp(BT->line, keptLine, (unsigned long)keptN * 8))) {
     int32_t routeLine[2 * LINEMAX]; int routeN = BT->nLine, routeKind = BT->lineKind, routeWait = BT->lineWaitAll;
     for (int q = 0; q < 2 * routeN; q++) routeLine[q] = BT->line[q];
     lineSet(keptLine, keptN, keptKind, keptWait);
     Dec dk = playOn(d);
     int keepIt = 0;
     if (BT->nLine) {
-      int keptDie = playDie;
-      int v = lineJudge(routeLine, routeN, routeWait);
-      int routeDie = (v & LV_LIVES) && !LNO[0] ? 1 << 20 : LNO[0] ? LNO[0] : 0;
+      int keptDie = playDie, routeDie;
+      if (routeN || (d.kind == K_SWAP && d.hasMove)) {
+        int32_t one[2] = { d.sr, d.sc };
+        int v = routeN ? lineJudge(routeLine, routeN, routeWait) : lineJudge(one, 1, d.waitAll);
+        routeDie = (v & LV_LIVES) && !LNO[0] ? 1 << 20 : LNO[0] ? LNO[0] : 0;
+      } else routeDie = !aloneOnEngine() ? 0 : LNA[0] ? LNA[0] : 1 << 20;
       keepIt = keptDie > routeDie;
 #ifndef __wasm__
-      if (botTraceOn && keepIt) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "KEPT %d,%d (dies %d) over the route's %d,%d (dies %d)\n", BT->line[0], BT->line[1], keptDie, routeLine[0], routeLine[1], routeDie); }
+      if (botTraceOn && keepIt) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "KEPT %d,%d (dies %d) over the route's %s %d,%d (dies %d)\n", BT->line[0], BT->line[1], keptDie, routeN ? "line" : d.kind == K_SWAP ? "swap" : "hold", d.sr, d.sc, routeDie); }
 #endif
     }
     if (keepIt) d = dk;
-    else { lineSet(routeLine, routeN, routeKind, routeWait); d = playOn(d); }
+    else { if (routeN) lineSet(routeLine, routeN, routeKind, routeWait); else BT->nLine = 0; d = playOn(d); }
   } else {
     SHARE(5); d = playOn(d);
   }
@@ -5026,7 +5030,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   d = setupTwos(d);
   d = surviveGuard(d);
   // a line set this decision is stamped with the presses made before it
-  if (BT->nLine && (BT->nLine != nLineAfterPlay || __builtin_memcmp(BT->line, lineAfterPlay, (unsigned long)BT->nLine * 8))) BT->linePresses = BT->lineBorn = BIN[IN_PRESSES];
+  if (BT->nLine && (BT->nLine != nLineAfterPlay || __builtin_memcmp(BT->line, lineAfterPlay, (unsigned long)BT->nLine * 8))) { BT->linePresses = BIN[IN_PRESSES]; BT->lineBorn = BT->nNotes; }
 #ifndef __wasm__
   // THE PRESS THE JUDGE EXPECTS, for the log: read from the judge's memo only
   // (the log does no work), set beside the PRESS line the front writes
