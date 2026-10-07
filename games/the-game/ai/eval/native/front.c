@@ -712,7 +712,10 @@ static void prereplayN(const int32_t *sws, int stride, int count, int n) {
     prjSnap[k] = slot;
     if (slot >= 0) { SNAPS[slot].dec = -1; if (!SNAPS[slot].b) SNAPS[slot].b = nb_new(); }
   }
+  prjN = fitTasks(prjN, rpCost);
+  double w0 = paWork;
   parallelDo(prjN, prjTask);
+  learnCost(&rpCost, w0, prjN);
   for (int k = 0; k < prjN; k++) {
     int slot = prjSnap[k];
     if (slot >= 0 && PRJ[k].rc == 0 && SNAPS[slot].n == PRJ[k].n && !__builtin_memcmp(SNAPS[slot].sw, PRJ[k].sw, (unsigned long)PRJ[k].n * 8)) SNAPS[slot].dec = btDecision;
@@ -797,7 +800,11 @@ static int lineStateAt(const int32_t *steps, int n, int landing, int32_t *masks,
     __builtin_memcpy(wait, m->wait, sizeof m->wait); cur[0] = m->cur[0]; cur[1] = m->cur[1]; *t = m->t;
     return m->rc;
   }
+  // a replay only where the budget holds one (rpCost, the most one has taken)
+  if (!inWorker && paWork - rdW0 + rpCost > OPTWORK) { budgetRefused++; return -1; }
+  double w0 = paWork;
   int rc = lineStateRun(steps, n, landing, masks, can, wait, cur, t);
+  if (!inWorker && paWork - w0 > rpCost) rpCost = paWork - w0;
   extern int paBudgetOut(void);
   if (!paBudgetOut() && !inWorker) {
     m->dec = btDecision; m->n = n; m->landing = landing; m->rc = rc;
@@ -1001,8 +1008,11 @@ static void prejudge(const int32_t *sws, int stride, int count, int n, int waitA
     for (int i = 0; i < 2 * n; i++) j->sw[i] = sw[i];
     j->n = n; j->waitAll = waitAll;
   }
+  jobs = fitTasks(jobs, jdCost);
   if (jobs < 2) return;
+  double w0 = paWork;
   parallelDo(jobs, pjJudge);
+  learnCost(&jdCost, w0, jobs);
   extern int paBudgetOut(void);
   if (paBudgetOut()) return;
   for (int k = 0; k < jobs; k++) jmPut(PJ[k].sw, PJ[k].n, PJ[k].waitAll, PJ[k].v, PJ[k].lno);
@@ -1020,8 +1030,11 @@ static void prejudgeLinesW(LineC *const *ls, int count, int waitAll) {
     for (int i = 0; i < 2 * l->n; i++) j->sw[i] = l->sw[i];
     j->n = l->n; j->waitAll = waitAll;
   }
+  jobs = fitTasks(jobs, jdCost);
   if (jobs < 2) return;
+  double w0 = paWork;
   parallelDo(jobs, pjJudge);
+  learnCost(&jdCost, w0, jobs);
   extern int paBudgetOut(void);
   if (paBudgetOut()) return;
   for (int k = 0; k < jobs; k++) jmPut(PJ[k].sw, PJ[k].n, PJ[k].waitAll, PJ[k].v, PJ[k].lno);

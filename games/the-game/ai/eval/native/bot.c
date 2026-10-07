@@ -28,12 +28,17 @@ enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
 // tower lowered also lets a pile perched on it down onto panels it can break on.
 #define HOLLOW(a) ((a)[10] + (a)[13])
 int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);   // the engine judge's out: [0] die ... [11] end board hash, [12] panels it ends with
-// THE OPTIONAL SEARCHES' BUDGET IN WORK: BUDGETMS at the slow twentieth of
+// THE CUT, past which the decision fails and the game with it: the frame less
+// the frame's own work (1000/60 - 0.9 ms, BUDGETMS's) at the slow twentieth of
 // the native work rate, measured over 5,359 decisions of seed 9 (units per ms
-// p5 4,963, p10 6,413, p50 9,865, p90 13,089): 15 ms x 4,950. budget_check
-// measures the time it actually takes (at p10, decision 219 of seed 4 ran 16.3 ms).
-#define OPTWORK 74000
-#define WORKBUDGET OPTWORK   // GC_WORK_ONLY (and the browser): the decision's budget, the same units
+// p5 4,963, p10 6,413, p50 9,865, p90 13,089): 15.77 ms x 4,950. budget_check
+// measures the time it actually takes.
+#define WORKBUDGET 78000   // GC_WORK_ONLY (and the browser)
+// WHERE OPTIONAL WORK STOPS: the engine refuses work past it, and every judge,
+// replay, search and batch is declined that would not fit. What was under way
+// finishes past it: at most 6,688 units over 3,446 decisions of seed 16 (20,000
+// frames, none cut), so the line stands that far under the cut.
+#define OPTWORK 71300
 enum { C_REFUSEDDEADLY, C_ALLDEAD, C_REFUSEDRETURN, C_REFUSEDTOOSLOW, C_PLANNED, C_PLANDROPPED, C_ATTACKED,
        C_ATTACKDROPPED, C_CELLSPLANNED, C_REFUSEDPAYLESS, C_REFUSEDSTARVING, C_REFUSEDOTHER, C_REFUSEDATEXIT,
        C_RAISEDFORMATERIAL, C_WAITEDTORAISE, C_DUGFOR, C_DIGDROPPED, C_BROKENOW, C_FLATTENBLIND, C_OPENINGRAISES,
@@ -2063,8 +2068,23 @@ static void jmPut(const int32_t *sw, int n, int waitAll, int v, const int32_t *l
 // (from its start, rdW0) and what a judge costs (jdCost, the most one has
 // taken) must fit in OPTWORK; past that the line is not judged, and a line
 // not judged is no option -- the decision is never cut
-static double jdCost, rdW0;   // rdW0: the work done when the decision began
+static double jdCost, btCost, rdW0;   // rdW0: the work done when the decision began
 static int budgetRefused;
+// A BATCH ONLY AS FAR AS THE BUDGET HOLDS IT: of `count` tasks costing at
+// most `cost` each, the number that fit in what is left; the rest are not done
+static int fitTasks(int count, double cost) {
+  extern PATLS double paWork;
+  double left = OPTWORK - (paWork - rdW0);
+  int k = left <= 0 ? 0 : cost <= 0 ? count : (int)(left / cost);
+  if (k < count) budgetRefused += count - k;
+  return k < count ? k : count;
+}
+// and what a batch cost, a task: the most yet
+static void learnCost(double *cost, double w0, int count) {
+  extern PATLS double paWork;
+  if (count > 0 && (paWork - w0) / count > *cost) *cost = (paWork - w0) / count;
+}
+static double rpCost;   // a replay's (prereplay)
 static int lineJudgeIn2(const int32_t *sw, int n, int waitAll) {
   extern PATLS double paWork;
   if (paWork - rdW0 + jdCost > OPTWORK) { budgetRefused++; return 0; }
@@ -3805,13 +3825,17 @@ static double breakTime(const int32_t *steps, int n) {
 static double breakWithinT(const int32_t *steps, int n, double limit) { return breakTimeOf(steps, n, limit); }
 static JLOCAL double btReplayMs, btSearchMs;   // GC_WORKSTAT
 static double breakTimeAfter(const int32_t *steps, int n, double limit, int32_t *st, uint32_t *can, uint8_t (*w)[WMAX], int32_t *cur, int32_t t);
+// A SEARCH ONLY WHERE THE BUDGET HOLDS ONE, as a judge (btCost: the most one
+// has taken); past that no break is found
 static double breakTimeOf(const int32_t *steps, int n, double limit) {
   int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t w[32][WMAX];
-  double bt0 = NOWMS2();
+  if (!inWorker && paWork - rdW0 + btCost > OPTWORK) { budgetRefused++; return INF; }
+  double w0 = paWork, bt0 = NOWMS2();
   int lsr = lineState(steps, n, st, can, w, cur, &t);
   btReplayMs += NOWMS2() - bt0;
-  if (lsr != 0) return INF;
-  return breakTimeAfter(steps, n, limit, st, can, w, cur, t);
+  double r = lsr != 0 ? INF : breakTimeAfter(steps, n, limit, st, can, w, cur, t);
+  if (!inWorker && paWork - w0 > btCost) btCost = paWork - w0;
+  return r;
 }
 // the same, from the board `steps` leave (lineState's), replayed already
 static double breakTimeAfter(const int32_t *steps, int n, double limit, int32_t *st, uint32_t *can, uint8_t (*w)[WMAX], int32_t *cur, int32_t t) {
@@ -3895,7 +3919,11 @@ static Dec breakSoon(Dec d) {
     // a margin is taken only past the board left alone's (aloneM), so no break later than that reaches it
     double floorM = margin.has && margin.score > aloneM ? margin.score : aloneM;
     bsLim = inTime.has ? -inTime.score + 1e-9 : floorM > -INF ? LINEHORIZON - floorM + 1e-9 : INF;
-    prereplay(bl, nb); bsPl = bl; bsB0 = tb; parallelDo(nb, bsTask);
+    nb = fitTasks(nb, btCost);
+    if (!nb) break;
+    { extern PATLS double paWork; double w0 = paWork;
+      prereplay(bl, nb); bsPl = bl; bsB0 = tb; parallelDo(nb, bsTask);
+      learnCost(&btCost, w0, nb); }
     for (int k = 0; k < nb; k++) { b0[bq[k]] = tb[k]; if (tb[k] < INF) { wb[2 * nwb] = bl[2 * k]; wb[2 * nwb + 1] = bl[2 * k + 1]; nwb++; } }
     prejudge(wb, 2, nwb, 1, 0);
     for (int k = at; k < end; k++) {
@@ -4354,7 +4382,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // (paBudget; GC_WORK_ONLY counts WORKBUDGET units of work instead, so a run
   // repeats). Past it, resolves and engine lines are refused and every search
   // keeps what it found.
-  { extern void paBudget(double, double); paBudget(botBudgetMs > 0 ? botBudgetMs : BUDGETMS, WORKBUDGET); }
+  { extern void paBudget(double, double); paBudget(botBudgetMs > 0 ? botBudgetMs : BUDGETMS, OPTWORK); }
   { extern PATLS double paWork; rdW0 = paWork; budgetRefused = 0; }
   btDecision++;
   btDecisionJ = btDecision;
@@ -4373,15 +4401,15 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
 #define NOWMS() 0.0
 #endif
   double t0 = NOWMS();
-  extern void paBudget(double, double); extern int paBudgetOut(void), paBudgetSpent(void);
+  extern void paBudget(double, double); extern int paBudgetOut(void), paBudgetSpent(void), paCutPast(double);
 #define SHARE(p) ((void)(p))   // one budget for the whole decision, opened above
-  SHARE(25); Dec d = decideRuled(); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(5); d = playOn(d); d = waitForDrain(d); d = raiseHold(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(25); d = breakFirst(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(5); d = stayAlive(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(15); d = keepBreak(d); d = lineupFirst(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(5); d = batchBreak(d); d = spendToBreak(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(10); d = breakSoon(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(25); Dec d = decideRuled(); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(5); d = playOn(d); d = waitForDrain(d); d = raiseHold(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(25); d = breakFirst(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(5); d = stayAlive(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(15); d = keepBreak(d); d = lineupFirst(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(5); d = batchBreak(d); d = spendToBreak(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(10); d = breakSoon(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(10); { Dec dF = fillFirst(d), dC = dropReady(readyWhenLands(keepReady(meanwhile(onePlan(dF))))), dS = noStall(dC);
     // A STALL REFUSED FALLS BACK TO THE CHOICE IT WAS PUT BEFORE, not to
     // standing still: the fill (or what came before it), if that is no stall
@@ -4394,7 +4422,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     lineLast = 3; plansDrop();
     if (l->n > 1) lineKeep(l, LINE_BREAK); else BT->nLine = 0;
     d = lineSwap(l, V_BREAKREACH, d);
-  } cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  } cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
 #undef SHARE
 #ifndef __wasm__
   // THE DECISION'S OWN ACCOUNT, kept for whoever finds it over the frame:

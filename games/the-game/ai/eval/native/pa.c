@@ -937,8 +937,9 @@ extern char *getenv(const char *);
 extern double atof(const char *);
 double paNowMs(void) { struct paTs t; clock_gettime(1, &t); return t.s * 1e3 + t.ns / 1e6; }
 #endif
+static double paWorkStart;
 void paBudget(double ms, double units) {
-  paOut = 0; paTick = 0;
+  paOut = 0; paTick = 0; paWorkStart = paWork;
 #ifndef __wasm__
   if (paWorkOnly < 0) paWorkOnly = getenv("GC_WORK_ONLY") != 0;
   // GC_BUDGET_MS replaces the budget, in ms (0: none, for comparing runs the clock must not cut)
@@ -952,6 +953,15 @@ void paBudget(double ms, double units) {
 // the share spent, read now: the clock every time, for the end of a stage
 int paBudgetSpent(void) {
   if (paOut || paWork >= paWorkEnd) return 1;
+#ifndef __wasm__
+  if (paDeadline < 1e299 && paNowMs() >= paDeadline) return 1;
+#endif
+  return 0;
+}
+// PAST THE CUT: the decision's work past `units` from its start (the engine
+// refuses work past paBudget's share before then), or the clock's deadline
+int paCutPast(double units) {
+  if (paWorkEnd < 1e299 && paWork - paWorkStart > units) return 1;
 #ifndef __wasm__
   if (paDeadline < 1e299 && paNowMs() >= paDeadline) return 1;
 #endif
