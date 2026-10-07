@@ -22,12 +22,13 @@ enum { M_BUILD, M_DEFEND, M_ATTACK };
 // the line a bot plays (Bot.line): what it is for, and the most steps it holds
 enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
 #define LINEMAX 8
+#define LNOLEN 13   // the engine judge's out: [0] die ... [11] end board hash, [12] panels it ends with
 #define WORKBUDGET 55000   // GC_WORK_ONLY: the budget in units of work
-// THE OPTIONAL SEARCHES' BUDGET IN WORK: BUDGETMS at the slow tenth of the
-// native work rate, measured over 5,359 decisions of seed 9 (units per ms
-// p10 6,413, p50 9,865, p90 13,089): 15 ms x 6,400. budget_check measures
-// the time it actually takes.
-#define OPTWORK 96000
+// THE OPTIONAL SEARCHES' BUDGET IN WORK: BUDGETMS at the slow twentieth of
+// the native work rate, measured over 5,359 decisions of seed 9 (units per ms
+// p5 4,963, p10 6,413, p50 9,865, p90 13,089): 15 ms x 4,950. budget_check
+// measures the time it actually takes (at p10, decision 219 of seed 4 ran 16.3 ms).
+#define OPTWORK 74000
 enum { C_REFUSEDDEADLY, C_ALLDEAD, C_REFUSEDRETURN, C_REFUSEDTOOSLOW, C_PLANNED, C_PLANDROPPED, C_ATTACKED,
        C_ATTACKDROPPED, C_CELLSPLANNED, C_REFUSEDPAYLESS, C_REFUSEDSTARVING, C_REFUSEDOTHER, C_REFUSEDATEXIT,
        C_RAISEDFORMATERIAL, C_WAITEDTORAISE, C_DUGFOR, C_DIGDROPPED, C_BROKENOW, C_FLATTENBLIND, C_OPENINGRAISES,
@@ -1817,7 +1818,7 @@ static double quietSettle(const int32_t *base, int r, int c, const int32_t *afte
 static int lineLast;   // what the line rules last did (playOn below)
 enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8, LV_DROPS = 16, LV_FILLS = 32 };
 static int lineJudge(const int32_t *sw, int n, int waitAll);
-static JLOCAL int32_t LNO[12];
+static JLOCAL int32_t LNO[LNOLEN];
 // FRAMES FROM A SWAP TO THE NEAREST CLEAR ON THE BOARD IT LEAVES (INF: none)
 static double clearBack(Cand *pc) {
   double back = INF;
@@ -1977,8 +1978,8 @@ static JLOCAL LineC *LNS = LINES_MAIN;
 #define LINES LNS
 static JLOCAL int nLines;
 static int nJudged;
-static int32_t LNA[12];
-static JLOCAL int32_t LNO[12];
+static int32_t LNA[LNOLEN];
+static JLOCAL int32_t LNO[LNOLEN];
 static int lnAlone;
 static int cashes(const int32_t *r) { return r[R_TOTAL] > 0 || r[R_SCOPE] == SC_BROKE; }
 static double timeLeft(void);
@@ -1996,7 +1997,7 @@ static int lineJudgeIn(const int32_t *sw, int n, int waitAll);
 // saw playing it (LNO), depend only on the line and this decision's board, so
 // every search that asks again is answered from the first asking.
 #define JMN 2048
-typedef struct { int dec, n, waitAll, v; int32_t sw[2 * LINEMAX], lno[12]; } JMemo;
+typedef struct { int dec, n, waitAll, v; int32_t sw[2 * LINEMAX], lno[LNOLEN]; } JMemo;
 static JMemo JM[JMN];
 static int btDecisionJ;   // the decision the memo is for (set by bot_decide)
 static unsigned jmHash(const int32_t *sw, int n, int waitAll) {
@@ -2011,7 +2012,7 @@ static int jmFind(const int32_t *sw, int n, int waitAll, int *v, int32_t *lno) {
     JMemo *m = &JM[(h + (unsigned)probe) & (JMN - 1)];
     if (m->dec != btDecisionJ) return 0;
     if (m->n == n && m->waitAll == waitAll && !__builtin_memcmp(m->sw, sw, (unsigned long)n * 8)) {
-      *v = m->v; for (int k = 0; k < 12; k++) lno[k] = m->lno[k];
+      *v = m->v; for (int k = 0; k < LNOLEN; k++) lno[k] = m->lno[k];
       return 1;
     }
   }
@@ -2024,7 +2025,7 @@ static void jmPut(const int32_t *sw, int n, int waitAll, int v, const int32_t *l
     if (m->dec == btDecisionJ && !(m->n == n && m->waitAll == waitAll && !__builtin_memcmp(m->sw, sw, (unsigned long)n * 8))) continue;
     m->dec = btDecisionJ; m->n = n; m->waitAll = waitAll; m->v = v;
     for (int k = 0; k < 2 * n; k++) m->sw[k] = sw[k];
-    for (int k = 0; k < 12; k++) m->lno[k] = lno[k];
+    for (int k = 0; k < LNOLEN; k++) m->lno[k] = lno[k];
     return;
   }
 }
@@ -2042,12 +2043,12 @@ static int lineJudge(const int32_t *sw, int n, int waitAll) {
       if (!paBudgetOut()) {
         m->dec = btDecisionJ; m->n = n; m->waitAll = waitAll; m->v = v;
         for (int k = 0; k < 2 * n; k++) m->sw[k] = sw[k];
-        for (int k = 0; k < 12; k++) m->lno[k] = LNO[k];
+        for (int k = 0; k < LNOLEN; k++) m->lno[k] = LNO[k];
       }
       return v;
     }
     if (m->n == n && m->waitAll == waitAll && !__builtin_memcmp(m->sw, sw, (unsigned long)n * 8)) {
-      for (int k = 0; k < 12; k++) LNO[k] = m->lno[k];
+      for (int k = 0; k < LNOLEN; k++) LNO[k] = m->lno[k];
       return m->v;
     }
   }
@@ -2099,7 +2100,7 @@ static void judgeAhead(LineC *first, const unsigned char *skip, int useOk) {
   // and the second judgement judged() makes of a break that pays but does not break: pressed once the board settles
   LineC *wsel[AHEAD]; int nw = 0;
   for (int j = 0; j < ns; j++) {
-    int v; int32_t lno[12];
+    int v; int32_t lno[LNOLEN];
     if (sel[j]->brk && jmFind(sel[j]->sw, sel[j]->n, 0, &v, lno) && (v & LV_PAYS) && !(v & LV_BREAKS)) wsel[nw++] = sel[j];
   }
   if (nw) prejudgeLinesW(wsel, nw, 1);
@@ -2856,7 +2857,7 @@ static LineC *bestBreak(void) {
     found++; bbFound = found; bbLastN = l->n; bbLastEst = l->est;
     if (pick && pickReady && l->conv <= pick->conv) continue;
     int rdy = 0, r, c;
-    if (ask) { int32_t keep[12]; for (int k = 0; k < 12; k++) keep[k] = LNO[k]; rdy = readyInTime(l->sw, l->n, &r, &c); for (int k = 0; k < 12; k++) LNO[k] = keep[k]; }
+    if (ask) { int32_t keep[LNOLEN]; for (int k = 0; k < LNOLEN; k++) keep[k] = LNO[k]; rdy = readyInTime(l->sw, l->n, &r, &c); for (int k = 0; k < LNOLEN; k++) LNO[k] = keep[k]; }
     if (!pick || rdy > pickReady || (rdy == pickReady && l->conv > pick->conv)) { pick = l; pickReady = rdy; }
   }
   bbReady = !ask || pickReady;
@@ -2905,7 +2906,7 @@ __attribute__((export_name("bot_keepbreak"))) int32_t bot_keepbreak(void) { retu
 // A LINE ONCE PLAYED IS PLAYED TO ITS END.
 static int readyAfterSpend(const int32_t *sw, int n);
 static int aloneOnEngine(void);
-static int spendsLeaveSixP(void) { return materialRows(DBASE) - (double)(LNO[3] - LNA[3]) / BW >= 6; }
+static int spendsLeaveSixP(void) { return (double)LNO[12] / BW >= 6; }   // the panels the line ends with, as rows
 static Dec playOn(Dec d) {
   lineLast = 0;
   if (!BT->nLine) return d;
@@ -2922,10 +2923,10 @@ static Dec playOn(Dec d) {
   // clears, leaves under six rows and no break ready is dropped -- unless the
   // board left alone dies, when stop time is what it buys
   if (BT->lineKind == LINE_PLAN && (v & LV_PAYS) && !(v & LV_BREAKS) && !spendsLeaveSixP()) {
-    int32_t keepO[12]; for (int q = 0; q < 12; q++) keepO[q] = LNO[q];
+    int32_t keepO[LNOLEN]; for (int q = 0; q < LNOLEN; q++) keepO[q] = LNO[q];
     int aloneDies = aloneOnEngine() && LNA[0];
     int ok = aloneDies || readyAfterSpend(BT->line, BT->nLine);
-    for (int q = 0; q < 12; q++) LNO[q] = keepO[q];
+    for (int q = 0; q < LNOLEN; q++) LNO[q] = keepO[q];
     if (!ok) { BT->nLine = 0; return d; }
   }
   lineLast = 1;
@@ -3617,7 +3618,7 @@ static Dec spendToBreak(Dec d) {
   // garbage let down is never held: it lowers the stack
   if (!(v & LV_LIVES) || !(v & LV_PAYS) || (v & (LV_BREAKS | LV_GAINS | LV_DROPS))) return d;
   // over six rows of panels there is material to spare: a clear that leaves six is spent
-  if (materialRows(DBASE) - (double)(LNO[3] - LNA[3]) / BW >= 6) return d;
+  if ((double)LNO[12] / BW >= 6) return d;   // the panels the line ends with
   return mkHold(V_SETUP, d.mode, d.alive, 0, 0, 0);
 }
 // WHAT LANDS IS WHAT IT WILL BREAK. A slab rests on the tallest column under
@@ -3869,7 +3870,7 @@ static double fillScoreOf(const int32_t *sw, int n, int die, int hollow) {
   return sc;
 }
 // a clear judged (LNO) leaves six rows of material, read off the line's own matches
-static int spendsLeaveSix(void) { return materialRows(DBASE) - (double)(LNO[3] - LNA[3]) / BW >= 6; }
+static int spendsLeaveSix(void) { return (double)LNO[12] / BW >= 6; }   // the panels the line ends with, as rows
 static int readyAfterSpend(const int32_t *sw, int n);
 int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);
 static Dec fillFirstIn(Dec d) {
@@ -4062,10 +4063,10 @@ static Dec fillFirstIn(Dec d) {
 // the next slab lands after the line. The line's judgement (LNO) is kept.
 static int readyAfterSpend(const int32_t *sw, int n) {
   if (!(BIN[IN_INCOMING] > 0)) return 1;
-  int32_t keep[12]; int r, c;
-  for (int k = 0; k < 12; k++) keep[k] = LNO[k];
+  int32_t keep[LNOLEN]; int r, c;
+  for (int k = 0; k < LNOLEN; k++) keep[k] = LNO[k];
   int ok = readyInTime(sw, n, &r, &c);
-  for (int k = 0; k < 12; k++) LNO[k] = keep[k];
+  for (int k = 0; k < LNOLEN; k++) LNO[k] = keep[k];
   return ok;
 }
 static Dec meanwhile(Dec d) {
@@ -4086,7 +4087,7 @@ static Dec meanwhile(Dec d) {
   // living longer by keeping the board busy is a stall: the queue lands after
   // it all the same, so under six rows the clear must leave a break ready for it
   // -- unless the line it goes before dies: then stop time is what buys the time to find the break
-#define SPENDS_OK(sw, n) (materialRows(DBASE) - (double)(LNO[3] - LNA[3]) / BW >= 6 || (urgent && (LNO[0] ? LNO[0] : 1 << 20) > die0Of && (die0 || readyAfterSpend(sw, n))))
+#define SPENDS_OK(sw, n) ((double)LNO[12] / BW >= 6 || (urgent && (LNO[0] ? LNO[0] : 1 << 20) > die0Of && (die0 || readyAfterSpend(sw, n))))
   for (int q = 0; q < nPool && tried < MEANWHILES; q++) {
     Cand *k = &POOL[q];
     if (k->kind != K_SWAP || !(k->res.total > 0) || k->res.broke || (k->sr == d.sr && k->sc == d.sc) || k->moveFrames + REACT > last0) continue;
@@ -4105,7 +4106,7 @@ static Dec meanwhile(Dec d) {
   // clearing nothing, that leaves the line its outcome and lowers the hollow
   // the next slab lands on, goes first -- the line is kept.
   if (!mr) {
-    int32_t keepO[12]; for (int k = 0; k < 12; k++) keepO[k] = LNO[k];
+    int32_t keepO[LNOLEN]; for (int k = 0; k < LNOLEN; k++) keepO[k] = LNO[k];
     lineJudge(ln + 2, n, waitAll);
     int h0 = LNO[10], hb = h0;
     for (int q = 0, t2 = 0; q < nPool && t2 < MEANWHILES; q++) {
@@ -4117,7 +4118,7 @@ static Dec meanwhile(Dec d) {
       if ((v & need) != need || LNO[1] > last0 || (die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0) || LNO[10] >= hb) continue;
       hb = LNO[10]; mr = k->sr; mc = k->sc;
     }
-    for (int k = 0; k < 12; k++) LNO[k] = keepO[k];
+    for (int k = 0; k < LNOLEN; k++) LNO[k] = keepO[k];
   }
   // no clear one swap away: the lines two deep, by rank, the first that pays and lives as long
   LineC *two = 0;
