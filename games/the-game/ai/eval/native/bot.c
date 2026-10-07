@@ -3228,6 +3228,26 @@ static int roomForBreak(const int32_t *st) {
   for (int c = 1; c <= BW; c++) g += popc(U(st, GARB + c));
   return materialRows(st) + (g + BIN[IN_NEXTSLAB]) / BW + 1 <= BH;
 }
+// THE BREAK, WHERE IT WILL BE: the swap nearest the cursor that breaks the
+// slab once it has landed after `sw` (none: 0). The cursor waits on it, so the
+// press comes the frame the slab lands -- before the board goes quiet and the
+// slab after it drops too.
+static ST RBL, RBS; static int32_t RBR[R_INTS + ST_INTS], RBSW[2 * 128];
+static int readyBreakAt(const int32_t *sw, int n, int *br, int *bc) {
+  int32_t t;
+  if (lineLanded(sw, n, RBL, &t) != 0) return 0;
+  int m = legal(RBL, RBSW), found = 0; double best = INF;
+  for (int i = 0; i < m; i++) {
+    int r = RBSW[2 * i], c = RBSW[2 * i + 1];
+    double cost = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], r, c);
+    if (cost >= best) continue;
+    stcpy(RBS, RBL);
+    if (!swapIn(RBS, r, c)) continue;
+    resolve(RBS, RBR, 1);
+    if (RBR[R_SCOPE] == SC_BROKE) { best = cost; *br = r; *bc = c; found = 1; }
+  }
+  return found;
+}
 static Dec readyOrDelay(Dec d) {
   if (d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA] || BIN[IN_TOPPED]) return d;
   if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;   // a break being played
@@ -3240,7 +3260,11 @@ static Dec readyOrDelay(Dec d) {
     if (lineLanded(sw, 1, lum, &t0) != 0) t0 = 0;
     if (lineJudge(sw, 1, 0) & LV_LIVES) dieRef = LNO[0] ? LNO[0] : 1 << 20;
   } else {
-    if (room && readyAfter(0, 0)) return d;
+    if (room && readyAfter(0, 0)) {
+      int r, c;
+      if (!d.hasPark && readyBreakAt(0, 0, &r, &c)) { d.hasPark = 1; d.pr = r; d.pc = c; }
+      return d;
+    }
     if (lineLanded(0, 0, lum, &t0) != 0) t0 = 0;
     if (aloneOnEngine()) dieRef = LNA[0] ? LNA[0] : 1 << 20;
   }
