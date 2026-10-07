@@ -22,7 +22,12 @@ enum { M_BUILD, M_DEFEND, M_ATTACK };
 // the line a bot plays (Bot.line): what it is for, and the most steps it holds
 enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
 #define LINEMAX 8
-#define LNOLEN 13   // the engine judge's out: [0] die ... [11] end board hash, [12] panels it ends with
+#define LNOLEN 14
+// THE HOLLOW of a judged line: the gaps under garbage on the board it ends on
+// ([10]) and the gaps the slabs to come would leave over its towers ([13]). A
+// tower lowered also lets a pile perched on it down onto panels it can break on.
+#define HOLLOW(a) ((a)[10] + (a)[13])
+int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);   // the engine judge's out: [0] die ... [11] end board hash, [12] panels it ends with
 #define WORKBUDGET 55000   // GC_WORK_ONLY: the budget in units of work
 // THE OPTIONAL SEARCHES' BUDGET IN WORK: BUDGETMS at the slow twentieth of
 // the native work rate, measured over 5,359 decisions of seed 9 (units per ms
@@ -1116,12 +1121,18 @@ static int raiseMode(const int32_t *base, int poolBreak) {
   if (BIN[IN_FALLING]) return 0;
   int rows = (int)__builtin_ceil(BIN[IN_NEXTSLAB] / BW);
   int fits = raiseSafe(base);
+  // A QUEUE THAT FILLS THE ROOM KILLS A BOARD WITH NO BREAK READY, raised or
+  // not: only material builds the break, and the raise costs only its row --
+  // it fits while the next slab still lands under the top
+  if (!fits && BIN[IN_INCOMING] > 0 && !BIN[IN_TOPPED] && !BIN[IN_STACKTOPPED] && !slabReadyHook(base))
+    fits = BH - tallestBoard(base) - 1 - rows - (BIN[IN_RAISING] != 0) > 0;
   BT->wantRows = rows;
   if (BT->opening && (BIN[IN_INCOMING] || !fits)) BT->opening = 0;
   if (!fits) return 0;
-  // READY BEFORE IT RAISES: with garbage to come, the risen board must have
-  // the break ready for the slab that lands on it
-  if (BIN[IN_INCOMING] > 0 && !(risenMasks(base, RZ) && slabReadyHook(RZ))) return 0;
+  // READY BEFORE IT RAISES: with garbage to come, a raise may not cost the
+  // break ready for the slab that lands -- the risen board keeps it. A board
+  // with none ready loses nothing by rising, and gains the material to build one.
+  if (BIN[IN_INCOMING] > 0 && !(risenMasks(base, RZ) && slabReadyHook(RZ)) && slabReadyHook(base)) return 0;
   if (!BT->opening && materialRows(base) >= 6) return 0;
   int stillComing = BIN[IN_INCOMING] > 0 || BIN[IN_FALLING];
   if (poolBreak && !stillComing) return 0;
@@ -1480,6 +1491,10 @@ static Dec decideCore(void) {
       int vv = bc->res.voidAfter, kvv = bk ? bk->res.voidAfter : 0;
       if (!bk || cv > kv || (cv == kv && (vv < kvv || (vv == kvv && bc->moveFrames < bk->moveFrames)))) bk = bc;
     }
+    // and only while it lands before the cursor would reach the break anyway:
+    // a slab hovering over a clear is not landing, and waiting on it only
+    // lets the next ones come
+    if (bk && stillComing) { static ST HLL; int32_t tl; if (lineLanded(0, 0, HLL, &tl) != 0 || tl > bk->moveFrames) stillComing = 0; }
     if (bk && stillComing && !topped) {
       BT->counts[C_HELDFORLANDING]++;
       return mkHold(V_AWAITLANDING, mode, alive, bk->kind == K_SWAP, bk->sr, bk->sc);
@@ -2072,7 +2087,7 @@ static int lineJudgeIn(const int32_t *sw, int n, int waitAll) {
   else if (LNO[3] > LNA[3]) v |= LV_PAYS;
   if (LNA[0] && (!LNO[0] || LNO[0] > LNA[0])) v |= LV_GAINS;
   if (LNO[9] > LNA[9]) v |= LV_DROPS;
-  if (LNO[10] < LNA[10]) v |= LV_FILLS;
+  if (HOLLOW(LNO) < HOLLOW(LNA)) v |= LV_FILLS;
   return v;
 }
 // THE NEXT LINES BY RANK, JUDGED TOGETHER: before a line is judged, it and
@@ -2111,7 +2126,7 @@ static void judgeAhead(LineC *first, const unsigned char *skip, int useOk) {
 static int judged(LineC *l) {
   if (l->verdict < 0) {
     l->verdict = nJudged < MAXJUDGED ? lineJudge(l->sw, l->n, 0) : 0; nJudged++;
-    l->hollow = l->verdict ? LNO[10] : 1 << 20;
+    l->hollow = l->verdict ? HOLLOW(LNO) : 1 << 20;
     l->conv = l->verdict ? LNO[2] - LNA[2] : 0;
     l->die = l->verdict ? (LNO[0] ? LNO[0] : 1 << 20) : 0;   // the frame it loses health (1 << 20: not within the horizon)
     // A BREAK PRESSED ONCE THE BOARD HAS SETTLED: a break needs garbage at
@@ -2119,7 +2134,7 @@ static int judged(LineC *l) {
     // matches beside it in vain. The last press then waits for every block.
     if (l->brk && (l->verdict & LV_PAYS) && !(l->verdict & LV_BREAKS) && nJudged < MAXJUDGED) {
       int v = lineJudge(l->sw, l->n, 1); nJudged++;
-      if (v & LV_BREAKS) { l->verdict = v; l->waitAll = 1; l->hollow = LNO[10]; l->conv = LNO[2] - LNA[2]; l->die = LNO[0] ? LNO[0] : 1 << 20; }
+      if (v & LV_BREAKS) { l->verdict = v; l->waitAll = 1; l->hollow = HOLLOW(LNO); l->conv = LNO[2] - LNA[2]; l->die = LNO[0] ? LNO[0] : 1 << 20; }
     }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
@@ -3416,6 +3431,9 @@ static int readyInTime(const int32_t *sw, int n, int *br, int *bc) {
 static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc) {
   uint32_t can[WMAX]; uint8_t wt[32][WMAX]; int32_t cur[2], t;
   if (lineLandedFull(sw, n, RBL, can, wt, cur, &t) != 0) return 0;
+  // a slab that tops the board out as it lands leaves no time for the break:
+  // topped with no stop, the board dies the next frame
+  if (tallestBoard(RBL) >= BH) return 0;
   int last = 0;
   if (n) { lineJudge(sw, n, 0); last = LNO[1] > 0 ? LNO[1] : 0; }
   double avail = t - last;
@@ -3519,11 +3537,16 @@ static Dec noStall(Dec d) {
   if (pc && pc->res.broke) return d;
   int32_t sw[2] = { d.sr, d.sc };
   int v = lineJudge(sw, 1, 0);
-  if (!(v & LV_PAYS) || (v & LV_BREAKS)) return d;
-  if (hasGarbage(DBASE) && !(LNO[10] > LNA[10])) return d;
+  if (!(v & LV_PAYS) || (v & (LV_BREAKS | LV_FILLS))) return d;   // a clear that readies the landing is no stall
+  if (hasGarbage(DBASE) && !(HOLLOW(LNO) > HOLLOW(LNA))) return d;
   // over six rows the material is there to spend: shaping the board and
   // buying time with it is the six-row rule's to allow
   if ((double)LNO[12] / BW >= 6) return d;
+  // and a pile not yet broken with a board not ready for the next slab needs
+  // the time: the next slab would only stack on it, so the clear buys the
+  // stop in which the break is found. With nothing on the board the slab
+  // lands -- there is room, and broken garbage is where material comes from.
+  if (hasGarbage(DBASE)) { int32_t k[LNOLEN]; for (int q = 0; q < LNOLEN; q++) k[q] = LNO[q]; int r, c, rdy = readyInTime(0, 0, &r, &c); for (int q = 0; q < LNOLEN; q++) LNO[q] = k[q]; if (!rdy) return d; }
   BT->nLine = 0;
   return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
 }
@@ -3692,7 +3715,7 @@ static Dec fillBeforeBreak(Dec d) {
   if (!n || n >= LINEMAX) return d;
   int need = LV_LIVES | LV_BREAKS;
   if ((lineJudge(ln + 2, n, BT->lineWaitAll) & need) != need) return d;
-  int best = LNO[10];
+  int best = HOLLOW(LNO);
   if (best == 0) return d;
   // the break may wait for a fill only while no slab can land first: the
   // board left alone has its next landing after the break, fill and all
@@ -3715,7 +3738,7 @@ static Dec fillBeforeBreak(Dec d) {
     ln[0] = k->sr; ln[1] = k->sc;
     int v = lineJudge(ln, n + 1, BT->lineWaitAll);
     if ((v & need) != need || LNO[1] >= tNext) continue;
-    if (LNO[10] < best) { best = LNO[10]; pr = k->sr; pc = k->sc; }
+    if (HOLLOW(LNO) < best) { best = HOLLOW(LNO); pr = k->sr; pc = k->sc; }
   }
   if (!pr) return d;
   return mkSwap(pr, pc, V_FILL, d.mode, d.alive);
@@ -3933,28 +3956,29 @@ static Dec fillFirstIn(Dec d) {
   if (lineLast) return d;
   if (d.kind == K_SWAP && endsInBreak(d)) return d;
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; aloneOnEngine(); fprintf(stderr, "FILL? alone hollow %d last %d via %d\n", LNA[10], lineLast, d.via); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; aloneOnEngine(); fprintf(stderr, "FILL? alone hollow %d last %d via %d\n", HOLLOW(LNA), lineLast, d.via); }
 #endif
-  if (!aloneOnEngine() || LNA[10] == 0) return d;
-  int best = LNA[10];
+  if (!aloneOnEngine() || HOLLOW(LNA) == 0) return d;
+  int best = HOLLOW(LNA);
   // A FILL IS A MEANS TO A BREAK, so it may not cost one: if the choice
   // breaks in time a fill must too; if not, a fill leaves at least as much
   // time between its break and its loss of health
   double need = marginAfter(0, 0, LNA[0]);
   fillUrgent = LNA[0] && need < 0;
-  double ref = fillScore(LNA[0], LNA[10]);   // what a fill must beat: the board left alone, and the choice
+  double ref = fillScore(LNA[0], HOLLOW(LNA));   // what a fill must beat: the board left alone, and the choice
   int refDie = LNA[0] ? LNA[0] : 1 << 20;   // the later loss of health of the two
   if (d.kind == K_SWAP && d.hasMove) {
     int32_t sw[2] = { d.sr, d.sc };
-    if (lineJudge(sw, 1, 0) & LV_LIVES) { best = LNO[10] < best ? LNO[10] : best; if ((LNO[0] ? LNO[0] : 1 << 20) > refDie) refDie = LNO[0] ? LNO[0] : 1 << 20; double cs = fillScore(LNO[0], LNO[10]); double m = marginAfter(sw, 1, LNO[0]); if (fillUrgent && m >= 0) cs += BREAKS_IN_TIME; if (cs > ref) ref = cs; if (m > need) need = m; }
+    if (lineJudge(sw, 1, 0) & LV_LIVES) { best = HOLLOW(LNO) < best ? HOLLOW(LNO) : best; if ((LNO[0] ? LNO[0] : 1 << 20) > refDie) refDie = LNO[0] ? LNO[0] : 1 << 20; double cs = fillScore(LNO[0], HOLLOW(LNO)); double m = marginAfter(sw, 1, LNO[0]); if (fillUrgent && m >= 0) cs += BREAKS_IN_TIME; if (cs > ref) ref = cs; if (m > need) need = m; }
 #ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  choice %d,%d die %d last %d hollow %d | alone die %d | break after choice %g alone %g\n", d.sr, d.sc, LNO[0], LNO[1], LNO[10], LNA[0], breakTime(sw, 1), breakTime(0, 0)); }
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  choice %d,%d die %d last %d hollow %d | alone die %d | break after choice %g alone %g\n", d.sr, d.sc, LNO[0], LNO[1], HOLLOW(LNO), LNA[0], breakTime(sw, 1), breakTime(0, 0)); }
 #endif
   }
   if (need > 0) need = 0;   // in time is in time
   // A FILL PRESSED AFTER THE SLAB LANDS FILLS NOTHING UNDER IT: a fill whose
   // last press comes after the next slab lands is not one
-  int32_t tLand = 1 << 20; { static ST FLL; if (lineLanded(0, 0, FLL, &tLand) != 0) tLand = 1 << 20; }
+  // -- the next slab's: under garbage already on the board, a fill fills whenever it comes
+  int32_t tLand = 1 << 20; if (!hasGarbage(DBASE)) { static ST FLL; if (lineLanded(0, 0, FLL, &tLand) != 0) tLand = 1 << 20; }
   Cand *pick = 0;
   // NOT TO DIE: over six rows a clear may be spent to fill; under, only while
   // the board left alone loses health before its soonest break, and only by a
@@ -3977,7 +4001,7 @@ static Dec fillFirstIn(Dec d) {
     int spend = (v & LV_PAYS) && !spendsLeaveSix();
     if (!(v & LV_LIVES) || (spend && !LIVES_LONGER()) || LNO[1] >= tLand) continue;
     int pdie = LNO[0];
-    double sc = fillScoreOf(sw, 1, pdie, LNO[10]);
+    double sc = fillScoreOf(sw, 1, pdie, HOLLOW(LNO));
     if (P.has ? !bestBeats(&P, sc, pc->moveFrames, sw, 1) : sc <= ref) continue;
     if (!fillKeeps(marginWithin(sw, 1, pdie, need), need)) continue;
     if (spend && !readyAfterSpend(sw, 1) && nonSpendLives()) continue;   // a move that spends nothing lives: a spend must leave a break ready
@@ -4028,7 +4052,7 @@ static Dec fillFirstIn(Dec d) {
       if (n == 0) continue;
       int v = lineJudge(fsw, n, 0);
 #ifndef __wasm__
-      if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; { int h = LNO[10], dd = LNO[0], la = LNO[1]; static int keep[TGRID + 2][WMAX + 1]; int kw = tW, kh = tH; __builtin_memcpy(keep, tCell, sizeof keep);
+      if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; { int h = HOLLOW(LNO), dd = LNO[0], la = LNO[1]; static int keep[TGRID + 2][WMAX + 1]; int kw = tW, kh = tH; __builtin_memcpy(keep, tCell, sizeof keep);
         double bt = v ? breakTime(fsw, n) : -1; __builtin_memcpy(tCell, keep, sizeof keep); tW = kw; tH = kh;
         fprintf(stderr, "  walk %d,%d dir %d n %d v %d hollow %d die %d last %d break %g\n", r, c, dir, n, v, h, dd, la, bt); } }
 #endif
@@ -4037,7 +4061,7 @@ static Dec fillFirstIn(Dec d) {
       double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
       // a walk must beat the pool's best; among walks, the same order (time: its estimate)
       int wdie = LNO[0];
-      double sc = fillScoreOf(fsw, n, wdie, LNO[10]);
+      double sc = fillScoreOf(fsw, n, wdie, HOLLOW(LNO));
       if (W.has ? !bestBeats(&W, sc, est, fsw, n) : sc <= ref) continue;
       if (!fillKeeps(marginWithin(fsw, n, wdie, need), need)) continue;
       if (spend && !readyAfterSpend(fsw, n) && nonSpendLives()) continue;
@@ -4084,11 +4108,11 @@ static Dec fillFirstIn(Dec d) {
       if (ok && n >= 2) {
         int v = lineJudge(sw, n, 0);
 #ifndef __wasm__
-        if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  tower %d,%d dir %d n %d v %d hollow %d best %d\n", a, a + 1, dir, n, v, LNO[10], best); }
+        if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  tower %d,%d dir %d n %d v %d hollow %d best %d\n", a, a + 1, dir, n, v, HOLLOW(LNO), best); }
 #endif
         double beat = W.has && W.score > ref ? W.score : ref;
         // a line kept is played to its end: it must end before the next slab lands
-        int32_t tNext; ST lum; int last = LNO[1], vv = v, die = LNO[0], hol = LNO[10];
+        int32_t tNext; ST lum; int last = LNO[1], vv = v, die = LNO[0], hol = HOLLOW(LNO);
         int inTime = lineLanded(0, 0, lum, &tNext) == 0 && last < tNext;
         if (inTime && (vv & LV_LIVES) && !(vv & LV_PAYS) && fillScoreOf(sw, n, die, hol) > beat && fillKeeps(marginWithin(sw, n, die, need), need)) {
           for (int k = 0; k < 2 * n; k++) BT->line[k] = sw[k];
@@ -4184,15 +4208,15 @@ static Dec meanwhile(Dec d) {
   if (!mr) {
     int32_t keepO[LNOLEN]; for (int k = 0; k < LNOLEN; k++) keepO[k] = LNO[k];
     lineJudge(ln + 2, n, waitAll);
-    int h0 = LNO[10], hb = h0;
+    int h0 = HOLLOW(LNO), hb = h0;
     for (int q = 0, t2 = 0; q < nPool && t2 < MEANWHILES; q++) {
       Cand *k = &POOL[q];
       if (k->kind != K_SWAP || k->res.total > 0 || k->res.broke || (k->sr == d.sr && k->sc == d.sc) || k->moveFrames + REACT > last0) continue;
       t2++;
       ln[0] = k->sr; ln[1] = k->sc;
       int v = lineJudge(ln, n + 1, waitAll);
-      if ((v & need) != need || LNO[1] > last0 || (die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0) || LNO[10] >= hb) continue;
-      hb = LNO[10]; mr = k->sr; mc = k->sc;
+      if ((v & need) != need || LNO[1] > last0 || (die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0) || HOLLOW(LNO) >= hb) continue;
+      hb = HOLLOW(LNO); mr = k->sr; mc = k->sc;
     }
     for (int k = 0; k < LNOLEN; k++) LNO[k] = keepO[k];
   }
@@ -4310,7 +4334,11 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   SHARE(15); d = keepBreak(d); d = lineupFirst(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(5); d = batchBreak(d); d = spendToBreak(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(10); d = breakSoon(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(10); d = noStall(dropReady(readyWhenLands(keepReady(meanwhile(onePlan(fillFirst(d)))))));
+  SHARE(10); { Dec dF = fillFirst(d), dC = dropReady(readyWhenLands(keepReady(meanwhile(onePlan(dF))))), dS = noStall(dC);
+    // A STALL REFUSED FALLS BACK TO THE CHOICE IT WAS PUT BEFORE, not to
+    // standing still: the fill (or what came before it), if that is no stall
+    if (dS.kind == K_HOLD && dC.kind == K_SWAP && dF.kind == K_SWAP && !(dF.sr == dC.sr && dF.sc == dC.sc)) { Dec a = noStall(dF); if (a.kind == K_SWAP) dS = dF; }
+    d = dS; }
   // A BREAK HELD FOR A BETTER TIME IS NOT HELD FOR NOTHING: if the decision
   // comes to standing still, the break is played -- idle readies nothing
   if (d.kind == K_HOLD && bbHasDeferred) {
