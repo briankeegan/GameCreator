@@ -2737,13 +2737,17 @@ static void targetAfterDrops(const int32_t *st, double limit) {
     stcpy(TAD, st);
     if (!swapIn(TAD, r, c)) continue;
     resolve(TAD, TADR, 1);
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  TAD %d,%d scope %d garb %g -> %g\n", r, c, TADR[R_SCOPE], g0, TADR[R_SCOPE] == SC_OK ? garbSum(TADR + R_INTS) : -1); }
+#endif
     if (TADR[R_SCOPE] != SC_OK || !(garbSum(TADR + R_INTS) < g0)) continue;
     int32_t pf[2] = { r, c }, st1[ST_INTS], cur[2], t;
     uint32_t can[WMAX]; uint8_t wt[32][WMAX];
-    if (lineState(pf, 1, st1, can, wt, cur, &t) != 0 || t > limit) continue;
-    tPfx[0] = r; tPfx[1] = c; tPfxN = 1;
-    targetLines(st1, cur[0], cur[1], t, limit);
-    tPfxN = 0;
+    int ls = lineState(pf, 1, st1, can, wt, cur, &t), n0 = nLines;
+    if (ls == 0 && t <= limit) { tPfx[0] = r; tPfx[1] = c; tPfxN = 1; targetLines(st1, cur[0], cur[1], t, limit); tPfxN = 0; }
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  TAD %d,%d drops: state %d t %d limit %g lines +%d\n", r, c, ls, t, limit, nLines - n0); }
+#endif
   }
 }
 // THE TIME THERE IS: topped, the drain; else the judge's horizon -- a line
