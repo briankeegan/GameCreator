@@ -2835,6 +2835,7 @@ static int bbFound, bbLastN; static double bbLastEst;   // bestBreak: how many l
 // among the same, the one that converts the most.
 static int readyInTime(const int32_t *sw, int n, int *br, int *bc);
 static int bbReady;   // the break bestBreak picked leaves the board ready for the next slab
+static LineC bbDeferred; static int bbHasDeferred;   // a living break held for a better time, this decision
 static LineC *bestBreak(void) {
   static unsigned char taken[MAXLINES];
   const int need = LV_LIVES | LV_BREAKS;
@@ -2987,6 +2988,7 @@ static Dec breakDeeper(Dec d);
 static Dec makeRoom(Dec d);
 static int roomForBreak(const int32_t *st);
 static Dec breakFirst(Dec d) {
+  bbHasDeferred = 0;
   // a line played on is kept only if it is itself a break
   int playing = lineLast == 1 && BT->lineKind != LINE_BREAK;
   if ((lineLast && !playing) || d.kind == K_RAISE || !hasGarbage(DBASE)) return d;
@@ -3025,7 +3027,7 @@ static Dec breakFirst(Dec d) {
   // other routes ready the board meanwhile, and the break is still there
   // -- and only while the board can still hold what the break makes, the next
   // slab on the pile included: past that, waiting only grows the pile
-  if (!bbReady && roomForBreak(DBASE) && aloneOnEngine() && !LNA[0]) return d;
+  if (!bbReady && roomForBreak(DBASE) && aloneOnEngine() && !LNA[0]) { bbDeferred = *l; bbHasDeferred = 1; return d; }
   lineLast = 3;
   plansDrop();
   if (l->n > 1) lineKeep(l, LINE_BREAK); else BT->nLine = 0;
@@ -4288,7 +4290,15 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   SHARE(15); d = keepBreak(d); d = lineupFirst(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(5); d = batchBreak(d); d = spendToBreak(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(10); d = breakSoon(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(10); d = noStall(dropReady(readyWhenLands(keepReady(meanwhile(onePlan(fillFirst(d))))))); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(10); d = noStall(dropReady(readyWhenLands(keepReady(meanwhile(onePlan(fillFirst(d)))))));
+  // A BREAK HELD FOR A BETTER TIME IS NOT HELD FOR NOTHING: if the decision
+  // comes to standing still, the break is played -- idle readies nothing
+  if (d.kind == K_HOLD && bbHasDeferred) {
+    LineC *l = &bbDeferred;
+    lineLast = 3; plansDrop();
+    if (l->n > 1) lineKeep(l, LINE_BREAK); else BT->nLine = 0;
+    d = lineSwap(l, V_BREAKREACH, d);
+  } cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
 #undef SHARE
   // the most the stages after breakFirst (and after lineup) have taken lately:
   // each decision's own, or the last most less a hundredth a decision -- one
