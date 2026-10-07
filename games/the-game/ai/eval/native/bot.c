@@ -3494,14 +3494,18 @@ static Dec makeRoom(Dec d) {
 // there is room for the next slab and the board is not topped, a clear that
 // breaks nothing is not played: the board goes quiet and the slab comes, to
 // a board readied for it.
+// NOR A PERCH: a clear that breaks nothing and leaves more hollow under the
+// garbage that lands than the board left alone digs the gap a slab perches
+// over -- the board made less ready, not more.
 static Dec noStall(Dec d) {
   if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0) || BIN[IN_TOPPED]) return d;
-  if (hasGarbage(DBASE) || !roomForBreak(DBASE) || endsInBreak(d)) return d;
+  if (!roomForBreak(DBASE) || endsInBreak(d)) return d;
   Cand *pc = poolSwap(d.sr, d.sc);
   if (pc && pc->res.broke) return d;
   int32_t sw[2] = { d.sr, d.sc };
   int v = lineJudge(sw, 1, 0);
   if (!(v & LV_PAYS) || (v & LV_BREAKS)) return d;
+  if (hasGarbage(DBASE) && !(LNO[10] > LNA[10])) return d;
   BT->nLine = 0;
   return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
 }
