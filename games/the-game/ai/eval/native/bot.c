@@ -3488,6 +3488,23 @@ static int readyInTime(const int32_t *sw, int n, int *br, int *bc) {
   }
   return ok;
 }
+#ifndef __wasm__
+// THE BOARD A PREDICTION RESTS ON, for the bot log: masks read, nothing
+// written, rows top to bottom as the trace prints them ('g' garbage)
+static void traceMasks(const int32_t *st) {
+  extern int fprintf(void *, const char *, ...); extern void *stderr;
+  int w = st[O_W], h = st[O_H] < 31 ? st[O_H] : 31, N = st[O_N];
+  for (int r = h; r >= 1; r--) {
+    fprintf(stderr, " ");
+    for (int c = 1; c <= w; c++) {
+      uint32_t b = 1u << (r - 1); char ch = '.';
+      if (U(st, GARB + c) & b) ch = 'g';
+      else for (int a = 1; a <= N; a++) if (CL(st, a, c) & b) ch = (char)('0' + a);
+      fprintf(stderr, "%c", ch);
+    }
+  }
+}
+#endif
 static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc) {
   uint32_t can[WMAX]; uint8_t wt[32][WMAX]; int32_t cur[2], t;
   if (lineLandedFull(sw, n, RBL, can, wt, cur, &t) != 0) return 0;
@@ -3507,6 +3524,13 @@ static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc) {
     resolve(RBS, RBR, 1);
     if (RBR[R_SCOPE] == SC_BROKE) { best = cost; *br = r; *bc = c; found = 1; }
   }
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
+    fprintf(stderr, "  LANDS after");
+    for (int k = 0; k < n; k++) fprintf(stderr, " %d,%d", sw[2 * k], sw[2 * k + 1]);
+    fprintf(stderr, " at %d, cursor %d,%d, break %d,%d |", t, cur[0], cur[1], found ? *br : 0, found ? *bc : 0);
+    traceMasks(RBL); fprintf(stderr, "\n"); }
+#endif
   return found;
 }
 // A PILE LET DOWN IS GARBAGE ARRIVING. A swap that sets garbage at rest
