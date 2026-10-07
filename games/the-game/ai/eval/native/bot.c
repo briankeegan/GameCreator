@@ -4036,7 +4036,7 @@ static Dec fillFirstIn(Dec d) {
     int32_t sw[2] = { d.sr, d.sc };
     if (lineJudge(sw, 1, 0) & LV_LIVES) { best = HOLLOW(LNO) < best ? HOLLOW(LNO) : best; if ((LNO[0] ? LNO[0] : 1 << 20) > refDie) refDie = LNO[0] ? LNO[0] : 1 << 20; double cs = fillScore(LNO[0], HOLLOW(LNO)); double m = marginAfter(sw, 1, LNO[0]); if (fillUrgent && m >= 0) cs += BREAKS_IN_TIME; if (cs > ref) ref = cs; if (m > need) need = m; }
 #ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  choice %d,%d die %d last %d hollow %d | alone die %d | break after choice %g alone %g\n", d.sr, d.sc, LNO[0], LNO[1], HOLLOW(LNO), LNA[0], breakTime(sw, 1), breakTime(0, 0)); }
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  choice %d,%d die %d last %d hollow %d | alone die %d\n", d.sr, d.sc, LNO[0], LNO[1], HOLLOW(LNO), LNA[0]); }   // the log does no work of its own: under a work budget it would change the decision
 #endif
   }
   if (need > 0) need = 0;   // in time is in time
@@ -4124,9 +4124,7 @@ static Dec fillFirstIn(Dec d) {
       if (n == 0) continue;
       int v = lineJudge(fsw, n, 0);
 #ifndef __wasm__
-      if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; { int h = HOLLOW(LNO), dd = LNO[0], la = LNO[1]; static int keep[TGRID + 2][WMAX + 1]; int kw = tW, kh = tH; __builtin_memcpy(keep, tCell, sizeof keep);
-        double bt = v ? breakTime(fsw, n) : -1; __builtin_memcpy(tCell, keep, sizeof keep); tW = kw; tH = kh;
-        fprintf(stderr, "  walk %d,%d dir %d n %d v %d hollow %d die %d last %d break %g\n", r, c, dir, n, v, h, dd, la, bt); } }
+      if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  walk %d,%d dir %d n %d v %d hollow %d die %d last %d\n", r, c, dir, n, v, HOLLOW(LNO), LNO[0], LNO[1]); }
 #endif
       int spend = (v & LV_PAYS) && !spendsLeaveSix();
       if (!(v & LV_LIVES) || (spend && !LIVES_LONGER())) continue;
