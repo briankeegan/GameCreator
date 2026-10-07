@@ -139,4 +139,6 @@ wt.parentPort.on('message', function (m) {
   }
   wt.parentPort.postMessage(out);
 });
+// The engine and its threads, compiled before the first question.
+(function () { var N = require(path.join(DIR, 'native.js')).server; if ((OPTS.threads || 1) > 1) N.initThreads(OPTS.threads); else N.init(); })();
 wt.parentPort.postMessage({ ready: true });
