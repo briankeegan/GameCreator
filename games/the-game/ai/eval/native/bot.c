@@ -58,7 +58,7 @@ typedef struct { int has, n; int32_t mv[2 * MAXD]; double frames, gain, rate, st
 typedef struct {
   double tab[T_SIZE];
   Sig seen[4]; int nSeen;
-  int prR[8], prC[8], prA[8], prB[8], nPr;   // the last presses, and the colours each left in its pair
+  int prR[8], prC[8], prA[8], prB[8], nPr; double prN[8], lineBorn;   // the last presses, and the colours each left in its pair
   double linePresses;   // the front's press count when the line was set (IN_PRESSES): a step counts as made only by a press since
   Route plan, dig, attack, flatten;
   int digIsBreak, opening, maxSlab, nRecent, wantRows, wantRaise;
@@ -1234,7 +1234,7 @@ static int unreadies(const Cand *pc) {
   if (!baseReady) return 0;
   return !slabReadyHook(pc->masks);
 }
-static int undoesPress(int r, int c);
+static int undoesPress(int r, int c), undoesOld(int r, int c);
 // THE LINE IS SET IN ONE PLACE: every route that keeps a line to play on
 // writes it here, never by hand
 static void lineSet(const int32_t *sw, int n, int kind, int waitAll) {
@@ -3074,7 +3074,7 @@ static Dec playOn(Dec d) {
   if (!BT->nLine) return d;
   // NOR BY GOING BACK: a line whose next step undoes a press is dropped here,
   // where it is chosen, so the choice falls to the next best and not to a hold
-  if (undoesPress(BT->line[0], BT->line[1])) { BT->nLine = 0; return d; }
+  if (undoesOld(BT->line[0], BT->line[1])) { BT->nLine = 0; return d; }
   linesReset();
   int v = lineJudge(BT->line, BT->nLine, BT->lineWaitAll);
   int need = LV_LIVES | (BT->lineKind == LINE_BREAK ? LV_BREAKS : BT->lineKind == LINE_CASH ? LV_GAINS : 0);
@@ -3118,8 +3118,8 @@ static void notePresses(void) {
   if (!BIN[IN_HASLAST]) return;
   int r = (int)BIN[IN_LASTR], c = (int)BIN[IN_LASTC];
   if (BT->nPr && BT->prR[0] == r && BT->prC[0] == c) return;
-  for (int i = (BT->nPr < 8 ? BT->nPr : 7); i > 0; i--) { BT->prR[i] = BT->prR[i - 1]; BT->prC[i] = BT->prC[i - 1]; BT->prA[i] = BT->prA[i - 1]; BT->prB[i] = BT->prB[i - 1]; }
-  BT->prR[0] = r; BT->prC[0] = c; BT->prA[0] = pairColour(DBASE, r, c); BT->prB[0] = pairColour(DBASE, r, c + 1);
+  for (int i = (BT->nPr < 8 ? BT->nPr : 7); i > 0; i--) { BT->prR[i] = BT->prR[i - 1]; BT->prC[i] = BT->prC[i - 1]; BT->prA[i] = BT->prA[i - 1]; BT->prB[i] = BT->prB[i - 1]; BT->prN[i] = BT->prN[i - 1]; }
+  BT->prR[0] = r; BT->prC[0] = c; BT->prA[0] = pairColour(DBASE, r, c); BT->prB[0] = pairColour(DBASE, r, c + 1); BT->prN[0] = BIN[IN_PRESSES];
   if (BT->nPr < 8) BT->nPr++;
 }
 static int undoesPress(int r, int c) {
@@ -3129,6 +3129,14 @@ static int undoesPress(int r, int c) {
   if (a == b) return 0;
   for (int i = 0; i < BT->nPr; i++) if (BT->prR[i] == r && BT->prC[i] == c && BT->prA[i] == a && BT->prB[i] == b) return i + 1;
   return 0;
+}
+// A LINE'S OWN PRESS IS ITS PLAN: the step of the line being played that
+// presses a pair back undoes a press only if that press came before the line
+// was set -- one the line made itself was judged with it, the line whole
+static int undoesOld(int r, int c) {
+  int back = undoesPress(r, c);
+  if (back && BT->nLine && BIN[IN_PRESSES] > 0 && BT->prN[back - 1] > BT->lineBorn) return 0;
+  return back;
 }
 // A LINE MAY NOT START BY GOING BACK: not by undoing a press, and (two deep)
 // not by repeating the last swap or returning to a board seen
@@ -3213,7 +3221,7 @@ static int landHollow(const int32_t *sw, int n) {
 // hold, which keeps the board that press made.
 static Dec returnGuard(Dec d) {
   if (d.kind != K_SWAP || !d.hasMove || lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;
-  int back = undoesPress(d.sr, d.sc);
+  int back = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc ? undoesOld(d.sr, d.sc) : undoesPress(d.sr, d.sc);
   if (!back) return d;
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RETURN via %d %d,%d undoes the press %d back\n", d.via, d.sr, d.sc, back); }
@@ -5018,7 +5026,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   d = setupTwos(d);
   d = surviveGuard(d);
   // a line set this decision is stamped with the presses made before it
-  if (BT->nLine && (BT->nLine != nLineAfterPlay || __builtin_memcmp(BT->line, lineAfterPlay, (unsigned long)BT->nLine * 8))) BT->linePresses = BIN[IN_PRESSES];
+  if (BT->nLine && (BT->nLine != nLineAfterPlay || __builtin_memcmp(BT->line, lineAfterPlay, (unsigned long)BT->nLine * 8))) BT->linePresses = BT->lineBorn = BIN[IN_PRESSES];
 #ifndef __wasm__
   // THE PRESS THE JUDGE EXPECTS, for the log: read from the judge's memo only
   // (the log does no work), set beside the PRESS line the front writes
