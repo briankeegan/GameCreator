@@ -54,6 +54,7 @@ typedef struct {
   int32_t line[2 * LINEMAX]; int nLine, lineKind, lineWaitAll;   // the line being played, its steps still to play: LINE_BREAK or LINE_CASH
   int32_t recent[4];
   double counts[NCOUNT];
+  int lastVia;   // the route the last decision took
 } Bot;
 
 static LOCAL int nScore, nLook, nSave, rScore, rMain, rLook, rSave, rCand, lookDepthLog;
@@ -1132,6 +1133,9 @@ static int raiseMode(const int32_t *base, int poolBreak) {
   // READY BEFORE IT RAISES: with garbage to come, a raise may not cost the
   // break ready for the slab that lands -- the risen board keeps it. A board
   // with none ready loses nothing by rising, and gains the material to build one.
+  // A break line being played is a break ready: the raise would move the
+  // board under it.
+  if ((BT->nLine && BT->lineKind == LINE_BREAK) || BT->lastVia == V_BREAKREACH || BT->lastVia == V_BREAK) return 0;
   if (BIN[IN_INCOMING] > 0 && !(risenMasks(base, RZ) && slabReadyHook(RZ)) && slabReadyHook(base)) return 0;
   if (!BT->opening && materialRows(base) >= 6) return 0;
   int stillComing = BIN[IN_INCOMING] > 0 || BIN[IN_FALLING];
@@ -4384,6 +4388,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   o[0] = d.kind; o[1] = d.hasMove; o[2] = d.sr; o[3] = d.sc; o[4] = d.hasPark; o[5] = d.pr; o[6] = d.pc;
   o[7] = d.via; o[8] = d.spends; o[9] = d.reveal; o[10] = d.mode; o[11] = d.alive;
   o[12] = BT->wantRaise; o[13] = BT->wantRows; o[14] = clearRaiseFrames;
+  BT->lastVia = d.via;
   o[98] = d.waitAll;   // the swap waits for the board to settle (front.c)
   double ew = INF;
   for (int i = 0; i < nPool; i++) {
