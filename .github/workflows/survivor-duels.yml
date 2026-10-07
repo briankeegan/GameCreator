@@ -60,10 +60,17 @@ jobs:
         with:
           node-version: '22'
       - name: Install luajit + luarocks
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: |
-          sudo apt-get update
-          sudo apt-get install -y luajit luarocks liblua5.1-0-dev build-essential unzip libreadline-dev
+          # An apt that hangs (a slow mirror, the runner's own upgrade holding
+          # the lock) is cut at 4 minutes and tried again, up to three times.
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for i in 1 2 3; do
+            timeout 240 sudo apt-get $APT update && \
+            timeout 240 sudo apt-get $APT install -y luajit luarocks liblua5.1-0-dev build-essential unzip libreadline-dev && exit 0
+            echo "apt attempt $i failed"; sleep 10
+          done
+          exit 1
       - name: Install lua rocks (luasocket, luafilesystem, luautf8)
         timeout-minutes: 10
         run: |
