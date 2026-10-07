@@ -42,7 +42,10 @@ var OPTS = {
     goal: process.env.GC_GOAL || undefined,
     alsoTake: process.env.GC_ALSO_TAKE ? Number(process.env.GC_ALSO_TAKE) : undefined,
     buildToward: process.env.GC_BUILD_TOWARD ? Number(process.env.GC_BUILD_TOWARD) : undefined,
-    stopFloor: process.env.GC_STOP_FLOOR ? Number(process.env.GC_STOP_FLOOR) : undefined
+    stopFloor: process.env.GC_STOP_FLOOR ? Number(process.env.GC_STOP_FLOOR) : undefined,
+    // GC_BOT=survivor: both sides are WasmSurvivor (survivor_bot.js), the
+    // profile's switches with the genome's weights; the switches above are unused.
+    bot: process.env.GC_BOT || undefined
 };
 
 function rng() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
