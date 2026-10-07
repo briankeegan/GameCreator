@@ -3192,13 +3192,6 @@ static Dec lineupFirst(Dec d) {
   if (B.n == 1 && d.kind == K_SWAP && d.hasMove && d.sr == B.sw[0] && d.sc == B.sw[1]) return d;
   // the masks propose the lineup, the engine judges it, as every line
   if (!(lineJudge(B.sw, B.n, 0) & LV_LIVES)) return d;
-  // NEVER DYING FIRST: a lineup that dies in sight replaces only a choice that dies no later
-  if (LNO[0]) {
-    int dieB = LNO[0], dieD;
-    if (d.kind == K_SWAP && d.hasMove) { int32_t s1[2] = { d.sr, d.sc }; dieD = (lineJudge(s1, 1, 0) & LV_LIVES) ? LNO[0] : -1; }
-    else dieD = aloneOnEngine() ? LNA[0] : -1;
-    if (dieD == 0 || dieD > dieB) return d;
-  }
   lineupLast = (int)B.score;
   lineLast = 5;
   plansDrop();
