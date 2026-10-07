@@ -3421,6 +3421,9 @@ static int readyInTime(const int32_t *sw, int n, int *br, int *bc) {
 static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc) {
   uint32_t can[WMAX]; uint8_t wt[32][WMAX]; int32_t cur[2], t;
   if (lineLandedFull(sw, n, RBL, can, wt, cur, &t) != 0) return 0;
+  // a slab that tops the board out as it lands leaves no time for the break:
+  // topped with no stop, the board dies the next frame
+  if (tallestBoard(RBL) >= BH) return 0;
   int last = 0;
   if (n) { lineJudge(sw, n, 0); last = LNO[1] > 0 ? LNO[1] : 0; }
   double avail = t - last;
