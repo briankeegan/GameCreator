@@ -32,7 +32,7 @@ typedef struct {
   int lastKind, lastVia, lastMoveR, lastMoveC;
   Settle settle;   // the board's cells, when each settles (unsettled), at the last decision
   int wWaitTo, wFrames, wWaitAll, wR0, wKept;
-  int pkR, pkC, pkAt, pkAll;   // the swap walked to, and the clock its first plan pressed it at (pkAt 0: none)   // a walk: the frame its swap's panels settle (every panel's: wWaitAll), the frames it has taken
+  int pkR, pkC, pkAt, pkAll, presses;   // presses: every swap pressed, counted (IN_PRESSES)   // the swap walked to, and the clock its first plan pressed it at (pkAt 0: none)   // a walk: the frame its swap's panels settle (every panel's: wWaitAll), the frames it has taken
 } Front;
 #define MAXFRONTS 16
 static Front FRONTS[MAXFRONTS];
@@ -386,6 +386,7 @@ static void fPrepare(Front *F) {
   d[IN_HASINROW] = 1;
   for (c = 1; c <= W; c++) { const int32_t *f = fp(0, c); d[IN_INROW + c] = !f[ISGARBAGE] && f[COLOR] ? f[COLOR] : -1; }
   if (F->hasLast) { d[IN_HASLAST] = 1; d[IN_LASTR] = F->lastR; d[IN_LASTC] = F->lastC; }
+  d[IN_PRESSES] = F->presses;
   for (c = 1; c <= W; c++) {
     int settling = 0, popLow = 0;
     for (r = 1; r < fRows(); r++) {
@@ -493,7 +494,7 @@ static int driveWalk(Front *F, int input) {
 #ifndef __wasm__
     { extern int botTraceOn; if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "PRESS clock %d at %d,%d\n", FB->clock, FB->curRow, FB->curCol); } }
 #endif
-    F->hasLast = 1; F->lastR = FB->curRow; F->lastC = FB->curCol; F->cooldown = F->wCooldown; F->pkAt = 0; return input; }
+    F->hasLast = 1; F->lastR = FB->curRow; F->lastC = FB->curCol; F->cooldown = F->wCooldown; F->pkAt = 0; F->presses++; return input; }
   // REFUSED, THE BOT DECIDES AGAIN. The swap was the one chosen; another
   // cell walked to instead is a choice nothing judged.
   F->cooldown = 0;
