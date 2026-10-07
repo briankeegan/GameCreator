@@ -4216,8 +4216,11 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   SHARE(10); d = breakSoon(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(10); d = dropReady(readyWhenLands(keepReady(meanwhile(onePlan(fillFirst(d)))))); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
 #undef SHARE
-  if (ws[k - 1] - ws[2] > laterMax) laterMax = ws[k - 1] - ws[2];   // the most the stages after breakFirst have taken
-  if (ws[k - 1] - ws[4] > laterLu) laterLu = ws[k - 1] - ws[4];   // and after lineup
+  // the most the stages after breakFirst (and after lineup) have taken lately:
+  // each decision's own, or the last most less a hundredth a decision -- one
+  // heavy decision does not shut the searches out for the rest of the game
+  laterMax *= 0.99; if (ws[k - 1] - ws[2] > laterMax) laterMax = ws[k - 1] - ws[2];
+  laterLu *= 0.99; if (ws[k - 1] - ws[4] > laterLu) laterLu = ws[k - 1] - ws[4];
   // A CUT IS A FAILURE: a stage that reaches its share has not decided, it has
   // been stopped. The decision fails and the game stops, naming the stage.
   for (int i = 0; i < k; i++) if (cutAt[i]) {
