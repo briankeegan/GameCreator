@@ -3056,15 +3056,17 @@ static Dec stayAlive(Dec d) {
   if (d.kind == K_SWAP && !d.hasMove) return d;
   // a break that lives, and a break line played on, are kept; a plan or cash
   // line played on is kept only if no line lives longer (below)
-  if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;
+  if (lineLast == 3) return d;
+  // a line played on is what the guard holds the decision to (surviveGuard)
+  if (lineLast == 1 && BT->lineKind == LINE_BREAK) return saKeep(d, playDie);
   // the engine, not the estimate, says whether the board is dying: health
   // lost within LIVEHORIZON frames, left alone
   linesReset();
-  if (!aloneOnEngine() || !LNA[0] || LNA[0] > LIVEHORIZON) return d;
+  if (!aloneOnEngine() || !LNA[0] || LNA[0] > LIVEHORIZON) return lineLast == 1 ? saKeep(d, playDie) : d;
   linesFind(2, 0);
   // NEVER DYING FIRST: the choice is kept only if it lives as long as the line that lives longest
   LineC *l = bestLiving(notLastSwap);
-  if (lineLast == 1) { if (!l || l->die <= playDie) return d; lineLast = 0; }
+  if (lineLast == 1) { if (!l || l->die <= playDie) return saKeep(d, playDie); lineLast = 0; }
   if (d.kind == K_SWAP) {
     dR = d.sr; dC = d.sc;
     LineC *mine = bestLineAvoid(LV_LIVES | LV_GAINS, 0, fromChoice);
