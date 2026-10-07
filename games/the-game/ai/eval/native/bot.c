@@ -2568,7 +2568,30 @@ static int tWalk(int *row, int r, int s, int t, int32_t *sw, int *n) {
   return 1;
 }
 // tTimeMode: the search only measures -- the frames to the soonest break it finds.
-static void tPropose(const int32_t *sw, int n, int cr, int cc, double t0, double limit) {
+// a swap played before the search's board (targetAfterDrops): every line found starts with it
+static JLOCAL int32_t tPfx[2]; static JLOCAL int tPfxN;
+static void tProposeIn(const int32_t *sw, int n, int cr, int cc, double t0, double limit);
+static void tPropose(const int32_t *sw0, int n0, int cr, int cc, double t0, double limit) {
+  if (!tPfxN) { tProposeIn(sw0, n0, cr, cc, t0, limit); return; }
+  if (n0 < 1 || n0 + 1 > LINEMAX) return;
+  int32_t sw[2 * LINEMAX];
+  sw[0] = tPfx[0]; sw[1] = tPfx[1];
+  for (int k = 0; k < 2 * n0; k++) sw[2 + k] = sw0[k];
+  // the prefix's own time is in t0; the line's first step is costed from where it leaves the cursor
+  int n = n0 + 1;
+  if (!tTimeMode && nLines >= MAXLINES) return;
+  for (int i = 0; i < nLines; i++)
+    if (LINES[i].n == n && !__builtin_memcmp(LINES[i].sw, sw, (unsigned long)n * 8)) return;
+  double at = t0;
+  int pr = cr, pc = cc;
+  for (int k = 0; k < n0; k++) { at += travelCost(pr, pc, sw0[2 * k], sw0[2 * k + 1]) + 1; pr = sw0[2 * k]; pc = sw0[2 * k + 1]; }
+  if (tTimeMode) { if (at < tTimeMin) tTimeMin = at; return; }
+  if (at > limit) return;
+  LineC *l = &LINES[nLines++];
+  l->n = n; l->brk = 1; l->est = at; l->verdict = -1; l->grown = 0; l->waitAll = 0;
+  for (int k = 0; k < 2 * n; k++) l->sw[k] = sw[k];
+}
+static void tProposeIn(const int32_t *sw, int n, int cr, int cc, double t0, double limit) {
   if (n < 1 || (!tTimeMode && nLines >= MAXLINES)) return;
   if (!tTimeMode)
     for (int i = 0; i < nLines; i++)
@@ -2699,6 +2722,30 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
     }
   }
 }
+// A PILE LET DOWN FIRST. Garbage perched on one column touches little; a
+// swap that pulls its support lets it down onto the panels beside, and the
+// breaks by distance are searched again on the board it settles to, each
+// line starting with that swap.
+static ST TAD; static int32_t TADR[R_INTS + ST_INTS], TADSW[2 * 128];
+static double garbSum(const int32_t *st) { double g = 0; for (int c = 1; c <= BW; c++) g += U(st, GARB + c); return g; }
+static void targetAfterDrops(const int32_t *st, double limit) {
+  if (tPfxN) return;
+  double g0 = garbSum(st);
+  int n = legal(st, TADSW);
+  for (int i = 0; i < n; i++) {
+    int r = TADSW[2 * i], c = TADSW[2 * i + 1];
+    stcpy(TAD, st);
+    if (!swapIn(TAD, r, c)) continue;
+    resolve(TAD, TADR, 1);
+    if (TADR[R_SCOPE] != SC_OK || !(garbSum(TADR + R_INTS) < g0)) continue;
+    int32_t pf[2] = { r, c }, st1[ST_INTS], cur[2], t;
+    uint32_t can[WMAX]; uint8_t wt[32][WMAX];
+    if (lineState(pf, 1, st1, can, wt, cur, &t) != 0 || t > limit) continue;
+    tPfx[0] = r; tPfx[1] = c; tPfxN = 1;
+    targetLines(st1, cur[0], cur[1], t, limit);
+    tPfxN = 0;
+  }
+}
 // THE TIME THERE IS: topped, the drain; else the judge's horizon -- a line
 // whose last press comes later is one the engine never finishes playing, so
 // it can never be judged to live
@@ -2721,7 +2768,7 @@ static void linesFind(int depth, int breaks) {
   uint8_t waits0[32][WMAX];
   if (BIN[IN_HASPA] && lineState(0, 0, st0, can0, waits0, cur, &t) == 0) {
     growAt(0, 0, t, depth, st0, cur[0], cur[1], can0, waits0, lsLimit);
-    if (breaks) targetLines(st0, cur[0], cur[1], t, lsTopped ? timeLeft() - 2 : INF);
+    if (breaks) { targetLines(st0, cur[0], cur[1], t, lsTopped ? timeLeft() - 2 : INF); targetAfterDrops(st0, lsTopped ? timeLeft() - 2 : LINEHORIZON); }
   } else {
     growAt(0, 0, 0, depth, DBASE, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], saveCan, 0, lsLimit);
     if (breaks) targetLines(DBASE, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, lsTopped ? timeLeft() - 2 : INF);
