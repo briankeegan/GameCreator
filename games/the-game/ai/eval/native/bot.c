@@ -2982,10 +2982,12 @@ static Dec playOn(Dec d) {
   if ((v & need) != need) { BT->nLine = 0; return d; }
   // A PLAN SPENDS AS EVERY CHOICE DOES: what is left of a plan line that
   // clears, leaves under six rows and no break ready is dropped -- unless the
-  // board left alone dies, when stop time is what it buys
+  // board left alone dies and the line buys time: it loses health later. A
+  // spend that dies as soon only spends the material the next break needs.
   if (BT->lineKind == LINE_PLAN && (v & LV_PAYS) && !(v & LV_BREAKS) && !spendsLeaveSixP()) {
     int32_t keepO[LNOLEN]; for (int q = 0; q < LNOLEN; q++) keepO[q] = LNO[q];
-    int ok = readyAfterSpend(BT->line, BT->nLine) || !nonSpendLives();
+    int buys = aloneOnEngine() && LNA[0] && (!keepO[0] || keepO[0] > LNA[0]);
+    int ok = readyAfterSpend(BT->line, BT->nLine) || (buys && !nonSpendLives());
     for (int q = 0; q < LNOLEN; q++) LNO[q] = keepO[q];
     if (!ok) { BT->nLine = 0; return d; }
   }
