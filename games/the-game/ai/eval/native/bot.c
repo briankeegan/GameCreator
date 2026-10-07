@@ -22,7 +22,8 @@ enum { M_BUILD, M_DEFEND, M_ATTACK };
 // the line a bot plays (Bot.line): what it is for, and the most steps it holds
 enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
 #define LINEMAX 8
-#define LNOLEN 13   // the engine judge's out: [0] die ... [11] end board hash, [12] panels it ends with
+#define LNOLEN 13
+int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);   // the engine judge's out: [0] die ... [11] end board hash, [12] panels it ends with
 #define WORKBUDGET 55000   // GC_WORK_ONLY: the budget in units of work
 // THE OPTIONAL SEARCHES' BUDGET IN WORK: BUDGETMS at the slow twentieth of
 // the native work rate, measured over 5,359 decisions of seed 9 (units per ms
@@ -1480,6 +1481,10 @@ static Dec decideCore(void) {
       int vv = bc->res.voidAfter, kvv = bk ? bk->res.voidAfter : 0;
       if (!bk || cv > kv || (cv == kv && (vv < kvv || (vv == kvv && bc->moveFrames < bk->moveFrames)))) bk = bc;
     }
+    // and only while it lands before the cursor would reach the break anyway:
+    // a slab hovering over a clear is not landing, and waiting on it only
+    // lets the next ones come
+    if (bk && stillComing) { static ST HLL; int32_t tl; if (lineLanded(0, 0, HLL, &tl) != 0 || tl > bk->moveFrames) stillComing = 0; }
     if (bk && stillComing && !topped) {
       BT->counts[C_HELDFORLANDING]++;
       return mkHold(V_AWAITLANDING, mode, alive, bk->kind == K_SWAP, bk->sr, bk->sc);
