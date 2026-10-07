@@ -3234,6 +3234,8 @@ static Dec spendToBreak(Dec d) {
     fprintf(stderr, "SPEND %d,%d v%d | drain %d/%d last %d conv %d/%d match %d/%d fell %d/%d\n", d.sr, d.sc, v, LNO[0], LNA[0], LNO[1], LNO[2], LNA[2], LNO[3], LNA[3], LNO[9], LNA[9]); }
 #endif
   if (!(v & LV_LIVES) || !(v & (LV_PAYS | LV_DROPS)) || (v & (LV_BREAKS | LV_GAINS))) return d;
+  // topped, the slab in the top row is what drains health: letting it down is played
+  if ((v & LV_DROPS) && BIN[IN_TOPPED]) return d;
   // over six rows of panels there is material to spare: a clear that leaves
   // less hollow under what lands is spent
   if ((v & LV_FILLS) && !(v & LV_DROPS) && materialRows(DBASE) >= 6) return d;
