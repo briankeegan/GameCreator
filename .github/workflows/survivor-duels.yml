@@ -76,7 +76,7 @@ jobs:
           set -eu
           if [ -n '${{ inputs.profile }}' ]; then export GC_SURVIVOR_PROFILE="$GITHUB_WORKSPACE/games/the-game/ai/eval/${{ inputs.profile }}"; fi
           threads=3; [ '${{ inputs.opponent }}' = survivor ] && threads=2
-          GC_SURVIVOR_TIMES="$GITHUB_WORKSPACE/times.txt" GC_SURVIVOR_DUMP="$GITHUB_WORKSPACE/death.jsonl" nohup node games/the-game/ai/eval/survivor.js --port 47777 --threads $threads > "$GITHUB_WORKSPACE/survivor.log" 2>&1 &
+          GC_SURVIVOR_KEEP=4 GC_SURVIVOR_TIMES="$GITHUB_WORKSPACE/times.txt" GC_SURVIVOR_DUMP="$GITHUB_WORKSPACE/death.jsonl" nohup node games/the-game/ai/eval/survivor.js --port 47777 --threads $threads > "$GITHUB_WORKSPACE/survivor.log" 2>&1 &
           if [ '${{ inputs.opponent }}' = survivor ]; then
             ( if [ -n '${{ inputs.profile2 }}' ]; then export GC_SURVIVOR_PROFILE="$GITHUB_WORKSPACE/games/the-game/ai/eval/${{ inputs.profile2 }}"; else unset GC_SURVIVOR_PROFILE; fi
               GC_SURVIVOR_DUMP="$GITHUB_WORKSPACE/death2.jsonl" nohup node games/the-game/ai/eval/survivor.js --port 47778 --threads 2 > "$GITHUB_WORKSPACE/survivor2.log" 2>&1 & )
