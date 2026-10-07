@@ -566,7 +566,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   if (botTraceOn && n == 1 && waitTo > 60 && LF) { extern int fprintf(void *, const char *, ...); extern void *stderr; int r = steps[0], c = steps[1];
     fprintf(stderr, "  WAIT %d,%d to %d | first %d,%d last %d,%d\n", r, c, waitTo, LF->settle.first[r][c], LF->settle.first[r][c + 1], LF->settle.last[r][c], LF->settle.last[r][c + 1]); }
 #endif
-  out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = out[13] = 0;
+  out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = out[13] = out[14] = 0;
   { extern int paBudgetOut(void); if (paBudgetOut()) return -1; }   // past the decision's budget: not played
   for (f = f0; f < horizon; f++) {
     { extern int paBudgetOut(void); if (paBudgetOut()) return -1; }   // past the budget mid-line: not played
@@ -659,7 +659,28 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
       int top = 0;
       for (int c = w; c < w + 4; c++) if (h[c] > top) top = h[c];
       for (int c = w; c < w + 4; c++) out[13] += top - h[c];
-    } }
+    }
+    // VERTICAL TWOS READY: a column whose top two panels match, with a third
+    // of their colour in the row under them at most two columns off, the way
+    // along that row clear of garbage -- one or two swaps from three in a
+    // column whose top touches whatever lands on it
+#define VPANEL(r, c) (b->p[r][c].f[COLOR] > 0 && b->p[r][c].f[COLOR] < 8 && !b->p[r][c].f[ISGARBAGE] && b->p[r][c].f[STATE] == NORMAL)
+    for (int c = 1; c <= W; c++) {
+      int r = h[c];
+      if (r < 3 || !VPANEL(r, c) || !VPANEL(r - 1, c)) continue;
+      int col = b->p[r][c].f[COLOR];
+      if (b->p[r - 1][c].f[COLOR] != col || (VPANEL(r - 2, c) && b->p[r - 2][c].f[COLOR] == col)) continue;
+      int ready = 0;
+      for (int d = -1; d <= 1 && !ready; d += 2)
+        for (int k = 1; k <= 2; k++) {
+          int cc = c + d * k;
+          if (cc < 1 || cc > W || b->p[r - 2][cc].f[ISGARBAGE]) break;
+          if (VPANEL(r - 2, cc) && b->p[r - 2][cc].f[COLOR] == col) { ready = 1; break; }
+        }
+      out[14] += ready;
+    }
+#undef VPANEL
+  }
   out[4] = out[1] < 0 ? 0 : (out[0] ? out[0] : horizon) - out[1];
   return 0;
 }

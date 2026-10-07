@@ -22,7 +22,7 @@ enum { M_BUILD, M_DEFEND, M_ATTACK };
 // the line a bot plays (Bot.line): what it is for, and the most steps it holds
 enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
 #define LINEMAX 8
-#define LNOLEN 14
+#define LNOLEN 15
 // THE HOLLOW of a judged line: the gaps under garbage on the board it ends on
 // ([10]) and the gaps the slabs to come would leave over its towers ([13]). A
 // tower lowered also lets a pile perched on it down onto panels it can break on.
@@ -3580,6 +3580,41 @@ static Dec makeRoom(Dec d) {
 // alone and leaves the least hollow (fewer than left alone) -- what a wait
 // for the landing plays (noStall)
 static Best fillLevel; static int fillLevelDec = -1;
+// DOWNTIME SETS UP VERTICAL TWOS: a decision that comes to standing still
+// (not for a raise, nor with a line being played) takes instead the swap,
+// nearest the cursor first, that clears nothing, loses health no sooner and
+// leaves no more hollow than the board left alone, and leaves the most
+// vertical twos ready (LNO[14]: two of a colour atop a column, a third in the
+// row under them within two columns -- a break for whatever lands there, a
+// swap or two away) -- and keeps a break in the time the board left alone has
+#define SETUPTRIES 8
+static double marginAfter(const int32_t *sw, int n, int die);
+static Dec setupTwos(Dec d) {
+  if (d.kind != K_HOLD || d.via == V_RAISING || BT->nLine || !BIN[IN_HASPA] || BIN[IN_TOPPED]) return d;
+  if (!aloneOnEngine()) return d;
+  int32_t pl[2 * MAXCAND]; int pn = 0, q, tried = 0, br = 0, bc = 0, best = LNA[14];
+  for (int k = 0; k < nPool && pn < MAXCAND; k++) {
+    Cand *cd = &POOL[k];
+    if (cd->kind != K_SWAP || cd->res.total > 0 || cd->res.broke) continue;
+    pl[2 * pn] = cd->sr; pl[2 * pn + 1] = cd->sc; pn++;
+  }
+  Out o; double far;
+  outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
+  while (tried < SETUPTRIES && outNext(&o, &q, &far)) {
+    int32_t s2[2] = { pl[2 * q], pl[2 * q + 1] };
+    tried++;
+    int v = lineJudge(s2, 1, 0);
+    if (!(v & LV_LIVES) || (v & LV_PAYS) || (LNA[0] ? (LNO[0] && LNO[0] < LNA[0]) : LNO[0] != 0) || HOLLOW(LNO) > HOLLOW(LNA) || LNO[14] <= best) continue;
+    best = LNO[14]; br = s2[0]; bc = s2[1];
+  }
+  if (!br) return d;
+  // IN THE TIME THERE IS: if the board left alone breaks before it loses
+  // health, so must the board the setup leaves
+  int32_t sw[2] = { br, bc };
+  double need = marginAfter(0, 0, LNA[0]);
+  if (need >= 0) { lineJudge(sw, 1, 0); if (marginAfter(sw, 1, LNO[0]) < 0) return d; }
+  return mkSwap(br, bc, V_SETUP, d.mode, d.alive);
+}
 static Dec noStall(Dec d) {
   if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0) || BIN[IN_TOPPED]) return d;
   if (!roomForBreak(DBASE) || endsInBreak(d)) return d;
@@ -4430,7 +4465,9 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     lineLast = 3; plansDrop();
     if (l->n > 1) lineKeep(l, LINE_BREAK); else BT->nLine = 0;
     d = lineSwap(l, V_BREAKREACH, d);
-  } cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  }
+  d = setupTwos(d);
+  cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
 #undef SHARE
 #ifndef __wasm__
   // THE DECISION'S OWN ACCOUNT, kept for whoever finds it over the frame:
