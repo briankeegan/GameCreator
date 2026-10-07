@@ -2984,6 +2984,8 @@ static int garbTop(const int32_t *st) {
 }
 // BREAKING COMES FIRST.
 static Dec breakDeeper(Dec d);
+static Dec makeRoom(Dec d);
+static int roomForBreak(const int32_t *st);
 static Dec breakFirst(Dec d) {
   // a line played on is kept only if it is itself a break
   int playing = lineLast == 1 && BT->lineKind != LINE_BREAK;
@@ -3012,6 +3014,12 @@ static Dec breakFirst(Dec d) {
     fprintf(stderr, "BREAKFIRST lines %d grown %d open %d k %g\n", nLines, g, live, timeLeft()); }
 #endif
   if (!l) return breakDeeper(d);
+  // ROOM FIRST: a break whose panels the board cannot hold tops it out with
+  // them; while a clear can make the room and lives, it goes first
+  if (!roomForBreak(DBASE)) {
+    Dec m = makeRoom(d);
+    if (m.kind == K_SWAP && m.hasMove && !(d.kind == K_SWAP && m.sr == d.sr && m.sc == d.sc) && m.via == V_KEEPHEALTH) return m;
+  }
   // BREAK AT THE RIGHT TIME: a break after which the next slab lands with no
   // break in reach waits while the board left alone does not die -- the
   // other routes ready the board meanwhile, and the break is still there
