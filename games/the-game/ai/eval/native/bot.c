@@ -23,6 +23,11 @@ enum { M_BUILD, M_DEFEND, M_ATTACK };
 enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
 #define LINEMAX 8
 #define WORKBUDGET 55000   // GC_WORK_ONLY: the budget in units of work
+// THE OPTIONAL SEARCHES' BUDGET IN WORK: BUDGETMS at the slow tenth of the
+// native work rate, measured over 5,359 decisions of seed 9 (units per ms
+// p10 6,413, p50 9,865, p90 13,089): 15 ms x 6,400. budget_check measures
+// the time it actually takes.
+#define OPTWORK 96000
 enum { C_REFUSEDDEADLY, C_ALLDEAD, C_REFUSEDRETURN, C_REFUSEDTOOSLOW, C_PLANNED, C_PLANDROPPED, C_ATTACKED,
        C_ATTACKDROPPED, C_CELLSPLANNED, C_REFUSEDPAYLESS, C_REFUSEDSTARVING, C_REFUSEDOTHER, C_REFUSEDATEXIT,
        C_RAISEDFORMATERIAL, C_WAITEDTORAISE, C_DUGFOR, C_DIGDROPPED, C_BROKENOW, C_FLATTENBLIND, C_OPENINGRAISES,
@@ -3006,7 +3011,7 @@ static JLOCAL int32_t KBP[2 * BREAKDEEP]; static JLOCAL int kbPath;   // the lin
 // THE DEEPER SEARCH'S SHARE: what the decision has left once the stages
 // after it are given the most they have taken (laterMax, measured); the
 // search stops there with what it found
-static double kbEnd, laterMax, rdW0;
+static double kbEnd, laterMax, laterLu, rdW0;
 extern PATLS double paWork;
 // A BREAK WITHIN k SWAPS of a resolved board, by the one search: out from
 // the cursor (where the last swap leaves it), the last swap decided on the
@@ -3055,7 +3060,7 @@ static Dec breakDeeper(Dec d) {
   resolve(DBASE, KBR, 1);
   if (KBR[R_SCOPE] != SC_OK) return d;
   stcpy(KB[0], KBR + R_INTS);
-  kbEnd = rdW0 + WORKBUDGET - laterMax;
+  kbEnd = rdW0 + OPTWORK - laterMax;
   if (paWork >= kbEnd) return d;
   kbPath = 1;
   int found = breakAt(0, BREAKDEEP, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
@@ -3229,7 +3234,11 @@ static Dec lineupFirst(Dec d) {
     if (r > 31 || !(can0[c] & (1u << (r - 1))) || !lineupNear(st0, r, c)) continue;
     ord0[no0] = i; far0[no0] = far; no0++;
   }
+  // THE LINEUP'S SHARE: what the decision has left once the stages after it
+  // are given the most they have taken (laterLu, measured)
+  double luEnd = rdW0 + OPTWORK - laterLu;
   for (int p0 = 0; p0 < no0; p0++) {
+    if (paWork > luEnd) break;
     i = ord0[p0]; far = far0[p0];
     if (outPast(&B, LUBEST, far)) break;
     int r = lg[2 * i], c = lg[2 * i + 1];
@@ -3260,6 +3269,7 @@ static Dec lineupFirst(Dec d) {
     int ord1[128], no1 = 0; double fr1[128];
     outBegin(&o1, lg1, 2, n1, cur1[0], cur1[1]);   // from where the first swap leaves the cursor
     while (outNext(&o1, &j, &far1) && no1 < 128) {
+      if (paWork > luEnd) break;
       int r2 = lg1[2 * j], c2 = lg1[2 * j + 1];
       if (r2 > 31 || !(can1[c2] & (1u << (r2 - 1))) || !lineupNear(st1, r2, c2)) continue;
       ord1[no1] = j; fr1[no1] = far1; no1++;
@@ -3293,6 +3303,7 @@ static Dec lineupFirst(Dec d) {
       Out o2; double far2;
       outBegin(&o2, lg2, 2, n2, cur2[0], cur2[1]);
       while (outNext(&o2, &k3, &far2)) {
+        if (paWork > luEnd) break;
         int r3 = lg2[2 * k3], c3 = lg2[2 * k3 + 1];
         if (r3 > 31 || !(can2[c3] & (1u << (r3 - 1))) || !lineupNear(st2, r3, c3)) continue;
         double at3 = t2 + dmax(far2, waits2[r3][c3]);
@@ -3349,14 +3360,14 @@ static int nRmem, rmemDec = -1;
 static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc);
 // A REPLAY ONLY WHERE THE BUDGET HOLDS ONE: the work the decision has spent
 // (from its start, rdW0) and what a replay costs (rdCost, the most one has
-// taken) must fit in WORKBUDGET; past that a board is not called ready.
+// taken) must fit in OPTWORK; past that a board is not called ready.
 static double rdCost;
 static int readyInTime(const int32_t *sw, int n, int *br, int *bc) {
   extern PATLS double paWork;
   if (rmemDec != btDecision) { rmemDec = btDecision; nRmem = 0; }
   if (n <= 3) for (int i = 0; i < nRmem; i++)
     if (RMEM[i].n == n && (!n || !__builtin_memcmp(RMEM[i].sw, sw, (unsigned long)n * 8))) { *br = RMEM[i].r; *bc = RMEM[i].c; return RMEM[i].ok; }
-  if (paWork - rdW0 + rdCost > WORKBUDGET) return 0;
+  if (paWork - rdW0 + rdCost > OPTWORK) return 0;
   double w = paWork;
   int ok = readyInTimeRaw(sw, n, br, bc);
   if (paWork - w > rdCost) rdCost = paWork - w;
@@ -4202,6 +4213,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   SHARE(10); d = dropReady(readyWhenLands(keepReady(meanwhile(onePlan(fillFirst(d)))))); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
 #undef SHARE
   if (ws[k - 1] - ws[2] > laterMax) laterMax = ws[k - 1] - ws[2];   // the most the stages after breakFirst have taken
+  if (ws[k - 1] - ws[4] > laterLu) laterLu = ws[k - 1] - ws[4];   // and after lineup
   // A CUT IS A FAILURE: a stage that reaches its share has not decided, it has
   // been stopped. The decision fails and the game stops, naming the stage.
   for (int i = 0; i < k; i++) if (cutAt[i]) {
