@@ -3337,9 +3337,10 @@ static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc) {
   return found;
 }
 // A PILE LET DOWN IS GARBAGE ARRIVING. A swap that sets garbage at rest
-// falling (DROPS) is played only if, where it lands, a break is in reach
-// when the next slab lands (readyInTime); otherwise the board is held while
-// held lives as long, the pile left where a break may still be made under it.
+// falling (DROPS) and leaves no break in reach where it lands (readyInTime)
+// gives way to a living swap or two-deep line, as long-lived, that does --
+// nearest first. With none, the drop is played: standing still readies
+// nothing, and the pile let down lowers the stack.
 static Dec dropReady(Dec d) {
   if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA] || !hasGarbage(DBASE)) return d;
   if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK) || endsInBreak(d)) return d;
@@ -3348,11 +3349,42 @@ static Dec dropReady(Dec d) {
   int32_t sw[2] = { d.sr, d.sc };
   int v = lineJudge(sw, 1, 0);
   if (!(v & LV_DROPS) || (v & LV_BREAKS)) return d;
-  int die = LNO[0] ? LNO[0] : 1 << 20, r, c;
-  if (!aloneOnEngine() || (LNA[0] ? LNA[0] : 1 << 20) < die) return d;
+  int dieRef = LNO[0] ? LNO[0] : 1 << 20, r, c, tried = 0;
   if (readyInTime(sw, 1, &r, &c)) return d;
-  BT->nLine = 0;
-  return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
+  int32_t pl[2 * MAXCAND]; int pn = 0, q;
+  for (int k = 0; k < nPool && pn < MAXCAND; k++) {
+    Cand *cd = &POOL[k];
+    if (cd->kind != K_SWAP || (cd->sr == d.sr && cd->sc == d.sc)) continue;
+    pl[2 * pn] = cd->sr; pl[2 * pn + 1] = cd->sc; pn++;
+  }
+  Out o; double far;
+  outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
+  while (tried < READYTRIES && outNext(&o, &q, &far)) {
+    int32_t s2[2] = { pl[2 * q], pl[2 * q + 1] };
+    if (!(lineJudge(s2, 1, 0) & LV_LIVES) || (LNO[0] ? LNO[0] : 1 << 20) < dieRef) continue;
+    tried++;
+    if (readyInTime(s2, 1, &r, &c)) { BT->nLine = 0; lineLast = 8; return mkSwap(s2[0], s2[1], V_LINEUP, d.mode, d.alive); }
+  }
+  int32_t tLand; static ST DRL;
+  if (lineLanded(0, 0, DRL, &tLand) != 0) return d;
+  linesFind(2, 0);
+  static unsigned char dk[MAXLINES];
+  for (int i = 0; i < nLines; i++) dk[i] = (char)(LINES[i].n < 2);
+  for (tried = 0; tried < READYTRIES;) {
+    int at = -1;
+    for (int i = 0; i < nLines; i++) {
+      LineC *l = &LINES[i];
+      if (dk[i] || l->est >= tLand || (l->verdict >= 0 && !(l->verdict & LV_LIVES))) continue;
+      if (at < 0 || l->est < LINES[at].est) at = i;
+    }
+    if (at < 0) break;
+    dk[at] = 1;
+    LineC *l = &LINES[at];
+    if (!(judged(l) & LV_LIVES) || (l->die ? l->die : 1 << 20) < dieRef) continue;
+    tried++;
+    if (readyInTime(l->sw, l->n, &r, &c)) { lineKeep(l, LINE_PLAN); lineLast = 8; return mkSwap(l->sw[0], l->sw[1], V_LINEUP, d.mode, d.alive); }
+  }
+  return d;
 }
 static Dec readyWhenLands(Dec d) {
   if (d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA] || BIN[IN_TOPPED]) return d;
