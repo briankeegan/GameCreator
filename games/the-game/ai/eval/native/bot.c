@@ -3125,16 +3125,15 @@ static Dec stayAlive(Dec d) {
   if (l->n > 1) lineKeep(l, l->brk ? LINE_BREAK : LINE_CASH); else BT->nLine = 0;
   return saKeep(lineSwap(l, V_KEEPHEALTH, d), l->die);
 }
-// NO DIGGING UNDER A PILE, NOR UNDER THE NEXT ONE: a clear that breaks nothing
-// and leaves more hollow than the board left alone (HOLLOW: the gaps under the
-// garbage on it, and the level the slabs to come land on) takes from under a
-// pile the panels its break needs -- whatever the material, since what a pile
-// touches, not what the board holds, is what breaks it. With garbage to come
-// the next slab lands on that level, so this holds before it lands as after.
-// It gives way to the hold, unless it loses health later than the hold does:
-// that is survival's, and surviveGuard, after this, weighs it.
+// NO DIGGING UNDER A PILE: a clear that breaks nothing and leaves more hollow
+// under the garbage than the board left alone (HOLLOW: the gaps under it and
+// the level the slabs to come land on) takes the panels a break of that pile
+// needs from under it -- whatever the material, since what a pile touches,
+// not what the board holds, is what breaks it. It gives way to the hold,
+// unless it loses health later than the hold does: that is survival's, and
+// surviveGuard, after this, weighs it.
 static Dec perchGuard(Dec d) {
-  if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0 || hasGarbage(DBASE))) return d;
+  if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA] || !hasGarbage(DBASE)) return d;
   if (lineLast == 3 || endsInBreak(d)) return d;
   Cand *pc = poolSwap(d.sr, d.sc);
   if (pc && pc->res.broke) return d;
