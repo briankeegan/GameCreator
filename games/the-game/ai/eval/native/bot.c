@@ -1121,6 +1121,11 @@ static int raiseMode(const int32_t *base, int poolBreak) {
   if (BIN[IN_FALLING]) return 0;
   int rows = (int)__builtin_ceil(BIN[IN_NEXTSLAB] / BW);
   int fits = raiseSafe(base);
+  // A QUEUE THAT FILLS THE ROOM KILLS A BOARD WITH NO BREAK READY, raised or
+  // not: only material builds the break, and the raise costs only its row --
+  // it fits while the next slab still lands under the top
+  if (!fits && BIN[IN_INCOMING] > 0 && !BIN[IN_TOPPED] && !BIN[IN_STACKTOPPED] && !slabReadyHook(base))
+    fits = BH - tallestBoard(base) - 1 - rows - (BIN[IN_RAISING] != 0) > 0;
   BT->wantRows = rows;
   if (BT->opening && (BIN[IN_INCOMING] || !fits)) BT->opening = 0;
   if (!fits) return 0;
