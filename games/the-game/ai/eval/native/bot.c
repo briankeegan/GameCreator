@@ -3394,7 +3394,11 @@ static Dec readyWhenLands(Dec d) {
   int dieRef = 0, r, c;
   if (d.kind == K_SWAP && d.hasMove) {
     Cand *pc = poolSwap(d.sr, d.sc);
-    if ((pc && pc->res.broke) || endsInBreak(d) || readyInTime(sw, 1, &r, &c)) return d;
+    int rdy = (pc && pc->res.broke) || endsInBreak(d) || readyInTime(sw, 1, &r, &c);
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RWL %d,%d via %d ready %d at %d,%d\n", d.sr, d.sc, d.via, rdy, rdy ? r : 0, rdy ? c : 0); }
+#endif
+    if (rdy) return d;
     if (lineJudge(sw, 1, 0) & LV_LIVES) dieRef = LNO[0] ? LNO[0] : 1 << 20;
   } else {
     if (readyInTime(0, 0, &r, &c)) {
