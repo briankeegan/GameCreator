@@ -3701,6 +3701,28 @@ static int levelInTime(void) {
   lineJudge(fillLevel.sw, fillLevel.n, 0);
   return marginAfter(fillLevel.sw, fillLevel.n, LNO[0]) >= 0;
 }
+// VERTICAL TWOS ON THE MASKS: the judge's count (front.c out[14]) read off a
+// predicted board, so two-swap setups can be ranked before the engine judges one
+static int twosOf(const int32_t *st) {
+  int W = st[O_W], n = 0;
+#define VP(r, c) ((r) >= 1 && (U(st, OCC + (c)) & (1u << ((r) - 1))) && !(U(st, (GARB) + (c)) & (1u << ((r) - 1))) && !(U(st, INERT + (c)) & (1u << ((r) - 1))))
+  for (int c = 1; c <= W; c++) {
+    int r = topRow(U(st, OCC + c));
+    if (r < 3 || !VP(r, c) || !VP(r - 1, c)) continue;
+    int col = colourFirst(st, c, 1u << (r - 1));
+    if (!col || colourFirst(st, c, 1u << (r - 2)) != col || (VP(r - 2, c) && colourFirst(st, c, 1u << (r - 3)) == col)) continue;
+    int ready = 0;
+    for (int dd = -1; dd <= 1 && !ready; dd += 2)
+      for (int k = 1; k <= 2; k++) {
+        int cc = c + dd * k;
+        if (cc < 1 || cc > W || (U(st, (GARB) + cc) & (1u << (r - 3)))) break;
+        if (VP(r - 2, cc) && colourFirst(st, cc, 1u << (r - 3)) == col) { ready = 1; break; }
+      }
+    n += ready;
+  }
+#undef VP
+  return n;
+}
 static Dec setupTwos(Dec d) {
   if (d.kind != K_HOLD || d.via == V_RAISING || BT->nLine || !BIN[IN_HASPA] || BIN[IN_TOPPED]) return d;
   // levelling first: a slab that perches breaks on nothing
@@ -3720,6 +3742,46 @@ static Dec setupTwos(Dec d) {
     int v = lineJudge(s2, 1, 0);
     if (!(v & LV_LIVES) || (v & LV_PAYS) || (LNA[0] ? (LNO[0] && LNO[0] < LNA[0]) : LNO[0] != 0) || HOLLOW(LNO) > HOLLOW(LNA) || LNO[14] <= best) continue;
     best = LNO[14]; br = s2[0]; bc = s2[1];
+  }
+  // TWO SWAPS: one swap seldom makes a two. Of the same nearest first swaps,
+  // every second swap that clears nothing is read on the masks (twosOf), and
+  // the lines that set up most, nearest first, go to the engine -- the
+  // first that the engine finds setting up more than the board left alone,
+  // under the same terms as one swap, is played and its second swap kept.
+  if (!br) {
+    static ST TS2; static int32_t TR2[R_INTS + ST_INTS];
+    int32_t two[SETUPTRIES][4]; int tv[SETUPTRIES]; double tf[SETUPTRIES]; int nt = 0;
+    int32_t lg[2 * 128];
+    outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
+    for (tried = 0; tried < SETUPTRIES && outNext(&o, &q, &far); tried++) {
+      Cand *pc = poolSwap(pl[2 * q], pl[2 * q + 1]);
+      if (!pc) continue;
+      int m = legal(pc->masks, lg), bv = 0, b2r = 0, b2c = 0; double bfar = INF;
+      for (int i = 0; i < m; i++) {
+        stcpy(TS2, pc->masks);
+        if (!swapIn(TS2, lg[2 * i], lg[2 * i + 1])) continue;
+        resolve(TS2, TR2, 1);
+        if (TR2[R_SCOPE] != SC_OK || TR2[R_TOTAL] > 0) continue;
+        int tw = twosOf(TR2 + R_INTS);
+        double f2 = far + travelCost(pl[2 * q], pl[2 * q + 1], lg[2 * i], lg[2 * i + 1]);
+        if (tw > bv || (tw == bv && tw && f2 < bfar)) { bv = tw; bfar = f2; b2r = lg[2 * i]; b2c = lg[2 * i + 1]; }
+      }
+      if (bv <= best) continue;
+      two[nt][0] = pl[2 * q]; two[nt][1] = pl[2 * q + 1]; two[nt][2] = b2r; two[nt][3] = b2c; tv[nt] = bv; tf[nt] = bfar; nt++;
+    }
+    for (int done = 0; done < nt; done++) {
+      int at = -1;
+      for (int i = 0; i < nt; i++) if (tv[i] > 0 && (at < 0 || tv[i] > tv[at] || (tv[i] == tv[at] && tf[i] < tf[at]))) at = i;
+      if (at < 0) break;
+      tv[at] = 0;
+      int v = lineJudge(two[at], 2, 0);
+      if (!(v & LV_LIVES) || (v & LV_PAYS) || (LNA[0] ? (LNO[0] && LNO[0] < LNA[0]) : LNO[0] != 0) || HOLLOW(LNO) > HOLLOW(LNA) || LNO[14] <= best) continue;
+      double need = marginAfter(0, 0, LNA[0]);
+      if (need >= 0 && marginAfter(two[at], 2, LNO[0]) < 0) continue;
+      for (int k = 0; k < 4; k++) BT->line[k] = two[at][k];
+      BT->nLine = 2; BT->lineKind = LINE_PLAN; BT->lineWaitAll = 0;
+      return mkSwap(two[at][0], two[at][1], V_SETUP, d.mode, d.alive);
+    }
   }
   if (!br) return d;
   // IN THE TIME THERE IS: if the board left alone breaks before it loses
