@@ -3626,8 +3626,21 @@ static Dec readyWhenLands(Dec d) {
 // break of fewer than BATCH cells is held while the stack's top leaves
 // ROOMLEFT rows, the board is not topped, and the engine says that, left
 // alone until the next slab lands, the board still has a break one swap away.
+// THE BOARD LEFT ALONE DIES -- BEFORE THE NEXT SLAB LANDS. The engine's
+// replay of the board left alone breaks nothing, so with a queue it always
+// dies in the end; that is the replay, not the board. A death counts as a
+// reason to act only if it comes before the next slab lands: past that, the
+// break readied for the slab is played.
+int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);
+static int aloneDiesBeforeLanding(void) {
+  if (!aloneOnEngine() || !LNA[0]) return 0;
+  static ST ADL; int32_t t;
+  if (lineLanded(0, 0, ADL, &t) != 0) return 1;
+  return LNA[0] <= t;
+}
 static Dec batchBreak(Dec d) {
   if (BIN[IN_TOPPED] || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA] || d.kind != K_SWAP || !d.hasMove) return d;
+  if (!BIN[IN_FALLING]) return d;   // break once it lands: held only for garbage in the air
   Cand *pc = poolSwap(d.sr, d.sc);
   int converts = pc && pc->res.broke ? pc->res.converts : 0;
   if (!converts && (lineLast == 3 || endsInBreak(d))) converts = 1;   // a break line's step: its size is the line's
@@ -3655,7 +3668,8 @@ static Dec spendToBreak(Dec d) {
     fprintf(stderr, "SPEND %d,%d v%d | drain %d/%d last %d conv %d/%d match %d/%d fell %d/%d\n", d.sr, d.sc, v, LNO[0], LNA[0], LNO[1], LNO[2], LNA[2], LNO[3], LNA[3], LNO[9], LNA[9]); }
 #endif
   // garbage let down is never held: it lowers the stack
-  if (!(v & LV_LIVES) || !(v & LV_PAYS) || (v & (LV_BREAKS | LV_GAINS | LV_DROPS))) return d;
+  if (!(v & LV_LIVES) || !(v & LV_PAYS) || (v & (LV_BREAKS | LV_DROPS))) return d;
+  if (v & LV_GAINS) { int32_t k[LNOLEN]; for (int q = 0; q < LNOLEN; q++) k[q] = LNO[q]; int dies = aloneDiesBeforeLanding(); for (int q = 0; q < LNOLEN; q++) LNO[q] = k[q]; if (dies) return d; }
   // over six rows of panels there is material to spare: a clear that leaves six is spent
   if ((double)LNO[12] / BW >= 6) return d;   // the panels the line ends with
   return mkHold(V_SETUP, d.mode, d.alive, 0, 0, 0);
@@ -4224,7 +4238,7 @@ static Dec keepReady(Dec d) {
   if (!pc || pc->res.broke || endsInBreak(d) || slabReadyHook(pc->masks)) return d;
   int32_t sw[2] = { d.sr, d.sc };
   int v = lineJudge(sw, 1, 0);
-  if (aloneOnEngine() && LNA[0] && (v & LV_LIVES) && (!LNO[0] || LNO[0] > LNA[0])) return d;
+  if ((v & LV_LIVES) && aloneDiesBeforeLanding() && (!LNO[0] || LNO[0] > LNA[0])) return d;
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "KEEPREADY held %d,%d via %d\n", d.sr, d.sc, d.via); }
 #endif
