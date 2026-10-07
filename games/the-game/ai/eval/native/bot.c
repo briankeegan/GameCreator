@@ -3003,6 +3003,11 @@ static ST KBA;
 static JLOCAL ST KB[BREAKDEEP + 1];   // per thread: lineup readiness is asked in parallel
 static JLOCAL int32_t KBR[R_INTS + ST_INTS], KBSW[BREAKDEEP][2 * 128];
 static JLOCAL int32_t KBP[2 * BREAKDEEP]; static JLOCAL int kbPath;   // the line found, when asked for it
+// THE DEEPER SEARCH'S SHARE: what the decision has left once the stages
+// after it are given the most they have taken (laterMax, measured); the
+// search stops there with what it found
+static double kbEnd, laterMax, rdW0;
+extern PATLS double paWork;
 // A BREAK WITHIN k SWAPS of a resolved board, by the one search: out from
 // the cursor (where the last swap leaves it), the last swap decided on the
 // grid where nothing can clear, and each board's answer kept -- it is the
@@ -3019,6 +3024,7 @@ static int breakAt(int d, int depth, int cr, int cc) {
   outBegin(&o, KBSW[d], 2, n, cr, cc);
   while (!found && outNext(&o, &i, &far)) {
     int r = KBSW[d][2 * i], c = KBSW[d][2 * i + 1];
+    if (kbPath && paWork > kbEnd) { cut = 1; break; }
     if (k == 1 && (haveLq || (leafGrid(KB[d]), haveLq = 1)) && leafQuiet(r, c)) continue;
     stcpy(KB[d + 1], KB[d]);
     if (!swapIn(KB[d + 1], r, c)) continue;
@@ -3049,6 +3055,8 @@ static Dec breakDeeper(Dec d) {
   resolve(DBASE, KBR, 1);
   if (KBR[R_SCOPE] != SC_OK) return d;
   stcpy(KB[0], KBR + R_INTS);
+  kbEnd = rdW0 + WORKBUDGET - laterMax;
+  if (paWork >= kbEnd) return d;
   kbPath = 1;
   int found = breakAt(0, BREAKDEEP, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
   kbPath = 0;
@@ -3342,7 +3350,7 @@ static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc);
 // A REPLAY ONLY WHERE THE BUDGET HOLDS ONE: the work the decision has spent
 // (from its start, rdW0) and what a replay costs (rdCost, the most one has
 // taken) must fit in WORKBUDGET; past that a board is not called ready.
-static double rdW0, rdCost;
+static double rdCost;
 static int readyInTime(const int32_t *sw, int n, int *br, int *bc) {
   extern PATLS double paWork;
   if (rmemDec != btDecision) { rmemDec = btDecision; nRmem = 0; }
@@ -4193,6 +4201,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   SHARE(10); d = breakSoon(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(10); d = dropReady(readyWhenLands(keepReady(meanwhile(onePlan(fillFirst(d)))))); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
 #undef SHARE
+  if (ws[k - 1] - ws[2] > laterMax) laterMax = ws[k - 1] - ws[2];   // the most the stages after breakFirst have taken
   // A CUT IS A FAILURE: a stage that reaches its share has not decided, it has
   // been stopped. The decision fails and the game stops, naming the stage.
   for (int i = 0; i < k; i++) if (cutAt[i]) {
