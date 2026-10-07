@@ -1828,6 +1828,7 @@ static double clearBack(Cand *pc) {
   return back;
 }
 static int breakWithin(const int32_t *st, int depth);
+static int roomForBreak(const int32_t *st);
 static Dec waitForDrain(Dec d) {
   // Topped only: before the board tops, stayAlive keeps the time.
   if (!BIN[IN_TOPPED]) return d;
@@ -1884,7 +1885,9 @@ static Dec waitForDrain(Dec d) {
     // stop left, those k are lost. So a clear is held to the drain -- unless
     // the board after it has a break now or after one more move, which ends
     // the wait it would buy.
-    if (breakWithin(picked->masks, 2)) return d;
+    // Nor while there is no room for a break: time is worth nothing to a
+    // board that cannot take the next slab, and the clear makes the room.
+    if (breakWithin(picked->masks, 2) || !roomForBreak(base)) return d;
     BT->counts[C_WAITEDFORDRAIN]++;
     return HOLDAT(picked->sr, picked->sc);
   }
@@ -3447,9 +3450,10 @@ static Dec makeRoom(Dec d) {
   return mkSwap(br, bc, V_KEEPHEALTH, d.mode, d.alive);
 }
 static Dec readyWhenLands(Dec d) {
-  if (d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA] || BIN[IN_TOPPED]) return d;
+  if (d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA]) return d;
   if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;   // a break being played
   if (!roomForBreak(DBASE)) return makeRoom(d);
+  if (BIN[IN_TOPPED]) return d;
   int32_t sw[2] = { d.sr, d.sc };
   int dieRef = 0, r, c;
   if (d.kind == K_SWAP && d.hasMove) {
