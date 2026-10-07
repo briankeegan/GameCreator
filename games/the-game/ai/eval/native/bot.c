@@ -3767,6 +3767,9 @@ static double fillScoreOf(const int32_t *sw, int n, int die, int hollow) {
   if (fillUrgent && marginWithin(sw, n, die ? die : LINEHORIZON, 0) >= 0) sc += BREAKS_IN_TIME;
   return sc;
 }
+// a clear judged (LNO) leaves six rows of material, read off the line's own matches
+static int spendsLeaveSix(void) { return materialRows(DBASE) - (double)(LNO[3] - LNA[3]) / BW >= 6; }
+static int readyAfterSpend(const int32_t *sw, int n);
 static Dec fillFirstIn(Dec d) {
   if (d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
   if (lineLast == 1 || lineLast == 3) return BT->lineKind == LINE_BREAK || lineLast == 3 ? fillBeforeBreak(d) : d;
@@ -3798,7 +3801,6 @@ static Dec fillFirstIn(Dec d) {
   // fill that loses it later. Losing it later is not enough on its own: a
   // clear's stop time puts every loss of health off, and a board spent below
   // six rows cannot rise while the stop lasts.
-  int surplus = materialRows(DBASE) >= 6;
 #define LIVES_LONGER() (fillUrgent && (LNO[0] ? LNO[0] : 1 << 20) > refDie)
   // the pool: by fillScore, then the shortest walk, then the swaps; nothing
   // counts that does not beat the choice and the board left alone
@@ -3812,11 +3814,13 @@ static Dec fillFirstIn(Dec d) {
     Cand *pc = &POOL[fq[q]];
     int32_t sw[2] = { pc->sr, pc->sc };
     int v = lineJudge(sw, 1, 0);
-    if (!(v & LV_LIVES) || ((v & LV_PAYS) && !surplus && !LIVES_LONGER())) continue;
+    int spend = (v & LV_PAYS) && !spendsLeaveSix();
+    if (!(v & LV_LIVES) || (spend && !LIVES_LONGER())) continue;
     int pdie = LNO[0];
     double sc = fillScoreOf(sw, 1, pdie, LNO[10]);
     if (P.has ? !bestBeats(&P, sc, pc->moveFrames, sw, 1) : sc <= ref) continue;
     if (!fillKeeps(marginWithin(sw, 1, pdie, need), need)) continue;
+    if (spend && !readyAfterSpend(sw, 1)) continue;
     bestTake(&P, sc, pc->moveFrames, sw, 1); pick = pc;
   }
   if (P.has) ref = P.score;
@@ -3868,13 +3872,15 @@ static Dec fillFirstIn(Dec d) {
         double bt = v ? breakTime(fsw, n) : -1; __builtin_memcpy(tCell, keep, sizeof keep); tW = kw; tH = kh;
         fprintf(stderr, "  walk %d,%d dir %d n %d v %d hollow %d die %d last %d break %g\n", r, c, dir, n, v, h, dd, la, bt); } }
 #endif
-      if (!(v & LV_LIVES) || ((v & LV_PAYS) && !LIVES_LONGER())) continue;
+      int spend = (v & LV_PAYS) && !spendsLeaveSix();
+      if (!(v & LV_LIVES) || (spend && !LIVES_LONGER())) continue;
       double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
       // a walk must beat the pool's best; among walks, the same order (time: its estimate)
       int wdie = LNO[0];
       double sc = fillScoreOf(fsw, n, wdie, LNO[10]);
       if (W.has ? !bestBeats(&W, sc, est, fsw, n) : sc <= ref) continue;
       if (!fillKeeps(marginWithin(fsw, n, wdie, need), need)) continue;
+      if (spend && !readyAfterSpend(fsw, n)) continue;
       bestTake(&W, sc, est, fsw, n); first[0] = fsw[0]; first[1] = fsw[1];
     }
   }
