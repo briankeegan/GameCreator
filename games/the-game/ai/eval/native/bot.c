@@ -3153,6 +3153,25 @@ static int landHollow(const int32_t *sw, int n) {
   }
   return h;
 }
+// NO GOING BACK: a swap that clears and breaks nothing and leaves the board
+// as it was a decision or few ago (BT->seen) undoes what was just done -- two
+// such decisions in turn swap a pair back and forth while the board waits. It
+// gives way to the hold, which keeps the board that was itself the choice.
+static Dec returnGuard(Dec d) {
+  if (d.kind != K_SWAP || !d.hasMove || lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;
+  Cand *pc = poolSwap(d.sr, d.sc);
+  if (!pc || pc->res.total > 0 || pc->res.broke) return d;
+  Sig sg; sigOf(pc->masks, &sg);
+  for (int i = 0; i < BT->nSeen; i++) {
+    if (!sigEq(&sg, &BT->seen[i])) continue;
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RETURN via %d %d,%d to a board seen %d decisions ago\n", d.via, d.sr, d.sc, BT->nSeen - i); }
+#endif
+    BT->nLine = 0; lineLast = 0;
+    return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
+  }
+  return d;
+}
 static Dec perchGuard(Dec d) {
   if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA]) return d;
   if (!hasGarbage(DBASE)) {
@@ -4871,6 +4890,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     if (l->n > 1) lineKeep(l, LINE_BREAK); else BT->nLine = 0;
     d = lineSwap(l, V_BREAKREACH, d);
   }
+  d = returnGuard(d);
   d = perchGuard(d);
   d = setupTwos(d);
   d = surviveGuard(d);
