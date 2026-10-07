@@ -3769,6 +3769,51 @@ static int twosOf(const int32_t *st) {
 #undef VP
   return n;
 }
+// TWO-SWAP SETUPS: of the nearest SETUPTRIES first swaps (pl), every second
+// swap that clears nothing, read on the masks (twosOf) of the board the engine
+// settles to after the first -- the stack rises while the first is walked to
+// and pressed -- the one per first swap that sets up most, nearest first; kept
+// if it sets up more vertical twos than that board has now. The twos are
+// counted where the setup makes them, not where the judge's horizon ends
+// (slabs landed on it, the stack risen). The count kept (-1: no board).
+static int twoSetups(const int32_t *pl, int pn, int32_t (*two)[4], int *tv, double *tf) {
+  static ST TS2; static int32_t TR2[R_INTS + ST_INTS];
+  int32_t lg[2 * 128], st1[ST_INTS], cur1[2], t1;
+  uint32_t can1[WMAX]; uint8_t waits1[32][WMAX];
+  if (lineState(0, 0, st1, can1, waits1, cur1, &t1) != 0) return -1;
+  int best = twosOf(st1), nt = 0, tried, q; double far;
+  Out o;
+  outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
+  for (tried = 0; tried < SETUPTRIES && outNext(&o, &q, &far); tried++) {
+    int32_t s1[2] = { pl[2 * q], pl[2 * q + 1] };
+    if (lineState(s1, 1, st1, can1, waits1, cur1, &t1) != 0) continue;
+    int m = legal(st1, lg), bv = 0, b2r = 0, b2c = 0; double bfar = INF;
+    for (int i = 0; i < m; i++) {
+      int r2 = lg[2 * i], c2 = lg[2 * i + 1];
+      if (r2 > 31 || !(can1[c2] & (1u << (r2 - 1)))) continue;
+      stcpy(TS2, st1);
+      if (!swapIn(TS2, r2, c2)) continue;
+      resolve(TS2, TR2, 1);
+      if (TR2[R_SCOPE] != SC_OK || TR2[R_TOTAL] > 0) continue;
+      int tw = twosOf(TR2 + R_INTS);
+      double f2 = t1 + dmax(travelCost(cur1[0], cur1[1], r2, c2), waits1[r2][c2]);
+      if (tw > bv || (tw == bv && tw && f2 < bfar)) { bv = tw; bfar = f2; b2r = r2; b2c = c2; }
+    }
+    if (bv <= best) continue;
+    two[nt][0] = s1[0]; two[nt][1] = s1[1]; two[nt][2] = b2r; two[nt][3] = b2c; tv[nt] = bv; tf[nt] = bfar; nt++;
+  }
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SETUP2 first %d, lines %d, twos now %d\n", tried, nt, best); }
+#endif
+  return nt;
+}
+// the next of them to judge: most twos, then nearest; each taken once
+static int nextSetup(int nt, int *tv, const double *tf) {
+  int at = -1;
+  for (int i = 0; i < nt; i++) if (tv[i] > 0 && (at < 0 || tv[i] > tv[at] || (tv[i] == tv[at] && tf[i] < tf[at]))) at = i;
+  if (at >= 0) tv[at] = 0;
+  return at;
+}
 static Dec setupTwos(Dec d) {
   if (d.kind != K_HOLD || d.via == V_RAISING || BT->nLine || !BIN[IN_HASPA] || BIN[IN_TOPPED]) return d;
   // levelling first: a slab that perches breaks on nothing
@@ -3795,44 +3840,12 @@ static Dec setupTwos(Dec d) {
   // first that the engine finds setting up more than the board left alone,
   // under the same terms as one swap, is played and its second swap kept.
   if (!br) {
-    static ST TS2; static int32_t TR2[R_INTS + ST_INTS];
-    int32_t two[SETUPTRIES][4]; int tv[SETUPTRIES]; double tf[SETUPTRIES]; int nt = 0;
-    int32_t lg[2 * 128], st1[ST_INTS], cur1[2], t1;
-    uint32_t can1[WMAX]; uint8_t waits1[32][WMAX];
-    // the twos are counted where the setup makes them: on the board the
-    // engine settles to, not where the judge's horizon ends (slabs landed on
-    // it, the stack risen) -- more than that board has now
-    if (lineState(0, 0, st1, can1, waits1, cur1, &t1) != 0) return d;
-    best = twosOf(st1);
-    outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
-    for (tried = 0; tried < SETUPTRIES && outNext(&o, &q, &far); tried++) {
-      // the second swap is proposed on the board the engine reaches after the
-      // first: the stack rises while the first is walked to and pressed
-      int32_t s1[2] = { pl[2 * q], pl[2 * q + 1] };
-      if (lineState(s1, 1, st1, can1, waits1, cur1, &t1) != 0) continue;
-      int m = legal(st1, lg), bv = 0, b2r = 0, b2c = 0; double bfar = INF;
-      for (int i = 0; i < m; i++) {
-        int r2 = lg[2 * i], c2 = lg[2 * i + 1];
-        if (r2 > 31 || !(can1[c2] & (1u << (r2 - 1)))) continue;
-        stcpy(TS2, st1);
-        if (!swapIn(TS2, r2, c2)) continue;
-        resolve(TS2, TR2, 1);
-        if (TR2[R_SCOPE] != SC_OK || TR2[R_TOTAL] > 0) continue;
-        int tw = twosOf(TR2 + R_INTS);
-        double f2 = t1 + dmax(travelCost(cur1[0], cur1[1], r2, c2), waits1[r2][c2]);
-        if (tw > bv || (tw == bv && tw && f2 < bfar)) { bv = tw; bfar = f2; b2r = lg[2 * i]; b2c = lg[2 * i + 1]; }
-      }
-      if (bv <= best) continue;
-      two[nt][0] = pl[2 * q]; two[nt][1] = pl[2 * q + 1]; two[nt][2] = b2r; two[nt][3] = b2c; tv[nt] = bv; tf[nt] = bfar; nt++;
-    }
-#ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SETUP2 first %d, lines %d, twos now %d, best line %d\n", tried, nt, best, nt ? tv[0] : 0); }
-#endif
+    int32_t two[SETUPTRIES][4]; int tv[SETUPTRIES]; double tf[SETUPTRIES];
+    int nt = twoSetups(pl, pn, two, tv, tf);
+    if (nt < 0) return d;
     for (int done = 0; done < nt; done++) {
-      int at = -1;
-      for (int i = 0; i < nt; i++) if (tv[i] > 0 && (at < 0 || tv[i] > tv[at] || (tv[i] == tv[at] && tf[i] < tf[at]))) at = i;
+      int at = nextSetup(nt, tv, tf);
       if (at < 0) break;
-      tv[at] = 0;
       int v = lineJudge(two[at], 2, 0);
 #ifndef __wasm__
       if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  SETUP2 %d,%d %d,%d | v %d die %d/%d hollow %d/%d last %d\n", two[at][0], two[at][1], two[at][2], two[at][3], v, LNO[0], LNA[0], HOLLOW(LNO), HOLLOW(LNA), LNO[1]); }
@@ -4613,6 +4626,36 @@ static Dec meanwhile(Dec d) {
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "MEANWHILE level: tried %d, line hollow %d twos %d -> %d,%d hollow %d twos %d\n", t2, h0, v0b, mr, mc, hb, vb); }
 #endif
+  }
+  // A WAIT SETS UP: with nothing better, two swaps that set up vertical twos
+  // (twoSetups) go before the line, the line kept, under the same terms --
+  // the line's outcome, no sooner a loss of health, no more hollow
+  if (!mr && n + 2 <= LINEMAX) {
+    int32_t pl[2 * MAXCAND]; int pn = 0;
+    for (int k = 0; k < nPool && pn < MAXCAND; k++) {
+      Cand *cd = &POOL[k];
+      if (cd->kind != K_SWAP || cd->res.total > 0 || cd->res.broke || (cd->sr == d.sr && cd->sc == d.sc) || cd->moveFrames + REACT > last0) continue;
+      pl[2 * pn] = cd->sr; pl[2 * pn + 1] = cd->sc; pn++;
+    }
+    int32_t tw2[SETUPTRIES][4]; int tv[SETUPTRIES]; double tf[SETUPTRIES];
+    int nt = pn ? twoSetups(pl, pn, tw2, tv, tf) : 0;
+    int32_t keepO[LNOLEN]; for (int k = 0; k < LNOLEN; k++) keepO[k] = LNO[k];
+    lineJudge(ln + 2, n, waitAll);
+    int hl0 = HOLLOW(LNO);
+    int32_t l2[2 * LINEMAX];
+    for (int done = 0; done < nt; done++) {
+      int at = nextSetup(nt, tv, tf);
+      if (at < 0) break;
+      for (int k = 0; k < 4; k++) l2[k] = tw2[at][k];
+      for (int k = 0; k < 2 * n; k++) l2[4 + k] = ln[2 + k];
+      int v = lineJudge(l2, n + 2, waitAll);
+      if ((v & need) != need || LNO[1] > last0 || (die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0) || HOLLOW(LNO) > hl0) continue;
+      for (int k = 0; k < LNOLEN; k++) LNO[k] = keepO[k];
+      for (int k = 0; k < 2 * (n + 1); k++) BT->line[k] = l2[2 + k];
+      BT->nLine = n + 1; BT->lineKind = kind; BT->lineWaitAll = waitAll;
+      return mkSwap(l2[0], l2[1], V_SETUP, d.mode, d.alive);
+    }
+    for (int k = 0; k < LNOLEN; k++) LNO[k] = keepO[k];
   }
   // no clear one swap away: the lines two deep, by rank, the first that pays and lives as long
   LineC *two = 0;
