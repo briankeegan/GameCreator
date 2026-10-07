@@ -5035,7 +5035,9 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc, v; int32_t lno[LNOLEN];
     int32_t sw1[2] = { d.sr, d.sc };
     if (playsLine ? jmFind(BT->line, BT->nLine, BT->lineWaitAll, &v, lno) : jmFind(sw1, 1, d.waitAll, &v, lno))
-      fprintf(stderr, "PLAN at %d,%d press at clock %d last %d die %d\n", d.sr, d.sc, lno[16], lno[1], lno[0]);
+      { fprintf(stderr, "PLAN at %d,%d press at clock %d last %d die %d | line", d.sr, d.sc, lno[16], lno[1], lno[0]);
+        for (int k = 0; k < BT->nLine; k++) fprintf(stderr, " %d,%d", BT->line[2 * k], BT->line[2 * k + 1]);
+        fprintf(stderr, " kind %d wait %d\n", BT->lineKind, BT->lineWaitAll); }
   }
 #endif
   cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
