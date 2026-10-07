@@ -1748,9 +1748,13 @@
     // proven to live, the guesses are dropped.
     var live = proven.length ? proven : unproven;
     this.allDoomedNow = !live.length;
+    // ALL DOOMED IS NOT GIVING UP. Under a stream no line outlives the
+    // horizon, so this is most of such a game: the caller's breaks and
+    // lineups (preferRank) come first, and of those the one living longest.
     if (!live.length) {
       this.doomedDecisions++;
-      return this._longestLived(cands);
+      var breaking = this.preferRank ? this._preferred(cands, []) : [];
+      return this._longestLived(breaking.length ? breaking : cands);
     }
     if (proven.length > 1) {
       // A line already known to run past the horizon (the one being followed)
