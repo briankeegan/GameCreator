@@ -3976,10 +3976,9 @@ static Dec fillFirstIn(Dec d) {
 #endif
   }
   if (need > 0) need = 0;   // in time is in time
-  // A FILL PRESSED AFTER THE SLAB LANDS FILLS NOTHING UNDER IT: a fill whose
-  // last press comes after the next slab lands is not one
-  // -- the next slab's: under garbage already on the board, a fill fills whenever it comes
-  int32_t tLand = 1 << 20; if (!hasGarbage(DBASE)) { static ST FLL; if (lineLanded(0, 0, FLL, &tLand) != 0) tLand = 1 << 20; }
+  // A FILL PRESSED AFTER THE SLAB LANDS still levels the board for the slabs
+  // after it: the hollow is read off the board the line ends on, whenever it
+  // is pressed
   Cand *pick = 0;
   // NOT TO DIE: over six rows a clear may be spent to fill; under, only while
   // the board left alone loses health before its soonest break, and only by a
@@ -4001,13 +4000,12 @@ static Dec fillFirstIn(Dec d) {
     int v = lineJudge(sw, 1, 0);
     int spend = (v & LV_PAYS) && !spendsLeaveSix();
 #ifndef __wasm__
-#define FILLWHY(why) do { if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  pool %d,%d v %d die %d last %d hollow %d spend %d tLand %d -> %s\n", sw[0], sw[1], v, LNO[0], LNO[1], HOLLOW(LNO), spend, tLand, why); } } while (0)
+#define FILLWHY(why) do { if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  pool %d,%d v %d die %d last %d hollow %d spend %d -> %s\n", sw[0], sw[1], v, LNO[0], LNO[1], HOLLOW(LNO), spend, why); } } while (0)
 #else
 #define FILLWHY(why) do { } while (0)
 #endif
     if (!(v & LV_LIVES)) { FILLWHY("dies"); continue; }
     if (spend && !LIVES_LONGER()) { FILLWHY("spends, lives no longer"); continue; }
-    if (LNO[1] >= tLand) { FILLWHY("pressed after the landing"); continue; }
     int pdie = LNO[0];
     double sc = fillScoreOf(sw, 1, pdie, HOLLOW(LNO));
     if (P.has ? !bestBeats(&P, sc, pc->moveFrames, sw, 1) : sc <= ref) { FILLWHY("beaten"); continue; }
@@ -4067,7 +4065,7 @@ static Dec fillFirstIn(Dec d) {
         fprintf(stderr, "  walk %d,%d dir %d n %d v %d hollow %d die %d last %d break %g\n", r, c, dir, n, v, h, dd, la, bt); } }
 #endif
       int spend = (v & LV_PAYS) && !spendsLeaveSix();
-      if (!(v & LV_LIVES) || (spend && !LIVES_LONGER()) || LNO[1] >= tLand) continue;
+      if (!(v & LV_LIVES) || (spend && !LIVES_LONGER())) continue;
       double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
       // a walk must beat the pool's best; among walks, the same order (time: its estimate)
       int wdie = LNO[0];
