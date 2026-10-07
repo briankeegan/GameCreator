@@ -1991,6 +1991,11 @@ static Dec waitForDrain(Dec d) {
 #define KEEPDEPTH 3
 #define LIVEHORIZON 60
 #define LINEHORIZON 240
+#define UNSETTLEMOST 180   // the most frames a board is followed while it settles (front.c's settle sim and the judge's busy tail)
+// THE JUDGE'S REACH: it plays to LINEHORIZON, and on while the board is busy
+// for up to UNSETTLEMOST more; a line that loses no health (LNO[0] 0) is
+// counted as losing none within it, never as losing it at LINEHORIZON
+#define LINEREACH (LINEHORIZON + UNSETTLEMOST)
 #define NEXTMOVE 6
 #define MAXLINES 512
 #define MAXJUDGED 96
@@ -3019,7 +3024,17 @@ static int notLastSwap(const LineC *l) {
 }
 static int dR, dC;
 static int fromChoice(const LineC *l) { return l->sw[0] == dR && l->sw[1] == dC; }
+// WHAT STAYALIVE CHOSE TO LIVE: the decision, the frame it loses health
+// (1 << 20: not within reach) and its line -- no later stage may put a choice
+// that loses health sooner in its place (surviveGuard, at the decision's end)
+static Dec saDec; static int saDie, saSet, saN, saKind, saWait; static int32_t saLine[2 * LINEMAX];
+static Dec saKeep(Dec d, int die) {
+  saSet = 1; saDec = d; saDie = die; saN = BT->nLine; saKind = BT->lineKind; saWait = BT->lineWaitAll;
+  for (int k = 0; k < 2 * saN; k++) saLine[k] = BT->line[k];
+  return d;
+}
 static Dec stayAlive(Dec d) {
+  saSet = 0;
   if (d.kind != K_SWAP && d.kind != K_HOLD) return d;
   if (d.kind == K_SWAP && !d.hasMove) return d;
   // a break that lives, and a break line played on, are kept; a plan or cash
@@ -3036,7 +3051,7 @@ static Dec stayAlive(Dec d) {
   if (d.kind == K_SWAP) {
     dR = d.sr; dC = d.sc;
     LineC *mine = bestLineAvoid(LV_LIVES | LV_GAINS, 0, fromChoice);
-    if (mine && (!l || mine->die >= l->die)) { if (mine->n > 1) lineKeep(mine, LINE_CASH); return d; }
+    if (mine && (!l || mine->die >= l->die)) { if (mine->n > 1) lineKeep(mine, LINE_CASH); return saKeep(d, mine->die); }
   }
   // A HOLD IS NOT A LINE STARTED LATER: a line is judged pressed from now, and
   // every frame the board waits is a frame garbage drops on it -- the line that
@@ -3046,7 +3061,29 @@ static Dec stayAlive(Dec d) {
   BT->counts[C_KEPTHEALTH]++;
   plansDrop();
   if (l->n > 1) lineKeep(l, l->brk ? LINE_BREAK : LINE_CASH); else BT->nLine = 0;
-  return lineSwap(l, V_KEEPHEALTH, d);
+  return saKeep(lineSwap(l, V_KEEPHEALTH, d), l->die);
+}
+// IT NEVER CHOOSES TO DIE: a decision that is not what stayAlive chose, and
+// loses health sooner than it (the engine judges it: the line it plays, or the
+// board left alone for a hold), gives way to stayAlive's choice and its line
+static Dec surviveGuard(Dec d) {
+  if (!saSet) return d;
+  if (d.kind == saDec.kind && d.hasMove == saDec.hasMove && d.sr == saDec.sr && d.sc == saDec.sc) return d;
+  int die;
+  if (d.kind == K_SWAP && d.hasMove) {
+    int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
+    int32_t sw[2] = { d.sr, d.sc };
+    int v = playsLine ? lineJudge(BT->line, BT->nLine, BT->lineWaitAll) : lineJudge(sw, 1, 0);
+    die = !(v & LV_LIVES) ? 0 : LNO[0] ? LNO[0] : 1 << 20;
+  } else if (d.kind == K_HOLD) die = aloneOnEngine() && LNA[0] ? LNA[0] : 1 << 20;
+  else return d;   // a raise: raiseMode's own rules
+  if (die >= saDie) return d;
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "GUARD via %d %d,%d dies %d before %d: stayAlive's %d,%d\n", d.via, d.sr, d.sc, die, saDie, saDec.sr, saDec.sc); }
+#endif
+  BT->nLine = saN; BT->lineKind = saKind; BT->lineWaitAll = saWait;
+  for (int k = 0; k < 2 * saN; k++) BT->line[k] = saLine[k];
+  return saDec;
 }
 
 #define BATCH 8
@@ -3632,10 +3669,18 @@ static Best fillLevel; static int fillLevelDec = -1;
 // swap or two away) -- and keeps a break in the time the board left alone has
 #define SETUPTRIES 8
 static double marginAfter(const int32_t *sw, int n, int die);
+// THE LEVELLER IN THE TIME THERE IS: if the board left alone breaks before it
+// loses health, so must the board fill's leveller leaves
+static int levelInTime(void) {
+  if (!aloneOnEngine()) return 0;
+  if (marginAfter(0, 0, LNA[0]) < 0) return 1;
+  lineJudge(fillLevel.sw, fillLevel.n, 0);
+  return marginAfter(fillLevel.sw, fillLevel.n, LNO[0]) >= 0;
+}
 static Dec setupTwos(Dec d) {
   if (d.kind != K_HOLD || d.via == V_RAISING || BT->nLine || !BIN[IN_HASPA] || BIN[IN_TOPPED]) return d;
   // levelling first: a slab that perches breaks on nothing
-  if (fillLevelDec == btDecision && fillLevel.has) return mkSwap(fillLevel.sw[0], fillLevel.sw[1], V_FILL, d.mode, d.alive);
+  if (fillLevelDec == btDecision && fillLevel.has && levelInTime()) return mkSwap(fillLevel.sw[0], fillLevel.sw[1], V_FILL, d.mode, d.alive);
   if (!aloneOnEngine()) return d;
   int32_t pl[2 * MAXCAND]; int pn = 0, q, tried = 0, br = 0, bc = 0, best = LNA[14];
   for (int k = 0; k < nPool && pn < MAXCAND; k++) {
@@ -3681,7 +3726,7 @@ static Dec noStall(Dec d) {
   // THE WAIT IS NOT IDLE: fill's leveller, if it found one; else the swap
   // nearest the cursor, of those that clear nothing, live as long as the
   // board left alone and leave the slab less hollow to land on
-  if (fillLevelDec == btDecision && fillLevel.has) return mkSwap(fillLevel.sw[0], fillLevel.sw[1], V_FILL, d.mode, d.alive);
+  if (fillLevelDec == btDecision && fillLevel.has && levelInTime()) return mkSwap(fillLevel.sw[0], fillLevel.sw[1], V_FILL, d.mode, d.alive);
   { int32_t pl[2 * MAXCAND]; int pn = 0, q, tried = 0, br = 0, bc = 0, hb = HOLLOW(LNA);
     for (int k = 0; k < nPool && pn < MAXCAND; k++) {
       Cand *cd = &POOL[k];
@@ -3816,7 +3861,13 @@ static Dec batchBreak(Dec d) {
   if (!BIN[IN_FALLING]) return d;   // break once it lands: held only for garbage in the air
   Cand *pc = poolSwap(d.sr, d.sc);
   int converts = pc && pc->res.broke ? pc->res.converts : 0;
-  if (!converts && (lineLast == 3 || endsInBreak(d))) converts = 1;   // a break line's step: its size is the line's
+  if (!converts && (lineLast == 3 || endsInBreak(d))) {   // a break line's step: its size is the line's, as the engine plays it
+    int32_t sw[2] = { d.sr, d.sc };
+    int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
+    int v = playsLine ? lineJudge(BT->line, BT->nLine, BT->lineWaitAll) : lineJudge(sw, 1, 0);
+    converts = (v & LV_BREAKS) && aloneOnEngine() ? LNO[2] - LNA[2] : 0;
+    if (converts >= BATCH) return d;
+  }
   if (!converts) return d;
   if (pc && pc->res.broke && pc->res.converts >= BATCH) return d;
   if (tallestBoard(DBASE) > BH - ROOMLEFT) return d;   // the whole stack, garbage and panels
@@ -3896,7 +3947,7 @@ static Dec fillBeforeBreak(Dec d) {
 // THE FRAMES TO A BREAK AFTER `steps`: the steps played on the engine as the
 // front plays them, then the soonest break the distance search finds on the
 // board they leave, walked from where the cursor is (INF: none).
-#define BUDGETMS 15.0   // the decision's budget: the 16.7 ms frame less the frame's own work (0.9 ms at most, seed 4)
+#define BUDGETMS 15.77   // the decision's budget: the 16.7 ms frame less the frame's own work, 1000/60 - 0.9 (0.9 ms at most, seed 4)
 static int btAloneAt = -1; static double btAlone;
 static double breakTimeOf(const int32_t *steps, int n, double limit);
 static void prejudge(const int32_t *sws, int stride, int count, int n, int waitAll);
@@ -3966,7 +4017,7 @@ static Dec breakSoon(Dec d) {
   if (lineLast == 2 || d.kind == K_RAISE || !BIN[IN_HASPA] || !hasGarbage(DBASE)) return d;
   if (d.kind == K_SWAP && endsInBreak(d)) return d;
   if (!aloneOnEngine()) return d;
-  double aloneTime = LNA[0] ? LNA[0] : LINEHORIZON;
+  double aloneTime = LNA[0] ? LNA[0] : LINEREACH;
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SOON alone %g break %g via %d\n", aloneTime, breakTime(0, 0), d.via); }
 #endif
@@ -3974,7 +4025,7 @@ static Dec breakSoon(Dec d) {
   if (d.kind == K_SWAP && d.hasMove) {
     int32_t sw[2] = { d.sr, d.sc };
     if (lineJudge(sw, 1, 0) & LV_LIVES) {
-      double time = LNO[0] ? LNO[0] : LINEHORIZON;
+      double time = LNO[0] ? LNO[0] : LINEREACH;
       if (breakTime(sw, 1) < time) return d;
     }
   }
@@ -4006,7 +4057,7 @@ static Dec breakSoon(Dec d) {
     double tb[SOONBATCH];
     // a margin is taken only past the board left alone's (aloneM), so no break later than that reaches it
     double floorM = margin.has && margin.score > aloneM ? margin.score : aloneM;
-    bsLim = inTime.has ? -inTime.score + 1e-9 : floorM > -INF ? LINEHORIZON - floorM + 1e-9 : INF;
+    bsLim = inTime.has ? -inTime.score + 1e-9 : floorM > -INF ? LINEREACH - floorM + 1e-9 : INF;
     nb = fitTasks(nb, btCost);
     if (!nb) break;
     prereplay(bl, nb); bsPl = bl; bsB0 = tb; parallelDo(nb, bsTask);
@@ -4018,10 +4069,10 @@ static Dec breakSoon(Dec d) {
       // a break after a swap comes no sooner than the walk to it
       if (outPast(&inTime, -far, 0)) { done = 1; break; }
       int32_t sw[2] = { pl[2 * q], pl[2 * q + 1] };
-      double lim0 = inTime.has && -inTime.score < LINEHORIZON ? -inTime.score + 1e-9 : LINEHORIZON;
+      double lim0 = inTime.has && -inTime.score < LINEREACH ? -inTime.score + 1e-9 : LINEREACH;
       if (!(b0[q] < lim0)) continue;
       if (!(lineJudge(sw, 1, 0) & LV_LIVES)) continue;
-      double time = LNO[0] ? LNO[0] : LINEHORIZON;
+      double time = LNO[0] ? LNO[0] : LINEREACH;
       double lim = inTime.has && -inTime.score < time ? -inTime.score + 1e-9 : time;
       double b = b0[q] < lim ? b0[q] : INF;
       if (b < time) bestTake(&inTime, -b, 0, sw, 1);
@@ -4034,7 +4085,7 @@ static Dec breakSoon(Dec d) {
       // no break within the bound: nothing to take, and not judged
       if (b0[q] >= INF) continue;
       if (!(lineJudge(sw, 1, 0) & LV_LIVES)) continue;
-      double time = LNO[0] ? LNO[0] : LINEHORIZON;
+      double time = LNO[0] ? LNO[0] : LINEREACH;
       // its break comes no sooner than the walk to it
       if (margin.has && time - far < margin.score) continue;
       double lim = margin.has ? (time > time - margin.score ? time : time - margin.score) : INF;
@@ -4065,10 +4116,10 @@ double marginWithinIn(const int32_t *sw, int n, int die, double need) {
   static int keep[TGRID + 2][WMAX + 1];
   int kw = tW, kh = tH;
   __builtin_memcpy(keep, tCell, sizeof keep);
-  double time = die ? die : LINEHORIZON;
+  double time = die ? die : LINEREACH;
   double b = (need >= INF || n == 0) ? breakTime(sw, n) : breakWithinT(sw, n, time - (need > 0 ? 0 : need) + 1e-9);
   __builtin_memcpy(tCell, keep, sizeof keep); tW = kw; tH = kh;
-  return (die ? die : LINEHORIZON) - b;
+  return (die ? die : LINEREACH) - b;
 }
 // in time (need 0): breaks in time; otherwise: no less time than the choice
 static int fillKeeps(double m, double need) { return need >= 0 ? m > 0 : m >= need; }
@@ -4099,7 +4150,7 @@ static double fillScore(int die, int hollow) { return (fillUrgent && die ? die :
 #define BREAKS_IN_TIME 1e12
 static double fillScoreOf(const int32_t *sw, int n, int die, int hollow) {
   double sc = fillScore(die, hollow);
-  if (fillUrgent && marginWithin(sw, n, die ? die : LINEHORIZON, 0) >= 0) sc += BREAKS_IN_TIME;
+  if (fillUrgent && marginWithin(sw, n, die ? die : LINEREACH, 0) >= 0) sc += BREAKS_IN_TIME;
   return sc;
 }
 // a clear judged (LNO) leaves six rows of material, read off the line's own matches
@@ -4445,6 +4496,7 @@ static Dec raiseHold(Dec d) {
   Cand *pc = poolSwap(d.sr, d.sc);
   double mf = pc ? pc->moveFrames : travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], d.sr, d.sc);
   if (mf + 5 <= BIN[IN_LOCKLEFT]) return d;
+  lineLast = 0;   // a hold is no line played on: what follows judges the hold
   return mkHold(V_RAISING, d.mode, d.alive, 0, 0, 0);
 }
 static Dec onePlan(Dec d) {
@@ -4514,6 +4566,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     d = lineSwap(l, V_BREAKREACH, d);
   }
   d = setupTwos(d);
+  d = surviveGuard(d);
   cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
 #undef SHARE
 #ifndef __wasm__
@@ -4530,6 +4583,8 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // each decision's own, or the last most less a hundredth a decision -- one
   // heavy decision does not shut the searches out for the rest of the game
   laterMax *= 0.99; if (ws[k - 1] - ws[2] > laterMax) laterMax = ws[k - 1] - ws[2];
+  // the most a judge, a search, a replay has cost: lately, as the reserves -- one heavy one does not shut them out for the game
+  jdCost *= 0.99; btCost *= 0.99; rpCost *= 0.99; rdCost *= 0.99;
   laterLu *= 0.99; if (ws[k - 1] - ws[4] > laterLu) laterLu = ws[k - 1] - ws[4];
   // A CUT IS A FAILURE: a stage that reaches its share has not decided, it has
   // been stopped. The decision fails and the game stops, naming the stage.
