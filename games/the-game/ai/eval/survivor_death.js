@@ -29,7 +29,7 @@ function line(x) {
 // WHERE IT WAS LOST: the board the last unbroken run of all-doomed
 // decisions began on, and the decisions around it.
 var dec = d.decided || [], k = dec.length;
-while (k > 0 && dec[k - 1].diag && dec[k - 1].diag.allDoomed) k--;
+while (k > 0 && dec[k - 1].diag && (dec[k - 1].diag.allDoomed || dec[k - 1].diag.tight)) k--;
 if (k < dec.length) {
   var first = dec[k], at = first.asked !== null && first.asked !== undefined ? first.asked : first.now;
   var hi = h.filter(function (e) { return e.clock <= at; }).pop();
@@ -37,4 +37,11 @@ if (k < dec.length) {
   if (hi) out = out.concat(show(hi));
   dec.slice(Math.max(0, k - 8), k + 4).forEach(function (x) { out.push(line(x)); });
 }
+// BREAKS NOT TAKEN: the board at each of the last four, and what was played.
+var skipped = dec.filter(function (x) { return x.breaks && !x.breaks.took; }).slice(-4);
+skipped.forEach(function (x) {
+  var at = x.asked !== null && x.asked !== undefined ? x.asked : x.now, hi = h.filter(function (e) { return e.clock <= at; }).pop();
+  out.push('', 'BREAK NOT TAKEN at decision ' + x.id + ': ' + line(x));
+  if (hi) out = out.concat(show(hi));
+});
 console.log(out.join('\n'));
