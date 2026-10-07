@@ -4319,7 +4319,11 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   SHARE(15); d = keepBreak(d); d = lineupFirst(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(5); d = batchBreak(d); d = spendToBreak(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(10); d = breakSoon(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(10); d = noStall(dropReady(readyWhenLands(keepReady(meanwhile(onePlan(fillFirst(d)))))));
+  SHARE(10); { Dec dF = fillFirst(d), dC = dropReady(readyWhenLands(keepReady(meanwhile(onePlan(dF))))), dS = noStall(dC);
+    // A STALL REFUSED FALLS BACK TO THE CHOICE IT WAS PUT BEFORE, not to
+    // standing still: the fill (or what came before it), if that is no stall
+    if (dS.kind == K_HOLD && dC.kind == K_SWAP && dF.kind == K_SWAP && !(dF.sr == dC.sr && dF.sc == dC.sc)) { Dec a = noStall(dF); if (a.kind == K_SWAP) dS = dF; }
+    d = dS; }
   // A BREAK HELD FOR A BETTER TIME IS NOT HELD FOR NOTHING: if the decision
   // comes to standing still, the break is played -- idle readies nothing
   if (d.kind == K_HOLD && bbHasDeferred) {
