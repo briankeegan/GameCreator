@@ -3542,6 +3542,12 @@ static Dec fillFirstIn(Dec d) {
       }
     }
     prejudgeLines(wp, nw); }
+  // AMONG WALKS THAT LEAVE THE SAME HOLLOW, THE ONE THAT TAKES A TOWER DOWN:
+  // a slab rests on the tallest column under it, so a tower two wide is
+  // lowered one column at a time and the first step shows no less hollow.
+  // Each column's height is its highest panel; the score is the sum of squares.
+  int hgt[WMAX + 2], sq0 = 0;
+  for (int c = 1; c <= tW; c++) { hgt[c] = walkTop(c); sq0 += hgt[c] * hgt[c]; }
   for (int c = 1; c <= tW; c++) {
     int r = walkTop(c);
     if (!r) continue;
@@ -3555,6 +3561,9 @@ static Dec fillFirstIn(Dec d) {
         if (!tSupported(r, at)) break;   // it drops here
       }
       if (n == 0) continue;
+      int sq = sq0, dropsAt = !tSupported(r, at);
+      { int e = at, he = dropsAt ? hgt[e] + 1 : (hgt[e] > r ? hgt[e] : r);
+        sq += (r - 1) * (r - 1) - hgt[c] * hgt[c] + he * he - hgt[e] * hgt[e]; }
       int v = lineJudge(fsw, n, 0);
 #ifndef __wasm__
       if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; { int h = LNO[10], dd = LNO[0], la = LNO[1]; static int keep[TGRID + 2][WMAX + 1]; int kw = tW, kh = tH; __builtin_memcpy(keep, tCell, sizeof keep);
@@ -3565,13 +3574,14 @@ static Dec fillFirstIn(Dec d) {
       double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
       // a walk must leave less than the pool's best; among walks, the same order (time: its estimate)
       int h = LNO[10];
-      if (W.has ? !bestBeats(&W, -h, est, fsw, n) : h >= best) continue;
+      double sc = -h - sq / 1e4;
+      if (W.has ? !bestBeats(&W, sc, est, fsw, n) : (h > best || (h == best && sq >= sq0))) continue;
       if (!fillKeeps(marginWithin(fsw, n, LNO[0], need), need)) continue;
-      bestTake(&W, -h, est, fsw, n); first[0] = fsw[0]; first[1] = fsw[1];
+      bestTake(&W, sc, est, fsw, n); first[0] = fsw[0]; first[1] = fsw[1];
     }
   }
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "FILL! best %d walk %d,%d pool %d,%d\n", W.has ? (int)-W.score : best, first[0], first[1], pick ? pick->sr : 0, pick ? pick->sc : 0); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "FILL! best %d walk %d,%d pool %d,%d\n", W.has ? (int)__builtin_floor(-W.score) : best, first[0], first[1], pick ? pick->sr : 0, pick ? pick->sc : 0); }
 #endif
   if (first[0]) return mkSwap(first[0], first[1], V_FILL, d.mode, d.alive);
   if (!pick) return d;
