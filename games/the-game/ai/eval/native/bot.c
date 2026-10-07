@@ -3301,7 +3301,24 @@ static int roomForBreak(const int32_t *st) {
 // drops too. The nearest such swap (none: 0); the cursor waits on it.
 static ST RBL, RBS; static int32_t RBR[R_INTS + ST_INTS], RBSW[2 * 128];
 int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t);
+// each line's answer is the decision's: asked again, it is not replayed again
+#define RMEMO 64
+static struct { int dec, n, ok, r, c; int32_t sw[2 * 3]; } RMEM[RMEMO];
+static int nRmem, rmemDec = -1;
+static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc);
 static int readyInTime(const int32_t *sw, int n, int *br, int *bc) {
+  if (rmemDec != btDecision) { rmemDec = btDecision; nRmem = 0; }
+  if (n <= 3) for (int i = 0; i < nRmem; i++)
+    if (RMEM[i].n == n && (!n || !__builtin_memcmp(RMEM[i].sw, sw, (unsigned long)n * 8))) { *br = RMEM[i].r; *bc = RMEM[i].c; return RMEM[i].ok; }
+  int ok = readyInTimeRaw(sw, n, br, bc);
+  if (n <= 3 && nRmem < RMEMO) {
+    RMEM[nRmem].n = n; RMEM[nRmem].ok = ok; RMEM[nRmem].r = ok ? *br : 0; RMEM[nRmem].c = ok ? *bc : 0;
+    for (int k = 0; k < 2 * n; k++) RMEM[nRmem].sw[k] = sw[k];
+    nRmem++;
+  }
+  return ok;
+}
+static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc) {
   uint32_t can[WMAX]; uint8_t wt[32][WMAX]; int32_t cur[2], t;
   if (lineLandedFull(sw, n, RBL, can, wt, cur, &t) != 0) return 0;
   int last = 0;
@@ -3318,6 +3335,24 @@ static int readyInTime(const int32_t *sw, int n, int *br, int *bc) {
     if (RBR[R_SCOPE] == SC_BROKE) { best = cost; *br = r; *bc = c; found = 1; }
   }
   return found;
+}
+// A PILE LET DOWN IS GARBAGE ARRIVING. A swap that sets garbage at rest
+// falling (DROPS) is played only if, where it lands, a break is in reach
+// when the next slab lands (readyInTime); otherwise the board is held while
+// held lives as long, the pile left where a break may still be made under it.
+static Dec dropReady(Dec d) {
+  if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA] || !hasGarbage(DBASE)) return d;
+  if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK) || endsInBreak(d)) return d;
+  Cand *pc = poolSwap(d.sr, d.sc);
+  if (pc && pc->res.broke) return d;
+  int32_t sw[2] = { d.sr, d.sc };
+  int v = lineJudge(sw, 1, 0);
+  if (!(v & LV_DROPS) || (v & LV_BREAKS)) return d;
+  int die = LNO[0] ? LNO[0] : 1 << 20, r, c;
+  if (!aloneOnEngine() || (LNA[0] ? LNA[0] : 1 << 20) < die) return d;
+  if (readyInTime(sw, 1, &r, &c)) return d;
+  BT->nLine = 0;
+  return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
 }
 static Dec readyWhenLands(Dec d) {
   if (d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA] || BIN[IN_TOPPED]) return d;
@@ -3999,7 +4034,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   SHARE(15); d = keepBreak(d); d = lineupFirst(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(5); d = batchBreak(d); d = spendToBreak(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(10); d = breakSoon(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(10); d = readyWhenLands(keepReady(meanwhile(onePlan(fillFirst(d))))); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(10); d = dropReady(readyWhenLands(keepReady(meanwhile(onePlan(fillFirst(d)))))); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
 #undef SHARE
   // A CUT IS A FAILURE: a stage that reaches its share has not decided, it has
   // been stopped. The decision fails and the game stops, naming the stage.
