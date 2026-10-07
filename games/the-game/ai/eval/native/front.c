@@ -969,7 +969,18 @@ static void parallelDo(int count, void (*task)(int)) {
   if (pjThreads < 0) { pjThreads = getenv("GC_THREADS") ? atoi(getenv("GC_THREADS")) : 3; if (pjThreads > 15) pjThreads = 15; }
   if (inWorker) { for (int k = 0; k < count; k++) task(k); return; }   // a task's own: one by one
   parallelJoin();
-  if (pjThreads <= 0 || count < 2) { for (int k = 0; k < count; k++) task(k); return; }
+  if (count < 2) { for (int k = 0; k < count; k++) task(k); return; }
+  // NO THREADS, THE SAME STEPS: the tasks run here, one by one, as workers --
+  // a decision is the same whatever the thread count
+  if (pjThreads <= 0) {
+    if (!LNB) LNB = nb_new();
+    if (!USB) USB = nb_new();
+    paOutcomeBoard(1);
+    int wasIn = inWorker; inWorker = 1;
+    for (int k = 0; k < count; k++) task(k);
+    inWorker = wasIn;
+    return;
+  }
   if (!LNB) LNB = nb_new();
   if (!USB) USB = nb_new();
   paOutcomeBoard(1);
@@ -1002,7 +1013,7 @@ static void pjJudge(int k) {
 }
 static void prejudge(const int32_t *sws, int stride, int count, int n, int waitAll) {
   if (pjThreads < 0) pjThreads = getenv("GC_THREADS") ? atoi(getenv("GC_THREADS")) : 3;
-  if (pjThreads <= 0 || !BIN[IN_HASPA] || !aloneOnEngine()) return;
+  if (!BIN[IN_HASPA] || !aloneOnEngine()) return;
   int jobs = 0;
   for (int k = 0; k < count && jobs < 256; k++) {
     const int32_t *sw = sws + stride * k;
@@ -1023,7 +1034,7 @@ static void prejudge(const int32_t *sws, int stride, int count, int n, int waitA
 // lines of their own lengths, judged as judged() judges them (waitAll: its second judgement)
 static void prejudgeLinesW(LineC *const *ls, int count, int waitAll) {
   if (pjThreads < 0) pjThreads = getenv("GC_THREADS") ? atoi(getenv("GC_THREADS")) : 3;
-  if (pjThreads <= 0 || !BIN[IN_HASPA] || !aloneOnEngine()) return;
+  if (!BIN[IN_HASPA] || !aloneOnEngine()) return;
   int jobs = 0;
   for (int k = 0; k < count && jobs < 256; k++) {
     const LineC *l = ls[k];
