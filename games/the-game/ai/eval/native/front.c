@@ -32,7 +32,7 @@ typedef struct {
   int lastKind, lastVia, lastMoveR, lastMoveC;
   Settle settle;   // the board's cells, when each settles (unsettled), at the last decision
   int wWaitTo, wFrames, wWaitAll, wR0, wKept;
-  int pkR, pkC, pkAt;   // the swap walked to, and the clock its first plan pressed it at (pkAt 0: none)   // a walk: the frame its swap's panels settle (every panel's: wWaitAll), the frames it has taken
+  int pkR, pkC, pkAt, pkAll;   // the swap walked to, and the clock its first plan pressed it at (pkAt 0: none)   // a walk: the frame its swap's panels settle (every panel's: wWaitAll), the frames it has taken
 } Front;
 #define MAXFRONTS 16
 static Front FRONTS[MAXFRONTS];
@@ -453,16 +453,19 @@ static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v;
 // frame; the front, topped, plans every frame. The swap it walks to keeps the
 // clock the first plan gave it, in play and in every replay, until it is
 // pressed or another is chosen.
-static int pressWait(Front *F, int r, int c, int clock, int wait) {
-  if (F->pkAt && F->pkR == r && F->pkC == c) return F->pkAt > clock ? F->pkAt - clock : 0;
+// A KEPT FRAME IS KEPT FOR THE SAME WAIT: a frame fixed waiting for the garbage
+// to land (waitAll) is not the frame of a press that waits only for its pair,
+// nor the other way -- the judge and the walk read it alike (pkAll)
+static int pressWait(Front *F, int r, int c, int clock, int wait, int waitAll) {
+  if (F->pkAt && F->pkR == r && F->pkC == c && F->pkAll == waitAll) return F->pkAt > clock ? F->pkAt - clock : 0;
   return wait;
 }
 static void beginWalk(Front *F, int r, int c, int cooldown, int waitAll) {
   F->walk = 1; F->wRow = r; F->wCol = c; F->wTimer = 0; F->wCooldown = cooldown; F->wRetries = 0; F->wHasDisp = 0;
   int wait = waitAll ? breakWait(&F->settle, r, c) : pairWait(&F->settle, r, c);
-  F->wKept = F->pkAt && F->pkR == r && F->pkC == c;
-  if (!F->wKept) { F->pkR = r; F->pkC = c; F->pkAt = FB->clock + wait; }
-  F->wWaitTo = pressWait(F, r, c, FB->clock, wait); F->wFrames = 0; F->wWaitAll = waitAll; F->wR0 = r;
+  F->wKept = F->pkAt && F->pkR == r && F->pkC == c && F->pkAll == waitAll;
+  if (!F->wKept) { F->pkR = r; F->pkC = c; F->pkAt = FB->clock + wait; F->pkAll = waitAll; }
+  F->wWaitTo = pressWait(F, r, c, FB->clock, wait, waitAll); F->wFrames = 0; F->wWaitAll = waitAll; F->wR0 = r;
 }
 static int driveWalk(Front *F, int input) {
   F->wFrames++;
@@ -475,6 +478,9 @@ static int driveWalk(Front *F, int input) {
   }
   // the swap's panels settle at a known frame: a walk that arrives first waits
   // a pair still now is pressed now, unless a plan has already fixed its frame
+#ifndef __wasm__
+  { extern int botTraceOn; if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "WALK clock %d at %d,%d frames %d waitTo %d pkAt %d kept %d waitAll %d free %d can %d topped %d\n", FB->clock, row, col, F->wFrames, F->wWaitTo, F->pkAt, F->wKept, F->wWaitAll, pairFree(&F->settle, F->wR0, col, F->wFrames), nb_can_swap(FB, FB->curRow, FB->curCol), toppedNow()); } }
+#endif
   if (F->wFrames < F->wWaitTo && (F->wWaitAll || F->wKept || !pairFree(&F->settle, F->wR0, col, F->wFrames))) {
     // a wait is not a plan: topped, or a reaction's worth of waiting, decide again
     if (!toppedNow() && F->wFrames % (F->reaction > 0 ? F->reaction : 12) != 0) return input;
@@ -574,9 +580,9 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   int tr = n > 0 ? steps[0] : 0, tc = n > 0 ? steps[1] : 0, last = n > 0 ? -1 : 0, f, dropped = b->garbageCreatedCount, f0 = 0;
   if (from) { step = from->n; walking = 0; held = from->held; cool = from->cool; last = from->last; dropped = from->dropped; f0 = from->f; }
   int snapSettle = from && from->hasSettle;
-  int kept0 = n > 0 && LF && LF->pkAt && LF->pkR == steps[0] && LF->pkC == steps[1];
+  int kept0 = n > 0 && LF && LF->pkAt && LF->pkR == steps[0] && LF->pkC == steps[1] && LF->pkAll == (LWAITALL && n == 1);
   int fs = 0, r0 = tr;   // the frame the step's settle was taken, its row then
-  int waitTo = n > 0 && LF ? pressWait(LF, steps[0], steps[1], paLibBoard()->clock, LWAITALL && n == 1 ? breakWait(&LF->settle, steps[0], steps[1]) : pairWait(&LF->settle, steps[0], steps[1])) : 0;
+  int waitTo = n > 0 && LF ? pressWait(LF, steps[0], steps[1], paLibBoard()->clock, LWAITALL && n == 1 ? breakWait(&LF->settle, steps[0], steps[1]) : pairWait(&LF->settle, steps[0], steps[1]), LWAITALL && n == 1) : 0;
 #ifndef __wasm__
   if (botTraceOn && n == 1 && waitTo > 60 && LF) { extern int fprintf(void *, const char *, ...); extern void *stderr; int r = steps[0], c = steps[1];
     fprintf(stderr, "  WAIT %d,%d to %d | first %d,%d last %d,%d\n", r, c, waitTo, LF->settle.first[r][c], LF->settle.first[r][c + 1], LF->settle.last[r][c], LF->settle.last[r][c + 1]); }
