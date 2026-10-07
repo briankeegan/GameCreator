@@ -4539,7 +4539,11 @@ static Dec meanwhile(Dec d) {
   if (!mr) {
     int32_t keepO[LNOLEN]; for (int k = 0; k < LNOLEN; k++) keepO[k] = LNO[k];
     lineJudge(ln + 2, n, waitAll);
-    int h0 = HOLLOW(LNO), hb = h0, vb = LNO[14], v0b = vb, t2 = 0, q;
+    // twos are read where the swap makes them (twosOf on the board the engine
+    // settles to after it), not where the judge's horizon ends
+    static ST MW1; int32_t mc1[2], mt1; uint32_t mcan[WMAX]; uint8_t mwt[32][WMAX];
+    int tw0 = lineState(0, 0, MW1, mcan, mwt, mc1, &mt1) == 0 ? twosOf(MW1) : 0;
+    int h0 = HOLLOW(LNO), hb = h0, vb = tw0, v0b = vb, t2 = 0, q;
     int32_t pl[2 * MAXCAND]; int pn = 0;
     for (int k = 0; k < nPool && pn < MAXCAND; k++) {
       Cand *cd = &POOL[k];
@@ -4553,8 +4557,12 @@ static Dec meanwhile(Dec d) {
       ln[0] = pl[2 * q]; ln[1] = pl[2 * q + 1];
       int v = lineJudge(ln, n + 1, waitAll);
       if ((v & need) != need || LNO[1] > last0 || (die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0)) continue;
-      if (!(HOLLOW(LNO) < hb || (HOLLOW(LNO) == hb && LNO[14] > vb))) continue;
-      hb = HOLLOW(LNO); vb = LNO[14]; mr = ln[0]; mc = ln[1];
+      int hl = HOLLOW(LNO);
+      if (hl > hb) continue;
+      int tw = vb;
+      if (hl == hb) { tw = lineState(ln, 1, MW1, mcan, mwt, mc1, &mt1) == 0 ? twosOf(MW1) : 0; if (tw <= vb) continue; }
+      else if (lineState(ln, 1, MW1, mcan, mwt, mc1, &mt1) == 0) tw = twosOf(MW1);
+      hb = hl; vb = tw; mr = ln[0]; mc = ln[1];
     }
     for (int k = 0; k < LNOLEN; k++) LNO[k] = keepO[k];
 #ifndef __wasm__
