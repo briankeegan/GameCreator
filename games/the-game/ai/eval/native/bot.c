@@ -1234,11 +1234,12 @@ static int unreadies(const Cand *pc) {
   if (!baseReady) return 0;
   return !slabReadyHook(pc->masks);
 }
+static int undoesPress(int r, int c);
 static int playable(int r, int c) {
   Cand *pc = poolSwap(r, c);
   if (!pc) return 0;
   if (unreadies(pc)) return 0;
-  if (returnsToSeen(r, c)) return 0;
+  if (returnsToSeen(r, c) || undoesPress(r, c)) return 0;
   if (spendsReserve(&pc->res, pc->masks)) return 0;
   return !deadly(pc->masks, &pc->res, horizonOf(pc));
 }
@@ -1406,7 +1407,7 @@ static Dec decideCore(void) {
       Cand *ac = ALLOWED[i];
       if (ac->kind == K_SWAP) {
         Sig s; sigOf(ac->masks, &s);
-        int seen = sigEq(&s, &HERE);
+        int seen = sigEq(&s, &HERE) || undoesPress(ac->sr, ac->sc);
         for (int q = 0; !seen && q < BT->nSeen; q++) if (sigEq(&s, &BT->seen[q])) seen = 1;
         if (seen) { BT->counts[C_REFUSEDRETURN]++; continue; }
       }
@@ -3094,7 +3095,37 @@ static Dec playOn(Dec d) {
 }
 
 // IT MUST NOT DIE.
+// AN UNDO: a swap at a pair the bot pressed, whose two cells still hold what
+// that press left there, puts them back as they were. Two presses undone in
+// turn swap the board around while it waits (seed 9: 3,2 and 4,1; seed 4:
+// 6,5 and 4,5, each line the other's undo by two frames of life). A swap that
+// clears or breaks is no undo. Returns how many presses back (0: none).
+static int pairColour(const int32_t *st, int r, int c) {
+  uint32_t b = 1u << (r - 1);
+  if (r < 1 || r > 31 || !(U(st, OCC + c) & b) || (U(st, GARB + c) & b)) return 0;
+  return colourFirst(st, c, b);
+}
+// the presses, as they come: the last one pressed, and the colours it left
+static void notePresses(void) {
+  if (!BIN[IN_HASLAST]) return;
+  int r = (int)BIN[IN_LASTR], c = (int)BIN[IN_LASTC];
+  if (BT->nPr && BT->prR[0] == r && BT->prC[0] == c) return;
+  for (int i = (BT->nPr < 8 ? BT->nPr : 7); i > 0; i--) { BT->prR[i] = BT->prR[i - 1]; BT->prC[i] = BT->prC[i - 1]; BT->prA[i] = BT->prA[i - 1]; BT->prB[i] = BT->prB[i - 1]; }
+  BT->prR[0] = r; BT->prC[0] = c; BT->prA[0] = pairColour(DBASE, r, c); BT->prB[0] = pairColour(DBASE, r, c + 1);
+  if (BT->nPr < 8) BT->nPr++;
+}
+static int undoesPress(int r, int c) {
+  Cand *pc = poolSwap(r, c);
+  if (pc && (pc->res.total > 0 || pc->res.broke)) return 0;
+  int a = pairColour(DBASE, r, c), b = pairColour(DBASE, r, c + 1);
+  if (a == b) return 0;
+  for (int i = 0; i < BT->nPr; i++) if (BT->prR[i] == r && BT->prC[i] == c && BT->prA[i] == a && BT->prB[i] == b) return i + 1;
+  return 0;
+}
+// A LINE MAY NOT START BY GOING BACK: not by undoing a press, and (two deep)
+// not by repeating the last swap or returning to a board seen
 static int notLastSwap(const LineC *l) {
+  if (undoesPress(l->sw[0], l->sw[1])) return 0;
   if (l->n == 1) return 1;
   int r = l->sw[0], c = l->sw[1];
   return !(returnsToSeen(r, c) || (BIN[IN_HASLAST] && r == (int)BIN[IN_LASTR] && c == (int)BIN[IN_LASTC]));
@@ -3126,7 +3157,12 @@ static Dec stayAlive(Dec d) {
   linesFind(2, 0);
   // NEVER DYING FIRST: the choice is kept only if it lives as long as the line that lives longest
   LineC *l = bestLiving(notLastSwap);
-  if (lineLast == 1) { if (!l || l->die <= playDie) return saKeep(d, playDie); lineLast = 0; }
+  if (lineLast == 1) {
+    if (!l || l->die <= playDie) return saKeep(d, playDie);
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SA leaves the line played (dies %d) for", playDie); for (int k = 0; k < l->n; k++) fprintf(stderr, " %d,%d", l->sw[2 * k], l->sw[2 * k + 1]); fprintf(stderr, " (dies %d)\n", l->die); }
+#endif
+    lineLast = 0; }
   if (d.kind == K_SWAP) {
     dR = d.sr; dC = d.sc;
     LineC *mine = bestLineAvoid(LV_LIVES | LV_GAINS, 0, fromChoice);
@@ -3165,40 +3201,17 @@ static int landHollow(const int32_t *sw, int n) {
   }
   return h;
 }
-// NO GOING BACK: a swap at a pair the bot pressed, whose two cells still hold
-// what that press left there, puts them back as they were -- an undo. Two
-// presses undone in turn swap the board around while it waits (seed 9: 3,2
-// and 4,1, each undone two presses later, for 110 frames). Unless it clears
-// or breaks, it gives way to the hold, which keeps the board that press made.
-static int pairColour(const int32_t *st, int r, int c) {
-  uint32_t b = 1u << (r - 1);
-  if (r < 1 || r > 31 || !(U(st, OCC + c) & b) || (U(st, GARB + c) & b)) return 0;
-  return colourFirst(st, c, b);
-}
+// NO GOING BACK: a swap that undoes a press (undoesPress) gives way to the
+// hold, which keeps the board that press made.
 static Dec returnGuard(Dec d) {
-  // the presses, as they come: the last one pressed, and the colours it left
-  if (BIN[IN_HASLAST]) {
-    int r = (int)BIN[IN_LASTR], c = (int)BIN[IN_LASTC];
-    if (!BT->nPr || BT->prR[0] != r || BT->prC[0] != c) {
-      for (int i = (BT->nPr < 8 ? BT->nPr : 7); i > 0; i--) { BT->prR[i] = BT->prR[i - 1]; BT->prC[i] = BT->prC[i - 1]; BT->prA[i] = BT->prA[i - 1]; BT->prB[i] = BT->prB[i - 1]; }
-      BT->prR[0] = r; BT->prC[0] = c; BT->prA[0] = pairColour(DBASE, r, c); BT->prB[0] = pairColour(DBASE, r, c + 1);
-      if (BT->nPr < 8) BT->nPr++;
-    }
-  }
   if (d.kind != K_SWAP || !d.hasMove || lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;
-  Cand *pc = poolSwap(d.sr, d.sc);
-  if (pc && (pc->res.total > 0 || pc->res.broke)) return d;
-  int a = pairColour(DBASE, d.sr, d.sc), b = pairColour(DBASE, d.sr, d.sc + 1);
-  if (a == b) return d;
-  for (int i = 0; i < BT->nPr; i++) {
-    if (BT->prR[i] != d.sr || BT->prC[i] != d.sc || BT->prA[i] != a || BT->prB[i] != b) continue;
+  int back = undoesPress(d.sr, d.sc);
+  if (!back) return d;
 #ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RETURN via %d %d,%d undoes the press %d back\n", d.via, d.sr, d.sc, i + 1); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RETURN via %d %d,%d undoes the press %d back\n", d.via, d.sr, d.sc, back); }
 #endif
-    BT->nLine = 0; lineLast = 0;
-    return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
-  }
-  return d;
+  BT->nLine = 0; lineLast = 0;
+  return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
 }
 static Dec perchGuard(Dec d) {
   if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA]) return d;
@@ -4898,6 +4911,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // every decision to, and a guard with nothing to hold it to lets anything
   // through -- so it is judged while the budget is whole, once
   aloneOnEngine();
+  DBASE = IN; notePresses();
   SHARE(25); Dec d = decideRuled(); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(5); d = playOn(d);
   int32_t lineAfterPlay[2 * LINEMAX]; int nLineAfterPlay = BT->nLine;
