@@ -20,7 +20,7 @@ static int comboCells(int size) {
 static const double STARTER_W[] = { -20, -10, -40, 5, 13, 20, 30, 4, 6, 8, 10, 10, 5, 15, 5, 5, 25, 5, 50, 30 };
 
 enum { H_NONE, H_UP, H_DOWN, H_LEFT, H_RIGHT };   // BIN[IN_HELD]
-typedef struct { uint8_t last[32][W + 2], first[32][W + 2], same[32][W + 2]; } Settle;   // per cell (unsettled): the frame it settles from, the frame it first changes, and whether it settles to what it holds now
+typedef struct { uint8_t last[32][W + 2], first[32][W + 2], same[32][W + 2], garb[32][W + 2]; } Settle;   // per cell (unsettled): the frame it settles from, the frame it first changes, whether it settles to what it holds now, and whether it settles to garbage
 typedef struct {
   int id, reaction, reveal, allowRaise;
   int cooldown, raiseFrames, raiseStarted, wantRaise, wantRows, raiseLives;
@@ -242,7 +242,7 @@ static void unsettled(Board *b, uint32_t *out, Settle *S) {
   nb_copy(USB, b);
   USB->ninc = 0;   // what is on the board settling, not what is still to drop
   for (int c = 0; c < W + 2; c++) out[c] = 0;
-  for (int r = 0; r < 32; r++) for (int c = 0; c < W + 2; c++) S->last[r][c] = S->first[r][c] = S->same[r][c] = 0;
+  for (int r = 0; r < 32; r++) for (int c = 0; c < W + 2; c++) S->last[r][c] = S->first[r][c] = S->same[r][c] = S->garb[r][c] = 0;
   static JLOCAL int32_t usNow[32][W + 2][3];   // per thread: parallel judges each settle their own board
   int top = b->height < 31 ? b->height : 31;
   for (int r = 1; r <= top; r++)
@@ -277,12 +277,17 @@ static void unsettled(Board *b, uint32_t *out, Settle *S) {
   for (int r = 1; r <= top; r++) for (int c = 1; c <= W; c++) {
     if (S->last[r][c]) out[c] |= 1u << (r - 1);
     S->same[r][c] = usPrev[r][c][0] == usNow[r][c][0] && usPrev[r][c][1] == usNow[r][c][1] && usPrev[r][c][2] == usNow[r][c][2];
+    S->garb[r][c] = usPrev[r][c][1] != 0;
   }
 }
-// The frame from which every cell is settled.
-static int allWait(const Settle *S) {
-  int m = 0;
-  for (int r = 1; r < 32; r++) for (int c = 1; c <= W; c++) if (S->last[r][c] > m) m = S->last[r][c];
+static int pairWait(const Settle *S, int r, int c);
+// A BREAK'S PRESS WAITS FOR WHAT IT BREAKS, not for the board: its own pair
+// settled and every garbage cell at rest (garbage is breakable the frame it
+// lands). A clear elsewhere still running is no reason to wait -- on a quiet
+// board the next slab drops meanwhile.
+static int breakWait(const Settle *S, int r, int c) {
+  int m = pairWait(S, r, c);
+  for (int rr = 1; rr < 32; rr++) for (int cc = 1; cc <= W; cc++) if (S->garb[rr][cc] && S->last[rr][cc] > m) m = S->last[rr][cc];
   return m;
 }
 // A PAIR STILL NOW IS PRESSED NOW: both its cells hold what they settle to,
@@ -454,7 +459,7 @@ static int pressWait(Front *F, int r, int c, int clock, int wait) {
 }
 static void beginWalk(Front *F, int r, int c, int cooldown, int waitAll) {
   F->walk = 1; F->wRow = r; F->wCol = c; F->wTimer = 0; F->wCooldown = cooldown; F->wRetries = 0; F->wHasDisp = 0;
-  int wait = waitAll ? allWait(&F->settle) : pairWait(&F->settle, r, c);
+  int wait = waitAll ? breakWait(&F->settle, r, c) : pairWait(&F->settle, r, c);
   F->wKept = F->pkAt && F->pkR == r && F->pkC == c;
   if (!F->wKept) { F->pkR = r; F->pkC = c; F->pkAt = FB->clock + wait; }
   F->wWaitTo = pressWait(F, r, c, FB->clock, wait); F->wFrames = 0; F->wWaitAll = waitAll; F->wR0 = r;
@@ -507,7 +512,7 @@ static int parkStep(Front *F, int input) {
 static JLOCAL Board *LNB;
 static Front *LF;
 static JLOCAL Settle LSET;
-static JLOCAL int LWAITALL;   // the line's last press waits for the whole board to settle
+static JLOCAL int LWAITALL;   // the line's last press waits for its pair and the garbage to settle (breakWait)
 // A LINE'S PREFIX, KEPT WHERE ITS NEXT STEP BEGINS. A line played to the
 // frame its next step would start (stopAtNext 1) leaves the engine exactly
 // where every longer line with that prefix stands then: the board, the frame,
@@ -556,7 +561,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   int snapSettle = from && from->hasSettle;
   int kept0 = n > 0 && LF && LF->pkAt && LF->pkR == steps[0] && LF->pkC == steps[1];
   int fs = 0, r0 = tr;   // the frame the step's settle was taken, its row then
-  int waitTo = n > 0 && LF ? pressWait(LF, steps[0], steps[1], paLibBoard()->clock, LWAITALL && n == 1 ? allWait(&LF->settle) : pairWait(&LF->settle, steps[0], steps[1])) : 0;
+  int waitTo = n > 0 && LF ? pressWait(LF, steps[0], steps[1], paLibBoard()->clock, LWAITALL && n == 1 ? breakWait(&LF->settle, steps[0], steps[1]) : pairWait(&LF->settle, steps[0], steps[1])) : 0;
 #ifndef __wasm__
   if (botTraceOn && n == 1 && waitTo > 60 && LF) { extern int fprintf(void *, const char *, ...); extern void *stderr; int r = steps[0], c = steps[1];
     fprintf(stderr, "  WAIT %d,%d to %d | first %d,%d last %d,%d\n", r, c, waitTo, LF->settle.first[r][c], LF->settle.first[r][c + 1], LF->settle.last[r][c], LF->settle.last[r][c + 1]); }
@@ -582,7 +587,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
         walking = 1; tr = steps[2 * step]; tc = steps[2 * step + 1]; timer = 0; disp = b->displacement;
         { uint32_t still[W + 2];
           if (snapSettle && step == from->n) { LSET = from->settle; snapSettle = 0; } else unsettled(b, still, &LSET);
-          waitTo = f + (LWAITALL && step == n - 1 ? allWait(&LSET) : pairWait(&LSET, tr, tc)); fs = f; r0 = tr; }
+          waitTo = f + (LWAITALL && step == n - 1 ? breakWait(&LSET, tr, tc) : pairWait(&LSET, tr, tc)); fs = f; r0 = tr; }
       }
     }
     if (walking) {
