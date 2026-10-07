@@ -22,7 +22,7 @@ enum { M_BUILD, M_DEFEND, M_ATTACK };
 // the line a bot plays (Bot.line): what it is for, and the most steps it holds
 enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
 #define LINEMAX 8
-#define LNOLEN 16
+#define LNOLEN 17
 // THE HOLLOW of a judged line: the gaps under garbage on the board it ends on
 // ([10]) and the gaps the slabs to come would leave over its towers ([13]). A
 // tower lowered also lets a pile perched on it down onto panels it can break on.
@@ -4911,6 +4911,17 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   d = perchGuard(d);
   d = setupTwos(d);
   d = surviveGuard(d);
+#ifndef __wasm__
+  // THE PRESS THE JUDGE EXPECTS, for the log: read from the judge's memo only
+  // (the log does no work), set beside the PRESS line the front writes
+  if (botTraceOn && d.kind == K_SWAP && d.hasMove) {
+    extern int fprintf(void *, const char *, ...); extern void *stderr;
+    int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc, v; int32_t lno[LNOLEN];
+    int32_t sw1[2] = { d.sr, d.sc };
+    if (playsLine ? jmFind(BT->line, BT->nLine, BT->lineWaitAll, &v, lno) : jmFind(sw1, 1, d.waitAll, &v, lno))
+      fprintf(stderr, "PLAN at %d,%d press at clock %d last %d die %d\n", d.sr, d.sc, lno[16], lno[1], lno[0]);
+  }
+#endif
   cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
 #undef SHARE
 #ifndef __wasm__

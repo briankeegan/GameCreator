@@ -479,7 +479,7 @@ static int driveWalk(Front *F, int input) {
   // the swap's panels settle at a known frame: a walk that arrives first waits
   // a pair still now is pressed now, unless a plan has already fixed its frame
 #ifndef __wasm__
-  { extern int botTraceOn; if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "WALK clock %d at %d,%d frames %d waitTo %d pkAt %d kept %d waitAll %d free %d can %d topped %d\n", FB->clock, row, col, F->wFrames, F->wWaitTo, F->pkAt, F->wKept, F->wWaitAll, pairFree(&F->settle, F->wR0, col, F->wFrames), nb_can_swap(FB, FB->curRow, FB->curCol), toppedNow()); } }
+  { extern int botTraceOn; if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "WALK front %d clock %d at %d,%d (target %d,%d cursor %d,%d top %d) frames %d waitTo %d pkAt %d kept %d waitAll %d free %d can %d topped %d\n", F->id, FB->clock, row, col, F->wRow, F->wCol, FB->curRow, FB->curCol, FB->topCurRow, F->wFrames, F->wWaitTo, F->pkAt, F->wKept, F->wWaitAll, pairFree(&F->settle, F->wR0, col, F->wFrames), nb_can_swap(FB, FB->curRow, FB->curCol), toppedNow()); } }
 #endif
   if (F->wFrames < F->wWaitTo && (F->wWaitAll || F->wKept || !pairFree(&F->settle, F->wR0, col, F->wFrames))) {
     // a wait is not a plan: topped, or a reaction's worth of waiting, decide again
@@ -489,7 +489,11 @@ static int driveWalk(Front *F, int input) {
   }
   int ok = nb_can_swap(FB, FB->curRow, FB->curCol) && nb_try_queue_swap(FB, FB->curRow, FB->curCol);
   F->walk = 0;
-  if (ok) { F->hasLast = 1; F->lastR = FB->curRow; F->lastC = FB->curCol; F->cooldown = F->wCooldown; F->pkAt = 0; return input; }
+  if (ok) {
+#ifndef __wasm__
+    { extern int botTraceOn; if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "PRESS clock %d at %d,%d\n", FB->clock, FB->curRow, FB->curCol); } }
+#endif
+    F->hasLast = 1; F->lastR = FB->curRow; F->lastC = FB->curCol; F->cooldown = F->wCooldown; F->pkAt = 0; return input; }
   // REFUSED, THE BOT DECIDES AGAIN. The swap was the one chosen; another
   // cell walked to instead is a choice nothing judged.
   F->cooldown = 0;
@@ -587,8 +591,9 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   if (botTraceOn && n == 1 && waitTo > 60 && LF) { extern int fprintf(void *, const char *, ...); extern void *stderr; int r = steps[0], c = steps[1];
     fprintf(stderr, "  WAIT %d,%d to %d | first %d,%d last %d,%d\n", r, c, waitTo, LF->settle.first[r][c], LF->settle.first[r][c + 1], LF->settle.last[r][c], LF->settle.last[r][c + 1]); }
 #endif
-  out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = out[13] = out[14] = 0; out[15] = -1;
+  out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = out[13] = out[14] = 0; out[15] = out[16] = -1;   // out[16]: the clock the first step is pressed at
   int32_t landedFrom = b->garbageCreatedCount;   // out[15]: read once the next slab has landed
+  int pressStep = -1, pressLast = 0;   // the step pressed this frame, and the last press before it
   { extern int paBudgetOut(void); if (paBudgetOut()) return -1; }   // past the decision's budget: not played
   // A LINE IS JUDGED TO WHERE ITS CONSEQUENCE SHOWS: past the horizon the
   // judge plays on while the board is still busy -- a chain running, garbage
@@ -635,7 +640,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
 #endif
           out[1] = -1; out[5] = step; out[6] = f; out[7] = b->ninc; return -1;
         }
-        else { last = f; step++; walking = 0; cool = LF ? LF->reaction : 12; dropped = b->garbageCreatedCount; }
+        else { pressStep = step; pressLast = last; if (step == 0) out[16] = b->clock; last = f; step++; walking = 0; cool = LF ? LF->reaction : 12; dropped = b->garbageCreatedCount; }
       } else if (timer > 0) timer--;
       else {
         if (b->curCol < col) input = IN_RIGHT; else if (b->curCol > col) input = IN_LEFT;
@@ -649,6 +654,13 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
     b->input = input;
     nb_run(b);
     if (b->err) return -1;
+    // A PRESS THE ENGINE DENIES IS NO PRESS: the swap is checked after the
+    // frame's physics, and a pair swappable before it may not be after (pa.c
+    // swapDenied) -- the step is still to press, as on the real board
+    if (pressStep >= 0) {
+      if (b->swapDenied) { step = pressStep; last = pressLast; if (step == 0) out[16] = -1; cool = 0; }
+      pressStep = -1;
+    }
     if (b->health < h0 || b->gameOverClock > 0) { out[0] = f + 1; break; }
     if (out[15] < 0 && b->garbageCreatedCount > landedFrom && !nb_falling_garbage(b)) out[15] = standingHollow(b);
   }
