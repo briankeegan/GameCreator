@@ -2097,7 +2097,12 @@ static int budgetRefused;
 // THE LINE OPTIONAL WORK STOPS AT: the decision's (OPTWORK from its start), or
 // lower while a stage runs that must leave a later stage its share (stageEnd)
 static double stageEnd = 1e300;
-static double optLine(void) { double e = rdW0 + OPTWORK; return stageEnd < e ? stageEnd : e; }
+// THE GUARDS' SHARE: perchGuard and surviveGuard decide last, and a guard that
+// cannot judge lets anything through -- so every stage before them stops short
+// of OPTWORK by the most they have taken (guardRes, decaying as the other
+// reserves); the guards themselves run to OPTWORK
+static double guardRes; static int inGuard;
+static double optLine(void) { double e = rdW0 + OPTWORK - (inGuard ? 0 : guardRes); return stageEnd < e ? stageEnd : e; }
 // A BATCH ONLY AS FAR AS THE BUDGET HOLDS IT: of `count` tasks costing at
 // most `cost` each, the number that fit in what is left; the rest are not done
 static int fitTasks(int count, double cost) {
@@ -4823,9 +4828,11 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     if (l->n > 1) lineKeep(l, LINE_BREAK); else BT->nLine = 0;
     d = lineSwap(l, V_BREAKREACH, d);
   }
-  d = perchGuard(d);
-  d = setupTwos(d);
-  d = surviveGuard(d);
+  { double g0 = paWork, gw;
+    inGuard = 1; d = perchGuard(d); inGuard = 0; gw = paWork - g0;
+    d = setupTwos(d);
+    g0 = paWork; inGuard = 1; d = surviveGuard(d); inGuard = 0; gw += paWork - g0;
+    guardRes *= 0.99; if (gw > guardRes) guardRes = gw; }
   cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
 #undef SHARE
 #ifndef __wasm__
