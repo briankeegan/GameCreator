@@ -3590,10 +3590,13 @@ static Dec fillFirstIn(Dec d) {
   }
   if (need > 0) need = 0;   // in time is in time
   Cand *pick = 0;
-  // NOT TO DIE, BY ANY MEANS: over six rows a clear may be spent to fill;
-  // under, only by a fill that loses health later than the choice and the board left alone
+  // NOT TO DIE: over six rows a clear may be spent to fill; under, only while
+  // the board left alone loses health before its soonest break, and only by a
+  // fill that loses it later. Losing it later is not enough on its own: a
+  // clear's stop time puts every loss of health off, and a board spent below
+  // six rows cannot rise while the stop lasts.
   int surplus = materialRows(DBASE) >= 6;
-#define LIVES_LONGER() ((LNO[0] ? LNO[0] : 1 << 20) > refDie)
+#define LIVES_LONGER() (fillUrgent && (LNO[0] ? LNO[0] : 1 << 20) > refDie)
   // the pool: by fillScore, then the shortest walk, then the swaps; nothing
   // counts that does not beat the choice and the board left alone
   Best P = { 0 };
@@ -3750,10 +3753,11 @@ static Dec meanwhile(Dec d) {
   int last0 = LNO[1], die0 = LNO[0], need = LV_LIVES | (v0 & LV_BREAKS), mr = 0, mc = 0, most = 0, tried = 0, keep = 1;
   int fr = 0, fc = 0, fmost = 0;   // a clear on its own, the line dropped: decided again once it can be pressed
   // MATERIAL IS SPENT ONLY TO BREAK OR TO LIVE: under six rows a clear goes
-  // first only if it loses health later than the line it goes before
-  aloneOnEngine();
+  // first only while the board left alone loses health before its soonest
+  // break, and loses it later than the line it goes before
+  int urgent = aloneOnEngine() && LNA[0] && marginAfter(0, 0, LNA[0]) < 0;
   int die0Of = die0 ? die0 : 1 << 20;
-#define SPENDS_OK() ((LNO[0] ? LNO[0] : 1 << 20) > die0Of || materialRows(DBASE) - (double)(LNO[3] - LNA[3]) / BW >= 6)
+#define SPENDS_OK() ((urgent && (LNO[0] ? LNO[0] : 1 << 20) > die0Of) || materialRows(DBASE) - (double)(LNO[3] - LNA[3]) / BW >= 6)
   for (int q = 0; q < nPool && tried < MEANWHILES; q++) {
     Cand *k = &POOL[q];
     if (k->kind != K_SWAP || !(k->res.total > 0) || k->res.broke || (k->sr == d.sr && k->sc == d.sc) || k->moveFrames + REACT > last0) continue;
