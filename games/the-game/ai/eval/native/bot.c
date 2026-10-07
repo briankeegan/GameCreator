@@ -2968,6 +2968,14 @@ static int readyAfterSpend(const int32_t *sw, int n);
 static int aloneOnEngine(void);
 static int nonSpendLives(void);
 static int spendsLeaveSixP(void) { return (double)LNO[12] / BW >= 6; }   // the panels the line ends with, as rows
+// A SPEND THAT KEEPS A WAITING RAISE OUT: a clear holds the rise lock, so
+// while a raise for material waits on it, a spend under six rows with no break
+// ready may only if the board left alone loses health before the lock would
+// end -- the raise could not come in time to save it anyway
+static int spendKeepsRaiseOut(void) {
+  if (!raiseWaiting || !aloneOnEngine()) return 0;
+  return !(LNA[0] && LNA[0] <= BIN[IN_LOCKLEFT]);
+}
 static Dec playOn(Dec d) {
   lineLast = 0;
   if (!BT->nLine) return d;
@@ -2987,7 +2995,7 @@ static Dec playOn(Dec d) {
   if (BT->lineKind == LINE_PLAN && (v & LV_PAYS) && !(v & LV_BREAKS) && !spendsLeaveSixP()) {
     int32_t keepO[LNOLEN]; for (int q = 0; q < LNOLEN; q++) keepO[q] = LNO[q];
     int buys = aloneOnEngine() && LNA[0] && (!keepO[0] || keepO[0] > LNA[0]);
-    int ok = readyAfterSpend(BT->line, BT->nLine) || (buys && !nonSpendLives());
+    int ok = readyAfterSpend(BT->line, BT->nLine) || (buys && !nonSpendLives() && !spendKeepsRaiseOut());
     for (int q = 0; q < LNOLEN; q++) LNO[q] = keepO[q];
     if (!ok) { BT->nLine = 0; return d; }
   }
@@ -4126,7 +4134,7 @@ static Dec fillFirstIn(Dec d) {
     double sc = fillScoreOf(sw, 1, pdie, HOLLOW(LNO));
     if (P.has ? !bestBeats(&P, sc, pc->moveFrames, sw, 1) : sc <= ref) { FILLWHY("beaten"); continue; }
     if (!fillKeeps(marginWithin(sw, 1, pdie, need), need)) { FILLWHY("costs the break's time"); continue; }
-    if (spend && !readyAfterSpend(sw, 1) && nonSpendLives()) { FILLWHY("spends, not ready, a non-spend lives"); continue; }   // a move that spends nothing lives: a spend must leave a break ready
+    if (spend && !readyAfterSpend(sw, 1) && (nonSpendLives() || spendKeepsRaiseOut())) { FILLWHY("spends, not ready, a non-spend lives or a raise waits"); continue; }   // a move that spends nothing lives: a spend must leave a break ready
     FILLWHY("best so far");
 #undef FILLWHY
     bestTake(&P, sc, pc->moveFrames, sw, 1); pick = pc;
@@ -4187,7 +4195,7 @@ static Dec fillFirstIn(Dec d) {
       double sc = fillScoreOf(fsw, n, wdie, HOLLOW(LNO));
       if (W.has ? !bestBeats(&W, sc, est, fsw, n) : sc <= ref) continue;
       if (!fillKeeps(marginWithin(fsw, n, wdie, need), need)) continue;
-      if (spend && !readyAfterSpend(fsw, n) && nonSpendLives()) continue;
+      if (spend && !readyAfterSpend(fsw, n) && (nonSpendLives() || spendKeepsRaiseOut())) continue;
       bestTake(&W, sc, est, fsw, n); first[0] = fsw[0]; first[1] = fsw[1];
     }
   }
@@ -4309,7 +4317,7 @@ static Dec meanwhile(Dec d) {
   // living longer by keeping the board busy is a stall: the queue lands after
   // it all the same, so under six rows the clear must leave a break ready for it
   // -- unless the line it goes before dies: then stop time is what buys the time to find the break
-#define SPENDS_OK(sw, n) ((double)LNO[12] / BW >= 6 || (urgent && (LNO[0] ? LNO[0] : 1 << 20) > die0Of && (readyAfterSpend(sw, n) || !nonSpendLives())))
+#define SPENDS_OK(sw, n) ((double)LNO[12] / BW >= 6 || (urgent && (LNO[0] ? LNO[0] : 1 << 20) > die0Of && (readyAfterSpend(sw, n) || (!nonSpendLives() && !spendKeepsRaiseOut()))))
   for (int q = 0; q < nPool && tried < MEANWHILES; q++) {
     Cand *k = &POOL[q];
     if (k->kind != K_SWAP || !(k->res.total > 0) || k->res.broke || (k->sr == d.sr && k->sc == d.sc) || k->moveFrames + REACT > last0) continue;
