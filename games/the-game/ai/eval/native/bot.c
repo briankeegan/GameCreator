@@ -3999,12 +3999,21 @@ static Dec fillFirstIn(Dec d) {
     int32_t sw[2] = { pc->sr, pc->sc };
     int v = lineJudge(sw, 1, 0);
     int spend = (v & LV_PAYS) && !spendsLeaveSix();
-    if (!(v & LV_LIVES) || (spend && !LIVES_LONGER()) || LNO[1] >= tLand) continue;
+#ifndef __wasm__
+#define FILLWHY(why) do { if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  pool %d,%d v %d die %d last %d hollow %d spend %d tLand %d -> %s\n", sw[0], sw[1], v, LNO[0], LNO[1], HOLLOW(LNO), spend, tLand, why); } } while (0)
+#else
+#define FILLWHY(why) do { } while (0)
+#endif
+    if (!(v & LV_LIVES)) { FILLWHY("dies"); continue; }
+    if (spend && !LIVES_LONGER()) { FILLWHY("spends, lives no longer"); continue; }
+    if (LNO[1] >= tLand) { FILLWHY("pressed after the landing"); continue; }
     int pdie = LNO[0];
     double sc = fillScoreOf(sw, 1, pdie, HOLLOW(LNO));
-    if (P.has ? !bestBeats(&P, sc, pc->moveFrames, sw, 1) : sc <= ref) continue;
-    if (!fillKeeps(marginWithin(sw, 1, pdie, need), need)) continue;
-    if (spend && !readyAfterSpend(sw, 1) && nonSpendLives()) continue;   // a move that spends nothing lives: a spend must leave a break ready
+    if (P.has ? !bestBeats(&P, sc, pc->moveFrames, sw, 1) : sc <= ref) { FILLWHY("beaten"); continue; }
+    if (!fillKeeps(marginWithin(sw, 1, pdie, need), need)) { FILLWHY("costs the break's time"); continue; }
+    if (spend && !readyAfterSpend(sw, 1) && nonSpendLives()) { FILLWHY("spends, not ready, a non-spend lives"); continue; }   // a move that spends nothing lives: a spend must leave a break ready
+    FILLWHY("best so far");
+#undef FILLWHY
     bestTake(&P, sc, pc->moveFrames, sw, 1); pick = pc;
   }
   if (P.has) ref = P.score;
