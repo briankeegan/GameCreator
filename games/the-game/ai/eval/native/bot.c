@@ -3438,9 +3438,11 @@ static int walkTop(int c) {
   for (int k = tH; k >= 1; k--) if (tCell[k][c] > 0) return k;
   return 0;
 }
-// NEVER DYING FIRST: a fill is ranked by the frame it loses health while the
-// time is short (LIVEHORIZON; later first), then by the hollow it leaves
-static double fillScore(int die, int hollow) { return (die && die <= LIVEHORIZON ? die : (1 << 20)) * 4096.0 - hollow; }
+// NEVER DYING FIRST: while the board left alone loses health before its
+// soonest break (fillUrgent), a fill is ranked by the frame it loses health
+// (later first); otherwise by the hollow it leaves
+static int fillUrgent;
+static double fillScore(int die, int hollow) { return (fillUrgent && die ? die : (1 << 20)) * 4096.0 - hollow; }
 static Dec fillFirstIn(Dec d) {
   if (d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
   if (lineLast) return d;
@@ -3450,11 +3452,12 @@ static Dec fillFirstIn(Dec d) {
 #endif
   if (!aloneOnEngine() || LNA[10] == 0) return d;
   int best = LNA[10];
-  double ref = fillScore(LNA[0], LNA[10]);   // what a fill must beat: the board left alone, and the choice
   // A FILL IS A MEANS TO A BREAK, so it may not cost one: if the choice
   // breaks in time a fill must too; if not, a fill leaves at least as much
   // time between its break and its loss of health
   double need = marginAfter(0, 0, LNA[0]);
+  fillUrgent = LNA[0] && need < 0;
+  double ref = fillScore(LNA[0], LNA[10]);   // what a fill must beat: the board left alone, and the choice
   if (d.kind == K_SWAP && d.hasMove) {
     int32_t sw[2] = { d.sr, d.sc };
     if (lineJudge(sw, 1, 0) & LV_LIVES) { best = LNO[10] < best ? LNO[10] : best; if (fillScore(LNO[0], LNO[10]) > ref) ref = fillScore(LNO[0], LNO[10]); double m = marginAfter(sw, 1, LNO[0]); if (m > need) need = m; }
@@ -3464,8 +3467,8 @@ static Dec fillFirstIn(Dec d) {
   }
   if (need > 0) need = 0;   // in time is in time
   Cand *pick = 0;
-  // over six rows a clear may be spent to fill; under, only to live while the time is short
-  int surplus = materialRows(DBASE) >= 6, urgent = LNA[0] && LNA[0] <= LIVEHORIZON;
+  // over six rows a clear may be spent to fill; under, only to live when the board dies before its break
+  int surplus = materialRows(DBASE) >= 6, urgent = fillUrgent;
   // the pool: by fillScore, then the shortest walk, then the swaps; nothing
   // counts that does not beat the choice and the board left alone
   Best P = { 0 };
