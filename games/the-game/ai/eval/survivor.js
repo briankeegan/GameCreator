@@ -27,7 +27,7 @@
 // never fills it and V8's memory reducer is off; the one collection is made
 // at a match's start, in the countdown (gc). Those flags are only read when
 // node starts, so survivor.js runs itself again with them.
-var HEAP_FLAGS = ['--initial-old-space-size=64', '--no-memory-reducer', '--expose-gc'];
+var HEAP_FLAGS = ['--initial-old-space-size=64', '--heap-growing-percent=1000', '--no-memory-reducer', '--expose-gc'];
 if (!process.env.GC_SURVIVOR_CHILD) {
   var child = require('child_process').spawn(process.execPath, process.execArgv.concat(HEAP_FLAGS, [__filename], process.argv.slice(2)),
                                              { stdio: 'inherit', env: Object.assign({}, process.env, { GC_SURVIVOR_CHILD: '1' }) });
@@ -453,11 +453,15 @@ Match.prototype.planned = function (from, n) {
   for (var t = from; t < from + n && this.plan[t]; t++) out.push(this.plan[t].bits);
   return out;
 };
+function rowsOf(gs) { var n = 0; for (var i = 0; i < gs.length; i++) n += gs[i].height; return n; }
 Match.prototype.record = function (truth, bits, arrivals) {
   this.history.push({ clock: truth.clock, stopWatch: truth.stopWatch, bits: bits, cursor: [truth.curRow, truth.curCol],
                       health: truth.health, stop: truth.stopTime + truth.preStopTime, shake: truth.shakeTime, lock: !!truth.riseLock,
-                      incoming: truth.incoming, arrivals: arrivals.map(function (a) { return [a.at, a.g.width, a.g.height, !!a.g.isChain, !!a.g.isMetal]; }),
-                      grid: gridOf(truth) });
+                      // compact, as it is kept for many frames: [pieces, rows] queued,
+                      // [pieces, rows, first due] on the way, and the grid as one string
+                      incoming: [truth.incoming.length, rowsOf(truth.incoming)],
+                      arrivals: [arrivals.length, rowsOf(arrivals.map(function (a) { return a.g; })), arrivals.length ? arrivals[0].at : null],
+                      grid: gridOf(truth).join('\n') });
   if (this.history.length > HISTORY) this.history.shift();
   if (truth.clock % SNAP_EVERY === 0) this.snaps.push({ clock: truth.clock, grid: gridOf(truth) });
 };
@@ -546,7 +550,7 @@ var server = net.createServer(function (sock) {
         var fms = Number(process.hrtime.bigint() - t0) / 1e6;
         if (fms > match.stats.frameMs) match.stats.frameMs = Math.round(fms * 10) / 10;
         if (fms > 8) match.stats.slowFrames++;
-        if (TIMES) TIMES.push(match.now + ' ' + (tWall / 1000).toFixed(4) + ' ' + rms.toFixed(2) + ' ' + fms.toFixed(2));
+        if (TIMES) TIMES.push(match.now + ' ' + (tWall / 1000).toFixed(4) + ' ' + rms.toFixed(2) + ' ' + fms.toFixed(2) + ' ' + line.length);
         if (fms > 14) {
           if (sched0) { var sc = schedstat(); console.error('  on cpu ' + ((sc[0] - sched0[0]) / 1e6).toFixed(1) + ' ms, waiting for one ' + ((sc[1] - sched0[1]) / 1e6).toFixed(1) + ' ms, ' + (sc[2] - sched0[2]) + ' slices'); }
           var A = match.aparts || [], am = function (i) { return A[i] && A[i + 1] ? (Number(A[i + 1] - A[i]) / 1e6).toFixed(1) : '-'; };
