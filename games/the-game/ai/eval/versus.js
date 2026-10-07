@@ -293,6 +293,8 @@ exports.duel = function (weightsA, weightsB, seed, opts, optsB) {
 
     settleOpener(0);
     settleOpener(1);
+    // A bot holding native contexts hands them back (survivor_bot.js).
+    cpus.forEach(function (c) { if (c.release) c.release(); });
 
     var aDead = !!stacks[0].gameOver, bDead = !!stacks[1].gameOver;
 

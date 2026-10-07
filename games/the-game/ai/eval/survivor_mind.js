@@ -25,7 +25,7 @@ function search() {
   if (!BS) BS = new (require(path.join(DIR, 'native.js')).server.Search)({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames, threads: OPTS.threads || 1 });
   return BS;
 }
-var bot = null, snap = null, nat = null, BS = null;   // BS: a search context of its own for breakMoves   // nat: the search's C context, kept from match to match
+var bot = null, snap = null, nat = null, candNat = null, BS = null;   // BS: a search context of its own for breakMoves   // nat, candNat: the search's and the candidates' C contexts, kept from match to match
 var NativeMem = function () {
   var N = require(path.join(DIR, 'native.js')).server, X = N.exports(), free = [];
   for (var k = 0; k < 4; k++) free.push(X.nb_pool_stat(k));
@@ -34,7 +34,7 @@ var NativeMem = function () {
 
 var failWritten = false;
 wt.parentPort.on('message', function (m) {
-  if (m.type === 'reset') { if (bot && bot._nat) nat = bot._nat; bot = null; snap = null; return; }
+  if (m.type === 'reset') { if (bot && bot._nat) nat = bot._nat; if (bot && bot._candNat) candNat = bot._candNat; bot = null; snap = null; return; }
   // A question at or before the one the frame loop stopped is not wanted:
   // ids only grow, and only the newest is ever waited on.
   function stale() { return !!cfg.abort && Atomics.load(cfg.abort, 0) >= m.id; }
@@ -53,6 +53,7 @@ wt.parentPort.on('message', function (m) {
     if (!bot) {
       bot = new P(view, OPTS);
       if (nat) bot._nat = nat;
+      if (candNat) bot._candNat = candNat;
     }
     // A decision that was never played is taken back, as Mind.think does.
     if (snap && !m.acted) {
