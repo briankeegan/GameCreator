@@ -2974,12 +2974,31 @@ static int bbFound, bbLastN; static double bbLastEst;   // bestBreak: how many l
 // pile it does not convert out of reach; among the same, the one that
 // converts the most.
 static int readyInTime(const int32_t *sw, int n, int *br, int *bc);
+// READY FIRST, THEN LATEST: of two living lines, one that outlives the board
+// left alone (`alone`, 0: it does not die) and leaves a break in reach when
+// the next slab lands goes first -- the slab it is ready for is what kills;
+// between two alike, the one that loses health later. 1 better, -1 worse, 0
+// the same (the caller's own tie-break decides).
+static int readyThenLater(int rdy, int die, int pickRdy, int pickDie) {
+  if (rdy != pickRdy) return rdy > pickRdy ? 1 : -1;
+  return die > pickDie ? 1 : die < pickDie ? -1 : 0;
+}
+// whether a line counts as ready: asked only with garbage to come, and only of
+// a line that outlives the board left alone
+static int readyCounts(const LineC *l, int alone) {
+  if (!(BIN[IN_INCOMING] > 0) || (alone && l->die <= alone)) return 0;
+  int32_t keep[LNOLEN]; int r, c;
+  for (int k = 0; k < LNOLEN; k++) keep[k] = LNO[k];
+  int rdy = readyInTime(l->sw, l->n, &r, &c);
+  for (int k = 0; k < LNOLEN; k++) LNO[k] = keep[k];
+  return rdy;
+}
 static int bbReady;   // the break bestBreak picked leaves the board ready for the next slab
 static LineC bbDeferred; static int bbHasDeferred;   // a living break held for a better time, this decision
 static LineC *bestBreak(void) {
   static unsigned char taken[MAXLINES];
   const int need = LV_LIVES | LV_BREAKS;
-  int ask = BIN[IN_INCOMING] > 0, pickReady = 0;
+  int ask = BIN[IN_INCOMING] > 0, pickReady = 0, alone = aloneOnEngine() ? LNA[0] : 0;
   LineC *pick = 0;
   bbFound = 0; bbLastN = 0;
   for (int i = 0; i < nLines; i++) taken[i] = 0;
@@ -2997,11 +3016,9 @@ static LineC *bestBreak(void) {
     if ((judged(l) & need) != need) continue;
     found++; bbFound = found; bbLastN = l->n; bbLastEst = l->est;
     if (pick && pickReady && l->die <= pick->die && l->conv <= pick->conv) continue;
-    int rdy = 0, r, c;
-    if (ask) { int32_t keep[LNOLEN]; for (int k = 0; k < LNOLEN; k++) keep[k] = LNO[k]; rdy = readyInTime(l->sw, l->n, &r, &c); for (int k = 0; k < LNOLEN; k++) LNO[k] = keep[k]; }
-    // NEVER DYING FIRST: the break that loses health latest; then ready; then the most converted
-    if (!pick || l->die > pick->die || (l->die == pick->die && (rdy > pickReady || (rdy == pickReady && l->conv > pick->conv))))
-      { pick = l; pickReady = rdy; }
+    int rdy = ask ? readyCounts(l, alone) : 0, cmp = pick ? readyThenLater(rdy, l->die, pickReady, pick->die) : 1;
+    // ready first, then the latest loss of health; then the most converted
+    if (cmp > 0 || (cmp == 0 && l->conv > pick->conv)) { pick = l; pickReady = rdy; }
   }
   bbReady = !ask || pickReady;
   return pick;
@@ -3025,12 +3042,9 @@ static LineC *bestLiving(int (*ok)(const LineC *)) {
     judgeAhead(l, taken, 0);
     if ((judged(l) & need) != need) continue;
     found++;
-    // READY FIRST, WHEN ASKED (stayAlive): a line that outlives the board left
-    // alone and leaves a break in reach when the next slab lands is preferred
-    // to one that only dies later -- the slab it is ready for is what kills
-    int rdy = 0, r, c;
-    if (blReady && BIN[IN_INCOMING] > 0 && (!blAlone || l->die > blAlone)) rdy = readyInTime(l->sw, l->n, &r, &c);
-    if (!pick || rdy > pickRdy || (rdy == pickRdy && (l->die > pick->die || (l->die == pick->die && l->hollow < pick->hollow)))) { pick = l; pickRdy = rdy; }
+    // ready first when asked (stayAlive, readyThenLater), then the latest loss of health; then the least hollow
+    int rdy = blReady ? readyCounts(l, blAlone) : 0, cmp = pick ? readyThenLater(rdy, l->die, pickRdy, pick->die) : 1;
+    if (cmp > 0 || (cmp == 0 && l->hollow < pick->hollow)) { pick = l; pickRdy = rdy; }
   }
   return pick;
 }
