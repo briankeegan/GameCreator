@@ -3050,6 +3050,8 @@ static int lineupNear(const int32_t *st, int r, int c) {
   return r >= land - 2 && r <= land && c + 1 >= c0 - 1 && c <= c0 + w;
 }
 #define LUBEST 5   // a break that spends nothing
+#define MEANWHILE 30   // frames before a lineup can be pressed, past which a clear may go first
+#define MEANWHILES 6   // clears asked, at most
 #define LUBEAM 6   // second swaps taken on to a third
 // the rank of a lineup, asked only for ranks of at least `need`: a lineup
 // that is only ready ranks 2 or 3, so past 3 readiness is not looked for
@@ -3191,12 +3193,39 @@ static Dec lineupFirst(Dec d) {
   if (!B.has) return d;
   if (B.n == 1 && d.kind == K_SWAP && d.hasMove && d.sr == B.sw[0] && d.sc == B.sw[1]) return d;
   // the masks propose the lineup, the engine judges it, as every line
-  if (!(lineJudge(B.sw, B.n, 0) & LV_LIVES)) return d;
+  int vB = lineJudge(B.sw, B.n, 0);
+  if (!(vB & LV_LIVES)) return d;
   lineupLast = (int)B.score;
   lineLast = 5;
   plansDrop();
   BT->nLine = 0;
   if (B.n >= 2) { for (int k = 0; k < 2 * B.n; k++) BT->line[k] = B.sw[k]; BT->nLine = B.n; BT->lineKind = LINE_PLAN; BT->lineWaitAll = 0; }
+  // MEANWHILE: a lineup that cannot be pressed for a while (what it is made
+  // on is still converting or falling) is preceded by a clear that does not
+  // put it off -- it lives as long, breaks if the lineup does, and the
+  // lineup's last swap is pressed no later
+  if (B.t > MEANWHILE && B.n < LINEMAX) {
+    int lastB = LNO[1], dieB = LNO[0], need = LV_LIVES | (vB & LV_BREAKS), mr = 0, mc = 0, most = 0, tried = 0;
+    int32_t ln[2 * LINEMAX];
+    for (int k = 0; k < 2 * B.n; k++) ln[2 + k] = B.sw[k];
+    for (int q = 0; q < nPool && tried < MEANWHILES; q++) {
+      Cand *k = &POOL[q];
+      if (k->kind != K_SWAP || !(k->res.total > 0) || k->res.broke || k->moveFrames + REACT > B.t) continue;
+      tried++;
+      ln[0] = k->sr; ln[1] = k->sc;
+      int v = lineJudge(ln, B.n + 1, 0);
+      if ((v & need) != need || LNO[1] > lastB || (dieB ? (LNO[0] && LNO[0] < dieB) : LNO[0] != 0)) continue;
+      if (LNO[3] > most) { most = LNO[3]; mr = k->sr; mc = k->sc; }
+    }
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "MEANWHILE lineup at %g last %d die %d | tried %d clear %d,%d cells %d\n", B.t, lastB, dieB, tried, mr, mc, most); }
+#endif
+    if (mr) {
+      for (int k = 0; k < 2 * B.n; k++) BT->line[k] = B.sw[k];
+      BT->nLine = B.n; BT->lineKind = LINE_PLAN; BT->lineWaitAll = 0;
+      return mkSwap(mr, mc, V_LINEUP, d.mode, d.alive);
+    }
+  }
   return mkSwap(B.sw[0], B.sw[1], V_LINEUP, d.mode, d.alive);
 }
 // BREAK WHEN IT PAYS. A match beside a pile converts the whole pile, so a
