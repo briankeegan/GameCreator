@@ -4120,10 +4120,9 @@ static Dec fillFirstIn(Dec d) {
         if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  tower %d,%d dir %d n %d v %d hollow %d best %d\n", a, a + 1, dir, n, v, HOLLOW(LNO), best); }
 #endif
         double beat = W.has && W.score > ref ? W.score : ref;
-        // a line kept is played to its end: it must end before the next slab lands
-        int32_t tNext; ST lum; int last = LNO[1], vv = v, die = LNO[0], hol = HOLLOW(LNO);
-        int inTime = lineLanded(0, 0, lum, &tNext) == 0 && last < tNext;
-        if (inTime && (vv & LV_LIVES) && !(vv & LV_PAYS) && fillScoreOf(sw, n, die, hol) > beat && fillKeeps(marginWithin(sw, n, die, need), need)) {
+        // the judge plays the line through whatever lands while it is played
+        int vv = v, die = LNO[0], hol = HOLLOW(LNO);
+        if ((vv & LV_LIVES) && !(vv & LV_PAYS) && fillScoreOf(sw, n, die, hol) > beat && fillKeeps(marginWithin(sw, n, die, need), need)) {
           for (int k = 0; k < 2 * n; k++) BT->line[k] = sw[k];
           BT->nLine = n; BT->lineKind = LINE_PLAN; BT->lineWaitAll = 0;
           return mkSwap(sw[0], sw[1], V_FILL, d.mode, d.alive);
