@@ -3597,7 +3597,8 @@ static Dec fillFirstIn(Dec d) {
 // off -- the two live as long as the swap alone, break if it breaks, and its
 // line's last swap is pressed no later. The swap's line is kept, to play next.
 // If no clear keeps it, one that lives as long on its own is played and the
-// line is decided again -- unless the line breaks.
+// line is decided again: there is time to line it up again before it could be
+// pressed, and the room the clear makes is what the converted panels need.
 static Dec meanwhile(Dec d) {
   if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA]) return d;
   int32_t ln[2 * LINEMAX]; int n = 0, kind = LINE_PLAN, waitAll = 0;
@@ -3618,7 +3619,6 @@ static Dec meanwhile(Dec d) {
       if (LNO[3] > most) { most = LNO[3]; mr = k->sr; mc = k->sc; }
       continue;
     }
-    if (v0 & LV_BREAKS) continue;   // a break is not given up for a clear
     v = lineJudge(ln, 1, 0);
     if ((v & LV_LIVES) && !(die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0) && LNO[3] > fmost) { fmost = LNO[3]; fr = k->sr; fc = k->sc; }
   }
