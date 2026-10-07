@@ -19,6 +19,7 @@ var cfg = wt.workerData, OPTS = SH.botOptions(cfg.profile, cfg.threads);
 var rates = [], SPEND = Number(process.env.GC_SURVIVOR_SPEND) || 0.6;   // budget searched per millisecond over the last decisions, and the share of the time there is spent searching
 // The search ends this long before the answer is due, for the rest of the decision and its post.
 var DEADLINE_MARGIN_MS = Number(process.env.GC_SURVIVOR_MARGIN) || 30;
+var TIGHT_MS = Number(process.env.GC_SURVIVOR_TIGHT) || 80;   // due sooner than this: one move deep
 var TALL_RANK = 30;   // frames: a break sooner than this outranks lowering a tall board
 var LINEUP_AFTER = 30;   // frames past a pop's end a lined-up row has to have matched by
 var BANK_ROWS = 12, BANK_TOP = 10;   // garbage rows on the way that make banking worth it, and the row it banks up to
@@ -205,7 +206,11 @@ wt.parentPort.on('message', function (m) {
     var provenRanked = [];
     if (process.env.GC_SURVIVOR_WHY && bot.preferProven) { var pp0 = bot.preferProven; bot.preferProven = function (c, i) { var r = pp0.call(this, c, i); provenRanked.push(key(c) + '=' + r); return r; }; }
     if (process.env.GC_SURVIVOR_WHY && bot.preferRank) { var pr0 = bot.preferRank; bot.preferRank = function (c, i) { var r = pr0.call(this, c, i); ranked.push(key(c) + '=' + r); return r; }; }
-    try { d = bot._decide(); } finally { bot._abort = null; N.deadline(0); }
+    // A question due within TIGHT_MS is decided one move deep: the lookahead
+    // has no clock, and its second ply is most of what is left.
+    var depth0 = bot.depth;
+    if (due && due - Date.now() < TIGHT_MS) bot.depth = 1;
+    try { d = bot._decide(); } finally { bot._abort = null; N.deadline(0); bot.depth = depth0; }
     var why = null;
     if (process.env.GC_SURVIVOR_WHY) {
       var sp = bot._searchProofs;
