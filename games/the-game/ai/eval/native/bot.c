@@ -4127,7 +4127,12 @@ static Dec readyWhenLands(Dec d) {
   // first after which the slab lands with a break in reach. A line pressed
   // after the slab lands readies nothing for it, so only those before are tried.
   int32_t tLand; static ST RWL;
-  if (lineLanded(0, 0, RWL, &tLand) != 0) return d;
+  if (lineLanded(0, 0, RWL, &tLand) != 0) {
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RWL no landing on the board left alone: deeper readiness not searched\n"); }
+#endif
+    return d;
+  }
   linesFind(2, 0);
   static unsigned char rk[MAXLINES];
   for (int i = 0; i < nLines; i++) rk[i] = (char)(LINES[i].n < 2);
@@ -4197,6 +4202,9 @@ static Dec readyWhenLands(Dec d) {
   {
     static ST RWB; uint32_t can[WMAX]; uint8_t wt[32][WMAX]; int32_t cur[2], tl;
     if (lineLandedFull(0, 0, RWB, can, wt, cur, &tl) != 0) return d;
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RWL by distance: lands at %d\n", tl); }
+#endif
     int n0 = nLines;
     targetLines(RWB, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, tl);
     static unsigned char wk[MAXLINES];
