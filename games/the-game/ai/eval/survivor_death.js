@@ -9,10 +9,13 @@ if (!h.length) { console.log('no history in the dump'); process.exit(0); }
 var last = h[h.length - 1], earlier = h[Math.max(0, h.length - 1 - back)];
 function rows(hs) { return hs.reduce(function (t, h) { return t + h; }, 0); }
 function show(e) {
-  var inc = e.incoming || [], arr = e.arrivals || [];
+  // compact records ([pieces, rows], [pieces, rows, first due], one grid string), or full ones
+  var inc = e.incoming || [], arr = e.arrivals || [], grid = typeof e.grid === 'string' ? e.grid.split('\n') : e.grid;
+  var qn = typeof inc[0] === 'number' ? inc[0] : inc.length, qr = typeof inc[0] === 'number' ? inc[1] : rows(inc.map(function (g) { return g.height; }));
+  var an = typeof arr[0] === 'number' ? arr[0] : arr.length, ar = typeof arr[0] === 'number' ? arr[1] : rows(arr.map(function (a) { return a[2]; }));
+  var first = typeof arr[0] === 'number' ? arr[2] : (arr.length ? arr[0][0] : null);
   return ['clock ' + e.clock + ' cursor ' + JSON.stringify(e.cursor) + ' health ' + e.health + ' stop ' + e.stop +
-          ' queued ' + inc.length + ' pieces (' + rows(inc.map(function (g) { return g.height; })) + ' rows)' +
-          ' arriving ' + arr.length + ' (' + rows(arr.map(function (a) { return a[2]; })) + ' rows' + (arr.length ? ', first at ' + arr[0][0] : '') + ')'].concat(e.grid);
+          ' queued ' + qn + ' pieces (' + qr + ' rows) arriving ' + an + ' (' + ar + ' rows' + (first !== null ? ', first at ' + first : '') + ')'].concat(grid);
 }
 // the boards every BOARD_EVERY frames from FRAMES_BEFORE on, then every
 // decision answered in those frames
