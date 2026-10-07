@@ -3263,12 +3263,6 @@ static int lineupNear(const int32_t *st, int r, int c) {
   return r >= land - 2 && r <= land && c + 1 >= c0 - 1 && c <= c0 + w;
 }
 #define LUBEST 5   // a break that spends nothing
-// A LINEUP'S SCORE: its rank, then -- among lineups of one rank -- the less
-// hollow it leaves the slabs to come (HOLLOW: the gaps under garbage and over
-// towers), a share of a rank that never reaches the next: rank + 0.5/(1+hollow)
-#define LUMOST (LUBEST + 0.5)
-static int luHollow;   // the hollow of the line lineupRank judged last
-static double luScore(int rank) { return rank ? rank + 0.5 / (1 + luHollow) : 0; }
 #define MEANWHILE 30   // frames before a swap is pressed, past which a clear may go first
 #define MEANWHILES 6   // clears asked, at most
 #define LUBEAM 6   // second swaps taken on to a third
@@ -3296,7 +3290,6 @@ static int lineupRank(const int32_t *st, const int32_t *sw, int n, int need) {
   if (!mb && !readyAfter(sw, n)) return 0;
   int v = lineJudge(sw, n, 0);
   if (!(v & LV_LIVES)) return 0;
-  luHollow = HOLLOW(LNO);
   int spends = LNO[3] > LNA[3];
   int rank = (v & LV_BREAKS) ? 4 : 0;
   if (!rank && need <= 3 && (!mb || readyAfter(sw, n))) rank = 2;
@@ -3335,21 +3328,21 @@ static Dec lineupFirst(Dec d) {
   for (int p0 = 0; p0 < no0; p0++) {
     if (paWork > luEnd) break;
     i = ord0[p0]; far = far0[p0];
-    if (outPast(&B, LUMOST, far)) break;
+    if (outPast(&B, LUBEST, far)) break;
     int r = lg[2 * i], c = lg[2 * i + 1];
     int32_t sw[4] = { r, c, 0, 0 };
-    if ((!B.has || (int)B.score <= 3) && !raFind(sw, 1, &j)) {   // this and the next, asked together
+    if ((!B.has || B.score <= 3) && !raFind(sw, 1, &j)) {   // this and the next, asked together
       int32_t ls[8][4]; int nls = 0;
       for (int q = p0; q < no0 && nls < 8; q++) { ls[nls][0] = lg[2 * ord0[q]]; ls[nls][1] = lg[2 * ord0[q] + 1]; ls[nls][2] = ls[nls][3] = 0; nls++; }
       readyAhead(st0, &ls[0][0], nls, 1);
     }
     double at = dmax(far, waits0[r][c]);
-    // it counts only at a rank that can win: the best's, where less hollow wins (luScore)
+    // it counts only at a rank that wins: level with the best if it comes ahead of it, else above
     double rk0 = NOWMS2();
-    int rank = lineupRank(st0, sw, 1, !B.has ? 0 : (int)B.score);
+    int rank = lineupRank(st0, sw, 1, !B.has ? 0 : bestBeats(&B, B.score, at, sw, 1) ? (int)B.score : (int)B.score + 1);
     luRanks++; luRankMs += NOWMS2() - rk0;
-    if (rank) bestTake(&B, luScore(rank), at, sw, 1);
-    if (rank >= 4 || outPast(&B, LUMOST, at)) continue;   // a second swap comes later still
+    if (rank) bestTake(&B, rank, at, sw, 1);
+    if (rank >= 4 || outPast(&B, LUBEST, at)) continue;   // a second swap comes later still
     if (BIN[IN_TOPPED]) continue;   // topped, one swap: the decision's frame is already the fullest
     // a second swap, on the board the engine reaches after the first
     int32_t st1[ST_INTS], cur1[2], t1, lg1[2 * 128];
@@ -3371,24 +3364,24 @@ static Dec lineupFirst(Dec d) {
     }
     for (int p1 = 0; p1 < no1; p1++) {
       j = ord1[p1]; far1 = fr1[p1];
-      if (outPast(&B, LUMOST, t1 + far1)) break;
+      if (outPast(&B, LUBEST, t1 + far1)) break;
       int r2 = lg1[2 * j], c2 = lg1[2 * j + 1];
       sw[2] = r2; sw[3] = c2;
       int vv;
-      if ((!B.has || (int)B.score <= 3) && !raFind(sw, 2, &vv)) {
+      if ((!B.has || B.score <= 3) && !raFind(sw, 2, &vv)) {
         int32_t ls[8][4]; int nls = 0;
         for (int q = p1; q < no1 && nls < 8; q++) { ls[nls][0] = r; ls[nls][1] = c; ls[nls][2] = lg1[2 * ord1[q]]; ls[nls][3] = lg1[2 * ord1[q] + 1]; nls++; }
         readyAhead(st0, &ls[0][0], nls, 2);
       }
       double at2 = t1 + dmax(far1, waits1[r2][c2]);
       double rk1 = NOWMS2();
-      int rank2 = lineupRank(st0, sw, 2, !B.has ? 0 : (int)B.score);
+      int rank2 = lineupRank(st0, sw, 2, !B.has ? 0 : bestBeats(&B, B.score, at2, sw, 2) ? (int)B.score : (int)B.score + 1);
       luRanks++; luRankMs += NOWMS2() - rk1;
-      if (rank2) bestTake(&B, luScore(rank2), at2, sw, 2);
+      if (rank2) bestTake(&B, rank2, at2, sw, 2);
       // A THIRD SWAP, for a board two cannot line up: the nearest LUBEAM
       // second swaps are taken on to the board the engine reaches after them,
       // for a third that breaks the slab. Only while nothing is ready yet.
-      if (rank2 >= 4 || (B.has && (int)B.score >= 2) || p1 >= LUBEAM || outPast(&B, LUMOST, at2)) continue;
+      if (rank2 >= 4 || (B.has && B.score >= 2) || p1 >= LUBEAM || outPast(&B, LUBEST, at2)) continue;
       int32_t st2[ST_INTS], cur2[2], t2, lg2[2 * 128];
       uint32_t can2[WMAX];
       uint8_t waits2[32][WMAX];
@@ -3402,13 +3395,13 @@ static Dec lineupFirst(Dec d) {
         int r3 = lg2[2 * k3], c3 = lg2[2 * k3 + 1];
         if (r3 > 31 || !(can2[c3] & (1u << (r3 - 1))) || !lineupNear(st2, r3, c3)) continue;
         double at3 = t2 + dmax(far2, waits2[r3][c3]);
-        if (outPast(&B, LUMOST, at3)) break;
+        if (outPast(&B, LUBEST, at3)) break;
         int32_t sw3[6] = { sw[0], sw[1], sw[2], sw[3], r3, c3 };
         // three deep, only a lineup the masks show breaking is judged: readiness costs a replay each
         if (!maskBreaks(st0, sw3, 3)) continue;
-        int rank3 = lineupRank(st0, sw3, 3, !B.has ? 0 : (int)B.score);
+        int rank3 = lineupRank(st0, sw3, 3, !B.has ? 0 : bestBeats(&B, B.score, at3, sw3, 3) ? (int)B.score : (int)B.score + 1);
         luRanks++;
-        if (rank3) bestTake(&B, luScore(rank3), at3, sw3, 3);
+        if (rank3) bestTake(&B, rank3, at3, sw3, 3);
         if (rank3 >= 2) break;
       }
     }
