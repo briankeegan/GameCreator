@@ -19,7 +19,7 @@ clang $FLAGS $MT $PGO -msimd128 -DPA_LIB -Wl,--initial-memory=1073741824 bit.c p
 # Native builds are for the machine that builds them (-march=native): the bot runs where it is built.
 clang -O3 -march=native -pthread -DPA_LIB -Wall -Wno-unused-function -Wno-unknown-attributes -Wno-ignored-attributes bit.c pa.c drill.c -lm -o drill
 # libbit.so: the bot and the engine for the Lua's training drill (../lua/train.lua, through luajit). Not tracked.
-clang -O3 -march=native -pthread -fPIC -shared -DPA_LIB -Wno-unknown-attributes -Wno-ignored-attributes -Wno-unused-function bit.c pa.c -lm -o libbit.so
+clang -O3 -march=native -pthread -fPIC -shared -DPA_LIB -Wno-unknown-attributes -Wno-ignored-attributes -Wno-unused-function bit.c pa.c -lm -o libbit.so.tmp && mv -f libbit.so.tmp libbit.so   # renamed into place: a run that has it loaded keeps its copy
 # --allow-undefined links a missing function as an import no loader provides, so
 # the module would fail only when instantiated: the only imports allowed are the
 # memory and abort_poll.

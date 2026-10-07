@@ -2009,6 +2009,9 @@ static int lnAlone;
 static int cashes(const int32_t *r) { return r[R_TOTAL] > 0 || r[R_SCOPE] == SC_BROKE; }
 static double timeLeft(void);
 static int btDecision;   // counts decisions: what is cached is cached for one
+static char lastStages[400];   // the last decision's stages: ms/judges each
+__attribute__((visibility("default"))) const char *bot_last_stages(void) { return lastStages; }
+__attribute__((visibility("default"))) int bot_decisions(void) { return btDecision; }
 static int lfDecision = -1, lfDepth, lfBreaks;   // the lines linesFind last found, and for what
 static void linesReset(void) { nLines = 0; nJudged = 0; lnAlone = 0; lfDecision = -1; }
 // The board left alone, on the engine: 0 if it cannot be played.
@@ -4377,6 +4380,15 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     d = lineSwap(l, V_BREAKREACH, d);
   } cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
 #undef SHARE
+#ifndef __wasm__
+  // THE DECISION'S OWN ACCOUNT, kept for whoever finds it over the frame:
+  // each stage's milliseconds and engine judges
+  { extern int snprintf(char *, unsigned long, const char *, ...);
+    static const char *const nm[] = { "ruled", "drain", "breakFirst", "stayAlive", "lineup", "spend", "soon", "fill" };
+    int at = snprintf(lastStages, sizeof lastStages, "decision %d:", btDecision);
+    for (int i = 0; i < k && i < 8 && at < (int)sizeof lastStages; i++)
+      at += snprintf(lastStages + at, sizeof lastStages - at, " %s %.1f/%d", nm[i], ts[i] - (i ? ts[i - 1] : t0), js[i] - (i ? js[i - 1] : 0)); }
+#endif
   // the most the stages after breakFirst (and after lineup) have taken lately:
   // each decision's own, or the last most less a hundredth a decision -- one
   // heavy decision does not shut the searches out for the rest of the game
