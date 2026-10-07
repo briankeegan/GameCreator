@@ -2833,6 +2833,7 @@ static int bbFound, bbLastN; static double bbLastEst;   // bestBreak: how many l
 // is taken over one that leaves the pile it does not convert out of reach;
 // among the same, the one that converts the most.
 static int readyInTime(const int32_t *sw, int n, int *br, int *bc);
+static int bbReady;   // the break bestBreak picked leaves the board ready for the next slab
 static LineC *bestBreak(void) {
   static unsigned char taken[MAXLINES];
   const int need = LV_LIVES | LV_BREAKS;
@@ -2858,6 +2859,7 @@ static LineC *bestBreak(void) {
     if (ask) { int32_t keep[12]; for (int k = 0; k < 12; k++) keep[k] = LNO[k]; rdy = readyInTime(l->sw, l->n, &r, &c); for (int k = 0; k < 12; k++) LNO[k] = keep[k]; }
     if (!pick || rdy > pickReady || (rdy == pickReady && l->conv > pick->conv)) { pick = l; pickReady = rdy; }
   }
+  bbReady = !ask || pickReady;
   return pick;
 }
 static LineC *bestLiving(int (*ok)(const LineC *)) {
@@ -3009,6 +3011,10 @@ static Dec breakFirst(Dec d) {
     fprintf(stderr, "BREAKFIRST lines %d grown %d open %d k %g\n", nLines, g, live, timeLeft()); }
 #endif
   if (!l) return breakDeeper(d);
+  // BREAK AT THE RIGHT TIME: a break after which the next slab lands with no
+  // break in reach waits while the board left alone does not die -- the
+  // other routes ready the board meanwhile, and the break is still there
+  if (!bbReady && aloneOnEngine() && !LNA[0]) return d;
   lineLast = 3;
   plansDrop();
   if (l->n > 1) lineKeep(l, LINE_BREAK); else BT->nLine = 0;
