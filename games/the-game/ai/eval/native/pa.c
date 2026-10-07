@@ -107,7 +107,10 @@ static void onLand(Board *b, Panel *p) {
   }
 }
 // p falls a row. Returns p where it now is.
+static int hollowUnder(Board *b, const Panel *p);
 static Panel *fall(Board *b, Panel *p) {
+  // a slab at rest that falls gives back the hollow it rested over
+  if (p->f[ISGARBAGE] && p->f[STATE] != FALLING) b->sHollow -= hollowUnder(b, p);
   Panel *q = below(b, p);
   p = switchPanels(b, p, q);           // p is now in the lower cell
   b->rowActive[p->f[ROW]] = -1;        // ROWS COUNTED
@@ -122,17 +125,19 @@ static Panel *fall(Board *b, Panel *p) {
 // HOLLOW: the empty cells under a garbage cell as it lands, down to what its
 // column holds -- the slab rests on its tallest column, and every other
 // column under it is a gap a clear beside it cannot reach.
-static void countHollow(Board *b, const Panel *p) {
-  int c = p->f[COL];
+static int hollowUnder(Board *b, const Panel *p) {
+  int c = p->f[COL], n = 0;
   for (int r = p->f[ROW] - 1; r >= 1; r--) {
     const Panel *q = P(b, r, c);
     if (q->f[COLOR] != 0) {
-      if (q->f[ISGARBAGE] && q->f[GARBAGEID] == p->f[GARBAGEID]) return;   // not the slab's bottom row
+      if (q->f[ISGARBAGE] && q->f[GARBAGEID] == p->f[GARBAGEID]) return 0;   // not the slab's bottom row
       break;
     }
-    b->sHollow++;
+    n++;
   }
+  return n;
 }
+static void countHollow(Board *b, const Panel *p) { b->sHollow += hollowUnder(b, p); }
 static void land(Board *b, Panel *p) {
   onLand(b, p);
   if (p->f[ISGARBAGE]) { countHollow(b, p); p->f[STATE] = NORMAL; }
