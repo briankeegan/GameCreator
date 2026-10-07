@@ -68,6 +68,10 @@ function makeCpu(stack, weights, opts) {
     // set on one side only compares two DECISION PROCEDURES, and the weights
     // handed to each side are not comparable numbers -- which is exactly why
     // optsB exists and why a mixed duel must pass each side its own vector.
+    // WasmSurvivor (survivor_bot.js): the profile's switches, these weights.
+    if (opts.bot === 'survivor') {
+        return require('./survivor_bot.js')(stack, weights, { profile: opts.profile, threads: opts.threads });
+    }
     if (opts.bot === 'bitbot') {
         // Loaded only for a duel that asks for it: a duel of two PuyoCpus
         // does not depend on BitBot's build.

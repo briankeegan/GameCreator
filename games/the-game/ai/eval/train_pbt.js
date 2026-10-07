@@ -72,7 +72,10 @@ var OPTS = {
     goal: process.env.GC_GOAL || undefined,
     alsoTake: process.env.GC_ALSO_TAKE ? Number(process.env.GC_ALSO_TAKE) : undefined,
     buildToward: process.env.GC_BUILD_TOWARD ? Number(process.env.GC_BUILD_TOWARD) : undefined,
-    stopFloor: process.env.GC_STOP_FLOOR ? Number(process.env.GC_STOP_FLOOR) : undefined
+    stopFloor: process.env.GC_STOP_FLOOR ? Number(process.env.GC_STOP_FLOOR) : undefined,
+    // GC_BOT=survivor: both sides are WasmSurvivor (survivor_bot.js), the
+    // profile's switches with the genome's weights; the switches above are unused.
+    bot: process.env.GC_BOT || undefined
 };
 
 var baseSeed = Number(process.env.GC_GA_SEED || 11) >>> 0;
@@ -119,6 +122,7 @@ function fingerprint() {
             String(OPTS.depth), String(OPTS.beam), OPTS.rise ? 'rise' : '',
             OPTS.density ? 'density' : '', OPTS.allowRaise ? 'allowRaise' : '',
             OPTS.engine ? 'engine' : '',
+            OPTS.bot || '',
             // THE RULES, NOT JUST THE SWITCHES. modes.RULES names the decision
             // procedure; a population fitted under one plays a different game
             // from a population fitted under the next, so they must not resume
