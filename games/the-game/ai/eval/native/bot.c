@@ -3137,8 +3137,47 @@ static Dec stayAlive(Dec d) {
 // not what the board holds, is what breaks it. It gives way to the hold,
 // unless it loses health later than the hold does: that is survival's, and
 // surviveGuard, after this, weighs it.
+// THE HOLLOW THE NEXT SLAB LANDS OVER: on the board the engine reaches when
+// it lands (lineLandedFull), the empty cells under each column's lowest
+// garbage, down to what the column holds (-1: no landing board)
+int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t);
+static int landHollow(const int32_t *sw, int n) {
+  static ST LH; uint32_t can[WMAX]; uint8_t wt[32][WMAX]; int32_t cur[2], t;
+  if (lineLandedFull(sw, n, LH, can, wt, cur, &t) != 0) return -1;
+  int h = 0;
+  for (int c = 1; c <= BW; c++) {
+    uint32_t g = U(LH, GARB + c);
+    if (!g) continue;
+    uint32_t below = lowb(g) - 1u, occ = U(LH, OCC + c) & below;
+    h += popc(below) - (occ ? topRow(occ) : 0);
+  }
+  return h;
+}
 static Dec perchGuard(Dec d) {
-  if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA] || !hasGarbage(DBASE)) return d;
+  if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA]) return d;
+  if (!hasGarbage(DBASE)) {
+    // NOR UNDER THE NEXT ONE: with garbage to come and none on the board, a
+    // clear that breaks nothing may not leave the next slab landing over more
+    // hollow than the hold does -- read where it lands, not where the judge's
+    // horizon ends
+    if (!(BIN[IN_INCOMING] > 0) || lineLast == 3 || endsInBreak(d)) return d;
+    Cand *pc = poolSwap(d.sr, d.sc);
+    if (pc && pc->res.broke) return d;
+    int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
+    int32_t sw[2] = { d.sr, d.sc };
+    const int32_t *ln = playsLine ? BT->line : sw; int n = playsLine ? BT->nLine : 1;
+    int v = lineJudge(ln, n, playsLine ? BT->lineWaitAll : 0);
+    if (!(v & LV_LIVES) || !(v & LV_PAYS) || (v & LV_BREAKS)) return d;
+    int die = LNO[0];
+    if (!aloneOnEngine() || (LNA[0] && (!die || die > LNA[0]))) return d;
+    int hd = landHollow(ln, n), h0 = hd < 0 ? -1 : landHollow(0, 0);
+    if (hd < 0 || h0 < 0 || hd <= h0) return d;
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "PERCH via %d %d,%d lands over %d, the hold's %d\n", d.via, d.sr, d.sc, hd, h0); }
+#endif
+    BT->nLine = 0; lineLast = 0;
+    return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
+  }
   if (lineLast == 3 || endsInBreak(d)) return d;
   Cand *pc = poolSwap(d.sr, d.sc);
   if (pc && pc->res.broke) return d;
