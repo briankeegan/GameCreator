@@ -2788,8 +2788,7 @@ static LineC *bestLiving(int (*ok)(const LineC *)) {
     judgeAhead(l, taken, 0);
     if ((judged(l) & need) != need) continue;
     found++;
-    int ld = (l->verdict & LV_DROPS) != 0, pd = pick && (pick->verdict & LV_DROPS) != 0;
-    if (!pick || l->die > pick->die || (l->die == pick->die && (ld < pd || (ld == pd && l->hollow < pick->hollow)))) pick = l;
+    if (!pick || l->die > pick->die || (l->die == pick->die && l->hollow < pick->hollow)) pick = l;
   }
   return pick;
 }
@@ -2853,7 +2852,7 @@ static Dec stayAlive(Dec d) {
   LineC *l = bestLiving(notLastSwap);
   if (d.kind == K_SWAP) {
     dR = d.sr; dC = d.sc;
-    LineC *mine = bestLineAvoid(LV_LIVES | LV_GAINS, LV_DROPS, fromChoice);
+    LineC *mine = bestLineAvoid(LV_LIVES | LV_GAINS, 0, fromChoice);
     if (mine && (!l || mine->die >= l->die)) { if (mine->n > 1) lineKeep(mine, LINE_CASH); return d; }
   } else {
     // a hold lives while a paying line can still be started after it
@@ -3233,12 +3232,11 @@ static Dec spendToBreak(Dec d) {
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
     fprintf(stderr, "SPEND %d,%d v%d | drain %d/%d last %d conv %d/%d match %d/%d fell %d/%d\n", d.sr, d.sc, v, LNO[0], LNA[0], LNO[1], LNO[2], LNA[2], LNO[3], LNA[3], LNO[9], LNA[9]); }
 #endif
-  if (!(v & LV_LIVES) || !(v & (LV_PAYS | LV_DROPS)) || (v & (LV_BREAKS | LV_GAINS))) return d;
-  // topped, the slab in the top row is what drains health: letting it down is played
-  if ((v & LV_DROPS) && BIN[IN_TOPPED]) return d;
+  // garbage let down is never held: it lowers the stack
+  if (!(v & LV_LIVES) || !(v & LV_PAYS) || (v & (LV_BREAKS | LV_GAINS | LV_DROPS))) return d;
   // over six rows of panels there is material to spare: a clear that leaves
   // less hollow under what lands is spent
-  if ((v & LV_FILLS) && !(v & LV_DROPS) && materialRows(DBASE) >= 6) return d;
+  if ((v & LV_FILLS) && materialRows(DBASE) >= 6) return d;
   return mkHold(V_SETUP, d.mode, d.alive, 0, 0, 0);
 }
 // WHAT LANDS IS WHAT IT WILL BREAK. A slab rests on the tallest column under
@@ -3246,7 +3244,7 @@ static Dec spendToBreak(Dec d) {
 // and the pile that settles into it later falls, unbroken, past the match.
 // While garbage is coming and no line is being played, the move played is
 // the one the engine finds leaves the least hollow under what lands (pa.c
-// HOLLOW) -- a move that clears nothing, drops no garbage at rest and lives --
+// HOLLOW) -- a move that clears nothing and lives --
 // if it leaves less than the choice and less than the board left alone.
 // While a break is being played, a fill swap goes first only if the break
 // still breaks after it and what lands is left less hollow.
@@ -3276,7 +3274,7 @@ static Dec fillBeforeBreak(Dec d) {
     if (k->kind != K_SWAP || k->res.total > 0) continue;
     ln[0] = k->sr; ln[1] = k->sc;
     int v = lineJudge(ln, n + 1, BT->lineWaitAll);
-    if ((v & need) != need || (v & LV_DROPS)) continue;
+    if ((v & need) != need) continue;
     if (LNO[10] < best) { best = LNO[10]; pr = k->sr; pc = k->sc; }
   }
   if (!pr) return d;
@@ -3508,7 +3506,7 @@ static Dec fillFirstIn(Dec d) {
     if (pc->res.total > 0 && !surplus) continue;
     int32_t sw[2] = { pc->sr, pc->sc };
     int v = lineJudge(sw, 1, 0);
-    if (!(v & LV_LIVES) || ((v & LV_DROPS) && !(v & LV_FILLS)) || ((v & LV_PAYS) && !surplus)) continue;
+    if (!(v & LV_LIVES) || ((v & LV_PAYS) && !surplus)) continue;
     int h = LNO[10];
     if (P.has ? !bestBeats(&P, -h, pc->moveFrames, sw, 1) : h >= best) continue;
     if (!fillKeeps(marginWithin(sw, 1, LNO[0], need), need)) continue;
@@ -3563,7 +3561,7 @@ static Dec fillFirstIn(Dec d) {
         double bt = v ? breakTime(fsw, n) : -1; __builtin_memcpy(tCell, keep, sizeof keep); tW = kw; tH = kh;
         fprintf(stderr, "  walk %d,%d dir %d n %d v %d hollow %d die %d last %d break %g\n", r, c, dir, n, v, h, dd, la, bt); } }
 #endif
-      if (!(v & LV_LIVES) || (v & LV_PAYS) || ((v & LV_DROPS) && !(v & LV_FILLS))) continue;
+      if (!(v & LV_LIVES) || (v & LV_PAYS)) continue;
       double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
       // a walk must leave less than the pool's best; among walks, the same order (time: its estimate)
       int h = LNO[10];
