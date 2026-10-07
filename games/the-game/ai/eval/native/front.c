@@ -727,8 +727,12 @@ static void baTask(int k) {
   BAV[k] = j->rc != 0 ? INF : breakTimeAfter(j->sw, 1, INF, st, can, w, cur, j->t);
   BAD[k] = 1;
 }
+// OFF: which of its tasks start before the search ends is the threads' timing,
+// so the work a decision counts (paWork, and the budgets read off it) would
+// differ run to run with the same board. A decision repeats exactly; the
+// replays are made on demand instead.
 static void breakAheadStart(void) {
-  if (baDecision == btDecision || !BIN[IN_HASPA] || !hasGarbage(DBASE) || !parAvailable()) return;
+  if (1 || baDecision == btDecision || !BIN[IN_HASPA] || !hasGarbage(DBASE) || !parAvailable()) return;
   baDecision = btDecision; baN = 0;
   int32_t pl[2 * MAXCAND]; int pn = 0, q; double far;
   for (int k = 0; k < nPool && pn < MAXCAND; k++) if (POOL[k].kind == K_SWAP) { pl[2 * pn] = POOL[k].sr; pl[2 * pn + 1] = POOL[k].sc; pn++; }
@@ -1074,6 +1078,10 @@ EXPORT(front_budget) void front_budget(double ms) {
 }
 static double nowMs(void) { struct gcTs t; clock_gettime(1, &t); return t.s * 1e3 + t.ns / 1e6; }
 #endif
+// THE BOT'S OWN TIME FOR THE LAST FRAME, so a runner can report every frame
+// past the budget as it plays rather than a separate check after
+static double lastTookMs;
+EXPORT(front_took_ms) double front_took_ms(void) { return lastTookMs; }
 EXPORT(front_frame) int front_frame(int fid, Board *b) {
 #ifndef __wasm__
   if (frameBudgetMs < 0) frameBudgetMs = getenv("GC_FRAME_MS") ? atof(getenv("GC_FRAME_MS")) : 1000.0 / 60;
@@ -1081,6 +1089,7 @@ EXPORT(front_frame) int front_frame(int fid, Board *b) {
   double t0 = nowMs(), w0 = paWork, e0 = paEngFrames;
   int bits = frontFrame(fid, b);
   double took = nowMs() - t0;
+  lastTookMs = took;
   if (getenv("GC_WORKSTAT") && paWork > w0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "WORK %d %.0f %.3f %.0f\n", b->clock, paWork - w0, took, paEngFrames - e0); }
   double limit = frameBudgetMs == 0 ? 0 : callMs > 0 ? callMs : frameBudgetMs;   // GC_FRAME_MS=0: no limit at all
   if (bits >= 0 && limit > 0 && took > limit) {
