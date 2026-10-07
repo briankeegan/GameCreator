@@ -2901,6 +2901,9 @@ __attribute__((export_name("bot_breakfirst"))) int32_t bot_breakfirst(void) { re
 __attribute__((export_name("bot_keepbreak"))) int32_t bot_keepbreak(void) { return 0; }
 
 // A LINE ONCE PLAYED IS PLAYED TO ITS END.
+static int readyAfterSpend(const int32_t *sw, int n);
+static int aloneOnEngine(void);
+static int spendsLeaveSixP(void) { return materialRows(DBASE) - (double)(LNO[3] - LNA[3]) / BW >= 6; }
 static Dec playOn(Dec d) {
   lineLast = 0;
   if (!BT->nLine) return d;
@@ -2913,6 +2916,16 @@ static Dec playOn(Dec d) {
   int v = lineJudge(BT->line, BT->nLine, BT->lineWaitAll);
   int need = LV_LIVES | (BT->lineKind == LINE_BREAK ? LV_BREAKS : BT->lineKind == LINE_CASH ? LV_GAINS : 0);
   if ((v & need) != need) { BT->nLine = 0; return d; }
+  // A PLAN SPENDS AS EVERY CHOICE DOES: what is left of a plan line that
+  // clears, leaves under six rows and no break ready is dropped -- unless the
+  // board left alone dies, when stop time is what it buys
+  if (BT->lineKind == LINE_PLAN && (v & LV_PAYS) && !(v & LV_BREAKS) && !spendsLeaveSixP()) {
+    int32_t keepO[12]; for (int q = 0; q < 12; q++) keepO[q] = LNO[q];
+    int aloneDies = aloneOnEngine() && LNA[0];
+    int ok = aloneDies || readyAfterSpend(BT->line, BT->nLine);
+    for (int q = 0; q < 12; q++) LNO[q] = keepO[q];
+    if (!ok) { BT->nLine = 0; return d; }
+  }
   lineLast = 1;
   plansDrop();
   Dec s = mkSwap(BT->line[0], BT->line[1], BT->lineKind == LINE_BREAK ? V_BREAKREACH : BT->lineKind == LINE_PLAN ? V_PLANSAVE : V_KEEPHEALTH, d.mode, d.alive);
