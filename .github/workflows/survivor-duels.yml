@@ -114,6 +114,8 @@ jobs:
           fi
           grep -h '^slow\|^  on cpu' survivor.log | head -40 | tr '\n' '|' | sed 's/^/::notice title=slow::/'; echo
           # the board it died on (survivor_death.js), one annotation
+          # survivor.js writes the dump as the link closes: wait for its last line
+          for i in $(seq 1 60); do [ -s death.jsonl ] && [ "$(tail -c 1 death.jsonl | od -An -c | tr -d ' ')" = '\n' ] && break; sleep 1; done
           if grep -q '"died":"WasmSurvivor"' duel.log && [ -s death.jsonl ]; then
             node games/the-game/ai/eval/survivor_death.js death.jsonl > death.txt
             split -C 3500 -d death.txt death.part.
