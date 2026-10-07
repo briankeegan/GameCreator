@@ -2927,8 +2927,11 @@ static int readyAfterSpend(const int32_t *sw, int n);
 static int aloneOnEngine(void);
 static int nonSpendLives(void);
 static int spendsLeaveSixP(void) { return (double)LNO[12] / BW >= 6; }   // the panels the line ends with, as rows
+// THE LINE A HOLD WAITS FOR: stayAlive keeps a hold while a living line can
+// still be started after it -- its loss of health (1 << 20: none) and hollow
+static int stayDie, stayHollow;
 static Dec playOn(Dec d) {
-  lineLast = 0;
+  lineLast = 0; stayDie = 0;
   if (!BT->nLine) return d;
   if (BIN[IN_HASLAST] && (int)BIN[IN_LASTR] == BT->line[0] && (int)BIN[IN_LASTC] == BT->line[1]) {
     for (int k = 2; k < 2 * BT->nLine; k++) BT->line[k - 2] = BT->line[k];
@@ -2983,7 +2986,11 @@ static Dec stayAlive(Dec d) {
     // a hold lives while a paying line can still be started after it
     double wait = BIN[IN_TOPPED] ? 2 : REACT;
     for (int i = 0; i < nLines; i++)
-      if (LINES[i].est + wait <= k - 2 && (judged(&LINES[i]) & (LV_LIVES | LV_GAINS)) == (LV_LIVES | LV_GAINS)) return d;
+      if (LINES[i].est + wait <= k - 2 && (judged(&LINES[i]) & (LV_LIVES | LV_GAINS)) == (LV_LIVES | LV_GAINS)) {
+        LineC *w = l && l->die >= LINES[i].die ? l : &LINES[i];
+        stayDie = w->die; stayHollow = w->hollow;
+        return d;
+      }
   }
   if (!l) return d;
   lineLast = 2;
@@ -3974,6 +3981,8 @@ static Dec fillFirstIn(Dec d) {
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  choice %d,%d die %d last %d hollow %d | alone die %d | break after choice %g alone %g\n", d.sr, d.sc, LNO[0], LNO[1], HOLLOW(LNO), LNA[0], breakTime(sw, 1), breakTime(0, 0)); }
 #endif
   }
+  // and the line a hold waits for: a fill that dies before it is no fill
+  if (stayDie) { int sd = stayDie >= 1 << 20 ? 0 : stayDie; if ((sd ? sd : 1 << 20) > refDie) refDie = sd ? sd : 1 << 20; double ss = fillScore(sd, stayHollow); if (ss > ref) ref = ss; }
   if (need > 0) need = 0;   // in time is in time
   // A FILL PRESSED AFTER THE SLAB LANDS FILLS NOTHING UNDER IT: a fill whose
   // last press comes after the next slab lands is not one
