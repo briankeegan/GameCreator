@@ -3527,7 +3527,7 @@ static Dec noStall(Dec d) {
   if (pc && pc->res.broke) return d;
   int32_t sw[2] = { d.sr, d.sc };
   int v = lineJudge(sw, 1, 0);
-  if (!(v & LV_PAYS) || (v & LV_BREAKS)) return d;
+  if (!(v & LV_PAYS) || (v & (LV_BREAKS | LV_FILLS))) return d;   // a clear that readies the landing is no stall
   if (hasGarbage(DBASE) && !(LNO[10] > LNA[10])) return d;
   // over six rows the material is there to spend: shaping the board and
   // buying time with it is the six-row rule's to allow
