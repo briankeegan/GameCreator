@@ -22,7 +22,8 @@ out = out.concat(show(last), ['', 'decisions from clock ' + from + ' (id asked>f
 function line(x) {
   var g = x.diag || {};
   return (x.id + ' ' + x.asked + '>' + x.at + '@' + x.now + ' ' + x.kind + (x.move ? x.move.join(',') : '') + ' ' + x.ms + 'ms b' + g.budget +
-           ' s' + g.survive + ' d' + g.doomed + (g.allDoomed ? ' ALLDOOMED' : '') + (g.tight ? ' TIGHT' : ''));
+           ' s' + g.survive + ' d' + g.doomed + (g.allDoomed ? ' ALLDOOMED' : '') + (g.tight ? ' TIGHT' : '') +
+           (x.breaks ? ' BREAK' + x.breaks.offered + (x.breaks.lineup ? 'L' : '') + (x.breaks.took ? ' taken' : ' NOT TAKEN') : ''));
 }
 (d.decided || []).filter(function (x) { return x.now >= from; }).forEach(function (x) { out.push(line(x)); });
 // WHERE IT WAS LOST: the board the last unbroken run of all-doomed

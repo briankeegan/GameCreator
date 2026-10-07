@@ -297,7 +297,7 @@ Match.prototype.take = function (truth) {
     if (a.error) { console.error('decision failed: ' + a.error); this.acted = false; pending = null; continue; }
     if (a.diag && a.diag.tight) this.stats.tight = (this.stats.tight || 0) + 1;
     if (a.breaks) { this.stats['break' + a.breaks.offered]++; if (a.breaks.took) this.stats['took' + a.breaks.offered]++; if (a.breaks.lineup) { this.stats.lineup++; if (a.breaks.took) this.stats.tookLineup++; } if (a.breaks.touch) { this.stats.touch++; if (a.breaks.took) this.stats.tookTouch++; } }
-    this.decided.push({ id: a.id, at: a.at, now: now, kind: a.kind, move: a.move, ms: a.ms, diag: a.diag,
+    this.decided.push({ id: a.id, at: a.at, now: now, kind: a.kind, move: a.move, ms: a.ms, diag: a.diag, breaks: a.breaks,
                        asked: pending && pending.id === a.id ? pending.askedAt : null, trip: pending && pending.id === a.id ? a.got - pending.sent : null });
     if (this.decided.length > 60 * KEEP) this.decided.shift();
     if (!pending || a.id !== pending.id) { this.stats.unasked++; continue; }
