@@ -1791,7 +1791,7 @@ static Dec decideRuled(void) {
       int32_t lg[2 * 128];
       int n = legal(base, lg);
       for (int i = 0; i < n; i++) if (lg[2 * i] == r0 && lg[2 * i + 1] == c0) { ok0 = 1; break; }
-      if (ok0 && route[F_DURATION] <= DDEADLINE) {
+      if (ok0 && route[F_DURATION] <= DDEADLINE && !undoesPress(r0, c0)) {
         BT->counts[C_SAVEPLANNED]++;
         // the route is a line: kept and played on while it lives (playOn)
         int n = (int)route[F_NSW] < LINEMAX ? (int)route[F_NSW] : LINEMAX;
@@ -3067,6 +3067,9 @@ static Dec playOn(Dec d) {
     BT->linePresses = BIN[IN_PRESSES];
   }
   if (!BT->nLine) return d;
+  // NOR BY GOING BACK: a line whose next step undoes a press is dropped here,
+  // where it is chosen, so the choice falls to the next best and not to a hold
+  if (undoesPress(BT->line[0], BT->line[1])) { BT->nLine = 0; return d; }
   linesReset();
   int v = lineJudge(BT->line, BT->nLine, BT->lineWaitAll);
   int need = LV_LIVES | (BT->lineKind == LINE_BREAK ? LV_BREAKS : BT->lineKind == LINE_CASH ? LV_GAINS : 0);
