@@ -3211,15 +3211,12 @@ static Dec lineupFirst(Dec d) {
   if (B.n >= 2) { for (int k = 0; k < 2 * B.n; k++) BT->line[k] = B.sw[k]; BT->nLine = B.n; BT->lineKind = LINE_PLAN; BT->lineWaitAll = 0; }
   return mkSwap(B.sw[0], B.sw[1], V_LINEUP, d.mode, d.alive);
 }
-// READY WHEN IT LANDS, AND IT LANDS WHEN THE BOARD GOES QUIET: a slab one
-// row high drops the first frame no panel is active (pa.c shouldDropGarbage),
-// so the bot decides when it arrives. Whatever route chose it, a choice that
-// is not a break and lets the slab land with no break a swap away is
-// replaced: by a swap after which it lands ready, else by a swap that puts
-// the landing off -- each swap keeps the board busy, and every frame bought is
-// a decision more to get ready in -- the one that leaves the least hollow
-// under what lands, so the frames bought are spent getting ready. A swap must
-// live as long as the choice, and spends no panels under six rows.
+// READY WHEN IT LANDS: a slab one row high drops the first frame no panel
+// is active (pa.c shouldDropGarbage). Whatever route chose it, a choice that
+// is not a break and lets the slab land with no break the cursor reaches in
+// time is replaced by a swap after which it does (readyInTime), if one lives
+// as long. The landing is never put off for its own sake: the queue does not
+// shrink while the board is kept busy, it lands later all at once.
 #define READYTRIES 8
 // ROOM FOR WHAT A BREAK MAKES: broken, the garbage on the board and the next
 // slab turn into panels; ready needs the board to hold them and the slab after
@@ -3253,35 +3250,29 @@ static int readyInTime(const int32_t *sw, int n, int *br, int *bc) {
   }
   return found;
 }
-static Dec readyOrDelay(Dec d) {
+static Dec readyWhenLands(Dec d) {
   if (d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA] || BIN[IN_TOPPED]) return d;
   if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;   // a break being played
-  int32_t sw[2] = { d.sr, d.sc }, t0 = 0, t;
-  ST lum;
-  int dieRef = 0, room = roomForBreak(DBASE);
+  if (!roomForBreak(DBASE)) return d;
+  int32_t sw[2] = { d.sr, d.sc };
+  int dieRef = 0, r, c;
   if (d.kind == K_SWAP && d.hasMove) {
     Cand *pc = poolSwap(d.sr, d.sc);
-    int r, c;
-    if ((pc && pc->res.broke) || endsInBreak(d) || (room && readyInTime(sw, 1, &r, &c))) return d;
-    if (lineLanded(sw, 1, lum, &t0) != 0) t0 = 0;
+    if ((pc && pc->res.broke) || endsInBreak(d) || readyInTime(sw, 1, &r, &c)) return d;
     if (lineJudge(sw, 1, 0) & LV_LIVES) dieRef = LNO[0] ? LNO[0] : 1 << 20;
   } else {
-    int r, c;
-    if (room && readyInTime(0, 0, &r, &c)) {
+    if (readyInTime(0, 0, &r, &c)) {
       if (!d.hasPark) { d.hasPark = 1; d.pr = r; d.pc = c; }
       return d;
     }
-    if (lineLanded(0, 0, lum, &t0) != 0) t0 = 0;
     if (aloneOnEngine()) dieRef = LNA[0] ? LNA[0] : 1 << 20;
   }
-  // with no room, panels are spent: of the swaps that put the landing off, the most cleared
-  int spare = materialRows(DBASE) >= 6 || !room, br = 0, bc = 0, tried = 0, bh = 1 << 30;
-  int32_t bt = t0;
+  int spare = materialRows(DBASE) >= 6, tried = 0;
   int32_t pl[2 * MAXCAND]; int pn = 0, q;
   for (int k = 0; k < nPool && pn < MAXCAND; k++) {
-    Cand *c = &POOL[k];
-    if (c->kind != K_SWAP || c->res.broke || (c->res.total > 0 && !spare) || (d.kind == K_SWAP && c->sr == d.sr && c->sc == d.sc)) continue;
-    pl[2 * pn] = c->sr; pl[2 * pn + 1] = c->sc; pn++;
+    Cand *cd = &POOL[k];
+    if (cd->kind != K_SWAP || cd->res.broke || (cd->res.total > 0 && !spare) || (d.kind == K_SWAP && cd->sr == d.sr && cd->sc == d.sc)) continue;
+    pl[2 * pn] = cd->sr; pl[2 * pn + 1] = cd->sc; pn++;
   }
   Out o; double far;
   outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
@@ -3289,17 +3280,10 @@ static Dec readyOrDelay(Dec d) {
     int32_t s2[2] = { pl[2 * q], pl[2 * q + 1] };
     if (!(lineJudge(s2, 1, 0) & LV_LIVES)) continue;
     if ((LNO[0] ? LNO[0] : 1 << 20) < dieRef) continue;
-    int h = room ? LNO[10] : -(LNO[3] - LNA[3]);
     tried++;
-    { int r, c; if (room && readyInTime(s2, 1, &r, &c)) { BT->nLine = 0; lineLast = 8; return mkSwap(s2[0], s2[1], V_LINEUP, d.mode, d.alive); } }
-    if (lineLanded(s2, 1, lum, &t) == 0 && t > t0 && (h < bh || (h == bh && t > bt))) { bt = t; bh = h; br = s2[0]; bc = s2[1]; }
+    if (readyInTime(s2, 1, &r, &c)) { BT->nLine = 0; lineLast = 8; return mkSwap(s2[0], s2[1], V_LINEUP, d.mode, d.alive); }
   }
-#ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "READYORDELAY room %d lands %d | tried %d delay %d,%d lands %d\n", room, t0, tried, br, bc, bt); }
-#endif
-  if (!br) return d;
-  BT->nLine = 0; lineLast = 8;
-  return mkSwap(br, bc, V_SETUP, d.mode, d.alive);
+  return d;
 }
 // BREAK WHEN IT PAYS. A match beside a pile converts the whole pile, so a
 // pile let grow while there is room turns one match into many panels. A
@@ -3855,7 +3839,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   SHARE(15); d = keepBreak(d); d = lineupFirst(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(5); d = batchBreak(d); d = spendToBreak(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(10); d = breakSoon(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(10); d = readyOrDelay(keepReady(meanwhile(onePlan(fillFirst(d))))); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(10); d = readyWhenLands(keepReady(meanwhile(onePlan(fillFirst(d))))); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
 #undef SHARE
   // A CUT IS A FAILURE: a stage that reaches its share has not decided, it has
   // been stopped. The decision fails and the game stops, naming the stage.
