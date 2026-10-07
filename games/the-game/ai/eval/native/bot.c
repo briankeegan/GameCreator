@@ -2817,9 +2817,15 @@ static LineC *bestLine(int need, int (*ok)(const LineC *)) { return bestLineAvoi
 // rank, the one that converts the most garbage on the engine -- a pile broken
 // whole, not its bottom slab with the rest left propped above a gap.
 static int bbFound, bbLastN; static double bbLastEst;   // bestBreak: how many living breaks it took, the last one's length and time
+// A BREAK THAT LEAVES THE BOARD READY: with more garbage to come, a living
+// break after which the next slab lands with a break in reach (readyInTime)
+// is taken over one that leaves the pile it does not convert out of reach;
+// among the same, the one that converts the most.
+static int readyInTime(const int32_t *sw, int n, int *br, int *bc);
 static LineC *bestBreak(void) {
   static unsigned char taken[MAXLINES];
   const int need = LV_LIVES | LV_BREAKS;
+  int ask = BIN[IN_INCOMING] > 0, pickReady = 0;
   LineC *pick = 0;
   bbFound = 0; bbLastN = 0;
   for (int i = 0; i < nLines; i++) taken[i] = 0;
@@ -2836,7 +2842,10 @@ static LineC *bestBreak(void) {
     judgeAhead(l, taken, 0);
     if ((judged(l) & need) != need) continue;
     found++; bbFound = found; bbLastN = l->n; bbLastEst = l->est;
-    if (!pick || l->conv > pick->conv) pick = l;
+    if (pick && pickReady && l->conv <= pick->conv) continue;
+    int rdy = 0, r, c;
+    if (ask) { int32_t keep[12]; for (int k = 0; k < 12; k++) keep[k] = LNO[k]; rdy = readyInTime(l->sw, l->n, &r, &c); for (int k = 0; k < 12; k++) LNO[k] = keep[k]; }
+    if (!pick || rdy > pickReady || (rdy == pickReady && l->conv > pick->conv)) { pick = l; pickReady = rdy; }
   }
   return pick;
 }
