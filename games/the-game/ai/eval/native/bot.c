@@ -3056,15 +3056,17 @@ static Dec stayAlive(Dec d) {
   if (d.kind == K_SWAP && !d.hasMove) return d;
   // a break that lives, and a break line played on, are kept; a plan or cash
   // line played on is kept only if no line lives longer (below)
-  if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;
+  if (lineLast == 3) return d;
+  // a line played on is what the guard holds the decision to (surviveGuard)
+  if (lineLast == 1 && BT->lineKind == LINE_BREAK) return saKeep(d, playDie);
   // the engine, not the estimate, says whether the board is dying: health
   // lost within LIVEHORIZON frames, left alone
   linesReset();
-  if (!aloneOnEngine() || !LNA[0] || LNA[0] > LIVEHORIZON) return d;
+  if (!aloneOnEngine() || !LNA[0] || LNA[0] > LIVEHORIZON) return lineLast == 1 ? saKeep(d, playDie) : d;
   linesFind(2, 0);
   // NEVER DYING FIRST: the choice is kept only if it lives as long as the line that lives longest
   LineC *l = bestLiving(notLastSwap);
-  if (lineLast == 1) { if (!l || l->die <= playDie) return d; lineLast = 0; }
+  if (lineLast == 1) { if (!l || l->die <= playDie) return saKeep(d, playDie); lineLast = 0; }
   if (d.kind == K_SWAP) {
     dR = d.sr; dC = d.sc;
     LineC *mine = bestLineAvoid(LV_LIVES | LV_GAINS, 0, fromChoice);
@@ -3082,19 +3084,26 @@ static Dec stayAlive(Dec d) {
 }
 // IT NEVER CHOOSES TO DIE: a decision that is not what stayAlive chose, and
 // loses health sooner than it (the engine judges it: the line it plays, or the
-// board left alone for a hold), gives way to stayAlive's choice and its line
+// board left alone for a hold), gives way to stayAlive's choice and its line.
+// The judge stops pressing where the line ends, so a decision READY for the
+// slab -- its break in reach the frame the slab lands (readyInTime, on the
+// engine) -- is a line with that break still to press: it gives way only to a
+// choice ready too.
 static Dec surviveGuard(Dec d) {
   if (!saSet) return d;
   if (d.kind == saDec.kind && d.hasMove == saDec.hasMove && d.sr == saDec.sr && d.sc == saDec.sc) return d;
-  int die;
+  int die, ready = 0, r, c;
   if (d.kind == K_SWAP && d.hasMove) {
     int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
     int32_t sw[2] = { d.sr, d.sc };
     int v = playsLine ? lineJudge(BT->line, BT->nLine, BT->lineWaitAll) : lineJudge(sw, 1, 0);
     die = !(v & LV_LIVES) ? 0 : LNO[0] ? LNO[0] : 1 << 20;
+    if (die < saDie && (v & LV_LIVES) && BIN[IN_INCOMING] > 0)
+      ready = playsLine ? readyInTime(BT->line, BT->nLine, &r, &c) : readyInTime(sw, 1, &r, &c);
   } else if (d.kind == K_HOLD) die = aloneOnEngine() && LNA[0] ? LNA[0] : 1 << 20;
   else return d;   // a raise: raiseMode's own rules
   if (die >= saDie) return d;
+  if (ready && !(saDec.kind == K_SWAP && saDec.hasMove && (saN ? readyInTime(saLine, saN, &r, &c) : readyInTime((int32_t[2]){ saDec.sr, saDec.sc }, 1, &r, &c)))) return d;
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "GUARD via %d %d,%d dies %d before %d: stayAlive's %d,%d\n", d.via, d.sr, d.sc, die, saDie, saDec.sr, saDec.sc); }
 #endif
@@ -3694,6 +3703,29 @@ static int levelInTime(void) {
   lineJudge(fillLevel.sw, fillLevel.n, 0);
   return marginAfter(fillLevel.sw, fillLevel.n, LNO[0]) >= 0;
 }
+// VERTICAL TWOS ON THE MASKS: the judge's count (front.c out[14]) read off a
+// predicted board, so two-swap setups can be ranked before the engine judges one
+static int twosOf(const int32_t *st) {
+  int W = st[O_W], n = 0;
+#define VP(r, c) ((r) >= 1 && (U(st, OCC + (c)) & (1u << ((r) - 1))) && !(U(st, (GARB) + (c)) & (1u << ((r) - 1))) && !(U(st, INERT + (c)) & (1u << ((r) - 1))))
+  for (int c = 1; c <= W; c++) {
+    uint32_t g = U(st, (GARB) + c);
+    int r = g ? __builtin_ctz(g) : topRow(U(st, OCC + c));   // under the lowest garbage, or the top
+    if (r < 3 || !VP(r, c) || !VP(r - 1, c)) continue;
+    int col = colourFirst(st, c, 1u << (r - 1));
+    if (!col || colourFirst(st, c, 1u << (r - 2)) != col || (VP(r - 2, c) && colourFirst(st, c, 1u << (r - 3)) == col)) continue;
+    int ready = 0;
+    for (int dd = -1; dd <= 1 && !ready; dd += 2)
+      for (int k = 1; k <= 2; k++) {
+        int cc = c + dd * k;
+        if (cc < 1 || cc > W || (U(st, (GARB) + cc) & (1u << (r - 3)))) break;
+        if (VP(r - 2, cc) && colourFirst(st, cc, 1u << (r - 3)) == col) { ready = 1; break; }
+      }
+    n += ready;
+  }
+#undef VP
+  return n;
+}
 static Dec setupTwos(Dec d) {
   if (d.kind != K_HOLD || d.via == V_RAISING || BT->nLine || !BIN[IN_HASPA] || BIN[IN_TOPPED]) return d;
   // levelling first: a slab that perches breaks on nothing
@@ -3713,6 +3745,62 @@ static Dec setupTwos(Dec d) {
     int v = lineJudge(s2, 1, 0);
     if (!(v & LV_LIVES) || (v & LV_PAYS) || (LNA[0] ? (LNO[0] && LNO[0] < LNA[0]) : LNO[0] != 0) || HOLLOW(LNO) > HOLLOW(LNA) || LNO[14] <= best) continue;
     best = LNO[14]; br = s2[0]; bc = s2[1];
+  }
+  // TWO SWAPS: one swap seldom makes a two. Of the same nearest first swaps,
+  // every second swap that clears nothing is read on the masks (twosOf), and
+  // the lines that set up most, nearest first, go to the engine -- the
+  // first that the engine finds setting up more than the board left alone,
+  // under the same terms as one swap, is played and its second swap kept.
+  if (!br) {
+    static ST TS2; static int32_t TR2[R_INTS + ST_INTS];
+    int32_t two[SETUPTRIES][4]; int tv[SETUPTRIES]; double tf[SETUPTRIES]; int nt = 0;
+    int32_t lg[2 * 128], st1[ST_INTS], cur1[2], t1;
+    uint32_t can1[WMAX]; uint8_t waits1[32][WMAX];
+    // the twos are counted where the setup makes them: on the board the
+    // engine settles to, not where the judge's horizon ends (slabs landed on
+    // it, the stack risen) -- more than that board has now
+    if (lineState(0, 0, st1, can1, waits1, cur1, &t1) != 0) return d;
+    best = twosOf(st1);
+    outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
+    for (tried = 0; tried < SETUPTRIES && outNext(&o, &q, &far); tried++) {
+      // the second swap is proposed on the board the engine reaches after the
+      // first: the stack rises while the first is walked to and pressed
+      int32_t s1[2] = { pl[2 * q], pl[2 * q + 1] };
+      if (lineState(s1, 1, st1, can1, waits1, cur1, &t1) != 0) continue;
+      int m = legal(st1, lg), bv = 0, b2r = 0, b2c = 0; double bfar = INF;
+      for (int i = 0; i < m; i++) {
+        int r2 = lg[2 * i], c2 = lg[2 * i + 1];
+        if (r2 > 31 || !(can1[c2] & (1u << (r2 - 1)))) continue;
+        stcpy(TS2, st1);
+        if (!swapIn(TS2, r2, c2)) continue;
+        resolve(TS2, TR2, 1);
+        if (TR2[R_SCOPE] != SC_OK || TR2[R_TOTAL] > 0) continue;
+        int tw = twosOf(TR2 + R_INTS);
+        double f2 = t1 + dmax(travelCost(cur1[0], cur1[1], r2, c2), waits1[r2][c2]);
+        if (tw > bv || (tw == bv && tw && f2 < bfar)) { bv = tw; bfar = f2; b2r = lg[2 * i]; b2c = lg[2 * i + 1]; }
+      }
+      if (bv <= best) continue;
+      two[nt][0] = pl[2 * q]; two[nt][1] = pl[2 * q + 1]; two[nt][2] = b2r; two[nt][3] = b2c; tv[nt] = bv; tf[nt] = bfar; nt++;
+    }
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SETUP2 first %d, lines %d, twos now %d, best line %d\n", tried, nt, best, nt ? tv[0] : 0); }
+#endif
+    for (int done = 0; done < nt; done++) {
+      int at = -1;
+      for (int i = 0; i < nt; i++) if (tv[i] > 0 && (at < 0 || tv[i] > tv[at] || (tv[i] == tv[at] && tf[i] < tf[at]))) at = i;
+      if (at < 0) break;
+      tv[at] = 0;
+      int v = lineJudge(two[at], 2, 0);
+#ifndef __wasm__
+      if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  SETUP2 %d,%d %d,%d | v %d die %d/%d hollow %d/%d last %d\n", two[at][0], two[at][1], two[at][2], two[at][3], v, LNO[0], LNA[0], HOLLOW(LNO), HOLLOW(LNA), LNO[1]); }
+#endif
+      if (!(v & LV_LIVES) || (v & LV_PAYS) || (LNA[0] ? (LNO[0] && LNO[0] < LNA[0]) : LNO[0] != 0) || HOLLOW(LNO) > HOLLOW(LNA)) continue;
+      double need = marginAfter(0, 0, LNA[0]);
+      if (need >= 0 && marginAfter(two[at], 2, LNO[0]) < 0) continue;
+      for (int k = 0; k < 4; k++) BT->line[k] = two[at][k];
+      BT->nLine = 2; BT->lineKind = LINE_PLAN; BT->lineWaitAll = 0;
+      return mkSwap(two[at][0], two[at][1], V_SETUP, d.mode, d.alive);
+    }
   }
   if (!br) return d;
   // IN THE TIME THERE IS: if the board left alone breaks before it loses
@@ -4448,22 +4536,40 @@ static Dec meanwhile(Dec d) {
   // NOT ONLY CLEARS: the wait is time the board can use. A swap pressed now,
   // clearing nothing, that leaves the line its outcome and lowers the hollow
   // the next slab lands on -- or, as level, sets up more vertical twos
-  // (LNO[14]) -- goes first; the line is kept.
+  // (LNO[14]) -- goes first; the line is kept. The swaps are asked as
+  // setupTwos asks them: nearest the cursor first, SETUPTRIES of them.
   if (!mr) {
     int32_t keepO[LNOLEN]; for (int k = 0; k < LNOLEN; k++) keepO[k] = LNO[k];
     lineJudge(ln + 2, n, waitAll);
-    int h0 = HOLLOW(LNO), hb = h0, vb = LNO[14];
-    for (int q = 0, t2 = 0; q < nPool && t2 < MEANWHILES; q++) {
-      Cand *k = &POOL[q];
-      if (k->kind != K_SWAP || k->res.total > 0 || k->res.broke || (k->sr == d.sr && k->sc == d.sc) || k->moveFrames + REACT > last0) continue;
+    // twos are read where the swap makes them (twosOf on the board the engine
+    // settles to after it), not where the judge's horizon ends
+    static ST MW1; int32_t mc1[2], mt1; uint32_t mcan[WMAX]; uint8_t mwt[32][WMAX];
+    int tw0 = lineState(0, 0, MW1, mcan, mwt, mc1, &mt1) == 0 ? twosOf(MW1) : 0;
+    int h0 = HOLLOW(LNO), hb = h0, vb = tw0, v0b = vb, t2 = 0, q;
+    int32_t pl[2 * MAXCAND]; int pn = 0;
+    for (int k = 0; k < nPool && pn < MAXCAND; k++) {
+      Cand *cd = &POOL[k];
+      if (cd->kind != K_SWAP || cd->res.total > 0 || cd->res.broke || (cd->sr == d.sr && cd->sc == d.sc) || cd->moveFrames + REACT > last0) continue;
+      pl[2 * pn] = cd->sr; pl[2 * pn + 1] = cd->sc; pn++;
+    }
+    Out o; double far;
+    outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
+    while (t2 < SETUPTRIES && outNext(&o, &q, &far)) {
       t2++;
-      ln[0] = k->sr; ln[1] = k->sc;
+      ln[0] = pl[2 * q]; ln[1] = pl[2 * q + 1];
       int v = lineJudge(ln, n + 1, waitAll);
       if ((v & need) != need || LNO[1] > last0 || (die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0)) continue;
-      if (!(HOLLOW(LNO) < hb || (HOLLOW(LNO) == hb && LNO[14] > vb))) continue;
-      hb = HOLLOW(LNO); vb = LNO[14]; mr = k->sr; mc = k->sc;
+      int hl = HOLLOW(LNO);
+      if (hl > hb) continue;
+      int tw = vb;
+      if (hl == hb) { tw = lineState(ln, 1, MW1, mcan, mwt, mc1, &mt1) == 0 ? twosOf(MW1) : 0; if (tw <= vb) continue; }
+      else if (lineState(ln, 1, MW1, mcan, mwt, mc1, &mt1) == 0) tw = twosOf(MW1);
+      hb = hl; vb = tw; mr = ln[0]; mc = ln[1];
     }
     for (int k = 0; k < LNOLEN; k++) LNO[k] = keepO[k];
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "MEANWHILE level: tried %d, line hollow %d twos %d -> %d,%d hollow %d twos %d\n", t2, h0, v0b, mr, mc, hb, vb); }
+#endif
   }
   // no clear one swap away: the lines two deep, by rank, the first that pays and lives as long
   LineC *two = 0;

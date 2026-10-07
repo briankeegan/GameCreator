@@ -570,10 +570,11 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   { extern int paBudgetOut(void); if (paBudgetOut()) return -1; }   // past the decision's budget: not played
   // A LINE IS JUDGED TO WHERE ITS CONSEQUENCE SHOWS: past the horizon the
   // judge plays on while the board is still busy -- a chain running, garbage
-  // converting or falling, a landing shaking -- for as long as a board settles
-  // (UNSETTLEMOST), so a break whose chain and conversion run past the horizon
-  // is seen to the quiet board the queue drops on
-  for (f = f0; f < horizon || (stopAtNext == 0 && f < horizon + UNSETTLEMOST && (b->nActive > 0 || nb_falling_garbage(b) || b->shakeTime > 0)); f++) {
+  // converting or falling, a landing shaking, a stop holding a queue that drops
+  // when it ends -- for as long as a board settles (UNSETTLEMOST), so a break
+  // whose chain and conversion run past the horizon is seen to the quiet board
+  // the queue drops on
+  for (f = f0; f < horizon || (stopAtNext == 0 && f < horizon + UNSETTLEMOST && (b->nActive > 0 || nb_falling_garbage(b) || b->shakeTime > 0 || (b->stopTime > 0 && b->ninc > 0))); f++) {
     { extern int paBudgetOut(void); if (paBudgetOut()) return -1; }   // past the budget mid-line: not played
     int input = 0;
     // stopAtNext 2: on until the next slab has dropped and landed
@@ -665,13 +666,15 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
       for (int c = w; c < w + 4; c++) if (h[c] > top) top = h[c];
       for (int c = w; c < w + 4; c++) out[13] += top - h[c];
     }
-    // VERTICAL TWOS READY: a column whose top two panels match, with a third
-    // of their colour in the row under them at most two columns off, the way
-    // along that row clear of garbage -- one or two swaps from three in a
-    // column whose top touches whatever lands on it
+    // VERTICAL TWOS READY: two matching panels atop a column's panels --
+    // under open sky, or under the column's lowest garbage -- with a third of
+    // their colour in the row under them at most two columns off, the way
+    // along that row clear of garbage: one or two swaps from three in a
+    // column whose top touches whatever lands on it, or what already has
 #define VPANEL(r, c) (b->p[r][c].f[COLOR] > 0 && b->p[r][c].f[COLOR] < 8 && !b->p[r][c].f[ISGARBAGE] && b->p[r][c].f[STATE] == NORMAL)
     for (int c = 1; c <= W; c++) {
       int r = h[c];
+      for (int k = 1; k <= h[c]; k++) if (b->p[k][c].f[ISGARBAGE]) { r = k - 1; break; }
       if (r < 3 || !VPANEL(r, c) || !VPANEL(r - 1, c)) continue;
       int col = b->p[r][c].f[COLOR];
       if (b->p[r - 1][c].f[COLOR] != col || (VPANEL(r - 2, c) && b->p[r - 2][c].f[COLOR] == col)) continue;
