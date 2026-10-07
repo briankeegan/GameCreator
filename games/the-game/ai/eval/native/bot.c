@@ -3532,6 +3532,9 @@ static Dec noStall(Dec d) {
   // over six rows the material is there to spend: shaping the board and
   // buying time with it is the six-row rule's to allow
   if ((double)LNO[12] / BW >= 6) return d;
+  // and a board not ready for the next slab needs the time: the clear buys
+  // the stop in which the break is found -- only a ready board lets it land
+  { int32_t k[LNOLEN]; for (int q = 0; q < LNOLEN; q++) k[q] = LNO[q]; int r, c, rdy = readyInTime(0, 0, &r, &c); for (int q = 0; q < LNOLEN; q++) LNO[q] = k[q]; if (!rdy) return d; }
   BT->nLine = 0;
   return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
 }
