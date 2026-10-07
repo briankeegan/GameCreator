@@ -3331,7 +3331,45 @@ static Dec spendToBreak(Dec d) {
 // the one the engine finds leaves the least hollow under what lands (pa.c
 // HOLLOW) -- a move that clears nothing and lives --
 // if it leaves less than the choice and less than the board left alone.
-// A break being played goes first: nothing is put ahead of it.
+// While a break is being played, a fill swap goes first only if the break
+// still breaks after it, what lands is left less hollow, and the break is
+// pressed before the next slab could land.
+static void prejudge(const int32_t *sws, int stride, int count, int n, int waitAll);
+static Dec fillBeforeBreak(Dec d) {
+  int32_t ln[2 * LINEMAX + 2]; int n = BT->nLine;
+  if (n) for (int k = 0; k < 2 * n; k++) ln[2 + k] = BT->line[k];
+  else if (d.kind == K_SWAP && d.hasMove) { ln[2] = d.sr; ln[3] = d.sc; n = 1; }
+  if (!n || n >= LINEMAX) return d;
+  int need = LV_LIVES | LV_BREAKS;
+  if ((lineJudge(ln + 2, n, BT->lineWaitAll) & need) != need) return d;
+  int best = LNO[10];
+  if (best == 0) return d;
+  // the break may wait for a fill only while no slab can land first: the
+  // board left alone has its next landing after the break, fill and all
+  int32_t tNext; ST lum;
+  if (lineLanded(0, 0, lum, &tNext) != 0) return d;
+  int pr = 0, pc = 0;
+  // each pool swap ahead of the line, judged together first
+  { static int32_t all[MAXCAND][2 * LINEMAX + 2]; int na = 0;
+    for (int q = 0; q < nPool; q++) {
+      Cand *k = &POOL[q];
+      if (k->kind != K_SWAP || k->res.total > 0) continue;
+      all[na][0] = k->sr; all[na][1] = k->sc;
+      for (int i = 2; i < 2 * n + 2; i++) all[na][i] = ln[i];
+      na++;
+    }
+    prejudge(&all[0][0], 2 * LINEMAX + 2, na, n + 1, BT->lineWaitAll); }
+  for (int q = 0; q < nPool; q++) {
+    Cand *k = &POOL[q];
+    if (k->kind != K_SWAP || k->res.total > 0) continue;
+    ln[0] = k->sr; ln[1] = k->sc;
+    int v = lineJudge(ln, n + 1, BT->lineWaitAll);
+    if ((v & need) != need || LNO[1] >= tNext) continue;
+    if (LNO[10] < best) { best = LNO[10]; pr = k->sr; pc = k->sc; }
+  }
+  if (!pr) return d;
+  return mkSwap(pr, pc, V_FILL, d.mode, d.alive);
+}
 // THE FRAMES TO A BREAK AFTER `steps`: the steps played on the engine as the
 // front plays them, then the soonest break the distance search finds on the
 // board they leave, walked from where the cursor is (INF: none).
@@ -3528,6 +3566,7 @@ static int fillUrgent;
 static double fillScore(int die, int hollow) { return (fillUrgent && die ? die : (1 << 20)) * 4096.0 - hollow; }
 static Dec fillFirstIn(Dec d) {
   if (d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
+  if (lineLast == 1 || lineLast == 3) return BT->lineKind == LINE_BREAK || lineLast == 3 ? fillBeforeBreak(d) : d;
   if (lineLast) return d;
   if (d.kind == K_SWAP && endsInBreak(d)) return d;
 #ifndef __wasm__
@@ -3674,7 +3713,10 @@ static Dec fillFirstIn(Dec d) {
         if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  tower %d,%d dir %d n %d v %d hollow %d best %d\n", a, a + 1, dir, n, v, LNO[10], best); }
 #endif
         double beat = W.has && W.score > ref ? W.score : ref;
-        if ((v & LV_LIVES) && !(v & LV_PAYS) && fillScore(LNO[0], LNO[10]) > beat && fillKeeps(marginWithin(sw, n, LNO[0], need), need)) {
+        // a line kept is played to its end: it must end before the next slab lands
+        int32_t tNext; ST lum; int last = LNO[1], vv = v, die = LNO[0], hol = LNO[10];
+        int inTime = lineLanded(0, 0, lum, &tNext) == 0 && last < tNext;
+        if (inTime && (vv & LV_LIVES) && !(vv & LV_PAYS) && fillScore(die, hol) > beat && fillKeeps(marginWithin(sw, n, die, need), need)) {
           for (int k = 0; k < 2 * n; k++) BT->line[k] = sw[k];
           BT->nLine = n; BT->lineKind = LINE_PLAN; BT->lineWaitAll = 0;
           return mkSwap(sw[0], sw[1], V_FILL, d.mode, d.alive);
