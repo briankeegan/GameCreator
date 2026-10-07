@@ -28,12 +28,12 @@ enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
 // tower lowered also lets a pile perched on it down onto panels it can break on.
 #define HOLLOW(a) ((a)[10] + (a)[13])
 int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);   // the engine judge's out: [0] die ... [11] end board hash, [12] panels it ends with
-#define WORKBUDGET 55000   // GC_WORK_ONLY: the budget in units of work
 // THE OPTIONAL SEARCHES' BUDGET IN WORK: BUDGETMS at the slow twentieth of
 // the native work rate, measured over 5,359 decisions of seed 9 (units per ms
 // p5 4,963, p10 6,413, p50 9,865, p90 13,089): 15 ms x 4,950. budget_check
 // measures the time it actually takes (at p10, decision 219 of seed 4 ran 16.3 ms).
 #define OPTWORK 74000
+#define WORKBUDGET OPTWORK   // GC_WORK_ONLY (and the browser): the decision's budget, the same units
 enum { C_REFUSEDDEADLY, C_ALLDEAD, C_REFUSEDRETURN, C_REFUSEDTOOSLOW, C_PLANNED, C_PLANDROPPED, C_ATTACKED,
        C_ATTACKDROPPED, C_CELLSPLANNED, C_REFUSEDPAYLESS, C_REFUSEDSTARVING, C_REFUSEDOTHER, C_REFUSEDATEXIT,
        C_RAISEDFORMATERIAL, C_WAITEDTORAISE, C_DUGFOR, C_DIGDROPPED, C_BROKENOW, C_FLATTENBLIND, C_OPENINGRAISES,
@@ -2059,15 +2059,29 @@ static void jmPut(const int32_t *sw, int n, int waitAll, int v, const int32_t *l
     return;
   }
 }
+// A JUDGE ONLY WHERE THE BUDGET HOLDS ONE: the work the decision has spent
+// (from its start, rdW0) and what a judge costs (jdCost, the most one has
+// taken) must fit in OPTWORK; past that the line is not judged, and a line
+// not judged is no option -- the decision is never cut
+static double jdCost, rdW0;   // rdW0: the work done when the decision began
+static int budgetRefused;
+static int lineJudgeIn2(const int32_t *sw, int n, int waitAll) {
+  extern PATLS double paWork;
+  if (paWork - rdW0 + jdCost > OPTWORK) { budgetRefused++; return 0; }
+  double w = paWork;
+  int v = lineJudgeIn(sw, n, waitAll);
+  if (paWork - w > jdCost) jdCost = paWork - w;
+  return v;
+}
 static int lineJudge(const int32_t *sw, int n, int waitAll) {
-  if (n < 1 || n > LINEMAX) return lineJudgeIn(sw, n, waitAll);
+  if (n < 1 || n > LINEMAX) return lineJudgeIn2(sw, n, waitAll);
   unsigned h = 2166136261u ^ (unsigned)(n * 31 + waitAll);
   for (int k = 0; k < 2 * n; k++) h = (h ^ (unsigned)sw[k]) * 16777619u;
   for (int probe = 0; probe < 8; probe++) {
     JMemo *m = &JM[(h + (unsigned)probe) & (JMN - 1)];
     if (m->dec != btDecisionJ) {   // free: judge, and keep it unless the budget refused it
       double t = NOWMS2();
-      int v = lineJudgeIn(sw, n, waitAll);
+      int v = lineJudgeIn2(sw, n, waitAll);
       fillJudges++; fillJudgeMs += NOWMS2() - t;
       extern int paBudgetOut(void);
       if (!paBudgetOut()) {
@@ -2083,7 +2097,7 @@ static int lineJudge(const int32_t *sw, int n, int waitAll) {
     }
   }
   double t = NOWMS2();
-  int v = lineJudgeIn(sw, n, waitAll);
+  int v = lineJudgeIn2(sw, n, waitAll);
   fillJudges++; fillJudgeMs += NOWMS2() - t;
   return v;
 }
@@ -3070,7 +3084,7 @@ static JLOCAL int32_t KBP[2 * BREAKDEEP]; static JLOCAL int kbPath;   // the lin
 // THE DEEPER SEARCH'S SHARE: what the decision has left once the stages
 // after it are given the most they have taken (laterMax, measured); the
 // search stops there with what it found
-static double kbEnd, laterMax, laterLu, rdW0;
+static double kbEnd, laterMax, laterLu;
 extern PATLS double paWork;
 // A BREAK WITHIN k SWAPS of a resolved board, by the one search: out from
 // the cursor (where the last swap leaves it), the last swap decided on the
@@ -4341,7 +4355,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // repeats). Past it, resolves and engine lines are refused and every search
   // keeps what it found.
   { extern void paBudget(double, double); paBudget(botBudgetMs > 0 ? botBudgetMs : BUDGETMS, WORKBUDGET); }
-  { extern PATLS double paWork; rdW0 = paWork; }
+  { extern PATLS double paWork; rdW0 = paWork; budgetRefused = 0; }
   btDecision++;
   btDecisionJ = btDecision;
   memoRoom();
@@ -4387,7 +4401,8 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // each stage's milliseconds and engine judges
   { extern int snprintf(char *, unsigned long, const char *, ...);
     static const char *const nm[] = { "ruled", "drain", "breakFirst", "stayAlive", "lineup", "spend", "soon", "fill" };
-    int at = snprintf(lastStages, sizeof lastStages, "decision %d:", btDecision);
+    extern PATLS double paWork;
+    int at = snprintf(lastStages, sizeof lastStages, "decision %d, work %.0f, judges declined %d:", btDecision, paWork - rdW0, budgetRefused);
     for (int i = 0; i < k && i < 8 && at < (int)sizeof lastStages; i++)
       at += snprintf(lastStages + at, sizeof lastStages - at, " %s %.1f/%d", nm[i], ts[i] - (i ? ts[i - 1] : t0), js[i] - (i ? js[i - 1] : 0)); }
 #endif
