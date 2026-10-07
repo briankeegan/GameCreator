@@ -3590,8 +3590,9 @@ static Dec makeRoom(Dec d) {
 // alone and leaves the least hollow (fewer than left alone) -- what a wait
 // for the landing plays (noStall)
 static Best fillLevel; static int fillLevelDec = -1;
-// DOWNTIME SETS UP VERTICAL TWOS: a decision that comes to standing still
-// (not for a raise, nor with a line being played) takes instead the swap,
+// DOWNTIME LEVELS, THEN SETS UP VERTICAL TWOS: a decision that comes to
+// standing still (not for a raise, nor with a line being played) plays fill's
+// leveller if fill found one; else the swap,
 // nearest the cursor first, that clears nothing, loses health no sooner and
 // leaves no more hollow than the board left alone, and leaves the most
 // vertical twos ready (LNO[14]: two of a colour atop a column, a third in the
@@ -3601,6 +3602,8 @@ static Best fillLevel; static int fillLevelDec = -1;
 static double marginAfter(const int32_t *sw, int n, int die);
 static Dec setupTwos(Dec d) {
   if (d.kind != K_HOLD || d.via == V_RAISING || BT->nLine || !BIN[IN_HASPA] || BIN[IN_TOPPED]) return d;
+  // levelling first: a slab that perches breaks on nothing
+  if (fillLevelDec == btDecision && fillLevel.has) return mkSwap(fillLevel.sw[0], fillLevel.sw[1], V_FILL, d.mode, d.alive);
   if (!aloneOnEngine()) return d;
   int32_t pl[2 * MAXCAND]; int pn = 0, q, tried = 0, br = 0, bc = 0, best = LNA[14];
   for (int k = 0; k < nPool && pn < MAXCAND; k++) {
