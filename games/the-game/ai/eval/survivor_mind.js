@@ -138,23 +138,24 @@ wt.parentPort.on('message', function (m) {
     var popping = !!(cfg.profile.conserve && SH.popLeft(board)), converting = popping ? SH.convertingOf(board) : 0;
     var br = null, brMs = 0, want = {}, tall = cfg.profile.tallRow && SH.top(board) >= cfg.profile.tallRow;
     // No break search on a question due sooner than it could take (one asked
-    // for the next frame, the plan dying): the answer would come late.
+    // for the next frame, the plan dying): the answer would come late. The
+    // survival search's own soonest breaks (breakAt) still rank the moves.
     var breakTime = !due || due - Date.now() >= DEADLINE_MARGIN_MS + LINEUP_MIN_MS;
-    if (cfg.profile.breakFirst && breakTime) {
+    if (cfg.profile.breakFirst) {
       bot._natSearch();   // the engine, on this bot's threads, before a second context is made on it
       if (!BS) BS = new (require(path.join(DIR, 'native.js')).server.Search)({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames, threads: OPTS.threads || 1 });
       var tb = Date.now();
-      br = SH.breakMoves(BS, board, { left: m.hold.left, started: m.hold.started }, arrivals, cfg.profile.breakDepth, cfg.profile.lineup && SH.popLeft(board) ? SH.popLeft(board) + LINEUP_AFTER : 0,
+      if (breakTime) br = SH.breakMoves(BS, board, { left: m.hold.left, started: m.hold.started }, arrivals, cfg.profile.breakDepth, cfg.profile.lineup && SH.popLeft(board) ? SH.popLeft(board) + LINEUP_AFTER : 0,
                          due ? Math.min(Date.now() + Math.max(LINEUP_MIN_MS, m.ms * LINEUP_SHARE), due - DEADLINE_MARGIN_MS) : Date.now() + LINEUP_MAX_MS);
       brMs = Date.now() - tb;
       if (stale()) throw P.ABORTED;
-      want = br.depth ? br.moves : {};
+      want = br && br.depth ? br.moves : {};
       // BANK PANELS BEFORE THE GARBAGE LANDS: once a slab is on the board the
       // stack is topped out and cannot rise, so the panels there are all
       // there will be but what breaking brings. With the profile's bank,
       // while garbage of BANK_ROWS rows or more is on its way and none has
       // landed, a raise is played first, up to BANK_TOP.
-      if (cfg.profile.bank && !br.depth && !SH.lowestGarbageRow(board) && SH.top(board) < BANK_TOP) {
+      if (cfg.profile.bank && !(br && br.depth) && !SH.lowestGarbageRow(board) && SH.top(board) < BANK_TOP) {
         var coming = 0;
         (m.arrivals || []).forEach(function (a) { coming += a.g ? a.g.height : 0; });
         (board.incoming || []).forEach(function (g) { coming += g.height; });
