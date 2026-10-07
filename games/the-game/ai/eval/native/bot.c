@@ -3989,6 +3989,24 @@ static Dec meanwhile(Dec d) {
     if ((v & LV_LIVES) && !(die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0) && LNO[3] > fmost && SPENDS_OK(ln, 1)) { fmost = LNO[3]; fr = k->sr; fc = k->sc; }
   }
   if (!mr && fr) { mr = fr; mc = fc; most = fmost; keep = 0; }
+  // NOT ONLY CLEARS: the wait is time the board can use. A swap pressed now,
+  // clearing nothing, that leaves the line its outcome and lowers the hollow
+  // the next slab lands on, goes first -- the line is kept.
+  if (!mr) {
+    int32_t keepO[12]; for (int k = 0; k < 12; k++) keepO[k] = LNO[k];
+    lineJudge(ln + 2, n, waitAll);
+    int h0 = LNO[10], hb = h0;
+    for (int q = 0, t2 = 0; q < nPool && t2 < MEANWHILES; q++) {
+      Cand *k = &POOL[q];
+      if (k->kind != K_SWAP || k->res.total > 0 || k->res.broke || (k->sr == d.sr && k->sc == d.sc) || k->moveFrames + REACT > last0) continue;
+      t2++;
+      ln[0] = k->sr; ln[1] = k->sc;
+      int v = lineJudge(ln, n + 1, waitAll);
+      if ((v & need) != need || LNO[1] > last0 || (die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0) || LNO[10] >= hb) continue;
+      hb = LNO[10]; mr = k->sr; mc = k->sc;
+    }
+    for (int k = 0; k < 12; k++) LNO[k] = keepO[k];
+  }
   // no clear one swap away: the lines two deep, by rank, the first that pays and lives as long
   LineC *two = 0;
   if (!mr) {
