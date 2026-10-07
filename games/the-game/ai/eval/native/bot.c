@@ -3808,6 +3808,16 @@ static Dec fillFirstIn(Dec d) {
 // If no clear keeps it, one that lives as long on its own is played and the
 // line is decided again: there is time to line it up again before it could be
 // pressed, and the room the clear makes is what the converted panels need.
+// READY AFTER A SPEND: no garbage to come, or a break the cursor reaches when
+// the next slab lands after the line. The line's judgement (LNO) is kept.
+static int readyAfterSpend(const int32_t *sw, int n) {
+  if (!(BIN[IN_INCOMING] > 0)) return 1;
+  int32_t keep[12]; int r, c;
+  for (int k = 0; k < 12; k++) keep[k] = LNO[k];
+  int ok = readyInTime(sw, n, &r, &c);
+  for (int k = 0; k < 12; k++) LNO[k] = keep[k];
+  return ok;
+}
 static Dec meanwhile(Dec d) {
   if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA]) return d;
   int32_t ln[2 * LINEMAX]; int n = 0, kind = LINE_PLAN, waitAll = 0;
@@ -3823,19 +3833,21 @@ static Dec meanwhile(Dec d) {
   // break, and loses it later than the line it goes before
   int urgent = aloneOnEngine() && LNA[0] && marginAfter(0, 0, LNA[0]) < 0;
   int die0Of = die0 ? die0 : 1 << 20;
-#define SPENDS_OK() ((urgent && (LNO[0] ? LNO[0] : 1 << 20) > die0Of) || materialRows(DBASE) - (double)(LNO[3] - LNA[3]) / BW >= 6)
+  // living longer by keeping the board busy is a stall: the queue lands after
+  // it all the same, so under six rows the clear must leave a break ready for it
+#define SPENDS_OK(sw, n) (materialRows(DBASE) - (double)(LNO[3] - LNA[3]) / BW >= 6 || (urgent && (LNO[0] ? LNO[0] : 1 << 20) > die0Of && readyAfterSpend(sw, n)))
   for (int q = 0; q < nPool && tried < MEANWHILES; q++) {
     Cand *k = &POOL[q];
     if (k->kind != K_SWAP || !(k->res.total > 0) || k->res.broke || (k->sr == d.sr && k->sc == d.sc) || k->moveFrames + REACT > last0) continue;
     tried++;
     ln[0] = k->sr; ln[1] = k->sc;
     int v = lineJudge(ln, n + 1, waitAll);
-    if ((v & need) == need && LNO[1] <= last0 && !(die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0) && SPENDS_OK()) {
+    if ((v & need) == need && LNO[1] <= last0 && !(die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0) && SPENDS_OK(ln, n + 1)) {
       if (LNO[3] > most) { most = LNO[3]; mr = k->sr; mc = k->sc; }
       continue;
     }
     v = lineJudge(ln, 1, 0);
-    if ((v & LV_LIVES) && !(die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0) && SPENDS_OK() && LNO[3] > fmost) { fmost = LNO[3]; fr = k->sr; fc = k->sc; }
+    if ((v & LV_LIVES) && !(die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0) && LNO[3] > fmost && SPENDS_OK(ln, 1)) { fmost = LNO[3]; fr = k->sr; fc = k->sc; }
   }
   if (!mr && fr) { mr = fr; mc = fc; most = fmost; keep = 0; }
   // no clear one swap away: the lines two deep, by rank, the first that pays and lives as long
@@ -3855,7 +3867,7 @@ static Dec meanwhile(Dec d) {
       if (at < 0) break;
       tk[at] = 1;
       LineC *l = &LINES[at];
-      if ((judged(l) & (LV_LIVES | LV_PAYS)) == (LV_LIVES | LV_PAYS) && l->die >= dieRef && notLastSwap(l) && (lineJudge(l->sw, l->n, l->waitAll), SPENDS_OK())) two = l;
+      if ((judged(l) & (LV_LIVES | LV_PAYS)) == (LV_LIVES | LV_PAYS) && l->die >= dieRef && notLastSwap(l) && (lineJudge(l->sw, l->n, l->waitAll), SPENDS_OK(l->sw, l->n))) two = l;
     }
     if (two) { mr = two->sw[0]; mc = two->sw[1]; keep = 0; }
   }
