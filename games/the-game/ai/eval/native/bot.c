@@ -3438,9 +3438,9 @@ static int walkTop(int c) {
   for (int k = tH; k >= 1; k--) if (tCell[k][c] > 0) return k;
   return 0;
 }
-// NEVER DYING FIRST: a fill is ranked by the frame it loses health (later
-// first, none within the horizon best), then by the hollow it leaves
-static double fillScore(int die, int hollow) { return (die ? die : (1 << 20)) * 4096.0 - hollow; }
+// NEVER DYING FIRST: a fill is ranked by the frame it loses health while the
+// time is short (LIVEHORIZON; later first), then by the hollow it leaves
+static double fillScore(int die, int hollow) { return (die && die <= LIVEHORIZON ? die : (1 << 20)) * 4096.0 - hollow; }
 static Dec fillFirstIn(Dec d) {
   if (d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
   if (lineLast) return d;
@@ -3464,7 +3464,8 @@ static Dec fillFirstIn(Dec d) {
   }
   if (need > 0) need = 0;   // in time is in time
   Cand *pick = 0;
-  int surplus = materialRows(DBASE) >= 6;   // over six rows a clear may be spent to fill
+  // over six rows a clear may be spent to fill; under, only to live while the time is short
+  int surplus = materialRows(DBASE) >= 6, urgent = LNA[0] && LNA[0] <= LIVEHORIZON;
   // the pool: by fillScore, then the shortest walk, then the swaps; nothing
   // counts that does not beat the choice and the board left alone
   Best P = { 0 };
@@ -3477,7 +3478,7 @@ static Dec fillFirstIn(Dec d) {
     Cand *pc = &POOL[fq[q]];
     int32_t sw[2] = { pc->sr, pc->sc };
     int v = lineJudge(sw, 1, 0);
-    if (!(v & LV_LIVES) || ((v & LV_PAYS) && !surplus && !(v & LV_GAINS))) continue;   // material is spent to live
+    if (!(v & LV_LIVES) || ((v & LV_PAYS) && !surplus && !(urgent && (v & LV_GAINS)))) continue;
     double sc = fillScore(LNO[0], LNO[10]);
     if (P.has ? !bestBeats(&P, sc, pc->moveFrames, sw, 1) : sc <= ref) continue;
     if (!fillKeeps(marginWithin(sw, 1, LNO[0], need), need)) continue;
@@ -3532,7 +3533,7 @@ static Dec fillFirstIn(Dec d) {
         double bt = v ? breakTime(fsw, n) : -1; __builtin_memcpy(tCell, keep, sizeof keep); tW = kw; tH = kh;
         fprintf(stderr, "  walk %d,%d dir %d n %d v %d hollow %d die %d last %d break %g\n", r, c, dir, n, v, h, dd, la, bt); } }
 #endif
-      if (!(v & LV_LIVES) || ((v & LV_PAYS) && !(v & LV_GAINS))) continue;
+      if (!(v & LV_LIVES) || ((v & LV_PAYS) && !(urgent && (v & LV_GAINS)))) continue;
       double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
       // a walk must beat the pool's best; among walks, the same order (time: its estimate)
       double sc = fillScore(LNO[0], LNO[10]);
