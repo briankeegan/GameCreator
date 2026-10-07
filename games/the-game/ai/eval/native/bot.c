@@ -3214,11 +3214,12 @@ static Dec lineupFirst(Dec d) {
 // READY WHEN IT LANDS, AND IT LANDS WHEN THE BOARD GOES QUIET: a slab one
 // row high drops the first frame no panel is active (pa.c shouldDropGarbage),
 // so the bot decides when it arrives. Whatever route chose it, a choice that
-// is not a break and lets the slab land with no break
-// a swap away is replaced: by a swap after which it lands ready, else by the
-// swap that puts the landing off longest -- each swap keeps the board busy,
-// and every frame bought is a decision more to get ready in. A swap must live
-// as long as the choice, and spends no panels under six rows.
+// is not a break and lets the slab land with no break a swap away is
+// replaced: by a swap after which it lands ready, else by a swap that puts
+// the landing off -- each swap keeps the board busy, and every frame bought is
+// a decision more to get ready in -- the one that leaves the least hollow
+// under what lands, so the frames bought are spent getting ready. A swap must
+// live as long as the choice, and spends no panels under six rows.
 #define READYTRIES 8
 static Dec readyOrDelay(Dec d) {
   if (d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA] || BIN[IN_TOPPED]) return d;
@@ -3236,7 +3237,7 @@ static Dec readyOrDelay(Dec d) {
     if (lineLanded(0, 0, lum, &t0) != 0) t0 = 0;
     if (aloneOnEngine()) dieRef = LNA[0] ? LNA[0] : 1 << 20;
   }
-  int spare = materialRows(DBASE) >= 6, br = 0, bc = 0, tried = 0;
+  int spare = materialRows(DBASE) >= 6, br = 0, bc = 0, tried = 0, bh = 1 << 30;
   int32_t bt = t0;
   int32_t pl[2 * MAXCAND]; int pn = 0, q;
   for (int k = 0; k < nPool && pn < MAXCAND; k++) {
@@ -3250,9 +3251,10 @@ static Dec readyOrDelay(Dec d) {
     int32_t s2[2] = { pl[2 * q], pl[2 * q + 1] };
     if (!(lineJudge(s2, 1, 0) & LV_LIVES)) continue;
     if ((LNO[0] ? LNO[0] : 1 << 20) < dieRef) continue;
+    int h = LNO[10];
     tried++;
     if (readyAfter(s2, 1)) { BT->nLine = 0; lineLast = 8; return mkSwap(s2[0], s2[1], V_LINEUP, d.mode, d.alive); }
-    if (lineLanded(s2, 1, lum, &t) == 0 && t > bt) { bt = t; br = s2[0]; bc = s2[1]; }
+    if (lineLanded(s2, 1, lum, &t) == 0 && t > t0 && (h < bh || (h == bh && t > bt))) { bt = t; bh = h; br = s2[0]; bc = s2[1]; }
   }
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "READYORDELAY lands %d | tried %d delay %d,%d lands %d\n", t0, tried, br, bc, bt); }
