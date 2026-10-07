@@ -3563,6 +3563,15 @@ static int walkTop(int c) {
 // (later first); otherwise by the hollow it leaves
 static int fillUrgent;
 static double fillScore(int die, int hollow) { return (fillUrgent && die ? die : (1 << 20)) * 4096.0 - hollow; }
+// READY TO BREAK COMES FIRST: while the time is short, a fill after which the
+// garbage breaks before the board loses health beats every fill that only
+// loses it later -- the garbage is what kills, and only a break removes it
+#define BREAKS_IN_TIME 1e12
+static double fillScoreOf(const int32_t *sw, int n, int die, int hollow) {
+  double sc = fillScore(die, hollow);
+  if (fillUrgent && marginWithin(sw, n, die ? die : LINEHORIZON, 0) >= 0) sc += BREAKS_IN_TIME;
+  return sc;
+}
 static Dec fillFirstIn(Dec d) {
   if (d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
   if (lineLast == 1 || lineLast == 3) return BT->lineKind == LINE_BREAK || lineLast == 3 ? fillBeforeBreak(d) : d;
@@ -3582,7 +3591,7 @@ static Dec fillFirstIn(Dec d) {
   int refDie = LNA[0] ? LNA[0] : 1 << 20;   // the later loss of health of the two
   if (d.kind == K_SWAP && d.hasMove) {
     int32_t sw[2] = { d.sr, d.sc };
-    if (lineJudge(sw, 1, 0) & LV_LIVES) { best = LNO[10] < best ? LNO[10] : best; if ((LNO[0] ? LNO[0] : 1 << 20) > refDie) refDie = LNO[0] ? LNO[0] : 1 << 20; if (fillScore(LNO[0], LNO[10]) > ref) ref = fillScore(LNO[0], LNO[10]); double m = marginAfter(sw, 1, LNO[0]); if (m > need) need = m; }
+    if (lineJudge(sw, 1, 0) & LV_LIVES) { best = LNO[10] < best ? LNO[10] : best; if ((LNO[0] ? LNO[0] : 1 << 20) > refDie) refDie = LNO[0] ? LNO[0] : 1 << 20; double cs = fillScore(LNO[0], LNO[10]); double m = marginAfter(sw, 1, LNO[0]); if (fillUrgent && m >= 0) cs += BREAKS_IN_TIME; if (cs > ref) ref = cs; if (m > need) need = m; }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  choice %d,%d die %d last %d hollow %d | alone die %d | break after choice %g alone %g\n", d.sr, d.sc, LNO[0], LNO[1], LNO[10], LNA[0], breakTime(sw, 1), breakTime(0, 0)); }
 #endif
@@ -3609,9 +3618,10 @@ static Dec fillFirstIn(Dec d) {
     int32_t sw[2] = { pc->sr, pc->sc };
     int v = lineJudge(sw, 1, 0);
     if (!(v & LV_LIVES) || ((v & LV_PAYS) && !surplus && !LIVES_LONGER())) continue;
-    double sc = fillScore(LNO[0], LNO[10]);
+    int pdie = LNO[0];
+    double sc = fillScoreOf(sw, 1, pdie, LNO[10]);
     if (P.has ? !bestBeats(&P, sc, pc->moveFrames, sw, 1) : sc <= ref) continue;
-    if (!fillKeeps(marginWithin(sw, 1, LNO[0], need), need)) continue;
+    if (!fillKeeps(marginWithin(sw, 1, pdie, need), need)) continue;
     bestTake(&P, sc, pc->moveFrames, sw, 1); pick = pc;
   }
   if (P.has) ref = P.score;
@@ -3666,9 +3676,10 @@ static Dec fillFirstIn(Dec d) {
       if (!(v & LV_LIVES) || ((v & LV_PAYS) && !LIVES_LONGER())) continue;
       double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
       // a walk must beat the pool's best; among walks, the same order (time: its estimate)
-      double sc = fillScore(LNO[0], LNO[10]);
+      int wdie = LNO[0];
+      double sc = fillScoreOf(fsw, n, wdie, LNO[10]);
       if (W.has ? !bestBeats(&W, sc, est, fsw, n) : sc <= ref) continue;
-      if (!fillKeeps(marginWithin(fsw, n, LNO[0], need), need)) continue;
+      if (!fillKeeps(marginWithin(fsw, n, wdie, need), need)) continue;
       bestTake(&W, sc, est, fsw, n); first[0] = fsw[0]; first[1] = fsw[1];
     }
   }
@@ -3718,7 +3729,7 @@ static Dec fillFirstIn(Dec d) {
         // a line kept is played to its end: it must end before the next slab lands
         int32_t tNext; ST lum; int last = LNO[1], vv = v, die = LNO[0], hol = LNO[10];
         int inTime = lineLanded(0, 0, lum, &tNext) == 0 && last < tNext;
-        if (inTime && (vv & LV_LIVES) && !(vv & LV_PAYS) && fillScore(die, hol) > beat && fillKeeps(marginWithin(sw, n, die, need), need)) {
+        if (inTime && (vv & LV_LIVES) && !(vv & LV_PAYS) && fillScoreOf(sw, n, die, hol) > beat && fillKeeps(marginWithin(sw, n, die, need), need)) {
           for (int k = 0; k < 2 * n; k++) BT->line[k] = sw[k];
           BT->nLine = n; BT->lineKind = LINE_PLAN; BT->lineWaitAll = 0;
           return mkSwap(sw[0], sw[1], V_FILL, d.mode, d.alive);
