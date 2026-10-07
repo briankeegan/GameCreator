@@ -1826,6 +1826,7 @@ static double clearBack(Cand *pc) {
   }
   return back;
 }
+static int breakWithin(const int32_t *st, int depth);
 static Dec waitForDrain(Dec d) {
   // Topped only: before the board tops, stayAlive keeps the time.
   if (!BIN[IN_TOPPED]) return d;
@@ -1878,10 +1879,11 @@ static Dec waitForDrain(Dec d) {
     if (picked->moveFrames + 2 > k || !steady(picked->sr, picked->sc, k - 2)) return d;
     // a clear that, played now, leaves a board that loses no health within the horizon is played, not held
     { int32_t sw[2] = { picked->sr, picked->sc }; if ((lineJudge(sw, 1, 0) & LV_LIVES) && LNO[0] == 0) return d; }
-    // the stop does not run while panels clear: a clear played with another
-    // still in reach after it costs no time and lowers the board -- only the
-    // last one is held
-    if (picked->moveFrames + quietSettle(base, picked->sr, picked->sc, picked->masks) + clearBack(picked) + 1 <= k) return d;
+    // A CLEAR SETS THE STOP, IT DOES NOT ADD TO IT: played with k frames of
+    // stop left, those k are lost. So a clear is held to the drain -- unless
+    // the board after it has a break now or after one more move, which ends
+    // the wait it would buy.
+    if (breakWithin(picked->masks, 2)) return d;
     BT->counts[C_WAITEDFORDRAIN]++;
     return HOLDAT(picked->sr, picked->sc);
   }
