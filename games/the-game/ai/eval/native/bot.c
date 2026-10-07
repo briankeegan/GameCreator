@@ -1419,8 +1419,14 @@ static Dec decideCore(void) {
     RANKED[nRanked++] = cand;
   }
 
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "READY base %d readyFirst %d incoming %g slab %d,%d,%d\n", baseReady, readyFirst, BIN[IN_INCOMING], (int)BIN[IN_SLABW], (int)BIN[IN_SLABH], (int)BIN[IN_SLABC]); }
+#endif
   if (readyFirst) {
     mainOptions(base, deadline, lookDepth, digging);
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "READYFIRST found %d\n", haveRecIn(ODATA, 3) ? (int)recIn(ODATA, 3)[F_NSW] : -1); }
+#endif
     if (haveRecIn(ODATA, 3)) {
       double *ready = recIn(ODATA, 3);
       int nsw = (int)ready[F_NSW];
@@ -3205,6 +3211,54 @@ static Dec lineupFirst(Dec d) {
   if (B.n >= 2) { for (int k = 0; k < 2 * B.n; k++) BT->line[k] = B.sw[k]; BT->nLine = B.n; BT->lineKind = LINE_PLAN; BT->lineWaitAll = 0; }
   return mkSwap(B.sw[0], B.sw[1], V_LINEUP, d.mode, d.alive);
 }
+// READY WHEN IT LANDS, AND IT LANDS WHEN THE BOARD GOES QUIET: a slab one
+// row high drops the first frame no panel is active (pa.c shouldDropGarbage),
+// so the bot decides when it arrives. A choice that lets it land with no break
+// a swap away is replaced: by a swap after which it lands ready, else by the
+// swap that puts the landing off longest -- each swap keeps the board busy,
+// and every frame bought is a decision more to get ready in. A swap must live
+// as long as the choice, and spends no panels under six rows.
+#define READYTRIES 8
+static Dec readyOrDelay(Dec d) {
+  if (lineLast || d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA] || BIN[IN_TOPPED]) return d;
+  int32_t sw[2] = { d.sr, d.sc }, t0 = 0, t;
+  ST lum;
+  int dieRef = 0;
+  if (d.kind == K_SWAP && d.hasMove) {
+    Cand *pc = poolSwap(d.sr, d.sc);
+    if ((pc && pc->res.broke) || endsInBreak(d) || readyAfter(sw, 1)) return d;
+    if (lineLanded(sw, 1, lum, &t0) != 0) t0 = 0;
+    if (lineJudge(sw, 1, 0) & LV_LIVES) dieRef = LNO[0] ? LNO[0] : 1 << 20;
+  } else {
+    if (readyAfter(0, 0)) return d;
+    if (lineLanded(0, 0, lum, &t0) != 0) t0 = 0;
+    if (aloneOnEngine()) dieRef = LNA[0] ? LNA[0] : 1 << 20;
+  }
+  int spare = materialRows(DBASE) >= 6, br = 0, bc = 0, tried = 0;
+  int32_t bt = t0;
+  int32_t pl[2 * MAXCAND]; int pn = 0, q;
+  for (int k = 0; k < nPool && pn < MAXCAND; k++) {
+    Cand *c = &POOL[k];
+    if (c->kind != K_SWAP || c->res.broke || (c->res.total > 0 && !spare) || (d.kind == K_SWAP && c->sr == d.sr && c->sc == d.sc)) continue;
+    pl[2 * pn] = c->sr; pl[2 * pn + 1] = c->sc; pn++;
+  }
+  Out o; double far;
+  outBegin(&o, pl, 2, pn, (int)BIN[IN_CROW], (int)BIN[IN_CCOL]);
+  while (tried < READYTRIES && outNext(&o, &q, &far)) {
+    int32_t s2[2] = { pl[2 * q], pl[2 * q + 1] };
+    if (!(lineJudge(s2, 1, 0) & LV_LIVES)) continue;
+    if ((LNO[0] ? LNO[0] : 1 << 20) < dieRef) continue;
+    tried++;
+    if (readyAfter(s2, 1)) { BT->nLine = 0; lineLast = 8; return mkSwap(s2[0], s2[1], V_LINEUP, d.mode, d.alive); }
+    if (lineLanded(s2, 1, lum, &t) == 0 && t > bt) { bt = t; br = s2[0]; bc = s2[1]; }
+  }
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "READYORDELAY lands %d | tried %d delay %d,%d lands %d\n", t0, tried, br, bc, bt); }
+#endif
+  if (!br) return d;
+  BT->nLine = 0; lineLast = 8;
+  return mkSwap(br, bc, V_SETUP, d.mode, d.alive);
+}
 // BREAK WHEN IT PAYS. A match beside a pile converts the whole pile, so a
 // pile let grow while there is room turns one match into many panels. A
 // break of fewer than BATCH cells is held while the stack's top leaves
@@ -3751,7 +3805,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   SHARE(5); d = playOn(d); d = waitForDrain(d); d = raiseHold(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(25); d = breakFirst(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(5); d = stayAlive(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(15); d = keepBreak(d); d = lineupFirst(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(15); d = keepBreak(d); d = lineupFirst(d); d = readyOrDelay(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(5); d = batchBreak(d); d = spendToBreak(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(10); d = breakSoon(d); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(10); d = keepReady(meanwhile(onePlan(fillFirst(d)))); cutAt[k] = paBudgetSpent(); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
