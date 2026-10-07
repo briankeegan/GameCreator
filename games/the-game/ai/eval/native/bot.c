@@ -4452,8 +4452,8 @@ static Dec meanwhile(Dec d) {
   if (!mr) {
     int32_t keepO[LNOLEN]; for (int k = 0; k < LNOLEN; k++) keepO[k] = LNO[k];
     lineJudge(ln + 2, n, waitAll);
-    int h0 = HOLLOW(LNO), hb = h0, vb = LNO[14];
-    for (int q = 0, t2 = 0; q < nPool && t2 < MEANWHILES; q++) {
+    int h0 = HOLLOW(LNO), hb = h0, vb = LNO[14], v0b = vb, t2 = 0;
+    for (int q = 0; q < nPool && t2 < MEANWHILES; q++) {
       Cand *k = &POOL[q];
       if (k->kind != K_SWAP || k->res.total > 0 || k->res.broke || (k->sr == d.sr && k->sc == d.sc) || k->moveFrames + REACT > last0) continue;
       t2++;
@@ -4464,6 +4464,9 @@ static Dec meanwhile(Dec d) {
       hb = HOLLOW(LNO); vb = LNO[14]; mr = k->sr; mc = k->sc;
     }
     for (int k = 0; k < LNOLEN; k++) LNO[k] = keepO[k];
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "MEANWHILE level: tried %d, line hollow %d twos %d -> %d,%d hollow %d twos %d\n", t2, h0, v0b, mr, mc, hb, vb); }
+#endif
   }
   // no clear one swap away: the lines two deep, by rank, the first that pays and lives as long
   LineC *two = 0;
