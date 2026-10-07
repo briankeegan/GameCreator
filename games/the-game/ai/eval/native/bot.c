@@ -3128,12 +3128,18 @@ static Dec stayAlive(Dec d) {
 // IT NEVER CHOOSES TO DIE: a decision that is not what stayAlive chose, and
 // loses health sooner than it (the engine judges it: the line it plays, or the
 // board left alone for a hold), gives way to stayAlive's choice and its line.
+// With no choice of stayAlive's (it acts only on a board dying left alone),
+// the reference is the hold: the board left alone, which no decision may lose
+// health sooner than.
 // The judge stops pressing where the line ends, so a decision READY for the
 // slab -- its break in reach the frame the slab lands (readyInTime, on the
 // engine) -- is a line with that break still to press: it gives way only to a
 // choice ready too.
 static Dec surviveGuard(Dec d) {
-  if (!saSet) return d;
+  if (!saSet) {
+    if (d.kind != K_SWAP || !d.hasMove || !aloneOnEngine()) return d;
+    saDec = mkHold(V_KEEPHEALTH, d.mode, d.alive, 0, 0, 0); saDie = LNA[0] ? LNA[0] : 1 << 20; saN = 0; saKind = 0; saWait = 0;
+  }
   if (d.kind == saDec.kind && d.hasMove == saDec.hasMove && d.sr == saDec.sr && d.sc == saDec.sc) return d;
   int die, ready = 0, r, c;
   if (d.kind == K_SWAP && d.hasMove) {
@@ -3146,9 +3152,9 @@ static Dec surviveGuard(Dec d) {
   } else if (d.kind == K_HOLD) die = aloneOnEngine() && LNA[0] ? LNA[0] : 1 << 20;
   else return d;   // a raise: raiseMode's own rules
   if (die >= saDie) return d;
-  if (ready && !(saDec.kind == K_SWAP && saDec.hasMove && (saN ? readyInTime(saLine, saN, &r, &c) : readyInTime((int32_t[2]){ saDec.sr, saDec.sc }, 1, &r, &c)))) return d;
+  if (ready && !(saDec.kind == K_SWAP && saDec.hasMove ? (saN ? readyInTime(saLine, saN, &r, &c) : readyInTime((int32_t[2]){ saDec.sr, saDec.sc }, 1, &r, &c)) : readyInTime(0, 0, &r, &c))) return d;
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "GUARD via %d %d,%d dies %d before %d: stayAlive's %d,%d\n", d.via, d.sr, d.sc, die, saDie, saDec.sr, saDec.sc); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "GUARD via %d %d,%d dies %d before %d: %s %d,%d\n", d.via, d.sr, d.sc, die, saDie, saSet ? "stayAlive's" : "the hold", saDec.sr, saDec.sc); }
 #endif
   BT->nLine = saN; BT->lineKind = saKind; BT->lineWaitAll = saWait;
   for (int k = 0; k < 2 * saN; k++) BT->line[k] = saLine[k];
