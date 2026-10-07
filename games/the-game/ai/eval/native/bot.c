@@ -3228,19 +3228,24 @@ static int roomForBreak(const int32_t *st) {
   for (int c = 1; c <= BW; c++) g += popc(U(st, GARB + c));
   return materialRows(st) + (g + BIN[IN_NEXTSLAB]) / BW + 1 <= BH;
 }
-// THE BREAK, WHERE IT WILL BE: the swap nearest the cursor that breaks the
-// slab once it has landed after `sw` (none: 0). The cursor waits on it, so the
-// press comes the frame the slab lands -- before the board goes quiet and the
-// slab after it drops too.
+// READY IN TIME: after `sw`, the slab lands, and a swap breaks it that the
+// cursor reaches by then -- from where the line leaves it, in the frames
+// between the line's last press and the landing -- so the press comes the
+// frame the slab lands, before the board goes quiet and the slab after it
+// drops too. The nearest such swap (none: 0); the cursor waits on it.
 static ST RBL, RBS; static int32_t RBR[R_INTS + ST_INTS], RBSW[2 * 128];
-static int readyBreakAt(const int32_t *sw, int n, int *br, int *bc) {
-  int32_t t;
-  if (lineLanded(sw, n, RBL, &t) != 0) return 0;
+int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t);
+static int readyInTime(const int32_t *sw, int n, int *br, int *bc) {
+  uint32_t can[WMAX]; uint8_t wt[32][WMAX]; int32_t cur[2], t;
+  if (lineLandedFull(sw, n, RBL, can, wt, cur, &t) != 0) return 0;
+  int last = 0;
+  if (n) { lineJudge(sw, n, 0); last = LNO[1] > 0 ? LNO[1] : 0; }
+  double avail = t - last;
   int m = legal(RBL, RBSW), found = 0; double best = INF;
   for (int i = 0; i < m; i++) {
     int r = RBSW[2 * i], c = RBSW[2 * i + 1];
-    double cost = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], r, c);
-    if (cost >= best) continue;
+    double cost = travelCost(cur[0], cur[1], r, c);
+    if (cost > avail || cost >= best) continue;
     stcpy(RBS, RBL);
     if (!swapIn(RBS, r, c)) continue;
     resolve(RBS, RBR, 1);
@@ -3256,13 +3261,14 @@ static Dec readyOrDelay(Dec d) {
   int dieRef = 0, room = roomForBreak(DBASE);
   if (d.kind == K_SWAP && d.hasMove) {
     Cand *pc = poolSwap(d.sr, d.sc);
-    if ((pc && pc->res.broke) || endsInBreak(d) || (room && readyAfter(sw, 1))) return d;
+    int r, c;
+    if ((pc && pc->res.broke) || endsInBreak(d) || (room && readyInTime(sw, 1, &r, &c))) return d;
     if (lineLanded(sw, 1, lum, &t0) != 0) t0 = 0;
     if (lineJudge(sw, 1, 0) & LV_LIVES) dieRef = LNO[0] ? LNO[0] : 1 << 20;
   } else {
-    if (room && readyAfter(0, 0)) {
-      int r, c;
-      if (!d.hasPark && readyBreakAt(0, 0, &r, &c)) { d.hasPark = 1; d.pr = r; d.pc = c; }
+    int r, c;
+    if (room && readyInTime(0, 0, &r, &c)) {
+      if (!d.hasPark) { d.hasPark = 1; d.pr = r; d.pc = c; }
       return d;
     }
     if (lineLanded(0, 0, lum, &t0) != 0) t0 = 0;
@@ -3285,7 +3291,7 @@ static Dec readyOrDelay(Dec d) {
     if ((LNO[0] ? LNO[0] : 1 << 20) < dieRef) continue;
     int h = room ? LNO[10] : -(LNO[3] - LNA[3]);
     tried++;
-    if (room && readyAfter(s2, 1)) { BT->nLine = 0; lineLast = 8; return mkSwap(s2[0], s2[1], V_LINEUP, d.mode, d.alive); }
+    { int r, c; if (room && readyInTime(s2, 1, &r, &c)) { BT->nLine = 0; lineLast = 8; return mkSwap(s2[0], s2[1], V_LINEUP, d.mode, d.alive); } }
     if (lineLanded(s2, 1, lum, &t) == 0 && t > t0 && (h < bh || (h == bh && t > bt))) { bt = t; bh = h; br = s2[0]; bc = s2[1]; }
   }
 #ifndef __wasm__
