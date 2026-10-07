@@ -3394,7 +3394,11 @@ static Dec readyWhenLands(Dec d) {
   int dieRef = 0, r, c;
   if (d.kind == K_SWAP && d.hasMove) {
     Cand *pc = poolSwap(d.sr, d.sc);
-    if ((pc && pc->res.broke) || endsInBreak(d) || readyInTime(sw, 1, &r, &c)) return d;
+    int rdy = (pc && pc->res.broke) || endsInBreak(d) || readyInTime(sw, 1, &r, &c);
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RWL %d,%d via %d ready %d at %d,%d\n", d.sr, d.sc, d.via, rdy, rdy ? r : 0, rdy ? c : 0); }
+#endif
+    if (rdy) return d;
     if (lineJudge(sw, 1, 0) & LV_LIVES) dieRef = LNO[0] ? LNO[0] : 1 << 20;
   } else {
     if (readyInTime(0, 0, &r, &c)) {
@@ -3440,6 +3444,38 @@ static Dec readyWhenLands(Dec d) {
     if (!(judged(l) & LV_LIVES) || (l->die ? l->die : 1 << 20) < dieRef) continue;
     tried++;
     if (readyInTime(l->sw, l->n, &r, &c)) { lineKeep(l, LINE_PLAN); lineLast = 8; return mkSwap(l->sw[0], l->sw[1], V_LINEUP, d.mode, d.alive); }
+  }
+  // NOR TWO: the time to the landing is what bounds the setup, not a count of
+  // swaps. The breaks by distance are found on the board as the slab lands
+  // on it; a walk whose steps but the last are played now, before it lands,
+  // leaves that last one in reach when it does.
+  {
+    static ST RWB; uint32_t can[WMAX]; uint8_t wt[32][WMAX]; int32_t cur[2], tl;
+    if (lineLandedFull(0, 0, RWB, can, wt, cur, &tl) != 0) return d;
+    int n0 = nLines;
+    targetLines(RWB, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, tl);
+    static unsigned char wk[MAXLINES];
+    for (int i = n0; i < nLines; i++) wk[i] = (char)(LINES[i].n < 2);
+    int got = -1;
+    for (tried = 0; tried < READYTRIES && got < 0;) {
+      int at = -1;
+      for (int i = n0; i < nLines; i++) if (!wk[i] && (at < 0 || LINES[i].est < LINES[at].est)) at = i;
+      if (at < 0) break;
+      wk[at] = 1;
+      LineC *l = &LINES[at];
+      if (!(lineJudge(l->sw, l->n - 1, 0) & LV_LIVES) || (LNO[0] ? LNO[0] : 1 << 20) < dieRef) continue;
+      tried++;
+      if (readyInTime(l->sw, l->n - 1, &r, &c)) got = at;
+    }
+    if (got >= 0) {
+      LineC l = LINES[got];
+      l.n--;
+      nLines = n0;
+      if (l.n > 1) lineKeep(&l, LINE_PLAN); else BT->nLine = 0;
+      lineLast = 8;
+      return mkSwap(l.sw[0], l.sw[1], V_LINEUP, d.mode, d.alive);
+    }
+    nLines = n0;
   }
   return d;
 }
@@ -3731,6 +3767,9 @@ static double fillScoreOf(const int32_t *sw, int n, int die, int hollow) {
   if (fillUrgent && marginWithin(sw, n, die ? die : LINEHORIZON, 0) >= 0) sc += BREAKS_IN_TIME;
   return sc;
 }
+// a clear judged (LNO) leaves six rows of material, read off the line's own matches
+static int spendsLeaveSix(void) { return materialRows(DBASE) - (double)(LNO[3] - LNA[3]) / BW >= 6; }
+static int readyAfterSpend(const int32_t *sw, int n);
 static Dec fillFirstIn(Dec d) {
   if (d.kind == K_RAISE || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0)) return d;
   if (lineLast == 1 || lineLast == 3) return BT->lineKind == LINE_BREAK || lineLast == 3 ? fillBeforeBreak(d) : d;
@@ -3762,7 +3801,6 @@ static Dec fillFirstIn(Dec d) {
   // fill that loses it later. Losing it later is not enough on its own: a
   // clear's stop time puts every loss of health off, and a board spent below
   // six rows cannot rise while the stop lasts.
-  int surplus = materialRows(DBASE) >= 6;
 #define LIVES_LONGER() (fillUrgent && (LNO[0] ? LNO[0] : 1 << 20) > refDie)
   // the pool: by fillScore, then the shortest walk, then the swaps; nothing
   // counts that does not beat the choice and the board left alone
@@ -3776,11 +3814,13 @@ static Dec fillFirstIn(Dec d) {
     Cand *pc = &POOL[fq[q]];
     int32_t sw[2] = { pc->sr, pc->sc };
     int v = lineJudge(sw, 1, 0);
-    if (!(v & LV_LIVES) || ((v & LV_PAYS) && !surplus && !LIVES_LONGER())) continue;
+    int spend = (v & LV_PAYS) && !spendsLeaveSix();
+    if (!(v & LV_LIVES) || (spend && !LIVES_LONGER())) continue;
     int pdie = LNO[0];
     double sc = fillScoreOf(sw, 1, pdie, LNO[10]);
     if (P.has ? !bestBeats(&P, sc, pc->moveFrames, sw, 1) : sc <= ref) continue;
     if (!fillKeeps(marginWithin(sw, 1, pdie, need), need)) continue;
+    if (spend && !readyAfterSpend(sw, 1)) continue;
     bestTake(&P, sc, pc->moveFrames, sw, 1); pick = pc;
   }
   if (P.has) ref = P.score;
@@ -3832,13 +3872,15 @@ static Dec fillFirstIn(Dec d) {
         double bt = v ? breakTime(fsw, n) : -1; __builtin_memcpy(tCell, keep, sizeof keep); tW = kw; tH = kh;
         fprintf(stderr, "  walk %d,%d dir %d n %d v %d hollow %d die %d last %d break %g\n", r, c, dir, n, v, h, dd, la, bt); } }
 #endif
-      if (!(v & LV_LIVES) || ((v & LV_PAYS) && !LIVES_LONGER())) continue;
+      int spend = (v & LV_PAYS) && !spendsLeaveSix();
+      if (!(v & LV_LIVES) || (spend && !LIVES_LONGER())) continue;
       double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
       // a walk must beat the pool's best; among walks, the same order (time: its estimate)
       int wdie = LNO[0];
       double sc = fillScoreOf(fsw, n, wdie, LNO[10]);
       if (W.has ? !bestBeats(&W, sc, est, fsw, n) : sc <= ref) continue;
       if (!fillKeeps(marginWithin(fsw, n, wdie, need), need)) continue;
+      if (spend && !readyAfterSpend(fsw, n)) continue;
       bestTake(&W, sc, est, fsw, n); first[0] = fsw[0]; first[1] = fsw[1];
     }
   }
@@ -3953,6 +3995,24 @@ static Dec meanwhile(Dec d) {
     if ((v & LV_LIVES) && !(die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0) && LNO[3] > fmost && SPENDS_OK(ln, 1)) { fmost = LNO[3]; fr = k->sr; fc = k->sc; }
   }
   if (!mr && fr) { mr = fr; mc = fc; most = fmost; keep = 0; }
+  // NOT ONLY CLEARS: the wait is time the board can use. A swap pressed now,
+  // clearing nothing, that leaves the line its outcome and lowers the hollow
+  // the next slab lands on, goes first -- the line is kept.
+  if (!mr) {
+    int32_t keepO[12]; for (int k = 0; k < 12; k++) keepO[k] = LNO[k];
+    lineJudge(ln + 2, n, waitAll);
+    int h0 = LNO[10], hb = h0;
+    for (int q = 0, t2 = 0; q < nPool && t2 < MEANWHILES; q++) {
+      Cand *k = &POOL[q];
+      if (k->kind != K_SWAP || k->res.total > 0 || k->res.broke || (k->sr == d.sr && k->sc == d.sc) || k->moveFrames + REACT > last0) continue;
+      t2++;
+      ln[0] = k->sr; ln[1] = k->sc;
+      int v = lineJudge(ln, n + 1, waitAll);
+      if ((v & need) != need || LNO[1] > last0 || (die0 ? (LNO[0] && LNO[0] < die0) : LNO[0] != 0) || LNO[10] >= hb) continue;
+      hb = LNO[10]; mr = k->sr; mc = k->sc;
+    }
+    for (int k = 0; k < 12; k++) LNO[k] = keepO[k];
+  }
   // no clear one swap away: the lines two deep, by rank, the first that pays and lives as long
   LineC *two = 0;
   if (!mr) {
