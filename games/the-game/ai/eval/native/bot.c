@@ -1276,8 +1276,7 @@ static Dec decideCore(void) {
   double stackClock = BIN[IN_STACKCLOCK];
   if (raising) {
     BT->plan.has = 0; BT->attack.has = 0; BT->flatten.has = 0;
-  } else if (topped || !(BIN[IN_STOP] > 0) || BIN[IN_INCOMING] > 0) {
-    // stop time holds the stack, not the garbage: with garbage to come, the plans are searched in it too
+  } else if (topped || !(BIN[IN_STOP] > 0)) {
     swept = 1;
     if (BT->plan.has && BT->plan.n) {
       int nr = BT->plan.mv[0], nc = BT->plan.mv[1];
