@@ -51,7 +51,8 @@ module.exports = function survivorBot(view, weights, o) {
               var t = Date.now(), a = mind.think.answer(q);
               a.got = Date.now();
               a.ms = Math.round(a.ms / ratio);   // as the game would have taken it (Match.soon reads it)
-              side.inFlight.push({ frame: side.stack.clock + Math.max(1, Math.ceil((a.got - t) / ratio / MS_PER_FRAME)), a: a });
+              // counted from the frame it was asked on (the stack has run past it by now)
+              side.inFlight.push({ frame: side.match.now + Math.max(1, Math.ceil((a.got - t) / ratio / MS_PER_FRAME)), a: a });
             },
             abort: mind.abort, answers: [], thinking: [], nextId: 1, pending: null, sync: false,
             profile: profile, hands: new SH.Hands(profile), msPerFrame: MS_PER_FRAME };
