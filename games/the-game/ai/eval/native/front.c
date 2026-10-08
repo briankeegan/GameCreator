@@ -951,21 +951,37 @@ static int pjFinished, pjGen;
 // share of what optional work has left (pjShare) and stops its searches at
 // taskEnd (searchInTime) -- the batch together never runs past optLine
 static double pjShare;
+static int pjSeq;   // batches begun: with a task's index, its cache tag
 static void pjShareOf(int count) {
   extern PATLS double paWork;
   double room = optLine() - paWork;
   pjShare = room > 0 && count > 0 ? room / count : 0;
+  pjSeq++;
 }
+// ONE TASK, THE SAME WHEREVER IT RUNS: the front's key state, its share of
+// the decision's work (taskEnd), its own cache (cacheTag) -- on a worker, on
+// this thread at a join, or one by one with no threads at all
+static void pjOne(int ix) {
+  HELDR = pjHeldR; HELDC = pjHeldC; HELDDIR = pjHeldDir; PRESS = pjPress;
+  extern PATLS double paWork, paEngFrames; double w0 = paWork, e0 = paEngFrames;
+  taskEnd = paWork + pjShare;
+#ifndef GC_NOCACHETAG
+  cacheTag = (u64)pjSeq * 4096 + (u64)ix + 1;
+#endif
+  pjTask(ix);
+  cacheTag = 0;
+  if (pjMe) { pjW[pjMe].w += paWork - w0; pjW[pjMe].e += paEngFrames - e0; }
+}
+// THE SAME TASKS ON THE SAME THREAD, EVERY RUN: thread p (0 the deciding
+// one, 1.. the workers) runs tasks p, p + P, p + 2P, ... in order. Each
+// thread keeps its own caches, and an answer found in a cache costs no work,
+// so a search's share reaches as far as that thread's history allows: with
+// tasks taken first come, which thread ran what -- the machine's timing --
+// would change the answers. Fixed, every machine plays the same game.
 static void pjRun(void) {
-  for (;;) {
-    unsigned long long w = __atomic_fetch_add(&pjWord, 1, __ATOMIC_ACQUIRE);
-    unsigned long long ix = w & PJ_IX, count = (w >> 20) & PJ_IX;
-    if (ix >= count) return;
-    HELDR = pjHeldR; HELDC = pjHeldC; HELDDIR = pjHeldDir; PRESS = pjPress;
-    { extern PATLS double paWork, paEngFrames; double w0 = paWork, e0 = paEngFrames;
-      taskEnd = paWork + pjShare;
-      pjTask((int)ix);
-      if (pjMe) { pjW[pjMe].w += paWork - w0; pjW[pjMe].e += paEngFrames - e0; } }
+  unsigned long long w = __atomic_load_n(&pjWord, __ATOMIC_ACQUIRE), count = (w >> 20) & PJ_IX;
+  for (unsigned long long ix = (unsigned long long)pjMe; ix < count; ix += (unsigned long long)pjThreads + 1) {
+    pjOne((int)ix);
     __atomic_add_fetch(&pjFinished, 1, __ATOMIC_RELEASE);
   }
 }
@@ -1003,6 +1019,10 @@ static void *pjWorker(void *arg) {
   }
   return 0;
 }
+// whether work is handed out as tasks from here (parallelDo): always, but
+// from inside a task -- the same with threads or without, so the thread
+// count never changes which path a search takes
+static int parTasks(void) { return !inWorker; }
 // whether parallelDo has workers to hand tasks to from here
 static int parAvailable(void) {
   if (pjThreads < 0) { pjThreads = getenv("GC_THREADS") ? atoi(getenv("GC_THREADS")) : 3; if (pjThreads > 15) pjThreads = 15; }
@@ -1010,8 +1030,8 @@ static int parAvailable(void) {
 }
 // count tasks, task(k) each, on GC_THREADS workers and this thread (one by one without)
 // THE WORKERS ALONE: a batch handed out while this thread does serial work of
-// its own (parallelBg); parallelJoin ends it -- the tasks not yet started are
-// dropped, the ones started are waited for. A batch of either kind starts only
+// its own (parallelBg); parallelJoin ends it once every task is done (this
+// thread takes those not yet started). A batch of either kind starts only
 // once the last background one has ended.
 static int pjBg, pjBgCount;
 static void pjFold(void) {
@@ -1020,14 +1040,12 @@ static void pjFold(void) {
 }
 static void parallelJoin(void) {
   if (!pjBg) return;
-  unsigned long long w = __atomic_load_n(&pjWord, __ATOMIC_ACQUIRE), ix;
-  for (;;) {
-    ix = w & PJ_IX;
-    if (ix >= (unsigned long long)pjBgCount) break;
-    if (__atomic_compare_exchange_n(&pjWord, &w, (w & ~PJ_IX) | (unsigned long long)pjBgCount, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) break;
-  }
-  int started = ix < (unsigned long long)pjBgCount ? (int)ix : pjBgCount;
-  while (__atomic_load_n(&pjFinished, __ATOMIC_ACQUIRE) < started) {}
+  // EVERY TASK DONE, WHATEVER THE MACHINE'S SPEED: this thread takes the ones
+  // not yet started, so what the batch found -- and the work it cost, each
+  // task within its share -- is the same on every machine
+  { int wasIn = inWorker; inWorker = 1; pjRun(); inWorker = wasIn; }
+  while (__atomic_load_n(&pjFinished, __ATOMIC_ACQUIRE) < pjBgCount) {}
+  bgReserve = 0;
   pjFold();
   pjBg = 0;
 }
@@ -1052,7 +1070,13 @@ static void pjStart(int count, void (*task)(int)) {
 static void parallelBg(int count, void (*task)(int)) {
   if (!parAvailable() || count < 1) return;
   parallelJoin();
-  pjShareOf(count + 1);   // this thread's own work goes on beside them
+  // THE WORKERS' HALF, HELD BACK: their work is folded into the decision only
+  // at the join, while this thread's own goes on beside them; half of what is
+  // left is theirs, shared evenly, and reserved from this thread's until then
+  extern PATLS double paWork;
+  double room = optLine() - paWork;
+  pjShare = room > 0 ? room / 2 / count : 0;
+  bgReserve = pjShare * count;
   pjStart(count, task);
   pjBg = 1; pjBgCount = count;
 }
@@ -1068,9 +1092,11 @@ static void parallelDo(int count, void (*task)(int)) {
     if (!USB) USB = nb_new();
     paOutcomeBoard(1);
     int wasIn = inWorker; inWorker = 1;
+    int heldR = HELDR, heldC = HELDC, heldDir = HELDDIR, press = PRESS;
     pjShareOf(count);
-    extern PATLS double paWork;
-    for (int k = 0; k < count; k++) { taskEnd = paWork + pjShare; task(k); }
+    pjTask = task; pjHeldR = heldR; pjHeldC = heldC; pjHeldDir = heldDir; pjPress = press;
+    for (int k = 0; k < count; k++) pjOne(k);
+    HELDR = heldR; HELDC = heldC; HELDDIR = heldDir; PRESS = press;
     inWorker = wasIn;
     return;
   }
@@ -1151,6 +1177,7 @@ static void prejudgeLinesW(LineC *const *ls, int count, int waitAll) { (void)ls;
 static void prejudge(const int32_t *sws, int stride, int count, int n, int waitAll) { (void)sws; (void)stride; (void)count; (void)n; (void)waitAll; }
 static void parallelDo(int count, void (*task)(int)) { for (int k = 0; k < count; k++) task(k); }
 static int parAvailable(void) { return 0; }
+static int parTasks(void) { return 0; }
 static void parallelBg(int count, void (*task)(int)) { (void)count; (void)task; }
 static void parallelJoin(void) {}
 #endif
@@ -1284,7 +1311,8 @@ static void botWarm(void);
 static void parallelDo(int count, void (*task)(int));
 // a thread's stack, touched to the depth the searches reach (their frames hold whole boards)
 __attribute__((noinline)) static void stackWarm(void) { volatile char buf[1 << 20]; for (int i = 0; i < (int)sizeof buf; i += 4096) buf[i] = 0; }
-static void warmTask(int k) { (void)k; stackWarm(); }
+static void sitWarm(void);
+static void warmTask(int k) { (void)k; stackWarm(); sitWarm(); }
 static void frontWarm(void) {
   memoRoom();
   __builtin_memset(LSM, 0, sizeof LSM);
@@ -1294,6 +1322,7 @@ static void frontWarm(void) {
   __builtin_memset(LNB, 0, sizeof(Board)); __builtin_memset(USB, 0, sizeof(Board));
   botWarm();
   stackWarm();
+  sitWarm();
   parallelDo(16, warmTask);   // the workers started, their boards and stacks touched, before the game
 }
 EXPORT(front_new) int front_new(Board *b, int reaction, int allowRaise) {

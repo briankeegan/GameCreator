@@ -1887,7 +1887,6 @@ static Dec decideRuled(void) {
 typedef struct { int kind, sr, sc, future, moveFrames; const int32_t *masks; Rs res; } Clr;
 static Clr CLEARS[MAXCAND + 128];
 static Res WD;
-static ST WDA;
 static int32_t WDSW[2 * 128], WDR[R_INTS + ST_INTS];
 static int breakLabel(int via) { return via == V_DIGPLAN || via == V_BREAKREACH || via == V_BREAK || via == V_LINEUP || via == V_LINEUPHOLD; }
 static int breaksOnEngine(Dec d);
@@ -1931,19 +1930,13 @@ enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8, LV_DROPS = 16, LV
 static int lineJudge(const int32_t *sw, int n, int waitAll);
 static int routeLives(const int32_t *sw, int n) { return (lineJudge(sw, n, 0) & LV_LIVES) != 0; }
 static JLOCAL int32_t LNO[LNOLEN];
-// FRAMES FROM A SWAP TO THE NEAREST CLEAR ON THE BOARD IT LEAVES (INF: none)
+// FRAMES FROM A SWAP TO THE SOONEST CLEAR ON THE BOARD IT LEAVES (INF: none):
+// the shared search in time from where the swap leaves the cursor, the first
+// line it takes that clears or breaks -- any length
 static double clearBack(Cand *pc) {
-  double back = INF;
-  stcpy(WDA, pc->masks);
-  int n = legal(WDA, WDSW);
-  for (int i = 0; i < n; i++) {
-    double cst = travelCost(pc->sr, pc->sc, WDSW[2 * i], WDSW[2 * i + 1]);
-    if (cst >= back || !swapIn(WDA, WDSW[2 * i], WDSW[2 * i + 1])) continue;
-    resolve(WDA, WDR, 0);
-    swapIn(WDA, WDSW[2 * i], WDSW[2 * i + 1]);
-    if (WDR[R_TOTAL] > 0 || WDR[R_SCOPE] == SC_BROKE) back = cst;
-  }
-  return back;
+  double at;
+  int frozen = BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0;
+  return searchInTime(pc->masks, pc->sr, pc->sc, 0, 0, INF, frozen, 0, 0, FAILSAFEWORK, sitFires, 0, 0, 0, &at) ? at : INF;
 }
 static int breakWithin(const int32_t *st, double left);
 static int roomForBreak(const int32_t *st);
@@ -2168,7 +2161,22 @@ static int budgetRefused;
 // THE LINE OPTIONAL WORK STOPS AT: the decision's (OPTWORK from its start), or
 // lower while a stage runs that must leave a later stage its share (stageEnd)
 static double stageEnd = 1e300;
-static double optLine(void) { double e = rdW0 + OPTWORK; return stageEnd < e ? stageEnd : e; }
+// bgReserve: a background batch's work, held back until it is folded in (front.c parallelBg)
+static double bgReserve;
+static double optLine(void) { double e = rdW0 + OPTWORK; return (stageEnd < e ? stageEnd : e) - bgReserve; }
+// THE STAGES AFTER KEEP THEIRS: a stage's optional work stops where the
+// stages after it keep the most they have taken lately (LATER[i]: measured
+// as each decision ends, a hundredth less each decision, so one heavy
+// decision does not shut a stage out for the game). stageOpen lowers where
+// optional work stops for the stage, stageClose puts it back.
+#define NSTAGES 8   // decideRuled, playOn/waitForDrain/raiseHold, breakFirst, stayAlive, lineup, spend, breakSoon, fill
+static double LATER[NSTAGES];
+static double stageLeaves(int i) { return rdW0 + OPTWORK - LATER[i]; }
+static double stageOpen(int i) { double keep = stageEnd, e = stageLeaves(i); if (e < stageEnd) stageEnd = e; return keep; }
+static void stageClose(double keep) { stageEnd = keep; }
+static void stagesMeasured(const double *ws, int k) {
+  for (int i = 0; i + 1 < k && i < NSTAGES; i++) { LATER[i] *= 0.99; if (ws[k - 1] - ws[i] > LATER[i]) LATER[i] = ws[k - 1] - ws[i]; }
+}
 // A BATCH ONLY AS FAR AS THE BUDGET HOLDS IT: of `count` tasks costing at
 // most `cost` each, the number that fit in what is left; the rest are not done
 static int fitTasks(int count, double cost) {
@@ -2344,6 +2352,14 @@ static void disturbed(const int32_t *a, const int32_t *b, uint32_t *out) {
 // or when its work (`work`, paWork's units) is spent. LINEMAX and SITCAP are
 // only how much a line and the heap hold.
 #define SITCAP 1024
+// WHAT THE SEARCH'S OWN BOOKKEEPING COSTS, as work: each line taken off the
+// heap (its board hashed and copied out) and each grown (its board copied in,
+// its disturbed cells and settle found). Calibrated on drill seed 4 so the
+// search's milliseconds per work match the rest of the decision's (GC_WORKSTAT
+// CAL): uncounted, it ran 0.178 ms/kwork against the rest's 0.146; at 1 and
+// 1, 0.121-0.136 against 0.138.
+#define SITPOPWORK 1
+#define SITNODEWORK 1
 #define SITHASH 2048
 typedef struct { int parent, n, r, c, stopped; double t, settled, left; uint32_t dist[WMAX]; int32_t rh[R_INTS]; } SitNode;   // stopped: a step before cleared, so the board is stopped; rh: the step's resolve record
 // THE BOUND, LOWERED AS IT GOES: an accept that only wants something sooner
@@ -2406,27 +2422,51 @@ static double workLeft(void) {
   if (scoreEnd > 0 && scoreEnd < e) e = scoreEnd;
   return e - paWork;
 }
-static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double notBefore, double left, int frozen,
-                        const uint32_t *can0, uint8_t (*wait0)[WMAX], double work, SitAccept accept, void *ctx,
-                        int32_t *sw, int *nOut, double *atOut) {
-  if (sitLevel >= SITLEVELS) return 0;   // nested past its memory: no answer, never a corrupted one
-  // EVERY SEARCH INSIDE THE DECISION'S BUDGET: its share, never past where
-  // optional work stops (optLine; a parallel task's own share, taskEnd) -- a
-  // search that ran on would cut the decision
-  { double room = workLeft(); if (work > room) work = room; }
-  if (!(work > 0)) return 0;
-  SitMem *m = &SITM[sitLevel];
+// a nesting level's memory, made the first time it is asked for (0: none to be had)
+static SitMem *sitMem(int level) {
+  SitMem *m = &SITM[level];
   if (!m->st) {
     m->st = grab(sizeof(ST) * SITCAP); m->nd = grab(sizeof(SitNode) * SITCAP); m->hp = grab(sizeof(int) * SITCAP); m->hk = grab(sizeof(u64) * SITHASH);
     m->t = grab(sizeof(ST)); m->r = grab(sizeof(int32_t) * (R_INTS + ST_INTS)); m->l = grab(sizeof(int32_t) * 2 * 128);
     if (!m->st || !m->nd || !m->hp || !m->hk || !m->t || !m->r || !m->l) { m->st = 0; return 0; }
   }
+  return m;
+}
+// EVERY LEVEL'S MEMORY TOUCHED BEFORE THE GAME (front.c frontWarm, on every
+// thread): a page first touched mid-decision faults in on the decision's time
+static void sitWarm(void) {
+  for (int level = 0; level < SITLEVELS; level++) {
+    SitMem *m = sitMem(level);
+    if (!m) return;
+    __builtin_memset(m->st, 0, sizeof(ST) * SITCAP); __builtin_memset(m->nd, 0, sizeof(SitNode) * SITCAP);
+    __builtin_memset(m->hp, 0, sizeof(int) * SITCAP); __builtin_memset(m->hk, 0, sizeof(u64) * SITHASH);
+  }
+}
+static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double notBefore, double left, int frozen,
+                        const uint32_t *can0, uint8_t (*wait0)[WMAX], double work, SitAccept accept, void *ctx,
+                        int32_t *sw, int *nOut, double *atOut) {
+  if (sitLevel >= SITLEVELS) return 0;   // nested past its memory: no answer, never a corrupted one
+#ifndef __wasm__
+  // GC_WORKSTAT: the search's milliseconds per work, beside the decision's (WORK lines) -- SITPOPWORK's calibration
+  static int calOn = -1; if (calOn < 0) calOn = getenv("GC_WORKSTAT") != 0;
+  static double calMs, calW; static int calN; double cal0 = calOn ? NOWMS2() : 0; extern PATLS double paWork; double calw0 = paWork; int calTop = calOn && sitLevel == 0;
+#endif
+  // EVERY SEARCH INSIDE THE DECISION'S BUDGET: its share, never past where
+  // optional work stops (optLine; a parallel task's own share, taskEnd) -- a
+  // search that ran on would cut the decision
+  { double room = workLeft(); if (work > room) work = room; }
+  if (!(work > 0)) return 0;
+  SitMem *m = sitMem(sitLevel);
+  if (!m) return 0;
   // the caller's level, kept to be put back
   ST *pst = SITST; SitNode *pnd = SITND; int *php = SITHP; u64 *phk = SITHK; int32_t *pt = SITT, *pr = SITR, *pl = SITL; double pleft = sitLeft;
   SITST = m->st; SITND = m->nd; SITHP = m->hp; SITHK = m->hk; SITT = m->t; SITR = m->r; SITL = m->l;
   sitLevel++;
   int got = sitRun(st0, cr, cc, t0, notBefore, left, frozen, can0, wait0, work, accept, ctx, sw, nOut, atOut);
   sitLevel--;
+#ifndef __wasm__
+  if (calTop && !inWorker) { calMs += NOWMS2() - cal0; calW += paWork - calw0; if (++calN % 20000 == 0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "CAL sit %.3f ms/kwork over %.0f kwork\n", calMs / (calW / 1000), calW / 1000); } }
+#endif
   SITST = pst; SITND = pnd; SITHP = php; SITHK = phk; SITT = pt; SITR = pr; SITL = pl; sitLeft = pleft;
   return got;
 }
@@ -2445,6 +2485,7 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
   int32_t line[2 * LINEMAX];
   while (nh > 0 && paWork - w0 < work) {
     int i = sitPop(&nh);
+    paWork += SITPOPWORK;
     SitNode nd = SITND[i];
     int root = nd.n == 0;
     // the soonest line not yet asked: the first to reach its board, asked now
@@ -2482,6 +2523,7 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
       int scope = SITR[R_SCOPE];
       if (scope != SC_OK && scope != SC_BROKE) continue;
       int j = nn++;
+      paWork += SITNODEWORK;
       stcpy(SITST[j], SITR + R_INTS);
       for (int k = 0; k < R_INTS; k++) SITND[j].rh[k] = SITR[k];
       SITND[j].parent = i; SITND[j].n = nd.n + 1; SITND[j].r = r; SITND[j].c = c; SITND[j].t = at;
@@ -2683,29 +2725,11 @@ static void linesFrom(const int32_t *st, int cr, int cc, int depth, double limit
 // board that gives.
 static JLOCAL double growRootMs, growKidMs, growStateMs; static JLOCAL int growKids;   // GC_WORKSTAT
 static void prereplayN(const int32_t *sws, int stride, int count, int n);
-static int parAvailable(void);
+static int parAvailable(void), parTasks(void);
 static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const int32_t *st, int cr, int cc,
                    const uint32_t *can, uint8_t (*waits)[WMAX], double limit);
-// A NEXT STEP'S SUBTREE, GROWN ON A WORKER: replayed (from the memo
-// prereplay left) and grown into lines of its own, handed back in the order
-// the serial walk would have added them
-typedef struct { int32_t pre[2 * REROOTS]; int np, depthLeft, topped, breaks, n; double share; LineC buf[MAXLINES]; } GK;
-static GK GKS[GROWCAP];
 // the line search's work is spent: its share (lfEnd) or the thread's (workLeft)
 static int growSpent(void) { extern PATLS double paWork; return workLeft() <= 0 || (lfEnd > 0 && lfEnd - paWork <= 0); }
-static void gkTask(int j) {
-  GK *g = &GKS[j];
-  LineC *keepL = LNS; int keepN = nLines, keepT = lsTopped, keepB = lsBreaks;
-  LNS = g->buf; nLines = 0; lsTopped = g->topped; lsBreaks = g->breaks;
-  extern PATLS double paWork;
-  double keepEnd = lfEnd;
-  lfEnd = paWork + g->share;   // a subtree on a worker: its even share of what the line search has left
-  int32_t st2[ST_INTS], cur[2], t; uint32_t can2[WMAX]; uint8_t waits2[32][WMAX];
-  if (!growSpent() && lineState(g->pre, g->np, st2, can2, waits2, cur, &t) == 0)
-    growAt(g->pre, g->np, t, g->depthLeft, st2, cur[0], cur[1], can2, waits2, INF);
-  g->n = nLines;
-  LNS = keepL; nLines = keepN; lsTopped = keepT; lsBreaks = keepB; lfEnd = keepEnd;
-}
 static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const int32_t *st, int cr, int cc,
                    const uint32_t *can, uint8_t (*waits)[WMAX], double limit) {
   int from = nLines;
@@ -2744,21 +2768,10 @@ static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const
     }
     prereplayN(&all[0][0], 2 * REROOTS, nn, np + 1);
   }
-  if (nn > 1 && parAvailable()) {
-    // the subtrees together; their lines taken in order, up to the cap, as the walk below adds them
-    for (int j = 0; j < nn; j++) {
-      GK *g = &GKS[j];
-      for (int k = 0; k < 2 * np; k++) g->pre[k] = pre[k];
-      g->pre[2 * np] = nexts[2 * j]; g->pre[2 * np + 1] = nexts[2 * j + 1];
-      g->np = np + 1; g->depthLeft = depthLeft - 1; g->topped = lsTopped; g->breaks = lsBreaks; g->n = 0;
-      g->share = lfEnd > 0 ? (lfEnd - paWork) / nn : LINESWORK / 2;
-    }
-    parallelDo(nn, gkTask);
-    for (int j = 0; j < nn; j++) {
-      for (int i = 0; i < GKS[j].n && nLines < MAXLINES; i++) LINES[nLines++] = GKS[j].buf[i];
-    }
-    return;
-  }
+  // ONE AT A TIME, BEST FIRST: the next steps are grown in rank order, each
+  // taking what the line search has left, so the best is grown fullest (an
+  // even share starves it -- seed 7 at combo_storm: dies 1638 shared, lives
+  // to 60000 best first)
   for (int j = 0; j < nn && !growSpent(); j++) {
     pre2[2 * np] = nexts[2 * j]; pre2[2 * np + 1] = nexts[2 * j + 1];
     double st0t = NOWMS2();
@@ -3477,9 +3490,8 @@ static Dec breakFirst(Dec d) {
 static ST KBA;
 static JLOCAL int32_t KBR[R_INTS + ST_INTS];
 // THE DEEPER SEARCH'S SHARE: what the decision has left once the stages
-// after it are given the most they have taken (laterMax, measured); the
-// search stops there with what it found
-static double kbEnd, laterMax, laterLu;
+// after breakFirst keep theirs (stageLeaves); the search stops there with what it found
+static double kbEnd;
 extern PATLS double paWork;
 #define BREAKWORK 2500   // a break-in-reach question's share of the work
 // A BREAK IN REACH, IN TIME: a break -- however many swaps -- on the board st
@@ -3501,7 +3513,7 @@ static Dec breakDeeper(Dec d) {
   resolve(DBASE, KBR, 1);
   if (KBR[R_SCOPE] != SC_OK) return d;
   static ST kb0; stcpy(kb0, KBR + R_INTS);
-  kbEnd = rdW0 + OPTWORK - laterMax;
+  kbEnd = stageLeaves(2);
   if (paWork >= kbEnd) return d;
   int32_t sw[2 * LINEMAX]; int n = 0;
   if (!searchInTime(kb0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, timeLeft(), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0,
@@ -3661,9 +3673,8 @@ static Dec lineupFirst(Dec d) {
   if (lineState(0, 0, st0, can0, waits0, cur, &t) != 0) return d;
   luStates = luRanks = luReady = 0; luStateMs = luRankMs = luReadyMs = 0;
   Best B = { 0 };
-  // THE LINEUP'S SHARE: what the decision has left once the stages after it
-  // are given the most they have taken (laterLu, measured)
-  double luEnd = rdW0 + OPTWORK - laterLu;
+  // THE LINEUP'S SHARE: what the decision has left once the stages after it keep theirs
+  double luEnd = stageLeaves(4);
   int last;
   LuCtx x = { &B, st0 };
   if (paWork < luEnd)
@@ -4336,14 +4347,12 @@ static int breakAhead(const int32_t *sw, double lim, double *out);   // front.c
 static double bsWork[16];   // each task's own work (SOONBATCH)
 static void bsTask(int k) { double v, w0 = paWork; bsB0[k] = breakAhead(bsPl + 2 * k, bsLim, &v) ? v : breakWithinT(bsPl + 2 * k, 1, bsLim); bsWork[k] = paWork - w0; }
 #define SOONBATCH 16   // swaps taken together, out from the cursor (bsWork's size)
-// BREAKSOON LEAVES FILL ITS SHARE: the most fill's stage has taken lately
-// (laterFill, decaying as the other reserves) is kept from breakSoon's searches
-static double laterFill;
+// BREAKSOON LEAVES FILL ITS SHARE (stageOpen)
 static Dec breakSoonIn(Dec d);
 static Dec breakSoon(Dec d) {
-  stageEnd = rdW0 + OPTWORK - laterFill;
+  double keep = stageOpen(6);
   Dec r = breakSoonIn(d);
-  stageEnd = 1e300;
+  stageClose(keep);
   return r;
 }
 static Dec breakSoonIn(Dec d) {
@@ -4959,9 +4968,11 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // may set a line of its own over the one kept from the last decision, or
   // clear it and choose a swap or a hold; the kept line is played on instead
   // while it lives longer than what the route chose
+  Dec d0;
   int32_t keptLine[2 * LINEMAX]; int keptN = BT->nLine, keptKind = BT->lineKind, keptWait = BT->lineWaitAll;
   for (int q = 0; q < 2 * keptN; q++) keptLine[q] = BT->line[q];
-  SHARE(25); Dec d = decideRuled(); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  { double keep = stageOpen(0); SHARE(25); d0 = decideRuled(); stageClose(keep); }   // the stages after keep theirs
+  Dec d = d0; cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   if (keptN && d.kind != K_RAISE && (BT->nLine != keptN || __builtin_memcmp(BT->line, keptLine, (unsigned long)keptN * 8))) {
     int32_t routeLine[2 * LINEMAX]; int routeN = BT->nLine, routeKind = BT->lineKind, routeWait = BT->lineWaitAll;
     for (int q = 0; q < 2 * routeN; q++) routeLine[q] = BT->line[q];
@@ -5046,11 +5057,9 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // the most the stages after breakFirst (and after lineup) have taken lately:
   // each decision's own, or the last most less a hundredth a decision -- one
   // heavy decision does not shut the searches out for the rest of the game
-  laterMax *= 0.99; if (ws[k - 1] - ws[2] > laterMax) laterMax = ws[k - 1] - ws[2];
+  stagesMeasured(ws, k);
   // the most a judge, a search, a replay has cost: lately, as the reserves -- one heavy one does not shut them out for the game
   jdCost *= 0.99; btCost *= 0.99; rpCost *= 0.99; rdCost *= 0.99;
-  laterLu *= 0.99; if (ws[k - 1] - ws[4] > laterLu) laterLu = ws[k - 1] - ws[4];
-  laterFill *= 0.99; if (ws[k - 1] - ws[k - 2] > laterFill) laterFill = ws[k - 1] - ws[k - 2];
   // A CUT IS A FAILURE: a stage that reaches its share has not decided, it has
   // been stopped. The decision fails and the game stops, naming the stage.
   for (int i = 0; i < k; i++) if (cutAt[i]) {

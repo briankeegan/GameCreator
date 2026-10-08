@@ -20,8 +20,8 @@ const RETIRED = ["LUBEAM", "KEEPDEPTH", "BREAKDEEP", "twoSetups", "anyOneSwapCle
 const HAND = {
   // the pool's routes (decideCore, the planned route's first step), whether
   // any next swap lives (lookahead's stranded), the topped drain's clears
-  // (clearBack, waitForDrain), and searchInTime itself
-  "bot.c": 6,
+  // once the board settles (waitForDrain), and searchInTime itself
+  "bot.c": 5,
   // the two definitions, the option search's plies and first-round masks, its exports and tests
   "bit.c": 9,
   // front_probe: a diagnostic for drill.c GC_PROBE, not a decision
