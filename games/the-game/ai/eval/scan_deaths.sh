@@ -10,7 +10,9 @@
 #   ./scan_deaths.sh RUN_ID [DIR]   (DIR defaults to ./deaths-RUN_ID)
 #
 # Prints one line per seed: "seed N: died F" or "seed N: alive F", and the
-# count of each. Logs and artifacts are fetched with curl, which follows
+# count of each, and writes them to DIR/results.tsv (seed, alive|died|...,
+# frame); a finished scan is added to survival_scans.tsv (run, commit, alive,
+# seeds that died) once. Logs and artifacts are fetched with curl, which follows
 # GitHub's redirect to where they are kept.
 set -euo pipefail
 run=${1:?run id}; dir=${2:-deaths-$run}
@@ -34,16 +36,23 @@ game() {   # the seed's whole game, from its artifact
     || echo "  seed $1: the artifact has no game.log.gz" >&2
   rm -f "$dir/seed$1.zip"
 }
-alive=0; died=0; other=0
+sha=$(curl -sSfL "${auth[@]}" "$api/runs/$run" | python3 -c 'import json, sys; print(json.load(sys.stdin)["head_sha"][:10])')
+alive=0; died=0; other=0; dead=(); : > "$dir/results.tsv"
 while read -r id seed concl; do
   [ "$concl" = success ] || [ "$concl" = failure ] || { echo "seed $seed: $concl"; other=$((other + 1)); continue; }
   log=$(curl -sSfL "${auth[@]}" "$api/jobs/$id/logs" | sed 's/^[0-9TZ:.-]* //')
   end=$(grep -E "^(died|alive) " <<<"$log" | tail -1 || true)
   echo "seed $seed: ${end:-no result}"
+  printf '%s\t%s\t%s\n' "$seed" "${end%% *}" "${end##* }" >> "$dir/results.tsv"
   case $end in
     alive*) alive=$((alive + 1)); [ -n "${GC_ALL:-}" ] && game "$seed" ;;
-    died*) died=$((died + 1)); sed -n '/^DEATH REPORT/,/^END DEATH REPORT/p' <<<"$log" > "$dir/seed$seed.txt"; game "$seed" ;;
+    died*) died=$((died + 1)); dead+=("$seed"); sed -n '/^DEATH REPORT/,/^END DEATH REPORT/p' <<<"$log" > "$dir/seed$seed.txt"; game "$seed" ;;
     *) other=$((other + 1)) ;;
   esac
 done <<<"$jobs"
 echo "alive $alive, died $died, other $other -- reports in $dir"
+hist=$(dirname "$0")/survival_scans.tsv
+[ -f "$hist" ] || printf 'run\tcommit\talive\tdied\n' > "$hist"
+if [ "$other" -eq 0 ] && ! grep -q "^$run	" "$hist"; then
+  printf '%s\t%s\t%s\t%s\n' "$run" "$sha" "$alive" "$(printf '%s\n' "${dead[@]}" | sort -n | paste -sd, -)" >> "$hist"
+fi
