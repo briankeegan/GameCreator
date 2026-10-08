@@ -20,12 +20,24 @@
   "chainLength": -0.05432902372177928
  },
  "record": {
-  "win": 0,
+  "win": 1,
   "loss": 0,
   "draw": 0,
   "none": 0,
   "died": 0
  },
- "history": [],
- "matches": 0
+ "history": [
+  {
+   "match": 0,
+   "opp": 1,
+   "result": "win",
+   "outcome": "won",
+   "frames": 8513,
+   "sent": 154,
+   "received": 105,
+   "late": 0,
+   "at": "2026-10-08T16:52:36.530Z"
+  }
+ ],
+ "matches": 1
 }
