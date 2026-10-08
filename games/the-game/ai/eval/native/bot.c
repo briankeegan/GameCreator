@@ -2369,6 +2369,7 @@ typedef struct { int parent, n, r, c, stopped; double t, settled, left; uint32_t
 // THE BOUND, LOWERED AS IT GOES: an accept that only wants something sooner
 // than what it has (the soonest break) lowers it, and the search prunes to it
 static JLOCAL double sitLeft;
+static JLOCAL int sitPops, sitGrown;   // the bot log's: lines taken and grown, since last read
 
 // A SEARCH INSIDE A SEARCH: an accept may ask a question that searches again
 // (is this board ready?), so each level of nesting has its own memory, the
@@ -2489,7 +2490,7 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
   int32_t line[2 * LINEMAX];
   while (nh > 0 && paWork - w0 < work) {
     int i = sitPop(&nh);
-    paWork += SITPOPWORK;
+    paWork += SITPOPWORK; sitPops++;
     SitNode nd = SITND[i];
     int root = nd.n == 0;
     // the soonest line not yet asked: the first to reach its board, asked now
@@ -2527,7 +2528,7 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
       int scope = SITR[R_SCOPE];
       if (scope != SC_OK && scope != SC_BROKE) continue;
       int j = nn++;
-      paWork += SITNODEWORK;
+      paWork += SITNODEWORK; sitGrown++;
       stcpy(SITST[j], SITR + R_INTS);
       for (int k = 0; k < R_INTS; k++) SITND[j].rh[k] = SITR[k];
       SITND[j].parent = i; SITND[j].n = nd.n + 1; SITND[j].r = r; SITND[j].c = c; SITND[j].t = at;
@@ -4052,24 +4053,20 @@ static Dec noStall(Dec d) {
 }
 // THE LINES THAT READY THE LANDING's accept: a line -- of any length, quiet
 // steps, and clears when the board has panels to spare -- is asked of the
-// engine if the masks show the slab ready in time after it (slabReadyHook);
-// the masks can miss what the engine sees, so the soonest READYTRIES lines
-// are asked whatever they show. Asked, it must live, as long as the
-// readiness bar asks (dieRef), and be ready when the slab lands (readyInTime).
-typedef struct { int dieRef, spare, dr, dc, tried, blind, masks, ok, r, c; } RqCtx;
+// engine if the masks show the slab ready in time after it (slabReadyHook),
+// READYTRIES of them; the rest of the search's work goes to looking further.
+// Asked, it must live, as long as the readiness bar asks (dieRef), and be
+// ready when the slab lands (readyInTime).
+typedef struct { int dieRef, spare, dr, dc, tried, masks, ok, r, c; } RqCtx;
 static int sitReadies(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
   RqCtx *x = ctx; (void)at;
   // a break is the break stages'; a clear spends panels a short board needs
   if (res[R_SCOPE] != SC_OK || (res[R_TOTAL] > 0 && !x->spare)) return SIT_END;
   if (n == 1 && sw[0] == x->dr && sw[1] == x->dc) return SIT_GROW;   // the choice itself: asked already
-  if (slabReadyHook(res + R_INTS)) {
-    x->masks++;
-    if (x->tried >= READYTRIES) return SIT_TAKE;   // asked enough: the search ends, none confirmed
-    x->tried++;
-  } else {
-    if (x->blind >= READYTRIES) return SIT_GROW;
-    x->blind++;
-  }
+  if (!slabReadyHook(res + R_INTS)) return SIT_GROW;   // the masks show it unready: the engine is not asked
+  x->masks++;
+  if (x->tried >= READYTRIES) return SIT_TAKE;   // asked enough: the search ends, none confirmed
+  x->tried++;
   if (!(lineJudge(sw, n, 0) & LV_LIVES) || (LNO[0] ? LNO[0] : 1 << 20) < x->dieRef) return SIT_GROW;
   if (!readyInTime(sw, n, &x->r, &x->c)) return SIT_GROW;
   x->ok = 1;
@@ -4085,11 +4082,12 @@ static int readiesLine(Dec d, int dieRef, int spare, int32_t *sw, int *n, int *r
   extern PATLS double paWork;
   if (lineLanded(0, 0, RWL, &tLand) != 0) return -1;
   if (lineState(0, 0, rq0, can0, wt0, cur0, &t0) != 0 || paWork >= optLine()) return 0;
-  RqCtx x = { dieRef, spare, d.kind == K_SWAP && d.hasMove ? d.sr : 0, d.kind == K_SWAP && d.hasMove ? d.sc : 0, 0, 0, 0, 0, 0, 0 };
+  RqCtx x = { dieRef, spare, d.kind == K_SWAP && d.hasMove ? d.sr : 0, d.kind == K_SWAP && d.hasMove ? d.sc : 0, 0, 0, 0, 0, 0 };
   *n = 0;
-  searchInTime(rq0, cur0[0], cur0[1], t0, 0, tLand, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can0, wt0, optLine() - paWork, sitReadies, &x, sw, n, 0);
+  double rw = optLine() - paWork; sitPops = sitGrown = 0;
+  searchInTime(rq0, cur0[0], cur0[1], t0, 0, tLand, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can0, wt0, rw, sitReadies, &x, sw, n, 0);
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "READIES lines: %d ready on the masks, %d asked, %d asked blind, %s", x.masks, x.tried, x.blind, x.ok ? "ready:" : "none");
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "READIES from %d to landing %d, work %.0f, lines taken %d grown %d: %d ready on the masks, %d asked, %s", t0, tLand, rw, sitPops, sitGrown, x.masks, x.tried, x.ok ? "ready:" : "none");
     if (x.ok) { for (int k = 0; k < *n; k++) fprintf(stderr, " %d,%d", sw[2 * k], sw[2 * k + 1]); fprintf(stderr, " break %d,%d", x.r, x.c); } fprintf(stderr, "\n"); }
 #endif
   if (!x.ok) return 0;
