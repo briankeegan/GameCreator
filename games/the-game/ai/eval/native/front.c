@@ -205,13 +205,11 @@ static int fTallest(void) {
     for (int c = 1; c <= W; c++) if (fp(r, c)[COLOR] != 0) return r;
   return 0;
 }
-// bot.c raiseRoom on the board and the queue as they are this frame, for the
-// rows the decision's rule says the room must hold (raiseQueued's basis)
-static int raiseRoomNow(int basis) {
+// bot.c raiseRoom on the board as it is this frame: every queued garbage row
+static int raiseRoomNow(void) {
   int rows = 0;
   for (int i = 0; i < FB->ninc; i++) rows += FB->inc[i].height;
-  const Incoming *next = FB->ninc ? &FB->inc[FB->ninc - 1] : 0;
-  return raiseRoom(fTallest(), raiseQueued(basis, next ? next->width * next->height : 0, rows), FB->manualRaise || FB->preventManualRaise);
+  return raiseRoom(fTallest(), rows, FB->manualRaise || FB->preventManualRaise);
 }
 static int canRaise(Front *F) {
   if (!F->allowRaise || F->raiseHeld) return 0;
@@ -378,7 +376,7 @@ static void fPrepare(Front *F) {
   int conv = F->reveal && nconv;
   int timed = (moving || open) && fTimed(TMST, &TM);
   d[IN_HASRISEN] = hasRisen;
-  F->raiseLives = F->allowRaise && !topped;   // topped, never (bot.c raiseFits)
+  F->raiseLives = F->allowRaise && !topped;   // topped, never (bot.c raiseSafe)
   d[IN_RAISING] = FB->manualRaise || FB->preventManualRaise;   // a row still coming up
   d[IN_INFLIGHT] = inFlight();
   d[IN_DRAINBOUND] = d[IN_TOPPED] ? drain : 0;
@@ -1276,7 +1274,7 @@ static int frontFrame(int fid, Board *b) {
   // queued garbage row (raiseRoom) and has no garbage in the air -- for as
   // many frames and rows as that is; each decision says again whether it
   // wants one. Topped, never: a raise pressed topped is game over (checkDeath).
-  F->raiseHeld = F->wantRaise && F->raiseLives && !nb_topped(b) && !nb_falling_garbage(b) && raiseRoomNow(F->wantRows) > 0;
+  F->raiseHeld = F->wantRaise && F->raiseLives && !nb_topped(b) && !nb_falling_garbage(b) && raiseRoomNow() > 0;
   if (F->raiseHeld) input |= IN_RAISE;
   if (F->walk) return fSend(F, driveWalk(F, input), held);
   if (F->park) input = parkStep(F, input);

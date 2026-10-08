@@ -902,50 +902,27 @@ static Cand POOL[MAXCAND];
 static ST POOLST[MAXCAND];
 static int nPool;
 static Res CR, CR2;
-// A RAISE IS WANTED, OFFERED AND HELD ONLY WHILE IT CANNOT KILL -- one rule
-// (raiseFits), asked by the pool, by the decision, and, for what changes
-// between decisions, by the front every frame it holds the key (front.c
-// raiseRoomNow): nothing about a raise is fixed, all of it is the board as it is.
-// A board loses health only topped, with no stop time and nothing holding the
-// rise lock; a manual raise zeroes the stop time, and one pressed topped is
-// game over (Stack.lua handleManualRaise, checkDeath). So topped, never.
-// ROOM: the rows left free above the tallest column once the queued garbage
-// rows the raise must leave room for have landed, and a raise already moving is up.
+// A RAISE IS WANTED AND OFFERED ONLY IF IT LIVES. A board loses health only
+// topped, with no stop time and nothing holding the rise lock; a manual raise
+// zeroes the stop time, and one pressed topped is game over (Stack.lua
+// handleManualRaise, checkDeath). So topped, never. Otherwise the passive rise
+// tops the raised board out in (free rows - queued garbage rows) rows, each
+// FPR frames, and the raise lives if the quickest clear the pool holds --
+// stop time earned, the rise held -- can be made before then.
+// ROOM TO RAISE: the rows left free above the tallest column once every
+// queued garbage row has landed and a raise already moving is up. One rule,
+// asked by the decision (raiseSafe) and by the front every frame it holds a
+// raise (front.c raiseRoomNow): no room, no raise.
 static int raiseRoom(int tallest, int queued, int raising) { return BH - tallest - 1 - queued - (raising != 0); }
-// THE ROWS THE ROOM MUST HOLD (basis): every queued row -- or, when that queue
-// already fills the room and no break is ready, the next slab's only: that
-// board dies raised or not, only material builds the break, and the raise fits
-// while the next slab still lands under the top
-static int raiseQueued(int basis, double nextCells, double inRows) {
-  int next = (int)__builtin_ceil(nextCells / BW);
-  return basis ? next : (int)dmax(next, inRows);
-}
-static int sitFires(const int32_t *res, const int32_t *sw, int n, double at, void *ctx);
-// THE SOONEST CLEAR IN TIME from where the cursor is (INF: none before `left`):
-// the shared search, any length -- the stop it earns holds the rise
-static double soonestClear(const int32_t *base, double left) {
-  double at; int frozen = BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0;
-  return searchInTime(base, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, left, frozen, 0, 0, FAILSAFEWORK, sitFires, 0, 0, 0, &at) ? at : INF;
-}
-// RAISE FITS: not topped, and room for the basis' rows; on the full queue it
-// also needs the passive rise -- free rows, FPR frames each -- to leave time
-// for the soonest clear in time (and the reaction) before it tops the raised board out
-static int raiseFitsIn(const int32_t *base, int *basis) {
-  *basis = 0;
+static int raiseSafe(const int32_t *base) {
   if (BIN[IN_TOPPED] || BIN[IN_STACKTOPPED]) return 0;
-  int tall = tallestBoard(base), raising = BIN[IN_RAISING] != 0;
-  int free = raiseRoom(tall, raiseQueued(0, BIN[IN_NEXTSLAB], BIN[IN_INROWS]), raising);
-  if (free > 0 && free * BIN[IN_FPR] > soonestClear(base, free * BIN[IN_FPR]) + REACT) return 1;
-  if (BIN[IN_INCOMING] > 0 && !slabReadyHook(base) && raiseRoom(tall, raiseQueued(1, BIN[IN_NEXTSLAB], BIN[IN_INROWS]), raising) > 0) { *basis = 1; return 1; }
-  return 0;
-}
-// once a decision (the pool and the decision ask alike)
-static int btDecision;
-static int rfDec = -1, rfFits, rfBasis;
-static int raiseFits(const int32_t *base, int *basis) {
-  if (rfDec != btDecision) { rfFits = raiseFitsIn(base, &rfBasis); rfDec = btDecision; }
-  *basis = rfBasis;
-  return rfFits;
+  int queued = (int)dmax(__builtin_ceil(BIN[IN_NEXTSLAB] / BW), BIN[IN_INROWS]);
+  int free = raiseRoom(tallestBoard(base), queued, BIN[IN_RAISING] != 0);
+  if (free <= 0) return 0;
+  double clear = INF;
+  for (int q = 0; q < nPool; q++)
+    if (POOL[q].kind == K_SWAP && POOL[q].res.total > 0 && POOL[q].moveFrames < clear) clear = POOL[q].moveFrames;
+  return free * BIN[IN_FPR] > clear + REACT;
 }
 // WHAT A SWAP CAUSES. On a board in motion the clear already resolving is in
 // every result the resolver gives, the board left alone included. A swap is
@@ -1198,8 +1175,14 @@ static int raiseMode(const int32_t *base, int poolBreak) {
   int topped = BIN[IN_TOPPED] != 0;
   if (!opt(O_ALLOWRAISE) || topped) { BT->opening = 0; return 0; }
   if (BIN[IN_FALLING]) return 0;
-  int basis, fits = raiseFits(base, &basis);
-  BT->wantRows = basis;   // the rows the front's room must hold, every frame (front.c raiseRoomNow)
+  int rows = (int)__builtin_ceil(BIN[IN_NEXTSLAB] / BW);
+  int fits = raiseSafe(base);
+  // A QUEUE THAT FILLS THE ROOM KILLS A BOARD WITH NO BREAK READY, raised or
+  // not: only material builds the break, and the raise costs its row -- it
+  // fits while the next slab still lands under the top.
+  if (!fits && BIN[IN_INCOMING] > 0 && !BIN[IN_TOPPED] && !BIN[IN_STACKTOPPED] && !slabReadyHook(base))
+    fits = BH - tallestBoard(base) - 1 - rows - (BIN[IN_RAISING] != 0) > 0;
+  BT->wantRows = rows;
   if (BT->opening && (BIN[IN_INCOMING] || !fits)) BT->opening = 0;
   if (!fits) return 0;
   // READY BEFORE IT RAISES: with garbage to come, a raise may not cost the
@@ -1368,9 +1351,8 @@ static Dec decideCore(void) {
   double dc0 = NOWMS2();
   candidates(base);
   dcCandMs = NOWMS2() - dc0;
-  // the raise the pool offers is one that fits (raiseFits: the same rule the decision asks)
-  int rfBasis0;
-  if (!raiseFits(base, &rfBasis0))
+  // the raise the pool offers is one that lives
+  if (!raiseSafe(base))
     for (int q = 0; q < nPool; q++)
       if (POOL[q].kind == K_RAISE) { POOL[q] = POOL[--nPool]; break; }
   Line rev; memset(&rev, 0, sizeof rev);
@@ -1577,9 +1559,8 @@ static Dec decideCore(void) {
       else BT->counts[C_RAISEDFORMATERIAL]++;
       return mk(K_RAISE, raising == 1 ? V_RAISE_OPENING : V_RAISE_MATERIAL, mode, alive);
     }
-    // The raise cannot happen yet: wantRaise stays set, and the front presses
-    // it the first frame nothing locks it and it still fits (front.c); the
-    // board's own moves go on meanwhile -- one that delays the raise delays it a frame.
+    // The raise cannot happen yet: wantRaise stays set so it fires when it
+    // can, and the frames until the rise lock ends go to the board (raiseHold).
     BT->counts[C_WAITEDTORAISE]++;
     raiseWaiting = 1;
   }
@@ -2125,7 +2106,7 @@ static JLOCAL int32_t LNO[LNOLEN];
 static int lnAlone;
 static int cashes(const int32_t *r) { return r[R_TOTAL] > 0 || r[R_SCOPE] == SC_BROKE; }
 static double timeLeft(void);
-static int btDecision;   // counts decisions: what is cached is cached for one (declared above too)
+static int btDecision;   // counts decisions: what is cached is cached for one
 static char lastStages[400];   // the last decision's stages: ms/judges each
 __attribute__((visibility("default"))) const char *bot_last_stages(void) { return lastStages; }
 __attribute__((visibility("default"))) int bot_decisions(void) { return btDecision; }
@@ -2192,7 +2173,7 @@ static double optLine(void) { double e = rdW0 + OPTWORK; return (stageEnd < e ? 
 // as each decision ends, a hundredth less each decision, so one heavy
 // decision does not shut a stage out for the game). stageOpen lowers where
 // optional work stops for the stage, stageClose puts it back.
-#define NSTAGES 8   // decideRuled, playOn/waitForDrain, breakFirst, stayAlive, lineup, spend, breakSoon, fill
+#define NSTAGES 8   // decideRuled, playOn/waitForDrain/raiseHold, breakFirst, stayAlive, lineup, spend, breakSoon, fill
 static double LATER[NSTAGES];
 static double stageLeaves(int i) { return rdW0 + OPTWORK - LATER[i]; }
 static double stageOpen(int i) { double keep = stageEnd, e = stageLeaves(i); if (e < stageEnd) stageEnd = e; return keep; }
@@ -4924,6 +4905,18 @@ static Dec keepReady(Dec d) {
   BT->nLine = 0;
   return mkHold(V_SETUP, d.mode, d.alive, 0, 0, 0);
 }
+// A SWAP THAT IS STILL MOVING WHEN THE LOCK ENDS TAKES THE ROW BACK: the
+// raise starts the frame nothing holds the rise lock, and a swap queued then
+// cancels it. While a raise waits, a swap is played only if its walk and its
+// five frames are done before the lock ends; otherwise the bot holds.
+static Dec raiseHold(Dec d) {
+  if (!raiseWaiting || d.kind != K_SWAP || !d.hasMove) return d;
+  Cand *pc = poolSwap(d.sr, d.sc);
+  double mf = pc ? pc->moveFrames : travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], d.sr, d.sc);
+  if (mf + 5 <= raiseWaitLeft()) return d;
+  lineLast = 0;   // a hold is no line played on: what follows judges the hold
+  return mkHold(V_RAISING, d.mode, d.alive, 0, 0, 0);
+}
 static Dec onePlan(Dec d) {
   if (d.kind != K_SWAP) return d;
   int keep = 0;
@@ -5009,7 +5002,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   }
   int32_t lineAfterPlay[2 * LINEMAX]; int nLineAfterPlay = BT->nLine;
   for (int q = 0; q < 2 * BT->nLine; q++) lineAfterPlay[q] = BT->line[q];
-  d = waitForDrain(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  d = waitForDrain(d); d = raiseHold(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(25); d = breakFirst(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(5); d = stayAlive(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(15); d = keepBreak(d); d = lineupFirst(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
@@ -5041,7 +5034,6 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
 #ifndef __wasm__
   // THE PRESS THE JUDGE EXPECTS, for the log: read from the judge's memo only
   // (the log does no work), set beside the PRESS line the front writes
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "DECIDE kind %d via %d at %d,%d lineLast %d\n", d.kind, d.via, d.sr, d.sc, lineLast); }
   if (botTraceOn && d.kind == K_SWAP && d.hasMove) {
     extern int fprintf(void *, const char *, ...); extern void *stderr;
     int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc, v; int32_t lno[LNOLEN];
@@ -5077,7 +5069,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   for (int i = 0; i < k; i++) if (cutAt[i]) {
 #ifndef __wasm__
     extern int fprintf(void *, const char *, ...); extern void *stderr;
-    static const char *STAGE[] = { "decideRuled", "playOn/waitForDrain", "breakFirst", "stayAlive", "keepBreak/lineupFirst", "batchBreak/spendToBreak", "breakSoon", "fillFirst" };
+    static const char *STAGE[] = { "decideRuled", "playOn/waitForDrain/raiseHold", "breakFirst", "stayAlive", "keepBreak/lineupFirst", "batchBreak/spendToBreak", "breakSoon", "fillFirst" };
     fprintf(stderr, "budget: the decision was cut in %s (%.2f ms)\n", STAGE[i], ts[i] - (i ? ts[i - 1] : t0));
 #endif
     botFailed = 1; break;
