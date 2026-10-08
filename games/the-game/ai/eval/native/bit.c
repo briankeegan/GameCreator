@@ -1286,11 +1286,13 @@ static int slabPlace(const int32_t *st, int32_t *out) {
   out[SLK(i)] = 0; out[SAIR(i)] = 0;
   return 1;
 }
-// READY: the next slab placed where it rests, and a break against it in time (anyBreakOf)
+// READY: the next slab placed where it rests, and a break against it in time
+// (anyBreakOf). A slab with no room to come down waits until a break makes it
+// some: ready is then a break in time against the garbage the board holds.
 static int slabReady(const int32_t *st) {
   int placed = slabPlace(st, SLABST);
   if (placed < 0) return slabReadyFast(st);
-  return placed && anyBreakOf(SLABST);
+  return anyBreakOf(placed ? SLABST : st);
 }
 static double priceOf(int chain, int total);
 static LOCAL int stopKeyId, hasStopPrice, expanding;
