@@ -63,7 +63,7 @@ grep -q listening "$MINDLOG" || { cat "$MINDLOG"; echo "$NAME: WasmSurvivor did 
 # the last match must be able to end before the job does
 STOP_AT=$(( DEADLINE - 600 ))
 echo "::notice title=$NAME::starting on $HOST:$PORT, stops at $(date -u -d @$STOP_AT +%H:%M) UTC, played $(bash "$EVAL/island2.sh" played)"
-OUT="$PWD/match.log"
+OUT="$PWD/match.log"; export TOPLOG="$PWD/topped.log"
 # the bot, logged in again if it ever drops out before STOP_AT
 while :; do
   (cd "$PG" && ISLAND2_SH="$EVAL/island2.sh" BOT="$N" STATE="$STATE" PA_SURVIVOR_PORT=47777 \

@@ -96,6 +96,7 @@ jobs:
           path: |
             match.log
             mind.log
+            topped.log
           if-no-files-found: warn
 
   next:

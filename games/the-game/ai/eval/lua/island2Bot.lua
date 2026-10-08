@@ -72,16 +72,57 @@ end
 local top
 local function topReset() top = { frames = 0, longest = 0, run = 0, stop = 0, shake = 0, swapLock = 0, active = 0, minHealth = 99, deadHealth = 0 } end
 topReset()
+-- THE BOARD WHILE TOPPED OUT, as this bot's own engine has it (TOPLOG):
+-- every 20th topped-out frame and every frame what protects it changes,
+-- the timers and the grid, top row first. A colour is its digit, garbage G,
+-- a panel matched or popping m (garbage g), swapping s, falling or
+-- hovering f, empty '.'; the cursor's two cells in brackets.
+local toplog = os.getenv("TOPLOG") and io.open(os.getenv("TOPLOG"), "a")
+local lastWhy
+local function cell(p)
+  if not p then return "." end
+  local st = p.state
+  if p.isGarbage then return (st == "matched" or st == "popping") and "g" or "G" end
+  if p.color == 0 then return "." end
+  if st == "matched" or st == "popping" or st == "popped" then return "m" end
+  if st == "swapping" then return "s" end
+  if st == "falling" or st == "hovering" then return "f" end
+  return tostring(p.color)
+end
+local function topTrace(st, why)
+  if not toplog then return end
+  if why == lastWhy and top.run % 20 ~= 1 then return end
+  lastWhy = why
+  local rows = {}
+  for r = st.height, 1, -1 do
+    local row = {}
+    for c = 1, st.width do
+      local ch = cell(st.panels[r] and st.panels[r][c])
+      if r == st.cur_row and (c == st.cur_col or c == st.cur_col + 1) then ch = "[" .. ch .. "]" end
+      row[#row + 1] = ch
+    end
+    rows[#rows + 1] = table.concat(row)
+  end
+  toplog:write(string.format("%s vs %s f=%d run=%d why=%s health=%d stop=%d pre=%d shake=%d lock=%s active=%d chain=%d | %s\n",
+    NAME, tostring(oppName), st.clock, top.run, why, st.health, st.stop_time, st.pre_stop_time, st.shake_time,
+    tostring(st.rise_lock), st.n_active_panels or 0, st.chain_counter or 0, table.concat(rows, "/")))
+  toplog:flush()
+end
 local function topCount(st)
-  if not (st:isToppedOut() or st.wasToppedOut) or st:game_ended() then top.run = 0; return end
+  if not (st:isToppedOut() or st.wasToppedOut) or st:game_ended() then
+    if top.run > 0 and toplog then toplog:write(string.format("%s vs %s f=%d not topped out after %d frames\n", NAME, tostring(oppName), st.clock, top.run)) end
+    top.run = 0; lastWhy = nil; return
+  end
   top.frames = top.frames + 1; top.run = top.run + 1
   if top.run > top.longest then top.longest = top.run end
   if st.health < top.minHealth then top.minHealth = st.health end
   if st.health <= 0 then top.deadHealth = top.deadHealth + 1 end
-  if st.stop_time > 0 or st.pre_stop_time > 0 then top.stop = top.stop + 1
-  elseif st.shake_time > 0 then top.shake = top.shake + 1
-  elseif st.rise_lock and (st.n_active_panels or 0) - (st.swappingPanelCount or 0) == 0 then top.swapLock = top.swapLock + 1
-  elseif st.rise_lock then top.active = top.active + 1 end
+  local why = "none"
+  if st.stop_time > 0 or st.pre_stop_time > 0 then top.stop = top.stop + 1; why = "stop"
+  elseif st.shake_time > 0 then top.shake = top.shake + 1; why = "shake"
+  elseif st.rise_lock and (st.n_active_panels or 0) - (st.swappingPanelCount or 0) == 0 then top.swapLock = top.swapLock + 1; why = "swaps"
+  elseif st.rise_lock then top.active = top.active + 1; why = "active" end
+  topTrace(st, why)
 end
 local pressed = 0   -- swaps and raises pressed this match
 local function playerCount() local n = 0; for _ in pairs(bot.players or {}) do n = n + 1 end; return n end
