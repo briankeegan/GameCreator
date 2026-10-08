@@ -22,7 +22,7 @@
  "record": {
   "win": 6,
   "loss": 8,
-  "draw": 0,
+  "draw": 1,
   "none": 0,
   "died": 5
  },
@@ -309,7 +309,29 @@
    },
    "at": "2026-10-08T17:31:15.035Z",
    "mergedToward": 0
+  },
+  {
+   "match": 14,
+   "opp": 4,
+   "result": "draw",
+   "outcome": "ceiling",
+   "frames": 35,
+   "sent": 0,
+   "received": 0,
+   "late": 0,
+   "topped": {
+    "frames": 0,
+    "longest": 0,
+    "run": 0,
+    "stop": 0,
+    "shake": 0,
+    "swapLock": 0,
+    "active": 0,
+    "minHealth": 99,
+    "deadHealth": 0
+   },
+   "at": "2026-10-08T17:31:19.990Z"
   }
  ],
- "matches": 14
+ "matches": 15
 }
