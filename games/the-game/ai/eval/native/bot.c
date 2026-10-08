@@ -4142,14 +4142,14 @@ static Dec readyWhenLands(Dec d) {
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RWL %d,%d via %d ready %d at %d,%d\n", d.sr, d.sc, d.via, rdy, rdy ? r : 0, rdy ? c : 0); }
 #endif
     if (rdy) return d;
-    if (lineJudge(sw, 1, 0) & LV_LIVES) dieRef = LNO[0] ? LNO[0] : 1 << 20;
-  } else {
-    if (readyInTime(0, 0, &r, &c)) {
-      if (!d.hasPark) { d.hasPark = 1; d.pr = r; d.pc = c; }
-      return d;
-    }
-    if (aloneOnEngine()) dieRef = LNA[0] ? LNA[0] : 1 << 20;
+  } else if (readyInTime(0, 0, &r, &c)) {
+    if (!d.hasPark) { d.hasPark = 1; d.pr = r; d.pc = c; }
+    return d;
   }
+  // READY FIRST (readyThenLater): a line that readies the landing need only
+  // outlive the board left alone, not the choice it replaces -- that choice's
+  // later death is judged without a break, and the break is what saves it
+  if (aloneOnEngine()) dieRef = LNA[0] ? LNA[0] + 1 : 1 << 20;
   int spare = materialRows(DBASE) >= 6, tried = 0;
   int32_t pl[2 * MAXCAND]; int pn = 0, q;
   for (int k = 0; k < nPool && pn < MAXCAND; k++) {
