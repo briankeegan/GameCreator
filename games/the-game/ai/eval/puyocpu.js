@@ -1873,6 +1873,7 @@
         for (j = 0; j < moves.length && budget > 0; j++) {
           budget--;
           // with an answer due (_dueAt) the line is as far as it got by then
+          if ((budget & 15) === 0 && this._abort && this._abort()) throw ABORTED;
           if (this._dueAt && (budget & 15) === 0 && Date.now() >= this._dueAt) { budget = 0; break; }
           c = moves[j] === 'long' ? this._lineStep(n, null, true) : this._lineStep(n, moves[j], false);
           if (!c) continue;
@@ -1925,6 +1926,7 @@
     var order = live.map(function (x, n) { return n; });
     order.sort(function (a, b) { return (live[b].score || 0) - (live[a].score || 0); });
     for (q = 0; q < order.length; q++) {
+      if (this._abort && this._abort()) throw ABORTED;
       var et = Date.now();
       if (this._dueAt && et + slowest > this._dueAt) break;
       i = order[q];
@@ -1964,6 +1966,7 @@
     if (!sp) return live;
     // With an answer due (_dueAt), as _furthest: measured while the slowest so far would still finish.
     for (i = 0; i < live.length; i++) {
+      if (this._abort && this._abort()) throw ABORTED;
       var rt = Date.now();
       if (this._dueAt && rt + slowest > this._dueAt) break;
       k = sp.cands.indexOf(live[i]);
@@ -3316,6 +3319,7 @@
     // second ply is given up (null) and the move is chosen one deep.
     var values = new Array(expand.length), slowest = 0;
     for (i = 0; i < expand.length; i++) {
+      if (this._abort && this._abort()) throw ABORTED;
       var vt = Date.now();
       if (this._dueAt && vt + slowest > this._dueAt) return null;
       values[i] = this._value(expand[i]);

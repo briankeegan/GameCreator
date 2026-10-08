@@ -219,7 +219,9 @@ function touchScore(grid) {
   }
   return s;
 }
-function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
+// stop(): the question is no longer wanted; checked between batches, and
+// throws what it returns (survivor_think.js: PuyoCpu.ABORTED).
+function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop) {
   maxDepth = maxDepth || 3;
   deadline = deadline || Infinity;
   var g = lowestGarbageRow(board);
@@ -244,6 +246,8 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
     if (whole) return S.advanceMany(steps, true);
     var out = [];
     for (var b = 0; b < steps.length; b += BATCH) {
+      var halt = stop && stop();
+      if (halt) throw halt;
       if (Date.now() >= deadline) { while (out.length < steps.length) out.push(null); break; }
       out = out.concat(S.advanceMany(steps.slice(b, b + BATCH), true));
     }
