@@ -2057,7 +2057,12 @@ int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_
 // DROPS: more garbage at rest starts to fall than left alone. FILLS: less
 // hollow under the garbage that lands than left alone (pa.c HOLLOW).
 
-typedef struct { int n, brk, ok, grown, waitAll, hollow, conv, die; int32_t sw[2 * LINEMAX]; double est; int verdict; } LineC;
+typedef struct { int n, brk, ok, grown, waitAll, hollow, conv, die; int32_t sw[2 * LINEMAX]; double est, life; int verdict; } LineC;
+// A LINE'S LIFE: the frame it loses health, less what its hollow costs. A
+// hollow cell under what lands is stack spent on nothing -- BW of them are a
+// row, and a row is FPR frames of rise -- so a line that dies a few frames
+// later but leaves the next slab propped over a gap lives less.
+static double lifeOf(int die, int hollow) { return (double)die - (double)hollow * BIN[IN_FPR] / BW; }
 // a thread's lines: the decision's, or a grown subtree's on a worker (growAt)
 static LineC LINES_MAIN[MAXLINES];
 static JLOCAL LineC *LNS = LINES_MAIN;
@@ -2229,12 +2234,13 @@ static int judged(LineC *l) {
     l->hollow = l->verdict ? HOLLOW(LNO) : 1 << 20;
     l->conv = l->verdict ? LNO[2] - LNA[2] : 0;
     l->die = l->verdict ? (LNO[0] ? LNO[0] : 1 << 20) : 0;   // the frame it loses health (1 << 20: not within the horizon)
+    l->life = l->verdict ? lifeOf(l->die, l->hollow) : 0;
     // A BREAK PRESSED ONCE THE BOARD HAS SETTLED: a break needs garbage at
     // rest beside the match, and a press made while the slab still lands
     // matches beside it in vain. The last press then waits for the garbage to land (breakWait).
     if (l->brk && (l->verdict & LV_PAYS) && !(l->verdict & LV_BREAKS) && nJudged < MAXJUDGED) {
       int v = lineJudge(l->sw, l->n, 1); nJudged++;
-      if (v & LV_BREAKS) { l->verdict = v; l->waitAll = 1; l->hollow = HOLLOW(LNO); l->conv = LNO[2] - LNA[2]; l->die = LNO[0] ? LNO[0] : 1 << 20; }
+      if (v & LV_BREAKS) { l->verdict = v; l->waitAll = 1; l->hollow = HOLLOW(LNO); l->conv = LNO[2] - LNA[2]; l->die = LNO[0] ? LNO[0] : 1 << 20; l->life = lifeOf(l->die, l->hollow); }
     }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
@@ -2995,9 +3001,9 @@ static int readyInTime(const int32_t *sw, int n, int *br, int *bc);
 // the next slab lands goes first -- the slab it is ready for is what kills;
 // between two alike, the one that loses health later. 1 better, -1 worse, 0
 // the same (the caller's own tie-break decides).
-static int readyThenLater(int rdy, int die, int pickRdy, int pickDie) {
+static int readyThenLater(int rdy, double life, int pickRdy, double pickLife) {
   if (rdy != pickRdy) return rdy > pickRdy ? 1 : -1;
-  return die > pickDie ? 1 : die < pickDie ? -1 : 0;
+  return life > pickLife ? 1 : life < pickLife ? -1 : 0;
 }
 // THE BAR A READY LINE CLEARS: it outlives the board left alone (the frame
 // after the board left alone loses health; any death, when it does not; 0
@@ -3036,8 +3042,8 @@ static LineC *bestBreak(void) {
     judgeAhead(l, taken, 0);
     if ((judged(l) & need) != need) continue;
     found++; bbFound = found; bbLastN = l->n; bbLastEst = l->est;
-    if (pick && pickReady && l->die <= pick->die && l->conv <= pick->conv) continue;
-    int rdy = ask ? readyCounts(l, alone) : 0, cmp = pick ? readyThenLater(rdy, l->die, pickReady, pick->die) : 1;
+    if (pick && pickReady && l->life <= pick->life && l->conv <= pick->conv) continue;
+    int rdy = ask ? readyCounts(l, alone) : 0, cmp = pick ? readyThenLater(rdy, l->life, pickReady, pick->life) : 1;
     // ready first, then the latest loss of health; then the most converted
     if (cmp > 0 || (cmp == 0 && l->conv > pick->conv)) { pick = l; pickReady = rdy; }
   }
@@ -3064,7 +3070,7 @@ static LineC *bestLiving(int (*ok)(const LineC *)) {
     if ((judged(l) & need) != need) continue;
     found++;
     // ready first when asked (stayAlive, readyThenLater), then the latest loss of health; then the least hollow
-    int rdy = blReady ? readyCounts(l, blAlone) : 0, cmp = pick ? readyThenLater(rdy, l->die, pickRdy, pick->die) : 1;
+    int rdy = blReady ? readyCounts(l, blAlone) : 0, cmp = pick ? readyThenLater(rdy, l->life, pickRdy, pick->life) : 1;
     if (cmp > 0 || (cmp == 0 && l->hollow < pick->hollow)) { pick = l; pickRdy = rdy; }
   }
   return pick;
@@ -3099,6 +3105,7 @@ static int leavesSixRows(void) { return (double)LNO[12] / BW >= 6; }
 // health before the wait would end -- the raise could not come in time to
 // save it anyway
 static int playDie;   // the frame the line played on loses health (1 << 20: not within the horizon)
+static double playLife;   // and its life (lifeOf)
 static int spendKeepsRaiseOut(void) {
   if (!raiseWaiting || !aloneOnEngine()) return 0;
   return !(LNA[0] && LNA[0] <= raiseWaitLeft());
@@ -3128,7 +3135,7 @@ static Dec playOn(Dec d) {
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "DROPLINE kind %d n %d", BT->lineKind, BT->nLine); for (int k = 0; k < BT->nLine; k++) fprintf(stderr, " %d,%d", BT->line[2 * k], BT->line[2 * k + 1]); fprintf(stderr, " | v %d need %d die %d last %d refused step %d at %d\n", v, need, LNO[0], LNO[1], LNO[5], LNO[6]); }
 #endif
     BT->nLine = 0; return d; }
-  playDie = LNO[0] ? LNO[0] : 1 << 20;
+  playDie = LNO[0] ? LNO[0] : 1 << 20; playLife = lifeOf(playDie, HOLLOW(LNO));
   // A PLAN SPENDS AS EVERY CHOICE DOES: what is left of a plan line that
   // clears, leaves under six rows and no break ready is dropped -- unless the
   // board left alone dies and the line buys time: it loses health later. A
@@ -3224,7 +3231,7 @@ static Dec stayAlive(Dec d) {
   LineC *l = bestLiving(notLastSwap);
   blReady = 0;
   if (lineLast == 1) {
-    if (!l || l->die <= playDie) return saKeep(d, playDie);
+    if (!l || l->life <= playLife) return saKeep(d, playDie);
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SA leaves the line played (dies %d) for", playDie); for (int k = 0; k < l->n; k++) fprintf(stderr, " %d,%d", l->sw[2 * k], l->sw[2 * k + 1]); fprintf(stderr, " (dies %d)\n", l->die); }
 #endif
@@ -3232,7 +3239,7 @@ static Dec stayAlive(Dec d) {
   if (d.kind == K_SWAP) {
     dR = d.sr; dC = d.sc;
     LineC *mine = bestLineAvoid(LV_LIVES | LV_GAINS, 0, fromChoice);
-    if (mine && (!l || mine->die >= l->die)) { if (mine->n > 1) lineKeep(mine, LINE_CASH); return saKeep(d, mine->die); }
+    if (mine && (!l || mine->life >= l->life)) { if (mine->n > 1) lineKeep(mine, LINE_CASH); return saKeep(d, mine->die); }
   }
   // A HOLD IS NOT A LINE STARTED LATER: a line is judged pressed from now, and
   // every frame the board waits is a frame garbage drops on it -- the line that
@@ -4656,7 +4663,7 @@ static int walkTop(int c) {
 // soonest break (fillUrgent), a fill is ranked by the frame it loses health
 // (later first); otherwise by the hollow it leaves
 static int fillUrgent;
-static double fillScore(int die, int hollow) { return (fillUrgent && die ? die : (1 << 20)) * 4096.0 - hollow; }
+static double fillScore(int die, int hollow) { return (fillUrgent && die ? lifeOf(die, hollow) : (1 << 20)) * 4096.0 - hollow; }
 // READY TO BREAK COMES FIRST: while the time is short, a fill after which the
 // garbage breaks before the board loses health beats every fill that only
 // loses it later -- the garbage is what kills, and only a break removes it
