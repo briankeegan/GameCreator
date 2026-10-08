@@ -4877,27 +4877,31 @@ static Dec meanwhile(Dec d) {
   x.ln = ln + 2; x.n = n; x.waitAll = waitAll; x.need = need; x.last0 = last0; x.die0 = die0; x.dr = d.sr; x.dc = d.sc;
   x.urgent = aloneOnEngine() && LNA[0] && marginAfter(0, 0, LNA[0]) < 0;
   x.die0Of = die0 ? die0 : 1 << 20;
-  waitLines(&x, sitWaitClear);
-  tried = x.tried; most = x.most;
   int32_t pre[2 * LINEMAX]; int np = 0;   // what goes first: its first step is played, the rest kept before the line
-  if (x.bn) { np = x.bn; for (int k = 0; k < 2 * np; k++) pre[k] = x.bsw[k]; }
-  else if (x.fn) { np = x.fn; for (int k = 0; k < 2 * np; k++) pre[k] = x.fsw[k]; most = x.fmost; keep = 0; }   // the line dropped: decided again once it can be pressed
-  // NOT ONLY CLEARS: the wait is time the board can use. A quiet line pressed
-  // now that leaves the line its outcome and lowers the hollow the next slab
-  // lands on -- or, as level, sets up more vertical twos -- goes first; the line is kept.
-  if (!np) {
+  // THE WAIT LEVELS FIRST: a quiet line pressed now that leaves the line its
+  // outcome and lowers the hollow the next slab lands on -- or, as level,
+  // sets up more vertical twos -- goes first, the line kept; a clear is put
+  // first only when nothing levels, since a clear spends what a break needs.
+  {
     int32_t keepO[LNOLEN]; for (int k = 0; k < LNOLEN; k++) keepO[k] = LNO[k];
-    lineJudge(ln + 2, n, waitAll);
     static ST MW0; int32_t mc0[2], mt0; uint32_t mcan0[WMAX]; uint8_t mwt0[32][WMAX];
     int tw0 = lineState(0, 0, MW0, mcan0, mwt0, mc0, &mt0) == 0 ? twosOf(MW0) : 0;
     int h0 = HOLLOW(LNO);
-    x.tried = 0; x.bn = 0; x.hb = h0; x.vb = tw0;
+    x.hb = h0; x.vb = tw0;
     waitLines(&x, sitWaitQuiet);
     if (x.bn) { np = x.bn; for (int k = 0; k < 2 * np; k++) pre[k] = x.bsw[k]; }
     for (int k = 0; k < LNOLEN; k++) LNO[k] = keepO[k];
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "MEANWHILE level: tried %d, line hollow %d twos %d -> %d steps hollow %d twos %d\n", x.tried, h0, tw0, np, x.hb, x.vb); }
 #endif
+  }
+  if (!np) {
+    x.tried = 0; x.bn = 0;
+    lineJudge(ln + 2, n, waitAll);
+    waitLines(&x, sitWaitClear);
+    tried = x.tried; most = x.most;
+    if (x.bn) { np = x.bn; for (int k = 0; k < 2 * np; k++) pre[k] = x.bsw[k]; }
+    else if (x.fn) { np = x.fn; for (int k = 0; k < 2 * np; k++) pre[k] = x.fsw[k]; most = x.fmost; keep = 0; }   // the line dropped: decided again once it can be pressed
   }
   if (np) { mr = pre[0]; mc = pre[1]; }
   // A WAIT SETS UP: with nothing better, a setup of any length (setupLines),
