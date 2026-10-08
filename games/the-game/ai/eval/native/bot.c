@@ -3435,8 +3435,8 @@ static Dec perchGuard(Dec d) {
   // horizon ends. With nothing queued a slab can still come: the hollow the
   // slabs to come would leave (HOLLOW, every four columns' gap under their
   // tallest) is held to the hold's below, as it is under garbage.
-  if (!hasGarbage(DBASE) && BIN[IN_INCOMING] > 0) {
-    if (lineLast == 3 || endsInBreak(d)) return d;
+  if (!hasGarbage(DBASE)) {
+    if (!(BIN[IN_INCOMING] > 0) || lineLast == 3 || endsInBreak(d)) return d;
     Cand *pc = poolSwap(d.sr, d.sc);
     if (pc && pc->res.broke) return d;
     int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
