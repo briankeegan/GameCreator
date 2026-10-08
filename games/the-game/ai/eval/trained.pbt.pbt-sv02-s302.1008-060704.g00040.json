@@ -1,0 +1,142 @@
+{
+  "mode": "pbt",
+  "objective": "versus",
+  "brain": "puyo",
+  "level": 10,
+  "selection": "champion of 4 islands after 40 updates",
+  "updates": 40,
+  "islands": 4,
+  "population": 16,
+  "leg": 10,
+  "depth": 2,
+  "beam": 0,
+  "rise": true,
+  "density": false,
+  "allowRaise": true,
+  "engine": true,
+  "modes": true,
+  "diversity": [
+    76.9,
+    76,
+    71.2,
+    79.6
+  ],
+  "rules": 56,
+  "features": [
+    "linksH",
+    "linksV",
+    "chainLayers",
+    "colourVariance",
+    "edgePenalty",
+    "garbageOnBoard",
+    "maxHeight",
+    "material",
+    "garbageAdjacency",
+    "reach4combo",
+    "reach2chain",
+    "chainLength",
+    "stopTimeEarned",
+    "garbageCleared",
+    "travelCost"
+  ],
+  "excluded": [
+    "breakPairs",
+    "reachBreak",
+    "brokeGarbage",
+    "reach3chain",
+    "reach4chain",
+    "reach5chain",
+    "reach6chain",
+    "reach7chain",
+    "reach8chain",
+    "reach5combo",
+    "reach6combo",
+    "reach7combo",
+    "reach8combo",
+    "reach9combo",
+    "reach10combo",
+    "pressure",
+    "overkill"
+  ],
+  "holdoutSeeds": [
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112
+  ],
+  "holdout": {
+    "avgFrames": 18908.333333333332,
+    "longestFrames": 21600,
+    "mirror": {
+      "duels": 12,
+      "avgSent": 324.25,
+      "chainDepth": {
+        "combo-small": 128,
+        "combo-big": 91,
+        "chain-short": 375,
+        "chain-medium": 3,
+        "chain-long": 0
+      },
+      "comboBySize": {
+        "4": 97,
+        "5": 12,
+        "6": 28,
+        "7": 8
+      },
+      "threes": 1425,
+      "chainByLinks": {
+        "2": 289,
+        "3": 67,
+        "4": 21,
+        "6": 3
+      },
+      "paylessClears": 792,
+      "openedChain": 381,
+      "brokeGarbage": 449
+    },
+    "deaths": {
+      "n": 3,
+      "selfInflicted": 0,
+      "forced": 0,
+      "cornered": 0,
+      "doomed": 0,
+      "toRise": 3,
+      "warningFrames": 508,
+      "avg": {
+        "top": 12,
+        "panels": 42,
+        "garbage": 19,
+        "queuedRows": 1,
+        "stop": 0,
+        "refusedFatal": 0,
+        "refusedCornering": 0,
+        "refusedRaises": 0
+      }
+    }
+  },
+  "weights": {
+    "linksH": 30.846354985258706,
+    "linksV": -6.116654663587299,
+    "chainLayers": -11.673248313774005,
+    "colourVariance": 4.972634440554598,
+    "edgePenalty": -14.179634210550988,
+    "garbageOnBoard": 14.625242237665333,
+    "maxHeight": 229.55548105554445,
+    "material": 117.31548181032551,
+    "garbageAdjacency": 74.68016528742396,
+    "reach4combo": 137.13358859006948,
+    "reach2chain": -3.759677116274684,
+    "chainLength": 208.9078021998088,
+    "stopTimeEarned": -7.43004898421003,
+    "garbageCleared": 44.13968113089898,
+    "travelCost": 72.17133887548528
+  }
+}
