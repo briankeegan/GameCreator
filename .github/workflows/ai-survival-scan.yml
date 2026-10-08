@@ -39,6 +39,7 @@ jobs:
         timeout-minutes: 5
         with:
           repository: briankeegan/panel-game
+          ref: bramp/multi-player   # the branch with bot/headlessBoot.lua, the one the local drill runs
           path: panel-game
           fetch-depth: 1
       - name: LuaJIT and the panel-game rocks
