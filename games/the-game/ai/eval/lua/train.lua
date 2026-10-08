@@ -11,7 +11,8 @@
 --
 -- MODE: combo_storm, factory or large_garbage, built as TrainingMenu.lua
 -- builds them. Prints "f<frame> panels P garb G queued Q top T" every 250
--- frames, then "died F" or "alive F". GC_TRACE=F prints every frame from F;
+-- frames, then "died F" or "alive F". GC_TRACE=F prints every frame from F
+-- (GC_STATES=1: with every cell's state);
 -- GC_BOTLOG=F (GC_BOTLOG_N frames, 1 by default) writes the bot's own log of
 -- its decisions to stderr, each frame headed "@ F".
 --
@@ -127,6 +128,11 @@ local function counts()
   end
   return p, g
 end
+-- GC_STATES=1: each cell as two characters, what it is and its state
+-- (n normal, d dimmed, f falling, h hovering, l landing, m matched, p popping,
+-- x popped, s swapping), so a break converting and a slab falling read apart
+local STATES = os.getenv("GC_STATES") == "1"
+local STATECH = { normal = "n", dimmed = "d", falling = "f", hovering = "h", landing = "l", matched = "m", popping = "p", popped = "x", swapping = "s" }
 local function show()
   local out = {}
   for r = math.min(#a.panels, 13), 0, -1 do
@@ -134,7 +140,8 @@ local function show()
     for c = 1, a.width do
       local q = a.panels[r][c]
       local ch = q.isGarbage and "g" or q.color ~= 0 and tostring(q.color % 10) or "."
-      if q.color ~= 0 and q.state ~= "normal" and q.state ~= "dimmed" then ch = q.isGarbage and "G" or "X" end
+      if STATES then ch = ch .. (q.color == 0 and "." or STATECH[q.state] or "?")
+      elseif q.color ~= 0 and q.state ~= "normal" and q.state ~= "dimmed" then ch = q.isGarbage and "G" or "X" end
       s[#s + 1] = ch
     end
     out[#out + 1] = table.concat(s)
