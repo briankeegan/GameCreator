@@ -28,8 +28,10 @@ function save(state, n, b) { fs.writeFileSync(file(state, n), JSON.stringify(b, 
 function clamp(v) { return Math.max(-MAX_WEIGHT, Math.min(MAX_WEIGHT, v)); }
 
 function matchesOf(b) { return b.matches !== undefined ? b.matches : b.round || 0; }
+// A match is not one if it ended within its first second, or the bot pressed
+// nothing for ten seconds: the link or the relay broke, not the weights.
 function outcome(res) {
-  if (!res.played) return 'none';
+  if (!res.played || (res.frames || 0) < 60 || (res.pressed === 0 && res.frames >= 600)) return 'none';
   if (res.outcome === 'won') return 'win';
   if (res.outcome === 'lost') return 'loss';
   return res.sent > res.received ? 'win' : res.sent < res.received ? 'loss' : 'draw';
@@ -64,9 +66,9 @@ if (cmd === 'seed') {
   var st = a[0], me = +a[1], opp = +a[2], res = JSON.parse(a[3]), bme = load(st, me), o = outcome(res);
   if (bme.matches === undefined) { bme.matches = bme.round || 0; delete bme.round; }
   bme.record[o]++;
-  if (res.outcome === 'lost') bme.record.died++;
+  if (res.outcome === 'lost' && o !== 'none') bme.record.died++;
   var entry = { match: bme.matches, opp: opp, result: o, outcome: res.outcome || null, frames: res.frames || 0,
-                sent: res.sent || 0, received: res.received || 0, late: res.late || 0, topped: res.topped, at: new Date().toISOString() };
+                sent: res.sent || 0, received: res.received || 0, late: res.late || 0, pressed: res.pressed, topped: res.topped, at: new Date().toISOString() };
   if (o === 'loss') {
     var w = load(st, opp).weights, out = {}, seed = (me * 7919 + bme.matches * 104729) >>> 0;
     var rng = function () { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };

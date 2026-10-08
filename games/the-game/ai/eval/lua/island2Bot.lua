@@ -83,6 +83,7 @@ local function topCount(st)
   elseif st.rise_lock and (st.n_active_panels or 0) - (st.swappingPanelCount or 0) == 0 then top.swapLock = top.swapLock + 1
   elseif st.rise_lock then top.active = top.active + 1 end
 end
+local pressed = 0   -- swaps and raises pressed this match
 local function playerCount() local n = 0; for _ in pairs(bot.players or {}) do n = n + 1 end; return n end
 local FRAME = 1 / 60
 
@@ -92,10 +93,20 @@ local function loadPlayed()
   played = {}
   for q, c in sh("played"):gmatch("(%d+):(%d+)") do played[tonumber(q)] = tonumber(c) end
 end
+-- Each match gets a link of its own: answers still in flight on the old one
+-- would be read as the new match's and put every answer a frame behind.
+local function closeLink()
+  local link = bot.survival
+  if not link then return end
+  link:endMatch()
+  if link.sock then pcall(function() link.sock:close() end) end
+  bot.survival = nil
+end
 local function finish(res)
   -- the death notice goes out before anything slow (BotClient retries it from pump)
   local t0 = socket.gettime()
   while bot._deathAwaitingFlush and socket.gettime() < t0 + 5 do bot:pump(); socket.sleep(0.01) end
+  closeLink()
   local line = sh("after " .. opp .. " " .. quote(dkjson.encode(res)))
   print(NAME .. " vs " .. oppName .. ": " .. line)
   -- back to the lobby, clear for the next match
@@ -108,7 +119,7 @@ local function finish(res)
 end
 
 loadPlayed()
-local lastChallengeAt, lastReadyAt, nextFrame, lateBefore, target = 0, 0, nil, 0, nil
+local lastChallengeAt, lastReadyAt, nextFrame, lateBefore, target, roomSince = 0, 0, nil, 0, nil, nil
 while true do
   bot:pump()
   local now = socket.gettime()
@@ -131,6 +142,11 @@ while true do
       end
     end
     if not bot.matchStart and playerCount() >= 2 and now - lastReadyAt > 1.5 then bot:sendReady(); lastReadyAt = now end
+    -- a room no match starts in is left after 30 s
+    if bot.inRoom and not bot.matchStart then
+      roomSince = roomSince or now
+      if now - roomSince > 30 then print(NAME .. ": no match in 30 s, leaving the room"); bot:leaveRoom(); roomSince = nil end
+    else roomSince = nil end
     if bot.matchStart then
       bot.oppDied, bot.outcome = false, nil
       bot:startMatch()
@@ -145,12 +161,15 @@ while true do
       end
       nextFrame = bot.scheduledStartMs / 1000
       lateBefore = bot.survival and bot.survival.late or 0
+      pressed = 0
       print(NAME .. " vs " .. tostring(oppName) .. ": match starting")
     end
   else
     while now >= nextFrame and not bot.matchEnded and bot.myStack.clock < FRAMES do
       bot:tickMatch()
       topCount(bot.myStack)
+      local k = bot.lastExecuted and bot.lastExecuted.type
+      if k == "SWAP" or k == "RAISE" then pressed = pressed + 1 end
       nextFrame = nextFrame + FRAME
       now = socket.gettime()
     end
@@ -162,8 +181,8 @@ while true do
       end
       local late = (bot.survival and bot.survival.late or 0) - lateBefore
       local res = { played = true, outcome = bot.matchEnded and bot.outcome or "ceiling", frames = bot.myStack.clock,
-                    sent = sent, received = received, late = late, topped = top }
-      if opp then finish(res) else print(NAME .. ": a match against no isl2b bot, not recorded"); bot:leaveRoom() end
+                    sent = sent, received = received, late = late, topped = top, pressed = pressed }
+      if opp then finish(res) else print(NAME .. ": a match against no isl2b bot, not recorded"); closeLink(); bot:leaveRoom() end
       loadPlayed(); target, lastReadyAt, nextFrame = nil, 0, nil
     end
   end
