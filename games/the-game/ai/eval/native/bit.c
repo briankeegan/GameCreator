@@ -721,12 +721,19 @@ static u64 hashOf(const int32_t *st) {
 typedef struct { u64 key; double v; } Slot;
 typedef struct { Slot *s; int n; } Table;
 static Slot TABLE_MAIN[4][TCAP];
+// A TASK'S ANSWERS ARE ITS OWN: inside a parallel task (front.c pjOne) every
+// key carries the task's tag, so a task finds only what it found itself --
+// never what the thread it ran on found for another task, which would change
+// what its share of work reaches with the thread count
+static LOCAL u64 cacheTag;
 static int tget(Table *t, u64 k, double *v) {
+  k ^= cacheTag * 0xD6E8FEB86659FD93ull;
   uint32_t i = (uint32_t)(k ^ (k >> 32)) & (TCAP - 1);
   while (t->s[i].key) { if (t->s[i].key == k) { *v = t->s[i].v; return 1; } i = (i + 1) & (TCAP - 1); }
   return 0;
 }
 static void tput(Table *t, u64 k, double v) {
+  k ^= cacheTag * 0xD6E8FEB86659FD93ull;
   if (t->n >= TCAP * 3 / 4) { for (int i = 0; i < TCAP; i++) t->s[i].key = 0; t->n = 0; }
   uint32_t i = (uint32_t)(k ^ (k >> 32)) & (TCAP - 1);
   while (t->s[i].key) { if (t->s[i].key == k) { t->s[i].v = v; return; } i = (i + 1) & (TCAP - 1); }
@@ -1647,7 +1654,7 @@ typedef struct { int32_t gen, next, n, kind, ack, nworkers, lean, dig; Cand **ca
 static Pool pool;
 
 static LOCAL int inPar;
-static int parAvailable(void);
+static int parAvailable(void), parTasks(void);
 static void parallelDo(int count, void (*task)(int));
 static void scoreTask(int i);
 static void savesTask(int i);
@@ -1701,7 +1708,7 @@ static void parRun(int kind, int n) { parRun0(kind, n); }
 static void parRun0(int kind, int n) {
   pool.kind = kind; pool.n = n; pool.next = 0;
   // natively the scores go to parallelDo's workers, each searching in its own memory
-  if (!pool.nworkers && kind == 1 && n > 1 && parAvailable()) { parallelDo(n, runTask); return; }
+  if (!pool.nworkers && kind == 1 && n > 1 && parTasks()) { parallelDo(n, runTask); return; }
   if (!pool.nworkers || n < 2) { inPar = 1; for (int i = 0; i < n; i++) runTask(i); inPar = 0; return; }
   __atomic_store_n(&pool.ack, 0, __ATOMIC_SEQ_CST);
   __atomic_add_fetch(&pool.gen, 1, __ATOMIC_SEQ_CST);

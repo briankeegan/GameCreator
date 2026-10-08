@@ -1,0 +1,129 @@
+{
+  "mode": "pbt",
+  "objective": "versus",
+  "brain": "puyo",
+  "level": 10,
+  "selection": "champion of 4 islands after 160 updates",
+  "updates": 160,
+  "islands": 4,
+  "population": 16,
+  "leg": 10,
+  "depth": 2,
+  "beam": 0,
+  "rise": true,
+  "density": false,
+  "allowRaise": true,
+  "engine": true,
+  "modes": true,
+  "diversity": [
+    51.8,
+    60.2,
+    53.5,
+    40.1
+  ],
+  "rules": 56,
+  "features": [
+    "linksH",
+    "linksV",
+    "chainLayers",
+    "colourVariance",
+    "edgePenalty",
+    "garbageOnBoard",
+    "maxHeight",
+    "material",
+    "garbageAdjacency",
+    "reach4combo",
+    "reach2chain",
+    "chainLength",
+    "stopTimeEarned",
+    "garbageCleared",
+    "travelCost"
+  ],
+  "excluded": [
+    "breakPairs",
+    "reachBreak",
+    "brokeGarbage",
+    "reach3chain",
+    "reach4chain",
+    "reach5chain",
+    "reach6chain",
+    "reach7chain",
+    "reach8chain",
+    "reach5combo",
+    "reach6combo",
+    "reach7combo",
+    "reach8combo",
+    "reach9combo",
+    "reach10combo",
+    "pressure",
+    "overkill"
+  ],
+  "holdoutSeeds": [
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112
+  ],
+  "holdout": {
+    "avgFrames": 21600,
+    "longestFrames": 21600,
+    "mirror": {
+      "duels": 12,
+      "avgSent": 360.9166666666667,
+      "chainDepth": {
+        "combo-small": 184,
+        "combo-big": 122,
+        "chain-short": 390,
+        "chain-medium": 5,
+        "chain-long": 0
+      },
+      "comboBySize": {
+        "4": 135,
+        "5": 16,
+        "6": 39,
+        "7": 6,
+        "8": 1
+      },
+      "threes": 1683,
+      "chainByLinks": {
+        "2": 305,
+        "3": 73,
+        "4": 14,
+        "5": 2,
+        "6": 1,
+        "7": 2
+      },
+      "paylessClears": 992,
+      "openedChain": 400,
+      "brokeGarbage": 528
+    },
+    "deaths": {
+      "n": 0
+    }
+  },
+  "weights": {
+    "linksH": 21.9189335710736,
+    "linksV": -6.365255285735199,
+    "chainLayers": 15.832440782565733,
+    "colourVariance": 71.1825033259688,
+    "edgePenalty": 77.58640436151596,
+    "garbageOnBoard": 103.16456514650565,
+    "maxHeight": -10.325657516090734,
+    "material": 26.18595605138309,
+    "garbageAdjacency": 66.75844520825756,
+    "reach4combo": 63.600971321679715,
+    "reach2chain": 68.80860069787494,
+    "chainLength": 69.22245289140795,
+    "stopTimeEarned": 52.66185541741539,
+    "garbageCleared": 121.37541028616313,
+    "travelCost": 22.895995565884263
+  }
+}

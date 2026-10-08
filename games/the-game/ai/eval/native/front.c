@@ -23,7 +23,7 @@ enum { H_NONE, H_UP, H_DOWN, H_LEFT, H_RIGHT };   // BIN[IN_HELD]
 typedef struct { uint8_t last[32][W + 2], first[32][W + 2], same[32][W + 2], garb[32][W + 2]; } Settle;   // per cell (unsettled): the frame it settles from, the frame it first changes, whether it settles to what it holds now, and whether it settles to garbage
 typedef struct {
   int id, reaction, reveal, allowRaise;
-  int cooldown, raiseFrames, raiseStarted, wantRaise, wantRows, raiseLives;
+  int cooldown, raiseHeld, wantRaise, wantRows, raiseLives;   // raiseHeld: the raise key pressed this frame
   int walk, wRow, wCol, wTimer, wCooldown, wRetries, wDisp, wHasDisp;
   int park, pRow, pCol, pTimer, pTr, pTc, pDisp;
   int hasLast, lastR, lastC, held;
@@ -199,8 +199,20 @@ static int drainBound(void) {
   return k;
 }
 static int toppedNow(void) { return nb_topped(FB); }
+// the tallest column's top row on the board as it is (0: empty)
+static int fTallest(void) {
+  for (int r = FB->height; r >= 1; r--)
+    for (int c = 1; c <= W; c++) if (fp(r, c)[COLOR] != 0) return r;
+  return 0;
+}
+// bot.c raiseRoom on the board as it is this frame: every queued garbage row
+static int raiseRoomNow(void) {
+  int rows = 0;
+  for (int i = 0; i < FB->ninc; i++) rows += FB->inc[i].height;
+  return raiseRoom(fTallest(), rows, FB->manualRaise || FB->preventManualRaise);
+}
 static int canRaise(Front *F) {
-  if (!F->allowRaise || F->raiseFrames > 0) return 0;
+  if (!F->allowRaise || F->raiseHeld) return 0;
   if (FB->preventManualRaise || FB->manualRaise) return 0;
   if (toppedNow() || nb_falling_garbage(FB) || FB->riseLock || nb_active(FB) || FB->shakeTime > 0) return 0;
   return 1;
@@ -951,21 +963,37 @@ static int pjFinished, pjGen;
 // share of what optional work has left (pjShare) and stops its searches at
 // taskEnd (searchInTime) -- the batch together never runs past optLine
 static double pjShare;
+static int pjSeq;   // batches begun: with a task's index, its cache tag
 static void pjShareOf(int count) {
   extern PATLS double paWork;
   double room = optLine() - paWork;
   pjShare = room > 0 && count > 0 ? room / count : 0;
+  pjSeq++;
 }
+// ONE TASK, THE SAME WHEREVER IT RUNS: the front's key state, its share of
+// the decision's work (taskEnd), its own cache (cacheTag) -- on a worker, on
+// this thread at a join, or one by one with no threads at all
+static void pjOne(int ix) {
+  HELDR = pjHeldR; HELDC = pjHeldC; HELDDIR = pjHeldDir; PRESS = pjPress;
+  extern PATLS double paWork, paEngFrames; double w0 = paWork, e0 = paEngFrames;
+  taskEnd = paWork + pjShare;
+#ifndef GC_NOCACHETAG
+  cacheTag = (u64)pjSeq * 4096 + (u64)ix + 1;
+#endif
+  pjTask(ix);
+  cacheTag = 0;
+  if (pjMe) { pjW[pjMe].w += paWork - w0; pjW[pjMe].e += paEngFrames - e0; }
+}
+// THE SAME TASKS ON THE SAME THREAD, EVERY RUN: thread p (0 the deciding
+// one, 1.. the workers) runs tasks p, p + P, p + 2P, ... in order. Each
+// thread keeps its own caches, and an answer found in a cache costs no work,
+// so a search's share reaches as far as that thread's history allows: with
+// tasks taken first come, which thread ran what -- the machine's timing --
+// would change the answers. Fixed, every machine plays the same game.
 static void pjRun(void) {
-  for (;;) {
-    unsigned long long w = __atomic_fetch_add(&pjWord, 1, __ATOMIC_ACQUIRE);
-    unsigned long long ix = w & PJ_IX, count = (w >> 20) & PJ_IX;
-    if (ix >= count) return;
-    HELDR = pjHeldR; HELDC = pjHeldC; HELDDIR = pjHeldDir; PRESS = pjPress;
-    { extern PATLS double paWork, paEngFrames; double w0 = paWork, e0 = paEngFrames;
-      taskEnd = paWork + pjShare;
-      pjTask((int)ix);
-      if (pjMe) { pjW[pjMe].w += paWork - w0; pjW[pjMe].e += paEngFrames - e0; } }
+  unsigned long long w = __atomic_load_n(&pjWord, __ATOMIC_ACQUIRE), count = (w >> 20) & PJ_IX;
+  for (unsigned long long ix = (unsigned long long)pjMe; ix < count; ix += (unsigned long long)pjThreads + 1) {
+    pjOne((int)ix);
     __atomic_add_fetch(&pjFinished, 1, __ATOMIC_RELEASE);
   }
 }
@@ -1003,6 +1031,10 @@ static void *pjWorker(void *arg) {
   }
   return 0;
 }
+// whether work is handed out as tasks from here (parallelDo): always, but
+// from inside a task -- the same with threads or without, so the thread
+// count never changes which path a search takes
+static int parTasks(void) { return !inWorker; }
 // whether parallelDo has workers to hand tasks to from here
 static int parAvailable(void) {
   if (pjThreads < 0) { pjThreads = getenv("GC_THREADS") ? atoi(getenv("GC_THREADS")) : 3; if (pjThreads > 15) pjThreads = 15; }
@@ -1010,8 +1042,8 @@ static int parAvailable(void) {
 }
 // count tasks, task(k) each, on GC_THREADS workers and this thread (one by one without)
 // THE WORKERS ALONE: a batch handed out while this thread does serial work of
-// its own (parallelBg); parallelJoin ends it -- the tasks not yet started are
-// dropped, the ones started are waited for. A batch of either kind starts only
+// its own (parallelBg); parallelJoin ends it once every task is done (this
+// thread takes those not yet started). A batch of either kind starts only
 // once the last background one has ended.
 static int pjBg, pjBgCount;
 static void pjFold(void) {
@@ -1020,14 +1052,12 @@ static void pjFold(void) {
 }
 static void parallelJoin(void) {
   if (!pjBg) return;
-  unsigned long long w = __atomic_load_n(&pjWord, __ATOMIC_ACQUIRE), ix;
-  for (;;) {
-    ix = w & PJ_IX;
-    if (ix >= (unsigned long long)pjBgCount) break;
-    if (__atomic_compare_exchange_n(&pjWord, &w, (w & ~PJ_IX) | (unsigned long long)pjBgCount, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) break;
-  }
-  int started = ix < (unsigned long long)pjBgCount ? (int)ix : pjBgCount;
-  while (__atomic_load_n(&pjFinished, __ATOMIC_ACQUIRE) < started) {}
+  // EVERY TASK DONE, WHATEVER THE MACHINE'S SPEED: this thread takes the ones
+  // not yet started, so what the batch found -- and the work it cost, each
+  // task within its share -- is the same on every machine
+  { int wasIn = inWorker; inWorker = 1; pjRun(); inWorker = wasIn; }
+  while (__atomic_load_n(&pjFinished, __ATOMIC_ACQUIRE) < pjBgCount) {}
+  bgReserve = 0;
   pjFold();
   pjBg = 0;
 }
@@ -1052,7 +1082,13 @@ static void pjStart(int count, void (*task)(int)) {
 static void parallelBg(int count, void (*task)(int)) {
   if (!parAvailable() || count < 1) return;
   parallelJoin();
-  pjShareOf(count + 1);   // this thread's own work goes on beside them
+  // THE WORKERS' HALF, HELD BACK: their work is folded into the decision only
+  // at the join, while this thread's own goes on beside them; half of what is
+  // left is theirs, shared evenly, and reserved from this thread's until then
+  extern PATLS double paWork;
+  double room = optLine() - paWork;
+  pjShare = room > 0 ? room / 2 / count : 0;
+  bgReserve = pjShare * count;
   pjStart(count, task);
   pjBg = 1; pjBgCount = count;
 }
@@ -1068,9 +1104,11 @@ static void parallelDo(int count, void (*task)(int)) {
     if (!USB) USB = nb_new();
     paOutcomeBoard(1);
     int wasIn = inWorker; inWorker = 1;
+    int heldR = HELDR, heldC = HELDC, heldDir = HELDDIR, press = PRESS;
     pjShareOf(count);
-    extern PATLS double paWork;
-    for (int k = 0; k < count; k++) { taskEnd = paWork + pjShare; task(k); }
+    pjTask = task; pjHeldR = heldR; pjHeldC = heldC; pjHeldDir = heldDir; pjPress = press;
+    for (int k = 0; k < count; k++) pjOne(k);
+    HELDR = heldR; HELDC = heldC; HELDDIR = heldDir; PRESS = press;
     inWorker = wasIn;
     return;
   }
@@ -1151,6 +1189,7 @@ static void prejudgeLinesW(LineC *const *ls, int count, int waitAll) { (void)ls;
 static void prejudge(const int32_t *sws, int stride, int count, int n, int waitAll) { (void)sws; (void)stride; (void)count; (void)n; (void)waitAll; }
 static void parallelDo(int count, void (*task)(int)) { for (int k = 0; k < count; k++) task(k); }
 static int parAvailable(void) { return 0; }
+static int parTasks(void) { return 0; }
 static void parallelBg(int count, void (*task)(int)) { (void)count; (void)task; }
 static void parallelJoin(void) {}
 #endif
@@ -1185,7 +1224,7 @@ static int fDecide(Front *F, FDec *out) {
   out->hasPark = o[4] != 0; out->pr = (int)o[5]; out->pc = (int)o[6]; out->via = (int)o[7]; out->waitAll = o[98] != 0;
   F->wantRaise = o[12] != 0;
   F->wantRows = (int)o[13];
-  if (o[14]) F->raiseFrames = 0;
+  if (o[14]) F->wantRaise = 0;
   F->escapeWalk = o[15];
   F->lastKind = out->kind; F->lastVia = out->via;
   F->lastMoveR = out->hasMove ? out->mr : out->hasPark ? out->pr : 0; F->lastMoveC = out->hasMove ? out->mc : out->hasPark ? out->pc : 0;
@@ -1229,19 +1268,14 @@ static int frontFrame(int fid, Board *b) {
   F->lastKind = -1;
   if (b->gameOverClock > 0) return 0;
   int held = F->held, input = 0;
-  // ONE PRESS, ONE ROW (Stack.lua): a held raise key starts the next row as
-  // soon as one is done, so the key is held only until the raise the bot
-  // decided on has started moving, and a decision arms one press. Topped,
-  // never: a raise pressed topped is game over (checkDeath).
-  if (F->wantRaise && !F->raiseLives) { F->wantRaise = 0; F->raiseFrames = 0; }
-  if (F->wantRaise && F->raiseFrames == 0 && !b->preventManualRaise && !b->manualRaise && !nb_falling_garbage(b)) {
-    F->raiseFrames = 20; F->raiseStarted = 0; F->wantRaise = 0;
-  }
-  if (F->raiseFrames > 0) {
-    if (b->manualRaise && b->manualRaiseYet) F->raiseStarted = 1;
-    if (F->raiseStarted || b->preventManualRaise || nb_topped(b)) F->raiseFrames = 0;
-    else { F->raiseFrames--; input |= IN_RAISE; }
-  }
+  // RAISING WHILE IT CANNOT KILL (Stack.lua: a held raise key starts the
+  // next row as soon as one is done): a raise the bot wants is held every
+  // frame the board, as it is that frame, leaves room for it and for every
+  // queued garbage row (raiseRoom) and has no garbage in the air -- for as
+  // many frames and rows as that is; each decision says again whether it
+  // wants one. Topped, never: a raise pressed topped is game over (checkDeath).
+  F->raiseHeld = F->wantRaise && F->raiseLives && !nb_topped(b) && !nb_falling_garbage(b) && raiseRoomNow() > 0;
+  if (F->raiseHeld) input |= IN_RAISE;
   if (F->walk) return fSend(F, driveWalk(F, input), held);
   if (F->park) input = parkStep(F, input);
   int sent = fSend(F, input, held);
@@ -1261,7 +1295,7 @@ static int frontFrame(int fid, Board *b) {
   if (fDecide(F, &d)) return -1;
   F->held = heldNow;
   if (d.kind == K_RAISE) {
-    F->raiseFrames = nb_topped(b) ? 0 : 20; F->raiseStarted = 0; F->wantRaise = 0; F->cooldown = F->reaction;
+    F->wantRaise = !nb_topped(b); F->cooldown = F->reaction;
     return sent;
   }
   if (d.kind == K_HOLD || !d.hasMove) {
@@ -1284,7 +1318,8 @@ static void botWarm(void);
 static void parallelDo(int count, void (*task)(int));
 // a thread's stack, touched to the depth the searches reach (their frames hold whole boards)
 __attribute__((noinline)) static void stackWarm(void) { volatile char buf[1 << 20]; for (int i = 0; i < (int)sizeof buf; i += 4096) buf[i] = 0; }
-static void warmTask(int k) { (void)k; stackWarm(); }
+static void sitWarm(void);
+static void warmTask(int k) { (void)k; stackWarm(); sitWarm(); }
 static void frontWarm(void) {
   memoRoom();
   __builtin_memset(LSM, 0, sizeof LSM);
@@ -1294,6 +1329,7 @@ static void frontWarm(void) {
   __builtin_memset(LNB, 0, sizeof(Board)); __builtin_memset(USB, 0, sizeof(Board));
   botWarm();
   stackWarm();
+  sitWarm();
   parallelDo(16, warmTask);   // the workers started, their boards and stacks touched, before the game
 }
 EXPORT(front_new) int front_new(Board *b, int reaction, int allowRaise) {
