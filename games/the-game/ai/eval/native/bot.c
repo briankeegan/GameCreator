@@ -7,7 +7,7 @@
 enum { IN_TOPPED, IN_STOP, IN_INCOMING, IN_NEXTSLAB, IN_FALLING, IN_CROW, IN_CCOL, IN_HEALTH, IN_DRAIN, IN_FPR,
        IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISING, IN_INFLIGHT,
        IN_DRAINBOUND, IN_STACKTOPPED, IN_MOVING, IN_HASTIMED, IN_REVEALOPEN, IN_CONVN, IN_CONVTIMER, IN_BCROW, IN_BCCOL,
-       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_PRESSES = 594, IN_SIZE = 600 };
+       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_PRESSES = 600, IN_SIZE = 608 };   // IN_POPLOW + 1..W runs to 599
 enum { TF_DEADLY = 1, TF_FORCE = 2, TF_REFUSE = 4, TF_RAISE = 8, TF_STUB = 16, TF_SLAB = 32 };
 static int deadlyCalls;
 #define TFLAG(f) (((int)BIN[IN_T]) & (f))
@@ -58,7 +58,7 @@ typedef struct { int has, n; int32_t mv[2 * MAXD]; double frames, gain, rate, st
 typedef struct {
   double tab[T_SIZE];
   Sig seen[4]; int nSeen;
-  int prR[8], prC[8], prA[8], prB[8], nPr; double prN[8], lineBorn, nNotes;   // each press's number in the bot's own count, and the count when the line was set   // the last presses, and the colours each left in its pair
+  int prR[8], prC[8], prA[8], prB[8], nPr; double prN[8], lineBorn, nNotes, seenPresses;   // each press's number in the bot's own count, and the count when the line was set   // the last presses, and the colours each left in its pair
   double linePresses;   // the front's press count when the line was set (IN_PRESSES): a step counts as made only by a press since
   Route plan, dig, attack, flatten;
   int digIsBreak, opening, maxSlab, nRecent, wantRows, wantRaise;
@@ -1758,6 +1758,7 @@ static Dec decideCore(void) {
 }
 
 static int isArith(int via) { return via == V_SURVIVALPLAN || via == V_PLANSAVE || via == V_DIGPLAN || via == V_BREAK || via == V_KEEPSAVE; }
+static int routeLives(const int32_t *sw, int n);   // the engine plays a route through and it lives
 static Dec decideRuled(void) {
   Dec d = decideCore();
   if (TFLAG(TF_FORCE)) d = mkSwap((int)BIN[IN_T + 1], (int)BIN[IN_T + 2], V_BESTATTACK, d.mode, d.alive);
@@ -1804,6 +1805,9 @@ static Dec decideRuled(void) {
         int n = (int)route[F_NSW] < LINEMAX ? (int)route[F_NSW] : LINEMAX;
         int32_t rl[2 * LINEMAX];
         for (int k = 0; k < 2 * n; k++) rl[k] = (int32_t)route[F_SW + k];
+        // a route the engine cannot play, or that dies, is not started: its
+        // first step pressed alone is half a plan
+        if (!routeLives(rl, n)) return d;
         lineSet(rl, n, LINE_PLAN, 0);
         return mkSwap(r0, c0, V_PLANSAVE, d.mode, d.alive);
       }
@@ -1884,6 +1888,7 @@ static double quietSettle(const int32_t *base, int r, int c, const int32_t *afte
 static int lineLast;   // what the line rules last did (playOn below)
 enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8, LV_DROPS = 16, LV_FILLS = 32 };
 static int lineJudge(const int32_t *sw, int n, int waitAll);
+static int routeLives(const int32_t *sw, int n) { return (lineJudge(sw, n, 0) & LV_LIVES) != 0; }
 static JLOCAL int32_t LNO[LNOLEN];
 // FRAMES FROM A SWAP TO THE NEAREST CLEAR ON THE BOARD IT LEAVES (INF: none)
 static double clearBack(Cand *pc) {
@@ -2974,12 +2979,32 @@ static int bbFound, bbLastN; static double bbLastEst;   // bestBreak: how many l
 // pile it does not convert out of reach; among the same, the one that
 // converts the most.
 static int readyInTime(const int32_t *sw, int n, int *br, int *bc);
+// READY FIRST, THEN LATEST: of two living lines, one that outlives the board
+// left alone (`alone`, 0: it does not die) and leaves a break in reach when
+// the next slab lands goes first -- the slab it is ready for is what kills;
+// between two alike, the one that loses health later. 1 better, -1 worse, 0
+// the same (the caller's own tie-break decides).
+static int readyThenLater(int rdy, int die, int pickRdy, int pickDie) {
+  if (rdy != pickRdy) return rdy > pickRdy ? 1 : -1;
+  return die > pickDie ? 1 : die < pickDie ? -1 : 0;
+}
+// whether a line counts as ready: asked only with garbage to come, and only of
+// a line that outlives the board left alone
+static int readyAtNext(const int32_t *sw, int n, int *br, int *bc);
+static int readyCounts(const LineC *l, int alone) {
+  if (!(BIN[IN_INCOMING] > 0) || (alone && l->die <= alone)) return 0;
+  int32_t keep[LNOLEN]; int r, c;
+  for (int k = 0; k < LNOLEN; k++) keep[k] = LNO[k];
+  int rdy = readyAtNext(l->sw, l->n, &r, &c);
+  for (int k = 0; k < LNOLEN; k++) LNO[k] = keep[k];
+  return rdy;
+}
 static int bbReady;   // the break bestBreak picked leaves the board ready for the next slab
 static LineC bbDeferred; static int bbHasDeferred;   // a living break held for a better time, this decision
 static LineC *bestBreak(void) {
   static unsigned char taken[MAXLINES];
   const int need = LV_LIVES | LV_BREAKS;
-  int ask = BIN[IN_INCOMING] > 0, pickReady = 0;
+  int ask = BIN[IN_INCOMING] > 0, pickReady = 0, alone = aloneOnEngine() ? LNA[0] : 0;
   LineC *pick = 0;
   bbFound = 0; bbLastN = 0;
   for (int i = 0; i < nLines; i++) taken[i] = 0;
@@ -2997,17 +3022,16 @@ static LineC *bestBreak(void) {
     if ((judged(l) & need) != need) continue;
     found++; bbFound = found; bbLastN = l->n; bbLastEst = l->est;
     if (pick && pickReady && l->die <= pick->die && l->conv <= pick->conv) continue;
-    int rdy = 0, r, c;
-    if (ask) { int32_t keep[LNOLEN]; for (int k = 0; k < LNOLEN; k++) keep[k] = LNO[k]; rdy = readyInTime(l->sw, l->n, &r, &c); for (int k = 0; k < LNOLEN; k++) LNO[k] = keep[k]; }
-    // NEVER DYING FIRST: the break that loses health latest; then ready; then the most converted
-    if (!pick || l->die > pick->die || (l->die == pick->die && (rdy > pickReady || (rdy == pickReady && l->conv > pick->conv))))
-      { pick = l; pickReady = rdy; }
+    int rdy = ask ? readyCounts(l, alone) : 0, cmp = pick ? readyThenLater(rdy, l->die, pickReady, pick->die) : 1;
+    // ready first, then the latest loss of health; then the most converted
+    if (cmp > 0 || (cmp == 0 && l->conv > pick->conv)) { pick = l; pickReady = rdy; }
   }
   bbReady = !ask || pickReady;
   return pick;
 }
+static int blReady, blAlone;
 static LineC *bestLiving(int (*ok)(const LineC *)) {
-  static unsigned char taken[MAXLINES];
+  static unsigned char taken[MAXLINES]; int pickRdy = 0;
   const int need = LV_LIVES | LV_GAINS;
   LineC *pick = 0;
   for (int i = 0; i < nLines; i++) taken[i] = ok && !ok(&LINES[i]);
@@ -3024,7 +3048,9 @@ static LineC *bestLiving(int (*ok)(const LineC *)) {
     judgeAhead(l, taken, 0);
     if ((judged(l) & need) != need) continue;
     found++;
-    if (!pick || l->die > pick->die || (l->die == pick->die && l->hollow < pick->hollow)) pick = l;
+    // ready first when asked (stayAlive, readyThenLater), then the latest loss of health; then the least hollow
+    int rdy = blReady ? readyCounts(l, blAlone) : 0, cmp = pick ? readyThenLater(rdy, l->die, pickRdy, pick->die) : 1;
+    if (cmp > 0 || (cmp == 0 && l->hollow < pick->hollow)) { pick = l; pickRdy = rdy; }
   }
   return pick;
 }
@@ -3117,7 +3143,10 @@ static int pairColour(const int32_t *st, int r, int c) {
 static void notePresses(void) {
   if (!BIN[IN_HASLAST]) return;
   int r = (int)BIN[IN_LASTR], c = (int)BIN[IN_LASTC];
-  if (BT->nPr && BT->prR[0] == r && BT->prC[0] == c) return;
+  // a press is new by the front's count (IN_PRESSES), or, from a front that
+  // does not count, by a pair other than the last noted
+  if (BIN[IN_PRESSES] > 0 ? !(BIN[IN_PRESSES] > BT->seenPresses) : (BT->nPr && BT->prR[0] == r && BT->prC[0] == c)) return;
+  BT->seenPresses = BIN[IN_PRESSES];
   for (int i = (BT->nPr < 8 ? BT->nPr : 7); i > 0; i--) { BT->prR[i] = BT->prR[i - 1]; BT->prC[i] = BT->prC[i - 1]; BT->prA[i] = BT->prA[i - 1]; BT->prB[i] = BT->prB[i - 1]; BT->prN[i] = BT->prN[i - 1]; }
   BT->prR[0] = r; BT->prC[0] = c; BT->prA[0] = pairColour(DBASE, r, c); BT->prB[0] = pairColour(DBASE, r, c + 1); BT->prN[0] = ++BT->nNotes;
   if (BT->nPr < 8) BT->nPr++;
@@ -3172,7 +3201,9 @@ static Dec stayAlive(Dec d) {
   if (!aloneOnEngine() || !LNA[0] || LNA[0] > LIVEHORIZON) return lineLast == 1 ? saKeep(d, playDie) : d;
   linesFind(2, 0);
   // NEVER DYING FIRST: the choice is kept only if it lives as long as the line that lives longest
+  blReady = 1; blAlone = LNA[0];
   LineC *l = bestLiving(notLastSwap);
+  blReady = 0;
   if (lineLast == 1) {
     if (!l || l->die <= playDie) return saKeep(d, playDie);
 #ifndef __wasm__
@@ -3747,6 +3778,21 @@ static int readyInTime(const int32_t *sw, int n, int *br, int *bc) {
   }
   return ok;
 }
+// READY AT THE NEXT LANDING: a break in reach the frame the next slab lands,
+// pressed after the line's last step -- not one reached by letting the dump
+// come down first. What a choice is ranked by (readyCounts): a dump let down
+// is slabs piled on the board, however a break meets them after.
+static int rdNextOnly;   // readyAtNext: the first landing only
+static int readyAtNext(const int32_t *sw, int n, int *br, int *bc) {
+  extern PATLS double paWork;
+  if (paWork + rdCost > optLine()) return 0;
+  double w = paWork;
+  rdNextOnly = 1;
+  int ok = readyInTimeRaw(sw, n, br, bc);
+  rdNextOnly = 0;
+  if (paWork - w > rdCost) rdCost = paWork - w;
+  return ok;
+}
 #ifndef __wasm__
 // THE BOARD A PREDICTION RESTS ON, for the bot log: masks read, nothing
 // written, rows top to bottom as the trace prints them ('g' garbage)
@@ -3773,7 +3819,7 @@ int lineLandedK(const int32_t *steps, int n, int k, int32_t *masks, uint32_t *ca
 static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc) {
   uint32_t can[WMAX]; uint8_t wt[32][WMAX]; int32_t cur[2], t;
   int last = -1, found = 0;
-  for (int k = 1; !found; k++) {
+  for (int k = 1; !found && (k == 1 || !rdNextOnly); k++) {
     if (lineLandedK(sw, n, k, RBL, can, wt, cur, &t) != 0) return 0;
     // a slab that tops the board out as it lands leaves no time for the break:
     // topped with no stop, the board dies the next frame
@@ -4105,7 +4151,12 @@ static Dec readyWhenLands(Dec d) {
   // first after which the slab lands with a break in reach. A line pressed
   // after the slab lands readies nothing for it, so only those before are tried.
   int32_t tLand; static ST RWL;
-  if (lineLanded(0, 0, RWL, &tLand) != 0) return d;
+  if (lineLanded(0, 0, RWL, &tLand) != 0) {
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RWL no landing on the board left alone: deeper readiness not searched\n"); }
+#endif
+    return d;
+  }
   linesFind(2, 0);
   static unsigned char rk[MAXLINES];
   for (int i = 0; i < nLines; i++) rk[i] = (char)(LINES[i].n < 2);
@@ -4168,6 +4219,63 @@ static Dec readyWhenLands(Dec d) {
       }
     }
   }
+  // QUIET STEPS TO READY: up to three swaps that clear nothing -- a panel
+  // walked over a gap falls, which no line by rows proposes -- searched
+  // breadth first on the board the engine settles to, each board once; the
+  // first boards on which the slab has a break one swap away (slabReadyHook,
+  // on the masks), fewest steps first, are asked of the engine (readyInTime)
+  {
+#define RQMAX 400
+    static ST RQS[RQMAX]; static int32_t RQSEQ[RQMAX][6], RQR[R_INTS + ST_INTS], RQL[2 * 128]; static int RQN[RQMAX]; static u64 RQH[RQMAX];
+    int32_t cur0[2], t0; uint32_t can0[WMAX]; uint8_t wt0[32][WMAX];
+    if (lineState(0, 0, RQS[0], can0, wt0, cur0, &t0) == 0) {
+      int nq = 1, head = 0, nf = 0, found[READYTRIES];
+      // where the slab lands is what readies it: the swaps tried are those
+      // within three rows of a column's top, beside or under its columns
+      int lo = (int)BIN[IN_SLABC] - 1, hi = (int)BIN[IN_SLABC] + (int)BIN[IN_SLABW];
+      extern PATLS double paWork;
+      RQN[0] = 0; RQH[0] = hashOf(RQS[0]);
+      while (head < nq && nf < READYTRIES && nq < RQMAX && paWork < optLine()) {
+        int at = head++;
+        if (RQN[at] >= 3) continue;
+        int nl = legal(RQS[at], RQL);
+        for (int i = 0; i < nl && nq < RQMAX && nf < READYTRIES; i++) {
+          int sr = RQL[2 * i], sc = RQL[2 * i + 1];
+          if (sc + 1 < lo || sc > hi) continue;
+          int top = topRow(U(RQS[at], OCC + sc)), t2 = topRow(U(RQS[at], OCC + sc + 1));
+          if (t2 > top) top = t2;
+          if (sr < top - 2) continue;
+          stcpy(RQS[nq], RQS[at]);
+          if (!swapIn(RQS[nq], sr, sc)) continue;
+          resolve(RQS[nq], RQR, 1);
+          if (RQR[R_SCOPE] != SC_OK || RQR[R_TOTAL] > 0) continue;
+          stcpy(RQS[nq], RQR + R_INTS);
+          u64 h = hashOf(RQS[nq]); int dup = 0;
+          for (int j = 0; j < nq && !dup; j++) dup = RQH[j] == h;
+          if (dup) continue;
+          RQH[nq] = h; RQN[nq] = RQN[at] + 1;
+          for (int k = 0; k < 2 * RQN[at]; k++) RQSEQ[nq][k] = RQSEQ[at][k];
+          RQSEQ[nq][2 * RQN[at]] = sr; RQSEQ[nq][2 * RQN[at] + 1] = sc;
+          if (RQN[nq] > 1 && slabReadyHook(RQS[nq])) found[nf++] = nq;
+          nq++;
+        }
+      }
+#ifndef __wasm__
+      if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RWL quiet: %d boards, %d ready on the masks\n", nq, nf); }
+#endif
+      for (int i = 0; i < nf; i++) {
+        int q = found[i], n = RQN[q];
+        if (!(lineJudge(RQSEQ[q], n, 0) & LV_LIVES) || (LNO[0] ? LNO[0] : 1 << 20) < dieRef) continue;
+        if (readyInTime(RQSEQ[q], n, &r, &c)) {
+#ifndef __wasm__
+          if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RWL quiet ready:"); for (int k = 0; k < n; k++) fprintf(stderr, " %d,%d", RQSEQ[q][2 * k], RQSEQ[q][2 * k + 1]); fprintf(stderr, " break %d,%d\n", r, c); }
+#endif
+          lineSet(RQSEQ[q], n, LINE_PLAN, 0); lineLast = 8;
+          return mkSwap(RQSEQ[q][0], RQSEQ[q][1], V_LINEUP, d.mode, d.alive);
+        }
+      }
+    }
+  }
   // NOR TWO: the time to the landing is what bounds the setup, not a count of
   // swaps. The breaks by distance are found on the board as the slab lands
   // on it; a walk whose steps but the last are played now, before it lands,
@@ -4175,6 +4283,9 @@ static Dec readyWhenLands(Dec d) {
   {
     static ST RWB; uint32_t can[WMAX]; uint8_t wt[32][WMAX]; int32_t cur[2], tl;
     if (lineLandedFull(0, 0, RWB, can, wt, cur, &tl) != 0) return d;
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RWL by distance: lands at %d\n", tl); }
+#endif
     int n0 = nLines;
     targetLines(RWB, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, tl);
     static unsigned char wk[MAXLINES];
@@ -4190,6 +4301,9 @@ static Dec readyWhenLands(Dec d) {
       tried++;
       if (readyInTime(l->sw, l->n - 1, &r, &c)) got = at;
     }
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RWL by distance: %d lines, %d tried, got %d\n", nLines - n0, tried, got); }
+#endif
     if (got >= 0) {
       LineC l = LINES[got];
       l.n--;
