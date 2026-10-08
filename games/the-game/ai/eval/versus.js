@@ -126,6 +126,23 @@ function makeCpu(stack, weights, opts) {
     });
 }
 
+// A board as rows of text, top first: . empty, G garbage, a colour's number.
+function gridRows(st) {
+    var out = [];
+    for (var r = st.height; r >= 1; r--) {
+        var row = st.panels[r], line = '';
+        for (var c = 1; c <= st.width; c++) { var p = row && row[c]; line += !p || !p.color ? '.' : p.isGarbage ? 'G' : String(p.color % 10); }
+        out.push(line);
+    }
+    return out;
+}
+// What a frame loop (survivor_match.js) counted: how its decisions went.
+function botStats(st) {
+    if (!st) return null;
+    return { decisions: st.decisions, played: st.played, late: st.late, lateTaken: st.lateTaken, diverged: st.diverged,
+             unforeseen: st.unforeseen, reasked: st.reasked, followed: st.followed, idle: st.idle, maxMs: st.maxMs, refused: st.refused };
+}
+
 // One duel. Returns which side died, and the numbers worth looking at.
 //
 //   winner  0 | 1 | null      null is a draw: the ceiling, or both at once
@@ -336,7 +353,11 @@ exports.duel = function (weightsA, weightsB, seed, opts, optsB) {
             forced: cpu.forcedDecisions || 0, cornered: cpu.corneredDecisions || 0,
             refusedFatal: cpu.fatalMovesDropped || 0,
             refusedCornering: cpu.corneringMovesDropped || 0,
-            refusedRaises: cpu.suicidalRaises || 0
+            refusedRaises: cpu.suicidalRaises || 0,
+            // the board it died on, top row first, and its frame loop's
+            // counts when it has one (survivor_bot.js)
+            grid: gridRows(st),
+            bot: cpu.stats ? botStats(cpu.stats()) : undefined
         });
     });
 
@@ -345,7 +366,8 @@ exports.duel = function (weightsA, weightsB, seed, opts, optsB) {
 
     // `reason` says HOW the duel ended, not who won it: a duel that reaches
     // the ceiling reads 'ceiling' whether or not the score decided it.
-    return { winner: winner, frames: f, sent: sent, chainDepth: chainDepth, exact: exact,
+    return { winner: winner, frames: f, sent: sent, chainDepth: chainDepth, exact: exact, seed: seed,
+             bots: cpus.map(function (c) { return c.stats ? botStats(c.stats()) : null; }),
              scores: scores, draw: winner === null, deaths: deaths,
              reason: (!aDead && !bDead) ? 'ceiling' : (aDead && bDead ? 'both' : 'death') };
 };

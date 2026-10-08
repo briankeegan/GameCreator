@@ -352,9 +352,11 @@ function tally(out) {
     var wins = 0, draws = 0, sentUs = 0, sentThem = 0, frames = 0, longest = 0;
     var depthUs = versus.zeroDepth(), depthThem = versus.zeroDepth();
     var exactUs = versus.zeroExact();
-    var deaths = [];
+    var deaths = [], bots = {};
     out.forEach(function (d) {
-        if (d.deaths) for (var z = 0; z < d.deaths.length; z++) deaths.push(d.deaths[z]);
+        if (d.deaths) for (var z = 0; z < d.deaths.length; z++) { d.deaths[z].seed = d.seed; deaths.push(d.deaths[z]); }
+        // the frame loops' counts, summed over the duels (survivor_bot.js)
+        (d.bots || []).forEach(function (b) { if (!b) return; for (var k in b) bots[k] = k === 'maxMs' ? Math.max(bots[k] || 0, b[k] || 0) : (bots[k] || 0) + (b[k] || 0); });
         if (d.winner === 0) wins++; else if (d.winner === null) draws++;
         sentUs += d.sent[0]; sentThem += d.sent[1];
         // HOW LONG THE GAMES ACTUALLY RAN. A record read without it cannot
@@ -367,7 +369,7 @@ function tally(out) {
         versus.addExact(exactUs, d.exact[0]);
     });
     return { wins: wins, draws: draws, n: out.length, frames: frames, longest: longest,
-             sentUs: sentUs, sentThem: sentThem, deaths: deaths,
+             sentUs: sentUs, sentThem: sentThem, deaths: deaths, bots: bots,
              depthUs: depthUs, depthThem: depthThem, exactUs: exactUs };
 }
 
@@ -437,7 +439,8 @@ function buildReport(genome, r) {
         // decisions anyway. A move that survives is not a promise the next
         // frame does. `warningFrames` is the median time the stack spent in
         // the top three rows before the end: how long there was to act.
-        deaths: deathReport(r.deaths)
+        deaths: deathReport(r.deaths),
+        bots: Object.keys(r.bots).length ? r.bots : undefined
     };
 }
 
@@ -464,7 +467,11 @@ function deathReport(ds) {
     for (var k in sum) avg[k] = sum[k] / ds.length;
     return { n: ds.length, selfInflicted: selfInflicted, forced: forced,
              cornered: cornered, doomed: doomed, toRise: toRise,
-             warningFrames: med, avg: avg };
+             warningFrames: med, avg: avg,
+             // every death: the board seed, the frame, the board, and how the
+             // dying side's decisions went (survivor_bot.js)
+             each: ds.map(function (d) { return { seed: d.seed, side: d.side, frame: d.frame, warning: d.warning, top: d.top,
+                                                  garbage: d.garbage, queuedRows: d.queuedRows, bot: d.bot, grid: d.grid }; }) };
 }
 
 function writeSnapshot(best, report, totalUpdates, diversity) {
