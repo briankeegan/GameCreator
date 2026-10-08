@@ -52,8 +52,10 @@ require('v8').setFlagsFromString('--no-parallel-pointer-update');
 var net = require('net'), path = require('path'), wt = require('worker_threads');
 // GC pauses on this thread: the longest, and how many passed 4 ms (match stats gcMs, slowGc).
 var GC = { max: 0, slow: 0 };
-// GC_SURVIVOR_TIMES=file: per frame, the clock, when its line was read (epoch s), the reply's and the frame's ms; written at the match's end.
+// GC_SURVIVOR_TIMES=file: per frame, the clock, when its line was read (epoch s), the reply's and the frame's ms, the line's length, and the time
+// between frames (schedDelta's first two, ms, then switches preempted and blocking); written at the match's end.
 var TIMES = process.env.GC_SURVIVOR_TIMES ? [] : null, performance = require('perf_hooks').performance;
+var lastSched = null;   // schedstat() at the end of the last frame (TIMES)
 // Where this thread's time went (Linux): on a cpu, waiting for one (ns) and
 // slices (schedstat); page faults, minor and major (stat); switches made
 // blocking and preempted (status); and the machine's stalls on cpu, memory
@@ -152,7 +154,10 @@ var server = net.createServer(function (sock) {
         var fms = Number(process.hrtime.bigint() - t0) / 1e6;
         if (fms > match.stats.frameMs) match.stats.frameMs = Math.round(fms * 10) / 10;
         if (fms > 8) match.stats.slowFrames++;
-        if (TIMES) TIMES.push(match.now + ' ' + (tWall / 1000).toFixed(4) + ' ' + rms.toFixed(2) + ' ' + fms.toFixed(2) + ' ' + line.length);
+        // and, since the last frame's reply, this thread's time on a cpu and waiting for one (ms), and its switches preempted and blocking
+        if (TIMES) { var bw = lastSched && sched0 ? [(sched0[0] - lastSched[0]) / 1e6, (sched0[1] - lastSched[1]) / 1e6, sched0[6] - lastSched[6], sched0[5] - lastSched[5]] : [0, 0, 0, 0];
+          TIMES.push(match.now + ' ' + (tWall / 1000).toFixed(4) + ' ' + rms.toFixed(2) + ' ' + fms.toFixed(2) + ' ' + line.length + ' ' + bw[0].toFixed(1) + ' ' + bw[1].toFixed(1) + ' ' + bw[2] + ' ' + bw[3]);
+          lastSched = schedstat(); }
         if (fms > 14) {
           if (sched0) console.error('  ' + schedDelta(sched0, schedstat()));
           var A = match.aparts || [], am = function (i) { return A[i] && A[i + 1] ? (Number(A[i + 1] - A[i]) / 1e6).toFixed(1) : '-'; };

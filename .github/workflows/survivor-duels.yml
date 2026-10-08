@@ -114,11 +114,11 @@ jobs:
           grep -h 'match over' survivor.log | sed 's/^/::notice title=survivor::/' || true
           # survivor.js writes its timings and its dump as the link closes: wait for them
           for i in $(seq 1 60); do [ -s death.jsonl ] && [ "$(tail -c 1 death.jsonl | od -An -c | tr -d ' ')" = '\n' ] && [ -s times.txt ] && break; sleep 1; done
-          # each late frame: Lua's wait, when the sidecar read the line (ms after it was sent), its reply, GC near it
+          # each late frame: Lua's wait, when the sidecar read the line (ms after it was sent), its reply, GC near it, and where the sidecar's time went before it
           if grep -q '^LATE' duel.log && [ -f times.txt ]; then
-            awk 'FNR==NR { if ($1=="gc") gc[++ng]=$2" "$3" "$4; else { rd[$1]=$2; rp[$1]=$3 } ; next }
+            awk 'FNR==NR { if ($1=="gc") gc[++ng]=$2" "$3" "$4; else { rd[$1]=$2; rp[$1]=$3; bt[$1]=" between cpu "$6" wait "$7" preempted "$8" blocked "$9 } ; next }
                  $1=="LATE" { c=$3; s=$7; g=""; for (i=1;i<=ng;i++) { split(gc[i],a," "); if (a[1]>=s-0.05 && a[1]<=rd[c]) g=g" gc"a[3]":"a[2]"ms" }
-                              printf "%s dump %.1f wait %.1f read +%.1f reply %s%s%%0A", c, (s-$5)*1000, ($9-s)*1000, (rd[c]-s)*1000, rp[c], g }' times.txt duel.log \
+                              printf "%s dump %.1f wait %.1f read +%.1f reply %s%s%s%%0A", c, (s-$5)*1000, ($9-s)*1000, (rd[c]-s)*1000, rp[c], g, bt[c] }' times.txt duel.log \
               | tr -d '\n' | sed 's/^/::notice title=late frames::/'; echo
           fi
           grep -h '^slow\|^  on cpu' survivor.log | head -40 | tr '\n' '|' | sed 's/^/::notice title=slow::/'; echo
