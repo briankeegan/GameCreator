@@ -4574,11 +4574,22 @@ static int walkTop(int c) {
 // soonest break (fillUrgent), a fill is ranked by the frame it loses health
 // (later first); otherwise by the hollow it leaves
 static int fillUrgent;
-// -- and, among fills that beat the board, by the twos it leaves that line up
-// a break (breakTwosOf): a fill organizes. The board and the choice are beaten
-// on life and hollow only (their twos counted full).
-#define FILLTWOS 8
-static double fillScore(int die, int hollow, int twos) { return ((fillUrgent && die ? lifeOf(die, hollow) : (1 << 20)) * 4096.0 - hollow) * FILLTWOS + (twos < FILLTWOS - 1 ? twos : FILLTWOS - 1); }
+static double fillScore(int die, int hollow) { return (fillUrgent && die ? lifeOf(die, hollow) : (1 << 20)) * 4096.0 - hollow; }
+// FILLS THAT TIE ORGANIZE: of two fills as good and as soon, the one leaving
+// more vertical twos whose three touches garbage (breakTwosOf) -- asked only
+// on the tie, since each costs a replay. btw: the best's twos (-1: not asked).
+static int twosAfter(const int32_t *sw, int n);
+static int fillBeats(const Best *b, int *btw, double score, double t, const int32_t *sw, int n) {
+  if (!b->has || score != b->score || t != b->t) return bestBeats(b, score, t, sw, n);
+  if (*btw < 0) *btw = twosAfter(b->sw, b->n);
+  int tw = twosAfter(sw, n);
+  if (tw != *btw) return tw > *btw;
+  return swapsBeforeN(sw, n, b->sw, b->n);
+}
+static void fillTake(Best *b, int *btw, double score, double t, const int32_t *sw, int n) {
+  b->has = 1; b->score = score; b->t = t; b->n = n; *btw = -1;
+  for (int k = 0; k < 2 * n; k++) b->sw[k] = sw[k];
+}
 // the twos on the board a line leaves (0 where the budget holds no replay)
 static int twosAfter(const int32_t *sw, int n) {
   static ST TA; int32_t c1[2], t1; uint32_t cn[WMAX]; uint8_t wt[32][WMAX];
@@ -4588,12 +4599,10 @@ static int twosAfter(const int32_t *sw, int n) {
 // garbage breaks before the board loses health beats every fill that only
 // loses it later -- the garbage is what kills, and only a break removes it
 #define BREAKS_IN_TIME 1e12
-// The twos cost a replay: asked only of a fill that would tie or beat `floor`
-// (the best so far) with them.
-static double fillScoreOf(const int32_t *sw, int n, int die, int hollow, double floor) {
-  double sc = fillScore(die, hollow, 0);
+static double fillScoreOf(const int32_t *sw, int n, int die, int hollow) {
+  double sc = fillScore(die, hollow);
   if (fillUrgent && marginWithin(sw, n, die ? die : LINEREACH, 0) >= 0) sc += BREAKS_IN_TIME;
-  return sc + (FILLTWOS - 1) < floor ? sc : sc + fillScore(0, 0, twosAfter(sw, n)) - fillScore(0, 0, 0);
+  return sc;
 }
 // a clear judged (LNO) leaves six rows of material, read off the line's own matches
 static int readyAfterSpend(const int32_t *sw, int n);
@@ -4616,11 +4625,11 @@ static Dec fillFirstIn(Dec d) {
   // time between its break and its loss of health
   double need = marginAfter(0, 0, LNA[0]);
   fillUrgent = LNA[0] && need < 0;
-  double ref = fillScore(LNA[0], HOLLOW(LNA), FILLTWOS - 1);   // what a fill must beat: the board left alone, and the choice
+  double ref = fillScore(LNA[0], HOLLOW(LNA));   // what a fill must beat: the board left alone, and the choice
   int refDie = LNA[0] ? LNA[0] : 1 << 20;   // the later loss of health of the two
   if (d.kind == K_SWAP && d.hasMove) {
     int32_t sw[2] = { d.sr, d.sc };
-    if (lineJudge(sw, 1, 0) & LV_LIVES) { best = HOLLOW(LNO) < best ? HOLLOW(LNO) : best; if ((LNO[0] ? LNO[0] : 1 << 20) > refDie) refDie = LNO[0] ? LNO[0] : 1 << 20; double cs = fillScore(LNO[0], HOLLOW(LNO), FILLTWOS - 1); double m = marginAfter(sw, 1, LNO[0]); if (fillUrgent && m >= 0) cs += BREAKS_IN_TIME; if (cs > ref) ref = cs; if (m > need) need = m; }
+    if (lineJudge(sw, 1, 0) & LV_LIVES) { best = HOLLOW(LNO) < best ? HOLLOW(LNO) : best; if ((LNO[0] ? LNO[0] : 1 << 20) > refDie) refDie = LNO[0] ? LNO[0] : 1 << 20; double cs = fillScore(LNO[0], HOLLOW(LNO)); double m = marginAfter(sw, 1, LNO[0]); if (fillUrgent && m >= 0) cs += BREAKS_IN_TIME; if (cs > ref) ref = cs; if (m > need) need = m; }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  choice %d,%d die %d last %d hollow %d | alone die %d\n", d.sr, d.sc, LNO[0], LNO[1], HOLLOW(LNO), LNA[0]); }   // the log does no work of its own: under a work budget it would change the decision
 #endif
@@ -4638,7 +4647,7 @@ static Dec fillFirstIn(Dec d) {
 #define LIVES_LONGER() (fillUrgent && (LNO[0] ? LNO[0] : 1 << 20) > refDie)
   // the pool: by fillScore, then the shortest walk, then the swaps; nothing
   // counts that does not beat the choice and the board left alone
-  Best P = { 0 };
+  Best P = { 0 }; int ptw = -1;
   int32_t fl[2 * MAXCAND]; int fn = 0, fq[MAXCAND], q;
   for (int k = 0; k < nPool && fn < MAXCAND; k++) if (POOL[k].kind == K_SWAP) { fl[2 * fn] = POOL[k].sr; fl[2 * fn + 1] = POOL[k].sc; fq[fn++] = k; }
   prejudge(fl, 2, fn, 1, 0);
@@ -4658,13 +4667,13 @@ static Dec fillFirstIn(Dec d) {
     if (spend && !LIVES_LONGER()) { FILLWHY("spends, lives no longer"); continue; }
     int pdie = LNO[0];
     LEVELTAKE(sw, 1, pc->moveFrames);
-    double sc = fillScoreOf(sw, 1, pdie, HOLLOW(LNO), P.has ? P.score : ref);
-    if (P.has ? !bestBeats(&P, sc, pc->moveFrames, sw, 1) : sc <= ref) { FILLWHY("beaten"); continue; }
+    double sc = fillScoreOf(sw, 1, pdie, HOLLOW(LNO));
+    if (P.has ? !fillBeats(&P, &ptw, sc, pc->moveFrames, sw, 1) : sc <= ref) { FILLWHY("beaten"); continue; }
     if (!fillKeeps(marginWithin(sw, 1, pdie, need), need)) { FILLWHY("costs the break's time"); continue; }
     if (spend && !readyAfterSpend(sw, 1) && (nonSpendLives() || spendKeepsRaiseOut())) { FILLWHY("spends, not ready, a non-spend lives or a raise waits"); continue; }   // a move that spends nothing lives: a spend must leave a break ready
     FILLWHY("best so far");
 #undef FILLWHY
-    bestTake(&P, sc, pc->moveFrames, sw, 1); pick = pc;
+    fillTake(&P, &ptw, sc, pc->moveFrames, sw, 1); pick = pc;
   }
   if (P.has) ref = P.score;
   // the top of every column walked along its row, a column a swap, until it
@@ -4672,7 +4681,7 @@ static Dec fillFirstIn(Dec d) {
   // the walk is planned on the board the engine settles to: a clear under a
   // column moves its top before the cursor gets there
   int32_t fsw[2 * LINEMAX], first[2] = { 0, 0 };
-  Best W = { 0 };
+  Best W = { 0 }; int wtw = -1;
   { int32_t st0[ST_INTS], cur[2], t; uint32_t can0[WMAX]; uint8_t waits0[32][WMAX];
     tGrid(lineState(0, 0, st0, can0, waits0, cur, &t) == 0 ? st0 : DBASE); }
 #ifndef __wasm__
@@ -4720,11 +4729,11 @@ static Dec fillFirstIn(Dec d) {
       // a walk must beat the pool's best; among walks, the same order (time: its estimate)
       int wdie = LNO[0];
       LEVELTAKE(fsw, n, est);
-      double sc = fillScoreOf(fsw, n, wdie, HOLLOW(LNO), W.has ? W.score : ref);
-      if (W.has ? !bestBeats(&W, sc, est, fsw, n) : sc <= ref) continue;
+      double sc = fillScoreOf(fsw, n, wdie, HOLLOW(LNO));
+      if (W.has ? !fillBeats(&W, &wtw, sc, est, fsw, n) : sc <= ref) continue;
       if (!fillKeeps(marginWithin(fsw, n, wdie, need), need)) continue;
       if (spend && !readyAfterSpend(fsw, n) && (nonSpendLives() || spendKeepsRaiseOut())) continue;
-      bestTake(&W, sc, est, fsw, n); first[0] = fsw[0]; first[1] = fsw[1];
+      fillTake(&W, &wtw, sc, est, fsw, n); first[0] = fsw[0]; first[1] = fsw[1];
     }
   }
   // A TOWER TWO WIDE COMES DOWN IN TWO WALKS: a slab rests on the taller of
@@ -4772,7 +4781,7 @@ static Dec fillFirstIn(Dec d) {
         double beat = W.has && W.score > ref ? W.score : ref;
         // the judge plays the line through whatever lands while it is played
         int vv = v, die = LNO[0], hol = HOLLOW(LNO);
-        if ((vv & LV_LIVES) && !(vv & LV_PAYS) && fillScoreOf(sw, n, die, hol, beat) > beat && fillKeeps(marginWithin(sw, n, die, need), need)) {
+        if ((vv & LV_LIVES) && !(vv & LV_PAYS) && fillScoreOf(sw, n, die, hol) > beat && fillKeeps(marginWithin(sw, n, die, need), need)) {
           lineSet(sw, n, LINE_PLAN, 0);
           return mkSwap(sw[0], sw[1], V_FILL, d.mode, d.alive);
         }
