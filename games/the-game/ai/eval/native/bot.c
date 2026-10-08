@@ -3309,15 +3309,18 @@ static int readyThenLater(int rdy, double life, int pickRdy, double pickLife) {
   if (rdy != pickRdy) return rdy > pickRdy ? 1 : -1;
   return life > pickLife ? 1 : life < pickLife ? -1 : 0;
 }
-// THE BAR A READY LINE CLEARS: it outlives the board left alone (the frame
-// after the board left alone loses health; any death, when it does not; 0
-// with no engine). Every route that plays a line for its readiness asks this.
-static int readyBar(void) { return aloneOnEngine() ? (LNA[0] ? LNA[0] + 1 : 1 << 20) : 0; }
+// THE BAR A READY LINE CLEARS: it loses health no sooner than the board left
+// alone (any death, when that does not; 0 with no engine). Not later: a line
+// that only readies the break is replayed without the break, and against a
+// queue that fills the room it dies when the board left alone does -- the
+// break it readies is what saves it. Every route that plays a line for its
+// readiness asks this.
+static int readyBar(void) { return aloneOnEngine() ? (LNA[0] ? LNA[0] : 1 << 20) : 0; }
 // whether a line counts as ready: asked only with garbage to come, and only of
-// a line that outlives the board left alone
+// a line that loses health no sooner than the board left alone
 static int readyAtNext(const int32_t *sw, int n, int *br, int *bc);
 static int readyCounts(const LineC *l, int alone) {
-  if (!(BIN[IN_INCOMING] > 0) || (alone && l->die <= alone)) return 0;
+  if (!(BIN[IN_INCOMING] > 0) || (alone && l->die < alone)) return 0;
   int32_t keep[LNOLEN]; int r, c;
   for (int k = 0; k < LNOLEN; k++) keep[k] = LNO[k];
   int rdy = readyAtNext(l->sw, l->n, &r, &c);
