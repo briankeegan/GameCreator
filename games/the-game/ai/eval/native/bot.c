@@ -2388,6 +2388,11 @@ static void disturbed(const int32_t *a, const int32_t *b, uint32_t *out) {
 // steps were played when taken; at 0.1, 0.144 and 0.125.
 #define SITPOPWORK 1
 #define SITOFFERWORK 0.1
+// LISTING A LINE'S LEGAL STEPS (legal, once per line kept, before its steps
+// are offered): 2,179 instructions a listing over 1,187,942 listings
+// (callgrind, drill seed 4, 3,000 frames), at the decisions' mean of 1,134
+// instructions a unit there (26.58e9 over 23.43e6 units)
+#define SITLEGALWORK 1.9
 #define SITNODEWORK 1
 #define SITHASH 2048
 typedef struct { int parent, n, r, c, stopped; double t, settled, left; uint32_t dist[WMAX]; int32_t rh[R_INTS]; } SitNode;   // stopped: a step before cleared, so the board is stopped; rh: the step's resolve record
@@ -2401,10 +2406,13 @@ static JLOCAL double sitLeft;
 // (is this board ready?), so each level of nesting has its own memory, the
 // current level's set in place on entry and the caller's put back on exit
 #define SITLEVELS 4
-typedef struct { ST *st; SitNode *nd; SitKid *kd; SitHeap *hp; u64 *hk; int32_t *t, *r, *l; double left; } SitMem;
+typedef struct { ST *st; SitNode *nd; SitKid *kd; SitHeap *hp; u64 *hk; uint32_t *hg, gen; int32_t *t, *r, *l; double left; } SitMem;
 static JLOCAL SitMem SITM[SITLEVELS];
 static JLOCAL int sitLevel;
 static JLOCAL ST *SITST; static JLOCAL SitNode *SITND; static JLOCAL SitKid *SITKD; static JLOCAL SitHeap *SITHP; static JLOCAL u64 *SITHK;
+// A BOARD SEEN IS STAMPED WITH ITS SEARCH: an entry another search wrote reads
+// as empty, so a search starts without clearing the table
+static JLOCAL uint32_t *SITHG, SITGEN;
 static JLOCAL int32_t *SITT, *SITR, *SITL;
 
 static int sitLine(int i, int32_t *sw) {
@@ -2434,8 +2442,8 @@ static int sitPop(int *nh) {
 static int sitSeen(u64 h) {   // 1 if the board was grown already; else noted
   unsigned k = (unsigned)(h ^ (h >> 31)) & (SITHASH - 1);
   for (int probe = 0; probe < SITHASH; probe++, k = (k + 1) & (SITHASH - 1)) {
+    if (SITHG[k] != SITGEN) { SITHK[k] = h ? h : 1; SITHG[k] = SITGEN; return 0; }
     if (SITHK[k] == h) return 1;
-    if (!SITHK[k]) { SITHK[k] = h ? h : 1; return 0; }
   }
   return 1;
 }
@@ -2458,9 +2466,9 @@ static double workLeft(void) {
 static SitMem *sitMem(int level) {
   SitMem *m = &SITM[level];
   if (!m->st) {
-    m->st = grab(sizeof(ST) * SITCAP); m->nd = grab(sizeof(SitNode) * SITCAP); m->kd = grab(sizeof(SitKid) * SITKIDS); m->hp = grab(sizeof(SitHeap) * SITKIDS); m->hk = grab(sizeof(u64) * SITHASH);
+    m->st = grab(sizeof(ST) * SITCAP); m->nd = grab(sizeof(SitNode) * SITCAP); m->kd = grab(sizeof(SitKid) * SITKIDS); m->hp = grab(sizeof(SitHeap) * SITKIDS); m->hk = grab(sizeof(u64) * SITHASH); m->hg = grab(sizeof(uint32_t) * SITHASH);
     m->t = grab(sizeof(ST)); m->r = grab(sizeof(int32_t) * (R_INTS + ST_INTS)); m->l = grab(sizeof(int32_t) * 2 * 128);
-    if (!m->st || !m->nd || !m->kd || !m->hp || !m->hk || !m->t || !m->r || !m->l) { m->st = 0; return 0; }
+    if (!m->st || !m->nd || !m->kd || !m->hp || !m->hk || !m->hg || !m->t || !m->r || !m->l) { m->st = 0; return 0; }
   }
   return m;
 }
@@ -2471,7 +2479,7 @@ static void sitWarm(void) {
     SitMem *m = sitMem(level);
     if (!m) return;
     __builtin_memset(m->st, 0, sizeof(ST) * SITCAP); __builtin_memset(m->nd, 0, sizeof(SitNode) * SITCAP);
-    __builtin_memset(m->kd, 0, sizeof(SitKid) * SITKIDS); __builtin_memset(m->hp, 0, sizeof(SitHeap) * SITKIDS); __builtin_memset(m->hk, 0, sizeof(u64) * SITHASH);
+    __builtin_memset(m->kd, 0, sizeof(SitKid) * SITKIDS); __builtin_memset(m->hp, 0, sizeof(SitHeap) * SITKIDS); __builtin_memset(m->hk, 0, sizeof(u64) * SITHASH); __builtin_memset(m->hg, 0, sizeof(uint32_t) * SITHASH);
   }
 }
 static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double notBefore, double left, int frozen,
@@ -2491,15 +2499,17 @@ static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double no
   SitMem *m = sitMem(sitLevel);
   if (!m) return 0;
   // the caller's level, kept to be put back
-  ST *pst = SITST; SitNode *pnd = SITND; SitKid *pkd = SITKD; SitHeap *php = SITHP; u64 *phk = SITHK; int32_t *pt = SITT, *pr = SITR, *pl = SITL; double pleft = sitLeft;
+  ST *pst = SITST; SitNode *pnd = SITND; SitKid *pkd = SITKD; SitHeap *php = SITHP; u64 *phk = SITHK; uint32_t *phg = SITHG, pgen = SITGEN; int32_t *pt = SITT, *pr = SITR, *pl = SITL; double pleft = sitLeft;
   SITST = m->st; SITND = m->nd; SITKD = m->kd; SITHP = m->hp; SITHK = m->hk; SITT = m->t; SITR = m->r; SITL = m->l;
+  if (++m->gen == 0) { __builtin_memset(m->hg, 0, sizeof(uint32_t) * SITHASH); m->gen = 1; }
+  SITHG = m->hg; SITGEN = m->gen;
   sitLevel++;
   int got = sitRun(st0, cr, cc, t0, notBefore, left, frozen, can0, wait0, work, accept, ctx, sw, nOut, atOut);
   sitLevel--;
 #ifndef __wasm__
   if (calTop && !inWorker) { calMs += NOWMS2() - cal0; calW += paWork - calw0; if (++calN % 20000 == 0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "CAL sit %.3f ms/kwork over %.0f kwork\n", calMs / (calW / 1000), calW / 1000); } }
 #endif
-  SITST = pst; SITND = pnd; SITKD = pkd; SITHP = php; SITHK = phk; SITT = pt; SITR = pr; SITL = pl; sitLeft = pleft;
+  SITST = pst; SITND = pnd; SITKD = pkd; SITHP = php; SITHK = phk; SITHG = phg; SITGEN = pgen; SITT = pt; SITR = pr; SITL = pl; sitLeft = pleft;
   return got;
 }
 // a kept line's steps offered: each legal pair, pressed when the clock says
@@ -2512,6 +2522,7 @@ static void sitOffer(int i, int *nk, int *nh, double notBefore, int frozen, cons
   double start = root ? nd->t : nd->t + stepGap(frozen || nd->stopped);   // a clear's stop time: no reaction to wait out
   double bound = nd->left < sitLeft ? nd->left : sitLeft;
   int m = legal(SITST[i], SITL);
+  paWork += SITLEGALWORK;
   for (int q = 0; q < m && *nk < SITKIDS; q++) {
     int r = SITL[2 * q], c = SITL[2 * q + 1];
     if (r > 31) continue;
@@ -2532,7 +2543,6 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
                   const uint32_t *can0, uint8_t (*wait0)[WMAX], double work, SitAccept accept, void *ctx,
                   int32_t *sw, int *nOut, double *atOut) {
   extern PATLS double paWork;
-  for (int k = 0; k < SITHASH; k++) SITHK[k] = 0;
   double w0 = paWork;
   stcpy(SITST[0], st0);
   SITND[0].parent = -1; SITND[0].n = 0; SITND[0].r = cr; SITND[0].c = cc; SITND[0].t = t0; SITND[0].settled = 0; SITND[0].left = left; SITND[0].stopped = 0;
