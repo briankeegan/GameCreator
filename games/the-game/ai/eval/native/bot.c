@@ -2608,12 +2608,9 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
 static int sitBreaks(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) { (void)sw; (void)n; (void)at; (void)ctx; return res[R_SCOPE] == SC_BROKE ? SIT_TAKE : SIT_GROW; }
 // A BREAK IN TIME, ON THE MASKS: a break -- any length -- pressed before the
 // board loses health (framesToDeath), walked from the cursor: soonest first,
-// with the readiness search's share (READYWORK), as the board's own is asked
-// (bit.c anyBreakOf, and through it slabReady's slab placed where it rests;
-// answers kept per board). A line kept and its steps offered cost about 5,
-// a step taken about 6: one swap deep is some 140, two about 3,300 -- a
-// smaller share saw no break of two swaps, and no line read as ready.
-#define BREAKOFWORK READYWORK
+// with a small share of work, since it is asked of every option and
+// candidate (bit.c anyBreakOf, and through it slabReady's slab placed where it rests)
+#define BREAKOFWORK 240
 static int inTimeOfWork(const int32_t *st, SitAccept want, double work) {
   return searchInTime(st, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, framesToDeath(tallestBoard(st), BIN[IN_FPR]),
                       BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, 0, 0, work, want, 0, 0, 0, 0);
