@@ -3988,7 +3988,11 @@ static int workTop(const int32_t *st, int c) {
 }
 // VERTICAL TWOS ON THE MASKS: the judge's count (front.c out[14]) read off a
 // predicted board, so two-swap setups can be ranked before the engine judges one
-static int twosOf(const int32_t *st) {
+static int twosOfIn(const int32_t *st, int breaking);
+static int twosOf(const int32_t *st) { return twosOfIn(st, 0); }
+// the twos whose three touches garbage: lined up, they break
+static int breakTwosOf(const int32_t *st) { return twosOfIn(st, 1); }
+static int twosOfIn(const int32_t *st, int breaking) {
   int W = st[O_W], n = 0;
 #define VP(r, c) ((r) >= 1 && (U(st, OCC + (c)) & (1u << ((r) - 1))) && !(U(st, (GARB) + (c)) & (1u << ((r) - 1))) && !(U(st, INERT + (c)) & (1u << ((r) - 1))))
   for (int c = 1; c <= W; c++) {
@@ -4003,6 +4007,12 @@ static int twosOf(const int32_t *st) {
         if (cc < 1 || cc > W || (U(st, (GARB) + cc) & (1u << (r - 3)))) break;
         if (VP(r - 2, cc) && colourFirst(st, cc, 1u << (r - 3)) == col) { ready = 1; break; }
       }
+    if (ready && breaking) {   // the three, rows r-2..r of c: garbage over it or beside it
+      uint32_t three = 7u << (r - 3), g = U(st, GARB + c) & (1u << r);
+      if (c > 1) g |= U(st, GARB + c - 1) & three;
+      if (c < W) g |= U(st, GARB + c + 1) & three;
+      ready = g != 0;
+    }
     n += ready;
   }
 #undef VP
@@ -4564,13 +4574,15 @@ static int walkTop(int c) {
 // soonest break (fillUrgent), a fill is ranked by the frame it loses health
 // (later first); otherwise by the hollow it leaves
 static int fillUrgent;
-// -- and, as level, by the vertical twos it leaves (twosOf): a fill organizes
+// -- and, among fills that beat the board, by the twos it leaves that line up
+// a break (breakTwosOf): a fill organizes. The board and the choice are beaten
+// on life and hollow only (their twos counted full).
 #define FILLTWOS 8
 static double fillScore(int die, int hollow, int twos) { return ((fillUrgent && die ? lifeOf(die, hollow) : (1 << 20)) * 4096.0 - hollow) * FILLTWOS + (twos < FILLTWOS - 1 ? twos : FILLTWOS - 1); }
 // the twos on the board a line leaves (0 where the budget holds no replay)
 static int twosAfter(const int32_t *sw, int n) {
   static ST TA; int32_t c1[2], t1; uint32_t cn[WMAX]; uint8_t wt[32][WMAX];
-  return lineState(sw, n, TA, cn, wt, c1, &t1) == 0 ? twosOf(TA) : 0;
+  return lineState(sw, n, TA, cn, wt, c1, &t1) == 0 ? breakTwosOf(TA) : 0;
 }
 // READY TO BREAK COMES FIRST: while the time is short, a fill after which the
 // garbage breaks before the board loses health beats every fill that only
@@ -4602,11 +4614,11 @@ static Dec fillFirstIn(Dec d) {
   // time between its break and its loss of health
   double need = marginAfter(0, 0, LNA[0]);
   fillUrgent = LNA[0] && need < 0;
-  double ref = fillScore(LNA[0], HOLLOW(LNA), twosAfter(0, 0));   // what a fill must beat: the board left alone, and the choice
+  double ref = fillScore(LNA[0], HOLLOW(LNA), FILLTWOS - 1);   // what a fill must beat: the board left alone, and the choice
   int refDie = LNA[0] ? LNA[0] : 1 << 20;   // the later loss of health of the two
   if (d.kind == K_SWAP && d.hasMove) {
     int32_t sw[2] = { d.sr, d.sc };
-    if (lineJudge(sw, 1, 0) & LV_LIVES) { best = HOLLOW(LNO) < best ? HOLLOW(LNO) : best; if ((LNO[0] ? LNO[0] : 1 << 20) > refDie) refDie = LNO[0] ? LNO[0] : 1 << 20; double cs = fillScore(LNO[0], HOLLOW(LNO), twosAfter(sw, 1)); double m = marginAfter(sw, 1, LNO[0]); if (fillUrgent && m >= 0) cs += BREAKS_IN_TIME; if (cs > ref) ref = cs; if (m > need) need = m; }
+    if (lineJudge(sw, 1, 0) & LV_LIVES) { best = HOLLOW(LNO) < best ? HOLLOW(LNO) : best; if ((LNO[0] ? LNO[0] : 1 << 20) > refDie) refDie = LNO[0] ? LNO[0] : 1 << 20; double cs = fillScore(LNO[0], HOLLOW(LNO), FILLTWOS - 1); double m = marginAfter(sw, 1, LNO[0]); if (fillUrgent && m >= 0) cs += BREAKS_IN_TIME; if (cs > ref) ref = cs; if (m > need) need = m; }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  choice %d,%d die %d last %d hollow %d | alone die %d\n", d.sr, d.sc, LNO[0], LNO[1], HOLLOW(LNO), LNA[0]); }   // the log does no work of its own: under a work budget it would change the decision
 #endif
