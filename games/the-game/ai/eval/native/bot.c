@@ -2999,6 +2999,10 @@ static int readyThenLater(int rdy, int die, int pickRdy, int pickDie) {
   if (rdy != pickRdy) return rdy > pickRdy ? 1 : -1;
   return die > pickDie ? 1 : die < pickDie ? -1 : 0;
 }
+// THE BAR A READY LINE CLEARS: it outlives the board left alone (the frame
+// after the board left alone loses health; any death, when it does not; 0
+// with no engine). Every route that plays a line for its readiness asks this.
+static int readyBar(void) { return aloneOnEngine() ? (LNA[0] ? LNA[0] + 1 : 1 << 20) : 0; }
 // whether a line counts as ready: asked only with garbage to come, and only of
 // a line that outlives the board left alone
 static int readyAtNext(const int32_t *sw, int n, int *br, int *bc);
@@ -3863,7 +3867,8 @@ static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc) {
 }
 // A PILE LET DOWN IS GARBAGE ARRIVING. A swap that sets garbage at rest
 // falling (DROPS) and leaves no break in reach where it lands (readyInTime)
-// gives way to a living swap or two-deep line, as long-lived, that does --
+// gives way to a living swap or two-deep line that does and clears the
+// readiness bar (readyBar) --
 // nearest first. With none, the drop is played: standing still readies
 // nothing, and the pile let down lowers the stack.
 static Dec dropReady(Dec d) {
@@ -3874,7 +3879,7 @@ static Dec dropReady(Dec d) {
   int32_t sw[2] = { d.sr, d.sc };
   int v = lineJudge(sw, 1, 0);
   if (!(v & LV_DROPS) || (v & LV_BREAKS)) return d;
-  int dieRef = LNO[0] ? LNO[0] : 1 << 20, r, c, tried = 0;
+  int dieRef = readyBar(), r, c, tried = 0;
   if (readyInTime(sw, 1, &r, &c)) return d;
   int32_t pl[2 * MAXCAND]; int pn = 0, q;
   for (int k = 0; k < nPool && pn < MAXCAND; k++) {
@@ -4151,7 +4156,7 @@ static Dec readyWhenLands(Dec d) {
   // READY FIRST (readyThenLater): a line that readies the landing need only
   // outlive the board left alone, not the choice it replaces -- that choice's
   // later death is judged without a break, and the break is what saves it
-  if (aloneOnEngine()) dieRef = LNA[0] ? LNA[0] + 1 : 1 << 20;
+  dieRef = readyBar();
   int spare = materialRows(DBASE) >= 6, tried = 0;
   int32_t pl[2 * MAXCAND]; int pn = 0, q;
   for (int k = 0; k < nPool && pn < MAXCAND; k++) {
