@@ -40,11 +40,12 @@ if (!process.env.GC_SURVIVOR_CHILD) {
   child.on('exit', function (code, sig) { process.exit(code === null ? 1 : code); });
   return;
 }
-// THE FRAME LOOP STAYS OUT OF GC'S WAY: a young generation big enough that
-// it rarely fills mid-frame, and collections done on the thread that needs
-// them -- V8's helper threads are the process's, and a collection here that
-// waits on them waits behind the mind's.
-require('v8').setFlagsFromString('--max-semi-space-size=64');
+// THE FRAME LOOP STAYS OUT OF GC'S WAY: collections done on the thread that
+// needs them -- V8's helper threads are the process's, and a collection here
+// that waits on them waits behind the mind's. The young generation keeps its
+// default size: a heap's is fixed when it is made, so a size set here would
+// reach only the mind's, and there a 64 MB one held decisions for up to 130 ms
+// a scavenge against 16 ms at the default (473 recorded boards, 100 ms each).
 require('v8').setFlagsFromString('--no-parallel-scavenge');
 require('v8').setFlagsFromString('--no-parallel-compaction');
 require('v8').setFlagsFromString('--no-parallel-pointer-update');
