@@ -4831,22 +4831,36 @@ static int mwJoin(const MwCtx *x, const int32_t *sw, int n, int32_t *l2) {
   for (int k = 0; k < 2 * x->n; k++) l2[2 * n + k] = x->ln[k];
   return n + x->n;
 }
+// A CLEAR IN THE WAIT ORGANIZES OR IS NOT MADE: it goes first only if the
+// board it leaves (the masks) has a break in reach, or more vertical twos than
+// the board has now -- a clear spends what a break needs. Of those: a break in
+// reach first, then more twos, then the fewest panels spent.
+static int clearOrganizes(const MwCtx *x, const int32_t *st) {
+  if (hasGarbage(st) && anyBreakOf(st)) return 2;
+  return twosOf(st) > x->vb ? 1 : 0;
+}
 static int sitWaitClear(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
   MwCtx *x = ctx; (void)at;
   if (res[R_SCOPE] != SC_OK) return SIT_END;
   if (!(res[R_TOTAL] > 0)) return SIT_GROW;   // quiet steps on the way to a clear
   if (n == 1 && sw[0] == x->dr && sw[1] == x->dc) return SIT_END;
+  int org = clearOrganizes(x, res + R_INTS);
+  if (!org) return SIT_END;
   int32_t l2[2 * LINEMAX]; int nl = mwJoin(x, sw, n, l2);
   if (!nl) return SIT_END;
   if (x->tried >= MEANWHILES) return SIT_TAKE;
   x->tried++;
   int v = lineJudge(l2, nl, x->waitAll);
   if ((v & x->need) == x->need && LNO[1] <= x->last0 && !mwDiesSooner(x) && spendsOk(x, l2, nl)) {
-    if (LNO[3] > x->most) { x->most = LNO[3]; x->bn = n; for (int k = 0; k < 2 * n; k++) x->bsw[k] = sw[k]; }
+    int key = org * 1000 - LNO[3];
+    if (!x->bn || key > x->most) { x->most = key; x->bn = n; for (int k = 0; k < 2 * n; k++) x->bsw[k] = sw[k]; }
     return SIT_END;
   }
   v = lineJudge(sw, n, 0);
-  if ((v & LV_LIVES) && !mwDiesSooner(x) && LNO[3] > x->fmost && spendsOk(x, sw, n)) { x->fmost = LNO[3]; x->fn = n; for (int k = 0; k < 2 * n; k++) x->fsw[k] = sw[k]; }
+  if ((v & LV_LIVES) && !mwDiesSooner(x) && spendsOk(x, sw, n)) {
+    int key = org * 1000 - LNO[3];
+    if (!x->fn || key > x->fmost) { x->fmost = key; x->fn = n; for (int k = 0; k < 2 * n; k++) x->fsw[k] = sw[k]; }
+  }
   return SIT_END;
 }
 // THE HOLLOW ON THE MASKS, as the judge reads it (front.c out[10] + out[13]):
