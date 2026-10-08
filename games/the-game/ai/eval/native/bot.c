@@ -3192,8 +3192,12 @@ static LineC *bestBreak(void) {
   return pick;
 }
 static int blReady, blAlone;
+// BREAKING COMES FIRST, in survival too: a line the engine says breaks
+// garbage -- any match against it, pressed or fallen into -- goes before one
+// that only lives longer
+static int breaksOf(const LineC *l) { return (judged((LineC *)l) & LV_BREAKS) != 0; }
 static LineC *bestLiving(int (*ok)(const LineC *)) {
-  static unsigned char taken[MAXLINES]; int pickRdy = 0;
+  static unsigned char taken[MAXLINES]; int pickRdy = 0, pickBrk = 0;
   const int need = LV_LIVES | LV_GAINS;
   LineC *pick = 0;
   for (int i = 0; i < nLines; i++) taken[i] = ok && !ok(&LINES[i]);
@@ -3210,9 +3214,12 @@ static LineC *bestLiving(int (*ok)(const LineC *)) {
     judgeAhead(l, taken, 0);
     if ((judged(l) & need) != need) continue;
     found++;
-    // ready first when asked (stayAlive, readyThenLater), then the latest loss of health; then the least hollow
-    int rdy = blReady ? readyCounts(l, blAlone) : 0, cmp = pick ? readyThenLater(rdy, l->life, pickRdy, pick->life) : 1;
-    if (cmp > 0 || (cmp == 0 && l->hollow < pick->hollow)) { pick = l; pickRdy = rdy; }
+    // a break first; then ready when asked (stayAlive, readyThenLater) -- a
+    // break in reach when the next slab lands; then the latest loss of
+    // health; then the least hollow
+    int brk = breaksOf(l);
+    int rdy = blReady ? readyCounts(l, blAlone) : 0, cmp = !pick ? 1 : brk != pickBrk ? (brk ? 1 : -1) : readyThenLater(rdy, l->life, pickRdy, pick->life);
+    if (cmp > 0 || (cmp == 0 && l->hollow < pick->hollow)) { pick = l; pickRdy = rdy; pickBrk = brk; }
   }
   return pick;
 }
@@ -3372,7 +3379,7 @@ static Dec stayAlive(Dec d) {
   LineC *l = bestLiving(notLastSwap);
   blReady = 0;
   if (lineLast == 1) {
-    if (!l || l->life <= playLife) return saKeep(d, playDie);
+    if (!l || (!breaksOf(l) && l->life <= playLife)) return saKeep(d, playDie);
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "SA leaves the line played (dies %d) for", playDie); for (int k = 0; k < l->n; k++) fprintf(BLOG, " %d,%d", l->sw[2 * k], l->sw[2 * k + 1]); fprintf(BLOG, " (dies %d)\n", l->die); }
 #endif
@@ -3380,7 +3387,7 @@ static Dec stayAlive(Dec d) {
   if (d.kind == K_SWAP) {
     dR = d.sr; dC = d.sc;
     LineC *mine = bestLineAvoid(LV_LIVES | LV_GAINS, 0, fromChoice);
-    if (mine && (!l || mine->life >= l->life)) { if (mine->n > 1) lineKeep(mine, LINE_CASH); return saKeep(d, mine->die); }
+    if (mine && (!l || (breaksOf(mine) >= breaksOf(l) && mine->life >= l->life))) { if (mine->n > 1) lineKeep(mine, LINE_CASH); return saKeep(d, mine->die); }
   }
   // A HOLD IS NOT A LINE STARTED LATER: a line is judged pressed from now, and
   // every frame the board waits is a frame garbage drops on it -- the line that
@@ -4806,7 +4813,7 @@ typedef struct {
   const int32_t *ln; int n, waitAll, need, last0, die0, dr, dc, urgent, die0Of, tried;
   int most, bn; int32_t bsw[2 * LINEMAX];        // the best: the clear that matches most, or the quiet line that leaves least hollow
   int fmost, fn; int32_t fsw[2 * LINEMAX];       // a clear on its own, the line dropped
-  int hb, vb;                                    // the hollow and twos to beat (quiet)
+  int hb, vb, rb;                                // the hollow, twos and break in reach to beat (quiet)
 } MwCtx;
 // MATERIAL IS SPENT ONLY TO BREAK OR TO LIVE: under six rows a clear goes
 // first only while the board left alone loses health before its soonest
@@ -4854,13 +4861,16 @@ static int sitWaitQuiet(const int32_t *res, const int32_t *sw, int n, double at,
   int v = lineJudge(l2, nl, x->waitAll);
   if ((v & x->need) != x->need || LNO[1] > x->last0 || mwDiesSooner(x)) return SIT_GROW;
   int hl = HOLLOW(LNO);
-  if (hl > x->hb) return SIT_GROW;
-  // twos are read where the steps make them (twosOf on the board the engine
-  // settles to after them), not where the judge's horizon ends
+  // LEVELING ORGANIZES: a quiet line that leaves a break in reach (anyBreakOf,
+  // on the board the engine settles to after it) goes first; then the least
+  // hollow; then the most vertical twos -- both read where the steps make them
   static ST MW1; int32_t mc1[2], mt1; uint32_t mcan[WMAX]; uint8_t mwt[32][WMAX];
-  int tw = lineState(sw, n, MW1, mcan, mwt, mc1, &mt1) == 0 ? twosOf(MW1) : 0;
-  if (hl == x->hb && tw <= x->vb) return SIT_GROW;
-  x->hb = hl; x->vb = tw; x->bn = n; for (int k = 0; k < 2 * n; k++) x->bsw[k] = sw[k];
+  int ok1 = lineState(sw, n, MW1, mcan, mwt, mc1, &mt1) == 0;
+  int rb = ok1 && hasGarbage(MW1) && anyBreakOf(MW1);
+  if (rb < x->rb || (rb == x->rb && hl > x->hb)) return SIT_GROW;
+  int tw = ok1 ? twosOf(MW1) : 0;
+  if (rb == x->rb && hl == x->hb && tw <= x->vb) return SIT_GROW;
+  x->rb = rb; x->hb = hl; x->vb = tw; x->bn = n; for (int k = 0; k < 2 * n; k++) x->bsw[k] = sw[k];
   return SIT_GROW;
 }
 static void waitLines(MwCtx *x, SitAccept accept) { waitSearch(pressSeen(x->last0) - REACT, accept, x); }
@@ -4887,7 +4897,7 @@ static Dec meanwhile(Dec d) {
     static ST MW0; int32_t mc0[2], mt0; uint32_t mcan0[WMAX]; uint8_t mwt0[32][WMAX];
     int tw0 = lineState(0, 0, MW0, mcan0, mwt0, mc0, &mt0) == 0 ? twosOf(MW0) : 0;
     int h0 = HOLLOW(LNO);
-    x.hb = h0; x.vb = tw0;
+    x.hb = h0; x.vb = tw0; x.rb = hasGarbage(MW0) && anyBreakOf(MW0);
     waitLines(&x, sitWaitQuiet);
     if (x.bn) { np = x.bn; for (int k = 0; k < 2 * np; k++) pre[k] = x.bsw[k]; }
     for (int k = 0; k < LNOLEN; k++) LNO[k] = keepO[k];
