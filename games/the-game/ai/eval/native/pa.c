@@ -1299,6 +1299,8 @@ int paOutcome(int r, int c, int at, int horizon, int32_t *out) {
       if (!canSwap(PAT, r, c)) return -2;
       PAT->curRow = r; PAT->curCol = c; tryQueueSwap(PAT, r, c); pressed = 1;
     }
+    // a replay only within the decision's budget, as every other: past it, no answer
+    if (paBudgetOut()) return -4;
     PAT->input = 0;
     run(PAT);
     if (PAT->err) return -3;

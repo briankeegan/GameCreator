@@ -217,7 +217,12 @@ while f < FRAMES do
     ffi.C.fclose(mem); C.botLogTo = nil; C.botTraceOn = 0
     blog = ffi.string(LOGP[0], LOGN[0]); ffi.C.free(LOGP[0])
   end
-  if bits < 0 then io.stderr:write("train: the bot failed at frame " .. f .. "\n"); os.exit(2) end
+  if bits < 0 then
+    -- the failing frame's own log first: what failed is in it
+    if blog ~= "" then io.stderr:write("@ " .. f .. "\n", blog) end
+    if GAMELOG then GAMELOG:write("@ ", f, "\n", blog, "train: the bot failed\n"); GAMELOG:close() end
+    io.stderr:write("train: the bot failed at frame " .. f .. "\n"); os.exit(2)
+  end
   if C.nb_pressed(board) ~= 0 then bits = bit.bor(bits, 16) end
   a:receiveConfirmedInput(KeyDataEncoding.base64encode[bits + 1])
   match:run()
