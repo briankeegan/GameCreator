@@ -4588,10 +4588,12 @@ static int twosAfter(const int32_t *sw, int n) {
 // garbage breaks before the board loses health beats every fill that only
 // loses it later -- the garbage is what kills, and only a break removes it
 #define BREAKS_IN_TIME 1e12
-static double fillScoreOf(const int32_t *sw, int n, int die, int hollow) {
-  double sc = fillScore(die, hollow, twosAfter(sw, n));
+// The twos cost a replay: asked only of a fill that would tie or beat `floor`
+// (the best so far) with them.
+static double fillScoreOf(const int32_t *sw, int n, int die, int hollow, double floor) {
+  double sc = fillScore(die, hollow, 0);
   if (fillUrgent && marginWithin(sw, n, die ? die : LINEREACH, 0) >= 0) sc += BREAKS_IN_TIME;
-  return sc;
+  return sc + (FILLTWOS - 1) < floor ? sc : sc + fillScore(0, 0, twosAfter(sw, n)) - fillScore(0, 0, 0);
 }
 // a clear judged (LNO) leaves six rows of material, read off the line's own matches
 static int readyAfterSpend(const int32_t *sw, int n);
@@ -4656,7 +4658,7 @@ static Dec fillFirstIn(Dec d) {
     if (spend && !LIVES_LONGER()) { FILLWHY("spends, lives no longer"); continue; }
     int pdie = LNO[0];
     LEVELTAKE(sw, 1, pc->moveFrames);
-    double sc = fillScoreOf(sw, 1, pdie, HOLLOW(LNO));
+    double sc = fillScoreOf(sw, 1, pdie, HOLLOW(LNO), P.has ? P.score : ref);
     if (P.has ? !bestBeats(&P, sc, pc->moveFrames, sw, 1) : sc <= ref) { FILLWHY("beaten"); continue; }
     if (!fillKeeps(marginWithin(sw, 1, pdie, need), need)) { FILLWHY("costs the break's time"); continue; }
     if (spend && !readyAfterSpend(sw, 1) && (nonSpendLives() || spendKeepsRaiseOut())) { FILLWHY("spends, not ready, a non-spend lives or a raise waits"); continue; }   // a move that spends nothing lives: a spend must leave a break ready
@@ -4718,7 +4720,7 @@ static Dec fillFirstIn(Dec d) {
       // a walk must beat the pool's best; among walks, the same order (time: its estimate)
       int wdie = LNO[0];
       LEVELTAKE(fsw, n, est);
-      double sc = fillScoreOf(fsw, n, wdie, HOLLOW(LNO));
+      double sc = fillScoreOf(fsw, n, wdie, HOLLOW(LNO), W.has ? W.score : ref);
       if (W.has ? !bestBeats(&W, sc, est, fsw, n) : sc <= ref) continue;
       if (!fillKeeps(marginWithin(fsw, n, wdie, need), need)) continue;
       if (spend && !readyAfterSpend(fsw, n) && (nonSpendLives() || spendKeepsRaiseOut())) continue;
@@ -4770,7 +4772,7 @@ static Dec fillFirstIn(Dec d) {
         double beat = W.has && W.score > ref ? W.score : ref;
         // the judge plays the line through whatever lands while it is played
         int vv = v, die = LNO[0], hol = HOLLOW(LNO);
-        if ((vv & LV_LIVES) && !(vv & LV_PAYS) && fillScoreOf(sw, n, die, hol) > beat && fillKeeps(marginWithin(sw, n, die, need), need)) {
+        if ((vv & LV_LIVES) && !(vv & LV_PAYS) && fillScoreOf(sw, n, die, hol, beat) > beat && fillKeeps(marginWithin(sw, n, die, need), need)) {
           lineSet(sw, n, LINE_PLAN, 0);
           return mkSwap(sw[0], sw[1], V_FILL, d.mode, d.alive);
         }
