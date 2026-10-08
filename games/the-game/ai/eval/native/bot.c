@@ -3680,7 +3680,6 @@ static int lineupNear(const int32_t *st, int r, int c) {
 #define LUMOST (LUBEST + 0.5)
 static int luHollow;   // the hollow of the line lineupRank judged last
 static double luScore(int rank) { return rank ? rank + 0.5 / (1 + luHollow) : 0; }
-#define MEANWHILE 30   // frames before a swap is pressed, past which a clear may go first
 #define MEANWHILES 6   // clears asked, at most
 // the rank of a lineup, asked only for ranks of at least `need`: a lineup
 // that is only ready ranks 2 or 3, so past 3 readiness is not looked for
@@ -4871,7 +4870,7 @@ static Dec meanwhile(Dec d) {
   else { n = 1; ln[2] = d.sr; ln[3] = d.sc; }
   if (n >= LINEMAX) return d;
   int v0 = lineJudge(ln + 2, n, waitAll);
-  if (!(v0 & LV_LIVES) || LNO[1] <= MEANWHILE) return d;
+  if (!(v0 & LV_LIVES)) return d;   // the time before the line's press bounds what goes first (waitLines)
   int last0 = LNO[1], die0 = LNO[0], need = LV_LIVES | (v0 & LV_BREAKS), mr = 0, mc = 0, most = 0, tried = 0, keep = 1;
   MwCtx x; __builtin_memset(&x, 0, sizeof x);
   x.ln = ln + 2; x.n = n; x.waitAll = waitAll; x.need = need; x.last0 = last0; x.die0 = die0; x.dr = d.sr; x.dc = d.sc;
