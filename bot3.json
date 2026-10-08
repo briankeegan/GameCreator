@@ -20,7 +20,7 @@
   "chainLength": 8.532006121767683
  },
  "record": {
-  "win": 2,
+  "win": 3,
   "loss": 0,
   "draw": 0,
   "none": 0,
@@ -48,7 +48,18 @@
    "received": 0,
    "late": 0,
    "at": "2026-10-08T16:56:30.629Z"
+  },
+  {
+   "match": 2,
+   "opp": 1,
+   "result": "win",
+   "outcome": "won",
+   "frames": 325,
+   "sent": 0,
+   "received": 6,
+   "late": 0,
+   "at": "2026-10-08T16:56:40.262Z"
   }
  ],
- "matches": 2
+ "matches": 3
 }
