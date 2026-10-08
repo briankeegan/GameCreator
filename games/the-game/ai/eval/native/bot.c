@@ -1216,10 +1216,11 @@ static int raiseMode(const int32_t *base, int poolBreak) {
   if (materialRows(base) >= 6) { BT->opening = 0; return 0; }
   int stillComing = BIN[IN_INCOMING] > 0 || BIN[IN_FALLING];
   if (poolBreak && !stillComing) return 0;
-  // A RAISE NEVER SPENDS STOP TIME: a manual raise ends the stop, and the
-  // stop is the one thing the board cannot buy back -- the raise waits on all
-  // of it (raiseAfter), as it waits on the rise lock
-  raiseAfter = BIN[IN_STOP] > 0 ? BIN[IN_STOP] : 0;
+  // UNDER SIX ROWS A RAISE DOES NOT WAIT ON THE STOP: a break needs panels
+  // under and beside where the slab lands, and a raise is the only way to them
+  // besides breaking. A short board's stop protects nothing -- it is far from
+  // the top -- so the raise is pressed in it (raiseAfter 0), ending it.
+  raiseAfter = 0;
   return BT->opening ? 1 : 2;
 }
 static int modeOf(int haveEscape, double escape, double deadline) {
