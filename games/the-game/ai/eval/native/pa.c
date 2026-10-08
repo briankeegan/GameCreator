@@ -885,6 +885,18 @@ static int isQuiet(Board *b) {
 }
 static int32_t countdownRoom(Board *b);
 static void countdownFrame(Board *b);
+// WHAT A FRAME COSTS IS WHAT IT DOES: a quiet frame runs the timers, a
+// countdown frame counts, an active one checks matches and moves every panel.
+// Fitted over 25,050 replays of drill seed 4 (linePlay, the replay's own
+// bookkeeping included; the first 6,000 frames): a quiet frame 537 cycles, a
+// countdown frame 581, an active one 1,562 -- charged at 326 cycles a unit,
+// which keeps the mix the decisions play (154,101 quiet, 634,334 countdown,
+// 2,250,455 active over seed 4's 11,538 frames) at the four a frame the
+// budget was set by (WORKBUDGET, bot.c).
+#define FRAMEWORK_QUIET 1.65
+#define FRAMEWORK_COUNT 1.78
+#define FRAMEWORK_ACTIVE 4.79
+extern PATLS double paWork;
 static void runPhysics(Board *b) {
   b->nlanded = 0;
   b->wasToppedOut = isToppedOut(b);
@@ -896,14 +908,14 @@ static void runPhysics(Board *b) {
   if (b->displacement % 16 != 0) b->topCurRow = b->height - 1;
   if (swapQueued(b)) { doSwap(b, b->queuedSwapRow, b->queuedSwapCol); b->queuedSwapCol = 0; b->queuedSwapRow = 0; }
   if (b->quiet && !b->noQuiet) {
-    STAT(17)++;
+    STAT(17)++; paWork += FRAMEWORK_QUIET;
     b->shakeTimeOnFrame = 0;
     b->nPrevActive = b->nActive;
   } else if (b->cdLeft > 0 && !b->noQuiet) {
-    STAT(19)++;
+    STAT(19)++; paWork += FRAMEWORK_COUNT;
     countdownFrame(b);
   } else {
-    STAT(16)++;
+    STAT(16)++; paWork += FRAMEWORK_ACTIVE;
     checkMatches(b);
     updatePanels(b);
     updateActivePanelCount(b);
@@ -917,8 +929,8 @@ static void runPhysics(Board *b) {
 }
 // Stack:run, past the countdown. b->input is the frame's keys; pressSwap
 // adds swap (tryQueueSwap); swapDenied says a swap pressed was not taken.
-// WORK: the search's cost in units of ~0.077 us natively, an engine frame four
-// (a resolve on the masks, bit.c, three); the bot's per-decision budget is counted in it.
+// WORK: the search's cost in units of ~0.077 us natively, an engine frame by
+// what it does, four on average (runPhysics; a resolve on the masks, bit.c, three); the bot's per-decision budget is counted in it.
 PATLS double paWork, paEngFrames;
 PATLS double paWorkEnd = 1e300;   // paWorkEnd: where the decision's budget runs out -- the deciding thread's own:
 // a worker's batch is bounded before it starts, and never by a counter that is not its own
@@ -951,7 +963,7 @@ int paBudgetOut(void) {
   return 0;
 }
 static void run(Board *b) {
-  paWork += 4; paEngFrames++;
+  paEngFrames++;   // its work is charged by what it does (runPhysics)
   if (b->gameOverClock > 0 && b->clock >= b->gameOverClock) return;
   if (b->inCountdown || !b->stopWatchIsRunning) { b->err |= ERR_STATE; return; }
   int pressed = b->pressSwap || (b->input & IN_SWAP);
