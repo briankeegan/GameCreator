@@ -45,9 +45,11 @@ jobs:
       - name: LuaJIT and the panel-game rocks
         timeout-minutes: 10
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq luajit luarocks liblua5.1-0-dev clang
-          for r in luafilesystem luasocket luautf8; do luarocks --lua-version 5.1 --local install $r; done
+          # each install is network: three tries, so a blip does not cost the seed
+          try() { for n in 1 2 3; do "$@" && return 0; sleep 15; done; return 1; }
+          try sudo apt-get update -qq
+          try sudo apt-get install -y -qq luajit luarocks liblua5.1-0-dev clang
+          for r in luafilesystem luasocket luautf8; do try luarocks --lua-version 5.1 --local install $r; done
       - name: Build the bot
         working-directory: games/the-game/ai/eval/native
         run: clang -O3 -march=native -pthread -fPIC -shared -DPA_LIB -Wno-unknown-attributes -Wno-ignored-attributes -Wno-unused-function bit.c pa.c -lm -o libbit.so
