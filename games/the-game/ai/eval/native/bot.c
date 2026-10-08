@@ -2386,7 +2386,13 @@ static void disturbed(const int32_t *a, const int32_t *b, uint32_t *out) {
 // heaped) is SITOFFERWORK: on combo_storm seed 9 uncounted, breakFirst ran
 // 0.202 ms/kwork and the whole decision 0.147, against 0.146 and 0.128 before
 // steps were played when taken; at 0.1, 0.144 and 0.125.
-#define SITPOPWORK 1
+// TAKEN, A STEP IS PLAYED (swapped in, resolved, hashed, sorted off the
+// heap): callgrind over drill seed 4's first 3,000 frames counted 4,466,270
+// steps taken, 1,809,026 lines kept and 39,664,141 steps offered; the
+// search's own instructions beyond the resolve (19.32e9) at the decisions'
+// mean of 1,196 instructions a unit leave 3.2 a step taken once a line kept
+// has its 1.
+#define SITPOPWORK 3.2
 #define SITOFFERWORK 0.1
 // LISTING A LINE'S LEGAL STEPS (legal, once per line kept, before its steps
 // are offered): 2,179 instructions a listing over 1,187,942 listings
