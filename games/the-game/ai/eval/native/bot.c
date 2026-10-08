@@ -32,17 +32,21 @@ enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
 // board ends on
 #define HOLLOW(a) ((a)[15] >= 0 ? (a)[15] : (a)[10] + (a)[13])
 int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);   // the engine judge's out: [0] die ... [11] end board hash, [12] panels it ends with
-// THE CUT, past which the decision fails and the game with it: the frame less
-// the frame's own work (1000/60 - 0.9 ms, BUDGETMS's) at the slow twentieth of
-// the native work rate, measured over 5,359 decisions of seed 9 (units per ms
-// p5 4,963, p10 6,413, p50 9,865, p90 13,089): 15.77 ms x 4,950. budget_check
-// measures the time it actually takes.
-#define WORKBUDGET 78000   // natively and in the browser alike
+// THE CUT, past which the decision fails and the game with it: the time the
+// tighter of the two games leaves a decision -- the server's Lua, 12.8 ms
+// (BUDGETMS less train.lua's RUN_RESERVE) -- at the slowest hundredth of the
+// work rate there, over 929 heavy decisions of combo_storm seed 9 (4,000
+// frames, each decision's least time over two runs; units per ms p1 6,027,
+// p5 6,447, p50 10,308): 12.8 ms x 6,027. Natively the rate is higher (drill
+// seed 9: p5 7,148). lua_budget_check and budget_check measure the time it
+// actually takes.
+#define WORKBUDGET 77100   // natively and in the browser alike
 // WHERE OPTIONAL WORK STOPS: the engine refuses work past it, and every judge,
 // replay, search and batch is declined that would not fit. What was under way
-// finishes past it: at most 6,688 units over 3,446 decisions of seed 16 (20,000
-// frames, none cut), so the line stands that far under the cut.
-#define OPTWORK 71300
+// finishes past it: at most 6,688 units over 3,446 decisions of seed 16 under
+// the charges of the 4,963-a-ms rate, 9,630 at today's 7,148, so the line
+// stands that far under the cut.
+#define OPTWORK 67500
 enum { C_REFUSEDDEADLY, C_ALLDEAD, C_REFUSEDRETURN, C_REFUSEDTOOSLOW, C_PLANNED, C_PLANDROPPED, C_ATTACKED,
        C_ATTACKDROPPED, C_CELLSPLANNED, C_REFUSEDPAYLESS, C_REFUSEDSTARVING, C_REFUSEDOTHER, C_REFUSEDATEXIT,
        C_RAISEDFORMATERIAL, C_WAITEDTORAISE, C_DUGFOR, C_DIGDROPPED, C_BROKENOW, C_FLATTENBLIND, C_OPENINGRAISES,
