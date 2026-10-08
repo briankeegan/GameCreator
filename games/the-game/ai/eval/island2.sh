@@ -5,8 +5,8 @@
 #
 # Starts WasmSurvivor (survivor.js, re-reading this bot's profile at every
 # match) and the bot (lua/island2Bot.lua), which stays logged in and plays
-# its opponents in turn till DEADLINE. The bot calls back here:
-#   island2.sh next             the opponent it plays next (island2.js next)
+# whichever of the others is free till DEADLINE. The bot calls back here:
+#   island2.sh played           matches played against each other bot (island2.js played)
 #   island2.sh after OPP RESULT records the match (island2.js record: a loss
 #                               moves the weights toward the winner's), rewrites
 #                               the profile and pushes this bot's file to the
@@ -27,9 +27,9 @@ push_state() {   # this bot's file only; another bot's push is rebased onto, nev
 }
 
 case "${1:-}" in
-  next)
+  played)
     git -C "$STATE" pull -q --rebase origin island2-state 2>/dev/null
-    node "$EVAL/island2.js" next "$STATE" "$N"
+    node "$EVAL/island2.js" played "$STATE" "$N"
     exit ;;
   after)
     git -C "$STATE" pull -q --rebase origin island2-state 2>/dev/null
@@ -57,7 +57,7 @@ grep -q listening mind.log || { cat mind.log; echo "$NAME: WasmSurvivor did not 
 
 # the last match must be able to end before the job does
 STOP_AT=$(( DEADLINE - 600 ))
-echo "::notice title=$NAME::starting on $HOST:$PORT, stops at $(date -u -d @$STOP_AT +%H:%M) UTC, first opponent isl2b$(bash "$EVAL/island2.sh" next)"
+echo "::notice title=$NAME::starting on $HOST:$PORT, stops at $(date -u -d @$STOP_AT +%H:%M) UTC, played $(bash "$EVAL/island2.sh" played)"
 OUT="$PWD/match.log"
 (cd "$PG" && ISLAND2_SH="$EVAL/island2.sh" BOT="$N" STATE="$STATE" PA_SURVIVOR_PORT=47777 \
   LUA_PATH="./?.lua;./common/lib/?.lua;/usr/local/share/lua/5.1/?.lua;;" \

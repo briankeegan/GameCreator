@@ -5,16 +5,15 @@
 --    GC_SURVIVOR_RELOAD=1)
 --   luajit .../lua/island2Bot.lua HOST PORT N STOP_AT
 --
--- Logs in once as isl2b<N> and stays. Before each match it asks island2.js
--- who it plays next (`island2.sh next`), challenges that bot by name whenever
--- both are in the lobby and accepts a challenge from that bot only -- the
--- server opens a private room once both challenge. It plays as WasmSurvivor
+-- Logs in once as isl2b<N> and stays. While free it challenges the free
+-- isl2b bot it has played least (`island2.sh played`; the lowest number on a
+-- tie) and accepts a challenge from any isl2b bot -- the server opens a
+-- private room once both challenge. It plays as WasmSurvivor
 -- (brain "survival") until a side dies or the stack's clock reaches 21600
 -- (six minutes), leaves the room, and hands the result to `island2.sh after`,
 -- which records it (a loss moves this bot's weights toward the winner's) and
--- rewrites the profile survivor.js reads at the next match. An opponent not
--- met in PATIENCE seconds is recorded as no match and the next is played.
--- No match starts after STOP_AT (epoch seconds).
+-- rewrites the profile survivor.js reads at the next match. No match starts
+-- after STOP_AT (epoch seconds).
 io.stdout:setvbuf("no")
 require("bot.headlessBoot")
 do local l = require("common.lib.logger"); l.setLogLevel(l.levels.WARN) end
@@ -26,8 +25,8 @@ local GameModes = require("common.data.GameModes")
 
 local HOST, PORT, N, STOP_AT = arg[1], tonumber(arg[2]), tonumber(arg[3]), tonumber(arg[4])
 assert(HOST and PORT and N and STOP_AT, "usage: island2Bot.lua HOST PORT N STOP_AT")
-local NAME, FRAMES, PATIENCE = "isl2b" .. N, 21600, 900
-local SH = os.getenv("ISLAND2_SH")   -- island2.sh, for `next` and `after`
+local NAME, FRAMES = "isl2b" .. N, 21600
+local SH = os.getenv("ISLAND2_SH")   -- island2.sh, for `played` and `after`
 
 local function sh(args)
   local p = io.popen("bash " .. SH .. " " .. args)
@@ -42,12 +41,17 @@ if not bot:login() then print(NAME .. ": login failed"); os.exit(1) end
 bot:leaveRoom()
 print(NAME .. ": in the lobby on " .. HOST .. ":" .. PORT)
 
--- this match's opponent: the only challenge answered
-local opp, oppName, oppId = nil, nil, nil
+-- the other isl2b bots: a challenge from one is answered, from anyone else not
+local function islandOf(name) local q = name and name:match("^isl2b(%d+)$"); return q and tonumber(q) end
+local function lobbyName(id)
+  for _, p in pairs(bot.lobby and bot.lobby.players or {}) do if p.publicId == id then return p.name end end
+end
 local accept = bot.acceptChallenge
 bot.acceptChallenge = function(self, senderId, gameModeId)
-  if oppId and senderId == oppId then return accept(self, senderId, gameModeId) end
+  local q = islandOf(lobbyName(senderId))
+  if q and q ~= N then return accept(self, senderId, gameModeId) end
 end
+local opp, oppName = nil, nil   -- this match's opponent, read from the room
 -- garbage cells, both ways, this match
 local sent, received = 0, 0
 local ship = bot._shipGarbageEvent
@@ -82,12 +86,16 @@ end
 local function playerCount() local n = 0; for _ in pairs(bot.players or {}) do n = n + 1 end; return n end
 local FRAME = 1 / 60
 
-local function nextMatch()
-  opp = tonumber(sh("next")); oppName = "isl2b" .. opp; oppId = nil
-  sent, received = 0, 0
-  print(NAME .. ": next is " .. oppName)
+-- matches played against each other bot, from this bot's file
+local played = {}
+local function loadPlayed()
+  played = {}
+  for q, c in sh("played"):gmatch("(%d+):(%d+)") do played[tonumber(q)] = tonumber(c) end
 end
 local function finish(res)
+  -- the death notice goes out before anything slow (BotClient retries it from pump)
+  local t0 = socket.gettime()
+  while bot._deathAwaitingFlush and socket.gettime() < t0 + 5 do bot:pump(); socket.sleep(0.01) end
   local line = sh("after " .. opp .. " " .. quote(dkjson.encode(res)))
   print(NAME .. " vs " .. oppName .. ": " .. line)
   -- back to the lobby, clear for the next match
@@ -99,26 +107,27 @@ local function finish(res)
   while socket.gettime() < t0 + 2 do bot:pump(); socket.sleep(0.01) end
 end
 
-nextMatch()
-local waitFrom, lastChallengeAt, lastReadyAt, nextFrame, lateBefore = socket.gettime(), 0, 0, nil, 0
+loadPlayed()
+local lastChallengeAt, lastReadyAt, nextFrame, lateBefore, target = 0, 0, nil, 0, nil
 while true do
   bot:pump()
   local now = socket.gettime()
   if not bot.match then
     if now > STOP_AT then print(NAME .. ": stopping"); bot:disconnect(); os.exit(0) end
-    if now - waitFrom > PATIENCE then
-      finish({ played = false, why = "no match in " .. PATIENCE .. "s" })
-      nextMatch(); waitFrom = socket.gettime()
-    end
-    if not bot.inRoom and bot.lobby and bot.lobby.players then
+    if not bot.inRoom and bot.lobby and bot.lobby.players and now - lastChallengeAt > 3 then
+      -- the free isl2b bot played least, lowest number on a tie
+      local best, bestId, bestCount = nil, nil, nil
       for _, p in pairs(bot.lobby.players) do
-        if p.name == oppName then
-          oppId = p.publicId
-          if p.state == "lobby" and now - lastChallengeAt > 3 then
-            lastChallengeAt = now
-            bot.gameplay:sendRequest(ClientProtocol.updateChallengeStatus(bot.publicId, p.publicId, GameModes.IDs.TWO_PLAYER_VS, true))
-          end
+        local q = islandOf(p.name)
+        if q and q ~= N and p.state == "lobby" then
+          local c = played[q] or 0
+          if not best or c < bestCount or (c == bestCount and q < best) then best, bestId, bestCount = q, p.publicId, c end
         end
+      end
+      if best then
+        lastChallengeAt = now
+        if best ~= target then target = best; print(NAME .. ": challenging isl2b" .. best .. " (played " .. bestCount .. ")") end
+        bot.gameplay:sendRequest(ClientProtocol.updateChallengeStatus(bot.publicId, bestId, GameModes.IDs.TWO_PLAYER_VS, true))
       end
     end
     if not bot.matchStart and playerCount() >= 2 and now - lastReadyAt > 1.5 then bot:sendReady(); lastReadyAt = now end
@@ -126,6 +135,9 @@ while true do
       bot.oppDied, bot.outcome = false, nil
       bot:startMatch()
       topReset()
+      opp, oppName = nil, nil
+      for _, p in pairs(bot.players or {}) do if p.name ~= NAME and islandOf(p.name) then opp, oppName = islandOf(p.name), p.name end end
+      sent, received = 0, 0
       local apply = bot.myStack.applyNetworkGarbage
       bot.myStack.applyNetworkGarbage = function(self, garbage, sender)
         for _, g in ipairs(garbage or {}) do received = received + (g.width or 6) * (g.height or 1) end
@@ -133,7 +145,7 @@ while true do
       end
       nextFrame = bot.scheduledStartMs / 1000
       lateBefore = bot.survival and bot.survival.late or 0
-      print(NAME .. " vs " .. oppName .. ": match starting")
+      print(NAME .. " vs " .. tostring(oppName) .. ": match starting")
     end
   else
     while now >= nextFrame and not bot.matchEnded and bot.myStack.clock < FRAMES do
@@ -149,9 +161,10 @@ while true do
         while socket.gettime() < t0 + 1 do bot:pump(); socket.sleep(0.01) end
       end
       local late = (bot.survival and bot.survival.late or 0) - lateBefore
-      finish({ played = true, outcome = bot.matchEnded and bot.outcome or "ceiling", frames = bot.myStack.clock,
-               sent = sent, received = received, late = late, topped = top })
-      nextMatch(); waitFrom, lastReadyAt, nextFrame = socket.gettime(), 0, nil
+      local res = { played = true, outcome = bot.matchEnded and bot.outcome or "ceiling", frames = bot.myStack.clock,
+                    sent = sent, received = received, late = late, topped = top }
+      if opp then finish(res) else print(NAME .. ": a match against no isl2b bot, not recorded"); bot:leaveRoom() end
+      loadPlayed(); target, lastReadyAt, nextFrame = nil, 0, nil
     end
   end
   socket.sleep(0.002)

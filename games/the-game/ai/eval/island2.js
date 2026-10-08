@@ -1,18 +1,16 @@
 // ISLAND 2.0: ten WasmSurvivors on the live server, each in its own job,
-// sitting in the lobby and challenging their next opponent by name
-// (island2.sh, lua/island2Bot.lua, islands2.yml). This holds their weights and
-// records, one file per bot (STATE/bot<N>.json, on the island2-state branch),
-// and who each plays next.
+// sitting in the lobby and challenging each other by name (island2.sh,
+// lua/island2Bot.lua, islands2.yml). This holds their weights and records,
+// one file per bot (STATE/bot<N>.json, on the island2-state branch).
 //
 //   node island2.js seed STATE                    a bot file per champion profile (survivor-profiles/champ-svNN.json)
-//   node island2.js next STATE N                  the bot N plays next
+//   node island2.js played STATE N                how many matches N has played against each other bot: "opp:count ..."
 //   node island2.js profile STATE N DIR           writes N's weights as a WasmSurvivor profile; prints its path
 //   node island2.js record STATE N OPP RESULT     records a match against bot OPP (lua/island2Bot.lua's result); a loss moves N's weights toward OPP's
 //
-// THE PAIRS: bot N's k-th match is against opponent(N, k), the circle
-// method, so the k-th match of each pair is the same match from both sides
-// and every pair meets once in nine. No clock: a pair plays as soon as both
-// are free.
+// THE PAIRS: a free bot challenges the free bot it has played least
+// (lua/island2Bot.lua, from `played`) and accepts any of the others, so no
+// bot waits on one that is busy and every pair is played about as often.
 // A match is won by the side alive when the other dies; if both are alive at
 // the ceiling, by more garbage sent; equal is a draw.
 // THE UPDATE (pbt_worker.js's): the loser goes MERGE of the way to the
@@ -29,13 +27,6 @@ function load(state, n) { return JSON.parse(fs.readFileSync(file(state, n), 'utf
 function save(state, n, b) { fs.writeFileSync(file(state, n), JSON.stringify(b, null, 1) + '\n'); }
 function clamp(v) { return Math.max(-MAX_WEIGHT, Math.min(MAX_WEIGHT, v)); }
 
-function opponent(n, k) {
-  // circle method: bot 0 stays put, the other nine turn one place a round;
-  // the line is folded in half and each pairs with the one across from it
-  var m = N_BOTS - 1, r = k % m, line = [0];
-  for (var i = 0; i < m; i++) line.push(1 + (i + r) % m);
-  return line[N_BOTS - 1 - line.indexOf(n)];
-}
 function matchesOf(b) { return b.matches !== undefined ? b.matches : b.round || 0; }
 function outcome(res) {
   if (!res.played) return 'none';
@@ -56,8 +47,11 @@ if (cmd === 'seed') {
     save(state, n, { bot: n, name: 'isl2b' + n, seededFrom: path.basename(prof), matches: 0, weights: weights,
                      record: { win: 0, loss: 0, draw: 0, none: 0, died: 0 }, history: [] });
   }
-} else if (cmd === 'next') {
-  console.log(opponent(+a[1], matchesOf(load(a[0], +a[1]))));
+} else if (cmd === 'played') {
+  var counts = {};
+  for (var q = 0; q < N_BOTS; q++) if (q !== +a[1]) counts[q] = 0;
+  load(a[0], +a[1]).history.forEach(function (h) { if (h.opp in counts && h.result !== 'none') counts[h.opp]++; });
+  console.log(Object.keys(counts).map(function (q) { return q + ':' + counts[q]; }).join(' '));
 } else if (cmd === 'profile') {
   var b = load(a[0], +a[1]), dir = a[2], base = require('./survivor.profile.json');
   var wf = path.join(dir, 'island2-weights-' + a[1] + '.json'), pf = path.join(dir, 'island2-profile-' + a[1] + '.json');
@@ -86,5 +80,5 @@ if (cmd === 'seed') {
   save(st, me, bme);
   console.log(JSON.stringify(entry));
 } else {
-  console.error('island2.js: seed | next | profile | record'); process.exit(2);
+  console.error('island2.js: seed | played | profile | record'); process.exit(2);
 }
