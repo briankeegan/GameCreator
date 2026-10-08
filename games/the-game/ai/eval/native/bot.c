@@ -3073,7 +3073,11 @@ __attribute__((export_name("bot_keepbreak"))) int32_t bot_keepbreak(void) { retu
 static int readyAfterSpend(const int32_t *sw, int n);
 static int aloneOnEngine(void);
 static int nonSpendLives(void);
-static int spendsLeaveSixP(void) { return (double)LNO[12] / BW >= 6; }   // the panels the line ends with, as rows
+// SIX ROWS LEFT: the panels the judged line ends with (LNO[12]: those whose
+// colours are known -- a converted cell's colour is unseen until it shows,
+// and may cascade away) make six rows. The one test of whether a spend leaves
+// the board its working material.
+static int leavesSixRows(void) { return (double)LNO[12] / BW >= 6; }
 // A SPEND THAT KEEPS A WAITING RAISE OUT: a clear holds the rise lock and
 // renews the stop, so while a raise for material waits on either, a spend
 // under six rows with no break ready may only if the board left alone loses
@@ -3114,7 +3118,7 @@ static Dec playOn(Dec d) {
   // clears, leaves under six rows and no break ready is dropped -- unless the
   // board left alone dies and the line buys time: it loses health later. A
   // spend that dies as soon only spends the material the next break needs.
-  if (BT->lineKind == LINE_PLAN && (v & LV_PAYS) && !(v & LV_BREAKS) && !spendsLeaveSixP()) {
+  if (BT->lineKind == LINE_PLAN && (v & LV_PAYS) && !(v & LV_BREAKS) && !leavesSixRows()) {
     int32_t keepO[LNOLEN]; for (int q = 0; q < LNOLEN; q++) keepO[q] = LNO[q];
     int buys = aloneOnEngine() && LNA[0] && (!keepO[0] || keepO[0] > LNA[0]);
     int ok = readyAfterSpend(BT->line, BT->nLine) || (buys && !nonSpendLives() && !spendKeepsRaiseOut());
@@ -4080,7 +4084,7 @@ static Dec noStall(Dec d) {
   if (hasGarbage(DBASE) && !(HOLLOW(LNO) > HOLLOW(LNA))) return d;
   // over six rows the material is there to spend: shaping the board and
   // buying time with it is the six-row rule's to allow
-  if ((double)LNO[12] / BW >= 6) return d;
+  if (leavesSixRows()) return d;
   // and a pile not yet broken with a board not ready for the next slab needs
   // the time: the next slab would only stack on it, so the clear buys the
   // stop in which the break is found. With nothing on the board the slab
@@ -4372,7 +4376,7 @@ static Dec spendToBreak(Dec d) {
   if (!(v & LV_LIVES) || !(v & LV_PAYS) || (v & (LV_BREAKS | LV_DROPS))) return d;
   if (v & LV_GAINS) { int32_t k[LNOLEN]; for (int q = 0; q < LNOLEN; q++) k[q] = LNO[q]; int dies = aloneDiesBeforeLanding(); for (int q = 0; q < LNOLEN; q++) LNO[q] = k[q]; if (dies) return d; }
   // over six rows of panels there is material to spare: a clear that leaves six is spent
-  if ((double)LNO[12] / BW >= 6) return d;   // the panels the line ends with
+  if (leavesSixRows()) return d;
   return mkHold(V_SETUP, d.mode, d.alive, 0, 0, 0);
 }
 // WHAT LANDS IS WHAT IT WILL BREAK. A slab rests on the tallest column under
@@ -4641,7 +4645,6 @@ static double fillScoreOf(const int32_t *sw, int n, int die, int hollow) {
   return sc;
 }
 // a clear judged (LNO) leaves six rows of material, read off the line's own matches
-static int spendsLeaveSix(void) { return (double)LNO[12] / BW >= 6; }   // the panels the line ends with, as rows
 static int readyAfterSpend(const int32_t *sw, int n);
 static int nonSpendLives(void);
 int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);
@@ -4694,7 +4697,7 @@ static Dec fillFirstIn(Dec d) {
     Cand *pc = &POOL[fq[q]];
     int32_t sw[2] = { pc->sr, pc->sc };
     int v = lineJudge(sw, 1, 0);
-    int spend = (v & LV_PAYS) && !spendsLeaveSix();
+    int spend = (v & LV_PAYS) && !leavesSixRows();
 #ifndef __wasm__
 #define FILLWHY(why) do { if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  pool %d,%d v %d die %d last %d hollow %d spend %d -> %s\n", sw[0], sw[1], v, LNO[0], LNO[1], HOLLOW(LNO), spend, why); } } while (0)
 #else
@@ -4759,7 +4762,7 @@ static Dec fillFirstIn(Dec d) {
 #ifndef __wasm__
       if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  walk %d,%d dir %d n %d v %d hollow %d die %d last %d\n", r, c, dir, n, v, HOLLOW(LNO), LNO[0], LNO[1]); }
 #endif
-      int spend = (v & LV_PAYS) && !spendsLeaveSix();
+      int spend = (v & LV_PAYS) && !leavesSixRows();
       if (!(v & LV_LIVES) || (spend && !LIVES_LONGER())) continue;
       double est = travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], fsw[0], fsw[1]) + 5 * n;
       // a walk must beat the pool's best; among walks, the same order (time: its estimate)
@@ -4889,7 +4892,7 @@ static Dec meanwhile(Dec d) {
   // living longer by keeping the board busy is a stall: the queue lands after
   // it all the same, so under six rows the clear must leave a break ready for it
   // -- unless the line it goes before dies: then stop time is what buys the time to find the break
-#define SPENDS_OK(sw, n) ((double)LNO[12] / BW >= 6 || (urgent && (LNO[0] ? LNO[0] : 1 << 20) > die0Of && (readyAfterSpend(sw, n) || (!nonSpendLives() && !spendKeepsRaiseOut()))))
+#define SPENDS_OK(sw, n) (leavesSixRows() || (urgent && (LNO[0] ? LNO[0] : 1 << 20) > die0Of && (readyAfterSpend(sw, n) || (!nonSpendLives() && !spendKeepsRaiseOut()))))
   for (int q = 0; q < nPool && tried < MEANWHILES; q++) {
     Cand *k = &POOL[q];
     if (k->kind != K_SWAP || !(k->res.total > 0) || k->res.broke || (k->sr == d.sr && k->sc == d.sc) || k->moveFrames + REACT > last0) continue;
