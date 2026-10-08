@@ -103,8 +103,12 @@ static void fMasks(int32_t *m, int rise) {
       if (v == 0) continue;
       m[OCC + c] |= (int32_t)b;
       if (v == -2) { m[INERT + c] |= (int32_t)b; m[GARB + c] |= (int32_t)b; continue; }
-      // dimmed, or a colour not yet dealt (pa.c UNSEEN_COLOUR): no masks for it
-      if (v < 0 || v >= NCOL) { m[O_BAD] = 1; return; }
+      // dimmed: no masks for it
+      if (v < 0) { m[O_BAD] = 1; return; }
+      // A COLOUR NOT YET DEALT (pa.c UNSEEN_COLOUR: a break's cells, a row past
+      // the feed) is still a panel: it fills its cell, falls and swaps, and
+      // matches nothing -- occupied, in no colour's mask
+      if (v >= NCOL) continue;
       if (v > m[O_N]) m[O_N] = v;
       m[SCOL + v * WMAX + c] |= (int32_t)b;
     }

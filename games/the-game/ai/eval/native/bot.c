@@ -153,15 +153,16 @@ static int tallestBoard(const int32_t *st) {
   for (int c = 1; c <= BW; c++) { int top = topRow(U(st, OCC + c)); if (top > t) t = top; }
   return t;
 }
-// MATERIAL: the panels, and the garbage already broken -- a broken slab (locked,
-// not falling) turns into panels cell for cell, so a board whose pile is
-// converting has the material it is about to have, not the stack under it
+// MATERIAL: the panels whose colours are known. A break's cells are not
+// material until their colours are dealt -- unseen, they match nothing and
+// may cascade away when they show (leavesSixRows reads the judge's count of
+// the same).
 static double materialRows(const int32_t *st) {
   int n = 0;
   for (int c = 1; c <= BW; c++) {
-    uint32_t broken = 0;
-    for (int i = 0; i < st[O_NSLAB]; i++) if (st[SLK(i)] && !st[SAIR(i)]) broken |= U(st, SM(i, c));
-    n += popc((U(st, OCC + c) & ~U(st, GARB + c)) | broken);
+    uint32_t known = 0;
+    for (int a = 1; a <= st[O_N]; a++) known |= CL(st, a, c);
+    n += popc(known & U(st, OCC + c) & ~U(st, GARB + c));
   }
   return (double)n / BW;
 }
@@ -2747,6 +2748,7 @@ static int tGrid(const int32_t *st) {
       if (U(st, GARB + c) & b) { v = -1; any = 1; }
       else if (U(st, INERT + c) & b) v = -2;
       else for (int a = 1; a <= N; a++) if (CL(st, a, c) & b) v = a;
+      if (!v && (U(st, OCC + c) & b)) v = -2;   // a colour not yet dealt: there, matching nothing
       tCell[r][c] = v;
     }
   return any;
