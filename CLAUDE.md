@@ -260,9 +260,20 @@ ways: a tool not listed, or a path listed that doesn't exist.
 - **Every decision fits the game's frame.** The bot plays at 60 fps:
   `BUDGETMS` in `native/bot.c` (the 16.7 ms frame less the frame's own work)
   is a decision's budget, and in a game the clock cuts one past it and the game
-  fails. After any change to `native/`, run `budget_check.sh`: it takes each
-  decision's least time over several runs (the machine stalls, the bot's work
-  does not) and fails if any is over.
+  fails. A change to `native/` is pushed only after `budget_check.sh` and
+  `lua_budget_check.sh` both pass: each takes every decision's least time over
+  several runs (the machine stalls, the bot's work does not) and fails if any
+  is over. Work holds time only while every cost is charged by what it does
+  (an engine frame by its path, `pa.c` `FRAMEWORK_*`; the search by its steps,
+  `bot.c` `SIT*WORK`): a path newly reached that runs slow per work is
+  calibrated there, with the measurement beside the number.
+- **Survival is a loop on Actions.** `ai-survival-scan.yml` plays all 24 seeds
+  at once and keeps each seed's whole game (`game.log.gz`, every frame's bot
+  log and board) as its artifact; `scan_deaths.sh RUN_ID DIR` fetches them and
+  adds the scan to `survival_scans.tsv`. Read the games, find what the deaths
+  share, put it in the death-patterns artifact, fix it in the shared function
+  that decides it, merge to main, scan again. A worse scan is tuned forward,
+  never reverted. Local runs are for testing tools, not for reading games.
 
 ## Infrastructure
 
