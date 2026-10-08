@@ -3200,11 +3200,7 @@ static Dec stayAlive(Dec d) {
   LineC *l = bestLiving(notLastSwap);
   blReady = 0;
   if (lineLast == 1) {
-    // NOT PUT OFF: a line that only adds steps before the steps the played
-    // line still has is that line delayed -- taken each decision, its own
-    // steps are never pressed
-    int delays = l && l->n > BT->nLine && BT->nLine > 0 && !__builtin_memcmp(l->sw + 2 * (l->n - BT->nLine), BT->line, (unsigned long)BT->nLine * 8);
-    if (!l || l->die <= playDie || delays) return saKeep(d, playDie);
+    if (!l || l->die <= playDie) return saKeep(d, playDie);
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SA leaves the line played (dies %d) for", playDie); for (int k = 0; k < l->n; k++) fprintf(stderr, " %d,%d", l->sw[2 * k], l->sw[2 * k + 1]); fprintf(stderr, " (dies %d)\n", l->die); }
 #endif
