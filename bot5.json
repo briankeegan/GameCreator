@@ -2,7 +2,6 @@
  "bot": 5,
  "name": "isl2b5",
  "seededFrom": "champ-sv06.json",
- "round": 3732245,
  "weights": {
   "travelCost": 22.895995565884263,
   "stopTimeEarned": 52.66185541741539,
@@ -21,23 +20,12 @@
   "chainLength": 69.22245289140795
  },
  "record": {
-  "win": 1,
+  "win": 0,
   "loss": 0,
   "draw": 0,
   "none": 0,
   "died": 0
  },
- "history": [
-  {
-   "round": 3732244,
-   "opp": 9,
-   "result": "win",
-   "outcome": "won",
-   "frames": 8233,
-   "sent": 122,
-   "received": 124,
-   "late": 0,
-   "at": "2026-10-08T16:34:19.886Z"
-  }
- ]
+ "history": [],
+ "matches": 0
 }

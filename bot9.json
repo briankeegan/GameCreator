@@ -2,7 +2,6 @@
  "bot": 9,
  "name": "isl2b9",
  "seededFrom": "champ-sv10.json",
- "round": 0,
  "weights": {
   "travelCost": 0,
   "stopTimeEarned": 0,
@@ -27,5 +26,6 @@
   "none": 0,
   "died": 0
  },
- "history": []
+ "history": [],
+ "matches": 0
 }

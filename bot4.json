@@ -2,7 +2,6 @@
  "bot": 4,
  "name": "isl2b4",
  "seededFrom": "champ-sv05.json",
- "round": 0,
  "weights": {
   "travelCost": 127.32975446230627,
   "stopTimeEarned": 82.88211343400651,
@@ -27,5 +26,6 @@
   "none": 0,
   "died": 0
  },
- "history": []
+ "history": [],
+ "matches": 0
 }
