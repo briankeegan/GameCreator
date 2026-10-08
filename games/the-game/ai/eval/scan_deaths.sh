@@ -2,13 +2,16 @@
 # THE DEATHS OF A SURVIVAL SCAN, as files: every seed that died in an
 # ai-survival-scan.yml run, its death report (train.lua GC_DEATHLOG: the last
 # frames, the bot's log then the board) cut out of its job log into
-# DIR/seed<N>.txt -- the same report a local run of that seed prints.
+# DIR/seed<N>.txt -- the same report a local run of that seed prints -- and
+# its whole game (train.lua GC_GAMELOG, every frame's bot log and board) into
+# DIR/seed<N>.log.gz from the seed's artifact. GC_ALL=1 fetches the games of
+# the seeds that lived too.
 #
 #   ./scan_deaths.sh RUN_ID [DIR]   (DIR defaults to ./deaths-RUN_ID)
 #
 # Prints one line per seed: "seed N: died F" or "seed N: alive F", and the
-# count of each. The job log is fetched with curl, which follows GitHub's
-# redirect to where logs are kept.
+# count of each. Logs and artifacts are fetched with curl, which follows
+# GitHub's redirect to where they are kept.
 set -euo pipefail
 run=${1:?run id}; dir=${2:-deaths-$run}
 api=https://api.github.com/repos/briankeegan/GameCreator/actions
@@ -20,6 +23,17 @@ for j in json.load(sys.stdin)["jobs"]:
     m = re.search(r"\((\d+)\)", j["name"])
     if m: print(j["id"], m.group(1), j["conclusion"] or j["status"])')
 [ -n "$jobs" ] || { echo "scan_deaths: run $run has no seed jobs" >&2; exit 1; }
+arts=$(curl -sSfL "${auth[@]}" "$api/runs/$run/artifacts?per_page=100" | python3 -c '
+import json, sys
+for a in json.load(sys.stdin)["artifacts"]: print(a["name"], a["id"])')
+game() {   # the seed's whole game, from its artifact
+  local id; id=$(awk -v n="seed-$1" '$1 == n { print $2 }' <<<"$arts")
+  [ -n "$id" ] || { echo "  seed $1: no artifact" >&2; return 0; }
+  curl -sSfL "${auth[@]}" "$api/artifacts/$id/zip" -o "$dir/seed$1.zip"
+  python3 -c 'import sys, zipfile; z = zipfile.ZipFile(sys.argv[1]); open(sys.argv[2], "wb").write(z.read("game.log.gz"))' "$dir/seed$1.zip" "$dir/seed$1.log.gz" \
+    || echo "  seed $1: the artifact has no game.log.gz" >&2
+  rm -f "$dir/seed$1.zip"
+}
 alive=0; died=0; other=0
 while read -r id seed concl; do
   [ "$concl" = success ] || [ "$concl" = failure ] || { echo "seed $seed: $concl"; other=$((other + 1)); continue; }
@@ -27,8 +41,8 @@ while read -r id seed concl; do
   end=$(grep -E "^(died|alive) " <<<"$log" | tail -1 || true)
   echo "seed $seed: ${end:-no result}"
   case $end in
-    alive*) alive=$((alive + 1)) ;;
-    died*) died=$((died + 1)); sed -n '/^DEATH REPORT/,/^END DEATH REPORT/p' <<<"$log" > "$dir/seed$seed.txt" ;;
+    alive*) alive=$((alive + 1)); [ -n "${GC_ALL:-}" ] && game "$seed" ;;
+    died*) died=$((died + 1)); sed -n '/^DEATH REPORT/,/^END DEATH REPORT/p' <<<"$log" > "$dir/seed$seed.txt"; game "$seed" ;;
     *) other=$((other + 1)) ;;
   esac
 done <<<"$jobs"
