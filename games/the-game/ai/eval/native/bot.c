@@ -2369,12 +2369,17 @@ static void disturbed(const int32_t *a, const int32_t *b, uint32_t *out) {
 // copied in, its disturbed cells and settle found). Calibrated on drill seed 4 so the
 // search's milliseconds per work match the rest of the decision's (GC_WORKSTAT
 // CAL): uncounted, it ran 0.178 ms/kwork against the rest's 0.146; at 1 and
-// 1, 0.121-0.136 against 0.138.
+// 1, 0.121-0.136 against 0.138. Each step offered (its press frame found and
+// heaped) is SITOFFERWORK: on combo_storm seed 9 uncounted, breakFirst ran
+// 0.202 ms/kwork and the whole decision 0.147, against 0.146 and 0.128 before
+// steps were played when taken; at 0.1, 0.144 and 0.125.
 #define SITPOPWORK 1
+#define SITOFFERWORK 0.1
 #define SITNODEWORK 1
 #define SITHASH 2048
 typedef struct { int parent, n, r, c, stopped; double t, settled, left; uint32_t dist[WMAX]; int32_t rh[R_INTS]; } SitNode;   // stopped: a step before cleared, so the board is stopped; rh: the step's resolve record
 typedef struct { int parent, r, c; double t; } SitKid;   // a step offered: the line it grows (a SitNode) and when it is pressed
+typedef struct { double t; int k; } SitHeap;   // the heap holds each step's press frame beside it, so it sorts without reading the steps
 // THE BOUND, LOWERED AS IT GOES: an accept that only wants something sooner
 // than what it has (the soonest break) lowers it, and the search prunes to it
 static JLOCAL double sitLeft;
@@ -2383,10 +2388,10 @@ static JLOCAL double sitLeft;
 // (is this board ready?), so each level of nesting has its own memory, the
 // current level's set in place on entry and the caller's put back on exit
 #define SITLEVELS 4
-typedef struct { ST *st; SitNode *nd; SitKid *kd; int *hp; u64 *hk; int32_t *t, *r, *l; double left; } SitMem;
+typedef struct { ST *st; SitNode *nd; SitKid *kd; SitHeap *hp; u64 *hk; int32_t *t, *r, *l; double left; } SitMem;
 static JLOCAL SitMem SITM[SITLEVELS];
 static JLOCAL int sitLevel;
-static JLOCAL ST *SITST; static JLOCAL SitNode *SITND; static JLOCAL SitKid *SITKD; static JLOCAL int *SITHP; static JLOCAL u64 *SITHK;
+static JLOCAL ST *SITST; static JLOCAL SitNode *SITND; static JLOCAL SitKid *SITKD; static JLOCAL SitHeap *SITHP; static JLOCAL u64 *SITHK;
 static JLOCAL int32_t *SITT, *SITR, *SITL;
 
 static int sitLine(int i, int32_t *sw) {
@@ -2396,16 +2401,17 @@ static int sitLine(int i, int32_t *sw) {
 }
 static void sitPush(int *nh, int i) {   // the heap of steps offered: the soonest press on top
   int k = (*nh)++;
-  while (k > 0) { int p = (k - 1) / 2; if (SITKD[SITHP[p]].t <= SITKD[i].t) break; SITHP[k] = SITHP[p]; k = p; }
-  SITHP[k] = i;
+  double t = SITKD[i].t;
+  while (k > 0) { int p = (k - 1) / 2; if (SITHP[p].t <= t) break; SITHP[k] = SITHP[p]; k = p; }
+  SITHP[k].t = t; SITHP[k].k = i;
 }
 static int sitPop(int *nh) {
-  int top = SITHP[0], last = SITHP[--(*nh)], k = 0;
+  int top = SITHP[0].k; SitHeap last = SITHP[--(*nh)]; int k = 0;
   for (;;) {
     int a = 2 * k + 1, b = a + 1, m = k;
-    double tm = SITKD[last].t;
-    if (a < *nh && SITKD[SITHP[a]].t < tm) { m = a; tm = SITKD[SITHP[a]].t; }
-    if (b < *nh && SITKD[SITHP[b]].t < tm) m = b;
+    double tm = last.t;
+    if (a < *nh && SITHP[a].t < tm) { m = a; tm = SITHP[a].t; }
+    if (b < *nh && SITHP[b].t < tm) m = b;
     if (m == k) break;
     SITHP[k] = SITHP[m]; k = m;
   }
@@ -2439,7 +2445,7 @@ static double workLeft(void) {
 static SitMem *sitMem(int level) {
   SitMem *m = &SITM[level];
   if (!m->st) {
-    m->st = grab(sizeof(ST) * SITCAP); m->nd = grab(sizeof(SitNode) * SITCAP); m->kd = grab(sizeof(SitKid) * SITKIDS); m->hp = grab(sizeof(int) * SITKIDS); m->hk = grab(sizeof(u64) * SITHASH);
+    m->st = grab(sizeof(ST) * SITCAP); m->nd = grab(sizeof(SitNode) * SITCAP); m->kd = grab(sizeof(SitKid) * SITKIDS); m->hp = grab(sizeof(SitHeap) * SITKIDS); m->hk = grab(sizeof(u64) * SITHASH);
     m->t = grab(sizeof(ST)); m->r = grab(sizeof(int32_t) * (R_INTS + ST_INTS)); m->l = grab(sizeof(int32_t) * 2 * 128);
     if (!m->st || !m->nd || !m->kd || !m->hp || !m->hk || !m->t || !m->r || !m->l) { m->st = 0; return 0; }
   }
@@ -2452,7 +2458,7 @@ static void sitWarm(void) {
     SitMem *m = sitMem(level);
     if (!m) return;
     __builtin_memset(m->st, 0, sizeof(ST) * SITCAP); __builtin_memset(m->nd, 0, sizeof(SitNode) * SITCAP);
-    __builtin_memset(m->kd, 0, sizeof(SitKid) * SITKIDS); __builtin_memset(m->hp, 0, sizeof(int) * SITKIDS); __builtin_memset(m->hk, 0, sizeof(u64) * SITHASH);
+    __builtin_memset(m->kd, 0, sizeof(SitKid) * SITKIDS); __builtin_memset(m->hp, 0, sizeof(SitHeap) * SITKIDS); __builtin_memset(m->hk, 0, sizeof(u64) * SITHASH);
   }
 }
 static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double notBefore, double left, int frozen,
@@ -2472,7 +2478,7 @@ static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double no
   SitMem *m = sitMem(sitLevel);
   if (!m) return 0;
   // the caller's level, kept to be put back
-  ST *pst = SITST; SitNode *pnd = SITND; SitKid *pkd = SITKD; int *php = SITHP; u64 *phk = SITHK; int32_t *pt = SITT, *pr = SITR, *pl = SITL; double pleft = sitLeft;
+  ST *pst = SITST; SitNode *pnd = SITND; SitKid *pkd = SITKD; SitHeap *php = SITHP; u64 *phk = SITHK; int32_t *pt = SITT, *pr = SITR, *pl = SITL; double pleft = sitLeft;
   SITST = m->st; SITND = m->nd; SITKD = m->kd; SITHP = m->hp; SITHK = m->hk; SITT = m->t; SITR = m->r; SITL = m->l;
   sitLevel++;
   int got = sitRun(st0, cr, cc, t0, notBefore, left, frozen, can0, wait0, work, accept, ctx, sw, nOut, atOut);
@@ -2487,6 +2493,7 @@ static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double no
 // (from the line's last press and cursor; a pair the line disturbed once it is
 // still), kept only if pressed in time
 static void sitOffer(int i, int *nk, int *nh, double notBefore, int frozen, const uint32_t *can0, uint8_t (*wait0)[WMAX]) {
+  extern PATLS double paWork;
   SitNode *nd = &SITND[i];
   int root = nd->n == 0;
   double start = root ? nd->t : nd->t + stepGap(frozen || nd->stopped);   // a clear's stop time: no reaction to wait out
@@ -2503,6 +2510,7 @@ static void sitOffer(int i, int *nk, int *nh, double notBefore, int frozen, cons
     double at = stepPress(start, nd->r, nd->c, r, c, ready);
     if (at > bound) continue;
     int k = (*nk)++;
+    paWork += SITOFFERWORK;
     SITKD[k].parent = i; SITKD[k].r = r; SITKD[k].c = c; SITKD[k].t = at;
     sitPush(nh, k);
   }
