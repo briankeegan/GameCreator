@@ -32,7 +32,7 @@ local SH = os.getenv("ISLAND2_SH")   -- island2.sh, for `next` and `after`
 local function sh(args)
   local p = io.popen("bash " .. SH .. " " .. args)
   local out = p:read("*a"); p:close()
-  return (out or ""):gsub("%s+$", "")
+  return (out or ""):match("^(.-)%s*$")
 end
 local function quote(s) return "'" .. s:gsub("'", "'\\''") .. "'" end
 

@@ -100,7 +100,8 @@ jobs:
 
   next:
     needs: bot
-    if: always() && inputs.chain != 'false'
+    # not after a cancel: a cancelled run hands over to nothing
+    if: ${{ !cancelled() && inputs.chain != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
