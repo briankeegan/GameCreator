@@ -41,6 +41,14 @@ if not bot:login() then print(NAME .. ": login failed"); os.exit(1) end
 bot:leaveRoom()
 print(NAME .. ": in the lobby on " .. HOST .. ":" .. PORT)
 
+-- The server closing the connection ends this process (island2.sh logs in again).
+local readSocket = bot.gameplay.readSocket
+bot.gameplay.readSocket = function(self)
+  local ok = readSocket(self)
+  if ok == false then print(NAME .. ": the server closed the connection"); os.exit(3) end
+  return ok
+end
+
 -- the other isl2b bots: a challenge from one is answered, from anyone else not
 local function islandOf(name) local q = name and name:match("^isl2b(%d+)$"); return q and tonumber(q) end
 local function lobbyName(id)
