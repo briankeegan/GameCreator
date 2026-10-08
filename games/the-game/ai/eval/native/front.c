@@ -681,11 +681,13 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   for (int r = 0; r < b->nrows; r++)
     for (int c = 1; c <= W; c++) { fh = (fh ^ (uint32_t)(b->p[r][c].f[COLOR] * 2 + (b->p[r][c].f[ISGARBAGE] != 0))) * 16777619u; }
   out[11] = (int32_t)fh;
-  // the material it ends with: panels, not garbage, not already matched to go
+  // the material it ends with: panels, not garbage, not already matched to
+  // go, and of a known colour -- a break's cells are unseen (130 and up, pa.c
+  // convertGarbagePanels) until they show
   for (int r = 1; r < b->nrows; r++)
     for (int c = 1; c <= W; c++) {
       const int32_t *g = b->p[r][c].f;
-      if (g[COLOR] && !g[ISGARBAGE] && g[STATE] != MATCHED && g[STATE] != POPPING && g[STATE] != POPPED) out[12]++;
+      if (g[COLOR] && g[COLOR] < 130 && !g[ISGARBAGE] && g[STATE] != MATCHED && g[STATE] != POPPING && g[STATE] != POPPED) out[12]++;
     }
   // the hollow the slabs to come would leave on it: a slab four wide rests on
   // the tallest column under it, and the slabs come over every four columns in
