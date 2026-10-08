@@ -5373,7 +5373,9 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   Dec dF;
   { double keep = stageOpen(7); SHARE(10); dF = fillFirst(d); stageClose(keep); }
   cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  { Dec dC = dropReady(readyWhenLands(keepReady(meanwhile(onePlan(dF))))), dS = noStall(dC);
+  // READY BEFORE THE WAIT: the line that readies the landing is chosen first,
+  // with the work there is; the wait then fills the time before that line
+  { Dec dC = dropReady(meanwhile(readyWhenLands(keepReady(onePlan(dF))))), dS = noStall(dC);
     // A STALL REFUSED FALLS BACK TO THE CHOICE IT WAS PUT BEFORE, not to
     // standing still: the fill (or what came before it), if that is no stall
     if (dS.kind == K_HOLD && dC.kind == K_SWAP && dF.kind == K_SWAP && !(dF.sr == dC.sr && dF.sc == dC.sc)) { Dec a = noStall(dF); if (a.kind == K_SWAP) dS = dF; }
