@@ -1,0 +1,31 @@
+{
+ "bot": 0,
+ "name": "isl2b0",
+ "seededFrom": "champ-sv01.json",
+ "round": 0,
+ "weights": {
+  "travelCost": 0.5274803393815972,
+  "stopTimeEarned": 46.75330109302388,
+  "colourVariance": 70.9830341843362,
+  "linksV": 61.61753320710806,
+  "garbageAdjacency": 36.3628012534095,
+  "edgePenalty": 42.537620819912114,
+  "chainLayers": -18.689713542018886,
+  "material": 76.57139400050949,
+  "linksH": 54.222689428392194,
+  "garbageCleared": 57.25697052578674,
+  "garbageOnBoard": -13.382895300335669,
+  "reach2chain": 134.4848224575579,
+  "maxHeight": 46.94212292791444,
+  "reach4combo": 20.300783342363673,
+  "chainLength": 4.213581979892025
+ },
+ "record": {
+  "win": 0,
+  "loss": 0,
+  "draw": 0,
+  "none": 0,
+  "died": 0
+ },
+ "history": []
+}
