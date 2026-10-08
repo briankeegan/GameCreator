@@ -72,7 +72,7 @@ if (cmd === 'seed') {
   bme.record[o]++;
   if (res.outcome === 'lost') bme.record.died++;
   var entry = { match: bme.matches, opp: opp, result: o, outcome: res.outcome || null, frames: res.frames || 0,
-                sent: res.sent || 0, received: res.received || 0, late: res.late || 0, at: new Date().toISOString() };
+                sent: res.sent || 0, received: res.received || 0, late: res.late || 0, topped: res.topped, at: new Date().toISOString() };
   if (o === 'loss') {
     var w = load(st, opp).weights, out = {}, seed = (me * 7919 + bme.matches * 104729) >>> 0;
     var rng = function () { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };

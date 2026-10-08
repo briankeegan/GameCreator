@@ -56,6 +56,29 @@ bot._shipGarbageEvent = function(self, body)
   return ship(self, body)
 end
 
+-- A death relayed while no match is being played is the last match's.
+local dispatch = bot.dispatch
+bot.dispatch = function(self, msg)
+  if msg[require("common.network.NetworkProtocol").serverMessageTypes.deathEvent.prefix] and not self.match then return end
+  return dispatch(self, msg)
+end
+-- WHAT KEPT IT ALIVE, topped out: each frame the stack is topped out and
+-- alive, why its health did not drain (stop time, garbage shake, a rise lock
+-- held by swaps alone, or other activity), and the lowest health it had.
+local top
+local function topReset() top = { frames = 0, longest = 0, run = 0, stop = 0, shake = 0, swapLock = 0, active = 0, minHealth = 99, deadHealth = 0 } end
+topReset()
+local function topCount(st)
+  if not (st:isToppedOut() or st.wasToppedOut) or st:game_ended() then top.run = 0; return end
+  top.frames = top.frames + 1; top.run = top.run + 1
+  if top.run > top.longest then top.longest = top.run end
+  if st.health < top.minHealth then top.minHealth = st.health end
+  if st.health <= 0 then top.deadHealth = top.deadHealth + 1 end
+  if st.stop_time > 0 or st.pre_stop_time > 0 then top.stop = top.stop + 1
+  elseif st.shake_time > 0 then top.shake = top.shake + 1
+  elseif st.rise_lock and (st.n_active_panels or 0) - (st.swappingPanelCount or 0) == 0 then top.swapLock = top.swapLock + 1
+  elseif st.rise_lock then top.active = top.active + 1 end
+end
 local function playerCount() local n = 0; for _ in pairs(bot.players or {}) do n = n + 1 end; return n end
 local FRAME = 1 / 60
 
@@ -100,7 +123,9 @@ while true do
     end
     if not bot.matchStart and playerCount() >= 2 and now - lastReadyAt > 1.5 then bot:sendReady(); lastReadyAt = now end
     if bot.matchStart then
+      bot.oppDied, bot.outcome = false, nil
       bot:startMatch()
+      topReset()
       local apply = bot.myStack.applyNetworkGarbage
       bot.myStack.applyNetworkGarbage = function(self, garbage, sender)
         for _, g in ipairs(garbage or {}) do received = received + (g.width or 6) * (g.height or 1) end
@@ -113,6 +138,7 @@ while true do
   else
     while now >= nextFrame and not bot.matchEnded and bot.myStack.clock < FRAMES do
       bot:tickMatch()
+      topCount(bot.myStack)
       nextFrame = nextFrame + FRAME
       now = socket.gettime()
     end
@@ -124,7 +150,7 @@ while true do
       end
       local late = (bot.survival and bot.survival.late or 0) - lateBefore
       finish({ played = true, outcome = bot.matchEnded and bot.outcome or "ceiling", frames = bot.myStack.clock,
-               sent = sent, received = received, late = late })
+               sent = sent, received = received, late = late, topped = top })
       nextMatch(); waitFrom, lastReadyAt, nextFrame = socket.gettime(), 0, nil
     end
   end
