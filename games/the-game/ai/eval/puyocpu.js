@@ -1872,6 +1872,8 @@
         var moves = [ 'long', null ].concat(n.b.legalSwaps());
         for (j = 0; j < moves.length && budget > 0; j++) {
           budget--;
+          // with an answer due (_dueAt) the line is as far as it got by then
+          if (this._dueAt && (budget & 15) === 0 && Date.now() >= this._dueAt) { budget = 0; break; }
           c = moves[j] === 'long' ? this._lineStep(n, null, true) : this._lineStep(n, moves[j], false);
           if (!c) continue;
           c.prev = n; c.m = moves[j]; c.tag = start.tag;
@@ -1914,13 +1916,17 @@
   };
   // IN SCORE ORDER, STOPPING AT THE FIRST LINE THAT REACHES EXTEND_FRAMES:
   // no move can beat that, so the best-scoring move alive that far is the
-  // answer and the rest are not extended.
+  // answer and the rest are not extended. With an answer due (_dueAt), a line
+  // is extended only while the slowest so far would still finish before then,
+  // and the moves are chosen among those extended.
   PuyoCpu.prototype._furthest = function (live) {
-    var sp = this._searchProofs, best = -1, reach = [], i, k, e, q;
+    var sp = this._searchProofs, best = -1, reach = [], i, k, e, q, slowest = 0;
     if (!sp) return live;
     var order = live.map(function (x, n) { return n; });
     order.sort(function (a, b) { return (live[b].score || 0) - (live[a].score || 0); });
     for (q = 0; q < order.length; q++) {
+      var et = Date.now();
+      if (this._dueAt && et + slowest > this._dueAt) break;
       i = order[q];
       k = sp.cands.indexOf(live[i]);
       e = k >= 0 && sp.proofs[k] ? this._extendLine(sp.proofs[k]) : null;
@@ -1928,9 +1934,10 @@
       if (e && !e.dead && e.t >= sp.proofs[k].t) sp.proofs[k] = e;
       if (reach[i] > best) best = reach[i];
       if (reach[i] >= this.EXTEND_FRAMES) return [live[i]];
+      slowest = Math.max(slowest, Date.now() - et);
     }
     var keep = [];
-    for (i = 0; i < live.length; i++) if (reach[i] === best) keep.push(live[i]);
+    for (i = 0; i < live.length; i++) if (reach[i] !== undefined && reach[i] === best) keep.push(live[i]);
     return keep.length ? keep : live;
   };
   PuyoCpu.prototype.SLACK_FRAMES = 480;
@@ -1953,16 +1960,20 @@
     return (r.died || r.diedInWalk) ? (r.diedAt || 0) : this.SLACK_FRAMES;
   };
   PuyoCpu.prototype._mostRoom = function (live, cands) {
-    var sp = this._searchProofs, best = -1, room = [], i, k, pf;
+    var sp = this._searchProofs, best = -1, room = [], i, k, pf, slowest = 0;
     if (!sp) return live;
+    // With an answer due (_dueAt), as _furthest: measured while the slowest so far would still finish.
     for (i = 0; i < live.length; i++) {
+      var rt = Date.now();
+      if (this._dueAt && rt + slowest > this._dueAt) break;
       k = sp.cands.indexOf(live[i]);
       pf = k >= 0 ? sp.proofs[k] : null;
       room.push(pf ? this._slack(pf) : 0);
       if (room[i] > best) best = room[i];
+      slowest = Math.max(slowest, Date.now() - rt);
     }
     var keep = [];
-    for (i = 0; i < live.length; i++) if (room[i] === best) keep.push(live[i]);
+    for (i = 0; i < room.length; i++) if (room[i] === best) keep.push(live[i]);
     return keep.length ? keep : live;
   };
 
