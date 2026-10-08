@@ -3907,13 +3907,17 @@ static Dec dropReady(Dec d) {
 // spent then: a choice that clears less than the living clear that clears
 // most, and dies no sooner, gives way to it.
 // THE SHARED SEARCH IN TIME, from the board the engine settles to now, the
-// lines pressed before `left`, within what the decision's work has left
-static void waitSearch(double left, SitAccept accept, void *ctx) {
+// lines pressed before `left`, within what the decision's work has left (and
+// at most `cap` of it)
+static void waitSearchW(double left, SitAccept accept, void *ctx, double cap);
+static void waitSearch(double left, SitAccept accept, void *ctx) { waitSearchW(left, accept, ctx, 1e300); }
+static void waitSearchW(double left, SitAccept accept, void *ctx, double cap) {
   static ST w0; int32_t cur0[2], t0; uint32_t can0[WMAX]; uint8_t wt0[32][WMAX];
   extern PATLS double paWork;
   int32_t keepO[LNOLEN]; for (int k = 0; k < LNOLEN; k++) keepO[k] = LNO[k];
-  if (lineState(0, 0, w0, can0, wt0, cur0, &t0) == 0 && paWork < optLine())
-    searchInTime(w0, cur0[0], cur0[1], t0, 0, left, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can0, wt0, optLine() - paWork, accept, ctx, 0, 0, 0);
+  double work = optLine() - paWork; if (work > cap) work = cap;
+  if (lineState(0, 0, w0, can0, wt0, cur0, &t0) == 0 && work > 0)
+    searchInTime(w0, cur0[0], cur0[1], t0, 0, left, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can0, wt0, work, accept, ctx, 0, 0, 0);
   for (int k = 0; k < LNOLEN; k++) LNO[k] = keepO[k];
 }
 // ROOM's accept: a line ending in a clear that lives, loses health no sooner
@@ -4807,6 +4811,8 @@ typedef struct {
   int most, bn; int32_t bsw[2 * LINEMAX];        // the best: the clear that matches most, or the quiet line that leaves least hollow
   int fmost, fn; int32_t fsw[2 * LINEMAX];       // a clear on its own, the line dropped
   int hb, vb;                                    // the hollow and twos to beat (quiet)
+  // the quiet lines reached, the best kept by what they leave on the masks
+  int qn, qh[SETUPTRIES], qt[SETUPTRIES], ql[SETUPTRIES]; int32_t qsw[SETUPTRIES][2 * LINEMAX];
 } MwCtx;
 // MATERIAL IS SPENT ONLY TO BREAK OR TO LIVE: under six rows a clear goes
 // first only while the board left alone loses health before its soonest
@@ -4843,25 +4849,67 @@ static int sitWaitClear(const int32_t *res, const int32_t *sw, int n, double at,
   if ((v & LV_LIVES) && !mwDiesSooner(x) && LNO[3] > x->fmost && spendsOk(x, sw, n)) { x->fmost = LNO[3]; x->fn = n; for (int k = 0; k < 2 * n; k++) x->fsw[k] = sw[k]; }
   return SIT_END;
 }
+// THE HOLLOW ON THE MASKS, as the judge reads it (front.c out[10] + out[13]):
+// the gaps under each column's lowest garbage, and the gaps the slabs to come
+// would leave -- every four columns' gap under their tallest
+static int hollowOnMasks(const int32_t *st) {
+  int W = st[O_W], h = 0, top[WMAX + 2];
+  for (int c = 1; c <= W; c++) {
+    uint32_t g = U(st, GARB + c), occ = U(st, OCC + c);
+    top[c] = topRow(occ);
+    if (g) { uint32_t below = lowb(g) - 1u; h += popc(below) - popc(occ & below); }
+  }
+  for (int w = 1; w + 3 <= W; w++) {
+    int t = 0;
+    for (int c = w; c < w + 4; c++) if (top[c] > t) t = top[c];
+    for (int c = w; c < w + 4; c++) h += t - top[c];
+  }
+  return h;
+}
+// THE WAIT'S QUIET LINES, every one the search reaches in time and of any
+// order of steps -- a drop and then a swap that lines up two, as much as a
+// single swap -- each read on the board it leaves (the masks): least hollow,
+// then most vertical twos, then soonest. The best are kept; the engine judges
+// them after, in that order.
 static int sitWaitQuiet(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
   MwCtx *x = ctx; (void)at;
   if (res[R_SCOPE] != SC_OK || res[R_TOTAL] > 0) return SIT_END;
   if (n == 1 && sw[0] == x->dr && sw[1] == x->dc) return SIT_GROW;
-  int32_t l2[2 * LINEMAX]; int nl = mwJoin(x, sw, n, l2);
-  if (!nl) return SIT_END;
-  if (x->tried >= SETUPTRIES) return SIT_TAKE;
-  x->tried++;
-  int v = lineJudge(l2, nl, x->waitAll);
-  if ((v & x->need) != x->need || LNO[1] > x->last0 || mwDiesSooner(x)) return SIT_GROW;
-  int hl = HOLLOW(LNO);
-  if (hl > x->hb) return SIT_GROW;
-  // twos are read where the steps make them (twosOf on the board the engine
-  // settles to after them), not where the judge's horizon ends
-  static ST MW1; int32_t mc1[2], mt1; uint32_t mcan[WMAX]; uint8_t mwt[32][WMAX];
-  int tw = lineState(sw, n, MW1, mcan, mwt, mc1, &mt1) == 0 ? twosOf(MW1) : 0;
-  if (hl == x->hb && tw <= x->vb) return SIT_GROW;
-  x->hb = hl; x->vb = tw; x->bn = n; for (int k = 0; k < 2 * n; k++) x->bsw[k] = sw[k];
+  if (n + x->n > LINEMAX) return SIT_END;
+  const int32_t *st = res + R_INTS;
+  int hl = hollowOnMasks(st), tw = twosOf(st), k = x->qn;
+  if (k == SETUPTRIES) {   // full: it replaces the worst kept, if it beats it
+    k = 0;
+    for (int i = 1; i < SETUPTRIES; i++) if (x->qh[i] > x->qh[k] || (x->qh[i] == x->qh[k] && x->qt[i] < x->qt[k])) k = i;
+    if (hl > x->qh[k] || (hl == x->qh[k] && tw <= x->qt[k])) return SIT_GROW;
+  } else x->qn++;
+  x->qh[k] = hl; x->qt[k] = tw; x->ql[k] = n;
+  for (int q = 0; q < 2 * n; q++) x->qsw[k][q] = sw[q];
   return SIT_GROW;
+}
+// the kept quiet lines judged on the engine, best on the masks first: the
+// first that keeps the line its outcome, loses health no sooner, and leaves
+// less hollow -- or as much, with more twos -- than the line alone
+static void waitQuietJudge(MwCtx *x) {
+  int32_t l2[2 * LINEMAX];
+  for (int done = 0; done < x->qn; done++) {
+    int at = -1;
+    for (int i = 0; i < x->qn; i++) if (x->ql[i] && (at < 0 || x->qh[i] < x->qh[at] || (x->qh[i] == x->qh[at] && x->qt[i] > x->qt[at]))) at = i;
+    if (at < 0) break;
+    int n = x->ql[at]; x->ql[at] = 0;
+    int nl = mwJoin(x, x->qsw[at], n, l2);
+    if (!nl) continue;
+    x->tried++;
+    int v = lineJudge(l2, nl, x->waitAll);
+    if ((v & x->need) != x->need || LNO[1] > x->last0 || mwDiesSooner(x)) continue;
+    int hl = HOLLOW(LNO);
+    if (hl > x->hb) continue;
+    static ST MW1; int32_t mc1[2], mt1; uint32_t mcan[WMAX]; uint8_t mwt[32][WMAX];
+    int tw = lineState(x->qsw[at], n, MW1, mcan, mwt, mc1, &mt1) == 0 ? twosOf(MW1) : 0;
+    if (hl == x->hb && tw <= x->vb) continue;
+    x->hb = hl; x->vb = tw; x->bn = n; for (int k = 0; k < 2 * n; k++) x->bsw[k] = x->qsw[at][k];
+    return;
+  }
 }
 static void waitLines(MwCtx *x, SitAccept accept) { waitSearch(pressSeen(x->last0) - REACT, accept, x); }
 static Dec meanwhile(Dec d) {
@@ -4887,8 +4935,9 @@ static Dec meanwhile(Dec d) {
     static ST MW0; int32_t mc0[2], mt0; uint32_t mcan0[WMAX]; uint8_t mwt0[32][WMAX];
     int tw0 = lineState(0, 0, MW0, mcan0, mwt0, mc0, &mt0) == 0 ? twosOf(MW0) : 0;
     int h0 = HOLLOW(LNO);
-    x.hb = h0; x.vb = tw0;
-    waitLines(&x, sitWaitQuiet);
+    x.hb = h0; x.vb = tw0; x.qn = 0;
+    waitSearchW(pressSeen(x.last0) - REACT, sitWaitQuiet, &x, SETUPWORK);
+    waitQuietJudge(&x);
     if (x.bn) { np = x.bn; for (int k = 0; k < 2 * np; k++) pre[k] = x.bsw[k]; }
     for (int k = 0; k < LNOLEN; k++) LNO[k] = keepO[k];
 #ifndef __wasm__
