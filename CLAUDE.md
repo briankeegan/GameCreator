@@ -248,6 +248,15 @@ ways: a tool not listed, or a path listed that doesn't exist.
 - A test's scratch files go beside the test, never `os.tmpdir()`.
 - **BitBot drills run at level 10, nothing else.** `pa_drill.js` exits if a
   scenario's level is not 10.
+- **Time, never swaps.** A line is as good as the frame it is done, however
+  many swaps it takes; nothing the bot asks is capped at a number of swaps.
+  Every search that grows lines is `searchInTime` (`native/bot.c`): soonest
+  press first, bounded by the time there is and a share of the decision's
+  work (`workLeft`), `LINEMAX` only storage. One clock prices it all
+  (`travelCost`, `stepGap`, `lineFrames`), counted from where the cursor is;
+  an engine press time meets it only through `pressSeen`. `clock.test.sh`
+  holds the clock to the engine; `check_time_not_swaps.mjs` fails on a cap
+  coming back or a new hand-listed search.
 - **Every decision fits the game's frame.** The bot plays at 60 fps:
   `BUDGETMS` in `native/bot.c` (the 16.7 ms frame less the frame's own work)
   is a decision's budget, and in a game the clock cuts one past it and the game

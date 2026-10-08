@@ -621,7 +621,8 @@
       var o = log[i];
       if (o.clock >= this.clock) return [true, 0];
       if (o.leftId === p1.id && o.rightId === p2.id && o.row === row && o.col === col) {
-        return this.health > this.behaviours.swapStallingPunish ? [true, this.behaviours.swapStallingPunish] : [false, 0];
+        // short of the full punish, a wiggle costs the health that is left (WigglePay.lua)
+        return this.health > this.behaviours.swapStallingPunish ? [true, this.behaviours.swapStallingPunish] : this.health > 0 ? [true, this.health] : [false, 0];
       }
     }
     return [true, 0];

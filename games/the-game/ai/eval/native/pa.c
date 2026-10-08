@@ -479,6 +479,7 @@ static int wiggleCanSwap(Board *b, Panel *p1, Panel *p2, int32_t *cost) {
     if (o->clock >= b->clock) return 1;
     if (o->leftId == p1->f[ID] && o->rightId == p2->f[ID] && o->row == b->curRow && o->col == b->curCol) {
       if (b->health > b->swapStallingPunish) { *cost = b->swapStallingPunish; return 1; }
+      if (b->health > 0) { *cost = b->health; return 1; }   // short of the full punish: what is left (WigglePay.lua)
       return 0;
     }
   }

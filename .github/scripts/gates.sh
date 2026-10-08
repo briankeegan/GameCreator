@@ -283,6 +283,19 @@ gate_server_engine() {
   node games/the-game/ai/eval/native_arrivals.test.js
 }
 
+# THE CLOCK IS THE ENGINE'S: every line the bot judges in a real game, priced
+# by the searches' clock and by the engine, the clock never later
+# (clock.test.sh). Needs the panel-game checkout and luajit for the deal.
+gate_clock() {
+  GC_PANEL_GAME="${GC_PANEL_GAME_LIVE:-${GC_PANEL_GAME:-}}" sh games/the-game/ai/eval/clock.test.sh
+}
+
+# TIME, NEVER SWAPS: BitBot's searches are the shared search in time, and no
+# cap in swaps comes back (check_time_not_swaps.mjs).
+gate_time_not_swaps() {
+  node .github/scripts/check_time_not_swaps.mjs
+}
+
 # BitBot's search in C (native/bit.wasm) gives bitmatch.js's answer for every
 # legal swap of every real board, and the module loads at all.
 gate_bitnative() {
@@ -543,6 +556,8 @@ GATES=(
   "a switch means the same thing everywhere:gate_flags:games/the-game/ai/"
   "the server's engine, in JS and in C, is the server's:gate_server_engine:games/"
   "BitBot's C search gives the JS search's answers:gate_bitnative:games/the-game/ai/"
+  "BitBot's clock is the engine's:gate_clock:games/the-game/ai/"
+  "BitBot searches in time, never in swaps:gate_time_not_swaps:games/the-game/ai/"
   "what a board can fire next move:gate_reach:games/the-game/ai/"
   "the cursor walks and its travel is priced:gate_cursor:games/the-game/"
   "the LOVE RNG matches the real engine:gate_love_rng:games/the-game/ai/"
@@ -681,7 +696,7 @@ gate_changed() {
 # autopilot pre-flight, where the checkout is present.
 PANEL_GAME_GATES=(
   gate_chain_measure gate_versus_loop gate_chaining gate_opponent
-  gate_features gate_normalise
+  gate_features gate_normalise gate_clock
 )
 # PANEL_GAME_GATES, run nightly by ai-slow-gates.yml beside a panel-game checkout.
 gate_panel_game() {

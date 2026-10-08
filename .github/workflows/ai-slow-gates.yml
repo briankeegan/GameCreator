@@ -42,9 +42,27 @@ jobs:
           GC_TRAINING_DIR: ${{ github.workspace }}/panel-game/client/assets/default_data/training
           GC_PANEL_GAME: ${{ github.workspace }}/panel-game
         run: source .github/scripts/gates.sh && gate_slow
+      # the drill's deal comes from the live server's Lua (gate_clock): the
+      # branch with bot/headlessBoot.lua, as ai-survival-scan.yml checks out
+      - uses: actions/checkout@v4
+        if: success() || failure()
+        timeout-minutes: 5
+        with:
+          repository: briankeegan/panel-game
+          ref: bramp/multi-player
+          path: panel-game-live
+          fetch-depth: 1
+      - name: Lua and clang for the drill
+        if: success() || failure()
+        timeout-minutes: 10
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq luajit luarocks liblua5.1-0-dev clang
+          for r in luafilesystem luasocket luautf8; do luarocks --lua-version 5.1 --local install $r; done
       - name: Gates that need panel-game
         if: success() || failure()
         env:
           GC_TRAINING_DIR: ${{ github.workspace }}/panel-game/client/assets/default_data/training
           GC_PANEL_GAME: ${{ github.workspace }}/panel-game
+          GC_PANEL_GAME_LIVE: ${{ github.workspace }}/panel-game-live
         run: source .github/scripts/gates.sh && gate_panel_game

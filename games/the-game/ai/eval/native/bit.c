@@ -562,27 +562,6 @@ static int quietSwapG(const int32_t *st, const Grid *G, int rest, int r, int c) 
   if (!G->g[r][c] || !G->g[r][c + 1]) return 0;
   return !swapCanClearG(st, G, 1, r, c);
 }
-static LOCAL ST SLOW;
-static LOCAL int32_t SWB[2 * 128], RB[R_INTS + ST_INTS];
-static int anyOneSwapClear(const int32_t *st) {
-  Grid G;
-  int n = legalG(st, SWB, &G), haveSlow = 0;
-  for (int i = 0; i < n; i++) {
-    int r = SWB[2 * i], c = SWB[2 * i + 1];
-    int left = G.g[r][c], right = G.g[r][c + 1];
-    if (!left || !right) {
-      if (!haveSlow) { stcpy(SLOW, st); haveSlow = 1; }
-      if (!swapIn(SLOW, r, c)) continue;
-      nFireR++, resolve(SLOW, RB, 0);
-      swapIn(SLOW, r, c);
-      if (RB[R_TOTAL] > 0 || RB[R_SCOPE] == SC_BROKE) return 1;
-      continue;
-    }
-    if (gLine(st, &G, r, c + 1, left, r, c, left, right)) return 1;
-    if (gLine(st, &G, r, c, right, r, c, left, right)) return 1;
-  }
-  return 0;
-}
 typedef uint32_t v8u __attribute__((vector_size(32)));
 static void reachMask(const int32_t *st, uint32_t *out) {
   int W = st[O_W];
@@ -962,15 +941,21 @@ static Res *settleOf(const int32_t *st) {
   return out;
 }
 
+// FIRE READY: a clear or a break -- any length -- pressed before the board
+// loses health (bot.c fireInTimeOf: the shared search in time); kept by the
+// board, the cursor and the stop
+static int fireInTimeOf(const int32_t *st);
+static u64 breakKey(const int32_t *st0);
+#define OFFERSEEN 32
+typedef struct { int nb, fire; double pay; u64 seen[OFFERSEEN]; } Offers;   // bot.c offersOf
+static void offersOf(const int32_t *st, Offers *o);
 static int canFireOf(const int32_t *st) {
-  u64 k = hashOf(st); double v;
+  u64 k = breakKey(st); double v;
   if (tget(&FIRE, k, &v)) return (int)v;
-  int f = anyOneSwapClear(st);
+  int f = fireInTimeOf(st);
   tput(&FIRE, k, f);
   return f;
 }
-static LOCAL ST SCR;
-static LOCAL int32_t SWS[2 * 128], RS[R_INTS + ST_INTS];
 static void markLines(const int32_t *st, const Grid *G, int rr, int cc, int col, int r, int c, int l, int rt, uint32_t *k) {
   int lo = cc, hi = cc;
   while (gAt(st, G, rr, lo - 1, r, c, l, rt) == col) lo--;
@@ -1261,157 +1246,83 @@ static int quietDrop(const int32_t *st, const Grid *G, const Drop *D, int r, int
   }
   return dropQuiet(st, D, r, c, ZK, out);
 }
-static int breaksFirst(const int32_t *st, const Grid *G, int r, int c) { int t, cs; return firstRound(st, G, r, c, &t, &cs); }
-// whether any one swap breaks garbage: the scan alone, no tables (a worker's)
-static int anyBreakScan(const int32_t *st0) {
-  Grid G;
-  stcpy(SCR, st0);
-  int n = legalG(SCR, SWS, &G), any = 0, rest = atRest(SCR), nLater = 0, LATER[128];
-  Drop D; int haveD = 0;
-  for (int i = 0; i < n && !any; i++) {
-    if (!swapCanClearG(SCR, &G, rest, SWS[2 * i], SWS[2 * i + 1])) continue;
-    if (rest && G.g[SWS[2 * i]][SWS[2 * i + 1]] && G.g[SWS[2 * i]][SWS[2 * i + 1] + 1]) {
-      int t, cas; uint32_t kq[WMAX];
-      if (firstRoundK(SCR, &G, SWS[2 * i], SWS[2 * i + 1], &t, &cas, kq)) { any = 1; break; }
-      if (!cas || DROPQ(SCR, SWS[2 * i], SWS[2 * i + 1], kq)) continue;
-    }
-    if (rest && !(G.g[SWS[2 * i]][SWS[2 * i + 1]] && G.g[SWS[2 * i]][SWS[2 * i + 1] + 1]) && DROPQ(SCR, SWS[2 * i], SWS[2 * i + 1], ZK)) continue;
-    LATER[nLater++] = i;
-  }
-  for (int j = 0; j < nLater && !any; j++) {
-    int i = LATER[j];
-    if (!swapIn(SCR, SWS[2 * i], SWS[2 * i + 1])) continue;
-    nAnyR++, resolve(SCR, RS, 0);
-    swapIn(SCR, SWS[2 * i], SWS[2 * i + 1]);
-    if (RS[R_SCOPE] == SC_BROKE) any = 1;
-  }
-  return any;
-}
-static int anyBreakKnown(const int32_t *st0, u64 k, double *v) {
-  if (tget(&SAVES, k, v)) { *v = *v > 0; return 1; }
-  return tget(&ANYB, k, v);
-}
+// A BREAK IN TIME: a break -- any length -- pressed before the board loses
+// health, walked from the cursor (bot.c breakInTimeOf: the shared search in
+// time). Kept by the board, the cursor and the stop, which are what it depends on.
+static int breakInTimeOf(const int32_t *st);
+static u64 breakKey(const int32_t *st0);
 static int anyBreakOf(const int32_t *st0) {
-  u64 k = hashOf(st0); double v;
-  if (anyBreakKnown(st0, k, &v)) return (int)v;
-  int any = anyBreakScan(st0);
+  u64 k = breakKey(st0); double v;
+  if (tget(&ANYB, k, &v)) return (int)v;
+  int any = breakInTimeOf(st0);
   tput(&ANYB, k, any);
   return any;
 }
 // THE NEXT SLAB WHERE IT WILL REST. A slab covers its own columns, not the
 // stack's top row: it lands on the tallest of them and touches only the cells
-// under and beside it. Ready means one swap breaks it there. SLABC is the
+// under and beside it. Ready means a break in time there. SLABC is the
 // slab's left column, 0 when the caller does not know it.
 static LOCAL int SLABW, SLABH, SLABC;
 static LOCAL ST SLABST;
-static int slabReady(const int32_t *st) {
+// the next slab placed where it rests on st (out): 1 placed; 0 it does not
+// fit; -1 the slab's place is unknown (SLABC 0) -- the caller's fallback
+static int slabPlace(const int32_t *st, int32_t *out) {
   int c0 = SLABC, c1 = SLABC + SLABW - 1, bottom = 0, c;
-  if (!c0 || c1 > st[O_W] || st[O_NSLAB] >= MAXSLAB) return slabReadyFast(st);
+  if (!c0 || c1 > st[O_W] || st[O_NSLAB] >= MAXSLAB) return -1;
   for (c = c0; c <= c1; c++) { int t = topRow(U(st, OCC + c)); if (t > bottom) bottom = t; }
   if (bottom >= st[O_H] || bottom + SLABH > 30) return 0;
-  stcpy(SLABST, st);
+  stcpy(out, st);
   uint32_t m = ((1u << SLABH) - 1u) << bottom;
-  int i = SLABST[O_NSLAB]++;
-  for (c = 0; c < WMAX; c++) SLABST[SM(i, c)] = 0;
-  for (c = c0; c <= c1; c++) { SLABST[OCC + c] |= (int32_t)m; SLABST[INERT + c] |= (int32_t)m; SLABST[GARB + c] |= (int32_t)m; SLABST[SM(i, c)] = (int32_t)m; }
-  SLABST[SLK(i)] = 0; SLABST[SAIR(i)] = 0;
-  return anyBreakOf(SLABST);
+  int i = out[O_NSLAB]++;
+  for (c = 0; c < WMAX; c++) out[SM(i, c)] = 0;
+  for (c = c0; c <= c1; c++) { out[OCC + c] |= (int32_t)m; out[INERT + c] |= (int32_t)m; out[GARB + c] |= (int32_t)m; out[SM(i, c)] = (int32_t)m; }
+  out[SLK(i)] = 0; out[SAIR(i)] = 0;
+  return 1;
+}
+// READY: the next slab placed where it rests, and a break against it in time (anyBreakOf)
+static int slabReady(const int32_t *st) {
+  int placed = slabPlace(st, SLABST);
+  if (placed < 0) return slabReadyFast(st);
+  return placed && anyBreakOf(SLABST);
 }
 static double priceOf(int chain, int total);
 static LOCAL int stopKeyId, hasStopPrice, expanding;
+// THE BREAKS A BOARD OFFERS IN TIME (offersOf), counted; what the same search
+// says of fire, a break, and the best stop is kept for their askers
+static void offersKeep(const int32_t *st0, u64 k, Offers *o);
 static int savesOfRaw(const int32_t *st0) {
-  Grid G;
-  u64 k = hashOf(st0); double v;
+  u64 k = breakKey(st0); double v;
   if (tget(&SAVES, k, &v)) return (int)v;
-  stcpy(SCR, st0);
-  int n = legalG(SCR, SWS, &G), cnt = 0, rest = atRest(SCR), fire = 0;
-  double best = 0;
-  Drop D; int haveD = 0;
-  for (int i = 0; i < n; i++) {
-    if (!swapCanClearG(SCR, &G, rest, SWS[2 * i], SWS[2 * i + 1])) continue;
-    if (rest && G.g[SWS[2 * i]][SWS[2 * i + 1]] && G.g[SWS[2 * i]][SWS[2 * i + 1] + 1]) {
-      int t, cas; uint32_t kq[WMAX];
-      int br = firstRoundK(SCR, &G, SWS[2 * i], SWS[2 * i + 1], &t, &cas, kq);
-      if (br || !cas || DROPQ(SCR, SWS[2 * i], SWS[2 * i + 1], kq)) {
-        if (br) cnt++;
-        if (t > 0) {
-          fire = 1;
-          double pays = priceOf(1, t);
-          if (pays != pays) pays = 0;
-          if (pays > best) best = pays;
-        }
-        continue;
-      }
-    }
-    if (rest && !(G.g[SWS[2 * i]][SWS[2 * i + 1]] && G.g[SWS[2 * i]][SWS[2 * i + 1] + 1]) && DROPQ(SCR, SWS[2 * i], SWS[2 * i + 1], ZK)) continue;
-    if (!swapIn(SCR, SWS[2 * i], SWS[2 * i + 1])) continue;
-    nSavesR++, resolve(SCR, RS, 0);
-    swapIn(SCR, SWS[2 * i], SWS[2 * i + 1]);
-    if (RS[R_SCOPE] == SC_BROKE) cnt++;
-    if (RS[R_TOTAL] > 0 || RS[R_SCOPE] == SC_BROKE) fire = 1;
-    if (RS[R_TOTAL] > 0) {
-      double pays = priceOf(RS[R_CHAIN], RS[R_TOTAL]);
-      if (pays != pays) pays = 0;
-      if (pays > best) best = pays;
-    }
-  }
-  tput(&SAVES, k, cnt);
-  if (rest) tput(&FIRE, k, fire);
-  if (stopKeyId && expanding) tput(&STOPS_T, k ^ ((u64)stopKeyId * 0x9e3779b97f4a7c15ull), best);
-  return cnt;
+  Offers o; offersKeep(st0, k, &o);
+  return o.nb;
 }
 static LOCAL double PCHAIN[64], PCOMBO[256];
 static double priceOf(int chain, int total) {
   if (chain >= 2) return PCHAIN[chain < 63 ? chain : 63];
   return PCOMBO[total < 255 ? total : 255];
 }
-static LOCAL ST SCS;
-static LOCAL int32_t SWL[2 * 128], RL[R_INTS + ST_INTS];
-static double bestOneSwapStop(const int32_t *st0) {
-  Grid G;
-  stcpy(SCS, st0);
-  int n = legalG(SCS, SWL, &G), rest = atRest(SCS);
-  Drop D; int haveD = 0;
-  double best = 0;
-  for (int i = 0; i < n; i++) {
-    if (!swapCanClearG(SCS, &G, rest, SWL[2 * i], SWL[2 * i + 1])) continue;
-    if (rest && G.g[SWL[2 * i]][SWL[2 * i + 1]] && G.g[SWL[2 * i]][SWL[2 * i + 1] + 1]) {
-      int t, cas; uint32_t kq[WMAX];
-      int br = firstRoundK(SCS, &G, SWL[2 * i], SWL[2 * i + 1], &t, &cas, kq);
-      if (br || !cas || DROPQ(SCS, SWL[2 * i], SWL[2 * i + 1], kq)) {
-        if (!(t > 0)) continue;
-        double pays = priceOf(1, t);
-        if (pays != pays) pays = 0;
-        if (pays > best) best = pays;
-        continue;
-      }
-    }
-    if (rest && !(G.g[SWL[2 * i]][SWL[2 * i + 1]] && G.g[SWL[2 * i]][SWL[2 * i + 1] + 1]) && DROPQ(SCS, SWL[2 * i], SWL[2 * i + 1], ZK)) continue;
-    if (!swapIn(SCS, SWL[2 * i], SWL[2 * i + 1])) continue;
-    nLandR++, resolve(SCS, RL, 0);
-    swapIn(SCS, SWL[2 * i], SWL[2 * i + 1]);
-    if (!(RL[R_TOTAL] > 0)) continue;
-    double pays = priceOf(RL[R_CHAIN], RL[R_TOTAL]);
-    if (pays != pays) pays = 0;
-    if (pays > best) best = pays;
-  }
-  return best;
+static void offersKeep(const int32_t *st0, u64 k, Offers *o) {
+  offersOf(st0, o);
+  tput(&SAVES, k, o->nb); tput(&ANYB, k, o->nb > 0); tput(&FIRE, k, o->fire);
+  if (stopKeyId && expanding) tput(&STOPS_T, k ^ ((u64)stopKeyId * 0x9e3779b97f4a7c15ull), o->pay);
 }
+// THE BEST STOP A BOARD OFFERS IN TIME: the most a clear pays (offersOf)
 static double landStopOf(const int32_t *st) {
-  if (!stopKeyId) return bestOneSwapStop(st);
-  u64 k = hashOf(st) ^ ((u64)stopKeyId * 0x9e3779b97f4a7c15ull); double v;
-  if (tget(&STOPS_T, k, &v)) return v;
-  double r = bestOneSwapStop(st);
-  tput(&STOPS_T, k, r);
-  return r;
+  u64 k = breakKey(st); Offers o;
+  if (!stopKeyId) { offersOf(st, &o); return o.pay; }
+  u64 ks = k ^ ((u64)stopKeyId * 0x9e3779b97f4a7c15ull); double v;
+  if (tget(&STOPS_T, ks, &v)) return v;
+  offersKeep(st, k, &o);
+  tput(&STOPS_T, ks, o.pay);
+  return o.pay;
 }
 
 // ---------------------------------------------------------------- the search
 static LOCAL double LMAX;
 static LOCAL int lazyBreak;
-static LOCAL double FPR, DEADLINE, LOCKP, OVERHEAD, SWAPP, HOLD, WORK, MAXSTOP, READYWORTH, PREPWORTH;
+static LOCAL double FPR, DEADLINE, LOCKP, SWAPP, HOLD, WORK, MAXSTOP, READYWORTH, PREPWORTH;
 static LOCAL int SPEND, LEAN, PREPARE, DIG, PRESS, Wd;
-static LOCAL int dropBudget, saveBudget, slabBudget, prepBudget, readyBudget;
+static LOCAL int saveBudget, slabBudget, prepBudget, readyBudget;
 static LOCAL int nAvoid; static LOCAL int32_t AVOID[2 * 40];
 // records the caller will not read (P[108]: 4 the fire-ready, 8 the slab-ready), never checked
 static LOCAL int recSkip;
@@ -1433,31 +1344,14 @@ static int travelCost(int r0, int c0, int r1, int c1) {
   return t;
 }
 static int hasGarb(const int32_t *st) { for (int c = 1; c <= st[O_W]; c++) if (st[GARB + c]) return 1; return 0; }
-static int breakAfterDropOf(const int32_t *st0);
+// THE FRAME A PLY'S SWAP IS PRESSED: its walks (cost) and, between presses,
+// the clock's gap (OVERHEAD: bot.c stepGap, the same clock every search reads)
+static LOCAL double OVERHEAD;
+static int planAt(int cost, int ply) { return cost + (int)((ply - 1) * OVERHEAD); }
+// a break in time: a line that drops the pile first is one of its lines
 static int breakReadyOf(const int32_t *st) {
   if (!hasGarb(st)) return -1;
-  if (anyBreakOf(st)) return 1;
-  return breakAfterDropOf(st);
-}
-static LOCAL ST SCD;
-static LOCAL int32_t SWD[2 * 128];
-static LOCAL Res RDROP;
-static int breakAfterDropOf(const int32_t *st0) {
-  Grid G;
-  if (dropBudget <= 0) return 0;
-  dropBudget--;
-  stcpy(SCD, st0);
-  int n = legalG(SCD, SWD, &G), rest = atRest(SCD);
-  for (int i = 0; i < n; i++) {
-    if (!swapCanClearG(SCD, &G, rest, SWD[2 * i], SWD[2 * i + 1])) continue;
-    if (!swapIn(SCD, SWD[2 * i], SWD[2 * i + 1])) continue;
-    resolve(SCD, RDROP.r, 1);
-    swapIn(SCD, SWD[2 * i], SWD[2 * i + 1]);
-    if (RDROP.r[R_SCOPE] == SC_BROKE) return 1;
-    if (RDROP.r[R_SCOPE] != SC_OK || RDROP.r[R_TOTAL] == 0) continue;
-    if (anyBreakOf(RDROP.st)) return 1;
-  }
-  return 0;
+  return anyBreakOf(st);
 }
 static double setupWorth(int haveG, double g, double left) {
   if (!haveG || !(left > 0)) return 0;
@@ -1550,8 +1444,7 @@ static void extras(double *o, const int32_t *settled) {
     return;
   }
   if (lazyClose && expanding && settled) {
-    // left for the reader (readyOf, closesOf): expanding, no drop is asked
-    // (dropBudget 0), so it is the board's alone -- garbage, and a swap that breaks it
+    // left for the reader (readyOf, closesOf): garbage, and a break in time
     o[F_BREAKREADY] = -4;
     o[F_CLOSESBREAK] = BASEBREAK ? -2 : 0;
     OPTSET[(o - (OD + 64)) / REC] = settled;
@@ -1624,7 +1517,7 @@ static void sortBorn(int n) {
 }
 
 static LOCAL int threadReady;
-struct CK { Res *res; int resPly, persist, quiet, hasRR, rrDig, hasSh, hasShG, sv, fire, slab, hasLand, anyB, bad; double land; Shape sh, shg; uint32_t rr[WMAX]; };
+struct CK { Res *res; int resPly, persist, quiet, hasRR, rrDig, hasSh, hasShG, sv, fire, slab, hasLand, anyB; double land; Shape sh, shg; uint32_t rr[WMAX]; };
 #define NTCAP (1 << 12)
 typedef struct { u64 h; int32_t gen, at, n, nl, rest; CK *ck; int32_t *sw; } NT;
 static NT NT_MAIN[NTCAP];
@@ -1651,7 +1544,7 @@ static CK *nodeAdd(unsigned i, const int32_t *st, int nl, const int32_t *sw, int
   int at = (arenaN + 1) & ~1, need = (int)((nl * sizeof(CK) + 3) / 4);
   if (at + need + n + 2 * nl + R_INTS + ST_INTS > arenaCap) return 0;
   CK *ck = (CK *)(ARENA + at);
-  for (int k = 0; k < nl; k++) { ck[k].res = 0; ck[k].hasRR = 0; ck[k].hasSh = 0; ck[k].hasShG = 0; ck[k].sv = -1; ck[k].fire = -1; ck[k].slab = -1; ck[k].hasLand = 0; ck[k].anyB = -1; ck[k].bad = -1; }
+  for (int k = 0; k < nl; k++) { ck[k].res = 0; ck[k].hasRR = 0; ck[k].hasSh = 0; ck[k].hasShG = 0; ck[k].sv = -1; ck[k].fire = -1; ck[k].slab = -1; ck[k].hasLand = 0; ck[k].anyB = -1; }
   int32_t *cp = ARENA + at + need, *sp = cp + n;
   for (int j = 0; j < n; j++) cp[j] = st[j];
   for (int j = 0; j < 2 * nl; j++) sp[j] = sw[j];
@@ -1712,10 +1605,7 @@ static int breakReadyC(const int32_t *st) {
   if (!e) return breakReadyOf(st);
   if (!hasGarb(st)) return -1;
   if (e->anyB < 0) e->anyB = anyBreakOf(st);
-  if (e->anyB) return 1;
-  if (dropBudget <= 0) return 0;
-  if (e->bad >= 0) { dropBudget--; return e->bad; }
-  return e->bad = breakAfterDropOf(st);
+  return e->anyB;
 }
 static void threadInit(void) {
   if (threadReady) return;
@@ -1777,7 +1667,7 @@ static void runTask(int i) {
     settled = r + R_INTS;
     if (r[R_TOTAL] > 0) {
       if (!pool.lean && hasGarb(settled)) { x[0] = 1; x[1] = anyBreakOf(settled); }
-      u64 h = hashOf(settled); x[4] = (int32_t)h; x[5] = (int32_t)(h >> 32);
+      u64 h = breakKey(settled); x[4] = (int32_t)h; x[5] = (int32_t)(h >> 32);
       return;
     }
   }
@@ -1785,7 +1675,7 @@ static void runTask(int i) {
     uint32_t rm[WMAX];
     x[2] = reachOf(settled, rm) > 0;
   }
-  u64 h = hashOf(settled); x[4] = (int32_t)h; x[5] = (int32_t)(h >> 32);
+  u64 h = breakKey(settled); x[4] = (int32_t)h; x[5] = (int32_t)(h >> 32);
 }
 static int32_t SAVEIX[MAXSET];
 static void savesTask(int i) {
@@ -1900,7 +1790,7 @@ static int prefetchPly(int nf, int ply) {
       int quiet = quietSwapG(state, &G, nodeRest, sr, sc);
       if (quiet && !DIG) continue;
       int cost = node->spent + travelCost(node->fr, node->fc, sr, sc);
-      if ((double)(cost + ply - 1) > node->lock + SPEND) continue;
+      if ((double)planAt(cost, ply) > node->lock + SPEND) continue;
       if (nt >= MAXSET) continue;
       if (!quiet) TASKIX[fi * TIXW + k] = nt;
       PSET[4 * nt] = fi; PSET[4 * nt + 1] = sr; PSET[4 * nt + 2] = sc; PSET[4 * nt + 3] = quiet; nt++;
@@ -1942,6 +1832,10 @@ static int readyAsk(CK *e, const int32_t *st) {
   if (e) e->slab = v;
   return v;
 }
+// AS DEEP AS THE TIME, AS FAR AS THE WORK: the plies grow while the thread's
+// work holds (bot.c workLeft: the decision's, a parallel task's or a scored
+// candidate's share); what was found before it ran out stands
+static double workLeft(void);
 static void expandAll(int depth, int cr, int cc) {
   expanding = 1;
   Shape BASE; shapeOf(BASEST, &BASE);
@@ -1954,11 +1848,14 @@ static void expandAll(int depth, int cr, int cc) {
   FRONT[0].hasReach = 0; FRONT[0].dig = 0; FRONT[0].lock = LOCKP;
   int32_t seq[2 * MAXD];
   double fv = 0;
-  for (int ply = 1; ply <= depth && nf; ply++) {
+  int spent = 0;
+  for (int ply = 1; ply <= depth && nf && !spent; ply++) {
+    if (workLeft() <= 0) break;
     int nb = 0;
     qside ^= 1; nQuiet[qside] = 0;
     int pf = pool.nworkers && !LEAN && !inPar && prefetchPly(nf, ply);
     for (int fi = 0; fi < nf; fi++) {
+      if (fi && workLeft() <= 0) { spent = 1; break; }
       Node *node = &FRONT[fi];
       int32_t *state = WORK_ST[fi];
       stcpy(state, node->st);
@@ -2015,7 +1912,7 @@ static void expandAll(int depth, int cr, int cc) {
           e->persist = !e->quiet && ((int32_t *)res < PSOUT || (int32_t *)res >= PSOUT + 2 * MAXSET * SOUT);
         }
         int cost = node->spent + travelCost(node->fr, node->fc, sr, sc);
-        int tPlan = cost + ply - 1;
+        int tPlan = planAt(cost, ply);
         if ((double)tPlan > node->lock + SPEND) continue;
         int broke = res->r[R_SCOPE] == SC_BROKE;
         if (res->r[R_SCOPE] != SC_OK && !broke) continue;
@@ -2182,7 +2079,7 @@ static int optionsRun(const int32_t *st0, const double *P, const int32_t *first,
   stcpy(BASEST, st0);
   Wd = BASEST[O_W];
   READYWORTH = HOLD / Wd; PREPWORTH = (FPR + HOLD) / Wd;
-  prepBudget = 24; dropBudget = 8;
+  prepBudget = 24;
   shapeOf(BASEST, &START);
   BASELOW = START.low; BASEBUMPS = START.bumps; BASEVOID = START.high - START.mat; BASEGAP = START.slabRowGap;
   BASEBREAK = LEAN ? 0 : breakReadyOf(BASEST) == 1;
@@ -2219,7 +2116,7 @@ static int optionsRun(const int32_t *st0, const double *P, const int32_t *first,
     o[F_BREAKS] = broke;
     nNow++;
   }
-  BASEDIG = 0; BASESAVE = 0; saveBudget = 0; slabBudget = 0; dropBudget = 0;
+  BASEDIG = 0; BASESAVE = 0; saveBudget = 0; slabBudget = 0;
   if ((depth ? depth : 1) >= 2) expandAll(depth ? depth : 1, cr, cc);
   expanding = 0;
   double *fl = recAt(0);

@@ -946,6 +946,16 @@ static int pjHeldR, pjHeldC, pjHeldDir, pjPress;   // the settings travelCost re
 #define PJ_IX 0xFFFFFull
 static unsigned long long pjWord;
 static int pjFinished, pjGen;
+// A TASK'S SHARE OF THE DECISION: a batch's tasks fold their work into the
+// decision only once it ends, so each is handed, before it starts, an even
+// share of what optional work has left (pjShare) and stops its searches at
+// taskEnd (searchInTime) -- the batch together never runs past optLine
+static double pjShare;
+static void pjShareOf(int count) {
+  extern PATLS double paWork;
+  double room = optLine() - paWork;
+  pjShare = room > 0 && count > 0 ? room / count : 0;
+}
 static void pjRun(void) {
   for (;;) {
     unsigned long long w = __atomic_fetch_add(&pjWord, 1, __ATOMIC_ACQUIRE);
@@ -953,6 +963,7 @@ static void pjRun(void) {
     if (ix >= count) return;
     HELDR = pjHeldR; HELDC = pjHeldC; HELDDIR = pjHeldDir; PRESS = pjPress;
     { extern PATLS double paWork, paEngFrames; double w0 = paWork, e0 = paEngFrames;
+      taskEnd = paWork + pjShare;
       pjTask((int)ix);
       if (pjMe) { pjW[pjMe].w += paWork - w0; pjW[pjMe].e += paEngFrames - e0; } }
     __atomic_add_fetch(&pjFinished, 1, __ATOMIC_RELEASE);
@@ -1041,6 +1052,7 @@ static void pjStart(int count, void (*task)(int)) {
 static void parallelBg(int count, void (*task)(int)) {
   if (!parAvailable() || count < 1) return;
   parallelJoin();
+  pjShareOf(count + 1);   // this thread's own work goes on beside them
   pjStart(count, task);
   pjBg = 1; pjBgCount = count;
 }
@@ -1056,7 +1068,9 @@ static void parallelDo(int count, void (*task)(int)) {
     if (!USB) USB = nb_new();
     paOutcomeBoard(1);
     int wasIn = inWorker; inWorker = 1;
-    for (int k = 0; k < count; k++) task(k);
+    pjShareOf(count);
+    extern PATLS double paWork;
+    for (int k = 0; k < count; k++) { taskEnd = paWork + pjShare; task(k); }
     inWorker = wasIn;
     return;
   }
@@ -1069,6 +1083,7 @@ static void parallelDo(int count, void (*task)(int)) {
     pjStarted = 1;
   }
   int heldR = HELDR, heldC = HELDC, heldDir = HELDDIR, press = PRESS;
+  pjShareOf(count);
   pjTask = task;
   pjHeldR = heldR; pjHeldC = heldC; pjHeldDir = heldDir; pjPress = press;
   __atomic_store_n(&pjFinished, 0, __ATOMIC_RELAXED);
