@@ -144,6 +144,11 @@ gate_garbage_rules() {
 gate_normalise() {
   node games/the-game/ai/eval/normalise.test.js
 }
+# SURVIVAL'S ORDER: on a board topped by slabs, a swap that breaks garbage is
+# played over a bigger clear away from it (survival_rules.test.js, one decision).
+gate_survival_rules() {
+  node games/the-game/ai/eval/survival_rules.test.js
+}
 
 gate_features_live() {
   node games/the-game/ai/eval/feature_liveness.js 2 all
@@ -575,6 +580,7 @@ GATES=(
   "every option field is priced by both rankers:gate_option_pricing:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"
   "every feature is a share, not a count:gate_normalise:games/the-game/ai/"
+  "survival breaks before it clears:gate_survival_rules:games/the-game/ai/"
   "the shipped weights and the tools that measure them:gate_shipped_weights:games/the-game/ai/"
   "that check fires:gate_shipped_weights_check_fires:games/the-game/ai/"
   "the gates actually reject defects:gate_gates_reject_defects:"
