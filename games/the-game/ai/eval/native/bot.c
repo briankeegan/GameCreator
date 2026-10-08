@@ -3317,20 +3317,27 @@ static Dec surviveGuard(Dec d) {
     saDec = mkHold(V_KEEPHEALTH, d.mode, d.alive, 0, 0, 0); saDie = LNA[0] ? LNA[0] : 1 << 20; saN = 0; saKind = 0; saWait = 0;
   }
   if (d.kind == saDec.kind && d.hasMove == saDec.hasMove && d.sr == saDec.sr && d.sc == saDec.sc) return d;
+  // ONE RULE FOR EVERY CHOICE (readyThenLater): ready for the next slab
+  // first -- a swap counts as ready only if it outlives the board left
+  // alone -- then the later loss of health
+  int incoming = BIN[IN_INCOMING] > 0, alone = aloneOnEngine() ? (LNA[0] ? LNA[0] : 1 << 20) : 0;
   int die, ready = 0, r, c;
   if (d.kind == K_SWAP && d.hasMove) {
     int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
     int32_t sw[2] = { d.sr, d.sc };
     int v = playsLine ? lineJudge(BT->line, BT->nLine, BT->lineWaitAll) : lineJudge(sw, 1, 0);
     die = !(v & LV_LIVES) ? 0 : LNO[0] ? LNO[0] : 1 << 20;
-    if (die < saDie && (v & LV_LIVES) && BIN[IN_INCOMING] > 0)
-      ready = playsLine ? readyInTime(BT->line, BT->nLine, &r, &c) : readyInTime(sw, 1, &r, &c);
-  } else if (d.kind == K_HOLD) die = aloneOnEngine() && LNA[0] ? LNA[0] : 1 << 20;
+    if (incoming && die && die > alone) ready = playsLine ? readyAtNext(BT->line, BT->nLine, &r, &c) : readyAtNext(sw, 1, &r, &c);
+  } else if (d.kind == K_HOLD) { die = alone ? alone : 1 << 20; ready = incoming && readyAtNext(0, 0, &r, &c); }
   else return d;   // a raise: raiseMode's own rules
-  if (die >= saDie) return d;
-  if (ready && !(saDec.kind == K_SWAP && saDec.hasMove ? (saN ? readyInTime(saLine, saN, &r, &c) : readyInTime((int32_t[2]){ saDec.sr, saDec.sc }, 1, &r, &c)) : readyInTime(0, 0, &r, &c))) return d;
+  int refReady = 0;
+  if (incoming) {
+    if (saDec.kind == K_SWAP && saDec.hasMove) { if (saDie > alone) refReady = saN ? readyAtNext(saLine, saN, &r, &c) : readyAtNext((int32_t[2]){ saDec.sr, saDec.sc }, 1, &r, &c); }
+    else refReady = readyAtNext(0, 0, &r, &c);
+  }
+  if (readyThenLater(ready, die, refReady, saDie) >= 0) return d;
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "GUARD via %d %d,%d dies %d before %d: %s %d,%d\n", d.via, d.sr, d.sc, die, saDie, saSet ? "stayAlive's" : "the hold", saDec.sr, saDec.sc); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "GUARD via %d %d,%d dies %d ready %d, before %s %d,%d dies %d ready %d\n", d.via, d.sr, d.sc, die, ready, saSet ? "stayAlive's" : "the hold", saDec.sr, saDec.sc, saDie, refReady); }
 #endif
   lineSet(saLine, saN, saKind, saWait);
   return saDec;
