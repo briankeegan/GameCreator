@@ -14,7 +14,10 @@
 -- frames, then "died F" or "alive F". GC_TRACE=F prints every frame from F
 -- (GC_STATES=1: with every cell's state);
 -- GC_BOTLOG=F (GC_BOTLOG_N frames, 1 by default) writes the bot's own log of
--- its decisions to stderr, each frame headed "@ F".
+-- its decisions to stderr, each frame headed "@ F". GC_DEATHLOG=N keeps the
+-- last N frames -- the bot's log, then the board with every cell's state --
+-- and prints them, headed "DEATH REPORT", if the run dies: the run that died
+-- is the one read, here or on Actions, never a replay.
 --
 -- EVERY DECISION IN ITS BUDGET, counted in work as the browser counts it
 -- (native/bot.c WORKBUDGET); the collector runs one step at the top of each
@@ -35,6 +38,7 @@ local MODE, SEED = arg[1], tonumber(arg[2])
 local FRAMES, LEVEL = tonumber(arg[3]) or 120000, tonumber(arg[4]) or 10
 local TRACE = tonumber(os.getenv("GC_TRACE") or "-1")
 local BOTLOG, BOTLOG_N = tonumber(os.getenv("GC_BOTLOG") or "-1"), tonumber(os.getenv("GC_BOTLOG_N") or "1")
+local DEATHLOG = tonumber(os.getenv("GC_DEATHLOG") or "0")
 if LEVEL ~= 10 then io.stderr:write("train: drills run at level 10 only\n"); os.exit(2) end
 
 -- TrainingMenu.lua createBasicTrainingMode
@@ -73,6 +77,11 @@ int nb_pressed(Board *b);
 int front_new(Board *b, int reaction, int allowRaise);
 int front_frame(int fid, Board *b);
 int botTraceOn;
+void *botLogTo;
+typedef struct FILE FILE;
+FILE *open_memstream(char **ptr, size_t *size);
+int fclose(FILE *f);
+void free(void *p);
 typedef struct { long tv_sec; long tv_nsec; } gc_timespec;
 int clock_gettime(int clk, gc_timespec *ts);
 ]]
@@ -133,14 +142,15 @@ end
 -- x popped, s swapping), so a break converting and a slab falling read apart
 local STATES = os.getenv("GC_STATES") == "1"
 local STATECH = { normal = "n", dimmed = "d", falling = "f", hovering = "h", landing = "l", matched = "m", popping = "p", popped = "x", swapping = "s" }
-local function show()
+local function show(states)
+  states = states or STATES
   local out = {}
   for r = math.min(#a.panels, 13), 0, -1 do
     local s = {}
     for c = 1, a.width do
       local q = a.panels[r][c]
       local ch = q.isGarbage and "g" or q.color ~= 0 and tostring(q.color % 10) or "."
-      if STATES then ch = ch .. (q.color == 0 and "." or STATECH[q.state] or "?")
+      if states then ch = ch .. (q.color == 0 and "." or STATECH[q.state] or "?")
       elseif q.color ~= 0 and q.state ~= "normal" and q.state ~= "dimmed" then ch = q.isGarbage and "G" or "X" end
       s[#s + 1] = ch
     end
@@ -153,6 +163,19 @@ local FRAME_MS, RUN_RESERVE = 1000 / 60, 3.0   -- RUN_RESERVE: match:run, 1.9 ms
 local TS = ffi.new("gc_timespec")
 local function now() ffi.C.clock_gettime(1, TS); return tonumber(TS.tv_sec) * 1e3 + tonumber(TS.tv_nsec) / 1e6 end
 local over, slowest = 0, 0
+local function frameLine(f, bits, states)
+  return string.format("F %d keys %d stop %d shake %d lock %d raise %d health %d cur %d,%d in %d | %s", f, bits, a.stop_time,
+                       a.shake_time, a.rise_lock and 1 or 0, a.manual_raise and 1 or 0, a.health, a.cur_row, a.cur_col,
+                       #a.incomingGarbage.stagedGarbage, show(states))
+end
+-- GC_DEATHLOG: each frame's bot log written to memory, not stderr, and kept
+-- in a ring of the last DEATHLOG frames with the board that followed it
+local ring, LOGP, LOGN = {}, ffi.new("char *[1]"), ffi.new("size_t[1]")
+local function deathReport(f)
+  print("DEATH REPORT: the last " .. math.min(DEATHLOG, f + 1) .. " frames, the bot's log then the board")
+  for g = math.max(0, f - DEATHLOG + 1), f do io.write(ring[g % DEATHLOG + 1]) end
+  print("END DEATH REPORT")
+end
 
 -- the countdown, nothing pressed; the bot is made during it, not on a live frame
 local fid = -1
@@ -178,7 +201,14 @@ while f < FRAMES do
   load()
   C.botTraceOn = (BOTLOG >= 0 and f >= BOTLOG and f < BOTLOG + BOTLOG_N) and 1 or 0
   if C.botTraceOn ~= 0 then io.stderr:write("@ " .. f .. "\n") end
+  local mem
+  if DEATHLOG > 0 and C.botTraceOn == 0 then mem = ffi.C.open_memstream(LOGP, LOGN); C.botLogTo = mem; C.botTraceOn = 1 end
   local bits = os.getenv("GC_NOBOT") and 0 or C.front_frame(fid, board)
+  local blog = ""
+  if mem then
+    ffi.C.fclose(mem); C.botLogTo = nil; C.botTraceOn = 0
+    blog = ffi.string(LOGP[0], LOGN[0]); ffi.C.free(LOGP[0])
+  end
   if bits < 0 then io.stderr:write("train: the bot failed at frame " .. f .. "\n"); os.exit(2) end
   if C.nb_pressed(board) ~= 0 then bits = bit.bor(bits, 16) end
   a:receiveConfirmedInput(KeyDataEncoding.base64encode[bits + 1])
@@ -186,11 +216,8 @@ while f < FRAMES do
   local took = now() - t0
   if took > FRAME_MS then over = over + 1 end
   if took > slowest then slowest = took end
-  if TRACE >= 0 and f >= TRACE then
-    print(string.format("F %d keys %d stop %d shake %d lock %d raise %d health %d cur %d,%d in %d | %s", f, bits, a.stop_time,
-                        a.shake_time, a.rise_lock and 1 or 0, a.manual_raise and 1 or 0, a.health, a.cur_row, a.cur_col,
-                        #a.incomingGarbage.stagedGarbage, show()))
-  end
+  if TRACE >= 0 and f >= TRACE then print(frameLine(f, bits)) end
+  if DEATHLOG > 0 then ring[f % DEATHLOG + 1] = "@ " .. f .. "\n" .. blog .. frameLine(f, bits, true) .. "\n" end
   local dead = a.game_over_clock and a.game_over_clock > 0
   if f % 250 == 0 or dead then
     local p, g = counts()
@@ -198,6 +225,7 @@ while f < FRAMES do
                         a:isToppedOut() and 1 or 0))
     io.stdout:flush()
   end
+  if dead and DEATHLOG > 0 then deathReport(f) end
   if dead then print(string.format("frames over %.1f ms: %d, slowest %.1f ms", FRAME_MS, over, slowest)); print("died " .. f); os.exit(1) end
   f = f + 1
 end

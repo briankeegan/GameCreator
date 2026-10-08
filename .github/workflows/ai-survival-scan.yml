@@ -54,19 +54,18 @@ jobs:
       - name: Seed ${{ matrix.seed }}
         env:
           GC_PANEL_GAME: ${{ github.workspace }}/panel-game
-          GC_TRACE: '0'   # every frame's board, for reading a death
-          GC_STATES: '1'  # with every cell's state: a break and a falling slab read apart
+          GC_DEATHLOG: '300'   # a death's last frames, the bot's log and the board, printed by the run itself
         run: |
           games/the-game/ai/eval/train.sh ${{ inputs.mode }} ${{ matrix.seed }} ${{ inputs.frames }} | tee out.txt | grep -E "^(died|alive|bot over)"
           end=$(grep -E "^(died|alive)" out.txt | tail -1)
           echo "seed ${{ matrix.seed }}: $end" >> "$GITHUB_STEP_SUMMARY"
           [[ $end == alive* ]]
-      # THE DEATH IN THE LOG: the last 700 frames, so a death is read from the
-      # job log itself (the artifact below is a download the API redirects)
-      - name: The last frames
+      # THE DEATH IN THE LOG: games/the-game/ai/eval/scan_deaths.sh RUN_ID
+      # cuts every seed's report out of its job log into a file
+      - name: The death report
         if: failure()
         timeout-minutes: 2
-        run: grep -E "^F " out.txt | tail -n 700
+        run: sed -n '/^DEATH REPORT/,/^END DEATH REPORT/p' out.txt
       - name: Keep the game
         if: failure()
         uses: actions/upload-artifact@v4

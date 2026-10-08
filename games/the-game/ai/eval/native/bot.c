@@ -87,6 +87,8 @@ extern int atoi(const char *);
 static double NOWMS2(void) { return 0; }
 #endif
 int botTraceOn;   // the native drill's GC_BOTLOG: the pool, as the engine plays it
+void *botLogTo;    // where the bot log goes: stderr, or a run's own buffer (train.lua's death report)
+#define BLOG (botLogTo ? botLogTo : stderr)
 static ST RISEN, TMST;
 static double *TB;
 
@@ -1007,7 +1009,7 @@ static void candidates(int32_t *base) {
       for (int k = 0; k < 8; k++) PAOUT[k] = POOUT[i][k];
 #ifndef __wasm__
       if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
-        fprintf(stderr, "POOL %d,%d at %d rc %d cells %d conv %d clears %d chain %d stop %d frames %d | alone cells %d\n", r, c, travelCost(cr, cc, r, c), rc,
+        fprintf(BLOG, "POOL %d,%d at %d rc %d cells %d conv %d clears %d chain %d stop %d frames %d | alone cells %d\n", r, c, travelCost(cr, cc, r, c), rc,
                 PAOUT[0], PAOUT[1], PAOUT[2], PAOUT[3], PAOUT[4], PAOUT[5], PALONE[0]); }
 #endif
       if (rc == -2) { swapIn(base, r, c); continue; }
@@ -1528,12 +1530,12 @@ static Dec decideCore(void) {
   }
 
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "READY base %d readyFirst %d incoming %g slab %d,%d,%d\n", baseReady, readyFirst, BIN[IN_INCOMING], (int)BIN[IN_SLABW], (int)BIN[IN_SLABH], (int)BIN[IN_SLABC]); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "READY base %d readyFirst %d incoming %g slab %d,%d,%d\n", baseReady, readyFirst, BIN[IN_INCOMING], (int)BIN[IN_SLABW], (int)BIN[IN_SLABH], (int)BIN[IN_SLABC]); }
 #endif
   if (readyFirst) {
     mainOptions(base, deadline, lookDepth, digging);
 #ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "READYFIRST found %d\n", haveRecIn(ODATA, 3) ? (int)recIn(ODATA, 3)[F_NSW] : -1); }
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "READYFIRST found %d\n", haveRecIn(ODATA, 3) ? (int)recIn(ODATA, 3)[F_NSW] : -1); }
 #endif
     if (haveRecIn(ODATA, 3)) {
       double *ready = recIn(ODATA, 3);
@@ -1982,9 +1984,9 @@ static Dec waitForDrain(Dec d) {
   }
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
-    fprintf(stderr, "DRAIN k %g d kind %d via %d @%d,%d clears %d:", k, d.kind, d.via, d.sr, d.sc, nc);
-    for (int i = 0; i < nc; i++) fprintf(stderr, " %d,%d(mf %d tot %d brk %d fut %d)", CLEARS[i].sr, CLEARS[i].sc, (int)CLEARS[i].moveFrames, CLEARS[i].res.total, CLEARS[i].res.broke, CLEARS[i].future);
-    fprintf(stderr, "\n"); }
+    fprintf(BLOG, "DRAIN k %g d kind %d via %d @%d,%d clears %d:", k, d.kind, d.via, d.sr, d.sc, nc);
+    for (int i = 0; i < nc; i++) fprintf(BLOG, " %d,%d(mf %d tot %d brk %d fut %d)", CLEARS[i].sr, CLEARS[i].sc, (int)CLEARS[i].moveFrames, CLEARS[i].res.total, CLEARS[i].res.broke, CLEARS[i].future);
+    fprintf(BLOG, "\n"); }
 #endif
   if (!nc) return d;
   if (d.spends) return d;
@@ -2204,7 +2206,7 @@ static int lineJudgeIn2(const int32_t *sw, int n, int waitAll) {
   if (clockCheck < 0) clockCheck = getenv("GC_CLOCKCHECK") != 0;
   if (clockCheck && n >= 1 && LNO[1] > 0) { extern int fprintf(void *, const char *, ...); extern void *stderr;
     int frozen = BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0;
-    fprintf(stderr, "CLOCK %d %d %.0f %.0f %d\n", n, frozen, lineFrames(sw, n, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, frozen), pressSeen(LNO[1]), waitAll); }
+    fprintf(BLOG, "CLOCK %d %d %.0f %.0f %d\n", n, frozen, lineFrames(sw, n, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, frozen), pressSeen(LNO[1]), waitAll); }
 #endif
   return v;
 }
@@ -2300,10 +2302,10 @@ static int judged(LineC *l) {
     }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
-      fprintf(stderr, "JUDGE n%d %d,%d", l->n, l->sw[0], l->sw[1]);
-      if (l->n > 1) fprintf(stderr, " %d,%d", l->sw[2], l->sw[3]);
-      if (l->n > 2) fprintf(stderr, " %d,%d", l->sw[4], l->sw[5]);
-      fprintf(stderr, " brk %d est %g -> v%d | drain %d last %d conv %d/%d match %d/%d k %g refused step %d at %d inc %d->%d\n", l->brk, l->est, l->verdict, LNO[0], LNO[1], LNO[2], LNA[2], LNO[3], LNA[3], timeLeft(), LNO[5], LNO[6], (int)BIN[IN_INCOMING] / 4, LNO[7]); }
+      fprintf(BLOG, "JUDGE n%d %d,%d", l->n, l->sw[0], l->sw[1]);
+      if (l->n > 1) fprintf(BLOG, " %d,%d", l->sw[2], l->sw[3]);
+      if (l->n > 2) fprintf(BLOG, " %d,%d", l->sw[4], l->sw[5]);
+      fprintf(BLOG, " brk %d est %g -> v%d | drain %d last %d conv %d/%d match %d/%d k %g refused step %d at %d inc %d->%d\n", l->brk, l->est, l->verdict, LNO[0], LNO[1], LNO[2], LNA[2], LNO[3], LNA[3], timeLeft(), LNO[5], LNO[6], (int)BIN[IN_INCOMING] / 4, LNO[7]); }
 #endif
   }
   return l->verdict;
@@ -2469,7 +2471,7 @@ static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double no
   int got = sitRun(st0, cr, cc, t0, notBefore, left, frozen, can0, wait0, work, accept, ctx, sw, nOut, atOut);
   sitLevel--;
 #ifndef __wasm__
-  if (calTop && !inWorker) { calMs += NOWMS2() - cal0; calW += paWork - calw0; if (++calN % 20000 == 0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "CAL sit %.3f ms/kwork over %.0f kwork\n", calMs / (calW / 1000), calW / 1000); } }
+  if (calTop && !inWorker) { calMs += NOWMS2() - cal0; calW += paWork - calw0; if (++calN % 20000 == 0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "CAL sit %.3f ms/kwork over %.0f kwork\n", calMs / (calW / 1000), calW / 1000); } }
 #endif
   SITST = pst; SITND = pnd; SITHP = php; SITHK = phk; SITT = pt; SITR = pr; SITL = pl; sitLeft = pleft;
   return got;
@@ -2917,7 +2919,7 @@ static void tDrops(int cr, int cc, double t0, double limit) {
       if (!hit) continue;
       int32_t sw[2] = { r, c };
 #ifndef __wasm__
-      if (botTraceOn && !tTimeMode) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  DROP %d,%d\n", r, c); }
+      if (botTraceOn && !tTimeMode) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  DROP %d,%d\n", r, c); }
 #endif
       tPropose(sw, 1, cr, cc, t0, limit);
     }
@@ -2992,11 +2994,11 @@ static void targetAfterDrops(const int32_t *st, int cr, int cc, double t0, doubl
     int ls = lineState(x.sw[i], x.len[i], st1, can, wt, cur, &t), n0 = nLines;
     if (ls == 0 && t <= limit) { for (int k = 0; k < 2 * x.len[i]; k++) tPfx[k] = x.sw[i][k]; tPfxN = x.len[i]; targetLines(st1, cur[0], cur[1], t, limit); tPfxN = 0; }
 #ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  TAD"); for (int k = 0; k < x.len[i]; k++) fprintf(stderr, " %d,%d", x.sw[i][2 * k], x.sw[i][2 * k + 1]); fprintf(stderr, " drops: state %d t %d limit %g lines +%d\n", ls, t, limit, nLines - n0); }
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  TAD"); for (int k = 0; k < x.len[i]; k++) fprintf(BLOG, " %d,%d", x.sw[i][2 * k], x.sw[i][2 * k + 1]); fprintf(BLOG, " drops: state %d t %d limit %g lines +%d\n", ls, t, limit, nLines - n0); }
 #endif
   }
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  TAD drops found %d\n", x.n); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  TAD drops found %d\n", x.n); }
 #endif
 }
 // THE TIME THERE IS: topped, the drain; else the judge's horizon -- a line
@@ -3210,7 +3212,7 @@ static Dec playOn(Dec d) {
   int need = LV_LIVES | (BT->lineKind == LINE_BREAK ? LV_BREAKS : BT->lineKind == LINE_CASH ? LV_GAINS : 0);
   if ((v & need) != need) {
 #ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "DROPLINE kind %d n %d", BT->lineKind, BT->nLine); for (int k = 0; k < BT->nLine; k++) fprintf(stderr, " %d,%d", BT->line[2 * k], BT->line[2 * k + 1]); fprintf(stderr, " | v %d need %d die %d last %d refused step %d at %d\n", v, need, LNO[0], LNO[1], LNO[5], LNO[6]); }
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "DROPLINE kind %d n %d", BT->lineKind, BT->nLine); for (int k = 0; k < BT->nLine; k++) fprintf(BLOG, " %d,%d", BT->line[2 * k], BT->line[2 * k + 1]); fprintf(BLOG, " | v %d need %d die %d last %d refused step %d at %d\n", v, need, LNO[0], LNO[1], LNO[5], LNO[6]); }
 #endif
     BT->nLine = 0; return d; }
   playDie = LNO[0] ? LNO[0] : 1 << 20; playLife = lifeOf(playDie, HOLLOW(LNO));
@@ -3311,7 +3313,7 @@ static Dec stayAlive(Dec d) {
   if (lineLast == 1) {
     if (!l || l->life <= playLife) return saKeep(d, playDie);
 #ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SA leaves the line played (dies %d) for", playDie); for (int k = 0; k < l->n; k++) fprintf(stderr, " %d,%d", l->sw[2 * k], l->sw[2 * k + 1]); fprintf(stderr, " (dies %d)\n", l->die); }
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "SA leaves the line played (dies %d) for", playDie); for (int k = 0; k < l->n; k++) fprintf(BLOG, " %d,%d", l->sw[2 * k], l->sw[2 * k + 1]); fprintf(BLOG, " (dies %d)\n", l->die); }
 #endif
     lineLast = 0; }
   if (d.kind == K_SWAP) {
@@ -3359,7 +3361,7 @@ static Dec returnGuard(Dec d) {
   int back = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc ? undoesOld(d.sr, d.sc) : undoesPress(d.sr, d.sc);
   if (!back) return d;
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RETURN via %d %d,%d undoes the press %d back\n", d.via, d.sr, d.sc, back); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "RETURN via %d %d,%d undoes the press %d back\n", d.via, d.sr, d.sc, back); }
 #endif
   BT->nLine = 0; lineLast = 0;
   return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
@@ -3384,7 +3386,7 @@ static Dec perchGuard(Dec d) {
     int hd = landHollow(ln, n), h0 = hd < 0 ? -1 : landHollow(0, 0);
     if (hd < 0 || h0 < 0 || hd <= h0) return d;
 #ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "PERCH via %d %d,%d lands over %d, the hold's %d\n", d.via, d.sr, d.sc, hd, h0); }
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "PERCH via %d %d,%d lands over %d, the hold's %d\n", d.via, d.sr, d.sc, hd, h0); }
 #endif
     BT->nLine = 0; lineLast = 0;
     return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
@@ -3400,7 +3402,7 @@ static Dec perchGuard(Dec d) {
   if (!aloneOnEngine() || h <= HOLLOW(LNA)) return d;
   if (LNA[0] && (!die || die > LNA[0])) return d;
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "PERCH via %d %d,%d hollow %d over the hold's %d\n", d.via, d.sr, d.sc, h, HOLLOW(LNA)); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "PERCH via %d %d,%d hollow %d over the hold's %d\n", d.via, d.sr, d.sc, h, HOLLOW(LNA)); }
 #endif
   BT->nLine = 0; lineLast = 0;
   return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
@@ -3434,7 +3436,7 @@ static Dec surviveGuard(Dec d) {
   if (die >= saDie) return d;
   if (ready && !(saDec.kind == K_SWAP && saDec.hasMove ? (saN ? readyInTime(saLine, saN, &r, &c) : readyInTime((int32_t[2]){ saDec.sr, saDec.sc }, 1, &r, &c)) : readyInTime(0, 0, &r, &c))) return d;
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "GUARD via %d %d,%d dies %d before %d: %s %d,%d\n", d.via, d.sr, d.sc, die, saDie, saSet ? "stayAlive's" : "the hold", saDec.sr, saDec.sc); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "GUARD via %d %d,%d dies %d before %d: %s %d,%d\n", d.via, d.sr, d.sc, die, saDie, saSet ? "stayAlive's" : "the hold", saDec.sr, saDec.sc); }
 #endif
   lineSet(saLine, saN, saKind, saWait);
   return saDec;
@@ -3463,13 +3465,13 @@ static Dec breakFirst(Dec d) {
     double lf0 = NOWMS2();
     linesFind(REROOTS, 1);
 #ifndef __wasm__
-    if (getenv("GC_WORKSTAT")) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "LINESFIND %.2f ms | root %.2f kids %d %.2f states %.2f | lines %d\n", NOWMS2() - lf0, growRootMs, growKids, growKidMs, growStateMs, nLines); }
+    if (getenv("GC_WORKSTAT")) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINESFIND %.2f ms | root %.2f kids %d %.2f states %.2f | lines %d\n", NOWMS2() - lf0, growRootMs, growKids, growKidMs, growStateMs, nLines); }
 #endif
     l = bestBreak(); }
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; int g = 0, live = 0;
     for (int i = 0; i < nLines; i++) { if (LINES[i].grown) g++; if (LINES[i].verdict != 0) live++; }
-    fprintf(stderr, "BREAKFIRST lines %d grown %d open %d k %g\n", nLines, g, live, timeLeft()); }
+    fprintf(BLOG, "BREAKFIRST lines %d grown %d open %d k %g\n", nLines, g, live, timeLeft()); }
 #endif
   if (!l) return breakDeeper(d);
   // ROOM FIRST: a break whose panels the board cannot hold tops it out with
@@ -3685,7 +3687,7 @@ static Dec lineupFirst(Dec d) {
     searchInTime(st0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, lineEnds(0, 0, &last), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0,
                  can0, waits0, luEnd - paWork, sitLineup, &x, 0, 0, 0);
 #ifndef __wasm__
-  if (getenv("GC_WORKSTAT")) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "LINEUP states %d %.2f ms | ranks %d %.2f ms (ready %d %.2f ms)\n", luStates, luStateMs, luRanks, luRankMs, luReady, luReadyMs); }
+  if (getenv("GC_WORKSTAT")) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINEUP states %d %.2f ms | ranks %d %.2f ms (ready %d %.2f ms)\n", luStates, luStateMs, luRanks, luRankMs, luReady, luReadyMs); }
 #endif
   if (!B.has) return d;
   if (B.n == 1 && d.kind == K_SWAP && d.hasMove && d.sr == B.sw[0] && d.sc == B.sw[1]) return d;
@@ -3766,12 +3768,12 @@ static void traceMasks(const int32_t *st) {
   extern int fprintf(void *, const char *, ...); extern void *stderr;
   int w = st[O_W], h = st[O_H] < 31 ? st[O_H] : 31, N = st[O_N];
   for (int r = h; r >= 1; r--) {
-    fprintf(stderr, " ");
+    fprintf(BLOG, " ");
     for (int c = 1; c <= w; c++) {
       uint32_t b = 1u << (r - 1); char ch = '.';
       if (U(st, GARB + c) & b) ch = 'g';
       else for (int a = 1; a <= N; a++) if (CL(st, a, c) & b) ch = (char)('0' + a);
-      fprintf(stderr, "%c", ch);
+      fprintf(BLOG, "%c", ch);
     }
   }
 }
@@ -3802,10 +3804,10 @@ static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc) {
       if (searchInTime(RBL, cur[0], cur[1], start, t, die - 1, frozen, 0, 0, READYWORK, sitBreaks, 0, bsw, &bn, &bat)) { *br = bsw[0]; *bc = bsw[1]; found = 1; } }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
-      fprintf(stderr, "  LANDS after");
-      for (int q = 0; q < n; q++) fprintf(stderr, " %d,%d", sw[2 * q], sw[2 * q + 1]);
-      fprintf(stderr, " slab %d at %d, cursor %d,%d, break %d,%d |", k, t, cur[0], cur[1], found ? *br : 0, found ? *bc : 0);
-      traceMasks(RBL); fprintf(stderr, "\n"); }
+      fprintf(BLOG, "  LANDS after");
+      for (int q = 0; q < n; q++) fprintf(BLOG, " %d,%d", sw[2 * q], sw[2 * q + 1]);
+      fprintf(BLOG, " slab %d at %d, cursor %d,%d, break %d,%d |", k, t, cur[0], cur[1], found ? *br : 0, found ? *bc : 0);
+      traceMasks(RBL); fprintf(BLOG, "\n"); }
 #endif
   }
   return found;
@@ -3981,7 +3983,7 @@ static Dec setupTwos(Dec d) {
   static SetupCtx x;
   if (!setupLines(&x, timeLeft())) return d;
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SETUP lines %d, twos now %d\n", x.n, x.base); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "SETUP lines %d, twos now %d\n", x.n, x.base); }
 #endif
   // each judged on the engine, most twos first: it lives, pays nothing, loses
   // health no sooner and leaves no more hollow than the board left alone, and
@@ -3994,7 +3996,7 @@ static Dec setupTwos(Dec d) {
     int32_t *sw = x.sw[at]; int n = x.len[at];
     int v = lineJudge(sw, n, 0);
 #ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  SETUP"); for (int k = 0; k < n; k++) fprintf(stderr, " %d,%d", sw[2 * k], sw[2 * k + 1]); fprintf(stderr, " | v %d die %d/%d hollow %d/%d last %d\n", v, LNO[0], LNA[0], HOLLOW(LNO), HOLLOW(LNA), LNO[1]); }
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  SETUP"); for (int k = 0; k < n; k++) fprintf(BLOG, " %d,%d", sw[2 * k], sw[2 * k + 1]); fprintf(BLOG, " | v %d die %d/%d hollow %d/%d last %d\n", v, LNO[0], LNA[0], HOLLOW(LNO), HOLLOW(LNA), LNO[1]); }
 #endif
     if (!(v & LV_LIVES) || (v & LV_PAYS) || (LNA[0] ? (LNO[0] && LNO[0] < LNA[0]) : LNO[0] != 0) || HOLLOW(LNO) > HOLLOW(LNA)) continue;
     if (need >= 0 && marginAfter(sw, n, LNO[0]) < 0) continue;
@@ -4089,8 +4091,8 @@ static int readiesLine(Dec d, int dieRef, int spare, int32_t *sw, int *n, int *r
   *n = 0;
   searchInTime(rq0, cur0[0], cur0[1], t0, 0, tLand, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can0, wt0, optLine() - paWork, sitReadies, &x, sw, n, 0);
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "READIES lines: %d ready on the masks, %d asked, %d asked blind, %s", x.masks, x.tried, x.blind, x.ok ? "ready:" : "none");
-    if (x.ok) { for (int k = 0; k < *n; k++) fprintf(stderr, " %d,%d", sw[2 * k], sw[2 * k + 1]); fprintf(stderr, " break %d,%d", x.r, x.c); } fprintf(stderr, "\n"); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "READIES lines: %d ready on the masks, %d asked, %d asked blind, %s", x.masks, x.tried, x.blind, x.ok ? "ready:" : "none");
+    if (x.ok) { for (int k = 0; k < *n; k++) fprintf(BLOG, " %d,%d", sw[2 * k], sw[2 * k + 1]); fprintf(BLOG, " break %d,%d", x.r, x.c); } fprintf(BLOG, "\n"); }
 #endif
   if (!x.ok) return 0;
   *r = x.r; *c = x.c;
@@ -4107,7 +4109,7 @@ static Dec readyWhenLands(Dec d) {
     Cand *pc = poolSwap(d.sr, d.sc);
     int rdy = (pc && pc->res.broke) || endsInBreak(d) || readyInTime(sw, 1, &r, &c);
 #ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RWL %d,%d via %d ready %d at %d,%d\n", d.sr, d.sc, d.via, rdy, rdy ? r : 0, rdy ? c : 0); }
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "RWL %d,%d via %d ready %d at %d,%d\n", d.sr, d.sc, d.via, rdy, rdy ? r : 0, rdy ? c : 0); }
 #endif
     if (rdy) return d;
   } else if (readyInTime(0, 0, &r, &c)) {
@@ -4138,7 +4140,7 @@ static Dec readyWhenLands(Dec d) {
     static ST RWB; uint32_t can[WMAX]; uint8_t wt[32][WMAX]; int32_t cur[2], tl;
     if (lineLandedFull(0, 0, RWB, can, wt, cur, &tl) != 0) return d;
 #ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RWL by distance: lands at %d\n", tl); }
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "RWL by distance: lands at %d\n", tl); }
 #endif
     int n0 = nLines;
     targetLines(RWB, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, tl);
@@ -4156,7 +4158,7 @@ static Dec readyWhenLands(Dec d) {
       if (readyInTime(l->sw, l->n - 1, &r, &c)) got = at;
     }
 #ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "RWL by distance: %d lines, %d tried, got %d\n", nLines - n0, tried, got); }
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "RWL by distance: %d lines, %d tried, got %d\n", nLines - n0, tried, got); }
 #endif
     if (got >= 0) {
       LineC l = LINES[got];
@@ -4220,7 +4222,7 @@ static Dec spendToBreak(Dec d) {
   int v = lineJudge(sw, 1, 0);
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
-    fprintf(stderr, "SPEND %d,%d v%d | drain %d/%d last %d conv %d/%d match %d/%d fell %d/%d\n", d.sr, d.sc, v, LNO[0], LNA[0], LNO[1], LNO[2], LNA[2], LNO[3], LNA[3], LNO[9], LNA[9]); }
+    fprintf(BLOG, "SPEND %d,%d v%d | drain %d/%d last %d conv %d/%d match %d/%d fell %d/%d\n", d.sr, d.sc, v, LNO[0], LNA[0], LNO[1], LNO[2], LNA[2], LNO[3], LNA[3], LNO[9], LNA[9]); }
 #endif
   // garbage let down is never held: it lowers the stack
   if (!(v & LV_LIVES) || !(v & LV_PAYS) || (v & (LV_BREAKS | LV_DROPS))) return d;
@@ -4366,7 +4368,7 @@ static Dec breakSoonIn(Dec d) {
   if (!aloneOnEngine()) return d;
   double aloneTime = LNA[0] ? LNA[0] : LINEREACH;
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SOON alone %g break %g via %d\n", aloneTime, breakTime(0, 0), d.via); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "SOON alone %g break %g via %d\n", aloneTime, breakTime(0, 0), d.via); }
 #endif
   if (breakTime(0, 0) < aloneTime) return d;   // holding, a break still comes in time
   if (d.kind == K_SWAP && d.hasMove) {
@@ -4444,7 +4446,7 @@ static Dec breakSoonIn(Dec d) {
   int pr = inTime.has ? inTime.sw[0] : 0, pc = inTime.has ? inTime.sw[1] : 0, mr = margin.has ? margin.sw[0] : 0, mc = margin.has ? margin.sw[1] : 0;
   double best = inTime.has ? -inTime.score : INF, bestMargin = margin.has ? margin.score : -INF;
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SOON! in-time %d,%d at %g | margin %d,%d %g\n", pr, pc, best, mr, mc, bestMargin); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "SOON! in-time %d,%d at %g | margin %d,%d %g\n", pr, pc, best, mr, mc, bestMargin); }
 #endif
   if (pr) { lineLast = 7; return mkSwap(pr, pc, V_SETUP, d.mode, d.alive); }
   if (mr && bestMargin > (breakTime(0, 0) < INF ? aloneTime - breakTime(0, 0) : -INF)) {
@@ -4476,7 +4478,7 @@ static Dec fillFirst(Dec d) {
   double t0 = NOWMS2();
   Dec r = fillFirstIn(d);
 #ifndef __wasm__
-  if (getenv("GC_FILLSTAT")) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "FILLSTAT %.2f ms | judges %d %.2f ms | margins %d %.2f ms | pool %d\n", NOWMS2() - t0, fillJudges - j0, fillJudgeMs - jm0, fillMargins, fillMarginMs, nPool); }
+  if (getenv("GC_FILLSTAT")) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "FILLSTAT %.2f ms | judges %d %.2f ms | margins %d %.2f ms | pool %d\n", NOWMS2() - t0, fillJudges - j0, fillJudgeMs - jm0, fillMargins, fillMarginMs, nPool); }
 #endif
   return r;
 }
@@ -4512,7 +4514,7 @@ static Dec fillFirstIn(Dec d) {
   if (lineLast) return d;
   if (d.kind == K_SWAP && endsInBreak(d)) return d;
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; aloneOnEngine(); fprintf(stderr, "FILL? alone hollow %d last %d via %d\n", HOLLOW(LNA), lineLast, d.via); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; aloneOnEngine(); fprintf(BLOG, "FILL? alone hollow %d last %d via %d\n", HOLLOW(LNA), lineLast, d.via); }
 #endif
   if (!aloneOnEngine() || HOLLOW(LNA) == 0) return d;
   int best = HOLLOW(LNA);
@@ -4527,7 +4529,7 @@ static Dec fillFirstIn(Dec d) {
     int32_t sw[2] = { d.sr, d.sc };
     if (lineJudge(sw, 1, 0) & LV_LIVES) { best = HOLLOW(LNO) < best ? HOLLOW(LNO) : best; if ((LNO[0] ? LNO[0] : 1 << 20) > refDie) refDie = LNO[0] ? LNO[0] : 1 << 20; double cs = fillScore(LNO[0], HOLLOW(LNO)); double m = marginAfter(sw, 1, LNO[0]); if (fillUrgent && m >= 0) cs += BREAKS_IN_TIME; if (cs > ref) ref = cs; if (m > need) need = m; }
 #ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  choice %d,%d die %d last %d hollow %d | alone die %d\n", d.sr, d.sc, LNO[0], LNO[1], HOLLOW(LNO), LNA[0]); }   // the log does no work of its own: under a work budget it would change the decision
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  choice %d,%d die %d last %d hollow %d | alone die %d\n", d.sr, d.sc, LNO[0], LNO[1], HOLLOW(LNO), LNA[0]); }   // the log does no work of its own: under a work budget it would change the decision
 #endif
   }
   if (need > 0) need = 0;   // in time is in time
@@ -4555,7 +4557,7 @@ static Dec fillFirstIn(Dec d) {
     int v = lineJudge(sw, 1, 0);
     int spend = (v & LV_PAYS) && !leavesSixRows();
 #ifndef __wasm__
-#define FILLWHY(why) do { if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  pool %d,%d v %d die %d last %d hollow %d spend %d -> %s\n", sw[0], sw[1], v, LNO[0], LNO[1], HOLLOW(LNO), spend, why); } } while (0)
+#define FILLWHY(why) do { if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  pool %d,%d v %d die %d last %d hollow %d spend %d -> %s\n", sw[0], sw[1], v, LNO[0], LNO[1], HOLLOW(LNO), spend, why); } } while (0)
 #else
 #define FILLWHY(why) do { } while (0)
 #endif
@@ -4581,7 +4583,7 @@ static Dec fillFirstIn(Dec d) {
   { int32_t st0[ST_INTS], cur[2], t; uint32_t can0[WMAX]; uint8_t waits0[32][WMAX];
     tGrid(lineState(0, 0, st0, can0, waits0, cur, &t) == 0 ? st0 : DBASE); }
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  grid H %d:", tH); for (int r = tH; r >= 1; r--) { fprintf(stderr, " "); for (int c = 1; c <= tW; c++) fprintf(stderr, "%c", tCell[r][c] == 0 ? '.' : tCell[r][c] < 0 ? 'g' : '0' + tCell[r][c]); } fprintf(stderr, "\n"); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  grid H %d:", tH); for (int r = tH; r >= 1; r--) { fprintf(BLOG, " "); for (int c = 1; c <= tW; c++) fprintf(BLOG, "%c", tCell[r][c] == 0 ? '.' : tCell[r][c] < 0 ? 'g' : '0' + tCell[r][c]); } fprintf(BLOG, "\n"); }
 #endif
   // every walk judged together first (natively in parallel), then taken in order
   { static LineC wl[2 * (WMAX + 1)]; LineC *wp[2 * (WMAX + 1)]; int nw = 0;
@@ -4616,7 +4618,7 @@ static Dec fillFirstIn(Dec d) {
       if (n == 0) continue;
       int v = lineJudge(fsw, n, 0);
 #ifndef __wasm__
-      if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  walk %d,%d dir %d n %d v %d hollow %d die %d last %d\n", r, c, dir, n, v, HOLLOW(LNO), LNO[0], LNO[1]); }
+      if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  walk %d,%d dir %d n %d v %d hollow %d die %d last %d\n", r, c, dir, n, v, HOLLOW(LNO), LNO[0], LNO[1]); }
 #endif
       int spend = (v & LV_PAYS) && !leavesSixRows();
       if (!(v & LV_LIVES) || (spend && !LIVES_LONGER())) continue;
@@ -4672,7 +4674,7 @@ static Dec fillFirstIn(Dec d) {
       if (ok && n >= 2) {
         int v = lineJudge(sw, n, 0);
 #ifndef __wasm__
-        if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "  tower %d,%d dir %d n %d v %d hollow %d best %d\n", a, a + 1, dir, n, v, HOLLOW(LNO), best); }
+        if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  tower %d,%d dir %d n %d v %d hollow %d best %d\n", a, a + 1, dir, n, v, HOLLOW(LNO), best); }
 #endif
         double beat = W.has && W.score > ref ? W.score : ref;
         // the judge plays the line through whatever lands while it is played
@@ -4685,7 +4687,7 @@ static Dec fillFirstIn(Dec d) {
     }
   }
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "FILL! best %.0f walk %d,%d pool %d,%d\n", W.has ? W.score : ref, first[0], first[1], pick ? pick->sr : 0, pick ? pick->sc : 0); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "FILL! best %.0f walk %d,%d pool %d,%d\n", W.has ? W.score : ref, first[0], first[1], pick ? pick->sr : 0, pick ? pick->sc : 0); }
 #endif
 #undef LIVES_LONGER
   if (first[0]) return mkSwap(first[0], first[1], V_FILL, d.mode, d.alive);
@@ -4826,7 +4828,7 @@ static Dec meanwhile(Dec d) {
     if (x.bn) { np = x.bn; for (int k = 0; k < 2 * np; k++) pre[k] = x.bsw[k]; }
     for (int k = 0; k < LNOLEN; k++) LNO[k] = keepO[k];
 #ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "MEANWHILE level: tried %d, line hollow %d twos %d -> %d steps hollow %d twos %d\n", x.tried, h0, tw0, np, x.hb, x.vb); }
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "MEANWHILE level: tried %d, line hollow %d twos %d -> %d steps hollow %d twos %d\n", x.tried, h0, tw0, np, x.hb, x.vb); }
 #endif
   }
   if (np) { mr = pre[0]; mc = pre[1]; }
@@ -4876,7 +4878,7 @@ static Dec meanwhile(Dec d) {
     if (two) { mr = two->sw[0]; mc = two->sw[1]; keep = 0; }
   }
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "MEANWHILE %d,%d last %d die %d | tried %d clear %d,%d cells %d keep %d\n", d.sr, d.sc, last0, die0, tried, mr, mc, most, keep); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "MEANWHILE %d,%d last %d die %d | tried %d clear %d,%d cells %d keep %d\n", d.sr, d.sc, last0, die0, tried, mr, mc, most, keep); }
 #endif
   if (!mr) return d;
   if (keep && np) { int32_t l2[2 * LINEMAX]; int nl = mwJoin(&x, pre + 2, np - 1, l2); if (nl) lineSet(l2, nl, kind, waitAll); else BT->nLine = 0; }
@@ -4900,7 +4902,7 @@ static Dec keepReady(Dec d) {
   int v = lineJudge(sw, 1, 0);
   if ((v & LV_LIVES) && aloneDiesBeforeLanding() && (!LNO[0] || LNO[0] > LNA[0])) return d;
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "KEEPREADY held %d,%d via %d\n", d.sr, d.sc, d.via); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "KEEPREADY held %d,%d via %d\n", d.sr, d.sc, d.via); }
 #endif
   BT->nLine = 0;
   return mkHold(V_SETUP, d.mode, d.alive, 0, 0, 0);
@@ -4992,7 +4994,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
       } else routeDie = !aloneOnEngine() ? 0 : LNA[0] ? LNA[0] : 1 << 20;
       keepIt = keptDie > routeDie;
 #ifndef __wasm__
-      if (botTraceOn && keepIt) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "KEPT %d,%d (dies %d) over the route's %s %d,%d (dies %d)\n", BT->line[0], BT->line[1], keptDie, routeN ? "line" : d.kind == K_SWAP ? "swap" : "hold", d.sr, d.sc, routeDie); }
+      if (botTraceOn && keepIt) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "KEPT %d,%d (dies %d) over the route's %s %d,%d (dies %d)\n", BT->line[0], BT->line[1], keptDie, routeN ? "line" : d.kind == K_SWAP ? "swap" : "hold", d.sr, d.sc, routeDie); }
 #endif
     }
     if (keepIt) d = dk;
@@ -5039,9 +5041,9 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc, v; int32_t lno[LNOLEN];
     int32_t sw1[2] = { d.sr, d.sc };
     if (playsLine ? jmFind(BT->line, BT->nLine, BT->lineWaitAll, &v, lno) : jmFind(sw1, 1, d.waitAll, &v, lno))
-      { fprintf(stderr, "PLAN at %d,%d press at clock %d last %d die %d | line", d.sr, d.sc, lno[16], lno[1], lno[0]);
-        for (int k = 0; k < BT->nLine; k++) fprintf(stderr, " %d,%d", BT->line[2 * k], BT->line[2 * k + 1]);
-        fprintf(stderr, " kind %d wait %d\n", BT->lineKind, BT->lineWaitAll); }
+      { fprintf(BLOG, "PLAN at %d,%d press at clock %d last %d die %d | line", d.sr, d.sc, lno[16], lno[1], lno[0]);
+        for (int k = 0; k < BT->nLine; k++) fprintf(BLOG, " %d,%d", BT->line[2 * k], BT->line[2 * k + 1]);
+        fprintf(BLOG, " kind %d wait %d\n", BT->lineKind, BT->lineWaitAll); }
   }
 #endif
   cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
@@ -5056,7 +5058,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     for (int i = 0; i < k && i < 8 && at < (int)sizeof lastStages; i++)
       at += snprintf(lastStages + at, sizeof lastStages - at, " %s %.1f/%d", nm[i], ts[i] - (i ? ts[i - 1] : t0), js[i] - (i ? js[i - 1] : 0));
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;   // every decision's work, by stage, in the bot log
-      fprintf(stderr, "WORKS"); for (int i = 0; i < k && i < 8; i++) fprintf(stderr, " %s %.0f", nm[i], ws[i] - (i ? ws[i - 1] : w0)); fprintf(stderr, " | total %.0f, declined %d\n", paWork - rdW0, budgetRefused); } }
+      fprintf(BLOG, "WORKS"); for (int i = 0; i < k && i < 8; i++) fprintf(BLOG, " %s %.0f", nm[i], ws[i] - (i ? ws[i - 1] : w0)); fprintf(BLOG, " | total %.0f, declined %d\n", paWork - rdW0, budgetRefused); } }
 #endif
   // the most the stages after breakFirst (and after lineup) have taken lately:
   // each decision's own, or the last most less a hundredth a decision -- one
@@ -5070,13 +5072,13 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
 #ifndef __wasm__
     extern int fprintf(void *, const char *, ...); extern void *stderr;
     static const char *STAGE[] = { "decideRuled", "playOn/waitForDrain/raiseHold", "breakFirst", "stayAlive", "keepBreak/lineupFirst", "batchBreak/spendToBreak", "breakSoon", "fillFirst" };
-    fprintf(stderr, "budget: the decision was cut in %s (%.2f ms)\n", STAGE[i], ts[i] - (i ? ts[i - 1] : t0));
+    fprintf(BLOG, "budget: the decision was cut in %s (%.2f ms)\n", STAGE[i], ts[i] - (i ? ts[i - 1] : t0));
 #endif
     botFailed = 1; break;
   }
 #ifndef __wasm__
   { extern char *getenv(const char *); extern int fprintf(void *, const char *, ...); extern void *stderr;
-    if (getenv("GC_WORKSTAT")) { fprintf(stderr, "STAGES%s pool %.3f", paBudgetOut() ? " OUT" : "", dcCandMs); fprintf(stderr, " SA %.3f %d MO %.3f", saMs, saN, moMs); saMs = moMs = 0; saN = 0; for (int i = 0; i < k; i++) fprintf(stderr, " %.0f/%.3f/%d/%.3f", ws[i] - (i ? ws[i - 1] : w0), ts[i] - (i ? ts[i - 1] : t0), js[i] - (i ? js[i - 1] : 0), jm[i] - (i ? jm[i - 1] : 0)); fprintf(stderr, "\n"); } }
+    if (getenv("GC_WORKSTAT")) { fprintf(BLOG, "STAGES%s pool %.3f", paBudgetOut() ? " OUT" : "", dcCandMs); fprintf(BLOG, " SA %.3f %d MO %.3f", saMs, saN, moMs); saMs = moMs = 0; saN = 0; for (int i = 0; i < k; i++) fprintf(BLOG, " %.0f/%.3f/%d/%.3f", ws[i] - (i ? ws[i - 1] : w0), ts[i] - (i ? ts[i - 1] : t0), js[i] - (i ? js[i - 1] : 0), jm[i] - (i ? jm[i - 1] : 0)); fprintf(BLOG, "\n"); } }
 #endif
   ENGINE_BASE = 0;
   if (d.kind == K_SWAP && d.hasMove) {

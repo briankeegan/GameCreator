@@ -496,7 +496,7 @@ static int driveWalk(Front *F, int input) {
   // the swap's panels settle at a known frame: a walk that arrives first waits
   // a pair still now is pressed now, unless a plan has already fixed its frame
 #ifndef __wasm__
-  { extern int botTraceOn; if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "WALK front %d clock %d at %d,%d (target %d,%d cursor %d,%d top %d) frames %d waitTo %d pkAt %d kept %d waitAll %d free %d can %d topped %d\n", F->id, FB->clock, row, col, F->wRow, F->wCol, FB->curRow, FB->curCol, FB->topCurRow, F->wFrames, F->wWaitTo, F->pkAt, F->wKept, F->wWaitAll, pairFree(&F->settle, F->wR0, col, F->wFrames), nb_can_swap(FB, FB->curRow, FB->curCol), toppedNow()); } }
+  { extern int botTraceOn; if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "WALK front %d clock %d at %d,%d (target %d,%d cursor %d,%d top %d) frames %d waitTo %d pkAt %d kept %d waitAll %d free %d can %d topped %d\n", F->id, FB->clock, row, col, F->wRow, F->wCol, FB->curRow, FB->curCol, FB->topCurRow, F->wFrames, F->wWaitTo, F->pkAt, F->wKept, F->wWaitAll, pairFree(&F->settle, F->wR0, col, F->wFrames), nb_can_swap(FB, FB->curRow, FB->curCol), toppedNow()); } }
 #endif
   if (F->wFrames < F->wWaitTo && (F->wWaitAll || F->wKept || !pairFree(&F->settle, F->wR0, col, F->wFrames))) {
     // a wait is not a plan: topped, or a reaction's worth of waiting, decide again
@@ -508,7 +508,7 @@ static int driveWalk(Front *F, int input) {
   F->walk = 0;
   if (ok) {
 #ifndef __wasm__
-    { extern int botTraceOn; if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "PRESS clock %d at %d,%d\n", FB->clock, FB->curRow, FB->curCol); } }
+    { extern int botTraceOn; if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "PRESS clock %d at %d,%d\n", FB->clock, FB->curRow, FB->curCol); } }
 #endif
     F->hasLast = 1; F->lastR = FB->curRow; F->lastC = FB->curCol; F->cooldown = F->wCooldown; F->pkAt = 0; F->presses++; return input; }
   // REFUSED, THE BOT DECIDES AGAIN. The swap was the one chosen; another
@@ -606,7 +606,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   int waitTo = n > 0 && LF ? pressWait(LF, steps[0], steps[1], paLibBoard()->clock, LWAITALL && n == 1 ? breakWait(&LF->settle, steps[0], steps[1]) : pairWait(&LF->settle, steps[0], steps[1]), LWAITALL && n == 1) : 0;
 #ifndef __wasm__
   if (botTraceOn && n == 1 && waitTo > 60 && LF) { extern int fprintf(void *, const char *, ...); extern void *stderr; int r = steps[0], c = steps[1];
-    fprintf(stderr, "  WAIT %d,%d to %d | first %d,%d last %d,%d\n", r, c, waitTo, LF->settle.first[r][c], LF->settle.first[r][c + 1], LF->settle.last[r][c], LF->settle.last[r][c + 1]); }
+    fprintf(BLOG, "  WAIT %d,%d to %d | first %d,%d last %d,%d\n", r, c, waitTo, LF->settle.first[r][c], LF->settle.first[r][c + 1], LF->settle.last[r][c], LF->settle.last[r][c + 1]); }
 #endif
   out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = out[13] = out[14] = 0; out[15] = out[16] = -1;   // out[16]: the clock the first step is pressed at
   int32_t landedFrom = b->garbageCreatedCount;   // out[15]: read once the next slab has landed
@@ -651,7 +651,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
 #ifndef __wasm__
           if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
             Panel *p1 = &b->p[row][col], *p2 = &b->p[row][col + 1], *a1 = &b->p[row + 1][col], *a2 = &b->p[row + 1][col + 1];
-            fprintf(stderr, "REFUSE step %d f %d at %d,%d cur %d,%d clock %d | p1 c%d s%d ds%d g%d p2 c%d s%d ds%d g%d above s%d s%d canNow(fresh) %d\n", step, f, row, col,
+            fprintf(BLOG, "REFUSE step %d f %d at %d,%d cur %d,%d clock %d | p1 c%d s%d ds%d g%d p2 c%d s%d ds%d g%d above s%d s%d canNow(fresh) %d\n", step, f, row, col,
                     b->curRow, b->curCol, b->clock, p1->f[COLOR], p1->f[STATE], p1->f[DONTSWAP], p1->f[ISGARBAGE], p2->f[COLOR], p2->f[STATE], p2->f[DONTSWAP], p2->f[ISGARBAGE],
                     a1->f[STATE], a2->f[STATE], nb_can_swap(paLibBoard(), row, col)); }
 #endif
@@ -1256,7 +1256,7 @@ EXPORT(front_frame) int front_frame(int fid, Board *b) {
   int bits = frontFrame(fid, b);
   double took = nowMs() - t0;
   lastTookMs = took;
-  if (getenv("GC_WORKSTAT") && paWork > w0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "WORK %d %.0f %.3f %.0f\n", b->clock, paWork - w0, took, paEngFrames - e0); }
+  if (getenv("GC_WORKSTAT") && paWork > w0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "WORK %d %.0f %.3f %.0f\n", b->clock, paWork - w0, took, paEngFrames - e0); }
   return bits;
 #else
   return frontFrame(fid, b);
