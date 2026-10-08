@@ -2986,6 +2986,89 @@ static void tDrops(int cr, int cc, double t0, double limit) {
       tPropose(sw, 1, cr, cc, t0, limit);
     }
 }
+// A THREE STACKED BY DROPS: garbage breaks from a column of three beside it,
+// and a column is filled from above as much as along a row -- a panel walked
+// over it falls into it. Each cell of the three, bottom first, is filled by
+// the panel of the colour, in its row or any row above, that gets there in
+// the fewest swaps; every walk is played on a copy of the grid with what
+// falls after it, and the line is proposed only if the grid it leaves holds
+// the three against the garbage. The engine judges it like any other line.
+#define TSTACKWORK 2.5   // a step walked on the grid copy (swap and fall), and a grid copied: at 0.5, 1,229 units per ms (seed 9, 6,000 frames) against the 6,027 a ms is worth
+#define TSTACKNEAR 3     // the nearest panels of the colour tried for each cell
+static void gSettle(int g[][WMAX + 2], int c) {
+  int to = 1;
+  for (int k = 1; k <= tH; k++) {
+    int v = g[k][c];
+    if (v == 0) continue;
+    if (v < 0) { to = k + 1; continue; }   // garbage and the inert hold; a panel (or the walker's mark) falls
+    if (to != k) { g[to][c] = v; g[k][c] = 0; }
+    to++;
+  }
+}
+// the panel at (*r, s) walked along its row to column t, falling wherever it
+// is not held up and going on from where it lands; 0 if garbage is in the way
+static int gWalk(int g[][WMAX + 2], int *r, int s, int t, int32_t *sw, int *n) {
+  int rr = *r;
+  while (s != t) {
+    int a = s < t ? s : s - 1, to = s < t ? s + 1 : s - 1;
+    if (g[rr][a] < 0 || g[rr][a + 1] < 0 || *n >= LINEMAX) return 0;
+    int x = g[rr][a]; g[rr][a] = g[rr][a + 1]; g[rr][a + 1] = x;
+    sw[2 * *n] = rr; sw[2 * *n + 1] = a; (*n)++;
+    paWork += TSTACKWORK;
+    int v = g[rr][to]; g[rr][to] = 100;   // the walker, marked through the fall
+    gSettle(g, a); gSettle(g, a + 1);
+    for (rr = 1; rr <= tH && g[rr][to] != 100; rr++) ;
+    g[rr][to] = v; s = to;
+  }
+  *r = rr;
+  return 1;
+}
+static void tStacks(int N, int cr, int cc, double t0, double limit) {
+  static JLOCAL int g[TGRID + 2][WMAX + 2], h[TGRID + 2][WMAX + 2], b[TGRID + 2][WMAX + 2];
+  int32_t sw[2 * LINEMAX], sb[2 * LINEMAX];
+  for (int a = 1; a <= N; a++)
+    for (int c = 1; c <= tW; c++)
+      for (int r = 1; r + 2 <= tH; r++) {
+        if (!tBeside(r, c) && !tBeside(r + 1, c) && !tBeside(r + 2, c)) continue;
+        if ((r > 1 && tCell[r - 1][c] == 0) || tCell[r][c] < 0 || tCell[r + 1][c] < 0 || tCell[r + 2][c] < 0) continue;
+        __builtin_memcpy(g, tCell, sizeof g);
+        int n = 0, ok = 1;
+        for (int i = 0; i < 3 && ok; i++) {
+          int rr = r + i;
+          if (g[rr][c] == a) continue;
+          int bn = -1;
+          // the panels of the colour in this row or above, nearest first (columns away, then rows up)
+          int cand[3 * TSTACKNEAR][2], nc = 0;
+          for (int d = 1; d <= tW + tH && nc < TSTACKNEAR; d++)
+            for (int rh = rr; rh <= tH && nc < TSTACKNEAR; rh++) {
+              int dc = d - (rh - rr);
+              if (dc < 1) continue;
+              for (int sgn = -1; sgn <= 1 && nc < TSTACKNEAR; sgn += 2) {
+                int sc = c + sgn * dc;
+                if (sc >= 1 && sc <= tW && g[rh][sc] == a) { cand[nc][0] = rh; cand[nc][1] = sc; nc++; }
+              }
+            }
+          for (int k = 0; k < nc; k++) {
+            __builtin_memcpy(h, g, sizeof h);
+            int m = n, pr = cand[k][0];
+            for (int q = 0; q < 2 * n; q++) sw[q] = sb[q];
+            paWork += TSTACKWORK;
+            if (!gWalk(h, &pr, cand[k][1], c, sw, &m) || pr != rr) continue;
+            int kept = 1;
+            for (int q = r; q < rr; q++) if (h[q][c] != a) kept = 0;
+            if (!kept || (bn >= 0 && m >= bn)) continue;
+            bn = m; __builtin_memcpy(b, h, sizeof b);
+            for (int q = 2 * n; q < 2 * m; q++) sb[q] = sw[q];
+          }
+          if (bn < 0) { ok = 0; break; }
+          n = bn; __builtin_memcpy(g, b, sizeof g);
+        }
+        if (!ok || n == 0) continue;
+        int hit = 0;
+        for (int q = r; q <= r + 2 && !hit; q++) hit = tGarbRun(g, tH, q, c, 1);
+        if (hit) tPropose(sb, n, cr, cc, t0, limit);
+      }
+}
 static void targetLines(const int32_t *st, int cr, int cc, double t0, double limit) {
   if (!tGrid(st)) return;
   int N = st[O_N];
@@ -3028,6 +3111,7 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
       }
     }
   }
+  tStacks(N, cr, cc, t0, limit);
 }
 // A PILE LET DOWN FIRST. Garbage perched on a column or two touches little; a
 // line that pulls its support -- however many swaps -- lets it down onto the
