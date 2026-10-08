@@ -1,7 +1,7 @@
 # BitBot survival on the server's own engine: every seed of a training mode
 # played at level 10 by games/the-game/ai/eval/train.sh (lua/train.lua), one
-# seed per runner, all at once. A seed that dies fails its job and cancels the
-# rest. The bot's budget is counted in work, not time, so a runner plays the
+# seed per runner, all at once. Every seed plays to the end unless
+# stop_on_death is set. The bot's budget is counted in work, not time, so a runner plays the
 # same game this sandbox does.
 name: AI survival scan
 
@@ -17,7 +17,7 @@ on:
       stop_on_death:
         description: cancel every seed once one dies
         type: boolean
-        default: true
+        default: false
 
 concurrency:
   group: ai-survival-scan-${{ github.ref }}
