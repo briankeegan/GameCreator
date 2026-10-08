@@ -23,7 +23,7 @@ enum { H_NONE, H_UP, H_DOWN, H_LEFT, H_RIGHT };   // BIN[IN_HELD]
 typedef struct { uint8_t last[32][W + 2], first[32][W + 2], same[32][W + 2], garb[32][W + 2]; } Settle;   // per cell (unsettled): the frame it settles from, the frame it first changes, whether it settles to what it holds now, and whether it settles to garbage
 typedef struct {
   int id, reaction, reveal, allowRaise;
-  int cooldown, raiseFrames, raiseStarted, wantRaise, wantRows, raiseLives;
+  int cooldown, raiseHeld, wantRaise, wantRows, raiseLives;   // raiseHeld: the raise key pressed this frame
   int walk, wRow, wCol, wTimer, wCooldown, wRetries, wDisp, wHasDisp;
   int park, pRow, pCol, pTimer, pTr, pTc, pDisp;
   int hasLast, lastR, lastC, held;
@@ -199,8 +199,22 @@ static int drainBound(void) {
   return k;
 }
 static int toppedNow(void) { return nb_topped(FB); }
+// the tallest column's top row on the board as it is (0: empty)
+static int fTallest(void) {
+  for (int r = FB->height; r >= 1; r--)
+    for (int c = 1; c <= W; c++) if (fp(r, c)[COLOR] != 0) return r;
+  return 0;
+}
+// bot.c raiseRoom on the board and the queue as they are this frame, for the
+// rows the decision's rule says the room must hold (raiseQueued's basis)
+static int raiseRoomNow(int basis) {
+  int rows = 0;
+  for (int i = 0; i < FB->ninc; i++) rows += FB->inc[i].height;
+  const Incoming *next = FB->ninc ? &FB->inc[FB->ninc - 1] : 0;
+  return raiseRoom(fTallest(), raiseQueued(basis, next ? next->width * next->height : 0, rows), FB->manualRaise || FB->preventManualRaise);
+}
 static int canRaise(Front *F) {
-  if (!F->allowRaise || F->raiseFrames > 0) return 0;
+  if (!F->allowRaise || F->raiseHeld) return 0;
   if (FB->preventManualRaise || FB->manualRaise) return 0;
   if (toppedNow() || nb_falling_garbage(FB) || FB->riseLock || nb_active(FB) || FB->shakeTime > 0) return 0;
   return 1;
@@ -364,7 +378,7 @@ static void fPrepare(Front *F) {
   int conv = F->reveal && nconv;
   int timed = (moving || open) && fTimed(TMST, &TM);
   d[IN_HASRISEN] = hasRisen;
-  F->raiseLives = F->allowRaise && !topped;   // topped, never (bot.c raiseSafe)
+  F->raiseLives = F->allowRaise && !topped;   // topped, never (bot.c raiseFits)
   d[IN_RAISING] = FB->manualRaise || FB->preventManualRaise;   // a row still coming up
   d[IN_INFLIGHT] = inFlight();
   d[IN_DRAINBOUND] = d[IN_TOPPED] ? drain : 0;
@@ -1212,7 +1226,7 @@ static int fDecide(Front *F, FDec *out) {
   out->hasPark = o[4] != 0; out->pr = (int)o[5]; out->pc = (int)o[6]; out->via = (int)o[7]; out->waitAll = o[98] != 0;
   F->wantRaise = o[12] != 0;
   F->wantRows = (int)o[13];
-  if (o[14]) F->raiseFrames = 0;
+  if (o[14]) F->wantRaise = 0;
   F->escapeWalk = o[15];
   F->lastKind = out->kind; F->lastVia = out->via;
   F->lastMoveR = out->hasMove ? out->mr : out->hasPark ? out->pr : 0; F->lastMoveC = out->hasMove ? out->mc : out->hasPark ? out->pc : 0;
@@ -1256,19 +1270,14 @@ static int frontFrame(int fid, Board *b) {
   F->lastKind = -1;
   if (b->gameOverClock > 0) return 0;
   int held = F->held, input = 0;
-  // ONE PRESS, ONE ROW (Stack.lua): a held raise key starts the next row as
-  // soon as one is done, so the key is held only until the raise the bot
-  // decided on has started moving, and a decision arms one press. Topped,
-  // never: a raise pressed topped is game over (checkDeath).
-  if (F->wantRaise && !F->raiseLives) { F->wantRaise = 0; F->raiseFrames = 0; }
-  if (F->wantRaise && F->raiseFrames == 0 && !b->preventManualRaise && !b->manualRaise && !nb_falling_garbage(b)) {
-    F->raiseFrames = 20; F->raiseStarted = 0; F->wantRaise = 0;
-  }
-  if (F->raiseFrames > 0) {
-    if (b->manualRaise && b->manualRaiseYet) F->raiseStarted = 1;
-    if (F->raiseStarted || b->preventManualRaise || nb_topped(b)) F->raiseFrames = 0;
-    else { F->raiseFrames--; input |= IN_RAISE; }
-  }
+  // RAISING WHILE IT CANNOT KILL (Stack.lua: a held raise key starts the
+  // next row as soon as one is done): a raise the bot wants is held every
+  // frame the board, as it is that frame, leaves room for it and for every
+  // queued garbage row (raiseRoom) and has no garbage in the air -- for as
+  // many frames and rows as that is; each decision says again whether it
+  // wants one. Topped, never: a raise pressed topped is game over (checkDeath).
+  F->raiseHeld = F->wantRaise && F->raiseLives && !nb_topped(b) && !nb_falling_garbage(b) && raiseRoomNow(F->wantRows) > 0;
+  if (F->raiseHeld) input |= IN_RAISE;
   if (F->walk) return fSend(F, driveWalk(F, input), held);
   if (F->park) input = parkStep(F, input);
   int sent = fSend(F, input, held);
@@ -1288,7 +1297,7 @@ static int frontFrame(int fid, Board *b) {
   if (fDecide(F, &d)) return -1;
   F->held = heldNow;
   if (d.kind == K_RAISE) {
-    F->raiseFrames = nb_topped(b) ? 0 : 20; F->raiseStarted = 0; F->wantRaise = 0; F->cooldown = F->reaction;
+    F->wantRaise = !nb_topped(b); F->cooldown = F->reaction;
     return sent;
   }
   if (d.kind == K_HOLD || !d.hasMove) {
