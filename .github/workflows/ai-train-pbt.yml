@@ -81,6 +81,9 @@ on:
       bot:
         description: 'survivor = both sides of every duel are WasmSurvivor (survivor_bot.js): its profile switches, the genome as its weights. Blank = PuyoCpu with the switches above'
         default: ''
+      think:
+        description: 'bot survivor: how much faster the game thinks than a duel side (survivor_bot.js THINK). Blank = 1'
+        default: ''
 
 
 # One run per experiment, and never two of the same. cancel-in-progress stays
@@ -161,6 +164,7 @@ jobs:
           GC_RAISE: ${{ github.event.inputs.raise || 'true' }}
           GC_ENGINE: ${{ github.event.inputs.engine || '1' }}
           GC_BOT: ${{ github.event.inputs.bot || '' }}
+          GC_SURVIVOR_THINK: ${{ github.event.inputs.think || '' }}
           GC_RISE: ${{ github.event.inputs.rise || '1' }}
           GC_DENSITY: ${{ github.event.inputs.density || '' }}
           GC_PBT_ISLANDS: ${{ github.event.inputs.islands || '4' }}
@@ -235,7 +239,7 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $GH_TOKEN" \
             "https://api.github.com/repos/${{ github.repository }}/actions/workflows/ai-train-pbt.yml/dispatches" \
-            -d '{"ref":"main","inputs":{"variant":"${{ github.event.inputs.variant }}","level":"${{ github.event.inputs.level }}","exclude":"${{ github.event.inputs.exclude }}","include":"${{ github.event.inputs.include }}","islands":"${{ github.event.inputs.islands }}","population":"${{ github.event.inputs.population }}","leg":"${{ github.event.inputs.leg }}","modes":"${{ github.event.inputs.modes }}","faceoff":"${{ github.event.inputs.faceoff }}","migrate":"${{ github.event.inputs.migrate }}","ga_seed":"${{ github.event.inputs.ga_seed }}","depth":"${{ github.event.inputs.depth }}","beam":"${{ github.event.inputs.beam }}","raise":"${{ github.event.inputs.raise }}","engine":"${{ github.event.inputs.engine }}","rise":"${{ github.event.inputs.rise }}","density":"${{ github.event.inputs.density }}","minutes":"${{ github.event.inputs.minutes }}","bot":"${{ github.event.inputs.bot }}","chain":"true"}}')
+            -d '{"ref":"main","inputs":{"variant":"${{ github.event.inputs.variant }}","level":"${{ github.event.inputs.level }}","exclude":"${{ github.event.inputs.exclude }}","include":"${{ github.event.inputs.include }}","islands":"${{ github.event.inputs.islands }}","population":"${{ github.event.inputs.population }}","leg":"${{ github.event.inputs.leg }}","modes":"${{ github.event.inputs.modes }}","faceoff":"${{ github.event.inputs.faceoff }}","migrate":"${{ github.event.inputs.migrate }}","ga_seed":"${{ github.event.inputs.ga_seed }}","depth":"${{ github.event.inputs.depth }}","beam":"${{ github.event.inputs.beam }}","raise":"${{ github.event.inputs.raise }}","engine":"${{ github.event.inputs.engine }}","rise":"${{ github.event.inputs.rise }}","density":"${{ github.event.inputs.density }}","minutes":"${{ github.event.inputs.minutes }}","bot":"${{ github.event.inputs.bot }}","think":"${{ github.event.inputs.think }}","chain":"true"}}')
           if [ "$code" != "204" ]; then
             echo "the continuation was REFUSED (HTTP $code) — this chain ends here:"
             cat /tmp/dispatch.out
