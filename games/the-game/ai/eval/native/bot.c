@@ -2355,19 +2355,31 @@ static void disturbed(const int32_t *a, const int32_t *b, uint32_t *out) {
 // is pressed by `left`, and none is pressed before `notBefore` (a break waits
 // for the garbage to rest). Nothing is cut by a count of swaps: the search
 // ends when `accept` takes a line, when nothing left can be pressed in time,
-// or when its work (`work`, paWork's units) is spent. LINEMAX and SITCAP are
-// only how much a line and the heap hold.
+// or when its work (`work`, paWork's units) is spent.
+// A STEP IS PLAYED WHEN IT IS TAKEN, never when it is offered: growing a line
+// offers each step with only the frame it is pressed on (which needs no
+// board), and a step's board is resolved when the heap gives it up -- so the
+// work goes to the lines asked, not to the many offered and never reached.
+// LINEMAX, SITCAP (lines played) and SITKIDS (steps offered) are only how
+// much a line and the heap hold.
 #define SITCAP 1024
-// WHAT THE SEARCH'S OWN BOOKKEEPING COSTS, as work: each line taken off the
-// heap (its board hashed and copied out) and each grown (its board copied in,
-// its disturbed cells and settle found). Calibrated on drill seed 4 so the
+#define SITKIDS 32768
+// WHAT THE SEARCH'S OWN BOOKKEEPING COSTS, as work: each step taken off the
+// heap (its board copied out, played, hashed) and each line kept (its board
+// copied in, its disturbed cells and settle found). Calibrated on drill seed 4 so the
 // search's milliseconds per work match the rest of the decision's (GC_WORKSTAT
 // CAL): uncounted, it ran 0.178 ms/kwork against the rest's 0.146; at 1 and
-// 1, 0.121-0.136 against 0.138.
+// 1, 0.121-0.136 against 0.138. Each step offered (its press frame found and
+// heaped) is SITOFFERWORK: on combo_storm seed 9 uncounted, breakFirst ran
+// 0.202 ms/kwork and the whole decision 0.147, against 0.146 and 0.128 before
+// steps were played when taken; at 0.1, 0.144 and 0.125.
 #define SITPOPWORK 1
+#define SITOFFERWORK 0.1
 #define SITNODEWORK 1
 #define SITHASH 2048
 typedef struct { int parent, n, r, c, stopped; double t, settled, left; uint32_t dist[WMAX]; int32_t rh[R_INTS]; } SitNode;   // stopped: a step before cleared, so the board is stopped; rh: the step's resolve record
+typedef struct { int parent, r, c; double t; } SitKid;   // a step offered: the line it grows (a SitNode) and when it is pressed
+typedef struct { double t; int k; } SitHeap;   // the heap holds each step's press frame beside it, so it sorts without reading the steps
 // THE BOUND, LOWERED AS IT GOES: an accept that only wants something sooner
 // than what it has (the soonest break) lowers it, and the search prunes to it
 static JLOCAL double sitLeft;
@@ -2376,10 +2388,10 @@ static JLOCAL double sitLeft;
 // (is this board ready?), so each level of nesting has its own memory, the
 // current level's set in place on entry and the caller's put back on exit
 #define SITLEVELS 4
-typedef struct { ST *st; SitNode *nd; int *hp; u64 *hk; int32_t *t, *r, *l; double left; } SitMem;
+typedef struct { ST *st; SitNode *nd; SitKid *kd; SitHeap *hp; u64 *hk; int32_t *t, *r, *l; double left; } SitMem;
 static JLOCAL SitMem SITM[SITLEVELS];
 static JLOCAL int sitLevel;
-static JLOCAL ST *SITST; static JLOCAL SitNode *SITND; static JLOCAL int *SITHP; static JLOCAL u64 *SITHK;
+static JLOCAL ST *SITST; static JLOCAL SitNode *SITND; static JLOCAL SitKid *SITKD; static JLOCAL SitHeap *SITHP; static JLOCAL u64 *SITHK;
 static JLOCAL int32_t *SITT, *SITR, *SITL;
 
 static int sitLine(int i, int32_t *sw) {
@@ -2387,18 +2399,19 @@ static int sitLine(int i, int32_t *sw) {
   for (int j = i; SITND[j].n > 0; j = SITND[j].parent) { sw[2 * (SITND[j].n - 1)] = SITND[j].r; sw[2 * (SITND[j].n - 1) + 1] = SITND[j].c; }
   return n;
 }
-static void sitPush(int *nh, int i) {   // the heap: the soonest press on top
+static void sitPush(int *nh, int i) {   // the heap of steps offered: the soonest press on top
   int k = (*nh)++;
-  while (k > 0) { int p = (k - 1) / 2; if (SITND[SITHP[p]].t <= SITND[i].t) break; SITHP[k] = SITHP[p]; k = p; }
-  SITHP[k] = i;
+  double t = SITKD[i].t;
+  while (k > 0) { int p = (k - 1) / 2; if (SITHP[p].t <= t) break; SITHP[k] = SITHP[p]; k = p; }
+  SITHP[k].t = t; SITHP[k].k = i;
 }
 static int sitPop(int *nh) {
-  int top = SITHP[0], last = SITHP[--(*nh)], k = 0;
+  int top = SITHP[0].k; SitHeap last = SITHP[--(*nh)]; int k = 0;
   for (;;) {
     int a = 2 * k + 1, b = a + 1, m = k;
-    double tm = SITND[last].t;
-    if (a < *nh && SITND[SITHP[a]].t < tm) { m = a; tm = SITND[SITHP[a]].t; }
-    if (b < *nh && SITND[SITHP[b]].t < tm) m = b;
+    double tm = last.t;
+    if (a < *nh && SITHP[a].t < tm) { m = a; tm = SITHP[a].t; }
+    if (b < *nh && SITHP[b].t < tm) m = b;
     if (m == k) break;
     SITHP[k] = SITHP[m]; k = m;
   }
@@ -2432,9 +2445,9 @@ static double workLeft(void) {
 static SitMem *sitMem(int level) {
   SitMem *m = &SITM[level];
   if (!m->st) {
-    m->st = grab(sizeof(ST) * SITCAP); m->nd = grab(sizeof(SitNode) * SITCAP); m->hp = grab(sizeof(int) * SITCAP); m->hk = grab(sizeof(u64) * SITHASH);
+    m->st = grab(sizeof(ST) * SITCAP); m->nd = grab(sizeof(SitNode) * SITCAP); m->kd = grab(sizeof(SitKid) * SITKIDS); m->hp = grab(sizeof(SitHeap) * SITKIDS); m->hk = grab(sizeof(u64) * SITHASH);
     m->t = grab(sizeof(ST)); m->r = grab(sizeof(int32_t) * (R_INTS + ST_INTS)); m->l = grab(sizeof(int32_t) * 2 * 128);
-    if (!m->st || !m->nd || !m->hp || !m->hk || !m->t || !m->r || !m->l) { m->st = 0; return 0; }
+    if (!m->st || !m->nd || !m->kd || !m->hp || !m->hk || !m->t || !m->r || !m->l) { m->st = 0; return 0; }
   }
   return m;
 }
@@ -2445,7 +2458,7 @@ static void sitWarm(void) {
     SitMem *m = sitMem(level);
     if (!m) return;
     __builtin_memset(m->st, 0, sizeof(ST) * SITCAP); __builtin_memset(m->nd, 0, sizeof(SitNode) * SITCAP);
-    __builtin_memset(m->hp, 0, sizeof(int) * SITCAP); __builtin_memset(m->hk, 0, sizeof(u64) * SITHASH);
+    __builtin_memset(m->kd, 0, sizeof(SitKid) * SITKIDS); __builtin_memset(m->hp, 0, sizeof(SitHeap) * SITKIDS); __builtin_memset(m->hk, 0, sizeof(u64) * SITHASH);
   }
 }
 static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double notBefore, double left, int frozen,
@@ -2465,16 +2478,42 @@ static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double no
   SitMem *m = sitMem(sitLevel);
   if (!m) return 0;
   // the caller's level, kept to be put back
-  ST *pst = SITST; SitNode *pnd = SITND; int *php = SITHP; u64 *phk = SITHK; int32_t *pt = SITT, *pr = SITR, *pl = SITL; double pleft = sitLeft;
-  SITST = m->st; SITND = m->nd; SITHP = m->hp; SITHK = m->hk; SITT = m->t; SITR = m->r; SITL = m->l;
+  ST *pst = SITST; SitNode *pnd = SITND; SitKid *pkd = SITKD; SitHeap *php = SITHP; u64 *phk = SITHK; int32_t *pt = SITT, *pr = SITR, *pl = SITL; double pleft = sitLeft;
+  SITST = m->st; SITND = m->nd; SITKD = m->kd; SITHP = m->hp; SITHK = m->hk; SITT = m->t; SITR = m->r; SITL = m->l;
   sitLevel++;
   int got = sitRun(st0, cr, cc, t0, notBefore, left, frozen, can0, wait0, work, accept, ctx, sw, nOut, atOut);
   sitLevel--;
 #ifndef __wasm__
   if (calTop && !inWorker) { calMs += NOWMS2() - cal0; calW += paWork - calw0; if (++calN % 20000 == 0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "CAL sit %.3f ms/kwork over %.0f kwork\n", calMs / (calW / 1000), calW / 1000); } }
 #endif
-  SITST = pst; SITND = pnd; SITHP = php; SITHK = phk; SITT = pt; SITR = pr; SITL = pl; sitLeft = pleft;
+  SITST = pst; SITND = pnd; SITKD = pkd; SITHP = php; SITHK = phk; SITT = pt; SITR = pr; SITL = pl; sitLeft = pleft;
   return got;
+}
+// a kept line's steps offered: each legal pair, pressed when the clock says
+// (from the line's last press and cursor; a pair the line disturbed once it is
+// still), kept only if pressed in time
+static void sitOffer(int i, int *nk, int *nh, double notBefore, int frozen, const uint32_t *can0, uint8_t (*wait0)[WMAX]) {
+  extern PATLS double paWork;
+  SitNode *nd = &SITND[i];
+  int root = nd->n == 0;
+  double start = root ? nd->t : nd->t + stepGap(frozen || nd->stopped);   // a clear's stop time: no reaction to wait out
+  double bound = nd->left < sitLeft ? nd->left : sitLeft;
+  int m = legal(SITST[i], SITL);
+  for (int q = 0; q < m && *nk < SITKIDS; q++) {
+    int r = SITL[2 * q], c = SITL[2 * q + 1];
+    if (r > 31) continue;
+    uint32_t bit = 1u << (r - 1);
+    if (root && can0 && !(can0[c] & bit)) continue;
+    double ready = notBefore;
+    if (root && wait0 && nd->t + wait0[r][c] > ready) ready = nd->t + wait0[r][c];
+    if (!root && ((nd->dist[c] | nd->dist[c + 1]) & bit) && nd->settled > ready) ready = nd->settled;
+    double at = stepPress(start, nd->r, nd->c, r, c, ready);
+    if (at > bound) continue;
+    int k = (*nk)++;
+    paWork += SITOFFERWORK;
+    SITKD[k].parent = i; SITKD[k].r = r; SITKD[k].c = c; SITKD[k].t = at;
+    sitPush(nh, k);
+  }
 }
 static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefore, double left, int frozen,
                   const uint32_t *can0, uint8_t (*wait0)[WMAX], double work, SitAccept accept, void *ctx,
@@ -2486,60 +2525,49 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
   SITND[0].parent = -1; SITND[0].n = 0; SITND[0].r = cr; SITND[0].c = cc; SITND[0].t = t0; SITND[0].settled = 0; SITND[0].left = left; SITND[0].stopped = 0;
   sitLeft = left;
   for (int c = 0; c < WMAX; c++) SITND[0].dist[c] = 0;
-  int nn = 1, nh = 0;
-  sitPush(&nh, 0);
+  sitSeen(hashOf(SITST[0]));
+  int nn = 1, nk = 0, nh = 0;
+  sitOffer(0, &nk, &nh, notBefore, frozen, can0, wait0);
   int32_t line[2 * LINEMAX];
   while (nh > 0 && paWork - w0 < work) {
-    int i = sitPop(&nh);
+    SitKid kd = SITKD[sitPop(&nh)];
     paWork += SITPOPWORK;
-    SitNode nd = SITND[i];
-    int root = nd.n == 0;
-    // the soonest line not yet asked: the first to reach its board, asked now
-    if (sitSeen(hashOf(SITST[i]))) continue;
-    if (!root) {
-      if (nd.t > sitLeft) continue;   // past a bound lowered since it was grown
-      sitLine(i, line);
-      for (int k = 0; k < R_INTS; k++) SITR[k] = nd.rh[k];
-      stcpy(SITR + R_INTS, SITST[i]);
-      int say = accept(SITR, line, nd.n, nd.t, ctx);
-      if (say == SIT_TAKE) {
-        if (sw) for (int k = 0; k < 2 * nd.n; k++) sw[k] = line[k];
-        if (nOut) *nOut = nd.n;
-        if (atOut) *atOut = nd.t;
-        return 1;
-      }
-      // a break ends a line (what it converts is unseen); the storage ends it too
-      if (say == SIT_END || nd.rh[R_SCOPE] == SC_BROKE || nd.n >= LINEMAX) continue;
-    }
-    double start = root ? nd.t : nd.t + stepGap(frozen || nd.stopped);   // a clear's stop time: no reaction to wait out
-    int m = legal(SITST[i], SITL);
-    for (int q = 0; q < m && paWork - w0 < work && nn < SITCAP; q++) {
-      int r = SITL[2 * q], c = SITL[2 * q + 1];
-      if (r > 31) continue;
-      uint32_t bit = 1u << (r - 1);
-      if (root && can0 && !(can0[c] & bit)) continue;
-      double ready = notBefore;
-      if (root && wait0 && t0 + wait0[r][c] > ready) ready = t0 + wait0[r][c];
-      if (!root && ((nd.dist[c] | nd.dist[c + 1]) & bit) && nd.settled > ready) ready = nd.settled;
-      double at = stepPress(start, nd.r, nd.c, r, c, ready);
-      if (at > (nd.left < sitLeft ? nd.left : sitLeft)) continue;
-      stcpy(SITT, SITST[i]);
-      if (!swapIn(SITT, r, c)) continue;
-      resolve(SITT, SITR, 1);
-      int scope = SITR[R_SCOPE];
-      if (scope != SC_OK && scope != SC_BROKE) continue;
-      int j = nn++;
+    if (kd.t > sitLeft) continue;   // past a bound lowered since it was offered
+    SitNode *pa = &SITND[kd.parent];
+    // the step played on its line's board
+    stcpy(SITT, SITST[kd.parent]);
+    if (!swapIn(SITT, kd.r, kd.c)) continue;
+    resolve(SITT, SITR, 1);
+    int scope = SITR[R_SCOPE];
+    if (scope != SC_OK && scope != SC_BROKE) continue;
+    // the soonest line to reach its board is the one asked; a later one is no more
+    if (sitSeen(hashOf(SITR + R_INTS))) continue;
+    int n = pa->n + 1;
+    sitLine(kd.parent, line);
+    line[2 * (n - 1)] = kd.r; line[2 * (n - 1) + 1] = kd.c;
+    // kept before it is asked (the ask may use the resolve's buffer): a break
+    // ends a line (what it converts is unseen), and the storage ends it too
+    int j = scope != SC_BROKE && n < LINEMAX && nn < SITCAP ? nn++ : -1;
+    if (j >= 0) {
       paWork += SITNODEWORK;
       stcpy(SITST[j], SITR + R_INTS);
       for (int k = 0; k < R_INTS; k++) SITND[j].rh[k] = SITR[k];
-      SITND[j].parent = i; SITND[j].n = nd.n + 1; SITND[j].r = r; SITND[j].c = c; SITND[j].t = at;
-      SITND[j].stopped = nd.stopped || SITR[R_TOTAL] > 0;
-      SITND[j].settled = at + (SITR[R_TOTAL] > 0 ? SITR[R_FRAMES] : quietSettle(SITST[i], r, c, SITR + R_INTS));
+      SITND[j].parent = kd.parent; SITND[j].n = n; SITND[j].r = kd.r; SITND[j].c = kd.c; SITND[j].t = kd.t;
+      SITND[j].stopped = pa->stopped || SITR[R_TOTAL] > 0;
+      SITND[j].settled = kd.t + (SITR[R_TOTAL] > 0 ? SITR[R_FRAMES] : quietSettle(SITST[kd.parent], kd.r, kd.c, SITR + R_INTS));
       // topped, a clear holds the board while it settles: the time there is runs on with it
-      SITND[j].left = frozen && SITND[j].settled - 2 > nd.left ? SITND[j].settled - 2 : nd.left;
-      disturbed(SITST[i], SITR + R_INTS, SITND[j].dist);
-      sitPush(&nh, j);
+      SITND[j].left = frozen && SITND[j].settled - 2 > pa->left ? SITND[j].settled - 2 : pa->left;
+      disturbed(SITST[kd.parent], SITR + R_INTS, SITND[j].dist);
     }
+    int say = accept(SITR, line, n, kd.t, ctx);
+    if (say == SIT_TAKE) {
+      if (sw) for (int k = 0; k < 2 * n; k++) sw[k] = line[k];
+      if (nOut) *nOut = n;
+      if (atOut) *atOut = kd.t;
+      return 1;
+    }
+    if (say == SIT_END || j < 0) continue;
+    sitOffer(j, &nk, &nh, notBefore, frozen, 0, 0);
   }
   return 0;
 }
