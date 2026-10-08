@@ -145,5 +145,7 @@ module.exports = function think(cfg) {
     return out;
     }
   function reset() { if (bot && bot._nat) nat = bot._nat; if (bot && bot._candNat) candNat = bot._candNat; bot = null; snap = null; }
-  return { answer: answer, reset: reset };
+  // New weights take effect from the next match (reset).
+  function setWeights(w) { OPTS.weights = w; }
+  return { answer: answer, reset: reset, setWeights: setWeights };
 };
