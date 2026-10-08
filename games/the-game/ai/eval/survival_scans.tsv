@@ -11,3 +11,4 @@ run	commit	alive	died
 37822852566	ac60bade99	8	1,2,3,4,5,6,10,11,12,15,17,18,21,22,23,24
 37823740056	ba7cc229a9	12	1,6,9,13,14,15,17,18,20,21,22,24
 37826408778	4dd8b15e8d	0	crashed out early: per-line readiness at READYWORK (16 dead by frame 2,700)
+37827804698	bab24be2a4	14	3,7,11,12,13,15,18,20,21,22
