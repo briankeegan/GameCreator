@@ -92,7 +92,8 @@ function prepare(bot, board, o) {
     bot._natSearch();   // the engine, on this bot's threads, before a second context is made on it
     var tb = Date.now();
     if (breakTime) br = SH.breakMoves(o.search(), board, { left: o.hold.left, started: o.hold.started }, o.arrivals, o.profile.breakDepth, o.profile.lineup && SH.popLeft(board) ? SH.popLeft(board) + LINEUP_AFTER : 0,
-                       o.due ? Math.min(Date.now() + Math.max(LINEUP_MIN_MS, o.ms * LINEUP_SHARE), o.due - o.margin) : Date.now() + LINEUP_MAX_MS);
+                       o.due ? Math.min(Date.now() + Math.max(LINEUP_MIN_MS, o.ms * LINEUP_SHARE), o.due - o.margin) : Date.now() + LINEUP_MAX_MS,
+                       o.stale ? function () { return o.stale() ? o.aborted : null; } : null);
     brMs = Date.now() - tb;
     if (o.stale && o.stale()) throw o.aborted;
     want = br && br.depth ? br.moves : {};
