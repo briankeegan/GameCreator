@@ -2188,7 +2188,7 @@ static double optLine(void) { double e = rdW0 + OPTWORK; return (stageEnd < e ? 
 // as each decision ends, a hundredth less each decision, so one heavy
 // decision does not shut a stage out for the game). stageOpen lowers where
 // optional work stops for the stage, stageClose puts it back.
-#define NSTAGES 8   // decideRuled, playOn/waitForDrain/raiseHold, breakFirst, stayAlive, lineup, spend, breakSoon, fill
+#define NSTAGES 9   // decideRuled, playOn/waitForDrain/raiseHold, breakFirst, stayAlive, lineup, spend, breakSoon, fillFirst, the steps after it
 static double LATER[NSTAGES];
 static double stageLeaves(int i) { return rdW0 + OPTWORK - LATER[i]; }
 static double stageOpen(int i) { double keep = stageEnd, e = stageLeaves(i); if (e < stageEnd) stageEnd = e; return keep; }
@@ -5056,7 +5056,12 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   SHARE(15); d = keepBreak(d); d = lineupFirst(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(5); d = batchBreak(d); d = spendToBreak(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(10); d = breakSoon(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(10); { Dec dF = fillFirst(d), dC = dropReady(readyWhenLands(keepReady(meanwhile(onePlan(dF))))), dS = noStall(dC);
+  // FILL LEAVES THE STEPS AFTER IT THEIR SHARE (stageOpen): the leveling,
+  // readiness and guards that follow it are measured as a stage of their own
+  Dec dF;
+  { double keep = stageOpen(7); SHARE(10); dF = fillFirst(d); stageClose(keep); }
+  cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  { Dec dC = dropReady(readyWhenLands(keepReady(meanwhile(onePlan(dF))))), dS = noStall(dC);
     // A STALL REFUSED FALLS BACK TO THE CHOICE IT WAS PUT BEFORE, not to
     // standing still: the fill (or what came before it), if that is no stall
     if (dS.kind == K_HOLD && dC.kind == K_SWAP && dF.kind == K_SWAP && !(dF.sr == dC.sr && dF.sc == dC.sc)) { Dec a = noStall(dF); if (a.kind == K_SWAP) dS = dF; }
@@ -5098,13 +5103,13 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // THE DECISION'S OWN ACCOUNT, kept for whoever finds it over the frame:
   // each stage's milliseconds and engine judges
   { extern int snprintf(char *, unsigned long, const char *, ...);
-    static const char *const nm[] = { "ruled", "drain", "breakFirst", "stayAlive", "lineup", "spend", "soon", "fill" };
+    static const char *const nm[] = { "ruled", "drain", "breakFirst", "stayAlive", "lineup", "spend", "soon", "fill", "after" };
     extern PATLS double paWork;
     int at = snprintf(lastStages, sizeof lastStages, "decision %d, work %.0f, judges declined %d:", btDecision, paWork - rdW0, budgetRefused);
-    for (int i = 0; i < k && i < 8 && at < (int)sizeof lastStages; i++)
+    for (int i = 0; i < k && i < NSTAGES && at < (int)sizeof lastStages; i++)
       at += snprintf(lastStages + at, sizeof lastStages - at, " %s %.1f/%d", nm[i], ts[i] - (i ? ts[i - 1] : t0), js[i] - (i ? js[i - 1] : 0));
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;   // every decision's work, by stage, in the bot log
-      fprintf(BLOG, "WORKS"); for (int i = 0; i < k && i < 8; i++) fprintf(BLOG, " %s %.0f", nm[i], ws[i] - (i ? ws[i - 1] : w0)); fprintf(BLOG, " | total %.0f, declined %d\n", paWork - rdW0, budgetRefused); } }
+      fprintf(BLOG, "WORKS"); for (int i = 0; i < k && i < NSTAGES; i++) fprintf(BLOG, " %s %.0f", nm[i], ws[i] - (i ? ws[i - 1] : w0)); fprintf(BLOG, " | total %.0f, declined %d\n", paWork - rdW0, budgetRefused); } }
 #endif
   // the most the stages after breakFirst (and after lineup) have taken lately:
   // each decision's own, or the last most less a hundredth a decision -- one
@@ -5117,7 +5122,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   for (int i = 0; i < k; i++) if (cutAt[i]) {
 #ifndef __wasm__
     extern int fprintf(void *, const char *, ...); extern void *stderr;
-    static const char *STAGE[] = { "decideRuled", "playOn/waitForDrain/raiseHold", "breakFirst", "stayAlive", "keepBreak/lineupFirst", "batchBreak/spendToBreak", "breakSoon", "fillFirst" };
+    static const char *STAGE[] = { "decideRuled", "playOn/waitForDrain/raiseHold", "breakFirst", "stayAlive", "keepBreak/lineupFirst", "batchBreak/spendToBreak", "breakSoon", "fillFirst", "meanwhile/keepReady/readyWhenLands/dropReady/guards" };
     fprintf(BLOG, "budget: the decision was cut in %s (%.2f ms)\n", STAGE[i], ts[i] - (i ? ts[i - 1] : t0));
 #endif
     botFailed = 1; break;

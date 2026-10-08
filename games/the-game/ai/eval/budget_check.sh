@@ -24,7 +24,7 @@ done
 python3 - "$tmp" "$runs" "$budget" <<'PY'
 import sys
 d, runs, budget = sys.argv[1], int(sys.argv[2]), float(sys.argv[3])
-names = 'decideRuled play breakFirst stayAlive lineup batch breakSoon fill'.split()
+names = 'decideRuled play breakFirst stayAlive lineup batch breakSoon fill after'.split()
 def load(f):
     rows = []
     for l in open(f):
