@@ -53,7 +53,8 @@ var net = require('net'), path = require('path'), wt = require('worker_threads')
 // GC pauses on this thread: the longest, and how many passed 4 ms (match stats gcMs, slowGc).
 var GC = { max: 0, slow: 0 };
 // GC_SURVIVOR_TIMES=file: per frame, the clock, when its line was read (epoch s), the reply's and the frame's ms, the line's length, and the time
-// between frames (schedDelta's first two, ms, then switches preempted and blocking); written at the match's end.
+// between frames (schedDelta's first two, ms, then switches preempted and blocking, page faults minor and major, and the
+// machine's memory and io stalls, ms); written at the match's end.
 var TIMES = process.env.GC_SURVIVOR_TIMES ? [] : null, performance = require('perf_hooks').performance;
 var lastSched = null;   // schedstat() at the end of the last frame (TIMES)
 // Where this thread's time went (Linux): on a cpu, waiting for one (ns) and
@@ -154,9 +155,10 @@ var server = net.createServer(function (sock) {
         var fms = Number(process.hrtime.bigint() - t0) / 1e6;
         if (fms > match.stats.frameMs) match.stats.frameMs = Math.round(fms * 10) / 10;
         if (fms > 8) match.stats.slowFrames++;
-        // and, since the last frame's reply, this thread's time on a cpu and waiting for one (ms), and its switches preempted and blocking
-        if (TIMES) { var bw = lastSched && sched0 ? [(sched0[0] - lastSched[0]) / 1e6, (sched0[1] - lastSched[1]) / 1e6, sched0[6] - lastSched[6], sched0[5] - lastSched[5]] : [0, 0, 0, 0];
-          TIMES.push(match.now + ' ' + (tWall / 1000).toFixed(4) + ' ' + rms.toFixed(2) + ' ' + fms.toFixed(2) + ' ' + line.length + ' ' + bw[0].toFixed(1) + ' ' + bw[1].toFixed(1) + ' ' + bw[2] + ' ' + bw[3]);
+        // and, since the last frame's reply, this thread's time on a cpu and waiting for one (ms), its switches preempted and blocking,
+        // its minor and major page faults, and the machine's memory and io stalls (ms)
+        if (TIMES) { var bw = lastSched && sched0 ? [(sched0[0] - lastSched[0]) / 1e6, (sched0[1] - lastSched[1]) / 1e6, sched0[6] - lastSched[6], sched0[5] - lastSched[5], sched0[3] - lastSched[3], sched0[4] - lastSched[4], (sched0[8] - lastSched[8]) / 1e3, (sched0[9] - lastSched[9]) / 1e3] : [0, 0, 0, 0, 0, 0, 0, 0];
+          TIMES.push(match.now + ' ' + (tWall / 1000).toFixed(4) + ' ' + rms.toFixed(2) + ' ' + fms.toFixed(2) + ' ' + line.length + ' ' + bw[0].toFixed(1) + ' ' + bw[1].toFixed(1) + ' ' + bw[2] + ' ' + bw[3] + ' ' + bw[4] + ' ' + bw[5] + ' ' + bw[6].toFixed(1) + ' ' + bw[7].toFixed(1));
           lastSched = schedstat(); }
         if (fms > 14) {
           if (sched0) console.error('  ' + schedDelta(sched0, schedstat()));
