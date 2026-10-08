@@ -224,7 +224,8 @@ while true do
     end
     if bot.matchEnded or bot.myStack.clock >= FRAMES then
       if not bot.matchEnded then
-        -- the ceiling: both alive
+        -- the ceiling: both alive -- a draw, so the server ends the match as a tie
+        pcall(function() bot.gameplay:sendRequest(ClientProtocol.reportLocalGameResult(0)) end)
         local t0 = socket.gettime()
         while socket.gettime() < t0 + 1 do bot:pump(); socket.sleep(0.01) end
       end
