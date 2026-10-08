@@ -2058,7 +2058,9 @@ int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_
 // hollow under the garbage that lands than left alone (pa.c HOLLOW).
 
 typedef struct { int n, brk, ok, grown, waitAll, hollow, conv, die; int32_t sw[2 * LINEMAX]; double est, life; int verdict; } LineC;
-// A LINE'S LIFE: the frame it loses health, less what its hollow costs. A
+// A LINE'S LIFE, what survival RANKS by: the frame it loses health, less what
+// its hollow costs. (The floors -- surviveGuard, the kept line -- stay on the
+// frame itself: no choice may lose health sooner, whatever its shape.) A
 // hollow cell under what lands is stack spent on nothing -- BW of them are a
 // row, and a row is FPR frames of rise -- so a line that dies a few frames
 // later but leaves the next slab propped over a gap lives less.
@@ -3206,9 +3208,9 @@ static int fromChoice(const LineC *l) { return l->sw[0] == dR && l->sw[1] == dC;
 // WHAT STAYALIVE CHOSE TO LIVE: the decision, the frame it loses health
 // (1 << 20: not within reach) and its line -- no later stage may put a choice
 // that loses health sooner in its place (surviveGuard, at the decision's end)
-static Dec saDec; static int saDie, saSet, saN, saKind, saWait; static double saLife; static int32_t saLine[2 * LINEMAX];
-static Dec saKeep(Dec d, int die, double life) {
-  saSet = 1; saDec = d; saDie = die; saLife = life; saN = BT->nLine; saKind = BT->lineKind; saWait = BT->lineWaitAll;
+static Dec saDec; static int saDie, saSet, saN, saKind, saWait; static int32_t saLine[2 * LINEMAX];
+static Dec saKeep(Dec d, int die) {
+  saSet = 1; saDec = d; saDie = die; saN = BT->nLine; saKind = BT->lineKind; saWait = BT->lineWaitAll;
   for (int k = 0; k < 2 * saN; k++) saLine[k] = BT->line[k];
   return d;
 }
@@ -3220,18 +3222,18 @@ static Dec stayAlive(Dec d) {
   // line played on is kept only if no line lives longer (below)
   if (lineLast == 3) return d;
   // a line played on is what the guard holds the decision to (surviveGuard)
-  if (lineLast == 1 && BT->lineKind == LINE_BREAK) return saKeep(d, playDie, playLife);
+  if (lineLast == 1 && BT->lineKind == LINE_BREAK) return saKeep(d, playDie);
   // the engine, not the estimate, says whether the board is dying: health
   // lost within LIVEHORIZON frames, left alone
   linesReset();
-  if (!aloneOnEngine() || !LNA[0] || LNA[0] > LIVEHORIZON) return lineLast == 1 ? saKeep(d, playDie, playLife) : d;
+  if (!aloneOnEngine() || !LNA[0] || LNA[0] > LIVEHORIZON) return lineLast == 1 ? saKeep(d, playDie) : d;
   linesFind(2, 0);
   // NEVER DYING FIRST: the choice is kept only if it lives as long as the line that lives longest
   blReady = 1; blAlone = LNA[0];
   LineC *l = bestLiving(notLastSwap);
   blReady = 0;
   if (lineLast == 1) {
-    if (!l || l->life <= playLife) return saKeep(d, playDie, playLife);
+    if (!l || l->life <= playLife) return saKeep(d, playDie);
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "SA leaves the line played (dies %d) for", playDie); for (int k = 0; k < l->n; k++) fprintf(stderr, " %d,%d", l->sw[2 * k], l->sw[2 * k + 1]); fprintf(stderr, " (dies %d)\n", l->die); }
 #endif
@@ -3239,7 +3241,7 @@ static Dec stayAlive(Dec d) {
   if (d.kind == K_SWAP) {
     dR = d.sr; dC = d.sc;
     LineC *mine = bestLineAvoid(LV_LIVES | LV_GAINS, 0, fromChoice);
-    if (mine && (!l || mine->life >= l->life)) { if (mine->n > 1) lineKeep(mine, LINE_CASH); return saKeep(d, mine->die, mine->life); }
+    if (mine && (!l || mine->life >= l->life)) { if (mine->n > 1) lineKeep(mine, LINE_CASH); return saKeep(d, mine->die); }
   }
   // A HOLD IS NOT A LINE STARTED LATER: a line is judged pressed from now, and
   // every frame the board waits is a frame garbage drops on it -- the line that
@@ -3249,7 +3251,7 @@ static Dec stayAlive(Dec d) {
   BT->counts[C_KEPTHEALTH]++;
   plansDrop();
   if (l->n > 1) lineKeep(l, l->brk ? LINE_BREAK : LINE_CASH); else BT->nLine = 0;
-  return saKeep(lineSwap(l, V_KEEPHEALTH, d), l->die, l->life);
+  return saKeep(lineSwap(l, V_KEEPHEALTH, d), l->die);
 }
 // NO DIGGING UNDER A PILE: a clear that breaks nothing and leaves more hollow
 // under the garbage than the board left alone (HOLLOW: the gaps under it and
@@ -3328,7 +3330,7 @@ static Dec perchGuard(Dec d) {
   return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
 }
 // IT NEVER CHOOSES TO DIE: a decision that is not what stayAlive chose, and
-// lives less than it (lifeOf; the engine judges it: the line it plays, or the
+// loses health sooner than it (the engine judges it: the line it plays, or the
 // board left alone for a hold), gives way to stayAlive's choice and its line.
 // With no choice of stayAlive's (it acts only on a board dying left alone),
 // the reference is the hold: the board left alone, which no decision may lose
@@ -3340,21 +3342,20 @@ static Dec perchGuard(Dec d) {
 static Dec surviveGuard(Dec d) {
   if (!saSet) {
     if (d.kind != K_SWAP || !d.hasMove || !aloneOnEngine()) return d;
-    saDec = mkHold(V_KEEPHEALTH, d.mode, d.alive, 0, 0, 0); saDie = LNA[0] ? LNA[0] : 1 << 20; saLife = lifeOf(saDie, HOLLOW(LNA)); saN = 0; saKind = 0; saWait = 0;
+    saDec = mkHold(V_KEEPHEALTH, d.mode, d.alive, 0, 0, 0); saDie = LNA[0] ? LNA[0] : 1 << 20; saN = 0; saKind = 0; saWait = 0;
   }
   if (d.kind == saDec.kind && d.hasMove == saDec.hasMove && d.sr == saDec.sr && d.sc == saDec.sc) return d;
-  int die, ready = 0, r, c; double life;
+  int die, ready = 0, r, c;
   if (d.kind == K_SWAP && d.hasMove) {
     int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
     int32_t sw[2] = { d.sr, d.sc };
     int v = playsLine ? lineJudge(BT->line, BT->nLine, BT->lineWaitAll) : lineJudge(sw, 1, 0);
     die = !(v & LV_LIVES) ? 0 : LNO[0] ? LNO[0] : 1 << 20;
-    life = die ? lifeOf(die, HOLLOW(LNO)) : -1e18;
-    if (life < saLife && (v & LV_LIVES) && BIN[IN_INCOMING] > 0)
+    if (die < saDie && (v & LV_LIVES) && BIN[IN_INCOMING] > 0)
       ready = playsLine ? readyInTime(BT->line, BT->nLine, &r, &c) : readyInTime(sw, 1, &r, &c);
-  } else if (d.kind == K_HOLD) { die = aloneOnEngine() && LNA[0] ? LNA[0] : 1 << 20; life = lifeOf(die, aloneOnEngine() ? HOLLOW(LNA) : 0); }
+  } else if (d.kind == K_HOLD) die = aloneOnEngine() && LNA[0] ? LNA[0] : 1 << 20;
   else return d;   // a raise: raiseMode's own rules
-  if (life >= saLife) return d;
+  if (die >= saDie) return d;
   if (ready && !(saDec.kind == K_SWAP && saDec.hasMove ? (saN ? readyInTime(saLine, saN, &r, &c) : readyInTime((int32_t[2]){ saDec.sr, saDec.sc }, 1, &r, &c)) : readyInTime(0, 0, &r, &c))) return d;
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "GUARD via %d %d,%d dies %d before %d: %s %d,%d\n", d.via, d.sr, d.sc, die, saDie, saSet ? "stayAlive's" : "the hold", saDec.sr, saDec.sc); }
@@ -5117,7 +5118,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // through -- so it is judged while the budget is whole, once
   aloneOnEngine();
   DBASE = IN; notePresses();
-  // A LINE ONCE PLAYED IS NOT REPLACED BY A CHOICE THAT LIVES LESS (lifeOf): a route
+  // A LINE ONCE PLAYED IS NOT REPLACED BY A CHOICE THAT DIES SOONER: a route
   // may set a line of its own over the one kept from the last decision, or
   // clear it and choose a swap or a hold; the kept line is played on instead
   // while it lives longer than what the route chose
@@ -5131,14 +5132,13 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     Dec dk = playOn(d);
     int keepIt = 0;
     if (BT->nLine) {
-      int keptDie = playDie, routeDie; double routeLife;
+      int keptDie = playDie, routeDie;
       if (routeN || (d.kind == K_SWAP && d.hasMove)) {
         int32_t one[2] = { d.sr, d.sc };
         int v = routeN ? lineJudge(routeLine, routeN, routeWait) : lineJudge(one, 1, d.waitAll);
         routeDie = (v & LV_LIVES) && !LNO[0] ? 1 << 20 : LNO[0] ? LNO[0] : 0;
-        routeLife = routeDie ? lifeOf(routeDie, HOLLOW(LNO)) : -1e18;
-      } else { routeDie = !aloneOnEngine() ? 0 : LNA[0] ? LNA[0] : 1 << 20; routeLife = routeDie ? lifeOf(routeDie, HOLLOW(LNA)) : -1e18; }
-      keepIt = playLife > routeLife;
+      } else routeDie = !aloneOnEngine() ? 0 : LNA[0] ? LNA[0] : 1 << 20;
+      keepIt = keptDie > routeDie;
 #ifndef __wasm__
       if (botTraceOn && keepIt) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "KEPT %d,%d (dies %d) over the route's %s %d,%d (dies %d)\n", BT->line[0], BT->line[1], keptDie, routeN ? "line" : d.kind == K_SWAP ? "swap" : "hold", d.sr, d.sc, routeDie); }
 #endif
