@@ -1147,15 +1147,9 @@ static int raiseMode(const int32_t *base, int poolBreak) {
   int fits = raiseSafe(base);
   // A QUEUE THAT FILLS THE ROOM KILLS A BOARD WITH NO BREAK READY, raised or
   // not: only material builds the break, and the raise costs its row -- it
-  // fits while the next slab still lands under the top -- and the stop time,
-  // which a manual raise ends: lost for nothing once the stop left is no
-  // longer than the queue takes to top the risen board. Until then the raise
-  // waits on the stop (raiseAfter), as it waits on the rise lock.
-  double stopOver = 0;
-  if (!fits && BIN[IN_INCOMING] > 0 && !BIN[IN_TOPPED] && !BIN[IN_STACKTOPPED] && !slabReadyHook(base)) {
+  // fits while the next slab still lands under the top.
+  if (!fits && BIN[IN_INCOMING] > 0 && !BIN[IN_TOPPED] && !BIN[IN_STACKTOPPED] && !slabReadyHook(base))
     fits = BH - tallestBoard(base) - 1 - rows - (BIN[IN_RAISING] != 0) > 0;
-    stopOver = BIN[IN_STOP] - framesToDeathS(0, tallestBoard(base) + 1, BIN[IN_FPR]);
-  }
   BT->wantRows = rows;
   if (BT->opening && (BIN[IN_INCOMING] || !fits)) BT->opening = 0;
   if (!fits) return 0;
@@ -1171,7 +1165,10 @@ static int raiseMode(const int32_t *base, int poolBreak) {
   if (materialRows(base) >= 6) { BT->opening = 0; return 0; }
   int stillComing = BIN[IN_INCOMING] > 0 || BIN[IN_FALLING];
   if (poolBreak && !stillComing) return 0;
-  raiseAfter = stopOver > 0 ? stopOver : 0;
+  // A RAISE NEVER SPENDS STOP TIME: a manual raise ends the stop, and the
+  // stop is the one thing the board cannot buy back -- the raise waits on all
+  // of it (raiseAfter), as it waits on the rise lock
+  raiseAfter = BIN[IN_STOP] > 0 ? BIN[IN_STOP] : 0;
   return BT->opening ? 1 : 2;
 }
 static int modeOf(int haveEscape, double escape, double deadline) {
