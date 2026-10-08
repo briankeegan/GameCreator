@@ -48,7 +48,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: briankeegan/panel-game
-          ref: ${{ inputs.panel_ref }}
+          ref: ${{ inputs.panel_ref || 'bramp/multi-player' }}
           path: panel-game
           fetch-depth: 1
       - uses: actions/setup-node@v4
@@ -81,10 +81,11 @@ jobs:
         timeout-minutes: 345
         env:
           BOT: ${{ matrix.bot }}
-          HOST: ${{ inputs.ip }}
-          PORT: ${{ inputs.port }}
-          MINUTES: ${{ inputs.minutes }}
+          HOST: ${{ inputs.ip || '104.156.250.136' }}
+          PORT: ${{ inputs.port || '49569' }}
+          MINUTES: ${{ inputs.minutes || '330' }}
         run: |
+          # an input left empty on a dispatch comes through empty, not as its default
           export STATE="$GITHUB_WORKSPACE/state" PG="$GITHUB_WORKSPACE/panel-game"
           export DEADLINE=$(( $(date +%s) + MINUTES * 60 ))
           bash games/the-game/ai/eval/island2.sh
@@ -114,5 +115,5 @@ jobs:
           code=$(curl -sS -o /tmp/dispatch.out -w '%{http_code}' -X POST \
             -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_TOKEN" \
             "https://api.github.com/repos/${{ github.repository }}/actions/workflows/islands2.yml/dispatches" \
-            -d '{"ref":"main","inputs":{"minutes":"${{ inputs.minutes }}","ip":"${{ inputs.ip }}","port":"${{ inputs.port }}","panel_ref":"${{ inputs.panel_ref }}","chain":"true"}}')
+            -d '{"ref":"main","inputs":{"minutes":"${{ inputs.minutes || '330' }}","ip":"${{ inputs.ip || '104.156.250.136' }}","port":"${{ inputs.port || '49569' }}","panel_ref":"${{ inputs.panel_ref || 'bramp/multi-player' }}","chain":"true"}}')
           echo "dispatch: HTTP $code"; cat /tmp/dispatch.out; [ "$code" = 204 ]

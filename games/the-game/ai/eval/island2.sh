@@ -57,7 +57,13 @@ grep -q listening mind.log || { cat mind.log; echo "$NAME: WasmSurvivor did not 
 
 # the last match must be able to end before the job does
 STOP_AT=$(( DEADLINE - 600 ))
-cd "$PG" && ISLAND2_SH="$EVAL/island2.sh" BOT="$N" STATE="$STATE" PA_SURVIVOR_PORT=47777 \
+echo "::notice title=$NAME::starting on $HOST:$PORT, stops at $(date -u -d @$STOP_AT +%H:%M) UTC, first opponent isl2b$(bash "$EVAL/island2.sh" next)"
+OUT="$PWD/match.log"
+(cd "$PG" && ISLAND2_SH="$EVAL/island2.sh" BOT="$N" STATE="$STATE" PA_SURVIVOR_PORT=47777 \
   LUA_PATH="./?.lua;./common/lib/?.lua;/usr/local/share/lua/5.1/?.lua;;" \
   LUA_CPATH="./common/lib/?.so;./common/lib/?/?.so;/usr/local/lib/lua/5.1/?.so;;" \
-  timeout $(( DEADLINE - $(date +%s) )) luajit "$EVAL/lua/island2Bot.lua" "$HOST" "$PORT" "$N" "$STOP_AT" 2>&1 | tee -a "$OLDPWD/match.log"
+  timeout $(( DEADLINE - $(date +%s) )) luajit "$EVAL/lua/island2Bot.lua" "$HOST" "$PORT" "$N" "$STOP_AT") > "$OUT" 2>&1
+rc=$?
+# the run's annotations are where its story is read: how it ended, and the end of its log
+echo "::notice title=$NAME ended ($rc)::$(tail -n 25 "$OUT" | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')"
+grep -h "match over" mind.log | tail -n 3 | sed 's/^/mind: /'
