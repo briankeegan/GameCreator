@@ -505,6 +505,19 @@ static int slabReadyHook(const int32_t *st) {
   SLABW = (int)BIN[IN_SLABW]; SLABH = (int)BIN[IN_SLABH]; SLABC = (int)BIN[IN_SLABC];
   return slabReady(st);
 }
+#define READYWORK 2500   // the readiness search's share of a decision's work
+// THE BOARD'S OWN READINESS, asked once a decision: the same question as an
+// option's (slabReady), with the readiness search's share of the decision's
+// work (READYWORK) -- an option's small share finds no break of two swaps
+static int inTimeOfWork(const int32_t *st, SitAccept want, double work);
+static int sitBreaks(const int32_t *res, const int32_t *sw, int n, double at, void *ctx);
+static int slabReadyBoard(const int32_t *st) {
+  if (TFLAG(TF_SLAB)) return BIN[IN_T + 6] != 0;
+  SLABW = (int)BIN[IN_SLABW]; SLABH = (int)BIN[IN_SLABH]; SLABC = (int)BIN[IN_SLABC];
+  int placed = slabPlace(st, SLABST);
+  if (placed < 0) return slabReadyFast(st);
+  return inTimeOfWork(placed ? SLABST : st, sitBreaks, READYWORK);
+}
 static double idleScore(const Cand *cand, const int32_t *base) {
   const int32_t *m = cand->masks;
   double fpr = BIN[IN_FPR], perPanel = fpr / BW;
@@ -1368,7 +1381,7 @@ static Dec decideCore(void) {
   int poolBreak = 0;
   for (int i = 0; i < nPool; i++) if (POOL[i].res.broke) { poolBreak = 1; break; }
   int topped = BIN[IN_TOPPED] != 0;
-  int readyBase = slabReadyHook(base) && heldReady();
+  int readyBase = slabReadyBoard(base) && heldReady();
   int readyFirst = !poolBreak && !topped && !readyBase;   // the slab-ready record is read
   optSkip = 4 | (readyFirst ? 0 : 8);
   baseReady = BIN[IN_INCOMING] > 0 && readyBase;
@@ -2578,10 +2591,11 @@ static int sitBreaks(const int32_t *res, const int32_t *sw, int n, double at, vo
 // with a small share of work, since it is asked of every option and
 // candidate (bit.c anyBreakOf, and through it slabReady's slab placed where it rests)
 #define BREAKOFWORK 240
-static int inTimeOf(const int32_t *st, SitAccept want) {
+static int inTimeOfWork(const int32_t *st, SitAccept want, double work) {
   return searchInTime(st, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, framesToDeath(tallestBoard(st), BIN[IN_FPR]),
-                      BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, 0, 0, BREAKOFWORK, want, 0, 0, 0, 0);
+                      BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, 0, 0, work, want, 0, 0, 0, 0);
 }
+static int inTimeOf(const int32_t *st, SitAccept want) { return inTimeOfWork(st, want, BREAKOFWORK); }
 static int breakInTimeOf(const int32_t *st) { return inTimeOf(st, sitBreaks); }
 // A CLEAR IN TIME (fire ready): the same, a clear or a break
 static int sitFires(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) { (void)sw; (void)n; (void)at; (void)ctx; return res[R_TOTAL] > 0 || res[R_SCOPE] == SC_BROKE ? SIT_TAKE : SIT_GROW; }
@@ -2615,7 +2629,6 @@ static u64 breakKey(const int32_t *st) {
   u64 m = ((u64)BIN[IN_CROW] << 40) ^ ((u64)BIN[IN_CCOL] << 32) ^ ((u64)(BIN[IN_STOP] > 0 ? BIN[IN_STOP] : 0) << 8) ^ (u64)(BIN[IN_TOPPED] != 0);
   return (hashOf(st) ^ (m * 0x9E3779B97F4A7C15ull)) | 1;
 }
-#define READYWORK 2500   // the readiness search's share of a decision's work
 // THE TIME A LINE LEAVES: the frame the board loses health after it (the
 // engine's judgement), else -- the board left alone -- its own, else the
 // judge's reach; `last`: the frame its last step is pressed (0: no steps)
