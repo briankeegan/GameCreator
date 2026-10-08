@@ -235,11 +235,23 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline) {
     return near ? ms.filter(function (m) { return m[0] >= g - 3 && m[0] <= g + 1; }) : ms;
   }
   // Steps go to the engine a batch at a time, played on every thread; each is
-  // read in the order the one-at-a-time loop would have read it.
-  function many(steps) { return steps.length ? S.advanceMany(steps, true) : []; }
-  function swapsFrom(n, ms) { return many(ms.map(function (m) { return [n, 'swap', m, 0]; })); }
+  // read in the order the one-at-a-time loop would have read it. Past
+  // `deadline` the steps not yet played come back null, as lines that are not
+  // there; the first swaps (made, below) are always played.
+  var BATCH = 64;
+  function many(steps, whole) {
+    if (!steps.length) return [];
+    if (whole) return S.advanceMany(steps, true);
+    var out = [];
+    for (var b = 0; b < steps.length; b += BATCH) {
+      if (Date.now() >= deadline) { while (out.length < steps.length) out.push(null); break; }
+      out = out.concat(S.advanceMany(steps.slice(b, b + BATCH), true));
+    }
+    return out;
+  }
+  function swapsFrom(n, ms, whole) { return many(ms.map(function (m) { return [n, 'swap', m, 0]; }), whole); }
   var firsts = swapsOf(root).map(function (m) { return { key: m[0] + ',' + m[1], m: m }; }), found = {}, any = false;
-  var made = swapsFrom(root, firsts.map(function (f) { return f.m; }));
+  var made = swapsFrom(root, firsts.map(function (f) { return f.m; }), true);
   firsts.forEach(function (f, q) { f.n = made[q]; if (breaks(f.n)) { found[f.key] = true; any = true; } });
   if (any) return { depth: 1, moves: found };
   // GARBAGE RESTING, NOTHING POPPING: a break sooner rather than later. A
