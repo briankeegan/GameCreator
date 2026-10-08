@@ -4810,7 +4810,9 @@ typedef struct {
   const int32_t *ln; int n, waitAll, need, last0, die0, dr, dc, urgent, die0Of, tried;
   int most, bn; int32_t bsw[2 * LINEMAX];        // the best: the clear that matches most, or the quiet line that leaves least hollow
   int fmost, fn; int32_t fsw[2 * LINEMAX];       // a clear on its own, the line dropped
-  int hb, vb;                                    // the hollow and twos to beat (quiet)
+  int hb, vb, hm;                                // the hollow and twos to beat (quiet); the hollow now on the masks
+  uint32_t used[WMAX + 2]; const int32_t *pre;   // the line's panels (lineUses) on the board now
+  int seen, moved;
   // the quiet lines reached, the best kept by what they leave on the masks
   int qn, qh[SETUPTRIES], qt[SETUPTRIES], ql[SETUPTRIES]; int32_t qsw[SETUPTRIES][2 * LINEMAX];
 } MwCtx;
@@ -4880,6 +4882,25 @@ static int hollowOnMasks(const int32_t *st) {
   }
   return h;
 }
+// THE LINE'S PANELS: every panel the line moves, clears or drops (the board
+// before it against the board after). A line put first must leave each of them
+// where it is, its colour unchanged, or the line is pressed on something else.
+static void lineUses(const int32_t *pre, const int32_t *post, uint32_t *used) {
+  for (int c = 1; c <= pre[O_W]; c++) {
+    uint32_t u = U(pre, OCC + c) & ~U(post, OCC + c);
+    for (int a = 0; a < NCOL; a++) u |= (CL(pre, a, c) ^ CL(post, a, c)) & U(pre, OCC + c);
+    used[c] = u;
+  }
+}
+static int movesLine(const MwCtx *x, const int32_t *st) {
+  for (int c = 1; c <= st[O_W]; c++) {
+    uint32_t u = x->used[c];
+    if (!u) continue;
+    if (u & ~U(st, OCC + c)) return 1;
+    for (int a = 0; a < NCOL; a++) if ((CL(x->pre, a, c) ^ CL(st, a, c)) & u) return 1;
+  }
+  return 0;
+}
 // THE WAIT'S QUIET LINES, every one the search reaches in time and of any
 // order of steps -- a drop and then a swap that lines up two, as much as a
 // single swap -- each read on the board it leaves (the masks): least hollow,
@@ -4891,7 +4912,10 @@ static int sitWaitQuiet(const int32_t *res, const int32_t *sw, int n, double at,
   if (n == 1 && sw[0] == x->dr && sw[1] == x->dc) return SIT_GROW;
   if (n + x->n > LINEMAX) return SIT_END;
   const int32_t *st = res + R_INTS;
+  x->seen++;
+  if (movesLine(x, st)) { x->moved++; return SIT_GROW; }
   int hl = hollowOnMasks(st), tw = twosOf(st), k = x->qn;
+  if (hl > x->hm || (hl == x->hm && tw <= x->vb)) return SIT_GROW;   // levels nothing yet
   if (k == SETUPTRIES) {   // full: it replaces the worst kept, if it beats it
     k = 0;
     for (int i = 1; i < SETUPTRIES; i++) if (x->qh[i] > x->qh[k] || (x->qh[i] == x->qh[k] && x->qt[i] < x->qt[k])) k = i;
@@ -4915,8 +4939,8 @@ static void waitQuietJudge(MwCtx *x) {
     if (!nl) continue;
     x->tried++;
     int v = lineJudge(l2, nl, x->waitAll);
-    if ((v & x->need) != x->need || LNO[1] > x->last0 || mwDiesSooner(x)) continue;
     int hl = HOLLOW(LNO);
+    if ((v & x->need) != x->need || LNO[1] > x->last0 || mwDiesSooner(x)) continue;
     if (hl > x->hb) continue;
     static ST MW1; int32_t mc1[2], mt1; uint32_t mcan[WMAX]; uint8_t mwt[32][WMAX];
     int tw = lineState(x->qsw[at], n, MW1, mcan, mwt, mc1, &mt1) == 0 ? twosOf(MW1) : 0;
@@ -4950,12 +4974,15 @@ static Dec meanwhile(Dec d) {
     int tw0 = lineState(0, 0, MW0, mcan0, mwt0, mc0, &mt0) == 0 ? twosOf(MW0) : 0;
     int h0 = HOLLOW(LNO);
     x.hb = h0; x.vb = tw0; x.qn = 0;
+    static ST MWL; int32_t mcl[2], mtl; uint32_t mcanl[WMAX]; uint8_t mwtl[32][WMAX];
+    if (lineState(ln + 2, n, MWL, mcanl, mwtl, mcl, &mtl) == 0 && tw0 >= 0) { lineUses(MW0, MWL, x.used); x.pre = MW0; }
+    x.hm = tw0 >= 0 ? hollowOnMasks(MW0) : 0;
     waitSearchW(pressSeen(x.last0) - REACT, sitWaitQuiet, &x, SETUPWORK);
     waitQuietJudge(&x);
     if (x.bn) { np = x.bn; for (int k = 0; k < 2 * np; k++) pre[k] = x.bsw[k]; }
     for (int k = 0; k < LNOLEN; k++) LNO[k] = keepO[k];
 #ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "MEANWHILE level: tried %d, line hollow %d twos %d -> %d steps hollow %d twos %d\n", x.tried, h0, tw0, np, x.hb, x.vb); }
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "MEANWHILE level: seen %d moved %d hm %d, tried %d, line hollow %d twos %d -> %d steps hollow %d twos %d\n", x.seen, x.moved, x.hm, x.tried, h0, tw0, np, x.hb, x.vb); }
 #endif
   }
   if (!np) {
