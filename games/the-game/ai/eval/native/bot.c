@@ -1228,6 +1228,14 @@ static int landingOf(const int32_t *st) {
 // swap but a break may make the next slab's landing worse.
 static int baseReady;
 static int baseLanding;
+// READY IS THE ENGINE'S WORD: the masks say a break meets the next slab; the
+// engine landing it on the board held says whether one is in reach when it
+// does. Where no engine holds the board, or nothing is queued, the masks stand.
+static int readyInTime(const int32_t *sw, int n, int *br, int *bc);
+static int heldReady(void) {
+  int r, c;
+  return !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0) || readyInTime(0, 0, &r, &c);
+}
 static int unreadies(const Cand *pc) {
   if (!pc || pc->kind != K_SWAP || pc->res.broke) return 0;
   if (BIN[IN_INCOMING] > 0 && landingOf(pc->masks) < baseLanding) return 1;
@@ -1322,9 +1330,10 @@ static Dec decideCore(void) {
   int poolBreak = 0;
   for (int i = 0; i < nPool; i++) if (POOL[i].res.broke) { poolBreak = 1; break; }
   int topped = BIN[IN_TOPPED] != 0;
-  int readyFirst = !poolBreak && !topped && !slabReadyHook(base);   // the slab-ready record is read
+  int readyBase = slabReadyHook(base) && heldReady();
+  int readyFirst = !poolBreak && !topped && !readyBase;   // the slab-ready record is read
   optSkip = 4 | (readyFirst ? 0 : 8);
-  baseReady = BIN[IN_INCOMING] > 0 && slabReadyHook(base);
+  baseReady = BIN[IN_INCOMING] > 0 && readyBase;
   baseLanding = landingOf(base);
   double dl2 = topped ? dmax(deadline, resolveFramesOf(3, 0)) : deadline;
   int lookDepth = (int)dmin(opt(O_MAXDEPTH), dmax(1, __builtin_floor(dl2 / (REACT > 1 ? REACT : 1))));
