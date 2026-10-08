@@ -5084,6 +5084,28 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // through -- so it is judged while the budget is whole, once
   aloneOnEngine();
   DBASE = IN; notePresses();
+#ifndef __wasm__
+  // THE BOARD'S SHAPE, for the log: each column's panels (to its lowest
+  // garbage), the middle's depth under the sides (U), the tallest column over
+  // the next (tower), the hollow under the next slab's landing, the panels
+  if (botTraceOn) {
+    extern int fprintf(void *, const char *, ...); extern void *stderr;
+    int h[WMAX + 1], mat = 0;
+    for (int c = 1; c <= BW; c++) {
+      uint32_t occ = U(DBASE, OCC + c), g = U(DBASE, GARB + c);
+      uint32_t below = g ? lowb(g) - 1u : occ;
+      h[c] = (occ & below) ? topRow(occ & below) : 0; mat += popc(occ & ~U(DBASE, GARB + c));
+    }
+    int side = h[1] < h[BW] ? h[1] : h[BW], mid = 1 << 20, hi = 0, hi2 = 0;
+    for (int c = 2; c < BW; c++) if (h[c] < mid) mid = h[c];
+    for (int c = 1; c <= BW; c++) { if (h[c] > hi) { hi2 = hi; hi = h[c]; } else if (h[c] > hi2) hi2 = h[c]; }
+    int c0 = (int)BIN[IN_SLABC], c1 = c0 + (int)BIN[IN_SLABW] - 1, top = 0, hol = 0;
+    if (c0 >= 1 && c1 <= BW) { for (int c = c0; c <= c1; c++) if (h[c] > top) top = h[c]; for (int c = c0; c <= c1; c++) hol += top - h[c]; }
+    fprintf(stderr, "SHAPE h");
+    for (int c = 1; c <= BW; c++) fprintf(stderr, " %d", h[c]);
+    fprintf(stderr, " | u %d tower %d landhollow %d mat %d garb %d\n", side - mid, hi - hi2, hol, mat, garbageRows(DBASE));
+  }
+#endif
   // A LINE ONCE PLAYED IS NOT REPLACED BY A CHOICE THAT DIES SOONER: a route
   // may set a line of its own over the one kept from the last decision, or
   // clear it and choose a swap or a hold; the kept line is played on instead
