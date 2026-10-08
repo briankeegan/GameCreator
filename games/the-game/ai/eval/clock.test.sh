@@ -15,10 +15,10 @@
 #   - a line on a stopped or topped board (no reaction to wait out, whatever
 #     it clears) is ever priced later than the engine.
 #
-#   ./clock.test.sh [SEED] [FRAMES]   (4 3000 by default)
+#   ./clock.test.sh [SEED] [FRAMES]   (4 700 by default: about 1.5 s, a gate's limit)
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
-seed=${1:-4}; frames=${2:-3000}
+seed=${1:-4}; frames=${2:-700}
 out="$here/.clock.test.out"
 trap 'rm -f "$out"' EXIT
 # the drill alone (native/build.sh's line for it), not every target build.sh makes
