@@ -15,6 +15,7 @@ var DIR = __dirname;
 var mind = require(path.join(DIR, 'survivor_think.js'))(wt.workerData);
 wt.parentPort.on('message', function (m) {
   if (m.type === 'reset') { mind.reset(); return; }
+  if (m.type === 'weights') { mind.setWeights(m.weights); mind.reset(); return; }
   wt.parentPort.postMessage(mind.answer(m));
 });
 wt.parentPort.postMessage({ ready: true });

@@ -1,15 +1,15 @@
 name: Islands 2.0 (live server)
 
-# Ten WasmSurvivors, a job each, playing each other on the live server a
-# round at a time: games/the-game/ai/eval/island2.sh, island2.js,
-# lua/island2Match.lua. Their weights and records live on the island2-state
-# branch, one file per bot. A run plays rounds for `minutes`, then dispatches
+# Ten WasmSurvivors, a job each, logged in to the live server and playing
+# their opponents in turn, each challenging the next by name:
+# games/the-game/ai/eval/island2.sh, island2.js, lua/island2Bot.lua. Their weights and records live on the island2-state
+# branch, one file per bot. A run plays for `minutes`, then dispatches
 # the next unless ISLAND2_STOP is on main.
 on:
   workflow_dispatch:
     inputs:
       minutes:
-        description: 'Minutes each bot plays rounds before the run hands over'
+        description: 'Minutes each bot plays before the run hands over'
         default: '330'
       ip:
         description: 'Server IP (the live bramp server)'
@@ -77,7 +77,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch -q origin island2-state
           git worktree add -q -B island2-state state origin/island2-state
-      - name: Play rounds
+      - name: Play
         timeout-minutes: 345
         env:
           BOT: ${{ matrix.bot }}
@@ -94,7 +94,7 @@ jobs:
           name: island2-bot${{ matrix.bot }}
           path: |
             match.log
-            mind-*.log
+            mind.log
           if-no-files-found: warn
 
   next:
