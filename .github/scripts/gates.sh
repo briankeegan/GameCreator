@@ -145,9 +145,12 @@ gate_normalise() {
   node games/the-game/ai/eval/normalise.test.js
 }
 # SURVIVAL'S ORDER: on a board topped by slabs, a swap that breaks garbage is
-# played over a bigger clear away from it (survival_rules.test.js, one decision).
+# played over a bigger clear away from it (survival_rules.test.js, one
+# decision); and the distance planner finds the break on example boards, every
+# line it proposes breaking when replayed (planner.test.js).
 gate_survival_rules() {
-  node games/the-game/ai/eval/survival_rules.test.js
+  node games/the-game/ai/eval/survival_rules.test.js &&
+  node games/the-game/ai/eval/planner.test.js
 }
 
 gate_features_live() {

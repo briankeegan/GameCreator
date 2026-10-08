@@ -312,7 +312,19 @@
     return rc ? null : { cells: o[0], converted: o[1], clears: o[2], chain: o[3], stop: o[4], frames: o[5] };
   }
   function slabReady(st, w, h, c) { put(st); return ex.bit_slab_ready(w, h, c) !== 0; }
-  return { record: record, recorded: recorded, replay: replay, _checkbf: checkbf, slabReady: slabReady, loadEngine: loadEngine, engineOutcome: engineOutcome, fits: fits, resolve: resolve, resolveTimed: resolveTimed, scan: scan, load: load, options: options,
+  // the distance planner's lines on a board (bot.c targetLines): [[r, c], ...] each
+  function targetLines(st, cr, cc) {
+    put(st);
+    var n = Math.min(ex.bit_target_lines(cr, cc), 22), m = heap(), out = [];
+    for (var i = 0; i < n; i++) {
+      var o = LIST + 17 * i, line = [];
+      for (var k = 0; k < Math.min(m[o], 8); k++) line.push([m[o + 1 + 2 * k], m[o + 2 + 2 * k]]);
+      line.whole = m[o] <= 8;
+      out.push(line);
+    }
+    return out;
+  }
+  return { record: record, recorded: recorded, replay: replay, _checkbf: checkbf, slabReady: slabReady, targetLines: targetLines, loadEngine: loadEngine, engineOutcome: engineOutcome, fits: fits, resolve: resolve, resolveTimed: resolveTimed, scan: scan, load: load, options: options,
            botNew: botNew, botIn: botIn, botStates: botStates, botDecide: botDecide, botTab: botTab, botPut: botPut, botTest: botTest,
            botPoolMasks: botPoolMasks, deadlyCalls: deadlyCalls, opening: opening, putRecords: putRecords };
 }));

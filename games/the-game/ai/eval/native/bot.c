@@ -2993,8 +2993,13 @@ static void tDrops(int cr, int cc, double t0, double limit) {
 // the fewest swaps; every walk is played on a copy of the grid with what
 // falls after it, and the line is proposed only if the grid it leaves holds
 // the three against the garbage. The engine judges it like any other line.
-#define TSTACKWORK 2.5   // a step walked on the grid copy (swap and fall), and a grid copied: at 0.5, 1,229 units per ms (seed 9, 6,000 frames) against the 6,027 a ms is worth
+#define TSTACKWORK 1.7   // a grid step (a swap and its fall, a clear round, a copy): the planner (targetLines) charges 6,933 units per ms at 1.7 (8,926 at 2.5; seed 9, 6,000 frames) against the 6,027 a ms is worth
 #define TSTACKNEAR 3     // the nearest panels of the colour tried for each cell
+// the distance grid (tCell) copied onto a grid with a column either side of the board
+static void gLoad(int g[][WMAX + 2]) {
+  for (int k = 0; k < TGRID + 2; k++)
+    for (int q = 0; q < WMAX + 2; q++) g[k][q] = k <= tH && q >= 1 && q <= tW ? tCell[k][q] : 0;
+}
 static void gSettle(int g[][WMAX + 2], int c) {
   int to = 1;
   for (int k = 1; k <= tH; k++) {
@@ -3031,7 +3036,7 @@ static void tStacks(int N, int cr, int cc, double t0, double limit) {
       for (int r = 1; r + 2 <= tH; r++) {
         if (!tBeside(r, c) && !tBeside(r + 1, c) && !tBeside(r + 2, c)) continue;
         if ((r > 1 && tCell[r - 1][c] == 0) || tCell[r][c] < 0 || tCell[r + 1][c] < 0 || tCell[r + 2][c] < 0) continue;
-        __builtin_memcpy(g, tCell, sizeof g);
+        gLoad(g);
         int n = 0, ok = 1;
         for (int i = 0; i < 3 && ok; i++) {
           int rr = r + i;
@@ -3068,6 +3073,78 @@ static void tStacks(int N, int cr, int cc, double t0, double limit) {
         for (int q = r; q <= r + 2 && !hit; q++) hit = tGarbRun(g, tH, q, c, 1);
         if (hit) tPropose(sb, n, cr, cc, t0, limit);
       }
+}
+// A SWAP THAT DROPS INTO A BREAK: a swap takes panels out from under a
+// column -- clearing them, or moving one aside into the air -- the column
+// falls, and what it falls into can be three against the garbage: at once,
+// as a chain, or after one more swap, near the garbage, on the board it
+// leaves. On a copy of the grid: every run of three or more is cleared and
+// what stood on it falls, round after round; a run touching garbage is a break.
+static int gResolve(int g[][WMAX + 2], int *cleared) {
+  static JLOCAL unsigned char mk[TGRID + 2][WMAX + 2];
+  int broke = 0;
+  *cleared = 0;
+  for (;;) {
+    int any = 0;
+    __builtin_memset(mk, 0, sizeof mk);
+    paWork += TSTACKWORK;
+    for (int r = 1; r <= tH; r++)
+      for (int c = 1; c <= tW; c++) {
+        int a = g[r][c];
+        if (a <= 0 || a > 99) continue;
+        int e = c; while (e + 1 <= tW && g[r][e + 1] == a) e++;
+        if (e - c >= 2) { for (int k = c; k <= e; k++) mk[r][k] = 1; any = 1; }
+        int t = r; while (t + 1 <= tH && g[t + 1][c] == a) t++;
+        if (t - r >= 2) { for (int k = r; k <= t; k++) mk[k][c] = 1; any = 1; }
+      }
+    if (!any) return broke;
+    for (int r = 1; r <= tH; r++)
+      for (int c = 1; c <= tW; c++) {
+        if (!mk[r][c]) continue;
+        if (g[r + 1][c] == -1 || (r > 1 && g[r - 1][c] == -1) || (c > 1 && g[r][c - 1] == -1) || (c < tW && g[r][c + 1] == -1)) broke = 1;
+        g[r][c] = 0; (*cleared)++;
+      }
+    if (broke) return 1;
+    for (int c = 1; c <= tW; c++) gSettle(g, c);
+  }
+}
+// the swap (r, c) played on a copy of the grid and resolved: -1 not a swap,
+// else 1 if it breaks; *cleared the panels its clears took
+static int gSwapResolve(int dst[][WMAX + 2], int src[][WMAX + 2], int r, int c, int *cleared) {
+  int x = src[r][c], y = src[r][c + 1];
+  *cleared = 0;
+  if (x < 0 || y < 0 || x == y) return -1;
+  __builtin_memcpy(dst, src, sizeof(int) * (TGRID + 2) * (WMAX + 2));
+  paWork += TSTACKWORK;
+  dst[r][c] = y; dst[r][c + 1] = x;
+  gSettle(dst, c); gSettle(dst, c + 1);
+  return gResolve(dst, cleared);
+}
+#define TNEARG 3   // a second swap is tried this near garbage (cells, either way)
+static int gNearGarbage(int g[][WMAX + 2], int r, int c) {
+  for (int k = r - TNEARG; k <= r + TNEARG; k++)
+    for (int q = c - TNEARG; q <= c + 1 + TNEARG; q++)
+      if (k >= 1 && k <= tH && q >= 1 && q <= tW && g[k][q] == -1) return 1;
+  return 0;
+}
+static void tClears(int cr, int cc, double t0, double limit) {
+  static JLOCAL int g0[TGRID + 2][WMAX + 2], g[TGRID + 2][WMAX + 2], h[TGRID + 2][WMAX + 2];
+  gLoad(g0);
+  for (int r = 1; r <= tH; r++)
+    for (int c = 1; c < tW; c++) {
+      int cl, b = gSwapResolve(g, g0, r, c, &cl);
+      if (b < 0) continue;
+      int32_t sw[4] = { r, c, 0, 0 };
+      if (b) { tPropose(sw, 1, cr, cc, t0, limit); continue; }
+      // the board it leaves: one more swap, near the garbage, that breaks on it
+      for (int r2 = 1; r2 <= tH; r2++)
+        for (int c2 = 1; c2 < tW; c2++) {
+          int cl2;
+          if (!gNearGarbage(g, r2, c2) || gSwapResolve(h, g, r2, c2, &cl2) != 1) continue;
+          sw[2] = r2; sw[3] = c2;
+          tPropose(sw, 2, cr, cc, t0, limit);
+        }
+    }
 }
 static void targetLines(const int32_t *st, int cr, int cc, double t0, double limit) {
   if (!tGrid(st)) return;
@@ -3112,6 +3189,7 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
     }
   }
   tStacks(N, cr, cc, t0, limit);
+  tClears(cr, cc, t0, limit);
 }
 // A PILE LET DOWN FIRST. Garbage perched on a column or two touches little; a
 // line that pulls its support -- however many swaps -- lets it down onto the
@@ -5472,3 +5550,19 @@ __attribute__((export_name("bot_test"))) double bot_test(int32_t id, int32_t fn)
 }
 __attribute__((export_name("bot_state"))) int32_t bot_state(int32_t id) { return (int32_t)(long)&BOTS[id]; }
 __attribute__((export_name("bot_state_size"))) int32_t bot_state_size(void) { return (int32_t)sizeof(Bot); }
+
+// THE DISTANCE PLANNER ON A BOARD, for its tests: targetLines on the board
+// put in IN, the cursor at (cr, cc), no time bound. LIST gets each line as
+// its length then its swaps (up to eight), 22 lines at most; the count is returned.
+__attribute__((export_name("bit_target_lines"))) int32_t bit_target_lines(int32_t cr, int32_t cc) {
+  memoRoom(); threadInit();
+  linesReset();
+  targetLines(IN, cr, cc, 0, INF);
+  int n = nLines < 22 ? nLines : 22;
+  for (int i = 0; i < n; i++) {
+    int32_t *o = LIST + 17 * i;
+    o[0] = LINES[i].n;
+    for (int k = 0; k < 16; k++) o[1 + k] = k < 2 * LINES[i].n ? LINES[i].sw[k] : 0;
+  }
+  return nLines;
+}
