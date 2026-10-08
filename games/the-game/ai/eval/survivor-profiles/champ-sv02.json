@@ -1,6 +1,6 @@
 {
   "name": "WasmSurvivor",
-  "weights": "trained.pbt.pbt-sv02-s302.1008-085757.g00080.json",
+  "weights": "trained.pbt.pbt-sv02-s302.1008-144849.g00160.json",
   "reaction": 12,
   "swapGap": 12,
   "cursorMoveFrames": 4,

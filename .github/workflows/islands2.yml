@@ -1,0 +1,118 @@
+name: Islands 2.0 (live server)
+
+# Ten WasmSurvivors, a job each, playing each other on the live server a
+# round at a time: games/the-game/ai/eval/island2.sh, island2.js,
+# lua/island2Match.lua. Their weights and records live on the island2-state
+# branch, one file per bot. A run plays rounds for `minutes`, then dispatches
+# the next unless ISLAND2_STOP is on main.
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: 'Minutes each bot plays rounds before the run hands over'
+        default: '330'
+      ip:
+        description: 'Server IP (the live bramp server)'
+        default: '104.156.250.136'
+      port:
+        description: 'Server port'
+        default: '49569'
+      panel_ref:
+        description: 'panel-game branch the bots run (the server''s code)'
+        default: 'bramp/multi-player'
+      chain:
+        description: 'false = one run and stop'
+        default: 'true'
+
+concurrency:
+  group: islands2
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  bot:
+    name: bot ${{ matrix.bot }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        bot: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/checkout@v4
+        with:
+          repository: briankeegan/panel-game
+          ref: ${{ inputs.panel_ref }}
+          path: panel-game
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install luajit + luarocks
+        timeout-minutes: 15
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for i in 1 2 3; do
+            timeout 240 sudo apt-get $APT update && \
+            timeout 240 sudo apt-get $APT install -y luajit luarocks liblua5.1-0-dev build-essential unzip libreadline-dev && exit 0
+            echo "apt attempt $i failed"; sleep 10
+          done
+          exit 1
+      - name: Install lua rocks (luasocket, luafilesystem, luautf8)
+        timeout-minutes: 10
+        run: |
+          sudo luarocks install luasocket --lua-version 5.1
+          sudo luarocks install luafilesystem --lua-version 5.1
+          sudo luarocks install luautf8 --lua-version 5.1
+      - name: The state branch
+        timeout-minutes: 5
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch -q origin island2-state
+          git worktree add -q -B island2-state state origin/island2-state
+      - name: Play rounds
+        timeout-minutes: 345
+        env:
+          BOT: ${{ matrix.bot }}
+          HOST: ${{ inputs.ip }}
+          PORT: ${{ inputs.port }}
+          MINUTES: ${{ inputs.minutes }}
+        run: |
+          export STATE="$GITHUB_WORKSPACE/state" PG="$GITHUB_WORKSPACE/panel-game"
+          export DEADLINE=$(( $(date +%s) + MINUTES * 60 ))
+          bash games/the-game/ai/eval/island2.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: island2-bot${{ matrix.bot }}
+          path: |
+            match.log
+            mind-*.log
+          if-no-files-found: warn
+
+  next:
+    needs: bot
+    if: always() && inputs.chain != 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Dispatch the next run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -f ISLAND2_STOP ]; then echo "ISLAND2_STOP is on main — not continuing."; exit 0; fi
+          code=$(curl -sS -o /tmp/dispatch.out -w '%{http_code}' -X POST \
+            -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/islands2.yml/dispatches" \
+            -d '{"ref":"main","inputs":{"minutes":"${{ inputs.minutes }}","ip":"${{ inputs.ip }}","port":"${{ inputs.port }}","panel_ref":"${{ inputs.panel_ref }}","chain":"true"}}')
+          echo "dispatch: HTTP $code"; cat /tmp/dispatch.out; [ "$code" = 204 ]
