@@ -55,11 +55,18 @@ jobs:
         env:
           GC_PANEL_GAME: ${{ github.workspace }}/panel-game
           GC_TRACE: '0'   # every frame's board, for reading a death
+          GC_STATES: '1'  # with every cell's state: a break and a falling slab read apart
         run: |
           games/the-game/ai/eval/train.sh ${{ inputs.mode }} ${{ matrix.seed }} ${{ inputs.frames }} | tee out.txt | grep -E "^(died|alive|bot over)"
           end=$(grep -E "^(died|alive)" out.txt | tail -1)
           echo "seed ${{ matrix.seed }}: $end" >> "$GITHUB_STEP_SUMMARY"
           [[ $end == alive* ]]
+      # THE DEATH IN THE LOG: the last 700 frames, so a death is read from the
+      # job log itself (the artifact below is a download the API redirects)
+      - name: The last frames
+        if: failure()
+        timeout-minutes: 2
+        run: grep -E "^F " out.txt | tail -n 700
       - name: Keep the game
         if: failure()
         uses: actions/upload-artifact@v4
