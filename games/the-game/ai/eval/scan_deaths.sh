@@ -18,7 +18,7 @@ jobs=$(curl -sSfL "${auth[@]}" "$api/runs/$run/jobs?per_page=100" | python3 -c '
 import json, re, sys
 for j in json.load(sys.stdin)["jobs"]:
     m = re.search(r"\((\d+)\)", j["name"])
-    if m: print(j["id"], m.group(1), j["conclusion"])')
+    if m: print(j["id"], m.group(1), j["conclusion"] or j["status"])')
 [ -n "$jobs" ] || { echo "scan_deaths: run $run has no seed jobs" >&2; exit 1; }
 alive=0; died=0; other=0
 while read -r id seed concl; do
