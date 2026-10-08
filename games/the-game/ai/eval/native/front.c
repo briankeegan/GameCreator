@@ -596,7 +596,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   if (botTraceOn && n == 1 && waitTo > 60 && LF) { extern int fprintf(void *, const char *, ...); extern void *stderr; int r = steps[0], c = steps[1];
     fprintf(stderr, "  WAIT %d,%d to %d | first %d,%d last %d,%d\n", r, c, waitTo, LF->settle.first[r][c], LF->settle.first[r][c + 1], LF->settle.last[r][c], LF->settle.last[r][c + 1]); }
 #endif
-  out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = out[13] = out[14] = 0; out[15] = out[16] = -1;   // out[16]: the clock the first step is pressed at
+  out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = out[13] = out[14] = 0; out[15] = out[16] = -1; out[17] = 0;   // out[16]: the clock the first step is pressed at
   int32_t landedFrom = b->garbageCreatedCount;   // out[15]: read once the next slab has landed
   int pressStep = -1, pressLast = 0;   // the step pressed this frame, and the last press before it
   { extern int paBudgetOut(void); if (paBudgetOut()) return -1; }   // past the decision's budget: not played
@@ -677,7 +677,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
     for (int c = 1; c <= W; c++) {
       const int32_t *g = b->p[r][c].f, *u = b->p[r - 1][c].f;
       if (!g[ISGARBAGE] || u[COLOR] != 0) continue;
-      for (int k = r - 1; k >= 1 && b->p[k][c].f[COLOR] == 0; k--) out[10]++;
+      for (int k = r - 1; k >= 1 && b->p[k][c].f[COLOR] == 0; k--) { out[10]++; out[17]++; }
     }
   // the board it ends on, as one number: a line that ends where the board left
   // alone ends has done nothing
@@ -709,6 +709,9 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
       for (int c = w; c < w + 4; c++) if (h[c] > top) top = h[c];
       for (int c = w; c < w + 4; c++) out[13] += top - h[c];
     }
+    // THE BOARD IT ENDS ON, HOW FLAT: its gaps under garbage (above) and the
+    // unevenness the slabs to come land on, both read here, at the end
+    out[17] += out[13];
     // VERTICAL TWOS READY: two matching panels atop a column's panels --
     // under open sky, or under the column's lowest garbage -- with a third of
     // their colour in the row under them at most two columns off, the way

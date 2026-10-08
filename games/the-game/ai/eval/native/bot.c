@@ -22,7 +22,7 @@ enum { M_BUILD, M_DEFEND, M_ATTACK };
 // the line a bot plays (Bot.line): what it is for, and the most steps it holds
 enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
 #define LINEMAX 8
-#define LNOLEN 17
+#define LNOLEN 18
 // THE HOLLOW of a judged line: the gaps under garbage on the board it ends on
 // ([10]) and the gaps the slabs to come would leave over its towers ([13]). A
 // tower lowered also lets a pile perched on it down onto panels it can break on.
@@ -2057,7 +2057,7 @@ int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_
 // DROPS: more garbage at rest starts to fall than left alone. FILLS: less
 // hollow under the garbage that lands than left alone (pa.c HOLLOW).
 
-typedef struct { int n, brk, ok, grown, waitAll, hollow, conv, die; int32_t sw[2 * LINEMAX]; double est, life; int verdict; } LineC;
+typedef struct { int n, brk, ok, grown, waitAll, hollow, flat, conv, die; int32_t sw[2 * LINEMAX]; double est, life; int verdict; } LineC;
 // A LINE'S LIFE, what survival RANKS by: the frame it loses health, less what
 // its hollow costs. (The floors -- surviveGuard, the kept line -- stay on the
 // frame itself: no choice may lose health sooner, whatever its shape.) A
@@ -2234,6 +2234,7 @@ static int judged(LineC *l) {
   if (l->verdict < 0) {
     l->verdict = nJudged < MAXJUDGED ? lineJudge(l->sw, l->n, 0) : 0; nJudged++;
     l->hollow = l->verdict ? HOLLOW(LNO) : 1 << 20;
+    l->flat = l->verdict ? LNO[17] : 1 << 20;
     l->conv = l->verdict ? LNO[2] - LNA[2] : 0;
     l->die = l->verdict ? (LNO[0] ? LNO[0] : 1 << 20) : 0;   // the frame it loses health (1 << 20: not within the horizon)
     l->life = l->verdict ? lifeOf(l->die, l->hollow) : 0;
@@ -2242,7 +2243,7 @@ static int judged(LineC *l) {
     // matches beside it in vain. The last press then waits for the garbage to land (breakWait).
     if (l->brk && (l->verdict & LV_PAYS) && !(l->verdict & LV_BREAKS) && nJudged < MAXJUDGED) {
       int v = lineJudge(l->sw, l->n, 1); nJudged++;
-      if (v & LV_BREAKS) { l->verdict = v; l->waitAll = 1; l->hollow = HOLLOW(LNO); l->conv = LNO[2] - LNA[2]; l->die = LNO[0] ? LNO[0] : 1 << 20; l->life = lifeOf(l->die, l->hollow); }
+      if (v & LV_BREAKS) { l->verdict = v; l->waitAll = 1; l->hollow = HOLLOW(LNO); l->flat = LNO[17]; l->conv = LNO[2] - LNA[2]; l->die = LNO[0] ? LNO[0] : 1 << 20; l->life = lifeOf(l->die, l->hollow); }
     }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
@@ -3022,6 +3023,17 @@ static int readyCounts(const LineC *l, int alone) {
   for (int k = 0; k < LNOLEN; k++) LNO[k] = keep[k];
   return rdy;
 }
+// FLATTEST FIRST, WHERE NEITHER LOSES HEALTH: of two breaks that both keep
+// health through the judge's reach, the one that ends on the flatter board
+// (LNO[17]: the empty cells under its garbage and the unevenness of the
+// surface the slabs to come land on) goes first -- a pile broken into a
+// tower is the next pile's perch. Where either loses health within reach,
+// ready first, then the later loss. Then the most converted.
+static int breakBefore(const LineC *l, int rdy, const LineC *pick, int pickRdy) {
+  if (l->die == 1 << 20 && pick->die == 1 << 20 && l->flat != pick->flat) return l->flat < pick->flat;
+  int cmp = readyThenLater(rdy, l->life, pickRdy, pick->life);
+  return cmp > 0 || (cmp == 0 && l->conv > pick->conv);
+}
 static int bbReady;   // the break bestBreak picked leaves the board ready for the next slab
 static LineC bbDeferred; static int bbHasDeferred;   // a living break held for a better time, this decision
 static LineC *bestBreak(void) {
@@ -3044,10 +3056,10 @@ static LineC *bestBreak(void) {
     judgeAhead(l, taken, 0);
     if ((judged(l) & need) != need) continue;
     found++; bbFound = found; bbLastN = l->n; bbLastEst = l->est;
-    if (pick && pickReady && l->life <= pick->life && l->conv <= pick->conv) continue;
-    int rdy = ask ? readyCounts(l, alone) : 0, cmp = pick ? readyThenLater(rdy, l->life, pickReady, pick->life) : 1;
-    // ready first, then the latest loss of health; then the most converted
-    if (cmp > 0 || (cmp == 0 && l->conv > pick->conv)) { pick = l; pickReady = rdy; }
+    int flatter = pick && l->die == 1 << 20 && pick->die == 1 << 20 && l->flat < pick->flat;
+    if (pick && !flatter && pickReady && l->life <= pick->life && l->conv <= pick->conv) continue;
+    int rdy = ask ? readyCounts(l, alone) : 0;
+    if (!pick || breakBefore(l, rdy, pick, pickReady)) { pick = l; pickReady = rdy; }
   }
   bbReady = !ask || pickReady;
   return pick;
