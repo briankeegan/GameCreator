@@ -1758,6 +1758,7 @@ static Dec decideCore(void) {
 }
 
 static int isArith(int via) { return via == V_SURVIVALPLAN || via == V_PLANSAVE || via == V_DIGPLAN || via == V_BREAK || via == V_KEEPSAVE; }
+static int routeLives(const int32_t *sw, int n);   // the engine plays a route through and it lives
 static Dec decideRuled(void) {
   Dec d = decideCore();
   if (TFLAG(TF_FORCE)) d = mkSwap((int)BIN[IN_T + 1], (int)BIN[IN_T + 2], V_BESTATTACK, d.mode, d.alive);
@@ -1804,6 +1805,9 @@ static Dec decideRuled(void) {
         int n = (int)route[F_NSW] < LINEMAX ? (int)route[F_NSW] : LINEMAX;
         int32_t rl[2 * LINEMAX];
         for (int k = 0; k < 2 * n; k++) rl[k] = (int32_t)route[F_SW + k];
+        // a route the engine cannot play, or that dies, is not started: its
+        // first step pressed alone is half a plan
+        if (!routeLives(rl, n)) return d;
         lineSet(rl, n, LINE_PLAN, 0);
         return mkSwap(r0, c0, V_PLANSAVE, d.mode, d.alive);
       }
@@ -1884,6 +1888,7 @@ static double quietSettle(const int32_t *base, int r, int c, const int32_t *afte
 static int lineLast;   // what the line rules last did (playOn below)
 enum { LV_LIVES = 1, LV_PAYS = 2, LV_BREAKS = 4, LV_GAINS = 8, LV_DROPS = 16, LV_FILLS = 32 };
 static int lineJudge(const int32_t *sw, int n, int waitAll);
+static int routeLives(const int32_t *sw, int n) { return (lineJudge(sw, n, 0) & LV_LIVES) != 0; }
 static JLOCAL int32_t LNO[LNOLEN];
 // FRAMES FROM A SWAP TO THE NEAREST CLEAR ON THE BOARD IT LEAVES (INF: none)
 static double clearBack(Cand *pc) {
