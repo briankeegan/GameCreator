@@ -3954,14 +3954,20 @@ static int levelInTime(void) {
   lineJudge(fillLevel.sw, fillLevel.n, 0);
   return marginAfter(fillLevel.sw, fillLevel.n, LNO[0]) >= 0;
 }
+// A COLUMN'S WORKING TOP: the highest panel a swap can reach under the
+// column's lowest garbage, or the column's top when it holds none. Garbage
+// cannot be swapped, so a reach measured from its top reaches nothing.
+static int workTop(const int32_t *st, int c) {
+  uint32_t g = U(st, GARB + c);
+  return g ? __builtin_ctz(g) : topRow(U(st, OCC + c));
+}
 // VERTICAL TWOS ON THE MASKS: the judge's count (front.c out[14]) read off a
 // predicted board, so two-swap setups can be ranked before the engine judges one
 static int twosOf(const int32_t *st) {
   int W = st[O_W], n = 0;
 #define VP(r, c) ((r) >= 1 && (U(st, OCC + (c)) & (1u << ((r) - 1))) && !(U(st, (GARB) + (c)) & (1u << ((r) - 1))) && !(U(st, INERT + (c)) & (1u << ((r) - 1))))
   for (int c = 1; c <= W; c++) {
-    uint32_t g = U(st, (GARB) + c);
-    int r = g ? __builtin_ctz(g) : topRow(U(st, OCC + c));   // under the lowest garbage, or the top
+    int r = workTop(st, c);
     if (r < 3 || !VP(r, c) || !VP(r - 1, c)) continue;
     int col = colourFirst(st, c, 1u << (r - 1));
     if (!col || colourFirst(st, c, 1u << (r - 2)) != col || (VP(r - 2, c) && colourFirst(st, c, 1u << (r - 3)) == col)) continue;
@@ -4235,7 +4241,7 @@ static Dec readyWhenLands(Dec d) {
     if (lineState(0, 0, RQS[0], can0, wt0, cur0, &t0) == 0) {
       int nq = 1, head = 0, nf = 0, found[READYTRIES];
       // where the slab lands is what readies it: the swaps tried are those
-      // within three rows of a column's top, beside or under its columns
+      // within three rows of a column's working top, beside or under its columns
       int lo = (int)BIN[IN_SLABC] - 1, hi = (int)BIN[IN_SLABC] + (int)BIN[IN_SLABW];
       extern PATLS double paWork;
       RQN[0] = 0; RQH[0] = hashOf(RQS[0]);
@@ -4246,7 +4252,7 @@ static Dec readyWhenLands(Dec d) {
         for (int i = 0; i < nl && nq < RQMAX && nf < READYTRIES; i++) {
           int sr = RQL[2 * i], sc = RQL[2 * i + 1];
           if (sc + 1 < lo || sc > hi) continue;
-          int top = topRow(U(RQS[at], OCC + sc)), t2 = topRow(U(RQS[at], OCC + sc + 1));
+          int top = workTop(RQS[at], sc), t2 = workTop(RQS[at], sc + 1);
           if (t2 > top) top = t2;
           if (sr < top - 2) continue;
           stcpy(RQS[nq], RQS[at]);
