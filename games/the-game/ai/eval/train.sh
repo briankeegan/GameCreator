@@ -11,6 +11,8 @@ here=$(cd "$(dirname "$0")" && pwd)
 game=${GC_PANEL_GAME:-$here/../../../../../briankeegan/panel-game}
 [ -f "$here/native/libbit.so" ] || "$here/native/build.sh" > /dev/null
 eval "$(luarocks path --lua-version 5.1)"
+# a path given relative is the caller's, not the checkout's it runs in
+case ${GC_GAMELOG:-/} in /*) ;; *) GC_GAMELOG=$PWD/$GC_GAMELOG; export GC_GAMELOG ;; esac
 cd "$game"
 LUA_PATH="./?.lua;./common/lib/?.lua;$LUA_PATH" LUA_CPATH="./common/lib/?.so;$LUA_CPATH" \
   exec luajit "$here/lua/train.lua" "$@"

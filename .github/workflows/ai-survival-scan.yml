@@ -54,7 +54,9 @@ jobs:
       - name: Seed ${{ matrix.seed }}
         env:
           GC_PANEL_GAME: ${{ github.workspace }}/panel-game
-          GC_DEATHLOG: '300'   # a death's last frames, the bot's log and the board, printed by the run itself
+          GC_DEATHLOG: '300'     # a death's report in the job log: the bot's log of its last 300 frames,
+          GC_DEATHBOARD: '3000'  # the boards of its last 3000
+          GC_GAMELOG: game.log   # the whole game, every frame's bot log and board: the artifact
         run: |
           games/the-game/ai/eval/train.sh ${{ inputs.mode }} ${{ matrix.seed }} ${{ inputs.frames }} | tee out.txt | grep -E "^(died|alive|bot over)"
           end=$(grep -E "^(died|alive)" out.txt | tail -1)
@@ -66,10 +68,18 @@ jobs:
         if: failure()
         timeout-minutes: 2
         run: sed -n '/^DEATH REPORT/,/^END DEATH REPORT/p' out.txt
+      # EVERY SEED'S WHOLE GAME, alive or dead (scan_deaths.sh fetches them)
+      - name: Pack the game
+        if: always()
+        timeout-minutes: 2
+        run: gzip -f game.log
       - name: Keep the game
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         timeout-minutes: 5
         with:
           name: seed-${{ matrix.seed }}
-          path: out.txt
+          path: |
+            game.log.gz
+            out.txt
+          retention-days: 14

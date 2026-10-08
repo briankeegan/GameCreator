@@ -15,9 +15,11 @@
 -- (GC_STATES=1: with every cell's state);
 -- GC_BOTLOG=F (GC_BOTLOG_N frames, 1 by default) writes the bot's own log of
 -- its decisions to stderr, each frame headed "@ F". GC_DEATHLOG=N keeps the
--- last N frames -- the bot's log, then the board with every cell's state --
--- and prints them, headed "DEATH REPORT", if the run dies: the run that died
--- is the one read, here or on Actions, never a replay.
+-- bot's log of the last N frames and GC_DEATHBOARD=M (N by default) the board
+-- of the last M, every cell's state, and prints them, headed "DEATH REPORT",
+-- if the run dies: the run that died is the one read, here or on Actions,
+-- never a replay. GC_GAMELOG=PATH writes the whole game there, every frame's
+-- bot log and board.
 --
 -- EVERY DECISION IN ITS BUDGET, counted in work as the browser counts it
 -- (native/bot.c WORKBUDGET); the collector runs one step at the top of each
@@ -39,6 +41,8 @@ local FRAMES, LEVEL = tonumber(arg[3]) or 120000, tonumber(arg[4]) or 10
 local TRACE = tonumber(os.getenv("GC_TRACE") or "-1")
 local BOTLOG, BOTLOG_N = tonumber(os.getenv("GC_BOTLOG") or "-1"), tonumber(os.getenv("GC_BOTLOG_N") or "1")
 local DEATHLOG = tonumber(os.getenv("GC_DEATHLOG") or "0")
+local DEATHBOARD = DEATHLOG > 0 and math.max(DEATHLOG, tonumber(os.getenv("GC_DEATHBOARD") or "0")) or 0
+local GAMELOG = os.getenv("GC_GAMELOG") and assert(io.open(os.getenv("GC_GAMELOG"), "w"))
 if LEVEL ~= 10 then io.stderr:write("train: drills run at level 10 only\n"); os.exit(2) end
 
 -- TrainingMenu.lua createBasicTrainingMode
@@ -169,11 +173,15 @@ local function frameLine(f, bits, states)
                        #a.incomingGarbage.stagedGarbage, show(states))
 end
 -- GC_DEATHLOG: each frame's bot log written to memory, not stderr, and kept
--- in a ring of the last DEATHLOG frames with the board that followed it
-local ring, LOGP, LOGN = {}, ffi.new("char *[1]"), ffi.new("size_t[1]")
+-- in a ring of the last DEATHLOG frames; the boards in one of DEATHBOARD
+local logs, boards, LOGP, LOGN = {}, {}, ffi.new("char *[1]"), ffi.new("size_t[1]")
 local function deathReport(f)
-  print("DEATH REPORT: the last " .. math.min(DEATHLOG, f + 1) .. " frames, the bot's log then the board")
-  for g = math.max(0, f - DEATHLOG + 1), f do io.write(ring[g % DEATHLOG + 1]) end
+  print("DEATH REPORT: the boards of the last " .. math.min(DEATHBOARD, f + 1) .. " frames, the bot's log of the last "
+        .. math.min(DEATHLOG, f + 1) .. " before them")
+  for g = math.max(0, f - DEATHBOARD + 1), f do
+    if g > f - DEATHLOG then io.write("@ ", g, "\n", logs[g % DEATHLOG + 1]) end
+    io.write(boards[g % DEATHBOARD + 1], "\n")
+  end
   print("END DEATH REPORT")
 end
 
@@ -202,7 +210,7 @@ while f < FRAMES do
   C.botTraceOn = (BOTLOG >= 0 and f >= BOTLOG and f < BOTLOG + BOTLOG_N) and 1 or 0
   if C.botTraceOn ~= 0 then io.stderr:write("@ " .. f .. "\n") end
   local mem
-  if DEATHLOG > 0 and C.botTraceOn == 0 then mem = ffi.C.open_memstream(LOGP, LOGN); C.botLogTo = mem; C.botTraceOn = 1 end
+  if (DEATHLOG > 0 or GAMELOG) and C.botTraceOn == 0 then mem = ffi.C.open_memstream(LOGP, LOGN); C.botLogTo = mem; C.botTraceOn = 1 end
   local bits = os.getenv("GC_NOBOT") and 0 or C.front_frame(fid, board)
   local blog = ""
   if mem then
@@ -217,7 +225,11 @@ while f < FRAMES do
   if took > FRAME_MS then over = over + 1 end
   if took > slowest then slowest = took end
   if TRACE >= 0 and f >= TRACE then print(frameLine(f, bits)) end
-  if DEATHLOG > 0 then ring[f % DEATHLOG + 1] = "@ " .. f .. "\n" .. blog .. frameLine(f, bits, true) .. "\n" end
+  if DEATHLOG > 0 or GAMELOG then
+    local board = frameLine(f, bits, true)
+    if DEATHLOG > 0 then logs[f % DEATHLOG + 1] = blog; boards[f % DEATHBOARD + 1] = board end
+    if GAMELOG then GAMELOG:write("@ ", f, "\n", blog, board, "\n") end
+  end
   local dead = a.game_over_clock and a.game_over_clock > 0
   if f % 250 == 0 or dead then
     local p, g = counts()
@@ -226,8 +238,10 @@ while f < FRAMES do
     io.stdout:flush()
   end
   if dead and DEATHLOG > 0 then deathReport(f) end
+  if dead and GAMELOG then GAMELOG:close() end
   if dead then print(string.format("frames over %.1f ms: %d, slowest %.1f ms", FRAME_MS, over, slowest)); print("died " .. f); os.exit(1) end
   f = f + 1
 end
 print(string.format("frames over %.1f ms: %d, slowest %.1f ms", FRAME_MS, over, slowest))
+if GAMELOG then GAMELOG:close() end
 print("alive " .. f)
