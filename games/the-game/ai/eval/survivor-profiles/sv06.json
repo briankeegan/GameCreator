@@ -1,0 +1,16 @@
+{
+  "name": "WasmSurvivor",
+  "weights": "trained.pbt.pbt-sv06-s306.1008-060008.g00040.json",
+  "reaction": 12,
+  "swapGap": 12,
+  "cursorMoveFrames": 4,
+  "depth": 2,
+  "modes": true,
+  "ahead": 90,
+  "threat": null,
+  "breakFirst": true,
+  "breakDepth": 1,
+  "lineup": true,
+  "conserve": true,
+  "nativeCands": true
+}
