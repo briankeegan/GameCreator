@@ -115,7 +115,7 @@ module.exports = function think(cfg) {
         var sp = bot._searchProofs;
         why = { provenRanks: provenRanked.join(' '), ranked: ranked.join(' '), want: Object.keys(want), cands: sp ? sp.cands.map(key) : null, proven: sp ? sp.cands.filter(function (c, i) { return sp.proofs[i]; }).map(key) : null };
       }
-      d = SP.overrule(d, prep);   // a lineup while a slab pops (survivor_prefer.js)
+      d = SP.overrule(d, prep, bot);   // a lineup while a slab pops (survivor_prefer.js)
       var overruled = !!d.overruled;
       var took = Date.now() - t1;
       if (took > 20) { rates.push(bot.SURVIVE_SEARCH_BUDGET / took); if (rates.length > 8) rates.shift(); }

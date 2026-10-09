@@ -137,11 +137,14 @@ function key(c) { return c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[
 // A LINEUP WHILE A SLAB POPS IS PLAYED. Nothing can die before the pop
 // ends and the lineup breaks the slab when it does; the bot's own stages
 // (the lookahead, the modes) do not know what the pop's end brings.
-function overrule(d, prep) {
+// With threesLast, a three is not forced over the bot's own move.
+function overrule(d, prep, bot) {
   var br = prep.br, want = prep.want;
   if (br && (prep.popping && br.lineup || br.touch) && !want[key(d)]) {
     var lk = Object.keys(want).filter(function (k) { return /^\d+,\d+$/.test(k); })[0];
-    if (lk) return { kind: 'swap', move: lk.split(',').map(Number), overruled: true };
+    var mv = lk && lk.split(',').map(Number);
+    if (mv && bot && bot.refuseBareThree && bot.threeOnlySwap(mv)) return d;
+    if (mv) return { kind: 'swap', move: mv, overruled: true };
   }
   return d;
 }

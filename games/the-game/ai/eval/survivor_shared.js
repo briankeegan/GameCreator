@@ -28,7 +28,7 @@ function botOptions(p, threads) {
   });
   return { weights: weights,
            reaction: p.reaction, swapGap: p.swapGap, cursorMoveFrames: p.cursorMoveFrames, depth: p.depth, beam: 0, rise: true, allowRaise: true,
-           modes: p.modes, engine: true, native: true, nativeCands: !!p.nativeCands, noBareThree: !!p.noBareThree, threads: threads };
+           modes: p.modes, engine: true, native: true, nativeCands: !!p.nativeCands, threesLast: !!p.threesLast, threads: threads };
 }
 
 // ---------------------------------------------------------------- garbage on its way
