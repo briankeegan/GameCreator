@@ -487,6 +487,8 @@ static int driveWalk(Front *F, int input) {
   F->wFrames++;
   if (F->wHasDisp && FB->displacement > F->wDisp) F->wRow++;
   F->wDisp = FB->displacement; F->wHasDisp = 1;
+  // a target risen past the rows the cursor reaches is no pair to press: the bot decides again
+  if (F->wRow > FB->topCurRow) { F->walk = 0; F->cooldown = 0; return input; }
   int row = clampi(F->wRow, 1, FB->topCurRow), col = clampi(F->wCol, 1, W - 1);
   if (FB->curRow != row || FB->curCol != col) {
     if (F->wTimer > 0) { F->wTimer--; return input; }
