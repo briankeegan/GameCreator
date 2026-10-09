@@ -3129,18 +3129,25 @@ static int gNearGarbage(int g[][WMAX + 2], int r, int c) {
 }
 static void tClears(int cr, int cc, double t0, double limit) {
   static JLOCAL int g0[TGRID + 2][WMAX + 2], g[TGRID + 2][WMAX + 2], h[TGRID + 2][WMAX + 2];
+  static JLOCAL unsigned char alone[TGRID + 2][WMAX + 2];   // the swaps that break on their own
   gLoad(g0);
   for (int r = 1; r <= tH; r++)
     for (int c = 1; c < tW; c++) {
       int cl, b = gSwapResolve(g, g0, r, c, &cl);
-      if (b < 0) continue;
+      alone[r][c] = b == 1;
+      if (b == 1) { int32_t sw[2] = { r, c }; tPropose(sw, 1, cr, cc, t0, limit); }
+    }
+  for (int r = 1; r <= tH; r++)
+    for (int c = 1; c < tW; c++) {
+      int cl, b = gSwapResolve(g, g0, r, c, &cl);
+      if (b != 0) continue;
       int32_t sw[4] = { r, c, 0, 0 };
-      if (b) { tPropose(sw, 1, cr, cc, t0, limit); continue; }
       // the board it leaves: one more swap, near the garbage, that breaks on it
+      // and not on its own (that one is a line of one already)
       for (int r2 = 1; r2 <= tH; r2++)
         for (int c2 = 1; c2 < tW; c2++) {
           int cl2;
-          if (!gNearGarbage(g, r2, c2) || gSwapResolve(h, g, r2, c2, &cl2) != 1) continue;
+          if (alone[r2][c2] || !gNearGarbage(g, r2, c2) || gSwapResolve(h, g, r2, c2, &cl2) != 1) continue;
           sw[2] = r2; sw[3] = c2;
           tPropose(sw, 2, cr, cc, t0, limit);
         }
@@ -4368,30 +4375,21 @@ static Dec readyWhenLands(Dec d) {
   // outlive the board left alone, not the choice it replaces -- that choice's
   // later death is judged without a break, and the break is what saves it
   dieRef = readyBar();
-  // THE LINES THAT READY IT, IN TIME (readiesLine): the first the engine confirms is played
   int spare = materialRows(DBASE) >= 6, tried;
-  {
-    int32_t rl[2 * LINEMAX]; int rn;
-    int got = readiesLine(d, dieRef, spare, rl, &rn, &r, &c);
-    if (got < 0) return d;
-    if (got) {
-      if (rn > 1) lineSet(rl, rn, LINE_PLAN, 0); else BT->nLine = 0;
-      lineLast = 8;
-      return mkSwap(rl[0], rl[1], V_LINEUP, d.mode, d.alive);
-    }
-  }
-  // NOR TWO: the time to the landing is what bounds the setup, not a count of
+  // FIRST BY DISTANCE: the time to the landing is what bounds the setup, not a count of
   // swaps. The breaks by distance are found on the board as the slab lands
   // on it; a walk whose steps but the last are played now, before it lands,
-  // leaves that last one in reach when it does.
+  // leaves that last one in reach when it does. The planner is not bounded
+  // by the landing: the last step comes after it; the engine judges the
+  // steps before it and readyInTime the break.
   {
     static ST RWB; uint32_t can[WMAX]; uint8_t wt[32][WMAX]; int32_t cur[2], tl;
-    if (lineLandedFull(0, 0, RWB, can, wt, cur, &tl) != 0) return d;
+    if (lineLandedFull(0, 0, RWB, can, wt, cur, &tl) == 0) {
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "RWL by distance: lands at %d\n", tl); }
 #endif
     int n0 = nLines;
-    targetLines(RWB, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, tl);
+    targetLines(RWB, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, INF);
     static unsigned char wk[MAXLINES];
     for (int i = n0; i < nLines; i++) wk[i] = (char)(LINES[i].n < 2);
     int got = -1;
@@ -4417,6 +4415,19 @@ static Dec readyWhenLands(Dec d) {
       return mkSwap(l.sw[0], l.sw[1], V_LINEUP, d.mode, d.alive);
     }
     nLines = n0;
+    }
+  }
+  // THE LINES THAT READY IT, IN TIME (readiesLine), with the work left after
+  // the cheaper breaks by distance: the first the engine confirms is played
+  {
+    int32_t rl[2 * LINEMAX]; int rn;
+    int got = readiesLine(d, dieRef, spare, rl, &rn, &r, &c);
+    if (got < 0) return d;
+    if (got) {
+      if (rn > 1) lineSet(rl, rn, LINE_PLAN, 0); else BT->nLine = 0;
+      lineLast = 8;
+      return mkSwap(rl[0], rl[1], V_LINEUP, d.mode, d.alive);
+    }
   }
   return d;
 }
