@@ -6,7 +6,8 @@
 // A move whose clears are all threes and start no chain -- garbage broken or
 // not -- is dropped while any other move is left; it is kept when it is all
 // there is (the survival search has already said what lives). A chain, a
-// combo of four and a move clearing nothing all stay.
+// combo of four and a move clearing nothing all stay. Topped out, a three is
+// allowed: that is the last resort it is kept for.
 var assert = require('assert');
 var P = require('./puyocpu.js');
 function cand(name, comboSizes, chainLength, brokeGarbage) {
@@ -22,6 +23,9 @@ assert.strictEqual(bot.bareThreesDropped, 3);
 assert.strictEqual(names(bot._noBareThree([bare, brk])), 'bare,break', 'threes only: all kept');
 assert.strictEqual(names(bot._noBareThree([bare])), 'bare', 'the only move left is played');
 assert.strictEqual(bot.bareThreesKept, 2);
+bot.stack = { wasToppedOut: true };
+assert.strictEqual(names(bot._noBareThree([bare, hold])), 'bare,hold', 'topped out, a three is allowed');
+bot.stack = { wasToppedOut: false };
 bot.refuseBareThree = false;
 assert.strictEqual(names(bot._noBareThree([bare, hold])), 'bare,hold', 'off unless the profile asks');
 bot._allCands = [{ kind: 'swap', move: [3, 2], resolved: brk.resolved }, { kind: 'swap', move: [4, 2], resolved: chain.resolved }];
