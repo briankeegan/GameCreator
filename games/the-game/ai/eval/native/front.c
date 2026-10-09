@@ -55,8 +55,20 @@ static int fMoving(const int32_t *f) {
   return !(fState(f) == NORMAL && !(f[ISGARBAGE] && fInt(f[SHAKETIME])) && !f[STATECHANGED] && !f[PROPCHAIN] &&
            !SETB(f[QUEUEDHOVER]) && !f[MATCHANYWAY] && !fFell(f) && !SETB(f[CHAINING]));
 }
+// A BREAK'S CELL IS THE PANEL IT TURNS INTO once the game shows it, and not
+// before: the engine colours the slab's bottom row as it matches (pa.c
+// convertGarbagePanels), the client shows each cell's panel one at a time --
+// past the flash, at its own pop (PanelCellRender.lua: initial_time - timer
+// >= FLASH, timer <= pop_time). Shown, it pops, hovers and falls as that panel.
+static int fConv(const int32_t *f) {
+  if (!f[ISGARBAGE] || !(f[COLOR] > 0) || f[COLOR] == 9 || fInt(f[YOFF]) != -1) return 0;
+  int s = fState(f);
+  if (s == POPPING || s == POPPED) return 1;
+  return s == MATCHED && fInt(f[INITIALTIME]) - fInt(f[TIMER]) >= FB->fFLASH && fInt(f[TIMER]) <= fInt(f[POPTIME]);
+}
 // The snapshot's grid value: -2 garbage, 0 empty or leaving, -1 dimmed, else the colour.
 static int fGrid(const int32_t *f) {
+  if (fConv(f)) return f[COLOR];
   if (f[ISGARBAGE]) return -2;
   if (f[COLOR] == 0) return 0;
   int s = fState(f);
@@ -120,7 +132,7 @@ static void fMasks(int32_t *m, int rise) {
   for (r = 0; r <= top; r++) {
     for (c = 1; c <= W; c++) {
       const int32_t *f = fp(r, c);
-      if (!f[ISGARBAGE]) continue;
+      if (!f[ISGARBAGE] || fConv(f)) continue;
       int nr = r + rise;
       if (rise && nr > H) continue;   // pushed past the ceiling, it leaves with its panels
       int i;
@@ -364,12 +376,12 @@ static void fPrepare(Front *F) {
       if (fState(f) != NORMAL) { moving = 1; flying++; }
       if (fFell(f)) converted++;
     }
-  // a slab breaking: its bottom row already has the colours it turns into
+  // a slab breaking: the cells of its bottom row the game has shown (fConv)
   int nconv = 0, convTimer = -1, top = fTopRow();
   for (r = 1; r <= top; r++)
     for (c = 1; c <= W; c++) {
       const int32_t *f = fp(r, c);
-      if (!fMoving(f) || !f[ISGARBAGE] || fState(f) != MATCHED || !(f[COLOR] > 0) || f[COLOR] == 9) continue;
+      if (!fMoving(f) || !fConv(f)) continue;
       if (nconv < 80) { d[IN_CONV + 3 * nconv] = r; d[IN_CONV + 3 * nconv + 1] = c; d[IN_CONV + 3 * nconv + 2] = f[COLOR]; nconv++; }
       if (convTimer < 0 || fInt(f[TIMER]) < convTimer) convTimer = fInt(f[TIMER]);
     }
@@ -385,6 +397,18 @@ static void fPrepare(Front *F) {
   d[IN_STACKTOPPED] = topped;
   d[IN_MOVING] = moving;
   nb_copy(paLibBoard(), FB); d[IN_HASPA] = 1;   // the engine holds the board the bot decides on
+  // THE BOT KNOWS WHAT THE GAME SHOWS: no row dealt past the one coming up,
+  // no break's colours before its cells pop into view (fConv) -- a harness
+  // that deals them to its own engine (the drill, train.lua) deals them to
+  // the game, not to the bot. A cell not yet shown is a panel of a colour not
+  // dealt (pa.c UNSEEN_COLOUR): it fills its cell and matches nothing.
+  { Board *pb = paLibBoard();
+    pb->nRowFeed = 0; pb->nBrkFeed = 0;
+    for (r = 1; r < pb->nrows; r++)
+      for (c = 1; c <= W; c++) {
+        int32_t *f = pb->p[r][c].f;
+        if (f[ISGARBAGE] && f[COLOR] > 0 && f[COLOR] != 9 && f[COLOR] < 130 && !fConv(f)) f[COLOR] = 130 + (W * r + c - 1) % 90;
+      } }
   // THE FIRST WAVE BEFORE IT IS SEEN: until a real slab is queued, the board
   // the bot decides on holds one queued slab the width of the board, so every
   // readiness rule and replay readies the first wave as it readies every
@@ -409,7 +433,7 @@ static void fPrepare(Front *F) {
     int nl = 0;
     for (r = 1; r <= FB->height; r++)
       for (c = 1; c < W; c++) {
-        int a = fGrid(fp(r, c)), b = fGrid(fp(r, c + 1));
+        int a = fConv(fp(r, c)) ? -2 : fGrid(fp(r, c)), b = fConv(fp(r, c + 1)) ? -2 : fGrid(fp(r, c + 1));
         if (a < 0 || b < 0 || (a == 0 && b == 0) || a == b) continue;
         d[IN_LEGAL + 2 * nl] = r; d[IN_LEGAL + 2 * nl + 1] = c; nl++;
       }
