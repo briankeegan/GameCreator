@@ -3719,84 +3719,6 @@ static Dec stayAlive(Dec d) {
   if (l->n > 1) lineKeep(l, l->brk ? LINE_BREAK : LINE_CASH); else BT->nLine = 0;
   return saKeep(lineSwap(l, V_KEEPHEALTH, d));
 }
-// NO DIGGING UNDER A PILE: a clear that breaks nothing and leaves more hollow
-// under the garbage than the board left alone (HOLLOW: the gaps under it and
-// the level the slabs to come land on) takes the panels a break of that pile
-// needs from under it -- whatever the material, since what a pile touches,
-// not what the board holds, is what breaks it. It gives way to the hold,
-// unless it loses health later than the hold does: that is survival's, and
-// arbitrate, after this, weighs it.
-// THE HOLLOW THE NEXT SLAB LANDS OVER: on the board the engine reaches when
-// it lands (lineLandedFull), the empty cells under each column's lowest
-// garbage, down to what the column holds (-1: no landing board)
-int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t);
-static int landHollow(const int32_t *sw, int n) {
-  static ST LH; uint32_t can[WMAX]; uint8_t wt[32][WMAX]; int32_t cur[2], t;
-  if (lineLandedFull(sw, n, LH, can, wt, cur, &t) != 0) return -1;
-  int h = 0;
-  for (int c = 1; c <= BW; c++) {
-    uint32_t g = U(LH, GARB + c);
-    if (!g) continue;
-    uint32_t below = lowb(g) - 1u, occ = U(LH, OCC + c) & below;
-    h += popc(below) - (occ ? topRow(occ) : 0);
-  }
-  return h;
-}
-// NO GOING BACK: a swap that undoes a press (undoesPress) gives way to the
-// hold, which keeps the board that press made.
-static Dec returnGuard(Dec d) {
-  if (d.kind != K_SWAP || !d.hasMove || lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;
-  int back = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc ? undoesOld(d.sr, d.sc) : undoesPress(d.sr, d.sc);
-  if (!back) return d;
-#ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "RETURN via %d %d,%d undoes the press %d back\n", d.via, d.sr, d.sc, back); }
-#endif
-  BT->nLine = 0; lineLast = 0;
-  return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
-}
-static Dec perchGuard(Dec d) {
-  if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA]) return d;
-  // NOR UNDER THE NEXT ONE: with garbage to come and none on the board, a
-  // clear that breaks nothing may not leave the next slab landing over more
-  // hollow than the hold does -- read where it lands, not where the judge's
-  // horizon ends. With nothing queued a slab can still come: the hollow the
-  // slabs to come would leave (HOLLOW, every four columns' gap under their
-  // tallest) is held to the hold's below, as it is under garbage.
-  if (!hasGarbage(DBASE)) {
-    if (!(BIN[IN_INCOMING] > 0) || lineLast == 3 || endsInBreak(d)) return d;
-    Cand *pc = poolSwap(d.sr, d.sc);
-    if (pc && pc->res.broke) return d;
-    int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
-    int32_t sw[2] = { d.sr, d.sc };
-    const int32_t *ln = playsLine ? BT->line : sw; int n = playsLine ? BT->nLine : 1;
-    int v = lineJudge(ln, n, playsLine ? BT->lineWaitAll : 0);
-    if (!(v & LV_LIVES) || !(v & LV_PAYS) || (v & LV_BREAKS)) return d;
-    int die = LNO[0];
-    if (!aloneOnEngine() || (LNA[0] && (!die || die > LNA[0]))) return d;
-    int hd = landHollow(ln, n), h0 = hd < 0 ? -1 : landHollow(0, 0);
-    if (hd < 0 || h0 < 0 || hd <= h0) return d;
-#ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "PERCH via %d %d,%d lands over %d, the hold's %d\n", d.via, d.sr, d.sc, hd, h0); }
-#endif
-    BT->nLine = 0; lineLast = 0;
-    return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
-  }
-  if (lineLast == 3 || endsInBreak(d)) return d;
-  Cand *pc = poolSwap(d.sr, d.sc);
-  if (pc && pc->res.broke) return d;
-  int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
-  int32_t sw[2] = { d.sr, d.sc };
-  int v = playsLine ? lineJudge(BT->line, BT->nLine, BT->lineWaitAll) : lineJudge(sw, 1, 0);
-  if (!(v & LV_LIVES) || !(v & LV_PAYS) || (v & LV_BREAKS)) return d;
-  int h = HOLLOW(LNO), die = LNO[0];
-  if (!aloneOnEngine() || h <= HOLLOW(LNA)) return d;
-  if (LNA[0] && (!die || die > LNA[0])) return d;
-#ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "PERCH via %d %d,%d hollow %d over the hold's %d\n", d.via, d.sr, d.sc, h, HOLLOW(LNA)); }
-#endif
-  BT->nLine = 0; lineLast = 0;
-  return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
-}
 // THE ONE CHOICE. The decision the stages made, the target the walk was on
 // (no press since it was chosen) and what stayAlive chose -- with none, the
 // board left alone -- are weighed in one order, and the best is the decision:
@@ -3804,10 +3726,13 @@ static Dec perchGuard(Dec d) {
 // when the next slab lands (readyInTime), then the later loss of health
 // (hollow costed), then the more garbage converted, then the less hollow.
 // Equal: the target, the decision, the alternative, in that order -- a
-// decision turns from its target only for a better one. Each is judged on the
+// decision turns from its target only for a better one -- except a decision
+// that puts back the last press (undoesPress), which the alternative keeps
+// the board of unless it is better. More hollow under the garbage (and under
+// the slab to come) is life lost, so the rank holds a clear that digs under a pile. Each is judged on the
 // engine (lineJudge, which keeps to the work there is); one it cannot judge is
 // not weighed, and a decision it cannot judge stands.
-typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, lives, breaks, die, conv, hollow; double life; } Opt;
+typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, lives, breaks, die, conv, hollow, pri; double life; } Opt;
 static int optJudge(Opt *o) {
   int last = 0;
   o->rdy = o->rdyKnown = o->breaks = o->conv = 0;
@@ -3855,10 +3780,12 @@ static Dec arbitrate(Dec d) {
   if (hasT) {
     Opt *o = &O[n]; o->d = mkSwap(BT->tgt[0], BT->tgt[1], BT->tgtVia, d.mode, d.alive); o->d.waitAll = BT->tgtN == 1 && BT->tgtWait;
     o->n = BT->tgtN; o->wait = BT->tgtWait; for (int k = 0; k < 2 * o->n; k++) o->sw[k] = BT->tgt[k];
+    o->pri = 0;
     if (optJudge(o)) n++;
   }
   // the decision
   { Opt *o = &O[n]; o->d = d; at = n;
+    o->pri = d.kind == K_SWAP && (BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc ? undoesOld(d.sr, d.sc) : undoesPress(d.sr, d.sc)) ? 3 : 1;
     if (d.kind == K_SWAP) {
       int line = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
       o->n = line ? BT->nLine : 1; o->wait = line ? BT->lineWaitAll : 0;
@@ -3874,11 +3801,12 @@ static Dec arbitrate(Dec d) {
     if (saSet) { o->d = saDec; o->n = saN; o->wait = saWait; for (int k = 0; k < 2 * saN; k++) o->sw[k] = saLine[k];
                  if (!saN && saDec.kind == K_SWAP) { o->n = 1; o->wait = 0; o->sw[0] = saDec.sr; o->sw[1] = saDec.sc; } }
     else { o->d = mkHold(V_KEEPHEALTH, d.mode, d.alive, 0, 0, 0); o->n = 0; }
+    o->pri = 2;
     hasA = optJudge(o); if (hasA) n++;
   }
   if (n < 2) return d;
   int best = 0;
-  for (int i = 1; i < n; i++) if (optRank(&O[i], &O[best]) > 0) best = i;
+  for (int i = 1; i < n; i++) { int c = optRank(&O[i], &O[best]); if (c > 0 || (c == 0 && O[i].pri < O[best].pri)) best = i; }
   if (best == at) return d;
   Opt *b = &O[best];
 #ifndef __wasm__
@@ -5680,9 +5608,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // step takes the line's timing (a break waits for its panels to settle),
   // whichever route returned it
   if (d.kind == K_SWAP && BT->nLine == 1 && BT->line[0] == d.sr && BT->line[1] == d.sc) d.waitAll = BT->lineWaitAll;
-  // the guards, then the one choice (arbitrate): survival's above all
-  d = returnGuard(d);
-  d = perchGuard(d);
+  // the one choice (arbitrate): survival's above all
   d = setupTwos(d);
   d = arbitrate(d);
   recordTarget(d);
