@@ -1201,6 +1201,11 @@ static int raiseModeOf(const int32_t *base, int poolBreak) {
   int topped = BIN[IN_TOPPED] != 0;
   if (!opt(O_ALLOWRAISE) || topped) { BT->opening = 0; { raiseGate = 2; return 0; } }
   if (BIN[IN_FALLING]) { raiseGate = 3; return 0; }
+  // THE LOCK THAT WILL NOT END: panels or garbage in motion hold the rise
+  // (pa.c riseLock), and while garbage is still queued to drop it holds again
+  // as soon as it lifts -- in a storm, nearly every frame. No raise is wanted
+  // that the board cannot take: material comes from what breaks.
+  if (BIN[IN_LOCKLEFT] > 0 && BIN[IN_INCOMING] > 0) { raiseGate = 11; return 0; }
   int rows = (int)__builtin_ceil(BIN[IN_NEXTSLAB] / BW);
   int fits = raiseSafe(base);
   // A QUEUE THAT FILLS THE ROOM KILLS A BOARD WITH NO BREAK READY, raised or
@@ -5582,6 +5587,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
 #ifndef __wasm__
   // what the decision is and which stage it came from, with what its swap
   // clears on its own (the pool's resolve): the trace's, read by scan tools
+  if (botTraceOn && !(d.kind == K_SWAP && d.hasMove)) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "DECIDE %s via %d\n", d.kind == K_RAISE ? "raise" : "hold", d.via); }
   if (botTraceOn && d.kind == K_SWAP && d.hasMove) { extern int fprintf(void *, const char *, ...); extern void *stderr;
     Cand *pc = poolSwap(d.sr, d.sc);
     fprintf(BLOG, "DECIDE via %d %d,%d total %d chain %d broke %d line %d\n", d.via, d.sr, d.sc, pc ? pc->res.total : -1, pc ? pc->res.chain : -1, pc ? pc->res.broke : -1, lineLast); }
