@@ -3784,7 +3784,8 @@ static int optRank(Opt *a, Opt *b) {
   if (da != db) return da > db ? 1 : -1;
   // no break to make yet: the one that brings the break soonest (setup), then a
   // combo or a chain, the break looked for while it resolves
-  if (ka) { double sa = optSoon(a), sb = optSoon(b); if (sa != sb) return sa < sb ? 1 : -1; }
+  // a break sooner by more than NEXTMOVE: less is the walk's own movement, and the target stands
+  if (ka) { double sa = optSoon(a), sb = optSoon(b), gap = sa > sb ? sa - sb : sb - sa; if (sa != sb && !(gap <= NEXTMOVE)) return sa < sb ? 1 : -1; }
   if (a->cash != b->cash) return a->cash > b->cash ? 1 : -1;
   if (a->life != b->life) return a->life > b->life ? 1 : -1;
   if (a->conv != b->conv) return a->conv > b->conv ? 1 : -1;
@@ -3829,7 +3830,9 @@ static Dec arbitrate(Dec d) {
   if (best == at) return d;
   Opt *b = &O[best];
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "ARBITER %s %d,%d (dies %d) over via %d %d,%d (dies %d)\n", hasA && best == n - 1 ? "the alternative" : "the target", b->d.sr, b->d.sc, b->die, d.via, d.sr, d.sc, O[at].die); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "ARBITER %s %d,%d over via %d %d,%d | keys (lives breaks ready die soon cash life hollow; -1 unasked) won %d %d %d %d %g %d %g %d | lost %d %d %d %d %g %d %g %d\n", hasA && best == n - 1 ? "the alternative" : "the target", b->d.sr, b->d.sc, d.via, d.sr, d.sc,
+      b->lives, b->breaks, b->rdyKnown ? b->rdy : -1, b->die, b->soonKnown ? b->soon : -1.0, b->cash, b->life, b->hollow,
+      O[at].lives, O[at].breaks, O[at].rdyKnown ? O[at].rdy : -1, O[at].die, O[at].soonKnown ? O[at].soon : -1.0, O[at].cash, O[at].life, O[at].hollow); }
 #endif
   if (hasA && best == n - 1) lineSet(saSet ? saLine : 0, saSet ? saN : 0, saSet ? saKind : 0, saSet ? saWait : 0);
   else if (BT->tgtN > 1) lineSet(BT->tgt, BT->tgtN, BT->tgtKind, BT->tgtWait);
