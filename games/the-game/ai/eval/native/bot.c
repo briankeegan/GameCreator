@@ -3737,10 +3737,10 @@ static Dec stayAlive(Dec d) {
 // the slab to come) is life lost, so the rank holds a clear that digs under a pile. Each is judged on the
 // engine (lineJudge, which keeps to the work there is); one it cannot judge is
 // not weighed, and a decision it cannot judge stands.
-typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, lives, breaks, die, conv, hollow, pri; double life; } Opt;
+typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, die, conv, hollow, pri; double life, soon; } Opt;
 static int optJudge(Opt *o) {
   int last = 0;
-  o->rdy = o->rdyKnown = o->breaks = o->conv = 0;
+  o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = 0;
   if (o->d.kind == K_HOLD) {
     o->die = aloneDie(1 << 20);
     o->hollow = aloneOnEngine() ? HOLLOW(LNA) : 0;
@@ -3751,6 +3751,8 @@ static int optJudge(Opt *o) {
     if (die < 0) return 0;   // no verdict: nothing to weigh
     o->die = die; o->lives = die > 0; o->breaks = (v & LV_BREAKS) != 0;
     o->conv = LNO[2] - LNA[2]; o->hollow = HOLLOW(LNO); last = LNO[1];
+    // a combo or a chain: it clears more than the board left alone, and digs under no pile (more hollow than the hold)
+    o->cash = LNO[3] > LNA[3] && (!aloneOnEngine() || o->hollow <= HOLLOW(LNA));
   }
   o->life = lifeOf(o->die, last, o->hollow);
   return 1;
@@ -3763,6 +3765,14 @@ static int optReady(Opt *o) {
   }
   return o->rdy;
 }
+// THE FRAMES FROM NOW TO THE SOONEST BREAK after the candidate (breakTime: the
+// shared question; INF: none within the work there is), asked only of
+// candidates that tie on everything above it
+static double breakTime(const int32_t *steps, int n);
+static double optSoon(Opt *o) {
+  if (!o->soonKnown) { o->soon = breakTime(o->d.kind == K_HOLD ? 0 : o->sw, o->d.kind == K_HOLD ? 0 : o->n); o->soonKnown = 1; }
+  return o->soon;
+}
 // 1: a is better, -1: b is, 0: the same
 static int optRank(Opt *a, Opt *b) {
   int ka = a->lives ? 1 + a->breaks : 0, kb = b->lives ? 1 + b->breaks : 0;
@@ -3772,6 +3782,10 @@ static int optRank(Opt *a, Opt *b) {
   // line that takes longer to finish still outlives a hold that dies first
   int da = a->die < LIVEHORIZON ? a->die : LIVEHORIZON, db = b->die < LIVEHORIZON ? b->die : LIVEHORIZON;
   if (da != db) return da > db ? 1 : -1;
+  // no break to make yet: the one that brings the break soonest (setup), then a
+  // combo or a chain, the break looked for while it resolves
+  if (ka) { double sa = optSoon(a), sb = optSoon(b); if (sa != sb) return sa < sb ? 1 : -1; }
+  if (a->cash != b->cash) return a->cash > b->cash ? 1 : -1;
   if (a->life != b->life) return a->life > b->life ? 1 : -1;
   if (a->conv != b->conv) return a->conv > b->conv ? 1 : -1;
   if (a->hollow != b->hollow) return a->hollow < b->hollow ? 1 : -1;
