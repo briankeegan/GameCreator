@@ -270,9 +270,10 @@ ways: a tool not listed, or a path listed that doesn't exist.
 - **Survival is a loop on Actions.** `ai-survival-scan.yml` plays all 24 seeds
   at once and keeps each seed's whole game (`game.log.gz`, every frame's bot
   log and board) as its artifact; `scan_deaths.sh RUN_ID DIR` fetches them and
-  adds the scan to `survival_scans.tsv`. Read the games, find what the deaths
-  share, put it in the death-patterns artifact, fix it in the shared function
-  that decides it, merge to main, scan again. A worse scan is tuned forward,
+  adds the scan to `survival_scans.tsv`. Put the scan in the death-patterns
+  artifact first, then read the games there, find what the deaths share and
+  add it, fix it in the shared function that decides it -- the rule, its test
+  and its gate with it -- merge to main, scan again. A worse scan is tuned forward,
   never reverted. Local runs are for testing tools, not for reading games.
 
 ## Infrastructure
