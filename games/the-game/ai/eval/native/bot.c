@@ -1413,6 +1413,10 @@ static int raiseWaiting;
 // the frames until a waiting raise can fire: the rise lock, or the stop it waits on
 static double raiseWaitLeft(void) { return dmax(BIN[IN_LOCKLEFT], raiseAfter); }
 static double dcCandMs;   // GC_WORKSTAT: the pool's share of decideRuled
+// A POOL SWAP THAT BREAKS: the pool's claim asked of the engine (swapBreaks), as
+// every stage asks it; a hold's claim is the board's own and stands
+static int swapBreaks(Dec d);
+static int poolBreaks(const Cand *pc) { return pc->res.broke && (pc->kind != K_SWAP || swapBreaks(mkSwap(pc->sr, pc->sc, V_BREAKREACH, 0, 0))); }
 static Dec decideCore(void) {
   raiseWaiting = 0;
   int32_t *base = IN;
@@ -1436,7 +1440,7 @@ static Dec decideCore(void) {
   int landed = garbageRows(base);
   if (landed > BT->maxSlab) BT->maxSlab = landed;
   int poolBreak = 0;
-  for (int i = 0; i < nPool; i++) if (POOL[i].res.broke) { poolBreak = 1; break; }
+  for (int i = 0; i < nPool; i++) if (poolBreaks(&POOL[i])) { poolBreak = 1; break; }
   int topped = BIN[IN_TOPPED] != 0;
   int readyBase = slabReadyBoard(base) && heldReady();
   int readyFirst = !poolBreak && !topped && !readyBase;   // the slab-ready record is read
@@ -1500,7 +1504,7 @@ static Dec decideCore(void) {
   int survivalNeeded = mode == M_DEFEND;
   lastSurvivalNeeded = survivalNeeded;
   int breakOnPool = 0;
-  for (int i = 0; i < nPool; i++) if (POOL[i].res.broke) { breakOnPool = 1; break; }
+  for (int i = 0; i < nPool; i++) if (poolBreaks(&POOL[i])) { breakOnPool = 1; break; }
   lastBreakOnPool = breakOnPool;
   sigOf(base, &HERE); hereSet = 1;
   int na = 0;
@@ -1557,7 +1561,7 @@ static Dec decideCore(void) {
   if (BT->nSeen > 3) { for (int i = 1; i < BT->nSeen; i++) BT->seen[i - 1] = BT->seen[i]; BT->nSeen--; }
   if (materialRows(base) < 6) {
     int nd = 0;
-    for (int i = 0; i < na; i++) if (ALLOWED[i]->res.broke) TMPC[nd++] = ALLOWED[i];
+    for (int i = 0; i < na; i++) if (poolBreaks(ALLOWED[i])) TMPC[nd++] = ALLOWED[i];
     if (nd) { BT->counts[C_FORCEDBREAK]++; for (int i = 0; i < nd; i++) ALLOWED[i] = TMPC[i]; na = nd; }
   }
   int beam = (int)opt(O_BEAM);
@@ -1640,7 +1644,7 @@ static Dec decideCore(void) {
 
   if (digging) {
     int haveBreak = 0;
-    for (int i = 0; i < nPool; i++) if (POOL[i].res.broke) { haveBreak = 1; break; }
+    for (int i = 0; i < nPool; i++) if (poolBreaks(&POOL[i])) { haveBreak = 1; break; }
     // BREAK ONCE IT LANDS: the hold is for garbage in the air, landing now --
     // not for the queue, which in a storm never empties, so waiting on it
     // only grows the pile until the board tops out
@@ -1648,7 +1652,7 @@ static Dec decideCore(void) {
     Cand *bk = 0;
     for (int i = 0; i < nPool; i++) {
       Cand *bc = &POOL[i];
-      if ((bc->kind != K_SWAP && bc->kind != K_HOLD) || !bc->res.broke) continue;
+      if ((bc->kind != K_SWAP && bc->kind != K_HOLD) || !poolBreaks(bc)) continue;
       if (bc->moveFrames > deadline) continue;
       if (deadly(bc->masks, &bc->res, horizonOf(bc))) continue;
       int cv = bc->res.converts, kv = bk ? bk->res.converts : -1;
