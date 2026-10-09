@@ -13,3 +13,4 @@ challengeloop on
 ready
 stage 1 won frames=3032 continues=0 next=2 complete=false fps=56.4
 shot=/home/runner/.local/share/love/panel-game/stage01_won_c0.png
+ready
