@@ -2894,6 +2894,10 @@ static int tWalk(int *row, int r, int s, int t, int32_t *sw, int *n) {
 static JLOCAL int32_t tPfx[2 * LINEMAX]; static JLOCAL int tPfxN;
 static void tProposeIn(const int32_t *sw, int n, int cr, int cc, double t0, double limit);
 static int tDupes;   // proposals already in the table (the trace's)
+// THE LINES A SEARCH HAS ALREADY: a proposal is a duplicate only of the lines
+// from here on -- a search on another board (the landing's) asks its own
+// question of lines an earlier one found on this one
+static int tFrom;
 static void tPropose(const int32_t *sw0, int n0, int cr, int cc, double t0, double limit) {
   if (!tPfxN) { tProposeIn(sw0, n0, cr, cc, t0, limit); return; }
   if (n0 < 1 || n0 + tPfxN > LINEMAX) return;
@@ -2903,8 +2907,9 @@ static void tPropose(const int32_t *sw0, int n0, int cr, int cc, double t0, doub
   // the prefix's own time is in t0; the line's first step is costed from where it leaves the cursor
   int n = n0 + tPfxN;
   if (!tTimeMode && nLines >= MAXLINES) return;
-  for (int i = 0; i < nLines; i++)
-    if (LINES[i].n == n && !__builtin_memcmp(LINES[i].sw, sw, (unsigned long)n * 8)) { tDupes++; return; }
+  if (!tTimeMode)
+    for (int i = tFrom; i < nLines; i++)
+      if (LINES[i].n == n && !__builtin_memcmp(LINES[i].sw, sw, (unsigned long)n * 8)) { tDupes++; return; }
   double at = lineFrames(sw0, n0, cr, cc, t0, lsTopped);   // the clock, from the frame the prefix leaves the front deciding
   if (tTimeMode) { if (at < tTimeMin) tTimeMin = at; return; }
   if (at > limit) return;
@@ -2915,7 +2920,7 @@ static void tPropose(const int32_t *sw0, int n0, int cr, int cc, double t0, doub
 static void tProposeIn(const int32_t *sw, int n, int cr, int cc, double t0, double limit) {
   if (n < 1 || (!tTimeMode && nLines >= MAXLINES)) return;
   if (!tTimeMode)
-    for (int i = 0; i < nLines; i++)
+    for (int i = tFrom; i < nLines; i++)
       if (LINES[i].n == n && !__builtin_memcmp(LINES[i].sw, sw, (unsigned long)n * 8)) { tDupes++; return; }
   double at = lineFrames(sw, n, cr, cc, t0, lsTopped);   // the clock
   if (tTimeMode) { if (at < tTimeMin) tTimeMin = at; return; }
@@ -4459,8 +4464,9 @@ static Dec readyWhenLands(Dec d) {
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "RWL by distance: lands at %d | garbage %d work left %.0f lines before %d\n", tl, hasGarbage(RWB), workLeft(), nLines); }
 #endif
     int n0 = nLines;
-    tDupes = 0;
+    tDupes = 0; tFrom = n0;
     targetLines(RWB, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, INF);
+    tFrom = 0;
     static unsigned char wk[MAXLINES];
     for (int i = n0; i < nLines; i++) wk[i] = (char)(LINES[i].n < 2);
     int got = -1;
