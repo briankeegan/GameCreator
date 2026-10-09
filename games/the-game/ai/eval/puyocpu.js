@@ -238,8 +238,8 @@
     this.refuseUndo = opts.refuseUndo === true;
     // THREES LAST (opts.threesLast): a move whose clears are all threes,
     // break no garbage and start no chain is dropped from the moves the bot
-    // may play whenever any other move is left and the stack is not topped
-    // out. A three that breaks garbage stays: holding those back dies (3
+    // may play whenever any other move is left and the stack is below
+    // THREES_FROM_ROW. A three that breaks garbage stays: holding those back dies (3
     // deaths in 20 live matches, against 0 in 20 with them allowed). It runs after the survival search, so a three that is the
     // only move proven to live is still played.
     this.refuseBareThree = opts.threesLast === true;
@@ -2122,10 +2122,12 @@
       if (all[i].kind === 'swap' && all[i].move && all[i].move[0] === move[0] && all[i].move[1] === move[1]) return bareThree(all[i]);
     return false;
   };
+  PuyoCpu.prototype.THREES_FROM_ROW = 8;
   PuyoCpu.prototype._noBareThree = function (cands) {
     if (!this.refuseBareThree || !cands || !cands.length) return cands;
-    // Topped out, a three is the last resort it is kept for.
-    if ((this.stack && this.stack.wasToppedOut) || (this._board && this._boardToppedOut(this._board))) return cands;
+    // A tall stack is what a three is the last resort for: from
+    // THREES_FROM_ROW up, and topped out, threes are played as any move is.
+    if ((this.stack && this.stack.wasToppedOut) || (this._board && (this._boardToppedOut(this._board) || topRow(this._board) >= this.THREES_FROM_ROW))) return cands;
     var live = cands.filter(function (c) { return !bareThree(c); });
     if (live.length === cands.length) return cands;
     if (!live.length) { this.bareThreesKept++; return cands; }

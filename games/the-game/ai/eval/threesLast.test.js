@@ -6,8 +6,8 @@
 // A move whose clears are all threes, break no garbage and start no chain is
 // dropped while any other move is left; it is kept when it is all there is
 // (the survival search has already said what lives). A three breaking
-// garbage, a chain, a combo of four and a move clearing nothing all stay. Topped out, a three is
-// allowed: that is the last resort it is kept for.
+// garbage, a chain, a combo of four and a move clearing nothing all stay. A
+// tall stack (THREES_FROM_ROW up) or a topped-out one may play any three.
 var assert = require('assert');
 var P = require('./puyocpu.js');
 function cand(name, comboSizes, chainLength, brokeGarbage) {
@@ -26,6 +26,12 @@ assert.strictEqual(bot.bareThreesKept, 1);
 bot.stack = { wasToppedOut: true };
 assert.strictEqual(names(bot._noBareThree([bare, hold])), 'bare,hold', 'topped out, a three is allowed');
 bot.stack = { wasToppedOut: false };
+function board(top) { var g = []; for (var r = 0; r <= 12; r++) g[r] = r >= 1 && r <= top ? [0, 1, 2, 3, 4, 5, 6] : [0, 0, 0, 0, 0, 0, 0]; return { grid: g, width: 6, height: 12 }; }
+bot._board = board(7);
+assert.strictEqual(names(bot._noBareThree([bare, hold])), 'hold', 'a low stack plays no bare three');
+bot._board = board(bot.THREES_FROM_ROW);
+assert.strictEqual(names(bot._noBareThree([bare, hold])), 'bare,hold', 'a tall stack may');
+bot._board = null;
 bot.refuseBareThree = false;
 assert.strictEqual(names(bot._noBareThree([bare, hold])), 'bare,hold', 'off unless the profile asks');
 bot._allCands = [{ kind: 'swap', move: [3, 2], resolved: brk.resolved }, { kind: 'swap', move: [4, 2], resolved: chain.resolved }];
