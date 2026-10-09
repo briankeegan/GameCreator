@@ -3461,14 +3461,17 @@ static int bbFound, bbLastN; static double bbLastEst;   // bestBreak: how many l
 // pile it does not convert out of reach; among the same, the one that
 // converts the most.
 static int readyInTime(const int32_t *sw, int n, int *br, int *bc);
-// READY FIRST, THEN LATEST: of two living lines, one that outlives the board
-// left alone (`alone`, 0: it does not die) and leaves a break in reach when
-// the next slab lands goes first -- the slab it is ready for is what kills;
-// between two alike, the one that loses health later. 1 better, -1 worse, 0
-// the same (the caller's own tie-break decides).
-static int readyThenLater(int rdy, double life, int pickRdy, double pickLife) {
-  if (rdy != pickRdy) return rdy > pickRdy ? 1 : -1;
-  return life > pickLife ? 1 : life < pickLife ? -1 : 0;
+// THE ONE ORDER LINES ARE RANKED IN, best first: the one that leaves a break in
+// reach when the next slab lands (rdy; the slab it is ready for is what
+// kills), then the one that loses health later (life: hollow costed), then the
+// one that converts more garbage, then the less hollow, then the sooner done.
+// 1: a is better, -1: b is; two different lines are never equal.
+static int lineRank(const LineC *a, int ra, const LineC *b, int rb) {
+  if (ra != rb) return ra > rb ? 1 : -1;
+  if (a->life != b->life) return a->life > b->life ? 1 : -1;
+  if (a->conv != b->conv) return a->conv > b->conv ? 1 : -1;
+  if (a->hollow != b->hollow) return a->hollow < b->hollow ? 1 : -1;
+  return lineBefore(a, b) ? 1 : -1;
 }
 // THE BAR A READY LINE CLEARS: it loses health no sooner than the board left
 // alone (any death, when that does not; 0 with no engine). Not later: a line
@@ -3510,10 +3513,9 @@ static LineC *bestBreak(void) {
     judgeAhead(l, taken, 0);
     if ((judged(l) & need) != need) continue;
     found++; bbFound = found; bbLastN = l->n; bbLastEst = l->est;
-    if (pick && pickReady && l->life <= pick->life && l->conv <= pick->conv) continue;
-    int rdy = ask ? readyCounts(l, alone) : 0, cmp = pick ? readyThenLater(rdy, l->life, pickReady, pick->life) : 1;
-    // ready first, then the latest loss of health; then the most converted
-    if (cmp > 0 || (cmp == 0 && l->conv > pick->conv)) { pick = l; pickReady = rdy; }
+    if (pick && pickReady && lineRank(l, 1, pick, pickReady) < 0) continue;   // not better even if ready: not asked
+    int rdy = ask ? readyCounts(l, alone) : 0;
+    if (!pick || lineRank(l, rdy, pick, pickReady) > 0) { pick = l; pickReady = rdy; }
   }
   bbReady = !ask || pickReady;
   return pick;
@@ -3537,9 +3539,9 @@ static LineC *bestLiving(int (*ok)(const LineC *)) {
     judgeAhead(l, taken, 0);
     if ((judged(l) & need) != need) continue;
     found++;
-    // ready first when asked (stayAlive, readyThenLater), then the latest loss of health; then the least hollow
-    int rdy = blReady ? readyCounts(l, blAlone) : 0, cmp = pick ? readyThenLater(rdy, l->life, pickRdy, pick->life) : 1;
-    if (cmp > 0 || (cmp == 0 && l->hollow < pick->hollow)) { pick = l; pickRdy = rdy; }
+    // ready first when asked (stayAlive), then by the one order (lineRank)
+    int rdy = blReady ? readyCounts(l, blAlone) : 0;
+    if (!pick || lineRank(l, rdy, pick, pickRdy) > 0) { pick = l; pickRdy = rdy; }
   }
   return pick;
 }
@@ -4582,7 +4584,7 @@ static Dec readyWhenLands(Dec d) {
     if (!d.hasPark) { d.hasPark = 1; d.pr = r; d.pc = c; }
     return d;
   }
-  // READY FIRST (readyThenLater): a line that readies the landing need only
+  // READY FIRST (lineRank): a line that readies the landing need only
   // outlive the board left alone, not the choice it replaces -- that choice's
   // later death is judged without a break, and the break is what saves it
   dieRef = readyBar();
