@@ -628,7 +628,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = out[13] = out[14] = 0; out[15] = out[16] = -1;   // out[16]: the clock the first step is pressed at
   int32_t landedFrom = b->garbageCreatedCount;   // out[15]: read once the next slab has landed
   int pressStep = -1, pressLast = 0;   // the step pressed this frame, and the last press before it
-  { extern int paBudgetOut(void); if (paBudgetOut()) return -1; }   // past the decision's budget: not played
+  { extern int paBudgetOut(void); if (paBudgetOut() || workLeft() <= 0) return -1; }   // past the decision's budget, or this thread's share of it (workLeft): not played
   // A LINE IS JUDGED TO WHERE ITS CONSEQUENCE SHOWS: past the horizon the
   // judge plays on while the board is still busy -- a chain running, garbage
   // converting or falling, a landing shaking, a topped board held up by stop
@@ -637,7 +637,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   // (UNSETTLEMOST), so a break whose chain and conversion run past the horizon
   // is seen to the quiet board the queue drops on
   for (f = f0; f < horizon || (stopAtNext == 0 && f < horizon + UNSETTLEMOST && (b->nActive > 0 || nb_falling_garbage(b) || b->shakeTime > 0 || (b->stopTime > 0 && nb_topped(b)))); f++) {
-    { extern int paBudgetOut(void); if (paBudgetOut()) return -1; }   // past the budget mid-line: not played
+    { extern int paBudgetOut(void); if (paBudgetOut() || workLeft() <= 0) return -1; }   // past the budget, or this thread's share of it, mid-line: not played
     int input = 0;
     // stopAtNext 2: on until the next landK slabs have dropped and landed
     if (stopAtNext == 2 && step == n && !walking && b->garbageCreatedCount >= dropped + landK && !nb_falling_garbage(b)) {
