@@ -5584,14 +5584,16 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // clear it and choose a swap or a hold; the kept line is played on instead
   // while it lives longer than what the route chose
   Dec d0;
-  int32_t keptLine[2 * LINEMAX]; int keptN = BT->nLine, keptKind = BT->lineKind, keptWait = BT->lineWaitAll;
+  // the kept line is put back as it was, its stamp too: the presses made
+  // since it was set are its steps (playOn), not presses made before it
+  int32_t keptLine[2 * LINEMAX]; int keptN = BT->nLine, keptKind = BT->lineKind, keptWait = BT->lineWaitAll, keptPresses = BT->linePresses, keptBorn = BT->lineBorn;
   for (int q = 0; q < 2 * keptN; q++) keptLine[q] = BT->line[q];
   { double keep = stageOpen(0); SHARE(25); d0 = decideRuled(); stageClose(keep); }   // the stages after keep theirs
   Dec d = d0; cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   if (keptN && d.kind != K_RAISE && (BT->nLine != keptN || __builtin_memcmp(BT->line, keptLine, (unsigned long)keptN * 8))) {
     int32_t routeLine[2 * LINEMAX]; int routeN = BT->nLine, routeKind = BT->lineKind, routeWait = BT->lineWaitAll;
     for (int q = 0; q < 2 * routeN; q++) routeLine[q] = BT->line[q];
-    lineSet(keptLine, keptN, keptKind, keptWait);
+    lineSet(keptLine, keptN, keptKind, keptWait); BT->linePresses = keptPresses; BT->lineBorn = keptBorn;
     Dec dk = playOn(d);
     int keepIt = 0;
     if (BT->nLine) {
