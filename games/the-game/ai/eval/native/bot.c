@@ -3287,7 +3287,9 @@ static void targetAfterDrops(const int32_t *st, int cr, int cc, double t0, doubl
   x.g0 = garbSum(st); x.n = 0;
   if (!(x.g0 > 0)) return;
   searchInTime(st, cr, cc, t0, 0, limit, lsTopped, ENGINE_BASE ? ENGINE_CAN : 0, ENGINE_WAITS, TADWORK, sitDrops, &x, 0, 0, 0);
-  for (int i = 0; i < x.n && workLeft() > 0; i++) {
+  // soonest drop first; timing wants only the soonest break, so it stops at the first board that gives one
+  double bound0 = tTimeMin;
+  for (int i = 0; i < x.n && workLeft() > 0 && !(tTimeMode && tTimeMin < bound0); i++) {
     int32_t st1[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t wt[32][WMAX];
     int ls = lineState(x.sw[i], x.len[i], st1, can, wt, cur, &t), n0 = nLines;
     if (ls == 0 && t <= limit) { for (int k = 0; k < 2 * x.len[i]; k++) tPfx[k] = x.sw[i][k]; tPfxN = x.len[i]; targetLines(st1, cur[0], cur[1], t, limit); tPfxN = 0; }
@@ -3304,7 +3306,7 @@ static void targetAfterDrops(const int32_t *st, int cr, int cc, double t0, doubl
 // (targetAfterDrops), within the time there is
 static void breakLines(const int32_t *st, int cr, int cc, double t0, double limit) {
   targetLines(st, cr, cc, t0, limit);
-  targetAfterDrops(st, cr, cc, t0, limit < LINEHORIZON ? limit : LINEHORIZON);
+  targetAfterDrops(st, cr, cc, t0, limit < INF ? limit : LINEHORIZON);
 }
 // THE TIME THERE IS: topped, the drain; else the judge's horizon -- a line
 // whose last press comes later is one the engine never finishes playing, so
