@@ -3738,6 +3738,24 @@ static Dec perchGuard(Dec d) {
 // slab -- its break in reach the frame the slab lands (readyInTime, on the
 // engine) -- is a line with that break still to press: it gives way only to a
 // choice ready too.
+// THREES LAST: a swap whose line's clears, past what the board left alone
+// does, are only plain threes -- it breaks nothing and makes no combo of four
+// or more and no chain link (plainThrees) -- gives way to the hold, whichever
+// stage chose it. A three that keeps health the board left alone loses is
+// survival's and stands; surviveGuard, after this, weighs the hold.
+static Dec threesGuard(Dec d) {
+  if (d.kind != K_SWAP || !d.hasMove || lineLast == 3) return d;
+  int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
+  int32_t sw[2] = { d.sr, d.sc };
+  int v = playsLine ? lineJudge(BT->line, BT->nLine, BT->lineWaitAll) : lineJudge(sw, 1, 0);
+  if (!v || (v & LV_BREAKS) || !plainThrees(v)) return d;
+  if (!aloneOnEngine() || (LNA[0] && (!LNO[0] || LNO[0] > LNA[0]))) return d;
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "THREES via %d %d,%d holds: plain threes %d\n", d.via, d.sr, d.sc, LNO[17]); }
+#endif
+  BT->nLine = 0; lineLast = 0;
+  return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
+}
 static Dec surviveGuard(Dec d) {
   if (!saSet) {
     if (d.kind != K_SWAP || !d.hasMove || !aloneOnEngine()) return d;
@@ -5515,6 +5533,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   d = returnGuard(d);
   d = perchGuard(d);
   d = setupTwos(d);
+  d = threesGuard(d);
   d = surviveGuard(d);
   // a line set this decision is stamped with the presses made before it
   if (BT->nLine && (BT->nLine != nLineAfterPlay || __builtin_memcmp(BT->line, lineAfterPlay, (unsigned long)BT->nLine * 8))) { BT->linePresses = BIN[IN_PRESSES]; BT->lineBorn = BT->nNotes; }
