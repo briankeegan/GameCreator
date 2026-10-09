@@ -277,7 +277,10 @@ ways: a tool not listed, or a path listed that doesn't exist.
   add it, fix it in the shared function that decides it -- the rule, its test
   and its gate with it -- merge to main, scan again. A worse scan is tuned forward,
   never reverted. Local runs are for testing tools, not for reading games.
-  Fix what exists, through the shared functions; no new rules.
+  Fix what exists, through the shared functions; no new rules. Every caller
+  asking the same question calls the same shared function, in its fullest
+  form (`breakLines`: every line that breaks by distance) -- two callers
+  asking it two ways is a discrepancy waiting to decide a game.
 - **Commit and push as you go.** Every change is committed and pushed to
   `main` the moment it is made: the source first and the scan dispatched
   with it, the wasm rebuild after in the background, a scan's line in
