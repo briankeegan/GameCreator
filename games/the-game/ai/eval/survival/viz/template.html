@@ -1,0 +1,222 @@
+<title>BitBot Death Patterns</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Built by death_patterns.py from a survival scan: the scans, what the deaths share, each death's game */
+:root {
+  --bg: #eef0f4; --surface: #ffffff; --ink: #1b2130; --muted: #5d6578; --line: #d5d9e2;
+  --well: #1a1f2b; --garbage: #6b7488; --garbage-hi: #b7bfd0; --accent: #2f6fe0; --alive: #2f9e5b; --dead: #d9433f; --queue: #e08a2f;
+  --display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11141b; --surface: #1a1f2b; --ink: #e6e9f0; --muted: #98a0b3; --line: #2c3343;
+  --well: #0a0c11; --garbage: #5f687c; --garbage-hi: #a3acc0; --accent: #6c9cff; --alive: #4cc27a; --dead: #f06a66; --queue: #f0a252; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #11141b; --surface: #1a1f2b; --ink: #e6e9f0; --muted: #98a0b3; --line: #2c3343;
+  --well: #0a0c11; --garbage: #5f687c; --garbage-hi: #a3acc0; --accent: #6c9cff; --alive: #4cc27a; --dead: #f06a66; --queue: #f0a252; color-scheme: dark }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); line-height: 1.5; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 48px; display: grid; gap: 28px; }
+h1 { font-family: var(--display); font-weight: 700; font-size: 1.9rem; letter-spacing: .01em; margin: 0; text-wrap: balance; }
+h2 { font-family: var(--display); font-size: 1.25rem; margin: 0; text-wrap: balance; }
+.lede { color: var(--muted); max-width: 65ch; margin: 6px 0 0; }
+.mono { font-family: var(--mono); }
+.scans { display: grid; gap: 8px; }
+.scanrow { display: grid; grid-template-columns: 7.5em 3.2em minmax(0, 1fr); gap: 10px; align-items: center; font-family: var(--mono); font-size: .82rem; font-variant-numeric: tabular-nums; }
+.scanrow .n { font-weight: 500; }
+.dots { display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 3px; max-width: 520px; }
+.dot { aspect-ratio: 1; border-radius: 3px; background: var(--alive); display: grid; place-items: center; font-size: .55rem; color: #fff; }
+.dot.d { background: var(--dead); }
+.dot.cur { outline: 2px solid var(--ink); outline-offset: 1px; }
+.findings { display: grid; gap: 10px; max-width: 72ch; }
+.findings ol { margin: 0; padding-left: 1.3em; display: grid; gap: 8px; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: .85rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend canvas { width: 18px; height: 18px; border-radius: 3px; }
+.sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: grid; gap: 6px; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+.card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+.card:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.card .lab { display: flex; justify-content: space-between; font-family: var(--mono); font-size: .78rem; color: var(--muted); }
+.card .lab b { font-family: var(--display); color: var(--ink); font-size: .95rem; }
+.card canvas { width: 100%; height: auto; display: block; border-radius: 4px; }
+.card .facts { font-family: var(--mono); font-size: .72rem; color: var(--muted); line-height: 1.35; font-variant-numeric: tabular-nums; }
+.viewer { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 24px; }
+@media (max-width: 680px) { .viewer { grid-template-columns: minmax(0, 1fr); } }
+.viewer > canvas { width: 100%; max-width: 300px; height: auto; display: block; border-radius: 6px; }
+.panel { display: grid; gap: 14px; align-content: start; min-width: 0; }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.stat { border-top: 1px solid var(--line); padding-top: 6px; min-width: 0; }
+.stat .k { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.stat .v { font-family: var(--mono); font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+.stat .v.zero { color: var(--dead); }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.controls button { font: 500 .9rem var(--body); padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; }
+.controls button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+#scrub { width: 100%; accent-color: var(--accent); }
+#timeline { width: 100%; height: 150px; display: block; cursor: crosshair; }
+.tkey { display: flex; flex-wrap: wrap; gap: 12px; font-size: .78rem; color: var(--muted); }
+.tkey i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 5px; }
+.log { font-family: var(--mono); font-size: .74rem; line-height: 1.45; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; max-height: 240px; overflow: auto; white-space: pre; color: var(--ink); }
+.log .f { color: var(--muted); }
+.note { color: var(--muted); font-size: .85rem; margin: 0; }
+</style>
+<div class="wrap">
+  <header>
+    <h1>BitBot death patterns</h1>
+    <p class="lede" id="lede"></p>
+  </header>
+  <section class="scans" aria-label="Scans">
+    <h2>Every scan, 24 combo-storm seeds to frame 60,000</h2>
+    <div id="scans"></div>
+  </section>
+  <section class="findings" aria-label="What the deaths share" id="findings"></section>
+  <div class="legend" id="legend" aria-label="Legend"></div>
+  <section class="sheet" id="sheet" aria-label="Death boards"></section>
+  <section class="viewer">
+    <canvas id="big" width="300" height="650" aria-label="Board"></canvas>
+    <div class="panel">
+      <h2 id="title">Seed</h2>
+      <div class="stats">
+        <div class="stat"><div class="k">Frame</div><div class="v" id="vf">0</div></div>
+        <div class="stat"><div class="k">To death</div><div class="v" id="vd">0</div></div>
+        <div class="stat"><div class="k">Stop time</div><div class="v" id="vs">0</div></div>
+        <div class="stat"><div class="k">Keys</div><div class="v" id="vk">0</div></div>
+      </div>
+      <input type="range" id="scrub" min="0" max="0" value="0" aria-label="Frame">
+      <div class="controls">
+        <button id="play" class="primary">Play</button>
+        <button id="back">−60</button><button id="fwd">+60</button>
+        <button id="prevd">◀ decision</button><button id="nextd">decision ▶</button>
+        <button id="end">Death frame</button>
+        <label class="mono" style="font-size:.85rem;color:var(--muted)"><input type="checkbox" id="slow"> slow</label>
+      </div>
+      <div class="log" id="log" aria-label="The bot's decisions"></div>
+      <canvas id="timeline" aria-label="The whole game"></canvas>
+      <div class="tkey"><span><i style="background:var(--garbage)"></i>garbage cells on the board</span><span><i style="background:var(--accent)"></i>panels</span><span><i style="background:var(--queue)"></i>cells queued (own scale)</span><span><i style="background:var(--dead);height:8px;width:2px"></i>a break</span></div>
+      <p class="note">The whole game above; the shaded part is what the board replays. Click the timeline to jump there.</p>
+    </div>
+  </section>
+</div>
+<script>
+const D = /*DATA*/null;
+const COL = {1:'#e5484d',2:'#3fb950',3:'#39c5cf',4:'#f2c037',5:'#a371f7',6:'#3b82f6',7:'#c0c4cc',8:'#ff8a3d',9:'#d0d4dc'};
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmt = n => n == null ? '—' : n.toLocaleString();
+function cellAt(g, x, y, cell, col, st) {
+  if (col === '.') return;
+  const pad = Math.max(1, cell * 0.06), w = cell - 2 * pad, gar = col === 'g';
+  const clearing = st === 'm' || st === 'p' || st === 'x', unlanded = st === 'f' || st === 'h' || st === 'l', rising = st === 'd';
+  g.save();
+  g.globalAlpha = rising ? 0.38 : unlanded ? 0.45 : 1;
+  g.fillStyle = gar ? (clearing ? css('--garbage-hi') : css('--garbage')) : (COL[col] || '#888');
+  g.beginPath();
+  if (g.roundRect) g.roundRect(x + pad, y + pad, w, w, cell * 0.16); else g.rect(x + pad, y + pad, w, w);
+  g.fill();
+  g.globalAlpha = 1;
+  if (gar && !clearing) { g.strokeStyle = 'rgba(0,0,0,.28)'; g.lineWidth = Math.max(1, cell * .04); g.beginPath(); g.moveTo(x + cell * .25, y + cell * .5); g.lineTo(x + cell * .75, y + cell * .5); g.stroke(); }
+  if (clearing) { g.strokeStyle = '#ffffff'; g.lineWidth = Math.max(1.5, cell * .1); g.beginPath();
+    if (g.roundRect) g.roundRect(x + pad * 2.2, y + pad * 2.2, cell - 4.4 * pad, cell - 4.4 * pad, cell * 0.12); else g.rect(x + pad * 2.2, y + pad * 2.2, cell - 4.4 * pad, cell - 4.4 * pad); g.stroke(); }
+  if (st === 'r') { g.strokeStyle = css('--garbage-hi'); g.lineWidth = Math.max(1.5, cell * .12); g.beginPath();
+    if (g.roundRect) g.roundRect(x + pad, y + pad, w, w, cell * 0.16); else g.rect(x + pad, y + pad, w, w); g.stroke(); }
+  if (st === 's') { g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = Math.max(1, cell * .07); g.beginPath(); g.moveTo(x + cell * .22, y + cell * .5); g.lineTo(x + cell * .78, y + cell * .5); g.stroke(); }
+  g.restore();
+}
+function draw(cv, rows, cell) {
+  const g = cv.getContext('2d'), W = 6, H = rows.length;
+  cv.width = W * cell; cv.height = H * cell;
+  g.fillStyle = css('--well'); g.fillRect(0, 0, cv.width, cv.height);
+  g.fillStyle = css('--line'); g.fillRect(0, (H - 1) * cell - 1, cv.width, Math.max(1, cell * .04));   // the rising row sits under the line
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) cellAt(g, c * cell, r * cell, cell, rows[r][2 * c], rows[r][2 * c + 1]);
+}
+const LEGEND = [['3n', 'panel'], ['3d', 'rising row, not in play'], ['3f', 'not landed'], ['3m', 'clearing'], ['3s', 'swapping'], ['gn', 'garbage'], ['gf', 'garbage not landed'], ['gm', 'garbage breaking'], ['3r', 'breaking, its panel shown']];
+function legend() {
+  const el = document.getElementById('legend'); el.innerHTML = '';
+  LEGEND.forEach(([code, label]) => { const s = document.createElement('span'), cv = document.createElement('canvas'); cv.width = cv.height = 36;
+    const g = cv.getContext('2d'); g.fillStyle = css('--well'); g.fillRect(0, 0, 36, 36); cellAt(g, 0, 0, 36, code[0], code[1]);
+    s.appendChild(cv); s.appendChild(document.createTextNode(label)); el.appendChild(s); });
+}
+// the scans, newest last; the page's own scan marked
+const curDied = D.results.filter(r => r[1] === 'died').map(r => r[0]);
+const alive = D.results.filter(r => r[1] === 'alive').length;
+document.getElementById('lede').textContent = `This scan: ${alive} of ${D.results.length} seeds alive at frame 60,000, level 10, on the server's Lua engine. Each card is a death's last board; pick one to replay its last frames with the bot's decisions, over a timeline of its whole game.`;
+const scansEl = document.getElementById('scans');
+D.scans.forEach((s, i) => {
+  const row = document.createElement('div'); row.className = 'scanrow';
+  const mine = s.died.join() === curDied.join() && s.alive === alive;
+  row.innerHTML = `<span>${s.commit}</span><span class="n">${s.alive}/24</span>`;
+  const dots = document.createElement('div'); dots.className = 'dots';
+  for (let k = 1; k <= 24; k++) { const b = document.createElement('span'); b.className = 'dot' + (s.died.includes(k) ? ' d' : '') + (mine && i === D.scans.length - 1 ? ' cur' : ''); b.textContent = k; b.title = `seed ${k}: ${s.died.includes(k) ? 'died' : 'alive'}`; dots.appendChild(b); }
+  row.appendChild(dots); scansEl.appendChild(row);
+});
+const fEl = document.getElementById('findings');
+if (D.findings.length) { fEl.innerHTML = '<h2>What the deaths share</h2><ol></ol>'; D.findings.forEach(t => { const li = document.createElement('li'); li.textContent = t; fEl.querySelector('ol').appendChild(li); }); }
+legend();
+const seeds = Object.keys(D.seeds).map(Number).sort((a, b) => a - b);
+const sheet = document.getElementById('sheet'), big = document.getElementById('big'), scrub = document.getElementById('scrub'), tl = document.getElementById('timeline');
+let cur = seeds[0], idx = 0, timer = null;
+const pct = a => a[1] ? `${a[0]}/${a[1]}` : '—';
+function card(s) {
+  const d = D.seeds[s], last = d.frames[d.frames.length - 1];
+  const b = document.createElement('button'); b.className = 'card'; b.id = 'seed' + s;
+  b.innerHTML = `<div class="lab"><b>Seed ${s}</b><span>${fmt(d.died)}</span></div><div class="facts">last break ${d.lastBreak == null ? 'none' : '−' + fmt(d.died - d.lastBreak)}<br>idle ${d.idle}% · stopped ${d.stopped}%<br>queued ${d.queue} slabs<br>break found ${pct(d.decisions.breakFirst)}<br>ready found ${pct(d.decisions.readies)}</div>`;
+  const cv = document.createElement('canvas'); b.appendChild(cv); draw(cv, last[3], 20);
+  b.onclick = () => select(s); return b;
+}
+function timeline() {
+  const d = D.seeds[cur], r = tl.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  tl.width = Math.max(1, r.width * dpr); tl.height = 150 * dpr;
+  const g = tl.getContext('2d'); g.scale(dpr, dpr);
+  const W = r.width, H = 150, top = 8, bot = H - 18, x = f => f / d.died * W, y = (v, m) => bot - v / m * (bot - top);
+  g.clearRect(0, 0, W, H);
+  const f0 = d.frames[0][0]; g.fillStyle = css('--line'); g.fillRect(x(f0), top, W - x(f0), bot - top);
+  const qmax = Math.max(1, ...d.timeline.map(t => t[4]));
+  const line = (k, m, color, dash) => { g.strokeStyle = color; g.lineWidth = 1.5; g.setLineDash(dash || []); g.beginPath(); d.timeline.forEach((t, i) => i ? g.lineTo(x(t[0]), y(t[k], m)) : g.moveTo(x(t[0]), y(t[k], m))); g.stroke(); g.setLineDash([]); };
+  line(1, 72, css('--garbage')); line(2, 72, css('--accent')); line(4, qmax, css('--queue'), [4, 3]);
+  g.fillStyle = css('--dead'); d.breakAt.forEach(f => g.fillRect(x(f), bot + 3, 1.5, 7));
+  g.fillStyle = css('--muted'); g.font = '11px ' + css('--mono'); g.fillText('0', 2, H - 2); const lab = fmt(d.died); g.fillText(lab, W - g.measureText(lab).width - 2, H - 2);
+  g.fillText('72 cells', 2, top + 9); g.fillText(qmax + ' queued', W - g.measureText(qmax + ' queued').width - 2, top + 9);
+  const fx = x(d.frames[idx][0]); g.fillStyle = css('--ink'); g.fillRect(fx - 0.75, top, 1.5, bot - top);
+}
+function show() {
+  const d = D.seeds[cur], f = d.frames[idx];
+  draw(big, f[3], 46);
+  document.getElementById('vf').textContent = fmt(f[0]);
+  document.getElementById('vd').textContent = fmt(d.died - f[0]);
+  const vs = document.getElementById('vs'); vs.textContent = f[2]; vs.classList.toggle('zero', f[2] === 0);
+  document.getElementById('vk').textContent = f[1];
+  // the decisions up to this frame, the newest last
+  const log = document.getElementById('log'), out = [];
+  for (let k = Math.max(0, idx - 90); k <= idx; k++) if (d.frames[k][4].length) out.push(`<span class="f">@ ${d.frames[k][0]}</span>\n` + d.frames[k][4].map(l => l.replace(/&/g, '&amp;').replace(/</g, '&lt;')).join('\n'));
+  log.innerHTML = out.slice(-6).join('\n') || '<span class="f">no decision in the last 90 frames</span>';
+  log.scrollTop = log.scrollHeight;
+  scrub.value = idx; timeline();
+}
+function select(s) {
+  stop(); cur = s; const d = D.seeds[s];
+  document.querySelectorAll('.card').forEach(c => c.setAttribute('aria-pressed', c.id === 'seed' + s));
+  document.getElementById('title').textContent = `Seed ${s}, died at frame ${fmt(d.died)}`;
+  scrub.max = d.frames.length - 1; idx = d.frames.length - 1; show();
+}
+function stop() { if (timer) clearInterval(timer); timer = null; document.getElementById('play').textContent = 'Play'; }
+const go = k => { stop(); idx = Math.max(0, Math.min(D.seeds[cur].frames.length - 1, k)); show(); };
+document.getElementById('play').onclick = () => {
+  if (timer) return stop();
+  if (idx >= D.seeds[cur].frames.length - 1) idx = 0;
+  document.getElementById('play').textContent = 'Pause';
+  timer = setInterval(() => { if (idx >= D.seeds[cur].frames.length - 1) return stop(); idx++; show(); }, document.getElementById('slow').checked ? 150 : 50);
+};
+scrub.oninput = () => go(+scrub.value);
+document.getElementById('back').onclick = () => go(idx - 60);
+document.getElementById('fwd').onclick = () => go(idx + 60);
+document.getElementById('end').onclick = () => go(D.seeds[cur].frames.length - 1);
+document.getElementById('prevd').onclick = () => { const F = D.seeds[cur].frames; let k = idx - 1; while (k > 0 && !F[k][4].length) k--; go(k); };
+document.getElementById('nextd').onclick = () => { const F = D.seeds[cur].frames; let k = idx + 1; while (k < F.length - 1 && !F[k][4].length) k++; go(k); };
+tl.onclick = e => { const d = D.seeds[cur], r = tl.getBoundingClientRect(), f = (e.clientX - r.left) / r.width * d.died;
+  let k = d.frames.findIndex(x => x[0] >= f); if (k < 0) k = d.frames.length - 1; go(k); };
+seeds.forEach(s => sheet.appendChild(card(s)));
+if (seeds.length) select(seeds[0]);
+addEventListener('resize', () => seeds.length && timeline());
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { legend(); seeds.forEach(s => { const d = D.seeds[s]; draw(document.querySelector('#seed' + s + ' canvas'), d.frames[d.frames.length - 1][3], 20); }); if (seeds.length) show(); });
+</script>
