@@ -11,3 +11,4 @@ menusel: selected go_
 reached CharacterSelectChallenge
 challengeloop on
 ready
+stage 1 won frames=3708 continues=0 next=2 complete=false
