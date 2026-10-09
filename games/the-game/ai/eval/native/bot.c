@@ -3825,7 +3825,7 @@ static Dec surviveGuard(Dec d) {
     if (die < 0) return d;   // no verdict: nothing to hold it to
     if (die < saDie && (v & LV_LIVES) && BIN[IN_INCOMING] > 0)
       ready = playsLine ? readyInTime(BT->line, BT->nLine, &r, &c) : readyInTime(sw, 1, &r, &c);
-  } else if (d.kind == K_HOLD) die = aloneOnEngine() && lnoDie(LNA);
+  } else if (d.kind == K_HOLD) die = aloneOnEngine() ? lnoDie(LNA) : 1 << 20;
   else return d;   // a raise: raiseMode's own rules
   if (die >= saDie) return d;
   if (ready && !(saDec.kind == K_SWAP && saDec.hasMove ? (saN ? readyInTime(saLine, saN, &r, &c) : readyInTime((int32_t[2]){ saDec.sr, saDec.sc }, 1, &r, &c)) : readyInTime(0, 0, &r, &c))) return d;
