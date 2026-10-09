@@ -1223,9 +1223,10 @@ static int raiseModeOf(const int32_t *base, int poolBreak) {
   // board under it.
   if (BT->nLine && BT->lineKind == LINE_BREAK) { raiseGate = 5; return 0; }
   if (BIN[IN_INCOMING] > 0 && !(risenMasks(base, RZ) && slabReadyHook(RZ)) && slabReadyHook(base)) { raiseGate = 6; return 0; }
-  // six rows of material is what the board works with, from the opening on:
-  // a raise past them only spends the room the first garbage lands in
-  if (materialRows(base) >= 6) { BT->opening = 0; { raiseGate = 7; return 0; } }
+  // AS HIGH AS IT CAN: after the opening the rise is locked nearly every
+  // frame (garbage in motion), so the opening's raise is the material the
+  // board gets besides what breaks -- raised while the next slab still has
+  // room (raiseSafe)
   int stillComing = BIN[IN_INCOMING] > 0 || BIN[IN_FALLING];
   if (poolBreak && !stillComing) { raiseGate = 8; return 0; }
   // UNDER SIX ROWS A RAISE DOES NOT WAIT ON THE STOP: a break needs panels
