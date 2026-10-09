@@ -2265,7 +2265,8 @@ static JLOCAL int judgeRefused;   // the last judge was refused for the budget: 
 static int lineJudgeIn2(const int32_t *sw, int n, int waitAll) {
   extern PATLS double paWork;
   judgeRefused = 0;
-  if (paWork + jdCost > optLine()) { budgetRefused++; judgeRefused = 1; return 0; }
+  // the work this thread has left -- the decision's, or a parallel task's own share (workLeft)
+  if (jdCost > workLeft()) { budgetRefused++; judgeRefused = 1; return 0; }
   double w = paWork;
   int v = lineJudgeIn(sw, n, waitAll);
   if (paWork - w > jdCost) jdCost = paWork - w;
@@ -4091,7 +4092,7 @@ static int readyInTime(const int32_t *sw, int n, int *br, int *bc) {
   if (rmemDec != btDecision) { rmemDec = btDecision; nRmem = 0; }
   if (n <= 3) for (int i = 0; i < nRmem; i++)
     if (RMEM[i].n == n && (!n || !__builtin_memcmp(RMEM[i].sw, sw, (unsigned long)n * 8))) { *br = RMEM[i].r; *bc = RMEM[i].c; return RMEM[i].ok; }
-  if (paWork + rdCost > optLine()) return 0;
+  if (rdCost > workLeft()) return 0;   // the work this thread has left (workLeft)
   double w = paWork;
   int ok = readyInTimeRaw(sw, n, br, bc);
   if (paWork - w > rdCost) rdCost = paWork - w;
@@ -4109,7 +4110,7 @@ static int readyInTime(const int32_t *sw, int n, int *br, int *bc) {
 static int rdNextOnly;   // readyAtNext: the first landing only
 static int readyAtNext(const int32_t *sw, int n, int *br, int *bc) {
   extern PATLS double paWork;
-  if (paWork + rdCost > optLine()) return 0;
+  if (rdCost > workLeft()) return 0;   // the work this thread has left (workLeft)
   double w = paWork;
   rdNextOnly = 1;
   int ok = readyInTimeRaw(sw, n, br, bc);
@@ -4731,7 +4732,7 @@ static double breakTimeAfter(const int32_t *steps, int n, double limit, int32_t 
 // has taken); past that no break is found
 static double breakTimeOf(const int32_t *steps, int n, double limit) {
   int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t w[32][WMAX];
-  if (!inWorker && paWork + btCost > optLine()) { budgetRefused++; return INF; }
+  if (btCost > workLeft()) { budgetRefused++; return INF; }   // the work this thread has left (workLeft)
   double w0 = paWork, bt0 = NOWMS2();
   int lsr = lineState(steps, n, st, can, w, cur, &t);
   btReplayMs += NOWMS2() - bt0;

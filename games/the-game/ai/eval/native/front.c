@@ -891,7 +891,7 @@ static int lineStateAt(const int32_t *steps, int n, int landing, int32_t *masks,
     return m->rc;
   }
   // a replay only where the budget holds one (rpCost, the most one has taken)
-  if (!inWorker && paWork + rpCost > optLine()) { budgetRefused++; return -1; }
+  if (rpCost > workLeft()) { budgetRefused++; return -1; }   // the decision's work, or a parallel task's own share
   double w0 = paWork;
   int rc = lineStateRun(steps, n, landing, masks, can, wait, cur, t);
   if (!inWorker && paWork - w0 > rpCost) rpCost = paWork - w0;
