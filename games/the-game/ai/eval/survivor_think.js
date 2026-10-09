@@ -30,11 +30,7 @@ function walkOf(bot, d) {
 }
 module.exports = function think(cfg) {
   var OPTS = SH.botOptions(cfg.profile, cfg.threads);
-  function floored(w) {
-    var f = cfg.profile && cfg.profile.travelFloor;
-    if (f && !((w.travelCost || 0) >= f)) { w = Object.assign({}, w); w.travelCost = f; }
-    return w;
-  }
+  var floored = SH.floorTravel;
   if (cfg.weights) OPTS.weights = floored(cfg.weights);
   var rates = [];   // budget searched per millisecond over the last decisions
   function search() {

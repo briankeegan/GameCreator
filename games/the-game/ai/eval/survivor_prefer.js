@@ -146,7 +146,7 @@ function overrule(d, prep, bot) {
   var br = prep.br, want = prep.want;
   if (br && (prep.popping && br.lineup || br.touch) && !want[key(d)]) {
     var keys = Object.keys(want).filter(function (k) { return /^\d+,\d+$/.test(k); }), lk = keys[0];
-    // nearestFirst: of the breaks wanted, the one the cursor reaches soonest
+    // of the breaks wanted, the one the cursor reaches soonest
     if (bot && bot.nearestFirst && keys.length > 1) {
       var near = Infinity;
       (bot._allCands || []).forEach(function (c) {

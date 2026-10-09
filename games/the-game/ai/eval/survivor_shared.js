@@ -18,6 +18,17 @@ function profile() {
   if (p.name.length > 16) throw new Error('survivor profile: name "' + p.name + '" is over the server\'s 16 characters');
   return p;
 }
+// THE CURSOR WALKS AS LITTLE AS IT CAN. Its walk always costs at least
+// TRAVEL_FLOOR (a travelCost below it is raised to it, in every weight set
+// loaded), so no weight set treats a long walk as a good thing; and of moves
+// the rules rank the same, the nearest is played (PuyoCpu nearestFirst).
+// Neither is a profile switch.
+var TRAVEL_FLOOR = 60;
+function floorTravel(w) {
+  if ((w.travelCost || 0) >= TRAVEL_FLOOR) return w;
+  w = Object.assign({}, w); w.travelCost = TRAVEL_FLOOR;
+  return w;
+}
 // What PuyoCpu is built with for a profile.
 function botOptions(p, threads) {
   var weights = JSON.parse(fs.readFileSync(path.join(__dirname, p.weights), 'utf8')).weights;
@@ -26,13 +37,10 @@ function botOptions(p, threads) {
     if (!(k in weights)) throw new Error('survivor profile: override ' + k + ' is not a weight');
     weights[k] = p.overrides[k];
   });
-  // travelFloor: the cursor's walk always costs at least this much (a
-  // travelCost below it is raised to it), so no weight set treats a long
-  // walk as a good thing.
-  if (p.travelFloor && !((weights.travelCost || 0) >= p.travelFloor)) weights.travelCost = p.travelFloor;
+  weights = floorTravel(weights);
   return { weights: weights,
            reaction: p.reaction, swapGap: p.swapGap, cursorMoveFrames: p.cursorMoveFrames, depth: p.depth, beam: 0, rise: true, allowRaise: true,
-           modes: p.modes, engine: true, native: true, nativeCands: !!p.nativeCands, threesLast: !!p.threesLast, nearestFirst: !!p.nearestFirst, threads: threads };
+           modes: p.modes, engine: true, native: true, nativeCands: !!p.nativeCands, threesLast: !!p.threesLast, nearestFirst: true, threads: threads };
 }
 
 // ---------------------------------------------------------------- garbage on its way
@@ -469,4 +477,4 @@ Hands.prototype.idle = function (board, hold, arrivals) {
   return { bits: k.inputs[0], hold: k.holds[0] };
 };
 
-module.exports = { touchScore: touchScore, profile: profile, botOptions: botOptions, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, pending: pending, arrivalsFrom: arrivalsFrom, threat: threat, top: top, gridTop: gridTop, popLeft: popLeft, lowestGarbageRow: lowestGarbageRow, breakMoves: breakMoves, Hands: Hands, convertingOf: convertingOf, keepRank: keepRank, panelsOf: panelsOf, ROOM: ROOM, CAP: CAP };
+module.exports = { touchScore: touchScore, profile: profile, botOptions: botOptions, floorTravel: floorTravel, TRAVEL_FLOOR: TRAVEL_FLOOR, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, pending: pending, arrivalsFrom: arrivalsFrom, threat: threat, top: top, gridTop: gridTop, popLeft: popLeft, lowestGarbageRow: lowestGarbageRow, breakMoves: breakMoves, Hands: Hands, convertingOf: convertingOf, keepRank: keepRank, panelsOf: panelsOf, ROOM: ROOM, CAP: CAP };

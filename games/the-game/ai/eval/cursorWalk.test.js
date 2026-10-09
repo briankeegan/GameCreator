@@ -1,24 +1,28 @@
 #!/usr/bin/env node
-// THE CURSOR'S WALK (profile travelFloor, nearestFirst).
+// THE CURSOR WALKS AS LITTLE AS IT CAN (survivor_shared.js TRAVEL_FLOOR,
+// PuyoCpu nearestFirst), for every WasmSurvivor profile, with no switch.
 //
 //   node cursorWalk.test.js
 //
-// travelFloor raises a travelCost weight below it to it, wherever weights are
-// loaded (the profile's, a duel's, an island's reload); nearestFirst keeps, of
-// the moves the bot's rules rank the same, the ones the cursor reaches
-// soonest, and the nearest of the breaks a lineup would force.
-var assert = require('assert'), path = require('path');
+// A travelCost weight below TRAVEL_FLOOR is raised to it wherever weights are
+// loaded (the profile's, a duel's, an island's reload); of the moves the bot's
+// rules rank the same, the ones the cursor reaches soonest are kept, and of the
+// breaks a lineup would force, the nearest.
+var assert = require('assert');
 var SH = require('./survivor_shared.js'), P = require('./puyocpu.js'), SP = require('./survivor_prefer.js');
-var base = SH.profile(), p = JSON.parse(JSON.stringify(base));
-p.travelFloor = 60;
-var w = SH.botOptions(p, 1).weights;
-assert(w.travelCost >= 60, 'profile weights: travelCost ' + w.travelCost);
-delete p.travelFloor;
-var raw = SH.botOptions(p, 1).weights.travelCost;
-p.travelFloor = raw + 1000;
-assert.strictEqual(SH.botOptions(p, 1).weights.travelCost, raw + 1000, 'a floor above the weight raises it');
-p.travelFloor = raw - 1000;
-assert.strictEqual(SH.botOptions(p, 1).weights.travelCost, raw, 'a weight above the floor stays');
+var F = SH.TRAVEL_FLOOR;
+var p = JSON.parse(JSON.stringify(SH.profile()));
+var o = SH.botOptions(p, 1);
+assert(o.weights.travelCost >= F, 'profile weights: travelCost ' + o.weights.travelCost);
+assert.strictEqual(o.nearestFirst, true, 'nearestFirst is always on');
+p.nearestFirst = false; p.travelFloor = 0;
+assert.strictEqual(SH.botOptions(p, 1).nearestFirst, true, 'a profile cannot switch nearestFirst off');
+assert(SH.botOptions(p, 1).weights.travelCost >= F, 'a profile cannot switch the floor off');
+assert.strictEqual(SH.floorTravel({ travelCost: F - 50 }).travelCost, F, 'a weight below the floor is raised');
+assert.strictEqual(SH.floorTravel({}).travelCost, F, 'a missing weight is the floor');
+assert.strictEqual(SH.floorTravel({ travelCost: F + 50 }).travelCost, F + 50, 'a weight above the floor stays');
+var w = { travelCost: 1 }; SH.floorTravel(w);
+assert.strictEqual(w.travelCost, 1, 'the caller\'s weights are not changed');
 // nearest of equally ranked
 var bot = Object.create(P.prototype);
 bot.preferRank = function () { return 0; };
