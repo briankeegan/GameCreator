@@ -11,3 +11,5 @@ menusel: selected go_
 reached CharacterSelectChallenge
 challengeloop on
 ready
+stage 1 won frames=3782 continues=0 next=2 complete=false fps=57.0
+shot=/home/runner/.local/share/love/panel-game/stage01_won_c0.png
