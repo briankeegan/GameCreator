@@ -13,6 +13,8 @@ if [ -n "$1" ]; then
   # every tracked source the change touched, never the build or a scan's line
   git add -u -- games/the-game/ai/eval ':!games/the-game/ai/eval/native/BUILT' ':!games/the-game/ai/eval/native/*.wasm' ':!games/the-game/ai/eval/survival_scans.tsv'
   if git diff --cached --quiet; then echo "nothing to ship"; exit 1; fi
+  # a change said to be the bot's carries a file of the bot's: a message that names it over a diff that does not is a failed edit
+  case "$1" in BitBot*) git diff --cached --name-only | grep -q 'ai/eval/native/.*\.[ch]$' || { echo "REFUSED: '$1' changes no file under ai/eval/native"; git reset -q; exit 1; };; esac
   git commit -q -m "$1
 
 $TRAILER"
