@@ -2287,6 +2287,18 @@ static int lineJudgeIn2(const int32_t *sw, int n, int waitAll) {
 #endif
   return v;
 }
+// THE FRAME A JUDGED LINE LOSES HEALTH, read the one way every rule reads it
+// (1 << 20: not within the judge's reach; 0: it dies now). A verdict without
+// LV_LIVES is three things: the budget refused the judge (no verdict: -1),
+// the line ends where the board left alone ends (it dies when that does), or
+// a step is refused or it loses health before the next move (0). Call it
+// right after the judge, with judgeRefused cleared before it.
+static int judgedDie(int v) {
+  if (v & LV_LIVES) return LNO[0] ? LNO[0] : 1 << 20;
+  if (judgeRefused) return -1;
+  if (LNO[1] >= 0 && !(LNO[0] && LNO[0] <= LNO[1] + NEXTMOVE)) return LNO[0] ? LNO[0] : 1 << 20;
+  return 0;
+}
 static int lineJudge(const int32_t *sw, int n, int waitAll) {
   if (n < 1 || n > LINEMAX) return lineJudgeIn2(sw, n, waitAll);
   unsigned h = 2166136261u ^ (unsigned)(n * 31 + waitAll);
@@ -3791,8 +3803,10 @@ static Dec surviveGuard(Dec d) {
   if (d.kind == K_SWAP && d.hasMove) {
     int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
     int32_t sw[2] = { d.sr, d.sc };
+    judgeRefused = 0;
     int v = playsLine ? lineJudge(BT->line, BT->nLine, BT->lineWaitAll) : lineJudge(sw, 1, 0);
-    die = !(v & LV_LIVES) ? 0 : LNO[0] ? LNO[0] : 1 << 20;
+    die = judgedDie(v);
+    if (die < 0) return d;   // no verdict: nothing to hold it to
     if (die < saDie && (v & LV_LIVES) && BIN[IN_INCOMING] > 0)
       ready = playsLine ? readyInTime(BT->line, BT->nLine, &r, &c) : readyInTime(sw, 1, &r, &c);
   } else if (d.kind == K_HOLD) die = aloneOnEngine() && LNA[0] ? LNA[0] : 1 << 20;
@@ -4429,10 +4443,7 @@ static int ruleRank(int via) {
 // is no reason to turn the walk around
 static int tgtAlive(void) {
   judgeRefused = 0;   // a verdict from the memo leaves it as it was
-  int v = lineJudge(BT->tgt, BT->tgtN, BT->tgtWait);
-  if (v & LV_LIVES) return 1;
-  if (judgeRefused) return 1;
-  return LNO[1] >= 0 && !(LNO[0] && LNO[0] <= LNO[1] + NEXTMOVE);
+  return judgedDie(lineJudge(BT->tgt, BT->tgtN, BT->tgtWait)) != 0;
 }
 static Dec keepTarget(Dec d) {
   int fresh = d.kind == K_SWAP && d.hasMove;
