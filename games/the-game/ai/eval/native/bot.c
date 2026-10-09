@@ -1235,6 +1235,10 @@ static int raiseModeOf(const int32_t *base, int poolBreak) {
   // board under it.
   if (BT->nLine && BT->lineKind == LINE_BREAK) { raiseGate = 5; return 0; }
   if ((BIN[IN_INCOMING] > 0 || BT->opening) && !(risenMasks(base, RZ) && waveReady(RZ)) && waveReady(base)) { raiseGate = 6; return 0; }
+  // THE OPENING RAISES WITH A BREAK READY: as high as it can, each row only
+  // onto a board the first wave can land on and be broken (waveReady, the
+  // phantom first wave). A board not ready is made ready first, then raised.
+  if (BT->opening && !(risenMasks(base, RZ) && waveReady(RZ))) { raiseGate = 12; return 0; }
   // AS HIGH AS IT CAN: after the opening the rise is locked nearly every
   // frame (garbage in motion), so the opening's raise is the material the
   // board gets besides what breaks -- raised while the next slab still has
