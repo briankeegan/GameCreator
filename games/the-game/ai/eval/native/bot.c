@@ -22,7 +22,7 @@ enum { M_BUILD, M_DEFEND, M_ATTACK };
 // the line a bot plays (Bot.line): what it is for, and the most steps it holds
 enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
 #define LINEMAX 16   // the most steps a line holds: storage, never a limit on what is searched -- a line that does not fit is refused, never cut
-#define LNOLEN 19
+#define LNOLEN 17
 // THE HOLLOW of a judged line: the gaps under garbage on the board it ends on
 // ([10]) and the gaps the slabs to come would leave over its towers ([13]). A
 // tower lowered also lets a pile perched on it down onto panels it can break on.
@@ -2064,9 +2064,6 @@ static Dec waitForDrain(Dec d) {
         cnSt = clearNow && (clearNow->future || steady(clearNow->sr, clearNow->sc, dmax(clearNow->moveFrames, k - 2)));
     if (clearNow && st != cnSt) { if (st) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; } continue; }
     if (clearNow && bk != cnBk) { if (bk) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; } continue; }
-    // a combo of four or more or a chain earns stop; a plain three does not (a three is a last resort)
-    int w = isCh || tn > 3, cnW = clearNow && (clearNow->res.chain >= 2 || cnTn > 3);
-    if (clearNow && w != cnW) { if (w) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; } continue; }
     if (!clearNow || tn < cnTn || (tn == cnTn && (vd < cnVd || (vd == cnVd && rate > cnRate)))) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; }
   }
   if (breakNow && !breakNow->future) return mkSwap(breakNow->sr, breakNow->sc, V_BREAK, d.mode, d.alive);
@@ -2120,7 +2117,7 @@ int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_
 // DROPS: more garbage at rest starts to fall than left alone. FILLS: less
 // hollow under the garbage that lands than left alone (pa.c HOLLOW).
 
-typedef struct { int n, brk, ok, grown, waitAll, hollow, conv, die, plain3; int32_t sw[2 * LINEMAX]; double est, life; int verdict; } LineC;
+typedef struct { int n, brk, ok, grown, waitAll, hollow, conv, die; int32_t sw[2 * LINEMAX]; double est, life; int verdict; } LineC;
 // A LINE'S LIFE, what survival RANKS by: the frame it loses health, less what
 // its hollow costs. (The floors -- surviveGuard, the kept line -- stay on the
 // frame itself: no choice may lose health sooner, whatever its shape.) A
@@ -2224,17 +2221,12 @@ static int fitTasks(int count, double cost) {
   return k < count ? k : count;
 }
 static double rpCost;   // a replay's (prereplay)
-static int plainThrees(int verdict);
 static int lineJudgeIn2(const int32_t *sw, int n, int waitAll) {
   extern PATLS double paWork;
   if (paWork + jdCost > optLine()) { budgetRefused++; return 0; }
   double w = paWork;
   int v = lineJudgeIn(sw, n, waitAll);
   if (paWork - w > jdCost) jdCost = paWork - w;
-  // A THREE IS A LAST RESORT: a line whose clears are only plain threes is
-  // no line at all, for every stage that asks -- unless it keeps health the
-  // board left alone loses (plainThrees)
-  if (v && !(v & LV_BREAKS) && plainThrees(v) && !(aloneOnEngine() && LNA[0] && (!LNO[0] || LNO[0] > LNA[0]))) v = 0;
 #ifndef __wasm__
   // GC_CLOCKCHECK: the clock's frame for the line's last press beside the
   // engine's (clock.test.sh); the log does no work of its own
@@ -2322,19 +2314,6 @@ static void judgeAhead(LineC *first, const unsigned char *skip, int useOk) {
   }
   if (nw) prejudgeLinesW(wsel, nw, 1);
 }
-// A THREE IS A LAST RESORT: a clear of three panels with no chain earns no
-// stop time and spends three panels a break needs. A line whose clears, past
-// what the board left alone does, are only such threes -- it breaks nothing
-// and makes no combo of four or more and no chain link -- is judged no line
-// (lineJudgeIn2) unless it keeps health the board left alone loses; such a
-// three is then ranked after every other living line (bestLiving, makeRoom,
-// the drain's escape).
-static int aloneOnEngine(void);
-static int plainThrees(int verdict) {
-  if (verdict & LV_BREAKS) return 0;
-  int a3 = aloneOnEngine() ? LNA[17] : 0, aw = aloneOnEngine() ? LNA[18] : 0;
-  return LNO[17] > a3 && LNO[18] <= aw;
-}
 static int judged(LineC *l) {
   if (l->verdict < 0) {
     l->verdict = nJudged < MAXJUDGED ? lineJudge(l->sw, l->n, 0) : 0; nJudged++;
@@ -2342,13 +2321,12 @@ static int judged(LineC *l) {
     l->conv = l->verdict ? LNO[2] - LNA[2] : 0;
     l->die = l->verdict ? (LNO[0] ? LNO[0] : 1 << 20) : 0;   // the frame it loses health (1 << 20: not within the horizon)
     l->life = l->verdict ? lifeOf(l->die, l->hollow) : 0;
-    l->plain3 = l->verdict ? plainThrees(l->verdict) : 0;
     // A BREAK PRESSED ONCE THE BOARD HAS SETTLED: a break needs garbage at
     // rest beside the match, and a press made while the slab still lands
     // matches beside it in vain. The last press then waits for the garbage to land (breakWait).
     if (l->brk && (l->verdict & LV_PAYS) && !(l->verdict & LV_BREAKS) && nJudged < MAXJUDGED) {
       int v = lineJudge(l->sw, l->n, 1); nJudged++;
-      if (v & LV_BREAKS) { l->verdict = v; l->waitAll = 1; l->hollow = HOLLOW(LNO); l->conv = LNO[2] - LNA[2]; l->die = LNO[0] ? LNO[0] : 1 << 20; l->life = lifeOf(l->die, l->hollow); l->plain3 = 0; }
+      if (v & LV_BREAKS) { l->verdict = v; l->waitAll = 1; l->hollow = HOLLOW(LNO); l->conv = LNO[2] - LNA[2]; l->die = LNO[0] ? LNO[0] : 1 << 20; l->life = lifeOf(l->die, l->hollow); }
     }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
@@ -3472,11 +3450,8 @@ static LineC *bestLiving(int (*ok)(const LineC *)) {
     judgeAhead(l, taken, 0);
     if ((judged(l) & need) != need) continue;
     found++;
-    // ready first when asked (stayAlive, readyThenLater), then not a line of
-    // plain threes, then the latest loss of health; then the least hollow
-    int rdy = blReady ? readyCounts(l, blAlone) : 0;
-    if (pick && rdy == pickRdy && l->plain3 != pick->plain3) { if (!l->plain3) pick = l; continue; }
-    int cmp = pick ? readyThenLater(rdy, l->life, pickRdy, pick->life) : 1;
+    // ready first when asked (stayAlive, readyThenLater), then the latest loss of health; then the least hollow
+    int rdy = blReady ? readyCounts(l, blAlone) : 0, cmp = pick ? readyThenLater(rdy, l->life, pickRdy, pick->life) : 1;
     if (cmp > 0 || (cmp == 0 && l->hollow < pick->hollow)) { pick = l; pickRdy = rdy; }
   }
   return pick;
@@ -3645,7 +3620,7 @@ static Dec stayAlive(Dec d) {
   if (d.kind == K_SWAP) {
     dR = d.sr; dC = d.sc;
     LineC *mine = bestLineAvoid(LV_LIVES | LV_GAINS, 0, fromChoice);
-    if (mine && (!l || (mine->life >= l->life && !(mine->plain3 && !l->plain3)))) { if (mine->n > 1) lineKeep(mine, LINE_CASH); return saKeep(d, mine->die); }
+    if (mine && (!l || mine->life >= l->life)) { if (mine->n > 1) lineKeep(mine, LINE_CASH); return saKeep(d, mine->die); }
   }
   // A HOLD IS NOT A LINE STARTED LATER: a line is judged pressed from now, and
   // every frame the board waits is a frame garbage drops on it -- the line that
@@ -4191,18 +4166,14 @@ static void waitSearchW(double left, SitAccept accept, void *ctx, double cap) {
 // ROOM's accept: a line ending in a clear that lives, loses health no sooner
 // than the choice (die0), and clears more than any before it (MAXCAND asked)
 typedef struct { int die0, most, tried, bn; int32_t bsw[2 * LINEMAX]; } RoomCtx;
-// a line's room: the panels it clears, and above any count of them, that its
-// clears are worth something -- plain threes are a last resort (plainThrees)
 static int sitRoom(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
   RoomCtx *x = ctx; (void)at;
   if (res[R_SCOPE] != SC_OK) return SIT_END;
   if (!(res[R_TOTAL] > 0)) return SIT_GROW;
   if (x->tried >= MAXCAND) return SIT_TAKE;
   x->tried++;
-  int v = lineJudge(sw, n, 0);
-  int key = (plainThrees(v) ? 0 : 1000) + LNO[3];
-  if (!(v & LV_LIVES) || (LNO[0] ? LNO[0] : 1 << 20) < x->die0 || key <= x->most) return SIT_END;
-  x->most = key; x->bn = n; for (int k = 0; k < 2 * n; k++) x->bsw[k] = sw[k];
+  if (!(lineJudge(sw, n, 0) & LV_LIVES) || (LNO[0] ? LNO[0] : 1 << 20) < x->die0 || LNO[3] <= x->most) return SIT_END;
+  x->most = LNO[3]; x->bn = n; for (int k = 0; k < 2 * n; k++) x->bsw[k] = sw[k];
   return SIT_END;
 }
 static Dec makeRoom(Dec d) {
@@ -4574,11 +4545,16 @@ static Dec batchBreak(Dec d) {
 // pieces -- is played only if it breaks, buys time (GAINS), was chosen to live
 // (stayAlive) or is a step of a line that breaks; otherwise the bot holds.
 static Dec spendToBreak(Dec d) {
-  if (lineLast || d.kind != K_SWAP || !d.hasMove || endsInBreak(d)) return d;
+  if (d.kind != K_SWAP || !d.hasMove || endsInBreak(d)) return d;
+  // chosen to live (stayAlive, its cash line), a break line, a batch held:
+  // the rule's own exceptions. A plan, a lineup or a kept break played on is
+  // judged here whole, like any other choice.
+  if (lineLast == 2 || lineLast == 3 || lineLast == 6 || (lineLast == 1 && BT->lineKind != LINE_PLAN)) return d;
   if (!(hasGarbage(DBASE) || BIN[IN_INCOMING] > 0)) return d;
-  // what the swap does, played on the engine against the board left alone
+  // what the swap does -- the line it is a step of, played whole -- on the engine against the board left alone
   int32_t sw[2] = { d.sr, d.sc };
-  int v = lineJudge(sw, 1, 0);
+  int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
+  int v = playsLine ? lineJudge(BT->line, BT->nLine, BT->lineWaitAll) : lineJudge(sw, 1, 0);
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
     fprintf(BLOG, "SPEND %d,%d v%d | drain %d/%d last %d conv %d/%d match %d/%d fell %d/%d\n", d.sr, d.sc, v, LNO[0], LNA[0], LNO[1], LNO[2], LNA[2], LNO[3], LNA[3], LNO[9], LNA[9]); }
@@ -4588,6 +4564,7 @@ static Dec spendToBreak(Dec d) {
   if (v & LV_GAINS) { int32_t k[LNOLEN]; for (int q = 0; q < LNOLEN; q++) k[q] = LNO[q]; int dies = aloneDiesBeforeLanding(); for (int q = 0; q < LNOLEN; q++) LNO[q] = k[q]; if (dies) return d; }
   // over six rows of panels there is material to spare: a clear that leaves six is spent
   if (leavesSixRows()) return d;
+  BT->nLine = 0; lineLast = 0;
   return mkHold(V_SETUP, d.mode, d.alive, 0, 0, 0);
 }
 // WHAT LANDS IS WHAT IT WILL BREAK. A slab rests on the tallest column under
