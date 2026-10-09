@@ -32,6 +32,7 @@ typedef struct {
   int lastKind, lastVia, lastMoveR, lastMoveC;
   Settle settle;   // the board's cells, when each settles (unsettled), at the last decision
   int wWaitTo, wFrames, wWaitAll, wR0, wKept;
+  int sawWave;   // a real garbage slab has been queued: the phantom first wave is over
   int pkR, pkC, pkAt, pkAll, presses;   // presses: every swap pressed, counted (IN_PRESSES)   // the swap walked to, and the clock its first plan pressed it at (pkAt 0: none)   // a walk: the frame its swap's panels settle (every panel's: wWaitAll), the frames it has taken
 } Front;
 #define MAXFRONTS 16
@@ -383,6 +384,21 @@ static void fPrepare(Front *F) {
   d[IN_STACKTOPPED] = topped;
   d[IN_MOVING] = moving;
   nb_copy(paLibBoard(), FB); d[IN_HASPA] = 1;   // the engine holds the board the bot decides on
+  // THE FIRST WAVE BEFORE IT IS SEEN: until a real slab is queued, the board
+  // the bot decides on holds one queued slab the width of the board, so every
+  // readiness rule and replay readies the first wave as it readies every
+  // other. Only the bot's copy holds it; IN_PHANTOM says how much of the
+  // incoming is phantom, so what the raise reads is the real queue.
+  if (FB->ninc > 0 || FB->garbageCreatedCount > 0) F->sawWave = 1;
+  if (!F->sawWave) {
+    Board *pb = paLibBoard();
+    Incoming *p = &pb->inc[0];
+    p->width = W; p->height = 1; p->isChain = 0; p->isMetal = 0; p->frameEarned = FB->clock; p->finalized = 1;
+    pb->ninc = 1;
+    d[IN_PHANTOM] = W;
+    d[IN_INCOMING] = W; d[IN_NEXTSLAB] = W; d[IN_INROWS] = 1;
+    d[IN_SLABW] = W; d[IN_SLABH] = 1; d[IN_SLABC] = nb_spawn_col(pb, W);
+  }
   d[IN_HASTIMED] = timed;
   d[IN_REVEALOPEN] = open;
   if (conv) { d[IN_CONVN] = nconv; d[IN_CONVTIMER] = convTimer; }

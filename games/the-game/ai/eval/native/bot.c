@@ -7,7 +7,7 @@
 enum { IN_TOPPED, IN_STOP, IN_INCOMING, IN_NEXTSLAB, IN_FALLING, IN_CROW, IN_CCOL, IN_HEALTH, IN_DRAIN, IN_FPR,
        IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISING, IN_INFLIGHT,
        IN_DRAINBOUND, IN_STACKTOPPED, IN_MOVING, IN_HASTIMED, IN_REVEALOPEN, IN_CONVN, IN_CONVTIMER, IN_BCROW, IN_BCCOL,
-       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_PRESSES = 600, IN_SIZE = 608 };   // IN_POPLOW + 1..W runs to 599
+       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_PRESSES = 600, IN_PHANTOM, IN_SIZE = 608 };   // IN_POPLOW + 1..W runs to 599
 enum { TF_DEADLY = 1, TF_FORCE = 2, TF_REFUSE = 4, TF_RAISE = 8, TF_STUB = 16, TF_SLAB = 32 };
 static int deadlyCalls;
 #define TFLAG(f) (((int)BIN[IN_T]) & (f))
@@ -939,7 +939,7 @@ static JLOCAL int raiseShort;   // raiseSafe refused for room (1) or for a clear
 static int raiseSafe(const int32_t *base) {
   raiseShort = 1;
   if (BIN[IN_TOPPED] || BIN[IN_STACKTOPPED]) return 0;
-  int queued = (int)BIN[IN_SLABH];
+  int queued = BIN[IN_PHANTOM] > 0 ? 0 : (int)BIN[IN_SLABH];   // the real next slab, never the phantom
   int free = raiseRoom(tallestBoard(base), queued, BIN[IN_RAISING] != 0);
   if (free <= 0) return 0;
   raiseShort = 0;
@@ -1207,6 +1207,7 @@ static int waveReady(const int32_t *st) {
 }
 static int raiseModeOf(const int32_t *base, int poolBreak) {
   raiseAfter = 0;
+  double realIn = BIN[IN_INCOMING] - BIN[IN_PHANTOM];   // the raise reads the real queue, never the phantom first wave
   if (TFLAG(TF_RAISE)) { raiseGate = 1; return (int)BIN[IN_T + 3]; }
   int topped = BIN[IN_TOPPED] != 0;
   if (!opt(O_ALLOWRAISE) || topped) { BT->opening = 0; { raiseGate = 2; return 0; } }
@@ -1215,16 +1216,16 @@ static int raiseModeOf(const int32_t *base, int poolBreak) {
   // (pa.c riseLock), and while garbage is still queued to drop it holds again
   // as soon as it lifts -- in a storm, nearly every frame. No raise is wanted
   // that the board cannot take: material comes from what breaks.
-  if (BIN[IN_LOCKLEFT] > 0 && BIN[IN_INCOMING] > 0) { raiseGate = 11; return 0; }
-  int rows = (int)__builtin_ceil(BIN[IN_NEXTSLAB] / BW);
+  if (BIN[IN_LOCKLEFT] > 0 && realIn > 0) { raiseGate = 11; return 0; }
+  int rows = BIN[IN_PHANTOM] > 0 ? 0 : (int)__builtin_ceil(BIN[IN_NEXTSLAB] / BW);
   int fits = raiseSafe(base);
   // A QUEUE THAT FILLS THE ROOM KILLS A BOARD WITH NO BREAK READY, raised or
   // not: only material builds the break, and the raise costs its row -- it
   // fits while the next slab still lands under the top.
-  if (!fits && BIN[IN_INCOMING] > 0 && !BIN[IN_TOPPED] && !BIN[IN_STACKTOPPED] && !slabReadyHook(base))
+  if (!fits && realIn > 0 && !BIN[IN_TOPPED] && !BIN[IN_STACKTOPPED] && !slabReadyHook(base))
     fits = BH - tallestBoard(base) - 1 - rows - (BIN[IN_RAISING] != 0) > 0;
   BT->wantRows = rows;
-  if (BT->opening && (BIN[IN_INCOMING] || !fits)) BT->opening = 0;
+  if (BT->opening && (realIn > 0 || !fits)) BT->opening = 0;
   if (!fits) { raiseGate = raiseShort ? 4 : 10; return 0; }
   // READY BEFORE IT RAISES: with garbage to come -- the first wave too, before
   // it is seen (waveReady) -- a raise may not cost the
