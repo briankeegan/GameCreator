@@ -4664,8 +4664,8 @@ static Dec spendToBreak(Dec d) {
   // garbage let down is never held: it lowers the stack
   if (!(v & LV_LIVES) || !(v & LV_PAYS) || (v & (LV_BREAKS | LV_DROPS))) return d;
   if (v & LV_GAINS) { int32_t k[LNOLEN]; for (int q = 0; q < LNOLEN; q++) k[q] = LNO[q]; int dies = aloneDiesBeforeLanding(); for (int q = 0; q < LNOLEN; q++) LNO[q] = k[q]; if (dies) return d; }
-  // over six rows of panels there is material to spare: a clear that leaves six is spent
-  if (leavesSixRows()) return d;
+  // however much the board holds: in a storm the stack does not rise, and a
+  // break is the only material that comes back
   BT->nLine = 0; lineLast = 0;
   return mkHold(V_SETUP, d.mode, d.alive, 0, 0, 0);
 }
