@@ -33,6 +33,7 @@ typedef struct {
   Settle settle;   // the board's cells, when each settles (unsettled), at the last decision
   int wWaitTo, wFrames, wWaitAll, wR0, wKept;
   int sawWave;   // a real garbage slab has been queued: the phantom first wave is over
+  int risen, riseDisp, riseHas;   // rows risen since the game began (IN_RISEN), counted every frame
   int pkR, pkC, pkAt, pkAll, presses;   // presses: every swap pressed, counted (IN_PRESSES)   // the swap walked to, and the clock its first plan pressed it at (pkAt 0: none)   // a walk: the frame its swap's panels settle (every panel's: wWaitAll), the frames it has taken
 } Front;
 #define MAXFRONTS 16
@@ -418,6 +419,7 @@ static void fPrepare(Front *F) {
   for (c = 1; c <= W; c++) { const int32_t *f = fp(0, c); d[IN_INROW + c] = !f[ISGARBAGE] && f[COLOR] ? f[COLOR] : -1; }
   if (F->hasLast) { d[IN_HASLAST] = 1; d[IN_LASTR] = F->lastR; d[IN_LASTC] = F->lastC; }
   d[IN_PRESSES] = F->presses;
+  d[IN_RISEN] = F->risen;
   for (c = 1; c <= W; c++) {
     int settling = 0, popLow = 0;
     for (r = 1; r < fRows(); r++) {
@@ -1282,6 +1284,10 @@ EXPORT(front_frame) int front_frame(int fid, Board *b) {
 static int frontFrame(int fid, Board *b) {
   Front *F = &FRONTS[fid];
   FB = b;
+  // THE ROWS RISEN, every frame: a new row shows as the displacement jumping
+  // back up. The last press's row rises with the stack.
+  if (F->riseHas && b->displacement > F->riseDisp) { F->risen++; if (F->hasLast) F->lastR++; }
+  F->riseDisp = b->displacement; F->riseHas = 1;
   F->lastKind = -1;
   if (b->gameOverClock > 0) return 0;
   int held = F->held, input = 0;

@@ -7,7 +7,7 @@
 enum { IN_TOPPED, IN_STOP, IN_INCOMING, IN_NEXTSLAB, IN_FALLING, IN_CROW, IN_CCOL, IN_HEALTH, IN_DRAIN, IN_FPR,
        IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISING, IN_INFLIGHT,
        IN_DRAINBOUND, IN_STACKTOPPED, IN_MOVING, IN_HASTIMED, IN_REVEALOPEN, IN_CONVN, IN_CONVTIMER, IN_BCROW, IN_BCCOL,
-       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_PRESSES = 600, IN_PHANTOM, IN_SIZE = 608 };   // IN_POPLOW + 1..W runs to 599
+       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_PRESSES = 600, IN_PHANTOM, IN_RISEN, IN_SIZE = 608 };   // IN_POPLOW + 1..W runs to 599
 enum { TF_DEADLY = 1, TF_FORCE = 2, TF_REFUSE = 4, TF_RAISE = 8, TF_STUB = 16, TF_SLAB = 32 };
 static int deadlyCalls;
 #define TFLAG(f) (((int)BIN[IN_T]) & (f))
@@ -68,6 +68,7 @@ typedef struct {
   int digIsBreak, opening, maxSlab, nRecent, wantRows, wantRaise;
   int32_t line[2 * LINEMAX]; int nLine, lineKind, lineWaitAll;   // the line being played, its steps still to play: LINE_BREAK or LINE_CASH
   int32_t recent[4];
+  double risenSeen;   // the rows risen (IN_RISEN) when the stored rows were last moved up
   int32_t tgt[2 * LINEMAX]; int tgtN, tgtKind, tgtWait, tgtVia; double tgtPresses;   // the target being walked to (keepTarget): its line, the rule that chose it, the presses when it was chosen
   double counts[NCOUNT];
   int lastVia;   // the route the last decision took
@@ -5524,6 +5525,18 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // every decision to, and a guard with nothing to hold it to lets anything
   // through -- so it is judged while the budget is whole, once
   aloneOnEngine();
+  // STORED ROWS FOLLOW THE STACK: every row the bot keeps from one decision
+  // to the next -- the line, the target, the routes, the presses -- moves up
+  // by the rows risen since
+  { int dr = (int)(BIN[IN_RISEN] - BT->risenSeen);
+    if (dr > 0) {
+      for (int k = 0; k < BT->nLine; k++) BT->line[2 * k] += dr;
+      for (int k = 0; k < BT->tgtN; k++) BT->tgt[2 * k] += dr;
+      Route *rs[4] = { &BT->plan, &BT->dig, &BT->attack, &BT->flatten };
+      for (int q = 0; q < 4; q++) for (int k = 0; k < rs[q]->n; k++) rs[q]->mv[2 * k] += dr;
+      for (int i = 0; i < BT->nPr; i++) BT->prR[i] += dr;
+    }
+    BT->risenSeen = BIN[IN_RISEN]; }
   DBASE = IN; notePresses();
   // THE SWAPS NOT TO UNDO are the last two pressed, never the last decided:
   // a swap decided and still walked to has undone nothing
