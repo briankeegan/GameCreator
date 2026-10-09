@@ -2145,6 +2145,8 @@ static Dec waitForDrain(Dec d) {
 // lives and still pays (breaks, for a break line) -- whatever chose it.
 #define REROOTS 3   // a line's first steps replayed on the engine before the masks propose the rest: precision, never reach
 #define LIVEHORIZON 60
+// A MATCH IS THREE: more than that cleared at once, past what the board clears alone, is a combo or a chain
+#define COMBOMIN 4
 #define LINEHORIZON 240
 #define UNSETTLEMOST 180   // the most frames a board is followed while it settles (front.c's settle sim and the judge's busy tail)
 // THE JUDGE'S REACH: it plays to LINEHORIZON, and on while the board is busy
@@ -2434,6 +2436,18 @@ static int breaksOnEngine(Dec d) {
   int v = lineJudge(ln, n, 0);
   if ((v & LV_PAYS) && !(v & LV_BREAKS)) v = lineJudge(ln, n, 1);
   return (v & LV_BREAKS) != 0;
+}
+// A SWAP THAT BREAKS, the one answer: on the engine, as the line it belongs to
+// is judged (breaksOnEngine: the decision's horizon, the whole line, pressed
+// when the clock says). The pool's own claim (res.broke) is the one swap
+// pressed at its travel time over a longer horizon -- a cascade many frames on
+// counts -- and a stage that skips its own work on that claim never looks for
+// the break. With no engine the pool's claim stands.
+static int swapBreaks(Dec d) {
+  if (d.kind != K_SWAP || !d.hasMove) return 0;
+  if (BIN[IN_HASPA]) return breaksOnEngine(d);
+  Cand *pc = poolSwap(d.sr, d.sc);
+  return pc && pc->res.broke;
 }
 // THE LINES' SETTINGS (linesFrom): topped, breaks only, the engine's board
 static JLOCAL int lsTopped, lsBreaks;
@@ -3752,7 +3766,7 @@ static int optJudge(Opt *o) {
     o->die = die; o->lives = die > 0; o->breaks = (v & LV_BREAKS) != 0;
     o->conv = LNO[2] - LNA[2]; o->hollow = HOLLOW(LNO); last = LNO[1];
     // a combo or a chain: it clears more than the board left alone, and digs under no pile (more hollow than the hold)
-    o->cash = LNO[3] > LNA[3] && (!aloneOnEngine() || o->hollow <= HOLLOW(LNA));
+    o->cash = LNO[3] - LNA[3] >= COMBOMIN && (!aloneOnEngine() || o->hollow <= HOLLOW(LNA));
   }
   o->life = lifeOf(o->die, last, o->hollow);
   return 1;
@@ -3856,10 +3870,7 @@ static Dec breakFirst(Dec d) {
 #endif
     return d;
   }
-  if (d.kind == K_SWAP && d.hasMove && !playing) {
-    Cand *pc = poolSwap(d.sr, d.sc);
-    if ((pc && pc->res.broke) || endsInBreak(d)) return d;
-  }
+  if (d.kind == K_SWAP && d.hasMove && !playing && swapBreaks(d)) return d;
   // THE BREAKS, IN TIME: the lines are found soonest first, as long as time
   // and work allow (linesFind, searchInTime); the first LIVINGS living breaks,
   // by rank, are the ones weighed (bestBreak)
@@ -4070,10 +4081,7 @@ static Dec lineupFirst(Dec d) {
   // a lineup is for a board with time: topped with death in sight, staying alive comes first
   if (lineLast || d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA]) return d;
   if (BIN[IN_TOPPED] && (!aloneOnEngine() || (LNA[0] && LNA[0] <= LIVEHORIZON))) return d;
-  if (d.kind == K_SWAP && d.hasMove) {
-    Cand *pc = poolSwap(d.sr, d.sc);
-    if ((pc && pc->res.broke) || endsInBreak(d)) return d;
-  }
+  if (swapBreaks(d)) return d;
   linesReset();
   int32_t st0[ST_INTS], cur[2], t;
   uint32_t can0[WMAX];
@@ -4232,8 +4240,7 @@ static int readiesLine(Dec d, int dieRef, int spare, int32_t *sw, int *n, int *r
 static Dec dropReady(Dec d) {
   if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA] || !hasGarbage(DBASE)) return d;
   if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK) || endsInBreak(d)) return d;
-  Cand *pc = poolSwap(d.sr, d.sc);
-  if (pc && pc->res.broke) return d;
+  if (swapBreaks(d)) return d;
   int32_t sw[2] = { d.sr, d.sc };
   int v = lineJudge(sw, 1, 0);
   if (!(v & LV_DROPS) || (v & LV_BREAKS)) return d;
@@ -4277,7 +4284,7 @@ static int sitRoom(const int32_t *res, const int32_t *sw, int n, double at, void
   return SIT_END;
 }
 static Dec makeRoom(Dec d) {
-  if (d.kind == K_SWAP && d.hasMove) { Cand *pc = poolSwap(d.sr, d.sc); if ((pc && pc->res.broke) || endsInBreak(d)) return d; }
+  if (swapBreaks(d)) return d;
   int32_t sw[2] = { d.sr, d.sc };
   int cells0 = 0, die0 = 1 << 20;
   if (d.kind == K_SWAP && d.hasMove) { if (lineJudge(sw, 1, 0) & LV_LIVES) { cells0 = LNO[3]; die0 = lnoDie(LNO); } else die0 = 0; }
@@ -4465,8 +4472,7 @@ static void recordTarget(Dec d) {
 static Dec noStall(Dec d) {
   if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0) || BIN[IN_TOPPED]) return d;
   if (!roomForBreak(DBASE) || endsInBreak(d)) return d;
-  Cand *pc = poolSwap(d.sr, d.sc);
-  if (pc && pc->res.broke) return d;
+  if (swapBreaks(d)) return d;
   int32_t sw[2] = { d.sr, d.sc };
   int v = lineJudge(sw, 1, 0);
   if (!(v & LV_PAYS) || (v & (LV_BREAKS | LV_FILLS))) return d;   // a clear that readies the landing is no stall
@@ -4551,8 +4557,7 @@ static Dec readyWhenLands(Dec d) {
   int32_t sw[2] = { d.sr, d.sc };
   int dieRef = 0, r, c;
   if (d.kind == K_SWAP && d.hasMove) {
-    Cand *pc = poolSwap(d.sr, d.sc);
-    int rdy = (pc && pc->res.broke) || endsInBreak(d) || readyInTime(sw, 1, &r, &c);
+    int rdy = swapBreaks(d) || readyInTime(sw, 1, &r, &c);
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "RWL %d,%d via %d ready %d at %d,%d\n", d.sr, d.sc, d.via, rdy, rdy ? r : 0, rdy ? c : 0); }
 #endif
@@ -4642,17 +4647,12 @@ static int aloneDiesBeforeLanding(void) {
 static Dec batchBreak(Dec d) {
   if (BIN[IN_TOPPED] || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA] || d.kind != K_SWAP || !d.hasMove) return d;
   if (!BIN[IN_FALLING]) return d;   // break once it lands: held only for garbage in the air
-  Cand *pc = poolSwap(d.sr, d.sc);
-  int converts = pc && pc->res.broke ? pc->res.converts : 0;
-  if (!converts && (lineLast == 3 || endsInBreak(d))) {   // a break line's step: its size is the line's, as the engine plays it
-    int32_t sw[2] = { d.sr, d.sc };
-    int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
-    int v = playsLine ? lineJudge(BT->line, BT->nLine, BT->lineWaitAll) : lineJudge(sw, 1, 0);
-    converts = (v & LV_BREAKS) && aloneOnEngine() ? LNO[2] - LNA[2] : 0;
-    if (converts >= BATCH) return d;
-  }
-  if (!converts) return d;
-  if (pc && pc->res.broke && pc->res.converts >= BATCH) return d;
+  // how much garbage the swap's line converts, as the engine plays it
+  int32_t sw[2] = { d.sr, d.sc };
+  int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
+  int v = playsLine ? lineJudge(BT->line, BT->nLine, BT->lineWaitAll) : lineJudge(sw, 1, 0);
+  int converts = (v & LV_BREAKS) && aloneOnEngine() ? LNO[2] - LNA[2] : 0;
+  if (converts <= 0 || converts >= BATCH) return d;
   if (tallestBoard(DBASE) > BH - ROOMLEFT) return d;   // the whole stack, garbage and panels
   if (!readyAfter(0, 0)) return d;
   BT->nLine = 0; lineLast = 6;
@@ -4681,6 +4681,8 @@ static Dec spendToBreak(Dec d) {
 #endif
   // garbage let down is never held: it lowers the stack
   if (!(v & LV_LIVES) || !(v & LV_PAYS) || (v & (LV_BREAKS | LV_DROPS))) return d;
+  // a combo or a chain digging under no pile is played, the break looked for while it resolves
+  if (LNO[3] - LNA[3] >= COMBOMIN && (!aloneOnEngine() || HOLLOW(LNO) <= HOLLOW(LNA))) return d;
   if (v & LV_GAINS) { int32_t k[LNOLEN]; for (int q = 0; q < LNOLEN; q++) k[q] = LNO[q]; int dies = aloneDiesBeforeLanding(); for (int q = 0; q < LNOLEN; q++) LNO[q] = k[q]; if (dies) return d; }
   // however much the board holds: in a storm the stack does not rise, and a
   // break is the only material that comes back
@@ -5479,7 +5481,7 @@ static Dec keepReady(Dec d) {
   if (!(BIN[IN_INCOMING] > 0) || !baseReady || d.kind != K_SWAP || !d.hasMove) return d;
   if (lineLast == 3 || lineLast == 5 || (lineLast == 1 && (BT->lineKind == LINE_BREAK || BT->lineKind == LINE_PLAN))) return d;
   Cand *pc = poolSwap(d.sr, d.sc);
-  if (!pc || pc->res.broke || endsInBreak(d) || slabReadyHook(pc->masks)) return d;
+  if (!pc || swapBreaks(d) || slabReadyHook(pc->masks)) return d;
   int32_t sw[2] = { d.sr, d.sc };
   int v = lineJudge(sw, 1, 0);
   if ((v & LV_LIVES) && aloneDiesBeforeLanding() && (!LNO[0] || LNO[0] > LNA[0])) return d;
