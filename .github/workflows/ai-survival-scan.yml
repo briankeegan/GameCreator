@@ -43,10 +43,12 @@ jobs:
           path: panel-game
           fetch-depth: 1
       - name: LuaJIT and the panel-game rocks
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: |
-          # each install is network: three tries, so a blip does not cost the seed
-          try() { for n in 1 2 3; do "$@" && return 0; sleep 15; done; return 1; }
+          # each install is network: three tries, so a blip does not cost the seed,
+          # and each try is cut at three minutes, so a hung mirror is a try lost
+          # and not the step's whole time
+          try() { for n in 1 2 3; do timeout 180 "$@" && return 0; sleep 15; done; return 1; }
           try sudo apt-get update -qq
           try sudo apt-get install -y -qq luajit luarocks liblua5.1-0-dev clang
           for r in luafilesystem luasocket luautf8; do try luarocks --lua-version 5.1 --local install $r; done
