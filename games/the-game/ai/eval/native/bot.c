@@ -3850,7 +3850,12 @@ static Dec breakFirst(Dec d) {
   bbHasDeferred = 0;
   // a line played on is kept only if it is itself a break
   int playing = lineLast == 1 && BT->lineKind != LINE_BREAK;
-  if ((lineLast && !playing) || d.kind == K_RAISE || !hasGarbage(DBASE)) return d;
+  if ((lineLast && !playing) || d.kind == K_RAISE || !hasGarbage(DBASE)) {
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "BREAKFIRST skipped: lineLast %d line kind %d nLine %d raise %d garbage on board %d\n", lineLast, BT->lineKind, BT->nLine, d.kind == K_RAISE, hasGarbage(DBASE)); }
+#endif
+    return d;
+  }
   if (d.kind == K_SWAP && d.hasMove && !playing) {
     Cand *pc = poolSwap(d.sr, d.sc);
     if ((pc && pc->res.broke) || endsInBreak(d)) return d;
