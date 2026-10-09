@@ -4422,8 +4422,9 @@ static Dec keepTarget(Dec d) {
     Dec k = mkSwap(BT->tgt[0], BT->tgt[1], BT->tgtVia, d.mode, d.alive); k.waitAll = BT->tgtN == 1 && BT->tgtWait;
     return k;
   }
-  BT->tgtN = 0;
+  // a hold leaves the target as it was: only a press, or a rule that outranks it, ends it
   if (!fresh) return d;
+  BT->tgtN = 0;
   int line = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
   BT->tgtN = line ? BT->nLine : 1; BT->tgtKind = line ? BT->lineKind : 0; BT->tgtWait = line ? BT->lineWaitAll : d.waitAll; BT->tgtVia = d.via;
   if (line) for (int k = 0; k < 2 * BT->nLine; k++) BT->tgt[k] = BT->line[k]; else { BT->tgt[0] = d.sr; BT->tgt[1] = d.sc; }
