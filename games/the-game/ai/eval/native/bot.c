@@ -1300,6 +1300,7 @@ static void lineSet(const int32_t *sw, int n, int kind, int waitAll) {
   for (int k = 0; k < 2 * n; k++) BT->line[k] = sw[k];
   BT->nLine = n; BT->lineKind = kind; BT->lineWaitAll = waitAll;
 }
+static int routeLives(const int32_t *sw, int n);
 static int playable(int r, int c) {
   Cand *pc = poolSwap(r, c);
   if (!pc) return 0;
@@ -1560,8 +1561,10 @@ static Dec decideCore(void) {
       int nsw = (int)ready[F_NSW];
       int32_t sw[2 * MAXD];
       for (int j = 0; j < 2 * nsw; j++) sw[j] = (int32_t)ready[F_SW + j];
+      // a first step the pool does not hold is judged as the line it starts:
+      // the engine plays it whole, and it is played if it lives
       if (nsw && planInTime(sw, nsw, ready[F_DURATION], base, deadline)) {
-        if (playable(sw[0], sw[1])) {
+        if (poolSwap(sw[0], sw[1]) ? playable(sw[0], sw[1]) : routeLives(sw, nsw)) {
           BT->wantRaise = 0;
           clearRaiseFrames = 1;
           BT->counts[C_READIEDFIRST]++;
