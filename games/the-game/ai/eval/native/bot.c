@@ -58,7 +58,7 @@ enum { C_REFUSEDDEADLY, C_ALLDEAD, C_REFUSEDRETURN, C_REFUSEDTOOSLOW, C_PLANNED,
 typedef struct { int scope, chain, total, rounds, biggest, broke, converts, voidAfter, garbage; } Rs;
 struct Cand { int kind, sr, sc, moveFrames, future; const int32_t *masks; Rs res; };
 typedef struct { int N; uint32_t occ[WMAX], garb[WMAX], col[NCOL][WMAX]; } Sig;
-typedef struct { int has, n; int32_t mv[2 * MAXD]; double frames, gain, rate, startedAt; int spend, blind; } Route;
+typedef struct { int has, n; int32_t mv[2 * MAXD]; double frames, gain, rate, startedAt, stamp; int spend, blind; } Route;   // stamp: the press count when its first step was last decided (-1: not decided)
 typedef struct {
   double tab[T_SIZE];
   Sig seen[4]; int nSeen;
@@ -1365,11 +1365,21 @@ static void routeSet(Route *rt, const double *o, int from, double frames, double
   int n = (int)o[F_NSW];
   rt->n = 0;
   for (int j = from; j < n; j++) { rt->mv[2 * rt->n] = (int32_t)o[F_SW + 2 * j]; rt->mv[2 * rt->n + 1] = (int32_t)o[F_SW + 2 * j + 1]; rt->n++; }
-  rt->frames = frames; rt->startedAt = startedAt; rt->has = rt->n > 0; rt->spend = 0; rt->blind = 0;
+  rt->frames = frames; rt->startedAt = startedAt; rt->has = rt->n > 0; rt->spend = 0; rt->blind = 0; rt->stamp = -1;
 }
 static void routeShift(Route *rt) {
   for (int j = 1; j < rt->n; j++) { rt->mv[2 * (j - 1)] = rt->mv[2 * j]; rt->mv[2 * (j - 1) + 1] = rt->mv[2 * j + 1]; }
   rt->n--;
+}
+// A ROUTE'S STEP IS MADE WHEN IT IS PRESSED, not when it is decided: the step
+// followed is the route's first, stamped with the presses so far (routeFollow);
+// at the next decision it comes off only if the press since was that step (routeAdvance)
+static void routeFollow(Route *rt) { rt->stamp = BT->nNotes; }
+static void routeAdvance(Route *rt, int *isBreak) {
+  if (!rt->has || !rt->n || rt->stamp < 0 || !(BT->nNotes > rt->stamp)) return;
+  if (BT->nPr && BT->prR[0] == rt->mv[0] && BT->prC[0] == rt->mv[1]) routeShift(rt);
+  rt->stamp = -1;
+  if (!rt->n) { rt->has = 0; if (isBreak) *isBreak = 0; }
 }
 
 static Cand *ALLOWED[MAXCAND], *TMPC[MAXCAND], *RANKED[MAXCAND], *SPARE[MAXCAND];
@@ -1448,8 +1458,7 @@ static Dec decideCore(void) {
       int planFits = planInTime(BT->plan.mv, BT->plan.n, remains, base, deadline);
       if (stillLegal && planFits) {
         haveSurvival = 1; sMove[0] = nr; sMove[1] = nc; sFrames = remains; sRate = BT->plan.rate;
-        routeShift(&BT->plan);
-        if (!BT->plan.n) BT->plan.has = 0;
+        routeFollow(&BT->plan);
       } else if (planFits && settling(nr, nc)) {
         havePlanWait = 1; pwMove[0] = nr; pwMove[1] = nc;
         planWaitEscape = BT->plan.rate >= 1 ? remains : INF;
@@ -1462,7 +1471,7 @@ static Dec decideCore(void) {
       mainOptions(base, deadline, lookDepth, digging);
       Pick plan;
       if (bestPlan(BIN[IN_STOP], deadline, topped, fpr, tallPool, base, &plan) && plan.rate > 0) {
-        routeSet(&BT->plan, plan.option, 1, plan.frames, stackClock);
+        routeSet(&BT->plan, plan.option, 0, plan.frames, stackClock); routeFollow(&BT->plan);
         BT->plan.gain = plan.gain; BT->plan.rate = plan.rate;
         haveSurvival = 1; sMove[0] = (int)plan.option[F_SW]; sMove[1] = (int)plan.option[F_SW + 1];
         sFrames = plan.frames; sRate = plan.rate;
@@ -1679,7 +1688,7 @@ static Dec decideCore(void) {
         int rr = (int)reach[F_SW], rc = (int)reach[F_SW + 1];
         if (playable(rr, rc) && (digLeft == INF || mode == M_DEFEND)) {
           BT->plan.has = 0;
-          if (reach[F_NSW] > 1) routeSet(&BT->dig, reach, 1, reach[F_DURATION], stackClock); else BT->dig.has = 0;
+          routeSet(&BT->dig, reach, 0, reach[F_DURATION], stackClock); routeFollow(&BT->dig);
           BT->digIsBreak = BT->dig.has;
           BT->counts[C_BROKEREACHED]++;
           if (digLeft != INF) BT->counts[C_BROKEPREEMPT]++;
@@ -1704,7 +1713,7 @@ static Dec decideCore(void) {
         }
         if (lr && lrSpend < BIN[IN_HEALTH] && playableSpending((int)lr[F_SW], (int)lr[F_SW + 1])) {
           BT->plan.has = 0;
-          if (lr[F_NSW] > 1) { routeSet(&BT->dig, lr, 1, lr[F_DURATION], stackClock); BT->dig.spend = 1; } else BT->dig.has = 0;
+          routeSet(&BT->dig, lr, 0, lr[F_DURATION], stackClock); BT->dig.spend = 1; routeFollow(&BT->dig);
           BT->digIsBreak = BT->dig.has;
           BT->counts[C_BROKESPENDING]++;
           Dec d = mkSwap((int)lr[F_SW], (int)lr[F_SW + 1], V_BREAKSPEND, mode, alive); d.spends = 1; return d;
@@ -1719,8 +1728,7 @@ static Dec decideCore(void) {
                                 : planInTime(BT->dig.mv, BT->dig.n, dmax(0, BT->dig.frames - dspent), base, deadline);
       if (dnOk && digOk) {
         int digSpends = BT->dig.spend;
-        routeShift(&BT->dig);
-        if (!BT->dig.n) { BT->dig.has = 0; BT->digIsBreak = 0; }
+        routeFollow(&BT->dig);
         BT->plan.has = 0;
         BT->counts[C_DUGFOR]++;
         Dec d = mkSwap(dr, dc, V_DIGPLAN, mode, alive); d.spends = digSpends; return d;
@@ -1738,8 +1746,7 @@ static Dec decideCore(void) {
         for (int j = 0; j < 2 * nsw; j++) sw[j] = (int32_t)dp[F_SW + j];
         if (nsw && planInTime(sw, nsw, dp[F_DURATION], base, deadline) && playable(sw[0], sw[1])) {
           BT->digIsBreak = 0;
-          routeSet(&BT->dig, dp, 1, dp[F_DURATION], stackClock);
-          if (!BT->dig.n) { BT->dig.has = 0; BT->digIsBreak = 0; }
+          routeSet(&BT->dig, dp, 0, dp[F_DURATION], stackClock); routeFollow(&BT->dig);
           BT->counts[C_DUGFOR]++;
           return mkSwap(sw[0], sw[1], V_DIGPLAN, mode, alive);
         }
@@ -1755,8 +1762,7 @@ static Dec decideCore(void) {
       int okNext = aFits && playable(ar, ac);
       if (!okNext && aFits && settling(ar, ac)) return mkHold(V_ATTACKWAIT, mode, alive, 1, ar, ac);
       if (okNext) {
-        routeShift(&BT->attack);
-        if (!BT->attack.n) BT->attack.has = 0;
+        routeFollow(&BT->attack);
         BT->counts[C_ATTACKED]++;
         return mkSwap(ar, ac, V_ATTACKPLAN, mode, alive);
       }
@@ -1770,7 +1776,7 @@ static Dec decideCore(void) {
       haveAtk = 0; BT->attack.has = 0; BT->counts[C_REFUSEDRETURN]++;
     }
     if (haveAtk) {
-      routeSet(&BT->attack, atk.option, 1, atk.option[F_DURATION], stackClock);
+      routeSet(&BT->attack, atk.option, 0, atk.option[F_DURATION], stackClock); routeFollow(&BT->attack);
       BT->counts[C_ATTACKED]++;
       BT->counts[C_CELLSPLANNED] += atk.cells;
       return mkSwap((int)atk.option[F_SW], (int)atk.option[F_SW + 1], V_BESTATTACK, mode, alive);
@@ -1821,8 +1827,7 @@ static Dec decideCore(void) {
     if (!fok && fFits && settling(fr, fc)) return mkHold(V_FLATTENWAIT, mode, alive, 1, fr, fc);
     fok = fok && fFits;
     if (fok) {
-      routeShift(&BT->flatten);
-      if (!BT->flatten.n) BT->flatten.has = 0;
+      routeFollow(&BT->flatten);
       BT->counts[C_FLATTENED]++;
       return mkSwap(fr, fc, V_FLATTEN, mode, alive);
     }
@@ -5513,6 +5518,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // a swap decided and still walked to has undone nothing
   BT->nRecent = BT->nPr < 2 ? BT->nPr : 2;
   for (int i = 0; i < BT->nRecent; i++) { BT->recent[2 * i] = BT->prR[i]; BT->recent[2 * i + 1] = BT->prC[i]; }
+  routeAdvance(&BT->plan, 0); routeAdvance(&BT->dig, &BT->digIsBreak); routeAdvance(&BT->attack, 0); routeAdvance(&BT->flatten, 0);
   // A LINE ONCE PLAYED IS NOT REPLACED BY A CHOICE THAT DIES SOONER: a route
   // may set a line of its own over the one kept from the last decision, or
   // clear it and choose a swap or a hold; the kept line is played on instead
