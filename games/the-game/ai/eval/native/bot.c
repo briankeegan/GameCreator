@@ -4376,17 +4376,24 @@ static int sitFill(const int32_t *res, const int32_t *sw, int n, double at, void
 // ONE TARGET UNTIL IT IS PRESSED: a swap's rank moves with the cursor walking
 // to it -- its press frame, and with it the frame its line loses health -- so
 // a rule asked again mid-walk can turn to a neighbour and back without
-// pressing either. While no press has been made since the target was chosen
-// and the same rule chooses again, the walk goes on to it if its line still lives.
+// pressing either -- or two rules, each the other's way. While no press has
+// been made since the target was chosen, the walk goes on to it if its line
+// still lives, unless the rule choosing now outranks the one that chose it:
+// breaking and living first, then lining a break up, then the rest.
+static int ruleRank(int via) {
+  if (via == V_BREAK || via == V_BREAKREACH || via == V_BREAKSPEND || via == V_DIGPLAN || via == V_KEEPHEALTH || via == V_SURVIVALPLAN || via == V_PLANSAVE || via == V_KEEPSAVE || via == V_READYFIRST) return 3;
+  if (via == V_LINEUP || via == V_LINEUPHOLD) return 2;
+  return 1;
+}
 static Dec keepTarget(Dec d) {
   int fresh = d.kind == K_SWAP && d.hasMove;
-  if (fresh && BT->tgtN && d.via == BT->tgtVia && BIN[IN_PRESSES] > 0 && BIN[IN_PRESSES] == BT->tgtPresses &&
+  if (fresh && BT->tgtN && ruleRank(d.via) <= ruleRank(BT->tgtVia) && BIN[IN_PRESSES] > 0 && BIN[IN_PRESSES] == BT->tgtPresses &&
       !(d.sr == BT->tgt[0] && d.sc == BT->tgt[1]) && (lineJudge(BT->tgt, BT->tgtN, BT->tgtWait) & LV_LIVES)) {
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "KEEPTARGET %d,%d over %d,%d via %d\n", BT->tgt[0], BT->tgt[1], d.sr, d.sc, d.via); }
 #endif
     if (BT->tgtN > 1) lineSet(BT->tgt, BT->tgtN, BT->tgtKind, BT->tgtWait); else BT->nLine = 0;
-    return mkSwap(BT->tgt[0], BT->tgt[1], d.via, d.mode, d.alive);
+    return mkSwap(BT->tgt[0], BT->tgt[1], BT->tgtVia, d.mode, d.alive);
   }
   BT->tgtN = 0;
   if (!fresh) return d;
