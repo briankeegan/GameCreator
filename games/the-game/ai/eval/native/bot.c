@@ -2082,8 +2082,8 @@ static Dec waitForDrain(Dec d) {
 // decision needs; it PAYS if it matches more panels or converts more garbage
 // than the board left alone, and BREAKS if it converts more garbage.
 //
-// IT MUST NOT DIE: a choice that does not live, once the board left alone dies
-// anywhere the judge sees (LIVEHORIZON), is replaced by a line that lives and pays -- breaking first.
+// IT MUST NOT DIE: a choice that does not live, while the time is short
+// (LIVEHORIZON), is replaced by a line that lives and pays -- breaking first.
 // BREAKING COMES FIRST: a line that breaks and lives is played over a choice
 // that does not break. A BREAK IS KEPT IN REACH: topped, a choice that leaves
 // no break in time is replaced by a living, paying line that
@@ -2091,13 +2091,13 @@ static Dec waitForDrain(Dec d) {
 // line (BT->line) and plays its next step while the engine says it still
 // lives and still pays (breaks, for a break line) -- whatever chose it.
 #define REROOTS 3   // a line's first steps replayed on the engine before the masks propose the rest: precision, never reach
+#define LIVEHORIZON 60
 #define LINEHORIZON 240
 #define UNSETTLEMOST 180   // the most frames a board is followed while it settles (front.c's settle sim and the judge's busy tail)
 // THE JUDGE'S REACH: it plays to LINEHORIZON, and on while the board is busy
 // for up to UNSETTLEMOST more; a line that loses no health (LNO[0] 0) is
 // counted as losing none within it, never as losing it at LINEHORIZON
 #define LINEREACH (LINEHORIZON + UNSETTLEMOST)
-#define LIVEHORIZON LINEREACH   // a death the judge sees at all is acted on now, while there is time to act
 #define NEXTMOVE 6
 #define MAXLINES 512
 #define MAXJUDGED 96
@@ -3594,7 +3594,7 @@ static Dec stayAlive(Dec d) {
   // a line played on is what the guard holds the decision to (surviveGuard)
   if (lineLast == 1 && BT->lineKind == LINE_BREAK) return saKeep(d, playDie);
   // the engine, not the estimate, says whether the board is dying: health
-  // lost within LIVEHORIZON frames (as far as the judge sees), left alone
+  // lost within LIVEHORIZON frames, left alone
   linesReset();
   if (!aloneOnEngine() || !LNA[0] || LNA[0] > LIVEHORIZON) return lineLast == 1 ? saKeep(d, playDie) : d;
   linesFind(2, 0);
