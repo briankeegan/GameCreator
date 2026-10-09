@@ -3595,11 +3595,11 @@ static Dec stayAliveIn(Dec d);
 // A LATER DEATH'S SEARCH STOPS SHORT: stayAlive's search runs past where it is
 // stopped by up to 13,568 units (combo_storm seed 3: 42,849 spent from 37,761
 // used, 33,512 from 47,634, of OPTWORK 67,500), more than OPTWORK leaves below
-// WORKBUDGET; for a death past LIVEHORIZON it stops SAOVER sooner
+// WORKBUDGET; for a death past LIVEHORIZON it stops SAOVER short of WORKBUDGET
 #define SAOVER 14000
 static Dec stayAlive(Dec d) {
   if (!(aloneOnEngine() && LNA[0] > LIVEHORIZON)) return stayAliveIn(d);
-  double keep = stageEnd, e = rdW0 + OPTWORK - SAOVER;
+  double keep = stageEnd, e = rdW0 + WORKBUDGET - SAOVER;
   if (e < stageEnd) stageEnd = e;
   d = stayAliveIn(d);
   stageClose(keep);
