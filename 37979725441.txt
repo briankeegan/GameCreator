@@ -46,3 +46,5 @@ shot=/home/runner/.local/share/love/panel-game/stage11_won_c0.png
 ready
 stage 12 won frames=9694 continues=0 next=12 complete=true
 shot=/home/runner/.local/share/love/panel-game/stage12_won_c0.png
+challenge over
+shot=/home/runner/.local/share/love/panel-game/hurricane_recap.png
