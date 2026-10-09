@@ -43,6 +43,7 @@ local BOTLOG, BOTLOG_N = tonumber(os.getenv("GC_BOTLOG") or "-1"), tonumber(os.g
 local DEATHLOG = tonumber(os.getenv("GC_DEATHLOG") or "0")
 local DEATHBOARD = DEATHLOG > 0 and math.max(DEATHLOG, tonumber(os.getenv("GC_DEATHBOARD") or "0")) or 0
 local GAMELOG = os.getenv("GC_GAMELOG") and assert(io.open(os.getenv("GC_GAMELOG"), "w"))
+local QSEEN = setmetatable({}, { __mode = "k" })   -- the garbage already written to the game log
 if LEVEL ~= 10 then io.stderr:write("train: drills run at level 10 only\n"); os.exit(2) end
 
 -- TrainingMenu.lua createBasicTrainingMode
@@ -234,6 +235,16 @@ while f < FRAMES do
     local board = frameLine(f, bits, true)
     if DEATHLOG > 0 then logs[f % DEATHLOG + 1] = blog; boards[f % DEATHBOARD + 1] = board end
     if GAMELOG then GAMELOG:write("@ ", f, "\n", blog, board, "\n") end
+    -- THE GARBAGE AS IT COMES, for a replay of the game on the C engine
+    -- (drill GC_GARBAGE_IN): each slab the frame it is first staged
+    if GAMELOG then
+      for _, g in ipairs(a.incomingGarbage.stagedGarbage) do
+        if not QSEEN[g] then
+          QSEEN[g] = true
+          GAMELOG:write(string.format("Q %d %d %d %d %d %d\n", f, g.width, g.height, g.isChain and 1 or 0, g.isMetal and 1 or 0, g.frameEarned or 0))
+        end
+      end
+    end
   end
   local dead = a.game_over_clock and a.game_over_clock > 0
   if f % 250 == 0 or dead then

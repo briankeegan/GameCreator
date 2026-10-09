@@ -163,8 +163,21 @@ int main(int argc, char **argv) {
   if (bot < 0) die("no bot", 0);
   int via[64][3] = { { 0 } }, f, lastPress = -100, bySwap = 0, byCascade = 0, converted = 0;
   char text[256];
+  // GC_GARBAGE_IN=file: the garbage a game logged (train.lua's Q lines: frame
+  // width height chain metal earned), sent on the frames it came -- with
+  // GC_TAPE_IN, the whole game played again on this engine
+  static int32_t gq[200000][6]; int ngq = 0, gqAt = 0;
+  if (getenv("GC_GARBAGE_IN")) {
+    FILE *gi = fopen(getenv("GC_GARBAGE_IN"), "r");
+    if (!gi) die("cannot read ", getenv("GC_GARBAGE_IN"));
+    char ln[256];
+    while (ngq < 200000 && fgets(ln, sizeof ln, gi))
+      if (ln[0] == 'Q' && sscanf(ln + 1, "%d %d %d %d %d %d", &gq[ngq][0], &gq[ngq][1], &gq[ngq][2], &gq[ngq][3], &gq[ngq][4], &gq[ngq][5]) == 6) ngq++;
+    fclose(gi);
+  }
   for (f = 0; f < frames; f++) {
-    if (b->stopWatchIsRunning && b->stopWatch >= lead + 1 && (b->stopWatch - lead - 1) % cycle < len)
+    if (getenv("GC_GARBAGE_IN")) { while (gqAt < ngq && gq[gqAt][0] <= f) { nb_receive(b, gq[gqAt][1], gq[gqAt][2], gq[gqAt][3], gq[gqAt][4], gq[gqAt][5], 1); gqAt++; } }
+    else if (b->stopWatchIsRunning && b->stopWatch >= lead + 1 && (b->stopWatch - lead - 1) % cycle < len)
       nb_receive(b, gw, gh, 0, 0, b->stopWatch, 1);
     feed(b);
     int bits;
