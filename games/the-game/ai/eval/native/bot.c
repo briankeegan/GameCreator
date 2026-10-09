@@ -4847,14 +4847,8 @@ static double breakTier(const int32_t *sw, int n, int die) {
   if (fillUrgent && marginWithin(sw, n, die ? die : LINEREACH, 0) >= 0) return BREAKS_IN_TIME;
   return reachFirst() && breakKept(sw, n) ? BREAK_IN_REACH : 0;
 }
-// A FULL BOARD CLEARS BIG: topped, or with garbage converting into it, and
-// over six rows, of fills alike in breaking, life and hollow, the one that
-// clears most (LNO[3], the line just judged) goes first -- fours, combos and
-// chains take panels across the columns and keep the board flat for what is
-// landing. Otherwise a panel spent is a panel the next break needs.
 static double fillScoreOf(const int32_t *sw, int n, int die, int hollow) {
-  double big = (BIN[IN_TOPPED] || BIN[IN_CONVN] > 0) && materialRows(DBASE) >= 6 ? (LNO[3] < 15 ? LNO[3] : 15) / 16.0 : 0;
-  return fillScore(die, hollow) + big + breakTier(sw, n, die);
+  return fillScore(die, hollow) + breakTier(sw, n, die);
 }
 // a clear judged (LNO) leaves six rows of material, read off the line's own matches
 static int readyAfterSpend(const int32_t *sw, int n);
