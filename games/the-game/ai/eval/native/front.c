@@ -609,6 +609,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
     fprintf(BLOG, "  WAIT %d,%d to %d | first %d,%d last %d,%d\n", r, c, waitTo, LF->settle.first[r][c], LF->settle.first[r][c + 1], LF->settle.last[r][c], LF->settle.last[r][c + 1]); }
 #endif
   out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = out[13] = out[14] = 0; out[15] = out[16] = -1;   // out[16]: the clock the first step is pressed at
+  out[17] = out[18] = 0;
   int32_t landedFrom = b->garbageCreatedCount;   // out[15]: read once the next slab has landed
   int pressStep = -1, pressLast = 0;   // the step pressed this frame, and the last press before it
   { extern int paBudgetOut(void); if (paBudgetOut()) return -1; }   // past the decision's budget: not played
@@ -683,6 +684,10 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   }
   out[1] = step == n ? last : -1;
   out[2] = b->sBroke; out[3] = b->sCleared; out[9] = b->sFell; out[10] = b->sHollow;
+  // WHAT ITS CLEARS WERE WORTH: [17] plain threes (three panels, no chain --
+  // the engine grants no stop time for them, calculateStopTime), [18] combos
+  // of four or more and chain links
+  for (int k = 0; k < b->sNCombo; k++) { if (b->sCombo[k] > 3 || b->sChainAt[k] >= 2) out[18]++; else out[17]++; }
   // and the gaps under garbage as it stands on the board the line ends on: a
   // pile propped above empty cells is hollow whether or not it just landed
   for (int r = 2; r < b->nrows; r++)
