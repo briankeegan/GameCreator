@@ -1,12 +1,14 @@
 {
-  "name": "WasmSurvivor",
-  "weights": "trained.pbt.pbt-r22-s322.0926-142336.g03120.json",
-  "reaction": 12,
-  "cursorMoveFrames": 4,
-  "depth": 2,
-  "modes": false,
-  "ahead": 90,
-  "threat": null,
-  "breakFirst": true,
-  "breakDepth": 1
+ "name": "WasmSurvivor",
+ "weights": "trained.pbt.pbt-r22-s322.0926-142336.g03120.json",
+ "reaction": 12,
+ "cursorMoveFrames": 4,
+ "depth": 2,
+ "modes": false,
+ "ahead": 90,
+ "threat": null,
+ "breakFirst": true,
+ "breakDepth": 1,
+ "bank": true,
+ "raiseTo": 8
 }

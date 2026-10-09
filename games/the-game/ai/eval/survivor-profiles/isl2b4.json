@@ -13,5 +13,7 @@
  "lineup": true,
  "conserve": true,
  "threesLast": true,
- "nativeCands": true
+ "nativeCands": true,
+ "bank": true,
+ "raiseTo": 8
 }
