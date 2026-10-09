@@ -19,8 +19,9 @@ on:
         type: boolean
         default: false
 
+# one scan per commit: a push never cancels the scan of the commit before it
 concurrency:
-  group: ai-survival-scan-${{ github.ref }}
+  group: ai-survival-scan-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
