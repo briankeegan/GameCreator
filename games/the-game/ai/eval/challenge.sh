@@ -30,6 +30,11 @@ CMD="$OUT_DIR/pa_cmd.txt" OUT="$OUT_DIR/pa_out.txt"
 : > "$OUT"
 case "$BOT" in wasm|bitbot) ;; *) echo "challenge.sh: BOT is wasm or bitbot, not $BOT" >&2; exit 2 ;; esac
 
+# THE BOT HAS THE MACHINE THE DRILLS GIVE IT. The client draws every frame in
+# software (llvmpipe), which spreads over every core it is given; it is held
+# to the first core with one render thread, and WasmSurvivor runs on the rest.
+NCPU=$(nproc); CLIENT_CPU=0; MIND_CPUS="1-$(( NCPU - 1 ))"
+[ "$NCPU" -lt 2 ] && MIND_CPUS=0
 MIND=
 cleanup() { [ -n "$MIND" ] && kill "$MIND" 2>/dev/null; [ -n "${CLIENT:-}" ] && kill "$CLIENT" 2>/dev/null; }
 trap cleanup EXIT
@@ -37,7 +42,7 @@ if [ "$BOT" = wasm ]; then
   [ -n "${PROFILE:-}" ] && export GC_SURVIVOR_PROFILE="$EVAL/$PROFILE"
   # each stage it loses: its last frames, boards and decisions (survivor_death.js reads them)
   GC_SURVIVOR_DUMP="$OUT_DIR/death.jsonl" GC_SURVIVOR_KEEP=4 \
-    node "$EVAL/survivor.js" --port "$PORT" --threads $(( $(nproc) - 1 )) > "$OUT_DIR/survivor.log" 2>&1 &
+    taskset -c "$MIND_CPUS" node "$EVAL/survivor.js" --port "$PORT" --threads $(( NCPU - 1 )) > "$OUT_DIR/survivor.log" 2>&1 &
   MIND=$!
   for i in $(seq 1 300); do grep -q listening "$OUT_DIR/survivor.log" && break; sleep 0.2; done
   grep -q listening "$OUT_DIR/survivor.log" || { cat "$OUT_DIR/survivor.log"; echo "challenge.sh: WasmSurvivor did not start" >&2; exit 1; }
@@ -49,7 +54,7 @@ fi
 (cd "$PG" && XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp} PA_CMD_FILE="$CMD" PA_OUT_FILE="$OUT" \
    PA_SURVIVOR=1 PA_BOT="$BOT" PA_SURVIVOR_PORT="$PORT" GC_EVAL_DIR="$EVAL" PA_CHALLENGE_CONTINUES="$CONTINUES" \
    PA_CHALLENGE_STAGE="${STAGE:-}" PA_CHALLENGE_REPEAT="${REPEAT:-}" \
-   exec timeout $(( MINUTES * 60 )) stdbuf -oL xvfb-run --auto-servernum -s "-screen 0 1280x720x24" "$LOVE" "$PG") > "$OUT_DIR/client.log" 2>&1 &
+   LP_NUM_THREADS=1 exec taskset -c "$CLIENT_CPU" timeout $(( MINUTES * 60 )) stdbuf -oL xvfb-run --auto-servernum -s "-screen 0 1280x720x24" "$LOVE" "$PG") > "$OUT_DIR/client.log" 2>&1 &
 CLIENT=$!
 
 send() { printf '%s\n' "$@" >> "$CMD"; }
