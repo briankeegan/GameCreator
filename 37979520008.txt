@@ -9,3 +9,6 @@ reached ChallengeModeMenu
 texts[ChallengeModeMenu]: < | > | Hurricane | Difficulty | Go! | Back
 menusel: selected go_
 reached CharacterSelectChallenge
+challengeloop on
+stage set to 8
+ready
