@@ -2294,6 +2294,11 @@ static int lineJudgeIn2(const int32_t *sw, int n, int waitAll) {
 // the one read of the judge's first number: 1 << 20 when it is not within the
 // horizon. Rules compare this, never LNO[0] (0 there means none).
 static int lnoDie(const int32_t *a) { return a[0] ? a[0] : 1 << 20; }
+// THE FRAME THE BOARD LEFT ALONE LOSES HEALTH on the engine (lnoDie of LNA;
+// 1 << 20: not within the horizon), or `unknown` when the engine has no
+// board to say -- what that means is the asking rule's own
+static int aloneOnEngine(void);
+static int aloneDie(int unknown) { return aloneOnEngine() ? lnoDie(LNA) : unknown; }
 // THE FRAME A JUDGED LINE LOSES HEALTH, read the one way every rule reads it
 // (1 << 20: not within the judge's reach; 0: it dies now). A verdict without
 // LV_LIVES is three things: the budget refused the judge (no verdict: -1),
@@ -3479,7 +3484,7 @@ static int lineRank(const LineC *a, int ra, const LineC *b, int rb) {
 // queue that fills the room it dies when the board left alone does -- the
 // break it readies is what saves it. Every route that plays a line for its
 // readiness asks this.
-static int readyBar(void) { return aloneOnEngine() ? lnoDie(LNA) : 0; }
+static int readyBar(void) { return aloneDie(0); }
 // whether a line counts as ready: asked only with garbage to come, and only of
 // a line that loses health no sooner than the board left alone
 static int readyAtNext(const int32_t *sw, int n, int *br, int *bc);
@@ -3812,7 +3817,7 @@ static Dec perchGuard(Dec d) {
 static Dec surviveGuard(Dec d) {
   if (!saSet) {
     if (d.kind != K_SWAP || !d.hasMove || !aloneOnEngine()) return d;
-    saDec = mkHold(V_KEEPHEALTH, d.mode, d.alive, 0, 0, 0); saDie = lnoDie(LNA); saN = 0; saKind = 0; saWait = 0;
+    saDec = mkHold(V_KEEPHEALTH, d.mode, d.alive, 0, 0, 0); saDie = aloneDie(1 << 20); saN = 0; saKind = 0; saWait = 0;
   }
   if (d.kind == saDec.kind && d.hasMove == saDec.hasMove && d.sr == saDec.sr && d.sc == saDec.sc) return d;
   int die, ready = 0, r, c;
@@ -3825,7 +3830,7 @@ static Dec surviveGuard(Dec d) {
     if (die < 0) return d;   // no verdict: nothing to hold it to
     if (die < saDie && (v & LV_LIVES) && BIN[IN_INCOMING] > 0)
       ready = playsLine ? readyInTime(BT->line, BT->nLine, &r, &c) : readyInTime(sw, 1, &r, &c);
-  } else if (d.kind == K_HOLD) die = aloneOnEngine() ? lnoDie(LNA) : 1 << 20;
+  } else if (d.kind == K_HOLD) die = aloneDie(1 << 20);
   else return d;   // a raise: raiseMode's own rules
   if (die >= saDie) return d;
   if (ready && !(saDec.kind == K_SWAP && saDec.hasMove ? (saN ? readyInTime(saLine, saN, &r, &c) : readyInTime((int32_t[2]){ saDec.sr, saDec.sc }, 1, &r, &c)) : readyInTime(0, 0, &r, &c))) return d;
@@ -4272,7 +4277,7 @@ static Dec makeRoom(Dec d) {
   int32_t sw[2] = { d.sr, d.sc };
   int cells0 = 0, die0 = 1 << 20;
   if (d.kind == K_SWAP && d.hasMove) { if (lineJudge(sw, 1, 0) & LV_LIVES) { cells0 = LNO[3]; die0 = lnoDie(LNO); } else die0 = 0; }
-  else if (aloneOnEngine()) { cells0 = LNA[3]; die0 = lnoDie(LNA); }
+  else if (aloneOnEngine()) { cells0 = LNA[3]; die0 = aloneDie(0); }
   // the living clears in time, soonest first: the one that clears most
   RoomCtx x; x.die0 = die0; x.most = cells0; x.bn = 0; x.tried = 0;
   waitSearch(LINEHORIZON, sitRoom, &x);
@@ -5615,7 +5620,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
         int32_t one[2] = { d.sr, d.sc };
         int v = routeN ? lineJudge(routeLine, routeN, routeWait) : lineJudge(one, 1, d.waitAll);
         routeDie = (v & LV_LIVES) && !LNO[0] ? 1 << 20 : LNO[0] ? LNO[0] : 0;
-      } else routeDie = !aloneOnEngine() ? 0 : lnoDie(LNA);
+      } else routeDie = aloneDie(0);
       keepIt = keptDie > routeDie;
 #ifndef __wasm__
       if (botTraceOn && keepIt) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "KEPT %d,%d (dies %d) over the route's %s %d,%d (dies %d)\n", BT->line[0], BT->line[1], keptDie, routeN ? "line" : d.kind == K_SWAP ? "swap" : "hold", d.sr, d.sc, routeDie); }
