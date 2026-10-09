@@ -3,25 +3,25 @@
  "name": "isl2b8",
  "seededFrom": "champ-sv09.json",
  "weights": {
-  "travelCost": 62.592769659747695,
-  "stopTimeEarned": 64.63948590546269,
-  "colourVariance": 60.23228273751306,
-  "linksV": 50.08792807790651,
-  "garbageAdjacency": 56.53080631276103,
-  "edgePenalty": 178.2031010163624,
-  "chainLayers": -38.55038496429231,
-  "material": 33.52925362484778,
-  "linksH": 177.50148237627172,
-  "garbageCleared": 50.808046913124,
-  "garbageOnBoard": -49.22782828659616,
-  "reach2chain": 147.05985031181334,
-  "maxHeight": 64.44599704853809,
-  "reach4combo": -1.8589815206240878,
-  "chainLength": 82.59445054027569
+  "travelCost": 69.74694577818595,
+  "stopTimeEarned": 55.84516429493674,
+  "colourVariance": 51.136604234769045,
+  "linksV": 45.32992393830595,
+  "garbageAdjacency": 62.45845310016444,
+  "edgePenalty": 170.9468953642023,
+  "chainLayers": -26.258028798379982,
+  "material": 18.368536673368858,
+  "linksH": 178.18024682919403,
+  "garbageCleared": 54.261261523274925,
+  "garbageOnBoard": -34.403134113443784,
+  "reach2chain": 132.66908945807543,
+  "maxHeight": 67.82692174251315,
+  "reach4combo": 4.001823075001097,
+  "chainLength": 69.06355121447376
  },
  "record": {
   "win": 84,
-  "loss": 55,
+  "loss": 56,
   "draw": 3,
   "none": 0,
   "died": 8
@@ -3280,7 +3280,31 @@
     "run": 0
    },
    "at": "2026-10-09T10:17:18.404Z"
+  },
+  {
+   "match": 142,
+   "opp": 2,
+   "result": "loss",
+   "outcome": "ceiling",
+   "frames": 21600,
+   "sent": 415,
+   "received": 457,
+   "late": 0,
+   "pressed": 742,
+   "topped": {
+    "stop": 5796,
+    "shake": 423,
+    "swapLock": 106,
+    "active": 267,
+    "minHealth": 1,
+    "deadHealth": 0,
+    "frames": 6598,
+    "longest": 447,
+    "run": 0
+   },
+   "at": "2026-10-09T10:23:27.823Z",
+   "mergedToward": 2
   }
  ],
- "matches": 142
+ "matches": 143
 }
