@@ -1,22 +1,22 @@
 name: Challenge mode (the real client)
 
-# WasmSurvivor plays the panel-game client's own Challenge Mode, the game as a
-# player runs it: the client is launched under xvfb and driven through its
-# menus by its e2e harness (client/src/debug/AppDriver.lua, PA_CMD_FILE) --
-# og stuff -> Challenge Mode -> the difficulty -> go -> Ready -- and the local
-# player's stack takes its keys from survivor.js (PA_SURVIVOR=1). Stage after
-# stage until the recap, or past `continues` continues. Each stage's result is
-# an annotation; the harness's log, WasmSurvivor's and the recap screenshot are
-# the artifact. While it plays, the harness's log is pushed every 20 s to the
+# A bot plays the panel-game client's own Challenge Mode, the game as a player
+# runs it: games/the-game/ai/eval/challenge.sh (the menus clicked through by the
+# client's e2e harness, the player's keys from the bot). Stage after stage
+# until the recap, or past `continues` continues. Each stage's result is an
+# annotation; the harness's log, the bot's and the client's are the artifact. While it plays, the harness's log is pushed every 20 s to the
 # challenge-live branch as <run id>.txt, so a game in progress can be read.
 on:
   workflow_dispatch:
     inputs:
+      bot:
+        description: 'wasm (WasmSurvivor) or bitbot (BitBot)'
+        default: 'wasm'
       difficulty:
         description: 'Challenge difficulty, 1-8 (8 = Hurricane)'
         default: '8'
       profile:
-        description: 'The WasmSurvivor profile, relative to games/the-game/ai/eval (empty = survivor.profile.json)'
+        description: 'With bot wasm: the WasmSurvivor profile, relative to games/the-game/ai/eval (empty = survivor.profile.json)'
         default: 'survivor-profiles/isl2b4.json'
       continues:
         description: 'Stop after this many continues'
@@ -45,26 +45,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: xvfb and love
+      - name: xvfb, love and clang
         timeout-minutes: 15
         run: |
           APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
-          for i in 1 2 3; do timeout 240 sudo apt-get $APT update && timeout 240 sudo apt-get $APT install -y libfuse2 xvfb && break; sleep 10; done
+          for i in 1 2 3; do timeout 240 sudo apt-get $APT update && timeout 240 sudo apt-get $APT install -y libfuse2 xvfb clang && break; sleep 10; done
           mkdir -p ~/love2d
           for i in 1 2 3; do curl -fsSL "https://github.com/panel-attack/panel-game/releases/download/love2d-12.0/love-12.0-linux-x86_64.tar.gz" -o /tmp/love.tar.gz && break; sleep 10; done
           tar -xzf /tmp/love.tar.gz -C ~/love2d
           mv ~/love2d/*.AppImage ~/love2d/love.AppImage
           chmod +x ~/love2d/love.AppImage
-      - name: Start WasmSurvivor
-        timeout-minutes: 2
-        run: |
-          set -eu
-          P='${{ inputs.profile }}'
-          if [ -n "$P" ]; then export GC_SURVIVOR_PROFILE="$GITHUB_WORKSPACE/games/the-game/ai/eval/$P"; fi
-          nohup node games/the-game/ai/eval/survivor.js --port 47777 --threads $(( $(nproc) - 1 )) > "$GITHUB_WORKSPACE/survivor.log" 2>&1 &
-          for i in $(seq 1 300); do grep -q listening survivor.log && break; sleep 0.2; done
-          cat survivor.log
-          grep -q listening survivor.log
       - name: The live log's branch
         timeout-minutes: 3
         run: |
@@ -74,61 +64,34 @@ jobs:
           else git worktree add -q --detach live && git -C live checkout -q --orphan challenge-live && git -C live rm -rfq . ; fi
       - name: Play
         timeout-minutes: 340
-        working-directory: panel-game
         env:
-          DIFFICULTY: ${{ inputs.difficulty || '8' }}
-          CONTINUES: ${{ inputs.continues || '10' }}
+          PG: ${{ github.workspace }}/panel-game
+          LOVE: /home/runner/love2d/love.AppImage
+          OUT_DIR: ${{ github.workspace }}/out
+          PROFILE: ${{ inputs.profile }}
+          MINUTES: '330'
         run: |
           set -u
-          CMD="$GITHUB_WORKSPACE/pa_cmd.txt" OUT="$GITHUB_WORKSPACE/pa_out.txt"
-          : > "$OUT"
-          PA_CMD_FILE="$CMD" PA_OUT_FILE="$OUT" PA_SURVIVOR=1 PA_SURVIVOR_PORT=47777 PA_CHALLENGE_CONTINUES="$CONTINUES" \
-            nohup xvfb-run --auto-servernum -s "-screen 0 1280x720x24" ~/love2d/love.AppImage . > "$GITHUB_WORKSPACE/client.log" 2>&1 &
-          send() { printf '%s\n' "$@" >> "$CMD"; }
+          bash games/the-game/ai/eval/challenge.sh "${{ inputs.bot || 'wasm' }}" "${{ inputs.difficulty || '8' }}" "${{ inputs.continues || '10' }}" &
+          RUN=$!
           LIVE="$GITHUB_WORKSPACE/live" NAME="${{ github.run_id }}.txt"
           live() {   # the harness's log so far, to the challenge-live branch
-            cp "$OUT" "$LIVE/$NAME" 2>/dev/null || return 0
+            cp "$OUT_DIR/pa_out.txt" "$LIVE/$NAME" 2>/dev/null || return 0
             git -C "$LIVE" add "$NAME" && git -C "$LIVE" commit -qm "challenge ${{ github.run_id }}" 2>/dev/null || return 0
             for i in 1 2 3; do git -C "$LIVE" push -q origin HEAD:challenge-live 2>/dev/null && return 0; git -C "$LIVE" pull -q --rebase origin challenge-live 2>/dev/null; done
           }
-          lastscene() { grep -o '^\(ready\|scene\)=.*' "$OUT" | tail -1 | cut -d= -f2; }
-          # the client is up once the harness writes ready=<scene>
-          for i in $(seq 1 600); do grep -q '^ready=' "$OUT" && break; sleep 1; done
-          grep -q '^ready=' "$OUT" || { tail -50 "$GITHUB_WORKSPACE/client.log" | tee -a "$OUT"; echo "the client did not start" | tee -a "$OUT"; live; exit 1; }
-          live
-          # first-run screens and the title: Return until the main menu
-          for i in $(seq 1 20); do
-            [ "$(lastscene)" = MainMenu ] && break
-            send "tap return" "wait 60" "scene"; sleep 3
-          done
-          [ "$(lastscene)" = MainMenu ] || { echo "never reached the main menu" >> "$OUT"; live; cat "$OUT"; exit 1; }
-          live
-          # og stuff -> Challenge Mode -> the difficulty (the stepper starts at 1) -> go -> character select
-          send "menusel og stuff" "menusel mm_1_challenge_mode" "waitscene ChallengeModeMenu 600" "where"
-          for i in $(seq 2 "$DIFFICULTY"); do send "tap right"; done
-          send "texts" "shoot challenge_menu" "menusel go_" "waitscene CharacterSelectChallenge 600" "challengeloop"
-          # stage after stage, till the recap or the continues run out
-          while kill -0 $(pgrep -f love.AppImage | head -1) 2>/dev/null; do
-            grep -q '^challenge \(over\|stopped\)' "$OUT" && break
-            sleep 20; live
-          done
-          sleep 5; live
-          cat "$OUT"
+          while kill -0 $RUN 2>/dev/null; do sleep 20; live; done
+          wait $RUN; rc=$?; live; exit $rc
       - name: Results
         if: always()
         run: |
-          grep -h '^stage \|^challenge \|^texts\|^where\|TIMEOUT\|not in\|no menu' pa_out.txt 2>/dev/null | sed 's/^/::notice title=challenge::/' || true
-          grep -h 'match over' survivor.log | sed 's/^/::notice title=survivor::/' || true
+          grep -h '^stage \|^challenge \|^texts\|TIMEOUT\|not in\|no menu\|did not\|never' out/pa_out.txt 2>/dev/null | sed 's/^/::notice title=challenge::/' || true
+          grep -h 'match over' out/survivor.log 2>/dev/null | sed 's/^/::notice title=survivor::/' || true
           echo '## Challenge mode' >> "$GITHUB_STEP_SUMMARY"
-          grep -h '^stage \|^challenge ' pa_out.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo 'no stage finished' >> "$GITHUB_STEP_SUMMARY"
-          mkdir -p shots; find ~/.local/share/love -name '*.png' -newer pa_cmd.txt -exec cp {} shots/ \; 2>/dev/null || true
+          grep -h '^stage \|^challenge ' out/pa_out.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo 'no stage finished' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: challenge-mode
-          path: |
-            pa_out.txt
-            client.log
-            survivor.log
-            shots/
+          path: out/
           if-no-files-found: warn
