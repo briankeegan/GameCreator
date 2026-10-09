@@ -4378,7 +4378,7 @@ static Dec noStall(Dec d) {
   return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
 }
 // THE LINES THAT READY THE LANDING's accept: a line -- of any length, quiet
-// steps, and clears when the board has panels to spare -- is asked of the
+// steps and clears, combos and chains among them -- is asked of the
 // engine if the masks show the slab ready in time after it (slabReadyHook);
 // the masks can miss what the engine sees, so the soonest READYTRIES lines
 // are asked whatever they show. Asked, it must live, as long as the
@@ -4386,8 +4386,9 @@ static Dec noStall(Dec d) {
 typedef struct { int dieRef, spare, dr, dc, tried, blind, masks, ok, r, c; } RqCtx;
 static int sitReadies(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
   RqCtx *x = ctx; (void)at;
-  // a break is the break stages'; a clear spends panels a short board needs
-  if (res[R_SCOPE] != SC_OK || (res[R_TOTAL] > 0 && !x->spare)) return SIT_END;
+  // a break is the break stages'; a clear on the way is spent for the break
+  // the line readies, which the engine confirms below (readyInTime)
+  if (res[R_SCOPE] != SC_OK) return SIT_END;
   if (n == 1 && sw[0] == x->dr && sw[1] == x->dc) return SIT_GROW;   // the choice itself: asked already
   if (slabReadyHook(res + R_INTS)) {
     x->masks++;
