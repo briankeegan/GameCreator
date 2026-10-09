@@ -68,6 +68,7 @@ typedef struct {
   int digIsBreak, opening, maxSlab, nRecent, wantRows, wantRaise;
   int32_t line[2 * LINEMAX]; int nLine, lineKind, lineWaitAll;   // the line being played, its steps still to play: LINE_BREAK or LINE_CASH
   int32_t recent[4];
+  int32_t tgt[2 * LINEMAX]; int tgtN, tgtKind, tgtWait, tgtVia; double tgtPresses;   // the target being walked to (keepTarget): its line, the rule that chose it, the presses when it was chosen
   double counts[NCOUNT];
   int lastVia;   // the route the last decision took
 } Bot;
@@ -4372,6 +4373,29 @@ static int sitFill(const int32_t *res, const int32_t *sw, int n, double at, void
   x->hb = HOLLOW(LNO); x->bn = n; for (int k = 0; k < 2 * n; k++) x->bsw[k] = sw[k];
   return SIT_GROW;
 }
+// ONE TARGET UNTIL IT IS PRESSED: a swap's rank moves with the cursor walking
+// to it -- its press frame, and with it the frame its line loses health -- so
+// a rule asked again mid-walk can turn to a neighbour and back without
+// pressing either. While no press has been made since the target was chosen
+// and the same rule chooses again, the walk goes on to it if its line still lives.
+static Dec keepTarget(Dec d) {
+  int fresh = d.kind == K_SWAP && d.hasMove;
+  if (fresh && BT->tgtN && d.via == BT->tgtVia && BIN[IN_PRESSES] > 0 && BIN[IN_PRESSES] == BT->tgtPresses &&
+      !(d.sr == BT->tgt[0] && d.sc == BT->tgt[1]) && (lineJudge(BT->tgt, BT->tgtN, BT->tgtWait) & LV_LIVES)) {
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "KEEPTARGET %d,%d over %d,%d via %d\n", BT->tgt[0], BT->tgt[1], d.sr, d.sc, d.via); }
+#endif
+    if (BT->tgtN > 1) lineSet(BT->tgt, BT->tgtN, BT->tgtKind, BT->tgtWait); else BT->nLine = 0;
+    return mkSwap(BT->tgt[0], BT->tgt[1], d.via, d.mode, d.alive);
+  }
+  BT->tgtN = 0;
+  if (!fresh) return d;
+  int line = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
+  BT->tgtN = line ? BT->nLine : 1; BT->tgtKind = line ? BT->lineKind : 0; BT->tgtWait = line ? BT->lineWaitAll : d.waitAll; BT->tgtVia = d.via;
+  if (line) for (int k = 0; k < 2 * BT->nLine; k++) BT->tgt[k] = BT->line[k]; else { BT->tgt[0] = d.sr; BT->tgt[1] = d.sc; }
+  BT->tgtPresses = BIN[IN_PRESSES];
+  return d;
+}
 static Dec noStall(Dec d) {
   if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0) || BIN[IN_TOPPED]) return d;
   if (!roomForBreak(DBASE) || endsInBreak(d)) return d;
@@ -5530,6 +5554,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   d = perchGuard(d);
   d = setupTwos(d);
   d = surviveGuard(d);
+  d = keepTarget(d);
   // a line set this decision is stamped with the presses made before it
   if (BT->nLine && (BT->nLine != nLineAfterPlay || __builtin_memcmp(BT->line, lineAfterPlay, (unsigned long)BT->nLine * 8))) { BT->linePresses = BIN[IN_PRESSES]; BT->lineBorn = BT->nNotes; }
 #ifndef __wasm__
