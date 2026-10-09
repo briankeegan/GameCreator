@@ -144,9 +144,14 @@ local function counts()
 end
 -- GC_STATES=1: each cell as two characters, what it is and its state
 -- (n normal, d dimmed, f falling, h hovering, l landing, m matched, p popping,
--- x popped, s swapping), so a break converting and a slab falling read apart
+-- x popped, s swapping), so a break converting and a slab falling read apart;
+-- a breaking cell the game has shown is its panel, state r (front.c fConv)
 local STATES = os.getenv("GC_STATES") == "1"
 local STATECH = { normal = "n", dimmed = "d", falling = "f", hovering = "h", landing = "l", matched = "m", popping = "p", popped = "x", swapping = "s" }
+local function shown(q)
+  return q.isGarbage and q.color ~= 0 and q.color ~= 9 and q.y_offset == -1 and q.state == "matched"
+     and q.initial_time - q.timer >= a.levelData.frameConstants.FLASH and q.timer <= q.pop_time
+end
 local function show(states)
   states = states or STATES
   local out = {}
@@ -154,8 +159,9 @@ local function show(states)
     local s = {}
     for c = 1, a.width do
       local q = a.panels[r][c]
-      local ch = q.isGarbage and "g" or q.color ~= 0 and tostring(q.color % 10) or "."
-      if states then ch = ch .. (q.color == 0 and "." or STATECH[q.state] or "?")
+      local rev = shown(q)
+      local ch = rev and tostring(q.color % 10) or q.isGarbage and "g" or q.color ~= 0 and tostring(q.color % 10) or "."
+      if states then ch = ch .. (q.color == 0 and "." or rev and "r" or STATECH[q.state] or "?")
       elseif q.color ~= 0 and q.state ~= "normal" and q.state ~= "dimmed" then ch = q.isGarbage and "G" or "X" end
       s[#s + 1] = ch
     end
