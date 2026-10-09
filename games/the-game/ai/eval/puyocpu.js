@@ -235,7 +235,6 @@
     // deaths against 44. Banning the repeat costs more than the repeat does
     // -- the cursor is already on that square, and forcing a different one
     // spends travel frames and leaves it out of position.
-    this.refuseUndo = opts.refuseUndo === true;
     // THREES LAST (opts.threesLast): a move whose clears are all threes,
     // breaking no garbage and starting no chain, is dropped from the moves the
     // bot may play whenever any other move is left, unless the stack is topped
@@ -2090,27 +2089,13 @@
   //
   // The evaluator scores every candidate on its own board and has no memory,
   // so on a quiet board the swap it liked last decision is still the one it
-  // likes -- and playing it again just undoes it. Measured over 1,334
-  // decisions in six duels: 263 of them, ONE IN FIVE, played the same square
-  // twice in a row, and only 21% of decisions cleared anything at all.
+  // likes -- and playing it again just undoes it. A swap of the square the
+  // last move swapped, when that move cleared nothing, is never a candidate;
+  // the next best is (a hold, or another square). It lifts only if it would
+  // empty the pool.
   //
-  // It is not merely wasted time. handleManualRaise returns while riseLock is
-  // set, and updateRiseLock sets it on swapQueued() or hasActivePanels() --
-  // so a bot that is always mid-swap can never raise. Read off 335 decisions
-  // where the stack was starved under the lid (two panels or fewer touching
-  // the slab) with three or more rows of headroom: RAISE was not on the
-  // candidate list at all on 251 of them. No raise means no new panels, a
-  // starved interface means no match can reach the slab, and the garbage only
-  // ever accumulates.
-  //
-  // MEASURED AND OFF. The reasoning above is sound and the rule does what it
-  // says -- undos fall from 263 of 1,334 decisions to 119, and decisions that
-  // clear something rise from 21% to 23%. It still LOSES: 120 duels, sides
-  // alternated, 37% survival against 63% without it. Keeping the cursor where
-  // it already is buys more than the wasted swap costs.
-  //
-  // Narrow on purpose: only the SAME SQUARE as the move just taken, only when
-  // that move cleared nothing, and it lifts if it would empty the pool.
+  // A swap in progress also holds the stack's rise lock (updateRiseLock), so
+  // a bot that is always mid-swap can never raise.
   function bareThree(c) {
     var r = c && c.resolved, sizes = r && r.comboSizes;
     if (!sizes || !sizes.length || (r.brokeGarbage || 0) > 0 || (r.chainLength || 0) >= 2) return false;
@@ -2142,7 +2127,7 @@
     return live;
   };
   PuyoCpu.prototype._notAnUndo = function (cands) {
-    if (!this.refuseUndo || !cands || cands.length < 2) return cands;
+    if (!cands || cands.length < 2) return cands;
     var last = this._lastSquare;
     if (!last) return cands;
     var live = [], i, m;

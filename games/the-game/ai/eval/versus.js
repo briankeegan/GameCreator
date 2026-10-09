@@ -101,7 +101,6 @@ function makeCpu(stack, weights, opts) {
         // self-death counters can move compared a run against itself.
         refuseSuicide: opts.refuseSuicide !== false,
         engineDeath: opts.engineDeath !== false,
-        refuseUndo: opts.refuseUndo === true,
         deepestLine: opts.deepestLine === true,
         breakingEscape: opts.breakingEscape === true,
         dangerClock: opts.dangerClock === true,
