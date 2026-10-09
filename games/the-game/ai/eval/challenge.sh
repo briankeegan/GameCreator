@@ -69,5 +69,7 @@ while kill -0 $CLIENT 2>/dev/null; do
   sleep 10
 done
 sleep 3
+# the screenshots the harness took (one as each stage ends), from the client's save dir
+grep -o '^shot=.*' "$OUT" | cut -d= -f2- | while read -r f; do b=$(basename "$f"); find "${XDG_DATA_HOME:-$HOME/.local/share}/love" -name "$b" -exec cp {} "$OUT_DIR/" \; 2>/dev/null; done
 grep -h '^texts\|^stage \|^challenge \|TIMEOUT' "$OUT"
 grep -q '^stage ' "$OUT"
