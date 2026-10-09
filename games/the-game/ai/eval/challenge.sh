@@ -34,7 +34,9 @@ cleanup() { [ -n "$MIND" ] && kill "$MIND" 2>/dev/null; [ -n "${CLIENT:-}" ] && 
 trap cleanup EXIT
 if [ "$BOT" = wasm ]; then
   [ -n "${PROFILE:-}" ] && export GC_SURVIVOR_PROFILE="$EVAL/$PROFILE"
-  node "$EVAL/survivor.js" --port "$PORT" --threads $(( $(nproc) - 1 )) > "$OUT_DIR/survivor.log" 2>&1 &
+  # each stage it loses: its last frames, boards and decisions (survivor_death.js reads them)
+  GC_SURVIVOR_DUMP="$OUT_DIR/death.jsonl" GC_SURVIVOR_KEEP=4 \
+    node "$EVAL/survivor.js" --port "$PORT" --threads $(( $(nproc) - 1 )) > "$OUT_DIR/survivor.log" 2>&1 &
   MIND=$!
   for i in $(seq 1 300); do grep -q listening "$OUT_DIR/survivor.log" && break; sleep 0.2; done
   grep -q listening "$OUT_DIR/survivor.log" || { cat "$OUT_DIR/survivor.log"; echo "challenge.sh: WasmSurvivor did not start" >&2; exit 1; }
@@ -71,5 +73,6 @@ done
 sleep 3
 # the screenshots the harness took (one as each stage ends), from the client's save dir
 grep -o '^shot=.*' "$OUT" | cut -d= -f2- | while read -r f; do b=$(basename "$f"); find "${XDG_DATA_HOME:-$HOME/.local/share}/love" -name "$b" -exec cp {} "$OUT_DIR/" \; 2>/dev/null; done
+[ -s "$OUT_DIR/death.jsonl" ] && node "$EVAL/survivor_death.js" "$OUT_DIR/death.jsonl" > "$OUT_DIR/death.txt" 2>&1
 grep -h '^texts\|^stage \|^challenge \|TIMEOUT' "$OUT"
 grep -q '^stage ' "$OUT"
