@@ -93,7 +93,7 @@ function Match(level, L) {
   this.arrivals = [];      // garbage on its way (arrivalsOf)
   this.line = null;        // the proven line after the plan: { steps, at } (follow)
   this.knew = [];          // the garbage on its way the plan was decided knowing
-  this.stats = { frames: 0, frameMs: 0, slowFrames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0, unforeseen: 0, reasked: 0, revealed: 0, lineup: 0, tookLineup: 0, touch: 0, tookTouch: 0, unasked: 0, rewalked: 0, break1: 0, took1: 0, break2: 0, took2: 0, break3: 0, took3: 0 };
+  this.stats = { frames: 0, frameMs: 0, slowFrames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0, unforeseen: 0, reasked: 0, revealed: 0, lineup: 0, tookLineup: 0, touch: 0, tookTouch: 0, unasked: 0, rewalked: 0, break1: 0, took1: 0, break2: 0, took2: 0, break3: 0, took3: 0, swaps: 0, again: 0 };
   this.history = []; this.decided = []; this.asked = []; this.snaps = []; this.dumped = false;
   this.msPerFrame = L.msPerFrame || 1000 / 60; this.wall = 0;   // how fast frames come (soon); a link may fix it (msPerFrame)
   // A question from the last match is not this one's: its answer is dropped.
@@ -264,6 +264,12 @@ Match.prototype.take = function (truth) {
     this.stats.played++;
     // Each planned frame carries the raise held after it.
     var sw = a.kind === 'swap' ? swapOf(board, move) : null;
+    // the swaps played, and how many of them the same square as the one before
+    if (a.kind === 'swap' && move) {
+      this.stats.swaps++;
+      if (this.lastSquare && this.lastSquare[0] === move[0] && this.lastSquare[1] === move[1]) this.stats.again++;
+      this.lastSquare = [move[0], move[1]];
+    }
     for (var t in this.plan) if (+t >= at) delete this.plan[t];
     for (var i = 0; i < step.inputs.length; i++) this.plan[at + i] = { bits: step.inputs[i], hold: step.holds[i], swap: sw };
     this.nextAt = at + step.inputs.length;
