@@ -2311,15 +2311,8 @@ static int judgedDie(int v) {
   if (LNO[1] >= 0 && !(LNO[0] && LNO[0] <= LNO[1] + NEXTMOVE)) return lnoDie(LNO);
   return 0;
 }
-// NO UNDOING: a line that starts by putting back a press (undoesPress; the
-// kept line's own presses excepted, undoesOld) is never played, so it is
-// judged as a step refused -- every rule then takes its next best, not a hold
-static int undoesFirst(const int32_t *sw) {
-  return BT->nLine && BT->line[0] == sw[0] && BT->line[1] == sw[1] ? undoesOld(sw[0], sw[1]) : undoesPress(sw[0], sw[1]);
-}
 static int lineJudge(const int32_t *sw, int n, int waitAll) {
   if (n < 1 || n > LINEMAX) return lineJudgeIn2(sw, n, waitAll);
-  if (undoesFirst(sw)) { for (int k = 0; k < LNOLEN; k++) LNO[k] = 0; LNO[1] = -1; LNO[5] = 0; judgeRefused = 0; return 0; }
   unsigned h = 2166136261u ^ (unsigned)(n * 31 + waitAll);
   for (int k = 0; k < 2 * n; k++) h = (h ^ (unsigned)sw[k]) * 16777619u;
   for (int probe = 0; probe < 8; probe++) {
