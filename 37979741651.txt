@@ -19,3 +19,4 @@ shot=/home/runner/.local/share/love/panel-game/stage01_won_c1.png
 ready
 stage 2 won frames=3687 continues=1 next=3 complete=false
 shot=/home/runner/.local/share/love/panel-game/stage02_won_c1.png
+ready
