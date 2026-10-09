@@ -5571,6 +5571,13 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     BT->recent[0] = d.sr; BT->recent[1] = d.sc;
     BT->nRecent = BT->nRecent ? 2 : 1;
   }
+#ifndef __wasm__
+  // what the decision is and which stage it came from, with what its swap
+  // clears on its own (the pool's resolve): the trace's, read by scan tools
+  if (botTraceOn && d.kind == K_SWAP && d.hasMove) { extern int fprintf(void *, const char *, ...); extern void *stderr;
+    Cand *pc = poolSwap(d.sr, d.sc);
+    fprintf(BLOG, "DECIDE via %d %d,%d total %d chain %d broke %d line %d\n", d.via, d.sr, d.sc, pc ? pc->res.total : -1, pc ? pc->res.chain : -1, pc ? pc->res.broke : -1, lineLast); }
+#endif
   double *o = BOUT;
   for (int i = 0; i < 128; i++) o[i] = 0;
   o[0] = d.kind; o[1] = d.hasMove; o[2] = d.sr; o[3] = d.sc; o[4] = d.hasPark; o[5] = d.pr; o[6] = d.pc;
