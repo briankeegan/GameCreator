@@ -1225,7 +1225,7 @@ static int raiseModeOf(const int32_t *base, int poolBreak) {
   if (!fits && realIn > 0 && !BIN[IN_TOPPED] && !BIN[IN_STACKTOPPED] && !slabReadyHook(base))
     fits = BH - tallestBoard(base) - 1 - rows - (BIN[IN_RAISING] != 0) > 0;
   BT->wantRows = rows;
-  if (BT->opening && (realIn > 0 || !fits)) BT->opening = 0;
+  if (BT->opening && realIn > 0) BT->opening = 0;   // the opening ends with the first real garbage, not a raise refused for a moment
   if (!fits) { raiseGate = raiseShort ? 4 : 10; return 0; }
   // READY BEFORE IT RAISES: with garbage to come -- the first wave too, before
   // it is seen (waveReady) -- a raise may not cost the
@@ -1238,7 +1238,7 @@ static int raiseModeOf(const int32_t *base, int poolBreak) {
   // THE OPENING RAISES WITH A BREAK READY: as high as it can, each row only
   // onto a board the first wave can land on and be broken (waveReady, the
   // phantom first wave). A board not ready is made ready first, then raised.
-  if (BT->opening && !(risenMasks(base, RZ) && waveReady(RZ))) { raiseGate = 12; return 0; }
+  if ((BT->opening || BIN[IN_PHANTOM] > 0) && !(risenMasks(base, RZ) && waveReady(RZ))) { raiseGate = 12; return 0; }
   // AS HIGH AS IT CAN: after the opening the rise is locked nearly every
   // frame (garbage in motion), so the opening's raise is the material the
   // board gets besides what breaks -- raised while the next slab still has
