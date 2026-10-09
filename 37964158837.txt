@@ -18,3 +18,4 @@ ready
 stage 3 lost frames=3552 continues=1 next=3 complete=false
 ready
 stage 3 won frames=4610 continues=1 next=4 complete=false
+ready
