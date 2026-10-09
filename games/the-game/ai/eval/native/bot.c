@@ -3784,7 +3784,8 @@ static int optRank(Opt *a, Opt *b) {
   if (da != db) return da > db ? 1 : -1;
   // no break to make yet: the one that brings the break soonest (setup), then a
   // combo or a chain, the break looked for while it resolves
-  if (ka) { double sa = optSoon(a), sb = optSoon(b); if (sa != sb) return sa < sb ? 1 : -1; }
+  // a break sooner by more than NEXTMOVE: less is the walk's own movement, and the target stands
+  if (ka) { double sa = optSoon(a), sb = optSoon(b), gap = sa > sb ? sa - sb : sb - sa; if (sa != sb && !(gap <= NEXTMOVE)) return sa < sb ? 1 : -1; }
   if (a->cash != b->cash) return a->cash > b->cash ? 1 : -1;
   if (a->life != b->life) return a->life > b->life ? 1 : -1;
   if (a->conv != b->conv) return a->conv > b->conv ? 1 : -1;
