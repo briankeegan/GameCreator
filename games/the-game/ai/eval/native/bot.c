@@ -4549,8 +4549,10 @@ static Dec spendToBreak(Dec d) {
   // garbage let down is never held: it lowers the stack
   if (!(v & LV_LIVES) || !(v & LV_PAYS) || (v & (LV_BREAKS | LV_DROPS))) return d;
   if (v & LV_GAINS) { int32_t k[LNOLEN]; for (int q = 0; q < LNOLEN; q++) k[q] = LNO[q]; int dies = aloneDiesBeforeLanding(); for (int q = 0; q < LNOLEN; q++) LNO[q] = k[q]; if (dies) return d; }
-  // over six rows of panels there is material to spare: a clear that leaves six is spent
-  if (leavesSixRows()) return d;
+  // over six rows of panels there is material to spare: a clear that leaves
+  // six is spent -- unless garbage is still to come: then the board does not
+  // rise again, and what is on it is all the next break is made from
+  if (leavesSixRows() && !(BIN[IN_INCOMING] > 0)) return d;
   return mkHold(V_SETUP, d.mode, d.alive, 0, 0, 0);
 }
 // WHAT LANDS IS WHAT IT WILL BREAK. A slab rests on the tallest column under
