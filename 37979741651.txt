@@ -11,3 +11,6 @@ menusel: selected go_
 reached CharacterSelectChallenge
 challengeloop on
 ready
+stage 1 lost frames=3767 continues=1 next=1 complete=false
+shot=/home/runner/.local/share/love/panel-game/stage01_lost_c1.png
+ready
