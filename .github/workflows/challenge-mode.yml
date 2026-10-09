@@ -7,7 +7,8 @@ name: Challenge mode (the real client)
 # player's stack takes its keys from survivor.js (PA_SURVIVOR=1). Stage after
 # stage until the recap, or past `continues` continues. Each stage's result is
 # an annotation; the harness's log, WasmSurvivor's and the recap screenshot are
-# the artifact.
+# the artifact. While it plays, the harness's log is pushed every 20 s to the
+# challenge-live branch as <run id>.txt, so a game in progress can be read.
 on:
   workflow_dispatch:
     inputs:
@@ -23,6 +24,9 @@ on:
       panel_ref:
         description: 'The panel-game branch with AppDriver PA_SURVIVOR and challengeloop'
         default: 'claude/newsey-game-ask-qa8u5e'
+
+permissions:
+  contents: write
 
 jobs:
   play:
@@ -61,6 +65,13 @@ jobs:
           for i in $(seq 1 300); do grep -q listening survivor.log && break; sleep 0.2; done
           cat survivor.log
           grep -q listening survivor.log
+      - name: The live log's branch
+        timeout-minutes: 3
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git fetch -q origin challenge-live; then git worktree add -q -B challenge-live live origin/challenge-live
+          else git worktree add -q --detach live && git -C live checkout -q --orphan challenge-live && git -C live rm -rfq . ; fi
       - name: Play
         timeout-minutes: 340
         working-directory: panel-game
@@ -74,16 +85,24 @@ jobs:
           PA_CMD_FILE="$CMD" PA_OUT_FILE="$OUT" PA_SURVIVOR=1 PA_SURVIVOR_PORT=47777 PA_CHALLENGE_CONTINUES="$CONTINUES" \
             nohup xvfb-run --auto-servernum -s "-screen 0 1280x720x24" ~/love2d/love.AppImage . > "$GITHUB_WORKSPACE/client.log" 2>&1 &
           send() { printf '%s\n' "$@" >> "$CMD"; }
+          LIVE="$GITHUB_WORKSPACE/live" NAME="${{ github.run_id }}.txt"
+          live() {   # the harness's log so far, to the challenge-live branch
+            cp "$OUT" "$LIVE/$NAME" 2>/dev/null || return 0
+            git -C "$LIVE" add "$NAME" && git -C "$LIVE" commit -qm "challenge ${{ github.run_id }}" 2>/dev/null || return 0
+            for i in 1 2 3; do git -C "$LIVE" push -q origin HEAD:challenge-live 2>/dev/null && return 0; git -C "$LIVE" pull -q --rebase origin challenge-live 2>/dev/null; done
+          }
           lastscene() { grep -o '^\(ready\|scene\)=.*' "$OUT" | tail -1 | cut -d= -f2; }
           # the client is up once the harness writes ready=<scene>
           for i in $(seq 1 600); do grep -q '^ready=' "$OUT" && break; sleep 1; done
-          grep -q '^ready=' "$OUT" || { tail -50 "$GITHUB_WORKSPACE/client.log"; echo "the client did not start"; exit 1; }
+          grep -q '^ready=' "$OUT" || { tail -50 "$GITHUB_WORKSPACE/client.log" | tee -a "$OUT"; echo "the client did not start" | tee -a "$OUT"; live; exit 1; }
+          live
           # first-run screens and the title: Return until the main menu
           for i in $(seq 1 20); do
             [ "$(lastscene)" = MainMenu ] && break
             send "tap return" "wait 60" "scene"; sleep 3
           done
-          [ "$(lastscene)" = MainMenu ] || { cat "$OUT"; echo "never reached the main menu"; exit 1; }
+          [ "$(lastscene)" = MainMenu ] || { echo "never reached the main menu" >> "$OUT"; live; cat "$OUT"; exit 1; }
+          live
           # og stuff -> Challenge Mode -> the difficulty (the stepper starts at 1) -> go -> character select
           send "menusel og stuff" "menusel mm_1_challenge_mode" "waitscene ChallengeModeMenu 600" "where"
           for i in $(seq 2 "$DIFFICULTY"); do send "tap right"; done
@@ -91,9 +110,9 @@ jobs:
           # stage after stage, till the recap or the continues run out
           while kill -0 $(pgrep -f love.AppImage | head -1) 2>/dev/null; do
             grep -q '^challenge \(over\|stopped\)' "$OUT" && break
-            sleep 20
+            sleep 20; live
           done
-          sleep 5
+          sleep 5; live
           cat "$OUT"
       - name: Results
         if: always()
