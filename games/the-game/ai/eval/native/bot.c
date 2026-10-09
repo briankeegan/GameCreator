@@ -1189,12 +1189,13 @@ static Dec mkHold(int via, int mode, int alive, int hasPark, int pr, int pc) { D
 // THE FRAMES A WANTED RAISE STILL WAITS ON THE STOP (0: it waits on nothing
 // but the rise lock)
 static double raiseAfter;
-static int raiseMode(const int32_t *base, int poolBreak) {
+static JLOCAL int raiseGate;   // the gate that decided raiseMode, for the trace
+static int raiseModeOf(const int32_t *base, int poolBreak) {
   raiseAfter = 0;
-  if (TFLAG(TF_RAISE)) return (int)BIN[IN_T + 3];
+  if (TFLAG(TF_RAISE)) { raiseGate = 1; return (int)BIN[IN_T + 3]; }
   int topped = BIN[IN_TOPPED] != 0;
-  if (!opt(O_ALLOWRAISE) || topped) { BT->opening = 0; return 0; }
-  if (BIN[IN_FALLING]) return 0;
+  if (!opt(O_ALLOWRAISE) || topped) { BT->opening = 0; { raiseGate = 2; return 0; } }
+  if (BIN[IN_FALLING]) { raiseGate = 3; return 0; }
   int rows = (int)__builtin_ceil(BIN[IN_NEXTSLAB] / BW);
   int fits = raiseSafe(base);
   // A QUEUE THAT FILLS THE ROOM KILLS A BOARD WITH NO BREAK READY, raised or
@@ -1204,25 +1205,32 @@ static int raiseMode(const int32_t *base, int poolBreak) {
     fits = BH - tallestBoard(base) - 1 - rows - (BIN[IN_RAISING] != 0) > 0;
   BT->wantRows = rows;
   if (BT->opening && (BIN[IN_INCOMING] || !fits)) BT->opening = 0;
-  if (!fits) return 0;
+  if (!fits) { raiseGate = 4; return 0; }
   // READY BEFORE IT RAISES: with garbage to come, a raise may not cost the
   // break ready for the slab that lands -- the risen board keeps it. A board
   // with none ready loses nothing by rising, and gains the material to build one.
   // A break line being played is a break ready: the raise would move the
   // board under it.
-  if ((BT->nLine && BT->lineKind == LINE_BREAK) || BT->lastVia == V_BREAKREACH || BT->lastVia == V_BREAK) return 0;
-  if (BIN[IN_INCOMING] > 0 && !(risenMasks(base, RZ) && slabReadyHook(RZ)) && slabReadyHook(base)) return 0;
+  if ((BT->nLine && BT->lineKind == LINE_BREAK) || BT->lastVia == V_BREAKREACH || BT->lastVia == V_BREAK) { raiseGate = 5; return 0; }
+  if (BIN[IN_INCOMING] > 0 && !(risenMasks(base, RZ) && slabReadyHook(RZ)) && slabReadyHook(base)) { raiseGate = 6; return 0; }
   // six rows of material is what the board works with, from the opening on:
   // a raise past them only spends the room the first garbage lands in
-  if (materialRows(base) >= 6) { BT->opening = 0; return 0; }
+  if (materialRows(base) >= 6) { BT->opening = 0; { raiseGate = 7; return 0; } }
   int stillComing = BIN[IN_INCOMING] > 0 || BIN[IN_FALLING];
-  if (poolBreak && !stillComing) return 0;
+  if (poolBreak && !stillComing) { raiseGate = 8; return 0; }
   // UNDER SIX ROWS A RAISE DOES NOT WAIT ON THE STOP: a break needs panels
   // under and beside where the slab lands, and a raise is the only way to them
   // besides breaking. A short board's stop protects nothing -- it is far from
   // the top -- so the raise is pressed in it (raiseAfter 0), ending it.
   raiseAfter = 0;
-  return BT->opening ? 1 : 2;
+  { raiseGate = 9; return BT->opening ? 1 : 2; }
+}
+static int raiseMode(const int32_t *base, int poolBreak) {
+  int r = raiseModeOf(base, poolBreak);
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "RAISEGATE %d mode %d\n", raiseGate, r); }
+#endif
+  return r;
 }
 static int modeOf(int haveEscape, double escape, double deadline) {
   if (BIN[IN_TOPPED]) return M_DEFEND;
