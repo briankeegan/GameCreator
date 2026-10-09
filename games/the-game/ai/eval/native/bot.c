@@ -2083,8 +2083,8 @@ static Dec waitForDrain(Dec d) {
 // than the board left alone, and BREAKS if it converts more garbage.
 //
 // IT MUST NOT DIE: a choice that does not live, while the time is short
-// (LIVEHORIZON) or, topped with every slab converting, while no break comes
-// before the board left alone dies, is replaced by a line that lives and pays -- breaking first.
+// (LIVEHORIZON) or, topped with every slab converting, while the board left
+// alone dies anywhere the judge sees, is replaced by a line that lives and pays -- breaking first.
 // BREAKING COMES FIRST: a line that breaks and lives is played over a choice
 // that does not break. A BREAK IS KEPT IN REACH: topped, a choice that leaves
 // no break in time is replaced by a living, paying line that
@@ -3585,7 +3585,6 @@ static Dec saKeep(Dec d, int die) {
   for (int k = 0; k < 2 * saN; k++) saLine[k] = BT->line[k];
   return d;
 }
-static double breakWithinT(const int32_t *steps, int n, double limit);
 // garbage on the board, and none of it still to break: every cell converting (busy)
 static int allConverting(const int32_t *st) {
   if (!hasGarbage(st)) return 0;
@@ -3603,11 +3602,10 @@ static Dec stayAlive(Dec d) {
   if (lineLast == 1 && BT->lineKind == LINE_BREAK) return saKeep(d, playDie);
   // the engine, not the estimate, says whether the board is dying: health
   // lost within LIVEHORIZON frames, left alone -- or, topped with every slab
-  // on the board already converting, anywhere the judge sees when no break
-  // comes before it: then nothing on the board can be kept for a break, and
-  // what the conversion drops must fit
+  // on the board already converting, anywhere the judge sees: then nothing on
+  // the board can be kept for a break, and what the conversion drops must fit
   if (!aloneOnEngine() || !LNA[0] || LNA[0] > LINEREACH ||
-      (LNA[0] > LIVEHORIZON && (!BIN[IN_TOPPED] || !allConverting(DBASE) || breakWithinT(0, 0, LNA[0]) < INF))) return lineLast == 1 ? saKeep(d, playDie) : d;
+      (LNA[0] > LIVEHORIZON && (!BIN[IN_TOPPED] || !allConverting(DBASE)))) return lineLast == 1 ? saKeep(d, playDie) : d;
   linesReset();
   linesFind(2, 0);
   // NEVER DYING FIRST: the choice is kept only if it lives as long as the line that lives longest
