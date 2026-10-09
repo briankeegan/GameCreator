@@ -14,3 +14,6 @@ ready
 stage 1 lost frames=3767 continues=1 next=1 complete=false
 shot=/home/runner/.local/share/love/panel-game/stage01_lost_c1.png
 ready
+stage 1 won frames=4558 continues=1 next=2 complete=false
+shot=/home/runner/.local/share/love/panel-game/stage01_won_c1.png
+ready
