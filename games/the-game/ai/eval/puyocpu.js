@@ -236,15 +236,15 @@
     // -- the cursor is already on that square, and forcing a different one
     // spends travel frames and leaves it out of position.
     this.refuseUndo = opts.refuseUndo === true;
-    // THREES LAST (opts.threesLast): a move whose clears are all threes,
-    // break no garbage and start no chain is dropped from the moves the bot
-    // may play whenever any other move is left and the stack is below
-    // THREES_FROM_ROW. A three that breaks garbage stays: holding those back dies (3
-    // deaths in 20 live matches, against 0 in 20 with them allowed). It runs after the survival search, so a three that is the
+    // THREES LAST (opts.threesLast): a move whose clears are all threes and
+    // start no chain -- garbage broken or not -- is dropped from the moves the
+    // bot may play whenever any other move is left and the stack is not
+    // topped out. It runs after the survival search, so a three that is the
     // only move proven to live is still played.
     this.refuseBareThree = opts.threesLast === true;
     this.bareThreesDropped = 0;
     this.bareThreesKept = 0;
+    this.bareThreesTopped = 0;
     // OFF. A WASH, AND IT IS NOT FREE. 120 duels with sides alternated: 58
     // deaths against 62, 52% against 48% -- 0.4 sigma, nothing. A 60-duel
     // read said 57% against 43% and that was noise; the repo's own rule is
@@ -2111,23 +2111,24 @@
   // that move cleared nothing, and it lifts if it would empty the pool.
   function bareThree(c) {
     var r = c && c.resolved, sizes = r && r.comboSizes;
-    if (!sizes || !sizes.length || (r.brokeGarbage || 0) > 0 || (r.chainLength || 0) >= 2) return false;
+    if (!sizes || !sizes.length || (r.chainLength || 0) >= 2) return false;
     for (var i = 0; i < sizes.length; i++) if (sizes[i] > 3) return false;
     return true;
   }
-  // Is this swap, among the decision's candidates, a move of bare threes.
+  // Is this swap, among the decision's candidates, a move of threes only.
   PuyoCpu.prototype.threeOnlySwap = function (move) {
     var all = this._allCands || [];
     for (var i = 0; i < all.length; i++)
       if (all[i].kind === 'swap' && all[i].move && all[i].move[0] === move[0] && all[i].move[1] === move[1]) return bareThree(all[i]);
     return false;
   };
-  PuyoCpu.prototype.THREES_FROM_ROW = 8;
   PuyoCpu.prototype._noBareThree = function (cands) {
     if (!this.refuseBareThree || !cands || !cands.length) return cands;
-    // A tall stack is what a three is the last resort for: from
-    // THREES_FROM_ROW up, and topped out, threes are played as any move is.
-    if ((this.stack && this.stack.wasToppedOut) || (this._board && (this._boardToppedOut(this._board) || topRow(this._board) >= this.THREES_FROM_ROW))) return cands;
+    // Topped out, a three is played as any move is.
+    if ((this.stack && this.stack.wasToppedOut) || (this._board && this._boardToppedOut(this._board))) {
+      if (cands.some(bareThree)) this.bareThreesTopped++;
+      return cands;
+    }
     var live = cands.filter(function (c) { return !bareThree(c); });
     if (live.length === cands.length) return cands;
     if (!live.length) { this.bareThreesKept++; return cands; }

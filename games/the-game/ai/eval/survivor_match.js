@@ -240,7 +240,7 @@ Match.prototype.take = function (truth) {
     if (process.env.GC_SURVIVOR_DEBUG && a.mem) console.error('decision ' + a.id + ' at ' + a.at + ': ' + a.ms + ' ms (break ' + a.brMs + ') ' + a.kind + ' ' + JSON.stringify(a.move) + ' ' + JSON.stringify(a.diag) + ' ' + Math.round(a.mem.bytes / 1048576) + 'MB');
     if (a.error) { console.error('decision failed: ' + a.error); this.acted = false; L.pending = null; continue; }
     if (a.diag && a.diag.tight) this.stats.tight = (this.stats.tight || 0) + 1;
-    if (a.diag && a.diag.bare3Dropped !== undefined) { this.stats.bare3Dropped = a.diag.bare3Dropped; this.stats.bare3Kept = a.diag.bare3Kept; }
+    if (a.diag && a.diag.bare3Dropped !== undefined) { this.stats.bare3Dropped = a.diag.bare3Dropped; this.stats.bare3Kept = a.diag.bare3Kept; this.stats.bare3Topped = a.diag.bare3Topped; }
     if (a.breaks) { this.stats['break' + a.breaks.offered]++; if (a.breaks.took) this.stats['took' + a.breaks.offered]++; if (a.breaks.lineup) { this.stats.lineup++; if (a.breaks.took) this.stats.tookLineup++; } if (a.breaks.touch) { this.stats.touch++; if (a.breaks.took) this.stats.tookTouch++; } }
     this.decided.push({ id: a.id, at: a.at, now: now, kind: a.kind, move: a.move, ms: a.ms, diag: a.diag, breaks: a.breaks,
                        asked: L.pending && L.pending.id === a.id ? L.pending.askedAt : null, trip: L.pending && L.pending.id === a.id ? a.got - L.pending.sent : null });
