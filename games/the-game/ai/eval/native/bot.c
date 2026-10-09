@@ -1328,6 +1328,10 @@ static int undoesPress(int r, int c), undoesOld(int r, int c);
 // writes it here, never by hand
 static void lineSet(const int32_t *sw, int n, int kind, int waitAll) {
   if (n > LINEMAX) { BT->nLine = 0; return; }   // a line cut short is half a plan: none is kept
+  // A NEW LINE IS STAMPED WHEN IT IS SET with the presses made before it, so
+  // a press made before it never counts as its first step (playOn); the same
+  // line set again keeps its stamp, so a press made since still counts
+  if (n != BT->nLine || __builtin_memcmp(BT->line, sw, (unsigned long)n * 8)) { BT->linePresses = BIN[IN_PRESSES]; BT->lineBorn = BT->nNotes; }
   for (int k = 0; k < 2 * n; k++) BT->line[k] = sw[k];
   BT->nLine = n; BT->lineKind = kind; BT->lineWaitAll = waitAll;
 }
@@ -4407,7 +4411,7 @@ static int ruleRank(int via) {
 }
 static Dec keepTarget(Dec d) {
   int fresh = d.kind == K_SWAP && d.hasMove;
-  if (fresh && BT->tgtN && ruleRank(d.via) <= ruleRank(BT->tgtVia) && BIN[IN_PRESSES] > 0 && BIN[IN_PRESSES] == BT->tgtPresses &&
+  if (fresh && BT->tgtN && ruleRank(d.via) <= ruleRank(BT->tgtVia) && BT->nNotes == BT->tgtPresses &&
       !(d.sr == BT->tgt[0] && d.sc == BT->tgt[1]) && (lineJudge(BT->tgt, BT->tgtN, BT->tgtWait) & LV_LIVES)) {
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "KEEPTARGET %d,%d over %d,%d via %d\n", BT->tgt[0], BT->tgt[1], d.sr, d.sc, d.via); }
@@ -4421,7 +4425,7 @@ static Dec keepTarget(Dec d) {
   int line = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
   BT->tgtN = line ? BT->nLine : 1; BT->tgtKind = line ? BT->lineKind : 0; BT->tgtWait = line ? BT->lineWaitAll : d.waitAll; BT->tgtVia = d.via;
   if (line) for (int k = 0; k < 2 * BT->nLine; k++) BT->tgt[k] = BT->line[k]; else { BT->tgt[0] = d.sr; BT->tgt[1] = d.sc; }
-  BT->tgtPresses = BIN[IN_PRESSES];
+  BT->tgtPresses = BT->nNotes;
   return d;
 }
 static Dec noStall(Dec d) {
