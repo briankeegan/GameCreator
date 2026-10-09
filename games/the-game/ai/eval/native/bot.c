@@ -4424,10 +4424,20 @@ static int ruleRank(int via) {
   if (via == V_LINEUP || via == V_LINEUPHOLD) return 2;
   return 1;
 }
+// the target still goes on unless its line dies or a step of it is refused:
+// a verdict of nothing done -- or no verdict, the budget refusing the judge --
+// is no reason to turn the walk around
+static int tgtAlive(void) {
+  judgeRefused = 0;   // a verdict from the memo leaves it as it was
+  int v = lineJudge(BT->tgt, BT->tgtN, BT->tgtWait);
+  if (v & LV_LIVES) return 1;
+  if (judgeRefused) return 1;
+  return LNO[1] >= 0 && !(LNO[0] && LNO[0] <= LNO[1] + NEXTMOVE);
+}
 static Dec keepTarget(Dec d) {
   int fresh = d.kind == K_SWAP && d.hasMove;
   if (fresh && BT->tgtN && ruleRank(d.via) <= ruleRank(BT->tgtVia) && BT->nNotes == BT->tgtPresses &&
-      !(d.sr == BT->tgt[0] && d.sc == BT->tgt[1]) && (lineJudge(BT->tgt, BT->tgtN, BT->tgtWait) & LV_LIVES)) {
+      !(d.sr == BT->tgt[0] && d.sc == BT->tgt[1]) && tgtAlive()) {
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "KEEPTARGET %d,%d over %d,%d via %d\n", BT->tgt[0], BT->tgt[1], d.sr, d.sc, d.via); }
 #endif
