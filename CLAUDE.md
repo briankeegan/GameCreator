@@ -287,7 +287,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   what you touch better than you found it.
 - **Commit and push as you go.** Every change is committed and pushed to
   `main` the moment it is made: the source first and the scan dispatched
-  with it, the wasm rebuild after in the background, a scan's line in
+  with it, the wasm rebuilt once, in the background, when the batch of work is done (the scan builds its own library from the source; the wasm is for the live game), a scan's line in
   `survival_scans.tsv` as soon as it is fetched. Nothing waits uncommitted
   for a scan, a rebuild or a check. Anything slow runs in the background, so
   an interruption stops nothing.
