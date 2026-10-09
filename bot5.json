@@ -20,7 +20,7 @@
   "chainLength": 70.7153033615315
  },
  "record": {
-  "win": 72,
+  "win": 73,
   "loss": 34,
   "draw": 1,
   "none": 0,
@@ -2425,7 +2425,30 @@
     "deadHealth": 0
    },
    "at": "2026-10-09T04:44:50.259Z"
+  },
+  {
+   "match": 107,
+   "opp": 9,
+   "result": "win",
+   "outcome": "ceiling",
+   "frames": 21600,
+   "sent": 506,
+   "received": 488,
+   "late": 0,
+   "pressed": 733,
+   "topped": {
+    "frames": 5261,
+    "longest": 660,
+    "run": 0,
+    "stop": 4508,
+    "shake": 537,
+    "swapLock": 42,
+    "active": 173,
+    "minHealth": 1,
+    "deadHealth": 0
+   },
+   "at": "2026-10-09T04:50:58.802Z"
   }
  ],
- "matches": 107
+ "matches": 108
 }
