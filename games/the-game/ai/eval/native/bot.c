@@ -928,14 +928,15 @@ static Res CR, CR2;
 // tops the raised board out in (free rows - queued garbage rows) rows, each
 // FPR frames, and the raise lives if the quickest clear the pool holds --
 // stop time earned, the rise held -- can be made before then.
-// ROOM TO RAISE: the rows left free above the tallest column once every
-// queued garbage row has landed and a raise already moving is up. One rule,
+// ROOM TO RAISE: the rows left free above the tallest column once the next
+// slab has landed and a raise already moving is up. Slabs land one at a time,
+// each with time to break it before the next; a storm's queue never empties. One rule,
 // asked by the decision (raiseSafe) and by the front every frame it holds a
 // raise (front.c raiseRoomNow): no room, no raise.
 static int raiseRoom(int tallest, int queued, int raising) { return BH - tallest - 1 - queued - (raising != 0); }
 static int raiseSafe(const int32_t *base) {
   if (BIN[IN_TOPPED] || BIN[IN_STACKTOPPED]) return 0;
-  int queued = (int)dmax(__builtin_ceil(BIN[IN_NEXTSLAB] / BW), BIN[IN_INROWS]);
+  int queued = (int)BIN[IN_SLABH];
   int free = raiseRoom(tallestBoard(base), queued, BIN[IN_RAISING] != 0);
   if (free <= 0) return 0;
   double clear = INF;

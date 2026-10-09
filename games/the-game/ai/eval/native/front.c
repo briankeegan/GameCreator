@@ -207,8 +207,7 @@ static int fTallest(void) {
 }
 // bot.c raiseRoom on the board as it is this frame: every queued garbage row
 static int raiseRoomNow(void) {
-  int rows = 0;
-  for (int i = 0; i < FB->ninc; i++) rows += FB->inc[i].height;
+  int rows = FB->ninc ? FB->inc[FB->ninc - 1].height : 0;   // the next slab (bot.c raiseRoom)
   return raiseRoom(fTallest(), rows, FB->manualRaise || FB->preventManualRaise);
 }
 static int canRaise(Front *F) {
