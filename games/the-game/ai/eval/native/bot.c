@@ -4456,14 +4456,18 @@ static Dec keepTarget(Dec d) {
     Dec k = mkSwap(BT->tgt[0], BT->tgt[1], BT->tgtVia, d.mode, d.alive); k.waitAll = BT->tgtN == 1 && BT->tgtWait;
     return k;
   }
+  return d;
+}
+// the target is what the decision finally walks to, recorded after the guards
+static void recordTarget(Dec d) {
   // a hold leaves the target as it was: only a press, or a rule that outranks it, ends it
-  if (!fresh) return d;
+  if (!(d.kind == K_SWAP && d.hasMove)) return;
+  if (BT->tgtN && d.sr == BT->tgt[0] && d.sc == BT->tgt[1] && BT->nNotes == BT->tgtPresses) return;   // the target kept
   BT->tgtN = 0;
   int line = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
   BT->tgtN = line ? BT->nLine : 1; BT->tgtKind = line ? BT->lineKind : 0; BT->tgtWait = line ? BT->lineWaitAll : d.waitAll; BT->tgtVia = d.via;
   if (line) for (int k = 0; k < 2 * BT->nLine; k++) BT->tgt[k] = BT->line[k]; else { BT->tgt[0] = d.sr; BT->tgt[1] = d.sc; }
   BT->tgtPresses = BT->nNotes;
-  return d;
 }
 static Dec noStall(Dec d) {
   if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0) || BIN[IN_TOPPED]) return d;
@@ -5636,11 +5640,13 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // step takes the line's timing (a break waits for its panels to settle),
   // whichever route returned it
   if (d.kind == K_SWAP && BT->nLine == 1 && BT->line[0] == d.sr && BT->line[1] == d.sc) d.waitAll = BT->lineWaitAll;
+  // the walk held to its target first; the guards after it have the last word, survival's above all
+  d = keepTarget(d);
   d = returnGuard(d);
   d = perchGuard(d);
   d = setupTwos(d);
   d = surviveGuard(d);
-  d = keepTarget(d);
+  recordTarget(d);
   // a line set this decision is stamped with the presses made before it
   if (BT->nLine && (BT->nLine != nLineAfterPlay || __builtin_memcmp(BT->line, lineAfterPlay, (unsigned long)BT->nLine * 8))) { BT->linePresses = BIN[IN_PRESSES]; BT->lineBorn = BT->nNotes; }
 #ifndef __wasm__
