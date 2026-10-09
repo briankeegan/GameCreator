@@ -262,8 +262,9 @@ ways: a tool not listed, or a path listed that doesn't exist.
   are judged on the engine and ranked once: breaks the next garbage in time
   (it lives), lives, a break in reach when the next slab lands, the later loss
   of health inside `LIVEHORIZON`, the soonest break after it (`breakTime`:
-  setup), a combo or chain that digs under no pile (no break to make: clear,
-  and look for the break while it resolves), life (what it buys once done,
+  setup), a combo or chain (more than a three cleared at once, `COMBOMIN`)
+  that digs under no pile (no break to make: clear, and look for the break
+  while it resolves), life (what it buys once done,
   hollow costed), converted, hollow; equal: the target, the decision, the
   alternative. A swap-back keeps the board unless it ranks higher. A rule that
   overrides another after the fact belongs in this order, not after it. The
