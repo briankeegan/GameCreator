@@ -2224,12 +2224,17 @@ static int fitTasks(int count, double cost) {
   return k < count ? k : count;
 }
 static double rpCost;   // a replay's (prereplay)
+static int plainThrees(int verdict);
 static int lineJudgeIn2(const int32_t *sw, int n, int waitAll) {
   extern PATLS double paWork;
   if (paWork + jdCost > optLine()) { budgetRefused++; return 0; }
   double w = paWork;
   int v = lineJudgeIn(sw, n, waitAll);
   if (paWork - w > jdCost) jdCost = paWork - w;
+  // A THREE IS A LAST RESORT: a line whose clears are only plain threes is
+  // no line at all, for every stage that asks -- unless it keeps health the
+  // board left alone loses (plainThrees)
+  if (v && !(v & LV_BREAKS) && plainThrees(v) && !(aloneOnEngine() && LNA[0] && (!LNO[0] || LNO[0] > LNA[0]))) v = 0;
 #ifndef __wasm__
   // GC_CLOCKCHECK: the clock's frame for the line's last press beside the
   // engine's (clock.test.sh); the log does no work of its own
@@ -2320,8 +2325,10 @@ static void judgeAhead(LineC *first, const unsigned char *skip, int useOk) {
 // A THREE IS A LAST RESORT: a clear of three panels with no chain earns no
 // stop time and spends three panels a break needs. A line whose clears, past
 // what the board left alone does, are only such threes -- it breaks nothing
-// and makes no combo of four or more and no chain link -- is played only when
-// nothing else lives (bestLiving, the drain's escape).
+// and makes no combo of four or more and no chain link -- is judged no line
+// (lineJudgeIn2) unless it keeps health the board left alone loses; such a
+// three is then ranked after every other living line (bestLiving, makeRoom,
+// the drain's escape).
 static int aloneOnEngine(void);
 static int plainThrees(int verdict) {
   if (verdict & LV_BREAKS) return 0;
@@ -3738,24 +3745,6 @@ static Dec perchGuard(Dec d) {
 // slab -- its break in reach the frame the slab lands (readyInTime, on the
 // engine) -- is a line with that break still to press: it gives way only to a
 // choice ready too.
-// THREES LAST: a swap whose line's clears, past what the board left alone
-// does, are only plain threes -- it breaks nothing and makes no combo of four
-// or more and no chain link (plainThrees) -- gives way to the hold, whichever
-// stage chose it. A three that keeps health the board left alone loses is
-// survival's and stands; surviveGuard, after this, weighs the hold.
-static Dec threesGuard(Dec d) {
-  if (d.kind != K_SWAP || !d.hasMove || lineLast == 3) return d;
-  int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
-  int32_t sw[2] = { d.sr, d.sc };
-  int v = playsLine ? lineJudge(BT->line, BT->nLine, BT->lineWaitAll) : lineJudge(sw, 1, 0);
-  if (!v || (v & LV_BREAKS) || !plainThrees(v)) return d;
-  if (!aloneOnEngine() || (LNA[0] && (!LNO[0] || LNO[0] > LNA[0]))) return d;
-#ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "THREES via %d %d,%d holds: plain threes %d\n", d.via, d.sr, d.sc, LNO[17]); }
-#endif
-  BT->nLine = 0; lineLast = 0;
-  return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
-}
 static Dec surviveGuard(Dec d) {
   if (!saSet) {
     if (d.kind != K_SWAP || !d.hasMove || !aloneOnEngine()) return d;
@@ -5533,7 +5522,6 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   d = returnGuard(d);
   d = perchGuard(d);
   d = setupTwos(d);
-  d = threesGuard(d);
   d = surviveGuard(d);
   // a line set this decision is stamped with the presses made before it
   if (BT->nLine && (BT->nLine != nLineAfterPlay || __builtin_memcmp(BT->line, lineAfterPlay, (unsigned long)BT->nLine * 8))) { BT->linePresses = BIN[IN_PRESSES]; BT->lineBorn = BT->nNotes; }
