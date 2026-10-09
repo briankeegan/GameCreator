@@ -236,11 +236,12 @@
     // -- the cursor is already on that square, and forcing a different one
     // spends travel frames and leaves it out of position.
     this.refuseUndo = opts.refuseUndo === true;
-    // THREES LAST (opts.threesLast): a move whose clears are all threes and
-    // start no chain -- garbage broken or not -- is dropped from the moves the
+    // THREES LAST (opts.threesLast): a move whose clears are all threes,
+    // breaking no garbage and starting no chain, is dropped from the moves the
     // bot may play whenever any other move is left, unless the stack is topped
-    // out with nothing holding it. It runs after the survival search, so a three that is the
-    // only move proven to live is still played.
+    // out with nothing holding it. Breaking garbage comes first: a three that
+    // breaks garbage is played as any move is. It runs after the survival
+    // search, so a three that is the only move proven to live is still played.
     this.refuseBareThree = opts.threesLast === true;
     this.bareThreesDropped = 0;
     this.bareThreesKept = 0;
@@ -2111,11 +2112,11 @@
   // that move cleared nothing, and it lifts if it would empty the pool.
   function bareThree(c) {
     var r = c && c.resolved, sizes = r && r.comboSizes;
-    if (!sizes || !sizes.length || (r.chainLength || 0) >= 2) return false;
+    if (!sizes || !sizes.length || (r.brokeGarbage || 0) > 0 || (r.chainLength || 0) >= 2) return false;
     for (var i = 0; i < sizes.length; i++) if (sizes[i] > 3) return false;
     return true;
   }
-  // Is this swap, among the decision's candidates, a move of threes only.
+  // Is this swap, among the decision's candidates, a move of bare threes.
   PuyoCpu.prototype.threeOnlySwap = function (move) {
     var all = this._allCands || [];
     for (var i = 0; i < all.length; i++)

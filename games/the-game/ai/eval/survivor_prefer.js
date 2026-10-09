@@ -107,6 +107,10 @@ function prepare(bot, board, o) {
       (board.incoming || []).forEach(function (g) { coming += g.height; });
       if (coming >= BANK_ROWS) want = { raise: true };
     }
+    // PANELS TO WORK WITH: with the profile's raiseTo, while no garbage is on
+    // the board and no break is to be made, a raise is played first until the
+    // stack's top reaches that row -- from the first frame of a match on.
+    if (o.profile.raiseTo && !(br && br.depth) && !SH.lowestGarbageRow(board) && SH.top(board) < o.profile.raiseTo) want = { raise: true };
     bot.preferRank = function (c, i) {
       if (want[c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[1] : c.kind]) return 0;
       // While a slab pops nothing can die, so a line breaking garbage later
