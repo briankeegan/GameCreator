@@ -18,6 +18,12 @@ on:
       profile:
         description: 'With bot wasm: the WasmSurvivor profile, relative to games/the-game/ai/eval (empty = survivor.profile.json)'
         default: 'survivor-profiles/isl2b4.json'
+      stage:
+        description: 'Start on this stage (empty = 1)'
+        default: ''
+      repeat:
+        description: 'With stage: play it this many times, won or lost (empty = go on to the next)'
+        default: ''
       continues:
         description: 'Stop after this many continues'
         default: '10'
@@ -69,6 +75,8 @@ jobs:
           LOVE: /home/runner/love2d/love.AppImage
           OUT_DIR: ${{ github.workspace }}/out
           PROFILE: ${{ inputs.profile }}
+          STAGE: ${{ inputs.stage }}
+          REPEAT: ${{ inputs.repeat }}
           MINUTES: '330'
         run: |
           set -u

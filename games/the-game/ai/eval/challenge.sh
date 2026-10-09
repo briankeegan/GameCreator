@@ -18,7 +18,8 @@
 # $OUT_DIR/pa_out.txt, as it is played; the end prints them all.
 #
 # Env: OUT_DIR (default ./challenge-out), PORT (47777), MINUTES (330, the
-# client's limit), PROFILE.
+# client's limit), PROFILE; STAGE=N starts on stage N, and with REPEAT=K plays
+# that stage K times, won or lost.
 set -u
 EVAL="$(cd "$(dirname "$0")" && pwd)"
 BOT=${1:-wasm}; DIFFICULTY=${2:-8}; CONTINUES=${3:-10}
@@ -47,6 +48,7 @@ fi
 
 (cd "$PG" && XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp} PA_CMD_FILE="$CMD" PA_OUT_FILE="$OUT" \
    PA_SURVIVOR=1 PA_BOT="$BOT" PA_SURVIVOR_PORT="$PORT" GC_EVAL_DIR="$EVAL" PA_CHALLENGE_CONTINUES="$CONTINUES" \
+   PA_CHALLENGE_STAGE="${STAGE:-}" PA_CHALLENGE_REPEAT="${REPEAT:-}" \
    exec timeout $(( MINUTES * 60 )) stdbuf -oL xvfb-run --auto-servernum -s "-screen 0 1280x720x24" "$LOVE" "$PG") > "$OUT_DIR/client.log" 2>&1 &
 CLIENT=$!
 
