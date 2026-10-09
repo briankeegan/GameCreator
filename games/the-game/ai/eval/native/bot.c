@@ -3299,6 +3299,13 @@ static void targetAfterDrops(const int32_t *st, int cr, int cc, double t0, doubl
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  TAD drops found %d\n", x.n); }
 #endif
 }
+// EVERY LINE THAT BREAKS BY DISTANCE, whoever asks: the planner's shapes on
+// the board (targetLines), and on each board a perched pile is let down to
+// (targetAfterDrops), within the time there is
+static void breakLines(const int32_t *st, int cr, int cc, double t0, double limit) {
+  targetLines(st, cr, cc, t0, limit);
+  targetAfterDrops(st, cr, cc, t0, limit < LINEHORIZON ? limit : LINEHORIZON);
+}
 // THE TIME THERE IS: topped, the drain; else the judge's horizon -- a line
 // whose last press comes later is one the engine never finishes playing, so
 // it can never be judged to live
@@ -3323,10 +3330,10 @@ static void linesFind(int depth, int breaks) {
   uint8_t waits0[32][WMAX];
   if (BIN[IN_HASPA] && lineState(0, 0, st0, can0, waits0, cur, &t) == 0) {
     growAt(0, 0, t, depth, st0, cur[0], cur[1], can0, waits0, lsLimit);
-    if (breaks) { targetLines(st0, cur[0], cur[1], t, lsTopped ? timeLeft() - 2 : INF); targetAfterDrops(st0, cur[0], cur[1], t, lsTopped ? timeLeft() - 2 : LINEHORIZON); }
+    if (breaks) breakLines(st0, cur[0], cur[1], t, lsTopped ? timeLeft() - 2 : INF);
   } else {
     growAt(0, 0, 0, depth, DBASE, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], saveCan, 0, lsLimit);
-    if (breaks) targetLines(DBASE, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, lsTopped ? timeLeft() - 2 : INF);
+    if (breaks) breakLines(DBASE, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, lsTopped ? timeLeft() - 2 : INF);
   }
   ENGINE_BASE = saveBase; ENGINE_WAITS = 0;
   for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = saveCan[c];
@@ -4461,9 +4468,7 @@ static Dec readyWhenLands(Dec d) {
 #endif
     int n0 = nLines;
     tDupes = 0;
-    targetLines(RWB, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, INF);
-    // garbage perched over a gap: the lines that let it down first, then break (as breakFirst's)
-    targetAfterDrops(RWB, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, LINEHORIZON);
+    breakLines(RWB, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, INF);
     static unsigned char wk[MAXLINES];
     for (int i = n0; i < nLines; i++) wk[i] = (char)(LINES[i].n < 2);
     int got = -1;
@@ -4664,7 +4669,7 @@ static double breakTimeAfter(const int32_t *steps, int n, double limit, int32_t 
   tTimeMode = 1; tTimeMin = limit < INF ? limit - t : INF;
   if (tTimeMin <= 0) { tTimeMode = 0; return INF; }
   double bound = tTimeMin;
-  targetLines(st, cur[0], cur[1], 0, INF);
+  breakLines(st, cur[0], cur[1], 0, INF);
   // and the masks' lines on the same board, in time (linesFrom, TIMEWORK)
   { const int32_t *sb = ENGINE_BASE; uint8_t (*sw8)[WMAX] = ENGINE_WAITS; uint32_t sc[WMAX]; int snp = nPfx, stp = lsTopped, sbr = lsBreaks; double spt = pfxT;
     for (int c = 0; c < WMAX; c++) sc[c] = ENGINE_CAN[c];
@@ -5676,7 +5681,7 @@ __attribute__((export_name("bot_state_size"))) int32_t bot_state_size(void) { re
 __attribute__((export_name("bit_target_lines"))) int32_t bit_target_lines(int32_t cr, int32_t cc) {
   memoRoom(); threadInit();
   linesReset();
-  targetLines(IN, cr, cc, 0, INF);
+  breakLines(IN, cr, cc, 0, INF);
   int n = nLines < 22 ? nLines : 22;
   for (int i = 0; i < n; i++) {
     int32_t *o = LIST + 17 * i;
