@@ -3591,7 +3591,21 @@ static int allConverting(const int32_t *st) {
   for (int c = 1; c <= BW; c++) if (U(st, GARB + c) & ~U(st, BUSY + c)) return 0;
   return 1;
 }
+static Dec stayAliveIn(Dec d);
+// A LATER DEATH'S SEARCH STOPS SHORT: stayAlive's search runs past where it is
+// stopped by up to 13,568 units (combo_storm seed 3: 42,849 spent from 37,761
+// used, 33,512 from 47,634, of OPTWORK 67,500), more than OPTWORK leaves below
+// WORKBUDGET; for a death past LIVEHORIZON it stops SAOVER sooner
+#define SAOVER 14000
 static Dec stayAlive(Dec d) {
+  if (!(aloneOnEngine() && LNA[0] > LIVEHORIZON)) return stayAliveIn(d);
+  double keep = stageEnd, e = rdW0 + OPTWORK - SAOVER;
+  if (e < stageEnd) stageEnd = e;
+  d = stayAliveIn(d);
+  stageClose(keep);
+  return d;
+}
+static Dec stayAliveIn(Dec d) {
   saSet = 0;
   if (d.kind != K_SWAP && d.kind != K_HOLD) return d;
   if (d.kind == K_SWAP && !d.hasMove) return d;
@@ -3604,6 +3618,7 @@ static Dec stayAlive(Dec d) {
   // lost within LIVEHORIZON frames, left alone -- or, topped with every slab
   // on the board already converting, anywhere the judge sees: then nothing on
   // the board can be kept for a break, and what the conversion drops must fit
+  // (its search stops short: stayAlive, above)
   if (!aloneOnEngine() || !LNA[0] || LNA[0] > LINEREACH ||
       (LNA[0] > LIVEHORIZON && (!BIN[IN_TOPPED] || !allConverting(DBASE)))) return lineLast == 1 ? saKeep(d, playDie) : d;
   linesReset();
