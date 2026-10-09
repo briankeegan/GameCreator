@@ -4462,6 +4462,8 @@ static Dec readyWhenLands(Dec d) {
     int n0 = nLines;
     tDupes = 0;
     targetLines(RWB, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, INF);
+    // garbage perched over a gap: the lines that let it down first, then break (as breakFirst's)
+    targetAfterDrops(RWB, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, LINEHORIZON);
     static unsigned char wk[MAXLINES];
     for (int i = n0; i < nLines; i++) wk[i] = (char)(LINES[i].n < 2);
     int got = -1;
