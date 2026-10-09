@@ -257,6 +257,19 @@ ways: a tool not listed, or a path listed that doesn't exist.
   an engine press time meets it only through `pressSeen`. `clock.test.sh`
   holds the clock to the engine; `check_time_not_swaps.mjs` fails on a cap
   coming back or a new hand-listed search.
+- **A decision is one ordered choice (`arbitrate`).** The stages propose; the
+  decision they made, the walk's target and stayAlive's choice (or the hold)
+  are judged on the engine and ranked once: breaks the next garbage in time
+  (it lives), lives, a break in reach when the next slab lands, the later loss
+  of health inside `LIVEHORIZON`, the soonest break after it (`breakTime`:
+  setup), a combo or chain that digs under no pile (no break to make: clear,
+  and look for the break while it resolves), life (what it buys once done,
+  hollow costed), converted, hollow; equal: the target, the decision, the
+  alternative. A swap-back keeps the board unless it ranks higher. A rule that
+  overrides another after the fact belongs in this order, not after it. The
+  engine is reached only through `lineJudge` and `searchInTime`, which stop at
+  their share of the work (`workLeft`); the decision's closing keeps
+  `FINALJUDGES` judges' work under whatever the stages measure.
 - **Every decision fits the game's frame.** The bot plays at 60 fps:
   `BUDGETMS` in `native/bot.c` (the 16.7 ms frame less the frame's own work)
   is a decision's budget, and in a game the clock cuts one past it and the game
@@ -287,7 +300,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   what you touch better than you found it.
 - **Commit and push as you go.** Every change is committed and pushed to
   `main` the moment it is made: the source first and the scan dispatched
-  with it, the wasm rebuild after in the background, a scan's line in
+  with it, the wasm rebuilt once, in the background, when the batch of work is done (the scan builds its own library from the source; the wasm is for the live game), a scan's line in
   `survival_scans.tsv` as soon as it is fetched. Nothing waits uncommitted
   for a scan, a rebuild or a check. Anything slow runs in the background, so
   an interruption stops nothing.

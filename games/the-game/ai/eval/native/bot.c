@@ -69,7 +69,7 @@ typedef struct {
   int32_t line[2 * LINEMAX]; int nLine, lineKind, lineWaitAll;   // the line being played, its steps still to play: LINE_BREAK or LINE_CASH
   int32_t recent[4];
   double risenSeen;   // the rows risen (IN_RISEN) when the stored rows were last moved up
-  int32_t tgt[2 * LINEMAX]; int tgtN, tgtKind, tgtWait, tgtVia; double tgtPresses;   // the target being walked to (keepTarget): its line, the rule that chose it, the presses when it was chosen
+  int32_t tgt[2 * LINEMAX]; int tgtN, tgtKind, tgtWait, tgtVia; double tgtPresses;   // the target being walked to (arbitrate): its line, the rule that chose it, the presses when it was chosen
   double counts[NCOUNT];
   int lastVia;   // the route the last decision took
 } Bot;
@@ -2165,7 +2165,7 @@ int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_
 
 typedef struct { int n, brk, ok, grown, waitAll, hollow, conv, die; int32_t sw[2 * LINEMAX]; double est, life; int verdict; } LineC;
 // A LINE'S LIFE, what survival RANKS by: the frame it loses health, less what
-// its hollow costs. (The floors -- surviveGuard, the kept line -- stay on the
+// its hollow costs. (The floors -- arbitrate, the kept line -- stay on the
 // frame itself: no choice may lose health sooner, whatever its shape.) A
 // hollow cell under what lands is stack spent on nothing -- BW of them are a
 // row, and a row is FPR frames of rise -- so a line that dies a few frames
@@ -2254,7 +2254,12 @@ static double optLine(void) { double e = rdW0 + OPTWORK; return (stageEnd < e ? 
 // optional work stops for the stage, stageClose puts it back.
 #define NSTAGES 9   // decideRuled, playOn/waitForDrain/raiseHold, breakFirst, stayAlive, lineup, spend, breakSoon, fillFirst, the steps after it
 static double LATER[NSTAGES];
-static double stageLeaves(int i) { return rdW0 + OPTWORK - LATER[i]; }
+// THE CLOSING KEEPS ITS OWN: whatever the stages measured, the decision's end
+// (the arbiter's judges of its candidates, the readiness asked of them) keeps
+// FINALJUDGES judges' work -- measured from what they took, they would learn
+// none while a stage before them took the rest, and that stage take it again
+#define FINALJUDGES 6
+static double stageLeaves(int i) { double keep = LATER[i] > FINALJUDGES * jdCost ? LATER[i] : FINALJUDGES * jdCost; return rdW0 + OPTWORK - keep; }
 static double stageOpen(int i) { double keep = stageEnd, e = stageLeaves(i); if (e < stageEnd) stageEnd = e; return keep; }
 static void stageClose(double keep) { stageEnd = keep; }
 static void stagesMeasured(const double *ws, int k) {
@@ -2290,6 +2295,15 @@ static int lineJudgeIn2(const int32_t *sw, int n, int waitAll) {
 #endif
   return v;
 }
+// THE FRAME THE JUDGED LINE (LNO) OR THE BOARD LEFT ALONE (LNA) LOSES HEALTH,
+// the one read of the judge's first number: 1 << 20 when it is not within the
+// horizon. Rules compare this, never LNO[0] (0 there means none).
+static int lnoDie(const int32_t *a) { return a[0] ? a[0] : 1 << 20; }
+// THE FRAME THE BOARD LEFT ALONE LOSES HEALTH on the engine (lnoDie of LNA;
+// 1 << 20: not within the horizon), or `unknown` when the engine has no
+// board to say -- what that means is the asking rule's own
+static int aloneOnEngine(void);
+static int aloneDie(int unknown) { return aloneOnEngine() ? lnoDie(LNA) : unknown; }
 // THE FRAME A JUDGED LINE LOSES HEALTH, read the one way every rule reads it
 // (1 << 20: not within the judge's reach; 0: it dies now). A verdict without
 // LV_LIVES is three things: the budget refused the judge (no verdict: -1),
@@ -2297,20 +2311,13 @@ static int lineJudgeIn2(const int32_t *sw, int n, int waitAll) {
 // a step is refused or it loses health before the next move (0). Call it
 // right after the judge, with judgeRefused cleared before it.
 static int judgedDie(int v) {
-  if (v & LV_LIVES) return LNO[0] ? LNO[0] : 1 << 20;
+  if (v & LV_LIVES) return lnoDie(LNO);
   if (judgeRefused) return -1;
-  if (LNO[1] >= 0 && !(LNO[0] && LNO[0] <= LNO[1] + NEXTMOVE)) return LNO[0] ? LNO[0] : 1 << 20;
+  if (LNO[1] >= 0 && !(LNO[0] && LNO[0] <= LNO[1] + NEXTMOVE)) return lnoDie(LNO);
   return 0;
-}
-// NO UNDOING: a line that starts by putting back a press (undoesPress; the
-// kept line's own presses excepted, undoesOld) is never played, so it is
-// judged as a step refused -- every rule then takes its next best, not a hold
-static int undoesFirst(const int32_t *sw) {
-  return BT->nLine && BT->line[0] == sw[0] && BT->line[1] == sw[1] ? undoesOld(sw[0], sw[1]) : undoesPress(sw[0], sw[1]);
 }
 static int lineJudge(const int32_t *sw, int n, int waitAll) {
   if (n < 1 || n > LINEMAX) return lineJudgeIn2(sw, n, waitAll);
-  if (undoesFirst(sw)) { for (int k = 0; k < LNOLEN; k++) LNO[k] = 0; LNO[1] = -1; LNO[5] = 0; judgeRefused = 0; return 0; }
   unsigned h = 2166136261u ^ (unsigned)(n * 31 + waitAll);
   for (int k = 0; k < 2 * n; k++) h = (h ^ (unsigned)sw[k]) * 16777619u;
   for (int probe = 0; probe < 8; probe++) {
@@ -2390,14 +2397,14 @@ static int judged(LineC *l) {
     l->verdict = nJudged < MAXJUDGED ? lineJudge(l->sw, l->n, 0) : 0; nJudged++;
     l->hollow = l->verdict ? HOLLOW(LNO) : 1 << 20;
     l->conv = l->verdict ? LNO[2] - LNA[2] : 0;
-    l->die = l->verdict ? (LNO[0] ? LNO[0] : 1 << 20) : 0;   // the frame it loses health (1 << 20: not within the horizon)
+    l->die = l->verdict ? lnoDie(LNO) : 0;   // the frame it loses health (1 << 20: not within the horizon)
     l->life = l->verdict ? lifeOf(l->die, LNO[1], l->hollow) : 0;
     // A BREAK PRESSED ONCE THE BOARD HAS SETTLED: a break needs garbage at
     // rest beside the match, and a press made while the slab still lands
     // matches beside it in vain. The last press then waits for the garbage to land (breakWait).
     if (l->brk && (l->verdict & LV_PAYS) && !(l->verdict & LV_BREAKS) && nJudged < MAXJUDGED) {
       int v = lineJudge(l->sw, l->n, 1); nJudged++;
-      if (v & LV_BREAKS) { l->verdict = v; l->waitAll = 1; l->hollow = HOLLOW(LNO); l->conv = LNO[2] - LNA[2]; l->die = LNO[0] ? LNO[0] : 1 << 20; l->life = lifeOf(l->die, LNO[1], l->hollow); }
+      if (v & LV_BREAKS) { l->verdict = v; l->waitAll = 1; l->hollow = HOLLOW(LNO); l->conv = LNO[2] - LNA[2]; l->die = lnoDie(LNO); l->life = lifeOf(l->die, LNO[1], l->hollow); }
     }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
@@ -3457,14 +3464,17 @@ static int bbFound, bbLastN; static double bbLastEst;   // bestBreak: how many l
 // pile it does not convert out of reach; among the same, the one that
 // converts the most.
 static int readyInTime(const int32_t *sw, int n, int *br, int *bc);
-// READY FIRST, THEN LATEST: of two living lines, one that outlives the board
-// left alone (`alone`, 0: it does not die) and leaves a break in reach when
-// the next slab lands goes first -- the slab it is ready for is what kills;
-// between two alike, the one that loses health later. 1 better, -1 worse, 0
-// the same (the caller's own tie-break decides).
-static int readyThenLater(int rdy, double life, int pickRdy, double pickLife) {
-  if (rdy != pickRdy) return rdy > pickRdy ? 1 : -1;
-  return life > pickLife ? 1 : life < pickLife ? -1 : 0;
+// THE ONE ORDER LINES ARE RANKED IN, best first: the one that leaves a break in
+// reach when the next slab lands (rdy; the slab it is ready for is what
+// kills), then the one that loses health later (life: hollow costed), then the
+// one that converts more garbage, then the less hollow, then the sooner done.
+// 1: a is better, -1: b is; two different lines are never equal.
+static int lineRank(const LineC *a, int ra, const LineC *b, int rb) {
+  if (ra != rb) return ra > rb ? 1 : -1;
+  if (a->life != b->life) return a->life > b->life ? 1 : -1;
+  if (a->conv != b->conv) return a->conv > b->conv ? 1 : -1;
+  if (a->hollow != b->hollow) return a->hollow < b->hollow ? 1 : -1;
+  return lineBefore(a, b) ? 1 : -1;
 }
 // THE BAR A READY LINE CLEARS: it loses health no sooner than the board left
 // alone (any death, when that does not; 0 with no engine). Not later: a line
@@ -3472,7 +3482,7 @@ static int readyThenLater(int rdy, double life, int pickRdy, double pickLife) {
 // queue that fills the room it dies when the board left alone does -- the
 // break it readies is what saves it. Every route that plays a line for its
 // readiness asks this.
-static int readyBar(void) { return aloneOnEngine() ? (LNA[0] ? LNA[0] : 1 << 20) : 0; }
+static int readyBar(void) { return aloneDie(0); }
 // whether a line counts as ready: asked only with garbage to come, and only of
 // a line that loses health no sooner than the board left alone
 static int readyAtNext(const int32_t *sw, int n, int *br, int *bc);
@@ -3506,10 +3516,9 @@ static LineC *bestBreak(void) {
     judgeAhead(l, taken, 0);
     if ((judged(l) & need) != need) continue;
     found++; bbFound = found; bbLastN = l->n; bbLastEst = l->est;
-    if (pick && pickReady && l->life <= pick->life && l->conv <= pick->conv) continue;
-    int rdy = ask ? readyCounts(l, alone) : 0, cmp = pick ? readyThenLater(rdy, l->life, pickReady, pick->life) : 1;
-    // ready first, then the latest loss of health; then the most converted
-    if (cmp > 0 || (cmp == 0 && l->conv > pick->conv)) { pick = l; pickReady = rdy; }
+    if (pick && pickReady && lineRank(l, 1, pick, pickReady) < 0) continue;   // not better even if ready: not asked
+    int rdy = ask ? readyCounts(l, alone) : 0;
+    if (!pick || lineRank(l, rdy, pick, pickReady) > 0) { pick = l; pickReady = rdy; }
   }
   bbReady = !ask || pickReady;
   return pick;
@@ -3533,9 +3542,9 @@ static LineC *bestLiving(int (*ok)(const LineC *)) {
     judgeAhead(l, taken, 0);
     if ((judged(l) & need) != need) continue;
     found++;
-    // ready first when asked (stayAlive, readyThenLater), then the latest loss of health; then the least hollow
-    int rdy = blReady ? readyCounts(l, blAlone) : 0, cmp = pick ? readyThenLater(rdy, l->life, pickRdy, pick->life) : 1;
-    if (cmp > 0 || (cmp == 0 && l->hollow < pick->hollow)) { pick = l; pickRdy = rdy; }
+    // ready first when asked (stayAlive), then by the one order (lineRank)
+    int rdy = blReady ? readyCounts(l, blAlone) : 0;
+    if (!pick || lineRank(l, rdy, pick, pickRdy) > 0) { pick = l; pickRdy = rdy; }
   }
   return pick;
 }
@@ -3599,7 +3608,7 @@ static Dec playOn(Dec d) {
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "DROPLINE kind %d n %d", BT->lineKind, BT->nLine); for (int k = 0; k < BT->nLine; k++) fprintf(BLOG, " %d,%d", BT->line[2 * k], BT->line[2 * k + 1]); fprintf(BLOG, " | v %d need %d die %d last %d refused step %d at %d\n", v, need, LNO[0], LNO[1], LNO[5], LNO[6]); }
 #endif
     BT->nLine = 0; return d; }
-  playDie = LNO[0] ? LNO[0] : 1 << 20; playLife = lifeOf(playDie, LNO[1], HOLLOW(LNO));
+  playDie = lnoDie(LNO); playLife = lifeOf(playDie, LNO[1], HOLLOW(LNO));
   // A PLAN SPENDS AS EVERY CHOICE DOES: what is left of a plan line that
   // clears, leaves under six rows and no break ready is dropped -- unless the
   // board left alone dies and the line buys time: it loses health later. A
@@ -3669,10 +3678,10 @@ static int dR, dC;
 static int fromChoice(const LineC *l) { return l->sw[0] == dR && l->sw[1] == dC; }
 // WHAT STAYALIVE CHOSE TO LIVE: the decision, the frame it loses health
 // (1 << 20: not within reach) and its line -- no later stage may put a choice
-// that loses health sooner in its place (surviveGuard, at the decision's end)
-static Dec saDec; static int saDie, saSet, saN, saKind, saWait; static int32_t saLine[2 * LINEMAX];
-static Dec saKeep(Dec d, int die) {
-  saSet = 1; saDec = d; saDie = die; saN = BT->nLine; saKind = BT->lineKind; saWait = BT->lineWaitAll;
+// that loses health sooner in its place (arbitrate, at the decision's end)
+static Dec saDec; static int saSet, saN, saKind, saWait; static int32_t saLine[2 * LINEMAX];
+static Dec saKeep(Dec d) {
+  saSet = 1; saDec = d; saN = BT->nLine; saKind = BT->lineKind; saWait = BT->lineWaitAll;
   for (int k = 0; k < 2 * saN; k++) saLine[k] = BT->line[k];
   return d;
 }
@@ -3683,19 +3692,19 @@ static Dec stayAlive(Dec d) {
   // a break that lives, and a break line played on, are kept; a plan or cash
   // line played on is kept only if no line lives longer (below)
   if (lineLast == 3) return d;
-  // a line played on is what the guard holds the decision to (surviveGuard)
-  if (lineLast == 1 && BT->lineKind == LINE_BREAK) return saKeep(d, playDie);
+  // a line played on is what the guard holds the decision to (arbitrate)
+  if (lineLast == 1 && BT->lineKind == LINE_BREAK) return saKeep(d);
   // the engine, not the estimate, says whether the board is dying: health
   // lost within LIVEHORIZON frames, left alone
   linesReset();
-  if (!aloneOnEngine() || !LNA[0] || LNA[0] > LIVEHORIZON) return lineLast == 1 ? saKeep(d, playDie) : d;
+  if (!aloneOnEngine() || !LNA[0] || LNA[0] > LIVEHORIZON) return lineLast == 1 ? saKeep(d) : d;
   linesFind(2, 0);
   // NEVER DYING FIRST: the choice is kept only if it lives as long as the line that lives longest
   blReady = 1; blAlone = LNA[0];
   LineC *l = bestLiving(notLastSwap);
   blReady = 0;
   if (lineLast == 1) {
-    if (!l || l->life <= playLife) return saKeep(d, playDie);
+    if (!l || l->life <= playLife) return saKeep(d);
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "SA leaves the line played (dies %d) for", playDie); for (int k = 0; k < l->n; k++) fprintf(BLOG, " %d,%d", l->sw[2 * k], l->sw[2 * k + 1]); fprintf(BLOG, " (dies %d)\n", l->die); }
 #endif
@@ -3703,7 +3712,7 @@ static Dec stayAlive(Dec d) {
   if (d.kind == K_SWAP) {
     dR = d.sr; dC = d.sc;
     LineC *mine = bestLineAvoid(LV_LIVES | LV_GAINS, 0, fromChoice);
-    if (mine && (!l || mine->life >= l->life)) { if (mine->n > 1) lineKeep(mine, LINE_CASH); return saKeep(d, mine->die); }
+    if (mine && (!l || mine->life >= l->life)) { if (mine->n > 1) lineKeep(mine, LINE_CASH); return saKeep(d); }
   }
   // A HOLD IS NOT A LINE STARTED LATER: a line is judged pressed from now, and
   // every frame the board waits is a frame garbage drops on it -- the line that
@@ -3713,121 +3722,119 @@ static Dec stayAlive(Dec d) {
   BT->counts[C_KEPTHEALTH]++;
   plansDrop();
   if (l->n > 1) lineKeep(l, l->brk ? LINE_BREAK : LINE_CASH); else BT->nLine = 0;
-  return saKeep(lineSwap(l, V_KEEPHEALTH, d), l->die);
+  return saKeep(lineSwap(l, V_KEEPHEALTH, d));
 }
-// NO DIGGING UNDER A PILE: a clear that breaks nothing and leaves more hollow
-// under the garbage than the board left alone (HOLLOW: the gaps under it and
-// the level the slabs to come land on) takes the panels a break of that pile
-// needs from under it -- whatever the material, since what a pile touches,
-// not what the board holds, is what breaks it. It gives way to the hold,
-// unless it loses health later than the hold does: that is survival's, and
-// surviveGuard, after this, weighs it.
-// THE HOLLOW THE NEXT SLAB LANDS OVER: on the board the engine reaches when
-// it lands (lineLandedFull), the empty cells under each column's lowest
-// garbage, down to what the column holds (-1: no landing board)
-int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t);
-static int landHollow(const int32_t *sw, int n) {
-  static ST LH; uint32_t can[WMAX]; uint8_t wt[32][WMAX]; int32_t cur[2], t;
-  if (lineLandedFull(sw, n, LH, can, wt, cur, &t) != 0) return -1;
-  int h = 0;
-  for (int c = 1; c <= BW; c++) {
-    uint32_t g = U(LH, GARB + c);
-    if (!g) continue;
-    uint32_t below = lowb(g) - 1u, occ = U(LH, OCC + c) & below;
-    h += popc(below) - (occ ? topRow(occ) : 0);
-  }
-  return h;
-}
-// NO GOING BACK: a swap that undoes a press (undoesPress) gives way to the
-// hold, which keeps the board that press made.
-static Dec returnGuard(Dec d) {
-  if (d.kind != K_SWAP || !d.hasMove || lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;
-  int back = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc ? undoesOld(d.sr, d.sc) : undoesPress(d.sr, d.sc);
-  if (!back) return d;
-#ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "RETURN via %d %d,%d undoes the press %d back\n", d.via, d.sr, d.sc, back); }
-#endif
-  BT->nLine = 0; lineLast = 0;
-  return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
-}
-static Dec perchGuard(Dec d) {
-  if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA]) return d;
-  // NOR UNDER THE NEXT ONE: with garbage to come and none on the board, a
-  // clear that breaks nothing may not leave the next slab landing over more
-  // hollow than the hold does -- read where it lands, not where the judge's
-  // horizon ends. With nothing queued a slab can still come: the hollow the
-  // slabs to come would leave (HOLLOW, every four columns' gap under their
-  // tallest) is held to the hold's below, as it is under garbage.
-  if (!hasGarbage(DBASE)) {
-    if (!(BIN[IN_INCOMING] > 0) || lineLast == 3 || endsInBreak(d)) return d;
-    Cand *pc = poolSwap(d.sr, d.sc);
-    if (pc && pc->res.broke) return d;
-    int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
-    int32_t sw[2] = { d.sr, d.sc };
-    const int32_t *ln = playsLine ? BT->line : sw; int n = playsLine ? BT->nLine : 1;
-    int v = lineJudge(ln, n, playsLine ? BT->lineWaitAll : 0);
-    if (!(v & LV_LIVES) || !(v & LV_PAYS) || (v & LV_BREAKS)) return d;
-    int die = LNO[0];
-    if (!aloneOnEngine() || (LNA[0] && (!die || die > LNA[0]))) return d;
-    int hd = landHollow(ln, n), h0 = hd < 0 ? -1 : landHollow(0, 0);
-    if (hd < 0 || h0 < 0 || hd <= h0) return d;
-#ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "PERCH via %d %d,%d lands over %d, the hold's %d\n", d.via, d.sr, d.sc, hd, h0); }
-#endif
-    BT->nLine = 0; lineLast = 0;
-    return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
-  }
-  if (lineLast == 3 || endsInBreak(d)) return d;
-  Cand *pc = poolSwap(d.sr, d.sc);
-  if (pc && pc->res.broke) return d;
-  int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
-  int32_t sw[2] = { d.sr, d.sc };
-  int v = playsLine ? lineJudge(BT->line, BT->nLine, BT->lineWaitAll) : lineJudge(sw, 1, 0);
-  if (!(v & LV_LIVES) || !(v & LV_PAYS) || (v & LV_BREAKS)) return d;
-  int h = HOLLOW(LNO), die = LNO[0];
-  if (!aloneOnEngine() || h <= HOLLOW(LNA)) return d;
-  if (LNA[0] && (!die || die > LNA[0])) return d;
-#ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "PERCH via %d %d,%d hollow %d over the hold's %d\n", d.via, d.sr, d.sc, h, HOLLOW(LNA)); }
-#endif
-  BT->nLine = 0; lineLast = 0;
-  return mkHold(V_AWAITLANDING, d.mode, d.alive, 0, 0, 0);
-}
-// IT NEVER CHOOSES TO DIE: a decision that is not what stayAlive chose, and
-// loses health sooner than it (the engine judges it: the line it plays, or the
-// board left alone for a hold), gives way to stayAlive's choice and its line.
-// With no choice of stayAlive's (it acts only on a board dying left alone),
-// the reference is the hold: the board left alone, which no decision may lose
-// health sooner than.
-// The judge stops pressing where the line ends, so a decision READY for the
-// slab -- its break in reach the frame the slab lands (readyInTime, on the
-// engine) -- is a line with that break still to press: it gives way only to a
-// choice ready too.
-static Dec surviveGuard(Dec d) {
-  if (!saSet) {
-    if (d.kind != K_SWAP || !d.hasMove || !aloneOnEngine()) return d;
-    saDec = mkHold(V_KEEPHEALTH, d.mode, d.alive, 0, 0, 0); saDie = LNA[0] ? LNA[0] : 1 << 20; saN = 0; saKind = 0; saWait = 0;
-  }
-  if (d.kind == saDec.kind && d.hasMove == saDec.hasMove && d.sr == saDec.sr && d.sc == saDec.sc) return d;
-  int die, ready = 0, r, c;
-  if (d.kind == K_SWAP && d.hasMove) {
-    int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
-    int32_t sw[2] = { d.sr, d.sc };
+// THE ONE CHOICE. The decision the stages made, the target the walk was on
+// (no press since it was chosen) and what stayAlive chose -- with none, the
+// board left alone -- are weighed in one order, and the best is the decision:
+// a break in time (it lives), then a line that lives, then a break in reach
+// when the next slab lands (readyInTime), then the later loss of health
+// (hollow costed), then the more garbage converted, then the less hollow.
+// Equal: the target, the decision, the alternative, in that order -- a
+// decision turns from its target only for a better one -- except a decision
+// that puts back the last press (undoesPress), which the alternative keeps
+// the board of unless it is better. More hollow under the garbage (and under
+// the slab to come) is life lost, so the rank holds a clear that digs under a pile. Each is judged on the
+// engine (lineJudge, which keeps to the work there is); one it cannot judge is
+// not weighed, and a decision it cannot judge stands.
+typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, die, conv, hollow, pri; double life, soon; } Opt;
+static int optJudge(Opt *o) {
+  int last = 0;
+  o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = 0;
+  if (o->d.kind == K_HOLD) {
+    o->die = aloneDie(1 << 20);
+    o->hollow = aloneOnEngine() ? HOLLOW(LNA) : 0;
+    o->lives = o->die > NEXTMOVE;
+  } else {
     judgeRefused = 0;
-    int v = playsLine ? lineJudge(BT->line, BT->nLine, BT->lineWaitAll) : lineJudge(sw, 1, 0);
-    die = judgedDie(v);
-    if (die < 0) return d;   // no verdict: nothing to hold it to
-    if (die < saDie && (v & LV_LIVES) && BIN[IN_INCOMING] > 0)
-      ready = playsLine ? readyInTime(BT->line, BT->nLine, &r, &c) : readyInTime(sw, 1, &r, &c);
-  } else if (d.kind == K_HOLD) die = aloneOnEngine() && LNA[0] ? LNA[0] : 1 << 20;
-  else return d;   // a raise: raiseMode's own rules
-  if (die >= saDie) return d;
-  if (ready && !(saDec.kind == K_SWAP && saDec.hasMove ? (saN ? readyInTime(saLine, saN, &r, &c) : readyInTime((int32_t[2]){ saDec.sr, saDec.sc }, 1, &r, &c)) : readyInTime(0, 0, &r, &c))) return d;
+    int v = lineJudge(o->sw, o->n, o->wait), die = judgedDie(v);
+    if (die < 0) return 0;   // no verdict: nothing to weigh
+    o->die = die; o->lives = die > 0; o->breaks = (v & LV_BREAKS) != 0;
+    o->conv = LNO[2] - LNA[2]; o->hollow = HOLLOW(LNO); last = LNO[1];
+    // a combo or a chain: it clears more than the board left alone, and digs under no pile (more hollow than the hold)
+    o->cash = LNO[3] > LNA[3] && (!aloneOnEngine() || o->hollow <= HOLLOW(LNA));
+  }
+  o->life = lifeOf(o->die, last, o->hollow);
+  return 1;
+}
+static int optReady(Opt *o) {
+  if (!o->rdyKnown) {
+    int r, c;
+    o->rdy = o->lives && BIN[IN_INCOMING] > 0 && BIN[IN_HASPA] ? (o->d.kind == K_HOLD ? readyInTime(0, 0, &r, &c) : readyInTime(o->sw, o->n, &r, &c)) : 0;
+    o->rdyKnown = 1;
+  }
+  return o->rdy;
+}
+// THE FRAMES FROM NOW TO THE SOONEST BREAK after the candidate (breakTime: the
+// shared question; INF: none within the work there is), asked only of
+// candidates that tie on everything above it
+static double breakTime(const int32_t *steps, int n);
+static double optSoon(Opt *o) {
+  if (!o->soonKnown) { o->soon = breakTime(o->d.kind == K_HOLD ? 0 : o->sw, o->d.kind == K_HOLD ? 0 : o->n); o->soonKnown = 1; }
+  return o->soon;
+}
+// 1: a is better, -1: b is, 0: the same
+static int optRank(Opt *a, Opt *b) {
+  int ka = a->lives ? 1 + a->breaks : 0, kb = b->lives ? 1 + b->breaks : 0;
+  if (ka != kb) return ka > kb ? 1 : -1;
+  if (ka && BIN[IN_INCOMING] > 0) { int ra = optReady(a), rb = optReady(b); if (ra != rb) return ra > rb ? 1 : -1; }
+  // dying within LIVEHORIZON, the later loss of health is the time there is: a
+  // line that takes longer to finish still outlives a hold that dies first
+  int da = a->die < LIVEHORIZON ? a->die : LIVEHORIZON, db = b->die < LIVEHORIZON ? b->die : LIVEHORIZON;
+  if (da != db) return da > db ? 1 : -1;
+  // no break to make yet: the one that brings the break soonest (setup), then a
+  // combo or a chain, the break looked for while it resolves
+  if (ka) { double sa = optSoon(a), sb = optSoon(b); if (sa != sb) return sa < sb ? 1 : -1; }
+  if (a->cash != b->cash) return a->cash > b->cash ? 1 : -1;
+  if (a->life != b->life) return a->life > b->life ? 1 : -1;
+  if (a->conv != b->conv) return a->conv > b->conv ? 1 : -1;
+  if (a->hollow != b->hollow) return a->hollow < b->hollow ? 1 : -1;
+  return 0;
+}
+static Dec arbitrate(Dec d) {
+  if (!((d.kind == K_SWAP && d.hasMove) || d.kind == K_HOLD)) return d;   // a raise: raiseMode's own rules
+  Opt O[3]; int n = 0, at = -1;
+  // the target the walk was on, still ahead of the decision
+  int hasT = d.kind == K_SWAP && BT->tgtN && BT->nNotes == BT->tgtPresses && !(d.sr == BT->tgt[0] && d.sc == BT->tgt[1]);
+  if (hasT) {
+    Opt *o = &O[n]; o->d = mkSwap(BT->tgt[0], BT->tgt[1], BT->tgtVia, d.mode, d.alive); o->d.waitAll = BT->tgtN == 1 && BT->tgtWait;
+    o->n = BT->tgtN; o->wait = BT->tgtWait; for (int k = 0; k < 2 * o->n; k++) o->sw[k] = BT->tgt[k];
+    o->pri = 0;
+    if (optJudge(o)) n++;
+  }
+  // the decision
+  { Opt *o = &O[n]; o->d = d; at = n;
+    o->pri = d.kind == K_SWAP && (BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc ? undoesOld(d.sr, d.sc) : undoesPress(d.sr, d.sc)) ? 3 : 1;
+    if (d.kind == K_SWAP) {
+      int line = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
+      o->n = line ? BT->nLine : 1; o->wait = line ? BT->lineWaitAll : 0;
+      if (line) for (int k = 0; k < 2 * o->n; k++) o->sw[k] = BT->line[k]; else { o->sw[0] = d.sr; o->sw[1] = d.sc; }
+    } else o->n = 0;
+    if (!optJudge(o)) return d;
+    n++; }
+  // what stayAlive chose; with none, the board left alone
+  int hasA = 0;
+  if (saSet ? !(d.kind == saDec.kind && d.hasMove == saDec.hasMove && d.sr == saDec.sr && d.sc == saDec.sc)
+            : d.kind == K_SWAP && aloneOnEngine()) {
+    Opt *o = &O[n];
+    if (saSet) { o->d = saDec; o->n = saN; o->wait = saWait; for (int k = 0; k < 2 * saN; k++) o->sw[k] = saLine[k];
+                 if (!saN && saDec.kind == K_SWAP) { o->n = 1; o->wait = 0; o->sw[0] = saDec.sr; o->sw[1] = saDec.sc; } }
+    else { o->d = mkHold(V_KEEPHEALTH, d.mode, d.alive, 0, 0, 0); o->n = 0; }
+    o->pri = 2;
+    hasA = optJudge(o); if (hasA) n++;
+  }
+  if (n < 2) return d;
+  int best = 0;
+  for (int i = 1; i < n; i++) { int c = optRank(&O[i], &O[best]); if (c > 0 || (c == 0 && O[i].pri < O[best].pri)) best = i; }
+  if (best == at) return d;
+  Opt *b = &O[best];
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "GUARD via %d %d,%d dies %d before %d: %s %d,%d\n", d.via, d.sr, d.sc, die, saDie, saSet ? "stayAlive's" : "the hold", saDec.sr, saDec.sc); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "ARBITER %s %d,%d (dies %d) over via %d %d,%d (dies %d)\n", hasA && best == n - 1 ? "the alternative" : "the target", b->d.sr, b->d.sc, b->die, d.via, d.sr, d.sc, O[at].die); }
 #endif
-  lineSet(saLine, saN, saKind, saWait);
-  return saDec;
+  if (hasA && best == n - 1) lineSet(saSet ? saLine : 0, saSet ? saN : 0, saSet ? saKind : 0, saSet ? saWait : 0);
+  else if (BT->tgtN > 1) lineSet(BT->tgt, BT->tgtN, BT->tgtKind, BT->tgtWait);
+  else BT->nLine = 0;
+  return b->d;
 }
 
 #define BATCH 8
@@ -4257,7 +4264,7 @@ static int sitRoom(const int32_t *res, const int32_t *sw, int n, double at, void
   if (!(res[R_TOTAL] > 0)) return SIT_GROW;
   if (x->tried >= MAXCAND) return SIT_TAKE;
   x->tried++;
-  if (!(lineJudge(sw, n, 0) & LV_LIVES) || (LNO[0] ? LNO[0] : 1 << 20) < x->die0 || LNO[3] <= x->most) return SIT_END;
+  if (!(lineJudge(sw, n, 0) & LV_LIVES) || lnoDie(LNO) < x->die0 || LNO[3] <= x->most) return SIT_END;
   x->most = LNO[3]; x->bn = n; for (int k = 0; k < 2 * n; k++) x->bsw[k] = sw[k];
   return SIT_END;
 }
@@ -4265,8 +4272,8 @@ static Dec makeRoom(Dec d) {
   if (d.kind == K_SWAP && d.hasMove) { Cand *pc = poolSwap(d.sr, d.sc); if ((pc && pc->res.broke) || endsInBreak(d)) return d; }
   int32_t sw[2] = { d.sr, d.sc };
   int cells0 = 0, die0 = 1 << 20;
-  if (d.kind == K_SWAP && d.hasMove) { if (lineJudge(sw, 1, 0) & LV_LIVES) { cells0 = LNO[3]; die0 = LNO[0] ? LNO[0] : 1 << 20; } else die0 = 0; }
-  else if (aloneOnEngine()) { cells0 = LNA[3]; die0 = LNA[0] ? LNA[0] : 1 << 20; }
+  if (d.kind == K_SWAP && d.hasMove) { if (lineJudge(sw, 1, 0) & LV_LIVES) { cells0 = LNO[3]; die0 = lnoDie(LNO); } else die0 = 0; }
+  else if (aloneOnEngine()) { cells0 = LNA[3]; die0 = aloneDie(0); }
   // the living clears in time, soonest first: the one that clears most
   RoomCtx x; x.die0 = die0; x.most = cells0; x.bn = 0; x.tried = 0;
   waitSearch(LINEHORIZON, sitRoom, &x);
@@ -4436,38 +4443,6 @@ static int sitFill(const int32_t *res, const int32_t *sw, int n, double at, void
   x->hb = HOLLOW(LNO); x->bn = n; for (int k = 0; k < 2 * n; k++) x->bsw[k] = sw[k];
   return SIT_GROW;
 }
-// ONE TARGET UNTIL IT IS PRESSED: a swap's rank moves with the cursor walking
-// to it -- its press frame, and with it the frame its line loses health -- so
-// a rule asked again mid-walk can turn to a neighbour and back without
-// pressing either -- or two rules, each the other's way. While no press has
-// been made since the target was chosen, the walk goes on to it if its line
-// still lives, unless the rule choosing now outranks the one that chose it:
-// breaking and living first, then lining a break up, then the rest.
-static int ruleRank(int via) {
-  if (via == V_BREAK || via == V_BREAKREACH || via == V_BREAKSPEND || via == V_DIGPLAN || via == V_KEEPHEALTH || via == V_SURVIVALPLAN || via == V_PLANSAVE || via == V_KEEPSAVE || via == V_READYFIRST) return 3;
-  if (via == V_LINEUP || via == V_LINEUPHOLD) return 2;
-  return 1;
-}
-// the target still goes on unless its line dies or a step of it is refused:
-// a verdict of nothing done -- or no verdict, the budget refusing the judge --
-// is no reason to turn the walk around
-static int tgtAlive(void) {
-  judgeRefused = 0;   // a verdict from the memo leaves it as it was
-  return judgedDie(lineJudge(BT->tgt, BT->tgtN, BT->tgtWait)) != 0;
-}
-static Dec keepTarget(Dec d) {
-  int fresh = d.kind == K_SWAP && d.hasMove;
-  if (fresh && BT->tgtN && ruleRank(d.via) <= ruleRank(BT->tgtVia) && BT->nNotes == BT->tgtPresses &&
-      !(d.sr == BT->tgt[0] && d.sc == BT->tgt[1]) && tgtAlive()) {
-#ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "KEEPTARGET %d,%d over %d,%d via %d\n", BT->tgt[0], BT->tgt[1], d.sr, d.sc, d.via); }
-#endif
-    if (BT->tgtN > 1) lineSet(BT->tgt, BT->tgtN, BT->tgtKind, BT->tgtWait); else BT->nLine = 0;
-    Dec k = mkSwap(BT->tgt[0], BT->tgt[1], BT->tgtVia, d.mode, d.alive); k.waitAll = BT->tgtN == 1 && BT->tgtWait;
-    return k;
-  }
-  return d;
-}
 // the target is what the decision finally walks to, recorded after the guards
 static void recordTarget(Dec d) {
   // a hold leaves the target as it was: only a press, or a rule that outranks it, ends it
@@ -4534,7 +4509,7 @@ static int sitReadies(const int32_t *res, const int32_t *sw, int n, double at, v
     if (x->blind >= READYTRIES) return SIT_GROW;
     x->blind++;
   }
-  if (!(lineJudge(sw, n, 0) & LV_LIVES) || (LNO[0] ? LNO[0] : 1 << 20) < x->dieRef) return SIT_GROW;
+  if (!(lineJudge(sw, n, 0) & LV_LIVES) || lnoDie(LNO) < x->dieRef) return SIT_GROW;
   if (!readyInTime(sw, n, &x->r, &x->c)) return SIT_GROW;
   x->ok = 1;
   return SIT_TAKE;
@@ -4578,7 +4553,7 @@ static Dec readyWhenLands(Dec d) {
     if (!d.hasPark) { d.hasPark = 1; d.pr = r; d.pc = c; }
     return d;
   }
-  // READY FIRST (readyThenLater): a line that readies the landing need only
+  // READY FIRST (lineRank): a line that readies the landing need only
   // outlive the board left alone, not the choice it replaces -- that choice's
   // later death is judged without a break, and the break is what saves it
   dieRef = readyBar();
@@ -4607,7 +4582,7 @@ static Dec readyWhenLands(Dec d) {
       if (at < 0) break;
       wk[at] = 1;
       LineC *l = &LINES[at];
-      if (!(lineJudge(l->sw, l->n - 1, 0) & LV_LIVES) || (LNO[0] ? LNO[0] : 1 << 20) < dieRef) continue;
+      if (!(lineJudge(l->sw, l->n - 1, 0) & LV_LIVES) || lnoDie(LNO) < dieRef) continue;
       tried++;
       if (readyInTime(l->sw, l->n - 1, &r, &c)) got = at;
     }
@@ -5027,10 +5002,10 @@ static Dec fillFirstIn(Dec d) {
   double need = marginAfter(0, 0, LNA[0]);
   fillUrgent = LNA[0] && need < 0;
   double ref = fillScore(LNA[0], -1, HOLLOW(LNA)) + (reachFirst() && breakKept(0, 0) ? BREAK_IN_REACH : 0);   // what a fill must beat: the board left alone, and the choice
-  int refDie = LNA[0] ? LNA[0] : 1 << 20;   // the later loss of health of the two
+  int refDie = lnoDie(LNA);   // the later loss of health of the two
   if (d.kind == K_SWAP && d.hasMove) {
     int32_t sw[2] = { d.sr, d.sc };
-    if (lineJudge(sw, 1, 0) & LV_LIVES) { best = HOLLOW(LNO) < best ? HOLLOW(LNO) : best; if ((LNO[0] ? LNO[0] : 1 << 20) > refDie) refDie = LNO[0] ? LNO[0] : 1 << 20; double cs = fillScore(LNO[0], LNO[1], HOLLOW(LNO)); double m = marginAfter(sw, 1, LNO[0]); cs += fillUrgent && m >= 0 ? BREAKS_IN_TIME : reachFirst() && breakKept(sw, 1) ? BREAK_IN_REACH : 0; if (cs > ref) ref = cs; if (m > need) need = m; }
+    if (lineJudge(sw, 1, 0) & LV_LIVES) { best = HOLLOW(LNO) < best ? HOLLOW(LNO) : best; if (lnoDie(LNO) > refDie) refDie = lnoDie(LNO); double cs = fillScore(LNO[0], LNO[1], HOLLOW(LNO)); double m = marginAfter(sw, 1, LNO[0]); cs += fillUrgent && m >= 0 ? BREAKS_IN_TIME : reachFirst() && breakKept(sw, 1) ? BREAK_IN_REACH : 0; if (cs > ref) ref = cs; if (m > need) need = m; }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  choice %d,%d die %d last %d hollow %d | alone die %d\n", d.sr, d.sc, LNO[0], LNO[1], HOLLOW(LNO), LNA[0]); }   // the log does no work of its own: under a work budget it would change the decision
 #endif
@@ -5045,7 +5020,7 @@ static Dec fillFirstIn(Dec d) {
   // fill that loses it later. Losing it later is not enough on its own: a
   // clear's stop time puts every loss of health off, and a board spent below
   // six rows cannot rise while the stop lasts.
-#define LIVES_LONGER() (fillUrgent && (LNO[0] ? LNO[0] : 1 << 20) > refDie)
+#define LIVES_LONGER() (fillUrgent && lnoDie(LNO) > refDie)
   // the pool: by fillScore, then the shortest walk, then the swaps; nothing
   // counts that does not beat the choice and the board left alone
   Best P = { 0 }; int ptw = -1;
@@ -5255,7 +5230,7 @@ typedef struct {
 // before dies: then stop time is what buys the time to find the break.
 // (LNO: the judgement of the line asked about)
 static int spendsOk(const MwCtx *x, const int32_t *sw, int n) {
-  return leavesSixRows() || (x->urgent && (LNO[0] ? LNO[0] : 1 << 20) > x->die0Of && (readyAfterSpend(sw, n) || (!nonSpendLives() && !spendKeepsRaiseOut())));
+  return leavesSixRows() || (x->urgent && lnoDie(LNO) > x->die0Of && (readyAfterSpend(sw, n) || (!nonSpendLives() && !spendKeepsRaiseOut())));
 }
 static int mwDiesSooner(const MwCtx *x) { return x->die0 ? (LNO[0] && LNO[0] < x->die0) : LNO[0] != 0; }
 static int mwJoin(const MwCtx *x, const int32_t *sw, int n, int32_t *l2) {
@@ -5609,7 +5584,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
         int32_t one[2] = { d.sr, d.sc };
         int v = routeN ? lineJudge(routeLine, routeN, routeWait) : lineJudge(one, 1, d.waitAll);
         routeDie = (v & LV_LIVES) && !LNO[0] ? 1 << 20 : LNO[0] ? LNO[0] : 0;
-      } else routeDie = !aloneOnEngine() ? 0 : LNA[0] ? LNA[0] : 1 << 20;
+      } else routeDie = aloneDie(0);
       keepIt = keptDie > routeDie;
 #ifndef __wasm__
       if (botTraceOn && keepIt) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "KEPT %d,%d (dies %d) over the route's %s %d,%d (dies %d)\n", BT->line[0], BT->line[1], keptDie, routeN ? "line" : d.kind == K_SWAP ? "swap" : "hold", d.sr, d.sc, routeDie); }
@@ -5652,12 +5627,9 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // step takes the line's timing (a break waits for its panels to settle),
   // whichever route returned it
   if (d.kind == K_SWAP && BT->nLine == 1 && BT->line[0] == d.sr && BT->line[1] == d.sc) d.waitAll = BT->lineWaitAll;
-  // the walk held to its target first; the guards after it have the last word, survival's above all
-  d = keepTarget(d);
-  d = returnGuard(d);
-  d = perchGuard(d);
+  // the one choice (arbitrate): survival's above all
   d = setupTwos(d);
-  d = surviveGuard(d);
+  d = arbitrate(d);
   recordTarget(d);
   // a line set this decision is stamped with the presses made before it
   if (BT->nLine && (BT->nLine != nLineAfterPlay || __builtin_memcmp(BT->line, lineAfterPlay, (unsigned long)BT->nLine * 8))) { BT->linePresses = BIN[IN_PRESSES]; BT->lineBorn = BT->nNotes; }
