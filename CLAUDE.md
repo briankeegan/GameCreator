@@ -257,6 +257,17 @@ ways: a tool not listed, or a path listed that doesn't exist.
   an engine press time meets it only through `pressSeen`. `clock.test.sh`
   holds the clock to the engine; `check_time_not_swaps.mjs` fails on a cap
   coming back or a new hand-listed search.
+- **A decision is one ordered choice (`arbitrate`).** The stages propose; the
+  decision they made, the walk's target and stayAlive's choice (or the hold)
+  are judged on the engine and ranked once: breaks the next garbage in time
+  (it lives), lives, a break in reach when the next slab lands, the later loss
+  of health inside `LIVEHORIZON`, life (what it buys once done, hollow
+  costed), converted, hollow; equal: the target, the decision, the
+  alternative. A swap-back keeps the board unless it ranks higher. A rule that
+  overrides another after the fact belongs in this order, not after it. The
+  engine is reached only through `lineJudge` and `searchInTime`, which stop at
+  their share of the work (`workLeft`); the decision's closing keeps
+  `FINALJUDGES` judges' work under whatever the stages measure.
 - **Every decision fits the game's frame.** The bot plays at 60 fps:
   `BUDGETMS` in `native/bot.c` (the 16.7 ms frame less the frame's own work)
   is a decision's budget, and in a game the clock cuts one past it and the game
