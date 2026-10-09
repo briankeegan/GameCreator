@@ -1,0 +1,13 @@
+ready=LanguageSelectSetup
+scene=DiscordCommunitySetup
+scene=InputConfigMenu
+scene=TitleScreen
+scene=MainMenu
+menusel: selected og stuff
+menusel: selected mm_1_challenge_mode
+reached ChallengeModeMenu
+texts[ChallengeModeMenu]: < | > | Hurricane | Difficulty | Go! | Back
+menusel: selected go_
+reached CharacterSelectChallenge
+challengeloop on
+ready
