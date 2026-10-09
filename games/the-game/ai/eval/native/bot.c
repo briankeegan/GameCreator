@@ -3076,6 +3076,58 @@ static void tStacks(int N, int cr, int cc, double t0, double limit) {
         if (hit) tPropose(sb, n, cr, cc, t0, limit);
       }
 }
+// A THREE IN A ROW BUILT BY DROPS: the row under or beside the garbage is
+// filled as a column is (tStacks) -- each of three side-by-side cells, left
+// first, by the panel of the colour in its row or any row above that gets
+// there in the fewest swaps, walked on a copy of the grid with what falls
+// after it; a cell is filled only where its column stands one short of it.
+// Proposed only if the grid it leaves holds the three against the garbage.
+static void tRows(int N, int cr, int cc, double t0, double limit) {
+  static JLOCAL int g[TGRID + 2][WMAX + 2], h[TGRID + 2][WMAX + 2], b[TGRID + 2][WMAX + 2];
+  int32_t sw[2 * LINEMAX], sb[2 * LINEMAX];
+  for (int a = 1; a <= N; a++)
+    for (int r = 1; r <= tH; r++)
+      for (int c = 1; c + 2 <= tW; c++) {
+        if (!tBeside(r, c) && !tBeside(r, c + 1) && !tBeside(r, c + 2)) continue;
+        int any = 0;
+        for (int q = c; q <= c + 2; q++) { if (tCell[r][q] < 0) any = -1; else if (tCell[r][q] == a) any += any >= 0; }
+        if (any < 0 || any == 3) continue;   // garbage in the way; or a run already (no board at rest has one)
+        gLoad(g);
+        int n = 0, ok = 1;
+        for (int i = 0; i < 3 && ok; i++) {
+          int q = c + i;
+          if (g[r][q] == a) continue;
+          if (r > 1 && g[r - 1][q] == 0) { ok = 0; break; }   // nothing to hold a panel there
+          int bn = -1;
+          int cand[TSTACKNEAR][2], nc = 0;
+          for (int d = 1; d <= tW + tH && nc < TSTACKNEAR; d++)
+            for (int rh = r; rh <= tH && nc < TSTACKNEAR; rh++) {
+              int dc = d - (rh - r);
+              if (dc < 1) continue;
+              for (int sgn = -1; sgn <= 1 && nc < TSTACKNEAR; sgn += 2) {
+                int sc = q + sgn * dc;
+                if (sc >= 1 && sc <= tW && !(rh == r && sc >= c && sc < q) && g[rh][sc] == a) { cand[nc][0] = rh; cand[nc][1] = sc; nc++; }
+              }
+            }
+          for (int k = 0; k < nc; k++) {
+            __builtin_memcpy(h, g, sizeof h);
+            int m = n, pr = cand[k][0];
+            for (int z = 0; z < 2 * n; z++) sw[z] = sb[z];
+            paWork += TSTACKWORK;
+            if (!gWalk(h, &pr, cand[k][1], q, sw, &m) || pr != r) continue;
+            int kept = 1;
+            for (int z = c; z < q; z++) if (h[r][z] != a) kept = 0;
+            if (!kept || (bn >= 0 && m >= bn)) continue;
+            bn = m; __builtin_memcpy(b, h, sizeof b);
+            for (int z = 2 * n; z < 2 * m; z++) sb[z] = sw[z];
+          }
+          if (bn < 0) { ok = 0; break; }
+          n = bn; __builtin_memcpy(g, b, sizeof g);
+        }
+        if (!ok || n == 0) continue;
+        if (tGarbRun(g, tH, r, c, 0) || tGarbRun(g, tH, r, c + 1, 0) || tGarbRun(g, tH, r, c + 2, 0)) tPropose(sb, n, cr, cc, t0, limit);
+      }
+}
 // A SWAP THAT DROPS INTO A BREAK: a swap takes panels out from under a
 // column -- clearing them, or moving one aside into the air -- the column
 // falls, and what it falls into can be three against the garbage: at once,
@@ -3198,6 +3250,7 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
     }
   }
   tStacks(N, cr, cc, t0, limit);
+  tRows(N, cr, cc, t0, limit);
   tClears(cr, cc, t0, limit);
 }
 // A PILE LET DOWN FIRST. Garbage perched on a column or two touches little; a
@@ -5061,8 +5114,10 @@ static int mwJoin(const MwCtx *x, const int32_t *sw, int n, int32_t *l2) {
 // twos than the board has now -- a clear spends what a break needs -- or still
 // six rows of material (over six rows the material is there to spend: a full
 // board's clears make the room the slabs to come need, and the stop). Of
-// those: a break in reach first, then more twos, then spare, then the fewest
-// panels spent.
+// those: a break in reach first, then more twos -- the fewest panels spent --
+// then spare, where the biggest clear goes first (fours, combos, chains take
+// panels across the columns and earn the stop) and of those the flattest board.
+static int clearKey(int org) { return org * 100000 + (org == 1 ? LNO[3] * 100 - HOLLOW(LNO) : -LNO[3]); }
 static int clearOrganizes(const MwCtx *x, const int32_t *st) {
   if (hasGarbage(st) && anyBreakOf(st)) return 3;
   if (twosOf(st) > x->vb) return 2;
@@ -5081,13 +5136,13 @@ static int sitWaitClear(const int32_t *res, const int32_t *sw, int n, double at,
   x->tried++;
   int v = lineJudge(l2, nl, x->waitAll);
   if ((v & x->need) == x->need && LNO[1] <= x->last0 && !mwDiesSooner(x) && spendsOk(x, l2, nl)) {
-    int key = org * 1000 - LNO[3];
+    int key = clearKey(org);
     if (!x->bn || key > x->most) { x->most = key; x->bn = n; for (int k = 0; k < 2 * n; k++) x->bsw[k] = sw[k]; }
     return SIT_END;
   }
   v = lineJudge(sw, n, 0);
   if ((v & LV_LIVES) && !mwDiesSooner(x) && spendsOk(x, sw, n)) {
-    int key = org * 1000 - LNO[3];
+    int key = clearKey(org);
     if (!x->fn || key > x->fmost) { x->fmost = key; x->fn = n; for (int k = 0; k < 2 * n; k++) x->fsw[k] = sw[k]; }
   }
   return SIT_END;
