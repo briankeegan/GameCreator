@@ -236,6 +236,13 @@
     // -- the cursor is already on that square, and forcing a different one
     // spends travel frames and leaves it out of position.
     this.refuseUndo = opts.refuseUndo === true;
+    // NO BARE THREES (opts.noBareThree): a clear of three that breaks no
+    // garbage and starts no chain is dropped from the moves the bot may play
+    // whenever any other move is left -- after the survival search, so a
+    // bare three that is the only move proven to live is still played.
+    this.refuseBareThree = opts.noBareThree === true;
+    this.bareThreesDropped = 0;
+    this.bareThreesKept = 0;
     // OFF. A WASH, AND IT IS NOT FREE. 120 duels with sides alternated: 58
     // deaths against 62, 52% against 48% -- 0.4 sigma, nothing. A 60-duel
     // read said 57% against 43% and that was noise; the repo's own rule is
@@ -1747,6 +1754,7 @@
     // proof past it picks waiting over breaking: seed 2 frame 11557, a break
     // reaching 312 frames dropped for a wait reaching 372, dead 780 later.
     else if (breakWeak.length) proven = proven.concat(breakWeak);
+    proven = this._noBareThree(proven);
     // measureLife: the proven moves the engine shows living longest, then
     // keeping the most panels, before the caller's order is applied to them.
     if (this.measureLife && proven.length > 1) proven = this._measureLife(proven);
@@ -2099,6 +2107,20 @@
   //
   // Narrow on purpose: only the SAME SQUARE as the move just taken, only when
   // that move cleared nothing, and it lifts if it would empty the pool.
+  function bareThree(c) {
+    var r = c && c.resolved, sizes = r && r.comboSizes;
+    if (!sizes || !sizes.length || (r.brokeGarbage || 0) > 0 || (r.chainLength || 0) >= 2) return false;
+    for (var i = 0; i < sizes.length; i++) if (sizes[i] > 3) return false;
+    return true;
+  }
+  PuyoCpu.prototype._noBareThree = function (cands) {
+    if (!this.refuseBareThree || !cands || !cands.length) return cands;
+    var live = cands.filter(function (c) { return !bareThree(c); });
+    if (live.length === cands.length) return cands;
+    if (!live.length) { this.bareThreesKept++; return cands; }
+    this.bareThreesDropped += cands.length - live.length;
+    return live;
+  };
   PuyoCpu.prototype._notAnUndo = function (cands) {
     if (!this.refuseUndo || !cands || cands.length < 2) return cands;
     var last = this._lastSquare;
@@ -2738,7 +2760,7 @@
     }
     this._nativeNodes(cands);
     var out = this._levelForSlab(this._flatten(this._towardBreak(
-        this._notAnUndo(this._heightCap(this._doomed(this._survivors(cands)))))));
+        this._notAnUndo(this._heightCap(this._noBareThree(this._doomed(this._survivors(cands))))))));
     return this._lastResort(out);
   };
 
