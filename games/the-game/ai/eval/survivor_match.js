@@ -93,7 +93,7 @@ function Match(level, L) {
   this.arrivals = [];      // garbage on its way (arrivalsOf)
   this.line = null;        // the proven line after the plan: { steps, at } (follow)
   this.knew = [];          // the garbage on its way the plan was decided knowing
-  this.stats = { frames: 0, frameMs: 0, slowFrames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0, unforeseen: 0, reasked: 0, revealed: 0, lineup: 0, tookLineup: 0, touch: 0, tookTouch: 0, unasked: 0, rewalked: 0, break1: 0, took1: 0, break2: 0, took2: 0, break3: 0, took3: 0, swaps: 0, again: 0 };
+  this.stats = { frames: 0, frameMs: 0, slowFrames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0, unforeseen: 0, reasked: 0, revealed: 0, lineup: 0, tookLineup: 0, touch: 0, tookTouch: 0, unasked: 0, rewalked: 0, break1: 0, took1: 0, break2: 0, took2: 0, break3: 0, took3: 0, swaps: 0, undone: 0 };
   this.history = []; this.decided = []; this.asked = []; this.snaps = []; this.dumped = false;
   this.msPerFrame = L.msPerFrame || 1000 / 60; this.wall = 0;   // how fast frames come (soon); a link may fix it (msPerFrame)
   // A question from the last match is not this one's: its answer is dropped.
@@ -258,17 +258,26 @@ Match.prototype.take = function (truth) {
       if (!this.stats.lateWorst || now - a.at > this.stats.lateWorst.over)
         this.stats.lateWorst = { over: now - a.at, ms: a.ms, br: a.brMs, took: a.diag && a.diag.took, survive: a.diag && a.diag.survive, budget: a.diag && a.diag.budget, queued: a.queued };
     }
+    // A swap that only puts back the two panels the swap before it exchanged is
+    // never played: the hold it stands for is.
+    if (a.kind === 'swap' && move && this.lastSwap) {
+      var us = swapOf(board, move), lw = this.lastSwap;
+      if (us.ids && lw.move[0] === move[0] && lw.move[1] === move[1] && lw.ids[0] === us.ids[1] && lw.ids[1] === us.ids[0]) {
+        a = Object.assign({}, a, { kind: 'hold', move: null, line: null });
+        move = null;
+        this.stats.undone++;
+      }
+    }
     var step = L.hands.keys(board, hold, a.kind, move, arrivals);
     if (!step) { this.stats.refused++; this.acted = false; continue; }
     this.acted = true;
     this.stats.played++;
     // Each planned frame carries the raise held after it.
     var sw = a.kind === 'swap' ? swapOf(board, move) : null;
-    // the swaps played, and how many of them the same square as the one before
-    if (a.kind === 'swap' && move) {
+    // the swaps played
+    if (a.kind === 'swap' && move && sw && sw.ids) {
       this.stats.swaps++;
-      if (this.lastSquare && this.lastSquare[0] === move[0] && this.lastSquare[1] === move[1]) this.stats.again++;
-      this.lastSquare = [move[0], move[1]];
+      this.lastSwap = sw;
     }
     for (var t in this.plan) if (+t >= at) delete this.plan[t];
     for (var i = 0; i < step.inputs.length; i++) this.plan[at + i] = { bits: step.inputs[i], hold: step.holds[i], swap: sw };

@@ -310,7 +310,7 @@
     this._line = null;
     this.shallowMovesDropped = 0;
     this.undoMovesDropped = 0;
-    this._lastSquare = null;
+    this._lastSwap = null;
     this.engineDeath = opts.engineDeath !== false;
     // RULES 14's two rules, behind one switch so the pair can be measured
     // against the procedure they changed. A rule that cannot be switched off
@@ -2090,9 +2090,10 @@
   // The evaluator scores every candidate on its own board and has no memory,
   // so on a quiet board the swap it liked last decision is still the one it
   // likes -- and playing it again just undoes it. A swap of the square the
-  // last move swapped, when that move cleared nothing, is never a candidate;
-  // the next best is (a hold, or another square). It lifts only if it would
-  // empty the pool.
+  // last move swapped, while it still holds the two panels that swap
+  // exchanged (nothing has cleared or fallen there since), is never a
+  // candidate; the next best is (a hold, or another square). It lifts only if
+  // it would empty the pool.
   //
   // A swap in progress also holds the stack's rise lock (updateRiseLock), so
   // a bot that is always mid-swap can never raise.
@@ -2128,14 +2129,12 @@
   };
   PuyoCpu.prototype._notAnUndo = function (cands) {
     if (!cands || cands.length < 2) return cands;
-    var last = this._lastSquare;
-    if (!last) return cands;
-    var live = [], i, m;
-    for (i = 0; i < cands.length; i++) {
-      m = cands[i].move;
-      if (m && m[0] === last[0] && m[1] === last[1]) continue;
-      live.push(cands[i]);
-    }
+    var last = this._lastSwap, rows = this.stack && this.stack.panels;
+    if (!last || !rows) return cands;
+    // the square holds the two panels the last swap exchanged, as it left them
+    var row = rows[last.move[0]], a = row && row[last.move[1]], b = row && row[last.move[1] + 1];
+    if (!a || !b || a.id !== last.right || b.id !== last.left) return cands;
+    var live = cands.filter(function (c) { return !(c.move && c.move[0] === last.move[0] && c.move[1] === last.move[1]); });
     if (!live.length || live.length === cands.length) return cands;
     this.undoMovesDropped += cands.length - live.length;
     return live;
@@ -2765,8 +2764,8 @@
     }
     this._nativeNodes(cands);
     this._allCands = cands;
-    var out = this._levelForSlab(this._flatten(this._towardBreak(
-        this._notAnUndo(this._heightCap(this._noBareThree(this._doomed(this._survivors(cands))))))));
+    var out = this._notAnUndo(this._levelForSlab(this._flatten(this._towardBreak(
+        this._heightCap(this._noBareThree(this._doomed(this._survivors(cands))))))));
     return this._lastResort(out);
   };
 
@@ -3117,9 +3116,12 @@
                             steps: line.slice(1).map(function (x) { return isLong(x.m) ? { long: x.t - t0 } : x.m; }) };
       }
     }
-    // The square to refuse next time: only a swap that changed nothing.
-    this._lastSquare = (cand && cand.move && cand.resolved &&
-                        !cand.resolved.clearedPanels) ? cand.move : null;
+    // The swap to refuse undoing next time: the square and the two panels.
+    this._lastSwap = null;
+    if (cand && cand.kind === 'swap' && cand.move && this.stack && this.stack.panels) {
+      var lr = this.stack.panels[cand.move[0]], la = lr && lr[cand.move[1]], lb = lr && lr[cand.move[1] + 1];
+      if (la && lb && la.id != null && lb.id != null && la.id !== lb.id) this._lastSwap = { move: cand.move, left: la.id, right: lb.id };
+    }
     var bar = this._bar();
     this._firedLast = !!cand && modes.fires(cand.resolved, bar.links, bar.wide);
     // THE SAME QUESTION THE FILTER ASKED. selfInflicted means "it chose a
