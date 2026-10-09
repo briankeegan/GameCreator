@@ -277,6 +277,13 @@ ways: a tool not listed, or a path listed that doesn't exist.
   add it, fix it in the shared function that decides it -- the rule, its test
   and its gate with it -- merge to main, scan again. A worse scan is tuned forward,
   never reverted. Local runs are for testing tools, not for reading games.
+  Fix what exists, through the shared functions; no new rules.
+- **Commit and push as you go.** Every change is committed and pushed to
+  `main` the moment it is made: the source first and the scan dispatched
+  with it, the wasm rebuild after in the background, a scan's line in
+  `survival_scans.tsv` as soon as it is fetched. Nothing waits uncommitted
+  for a scan, a rebuild or a check. Anything slow runs in the background, so
+  an interruption stops nothing.
 
 ## Infrastructure
 
