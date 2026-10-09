@@ -278,7 +278,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   and its gate with it -- merge to main, scan again. A worse scan is tuned forward,
   never reverted. Local runs are for testing tools, not for reading games.
   Fix what exists, through the shared functions; no new rules. Every caller
-  asking the same question calls the same shared function, in its fullest
+  asking the same question calls the same shared function, in its best
   form (`breakLines`: every line that breaks by distance) -- two callers
   asking it two ways is a discrepancy waiting to decide a game.
 - **Commit and push as you go.** Every change is committed and pushed to
