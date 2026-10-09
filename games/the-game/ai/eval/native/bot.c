@@ -3212,7 +3212,8 @@ static void tClears(int cr, int cc, double t0, double limit) {
     }
 }
 static void targetLines(const int32_t *st, int cr, int cc, double t0, double limit) {
-  if (!tGrid(st)) return;
+  // the planner's work stops where the decision's does (workLeft)
+  if (workLeft() <= 0 || !tGrid(st)) return;
   int N = st[O_N];
   int32_t sw[2 * LINEMAX]; int row[WMAX + 1];
   tDrops(cr, cc, t0, limit);
@@ -3279,7 +3280,7 @@ static void targetAfterDrops(const int32_t *st, int cr, int cc, double t0, doubl
   x.g0 = garbSum(st); x.n = 0;
   if (!(x.g0 > 0)) return;
   searchInTime(st, cr, cc, t0, 0, limit, lsTopped, ENGINE_BASE ? ENGINE_CAN : 0, ENGINE_WAITS, TADWORK, sitDrops, &x, 0, 0, 0);
-  for (int i = 0; i < x.n; i++) {
+  for (int i = 0; i < x.n && workLeft() > 0; i++) {
     int32_t st1[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t wt[32][WMAX];
     int ls = lineState(x.sw[i], x.len[i], st1, can, wt, cur, &t), n0 = nLines;
     if (ls == 0 && t <= limit) { for (int k = 0; k < 2 * x.len[i]; k++) tPfx[k] = x.sw[i][k]; tPfxN = x.len[i]; targetLines(st1, cur[0], cur[1], t, limit); tPfxN = 0; }
