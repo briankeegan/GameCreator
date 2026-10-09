@@ -2083,8 +2083,7 @@ static Dec waitForDrain(Dec d) {
 // than the board left alone, and BREAKS if it converts more garbage.
 //
 // IT MUST NOT DIE: a choice that does not live, while the time is short
-// (LIVEHORIZON) or, topped with every slab converting, while the board left
-// alone dies anywhere the judge sees, is replaced by a line that lives and pays -- breaking first.
+// (LIVEHORIZON), is replaced by a line that lives and pays -- breaking first.
 // BREAKING COMES FIRST: a line that breaks and lives is played over a choice
 // that does not break. A BREAK IS KEPT IN REACH: topped, a choice that leaves
 // no break in time is replaced by a living, paying line that
@@ -3586,27 +3585,7 @@ static Dec saKeep(Dec d, int die) {
   for (int k = 0; k < 2 * saN; k++) saLine[k] = BT->line[k];
   return d;
 }
-// garbage on the board, and none of it still to break: every cell converting (busy)
-static int allConverting(const int32_t *st) {
-  if (!hasGarbage(st)) return 0;
-  for (int c = 1; c <= BW; c++) if (U(st, GARB + c) & ~U(st, BUSY + c)) return 0;
-  return 1;
-}
-static Dec stayAliveIn(Dec d);
-// A LATER DEATH'S SEARCH STOPS SHORT: stayAlive's search runs past where it is
-// stopped by up to 13,568 units (combo_storm seed 3: 42,849 spent from 37,761
-// used, 33,512 from 47,634, of OPTWORK 67,500), more than OPTWORK leaves below
-// WORKBUDGET; for a death past LIVEHORIZON it stops SAOVER short of WORKBUDGET
-#define SAOVER 14000
 static Dec stayAlive(Dec d) {
-  if (!(aloneOnEngine() && LNA[0] > LIVEHORIZON)) return stayAliveIn(d);
-  double keep = stageEnd, e = rdW0 + WORKBUDGET - SAOVER;
-  if (e < stageEnd) stageEnd = e;
-  d = stayAliveIn(d);
-  stageClose(keep);
-  return d;
-}
-static Dec stayAliveIn(Dec d) {
   saSet = 0;
   if (d.kind != K_SWAP && d.kind != K_HOLD) return d;
   if (d.kind == K_SWAP && !d.hasMove) return d;
@@ -3616,13 +3595,9 @@ static Dec stayAliveIn(Dec d) {
   // a line played on is what the guard holds the decision to (surviveGuard)
   if (lineLast == 1 && BT->lineKind == LINE_BREAK) return saKeep(d, playDie);
   // the engine, not the estimate, says whether the board is dying: health
-  // lost within LIVEHORIZON frames, left alone -- or, topped with every slab
-  // on the board already converting, anywhere the judge sees: then nothing on
-  // the board can be kept for a break, and what the conversion drops must fit
-  // (its search stops short: stayAlive, above)
-  if (!aloneOnEngine() || !LNA[0] || LNA[0] > LINEREACH ||
-      (LNA[0] > LIVEHORIZON && (!BIN[IN_TOPPED] || !allConverting(DBASE)))) return lineLast == 1 ? saKeep(d, playDie) : d;
+  // lost within LIVEHORIZON frames, left alone
   linesReset();
+  if (!aloneOnEngine() || !LNA[0] || LNA[0] > LIVEHORIZON) return lineLast == 1 ? saKeep(d, playDie) : d;
   linesFind(2, 0);
   // NEVER DYING FIRST: the choice is kept only if it lives as long as the line that lives longest
   blReady = 1; blAlone = LNA[0];
