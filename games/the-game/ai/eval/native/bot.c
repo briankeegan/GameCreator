@@ -2989,7 +2989,7 @@ static int tGarbRun(int g[][WMAX + 2], int h, int r, int c, int vert) {
 }
 static void tDrops(int cr, int cc, double t0, double limit) {
   static JLOCAL int g[TGRID + 2][WMAX + 2];
-  for (int r = 1; r <= tH; r++)
+  for (int r = 1; r <= tH && workLeft() > 0; r++)
     for (int c = 1; c < tW; c++) {
       int x = tCell[r][c], y = tCell[r][c + 1];
       if (x < 0 || y < 0 || x == y) continue;
@@ -3065,7 +3065,7 @@ static int gWalk(int g[][WMAX + 2], int *r, int s, int t, int32_t *sw, int *n) {
 static void tStacks(int N, int cr, int cc, double t0, double limit) {
   static JLOCAL int g[TGRID + 2][WMAX + 2], h[TGRID + 2][WMAX + 2], b[TGRID + 2][WMAX + 2];
   int32_t sw[2 * LINEMAX], sb[2 * LINEMAX];
-  for (int a = 1; a <= N; a++)
+  for (int a = 1; a <= N && workLeft() > 0; a++)
     for (int c = 1; c <= tW; c++)
       for (int r = 1; r + 2 <= tH; r++) {
         if (!tBeside(r, c) && !tBeside(r + 1, c) && !tBeside(r + 2, c)) continue;
@@ -3117,7 +3117,7 @@ static void tStacks(int N, int cr, int cc, double t0, double limit) {
 static void tRows(int N, int cr, int cc, double t0, double limit) {
   static JLOCAL int g[TGRID + 2][WMAX + 2], h[TGRID + 2][WMAX + 2], b[TGRID + 2][WMAX + 2];
   int32_t sw[2 * LINEMAX], sb[2 * LINEMAX];
-  for (int a = 1; a <= N; a++)
+  for (int a = 1; a <= N && workLeft() > 0; a++)
     for (int r = 1; r <= tH; r++)
       for (int c = 1; c + 2 <= tW; c++) {
         if (!tBeside(r, c) && !tBeside(r, c + 1) && !tBeside(r, c + 2)) continue;
@@ -3219,12 +3219,14 @@ static void tClears(int cr, int cc, double t0, double limit) {
   gLoad(g0);
   for (int r = 1; r <= tH; r++)
     for (int c = 1; c < tW; c++) {
+      if (workLeft() <= 0) return;
       int cl, b = gSwapResolve(g, g0, r, c, &cl);
       alone[r][c] = b == 1;
       if (b == 1) { int32_t sw[2] = { r, c }; tPropose(sw, 1, cr, cc, t0, limit); }
     }
   for (int r = 1; r <= tH; r++)
     for (int c = 1; c < tW; c++) {
+      if (workLeft() <= 0) return;
       int cl, b = gSwapResolve(g, g0, r, c, &cl);
       if (b != 0) continue;
       int32_t sw[4] = { r, c, 0, 0 };
@@ -3240,12 +3242,13 @@ static void tClears(int cr, int cc, double t0, double limit) {
     }
 }
 static void targetLines(const int32_t *st, int cr, int cc, double t0, double limit) {
-  // the planner's work stops where the decision's does (workLeft)
+  // the planner's work stops where the decision's does (workLeft): at the
+  // head of every loop that proposes, so no one call runs past it
   if (workLeft() <= 0 || !tGrid(st)) return;
   int N = st[O_N];
   int32_t sw[2 * LINEMAX]; int row[WMAX + 1];
   tDrops(cr, cc, t0, limit);
-  for (int a = 1; a <= N; a++) {
+  for (int a = 1; a <= N && workLeft() > 0; a++) {
     // three in a column: each row's nearest panel of the colour walked to it
     for (int c = 1; c <= tW; c++)
       for (int r = 1; r + 2 <= tH; r++) {
