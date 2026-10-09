@@ -934,14 +934,19 @@ static Res CR, CR2;
 // asked by the decision (raiseSafe) and by the front every frame it holds a
 // raise (front.c raiseRoomNow): no room, no raise.
 static int raiseRoom(int tallest, int queued, int raising) { return BH - tallest - 1 - queued - (raising != 0); }
+static JLOCAL int raiseShort;   // raiseSafe refused for room (1) or for a clear in time (0), for the trace
 static int raiseSafe(const int32_t *base) {
+  raiseShort = 1;
   if (BIN[IN_TOPPED] || BIN[IN_STACKTOPPED]) return 0;
   int queued = (int)BIN[IN_SLABH];
   int free = raiseRoom(tallestBoard(base), queued, BIN[IN_RAISING] != 0);
   if (free <= 0) return 0;
+  raiseShort = 0;
   double clear = INF;
   for (int q = 0; q < nPool; q++)
     if (POOL[q].kind == K_SWAP && POOL[q].res.total > 0 && POOL[q].moveFrames < clear) clear = POOL[q].moveFrames;
+  // no clear the board holds now: the raised board's own, in time (the shared search, fireInTimeOf)
+  if (clear == INF) return risenMasks(base, RZ) && fireInTimeOf(RZ);
   return free * BIN[IN_FPR] > clear + REACT;
 }
 // WHAT A SWAP CAUSES. On a board in motion the clear already resolving is in
@@ -1205,7 +1210,7 @@ static int raiseModeOf(const int32_t *base, int poolBreak) {
     fits = BH - tallestBoard(base) - 1 - rows - (BIN[IN_RAISING] != 0) > 0;
   BT->wantRows = rows;
   if (BT->opening && (BIN[IN_INCOMING] || !fits)) BT->opening = 0;
-  if (!fits) { raiseGate = 4; return 0; }
+  if (!fits) { raiseGate = raiseShort ? 4 : 10; return 0; }
   // READY BEFORE IT RAISES: with garbage to come, a raise may not cost the
   // break ready for the slab that lands -- the risen board keeps it. A board
   // with none ready loses nothing by rising, and gains the material to build one.
