@@ -281,8 +281,9 @@ ways: a tool not listed, or a path listed that doesn't exist.
   asking the same question calls the same shared function, in its best
   form (`breakLines`: every line that breaks by distance) -- two callers
   asking it two ways is a discrepancy waiting to decide a game.
-  No major refactor until the code in the way is the problem: leave what
-  you touch better than you found it.
+  Refactor as you see it, not ahead of it: where you find two callers
+  asking one question two ways, make them share the function then; leave
+  what you touch better than you found it.
 - **Commit and push as you go.** Every change is committed and pushed to
   `main` the moment it is made: the source first and the scan dispatched
   with it, the wasm rebuild after in the background, a scan's line in
