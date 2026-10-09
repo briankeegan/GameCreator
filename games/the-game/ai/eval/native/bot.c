@@ -2893,6 +2893,7 @@ static int tWalk(int *row, int r, int s, int t, int32_t *sw, int *n) {
 // the swaps played before the search's board (targetAfterDrops): every line found starts with them
 static JLOCAL int32_t tPfx[2 * LINEMAX]; static JLOCAL int tPfxN;
 static void tProposeIn(const int32_t *sw, int n, int cr, int cc, double t0, double limit);
+static int tDupes;   // proposals already in the table (the trace's)
 static void tPropose(const int32_t *sw0, int n0, int cr, int cc, double t0, double limit) {
   if (!tPfxN) { tProposeIn(sw0, n0, cr, cc, t0, limit); return; }
   if (n0 < 1 || n0 + tPfxN > LINEMAX) return;
@@ -2903,7 +2904,7 @@ static void tPropose(const int32_t *sw0, int n0, int cr, int cc, double t0, doub
   int n = n0 + tPfxN;
   if (!tTimeMode && nLines >= MAXLINES) return;
   for (int i = 0; i < nLines; i++)
-    if (LINES[i].n == n && !__builtin_memcmp(LINES[i].sw, sw, (unsigned long)n * 8)) return;
+    if (LINES[i].n == n && !__builtin_memcmp(LINES[i].sw, sw, (unsigned long)n * 8)) { tDupes++; return; }
   double at = lineFrames(sw0, n0, cr, cc, t0, lsTopped);   // the clock, from the frame the prefix leaves the front deciding
   if (tTimeMode) { if (at < tTimeMin) tTimeMin = at; return; }
   if (at > limit) return;
@@ -2915,7 +2916,7 @@ static void tProposeIn(const int32_t *sw, int n, int cr, int cc, double t0, doub
   if (n < 1 || (!tTimeMode && nLines >= MAXLINES)) return;
   if (!tTimeMode)
     for (int i = 0; i < nLines; i++)
-      if (LINES[i].n == n && !__builtin_memcmp(LINES[i].sw, sw, (unsigned long)n * 8)) return;
+      if (LINES[i].n == n && !__builtin_memcmp(LINES[i].sw, sw, (unsigned long)n * 8)) { tDupes++; return; }
   double at = lineFrames(sw, n, cr, cc, t0, lsTopped);   // the clock
   if (tTimeMode) { if (at < tTimeMin) tTimeMin = at; return; }
   if (at > limit) return;
@@ -4455,9 +4456,10 @@ static Dec readyWhenLands(Dec d) {
     static ST RWB; uint32_t can[WMAX]; uint8_t wt[32][WMAX]; int32_t cur[2], tl;
     if (lineLandedFull(0, 0, RWB, can, wt, cur, &tl) == 0) {
 #ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "RWL by distance: lands at %d\n", tl); }
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "RWL by distance: lands at %d | garbage %d work left %.0f lines before %d\n", tl, hasGarbage(RWB), workLeft(), nLines); }
 #endif
     int n0 = nLines;
+    tDupes = 0;
     targetLines(RWB, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, INF);
     static unsigned char wk[MAXLINES];
     for (int i = n0; i < nLines; i++) wk[i] = (char)(LINES[i].n < 2);
@@ -4473,7 +4475,7 @@ static Dec readyWhenLands(Dec d) {
       if (readyInTime(l->sw, l->n - 1, &r, &c)) got = at;
     }
 #ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "RWL by distance: %d lines, %d tried, got %d\n", nLines - n0, tried, got); }
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "RWL by distance: %d lines, %d tried, got %d, %d already found\n", nLines - n0, tried, got, tDupes); }
 #endif
     if (got >= 0) {
       LineC l = LINES[got];
