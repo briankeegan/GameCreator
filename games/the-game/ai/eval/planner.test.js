@@ -63,6 +63,14 @@ function breaks(rows, line) {
     return resolve(g) === 1;
   });
 }
+// THE SHARED SEARCH finds the break too (searchInTime: what breakFirst and
+// readiness ask), however many quiet boards it resolves before it
+function searched(name, rows, cr, cc) {
+  var line = BN.breakSearch(state(rows), cr, cc);
+  assert.ok(line, name + ': the search finds no break');
+  assert.ok(breaks(rows, line), name + ': the search\'s ' + JSON.stringify(line) + ' does not break');
+  console.log('search: ' + name + ': ' + JSON.stringify(line));
+}
 function check(name, rows) {
   var lines = BN.targetLines(state(rows), 1, 1);
   assert.ok(lines.length > 0, name + ': no line proposed');
@@ -74,3 +82,5 @@ function check(name, rows) {
 check('pull a support, then swap', ['gggg..', '..gggg', '.gggg.', 'gggg..', '5.....', '55...1', '63..31', '266.26', '144155', '163322', '255233', '245516']);
 // two 5s walked over column 3 drop onto its 5: three against the pile
 check('walk off a ledge', ['gggggg', '5....5', '13.214', '265352', '341236', '126451', '463125', '214362']);
+// the cursor at the bottom: the quiet boards nearer it are resolved before the break
+searched('pull a support, then swap', ['gggg..', '..gggg', '.gggg.', 'gggg..', '5.....', '55...1', '63..31', '266.26', '144155', '163322', '255233', '245516'], 1, 1);

@@ -312,6 +312,14 @@
     return rc ? null : { cells: o[0], converted: o[1], clears: o[2], chain: o[3], stop: o[4], frames: o[5] };
   }
   function slabReady(st, w, h, c) { put(st); return ex.bit_slab_ready(w, h, c) !== 0; }
+  // the shared search's soonest break on a board (bot.c searchInTime): [[r, c], ...] or null
+  function breakSearch(st, cr, cc) {
+    put(st);
+    if (!ex.bit_break_search(cr, cc)) return null;
+    var m = heap(), n = m[LIST], line = [];
+    for (var k = 0; k < n; k++) line.push([m[LIST + 1 + 2 * k], m[LIST + 2 + 2 * k]]);
+    return line;
+  }
   // the distance planner's lines on a board (bot.c targetLines): [[r, c], ...] each
   function targetLines(st, cr, cc) {
     put(st);
@@ -324,7 +332,7 @@
     }
     return out;
   }
-  return { record: record, recorded: recorded, replay: replay, _checkbf: checkbf, slabReady: slabReady, targetLines: targetLines, loadEngine: loadEngine, engineOutcome: engineOutcome, fits: fits, resolve: resolve, resolveTimed: resolveTimed, scan: scan, load: load, options: options,
+  return { record: record, recorded: recorded, replay: replay, _checkbf: checkbf, slabReady: slabReady, targetLines: targetLines, breakSearch: breakSearch, loadEngine: loadEngine, engineOutcome: engineOutcome, fits: fits, resolve: resolve, resolveTimed: resolveTimed, scan: scan, load: load, options: options,
            botNew: botNew, botIn: botIn, botStates: botStates, botDecide: botDecide, botTab: botTab, botPut: botPut, botTest: botTest,
            botPoolMasks: botPoolMasks, deadlyCalls: deadlyCalls, opening: opening, putRecords: putRecords };
 }));

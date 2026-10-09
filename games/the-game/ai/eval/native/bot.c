@@ -5588,3 +5588,16 @@ __attribute__((export_name("bit_target_lines"))) int32_t bit_target_lines(int32_
   }
   return nLines;
 }
+// THE SHARED SEARCH ON A BOARD, for its tests: the soonest break (sitBreaks)
+// from the cursor at (cr, cc), no time bound. LIST gets its length then its
+// swaps; 1 if one is found.
+__attribute__((export_name("bit_break_search"))) int32_t bit_break_search(int32_t cr, int32_t cc) {
+  memoRoom(); threadInit();
+  extern PATLS double paWork;
+  rdW0 = paWork;
+  int32_t sw[2 * LINEMAX]; int n = 0; double at = 0;
+  int found = searchInTime(IN, cr, cc, 0, 0, INF, 0, 0, 0, 20000, sitBreaks, 0, sw, &n, &at);
+  LIST[0] = found ? n : 0;
+  for (int k = 0; k < 2 * n && k < 2 * LINEMAX; k++) LIST[1 + k] = sw[k];
+  return found;
+}
