@@ -145,7 +145,14 @@ function key(c) { return c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[
 function overrule(d, prep, bot) {
   var br = prep.br, want = prep.want;
   if (br && (prep.popping && br.lineup || br.touch) && !want[key(d)]) {
-    var lk = Object.keys(want).filter(function (k) { return /^\d+,\d+$/.test(k); })[0];
+    var keys = Object.keys(want).filter(function (k) { return /^\d+,\d+$/.test(k); }), lk = keys[0];
+    // nearestFirst: of the breaks wanted, the one the cursor reaches soonest
+    if (bot && bot.nearestFirst && keys.length > 1) {
+      var near = Infinity;
+      (bot._allCands || []).forEach(function (c) {
+        if (c.kind === 'swap' && c.move && c.travel != null && c.travel < near && keys.indexOf(c.move[0] + ',' + c.move[1]) >= 0) { near = c.travel; lk = c.move[0] + ',' + c.move[1]; }
+      });
+    }
     var mv = lk && lk.split(',').map(Number);
     if (mv && bot && bot.refuseBareThree && bot.threeOnlySwap(mv)) return d;
     if (mv) return { kind: 'swap', move: mv, overruled: true };

@@ -26,9 +26,13 @@ function botOptions(p, threads) {
     if (!(k in weights)) throw new Error('survivor profile: override ' + k + ' is not a weight');
     weights[k] = p.overrides[k];
   });
+  // travelFloor: the cursor's walk always costs at least this much (a
+  // travelCost below it is raised to it), so no weight set treats a long
+  // walk as a good thing.
+  if (p.travelFloor && !((weights.travelCost || 0) >= p.travelFloor)) weights.travelCost = p.travelFloor;
   return { weights: weights,
            reaction: p.reaction, swapGap: p.swapGap, cursorMoveFrames: p.cursorMoveFrames, depth: p.depth, beam: 0, rise: true, allowRaise: true,
-           modes: p.modes, engine: true, native: true, nativeCands: !!p.nativeCands, threesLast: !!p.threesLast, threads: threads };
+           modes: p.modes, engine: true, native: true, nativeCands: !!p.nativeCands, threesLast: !!p.threesLast, nearestFirst: !!p.nearestFirst, threads: threads };
 }
 
 // ---------------------------------------------------------------- garbage on its way

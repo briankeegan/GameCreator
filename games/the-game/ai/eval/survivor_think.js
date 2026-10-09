@@ -20,9 +20,22 @@ var SPEND = Number(process.env.GC_SURVIVOR_SPEND) || 0.6;   // budget searched p
 var DEADLINE_MARGIN_MS = Number(process.env.GC_SURVIVOR_MARGIN) || 30;
 var TIGHT_MS = Number(process.env.GC_SURVIVOR_TIGHT) || 80;   // due sooner than this: one move deep
 var LOOKAHEAD_MARGIN_MS = 15;   // the second ply ends this long before the answer is due, for the rest and the post
+// The frames the cursor walks to the swap played (null for anything else).
+function walkOf(bot, d) {
+  if (!d || d.kind !== 'swap' || !d.move) return null;
+  var all = bot._allCands || [];
+  for (var i = 0; i < all.length; i++)
+    if (all[i].kind === 'swap' && all[i].move && all[i].move[0] === d.move[0] && all[i].move[1] === d.move[1]) return all[i].travel == null ? null : all[i].travel;
+  return null;
+}
 module.exports = function think(cfg) {
   var OPTS = SH.botOptions(cfg.profile, cfg.threads);
-  if (cfg.weights) OPTS.weights = cfg.weights;
+  function floored(w) {
+    var f = cfg.profile && cfg.profile.travelFloor;
+    if (f && !((w.travelCost || 0) >= f)) { w = Object.assign({}, w); w.travelCost = f; }
+    return w;
+  }
+  if (cfg.weights) OPTS.weights = floored(cfg.weights);
   var rates = [];   // budget searched per millisecond over the last decisions
   function search() {
     if (!BS) BS = new (require(path.join(DIR, 'native.js')).server.Search)({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames, threads: OPTS.threads || 1 });
@@ -131,7 +144,7 @@ module.exports = function think(cfg) {
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
             mem: NativeMem(),
             breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
-            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped } };
+            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, walk: walkOf(bot, d) } };
     } catch (e) {
       if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
       else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e) + ' [inc ' + (board && board.incoming ? board.incoming.length : '?') + ', arr ' + (m.arrivals ? m.arrivals.length : '?') + ']', ms: Date.now() - t0 };
@@ -146,6 +159,6 @@ module.exports = function think(cfg) {
     }
   function reset() { if (bot && bot._nat) nat = bot._nat; if (bot && bot._candNat) candNat = bot._candNat; bot = null; snap = null; }
   // New weights take effect from the next match (reset).
-  function setWeights(w) { OPTS.weights = w; }
+  function setWeights(w) { OPTS.weights = floored(w); }
   return { answer: answer, reset: reset, setWeights: setWeights };
 };

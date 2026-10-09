@@ -243,6 +243,7 @@
     // breaks garbage is played as any move is. It runs after the survival
     // search, so a three that is the only move proven to live is still played.
     this.refuseBareThree = opts.threesLast === true;
+    this.nearestFirst = opts.nearestFirst === true;
     this.bareThreesDropped = 0;
     this.bareThreesKept = 0;
     this.bareThreesTopped = 0;
@@ -2923,7 +2924,16 @@
       if (proven && self.preferProven) r = Math.min(r, self.preferProven(c, i));
       if (r < best) best = r; return r;
     });
-    return best < Infinity ? list.filter(function (c, i) { return ranks[i] === best; }) : none;
+    if (!(best < Infinity)) return none;
+    var top = list.filter(function (c, i) { return ranks[i] === best; });
+    // NEAREST FIRST (opts.nearestFirst): of moves ranked the same, the ones
+    // the cursor reaches soonest.
+    if (this.nearestFirst && top.length > 1) {
+      var near = Infinity;
+      top.forEach(function (c) { if (c.travel != null && c.travel < near) near = c.travel; });
+      if (near < Infinity) top = top.filter(function (c) { return c.travel == null || c.travel === near; });
+    }
+    return top;
   };
   PuyoCpu.prototype._decide = function () {
     // The engine in C's nodes last one decision. The line being followed is
