@@ -3,10 +3,10 @@
 //
 //   node threesLast.test.js
 //
-// A move whose clears are all threes and start no chain -- garbage broken or
-// not -- is dropped while any other move is left; it is kept when it is all
-// there is (the survival search has already said what lives). A chain, a
-// combo of four and a move clearing nothing all stay. Topped out, a three is
+// A move whose clears are all threes, break no garbage and start no chain is
+// dropped while any other move is left; it is kept when it is all there is
+// (the survival search has already said what lives). A three breaking
+// garbage, a chain, a combo of four and a move clearing nothing all stay. Topped out, a three is
 // allowed: that is the last resort it is kept for.
 var assert = require('assert');
 var P = require('./puyocpu.js');
@@ -18,22 +18,24 @@ bot.refuseBareThree = true; bot.bareThreesDropped = 0; bot.bareThreesKept = 0;
 var bare = cand('bare', [3], 1, 0), hold = cand('hold', [], 0, 0), brk = cand('break', [3], 1, 2),
     chain = cand('chain', [3, 3], 2, 0), four = cand('four', [4], 1, 0), two3 = cand('two threes', [3, 3], 1, 0);
 var names = function (l) { return l.map(function (c) { return c.name; }).join(','); };
-assert.strictEqual(names(bot._noBareThree([bare, hold, brk, chain, four, two3])), 'hold,chain,four');
-assert.strictEqual(bot.bareThreesDropped, 3);
-assert.strictEqual(names(bot._noBareThree([bare, brk])), 'bare,break', 'threes only: all kept');
+assert.strictEqual(names(bot._noBareThree([bare, hold, brk, chain, four, two3])), 'hold,break,chain,four');
+assert.strictEqual(bot.bareThreesDropped, 2);
+assert.strictEqual(names(bot._noBareThree([bare, brk])), 'break');
 assert.strictEqual(names(bot._noBareThree([bare])), 'bare', 'the only move left is played');
-assert.strictEqual(bot.bareThreesKept, 2);
+assert.strictEqual(bot.bareThreesKept, 1);
 bot.stack = { wasToppedOut: true };
 assert.strictEqual(names(bot._noBareThree([bare, hold])), 'bare,hold', 'topped out, a three is allowed');
 bot.stack = { wasToppedOut: false };
 bot.refuseBareThree = false;
 assert.strictEqual(names(bot._noBareThree([bare, hold])), 'bare,hold', 'off unless the profile asks');
 bot._allCands = [{ kind: 'swap', move: [3, 2], resolved: brk.resolved }, { kind: 'swap', move: [4, 2], resolved: chain.resolved }];
-assert.strictEqual(bot.threeOnlySwap([3, 2]), true, 'a three that breaks garbage is a three');
+bot._allCands.push({ kind: 'swap', move: [5, 2], resolved: bare.resolved });
+assert.strictEqual(bot.threeOnlySwap([5, 2]), true);
+assert.strictEqual(bot.threeOnlySwap([3, 2]), false, 'a three that breaks garbage is allowed');
 assert.strictEqual(bot.threeOnlySwap([4, 2]), false);
-var SP = require('./survivor_prefer.js'), prep = { br: { touch: true }, want: { '3,2': true }, popping: false };
+var SP = require('./survivor_prefer.js'), prep = { br: { touch: true }, want: { '5,2': true }, popping: false };
 bot.refuseBareThree = true;
 assert.strictEqual(SP.overrule({ kind: 'hold' }, prep, bot).kind, 'hold', 'a three is not forced over the bot');
-prep.want = { '4,2': true };
-assert.deepStrictEqual(SP.overrule({ kind: 'hold' }, prep, bot).move, [4, 2], 'anything else still is');
+prep.want = { '3,2': true };
+assert.deepStrictEqual(SP.overrule({ kind: 'hold' }, prep, bot).move, [3, 2], 'a break still is');
 console.log('threesLast: ok');
