@@ -5056,13 +5056,17 @@ static int mwJoin(const MwCtx *x, const int32_t *sw, int n, int32_t *l2) {
   for (int k = 0; k < 2 * x->n; k++) l2[2 * n + k] = x->ln[k];
   return n + x->n;
 }
-// A CLEAR IN THE WAIT ORGANIZES OR IS NOT MADE: it goes first only if the
-// board it leaves (the masks) has a break in reach, or more vertical twos than
-// the board has now -- a clear spends what a break needs. Of those: a break in
-// reach first, then more twos, then the fewest panels spent.
+// A CLEAR IN THE WAIT ORGANIZES, OR SPENDS ONLY WHAT IS SPARE: it goes first
+// if the board it leaves (the masks) has a break in reach, or more vertical
+// twos than the board has now -- a clear spends what a break needs -- or still
+// six rows of material (over six rows the material is there to spend: a full
+// board's clears make the room the slabs to come need, and the stop). Of
+// those: a break in reach first, then more twos, then spare, then the fewest
+// panels spent.
 static int clearOrganizes(const MwCtx *x, const int32_t *st) {
-  if (hasGarbage(st) && anyBreakOf(st)) return 2;
-  return twosOf(st) > x->vb ? 1 : 0;
+  if (hasGarbage(st) && anyBreakOf(st)) return 3;
+  if (twosOf(st) > x->vb) return 2;
+  return materialRows(st) >= 6 ? 1 : 0;
 }
 static int sitWaitClear(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
   MwCtx *x = ctx; (void)at;
