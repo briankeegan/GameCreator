@@ -2574,8 +2574,10 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
     resolve(SITT, SITR, 1);
     int scope = SITR[R_SCOPE];
     if (scope != SC_OK && scope != SC_BROKE) continue;
-    // the soonest line to reach its board is the one asked; a later one is no more
-    if (sitSeen(hashOf(SITR + R_INTS))) continue;
+    // the soonest line to reach its board is the one asked; a later one is no
+    // more. A break leaves no board (resolve writes none for it: what it
+    // converts is unseen) and ends its line, so it is never a repeat.
+    if (scope != SC_BROKE && sitSeen(hashOf(SITR + R_INTS))) continue;
     int n = pa->n + 1;
     sitLine(kd.parent, line);
     line[2 * (n - 1)] = kd.r; line[2 * (n - 1) + 1] = kd.c;
@@ -4038,6 +4040,10 @@ static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc) {
     // topped with no stop, the board dies the next frame
     if (landed && tallestBoard(RBL) >= BH) return 0;
     if (last < 0) die = lineEnds(sw, n, &last);
+    // THE BOARD AS THE SLAB RESTS: the replay stops the frame it lands, its
+    // cells still busy with the landing, and a busy cell takes no swap -- the
+    // search waits for the rest (not before t) and reads the board settled
+    if (landed) RBL[O_BUSYF] = 0;
     { int32_t bsw[2 * LINEMAX]; int bn; double bat;
       int frozen = BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0;
       double start = n ? last + stepGap(frozen) : 0;
