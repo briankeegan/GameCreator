@@ -4778,14 +4778,24 @@ static int twosAfter(const int32_t *sw, int n) {
   static ST TA; int32_t c1[2], t1; uint32_t cn[WMAX]; uint8_t wt[32][WMAX];
   return lineState(sw, n, TA, cn, wt, c1, &t1) == 0 ? breakTwosOf(TA) : 0;
 }
-// READY TO BREAK COMES FIRST: while the time is short, a fill after which the
-// garbage breaks before the board loses health beats every fill that only
-// loses it later -- the garbage is what kills, and only a break removes it
+// BREAKING FIRST, LIFE KEPT: a fill after which the garbage breaks before the
+// board loses health beats every other. Then a fill after which a break is
+// still in reach in the time there is (the distance planner within the
+// judge's reach, breakWithinT) beats one after which none is -- topped out,
+// whatever stop time the other buys; not topped and losing health, only after
+// life, since stop time beats a break that will not come in time. With no loss
+// of health coming the fills that keep a break in reach are the ones that
+// level: of those, the least hollow.
 #define BREAKS_IN_TIME 1e12
+#define BREAK_IN_REACH 1e11
+static int reachFirst(void) { return BIN[IN_TOPPED] || !fillUrgent; }
+static int breakKept(const int32_t *sw, int n) { return breakWithinT(sw, n, LINEREACH) < INF; }
+static double breakTier(const int32_t *sw, int n, int die) {
+  if (fillUrgent && marginWithin(sw, n, die ? die : LINEREACH, 0) >= 0) return BREAKS_IN_TIME;
+  return reachFirst() && breakKept(sw, n) ? BREAK_IN_REACH : 0;
+}
 static double fillScoreOf(const int32_t *sw, int n, int die, int hollow) {
-  double sc = fillScore(die, hollow);
-  if (fillUrgent && marginWithin(sw, n, die ? die : LINEREACH, 0) >= 0) sc += BREAKS_IN_TIME;
-  return sc;
+  return fillScore(die, hollow) + breakTier(sw, n, die);
 }
 // a clear judged (LNO) leaves six rows of material, read off the line's own matches
 static int readyAfterSpend(const int32_t *sw, int n);
@@ -4808,11 +4818,11 @@ static Dec fillFirstIn(Dec d) {
   // time between its break and its loss of health
   double need = marginAfter(0, 0, LNA[0]);
   fillUrgent = LNA[0] && need < 0;
-  double ref = fillScore(LNA[0], HOLLOW(LNA));   // what a fill must beat: the board left alone, and the choice
+  double ref = fillScore(LNA[0], HOLLOW(LNA)) + (reachFirst() && breakKept(0, 0) ? BREAK_IN_REACH : 0);   // what a fill must beat: the board left alone, and the choice
   int refDie = LNA[0] ? LNA[0] : 1 << 20;   // the later loss of health of the two
   if (d.kind == K_SWAP && d.hasMove) {
     int32_t sw[2] = { d.sr, d.sc };
-    if (lineJudge(sw, 1, 0) & LV_LIVES) { best = HOLLOW(LNO) < best ? HOLLOW(LNO) : best; if ((LNO[0] ? LNO[0] : 1 << 20) > refDie) refDie = LNO[0] ? LNO[0] : 1 << 20; double cs = fillScore(LNO[0], HOLLOW(LNO)); double m = marginAfter(sw, 1, LNO[0]); if (fillUrgent && m >= 0) cs += BREAKS_IN_TIME; if (cs > ref) ref = cs; if (m > need) need = m; }
+    if (lineJudge(sw, 1, 0) & LV_LIVES) { best = HOLLOW(LNO) < best ? HOLLOW(LNO) : best; if ((LNO[0] ? LNO[0] : 1 << 20) > refDie) refDie = LNO[0] ? LNO[0] : 1 << 20; double cs = fillScore(LNO[0], HOLLOW(LNO)); double m = marginAfter(sw, 1, LNO[0]); cs += fillUrgent && m >= 0 ? BREAKS_IN_TIME : reachFirst() && breakKept(sw, 1) ? BREAK_IN_REACH : 0; if (cs > ref) ref = cs; if (m > need) need = m; }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  choice %d,%d die %d last %d hollow %d | alone die %d\n", d.sr, d.sc, LNO[0], LNO[1], HOLLOW(LNO), LNA[0]); }   // the log does no work of its own: under a work budget it would change the decision
 #endif
