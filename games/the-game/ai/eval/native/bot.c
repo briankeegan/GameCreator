@@ -4003,11 +4003,13 @@ static Dec lineupFirst(Dec d) {
 // shrink while the board is kept busy, it lands later all at once.
 #define READYTRIES 8
 // ROOM FOR WHAT A BREAK MAKES: broken, the garbage on the board and the next
-// slab turn into panels; ready needs the board to hold them and the slab after
+// slab turn into panels, and each falls in its own column: ready needs every
+// column to hold what is in it, the next slab's rows on top and a row to spare
 static int roomForBreak(const int32_t *st) {
-  int occ = 0;   // the panels and every garbage cell: all of it panels once broken
-  for (int c = 1; c <= BW; c++) occ += popc(U(st, OCC + c));
-  return (occ + BIN[IN_NEXTSLAB]) / BW + 1 <= BH;
+  int most = 0;   // the panels and every garbage cell of the fullest column: all of it panels once broken
+  for (int c = 1; c <= BW; c++) { int n = popc(U(st, OCC + c)); if (n > most) most = n; }
+  int next = ((int)BIN[IN_NEXTSLAB] + BW - 1) / BW;
+  return most + next + 1 <= BH;
 }
 // READY IN TIME: after `sw`, the slab lands, and a swap breaks it that the
 // cursor reaches by then -- from where the line leaves it, in the frames
