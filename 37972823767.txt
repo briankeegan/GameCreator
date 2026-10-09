@@ -41,3 +41,6 @@ ready
 stage 9 won frames=5199 continues=1 next=10 complete=false
 shot=/home/runner/.local/share/love/panel-game/stage09_won_c1.png
 ready
+stage 10 won frames=8471 continues=1 next=11 complete=false
+shot=/home/runner/.local/share/love/panel-game/stage10_won_c1.png
+ready
