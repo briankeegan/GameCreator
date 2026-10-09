@@ -2252,9 +2252,11 @@ static int fitTasks(int count, double cost) {
   return k < count ? k : count;
 }
 static double rpCost;   // a replay's (prereplay)
+static JLOCAL int judgeRefused;   // the last judge was refused for the budget: no verdict, never one to keep
 static int lineJudgeIn2(const int32_t *sw, int n, int waitAll) {
   extern PATLS double paWork;
-  if (paWork + jdCost > optLine()) { budgetRefused++; return 0; }
+  judgeRefused = 0;
+  if (paWork + jdCost > optLine()) { budgetRefused++; judgeRefused = 1; return 0; }
   double w = paWork;
   int v = lineJudgeIn(sw, n, waitAll);
   if (paWork - w > jdCost) jdCost = paWork - w;
@@ -2280,7 +2282,7 @@ static int lineJudge(const int32_t *sw, int n, int waitAll) {
       int v = lineJudgeIn2(sw, n, waitAll);
       fillJudges++; fillJudgeMs += NOWMS2() - t;
       extern int paBudgetOut(void);
-      if (!paBudgetOut()) {
+      if (!paBudgetOut() && !judgeRefused) {
         m->dec = btDecisionJ; m->n = n; m->waitAll = waitAll; m->v = v;
         for (int k = 0; k < 2 * n; k++) m->sw[k] = sw[k];
         for (int k = 0; k < LNOLEN; k++) m->lno[k] = LNO[k];
@@ -4406,7 +4408,8 @@ static Dec keepTarget(Dec d) {
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "KEEPTARGET %d,%d over %d,%d via %d\n", BT->tgt[0], BT->tgt[1], d.sr, d.sc, d.via); }
 #endif
     if (BT->tgtN > 1) lineSet(BT->tgt, BT->tgtN, BT->tgtKind, BT->tgtWait); else BT->nLine = 0;
-    return mkSwap(BT->tgt[0], BT->tgt[1], BT->tgtVia, d.mode, d.alive);
+    Dec k = mkSwap(BT->tgt[0], BT->tgt[1], BT->tgtVia, d.mode, d.alive); k.waitAll = BT->tgtN == 1 && BT->tgtWait;
+    return k;
   }
   BT->tgtN = 0;
   if (!fresh) return d;
@@ -5506,6 +5509,10 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // through -- so it is judged while the budget is whole, once
   aloneOnEngine();
   DBASE = IN; notePresses();
+  // THE SWAPS NOT TO UNDO are the last two pressed, never the last decided:
+  // a swap decided and still walked to has undone nothing
+  BT->nRecent = BT->nPr < 2 ? BT->nPr : 2;
+  for (int i = 0; i < BT->nRecent; i++) { BT->recent[2 * i] = BT->prR[i]; BT->recent[2 * i + 1] = BT->prC[i]; }
   // A LINE ONCE PLAYED IS NOT REPLACED BY A CHOICE THAT DIES SOONER: a route
   // may set a line of its own over the one kept from the last decision, or
   // clear it and choose a swap or a hold; the kept line is played on instead
@@ -5625,11 +5632,6 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     if (getenv("GC_WORKSTAT")) { fprintf(BLOG, "STAGES%s pool %.3f", paBudgetOut() ? " OUT" : "", dcCandMs); fprintf(BLOG, " SA %.3f %d MO %.3f", saMs, saN, moMs); saMs = moMs = 0; saN = 0; for (int i = 0; i < k; i++) fprintf(BLOG, " %.0f/%.3f/%d/%.3f", ws[i] - (i ? ws[i - 1] : w0), ts[i] - (i ? ts[i - 1] : t0), js[i] - (i ? js[i - 1] : 0), jm[i] - (i ? jm[i - 1] : 0)); fprintf(BLOG, "\n"); } }
 #endif
   ENGINE_BASE = 0;
-  if (d.kind == K_SWAP && d.hasMove) {
-    BT->recent[2] = BT->nRecent ? BT->recent[0] : 0; BT->recent[3] = BT->nRecent ? BT->recent[1] : 0;
-    BT->recent[0] = d.sr; BT->recent[1] = d.sc;
-    BT->nRecent = BT->nRecent ? 2 : 1;
-  }
 #ifndef __wasm__
   // what the decision is and which stage it came from, with what its swap
   // clears on its own (the pool's resolve): the trace's, read by scan tools
