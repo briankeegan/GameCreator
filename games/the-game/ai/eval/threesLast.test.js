@@ -6,7 +6,7 @@
 // A move whose clears are all threes and start no chain -- garbage broken or
 // not -- is dropped while any other move is left; it is kept when it is all
 // there is (the survival search has already said what lives), and when the
-// stack is topped out. A chain, a combo of four and a move clearing nothing
+// stack is topped out with nothing holding it. A chain, a combo of four and a move clearing nothing
 // all stay.
 var assert = require('assert');
 var P = require('./puyocpu.js');
@@ -24,7 +24,11 @@ assert.strictEqual(names(bot._noBareThree([bare, brk])), 'bare,break', 'threes o
 assert.strictEqual(names(bot._noBareThree([bare])), 'bare', 'the only move left is played');
 assert.strictEqual(bot.bareThreesKept, 2);
 bot.stack = { wasToppedOut: true };
-assert.strictEqual(names(bot._noBareThree([bare, hold])), 'bare,hold', 'topped out, a three is allowed');
+assert.strictEqual(names(bot._noBareThree([bare, hold])), 'bare,hold', 'topped out with nothing holding it, a three is allowed');
+bot.stack = { wasToppedOut: true, stopTime: 40 };
+assert.strictEqual(names(bot._noBareThree([bare, hold])), 'hold', 'topped out in stop time: no three');
+bot.stack = { wasToppedOut: true, shakeTime: 10 };
+assert.strictEqual(names(bot._noBareThree([bare, hold])), 'hold', 'topped out while garbage shakes it: no three');
 bot.stack = { wasToppedOut: false };
 function board(top) { var g = []; for (var r = 0; r <= 12; r++) g[r] = r >= 1 && r <= top ? [0, 1, 2, 3, 4, 5, 6] : [0, 0, 0, 0, 0, 0, 0]; return { grid: g, width: 6, height: 12 }; }
 bot._board = board(11);

@@ -238,8 +238,8 @@
     this.refuseUndo = opts.refuseUndo === true;
     // THREES LAST (opts.threesLast): a move whose clears are all threes and
     // start no chain -- garbage broken or not -- is dropped from the moves the
-    // bot may play whenever any other move is left and the stack is not
-    // topped out. It runs after the survival search, so a three that is the
+    // bot may play whenever any other move is left, unless the stack is topped
+    // out with nothing holding it. It runs after the survival search, so a three that is the
     // only move proven to live is still played.
     this.refuseBareThree = opts.threesLast === true;
     this.bareThreesDropped = 0;
@@ -2124,8 +2124,12 @@
   };
   PuyoCpu.prototype._noBareThree = function (cands) {
     if (!this.refuseBareThree || !cands || !cands.length) return cands;
-    // Topped out, a three is played as any move is.
-    if ((this.stack && this.stack.wasToppedOut) || (this._board && this._boardToppedOut(this._board))) {
+    // Topped out with nothing holding the stack (no stop time, no clear
+    // running, no garbage shaking it), a three is played as any move is: the
+    // next frame without a clear is the last.
+    var st = this.stack || {};
+    var bare = !(st.stopTime > 0) && !(st.preStopTime > 0) && !(st.shakeTime > 0);
+    if (bare && (st.wasToppedOut || (this._board && this._boardToppedOut(this._board)))) {
       if (cands.some(bareThree)) this.bareThreesTopped++;
       return cands;
     }
