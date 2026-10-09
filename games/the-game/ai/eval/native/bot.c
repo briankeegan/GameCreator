@@ -1211,7 +1211,7 @@ static int raiseModeOf(const int32_t *base, int poolBreak) {
   // with none ready loses nothing by rising, and gains the material to build one.
   // A break line being played is a break ready: the raise would move the
   // board under it.
-  if ((BT->nLine && BT->lineKind == LINE_BREAK) || BT->lastVia == V_BREAKREACH || BT->lastVia == V_BREAK) { raiseGate = 5; return 0; }
+  if (BT->nLine && BT->lineKind == LINE_BREAK) { raiseGate = 5; return 0; }
   if (BIN[IN_INCOMING] > 0 && !(risenMasks(base, RZ) && slabReadyHook(RZ)) && slabReadyHook(base)) { raiseGate = 6; return 0; }
   // six rows of material is what the board works with, from the opening on:
   // a raise past them only spends the room the first garbage lands in
