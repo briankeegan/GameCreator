@@ -2257,8 +2257,20 @@ static double LATER[NSTAGES];
 static double stageLeaves(int i) { return rdW0 + OPTWORK - LATER[i]; }
 static double stageOpen(int i) { double keep = stageEnd, e = stageLeaves(i); if (e < stageEnd) stageEnd = e; return keep; }
 static void stageClose(double keep) { stageEnd = keep; }
-static void stagesMeasured(const double *ws, int k) {
-  for (int i = 0; i + 1 < k && i < NSTAGES; i++) { LATER[i] *= 0.99; if (ws[k - 1] - ws[i] > LATER[i]) LATER[i] = ws[k - 1] - ws[i]; }
+// A STAGE REFUSED WORK WANTED MORE THAN IT USED: a decision in which a judge, a
+// replay or a search was refused (budgetRefused) raises what the stages after
+// each stage keep by a step past what they took (STAGESTEP, to at most half the
+// decision), decision after decision until they are no longer refused -- else a
+// stage that takes the rest of the budget leaves the later ones none, they
+// measure none, and it takes the rest again
+#define STAGESTEP (OPTWORK / 16)
+static void stagesMeasured(const double *ws, int k, int starved) {
+  for (int i = 0; i + 1 < k && i < NSTAGES; i++) {
+    double used = ws[k - 1] - ws[i];
+    LATER[i] *= 0.99;
+    if (starved) { used += STAGESTEP; if (used > OPTWORK / 2) used = OPTWORK / 2; }
+    if (used > LATER[i]) LATER[i] = used;
+  }
 }
 // A BATCH ONLY AS FAR AS THE BUDGET HOLDS IT: of `count` tasks costing at
 // most `cost` each, the number that fit in what is left; the rest are not done
@@ -5644,7 +5656,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // the most the stages after breakFirst (and after lineup) have taken lately:
   // each decision's own, or the last most less a hundredth a decision -- one
   // heavy decision does not shut the searches out for the rest of the game
-  stagesMeasured(ws, k);
+  stagesMeasured(ws, k, budgetRefused > 0);
   // the most a judge, a search, a replay has cost: lately, as the reserves -- one heavy one does not shut them out for the game
   jdCost *= 0.99; btCost *= 0.99; rpCost *= 0.99; rdCost *= 0.99;
   // A CUT IS A FAILURE: a stage that reaches its share has not decided, it has
