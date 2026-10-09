@@ -19,17 +19,23 @@ var a = S.advance(r, 'long', null, 200), b = T.advance(r2, 'long', null, 200);
 assert.strictEqual(!!a.dead, !!b.dead, 'a long step: dead one way only');
 assert.strictEqual(a.t, b.t, 'a long step: frame');
 if (a.b || b.b) assert.deepStrictEqual(a.b.grid, b.b.grid, 'a long step: grid');
-// GARBAGE QUEUED PAST THE ENGINE'S ROOM (pa.h MAXINC): the 256 that drop soonest
-// (the queue's end) are kept, and nothing is written past the io body.
+// GARBAGE QUEUED PAST THE ENGINE'S ROOM (pa.h MAXINC): the 192 that drop soonest
+// (the queue's end) are kept -- room for the 64 arrivals a search adds to the
+// queue -- and nothing is written past the io body.
 var deep = st.copy(), last = null;
 for (i = 0; i < 400; i++) deep.incoming.unshift({ width: 3 + (i % 4), height: 1, isChain: false, isMetal: false, frameEarned: deep.stopWatch, finalized: true });
 var U = new N.Search({ reaction: 3, cursorMoveFrames: 4, threads: 1 }), ru = U.root(deep, { left: 0, started: false }, [], false);
 var kept = ru.st.incoming;
-assert.strictEqual(kept.length, 256, 'kept ' + kept.length + ' of 400 queued');
-for (i = 0; i < 256; i++) assert.strictEqual(kept[i].width, deep.incoming[144 + i].width, 'queued ' + i + ': not the soonest');
-var cut = st.copy(); cut.incoming = deep.incoming.slice(144);
+assert.strictEqual(kept.length, 192, 'kept ' + kept.length + ' of 400 queued');
+for (i = 0; i < 192; i++) assert.strictEqual(kept[i].width, deep.incoming[208 + i].width, 'queued ' + i + ': not the soonest');
+var cut = st.copy(); cut.incoming = deep.incoming.slice(208);
 var V = new N.Search({ reaction: 3, cursorMoveFrames: 4, threads: 1 }), rv = V.root(cut, { left: 0, started: false }, [], false);
 var c1 = U.advance(ru, 'long', null, 200), c2 = V.advance(rv, 'long', null, 200);
 assert.strictEqual(!!c1.dead, !!c2.dead, 'queued: dead one way only');
 assert.strictEqual(c1.t, c2.t, 'queued: frame');
-console.log('ok: 300 arrivals on their way, the search keeps the 64 soonest; 400 queued, the 256 that drop soonest; each plays as given them alone');
+// A queue past the room with the 64 arrivals landing on it steps without running out of room.
+var full = [];
+for (i = 0; i < 64; i++) full.push({ at: deep.clock + 1 + i, width: 6, height: 1, isChain: false, isMetal: false });
+var Wf = new N.Search({ reaction: 3, cursorMoveFrames: 4, threads: 1 }), rw = Wf.root(deep, { left: 0, started: false }, full, false);
+Wf.advance(rw, 'long', null, 200);
+console.log('ok: 300 arrivals on their way, the search keeps the 64 soonest; 400 queued, the 192 that drop soonest, room left for 64 arriving; each plays as given them alone');

@@ -171,17 +171,19 @@
   // THE ENGINE'S ROOM (pa.h, as pa.wasm is built): rows, garbage queued,
   // swap stalls, landed ids. The io body has room for that much and no more,
   // so a board past it is never written: queued garbage past the room keeps
-  // the pieces that drop soonest (the queue drops from its end); anything
-  // else past it is refused.
+  // the pieces that drop soonest (the queue drops from its end), leaving room
+  // for the MAXARR arrivals a search adds to it; anything else past it is
+  // refused.
   var ROOM = { rows: 48, inc: 256, stall: 64, landed: 16 };
   function fit(st) {
     if (st.panels.length > ROOM.rows) refuse('rows', st.panels.length);
     if (st.swapStallBacklog.length > ROOM.stall) refuse('swapStallBacklog', st.swapStallBacklog.length);
     if (st.garbageLandedThisFrame.length > ROOM.landed) refuse('garbageLandedThisFrame', st.garbageLandedThisFrame.length);
-    if (st.incoming.length <= ROOM.inc) return st;
+    var keep = ROOM.inc - MAXARR;
+    if (st.incoming.length <= keep) return st;
     var o = Object.create(Object.getPrototypeOf(st));
     for (var k in st) if (Object.prototype.hasOwnProperty.call(st, k)) o[k] = st[k];
-    o.incoming = st.incoming.slice(st.incoming.length - ROOM.inc);
+    o.incoming = st.incoming.slice(st.incoming.length - keep);
     return o;
   }
   function wire(st) { paWire(fit(st)); }
@@ -311,8 +313,9 @@
   Search.prototype.root = function (st, hold, arrivals, fresh) {
     if (typeof st.toStack === 'function') st = st.toStack();
     this.template = st;
-    wire(st);
-    var body = new Int32Array(MEM.buffer, (X.nb_io_body() >>> 0)), used = bodyLen(st);
+    var put = fit(st);   // the arrivals go after the board as written, trimmed queue and all
+    paWire(put);
+    var body = new Int32Array(MEM.buffer, (X.nb_io_body() >>> 0)), used = bodyLen(put);
     arrivals = soonest(arrivals, MAXARR);
     arrivals.forEach(function (a, i) {
       body[used + 5 * i] = int(a.at, 'arrival'); body[used + 5 * i + 1] = int(a.width, 'arrival');
@@ -399,7 +402,7 @@
   function unstep(S, r) {
     if (r === -1) return null;
     if (r === -2) return { dead: true, t: X.ns_dead_at() };
-    if (r < 0) throw new Error('Native: the step ran out of room (' + r + ')');
+    if (r < 0) throw new Error('Native: the step ran out of room (' + r + (X.ns_step_err ? ', engine err ' + X.ns_step_err() : '') + ')');
     return S.wrap(r);
   }
   // _engineStep: m is null (hold), 'raise' or [row, col]; long waits to until.
