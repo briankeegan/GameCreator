@@ -3,41 +3,30 @@
  "name": "isl2b0",
  "seededFrom": "champ-sv01.json",
  "weights": {
-  "travelCost": 21.919368502036953,
-  "stopTimeEarned": 78.64836685682505,
-  "colourVariance": 44.33176702112675,
-  "linksV": -16.70057564238982,
-  "garbageAdjacency": -29.72546511780952,
-  "edgePenalty": 66.18939176876546,
-  "chainLayers": -44.014221729869014,
-  "material": 20.720059888792505,
-  "linksH": 106.16937569239748,
-  "garbageCleared": 56.689781002871506,
-  "garbageOnBoard": 73.82925934533844,
-  "reach2chain": 99.01830276909897,
-  "maxHeight": 127.5376326037419,
-  "reach4combo": 65.5869979278401,
-  "chainLength": 108.11170347695061
+  "travelCost": 16.54351014652628,
+  "stopTimeEarned": 87.4397912608832,
+  "colourVariance": 24.06912313894905,
+  "linksV": -5.648402391269424,
+  "garbageAdjacency": -12.835360076107474,
+  "edgePenalty": 64.9136944253193,
+  "chainLayers": -58.482096437107465,
+  "material": 28.104265439383667,
+  "linksH": 107.73176750628068,
+  "garbageCleared": 70.54921987297713,
+  "garbageOnBoard": 74.755058973482,
+  "reach2chain": 87.58976475670244,
+  "maxHeight": 125.33671452029952,
+  "reach4combo": 53.30984614055515,
+  "chainLength": 113.25102074423015
  },
  "record": {
   "win": 110,
-  "loss": 90,
+  "loss": 91,
   "draw": 0,
   "none": 0,
   "died": 10
  },
  "history": [
-  {
-   "match": 0,
-   "opp": 9,
-   "result": "win",
-   "outcome": "ceiling",
-   "frames": 21600,
-   "sent": 436,
-   "received": 421,
-   "late": 0,
-   "at": "2026-10-08T16:55:47.328Z"
-  },
   {
    "match": 1,
    "opp": 1,
@@ -4672,7 +4661,31 @@
     "deadHealth": 0
    },
    "at": "2026-10-09T17:36:21.319Z"
+  },
+  {
+   "match": 200,
+   "opp": 8,
+   "result": "loss",
+   "outcome": "ceiling",
+   "frames": 21600,
+   "sent": 554,
+   "received": 581,
+   "late": 0,
+   "pressed": 752,
+   "topped": {
+    "frames": 14025,
+    "longest": 925,
+    "run": 0,
+    "stop": 12327,
+    "shake": 1236,
+    "swapLock": 119,
+    "active": 342,
+    "minHealth": 1,
+    "deadHealth": 0
+   },
+   "at": "2026-10-09T17:42:31.700Z",
+   "mergedToward": 8
   }
  ],
- "matches": 200
+ "matches": 201
 }
