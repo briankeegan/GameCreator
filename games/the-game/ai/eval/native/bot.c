@@ -1966,6 +1966,8 @@ static double clearBack(Cand *pc) {
   return searchInTime(pc->masks, pc->sr, pc->sc, 0, 0, INF, frozen, 0, 0, FAILSAFEWORK, sitFires, 0, 0, 0, &at) ? at : INF;
 }
 static int breakWithin(const int32_t *st, double left);
+#define BREAKWORK 2500   // a break-in-reach question's share of the work
+extern PATLS double paWork;
 static int roomForBreak(const int32_t *st);
 static Dec waitForDrain(Dec d) {
   // Topped only: before the board tops, stayAlive keeps the time.
@@ -2039,7 +2041,7 @@ static Dec waitForDrain(Dec d) {
   }
   BT->counts[C_KEPTHEALTH]++;
   Clr *breakNow = 0, *clearNow = 0;
-  double cnRate = 0, cnVd = 0; int cnTn = 0;
+  double cnRate = 0, cnVd = 0; int cnTn = 0, cnBk = 0;
   double *f = BIN + IN_SF;
   for (int i = 0; i < nc; i++) {
     Clr *cl = &CLEARS[i];
@@ -2051,13 +2053,18 @@ static Dec waitForDrain(Dec d) {
       continue;
     }
     int isCh = r->chain >= 2;
-    double rate = (f[1] + f[2] + f[3] * r->total + stopTimeOf(isCh, isCh ? 0 : r->total, isCh ? r->chain : 0, 1)) / r->total;
+    double stop = stopTimeOf(isCh, isCh ? 0 : r->total, isCh ? r->chain : 0, 1);
+    double rate = (f[1] + f[2] + f[3] * r->total + stop) / r->total;
     double vd = 0;
     if (cl->masks) { Shape sh; shapeOf(cl->masks, &sh); vd = sh.high - sh.mat; }
+    // THE TIME BOUGHT IS FOR A BREAK: of the clears that buy it, one after
+    // which a break comes within the stop it buys goes first
+    int bk = cl->masks && hasGarbage(cl->masks) && paWork + BREAKWORK < optLine() && breakWithin(cl->masks, stop);
     int tn = r->total, st = cl->future || steady(cl->sr, cl->sc, dmax(cl->moveFrames, k - 2)),
         cnSt = clearNow && (clearNow->future || steady(clearNow->sr, clearNow->sc, dmax(clearNow->moveFrames, k - 2)));
-    if (clearNow && st != cnSt) { if (st) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; } continue; }
-    if (!clearNow || tn < cnTn || (tn == cnTn && (vd < cnVd || (vd == cnVd && rate > cnRate)))) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; }
+    if (clearNow && st != cnSt) { if (st) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; } continue; }
+    if (clearNow && bk != cnBk) { if (bk) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; } continue; }
+    if (!clearNow || tn < cnTn || (tn == cnTn && (vd < cnVd || (vd == cnVd && rate > cnRate)))) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; }
   }
   if (breakNow && !breakNow->future) return mkSwap(breakNow->sr, breakNow->sc, V_BREAK, d.mode, d.alive);
   if (breakNow) return HOLDAT(breakNow->sr, breakNow->sc);
@@ -3794,7 +3801,6 @@ static JLOCAL int32_t KBR[R_INTS + ST_INTS];
 // after breakFirst keep theirs (stageLeaves); the search stops there with what it found
 static double kbEnd;
 extern PATLS double paWork;
-#define BREAKWORK 2500   // a break-in-reach question's share of the work
 // A BREAK IN REACH, IN TIME: a break -- however many swaps -- on the board st
 // settles to (st breaking counts), its last press by `left`, walked from the
 // cursor. The shared search's (searchInTime): soonest first.
