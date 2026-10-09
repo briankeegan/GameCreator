@@ -4322,20 +4322,27 @@ static int twosOfIn(const int32_t *st, int breaking) {
 #undef VP
   return n;
 }
-// SETUPS IN TIME: quiet lines (they clear nothing) found soonest first by the
-// shared search on the board the engine settles to, every step pressed in the
-// time there is; a line is a setup if the board it leaves has more vertical
-// twos (twosOf, read where the setup makes them) than the board has now. The
+// SETUPS IN TIME: lines found soonest first by the shared search on the board
+// the engine settles to, every step pressed in the time there is; a line is a
+// setup if the board it leaves has more vertical twos (twosOf, read where the
+// setup makes them) than the board has now -- or, a line that clears on the
+// way (a combo, a chain), if the board it leaves has a break in reach. The
 // first SETUPTRIES found are kept, each with its twos and its time.
 #define SETUPWORK 6000
-typedef struct { int base, n, len[SETUPTRIES], tw[SETUPTRIES]; int32_t sw[SETUPTRIES][2 * LINEMAX]; double at[SETUPTRIES]; } SetupCtx;
+typedef struct { int base, n, len[SETUPTRIES], tw[SETUPTRIES], reach[SETUPTRIES]; int32_t sw[SETUPTRIES][2 * LINEMAX]; double at[SETUPTRIES]; } SetupCtx;   // reach: the board it leaves has a break in reach
+#define SETUPREACH 1000   // a setup that leaves a break in reach ranks above any count of twos
 static int sitSetup(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
   SetupCtx *x = ctx;
-  if (res[R_SCOPE] != SC_OK || res[R_TOTAL] > 0) return SIT_END;
-  int tw = twosOf(res + R_INTS);
+  if (res[R_SCOPE] != SC_OK) return SIT_END;   // a break is the break stages'
+  // A COMBO OR A CHAIN SETS UP TOO: a line that clears is a setup when the
+  // board it leaves has a break in reach (anyBreakOf) -- the clear spent for
+  // that break -- and grows on otherwise
+  int tw, reach = 0;
+  if (res[R_TOTAL] > 0) { if (!anyBreakOf(res + R_INTS)) return SIT_GROW; tw = SETUPREACH; reach = 1; }
+  else tw = twosOf(res + R_INTS);
   if (tw > x->base && x->n < SETUPTRIES) {
     int k = x->n++;
-    x->len[k] = n; x->tw[k] = tw; x->at[k] = at;
+    x->len[k] = n; x->tw[k] = tw; x->at[k] = at; x->reach[k] = reach;
     for (int q = 0; q < 2 * n; q++) x->sw[k][q] = sw[q];
     if (x->n >= SETUPTRIES) return SIT_TAKE;
   }
@@ -4384,7 +4391,8 @@ static Dec setupTwos(Dec d) {
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  SETUP"); for (int k = 0; k < n; k++) fprintf(BLOG, " %d,%d", sw[2 * k], sw[2 * k + 1]); fprintf(BLOG, " | v %d die %d/%d hollow %d/%d last %d\n", v, LNO[0], LNA[0], HOLLOW(LNO), HOLLOW(LNA), LNO[1]); }
 #endif
-    if (!(v & LV_LIVES) || (v & LV_PAYS) || (LNA[0] ? (LNO[0] && LNO[0] < LNA[0]) : LNO[0] != 0) || HOLLOW(LNO) > HOLLOW(LNA)) continue;
+    // it pays nothing -- unless it leaves a break in reach: material spent only to break
+    if (!(v & LV_LIVES) || ((v & LV_PAYS) && !x.reach[at]) || (LNA[0] ? (LNO[0] && LNO[0] < LNA[0]) : LNO[0] != 0) || HOLLOW(LNO) > HOLLOW(LNA)) continue;
     if (need >= 0 && marginAfter(sw, n, LNO[0]) < 0) continue;
     if (n > 1) lineSet(sw, n, LINE_PLAN, 0);
     return mkSwap(sw[0], sw[1], V_SETUP, d.mode, d.alive);
