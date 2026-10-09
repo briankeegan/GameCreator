@@ -4426,8 +4426,8 @@ static int readiesLine(Dec d, int dieRef, int spare, int32_t *sw, int *n, int *r
 static Dec readyWhenLands(Dec d) {
   if (d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA]) return d;
   if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;   // a break being played
-  if (!roomForBreak(DBASE)) return makeRoom(d);
-  if (BIN[IN_TOPPED]) return d;
+  // no room for what a break makes: the room is made only when no line readies the landing
+  int room = roomForBreak(DBASE);
   int32_t sw[2] = { d.sr, d.sc };
   int dieRef = 0, r, c;
   if (d.kind == K_SWAP && d.hasMove) {
@@ -4493,14 +4493,14 @@ static Dec readyWhenLands(Dec d) {
   {
     int32_t rl[2 * LINEMAX]; int rn;
     int got = readiesLine(d, dieRef, spare, rl, &rn, &r, &c);
-    if (got < 0) return d;
+    if (got < 0) return room ? d : makeRoom(d);
     if (got) {
       if (rn > 1) lineSet(rl, rn, LINE_PLAN, 0); else BT->nLine = 0;
       lineLast = 8;
       return mkSwap(rl[0], rl[1], V_LINEUP, d.mode, d.alive);
     }
   }
-  return d;
+  return room ? d : makeRoom(d);
 }
 // BREAK WHEN IT PAYS. A match beside a pile converts the whole pile, so a
 // pile let grow while there is room turns one match into many panels. A
