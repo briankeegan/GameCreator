@@ -29,7 +29,11 @@ typedef struct { uint8_t last[32][W + 2], first[32][W + 2], same[32][W + 2], gar
 #define ACTIONWINDOW 600
 // the keys' own state, the real front's and every simulated line's alike: the
 // frames of the actions inside the window (a ring), and a direction held down
-typedef struct { int actAt[ACTIONLIMIT], actOld, actN, holdKey; } Pad;
+// A RESERVE IS KEPT FOR THE FLURRY A BOARD ABOUT TO LOSE HEALTH NEEDS: while the
+// board left alone does not, a press stops ACTIONRESERVE short of the limit
+// (limit: what this decision may spend to, set where it begins)
+#define ACTIONRESERVE 20
+typedef struct { int actAt[ACTIONLIMIT], actOld, actN, holdKey, limit; } Pad;
 typedef struct {
   int id, reaction, reveal, allowRaise;
   int cooldown, raiseHeld, wantRaise, wantRows, raiseLives;   // raiseHeld: the raise key pressed this frame
@@ -500,7 +504,7 @@ static int padCount(Pad *p, int clock) {
   while (p->actN > 0 && clock - p->actAt[p->actOld] >= ACTIONWINDOW) { p->actOld = (p->actOld + 1) % ACTIONLIMIT; p->actN--; }
   return p->actN;
 }
-static int padAllowed(Pad *p, int clock) { return padCount(p, clock) < ACTIONLIMIT; }
+static int padAllowed(Pad *p, int clock) { return padCount(p, clock) < (p->limit ? p->limit : ACTIONLIMIT); }
 static void padSpend(Pad *p, int clock) {
   if (padCount(p, clock) >= ACTIONLIMIT) return;
   p->actAt[(p->actOld + p->actN) % ACTIONLIMIT] = clock; p->actN++;
@@ -628,6 +632,8 @@ static int parkStep(Front *F, int input) {
 // drain (horizon when none).
 static JLOCAL Board *LNB;
 static Front *LF;
+// what the decision may spend of the allowance: all of it when the board left alone loses health
+static void frontUrgent(int urgent) { if (LF) LF->pad.limit = urgent ? ACTIONLIMIT : ACTIONLIMIT - ACTIONRESERVE; }
 static JLOCAL Settle LSET;
 static JLOCAL int LWAITALL;   // the line's last press waits for its pair and the garbage to settle (breakWait)
 // A LINE'S PREFIX, KEPT WHERE ITS NEXT STEP BEGINS. A line played to the
@@ -1434,6 +1440,7 @@ EXPORT(front_new) int front_new(Board *b, int reaction, int allowRaise) {
 #endif
   Front *F = &FRONTS[nFronts];
   memset(F, 0, sizeof *F);
+  F->pad.limit = ACTIONLIMIT;
   F->reaction = reaction; F->reveal = 1; F->allowRaise = allowRaise; F->escapeWalk = INF;
   F->id = bot_new();
   if (F->id < 0) return -1;
