@@ -259,7 +259,7 @@ while f < FRAMES do
   if DEATHLOG > 0 or GAMELOG then
     local board = frameLine(f, bits, true)
     if DEATHLOG > 0 then logs[f % DEATHLOG + 1] = blog; boards[f % DEATHBOARD + 1] = board end
-    if GAMELOG then GAMELOG:write("@ ", f, "\n", blog, board, "\n") end
+    if GAMELOG then GAMELOG:write("@ ", f, "\n", blog, string.format("THINK %.2f\n", thought), board, "\n") end
     -- THE GARBAGE AS IT COMES, for a replay of the game on the C engine
     -- (drill GC_GARBAGE_IN): each slab the frame it is first staged
     if GAMELOG then
