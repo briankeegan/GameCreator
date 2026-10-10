@@ -3,53 +3,30 @@
  "name": "isl2b4",
  "seededFrom": "champ-sv05.json",
  "weights": {
-  "travelCost": 51.84706636829852,
-  "stopTimeEarned": -17.203320994007143,
-  "colourVariance": -25.657869980742007,
-  "linksV": -102.05734920519097,
-  "garbageAdjacency": -82.43019305015669,
-  "edgePenalty": 139.70718395040572,
-  "chainLayers": -93.36426396130007,
-  "material": 3.8673309076310556,
-  "linksH": 202.08452144885464,
-  "garbageCleared": 85.17188325845797,
-  "garbageOnBoard": 91.0349731293079,
-  "reach2chain": 80.93509247844025,
-  "maxHeight": 191.25314299908388,
-  "reach4combo": 155.12675823614887,
-  "chainLength": 128.82478891860833
+  "travelCost": 58.57853010393592,
+  "stopTimeEarned": -30.163544295977783,
+  "colourVariance": -32.260830968158416,
+  "linksV": -102.40288630412135,
+  "garbageAdjacency": -85.50900739083528,
+  "edgePenalty": 139.49163281653077,
+  "chainLayers": -104.01167291186928,
+  "material": 17.62495366044262,
+  "linksH": 211.70509560520628,
+  "garbageCleared": 102.12915436851088,
+  "garbageOnBoard": 91.72294909731723,
+  "reach2chain": 73.98426488610043,
+  "maxHeight": 177.9708308253593,
+  "reach4combo": 168.35103798247047,
+  "chainLength": 119.93509355386195
  },
  "record": {
   "win": 219,
-  "loss": 191,
+  "loss": 192,
   "draw": 3,
   "none": 0,
-  "died": 70
+  "died": 71
  },
  "history": [
-  {
-   "match": 213,
-   "opp": 0,
-   "result": "win",
-   "outcome": "ceiling",
-   "frames": 21600,
-   "sent": 531,
-   "received": 487,
-   "late": 0,
-   "pressed": 832,
-   "topped": {
-    "frames": 6303,
-    "longest": 602,
-    "run": 0,
-    "stop": 5181,
-    "shake": 783,
-    "swapLock": 110,
-    "active": 223,
-    "minHealth": 1,
-    "deadHealth": 0
-   },
-   "at": "2026-10-09T20:52:41.805Z"
-  },
   {
    "match": 214,
    "opp": 0,
@@ -4717,7 +4694,31 @@
     "stop": 5546
    },
    "at": "2026-10-10T11:27:14.209Z"
+  },
+  {
+   "match": 413,
+   "opp": 8,
+   "result": "loss",
+   "outcome": "lost",
+   "frames": 3099,
+   "sent": 71,
+   "received": 70,
+   "late": 0,
+   "pressed": 137,
+   "topped": {
+    "shake": 159,
+    "swapLock": 12,
+    "active": 46,
+    "minHealth": 1,
+    "deadHealth": 0,
+    "frames": 850,
+    "longest": 306,
+    "run": 0,
+    "stop": 633
+   },
+   "at": "2026-10-10T11:28:13.308Z",
+   "mergedToward": 8
   }
  ],
- "matches": 413
+ "matches": 414
 }
