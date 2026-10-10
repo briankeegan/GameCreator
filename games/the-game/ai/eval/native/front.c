@@ -33,7 +33,7 @@ typedef struct { uint8_t last[32][W + 2], first[32][W + 2], same[32][W + 2], gar
 #define ACTIONRING 128   // room for the diagnostic limit (GC_INPUT_LIMIT) above the game's
 typedef struct { int actAt[ACTIONRING], actOld, actN, holdKey, limit, holdMin; } Pad;
 typedef struct {
-  int id, reaction, reveal, allowRaise;
+  int id, reaction, reveal, allowRaise, lastClock;
   int cooldown, raiseHeld, wantRaise, wantRows, raiseLives;   // raiseHeld: the raise key pressed this frame
   int walk, wRow, wCol, wTimer, wCooldown, wRetries, wDisp, wHasDisp;
   int park, pRow, pCol, pTimer, pTr, pTc, pDisp;
@@ -1367,12 +1367,15 @@ static int fDecide(Front *F, FDec *out) {
 // One frame: the keys to press (the server's bits), the swap queued on the
 // board itself as the walk arrives. -1: the bot failed.
 static int frontFrame(int fid, Board *b);
+static void frontRestart(Front *F);
 // THE BUDGET is the decision's work (bot.c WORKBUDGET), the same here as in the browser; the game's ThinkBudget
 // (train.lua) is the only clock
 EXPORT(front_frame) int front_frame(int fid, Board *b) { return frontFrame(fid, b); }
 static int frontFrame(int fid, Board *b) {
   Front *F = &FRONTS[fid];
   FB = b;
+  if (b->clock < F->lastClock) frontRestart(F);
+  F->lastClock = b->clock;
   // THE ROWS RISEN, every frame: a new row shows as the displacement jumping
   // back up. The last press's row rises with the stack.
   if (F->riseHas && b->displacement > F->riseDisp) { F->risen++; if (F->hasLast) F->lastR++; }
@@ -1463,9 +1466,22 @@ EXPORT(front_new) int front_new(Board *b, int reaction, int allowRaise) {
   F->reaction = reaction; F->reveal = 1; F->allowRaise = allowRaise; F->escapeWalk = INF;
   F->id = bot_new();
   if (F->id < 0) return -1;
+  F->lastClock = -1;
   FB = b;
   fTable(F, BOTS[F->id].tab);
   return nFronts++;
+}
+// A NEW GAME IS A CLEAN START. The match clock only runs forward, so a clock behind the last frame's is a game
+// begun again on this front, and all it holds -- the action window, the cooldown, the walk, the plans, the bot's
+// own state -- is the last game's. The front and its bot are made again, as front_new makes them.
+static void frontRestart(Front *F) {
+  int id = F->id, reaction = F->reaction, allowRaise = F->allowRaise, reveal = F->reveal;
+  memset(&BOTS[id], 0, sizeof(Bot)); BOTS[id].opening = 1;
+  memset(F, 0, sizeof *F);
+  F->pad.limit = actionLimit();
+  F->reaction = reaction; F->reveal = reveal; F->allowRaise = allowRaise; F->escapeWalk = INF;
+  F->id = id; F->lastClock = -1;
+  fTable(F, BOTS[id].tab);
 }
 // The last decision's swap (or park) cell, row * 10 + column.
 EXPORT(front_move) int front_move(int fid) { return FRONTS[fid].lastMoveR * 10 + FRONTS[fid].lastMoveC; }

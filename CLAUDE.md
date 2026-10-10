@@ -246,6 +246,11 @@ ways: a tool not listed, or a path listed that doesn't exist.
   the Lua (`lua/engineRecord.lua`, run in a panel-game checkout). The Lua is
   the reference. A bot is put on a board with `PuyoCpu.onPA(stack, opts, opp)`.
 - A test's scratch files go beside the test, never `os.tmpdir()`.
+- **A new game is a clean start.** The match clock only runs forward, so a
+  clock behind the last frame's is a game begun again on the same front
+  (`front_frame`): the front and its bot are made again (`frontRestart`), with
+  the action window, cooldown, walk, plans and bot state of the last game gone.
+  A hookup need not remember to.
 - **BitBot drills run at level 10, nothing else.** `pa_drill.js` exits if a
   scenario's level is not 10.
 - **A clear that breaks nothing is pressed only to live, when due**
@@ -311,10 +316,13 @@ ways: a tool not listed, or a path listed that doesn't exist.
   `bot.c` `SIT*WORK`): a path newly reached that runs slow per work is
   calibrated there, with the measurement beside the number.
   The host tells the bot the game's ceiling, the time left in the frame, and
-  what each frame's thinking took (`bot_time`, from `ThinkBudget`): the cut
-  (`WORKBUDGET`) is held to the ceiling over the 99.99th percentile of the
-  bot's milliseconds per unit of work, and the bot reads the monotonic clock
-  every 32 checks of the budget and every 400 units of work (`paWall`), so a decision whose time is up is out of budget
+  what each frame's thinking took (`bot_time`, from `ThinkBudget`): the line
+  optional work stops at (`OPTWORK`) is the frame's time left, less what the
+  front takes after a decision, over the bot's milliseconds per unit of work
+  (a decision's own time, among those that reach the line, at the quantile
+  that leaves 1 in 1,000 of all decisions over the ceiling), the cut 9,600
+  units above it, and the bot reads the monotonic clock
+  every 400 units (`paWall`), so a decision whose time is up is out of budget
   like one whose work is. A host that does not call `bot_time` (the browser,
   the drills) gets the start values, and a scan no longer repeats exactly.
 - **Survival is a loop on Actions. Run every step of it in the background**
