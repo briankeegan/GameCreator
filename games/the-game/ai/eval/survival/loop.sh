@@ -15,12 +15,12 @@ H=$(grep -o "pushed [0-9a-f]*" $S/loop.ship.$$.txt | cut -d' ' -f2)
 [ -n "$H" ] || { cat $S/loop.ship.$$.txt; exit 1; }
 echo "pushed $H"
 R=""; until [ -n "$R" ]; do sleep 10; R=$(gh api "repos/$REPO/actions/workflows/ai-survival-scan.yml/runs?per_page=10" --jq ".workflow_runs[]|select(.head_sha|startswith(\"$H\"))|.id" | head -1); done
-until [ "$(gh api repos/$REPO/actions/runs/$R --jq .status)" = completed ]; do sleep 30; done
+until [ "$(gh api repos/$REPO/actions/runs/$R --jq .status)" = completed ]; do sleep 10; done
 D=$S/scan-$H; rm -rf $D
 wait $ship || true
 # git and survival_scans.tsv are touched by one loop at a time: the rebuild holds this lock while it builds and commits
 until mkdir $S/ship.lock 2>/dev/null; do sleep 5; done; trap "rmdir $S/ship.lock" EXIT
-GC_ALL=1 timeout 900 games/the-game/ai/eval/scan_deaths.sh $R $D 2>&1 | tail -1
+if [ -n "${GC_SCREEN:-}" ]; then GC_NOGAME=1 timeout 300 games/the-game/ai/eval/scan_deaths.sh $R $D 2>&1 | tail -2; else GC_ALL=1 timeout 900 games/the-game/ai/eval/scan_deaths.sh $R $D 2>&1 | tail -1; fi
 tail -1 $S/loop.ship.$$.txt
 # the scan's line, committed alone (the rebuild has finished: nothing else is uncommitted)
 if ! git diff --quiet games/the-game/ai/eval/survival_scans.tsv; then
@@ -32,6 +32,11 @@ $TRAILER"
 fi
 rmdir $S/ship.lock; trap - EXIT
 tail -1 games/the-game/ai/eval/survival_scans.tsv
+# A SCREEN is the scan's results alone: alive at the frame cap, the mean frames, the budgets
+if [ -n "${GC_SCREEN:-}" ]; then
+  awk -v cap="${GC_FRAMES:-60000}" '{ n++; f = $3 + 0; if ($2 == "alive" || f >= cap) a++; s += (f < cap ? f : cap) } END { printf "screen %s: alive at %d frames %d/%d, mean frames %.0f\n", "'$H'", cap, a, n, s / n }' $D/results.tsv
+  exit 0
+fi
 cd $HERE
 python3 scandiff.py $D
 SUM=$(python3 summary.py $D); echo "$SUM"

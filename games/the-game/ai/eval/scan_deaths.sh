@@ -29,6 +29,7 @@ arts=$(curl -sSfL "${auth[@]}" "$api/runs/$run/artifacts?per_page=100" | python3
 import json, sys
 for a in json.load(sys.stdin)["artifacts"]: print(a["name"], a["id"])')
 game() {   # the seed's whole game, from its artifact
+  [ -n "${GC_NOGAME:-}" ] && return 0   # a screen reads no game
   local id; id=$(awk -v n="seed-$1" '$1 == n { print $2 }' <<<"$arts")
   [ -n "$id" ] || { echo "  seed $1: no artifact" >&2; return 0; }
   curl -sSfL "${auth[@]}" "$api/artifacts/$id/zip" -o "$dir/seed$1.zip"
