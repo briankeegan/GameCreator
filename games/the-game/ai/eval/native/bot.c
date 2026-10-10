@@ -3821,7 +3821,7 @@ static Dec stayAlive(Dec d) {
 // the slab to come) is life lost, so the rank holds a clear that digs under a pile. Each is judged on the
 // engine (lineJudge, which keeps to the work there is); one it cannot judge is
 // not weighed, and a decision it cannot judge stands.
-typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, safe, clears, size, chain, die, conv, hollow, pri; double life, soon; } Opt;
+typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, safe, clears, stall, size, chain, die, conv, hollow, pri; double life, soon; } Opt;
 static int optJudge(Opt *o) {
   int last = 0, spent = 0;
   o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = o->early = o->clears = o->size = o->chain = 0;
@@ -3835,9 +3835,9 @@ static int optJudge(Opt *o) {
     if (die < 0) return 0;   // no verdict: nothing to weigh
     o->die = die; o->lives = die > 0; o->breaks = (v & LV_BREAKS) != 0;
     o->conv = LNO[2] - LNA[2]; o->hollow = HOLLOW(LNO); last = LNO[1]; spent = spentOf();
-    // A SWAP THAT CLEARS NOTHING BUYS NO TIME: the rise it locks while it lands is no reason to press it, so the
-    // board loses health no later for it than left alone; it is pressed for what it sets up (ready, hollow)
-    if (aloneOnEngine() && !o->breaks && o->conv <= 0 && LNO[3] <= LNA[3]) { int alone = aloneDie(1 << 20); if (o->die > alone) o->die = alone; }
+    // A SETUP SWAP THAT CLEARS NOTHING BUYS NO TIME: the rise it locks while it lands is no reason to press it, so
+    // the board loses health no later for it than left alone; it is pressed for what it sets up (ready, hollow)
+    if (o->stall && aloneOnEngine() && !o->breaks && o->conv <= 0 && LNO[3] <= LNA[3]) { int alone = aloneDie(1 << 20); if (o->die > alone) o->die = alone; }
     // a combo or a chain: it clears more than the board left alone, and digs under no pile (more hollow than the hold)
     // an attack: the line makes a chain longer than the board's own, or a larger single match than it does, and digs under no pile (more hollow than the hold)
     o->chain = LNO[18] > LNA[18] && LNO[18] >= 2 ? LNO[18] : 0;
@@ -3940,7 +3940,7 @@ static int setupOptions(Opt *O, int n, Dec d) {
     if (!sparesSetups(c->sr, c->sc)) continue;
     Opt *o = &O[n];
     o->d = mkSwap(c->sr, c->sc, V_SETUP, d.mode, d.alive);
-    o->n = 1; o->wait = 0; o->sw[0] = c->sr; o->sw[1] = c->sc; o->pri = 2;
+    o->n = 1; o->wait = 0; o->sw[0] = c->sr; o->sw[1] = c->sc; o->pri = 2; o->stall = 1;   // a setup has no reason but what it sets up: the rise it locks buys no time
     if (optJudge(o)) n++;
   }
   return n;
@@ -3965,6 +3965,7 @@ static int getsBackInTime(const Opt *o, const int32_t *line, int n) {
 static Dec arbitrate(Dec d) {
   if (!((d.kind == K_SWAP && d.hasMove) || d.kind == K_HOLD)) return d;   // a raise: raiseMode's own rules
   Opt O[4 + SETUPOPTS]; int n = 0, at = -1;
+  memset(O, 0, sizeof O);
   // the target the walk was on, still ahead of the decision
   int hasT = d.kind == K_SWAP && BT->tgtN && BT->nNotes == BT->tgtPresses && !(d.sr == BT->tgt[0] && d.sc == BT->tgt[1]);
   if (hasT) {
