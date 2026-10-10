@@ -33,6 +33,9 @@ on:
       profile2:
         description: 'With opponent survivor: its profile (empty = survivor.profile.json)'
         default: ''
+      threads:
+        description: 'Search threads for WasmSurvivor (default 3; 2 with a second WasmSurvivor opponent)'
+        default: ''
       rate:
         description: 'Game speed against the wall clock (1 = real time; 0.5 = half, so two bots on one runner each think as fast as one alone)'
         default: '1'
@@ -83,6 +86,7 @@ jobs:
           set -eu
           if [ -n '${{ inputs.profile }}' ]; then export GC_SURVIVOR_PROFILE="$GITHUB_WORKSPACE/games/the-game/ai/eval/${{ inputs.profile }}"; fi
           threads=3; [ '${{ inputs.opponent }}' = survivor ] && threads=2
+          [ -n '${{ inputs.threads }}' ] && threads='${{ inputs.threads }}'
           GC_SURVIVOR_KEEP=4 GC_SURVIVOR_TIMES="$GITHUB_WORKSPACE/times.txt" GC_SURVIVOR_DUMP="$GITHUB_WORKSPACE/death.jsonl" nohup node games/the-game/ai/eval/survivor.js --port 47777 --threads $threads > "$GITHUB_WORKSPACE/survivor.log" 2>&1 &
           if [ '${{ inputs.opponent }}' = survivor ]; then
             ( if [ -n '${{ inputs.profile2 }}' ]; then export GC_SURVIVOR_PROFILE="$GITHUB_WORKSPACE/games/the-game/ai/eval/${{ inputs.profile2 }}"; else unset GC_SURVIVOR_PROFILE; fi
@@ -103,6 +107,13 @@ jobs:
           export PA_DUEL_TIMES=1
           luajit "$GITHUB_WORKSPACE/games/the-game/ai/eval/lua/survivorDuel.lua" ${{ matrix.seed }} ${{ inputs.frames }} ${{ inputs.garbage_every }} ${{ inputs.rate }} ${{ inputs.solo }} ${{ inputs.stream }} ${{ inputs.opponent }} 2>&1 | tee "$GITHUB_WORKSPACE/duel.log"
           grep -q '^RESULT' "$GITHUB_WORKSPACE/duel.log"
+      - name: CPU limits and throttling
+        if: always()
+        timeout-minutes: 1
+        run: |
+          echo "cpus: $(nproc)"
+          for f in /sys/fs/cgroup/cpu.max /sys/fs/cgroup/cpu.stat /sys/fs/cgroup/cpu/cpu.cfs_quota_us /sys/fs/cgroup/cpu/cpu.stat; do [ -r "$f" ] && { echo "== $f"; cat "$f"; }; done
+          echo "::notice title=cpu::$(cat /sys/fs/cgroup/cpu.max 2>/dev/null | tr '\n' ' ') $(grep -E 'nr_throttled|throttled_usec|nr_periods' /sys/fs/cgroup/cpu.stat 2>/dev/null | tr '\n' ' ')"
       - name: Summary
         if: always()
         run: |
