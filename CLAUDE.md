@@ -294,6 +294,16 @@ ways: a tool not listed, or a path listed that doesn't exist.
   engine is reached only through `lineJudge` and `searchInTime`, which stop at
   their share of the work (`workLeft`); the decision's closing keeps
   `FINALJUDGES` judges' work under whatever the stages measure.
+  **Anything that fits the time is weighed by what it is worth, never by how
+  soon it is done** (`bestPlan`, `bestAttack`: `Pick.key`); only when nothing
+  fits is the soonest taken. In `bestPlan` an attack (`attackFirst`) comes
+  before a clear that is neither. **Idle time is for setups**: with no break in
+  reach, `setupOptions` adds the swaps that clear nothing and make more
+  vertical twos, then flatter, as options beside the hold. A setup must spare
+  every saved line (`sparesSetups`: the kept line, target, plan and attack play
+  out as well after it), must get back in time to stayAlive's line
+  (`getsBackInTime`), and is credited no time for the rise it locks (`stall`).
+  A clear that fills hollow under the garbage is not `early`.
 - **Every decision fits the game's think budget, and every press its input
   budget.** The game holds a computer player to 8 ms of thinking a frame
   (`ThinkBudget.lua`) and to 456 actions a minute, at most 76 in any 600
