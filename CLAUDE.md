@@ -253,8 +253,8 @@ ways: a tool not listed, or a path listed that doesn't exist.
   `updateRiseLock`), so the clear is in time while its last press comes
   before the frame the board left alone loses health. Put off, it begins at
   the front's next decision: after the swap played instead, once it has landed
-  (`stepGap`); after a hold, the next frame on a stopped or topped board, else
-  a reaction and a frame later. While that later clear is still in time, the
+  (`stepGap`); after a hold, a reaction and a frame later (the cooldown lifts
+  at once only on a stopped board that is not topped). While that later clear is still in time, the
   stages' choice plays. No route clears for shape or spare material.
 - **Time, never swaps.** A line is as good as the frame it is done, however
   many swaps it takes; nothing the bot asks is capped at a number of swaps.
