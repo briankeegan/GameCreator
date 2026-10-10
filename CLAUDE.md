@@ -314,7 +314,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   what each frame's thinking took (`bot_time`, from `ThinkBudget`): the cut
   (`WORKBUDGET`) is held to the ceiling over the 99.99th percentile of the
   bot's milliseconds per unit of work, and the bot reads the monotonic clock
-  every 32 checks of the budget and every 400 units of work (`paWall`), so a decision whose time is up is out of budget
+  every 400 units (`paWall`), so a decision whose time is up is out of budget
   like one whose work is. A host that does not call `bot_time` (the browser,
   the drills) gets the start values, and a scan no longer repeats exactly.
 - **Survival is a loop on Actions. Run every step of it in the background**
