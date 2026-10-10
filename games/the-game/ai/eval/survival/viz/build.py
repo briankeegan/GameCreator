@@ -44,7 +44,7 @@ def seed(n):
 results = [l.rstrip('\n').split('\t') for l in open(os.path.join(d, 'results.tsv'))]
 H = [l.rstrip('\n').split('\t') for l in open(hist)][1:]
 data = {'results': [[int(s), e, int(f) if f.isdigit() else None] for s, e, f in results],
-        'scans': [{'run': r, 'commit': c, 'alive': int(a), 'died': [int(x) for x in ds.split(' ')[0].split(',') if x.isdigit()]} for r, c, a, ds in H],
+        'scans': [{'run': r, 'commit': c, 'alive': int(a), 'died': [int(x) for x in ds.split(' ')[0].split(',') if x.isdigit()]} for r, c, a, ds, *_ in H],
         'findings': json.load(open(os.path.join(d, 'findings.json'))), 'seeds': {}}
 for s, e, f in data['results']:
     if e == 'died' and os.path.exists(os.path.join(d, 'seed%d.log.gz' % s)): data['seeds'][s] = seed(s)
