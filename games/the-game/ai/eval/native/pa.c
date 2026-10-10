@@ -952,9 +952,11 @@ static double paNowMs(void) { struct { long s, ns; } t; clock_gettime(1, &t); re
 #else
 static double paNowMs(void) { return 0; }
 #endif
-static PATLS double paWallEnd, paWallNext;
+static PATLS double paWallEnd, paWallNext, paWallFired;
 double paClockMs(void) { return paNowMs(); }
-void paWall(double msFromNow) { paWallEnd = msFromNow > 0 ? paNowMs() + msFromNow : 0; paWallNext = paWork; }
+void paWall(double msFromNow) { paWallEnd = msFromNow > 0 ? paNowMs() + msFromNow : 0; paWallNext = paWork; paWallFired = 0; }
+// the time since the guard ran the decision out of budget, -1 if it did not
+double paWallOver(void) { return paWallFired > 0 ? paNowMs() - paWallFired : -1; }
 void paBudget(double units) {
   paOut = 0; paWorkStart = paWork;
   paWorkEnd = units < 1e299 ? paWork + units : 1e300;
@@ -973,7 +975,7 @@ int paCutPast(double units) {
 int paBudgetOut(void) {
   if (paOut) return 1;
   if (paWork >= paWorkEnd) return paOut = 1;
-  if (paWallEnd > 0 && paWork >= paWallNext) { paWallNext = paWork + 400; if (paNowMs() >= paWallEnd) return paOut = 1; }
+  if (paWallEnd > 0 && paWork >= paWallNext) { paWallNext = paWork + 400; if (paNowMs() >= paWallEnd) { paWallFired = paNowMs(); return paOut = 1; } }
   return 0;
 }
 static void run(Board *b) {

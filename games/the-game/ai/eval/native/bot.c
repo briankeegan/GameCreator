@@ -51,9 +51,9 @@ static double gWorkBudget = WORKBUDGET0, gOptWork = OPTWORK0;
 #define OPTWORK gOptWork
 #define UNDERWAY 9600
 // the quantile of milliseconds per unit the cut is held to, and how far a decision moves it
-#define RATEQUANTILE 0.9999
+#define RATEQUANTILE 0.9988   // of the decisions that reach the line (84% do): 1 in 1,000 of all decisions over the ceiling
 #define RATESTEP 0.01
-static double tkCeiling, tkRate, tkLastWork, tkLeft, tkTail = 0.3, tkT0, tkDecMs;   // the ceiling told, ms per unit tracked, the work of the decision the last frame made, the frame's time left when it began, the time the front takes after a decision's work stops, when the decision began, how long it took
+static double tkCeiling, tkRate, tkLastWork, tkLeft, tkTail = 0.3, tkOver = 0.5, tkT0, tkDecMs;   // the ceiling told, ms per unit tracked, the work of the decision the last frame made, the frame's time left when it began, the time the front takes after a decision's work stops, when the decision began, how long it took
 enum { C_REFUSEDDEADLY, C_ALLDEAD, C_REFUSEDRETURN, C_REFUSEDTOOSLOW, C_PLANNED, C_PLANDROPPED, C_ATTACKED,
        C_ATTACKDROPPED, C_CELLSPLANNED, C_REFUSEDPAYLESS, C_REFUSEDSTARVING, C_REFUSEDOTHER, C_REFUSEDATEXIT,
        C_RAISEDFORMATERIAL, C_WAITEDTORAISE, C_DUGFOR, C_DIGDROPPED, C_BROKENOW, C_FLATTENBLIND, C_OPENINGRAISES,
@@ -3631,16 +3631,18 @@ __attribute__((export_name("bot_breakfirst"))) int32_t bot_breakfirst(void) { re
 // A decision that reached the line moves the rate; the cut and the line follow it.
 __attribute__((export_name("bot_time"))) void bot_time(double ceilingMs, double lastMs, double leftMs) {
   if (ceilingMs <= 0) return;
-  // what the front takes after the decision stops: the frame less the host's own load before it and the decision
-  if (tkDecMs > 0 && lastMs > 0) { double tail = lastMs - (tkCeiling - tkLeft) - tkDecMs; if (tail > tkTail) tkTail = tail; else tkTail *= 0.999; }
-  tkDecMs = 0; tkLeft = leftMs;
-  if (tkRate == 0 || ceilingMs != tkCeiling) { tkCeiling = ceilingMs; tkRate = ceilingMs / WORKBUDGET0; }
-  if (tkLastWork >= 0.5 * gOptWork && lastMs > 0) {
-    double r = lastMs / tkLastWork;
-    if (r > tkRate) tkRate += RATESTEP * RATEQUANTILE * tkRate; else tkRate -= RATESTEP * (1 - RATEQUANTILE) * tkRate;
+  if (tkRate == 0 || ceilingMs != tkCeiling) { tkCeiling = ceilingMs; tkRate = (ceilingMs - 0.9) / OPTWORK0; }   // the line as shipped
+  if (tkDecMs > 0 && lastMs > 0) {
+    // what the front takes after the decision stops: the frame less the host's own load before it and the decision
+    double tail = lastMs - (tkCeiling - tkLeft) - tkDecMs; if (tail > tkTail) tkTail = tail; else tkTail *= 0.999;
+    // a decision that reached the line: its own milliseconds per unit of work
+    if (tkLastWork >= 0.9 * gOptWork) {
+      double r = tkDecMs / tkLastWork;
+      if (r > tkRate) tkRate += RATESTEP * RATEQUANTILE * tkRate; else tkRate -= RATESTEP * (1 - RATEQUANTILE) * tkRate;
+    }
   }
-  tkLastWork = 0;
-  gWorkBudget = tkCeiling / tkRate; gOptWork = gWorkBudget - UNDERWAY;
+  tkDecMs = 0; tkLastWork = 0; tkLeft = leftMs;
+  gOptWork = (tkLeft - tkTail) / tkRate; gWorkBudget = gOptWork + UNDERWAY;
 }
 __attribute__((export_name("bot_keepbreak"))) int32_t bot_keepbreak(void) { return 0; }
 
@@ -5619,7 +5621,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // OPTWORK resolves and engine lines are refused and every search keeps what
   // it found; past WORKBUDGET the decision is cut and the game fails.
   { extern void paBudget(double); paBudget(OPTWORK); }
-  { extern void paWall(double); extern double paClockMs(void); tkT0 = paClockMs(); paWall(tkLeft > 0 ? tkLeft - UNDERWAY * tkRate - tkTail : 0); }
+  { extern void paWall(double); extern double paClockMs(void); tkT0 = paClockMs(); paWall(tkLeft > 0 ? tkLeft - tkTail - tkOver : 0); }
   { extern PATLS double paWork; rdW0 = paWork; budgetRefused = 0; }
   btDecision++;
   btDecisionJ = btDecision;
@@ -5746,7 +5748,8 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
 #endif
   cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
 #undef SHARE
-  { extern PATLS double paWork; extern double paClockMs(void); tkLastWork = paWork - rdW0; tkDecMs = paClockMs() - tkT0; }
+  { extern PATLS double paWork; extern double paClockMs(void); tkLastWork = paWork - rdW0; tkDecMs = paClockMs() - tkT0;
+    { extern double paWallOver(void); double o = paWallOver(); if (o >= 0) { if (o > tkOver) tkOver = o; } else tkOver *= 0.9999; } }
 #ifndef __wasm__
   // THE DECISION'S OWN ACCOUNT, kept for whoever finds it over the frame:
   // each stage's milliseconds and engine judges
