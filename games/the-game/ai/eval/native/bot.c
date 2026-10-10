@@ -3906,6 +3906,22 @@ static int optRank(Opt *a, Opt *b) {
 #define SETUPOPTS 3
 static int twosOf(const int32_t *st);
 static double setupKey(const int32_t *m) { Shape sh; shapeOf(m, &sh); return twosOf(m) * 1000.0 - sh.bumps; }
+// A SETUP LEAVES THE SETUPS THERE ARE: a saved line -- the one kept, the target, the plan, the attack -- must play
+// out as well after the swap as before it, on the engine: it breaks and clears as much, makes the same combo and
+// chain, and loses health no sooner.
+static int sparesLine(const int32_t *line, int n, int r, int c) {
+  if (n <= 0 || n + 1 > LINEMAX) return 1;
+  int32_t o0[LNOLEN], o1[LNOLEN], st[2 * LINEMAX + 2];
+  if (lineOnEngine(line, n, LINEHORIZON, 0, o0) != 0 || o0[1] < 0) return 1;   // one that cannot be played is no setup to spare
+  st[0] = r; st[1] = c; for (int k = 0; k < 2 * n; k++) st[2 + k] = line[k];
+  if (lineOnEngine(st, n + 1, LINEHORIZON, 0, o1) != 0 || o1[1] < 0) return 0;
+  if (o0[0] ? (o1[0] && o1[0] < o0[0]) : o1[0] != 0) return 0;   // loses health sooner
+  return o1[2] >= o0[2] && o1[3] >= o0[3] && o1[17] >= o0[17] && o1[18] >= o0[18];
+}
+static int sparesSetups(int r, int c) {
+  return sparesLine(BT->line, BT->nLine, r, c) && sparesLine(BT->tgt, BT->tgtN, r, c)
+      && (!BT->plan.has || sparesLine(BT->plan.mv, BT->plan.n, r, c)) && (!BT->attack.has || sparesLine(BT->attack.mv, BT->attack.n, r, c));
+}
 static int setupOptions(Opt *O, int n, Dec d) {
   double base = setupKey(DBASE), key[SETUPOPTS]; int at[SETUPOPTS], na = 0;
   for (int i = 0; i < nPool; i++) {
@@ -3919,6 +3935,7 @@ static int setupOptions(Opt *O, int n, Dec d) {
   }
   for (int j = 0; j < na; j++) {
     Cand *c = &POOL[at[j]];
+    if (!sparesSetups(c->sr, c->sc)) continue;
     Opt *o = &O[n];
     o->d = mkSwap(c->sr, c->sc, V_SETUP, d.mode, d.alive);
     o->n = 1; o->wait = 0; o->sw[0] = c->sr; o->sw[1] = c->sc; o->pri = 2;
@@ -3965,7 +3982,7 @@ static Dec arbitrate(Dec d) {
   }
   int setupAt = 1 << 20;   // the first of the setup options, if any
   { int breaking = 0; for (int i = 0; i < n; i++) if (O[i].breaks) breaking = 1;
-    if (0 && !breaking && aloneOnEngine() && BIN[IN_INCOMING] > 0 && (d.kind == K_HOLD || O[at].early)) { setupAt = n; n = setupOptions(O, n, d); } }
+    if (!breaking && aloneOnEngine() && BIN[IN_INCOMING] > 0 && (d.kind == K_HOLD || O[at].early)) { setupAt = n; n = setupOptions(O, n, d); } }
   if (n < 2) return d;
   int best = 0;
   for (int i = 1; i < n; i++) { int c = optRank(&O[i], &O[best]); if (c > 0 || (c == 0 && O[i].pri < O[best].pri)) best = i; }
