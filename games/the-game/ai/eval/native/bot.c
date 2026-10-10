@@ -3835,7 +3835,7 @@ static int optRank(Opt *a, Opt *b) {
 }
 static Dec arbitrate(Dec d) {
   if (!((d.kind == K_SWAP && d.hasMove) || d.kind == K_HOLD)) return d;   // a raise: raiseMode's own rules
-  Opt O[3]; int n = 0, at = -1;
+  Opt O[4]; int n = 0, at = -1;
   // the target the walk was on, still ahead of the decision
   int hasT = d.kind == K_SWAP && BT->tgtN && BT->nNotes == BT->tgtPresses && !(d.sr == BT->tgt[0] && d.sc == BT->tgt[1]);
   if (hasT) {
@@ -3854,16 +3854,20 @@ static Dec arbitrate(Dec d) {
     } else o->n = 0;
     if (!optJudge(o)) return d;
     n++; }
-  // what stayAlive chose; with none, the board left alone
-  int hasA = 0;
-  if (saSet ? !(d.kind == saDec.kind && d.hasMove == saDec.hasMove && d.sr == saDec.sr && d.sc == saDec.sc)
-            : d.kind == K_SWAP && aloneOnEngine()) {
+  // what stayAlive chose, and the board left alone: a swap is held to both
+  int ia = -1, ih = -1;
+  if (saSet && !(d.kind == saDec.kind && d.hasMove == saDec.hasMove && d.sr == saDec.sr && d.sc == saDec.sc)) {
     Opt *o = &O[n];
-    if (saSet) { o->d = saDec; o->n = saN; o->wait = saWait; for (int k = 0; k < 2 * saN; k++) o->sw[k] = saLine[k];
-                 if (!saN && saDec.kind == K_SWAP) { o->n = 1; o->wait = 0; o->sw[0] = saDec.sr; o->sw[1] = saDec.sc; } }
-    else { o->d = mkHold(V_KEEPHEALTH, d.mode, d.alive, 0, 0, 0); o->n = 0; }
+    o->d = saDec; o->n = saN; o->wait = saWait; for (int k = 0; k < 2 * saN; k++) o->sw[k] = saLine[k];
+    if (!saN && saDec.kind == K_SWAP) { o->n = 1; o->wait = 0; o->sw[0] = saDec.sr; o->sw[1] = saDec.sc; }
     o->pri = 2;
-    hasA = optJudge(o); if (hasA) n++;
+    if (optJudge(o)) ia = n++;
+  }
+  if (d.kind == K_SWAP && aloneOnEngine() && !(ia >= 0 && O[ia].d.kind == K_HOLD)) {
+    Opt *o = &O[n];
+    o->d = mkHold(V_KEEPHEALTH, d.mode, d.alive, 0, 0, 0); o->n = 0;
+    o->pri = 2;
+    if (optJudge(o)) ih = n++;
   }
   if (n < 2) return d;
   int best = 0;
@@ -3871,11 +3875,12 @@ static Dec arbitrate(Dec d) {
   if (best == at) return d;
   Opt *b = &O[best];
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "ARBITER %s %d,%d over via %d %d,%d | keys (lives breaks ready die soon cash life hollow; -1 unasked) won %d %d %d %d %g %d %g %d | lost %d %d %d %d %g %d %g %d\n", hasA && best == n - 1 ? "the alternative" : "the target", b->d.sr, b->d.sc, d.via, d.sr, d.sc,
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "ARBITER %s %d,%d over via %d %d,%d | keys (lives breaks ready die soon cash life hollow; -1 unasked) won %d %d %d %d %g %d %g %d | lost %d %d %d %d %g %d %g %d\n", best == ia || best == ih ? "the alternative" : "the target", b->d.sr, b->d.sc, d.via, d.sr, d.sc,
       b->lives, b->breaks, b->rdyKnown ? b->rdy : -1, b->die, b->soonKnown ? b->soon : -1.0, b->cash, b->life, b->hollow,
       O[at].lives, O[at].breaks, O[at].rdyKnown ? O[at].rdy : -1, O[at].die, O[at].soonKnown ? O[at].soon : -1.0, O[at].cash, O[at].life, O[at].hollow); }
 #endif
-  if (hasA && best == n - 1) lineSet(saSet ? saLine : 0, saSet ? saN : 0, saSet ? saKind : 0, saSet ? saWait : 0);
+  if (best == ia) lineSet(saLine, saN, saKind, saWait);
+  else if (best == ih) BT->nLine = 0;
   else if (BT->tgtN > 1) lineSet(BT->tgt, BT->tgtN, BT->tgtKind, BT->tgtWait);
   else BT->nLine = 0;
   return b->d;
