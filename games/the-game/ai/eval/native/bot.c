@@ -37,18 +37,18 @@ int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);   // th
 // think budget (ThinkBudget.lua) is 8 ms a frame for a computer player's whole
 // thinking. A decision's work is counted in units, and a unit takes longer or
 // shorter by machine and by what the decision does. On the scan's runner
-// (ai-survival-scan, 1.09 million frames) a decision that stops at OPTWORK
-// takes 5.5 ms at the median, 7.6 at the 99th percentile and 8.6 at the
-// 99.9th when it stops at 62,400 units, with 0.6 ms of the frame's own work
-// besides: so the line is 62,400 x 7.4 / 8.0, 57,600 units. lua_budget_check
+// (ai-survival-scan, 262,744 decisions) a decision that stops at 57,600 units
+// takes 4.9 ms at the median, 7.1 at the 99th percentile and 8.2 at the
+// 99.9th, with 0.6 ms of the frame's own work among it: so the line is
+// 57,600 x 7.4 / 7.6, 56,000 units. lua_budget_check
 // and budget_check measure the time it actually takes.
-#define WORKBUDGET 67200   // natively and in the browser alike
+#define WORKBUDGET 65600   // natively and in the browser alike
 // WHERE OPTIONAL WORK STOPS: the engine refuses work past it, and every judge,
 // replay, search and batch is declined that would not fit. What was under way
 // finishes past it: at most 6,688 units over 3,446 decisions of seed 16 under
 // the charges of the 4,963-a-ms rate, 9,630 at today's 7,148, so the line
 // stands that far under the cut.
-#define OPTWORK 57600   // WORKBUDGET less the 9,600 under way when the line is crossed
+#define OPTWORK 56000   // WORKBUDGET less the 9,600 under way when the line is crossed
 enum { C_REFUSEDDEADLY, C_ALLDEAD, C_REFUSEDRETURN, C_REFUSEDTOOSLOW, C_PLANNED, C_PLANDROPPED, C_ATTACKED,
        C_ATTACKDROPPED, C_CELLSPLANNED, C_REFUSEDPAYLESS, C_REFUSEDSTARVING, C_REFUSEDOTHER, C_REFUSEDATEXIT,
        C_RAISEDFORMATERIAL, C_WAITEDTORAISE, C_DUGFOR, C_DIGDROPPED, C_BROKENOW, C_FLATTENBLIND, C_OPENINGRAISES,
