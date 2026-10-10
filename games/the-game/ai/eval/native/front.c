@@ -38,6 +38,7 @@ typedef struct {
   int lastKind, lastVia, lastMoveR, lastMoveC;
   Settle settle;   // the board's cells, when each settles (unsettled), at the last decision
   int wWaitTo, wFrames, wWaitAll, wR0, wKept;
+  int holdKey;   // a direction held down on a long walk (HOLDLEG), until the cursor is there
   int actAt[ACTIONLIMIT], actOld, actN;   // the frames of the actions inside the window, a ring (spendAction)
   int sawWave;   // a real garbage slab has been queued: the phantom first wave is over
   int risen, riseDisp, riseHas;   // rows risen since the game began (IN_RISEN), counted every frame
@@ -504,24 +505,40 @@ static void spendAction(Front *F) {
 }
 static int fSend(Front *F, int input, int held) {
   int dir = input & IN_UP ? H_UP : input & IN_DOWN ? H_DOWN : input & IN_LEFT ? H_LEFT : input & IN_RIGHT ? H_RIGHT : H_NONE;
-  if (dir && dir == held) {
+  if (dir && dir == held && !F->holdKey) {
     input &= ~(IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT);
     if (F->walk) F->wTimer = 0;
     if (F->park) F->pTimer = 0;
     dir = H_NONE;
   }
-  if (dir) spendAction(F);
+  if (dir && dir != held) spendAction(F);
   F->held = dir;
   return input;
 }
-static int stepToward(Front *F, int *timer, int row, int col, int input) {
+// A WALK OF HOLDLEG CELLS OR MORE IS HELD, NOT TAPPED: a held direction is one
+// action however far the cursor goes, the first cell on the press, the second
+// after the engine's repeat delay (HOLDFIRST frames), then one a frame; from
+// four cells up that is no later than taps MOVE_FRAMES apart.
+#define HOLDLEG 4
+#define HOLDFIRST 10
+static int stepToward(Front *F, int *timer, int row, int col, int input, int canHold) {
   if (!actionAllowed(F)) return input;
-  if (FB->curCol < col) input |= IN_RIGHT;
-  else if (FB->curCol > col) input |= IN_LEFT;
-  else if (FB->curRow < row) input |= IN_UP;
-  else input |= IN_DOWN;
+  int key, dist;
+  if (FB->curCol < col) { key = IN_RIGHT; dist = col - FB->curCol; }
+  else if (FB->curCol > col) { key = IN_LEFT; dist = FB->curCol - col; }
+  else if (FB->curRow < row) { key = IN_UP; dist = row - FB->curRow; }
+  else { key = IN_DOWN; dist = FB->curRow - row; }
   *timer = MOVE_FRAMES - 1;
-  return input;
+  if (canHold && dist >= HOLDLEG) F->holdKey = key;
+  return input | key;
+}
+// the held key goes on while the cursor is short of the cell on that axis
+static int holdGoing(Front *F, int row, int col) {
+  int k = F->holdKey;
+  if (!k) return 0;
+  int short_ = k == IN_RIGHT ? FB->curCol < col : k == IN_LEFT ? FB->curCol > col : k == IN_UP ? FB->curRow < row : FB->curRow > row;
+  if (!short_) F->holdKey = 0;
+  return short_;
 }
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 // A SWAP IS PRESSED WHEN ITS FIRST PLAN PRESSED IT. The settle is taken on
@@ -537,7 +554,7 @@ static int pressWait(Front *F, int r, int c, int clock, int wait, int waitAll) {
   return wait;
 }
 static void beginWalk(Front *F, int r, int c, int cooldown, int waitAll) {
-  F->walk = 1; F->wRow = r; F->wCol = c; F->wTimer = 0; F->wCooldown = cooldown; F->wRetries = 0; F->wHasDisp = 0;
+  F->holdKey = 0; F->walk = 1; F->wRow = r; F->wCol = c; F->wTimer = 0; F->wCooldown = cooldown; F->wRetries = 0; F->wHasDisp = 0;
   int wait = waitAll ? breakWait(&F->settle, r, c) : pairWait(&F->settle, r, c);
   F->wKept = F->pkAt && F->pkR == r && F->pkC == c && F->pkAll == waitAll;
   if (!F->wKept) { F->pkR = r; F->pkC = c; F->pkAt = FB->clock + wait; F->pkAll = waitAll; }
@@ -548,12 +565,14 @@ static int driveWalk(Front *F, int input) {
   if (F->wHasDisp && FB->displacement > F->wDisp) F->wRow++;
   F->wDisp = FB->displacement; F->wHasDisp = 1;
   // a target risen past the rows the cursor reaches is no pair to press: the bot decides again
-  if (F->wRow > FB->topCurRow) { F->walk = 0; F->cooldown = 0; return input; }
+  if (F->wRow > FB->topCurRow) { F->walk = 0; F->holdKey = 0; F->cooldown = 0; return input; }
   int row = clampi(F->wRow, 1, FB->topCurRow), col = clampi(F->wCol, 1, W - 1);
   if (FB->curRow != row || FB->curCol != col) {
+    if (holdGoing(F, row, col)) return input | F->holdKey;
     if (F->wTimer > 0) { F->wTimer--; return input; }
-    return stepToward(F, &F->wTimer, row, col, input);
+    return stepToward(F, &F->wTimer, row, col, input, 1);
   }
+  F->holdKey = 0;
   // the swap's panels settle at a known frame: a walk that arrives first waits
   // a pair still now is pressed now, unless a plan has already fixed its frame
 #ifndef __wasm__
@@ -585,7 +604,7 @@ static int parkStep(Front *F, int input) {
   int row = clampi(F->pRow, 1, FB->topCurRow), col = clampi(F->pCol, 1, W - 1);
   if (FB->curRow == row && FB->curCol == col) return input;
   if (F->pTimer > 0) { F->pTimer--; return input; }
-  return stepToward(F, &F->pTimer, row, col, input);
+  return stepToward(F, &F->pTimer, row, col, input, 0);
 }
 #define DIRS (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT)
 
