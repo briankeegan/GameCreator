@@ -168,6 +168,6 @@ end
 link:endMatch()
 if link2 then link2:endMatch() end
 local died = a:game_ended() and "WasmSurvivor" or (b:game_ended() and "opponent" or "nobody")
-local over, worst = link:budget()
-print(string.format('RESULT {"seed":%d,"frames":%d,"clock":%d,"died":"%s","late":%d,"late2":%d,"handed":%d,"sent":%d,"sent2":%d,"seconds":%.0f,"thinkOver":%d,"thinkWorstMs":%.1f}',
-  SEED, frame, a.clock, died, link.late, link2 and link2.late or 0, handed, got[b], got[a], socket.gettime() - t0, over, worst * 1000))
+local over, worst, dropped = link:budget()
+print(string.format('RESULT {"seed":%d,"frames":%d,"clock":%d,"died":"%s","late":%d,"late2":%d,"handed":%d,"sent":%d,"sent2":%d,"seconds":%.0f,"thinkOver":%d,"thinkWorstMs":%.1f,"inputDropped":%d}',
+  SEED, frame, a.clock, died, link.late, link2 and link2.late or 0, handed, got[b], got[a], socket.gettime() - t0, over, worst * 1000, dropped))

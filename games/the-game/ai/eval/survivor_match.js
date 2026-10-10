@@ -88,6 +88,7 @@ function Match(level, L) {
   this.plan = {};          // clock -> input planned for that frame
   this.expect = null;      // the board predicted for the next frame
   this.hold = { left: 0, started: false };
+  this.actionWindow = ACTION_WINDOW; this.actionLimit = ACTION_LIMIT;
   this.swapHistory = [];   // the last few swaps played, to tell a swap back
   this.acted = true;       // whether the mind's last decision was played
   this.nextAt = 0;         // the frame the plan ends on
@@ -326,18 +327,25 @@ Match.prototype.take = function (truth) {
 };
 // THE INPUT BUDGET (the game's InputBudget): swap and direction keys going down,
 // at most ACTION_LIMIT of them in any ACTION_WINDOW frames (456 a minute).
-var SWAP_HISTORY = 8, SWAP_BACK_FRAMES = 300, ACTION_WINDOW = 600, ACTION_LIMIT = Math.floor(456 * ACTION_WINDOW / 3600);
+var SWAP_HISTORY = 8, SWAP_BACK_FRAMES = 300, ACTION_WINDOW = 600, ACTION_LIMIT = Math.floor(456 * ACTION_WINDOW / 3600);   // until the game's own InputBudget says otherwise (Match.budget)
+// The game's own InputBudget (SurvivalLink sends it with every board): its
+// limit and window, and the frames ago each key still inside the window was pressed.
+Match.prototype.budget = function (clock, b) {
+  if (b.limit > 0) this.actionLimit = b.limit;
+  if (b.window > 0) this.actionWindow = b.window;
+  this.pressFrames = (b.ages || []).map(function (age) { return clock - age; });
+};
 // How many actions the game still allows a move starting on frame `at`: the
 // allowance less the presses made and planned in the window before it.
 Match.prototype.allowanceAt = function (at) {
-  var counted = IN.swap | IN.up | IN.down | IN.left | IN.right, lo = at - ACTION_WINDOW, used = 0, prev = this.prevBits || 0;
+  var counted = IN.swap | IN.up | IN.down | IN.left | IN.right, lo = at - this.actionWindow, used = 0, prev = this.prevBits || 0;
   (this.pressFrames || []).forEach(function (f) { if (f > lo) used++; });
   for (var t = this.now; t < at; t++) {
     var bits = this.plan[t] ? this.plan[t].bits : 0, down = bits & counted & ~prev;
     prev = bits;
     for (var k = 1; k <= 16; k <<= 1) if (down & k && t > lo) used++;
   }
-  return Math.max(0, ACTION_LIMIT - used);
+  return Math.max(0, this.actionLimit - used);
 };
 // Whether the keys `ins` from frame `at` stay inside the allowance in every window.
 Match.prototype.fits = function (at, ins) {
@@ -346,8 +354,8 @@ Match.prototype.fits = function (at, ins) {
     var bits = t >= at ? ins[t - at] : (this.plan[t] ? this.plan[t].bits : 0), down = bits & counted & ~prev;
     prev = bits;
     for (var k = 1; k <= 16; k <<= 1) if (down & k) {
-      while (spent.length && t - spent[0] >= ACTION_WINDOW) spent.shift();
-      if (spent.length >= ACTION_LIMIT) return false;
+      while (spent.length && t - spent[0] >= this.actionWindow) spent.shift();
+      if (spent.length >= this.actionLimit) return false;
       spent.push(t);
     }
   }
@@ -358,9 +366,9 @@ Match.prototype.countActions = function (bits, now) {
   this.prevBits = bits;
   var pf = this.pressFrames || (this.pressFrames = []);
   [IN.swap, IN.up, IN.down, IN.left, IN.right].forEach(function (k) { if (down & k) { pf.push(now); st.actions++; } });
-  while (pf.length && now - pf[0] >= ACTION_WINDOW) pf.shift();
+  while (pf.length && now - pf[0] >= this.actionWindow) pf.shift();
   if (pf.length > st.maxWindow) st.maxWindow = pf.length;
-  if (pf.length > ACTION_LIMIT) st.overInput++;
+  if (pf.length > this.actionLimit) st.overInput++;
 };
 // The keys of a decision, its walks held rather than tapped (survivor_keys.js).
 Match.prototype.holdWalks = function (inputs) { return KEYS.holdWalks(inputs); };

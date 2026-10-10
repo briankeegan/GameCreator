@@ -138,6 +138,7 @@ var server = net.createServer(function (sock) {
         if (!match) { reply = { input: 0 }; }
         else {
           var truth = PA.fromLua(m.state, match.level, new PA.Unseen()), state = m.state;
+          if (m.budget) match.budget(truth.clock, m.budget);
           tBoard = process.hrtime.bigint();
           reply = { clock: truth.clock, input: match.frame(truth, arrivalsOf(state), function () { return PA.fromLua(state, match.level, new PA.Unseen()); }), next: match.planned(truth.clock + 1, NEXT) };
         }
