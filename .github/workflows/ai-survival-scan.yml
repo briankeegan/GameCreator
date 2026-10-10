@@ -21,6 +21,9 @@ on:
       seeds:
         description: the seeds to play, as a JSON list (the default is 1 to 24; a second block, 25 to 48, doubles a build's games)
         default: '[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]'
+      panel_game_ref:
+        description: the panel-game commit the scan runs on (a commit of bramp/multi-player); change it on purpose, never by drift
+        default: 107bcdee453672608120a52397cd973428d9247f
       fixed_budget:
         description: "the bot is not told the time (no bot_time): every decision gets the start work line and no clock guard, so the same build plays the same games every time -- for comparing two builds; the default scan keeps the game's clock"
         type: boolean
@@ -50,7 +53,7 @@ jobs:
         timeout-minutes: 5
         with:
           repository: briankeegan/panel-game
-          ref: bramp/multi-player   # the branch with bot/headlessBoot.lua, the one the local drill runs
+          ref: ${{ inputs.panel_game_ref }}   # a commit of bramp/multi-player (the branch with bot/headlessBoot.lua): the engine a scan runs on, fixed so two scans compare
           path: panel-game
           fetch-depth: 1
       - name: LuaJIT and the panel-game rocks
