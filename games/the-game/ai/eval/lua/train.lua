@@ -84,6 +84,7 @@ int nb_feed_break(Board *b, int32_t c1, int32_t c2, int32_t c3, int32_t c4, int3
 int nb_pressed(Board *b);
 int front_new(Board *b, int reaction, int allowRaise);
 int front_frame(int fid, Board *b);
+void bot_time(double ceilingMs, double lastMs, double leftMs);
 int botTraceOn;
 void *botLogTo;
 typedef struct FILE FILE;
@@ -218,6 +219,7 @@ do
 end
 collectgarbage("stop")
 local f = 0
+local lastThought = 0   -- what the last frame's thinking was charged, seconds: told to the bot
 local function report()
   print(string.format("think budget %.0f ms: %d frames over it, slowest %.1f ms, %.1f ms a frame on average",
                       ThinkBudget.ceilingMillis(), think:overruns(), think:worst() * 1000, think:charged() * 1000 / math.max(f, 1)))
@@ -234,6 +236,7 @@ while f < FRAMES do
   local mem
   if (DEATHLOG > 0 or GAMELOG) and C.botTraceOn == 0 then mem = ffi.C.open_memstream(LOGP, LOGN); C.botLogTo = mem; C.botTraceOn = 1 end
   local tk1 = now()
+  C.bot_time(ThinkBudget.ceilingMillis(), lastThought * 1000, ThinkBudget.ceilingMillis() - loadMs)
   local bits = os.getenv("GC_NOBOT") and 0 or C.front_frame(fid, board)
   local thought = loadMs + (now() - tk1)
   local blog = ""
@@ -251,6 +254,7 @@ while f < FRAMES do
   a:receiveConfirmedInput(KeyDataEncoding.base64encode[bits + 1])
   match:run()
   think:charge(thought / 1000)
+  lastThought = thought / 1000
   inputs:press(KeyDataEncoding.base64encode[bits + 1], f)
   local inWindow = inputs:count()
   if inWindow > mostInWindow then mostInWindow = inWindow end

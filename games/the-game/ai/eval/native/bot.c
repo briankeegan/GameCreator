@@ -36,19 +36,24 @@ int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);   // th
 // THE CUT, past which the decision fails and the game with it: the game's
 // think budget (ThinkBudget.lua) is 8 ms a frame for a computer player's whole
 // thinking. A decision's work is counted in units, and a unit takes longer or
-// shorter by machine and by what the decision does. On the scan's runner
-// (ai-survival-scan, 262,744 decisions) a decision that stops at 57,600 units
-// takes 4.9 ms at the median, 7.1 at the 99th percentile and 8.2 at the
-// 99.9th, with 0.6 ms of the frame's own work among it: so the line is
-// 57,600 x 7.4 / 7.6, 56,000 units. lua_budget_check
-// and budget_check measure the time it actually takes.
-#define WORKBUDGET 65600   // natively and in the browser alike
-// WHERE OPTIONAL WORK STOPS: the engine refuses work past it, and every judge,
-// replay, search and batch is declined that would not fit. What was under way
-// finishes past it: at most 6,688 units over 3,446 decisions of seed 16 under
-// the charges of the 4,963-a-ms rate, 9,630 at today's 7,148, so the line
-// stands that far under the cut.
-#define OPTWORK 56000   // WORKBUDGET less the 9,600 under way when the line is crossed
+// shorter by machine and by what the decision does, so the cut follows the
+// machine: the host tells the bot the ceiling (ThinkBudget snapshot) and what
+// each frame's thinking took (bot_time), and the bot keeps the 99.99th
+// percentile of its milliseconds per unit of work among the decisions that
+// reach the line. The cut is the ceiling over that rate; the line optional work
+// stops at stands 9,600 units under it, what was under way when it is crossed.
+// With no host the start values stand: 65,600 and 56,000, the line of a
+// decision that took 8.2 ms at the 99.9th percentile on the scan's runner.
+#define WORKBUDGET0 65600
+#define OPTWORK0 56000
+static double gWorkBudget = WORKBUDGET0, gOptWork = OPTWORK0;
+#define WORKBUDGET gWorkBudget
+#define OPTWORK gOptWork
+#define UNDERWAY 9600
+// the quantile of milliseconds per unit the cut is held to, and how far a decision moves it
+#define RATEQUANTILE 0.9999
+#define RATESTEP 0.01
+static double tkCeiling, tkRate, tkLastWork, tkLeft, tkTail = 0.3, tkT0, tkDecMs;   // the ceiling told, ms per unit tracked, the work of the decision the last frame made, the frame's time left when it began, the time the front takes after a decision's work stops, when the decision began, how long it took
 enum { C_REFUSEDDEADLY, C_ALLDEAD, C_REFUSEDRETURN, C_REFUSEDTOOSLOW, C_PLANNED, C_PLANDROPPED, C_ATTACKED,
        C_ATTACKDROPPED, C_CELLSPLANNED, C_REFUSEDPAYLESS, C_REFUSEDSTARVING, C_REFUSEDOTHER, C_REFUSEDATEXIT,
        C_RAISEDFORMATERIAL, C_WAITEDTORAISE, C_DUGFOR, C_DIGDROPPED, C_BROKENOW, C_FLATTENBLIND, C_OPENINGRAISES,
@@ -3622,6 +3627,21 @@ static void plansDrop(void) { BT->plan.has = 0; BT->attack.has = 0; BT->flatten.
 // choice that lost the break replaced, 5 a lineup played.
 static int lineLast;
 __attribute__((export_name("bot_breakfirst"))) int32_t bot_breakfirst(void) { return lineLast; }
+// THE HOST TELLS THE BOT THE TIME: the ceiling (ms) and what the last frame's thinking took (ms), before each frame.
+// A decision that reached the line moves the rate; the cut and the line follow it.
+__attribute__((export_name("bot_time"))) void bot_time(double ceilingMs, double lastMs, double leftMs) {
+  if (ceilingMs <= 0) return;
+  // what the front takes after the decision stops: the frame less the host's own load before it and the decision
+  if (tkDecMs > 0 && lastMs > 0) { double tail = lastMs - (tkCeiling - tkLeft) - tkDecMs; if (tail > tkTail) tkTail = tail; else tkTail *= 0.999; }
+  tkDecMs = 0; tkLeft = leftMs;
+  if (tkRate == 0 || ceilingMs != tkCeiling) { tkCeiling = ceilingMs; tkRate = ceilingMs / WORKBUDGET0; }
+  if (tkLastWork >= 0.5 * gOptWork && lastMs > 0) {
+    double r = lastMs / tkLastWork;
+    if (r > tkRate) tkRate += RATESTEP * RATEQUANTILE * tkRate; else tkRate -= RATESTEP * (1 - RATEQUANTILE) * tkRate;
+  }
+  tkLastWork = 0;
+  gWorkBudget = tkCeiling / tkRate; gOptWork = gWorkBudget - UNDERWAY;
+}
 __attribute__((export_name("bot_keepbreak"))) int32_t bot_keepbreak(void) { return 0; }
 
 // A LINE ONCE PLAYED IS PLAYED TO ITS END.
@@ -5599,6 +5619,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // OPTWORK resolves and engine lines are refused and every search keeps what
   // it found; past WORKBUDGET the decision is cut and the game fails.
   { extern void paBudget(double); paBudget(OPTWORK); }
+  { extern void paWall(double); extern double paClockMs(void); tkT0 = paClockMs(); paWall(tkLeft > 0 ? tkLeft - UNDERWAY * tkRate - tkTail : 0); }
   { extern PATLS double paWork; rdW0 = paWork; budgetRefused = 0; }
   btDecision++;
   btDecisionJ = btDecision;
@@ -5725,6 +5746,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
 #endif
   cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
 #undef SHARE
+  { extern PATLS double paWork; extern double paClockMs(void); tkLastWork = paWork - rdW0; tkDecMs = paClockMs() - tkT0; }
 #ifndef __wasm__
   // THE DECISION'S OWN ACCOUNT, kept for whoever finds it over the frame:
   // each stage's milliseconds and engine judges
