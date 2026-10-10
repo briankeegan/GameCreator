@@ -2265,7 +2265,16 @@ static double LATER[NSTAGES];
 // FINALJUDGES judges' work -- measured from what they took, they would learn
 // none while a stage before them took the rest, and that stage take it again
 #define FINALJUDGES 6
-static double stageLeaves(int i) { double keep = LATER[i] > FINALJUDGES * jdCost ? LATER[i] : FINALJUDGES * jdCost; return rdW0 + OPTWORK - keep; }
+// EVERY STAGE HAS A SHARE OF OPTWORK (percent), and the stages before it leave
+// at least the shares of the stages after it: a stage that takes nothing for
+// lack of work is measured at nothing, and would be left nothing again
+static const int STAGESHARE[NSTAGES] = { 30, 0, 25, 5, 15, 5, 10, 5, 5 };
+static double stageLeaves(int i) {
+  double keep = LATER[i] > FINALJUDGES * jdCost ? LATER[i] : FINALJUDGES * jdCost;
+  int after = 0; for (int j = i + 1; j < NSTAGES; j++) after += STAGESHARE[j];
+  if (keep < OPTWORK * after / 100) keep = OPTWORK * after / 100;
+  return rdW0 + OPTWORK - keep;
+}
 static double stageOpen(int i) { double keep = stageEnd, e = stageLeaves(i); if (e < stageEnd) stageEnd = e; return keep; }
 static void stageClose(double keep) { stageEnd = keep; }
 static void stagesMeasured(const double *ws, int k) {
