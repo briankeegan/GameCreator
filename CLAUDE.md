@@ -291,7 +291,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   (`sparesSetups`), and the board readier or living longer; a swap that clears
   nothing buys no time from the rise it locks. An option other than a break does not survive if, followed by the
   line that saves the board (stayAlive's), the board loses health before that line's
-  last press (`getsBackInTime`, on the engine). A swap-back keeps the board unless it ranks higher. A rule that
+  last press (`getsBackInTime`, on the engine; asked, like `sparesSetups`, only of the option that wins -- one that fails is out and the rest are ranked again). A swap-back keeps the board unless it ranks higher. A rule that
   overrides another after the fact belongs in this order, not after it. The
   engine is reached only through `lineJudge` and `searchInTime`, which stop at
   their share of the work (`workLeft`); the decision's closing keeps
