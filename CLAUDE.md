@@ -248,17 +248,14 @@ ways: a tool not listed, or a path listed that doesn't exist.
 - A test's scratch files go beside the test, never `os.tmpdir()`.
 - **BitBot drills run at level 10, nothing else.** `pa_drill.js` exits if a
   scenario's level is not 10.
-- **Break when the dump has landed; clear only to live, when due.** One test,
-  `waitFree`: the engine plays the line begun now and begun at the next
-  decision (a reaction later), each valued as a line's life is; while the later
-  one is worth no less -- more garbage landed and converted, no sooner loss of
-  health -- the bot waits. Waiting sets the board up (`waitMeanwhile`): a swap
-  that clears nothing and adds vertical twos, then flattens, is played if the
-  engine says the line still follows it, worth no less (the swap, then the
-  line, walked to in turn); otherwise it holds, parked on the line. A break
-  waits that way;
-  a three that breaks nothing waits that way until it is due (`clearDue`). No
-  route clears for shape or spare material.
+- **A clear that breaks nothing is pressed only to live, when due**
+  (`clearDue`). A press locks the rise the frame it is made (`pa.c`
+  `updateRiseLock`), so the clear is in time while its last press comes
+  before the frame the board left alone loses health. Put off, it begins at
+  the front's next decision: after the swap played instead, once it has landed
+  (`stepGap`); after a hold, a reaction and a frame later (the cooldown lifts
+  at once only on a stopped board that is not topped). While that later clear is still in time, the
+  stages' choice plays. No route clears for shape or spare material.
 - **Time, never swaps.** A line is as good as the frame it is done, however
   many swaps it takes; nothing the bot asks is capped at a number of swaps.
   Every search that grows lines is `searchInTime` (`native/bot.c`): soonest
@@ -329,7 +326,10 @@ ways: a tool not listed, or a path listed that doesn't exist.
   with it, the wasm rebuilt once, in the background, when the batch of work is done (the scan builds its own library from the source; the wasm is for the live game), a scan's line in
   `survival_scans.tsv` as soon as it is fetched. Nothing waits uncommitted
   for a scan, a rebuild or a check. Anything slow runs in the background, so
-  an interruption stops nothing.
+  an interruption stops nothing. One scan at a time, always of the newest
+  source: a change pushed while a scan runs cancels that scan and starts one
+  on the new head -- a scan of code already known to be wrong measures
+  nothing.
 
 ## Infrastructure
 

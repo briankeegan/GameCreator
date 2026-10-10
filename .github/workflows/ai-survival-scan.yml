@@ -13,7 +13,7 @@ on:
         default: combo_storm
       frames:
         description: frames each seed plays
-        default: '60000'
+        default: '30000'
       stop_on_death:
         description: cancel every seed once one dies
         type: boolean
