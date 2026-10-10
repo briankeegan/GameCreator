@@ -115,6 +115,7 @@ while frame < FRAMES and not a:game_ended() and not b:game_ended() do
   sources[#sources + 1] = extra
   local lateBefore, sentAt = link.late, socket.gettime()
   local ca = link:input(a, sources)
+  if link.stopReason then print(link.stopReason) break end
   -- PA_DUEL_TIMES=1: each late frame, with when its state was sent and when the wait gave up
   if TIMES and link.late > lateBefore then print(string.format("LATE clock %d dump %.4f sent %.4f gaveup %.4f", a.clock, sentAt, link.sentAt or 0, socket.gettime())) end
   local cb

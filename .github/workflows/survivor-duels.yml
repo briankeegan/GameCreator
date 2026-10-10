@@ -33,6 +33,9 @@ on:
       profile2:
         description: 'With opponent survivor: its profile (empty = survivor.profile.json)'
         default: ''
+      stop_on_over:
+        description: '1 = stop at the first frame over the 8 ms ceiling and print where its time went'
+        default: '0'
       threads:
         description: 'Search threads for WasmSurvivor (default 3; 2 with a second WasmSurvivor opponent)'
         default: ''
@@ -105,6 +108,7 @@ jobs:
           export LUA_CPATH="./common/lib/?.so;./common/lib/?/?.so;$LUA_CPATH"
           set -o pipefail
           export PA_DUEL_TIMES=1
+          [ '${{ inputs.stop_on_over }}' = 1 ] && export PA_STOP_ON_OVER=1
           luajit "$GITHUB_WORKSPACE/games/the-game/ai/eval/lua/survivorDuel.lua" ${{ matrix.seed }} ${{ inputs.frames }} ${{ inputs.garbage_every }} ${{ inputs.rate }} ${{ inputs.solo }} ${{ inputs.stream }} ${{ inputs.opponent }} 2>&1 | tee "$GITHUB_WORKSPACE/duel.log"
           grep -q '^RESULT' "$GITHUB_WORKSPACE/duel.log"
       - name: CPU limits and throttling
