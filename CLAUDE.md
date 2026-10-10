@@ -316,8 +316,6 @@ ways: a tool not listed, or a path listed that doesn't exist.
   `attackFirst`), then the one with more vertical twos; the rule
   compares only a setup with the hold or another setup -- a fill or a levelling
   swap is ranked by life and hollow.
-  In downtime (the board left alone loses no health within `LIVEHORIZON`) a combo
-  or chain ranks before life: with time to spare it is made.
   **The scramble**, a last resort: when the board left alone loses health
   (`boardDying`) and no other option outlives it, the best combo or chain any
   line reaches in the time there is is an option too (`reachOption`: the whole line judged on the
