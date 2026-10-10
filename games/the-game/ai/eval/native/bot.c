@@ -3964,10 +3964,12 @@ static Dec arbitrate(Dec d) {
     o->pri = 2;
     if (optJudge(o)) ih = n++;
   }
-  if (n < 2) return d;
+  // the decision that is stayAlive's own choice keeps stayAlive's line, whichever option carried it
+  int isSa = saSet && saN && d.kind == saDec.kind && d.sr == saDec.sr && d.sc == saDec.sc;
+  if (n < 2) { if (isSa) lineSet(saLine, saN, saKind, saWait); return d; }
   int best = 0;
   for (int i = 1; i < n; i++) { int c = optRank(&O[i], &O[best]); if (c > 0 || (c == 0 && O[i].pri < O[best].pri)) best = i; }
-  if (best == at) return d;
+  if (best == at) { if (isSa) lineSet(saLine, saN, saKind, saWait); return d; }
   Opt *b = &O[best];
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "ARBITER %s %d,%d over via %d %d,%d | keys (lives breaks ready die soon cash life hollow; -1 unasked) won %d %d %d %d %g %d %g %d | lost %d %d %d %d %g %d %g %d\n", best == ia || best == ih ? "the alternative" : "the target", b->d.sr, b->d.sc, d.via, d.sr, d.sc,
