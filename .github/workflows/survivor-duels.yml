@@ -126,6 +126,7 @@ jobs:
           grep 'match over' survivor2.log >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
           # the same lines as annotations, which the API serves (check-runs/<id>/annotations)
           grep -h '^RESULT' duel.log | sed 's/^/::notice title=duel::/' || true
+          grep -h '^STOPPED' duel.log | sed 's/^/::notice title=stopped::/' || true
           grep -h 'match over' survivor.log | sed 's/^/::notice title=survivor::/' || true
           # survivor.js writes its timings and its dump as the link closes: wait for them
           for i in $(seq 1 60); do [ -s death.jsonl ] && [ "$(tail -c 1 death.jsonl | od -An -c | tr -d ' ')" = '\n' ] && [ -s times.txt ] && break; sleep 1; done
