@@ -33,7 +33,8 @@ typedef struct { uint8_t last[32][W + 2], first[32][W + 2], same[32][W + 2], gar
 // board left alone does not, a press stops ACTIONRESERVE short of the limit
 // (limit: what this decision may spend to, set where it begins)
 #define ACTIONRESERVE 20
-typedef struct { int actAt[ACTIONLIMIT], actOld, actN, holdKey, limit; } Pad;
+#define ACTIONRING 128   // room for the diagnostic limit (GC_INPUT_LIMIT) above the game's
+typedef struct { int actAt[ACTIONRING], actOld, actN, holdKey, limit; } Pad;
 typedef struct {
   int id, reaction, reveal, allowRaise;
   int cooldown, raiseHeld, wantRaise, wantRows, raiseLives;   // raiseHeld: the raise key pressed this frame
@@ -500,14 +501,24 @@ static void fTable(Front *F, double *tab) {
 }
 
 // ---------------------------------------------------------------- the keys (bitbot.js update, panel-cpu.js walk)
+// the game's allowance; GC_INPUT_LIMIT (native, a diagnostic) sets another, to see what the input budget costs
+static int actionLimit(void) {
+#ifndef __wasm__
+  static int lim = -1;
+  if (lim < 0) { const char *e = getenv("GC_INPUT_LIMIT"); lim = e && *e ? atoi(e) : ACTIONLIMIT; if (lim < ACTIONRESERVE + 1 || lim > ACTIONRING) lim = ACTIONLIMIT; }
+  return lim;
+#else
+  return ACTIONLIMIT;
+#endif
+}
 static int padCount(Pad *p, int clock) {
-  while (p->actN > 0 && clock - p->actAt[p->actOld] >= ACTIONWINDOW) { p->actOld = (p->actOld + 1) % ACTIONLIMIT; p->actN--; }
+  while (p->actN > 0 && clock - p->actAt[p->actOld] >= ACTIONWINDOW) { p->actOld = (p->actOld + 1) % ACTIONRING; p->actN--; }
   return p->actN;
 }
 static int padAllowed(Pad *p, int clock) { return padCount(p, clock) < (p->limit ? p->limit : ACTIONLIMIT); }
 static void padSpend(Pad *p, int clock) {
-  if (padCount(p, clock) >= ACTIONLIMIT) return;
-  p->actAt[(p->actOld + p->actN) % ACTIONLIMIT] = clock; p->actN++;
+  if (padCount(p, clock) >= ACTIONRING) return;
+  p->actAt[(p->actOld + p->actN) % ACTIONRING] = clock; p->actN++;
 }
 // THE KEYS OF ONE FRAME: a direction held over two frames is let go (the walk
 // taps), except a held walk; a direction that goes down, or a swap, is an action
@@ -633,7 +644,7 @@ static int parkStep(Front *F, int input) {
 static JLOCAL Board *LNB;
 static Front *LF;
 // what the decision may spend of the allowance: all of it when the board left alone loses health
-static void frontUrgent(int urgent) { if (LF) LF->pad.limit = urgent ? ACTIONLIMIT : ACTIONLIMIT - ACTIONRESERVE; }
+static void frontUrgent(int urgent) { if (LF) LF->pad.limit = urgent ? actionLimit() : actionLimit() - ACTIONRESERVE; }
 static JLOCAL Settle LSET;
 static JLOCAL int LWAITALL;   // the line's last press waits for its pair and the garbage to settle (breakWait)
 // A LINE'S PREFIX, KEPT WHERE ITS NEXT STEP BEGINS. A line played to the
@@ -1440,7 +1451,7 @@ EXPORT(front_new) int front_new(Board *b, int reaction, int allowRaise) {
 #endif
   Front *F = &FRONTS[nFronts];
   memset(F, 0, sizeof *F);
-  F->pad.limit = ACTIONLIMIT;
+  F->pad.limit = actionLimit();
   F->reaction = reaction; F->reveal = 1; F->allowRaise = allowRaise; F->escapeWalk = INF;
   F->id = bot_new();
   if (F->id < 0) return -1;

@@ -18,6 +18,9 @@ on:
         description: cancel every seed once one dies
         type: boolean
         default: false
+      input_limit:
+        description: actions the bot may press in any 600 frames (empty: the game's 76; a diagnostic, to see what the input budget costs)
+        default: ''
 
 # one scan per commit: a push never cancels the scan of the commit before it
 concurrency:
@@ -62,6 +65,7 @@ jobs:
           GC_DEATHLOG: '300'     # a death's report in the job log: the bot's log of its last 300 frames,
           GC_DEATHBOARD: '3000'  # the boards of its last 3000
           GC_GAMELOG: game.log   # the whole game, every frame's bot log and board: the artifact
+          GC_INPUT_LIMIT: ${{ inputs.input_limit }}
         run: |
           games/the-game/ai/eval/train.sh ${{ inputs.mode }} ${{ matrix.seed }} ${{ inputs.frames }} | tee out.txt | grep -E "^(died|alive|bot over)"
           end=$(grep -E "^(died|alive)" out.txt | tail -1)
