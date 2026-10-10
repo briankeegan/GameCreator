@@ -3628,11 +3628,6 @@ __attribute__((export_name("bot_keepbreak"))) int32_t bot_keepbreak(void) { retu
 static int readyAfterSpend(const int32_t *sw, int n);
 static int aloneOnEngine(void);
 static int nonSpendLives(void);
-// WHEN THE FRONT DECIDES AGAIN (front.c): after a hold, a reaction and a frame -- the cooldown lifts at once only
-// on a stopped board that is not topped; after a press made `last` frames from now, the swap landed and the
-// reaction over (stepGap). Frames from now.
-static double holdGap(void) { return BIN[IN_STOP] > 0 && !BIN[IN_TOPPED] ? 1 : REACT + 1; }
-static double actsAgain(int last, int hold) { return hold ? holdGap() : last + stepGap(BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0) + PRESS; }
 // A CLEAR THAT BREAKS NOTHING IS PRESSED ONLY WHEN IT IS DUE: material is
 // spent to break, or to live at the last moment it can. A press locks the rise
 // the frame it is made (pa.c updateRiseLock: a queued swap), so the clear is
@@ -3652,7 +3647,7 @@ static int clearDue(const int32_t *sw, int n, const int32_t *alt) {
     both[0] = alt[0]; both[1] = alt[1];
     for (int k = 0; k < 2 * m; k++) both[2 + k] = sw[k];
     later = lineFrames(both, m + 1, cr, cc, 0, frozen);
-  } else later = lineFrames(sw, n, cr, cc, holdGap(), frozen);
+  } else later = lineFrames(sw, n, cr, cc, BIN[IN_STOP] > 0 && !BIN[IN_TOPPED] ? 1 : REACT + 1, frozen);
   return LNA[0] <= later - PRESS;
 }
 // A SPEND THAT KEEPS A WAITING RAISE OUT: a clear holds the rise lock and
@@ -3821,10 +3816,10 @@ static Dec stayAlive(Dec d) {
 // the slab to come) is life lost, so the rank holds a clear that digs under a pile. Each is judged on the
 // engine (lineJudge, which keeps to the work there is); one it cannot judge is
 // not weighed, and a decision it cannot judge stands.
-typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, safe, clears, stall, size, chain, die, conv, hollow, pri; double life, soon; } Opt;
+typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, size, chain, die, conv, hollow, pri; double life, soon; } Opt;
 static int optJudge(Opt *o) {
   int last = 0, spent = 0;
-  o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = o->early = o->clears = o->size = o->chain = 0;
+  o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = o->early = o->size = o->chain = 0;
   if (o->d.kind == K_HOLD) {
     o->die = aloneDie(1 << 20);
     o->hollow = aloneOnEngine() ? HOLLOW(LNA) : 0;
@@ -3835,21 +3830,14 @@ static int optJudge(Opt *o) {
     if (die < 0) return 0;   // no verdict: nothing to weigh
     o->die = die; o->lives = die > 0; o->breaks = (v & LV_BREAKS) != 0;
     o->conv = LNO[2] - LNA[2]; o->hollow = HOLLOW(LNO); last = LNO[1]; spent = spentOf();
-    // A SETUP SWAP THAT CLEARS NOTHING BUYS NO TIME: the rise it locks while it lands is no reason to press it, so
-    // the board loses health no later for it than left alone; it is pressed for what it sets up (ready, hollow)
-    if (o->stall && aloneOnEngine() && !o->breaks && o->conv <= 0 && LNO[3] <= LNA[3]) { int alone = aloneDie(1 << 20); if (o->die > alone) o->die = alone; }
     // a combo or a chain: it clears more than the board left alone, and digs under no pile (more hollow than the hold)
     // an attack: the line makes a chain longer than the board's own, or a larger single match than it does, and digs under no pile (more hollow than the hold)
     o->chain = LNO[18] > LNA[18] && LNO[18] >= 2 ? LNO[18] : 0;
     o->size = LNO[17] > LNA[17] ? LNO[17] : 0;
-    o->clears = LNO[3] > LNA[3];
     o->cash = (o->chain || comboWorth(o->size) >= 0) && (!aloneOnEngine() || o->hollow <= HOLLOW(LNA));
-    // a clear that breaks nothing, is no combo and fills nothing under the garbage (less hollow than the board
-    // left alone), before it is due (clearDue), is a spend the board does not need yet
-    o->early = !o->breaks && !o->cash && LNO[3] > LNA[3] && (!aloneOnEngine() || o->hollow >= HOLLOW(LNA)) && !clearDue(o->sw, o->n, 0);
+    // a clear that breaks nothing and is no combo, before it is due (clearDue), is a spend the board does not need yet
+    o->early = !o->breaks && !o->cash && LNO[3] > LNA[3] && !clearDue(o->sw, o->n, 0);
   }
-  // it outlives the next decision: the board does not lose health before the front acts again
-  o->safe = o->die > actsAgain(last, o->d.kind == K_HOLD);
   o->life = lifeOf(o->die, last, o->hollow, spent);
   return 1;
 }
@@ -3885,8 +3873,6 @@ static int optRank(Opt *a, Opt *b) {
   if (ka && BIN[IN_INCOMING] > 0) { int ra = optReady(a), rb = optReady(b); if (ra != rb) return ra > rb ? 1 : -1; }
   // dying within LIVEHORIZON, the later loss of health is the time there is: a
   // line that takes longer to finish still outlives a hold that dies first
-  // dying within LIVEHORIZON, the later loss of health is the time there is: a
-  // line that takes longer to finish still outlives a hold that dies first
   int da = a->die < LIVEHORIZON ? a->die : LIVEHORIZON, db = b->die < LIVEHORIZON ? b->die : LIVEHORIZON;
   if (da != db) return da > db ? 1 : -1;
   // no break to make yet: the one that brings the break soonest (setup), then
@@ -3901,70 +3887,9 @@ static int optRank(Opt *a, Opt *b) {
   if (a->hollow != b->hollow) return a->hollow < b->hollow ? 1 : -1;
   return 0;
 }
-// THE SETUP IS AN OPTION: with a slab coming and no break in reach, the swaps that clear nothing and set the
-// board up -- more vertical twos (each a swap from a three), then flatter -- are weighed beside the hold, each
-// judged on the engine like any option. The masks propose, SETUPOPTS of them best first; the order decides:
-// a setup is played only if it leaves the board readier (or living longer) than the board left alone.
-#define SETUPOPTS 3
-static int twosOf(const int32_t *st);
-static double setupKey(const int32_t *m) { Shape sh; shapeOf(m, &sh); return twosOf(m) * 1000.0 - sh.bumps; }
-// A SETUP LEAVES THE SETUPS THERE ARE: a saved line -- the one kept, the target, the plan, the attack -- must play
-// out as well after the swap as before it, on the engine: it breaks and clears as much, makes the same combo and
-// chain, and loses health no sooner.
-static int sparesLine(const int32_t *line, int n, int r, int c) {
-  if (n <= 0 || n + 1 > LINEMAX) return 1;
-  int32_t o0[LNOLEN], o1[LNOLEN], st[2 * LINEMAX + 2];
-  if (lineOnEngine(line, n, LINEHORIZON, 0, o0) != 0 || o0[1] < 0) return 1;   // one that cannot be played is no setup to spare
-  st[0] = r; st[1] = c; for (int k = 0; k < 2 * n; k++) st[2 + k] = line[k];
-  if (lineOnEngine(st, n + 1, LINEHORIZON, 0, o1) != 0 || o1[1] < 0) return 0;
-  if (o0[0] ? (o1[0] && o1[0] < o0[0]) : o1[0] != 0) return 0;   // loses health sooner
-  return o1[2] >= o0[2] && o1[3] >= o0[3] && o1[17] >= o0[17] && o1[18] >= o0[18];
-}
-static int sparesSetups(int r, int c) {
-  return sparesLine(BT->line, BT->nLine, r, c) && sparesLine(BT->tgt, BT->tgtN, r, c)
-      && (!BT->plan.has || sparesLine(BT->plan.mv, BT->plan.n, r, c)) && (!BT->attack.has || sparesLine(BT->attack.mv, BT->attack.n, r, c));
-}
-static int setupOptions(Opt *O, int n, Dec d) {
-  double base = setupKey(DBASE), key[SETUPOPTS]; int at[SETUPOPTS], na = 0;
-  for (int i = 0; i < nPool; i++) {
-    Cand *c = &POOL[i];
-    if (c->kind != K_SWAP || c->res.total > 0 || c->res.broke) continue;
-    double k = setupKey(c->masks);
-    if (k <= base || (na == SETUPOPTS && k <= key[na - 1])) continue;
-    int j = na < SETUPOPTS ? na++ : na - 1;
-    while (j > 0 && key[j - 1] < k) { key[j] = key[j - 1]; at[j] = at[j - 1]; j--; }
-    key[j] = k; at[j] = i;
-  }
-  for (int j = 0; j < na; j++) {
-    Cand *c = &POOL[at[j]];
-    Opt *o = &O[n];
-    o->d = mkSwap(c->sr, c->sc, V_SETUP, d.mode, d.alive);
-    o->n = 1; o->wait = 0; o->sw[0] = c->sr; o->sw[1] = c->sc; o->pri = 2; o->stall = 1;   // a setup has no reason but what it sets up: the rise it locks buys no time
-    if (optJudge(o)) n++;
-  }
-  return n;
-}
-// AN OPTION THAT CANNOT GET BACK IN TIME CANNOT SURVIVE: a swap, followed by the line that
-// saves the board (stayAlive's), must still play that line before the board loses health -- the walk, the press,
-// the swap landing and the walk back all come out of the time there is. On the engine; one it cannot judge stands.
-static int getsBackInTime(const Opt *o, const int32_t *line, int n) {
-  if (n <= 0 || o->n + n > LINEMAX) return 1;
-  int32_t st[2 * LINEMAX], r[LNOLEN];
-  for (int k = 0; k < 2 * o->n; k++) st[k] = o->sw[k];
-  for (int k = 0; k < 2 * n; k++) st[2 * o->n + k] = line[k];
-  int rc = lineOnEngine(st, o->n + n, LINEHORIZON, 0, r);
-#ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
-    fprintf(BLOG, "GATE %d,%d then %d,%d | rc %d loss %d lastpress %d -> %s\n", o->sw[0], o->sw[1], line[0], line[1], rc, rc == 0 ? r[0] : -1, rc == 0 ? r[1] : -1, rc != 0 || (r[1] < 0 && !r[0]) ? "unjudged, stands" : r[1] < 0 ? "VETO cut short" : (!r[0] || r[0] > r[1]) ? "gets back" : "VETO"); }
-#endif
-  if (rc != 0) return 1;
-  if (r[1] < 0) return !r[0];   // the line was cut short by the board losing health: it did not get back in time
-  return !r[0] || r[0] > r[1];
-}
 static Dec arbitrate(Dec d) {
   if (!((d.kind == K_SWAP && d.hasMove) || d.kind == K_HOLD)) return d;   // a raise: raiseMode's own rules
-  Opt O[4 + SETUPOPTS]; int n = 0, at = -1;
-  memset(O, 0, sizeof O);
+  Opt O[4]; int n = 0, at = -1;
   // the target the walk was on, still ahead of the decision
   int hasT = d.kind == K_SWAP && BT->tgtN && BT->nNotes == BT->tgtPresses && !(d.sr == BT->tgt[0] && d.sc == BT->tgt[1]);
   if (hasT) {
@@ -3999,38 +3924,18 @@ static Dec arbitrate(Dec d) {
     o->pri = 2;
     if (optJudge(o)) ih = n++;
   }
-  int setupAt = 1 << 20;   // the first of the setup options, if any
-  { int breaking = 0; for (int i = 0; i < n; i++) if (O[i].breaks) breaking = 1;
-    if (!breaking && aloneOnEngine() && BIN[IN_INCOMING] > 0 && (d.kind == K_HOLD || O[at].early)) { setupAt = n; n = setupOptions(O, n, d); } }
-  // the line that saves the board: what an option must still be able to play after it (getsBackInTime)
-  int32_t sv[2 * LINEMAX]; int sn = 0;
-  if (saSet && aloneOnEngine()) {
-    sn = saN;
-    if (sn > 0) for (int k = 0; k < 2 * sn; k++) sv[k] = saLine[k];
-    else if (saDec.kind == K_SWAP) { sn = 1; sv[0] = saDec.sr; sv[1] = saDec.sc; }
-  }
   if (n < 2) return d;
-  // the best option is asked the two survival questions, on the engine, only when it wins: one that fails is out
-  // (it does not survive) and the rest are ranked again
   int best = 0;
-  for (;;) {
-    best = 0;
-    for (int i = 1; i < n; i++) { int c = optRank(&O[i], &O[best]); if (c > 0 || (c == 0 && O[i].pri < O[best].pri)) best = i; }
-    Opt *w = &O[best];
-    int bad = (best >= setupAt && !sparesSetups(w->sw[0], w->sw[1]))
-           || (sn > 0 && w->lives && w->n > 0 && !w->breaks && !(w->sw[0] == sv[0] && w->sw[1] == sv[1]) && !getsBackInTime(w, sv, sn));
-    if (!bad) break;
-    w->lives = 0;
-  }
+  for (int i = 1; i < n; i++) { int c = optRank(&O[i], &O[best]); if (c > 0 || (c == 0 && O[i].pri < O[best].pri)) best = i; }
   if (best == at) return d;
   Opt *b = &O[best];
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "ARBITER %s %d,%d over via %d %d,%d | keys (lives breaks early safe ready die soon attack life hollow; -1 unasked) won %d %d %d %d %d %d %g %d %g %d | lost %d %d %d %d %d %d %g %d %g %d\n", best == ia || best == ih ? "the alternative" : "the target", b->d.sr, b->d.sc, d.via, d.sr, d.sc,
-      b->lives, b->breaks, b->early, b->safe, b->rdyKnown ? b->rdy : -1, b->die, b->soonKnown ? b->soon : -1.0, b->cash ? (b->chain ? 100 + b->chain : b->size) : 0, b->life, b->hollow,
-      O[at].lives, O[at].breaks, O[at].early, O[at].safe, O[at].rdyKnown ? O[at].rdy : -1, O[at].die, O[at].soonKnown ? O[at].soon : -1.0, O[at].cash ? (O[at].chain ? 100 + O[at].chain : O[at].size) : 0, O[at].life, O[at].hollow); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "ARBITER %s %d,%d over via %d %d,%d | keys (lives breaks ready die soon cash life hollow; -1 unasked) won %d %d %d %d %g %d %g %d | lost %d %d %d %d %g %d %g %d\n", best == ia || best == ih ? "the alternative" : "the target", b->d.sr, b->d.sc, d.via, d.sr, d.sc,
+      b->lives, b->breaks, b->rdyKnown ? b->rdy : -1, b->die, b->soonKnown ? b->soon : -1.0, b->cash, b->life, b->hollow,
+      O[at].lives, O[at].breaks, O[at].rdyKnown ? O[at].rdy : -1, O[at].die, O[at].soonKnown ? O[at].soon : -1.0, O[at].cash, O[at].life, O[at].hollow); }
 #endif
   if (best == ia) lineSet(saLine, saN, saKind, saWait);
-  else if (best == ih || best >= setupAt) BT->nLine = 0;
+  else if (best == ih) BT->nLine = 0;
   else if (BT->tgtN > 1) lineSet(BT->tgt, BT->tgtN, BT->tgtKind, BT->tgtWait);
   else BT->nLine = 0;
   return b->d;
