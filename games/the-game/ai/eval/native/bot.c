@@ -3937,7 +3937,6 @@ static int setupOptions(Opt *O, int n, Dec d) {
   }
   for (int j = 0; j < na; j++) {
     Cand *c = &POOL[at[j]];
-    if (!sparesSetups(c->sr, c->sc)) continue;
     Opt *o = &O[n];
     o->d = mkSwap(c->sr, c->sc, V_SETUP, d.mode, d.alive);
     o->n = 1; o->wait = 0; o->sw[0] = c->sr; o->sw[1] = c->sc; o->pri = 2; o->stall = 1;   // a setup has no reason but what it sets up: the rise it locks buys no time
@@ -4003,19 +4002,26 @@ static Dec arbitrate(Dec d) {
   int setupAt = 1 << 20;   // the first of the setup options, if any
   { int breaking = 0; for (int i = 0; i < n; i++) if (O[i].breaks) breaking = 1;
     if (!breaking && aloneOnEngine() && BIN[IN_INCOMING] > 0 && (d.kind == K_HOLD || O[at].early)) { setupAt = n; n = setupOptions(O, n, d); } }
+  // the line that saves the board: what an option must still be able to play after it (getsBackInTime)
+  int32_t sv[2 * LINEMAX]; int sn = 0;
   if (saSet && aloneOnEngine()) {
-    int32_t sv[2 * LINEMAX]; int sn = saN;
+    sn = saN;
     if (sn > 0) for (int k = 0; k < 2 * sn; k++) sv[k] = saLine[k];
     else if (saDec.kind == K_SWAP) { sn = 1; sv[0] = saDec.sr; sv[1] = saDec.sc; }
-    if (sn > 0) for (int i = 0; i < n; i++) {
-      Opt *o = &O[i];
-      if (!o->lives || o->n == 0 || o->breaks || (o->sw[0] == sv[0] && o->sw[1] == sv[1])) continue;
-      if (!getsBackInTime(o, sv, sn)) o->lives = 0;
-    }
   }
   if (n < 2) return d;
+  // the best option is asked the two survival questions, on the engine, only when it wins: one that fails is out
+  // (it does not survive) and the rest are ranked again
   int best = 0;
-  for (int i = 1; i < n; i++) { int c = optRank(&O[i], &O[best]); if (c > 0 || (c == 0 && O[i].pri < O[best].pri)) best = i; }
+  for (;;) {
+    best = 0;
+    for (int i = 1; i < n; i++) { int c = optRank(&O[i], &O[best]); if (c > 0 || (c == 0 && O[i].pri < O[best].pri)) best = i; }
+    Opt *w = &O[best];
+    int bad = (best >= setupAt && !sparesSetups(w->sw[0], w->sw[1]))
+           || (sn > 0 && w->lives && w->n > 0 && !w->breaks && !(w->sw[0] == sv[0] && w->sw[1] == sv[1]) && !getsBackInTime(w, sv, sn));
+    if (!bad) break;
+    w->lives = 0;
+  }
   if (best == at) return d;
   Opt *b = &O[best];
 #ifndef __wasm__
