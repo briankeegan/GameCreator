@@ -88,6 +88,7 @@ function Match(level, L) {
   this.plan = {};          // clock -> input planned for that frame
   this.expect = null;      // the board predicted for the next frame
   this.hold = { left: 0, started: false };
+  this.swapHistory = [];   // the last few swaps played, to tell a swap back
   this.acted = true;       // whether the mind's last decision was played
   this.nextAt = 0;         // the frame the plan ends on
   this.arrivals = [];      // garbage on its way (arrivalsOf)
@@ -206,19 +207,21 @@ function swapOf(board, move) {
   var row = board.panels[move[0]], a = row && row[move[1]], b = row && row[move[1] + 1];
   return { move: move, ids: a && b ? [a.id, b.id] : null };
 }
-// Every panel's id by square, as one string; with a swap's two squares exchanged
-// it is the board as that swap leaves it.
-function idsOf(board, move) {
-  var out = [];
+// The ids of every panel on the board, and of the garbage among them.
+function panelIds(board) {
+  var all = {}, garbage = {};
   for (var r = 1; r < board.panels.length; r++) {
-    var row = board.panels[r] || [], line = [];
-    for (var c = 1; c <= 6; c++) {
-      var k = move && r === move[0] ? (c === move[1] ? c + 1 : c === move[1] + 1 ? c - 1 : c) : c;
-      line.push(row[k] ? row[k].id : '');
-    }
-    out.push(line.join(','));
+    var row = board.panels[r];
+    if (row) for (var c = 1; c <= 6; c++) { var p = row[c]; if (p && p.id != null) { all[p.id] = true; if (p.isGarbage) garbage[p.id] = true; } }
   }
-  return out.join(';');
+  return { all: all, garbage: garbage };
+}
+// Whether a panel left the board (a clear) or garbage came onto it since `then`.
+// A row rising is not a change: the stack scrolls and its squares are not the same ones.
+function changedSince(then, now) {
+  for (var id in then.all) if (!now.all[id]) return true;
+  for (var g in now.garbage) if (!then.garbage[g]) return true;
+  return false;
 }
 function moved(sw, to) {
   var ids = sw.ids, c = sw.move[1];
@@ -273,19 +276,26 @@ Match.prototype.take = function (truth) {
       if (!this.stats.lateWorst || now - a.at > this.stats.lateWorst.over)
         this.stats.lateWorst = { over: now - a.at, ms: a.ms, br: a.brMs, took: a.diag && a.diag.took, survive: a.diag && a.diag.survive, budget: a.diag && a.diag.budget, queued: a.queued };
     }
-    // A swap that puts back the two panels the swap before it exchanged is a
-    // swap back. It is played when it clears something or breaks the garbage
-    // wanted, or once when something else on the board has changed since;
-    // otherwise it is played as a hold. A second swap back in a row never is.
-    var back = false;
-    if (a.kind === 'swap' && move && this.lastSwap) {
-      var us = swapOf(board, move), lw = this.lastSwap;
-      back = !!(us.ids && lw.move[0] === move[0] && lw.move[1] === move[1] && lw.ids[0] === us.ids[1] && lw.ids[1] === us.ids[0]);
+    // A swap that puts back the two panels one of the last few swaps exchanged
+    // (wherever the stack has since scrolled them to) is a swap back. It is played
+    // when it clears something or breaks the garbage wanted, or once when a
+    // panel has cleared or garbage landed since; otherwise it is played as a
+    // hold. A second swap back of the same pair never is.
+    var back = null, now = null;
+    if (a.kind === 'swap' && move && this.swapHistory.length) {
+      var us = swapOf(board, move);
+      if (us.ids) {
+        for (var h = this.swapHistory.length - 1; h >= 0; h--) {
+          var e = this.swapHistory[h];
+          if (e.ids[0] === us.ids[1] && e.ids[1] === us.ids[0]) { back = e; break; }
+        }
+      }
       if (back) {
-        var clears = (a.diag && a.diag.clears > 0) || (a.breaks && a.breaks.took), changed = lw.after !== idsOf(board);
-        if (!clears && !(changed && !lw.backs)) {
+        now = panelIds(board);
+        var clears = (a.diag && a.diag.clears > 0) || (a.breaks && a.breaks.took);
+        if (!clears && !(changedSince(back, now) && !back.backs)) {
           a = Object.assign({}, a, { kind: 'hold', move: null, line: null });
-          move = null; back = false;
+          move = null; back = null;
           this.stats.undone++;
         }
       }
@@ -299,12 +309,12 @@ Match.prototype.take = function (truth) {
     this.stats.heldWalks += ins.held;
     // Each planned frame carries the raise held after it.
     var sw = a.kind === 'swap' ? swapOf(board, move) : null;
-    // the swaps played
+    // the swaps played, and the last few kept to tell a swap back
     if (a.kind === 'swap' && move && sw && sw.ids) {
       this.stats.swaps++;
-      sw.after = idsOf(board, move);
-      sw.backs = back ? this.lastSwap.backs + 1 : 0;
-      this.lastSwap = sw;
+      var ids = panelIds(board);
+      this.swapHistory.push({ ids: sw.ids, all: ids.all, garbage: ids.garbage, backs: back ? back.backs + 1 : 0, at: at });
+      while (this.swapHistory.length > SWAP_HISTORY || (this.swapHistory.length && at - this.swapHistory[0].at > SWAP_BACK_FRAMES)) this.swapHistory.shift();
     }
     for (var t in this.plan) if (+t >= at) delete this.plan[t];
     for (var i = 0; i < ins.length; i++) this.plan[at + i] = { bits: ins[i], hold: step.holds[i], swap: sw };
@@ -316,7 +326,7 @@ Match.prototype.take = function (truth) {
 };
 // THE INPUT BUDGET (the game's InputBudget): swap and direction keys going down,
 // at most ACTION_LIMIT of them in any ACTION_WINDOW frames (456 a minute).
-var ACTION_WINDOW = 600, ACTION_LIMIT = Math.floor(456 * ACTION_WINDOW / 3600);
+var SWAP_HISTORY = 8, SWAP_BACK_FRAMES = 300, ACTION_WINDOW = 600, ACTION_LIMIT = Math.floor(456 * ACTION_WINDOW / 3600);
 // How many actions the game still allows a move starting on frame `at`: the
 // allowance less the presses made and planned in the window before it.
 Match.prototype.allowanceAt = function (at) {
