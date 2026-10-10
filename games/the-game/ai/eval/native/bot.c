@@ -2272,7 +2272,7 @@ static double LATER[NSTAGES];
 // EVERY STAGE HAS A SHARE OF OPTWORK (percent), and the stages before it leave
 // at least the shares of the stages after it: a stage that takes nothing for
 // lack of work is measured at nothing, and would be left nothing again
-static const int STAGESHARE[NSTAGES] = { 20, 0, 25, 5, 25, 5, 10, 5, 5 };
+static const int STAGESHARE[NSTAGES] = { 30, 0, 25, 5, 15, 5, 10, 5, 5 };
 static double stageLeaves(int i) {
   double keep = LATER[i] > FINALJUDGES * jdCost ? LATER[i] : FINALJUDGES * jdCost;
   int after = 0; for (int j = i + 1; j < NSTAGES; j++) after += STAGESHARE[j];
