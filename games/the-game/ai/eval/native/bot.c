@@ -3921,12 +3921,22 @@ static double optSoon(Opt *o) {
   if (!o->soonKnown) { o->soon = breakTime(o->d.kind == K_HOLD ? 0 : o->sw, o->d.kind == K_HOLD ? 0 : o->n); o->soonKnown = 1; }
   return o->soon;
 }
-// WHAT AN OPTION LEAVES ONE SWAP AWAY, for the options that clear nothing (the hold, the setups): the board the option
-// settles to, every legal swap on it resolved, the best attack among them (attackFirst), and its vertical twos
-// (twosOf). A setup is worth what it makes ready; it is read once, and only while the decision has work left.
+// WHAT AN OPTION LEAVES WITHIN REACH, for the options that clear nothing (the hold, the setups): the board the option
+// settles to, searched in the time there is (searchInTime, any number of swaps), the best attack any line reaches
+// (attackFirst), and its vertical twos (twosOf). Read once, and only while the decision has work left.
 static int twosOf(const int32_t *st);
-#define AHEADWORK 40   // a resolve of one swap on the masks, in work units
-static int32_t AHSW[2 * 128], AHR[R_INTS + ST_INTS];
+#define REACHWORK 6000   // the share of the decision's work one option's reach search may spend
+typedef struct { Atk best; } ReachCtx;
+static int sitReach(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
+  ReachCtx *x = ctx; (void)sw; (void)n; (void)at;
+  if (res[R_SCOPE] != SC_OK) return SIT_END;   // a break is the break stages'
+  if (res[R_TOTAL] > 0) {
+    Atk k = atkOf(res[R_ROUNDS] == 1 ? res[R_TOTAL] : 0, res[R_CHAIN]);
+    if (isAttack(k) && attackFirst(k, x->best) > 0) x->best = k;
+    return SIT_END;   // a clear ends the line
+  }
+  return SIT_GROW;
+}
 static void optAhead(Opt *o) {
   extern PATLS double paWork;
   if (o->aheadKnown) return;
@@ -3936,17 +3946,10 @@ static void optAhead(Opt *o) {
   int hold = o->d.kind == K_HOLD;
   if (lineState(hold ? 0 : o->sw, hold ? 0 : o->n, st, can, w, cur, &t) != 0) return;
   o->twos = twosOf(st);
-  int n = legal(st, AHSW);
-  for (int i = 0; i < n && paWork < optLine(); i++) {
-    int sr = AHSW[2 * i], sc = AHSW[2 * i + 1];
-    if (!swapIn(st, sr, sc)) continue;
-    resolve(st, AHR, 0);
-    swapIn(st, sr, sc);
-    paWork += AHEADWORK;
-    if (AHR[R_TOTAL] <= 0) continue;
-    Rs r = summarise(AHR); Atk k = atkOfRes(&r);
-    if (attackFirst(k, o->ahead) > 0) o->ahead = k;
-  }
+  ReachCtx rx = { atkOf(0, 0) };
+  double work = optLine() - paWork; if (work > REACHWORK) work = REACHWORK;
+  searchInTime(st, cur[0], cur[1], t, 0, timeLeft(), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can, w, work, sitReach, &rx, 0, 0, 0);
+  o->ahead = rx.best;
 }
 // 1: a is better, -1: b is, 0: the same
 static int optRank(Opt *a, Opt *b) {
