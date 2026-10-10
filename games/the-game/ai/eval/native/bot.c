@@ -3972,9 +3972,9 @@ static Dec arbitrate(Dec d) {
   if (best == at) return d;
   Opt *b = &O[best];
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "ARBITER %s %d,%d over via %d %d,%d | keys (lives breaks ready die soon cash life hollow; -1 unasked) won %d %d %d %d %g %d %g %d | lost %d %d %d %d %g %d %g %d\n", best == ia || best == ih ? "the alternative" : "the target", b->d.sr, b->d.sc, d.via, d.sr, d.sc,
-      b->lives, b->breaks, b->rdyKnown ? b->rdy : -1, b->die, b->soonKnown ? b->soon : -1.0, b->cash, b->life, b->hollow,
-      O[at].lives, O[at].breaks, O[at].rdyKnown ? O[at].rdy : -1, O[at].die, O[at].soonKnown ? O[at].soon : -1.0, O[at].cash, O[at].life, O[at].hollow); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "ARBITER %s %d,%d over via %d %d,%d | keys (lives breaks early safe ready die soon attack life hollow; -1 unasked) won %d %d %d %d %d %d %g %d %g %d | lost %d %d %d %d %d %d %g %d %g %d\n", best == ia || best == ih ? "the alternative" : "the target", b->d.sr, b->d.sc, d.via, d.sr, d.sc,
+      b->lives, b->breaks, b->early, b->safe, b->rdyKnown ? b->rdy : -1, b->die, b->soonKnown ? b->soon : -1.0, b->cash ? (b->chain ? 100 + b->chain : b->size) : 0, b->life, b->hollow,
+      O[at].lives, O[at].breaks, O[at].early, O[at].safe, O[at].rdyKnown ? O[at].rdy : -1, O[at].die, O[at].soonKnown ? O[at].soon : -1.0, O[at].cash ? (O[at].chain ? 100 + O[at].chain : O[at].size) : 0, O[at].life, O[at].hollow); }
 #endif
   if (best == ia) lineSet(saLine, saN, saKind, saWait);
   else if (best == ih || best >= setupAt) BT->nLine = 0;
