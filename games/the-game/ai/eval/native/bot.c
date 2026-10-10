@@ -2195,11 +2195,12 @@ static double panelWorth(int panels) { return panels >= 36 ? 1 : panels >= 30 ? 
 // THE MATERIAL A JUDGED LINE (LNO) SPENDS against the board left alone: the
 // panels it ends with and the garbage it converted, less the board left
 // alone's, each worth what a panel is worth on the board the line leaves
-static int spentOf(void) {
+static int spentIn(const int32_t *a) {
   if (!aloneOnEngine()) return 0;
-  double s = ((LNA[12] + LNA[2]) - (LNO[12] + LNO[2])) * panelWorth(LNO[12]);
+  double s = ((LNA[12] + LNA[2]) - (a[12] + a[2])) * panelWorth(a[12]);
   return (int)(s + (s >= 0 ? 0.5 : -0.5));
 }
+static int spentOf(void) { return spentIn(LNO); }
 static int lnAlone;
 static int cashes(const int32_t *r) { return r[R_TOTAL] > 0 || r[R_SCOPE] == SC_BROKE; }
 static double timeLeft(void);
@@ -3612,18 +3613,25 @@ static int readyAfterSpend(const int32_t *sw, int n);
 static int aloneOnEngine(void);
 static int nonSpendLives(void);
 // A CLEAR THAT BREAKS NOTHING IS PRESSED ONLY WHEN IT IS DUE: material is
-// spent to break, or to live at the last moment it can. The engine plays the
-// clear begun when the front next decides -- a hold counts its reaction down
-// over the next REACT frames and decides the frame after (front.c cooldown),
-// REACT + 1 -- and while it still lives begun then, it waits (held, stayAlive),
-// and a break may come first. The one test, for every route that clears to live.
+// spent to break, or to live, and only once waiting costs something. The
+// engine plays the clear begun now and begun when the front next decides -- a
+// hold counts its reaction down over the next REACT frames and decides the
+// frame after (front.c cooldown), REACT + 1 -- and each is valued as a line's
+// life is, the press itself not counted (lifeOf, last 0): the frame the board
+// loses health less its hollow and material spent. Waiting free, it waits
+// (held, stayAlive) and a break may come first; waiting costs -- the board
+// loses health sooner, or the queue drops on a quiet board -- it is due now.
+// The one test, for every route that clears to live.
 int lineOnEngineFrom(const int32_t *steps, int n, int horizon, int delay, int32_t *out);
+static double heldValue(const int32_t *a) { return lifeOf(lnoDie(a), 0, HOLLOW(a), spentIn(a)); }
 static int clearDue(const int32_t *sw, int n) {
   if (!aloneOnEngine()) return 1;
   if (!LNA[0]) return 0;
-  int32_t o[LNOLEN];
-  if (lineOnEngineFrom(sw, n, LINEHORIZON, (REACT > 0 ? REACT : 0) + 1, o) != 0 || o[1] < 0) return 1;   // not to be judged begun later: due now
-  return o[0] && o[0] <= o[1] + NEXTMOVE;   // begun later it loses health by its own press (lineJudge's LIVES): due now
+  int32_t now[LNOLEN], later[LNOLEN];
+  if (lineOnEngineFrom(sw, n, LINEHORIZON, 0, now) != 0 || now[1] < 0) return 1;
+  if (lineOnEngineFrom(sw, n, LINEHORIZON, (REACT > 0 ? REACT : 0) + 1, later) != 0 || later[1] < 0) return 1;   // not to be played begun later: due now
+  if (later[0] && later[0] <= later[1] + NEXTMOVE) return 1;   // begun later it loses health by its own press (lineJudge's LIVES)
+  return heldValue(later) < heldValue(now);
 }
 // A SPEND THAT KEEPS A WAITING RAISE OUT: a clear holds the rise lock and
 // renews the stop, so while a raise for material waits on either, a spend

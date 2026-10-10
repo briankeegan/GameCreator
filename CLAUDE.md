@@ -249,8 +249,10 @@ ways: a tool not listed, or a path listed that doesn't exist.
 - **BitBot drills run at level 10, nothing else.** `pa_drill.js` exits if a
   scenario's level is not 10.
 - **A three that breaks nothing is pressed only to live, and only when it is
-  due** (`clearDue`: the engine plays the clear begun a reaction later, and it
-  no longer lives). No route clears for shape or spare material.
+  due** (`clearDue`: the engine plays the clear begun now and begun at the next
+  decision; it is due once waiting costs life -- the queue dropping on a quiet
+  board, an earlier loss of health). Waiting, the bot holds. No route clears
+  for shape or spare material.
 - **Time, never swaps.** A line is as good as the frame it is done, however
   many swaps it takes; nothing the bot asks is capped at a number of swaps.
   Every search that grows lines is `searchInTime` (`native/bot.c`): soonest
