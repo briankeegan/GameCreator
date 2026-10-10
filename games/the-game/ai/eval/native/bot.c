@@ -34,19 +34,23 @@ enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
 int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);   // the engine judge's out: [0] die ... [11] end board hash, [12] panels it ends with
 // THE CUT, past which the decision fails and the game with it: the game's
 // think budget (ThinkBudget.lua) is 8 ms a frame for a computer player's whole
-// thinking, so a decision gets BUDGETMS (that less the frame's own work), at
-// the slowest hundredth of the work rate over 929 heavy decisions of
-// combo_storm seed 9 (4,000 frames, each decision's least time over two runs;
-// units per ms p1 6,027, p5 6,447, p50 10,308): 7.1 ms x 6,027. Natively the
-// rate is higher (drill seed 9: p5 7,148). lua_budget_check and budget_check
-// measure the time it actually takes.
-#define WORKBUDGET 42800   // natively and in the browser alike
+// thinking. A decision's work is counted in units, and a unit takes longer or
+// shorter by machine and by what the decision does: a full decision of
+// combo_storm seed 18 (4,000 frames, 33,000 units) takes 3.5 ms at the median,
+// a median of 9,400 units per ms (drill seed 9 p5 7,148, Lua seed 9 p1 6,027).
+// 8 ms at the median rate is 75,000 units; a decision is cut at 72,000. Below
+// the median rate a full decision overruns the game's 8 ms (train.lua counts
+// the frames over it), so the rate is what to raise, not the budget to cut:
+// half the work (42,800) leaves a stage nothing to judge with and the bot dies
+// in its first wave. lua_budget_check and budget_check measure the time it
+// actually takes.
+#define WORKBUDGET 72000   // natively and in the browser alike
 // WHERE OPTIONAL WORK STOPS: the engine refuses work past it, and every judge,
 // replay, search and batch is declined that would not fit. What was under way
 // finishes past it: at most 6,688 units over 3,446 decisions of seed 16 under
 // the charges of the 4,963-a-ms rate, 9,630 at today's 7,148, so the line
 // stands that far under the cut.
-#define OPTWORK 33200   // WORKBUDGET less the 9,600 under way when the line is crossed
+#define OPTWORK 62400   // WORKBUDGET less the 9,600 under way when the line is crossed
 enum { C_REFUSEDDEADLY, C_ALLDEAD, C_REFUSEDRETURN, C_REFUSEDTOOSLOW, C_PLANNED, C_PLANDROPPED, C_ATTACKED,
        C_ATTACKDROPPED, C_CELLSPLANNED, C_REFUSEDPAYLESS, C_REFUSEDSTARVING, C_REFUSEDOTHER, C_REFUSEDATEXIT,
        C_RAISEDFORMATERIAL, C_WAITEDTORAISE, C_DUGFOR, C_DIGDROPPED, C_BROKENOW, C_FLATTENBLIND, C_OPENINGRAISES,
@@ -80,17 +84,11 @@ static Bot BOTS[MAXBOT];
 static int nBots = 0;
 static Bot *BT;
 static double BIN[IN_SIZE], BOUT[256];
+// the game's ThinkBudget is the only clock: the bot reads none
+#define NOWMS2() 0.0
 #ifndef __wasm__
-#define GC_TS 1
-struct gcTs { long s, ns; };   // the native clock (clock_gettime), for the budget
-extern int clock_gettime(int, struct gcTs *);
-#endif
-#ifndef __wasm__
-static double NOWMS2(void) { struct gcTs q; clock_gettime(1, &q); return q.s * 1e3 + q.ns / 1e6; }
 extern char *getenv(const char *);
 extern int atoi(const char *);
-#else
-static double NOWMS2(void) { return 0; }
 #endif
 int botTraceOn;   // the native drill's GC_BOTLOG: the pool, as the engine plays it
 void *botLogTo;    // where the bot log goes: stderr, or a run's own buffer (train.lua's death report)
@@ -2614,7 +2612,7 @@ static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double no
   if (sitLevel >= SITLEVELS) return 0;   // nested past its memory: no answer, never a corrupted one
 #ifndef __wasm__
   // GC_WORKSTAT: the search's milliseconds per work, beside the decision's (WORK lines) -- SITPOPWORK's calibration
-  static int calOn = -1; if (calOn < 0) calOn = getenv("GC_WORKSTAT") != 0;
+  static int calOn = -1; if (calOn < 0) calOn = 0;
   static double calMs, calW; static int calN; double cal0 = calOn ? NOWMS2() : 0; extern PATLS double paWork; double calw0 = paWork; int calTop = calOn && sitLevel == 0;
 #endif
   // EVERY SEARCH INSIDE THE DECISION'S BUDGET: its share, never past where
@@ -3892,7 +3890,7 @@ static Dec breakFirst(Dec d) {
     double lf0 = NOWMS2();
     linesFind(REROOTS, 1);
 #ifndef __wasm__
-    if (getenv("GC_WORKSTAT")) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINESFIND %.2f ms | root %.2f kids %d %.2f states %.2f | lines %d\n", NOWMS2() - lf0, growRootMs, growKids, growKidMs, growStateMs, nLines); }
+    if (0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINESFIND %.2f ms | root %.2f kids %d %.2f states %.2f | lines %d\n", NOWMS2() - lf0, growRootMs, growKids, growKidMs, growStateMs, nLines); }
 #endif
     l = bestBreak(); }
 #ifndef __wasm__
@@ -4110,7 +4108,7 @@ static Dec lineupFirst(Dec d) {
     searchInTime(st0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, lineEnds(0, 0, &last), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0,
                  can0, waits0, luEnd - paWork, sitLineup, &x, 0, 0, 0);
 #ifndef __wasm__
-  if (getenv("GC_WORKSTAT")) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINEUP states %d %.2f ms | ranks %d %.2f ms (ready %d %.2f ms)\n", luStates, luStateMs, luRanks, luRankMs, luReady, luReadyMs); }
+  if (0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINEUP states %d %.2f ms | ranks %d %.2f ms (ready %d %.2f ms)\n", luStates, luStateMs, luRanks, luRankMs, luReady, luReadyMs); }
 #endif
   if (!B.has) return d;
   if (B.n == 1 && d.kind == K_SWAP && d.hasMove && d.sr == B.sw[0] && d.sc == B.sw[1]) return d;
@@ -4949,7 +4947,7 @@ static Dec fillFirst(Dec d) {
   double t0 = NOWMS2();
   Dec r = fillFirstIn(d);
 #ifndef __wasm__
-  if (getenv("GC_FILLSTAT")) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "FILLSTAT %.2f ms | judges %d %.2f ms | margins %d %.2f ms | pool %d\n", NOWMS2() - t0, fillJudges - j0, fillJudgeMs - jm0, fillMargins, fillMarginMs, nPool); }
+  if (0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "FILLSTAT %.2f ms | judges %d %.2f ms | margins %d %.2f ms | pool %d\n", NOWMS2() - t0, fillJudges - j0, fillJudgeMs - jm0, fillMargins, fillMarginMs, nPool); }
 #endif
   return r;
 }
@@ -5554,11 +5552,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   extern PATLS double paWork;
   double w0 = paWork, ws[12], ts[12], jm[12]; int k = 0, cutAt[12], js[12];
   fillJudges = 0; fillJudgeMs = 0;
-#ifndef __wasm__
-#define NOWMS() ({ struct gcTs q; clock_gettime(1, &q); q.s * 1e3 + q.ns / 1e6; })
-#else
 #define NOWMS() 0.0
-#endif
   double t0 = NOWMS();
   extern int paBudgetOut(void), paBudgetSpent(void), paCutPast(double);
 #define SHARE(p) ((void)(p))   // one budget for the whole decision, opened above
@@ -5701,7 +5695,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   }
 #ifndef __wasm__
   { extern char *getenv(const char *); extern int fprintf(void *, const char *, ...); extern void *stderr;
-    if (getenv("GC_WORKSTAT")) { fprintf(BLOG, "STAGES%s pool %.3f", paBudgetOut() ? " OUT" : "", dcCandMs); fprintf(BLOG, " SA %.3f %d MO %.3f", saMs, saN, moMs); saMs = moMs = 0; saN = 0; for (int i = 0; i < k; i++) fprintf(BLOG, " %.0f/%.3f/%d/%.3f", ws[i] - (i ? ws[i - 1] : w0), ts[i] - (i ? ts[i - 1] : t0), js[i] - (i ? js[i - 1] : 0), jm[i] - (i ? jm[i - 1] : 0)); fprintf(BLOG, "\n"); } }
+    if (0) { fprintf(BLOG, "STAGES%s pool %.3f", paBudgetOut() ? " OUT" : "", dcCandMs); fprintf(BLOG, " SA %.3f %d MO %.3f", saMs, saN, moMs); saMs = moMs = 0; saN = 0; for (int i = 0; i < k; i++) fprintf(BLOG, " %.0f/%.3f/%d/%.3f", ws[i] - (i ? ws[i - 1] : w0), ts[i] - (i ? ts[i - 1] : t0), js[i] - (i ? js[i - 1] : 0), jm[i] - (i ? jm[i - 1] : 0)); fprintf(BLOG, "\n"); } }
 #endif
   ENGINE_BASE = 0;
 #ifndef __wasm__

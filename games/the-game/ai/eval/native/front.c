@@ -27,6 +27,11 @@ typedef struct { uint8_t last[32][W + 2], first[32][W + 2], same[32][W + 2], gar
 // does not allow is not pressed: the walk waits for the frame it is.
 #define ACTIONLIMIT 76   // 456 actions a minute over the window: floor(456 * 600 / 3600)
 #define ACTIONWINDOW 600
+// the keys' own state, the real front's and every simulated line's alike: the
+// frames of the actions inside the window (a ring), and a direction held down
+#define HOLDTIGHT 24   // the actions short of the limit at which short walks are held too
+#define ACTIONRING 128   // room for the diagnostic limit (GC_INPUT_LIMIT) above the game's
+typedef struct { int actAt[ACTIONRING], actOld, actN, holdKey, limit; } Pad;
 typedef struct {
   int id, reaction, reveal, allowRaise;
   int cooldown, raiseHeld, wantRaise, wantRows, raiseLives;   // raiseHeld: the raise key pressed this frame
@@ -38,7 +43,7 @@ typedef struct {
   int lastKind, lastVia, lastMoveR, lastMoveC;
   Settle settle;   // the board's cells, when each settles (unsettled), at the last decision
   int wWaitTo, wFrames, wWaitAll, wR0, wKept;
-  int actAt[ACTIONLIMIT], actOld, actN;   // the frames of the actions inside the window, a ring (spendAction)
+  Pad pad;
   int sawWave;   // a real garbage slab has been queued: the phantom first wave is over
   int risen, riseDisp, riseHas;   // rows risen since the game began (IN_RISEN), counted every frame
   int pkR, pkC, pkAt, pkAll, presses;   // presses: every swap pressed, counted (IN_PRESSES)   // the swap walked to, and the clock its first plan pressed it at (pkAt 0: none)   // a walk: the frame its swap's panels settle (every panel's: wWaitAll), the frames it has taken
@@ -493,35 +498,69 @@ static void fTable(Front *F, double *tab) {
 }
 
 // ---------------------------------------------------------------- the keys (bitbot.js update, panel-cpu.js walk)
-static int actionsInWindow(Front *F, int clock) {
-  while (F->actN > 0 && clock - F->actAt[F->actOld] >= ACTIONWINDOW) { F->actOld = (F->actOld + 1) % ACTIONLIMIT; F->actN--; }
-  return F->actN;
+// the game's allowance; GC_INPUT_LIMIT (native, a diagnostic) sets another, to see what the input budget costs
+static int actionLimit(void) {
+#ifndef __wasm__
+  static int lim = -1;
+  if (lim < 0) { const char *e = getenv("GC_INPUT_LIMIT"); lim = e && *e ? atoi(e) : ACTIONLIMIT; if (lim < 1 || lim > ACTIONRING) lim = ACTIONLIMIT; }
+  return lim;
+#else
+  return ACTIONLIMIT;
+#endif
 }
-static int actionAllowed(Front *F) { return actionsInWindow(F, FB->clock) < ACTIONLIMIT; }
-static void spendAction(Front *F) {
-  if (actionsInWindow(F, FB->clock) >= ACTIONLIMIT) return;
-  F->actAt[(F->actOld + F->actN) % ACTIONLIMIT] = FB->clock; F->actN++;
+static int padCount(Pad *p, int clock) {
+  while (p->actN > 0 && clock - p->actAt[p->actOld] >= ACTIONWINDOW) { p->actOld = (p->actOld + 1) % ACTIONRING; p->actN--; }
+  return p->actN;
 }
-static int fSend(Front *F, int input, int held) {
+static int padAllowed(Pad *p, int clock) { return padCount(p, clock) < (p->limit ? p->limit : ACTIONLIMIT); }
+static void padSpend(Pad *p, int clock) {
+  if (padCount(p, clock) >= ACTIONRING) return;
+  p->actAt[(p->actOld + p->actN) % ACTIONRING] = clock; p->actN++;
+}
+// THE KEYS OF ONE FRAME: a direction held over two frames is let go (the walk
+// taps), except a held walk; a direction that goes down, or a swap, is an action
+static int padSend(Pad *p, int input, int *held, int clock) {
   int dir = input & IN_UP ? H_UP : input & IN_DOWN ? H_DOWN : input & IN_LEFT ? H_LEFT : input & IN_RIGHT ? H_RIGHT : H_NONE;
-  if (dir && dir == held) {
+  if (dir && dir == *held && !p->holdKey) {
     input &= ~(IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT);
-    if (F->walk) F->wTimer = 0;
-    if (F->park) F->pTimer = 0;
     dir = H_NONE;
   }
-  if (dir) spendAction(F);
-  F->held = dir;
+  if (dir && dir != *held) padSpend(p, clock);
+  *held = dir;
   return input;
 }
-static int stepToward(Front *F, int *timer, int row, int col, int input) {
-  if (!actionAllowed(F)) return input;
-  if (FB->curCol < col) input |= IN_RIGHT;
-  else if (FB->curCol > col) input |= IN_LEFT;
-  else if (FB->curRow < row) input |= IN_UP;
-  else input |= IN_DOWN;
-  *timer = MOVE_FRAMES - 1;
+static int fSend(Front *F, int input, int held) {
+  int had = input & (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT), h = held;
+  input = padSend(&F->pad, input, &h, FB->clock);
+  F->held = h;
+  if (had && !(input & (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT))) {
+    if (F->walk) F->wTimer = 0;
+    if (F->park) F->pTimer = 0;
+  }
   return input;
+}
+// THE NEXT KEY OF A WALK to (row, col) from the cursor of board `bd`, if the
+// input budget allows one; a long walk starts a held key
+static int padStepToward(Pad *p, const Board *bd, int *timer, int row, int col, int input, int canHold) {
+  if (!padAllowed(p, bd->clock)) return input;
+  int key, dist;
+  if (bd->curCol < col) { key = IN_RIGHT; dist = col - bd->curCol; }
+  else if (bd->curCol > col) { key = IN_LEFT; dist = bd->curCol - col; }
+  else if (bd->curRow < row) { key = IN_UP; dist = row - bd->curRow; }
+  else { key = IN_DOWN; dist = bd->curRow - row; }
+  *timer = MOVE_FRAMES - 1;
+  // a window nearly spent holds a walk of two cells too: a few frames slower than taps, against a press waiting for the allowance
+  int minLeg = padCount(p, bd->clock) + HOLDTIGHT >= (p->limit ? p->limit : ACTIONLIMIT) ? 2 : HOLDLEG;
+  if (canHold && dist >= minLeg) p->holdKey = key;
+  return input | key;
+}
+// the held key goes on while the cursor is short of the cell on that axis
+static int padHoldGoing(Pad *p, const Board *bd, int row, int col) {
+  int k = p->holdKey;
+  if (!k) return 0;
+  int short_ = k == IN_RIGHT ? bd->curCol < col : k == IN_LEFT ? bd->curCol > col : k == IN_UP ? bd->curRow < row : bd->curRow > row;
+  if (!short_) p->holdKey = 0;
+  return short_;
 }
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 // A SWAP IS PRESSED WHEN ITS FIRST PLAN PRESSED IT. The settle is taken on
@@ -537,7 +576,7 @@ static int pressWait(Front *F, int r, int c, int clock, int wait, int waitAll) {
   return wait;
 }
 static void beginWalk(Front *F, int r, int c, int cooldown, int waitAll) {
-  F->walk = 1; F->wRow = r; F->wCol = c; F->wTimer = 0; F->wCooldown = cooldown; F->wRetries = 0; F->wHasDisp = 0;
+  F->pad.holdKey = 0; F->walk = 1; F->wRow = r; F->wCol = c; F->wTimer = 0; F->wCooldown = cooldown; F->wRetries = 0; F->wHasDisp = 0;
   int wait = waitAll ? breakWait(&F->settle, r, c) : pairWait(&F->settle, r, c);
   F->wKept = F->pkAt && F->pkR == r && F->pkC == c && F->pkAll == waitAll;
   if (!F->wKept) { F->pkR = r; F->pkC = c; F->pkAt = FB->clock + wait; F->pkAll = waitAll; }
@@ -548,12 +587,14 @@ static int driveWalk(Front *F, int input) {
   if (F->wHasDisp && FB->displacement > F->wDisp) F->wRow++;
   F->wDisp = FB->displacement; F->wHasDisp = 1;
   // a target risen past the rows the cursor reaches is no pair to press: the bot decides again
-  if (F->wRow > FB->topCurRow) { F->walk = 0; F->cooldown = 0; return input; }
+  if (F->wRow > FB->topCurRow) { F->walk = 0; F->pad.holdKey = 0; F->cooldown = 0; return input; }
   int row = clampi(F->wRow, 1, FB->topCurRow), col = clampi(F->wCol, 1, W - 1);
   if (FB->curRow != row || FB->curCol != col) {
+    if (padHoldGoing(&F->pad, FB, row, col)) return input | F->pad.holdKey;
     if (F->wTimer > 0) { F->wTimer--; return input; }
-    return stepToward(F, &F->wTimer, row, col, input);
+    return padStepToward(&F->pad, FB, &F->wTimer, row, col, input, 1);
   }
+  F->pad.holdKey = 0;
   // the swap's panels settle at a known frame: a walk that arrives first waits
   // a pair still now is pressed now, unless a plan has already fixed its frame
 #ifndef __wasm__
@@ -565,11 +606,11 @@ static int driveWalk(Front *F, int input) {
     F->walk = 0; F->cooldown = 0;
     return input;
   }
-  if (!actionAllowed(F)) return input;   // the swap waits for the budget's next action
+  if (!padAllowed(&F->pad, FB->clock)) return input;   // the swap waits for the budget's next action
   int ok = nb_can_swap(FB, FB->curRow, FB->curCol) && nb_try_queue_swap(FB, FB->curRow, FB->curCol);
   F->walk = 0;
   if (ok) {
-    spendAction(F);
+    padSpend(&F->pad, FB->clock);
 #ifndef __wasm__
     { extern int botTraceOn; if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "PRESS clock %d at %d,%d\n", FB->clock, FB->curRow, FB->curCol); } }
 #endif
@@ -585,7 +626,7 @@ static int parkStep(Front *F, int input) {
   int row = clampi(F->pRow, 1, FB->topCurRow), col = clampi(F->pCol, 1, W - 1);
   if (FB->curRow == row && FB->curCol == col) return input;
   if (F->pTimer > 0) { F->pTimer--; return input; }
-  return stepToward(F, &F->pTimer, row, col, input);
+  return padStepToward(&F->pad, FB, &F->pTimer, row, col, input, 0);
 }
 #define DIRS (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT)
 
@@ -611,7 +652,7 @@ static JLOCAL int LWAITALL;   // the line's last press waits for its pair and th
 // last step, so no prefix carries it. Written by the main thread; a worker's
 // replay is kept in the slot the main thread gave its job.
 #define SNAPN 256
-typedef struct { int dec, n, f, cool, held, last, dropped, hasSettle; int32_t sw[2 * LINEMAX]; Board *b; Settle settle; } Snap;
+typedef struct { int dec, n, f, cool, held, last, dropped, hasSettle; Pad pad; int32_t sw[2 * LINEMAX]; Board *b; Settle settle; } Snap;
 // and the settle the next step starts from, the one the prefix's replay takes of the same board last
 static Snap SNAPS[SNAPN];
 static JLOCAL int snapTo = -1;   // the slot this thread's next prefix is kept in (-1: by its line)
@@ -625,14 +666,14 @@ static Snap *snapFind(const int32_t *sw, int n) {
   Snap *s = &SNAPS[snapHash(sw, n)];
   return s->dec == btDecision && s->n == n && s->b && !__builtin_memcmp(s->sw, sw, (unsigned long)n * 8) ? s : 0;
 }
-static void snapKeep(const int32_t *sw, int n, Board *b, int f, int cool, int held, int last, int dropped) {
+static void snapKeep(const int32_t *sw, int n, Board *b, int f, int cool, int held, int last, int dropped, const Pad *pad) {
   if (n < 1 || n >= LINEMAX || LWAITALL) return;
   int slot = snapTo >= 0 ? snapTo : inWorker ? -1 : (int)snapHash(sw, n);
   if (slot < 0) return;
   Snap *s = &SNAPS[slot];
   if (!s->b) { if (inWorker) return; s->b = nb_new(); }
   nb_copy(s->b, b);
-  s->n = n; s->f = f; s->cool = cool; s->held = held; s->last = last; s->dropped = dropped; s->hasSettle = 0; snapLast = s;
+  s->n = n; s->f = f; s->cool = cool; s->held = held; s->last = last; s->dropped = dropped; s->pad = *pad; s->hasSettle = 0; snapLast = s;
   for (int k = 0; k < 2 * n; k++) s->sw[k] = sw[k];
   if (snapTo < 0) s->dec = btDecision;   // a worker's is stamped by the main thread
 }
@@ -662,6 +703,8 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   int32_t h0 = paLibBoard()->health;
   int step = 0, walking = n > 0, timer = 0, held = LF ? LF->held : H_NONE, cool = 0, disp = b->displacement;
   int tr = n > 0 ? steps[0] : 0, tc = n > 0 ? steps[1] : 0, last = n > 0 ? -1 : 0, f, dropped = b->garbageCreatedCount, f0 = 0;
+  Pad pad; if (from) pad = from->pad; else if (LF) pad = LF->pad; else __builtin_memset(&pad, 0, sizeof pad);
+  pad.holdKey = 0;   // the line begins with the key let go
   if (from) { step = from->n; walking = 0; held = from->held; cool = from->cool; last = from->last; dropped = from->dropped; f0 = from->f; }
   int snapSettle = from && from->hasSettle;
   int kept0 = n > 0 && LF && LF->pkAt && LF->pkR == steps[0] && LF->pkC == steps[1] && LF->pkAll == (LWAITALL && n == 1);
@@ -695,7 +738,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
       int landing = b->queuedSwapRow > 0 || b->swappingCount > 0 || b->pressSwap;
       if (!landing && (cool == 0 || b->stopTime > 0 || nb_topped(b))) {
         if (step == n) {   // the front decides again here
-          if (stopAtNext == 1) snapKeep(steps, n, b, f, coolIn, held, last, dropped);
+          if (stopAtNext == 1) snapKeep(steps, n, b, f, coolIn, held, last, dropped, &pad);
           out[1] = last; out[8] = f; return 1;
         }
         walking = 1; tr = steps[2 * step]; tc = steps[2 * step + 1]; timer = 0; disp = b->displacement;
@@ -709,7 +752,9 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
       disp = b->displacement;
       int row = clampi(tr, 1, b->topCurRow), col = clampi(tc, 1, W - 1);
       if (b->curRow == row && b->curCol == col) {
+        pad.holdKey = 0;
         if (f < waitTo && ((LWAITALL && step == n - 1) || (step == 0 && kept0) || !pairFree(step == 0 ? &LF->settle : &LSET, r0, col, f - fs))) { /* its panels settle at waitTo: never pressed on panels still moving */ }
+        else if (!padAllowed(&pad, b->clock)) { /* the input budget's next action */ }
         else if (!nb_can_swap(b, row, col) || !nb_try_queue_swap(b, row, col)) {
 #ifndef __wasm__
           if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
@@ -720,17 +765,14 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
 #endif
           out[1] = -1; out[5] = step; out[6] = f; out[7] = b->ninc; return -1;
         }
-        else { pressStep = step; pressLast = last; if (step == 0) out[16] = b->clock; last = f; step++; walking = 0; cool = LF ? LF->reaction : 12; dropped = b->garbageCreatedCount; }
-      } else if (timer > 0) timer--;
-      else {
-        if (b->curCol < col) input = IN_RIGHT; else if (b->curCol > col) input = IN_LEFT;
-        else if (b->curRow < row) input = IN_UP; else input = IN_DOWN;
-        timer = MOVE_FRAMES - 1;
-      }
+        else { padSpend(&pad, b->clock); pressStep = step; pressLast = last; if (step == 0) out[16] = b->clock; last = f; step++; walking = 0; cool = LF ? LF->reaction : 12; dropped = b->garbageCreatedCount; }
+      } else if (padHoldGoing(&pad, b, row, col)) input = pad.holdKey;
+      else if (timer > 0) timer--;
+      else input = padStepToward(&pad, b, &timer, row, col, 0, 1);
     }
-    int dir = input & IN_UP ? H_UP : input & IN_DOWN ? H_DOWN : input & IN_LEFT ? H_LEFT : input & IN_RIGHT ? H_RIGHT : H_NONE;
-    if (dir && dir == held) { input = 0; timer = 0; dir = H_NONE; }
-    held = dir;
+    { int had = input & (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT);
+      input = padSend(&pad, input, &held, b->clock);
+      if (had && !input) timer = 0; }
     b->input = input;
     nb_run(b);
     if (b->err) return -1;
@@ -1297,34 +1339,9 @@ static int fDecide(Front *F, FDec *out) {
 // One frame: the keys to press (the server's bits), the swap queued on the
 // board itself as the walk arrives. -1: the bot failed.
 static int frontFrame(int fid, Board *b);
-// THE FRAME'S TIME, measured: the budget is the decision's work (bot.c
-// WORKBUDGET), the same here as in the browser; the clock is reported
-// (front_took_ms), the machine's speed being no rule of the game's.
-#ifndef __wasm__
-#ifndef GC_TS
-struct gcTs { long s, ns; };
-extern int clock_gettime(int, struct gcTs *);
-#endif
-extern char *getenv(const char *);
-static double nowMs(void) { struct gcTs t; clock_gettime(1, &t); return t.s * 1e3 + t.ns / 1e6; }
-#endif
-// THE BOT'S OWN TIME FOR THE LAST FRAME, so a runner can report every frame
-// past the budget as it plays rather than a separate check after
-static double lastTookMs;
-EXPORT(front_took_ms) double front_took_ms(void) { return lastTookMs; }
-EXPORT(front_frame) int front_frame(int fid, Board *b) {
-#ifndef __wasm__
-  extern PATLS double paWork, paEngFrames;
-  double t0 = nowMs(), w0 = paWork, e0 = paEngFrames;
-  int bits = frontFrame(fid, b);
-  double took = nowMs() - t0;
-  lastTookMs = took;
-  if (getenv("GC_WORKSTAT") && paWork > w0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "WORK %d %.0f %.3f %.0f\n", b->clock, paWork - w0, took, paEngFrames - e0); }
-  return bits;
-#else
-  return frontFrame(fid, b);
-#endif
-}
+// THE BUDGET is the decision's work (bot.c WORKBUDGET), the same here as in the browser; the game's ThinkBudget
+// (train.lua) is the only clock
+EXPORT(front_frame) int front_frame(int fid, Board *b) { return frontFrame(fid, b); }
 static int frontFrame(int fid, Board *b) {
   Front *F = &FRONTS[fid];
   FB = b;
@@ -1406,6 +1423,7 @@ EXPORT(front_new) int front_new(Board *b, int reaction, int allowRaise) {
 #endif
   Front *F = &FRONTS[nFronts];
   memset(F, 0, sizeof *F);
+  F->pad.limit = actionLimit();
   F->reaction = reaction; F->reveal = 1; F->allowRaise = allowRaise; F->escapeWalk = INF;
   F->id = bot_new();
   if (F->id < 0) return -1;
