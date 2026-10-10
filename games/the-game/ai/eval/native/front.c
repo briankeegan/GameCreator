@@ -644,7 +644,13 @@ static JLOCAL Board *LNB;
 static Front *LF;
 // THE WALKS OF A CALM BOARD ARE HELD from two cells, taps kept for a board that loses health: a held key is one
 // action however far the cursor goes, and the allowance saved is there for the burst the next wave needs
-static void frontCalm(int calm) { if (LF) LF->pad.holdMin = calm ? 2 : HOLDLEG; }
+static void frontCalm(int calm) {
+  if (!LF) return;
+  LF->pad.holdMin = calm ? 2 : HOLDLEG;
+  // the clock walks as the front will: a window nearly spent holds a walk of two cells too (padStepToward)
+  int tight = padCount(&LF->pad, paLibBoard()->clock) + HOLDTIGHT >= (LF->pad.limit ? LF->pad.limit : ACTIONLIMIT);
+  HOLDMIN = calm || tight ? 2 : HOLDLEG;
+}
 static JLOCAL Settle LSET;
 static JLOCAL int LWAITALL;   // the line's last press waits for its pair and the garbage to settle (breakWait)
 // A LINE'S PREFIX, KEPT WHERE ITS NEXT STEP BEGINS. A line played to the
