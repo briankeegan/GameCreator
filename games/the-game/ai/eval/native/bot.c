@@ -4174,10 +4174,12 @@ int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, u
 #define RMEMO 512
 static struct { int dec, n, ok, r, c; int32_t sw[2 * LINEMAX]; } RMEM[RMEMO];   // asked of a line once a decision, whoever asks
 static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc);
-// A REPLAY ONLY WHERE THE BUDGET HOLDS ONE: the work the decision has spent
-// (from its start, rdW0) and what a replay costs (rdCost, the most one has
-// taken) must fit in OPTWORK; past that a board is not called ready.
+// A REPLAY ONLY WHERE THE BUDGET HOLDS ONE: what a replay costs (rdCost, the
+// running mean of what replays have taken) must fit in the work this thread
+// has left; past that a board is not called ready. One that runs past it is
+// stopped by the engine at OPTWORK and answers not ready, unremembered.
 static double rdCost;
+static int rdRefused;   // questions refused for work this decision, for the bot log
 static int readyInTime(const int32_t *sw, int n, int *br, int *bc) {
   extern PATLS double paWork;
   unsigned h = 2166136261u ^ (unsigned)n;
@@ -4185,10 +4187,10 @@ static int readyInTime(const int32_t *sw, int n, int *br, int *bc) {
   int slot = n <= LINEMAX ? (int)(h & (RMEMO - 1)) : -1;
   if (slot >= 0 && RMEM[slot].dec == btDecision && RMEM[slot].n == n && (!n || !__builtin_memcmp(RMEM[slot].sw, sw, (unsigned long)n * 8))) {
     *br = RMEM[slot].r; *bc = RMEM[slot].c; return RMEM[slot].ok; }
-  if (rdCost > workLeft()) return 0;   // the work this thread has left (workLeft)
+  if (rdCost > workLeft()) { rdRefused++; return 0; }   // the work this thread has left (workLeft)
   double w = paWork;
   int ok = readyInTimeRaw(sw, n, br, bc);
-  if (paWork - w > rdCost) rdCost = paWork - w;
+  rdCost = rdCost ? 0.9 * rdCost + 0.1 * (paWork - w) : paWork - w;
   extern int paBudgetOut(void);
   if (slot >= 0 && !paBudgetOut() && !inWorker) {
     RMEM[slot].dec = btDecision; RMEM[slot].n = n; RMEM[slot].ok = ok; RMEM[slot].r = ok ? *br : 0; RMEM[slot].c = ok ? *bc : 0;
@@ -5689,14 +5691,15 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     for (int i = 0; i < k && i < NSTAGES && at < (int)sizeof lastStages; i++)
       at += snprintf(lastStages + at, sizeof lastStages - at, " %s %.1f/%d", nm[i], ts[i] - (i ? ts[i - 1] : t0), js[i] - (i ? js[i - 1] : 0));
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;   // every decision's work, by stage, in the bot log
-      fprintf(BLOG, "WORKS"); for (int i = 0; i < k && i < NSTAGES; i++) fprintf(BLOG, " %s %.0f", nm[i], ws[i] - (i ? ws[i - 1] : w0)); fprintf(BLOG, " | total %.0f, declined %d\n", paWork - rdW0, budgetRefused); } }
+      fprintf(BLOG, "WORKS"); for (int i = 0; i < k && i < NSTAGES; i++) fprintf(BLOG, " %s %.0f", nm[i], ws[i] - (i ? ws[i - 1] : w0)); fprintf(BLOG, " | total %.0f, declined %d, ready refused %d (a replay %.0f)\n", paWork - rdW0, budgetRefused, rdRefused, rdCost); } }
 #endif
+  rdRefused = 0;
   // the most the stages after breakFirst (and after lineup) have taken lately:
   // each decision's own, or the last most less a hundredth a decision -- one
   // heavy decision does not shut the searches out for the rest of the game
   stagesMeasured(ws, k);
-  // the most a judge, a search, a replay has cost: lately, as the reserves -- one heavy one does not shut them out for the game
-  jdCost *= 0.99; btCost *= 0.99; rpCost *= 0.99; rdCost *= 0.99;
+  // the most a judge, a search, a play has cost: lately, as the reserves -- one heavy one does not shut them out for the game
+  jdCost *= 0.99; btCost *= 0.99; rpCost *= 0.99;
   // A CUT IS A FAILURE: a stage that reaches its share has not decided, it has
   // been stopped. The decision fails and the game stops, naming the stage.
   for (int i = 0; i < k; i++) if (cutAt[i]) {
