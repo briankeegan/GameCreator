@@ -248,11 +248,13 @@ ways: a tool not listed, or a path listed that doesn't exist.
 - A test's scratch files go beside the test, never `os.tmpdir()`.
 - **BitBot drills run at level 10, nothing else.** `pa_drill.js` exits if a
   scenario's level is not 10.
-- **A three that breaks nothing is pressed only to live, and only when it is
-  due** (`clearDue`: the engine plays the clear begun now and begun at the next
-  decision; it is due once waiting costs life -- the queue dropping on a quiet
-  board, an earlier loss of health). Waiting, the bot holds. No route clears
-  for shape or spare material.
+- **Break when the dump has landed; clear only to live, when due.** One test,
+  `waitFree`: the engine plays the line begun now and begun at the next
+  decision (a reaction later), each valued as a line's life is; while the later
+  one is worth no less -- more garbage landed and converted, no sooner loss of
+  health -- the bot waits, held and parked on the line. A break waits that way;
+  a three that breaks nothing waits that way until it is due (`clearDue`). No
+  route clears for shape or spare material.
 - **Time, never swaps.** A line is as good as the frame it is done, however
   many swaps it takes; nothing the bot asks is capped at a number of swaps.
   Every search that grows lines is `searchInTime` (`native/bot.c`): soonest

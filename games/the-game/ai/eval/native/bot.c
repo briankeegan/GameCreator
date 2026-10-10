@@ -3612,26 +3612,33 @@ __attribute__((export_name("bot_keepbreak"))) int32_t bot_keepbreak(void) { retu
 static int readyAfterSpend(const int32_t *sw, int n);
 static int aloneOnEngine(void);
 static int nonSpendLives(void);
-// A CLEAR THAT BREAKS NOTHING IS PRESSED ONLY WHEN IT IS DUE: material is
-// spent to break, or to live, and only once waiting costs something. The
-// engine plays the clear begun now and begun when the front next decides -- a
-// hold counts its reaction down over the next REACT frames and decides the
-// frame after (front.c cooldown), REACT + 1 -- and each is valued as a line's
-// life is, the press itself not counted (lifeOf, last 0): the frame the board
-// loses health less its hollow and material spent. Waiting free, it waits
-// (held, stayAlive) and a break may come first; waiting costs -- the board
-// loses health sooner, or the queue drops on a quiet board -- it is due now.
-// The one test, for every route that clears to live.
+// WAITING IS FREE: the line begun when the front next decides -- a hold
+// counts its reaction down over the next REACT frames and decides the frame
+// after (front.c cooldown), REACT + 1 -- is worth no less than begun now. The
+// engine plays both, and each is valued as a line's life is, its press not
+// counted (lifeOf, last 0): the frame the board loses health, less its hollow
+// and the material it spends, garbage converted credited. So a break waits
+// while the slabs still dropping land on it and break with it -- more garbage
+// converted -- and goes as soon as waiting would cost it: the board losing
+// health sooner, or the break out of reach. A clear that breaks nothing waits
+// until it is due the same way. Waiting, the board is held as it was judged.
+// The one test, for every line that may wait.
 int lineOnEngineFrom(const int32_t *steps, int n, int horizon, int delay, int32_t *out);
 static double heldValue(const int32_t *a) { return lifeOf(lnoDie(a), 0, HOLLOW(a), spentIn(a)); }
-static int clearDue(const int32_t *sw, int n) {
-  if (!aloneOnEngine()) return 1;
-  if (!LNA[0]) return 0;
+static int waitFree(const int32_t *sw, int n, int breaks) {
+  if (!aloneOnEngine()) return 0;
   int32_t now[LNOLEN], later[LNOLEN];
-  if (lineOnEngineFrom(sw, n, LINEHORIZON, 0, now) != 0 || now[1] < 0) return 1;
-  if (lineOnEngineFrom(sw, n, LINEHORIZON, (REACT > 0 ? REACT : 0) + 1, later) != 0 || later[1] < 0) return 1;   // not to be played begun later: due now
-  if (later[0] && later[0] <= later[1] + NEXTMOVE) return 1;   // begun later it loses health by its own press (lineJudge's LIVES)
-  return heldValue(later) < heldValue(now);
+  if (lineOnEngineFrom(sw, n, LINEHORIZON, 0, now) != 0 || now[1] < 0) return 0;
+  if (lineOnEngineFrom(sw, n, LINEHORIZON, (REACT > 0 ? REACT : 0) + 1, later) != 0 || later[1] < 0) return 0;   // not to be played begun later
+  if (later[0] && later[0] <= later[1] + NEXTMOVE) return 0;   // begun later it loses health by its own press (lineJudge's LIVES)
+  if (breaks && !(later[2] > LNA[2])) return 0;   // begun later it no longer breaks
+  return heldValue(later) >= heldValue(now);
+}
+// a clear that breaks nothing is due once waiting is not free; with no loss
+// of health coming, never
+static int clearDue(const int32_t *sw, int n) {
+  if (aloneOnEngine() && !LNA[0]) return 0;
+  return !waitFree(sw, n, 0);
 }
 // A SPEND THAT KEEPS A WAITING RAISE OUT: a clear holds the rise lock and
 // renews the stop, so while a raise for material waits on either, a spend
@@ -3962,12 +3969,14 @@ static Dec breakFirst(Dec d) {
     Dec m = makeRoom(d);
     if (m.kind == K_SWAP && m.hasMove && !(d.kind == K_SWAP && m.sr == d.sr && m.sc == d.sc) && m.via == V_KEEPHEALTH) return m;
   }
-  // BREAK AT THE RIGHT TIME: a break after which the next slab lands with no
-  // break in reach waits while the board left alone does not die -- the
-  // other routes ready the board meanwhile, and the break is still there
-  // -- and only while the board can still hold what the break makes, the next
-  // slab on the pile included: past that, waiting only grows the pile
-  if (!bbReady && roomForBreak(DBASE) && aloneOnEngine() && !LNA[0]) { bbDeferred = *l; bbHasDeferred = 1; return d; }
+  // BREAK WHEN THE DUMP HAS LANDED: a break waits while waiting is free
+  // (waitFree) -- the slabs still dropping land and break with it -- held,
+  // parked on its first step, and only while the board can hold what the
+  // break makes (roomForBreak)
+  if (roomForBreak(DBASE) && waitFree(l->sw, l->n, 1)) {
+    bbDeferred = *l; bbHasDeferred = 1; BT->nLine = 0; plansDrop(); lineLast = 3;   // a break being played: no later stage plays in its place
+    return saKeep(mkHold(V_BREAKREACH, d.mode, d.alive, 1, l->sw[0], l->sw[1]));
+  }
   lineLast = 3;
   plansDrop();
   if (l->n > 1) lineKeep(l, LINE_BREAK); else BT->nLine = 0;
