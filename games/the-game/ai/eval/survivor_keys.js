@@ -34,4 +34,14 @@ function holdWalks(inputs, minLeg) {
   out.held = held;
   return out;
 }
-module.exports = { holdWalks: holdWalks, MIN_LEG: MIN_LEG };
+// The actions a swap at `move` costs from the cursor at (row, col): its walk,
+// across then up or down, each walk held when holdWalks would hold it, and the swap.
+function actionsFor(row, col, move) {
+  var legs = [Math.abs(move[1] - col), Math.abs(move[0] - row)].filter(function (n) { return n > 0; }), cost = 1;
+  legs.forEach(function (n, k) {
+    var inner = k < legs.length - 1;
+    cost += n >= MIN_LEG + 1 || (n === MIN_LEG && inner) ? 1 : n;
+  });
+  return cost;
+}
+module.exports = { holdWalks: holdWalks, actionsFor: actionsFor, MIN_LEG: MIN_LEG };

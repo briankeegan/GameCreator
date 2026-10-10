@@ -155,6 +155,8 @@ function overrule(d, prep, bot) {
     }
     var mv = lk && lk.split(',').map(Number);
     if (mv && bot && bot.refuseBareThree && bot.threeOnlySwap(mv)) return d;
+    // a break the allowance of keys cannot pay for is not forced
+    if (mv && bot && bot.allowance < Infinity && bot.stack && require('./survivor_keys.js').actionsFor(bot.stack.curRow, bot.stack.curCol, mv) > bot.allowance) return d;
     if (mv) return { kind: 'swap', move: mv, overruled: true };
   }
   return d;

@@ -93,7 +93,7 @@ function Match(level, L) {
   this.arrivals = [];      // garbage on its way (arrivalsOf)
   this.line = null;        // the proven line after the plan: { steps, at } (follow)
   this.knew = [];          // the garbage on its way the plan was decided knowing
-  this.stats = { frames: 0, frameMs: 0, slowFrames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0, unforeseen: 0, reasked: 0, revealed: 0, lineup: 0, tookLineup: 0, touch: 0, tookTouch: 0, unasked: 0, rewalked: 0, break1: 0, took1: 0, break2: 0, took2: 0, break3: 0, took3: 0, swaps: 0, undone: 0, actions: 0, maxWindow: 0, overInput: 0, heldWalks: 0 };
+  this.stats = { frames: 0, frameMs: 0, slowFrames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0, unforeseen: 0, reasked: 0, revealed: 0, lineup: 0, tookLineup: 0, touch: 0, tookTouch: 0, unasked: 0, rewalked: 0, break1: 0, took1: 0, break2: 0, took2: 0, break3: 0, took3: 0, swaps: 0, undone: 0, actions: 0, maxWindow: 0, overInput: 0, heldWalks: 0, guarded: 0 };
   this.history = []; this.decided = []; this.asked = []; this.snaps = []; this.dumped = false;
   this.msPerFrame = L.msPerFrame || 1000 / 60; this.wall = 0;   // how fast frames come (soon); a link may fix it (msPerFrame)
   // A question from the last match is not this one's: its answer is dropped.
@@ -191,7 +191,7 @@ Match.prototype.ask = function (at, board, hold, pend) {
                       board: packed.toString('base64') });
     if (this.asked.length > 40 * KEEP) this.asked.shift();
   }
-  L.post({ id: L.pending.id, epoch: this.epoch, at: at, lead: at - this.now, ms: L.sync ? 0 : (at - this.now) * this.msPerFrame, posted: Date.now(),
+  L.post({ id: L.pending.id, epoch: this.epoch, at: at, lead: at - this.now, ms: L.sync ? 0 : (at - this.now) * this.msPerFrame, posted: Date.now(), allowance: this.allowanceAt(at),
                     packed: packed, hold: hold, arrivals: arrivals, acted: this.acted });
   this.stats.decisions++;
 };
@@ -255,6 +255,7 @@ Match.prototype.take = function (truth) {
     if (a.error) { console.error('decision failed: ' + a.error); this.acted = false; L.pending = null; continue; }
     if (a.diag && a.diag.tight) this.stats.tight = (this.stats.tight || 0) + 1;
     if (a.diag && a.diag.walk != null) { this.stats.walks = (this.stats.walks || 0) + 1; this.stats.walkFrames = (this.stats.walkFrames || 0) + a.diag.walk; }
+    if (a.diag && a.diag.unaffordable !== undefined) this.stats.unaffordable = a.diag.unaffordable;
     if (a.diag && a.diag.bare3Dropped !== undefined) { this.stats.bare3Dropped = a.diag.bare3Dropped; this.stats.bare3Kept = a.diag.bare3Kept; this.stats.bare3Topped = a.diag.bare3Topped; }
     if (a.breaks) { this.stats['break' + a.breaks.offered]++; if (a.breaks.took) this.stats['took' + a.breaks.offered]++; if (a.breaks.lineup) { this.stats.lineup++; if (a.breaks.took) this.stats.tookLineup++; } if (a.breaks.touch) { this.stats.touch++; if (a.breaks.took) this.stats.tookTouch++; } }
     this.decided.push({ id: a.id, at: a.at, now: now, kind: a.kind, move: a.move, ms: a.ms, diag: a.diag, breaks: a.breaks,
@@ -294,6 +295,7 @@ Match.prototype.take = function (truth) {
     this.acted = true;
     this.stats.played++;
     var ins = this.holdWalks(step.inputs);
+    if (!this.fits(at, ins)) { this.stats.guarded++; this.acted = false; continue; }
     this.stats.heldWalks += ins.held;
     // Each planned frame carries the raise held after it.
     var sw = a.kind === 'swap' ? swapOf(board, move) : null;
@@ -315,6 +317,32 @@ Match.prototype.take = function (truth) {
 // THE INPUT BUDGET (the game's InputBudget): swap and direction keys going down,
 // at most ACTION_LIMIT of them in any ACTION_WINDOW frames (456 a minute).
 var ACTION_WINDOW = 600, ACTION_LIMIT = Math.floor(456 * ACTION_WINDOW / 3600);
+// How many actions the game still allows a move starting on frame `at`: the
+// allowance less the presses made and planned in the window before it.
+Match.prototype.allowanceAt = function (at) {
+  var counted = IN.swap | IN.up | IN.down | IN.left | IN.right, lo = at - ACTION_WINDOW, used = 0, prev = this.prevBits || 0;
+  (this.pressFrames || []).forEach(function (f) { if (f > lo) used++; });
+  for (var t = this.now; t < at; t++) {
+    var bits = this.plan[t] ? this.plan[t].bits : 0, down = bits & counted & ~prev;
+    prev = bits;
+    for (var k = 1; k <= 16; k <<= 1) if (down & k && t > lo) used++;
+  }
+  return Math.max(0, ACTION_LIMIT - used);
+};
+// Whether the keys `ins` from frame `at` stay inside the allowance in every window.
+Match.prototype.fits = function (at, ins) {
+  var counted = IN.swap | IN.up | IN.down | IN.left | IN.right, prev = this.prevBits || 0, spent = (this.pressFrames || []).slice();
+  for (var t = this.now; t < at + ins.length; t++) {
+    var bits = t >= at ? ins[t - at] : (this.plan[t] ? this.plan[t].bits : 0), down = bits & counted & ~prev;
+    prev = bits;
+    for (var k = 1; k <= 16; k <<= 1) if (down & k) {
+      while (spent.length && t - spent[0] >= ACTION_WINDOW) spent.shift();
+      if (spent.length >= ACTION_LIMIT) return false;
+      spent.push(t);
+    }
+  }
+  return true;
+};
 Match.prototype.countActions = function (bits, now) {
   var counted = IN.swap | IN.up | IN.down | IN.left | IN.right, down = bits & counted & ~(this.prevBits || 0), st = this.stats;
   this.prevBits = bits;
@@ -495,6 +523,9 @@ Match.prototype.follow = function () {
   if (L.pending) Atomics.store(L.abort, 0, L.pending.id);
   L.pending = null; this.acted = false;
   var ins = this.holdWalks(k.inputs);
+  if (!this.fits(this.nextAt, ins)) { this.line = null; this.stats.guarded++; return false; }
+  // a step the allowance cannot pay for is not followed: the mind is asked, with the allowance
+  if (kind === 'swap' && KEYS.actionsFor(pr.board.curRow, pr.board.curCol, move) > this.allowanceAt(this.nextAt)) { this.line = null; this.stats.unaffordableFollow = (this.stats.unaffordableFollow || 0) + 1; return false; }
   this.stats.heldWalks += ins.held;
   var sw = kind === 'swap' ? swapOf(pr.board, move) : null;
   for (var i = 0; i < ins.length; i++) this.plan[this.nextAt + i] = { bits: ins[i], hold: k.holds[i], swap: sw };

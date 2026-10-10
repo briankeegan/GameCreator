@@ -309,6 +309,7 @@
     this.towardDecisions = 0;
     this._line = null;
     this.shallowMovesDropped = 0;
+    this.unaffordableDropped = 0;
     this.engineDeath = opts.engineDeath !== false;
     // RULES 14's two rules, behind one switch so the pair can be measured
     // against the procedure they changed. A rule that cannot be switched off
@@ -2113,6 +2114,29 @@
     this.bareThreesDropped += cands.length - live.length;
     return live;
   };
+  // WHAT THE GAME STILL ALLOWS. The game counts the swap and direction keys
+  // going down and lets a player have so many in a window of frames
+  // (this.allowance, from the frame loop). A swap whose walk and press cost
+  // more than that is not on the list, so the pool is what can be played and
+  // the choice is the best of it; a hold costs nothing and is always there.
+  // It runs before the survival filter, so what is proven to live is proven
+  // among the moves that can be played.
+  var ALLOWANCE_RESERVE = 24;
+  PuyoCpu.prototype._affordable = function (cands) {
+    var left = this.allowance;
+    if (!(left < Infinity) || !cands || cands.length < 2 || !this.stack) return cands;
+    // While nothing is on its way and the stack is low, a move that clears nothing
+    // leaves RESERVE of the allowance for the ones that do.
+    var st = this.stack, spare = this.allowanceCalm ? ALLOWANCE_RESERVE : 0, live = cands.filter(function (c) {
+      if (c.kind !== 'swap' || !c.move) return true;
+      var cost = require('./survivor_keys.js').actionsFor(st.curRow, st.curCol, c.move);
+      return cost <= left - (c.resolved && c.resolved.clearedPanels > 0 ? 0 : spare);
+    });
+    if (!live.length || live.length === cands.length) return cands;
+    this.unaffordableDropped += cands.length - live.length;
+    Object.keys(cands).forEach(function (k) { if (!/^\d+$/.test(k)) live[k] = cands[k]; });
+    return live;
+  };
   PuyoCpu.prototype._heightCap = function (cands) {
     if (!this.heightCap || !cands || cands.length < 2) return cands;
     var h = this._board ? this._board.height : 12;
@@ -2738,7 +2762,7 @@
     this._nativeNodes(cands);
     this._allCands = cands;
     var out = this._levelForSlab(this._flatten(this._towardBreak(
-        this._heightCap(this._noBareThree(this._doomed(this._survivors(cands)))))));
+        this._heightCap(this._noBareThree(this._doomed(this._survivors(this._affordable(cands))))))));
     return this._lastResort(out);
   };
 

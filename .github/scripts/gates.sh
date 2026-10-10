@@ -132,7 +132,8 @@ gate_garbage_rules() {
   node games/the-game/ai/eval/threesLast.test.js &&
   node games/the-game/ai/eval/raiseTo.test.js &&
   node games/the-game/ai/eval/cursorWalk.test.js &&
-  node games/the-game/ai/eval/holdWalk.test.js
+  node games/the-game/ai/eval/holdWalk.test.js &&
+  node games/the-game/ai/eval/allowance.test.js
 }
 
 # EVERY FEATURE IS A SHARE, NOT A COUNT.
