@@ -3,6 +3,7 @@
 #
 #   [HURRICANE=1] acceptance.sh [MINUTES [PROFILE]]     (needs gh, run from anywhere)
 #
+# The drill goes in the duel's `stream` input (the game's training modes).
 # What has to pass: WasmSurvivor lives the full six minutes (21,600 frames) of
 # every drill -- combo_storm, factory, large_garbage -- on each seed, inside the
 # game's thinking and input budgets, and beats Hurricane (Challenge Mode 8)
@@ -20,7 +21,7 @@ api() { gh api "repos/$REPO/$1" "${@:2}"; }
 
 # QUEUE: "kind drill seeds" -- a drill's seeds in one run, or hurricane
 QUEUE=()
-for seeds in '[4,5,6]' '[7,8,9]'; do for d in combo_storm factory large_garbage; do QUEUE+=("duel $d $seeds"); done; done
+for seeds in '[1,2,3]' '[4,5,6]'; do for d in combo_storm factory large_garbage; do QUEUE+=("duel $d $seeds"); done; done
 # Hurricane waits for the drills: HURRICANE=1 puts it in the queue
 [ "${HURRICANE:-0}" = 1 ] && QUEUE+=("hurricane - -" "hurricane - -")
 
@@ -36,7 +37,7 @@ inflight() {   # jobs of ours not yet finished
 
 dispatch() {   # kind drill seeds
   case "$1" in
-    duel) api actions/workflows/survivor-duels.yml/dispatches -X POST -f ref=main -f "inputs[seeds]=$3" -f 'inputs[frames]=21600' -f "inputs[opponent]=$2" -f "inputs[profile]=$PROFILE" -f "inputs[panel_ref]=$PANEL" >/dev/null ;;
+    duel) api actions/workflows/survivor-duels.yml/dispatches -X POST -f ref=main -f "inputs[seeds]=$3" -f 'inputs[frames]=21600' -f "inputs[stream]=$2" -f "inputs[profile]=$PROFILE" -f "inputs[panel_ref]=$PANEL" >/dev/null ;;
     hurricane) api actions/workflows/challenge-mode.yml/dispatches -X POST -f ref=main -f 'inputs[bot]=wasm' -f 'inputs[difficulty]=8' -f "inputs[profile]=$PROFILE" -f 'inputs[continues]=10' -f "inputs[panel_ref]=$PANEL" >/dev/null ;;
   esac
 }
@@ -45,7 +46,7 @@ JUDGED=" "
 judge() {   # every finished run of ours, once
   local w r conc msg
   for w in survivor-duels challenge-mode; do
-    for r in $(api "actions/workflows/$w.yml/runs?per_page=12" --jq '.workflow_runs[]|select(.status=="completed")|.id'); do
+    for r in $(api "actions/workflows/$w.yml/runs?per_page=12" --jq ".workflow_runs[]|select(.status==\"completed\" and .created_at>\"$SINCE\")|.id"); do
       case "$JUDGED" in *" $r "*) continue ;; esac
       JUDGED="$JUDGED$r "
       for j in $(api "actions/runs/$r/jobs?per_page=100" --jq '.jobs[].id'); do
@@ -56,6 +57,7 @@ judge() {   # every finished run of ours, once
   done
 }
 
+SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 end=$(( $(date +%s) + MINUTES * 60 ))
 while :; do
   busy=$(inflight)
