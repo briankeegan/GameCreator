@@ -3646,8 +3646,8 @@ static int waitFree(const int32_t *sw, int n, int breaks) {
 #define MEANWHILES 4
 static int twosOf(const int32_t *st);
 static double setupKey(const int32_t *m) { Shape sh; shapeOf(m, &sh); return twosOf(m) * 1000.0 - sh.bumps; }
-static int meanwhileKeeps(int r, int c, const int32_t *sw, int n, int breaks) {
-  int32_t st[2 * LINEMAX], o[LNOLEN];
+static int meanwhileKeeps(int r, int c, const int32_t *sw, int n, int breaks, int32_t *st) {
+  int32_t o[LNOLEN];
   st[0] = r; st[1] = c;
   for (int k = 0; k < 2 * n; k++) st[2 + k] = sw[k];
   if (lineOnEngineFrom(st, n + 1, LINEHORIZON, 0, o) != 0 || o[1] < 0) return 0;
@@ -3667,9 +3667,16 @@ static Dec waitMeanwhile(Dec d, const int32_t *sw, int n, int breaks, Dec hold) 
     while (j > 0 && key[j - 1] < k) { key[j] = key[j - 1]; at[j] = at[j - 1]; j--; }
     key[j] = k; at[j] = i;
   }
+  // the swap and the line after it are kept as one line, so the front plays
+  // straight on to the line as the engine judged it (a kept line lifts the
+  // front's cooldown on a topped board, as linePlay does)
+  int32_t st[2 * LINEMAX];
   for (int j = 0; j < na && j < MEANWHILES; j++) {
     Cand *c = &POOL[at[j]];
-    if (meanwhileKeeps(c->sr, c->sc, sw, n, breaks)) return mkSwap(c->sr, c->sc, hold.via, d.mode, d.alive);
+    if (meanwhileKeeps(c->sr, c->sc, sw, n, breaks, st)) {
+      lineSet(st, n + 1, breaks ? LINE_BREAK : LINE_CASH, 0);
+      return mkSwap(c->sr, c->sc, hold.via, d.mode, d.alive);
+    }
   }
   return hold;
 }
