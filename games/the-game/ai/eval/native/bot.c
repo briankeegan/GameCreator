@@ -2121,7 +2121,7 @@ static Dec waitForDrain(Dec d) {
   }
   BT->counts[C_KEPTHEALTH]++;
   Clr *breakNow = 0, *clearNow = 0;
-  double cnRate = 0, cnVd = 0; int cnTn = 0, cnBk = 0;
+  double cnRate = 0, cnVd = 0; int cnTn = 0, cnBk = 0, cnBig = 0, cnCh = 0;
   double *f = BIN + IN_SF;
   for (int i = 0; i < nc; i++) {
     Clr *cl = &CLEARS[i];
@@ -2142,9 +2142,12 @@ static Dec waitForDrain(Dec d) {
     int bk = cl->masks && hasGarbage(cl->masks) && paWork + BREAKWORK < optLine() && breakWithin(cl->masks, stop);
     int tn = r->total, st = cl->future || steady(cl->sr, cl->sc, dmax(cl->moveFrames, k - 2)),
         cnSt = clearNow && (clearNow->future || steady(clearNow->sr, clearNow->sc, dmax(clearNow->moveFrames, k - 2)));
-    if (clearNow && st != cnSt) { if (st) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; } continue; }
-    if (clearNow && bk != cnBk) { if (bk) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; } continue; }
-    if (!clearNow || tn < cnTn || (tn == cnTn && (vd < cnVd || (vd == cnVd && rate > cnRate)))) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; }
+    if (clearNow && st != cnSt) { if (st) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnBig = r->biggest; cnCh = r->chain >= 2 ? r->chain : 0; } continue; }
+    if (clearNow && bk != cnBk) { if (bk) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnBig = r->biggest; cnCh = r->chain >= 2 ? r->chain : 0; } continue; }
+    // of the clears that fit, an attack (a combo of four or more, a chain) comes first, by the one rule (attackFirst)
+    int atk = clearNow ? attackFirst(r->biggest, r->chain >= 2 ? r->chain : 0, cnBig, cnCh) : 0;
+    if (atk) { if (atk > 0) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnBig = r->biggest; cnCh = r->chain >= 2 ? r->chain : 0; } continue; }
+    if (!clearNow || tn < cnTn || (tn == cnTn && (vd < cnVd || (vd == cnVd && rate > cnRate)))) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnBig = r->biggest; cnCh = r->chain >= 2 ? r->chain : 0; }
   }
   if (breakNow && !breakNow->future) return mkSwap(breakNow->sr, breakNow->sc, V_BREAK, d.mode, d.alive);
   if (breakNow) return HOLDAT(breakNow->sr, breakNow->sc);
