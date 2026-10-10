@@ -3865,7 +3865,7 @@ static Dec stayAlive(Dec d) {
 // the slab to come) is life lost, so the rank holds a clear that digs under a pile. Each is judged on the
 // engine (lineJudge, which keeps to the work there is); one it cannot judge is
 // not weighed, and a decision it cannot judge stands.
-typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, plain, clears, stall, size, chain, die, conv, hollow, pri; double life, soon; } Opt;
+typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, plain, clears, stall, size, chain, die, conv, hollow, pri, aheadKnown, twos; Atk ahead; double life, soon; } Opt;
 static int optJudge(Opt *o) {
   int last = 0, spent = 0;
   o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = o->early = o->plain = o->clears = o->size = o->chain = 0;
@@ -3921,6 +3921,33 @@ static double optSoon(Opt *o) {
   if (!o->soonKnown) { o->soon = breakTime(o->d.kind == K_HOLD ? 0 : o->sw, o->d.kind == K_HOLD ? 0 : o->n); o->soonKnown = 1; }
   return o->soon;
 }
+// WHAT AN OPTION LEAVES ONE SWAP AWAY, for the options that clear nothing (the hold, the setups): the board the option
+// settles to, every legal swap on it resolved, the best attack among them (attackFirst), and its vertical twos
+// (twosOf). A setup is worth what it makes ready; it is read once, and only while the decision has work left.
+static int twosOf(const int32_t *st);
+#define AHEADWORK 40   // a resolve of one swap on the masks, in work units
+static int32_t AHSW[2 * 128], AHR[R_INTS + ST_INTS];
+static void optAhead(Opt *o) {
+  extern PATLS double paWork;
+  if (o->aheadKnown) return;
+  o->aheadKnown = 1; o->ahead = atkOf(0, 0); o->twos = 0;
+  if (!o->lives || !BIN[IN_HASPA] || paWork >= optLine()) return;
+  static ST st; int32_t cur[2], t; uint32_t can[WMAX]; uint8_t w[32][WMAX];
+  int hold = o->d.kind == K_HOLD;
+  if (lineState(hold ? 0 : o->sw, hold ? 0 : o->n, st, can, w, cur, &t) != 0) return;
+  o->twos = twosOf(st);
+  int n = legal(st, AHSW);
+  for (int i = 0; i < n && paWork < optLine(); i++) {
+    int sr = AHSW[2 * i], sc = AHSW[2 * i + 1];
+    if (!swapIn(st, sr, sc)) continue;
+    resolve(st, AHR, 0);
+    swapIn(st, sr, sc);
+    paWork += AHEADWORK;
+    if (AHR[R_TOTAL] <= 0) continue;
+    Rs r = summarise(AHR); Atk k = atkOfRes(&r);
+    if (attackFirst(k, o->ahead) > 0) o->ahead = k;
+  }
+}
 // 1: a is better, -1: b is, 0: the same
 static int optRank(Opt *a, Opt *b) {
   int ka = a->lives ? 1 + a->breaks : 0, kb = b->lives ? 1 + b->breaks : 0;
@@ -3940,6 +3967,12 @@ static int optRank(Opt *a, Opt *b) {
   // then a combo or a chain
   // a break sooner by more than NEXTMOVE: less is the walk's own movement, and the target stands
   if (ka) { double sa = optSoon(a), sb = optSoon(b), gap = sa > sb ? sa - sb : sb - sa; if (sa != sb && !(gap <= NEXTMOVE)) return sa < sb ? 1 : -1; }
+  // two options that clear nothing (the hold, the setups): the one that leaves the better attack one swap away, then more twos
+  if (ka && !a->clears && !a->breaks && !a->cash && !b->clears && !b->breaks && !b->cash) {
+    optAhead(a); optAhead(b);
+    int w = attackFirst(a->ahead, b->ahead); if (w) return w;
+    if (a->twos != b->twos) return a->twos > b->twos ? 1 : -1;
+  }
   if (a->cash && b->cash) { int w = attackCmp(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
   if (a->life != b->life) return a->life > b->life ? 1 : -1;
   if (a->cash != b->cash) return a->cash > b->cash ? 1 : -1;
