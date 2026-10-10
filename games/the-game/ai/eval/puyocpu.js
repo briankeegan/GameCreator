@@ -309,8 +309,6 @@
     this.towardDecisions = 0;
     this._line = null;
     this.shallowMovesDropped = 0;
-    this.undoMovesDropped = 0;
-    this._lastSwap = null;
     this.engineDeath = opts.engineDeath !== false;
     // RULES 14's two rules, behind one switch so the pair can be measured
     // against the procedure they changed. A rule that cannot be switched off
@@ -2085,18 +2083,6 @@
     }
     return Math.ceil(cells / w);
   };
-  // PUTTING A PANEL BACK WHERE IT WAS IS NOT A MOVE.
-  //
-  // The evaluator scores every candidate on its own board and has no memory,
-  // so on a quiet board the swap it liked last decision is still the one it
-  // likes -- and playing it again just undoes it. A swap of the square the
-  // last move swapped, while it still holds the two panels that swap
-  // exchanged (nothing has cleared or fallen there since), is never a
-  // candidate; the next best is (a hold, or another square). It lifts only if
-  // it would empty the pool.
-  //
-  // A swap in progress also holds the stack's rise lock (updateRiseLock), so
-  // a bot that is always mid-swap can never raise.
   function bareThree(c) {
     var r = c && c.resolved, sizes = r && r.comboSizes;
     if (!sizes || !sizes.length || (r.brokeGarbage || 0) > 0 || (r.chainLength || 0) >= 2) return false;
@@ -2127,19 +2113,6 @@
     this.bareThreesDropped += cands.length - live.length;
     return live;
   };
-  PuyoCpu.prototype._notAnUndo = function (cands) {
-    if (!cands || cands.length < 2) return cands;
-    var last = this._lastSwap, rows = this.stack && this.stack.panels;
-    if (!last || !rows) return cands;
-    // the square holds the two panels the last swap exchanged, as it left them
-    var row = rows[last.move[0]], a = row && row[last.move[1]], b = row && row[last.move[1] + 1];
-    if (!a || !b || a.id !== last.right || b.id !== last.left) return cands;
-    var live = cands.filter(function (c) { return !(c.move && c.move[0] === last.move[0] && c.move[1] === last.move[1]); });
-    if (!live.length || live.length === cands.length) return cands;
-    this.undoMovesDropped += cands.length - live.length;
-    return live;
-  };
-
   PuyoCpu.prototype._heightCap = function (cands) {
     if (!this.heightCap || !cands || cands.length < 2) return cands;
     var h = this._board ? this._board.height : 12;
@@ -2764,8 +2737,8 @@
     }
     this._nativeNodes(cands);
     this._allCands = cands;
-    var out = this._notAnUndo(this._levelForSlab(this._flatten(this._towardBreak(
-        this._heightCap(this._noBareThree(this._doomed(this._survivors(cands))))))));
+    var out = this._levelForSlab(this._flatten(this._towardBreak(
+        this._heightCap(this._noBareThree(this._doomed(this._survivors(cands)))))));
     return this._lastResort(out);
   };
 
@@ -3115,12 +3088,6 @@
         this._following = { at: this.stack.clock + t0, node: line[0], hold: cand.kind === 'hold',
                             steps: line.slice(1).map(function (x) { return isLong(x.m) ? { long: x.t - t0 } : x.m; }) };
       }
-    }
-    // The swap to refuse undoing next time: the square and the two panels.
-    this._lastSwap = null;
-    if (cand && cand.kind === 'swap' && cand.move && this.stack && this.stack.panels) {
-      var lr = this.stack.panels[cand.move[0]], la = lr && lr[cand.move[1]], lb = lr && lr[cand.move[1] + 1];
-      if (la && lb && la.id != null && lb.id != null && la.id !== lb.id) this._lastSwap = { move: cand.move, left: la.id, right: lb.id };
     }
     var bar = this._bar();
     this._firedLast = !!cand && modes.fires(cand.resolved, bar.links, bar.wide);

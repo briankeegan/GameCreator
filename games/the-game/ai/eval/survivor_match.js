@@ -206,6 +206,20 @@ function swapOf(board, move) {
   var row = board.panels[move[0]], a = row && row[move[1]], b = row && row[move[1] + 1];
   return { move: move, ids: a && b ? [a.id, b.id] : null };
 }
+// Every panel's id by square, as one string; with a swap's two squares exchanged
+// it is the board as that swap leaves it.
+function idsOf(board, move) {
+  var out = [];
+  for (var r = 1; r < board.panels.length; r++) {
+    var row = board.panels[r] || [], line = [];
+    for (var c = 1; c <= 6; c++) {
+      var k = move && r === move[0] ? (c === move[1] ? c + 1 : c === move[1] + 1 ? c - 1 : c) : c;
+      line.push(row[k] ? row[k].id : '');
+    }
+    out.push(line.join(','));
+  }
+  return out.join(';');
+}
 function moved(sw, to) {
   var ids = sw.ids, c = sw.move[1];
   if (!ids) return null;
@@ -258,14 +272,21 @@ Match.prototype.take = function (truth) {
       if (!this.stats.lateWorst || now - a.at > this.stats.lateWorst.over)
         this.stats.lateWorst = { over: now - a.at, ms: a.ms, br: a.brMs, took: a.diag && a.diag.took, survive: a.diag && a.diag.survive, budget: a.diag && a.diag.budget, queued: a.queued };
     }
-    // A swap that only puts back the two panels the swap before it exchanged is
-    // never played: the hold it stands for is.
+    // A swap that puts back the two panels the swap before it exchanged is a
+    // swap back. It is played when it clears something or breaks the garbage
+    // wanted, or once when something else on the board has changed since;
+    // otherwise it is played as a hold. A second swap back in a row never is.
+    var back = false;
     if (a.kind === 'swap' && move && this.lastSwap) {
       var us = swapOf(board, move), lw = this.lastSwap;
-      if (us.ids && lw.move[0] === move[0] && lw.move[1] === move[1] && lw.ids[0] === us.ids[1] && lw.ids[1] === us.ids[0]) {
-        a = Object.assign({}, a, { kind: 'hold', move: null, line: null });
-        move = null;
-        this.stats.undone++;
+      back = !!(us.ids && lw.move[0] === move[0] && lw.move[1] === move[1] && lw.ids[0] === us.ids[1] && lw.ids[1] === us.ids[0]);
+      if (back) {
+        var clears = (a.diag && a.diag.clears > 0) || (a.breaks && a.breaks.took), changed = lw.after !== idsOf(board);
+        if (!clears && !(changed && !lw.backs)) {
+          a = Object.assign({}, a, { kind: 'hold', move: null, line: null });
+          move = null; back = false;
+          this.stats.undone++;
+        }
       }
     }
     var step = L.hands.keys(board, hold, a.kind, move, arrivals);
@@ -277,6 +298,8 @@ Match.prototype.take = function (truth) {
     // the swaps played
     if (a.kind === 'swap' && move && sw && sw.ids) {
       this.stats.swaps++;
+      sw.after = idsOf(board, move);
+      sw.backs = back ? this.lastSwap.backs + 1 : 0;
       this.lastSwap = sw;
     }
     for (var t in this.plan) if (+t >= at) delete this.plan[t];
