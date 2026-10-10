@@ -3843,8 +3843,9 @@ static int optJudge(Opt *o) {
     o->chain = LNO[18] > LNA[18] && LNO[18] >= 2 ? LNO[18] : 0;
     o->size = LNO[17] > LNA[17] ? LNO[17] : 0;
     o->cash = (o->chain || comboWorth(o->size) >= 0) && (!aloneOnEngine() || o->hollow <= HOLLOW(LNA));
-    // a clear that breaks nothing and is no combo, before it is due (clearDue), is a spend the board does not need yet
-    o->early = !o->breaks && !o->cash && LNO[3] > LNA[3] && !clearDue(o->sw, o->n, 0);
+    // a clear that breaks nothing, is no combo and fills nothing under the garbage (less hollow than the board
+    // left alone), before it is due (clearDue), is a spend the board does not need yet
+    o->early = !o->breaks && !o->cash && LNO[3] > LNA[3] && (!aloneOnEngine() || o->hollow >= HOLLOW(LNA)) && !clearDue(o->sw, o->n, 0);
   }
   // it outlives the next decision: the board does not lose health before the front acts again
   o->safe = o->die > actsAgain(last, o->d.kind == K_HOLD);
