@@ -37,12 +37,14 @@ game() {   # the seed's whole game, from its artifact
   rm -f "$dir/seed$1.zip"
 }
 sha=$(curl -sSfL "${auth[@]}" "$api/runs/$run" | python3 -c 'import json, sys; print(json.load(sys.stdin)["head_sha"][:10])')
-alive=0; died=0; other=0; dead=(); : > "$dir/results.tsv"
+alive=0; died=0; other=0; dead=(); : > "$dir/results.tsv"; : > "$dir/think.tsv"
 while read -r id seed concl; do
   [ "$concl" = success ] || [ "$concl" = failure ] || { echo "seed $seed: $concl"; other=$((other + 1)); continue; }
   log=$(curl -sSfL "${auth[@]}" "$api/jobs/$id/logs" | sed 's/^[0-9TZ:.-]* //')
   end=$(grep -E "^(died|alive) " <<<"$log" | tail -1 || true)
   echo "seed $seed: ${end:-no result}"
+  # the game's think budget (8 ms a frame): the frames over it, and the slowest, as train.lua counts them
+  grep -E "^frames over " <<<"$log" | tail -1 | sed "s/^/$seed\t/" >> "$dir/think.tsv" || true
   printf '%s\t%s\t%s\n' "$seed" "${end%% *}" "${end##* }" >> "$dir/results.tsv"
   case $end in
     alive*) alive=$((alive + 1)); [ -n "${GC_ALL:-}" ] && game "$seed" ;;
@@ -51,6 +53,7 @@ while read -r id seed concl; do
   esac
 done <<<"$jobs"
 echo "alive $alive, died $died, other $other -- reports in $dir"
+awk -F'[ :,]+' 'NF > 4 { over += $5; if ($7 + 0 > slow) slow = $7 + 0; if ($5 > 0) seeds++ } END { printf "think budget (8 ms): %d frames over it in %d seeds, slowest %.1f ms\n", over, seeds, slow }' "$dir/think.tsv"
 hist=$(dirname "$0")/survival_scans.tsv
 [ -f "$hist" ] || printf 'run\tcommit\talive\tdied\n' > "$hist"
 if [ "$other" -eq 0 ] && ! grep -q "^$run	" "$hist"; then

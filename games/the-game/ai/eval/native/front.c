@@ -27,14 +27,11 @@ typedef struct { uint8_t last[32][W + 2], first[32][W + 2], same[32][W + 2], gar
 // does not allow is not pressed: the walk waits for the frame it is.
 #define ACTIONLIMIT 76   // 456 actions a minute over the window: floor(456 * 600 / 3600)
 #define ACTIONWINDOW 600
-// the keys' own state, the real front's and every simulated line's alike: the
-// frames of the actions inside the window (a ring), and a direction held down
-// A RESERVE IS KEPT FOR THE FLURRY A BOARD ABOUT TO LOSE HEALTH NEEDS: while the
-// board left alone does not, a press stops ACTIONRESERVE short of the limit
-// (limit: what this decision may spend to, set where it begins)
-#define ACTIONRESERVE 20
 #define HOLDTIGHT 24   // the actions short of the limit at which short walks are held too
 #define ACTIONRING 128   // room for the diagnostic limit (GC_INPUT_LIMIT) above the game's
+// the keys' own state, the real front's and every simulated line's alike: the
+// frames of the actions inside the window (a ring), a direction held down, and
+// the most this decision may spend (the game's limit)
 typedef struct { int actAt[ACTIONRING], actOld, actN, holdKey, limit; } Pad;
 typedef struct {
   int id, reaction, reveal, allowRaise;
@@ -506,7 +503,7 @@ static void fTable(Front *F, double *tab) {
 static int actionLimit(void) {
 #ifndef __wasm__
   static int lim = -1;
-  if (lim < 0) { const char *e = getenv("GC_INPUT_LIMIT"); lim = e && *e ? atoi(e) : ACTIONLIMIT; if (lim < ACTIONRESERVE + 1 || lim > ACTIONRING) lim = ACTIONLIMIT; }
+  if (lim < 0) { const char *e = getenv("GC_INPUT_LIMIT"); lim = e && *e ? atoi(e) : ACTIONLIMIT; if (lim < 1 || lim > ACTIONRING) lim = ACTIONLIMIT; }
   return lim;
 #else
   return ACTIONLIMIT;
@@ -646,8 +643,86 @@ static int parkStep(Front *F, int input) {
 // drain (horizon when none).
 static JLOCAL Board *LNB;
 static Front *LF;
-// what the decision may spend of the allowance: all of it when the board left alone loses health
-static void frontUrgent(int urgent) { if (LF) LF->pad.limit = urgent ? actionLimit() : actionLimit() - ACTIONRESERVE; }
+static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
+// A SWAP IS PRESSED WHEN ITS FIRST PLAN PRESSED IT. The settle is taken on
+// the board of the moment, so a plan made a frame later waits for a different
+// frame; the front, topped, plans every frame. The swap it walks to keeps the
+// clock the first plan gave it, in play and in every replay, until it is
+// pressed or another is chosen.
+// A KEPT FRAME IS KEPT FOR THE SAME WAIT: a frame fixed waiting for the garbage
+// to land (waitAll) is not the frame of a press that waits only for its pair,
+// nor the other way -- the judge and the walk read it alike (pkAll)
+static int pressWait(Front *F, int r, int c, int clock, int wait, int waitAll) {
+  if (F->pkAt && F->pkR == r && F->pkC == c && F->pkAll == waitAll) return F->pkAt > clock ? F->pkAt - clock : 0;
+  return wait;
+}
+static void beginWalk(Front *F, int r, int c, int cooldown, int waitAll) {
+  F->pad.holdKey = 0; F->walk = 1; F->wRow = r; F->wCol = c; F->wTimer = 0; F->wCooldown = cooldown; F->wRetries = 0; F->wHasDisp = 0;
+  int wait = waitAll ? breakWait(&F->settle, r, c) : pairWait(&F->settle, r, c);
+  F->wKept = F->pkAt && F->pkR == r && F->pkC == c && F->pkAll == waitAll;
+  if (!F->wKept) { F->pkR = r; F->pkC = c; F->pkAt = FB->clock + wait; F->pkAll = waitAll; }
+  F->wWaitTo = pressWait(F, r, c, FB->clock, wait, waitAll); F->wFrames = 0; F->wWaitAll = waitAll; F->wR0 = r;
+}
+static int driveWalk(Front *F, int input) {
+  F->wFrames++;
+  if (F->wHasDisp && FB->displacement > F->wDisp) F->wRow++;
+  F->wDisp = FB->displacement; F->wHasDisp = 1;
+  // a target risen past the rows the cursor reaches is no pair to press: the bot decides again
+  if (F->wRow > FB->topCurRow) { F->walk = 0; F->pad.holdKey = 0; F->cooldown = 0; return input; }
+  int row = clampi(F->wRow, 1, FB->topCurRow), col = clampi(F->wCol, 1, W - 1);
+  if (FB->curRow != row || FB->curCol != col) {
+    if (padHoldGoing(&F->pad, FB, row, col)) return input | F->pad.holdKey;
+    if (F->wTimer > 0) { F->wTimer--; return input; }
+    return padStepToward(&F->pad, FB, &F->wTimer, row, col, input, 1);
+  }
+  F->pad.holdKey = 0;
+  // the swap's panels settle at a known frame: a walk that arrives first waits
+  // a pair still now is pressed now, unless a plan has already fixed its frame
+#ifndef __wasm__
+  { extern int botTraceOn; if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "WALK front %d clock %d at %d,%d (target %d,%d cursor %d,%d top %d) frames %d waitTo %d pkAt %d kept %d waitAll %d free %d can %d topped %d\n", F->id, FB->clock, row, col, F->wRow, F->wCol, FB->curRow, FB->curCol, FB->topCurRow, F->wFrames, F->wWaitTo, F->pkAt, F->wKept, F->wWaitAll, pairFree(&F->settle, F->wR0, col, F->wFrames), nb_can_swap(FB, FB->curRow, FB->curCol), toppedNow()); } }
+#endif
+  if (F->wFrames < F->wWaitTo && (F->wWaitAll || F->wKept || !pairFree(&F->settle, F->wR0, col, F->wFrames))) {
+    // a wait is not a plan: topped, or a reaction's worth of waiting, decide again
+    if (!toppedNow() && F->wFrames % (F->reaction > 0 ? F->reaction : 12) != 0) return input;
+    F->walk = 0; F->cooldown = 0;
+    return input;
+  }
+  if (!padAllowed(&F->pad, FB->clock)) return input;   // the swap waits for the budget's next action
+  int ok = nb_can_swap(FB, FB->curRow, FB->curCol) && nb_try_queue_swap(FB, FB->curRow, FB->curCol);
+  F->walk = 0;
+  if (ok) {
+    padSpend(&F->pad, FB->clock);
+#ifndef __wasm__
+    { extern int botTraceOn; if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "PRESS clock %d at %d,%d\n", FB->clock, FB->curRow, FB->curCol); } }
+#endif
+    F->hasLast = 1; F->lastR = FB->curRow; F->lastC = FB->curCol; F->cooldown = F->wCooldown; F->pkAt = 0; F->presses++; return input; }
+  // REFUSED, THE BOT DECIDES AGAIN. The swap was the one chosen; another
+  // cell walked to instead is a choice nothing judged.
+  F->cooldown = 0;
+  return input;
+}
+static int parkStep(Front *F, int input) {
+  if (FB->displacement > F->pDisp) F->pRow++;
+  F->pDisp = FB->displacement;
+  int row = clampi(F->pRow, 1, FB->topCurRow), col = clampi(F->pCol, 1, W - 1);
+  if (FB->curRow == row && FB->curCol == col) return input;
+  if (F->pTimer > 0) { F->pTimer--; return input; }
+  return padStepToward(&F->pad, FB, &F->pTimer, row, col, input, 0);
+}
+#define DIRS (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT)
+
+// A LINE PLAYED ON THE ENGINE, as this front plays it: from the board the bot
+// is deciding on (paLibBoard), the cursor walks to each step as driveWalk
+// walks -- a tap, then MOVE_FRAMES apart, a key held over two frames let go --
+// the swap is pressed on arrival, and the next step is walked to when the
+// front would decide again: the swap landed, and the cooldown over or lifted
+// (stop, or topped). The board then runs on, nothing pressed, to `horizon`.
+// out: [0] the frame the board first lost health (0: not within horizon),
+// [1] the frame of the last press (-1: a step the engine refused), [2] garbage
+// cells converted, [3] panels matched, [4] frames from the last press to the
+// drain (horizon when none).
+static JLOCAL Board *LNB;
+static Front *LF;
 static JLOCAL Settle LSET;
 static JLOCAL int LWAITALL;   // the line's last press waits for its pair and the garbage to settle (breakWait)
 // A LINE'S PREFIX, KEPT WHERE ITS NEXT STEP BEGINS. A line played to the

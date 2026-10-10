@@ -67,7 +67,7 @@ jobs:
           GC_GAMELOG: game.log   # the whole game, every frame's bot log and board: the artifact
           GC_INPUT_LIMIT: ${{ inputs.input_limit }}
         run: |
-          games/the-game/ai/eval/train.sh ${{ inputs.mode }} ${{ matrix.seed }} ${{ inputs.frames }} | tee out.txt | grep -E "^(died|alive|bot over)"
+          games/the-game/ai/eval/train.sh ${{ inputs.mode }} ${{ matrix.seed }} ${{ inputs.frames }} | tee out.txt | grep -E "^(died|alive|bot over|frames over)"
           end=$(grep -E "^(died|alive)" out.txt | tail -1)
           echo "seed ${{ matrix.seed }}: $end" >> "$GITHUB_STEP_SUMMARY"
           [[ $end == alive* ]]
