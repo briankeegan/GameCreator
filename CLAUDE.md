@@ -290,7 +290,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   `setupOptions`) are weighed beside the hold, and play only if they leave every
   saved line (kept, target, plan, attack) playing out as well as before
   (`sparesSetups`), and the board readier or living longer; a swap that clears
-  nothing buys no time from the rise it locks. An option that clears nothing does not survive if, followed by the
+  nothing buys no time from the rise it locks. An option other than a break does not survive if, followed by the
   line that saves the board (stayAlive's), the board loses health before that line's
   last press (`getsBackInTime`, on the engine). A swap-back keeps the board unless it ranks higher. A rule that
   overrides another after the fact belongs in this order, not after it. The
