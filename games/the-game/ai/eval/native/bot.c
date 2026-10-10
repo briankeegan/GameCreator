@@ -3945,7 +3945,7 @@ static int setupOptions(Opt *O, int n, Dec d) {
   }
   return n;
 }
-// AN OPTION THAT CANNOT GET BACK IN TIME CANNOT SURVIVE: a swap that clears nothing, followed by the line that
+// AN OPTION THAT CANNOT GET BACK IN TIME CANNOT SURVIVE: a swap, followed by the line that
 // saves the board (stayAlive's), must still play that line before the board loses health -- the walk, the press,
 // the swap landing and the walk back all come out of the time there is. On the engine; one it cannot judge stands.
 static int getsBackInTime(const Opt *o, const int32_t *line, int n) {
@@ -4002,7 +4002,7 @@ static Dec arbitrate(Dec d) {
     else if (saDec.kind == K_SWAP) { sn = 1; sv[0] = saDec.sr; sv[1] = saDec.sc; }
     if (sn > 0) for (int i = 0; i < n; i++) {
       Opt *o = &O[i];
-      if (!o->lives || o->n == 0 || o->clears || o->breaks || (o->sw[0] == sv[0] && o->sw[1] == sv[1])) continue;
+      if (!o->lives || o->n == 0 || o->breaks || (o->sw[0] == sv[0] && o->sw[1] == sv[1])) continue;
       if (!getsBackInTime(o, sv, sn)) o->lives = 0;
     }
   }
