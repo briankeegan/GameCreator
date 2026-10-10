@@ -303,7 +303,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   stages did not pick (`attackOptions`: the `ATTACKOPTS` best swaps that make a combo of
   four or more or a chain, by `attackCmp`, of those the stages' own rules let
   through -- `FITS`: not refused, not too early, in time). **Idle time is for setups**: with no break in
-  reach, `setupOptions` adds the swaps that clear nothing and make more
+  reach and the board left alone losing no health within `LIVEHORIZON`, `setupOptions` adds the swaps that clear nothing and make more
   vertical twos, then flatter, as options beside the hold. A setup must spare
   every saved line (`sparesSetups`: the kept line, target, plan and attack play
   out as well after it), must get back in time to stayAlive's line
