@@ -59,4 +59,9 @@ hist=$(dirname "$0")/survival_scans.tsv
 [ -f "$hist" ] || printf 'run\tcommit\talive\tdied\n' > "$hist"
 if [ "$other" -eq 0 ] && ! grep -q "^$run	" "$hist"; then
   printf '%s\t%s\t%s\t%s\n' "$run" "$sha" "$alive" "$(printf '%s\n' "${dead[@]}" | sort -n | paste -sd, -)" >> "$hist"
+  # the line is committed and pushed as it is written: nothing waits uncommitted for a scan
+  trailer=$(cat "${GC_WORK:-/tmp/gc-survival}/trailer.txt" 2>/dev/null || true)
+  git -C "$(dirname "$0")" add "$hist" && git -C "$(dirname "$0")" commit -q -m "Survival scans: $sha
+
+$trailer" -- "$hist" && git -C "$(dirname "$0")" pull -q --rebase --autostash origin main && git -C "$(dirname "$0")" push -q origin HEAD:main || echo "scan_deaths: the scan's line is not pushed" >&2
 fi

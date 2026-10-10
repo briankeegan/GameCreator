@@ -4,16 +4,17 @@ import gzip,os,sys,statistics as st
 d=sys.argv[1]; rows_out=[]
 for f in sorted(os.listdir(d)):
     if not f.endswith('.log.gz'): continue
-    hist=[]
+    hist=[]; rdy=0
     for line in gzip.open(os.path.join(d,f),'rt'):
+        if line.startswith('READY base '): rdy=int(line.split()[2]); continue
         if not line.startswith('F '): continue
-        p=line.split(); fr=int(p[1]); rows=line.split('|',1)[1].split()[:-1]
+        p=line.split(); fr=int(p[1]); rows=line.split('|',1)[1].split()[:-1]; stop=int(p[p.index('stop')+1])
         g=sum(1 for r in rows for k in range(0,len(r),2) if r[k]=='g')
         pan=sum(1 for r in rows for k in range(0,len(r),2) if r[k].isdigit())
         top=0
         for i,r in enumerate(rows):
             if any(r[k]!='.' for k in range(0,len(r),2)): top=len(rows)-i; break
-        hist.append((fr,g,pan,top))
+        hist.append((fr,g,pan,top,rdy,stop))
     end=hist[-1][0]; died=end<59999
     i=30
     while i<len(hist):
@@ -23,12 +24,14 @@ for f in sorted(os.listdir(d)):
             while j+1<len(hist) and hist[j+1][1]>=hist[j][1] and j-i<60: j+=1
             size=hist[j][1]-pre[1]
             fatal=died and end-hist[i][0]<=900
-            rows_out.append((fatal,pre[2],pre[3],size,f,hist[i][0]))
+            k=i
+            while k>0 and hist[k-1][1]>=hist[k][1] and hist[k][1]>pre[1]: k-=1   # the frame the wave started down
+            rows_out.append((fatal,pre[2],pre[3],size,f,hist[i][0],hist[max(k-1,0)][4],hist[k][5]))
             i=j+60
         else: i+=1
 for lab,sel in (('fatal',[r for r in rows_out if r[0]]),('survived',[r for r in rows_out if not r[0]])):
     if not sel: continue
-    print('%-9s n=%4d panels median %4.0f | top median %4.1f | wave cells median %4.0f' % (lab,len(sel),st.median(r[1] for r in sel),st.median(r[2] for r in sel),st.median(r[3] for r in sel)))
+    print('%-9s n=%4d panels median %4.0f | top median %4.1f | wave cells median %4.0f | ready before it %d (%.0f%%) | stop as it lands median %d, none %.0f%%' % (lab,len(sel),st.median(r[1] for r in sel),st.median(r[2] for r in sel),st.median(r[3] for r in sel),sum(r[6] for r in sel),100.0*sum(r[6] for r in sel)/len(sel),st.median(r[7] for r in sel),100.0*sum(r[7]==0 for r in sel)/len(sel)))
 fat=[r for r in rows_out if r[0]]
 print('fatal:', ' '.join('%s@%d p%d top%d w%d' % (r[4][4:-7],r[5],r[1],r[2],r[3]) for r in fat))
 # survival rate by panels bucket

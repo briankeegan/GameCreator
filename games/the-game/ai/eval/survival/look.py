@@ -2,7 +2,8 @@ import gzip,sys
 # the boards breakFirst had no line on, near a death: is there a break in one or two swaps? (swap, fall, clear any run touching garbage)
 f,lo,hi=sys.argv[1],int(sys.argv[2]),int(sys.argv[3])
 def grid(rows):
-    g=[[r[k] if r[k] in 'g.' else int(r[k]) for k in range(0,len(r),2)] for r in rows]
+    # a panel counts only at rest ('n'); one matched, popping, falling or hovering is '#': not swapped, not matched, it stays
+    g=[[r[k] if r[k] in 'g.' else int(r[k]) if r[k+1]=='n' else '#' for k in range(0,len(r),2)] for r in rows]
     return g[::-1]   # g[0] bottom
 def settle(g):
     W=len(g[0])
@@ -12,9 +13,9 @@ def settle(g):
         r=0; 
         for k in range(len(g)):
             v=g[k][c]
-            if v=='g': 
+            if v in ('g','#'):
                 while len(out)<k: out.append('.')
-                out.append('g')
+                out.append(v)
             elif v!='.': out.append(v)
         while len(out)<len(g): out.append('.')
         for k in range(len(g)): g[k][c]=out[k]
@@ -23,7 +24,7 @@ def breaks(g):
     for r in range(H):
         for c in range(W):
             v=g[r][c]
-            if v in ('g','.'): continue
+            if v in ('g','.','#'): continue
             for dr,dc in ((0,1),(1,0)):
                 cells=[(r+i*dr,c+i*dc) for i in range(3)]
                 if all(0<=a<H and 0<=b<W and g[a][b]==v for a,b in cells):
@@ -33,7 +34,7 @@ def breaks(g):
     return False
 def swap(g,r,c):
     h=[row[:] for row in g]
-    if h[r][c]=='g' or h[r][c+1]=='g' or (h[r][c]=='.' and h[r][c+1]=='.'): return None
+    if h[r][c] in ('g','#') or h[r][c+1] in ('g','#') or (h[r][c]=='.' and h[r][c+1]=='.'): return None
     h[r][c],h[r][c+1]=h[r][c+1],h[r][c]; settle(h); return h
 bf=None; shown=0
 for line in gzip.open(f,'rt'):

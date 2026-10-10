@@ -39,7 +39,7 @@ typedef struct {
   int park, pRow, pCol, pTimer, pTr, pTc, pDisp;
   int hasLast, lastR, lastC, held;
   double escapeWalk;
-  u64 decidedOn;
+  u64 decidedOn, restOn;   // the board, and its cells at rest, the last decision was made on
   int lastKind, lastVia, lastMoveR, lastMoveC;
   Settle settle;   // the board's cells, when each settles (unsettled), at the last decision
   int wWaitTo, wFrames, wWaitAll, wR0, wKept;
@@ -255,6 +255,22 @@ static int windowOpen(void) {
 }
 static int inFlight(void) { return nb_active(FB) || FB->shakeTime > 0; }
 static int swapLanding(void) { return FB->queuedSwapRow > 0 || FB->swappingCount > 0; }
+// THE CELLS AT REST: what a swap can take and a break can be made from. A
+// cell in motion (swapping, falling, landing, clearing) counts only as busy,
+// so this changes when a cell comes to rest or leaves it, not at each frame
+// of a clear's animation
+static u64 restKey(void) {
+  u64 h = 1469598103934665603ull;
+  int top = FB->height + 2;
+  for (int r = 1; r <= top; r++)
+    for (int c = 1; c <= W; c++) {
+      const int32_t *f = fp(r, c);
+      int rest = f[STATE] == 0 || f[STATE] == 9;
+      h = (h ^ (u64)(rest ? (uint32_t)f[COLOR] + 1 : 0)) * 1099511628211ull;
+      h = (h ^ (u64)(rest && f[ISGARBAGE] ? 'g' : 0)) * 1099511628211ull;
+    }
+  return h;
+}
 static u64 boardKey(void) {
   static const char LETTER[] = { 'n', 'd', 's', 'm', 'p', 'p', 'h', 'f', 'l', 'n' };
   u64 h = 1469598103934665603ull;
@@ -576,7 +592,7 @@ static int pressWait(Front *F, int r, int c, int clock, int wait, int waitAll) {
   return wait;
 }
 static void beginWalk(Front *F, int r, int c, int cooldown, int waitAll) {
-  F->pad.holdKey = 0; F->walk = 1; F->wRow = r; F->wCol = c; F->wTimer = 0; F->wCooldown = cooldown; F->wRetries = 0; F->wHasDisp = 0;
+  F->walk = 1; F->wRow = r; F->wCol = c; F->wTimer = 0; F->wCooldown = cooldown; F->wRetries = 0; F->wHasDisp = 0;
   int wait = waitAll ? breakWait(&F->settle, r, c) : pairWait(&F->settle, r, c);
   F->wKept = F->pkAt && F->pkR == r && F->pkC == c && F->pkAll == waitAll;
   if (!F->wKept) { F->pkR = r; F->pkC = c; F->pkAt = FB->clock + wait; F->pkAll = waitAll; }
@@ -701,10 +717,11 @@ static int standingHollow(const Board *b) {
     }
   return h;
 }
+static JLOCAL int LDELAY;   // the frames before a judged line's first step may begin (lineOnEngineFrom)
 static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, int32_t *out) {
   if (!LNB) LNB = nb_new();
   Snap *from = 0;
-  for (int k = n - 1; k >= 1 && !from; k--) from = snapFind(steps, k);
+  if (!LDELAY) for (int k = n - 1; k >= 1 && !from; k--) from = snapFind(steps, k);
   nb_copy(LNB, from ? from->b : paLibBoard());
   { extern PATLS double paWork; paWork += 10; }   // the copy
   Board *b = LNB;
@@ -745,7 +762,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
       int coolIn = cool;
       if (cool > 0) cool--;
       int landing = b->queuedSwapRow > 0 || b->swappingCount > 0 || b->pressSwap;
-      if (!landing && (cool == 0 || b->stopTime > 0 || nb_topped(b))) {
+      if (!landing && f >= LDELAY && (cool == 0 || b->stopTime > 0 || nb_topped(b))) {
         if (step == n) {   // the front decides again here
           if (stopAtNext == 1) snapKeep(steps, n, b, f, coolIn, held, last, dropped, &pad);
           out[1] = last; out[8] = f; return 1;
@@ -863,6 +880,8 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
 }
 
 int lineOnEngine(const int32_t *steps, int n, int horizon, int waitAll, int32_t *out) { LWAITALL = waitAll; int rc = linePlay(steps, n, horizon, 0, out); LWAITALL = 0; return rc < 0 ? -1 : 0; }
+// the same line begun `delay` frames from now: what waiting that long costs it
+int lineOnEngineFrom(const int32_t *steps, int n, int horizon, int delay, int32_t *out) { LDELAY = delay; int rc = linePlay(steps, n, horizon, 0, out); LDELAY = 0; return rc < 0 ? -1 : 0; }
 // THE BOARD THE NEXT STEP IS CHOSEN ON: `steps` played on the engine as the
 // front plays them, up to the frame the front would decide again. Its masks,
 // the pairs the bot may target on it (swappable, settled), the cursor and the
@@ -1369,7 +1388,14 @@ static int frontFrame(int fid, Board *b) {
   // wants one. Topped, never: a raise pressed topped is game over (checkDeath).
   F->raiseHeld = F->wantRaise && F->raiseLives && !nb_topped(b) && !nb_falling_garbage(b) && raiseRoomNow() > 0;
   if (F->raiseHeld) input |= IN_RAISE;
-  if (F->walk) return fSend(F, driveWalk(F, input), held);
+  // A WALK SEES THE BOARD: a cell come to rest or gone from it under the walk
+  // (restKey) is decided again -- a break opened mid-walk is a break in reach.
+  // The held key stays down while it decides; a walk that goes on the same way
+  // keeps it (beginWalk, padHoldGoing).
+  if (F->walk) {
+    if (restKey() == F->restOn) return fSend(F, driveWalk(F, input), held);
+    F->walk = 0; F->cooldown = 0; input |= F->pad.holdKey;
+  }
   if (F->park) input = parkStep(F, input);
   int sent = fSend(F, input, held);
   int urgent = b->stopTime > 0 || toppedNow();
@@ -1380,7 +1406,7 @@ static int frontFrame(int fid, Board *b) {
     if (!lift) { F->cooldown--; return sent; }
     F->cooldown = 0;
   }
-  F->decidedOn = boardKey();
+  F->decidedOn = boardKey(); F->restOn = restKey();
   FDec d;
   // the held key the decision measures from is the one held before this frame
   int heldNow = F->held;
@@ -1389,10 +1415,11 @@ static int frontFrame(int fid, Board *b) {
   F->held = heldNow;
   if (d.kind == K_RAISE) {
     F->wantRaise = !nb_topped(b); F->cooldown = F->reaction;
+    if (F->pad.holdKey) { F->pad.holdKey = 0; return fSend(F, input & ~DIRS, held); }
     return sent;
   }
   if (d.kind == K_HOLD || !d.hasMove) {
-    F->cooldown = F->reaction;
+    F->cooldown = F->reaction; F->pad.holdKey = 0;
     if (d.hasPark && F->park && F->pTr == d.pr && F->pTc == d.pc) return sent;
     F->park = d.hasPark;
     if (d.hasPark) { F->pRow = d.pr; F->pCol = d.pc; F->pTimer = 0; F->pTr = d.pr; F->pTc = d.pc; F->pDisp = b->displacement; }

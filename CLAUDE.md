@@ -248,11 +248,24 @@ ways: a tool not listed, or a path listed that doesn't exist.
 - A test's scratch files go beside the test, never `os.tmpdir()`.
 - **BitBot drills run at level 10, nothing else.** `pa_drill.js` exits if a
   scenario's level is not 10.
+- **Break when the dump has landed; clear only to live, when due.** One test,
+  `waitFree`: the engine plays the line begun now and begun at the next
+  decision (a reaction later), each valued as a line's life is; while the later
+  one is worth no less -- more garbage landed and converted, no sooner loss of
+  health -- the bot waits. Waiting sets the board up (`waitMeanwhile`): a swap
+  that clears nothing and adds vertical twos, then flattens, is played if the
+  engine says the line still follows it, worth no less (the swap, then the
+  line, walked to in turn); otherwise it holds, parked on the line. A break
+  waits that way;
+  a three that breaks nothing waits that way until it is due (`clearDue`). No
+  route clears for shape or spare material.
 - **Time, never swaps.** A line is as good as the frame it is done, however
   many swaps it takes; nothing the bot asks is capped at a number of swaps.
   Every search that grows lines is `searchInTime` (`native/bot.c`): soonest
-  press first, bounded by the time there is and a share of the decision's
-  work (`workLeft`), `LINEMAX` only storage. One clock prices it all
+  press first, bounded by the time there is -- each line its own: a clear
+  holds a topped board while it settles, and one that lowers the stack moves
+  its loss of health later -- and a share of the decision's work
+  (`workLeft`), `LINEMAX` only storage. One clock prices it all
   (`travelCost`, `stepGap`, `lineFrames`), counted from where the cursor is;
   an engine press time meets it only through `pressSeen`. `clock.test.sh`
   holds the clock to the engine; `check_time_not_swaps.mjs` fails on a cap
@@ -260,12 +273,15 @@ ways: a tool not listed, or a path listed that doesn't exist.
 - **A decision is one ordered choice (`arbitrate`).** The stages propose; the
   decision they made, the walk's target and stayAlive's choice (or the hold)
   are judged on the engine and ranked once: breaks the next garbage in time
-  (it lives), lives, a break in reach when the next slab lands, the later loss
+  (it lives), lives, a break in reach when the next slab lands (none queued: a
+  slab the width of the board on the stack, `waveReady`; the engine's one
+  readiness, `readyInTime`, the masks' only to propose), the later loss
   of health inside `LIVEHORIZON`, the soonest break after it (`breakTime`:
-  setup), a combo or chain (more than a three cleared at once, `COMBOMIN`)
-  that digs under no pile (no break to make: clear, and look for the break
-  while it resolves), life (what it buys once done,
-  hollow costed), converted, hollow; equal: the target, the decision, the
+  setup), life (what it buys once done, hollow and material spent costed
+  and material converted credited, a cell a sixth of a row's rise, a panel
+  worth more the fewer the board is left with, `panelWorth`), a combo
+  or chain (more than a three cleared at once, `COMBOMIN`) that digs under no
+  pile, converted, hollow; equal: the target, the decision, the
   alternative. A swap-back keeps the board unless it ranks higher. A rule that
   overrides another after the fact belongs in this order, not after it. The
   engine is reached only through `lineJudge` and `searchInTime`, which stop at
@@ -276,9 +292,13 @@ ways: a tool not listed, or a path listed that doesn't exist.
   (`ThinkBudget.lua`) and to 456 actions a minute, at most 76 in any 600
   frames (`InputBudget.lua`; an action is a swap, up, down, left or right going
   down, a held direction one, raise none). `BUDGETMS` in `native/bot.c` (the 8
-  ms less the frame's own work) is a decision's budget, and `front.c`
-  (`ACTIONLIMIT`, `actionAllowed`) does not press a key the input budget does
-  not allow, the walk waiting for the frame it is. In a game the clock cuts a decision past it and the game
+  ms less the frame's own work) is a decision's budget. `front.c`'s key model
+  (`Pad`: `padAllowed`, `padStepToward`) is the front's and every judged
+  line's alike: no key past the allowance (the walk waits for the frame it
+  is), and a walk held, one action however far, from four cells, or from two
+  on a calm board or a nearly spent window (`travelCost` walks the same).
+  `lua/train.lua` charges the game's own `ThinkBudget` and `InputBudget` every
+  frame and the scan reports both. In a game the clock cuts a decision past it and the game
   fails. The budget is counted in work inside every game, so the survival
   scan is the budget check: a decision past it is cut, the seed fails, and
   the scan reports it. A change to `native/` is pushed and scanned at once;

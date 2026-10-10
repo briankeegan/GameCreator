@@ -14,7 +14,7 @@ Work files (scans, the git lock, the page) live in `$GC_WORK`
 - `scandiff.py DIR`: this scan against the one before -- alive, mean frames
   survived (steadier than the alive count), the seeds that moved
 - `flip.py`, `gates.py`, `landings.py`, `deathspend.py`: decision flips, raise
-  gates, landings by material, what spent material before each death
+  gates, landings by material and the readiness read before each, what spent material before each death
 - `slip.py DIR 900`: in each death's last 900 frames, options judged and not played
 - `look.py LOG LO HI`: breaks one or two swaps away on a death's boards
 - `openready.py DIR`: was the board ready before the first wave
