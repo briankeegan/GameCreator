@@ -5,13 +5,15 @@
    that long, not one frame's budget, to plan its opening. Not urgent; it
    may improve the start board.
 
-2. **BitBot is told when the other player is topped out.** The bot ranks a
-   combo against a chain by whether the opponent is topped out (combos
-   first) or not (chains first), reading the input `IN_OPPTOPPED`
-   (`native/bot.c`). Nothing sets it yet: the front needs a setter the game
-   calls each frame from the opponent's stack, and `PuyoCpu.onPA`'s `opp`
-   should pass it. Until then every opponent counts as not topped out, so
-   chains come first. The survival scan has no opponent to set it from.
+2. **The game tells BitBot who is across the table.** Before each frame the
+   host calls `front_opponent(fid, present, topped)` (`native/front.c`):
+   `present` is 1 in any match with another player, and `topped` is 1 once
+   that player's stack has lost. With an opponent present the bot assumes no
+   first wave and uses idle time for setups, combos and chains; `topped`
+   makes a combo go before a chain (`attackCmp`), otherwise a chain goes
+   first. Never called, as in the survival scan, it is alone: the first wave
+   is assumed. The game's own bot hookup (panel-game, `BitBotNative.lua`) must
+   declare and call it each frame.
 
 3. **The game tells BitBot the time.** The bot holds itself to the think budget
    from what the host tells it (`bot_time(ceilingMs, lastMs, leftMs)` in
