@@ -3854,7 +3854,7 @@ static Dec arbitrate(Dec d) {
     } else o->n = 0;
     if (!optJudge(o)) return d;
     n++; }
-  // what stayAlive chose, and the board left alone: a swap is held to both
+  // what stayAlive chose
   int ia = -1, ih = -1;
   if (saSet && !(d.kind == saDec.kind && d.hasMove == saDec.hasMove && d.sr == saDec.sr && d.sc == saDec.sc)) {
     Opt *o = &O[n];
@@ -3863,7 +3863,8 @@ static Dec arbitrate(Dec d) {
     o->pri = 2;
     if (optJudge(o)) ia = n++;
   }
-  if (d.kind == K_SWAP && aloneOnEngine() && !(ia >= 0 && O[ia].d.kind == K_HOLD)) {
+  // the board left alone: weighed when stayAlive chose nothing, and against a swap-back, which must beat doing nothing
+  if (d.kind == K_SWAP && aloneOnEngine() && (!saSet || O[at].pri == 3) && !(ia >= 0 && O[ia].d.kind == K_HOLD)) {
     Opt *o = &O[n];
     o->d = mkHold(V_KEEPHEALTH, d.mode, d.alive, 0, 0, 0); o->n = 0;
     o->pri = 2;
