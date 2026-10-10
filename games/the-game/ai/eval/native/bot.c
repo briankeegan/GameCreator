@@ -3954,7 +3954,7 @@ static void optAhead(Opt *o) {
 // THE SCRAMBLE: while a stop runs on a board that loses health within the judge's horizon, the best combo or chain
 // any line reaches in the time there is -- the freeze a clear bought, spent on continuing it -- is an option, the whole
 // line judged on the engine and played on once chosen.
-static int stopInDanger(void) { return BIN[IN_STOP] > 0 && aloneOnEngine() && aloneDie(1 << 20) < LINEHORIZON; }
+static int stopInDanger(void) { return BIN[IN_STOP] > 0 && aloneOnEngine() && aloneDie(1 << 20) < LIVEHORIZON; }
 static int gScramble;   // this decision is a last resort: a stop in danger, and no other option outlives the board left alone
 static int reachOption(Opt *O, int n, Dec d) {
   extern PATLS double paWork;
