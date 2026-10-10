@@ -816,6 +816,12 @@ static void keepFilter(double **all, int n, double **out, int *nout) {
 }
 static int kept(double *o) { return !(dropTallUnready && tallOpt(o) && readyOf(o) == 0); }
 static double *FILT[MAXOPT];
+// WHAT A COMBO IS WORTH BY ITS SIZE, the one rule for the setup (bestAttack) and the final choice
+// (optRank): a match is three, and more than that cleared at once, past what the board clears alone,
+// is a combo -- worth, low to high, 4, 7, 6, 5, 8, then 9 and more. -1: no combo.
+static int comboWorth(int size) { return size == 4 ? 0 : size == 7 ? 1 : size == 6 ? 2 : size == 5 ? 3 : size == 8 ? 4 : size > 8 ? 5 : -1; }
+// 1: the combo of size a is worth more than b's, -1: less, 0: the same or either is no combo
+static int worthCmp(int a, int b) { int wa = comboWorth(a), wb = comboWorth(b); return wa < 0 || wb < 0 || wa == wb ? 0 : wa > wb ? 1 : -1; }
 typedef struct { double rate, cells, gain, frames; double *option; } Pick;
 static int bestAttack(double deadline, double ppf, Pick *best) {
   int n, have = 0;
@@ -839,8 +845,9 @@ static int bestAttack(double deadline, double ppf, Pick *best) {
     double taste = 1 + TB[T_W + key] / 100;
     if (taste < 0.1) taste = 0.1;
     double rate = (cells / dmax(1, durOf(o))) * taste;
-    int win = !have || rate > best->rate;
-    if (!win && have && rate == best->rate) {
+    int cmp = have && !isChain && best->option[F_KIND] != 1 ? worthCmp((int)o[F_SIZE], (int)best->option[F_SIZE]) : 0;
+    int win = !have || (cmp ? cmp > 0 : rate > best->rate);
+    if (!win && have && !cmp && rate == best->rate) {
       double ob = has(o[F_BUMPS]) ? o[F_BUMPS] : 1e9, bb = has(best->option[F_BUMPS]) ? best->option[F_BUMPS] : 1e9;
       win = ob < bb;
     }
@@ -2145,8 +2152,6 @@ static Dec waitForDrain(Dec d) {
 // lives and still pays (breaks, for a break line) -- whatever chose it.
 #define REROOTS 3   // a line's first steps replayed on the engine before the masks propose the rest: precision, never reach
 #define LIVEHORIZON 60
-// A MATCH IS THREE: more than that cleared at once, past what the board clears alone, is a combo or a chain
-#define COMBOMIN 4
 #define LINEHORIZON 240
 #define UNSETTLEMOST 180   // the most frames a board is followed while it settles (front.c's settle sim and the judge's busy tail)
 // THE JUDGE'S REACH: it plays to LINEHORIZON, and on while the board is busy
@@ -3800,8 +3805,6 @@ static Dec stayAlive(Dec d) {
 // engine (lineJudge, which keeps to the work there is); one it cannot judge is
 // not weighed, and a decision it cannot judge stands.
 typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, size, die, conv, hollow, pri; double life, soon; } Opt;
-// WHAT A COMBO IS WORTH BY ITS SIZE, low to high: 4, 7, 6, 5, 8, then 9 and more
-static int comboWorth(int size) { return size == 4 ? 0 : size == 7 ? 1 : size == 6 ? 2 : size == 5 ? 3 : size == 8 ? 4 : size > 8 ? 5 : -1; }
 static int optJudge(Opt *o) {
   int last = 0, spent = 0;
   o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = o->early = o->size = 0;
@@ -3816,7 +3819,7 @@ static int optJudge(Opt *o) {
     o->die = die; o->lives = die > 0; o->breaks = (v & LV_BREAKS) != 0;
     o->conv = LNO[2] - LNA[2]; o->hollow = HOLLOW(LNO); last = LNO[1]; spent = spentOf();
     // a combo or a chain: it clears more than the board left alone, and digs under no pile (more hollow than the hold)
-    o->cash = LNO[3] - LNA[3] >= COMBOMIN && (!aloneOnEngine() || o->hollow <= HOLLOW(LNA));
+    o->cash = comboWorth(LNO[3] - LNA[3]) >= 0 && (!aloneOnEngine() || o->hollow <= HOLLOW(LNA));
     o->size = LNO[3] - LNA[3];
     // a clear that breaks nothing and is no combo, before it is due (clearDue), is a spend the board does not need yet
     o->early = !o->breaks && !o->cash && LNO[3] > LNA[3] && !clearDue(o->sw, o->n, 0);
@@ -3863,7 +3866,7 @@ static int optRank(Opt *a, Opt *b) {
   // then a combo or a chain
   // a break sooner by more than NEXTMOVE: less is the walk's own movement, and the target stands
   if (ka) { double sa = optSoon(a), sb = optSoon(b), gap = sa > sb ? sa - sb : sb - sa; if (sa != sb && !(gap <= NEXTMOVE)) return sa < sb ? 1 : -1; }
-  if (a->cash && b->cash && comboWorth(a->size) != comboWorth(b->size)) return comboWorth(a->size) > comboWorth(b->size) ? 1 : -1;
+  if (a->cash && b->cash) { int w = worthCmp(a->size, b->size); if (w) return w; }
   if (a->life != b->life) return a->life > b->life ? 1 : -1;
   if (a->cash != b->cash) return a->cash > b->cash ? 1 : -1;
   if (a->conv != b->conv) return a->conv > b->conv ? 1 : -1;
