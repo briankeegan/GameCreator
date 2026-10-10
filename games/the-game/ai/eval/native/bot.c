@@ -3953,7 +3953,12 @@ static int getsBackInTime(const Opt *o, const int32_t *line, int n) {
   int32_t st[2 * LINEMAX], r[LNOLEN];
   for (int k = 0; k < 2 * o->n; k++) st[k] = o->sw[k];
   for (int k = 0; k < 2 * n; k++) st[2 * o->n + k] = line[k];
-  if (lineOnEngine(st, o->n + n, LINEHORIZON, 0, r) != 0 || r[1] < 0) return 1;
+  int rc = lineOnEngine(st, o->n + n, LINEHORIZON, 0, r);
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
+    fprintf(BLOG, "GATE %d,%d then %d,%d | rc %d loss %d lastpress %d -> %s\n", o->sw[0], o->sw[1], line[0], line[1], rc, rc == 0 ? r[0] : -1, rc == 0 ? r[1] : -1, rc != 0 || r[1] < 0 ? "unjudged, stands" : (!r[0] || r[0] > r[1]) ? "gets back" : "VETO"); }
+#endif
+  if (rc != 0 || r[1] < 0) return 1;
   return !r[0] || r[0] > r[1];
 }
 static Dec arbitrate(Dec d) {
