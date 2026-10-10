@@ -284,7 +284,10 @@ ways: a tool not listed, or a path listed that doesn't exist.
   by whether the other player is topped out (combos) or not (chains), two
   combos by `comboWorth` (4, 7, 6, 5, 8, 9 and more, low to high), two chains by
   length -- converted, hollow; equal: the target, the decision, the
-  alternative. A swap-back keeps the board unless it ranks higher. A rule that
+  alternative. With a slab coming and no break in reach, the swaps that clear
+  nothing and set the board up (more vertical twos, then flatter;
+  `setupOptions`) are weighed beside the hold, and play only if they leave the
+  board readier or living longer. A swap-back keeps the board unless it ranks higher. A rule that
   overrides another after the fact belongs in this order, not after it. The
   engine is reached only through `lineJudge` and `searchInTime`, which stop at
   their share of the work (`workLeft`); the decision's closing keeps
