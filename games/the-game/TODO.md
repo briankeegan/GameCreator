@@ -9,7 +9,7 @@
    host calls `front_opponent(fid, present, topped)` (`native/front.c`):
    `present` is 1 in any match with another player, and `topped` is 1 once
    that player's stack has lost. With an opponent present the bot assumes no
-   first wave and uses idle time for setups, combos and chains; `topped`
+   first wave (no phantom slab, and the opening ends) and uses idle time for setups, combos and chains; `topped`
    makes a combo go before a chain (`attackCmp`), otherwise a chain goes
    first. Never called, as in the survival scan, it is alone: the first wave
    is assumed. The game's own bot hookup (panel-game, `BitBotNative.lua`) must
