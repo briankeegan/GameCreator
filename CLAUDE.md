@@ -310,6 +310,13 @@ ways: a tool not listed, or a path listed that doesn't exist.
   (an engine frame by its path, `pa.c` `FRAMEWORK_*`; the search by its steps,
   `bot.c` `SIT*WORK`): a path newly reached that runs slow per work is
   calibrated there, with the measurement beside the number.
+  The host tells the bot the game's ceiling, the time left in the frame, and
+  what each frame's thinking took (`bot_time`, from `ThinkBudget`): the cut
+  (`WORKBUDGET`) is held to the ceiling over the 99.99th percentile of the
+  bot's milliseconds per unit of work, and the bot reads the monotonic clock
+  every 400 units (`paWall`), so a decision whose time is up is out of budget
+  like one whose work is. A host that does not call `bot_time` (the browser,
+  the drills) gets the start values, and a scan no longer repeats exactly.
 - **Survival is a loop on Actions. Run every step of it in the background**
   -- the push, the scan, the fetch, the rebuild -- so nothing waits on it. `ai-survival-scan.yml` plays all 24 seeds
   at once and keeps each seed's whole game (`game.log.gz`, every frame's bot
