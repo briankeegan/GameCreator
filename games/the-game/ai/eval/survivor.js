@@ -40,6 +40,12 @@ if (!process.env.GC_SURVIVOR_CHILD) {
   child.on('exit', function (code, sig) { process.exit(code === null ? 1 : code); });
   return;
 }
+// THE SEARCH YIELDS TO THE GAME. The mind and its search threads are made after
+// this and take this niceness; the game's own thread, which waits for an
+// answer inside an 8 ms frame, then wins the cores the search is using.
+// GC_SURVIVOR_NICE=0 leaves it alone.
+var NICE = process.env.GC_SURVIVOR_NICE === undefined ? 10 : Number(process.env.GC_SURVIVOR_NICE);
+if (NICE) { try { require('os').setPriority(0, NICE); } catch (e) { console.log('niceness not set: ' + e.message); } }
 // THE FRAME LOOP STAYS OUT OF GC'S WAY: collections done on the thread that
 // needs them -- V8's helper threads are the process's, and a collection here
 // that waits on them waits behind the mind's. The young generation keeps its
@@ -90,6 +96,14 @@ var SM = require(path.join(__dirname, 'survivor_match.js')), Match = SM.Match, n
 var ABORT = new Int32Array(new SharedArrayBuffer(4));
 var mind = new wt.Worker(path.join(__dirname, 'survivor_mind.js'), { workerData: { profile: PROFILE, threads: opt.threads, abort: ABORT } });
 var mindReady = false;
+// the niceness of every thread, once the search has made its own
+setTimeout(function () {
+  try {
+    var fs = require('fs'), nices = fs.readdirSync('/proc/self/task').map(function (t) { return Number(fs.readFileSync('/proc/self/task/' + t + '/stat', 'utf8').replace(/^.*\) /, '').split(' ')[16]); });
+    var count = {}; nices.forEach(function (n) { count[n] = (count[n] || 0) + 1; });
+    console.log('thread niceness (nice: threads) ' + JSON.stringify(count));
+  } catch (e) { /* no /proc */ }
+}, 3000);
 // GC_SURVIVOR_SYNC=1: every decision is waited for, asked a frame ahead --
 // the bot as it plays with all the time it wants, for telling what it knows
 // from what it has time for.
