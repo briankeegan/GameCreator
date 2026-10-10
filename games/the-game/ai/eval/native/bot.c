@@ -1248,6 +1248,7 @@ static int raiseModeOf(const int32_t *base, int poolBreak) {
   double realIn = BIN[IN_INCOMING] - BIN[IN_PHANTOM];   // the raise reads the real queue, never the phantom first wave
   if (TFLAG(TF_RAISE)) { raiseGate = 1; return (int)BIN[IN_T + 3]; }
   int topped = BIN[IN_TOPPED] != 0;
+  if (BIN[IN_OPPPRESENT]) BT->opening = 0;   // with another player in the match there is no first wave to wait for (front_opponent)
   if (!opt(O_ALLOWRAISE) || topped) { BT->opening = 0; { raiseGate = 2; return 0; } }
   if (BIN[IN_FALLING]) { raiseGate = 3; return 0; }
   // THE LOCK THAT WILL NOT END: panels or garbage in motion hold the rise
