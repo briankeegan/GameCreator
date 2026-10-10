@@ -2676,7 +2676,7 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
   double w0 = paWork;
   stcpy(SITST[0], st0);
   SITND[0].parent = -1; SITND[0].n = 0; SITND[0].r = cr; SITND[0].c = cc; SITND[0].t = t0; SITND[0].settled = 0; SITND[0].left = left; SITND[0].stopped = 0;
-  sitLeft = left;
+  sitLeft = INF;   // lowered only by a break found (time mode); each line keeps its own time (left)
   for (int c = 0; c < WMAX; c++) SITND[0].dist[c] = 0;
   sitSeen(hashOf(SITST[0]));
   int nn = 1, nk = 0, nh = 0;
@@ -2710,8 +2710,11 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
       SITND[j].parent = kd.parent; SITND[j].n = n; SITND[j].r = kd.r; SITND[j].c = kd.c; SITND[j].t = kd.t;
       SITND[j].stopped = pa->stopped || SITR[R_TOTAL] > 0;
       SITND[j].settled = kd.t + (SITR[R_TOTAL] > 0 ? SITR[R_FRAMES] : quietSettle(SITST[kd.parent], kd.r, kd.c, SITR + R_INTS));
-      // topped, a clear holds the board while it settles: the time there is runs on with it
+      // A LINE'S OWN CLEARS MOVE THE TIME THERE IS: topped, a clear holds the
+      // board while it settles; and a clear that lowers the stack moves its
+      // loss of health later -- the break looked for while it resolves
       SITND[j].left = frozen && SITND[j].settled - 2 > pa->left ? SITND[j].settled - 2 : pa->left;
+      if (SITR[R_TOTAL] > 0) { double own = framesToDeath(tallestBoard(SITST[j]), BIN[IN_FPR]); if (own > SITND[j].left) SITND[j].left = own; }
       disturbed(SITST[kd.parent], SITR + R_INTS, SITND[j].dist);
     }
     int say = accept(SITR, line, n, kd.t, ctx);

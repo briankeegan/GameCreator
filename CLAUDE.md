@@ -251,8 +251,10 @@ ways: a tool not listed, or a path listed that doesn't exist.
 - **Time, never swaps.** A line is as good as the frame it is done, however
   many swaps it takes; nothing the bot asks is capped at a number of swaps.
   Every search that grows lines is `searchInTime` (`native/bot.c`): soonest
-  press first, bounded by the time there is and a share of the decision's
-  work (`workLeft`), `LINEMAX` only storage. One clock prices it all
+  press first, bounded by the time there is -- each line its own: a clear
+  holds a topped board while it settles, and one that lowers the stack moves
+  its loss of health later -- and a share of the decision's work
+  (`workLeft`), `LINEMAX` only storage. One clock prices it all
   (`travelCost`, `stepGap`, `lineFrames`), counted from where the cursor is;
   an engine press time meets it only through `pressSeen`. `clock.test.sh`
   holds the clock to the engine; `check_time_not_swaps.mjs` fails on a cap
