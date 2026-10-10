@@ -279,7 +279,8 @@ ways: a tool not listed, or a path listed that doesn't exist.
   and material converted credited, a cell a sixth of a row's rise, a panel
   worth more the fewer the board is left with, `panelWorth`), a combo
   or chain (more than a three cleared at once, `COMBOMIN`) that digs under no
-  pile, converted, hollow; equal: the target, the decision, the
+  pile -- between two combos the larger by `comboWorth` (4, 7, 6, 5, 8, 9 and
+  more, low to high) comes before life -- converted, hollow; equal: the target, the decision, the
   alternative. A swap-back keeps the board unless it ranks higher. A rule that
   overrides another after the fact belongs in this order, not after it. The
   engine is reached only through `lineJudge` and `searchInTime`, which stop at
