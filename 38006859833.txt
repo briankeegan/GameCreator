@@ -56,3 +56,6 @@ ready
 stage 9 won frames=8502 continues=6 next=10 complete=false fps=58.5
 shot=/home/runner/.local/share/love/panel-game/stage09_won_c6.png
 ready
+stage 10 won frames=6676 continues=6 next=11 complete=false fps=58.1
+shot=/home/runner/.local/share/love/panel-game/stage10_won_c6.png
+ready
