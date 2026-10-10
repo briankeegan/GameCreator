@@ -3625,6 +3625,7 @@ static int nonSpendLives(void);
 // The one test, for every line that may wait.
 int lineOnEngineFrom(const int32_t *steps, int n, int horizon, int delay, int32_t *out);
 static double heldValue(const int32_t *a) { return lifeOf(lnoDie(a), 0, HOLLOW(a), spentIn(a)); }
+static double waitWorth;   // what the line waited for is worth begun later (waitFree), for the move played meanwhile
 static int waitFree(const int32_t *sw, int n, int breaks) {
   if (!aloneOnEngine()) return 0;
   int32_t now[LNOLEN], later[LNOLEN];
@@ -3632,7 +3633,23 @@ static int waitFree(const int32_t *sw, int n, int breaks) {
   if (lineOnEngineFrom(sw, n, LINEHORIZON, (REACT > 0 ? REACT : 0) + 1, later) != 0 || later[1] < 0) return 0;   // not to be played begun later
   if (later[0] && later[0] <= later[1] + NEXTMOVE) return 0;   // begun later it loses health by its own press (lineJudge's LIVES)
   if (breaks && !(later[2] > LNA[2])) return 0;   // begun later it no longer breaks
-  return heldValue(later) >= heldValue(now);
+  waitWorth = heldValue(later);
+  return waitWorth >= heldValue(now);
+}
+// THE WAIT IS NOT IDLE: while a line waits (waitFree), the move the stages
+// chose is played first if the line still follows it -- the engine plays the
+// move, then the line, walking to each in turn -- and that is worth no less
+// than the line waited for: it neither spoils the line nor keeps it from its
+// time. Otherwise the board is held.
+static Dec waitMeanwhile(Dec d, const int32_t *sw, int n, int breaks, Dec hold) {
+  if (d.kind != K_SWAP || !d.hasMove || n + 1 > LINEMAX || (d.sr == sw[0] && d.sc == sw[1])) return hold;
+  int32_t st[2 * LINEMAX], o[LNOLEN];
+  st[0] = d.sr; st[1] = d.sc;
+  for (int k = 0; k < 2 * n; k++) st[2 + k] = sw[k];
+  if (lineOnEngineFrom(st, n + 1, LINEHORIZON, 0, o) != 0 || o[1] < 0) return hold;
+  if (o[0] && o[0] <= o[1] + NEXTMOVE) return hold;   // the line after it loses health by its own press
+  if (breaks && !(o[2] > LNA[2])) return hold;   // the line no longer breaks after it
+  return heldValue(o) >= waitWorth ? d : hold;
 }
 // a clear that breaks nothing is due once waiting is not free; with no loss
 // of health coming, never
@@ -3790,7 +3807,7 @@ static Dec stayAlive(Dec d) {
   // parked on the clear's first step, and no later stage plays in its place
   if (!judgedBreaks(l) && l->verdict >= 0 && (l->verdict & LV_PAYS) && !clearDue(l->sw, l->n)) {
     BT->nLine = 0; plansDrop();
-    return saKeep(mkHold(V_KEEPHEALTH, d.mode, d.alive, 1, l->sw[0], l->sw[1]));
+    return saKeep(waitMeanwhile(d, l->sw, l->n, 0, mkHold(V_KEEPHEALTH, d.mode, d.alive, 1, l->sw[0], l->sw[1])));
   }
   lineLast = 2;
   BT->counts[C_KEPTHEALTH]++;
@@ -3975,7 +3992,7 @@ static Dec breakFirst(Dec d) {
   // break makes (roomForBreak)
   if (roomForBreak(DBASE) && waitFree(l->sw, l->n, 1)) {
     bbDeferred = *l; bbHasDeferred = 1; BT->nLine = 0; plansDrop(); lineLast = 3;   // a break being played: no later stage plays in its place
-    return saKeep(mkHold(V_BREAKREACH, d.mode, d.alive, 1, l->sw[0], l->sw[1]));
+    return saKeep(waitMeanwhile(d, l->sw, l->n, 1, mkHold(V_BREAKREACH, d.mode, d.alive, 1, l->sw[0], l->sw[1])));
   }
   lineLast = 3;
   plansDrop();
