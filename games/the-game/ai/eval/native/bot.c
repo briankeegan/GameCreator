@@ -3955,6 +3955,7 @@ static void optAhead(Opt *o) {
 // any line reaches in the time there is -- the freeze a clear bought, spent on continuing it -- is an option, the whole
 // line judged on the engine and played on once chosen.
 static int stopInDanger(void) { return BIN[IN_STOP] > 0 && aloneOnEngine() && aloneDie(1 << 20) < LINEHORIZON; }
+static int gScramble;   // this decision is a last resort: a stop in danger, and no other option outlives the board left alone
 static int reachOption(Opt *O, int n, Dec d) {
   extern PATLS double paWork;
   if (!BIN[IN_HASPA] || paWork >= optLine()) return n;
@@ -4002,7 +4003,7 @@ static int optRank(Opt *a, Opt *b) {
     if (a->twos != b->twos) return a->twos > b->twos ? 1 : -1;
   }
   if (a->cash && b->cash) { int w = attackCmp(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
-  if (ka && a->cash != b->cash && stopInDanger()) return a->cash > b->cash ? 1 : -1;   // the freeze is spent continuing the chain
+  if (ka && a->cash != b->cash && gScramble) return a->cash > b->cash ? 1 : -1;   // the freeze is spent continuing the chain
   if (a->life != b->life) return a->life > b->life ? 1 : -1;
   if (a->cash != b->cash) return a->cash > b->cash ? 1 : -1;
   if (a->conv != b->conv) return a->conv > b->conv ? 1 : -1;
@@ -4137,7 +4138,12 @@ static Dec arbitrate(Dec d) {
   int setupAt = 1 << 20;   // the first of the setup options, if any
   { int breaking = 0; for (int i = 0; i < n; i++) if (O[i].breaks) breaking = 1;
     if (!breaking && aloneOnEngine()) n = attackOptions(O, n, d);
-    if (!breaking && stopInDanger()) { int before = n; n = reachOption(O, n, d); if (n > before) ra = before; }
+    gScramble = 0;
+    if (!breaking && stopInDanger()) {
+      int improves = 0, alone = aloneDie(1 << 20);
+      for (int i = 0; i < n; i++) if (O[i].lives && O[i].die > alone) improves = 1;
+      if (!improves) { gScramble = 1; int before = n; n = reachOption(O, n, d); if (n > before) ra = before; }
+    }
     // downtime: the board left alone loses no health within the horizon
     if (!breaking && aloneOnEngine() && aloneDie(1 << 20) > LIVEHORIZON && (d.kind == K_HOLD || O[at].early)) { setupAt = n; n = setupOptions(O, n, d); } }
   // the line that saves the board: what an option must still be able to play after it (getsBackInTime)
