@@ -169,5 +169,7 @@ link:endMatch()
 if link2 then link2:endMatch() end
 local died = a:game_ended() and "WasmSurvivor" or (b:game_ended() and "opponent" or "nobody")
 local over, worst, dropped = link:budget()
+local ph, ob = link:phases(), link:phases().overBy
+print(string.format('PHASES worst ms: encode %.1f send %.1f wait %.1f read %.1f; in over-ceiling frames: encode %.1f send %.1f wait %.1f read %.1f', ph.encode * 1000, ph.send * 1000, ph.wait * 1000, ph.read * 1000, ob.encode * 1000, ob.send * 1000, ob.wait * 1000, ob.read * 1000))
 print(string.format('RESULT {"seed":%d,"frames":%d,"clock":%d,"died":"%s","late":%d,"late2":%d,"handed":%d,"sent":%d,"sent2":%d,"seconds":%.0f,"thinkOver":%d,"thinkWorstMs":%.1f,"inputDropped":%d}',
   SEED, frame, a.clock, died, link.late, link2 and link2.late or 0, handed, got[b], got[a], socket.gettime() - t0, over, worst * 1000, dropped))
