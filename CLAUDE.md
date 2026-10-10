@@ -350,7 +350,9 @@ ways: a tool not listed, or a path listed that doesn't exist.
   like one whose work is. A host that does not call `bot_time` (the browser,
   the drills) gets the start values, and a scan no longer repeats exactly --
   except the scan dispatched with `fixed_budget`, which does not call it, so a
-  build plays the same games every time: the way to compare two builds.
+  build plays the same games every time: the way to compare two builds -- on
+  the same engine: the scan runs on the `panel_game_ref` commit, and two scans
+  compare only with the same one.
 - **Survival is a loop on Actions. Run every step of it in the background**
   -- the push, the scan, the fetch, the rebuild -- so nothing waits on it. `ai-survival-scan.yml` plays all 24 seeds
   at once and keeps each seed's whole game (`game.log.gz`, every frame's bot
