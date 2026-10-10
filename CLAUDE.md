@@ -303,11 +303,16 @@ ways: a tool not listed, or a path listed that doesn't exist.
   stages did not pick (`attackOptions`: the `ATTACKOPTS` best swaps that make a combo of
   four or more or a chain, by `attackCmp`, of those the stages' own rules let
   through -- `FITS`: not refused, not too early, in time). **Idle time is for setups**: with no break in
-  reach, `setupOptions` adds the swaps that clear nothing and make more
+  reach and the board left alone losing no health within `LIVEHORIZON`, `setupOptions` adds the swaps that clear nothing and make more
   vertical twos, then flatter, as options beside the hold. A setup must spare
   every saved line (`sparesSetups`: the kept line, target, plan and attack play
   out as well after it), must get back in time to stayAlive's line
   (`getsBackInTime`), and is credited no time for the rise it locks (`stall`).
+  Among options that clear nothing (the hold, the setups) the one that leaves the
+  better attack one swap away wins (`optAhead`: every legal swap on the board it
+  settles to, by `attackFirst`), then the one with more vertical twos; the rule
+  compares only a setup with the hold or another setup -- a fill or a levelling
+  swap is ranked by life and hollow.
   A clear that fills hollow under the garbage is not `early`.
 - **Every decision fits the game's think budget, and every press its input
   budget.** The game holds a computer player to 8 ms of thinking a frame
