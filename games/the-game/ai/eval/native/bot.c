@@ -833,12 +833,19 @@ static int worthCmp(int a, int b) { int wa = comboWorth(a), wb = comboWorth(b); 
 // Against a player who is topped out (IN_OPPTOPPED) a combo comes before a chain; against one who is not, a
 // chain before a combo. Two combos by comboWorth, two chains by length. 1: a is worth more, -1: b is, 0: the
 // same, or either is no attack.
-static int attackCmp(int sa, int ca, int sb, int cb) {
-  int chainA = ca >= 2, chainB = cb >= 2, atkA = chainA || comboWorth(sa) >= 0, atkB = chainB || comboWorth(sb) >= 0;
-  if (!atkA || !atkB) return 0;
+// What a candidate makes, in the one form attackCmp and attackFirst take: the largest match, and the chain's length
+// (0 when it is not a chain). Every candidate -- a result, an option row, an option -- is turned into it here.
+typedef struct { int size, chain; } Atk;
+static Atk atkOf(int size, int chain) { Atk k = { size, chain >= 2 ? chain : 0 }; return k; }
+static Atk atkOfRes(const Rs *r) { return atkOf(r->biggest, r->chain); }
+static Atk atkOfRow(const double *o) { return o[F_KIND] == 1 ? atkOf(0, (int)o[F_CHAIN]) : atkOf((int)o[F_SIZE], 0); }
+static int isAttack(Atk k) { return k.chain >= 2 || comboWorth(k.size) >= 0; }
+static int attackCmp(Atk a, Atk b) {
+  int chainA = a.chain >= 2, chainB = b.chain >= 2;
+  if (!isAttack(a) || !isAttack(b)) return 0;
   if (chainA != chainB) return chainA == (BIN[IN_OPPTOPPED] == 0) ? 1 : -1;
-  if (chainA) return ca == cb ? 0 : ca > cb ? 1 : -1;
-  return worthCmp(sa, sb);
+  if (chainA) return a.chain == b.chain ? 0 : a.chain > b.chain ? 1 : -1;
+  return worthCmp(a.size, b.size);
 }
 typedef struct { double rate, key, cells, gain, frames; double *option; } Pick;
 static int bestAttack(double deadline, double ppf, Pick *best) {
@@ -863,8 +870,7 @@ static int bestAttack(double deadline, double ppf, Pick *best) {
     double taste = 1 + TB[T_W + key] / 100;
     if (taste < 0.1) taste = 0.1;
     double rate = cells * taste;   // every one here fits the deadline: what it is worth, not how soon
-    int bestChain = have && best->option[F_KIND] == 1;
-    int cmp = have ? attackCmp(isChain ? 0 : (int)o[F_SIZE], isChain ? (int)o[F_CHAIN] : 0, bestChain ? 0 : (int)best->option[F_SIZE], bestChain ? (int)best->option[F_CHAIN] : 0) : 0;
+    int cmp = have ? attackCmp(atkOfRow(o), atkOfRow(best->option)) : 0;
     int win = !have || (cmp ? cmp > 0 : rate > best->key);
     if (!win && have && !cmp && rate == best->key) {
       double ob = has(o[F_BUMPS]) ? o[F_BUMPS] : 1e9, bb = has(best->option[F_BUMPS]) ? best->option[F_BUMPS] : 1e9;
@@ -877,10 +883,9 @@ static int bestAttack(double deadline, double ppf, Pick *best) {
 }
 // An attack -- a combo of four panels or more, or a chain -- comes before a clear that is neither: it buys the stop time
 // a plain clear does not. Between two attacks, attackCmp.
-static int attackFirst(int sa, int ca, int sb, int cb) {
-  int a = ca >= 2 || comboWorth(sa) >= 0, b = cb >= 2 || comboWorth(sb) >= 0;
-  if (a != b) return a ? 1 : -1;
-  return attackCmp(sa, ca, sb, cb);
+static int attackFirst(Atk a, Atk b) {
+  if (isAttack(a) != isAttack(b)) return isAttack(a) ? 1 : -1;
+  return attackCmp(a, b);
 }
 static int bestPlan(double clock, double deadline, int toppedOut, double fpr, int tallNow, const int32_t *base, Pick *bestOut) {
   int n, haveB = 0, haveO = 0;
@@ -919,8 +924,7 @@ static int bestPlan(double clock, double deadline, int toppedOut, double fpr, in
     double key = fits ? bought : rate;   // what fits is weighed by what it is worth; when nothing fits, the soonest
     Pick *cur = fits ? &best : &over;
     int haveCur = fits ? haveB : haveO;
-    int curChain = haveCur && cur->option[F_KIND] == 1;
-    int cmp = haveCur ? attackFirst(isChain ? 0 : (int)o[F_SIZE], isChain ? (int)o[F_CHAIN] : 0, curChain ? 0 : (int)cur->option[F_SIZE], curChain ? (int)cur->option[F_CHAIN] : 0) : 0;
+    int cmp = haveCur ? attackFirst(atkOfRow(o), atkOfRow(cur->option)) : 0;
     int better = !haveCur || (cmp ? cmp > 0 : key > cur->key);
     if (!better && haveCur && !cmp && key == cur->key) {
       double mb = has(o[F_BUMPS]) ? o[F_BUMPS] : 1e9, cb = has(cur->option[F_BUMPS]) ? cur->option[F_BUMPS] : 1e9;
@@ -2123,7 +2127,7 @@ static Dec waitForDrain(Dec d) {
   }
   BT->counts[C_KEPTHEALTH]++;
   Clr *breakNow = 0, *clearNow = 0;
-  double cnRate = 0, cnVd = 0; int cnTn = 0, cnBk = 0, cnBig = 0, cnCh = 0;
+  double cnRate = 0, cnVd = 0; int cnTn = 0, cnBk = 0; Atk cnAtk = { 0, 0 };
   double *f = BIN + IN_SF;
   for (int i = 0; i < nc; i++) {
     Clr *cl = &CLEARS[i];
@@ -2144,12 +2148,12 @@ static Dec waitForDrain(Dec d) {
     int bk = cl->masks && hasGarbage(cl->masks) && paWork + BREAKWORK < optLine() && breakWithin(cl->masks, stop);
     int tn = r->total, st = cl->future || steady(cl->sr, cl->sc, dmax(cl->moveFrames, k - 2)),
         cnSt = clearNow && (clearNow->future || steady(clearNow->sr, clearNow->sc, dmax(clearNow->moveFrames, k - 2)));
-    if (clearNow && st != cnSt) { if (st) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnBig = r->biggest; cnCh = r->chain >= 2 ? r->chain : 0; } continue; }
-    if (clearNow && bk != cnBk) { if (bk) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnBig = r->biggest; cnCh = r->chain >= 2 ? r->chain : 0; } continue; }
+    if (clearNow && st != cnSt) { if (st) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnAtk = atkOfRes(r); } continue; }
+    if (clearNow && bk != cnBk) { if (bk) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnAtk = atkOfRes(r); } continue; }
     // of the clears that fit, an attack (a combo of four or more, a chain) comes first, by the one rule (attackFirst)
-    int atk = clearNow ? attackFirst(r->biggest, r->chain >= 2 ? r->chain : 0, cnBig, cnCh) : 0;
-    if (atk) { if (atk > 0) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnBig = r->biggest; cnCh = r->chain >= 2 ? r->chain : 0; } continue; }
-    if (!clearNow || tn < cnTn || (tn == cnTn && (vd < cnVd || (vd == cnVd && rate > cnRate)))) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnBig = r->biggest; cnCh = r->chain >= 2 ? r->chain : 0; }
+    int atk = clearNow ? attackFirst(atkOfRes(r), cnAtk) : 0;
+    if (atk) { if (atk > 0) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnAtk = atkOfRes(r); } continue; }
+    if (!clearNow || tn < cnTn || (tn == cnTn && (vd < cnVd || (vd == cnVd && rate > cnRate)))) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnAtk = atkOfRes(r); }
   }
   if (breakNow && !breakNow->future) return mkSwap(breakNow->sr, breakNow->sc, V_BREAK, d.mode, d.alive);
   if (breakNow) return HOLDAT(breakNow->sr, breakNow->sc);
@@ -3932,7 +3936,7 @@ static int optRank(Opt *a, Opt *b) {
   // then a combo or a chain
   // a break sooner by more than NEXTMOVE: less is the walk's own movement, and the target stands
   if (ka) { double sa = optSoon(a), sb = optSoon(b), gap = sa > sb ? sa - sb : sb - sa; if (sa != sb && !(gap <= NEXTMOVE)) return sa < sb ? 1 : -1; }
-  if (a->cash && b->cash) { int w = attackCmp(a->size, a->chain, b->size, b->chain); if (w) return w; }
+  if (a->cash && b->cash) { int w = attackCmp(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
   if (a->life != b->life) return a->life > b->life ? 1 : -1;
   if (a->cash != b->cash) return a->cash > b->cash ? 1 : -1;
   if (a->conv != b->conv) return a->conv > b->conv ? 1 : -1;
@@ -3971,18 +3975,17 @@ static int attackOptions(Opt *O, int n, Dec d) {
   for (int i = 0; i < nPool; i++) {
     Cand *c = &POOL[i];
     if (c->kind != K_SWAP || c->res.broke) continue;
-    int ch = c->res.chain >= 2 ? c->res.chain : 0, sz = c->res.biggest;
-    if (!ch && comboWorth(sz) < 0) continue;
+    Atk k = atkOfRes(&c->res);
+    if (!isAttack(k)) continue;
     int taken = 0;
     for (int k = 0; k < n; k++) if (O[k].d.kind == K_SWAP && O[k].d.sr == c->sr && O[k].d.sc == c->sc) taken = 1;
     if (taken) continue;
     int j = na < ATTACKOPTS ? na++ : na;
     if (j == ATTACKOPTS) {
-      Cand *w = &POOL[at[ATTACKOPTS - 1]];
-      if (attackCmp(sz, ch, w->res.biggest, w->res.chain >= 2 ? w->res.chain : 0) <= 0) continue;
+      if (attackCmp(k, atkOfRes(&POOL[at[ATTACKOPTS - 1]].res)) <= 0) continue;
       j = ATTACKOPTS - 1;
     }
-    while (j > 0) { Cand *p = &POOL[at[j - 1]]; if (attackCmp(sz, ch, p->res.biggest, p->res.chain >= 2 ? p->res.chain : 0) <= 0) break; at[j] = at[j - 1]; j--; }
+    while (j > 0 && attackCmp(k, atkOfRes(&POOL[at[j - 1]].res)) > 0) { at[j] = at[j - 1]; j--; }
     at[j] = i;
   }
   for (int j = 0; j < na; j++) {
