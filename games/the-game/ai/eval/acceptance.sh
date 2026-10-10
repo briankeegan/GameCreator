@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # THE ACCEPTANCE SET, run in batches on Actions and never more than SLOTS jobs at once.
 #
-#   acceptance.sh [MINUTES [PROFILE]]     (needs gh, run from anywhere)
+#   [HURRICANE=1] acceptance.sh [MINUTES [PROFILE]]     (needs gh, run from anywhere)
 #
 # What has to pass: WasmSurvivor lives the full six minutes (21,600 frames) of
 # every drill -- combo_storm, factory, large_garbage -- on each seed, inside the
@@ -21,7 +21,8 @@ api() { gh api "repos/$REPO/$1" "${@:2}"; }
 # QUEUE: "kind drill seeds" -- a drill's seeds in one run, or hurricane
 QUEUE=()
 for seeds in '[4,5,6]' '[7,8,9]'; do for d in combo_storm factory large_garbage; do QUEUE+=("duel $d $seeds"); done; done
-QUEUE+=("hurricane - -" "hurricane - -")
+# Hurricane waits for the drills: HURRICANE=1 puts it in the queue
+[ "${HURRICANE:-0}" = 1 ] && QUEUE+=("hurricane - -" "hurricane - -")
 
 inflight() {   # jobs of ours not yet finished
   local n=0 w r c
