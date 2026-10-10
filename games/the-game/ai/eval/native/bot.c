@@ -3,6 +3,7 @@
 #define WORKING_ROWS 4
 #define MOVE_FRAMES 4
 #define INF (1.0 / 0.0)
+static void frontCalm(int calm);
 
 enum { IN_TOPPED, IN_STOP, IN_INCOMING, IN_NEXTSLAB, IN_FALLING, IN_CROW, IN_CCOL, IN_HEALTH, IN_DRAIN, IN_FPR,
        IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISING, IN_INFLIGHT,
@@ -5560,6 +5561,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // every decision to, and a guard with nothing to hold it to lets anything
   // through -- so it is judged while the budget is whole, once
   aloneOnEngine();
+  frontCalm(aloneOnEngine() && !LNA[0]);   // a board that loses no health holds its walks: the input allowance kept for one that does
   // STORED ROWS FOLLOW THE STACK: every row the bot keeps from one decision
   // to the next -- the line, the target, the routes, the presses -- moves up
   // by the rows risen since

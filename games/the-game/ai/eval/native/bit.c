@@ -1351,7 +1351,8 @@ static LOCAL int HELDR, HELDC, HELDDIR;
 #define HOLDLEG 4
 #define HOLDFIRST 10
 // the frame the last cell of an axis's walk is reached, its first key pressed at p
-static int walkEnds(int p, int d) { return d <= 0 ? p : d >= HOLDLEG ? p + d + HOLDFIRST - 2 : p + 4 * (d - 1); }
+static int HOLDMIN = HOLDLEG;   // the shortest walk the front holds this decision (front.c frontCalm): the clock walks as it does
+static int walkEnds(int p, int d) { return d <= 0 ? p : d >= HOLDMIN ? p + d + HOLDFIRST - 2 : p + 4 * (d - 1); }
 static int travelCost(int r0, int c0, int r1, int c1) {
   int dc = c1 > c0 ? c1 - c0 : c0 - c1, dr = r1 > r0 ? r1 - r0 : r0 - r1;
   int steps = dc + dr, t = 0;

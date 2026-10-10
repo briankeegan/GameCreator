@@ -31,7 +31,7 @@ typedef struct { uint8_t last[32][W + 2], first[32][W + 2], same[32][W + 2], gar
 // frames of the actions inside the window (a ring), and a direction held down
 #define HOLDTIGHT 24   // the actions short of the limit at which short walks are held too
 #define ACTIONRING 128   // room for the diagnostic limit (GC_INPUT_LIMIT) above the game's
-typedef struct { int actAt[ACTIONRING], actOld, actN, holdKey, limit; } Pad;
+typedef struct { int actAt[ACTIONRING], actOld, actN, holdKey, limit, holdMin; } Pad;
 typedef struct {
   int id, reaction, reveal, allowRaise;
   int cooldown, raiseHeld, wantRaise, wantRows, raiseLives;   // raiseHeld: the raise key pressed this frame
@@ -550,7 +550,7 @@ static int padStepToward(Pad *p, const Board *bd, int *timer, int row, int col, 
   else { key = IN_DOWN; dist = bd->curRow - row; }
   *timer = MOVE_FRAMES - 1;
   // a window nearly spent holds a walk of two cells too: a few frames slower than taps, against a press waiting for the allowance
-  int minLeg = padCount(p, bd->clock) + HOLDTIGHT >= (p->limit ? p->limit : ACTIONLIMIT) ? 2 : HOLDLEG;
+  int minLeg = padCount(p, bd->clock) + HOLDTIGHT >= (p->limit ? p->limit : ACTIONLIMIT) ? 2 : p->holdMin ? p->holdMin : HOLDLEG;
   if (canHold && dist >= minLeg) p->holdKey = key;
   return input | key;
 }
@@ -642,6 +642,15 @@ static int parkStep(Front *F, int input) {
 // drain (horizon when none).
 static JLOCAL Board *LNB;
 static Front *LF;
+// THE WALKS OF A CALM BOARD ARE HELD from two cells, taps kept for a board that loses health: a held key is one
+// action however far the cursor goes, and the allowance saved is there for the burst the next wave needs
+static void frontCalm(int calm) {
+  if (!LF) return;
+  LF->pad.holdMin = calm ? 2 : HOLDLEG;
+  // the clock walks as the front will: a window nearly spent holds a walk of two cells too (padStepToward)
+  int tight = padCount(&LF->pad, paLibBoard()->clock) + HOLDTIGHT >= (LF->pad.limit ? LF->pad.limit : ACTIONLIMIT);
+  HOLDMIN = calm || tight ? 2 : HOLDLEG;
+}
 static JLOCAL Settle LSET;
 static JLOCAL int LWAITALL;   // the line's last press waits for its pair and the garbage to settle (breakWait)
 // A LINE'S PREFIX, KEPT WHERE ITS NEXT STEP BEGINS. A line played to the

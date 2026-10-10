@@ -20,7 +20,7 @@ if [ -n "$1" ]; then
 $TRAILER"
   git pull -q --rebase --autostash origin main
   git push -q origin HEAD:main
-  gh api -X POST repos/briankeegan/GameCreator/actions/workflows/ai-survival-scan.yml/dispatches -f ref=main
+  gh api -X POST repos/briankeegan/GameCreator/actions/workflows/ai-survival-scan.yml/dispatches -f ref=main ${GC_FRAMES:+-f inputs[frames]=$GC_FRAMES}
   echo "pushed $(git rev-parse --short HEAD), scan dispatched"
   git show --stat --format= HEAD | sed 's/^/  changed: /' | tail -4
 fi

@@ -29,6 +29,7 @@ arts=$(curl -sSfL "${auth[@]}" "$api/runs/$run/artifacts?per_page=100" | python3
 import json, sys
 for a in json.load(sys.stdin)["artifacts"]: print(a["name"], a["id"])')
 game() {   # the seed's whole game, from its artifact
+  [ -n "${GC_NOGAME:-}" ] && return 0   # a screen reads no game
   local id; id=$(awk -v n="seed-$1" '$1 == n { print $2 }' <<<"$arts")
   [ -n "$id" ] || { echo "  seed $1: no artifact" >&2; return 0; }
   curl -sSfL "${auth[@]}" "$api/artifacts/$id/zip" -o "$dir/seed$1.zip"
@@ -43,6 +44,7 @@ while read -r id seed concl; do
   log=$(curl -sSfL "${auth[@]}" "$api/jobs/$id/logs" | sed 's/^[0-9TZ:.-]* //')
   end=$(grep -E "^(died|alive) " <<<"$log" | tail -1 || true)
   echo "seed $seed: ${end:-no result}"
+  printf '%s\t%s\t%s\n' "$seed" "${end%% *}" "${end##* }" >> "$dir/results.tsv"
   # the game's two budgets, as its own classes charged them (train.lua report)
   grep -E "^(think|input) budget " <<<"$log" | tail -2 | sed "s/^/$seed\t/" >> "$dir/budgets.tsv" || true
   case $end in
