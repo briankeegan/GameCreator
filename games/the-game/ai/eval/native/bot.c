@@ -3887,9 +3887,36 @@ static int optRank(Opt *a, Opt *b) {
   if (a->hollow != b->hollow) return a->hollow < b->hollow ? 1 : -1;
   return 0;
 }
+// THE SETUP IS AN OPTION: with a slab coming and no break in reach, the swaps that clear nothing and set the
+// board up -- more vertical twos (each a swap from a three), then flatter -- are weighed beside the hold, each
+// judged on the engine like any option. The masks propose, SETUPOPTS of them best first; the order decides:
+// a setup is played only if it leaves the board readier (or living longer) than the board left alone.
+#define SETUPOPTS 3
+static int twosOf(const int32_t *st);
+static double setupKey(const int32_t *m) { Shape sh; shapeOf(m, &sh); return twosOf(m) * 1000.0 - sh.bumps; }
+static int setupOptions(Opt *O, int n, Dec d) {
+  double base = setupKey(DBASE), key[SETUPOPTS]; int at[SETUPOPTS], na = 0;
+  for (int i = 0; i < nPool; i++) {
+    Cand *c = &POOL[i];
+    if (c->kind != K_SWAP || c->res.total > 0 || c->res.broke) continue;
+    double k = setupKey(c->masks);
+    if (k <= base || (na == SETUPOPTS && k <= key[na - 1])) continue;
+    int j = na < SETUPOPTS ? na++ : na - 1;
+    while (j > 0 && key[j - 1] < k) { key[j] = key[j - 1]; at[j] = at[j - 1]; j--; }
+    key[j] = k; at[j] = i;
+  }
+  for (int j = 0; j < na; j++) {
+    Cand *c = &POOL[at[j]];
+    Opt *o = &O[n];
+    o->d = mkSwap(c->sr, c->sc, V_SETUP, d.mode, d.alive);
+    o->n = 1; o->wait = 0; o->sw[0] = c->sr; o->sw[1] = c->sc; o->pri = 2;
+    if (optJudge(o)) n++;
+  }
+  return n;
+}
 static Dec arbitrate(Dec d) {
   if (!((d.kind == K_SWAP && d.hasMove) || d.kind == K_HOLD)) return d;   // a raise: raiseMode's own rules
-  Opt O[4]; int n = 0, at = -1;
+  Opt O[4 + SETUPOPTS]; int n = 0, at = -1;
   // the target the walk was on, still ahead of the decision
   int hasT = d.kind == K_SWAP && BT->tgtN && BT->nNotes == BT->tgtPresses && !(d.sr == BT->tgt[0] && d.sc == BT->tgt[1]);
   if (hasT) {
@@ -3924,6 +3951,9 @@ static Dec arbitrate(Dec d) {
     o->pri = 2;
     if (optJudge(o)) ih = n++;
   }
+  int setupAt = 1 << 20;   // the first of the setup options, if any
+  { int breaking = 0; for (int i = 0; i < n; i++) if (O[i].breaks) breaking = 1;
+    if (!breaking && aloneOnEngine() && BIN[IN_INCOMING] > 0 && (d.kind == K_HOLD || O[at].early)) { setupAt = n; n = setupOptions(O, n, d); } }
   if (n < 2) return d;
   int best = 0;
   for (int i = 1; i < n; i++) { int c = optRank(&O[i], &O[best]); if (c > 0 || (c == 0 && O[i].pri < O[best].pri)) best = i; }
@@ -3935,7 +3965,7 @@ static Dec arbitrate(Dec d) {
       O[at].lives, O[at].breaks, O[at].rdyKnown ? O[at].rdy : -1, O[at].die, O[at].soonKnown ? O[at].soon : -1.0, O[at].cash, O[at].life, O[at].hollow); }
 #endif
   if (best == ia) lineSet(saLine, saN, saKind, saWait);
-  else if (best == ih) BT->nLine = 0;
+  else if (best == ih || best >= setupAt) BT->nLine = 0;
   else if (BT->tgtN > 1) lineSet(BT->tgt, BT->tgtN, BT->tgtKind, BT->tgtWait);
   else BT->nLine = 0;
   return b->d;
