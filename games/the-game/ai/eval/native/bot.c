@@ -3785,10 +3785,18 @@ static int optJudge(Opt *o) {
   o->life = lifeOf(o->die, last, o->hollow);
   return 1;
 }
+// READY FOR THE NEXT WAVE: a break in reach when the queued slab lands
+// (readyInTime); with none queued, the board the option leaves ready for a
+// slab the width of the board on the stack (waveReady), as the next wave lands
 static int optReady(Opt *o) {
   if (!o->rdyKnown) {
-    int r, c;
-    o->rdy = o->lives && BIN[IN_INCOMING] > 0 && BIN[IN_HASPA] ? (o->d.kind == K_HOLD ? readyInTime(0, 0, &r, &c) : readyInTime(o->sw, o->n, &r, &c)) : 0;
+    int r, c, hold = o->d.kind == K_HOLD;
+    o->rdy = 0;
+    if (o->lives && BIN[IN_HASPA]) {
+      if (BIN[IN_INCOMING] > 0) o->rdy = hold ? readyInTime(0, 0, &r, &c) : readyInTime(o->sw, o->n, &r, &c);
+      else { int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t w[32][WMAX];
+             if (lineState(hold ? 0 : o->sw, hold ? 0 : o->n, st, can, w, cur, &t) == 0) o->rdy = waveReady(st); }
+    }
     o->rdyKnown = 1;
   }
   return o->rdy;

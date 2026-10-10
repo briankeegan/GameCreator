@@ -260,7 +260,8 @@ ways: a tool not listed, or a path listed that doesn't exist.
 - **A decision is one ordered choice (`arbitrate`).** The stages propose; the
   decision they made, the walk's target and stayAlive's choice (or the hold)
   are judged on the engine and ranked once: breaks the next garbage in time
-  (it lives), lives, a break in reach when the next slab lands, the later loss
+  (it lives), lives, a break in reach when the next slab lands (none queued: a
+  slab the width of the board on the stack, `waveReady`), the later loss
   of health inside `LIVEHORIZON`, the soonest break after it (`breakTime`:
   setup), a combo or chain (more than a three cleared at once, `COMBOMIN`)
   that digs under no pile (no break to make: clear, and look for the break
