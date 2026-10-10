@@ -281,7 +281,8 @@ ways: a tool not listed, or a path listed that doesn't exist.
   readiness, `readyInTime`, the masks' only to propose), the later loss
   of health inside `LIVEHORIZON`, a plain clear last (it clears, breaks nothing,
   is no combo or chain and fills nothing under garbage: `plain`, ranked below
-  any option that lives as long), the soonest break after it (`breakTime`:
+  any option that lives as long -- unless the board it settles to reaches a
+  combo or chain in the time there is, `optAhead`: the first clear starts it), the soonest break after it (`breakTime`:
   setup), life (what it buys once done, hollow and material spent costed
   and material converted credited, a cell a sixth of a row's rise, a panel
   worth more the fewer the board is left with, `panelWorth`), a combo
