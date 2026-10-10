@@ -3617,8 +3617,8 @@ static int nonSpendLives(void);
 // in time while its last press is made before the frame the board left alone
 // loses health. Put off, it begins at the front's next decision (front.c): after
 // the swap played in its place (`alt`), once that swap has landed (stepGap);
-// after a hold, the next frame on a stopped or topped board, else a reaction
-// and a frame later. While the clear begun then is still in time it waits,
+// after a hold, a reaction and a frame later -- the cooldown lifts at once only
+// on a stopped board that is not topped (a topped board that has not changed keeps it). While the clear begun then is still in time it waits,
 // and a break may come first. The one test, for every route that clears to live.
 static int clearDue(const int32_t *sw, int n, const int32_t *alt) {
   if (!aloneOnEngine()) return 1;
@@ -3630,7 +3630,7 @@ static int clearDue(const int32_t *sw, int n, const int32_t *alt) {
     both[0] = alt[0]; both[1] = alt[1];
     for (int k = 0; k < 2 * m; k++) both[2 + k] = sw[k];
     later = lineFrames(both, m + 1, cr, cc, 0, frozen);
-  } else later = lineFrames(sw, n, cr, cc, frozen ? 1 : REACT + 1, frozen);
+  } else later = lineFrames(sw, n, cr, cc, BIN[IN_STOP] > 0 && !BIN[IN_TOPPED] ? 1 : REACT + 1, frozen);
   return LNA[0] <= later - PRESS;
 }
 // A SPEND THAT KEEPS A WAITING RAISE OUT: a clear holds the rise lock and
