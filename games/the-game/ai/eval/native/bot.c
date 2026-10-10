@@ -3636,20 +3636,42 @@ static int waitFree(const int32_t *sw, int n, int breaks) {
   waitWorth = heldValue(later);
   return waitWorth >= heldValue(now);
 }
-// THE WAIT IS NOT IDLE: while a line waits (waitFree), the move the stages
-// chose is played first if the line still follows it -- the engine plays the
-// move, then the line, walking to each in turn -- and that is worth no less
-// than the line waited for: it neither spoils the line nor keeps it from its
-// time. Otherwise the board is held.
-static Dec waitMeanwhile(Dec d, const int32_t *sw, int n, int breaks, Dec hold) {
-  if (d.kind != K_SWAP || !d.hasMove || n + 1 > LINEMAX || (d.sr == sw[0] && d.sc == sw[1])) return hold;
+// THE WAIT SETS THE BOARD UP: while a line waits (waitFree), a swap that
+// clears nothing is played first if it sets the board up -- more vertical twos
+// (each a swap from a three), then flatter -- and the line still follows it:
+// the engine plays the swap, then the line, walking to each in turn, and that
+// is worth no less than the line waited for (it neither spoils the line nor
+// keeps it from its time). The pool's swaps that set up the most are asked,
+// MEANWHILES of them, best first; with none, the board is held.
+#define MEANWHILES 4
+static int twosOf(const int32_t *st);
+static double setupKey(const int32_t *m) { Shape sh; shapeOf(m, &sh); return twosOf(m) * 1000.0 - sh.bumps; }
+static int meanwhileKeeps(int r, int c, const int32_t *sw, int n, int breaks) {
   int32_t st[2 * LINEMAX], o[LNOLEN];
-  st[0] = d.sr; st[1] = d.sc;
+  st[0] = r; st[1] = c;
   for (int k = 0; k < 2 * n; k++) st[2 + k] = sw[k];
-  if (lineOnEngineFrom(st, n + 1, LINEHORIZON, 0, o) != 0 || o[1] < 0) return hold;
-  if (o[0] && o[0] <= o[1] + NEXTMOVE) return hold;   // the line after it loses health by its own press
-  if (breaks && !(o[2] > LNA[2])) return hold;   // the line no longer breaks after it
-  return heldValue(o) >= waitWorth ? d : hold;
+  if (lineOnEngineFrom(st, n + 1, LINEHORIZON, 0, o) != 0 || o[1] < 0) return 0;
+  if (o[0] && o[0] <= o[1] + NEXTMOVE) return 0;   // the line after it loses health by its own press
+  if (breaks && !(o[2] > LNA[2])) return 0;   // the line no longer breaks after it
+  return heldValue(o) >= waitWorth;
+}
+static Dec waitMeanwhile(Dec d, const int32_t *sw, int n, int breaks, Dec hold) {
+  if (n + 1 > LINEMAX) return hold;
+  double base = setupKey(DBASE), key[MAXCAND]; int at[MAXCAND], na = 0;
+  for (int i = 0; i < nPool; i++) {
+    Cand *c = &POOL[i];
+    if (c->kind != K_SWAP || c->res.total > 0 || c->res.broke || (c->sr == sw[0] && c->sc == sw[1])) continue;
+    double k = setupKey(c->masks);
+    if (k <= base) continue;   // sets nothing up
+    int j = na++;
+    while (j > 0 && key[j - 1] < k) { key[j] = key[j - 1]; at[j] = at[j - 1]; j--; }
+    key[j] = k; at[j] = i;
+  }
+  for (int j = 0; j < na && j < MEANWHILES; j++) {
+    Cand *c = &POOL[at[j]];
+    if (meanwhileKeeps(c->sr, c->sc, sw, n, breaks)) return mkSwap(c->sr, c->sc, hold.via, d.mode, d.alive);
+  }
+  return hold;
 }
 // a clear that breaks nothing is due once waiting is not free; with no loss
 // of health coming, never
