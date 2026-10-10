@@ -942,6 +942,19 @@ static PATLS int paOut;
 void paThreadId(int id) { thId = id < MAXTHREADS ? id : MAXTHREADS - 1; }   // a worker's own counters and spare boards (memory.h)
 #endif
 static double paWorkStart;
+// THE WALL CLOCK GUARD: the game times a computer player's thinking on a monotonic clock (ThinkBudget.now), and the
+// decision is told how much of its frame is left (paWall); every check of the budget also reads that clock, every
+// 400 units of work, and a decision whose time is up is out of budget like one whose work is. Natively only: the
+// browser's wasm has no clock, and its budget stays the work.
+#ifndef __wasm__
+extern int clock_gettime(int, void *);
+static double paNowMs(void) { struct { long s, ns; } t; clock_gettime(1, &t); return (double)t.s * 1e3 + (double)t.ns / 1e6; }
+#else
+static double paNowMs(void) { return 0; }
+#endif
+static PATLS double paWallEnd, paWallNext;
+double paClockMs(void) { return paNowMs(); }
+void paWall(double msFromNow) { paWallEnd = msFromNow > 0 ? paNowMs() + msFromNow : 0; paWallNext = paWork; }
 void paBudget(double units) {
   paOut = 0; paWorkStart = paWork;
   paWorkEnd = units < 1e299 ? paWork + units : 1e300;
@@ -960,6 +973,7 @@ int paCutPast(double units) {
 int paBudgetOut(void) {
   if (paOut) return 1;
   if (paWork >= paWorkEnd) return paOut = 1;
+  if (paWallEnd > 0 && paWork >= paWallNext) { paWallNext = paWork + 400; if (paNowMs() >= paWallEnd) return paOut = 1; }
   return 0;
 }
 static void run(Board *b) {

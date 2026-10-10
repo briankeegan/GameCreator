@@ -270,15 +270,20 @@ ways: a tool not listed, or a path listed that doesn't exist.
 - **A decision is one ordered choice (`arbitrate`).** The stages propose; the
   decision they made, the walk's target and stayAlive's choice (or the hold)
   are judged on the engine and ranked once: breaks the next garbage in time
-  (it lives), lives, a break in reach when the next slab lands (none queued: a
+  (it lives), lives, a clear that breaks nothing and is no combo ranks below any
+  option that lives until it is due (`clearDue`), a break in reach when the next slab lands (none queued: a
   slab the width of the board on the stack, `waveReady`; the engine's one
   readiness, `readyInTime`, the masks' only to propose), the later loss
   of health inside `LIVEHORIZON`, the soonest break after it (`breakTime`:
   setup), life (what it buys once done, hollow and material spent costed
   and material converted credited, a cell a sixth of a row's rise, a panel
   worth more the fewer the board is left with, `panelWorth`), a combo
-  or chain (more than a three cleared at once, `COMBOMIN`) that digs under no
-  pile, converted, hollow; equal: the target, the decision, the
+  or chain (a larger match than the board makes alone, or a longer chain) that
+  digs under no pile -- between two of them `attackCmp` (one rule, which the
+  setup's `bestAttack` takes too) comes before life: a combo against a chain
+  by whether the other player is topped out (combos) or not (chains), two
+  combos by `comboWorth` (4, 7, 6, 5, 8, 9 and more, low to high), two chains by
+  length -- converted, hollow; equal: the target, the decision, the
   alternative. A swap-back keeps the board unless it ranks higher. A rule that
   overrides another after the fact belongs in this order, not after it. The
   engine is reached only through `lineJudge` and `searchInTime`, which stop at
@@ -305,6 +310,13 @@ ways: a tool not listed, or a path listed that doesn't exist.
   (an engine frame by its path, `pa.c` `FRAMEWORK_*`; the search by its steps,
   `bot.c` `SIT*WORK`): a path newly reached that runs slow per work is
   calibrated there, with the measurement beside the number.
+  The host tells the bot the game's ceiling, the time left in the frame, and
+  what each frame's thinking took (`bot_time`, from `ThinkBudget`): the cut
+  (`WORKBUDGET`) is held to the ceiling over the 99.99th percentile of the
+  bot's milliseconds per unit of work, and the bot reads the monotonic clock
+  every 400 units (`paWall`), so a decision whose time is up is out of budget
+  like one whose work is. A host that does not call `bot_time` (the browser,
+  the drills) gets the start values, and a scan no longer repeats exactly.
 - **Survival is a loop on Actions. Run every step of it in the background**
   -- the push, the scan, the fetch, the rebuild -- so nothing waits on it. `ai-survival-scan.yml` plays all 24 seeds
   at once and keeps each seed's whole game (`game.log.gz`, every frame's bot

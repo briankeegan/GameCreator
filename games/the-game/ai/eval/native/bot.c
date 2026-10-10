@@ -8,7 +8,7 @@ static void frontCalm(int calm);
 enum { IN_TOPPED, IN_STOP, IN_INCOMING, IN_NEXTSLAB, IN_FALLING, IN_CROW, IN_CCOL, IN_HEALTH, IN_DRAIN, IN_FPR,
        IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISING, IN_INFLIGHT,
        IN_DRAINBOUND, IN_STACKTOPPED, IN_MOVING, IN_HASTIMED, IN_REVEALOPEN, IN_CONVN, IN_CONVTIMER, IN_BCROW, IN_BCCOL,
-       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_PRESSES = 600, IN_PHANTOM, IN_RISEN, IN_SIZE = 608 };   // IN_POPLOW + 1..W runs to 599
+       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_PRESSES = 600, IN_PHANTOM, IN_RISEN, IN_OPPTOPPED, IN_SIZE = 609 };   // IN_POPLOW + 1..W runs to 599
 enum { TF_DEADLY = 1, TF_FORCE = 2, TF_REFUSE = 4, TF_RAISE = 8, TF_STUB = 16, TF_SLAB = 32 };
 static int deadlyCalls;
 #define TFLAG(f) (((int)BIN[IN_T]) & (f))
@@ -23,7 +23,7 @@ enum { M_BUILD, M_DEFEND, M_ATTACK };
 // the line a bot plays (Bot.line): what it is for, and the most steps it holds
 enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
 #define LINEMAX 16   // the most steps a line holds: storage, never a limit on what is searched -- a line that does not fit is refused, never cut
-#define LNOLEN 17
+#define LNOLEN 19
 // THE HOLLOW of a judged line: the gaps under garbage on the board it ends on
 // ([10]) and the gaps the slabs to come would leave over its towers ([13]). A
 // tower lowered also lets a pile perched on it down onto panels it can break on.
@@ -36,19 +36,24 @@ int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);   // th
 // THE CUT, past which the decision fails and the game with it: the game's
 // think budget (ThinkBudget.lua) is 8 ms a frame for a computer player's whole
 // thinking. A decision's work is counted in units, and a unit takes longer or
-// shorter by machine and by what the decision does. On the scan's runner
-// (ai-survival-scan, 1.09 million frames) a decision that stops at OPTWORK
-// takes 5.5 ms at the median, 7.6 at the 99th percentile and 8.6 at the
-// 99.9th when it stops at 62,400 units, with 0.6 ms of the frame's own work
-// besides: so the line is 62,400 x 7.4 / 8.0, 57,600 units. lua_budget_check
-// and budget_check measure the time it actually takes.
-#define WORKBUDGET 67200   // natively and in the browser alike
-// WHERE OPTIONAL WORK STOPS: the engine refuses work past it, and every judge,
-// replay, search and batch is declined that would not fit. What was under way
-// finishes past it: at most 6,688 units over 3,446 decisions of seed 16 under
-// the charges of the 4,963-a-ms rate, 9,630 at today's 7,148, so the line
-// stands that far under the cut.
-#define OPTWORK 57600   // WORKBUDGET less the 9,600 under way when the line is crossed
+// shorter by machine and by what the decision does, so the cut follows the
+// machine: the host tells the bot the ceiling (ThinkBudget snapshot) and what
+// each frame's thinking took (bot_time), and the bot keeps the 99.99th
+// percentile of its milliseconds per unit of work among the decisions that
+// reach the line. The cut is the ceiling over that rate; the line optional work
+// stops at stands 9,600 units under it, what was under way when it is crossed.
+// With no host the start values stand: 65,600 and 56,000, the line of a
+// decision that took 8.2 ms at the 99.9th percentile on the scan's runner.
+#define WORKBUDGET0 65600
+#define OPTWORK0 56000
+static double gWorkBudget = WORKBUDGET0, gOptWork = OPTWORK0;
+#define WORKBUDGET gWorkBudget
+#define OPTWORK gOptWork
+#define UNDERWAY 9600
+// the quantile of milliseconds per unit the cut is held to, and how far a decision moves it
+#define RATEQUANTILE 0.9999
+#define RATESTEP 0.01
+static double tkCeiling, tkRate, tkLastWork, tkLeft, tkTail = 0.3, tkT0, tkDecMs;   // the ceiling told, ms per unit tracked, the work of the decision the last frame made, the frame's time left when it began, the time the front takes after a decision's work stops, when the decision began, how long it took
 enum { C_REFUSEDDEADLY, C_ALLDEAD, C_REFUSEDRETURN, C_REFUSEDTOOSLOW, C_PLANNED, C_PLANDROPPED, C_ATTACKED,
        C_ATTACKDROPPED, C_CELLSPLANNED, C_REFUSEDPAYLESS, C_REFUSEDSTARVING, C_REFUSEDOTHER, C_REFUSEDATEXIT,
        C_RAISEDFORMATERIAL, C_WAITEDTORAISE, C_DUGFOR, C_DIGDROPPED, C_BROKENOW, C_FLATTENBLIND, C_OPENINGRAISES,
@@ -816,6 +821,23 @@ static void keepFilter(double **all, int n, double **out, int *nout) {
 }
 static int kept(double *o) { return !(dropTallUnready && tallOpt(o) && readyOf(o) == 0); }
 static double *FILT[MAXOPT];
+// WHAT A COMBO IS WORTH BY ITS SIZE, the one rule for the setup (bestAttack) and the final choice
+// (optRank): a match is three, and more than that cleared at once, past what the board clears alone,
+// is a combo -- worth, low to high, 4, 7, 6, 5, 8, then 9 and more. -1: no combo.
+static int comboWorth(int size) { return size == 4 ? 0 : size == 7 ? 1 : size == 6 ? 2 : size == 5 ? 3 : size == 8 ? 4 : size > 8 ? 5 : -1; }
+// 1: the combo of size a is worth more than b's, -1: less, 0: the same or either is no combo
+static int worthCmp(int a, int b) { int wa = comboWorth(a), wb = comboWorth(b); return wa < 0 || wb < 0 || wa == wb ? 0 : wa > wb ? 1 : -1; }
+// WHAT AN ATTACK IS WORTH, combo against chain: a combo of `sa` panels or a chain of `ca` links (2 and up).
+// Against a player who is topped out (IN_OPPTOPPED) a combo comes before a chain; against one who is not, a
+// chain before a combo. Two combos by comboWorth, two chains by length. 1: a is worth more, -1: b is, 0: the
+// same, or either is no attack.
+static int attackCmp(int sa, int ca, int sb, int cb) {
+  int chainA = ca >= 2, chainB = cb >= 2, atkA = chainA || comboWorth(sa) >= 0, atkB = chainB || comboWorth(sb) >= 0;
+  if (!atkA || !atkB) return 0;
+  if (chainA != chainB) return chainA == (BIN[IN_OPPTOPPED] == 0) ? 1 : -1;
+  if (chainA) return ca == cb ? 0 : ca > cb ? 1 : -1;
+  return worthCmp(sa, sb);
+}
 typedef struct { double rate, cells, gain, frames; double *option; } Pick;
 static int bestAttack(double deadline, double ppf, Pick *best) {
   int n, have = 0;
@@ -839,8 +861,10 @@ static int bestAttack(double deadline, double ppf, Pick *best) {
     double taste = 1 + TB[T_W + key] / 100;
     if (taste < 0.1) taste = 0.1;
     double rate = (cells / dmax(1, durOf(o))) * taste;
-    int win = !have || rate > best->rate;
-    if (!win && have && rate == best->rate) {
+    int bestChain = have && best->option[F_KIND] == 1;
+    int cmp = have ? attackCmp(isChain ? 0 : (int)o[F_SIZE], isChain ? (int)o[F_CHAIN] : 0, bestChain ? 0 : (int)best->option[F_SIZE], bestChain ? (int)best->option[F_CHAIN] : 0) : 0;
+    int win = !have || (cmp ? cmp > 0 : rate > best->rate);
+    if (!win && have && !cmp && rate == best->rate) {
       double ob = has(o[F_BUMPS]) ? o[F_BUMPS] : 1e9, bb = has(best->option[F_BUMPS]) ? best->option[F_BUMPS] : 1e9;
       win = ob < bb;
     }
@@ -2145,8 +2169,6 @@ static Dec waitForDrain(Dec d) {
 // lives and still pays (breaks, for a break line) -- whatever chose it.
 #define REROOTS 3   // a line's first steps replayed on the engine before the masks propose the rest: precision, never reach
 #define LIVEHORIZON 60
-// A MATCH IS THREE: more than that cleared at once, past what the board clears alone, is a combo or a chain
-#define COMBOMIN 4
 #define LINEHORIZON 240
 #define UNSETTLEMOST 180   // the most frames a board is followed while it settles (front.c's settle sim and the judge's busy tail)
 // THE JUDGE'S REACH: it plays to LINEHORIZON, and on while the board is busy
@@ -3605,6 +3627,21 @@ static void plansDrop(void) { BT->plan.has = 0; BT->attack.has = 0; BT->flatten.
 // choice that lost the break replaced, 5 a lineup played.
 static int lineLast;
 __attribute__((export_name("bot_breakfirst"))) int32_t bot_breakfirst(void) { return lineLast; }
+// THE HOST TELLS THE BOT THE TIME: the ceiling (ms) and what the last frame's thinking took (ms), before each frame.
+// A decision that reached the line moves the rate; the cut and the line follow it.
+__attribute__((export_name("bot_time"))) void bot_time(double ceilingMs, double lastMs, double leftMs) {
+  if (ceilingMs <= 0) return;
+  // what the front takes after the decision stops: the frame less the host's own load before it and the decision
+  if (tkDecMs > 0 && lastMs > 0) { double tail = lastMs - (tkCeiling - tkLeft) - tkDecMs; if (tail > tkTail) tkTail = tail; else tkTail *= 0.999; }
+  tkDecMs = 0; tkLeft = leftMs;
+  if (tkRate == 0 || ceilingMs != tkCeiling) { tkCeiling = ceilingMs; tkRate = ceilingMs / WORKBUDGET0; }
+  if (tkLastWork >= 0.5 * gOptWork && lastMs > 0) {
+    double r = lastMs / tkLastWork;
+    if (r > tkRate) tkRate += RATESTEP * RATEQUANTILE * tkRate; else tkRate -= RATESTEP * (1 - RATEQUANTILE) * tkRate;
+  }
+  tkLastWork = 0;
+  gWorkBudget = tkCeiling / tkRate; gOptWork = gWorkBudget - UNDERWAY;
+}
 __attribute__((export_name("bot_keepbreak"))) int32_t bot_keepbreak(void) { return 0; }
 
 // A LINE ONCE PLAYED IS PLAYED TO ITS END.
@@ -3799,10 +3836,10 @@ static Dec stayAlive(Dec d) {
 // the slab to come) is life lost, so the rank holds a clear that digs under a pile. Each is judged on the
 // engine (lineJudge, which keeps to the work there is); one it cannot judge is
 // not weighed, and a decision it cannot judge stands.
-typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, die, conv, hollow, pri; double life, soon; } Opt;
+typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, size, chain, die, conv, hollow, pri; double life, soon; } Opt;
 static int optJudge(Opt *o) {
   int last = 0, spent = 0;
-  o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = 0;
+  o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = o->early = o->size = o->chain = 0;
   if (o->d.kind == K_HOLD) {
     o->die = aloneDie(1 << 20);
     o->hollow = aloneOnEngine() ? HOLLOW(LNA) : 0;
@@ -3814,7 +3851,12 @@ static int optJudge(Opt *o) {
     o->die = die; o->lives = die > 0; o->breaks = (v & LV_BREAKS) != 0;
     o->conv = LNO[2] - LNA[2]; o->hollow = HOLLOW(LNO); last = LNO[1]; spent = spentOf();
     // a combo or a chain: it clears more than the board left alone, and digs under no pile (more hollow than the hold)
-    o->cash = LNO[3] - LNA[3] >= COMBOMIN && (!aloneOnEngine() || o->hollow <= HOLLOW(LNA));
+    // an attack: the line makes a chain longer than the board's own, or a larger single match than it does, and digs under no pile (more hollow than the hold)
+    o->chain = LNO[18] > LNA[18] && LNO[18] >= 2 ? LNO[18] : 0;
+    o->size = LNO[17] > LNA[17] ? LNO[17] : 0;
+    o->cash = (o->chain || comboWorth(o->size) >= 0) && (!aloneOnEngine() || o->hollow <= HOLLOW(LNA));
+    // a clear that breaks nothing and is no combo, before it is due (clearDue), is a spend the board does not need yet
+    o->early = !o->breaks && !o->cash && LNO[3] > LNA[3] && !clearDue(o->sw, o->n, 0);
   }
   o->life = lifeOf(o->die, last, o->hollow, spent);
   return 1;
@@ -3847,6 +3889,7 @@ static double optSoon(Opt *o) {
 static int optRank(Opt *a, Opt *b) {
   int ka = a->lives ? 1 + a->breaks : 0, kb = b->lives ? 1 + b->breaks : 0;
   if (ka != kb) return ka > kb ? 1 : -1;
+  if (ka && a->early != b->early) return a->early ? -1 : 1;   // a clear that is not yet due ranks below any option that lives
   if (ka && BIN[IN_INCOMING] > 0) { int ra = optReady(a), rb = optReady(b); if (ra != rb) return ra > rb ? 1 : -1; }
   // dying within LIVEHORIZON, the later loss of health is the time there is: a
   // line that takes longer to finish still outlives a hold that dies first
@@ -3857,6 +3900,7 @@ static int optRank(Opt *a, Opt *b) {
   // then a combo or a chain
   // a break sooner by more than NEXTMOVE: less is the walk's own movement, and the target stands
   if (ka) { double sa = optSoon(a), sb = optSoon(b), gap = sa > sb ? sa - sb : sb - sa; if (sa != sb && !(gap <= NEXTMOVE)) return sa < sb ? 1 : -1; }
+  if (a->cash && b->cash) { int w = attackCmp(a->size, a->chain, b->size, b->chain); if (w) return w; }
   if (a->life != b->life) return a->life > b->life ? 1 : -1;
   if (a->cash != b->cash) return a->cash > b->cash ? 1 : -1;
   if (a->conv != b->conv) return a->conv > b->conv ? 1 : -1;
@@ -5575,6 +5619,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // OPTWORK resolves and engine lines are refused and every search keeps what
   // it found; past WORKBUDGET the decision is cut and the game fails.
   { extern void paBudget(double); paBudget(OPTWORK); }
+  { extern void paWall(double); extern double paClockMs(void); tkT0 = paClockMs(); paWall(tkLeft > 0 ? tkLeft - UNDERWAY * tkRate - tkTail : 0); }
   { extern PATLS double paWork; rdW0 = paWork; budgetRefused = 0; }
   btDecision++;
   btDecisionJ = btDecision;
@@ -5701,6 +5746,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
 #endif
   cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
 #undef SHARE
+  { extern PATLS double paWork; extern double paClockMs(void); tkLastWork = paWork - rdW0; tkDecMs = paClockMs() - tkT0; }
 #ifndef __wasm__
   // THE DECISION'S OWN ACCOUNT, kept for whoever finds it over the frame:
   // each stage's milliseconds and engine judges

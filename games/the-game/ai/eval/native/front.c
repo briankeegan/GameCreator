@@ -813,6 +813,9 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   }
   out[1] = step == n ? last : -1;
   out[2] = b->sBroke; out[3] = b->sCleared; out[9] = b->sFell; out[10] = b->sHollow;
+  // the largest single match the line made (out[17]) and the longest chain (out[18]: the engine's chain counter at a link, 2 and up)
+  out[17] = out[18] = 0;
+  for (int j = 0; j < b->sNCombo; j++) { if (b->sCombo[j] > out[17]) out[17] = b->sCombo[j]; if (b->sChainAt[j] > out[18]) out[18] = b->sChainAt[j]; }
   // and the gaps under garbage as it stands on the board the line ends on: a
   // pile propped above empty cells is hollow whether or not it just landed
   for (int r = 2; r < b->nrows; r++)
