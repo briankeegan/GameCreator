@@ -958,6 +958,7 @@ static int sigEq(const Sig *a, const Sig *b) {
 static Cand POOL[MAXCAND];
 static ST POOLST[MAXCAND];
 static int nPool;
+static Cand *FITS[MAXCAND]; static int nFits;   // the swaps the stages' rules let through (refuses, too early, too slow), before any narrowing: what the arbiter's own options are drawn from
 static Res CR, CR2;
 // A RAISE IS WANTED AND OFFERED ONLY IF IT LIVES. A board loses health only
 // topped, with no stop time and nothing holding the rise lock; a manual raise
@@ -1024,7 +1025,7 @@ static Rs paRes(const int32_t *o, const int32_t *alone) {
 }
 static ST TMC;
 static void candidates(int32_t *base) {
-  nPool = 0;
+  nPool = 0; nFits = 0;
   Cand *h = &POOL[nPool++];
   memset(h, 0, sizeof(Cand));
   h->kind = K_HOLD; h->masks = base;
@@ -1564,6 +1565,8 @@ static Dec decideCore(void) {
     ALLOWED[na++] = pc;
   }
   if (!na) { for (int i = 0; i < nPool; i++) ALLOWED[i] = &POOL[i]; na = nPool; }
+  for (int i = 0; i < na; i++) FITS[i] = ALLOWED[i];
+  nFits = na;
   if (opt(O_REFRETURN)) {
     int nk = 0;
     for (int i = 0; i < na; i++) {
@@ -3972,8 +3975,8 @@ static int sparesSetups(int r, int c) {
 #define ATTACKOPTS 2
 static int attackOptions(Opt *O, int n, Dec d) {
   int at[ATTACKOPTS], na = 0;
-  for (int i = 0; i < nPool; i++) {
-    Cand *c = &POOL[i];
+  for (int i = 0; i < nFits; i++) {
+    Cand *c = FITS[i];
     if (c->kind != K_SWAP || c->res.broke) continue;
     Atk k = atkOfRes(&c->res);
     if (!isAttack(k)) continue;
@@ -3982,14 +3985,14 @@ static int attackOptions(Opt *O, int n, Dec d) {
     if (taken) continue;
     int j = na < ATTACKOPTS ? na++ : na;
     if (j == ATTACKOPTS) {
-      if (attackCmp(k, atkOfRes(&POOL[at[ATTACKOPTS - 1]].res)) <= 0) continue;
+      if (attackCmp(k, atkOfRes(&FITS[at[ATTACKOPTS - 1]]->res)) <= 0) continue;
       j = ATTACKOPTS - 1;
     }
-    while (j > 0 && attackCmp(k, atkOfRes(&POOL[at[j - 1]].res)) > 0) { at[j] = at[j - 1]; j--; }
+    while (j > 0 && attackCmp(k, atkOfRes(&FITS[at[j - 1]]->res)) > 0) { at[j] = at[j - 1]; j--; }
     at[j] = i;
   }
   for (int j = 0; j < na; j++) {
-    Cand *c = &POOL[at[j]];
+    Cand *c = FITS[at[j]];
     Opt *o = &O[n];
     o->d = mkSwap(c->sr, c->sc, V_BESTATTACK, d.mode, d.alive);
     o->n = 1; o->wait = 0; o->sw[0] = c->sr; o->sw[1] = c->sc; o->pri = 2;
