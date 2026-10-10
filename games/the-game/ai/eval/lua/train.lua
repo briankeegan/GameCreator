@@ -23,7 +23,9 @@
 --
 -- EVERY DECISION IN ITS BUDGET, counted in work as the browser counts it
 -- (native/bot.c WORKBUDGET); the collector runs one step at the top of each
--- frame. The run ends by printing the frames over 16.7 ms and the slowest.
+-- frame. The run ends by printing the frames whose thinking (the board read
+-- and the bot's decision) went over the game's 8 ms think budget
+-- (ThinkBudget.lua) and the slowest.
 require("bot.headlessBoot")
 do local l = require("common.lib.logger"); l.setLogLevel(l.levels.ERROR) end
 local ffi = require("ffi")
@@ -173,7 +175,8 @@ end
 local FRAME_MS, RUN_RESERVE = 1000 / 60, 3.0   -- RUN_RESERVE: match:run, 1.9 ms at p99.9 (combo_storm seed 1); lua_budget_check.sh holds each decision to the frame less it
 local TS = ffi.new("gc_timespec")
 local function now() ffi.C.clock_gettime(1, TS); return tonumber(TS.tv_sec) * 1e3 + tonumber(TS.tv_nsec) / 1e6 end
-local over, slowest = 0, 0
+local THINK_MS = 8   -- ThinkBudget.ceilingMillis
+local over, slowest, slowLoad, slowBot = 0, 0, 0, 0
 local function frameLine(f, bits, states)
   return string.format("F %d keys %d stop %d shake %d lock %d raise %d health %d cur %d,%d in %d | %s", f, bits, a.stop_time,
                        a.shake_time, a.rise_lock and 1 or 0, a.manual_raise and 1 or 0, a.health, a.cur_row, a.cur_col,
@@ -213,12 +216,16 @@ local f = 0
 while f < FRAMES do
   local t0 = now()
   collectgarbage("step", 0)
+  local tk0 = now()
   load()
+  local loadMs = now() - tk0
   C.botTraceOn = (BOTLOG >= 0 and f >= BOTLOG and f < BOTLOG + BOTLOG_N) and 1 or 0
   if C.botTraceOn ~= 0 then io.stderr:write("@ " .. f .. "\n") end
   local mem
   if (DEATHLOG > 0 or GAMELOG) and C.botTraceOn == 0 then mem = ffi.C.open_memstream(LOGP, LOGN); C.botLogTo = mem; C.botTraceOn = 1 end
+  local tk1 = now()
   local bits = os.getenv("GC_NOBOT") and 0 or C.front_frame(fid, board)
+  local thought = loadMs + (now() - tk1)
   local blog = ""
   if mem then
     ffi.C.fclose(mem); C.botLogTo = nil; C.botTraceOn = 0
@@ -233,9 +240,10 @@ while f < FRAMES do
   if C.nb_pressed(board) ~= 0 then bits = bit.bor(bits, 16) end
   a:receiveConfirmedInput(KeyDataEncoding.base64encode[bits + 1])
   match:run()
-  local took = now() - t0
-  if took > FRAME_MS then over = over + 1 end
-  if took > slowest then slowest = took end
+  if thought > THINK_MS then over = over + 1 end
+  if loadMs > slowLoad then slowLoad = loadMs end
+  if thought - loadMs > slowBot then slowBot = thought - loadMs end
+  if thought > slowest then slowest = thought end
   if TRACE >= 0 and f >= TRACE then print(frameLine(f, bits)) end
   if DEATHLOG > 0 or GAMELOG then
     local board = frameLine(f, bits, true)
@@ -261,9 +269,9 @@ while f < FRAMES do
   end
   if dead and DEATHLOG > 0 then deathReport(f) end
   if dead and GAMELOG then GAMELOG:close() end
-  if dead then print(string.format("frames over %.1f ms: %d, slowest %.1f ms", FRAME_MS, over, slowest)); print("died " .. f); os.exit(1) end
+  if dead then print(string.format("frames over %.1f ms: %d, slowest %.1f ms (board read %.1f, bot %.1f)", THINK_MS, over, slowest, slowLoad, slowBot)); print("died " .. f); os.exit(1) end
   f = f + 1
 end
-print(string.format("frames over %.1f ms: %d, slowest %.1f ms", FRAME_MS, over, slowest))
+print(string.format("frames over %.1f ms: %d, slowest %.1f ms (board read %.1f, bot %.1f)", THINK_MS, over, slowest, slowLoad, slowBot))
 if GAMELOG then GAMELOG:close() end
 print("alive " .. f)
