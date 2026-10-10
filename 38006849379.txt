@@ -32,3 +32,6 @@ ready
 stage 6 lost frames=2641 continues=2 next=6 complete=false fps=55.8
 shot=/home/runner/.local/share/love/panel-game/stage06_lost_c2.png
 ready
+stage 6 won frames=4915 continues=2 next=7 complete=false fps=57.6
+shot=/home/runner/.local/share/love/panel-game/stage06_won_c2.png
+ready
