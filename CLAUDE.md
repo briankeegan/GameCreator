@@ -329,7 +329,10 @@ ways: a tool not listed, or a path listed that doesn't exist.
   with it, the wasm rebuilt once, in the background, when the batch of work is done (the scan builds its own library from the source; the wasm is for the live game), a scan's line in
   `survival_scans.tsv` as soon as it is fetched. Nothing waits uncommitted
   for a scan, a rebuild or a check. Anything slow runs in the background, so
-  an interruption stops nothing.
+  an interruption stops nothing. One scan at a time, always of the newest
+  source: a change pushed while a scan runs cancels that scan and starts one
+  on the new head -- a scan of code already known to be wrong measures
+  nothing.
 
 ## Infrastructure
 
