@@ -84,17 +84,11 @@ static Bot BOTS[MAXBOT];
 static int nBots = 0;
 static Bot *BT;
 static double BIN[IN_SIZE], BOUT[256];
+// the game's ThinkBudget is the only clock: the bot reads none
+#define NOWMS2() 0.0
 #ifndef __wasm__
-#define GC_TS 1
-struct gcTs { long s, ns; };   // the native clock (clock_gettime), for the budget
-extern int clock_gettime(int, struct gcTs *);
-#endif
-#ifndef __wasm__
-static double NOWMS2(void) { struct gcTs q; clock_gettime(1, &q); return q.s * 1e3 + q.ns / 1e6; }
 extern char *getenv(const char *);
 extern int atoi(const char *);
-#else
-static double NOWMS2(void) { return 0; }
 #endif
 int botTraceOn;   // the native drill's GC_BOTLOG: the pool, as the engine plays it
 void *botLogTo;    // where the bot log goes: stderr, or a run's own buffer (train.lua's death report)
@@ -2618,7 +2612,7 @@ static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double no
   if (sitLevel >= SITLEVELS) return 0;   // nested past its memory: no answer, never a corrupted one
 #ifndef __wasm__
   // GC_WORKSTAT: the search's milliseconds per work, beside the decision's (WORK lines) -- SITPOPWORK's calibration
-  static int calOn = -1; if (calOn < 0) calOn = getenv("GC_WORKSTAT") != 0;
+  static int calOn = -1; if (calOn < 0) calOn = 0;
   static double calMs, calW; static int calN; double cal0 = calOn ? NOWMS2() : 0; extern PATLS double paWork; double calw0 = paWork; int calTop = calOn && sitLevel == 0;
 #endif
   // EVERY SEARCH INSIDE THE DECISION'S BUDGET: its share, never past where
@@ -3896,7 +3890,7 @@ static Dec breakFirst(Dec d) {
     double lf0 = NOWMS2();
     linesFind(REROOTS, 1);
 #ifndef __wasm__
-    if (getenv("GC_WORKSTAT")) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINESFIND %.2f ms | root %.2f kids %d %.2f states %.2f | lines %d\n", NOWMS2() - lf0, growRootMs, growKids, growKidMs, growStateMs, nLines); }
+    if (0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINESFIND %.2f ms | root %.2f kids %d %.2f states %.2f | lines %d\n", NOWMS2() - lf0, growRootMs, growKids, growKidMs, growStateMs, nLines); }
 #endif
     l = bestBreak(); }
 #ifndef __wasm__
@@ -4114,7 +4108,7 @@ static Dec lineupFirst(Dec d) {
     searchInTime(st0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, lineEnds(0, 0, &last), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0,
                  can0, waits0, luEnd - paWork, sitLineup, &x, 0, 0, 0);
 #ifndef __wasm__
-  if (getenv("GC_WORKSTAT")) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINEUP states %d %.2f ms | ranks %d %.2f ms (ready %d %.2f ms)\n", luStates, luStateMs, luRanks, luRankMs, luReady, luReadyMs); }
+  if (0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINEUP states %d %.2f ms | ranks %d %.2f ms (ready %d %.2f ms)\n", luStates, luStateMs, luRanks, luRankMs, luReady, luReadyMs); }
 #endif
   if (!B.has) return d;
   if (B.n == 1 && d.kind == K_SWAP && d.hasMove && d.sr == B.sw[0] && d.sc == B.sw[1]) return d;
@@ -4953,7 +4947,7 @@ static Dec fillFirst(Dec d) {
   double t0 = NOWMS2();
   Dec r = fillFirstIn(d);
 #ifndef __wasm__
-  if (getenv("GC_FILLSTAT")) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "FILLSTAT %.2f ms | judges %d %.2f ms | margins %d %.2f ms | pool %d\n", NOWMS2() - t0, fillJudges - j0, fillJudgeMs - jm0, fillMargins, fillMarginMs, nPool); }
+  if (0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "FILLSTAT %.2f ms | judges %d %.2f ms | margins %d %.2f ms | pool %d\n", NOWMS2() - t0, fillJudges - j0, fillJudgeMs - jm0, fillMargins, fillMarginMs, nPool); }
 #endif
   return r;
 }
@@ -5558,11 +5552,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   extern PATLS double paWork;
   double w0 = paWork, ws[12], ts[12], jm[12]; int k = 0, cutAt[12], js[12];
   fillJudges = 0; fillJudgeMs = 0;
-#ifndef __wasm__
-#define NOWMS() ({ struct gcTs q; clock_gettime(1, &q); q.s * 1e3 + q.ns / 1e6; })
-#else
 #define NOWMS() 0.0
-#endif
   double t0 = NOWMS();
   extern int paBudgetOut(void), paBudgetSpent(void), paCutPast(double);
 #define SHARE(p) ((void)(p))   // one budget for the whole decision, opened above
@@ -5705,7 +5695,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   }
 #ifndef __wasm__
   { extern char *getenv(const char *); extern int fprintf(void *, const char *, ...); extern void *stderr;
-    if (getenv("GC_WORKSTAT")) { fprintf(BLOG, "STAGES%s pool %.3f", paBudgetOut() ? " OUT" : "", dcCandMs); fprintf(BLOG, " SA %.3f %d MO %.3f", saMs, saN, moMs); saMs = moMs = 0; saN = 0; for (int i = 0; i < k; i++) fprintf(BLOG, " %.0f/%.3f/%d/%.3f", ws[i] - (i ? ws[i - 1] : w0), ts[i] - (i ? ts[i - 1] : t0), js[i] - (i ? js[i - 1] : 0), jm[i] - (i ? jm[i - 1] : 0)); fprintf(BLOG, "\n"); } }
+    if (0) { fprintf(BLOG, "STAGES%s pool %.3f", paBudgetOut() ? " OUT" : "", dcCandMs); fprintf(BLOG, " SA %.3f %d MO %.3f", saMs, saN, moMs); saMs = moMs = 0; saN = 0; for (int i = 0; i < k; i++) fprintf(BLOG, " %.0f/%.3f/%d/%.3f", ws[i] - (i ? ws[i - 1] : w0), ts[i] - (i ? ts[i - 1] : t0), js[i] - (i ? js[i - 1] : 0), jm[i] - (i ? jm[i - 1] : 0)); fprintf(BLOG, "\n"); } }
 #endif
   ENGINE_BASE = 0;
 #ifndef __wasm__

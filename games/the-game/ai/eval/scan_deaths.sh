@@ -37,15 +37,14 @@ game() {   # the seed's whole game, from its artifact
   rm -f "$dir/seed$1.zip"
 }
 sha=$(curl -sSfL "${auth[@]}" "$api/runs/$run" | python3 -c 'import json, sys; print(json.load(sys.stdin)["head_sha"][:10])')
-alive=0; died=0; other=0; dead=(); : > "$dir/results.tsv"; : > "$dir/think.tsv"
+alive=0; died=0; other=0; dead=(); : > "$dir/results.tsv"; : > "$dir/budgets.tsv"
 while read -r id seed concl; do
   [ "$concl" = success ] || [ "$concl" = failure ] || { echo "seed $seed: $concl"; other=$((other + 1)); continue; }
   log=$(curl -sSfL "${auth[@]}" "$api/jobs/$id/logs" | sed 's/^[0-9TZ:.-]* //')
   end=$(grep -E "^(died|alive) " <<<"$log" | tail -1 || true)
   echo "seed $seed: ${end:-no result}"
-  # the game's think budget (8 ms a frame): the frames over it, and the slowest, as train.lua counts them
-  grep -E "^frames over " <<<"$log" | tail -1 | sed "s/^/$seed\t/" >> "$dir/think.tsv" || true
-  printf '%s\t%s\t%s\n' "$seed" "${end%% *}" "${end##* }" >> "$dir/results.tsv"
+  # the game's two budgets, as its own classes charged them (train.lua report)
+  grep -E "^(think|input) budget " <<<"$log" | tail -2 | sed "s/^/$seed\t/" >> "$dir/budgets.tsv" || true
   case $end in
     alive*) alive=$((alive + 1)); [ -n "${GC_ALL:-}" ] && game "$seed" ;;
     died*) died=$((died + 1)); dead+=("$seed"); sed -n '/^DEATH REPORT/,/^END DEATH REPORT/p' <<<"$log" > "$dir/seed$seed.txt"; game "$seed" ;;
@@ -53,7 +52,7 @@ while read -r id seed concl; do
   esac
 done <<<"$jobs"
 echo "alive $alive, died $died, other $other -- reports in $dir"
-awk -F'[ :,]+' 'NF > 4 { over += $5; if ($7 + 0 > slow) slow = $7 + 0; if ($5 > 0) seeds++ } END { printf "think budget (8 ms): %d frames over it in %d seeds, slowest %.1f ms\n", over, seeds, slow }' "$dir/think.tsv"
+awk -F'\t' '$2 ~ /^think/ { split($2, a, /[ ,]+/); over += a[5]; if (a[5] > 0) tseeds++; w = a[10] + 0; if (w > worst) worst = w } $2 ~ /^input/ { split($2, a, /[ ,:]+/); if (a[8] + 0 > most) most = a[8] + 0; over2 += a[9] } END { printf "think budget (8 ms): %d frames over it in %d seeds, slowest %.1f ms | input budget: most %d in a window, %d frames over\n", over, tseeds, worst, most, over2 }' "$dir/budgets.tsv"
 hist=$(dirname "$0")/survival_scans.tsv
 [ -f "$hist" ] || printf 'run\tcommit\talive\tdied\n' > "$hist"
 if [ "$other" -eq 0 ] && ! grep -q "^$run	" "$hist"; then
