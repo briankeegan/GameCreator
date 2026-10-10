@@ -33,6 +33,7 @@ typedef struct { uint8_t last[32][W + 2], first[32][W + 2], same[32][W + 2], gar
 // board left alone does not, a press stops ACTIONRESERVE short of the limit
 // (limit: what this decision may spend to, set where it begins)
 #define ACTIONRESERVE 20
+#define HOLDTIGHT 24   // the actions short of the limit at which short walks are held too
 #define ACTIONRING 128   // room for the diagnostic limit (GC_INPUT_LIMIT) above the game's
 typedef struct { int actAt[ACTIONRING], actOld, actN, holdKey, limit; } Pad;
 typedef struct {
@@ -552,7 +553,9 @@ static int padStepToward(Pad *p, const Board *bd, int *timer, int row, int col, 
   else if (bd->curRow < row) { key = IN_UP; dist = row - bd->curRow; }
   else { key = IN_DOWN; dist = bd->curRow - row; }
   *timer = MOVE_FRAMES - 1;
-  if (canHold && dist >= HOLDLEG) p->holdKey = key;
+  // a window nearly spent holds a walk of two cells too: a few frames slower than taps, against a press waiting for the allowance
+  int minLeg = padCount(p, bd->clock) + HOLDTIGHT >= (p->limit ? p->limit : ACTIONLIMIT) ? 2 : HOLDLEG;
+  if (canHold && dist >= minLeg) p->holdKey = key;
   return input | key;
 }
 // the held key goes on while the cursor is short of the cell on that axis
