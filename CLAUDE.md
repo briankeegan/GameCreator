@@ -255,10 +255,11 @@ ways: a tool not listed, or a path listed that doesn't exist.
   health -- the bot waits. Waiting sets the board up (`waitMeanwhile`): a swap
   that clears nothing and adds vertical twos, then flattens, is played if the
   engine says the line still follows it, worth no less (the swap, then the
-  line, walked to in turn); otherwise it holds, parked on the line. A break
-  waits that way;
-  a three that breaks nothing waits that way until it is due (`clearDue`). No
-  route clears for shape or spare material.
+  line, walked to in turn); otherwise it holds, parked on the line. A three
+  that breaks nothing is pressed only when due (`clearDue`): the board left
+  alone loses health no later than the frame the front decides again after
+  the clear played now on the engine (`out[17]`); until then the stages'
+  choice plays. No route clears for shape or spare material.
 - **Time, never swaps.** A line is as good as the frame it is done, however
   many swaps it takes; nothing the bot asks is capped at a number of swaps.
   Every search that grows lines is `searchInTime` (`native/bot.c`): soonest
