@@ -270,8 +270,8 @@ ways: a tool not listed, or a path listed that doesn't exist.
 - **A decision is one ordered choice (`arbitrate`).** The stages propose; the
   decision they made, the walk's target and stayAlive's choice (or the hold)
   are judged on the engine and ranked once: breaks the next garbage in time
-  (it lives), lives, a clear that breaks nothing, is no combo and fills nothing under the
-  garbage ranks below any option that lives until it is due (`clearDue`), a break in reach when the next slab lands (none queued: a
+  (it lives), lives, a clear that breaks nothing and is no combo ranks below any
+  option that lives until it is due (`clearDue`), a break in reach when the next slab lands (none queued: a
   slab the width of the board on the stack, `waveReady`; the engine's one
   readiness, `readyInTime`, the masks' only to propose), the later loss
   of health inside `LIVEHORIZON`, the soonest break after it (`breakTime`:
@@ -284,14 +284,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   by whether the other player is topped out (combos) or not (chains), two
   combos by `comboWorth` (4, 7, 6, 5, 8, 9 and more, low to high), two chains by
   length -- converted, hollow; equal: the target, the decision, the
-  alternative. With a slab coming and no break in reach, the swaps that clear
-  nothing and set the board up (more vertical twos, then flatter;
-  `setupOptions`) are weighed beside the hold, and play only if they leave every
-  saved line (kept, target, plan, attack) playing out as well as before
-  (`sparesSetups`), and the board readier or living longer; a swap that clears
-  nothing buys no time from the rise it locks. An option other than a break does not survive if, followed by the
-  line that saves the board (stayAlive's), the board loses health before that line's
-  last press (`getsBackInTime`, on the engine; asked, like `sparesSetups`, only of the option that wins -- one that fails is out and the rest are ranked again). A swap-back keeps the board unless it ranks higher. A rule that
+  alternative. A swap-back keeps the board unless it ranks higher. A rule that
   overrides another after the fact belongs in this order, not after it. The
   engine is reached only through `lineJudge` and `searchInTime`, which stop at
   their share of the work (`workLeft`); the decision's closing keeps
