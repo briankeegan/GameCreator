@@ -53,6 +53,8 @@ static double gWorkBudget = WORKBUDGET0, gOptWork = OPTWORK0;
 // the quantile of milliseconds per unit the cut is held to, and how far a decision moves it
 #define RATEQUANTILE 0.9988   // of the decisions that reach the line (84% do): 1 in 1,000 of all decisions over the ceiling
 #define RATESTEP 0.01
+#define TAILSTEP 0.05   // ms: how far a frame moves the time the front takes after the decision, held to the same quantile
+#define OPTFLOOR (OPTWORK0 / 4)   // the work a decision always has, whatever the frame's load: the stages it cannot skip
 static double tkCeiling, tkRate, tkLastWork, tkLeft, tkTail = 0.3, tkOver = 0.5, tkT0, tkDecMs;   // the ceiling told, ms per unit tracked, the work of the decision the last frame made, the frame's time left when it began, the time the front takes after a decision's work stops, when the decision began, how long it took
 enum { C_REFUSEDDEADLY, C_ALLDEAD, C_REFUSEDRETURN, C_REFUSEDTOOSLOW, C_PLANNED, C_PLANDROPPED, C_ATTACKED,
        C_ATTACKDROPPED, C_CELLSPLANNED, C_REFUSEDPAYLESS, C_REFUSEDSTARVING, C_REFUSEDOTHER, C_REFUSEDATEXIT,
@@ -3647,7 +3649,7 @@ __attribute__((export_name("bot_time"))) void bot_time(double ceilingMs, double 
   if (tkRate == 0 || ceilingMs != tkCeiling) { tkCeiling = ceilingMs; tkRate = (ceilingMs - 0.9) / OPTWORK0; }   // the line as shipped
   if (tkDecMs > 0 && lastMs > 0) {
     // what the front takes after the decision stops: the frame less the host's own load before it and the decision
-    double tail = lastMs - (tkCeiling - tkLeft) - tkDecMs; if (tail > tkTail) tkTail = tail; else tkTail *= 0.999;
+    double tail = lastMs - (tkCeiling - tkLeft) - tkDecMs; if (tail > tkTail) tkTail += TAILSTEP * RATEQUANTILE; else { tkTail -= TAILSTEP * (1 - RATEQUANTILE); if (tkTail < 0) tkTail = 0; }
     // a decision that reached the line: its own milliseconds per unit of work
     if (tkLastWork >= 0.9 * gOptWork) {
       double r = tkDecMs / tkLastWork;
@@ -3655,7 +3657,7 @@ __attribute__((export_name("bot_time"))) void bot_time(double ceilingMs, double 
     }
   }
   tkDecMs = 0; tkLastWork = 0; tkLeft = leftMs;
-  gOptWork = (tkLeft - tkTail) / tkRate; gWorkBudget = gOptWork + UNDERWAY;
+  gOptWork = (tkLeft - tkTail) / tkRate; if (gOptWork < OPTFLOOR) gOptWork = OPTFLOOR; gWorkBudget = gOptWork + UNDERWAY;
 }
 __attribute__((export_name("bot_keepbreak"))) int32_t bot_keepbreak(void) { return 0; }
 
