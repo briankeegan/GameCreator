@@ -1343,9 +1343,24 @@ static LOCAL ST BASEST;
 // cursor it left there. A first step the same way waits one frame for the key
 // to be released, or the engine reads it as held.
 static LOCAL int HELDR, HELDC, HELDDIR;
+// A WALK OF HOLDLEG CELLS OR MORE ON ONE AXIS IS HELD, NOT TAPPED: a held
+// direction is one action however far the cursor goes -- the first cell on the
+// press, the second after the engine's repeat delay (HOLDFIRST frames), then
+// one a frame -- which from four cells up is no later than taps MOVE_FRAMES
+// apart. The front (front.c padStepToward) and the lines it plays walk the same.
+#define HOLDLEG 4
+#define HOLDFIRST 10
+// the frame the last cell of an axis's walk is reached, its first key pressed at p
+static int walkEnds(int p, int d) { return d <= 0 ? p : d >= HOLDLEG ? p + d + HOLDFIRST - 2 : p + 4 * (d - 1); }
 static int travelCost(int r0, int c0, int r1, int c1) {
-  int steps = (r1 > r0 ? r1 - r0 : r0 - r1) + (c1 > c0 ? c1 - c0 : c0 - c1);
-  int t = (steps <= 0 ? 0 : 4 * (steps - 1) + 1) + PRESS;
+  int dc = c1 > c0 ? c1 - c0 : c0 - c1, dr = r1 > r0 ? r1 - r0 : r0 - r1;
+  int steps = dc + dr, t = 0;
+  if (steps > 0) {
+    int end = walkEnds(0, dc);   // columns first, then rows, the next key four frames on (MOVE_FRAMES)
+    if (dr > 0) end = walkEnds(dc > 0 ? end + 4 : 0, dr);
+    t = end + 1;
+  }
+  t += PRESS;
   if (steps > 0 && HELDDIR && r0 == HELDR && c0 == HELDC) {
     int dir = c1 > c0 ? 4 : c1 < c0 ? 3 : r1 > r0 ? 1 : 2;
     if (dir == HELDDIR) t++;
