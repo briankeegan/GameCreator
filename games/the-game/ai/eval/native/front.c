@@ -762,7 +762,9 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
       int coolIn = cool;
       if (cool > 0) cool--;
       int landing = b->queuedSwapRow > 0 || b->swappingCount > 0 || b->pressSwap;
-      if (!landing && f >= LDELAY && (cool == 0 || b->stopTime > 0 || nb_topped(b))) {
+      // the front decides again only on a frame its cooldown starts at 0 (frontFrame: it counts
+      // down and returns), or on a stopped or topped board: the line steps on as it does
+      if (!landing && f >= LDELAY && (coolIn == 0 || b->stopTime > 0 || nb_topped(b))) {
         if (step == n) {   // the front decides again here
           if (stopAtNext == 1) snapKeep(steps, n, b, f, coolIn, held, last, dropped, &pad);
           out[1] = last; out[8] = f; return 1;
