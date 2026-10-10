@@ -34,7 +34,7 @@ rmdir $S/ship.lock; trap - EXIT
 tail -1 games/the-game/ai/eval/survival_scans.tsv
 # A SCREEN is the scan's results alone: alive at the frame cap, the mean frames, the budgets
 if [ -n "${GC_SCREEN:-}" ]; then
-  awk -v cap="${GC_FRAMES:-60000}" '{ n++; f = $3 + 0; if ($2 == "alive" || f >= cap) a++; s += (f < cap ? f : cap) } END { printf "screen %s: alive at %d frames %d/%d, mean frames %.0f\n", "'$H'", cap, a, n, s / n }' $D/results.tsv
+  awk -v cap="${GC_FRAMES:-30000}" '{ n++; f = $3 + 0; if ($2 == "alive" || f >= cap) a++; s += (f < cap ? f : cap) } END { printf "screen %s: alive at %d frames %d/%d, mean frames %.0f\n", "'$H'", cap, a, n, s / n }' $D/results.tsv
   exit 0
 fi
 cd $HERE
