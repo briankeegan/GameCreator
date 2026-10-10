@@ -3993,19 +3993,55 @@ static Dec keepBreak(Dec d) {
 // the engine, the board left alone until the next slab has dropped and
 // landed. Best is a lineup that breaks it -- the engine converts garbage the
 // board alone would not; next, one after which a break is pressed in time on
-// the board it settles to (readyNext). A lineup must live, and spends no panels when one
+// the board it settles to (readyAfter). A lineup must live, and spends no panels when one
 // that spends none will do.
 int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);
 int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t);
 static ST LUM;
 static int lineupLast;
 static int luStates, luRanks, luReady; static double luStateMs, luRankMs, luReadyMs;   // GC_WORKSTAT
+static int readyAfterIn(const int32_t *sw, int n);
 static int maskBreaks(const int32_t *st, const int32_t *sw, int n);
 static void parallelDo(int count, void (*task)(int));
+// a lineup's readiness, once a decision
+#define RAN 512
+typedef struct { int dec, n, v; int32_t sw[2 * LINEMAX]; } RAMemo;
+static RAMemo RAM[RAN];
 // the decision's memos, touched before the game (frontWarm)
-static void botWarm(void) { __builtin_memset(JM, 0, sizeof JM); }
-// READY FOR THE NEXT SLAB, the one question for the lineup, the arbiter and every rule alike (readyInTime)
-static int readyNext(const int32_t *sw, int n) { int r, c; return readyInTime(sw, n, &r, &c); }
+static void botWarm(void) { __builtin_memset(JM, 0, sizeof JM); __builtin_memset(RAM, 0, sizeof RAM); }
+static RAMemo *raSlot(const int32_t *sw, int n) {
+  unsigned h = 2166136261u ^ (unsigned)n;
+  for (int k = 0; k < 2 * n; k++) h = (h ^ (unsigned)sw[k]) * 16777619u;
+  return &RAM[h & (RAN - 1)];
+}
+static int raFind(const int32_t *sw, int n, int *v) {
+  RAMemo *m = raSlot(sw, n);
+  if (m->dec != btDecision || m->n != n || __builtin_memcmp(m->sw, sw, (unsigned long)n * 8)) return 0;
+  *v = m->v; return 1;
+}
+static void raPut(const int32_t *sw, int n, int v) {
+  RAMemo *m = raSlot(sw, n);
+  m->dec = btDecision; m->n = n; m->v = v;
+  for (int k = 0; k < 2 * n; k++) m->sw[k] = sw[k];
+}
+static int readyAfter(const int32_t *sw, int n) {
+  int v;
+  if (n >= 1 && n <= LINEMAX && raFind(sw, n, &v)) return v;
+  double t0 = NOWMS2(); v = readyAfterIn(sw, n); luReady++; luReadyMs += NOWMS2() - t0;
+  extern int paBudgetOut(void);
+  if (n >= 1 && n <= LINEMAX && !paBudgetOut()) raPut(sw, n, v);
+  return v;
+}
+// THE MASKS PROPOSE, THE ENGINE JUDGES: the lineup's readiness read off the
+// masks (a break in reach when the next slab lands), the arbiter's on the engine (readyInTime)
+static int readyAfterIn(const int32_t *sw, int n) {
+  int32_t t; ST lum; int last;
+  if (lineLanded(sw, n, lum, &t) != 0) return 0;
+  double die = lineEnds(sw, n, &last);
+  int frozen = BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0;
+  int cr = n ? sw[2 * (n - 1)] : (int)BIN[IN_CROW], cc = n ? sw[2 * (n - 1) + 1] : (int)BIN[IN_CCOL];
+  return searchInTime(lum, cr, cc, n ? last + stepGap(frozen) : 0, t, die - 1, frozen, 0, 0, READYWORK, sitBreaks, 0, 0, 0, 0);
+}
 // Where a lineup can matter: the rows up to the one the next slab lands on,
 // in its columns and one either side.
 static int lineupNear(const int32_t *st, int r, int c) {
@@ -4046,13 +4082,13 @@ static int lineupRank(const int32_t *st, const int32_t *sw, int n, int need) {
   if (need > LUBEST) return 0;
   int mb = maskBreaks(st, sw, n);
   if (!mb && need > 3) return 0;
-  if (!mb && !readyNext(sw, n)) return 0;
+  if (!mb && !readyAfter(sw, n)) return 0;
   int v = lineJudge(sw, n, 0);
   if (!(v & LV_LIVES)) return 0;
   luHollow = HOLLOW(LNO);
   int spends = LNO[3] > LNA[3];
   int rank = (v & LV_BREAKS) ? 4 : 0;
-  if (!rank && need <= 3 && (!mb || readyNext(sw, n))) rank = 2;
+  if (!rank && need <= 3 && (!mb || readyAfter(sw, n))) rank = 2;
   return rank ? rank + !spends : 0;
 }
 // THE LINEUP'S LINES: the shared search in time grows every line near the
@@ -4610,7 +4646,7 @@ static Dec readyWhenLands(Dec d) {
 // pile let grow while there is room turns one match into many panels. A
 // break of fewer than BATCH cells is held while the stack's top leaves
 // ROOMLEFT rows, the board is not topped, and the engine says that, left
-// alone until the next slab lands, the board still has a break in time (readyNext).
+// alone until the next slab lands, the board still has a break in time (readyAfter).
 // THE BOARD LEFT ALONE DIES -- BEFORE THE NEXT SLAB LANDS. The engine's
 // replay of the board left alone breaks nothing, so with a queue it always
 // dies in the end; that is the replay, not the board. A death counts as a
@@ -4633,7 +4669,7 @@ static Dec batchBreak(Dec d) {
   int converts = (v & LV_BREAKS) && aloneOnEngine() ? LNO[2] - LNA[2] : 0;
   if (converts <= 0 || converts >= BATCH) return d;
   if (tallestBoard(DBASE) > BH - ROOMLEFT) return d;   // the whole stack, garbage and panels
-  if (!readyNext(0, 0)) return d;
+  if (!readyAfter(0, 0)) return d;
   BT->nLine = 0; lineLast = 6;
   return mkHold(V_LINEUPHOLD, d.mode, d.alive, 1, d.sr, d.sc);
 }
