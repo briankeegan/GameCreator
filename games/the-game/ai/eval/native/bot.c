@@ -3821,10 +3821,10 @@ static Dec stayAlive(Dec d) {
 // the slab to come) is life lost, so the rank holds a clear that digs under a pile. Each is judged on the
 // engine (lineJudge, which keeps to the work there is); one it cannot judge is
 // not weighed, and a decision it cannot judge stands.
-typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, safe, size, chain, die, conv, hollow, pri; double life, soon; } Opt;
+typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, safe, clears, size, chain, die, conv, hollow, pri; double life, soon; } Opt;
 static int optJudge(Opt *o) {
   int last = 0, spent = 0;
-  o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = o->early = o->size = o->chain = 0;
+  o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = o->early = o->clears = o->size = o->chain = 0;
   if (o->d.kind == K_HOLD) {
     o->die = aloneDie(1 << 20);
     o->hollow = aloneOnEngine() ? HOLLOW(LNA) : 0;
@@ -3842,6 +3842,7 @@ static int optJudge(Opt *o) {
     // an attack: the line makes a chain longer than the board's own, or a larger single match than it does, and digs under no pile (more hollow than the hold)
     o->chain = LNO[18] > LNA[18] && LNO[18] >= 2 ? LNO[18] : 0;
     o->size = LNO[17] > LNA[17] ? LNO[17] : 0;
+    o->clears = LNO[3] > LNA[3];
     o->cash = (o->chain || comboWorth(o->size) >= 0) && (!aloneOnEngine() || o->hollow <= HOLLOW(LNA));
     // a clear that breaks nothing, is no combo and fills nothing under the garbage (less hollow than the board
     // left alone), before it is due (clearDue), is a spend the board does not need yet
@@ -3944,6 +3945,17 @@ static int setupOptions(Opt *O, int n, Dec d) {
   }
   return n;
 }
+// AN OPTION THAT CANNOT GET BACK IN TIME CANNOT SURVIVE: a swap that clears nothing, followed by the line that
+// saves the board (stayAlive's), must still play that line before the board loses health -- the walk, the press,
+// the swap landing and the walk back all come out of the time there is. On the engine; one it cannot judge stands.
+static int getsBackInTime(const Opt *o, const int32_t *line, int n) {
+  if (n <= 0 || o->n + n > LINEMAX) return 1;
+  int32_t st[2 * LINEMAX], r[LNOLEN];
+  for (int k = 0; k < 2 * o->n; k++) st[k] = o->sw[k];
+  for (int k = 0; k < 2 * n; k++) st[2 * o->n + k] = line[k];
+  if (lineOnEngine(st, o->n + n, LINEHORIZON, 0, r) != 0 || r[1] < 0) return 1;
+  return !r[0] || r[0] > r[1];
+}
 static Dec arbitrate(Dec d) {
   if (!((d.kind == K_SWAP && d.hasMove) || d.kind == K_HOLD)) return d;   // a raise: raiseMode's own rules
   Opt O[4 + SETUPOPTS]; int n = 0, at = -1;
@@ -3984,6 +3996,16 @@ static Dec arbitrate(Dec d) {
   int setupAt = 1 << 20;   // the first of the setup options, if any
   { int breaking = 0; for (int i = 0; i < n; i++) if (O[i].breaks) breaking = 1;
     if (!breaking && aloneOnEngine() && BIN[IN_INCOMING] > 0 && (d.kind == K_HOLD || O[at].early)) { setupAt = n; n = setupOptions(O, n, d); } }
+  if (saSet && aloneOnEngine()) {
+    int32_t sv[2 * LINEMAX]; int sn = saN;
+    if (sn > 0) for (int k = 0; k < 2 * sn; k++) sv[k] = saLine[k];
+    else if (saDec.kind == K_SWAP) { sn = 1; sv[0] = saDec.sr; sv[1] = saDec.sc; }
+    if (sn > 0) for (int i = 0; i < n; i++) {
+      Opt *o = &O[i];
+      if (!o->lives || o->n == 0 || o->clears || o->breaks || (o->sw[0] == sv[0] && o->sw[1] == sv[1])) continue;
+      if (!getsBackInTime(o, sv, sn)) o->lives = 0;
+    }
+  }
   if (n < 2) return d;
   int best = 0;
   for (int i = 1; i < n; i++) { int c = optRank(&O[i], &O[best]); if (c > 0 || (c == 0 && O[i].pri < O[best].pri)) best = i; }
