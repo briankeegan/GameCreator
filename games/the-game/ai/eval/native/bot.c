@@ -3954,7 +3954,6 @@ static void optAhead(Opt *o) {
 // THE SCRAMBLE, A LAST RESORT: when the board left alone loses health and no other option outlives it, the best combo or
 // chain any line reaches in the time there is is an option, the whole line judged on the engine and played on once chosen.
 static int boardDying(void) { return aloneOnEngine() && aloneDie(1 << 20) < (1 << 20); }   // the board left alone loses health within the judge's reach
-static int gDowntime;   // this decision is downtime: the board left alone loses no health within LIVEHORIZON
 static int gScramble;   // this decision is a last resort: the board is dying and no other option outlives the board left alone
 static int reachOption(Opt *O, int n, Dec d) {
   extern PATLS double paWork;
@@ -4006,8 +4005,6 @@ static int optRank(Opt *a, Opt *b) {
   }
   if (a->cash && b->cash) { int w = attackCmp(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
   if (ka && a->cash != b->cash && gScramble) return a->cash > b->cash ? 1 : -1;   // the freeze is spent continuing the chain
-  // in downtime a combo or chain comes before life: with time to spare it is made
-  if (ka && a->cash != b->cash && gDowntime) return a->cash > b->cash ? 1 : -1;
   if (a->life != b->life) return a->life > b->life ? 1 : -1;
   if (a->cash != b->cash) return a->cash > b->cash ? 1 : -1;
   if (a->conv != b->conv) return a->conv > b->conv ? 1 : -1;
@@ -4143,7 +4140,6 @@ static Dec arbitrate(Dec d) {
   { int breaking = 0; for (int i = 0; i < n; i++) if (O[i].breaks) breaking = 1;
     if (!breaking && aloneOnEngine()) n = attackOptions(O, n, d);
     gScramble = 0;
-    gDowntime = aloneOnEngine() && aloneDie(1 << 20) > LIVEHORIZON;
     if (!breaking && boardDying()) {
       int improves = 0, alone = aloneDie(1 << 20);
       for (int i = 0; i < n; i++) if (O[i].lives && O[i].die > alone) improves = 1;
