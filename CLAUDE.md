@@ -310,7 +310,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   (`getsBackInTime`), and is credited no time for the rise it locks (`stall`).
   Among options that clear nothing (the hold, the setups) the one that leaves the
   better attack one swap away wins (`optAhead`: every legal swap on the board it
-  settles to, by `attackFirst`), then the one with more vertical twos.
+  settles to, by `attackFirst`): a setup is pressed for that reason alone.
   A clear that fills hollow under the garbage is not `early`.
 - **Every decision fits the game's think budget, and every press its input
   budget.** The game holds a computer player to 8 ms of thinking a frame
