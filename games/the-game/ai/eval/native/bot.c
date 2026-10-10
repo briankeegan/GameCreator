@@ -3967,11 +3967,10 @@ static int optRank(Opt *a, Opt *b) {
   // then a combo or a chain
   // a break sooner by more than NEXTMOVE: less is the walk's own movement, and the target stands
   if (ka) { double sa = optSoon(a), sb = optSoon(b), gap = sa > sb ? sa - sb : sb - sa; if (sa != sb && !(gap <= NEXTMOVE)) return sa < sb ? 1 : -1; }
-  // two options that clear nothing (the hold, the setups): the one that leaves the better attack one swap away, then more twos
+  // two options that clear nothing (the hold, the setups): the one that leaves the better attack one swap away -- a setup is pressed for that reason alone
   if (ka && !a->clears && !a->breaks && !a->cash && !b->clears && !b->breaks && !b->cash) {
     optAhead(a); optAhead(b);
     int w = attackFirst(a->ahead, b->ahead); if (w) return w;
-    if (a->twos != b->twos) return a->twos > b->twos ? 1 : -1;
   }
   if (a->cash && b->cash) { int w = attackCmp(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
   if (a->life != b->life) return a->life > b->life ? 1 : -1;
