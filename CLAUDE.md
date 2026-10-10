@@ -282,12 +282,12 @@ ways: a tool not listed, or a path listed that doesn't exist.
   of health inside `LIVEHORIZON`, a plain clear last (it clears, breaks nothing,
   is no combo or chain and fills nothing under garbage: `plain`, ranked below
   any option that lives as long), the soonest break after it (`breakTime`:
-  setup), life (what it buys once done, hollow and material spent costed
-  and material converted credited, a cell a sixth of a row's rise, a panel
-  worth more the fewer the board is left with, `panelWorth`), a combo
-  or chain (a larger match than the board makes alone, or a longer chain) that
-  digs under no pile -- between two of them `attackCmp` (one rule, which the
-  setup's `bestAttack` takes too) comes before life: a combo against a chain
+  setup), a combo or chain (a larger match than the board makes alone, or a
+  longer chain) that digs under no pile, life (what it buys once done, hollow
+  and material spent costed and material converted credited, a cell a sixth of
+  a row's rise, a panel worth more the fewer the board is left with,
+  `panelWorth`) -- between two attacks `attackCmp` (one rule, which the
+  setup's `bestAttack` takes too) decides: a combo against a chain
   by whether the other player is topped out (combos) or not (chains), two
   combos by `comboWorth` (4, 7, 6, 5, 8, 9 and more, low to high), two chains by
   length -- converted, hollow; equal: the target, the decision, the
