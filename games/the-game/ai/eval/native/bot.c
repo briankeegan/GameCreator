@@ -3613,15 +3613,16 @@ static int aloneOnEngine(void);
 static int nonSpendLives(void);
 // A CLEAR THAT BREAKS NOTHING IS PRESSED ONLY WHEN IT IS DUE: material is
 // spent to break, or to live at the last moment it can. The engine plays the
-// clear begun a reaction from now (the next decision): while it still lives
-// begun then, it waits, and a break may come first. The one test, for every
-// route that clears to live.
+// clear begun when the front next decides -- a hold counts its reaction down
+// over the next REACT frames and decides the frame after (front.c cooldown),
+// REACT + 1 -- and while it still lives begun then, it waits (held, stayAlive),
+// and a break may come first. The one test, for every route that clears to live.
 int lineOnEngineFrom(const int32_t *steps, int n, int horizon, int delay, int32_t *out);
 static int clearDue(const int32_t *sw, int n) {
   if (!aloneOnEngine()) return 1;
   if (!LNA[0]) return 0;
   int32_t o[LNOLEN];
-  if (lineOnEngineFrom(sw, n, LINEHORIZON, REACT > 1 ? REACT : 1, o) != 0 || o[1] < 0) return 1;   // not to be judged begun later: due now
+  if (lineOnEngineFrom(sw, n, LINEHORIZON, (REACT > 0 ? REACT : 0) + 1, o) != 0 || o[1] < 0) return 1;   // not to be judged begun later: due now
   return o[0] && o[0] <= o[1] + NEXTMOVE;   // begun later it loses health by its own press (lineJudge's LIVES): due now
 }
 // A SPEND THAT KEEPS A WAITING RAISE OUT: a clear holds the rise lock and
