@@ -246,6 +246,11 @@ ways: a tool not listed, or a path listed that doesn't exist.
   the Lua (`lua/engineRecord.lua`, run in a panel-game checkout). The Lua is
   the reference. A bot is put on a board with `PuyoCpu.onPA(stack, opts, opp)`.
 - A test's scratch files go beside the test, never `os.tmpdir()`.
+- **A new game is a clean start.** The match clock only runs forward, so a
+  clock behind the last frame's is a game begun again on the same front
+  (`front_frame`): the front and its bot are made again (`frontRestart`), with
+  the action window, cooldown, walk, plans and bot state of the last game gone.
+  A hookup need not remember to.
 - **BitBot drills run at level 10, nothing else.** `pa_drill.js` exits if a
   scenario's level is not 10.
 - **A clear that breaks nothing is pressed only to live, when due**
