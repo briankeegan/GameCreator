@@ -45,6 +45,7 @@ typedef struct {
   int wWaitTo, wFrames, wWaitAll, wR0, wKept;
   Pad pad;
   int sawWave;   // a real garbage slab has been queued: the phantom first wave is over
+  int oppPresent, oppTopped;   // told by the host (front_opponent): another player is in the match; that player's stack has lost
   int risen, riseDisp, riseHas;   // rows risen since the game began (IN_RISEN), counted every frame
   int pkR, pkC, pkAt, pkAll, presses;   // presses: every swap pressed, counted (IN_PRESSES)   // the swap walked to, and the clock its first plan pressed it at (pkAt 0: none)   // a walk: the frame its swap's panels settle (every panel's: wWaitAll), the frames it has taken
 } Front;
@@ -443,7 +444,8 @@ static void fPrepare(Front *F) {
   // other. Only the bot's copy holds it; IN_PHANTOM says how much of the
   // incoming is phantom, so what the raise reads is the real queue.
   if (FB->ninc > 0 || FB->garbageCreatedCount > 0) F->sawWave = 1;
-  if (!F->sawWave) {
+  d[IN_OPPPRESENT] = F->oppPresent; d[IN_OPPTOPPED] = F->oppTopped;
+  if (!F->sawWave && !F->oppPresent) {
     Board *pb = paLibBoard();
     Incoming *p = &pb->inc[0];
     p->width = W; p->height = 1; p->isChain = 0; p->isMetal = 0; p->frameEarned = FB->clock; p->finalized = 1;
@@ -1475,14 +1477,20 @@ EXPORT(front_new) int front_new(Board *b, int reaction, int allowRaise) {
 // begun again on this front, and all it holds -- the action window, the cooldown, the walk, the plans, the bot's
 // own state -- is the last game's. The front and its bot are made again, as front_new makes them.
 static void frontRestart(Front *F) {
-  int id = F->id, reaction = F->reaction, allowRaise = F->allowRaise, reveal = F->reveal;
+  int id = F->id, reaction = F->reaction, allowRaise = F->allowRaise, reveal = F->reveal, oppPresent = F->oppPresent, oppTopped = F->oppTopped;
   memset(&BOTS[id], 0, sizeof(Bot)); BOTS[id].opening = 1;
   memset(F, 0, sizeof *F);
   F->pad.limit = actionLimit();
   F->reaction = reaction; F->reveal = reveal; F->allowRaise = allowRaise; F->escapeWalk = INF;
+  F->oppPresent = oppPresent; F->oppTopped = oppTopped;
   F->id = id; F->lastClock = -1;
   fTable(F, BOTS[id].tab);
 }
+// WHO IS ACROSS THE TABLE, told before each frame: whether another player is in the match (present), and whether that
+// player's stack has lost (topped). With an opponent in the match the first wave is not assumed (fPrepare): the bot
+// plays for setups, combos and chains while none comes; a combo goes before a chain against a topped-out player
+// (attackCmp). Alone, as in the survival scan, the first wave is assumed.
+EXPORT(front_opponent) void front_opponent(int fid, int present, int topped) { Front *F = &FRONTS[fid]; F->oppPresent = present != 0; F->oppTopped = topped != 0; }
 // The last decision's swap (or park) cell, row * 10 + column.
 EXPORT(front_move) int front_move(int fid) { return FRONTS[fid].lastMoveR * 10 + FRONTS[fid].lastMoveC; }
 EXPORT(front_last) int front_last(int fid) { Front *F = &FRONTS[fid]; return F->lastKind < 0 ? -1 : F->lastKind * 100 + F->lastVia; }

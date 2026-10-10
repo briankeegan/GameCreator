@@ -84,6 +84,7 @@ int nb_feed_break(Board *b, int32_t c1, int32_t c2, int32_t c3, int32_t c4, int3
 int nb_pressed(Board *b);
 int front_new(Board *b, int reaction, int allowRaise);
 int front_frame(int fid, Board *b);
+void front_opponent(int fid, int present, int topped);
 void bot_time(double ceilingMs, double lastMs, double leftMs);
 int botTraceOn;
 void *botLogTo;
