@@ -267,7 +267,8 @@ ways: a tool not listed, or a path listed that doesn't exist.
   readiness, `readyInTime`, the masks' only to propose), the later loss
   of health inside `LIVEHORIZON`, the soonest break after it (`breakTime`:
   setup), life (what it buys once done, hollow and material spent costed
-  and material converted credited, a cell a sixth of a row's rise), a combo
+  and material converted credited, a cell a sixth of a row's rise, a panel
+  worth more the fewer the board is left with, `panelWorth`), a combo
   or chain (more than a three cleared at once, `COMBOMIN`) that digs under no
   pile, converted, hollow; equal: the target, the decision, the
   alternative. A swap-back keeps the board unless it ranks higher. A rule that

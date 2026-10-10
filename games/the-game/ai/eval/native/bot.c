@@ -2188,9 +2188,19 @@ static int nJudged;
 static int32_t LNA[LNOLEN];
 static JLOCAL int32_t LNO[LNOLEN];
 static int aloneOnEngine(void);
+// WHAT A PANEL IS WORTH, by the panels the board is left with: the risk the
+// next landing carries, against its floor. Calibrated on 9,918 landings of four
+// survival scans (landings.py): 36 panels and more 0.65% fatal, 30-35 1.05%,
+// 24-29 2.34%, 18-23 5.2%, under 18 23%.
+static double panelWorth(int panels) { return panels >= 36 ? 1 : panels >= 30 ? 1.6 : panels >= 24 ? 3.6 : panels >= 18 ? 8 : 35; }
 // THE MATERIAL A JUDGED LINE (LNO) SPENDS against the board left alone: the
-// panels it ends with and the garbage it converted, less the board left alone's
-static int spentOf(void) { return aloneOnEngine() ? (LNA[12] + LNA[2]) - (LNO[12] + LNO[2]) : 0; }
+// panels it ends with and the garbage it converted, less the board left
+// alone's, each worth what a panel is worth on the board the line leaves
+static int spentOf(void) {
+  if (!aloneOnEngine()) return 0;
+  double s = ((LNA[12] + LNA[2]) - (LNO[12] + LNO[2])) * panelWorth(LNO[12]);
+  return (int)(s + (s >= 0 ? 0.5 : -0.5));
+}
 static int lnAlone;
 static int cashes(const int32_t *r) { return r[R_TOTAL] > 0 || r[R_SCOPE] == SC_BROKE; }
 static double timeLeft(void);
