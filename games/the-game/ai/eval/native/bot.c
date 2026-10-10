@@ -3979,9 +3979,8 @@ static int optRank(Opt *a, Opt *b) {
     if (a->twos != b->twos) return a->twos > b->twos ? 1 : -1;
   }
   if (a->cash && b->cash) { int w = attackCmp(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
-  // a combo or chain comes before life: of two options that keep the board as long, the one that makes it
-  if (a->cash != b->cash) return a->cash > b->cash ? 1 : -1;
   if (a->life != b->life) return a->life > b->life ? 1 : -1;
+  if (a->cash != b->cash) return a->cash > b->cash ? 1 : -1;
   if (a->conv != b->conv) return a->conv > b->conv ? 1 : -1;
   if (a->hollow != b->hollow) return a->hollow < b->hollow ? 1 : -1;
   return 0;
