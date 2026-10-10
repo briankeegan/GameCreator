@@ -309,8 +309,9 @@ ways: a tool not listed, or a path listed that doesn't exist.
   out as well after it), must get back in time to stayAlive's line
   (`getsBackInTime`), and is credited no time for the rise it locks (`stall`).
   Among options that clear nothing (the hold, the setups) the one that leaves the
-  better attack one swap away wins (`optAhead`: every legal swap on the board it
-  settles to, by `attackFirst`), then the one with more vertical twos; the rule
+  better attack within reach wins (`optAhead`: the best attack any line reaches
+  from the board it settles to in the time there is, by `searchInTime` and
+  `attackFirst`), then the one with more vertical twos; the rule
   compares only a setup with the hold or another setup -- a fill or a levelling
   swap is ranked by life and hollow.
   A clear that fills hollow under the garbage is not `early`.
