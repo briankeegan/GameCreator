@@ -3628,6 +3628,11 @@ __attribute__((export_name("bot_keepbreak"))) int32_t bot_keepbreak(void) { retu
 static int readyAfterSpend(const int32_t *sw, int n);
 static int aloneOnEngine(void);
 static int nonSpendLives(void);
+// WHEN THE FRONT DECIDES AGAIN (front.c): after a hold, a reaction and a frame -- the cooldown lifts at once only
+// on a stopped board that is not topped; after a press made `last` frames from now, the swap landed and the
+// reaction over (stepGap). Frames from now.
+static double holdGap(void) { return BIN[IN_STOP] > 0 && !BIN[IN_TOPPED] ? 1 : REACT + 1; }
+static double actsAgain(int last, int hold) { return hold ? holdGap() : last + stepGap(BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0) + PRESS; }
 // A CLEAR THAT BREAKS NOTHING IS PRESSED ONLY WHEN IT IS DUE: material is
 // spent to break, or to live at the last moment it can. A press locks the rise
 // the frame it is made (pa.c updateRiseLock: a queued swap), so the clear is
@@ -3647,7 +3652,7 @@ static int clearDue(const int32_t *sw, int n, const int32_t *alt) {
     both[0] = alt[0]; both[1] = alt[1];
     for (int k = 0; k < 2 * m; k++) both[2 + k] = sw[k];
     later = lineFrames(both, m + 1, cr, cc, 0, frozen);
-  } else later = lineFrames(sw, n, cr, cc, BIN[IN_STOP] > 0 && !BIN[IN_TOPPED] ? 1 : REACT + 1, frozen);
+  } else later = lineFrames(sw, n, cr, cc, holdGap(), frozen);
   return LNA[0] <= later - PRESS;
 }
 // A SPEND THAT KEEPS A WAITING RAISE OUT: a clear holds the rise lock and
@@ -3816,7 +3821,7 @@ static Dec stayAlive(Dec d) {
 // the slab to come) is life lost, so the rank holds a clear that digs under a pile. Each is judged on the
 // engine (lineJudge, which keeps to the work there is); one it cannot judge is
 // not weighed, and a decision it cannot judge stands.
-typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, size, chain, die, conv, hollow, pri; double life, soon; } Opt;
+typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, safe, size, chain, die, conv, hollow, pri; double life, soon; } Opt;
 static int optJudge(Opt *o) {
   int last = 0, spent = 0;
   o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = o->early = o->size = o->chain = 0;
@@ -3838,6 +3843,8 @@ static int optJudge(Opt *o) {
     // a clear that breaks nothing and is no combo, before it is due (clearDue), is a spend the board does not need yet
     o->early = !o->breaks && !o->cash && LNO[3] > LNA[3] && !clearDue(o->sw, o->n, 0);
   }
+  // it outlives the next decision: the board does not lose health before the front acts again
+  o->safe = o->die > actsAgain(last, o->d.kind == K_HOLD);
   o->life = lifeOf(o->die, last, o->hollow, spent);
   return 1;
 }
@@ -3873,8 +3880,10 @@ static int optRank(Opt *a, Opt *b) {
   if (ka && BIN[IN_INCOMING] > 0) { int ra = optReady(a), rb = optReady(b); if (ra != rb) return ra > rb ? 1 : -1; }
   // dying within LIVEHORIZON, the later loss of health is the time there is: a
   // line that takes longer to finish still outlives a hold that dies first
-  int da = a->die < LIVEHORIZON ? a->die : LIVEHORIZON, db = b->die < LIVEHORIZON ? b->die : LIVEHORIZON;
-  if (da != db) return da > db ? 1 : -1;
+  // an option that loses health before the front acts again is worse than one that does not; two that do not
+  // are alike here (the next decision weighs the board again), two that do, by which loses it later
+  if (a->safe != b->safe) return a->safe ? 1 : -1;
+  if (!a->safe) { int da = a->die < LIVEHORIZON ? a->die : LIVEHORIZON, db = b->die < LIVEHORIZON ? b->die : LIVEHORIZON; if (da != db) return da > db ? 1 : -1; }
   // no break to make yet: the one that brings the break soonest (setup), then
   // the longer life (the stop time a clear buys less the material it spends),
   // then a combo or a chain
