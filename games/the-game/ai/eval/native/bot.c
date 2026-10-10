@@ -3988,6 +3988,8 @@ static int optRank(Opt *a, Opt *b) {
   if (da != db) return da > db ? 1 : -1;
   // a plain clear is the last resort: it ranks below any option that lives as long
   if (ka && (a->plain || b->plain)) { int pa = optPlain(a), pb = optPlain(b); if (pa != pb) return pa ? -1 : 1; }
+  // two breaks: the one that is a combo or a chain before a plain three, by the one rule (attackFirst)
+  if (ka == 2 && kb == 2) { int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
   // no break to make yet: the one that brings the break soonest (setup), then
   // the longer life (the stop time a clear buys less the material it spends),
   // then a combo or a chain
