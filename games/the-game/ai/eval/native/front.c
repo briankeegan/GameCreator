@@ -576,7 +576,7 @@ static int pressWait(Front *F, int r, int c, int clock, int wait, int waitAll) {
   return wait;
 }
 static void beginWalk(Front *F, int r, int c, int cooldown, int waitAll) {
-  F->pad.holdKey = 0; F->walk = 1; F->wRow = r; F->wCol = c; F->wTimer = 0; F->wCooldown = cooldown; F->wRetries = 0; F->wHasDisp = 0;
+  F->walk = 1; F->wRow = r; F->wCol = c; F->wTimer = 0; F->wCooldown = cooldown; F->wRetries = 0; F->wHasDisp = 0;
   int wait = waitAll ? breakWait(&F->settle, r, c) : pairWait(&F->settle, r, c);
   F->wKept = F->pkAt && F->pkR == r && F->pkC == c && F->pkAll == waitAll;
   if (!F->wKept) { F->pkR = r; F->pkC = c; F->pkAt = FB->clock + wait; F->pkAll = waitAll; }
@@ -1369,7 +1369,14 @@ static int frontFrame(int fid, Board *b) {
   // wants one. Topped, never: a raise pressed topped is game over (checkDeath).
   F->raiseHeld = F->wantRaise && F->raiseLives && !nb_topped(b) && !nb_falling_garbage(b) && raiseRoomNow() > 0;
   if (F->raiseHeld) input |= IN_RAISE;
-  if (F->walk) return fSend(F, driveWalk(F, input), held);
+  // A WALK SEES THE BOARD: a cell come to rest, a slab landed or a clear begun
+  // under it is decided again -- a break opened mid-walk is a break in reach.
+  // The held key stays down while it decides; a walk that goes on the same way
+  // keeps it (beginWalk, padHoldGoing).
+  if (F->walk) {
+    if (boardKey() == F->decidedOn) return fSend(F, driveWalk(F, input), held);
+    F->walk = 0; F->cooldown = 0; input |= F->pad.holdKey;
+  }
   if (F->park) input = parkStep(F, input);
   int sent = fSend(F, input, held);
   int urgent = b->stopTime > 0 || toppedNow();
@@ -1389,10 +1396,11 @@ static int frontFrame(int fid, Board *b) {
   F->held = heldNow;
   if (d.kind == K_RAISE) {
     F->wantRaise = !nb_topped(b); F->cooldown = F->reaction;
+    if (F->pad.holdKey) { F->pad.holdKey = 0; return fSend(F, input & ~DIRS, held); }
     return sent;
   }
   if (d.kind == K_HOLD || !d.hasMove) {
-    F->cooldown = F->reaction;
+    F->cooldown = F->reaction; F->pad.holdKey = 0;
     if (d.hasPark && F->park && F->pTr == d.pr && F->pTc == d.pc) return sent;
     F->park = d.hasPark;
     if (d.hasPark) { F->pRow = d.pr; F->pCol = d.pc; F->pTimer = 0; F->pTr = d.pr; F->pTc = d.pc; F->pDisp = b->displacement; }
