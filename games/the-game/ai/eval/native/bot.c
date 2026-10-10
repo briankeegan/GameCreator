@@ -4971,9 +4971,10 @@ static int walkTop(int c) {
 }
 // NEVER DYING FIRST: while the board left alone loses health before its
 // soonest break (fillUrgent), a fill is ranked by the frame it loses health
-// (later first); otherwise by the hollow it leaves
+// (later first: its life, hollow and material costed as every line's is);
+// otherwise by the hollow it leaves and the material it spends, a cell each
 static int fillUrgent;
-static double fillScore(int die, int last, int hollow) { return (fillUrgent && die ? lifeOf(die, last, hollow, 0) : (1 << 20)) * 4096.0 - hollow; }
+static double fillScore(int die, int last, int hollow, int spent) { return (fillUrgent && die ? lifeOf(die, last, hollow, spent) : (1 << 20)) * 4096.0 - hollow - spent; }
 // FILLS THAT TIE ORGANIZE: of two fills as good and as soon, the one leaving
 // more vertical twos whose three touches garbage (breakTwosOf) -- asked only
 // on the tie, since each costs a replay. btw: the best's twos (-1: not asked).
@@ -5010,8 +5011,8 @@ static double breakTier(const int32_t *sw, int n, int die) {
   if (fillUrgent && marginWithin(sw, n, die ? die : LINEREACH, 0) >= 0) return BREAKS_IN_TIME;
   return reachFirst() && breakKept(sw, n) ? BREAK_IN_REACH : 0;
 }
-static double fillScoreOf(const int32_t *sw, int n, int die, int last, int hollow) {
-  return fillScore(die, last, hollow) + breakTier(sw, n, die);
+static double fillScoreOf(const int32_t *sw, int n, int die, int last, int hollow, int spent) {
+  return fillScore(die, last, hollow, spent) + breakTier(sw, n, die);
 }
 // a clear judged (LNO) leaves six rows of material, read off the line's own matches
 static int readyAfterSpend(const int32_t *sw, int n);
@@ -5034,11 +5035,11 @@ static Dec fillFirstIn(Dec d) {
   // time between its break and its loss of health
   double need = marginAfter(0, 0, LNA[0]);
   fillUrgent = LNA[0] && need < 0;
-  double ref = fillScore(LNA[0], -1, HOLLOW(LNA)) + (reachFirst() && breakKept(0, 0) ? BREAK_IN_REACH : 0);   // what a fill must beat: the board left alone, and the choice
+  double ref = fillScore(LNA[0], -1, HOLLOW(LNA), 0) + (reachFirst() && breakKept(0, 0) ? BREAK_IN_REACH : 0);   // what a fill must beat: the board left alone, and the choice
   int refDie = lnoDie(LNA);   // the later loss of health of the two
   if (d.kind == K_SWAP && d.hasMove) {
     int32_t sw[2] = { d.sr, d.sc };
-    if (lineJudge(sw, 1, 0) & LV_LIVES) { best = HOLLOW(LNO) < best ? HOLLOW(LNO) : best; if (lnoDie(LNO) > refDie) refDie = lnoDie(LNO); double cs = fillScore(LNO[0], LNO[1], HOLLOW(LNO)); double m = marginAfter(sw, 1, LNO[0]); cs += fillUrgent && m >= 0 ? BREAKS_IN_TIME : reachFirst() && breakKept(sw, 1) ? BREAK_IN_REACH : 0; if (cs > ref) ref = cs; if (m > need) need = m; }
+    if (lineJudge(sw, 1, 0) & LV_LIVES) { best = HOLLOW(LNO) < best ? HOLLOW(LNO) : best; if (lnoDie(LNO) > refDie) refDie = lnoDie(LNO); double cs = fillScore(LNO[0], LNO[1], HOLLOW(LNO), spentOf()); double m = marginAfter(sw, 1, LNO[0]); cs += fillUrgent && m >= 0 ? BREAKS_IN_TIME : reachFirst() && breakKept(sw, 1) ? BREAK_IN_REACH : 0; if (cs > ref) ref = cs; if (m > need) need = m; }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  choice %d,%d die %d last %d hollow %d | alone die %d\n", d.sr, d.sc, LNO[0], LNO[1], HOLLOW(LNO), LNA[0]); }   // the log does no work of its own: under a work budget it would change the decision
 #endif
@@ -5076,7 +5077,7 @@ static Dec fillFirstIn(Dec d) {
     if (spend && !LIVES_LONGER()) { FILLWHY("spends, lives no longer"); continue; }
     int pdie = LNO[0], plast = LNO[1];
     LEVELTAKE(sw, 1, pc->moveFrames);
-    double sc = fillScoreOf(sw, 1, pdie, plast, HOLLOW(LNO));
+    double sc = fillScoreOf(sw, 1, pdie, plast, HOLLOW(LNO), spentOf());
     if (P.has ? !fillBeats(&P, &ptw, sc, pc->moveFrames, sw, 1) : sc <= ref) { FILLWHY("beaten"); continue; }
     if (!fillKeeps(marginWithin(sw, 1, pdie, need), need)) { FILLWHY("costs the break's time"); continue; }
     if (spend && !readyAfterSpend(sw, 1) && (nonSpendLives() || spendKeepsRaiseOut())) { FILLWHY("spends, not ready, a non-spend lives or a raise waits"); continue; }   // a move that spends nothing lives: a spend must leave a break ready
@@ -5138,7 +5139,7 @@ static Dec fillFirstIn(Dec d) {
       // a walk must beat the pool's best; among walks, the same order (time: its estimate)
       int wdie = LNO[0], wlast = LNO[1];
       LEVELTAKE(fsw, n, est);
-      double sc = fillScoreOf(fsw, n, wdie, wlast, HOLLOW(LNO));
+      double sc = fillScoreOf(fsw, n, wdie, wlast, HOLLOW(LNO), spentOf());
       if (W.has ? !fillBeats(&W, &wtw, sc, est, fsw, n) : sc <= ref) continue;
       if (!fillKeeps(marginWithin(fsw, n, wdie, need), need)) continue;
       if (spend && !readyAfterSpend(fsw, n) && (nonSpendLives() || spendKeepsRaiseOut())) continue;
@@ -5189,8 +5190,8 @@ static Dec fillFirstIn(Dec d) {
 #endif
         double beat = W.has && W.score > ref ? W.score : ref;
         // the judge plays the line through whatever lands while it is played
-        int vv = v, die = LNO[0], last = LNO[1], hol = HOLLOW(LNO);
-        if ((vv & LV_LIVES) && !(vv & LV_PAYS) && fillScoreOf(sw, n, die, last, hol) > beat && fillKeeps(marginWithin(sw, n, die, need), need)) {
+        int vv = v, die = LNO[0], last = LNO[1], hol = HOLLOW(LNO), spent = spentOf();
+        if ((vv & LV_LIVES) && !(vv & LV_PAYS) && fillScoreOf(sw, n, die, last, hol, spent) > beat && fillKeeps(marginWithin(sw, n, die, need), need)) {
           lineSet(sw, n, LINE_PLAN, 0);
           return mkSwap(sw[0], sw[1], V_FILL, d.mode, d.alive);
         }
