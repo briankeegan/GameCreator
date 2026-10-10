@@ -1,0 +1,4 @@
+ready=LanguageSelectSetup
+scene=DiscordCommunitySetup
+scene=InputConfigMenu
+scene=TitleScreen
