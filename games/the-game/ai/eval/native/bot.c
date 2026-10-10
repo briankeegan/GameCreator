@@ -3770,7 +3770,12 @@ static Dec stayAlive(Dec d) {
   // every frame the board waits is a frame garbage drops on it -- the line that
   // lives longest is played now
   if (!l) return d;
-  if (!judgedBreaks(l) && l->verdict >= 0 && (l->verdict & LV_PAYS) && !clearDue(l->sw, l->n)) return d;
+  // waiting, the board is kept as the wait was judged on: held, the cursor
+  // parked on the clear's first step, and no later stage plays in its place
+  if (!judgedBreaks(l) && l->verdict >= 0 && (l->verdict & LV_PAYS) && !clearDue(l->sw, l->n)) {
+    BT->nLine = 0; plansDrop();
+    return saKeep(mkHold(V_KEEPHEALTH, d.mode, d.alive, 1, l->sw[0], l->sw[1]));
+  }
   lineLast = 2;
   BT->counts[C_KEPTHEALTH]++;
   plansDrop();
