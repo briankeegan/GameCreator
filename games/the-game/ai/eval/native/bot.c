@@ -8,7 +8,7 @@ static void frontCalm(int calm);
 enum { IN_TOPPED, IN_STOP, IN_INCOMING, IN_NEXTSLAB, IN_FALLING, IN_CROW, IN_CCOL, IN_HEALTH, IN_DRAIN, IN_FPR,
        IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISING, IN_INFLIGHT,
        IN_DRAINBOUND, IN_STACKTOPPED, IN_MOVING, IN_HASTIMED, IN_REVEALOPEN, IN_CONVN, IN_CONVTIMER, IN_BCROW, IN_BCCOL,
-       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_PRESSES = 600, IN_PHANTOM, IN_RISEN, IN_OPPTOPPED, IN_SIZE = 609 };   // IN_POPLOW + 1..W runs to 599
+       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_PRESSES = 600, IN_PHANTOM, IN_RISEN, IN_OPPTOPPED, IN_OPPPRESENT, IN_SIZE = 610 };   // IN_POPLOW + 1..W runs to 599
 enum { TF_DEADLY = 1, TF_FORCE = 2, TF_REFUSE = 4, TF_RAISE = 8, TF_STUB = 16, TF_SLAB = 32 };
 static int deadlyCalls;
 #define TFLAG(f) (((int)BIN[IN_T]) & (f))
@@ -833,12 +833,19 @@ static int worthCmp(int a, int b) { int wa = comboWorth(a), wb = comboWorth(b); 
 // Against a player who is topped out (IN_OPPTOPPED) a combo comes before a chain; against one who is not, a
 // chain before a combo. Two combos by comboWorth, two chains by length. 1: a is worth more, -1: b is, 0: the
 // same, or either is no attack.
-static int attackCmp(int sa, int ca, int sb, int cb) {
-  int chainA = ca >= 2, chainB = cb >= 2, atkA = chainA || comboWorth(sa) >= 0, atkB = chainB || comboWorth(sb) >= 0;
-  if (!atkA || !atkB) return 0;
+// What a candidate makes, in the one form attackCmp and attackFirst take: the largest match, and the chain's length
+// (0 when it is not a chain). Every candidate -- a result, an option row, an option -- is turned into it here.
+typedef struct { int size, chain; } Atk;
+static Atk atkOf(int size, int chain) { Atk k = { size, chain >= 2 ? chain : 0 }; return k; }
+static Atk atkOfRes(const Rs *r) { return atkOf(r->biggest, r->chain); }
+static Atk atkOfRow(const double *o) { return o[F_KIND] == 1 ? atkOf(0, (int)o[F_CHAIN]) : atkOf((int)o[F_SIZE], 0); }
+static int isAttack(Atk k) { return k.chain >= 2 || comboWorth(k.size) >= 0; }
+static int attackCmp(Atk a, Atk b) {
+  int chainA = a.chain >= 2, chainB = b.chain >= 2;
+  if (!isAttack(a) || !isAttack(b)) return 0;
   if (chainA != chainB) return chainA == (BIN[IN_OPPTOPPED] == 0) ? 1 : -1;
-  if (chainA) return ca == cb ? 0 : ca > cb ? 1 : -1;
-  return worthCmp(sa, sb);
+  if (chainA) return a.chain == b.chain ? 0 : a.chain > b.chain ? 1 : -1;
+  return worthCmp(a.size, b.size);
 }
 typedef struct { double rate, key, cells, gain, frames; double *option; } Pick;
 static int bestAttack(double deadline, double ppf, Pick *best) {
@@ -863,8 +870,7 @@ static int bestAttack(double deadline, double ppf, Pick *best) {
     double taste = 1 + TB[T_W + key] / 100;
     if (taste < 0.1) taste = 0.1;
     double rate = cells * taste;   // every one here fits the deadline: what it is worth, not how soon
-    int bestChain = have && best->option[F_KIND] == 1;
-    int cmp = have ? attackCmp(isChain ? 0 : (int)o[F_SIZE], isChain ? (int)o[F_CHAIN] : 0, bestChain ? 0 : (int)best->option[F_SIZE], bestChain ? (int)best->option[F_CHAIN] : 0) : 0;
+    int cmp = have ? attackCmp(atkOfRow(o), atkOfRow(best->option)) : 0;
     int win = !have || (cmp ? cmp > 0 : rate > best->key);
     if (!win && have && !cmp && rate == best->key) {
       double ob = has(o[F_BUMPS]) ? o[F_BUMPS] : 1e9, bb = has(best->option[F_BUMPS]) ? best->option[F_BUMPS] : 1e9;
@@ -877,10 +883,9 @@ static int bestAttack(double deadline, double ppf, Pick *best) {
 }
 // An attack -- a combo of four panels or more, or a chain -- comes before a clear that is neither: it buys the stop time
 // a plain clear does not. Between two attacks, attackCmp.
-static int attackFirst(int sa, int ca, int sb, int cb) {
-  int a = ca >= 2 || comboWorth(sa) >= 0, b = cb >= 2 || comboWorth(sb) >= 0;
-  if (a != b) return a ? 1 : -1;
-  return attackCmp(sa, ca, sb, cb);
+static int attackFirst(Atk a, Atk b) {
+  if (isAttack(a) != isAttack(b)) return isAttack(a) ? 1 : -1;
+  return attackCmp(a, b);
 }
 static int bestPlan(double clock, double deadline, int toppedOut, double fpr, int tallNow, const int32_t *base, Pick *bestOut) {
   int n, haveB = 0, haveO = 0;
@@ -919,8 +924,7 @@ static int bestPlan(double clock, double deadline, int toppedOut, double fpr, in
     double key = fits ? bought : rate;   // what fits is weighed by what it is worth; when nothing fits, the soonest
     Pick *cur = fits ? &best : &over;
     int haveCur = fits ? haveB : haveO;
-    int curChain = haveCur && cur->option[F_KIND] == 1;
-    int cmp = haveCur ? attackFirst(isChain ? 0 : (int)o[F_SIZE], isChain ? (int)o[F_CHAIN] : 0, curChain ? 0 : (int)cur->option[F_SIZE], curChain ? (int)cur->option[F_CHAIN] : 0) : 0;
+    int cmp = haveCur ? attackFirst(atkOfRow(o), atkOfRow(cur->option)) : 0;
     int better = !haveCur || (cmp ? cmp > 0 : key > cur->key);
     if (!better && haveCur && !cmp && key == cur->key) {
       double mb = has(o[F_BUMPS]) ? o[F_BUMPS] : 1e9, cb = has(cur->option[F_BUMPS]) ? cur->option[F_BUMPS] : 1e9;
@@ -954,6 +958,7 @@ static int sigEq(const Sig *a, const Sig *b) {
 static Cand POOL[MAXCAND];
 static ST POOLST[MAXCAND];
 static int nPool;
+static Cand *FITS[MAXCAND]; static int nFits;   // the swaps the stages' rules let through (refuses, too early, too slow), before any narrowing: what the arbiter's own options are drawn from
 static Res CR, CR2;
 // A RAISE IS WANTED AND OFFERED ONLY IF IT LIVES. A board loses health only
 // topped, with no stop time and nothing holding the rise lock; a manual raise
@@ -1020,7 +1025,7 @@ static Rs paRes(const int32_t *o, const int32_t *alone) {
 }
 static ST TMC;
 static void candidates(int32_t *base) {
-  nPool = 0;
+  nPool = 0; nFits = 0;
   Cand *h = &POOL[nPool++];
   memset(h, 0, sizeof(Cand));
   h->kind = K_HOLD; h->masks = base;
@@ -1243,6 +1248,7 @@ static int raiseModeOf(const int32_t *base, int poolBreak) {
   double realIn = BIN[IN_INCOMING] - BIN[IN_PHANTOM];   // the raise reads the real queue, never the phantom first wave
   if (TFLAG(TF_RAISE)) { raiseGate = 1; return (int)BIN[IN_T + 3]; }
   int topped = BIN[IN_TOPPED] != 0;
+  if (BIN[IN_OPPPRESENT]) BT->opening = 0;   // with another player in the match there is no first wave to wait for (front_opponent)
   if (!opt(O_ALLOWRAISE) || topped) { BT->opening = 0; { raiseGate = 2; return 0; } }
   if (BIN[IN_FALLING]) { raiseGate = 3; return 0; }
   // THE LOCK THAT WILL NOT END: panels or garbage in motion hold the rise
@@ -1560,6 +1566,8 @@ static Dec decideCore(void) {
     ALLOWED[na++] = pc;
   }
   if (!na) { for (int i = 0; i < nPool; i++) ALLOWED[i] = &POOL[i]; na = nPool; }
+  for (int i = 0; i < na; i++) FITS[i] = ALLOWED[i];
+  nFits = na;
   if (opt(O_REFRETURN)) {
     int nk = 0;
     for (int i = 0; i < na; i++) {
@@ -2123,7 +2131,7 @@ static Dec waitForDrain(Dec d) {
   }
   BT->counts[C_KEPTHEALTH]++;
   Clr *breakNow = 0, *clearNow = 0;
-  double cnRate = 0, cnVd = 0; int cnTn = 0, cnBk = 0, cnBig = 0, cnCh = 0;
+  double cnRate = 0, cnVd = 0; int cnTn = 0, cnBk = 0; Atk cnAtk = { 0, 0 };
   double *f = BIN + IN_SF;
   for (int i = 0; i < nc; i++) {
     Clr *cl = &CLEARS[i];
@@ -2144,12 +2152,12 @@ static Dec waitForDrain(Dec d) {
     int bk = cl->masks && hasGarbage(cl->masks) && paWork + BREAKWORK < optLine() && breakWithin(cl->masks, stop);
     int tn = r->total, st = cl->future || steady(cl->sr, cl->sc, dmax(cl->moveFrames, k - 2)),
         cnSt = clearNow && (clearNow->future || steady(clearNow->sr, clearNow->sc, dmax(clearNow->moveFrames, k - 2)));
-    if (clearNow && st != cnSt) { if (st) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnBig = r->biggest; cnCh = r->chain >= 2 ? r->chain : 0; } continue; }
-    if (clearNow && bk != cnBk) { if (bk) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnBig = r->biggest; cnCh = r->chain >= 2 ? r->chain : 0; } continue; }
+    if (clearNow && st != cnSt) { if (st) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnAtk = atkOfRes(r); } continue; }
+    if (clearNow && bk != cnBk) { if (bk) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnAtk = atkOfRes(r); } continue; }
     // of the clears that fit, an attack (a combo of four or more, a chain) comes first, by the one rule (attackFirst)
-    int atk = clearNow ? attackFirst(r->biggest, r->chain >= 2 ? r->chain : 0, cnBig, cnCh) : 0;
-    if (atk) { if (atk > 0) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnBig = r->biggest; cnCh = r->chain >= 2 ? r->chain : 0; } continue; }
-    if (!clearNow || tn < cnTn || (tn == cnTn && (vd < cnVd || (vd == cnVd && rate > cnRate)))) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnBig = r->biggest; cnCh = r->chain >= 2 ? r->chain : 0; }
+    int atk = clearNow ? attackFirst(atkOfRes(r), cnAtk) : 0;
+    if (atk) { if (atk > 0) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnAtk = atkOfRes(r); } continue; }
+    if (!clearNow || tn < cnTn || (tn == cnTn && (vd < cnVd || (vd == cnVd && rate > cnRate)))) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnAtk = atkOfRes(r); }
   }
   if (breakNow && !breakNow->future) return mkSwap(breakNow->sr, breakNow->sc, V_BREAK, d.mode, d.alive);
   if (breakNow) return HOLDAT(breakNow->sr, breakNow->sc);
@@ -3857,10 +3865,10 @@ static Dec stayAlive(Dec d) {
 // the slab to come) is life lost, so the rank holds a clear that digs under a pile. Each is judged on the
 // engine (lineJudge, which keeps to the work there is); one it cannot judge is
 // not weighed, and a decision it cannot judge stands.
-typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, clears, stall, size, chain, die, conv, hollow, pri; double life, soon; } Opt;
+typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, plain, clears, stall, size, chain, die, conv, hollow, pri; double life, soon; } Opt;
 static int optJudge(Opt *o) {
   int last = 0, spent = 0;
-  o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = o->early = o->clears = o->size = o->chain = 0;
+  o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = o->early = o->plain = o->clears = o->size = o->chain = 0;
   if (o->d.kind == K_HOLD) {
     o->die = aloneDie(1 << 20);
     o->hollow = aloneOnEngine() ? HOLLOW(LNA) : 0;
@@ -3882,7 +3890,9 @@ static int optJudge(Opt *o) {
     o->cash = (o->chain || comboWorth(o->size) >= 0) && (!aloneOnEngine() || o->hollow <= HOLLOW(LNA));
     // a clear that breaks nothing, is no combo and fills nothing under the garbage (less hollow than the board
     // left alone), before it is due (clearDue), is a spend the board does not need yet
-    o->early = !o->breaks && !o->cash && LNO[3] > LNA[3] && (!aloneOnEngine() || o->hollow >= HOLLOW(LNA)) && !clearDue(o->sw, o->n, 0);
+    // a plain clear: it clears, breaks nothing, is no combo or chain and fills nothing under the garbage -- a last resort
+    o->plain = !o->breaks && !o->cash && LNO[3] > LNA[3] && (!aloneOnEngine() || o->hollow >= HOLLOW(LNA));
+    o->early = o->plain && !clearDue(o->sw, o->n, 0);
   }
   o->life = lifeOf(o->die, last, o->hollow, spent);
   return 1;
@@ -3923,12 +3933,14 @@ static int optRank(Opt *a, Opt *b) {
   // line that takes longer to finish still outlives a hold that dies first
   int da = a->die < LIVEHORIZON ? a->die : LIVEHORIZON, db = b->die < LIVEHORIZON ? b->die : LIVEHORIZON;
   if (da != db) return da > db ? 1 : -1;
+  // a plain clear is the last resort: it ranks below any option that lives as long
+  if (ka && a->plain != b->plain) return a->plain ? -1 : 1;
   // no break to make yet: the one that brings the break soonest (setup), then
   // the longer life (the stop time a clear buys less the material it spends),
   // then a combo or a chain
   // a break sooner by more than NEXTMOVE: less is the walk's own movement, and the target stands
   if (ka) { double sa = optSoon(a), sb = optSoon(b), gap = sa > sb ? sa - sb : sb - sa; if (sa != sb && !(gap <= NEXTMOVE)) return sa < sb ? 1 : -1; }
-  if (a->cash && b->cash) { int w = attackCmp(a->size, a->chain, b->size, b->chain); if (w) return w; }
+  if (a->cash && b->cash) { int w = attackCmp(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
   if (a->life != b->life) return a->life > b->life ? 1 : -1;
   if (a->cash != b->cash) return a->cash > b->cash ? 1 : -1;
   if (a->conv != b->conv) return a->conv > b->conv ? 1 : -1;
@@ -3957,6 +3969,37 @@ static int sparesLine(const int32_t *line, int n, int r, int c) {
 static int sparesSetups(int r, int c) {
   return sparesLine(BT->line, BT->nLine, r, c) && sparesLine(BT->tgt, BT->tgtN, r, c)
       && (!BT->plan.has || sparesLine(BT->plan.mv, BT->plan.n, r, c)) && (!BT->attack.has || sparesLine(BT->attack.mv, BT->attack.n, r, c));
+}
+// THE ATTACKS ARE OPTIONS: every swap the pool holds that makes a combo (a match of four or more) or a chain is a
+// candidate, not only the one a stage picked; the ATTACKOPTS best by attackCmp are weighed beside the rest, each judged
+// on the engine like any option.
+#define ATTACKOPTS 2
+static int attackOptions(Opt *O, int n, Dec d) {
+  int at[ATTACKOPTS], na = 0;
+  for (int i = 0; i < nFits; i++) {
+    Cand *c = FITS[i];
+    if (c->kind != K_SWAP || c->res.broke) continue;
+    Atk k = atkOfRes(&c->res);
+    if (!isAttack(k)) continue;
+    int taken = 0;
+    for (int k = 0; k < n; k++) if (O[k].d.kind == K_SWAP && O[k].d.sr == c->sr && O[k].d.sc == c->sc) taken = 1;
+    if (taken) continue;
+    int j = na < ATTACKOPTS ? na++ : na;
+    if (j == ATTACKOPTS) {
+      if (attackCmp(k, atkOfRes(&FITS[at[ATTACKOPTS - 1]]->res)) <= 0) continue;
+      j = ATTACKOPTS - 1;
+    }
+    while (j > 0 && attackCmp(k, atkOfRes(&FITS[at[j - 1]]->res)) > 0) { at[j] = at[j - 1]; j--; }
+    at[j] = i;
+  }
+  for (int j = 0; j < na; j++) {
+    Cand *c = FITS[at[j]];
+    Opt *o = &O[n];
+    o->d = mkSwap(c->sr, c->sc, V_BESTATTACK, d.mode, d.alive);
+    o->n = 1; o->wait = 0; o->sw[0] = c->sr; o->sw[1] = c->sc; o->pri = 2;
+    if (optJudge(o)) n++;
+  }
+  return n;
 }
 static int setupOptions(Opt *O, int n, Dec d) {
   double base = setupKey(DBASE), key[SETUPOPTS]; int at[SETUPOPTS], na = 0;
@@ -3993,7 +4036,7 @@ static int getsBackInTime(const Opt *o, const int32_t *line, int n) {
 }
 static Dec arbitrate(Dec d) {
   if (!((d.kind == K_SWAP && d.hasMove) || d.kind == K_HOLD)) return d;   // a raise: raiseMode's own rules
-  Opt O[4 + SETUPOPTS]; int n = 0, at = -1;
+  Opt O[4 + ATTACKOPTS + SETUPOPTS]; int n = 0, at = -1;
   memset(O, 0, sizeof O);
   // the target the walk was on, still ahead of the decision
   int hasT = d.kind == K_SWAP && BT->tgtN && BT->nNotes == BT->tgtPresses && !(d.sr == BT->tgt[0] && d.sc == BT->tgt[1]);
@@ -4031,6 +4074,7 @@ static Dec arbitrate(Dec d) {
   }
   int setupAt = 1 << 20;   // the first of the setup options, if any
   { int breaking = 0; for (int i = 0; i < n; i++) if (O[i].breaks) breaking = 1;
+    if (!breaking && aloneOnEngine()) n = attackOptions(O, n, d);
     if (!breaking && aloneOnEngine() && (d.kind == K_HOLD || O[at].early)) { setupAt = n; n = setupOptions(O, n, d); } }
   // the line that saves the board: what an option must still be able to play after it (getsBackInTime)
   int32_t sv[2 * LINEMAX]; int sn = 0;

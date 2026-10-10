@@ -279,7 +279,9 @@ ways: a tool not listed, or a path listed that doesn't exist.
   option that lives until it is due (`clearDue`), a break in reach when the next slab lands (none queued: a
   slab the width of the board on the stack, `waveReady`; the engine's one
   readiness, `readyInTime`, the masks' only to propose), the later loss
-  of health inside `LIVEHORIZON`, the soonest break after it (`breakTime`:
+  of health inside `LIVEHORIZON`, a plain clear last (it clears, breaks nothing,
+  is no combo or chain and fills nothing under garbage: `plain`, ranked below
+  any option that lives as long), the soonest break after it (`breakTime`:
   setup), life (what it buys once done, hollow and material spent costed
   and material converted credited, a cell a sixth of a row's rise, a panel
   worth more the fewer the board is left with, `panelWorth`), a combo
@@ -297,7 +299,10 @@ ways: a tool not listed, or a path listed that doesn't exist.
   **Anything that fits the time is weighed by what it is worth, never by how
   soon it is done** (`bestPlan`, `bestAttack`: `Pick.key`); only when nothing
   fits is the soonest taken. In `bestPlan` an attack (`attackFirst`) comes
-  before a clear that is neither. **Idle time is for setups**: with no break in
+  before a clear that is neither. The arbiter is also handed the attacks the
+  stages did not pick (`attackOptions`: the `ATTACKOPTS` best swaps that make a combo of
+  four or more or a chain, by `attackCmp`, of those the stages' own rules let
+  through -- `FITS`: not refused, not too early, in time). **Idle time is for setups**: with no break in
   reach, `setupOptions` adds the swaps that clear nothing and make more
   vertical twos, then flatter, as options beside the hold. A setup must spare
   every saved line (`sparesSetups`: the kept line, target, plan and attack play
