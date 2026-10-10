@@ -46,6 +46,6 @@ d, h, msg, summ = sys.argv[1:5]
 sd = subprocess.run(['python3', 'scandiff.py', d], capture_output=True, text=True).stdout.strip().split('\n')
 json.dump(['Scan of %s (%s). %s' % (h, msg, sd[0]), sd[1] if len(sd) > 1 else '', summ], open(d + '/findings.json', 'w'))
 PY2
-python3 flip.py $D | head -2; python3 gates.py $D; python3 landings.py $D | sed -n '1,2p;4,10p'; python3 deathspend.py $D; python3 look.py $D
+python3 flip.py $D | head -2; python3 gates.py $D; python3 landings.py $D | sed -n '1,2p;4,10p'; python3 deathspend.py $D
 python3 viz/build.py $D "$(git rev-parse --show-toplevel)/games/the-game/ai/eval/survival_scans.tsv" viz/template.html $S/death-patterns.html
 echo "DIR $D"

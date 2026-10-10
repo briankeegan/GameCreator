@@ -16,7 +16,5 @@ Work files (scans, the git lock, the page) live in `$GC_WORK`
 - `flip.py`, `gates.py`, `landings.py`, `deathspend.py`: decision flips, raise
   gates, landings by material and the readiness read before each, what spent material before each death
 - `slip.py DIR 900`: in each death's last 900 frames, options judged and not played
-- `look.py LOG LO HI`: breaks one or two swaps away on a death's boards, each
-  frame, and whether the bot decided that frame; `look.py DIR`: every death's
-  last 600 frames, the frames with a break in reach the bot did not decide on
+- `look.py LOG LO HI`: breaks one or two swaps away on a death's boards
 - `openready.py DIR`: was the board ready before the first wave
