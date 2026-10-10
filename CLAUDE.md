@@ -279,8 +279,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   option that lives until it is due (`clearDue`), a break in reach when the next slab lands (none queued: a
   slab the width of the board on the stack, `waveReady`; the engine's one
   readiness, `readyInTime`, the masks' only to propose), the later loss
-  of health inside `LIVEHORIZON`, of two breaks the combo or chain before a plain
-  three (`attackFirst`), a plain clear last (it clears, breaks nothing,
+  of health inside `LIVEHORIZON`, a plain clear last (it clears, breaks nothing,
   is no combo or chain and fills nothing under garbage: `plain`, ranked below
   any option that lives as long -- unless the board it settles to reaches a
   combo or chain in the time there is, `optAhead`: the first clear starts it), the soonest break after it (`breakTime`:
@@ -305,8 +304,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   stages did not pick (`attackOptions`: the `ATTACKOPTS` best swaps that make a combo of
   four or more or a chain, by `attackCmp`, of those the stages' own rules let
   through -- `FITS`: not refused, not too early, in time). **Idle time is for setups**: with no break in
-  reach, and the board left alone losing no health within `LIVEHORIZON` or a saving
-  line for the setup to fit before, `setupOptions` adds the swaps that clear nothing and make more
+  reach and the board left alone losing no health within `LIVEHORIZON`, `setupOptions` adds the swaps that clear nothing and make more
   vertical twos, then flatter, as options beside the hold. A setup must spare
   every saved line (`sparesSetups`: the kept line, target, plan and attack play
   out as well after it), must get back in time to stayAlive's line
@@ -317,9 +315,10 @@ ways: a tool not listed, or a path listed that doesn't exist.
   `attackFirst`), then the one with more vertical twos; the rule
   compares only a setup with the hold or another setup -- a fill or a levelling
   swap is ranked by life and hollow.
-  **The scramble**, a last resort: when the board left alone loses health
-  (`boardDying`) and no other option outlives it, the best combo or chain any
-  line reaches in the time there is is an option too (`reachOption`: the whole line judged on the
+  **The scramble**, a last resort: while a stop runs on a board that loses health
+  within `LINEHORIZON` (`stopInDanger`) and no other option outlives the board
+  left alone, the best combo or chain any line reaches in the time there is is an
+  option too (`reachOption`: the whole line judged on the
   engine, played on once chosen), and an option that makes one ranks before life.
   A clear that fills hollow under the garbage is not `early`.
 - **Every decision fits the game's think budget, and every press its input
