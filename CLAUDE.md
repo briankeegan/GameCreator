@@ -315,6 +315,10 @@ ways: a tool not listed, or a path listed that doesn't exist.
   `attackFirst`), then the one with more vertical twos; the rule
   compares only a setup with the hold or another setup -- a fill or a levelling
   swap is ranked by life and hollow.
+  **The scramble**: while a stop runs on a board that loses health within
+  `LINEHORIZON` (`stopInDanger`), the best combo or chain any line reaches in the
+  time there is is an option too (`reachOption`: the whole line judged on the
+  engine, played on once chosen), and an option that makes one ranks before life.
   A clear that fills hollow under the garbage is not `early`.
 - **Every decision fits the game's think budget, and every press its input
   budget.** The game holds a computer player to 8 ms of thinking a frame
