@@ -3968,7 +3968,9 @@ static int optRank(Opt *a, Opt *b) {
   // a break sooner by more than NEXTMOVE: less is the walk's own movement, and the target stands
   if (ka) { double sa = optSoon(a), sb = optSoon(b), gap = sa > sb ? sa - sb : sb - sa; if (sa != sb && !(gap <= NEXTMOVE)) return sa < sb ? 1 : -1; }
   // two options that clear nothing (the hold, the setups): the one that leaves the better attack one swap away -- a setup is pressed for that reason alone
-  if (ka && !a->clears && !a->breaks && !a->cash && !b->clears && !b->breaks && !b->cash) {
+  // only a setup against the hold or another setup: any other swap that clears nothing (a fill, a levelling) is ranked by life and hollow
+  if (ka && !a->clears && !a->breaks && !a->cash && !b->clears && !b->breaks && !b->cash && (a->stall || b->stall)
+      && (a->stall || a->d.kind == K_HOLD) && (b->stall || b->d.kind == K_HOLD)) {
     optAhead(a); optAhead(b);
     int w = attackFirst(a->ahead, b->ahead); if (w) return w;
   }
