@@ -3499,12 +3499,15 @@ static int bbFound, bbLastN; static double bbLastEst;   // bestBreak: how many l
 // pile it does not convert out of reach; among the same, the one that
 // converts the most.
 static int readyInTime(const int32_t *sw, int n, int *br, int *bc);
-// THE ONE ORDER LINES ARE RANKED IN, best first: the one that leaves a break in
-// reach when the next slab lands (rdy; the slab it is ready for is what
-// kills), then the one that loses health later (life: hollow costed), then the
+// THE ONE ORDER LINES ARE RANKED IN, best first, as arbitrate ranks them: the
+// one the engine says breaks, then the one that leaves a break in reach when
+// the next slab lands (rdy; the slab it is ready for is what kills), then the
+// one that loses health later (life: hollow and material costed), then the
 // one that converts more garbage, then the less hollow, then the sooner done.
 // 1: a is better, -1: b is; two different lines are never equal.
+static int judgedBreaks(const LineC *l) { return l->verdict >= 0 && (l->verdict & LV_BREAKS); }
 static int lineRank(const LineC *a, int ra, const LineC *b, int rb) {
+  if (judgedBreaks(a) != judgedBreaks(b)) return judgedBreaks(a) ? 1 : -1;
   if (ra != rb) return ra > rb ? 1 : -1;
   if (a->life != b->life) return a->life > b->life ? 1 : -1;
   if (a->conv != b->conv) return a->conv > b->conv ? 1 : -1;
