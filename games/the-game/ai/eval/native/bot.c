@@ -3857,10 +3857,10 @@ static Dec stayAlive(Dec d) {
 // the slab to come) is life lost, so the rank holds a clear that digs under a pile. Each is judged on the
 // engine (lineJudge, which keeps to the work there is); one it cannot judge is
 // not weighed, and a decision it cannot judge stands.
-typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, clears, stall, size, chain, die, conv, hollow, pri; double life, soon; } Opt;
+typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, plain, clears, stall, size, chain, die, conv, hollow, pri; double life, soon; } Opt;
 static int optJudge(Opt *o) {
   int last = 0, spent = 0;
-  o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = o->early = o->clears = o->size = o->chain = 0;
+  o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = o->early = o->plain = o->clears = o->size = o->chain = 0;
   if (o->d.kind == K_HOLD) {
     o->die = aloneDie(1 << 20);
     o->hollow = aloneOnEngine() ? HOLLOW(LNA) : 0;
@@ -3882,7 +3882,9 @@ static int optJudge(Opt *o) {
     o->cash = (o->chain || comboWorth(o->size) >= 0) && (!aloneOnEngine() || o->hollow <= HOLLOW(LNA));
     // a clear that breaks nothing, is no combo and fills nothing under the garbage (less hollow than the board
     // left alone), before it is due (clearDue), is a spend the board does not need yet
-    o->early = !o->breaks && !o->cash && LNO[3] > LNA[3] && (!aloneOnEngine() || o->hollow >= HOLLOW(LNA)) && !clearDue(o->sw, o->n, 0);
+    // a plain clear: it clears, breaks nothing, is no combo or chain and fills nothing under the garbage -- a last resort
+    o->plain = !o->breaks && !o->cash && LNO[3] > LNA[3] && (!aloneOnEngine() || o->hollow >= HOLLOW(LNA));
+    o->early = o->plain && !clearDue(o->sw, o->n, 0);
   }
   o->life = lifeOf(o->die, last, o->hollow, spent);
   return 1;
@@ -3923,6 +3925,8 @@ static int optRank(Opt *a, Opt *b) {
   // line that takes longer to finish still outlives a hold that dies first
   int da = a->die < LIVEHORIZON ? a->die : LIVEHORIZON, db = b->die < LIVEHORIZON ? b->die : LIVEHORIZON;
   if (da != db) return da > db ? 1 : -1;
+  // a plain clear is the last resort: it ranks below any option that lives as long
+  if (ka && a->plain != b->plain) return a->plain ? -1 : 1;
   // no break to make yet: the one that brings the break soonest (setup), then
   // the longer life (the stop time a clear buys less the material it spends),
   // then a combo or a chain
