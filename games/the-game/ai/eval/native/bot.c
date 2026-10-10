@@ -3962,6 +3962,38 @@ static int sparesSetups(int r, int c) {
   return sparesLine(BT->line, BT->nLine, r, c) && sparesLine(BT->tgt, BT->tgtN, r, c)
       && (!BT->plan.has || sparesLine(BT->plan.mv, BT->plan.n, r, c)) && (!BT->attack.has || sparesLine(BT->attack.mv, BT->attack.n, r, c));
 }
+// THE ATTACKS ARE OPTIONS: every swap the pool holds that makes a combo (a match of four or more) or a chain is a
+// candidate, not only the one a stage picked; the ATTACKOPTS best by attackCmp are weighed beside the rest, each judged
+// on the engine like any option.
+#define ATTACKOPTS 2
+static int attackOptions(Opt *O, int n, Dec d) {
+  int at[ATTACKOPTS], na = 0;
+  for (int i = 0; i < nPool; i++) {
+    Cand *c = &POOL[i];
+    if (c->kind != K_SWAP || c->res.broke) continue;
+    int ch = c->res.chain >= 2 ? c->res.chain : 0, sz = c->res.biggest;
+    if (!ch && comboWorth(sz) < 0) continue;
+    int taken = 0;
+    for (int k = 0; k < n; k++) if (O[k].d.kind == K_SWAP && O[k].d.sr == c->sr && O[k].d.sc == c->sc) taken = 1;
+    if (taken) continue;
+    int j = na < ATTACKOPTS ? na++ : na;
+    if (j == ATTACKOPTS) {
+      Cand *w = &POOL[at[ATTACKOPTS - 1]];
+      if (attackCmp(sz, ch, w->res.biggest, w->res.chain >= 2 ? w->res.chain : 0) <= 0) continue;
+      j = ATTACKOPTS - 1;
+    }
+    while (j > 0) { Cand *p = &POOL[at[j - 1]]; if (attackCmp(sz, ch, p->res.biggest, p->res.chain >= 2 ? p->res.chain : 0) <= 0) break; at[j] = at[j - 1]; j--; }
+    at[j] = i;
+  }
+  for (int j = 0; j < na; j++) {
+    Cand *c = &POOL[at[j]];
+    Opt *o = &O[n];
+    o->d = mkSwap(c->sr, c->sc, V_BESTATTACK, d.mode, d.alive);
+    o->n = 1; o->wait = 0; o->sw[0] = c->sr; o->sw[1] = c->sc; o->pri = 2;
+    if (optJudge(o)) n++;
+  }
+  return n;
+}
 static int setupOptions(Opt *O, int n, Dec d) {
   double base = setupKey(DBASE), key[SETUPOPTS]; int at[SETUPOPTS], na = 0;
   for (int i = 0; i < nPool; i++) {
@@ -3997,7 +4029,7 @@ static int getsBackInTime(const Opt *o, const int32_t *line, int n) {
 }
 static Dec arbitrate(Dec d) {
   if (!((d.kind == K_SWAP && d.hasMove) || d.kind == K_HOLD)) return d;   // a raise: raiseMode's own rules
-  Opt O[4 + SETUPOPTS]; int n = 0, at = -1;
+  Opt O[4 + ATTACKOPTS + SETUPOPTS]; int n = 0, at = -1;
   memset(O, 0, sizeof O);
   // the target the walk was on, still ahead of the decision
   int hasT = d.kind == K_SWAP && BT->tgtN && BT->nNotes == BT->tgtPresses && !(d.sr == BT->tgt[0] && d.sc == BT->tgt[1]);
@@ -4035,6 +4067,7 @@ static Dec arbitrate(Dec d) {
   }
   int setupAt = 1 << 20;   // the first of the setup options, if any
   { int breaking = 0; for (int i = 0; i < n; i++) if (O[i].breaks) breaking = 1;
+    if (!breaking && aloneOnEngine()) n = attackOptions(O, n, d);
     if (!breaking && aloneOnEngine() && (d.kind == K_HOLD || O[at].early)) { setupAt = n; n = setupOptions(O, n, d); } }
   // the line that saves the board: what an option must still be able to play after it (getsBackInTime)
   int32_t sv[2 * LINEMAX]; int sn = 0;
