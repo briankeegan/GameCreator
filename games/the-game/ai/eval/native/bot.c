@@ -3926,13 +3926,13 @@ static double optSoon(Opt *o) {
 // (attackFirst), and its vertical twos (twosOf). Read once, and only while the decision has work left.
 static int twosOf(const int32_t *st);
 #define REACHWORK 6000   // the share of the decision's work one option's reach search may spend
-typedef struct { Atk best; } ReachCtx;
+typedef struct { Atk best; int n; int32_t sw[2 * LINEMAX]; } ReachCtx;   // the best attack found, and the line that reaches it
 static int sitReach(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
-  ReachCtx *x = ctx; (void)sw; (void)n; (void)at;
+  ReachCtx *x = ctx; (void)at;
   if (res[R_SCOPE] != SC_OK) return SIT_END;   // a break is the break stages'
   if (res[R_TOTAL] > 0) {
     Atk k = atkOf(res[R_ROUNDS] == 1 ? res[R_TOTAL] : 0, res[R_CHAIN]);
-    if (isAttack(k) && attackFirst(k, x->best) > 0) x->best = k;
+    if (isAttack(k) && attackFirst(k, x->best) > 0 && n <= LINEMAX) { x->best = k; x->n = n; for (int q = 0; q < 2 * n; q++) x->sw[q] = sw[q]; }
     return SIT_END;   // a clear ends the line
   }
   return SIT_GROW;
@@ -3950,6 +3950,25 @@ static void optAhead(Opt *o) {
   double work = optLine() - paWork; if (work > REACHWORK) work = REACHWORK;
   searchInTime(st, cur[0], cur[1], t, 0, timeLeft(), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can, w, work, sitReach, &rx, 0, 0, 0);
   o->ahead = rx.best;
+}
+// THE SCRAMBLE: while a stop runs on a board that loses health within the judge's horizon, the best combo or chain
+// any line reaches in the time there is -- the freeze a clear bought, spent on continuing it -- is an option, the whole
+// line judged on the engine and played on once chosen.
+static int stopInDanger(void) { return BIN[IN_STOP] > 0 && aloneOnEngine() && aloneDie(1 << 20) < LINEHORIZON; }
+static int reachOption(Opt *O, int n, Dec d) {
+  extern PATLS double paWork;
+  if (!BIN[IN_HASPA] || paWork >= optLine()) return n;
+  static ST st; int32_t cur[2], t; uint32_t can[WMAX]; uint8_t w[32][WMAX];
+  if (lineState(0, 0, st, can, w, cur, &t) != 0) return n;
+  static ReachCtx rx; rx.best = atkOf(0, 0); rx.n = 0;
+  double work = optLine() - paWork; if (work > REACHWORK) work = REACHWORK;
+  searchInTime(st, cur[0], cur[1], t, 0, timeLeft(), 1, can, w, work, sitReach, &rx, 0, 0, 0);
+  if (!rx.n) return n;
+  Opt *o = &O[n];
+  o->d = mkSwap(rx.sw[0], rx.sw[1], V_BESTATTACK, d.mode, d.alive);
+  o->n = rx.n; o->wait = 0; o->pri = 2;
+  for (int q = 0; q < 2 * rx.n; q++) o->sw[q] = rx.sw[q];
+  return optJudge(o) ? n + 1 : n;
 }
 // A PLAIN CLEAR THAT OPENS AN ATTACK IS NOT PLAIN: the board it settles to reaches a combo or a chain in the time there
 // is (the first clear starts it, the rest is set up on what falls), so it is not a last resort.
@@ -3983,6 +4002,7 @@ static int optRank(Opt *a, Opt *b) {
     if (a->twos != b->twos) return a->twos > b->twos ? 1 : -1;
   }
   if (a->cash && b->cash) { int w = attackCmp(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
+  if (ka && a->cash != b->cash && stopInDanger()) return a->cash > b->cash ? 1 : -1;   // the freeze is spent continuing the chain
   if (a->life != b->life) return a->life > b->life ? 1 : -1;
   if (a->cash != b->cash) return a->cash > b->cash ? 1 : -1;
   if (a->conv != b->conv) return a->conv > b->conv ? 1 : -1;
@@ -4078,7 +4098,7 @@ static int getsBackInTime(const Opt *o, const int32_t *line, int n) {
 }
 static Dec arbitrate(Dec d) {
   if (!((d.kind == K_SWAP && d.hasMove) || d.kind == K_HOLD)) return d;   // a raise: raiseMode's own rules
-  Opt O[4 + ATTACKOPTS + SETUPOPTS]; int n = 0, at = -1;
+  Opt O[5 + ATTACKOPTS + SETUPOPTS]; int n = 0, at = -1, ra = -1;
   memset(O, 0, sizeof O);
   // the target the walk was on, still ahead of the decision
   int hasT = d.kind == K_SWAP && BT->tgtN && BT->nNotes == BT->tgtPresses && !(d.sr == BT->tgt[0] && d.sc == BT->tgt[1]);
@@ -4117,6 +4137,7 @@ static Dec arbitrate(Dec d) {
   int setupAt = 1 << 20;   // the first of the setup options, if any
   { int breaking = 0; for (int i = 0; i < n; i++) if (O[i].breaks) breaking = 1;
     if (!breaking && aloneOnEngine()) n = attackOptions(O, n, d);
+    if (!breaking && stopInDanger()) { int before = n; n = reachOption(O, n, d); if (n > before) ra = before; }
     // downtime: the board left alone loses no health within the horizon
     if (!breaking && aloneOnEngine() && aloneDie(1 << 20) > LIVEHORIZON && (d.kind == K_HOLD || O[at].early)) { setupAt = n; n = setupOptions(O, n, d); } }
   // the line that saves the board: what an option must still be able to play after it (getsBackInTime)
@@ -4146,7 +4167,8 @@ static Dec arbitrate(Dec d) {
       b->lives, b->breaks, b->rdyKnown ? b->rdy : -1, b->die, b->soonKnown ? b->soon : -1.0, b->cash, b->life, b->hollow,
       O[at].lives, O[at].breaks, O[at].rdyKnown ? O[at].rdy : -1, O[at].die, O[at].soonKnown ? O[at].soon : -1.0, O[at].cash, O[at].life, O[at].hollow); }
 #endif
-  if (best == ia) lineSet(saLine, saN, saKind, saWait);
+  if (best == ra) { if (O[best].n > 1) lineSet(O[best].sw, O[best].n, LINE_CASH, 0); else BT->nLine = 0; }
+  else if (best == ia) lineSet(saLine, saN, saKind, saWait);
   else if (best == ih || best >= setupAt) BT->nLine = 0;
   else if (BT->tgtN > 1) lineSet(BT->tgt, BT->tgtN, BT->tgtKind, BT->tgtWait);
   else BT->nLine = 0;
