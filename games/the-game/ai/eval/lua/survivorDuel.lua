@@ -171,6 +171,7 @@ local died = a:game_ended() and "WasmSurvivor" or (b:game_ended() and "opponent"
 local over, worst, dropped = link:budget()
 local ph, ob = link:phases(), link:phases().overBy
 local pt = ph.parts
+print(string.format('BOARD most rows %d, most panels %d; at the slowest panels encode: rows %d panels %d', pt.rows, pt.cells, pt.slowestRows, pt.slowestCells))
 print(string.format('ENCODE worst ms: panels %.1f stack %.1f backlog %.1f incoming %.1f telegraph %.1f', pt.panels * 1000, pt.stack * 1000, pt.backlog * 1000, pt.incoming * 1000, pt.telegraph * 1000))
 print(string.format('PHASES worst ms: encode %.1f send %.1f wait %.1f read %.1f; in over-ceiling frames: encode %.1f send %.1f wait %.1f read %.1f', ph.encode * 1000, ph.send * 1000, ph.wait * 1000, ph.read * 1000, ob.encode * 1000, ob.send * 1000, ob.wait * 1000, ob.read * 1000))
 print(string.format('RESULT {"seed":%d,"frames":%d,"clock":%d,"died":"%s","late":%d,"late2":%d,"handed":%d,"sent":%d,"sent2":%d,"seconds":%.0f,"thinkOver":%d,"thinkWorstMs":%.1f,"inputDropped":%d}',
