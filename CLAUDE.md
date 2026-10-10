@@ -260,8 +260,8 @@ ways: a tool not listed, or a path listed that doesn't exist.
   holds the clock to the engine; `check_time_not_swaps.mjs` fails on a cap
   coming back or a new hand-listed search.
 - **A decision is one ordered choice (`arbitrate`).** The stages propose; the
-  decision they made, the walk's target, stayAlive's choice (or the hold) are
-  judged -- a swap-back always against the hold on the engine and ranked once: breaks the next garbage in time
+  decision they made, the walk's target and stayAlive's choice (or the hold)
+  are judged on the engine and ranked once: breaks the next garbage in time
   (it lives), lives, a break in reach when the next slab lands (none queued: a
   slab the width of the board on the stack, `waveReady`; the engine's one
   readiness, `readyInTime`, the masks' only to propose), the later loss

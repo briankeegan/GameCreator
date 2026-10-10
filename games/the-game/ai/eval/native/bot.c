@@ -3863,8 +3863,8 @@ static Dec arbitrate(Dec d) {
     o->pri = 2;
     if (optJudge(o)) ia = n++;
   }
-  // the board left alone: weighed when stayAlive chose nothing, and against a swap-back, which must beat doing nothing
-  if (d.kind == K_SWAP && aloneOnEngine() && (!saSet || O[at].pri == 3) && !(ia >= 0 && O[ia].d.kind == K_HOLD)) {
+  // the board left alone, when stayAlive chose nothing
+  if (d.kind == K_SWAP && aloneOnEngine() && !saSet) {
     Opt *o = &O[n];
     o->d = mkHold(V_KEEPHEALTH, d.mode, d.alive, 0, 0, 0); o->n = 0;
     o->pri = 2;
@@ -4136,6 +4136,8 @@ static Dec lineupFirst(Dec d) {
 #endif
   if (!B.has) return d;
   if (B.n == 1 && d.kind == K_SWAP && d.hasMove && d.sr == B.sw[0] && d.sc == B.sw[1]) return d;
+  // a lineup that starts by putting back the last press is a line the board before it had: not proposed
+  if (undoesPress(B.sw[0], B.sw[1])) return d;
   // the masks propose the lineup, the engine judges it, as every line
   if (!(lineJudge(B.sw, B.n, 0) & LV_LIVES)) return d;
   lineupLast = (int)B.score;
