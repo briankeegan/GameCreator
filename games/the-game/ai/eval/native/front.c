@@ -39,7 +39,7 @@ typedef struct {
   int park, pRow, pCol, pTimer, pTr, pTc, pDisp;
   int hasLast, lastR, lastC, held;
   double escapeWalk;
-  u64 decidedOn;
+  u64 decidedOn, restOn;   // the board, and its cells at rest, the last decision was made on
   int lastKind, lastVia, lastMoveR, lastMoveC;
   Settle settle;   // the board's cells, when each settles (unsettled), at the last decision
   int wWaitTo, wFrames, wWaitAll, wR0, wKept;
@@ -255,6 +255,22 @@ static int windowOpen(void) {
 }
 static int inFlight(void) { return nb_active(FB) || FB->shakeTime > 0; }
 static int swapLanding(void) { return FB->queuedSwapRow > 0 || FB->swappingCount > 0; }
+// THE CELLS AT REST: what a swap can take and a break can be made from. A
+// cell in motion (swapping, falling, landing, clearing) counts only as busy,
+// so this changes when a cell comes to rest or leaves it, not at each frame
+// of a clear's animation
+static u64 restKey(void) {
+  u64 h = 1469598103934665603ull;
+  int top = FB->height + 2;
+  for (int r = 1; r <= top; r++)
+    for (int c = 1; c <= W; c++) {
+      const int32_t *f = fp(r, c);
+      int rest = f[STATE] == 0 || f[STATE] == 9;
+      h = (h ^ (u64)(rest ? (uint32_t)f[COLOR] + 1 : 0)) * 1099511628211ull;
+      h = (h ^ (u64)(rest && f[ISGARBAGE] ? 'g' : 0)) * 1099511628211ull;
+    }
+  return h;
+}
 static u64 boardKey(void) {
   static const char LETTER[] = { 'n', 'd', 's', 'm', 'p', 'p', 'h', 'f', 'l', 'n' };
   u64 h = 1469598103934665603ull;
@@ -1369,12 +1385,12 @@ static int frontFrame(int fid, Board *b) {
   // wants one. Topped, never: a raise pressed topped is game over (checkDeath).
   F->raiseHeld = F->wantRaise && F->raiseLives && !nb_topped(b) && !nb_falling_garbage(b) && raiseRoomNow() > 0;
   if (F->raiseHeld) input |= IN_RAISE;
-  // A WALK SEES THE BOARD: a cell come to rest, a slab landed or a clear begun
-  // under it is decided again -- a break opened mid-walk is a break in reach.
+  // A WALK SEES THE BOARD: a cell come to rest or gone from it under the walk
+  // (restKey) is decided again -- a break opened mid-walk is a break in reach.
   // The held key stays down while it decides; a walk that goes on the same way
   // keeps it (beginWalk, padHoldGoing).
   if (F->walk) {
-    if (boardKey() == F->decidedOn) return fSend(F, driveWalk(F, input), held);
+    if (restKey() == F->restOn) return fSend(F, driveWalk(F, input), held);
     F->walk = 0; F->cooldown = 0; input |= F->pad.holdKey;
   }
   if (F->park) input = parkStep(F, input);
@@ -1387,7 +1403,7 @@ static int frontFrame(int fid, Board *b) {
     if (!lift) { F->cooldown--; return sent; }
     F->cooldown = 0;
   }
-  F->decidedOn = boardKey();
+  F->decidedOn = boardKey(); F->restOn = restKey();
   FDec d;
   // the held key the decision measures from is the one held before this frame
   int heldNow = F->held;

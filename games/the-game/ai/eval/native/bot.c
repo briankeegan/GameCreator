@@ -213,8 +213,7 @@ static int tallestBoard(const int32_t *st) {
 }
 // MATERIAL: the panels whose colours are known. A break's cells are not
 // material until their colours are dealt -- unseen, they match nothing and
-// may cascade away when they show (leavesSixRows reads the judge's count of
-// the same).
+// may cascade away when they show.
 static double materialRows(const int32_t *st) {
   int n = 0;
   for (int c = 1; c <= BW; c++) {
@@ -3612,11 +3611,16 @@ __attribute__((export_name("bot_keepbreak"))) int32_t bot_keepbreak(void) { retu
 static int readyAfterSpend(const int32_t *sw, int n);
 static int aloneOnEngine(void);
 static int nonSpendLives(void);
-// SIX ROWS LEFT: the panels the judged line ends with (LNO[12]: those whose
-// colours are known -- a converted cell's colour is unseen until it shows,
-// and may cascade away) make six rows. The one test of whether a spend leaves
-// the board its working material.
-static int leavesSixRows(void) { return (double)LNO[12] / BW >= 6; }
+// A CLEAR THAT BREAKS NOTHING IS PRESSED ONLY WHEN IT IS DUE: material is
+// spent to break, or to live at the last moment it can -- while the board
+// left alone outlives the clear's last press (`last`, frames from now) and a
+// reaction, it waits, and a break may come first. The one test, for every
+// route that clears to live.
+static int clearDue(double last) {
+  if (!aloneOnEngine()) return 1;
+  if (!LNA[0]) return 0;
+  return LNA[0] <= last + REACT + NEXTMOVE;
+}
 // A SPEND THAT KEEPS A WAITING RAISE OUT: a clear holds the rise lock and
 // renews the stop, so while a raise for material waits on either, a spend
 // under six rows with no break ready may only if the board left alone loses
@@ -3655,10 +3659,10 @@ static Dec playOn(Dec d) {
     BT->nLine = 0; return d; }
   playDie = lnoDie(LNO); playLife = lifeOf(playDie, LNO[1], HOLLOW(LNO), spentOf());
   // A PLAN SPENDS AS EVERY CHOICE DOES: what is left of a plan line that
-  // clears, leaves under six rows and no break ready is dropped -- unless the
+  // clears without breaking and leaves no break ready is dropped -- unless the
   // board left alone dies and the line buys time: it loses health later. A
   // spend that dies as soon only spends the material the next break needs.
-  if (BT->lineKind == LINE_PLAN && (v & LV_PAYS) && !(v & LV_BREAKS) && !leavesSixRows()) {
+  if (BT->lineKind == LINE_PLAN && (v & LV_PAYS) && !(v & LV_BREAKS)) {
     int32_t keepO[LNOLEN]; for (int q = 0; q < LNOLEN; q++) keepO[q] = LNO[q];
     int buys = aloneOnEngine() && LNA[0] && (!keepO[0] || keepO[0] > LNA[0]);
     int ok = readyAfterSpend(BT->line, BT->nLine) || (buys && !nonSpendLives() && !spendKeepsRaiseOut());
@@ -3763,6 +3767,7 @@ static Dec stayAlive(Dec d) {
   // every frame the board waits is a frame garbage drops on it -- the line that
   // lives longest is played now
   if (!l) return d;
+  if (!judgedBreaks(l) && l->verdict >= 0 && (l->verdict & LV_PAYS) && !clearDue(l->est)) return d;
   lineLast = 2;
   BT->counts[C_KEPTHEALTH]++;
   plansDrop();
@@ -4515,9 +4520,6 @@ static Dec noStall(Dec d) {
   int v = lineJudge(sw, 1, 0);
   if (!(v & LV_PAYS) || (v & (LV_BREAKS | LV_FILLS))) return d;   // a clear that readies the landing is no stall
   if (hasGarbage(DBASE) && !(HOLLOW(LNO) > HOLLOW(LNA))) return d;
-  // over six rows the material is there to spend: shaping the board and
-  // buying time with it is the six-row rule's to allow
-  if (leavesSixRows()) return d;
   // and a pile not yet broken with a board not ready for the next slab needs
   // the time: the next slab would only stack on it, so the clear buys the
   // stop in which the break is found. With nothing on the board the slab
@@ -4719,7 +4721,7 @@ static Dec spendToBreak(Dec d) {
 #endif
   // garbage let down is never held: it lowers the stack
   if (!(v & LV_LIVES) || !(v & LV_PAYS) || (v & (LV_BREAKS | LV_DROPS))) return d;
-  if (v & LV_GAINS) { int32_t k[LNOLEN]; for (int q = 0; q < LNOLEN; q++) k[q] = LNO[q]; int dies = aloneDiesBeforeLanding(); for (int q = 0; q < LNOLEN; q++) LNO[q] = k[q]; if (dies) return d; }
+  if ((v & LV_GAINS) && clearDue(LNO[1])) return d;
   // however much the board holds: in a storm the stack does not rise, and a
   // break is the only material that comes back
   BT->nLine = 0; lineLast = 0;
@@ -5080,7 +5082,7 @@ static Dec fillFirstIn(Dec d) {
     Cand *pc = &POOL[fq[q]];
     int32_t sw[2] = { pc->sr, pc->sc };
     int v = lineJudge(sw, 1, 0);
-    int spend = (v & LV_PAYS) && !leavesSixRows();
+    int spend = (v & LV_PAYS) != 0;
 #ifndef __wasm__
 #define FILLWHY(why) do { if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  pool %d,%d v %d die %d last %d hollow %d spend %d -> %s\n", sw[0], sw[1], v, LNO[0], LNO[1], HOLLOW(LNO), spend, why); } } while (0)
 #else
@@ -5145,7 +5147,7 @@ static Dec fillFirstIn(Dec d) {
 #ifndef __wasm__
       if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  walk %d,%d dir %d n %d v %d hollow %d die %d last %d\n", r, c, dir, n, v, HOLLOW(LNO), LNO[0], LNO[1]); }
 #endif
-      int spend = (v & LV_PAYS) && !leavesSixRows();
+      int spend = (v & LV_PAYS) != 0;
       if (!(v & LV_LIVES) || (spend && !LIVES_LONGER())) continue;
       // its time: the engine's own last press (it has just played it); the clock where it could not
       double est = LNO[1] > 0 ? pressSeen(LNO[1]) : lineFrames(fsw, n, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, BIN[IN_TOPPED] || BIN[IN_STOP] > 0);
@@ -5269,15 +5271,14 @@ typedef struct {
   // the quiet lines reached, the best kept by what they leave on the masks
   int qn, qh[SETUPTRIES], qt[SETUPTRIES], ql[SETUPTRIES]; int32_t qsw[SETUPTRIES][2 * LINEMAX];
 } MwCtx;
-// MATERIAL IS SPENT ONLY TO BREAK OR TO LIVE: under six rows a clear goes
-// first only while the board left alone loses health before its soonest
+// MATERIAL IS SPENT ONLY TO BREAK OR TO LIVE: a clear goes first only while the board left alone loses health before its soonest
 // break, and loses it later than the line it goes before. Living longer by
 // keeping the board busy is a stall: the queue lands after it all the same,
 // so the clear must leave a break ready for it -- unless the line it goes
 // before dies: then stop time is what buys the time to find the break.
 // (LNO: the judgement of the line asked about)
 static int spendsOk(const MwCtx *x, const int32_t *sw, int n) {
-  return leavesSixRows() || (x->urgent && lnoDie(LNO) > x->die0Of && (readyAfterSpend(sw, n) || (!nonSpendLives() && !spendKeepsRaiseOut())));
+  return (x->urgent && lnoDie(LNO) > x->die0Of && (readyAfterSpend(sw, n) || (!nonSpendLives() && !spendKeepsRaiseOut())));
 }
 static int mwDiesSooner(const MwCtx *x) { return x->die0 ? (LNO[0] && LNO[0] < x->die0) : LNO[0] != 0; }
 static int mwJoin(const MwCtx *x, const int32_t *sw, int n, int32_t *l2) {
@@ -5286,19 +5287,15 @@ static int mwJoin(const MwCtx *x, const int32_t *sw, int n, int32_t *l2) {
   for (int k = 0; k < 2 * x->n; k++) l2[2 * n + k] = x->ln[k];
   return n + x->n;
 }
-// A CLEAR IN THE WAIT ORGANIZES, OR SPENDS ONLY WHAT IS SPARE: it goes first
-// if the board it leaves (the masks) has a break in reach, or more vertical
-// twos than the board has now -- a clear spends what a break needs -- or still
-// six rows of material (over six rows the material is there to spend: a full
-// board's clears make the room the slabs to come need, and the stop). Of
-// those: a break in reach first, then more twos -- the fewest panels spent --
-// then spare, where the biggest clear goes first (fours, combos, chains take
-// panels across the columns and earn the stop) and of those the flattest board.
+// A CLEAR IN THE WAIT ORGANIZES: it goes first if the board it leaves (the
+// masks) has a break in reach, or more vertical twos than the board has now --
+// a clear spends what a break needs. Of those: a break in reach first, then
+// more twos, the fewest panels spent.
 static int clearKey(int org) { return org * 100000 + (org == 1 ? LNO[3] * 100 - HOLLOW(LNO) : -LNO[3]); }
 static int clearOrganizes(const MwCtx *x, const int32_t *st) {
   if (hasGarbage(st) && anyBreakOf(st)) return 3;
   if (twosOf(st) > x->vb) return 2;
-  return materialRows(st) >= 6 ? 1 : 0;
+  return 0;
 }
 static int sitWaitClear(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
   MwCtx *x = ctx; (void)at;
