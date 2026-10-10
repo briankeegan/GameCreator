@@ -23,7 +23,7 @@ enum { M_BUILD, M_DEFEND, M_ATTACK };
 // the line a bot plays (Bot.line): what it is for, and the most steps it holds
 enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
 #define LINEMAX 16   // the most steps a line holds: storage, never a limit on what is searched -- a line that does not fit is refused, never cut
-#define LNOLEN 17
+#define LNOLEN 18
 // THE HOLLOW of a judged line: the gaps under garbage on the board it ends on
 // ([10]) and the gaps the slabs to come would leave over its towers ([13]). A
 // tower lowered also lets a pile perched on it down onto panels it can break on.
@@ -2131,8 +2131,8 @@ static Dec waitForDrain(Dec d) {
 // the ENGINE JUDGES them (lineOnEngine, front.c): the line played as the
 // front plays it -- walk, press, the swap landing, the next walk -- on a copy
 // of the board. A line LIVES if every step is taken and the board has not
-// lost health until NEXTMOVE frames after its last press, the time the next
-// decision needs; it PAYS if it matches more panels or converts more garbage
+// lost health by the frame the front decides again after its last press
+// (livesPast); it PAYS if it matches more panels or converts more garbage
 // than the board left alone, and BREAKS if it converts more garbage.
 //
 // IT MUST NOT DIE: a choice that does not live, while the time is short
@@ -2153,7 +2153,13 @@ static Dec waitForDrain(Dec d) {
 // for up to UNSETTLEMOST more; a line that loses no health (LNO[0] 0) is
 // counted as losing none within it, never as losing it at LINEHORIZON
 #define LINEREACH (LINEHORIZON + UNSETTLEMOST)
-#define NEXTMOVE 6
+#define NEXTMOVE 6   // the hold's: a hold lives while it loses health no sooner than this
+#define BREAKTIE 6   // the frames two breaks' times may differ by and tie: a walk's own movement (a bot choice)
+// A LINE LIVES PAST ITS LAST PRESS: it loses health no sooner than the frame
+// the front decides again after it (the engine's judge plays the front's
+// cooldown and records that frame, out[17]); a line that loses health before
+// the front can act again has lost it
+static int livesPast(const int32_t *a) { return !a[0] || (a[17] >= 0 && a[0] > a[17]); }
 #define MAXLINES 512
 #define MAXJUDGED 96
 int lineOnEngine(const int32_t *steps, int n, int horizon, int waitAll, int32_t *out);
@@ -2341,7 +2347,7 @@ static int aloneDie(int unknown) { return aloneOnEngine() ? lnoDie(LNA) : unknow
 static int judgedDie(int v) {
   if (v & LV_LIVES) return lnoDie(LNO);
   if (judgeRefused) return -1;
-  if (LNO[1] >= 0 && !(LNO[0] && LNO[0] <= LNO[1] + NEXTMOVE)) return lnoDie(LNO);
+  if (LNO[1] >= 0 && livesPast(LNO)) return lnoDie(LNO);
   return 0;
 }
 static int lineJudge(const int32_t *sw, int n, int waitAll) {
@@ -2376,7 +2382,7 @@ static int lineJudgeIn(const int32_t *sw, int n, int waitAll) {
   if (!BIN[IN_HASPA]) return 0;
   if (!aloneOnEngine()) return 0;
   if (lineOnEngine(sw, n, LINEHORIZON, waitAll, LNO) != 0 || LNO[1] < 0) return 0;
-  if (LNO[0] && LNO[0] <= LNO[1] + NEXTMOVE) return 0;
+  if (!livesPast(LNO)) return 0;
   // a line that ends on the board the board left alone ends on has done nothing
   if (LNO[0] == LNA[0] && LNO[11] == LNA[11]) return 0;
   int v = LV_LIVES;
@@ -3631,7 +3637,7 @@ static int waitFree(const int32_t *sw, int n, int breaks) {
   int32_t now[LNOLEN], later[LNOLEN];
   if (lineOnEngineFrom(sw, n, LINEHORIZON, 0, now) != 0 || now[1] < 0) return 0;
   if (lineOnEngineFrom(sw, n, LINEHORIZON, (REACT > 0 ? REACT : 0) + 1, later) != 0 || later[1] < 0) return 0;   // not to be played begun later
-  if (later[0] && later[0] <= later[1] + NEXTMOVE) return 0;   // begun later it loses health by its own press (lineJudge's LIVES)
+  if (!livesPast(later)) return 0;   // begun later it loses health before the front acts again (lineJudge's LIVES)
   if (breaks && !(later[2] > LNA[2])) return 0;   // begun later it no longer breaks
   waitWorth = heldValue(later);
   return waitWorth >= heldValue(now);
@@ -3642,8 +3648,8 @@ static int waitFree(const int32_t *sw, int n, int breaks) {
 // the engine plays the swap, then the line, walking to each in turn, and that
 // is worth no less than the line waited for (it neither spoils the line nor
 // keeps it from its time). The pool's swaps that set up the most are asked,
-// MEANWHILES of them, best first; with none, the board is held.
-#define MEANWHILES 4
+// WAITSETUPS of them, best first; with none, the board is held.
+#define WAITSETUPS 4
 static int twosOf(const int32_t *st);
 static double setupKey(const int32_t *m) { Shape sh; shapeOf(m, &sh); return twosOf(m) * 1000.0 - sh.bumps; }
 static int meanwhileKeeps(int r, int c, const int32_t *sw, int n, int breaks, int32_t *st) {
@@ -3651,7 +3657,7 @@ static int meanwhileKeeps(int r, int c, const int32_t *sw, int n, int breaks, in
   st[0] = r; st[1] = c;
   for (int k = 0; k < 2 * n; k++) st[2 + k] = sw[k];
   if (lineOnEngineFrom(st, n + 1, LINEHORIZON, 0, o) != 0 || o[1] < 0) return 0;
-  if (o[0] && o[0] <= o[1] + NEXTMOVE) return 0;   // the line after it loses health by its own press
+  if (!livesPast(o)) return 0;   // the line after it loses health before the front acts again
   if (breaks && !(o[2] > LNA[2])) return 0;   // the line no longer breaks after it
   return heldValue(o) >= waitWorth;
 }
@@ -3671,7 +3677,7 @@ static Dec waitMeanwhile(Dec d, const int32_t *sw, int n, int breaks, Dec hold) 
   // straight on to the line as the engine judged it (a kept line lifts the
   // front's cooldown on a topped board, as linePlay does)
   int32_t st[2 * LINEMAX];
-  for (int j = 0; j < na && j < MEANWHILES; j++) {
+  for (int j = 0; j < na && j < WAITSETUPS; j++) {
     Cand *c = &POOL[at[j]];
     if (meanwhileKeeps(c->sr, c->sc, sw, n, breaks, st)) {
       lineSet(st, n + 1, breaks ? LINE_BREAK : LINE_CASH, 0);
@@ -3913,8 +3919,8 @@ static int optRank(Opt *a, Opt *b) {
   // no break to make yet: the one that brings the break soonest (setup), then
   // the longer life (the stop time a clear buys less the material it spends),
   // then a combo or a chain
-  // a break sooner by more than NEXTMOVE: less is the walk's own movement, and the target stands
-  if (ka) { double sa = optSoon(a), sb = optSoon(b), gap = sa > sb ? sa - sb : sb - sa; if (sa != sb && !(gap <= NEXTMOVE)) return sa < sb ? 1 : -1; }
+  // a break sooner by more than BREAKTIE: less is the walk's own movement, and the target stands
+  if (ka) { double sa = optSoon(a), sb = optSoon(b), gap = sa > sb ? sa - sb : sb - sa; if (sa != sb && !(gap <= BREAKTIE)) return sa < sb ? 1 : -1; }
   if (a->life != b->life) return a->life > b->life ? 1 : -1;
   if (a->cash != b->cash) return a->cash > b->cash ? 1 : -1;
   if (a->conv != b->conv) return a->conv > b->conv ? 1 : -1;

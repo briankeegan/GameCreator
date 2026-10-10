@@ -740,7 +740,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   if (botTraceOn && n == 1 && waitTo > 60 && LF) { extern int fprintf(void *, const char *, ...); extern void *stderr; int r = steps[0], c = steps[1];
     fprintf(BLOG, "  WAIT %d,%d to %d | first %d,%d last %d,%d\n", r, c, waitTo, LF->settle.first[r][c], LF->settle.first[r][c + 1], LF->settle.last[r][c], LF->settle.last[r][c + 1]); }
 #endif
-  out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = out[13] = out[14] = 0; out[15] = out[16] = -1;   // out[16]: the clock the first step is pressed at
+  out[0] = 0; out[1] = -1; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = out[13] = out[14] = 0; out[15] = out[16] = out[17] = -1;   // out[16]: the clock the first step is pressed at; out[17]: the frame the front decides again after the last press
   int32_t landedFrom = b->garbageCreatedCount;   // out[15]: read once the next slab has landed
   int pressStep = -1, pressLast = 0;   // the step pressed this frame, and the last press before it
   { extern int paBudgetOut(void); if (paBudgetOut() || workLeft() <= 0) return -1; }   // past the decision's budget, or this thread's share of it (workLeft): not played
@@ -758,7 +758,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
     if (stopAtNext == 2 && step == n && !walking && b->garbageCreatedCount >= dropped + landK && !nb_falling_garbage(b)) {
       out[1] = last; out[8] = f; return 1;
     }
-    if (!walking && (step < n || stopAtNext == 1)) {
+    if (!walking && (step < n || stopAtNext == 1 || (n > 0 && out[17] < 0))) {
       int coolIn = cool;
       if (cool > 0) cool--;
       int landing = b->queuedSwapRow > 0 || b->swappingCount > 0 || b->pressSwap;
@@ -766,13 +766,14 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
       // down and returns), or on a stopped or topped board: the line steps on as it does
       if (!landing && f >= LDELAY && (coolIn == 0 || b->stopTime > 0 || nb_topped(b))) {
         if (step == n) {   // the front decides again here
-          if (stopAtNext == 1) snapKeep(steps, n, b, f, coolIn, held, last, dropped, &pad);
-          out[1] = last; out[8] = f; return 1;
-        }
+          out[17] = f;
+          if (stopAtNext == 1) { snapKeep(steps, n, b, f, coolIn, held, last, dropped, &pad); out[1] = last; out[8] = f; return 1; }
+        } else {
         walking = 1; tr = steps[2 * step]; tc = steps[2 * step + 1]; timer = 0; disp = b->displacement;
         { uint32_t still[W + 2];
           if (snapSettle && step == from->n) { LSET = from->settle; snapSettle = 0; } else unsettled(b, still, &LSET);
           waitTo = f + (LWAITALL && step == n - 1 ? breakWait(&LSET, tr, tc) : pairWait(&LSET, tr, tc)); fs = f; r0 = tr; }
+        }
       }
     }
     if (walking) {
