@@ -2272,7 +2272,7 @@ static double LATER[NSTAGES];
 // EVERY STAGE HAS A SHARE OF OPTWORK (percent), and the stages before it leave
 // at least the shares of the stages after it: a stage that takes nothing for
 // lack of work is measured at nothing, and would be left nothing again
-static const int STAGESHARE[NSTAGES] = { 10, 0, 35, 5, 25, 5, 10, 5, 5 };   // decideRuled, whose proposals the arbiter overrides near always, the least of the searches
+static const int STAGESHARE[NSTAGES] = { 30, 0, 25, 5, 15, 5, 10, 5, 5 };
 static double stageLeaves(int i) {
   double keep = LATER[i] > FINALJUDGES * jdCost ? LATER[i] : FINALJUDGES * jdCost;
   int after = 0; for (int j = i + 1; j < NSTAGES; j++) after += STAGESHARE[j];
@@ -3789,14 +3789,14 @@ static int optJudge(Opt *o) {
   return 1;
 }
 // READY FOR THE NEXT WAVE: a break in reach when the queued slab lands
-// (readyInTime); with none queued, the board the option leaves ready for a
+// (readyAtNext: the first landing, not a dump let down); with none queued, the board the option leaves ready for a
 // slab the width of the board on the stack (waveReady), as the next wave lands
 static int optReady(Opt *o) {
   if (!o->rdyKnown) {
     int r, c, hold = o->d.kind == K_HOLD;
     o->rdy = 0;
     if (o->lives && BIN[IN_HASPA]) {
-      if (BIN[IN_INCOMING] > 0) o->rdy = hold ? readyInTime(0, 0, &r, &c) : readyInTime(o->sw, o->n, &r, &c);
+      if (BIN[IN_INCOMING] > 0) o->rdy = hold ? readyAtNext(0, 0, &r, &c) : readyAtNext(o->sw, o->n, &r, &c);
       else { int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t w[32][WMAX];
              if (lineState(hold ? 0 : o->sw, hold ? 0 : o->n, st, can, w, cur, &t) == 0) o->rdy = waveReady(st); }
     }
@@ -4030,14 +4030,8 @@ static int readyAfter(const int32_t *sw, int n) {
   if (n >= 1 && n <= LINEMAX && !paBudgetOut()) raPut(sw, n, v);
   return v;
 }
-static int readyAfterIn(const int32_t *sw, int n) {
-  int32_t t; ST lum; int last;
-  if (lineLanded(sw, n, lum, &t) != 0) return 0;
-  double die = lineEnds(sw, n, &last);
-  int frozen = BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0;
-  int cr = n ? sw[2 * (n - 1)] : (int)BIN[IN_CROW], cc = n ? sw[2 * (n - 1) + 1] : (int)BIN[IN_CCOL];
-  return searchInTime(lum, cr, cc, n ? last + stepGap(frozen) : 0, t, die - 1, frozen, 0, 0, READYWORK, sitBreaks, 0, 0, 0, 0);
-}
+// the lineup's readiness is the arbiter's: a break in reach when the next slab lands (readyAtNext)
+static int readyAfterIn(const int32_t *sw, int n) { int r, c; return readyAtNext(sw, n, &r, &c); }
 // Where a lineup can matter: the rows up to the one the next slab lands on,
 // in its columns and one either side.
 static int lineupNear(const int32_t *st, int r, int c) {
