@@ -276,9 +276,13 @@ ways: a tool not listed, or a path listed that doesn't exist.
   (`ThinkBudget.lua`) and to 456 actions a minute, at most 76 in any 600
   frames (`InputBudget.lua`; an action is a swap, up, down, left or right going
   down, a held direction one, raise none). `BUDGETMS` in `native/bot.c` (the 8
-  ms less the frame's own work) is a decision's budget, and `front.c`
-  (`ACTIONLIMIT`, `actionAllowed`) does not press a key the input budget does
-  not allow, the walk waiting for the frame it is. In a game the clock cuts a decision past it and the game
+  ms less the frame's own work) is a decision's budget. `front.c`'s key model
+  (`Pad`: `padAllowed`, `padStepToward`) is the front's and every judged
+  line's alike: no key past the allowance (the walk waits for the frame it
+  is), and a walk held, one action however far, from four cells, or from two
+  on a calm board or a nearly spent window (`travelCost` walks the same).
+  `lua/train.lua` charges the game's own `ThinkBudget` and `InputBudget` every
+  frame and the scan reports both. In a game the clock cuts a decision past it and the game
   fails. The budget is counted in work inside every game, so the survival
   scan is the budget check: a decision past it is cut, the seed fails, and
   the scan reports it. A change to `native/` is pushed and scanned at once;
