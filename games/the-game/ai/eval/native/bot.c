@@ -2178,8 +2178,9 @@ typedef struct { int n, brk, ok, grown, waitAll, hollow, conv, die; int32_t sw[2
 // A LINE'S LIFE IS WHAT IT BUYS ONCE IT IS DONE: the frame it loses health
 // less the frame of its last press (last; -1, none), less what it spends of
 // the stack -- its hollow, and the material it ends without that the board
-// left alone keeps (spent): a cell is a sixth of a row, a row FPR frames of rise
-static double lifeOf(int die, int last, int hollow, int spent) { return (double)die - (double)(last > 0 ? last : 0) - (double)(hollow + (spent > 0 ? spent : 0)) * BIN[IN_FPR] / BW; }
+// left alone keeps (spent; less than none when it ends with more, garbage
+// converted): a cell is a sixth of a row, a row FPR frames of rise
+static double lifeOf(int die, int last, int hollow, int spent) { return (double)die - (double)(last > 0 ? last : 0) - (double)(hollow + spent) * BIN[IN_FPR] / BW; }
 // a thread's lines: the decision's, or a grown subtree's on a worker (growAt)
 static LineC LINES_MAIN[MAXLINES];
 static JLOCAL LineC *LNS = LINES_MAIN;
