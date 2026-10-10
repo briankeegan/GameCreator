@@ -3951,11 +3951,15 @@ static void optAhead(Opt *o) {
   searchInTime(st, cur[0], cur[1], t, 0, timeLeft(), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can, w, work, sitReach, &rx, 0, 0, 0);
   o->ahead = rx.best;
 }
+// A PLAIN CLEAR THAT OPENS AN ATTACK IS NOT PLAIN: the board it settles to reaches a combo or a chain in the time there
+// is (the first clear starts it, the rest is set up on what falls), so it is not a last resort.
+static int optPlain(Opt *o) { if (!o->plain) return 0; optAhead(o); return !isAttack(o->ahead); }
+static int optEarly(Opt *o) { return o->early && optPlain(o); }
 // 1: a is better, -1: b is, 0: the same
 static int optRank(Opt *a, Opt *b) {
   int ka = a->lives ? 1 + a->breaks : 0, kb = b->lives ? 1 + b->breaks : 0;
   if (ka != kb) return ka > kb ? 1 : -1;
-  if (ka && a->early != b->early) return a->early ? -1 : 1;   // a clear that is not yet due ranks below any option that lives
+  if (ka && (a->early || b->early)) { int ea = optEarly(a), eb = optEarly(b); if (ea != eb) return ea ? -1 : 1; }   // a clear that is not yet due ranks below any option that lives
   if (ka && BIN[IN_INCOMING] > 0) { int ra = optReady(a), rb = optReady(b); if (ra != rb) return ra > rb ? 1 : -1; }
   // dying within LIVEHORIZON, the later loss of health is the time there is: a
   // line that takes longer to finish still outlives a hold that dies first
@@ -3964,7 +3968,7 @@ static int optRank(Opt *a, Opt *b) {
   int da = a->die < LIVEHORIZON ? a->die : LIVEHORIZON, db = b->die < LIVEHORIZON ? b->die : LIVEHORIZON;
   if (da != db) return da > db ? 1 : -1;
   // a plain clear is the last resort: it ranks below any option that lives as long
-  if (ka && a->plain != b->plain) return a->plain ? -1 : 1;
+  if (ka && (a->plain || b->plain)) { int pa = optPlain(a), pb = optPlain(b); if (pa != pb) return pa ? -1 : 1; }
   // no break to make yet: the one that brings the break soonest (setup), then
   // the longer life (the stop time a clear buys less the material it spends),
   // then a combo or a chain
