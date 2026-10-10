@@ -20,37 +20,13 @@
   "chainLength": 114.09183759677933
  },
  "record": {
-  "win": 112,
+  "win": 113,
   "loss": 109,
   "draw": 0,
   "none": 0,
   "died": 10
  },
  "history": [
-  {
-   "match": 21,
-   "opp": 6,
-   "result": "loss",
-   "outcome": "ceiling",
-   "frames": 21600,
-   "sent": 459,
-   "received": 495,
-   "late": 0,
-   "pressed": 768,
-   "topped": {
-    "active": 188,
-    "minHealth": 1,
-    "deadHealth": 0,
-    "frames": 6541,
-    "longest": 999,
-    "run": 0,
-    "stop": 5511,
-    "shake": 759,
-    "swapLock": 80
-   },
-   "at": "2026-10-09T01:06:25.225Z",
-   "mergedToward": 6
-  },
   {
    "match": 22,
    "opp": 6,
@@ -4722,7 +4698,30 @@
    },
    "at": "2026-10-10T00:36:10.367Z",
    "mergedToward": 9
+  },
+  {
+   "match": 221,
+   "opp": 9,
+   "result": "win",
+   "outcome": "ceiling",
+   "frames": 21600,
+   "sent": 535,
+   "received": 480,
+   "late": 0,
+   "pressed": 778,
+   "topped": {
+    "swapLock": 67,
+    "active": 177,
+    "minHealth": 1,
+    "deadHealth": 0,
+    "frames": 6663,
+    "longest": 652,
+    "run": 12,
+    "stop": 5868,
+    "shake": 549
+   },
+   "at": "2026-10-10T00:42:21.011Z"
   }
  ],
- "matches": 221
+ "matches": 222
 }
