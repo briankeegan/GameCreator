@@ -72,11 +72,14 @@ for seed in $(awk '{ print $2 }' <<<"$jobs" | sort -n); do
 done
 rm -f "$dir"/.p*.msg "$dir"/.p*.res "$dir"/.p*.bud "$dir"/.p*.kind
 echo "alive $alive, died $died, other $other -- reports in $dir"
-awk -F'\t' '$2 ~ /^think/ { split($2, a, /[ ,]+/); over += a[5]; if (a[5] > 0) tseeds++; w = a[10] + 0; if (w > worst) worst = w } $2 ~ /^input/ { split($2, a, /[ ,:]+/); if (a[8] + 0 > most) most = a[8] + 0; over2 += a[9] } END { printf "think budget (8 ms): %d frames over it in %d seeds, slowest %.1f ms | input budget: most %d in a window, %d frames over\n", over, tseeds, worst, most, over2 }' "$dir/budgets.tsv"
+# the game's two budgets are the first thing a scan says: a think budget that is exceeded is OVER, never a footnote
+read -r tover tseeds tworst imost iover < <(awk -F'\t' '$2 ~ /^think/ { split($2, a, /[ ,]+/); over += a[5]; if (a[5] > 0) tseeds++; w = a[10] + 0; if (w > worst) worst = w } $2 ~ /^input/ { split($2, a, /[ ,:]+/); if (a[8] + 0 > most) most = a[8] + 0; over2 += a[9] } END { printf "%d %d %.1f %d %d\n", over, tseeds, worst, most, over2 }' "$dir/budgets.tsv")
+if [ "${tover:-0}" -gt 0 ]; then bstatus="OVER THINK BUDGET"; else bstatus="think budget within 8 ms"; fi
+if [ "${iover:-0}" -gt 0 ]; then bstatus="$bstatus, OVER INPUT BUDGET"; fi
 hist=$(dirname "$0")/survival_scans.tsv
-[ -f "$hist" ] || printf 'run\tcommit\talive\tdied\n' > "$hist"
+[ -f "$hist" ] || printf 'run\tcommit\talive\tdied\tthink_over\tworst_ms\n' > "$hist"
 if [ "$other" -eq 0 ] && ! grep -q "^$run	" "$hist"; then
-  printf '%s\t%s\t%s\t%s\n' "$run" "$sha" "$alive" "$(printf '%s\n' "${dead[@]}" | sort -n | paste -sd, -)" >> "$hist"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$run" "$sha" "$alive" "$(printf '%s\n' "${dead[@]}" | sort -n | paste -sd, -)" "${tover:-0}" "${tworst:-0}" >> "$hist"
   # the line is committed and pushed as it is written: nothing waits uncommitted for a scan
   trailer=$(cat "${GC_WORK:-/tmp/gc-survival}/trailer.txt" 2>/dev/null || true)
   here=$(cd "$(dirname "$0")" && pwd)
@@ -84,3 +87,4 @@ if [ "$other" -eq 0 ] && ! grep -q "^$run	" "$hist"; then
 
 $trailer" -- survival_scans.tsv && git -C "$here" pull -q --rebase --autostash origin main && git -C "$here" push -q origin HEAD:main || echo "scan_deaths: the scan's line is not pushed" >&2
 fi
+echo "$bstatus: $tover frames over the 8 ms think budget in $tseeds seeds, slowest decision $tworst ms | input budget: most $imost actions in a window, $iover frames over"
