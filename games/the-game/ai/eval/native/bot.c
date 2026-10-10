@@ -3885,10 +3885,10 @@ static int optRank(Opt *a, Opt *b) {
   if (ka && BIN[IN_INCOMING] > 0) { int ra = optReady(a), rb = optReady(b); if (ra != rb) return ra > rb ? 1 : -1; }
   // dying within LIVEHORIZON, the later loss of health is the time there is: a
   // line that takes longer to finish still outlives a hold that dies first
-  // an option that loses health before the front acts again is worse than one that does not; two that do not
-  // are alike here (the next decision weighs the board again), two that do, by which loses it later
-  if (a->safe != b->safe) return a->safe ? 1 : -1;
-  if (!a->safe) { int da = a->die < LIVEHORIZON ? a->die : LIVEHORIZON, db = b->die < LIVEHORIZON ? b->die : LIVEHORIZON; if (da != db) return da > db ? 1 : -1; }
+  // dying within LIVEHORIZON, the later loss of health is the time there is: a
+  // line that takes longer to finish still outlives a hold that dies first
+  int da = a->die < LIVEHORIZON ? a->die : LIVEHORIZON, db = b->die < LIVEHORIZON ? b->die : LIVEHORIZON;
+  if (da != db) return da > db ? 1 : -1;
   // no break to make yet: the one that brings the break soonest (setup), then
   // the longer life (the stop time a clear buys less the material it spends),
   // then a combo or a chain
