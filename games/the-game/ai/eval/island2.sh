@@ -50,9 +50,12 @@ print("1" + str(int(hashlib.sha256(msg).hexdigest(), 16) % 10**18).zfill(18), en
 
 P=$(node "$EVAL/island2.js" profile "$STATE" "$N" "$EVAL")
 export MINDLOG="$PWD/mind.log"
+# The bot's game runs on core 0 and WasmSurvivor on the others: a frame of the game that
+# waited for a core would be thinking time it did not use.
+NCPU=$(nproc); MINDCPUS="1-$(( NCPU - 1 ))"; [ "$NCPU" -lt 2 ] && MINDCPUS=0
 # WasmSurvivor, brought back if it ever exits
 ( while :; do
-    GC_SURVIVOR_RELOAD=1 GC_SURVIVOR_PROFILE="$P" node "$EVAL/survivor.js" --port 47777 --threads $(( $(nproc) - 1 )) >> "$MINDLOG" 2>&1
+    GC_SURVIVOR_RELOAD=1 GC_SURVIVOR_PROFILE="$P" taskset -c "$MINDCPUS" node "$EVAL/survivor.js" --port 47777 --threads $(( NCPU > 1 ? NCPU - 1 : 1 )) >> "$MINDLOG" 2>&1
     echo "mind exited ($?), restarting" >> "$MINDLOG"; sleep 2
   done ) &
 SUP=$!
@@ -69,7 +72,7 @@ while :; do
   (cd "$PG" && ISLAND2_SH="$EVAL/island2.sh" BOT="$N" STATE="$STATE" PA_SURVIVOR_PORT=47777 \
     LUA_PATH="./?.lua;./common/lib/?.lua;/usr/local/share/lua/5.1/?.lua;;" \
     LUA_CPATH="./common/lib/?.so;./common/lib/?/?.so;/usr/local/lib/lua/5.1/?.so;;" \
-    timeout $(( DEADLINE - $(date +%s) )) luajit "$EVAL/lua/island2Bot.lua" "$HOST" "$PORT" "$N" "$STOP_AT") >> "$OUT" 2>&1
+    timeout $(( DEADLINE - $(date +%s) )) taskset -c 0 luajit "$EVAL/lua/island2Bot.lua" "$HOST" "$PORT" "$N" "$STOP_AT") >> "$OUT" 2>&1
   rc=$?
   [ $rc = 0 ] || [ $(date +%s) -ge $STOP_AT ] && break
   echo "::warning title=$NAME dropped out ($rc), logging in again::$(tail -n 8 "$OUT" | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')"
