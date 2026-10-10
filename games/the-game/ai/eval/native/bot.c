@@ -3612,14 +3612,17 @@ static int readyAfterSpend(const int32_t *sw, int n);
 static int aloneOnEngine(void);
 static int nonSpendLives(void);
 // A CLEAR THAT BREAKS NOTHING IS PRESSED ONLY WHEN IT IS DUE: material is
-// spent to break, or to live at the last moment it can -- while the board
-// left alone outlives the clear's last press (`last`, frames from now) and a
-// reaction, it waits, and a break may come first. The one test, for every
+// spent to break, or to live at the last moment it can. The engine plays the
+// clear begun a reaction from now (the next decision): while it still lives
+// begun then, it waits, and a break may come first. The one test, for every
 // route that clears to live.
-static int clearDue(double last) {
+int lineOnEngineFrom(const int32_t *steps, int n, int horizon, int delay, int32_t *out);
+static int clearDue(const int32_t *sw, int n) {
   if (!aloneOnEngine()) return 1;
   if (!LNA[0]) return 0;
-  return LNA[0] <= last + REACT + NEXTMOVE;
+  int32_t o[LNOLEN];
+  if (lineOnEngineFrom(sw, n, LINEHORIZON, REACT > 1 ? REACT : 1, o) != 0 || o[1] < 0) return 1;   // not to be judged begun later: due now
+  return o[0] && o[0] <= o[1] + NEXTMOVE;   // begun later it loses health by its own press (lineJudge's LIVES): due now
 }
 // A SPEND THAT KEEPS A WAITING RAISE OUT: a clear holds the rise lock and
 // renews the stop, so while a raise for material waits on either, a spend
@@ -3767,7 +3770,7 @@ static Dec stayAlive(Dec d) {
   // every frame the board waits is a frame garbage drops on it -- the line that
   // lives longest is played now
   if (!l) return d;
-  if (!judgedBreaks(l) && l->verdict >= 0 && (l->verdict & LV_PAYS) && !clearDue(l->est)) return d;
+  if (!judgedBreaks(l) && l->verdict >= 0 && (l->verdict & LV_PAYS) && !clearDue(l->sw, l->n)) return d;
   lineLast = 2;
   BT->counts[C_KEPTHEALTH]++;
   plansDrop();
@@ -4721,7 +4724,7 @@ static Dec spendToBreak(Dec d) {
 #endif
   // garbage let down is never held: it lowers the stack
   if (!(v & LV_LIVES) || !(v & LV_PAYS) || (v & (LV_BREAKS | LV_DROPS))) return d;
-  if ((v & LV_GAINS) && clearDue(LNO[1])) return d;
+  if ((v & LV_GAINS) && (playsLine ? clearDue(BT->line, BT->nLine) : clearDue(sw, 1))) return d;
   // however much the board holds: in a storm the stack does not rise, and a
   // break is the only material that comes back
   BT->nLine = 0; lineLast = 0;

@@ -717,10 +717,11 @@ static int standingHollow(const Board *b) {
     }
   return h;
 }
+static JLOCAL int LDELAY;   // the frames before a judged line's first step may begin (lineOnEngineFrom)
 static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, int32_t *out) {
   if (!LNB) LNB = nb_new();
   Snap *from = 0;
-  for (int k = n - 1; k >= 1 && !from; k--) from = snapFind(steps, k);
+  if (!LDELAY) for (int k = n - 1; k >= 1 && !from; k--) from = snapFind(steps, k);
   nb_copy(LNB, from ? from->b : paLibBoard());
   { extern PATLS double paWork; paWork += 10; }   // the copy
   Board *b = LNB;
@@ -761,7 +762,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
       int coolIn = cool;
       if (cool > 0) cool--;
       int landing = b->queuedSwapRow > 0 || b->swappingCount > 0 || b->pressSwap;
-      if (!landing && (cool == 0 || b->stopTime > 0 || nb_topped(b))) {
+      if (!landing && f >= LDELAY && (cool == 0 || b->stopTime > 0 || nb_topped(b))) {
         if (step == n) {   // the front decides again here
           if (stopAtNext == 1) snapKeep(steps, n, b, f, coolIn, held, last, dropped, &pad);
           out[1] = last; out[8] = f; return 1;
@@ -879,6 +880,8 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
 }
 
 int lineOnEngine(const int32_t *steps, int n, int horizon, int waitAll, int32_t *out) { LWAITALL = waitAll; int rc = linePlay(steps, n, horizon, 0, out); LWAITALL = 0; return rc < 0 ? -1 : 0; }
+// the same line begun `delay` frames from now: what waiting that long costs it
+int lineOnEngineFrom(const int32_t *steps, int n, int horizon, int delay, int32_t *out) { LDELAY = delay; int rc = linePlay(steps, n, horizon, 0, out); LDELAY = 0; return rc < 0 ? -1 : 0; }
 // THE BOARD THE NEXT STEP IS CHOSEN ON: `steps` played on the engine as the
 // front plays them, up to the frame the front would decide again. Its masks,
 // the pairs the bot may target on it (swappable, settled), the cursor and the
