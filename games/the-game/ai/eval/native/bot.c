@@ -3689,11 +3689,17 @@ static Dec waitMeanwhile(Dec d, const int32_t *sw, int n, int breaks, Dec hold) 
   }
   return hold;
 }
-// a clear that breaks nothing is due once waiting is not free; with no loss
-// of health coming, never
+// A CLEAR THAT BREAKS NOTHING IS PRESSED ONLY WHEN IT IS DUE: the board left
+// alone loses health (LNA[0]) no later than the frame the front decides again
+// after the clear's last press, the clear played now (the engine's judge
+// records it, out[17]) -- put off to that decision, it would come too late.
+// Until then the stages' choice plays. With no loss of health coming, never.
 static int clearDue(const int32_t *sw, int n) {
-  if (aloneOnEngine() && !LNA[0]) return 0;
-  return !waitFree(sw, n, 0);
+  if (!aloneOnEngine()) return 1;
+  if (!LNA[0]) return 0;
+  int32_t o[LNOLEN];
+  if (lineOnEngineFrom(sw, n, LINEHORIZON, 0, o) != 0 || o[1] < 0 || o[17] < 0) return 1;
+  return LNA[0] <= o[17];
 }
 // A SPEND THAT KEEPS A WAITING RAISE OUT: a clear holds the rise lock and
 // renews the stop, so while a raise for material waits on either, a spend
@@ -3841,12 +3847,7 @@ static Dec stayAlive(Dec d) {
   // every frame the board waits is a frame garbage drops on it -- the line that
   // lives longest is played now
   if (!l) return d;
-  // waiting, the board is kept as the wait was judged on: held, the cursor
-  // parked on the clear's first step, and no later stage plays in its place
-  if (!judgedBreaks(l) && l->verdict >= 0 && (l->verdict & LV_PAYS) && !clearDue(l->sw, l->n)) {
-    BT->nLine = 0; plansDrop();
-    return saKeep(waitMeanwhile(d, l->sw, l->n, 0, mkHold(V_KEEPHEALTH, d.mode, d.alive, 1, l->sw[0], l->sw[1])));
-  }
+  if (!judgedBreaks(l) && l->verdict >= 0 && (l->verdict & LV_PAYS) && !clearDue(l->sw, l->n)) return d;
   lineLast = 2;
   BT->counts[C_KEPTHEALTH]++;
   plansDrop();
