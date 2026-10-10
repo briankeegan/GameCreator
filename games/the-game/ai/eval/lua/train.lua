@@ -226,6 +226,7 @@ local function report()
                       ThinkBudget.ceilingMillis(), think:overruns(), think:worst() * 1000, think:charged() * 1000 / math.max(f, 1)))
   print(string.format("input budget %d in %d frames: most %d, %d frames over", inputs.limit, inputs.window, mostInWindow, overInput))
 end
+local FIXED_BUDGET = (os.getenv("GC_FIXED_BUDGET") or "") ~= ""   -- a scan for comparing builds: the bot is not told the time, so a game repeats exactly
 while f < FRAMES do
   local t0 = now()
   collectgarbage("step", 0)
@@ -237,7 +238,7 @@ while f < FRAMES do
   local mem
   if (DEATHLOG > 0 or GAMELOG) and C.botTraceOn == 0 then mem = ffi.C.open_memstream(LOGP, LOGN); C.botLogTo = mem; C.botTraceOn = 1 end
   local tk1 = now()
-  C.bot_time(ThinkBudget.ceilingMillis(), lastThought * 1000, ThinkBudget.ceilingMillis() - loadMs)
+  if not FIXED_BUDGET then C.bot_time(ThinkBudget.ceilingMillis(), lastThought * 1000, ThinkBudget.ceilingMillis() - loadMs) end
   local bits = os.getenv("GC_NOBOT") and 0 or C.front_frame(fid, board)
   local thought = loadMs + (now() - tk1)
   local blog = ""
