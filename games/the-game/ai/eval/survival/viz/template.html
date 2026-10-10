@@ -123,12 +123,15 @@ function cellAt(g, x, y, cell, col, st) {
   if (st === 's') { g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = Math.max(1, cell * .07); g.beginPath(); g.moveTo(x + cell * .22, y + cell * .5); g.lineTo(x + cell * .78, y + cell * .5); g.stroke(); }
   g.restore();
 }
-function draw(cv, rows, cell) {
+function draw(cv, rows, cell, cur) {
   const g = cv.getContext('2d'), W = 6, H = rows.length;
   cv.width = W * cell; cv.height = H * cell;
   g.fillStyle = css('--well'); g.fillRect(0, 0, cv.width, cv.height);
   g.fillStyle = css('--line'); g.fillRect(0, (H - 1) * cell - 1, cv.width, Math.max(1, cell * .04));   // the rising row sits under the line
   for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) cellAt(g, c * cell, r * cell, cell, rows[r][2 * c], rows[r][2 * c + 1]);
+  // the cursor: two cells, row counted up from the row above the rising one
+  if (cur) { const y = (H - 1 - cur[0]) * cell, x = (cur[1] - 1) * cell, lw = Math.max(2, cell * .1);
+    g.strokeStyle = '#ffffff'; g.lineWidth = lw; g.strokeRect(x + lw / 2, y + lw / 2, 2 * cell - lw, cell - lw); }
 }
 const LEGEND = [['3n', 'panel'], ['3d', 'rising row, not in play'], ['3f', 'not landed'], ['3m', 'clearing'], ['3s', 'swapping'], ['gn', 'garbage'], ['gf', 'garbage not landed'], ['gm', 'garbage breaking'], ['3r', 'breaking, its panel shown']];
 function legend() {
@@ -161,7 +164,7 @@ function card(s) {
   const d = D.seeds[s], last = d.frames[d.frames.length - 1];
   const b = document.createElement('button'); b.className = 'card'; b.id = 'seed' + s;
   b.innerHTML = `<div class="lab"><b>Seed ${s}</b><span>${fmt(d.died)}</span></div><div class="facts">last break ${d.lastBreak == null ? 'none' : '−' + fmt(d.died - d.lastBreak)}<br>idle ${d.idle}% · stopped ${d.stopped}%<br>queued ${d.queue} slabs<br>break found ${pct(d.decisions.breakFirst)}<br>ready found ${pct(d.decisions.readies)}</div>`;
-  const cv = document.createElement('canvas'); b.appendChild(cv); draw(cv, last[3], 20);
+  const cv = document.createElement('canvas'); b.appendChild(cv); draw(cv, last[3], 20, last[5]);
   b.onclick = () => select(s); return b;
 }
 function timeline() {
@@ -181,7 +184,7 @@ function timeline() {
 }
 function show() {
   const d = D.seeds[cur], f = d.frames[idx];
-  draw(big, f[3], 46);
+  draw(big, f[3], 46, f[5]);
   document.getElementById('vf').textContent = fmt(f[0]);
   document.getElementById('vd').textContent = fmt(d.died - f[0]);
   const vs = document.getElementById('vs'); vs.textContent = f[2]; vs.classList.toggle('zero', f[2] === 0);
@@ -218,5 +221,5 @@ tl.onclick = e => { const d = D.seeds[cur], r = tl.getBoundingClientRect(), f = 
 seeds.forEach(s => sheet.appendChild(card(s)));
 if (seeds.length) select(seeds[0]);
 addEventListener('resize', () => seeds.length && timeline());
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { legend(); seeds.forEach(s => { const d = D.seeds[s]; draw(document.querySelector('#seed' + s + ' canvas'), d.frames[d.frames.length - 1][3], 20); }); if (seeds.length) show(); });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { legend(); seeds.forEach(s => { const d = D.seeds[s]; draw(document.querySelector('#seed' + s + ' canvas'), d.frames[d.frames.length - 1][3], 20, d.frames[d.frames.length - 1][5]); }); if (seeds.length) show(); });
 </script>
