@@ -3621,16 +3621,19 @@ static int nonSpendLives(void);
 // WAITING IS FREE: the line begun when the front next decides -- a hold
 // counts its reaction down over the next REACT frames and decides the frame
 // after (front.c cooldown), REACT + 1 -- is worth no less than begun now. The
-// engine plays both, and each is valued as a line's life is, its press not
-// counted (lifeOf, last 0): the frame the board loses health, less its hollow
-// and the material it spends, garbage converted credited. So a break waits
+// engine plays both, and each is valued as every line's life is (lifeOf):
+// what it buys once done -- the frame the board loses health less the frame
+// of its last press -- less its hollow and the material it spends, garbage
+// converted credited. A press put off only puts off what it buys: equal, so
+// waiting is free; it costs once the board loses health sooner for it, and
+// it pays once more garbage lands and converts with it. So a break waits
 // while the slabs still dropping land on it and break with it -- more garbage
 // converted -- and goes as soon as waiting would cost it: the board losing
 // health sooner, or the break out of reach. A clear that breaks nothing waits
 // until it is due the same way. Waiting, the board is held as it was judged.
 // The one test, for every line that may wait.
 int lineOnEngineFrom(const int32_t *steps, int n, int horizon, int delay, int32_t *out);
-static double heldValue(const int32_t *a) { return lifeOf(lnoDie(a), 0, HOLLOW(a), spentIn(a)); }
+static double heldValue(const int32_t *a) { return lifeOf(lnoDie(a), a[1], HOLLOW(a), spentIn(a)); }
 static double waitWorth;   // what the line waited for is worth begun later (waitFree), for the move played meanwhile
 static int waitFree(const int32_t *sw, int n, int breaks) {
   if (!aloneOnEngine()) return 0;
