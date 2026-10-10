@@ -3799,10 +3799,10 @@ static Dec stayAlive(Dec d) {
 // the slab to come) is life lost, so the rank holds a clear that digs under a pile. Each is judged on the
 // engine (lineJudge, which keeps to the work there is); one it cannot judge is
 // not weighed, and a decision it cannot judge stands.
-typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, die, conv, hollow, pri; double life, soon; } Opt;
+typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, die, conv, hollow, pri; double life, soon; } Opt;
 static int optJudge(Opt *o) {
   int last = 0, spent = 0;
-  o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = 0;
+  o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = o->early = 0;
   if (o->d.kind == K_HOLD) {
     o->die = aloneDie(1 << 20);
     o->hollow = aloneOnEngine() ? HOLLOW(LNA) : 0;
@@ -3815,6 +3815,8 @@ static int optJudge(Opt *o) {
     o->conv = LNO[2] - LNA[2]; o->hollow = HOLLOW(LNO); last = LNO[1]; spent = spentOf();
     // a combo or a chain: it clears more than the board left alone, and digs under no pile (more hollow than the hold)
     o->cash = LNO[3] - LNA[3] >= COMBOMIN && (!aloneOnEngine() || o->hollow <= HOLLOW(LNA));
+    // a clear that breaks nothing and is no combo, before it is due (clearDue), is a spend the board does not need yet
+    o->early = !o->breaks && !o->cash && LNO[3] > LNA[3] && !clearDue(o->sw, o->n, 0);
   }
   o->life = lifeOf(o->die, last, o->hollow, spent);
   return 1;
@@ -3847,6 +3849,7 @@ static double optSoon(Opt *o) {
 static int optRank(Opt *a, Opt *b) {
   int ka = a->lives ? 1 + a->breaks : 0, kb = b->lives ? 1 + b->breaks : 0;
   if (ka != kb) return ka > kb ? 1 : -1;
+  if (ka && a->early != b->early) return a->early ? -1 : 1;   // a clear that is not yet due ranks below any option that lives
   if (ka && BIN[IN_INCOMING] > 0) { int ra = optReady(a), rb = optReady(b); if (ra != rb) return ra > rb ? 1 : -1; }
   // dying within LIVEHORIZON, the later loss of health is the time there is: a
   // line that takes longer to finish still outlives a hold that dies first
