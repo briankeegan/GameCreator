@@ -38,21 +38,39 @@ game() {   # the seed's whole game, from its artifact
   rm -f "$dir/seed$1.zip"
 }
 sha=$(curl -sSfL "${auth[@]}" "$api/runs/$run" | python3 -c 'import json, sys; print(json.load(sys.stdin)["head_sha"][:10])')
-alive=0; died=0; other=0; dead=(); : > "$dir/results.tsv"; : > "$dir/budgets.tsv"
-while read -r id seed concl; do
-  [ "$concl" = success ] || [ "$concl" = failure ] || { echo "seed $seed: $concl"; other=$((other + 1)); continue; }
+# every seed is fetched at once (GC_FETCH_PARALLEL, default 12): each writes its own part files, merged in seed order
+part() {   # one seed: its job log, its result line, its budgets, its death report, its game
+  local id=$1 seed=$2 concl=$3 log end
+  [ "$concl" = success ] || [ "$concl" = failure ] || { echo "seed $seed: $concl" > "$dir/.p$seed.msg"; echo other > "$dir/.p$seed.kind"; return 0; }
   log=$(curl -sSfL "${auth[@]}" "$api/jobs/$id/logs" | sed 's/^[0-9TZ:.-]* //')
   end=$(grep -E "^(died|alive) " <<<"$log" | tail -1 || true)
-  echo "seed $seed: ${end:-no result}"
-  printf '%s\t%s\t%s\n' "$seed" "${end%% *}" "${end##* }" >> "$dir/results.tsv"
+  echo "seed $seed: ${end:-no result}" > "$dir/.p$seed.msg"
+  printf '%s\t%s\t%s\n' "$seed" "${end%% *}" "${end##* }" > "$dir/.p$seed.res"
   # the game's two budgets, as its own classes charged them (train.lua report)
-  grep -E "^(think|input) budget " <<<"$log" | tail -2 | sed "s/^/$seed\t/" >> "$dir/budgets.tsv" || true
+  { grep -E "^(think|input) budget " <<<"$log" | tail -2 | sed "s/^/$seed\t/" || true; } > "$dir/.p$seed.bud"
   case $end in
-    alive*) alive=$((alive + 1)); [ -n "${GC_ALL:-}" ] && game "$seed" ;;
-    died*) died=$((died + 1)); dead+=("$seed"); sed -n '/^DEATH REPORT/,/^END DEATH REPORT/p' <<<"$log" > "$dir/seed$seed.txt"; game "$seed" ;;
+    alive*) echo alive > "$dir/.p$seed.kind"; [ -n "${GC_ALL:-}" ] && game "$seed" ;;
+    died*) echo died > "$dir/.p$seed.kind"; sed -n '/^DEATH REPORT/,/^END DEATH REPORT/p' <<<"$log" > "$dir/seed$seed.txt"; game "$seed" ;;
+    *) echo other > "$dir/.p$seed.kind" ;;
+  esac
+}
+while read -r id seed concl; do
+  while [ "$(jobs -rp | wc -l)" -ge "${GC_FETCH_PARALLEL:-12}" ]; do wait -n || true; done
+  part "$id" "$seed" "$concl" &
+done <<<"$jobs"
+wait
+alive=0; died=0; other=0; dead=(); : > "$dir/results.tsv"; : > "$dir/budgets.tsv"
+for seed in $(awk '{ print $2 }' <<<"$jobs" | sort -n); do
+  cat "$dir/.p$seed.msg"
+  [ -f "$dir/.p$seed.res" ] && cat "$dir/.p$seed.res" >> "$dir/results.tsv"
+  [ -f "$dir/.p$seed.bud" ] && cat "$dir/.p$seed.bud" >> "$dir/budgets.tsv"
+  case $(cat "$dir/.p$seed.kind" 2>/dev/null) in
+    alive) alive=$((alive + 1)) ;;
+    died) died=$((died + 1)); dead+=("$seed") ;;
     *) other=$((other + 1)) ;;
   esac
-done <<<"$jobs"
+done
+rm -f "$dir"/.p*.msg "$dir"/.p*.res "$dir"/.p*.bud "$dir"/.p*.kind
 echo "alive $alive, died $died, other $other -- reports in $dir"
 awk -F'\t' '$2 ~ /^think/ { split($2, a, /[ ,]+/); over += a[5]; if (a[5] > 0) tseeds++; w = a[10] + 0; if (w > worst) worst = w } $2 ~ /^input/ { split($2, a, /[ ,:]+/); if (a[8] + 0 > most) most = a[8] + 0; over2 += a[9] } END { printf "think budget (8 ms): %d frames over it in %d seeds, slowest %.1f ms | input budget: most %d in a window, %d frames over\n", over, tseeds, worst, most, over2 }' "$dir/budgets.tsv"
 hist=$(dirname "$0")/survival_scans.tsv
