@@ -271,9 +271,14 @@ ways: a tool not listed, or a path listed that doesn't exist.
   engine is reached only through `lineJudge` and `searchInTime`, which stop at
   their share of the work (`workLeft`); the decision's closing keeps
   `FINALJUDGES` judges' work under whatever the stages measure.
-- **Every decision fits the game's frame.** The bot plays at 60 fps:
-  `BUDGETMS` in `native/bot.c` (the 16.7 ms frame less the frame's own work)
-  is a decision's budget, and in a game the clock cuts one past it and the game
+- **Every decision fits the game's think budget, and every press its input
+  budget.** The game holds a computer player to 8 ms of thinking a frame
+  (`ThinkBudget.lua`) and to 456 actions a minute, at most 76 in any 600
+  frames (`InputBudget.lua`; an action is a swap, up, down, left or right going
+  down, a held direction one, raise none). `BUDGETMS` in `native/bot.c` (the 8
+  ms less the frame's own work) is a decision's budget, and `front.c`
+  (`ACTIONLIMIT`, `actionAllowed`) does not press a key the input budget does
+  not allow, the walk waiting for the frame it is. In a game the clock cuts a decision past it and the game
   fails. The budget is counted in work inside every game, so the survival
   scan is the budget check: a decision past it is cut, the seed fails, and
   the scan reports it. A change to `native/` is pushed and scanned at once;

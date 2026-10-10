@@ -21,6 +21,12 @@ static const double STARTER_W[] = { -20, -10, -40, 5, 13, 20, 30, 4, 6, 8, 10, 1
 
 enum { H_NONE, H_UP, H_DOWN, H_LEFT, H_RIGHT };   // BIN[IN_HELD]
 typedef struct { uint8_t last[32][W + 2], first[32][W + 2], same[32][W + 2], garb[32][W + 2]; } Settle;   // per cell (unsettled): the frame it settles from, the frame it first changes, whether it settles to what it holds now, and whether it settles to garbage
+// THE INPUT BUDGET, the game's (InputBudget.lua): at most ACTIONLIMIT actions
+// in any ACTIONWINDOW frames, an action being a swap, up, down, left or right
+// going down; a held direction is one action, raise none. A key the budget
+// does not allow is not pressed: the walk waits for the frame it is.
+#define ACTIONLIMIT 76   // 456 actions a minute over the window: floor(456 * 600 / 3600)
+#define ACTIONWINDOW 600
 typedef struct {
   int id, reaction, reveal, allowRaise;
   int cooldown, raiseHeld, wantRaise, wantRows, raiseLives;   // raiseHeld: the raise key pressed this frame
@@ -32,6 +38,7 @@ typedef struct {
   int lastKind, lastVia, lastMoveR, lastMoveC;
   Settle settle;   // the board's cells, when each settles (unsettled), at the last decision
   int wWaitTo, wFrames, wWaitAll, wR0, wKept;
+  int actAt[ACTIONLIMIT], actOld, actN;   // the frames of the actions inside the window, a ring (spendAction)
   int sawWave;   // a real garbage slab has been queued: the phantom first wave is over
   int risen, riseDisp, riseHas;   // rows risen since the game began (IN_RISEN), counted every frame
   int pkR, pkC, pkAt, pkAll, presses;   // presses: every swap pressed, counted (IN_PRESSES)   // the swap walked to, and the clock its first plan pressed it at (pkAt 0: none)   // a walk: the frame its swap's panels settle (every panel's: wWaitAll), the frames it has taken
@@ -486,6 +493,15 @@ static void fTable(Front *F, double *tab) {
 }
 
 // ---------------------------------------------------------------- the keys (bitbot.js update, panel-cpu.js walk)
+static int actionsInWindow(Front *F, int clock) {
+  while (F->actN > 0 && clock - F->actAt[F->actOld] >= ACTIONWINDOW) { F->actOld = (F->actOld + 1) % ACTIONLIMIT; F->actN--; }
+  return F->actN;
+}
+static int actionAllowed(Front *F) { return actionsInWindow(F, FB->clock) < ACTIONLIMIT; }
+static void spendAction(Front *F) {
+  if (actionsInWindow(F, FB->clock) >= ACTIONLIMIT) return;
+  F->actAt[(F->actOld + F->actN) % ACTIONLIMIT] = FB->clock; F->actN++;
+}
 static int fSend(Front *F, int input, int held) {
   int dir = input & IN_UP ? H_UP : input & IN_DOWN ? H_DOWN : input & IN_LEFT ? H_LEFT : input & IN_RIGHT ? H_RIGHT : H_NONE;
   if (dir && dir == held) {
@@ -494,10 +510,12 @@ static int fSend(Front *F, int input, int held) {
     if (F->park) F->pTimer = 0;
     dir = H_NONE;
   }
+  if (dir) spendAction(F);
   F->held = dir;
   return input;
 }
-static int stepToward(int *timer, int row, int col, int input) {
+static int stepToward(Front *F, int *timer, int row, int col, int input) {
+  if (!actionAllowed(F)) return input;
   if (FB->curCol < col) input |= IN_RIGHT;
   else if (FB->curCol > col) input |= IN_LEFT;
   else if (FB->curRow < row) input |= IN_UP;
@@ -534,7 +552,7 @@ static int driveWalk(Front *F, int input) {
   int row = clampi(F->wRow, 1, FB->topCurRow), col = clampi(F->wCol, 1, W - 1);
   if (FB->curRow != row || FB->curCol != col) {
     if (F->wTimer > 0) { F->wTimer--; return input; }
-    return stepToward(&F->wTimer, row, col, input);
+    return stepToward(F, &F->wTimer, row, col, input);
   }
   // the swap's panels settle at a known frame: a walk that arrives first waits
   // a pair still now is pressed now, unless a plan has already fixed its frame
@@ -547,9 +565,11 @@ static int driveWalk(Front *F, int input) {
     F->walk = 0; F->cooldown = 0;
     return input;
   }
+  if (!actionAllowed(F)) return input;   // the swap waits for the budget's next action
   int ok = nb_can_swap(FB, FB->curRow, FB->curCol) && nb_try_queue_swap(FB, FB->curRow, FB->curCol);
   F->walk = 0;
   if (ok) {
+    spendAction(F);
 #ifndef __wasm__
     { extern int botTraceOn; if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "PRESS clock %d at %d,%d\n", FB->clock, FB->curRow, FB->curCol); } }
 #endif
@@ -565,7 +585,7 @@ static int parkStep(Front *F, int input) {
   int row = clampi(F->pRow, 1, FB->topCurRow), col = clampi(F->pCol, 1, W - 1);
   if (FB->curRow == row && FB->curCol == col) return input;
   if (F->pTimer > 0) { F->pTimer--; return input; }
-  return stepToward(&F->pTimer, row, col, input);
+  return stepToward(F, &F->pTimer, row, col, input);
 }
 #define DIRS (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT)
 
