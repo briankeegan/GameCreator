@@ -8,7 +8,7 @@ static void frontCalm(int calm);
 enum { IN_TOPPED, IN_STOP, IN_INCOMING, IN_NEXTSLAB, IN_FALLING, IN_CROW, IN_CCOL, IN_HEALTH, IN_DRAIN, IN_FPR,
        IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISING, IN_INFLIGHT,
        IN_DRAINBOUND, IN_STACKTOPPED, IN_MOVING, IN_HASTIMED, IN_REVEALOPEN, IN_CONVN, IN_CONVTIMER, IN_BCROW, IN_BCCOL,
-       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_PRESSES = 600, IN_PHANTOM, IN_RISEN, IN_SIZE = 608 };   // IN_POPLOW + 1..W runs to 599
+       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_PRESSES = 600, IN_PHANTOM, IN_RISEN, IN_OPPTOPPED, IN_SIZE = 609 };   // IN_POPLOW + 1..W runs to 599
 enum { TF_DEADLY = 1, TF_FORCE = 2, TF_REFUSE = 4, TF_RAISE = 8, TF_STUB = 16, TF_SLAB = 32 };
 static int deadlyCalls;
 #define TFLAG(f) (((int)BIN[IN_T]) & (f))
@@ -23,7 +23,7 @@ enum { M_BUILD, M_DEFEND, M_ATTACK };
 // the line a bot plays (Bot.line): what it is for, and the most steps it holds
 enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
 #define LINEMAX 16   // the most steps a line holds: storage, never a limit on what is searched -- a line that does not fit is refused, never cut
-#define LNOLEN 17
+#define LNOLEN 19
 // THE HOLLOW of a judged line: the gaps under garbage on the board it ends on
 // ([10]) and the gaps the slabs to come would leave over its towers ([13]). A
 // tower lowered also lets a pile perched on it down onto panels it can break on.
@@ -822,6 +822,17 @@ static double *FILT[MAXOPT];
 static int comboWorth(int size) { return size == 4 ? 0 : size == 7 ? 1 : size == 6 ? 2 : size == 5 ? 3 : size == 8 ? 4 : size > 8 ? 5 : -1; }
 // 1: the combo of size a is worth more than b's, -1: less, 0: the same or either is no combo
 static int worthCmp(int a, int b) { int wa = comboWorth(a), wb = comboWorth(b); return wa < 0 || wb < 0 || wa == wb ? 0 : wa > wb ? 1 : -1; }
+// WHAT AN ATTACK IS WORTH, combo against chain: a combo of `sa` panels or a chain of `ca` links (2 and up).
+// Against a player who is topped out (IN_OPPTOPPED) a combo comes before a chain; against one who is not, a
+// chain before a combo. Two combos by comboWorth, two chains by length. 1: a is worth more, -1: b is, 0: the
+// same, or either is no attack.
+static int attackCmp(int sa, int ca, int sb, int cb) {
+  int chainA = ca >= 2, chainB = cb >= 2, atkA = chainA || comboWorth(sa) >= 0, atkB = chainB || comboWorth(sb) >= 0;
+  if (!atkA || !atkB) return 0;
+  if (chainA != chainB) return chainA == (BIN[IN_OPPTOPPED] == 0) ? 1 : -1;
+  if (chainA) return ca == cb ? 0 : ca > cb ? 1 : -1;
+  return worthCmp(sa, sb);
+}
 typedef struct { double rate, cells, gain, frames; double *option; } Pick;
 static int bestAttack(double deadline, double ppf, Pick *best) {
   int n, have = 0;
@@ -845,7 +856,8 @@ static int bestAttack(double deadline, double ppf, Pick *best) {
     double taste = 1 + TB[T_W + key] / 100;
     if (taste < 0.1) taste = 0.1;
     double rate = (cells / dmax(1, durOf(o))) * taste;
-    int cmp = have && !isChain && best->option[F_KIND] != 1 ? worthCmp((int)o[F_SIZE], (int)best->option[F_SIZE]) : 0;
+    int bestChain = have && best->option[F_KIND] == 1;
+    int cmp = have ? attackCmp(isChain ? 0 : (int)o[F_SIZE], isChain ? (int)o[F_CHAIN] : 0, bestChain ? 0 : (int)best->option[F_SIZE], bestChain ? (int)best->option[F_CHAIN] : 0) : 0;
     int win = !have || (cmp ? cmp > 0 : rate > best->rate);
     if (!win && have && !cmp && rate == best->rate) {
       double ob = has(o[F_BUMPS]) ? o[F_BUMPS] : 1e9, bb = has(best->option[F_BUMPS]) ? best->option[F_BUMPS] : 1e9;
@@ -3804,10 +3816,10 @@ static Dec stayAlive(Dec d) {
 // the slab to come) is life lost, so the rank holds a clear that digs under a pile. Each is judged on the
 // engine (lineJudge, which keeps to the work there is); one it cannot judge is
 // not weighed, and a decision it cannot judge stands.
-typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, size, die, conv, hollow, pri; double life, soon; } Opt;
+typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, size, chain, die, conv, hollow, pri; double life, soon; } Opt;
 static int optJudge(Opt *o) {
   int last = 0, spent = 0;
-  o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = o->early = o->size = 0;
+  o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = o->early = o->size = o->chain = 0;
   if (o->d.kind == K_HOLD) {
     o->die = aloneDie(1 << 20);
     o->hollow = aloneOnEngine() ? HOLLOW(LNA) : 0;
@@ -3819,8 +3831,10 @@ static int optJudge(Opt *o) {
     o->die = die; o->lives = die > 0; o->breaks = (v & LV_BREAKS) != 0;
     o->conv = LNO[2] - LNA[2]; o->hollow = HOLLOW(LNO); last = LNO[1]; spent = spentOf();
     // a combo or a chain: it clears more than the board left alone, and digs under no pile (more hollow than the hold)
-    o->cash = comboWorth(LNO[3] - LNA[3]) >= 0 && (!aloneOnEngine() || o->hollow <= HOLLOW(LNA));
-    o->size = LNO[3] - LNA[3];
+    // an attack: the line makes a chain longer than the board's own, or a larger single match than it does, and digs under no pile (more hollow than the hold)
+    o->chain = LNO[18] > LNA[18] && LNO[18] >= 2 ? LNO[18] : 0;
+    o->size = LNO[17] > LNA[17] ? LNO[17] : 0;
+    o->cash = (o->chain || comboWorth(o->size) >= 0) && (!aloneOnEngine() || o->hollow <= HOLLOW(LNA));
     // a clear that breaks nothing and is no combo, before it is due (clearDue), is a spend the board does not need yet
     o->early = !o->breaks && !o->cash && LNO[3] > LNA[3] && !clearDue(o->sw, o->n, 0);
   }
@@ -3866,7 +3880,7 @@ static int optRank(Opt *a, Opt *b) {
   // then a combo or a chain
   // a break sooner by more than NEXTMOVE: less is the walk's own movement, and the target stands
   if (ka) { double sa = optSoon(a), sb = optSoon(b), gap = sa > sb ? sa - sb : sb - sa; if (sa != sb && !(gap <= NEXTMOVE)) return sa < sb ? 1 : -1; }
-  if (a->cash && b->cash) { int w = worthCmp(a->size, b->size); if (w) return w; }
+  if (a->cash && b->cash) { int w = attackCmp(a->size, a->chain, b->size, b->chain); if (w) return w; }
   if (a->life != b->life) return a->life > b->life ? 1 : -1;
   if (a->cash != b->cash) return a->cash > b->cash ? 1 : -1;
   if (a->conv != b->conv) return a->conv > b->conv ? 1 : -1;
