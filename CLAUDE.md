@@ -300,8 +300,9 @@ ways: a tool not listed, or a path listed that doesn't exist.
   soon it is done** (`bestPlan`, `bestAttack`: `Pick.key`); only when nothing
   fits is the soonest taken. In `bestPlan` an attack (`attackFirst`) comes
   before a clear that is neither. The arbiter is also handed the attacks the
-  stages did not pick (`attackOptions`: the `ATTACKOPTS` best swaps in the pool
-  that make a combo of four or more or a chain, by `attackCmp`). **Idle time is for setups**: with no break in
+  stages did not pick (`attackOptions`: the `ATTACKOPTS` best swaps that make a combo of
+  four or more or a chain, by `attackCmp`, of those the stages' own rules let
+  through -- `FITS`: not refused, not too early, in time). **Idle time is for setups**: with no break in
   reach, `setupOptions` adds the swaps that clear nothing and make more
   vertical twos, then flatter, as options beside the hold. A setup must spare
   every saved line (`sparesSetups`: the kept line, target, plan and attack play
