@@ -3519,12 +3519,11 @@ static int lineRank(const LineC *a, int ra, const LineC *b, int rb) {
 static int readyBar(void) { return aloneDie(0); }
 // whether a line counts as ready: asked only with garbage to come, and only of
 // a line that loses health no sooner than the board left alone
-static int readyAtNext(const int32_t *sw, int n, int *br, int *bc);
 static int readyCounts(const LineC *l, int alone) {
   if (!(BIN[IN_INCOMING] > 0) || (alone && l->die < alone)) return 0;
   int32_t keep[LNOLEN]; int r, c;
   for (int k = 0; k < LNOLEN; k++) keep[k] = LNO[k];
-  int rdy = readyAtNext(l->sw, l->n, &r, &c);
+  int rdy = readyInTime(l->sw, l->n, &r, &c);
   for (int k = 0; k < LNOLEN; k++) LNO[k] = keep[k];
   return rdy;
 }
@@ -3792,14 +3791,14 @@ static int optJudge(Opt *o) {
   return 1;
 }
 // READY FOR THE NEXT WAVE: a break in reach when the queued slab lands
-// (readyAtNext: the first landing, not a dump let down); with none queued, the board the option leaves ready for a
+// (readyInTime); with none queued, the board the option leaves ready for a
 // slab the width of the board on the stack (waveReady), as the next wave lands
 static int optReady(Opt *o) {
   if (!o->rdyKnown) {
     int r, c, hold = o->d.kind == K_HOLD;
     o->rdy = 0;
     if (o->lives && BIN[IN_HASPA]) {
-      if (BIN[IN_INCOMING] > 0) o->rdy = hold ? readyAtNext(0, 0, &r, &c) : readyAtNext(o->sw, o->n, &r, &c);
+      if (BIN[IN_INCOMING] > 0) o->rdy = hold ? readyInTime(0, 0, &r, &c) : readyInTime(o->sw, o->n, &r, &c);
       else { int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t w[32][WMAX];
              if (lineState(hold ? 0 : o->sw, hold ? 0 : o->n, st, can, w, cur, &t) == 0) o->rdy = waveReady(st); }
     }
@@ -4005,8 +4004,8 @@ static int maskBreaks(const int32_t *st, const int32_t *sw, int n);
 static void parallelDo(int count, void (*task)(int));
 // the decision's memos, touched before the game (frontWarm)
 static void botWarm(void) { __builtin_memset(JM, 0, sizeof JM); }
-// READY WHEN THE NEXT SLAB LANDS, the one question for the lineup and the arbiter alike (readyAtNext)
-static int readyNext(const int32_t *sw, int n) { int r, c; return readyAtNext(sw, n, &r, &c); }
+// READY FOR THE NEXT SLAB, the one question for the lineup, the arbiter and every rule alike (readyInTime)
+static int readyNext(const int32_t *sw, int n) { int r, c; return readyInTime(sw, n, &r, &c); }
 // Where a lineup can matter: the rows up to the one the next slab lands on,
 // in its columns and one either side.
 static int lineupNear(const int32_t *st, int r, int c) {
@@ -4126,9 +4125,8 @@ static int roomForBreak(const int32_t *st) {
 static ST RBL, RBS; static int32_t RBR[R_INTS + ST_INTS], RBSW[2 * 128];
 int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t);
 // each line's answer is the decision's: asked again, it is not replayed again
-#define RMEMO 64
-static struct { int dec, n, ok, r, c; int32_t sw[2 * 3]; } RMEM[RMEMO];
-static int nRmem, rmemDec = -1;
+#define RMEMO 512
+static struct { int dec, n, ok, r, c; int32_t sw[2 * LINEMAX]; } RMEM[RMEMO];   // asked of a line once a decision, whoever asks
 static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc);
 // A REPLAY ONLY WHERE THE BUDGET HOLDS ONE: the work the decision has spent
 // (from its start, rdW0) and what a replay costs (rdCost, the most one has
@@ -4136,45 +4134,19 @@ static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc);
 static double rdCost;
 static int readyInTime(const int32_t *sw, int n, int *br, int *bc) {
   extern PATLS double paWork;
-  if (rmemDec != btDecision) { rmemDec = btDecision; nRmem = 0; }
-  if (n <= 3) for (int i = 0; i < nRmem; i++)
-    if (RMEM[i].n == n && (!n || !__builtin_memcmp(RMEM[i].sw, sw, (unsigned long)n * 8))) { *br = RMEM[i].r; *bc = RMEM[i].c; return RMEM[i].ok; }
-  if (rdCost > workLeft()) return 0;   // the work this thread has left (workLeft)
-  double w = paWork;
-  int ok = readyInTimeRaw(sw, n, br, bc);
-  if (paWork - w > rdCost) rdCost = paWork - w;
-  if (n <= 3 && nRmem < RMEMO) {
-    RMEM[nRmem].n = n; RMEM[nRmem].ok = ok; RMEM[nRmem].r = ok ? *br : 0; RMEM[nRmem].c = ok ? *bc : 0;
-    for (int k = 0; k < 2 * n; k++) RMEM[nRmem].sw[k] = sw[k];
-    nRmem++;
-  }
-  return ok;
-}
-// READY AT THE NEXT LANDING: a break in reach the frame the next slab lands,
-// pressed after the line's last step -- not one reached by letting the dump
-// come down first. What a choice is ranked by (readyCounts): a dump let down
-// is slabs piled on the board, however a break meets them after.
-static int rdNextOnly;   // readyAtNext: the first landing only
-// asked of a line once a decision, whoever asks (the arbiter, the lineup)
-#define NMEMO 256
-static struct { int dec, n, ok, r, c; int32_t sw[2 * LINEMAX]; } NMEM[NMEMO];
-static int readyAtNext(const int32_t *sw, int n, int *br, int *bc) {
-  extern PATLS double paWork;
   unsigned h = 2166136261u ^ (unsigned)n;
   for (int k = 0; k < 2 * n; k++) h = (h ^ (unsigned)sw[k]) * 16777619u;
-  int slot = n <= LINEMAX ? (int)(h & (NMEMO - 1)) : -1;
-  if (slot >= 0 && NMEM[slot].dec == btDecision && NMEM[slot].n == n && (!n || !__builtin_memcmp(NMEM[slot].sw, sw, (unsigned long)n * 8))) {
-    *br = NMEM[slot].r; *bc = NMEM[slot].c; return NMEM[slot].ok; }
+  int slot = n <= LINEMAX ? (int)(h & (RMEMO - 1)) : -1;
+  if (slot >= 0 && RMEM[slot].dec == btDecision && RMEM[slot].n == n && (!n || !__builtin_memcmp(RMEM[slot].sw, sw, (unsigned long)n * 8))) {
+    *br = RMEM[slot].r; *bc = RMEM[slot].c; return RMEM[slot].ok; }
   if (rdCost > workLeft()) return 0;   // the work this thread has left (workLeft)
   double w = paWork;
-  rdNextOnly = 1;
   int ok = readyInTimeRaw(sw, n, br, bc);
-  rdNextOnly = 0;
   if (paWork - w > rdCost) rdCost = paWork - w;
   extern int paBudgetOut(void);
   if (slot >= 0 && !paBudgetOut() && !inWorker) {
-    NMEM[slot].dec = btDecision; NMEM[slot].n = n; NMEM[slot].ok = ok; NMEM[slot].r = ok ? *br : 0; NMEM[slot].c = ok ? *bc : 0;
-    for (int k = 0; k < 2 * n; k++) NMEM[slot].sw[k] = sw[k];
+    RMEM[slot].dec = btDecision; RMEM[slot].n = n; RMEM[slot].ok = ok; RMEM[slot].r = ok ? *br : 0; RMEM[slot].c = ok ? *bc : 0;
+    for (int k = 0; k < 2 * n; k++) RMEM[slot].sw[k] = sw[k];
   }
   return ok;
 }
@@ -4209,7 +4181,7 @@ int lineLandedK(const int32_t *steps, int n, int k, int32_t *masks, uint32_t *ca
 static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc) {
   uint32_t can[WMAX]; uint8_t wt[32][WMAX]; int32_t cur[2], t;
   int last = -1, found = 0; double die = LINEREACH;
-  for (int k = 1; !found && (k == 1 || !rdNextOnly); k++) {
+  for (int k = 1; !found; k++) {
     // A SLAB THAT DOES NOT COME DOWN waits on the pile until a break makes it
     // room: ready is then a break in time against the garbage the board holds
     // where the line leaves it
