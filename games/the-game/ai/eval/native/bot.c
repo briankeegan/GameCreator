@@ -3956,9 +3956,10 @@ static int getsBackInTime(const Opt *o, const int32_t *line, int n) {
   int rc = lineOnEngine(st, o->n + n, LINEHORIZON, 0, r);
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
-    fprintf(BLOG, "GATE %d,%d then %d,%d | rc %d loss %d lastpress %d -> %s\n", o->sw[0], o->sw[1], line[0], line[1], rc, rc == 0 ? r[0] : -1, rc == 0 ? r[1] : -1, rc != 0 || r[1] < 0 ? "unjudged, stands" : (!r[0] || r[0] > r[1]) ? "gets back" : "VETO"); }
+    fprintf(BLOG, "GATE %d,%d then %d,%d | rc %d loss %d lastpress %d -> %s\n", o->sw[0], o->sw[1], line[0], line[1], rc, rc == 0 ? r[0] : -1, rc == 0 ? r[1] : -1, rc != 0 || (r[1] < 0 && !r[0]) ? "unjudged, stands" : r[1] < 0 ? "VETO cut short" : (!r[0] || r[0] > r[1]) ? "gets back" : "VETO"); }
 #endif
-  if (rc != 0 || r[1] < 0) return 1;
+  if (rc != 0) return 1;
+  if (r[1] < 0) return !r[0];   // the line was cut short by the board losing health: it did not get back in time
   return !r[0] || r[0] > r[1];
 }
 static Dec arbitrate(Dec d) {
