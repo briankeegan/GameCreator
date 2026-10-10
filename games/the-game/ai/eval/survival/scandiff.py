@@ -2,7 +2,7 @@
 import sys, os, glob
 new = sys.argv[1].rstrip('/')
 base = os.path.dirname(new) or '.'
-others = sorted((d for d in glob.glob(base + '/scan-*') if os.path.isdir(d) and os.path.abspath(d) != os.path.abspath(new) and os.path.exists(d + '/results.tsv')), key=os.path.getmtime)
+others = sorted((d for d in glob.glob(base + '/scan-*') if os.path.isdir(d) and os.path.abspath(d) != os.path.abspath(new) and os.path.exists(d + '/results.tsv') and os.path.getsize(d + '/results.tsv') > 0), key=os.path.getmtime)
 def load(d): return {int(l.split()[0]): int(l.split()[2]) for l in open(d + '/results.tsv') if l.strip()}
 B = load(new)
 mean = lambda R: sum(min(v, 60000) for v in R.values()) / len(R)

@@ -44,6 +44,7 @@ while read -r id seed concl; do
   log=$(curl -sSfL "${auth[@]}" "$api/jobs/$id/logs" | sed 's/^[0-9TZ:.-]* //')
   end=$(grep -E "^(died|alive) " <<<"$log" | tail -1 || true)
   echo "seed $seed: ${end:-no result}"
+  printf '%s\t%s\t%s\n' "$seed" "${end%% *}" "${end##* }" >> "$dir/results.tsv"
   # the game's two budgets, as its own classes charged them (train.lua report)
   grep -E "^(think|input) budget " <<<"$log" | tail -2 | sed "s/^/$seed\t/" >> "$dir/budgets.tsv" || true
   case $end in
