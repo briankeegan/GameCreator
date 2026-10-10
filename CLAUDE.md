@@ -330,7 +330,9 @@ ways: a tool not listed, or a path listed that doesn't exist.
   optional work stops at (`OPTWORK`) is the frame's time left, less what the
   front takes after a decision, over the bot's milliseconds per unit of work
   (a decision's own time, among those that reach the line, at the quantile
-  that leaves 1 in 1,000 of all decisions over the ceiling), the cut 9,600
+  that leaves 1 in 1,000 of all decisions over the ceiling; the front's time is
+  tracked at that quantile too, and a decision always has `OPTFLOOR` work, so a
+  stalled frame cannot leave it none), the cut 9,600
   units above it, and the bot reads the monotonic clock
   every 400 units (`paWall`), so a decision whose time is up is out of budget
   like one whose work is. A host that does not call `bot_time` (the browser,
