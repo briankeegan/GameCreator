@@ -19,7 +19,7 @@ on:
         type: boolean
         default: false
       input_limit:
-        description: actions the bot may press in any 600 frames (empty: the game's 76; a diagnostic, to see what the input budget costs)
+        description: "actions the bot may press in any 600 frames; empty is the game's 76, another is a diagnostic of what the input budget costs"
         default: ''
 
 # one scan per commit: a push never cancels the scan of the commit before it
