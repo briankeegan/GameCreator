@@ -36,22 +36,19 @@ int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);   // th
 // THE CUT, past which the decision fails and the game with it: the game's
 // think budget (ThinkBudget.lua) is 8 ms a frame for a computer player's whole
 // thinking. A decision's work is counted in units, and a unit takes longer or
-// shorter by machine and by what the decision does: a full decision of
-// combo_storm seed 18 (4,000 frames, 33,000 units) takes 3.5 ms at the median,
-// a median of 9,400 units per ms (drill seed 9 p5 7,148, Lua seed 9 p1 6,027).
-// 8 ms at the median rate is 75,000 units; a decision is cut at 72,000. Below
-// the median rate a full decision overruns the game's 8 ms (train.lua counts
-// the frames over it), so the rate is what to raise, not the budget to cut:
-// half the work (42,800) leaves a stage nothing to judge with and the bot dies
-// in its first wave. lua_budget_check and budget_check measure the time it
-// actually takes.
-#define WORKBUDGET 72000   // natively and in the browser alike
+// shorter by machine and by what the decision does. On the scan's runner
+// (ai-survival-scan, 1.09 million frames) a decision that stops at OPTWORK
+// takes 5.5 ms at the median, 7.6 at the 99th percentile and 8.6 at the
+// 99.9th when it stops at 62,400 units, with 0.6 ms of the frame's own work
+// besides: so the line is 62,400 x 7.4 / 8.0, 57,600 units. lua_budget_check
+// and budget_check measure the time it actually takes.
+#define WORKBUDGET 67200   // natively and in the browser alike
 // WHERE OPTIONAL WORK STOPS: the engine refuses work past it, and every judge,
 // replay, search and batch is declined that would not fit. What was under way
 // finishes past it: at most 6,688 units over 3,446 decisions of seed 16 under
 // the charges of the 4,963-a-ms rate, 9,630 at today's 7,148, so the line
 // stands that far under the cut.
-#define OPTWORK 62400   // WORKBUDGET less the 9,600 under way when the line is crossed
+#define OPTWORK 57600   // WORKBUDGET less the 9,600 under way when the line is crossed
 enum { C_REFUSEDDEADLY, C_ALLDEAD, C_REFUSEDRETURN, C_REFUSEDTOOSLOW, C_PLANNED, C_PLANDROPPED, C_ATTACKED,
        C_ATTACKDROPPED, C_CELLSPLANNED, C_REFUSEDPAYLESS, C_REFUSEDSTARVING, C_REFUSEDOTHER, C_REFUSEDATEXIT,
        C_RAISEDFORMATERIAL, C_WAITEDTORAISE, C_DUGFOR, C_DIGDROPPED, C_BROKENOW, C_FLATTENBLIND, C_OPENINGRAISES,
