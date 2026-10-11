@@ -300,8 +300,8 @@ ways: a tool not listed, or a path listed that doesn't exist.
   `FINALJUDGES` judges' work under whatever the stages measure.
   **Anything that fits the time is weighed by what it is worth, never by how
   soon it is done** (`bestPlan`, `bestAttack`: `Pick.key`); only when nothing
-  fits is the soonest taken. In `bestPlan` an attack (`attackFirst`) comes
-  before a clear that is neither. The arbiter is also handed the attacks the
+  fits is the soonest taken. In `bestPlan` and `bestAttack` an attack (`attackFirst`) comes
+  before a clear that is neither; so it does in keepHealth's choice among its clears, ahead of the time they buy. The arbiter is also handed the attacks the
   stages did not pick (`attackOptions`: the `ATTACKOPTS` best swaps that make a combo of
   four or more or a chain, by `attackCmp`, of those the stages' own rules let
   through -- `FITS`: not refused, not too early, in time). The break stage ranks the lines it finds the same way (`lineRank`): the break that lives, ready, of two breaks -- or of two lines that save a board dying within `LIVEHORIZON` -- the later loss of health, then the combo or chain before a plain three (`attackFirst`), then life, garbage converted, hollow, the soonest. The main decision's last pick among the candidates allowed leaves the plain threes out when a combo or chain that clears is among them. Every chooser of a break asks the one comparison (`breakCmp`: the combo or chain before a plain three, then the most garbage converted, then the fewest voids, the sooner only between equals). Only options that fit the time are ranked, so a combo or chain that does not fit never takes a three's place; the arbiter does the same for two options that save a dying board. **Idle time is for setups**: with no break in
