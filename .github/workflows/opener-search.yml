@@ -1,0 +1,36 @@
+name: Opener search
+
+# The biggest attack a beam search finds on a match's opening board, by seed (opener_search.js).
+on:
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: 'Comma-separated seeds'
+        default: '1,2,3,4,5,6,7,8,9,10'
+      ms:
+        description: 'Search time a seed, ms'
+        default: '3000'
+      width:
+        description: 'Beam width'
+        default: '40'
+      depth:
+        description: 'Most swaps in a sequence'
+        default: '12'
+
+permissions:
+  contents: read
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Search
+        timeout-minutes: 20
+        run: |
+          node games/the-game/ai/eval/opener_search.js '${{ inputs.seeds }}' '${{ inputs.ms }}' '${{ inputs.width }}' '${{ inputs.depth }}' 2>&1 | tee search.log
+          sed 's/^/::notice title=opener::/' search.log
