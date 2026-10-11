@@ -14,7 +14,7 @@ var path = require('path'), fs = require('fs');
 var DIR = __dirname;
 require(path.join(DIR, '..', '..', 'panel-cpu.js'));
 var P = require(path.join(DIR, 'puyocpu.js')), PA = require(path.join(DIR, '..', '..', 'pa-engine.js'));
-var SH = require(path.join(DIR, 'survivor_shared.js')), SP = require(path.join(DIR, 'survivor_prefer.js'));
+var SH = require(path.join(DIR, 'survivor_shared.js')), SP = require(path.join(DIR, 'survivor_prefer.js')), MODES = require(path.join(DIR, 'modes.js'));
 var SPEND = Number(process.env.GC_SURVIVOR_SPEND) || 0.6;   // budget searched per millisecond over the last decisions, and the share of the time there is spent searching
 // The search ends this long before the answer is due, for the rest of the decision and its post.
 var DEADLINE_MARGIN_MS = Number(process.env.GC_SURVIVOR_MARGIN) || 30;
@@ -102,6 +102,12 @@ module.exports = function think(cfg) {
       var prep = SP.prepare(bot, board, { profile: cfg.profile, hold: m.hold, arrivals: arrivals, comingRows: comingRows, due: due, ms: m.ms, margin: DEADLINE_MARGIN_MS,
                                         search: search, stale: stale, aborted: P.ABORTED });
       var br = prep.br, brMs = prep.brMs, want = prep.want;
+      // WHILE CALM, THE PROFILE'S calmGoal IS WHAT IS BUILT, pulled toward by calmToward; otherwise the bot's own.
+      if (cfg.profile.calmGoal) {
+        if (!bot._baseAim) bot._baseAim = { goal: bot.goal, toward: bot.buildToward };
+        bot.goal = prep.calm ? MODES.goal(cfg.profile.calmGoal, cfg.profile.alsoTake) : bot._baseAim.goal;
+        bot.buildToward = prep.calm ? (cfg.profile.calmToward || bot._baseAim.toward) : bot._baseAim.toward;
+      }
       // THE TIME THERE IS: the survival search's budget is what can be searched
       // in the milliseconds before the answer is due (m.ms; 0 waits for the
       // whole budget), at the slowest rate of the last few decisions: a tall

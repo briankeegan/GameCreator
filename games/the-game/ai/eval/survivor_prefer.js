@@ -135,7 +135,9 @@ function prepare(bot, board, o) {
     bot.preferProven = function (c) { var b = this._settledOf(c); return b && b.grid ? KEEP_RANK + (drop ? DROP_ROW * slabRow(b) - DROP_PANEL * SH.panelsOf(b) : SH.keepRank(b, converting)) + gapOf(b) : Infinity; };
   }
   else if (o.profile.lowerSlab && hanging(board)) bot.preferProven = function (c) { var b = this._settledOf(c); return b && b.grid ? HANG_RANK + slabRow(b) : Infinity; };
-  return { br: br, brMs: brMs, want: want, popping: popping, banking: banking, profile: o.profile };
+  // CALM: no garbage on the board, queued or on its way, and the stack low.
+  var calm = !SH.lowestGarbageRow(board) && !(board.incoming || []).length && !(o.arrivals || []).length && !o.comingRows && SH.top(board) < (o.profile.calmTop || 8);
+  return { br: br, brMs: brMs, want: want, popping: popping, banking: banking, profile: o.profile, calm: calm };
 }
 function key(c) { return c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[1] : c.kind; }
 // A LINEUP WHILE A SLAB POPS IS PLAYED. Nothing can die before the pop
