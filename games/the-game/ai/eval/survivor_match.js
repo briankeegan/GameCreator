@@ -65,6 +65,8 @@ function revealed(want, got) {
 // decisions made over them are
 // written there, a match per line.
 var KEEP = Number(process.env.GC_SURVIVOR_KEEP) || 1;   // how many times the default the dump keeps
+var MATCHES = 0;   // matches made in this process: a file of a later one carries its number
+function numbered(file, no) { return no === 1 ? file : file.replace(/(\.[a-z]+(\.gz)?)$/, '-' + no + '$1'); }
 var HISTORY = 300 * KEEP, SNAP_EVERY = 120;   // and the board every SNAP_EVERY frames of the match (snaps)
 function gridOf(st) {
   var rows = [];
@@ -96,7 +98,7 @@ function Match(level, L) {
   this.line = null;        // the proven line after the plan: { steps, at } (follow)
   this.knew = [];          // the garbage on its way the plan was decided knowing
   this.stats = { frames: 0, frameMs: 0, slowFrames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0, unforeseen: 0, reasked: 0, revealed: 0, lineup: 0, tookLineup: 0, touch: 0, tookTouch: 0, unasked: 0, rewalked: 0, break1: 0, took1: 0, break2: 0, took2: 0, break3: 0, took3: 0, swaps: 0, undone: 0, actions: 0, maxWindow: 0, overInput: 0, heldWalks: 0, guarded: 0 };
-  this.history = []; this.decided = []; this.asked = []; this.snaps = []; this.losses = []; this.dumped = false;
+  this.history = []; this.decided = []; this.asked = []; this.snaps = []; this.losses = []; this.dumped = false; this.no = ++MATCHES;
   this.msPerFrame = L.msPerFrame || 1000 / 60; this.wall = 0;   // how fast frames come (soon); a link may fix it (msPerFrame)
   // A question from the last match is not this one's: its answer is dropped.
   L.pending = null;
@@ -535,7 +537,7 @@ Match.prototype.record = function (truth, bits, arrivals) {
 Match.prototype.frameLog = function (rec) {
   if (!this.frames) {
     var gz = require('zlib').createGzip({ level: 6 });
-    gz.pipe(require('fs').createWriteStream(process.env.GC_SURVIVOR_FRAMES));
+    gz.pipe(require('fs').createWriteStream(numbered(process.env.GC_SURVIVOR_FRAMES, this.no)));
     this.frames = gz;
   }
   var same = rec.grid === this.framesGrid;
@@ -546,7 +548,10 @@ Match.prototype.dump = function () {
   if (this.frames) { this.frames.end(); this.frames = null; }
   if (this.dumped || !process.env.GC_SURVIVOR_DUMP || !this.history.length) return;
   this.dumped = true;
-  require('fs').appendFileSync(process.env.GC_SURVIVOR_DUMP, JSON.stringify({ stats: this.stats, decided: this.decided, asked: this.asked, history: this.history, snaps: this.snaps, losses: this.losses }) + '\n');
+  var line = JSON.stringify({ stats: this.stats, decided: this.decided, asked: this.asked, history: this.history, snaps: this.snaps, losses: this.losses }) + '\n';
+  // a .gz dump is one file a match, numbered; any other is one file the matches append to
+  if (/\.gz$/.test(process.env.GC_SURVIVOR_DUMP)) require('fs').writeFileSync(numbered(process.env.GC_SURVIVOR_DUMP, this.no), require('zlib').gzipSync(line));
+  else require('fs').appendFileSync(process.env.GC_SURVIVOR_DUMP, line);
 };
 
 // THE PLAN RUNS OUT BEFORE THE ANSWER: the next step of the line the last
