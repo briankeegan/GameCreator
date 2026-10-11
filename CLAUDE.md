@@ -269,7 +269,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   its loss of health later -- and a share of the decision's work
   (`workLeft`), `LINEMAX` only storage. One clock prices it all
   (`travelCost`, `stepGap`, `lineFrames`), counted from where the cursor is;
-  an engine press time meets it only through `pressSeen`. `clock.test.sh`
+  an engine press time meets it only through `pressSeen`. A walk's press frame, fixed by its first plan, is the first frame its pair is still (`pairFree`), the frame the judge replays it at -- not the frame its panels last change. `clock.test.sh`
   holds the clock to the engine; `check_time_not_swaps.mjs` fails on a cap
   coming back or a new hand-listed search.
 - **A decision is one ordered choice (`arbitrate`).** The stages propose; the

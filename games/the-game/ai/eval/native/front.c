@@ -596,6 +596,9 @@ static int pressWait(Front *F, int r, int c, int clock, int wait, int waitAll) {
 static void beginWalk(Front *F, int r, int c, int cooldown, int waitAll) {
   F->walk = 1; F->wRow = r; F->wCol = c; F->wTimer = 0; F->wCooldown = cooldown; F->wRetries = 0; F->wHasDisp = 0;
   int wait = waitAll ? breakWait(&F->settle, r, c) : pairWait(&F->settle, r, c);
+  // THE FRAME THE FIRST PLAN PRESSES is the first frame from the walk's arrival that its pair is still (pairFree), as
+  // driveWalk and the judge's replay press it -- not the frame its panels last change, which a pair free sooner would wait for
+  if (!waitAll) { int a = travelCost(FB->curRow, FB->curCol, r, c) - 2; for (int f = a > 0 ? a : 0; f < wait; f++) if (pairFree(&F->settle, r, c, f)) { wait = f; break; } }
   F->wKept = F->pkAt && F->pkR == r && F->pkC == c && F->pkAll == waitAll;
   if (!F->wKept) { F->pkR = r; F->pkC = c; F->pkAt = FB->clock + wait; F->pkAll = waitAll; }
   F->wWaitTo = pressWait(F, r, c, FB->clock, wait, waitAll); F->wFrames = 0; F->wWaitAll = waitAll; F->wR0 = r;
