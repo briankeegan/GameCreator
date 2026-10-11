@@ -2324,7 +2324,7 @@ static int budgetRefused;
 static double stageEnd = 1e300;
 // bgReserve: a background batch's work, held back until it is folded in (front.c parallelBg)
 static double bgReserve;
-#define SETUPSHARE 0.2   // the share of OPTWORK the stages leave for the setups in downtime
+#define SETUPSHARE 0.1   // the share of OPTWORK the stages leave for the setups in downtime
 static double gSetupReserve;   // downtime: the work the stages leave for the arbiter's setups; the arbiter takes it back
 static double optLine(void) { double e = rdW0 + OPTWORK; return (stageEnd < e ? stageEnd : e) - bgReserve - gSetupReserve; }
 // THE STAGES AFTER KEEP THEIRS: a stage's optional work stops where the
