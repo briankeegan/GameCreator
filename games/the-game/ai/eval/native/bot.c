@@ -3699,12 +3699,13 @@ static int nonSpendLives(void);
 // on a stopped board that is not topped; after a press made `last` frames from now, the swap landed and the
 // reaction over (stepGap). Frames from now.
 static double holdGap(void) { return BIN[IN_STOP] > 0 && !BIN[IN_TOPPED] ? 1 : REACT + 1; }
-// THE TIME A SAVE NEEDS, on the clock, from the worst place the cursor can be: the wait for the front's next decision
-// (holdGap), the walk from one corner of the board to the opposite one (travelCost, the press included) and the
-// frames a press is trusted (NEXTMOVE). Health lost sooner than this is lost before any single swap can be pressed
+// THE TIME A SAVE NEEDS, on the clock: the wait for the front's next decision (holdGap), the walk from the cursor to the
+// farthest cell of the board (a corner; travelCost, the press included) and the frames a press is trusted (NEXTMOVE).
+// Health lost sooner than this is lost before any single swap can be pressed
 static int liveHorizon(void) {
-  int h = DBASE ? (int)DBASE[O_H] : 12;
-  return (int)holdGap() + travelCost(1, 1, h, BW - 1) + NEXTMOVE;
+  int cr = (int)BIN[IN_CROW], cc = (int)BIN[IN_CCOL], h = DBASE ? (int)DBASE[O_H] : 12, far = 0;
+  for (int i = 0; i < 4; i++) { int t = travelCost(cr, cc, i & 1 ? h : 1, i & 2 ? BW - 1 : 1); if (t > far) far = t; }
+  return (int)holdGap() + far + NEXTMOVE;
 }
 // A CLEAR THAT BREAKS NOTHING IS PRESSED ONLY WHEN IT IS DUE: material is
 // spent to break, or to live at the last moment it can. A press locks the rise
