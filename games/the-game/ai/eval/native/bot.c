@@ -4049,8 +4049,8 @@ static int optRank(Opt *a, Opt *b) {
       && (a->stall || a->d.kind == K_HOLD) && (b->stall || b->d.kind == K_HOLD)) {
     optAhead(a); optAhead(b);
     int w = attackFirst(a->ahead, b->ahead); if (w) return w;
-    if (isAttack(a->ahead) && isAttack(b->ahead) && a->reachAt != b->reachAt) return a->reachAt < b->reachAt ? 1 : -1;   // of the same attack, the one done sooner
-    if (a->reach != b->reach) return a->reach > b->reach ? 1 : -1;
+    if (a->reach != b->reach) return a->reach > b->reach ? 1 : -1;   // more attacks lined up
+    if (isAttack(a->ahead) && isAttack(b->ahead) && a->reachAt != b->reachAt) return a->reachAt < b->reachAt ? 1 : -1;   // of as many, the one done sooner
     if (a->twos != b->twos) return a->twos > b->twos ? 1 : -1;
   }
   if (a->cash && b->cash) { int w = attackCmp(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
@@ -4155,14 +4155,14 @@ static int setupOptions(Opt *O, int n, Dec d) {
     { double share = (workLeft() - FINALJUDGES * jdCost) / (na + 1 - jj);
       if (o.lives && share >= REACHMIN) { optAheadCap(&o, share < REACHWORK ? share : REACHWORK); nRead++; } }
     { int r = o.aheadKnown ? attackFirst(o.ahead, holdAhead) : 0;
-      int sooner = o.aheadKnown && isAttack(o.ahead) && isAttack(holdAhead) && r == 0 && o.reachAt < (hold ? hold->reachAt : 1e9);
-      if (!(r > 0 || sooner || (r == 0 && o.reach > holdReach) || kj > base)) continue; }
-    // kept in order: the better reach first (attackFirst), the attack done sooner, more attacks, then the cheap key; the best SETUPOPTS stay
+      int sooner = o.aheadKnown && isAttack(o.ahead) && isAttack(holdAhead) && r == 0 && o.reach == holdReach && o.reachAt < (hold ? hold->reachAt : 1e9);
+      if (!(r > 0 || (r == 0 && o.reach > holdReach) || sooner || kj > base)) continue; }
+    // kept in order: the better reach first (attackFirst), more attacks lined up, the attack done sooner, then the cheap key; the best SETUPOPTS stay
     int w = 0;
     while (w < nb) {
       int r = attackFirst(o.ahead, best[w].ahead);
-      if (r == 0 && isAttack(o.ahead) && isAttack(best[w].ahead) && o.reachAt != best[w].reachAt) r = o.reachAt < best[w].reachAt ? 1 : -1;
       if (r == 0) r = o.reach != best[w].reach ? (o.reach > best[w].reach ? 1 : -1) : 0;
+      if (r == 0 && isAttack(o.ahead) && isAttack(best[w].ahead) && o.reachAt != best[w].reachAt) r = o.reachAt < best[w].reachAt ? 1 : -1;
       if (r > 0 || (r == 0 && kj > bestKey[w])) break;
       w++;
     }
