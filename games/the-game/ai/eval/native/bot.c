@@ -3050,6 +3050,7 @@ static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const
 // add up to, however deep that is. Each is proposed, as the masks' lines are,
 // and the engine judges it.
 #define TGRID 18
+#define BREAKLEN 3   // the longest match the planner proposes while its cost is measured
 #define MINMATCH 3   // the game's smallest match: a rule of the game. A break is proposed with every match length from this up to the longest the board holds, one planner for all of them; the order only decides what the work reaches, the ranking puts a combo or chain before a three
 static JLOCAL int tCell[TGRID + 2][WMAX + 1];   // colour; 0 empty; -1 garbage; -2 a panel that cannot move
 static JLOCAL int tW, tH;
@@ -3415,7 +3416,7 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
   int32_t sw[2 * LINEMAX]; int row[WMAX + 1];
   tDrops(cr, cc, t0, limit);
   for (int a = 1; a <= N && workLeft() > 0; a++) {
-   for (int M = MINMATCH; M <= tH && workLeft() > 0; M++) {
+   for (int M = MINMATCH; M <= tH && M <= BREAKLEN && workLeft() > 0; M++) {
     // M in a column: each row's nearest panel of the colour walked to it
     for (int c = 1; c <= tW; c++)
       for (int r = 1; r + M - 1 <= tH; r++) {
@@ -3457,7 +3458,7 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
     }
    }
   }
-  for (int M = MINMATCH; M <= tH && workLeft() > 0; M++) { tStacks(N, M, cr, cc, t0, limit); tRows(N, M, cr, cc, t0, limit); }
+  for (int M = MINMATCH; M <= tH && M <= BREAKLEN && workLeft() > 0; M++) { tStacks(N, M, cr, cc, t0, limit); tRows(N, M, cr, cc, t0, limit); }
   tClears(cr, cc, t0, limit);
 }
 // A PILE LET DOWN FIRST. Garbage perched on a column or two touches little; a
