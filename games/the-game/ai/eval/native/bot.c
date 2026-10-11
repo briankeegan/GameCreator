@@ -2948,6 +2948,7 @@ static int sitCollect(const int32_t *res, const int32_t *sw, int n, double at, v
   if (nPfx + n > LINEMAX) return SIT_END;    // longer than a line holds: not kept, not grown
   LineC *l = &LINES[nLines++];
   l->n = nPfx + n; l->brk = brk; l->est = pfxT + at; l->verdict = -1; l->grown = nPfx; l->waitAll = 0;
+  { Rs made = n == 1 ? causedBy(summarise(res), &lsAlone) : summarise(res); l->size = made.biggest; l->chain = made.chain; }   // what it makes, before the engine judges it
   for (int k = 0; k < 2 * nPfx; k++) l->sw[k] = pfx[k];
   for (int k = 0; k < 2 * n; k++) l->sw[2 * nPfx + k] = sw[k];
   return SIT_END;   // a line ends at its first clear or break
@@ -3076,7 +3077,7 @@ static void tPropose(const int32_t *sw0, int n0, int cr, int cc, double t0, doub
   if (tTimeMode) { if (at < tTimeMin) tTimeMin = at; return; }
   if (at > limit) return;
   LineC *l = &LINES[nLines++];
-  l->n = n; l->brk = 1; l->est = at; l->verdict = -1; l->grown = 0; l->waitAll = 0;
+  l->n = n; l->brk = 1; l->est = at; l->verdict = -1; l->grown = 0; l->waitAll = 0; l->size = l->chain = 0;
   for (int k = 0; k < 2 * n; k++) l->sw[k] = sw[k];
 }
 static void tProposeIn(const int32_t *sw, int n, int cr, int cc, double t0, double limit) {
@@ -3088,7 +3089,7 @@ static void tProposeIn(const int32_t *sw, int n, int cr, int cc, double t0, doub
   if (tTimeMode) { if (at < tTimeMin) tTimeMin = at; return; }
   if (at > limit) return;
   LineC *l = &LINES[nLines++];
-  l->n = n; l->brk = 1; l->est = at; l->verdict = -1; l->grown = 0; l->waitAll = 0;
+  l->n = n; l->brk = 1; l->est = at; l->verdict = -1; l->grown = 0; l->waitAll = 0; l->size = l->chain = 0;
   for (int k = 0; k < 2 * n; k++) l->sw[k] = sw[k];
 }
 // The grid the distance searches read; 1 if it holds garbage.
@@ -3516,6 +3517,8 @@ static void linesFind(int depth, int breaks) {
 // never depends on the order found.
 static int lineBefore(const LineC *a, const LineC *b) {
   if (a->brk != b->brk) return a->brk;
+  // everything that fits the time is weighed by what it is worth; the sooner only between lines worth the same
+  { int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w > 0; }
   if (a->est != b->est) return a->est < b->est;
   int m = a->n < b->n ? a->n : b->n;
   for (int k = 0; k < 2 * m; k++) if (a->sw[k] != b->sw[k]) return a->sw[k] < b->sw[k];

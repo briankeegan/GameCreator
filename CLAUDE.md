@@ -304,7 +304,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   before a clear that is neither. The arbiter is also handed the attacks the
   stages did not pick (`attackOptions`: the `ATTACKOPTS` best swaps that make a combo of
   four or more or a chain, by `attackCmp`, of those the stages' own rules let
-  through -- `FITS`: not refused, not too early, in time). The break stage ranks the breaks it finds the same way (`lineRank`): the break that lives, ready, of two breaks the later loss of health inside `LIVEHORIZON`, then the combo or chain before a plain three (`attackFirst`), then life, garbage converted, hollow, the soonest. **Idle time is for setups**: with no break in
+  through -- `FITS`: not refused, not too early, in time). The break stage ranks the breaks it finds the same way (`lineRank`): the break that lives, ready, of two breaks the later loss of health inside `LIVEHORIZON`, then the combo or chain before a plain three (`attackFirst`), then life, garbage converted, hollow, the soonest. The lines that fit the time are examined in the same order, a line's worth taken from what its last swap makes (`lineBefore`), the sooner only between lines worth the same. **Idle time is for setups**: with no break in
   reach and the board left alone losing no health within `LIVEHORIZON` (or a line that saves the board kept), `setupOptions` adds the swaps that clear nothing and make more
   vertical twos, then flatter, as options beside the hold. A setup must spare
   every saved line (`sparesSetups`: the kept line, target, plan and attack play
