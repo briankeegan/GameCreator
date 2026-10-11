@@ -4176,6 +4176,15 @@ static Dec arbitrate(Dec d) {
     if (!bad) break;
     w->lives = 0;
   }
+#ifndef __wasm__
+  // WHAT IT WEIGHED, one short line in the run log whenever an attack was among the options or a plain clear won: every option's
+  // first swap, whether it lives and breaks, its loss of health, plain, the largest match and chain it makes, its life and hollow
+  { int hasAtk = 0; for (int i = 0; i < n; i++) hasAtk |= isAttack(atkOf(O[i].size, O[i].chain)) || O[i].cash > 0;
+    if (hasAtk || O[best].plain) { extern int fprintf(void *, const char *, ...); extern void *stderr;
+      fprintf(stderr, "ARBOPTS clock %d won %d of %d |", (int)BIN[IN_STACKCLOCK], best, n);
+      for (int i = 0; i < n; i++) fprintf(stderr, " [%d%s %d,%d via%d L%d B%d d%d p%d s%d c%d $%d life%.0f h%d]", i, i == at ? "*" : "", O[i].n ? O[i].sw[0] : O[i].d.sr, O[i].n ? O[i].sw[1] : O[i].d.sc, O[i].d.via, O[i].lives, O[i].breaks, O[i].die < LIVEHORIZON ? O[i].die : LIVEHORIZON, O[i].plain, O[i].size, O[i].chain, O[i].cash, O[i].life, O[i].hollow);
+      fprintf(stderr, "\n"); } }
+#endif
   if (best == at) return d;
   Opt *b = &O[best];
 #ifndef __wasm__
