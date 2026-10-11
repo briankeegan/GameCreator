@@ -4017,14 +4017,13 @@ static int optRank(Opt *a, Opt *b) {
   // line that takes longer to finish still outlives a hold that dies first
   int da = a->die < LIVEHORIZON ? a->die : LIVEHORIZON, db = b->die < LIVEHORIZON ? b->die : LIVEHORIZON;
   if (da != db) return da > db ? 1 : -1;
-  // SAVING A DYING BOARD: of two options that live as long, a combo or a chain goes before a plain three
-  if (ka == 1 && kb == 1 && aloneOnEngine() && aloneDie(1 << 20) < LIVEHORIZON) { int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
-  // OF TWO CLEARS that break nothing, a combo or a chain goes before a plain three, whether or not it digs under the pile (attackFirst)
-  if (ka == 1 && kb == 1 && a->clears && b->clears) { int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
+  // A COMBO OR A CHAIN BEFORE A PLAIN THREE, the one rule, asked once of every two options of a kind that clear or break -- or, saving a dying board, of any two that live
+  if (ka && ka == kb) {
+    int both = (a->clears || a->breaks) && (b->clears || b->breaks);
+    if (both || (ka == 1 && aloneOnEngine() && aloneDie(1 << 20) < LIVEHORIZON)) { int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
+  }
   // a plain clear is the last resort: it ranks below any option that lives as long
   if (ka && (a->plain || b->plain)) { int pa = optPlain(a), pb = optPlain(b); if (pa != pb) return pa ? -1 : 1; }
-  // two breaks: the one that is a combo or a chain before a plain three, by the one rule (attackFirst)
-  if (ka == 2 && kb == 2) { int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
   // no break to make yet: the one that brings the break soonest (setup), then
   // the longer life (the stop time a clear buys less the material it spends),
   // then a combo or a chain
