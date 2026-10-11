@@ -3047,8 +3047,7 @@ static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const
 // add up to, however deep that is. Each is proposed, as the masks' lines are,
 // and the engine judges it.
 #define TGRID 18
-#define BREAKMIN 3   // the matches a break is proposed with, one planner for every length: a tall pile is flatter broken by a four than a three
-#define BREAKMAX 4
+#define MINMATCH 3   // the game's smallest match: a rule of the game. A break is proposed with every match length from the longest the board holds down to this, one planner for all of them, the longest first
 static JLOCAL int tCell[TGRID + 2][WMAX + 1];   // colour; 0 empty; -1 garbage; -2 a panel that cannot move
 static JLOCAL int tW, tH;
 static int tSupported(int r, int c) { return r == 1 || tCell[r - 1][c] != 0; }
@@ -3133,14 +3132,14 @@ static int tGarbRun(int g[][WMAX + 2], int h, int r, int c, int vert) {
     lo = hi = r;
     while (lo > 1 && g[lo - 1][c] == a) lo--;
     while (hi < h && g[hi + 1][c] == a) hi++;
-    if (hi - lo + 1 < 3) return 0;
+    if (hi - lo + 1 < MINMATCH) return 0;
     for (int k = lo; k <= hi; k++)
       if ((c > 1 && g[k][c - 1] == -1) || (c < tW && g[k][c + 1] == -1) || g[k + 1][c] == -1 || (k == lo && k > 1 && g[k - 1][c] == -1)) return 1;
   } else {
     lo = hi = c;
     while (lo > 1 && g[r][lo - 1] == a) lo--;
     while (hi < tW && g[r][hi + 1] == a) hi++;
-    if (hi - lo + 1 < 3) return 0;
+    if (hi - lo + 1 < MINMATCH) return 0;
     for (int k = lo; k <= hi; k++)
       if (g[r + 1][k] == -1 || (r > 1 && g[r - 1][k] == -1) || (k == lo && k > 1 && g[r][k - 1] == -1) || (k == hi && k < tW && g[r][k + 1] == -1)) return 1;
   }
@@ -3343,9 +3342,9 @@ static int gResolve(int g[][WMAX + 2], int *cleared) {
         int a = g[r][c];
         if (a <= 0 || a > 99) continue;
         int e = c; while (e + 1 <= tW && g[r][e + 1] == a) e++;
-        if (e - c >= 2) { for (int k = c; k <= e; k++) mk[r][k] = 1; any = 1; }
+        if (e - c >= MINMATCH - 1) { for (int k = c; k <= e; k++) mk[r][k] = 1; any = 1; }
         int t = r; while (t + 1 <= tH && g[t + 1][c] == a) t++;
-        if (t - r >= 2) { for (int k = r; k <= t; k++) mk[k][c] = 1; any = 1; }
+        if (t - r >= MINMATCH - 1) { for (int k = r; k <= t; k++) mk[k][c] = 1; any = 1; }
       }
     if (!any) return broke;
     for (int r = 1; r <= tH; r++)
@@ -3413,7 +3412,7 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
   int32_t sw[2 * LINEMAX]; int row[WMAX + 1];
   tDrops(cr, cc, t0, limit);
   for (int a = 1; a <= N && workLeft() > 0; a++) {
-   for (int M = BREAKMIN; M <= BREAKMAX && workLeft() > 0; M++) {
+   for (int M = tH; M >= MINMATCH && workLeft() > 0; M--) {
     // M in a column: each row's nearest panel of the colour walked to it
     for (int c = 1; c <= tW; c++)
       for (int r = 1; r + M - 1 <= tH; r++) {
@@ -3444,7 +3443,7 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
         for (int j = 0; j + M - 1 < np; j++) {
           int n = 0, ok = 1;
           for (int x = 1; x <= tW; x++) row[x] = tCell[r][x];
-          int at[BREAKMAX];
+          int at[WMAX];
           for (int i = 0; i < M; i++) at[i] = pos[j + i];
           // the panels left of their targets walk right, rightmost first; then the rest
           for (int i = M - 1; i >= 0 && ok; i--) if (at[i] < c + i) { ok = tWalk(row, r, at[i], c + i, sw, &n); at[i] = c + i; }
@@ -3455,7 +3454,7 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
     }
    }
   }
-  for (int M = BREAKMIN; M <= BREAKMAX && workLeft() > 0; M++) { tStacks(N, M, cr, cc, t0, limit); tRows(N, M, cr, cc, t0, limit); }
+  for (int M = tH; M >= MINMATCH && workLeft() > 0; M--) { tStacks(N, M, cr, cc, t0, limit); tRows(N, M, cr, cc, t0, limit); }
   tClears(cr, cc, t0, limit);
 }
 // A PILE LET DOWN FIRST. Garbage perched on a column or two touches little; a
