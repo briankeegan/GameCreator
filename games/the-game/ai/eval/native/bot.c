@@ -2349,6 +2349,8 @@ static double stageLeaves(int i) {
 }
 static double stageOpen(int i) { double keep = stageEnd, e = stageLeaves(i); if (e < stageEnd) stageEnd = e; return keep; }
 static void stageClose(double keep) { stageEnd = keep; }
+// A STAGE RUNS TO WHERE THE CLOSING BEGINS: whatever the stages take, the arbiter's judges (FINALJUDGES) keep their work
+static double stageOpenClosing(void) { double keep = stageEnd, e = rdW0 + OPTWORK - FINALJUDGES * jdCost; if (e < stageEnd) stageEnd = e; return keep; }
 static void stagesMeasured(const double *ws, int k) {
   for (int i = 0; i + 1 < k && i < NSTAGES; i++) { LATER[i] *= 0.99; if (ws[k - 1] - ws[i] > LATER[i]) LATER[i] = ws[k - 1] - ws[i]; }
 }
@@ -5933,7 +5935,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   double t0 = NOWMS();
   extern int paBudgetOut(void), paBudgetSpent(void), paCutPast(double);
 #define SHARE(p) ((void)(p))   // one budget for the whole decision, opened above
-#define STAGE(i, ...) { double keep_ = stageOpen(i); __VA_ARGS__; stageClose(keep_); }   // a stage runs to where the stages after it keep theirs
+#define STAGE(i, ...) { (void)(i); double keep_ = stageOpenClosing(); __VA_ARGS__; stageClose(keep_); }   // a stage runs to where the closing's judges begin
   // THE HOLD IS JUDGED FIRST: the board left alone is what the guards hold
   // every decision to, and a guard with nothing to hold it to lets anything
   // through -- so it is judged while the budget is whole, once

@@ -298,7 +298,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   engine is reached only through `lineJudge` and `searchInTime`, which stop at
   their share of the work (`workLeft`); the decision's closing keeps
   `FINALJUDGES` judges' work under whatever the stages measure, and every stage runs
-  between `stageOpen` and `stageClose` (`STAGE`), so the stages after it keep their shares.
+  between `stageOpenClosing` and `stageClose` (`STAGE`), so none takes the work the closing's judges keep.
   **Anything that fits the time is weighed by what it is worth, never by how
   soon it is done** (`bestPlan`, `bestAttack`: `Pick.key`); only when nothing
   fits is the soonest taken. In `bestPlan` and `bestAttack` an attack (`attackFirst`) comes
