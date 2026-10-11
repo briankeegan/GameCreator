@@ -82,7 +82,7 @@ typedef struct {
   int32_t tgt[2 * LINEMAX]; int tgtN, tgtKind, tgtWait, tgtVia; double tgtPresses;   // the target being walked to (arbitrate): its line, the rule that chose it, the presses when it was chosen
   double counts[NCOUNT];
   int lastVia;   // the route the last decision took
-  int32_t keep[KEEPOPTS][2 * LINEMAX]; int keepN[KEEPOPTS], keepCol[KEEPOPTS][2], nKeep;   // the options the last decision judged to live and pay: swaps only, every number read again when they are asked for (keptOptions)
+  int32_t keep[KEEPOPTS][2 * LINEMAX]; int keepN[KEEPOPTS], keepCol[KEEPOPTS][2], keepBrk[KEEPOPTS], nKeep;   // the options the last decision judged to live and pay: swaps only, every number read again when they are asked for (keptOptions)
 } Bot;
 
 static LOCAL int nScore, nLook, nSave, rScore, rMain, rLook, rSave, rCand, lookDepthLog;
@@ -3093,6 +3093,14 @@ static void tProposeIn(const int32_t *sw, int n, int cr, int cc, double t0, doub
   for (int k = 0; k < 2 * n; k++) l->sw[k] = sw[k];
 }
 // The grid the distance searches read; 1 if it holds garbage.
+// the colour of a cell of the decision's board: 0 empty, -1 garbage, -2 a panel that cannot move
+static int cellColour(const int32_t *st, int r, int c) {
+  uint32_t b = 1u << (r - 1);
+  if (U(st, GARB + c) & b) return -1;
+  if (U(st, INERT + c) & b) return -2;
+  for (int a = 1; a <= st[O_N]; a++) if (CL(st, a, c) & b) return a;
+  return 0;
+}
 static int tGrid(const int32_t *st) {
   tW = st[O_W]; tH = st[O_H] < TGRID ? st[O_H] : TGRID;
   int N = st[O_N], any = 0;
@@ -3483,6 +3491,28 @@ static void breakLines(const int32_t *st, int cr, int cc, double t0, double limi
 // whose last press comes later is one the engine never finishes playing, so
 // it can never be judged to live
 static double linesLimit(int breaks) { (void)breaks; return lsTopped ? timeLeft() - 2 : LINEHORIZON; }
+// THE LINES ALREADY FOUND ARE IN THE POOL BEFORE THE SEARCH BEGINS: the lines the last decision kept (keepOptions), where
+// their first two panels still sit side by side, are timed on the clock from where the cursor is now and enter the pool
+// like any line the search proposes -- judged live, ranked by the time they take, never by a stored number.
+static int stillThere(int q) {
+  const int32_t *sw = BT->keep[q];
+  return sw[0] >= 1 && sw[0] <= (int)DBASE[O_H] && sw[1] >= 1 && sw[1] < (int)DBASE[O_W]
+      && cellColour(DBASE, sw[0], sw[1]) == BT->keepCol[q][0] && cellColour(DBASE, sw[0], sw[1] + 1) == BT->keepCol[q][1];
+}
+static void linesSeed(int cr, int cc, double t0, double limit, int breaks) {
+  for (int q = 0; q < BT->nKeep; q++) {
+    int n = BT->keepN[q]; const int32_t *sw = BT->keep[q];
+    if (n < 1 || n > LINEMAX || nLines >= MAXLINES || (breaks && !BT->keepBrk[q]) || !stillThere(q)) continue;
+    int dupe = 0;
+    for (int i = 0; i < nLines && !dupe; i++) dupe = LINES[i].n == n && !__builtin_memcmp(LINES[i].sw, sw, (unsigned long)n * 8);
+    if (dupe) continue;
+    double at = lineFrames(sw, n, cr, cc, t0, lsTopped);
+    if (at > limit) continue;
+    LineC *l = &LINES[nLines++];
+    l->n = n; l->brk = BT->keepBrk[q]; l->est = at; l->verdict = -1; l->grown = 0; l->waitAll = 0;
+    for (int k = 0; k < 2 * n; k++) l->sw[k] = sw[k];
+  }
+}
 static void linesFind(int depth, int breaks) {
   // the same lines asked for twice in a decision are found once
   if (lfDecision == btDecision && lfDepth == depth && lfBreaks == breaks) return;
@@ -3502,9 +3532,11 @@ static void linesFind(int depth, int breaks) {
   uint32_t can0[WMAX];
   uint8_t waits0[32][WMAX];
   if (BIN[IN_HASPA] && lineState(0, 0, st0, can0, waits0, cur, &t) == 0) {
+    linesSeed(cur[0], cur[1], t, lsLimit, breaks);
     growAt(0, 0, t, depth, st0, cur[0], cur[1], can0, waits0, lsLimit);
     if (breaks) breakLines(st0, cur[0], cur[1], t, lsTopped ? timeLeft() - 2 : INF);
   } else {
+    linesSeed((int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, lsLimit, breaks);
     growAt(0, 0, 0, depth, DBASE, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], saveCan, 0, lsLimit);
     if (breaks) breakLines(DBASE, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, lsTopped ? timeLeft() - 2 : INF);
   }
@@ -4104,21 +4136,13 @@ static int getsBackInTime(const Opt *o, const int32_t *line, int n) {
 // WHAT WAS FOUND IS KEPT: the options a decision judged to live and break, cash or attack are kept as swaps alone,
 // and asked for again at the next decision, where every number is read afresh on the board and the clock as they
 // are then -- one engine judge each, never a search; one that no longer works is dropped.
-// the colour of a cell of the decision's board: 0 empty, -1 garbage, -2 a panel that cannot move
-static int cellColour(const int32_t *st, int r, int c) {
-  uint32_t b = 1u << (r - 1);
-  if (U(st, GARB + c) & b) return -1;
-  if (U(st, INERT + c) & b) return -2;
-  for (int a = 1; a <= st[O_N]; a++) if (CL(st, a, c) & b) return a;
-  return 0;
-}
 static void keepOptions(const Opt *O, int n) {
   BT->nKeep = 0;
   for (int i = 0; i < n && BT->nKeep < KEEPOPTS; i++) {
     const Opt *o = &O[i];
     if (o->n < 1 || !o->lives || !(o->breaks || o->cash > 0 || isAttack(atkOf(o->size, o->chain)))) continue;
     int q = BT->nKeep++;
-    BT->keepN[q] = o->n;
+    BT->keepN[q] = o->n; BT->keepBrk[q] = o->breaks != 0;
     BT->keepCol[q][0] = cellColour(DBASE, o->sw[0], o->sw[1]); BT->keepCol[q][1] = cellColour(DBASE, o->sw[0], o->sw[1] + 1);
     for (int k = 0; k < 2 * o->n; k++) BT->keep[q][k] = o->sw[k];
   }
@@ -4129,8 +4153,7 @@ static int keptOptions(Opt *O, int n, Dec d) {
     int seen = 0;
     for (int i = 0; i < n && !seen; i++) seen = O[i].n >= 1 && O[i].sw[0] == sw[0] && O[i].sw[1] == sw[1];
     // STILL THERE: the same two panels sit side by side where the first swap is, or it is not the swap that was kept
-    if (seen || m < 1 || m > LINEMAX || sw[0] < 1 || sw[0] > (int)DBASE[O_H] || sw[1] < 1 || sw[1] >= (int)DBASE[O_W]) continue;
-    if (cellColour(DBASE, sw[0], sw[1]) != BT->keepCol[q][0] || cellColour(DBASE, sw[0], sw[1] + 1) != BT->keepCol[q][1]) continue;
+    if (seen || m < 1 || m > LINEMAX || !stillThere(q)) continue;
     Opt *o = &O[n];
     o->d = mkSwap(sw[0], sw[1], V_KEEPSAVE, d.mode, d.alive);
     o->n = m; o->wait = 0; o->pri = 2;
