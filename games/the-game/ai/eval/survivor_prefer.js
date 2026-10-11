@@ -6,7 +6,7 @@ var path = require('path');
 var SH = require(path.join(__dirname, 'survivor_shared.js'));
 var TALL_RANK = 30;   // frames: a break sooner than this outranks lowering a tall board
 var LINEUP_AFTER = 30;   // frames past a pop's end a lined-up row has to have matched by
-var BANK_ROWS = 12, BANK_TOP = 10;   // garbage rows on the way that make banking worth it, and the row it banks up to
+var BANK_ROWS = 12, BANK_TOP = 10;   // garbage rows on the way that make banking worth it, and the row it banks up to (the profile's bankTop)
 // The share of the time before an answer is due that the lineup search may
 // spend, and its floor; a question with no time given (m.ms 0) gets the most.
 var LINEUP_SHARE = 0.4, LINEUP_MIN_MS = 40, LINEUP_MAX_MS = 400;
@@ -102,7 +102,7 @@ function prepare(bot, board, o) {
     // there will be but what breaking brings. With the profile's bank,
     // while garbage of BANK_ROWS rows or more is on its way and none has
     // landed, a raise is played first, up to BANK_TOP.
-    if (o.profile.bank && !(br && br.depth) && !SH.lowestGarbageRow(board) && SH.top(board) < BANK_TOP) {
+    if (o.profile.bank && !(br && br.depth) && !SH.lowestGarbageRow(board) && SH.top(board) < (o.profile.bankTop || BANK_TOP)) {
       var coming = o.comingRows;
       (board.incoming || []).forEach(function (g) { coming += g.height; });
       if (coming >= BANK_ROWS) want = { raise: true };
