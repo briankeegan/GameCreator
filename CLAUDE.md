@@ -304,7 +304,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   before a clear that is neither. The arbiter is also handed the attacks the
   stages did not pick (`attackOptions`: the `ATTACKOPTS` best swaps that make a combo of
   four or more or a chain, by `attackCmp`, of those the stages' own rules let
-  through -- `FITS`: not refused, not too early, in time). **What was found is kept**: the options a decision judged to live and break, cash or attack are kept as swaps alone (`keepOptions`, `KEEPOPTS`) and asked for again at the next decision (`keptOptions`), one engine judge each on the board and the clock as they are then -- no stored number is read, and one that no longer works is dropped. **Idle time is for setups**: with no break in
+  through -- `FITS`: not refused, not too early, in time). **What was found is kept**: the options a decision judged to live and break, cash or attack are kept as swaps alone (`keepOptions`, `KEEPOPTS`) and asked for again at the next decision (`keptOptions`), one engine judge each on the board and the clock as they are then -- no stored number is read; one whose first two panels are no longer side by side where they were is not asked, and one that no longer works is dropped. **Idle time is for setups**: with no break in
   reach and the board left alone losing no health within `LIVEHORIZON` (or a line that saves the board kept), `setupOptions` adds the swaps that clear nothing and make more
   vertical twos, then flatter, as options beside the hold. A setup must spare
   every saved line (`sparesSetups`: the kept line, target, plan and attack play
