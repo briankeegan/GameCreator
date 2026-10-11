@@ -3047,6 +3047,8 @@ static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const
 // add up to, however deep that is. Each is proposed, as the masks' lines are,
 // and the engine judges it.
 #define TGRID 18
+#define BREAKMIN 3   // the matches a break is proposed with, one planner for every length: a tall pile is flatter broken by a four than a three
+#define BREAKMAX 4
 static JLOCAL int tCell[TGRID + 2][WMAX + 1];   // colour; 0 empty; -1 garbage; -2 a panel that cannot move
 static JLOCAL int tW, tH;
 static int tSupported(int r, int c) { return r == 1 || tCell[r - 1][c] != 0; }
@@ -3219,17 +3221,18 @@ static int gWalk(int g[][WMAX + 2], int *r, int s, int t, int32_t *sw, int *n) {
   *r = rr;
   return 1;
 }
-static void tStacks(int N, int cr, int cc, double t0, double limit) {
+static void tStacks(int N, int M, int cr, int cc, double t0, double limit) {
   static JLOCAL int g[TGRID + 2][WMAX + 2], h[TGRID + 2][WMAX + 2], b[TGRID + 2][WMAX + 2];
   int32_t sw[2 * LINEMAX], sb[2 * LINEMAX];
   for (int a = 1; a <= N && workLeft() > 0; a++)
     for (int c = 1; c <= tW; c++)
-      for (int r = 1; r + 2 <= tH; r++) {
-        if (!tBeside(r, c) && !tBeside(r + 1, c) && !tBeside(r + 2, c)) continue;
-        if ((r > 1 && tCell[r - 1][c] == 0) || tCell[r][c] < 0 || tCell[r + 1][c] < 0 || tCell[r + 2][c] < 0) continue;
+      for (int r = 1; r + M - 1 <= tH; r++) {
+        int beside = 0, free = 1;
+        for (int i = 0; i < M; i++) { beside |= tBeside(r + i, c); free &= tCell[r + i][c] >= 0; }
+        if (!beside || !free || (r > 1 && tCell[r - 1][c] == 0)) continue;
         gLoad(g);
         int n = 0, ok = 1;
-        for (int i = 0; i < 3 && ok; i++) {
+        for (int i = 0; i < M && ok; i++) {
           int rr = r + i;
           if (g[rr][c] == a) continue;
           int bn = -1;
@@ -3261,7 +3264,7 @@ static void tStacks(int N, int cr, int cc, double t0, double limit) {
         }
         if (!ok || n == 0) continue;
         int hit = 0;
-        for (int q = r; q <= r + 2 && !hit; q++) hit = tGarbRun(g, tH, q, c, 1);
+        for (int q = r; q <= r + M - 1 && !hit; q++) hit = tGarbRun(g, tH, q, c, 1);
         if (hit) tPropose(sb, n, cr, cc, t0, limit);
       }
 }
@@ -3271,19 +3274,21 @@ static void tStacks(int N, int cr, int cc, double t0, double limit) {
 // there in the fewest swaps, walked on a copy of the grid with what falls
 // after it; a cell is filled only where its column stands one short of it.
 // Proposed only if the grid it leaves holds the three against the garbage.
-static void tRows(int N, int cr, int cc, double t0, double limit) {
+static void tRows(int N, int M, int cr, int cc, double t0, double limit) {
   static JLOCAL int g[TGRID + 2][WMAX + 2], h[TGRID + 2][WMAX + 2], b[TGRID + 2][WMAX + 2];
   int32_t sw[2 * LINEMAX], sb[2 * LINEMAX];
   for (int a = 1; a <= N && workLeft() > 0; a++)
     for (int r = 1; r <= tH; r++)
-      for (int c = 1; c + 2 <= tW; c++) {
-        if (!tBeside(r, c) && !tBeside(r, c + 1) && !tBeside(r, c + 2)) continue;
+      for (int c = 1; c + M - 1 <= tW; c++) {
+        int beside = 0;
+        for (int q = c; q < c + M; q++) beside |= tBeside(r, q);
+        if (!beside) continue;
         int any = 0;
-        for (int q = c; q <= c + 2; q++) { if (tCell[r][q] < 0) any = -1; else if (tCell[r][q] == a) any += any >= 0; }
-        if (any < 0 || any == 3) continue;   // garbage in the way; or a run already (no board at rest has one)
+        for (int q = c; q < c + M; q++) { if (tCell[r][q] < 0) any = -1; else if (tCell[r][q] == a) any += any >= 0; }
+        if (any < 0 || any == M) continue;   // garbage in the way; or a run already (no board at rest has one)
         gLoad(g);
         int n = 0, ok = 1;
-        for (int i = 0; i < 3 && ok; i++) {
+        for (int i = 0; i < M && ok; i++) {
           int q = c + i;
           if (g[r][q] == a) continue;
           if (r > 1 && g[r - 1][q] == 0) { ok = 0; break; }   // nothing to hold a panel there
@@ -3314,7 +3319,9 @@ static void tRows(int N, int cr, int cc, double t0, double limit) {
           n = bn; __builtin_memcpy(g, b, sizeof g);
         }
         if (!ok || n == 0) continue;
-        if (tGarbRun(g, tH, r, c, 0) || tGarbRun(g, tH, r, c + 1, 0) || tGarbRun(g, tH, r, c + 2, 0)) tPropose(sb, n, cr, cc, t0, limit);
+        int hit = 0;
+        for (int q = c; q < c + M && !hit; q++) hit = tGarbRun(g, tH, r, q, 0);
+        if (hit) tPropose(sb, n, cr, cc, t0, limit);
       }
 }
 // A SWAP THAT DROPS INTO A BREAK: a swap takes panels out from under a
@@ -3406,13 +3413,16 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
   int32_t sw[2 * LINEMAX]; int row[WMAX + 1];
   tDrops(cr, cc, t0, limit);
   for (int a = 1; a <= N && workLeft() > 0; a++) {
-    // three in a column: each row's nearest panel of the colour walked to it
+   for (int M = BREAKMIN; M <= BREAKMAX && workLeft() > 0; M++) {
+    // M in a column: each row's nearest panel of the colour walked to it
     for (int c = 1; c <= tW; c++)
-      for (int r = 1; r + 2 <= tH; r++) {
+      for (int r = 1; r + M - 1 <= tH; r++) {
         if (!tSupported(r, c) && tCell[r][c] == 0) continue;
-        if (!tBeside(r, c) && !tBeside(r + 1, c) && !tBeside(r + 2, c)) continue;
+        int beside = 0;
+        for (int i = 0; i < M; i++) beside |= tBeside(r + i, c);
+        if (!beside) continue;
         int n = 0, ok = 1;
-        for (int i = 0; i < 3 && ok; i++) {
+        for (int i = 0; i < M && ok; i++) {
           int rr = r + i, best = -1;
           for (int s = 1; s <= tW; s++)
             if (tCell[rr][s] == a && (best < 0 || (s > c ? s - c : c - s) < (best > c ? best - c : c - best))) best = s;
@@ -3422,28 +3432,30 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
         }
         if (ok && n > 0) tPropose(sw, n, cr, cc, t0, limit);
       }
-    // three in a row: the colour's panels in the row, the nearest three walked together
+    // M in a row: the colour's panels in the row, the nearest M walked together
     for (int r = 1; r <= tH; r++) {
       int pos[WMAX], np = 0;
       for (int s = 1; s <= tW; s++) if (tCell[r][s] == a) pos[np++] = s;
-      if (np < 3) continue;
-      for (int c = 1; c + 2 <= tW; c++) {
-        if (!tSupported(r, c) || !tSupported(r, c + 1) || !tSupported(r, c + 2)) continue;
-        if (!tBeside(r, c) && !tBeside(r, c + 1) && !tBeside(r, c + 2)) continue;
-        for (int j = 0; j + 2 < np; j++) {
+      if (np < M) continue;
+      for (int c = 1; c + M - 1 <= tW; c++) {
+        int supported = 1, beside = 0;
+        for (int i = 0; i < M; i++) { supported &= tSupported(r, c + i); beside |= tBeside(r, c + i); }
+        if (!supported || !beside) continue;
+        for (int j = 0; j + M - 1 < np; j++) {
           int n = 0, ok = 1;
           for (int x = 1; x <= tW; x++) row[x] = tCell[r][x];
-          int at[3] = { pos[j], pos[j + 1], pos[j + 2] };
+          int at[BREAKMAX];
+          for (int i = 0; i < M; i++) at[i] = pos[j + i];
           // the panels left of their targets walk right, rightmost first; then the rest
-          for (int i = 2; i >= 0 && ok; i--) if (at[i] < c + i) { ok = tWalk(row, r, at[i], c + i, sw, &n); at[i] = c + i; }
-          for (int i = 0; i < 3 && ok; i++) if (at[i] > c + i) { ok = tWalk(row, r, at[i], c + i, sw, &n); at[i] = c + i; }
+          for (int i = M - 1; i >= 0 && ok; i--) if (at[i] < c + i) { ok = tWalk(row, r, at[i], c + i, sw, &n); at[i] = c + i; }
+          for (int i = 0; i < M && ok; i++) if (at[i] > c + i) { ok = tWalk(row, r, at[i], c + i, sw, &n); at[i] = c + i; }
           if (ok && n > 0) tPropose(sw, n, cr, cc, t0, limit);
         }
       }
     }
+   }
   }
-  tStacks(N, cr, cc, t0, limit);
-  tRows(N, cr, cc, t0, limit);
+  for (int M = BREAKMIN; M <= BREAKMAX && workLeft() > 0; M++) { tStacks(N, M, cr, cc, t0, limit); tRows(N, M, cr, cc, t0, limit); }
   tClears(cr, cc, t0, limit);
 }
 // A PILE LET DOWN FIRST. Garbage perched on a column or two touches little; a
