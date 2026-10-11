@@ -279,7 +279,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   option that lives until it is due (`clearDue`), a break in reach when the next slab lands (none queued: a
   slab the width of the board on the stack, `waveReady`; the engine's one
   readiness, `readyInTime`, the masks' only to propose), the later loss
-  of health inside `LIVEHORIZON` (`liveHorizon`: the wait for the front's next decision, the walk to the farthest corner, and `NEXTMOVE` -- what one save needs), of two breaks the combo or chain before a plain
+  of health inside `LIVEHORIZON` (`liveHorizon`: the wait for the front's next decision, the walk from one corner to the opposite, and `NEXTMOVE` -- what one save needs from the worst cursor), of two breaks the combo or chain before a plain
   three (`attackFirst`), a plain clear last (it clears, breaks nothing,
   is no combo or chain and fills nothing under garbage: `plain`, ranked below
   any option that lives as long -- unless the board it settles to reaches a
