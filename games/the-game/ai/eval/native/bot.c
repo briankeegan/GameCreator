@@ -4130,7 +4130,7 @@ static int setupOptions(Opt *O, int n, Dec d) {
   if (!hold) { memset(&holdTmp, 0, sizeof holdTmp); holdTmp.d = mkHold(V_KEEPHEALTH, d.mode, d.alive, 0, 0, 0); if (optJudge(&holdTmp)) hold = &holdTmp; }
   Atk holdAhead = atkOf(0, 0); int holdReach = 0;
   if (hold) { optAhead(hold); holdAhead = hold->ahead; holdReach = hold->reach; }
-  Opt best[SETUPOPTS]; double bestKey[SETUPOPTS]; int nb = 0;
+  Opt best[SETUPOPTS]; double bestKey[SETUPOPTS]; int nb = 0, nRead = 0;
   for (int j = 0; j < na; j++) {
     Cand *c = &POOL[at[j]];
     Opt o; memset(&o, 0, sizeof o);
@@ -4138,7 +4138,7 @@ static int setupOptions(Opt *O, int n, Dec d) {
     o.n = 1; o.wait = 0; o.sw[0] = c->sr; o.sw[1] = c->sc; o.pri = 2; o.stall = 1;   // a setup has no reason but what it sets up: the rise it locks buys no time
     if (!optJudge(&o)) continue;
     // its reach is read while the decision has work to spare beyond the final judges'
-    if (o.lives && workLeft() > FINALJUDGES * jdCost + REACHWORK) optAhead(&o);
+    if (o.lives && workLeft() > FINALJUDGES * jdCost + REACHWORK) { optAhead(&o); nRead++; }
     { int r = o.aheadKnown ? attackFirst(o.ahead, holdAhead) : 0;
       if (!(r > 0 || (r == 0 && o.reach > holdReach) || key[j] > base)) continue; }
     // kept in order: the better reach first (attackFirst), then the cheap key; the best SETUPOPTS stay
@@ -4152,8 +4152,8 @@ static int setupOptions(Opt *O, int n, Dec d) {
   for (int j = 0; j < nb; j++) O[n++] = best[j];
 #ifndef __wasm__
   { extern int fprintf(void *, const char *, ...); extern void *stderr;   // what setupOptions weighed, one line a call: the pool, the candidates probed, the options offered
-    fprintf(stderr, "SETUPOPTS clock %d pool %d probed %d offered %d\n", (int)BIN[IN_STACKCLOCK], nPool, na, nb);
-    if (botTraceOn) fprintf(BLOG, "SETUPOPTS pool %d probed %d offered %d\n", nPool, na, nb); }
+    fprintf(stderr, "SETUPOPTS clock %d pool %d probed %d read %d offered %d\n", (int)BIN[IN_STACKCLOCK], nPool, na, nRead, nb);
+    if (botTraceOn) fprintf(BLOG, "SETUPOPTS pool %d probed %d read %d offered %d\n", nPool, na, nRead, nb); }
 #endif
   return n;
 }
