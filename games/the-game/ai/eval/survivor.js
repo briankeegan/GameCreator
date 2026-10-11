@@ -45,22 +45,35 @@ if (!process.env.GC_SURVIVOR_CHILD) {
 // answer inside an 8 ms frame -- wins the cores they are using. Threads are
 // made all the time (V8's compile and collector helpers, the search), so the
 // niceness is set again as they appear. GC_SURVIVOR_NICE=0 leaves it alone.
+// A niced thread that is running keeps its core for the rest of its slice (two
+// to three ms) when the answering thread wakes, so the threads are also put in
+// the idle scheduling policy, which any waking thread takes a core from at once.
+// GC_SURVIVOR_IDLE=0 leaves the policy alone.
 var NICE = process.env.GC_SURVIVOR_NICE === undefined ? 19 : Number(process.env.GC_SURVIVOR_NICE);
+var IDLE = process.env.GC_SURVIVOR_IDLE !== '0', idled = {};
 function yieldThreads() {
-  var fs = require('fs'), os = require('os'), count = {};
+  var fs = require('fs'), os = require('os'), count = {}, fresh = [];
   try {
     fs.readdirSync('/proc/self/task').forEach(function (t) {
       var tid = Number(t), nice = Number(fs.readFileSync('/proc/self/task/' + t + '/stat', 'utf8').replace(/^.*\) /, '').split(' ')[16]);
       if (tid !== process.pid && nice !== NICE) { try { os.setPriority(tid, NICE); nice = NICE; } catch (e) { /* the thread ended */ } }
       count[nice] = (count[nice] || 0) + 1;
+      if (IDLE && tid !== process.pid && !idled[tid]) { idled[tid] = true; fresh.push(tid); }
     });
   } catch (e) { /* no /proc */ }
+  if (fresh.length) {
+    try { require('child_process').execFile('sh', ['-c', 'for t in "$@"; do chrt -i -p 0 $t; done', 'sh'].concat(fresh), function () {}); } catch (e) { /* no chrt */ }
+  }
   return count;
 }
 if (NICE) {
   yieldThreads();
   setInterval(yieldThreads, 1000).unref();
-  setTimeout(function () { console.log('thread niceness (nice: threads) ' + JSON.stringify(yieldThreads())); }, 3000).unref();
+  setTimeout(function () {
+    var fs = require('fs'), policy = {};
+    try { fs.readdirSync('/proc/self/task').forEach(function (t) { var p = fs.readFileSync('/proc/self/task/' + t + '/stat', 'utf8').replace(/^.*\) /, '').split(' ')[38]; policy[p] = (policy[p] || 0) + 1; }); } catch (e) { /* no /proc */ }
+    console.log('thread niceness (nice: threads) ' + JSON.stringify(yieldThreads()) + ', policy (6 = idle) ' + JSON.stringify(policy));
+  }, 3000).unref();
 }
 // THE FRAME LOOP STAYS OUT OF GC'S WAY: collections done on the thread that
 // needs them -- V8's helper threads are the process's, and a collection here
