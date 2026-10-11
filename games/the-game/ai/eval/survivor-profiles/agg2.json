@@ -18,5 +18,7 @@
  "raiseTo": 8,
  "bankTop": 11,
  "bankForce": true,
- "goal": "6-combo"
+ "goal": "4-chain",
+ "alsoTake": 4,
+ "buildToward": 120
 }
