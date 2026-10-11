@@ -3951,10 +3951,9 @@ static void optAhead(Opt *o) {
   searchInTime(st, cur[0], cur[1], t, 0, timeLeft(), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can, w, work, sitReach, &rx, 0, 0, 0);
   o->ahead = rx.best;
 }
-// THE SCRAMBLE: while a stop runs on a board that loses health within the judge's horizon, the best combo or chain
-// any line reaches in the time there is -- the freeze a clear bought, spent on continuing it -- is an option, the whole
-// line judged on the engine and played on once chosen.
-static int stopInDanger(void) { return BIN[IN_STOP] > 0 && aloneOnEngine() && aloneDie(1 << 20) < LINEHORIZON; }
+// THE SCRAMBLE, A LAST RESORT: when the board left alone loses health and no other option outlives it, the best combo or
+// chain any line reaches in the time there is is an option, the whole line judged on the engine and played on once chosen.
+static int boardDying(void) { return aloneOnEngine() && aloneDie(1 << 20) < (1 << 20); }   // the board left alone loses health within the judge's reach
 static int gScramble;   // this decision is a last resort: a stop in danger, and no other option outlives the board left alone
 static int reachOption(Opt *O, int n, Dec d) {
   extern PATLS double paWork;
@@ -4141,7 +4140,7 @@ static Dec arbitrate(Dec d) {
   { int breaking = 0; for (int i = 0; i < n; i++) if (O[i].breaks) breaking = 1;
     if (!breaking && aloneOnEngine()) n = attackOptions(O, n, d);
     gScramble = 0;
-    if (!breaking && stopInDanger()) {
+    if (!breaking && boardDying()) {
       int improves = 0, alone = aloneDie(1 << 20);
       for (int i = 0; i < n; i++) if (O[i].lives && O[i].die > alone) improves = 1;
       if (!improves) { gScramble = 1; int before = n; n = reachOption(O, n, d); if (n > before) ra = before; }
