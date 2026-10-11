@@ -108,6 +108,7 @@ local TIMES = os.getenv("PA_DUEL_TIMES") == "1"
 local t0 = socket.gettime()
 if TIMES then local send0 = link.send; link.send = function(self, s) send0(self, s); self.sentAt = socket.gettime() end end
 local frame, handed = 0, 0
+local endReason   -- why the match ended: a side died, the frame limit, or the link stopped it (the STOPPED line says why)
 while frame < FRAMES and not a:game_ended() and not b:game_ended() do
   frame = frame + 1
   extra.stopWatch = a.stopWatch
@@ -116,7 +117,7 @@ while frame < FRAMES and not a:game_ended() and not b:game_ended() do
   sources[#sources + 1] = extra
   local lateBefore, sentAt = link.late, socket.gettime()
   local ca = link:input(a, sources)
-  if link.stopReason then print(link.stopReason) break end
+  if link.stopReason then print(link.stopReason); endReason = 'stopped'; break end
   -- PA_DUEL_TIMES=1: each late frame, with when its state was sent and when the wait gave up
   if TIMES and link.late > lateBefore then print(string.format("LATE clock %d dump %.4f sent %.4f gaveup %.4f", a.clock, sentAt, link.sentAt or 0, socket.gettime())) end
   local cb
@@ -170,8 +171,9 @@ end
 link:endMatch()
 if link2 then link2:endMatch() end
 local died = a:game_ended() and "WasmSurvivor" or (b:game_ended() and "opponent" or "nobody")
+endReason = endReason or ((a:game_ended() or b:game_ended()) and "death" or "frame limit")
 local over, worst, dropped = link:budget()
 local ph, ob = link:phases(), link:phases().overBy
 print(string.format('PHASES longest frame at clock %s; worst ms: encode %.1f send %.1f wait %.1f read %.1f; in over-ceiling frames: encode %.1f send %.1f wait %.1f read %.1f', tostring(ph.worstClock), ph.encode * 1000, ph.send * 1000, ph.wait * 1000, ph.read * 1000, ob.encode * 1000, ob.send * 1000, ob.wait * 1000, ob.read * 1000))
-print(string.format('RESULT {"seed":%d,"frames":%d,"clock":%d,"died":"%s","late":%d,"late2":%d,"handed":%d,"sent":%d,"sent2":%d,"seconds":%.0f,"thinkOver":%d,"thinkWorstMs":%.1f,"inputDropped":%d}',
-  SEED, frame, a.clock, died, link.late, link2 and link2.late or 0, handed, got[b], got[a], socket.gettime() - t0, over, worst * 1000, dropped))
+print(string.format('RESULT {"seed":%d,"frames":%d,"clock":%d,"died":"%s","late":%d,"late2":%d,"handed":%d,"sent":%d,"sent2":%d,"seconds":%.0f,"thinkOver":%d,"thinkWorstMs":%.1f,"inputDropped":%d,"end":"%s"}',
+  SEED, frame, a.clock, died, link.late, link2 and link2.late or 0, handed, got[b], got[a], socket.gettime() - t0, over, worst * 1000, dropped, endReason))

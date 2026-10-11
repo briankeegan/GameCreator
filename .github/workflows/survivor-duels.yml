@@ -166,3 +166,4 @@ jobs:
       - name: Fail if WasmSurvivor died
         run: |
           if grep -q '"died":"WasmSurvivor"' duel.log; then echo "WasmSurvivor died"; exit 1; fi
+          if grep -q '"end":"stopped"' duel.log; then echo "the match was stopped before anyone died: $(grep -h '^STOPPED' duel.log | head -3)"; exit 1; fi
