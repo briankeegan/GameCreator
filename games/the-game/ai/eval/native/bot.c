@@ -2991,6 +2991,8 @@ static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const
                    const uint32_t *can, uint8_t (*waits)[WMAX], double limit);
 // the line search's work is spent: its share (lfEnd) or the thread's (workLeft)
 static int growSpent(void) { extern PATLS double paWork; return workLeft() <= 0 || (lfEnd > 0 && lfEnd - paWork <= 0); }
+// the longer matches stop where the closing's own work begins: the line search's share spent, or no more than the arbiter's judges (FINALJUDGES) left
+static int longSpent(void) { return growSpent() || workLeft() <= FINALJUDGES * jdCost; }
 static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const int32_t *st, int cr, int cc,
                    const uint32_t *can, uint8_t (*waits)[WMAX], double limit) {
   int from = nLines;
@@ -3229,7 +3231,7 @@ static void tStacks(int N, int M, int cr, int cc, double t0, double limit) {
   for (int a = 1; a <= N && workLeft() > 0; a++)
     for (int c = 1; c <= tW; c++)
       for (int r = 1; r + M - 1 <= tH; r++) {
-        if (M > MINMATCH && growSpent()) return;
+        if (M > MINMATCH && longSpent()) return;
         int beside = 0, free = 1;
         for (int i = 0; i < M; i++) { beside |= tBeside(r + i, c); free &= tCell[r + i][c] >= 0; }
         if (!beside || !free || (r > 1 && tCell[r - 1][c] == 0)) continue;
@@ -3283,7 +3285,7 @@ static void tRows(int N, int M, int cr, int cc, double t0, double limit) {
   for (int a = 1; a <= N && workLeft() > 0; a++)
     for (int r = 1; r <= tH; r++)
       for (int c = 1; c + M - 1 <= tW; c++) {
-        if (M > MINMATCH && growSpent()) return;
+        if (M > MINMATCH && longSpent()) return;
         int beside = 0;
         for (int q = c; q < c + M; q++) beside |= tBeside(r, q);
         if (!beside) continue;
@@ -3417,7 +3419,7 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
   int32_t sw[2 * LINEMAX]; int row[WMAX + 1];
   tDrops(cr, cc, t0, limit);
   for (int M = MINMATCH; M <= tH && workLeft() > 0; M++) {
-   if (M > MINMATCH && growSpent()) break;
+   if (M > MINMATCH && longSpent()) break;
    for (int a = 1; a <= N && workLeft() > 0; a++) {
     // M in a column: each row's nearest panel of the colour walked to it
     for (int c = 1; c <= tW; c++)
@@ -3426,7 +3428,7 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
         int beside = 0;
         for (int i = 0; i < M; i++) beside |= tBeside(r + i, c);
         if (!beside) continue;
-        if (M > MINMATCH) { paWork += TSTACKWORK; if (growSpent()) break; }
+        if (M > MINMATCH) { paWork += TSTACKWORK; if (longSpent()) break; }
         int n = 0, ok = 1;
         for (int i = 0; i < M && ok; i++) {
           int rr = r + i, best = -1;
@@ -3447,7 +3449,7 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
         int supported = 1, beside = 0;
         for (int i = 0; i < M; i++) { supported &= tSupported(r, c + i); beside |= tBeside(r, c + i); }
         if (!supported || !beside) continue;
-        if (M > MINMATCH) { paWork += TSTACKWORK; if (growSpent()) break; }
+        if (M > MINMATCH) { paWork += TSTACKWORK; if (longSpent()) break; }
         for (int j = 0; j + M - 1 < np; j++) {
           int n = 0, ok = 1;
           for (int x = 1; x <= tW; x++) row[x] = tCell[r][x];
