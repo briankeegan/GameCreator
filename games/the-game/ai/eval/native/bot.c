@@ -4021,9 +4021,6 @@ static int optRank(Opt *a, Opt *b) {
   }
   if (a->cash && b->cash) { int w = attackCmp(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
   if (ka && a->cash != b->cash && gScramble) return a->cash > b->cash ? 1 : -1;   // the freeze is spent continuing the chain
-  // an attack that respects the rules (cash: no more hollow than the hold) goes before an option that is none, a setup excepted
-  // (idle time is for setups); between two that are alike, life decides
-  if (ka && a->cash != b->cash && !a->stall && !b->stall) return a->cash > b->cash ? 1 : -1;
   if (a->life != b->life) return a->life > b->life ? 1 : -1;
   if (a->cash != b->cash) return a->cash > b->cash ? 1 : -1;
   if (a->conv != b->conv) return a->conv > b->conv ? 1 : -1;

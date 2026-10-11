@@ -289,7 +289,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   worth more the fewer the board is left with, `panelWorth`), a combo
   or chain (a larger match than the board makes alone, or a longer chain) that
   digs under no pile -- between two of them `attackCmp` (one rule, which the
-  setup's `bestAttack` takes too) comes before life, and an attack that respects the hollow gate goes before any option that is not one, life deciding only between options alike (a setup, which idle time is for, excepted): a combo against a chain
+  setup's `bestAttack` takes too) comes before life: a combo against a chain
   by whether the other player is topped out (combos) or not (chains), two
   combos by `comboWorth` (4, 7, 6, 5, 8, 9 and more, low to high), two chains by
   length -- converted, hollow; equal: the target, the decision, the
