@@ -38,9 +38,13 @@ function botOptions(p, threads) {
     weights[k] = p.overrides[k];
   });
   weights = floorTravel(weights);
-  return { weights: weights,
+  var goal = {};
+  if (p.goal) goal.goal = p.goal;
+  if (p.alsoTake !== undefined) goal.alsoTake = p.alsoTake;
+  if (p.buildToward !== undefined) goal.buildToward = p.buildToward;
+  return Object.assign(goal, { weights: weights,
            reaction: p.reaction, swapGap: p.swapGap, cursorMoveFrames: p.cursorMoveFrames, depth: p.depth, beam: 0, rise: true, allowRaise: true,
-           modes: p.modes, engine: true, native: true, nativeCands: !!p.nativeCands, threesLast: !!p.threesLast, nearestFirst: true, threads: threads };
+           modes: p.modes, engine: true, native: true, nativeCands: !!p.nativeCands, threesLast: !!p.threesLast, nearestFirst: true, threads: threads });
 }
 
 // ---------------------------------------------------------------- garbage on its way
