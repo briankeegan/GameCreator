@@ -596,9 +596,6 @@ static int pressWait(Front *F, int r, int c, int clock, int wait, int waitAll) {
 static void beginWalk(Front *F, int r, int c, int cooldown, int waitAll) {
   F->walk = 1; F->wRow = r; F->wCol = c; F->wTimer = 0; F->wCooldown = cooldown; F->wRetries = 0; F->wHasDisp = 0;
   int wait = waitAll ? breakWait(&F->settle, r, c) : pairWait(&F->settle, r, c);
-  // THE FRAME THE FIRST PLAN PRESSES is the first frame from the walk's arrival that its pair is still (pairFree), as
-  // driveWalk and the judge's replay press it -- not the frame its panels last change, which a pair free sooner would wait for
-  if (!waitAll) { int a = travelCost(FB->curRow, FB->curCol, r, c) - 2; for (int f = a > 0 ? a : 0; f < wait; f++) if (pairFree(&F->settle, r, c, f)) { wait = f; break; } }
   F->wKept = F->pkAt && F->pkR == r && F->pkC == c && F->pkAll == waitAll;
   if (!F->wKept) { F->pkR = r; F->pkC = c; F->pkAt = FB->clock + wait; F->pkAll = waitAll; }
   F->wWaitTo = pressWait(F, r, c, FB->clock, wait, waitAll); F->wFrames = 0; F->wWaitAll = waitAll; F->wR0 = r;
@@ -621,7 +618,7 @@ static int driveWalk(Front *F, int input) {
 #ifndef __wasm__
   { extern int botTraceOn; if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "WALK front %d clock %d at %d,%d (target %d,%d cursor %d,%d top %d) frames %d waitTo %d pkAt %d kept %d waitAll %d free %d can %d topped %d\n", F->id, FB->clock, row, col, F->wRow, F->wCol, FB->curRow, FB->curCol, FB->topCurRow, F->wFrames, F->wWaitTo, F->pkAt, F->wKept, F->wWaitAll, pairFree(&F->settle, F->wR0, col, F->wFrames), nb_can_swap(FB, FB->curRow, FB->curCol), toppedNow()); } }
 #endif
-  if (F->wFrames < F->wWaitTo && (F->wWaitAll || F->wKept || !pairFree(&F->settle, F->wR0, col, F->wFrames))) {
+  if (F->wFrames < F->wWaitTo && (F->wWaitAll || !pairFree(&F->settle, F->wR0, col, F->wFrames))) {
     // a wait is not a plan: topped, or a reaction's worth of waiting, decide again
     if (!toppedNow() && F->wFrames % (F->reaction > 0 ? F->reaction : 12) != 0) return input;
     F->walk = 0; F->cooldown = 0;
@@ -739,7 +736,6 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   pad.holdKey = 0;   // the line begins with the key let go
   if (from) { step = from->n; walking = 0; held = from->held; cool = from->cool; last = from->last; dropped = from->dropped; f0 = from->f; }
   int snapSettle = from && from->hasSettle;
-  int kept0 = n > 0 && !LDELAY && LF && LF->pkAt && LF->pkR == steps[0] && LF->pkC == steps[1] && LF->pkAll == (LWAITALL && n == 1);
   int fs = 0, r0 = tr;   // the frame the step's settle was taken, its row then
   int waitTo = n > 0 && LF ? pressWait(LF, steps[0], steps[1], paLibBoard()->clock, LWAITALL && n == 1 ? breakWait(&LF->settle, steps[0], steps[1]) : pairWait(&LF->settle, steps[0], steps[1]), LWAITALL && n == 1) : 0;
 #ifndef __wasm__
@@ -785,7 +781,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
       int row = clampi(tr, 1, b->topCurRow), col = clampi(tc, 1, W - 1);
       if (b->curRow == row && b->curCol == col) {
         pad.holdKey = 0;
-        if (f < waitTo && ((LWAITALL && step == n - 1) || (step == 0 && kept0) || !pairFree(step == 0 ? &LF->settle : &LSET, r0, col, f - fs))) { /* its panels settle at waitTo: never pressed on panels still moving */ }
+        if (f < waitTo && ((LWAITALL && step == n - 1) || !pairFree(step == 0 ? &LF->settle : &LSET, r0, col, f - fs))) { /* its panels settle at waitTo: never pressed on panels still moving */ }
         else if (!padAllowed(&pad, b->clock)) { /* the input budget's next action */ }
         else if (!nb_can_swap(b, row, col) || !nb_try_queue_swap(b, row, col)) {
 #ifndef __wasm__
