@@ -7,7 +7,7 @@
 var path = require('path');
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js')), N = require(path.join(__dirname, 'native.js')).server;
 var SEEDS = (process.argv[2] || '1,2,3,4,5,6,7,8,9,10').split(',').map(Number);
-var WIDTH = Number(process.argv[3]) || 120, DEPTH = Number(process.argv[4]) || 14, ROUNDS = Number(process.argv[5]) || 3, POOL = 500, W = 6;
+var WIDTH = Number(process.argv[3]) || 120, DEPTH = Number(process.argv[4]) || 14, ROUNDS = Number(process.argv[5]) || 3, POOL = 250, W = 6;
 
 function opening(seed) {
   var g = PA.game({ seed: seed, level: 10, countdown: false }), rows = [], r, c, top = 0;
@@ -81,7 +81,14 @@ function round(root, depth) {
       });
     });
     next.sort(function (a, b) { return b.h - a.h; });
+    var old = pool;
     pool = next.slice(0, POOL);
+    // the boards of every node not carried on (the fire kept) are let go
+    var keep = new Set(pool.map(function (it) { return it.n; }));
+    if (best) keep.add(best.n);
+    var spent = outs.filter(function (o) { return o && !o.dead && !keep.has(o); });
+    old.forEach(function (it) { if (it.n !== root && !keep.has(it.n)) spent.push(it.n); });
+    if (spent.length) S.drop(spent);
   }
   if (best) best.steps = steps;
   return best;
