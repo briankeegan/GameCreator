@@ -37,7 +37,7 @@ on:
         description: '1 = stop at the first frame over the 8 ms ceiling and print where its time went'
         default: '0'
       threads:
-        description: 'Search threads for WasmSurvivor (default 1)'
+        description: 'Search threads for WasmSurvivor (default 2)'
         default: ''
       rate:
         description: 'Game speed against the wall clock (1 = real time; 0.5 = half, so two bots on one runner each think as fast as one alone)'
@@ -88,7 +88,7 @@ jobs:
         run: |
           set -eu
           if [ -n '${{ inputs.profile }}' ]; then export GC_SURVIVOR_PROFILE="$GITHUB_WORKSPACE/games/the-game/ai/eval/${{ inputs.profile }}"; fi
-          threads=1
+          threads=2
           [ -n '${{ inputs.threads }}' ] && threads='${{ inputs.threads }}'
           GC_SURVIVOR_KEEP=4 GC_SURVIVOR_TIMES="$GITHUB_WORKSPACE/times.txt" GC_SURVIVOR_DUMP="$GITHUB_WORKSPACE/death.jsonl" nohup node games/the-game/ai/eval/survivor.js --port 47777 --threads $threads > "$GITHUB_WORKSPACE/survivor.log" 2>&1 &
           if [ '${{ inputs.opponent }}' = survivor ]; then
