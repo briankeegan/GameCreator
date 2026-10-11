@@ -366,7 +366,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   artifact first, then read the games there, find what the deaths share and
   add it, fix it in the shared function that decides it -- the rule, its test
   and its gate with it -- merge to main, scan again. A worse scan is tuned forward,
-  never reverted. Local runs are for testing tools, not for reading games.
+  never reverted. Local runs are for testing tools, not for reading games. The native bot writes one `SWAP` line to stderr for every swap it chooses (clock, route, what it clears, chains and breaks), always, so a live match's whole game can be counted from its run log; the full trace covers a match's first and last frames only.
   Fix what exists, through the shared functions; no new rules. Every caller
   asking the same question calls the same shared function, in its best
   form (`breakLines`: every line that breaks by distance) -- two callers

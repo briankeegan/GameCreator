@@ -6019,6 +6019,12 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   if (botTraceOn && d.kind == K_SWAP && d.hasMove) { extern int fprintf(void *, const char *, ...); extern void *stderr;
     Cand *pc = poolSwap(d.sr, d.sc);
     fprintf(BLOG, "DECIDE via %d %d,%d total %d chain %d broke %d line %d\n", d.via, d.sr, d.sc, pc ? pc->res.total : -1, pc ? pc->res.chain : -1, pc ? pc->res.broke : -1, lineLast); }
+  // EVERY SWAP IT CHOOSES, one short line in the run log, always: the route, and what the swap clears, chains and breaks
+  // (the full trace covers a match's first and last frames only, as writing it inside a timed decision costs time)
+  if (d.kind == K_SWAP && d.hasMove) { extern int fprintf(void *, const char *, ...); extern void *stderr;
+    Cand *sp = poolSwap(d.sr, d.sc);
+    fprintf(stderr, "SWAP clock %d via %d %d,%d total %d biggest %d chain %d broke %d line %d\n", (int)BIN[IN_STACKCLOCK], d.via, d.sr, d.sc,
+            sp ? sp->res.total : -1, sp ? sp->res.biggest : -1, sp ? sp->res.chain : -1, sp ? sp->res.broke : -1, lineLast); }
 #endif
   double *o = BOUT;
   for (int i = 0; i < 128; i++) o[i] = 0;
