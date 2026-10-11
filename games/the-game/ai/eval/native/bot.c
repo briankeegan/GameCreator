@@ -3926,13 +3926,13 @@ static double optSoon(Opt *o) {
 // (attackFirst), and its vertical twos (twosOf). Read once, and only while the decision has work left.
 static int twosOf(const int32_t *st);
 #define REACHWORK 6000   // the share of the decision's work one option's reach search may spend
-typedef struct { Atk best; int n; double at; int32_t sw[2 * LINEMAX]; } ReachCtx;   // the best attack found, the line that reaches it, and the frame its last press comes
+typedef struct { Atk best; int n; int32_t sw[2 * LINEMAX]; } ReachCtx;   // the best attack found, and the line that reaches it
 static int sitReach(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
   ReachCtx *x = ctx; (void)at;
   if (res[R_SCOPE] != SC_OK) return SIT_END;   // a break is the break stages'
   if (res[R_TOTAL] > 0) {
     Atk k = atkOf(res[R_ROUNDS] == 1 ? res[R_TOTAL] : 0, res[R_CHAIN]);
-    if (isAttack(k) && attackFirst(k, x->best) > 0 && n <= LINEMAX) { x->best = k; x->n = n; x->at = at; for (int q = 0; q < 2 * n; q++) x->sw[q] = sw[q]; }
+    if (isAttack(k) && attackFirst(k, x->best) > 0 && n <= LINEMAX) { x->best = k; x->n = n; for (int q = 0; q < 2 * n; q++) x->sw[q] = sw[q]; }
     return SIT_END;   // a clear ends the line
   }
   return SIT_GROW;
@@ -3953,7 +3953,7 @@ static void optAhead(Opt *o) {
 }
 // THE SCRAMBLE, A LAST RESORT: when the board left alone loses health and no other option outlives it, the best combo or
 // chain any line reaches in the time there is is an option, the whole line judged on the engine and played on once chosen.
-static int boardDying(void) { return aloneOnEngine() && aloneDie(1 << 20) < (1 << 20); }   // the board left alone loses health within the judge's reach
+static int boardDying(void) { return BIN[IN_STOP] > 0 && aloneOnEngine() && aloneDie(1 << 20) < LINEHORIZON; }   // a stop runs, and the board left alone loses health within the judge's horizon, as far as it can say a line lives
 static int gScramble;   // this decision is a last resort: a stop in danger, and no other option outlives the board left alone
 static int reachOption(Opt *O, int n, Dec d) {
   extern PATLS double paWork;
@@ -3964,8 +3964,6 @@ static int reachOption(Opt *O, int n, Dec d) {
   double work = optLine() - paWork; if (work > REACHWORK) work = REACHWORK;
   searchInTime(st, cur[0], cur[1], t, 0, timeLeft(), 1, can, w, work, sitReach, &rx, 0, 0, 0);
   if (!rx.n) return n;
-  // THE LAST MOMENT: the line is an option only when waiting one more decision would make it miss the board's loss of health
-  if (rx.at + NEXTMOVE + holdGap() < aloneDie(1 << 20)) return n;
   Opt *o = &O[n];
   o->d = mkSwap(rx.sw[0], rx.sw[1], V_BESTATTACK, d.mode, d.alive);
   o->n = rx.n; o->wait = 0; o->pri = 2;
@@ -4145,7 +4143,7 @@ static Dec arbitrate(Dec d) {
     if (!breaking && boardDying()) {
       int improves = 0, alone = aloneDie(1 << 20);
       for (int i = 0; i < n; i++) if (O[i].lives && O[i].die > alone) improves = 1;
-      if (!improves) { int before = n; n = reachOption(O, n, d); if (n > before) { ra = before; gScramble = 1; } }
+      if (!improves) { gScramble = 1; int before = n; n = reachOption(O, n, d); if (n > before) ra = before; }
     }
     // downtime: the board left alone loses no health within the horizon
     if (!breaking && aloneOnEngine() && aloneDie(1 << 20) > LIVEHORIZON && (d.kind == K_HOLD || O[at].early)) { setupAt = n; n = setupOptions(O, n, d); } }
