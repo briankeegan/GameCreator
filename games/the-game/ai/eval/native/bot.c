@@ -1747,9 +1747,7 @@ static Dec decideCore(void) {
         int32_t sw[2 * MAXD];
         for (int j = 0; j < 2 * nsw; j++) sw[j] = (int32_t)ro[F_SW + j];
         if (!planInTime(sw, nsw, ro[F_DURATION], base, deadline)) continue;
-        double rc0 = ro[F_CONVERTS], kc0 = reach ? reach[F_CONVERTS] : -1;
-        double rv0 = ro[F_VOID], kv0 = reach ? reach[F_VOID] : 0;
-        if (!reach || rc0 > kc0 || (rc0 == kc0 && (rv0 < kv0 || (rv0 == kv0 && ro[F_DURATION] < reach[F_DURATION])))) reach = ro;
+        if (!reach || breakCmp(atkOfRow(ro), (int)ro[F_CONVERTS], (int)ro[F_VOID], ro[F_DURATION], atkOfRow(reach), (int)reach[F_CONVERTS], (int)reach[F_VOID], reach[F_DURATION]) > 0) reach = ro;
       }
       if (reach) {
         int rr = (int)reach[F_SW], rc = (int)reach[F_SW + 1];
@@ -1776,7 +1774,10 @@ static Dec decideCore(void) {
           int32_t sw[2 * MAXD];
           for (int j = 0; j < 2 * nsw; j++) sw[j] = (int32_t)lo[F_SW + j];
           double sp = planSpend(sw, nsw, base);
-          if (sp < lrSpend || (sp == lrSpend && lr && lo[F_CONVERTS] > lr[F_CONVERTS])) { lr = lo; lrSpend = sp; }
+          // of the breaks the board can pay for, the one rule (breakCmp); when neither can be paid for, the cheaper
+          int pays = sp < BIN[IN_HEALTH], lrPays = lr && lrSpend < BIN[IN_HEALTH];
+          int better = !lr || pays != lrPays ? pays || !lr : pays ? breakCmp(atkOfRow(lo), (int)lo[F_CONVERTS], (int)lo[F_VOID], lo[F_DURATION], atkOfRow(lr), (int)lr[F_CONVERTS], (int)lr[F_VOID], lr[F_DURATION]) > 0 : sp < lrSpend;
+          if (better) { lr = lo; lrSpend = sp; }
         }
         if (lr && lrSpend < BIN[IN_HEALTH] && playableSpending((int)lr[F_SW], (int)lr[F_SW + 1])) {
           BT->plan.has = 0;
