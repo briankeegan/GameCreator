@@ -1,13 +1,13 @@
-// THE OPENING'S ATTACKS, on the native engine: node opener_native.js [SEEDS] [WIDTH] [DEPTH]
+// THE OPENING'S ATTACKS, on the native engine: node opener_native.js [SEEDS] [WIDTH] [DEPTH] [ROUNDS]
 //
-// From a match's opening board, a beam search over swaps in which a swap that fires does not end a
-// line: the line goes on from the board the fire leaves, so one line can be a big chain and the
-// combos after it. A line is ranked by the garbage cells its fires have sent, then by how connected
-// its board is. Prints, per seed, the best line replayed on the JS engine: each fire's cells and chain.
+// From a match's opening board: a round is a beam search over swaps that clear nothing, each board
+// ranked by the best fire one more swap makes from it, ending in the line to the biggest fire found.
+// The next round goes on from the board that fire leaves, so the opener is a big chain and the
+// combos after it. Prints, per seed, each round's fire replayed on the JS engine.
 var path = require('path');
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js')), N = require(path.join(__dirname, 'native.js')).server;
 var SEEDS = (process.argv[2] || '1,2,3,4,5,6,7,8,9,10').split(',').map(Number);
-var WIDTH = Number(process.argv[3]) || 150, DEPTH = Number(process.argv[4]) || 14, W = 6;
+var WIDTH = Number(process.argv[3]) || 120, DEPTH = Number(process.argv[4]) || 14, ROUNDS = Number(process.argv[5]) || 3, POOL = 500, W = 6;
 
 function opening(seed) {
   var g = PA.game({ seed: seed, level: 10, countdown: false }), rows = [], r, c, top = 0;
@@ -49,35 +49,58 @@ function replay(b0, seq) {
   return fires;
 }
 N.init();
-var S = new N.Search({ reaction: 12, swapGap: 12, cursorMoveFrames: 4, threads: 1 }), grand = 0;
-SEEDS.forEach(function (seed) {
-  var t0 = Date.now(), b0 = opening(seed);
-  S.reset();
-  var root = S.root(b0.copy(), { left: 0, started: false }, [], false);
-  var beam = [{ n: root, cum: 0, seq: [], h: 0 }], best = beam[0], steps = 0;
-  for (var d = 1; d <= DEPTH; d++) {
+var S = new N.Search({ reaction: 12, swapGap: 12, cursorMoveFrames: 4, threads: 1 });
+// One round from `root`: the line of swaps that clear nothing, ended by the swap that fires the most.
+function round(root, depth) {
+  var pool = [{ n: root, seq: [], h: 0 }], best = null, steps = 0;
+  for (var d = 1; d <= depth && pool.length; d++) {
     var jobs = [], meta = [];
-    beam.forEach(function (it) { it.n.b.legalSwaps().forEach(function (m) { jobs.push([it.n, 'settle', m, 0]); meta.push([it, m]); }); });
-    if (!jobs.length) break;
-    var outs = S.advanceMany(jobs, true), seen = {}, next = [];
+    pool.forEach(function (it) { it.n.b.legalSwaps().forEach(function (m) { jobs.push([it.n, 'settle', m, 0]); meta.push([it, m]); }); });
+    var outs = S.advanceMany(jobs, true);
     steps += jobs.length;
+    pool.forEach(function (it) { it.reach = 0; it.kids = []; });
     for (var i = 0; i < outs.length; i++) {
-      var o = outs[i];
+      var o = outs[i], it = meta[i][0], m = meta[i][1];
       if (!o || o.dead) continue;
-      var st = S.stepStats(o), g = st.cleared > 0 ? sent(st) : { cells: 0, chain: 0 }, it = meta[i][0];
-      var cand = { n: o, cum: it.cum + g.cells, seq: it.seq.concat([meta[i][1]]), h: 0 };
-      var key = String(o.b.key);
-      if (seen[key] && seen[key].cum >= cand.cum) continue;
-      cand.h = connected(o.b.grid);
-      seen[key] = cand;
+      var st = S.stepStats(o);
+      if (st.cleared > 0) {
+        var g = sent(st), seq = it.seq.concat([m]);
+        if (g.cells > it.reach) it.reach = g.cells;
+        if (!best || g.cells > best.cells || (g.cells === best.cells && seq.length < best.seq.length)) best = { cells: g.cells, chain: g.chain, seq: seq, n: o };
+      } else it.kids.push({ n: o, seq: it.seq.concat([m]) });
     }
-    Object.keys(seen).forEach(function (k) { next.push(seen[k]); });
-    next.sort(function (a, b) { return b.cum - a.cum || b.h - a.h; });
-    beam = next.slice(0, WIDTH);
-    if (beam.length && beam[0].cum > best.cum) best = beam[0];
+    // the boards with the biggest fire one swap away carry on; of those, their quiet children
+    pool.sort(function (a, b) { return b.reach - a.reach || b.h - a.h; });
+    var seen = {}, next = [];
+    pool.slice(0, WIDTH).forEach(function (it) {
+      it.kids.forEach(function (k) {
+        var key = String(k.n.b.key);
+        if (seen[key]) return;
+        seen[key] = 1;
+        next.push({ n: k.n, seq: k.seq, h: connected(k.n.b.grid) });
+      });
+    });
+    next.sort(function (a, b) { return b.h - a.h; });
+    pool = next.slice(0, POOL);
   }
-  var fires = replay(b0, best.seq), cells = fires.reduce(function (a, f) { return a + f.cells; }, 0);
+  if (best) best.steps = steps;
+  return best;
+}
+var grand = 0;
+SEEDS.forEach(function (seed) {
+  var t0 = Date.now(), b0 = opening(seed), total = 0, parts = [], seq = [];
+  S.reset();
+  var root = S.root(b0.copy(), { left: 0, started: false }, [], false), left = DEPTH;
+  for (var k = 0; k < ROUNDS; k++) {
+    var got = round(root, k === 0 ? DEPTH : Math.max(3, left));
+    if (!got) break;
+    seq = seq.concat(got.seq);
+    parts.push(got);
+    root = got.n;
+    left -= got.seq.length;
+  }
+  var fires = replay(b0, seq), cells = fires.reduce(function (a, f) { return a + f.cells; }, 0);
   grand += cells;
-  console.log('seed ' + seed + ': ' + cells + ' cells in ' + best.seq.length + ' swaps (' + fires.map(function (f) { return 'swap ' + f.at + ': chain ' + f.chain + ' combos ' + f.combos + ' = ' + f.cells; }).join('; ') + '), ' + steps + ' steps, ' + (Date.now() - t0) + ' ms');
+  console.log('seed ' + seed + ': ' + cells + ' cells in ' + seq.length + ' swaps (' + fires.map(function (f) { return 'swap ' + f.at + ': chain ' + f.chain + ' combos ' + f.combos + ' = ' + f.cells; }).join('; ') + '), ' + (Date.now() - t0) + ' ms');
 });
 console.log('mean cells ' + (grand / SEEDS.length).toFixed(1));
