@@ -83,7 +83,7 @@ function hanging(board, gap) {
 function prepare(bot, board, o) {
   bot.preferRank = null; bot.preferProven = null;
   var popping = !!(o.profile.conserve && SH.popLeft(board)), converting = popping ? SH.convertingOf(board) : 0;
-  var br = null, brMs = 0, want = {}, tall = o.profile.tallRow && SH.top(board) >= o.profile.tallRow;
+  var br = null, brMs = 0, want = {}, banking = false, tall = o.profile.tallRow && SH.top(board) >= o.profile.tallRow;
   // No break search on a question due sooner than it could take (one asked
   // for the next frame, the plan dying): the answer would come late. The
   // survival search's own soonest breaks (breakAt) still rank the moves.
@@ -105,7 +105,7 @@ function prepare(bot, board, o) {
     if (o.profile.bank && !(br && br.depth) && !SH.lowestGarbageRow(board) && SH.top(board) < (o.profile.bankTop || BANK_TOP)) {
       var coming = o.comingRows;
       (board.incoming || []).forEach(function (g) { coming += g.height; });
-      if (coming >= BANK_ROWS) want = { raise: true };
+      if (coming >= BANK_ROWS) { want = { raise: true }; banking = true; }
     }
     // PANELS TO WORK WITH: with the profile's raiseTo, while no garbage is on
     // the board and no break is to be made, a raise is played first until the
@@ -135,7 +135,7 @@ function prepare(bot, board, o) {
     bot.preferProven = function (c) { var b = this._settledOf(c); return b && b.grid ? KEEP_RANK + (drop ? DROP_ROW * slabRow(b) - DROP_PANEL * SH.panelsOf(b) : SH.keepRank(b, converting)) + gapOf(b) : Infinity; };
   }
   else if (o.profile.lowerSlab && hanging(board)) bot.preferProven = function (c) { var b = this._settledOf(c); return b && b.grid ? HANG_RANK + slabRow(b) : Infinity; };
-  return { br: br, brMs: brMs, want: want, popping: popping };
+  return { br: br, brMs: brMs, want: want, popping: popping, banking: banking, profile: o.profile };
 }
 function key(c) { return c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[1] : c.kind; }
 // A LINEUP WHILE A SLAB POPS IS PLAYED. Nothing can die before the pop
@@ -144,6 +144,9 @@ function key(c) { return c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[
 // With threesLast, a three is not forced over the bot's own move.
 function overrule(d, prep, bot) {
   var br = prep.br, want = prep.want;
+  // BANKING IS NOT LEFT TO THE OTHER STAGES: with the profile's bankForce the raise is played
+  // whatever they chose, until the stack reaches the row it banks to.
+  if (prep.banking && prep.profile && prep.profile.bankForce && d.kind !== 'raise' && bot && bot._canRaise()) return { kind: 'raise', overruled: true };
   if (br && (prep.popping && br.lineup || br.touch) && !want[key(d)]) {
     var keys = Object.keys(want).filter(function (k) { return /^\d+,\d+$/.test(k); }), lk = keys[0];
     // of the breaks wanted, the one the cursor reaches soonest
