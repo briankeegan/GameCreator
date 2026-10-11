@@ -972,13 +972,14 @@ static Res CR, CR2;
 // each with time to break it before the next; a storm's queue never empties. One rule,
 // asked by the decision (raiseSafe) and by the front every frame it holds a
 // raise (front.c raiseRoomNow): no room, no raise.
-static int raiseRoom(int tallest, int queued, int raising) { return BH - tallest - 1 - queued - (raising != 0); }
+// A raise begun with the next row one pixel from pushing (push) costs that row and its own: two.
+static int raiseRoom(int tallest, int queued, int raising, int push) { return BH - tallest - 1 - queued - (raising != 0) - (push && !raising); }
 static JLOCAL int raiseShort;   // raiseSafe refused for room (1) or for a clear in time (0), for the trace
 static int raiseSafe(const int32_t *base) {
   raiseShort = 1;
   if (BIN[IN_TOPPED] || BIN[IN_STACKTOPPED]) return 0;
   int queued = BIN[IN_PHANTOM] > 0 ? 0 : (int)BIN[IN_SLABH];   // the real next slab, never the phantom
-  int free = raiseRoom(tallestBoard(base), queued, BIN[IN_RAISING] != 0);
+  int free = raiseRoom(tallestBoard(base), queued, BIN[IN_RAISING] != 0, BIN[IN_FTNR] * 16 <= BIN[IN_FPR]);
   if (free <= 0) return 0;
   raiseShort = 0;
   double clear = INF;
