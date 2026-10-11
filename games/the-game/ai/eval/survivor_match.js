@@ -65,7 +65,7 @@ function revealed(want, got) {
 // decisions made over them are
 // written there, a match per line.
 var KEEP = Number(process.env.GC_SURVIVOR_KEEP) || 1;   // how many times the default the dump keeps
-var HISTORY = 300 * KEEP, SNAP_EVERY = 600;   // and the board every SNAP_EVERY frames of the match (snaps)
+var HISTORY = 300 * KEEP, SNAP_EVERY = 120;   // and the board every SNAP_EVERY frames of the match (snaps)
 function gridOf(st) {
   var rows = [];
   for (var r = st.panels.length - 1; r >= 0; r--) {
@@ -96,7 +96,7 @@ function Match(level, L) {
   this.line = null;        // the proven line after the plan: { steps, at } (follow)
   this.knew = [];          // the garbage on its way the plan was decided knowing
   this.stats = { frames: 0, frameMs: 0, slowFrames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0, unforeseen: 0, reasked: 0, revealed: 0, lineup: 0, tookLineup: 0, touch: 0, tookTouch: 0, unasked: 0, rewalked: 0, break1: 0, took1: 0, break2: 0, took2: 0, break3: 0, took3: 0, swaps: 0, undone: 0, actions: 0, maxWindow: 0, overInput: 0, heldWalks: 0, guarded: 0 };
-  this.history = []; this.decided = []; this.asked = []; this.snaps = []; this.dumped = false;
+  this.history = []; this.decided = []; this.asked = []; this.snaps = []; this.losses = []; this.dumped = false;
   this.msPerFrame = L.msPerFrame || 1000 / 60; this.wall = 0;   // how fast frames come (soon); a link may fix it (msPerFrame)
   // A question from the last match is not this one's: its answer is dropped.
   L.pending = null;
@@ -519,12 +519,20 @@ Match.prototype.record = function (truth, bits, arrivals) {
                       arrivals: [arrivals.length, rowsOf(arrivals.map(function (a) { return a.g; })), arrivals.length ? arrivals[0].at : null],
                       grid: gridOf(truth).join('\n') });
   if (this.history.length > HISTORY) this.history.shift();
-  if (truth.clock % SNAP_EVERY === 0) this.snaps.push({ clock: truth.clock, grid: gridOf(truth) });
+  var snap = { clock: truth.clock, health: truth.health, stop: truth.stopTime + truth.preStopTime, incoming: [truth.incoming.length, rowsOf(truth.incoming)] };
+  if (truth.clock % SNAP_EVERY === 0) { snap.grid = gridOf(truth); this.snaps.push(snap); }
+  // the board each time health is lost, with the decision before it
+  if (this.lastHealth != null && truth.health < this.lastHealth) {
+    snap.grid = gridOf(truth); snap.from = this.lastHealth; snap.cursor = [truth.curRow, truth.curCol];
+    snap.decided = this.decided.slice(-3).map(function (d) { return { id: d.id, at: d.at, kind: d.kind, move: d.move, breaks: d.breaks, diag: d.diag && { survive: d.diag.survive, allDoomed: d.diag.allDoomed, tight: d.diag.tight } }; });
+    this.losses.push(snap);
+  }
+  this.lastHealth = truth.health;
 };
 Match.prototype.dump = function () {
   if (this.dumped || !process.env.GC_SURVIVOR_DUMP || !this.history.length) return;
   this.dumped = true;
-  require('fs').appendFileSync(process.env.GC_SURVIVOR_DUMP, JSON.stringify({ stats: this.stats, decided: this.decided, asked: this.asked, history: this.history, snaps: this.snaps }) + '\n');
+  require('fs').appendFileSync(process.env.GC_SURVIVOR_DUMP, JSON.stringify({ stats: this.stats, decided: this.decided, asked: this.asked, history: this.history, snaps: this.snaps, losses: this.losses }) + '\n');
 };
 
 // THE PLAN RUNS OUT BEFORE THE ANSWER: the next step of the line the last
