@@ -3563,8 +3563,8 @@ static int judgedBreaks(const LineC *l) { return l->verdict >= 0 && (l->verdict 
 static int lineRank(const LineC *a, int ra, const LineC *b, int rb) {
   if (judgedBreaks(a) != judgedBreaks(b)) return judgedBreaks(a) ? 1 : -1;
   if (ra != rb) return ra > rb ? 1 : -1;
-  // OF TWO BREAKS the later loss of health inside LIVEHORIZON, then the combo or chain before a plain three (the arbiter's order)
-  if (judgedBreaks(a) && judgedBreaks(b)) {
+  // OF TWO BREAKS, or of two lines that save a dying board, the later loss of health inside LIVEHORIZON, then the combo or chain before a plain three (the arbiter's order)
+  if (judgedBreaks(a) || (aloneOnEngine() && aloneDie(1 << 20) < LIVEHORIZON)) {
     int da = a->die < LIVEHORIZON ? a->die : LIVEHORIZON, db = b->die < LIVEHORIZON ? b->die : LIVEHORIZON;
     if (da != db) return da > db ? 1 : -1;
     int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain));
@@ -3995,6 +3995,8 @@ static int optRank(Opt *a, Opt *b) {
   // line that takes longer to finish still outlives a hold that dies first
   int da = a->die < LIVEHORIZON ? a->die : LIVEHORIZON, db = b->die < LIVEHORIZON ? b->die : LIVEHORIZON;
   if (da != db) return da > db ? 1 : -1;
+  // SAVING A DYING BOARD: of two options that live as long, a combo or a chain goes before a plain three
+  if (ka == 1 && kb == 1 && aloneOnEngine() && aloneDie(1 << 20) < LIVEHORIZON) { int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
   // a plain clear is the last resort: it ranks below any option that lives as long
   if (ka && (a->plain || b->plain)) { int pa = optPlain(a), pb = optPlain(b); if (pa != pb) return pa ? -1 : 1; }
   // two breaks: the one that is a combo or a chain before a plain three, by the one rule (attackFirst)
