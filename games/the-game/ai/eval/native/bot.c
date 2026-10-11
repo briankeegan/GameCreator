@@ -64,6 +64,7 @@ enum { C_REFUSEDDEADLY, C_ALLDEAD, C_REFUSEDRETURN, C_REFUSEDTOOSLOW, C_PLANNED,
        C_REFUSEDNOFAILSAFE, C_REFUSEDSAMESWAP, C_READIEDFIRST, C_HELDFORLANDING, C_BROKEREACHED, C_BROKEPREEMPT,
        C_BROKESPENDING, C_WAITEDFORDRAIN, C_KEPTHEALTH, C_DECISIONS, C_BYMODE, NCOUNT = C_BYMODE + 3 };
 
+#define KEEPOPTS 3
 typedef struct { int scope, chain, total, rounds, biggest, broke, converts, voidAfter, garbage; } Rs;
 struct Cand { int kind, sr, sc, moveFrames, future; const int32_t *masks; Rs res; };
 typedef struct { int N; uint32_t occ[WMAX], garb[WMAX], col[NCOL][WMAX]; } Sig;
@@ -81,6 +82,7 @@ typedef struct {
   int32_t tgt[2 * LINEMAX]; int tgtN, tgtKind, tgtWait, tgtVia; double tgtPresses;   // the target being walked to (arbitrate): its line, the rule that chose it, the presses when it was chosen
   double counts[NCOUNT];
   int lastVia;   // the route the last decision took
+  int32_t keep[KEEPOPTS][2 * LINEMAX]; int keepN[KEEPOPTS], nKeep;   // the options the last decision judged to live and pay: swaps only, every number read again when they are asked for (keptOptions)
 } Bot;
 
 static LOCAL int nScore, nLook, nSave, rScore, rMain, rLook, rSave, rCand, lookDepthLog;
@@ -4099,9 +4101,36 @@ static int getsBackInTime(const Opt *o, const int32_t *line, int n) {
   if (r[1] < 0) return !r[0];   // the line was cut short by the board losing health: it did not get back in time
   return !r[0] || r[0] > r[1];
 }
+// WHAT WAS FOUND IS KEPT: the options a decision judged to live and break, cash or attack are kept as swaps alone,
+// and asked for again at the next decision, where every number is read afresh on the board and the clock as they
+// are then -- one engine judge each, never a search; one that no longer works is dropped.
+static void keepOptions(const Opt *O, int n) {
+  BT->nKeep = 0;
+  for (int i = 0; i < n && BT->nKeep < KEEPOPTS; i++) {
+    const Opt *o = &O[i];
+    if (o->n < 1 || !o->lives || !(o->breaks || o->cash > 0 || isAttack(atkOf(o->size, o->chain)))) continue;
+    int q = BT->nKeep++;
+    BT->keepN[q] = o->n;
+    for (int k = 0; k < 2 * o->n; k++) BT->keep[q][k] = o->sw[k];
+  }
+}
+static int keptOptions(Opt *O, int n, Dec d) {
+  for (int q = 0; q < BT->nKeep; q++) {
+    int m = BT->keepN[q]; const int32_t *sw = BT->keep[q];
+    int seen = 0;
+    for (int i = 0; i < n && !seen; i++) seen = O[i].n >= 1 && O[i].sw[0] == sw[0] && O[i].sw[1] == sw[1];
+    if (seen || m < 1 || m > LINEMAX) continue;
+    Opt *o = &O[n];
+    o->d = mkSwap(sw[0], sw[1], V_KEEPSAVE, d.mode, d.alive);
+    o->n = m; o->wait = 0; o->pri = 2;
+    for (int k = 0; k < 2 * m; k++) o->sw[k] = sw[k];
+    if (optJudge(o)) n++;
+  }
+  return n;
+}
 static Dec arbitrate(Dec d) {
   if (!((d.kind == K_SWAP && d.hasMove) || d.kind == K_HOLD)) return d;   // a raise: raiseMode's own rules
-  Opt O[5 + ATTACKOPTS + SETUPOPTS]; int n = 0, at = -1, ra = -1;
+  Opt O[5 + KEEPOPTS + ATTACKOPTS + SETUPOPTS]; int n = 0, at = -1, ra = -1;
   memset(O, 0, sizeof O);
   // the target the walk was on, still ahead of the decision
   int hasT = d.kind == K_SWAP && BT->tgtN && BT->nNotes == BT->tgtPresses && !(d.sr == BT->tgt[0] && d.sc == BT->tgt[1]);
@@ -4121,6 +4150,9 @@ static Dec arbitrate(Dec d) {
     } else o->n = 0;
     if (!optJudge(o)) return d;
     n++; }
+  int kAt = n;
+  n = keptOptions(O, n, d);
+  int kEnd = n;
   // what stayAlive chose
   int ia = -1, ih = -1;
   if (saSet && !(d.kind == saDec.kind && d.hasMove == saDec.hasMove && d.sr == saDec.sr && d.sc == saDec.sc)) {
@@ -4155,6 +4187,7 @@ static Dec arbitrate(Dec d) {
     if (sn > 0) for (int k = 0; k < 2 * sn; k++) sv[k] = saLine[k];
     else if (saDec.kind == K_SWAP) { sn = 1; sv[0] = saDec.sr; sv[1] = saDec.sc; }
   }
+  keepOptions(O, n);
   if (n < 2) return d;
   // the best option is asked the two survival questions, on the engine, only when it wins: one that fails is out
   // (it does not survive) and the rest are ranked again
@@ -4176,6 +4209,7 @@ static Dec arbitrate(Dec d) {
       O[at].lives, O[at].breaks, O[at].rdyKnown ? O[at].rdy : -1, O[at].die, O[at].soonKnown ? O[at].soon : -1.0, O[at].cash, O[at].life, O[at].hollow); }
 #endif
   if (best == ra) { if (O[best].n > 1) lineSet(O[best].sw, O[best].n, LINE_CASH, 0); else BT->nLine = 0; }
+  else if (best >= kAt && best < kEnd) { if (O[best].n > 1) lineSet(O[best].sw, O[best].n, O[best].breaks ? LINE_BREAK : LINE_CASH, 0); else BT->nLine = 0; }
   else if (best == ia) lineSet(saLine, saN, saKind, saWait);
   else if (best == ih || best >= setupAt) BT->nLine = 0;
   else if (BT->tgtN > 1) lineSet(BT->tgt, BT->tgtN, BT->tgtKind, BT->tgtWait);
@@ -5870,6 +5904,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     if (dr > 0) {
       for (int k = 0; k < BT->nLine; k++) BT->line[2 * k] += dr;
       for (int k = 0; k < BT->tgtN; k++) BT->tgt[2 * k] += dr;
+      for (int q = 0; q < BT->nKeep; q++) for (int k = 0; k < BT->keepN[q]; k++) BT->keep[q][2 * k] += dr;
       Route *rs[4] = { &BT->plan, &BT->dig, &BT->attack, &BT->flatten };
       for (int q = 0; q < 4; q++) for (int k = 0; k < rs[q]->n; k++) rs[q]->mv[2 * k] += dr;
       for (int i = 0; i < BT->nPr; i++) BT->prR[i] += dr;
