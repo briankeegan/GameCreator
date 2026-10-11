@@ -519,6 +519,7 @@ Match.prototype.record = function (truth, bits, arrivals) {
                       arrivals: [arrivals.length, rowsOf(arrivals.map(function (a) { return a.g; })), arrivals.length ? arrivals[0].at : null],
                       grid: gridOf(truth).join('\n') });
   if (this.history.length > HISTORY) this.history.shift();
+  if (process.env.GC_SURVIVOR_FRAMES) this.frameLog(this.history[this.history.length - 1]);
   var snap = { clock: truth.clock, health: truth.health, stop: truth.stopTime + truth.preStopTime, incoming: [truth.incoming.length, rowsOf(truth.incoming)] };
   if (truth.clock % SNAP_EVERY === 0) { snap.grid = gridOf(truth); this.snaps.push(snap); }
   // the board each time health is lost, with the decision before it
@@ -529,7 +530,20 @@ Match.prototype.record = function (truth, bits, arrivals) {
   }
   this.lastHealth = truth.health;
 };
+// GC_SURVIVOR_FRAMES=file.gz: every frame of the match, a line each, as it is played -- the board
+// only on the frames it changed on, the rest as the history keeps them.
+Match.prototype.frameLog = function (rec) {
+  if (!this.frames) {
+    var gz = require('zlib').createGzip({ level: 6 });
+    gz.pipe(require('fs').createWriteStream(process.env.GC_SURVIVOR_FRAMES));
+    this.frames = gz;
+  }
+  var same = rec.grid === this.framesGrid;
+  this.framesGrid = rec.grid;
+  this.frames.write(JSON.stringify(same ? Object.assign({}, rec, { grid: undefined }) : rec) + '\n');
+};
 Match.prototype.dump = function () {
+  if (this.frames) { this.frames.end(); this.frames = null; }
   if (this.dumped || !process.env.GC_SURVIVOR_DUMP || !this.history.length) return;
   this.dumped = true;
   require('fs').appendFileSync(process.env.GC_SURVIVOR_DUMP, JSON.stringify({ stats: this.stats, decided: this.decided, asked: this.asked, history: this.history, snaps: this.snaps, losses: this.losses }) + '\n');
