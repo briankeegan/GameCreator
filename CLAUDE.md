@@ -254,12 +254,12 @@ ways: a tool not listed, or a path listed that doesn't exist.
 - **BitBot drills run at level 10, nothing else.** `pa_drill.js` exits if a
   scenario's level is not 10.
 - **A clear that breaks nothing is pressed only to live, when due**
-  (`clearDue`). A press locks the rise the frame it is made (`pa.c`
-  `updateRiseLock`), so the clear is in time while its last press comes
-  before the frame the board left alone loses health. Put off, it begins at
-  the front's next decision: after the swap played instead, once it has landed
-  (`stepGap`); after a hold, a reaction and a frame later (the cooldown lifts
-  at once only on a stopped board that is not topped). While that later clear is still in time, the
+  (`clearDue`). Put off, it begins at the front's next decision: after the
+  swap played instead, once it has landed (`stepGap`); after a hold, a reaction
+  and a frame later (the cooldown lifts at once only on a stopped board that is
+  not topped). It is due when, begun then, it no longer lives -- the engine
+  plays it from that frame as the front plays it (`clearLivesAfter`, `lineDelay`
+  in `front.c`), the same judge as every line, not an estimate. While that later clear still lives, the
   stages' choice plays. No route clears for shape or spare material.
 - **Time, never swaps.** A line is as good as the frame it is done, however
   many swaps it takes; nothing the bot asks is capped at a number of swaps.

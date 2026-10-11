@@ -848,7 +848,6 @@ static int attackCmp(Atk a, Atk b) {
   return worthCmp(a.size, b.size);
 }
 typedef struct { double rate, key, cells, gain, frames; double *option; } Pick;
-static int attackFirst(Atk a, Atk b);
 static int bestAttack(double deadline, double ppf, Pick *best) {
   int n, have = 0;
   keepFilter(PILE, nPile, FILT, &n);
@@ -871,8 +870,7 @@ static int bestAttack(double deadline, double ppf, Pick *best) {
     double taste = 1 + TB[T_W + key] / 100;
     if (taste < 0.1) taste = 0.1;
     double rate = cells * taste;   // every one here fits the deadline: what it is worth, not how soon
-    // of two that break alike, a combo or a chain before a plain three (attackFirst); a break against none is weighed in its rate
-    int cmp = have ? (o[F_BREAKS] == best->option[F_BREAKS] ? attackFirst(atkOfRow(o), atkOfRow(best->option)) : attackCmp(atkOfRow(o), atkOfRow(best->option))) : 0;
+    int cmp = have ? attackCmp(atkOfRow(o), atkOfRow(best->option)) : 0;
     int win = !have || (cmp ? cmp > 0 : rate > best->key);
     if (!win && have && !cmp && rate == best->key) {
       double ob = has(o[F_BUMPS]) ? o[F_BUMPS] : 1e9, bb = has(best->option[F_BUMPS]) ? best->option[F_BUMPS] : 1e9;
@@ -2168,10 +2166,10 @@ static Dec waitForDrain(Dec d) {
     int tn = r->total, st = cl->future || steady(cl->sr, cl->sc, dmax(cl->moveFrames, k - 2)),
         cnSt = clearNow && (clearNow->future || steady(clearNow->sr, clearNow->sc, dmax(clearNow->moveFrames, k - 2)));
     if (clearNow && st != cnSt) { if (st) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnAtk = atkOfRes(r); } continue; }
-    // of the clears that fit, an attack (a combo of four or more, a chain) comes first, by the one rule (attackFirst), before the time bought is weighed
+    if (clearNow && bk != cnBk) { if (bk) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnAtk = atkOfRes(r); } continue; }
+    // of the clears that fit, an attack (a combo of four or more, a chain) comes first, by the one rule (attackFirst)
     int atk = clearNow ? attackFirst(atkOfRes(r), cnAtk) : 0;
     if (atk) { if (atk > 0) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnAtk = atkOfRes(r); } continue; }
-    if (clearNow && bk != cnBk) { if (bk) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnAtk = atkOfRes(r); } continue; }
     if (!clearNow || tn < cnTn || (tn == cnTn && (vd < cnVd || (vd == cnVd && rate > cnRate)))) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnAtk = atkOfRes(r); }
   }
   if (breakNow && !breakNow->future) return mkSwap(breakNow->sr, breakNow->sc, V_BREAK, d.mode, d.alive);
@@ -3709,18 +3707,40 @@ static double holdGap(void) { return BIN[IN_STOP] > 0 && !BIN[IN_TOPPED] ? 1 : R
 // after a hold, a reaction and a frame later -- the cooldown lifts at once only
 // on a stopped board that is not topped (a topped board that has not changed keeps it). While the clear begun then is still in time it waits,
 // and a break may come first. The one test, for every route that clears to live.
+void lineDelay(int d);
+// WHETHER A CLEAR STILL LIVES IF IT BEGINS LATER, on the engine, as the front plays it: the line played from `delay` frames
+// from now (lineDelay), judged as the judge judges a line: it loses no health before its last press and the next move.
+// One play a line a decision, to as far as the board left alone could lose health and a little past it.
+#define CLMEMO 64
+typedef struct { int dec, n, delay, lives; int32_t sw[2 * LINEMAX]; } ClMemo;
+static JLOCAL ClMemo CLM[CLMEMO];
+static int clearLivesAfter(const int32_t *sw, int n, int delay) {
+  if (n < 1 || n > LINEMAX) return 0;
+  unsigned h = 2166136261u ^ (unsigned)(n * 31 + delay);
+  for (int k = 0; k < 2 * n; k++) h = (h ^ (unsigned)sw[k]) * 16777619u;
+  ClMemo *m = &CLM[h & (CLMEMO - 1)];
+  if (m->dec == btDecision + 1 && m->n == n && m->delay == delay && !__builtin_memcmp(m->sw, sw, (unsigned long)n * 8)) return m->lives;
+  int horizon = LNA[0] + 40; if (horizon > LINEHORIZON) horizon = LINEHORIZON; if (horizon < 60) horizon = 60;
+  int32_t out[LNOLEN];
+  lineDelay(delay);
+  int rc = lineOnEngine(sw, n, horizon, 0, out);
+  lineDelay(0);
+  if (rc != 0) return 0;   // not played (a step refused, or the budget): it cannot be waited on
+  int lives = out[1] >= 0 && !(out[0] && out[0] <= out[1] + NEXTMOVE);
+  m->dec = btDecision + 1; m->n = n; m->delay = delay; m->lives = lives;
+  for (int k = 0; k < 2 * n; k++) m->sw[k] = sw[k];
+  return lives;
+}
 static int clearDue(const int32_t *sw, int n, const int32_t *alt) {
   if (!aloneOnEngine()) return 1;
   if (!LNA[0]) return 0;
-  int frozen = BIN[IN_TOPPED] || BIN[IN_STOP] > 0, cr = (int)BIN[IN_CROW], cc = (int)BIN[IN_CCOL];
-  double later;
   if (alt) {
-    int32_t both[2 * LINEMAX + 2]; int m = n < LINEMAX ? n : LINEMAX;
+    int32_t both[2 * LINEMAX + 2]; int m = n < LINEMAX ? n : LINEMAX - 1;
     both[0] = alt[0]; both[1] = alt[1];
     for (int k = 0; k < 2 * m; k++) both[2 + k] = sw[k];
-    later = lineFrames(both, m + 1, cr, cc, 0, frozen);
-  } else later = lineFrames(sw, n, cr, cc, holdGap(), frozen);
-  return LNA[0] <= later - PRESS;
+    return !clearLivesAfter(both, m + 1, 0);   // begun after the swap played in its place
+  }
+  return !clearLivesAfter(sw, n, (int)holdGap());   // begun at the front's next decision
 }
 // A SPEND THAT KEEPS A WAITING RAISE OUT: a clear holds the rise lock and
 // renews the stop, so while a raise for material waits on either, a spend

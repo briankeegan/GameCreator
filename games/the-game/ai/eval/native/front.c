@@ -671,6 +671,8 @@ static void frontCalm(int calm) {
 }
 static JLOCAL Settle LSET;
 static JLOCAL int LWAITALL;   // the line's last press waits for its pair and the garbage to settle (breakWait)
+static JLOCAL int LDELAY;     // the line begins this many frames from now: its first walk waits for the front's next decision (clearDue)
+void lineDelay(int d) { LDELAY = d; }
 // A LINE'S PREFIX, KEPT WHERE ITS NEXT STEP BEGINS. A line played to the
 // frame its next step would start (stopAtNext 1) leaves the engine exactly
 // where every longer line with that prefix stands then: the board, the frame,
@@ -722,19 +724,19 @@ static int standingHollow(const Board *b) {
 static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, int32_t *out) {
   if (!LNB) LNB = nb_new();
   Snap *from = 0;
-  for (int k = n - 1; k >= 1 && !from; k--) from = snapFind(steps, k);
+  if (!LDELAY) for (int k = n - 1; k >= 1 && !from; k--) from = snapFind(steps, k);   // a delayed line shares no prefix with an undelayed one
   nb_copy(LNB, from ? from->b : paLibBoard());
   { extern PATLS double paWork; paWork += 10; }   // the copy
   Board *b = LNB;
   if (!from) b->sNCombo = b->sCleared = b->sBroke = b->sEarned = b->sFell = b->sHollow = 0;   // a prefix kept carries its counts
   int32_t h0 = paLibBoard()->health;
-  int step = 0, walking = n > 0, timer = 0, held = LF ? LF->held : H_NONE, cool = 0, disp = b->displacement;
+  int step = 0, walking = n > 0 && !LDELAY, timer = 0, held = LF ? LF->held : H_NONE, cool = 0, disp = b->displacement;
   int tr = n > 0 ? steps[0] : 0, tc = n > 0 ? steps[1] : 0, last = n > 0 ? -1 : 0, f, dropped = b->garbageCreatedCount, f0 = 0;
   Pad pad; if (from) pad = from->pad; else if (LF) pad = LF->pad; else __builtin_memset(&pad, 0, sizeof pad);
   pad.holdKey = 0;   // the line begins with the key let go
   if (from) { step = from->n; walking = 0; held = from->held; cool = from->cool; last = from->last; dropped = from->dropped; f0 = from->f; }
   int snapSettle = from && from->hasSettle;
-  int kept0 = n > 0 && LF && LF->pkAt && LF->pkR == steps[0] && LF->pkC == steps[1] && LF->pkAll == (LWAITALL && n == 1);
+  int kept0 = n > 0 && !LDELAY && LF && LF->pkAt && LF->pkR == steps[0] && LF->pkC == steps[1] && LF->pkAll == (LWAITALL && n == 1);
   int fs = 0, r0 = tr;   // the frame the step's settle was taken, its row then
   int waitTo = n > 0 && LF ? pressWait(LF, steps[0], steps[1], paLibBoard()->clock, LWAITALL && n == 1 ? breakWait(&LF->settle, steps[0], steps[1]) : pairWait(&LF->settle, steps[0], steps[1]), LWAITALL && n == 1) : 0;
 #ifndef __wasm__
@@ -763,7 +765,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
       int coolIn = cool;
       if (cool > 0) cool--;
       int landing = b->queuedSwapRow > 0 || b->swappingCount > 0 || b->pressSwap;
-      if (!landing && (cool == 0 || b->stopTime > 0 || nb_topped(b))) {
+      if (!landing && (step > 0 || f >= LDELAY) && (cool == 0 || b->stopTime > 0 || nb_topped(b))) {
         if (step == n) {   // the front decides again here
           if (stopAtNext == 1) snapKeep(steps, n, b, f, coolIn, held, last, dropped, &pad);
           out[1] = last; out[8] = f; return 1;
