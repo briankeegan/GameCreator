@@ -14,7 +14,7 @@
 # fits in the slots left is dispatched, and every run that has finished is
 # judged once. It prints one line per verdict and a count of what is left.
 set -u
-MINUTES=${1:-10}; PROFILE=${2:-survivor-profiles/isl2b4.json}
+MINUTES=${1:-10}; PROFILE=${2:-survivor.profile.json}
 REPO=briankeegan/GameCreator; SLOTS=${SLOTS:-10}; POLL=${POLL:-45}
 PANEL=${PANEL:-claude/newsey-game-ask-qa8u5e}
 api() { gh api "repos/$REPO/$1" "${@:2}"; }

@@ -17,7 +17,7 @@ on:
         default: '8'
       profile:
         description: 'With bot wasm: the WasmSurvivor profile, relative to games/the-game/ai/eval (empty = survivor.profile.json)'
-        default: 'survivor-profiles/isl2b4.json'
+        default: ''
       stage:
         description: 'Start on this stage (empty = 1)'
         default: ''
