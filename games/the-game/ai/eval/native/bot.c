@@ -3896,11 +3896,12 @@ static int optJudge(Opt *o) {
     // A SETUP SWAP THAT CLEARS NOTHING BUYS NO TIME: the rise it locks while it lands is no reason to press it, so
     // the board loses health no later for it than left alone; it is pressed for what it sets up (ready, hollow)
     if (o->stall && aloneOnEngine() && !o->breaks && o->conv <= 0 && LNO[3] <= LNA[3]) { int alone = aloneDie(1 << 20); if (o->die > alone) o->die = alone; }
-    // an attack: the line makes a chain longer than the board's own, or a larger single match than it does
+    // a combo or a chain: it clears more than the board left alone, and digs under no pile (more hollow than the hold)
+    // an attack: the line makes a chain longer than the board's own, or a larger single match than it does, and digs under no pile (more hollow than the hold)
     o->chain = LNO[18] > LNA[18] && LNO[18] >= 2 ? LNO[18] : 0;
     o->size = LNO[17] > LNA[17] ? LNO[17] : 0;
     o->clears = LNO[3] > LNA[3];
-    o->cash = o->chain || comboWorth(o->size) >= 0;   // a combo or a chain of any size is an attack; the hollow it leaves is priced in its life
+    o->cash = (o->chain || comboWorth(o->size) >= 0) && (!aloneOnEngine() || o->hollow <= HOLLOW(LNA));
     // a clear that breaks nothing, is no combo and fills nothing under the garbage (less hollow than the board
     // left alone), before it is due (clearDue), is a spend the board does not need yet
     // a plain clear: it clears, breaks nothing, is no combo or chain and fills nothing under the garbage -- a last resort
