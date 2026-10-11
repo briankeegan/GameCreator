@@ -4023,16 +4023,14 @@ static int optRank(Opt *a, Opt *b) {
   if (ka != kb) return ka > kb ? 1 : -1;
   if (ka && (a->early || b->early)) { int ea = optEarly(a), eb = optEarly(b); if (ea != eb) return ea ? -1 : 1; }   // a clear that is not yet due ranks below any option that lives
   if (ka && BIN[IN_INCOMING] > 0) { int ra = optReady(a), rb = optReady(b); if (ra != rb) return ra > rb ? 1 : -1; }
-  // the later loss of health is the time there is: a line that takes longer to finish still outlives a hold that
-  // dies first -- as far as the judge sees (LINEHORIZON) when the board left alone loses health within it, else
-  // within LIVEHORIZON
-  int endangered = aloneOnEngine() && aloneDie(1 << 20) < LINEHORIZON;
+  // dying within LIVEHORIZON, the later loss of health is the time there is: a
+  // line that takes longer to finish still outlives a hold that dies first
+  // dying within LIVEHORIZON, the later loss of health is the time there is: a
+  // line that takes longer to finish still outlives a hold that dies first
   int da = a->die < LIVEHORIZON ? a->die : LIVEHORIZON, db = b->die < LIVEHORIZON ? b->die : LIVEHORIZON;
   if (da != db) return da > db ? 1 : -1;
   // SAVING A DYING BOARD: of two options that live as long, a combo or a chain goes before a plain three
-  if (ka == 1 && kb == 1 && endangered) { int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
-  // a board left alone that loses health within the judge's reach: of two that live as long and are no attack apart, the later loss of health
-  if (endangered && ka <= 1 && kb <= 1) { int fa = a->die < LINEHORIZON ? a->die : LINEHORIZON, fb = b->die < LINEHORIZON ? b->die : LINEHORIZON; if (fa != fb) return fa > fb ? 1 : -1; }
+  if (ka == 1 && kb == 1 && aloneOnEngine() && aloneDie(1 << 20) < LIVEHORIZON) { int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
   // OF TWO CLEARS that break nothing, a combo or a chain goes before a plain three, whether or not it digs under the pile (attackFirst)
   if (ka == 1 && kb == 1 && a->clears && b->clears) { int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
   // a plain clear is the last resort: it ranks below any option that lives as long
