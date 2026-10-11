@@ -887,6 +887,14 @@ static int attackFirst(Atk a, Atk b) {
   if (isAttack(a) != isAttack(b)) return isAttack(a) ? 1 : -1;
   return attackCmp(a, b);
 }
+// OF TWO BREAKS, which goes first -- the one rule every chooser of a break asks: the combo or a chain before a plain three
+// (attackFirst), then the one that converts the most garbage, then the fewer voids left, then the sooner. 1: a, -1: b.
+static int breakCmp(Atk ka, int cva, int vva, double fa, Atk kb, int cvb, int vvb, double fb) {
+  int w = attackFirst(ka, kb); if (w) return w;
+  if (cva != cvb) return cva > cvb ? 1 : -1;
+  if (vva != vvb) return vva < vvb ? 1 : -1;
+  return fa < fb ? 1 : fa > fb ? -1 : 0;
+}
 static int bestPlan(double clock, double deadline, int toppedOut, double fpr, int tallNow, const int32_t *base, Pick *bestOut) {
   int n, haveB = 0, haveO = 0;
   Pick best, over;
@@ -1696,9 +1704,7 @@ static Dec decideCore(void) {
       if ((bc->kind != K_SWAP && bc->kind != K_HOLD) || !poolBreaks(bc)) continue;
       if (bc->moveFrames > deadline) continue;
       if (deadly(bc->masks, &bc->res, horizonOf(bc))) continue;
-      int cv = bc->res.converts, kv = bk ? bk->res.converts : -1;
-      int vv = bc->res.voidAfter, kvv = bk ? bk->res.voidAfter : 0;
-      if (!bk || cv > kv || (cv == kv && (vv < kvv || (vv == kvv && bc->moveFrames < bk->moveFrames)))) bk = bc;
+      if (!bk || breakCmp(atkOfRes(&bc->res), bc->res.converts, bc->res.voidAfter, bc->moveFrames, atkOfRes(&bk->res), bk->res.converts, bk->res.voidAfter, bk->moveFrames) > 0) bk = bc;
     }
     // and only while it lands before the cursor would reach the break anyway:
     // a slab hovering over a clear is not landing, and waiting on it only
@@ -2139,8 +2145,7 @@ static Dec waitForDrain(Dec d) {
     Rs *r = &cl->res;
     if (cl->moveFrames + 1 > k) continue;
     if (r->broke) {
-      if (!breakNow || r->converts > breakNow->res.converts ||
-          (r->converts == breakNow->res.converts && cl->moveFrames < breakNow->moveFrames)) breakNow = cl;
+      if (!breakNow || breakCmp(atkOfRes(r), r->converts, 0, cl->moveFrames, atkOfRes(&breakNow->res), breakNow->res.converts, 0, breakNow->moveFrames) > 0) breakNow = cl;
       continue;
     }
     int isCh = r->chain >= 2;
