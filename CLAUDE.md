@@ -317,7 +317,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   compares only a setup with the hold or another setup -- a fill or a levelling
   swap is ranked by life and hollow.
   **The scramble**, a last resort: while a stop runs and the board left alone
-  loses health (`boardDying`) and no other option outlives it, the best combo or chain any
+  loses health within the judge's horizon, `LINEHORIZON` (`boardDying`) and no other option outlives it, the best combo or chain any
   line reaches in the time there is is an option too (`reachOption`: the whole line judged on the
   engine, played on once chosen), and an option that makes one ranks before life.
   A clear that fills hollow under the garbage is not `early`.
