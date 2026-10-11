@@ -13,8 +13,8 @@ on:
         description: 'JSON array of seeds'
         default: '[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]'
       frames:
-        description: 'Frames per game (21600 = six minutes)'
-        default: '21600'
+        description: 'Frames per game (0 = no limit: played until one side dies; 21600 = six minutes)'
+        default: '0'
       garbage_every:
         description: 'Extra garbage for WasmSurvivor about once in this many frames (0 = none)'
         default: '0'
@@ -49,7 +49,7 @@ on:
 jobs:
   duel:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 350
     strategy:
       fail-fast: false
       matrix:
@@ -108,7 +108,7 @@ jobs:
           luajit bot/tests/survivalLinkEncodeVerify.lua
       - name: Play seed ${{ matrix.seed }}
         id: play
-        timeout-minutes: 60
+        timeout-minutes: 330
         working-directory: panel-game
         run: |
           eval "$(luarocks path --local --lua-version 5.1)"

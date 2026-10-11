@@ -2,7 +2,7 @@
 --
 --   (in a panel-game checkout that has bot/SurvivalLink.lua, with its LUA_PATH;
 --    survivor.js listening)
---   luajit GameCreator/games/the-game/ai/eval/lua/survivorDuel.lua SEED FRAMES [GARBAGE_EVERY] [PACE] [SOLO] [STREAM] [OPPONENT]
+--   luajit GameCreator/games/the-game/ai/eval/lua/survivorDuel.lua SEED FRAMES (0: until one side dies) [GARBAGE_EVERY] [PACE] [SOLO] [STREAM] [OPPONENT]
 --
 -- A VS match as the server sets one up (TWO_PLAYER_VS, level 10, shock on),
 -- played on panel-game's own Lua engine: side 1 is WasmSurvivor through the
@@ -26,7 +26,8 @@ local CursorController = require("bot.CursorController")
 local SurvivalLink = require("bot.SurvivalLink")
 
 local SEED = tonumber(arg[1]) or 1
-local FRAMES = tonumber(arg[2]) or 21600
+local FRAMES = tonumber(arg[2]) or 0
+if FRAMES <= 0 then FRAMES = math.huge end   -- 0: no limit, the match is played until one side dies
 local GARBAGE_EVERY = tonumber(arg[3]) or 0
 -- PACE: game speed against the wall clock (1 = 60 frames a second, as the
 -- server; 0.5 = half speed, each of two bots on one machine thinking as fast
