@@ -2204,7 +2204,8 @@ static Dec waitForDrain(Dec d) {
 // line (BT->line) and plays its next step while the engine says it still
 // lives and still pays (breaks, for a break line) -- whatever chose it.
 #define REROOTS 3   // a line's first steps replayed on the engine before the masks propose the rest: precision, never reach
-#define LIVEHORIZON 60
+static int liveHorizon(void);
+#define LIVEHORIZON liveHorizon()
 #define LINEHORIZON 240
 #define UNSETTLEMOST 180   // the most frames a board is followed while it settles (front.c's settle sim and the judge's busy tail)
 // THE JUDGE'S REACH: it plays to LINEHORIZON, and on while the board is busy
@@ -3698,6 +3699,14 @@ static int nonSpendLives(void);
 // on a stopped board that is not topped; after a press made `last` frames from now, the swap landed and the
 // reaction over (stepGap). Frames from now.
 static double holdGap(void) { return BIN[IN_STOP] > 0 && !BIN[IN_TOPPED] ? 1 : REACT + 1; }
+// THE TIME A SAVE NEEDS, on the clock: the wait for the front's next decision (holdGap), the walk from the cursor to the
+// farthest cell of the board (a corner; travelCost, the press included) and the frames a press is trusted (NEXTMOVE).
+// Health lost sooner than this is lost before any single swap can be pressed
+static int liveHorizon(void) {
+  int cr = (int)BIN[IN_CROW], cc = (int)BIN[IN_CCOL], h = DBASE ? (int)DBASE[O_H] : 12, far = 0;
+  for (int i = 0; i < 4; i++) { int t = travelCost(cr, cc, i & 1 ? h : 1, i & 2 ? BW - 1 : 1); if (t > far) far = t; }
+  return (int)holdGap() + far + NEXTMOVE;
+}
 // A CLEAR THAT BREAKS NOTHING IS PRESSED ONLY WHEN IT IS DUE: material is
 // spent to break, or to live at the last moment it can. A press locks the rise
 // the frame it is made (pa.c updateRiseLock: a queued swap), so the clear is
