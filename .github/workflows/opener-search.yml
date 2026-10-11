@@ -9,13 +9,13 @@ on:
         default: '1,2,3,4,5,6,7,8,9,10'
       ms:
         description: 'Search time a seed, ms'
-        default: '3000'
+        default: '1000'
       width:
         description: 'Beam width'
-        default: '40'
+        default: '150'
       depth:
         description: 'Most swaps in a sequence'
-        default: '12'
+        default: '14'
 
 permissions:
   contents: read
@@ -34,3 +34,8 @@ jobs:
         run: |
           node games/the-game/ai/eval/opener_search.js '${{ inputs.seeds }}' '${{ inputs.ms }}' '${{ inputs.width }}' '${{ inputs.depth }}' 2>&1 | tee search.log
           sed 's/^/::notice title=opener::/' search.log
+      - name: Search on the native engine
+        timeout-minutes: 20
+        run: |
+          node games/the-game/ai/eval/opener_native.js '${{ inputs.seeds }}' '${{ inputs.width }}' '${{ inputs.depth }}' 2>&1 | tee native.log
+          sed 's/^/::notice title=native::/' native.log
