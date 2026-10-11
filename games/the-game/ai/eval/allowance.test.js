@@ -23,8 +23,10 @@ bot.unaffordableDropped = 0;
 var hold = { kind: 'hold' }, near = { kind: 'swap', move: [6, 3] }, far = { kind: 'swap', move: [1, 5] };
 bot.allowance = Infinity;
 assert.strictEqual(bot._affordable([hold, near, far]).length, 3, 'no allowance given: every move');
-bot.allowance = 3;
+bot.allowance = 2;   // tight: a walk of two cells or more is held, one action (the far swap costs 3)
 assert.deepStrictEqual(bot._affordable([hold, near, far]), [hold, near], 'what costs more than is left is not offered');
+bot.allowance = 3;
+assert.deepStrictEqual(bot._affordable([hold, near, far]), [hold, near, far], 'tight, the far swap costs 3 held');
 bot.allowance = 0;
 assert.deepStrictEqual(bot._affordable([hold, near, far]), [hold], 'nothing left: a hold');
 bot.allowance = 30; bot.allowanceCalm = true;

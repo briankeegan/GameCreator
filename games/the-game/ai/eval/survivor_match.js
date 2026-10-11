@@ -305,9 +305,9 @@ Match.prototype.take = function (truth) {
     if (!step) { this.stats.refused++; this.acted = false; continue; }
     this.acted = true;
     this.stats.played++;
-    var ins = this.holdWalks(step.inputs);
+    var walked = this.walkKeys(step, at), ins = walked.inputs;
     if (!this.fits(at, ins)) { this.stats.guarded++; this.acted = false; continue; }
-    this.stats.heldWalks += ins.held;
+    this.stats.heldWalks += walked.held;
     // Each planned frame carries the raise held after it.
     var sw = a.kind === 'swap' ? swapOf(board, move) : null;
     // the swaps played, and the last few kept to tell a swap back
@@ -318,8 +318,8 @@ Match.prototype.take = function (truth) {
       while (this.swapHistory.length > SWAP_HISTORY || (this.swapHistory.length && at - this.swapHistory[0].at > SWAP_BACK_FRAMES)) this.swapHistory.shift();
     }
     for (var t in this.plan) if (+t >= at) delete this.plan[t];
-    for (var i = 0; i < ins.length; i++) this.plan[at + i] = { bits: ins[i], hold: step.holds[i], swap: sw };
-    this.nextAt = at + step.inputs.length;
+    for (var i = 0; i < ins.length; i++) this.plan[at + i] = { bits: ins[i], hold: walked.holds[i], swap: sw };
+    this.nextAt = at + ins.length;
     this.knew = knew;
     // The line behind the move holds from where the move ends, played as decided.
     this.line = a.line && (a.lineFree || a.lineAt === this.nextAt) && at === a.at ? { steps: a.line.slice(), at: this.nextAt } : null;
@@ -371,7 +371,13 @@ Match.prototype.countActions = function (bits, now) {
   if (pf.length > this.actionLimit) st.overInput++;
 };
 // The keys of a decision, its walks held rather than tapped (survivor_keys.js).
-Match.prototype.holdWalks = function (inputs) { return KEYS.holdWalks(inputs); };
+// The keys of a decision as they are played: a walk held, one action however far, from where the cursor is there in
+// time and, with the allowance tight, from two cells (KEYS.slowWalks), the frames the cursor is late by put in.
+Match.prototype.walkKeys = function (k, at) {
+  if (this.allowanceAt(at) <= KEYS.HOLDTIGHT) return KEYS.slowWalks(k.inputs, k.holds, 2);
+  var ins = KEYS.holdWalks(k.inputs);
+  return { inputs: ins, holds: k.holds, held: ins.held };
+};
 Match.prototype.frame = function (truth, arrivals, fresh) {
   var L = this.L;
   var now = truth.clock, d, before = this.arrivals;
@@ -392,9 +398,9 @@ Match.prototype.frame = function (truth, arrivals, fresh) {
     this.epoch++; this.plan = {}; this.nextAt = 0; this.line = null; L.pending = null; this.acted = false;
     this.stats.diverged++;
     if (again) {
-      var ains = this.holdWalks(again.inputs);
-      for (var i = 0; i < ains.length; i++) this.plan[now + i] = { bits: ains[i], hold: again.holds[i], swap: again.swap };
-      this.nextAt = now + again.inputs.length;
+      var awalked = this.walkKeys(again, now), ains = awalked.inputs;
+      for (var i = 0; i < ains.length; i++) this.plan[now + i] = { bits: ains[i], hold: awalked.holds[i], swap: again.swap };
+      this.nextAt = now + ains.length;
       this.acted = !asking;
       this.stats.rewalked++;
     }
@@ -540,14 +546,15 @@ Match.prototype.follow = function () {
   if (!k) { this.line = null; return false; }
   if (L.pending) Atomics.store(L.abort, 0, L.pending.id);
   L.pending = null; this.acted = false;
-  var ins = this.holdWalks(k.inputs);
+  var walked = this.walkKeys(k, this.nextAt), ins = walked.inputs;
   if (!this.fits(this.nextAt, ins)) { this.line = null; this.stats.guarded++; return false; }
   // a step the allowance cannot pay for is not followed: the mind is asked, with the allowance
-  if (kind === 'swap' && KEYS.actionsFor(pr.board.curRow, pr.board.curCol, move) > this.allowanceAt(this.nextAt)) { this.line = null; this.stats.unaffordableFollow = (this.stats.unaffordableFollow || 0) + 1; return false; }
-  this.stats.heldWalks += ins.held;
+  var left = this.allowanceAt(this.nextAt);
+  if (kind === 'swap' && KEYS.actionsFor(pr.board.curRow, pr.board.curCol, move, left) > left) { this.line = null; this.stats.unaffordableFollow = (this.stats.unaffordableFollow || 0) + 1; return false; }
+  this.stats.heldWalks += walked.held;
   var sw = kind === 'swap' ? swapOf(pr.board, move) : null;
-  for (var i = 0; i < ins.length; i++) this.plan[this.nextAt + i] = { bits: ins[i], hold: k.holds[i], swap: sw };
-  this.nextAt += k.inputs.length;
+  for (var i = 0; i < ins.length; i++) this.plan[this.nextAt + i] = { bits: ins[i], hold: walked.holds[i], swap: sw };
+  this.nextAt += ins.length;
   this.line.steps.shift();
   if (!this.line.steps.length) this.line = null;
   this.stats.followed++;

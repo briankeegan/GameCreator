@@ -2129,7 +2129,7 @@
     // leaves RESERVE of the allowance for the ones that do.
     var st = this.stack, spare = this.allowanceCalm ? ALLOWANCE_RESERVE : 0, live = cands.filter(function (c) {
       if (c.kind !== 'swap' || !c.move) return true;
-      var cost = require('./survivor_keys.js').actionsFor(st.curRow, st.curCol, c.move);
+      var cost = require('./survivor_keys.js').actionsFor(st.curRow, st.curCol, c.move, left);
       return cost <= left - (c.resolved && c.resolved.clearedPanels > 0 ? 0 : spare);
     });
     if (!live.length || live.length === cands.length) return cands;

@@ -29,7 +29,7 @@ typedef struct { uint8_t last[32][W + 2], first[32][W + 2], same[32][W + 2], gar
 #define ACTIONWINDOW 600
 // the keys' own state, the real front's and every simulated line's alike: the
 // frames of the actions inside the window (a ring), and a direction held down
-#define HOLDTIGHT 24   // the actions short of the limit at which short walks are held too
+#define HOLDTIGHT 40   // the actions short of the limit at which short walks are held too (survivor_keys.js HOLDTIGHT)
 #define ACTIONRING 128   // room for the diagnostic limit (GC_INPUT_LIMIT) above the game's
 typedef struct { int actAt[ACTIONRING], actOld, actN, holdKey, limit, holdMin; } Pad;
 typedef struct {

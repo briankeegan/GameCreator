@@ -59,4 +59,32 @@ var checked = 0, saved = 0;
 var mixed = [IN.right, 0, 0, 0, IN.right, 0, 0, 0, IN.down, 0, 0, 0, IN.down, 0, 0, 0, IN.down, 0, 0, 0, IN.down, IN.swap | 0];
 assert.strictEqual(K.holdWalks(mixed)[0], IN.right);
 assert.strictEqual(K.holdWalks(mixed)[mixed.length - 1], IN.swap);
-console.log('holdWalk: ok (' + checked + ' walks, ' + saved + ' presses saved)');
+// THE SAME WALKS HELD FROM TWO CELLS (slowWalks), for a tight allowance: the frames the cursor is late by are put in
+// before the swap, the swap square and the end square are the taps', and the presses are fewer
+var slowChecked = 0, slowSaved = 0;
+DIRS.forEach(function (dir) {
+  for (var n = 1; n <= 9; n++) for (var row = 3; row <= 9; row += 3) for (var col = 1; col <= 5; col += 2) {
+    var tap = taps(dir, n, 0), holds = tap.map(function (b, i) { return { left: 0, started: false, i: i }; });
+    var slow = K.slowWalks(tap, holds, 2), swapTap = tap.indexOf(IN.swap), swapSlow = slow.inputs.indexOf(IN.swap);
+    var late = n === 2 ? 6 : n === 3 ? 3 : 0;
+    assert.strictEqual(slow.inputs.length, tap.length + late, 'walk of ' + n + ': ' + late + ' frames put in');
+    assert.strictEqual(slow.holds.length, slow.inputs.length, 'a hold for every frame');
+    assert.strictEqual(swapSlow, swapTap + late, 'the swap goes ' + late + ' frames later');
+    var a = play(tap, row, col), b = play(slow.inputs, row, col);
+    assert.deepStrictEqual(b.seen[swapSlow], a.seen[swapTap], 'dir ' + dir + ' n ' + n + ' from ' + row + ',' + col + ': the swap square');
+    assert.deepStrictEqual(b.seen[b.seen.length - 1], a.seen[a.seen.length - 1], 'the end square');
+    if (n >= 2) { assert(presses(slow.inputs) < presses(tap), 'walk of ' + n + ' is one press'); slowSaved += presses(tap) - presses(slow.inputs); }
+    else assert.deepStrictEqual(slow.inputs.slice(), tap, 'a one-cell walk is a tap');
+    if (n >= 4) assert.deepStrictEqual(slow.inputs.slice(), K.holdWalks(tap).slice(), 'from four cells it is the walk held in time');
+    slowChecked++;
+  }
+});
+// the cost of a swap, for the allowance: held from two cells once the allowance is at HOLDTIGHT or less
+assert.strictEqual(K.actionsFor(1, 1, [1, 3], 100), 3, 'two cells across, a tap each, and the swap');
+assert.strictEqual(K.actionsFor(1, 1, [1, 3], K.HOLDTIGHT), 2, 'tight: held, and the swap');
+assert.strictEqual(K.actionsFor(1, 1, [3, 3], K.HOLDTIGHT), 3, 'tight: two held walks and the swap');
+assert.strictEqual(K.actionsFor(1, 1, [1, 2], K.HOLDTIGHT), 2, 'one cell is a tap');
+// native/front.c holds from two cells at the same HOLDTIGHT
+var define = /#define HOLDTIGHT (\d+)/.exec(require('fs').readFileSync(require('path').join(__dirname, 'native', 'front.c'), 'utf8'));
+assert(define && +define[1] === K.HOLDTIGHT, 'native/front.c HOLDTIGHT is ' + (define && define[1]) + ', survivor_keys.js HOLDTIGHT is ' + K.HOLDTIGHT);
+console.log('holdWalk: ok (' + checked + ' walks, ' + saved + ' presses saved; tight: ' + slowChecked + ' walks, ' + slowSaved + ' presses saved)');
