@@ -3906,7 +3906,7 @@ static Dec stayAlive(Dec d) {
 // the slab to come) is life lost, so the rank holds a clear that digs under a pile. Each is judged on the
 // engine (lineJudge, which keeps to the work there is); one it cannot judge is
 // not weighed, and a decision it cannot judge stands.
-typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, plain, clears, stall, size, chain, die, conv, hollow, pri, aheadKnown, twos, reach, rn; Atk ahead; double life, soon, reachAt; int32_t rl[2 * LINEMAX]; } Opt;
+typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, plain, clears, stall, size, chain, die, conv, hollow, pri, aheadKnown, twos, reach; Atk ahead; double life, soon; } Opt;
 static int optJudge(Opt *o) {
   int last = 0, spent = 0;
   o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = o->early = o->plain = o->clears = o->size = o->chain = 0;
@@ -3968,14 +3968,14 @@ static double optSoon(Opt *o) {
 static int twosOf(const int32_t *st);
 #define REACHMIN 400    // the least work a candidate's reach search is given
 #define REACHWORK 6000   // the share of the decision's work one option's reach search may spend
-typedef struct { Atk best; int n, count; double bestAt; int32_t sw[2 * LINEMAX]; } ReachCtx;   // the best attack found, and the line that reaches it
+typedef struct { Atk best; int n, count; int32_t sw[2 * LINEMAX]; } ReachCtx;   // the best attack found, and the line that reaches it
 static int sitReach(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
-  ReachCtx *x = ctx;
+  ReachCtx *x = ctx; (void)at;
   if (res[R_SCOPE] != SC_OK) return SIT_END;   // a break is the break stages'
   if (res[R_TOTAL] > 0) {
     Atk k = atkOf(res[R_ROUNDS] == 1 ? res[R_TOTAL] : 0, res[R_CHAIN]);
     if (isAttack(k)) x->count++;   // the attacks within reach, counted: more of them is a better setup
-    if (isAttack(k) && attackFirst(k, x->best) > 0 && n <= LINEMAX) { x->best = k; x->n = n; x->bestAt = at; for (int q = 0; q < 2 * n; q++) x->sw[q] = sw[q]; }
+    if (isAttack(k) && attackFirst(k, x->best) > 0 && n <= LINEMAX) { x->best = k; x->n = n; for (int q = 0; q < 2 * n; q++) x->sw[q] = sw[q]; }
     return SIT_END;   // a clear ends the line
   }
   return SIT_GROW;
@@ -3983,7 +3983,7 @@ static int sitReach(const int32_t *res, const int32_t *sw, int n, double at, voi
 static void optAheadCap(Opt *o, double cap) {
   extern PATLS double paWork;
   if (o->aheadKnown) return;
-  o->aheadKnown = 1; o->ahead = atkOf(0, 0); o->twos = 0; o->reach = 0; o->rn = 0; o->reachAt = 1e9;
+  o->aheadKnown = 1; o->ahead = atkOf(0, 0); o->twos = 0; o->reach = 0;
   if (!o->lives || !BIN[IN_HASPA] || paWork >= optLine()) return;
   static ST st; int32_t cur[2], t; uint32_t can[WMAX]; uint8_t w[32][WMAX];
   int hold = o->d.kind == K_HOLD;
@@ -3993,7 +3993,6 @@ static void optAheadCap(Opt *o, double cap) {
   double work = optLine() - paWork; if (work > cap) work = cap;
   searchInTime(st, cur[0], cur[1], t, 0, timeLeft(), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can, w, work, sitReach, &rx, 0, 0, 0);
   o->ahead = rx.best; o->reach = rx.count;
-  if (isAttack(rx.best)) { o->reachAt = rx.bestAt; o->rn = rx.n; for (int q = 0; q < 2 * rx.n; q++) o->rl[q] = rx.sw[q]; }   // the soonest line to the best attack, and when it is done
 }
 static void optAhead(Opt *o) { optAheadCap(o, REACHWORK); }
 // THE SCRAMBLE, A LAST RESORT: when the board left alone loses health and no other option outlives it, the best combo or
@@ -4049,8 +4048,7 @@ static int optRank(Opt *a, Opt *b) {
       && (a->stall || a->d.kind == K_HOLD) && (b->stall || b->d.kind == K_HOLD)) {
     optAhead(a); optAhead(b);
     int w = attackFirst(a->ahead, b->ahead); if (w) return w;
-    if (a->reach != b->reach) return a->reach > b->reach ? 1 : -1;   // more attacks lined up
-    if (isAttack(a->ahead) && isAttack(b->ahead) && a->reachAt != b->reachAt) return a->reachAt < b->reachAt ? 1 : -1;   // of as many, the one done sooner
+    if (a->reach != b->reach) return a->reach > b->reach ? 1 : -1;
     if (a->twos != b->twos) return a->twos > b->twos ? 1 : -1;
   }
   if (a->cash && b->cash) { int w = attackCmp(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
@@ -4137,39 +4135,24 @@ static int setupOptions(Opt *O, int n, Dec d) {
     if (share >= REACHMIN) optAheadCap(hold, share < REACHWORK ? share : REACHWORK);
     holdAhead = hold->ahead; holdReach = hold->reach; }
   Opt best[SETUPOPTS]; double bestKey[SETUPOPTS]; int nb = 0, nRead = 0;
-  // A FEW-SWAP SETUP: the line the board left alone reaches its best attack by, soonest, is led toward a swap at a time -- its first swap is a candidate, and the one that leaves the attack sooner wins
-  int haveLine = hold && isAttack(hold->ahead) && hold->rn >= 2;
-  for (int jj = 0; jj <= na; jj++) {
-    int j = jj - 1;
-    if (j < 0 && !haveLine) continue;
-    Opt o; memset(&o, 0, sizeof o); double kj;
-    if (j < 0) { o.d = mkSwap(hold->rl[0], hold->rl[1], V_SETUP, d.mode, d.alive); o.sw[0] = hold->rl[0]; o.sw[1] = hold->rl[1]; kj = 1e9; }
-    else {
-      Cand *c = &POOL[at[j]];
-      if (haveLine && c->sr == hold->rl[0] && c->sc == hold->rl[1]) continue;   // the line's first swap is offered once
-      o.d = mkSwap(c->sr, c->sc, V_SETUP, d.mode, d.alive); o.sw[0] = c->sr; o.sw[1] = c->sc; kj = key[j];
-    }
-    o.n = 1; o.wait = 0; o.pri = 2; o.stall = 1;   // a setup has no reason but what it sets up: the rise it locks buys no time
+  for (int j = 0; j < na; j++) {
+    Cand *c = &POOL[at[j]];
+    Opt o; memset(&o, 0, sizeof o);
+    o.d = mkSwap(c->sr, c->sc, V_SETUP, d.mode, d.alive);
+    o.n = 1; o.wait = 0; o.sw[0] = c->sr; o.sw[1] = c->sc; o.pri = 2; o.stall = 1;   // a setup has no reason but what it sets up: the rise it locks buys no time
     if (!optJudge(&o)) continue;
     // its reach is read with an even share of the work left above the final judges' (REACHMIN: less reads nothing)
-    { double share = (workLeft() - FINALJUDGES * jdCost) / (na + 1 - jj);
+    { double share = (workLeft() - FINALJUDGES * jdCost) / (na - j);
       if (o.lives && share >= REACHMIN) { optAheadCap(&o, share < REACHWORK ? share : REACHWORK); nRead++; } }
     { int r = o.aheadKnown ? attackFirst(o.ahead, holdAhead) : 0;
-      int sooner = o.aheadKnown && isAttack(o.ahead) && isAttack(holdAhead) && r == 0 && o.reach == holdReach && o.reachAt < (hold ? hold->reachAt : 1e9);
-      if (!(r > 0 || (r == 0 && o.reach > holdReach) || sooner || kj > base)) continue; }
-    // kept in order: the better reach first (attackFirst), more attacks lined up, the attack done sooner, then the cheap key; the best SETUPOPTS stay
+      if (!(r > 0 || (r == 0 && o.reach > holdReach) || key[j] > base)) continue; }
+    // kept in order: the better reach first (attackFirst), then the cheap key; the best SETUPOPTS stay
     int w = 0;
-    while (w < nb) {
-      int r = attackFirst(o.ahead, best[w].ahead);
-      if (r == 0) r = o.reach != best[w].reach ? (o.reach > best[w].reach ? 1 : -1) : 0;
-      if (r == 0 && isAttack(o.ahead) && isAttack(best[w].ahead) && o.reachAt != best[w].reachAt) r = o.reachAt < best[w].reachAt ? 1 : -1;
-      if (r > 0 || (r == 0 && kj > bestKey[w])) break;
-      w++;
-    }
+    while (w < nb) { int r = attackFirst(o.ahead, best[w].ahead); if (r == 0) r = o.reach != best[w].reach ? (o.reach > best[w].reach ? 1 : -1) : 0; if (r > 0 || (r == 0 && key[j] > bestKey[w])) break; w++; }
     if (w >= SETUPOPTS) continue;
     if (nb < SETUPOPTS) nb++;
     for (int q = nb - 1; q > w; q--) { best[q] = best[q - 1]; bestKey[q] = bestKey[q - 1]; }
-    best[w] = o; bestKey[w] = kj;
+    best[w] = o; bestKey[w] = key[j];
   }
   for (int j = 0; j < nb; j++) O[n++] = best[j];
 #ifndef __wasm__
