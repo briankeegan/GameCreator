@@ -1650,6 +1650,12 @@ static Dec decideCore(void) {
     if (!cashes && !failsafeIn(cand, buried)) { BT->counts[C_REFUSEDNOFAILSAFE]++; SPARE[nSpare++] = cand; continue; }
     RANKED[nRanked++] = cand;
   }
+  // OF THE CANDIDATES ALLOWED, a combo or a chain that clears goes before a plain three: with one among them, the plain threes are not weighed
+  { int anyAtk = 0;
+    for (int i = 0; i < nRanked; i++) { const Rs *r = &RANKED[i]->res; if (RANKED[i]->kind == K_SWAP && r->total > 0 && !r->broke && isAttack(atkOfRes(r))) anyAtk = 1; }
+    if (anyAtk) { int k = 0;
+      for (int i = 0; i < nRanked; i++) { const Rs *r = &RANKED[i]->res; if (RANKED[i]->kind == K_SWAP && r->total > 0 && !r->broke && !isAttack(atkOfRes(r))) continue; RANKED[k++] = RANKED[i]; }
+      nRanked = k; } }
 
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "READY base %d readyFirst %d incoming %g slab %d,%d,%d\n", baseReady, readyFirst, BIN[IN_INCOMING], (int)BIN[IN_SLABW], (int)BIN[IN_SLABH], (int)BIN[IN_SLABC]); }
