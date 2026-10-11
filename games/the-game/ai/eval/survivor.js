@@ -45,7 +45,7 @@ if (!process.env.GC_SURVIVOR_CHILD) {
 // answer inside an 8 ms frame -- wins the cores they are using. Threads are
 // made all the time (V8's compile and collector helpers, the search), so the
 // niceness is set again as they appear. GC_SURVIVOR_NICE=0 leaves it alone.
-var NICE = process.env.GC_SURVIVOR_NICE === undefined ? 10 : Number(process.env.GC_SURVIVOR_NICE);
+var NICE = process.env.GC_SURVIVOR_NICE === undefined ? 19 : Number(process.env.GC_SURVIVOR_NICE);
 function yieldThreads() {
   var fs = require('fs'), os = require('os'), count = {};
   try {
