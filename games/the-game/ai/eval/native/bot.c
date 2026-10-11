@@ -4150,6 +4150,11 @@ static int setupOptions(Opt *O, int n, Dec d) {
     best[w] = o; bestKey[w] = key[j];
   }
   for (int j = 0; j < nb; j++) O[n++] = best[j];
+#ifndef __wasm__
+  { extern int fprintf(void *, const char *, ...); extern void *stderr;   // what setupOptions weighed, one line a call: the pool, the candidates probed, the options offered
+    fprintf(stderr, "SETUPOPTS clock %d pool %d probed %d offered %d\n", (int)BIN[IN_STACKCLOCK], nPool, na, nb);
+    if (botTraceOn) fprintf(BLOG, "SETUPOPTS pool %d probed %d offered %d\n", nPool, na, nb); }
+#endif
   return n;
 }
 // AN OPTION THAT CANNOT GET BACK IN TIME CANNOT SURVIVE: a swap, followed by the line that
@@ -4213,6 +4218,10 @@ static Dec arbitrate(Dec d) {
       if (!improves) { gScramble = 1; int before = n; n = reachOption(O, n, d); if (n > before) ra = before; }
     }
     // downtime: the board left alone loses no health within the horizon, or between actions: a line that saves the board is kept and the setup must spare it
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;   // why the setups were asked for or not
+      fprintf(BLOG, "SETUPASK breaking %d alone %d die %d saSet %d hold %d early %d\n", breaking, aloneOnEngine(), aloneOnEngine() ? aloneDie(1 << 20) : -1, saSet, d.kind == K_HOLD, O[at].early); }
+#endif
     if (!breaking && aloneOnEngine() && (aloneDie(1 << 20) > LIVEHORIZON || saSet) && (d.kind == K_HOLD || O[at].early)) { setupAt = n; n = setupOptions(O, n, d); } }
   // the line that saves the board: what an option must still be able to play after it (getsBackInTime)
   int32_t sv[2 * LINEMAX]; int sn = 0;
