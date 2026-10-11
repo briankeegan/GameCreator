@@ -50,3 +50,7 @@ ready
 stage 11 won frames=5975 continues=2 next=12 complete=false fps=58.1
 shot=/home/runner/.local/share/love/panel-game/stage11_won_c2.png
 ready
+stage 12 won frames=6967 continues=2 next=12 complete=true fps=58.4
+shot=/home/runner/.local/share/love/panel-game/stage12_won_c2.png
+challenge over thinkOver=0 thinkWorstMs=2.9 inputDropped=0 botFrames=69712
+shot=/home/runner/.local/share/love/panel-game/hurricane_recap.png
