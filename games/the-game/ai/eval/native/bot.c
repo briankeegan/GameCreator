@@ -82,7 +82,7 @@ typedef struct {
   int32_t tgt[2 * LINEMAX]; int tgtN, tgtKind, tgtWait, tgtVia; double tgtPresses;   // the target being walked to (arbitrate): its line, the rule that chose it, the presses when it was chosen
   double counts[NCOUNT];
   int lastVia;   // the route the last decision took
-  int32_t keep[KEEPOPTS][2 * LINEMAX]; int keepN[KEEPOPTS], nKeep;   // the options the last decision judged to live and pay: swaps only, every number read again when they are asked for (keptOptions)
+  int32_t keep[KEEPOPTS][2 * LINEMAX]; int keepN[KEEPOPTS], keepCol[KEEPOPTS][2], nKeep;   // the options the last decision judged to live and pay: swaps only, every number read again when they are asked for (keptOptions)
 } Bot;
 
 static LOCAL int nScore, nLook, nSave, rScore, rMain, rLook, rSave, rCand, lookDepthLog;
@@ -4104,6 +4104,14 @@ static int getsBackInTime(const Opt *o, const int32_t *line, int n) {
 // WHAT WAS FOUND IS KEPT: the options a decision judged to live and break, cash or attack are kept as swaps alone,
 // and asked for again at the next decision, where every number is read afresh on the board and the clock as they
 // are then -- one engine judge each, never a search; one that no longer works is dropped.
+// the colour of a cell of the decision's board: 0 empty, -1 garbage, -2 a panel that cannot move
+static int cellColour(const int32_t *st, int r, int c) {
+  uint32_t b = 1u << (r - 1);
+  if (U(st, GARB + c) & b) return -1;
+  if (U(st, INERT + c) & b) return -2;
+  for (int a = 1; a <= st[O_N]; a++) if (CL(st, a, c) & b) return a;
+  return 0;
+}
 static void keepOptions(const Opt *O, int n) {
   BT->nKeep = 0;
   for (int i = 0; i < n && BT->nKeep < KEEPOPTS; i++) {
@@ -4111,6 +4119,7 @@ static void keepOptions(const Opt *O, int n) {
     if (o->n < 1 || !o->lives || !(o->breaks || o->cash > 0 || isAttack(atkOf(o->size, o->chain)))) continue;
     int q = BT->nKeep++;
     BT->keepN[q] = o->n;
+    BT->keepCol[q][0] = cellColour(DBASE, o->sw[0], o->sw[1]); BT->keepCol[q][1] = cellColour(DBASE, o->sw[0], o->sw[1] + 1);
     for (int k = 0; k < 2 * o->n; k++) BT->keep[q][k] = o->sw[k];
   }
 }
@@ -4119,7 +4128,9 @@ static int keptOptions(Opt *O, int n, Dec d) {
     int m = BT->keepN[q]; const int32_t *sw = BT->keep[q];
     int seen = 0;
     for (int i = 0; i < n && !seen; i++) seen = O[i].n >= 1 && O[i].sw[0] == sw[0] && O[i].sw[1] == sw[1];
-    if (seen || m < 1 || m > LINEMAX) continue;
+    // STILL THERE: the same two panels sit side by side where the first swap is, or it is not the swap that was kept
+    if (seen || m < 1 || m > LINEMAX || sw[0] < 1 || sw[0] > (int)DBASE[O_H] || sw[1] < 1 || sw[1] >= (int)DBASE[O_W]) continue;
+    if (cellColour(DBASE, sw[0], sw[1]) != BT->keepCol[q][0] || cellColour(DBASE, sw[0], sw[1] + 1) != BT->keepCol[q][1]) continue;
     Opt *o = &O[n];
     o->d = mkSwap(sw[0], sw[1], V_KEEPSAVE, d.mode, d.alive);
     o->n = m; o->wait = 0; o->pri = 2;
