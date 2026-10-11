@@ -2324,7 +2324,9 @@ static int budgetRefused;
 static double stageEnd = 1e300;
 // bgReserve: a background batch's work, held back until it is folded in (front.c parallelBg)
 static double bgReserve;
-static double optLine(void) { double e = rdW0 + OPTWORK; return (stageEnd < e ? stageEnd : e) - bgReserve; }
+#define SETUPSHARE 0.2   // the share of OPTWORK the stages leave for the setups in downtime
+static double gSetupReserve;   // downtime: the work the stages leave for the arbiter's setups; the arbiter takes it back
+static double optLine(void) { double e = rdW0 + OPTWORK; return (stageEnd < e ? stageEnd : e) - bgReserve - gSetupReserve; }
 // THE STAGES AFTER KEEP THEIRS: a stage's optional work stops where the
 // stages after it keep the most they have taken lately (LATER[i]: measured
 // as each decision ends, a hundredth less each decision, so one heavy
@@ -4176,6 +4178,7 @@ static int getsBackInTime(const Opt *o, const int32_t *line, int n) {
   return !r[0] || r[0] > r[1];
 }
 static Dec arbitrate(Dec d) {
+  gSetupReserve = 0;
   if (!((d.kind == K_SWAP && d.hasMove) || d.kind == K_HOLD)) return d;   // a raise: raiseMode's own rules
   Opt O[5 + ATTACKOPTS + SETUPOPTS]; int n = 0, at = -1, ra = -1;
   memset(O, 0, sizeof O);
@@ -5938,6 +5941,9 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   nSettle = nLandR = nFireR = nSavesR = nAnyR = 0;
   nRes = 0; nOptRuns = 0; nOptDepth = 0; nScore = 0; nLook = 0; nSave = 0; rScore = rMain = rLook = rSave = rCand = 0;
   ENGINE_BASE = BIN[IN_HASPA] ? IN : 0;
+  // DOWNTIME: the board left alone loses no health within the horizon: the stages leave the setups their share
+  gSetupReserve = 0;
+  if (aloneOnEngine() && (!LNA[0] || LNA[0] > LIVEHORIZON)) gSetupReserve = OPTWORK * SETUPSHARE;
   for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = c >= 1 && c < BW ? (uint32_t)BIN[IN_CANSWAP + c] : 0;
   // the stages, timed; the budget is the whole decision's
   extern PATLS double paWork;
