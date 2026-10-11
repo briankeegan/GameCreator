@@ -848,7 +848,6 @@ static int attackCmp(Atk a, Atk b) {
   return worthCmp(a.size, b.size);
 }
 typedef struct { double rate, key, cells, gain, frames; double *option; } Pick;
-static int attackFirst(Atk a, Atk b);
 static int bestAttack(double deadline, double ppf, Pick *best) {
   int n, have = 0;
   keepFilter(PILE, nPile, FILT, &n);
@@ -871,8 +870,7 @@ static int bestAttack(double deadline, double ppf, Pick *best) {
     double taste = 1 + TB[T_W + key] / 100;
     if (taste < 0.1) taste = 0.1;
     double rate = cells * taste;   // every one here fits the deadline: what it is worth, not how soon
-    // of two that break alike, a combo or a chain before a plain three (attackFirst); a break against none is weighed in its rate
-    int cmp = have ? (o[F_BREAKS] == best->option[F_BREAKS] ? attackFirst(atkOfRow(o), atkOfRow(best->option)) : attackCmp(atkOfRow(o), atkOfRow(best->option))) : 0;
+    int cmp = have ? attackCmp(atkOfRow(o), atkOfRow(best->option)) : 0;
     int win = !have || (cmp ? cmp > 0 : rate > best->key);
     if (!win && have && !cmp && rate == best->key) {
       double ob = has(o[F_BUMPS]) ? o[F_BUMPS] : 1e9, bb = has(best->option[F_BUMPS]) ? best->option[F_BUMPS] : 1e9;
@@ -1749,7 +1747,9 @@ static Dec decideCore(void) {
         int32_t sw[2 * MAXD];
         for (int j = 0; j < 2 * nsw; j++) sw[j] = (int32_t)ro[F_SW + j];
         if (!planInTime(sw, nsw, ro[F_DURATION], base, deadline)) continue;
-        if (!reach || breakCmp(atkOfRow(ro), (int)ro[F_CONVERTS], (int)ro[F_VOID], ro[F_DURATION], atkOfRow(reach), (int)reach[F_CONVERTS], (int)reach[F_VOID], reach[F_DURATION]) > 0) reach = ro;
+        double rc0 = ro[F_CONVERTS], kc0 = reach ? reach[F_CONVERTS] : -1;
+        double rv0 = ro[F_VOID], kv0 = reach ? reach[F_VOID] : 0;
+        if (!reach || rc0 > kc0 || (rc0 == kc0 && (rv0 < kv0 || (rv0 == kv0 && ro[F_DURATION] < reach[F_DURATION])))) reach = ro;
       }
       if (reach) {
         int rr = (int)reach[F_SW], rc = (int)reach[F_SW + 1];
@@ -1776,10 +1776,7 @@ static Dec decideCore(void) {
           int32_t sw[2 * MAXD];
           for (int j = 0; j < 2 * nsw; j++) sw[j] = (int32_t)lo[F_SW + j];
           double sp = planSpend(sw, nsw, base);
-          // of the breaks the board can pay for, the one rule (breakCmp); when neither can be paid for, the cheaper
-          int pays = sp < BIN[IN_HEALTH], lrPays = lr && lrSpend < BIN[IN_HEALTH];
-          int better = !lr || pays != lrPays ? pays || !lr : pays ? breakCmp(atkOfRow(lo), (int)lo[F_CONVERTS], (int)lo[F_VOID], lo[F_DURATION], atkOfRow(lr), (int)lr[F_CONVERTS], (int)lr[F_VOID], lr[F_DURATION]) > 0 : sp < lrSpend;
-          if (better) { lr = lo; lrSpend = sp; }
+          if (sp < lrSpend || (sp == lrSpend && lr && lo[F_CONVERTS] > lr[F_CONVERTS])) { lr = lo; lrSpend = sp; }
         }
         if (lr && lrSpend < BIN[IN_HEALTH] && playableSpending((int)lr[F_SW], (int)lr[F_SW + 1])) {
           BT->plan.has = 0;
@@ -2168,10 +2165,10 @@ static Dec waitForDrain(Dec d) {
     int tn = r->total, st = cl->future || steady(cl->sr, cl->sc, dmax(cl->moveFrames, k - 2)),
         cnSt = clearNow && (clearNow->future || steady(clearNow->sr, clearNow->sc, dmax(clearNow->moveFrames, k - 2)));
     if (clearNow && st != cnSt) { if (st) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnAtk = atkOfRes(r); } continue; }
-    // of the clears that fit, an attack (a combo of four or more, a chain) comes first, by the one rule (attackFirst), before the time bought is weighed
+    if (clearNow && bk != cnBk) { if (bk) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnAtk = atkOfRes(r); } continue; }
+    // of the clears that fit, an attack (a combo of four or more, a chain) comes first, by the one rule (attackFirst)
     int atk = clearNow ? attackFirst(atkOfRes(r), cnAtk) : 0;
     if (atk) { if (atk > 0) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnAtk = atkOfRes(r); } continue; }
-    if (clearNow && bk != cnBk) { if (bk) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnAtk = atkOfRes(r); } continue; }
     if (!clearNow || tn < cnTn || (tn == cnTn && (vd < cnVd || (vd == cnVd && rate > cnRate)))) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnAtk = atkOfRes(r); }
   }
   if (breakNow && !breakNow->future) return mkSwap(breakNow->sr, breakNow->sc, V_BREAK, d.mode, d.alive);
@@ -2991,8 +2988,6 @@ static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const
                    const uint32_t *can, uint8_t (*waits)[WMAX], double limit);
 // the line search's work is spent: its share (lfEnd) or the thread's (workLeft)
 static int growSpent(void) { extern PATLS double paWork; return workLeft() <= 0 || (lfEnd > 0 && lfEnd - paWork <= 0); }
-// the longer matches stop where the closing's own work begins: the line search's share spent, or no more than the arbiter's judges (FINALJUDGES) left
-static int longSpent(void) { return growSpent() || workLeft() <= FINALJUDGES * jdCost; }
 static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const int32_t *st, int cr, int cc,
                    const uint32_t *can, uint8_t (*waits)[WMAX], double limit) {
   int from = nLines;
@@ -3052,7 +3047,6 @@ static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const
 // add up to, however deep that is. Each is proposed, as the masks' lines are,
 // and the engine judges it.
 #define TGRID 18
-#define MINMATCH 3   // the game's smallest match: a rule of the game. A break is proposed with every match length from this up to the longest the board holds, one planner for all of them; the order only decides what the work reaches, the ranking puts a combo or chain before a three
 static JLOCAL int tCell[TGRID + 2][WMAX + 1];   // colour; 0 empty; -1 garbage; -2 a panel that cannot move
 static JLOCAL int tW, tH;
 static int tSupported(int r, int c) { return r == 1 || tCell[r - 1][c] != 0; }
@@ -3137,14 +3131,14 @@ static int tGarbRun(int g[][WMAX + 2], int h, int r, int c, int vert) {
     lo = hi = r;
     while (lo > 1 && g[lo - 1][c] == a) lo--;
     while (hi < h && g[hi + 1][c] == a) hi++;
-    if (hi - lo + 1 < MINMATCH) return 0;
+    if (hi - lo + 1 < 3) return 0;
     for (int k = lo; k <= hi; k++)
       if ((c > 1 && g[k][c - 1] == -1) || (c < tW && g[k][c + 1] == -1) || g[k + 1][c] == -1 || (k == lo && k > 1 && g[k - 1][c] == -1)) return 1;
   } else {
     lo = hi = c;
     while (lo > 1 && g[r][lo - 1] == a) lo--;
     while (hi < tW && g[r][hi + 1] == a) hi++;
-    if (hi - lo + 1 < MINMATCH) return 0;
+    if (hi - lo + 1 < 3) return 0;
     for (int k = lo; k <= hi; k++)
       if (g[r + 1][k] == -1 || (r > 1 && g[r - 1][k] == -1) || (k == lo && k > 1 && g[r][k - 1] == -1) || (k == hi && k < tW && g[r][k + 1] == -1)) return 1;
   }
@@ -3225,19 +3219,17 @@ static int gWalk(int g[][WMAX + 2], int *r, int s, int t, int32_t *sw, int *n) {
   *r = rr;
   return 1;
 }
-static void tStacks(int N, int M, int cr, int cc, double t0, double limit) {
+static void tStacks(int N, int cr, int cc, double t0, double limit) {
   static JLOCAL int g[TGRID + 2][WMAX + 2], h[TGRID + 2][WMAX + 2], b[TGRID + 2][WMAX + 2];
   int32_t sw[2 * LINEMAX], sb[2 * LINEMAX];
   for (int a = 1; a <= N && workLeft() > 0; a++)
     for (int c = 1; c <= tW; c++)
-      for (int r = 1; r + M - 1 <= tH; r++) {
-        if (M > MINMATCH && longSpent()) return;
-        int beside = 0, free = 1;
-        for (int i = 0; i < M; i++) { beside |= tBeside(r + i, c); free &= tCell[r + i][c] >= 0; }
-        if (!beside || !free || (r > 1 && tCell[r - 1][c] == 0)) continue;
+      for (int r = 1; r + 2 <= tH; r++) {
+        if (!tBeside(r, c) && !tBeside(r + 1, c) && !tBeside(r + 2, c)) continue;
+        if ((r > 1 && tCell[r - 1][c] == 0) || tCell[r][c] < 0 || tCell[r + 1][c] < 0 || tCell[r + 2][c] < 0) continue;
         gLoad(g);
         int n = 0, ok = 1;
-        for (int i = 0; i < M && ok; i++) {
+        for (int i = 0; i < 3 && ok; i++) {
           int rr = r + i;
           if (g[rr][c] == a) continue;
           int bn = -1;
@@ -3269,7 +3261,7 @@ static void tStacks(int N, int M, int cr, int cc, double t0, double limit) {
         }
         if (!ok || n == 0) continue;
         int hit = 0;
-        for (int q = r; q <= r + M - 1 && !hit; q++) hit = tGarbRun(g, tH, q, c, 1);
+        for (int q = r; q <= r + 2 && !hit; q++) hit = tGarbRun(g, tH, q, c, 1);
         if (hit) tPropose(sb, n, cr, cc, t0, limit);
       }
 }
@@ -3279,22 +3271,19 @@ static void tStacks(int N, int M, int cr, int cc, double t0, double limit) {
 // there in the fewest swaps, walked on a copy of the grid with what falls
 // after it; a cell is filled only where its column stands one short of it.
 // Proposed only if the grid it leaves holds the three against the garbage.
-static void tRows(int N, int M, int cr, int cc, double t0, double limit) {
+static void tRows(int N, int cr, int cc, double t0, double limit) {
   static JLOCAL int g[TGRID + 2][WMAX + 2], h[TGRID + 2][WMAX + 2], b[TGRID + 2][WMAX + 2];
   int32_t sw[2 * LINEMAX], sb[2 * LINEMAX];
   for (int a = 1; a <= N && workLeft() > 0; a++)
     for (int r = 1; r <= tH; r++)
-      for (int c = 1; c + M - 1 <= tW; c++) {
-        if (M > MINMATCH && longSpent()) return;
-        int beside = 0;
-        for (int q = c; q < c + M; q++) beside |= tBeside(r, q);
-        if (!beside) continue;
+      for (int c = 1; c + 2 <= tW; c++) {
+        if (!tBeside(r, c) && !tBeside(r, c + 1) && !tBeside(r, c + 2)) continue;
         int any = 0;
-        for (int q = c; q < c + M; q++) { if (tCell[r][q] < 0) any = -1; else if (tCell[r][q] == a) any += any >= 0; }
-        if (any < 0 || any == M) continue;   // garbage in the way; or a run already (no board at rest has one)
+        for (int q = c; q <= c + 2; q++) { if (tCell[r][q] < 0) any = -1; else if (tCell[r][q] == a) any += any >= 0; }
+        if (any < 0 || any == 3) continue;   // garbage in the way; or a run already (no board at rest has one)
         gLoad(g);
         int n = 0, ok = 1;
-        for (int i = 0; i < M && ok; i++) {
+        for (int i = 0; i < 3 && ok; i++) {
           int q = c + i;
           if (g[r][q] == a) continue;
           if (r > 1 && g[r - 1][q] == 0) { ok = 0; break; }   // nothing to hold a panel there
@@ -3325,9 +3314,7 @@ static void tRows(int N, int M, int cr, int cc, double t0, double limit) {
           n = bn; __builtin_memcpy(g, b, sizeof g);
         }
         if (!ok || n == 0) continue;
-        int hit = 0;
-        for (int q = c; q < c + M && !hit; q++) hit = tGarbRun(g, tH, r, q, 0);
-        if (hit) tPropose(sb, n, cr, cc, t0, limit);
+        if (tGarbRun(g, tH, r, c, 0) || tGarbRun(g, tH, r, c + 1, 0) || tGarbRun(g, tH, r, c + 2, 0)) tPropose(sb, n, cr, cc, t0, limit);
       }
 }
 // A SWAP THAT DROPS INTO A BREAK: a swap takes panels out from under a
@@ -3349,9 +3336,9 @@ static int gResolve(int g[][WMAX + 2], int *cleared) {
         int a = g[r][c];
         if (a <= 0 || a > 99) continue;
         int e = c; while (e + 1 <= tW && g[r][e + 1] == a) e++;
-        if (e - c >= MINMATCH - 1) { for (int k = c; k <= e; k++) mk[r][k] = 1; any = 1; }
+        if (e - c >= 2) { for (int k = c; k <= e; k++) mk[r][k] = 1; any = 1; }
         int t = r; while (t + 1 <= tH && g[t + 1][c] == a) t++;
-        if (t - r >= MINMATCH - 1) { for (int k = r; k <= t; k++) mk[k][c] = 1; any = 1; }
+        if (t - r >= 2) { for (int k = r; k <= t; k++) mk[k][c] = 1; any = 1; }
       }
     if (!any) return broke;
     for (int r = 1; r <= tH; r++)
@@ -3418,19 +3405,14 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
   int N = st[O_N];
   int32_t sw[2 * LINEMAX]; int row[WMAX + 1];
   tDrops(cr, cc, t0, limit);
-  for (int M = MINMATCH; M <= tH && workLeft() > 0; M++) {
-   if (M > MINMATCH && longSpent()) break;
-   for (int a = 1; a <= N && workLeft() > 0; a++) {
-    // M in a column: each row's nearest panel of the colour walked to it
+  for (int a = 1; a <= N && workLeft() > 0; a++) {
+    // three in a column: each row's nearest panel of the colour walked to it
     for (int c = 1; c <= tW; c++)
-      for (int r = 1; r + M - 1 <= tH; r++) {
+      for (int r = 1; r + 2 <= tH; r++) {
         if (!tSupported(r, c) && tCell[r][c] == 0) continue;
-        int beside = 0;
-        for (int i = 0; i < M; i++) beside |= tBeside(r + i, c);
-        if (!beside) continue;
-        if (M > MINMATCH) { paWork += TSTACKWORK; if (longSpent()) break; }
+        if (!tBeside(r, c) && !tBeside(r + 1, c) && !tBeside(r + 2, c)) continue;
         int n = 0, ok = 1;
-        for (int i = 0; i < M && ok; i++) {
+        for (int i = 0; i < 3 && ok; i++) {
           int rr = r + i, best = -1;
           for (int s = 1; s <= tW; s++)
             if (tCell[rr][s] == a && (best < 0 || (s > c ? s - c : c - s) < (best > c ? best - c : c - best))) best = s;
@@ -3440,31 +3422,28 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
         }
         if (ok && n > 0) tPropose(sw, n, cr, cc, t0, limit);
       }
-    // M in a row: the colour's panels in the row, the nearest M walked together
+    // three in a row: the colour's panels in the row, the nearest three walked together
     for (int r = 1; r <= tH; r++) {
       int pos[WMAX], np = 0;
       for (int s = 1; s <= tW; s++) if (tCell[r][s] == a) pos[np++] = s;
-      if (np < M) continue;
-      for (int c = 1; c + M - 1 <= tW; c++) {
-        int supported = 1, beside = 0;
-        for (int i = 0; i < M; i++) { supported &= tSupported(r, c + i); beside |= tBeside(r, c + i); }
-        if (!supported || !beside) continue;
-        if (M > MINMATCH) { paWork += TSTACKWORK; if (longSpent()) break; }
-        for (int j = 0; j + M - 1 < np; j++) {
+      if (np < 3) continue;
+      for (int c = 1; c + 2 <= tW; c++) {
+        if (!tSupported(r, c) || !tSupported(r, c + 1) || !tSupported(r, c + 2)) continue;
+        if (!tBeside(r, c) && !tBeside(r, c + 1) && !tBeside(r, c + 2)) continue;
+        for (int j = 0; j + 2 < np; j++) {
           int n = 0, ok = 1;
           for (int x = 1; x <= tW; x++) row[x] = tCell[r][x];
-          int at[WMAX];
-          for (int i = 0; i < M; i++) at[i] = pos[j + i];
+          int at[3] = { pos[j], pos[j + 1], pos[j + 2] };
           // the panels left of their targets walk right, rightmost first; then the rest
-          for (int i = M - 1; i >= 0 && ok; i--) if (at[i] < c + i) { ok = tWalk(row, r, at[i], c + i, sw, &n); at[i] = c + i; }
-          for (int i = 0; i < M && ok; i++) if (at[i] > c + i) { ok = tWalk(row, r, at[i], c + i, sw, &n); at[i] = c + i; }
+          for (int i = 2; i >= 0 && ok; i--) if (at[i] < c + i) { ok = tWalk(row, r, at[i], c + i, sw, &n); at[i] = c + i; }
+          for (int i = 0; i < 3 && ok; i++) if (at[i] > c + i) { ok = tWalk(row, r, at[i], c + i, sw, &n); at[i] = c + i; }
           if (ok && n > 0) tPropose(sw, n, cr, cc, t0, limit);
         }
       }
     }
-   }
-   tStacks(N, M, cr, cc, t0, limit); tRows(N, M, cr, cc, t0, limit);
   }
+  tStacks(N, cr, cc, t0, limit);
+  tRows(N, cr, cc, t0, limit);
   tClears(cr, cc, t0, limit);
 }
 // A PILE LET DOWN FIRST. Garbage perched on a column or two touches little; a
@@ -3906,7 +3885,7 @@ static Dec stayAlive(Dec d) {
 // the slab to come) is life lost, so the rank holds a clear that digs under a pile. Each is judged on the
 // engine (lineJudge, which keeps to the work there is); one it cannot judge is
 // not weighed, and a decision it cannot judge stands.
-typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, plain, clears, stall, size, chain, die, conv, hollow, pri, aheadKnown, twos, reach; Atk ahead; double life, soon; } Opt;
+typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, plain, clears, stall, size, chain, die, conv, hollow, pri, aheadKnown, twos; Atk ahead; double life, soon; } Opt;
 static int optJudge(Opt *o) {
   int last = 0, spent = 0;
   o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = o->early = o->plain = o->clears = o->size = o->chain = 0;
@@ -3966,35 +3945,32 @@ static double optSoon(Opt *o) {
 // settles to, searched in the time there is (searchInTime, any number of swaps), the best attack any line reaches
 // (attackFirst), and its vertical twos (twosOf). Read once, and only while the decision has work left.
 static int twosOf(const int32_t *st);
-#define REACHMIN 400    // the least work a candidate's reach search is given
 #define REACHWORK 6000   // the share of the decision's work one option's reach search may spend
-typedef struct { Atk best; int n, count; int32_t sw[2 * LINEMAX]; } ReachCtx;   // the best attack found, and the line that reaches it
+typedef struct { Atk best; int n; int32_t sw[2 * LINEMAX]; } ReachCtx;   // the best attack found, and the line that reaches it
 static int sitReach(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
   ReachCtx *x = ctx; (void)at;
   if (res[R_SCOPE] != SC_OK) return SIT_END;   // a break is the break stages'
   if (res[R_TOTAL] > 0) {
     Atk k = atkOf(res[R_ROUNDS] == 1 ? res[R_TOTAL] : 0, res[R_CHAIN]);
-    if (isAttack(k)) x->count++;   // the attacks within reach, counted: more of them is a better setup
     if (isAttack(k) && attackFirst(k, x->best) > 0 && n <= LINEMAX) { x->best = k; x->n = n; for (int q = 0; q < 2 * n; q++) x->sw[q] = sw[q]; }
     return SIT_END;   // a clear ends the line
   }
   return SIT_GROW;
 }
-static void optAheadCap(Opt *o, double cap) {
+static void optAhead(Opt *o) {
   extern PATLS double paWork;
   if (o->aheadKnown) return;
-  o->aheadKnown = 1; o->ahead = atkOf(0, 0); o->twos = 0; o->reach = 0;
+  o->aheadKnown = 1; o->ahead = atkOf(0, 0); o->twos = 0;
   if (!o->lives || !BIN[IN_HASPA] || paWork >= optLine()) return;
   static ST st; int32_t cur[2], t; uint32_t can[WMAX]; uint8_t w[32][WMAX];
   int hold = o->d.kind == K_HOLD;
   if (lineState(hold ? 0 : o->sw, hold ? 0 : o->n, st, can, w, cur, &t) != 0) return;
   o->twos = twosOf(st);
   ReachCtx rx = { atkOf(0, 0) };
-  double work = optLine() - paWork; if (work > cap) work = cap;
+  double work = optLine() - paWork; if (work > REACHWORK) work = REACHWORK;
   searchInTime(st, cur[0], cur[1], t, 0, timeLeft(), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can, w, work, sitReach, &rx, 0, 0, 0);
-  o->ahead = rx.best; o->reach = rx.count;
+  o->ahead = rx.best;
 }
-static void optAhead(Opt *o) { optAheadCap(o, REACHWORK); }
 // THE SCRAMBLE, A LAST RESORT: when the board left alone loses health and no other option outlives it, the best combo or
 // chain any line reaches in the time there is is an option, the whole line judged on the engine and played on once chosen.
 static int boardDying(void) { return BIN[IN_STOP] > 0 && aloneOnEngine() && aloneDie(1 << 20) < LINEHORIZON; }   // a stop runs, and the board left alone loses health within the judge's horizon, as far as it can say a line lives
@@ -4030,13 +4006,14 @@ static int optRank(Opt *a, Opt *b) {
   // line that takes longer to finish still outlives a hold that dies first
   int da = a->die < LIVEHORIZON ? a->die : LIVEHORIZON, db = b->die < LIVEHORIZON ? b->die : LIVEHORIZON;
   if (da != db) return da > db ? 1 : -1;
-  // A COMBO OR A CHAIN BEFORE A PLAIN THREE, the one rule, asked once of every two options of a kind that clear or break -- or, saving a dying board, of any two that live
-  if (ka && ka == kb) {
-    int both = (a->clears || a->breaks) && (b->clears || b->breaks);
-    if (both || (ka == 1 && aloneOnEngine() && aloneDie(1 << 20) < LIVEHORIZON)) { int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
-  }
+  // SAVING A DYING BOARD: of two options that live as long, a combo or a chain goes before a plain three
+  if (ka == 1 && kb == 1 && aloneOnEngine() && aloneDie(1 << 20) < LIVEHORIZON) { int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
+  // OF TWO CLEARS that break nothing, a combo or a chain goes before a plain three, whether or not it digs under the pile (attackFirst)
+  if (ka == 1 && kb == 1 && a->clears && b->clears) { int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
   // a plain clear is the last resort: it ranks below any option that lives as long
   if (ka && (a->plain || b->plain)) { int pa = optPlain(a), pb = optPlain(b); if (pa != pb) return pa ? -1 : 1; }
+  // two breaks: the one that is a combo or a chain before a plain three, by the one rule (attackFirst)
+  if (ka == 2 && kb == 2) { int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
   // no break to make yet: the one that brings the break soonest (setup), then
   // the longer life (the stop time a clear buys less the material it spends),
   // then a combo or a chain
@@ -4048,7 +4025,6 @@ static int optRank(Opt *a, Opt *b) {
       && (a->stall || a->d.kind == K_HOLD) && (b->stall || b->d.kind == K_HOLD)) {
     optAhead(a); optAhead(b);
     int w = attackFirst(a->ahead, b->ahead); if (w) return w;
-    if (a->reach != b->reach) return a->reach > b->reach ? 1 : -1;
     if (a->twos != b->twos) return a->twos > b->twos ? 1 : -1;
   }
   if (a->cash && b->cash) { int w = attackCmp(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
@@ -4113,53 +4089,24 @@ static int attackOptions(Opt *O, int n, Dec d) {
   }
   return n;
 }
-#define SETUPPROBE 6   // the swaps the pool holds that clear nothing, by the cheap key, whose reach is read: the best SETUPOPTS of them are options
 static int setupOptions(Opt *O, int n, Dec d) {
-  extern PATLS double paWork;
-  double base = setupKey(DBASE), key[SETUPPROBE]; int at[SETUPPROBE], na = 0;
+  double base = setupKey(DBASE), key[SETUPOPTS]; int at[SETUPOPTS], na = 0;
   for (int i = 0; i < nPool; i++) {
     Cand *c = &POOL[i];
     if (c->kind != K_SWAP || c->res.total > 0 || c->res.broke) continue;
     double k = setupKey(c->masks);
-    if (na == SETUPPROBE && k <= key[na - 1]) continue;
-    int j = na < SETUPPROBE ? na++ : na - 1;
+    if (k <= base || (na == SETUPOPTS && k <= key[na - 1])) continue;
+    int j = na < SETUPOPTS ? na++ : na - 1;
     while (j > 0 && key[j - 1] < k) { key[j] = key[j - 1]; at[j] = at[j - 1]; j--; }
     key[j] = k; at[j] = i;
   }
-  // A SETUP IS OFFERED FOR WHAT IT LEAVES WITHIN REACH, by the one priority (attackFirst: a combo or a chain before a three), then how many attacks it leaves; or for the vertical twos it makes
-  Opt *hold = 0, holdTmp;
-  for (int i = 0; i < n; i++) if (O[i].d.kind == K_HOLD) hold = &O[i];
-  if (!hold) { memset(&holdTmp, 0, sizeof holdTmp); holdTmp.d = mkHold(V_KEEPHEALTH, d.mode, d.alive, 0, 0, 0); if (optJudge(&holdTmp)) hold = &holdTmp; }
-  Atk holdAhead = atkOf(0, 0); int holdReach = 0;
-  if (hold) { double share = (workLeft() - FINALJUDGES * jdCost) / (na + 1);
-    if (share >= REACHMIN) optAheadCap(hold, share < REACHWORK ? share : REACHWORK);
-    holdAhead = hold->ahead; holdReach = hold->reach; }
-  Opt best[SETUPOPTS]; double bestKey[SETUPOPTS]; int nb = 0, nRead = 0;
   for (int j = 0; j < na; j++) {
     Cand *c = &POOL[at[j]];
-    Opt o; memset(&o, 0, sizeof o);
-    o.d = mkSwap(c->sr, c->sc, V_SETUP, d.mode, d.alive);
-    o.n = 1; o.wait = 0; o.sw[0] = c->sr; o.sw[1] = c->sc; o.pri = 2; o.stall = 1;   // a setup has no reason but what it sets up: the rise it locks buys no time
-    if (!optJudge(&o)) continue;
-    // its reach is read with an even share of the work left above the final judges' (REACHMIN: less reads nothing)
-    { double share = (workLeft() - FINALJUDGES * jdCost) / (na - j);
-      if (o.lives && share >= REACHMIN) { optAheadCap(&o, share < REACHWORK ? share : REACHWORK); nRead++; } }
-    { int r = o.aheadKnown ? attackFirst(o.ahead, holdAhead) : 0;
-      if (!(r > 0 || (r == 0 && o.reach > holdReach) || key[j] > base)) continue; }
-    // kept in order: the better reach first (attackFirst), then the cheap key; the best SETUPOPTS stay
-    int w = 0;
-    while (w < nb) { int r = attackFirst(o.ahead, best[w].ahead); if (r == 0) r = o.reach != best[w].reach ? (o.reach > best[w].reach ? 1 : -1) : 0; if (r > 0 || (r == 0 && key[j] > bestKey[w])) break; w++; }
-    if (w >= SETUPOPTS) continue;
-    if (nb < SETUPOPTS) nb++;
-    for (int q = nb - 1; q > w; q--) { best[q] = best[q - 1]; bestKey[q] = bestKey[q - 1]; }
-    best[w] = o; bestKey[w] = key[j];
+    Opt *o = &O[n];
+    o->d = mkSwap(c->sr, c->sc, V_SETUP, d.mode, d.alive);
+    o->n = 1; o->wait = 0; o->sw[0] = c->sr; o->sw[1] = c->sc; o->pri = 2; o->stall = 1;   // a setup has no reason but what it sets up: the rise it locks buys no time
+    if (optJudge(o)) n++;
   }
-  for (int j = 0; j < nb; j++) O[n++] = best[j];
-#ifndef __wasm__
-  { extern int fprintf(void *, const char *, ...); extern void *stderr;   // what setupOptions weighed, one line a call: the pool, the candidates probed, the options offered
-    fprintf(stderr, "SETUPOPTS clock %d pool %d probed %d read %d offered %d\n", (int)BIN[IN_STACKCLOCK], nPool, na, nRead, nb);
-    if (botTraceOn) fprintf(BLOG, "SETUPOPTS pool %d probed %d read %d offered %d\n", nPool, na, nRead, nb); }
-#endif
   return n;
 }
 // AN OPTION THAT CANNOT GET BACK IN TIME CANNOT SURVIVE: a swap, followed by the line that
@@ -4223,10 +4170,6 @@ static Dec arbitrate(Dec d) {
       if (!improves) { gScramble = 1; int before = n; n = reachOption(O, n, d); if (n > before) ra = before; }
     }
     // downtime: the board left alone loses no health within the horizon, or between actions: a line that saves the board is kept and the setup must spare it
-#ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;   // why the setups were asked for or not
-      fprintf(BLOG, "SETUPASK breaking %d alone %d die %d saSet %d hold %d early %d\n", breaking, aloneOnEngine(), aloneOnEngine() ? aloneDie(1 << 20) : -1, saSet, d.kind == K_HOLD, O[at].early); }
-#endif
     if (!breaking && aloneOnEngine() && (aloneDie(1 << 20) > LIVEHORIZON || saSet) && (d.kind == K_HOLD || O[at].early)) { setupAt = n; n = setupOptions(O, n, d); } }
   // the line that saves the board: what an option must still be able to play after it (getsBackInTime)
   int32_t sv[2 * LINEMAX]; int sn = 0;
