@@ -848,6 +848,7 @@ static int attackCmp(Atk a, Atk b) {
   return worthCmp(a.size, b.size);
 }
 typedef struct { double rate, key, cells, gain, frames; double *option; } Pick;
+static int attackFirst(Atk a, Atk b);
 static int bestAttack(double deadline, double ppf, Pick *best) {
   int n, have = 0;
   keepFilter(PILE, nPile, FILT, &n);
@@ -870,7 +871,8 @@ static int bestAttack(double deadline, double ppf, Pick *best) {
     double taste = 1 + TB[T_W + key] / 100;
     if (taste < 0.1) taste = 0.1;
     double rate = cells * taste;   // every one here fits the deadline: what it is worth, not how soon
-    int cmp = have ? attackCmp(atkOfRow(o), atkOfRow(best->option)) : 0;
+    // of two that break alike, a combo or a chain before a plain three (attackFirst); a break against none is weighed in its rate
+    int cmp = have ? (o[F_BREAKS] == best->option[F_BREAKS] ? attackFirst(atkOfRow(o), atkOfRow(best->option)) : attackCmp(atkOfRow(o), atkOfRow(best->option))) : 0;
     int win = !have || (cmp ? cmp > 0 : rate > best->key);
     if (!win && have && !cmp && rate == best->key) {
       double ob = has(o[F_BUMPS]) ? o[F_BUMPS] : 1e9, bb = has(best->option[F_BUMPS]) ? best->option[F_BUMPS] : 1e9;
@@ -2166,10 +2168,10 @@ static Dec waitForDrain(Dec d) {
     int tn = r->total, st = cl->future || steady(cl->sr, cl->sc, dmax(cl->moveFrames, k - 2)),
         cnSt = clearNow && (clearNow->future || steady(clearNow->sr, clearNow->sc, dmax(clearNow->moveFrames, k - 2)));
     if (clearNow && st != cnSt) { if (st) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnAtk = atkOfRes(r); } continue; }
-    if (clearNow && bk != cnBk) { if (bk) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnAtk = atkOfRes(r); } continue; }
-    // of the clears that fit, an attack (a combo of four or more, a chain) comes first, by the one rule (attackFirst)
+    // of the clears that fit, an attack (a combo of four or more, a chain) comes first, by the one rule (attackFirst), before the time bought is weighed
     int atk = clearNow ? attackFirst(atkOfRes(r), cnAtk) : 0;
     if (atk) { if (atk > 0) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnAtk = atkOfRes(r); } continue; }
+    if (clearNow && bk != cnBk) { if (bk) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnAtk = atkOfRes(r); } continue; }
     if (!clearNow || tn < cnTn || (tn == cnTn && (vd < cnVd || (vd == cnVd && rate > cnRate)))) { clearNow = cl; cnRate = rate; cnVd = vd; cnTn = tn; cnBk = bk; cnAtk = atkOfRes(r); }
   }
   if (breakNow && !breakNow->future) return mkSwap(breakNow->sr, breakNow->sc, V_BREAK, d.mode, d.alive);
