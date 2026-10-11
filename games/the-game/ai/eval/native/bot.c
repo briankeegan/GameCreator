@@ -2349,8 +2349,6 @@ static double stageLeaves(int i) {
 }
 static double stageOpen(int i) { double keep = stageEnd, e = stageLeaves(i); if (e < stageEnd) stageEnd = e; return keep; }
 static void stageClose(double keep) { stageEnd = keep; }
-// A STAGE RUNS TO WHERE THE CLOSING BEGINS: whatever the stages take, the arbiter's judges (FINALJUDGES) keep their work
-static double stageOpenClosing(void) { double keep = stageEnd, e = rdW0 + OPTWORK - FINALJUDGES * jdCost; if (e < stageEnd) stageEnd = e; return keep; }
 static void stagesMeasured(const double *ws, int k) {
   for (int i = 0; i + 1 < k && i < NSTAGES; i++) { LATER[i] *= 0.99; if (ws[k - 1] - ws[i] > LATER[i]) LATER[i] = ws[k - 1] - ws[i]; }
 }
@@ -5935,7 +5933,6 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   double t0 = NOWMS();
   extern int paBudgetOut(void), paBudgetSpent(void), paCutPast(double);
 #define SHARE(p) ((void)(p))   // one budget for the whole decision, opened above
-#define STAGE(i, ...) { (void)(i); double keep_ = stageOpenClosing(); __VA_ARGS__; stageClose(keep_); }   // a stage runs to where the closing's judges begin
   // THE HOLD IS JUDGED FIRST: the board left alone is what the guards hold
   // every decision to, and a guard with nothing to hold it to lets anything
   // through -- so it is judged while the budget is whole, once
@@ -5991,15 +5988,15 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     if (keepIt) d = dk;
     else { if (routeN) lineSet(routeLine, routeN, routeKind, routeWait); else BT->nLine = 0; d = playOn(d); }
   } else {
-    STAGE(1, d = playOn(d));
+    SHARE(5); d = playOn(d);
   }
   int32_t lineAfterPlay[2 * LINEMAX]; int nLineAfterPlay = BT->nLine;
   for (int q = 0; q < 2 * BT->nLine; q++) lineAfterPlay[q] = BT->line[q];
-  STAGE(1, d = waitForDrain(d); d = raiseHold(d)); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  STAGE(2, d = breakFirst(d)); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  STAGE(3, d = stayAlive(d)); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  STAGE(4, d = keepBreak(d); d = lineupFirst(d)); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  STAGE(5, d = batchBreak(d); d = spendToBreak(d)); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  d = waitForDrain(d); d = raiseHold(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(25); d = breakFirst(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(5); d = stayAlive(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(15); d = keepBreak(d); d = lineupFirst(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(5); d = batchBreak(d); d = spendToBreak(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(10); d = breakSoon(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   // FILL LEAVES THE STEPS AFTER IT THEIR SHARE (stageOpen): the leveling,
   // readiness and guards that follow it are measured as a stage of their own
