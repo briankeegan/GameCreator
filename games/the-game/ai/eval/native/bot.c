@@ -2211,7 +2211,7 @@ int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_
 // DROPS: more garbage at rest starts to fall than left alone. FILLS: less
 // hollow under the garbage that lands than left alone (pa.c HOLLOW).
 
-typedef struct { int n, brk, ok, grown, waitAll, hollow, conv, die; int32_t sw[2 * LINEMAX]; double est, life; int verdict; } LineC;
+typedef struct { int n, brk, ok, grown, waitAll, hollow, conv, die, size, chain; int32_t sw[2 * LINEMAX]; double est, life; int verdict; } LineC;
 // A LINE'S LIFE, what survival RANKS by: the frame it loses health, less what
 // its hollow costs. (The floors -- arbitrate, the kept line -- stay on the
 // frame itself: no choice may lose health sooner, whatever its shape.) A
@@ -2471,13 +2471,14 @@ static int judged(LineC *l) {
     l->hollow = l->verdict ? HOLLOW(LNO) : 1 << 20;
     l->conv = l->verdict ? LNO[2] - LNA[2] : 0;
     l->die = l->verdict ? lnoDie(LNO) : 0;   // the frame it loses health (1 << 20: not within the horizon)
+    l->size = l->verdict ? LNO[17] : 0; l->chain = l->verdict ? LNO[18] : 0;   // the largest match it makes, its longest chain
     l->life = l->verdict ? lifeOf(l->die, LNO[1], l->hollow, spentOf()) : 0;
     // A BREAK PRESSED ONCE THE BOARD HAS SETTLED: a break needs garbage at
     // rest beside the match, and a press made while the slab still lands
     // matches beside it in vain. The last press then waits for the garbage to land (breakWait).
     if (l->brk && (l->verdict & LV_PAYS) && !(l->verdict & LV_BREAKS) && nJudged < MAXJUDGED) {
       int v = lineJudge(l->sw, l->n, 1); nJudged++;
-      if (v & LV_BREAKS) { l->verdict = v; l->waitAll = 1; l->hollow = HOLLOW(LNO); l->conv = LNO[2] - LNA[2]; l->die = lnoDie(LNO); l->life = lifeOf(l->die, LNO[1], l->hollow, spentOf()); }
+      if (v & LV_BREAKS) { l->verdict = v; l->waitAll = 1; l->hollow = HOLLOW(LNO); l->conv = LNO[2] - LNA[2]; l->die = lnoDie(LNO); l->size = LNO[17]; l->chain = LNO[18]; l->life = lifeOf(l->die, LNO[1], l->hollow, spentOf()); }
     }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
@@ -3562,6 +3563,13 @@ static int judgedBreaks(const LineC *l) { return l->verdict >= 0 && (l->verdict 
 static int lineRank(const LineC *a, int ra, const LineC *b, int rb) {
   if (judgedBreaks(a) != judgedBreaks(b)) return judgedBreaks(a) ? 1 : -1;
   if (ra != rb) return ra > rb ? 1 : -1;
+  // OF TWO BREAKS the later loss of health inside LIVEHORIZON, then the combo or chain before a plain three (the arbiter's order)
+  if (judgedBreaks(a) && judgedBreaks(b)) {
+    int da = a->die < LIVEHORIZON ? a->die : LIVEHORIZON, db = b->die < LIVEHORIZON ? b->die : LIVEHORIZON;
+    if (da != db) return da > db ? 1 : -1;
+    int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain));
+    if (w) return w;
+  }
   if (a->life != b->life) return a->life > b->life ? 1 : -1;
   if (a->conv != b->conv) return a->conv > b->conv ? 1 : -1;
   if (a->hollow != b->hollow) return a->hollow < b->hollow ? 1 : -1;
