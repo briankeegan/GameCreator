@@ -4145,8 +4145,8 @@ static Dec arbitrate(Dec d) {
       for (int i = 0; i < n; i++) if (O[i].lives && O[i].die > alone) improves = 1;
       if (!improves) { gScramble = 1; int before = n; n = reachOption(O, n, d); if (n > before) ra = before; }
     }
-    // downtime: the board left alone loses no health within the horizon
-    if (!breaking && aloneOnEngine() && aloneDie(1 << 20) > LIVEHORIZON && (d.kind == K_HOLD || O[at].early)) { setupAt = n; n = setupOptions(O, n, d); } }
+    // downtime: the board left alone loses no health within the horizon, or between actions: a line that saves the board is kept and the setup must spare it
+    if (!breaking && aloneOnEngine() && (aloneDie(1 << 20) > LIVEHORIZON || saSet) && (d.kind == K_HOLD || O[at].early)) { setupAt = n; n = setupOptions(O, n, d); } }
   // the line that saves the board: what an option must still be able to play after it (getsBackInTime)
   int32_t sv[2 * LINEMAX]; int sn = 0;
   if (saSet && aloneOnEngine()) {
