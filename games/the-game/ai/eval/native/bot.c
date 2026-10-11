@@ -3953,7 +3953,7 @@ static void optAhead(Opt *o) {
 }
 // THE SCRAMBLE, A LAST RESORT: when the board left alone loses health and no other option outlives it, the best combo or
 // chain any line reaches in the time there is is an option, the whole line judged on the engine and played on once chosen.
-static int boardDying(void) { return aloneOnEngine() && aloneDie(1 << 20) < (1 << 20); }   // the board left alone loses health within the judge's reach
+static int boardDying(void) { return BIN[IN_STOP] > 0 && aloneOnEngine() && aloneDie(1 << 20) < (1 << 20); }   // a stop runs, and the board left alone loses health within the judge's reach
 static int gScramble;   // this decision is a last resort: a stop in danger, and no other option outlives the board left alone
 static int reachOption(Opt *O, int n, Dec d) {
   extern PATLS double paWork;
