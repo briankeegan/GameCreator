@@ -4021,6 +4021,7 @@ static double optSoon(Opt *o) {
 // (attackFirst), and its vertical twos (twosOf). Read once, and only while the decision has work left.
 static int twosOf(const int32_t *st);
 #define REACHWORK 6000   // the share of the decision's work one option's reach search may spend
+#define REACHSHARE() (OPTWORK * 20 / 100)   // the scramble's share of a dying decision's work: the combo or chain that buys stop time, as the stages have theirs
 typedef struct { Atk best; int n; int32_t sw[2 * LINEMAX]; } ReachCtx;   // the best attack found, and the line that reaches it
 static int sitReach(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
   ReachCtx *x = ctx; (void)at;
@@ -4061,7 +4062,7 @@ static int reachOption(Opt *O, int n, Dec d, int frozen) {
   static ST st; int32_t cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
   if (lineState(0, 0, st, can, w, cur, &t) != 0) return n;
   static ReachCtx rx; rx.best = atkOf(0, 0); rx.n = 0;
-  double work = optLine() - paWork; if (work > REACHWORK) work = REACHWORK;
+  double work = optLine() - paWork, cap = gScramble ? REACHSHARE() : REACHWORK; if (work > cap) work = cap;
   double rw0 = paWork;
   searchInTime(st, cur[0], cur[1], t, 0, timeLeft(), frozen, can, w, work, sitReach, &rx, 0, 0, 0);
 #ifndef __wasm__
@@ -6028,7 +6029,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // every decision to, and a guard with nothing to hold it to lets anything
   // through -- so it is judged while the budget is whole, once
   aloneOnEngine();
-  reachHold = boardDying() ? REACHWORK : 0;
+  reachHold = boardDying() ? REACHSHARE() : 0;
   frontCalm(aloneOnEngine() && !LNA[0]);   // a board that loses no health holds its walks: the input allowance kept for one that does
   // STORED ROWS FOLLOW THE STACK: every row the bot keeps from one decision
   // to the next -- the line, the target, the routes, the presses -- moves up
