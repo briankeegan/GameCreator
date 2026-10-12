@@ -4452,6 +4452,9 @@ static int readyAfterIn(const int32_t *sw, int n) {
 // Where a lineup can matter: the rows up to the one the next slab lands on,
 // in its columns and one either side.
 static int lineupNear(const int32_t *st, int r, int c) {
+  // a swap beside garbage already on the board can make the break it needs
+  for (int cc = c - 1; cc <= c + 2; cc++)
+    if (cc >= 1 && cc <= BW && (U(st, GARB + cc) & (7u << (r >= 2 ? r - 2 : 0)))) return 1;
   int w = (int)BIN[IN_SLABW], c0 = (int)BIN[IN_SLABC];
   if (w <= 0 || c0 <= 0) return 1;
   int land = 0;
