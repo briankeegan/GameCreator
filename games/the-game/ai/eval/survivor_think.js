@@ -170,8 +170,8 @@ module.exports = function think(cfg) {
         else {
           // nothing on the board, nothing coming and the stack low: all the time and depth it takes to plan a big attack
           var quiet = comingRows === 0 && SH.top(board) < (A.quietTop || 9) && !(bot._planUntil > board.clock), P2 = quiet ? { ms: A.bigMs || 1500, width: A.bigWidth || 100, depth: A.bigDepth || 14 } : { ms: Math.min(A.ms || 300, due ? Math.max(40, due - Date.now() - DEADLINE_MARGIN_MS) : 300), width: A.width || 60, depth: A.depth || 10 };
-          // the opponent topped out: any combo or chain there is, soonest. Not: a big chain (a shorter one when the stack is tall).
-          var tall = SH.top(board) >= (A.fireTop || 9), minChain = oppOut ? 0 : tall ? 2 : (A.minChain || 4);
+          // the opponent topped out: any combo or chain there is, soonest. Not: a big chain, however tall the stack.
+          var minChain = oppOut ? 0 : (A.minChain || 4);
           var floor = oppOut ? (A.outCells || 3) : attacking ? 1 : Infinity;
           var ap = attacker.plan(board, m.hold, { ms: oppOut ? Math.min(P2.ms, 300) : P2.ms, width: P2.width, depth: P2.depth, pool: A.pool || 250, stopAt: oppOut ? floor : 0, minChain: minChain });
           if (attackLogged++ < 60) console.error('ATTACK clock ' + board.clock + ' attacking ' + attacking + ' out ' + oppOut + ' quiet ' + quiet + ' plan ' + (ap ? ap.cells + ' cells chain ' + ap.chain + ' swaps ' + ap.seq.length + ' first ' + JSON.stringify(ap.seq[0] || null) + ' setup ' + JSON.stringify(ap.setup) + ' base ' + ap.base + ' in ' + ap.ms + ' ms' : 'none'));

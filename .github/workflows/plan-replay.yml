@@ -1,0 +1,23 @@
+name: Plan replay
+
+# One swap on a board from a live match, on the native engine and the JS engine (plan_replay.js).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Replay
+        timeout-minutes: 5
+        run: |
+          node games/the-game/ai/eval/plan_replay.js 2>&1 | tee replay.log
+          sed 's/^/::notice title=replay::/' replay.log

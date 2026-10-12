@@ -19,7 +19,7 @@ function opening(seed) {
   }
   return PA.puzzle(rows.join(''));
 }
-function comboCells(size) { var n = 0, ps = PA.comboGarbage(size); for (var i = 0; i < ps.length; i++) n += ps[i][0] * ps[i][1]; return n; }
+function comboCells(size) { var n = 0, ps = PA.comboGarbage(size); for (var i = 0; i < ps.length; i++) n += ps[i]; return n; }
 // what a step's clears send: each clear's combo garbage and a slab for the chain they make
 function sent(stat) {
   var n = 0, chain = 0;
