@@ -61,4 +61,12 @@ prep.want = { '3,2': true };
 assert.strictEqual(SP.overrule({ kind: 'hold' }, prep, bot).kind, 'hold', 'a three break is not forced over the bot');
 bot.refuseThreeBreak = false;
 assert.deepStrictEqual(SP.overrule({ kind: 'hold' }, prep, bot).move, [3, 2], 'off unless the profile asks');
+// NO THREE UNTIL TOPPED OUT (threesOnlyTopped): of the proven moves a three is never chosen below the top; none left, none returned
+bot.refuseThreeBreak = true; bot.noThreesUntilTopped = true; bot.stack = { wasToppedOut: false }; bot._board = null;
+assert.strictEqual(names(bot._noBareThree([bare, brk, hold, chain], true)), 'hold,chain', 'a three break goes too');
+assert.strictEqual(names(bot._noBareThree([bare, brk], true)), '', 'only threes proven: the others are left to the unproven ones');
+assert.strictEqual(names(bot._noBareThree([bare, brk], false)), 'bare,break', 'the pool that is not the proven one keeps what it has');
+bot.stack = { wasToppedOut: true };
+assert.strictEqual(names(bot._noBareThree([bare, brk, hold], true)), 'bare,break,hold', 'topped out: a failsafe, threes may');
+bot.noThreesUntilTopped = false;
 console.log('threesLast: ok');

@@ -245,6 +245,9 @@
     // THREE BREAKS LAST (opts.threeBreaksLast, with threesLast): a three that breaks garbage is held to the same rule --
     // played only when no other move is proven to live.
     this.refuseThreeBreak = opts.threeBreaksLast === true;
+    // NO THREE UNTIL TOPPED OUT (opts.threesOnlyTopped): of the moves proven to live a three -- bare or breaking garbage -- is
+    // never chosen while the stack is not topped out; the best of the others is, and when none is proven the unproven ones are.
+    this.noThreesUntilTopped = opts.threesOnlyTopped === true;
     this.nearestFirst = opts.nearestFirst === true;
     this.bareThreesDropped = 0;
     this.bareThreesKept = 0;
@@ -1759,7 +1762,7 @@
     // proof past it picks waiting over breaking: seed 2 frame 11557, a break
     // reaching 312 frames dropped for a wait reaching 372, dead 780 later.
     else if (breakWeak.length) proven = proven.concat(breakWeak);
-    proven = this._noBareThree(proven);
+    proven = this._noBareThree(proven, true);
     // measureLife: the proven moves the engine shows living longest, then
     // keeping the most panels, before the caller's order is applied to them.
     if (this.measureLife && proven.length > 1) proven = this._measureLife(proven);
@@ -2119,8 +2122,15 @@
       if (all[i].kind === 'swap' && all[i].move && all[i].move[0] === move[0] && all[i].move[1] === move[1]) return bareThree(all[i]) || (!!this.refuseThreeBreak && threeBreak(all[i]));
     return false;
   };
-  PuyoCpu.prototype._noBareThree = function (cands) {
+  PuyoCpu.prototype._noBareThree = function (cands, strict) {
     if (!this.refuseBareThree || !cands || !cands.length) return cands;
+    if (strict && this.noThreesUntilTopped) {
+      var stk = this.stack || {};
+      if (stk.wasToppedOut || (this._board && this._boardToppedOut(this._board))) { this.threeForced = true; return cands; }
+      var tbs = this.refuseThreeBreak, notThree = cands.filter(function (c) { return !(bareThree(c) || (tbs && threeBreak(c))); });
+      this.bareThreesDropped += cands.length - notThree.length;
+      return notThree;
+    }
     // Topped out with nothing holding the stack (no stop time, no clear
     // running, no garbage shaking it), a three is played as any move is: the
     // next frame without a clear is the last.
