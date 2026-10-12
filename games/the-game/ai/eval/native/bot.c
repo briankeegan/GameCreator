@@ -998,8 +998,8 @@ static int raiseSafe(const int32_t *base) {
   double clear = INF;
   for (int q = 0; q < nPool; q++)
     if (POOL[q].kind == K_SWAP && POOL[q].res.total > 0 && POOL[q].moveFrames < clear) clear = POOL[q].moveFrames;
-  // the row fits under the top (free), and a high stack is the material a break is made of: with no clear to hold, it is raised all the same
-  if (clear == INF) return 1;
+  // no clear the board holds now: the raised board's own, in time (the shared search, fireInTimeOf)
+  if (clear == INF) return risenMasks(base, RZ) && fireInTimeOf(RZ);
   return free * BIN[IN_FPR] > clear + REACT;
 }
 // WHAT A SWAP CAUSES. On a board in motion the clear already resolving is in
