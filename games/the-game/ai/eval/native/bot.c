@@ -1245,14 +1245,11 @@ static Dec mkHold(int via, int mode, int alive, int hasPark, int pr, int pc) { D
 // but the rise lock)
 static double raiseAfter;
 static JLOCAL int raiseGate;   // the gate that decided raiseMode, for the trace
-// READY FOR THE WAVE: the slab queued, placed where it rests (slabReadyHook);
-// with none queued yet -- the opening, before the first wave is seen -- a slab
-// the width of the board on the stack, wherever the wave lands
+// READY FOR THE WAVE: the slab queued, placed where it rests (slabReadyHook); none queued, no wave to be ready for
 static int waveReady(const int32_t *st) {
   if (BIN[IN_INCOMING] > 0) return slabReadyHook(st);
   if (TFLAG(TF_SLAB)) return BIN[IN_T + 6] != 0;
-  SLABW = st[O_W]; SLABH = 1; SLABC = 1;
-  return slabReady(st);
+  return 0;
 }
 static int raiseModeOf(const int32_t *base, int poolBreak) {
   raiseAfter = 0;
@@ -1284,11 +1281,7 @@ static int raiseModeOf(const int32_t *base, int poolBreak) {
   // A break line being played is a break ready: the raise would move the
   // board under it.
   if (BT->nLine && BT->lineKind == LINE_BREAK) { raiseGate = 5; return 0; }
-  if ((BIN[IN_INCOMING] > 0 || BT->opening) && !(risenMasks(base, RZ) && waveReady(RZ)) && waveReady(base)) { raiseGate = 6; return 0; }
-  // THE OPENING RAISES WITH A BREAK READY: as high as it can, each row only
-  // onto a board the first wave can land on and be broken (waveReady, the
-  // phantom first wave). A board not ready is made ready first, then raised.
-  if ((BT->opening || BIN[IN_PHANTOM] > 0) && !(risenMasks(base, RZ) && waveReady(RZ))) { raiseGate = 12; return 0; }
+  if (BIN[IN_INCOMING] > 0 && !(risenMasks(base, RZ) && waveReady(RZ)) && waveReady(base)) { raiseGate = 6; return 0; }
   // AS HIGH AS IT CAN: after the opening the rise is locked nearly every
   // frame (garbage in motion), so the opening's raise is the material the
   // board gets besides what breaks -- raised while the next slab still has
@@ -3977,8 +3970,7 @@ static int optJudge(Opt *o) {
   return 1;
 }
 // READY FOR THE NEXT WAVE: a break in reach when the queued slab lands
-// (readyInTime); with none queued, the board the option leaves ready for a
-// slab the width of the board on the stack (waveReady), as the next wave lands
+// (readyInTime); with none queued there is no wave to be ready for (waveReady)
 static int optReady(Opt *o) {
   if (!o->rdyKnown) {
     int r, c, hold = o->d.kind == K_HOLD;
