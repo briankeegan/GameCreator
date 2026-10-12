@@ -1772,6 +1772,8 @@
     if ((this.preferRank || this.preferProven) && proven.length) proven = this._preferred(proven, proven, true);
     // A move the search ran out of budget on is a guess. When any move is
     // proven to live, the guesses are dropped.
+    // (the moves not proven, looked at when none is, are held to the same rule: a three is not among them below the top)
+    if (!proven.length && this.noThreesUntilTopped) unproven = this._noBareThree(unproven, true);
     var live = proven.length ? proven : unproven;
     this.allDoomedNow = !live.length;
     // ALL DOOMED IS NOT GIVING UP. Under a stream no line outlives the
