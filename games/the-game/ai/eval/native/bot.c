@@ -6105,7 +6105,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     for (int i = 0; i < k && i < NSTAGES && at < (int)sizeof lastStages; i++)
       at += snprintf(lastStages + at, sizeof lastStages - at, " %s %.1f/%d", nm[i], ts[i] - (i ? ts[i - 1] : t0), js[i] - (i ? js[i - 1] : 0));
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;   // every decision's work, by stage, in the bot log
-      fprintf(BLOG, "WORKS"); for (int i = 0; i < k && i < NSTAGES; i++) fprintf(BLOG, " %s %.0f", nm[i], ws[i] - (i ? ws[i - 1] : w0)); fprintf(BLOG, " | total %.0f, declined %d, ready refused %d (a replay %.0f)\n", paWork - rdW0, budgetRefused, rdRefused, rdCost); } }
+      fprintf(BLOG, "WORKS"); for (int i = 0; i < k && i < NSTAGES; i++) fprintf(BLOG, " %s %.0f", nm[i], ws[i] - (i ? ws[i - 1] : w0)); fprintf(BLOG, " | ms"); for (int i = 0; i < k && i < NSTAGES; i++) fprintf(BLOG, " %.2f/%d", ts[i] - (i ? ts[i - 1] : t0), js[i] - (i ? js[i - 1] : 0)); fprintf(BLOG, " | total %.0f, declined %d, ready refused %d (a replay %.0f)\n", paWork - rdW0, budgetRefused, rdRefused, rdCost); } }
 #endif
   rdRefused = 0;
   // the most the stages after breakFirst (and after lineup) have taken lately:
