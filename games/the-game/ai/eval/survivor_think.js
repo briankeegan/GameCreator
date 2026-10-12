@@ -160,7 +160,11 @@ module.exports = function think(cfg) {
       // is lost -- from here a three is a move like any other (life first), where below it it is the last resort
       var toppedEarly = !!m.topped || (typeof board.isToppedOut === 'function' && board.isToppedOut()) || (SH.top(board) >= 11 && (board.stopTime || 0) + (board.preStopTime || 0) === 0);
       bot.toppedOutNow = toppedEarly;
-      var danger = !!(A && A.lifeFirst && (toppedEarly || (SH.lowestGarbageRow(board) && SH.top(board) >= (A.dangerTop || 9)) || SH.top(board) + comingRows + queuedRows >= 12 - (A.dangerRoom === undefined ? 1 : A.dangerRoom)));
+      // (danger is the stack in jeopardy, not the stack raised high: its height counting the garbage on it, or what is about to land on it
+      // overflowing the board -- raising to row 10 is the plan, and a hit of a row or two on it is not an emergency)
+      var fullH = fullTop(board), landSoon = Infinity;
+      arrivals.forEach(function (a) { if (a.at < landSoon) landSoon = a.at; });
+      var danger = !!(A && A.lifeFirst && (toppedEarly || fullH >= (A.dangerTop || 11) || (landSoon <= (A.dangerSoon || 120) && fullH + comingRows + queuedRows >= 12 + (A.dangerOver === undefined ? 1 : A.dangerOver))));
       bot._danger = danger;
       if (danger) bot._dangers = (bot._dangers || 0) + 1;
       // A BIG CHAIN COMES BEFORE EVERYTHING ELSE: with garbage on the board only a chain found is played (the setups, raising and the holds are for a board without)
@@ -373,6 +377,11 @@ module.exports = function think(cfg) {
     return (A.raiseMax || 11) + bonus - (A.raiseLeaveRoom ? coming + queued : 0);
   }
   // The lowest peak: the fewest panels any column has -- a stack with one tall column and the rest empty has nothing to break with.
+  // the highest row with a panel or garbage on it
+  function fullTop(board) {
+    for (var r = board.panels.length - 1; r >= 1; r--) for (var c = 1; c <= 6; c++) { var p = board.panels[r] && board.panels[r][c]; if (p && (p.color || p.isGarbage)) return r; }
+    return 0;
+  }
   function lowPeak(board) {
     var low = 99, c, r, pk;
     for (c = 1; c <= 6; c++) { pk = 0; for (r = board.panels.length - 1; r >= 1 && !pk; r--) { var p = board.panels[r] && board.panels[r][c]; if (p && p.color && !p.isGarbage) pk = r; } if (pk < low) low = pk; }
