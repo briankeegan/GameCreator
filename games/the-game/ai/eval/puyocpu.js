@@ -2136,7 +2136,7 @@
       var tbs = this.refuseThreeBreak, notThree = cands.filter(function (c) { return !(bareThree(c) || (tbs && threeBreak(c))); });
       if (notThree.length) { this.bareThreesDropped += cands.length - notThree.length; return notThree; }
       var stk = this.stack || {};
-      if (this._danger || stk.wasToppedOut || (this._board && this._boardToppedOut(this._board))) { this.threeForced = true; return cands; }
+      if (this.toppedOutNow || stk.wasToppedOut || (this._board && this._boardToppedOut(this._board))) { this.threeForced = true; return cands; }
       return notThree;
     }
     // Topped out with nothing holding the stack (no stop time, no clear

@@ -71,7 +71,10 @@ assert.strictEqual(names(bot._noBareThree([bare, brk, hold], true)), 'hold', 'to
 assert.strictEqual(names(bot._noBareThree([bare, brk], true)), 'bare,break', 'topped out and only threes proven: they are played');
 bot.stack = { wasToppedOut: false }; bot._danger = true;
 assert.strictEqual(names(bot._noBareThree([bare, brk, chain], true)), 'chain', 'in danger: a three is the last resort');
-assert.strictEqual(names(bot._noBareThree([bare, brk], true)), 'bare,break', 'in danger and only threes proven: they are played');
+assert.strictEqual(names(bot._noBareThree([bare, brk], true)), '', 'in danger but not topped out: not even then, the unproven moves are looked at');
+bot.toppedOutNow = true;
+assert.strictEqual(names(bot._noBareThree([bare, brk], true)), 'bare,break', 'topped out (as the frame loop says) and only threes proven: they are played');
+bot.toppedOutNow = false;
 bot._danger = false;
 bot.noThreesUntilTopped = false;
 console.log('threesLast: ok');

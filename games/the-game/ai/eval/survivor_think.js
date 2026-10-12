@@ -156,7 +156,8 @@ module.exports = function think(cfg) {
       // coming and queued would fill it, the attack logic is off and the survival logic decides, threes included
       var queuedRows = 0;
       (board.incoming || []).forEach(function (g) { queuedRows += g.height || 0; });
-      var toppedEarly = typeof board.isToppedOut === 'function' && board.isToppedOut();
+      var toppedEarly = !!m.topped || (typeof board.isToppedOut === 'function' && board.isToppedOut());
+      bot.toppedOutNow = toppedEarly;
       var danger = !!(A && A.lifeFirst && (toppedEarly || (SH.lowestGarbageRow(board) && SH.top(board) >= (A.dangerTop || 9)) || SH.top(board) + comingRows + queuedRows >= 12 - (A.dangerRoom === undefined ? 1 : A.dangerRoom)));
       bot._danger = danger;
       if (danger) bot._dangers = (bot._dangers || 0) + 1;
@@ -230,7 +231,7 @@ module.exports = function think(cfg) {
       }
       // THE STACK IS RAISED AS FAR AS IT WILL GO WHEREVER THE BOARD IS (alwaysRaise): past the gate too, garbage coming or not, until
       // what is coming would no longer fit; the survival logic breaks what lands
-      if (A && !danger && A.alwaysRaise && !d && !cascadeLive(board, true) && SH.top(board) < raiseCap(board, comingRows, A) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1; }
+      if (A && !toppedEarly && A.alwaysRaise && !d && !cascadeLive(board, true) && SH.top(board) < raiseCap(board, comingRows, A) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1; }
       // A BIG CHAIN COMES FIRST WHEREVER THE BOARD IS: past the gate above (the stack tall, a lot coming, garbage all over it) a chain
       // the planner finds in a few swaps -- on the board with the garbage on its way counted -- is played before anything else
       if (A && !danger && !d && !(!A.ignoreOpp && m.opp && m.opp.out)) {
@@ -276,8 +277,8 @@ module.exports = function think(cfg) {
       // to bring more to build with. (Breaking garbage, a chain, a bigger match and a topped-out board are not plain threes.)
       // (the attack profile: a three is played only when the survival search left nothing else -- bot.threeForced)
       // (threesOnlyTopped: not even then, unless the stack is topped out -- a failsafe)
-      var toppedNow = typeof board.isToppedOut === 'function' && board.isToppedOut();
-      if ((((A || HT) && safeA || (A && !bot.threeForced)) || (A && A.threesOnlyTopped && !toppedNow && !danger)) && !d.overruled && d.kind === 'swap' && d.move && bot.threeOnlySwap(d.move)) { d = { kind: 'hold', overruled: true }; bot._threesHeld = (bot._threesHeld || 0) + 1; }
+      var toppedNow = toppedEarly;
+      if ((((A || HT) && safeA || (A && !bot.threeForced)) || (A && A.threesOnlyTopped && !toppedNow)) && !d.overruled && d.kind === 'swap' && d.move && bot.threeOnlySwap(d.move)) { d = { kind: 'hold', overruled: true }; bot._threesHeld = (bot._threesHeld || 0) + 1; }
       // A CLEAR THAT LEAVES THE STACK UNDER minRows ROWS is not made while the stack is not topped out: panels are kept to break what lands with
       if (A && A.minRows && !toppedNow && !danger && !d.overruled && d.kind === 'swap' && d.move) {
         var mc = (bot._allCands || []).filter(function (c) { return c.kind === 'swap' && c.move && c.move[0] === d.move[0] && c.move[1] === d.move[1]; })[0];
@@ -292,7 +293,7 @@ module.exports = function think(cfg) {
         why = { provenRanks: provenRanked.join(' '), ranked: ranked.join(' '), want: Object.keys(want), cands: sp ? sp.cands.map(key) : null, proven: sp ? sp.cands.filter(function (c, i) { return sp.proofs[i]; }).map(key) : null };
       }
       // (no three is played below the top, so no aimed lineup to a break -- its last swap is a three -- is either)
-      var noAimed = !!(A && A.threesOnlyTopped && !toppedNow && !danger);
+      var noAimed = !!(A && A.threesOnlyTopped && !toppedNow);
       d = SP.overrule(d, noAimed ? Object.assign({}, prep, { br: null, want: {} }) : prep, bot);   // a lineup while a slab pops (survivor_prefer.js)
       var overruled = !!d.overruled;
       var took = Date.now() - t1;
@@ -301,7 +302,7 @@ module.exports = function think(cfg) {
       // on while the next decision is late: steps as the search played them
       // ([row, col], 'raise', null for a hold, { long: until }), from lineAt.
       var fl = overruled ? null : bot._following, line = fl && !fl.hold && fl.steps && fl.steps.length ? fl.steps : null;
-      if (A && A.threesOnlyTopped && !toppedNow && !danger) line = null;
+      if (A && A.threesOnlyTopped && !toppedNow) line = null;
       // An aimed lineup is its whole path: the swaps after the first are the
       // line, from wherever the first ends.
       var lineFree = false;

@@ -195,7 +195,7 @@ Match.prototype.ask = function (at, board, hold, pend) {
                       board: packed.toString('base64') });
     if (this.asked.length > 40 * KEEP) this.asked.shift();
   }
-  L.post({ id: L.pending.id, epoch: this.epoch, at: at, lead: at - this.now, ms: L.sync ? 0 : (at - this.now) * this.msPerFrame, posted: Date.now(), allowance: this.allowanceAt(at), opp: this.opp || null,
+  L.post({ id: L.pending.id, epoch: this.epoch, at: at, lead: at - this.now, ms: L.sync ? 0 : (at - this.now) * this.msPerFrame, posted: Date.now(), allowance: this.allowanceAt(at), opp: this.opp || null, topped: !!this.toppedNow,
                     packed: packed, hold: hold, arrivals: arrivals, acted: this.acted });
   this.stats.decisions++;
 };
@@ -384,6 +384,7 @@ Match.prototype.frame = function (truth, arrivals, fresh) {
   var L = this.L;
   var now = truth.clock, d, before = this.arrivals;
   this.now = now;
+  this.toppedNow = typeof truth.isToppedOut === 'function' && truth.isToppedOut();   // the stack as it is this frame, with the questions
   this.arrivals = arrivals;
   this.stats.frames++;
   var wall = Date.now();
