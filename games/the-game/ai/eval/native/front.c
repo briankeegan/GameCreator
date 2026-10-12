@@ -448,11 +448,14 @@ static void fPrepare(Front *F) {
   if (!F->sawWave && !F->oppPresent) {
     Board *pb = paLibBoard();
     Incoming *p = &pb->inc[0];
-    p->width = W; p->height = 1; p->isChain = 0; p->isMetal = 0; p->frameEarned = FB->clock; p->finalized = 1;
+    int top = 0, rows;
+    for (int r = 1; r <= FB->height; r++) for (int c = 1; c <= W; c++) if (fp(r, c)[COLOR] != 0) top = r;
+    rows = FB->height - top - 1; if (rows < 1) rows = 1;   // the tallest slab the pile still leaves a row above
+    p->width = W; p->height = rows; p->isChain = 0; p->isMetal = 0; p->frameEarned = FB->clock; p->finalized = 1;
     pb->ninc = 1;
-    d[IN_PHANTOM] = W;
-    d[IN_INCOMING] = W; d[IN_NEXTSLAB] = W; d[IN_INROWS] = 1;
-    d[IN_SLABW] = W; d[IN_SLABH] = 1; d[IN_SLABC] = nb_spawn_col(pb, W);
+    d[IN_PHANTOM] = W * rows;
+    d[IN_INCOMING] = W * rows; d[IN_NEXTSLAB] = W * rows; d[IN_INROWS] = rows;
+    d[IN_SLABW] = W; d[IN_SLABH] = rows; d[IN_SLABC] = nb_spawn_col(pb, W);
   }
   d[IN_HASTIMED] = timed;
   d[IN_REVEALOPEN] = open;
