@@ -7,7 +7,7 @@
 # DIR/seed<N>.log.gz from the seed's artifact. GC_ALL=1 fetches the games of
 # the seeds that lived too.
 #
-#   ./scan_deaths.sh RUN_ID [DIR]   (DIR defaults to ./deaths-RUN_ID)
+#   [GC_MODE=factory] ./scan_deaths.sh RUN_ID [DIR]   (DIR defaults to ./deaths-RUN_ID; GC_MODE names the scan's mode in the history, combo_storm by default)
 #
 # Prints one line per seed: "seed N: died F" or "seed N: alive F", and the
 # count of each, and writes them to DIR/results.tsv (seed, alive|died|...,
@@ -77,9 +77,9 @@ read -r tover tseeds tworst imost iover < <(awk -F'\t' '$2 ~ /^think/ { split($2
 if [ "${tover:-0}" -gt 0 ]; then bstatus="OVER THINK BUDGET"; else bstatus="think budget within 8 ms"; fi
 if [ "${iover:-0}" -gt 0 ]; then bstatus="$bstatus, OVER INPUT BUDGET"; fi
 hist=$(dirname "$0")/survival_scans.tsv
-[ -f "$hist" ] || printf 'run\tcommit\talive\tdied\tthink_over\tworst_ms\n' > "$hist"
+[ -f "$hist" ] || printf 'run\tcommit\talive\tdied\tthink_over\tworst_ms\tmode\n' > "$hist"
 if [ "$other" -eq 0 ] && ! grep -q "^$run	" "$hist"; then
-  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$run" "$sha" "$alive" "$(printf '%s\n' "${dead[@]}" | sort -n | paste -sd, -)" "${tover:-0}" "${tworst:-0}" >> "$hist"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$run" "$sha" "$alive" "$(printf '%s\n' "${dead[@]}" | sort -n | paste -sd, -)" "${tover:-0}" "${tworst:-0}" "${GC_MODE:-combo_storm}" >> "$hist"
   # the line is committed and pushed as it is written: nothing waits uncommitted for a scan
   trailer=$(cat "${GC_WORK:-/tmp/gc-survival}/trailer.txt" 2>/dev/null || true)
   here=$(cd "$(dirname "$0")" && pwd)
