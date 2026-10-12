@@ -161,26 +161,28 @@ module.exports = function think(cfg) {
       // a board with no garbage on it, little coming and the stack low is safe: a plain three is not played on it
       if (HT && !SH.lowestGarbageRow(board) && comingRows <= (HT.maxComing === undefined ? 6 : HT.maxComing) && SH.top(board) < (HT.maxTop || 8)) safeA = true;
       bot._attackCells = 0;
-      if (A && !SH.lowestGarbageRow(board) && comingRows <= (A.maxComing === undefined ? 6 : A.maxComing) && SH.top(board) < (A.maxTop || 8)) {
-        safeA = true;
+      // A BIG CHAIN COMES BEFORE EVERYTHING ELSE: with garbage on the board only a chain found is played (the setups, raising and the holds are for a board without)
+      if (A && comingRows <= (A.maxComing === undefined ? 6 : A.maxComing) && SH.top(board) < (A.maxTop || 8)) {
+        var garb = !!SH.lowestGarbageRow(board);
+        safeA = !garb;
         if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
         // raising: the stack comes up for material until highTop
         var attacking = !!bot._attacking, oppOut = !!(m.opp && m.opp.out);
         // a chain running is left alone: a swap made while it goes can break it (not when the opponent is topped out: combos are short)
         var busy = (board.stopTime || 0) + (board.preStopTime || 0) > 0 || (board.chainCounter || 0) > 0;
         if (busy && !oppOut) { d = { kind: 'hold', overruled: true }; bot._chainHolds = (bot._chainHolds || 0) + 1; }
-        else if (!attacking && !oppOut && prep.want && prep.want.raise && bot._canRaise()) d = { kind: 'raise', overruled: true };
+        else if (!garb && !attacking && !oppOut && prep.want && prep.want.raise && bot._canRaise()) d = { kind: 'raise', overruled: true };
         else {
           // nothing on the board, nothing coming and the stack low: all the time and depth it takes to plan a big attack
-          var quiet = comingRows === 0 && SH.top(board) < (A.quietTop || 9) && !(bot._planUntil > board.clock), P2 = quiet ? { ms: A.bigMs || 1500, width: A.bigWidth || 100, depth: A.bigDepth || 14 } : { ms: Math.min(A.ms || 300, due ? Math.max(40, due - Date.now() - DEADLINE_MARGIN_MS) : 300), width: A.width || 60, depth: A.depth || 10 };
+          var quiet = !garb && comingRows === 0 && SH.top(board) < (A.quietTop || 9) && !(bot._planUntil > board.clock), P2 = quiet ? { ms: A.bigMs || 1500, width: A.bigWidth || 100, depth: A.bigDepth || 14 } : { ms: Math.min(A.ms || 300, due ? Math.max(40, due - Date.now() - DEADLINE_MARGIN_MS) : 300), width: A.width || 60, depth: A.depth || 10 };
           // the opponent topped out: any combo or chain there is, soonest. Not: a big chain, however tall the stack.
           var minChain = oppOut ? 0 : (A.minChain || 4);
-          var floor = oppOut ? (A.outCells || 3) : attacking ? 1 : Infinity;
+          var floor = oppOut ? (A.outCells || 3) : 1;
           var ap = attacker.plan(board, m.hold, { ms: oppOut ? Math.min(P2.ms, 300) : P2.ms, width: P2.width, depth: P2.depth, pool: A.pool || 250, stopAt: oppOut ? floor : 0, minChain: minChain });
           if (attackLogged++ < 60) console.error('ATTACK clock ' + board.clock + ' attacking ' + attacking + ' out ' + oppOut + ' quiet ' + quiet + ' plan ' + (ap ? ap.cells + ' cells chain ' + ap.chain + ' swaps ' + ap.seq.length + ' first ' + JSON.stringify(ap.seq[0] || null) + ' setup ' + JSON.stringify(ap.setup) + ' base ' + ap.base + ' in ' + ap.ms + ' ms' : 'none'));
           if (ap && ap.cells >= floor && ap.seq.length) { d = { kind: 'swap', move: ap.seq[0], overruled: true }; bot._attackCells = ap.cells; attackLine = ap.seq.slice(1); attackMove = ap.seq[0]; bot._planUntil = board.clock + 40 * ap.seq.length; }
           // no fire in reach: the swap that builds the board toward one
-          else if (ap && ap.setup) { d = { kind: 'swap', move: ap.setup, overruled: true }; bot._setups = (bot._setups || 0) + 1; }
+          else if (ap && ap.setup && !garb) { d = { kind: 'swap', move: ap.setup, overruled: true }; bot._setups = (bot._setups || 0) + 1; }
         }
       }
       var t1 = Date.now();
@@ -195,10 +197,12 @@ module.exports = function think(cfg) {
       var tight = !!(due && due - Date.now() < TIGHT_MS);
       if (tight) bot.depth = 1;
       bot._dueAt = due ? due - LOOKAHEAD_MARGIN_MS : 0;
+      bot.threeForced = false;
       try { if (!d) d = bot._decide(); } finally { bot._abort = null; N.deadline(0); bot.depth = depth0; bot._dueAt = 0; }
       // A PLAIN THREE IS A LAST RESORT: while the board is safe it is not played -- the bot waits, and the stack rises
       // to bring more to build with. (Breaking garbage, a chain, a bigger match and a topped-out board are not plain threes.)
-      if ((A || HT) && safeA && !d.overruled && d.kind === 'swap' && d.move && bot.threeOnlySwap(d.move)) { d = { kind: 'hold', overruled: true }; bot._threesHeld = (bot._threesHeld || 0) + 1; }
+      // (the attack profile: a three is played only when the survival search left nothing else -- bot.threeForced)
+      if (((A || HT) && safeA || (A && !bot.threeForced)) && !d.overruled && d.kind === 'swap' && d.move && bot.threeOnlySwap(d.move)) { d = { kind: 'hold', overruled: true }; bot._threesHeld = (bot._threesHeld || 0) + 1; }
       // WHILE THE BOARD IS SAFE AND THE OPPONENT IS NOT TOPPED OUT a combo is held back too: the bot builds toward a chain
       if (A && safeA && !(m.opp && m.opp.out) && !d.overruled && d.kind === 'swap' && d.move && bot.comboOnlySwap(d.move)) { d = { kind: 'hold', overruled: true }; bot._combosHeld = (bot._combosHeld || 0) + 1; }
       var why = null;

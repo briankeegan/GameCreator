@@ -2127,13 +2127,13 @@
     var st = this.stack || {};
     var bare = !(st.stopTime > 0) && !(st.preStopTime > 0) && !(st.shakeTime > 0);
     if (bare && (st.wasToppedOut || (this._board && this._boardToppedOut(this._board)))) {
-      if (cands.some(bareThree)) this.bareThreesTopped++;
+      if (cands.some(bareThree)) { this.bareThreesTopped++; this.threeForced = true; }
       return cands;
     }
     var tb = this.refuseThreeBreak, threes = function (c) { return bareThree(c) || (tb && threeBreak(c)); };
     var live = cands.filter(function (c) { return !threes(c); });
     if (live.length === cands.length) return cands;
-    if (!live.length) { this.bareThreesKept++; return cands; }
+    if (!live.length) { this.bareThreesKept++; this.threeForced = true; return cands; }
     this.bareThreesDropped += cands.length - live.length;
     return live;
   };
