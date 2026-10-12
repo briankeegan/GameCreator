@@ -157,14 +157,14 @@ module.exports = function think(cfg) {
         var garb = !!SH.lowestGarbageRow(board);
         safeA = !garb;
         if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
-        var oppOut = !A.ignoreOpp && !!(m.opp && m.opp.out);
+        var oppOut = !A.ignoreOpp && !!(m.opp && m.opp.out), aggro = !!A.aggro, minChainOf = A.minChain === undefined ? 4 : A.minChain;
         // BELOW lowTop AND NOT UNDER ATTACK, THE STACK IS RAISED, AND ON UNTIL raiseTo
         var quietBoard = comingRows === 0 && !(board.incoming && board.incoming.length);
         if (bot._refill && (SH.top(board) >= (A.raiseTo || 8) || !quietBoard)) bot._refill = false;
         else if (!bot._refill && SH.top(board) < (A.lowTop || 6) && quietBoard) bot._refill = true;
         // a chain running is left alone: a swap made while it goes can break it (not when the opponent is topped out: combos are short)
         var busy = (board.stopTime || 0) + (board.preStopTime || 0) > 0 || (board.chainCounter || 0) > 0;
-        if (busy && !oppOut) {
+        if (busy && (!oppOut || aggro)) {
           // a chain going is continued: the line of swaps made while it pops that makes it longest, else it is left alone
           var ex = attacker.extend(board, m.hold, { ms: Math.min(A.extendMs || 250, due ? Math.max(40, due - Date.now() - DEADLINE_MARGIN_MS) : 250), width: A.extendWidth || 40, depth: A.extendDepth || 6 });
           if (ex.seq.length && ex.cells >= ex.base + 6) { d = { kind: 'swap', move: ex.seq[0], overruled: true }; attackLine = ex.seq.slice(1); attackMove = ex.seq[0]; bot._extends = (bot._extends || 0) + 1; }
@@ -193,8 +193,8 @@ module.exports = function think(cfg) {
           // nothing on the board, nothing coming and the stack low: all the time and depth it takes to plan a big attack
           var quiet = !garb && comingRows === 0 && SH.top(board) < (A.quietTop || 9) && !(bot._planUntil > board.clock), P2 = quiet ? { ms: A.bigMs || 1500, width: A.bigWidth || 100, depth: A.bigDepth || 14 } : { ms: Math.min(A.ms || 300, due ? Math.max(40, due - Date.now() - DEADLINE_MARGIN_MS) : 300), width: A.width || 60, depth: A.depth || 10 };
           // the opponent topped out: any combo or chain there is, soonest. Not: a big chain, however tall the stack.
-          var minChain = oppOut ? 0 : (A.minChain || 4);
-          var floor = oppOut ? (A.outCells || 3) : 1;
+          var minChain = oppOut ? 0 : minChainOf;
+          var floor = oppOut || aggro ? (A.outCells || 3) : 1;
           var ap = attacker.plan(board, m.hold, { ms: oppOut ? Math.min(P2.ms, 300) : P2.ms, width: P2.width, depth: P2.depth, pool: A.pool || 250, stopAt: oppOut ? floor : 0, minChain: minChain, guideChain: A.guideChain });
           if (attackLogged++ < 60) console.error('ATTACK clock ' + board.clock + ' out ' + oppOut + ' quiet ' + quiet + ' plan ' + (ap ? ap.cells + ' cells chain ' + ap.chain + ' swaps ' + ap.seq.length + ' first ' + JSON.stringify(ap.seq[0] || null) + ' setup ' + JSON.stringify(ap.setup) + ' base ' + ap.base + ' in ' + ap.ms + ' ms' : 'none'));
           // a board that can be built on while it is low and little is coming: garbage on it or not, the bot builds a chain, it does not break
@@ -212,7 +212,7 @@ module.exports = function think(cfg) {
         var chainMs = due ? Math.min(A.chainMs || 250, due - Date.now() - DEADLINE_MARGIN_MS) : (A.chainMs || 250);
         if (chainMs >= 60) {
           if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
-          var cp = attacker.plan(board, m.hold, { ms: chainMs, width: A.width || 60, depth: A.chainSwaps || 6, pool: A.pool || 250, minChain: A.minChain || 4, guideChain: A.guideChain, arrivals: arrivals });
+          var cp = attacker.plan(board, m.hold, { ms: chainMs, width: A.width || 60, depth: A.chainSwaps || 6, pool: A.pool || 250, minChain: A.minChain === undefined ? 4 : A.minChain, guideChain: A.guideChain, arrivals: arrivals });
           if (cp && cp.cells >= 1 && cp.seq.length) { d = { kind: 'swap', move: cp.seq[0], overruled: true }; bot._attackCells = cp.cells; attackLine = cp.seq.slice(1); attackMove = cp.seq[0]; bot._planUntil = board.clock + 40 * cp.seq.length; bot._chainFirst = (bot._chainFirst || 0) + 1; }
         }
       }
@@ -235,7 +235,7 @@ module.exports = function think(cfg) {
       // (the attack profile: a three is played only when the survival search left nothing else -- bot.threeForced)
       if (((A || HT) && safeA || (A && !bot.threeForced)) && !d.overruled && d.kind === 'swap' && d.move && bot.threeOnlySwap(d.move)) { d = { kind: 'hold', overruled: true }; bot._threesHeld = (bot._threesHeld || 0) + 1; }
       // WHILE THE BOARD IS SAFE AND THE OPPONENT IS NOT TOPPED OUT a combo is held back too: the bot builds toward a chain
-      if (A && safeA && !oppOut && !d.overruled && d.kind === 'swap' && d.move && bot.comboOnlySwap(d.move)) { d = { kind: 'hold', overruled: true }; bot._combosHeld = (bot._combosHeld || 0) + 1; }
+      if (A && safeA && !oppOut && !A.aggro && !d.overruled && d.kind === 'swap' && d.move && bot.comboOnlySwap(d.move)) { d = { kind: 'hold', overruled: true }; bot._combosHeld = (bot._combosHeld || 0) + 1; }
       var why = null;
       if (process.env.GC_SURVIVOR_WHY) {
         var sp = bot._searchProofs;
@@ -286,7 +286,7 @@ module.exports = function think(cfg) {
     if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
     // a plan that cannot be made is no plan: the mind goes on with the match
     try {
-      var ap = attacker.plan(board, { left: 0, started: false }, { ms: A.warmMs || 2500, width: A.warmWidth || A.bigWidth || 100, depth: A.warmDepth || A.bigDepth || 14, pool: A.pool || 250, minChain: A.minChain || 4, guideChain: A.guideChain });
+      var ap = attacker.plan(board, { left: 0, started: false }, { ms: A.warmMs || 2500, width: A.warmWidth || A.bigWidth || 100, depth: A.warmDepth || A.bigDepth || 14, pool: A.pool || 250, minChain: A.minChain === undefined ? 4 : A.minChain, guideChain: A.guideChain });
       warmPlan = { key: boardKey(board), ap: ap, used: false };
       console.error('WARM plan ' + ap.cells + ' cells chain ' + ap.chain + ' swaps ' + ap.seq.length + ' in ' + ap.ms + ' ms');
     } catch (e) {
