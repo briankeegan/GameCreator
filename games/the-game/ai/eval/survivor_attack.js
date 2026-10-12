@@ -136,5 +136,32 @@ module.exports = function (opts) {
     best.ms = Date.now() - t0;
     return best;
   }
-  return { plan: plan, extend: extend };
+  // READY FOR THE GARBAGE ON ITS WAY: the board is played on to the frame the first arrival lands, and a swap that breaks it
+  // then (a three, a combo, anything) means the break is ready. Not ready: the swap made now after which it is.
+  // arrivals as the bot's serverArrivals; o: { ms }. Returns { ready, setup, at }.
+  function readyFor(board, hold, arrivals, o) {
+    var s = search(), t0 = Date.now(), first = null;
+    (arrivals || []).forEach(function (a) { if (first === null || a.at < first) first = a.at; });
+    if (first === null) return { ready: true, setup: null, at: 0 };
+    s.reset();
+    var root = s.root(board.copy(), hold, arrivals, false), wait = Math.max(1, first + 2);
+    function breaksAfterLanding(n) {
+      var land = n === root ? s.advance(n, 'long', null, wait) : s.advance(n, 'long', null, Math.max(1, wait - (n.t - root.t)));
+      if (!land || land.dead) return null;
+      var base = s.breaks(land), swaps = land.b.legalSwaps(), outs = s.advanceMany(swaps.map(function (m) { return [land, 'swap', m, 0]; }), true), any = false;
+      outs.forEach(function (out) { if (out && !out.dead && (out.brk !== undefined ? out.brk : s.breaks(out)) > base) any = true; });
+      return any;
+    }
+    var now = breaksAfterLanding(root);
+    if (now === null || now) return { ready: now === true, setup: null, at: first, ms: Date.now() - t0 };
+    var found = null;
+    var firsts = root.b.legalSwaps();
+    for (var i = 0; i < firsts.length && !found && Date.now() - t0 < (o.ms || 150); i++) {
+      var n1 = s.advance(root, 'swap', firsts[i], 0);
+      if (!n1 || n1.dead) continue;
+      if (breaksAfterLanding(n1)) found = firsts[i];
+    }
+    return { ready: false, setup: found, at: first, ms: Date.now() - t0 };
+  }
+  return { plan: plan, extend: extend, readyFor: readyFor };
 };
