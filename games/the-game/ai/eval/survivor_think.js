@@ -165,8 +165,7 @@ module.exports = function think(cfg) {
         // a chain running is left alone: a swap made while it goes can break it (not when the opponent is topped out: combos are short)
         // (stop time only matters to a stack that is topped out: with freeRaise a board whose panels have settled is free
         // again at once, and a raise ends the stop time that is left)
-        var busy = A.freeRaise ? ((board.chainCounter || 0) > 0 || (board.riseLock && (board.stopTime || 0) + (board.preStopTime || 0) > 0))
-                               : (board.stopTime || 0) + (board.preStopTime || 0) > 0 || (board.chainCounter || 0) > 0;
+        var busy = cascadeLive(board, A.freeRaise);
         if (busy && (!oppOut || aggro)) {
           // a chain going is continued: the line of swaps made while it pops that makes it longest, else it is left alone
           var ex = attacker.extend(board, m.hold, { ms: Math.min(A.extendMs || 250, due ? Math.max(40, due - Date.now() - DEADLINE_MARGIN_MS) : 250), width: A.extendWidth || 40, depth: A.extendDepth || 6 });
@@ -180,7 +179,7 @@ module.exports = function think(cfg) {
           d = { kind: 'swap', move: wp.seq[0], overruled: true }; bot._attackCells = wp.cells; attackLine = wp.seq.slice(1); attackMove = wp.seq[0]; bot._planUntil = board.clock + 40 * wp.seq.length;
           console.error('WARM played at ' + board.clock + ': ' + wp.cells + ' cells chain ' + wp.chain + ' swaps ' + wp.seq.length);
         }
-        else if (A.alwaysRaise && SH.top(board) < (A.raiseMax || 11) && bot._canRaise()) {
+        else if (A.alwaysRaise && SH.top(board) < raiseCap(board, comingRows, A) && bot._canRaise()) {
           // not in the middle of a chain: the stack is raised as far as it will go, garbage coming or not (the survival logic takes over when it is tall)
           d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1;
         }
@@ -213,6 +212,9 @@ module.exports = function think(cfg) {
           else if (building) { d = { kind: 'hold', overruled: true }; bot._buildHolds = (bot._buildHolds || 0) + 1; }
         }
       }
+      // THE STACK IS RAISED AS FAR AS IT WILL GO WHEREVER THE BOARD IS (alwaysRaise): past the gate too, garbage coming or not, until
+      // what is coming would no longer fit; the survival logic breaks what lands
+      if (A && A.alwaysRaise && !d && !cascadeLive(board, true) && SH.top(board) < raiseCap(board, comingRows, A) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1; }
       // A BIG CHAIN COMES FIRST WHEREVER THE BOARD IS: past the gate above (the stack tall, a lot coming, garbage all over it) a chain
       // the planner finds in a few swaps -- on the board with the garbage on its way counted -- is played before anything else
       if (A && !d && !(!A.ignoreOpp && m.opp && m.opp.out)) {
@@ -284,6 +286,22 @@ module.exports = function think(cfg) {
     }
   // THE COUNTDOWN IS PLANNING TIME: the board the match opens on is planned for while the game counts down, and the line
   // is played from the first frame the board still is what was planned for.
+  // A CHAIN OR A CLEAR IS LIVE: a chain counting, panels falling from a clear, or -- while stop time runs -- panels still matched
+  // or popping. Nothing is swapped then: a swap can take a panel out of what is about to fall or pop. With free, a board whose
+  // panels have all settled is free at once whatever stop time is left (it only matters to a stack that is topped out).
+  // How high the stack may be raised: raiseMax less the rows of garbage on their way and queued, so that what lands still fits.
+  function raiseCap(board, coming, A) {
+    var queued = 0;
+    (board.incoming || []).forEach(function (g) { queued += g.height || 0; });
+    return (A.raiseMax || 11) - coming - queued;
+  }
+  function cascadeLive(board, free) {
+    if ((board.chainCounter || 0) > 0) return true;
+    var stop = (board.stopTime || 0) + (board.preStopTime || 0) > 0;
+    if (!free) return stop;
+    if (typeof board.hasChainingPanels === 'function' && board.hasChainingPanels()) return true;
+    return stop && typeof board.hasActivePanels === 'function' && board.hasActivePanels();
+  }
   function boardKey(board) {
     var k = '', r, c;
     for (r = 1; r <= 12; r++) for (c = 1; c <= 6; c++) { var p = board.panels[r] && board.panels[r][c]; k += p ? (p.isGarbage ? 'G' : (p.color || 0)) : 0; }
