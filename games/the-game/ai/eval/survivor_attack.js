@@ -32,7 +32,7 @@ module.exports = function (opts) {
     if (!S) S = new N.Search({ reaction: opts.reaction, swapGap: opts.swapGap, cursorMoveFrames: opts.cursorMoveFrames, threads: 1 });
     return S;
   }
-  // o: { ms, width, depth, pool, stopAt, minChain, guideChain, arrivals }: arrivals is the garbage on its way, as the bot's serverArrivals; only a fire of a chain of minChain links or more counts; boards are ranked by fires of guideChain links or more; stopAt ends the search at the first depth with a fire of that many cells
+  // o: { ms, width, depth, pool, stopAt, minChain, guideChain, arrivals, rate }: with rate the fire kept is the best per swap of its line; arrivals is the garbage on its way, as the bot's serverArrivals; only a fire of a chain of minChain links or more counts; boards are ranked by fires of guideChain links or more; stopAt ends the search at the first depth with a fire of that many cells
   function plan(board, hold, o) {
     var s = search(), t0 = Date.now(), best = null;
     s.reset();
@@ -58,7 +58,9 @@ module.exports = function (opts) {
           if (g.chain >= (o.guideChain || o.minChain || 0) && shown > it.reach) it.reach = shown;
           g.cells = g.chain >= (o.minChain || 0) ? shown : 0;
           if (g.cells === 0) continue;
-          if (!best || g.cells > best.cells || (g.cells === best.cells && seq.length < best.seq.length)) best = { cells: g.cells, chain: g.chain, seq: seq, n: out };
+          // the fire kept: the most garbage, or with o.rate the most garbage for the time it takes (cells over swaps + rate) -- pressure, not the biggest
+          var rated = o.rate ? g.cells / (seq.length + o.rate) : g.cells, bestRated = best ? (o.rate ? best.cells / (best.seq.length + o.rate) : best.cells) : -1;
+          if (!best || rated > bestRated || (rated === bestRated && seq.length < best.seq.length)) best = { cells: g.cells, chain: g.chain, seq: seq, n: out };
         } else it.kids.push({ n: out, seq: it.seq.concat([m]) });
       }
       pool.sort(function (a, b) { return b.reach - a.reach || b.h - a.h; });
