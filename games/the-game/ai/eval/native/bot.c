@@ -3085,6 +3085,7 @@ static int tWalk(int *row, int r, int s, int t, int32_t *sw, int *n) {
 // the swaps played before the search's board (targetAfterDrops): every line found starts with them
 static JLOCAL int32_t tPfx[2 * LINEMAX]; static JLOCAL int tPfxN;
 static JLOCAL int tMatch = MINMATCH;   // the match length the shape being proposed makes (targetLines)
+static JLOCAL int tFrom = MINMATCH, tNeedBeside = 1;   // attackLines: matches of four or more anywhere, not only against garbage (stop time is a combo's, pa.c calculateStopTime)
 static void tProposeIn(const int32_t *sw, int n, int cr, int cc, double t0, double limit);
 static int tDupes;   // proposals already in the table (the trace's)
 static void tPropose(const int32_t *sw0, int n0, int cr, int cc, double t0, double limit) {
@@ -3427,17 +3428,18 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
   int N = st[O_N];
   int32_t sw[2 * LINEMAX]; int row[WMAX + 1];
   extern PATLS double paWork; double tw0 = paWork, tw1, tw2, tw3, tw4;
-  tDrops(cr, cc, t0, limit); tw1 = paWork;
+  if (tNeedBeside) tDrops(cr, cc, t0, limit);
+  tw1 = paWork;
   for (int a = 1; a <= N && workLeft() > 0; a++) {
     // M in a column, the game's minimum first and every longer length the board holds after it: each row's nearest panel of
     // the colour walked to it
-    for (int M = MINMATCH; M <= tH && (M == MINMATCH || !longSpent()); M++)
+    for (int M = tFrom; M <= tH && (M == tFrom || !longSpent()); M++)
       for (int c = 1; c <= tW; c++)
         for (int r = 1; r + M - 1 <= tH; r++) {
           if (!tSupported(r, c) && tCell[r][c] == 0) continue;
           int beside = 0;
           for (int i = 0; i < M && !beside; i++) beside = tBeside(r + i, c);
-          if (!beside) continue;
+          if (tNeedBeside && !beside) continue;
           int n = 0, ok = 1;
           for (int i = 0; i < M && ok; i++) {
             int rr = r + i, best = -1;
@@ -3453,11 +3455,11 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
     for (int r = 1; r <= tH; r++) {
       int pos[WMAX], np = 0;
       for (int s = 1; s <= tW; s++) if (tCell[r][s] == a) pos[np++] = s;
-      for (int M = MINMATCH; M <= np && (M == MINMATCH || !longSpent()); M++)
+      for (int M = tFrom; M <= np && (M == tFrom || !longSpent()); M++)
         for (int c = 1; c + M - 1 <= tW; c++) {
           int supported = 1, beside = 0;
           for (int i = 0; i < M; i++) { if (!tSupported(r, c + i)) supported = 0; if (tBeside(r, c + i)) beside = 1; }
-          if (!supported || !beside) continue;
+          if (!supported || (tNeedBeside && !beside)) continue;
           for (int j = 0; j + M - 1 < np; j++) {
             int n = 0, ok = 1, at[WMAX];
             for (int x = 1; x <= tW; x++) row[x] = tCell[r][x];
@@ -3471,6 +3473,7 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
     }
   }
   tw2 = paWork;
+  if (!tNeedBeside) return;   // attackLines: the shapes alone
   tStacks(N, cr, cc, t0, limit); tw3 = paWork;
   tRows(N, cr, cc, t0, limit); tw4 = paWork;
   tClears(cr, cc, t0, limit);
@@ -4051,6 +4054,33 @@ static void optAhead(Opt *o) {
 // chain any line reaches in the time there is is an option, the whole line judged on the engine and played on once chosen.
 static int boardDying(void) { return (BIN[IN_STOP] > 0 || BIN[IN_TOPPED]) && aloneOnEngine() && aloneDie(1 << 20) < LINEHORIZON; }   // a stop runs or the board is topped (a landing's shake holds it too), and the board left alone loses health within the judge's horizon, as far as it can say a line lives
 static int gScramble;   // this decision is a last resort: a stop or a topped board in danger, and no other option outlives the board left alone
+// THE DISTANCE PLANNER'S MATCHES OF FOUR OR MORE, anywhere (stop time is a combo's: pa.c calculateStopTime, a plain three gives none): the soonest few
+// are judged on the engine, and the one that lives longest is the line. The search that grows single swaps does not reach a match of four.
+#define ATKTRIES 4
+static int attackShapes(const int32_t *st, int cr, int cc, double t0, int32_t *bsw, int *bn) {
+  linesReset();
+  lsTopped = BIN[IN_TOPPED] != 0;
+  tFrom = MINMATCH + 1; tNeedBeside = 0;
+  targetLines(st, cr, cc, t0, timeLeft());
+  tFrom = MINMATCH; tNeedBeside = 1;
+  static unsigned char done[MAXLINES];
+  for (int i = 0; i < nLines; i++) done[i] = 0;
+  int best = -1, bestDie = aloneOnEngine() ? LNA[0] : 0;
+  for (int tried = 0; tried < ATKTRIES; tried++) {
+    int at = -1;
+    for (int i = 0; i < nLines; i++) if (!done[i] && (at < 0 || LINES[i].est < LINES[at].est)) at = i;
+    if (at < 0) break;
+    done[at] = 1;
+    if (workLeft() <= 0) break;
+    if (!(lineJudge(LINES[at].sw, LINES[at].n, 0) & LV_LIVES)) continue;
+    int die = lnoDie(LNO);
+    if (die > bestDie) { bestDie = die; best = at; }
+  }
+  if (best < 0) return 0;
+  *bn = LINES[best].n;
+  for (int k = 0; k < 2 * *bn; k++) bsw[k] = LINES[best].sw[k];
+  return 1;
+}
 static int reachOption(Opt *O, int n, Dec d, int frozen) {
   extern PATLS double paWork;
   if (!BIN[IN_HASPA] || paWork >= optLine()) {
@@ -4061,6 +4091,19 @@ static int reachOption(Opt *O, int n, Dec d, int frozen) {
   }
   static ST st; int32_t cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
   if (lineState(0, 0, st, can, w, cur, &t) != 0) return n;
+  if (gScramble) {
+    int32_t asw[2 * LINEMAX]; int an = 0;
+    if (attackShapes(st, cur[0], cur[1], t, asw, &an)) {
+      Opt *o = &O[n];
+      o->d = mkSwap(asw[0], asw[1], V_BESTATTACK, d.mode, d.alive);
+      o->n = an; o->wait = 0; o->pri = 2;
+      for (int q = 0; q < 2 * an; q++) o->sw[q] = asw[q];
+#ifndef __wasm__
+      if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "REACH planner match: %d swaps first %d,%d\n", an, asw[0], asw[1]); }
+#endif
+      if (optJudge(o)) n++;
+    }
+  }
   static ReachCtx rx; rx.best = atkOf(0, 0); rx.n = 0;
   double work = optLine() - paWork, cap = gScramble ? REACHSHARE() : REACHWORK; if (work > cap) work = cap;
   double rw0 = paWork;
