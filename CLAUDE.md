@@ -358,6 +358,19 @@ ways: a tool not listed, or a path listed that doesn't exist.
   build plays the same games every time: the way to compare two builds -- on
   the same engine: the scan runs on the `panel_game_ref` commit, and two scans
   compare only with the same one.
+- **No fixed numbers: the engine and the host say it.** The judge's reach
+  (`LINEHORIZON`) is the time the engine says the board has -- the rise at its
+  speed, the queue, the shake of the slab it lands, the drain -- plus the walk
+  (`lineHorizon`, set once a decision). A judged line, and the settle
+  simulation, run on while the engine keeps the board busy; each frame charges
+  the work, so the budget bounds them. The bot decides on the queue the game
+  shows: no wave is pretended before one is seen. A break converts one row of a
+  block (`pa.c matchGarbagePanels`), so a slab taller than the board holds one
+  row of the room (`slabRowsHeld`, `roomForBreak`). What the stages after one
+  keep (`stageLeaves`) is what they have taken lately, capped at twice their
+  shares, so a stage that takes what is left cannot starve the ones before it.
+  A new fixed number in these paths is a bug: derive it, or read it from
+  `BIN`.
 - **Survival is a loop on Actions. Run every step of it in the background**
   -- the push, the scan, the fetch, the rebuild -- so nothing waits on it. `ai-survival-scan.yml` plays all 24 seeds
   at once and keeps each seed's whole game (`game.log.gz`, every frame's bot
