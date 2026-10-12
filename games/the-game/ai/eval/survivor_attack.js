@@ -32,11 +32,11 @@ module.exports = function (opts) {
     if (!S) S = new N.Search({ reaction: opts.reaction, swapGap: opts.swapGap, cursorMoveFrames: opts.cursorMoveFrames, threads: 1 });
     return S;
   }
-  // o: { ms, width, depth, pool, stopAt, minChain, guideChain }: only a fire of a chain of minChain links or more counts; boards are ranked by fires of guideChain links or more; stopAt ends the search at the first depth with a fire of that many cells
+  // o: { ms, width, depth, pool, stopAt, minChain, guideChain, arrivals }: arrivals is the garbage on its way, as the bot's serverArrivals; only a fire of a chain of minChain links or more counts; boards are ranked by fires of guideChain links or more; stopAt ends the search at the first depth with a fire of that many cells
   function plan(board, hold, o) {
     var s = search(), t0 = Date.now(), best = null;
     s.reset();
-    var root = s.root(board.copy(), hold, [], false);
+    var root = s.root(board.copy(), hold, o.arrivals || [], false);
     // a cascade already running sends what it sends whatever is swapped: only what a swap adds to it counts
     var baseOut = s.advanceMany([[root, 'settle', null, 0]], true)[0], base = 0;
     if (baseOut && !baseOut.dead) { var bs = s.stepStats(baseOut); if (bs.cleared > 0) base = sent(bs).cells; }
