@@ -65,7 +65,8 @@ local mode = GameModes.getPreset(GameModes.IDs.ONE_PLAYER_TRAINING)
 local match = Match(GeneratorSource(SEED, true), mode.matchRules)
 local a = match:createStackWithSettings(LevelPresets.getModern(LEVEL), true, "controller")
 a:setMaxRunsPerFrame(1)
-local foe = match:createSimulatedStackWithSettings(basicTrainingMode(size[1], size[2]))
+local trainingMode = basicTrainingMode(size[1], size[2])
+local foe = match:createSimulatedStackWithSettings(trainingMode)
 foe:setMaxRunsPerFrame(1)
 match:addTarget(foe, a)
 match:start()
@@ -85,6 +86,7 @@ int nb_pressed(Board *b);
 int front_new(Board *b, int reaction, int allowRaise);
 int front_frame(int fid, Board *b);
 void front_opponent(int fid, int present, int topped);
+void front_lead(int fid, int frames);
 void bot_time(double ceilingMs, double lastMs, double leftMs);
 int botTraceOn;
 void *botLogTo;
@@ -239,6 +241,7 @@ while f < FRAMES do
   if (DEATHLOG > 0 or GAMELOG) and C.botTraceOn == 0 then mem = ffi.C.open_memstream(LOGP, LOGN); C.botLogTo = mem; C.botTraceOn = 1 end
   local tk1 = now()
   if not FIXED_BUDGET then C.bot_time(ThinkBudget.ceilingMillis(), lastThought * 1000, ThinkBudget.ceilingMillis() - loadMs) end
+  C.front_lead(fid, math.max(0, trainingMode.delayBeforeStart - f))   -- the preset's start delay: the frames left before its first attack
   local bits = os.getenv("GC_NOBOT") and 0 or C.front_frame(fid, board)
   local thought = loadMs + (now() - tk1)
   local blog = ""
