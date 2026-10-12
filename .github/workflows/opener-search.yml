@@ -22,6 +22,9 @@ on:
       plan:
         description: 'planner options (JSON) to run opener_plan.js with; empty: do not'
         default: ''
+      extend:
+        description: 'yes: run extend_replay.js (a chain going, continued) instead'
+        default: 'no'
 
 permissions:
   contents: read
@@ -36,13 +39,13 @@ jobs:
         with:
           node-version: 20
       - name: Search on the JS engine
-        if: ${{ inputs.js == 'yes' && inputs.plan == '' }}
+        if: ${{ inputs.js == 'yes' && inputs.plan == '' && inputs.extend != 'yes' }}
         timeout-minutes: 20
         run: |
           node games/the-game/ai/eval/opener_search.js '${{ inputs.seeds }}' '${{ inputs.ms }}' '${{ inputs.width }}' '${{ inputs.depth }}' 2>&1 | tee search.log
           sed 's/^/::notice title=opener::/' search.log
       - name: Search on the native engine
-        if: ${{ inputs.plan == '' }}
+        if: ${{ inputs.plan == '' && inputs.extend != 'yes' }}
         timeout-minutes: 20
         run: |
           node games/the-game/ai/eval/opener_native.js '${{ inputs.seeds }}' '${{ inputs.width }}' '${{ inputs.depth }}' 3 2>&1 | tee native.log
@@ -53,3 +56,9 @@ jobs:
         run: |
           node games/the-game/ai/eval/opener_plan.js '${{ inputs.seeds }}' '${{ inputs.plan }}' 2>&1 | tee plan.log
           sed 's/^/::notice title=plan::/' plan.log
+      - name: A chain going, continued
+        if: ${{ inputs.extend == 'yes' }}
+        timeout-minutes: 20
+        run: |
+          node games/the-game/ai/eval/extend_replay.js '${{ inputs.seeds }}' 2>&1 | tee extend.log
+          sed 's/^/::notice title=extend::/' extend.log
