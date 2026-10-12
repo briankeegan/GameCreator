@@ -3464,16 +3464,12 @@ static int sitDrops(const int32_t *res, const int32_t *sw, int n, double at, voi
   x->len[x->n] = n; for (int k = 0; k < 2 * n; k++) x->sw[x->n][k] = sw[k];
   return ++x->n >= TADTRIES ? SIT_TAKE : SIT_END;
 }
-// THE SOONEST LINE THAT LETS A PERCHED PILE DOWN, of the decision's search: when no line breaks yet, it is the step
-// toward one (breakPartial)
-static int tadN, tadDec = -1; static int32_t tadSw[2 * LINEMAX];
 static void targetAfterDrops(const int32_t *st, int cr, int cc, double t0, double limit) {
   if (tPfxN) return;
   static DropCtx x;
   x.g0 = garbSum(st); x.n = 0;
   if (!(x.g0 > 0)) return;
   searchInTime(st, cr, cc, t0, 0, limit, lsTopped, ENGINE_BASE ? ENGINE_CAN : 0, ENGINE_WAITS, TADWORK, sitDrops, &x, 0, 0, 0);
-  if (x.n > 0 && !tPfxN) { tadN = x.len[0]; for (int k = 0; k < 2 * tadN; k++) tadSw[k] = x.sw[0][k]; tadDec = btDecision; }
   // soonest drop first; timing wants only the soonest break, so it stops at the first board that gives one
   double bound0 = tTimeMin;
   for (int i = 0; i < x.n && workLeft() > 0 && !(tTimeMode && tTimeMin < bound0); i++) {
@@ -4255,15 +4251,6 @@ static Dec arbitrate(Dec d) {
 #define ROOMLEFT 4
 // BREAKING COMES FIRST.
 static Dec breakDeeper(Dec d);
-// INCREMENTAL PLANNING: with no line that breaks in the time there is, the step toward one -- the soonest line that lets the
-// pile down, played if it lives, loses health no sooner and leaves less hollow than the board left alone -- and the next decision plans on from the
-// board it makes. The arbiter weighs it against the hold.
-static Dec breakPartial(Dec d) {
-  if (tadDec != btDecision || tadN < 1 || !aloneOnEngine()) return d;
-  int v = lineJudge(tadSw, tadN, 0);
-  if (!(v & LV_LIVES) || !(HOLLOW(LNO) < HOLLOW(LNA)) || lnoDie(LNO) < lnoDie(LNA)) return d;
-  return mkSwap(tadSw[0], tadSw[1], V_BREAKREACH, d.mode, d.alive);
-}
 static Dec makeRoom(Dec d);
 static int roomForBreak(const int32_t *st);
 static Dec breakFirst(Dec d) {
@@ -4293,7 +4280,7 @@ static Dec breakFirst(Dec d) {
     for (int i = 0; i < nLines; i++) { if (LINES[i].grown) g++; if (LINES[i].verdict != 0) live++; }
     fprintf(BLOG, "BREAKFIRST lines %d grown %d open %d k %g\n", nLines, g, live, timeLeft()); }
 #endif
-  if (!l) { Dec m = breakDeeper(d); return m.via == V_BREAKREACH ? m : breakPartial(m); }
+  if (!l) return breakDeeper(d);
   // ROOM FIRST: a break whose panels the board cannot hold tops it out with
   // them; while a clear can make the room and lives, it goes first
   if (!roomForBreak(DBASE)) {
