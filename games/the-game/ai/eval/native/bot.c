@@ -4049,12 +4049,21 @@ static int boardDying(void) { return (BIN[IN_STOP] > 0 || BIN[IN_TOPPED]) && alo
 static int gScramble;   // this decision is a last resort: a stop or a topped board in danger, and no other option outlives the board left alone
 static int reachOption(Opt *O, int n, Dec d, int frozen) {
   extern PATLS double paWork;
-  if (!BIN[IN_HASPA] || paWork >= optLine()) return n;
+  if (!BIN[IN_HASPA] || paWork >= optLine()) {
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "REACH scramble %d no work: %.0f of %.0f\n", gScramble, paWork, optLine()); }
+#endif
+    return n;
+  }
   static ST st; int32_t cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
   if (lineState(0, 0, st, can, w, cur, &t) != 0) return n;
   static ReachCtx rx; rx.best = atkOf(0, 0); rx.n = 0;
   double work = optLine() - paWork; if (work > REACHWORK) work = REACHWORK;
+  double rw0 = paWork;
   searchInTime(st, cur[0], cur[1], t, 0, timeLeft(), frozen, can, w, work, sitReach, &rx, 0, 0, 0);
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "REACH scramble %d work %.0f of %.0f time %.0f found %d size %d chain %d\n", gScramble, paWork - rw0, work, timeLeft(), rx.n, rx.best.size, rx.best.chain); }
+#endif
   if (!rx.n) return n;
   Opt *o = &O[n];
   o->d = mkSwap(rx.sw[0], rx.sw[1], V_BESTATTACK, d.mode, d.alive);
