@@ -4630,7 +4630,7 @@ int lineLandedK(const int32_t *steps, int n, int k, int32_t *masks, uint32_t *ca
 // soonest first (searchInTime); `br, bc` its first step.
 static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc) {
   uint32_t can[WMAX]; Wait wt[32][WMAX]; int32_t cur[2], t;
-  int last = -1, found = 0; double die = LINEREACH;
+  int last = -1, found = 0; double die = LINEREACH, heldTo = INF;
   for (int k = 1; !found; k++) {
     // A SLAB THAT DOES NOT COME DOWN waits on the pile until a break makes it
     // room: ready is then a break in time against the garbage the board holds
@@ -4638,7 +4638,7 @@ static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc) {
     int landed = lineLandedK(sw, n, k, RBL, can, wt, cur, &t) == 0;
     if (!landed && (k > 1 || lineState(sw, n, RBL, can, wt, cur, &t) != 0 || !hasGarbage(RBL))) return 0;
     // a slab that tops the board out as it lands holds it for its shake and then its health (pa.c checkDeath): the break has until then
-    double heldTo = INF;
+    heldTo = INF;
     if (landed && tallestBoard(RBL) >= BH) heldTo = t + dmax(0, BIN[IN_SF + 4]) + dmax(0, BIN[IN_HEALTH]);
     if (last < 0) die = lineEnds(sw, n, &last);
     if (heldTo < die) die = heldTo;
@@ -4657,7 +4657,7 @@ static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc) {
       fprintf(BLOG, " slab %d at %d, cursor %d,%d, break %d,%d |", k, t, cur[0], cur[1], found ? *br : 0, found ? *bc : 0);
       traceMasks(RBL); fprintf(BLOG, "\n"); }
 #endif
-    if (!landed) break;
+    if (!landed || heldTo < INF) break;   // a board the slab tops takes no next slab (pa.c shouldDropGarbage)
   }
   return found;
 }
