@@ -2124,7 +2124,7 @@
   };
   PuyoCpu.prototype._noBareThree = function (cands, strict) {
     if (!this.refuseBareThree || !cands || !cands.length) return cands;
-    if (strict && this.noThreesUntilTopped) {
+    if (strict && this.noThreesUntilTopped && !this._danger) {
       var stk = this.stack || {};
       if (stk.wasToppedOut || (this._board && this._boardToppedOut(this._board))) { this.threeForced = true; return cands; }
       var tbs = this.refuseThreeBreak, notThree = cands.filter(function (c) { return !(bareThree(c) || (tbs && threeBreak(c))); });

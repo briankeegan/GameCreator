@@ -152,8 +152,16 @@ module.exports = function think(cfg) {
       // a board with no garbage on it, little coming and the stack low is safe: a plain three is not played on it
       if (HT && !SH.lowestGarbageRow(board) && comingRows <= (HT.maxComing === undefined ? 6 : HT.maxComing) && SH.top(board) < (HT.maxTop || 8)) safeA = true;
       bot._attackCells = 0;
+      // LIFE COMES BEFORE ANYTHING ELSE (lifeFirst): when the stack is topped out, garbage has landed on a stack that is tall, or what is
+      // coming and queued would fill it, the attack logic is off and the survival logic decides, threes included
+      var queuedRows = 0;
+      (board.incoming || []).forEach(function (g) { queuedRows += g.height || 0; });
+      var toppedEarly = typeof board.isToppedOut === 'function' && board.isToppedOut();
+      var danger = !!(A && A.lifeFirst && (toppedEarly || (SH.lowestGarbageRow(board) && SH.top(board) >= (A.dangerTop || 9)) || SH.top(board) + comingRows + queuedRows >= 12 - (A.dangerRoom === undefined ? 1 : A.dangerRoom)));
+      bot._danger = danger;
+      if (danger) bot._dangers = (bot._dangers || 0) + 1;
       // A BIG CHAIN COMES BEFORE EVERYTHING ELSE: with garbage on the board only a chain found is played (the setups, raising and the holds are for a board without)
-      if (A && comingRows <= (A.maxComing === undefined ? 6 : A.maxComing) && SH.top(board) < (A.maxTop || 8)) {
+      if (A && !danger && comingRows <= (A.maxComing === undefined ? 6 : A.maxComing) && SH.top(board) < (A.maxTop || 8)) {
         var garb = !!SH.lowestGarbageRow(board);
         safeA = !garb;
         if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
@@ -222,10 +230,10 @@ module.exports = function think(cfg) {
       }
       // THE STACK IS RAISED AS FAR AS IT WILL GO WHEREVER THE BOARD IS (alwaysRaise): past the gate too, garbage coming or not, until
       // what is coming would no longer fit; the survival logic breaks what lands
-      if (A && A.alwaysRaise && !d && !cascadeLive(board, true) && SH.top(board) < raiseCap(board, comingRows, A) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1; }
+      if (A && !danger && A.alwaysRaise && !d && !cascadeLive(board, true) && SH.top(board) < raiseCap(board, comingRows, A) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1; }
       // A BIG CHAIN COMES FIRST WHEREVER THE BOARD IS: past the gate above (the stack tall, a lot coming, garbage all over it) a chain
       // the planner finds in a few swaps -- on the board with the garbage on its way counted -- is played before anything else
-      if (A && !d && !(!A.ignoreOpp && m.opp && m.opp.out)) {
+      if (A && !danger && !d && !(!A.ignoreOpp && m.opp && m.opp.out)) {
         var chainMs = due ? Math.min(A.chainMs || 250, due - Date.now() - DEADLINE_MARGIN_MS) : (A.chainMs || 250);
         if (chainMs >= 60) {
           if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
@@ -252,9 +260,9 @@ module.exports = function think(cfg) {
       // (the attack profile: a three is played only when the survival search left nothing else -- bot.threeForced)
       // (threesOnlyTopped: not even then, unless the stack is topped out -- a failsafe)
       var toppedNow = typeof board.isToppedOut === 'function' && board.isToppedOut();
-      if ((((A || HT) && safeA || (A && !bot.threeForced)) || (A && A.threesOnlyTopped && !toppedNow)) && !d.overruled && d.kind === 'swap' && d.move && bot.threeOnlySwap(d.move)) { d = { kind: 'hold', overruled: true }; bot._threesHeld = (bot._threesHeld || 0) + 1; }
+      if ((((A || HT) && safeA || (A && !bot.threeForced)) || (A && A.threesOnlyTopped && !toppedNow && !danger)) && !d.overruled && d.kind === 'swap' && d.move && bot.threeOnlySwap(d.move)) { d = { kind: 'hold', overruled: true }; bot._threesHeld = (bot._threesHeld || 0) + 1; }
       // A CLEAR THAT LEAVES THE STACK UNDER minRows ROWS is not made while the stack is not topped out: panels are kept to break what lands with
-      if (A && A.minRows && !toppedNow && !d.overruled && d.kind === 'swap' && d.move) {
+      if (A && A.minRows && !toppedNow && !danger && !d.overruled && d.kind === 'swap' && d.move) {
         var mc = (bot._allCands || []).filter(function (c) { return c.kind === 'swap' && c.move && c.move[0] === d.move[0] && c.move[1] === d.move[1]; })[0];
         var sb = mc && mc.resolved && mc.resolved.clearedPanels > 0 ? bot._settledOf(mc) : null;
         if (sb && sb.grid && lowPeakOf(sb.grid) < A.minRows) { d = { kind: 'hold', overruled: true }; bot._rowsHeld = (bot._rowsHeld || 0) + 1; }
@@ -267,7 +275,7 @@ module.exports = function think(cfg) {
         why = { provenRanks: provenRanked.join(' '), ranked: ranked.join(' '), want: Object.keys(want), cands: sp ? sp.cands.map(key) : null, proven: sp ? sp.cands.filter(function (c, i) { return sp.proofs[i]; }).map(key) : null };
       }
       // (no three is played below the top, so no aimed lineup to a break -- its last swap is a three -- is either)
-      var noAimed = !!(A && A.threesOnlyTopped && !toppedNow);
+      var noAimed = !!(A && A.threesOnlyTopped && !toppedNow && !danger);
       d = SP.overrule(d, noAimed ? Object.assign({}, prep, { br: null, want: {} }) : prep, bot);   // a lineup while a slab pops (survivor_prefer.js)
       var overruled = !!d.overruled;
       var took = Date.now() - t1;
@@ -276,7 +284,7 @@ module.exports = function think(cfg) {
       // on while the next decision is late: steps as the search played them
       // ([row, col], 'raise', null for a hold, { long: until }), from lineAt.
       var fl = overruled ? null : bot._following, line = fl && !fl.hold && fl.steps && fl.steps.length ? fl.steps : null;
-      if (A && A.threesOnlyTopped && !toppedNow) line = null;
+      if (A && A.threesOnlyTopped && !toppedNow && !danger) line = null;
       // An aimed lineup is its whole path: the swaps after the first are the
       // line, from wherever the first ends.
       var lineFree = false;
@@ -287,7 +295,7 @@ module.exports = function think(cfg) {
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
             mem: NativeMem(),
             breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
-            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0 } };
+            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0 } };
     } catch (e) {
       if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
       else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e) + ' [inc ' + (board && board.incoming ? board.incoming.length : '?') + ', arr ' + (m.arrivals ? m.arrivals.length : '?') + ']', ms: Date.now() - t0 };
