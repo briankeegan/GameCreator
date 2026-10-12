@@ -2225,7 +2225,7 @@ int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_
 // DROPS: more garbage at rest starts to fall than left alone. FILLS: less
 // hollow under the garbage that lands than left alone (pa.c HOLLOW).
 
-typedef struct { int n, brk, ok, grown, waitAll, hollow, conv, die, size, chain; int32_t sw[2 * LINEMAX]; double est, life; int verdict; } LineC;
+typedef struct { int n, brk, ok, grown, waitAll, hollow, conv, die, size, chain, pm; int32_t sw[2 * LINEMAX]; double est, life; int verdict; } LineC;
 // A LINE'S LIFE, what survival RANKS by: the frame it loses health, less what
 // its hollow costs. (The floors -- arbitrate, the kept line -- stay on the
 // frame itself: no choice may lose health sooner, whatever its shape.) A
@@ -2961,7 +2961,7 @@ static int sitCollect(const int32_t *res, const int32_t *sw, int n, double at, v
   if (nLines >= MAXLINES) return SIT_TAKE;   // full: the search ends
   if (nPfx + n > LINEMAX) return SIT_END;    // longer than a line holds: not kept, not grown
   LineC *l = &LINES[nLines++];
-  l->n = nPfx + n; l->brk = brk; l->est = pfxT + at; l->verdict = -1; l->grown = nPfx; l->waitAll = 0;
+  l->n = nPfx + n; l->brk = brk; l->est = pfxT + at; l->verdict = -1; l->grown = nPfx; l->waitAll = 0; l->pm = MINMATCH;
   for (int k = 0; k < 2 * nPfx; k++) l->sw[k] = pfx[k];
   for (int k = 0; k < 2 * n; k++) l->sw[2 * nPfx + k] = sw[k];
   return SIT_END;   // a line ends at its first clear or break
@@ -3073,6 +3073,7 @@ static int tWalk(int *row, int r, int s, int t, int32_t *sw, int *n) {
 // tTimeMode: the search only measures -- the frames to the soonest break it finds.
 // the swaps played before the search's board (targetAfterDrops): every line found starts with them
 static JLOCAL int32_t tPfx[2 * LINEMAX]; static JLOCAL int tPfxN;
+static JLOCAL int tMatch = MINMATCH;   // the match length the shape being proposed makes (targetLines)
 static void tProposeIn(const int32_t *sw, int n, int cr, int cc, double t0, double limit);
 static int tDupes;   // proposals already in the table (the trace's)
 static void tPropose(const int32_t *sw0, int n0, int cr, int cc, double t0, double limit) {
@@ -3090,7 +3091,7 @@ static void tPropose(const int32_t *sw0, int n0, int cr, int cc, double t0, doub
   if (tTimeMode) { if (at < tTimeMin) tTimeMin = at; return; }
   if (at > limit) return;
   LineC *l = &LINES[nLines++];
-  l->n = n; l->brk = 1; l->est = at; l->verdict = -1; l->grown = 0; l->waitAll = 0;
+  l->n = n; l->brk = 1; l->est = at; l->verdict = -1; l->grown = 0; l->waitAll = 0; l->pm = tMatch;
   for (int k = 0; k < 2 * n; k++) l->sw[k] = sw[k];
 }
 static void tProposeIn(const int32_t *sw, int n, int cr, int cc, double t0, double limit) {
@@ -3102,7 +3103,7 @@ static void tProposeIn(const int32_t *sw, int n, int cr, int cc, double t0, doub
   if (tTimeMode) { if (at < tTimeMin) tTimeMin = at; return; }
   if (at > limit) return;
   LineC *l = &LINES[nLines++];
-  l->n = n; l->brk = 1; l->est = at; l->verdict = -1; l->grown = 0; l->waitAll = 0;
+  l->n = n; l->brk = 1; l->est = at; l->verdict = -1; l->grown = 0; l->waitAll = 0; l->pm = tMatch;
   for (int k = 0; k < 2 * n; k++) l->sw[k] = sw[k];
 }
 // The grid the distance searches read; 1 if it holds garbage.
@@ -3429,7 +3430,7 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
             for (int x = 1; x <= tW; x++) row[x] = tCell[rr][x];
             ok = tWalk(row, rr, best, c, sw, &n);
           }
-          if (ok && n > 0) tPropose(sw, n, cr, cc, t0, limit);
+          if (ok && n > 0) { tMatch = M; tPropose(sw, n, cr, cc, t0, limit); tMatch = MINMATCH; }
         }
     // M in a row: the colour's panels in the row, the nearest M walked together
     for (int r = 1; r <= tH; r++) {
@@ -3447,7 +3448,7 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
             // the panels left of their targets walk right, rightmost first; then the rest
             for (int i = M - 1; i >= 0 && ok; i--) if (at[i] < c + i) { ok = tWalk(row, r, at[i], c + i, sw, &n); at[i] = c + i; }
             for (int i = 0; i < M && ok; i++) if (at[i] > c + i) { ok = tWalk(row, r, at[i], c + i, sw, &n); at[i] = c + i; }
-            if (ok && n > 0) tPropose(sw, n, cr, cc, t0, limit);
+            if (ok && n > 0) { tMatch = M; tPropose(sw, n, cr, cc, t0, limit); tMatch = MINMATCH; }
           }
         }
     }
@@ -3540,6 +3541,7 @@ static void linesFind(int depth, int breaks) {
 // never depends on the order found.
 static int lineBefore(const LineC *a, const LineC *b) {
   if (a->brk != b->brk) return a->brk;
+  if (a->pm != b->pm) return a->pm > b->pm;   // a longer match is weighed before a shorter, never by how soon it is done
   if (a->est != b->est) return a->est < b->est;
   int m = a->n < b->n ? a->n : b->n;
   for (int k = 0; k < 2 * m; k++) if (a->sw[k] != b->sw[k]) return a->sw[k] < b->sw[k];
