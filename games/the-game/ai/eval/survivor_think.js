@@ -266,9 +266,15 @@ module.exports = function think(cfg) {
     if (!A) return;
     var board = PA.revive(m.packed ? require('v8').deserialize(m.packed) : m.board);
     if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
-    var ap = attacker.plan(board, { left: 0, started: false }, { ms: A.warmMs || 2500, width: A.warmWidth || 100, depth: A.warmDepth || 16, pool: A.pool || 250, minChain: A.minChain || 4, guideChain: A.guideChain });
-    warmPlan = { key: boardKey(board), ap: ap, used: false };
-    console.error('WARM plan ' + ap.cells + ' cells chain ' + ap.chain + ' swaps ' + ap.seq.length + ' in ' + ap.ms + ' ms');
+    // a plan that cannot be made is no plan: the mind goes on with the match
+    try {
+      var ap = attacker.plan(board, { left: 0, started: false }, { ms: A.warmMs || 2500, width: A.warmWidth || A.bigWidth || 100, depth: A.warmDepth || A.bigDepth || 14, pool: A.pool || 250, minChain: A.minChain || 4, guideChain: A.guideChain });
+      warmPlan = { key: boardKey(board), ap: ap, used: false };
+      console.error('WARM plan ' + ap.cells + ' cells chain ' + ap.chain + ' swaps ' + ap.seq.length + ' in ' + ap.ms + ' ms');
+    } catch (e) {
+      warmPlan = null;
+      console.error('WARM plan failed: ' + String(e && e.message || e));
+    }
   }
   function reset() { if (bot && bot._nat) nat = bot._nat; if (bot && bot._candNat) candNat = bot._candNat; bot = null; snap = null; }
   // New weights take effect from the next match (reset).
