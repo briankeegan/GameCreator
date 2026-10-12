@@ -88,5 +88,51 @@ module.exports = function (opts) {
     best.ms = Date.now() - t0;
     return best;
   }
-  return { plan: plan };
+  // A CHAIN GOING IS CONTINUED: from a board mid-cascade (stop time running), the swaps made while it pops that make
+  // it longer. A beam over swaps played as the cascade runs, each board ranked by what the cascade sends once it
+  // settles; the line ends at the board that sends the most. o: { ms, width, depth }
+  function extend(board, hold, o) {
+    var s = search(), t0 = Date.now();
+    s.reset();
+    var root = s.root(board.copy(), hold, [], false);
+    function sends(nodes) {
+      var outs = s.advanceMany(nodes.map(function (n) { return [n, 'settle', null, 0]; }), true);
+      return outs.map(function (out) {
+        if (!out || out.dead) return null;
+        var st = s.stepStats(out), g = sent(st);
+        return { cells: g.cells, chain: g.chain };
+      });
+    }
+    var base = sends([root])[0] || { cells: 0, chain: 0 };
+    var best = { cells: base.cells, chain: base.chain, seq: [], base: base.cells };
+    var pool = [{ n: root, seq: [] }];
+    for (var d = 1; d <= o.depth && pool.length && Date.now() - t0 < o.ms; d++) {
+      var jobs = [], meta = [];
+      pool.forEach(function (it) { it.n.b.legalSwaps().forEach(function (m) { jobs.push([it.n, 'swap', m, 0]); meta.push([it, m]); }); });
+      var outs = s.advanceMany(jobs, false), kids = [];
+      outs.forEach(function (out, i) { if (out && !out.dead) kids.push({ n: out, seq: meta[i][0].seq.concat([meta[i][1]]) }); });
+      var got = sends(kids.map(function (k) { return k.n; })), next = [];
+      kids.forEach(function (k, i) {
+        var g = got[i];
+        if (!g) return;
+        k.score = g.cells;
+        k.h = connected(k.n.b.grid);
+        if (g.cells > best.cells) best = { cells: g.cells, chain: g.chain, seq: k.seq, base: base.cells };
+        next.push(k);
+      });
+      var seen = {};
+      next = next.filter(function (k) { var key = String(k.n.b.key); if (seen[key]) return false; seen[key] = 1; return true; });
+      next.sort(function (a, b) { return b.score - a.score || b.h - a.h; });
+      var keepNodes = next.slice(0, o.width);
+      var keep = new Set(keepNodes.map(function (k) { return k.n; }));
+      var spent = [];
+      outs.forEach(function (out) { if (out && !out.dead && !keep.has(out)) spent.push(out); });
+      pool.forEach(function (it) { if (it.n !== root && !keep.has(it.n)) spent.push(it.n); });
+      if (spent.length) s.drop(spent);
+      pool = keepNodes;
+    }
+    best.ms = Date.now() - t0;
+    return best;
+  }
+  return { plan: plan, extend: extend };
 };

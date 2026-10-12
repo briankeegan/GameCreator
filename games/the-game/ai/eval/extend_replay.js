@@ -20,7 +20,7 @@ function chainOf(stat) { var m = 0; for (var i = 0; i < stat.chainAt.length; i++
 N.init();
 var S = new N.Search({ reaction: 12, swapGap: 12, cursorMoveFrames: 4, threads: 1 });
 var attacker = ATTACK({ reaction: 12, swapGap: 12, cursorMoveFrames: 4 });
-var agree = 0, tried = 0, gained = 0, cases = 0, bestSum = 0, baseSum = 0;
+var exBase = 0, exBest = 0, exGain = 0, agree = 0, tried = 0, gained = 0, cases = 0, bestSum = 0, baseSum = 0;
 SEEDS.forEach(function (seed) {
   var b0 = opening(seed), ap = attacker.plan(b0.copy(), { left: 0, started: false }, { ms: 1500, width: 100, depth: 14, pool: 250, minChain: 2 });
   if (!ap.seq.length) return;
@@ -50,9 +50,12 @@ SEEDS.forEach(function (seed) {
       tried++;
       if (chainOf(S.stepStats(o)) === js[ms[j]]) agree++;
     });
-    cases++; baseSum += base; bestSum += best;
+    var ex = attacker.extend(mid.copy(), { left: 0, started: false }, { ms: 1500, width: 60, depth: 8 });
+    console.log('  continued: cells ' + ex.base + ' -> ' + ex.cells + ' (chain ' + ex.chain + ') in ' + ex.seq.length + ' swaps, ' + ex.ms + ' ms');
+    cases++; baseSum += base; bestSum += best; exBase += ex.base; exBest += ex.cells; if (ex.cells > ex.base) exGain++;
     if (best > base) gained++;
     console.log('seed ' + seed + ' frame +' + F + ': chain ' + base + ' left alone, ' + best + ' with a swap' + (bestMove ? ' at ' + bestMove : ''));
   });
 });
+console.log('continued by a line of swaps: more garbage in ' + exGain + ' of ' + cases + ' cases (mean cells ' + (exBase / cases).toFixed(1) + ' -> ' + (exBest / cases).toFixed(1) + ')');
 console.log('native agrees with the JS engine on ' + agree + ' of ' + tried + ' swaps; a swap lengthens the chain in ' + gained + ' of ' + cases + ' cases (mean ' + (baseSum / cases).toFixed(2) + ' -> ' + (bestSum / cases).toFixed(2) + ')');
