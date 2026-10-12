@@ -32,7 +32,7 @@ module.exports = function (opts) {
     if (!S) S = new N.Search({ reaction: opts.reaction, swapGap: opts.swapGap, cursorMoveFrames: opts.cursorMoveFrames, threads: 1 });
     return S;
   }
-  // o: { ms, width, depth, pool, stopAt }: stopAt ends the search at the first depth with a fire of that many cells
+  // o: { ms, width, depth, pool, stopAt, minChain }: only a fire of a chain of minChain links or more counts; stopAt ends the search at the first depth with a fire of that many cells
   function plan(board, hold, o) {
     var s = search(), t0 = Date.now(), best = null;
     s.reset();
@@ -53,7 +53,7 @@ module.exports = function (opts) {
         var st = s.stepStats(out);
         if (st.cleared > 0) {
           var g = sent(st), seq = it.seq.concat([m]);
-          g.cells = Math.max(0, g.cells - base);
+          g.cells = g.chain >= (o.minChain || 0) ? Math.max(0, g.cells - base) : 0;
           if (g.cells > it.reach) it.reach = g.cells;
           if (!best || g.cells > best.cells || (g.cells === best.cells && seq.length < best.seq.length)) best = { cells: g.cells, chain: g.chain, seq: seq, n: out };
         } else it.kids.push({ n: out, seq: it.seq.concat([m]) });

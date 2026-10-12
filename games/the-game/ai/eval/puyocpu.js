@@ -2100,6 +2100,18 @@
     for (var i = 0; i < sizes.length; i++) if (sizes[i] > 3) return false;
     return true;
   }
+  // A move whose clears are combos only: no chain, no garbage broken.
+  PuyoCpu.prototype.comboOnlySwap = function (move) {
+    var all = this._allCands || [];
+    for (var i = 0; i < all.length; i++) {
+      var c = all[i];
+      if (c.kind === 'swap' && c.move && c.move[0] === move[0] && c.move[1] === move[1]) {
+        var r = c.resolved;
+        return !!(r && r.comboSizes && r.comboSizes.length && (r.chainLength || 0) < 2 && !((r.brokeGarbage || 0) > 0));
+      }
+    }
+    return false;
+  };
   // Is this swap, among the decision's candidates, a move of bare threes (with threeBreaksLast, of threes that break garbage too).
   PuyoCpu.prototype.threeOnlySwap = function (move) {
     var all = this._allCands || [], i;
