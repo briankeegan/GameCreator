@@ -88,3 +88,11 @@ if [ "$other" -eq 0 ] && ! grep -q "^$run	" "$hist"; then
 $trailer" -- survival_scans.tsv && git -C "$here" pull -q --rebase --autostash origin main && git -C "$here" push -q origin HEAD:main || echo "scan_deaths: the scan's line is not pushed" >&2
 fi
 echo "$bstatus: $tover frames over the 8 ms think budget in $tseeds seeds, slowest decision $tworst ms | input budget: most $imost actions in a window, $iover frames over"
+# THE BUDGET MUST NOT GET WORSE: against the last scan of this mode before it, frames over the think budget and the slowest decision
+prev=$(awk -F'\t' -v m="${GC_MODE:-combo_storm}" -v r="$run" '$1 != r && (($7 == "" ? "combo_storm" : $7) == m) { l = $5 " " $6 " " $1 } END { print l }' "$hist")
+if [ -n "$prev" ]; then
+  set -- $prev
+  if [ "${tover:-0}" -gt "$1" ] || awk -v a="${tworst:-0}" -v b="$2" 'BEGIN { exit !(a > b) }'; then
+    echo "BUDGET WORSE than scan $3 (${GC_MODE:-combo_storm}): think-over frames $1 -> ${tover:-0}, slowest $2 -> ${tworst:-0} ms -- find the path that costs more than its work charge and calibrate it before going on" >&2
+  fi
+fi
