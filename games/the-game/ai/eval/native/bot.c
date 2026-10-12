@@ -3401,6 +3401,8 @@ static void tClears(int cr, int cc, double t0, double limit) {
         }
     }
 }
+// THE LONGER MATCHES come after the shorter, and only while the planner's work is not spent and more than the arbiter's final judges is left
+static int longSpent(void) { return growSpent() || workLeft() <= FINALJUDGES * jdCost; }
 static void targetLines(const int32_t *st, int cr, int cc, double t0, double limit) {
   // the planner's work stops where the decision's does (workLeft): at the
   // head of every loop that proposes, so no one call runs past it
@@ -3409,40 +3411,45 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
   int32_t sw[2 * LINEMAX]; int row[WMAX + 1];
   tDrops(cr, cc, t0, limit);
   for (int a = 1; a <= N && workLeft() > 0; a++) {
-    // three in a column: each row's nearest panel of the colour walked to it
-    for (int c = 1; c <= tW; c++)
-      for (int r = 1; r + 2 <= tH; r++) {
-        if (!tSupported(r, c) && tCell[r][c] == 0) continue;
-        if (!tBeside(r, c) && !tBeside(r + 1, c) && !tBeside(r + 2, c)) continue;
-        int n = 0, ok = 1;
-        for (int i = 0; i < 3 && ok; i++) {
-          int rr = r + i, best = -1;
-          for (int s = 1; s <= tW; s++)
-            if (tCell[rr][s] == a && (best < 0 || (s > c ? s - c : c - s) < (best > c ? best - c : c - best))) best = s;
-          if (best < 0) { ok = 0; break; }
-          for (int x = 1; x <= tW; x++) row[x] = tCell[rr][x];
-          ok = tWalk(row, rr, best, c, sw, &n);
+    // M in a column, the game's minimum first and every longer length the board holds after it: each row's nearest panel of
+    // the colour walked to it
+    for (int M = MINMATCH; M <= tH && (M == MINMATCH || !longSpent()); M++)
+      for (int c = 1; c <= tW; c++)
+        for (int r = 1; r + M - 1 <= tH; r++) {
+          if (!tSupported(r, c) && tCell[r][c] == 0) continue;
+          int beside = 0;
+          for (int i = 0; i < M && !beside; i++) beside = tBeside(r + i, c);
+          if (!beside) continue;
+          int n = 0, ok = 1;
+          for (int i = 0; i < M && ok; i++) {
+            int rr = r + i, best = -1;
+            for (int s = 1; s <= tW; s++)
+              if (tCell[rr][s] == a && (best < 0 || (s > c ? s - c : c - s) < (best > c ? best - c : c - best))) best = s;
+            if (best < 0) { ok = 0; break; }
+            for (int x = 1; x <= tW; x++) row[x] = tCell[rr][x];
+            ok = tWalk(row, rr, best, c, sw, &n);
+          }
+          if (ok && n > 0) tPropose(sw, n, cr, cc, t0, limit);
         }
-        if (ok && n > 0) tPropose(sw, n, cr, cc, t0, limit);
-      }
-    // three in a row: the colour's panels in the row, the nearest three walked together
+    // M in a row: the colour's panels in the row, the nearest M walked together
     for (int r = 1; r <= tH; r++) {
       int pos[WMAX], np = 0;
       for (int s = 1; s <= tW; s++) if (tCell[r][s] == a) pos[np++] = s;
-      if (np < 3) continue;
-      for (int c = 1; c + 2 <= tW; c++) {
-        if (!tSupported(r, c) || !tSupported(r, c + 1) || !tSupported(r, c + 2)) continue;
-        if (!tBeside(r, c) && !tBeside(r, c + 1) && !tBeside(r, c + 2)) continue;
-        for (int j = 0; j + 2 < np; j++) {
-          int n = 0, ok = 1;
-          for (int x = 1; x <= tW; x++) row[x] = tCell[r][x];
-          int at[3] = { pos[j], pos[j + 1], pos[j + 2] };
-          // the panels left of their targets walk right, rightmost first; then the rest
-          for (int i = 2; i >= 0 && ok; i--) if (at[i] < c + i) { ok = tWalk(row, r, at[i], c + i, sw, &n); at[i] = c + i; }
-          for (int i = 0; i < 3 && ok; i++) if (at[i] > c + i) { ok = tWalk(row, r, at[i], c + i, sw, &n); at[i] = c + i; }
-          if (ok && n > 0) tPropose(sw, n, cr, cc, t0, limit);
+      for (int M = MINMATCH; M <= np && (M == MINMATCH || !longSpent()); M++)
+        for (int c = 1; c + M - 1 <= tW; c++) {
+          int supported = 1, beside = 0;
+          for (int i = 0; i < M; i++) { if (!tSupported(r, c + i)) supported = 0; if (tBeside(r, c + i)) beside = 1; }
+          if (!supported || !beside) continue;
+          for (int j = 0; j + M - 1 < np; j++) {
+            int n = 0, ok = 1, at[WMAX];
+            for (int x = 1; x <= tW; x++) row[x] = tCell[r][x];
+            for (int i = 0; i < M; i++) at[i] = pos[j + i];
+            // the panels left of their targets walk right, rightmost first; then the rest
+            for (int i = M - 1; i >= 0 && ok; i--) if (at[i] < c + i) { ok = tWalk(row, r, at[i], c + i, sw, &n); at[i] = c + i; }
+            for (int i = 0; i < M && ok; i++) if (at[i] > c + i) { ok = tWalk(row, r, at[i], c + i, sw, &n); at[i] = c + i; }
+            if (ok && n > 0) tPropose(sw, n, cr, cc, t0, limit);
+          }
         }
-      }
     }
   }
   tStacks(N, cr, cc, t0, limit);
