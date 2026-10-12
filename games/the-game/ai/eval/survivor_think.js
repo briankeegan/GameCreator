@@ -156,7 +156,9 @@ module.exports = function think(cfg) {
       // coming and queued would fill it, the attack logic is off and the survival logic decides, threes included
       var queuedRows = 0;
       (board.incoming || []).forEach(function (g) { queuedRows += g.height || 0; });
-      var toppedEarly = !!m.topped || (typeof board.isToppedOut === 'function' && board.isToppedOut());
+      // topped out, or one row from it with no stop time running: the stack rises by itself into the top row and, with no stop time,
+      // is lost -- from here a three is a move like any other (life first), where below it it is the last resort
+      var toppedEarly = !!m.topped || (typeof board.isToppedOut === 'function' && board.isToppedOut()) || (SH.top(board) >= 11 && (board.stopTime || 0) + (board.preStopTime || 0) === 0);
       bot.toppedOutNow = toppedEarly;
       var danger = !!(A && A.lifeFirst && (toppedEarly || (SH.lowestGarbageRow(board) && SH.top(board) >= (A.dangerTop || 9)) || SH.top(board) + comingRows + queuedRows >= 12 - (A.dangerRoom === undefined ? 1 : A.dangerRoom)));
       bot._danger = danger;
