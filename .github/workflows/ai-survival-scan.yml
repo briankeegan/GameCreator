@@ -31,10 +31,13 @@ on:
       input_limit:
         description: "actions the bot may press in any 600 frames; empty is the game's 76, another is a diagnostic of what the input budget costs"
         default: ''
+      source:
+        description: "a commit of this repository to scan instead of the dispatched one (to find which change moved a mode); empty is the dispatched commit"
+        default: ''
 
 # one scan per commit: a push never cancels the scan of the commit before it
 concurrency:
-  group: ai-survival-scan-${{ inputs.mode }}-${{ github.sha }}-${{ inputs.input_limit }}-${{ inputs.frames }}-${{ inputs.seeds }}-${{ inputs.fixed_budget }}
+  group: ai-survival-scan-${{ inputs.mode }}-${{ github.sha }}-${{ inputs.input_limit }}-${{ inputs.frames }}-${{ inputs.seeds }}-${{ inputs.fixed_budget }}-${{ inputs.source }}
   cancel-in-progress: true
 
 jobs:
@@ -49,6 +52,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         timeout-minutes: 5
+        with:
+          ref: ${{ inputs.source }}
       - uses: actions/checkout@v4
         timeout-minutes: 5
         with:
