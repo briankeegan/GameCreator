@@ -180,7 +180,13 @@ var server = net.createServer(function (sock) {
         }
       } else if (m.t === 'warm') {
         // the board in the countdown: the mind plans on it while the game counts down
-        if (match) LINK.post({ type: 'warm', packed: require('v8').serialize(PA.fromLua(m.state, match.level, new PA.Unseen())) });
+        if (match) {
+          // the board as it stands when the countdown ends: the engine plays a stack in play only
+          var wb = PA.fromLua(m.state, match.level, new PA.Unseen());
+          wb.inCountdown = false; wb.countdownTimer = null; wb.stopWatchIsRunning = true; wb.doCountdown = false; wb.animatingCursorDuringCountdown = false;
+          wb.clock = Math.max(wb.clock, PA.COUNTDOWN_TOTAL + 1);
+          LINK.post({ type: 'warm', packed: require('v8').serialize(wb) });
+        }
         reply = { ok: true };
       } else if (m.t === 'bye') { if (match) { console.log('match over: ' + overStats(match)); match.dump(); } match = null; reply = { ok: true }; }
       sock.write(JSON.stringify(reply) + '\n');
