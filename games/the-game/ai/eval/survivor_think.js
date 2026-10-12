@@ -180,6 +180,10 @@ module.exports = function think(cfg) {
           d = { kind: 'swap', move: wp.seq[0], overruled: true }; bot._attackCells = wp.cells; attackLine = wp.seq.slice(1); attackMove = wp.seq[0]; bot._planUntil = board.clock + 40 * wp.seq.length;
           console.error('WARM played at ' + board.clock + ': ' + wp.cells + ' cells chain ' + wp.chain + ' swaps ' + wp.seq.length);
         }
+        else if (A.alwaysRaise && SH.top(board) < (A.raiseMax || 11) && bot._canRaise()) {
+          // not in the middle of a chain: the stack is raised as far as it will go, garbage coming or not (the survival logic takes over when it is tall)
+          d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1;
+        }
         else if (bot._refill && bot._canRaise()) {
           // the stack has run low and nothing is coming: raised for panels, and on, up to raiseTo
           d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1;
@@ -236,7 +240,9 @@ module.exports = function think(cfg) {
       // A PLAIN THREE IS A LAST RESORT: while the board is safe it is not played -- the bot waits, and the stack rises
       // to bring more to build with. (Breaking garbage, a chain, a bigger match and a topped-out board are not plain threes.)
       // (the attack profile: a three is played only when the survival search left nothing else -- bot.threeForced)
-      if (((A || HT) && safeA || (A && !bot.threeForced)) && !d.overruled && d.kind === 'swap' && d.move && bot.threeOnlySwap(d.move)) { d = { kind: 'hold', overruled: true }; bot._threesHeld = (bot._threesHeld || 0) + 1; }
+      // (threesOnlyTopped: not even then, unless the stack is topped out -- a failsafe)
+      var toppedNow = typeof board.isToppedOut === 'function' && board.isToppedOut();
+      if ((((A || HT) && safeA || (A && !bot.threeForced)) || (A && A.threesOnlyTopped && !toppedNow)) && !d.overruled && d.kind === 'swap' && d.move && bot.threeOnlySwap(d.move)) { d = { kind: 'hold', overruled: true }; bot._threesHeld = (bot._threesHeld || 0) + 1; }
       // WHILE THE BOARD IS SAFE AND THE OPPONENT IS NOT TOPPED OUT a combo is held back too: the bot builds toward a chain
       if (A && safeA && !oppOut && !A.aggro && !d.overruled && d.kind === 'swap' && d.move && bot.comboOnlySwap(d.move)) { d = { kind: 'hold', overruled: true }; bot._combosHeld = (bot._combosHeld || 0) + 1; }
       var why = null;
@@ -252,6 +258,7 @@ module.exports = function think(cfg) {
       // on while the next decision is late: steps as the search played them
       // ([row, col], 'raise', null for a hold, { long: until }), from lineAt.
       var fl = overruled ? null : bot._following, line = fl && !fl.hold && fl.steps && fl.steps.length ? fl.steps : null;
+      if (A && A.threesOnlyTopped && !toppedNow) line = null;
       // An aimed lineup is its whole path: the swaps after the first are the
       // line, from wherever the first ends.
       var lineFree = false;
