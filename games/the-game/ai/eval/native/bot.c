@@ -4229,7 +4229,7 @@ static Dec arbitrate(Dec d) {
   // A LAST RESORT, when nothing else is to be done: the hold has won, and the soonest line that lets a perched pile down lives,
   // loses health no sooner and leaves less hollow than the board left alone -- its first swap is played, and the next decision
   // plans on from the board it makes
-  if (O[best].n == 0 && O[best].d.kind == K_HOLD && tadDec == btDecision && tadN > 0 && aloneOnEngine() && !BT->nLine) {
+  if (O[best].n == 0 && O[best].d.kind == K_HOLD && tadDec == btDecision && tadN > 0 && aloneOnEngine() && !BT->nLine && workLeft() > jdCost) {
     Opt p; memset(&p, 0, sizeof p);
     p.d = mkSwap(tadSw[0], tadSw[1], V_BREAKREACH, d.mode, d.alive);
     p.n = tadN; for (int k = 0; k < 2 * tadN; k++) p.sw[k] = tadSw[k];
