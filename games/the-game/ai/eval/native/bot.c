@@ -4021,7 +4021,7 @@ static double optSoon(Opt *o) {
 // (attackFirst), and its vertical twos (twosOf). Read once, and only while the decision has work left.
 static int twosOf(const int32_t *st);
 #define REACHWORK 6000   // the share of the decision's work one option's reach search may spend
-#define REACHSHARE() (OPTWORK * 35 / 100)   // the scramble's share of a dying decision's work: the combo or chain that buys stop time, as the stages have theirs
+#define REACHSHARE() (OPTWORK * 20 / 100)   // the scramble's share of a dying decision's work: the combo or chain that buys stop time, as the stages have theirs
 typedef struct { Atk best; int n; int32_t sw[2 * LINEMAX]; } ReachCtx;   // the best attack found, and the line that reaches it
 static int sitReach(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
   ReachCtx *x = ctx; (void)at;
