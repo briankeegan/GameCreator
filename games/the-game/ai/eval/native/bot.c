@@ -4521,17 +4521,22 @@ static int sitLineup(const int32_t *res, const int32_t *sw, int n, double at, vo
   if (rank) bestTake(x->B, luScore(rank), at, sw, n);
   return rank >= 4 ? SIT_END : SIT_GROW;
 }
+#ifndef __wasm__
+#define LUWHY(code) do { if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINEUPWHY %d\n", code); } } while (0)
+#else
+#define LUWHY(code) do { } while (0)
+#endif
 static Dec lineupFirst(Dec d) {
   lineupLast = 0;
   // a lineup is for a board with time: topped with death in sight, staying alive comes first
-  if (lineLast || d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA]) return d;
-  if (BIN[IN_TOPPED] && (!aloneOnEngine() || (LNA[0] && LNA[0] <= LIVEHORIZON))) return d;
-  if (swapBreaks(d)) return d;
+  if (lineLast || d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA]) { LUWHY(1); return d; }
+  if (BIN[IN_TOPPED] && (!aloneOnEngine() || (LNA[0] && LNA[0] <= LIVEHORIZON))) { LUWHY(2); return d; }
+  if (swapBreaks(d)) { LUWHY(3); return d; }
   linesReset();
   int32_t st0[ST_INTS], cur[2], t;
   uint32_t can0[WMAX];
   Wait waits0[32][WMAX];
-  if (lineState(0, 0, st0, can0, waits0, cur, &t) != 0) return d;
+  if (lineState(0, 0, st0, can0, waits0, cur, &t) != 0) { LUWHY(4); return d; }
   luStates = luRanks = luReady = 0; luStateMs = luRankMs = luReadyMs = 0;
   Best B = { 0 };
   // THE LINEUP'S SHARE: what the decision has left once the stages after it keep theirs
@@ -4544,12 +4549,14 @@ static Dec lineupFirst(Dec d) {
 #ifndef __wasm__
   if (0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINEUP states %d %.2f ms | ranks %d %.2f ms (ready %d %.2f ms)\n", luStates, luStateMs, luRanks, luRankMs, luReady, luReadyMs); }
 #endif
-  if (!B.has) return d;
-  if (B.n == 1 && d.kind == K_SWAP && d.hasMove && d.sr == B.sw[0] && d.sc == B.sw[1]) return d;
+  if (!(paWork < luEnd)) LUWHY(5);
+  if (!B.has) { LUWHY(6); return d; }
+  if (B.n == 1 && d.kind == K_SWAP && d.hasMove && d.sr == B.sw[0] && d.sc == B.sw[1]) { LUWHY(7); return d; }
   // a lineup that starts by putting back the last press is a line the board before it had: not proposed
-  if (undoesPress(B.sw[0], B.sw[1])) return d;
+  if (undoesPress(B.sw[0], B.sw[1])) { LUWHY(8); return d; }
   // the masks propose the lineup, the engine judges it, as every line
-  if (!(lineJudge(B.sw, B.n, 0) & LV_LIVES)) return d;
+  if (!(lineJudge(B.sw, B.n, 0) & LV_LIVES)) { LUWHY(9); return d; }
+  LUWHY(0);
   lineupLast = (int)B.score;
   lineLast = 5;
   plansDrop();
