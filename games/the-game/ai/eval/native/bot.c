@@ -3648,8 +3648,8 @@ static LineC *bestBreak(void) {
   bbReady = !ask || pickReady;
 #ifndef __wasm__
   // THE LONGER SHAPES A DECISION PROPOSED (a match of four or more): how many, how many were judged, how many live and break
-  { int P = 0, J = 0, L = 0; for (int i = 0; i < nLines; i++) { const LineC *q = &LINES[i]; if (!q->brk || q->pm < 4) continue; P++; if (q->verdict >= 0) { J++; if ((q->verdict & need) == need) L++; } }
-    if (P) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "LONGLINES clock %d proposed %d judged %d living %d of %d lines\n", (int)BIN[IN_STACKCLOCK], P, J, L, nLines); } }
+  { int P = 0, J = 0, L = 0, V = 0, B = 0; for (int i = 0; i < nLines; i++) { const LineC *q = &LINES[i]; if (!q->brk || q->pm < 4) continue; P++; if (q->verdict >= 0) { J++; if (q->verdict & LV_LIVES) V++; if (q->verdict & LV_BREAKS) B++; if ((q->verdict & need) == need) L++; } }
+    if (P) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "LONGLINES clock %d proposed %d judged %d lives %d breaks %d both %d of %d lines\n", (int)BIN[IN_STACKCLOCK], P, J, V, B, L, nLines); } }
   // A THREE CHOSEN OVER AN ATTACK, always in the run log: the break picked makes no more than a plain three while a judged break made a combo or chain
   if (pick && pick->chain < 2 && pick->size < 4 && (bigC >= 2 || bigS >= 4)) { extern int fprintf(void *, const char *, ...); extern void *stderr;
     fprintf(stderr, "BREAK3 clock %d chose size %d chain %d over size %d chain %d (%d judged)\n", (int)BIN[IN_STACKCLOCK], pick->size, pick->chain, bigS, bigC, bbFound); }
