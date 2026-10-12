@@ -4637,10 +4637,11 @@ static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc) {
     // where the line leaves it
     int landed = lineLandedK(sw, n, k, RBL, can, wt, cur, &t) == 0;
     if (!landed && (k > 1 || lineState(sw, n, RBL, can, wt, cur, &t) != 0 || !hasGarbage(RBL))) return 0;
-    // a slab that tops the board out as it lands leaves no time for the break:
-    // topped with no stop, the board dies the next frame
-    if (landed && tallestBoard(RBL) >= BH) return 0;
+    // a slab that tops the board out as it lands holds it for its shake and then its health (pa.c checkDeath): the break has until then
+    double heldTo = INF;
+    if (landed && tallestBoard(RBL) >= BH) heldTo = t + dmax(0, BIN[IN_SF + 4]) + dmax(0, BIN[IN_HEALTH]);
     if (last < 0) die = lineEnds(sw, n, &last);
+    if (heldTo < die) die = heldTo;
     // THE BOARD AS THE SLAB RESTS: the replay stops the frame it lands, its
     // cells still busy with the landing, and a busy cell takes no swap -- the
     // search waits for the rest (not before t) and reads the board settled
