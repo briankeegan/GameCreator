@@ -981,12 +981,14 @@ static Res CR, CR2;
 // asked by the decision (raiseSafe) and by the front every frame it holds a
 // raise (front.c raiseRoomNow): no room, no raise.
 // A raise begun with the next row one pixel from pushing (push) costs that row and its own: two.
+// THE ROWS A SLAB HOLDS OF THE BOARD'S ROOM: a slab taller than the board never fits whole, and a break converts one row of it at a time
+static int slabRowsHeld(int rows) { return rows + 1 > BH ? 1 : rows; }
 static int raiseRoom(int tallest, int queued, int raising, int push) { return BH - tallest - 1 - queued - (raising != 0) - (push && !raising); }
 static JLOCAL int raiseShort;   // raiseSafe refused for room (1) or for a clear in time (0), for the trace
 static int raiseSafe(const int32_t *base) {
   raiseShort = 1;
   if (BIN[IN_TOPPED] || BIN[IN_STACKTOPPED]) return 0;
-  int queued = BIN[IN_PHANTOM] > 0 ? 0 : (int)BIN[IN_SLABH];   // the real next slab, never the phantom
+  int queued = BIN[IN_PHANTOM] > 0 ? 0 : slabRowsHeld((int)BIN[IN_SLABH]);   // the real next slab, never the phantom
   int free = raiseRoom(tallestBoard(base), queued, BIN[IN_RAISING] != 0, BIN[IN_FTNR] * 16 <= BIN[IN_FPR]);
   if (free <= 0) return 0;
   raiseShort = 0;
@@ -1265,7 +1267,7 @@ static int raiseModeOf(const int32_t *base, int poolBreak) {
   // as soon as it lifts -- in a storm, nearly every frame. No raise is wanted
   // that the board cannot take: material comes from what breaks.
   if (BIN[IN_LOCKLEFT] > 0 && realIn > 0) { raiseGate = 11; return 0; }
-  int rows = BIN[IN_PHANTOM] > 0 ? 0 : (int)__builtin_ceil(BIN[IN_NEXTSLAB] / BW);
+  int rows = BIN[IN_PHANTOM] > 0 ? 0 : slabRowsHeld((int)__builtin_ceil(BIN[IN_NEXTSLAB] / BW));
   int fits = raiseSafe(base);
   // A QUEUE THAT FILLS THE ROOM KILLS A BOARD WITH NO BREAK READY, raised or
   // not: only material builds the break, and the raise costs its row -- it
