@@ -4029,14 +4029,14 @@ static void optAhead(Opt *o) {
 // chain any line reaches in the time there is is an option, the whole line judged on the engine and played on once chosen.
 static int boardDying(void) { return BIN[IN_STOP] > 0 && aloneOnEngine() && aloneDie(1 << 20) < LINEHORIZON; }   // a stop runs, and the board left alone loses health within the judge's horizon, as far as it can say a line lives
 static int gScramble;   // this decision is a last resort: a stop in danger, and no other option outlives the board left alone
-static int reachOption(Opt *O, int n, Dec d) {
+static int reachOption(Opt *O, int n, Dec d, int frozen) {
   extern PATLS double paWork;
   if (!BIN[IN_HASPA] || paWork >= optLine()) return n;
   static ST st; int32_t cur[2], t; uint32_t can[WMAX]; uint8_t w[32][WMAX];
   if (lineState(0, 0, st, can, w, cur, &t) != 0) return n;
   static ReachCtx rx; rx.best = atkOf(0, 0); rx.n = 0;
   double work = optLine() - paWork; if (work > REACHWORK) work = REACHWORK;
-  searchInTime(st, cur[0], cur[1], t, 0, timeLeft(), 1, can, w, work, sitReach, &rx, 0, 0, 0);
+  searchInTime(st, cur[0], cur[1], t, 0, timeLeft(), frozen, can, w, work, sitReach, &rx, 0, 0, 0);
   if (!rx.n) return n;
   Opt *o = &O[n];
   o->d = mkSwap(rx.sw[0], rx.sw[1], V_BESTATTACK, d.mode, d.alive);
@@ -4064,6 +4064,8 @@ static int optRank(Opt *a, Opt *b) {
   if (ka == 1 && kb == 1 && aloneOnEngine() && aloneDie(1 << 20) < LIVEHORIZON) { int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
   // OF TWO CLEARS that break nothing, a combo or a chain goes before a plain three, whether or not it digs under the pile (attackFirst)
   if (ka == 1 && kb == 1 && a->clears && b->clears) { int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
+  // DOWNTIME: the board left alone loses no health within the horizon, so a combo or a chain that lives as long goes before an option that clears nothing
+  if (ka == 1 && kb == 1 && aloneOnEngine() && aloneDie(1 << 20) > LIVEHORIZON && (a->cash > 0) != (b->cash > 0) && (a->cash > 0 ? !b->clears : !a->clears)) return a->cash > 0 ? 1 : -1;
   // a plain clear is the last resort: it ranks below any option that lives as long
   if (ka && (a->plain || b->plain)) { int pa = optPlain(a), pb = optPlain(b); if (pa != pb) return pa ? -1 : 1; }
   // two breaks: the one that is a combo or a chain before a plain three, by the one rule (attackFirst)
@@ -4221,7 +4223,12 @@ static Dec arbitrate(Dec d) {
     if (!breaking && boardDying()) {
       int improves = 0, alone = aloneDie(1 << 20);
       for (int i = 0; i < n; i++) if (O[i].lives && O[i].die > alone) improves = 1;
-      if (!improves) { gScramble = 1; int before = n; n = reachOption(O, n, d); if (n > before) ra = before; }
+      if (!improves) { gScramble = 1; int before = n; n = reachOption(O, n, d, 1); if (n > before) ra = before; }
+    }
+    // downtime, nothing to break and the board safe: the best combo or chain any line reaches in the time there is is an option too -- the
+    // setup of many swaps that ends in an attack, played on once chosen -- on the work the decision has left over
+    if (!breaking && aloneOnEngine() && aloneDie(1 << 20) > LIVEHORIZON && d.kind == K_HOLD && !BT->nLine && workLeft() > 4 * jdCost) {
+      int before = n; n = reachOption(O, n, d, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0); if (n > before) ra = before;
     }
     // downtime: the board left alone loses no health within the horizon, or between actions: a line that saves the board is kept and the setup must spare it
     if (!breaking && aloneOnEngine() && (aloneDie(1 << 20) > LIVEHORIZON || saSet) && (d.kind == K_HOLD || O[at].early)) { setupAt = n; n = setupOptions(O, n, d); } }
