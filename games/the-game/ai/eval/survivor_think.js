@@ -103,12 +103,12 @@ module.exports = function think(cfg) {
                                         search: search, stale: stale, aborted: P.ABORTED });
       var br = prep.br, brMs = prep.brMs, want = prep.want;
       // WHILE CALM, THE PROFILE'S calmGoal IS WHAT IS BUILT, pulled toward by calmToward; otherwise the bot's own.
-      // VERSUS: while the board is calm, what is built depends on the opponent -- combos as fast as they come
+      // VERSUS: while the board is calm (always, with vsAlways -- the survival search still keeps it alive), what is built depends on the opponent -- combos as fast as they come
       // when it is topped out, large combos while it is not.
       if (cfg.profile.vs) {
         if (!bot._baseAim) bot._baseAim = { goal: bot.goal, toward: bot.buildToward };
         var opp = m.opp, near = opp && opp.out;
-        var aim = prep.calm && opp ? (near ? cfg.profile.vs.out : cfg.profile.vs.idle) : null;
+        var aim = (prep.calm || cfg.profile.vsAlways) && opp ? (near ? cfg.profile.vs.out : cfg.profile.vs.idle) : null;
         bot.goal = aim ? MODES.goal(aim.goal, aim.alsoTake) : bot._baseAim.goal;
         bot.buildToward = aim ? aim.toward : bot._baseAim.toward;
       } else if (cfg.profile.calmGoal) {
