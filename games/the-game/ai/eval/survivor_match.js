@@ -517,7 +517,7 @@ Match.prototype.record = function (truth, bits, arrivals) {
                       health: truth.health, stop: truth.stopTime + truth.preStopTime, shake: truth.shakeTime, lock: !!truth.riseLock,
                       // compact, as it is kept for many frames: [pieces, rows] queued,
                       // [pieces, rows, first due] on the way, and the grid as one string
-                      incoming: [truth.incoming.length, rowsOf(truth.incoming)], opp: this.opp ? (this.opp.out ? 1 : 0) : null,
+                      incoming: [truth.incoming.length, rowsOf(truth.incoming)], opp: this.opp ? [this.opp.out ? 1 : 0, this.opp.top] : null,
                       arrivals: [arrivals.length, rowsOf(arrivals.map(function (a) { return a.g; })), arrivals.length ? arrivals[0].at : null],
                       grid: gridOf(truth).join('\n') });
   if (this.history.length > HISTORY) this.history.shift();
