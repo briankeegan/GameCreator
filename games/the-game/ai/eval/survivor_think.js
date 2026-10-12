@@ -233,6 +233,13 @@ module.exports = function think(cfg) {
       }
       // THE STACK IS RAISED AS FAR AS IT WILL GO WHEREVER THE BOARD IS (alwaysRaise): past the gate too, garbage coming or not, until
       // what is coming would no longer fit; the survival logic breaks what lands
+      // GARBAGE ON ITS WAY, WHEREVER THE BOARD IS (danger too): before the stack is raised for it, a swap that will break it when it lands
+      // is made ready -- the hit is told of 150 frames before it lands
+      if (A && !toppedEarly && A.readyBreak && !d && !SH.lowestGarbageRow(board) && arrivals.length && !cascadeLive(board, true)) {
+        var rdy2 = attacker ? attacker.readyFor(board, m.hold, arrivals, { ms: A.readyMs || 150 }) : null;
+        if (!attacker) { attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames }); rdy2 = attacker.readyFor(board, m.hold, arrivals, { ms: A.readyMs || 150 }); }
+        if (rdy2 && !rdy2.ready && rdy2.setup) { d = { kind: 'swap', move: rdy2.setup, overruled: true }; bot._readies = (bot._readies || 0) + 1; }
+      }
       if (A && !toppedEarly && A.alwaysRaise && !d && !cascadeLive(board, true) && SH.top(board) < raiseCap(board, comingRows, A) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1; }
       // A BIG CHAIN COMES FIRST WHEREVER THE BOARD IS: past the gate above (the stack tall, a lot coming, garbage all over it) a chain
       // the planner finds in a few swaps -- on the board with the garbage on its way counted -- is played before anything else
