@@ -4262,9 +4262,6 @@ static Dec breakPartial(Dec d) {
   if (tadDec != btDecision || tadN < 1 || !aloneOnEngine()) return d;
   int v = lineJudge(tadSw, tadN, 0);
   if (!(v & LV_LIVES) || !(HOLLOW(LNO) < HOLLOW(LNA)) || lnoDie(LNO) < lnoDie(LNA)) return d;
-  lineLast = 3;
-  plansDrop();
-  BT->nLine = 0;
   return mkSwap(tadSw[0], tadSw[1], V_BREAKREACH, d.mode, d.alive);
 }
 static Dec makeRoom(Dec d);
