@@ -52,7 +52,8 @@ function raiseCap(board, coming, A) {
 }
 // Topped out, or one row from it with no stop time running (the stack rises by itself into the top row, and is lost).
 function toppedOrNearly(board, toppedReal) {
-  return !!toppedReal || (typeof board.isToppedOut === 'function' && board.isToppedOut()) || (panelTop(board) >= 11 && (board.stopTime || 0) + (board.preStopTime || 0) === 0);
+  // (the height counts garbage: a stack with garbage in row 11 rises into row 12 as surely as one with a panel there)
+  return !!toppedReal || (typeof board.isToppedOut === 'function' && board.isToppedOut()) || (fullTop(board) >= 11 && (board.stopTime || 0) + (board.preStopTime || 0) === 0);
 }
 // The stack in jeopardy: topped out (or nearly), its height with the garbage on it at dangerTop or more, or a hit landing within dangerSoon
 // frames that would overflow the board (rows coming and queued on top of its height, dangerOver rows over the 12).

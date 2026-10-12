@@ -183,7 +183,7 @@ module.exports = function think(cfg) {
         // A MANUAL RAISE BRINGS ONE ROW, and the next waits until something has moved (the engine lets go of it when the floor has
         // been locked and is free again) or the stack has risen by itself -- which it does not while stop time runs. So a stack that
         // is to be raised and cannot be only because of that is let go of by a swap: the build swap, or any.
-        var unlock = !!(A.alwaysRaise && !busy && SH.top(board) < raiseCap(board, comingRows, A) && bot.stack && bot.stack.preventManualRaise && !bot._canRaise());
+        var unlock = !!(A.alwaysRaise && !busy && fullTop(board) < raiseCap(board, comingRows, A) && bot.stack && bot.stack.preventManualRaise && !bot._canRaise());
         if (busy && (!oppOut || aggro)) {
           // a chain going is continued: the line of swaps made while it pops that makes it longest, else it is left alone
           var ex = A.minRows && lowPeak(board) < A.minRows ? { seq: [], cells: 0, base: 0 } : attacker.extend(board, m.hold, { ms: Math.min(A.extendMs || 250, due ? Math.max(40, due - Date.now() - DEADLINE_MARGIN_MS) : 250), width: A.extendWidth || 40, depth: A.extendDepth || 6 });
@@ -201,7 +201,7 @@ module.exports = function think(cfg) {
           // garbage is on its way and no swap will break it when it lands: the swap that makes one ready, before the stack is raised
           d = { kind: 'swap', move: rdy.setup, overruled: true }; bot._readies = (bot._readies || 0) + 1;
         }
-        else if (A.alwaysRaise && SH.top(board) < raiseCap(board, comingRows, A) && bot._canRaise()) {
+        else if (A.alwaysRaise && fullTop(board) < raiseCap(board, comingRows, A) && bot._canRaise()) {
           // not in the middle of a chain: the stack is raised as far as it will go, garbage coming or not (the survival logic takes over when it is tall)
           d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1;
         }
@@ -243,7 +243,7 @@ module.exports = function think(cfg) {
         if (!attacker) { attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames }); rdy2 = attacker.readyFor(board, m.hold, arrivals, { ms: A.readyMs || 150 }); }
         if (rdy2 && !rdy2.ready && rdy2.setup) { d = { kind: 'swap', move: rdy2.setup, overruled: true }; bot._readies = (bot._readies || 0) + 1; }
       }
-      if (A && !toppedEarly && A.alwaysRaise && !d && !cascadeLive(board, true) && SH.top(board) < raiseCap(board, comingRows, A) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1; }
+      if (A && !toppedEarly && A.alwaysRaise && !d && !cascadeLive(board, true) && fullTop(board) < raiseCap(board, comingRows, A) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1; }
       // A BIG CHAIN COMES FIRST WHEREVER THE BOARD IS: past the gate above (the stack tall, a lot coming, garbage all over it) a chain
       // the planner finds in a few swaps -- on the board with the garbage on its way counted -- is played before anything else
       if (A && !danger && !d && !(!A.ignoreOpp && m.opp && m.opp.out)) {
@@ -308,7 +308,7 @@ module.exports = function think(cfg) {
       // is played, or a swap that builds toward one
       if (A && A.noIdle && d.kind === 'hold' && !danger && !toppedEarly && !cascadeLive(board, true)) {
         var niMs = due ? Math.min(A.noIdleMs || 80, due - Date.now() - 2 * DEADLINE_MARGIN_MS - 100) : (A.noIdleMs || 80);
-        if (SH.top(board) < raiseCap(board, comingRows, A) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._idleFilled = (bot._idleFilled || 0) + 1; }
+        if (fullTop(board) < raiseCap(board, comingRows, A) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._idleFilled = (bot._idleFilled || 0) + 1; }
         else if (niMs >= 30) {
           if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
           var nip = attacker.plan(board, m.hold, { ms: niMs, width: 30, depth: 4, pool: 100, minChain: A.minChain === undefined ? 4 : A.minChain, arrivals: arrivals, rate: A.rate });
@@ -339,7 +339,7 @@ module.exports = function think(cfg) {
       if (d.kind === 'raise' && A && A.holdRaise) {
         var landIn = Infinity, lead = A.raiseLead || 10;
         arrivals.forEach(function (a) { if (a.at < landIn) landIn = a.at; });
-        holdFrames = Math.max(18, Math.min(A.raiseHoldMax || 54, 18 * (raiseCap(board, comingRows, A) - SH.top(board))));
+        holdFrames = Math.max(18, Math.min(A.raiseHoldMax || 54, 18 * (raiseCap(board, comingRows, A) - fullTop(board))));
         if (landIn < Infinity) holdFrames = Math.min(holdFrames, landIn - lead);
         if (holdFrames < 1 && landIn <= lead) { d = { kind: 'hold', overruled: true }; holdFrames = 0; }
         else if (holdFrames < 1) holdFrames = 0;

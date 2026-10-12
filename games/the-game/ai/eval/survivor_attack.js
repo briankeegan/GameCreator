@@ -160,7 +160,9 @@ module.exports = function (opts) {
       var land = n === root ? s.advance(n, 'long', null, wait) : s.advance(n, 'long', null, Math.max(1, wait - (n.t - root.t)));
       if (!land || land.dead) return null;
       var base = s.breaks(land), swaps = land.b.legalSwaps(), outs = s.advanceMany(swaps.map(function (m) { return [land, 'swap', m, 0]; }), true), any = false;
-      outs.forEach(function (out) { if (out && !out.dead && (out.brk !== undefined ? out.brk : s.breaks(out)) > base) any = true; });
+      var made = [land];
+      outs.forEach(function (out) { if (out && !out.dead) { made.push(out); if ((out.brk !== undefined ? out.brk : s.breaks(out)) > base) any = true; } });
+      s.drop(made);   // the nodes of this check are let go of: the next is made from the root
       return any;
     }
     var now = breaksAfterLanding(root);
@@ -170,7 +172,9 @@ module.exports = function (opts) {
     for (var i = 0; i < firsts.length && !found && Date.now() - t0 < (o.ms || 150); i++) {
       var n1 = s.advance(root, 'swap', firsts[i], 0);
       if (!n1 || n1.dead) continue;
-      if (breaksAfterLanding(n1)) found = firsts[i];
+      var okFirst = breaksAfterLanding(n1);
+      s.drop([n1]);
+      if (okFirst) found = firsts[i];
     }
     return { ready: false, setup: found, at: first, ms: Date.now() - t0 };
   }

@@ -57,6 +57,9 @@ assert.strictEqual(C.panelTop(eleven), 11);
 assert.strictEqual(eleven.isToppedOut(), false);
 eleven.stopTime = 0; eleven.preStopTime = 0;
 assert.strictEqual(C.toppedOrNearly(eleven, false), true, 'one row from the top with no stop time is as good as topped out');
+var garbageEleven = board(['111111', '222222']);
+garbageEleven.panels[11][2].isGarbage = true; garbageEleven.stopTime = 0; garbageEleven.preStopTime = 0;
+assert.strictEqual(C.toppedOrNearly(garbageEleven, false), true, 'garbage in row 11 with no stop time: the next row up tops it out');
 eleven.stopTime = 50;
 assert.strictEqual(C.toppedOrNearly(eleven, false), false, 'with stop time running it is not');
 // raise cap
