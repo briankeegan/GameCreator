@@ -4415,7 +4415,7 @@ int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);
 int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, Wait (*wait)[WMAX], int32_t *cur, int32_t *t);
 static ST LUM;
 static int lineupLast;
-static int luStates, luRanks, luReady; static double luStateMs, luRankMs, luReadyMs;   // GC_WORKSTAT
+static int luStates, luRanks, luReady, luNearCut, luNodes; static double luStateMs, luRankMs, luReadyMs;   // GC_WORKSTAT
 static int readyAfterIn(const int32_t *sw, int n);
 static int maskBreaks(const int32_t *st, const int32_t *sw, int n);
 static void parallelDo(int count, void (*task)(int));
@@ -4514,7 +4514,9 @@ static int lineupRank(const int32_t *st, const int32_t *sw, int n, int need) {
 typedef struct { Best *B; const int32_t *st0; } LuCtx;
 static int sitLineup(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
   LuCtx *x = ctx;
-  if (outPast(x->B, LUMOST, at) || !lineupNear(res + R_INTS, sw[2 * n - 2], sw[2 * n - 1])) return SIT_END;
+  luNodes++;
+  if (outPast(x->B, LUMOST, at)) return SIT_END;
+  if (!lineupNear(res + R_INTS, sw[2 * n - 2], sw[2 * n - 1])) { luNearCut++; return SIT_END; }
   double rk = NOWMS2();
   int rank = lineupRank(x->st0, sw, n, !x->B->has ? 0 : (int)x->B->score);
   luRanks++; luRankMs += NOWMS2() - rk;
@@ -4537,7 +4539,7 @@ static Dec lineupFirst(Dec d) {
   uint32_t can0[WMAX];
   Wait waits0[32][WMAX];
   if (lineState(0, 0, st0, can0, waits0, cur, &t) != 0) { LUWHY(4); return d; }
-  luStates = luRanks = luReady = 0; luStateMs = luRankMs = luReadyMs = 0;
+  luStates = luRanks = luReady = luNearCut = luNodes = 0; luStateMs = luRankMs = luReadyMs = 0;
   Best B = { 0 };
   // THE LINEUP'S SHARE: what the decision has left once the stages after it keep theirs
   double luEnd = stageLeaves(4);
@@ -4550,6 +4552,9 @@ static Dec lineupFirst(Dec d) {
   if (0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINEUP states %d %.2f ms | ranks %d %.2f ms (ready %d %.2f ms)\n", luStates, luStateMs, luRanks, luRankMs, luReady, luReadyMs); }
 #endif
   if (!(paWork < luEnd)) LUWHY(5);
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINEUPSTATS nodes %d ranked %d nearcut %d work %.0f of %.0f\n", luNodes, luRanks, luNearCut, paWork, luEnd); }
+#endif
   if (!B.has) { LUWHY(6); return d; }
   if (B.n == 1 && d.kind == K_SWAP && d.hasMove && d.sr == B.sw[0] && d.sc == B.sw[1]) { LUWHY(7); return d; }
   // a lineup that starts by putting back the last press is a line the board before it had: not proposed
