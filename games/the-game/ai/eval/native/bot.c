@@ -3200,6 +3200,7 @@ static void tDrops(int cr, int cc, double t0, double limit) {
 // the fewest swaps; every walk is played on a copy of the grid with what
 // falls after it, and the line is proposed only if the grid it leaves holds
 // the three against the garbage. The engine judges it like any other line.
+#define TSHAPEWORK 0.5   // a column or row shape tried (targetLines): about 150 cycles at 326 a unit -- estimated, the scan's ms per kunit is its check
 #define TSTACKWORK 1.7   // a grid step (a swap and its fall, a clear round, a copy): the planner (targetLines) charges 6,933 units per ms at 1.7 (8,926 at 2.5; seed 9, 6,000 frames) against the 6,027 a ms is worth
 #define TSTACKNEAR 3     // the nearest panels of the colour tried for each cell
 // the distance grid (tCell) copied onto a grid with a column either side of the board
@@ -3436,6 +3437,8 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
     for (int M = tFrom; M <= tH && (M == tFrom || !longSpent()); M++)
       for (int c = 1; c <= tW; c++)
         for (int r = 1; r + M - 1 <= tH; r++) {
+          paWork += TSHAPEWORK;   // a shape tried: M rows, each the nearest panel of the colour looked for and walked
+          if (workLeft() <= 0) return;
           if (!tSupported(r, c) && tCell[r][c] == 0) continue;
           int beside = 0;
           for (int i = 0; i < M && !beside; i++) beside = tBeside(r + i, c);
@@ -3457,6 +3460,8 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
       for (int s = 1; s <= tW; s++) if (tCell[r][s] == a) pos[np++] = s;
       for (int M = tFrom; M <= np && (M == tFrom || !longSpent()); M++)
         for (int c = 1; c + M - 1 <= tW; c++) {
+          paWork += TSHAPEWORK;
+          if (workLeft() <= 0) return;
           int supported = 1, beside = 0;
           for (int i = 0; i < M; i++) { if (!tSupported(r, c + i)) supported = 0; if (tBeside(r, c + i)) beside = 1; }
           if (!supported || (tNeedBeside && !beside)) continue;
@@ -4093,7 +4098,11 @@ static int reachOption(Opt *O, int n, Dec d, int frozen) {
   if (lineState(0, 0, st, can, w, cur, &t) != 0) return n;
   if (gScramble) {
     int32_t asw[2 * LINEMAX]; int an = 0;
-    if (attackShapes(st, cur[0], cur[1], t, asw, &an)) {
+    double keepEnd = stageEnd, shapesEnd = paWork + REACHSHARE() / 2;   // the matches take half the scramble's share; the search of swaps has the rest
+    if (shapesEnd < stageEnd) stageEnd = shapesEnd;
+    int gotShapes = attackShapes(st, cur[0], cur[1], t, asw, &an);
+    stageEnd = keepEnd;
+    if (gotShapes) {
       Opt *o = &O[n];
       o->d = mkSwap(asw[0], asw[1], V_BESTATTACK, d.mode, d.alive);
       o->n = an; o->wait = 0; o->pri = 2;
