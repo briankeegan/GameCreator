@@ -44,7 +44,7 @@ typedef struct {
   Settle settle;   // the board's cells, when each settles (unsettled), at the last decision
   int wWaitTo, wFrames, wWaitAll, wR0, wKept;
   Pad pad;
-  int sawWave;   // a real garbage slab has been queued: the phantom first wave is over
+  int sawWave;   // a real garbage slab has been queued
   int oppPresent, oppTopped;   // told by the host (front_opponent): another player is in the match; that player's stack has lost
   int risen, riseDisp, riseHas;   // rows risen since the game began (IN_RISEN), counted every frame
   int pkR, pkC, pkAt, pkAll, presses;   // presses: every swap pressed, counted (IN_PRESSES)   // the swap walked to, and the clock its first plan pressed it at (pkAt 0: none)   // a walk: the frame its swap's panels settle (every panel's: wWaitAll), the frames it has taken
@@ -438,25 +438,8 @@ static void fPrepare(Front *F) {
         int32_t *f = pb->p[r][c].f;
         if (f[ISGARBAGE] && f[COLOR] > 0 && f[COLOR] != 9 && f[COLOR] < 130 && !fConv(f)) f[COLOR] = 130 + (W * r + c - 1) % 90;
       } }
-  // THE FIRST WAVE BEFORE IT IS SEEN: until a real slab is queued, the board
-  // the bot decides on holds one queued slab the width of the board, so every
-  // readiness rule and replay readies the first wave as it readies every
-  // other. Only the bot's copy holds it; IN_PHANTOM says how much of the
-  // incoming is phantom, so what the raise reads is the real queue.
   if (FB->ninc > 0 || FB->garbageCreatedCount > 0) F->sawWave = 1;
   d[IN_OPPPRESENT] = F->oppPresent; d[IN_OPPTOPPED] = F->oppTopped;
-  if (!F->sawWave && !F->oppPresent) {
-    Board *pb = paLibBoard();
-    Incoming *p = &pb->inc[0];
-    int top = 0, rows;
-    for (int r = 1; r <= FB->height; r++) for (int c = 1; c <= W; c++) if (fp(r, c)[COLOR] != 0) top = r;
-    rows = FB->height - top - 1; if (rows < 1) rows = 1;   // the tallest slab the pile still leaves a row above
-    p->width = W; p->height = rows; p->isChain = 0; p->isMetal = 0; p->frameEarned = FB->clock; p->finalized = 1;
-    pb->ninc = 1;
-    d[IN_PHANTOM] = W * rows;
-    d[IN_INCOMING] = W * rows; d[IN_NEXTSLAB] = W * rows; d[IN_INROWS] = rows;
-    d[IN_SLABW] = W; d[IN_SLABH] = rows; d[IN_SLABC] = nb_spawn_col(pb, W);
-  }
   d[IN_HASTIMED] = timed;
   d[IN_REVEALOPEN] = open;
   if (conv) { d[IN_CONVN] = nconv; d[IN_CONVTIMER] = convTimer; }
