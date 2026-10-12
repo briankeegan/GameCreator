@@ -4164,6 +4164,9 @@ static int setupOptions(Opt *O, int n, Dec d) {
     while (j > 0 && key[j - 1] < k) { key[j] = key[j - 1]; at[j] = at[j - 1]; j--; }
     key[j] = k; at[j] = i;
   }
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; int sw = 0; for (int i = 0; i < nPool; i++) if (POOL[i].kind == K_SWAP) sw++; fprintf(BLOG, "SETUPS pool %d swaps %d better %d base %.0f\n", nPool, sw, na, base); }
+#endif
   for (int j = 0; j < na; j++) {
     Cand *c = &POOL[at[j]];
     Opt *o = &O[n];
