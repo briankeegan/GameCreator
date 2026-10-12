@@ -195,7 +195,7 @@ Match.prototype.ask = function (at, board, hold, pend) {
                       board: packed.toString('base64') });
     if (this.asked.length > 40 * KEEP) this.asked.shift();
   }
-  L.post({ id: L.pending.id, epoch: this.epoch, at: at, lead: at - this.now, ms: L.sync ? 0 : (at - this.now) * this.msPerFrame, posted: Date.now(), allowance: this.allowanceAt(at),
+  L.post({ id: L.pending.id, epoch: this.epoch, at: at, lead: at - this.now, ms: L.sync ? 0 : (at - this.now) * this.msPerFrame, posted: Date.now(), allowance: this.allowanceAt(at), opp: this.opp || null,
                     packed: packed, hold: hold, arrivals: arrivals, acted: this.acted });
   this.stats.decisions++;
 };
