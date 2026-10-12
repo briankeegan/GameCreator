@@ -3464,12 +3464,15 @@ static int sitDrops(const int32_t *res, const int32_t *sw, int n, double at, voi
   x->len[x->n] = n; for (int k = 0; k < 2 * n; k++) x->sw[x->n][k] = sw[k];
   return ++x->n >= TADTRIES ? SIT_TAKE : SIT_END;
 }
+// THE SOONEST LINE THAT LETS A PERCHED PILE DOWN, of the decision's search: the last resort's step (arbitrate)
+static int tadN, tadDec = -1; static int32_t tadSw[2 * LINEMAX];
 static void targetAfterDrops(const int32_t *st, int cr, int cc, double t0, double limit) {
   if (tPfxN) return;
   static DropCtx x;
   x.g0 = garbSum(st); x.n = 0;
   if (!(x.g0 > 0)) return;
   searchInTime(st, cr, cc, t0, 0, limit, lsTopped, ENGINE_BASE ? ENGINE_CAN : 0, ENGINE_WAITS, TADWORK, sitDrops, &x, 0, 0, 0);
+  if (x.n > 0) { tadN = x.len[0]; for (int k = 0; k < 2 * tadN; k++) tadSw[k] = x.sw[0][k]; tadDec = btDecision; }
   // soonest drop first; timing wants only the soonest break, so it stops at the first board that gives one
   double bound0 = tTimeMin;
   for (int i = 0; i < x.n && workLeft() > 0 && !(tTimeMode && tTimeMin < bound0); i++) {
@@ -4222,6 +4225,16 @@ static Dec arbitrate(Dec d) {
            || (sn > 0 && w->lives && w->n > 0 && !w->breaks && !(w->sw[0] == sv[0] && w->sw[1] == sv[1]) && !getsBackInTime(w, sv, sn));
     if (!bad) break;
     w->lives = 0;
+  }
+  // A LAST RESORT, when nothing else is to be done: the hold has won, and the soonest line that lets a perched pile down lives,
+  // loses health no sooner and leaves less hollow than the board left alone -- its first swap is played, and the next decision
+  // plans on from the board it makes
+  if (O[best].n == 0 && O[best].d.kind == K_HOLD && tadDec == btDecision && tadN > 0 && aloneOnEngine() && !BT->nLine) {
+    Opt p; memset(&p, 0, sizeof p);
+    p.d = mkSwap(tadSw[0], tadSw[1], V_BREAKREACH, d.mode, d.alive);
+    p.n = tadN; for (int k = 0; k < 2 * tadN; k++) p.sw[k] = tadSw[k];
+    p.pri = 2;
+    if (optJudge(&p) && p.lives && p.hollow < O[best].hollow && p.die >= O[best].die) { BT->nLine = 0; return p.d; }
   }
 #ifndef __wasm__
   // WHAT IT WEIGHED, one short line in the run log whenever an attack was among the options or a plain clear won: every option's
