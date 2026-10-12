@@ -2332,7 +2332,10 @@ static int budgetRefused;
 static double stageEnd = 1e300;
 // bgReserve: a background batch's work, held back until it is folded in (front.c parallelBg)
 static double bgReserve;
-static double optLine(void) { double e = rdW0 + OPTWORK; return (stageEnd < e ? stageEnd : e) - bgReserve; }
+// reachHold: a board that is dying keeps the scramble's work (reachOption) out of every stage before the arbiter's: the combo or chain that buys stop time
+// is the one thing that outlives a pop (pa.c checkMatches), and it was asked 22,433 times with no work left
+static double reachHold;
+static double optLine(void) { double e = rdW0 + OPTWORK; return (stageEnd < e ? stageEnd : e) - bgReserve - reachHold; }
 // THE STAGES AFTER KEEP THEIRS: a stage's optional work stops where the
 // stages after it keep their shares (STAGESHARE). stageOpen lowers where
 // optional work stops for the stage, stageClose puts it back.
@@ -4209,6 +4212,7 @@ static int getsBackInTime(const Opt *o, const int32_t *line, int n) {
   return !r[0] || r[0] > r[1];
 }
 static Dec arbitrate(Dec d) {
+  reachHold = 0;   // the stages before it have left the scramble its work
   if (!((d.kind == K_SWAP && d.hasMove) || d.kind == K_HOLD)) return d;   // a raise: raiseMode's own rules
   Opt O[5 + ATTACKOPTS + SETUPOPTS]; int n = 0, at = -1, ra = -1;
   memset(O, 0, sizeof O);
@@ -6024,6 +6028,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // every decision to, and a guard with nothing to hold it to lets anything
   // through -- so it is judged while the budget is whole, once
   aloneOnEngine();
+  reachHold = boardDying() ? REACHWORK : 0;
   frontCalm(aloneOnEngine() && !LNA[0]);   // a board that loses no health holds its walks: the input allowance kept for one that does
   // STORED ROWS FOLLOW THE STACK: every row the bot keeps from one decision
   // to the next -- the line, the target, the routes, the presses -- moves up
