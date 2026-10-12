@@ -2334,35 +2334,24 @@ static double stageEnd = 1e300;
 static double bgReserve;
 static double optLine(void) { double e = rdW0 + OPTWORK; return (stageEnd < e ? stageEnd : e) - bgReserve; }
 // THE STAGES AFTER KEEP THEIRS: a stage's optional work stops where the
-// stages after it keep the most they have taken lately (LATER[i]: measured
-// as each decision ends, a hundredth less each decision, so one heavy
-// decision does not shut a stage out for the game). stageOpen lowers where
+// stages after it keep their shares (STAGESHARE). stageOpen lowers where
 // optional work stops for the stage, stageClose puts it back.
 #define NSTAGES 9   // decideRuled, playOn/waitForDrain/raiseHold, breakFirst, stayAlive, lineup, spend, breakSoon, fillFirst, the steps after it
-static double LATER[NSTAGES];
-// THE CLOSING KEEPS ITS OWN: whatever the stages measured, the decision's end
-// (the arbiter's judges of its candidates, the readiness asked of them) keeps
-// FINALJUDGES judges' work -- measured from what they took, they would learn
-// none while a stage before them took the rest, and that stage take it again
+// THE CLOSING KEEPS ITS OWN: the decision's end (the arbiter's judges of its
+// candidates, the readiness asked of them) keeps FINALJUDGES judges' work
 #define FINALJUDGES 6
 // EVERY STAGE HAS A SHARE OF OPTWORK (percent), and the stages before it leave
-// at least the shares of the stages after it: a stage that takes nothing for
-// lack of work is measured at nothing, and would be left nothing again
+// the shares of the stages after it, no more: a later stage takes whatever is
+// left it, so what it took lately says what it was given, not what it needs
 static const int STAGESHARE[NSTAGES] = { 30, 0, 25, 5, 20, 5, 5, 5, 5 };
-// THE MEASURE IS CAPPED AT TWICE THE SHARES: a later stage takes whatever is left it, so what it took says what it was
-// given, not what it needs -- uncapped, it starves the stages before it, and is measured larger for it
 static double stageLeaves(int i) {
   int after = 0; for (int j = i + 1; j < NSTAGES; j++) after += STAGESHARE[j];
-  double share = OPTWORK * after / 100, keep = LATER[i] < 2 * share ? LATER[i] : 2 * share;
+  double keep = OPTWORK * after / 100;
   if (keep < FINALJUDGES * jdCost) keep = FINALJUDGES * jdCost;
-  if (keep < share) keep = share;
   return rdW0 + OPTWORK - keep;
 }
 static double stageOpen(int i) { double keep = stageEnd, e = stageLeaves(i); if (e < stageEnd) stageEnd = e; return keep; }
 static void stageClose(double keep) { stageEnd = keep; }
-static void stagesMeasured(const double *ws, int k) {
-  for (int i = 0; i + 1 < k && i < NSTAGES; i++) { LATER[i] *= 0.99; if (ws[k - 1] - ws[i] > LATER[i]) LATER[i] = ws[k - 1] - ws[i]; }
-}
 // A BATCH ONLY AS FAR AS THE BUDGET HOLDS IT: of `count` tasks costing at
 // most `cost` each, the number that fit in what is left; the rest are not done
 static int fitTasks(int count, double cost) {
@@ -6115,7 +6104,6 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // the most the stages after breakFirst (and after lineup) have taken lately:
   // each decision's own, or the last most less a hundredth a decision -- one
   // heavy decision does not shut the searches out for the rest of the game
-  stagesMeasured(ws, k);
   // the most a judge, a search, a play has cost: lately, as the reserves -- one heavy one does not shut them out for the game
   jdCost *= 0.99; btCost *= 0.99; rpCost *= 0.99;
   // A CUT IS A FAILURE: a stage that reaches its share has not decided, it has
