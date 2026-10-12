@@ -2341,10 +2341,13 @@ static double LATER[NSTAGES];
 // at least the shares of the stages after it: a stage that takes nothing for
 // lack of work is measured at nothing, and would be left nothing again
 static const int STAGESHARE[NSTAGES] = { 30, 0, 25, 5, 20, 5, 5, 5, 5 };
+// THE MEASURE IS CAPPED AT TWICE THE SHARES: a later stage takes whatever is left it, so what it took says what it was
+// given, not what it needs -- uncapped, it starves the stages before it, and is measured larger for it
 static double stageLeaves(int i) {
-  double keep = LATER[i] > FINALJUDGES * jdCost ? LATER[i] : FINALJUDGES * jdCost;
   int after = 0; for (int j = i + 1; j < NSTAGES; j++) after += STAGESHARE[j];
-  if (keep < OPTWORK * after / 100) keep = OPTWORK * after / 100;
+  double share = OPTWORK * after / 100, keep = LATER[i] < 2 * share ? LATER[i] : 2 * share;
+  if (keep < FINALJUDGES * jdCost) keep = FINALJUDGES * jdCost;
+  if (keep < share) keep = share;
   return rdW0 + OPTWORK - keep;
 }
 static double stageOpen(int i) { double keep = stageEnd, e = stageLeaves(i); if (e < stageEnd) stageEnd = e; return keep; }
