@@ -3541,7 +3541,6 @@ static void linesFind(int depth, int breaks) {
 // never depends on the order found.
 static int lineBefore(const LineC *a, const LineC *b) {
   if (a->brk != b->brk) return a->brk;
-  if (a->pm != b->pm) return a->pm > b->pm;   // a longer match is weighed before a shorter, never by how soon it is done
   if (a->est != b->est) return a->est < b->est;
   int m = a->n < b->n ? a->n : b->n;
   for (int k = 0; k < 2 * m; k++) if (a->sw[k] != b->sw[k]) return a->sw[k] < b->sw[k];
