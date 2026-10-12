@@ -2725,6 +2725,7 @@ static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double no
 // a kept line's steps offered: each legal pair, pressed when the clock says
 // (from the line's last press and cursor; a pair the line disturbed once it is
 // still), kept only if pressed in time
+static JLOCAL int (*sitFilter)(const int32_t *st, int r, int c);   // a search that matters only in one region offers no swap outside it: the cost is not paid for a child that is then cut
 static void sitOffer(int i, int *nk, int *nh, double notBefore, int frozen, const uint32_t *can0, Wait (*wait0)[WMAX]) {
   extern PATLS double paWork;
   SitNode *nd = &SITND[i];
@@ -2736,6 +2737,7 @@ static void sitOffer(int i, int *nk, int *nh, double notBefore, int frozen, cons
   for (int q = 0; q < m && *nk < SITKIDS; q++) {
     int r = SITL[2 * q], c = SITL[2 * q + 1];
     if (r > 31) continue;
+    if (sitFilter && !sitFilter(SITST[i], r, c)) continue;
     uint32_t bit = 1u << (r - 1);
     if (root && can0 && !(can0[c] & bit)) continue;
     double ready = notBefore;
@@ -4541,9 +4543,11 @@ static Dec lineupFirst(Dec d) {
   double luEnd = stageLeaves(4);
   int last;
   LuCtx x = { &B, st0 };
+  sitFilter = lineupNear;
   if (paWork < luEnd)
     searchInTime(st0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, lineEnds(0, 0, &last), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0,
                  can0, waits0, luEnd - paWork, sitLineup, &x, 0, 0, 0);
+  sitFilter = 0;
 #ifndef __wasm__
   if (0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINEUP states %d %.2f ms | ranks %d %.2f ms (ready %d %.2f ms)\n", luStates, luStateMs, luRanks, luRankMs, luReady, luReadyMs); }
 #endif
