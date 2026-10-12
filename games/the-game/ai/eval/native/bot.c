@@ -2714,6 +2714,7 @@ static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double no
 // a kept line's steps offered: each legal pair, pressed when the clock says
 // (from the line's last press and cursor; a pair the line disturbed once it is
 // still), kept only if pressed in time
+static JLOCAL int sitRootKids; static JLOCAL double sitRootLeft;
 static JLOCAL int (*sitFilter)(const int32_t *st, int r, int c);   // a search that matters only in one region offers no swap outside it: the cost is not paid for a child that is then cut
 static void sitOffer(int i, int *nk, int *nh, double notBefore, int frozen, const uint32_t *can0, Wait (*wait0)[WMAX]) {
   extern PATLS double paWork;
@@ -2752,6 +2753,7 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
   sitSeen(hashOf(SITST[0]));
   int nn = 1, nk = 0, nh = 0;
   sitOffer(0, &nk, &nh, notBefore, frozen, can0, wait0);
+  sitRootKids = nk; sitRootLeft = left;
   int32_t line[2 * LINEMAX];
   while (nh > 0 && paWork - w0 < work) {
     SitKid kd = SITKD[sitPop(&nh)];
@@ -4532,7 +4534,7 @@ static Dec lineupFirst(Dec d) {
   double luEnd = stageLeaves(4);
   int last;
   LuCtx x = { &B, st0 };
-  sitFilter = lineupNear;
+  sitFilter = lineupNear; sitRootKids = -1; sitRootLeft = -1;
   if (paWork < luEnd)
     searchInTime(st0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, lineEnds(0, 0, &last), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0,
                  can0, waits0, luEnd - paWork, sitLineup, &x, 0, 0, 0);
@@ -4542,7 +4544,7 @@ static Dec lineupFirst(Dec d) {
 #endif
   if (!(paWork < luEnd)) LUWHY(5);
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINEUPSTATS nodes %d ranked %d nearcut %d work %.0f of %.0f\n", luNodes, luRanks, luNearCut, paWork, luEnd); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINEUPSTATS nodes %d ranked %d nearcut %d rootkids %d left %.0f work %.0f of %.0f\n", luNodes, luRanks, luNearCut, sitRootKids, sitRootLeft, paWork, luEnd); }
 #endif
   if (!B.has) { LUWHY(6); return d; }
   if (B.n == 1 && d.kind == K_SWAP && d.hasMove && d.sr == B.sw[0] && d.sc == B.sw[1]) { LUWHY(7); return d; }
