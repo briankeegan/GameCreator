@@ -6061,9 +6061,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   int32_t lineAfterPlay[2 * LINEMAX]; int nLineAfterPlay = BT->nLine;
   for (int q = 0; q < 2 * BT->nLine; q++) lineAfterPlay[q] = BT->line[q];
   d = waitForDrain(d); d = raiseHold(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  // DOWNTIME KEEPS ITS WORK FOR THE ATTACK: with the board safe (it loses no health within the horizon) the break search stops at its share,
-  // so the idle-time attack and the setups after it have work; dying, it takes what it needs
-  { double keep = aloneOnEngine() && aloneDie(1 << 20) > LIVEHORIZON ? stageOpen(2) : stageEnd; SHARE(25); d = breakFirst(d); stageClose(keep); } cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  SHARE(25); d = breakFirst(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(5); d = stayAlive(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(15); d = keepBreak(d); d = lineupFirst(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(5); d = batchBreak(d); d = spendToBreak(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
