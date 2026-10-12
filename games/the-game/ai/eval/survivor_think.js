@@ -166,7 +166,10 @@ module.exports = function think(cfg) {
         if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
         // raising: the stack comes up for material until highTop
         var attacking = !!bot._attacking, oppOut = !!(m.opp && m.opp.out);
-        if (!attacking && !oppOut && prep.want && prep.want.raise && bot._canRaise()) d = { kind: 'raise', overruled: true };
+        // a chain running is left alone: a swap made while it goes can break it (not when the opponent is topped out: combos are short)
+        var busy = (board.stopTime || 0) + (board.preStopTime || 0) > 0 || (board.chainCounter || 0) > 0;
+        if (busy && !oppOut) { d = { kind: 'hold', overruled: true }; bot._chainHolds = (bot._chainHolds || 0) + 1; }
+        else if (!attacking && !oppOut && prep.want && prep.want.raise && bot._canRaise()) d = { kind: 'raise', overruled: true };
         else {
           // nothing on the board, nothing coming and the stack low: all the time and depth it takes to plan a big attack
           var quiet = comingRows === 0 && SH.top(board) < (A.quietTop || 9) && !(bot._planUntil > board.clock), P2 = quiet ? { ms: A.bigMs || 1500, width: A.bigWidth || 100, depth: A.bigDepth || 14 } : { ms: Math.min(A.ms || 300, due ? Math.max(40, due - Date.now() - DEADLINE_MARGIN_MS) : 300), width: A.width || 60, depth: A.depth || 10 };
@@ -221,7 +224,7 @@ module.exports = function think(cfg) {
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
             mem: NativeMem(),
             breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
-            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0 } };
+            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0 } };
     } catch (e) {
       if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
       else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e) + ' [inc ' + (board && board.incoming ? board.incoming.length : '?') + ', arr ' + (m.arrivals ? m.arrivals.length : '?') + ']', ms: Date.now() - t0 };
