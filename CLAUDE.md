@@ -369,6 +369,9 @@ ways: a tool not listed, or a path listed that doesn't exist.
   row of the room (`slabRowsHeld`, `roomForBreak`). What the stages after one
   keep (`stageLeaves`) is what they have taken lately, capped at twice their
   shares, so a stage that takes what is left cannot starve the ones before it.
+  A board a landing slab fills is held by that landing's shake before the
+  drain ends it (`pa.c checkDeath`, `nb_shake_frames`), so a break against a
+  slab taller than the board still has the shake's time (`framesToDeathS`).
   A new fixed number in these paths is a bug: derive it, or read it from
   `BIN`.
 - **Survival is a loop on Actions. Run every step of it in the background**
