@@ -357,7 +357,9 @@ module.exports = function think(cfg) {
   function raiseCap(board, coming, A) {
     var queued = 0;
     if (A.raiseLeaveRoom) (board.incoming || []).forEach(function (g) { queued += g.height || 0; });
-    return (A.raiseMax || 11) - (A.raiseLeaveRoom ? coming + queued : 0);
+    // (while stop time runs the stack does not rise by itself, so one row more is safe: raiseStopBonus, from raiseStopFrames of it)
+    var bonus = (A.raiseStopBonus || 0) && (board.stopTime || 0) + (board.preStopTime || 0) >= (A.raiseStopFrames || 60) ? A.raiseStopBonus : 0;
+    return (A.raiseMax || 11) + bonus - (A.raiseLeaveRoom ? coming + queued : 0);
   }
   // The lowest peak: the fewest panels any column has -- a stack with one tall column and the rest empty has nothing to break with.
   function lowPeak(board) {
