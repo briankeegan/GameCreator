@@ -85,7 +85,16 @@ module.exports = function (opts) {
       if (spent.length) s.drop(spent);
     }
     if (!best) best = { cells: 0, chain: 0, seq: [] };
+    else { // the highest row with a panel on the board the fire leaves
+      var ga = best.n && best.n.b && best.n.b.grid, ar = 0, rr, cc;
+      if (ga) for (rr = ga.length - 2; rr >= 1 && !ar; rr--) for (cc = 1; cc <= W; cc++) if (ga[rr] && ga[rr][cc] > 0 && ga[rr][cc] < 8) { ar = rr; break; }
+      best.after = ar;
+    }
     best.setup = setup ? setup.move : null;
+    // any swap at all: one that moves nothing that matters is how the rise is let go of (see survivor_think.js, unlock)
+    var legal = root.b.legalSwaps(), same = null, g0 = root.b.grid;
+    legal.forEach(function (m) { if (!same && g0[m[0]] && g0[m[0]][m[1]] > 0 && g0[m[0]][m[1]] < 8 && g0[m[0]][m[1]] === g0[m[0]][m[1] + 1]) same = m; });
+    best.anySwap = same || (legal.length ? legal[0] : null);
     best.base = base;
     best.ms = Date.now() - t0;
     return best;
