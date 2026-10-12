@@ -242,6 +242,9 @@
     // breaks garbage is played as any move is. It runs after the survival
     // search, so a three that is the only move proven to live is still played.
     this.refuseBareThree = opts.threesLast === true;
+    // THREE BREAKS LAST (opts.threeBreaksLast, with threesLast): a three that breaks garbage is held to the same rule --
+    // played only when no other move is proven to live.
+    this.refuseThreeBreak = opts.threeBreaksLast === true;
     this.nearestFirst = opts.nearestFirst === true;
     this.bareThreesDropped = 0;
     this.bareThreesKept = 0;
@@ -2090,11 +2093,18 @@
     for (var i = 0; i < sizes.length; i++) if (sizes[i] > 3) return false;
     return true;
   }
-  // Is this swap, among the decision's candidates, a move of bare threes.
+  // A move whose clears are all threes, one of them breaking garbage.
+  function threeBreak(c) {
+    var r = c && c.resolved, sizes = r && r.comboSizes;
+    if (!sizes || !sizes.length || !((r.brokeGarbage || 0) > 0) || (r.chainLength || 0) >= 2) return false;
+    for (var i = 0; i < sizes.length; i++) if (sizes[i] > 3) return false;
+    return true;
+  }
+  // Is this swap, among the decision's candidates, a move of bare threes (with threeBreaksLast, of threes that break garbage too).
   PuyoCpu.prototype.threeOnlySwap = function (move) {
-    var all = this._allCands || [];
-    for (var i = 0; i < all.length; i++)
-      if (all[i].kind === 'swap' && all[i].move && all[i].move[0] === move[0] && all[i].move[1] === move[1]) return bareThree(all[i]);
+    var all = this._allCands || [], i;
+    for (i = 0; i < all.length; i++)
+      if (all[i].kind === 'swap' && all[i].move && all[i].move[0] === move[0] && all[i].move[1] === move[1]) return bareThree(all[i]) || (!!this.refuseThreeBreak && threeBreak(all[i]));
     return false;
   };
   PuyoCpu.prototype._noBareThree = function (cands) {
@@ -2108,7 +2118,8 @@
       if (cands.some(bareThree)) this.bareThreesTopped++;
       return cands;
     }
-    var live = cands.filter(function (c) { return !bareThree(c); });
+    var tb = this.refuseThreeBreak, threes = function (c) { return bareThree(c) || (tb && threeBreak(c)); };
+    var live = cands.filter(function (c) { return !threes(c); });
     if (live.length === cands.length) return cands;
     if (!live.length) { this.bareThreesKept++; return cands; }
     this.bareThreesDropped += cands.length - live.length;

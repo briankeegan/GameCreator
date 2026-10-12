@@ -50,4 +50,15 @@ prep.want = { '3,2': true };
 assert.deepStrictEqual(SP.overrule({ kind: 'hold' }, prep, bot).move, [3, 2], 'a three that breaks garbage still is');
 prep.want = { '4,2': true };
 assert.deepStrictEqual(SP.overrule({ kind: 'hold' }, prep, bot).move, [4, 2], 'and anything else');
+// THREE BREAKS LAST (threeBreaksLast): a three that breaks garbage is held to the same rule.
+bot.refuseThreeBreak = true; bot.bareThreesDropped = 0; bot.bareThreesKept = 0;
+assert.strictEqual(names(bot._noBareThree([brk, hold, chain, four])), 'hold,chain,four', 'a three break is dropped while another move is left');
+assert.strictEqual(names(bot._noBareThree([bare, brk])), 'bare,break', 'only threes left: they stay');
+assert.strictEqual(bot.bareThreesKept, 1);
+assert.strictEqual(bot.threeOnlySwap([3, 2]), true);
+assert.strictEqual(bot.threeOnlySwap([4, 2]), false, 'a chain is not held back');
+prep.want = { '3,2': true };
+assert.strictEqual(SP.overrule({ kind: 'hold' }, prep, bot).kind, 'hold', 'a three break is not forced over the bot');
+bot.refuseThreeBreak = false;
+assert.deepStrictEqual(SP.overrule({ kind: 'hold' }, prep, bot).move, [3, 2], 'off unless the profile asks');
 console.log('threesLast: ok');
