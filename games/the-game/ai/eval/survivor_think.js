@@ -47,7 +47,7 @@ module.exports = function think(cfg) {
     if (!BS) BS = new (require(path.join(DIR, 'native.js')).server.Search)({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames, threads: OPTS.threads || 1 });
     return BS;
   }
-  var bot = null, snap = null, nat = null, candNat = null, BS = null, attacker = null, attackLogged = 0, attackGate = 0, noRaise = null;   // BS: a search context of its own for breakMoves   // nat, candNat: the search's and the candidates' C contexts, kept from match to match
+  var bot = null, snap = null, nat = null, candNat = null, BS = null, attacker = null, attackLogged = 0, attackGate = 0;   // BS: a search context of its own for breakMoves   // nat, candNat: the search's and the candidates' C contexts, kept from match to match
   var NativeMem = function () {
     var N = require(path.join(DIR, 'native.js')).server, X = N.exports(), free = [];
     for (var k = 0; k < 4; k++) free.push(X.nb_pool_stat(k));
@@ -75,7 +75,6 @@ module.exports = function think(cfg) {
     try {
       if (!bot) {
         bot = new P(view, OPTS);
-        bot._attacking = false;
         if (nat) bot._nat = nat;
         if (candNat) bot._candNat = candNat;
       }
@@ -101,15 +100,7 @@ module.exports = function think(cfg) {
       // that leaves its top lowest: a move leaving the top at row h ranks as a
       // break TALL_RANK + h frames away. Six-wide garbage lands on the tallest
       // column, so that column is the board's height.
-      // THE CYCLE (profile.attack): the stack is raised for material up to highTop, then attacks until it is below lowTop, then raised again.
-      var profNow = cfg.profile, AC = cfg.profile.attack;
-      if (AC) {
-        var topNow = SH.top(board);
-        if (!bot._attacking && topNow >= (AC.highTop || 8)) bot._attacking = true;
-        else if (bot._attacking && topNow < (AC.lowTop || 5)) bot._attacking = false;
-        if (bot._attacking) profNow = noRaise || (noRaise = Object.assign({}, cfg.profile, { raiseTo: 0 }));
-      }
-      var prep = SP.prepare(bot, board, { profile: profNow, hold: m.hold, arrivals: arrivals, comingRows: comingRows, due: due, ms: m.ms, margin: DEADLINE_MARGIN_MS,
+      var prep = SP.prepare(bot, board, { profile: cfg.profile, hold: m.hold, arrivals: arrivals, comingRows: comingRows, due: due, ms: m.ms, margin: DEADLINE_MARGIN_MS,
                                         search: search, stale: stale, aborted: P.ABORTED });
       var br = prep.br, brMs = prep.brMs, want = prep.want;
       // WHILE CALM, THE PROFILE'S calmGoal IS WHAT IS BUILT, pulled toward by calmToward; otherwise the bot's own.
@@ -166,22 +157,21 @@ module.exports = function think(cfg) {
         var garb = !!SH.lowestGarbageRow(board);
         safeA = !garb;
         if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
-        // raising: the stack comes up for material until highTop
-        var attacking = !!bot._attacking, oppOut = !A.ignoreOpp && !!(m.opp && m.opp.out);
+        var oppOut = !A.ignoreOpp && !!(m.opp && m.opp.out);
         // a chain running is left alone: a swap made while it goes can break it (not when the opponent is topped out: combos are short)
         var busy = (board.stopTime || 0) + (board.preStopTime || 0) > 0 || (board.chainCounter || 0) > 0;
         if (busy && !oppOut) { d = { kind: 'hold', overruled: true }; bot._chainHolds = (bot._chainHolds || 0) + 1; }
-        else if (!garb && !attacking && !oppOut && prep.want && prep.want.raise && bot._canRaise()) d = { kind: 'raise', overruled: true };
         else {
           // nothing on the board, nothing coming and the stack low: all the time and depth it takes to plan a big attack
           var quiet = !garb && comingRows === 0 && SH.top(board) < (A.quietTop || 9) && !(bot._planUntil > board.clock), P2 = quiet ? { ms: A.bigMs || 1500, width: A.bigWidth || 100, depth: A.bigDepth || 14 } : { ms: Math.min(A.ms || 300, due ? Math.max(40, due - Date.now() - DEADLINE_MARGIN_MS) : 300), width: A.width || 60, depth: A.depth || 10 };
           // the opponent topped out: any combo or chain there is, soonest. Not: a big chain, however tall the stack.
           var minChain = oppOut ? 0 : (A.minChain || 4);
           var floor = oppOut ? (A.outCells || 3) : 1;
-          var ap = attacker.plan(board, m.hold, { ms: oppOut ? Math.min(P2.ms, 300) : P2.ms, width: P2.width, depth: P2.depth, pool: A.pool || 250, stopAt: oppOut ? floor : 0, minChain: minChain });
-          if (attackLogged++ < 60) console.error('ATTACK clock ' + board.clock + ' attacking ' + attacking + ' out ' + oppOut + ' quiet ' + quiet + ' plan ' + (ap ? ap.cells + ' cells chain ' + ap.chain + ' swaps ' + ap.seq.length + ' first ' + JSON.stringify(ap.seq[0] || null) + ' setup ' + JSON.stringify(ap.setup) + ' base ' + ap.base + ' in ' + ap.ms + ' ms' : 'none'));
+          var ap = attacker.plan(board, m.hold, { ms: oppOut ? Math.min(P2.ms, 300) : P2.ms, width: P2.width, depth: P2.depth, pool: A.pool || 250, stopAt: oppOut ? floor : 0, minChain: minChain, guideChain: A.guideChain });
+          if (attackLogged++ < 60) console.error('ATTACK clock ' + board.clock + ' out ' + oppOut + ' quiet ' + quiet + ' plan ' + (ap ? ap.cells + ' cells chain ' + ap.chain + ' swaps ' + ap.seq.length + ' first ' + JSON.stringify(ap.seq[0] || null) + ' setup ' + JSON.stringify(ap.setup) + ' base ' + ap.base + ' in ' + ap.ms + ' ms' : 'none'));
           if (ap && ap.cells >= floor && ap.seq.length) { d = { kind: 'swap', move: ap.seq[0], overruled: true }; bot._attackCells = ap.cells; attackLine = ap.seq.slice(1); attackMove = ap.seq[0]; bot._planUntil = board.clock + 40 * ap.seq.length; }
-          // no fire in reach: the swap that builds the board toward one
+          // no fire in reach: more panels to build with (the stack is raised) up to raiseMax, then the swap that builds the board toward one
+          else if (!garb && SH.top(board) < (A.raiseMax || 10) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1; }
           else if (ap && ap.setup && !garb) { d = { kind: 'swap', move: ap.setup, overruled: true }; bot._setups = (bot._setups || 0) + 1; }
         }
       }
