@@ -152,7 +152,9 @@ module.exports = function think(cfg) {
       if (A && !SH.lowestGarbageRow(board) && comingRows <= (A.maxComing === undefined ? 6 : A.maxComing) && SH.top(board) < (A.maxTop || 8)) {
         safeA = true;
         if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
-        var ap = attacker.plan(board, m.hold, { ms: Math.min(A.ms || 300, due ? Math.max(40, due - Date.now() - DEADLINE_MARGIN_MS) : 300), width: A.width || 60, depth: A.depth || 10, pool: A.pool || 250 });
+        // nothing on the board, nothing coming and the stack low: all the time and depth it takes to plan a big attack
+        var quiet = comingRows === 0 && SH.top(board) < (A.quietTop || 7), P2 = quiet ? { ms: A.bigMs || 1500, width: A.bigWidth || 100, depth: A.bigDepth || 14 } : { ms: Math.min(A.ms || 300, due ? Math.max(40, due - Date.now() - DEADLINE_MARGIN_MS) : 300), width: A.width || 60, depth: A.depth || 10 };
+        var ap = attacker.plan(board, m.hold, { ms: P2.ms, width: P2.width, depth: P2.depth, pool: A.pool || 250 });
         if (ap && ap.cells >= (A.minCells || 12)) { d = { kind: 'swap', move: ap.seq[0], overruled: true }; bot._attackCells = ap.cells; }
         // no big fire in reach: the swap that builds the board toward one
         else if (ap && ap.setup) { d = { kind: 'swap', move: ap.setup, overruled: true }; bot._setups = (bot._setups || 0) + 1; }
