@@ -3464,12 +3464,15 @@ static int sitDrops(const int32_t *res, const int32_t *sw, int n, double at, voi
   x->len[x->n] = n; for (int k = 0; k < 2 * n; k++) x->sw[x->n][k] = sw[k];
   return ++x->n >= TADTRIES ? SIT_TAKE : SIT_END;
 }
+// THE SOONEST LINE THAT LETS A PERCHED PILE DOWN, of the decision's search: the last resort's step (arbitrate)
+static int tadN, tadDec = -1; static int32_t tadSw[2 * LINEMAX];
 static void targetAfterDrops(const int32_t *st, int cr, int cc, double t0, double limit) {
   if (tPfxN) return;
   static DropCtx x;
   x.g0 = garbSum(st); x.n = 0;
   if (!(x.g0 > 0)) return;
   searchInTime(st, cr, cc, t0, 0, limit, lsTopped, ENGINE_BASE ? ENGINE_CAN : 0, ENGINE_WAITS, TADWORK, sitDrops, &x, 0, 0, 0);
+  if (x.n > 0) { tadN = x.len[0]; for (int k = 0; k < 2 * tadN; k++) tadSw[k] = x.sw[0][k]; tadDec = btDecision; }
   // soonest drop first; timing wants only the soonest break, so it stops at the first board that gives one
   double bound0 = tTimeMin;
   for (int i = 0; i < x.n && workLeft() > 0 && !(tTimeMode && tTimeMin < bound0); i++) {
@@ -4154,7 +4157,6 @@ static int getsBackInTime(const Opt *o, const int32_t *line, int n) {
   if (r[1] < 0) return !r[0];   // the line was cut short by the board losing health: it did not get back in time
   return !r[0] || r[0] > r[1];
 }
-static Dec breakSpare(Dec d);
 static Dec arbitrate(Dec d) {
   if (!((d.kind == K_SWAP && d.hasMove) || d.kind == K_HOLD)) return d;   // a raise: raiseMode's own rules
   Opt O[5 + ATTACKOPTS + SETUPOPTS]; int n = 0, at = -1, ra = -1;
@@ -4224,10 +4226,15 @@ static Dec arbitrate(Dec d) {
     if (!bad) break;
     w->lives = 0;
   }
-  // NOTHING ELSE TO DO: the hold has won, there is garbage to break and work left over -- the search for a break goes on with it
-  if (O[best].n == 0 && O[best].d.kind == K_HOLD && !BT->nLine && hasGarbage(DBASE) && workLeft() > 4 * jdCost) {
-    Dec m = breakSpare(d);
-    if (m.kind == K_SWAP && m.hasMove && m.via == V_BREAKREACH) return m;
+  // A LAST RESORT, when nothing else is to be done: the hold has won, and the soonest line that lets a perched pile down lives,
+  // loses health no sooner and leaves less hollow than the board left alone -- its first swap is played, and the next decision
+  // plans on from the board it makes
+  if (O[best].n == 0 && O[best].d.kind == K_HOLD && tadDec == btDecision && tadN > 0 && aloneOnEngine() && !BT->nLine && workLeft() > jdCost) {
+    Opt p; memset(&p, 0, sizeof p);
+    p.d = mkSwap(tadSw[0], tadSw[1], V_BREAKREACH, d.mode, d.alive);
+    p.n = tadN; for (int k = 0; k < 2 * tadN; k++) p.sw[k] = tadSw[k];
+    p.pri = 2;
+    if (optJudge(&p) && p.lives && p.hollow < O[best].hollow && p.die >= O[best].die) { BT->nLine = 0; return p.d; }
   }
 #ifndef __wasm__
   // WHAT IT WEIGHED, one short line in the run log whenever an attack was among the options or a plain clear won: every option's
@@ -4257,7 +4264,6 @@ static Dec arbitrate(Dec d) {
 #define ROOMLEFT 4
 // BREAKING COMES FIRST.
 static Dec breakDeeper(Dec d);
-static Dec breakSpare(Dec d);
 static Dec makeRoom(Dec d);
 static int roomForBreak(const int32_t *st);
 static Dec breakFirst(Dec d) {
@@ -4327,12 +4333,12 @@ static int breakWithin(const int32_t *st, double left) {
 // PAST THE LINES: when none of the lines breaks, the shared search is asked
 // again for a break with what the decision has left of its work, and the line
 // it finds is played if the engine says it lives and breaks -- in the time there is.
-static Dec breakDeeperTo(Dec d, double end) {
+static Dec breakDeeper(Dec d) {
   if (!BIN[IN_HASPA]) return d;
   resolve(DBASE, KBR, 1);
   if (KBR[R_SCOPE] != SC_OK) return d;
   static ST kb0; stcpy(kb0, KBR + R_INTS);
-  kbEnd = end;
+  kbEnd = stageLeaves(2);
   if (paWork >= kbEnd) return d;
   int32_t sw[2 * LINEMAX]; int n = 0;
   if (!searchInTime(kb0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, timeLeft(), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0,
@@ -4344,9 +4350,6 @@ static Dec breakDeeperTo(Dec d, double end) {
   lineKeep(&l, LINE_BREAK);
   return mkSwap(sw[0], sw[1], V_BREAKREACH, d.mode, d.alive);
 }
-static Dec breakDeeper(Dec d) { return breakDeeperTo(d, stageLeaves(2)); }
-// THE WORK THE DECISION HAS LEFT, spent on the same search when nothing else was found to do
-static Dec breakSpare(Dec d) { return breakDeeperTo(d, optLine() - 2 * jdCost); }
 static int keepsBreak(int r, int c) {
   stcpy(KBA, DBASE);
   if (!swapIn(KBA, r, c)) return 0;
