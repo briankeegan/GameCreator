@@ -330,7 +330,18 @@ module.exports = function think(cfg) {
       // the rest of an attack line is played on while the next question is thought about
       if (attackLine && attackLine.length && d.kind === 'swap' && d.move && attackMove && d.move[0] === attackMove[0] && d.move[1] === attackMove[1]) { line = attackLine; lineFree = true; }
       if (!noAimed && br && br.path && d.kind === 'swap' && d.move && br.path[0][0] === d.move[0] && br.path[0][1] === d.move[1] && br.path.length > 1) { line = br.path.slice(1); lineFree = true; }
-      out = { id: m.id, epoch: m.epoch, at: m.at, kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, raiseFrames: d.kind === 'raise' && A && A.holdRaise ? Math.max(18, Math.min(A.raiseHoldMax || 54, 18 * (raiseCap(board, comingRows, A) - SH.top(board)))) : 0, ms: Date.now() - t0, queued: m.posted ? t0 - m.posted : 0, brMs: brMs, why: why,
+      // THE RAISE IS GARBAGE AWARE: the button is held only until the garbage on its way lands, less a lead to act in, and not at all when
+      // it lands within the lead
+      var holdFrames = 0;
+      if (d.kind === 'raise' && A && A.holdRaise) {
+        var landIn = Infinity, lead = A.raiseLead || 10;
+        arrivals.forEach(function (a) { if (a.at < landIn) landIn = a.at; });
+        holdFrames = Math.max(18, Math.min(A.raiseHoldMax || 54, 18 * (raiseCap(board, comingRows, A) - SH.top(board))));
+        if (landIn < Infinity) holdFrames = Math.min(holdFrames, landIn - lead);
+        if (holdFrames < 1 && landIn <= lead) { d = { kind: 'hold', overruled: true }; holdFrames = 0; }
+        else if (holdFrames < 1) holdFrames = 0;
+      }
+      out = { id: m.id, epoch: m.epoch, at: m.at, kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, raiseFrames: holdFrames, ms: Date.now() - t0, queued: m.posted ? t0 - m.posted : 0, brMs: brMs, why: why,
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
             mem: NativeMem(),
             breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
