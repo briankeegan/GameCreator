@@ -4491,10 +4491,19 @@ static int maskBreaks(const int32_t *st, const int32_t *sw, int n) {
   return 0;
 }
 static int luWhy[6];   // why lineupRank turned a line down, for the bot log: 0 needs more than any rank, 1 no break and a break wanted, 2 not ready after, 3 does not live, 4 no rank, 5 ranked
-static int lineupRank(const int32_t *st, const int32_t *sw, int n, int need) {
+// THE MASKS FIRST: a line whose board, with the slab placed where it rests, has no break in reach even on the masks
+// is not asked of the engine -- the engine's readiness replays the line and searches the landing, a hundred times the masks' cost
+static int maskReadyAfter(const int32_t *post) {
+  SLABW = (int)BIN[IN_SLABW]; SLABH = (int)BIN[IN_SLABH]; SLABC = (int)BIN[IN_SLABC];
+  int placed = slabPlace(post, SLABST);
+  if (placed < 0) return 1;
+  return inTimeOf(placed ? SLABST : post, sitBreaks);
+}
+static int lineupRank(const int32_t *st, const int32_t *post, const int32_t *sw, int n, int need) {
   if (need > LUBEST) { luWhy[0]++; return 0; }
   int mb = maskBreaks(st, sw, n);
   if (!mb && need > 3) { luWhy[1]++; return 0; }
+  if (!mb && !maskReadyAfter(post)) { luWhy[2]++; return 0; }
   if (!mb && !readyAfter(sw, n)) { luWhy[2]++; return 0; }
   int v = lineJudge(sw, n, 0);
   if (!(v & LV_LIVES)) { luWhy[3]++; return 0; }
@@ -4517,7 +4526,7 @@ static int sitLineup(const int32_t *res, const int32_t *sw, int n, double at, vo
   if (outPast(x->B, LUMOST, at)) return SIT_END;
   if (!lineupNear(res + R_INTS, sw[2 * n - 2], sw[2 * n - 1])) { luNearCut++; return SIT_END; }
   double rk = NOWMS2();
-  int rank = lineupRank(x->st0, sw, n, !x->B->has ? 0 : (int)x->B->score);
+  int rank = lineupRank(x->st0, res + R_INTS, sw, n, !x->B->has ? 0 : (int)x->B->score);
   luRanks++; luRankMs += NOWMS2() - rk;
   if (rank) bestTake(x->B, luScore(rank), at, sw, n);
   return rank >= 4 ? SIT_END : SIT_GROW;
