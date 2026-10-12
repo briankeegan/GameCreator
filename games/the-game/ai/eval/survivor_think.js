@@ -47,7 +47,7 @@ module.exports = function think(cfg) {
     if (!BS) BS = new (require(path.join(DIR, 'native.js')).server.Search)({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames, threads: OPTS.threads || 1 });
     return BS;
   }
-  var bot = null, snap = null, nat = null, candNat = null, BS = null, attacker = null, attackLogged = 0, attackGate = 0;   // BS: a search context of its own for breakMoves   // nat, candNat: the search's and the candidates' C contexts, kept from match to match
+  var bot = null, snap = null, nat = null, candNat = null, BS = null, attacker = null, attackLogged = 0, attackGate = 0, warmPlan = null;   // BS: a search context of its own for breakMoves   // nat, candNat: the search's and the candidates' C contexts, kept from match to match
   var NativeMem = function () {
     var N = require(path.join(DIR, 'native.js')).server, X = N.exports(), free = [];
     for (var k = 0; k < 4; k++) free.push(X.nb_pool_stat(k));
@@ -166,6 +166,13 @@ module.exports = function think(cfg) {
           if (ex.seq.length && ex.cells >= ex.base + 6) { d = { kind: 'swap', move: ex.seq[0], overruled: true }; attackLine = ex.seq.slice(1); attackMove = ex.seq[0]; bot._extends = (bot._extends || 0) + 1; }
           else { d = { kind: 'hold', overruled: true }; bot._chainHolds = (bot._chainHolds || 0) + 1; }
         }
+        else if (!oppOut && warmPlan && !warmPlan.used && warmPlan.ap.seq.length && warmPlan.ap.cells >= 1 && warmPlan.key === boardKey(board)) {
+          // the plan made in the countdown, while the board is still the one it was made for
+          warmPlan.used = true;
+          var wp = warmPlan.ap;
+          d = { kind: 'swap', move: wp.seq[0], overruled: true }; bot._attackCells = wp.cells; attackLine = wp.seq.slice(1); attackMove = wp.seq[0]; bot._planUntil = board.clock + 40 * wp.seq.length;
+          console.error('WARM played at ' + board.clock + ': ' + wp.cells + ' cells chain ' + wp.chain + ' swaps ' + wp.seq.length);
+        }
         else if (!garb && !oppOut && SH.top(board) < (A.raiseTo || 8) && bot._canRaise()) {
           // the first thing: the stack is raised for panels to build with, up to raiseTo
           d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1;
@@ -247,8 +254,24 @@ module.exports = function think(cfg) {
     }
     return out;
     }
+  // THE COUNTDOWN IS PLANNING TIME: the board the match opens on is planned for while the game counts down, and the line
+  // is played from the first frame the board still is what was planned for.
+  function boardKey(board) {
+    var k = '', r, c;
+    for (r = 1; r <= 12; r++) for (c = 1; c <= 6; c++) { var p = board.panels[r] && board.panels[r][c]; k += p ? (p.isGarbage ? 'G' : (p.color || 0)) : 0; }
+    return k;
+  }
+  function warm(m) {
+    var A = cfg.profile.attack;
+    if (!A) return;
+    var board = PA.revive(m.packed ? require('v8').deserialize(m.packed) : m.board);
+    if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
+    var ap = attacker.plan(board, { left: 0, started: false }, { ms: A.warmMs || 2500, width: A.warmWidth || 100, depth: A.warmDepth || 16, pool: A.pool || 250, minChain: A.minChain || 4, guideChain: A.guideChain });
+    warmPlan = { key: boardKey(board), ap: ap, used: false };
+    console.error('WARM plan ' + ap.cells + ' cells chain ' + ap.chain + ' swaps ' + ap.seq.length + ' in ' + ap.ms + ' ms');
+  }
   function reset() { if (bot && bot._nat) nat = bot._nat; if (bot && bot._candNat) candNat = bot._candNat; bot = null; snap = null; }
   // New weights take effect from the next match (reset).
   function setWeights(w) { OPTS.weights = floored(w); }
-  return { answer: answer, reset: reset, setWeights: setWeights };
+  return { answer: answer, reset: reset, setWeights: setWeights, warm: warm };
 };

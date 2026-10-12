@@ -178,6 +178,10 @@ var server = net.createServer(function (sock) {
           tBoard = process.hrtime.bigint();
           reply = { clock: truth.clock, input: match.frame(truth, arrivalsOf(state), function () { return PA.fromLua(state, match.level, new PA.Unseen()); }), next: match.planned(truth.clock + 1, NEXT) };
         }
+      } else if (m.t === 'warm') {
+        // the board in the countdown: the mind plans on it while the game counts down
+        if (match) LINK.post({ type: 'warm', packed: require('v8').serialize(PA.fromLua(m.state, match.level, new PA.Unseen())) });
+        reply = { ok: true };
       } else if (m.t === 'bye') { if (match) { console.log('match over: ' + overStats(match)); match.dump(); } match = null; reply = { ok: true }; }
       sock.write(JSON.stringify(reply) + '\n');
       if (match && m.t === 'f') {
