@@ -180,7 +180,7 @@ module.exports = function think(cfg) {
           d = { kind: 'swap', move: wp.seq[0], overruled: true }; bot._attackCells = wp.cells; attackLine = wp.seq.slice(1); attackMove = wp.seq[0]; bot._planUntil = board.clock + 40 * wp.seq.length;
           console.error('WARM played at ' + board.clock + ': ' + wp.cells + ' cells chain ' + wp.chain + ' swaps ' + wp.seq.length);
         }
-        else if (A.alwaysRaise && !garb && SH.top(board) < (A.raiseMax || 11) && bot._canRaise()) {
+        else if (A.alwaysRaise && SH.top(board) < (A.raiseMax || 11) && bot._canRaise()) {
           // not in the middle of a chain: the stack is raised as far as it will go, garbage coming or not (the survival logic takes over when it is tall)
           d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1;
         }
