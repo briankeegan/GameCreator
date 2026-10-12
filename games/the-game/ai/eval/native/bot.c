@@ -284,9 +284,9 @@ static double framesToDeathS(double stopTime, int tallest, double fpr) {
   // still coming are the whole queue's, not the next slab's.
   double queued = dmax(__builtin_ceil(BIN[IN_NEXTSLAB] / BW), BIN[IN_INROWS]);
   int room = BH - tallest;
-  // A FULL BOARD IS HELD BY THE SHAKE OF THE SLAB THAT FILLED IT: the drain ends it only after the landing's shake (pa.c checkDeath), as
-  // the engine counts it for the next slab (nb_shake_frames)
-  if (room <= 0) return dmax(clock, BIN[IN_SF + 4]);
+  // A FULL BOARD IS HELD BY THE STOP AND THE SHAKE OF THE SLAB THAT FILLED IT: health drains only once neither runs (pa.c riseLock, checkDeath),
+  // a frame of it per point of health, the shake as the engine counts it for the next slab (nb_shake_frames: by the slab's cells)
+  if (room <= 0) return dmax(clock, BIN[IN_SF + 4]) + dmax(0, BIN[IN_HEALTH]);
   if (queued >= room && room > 0) {
     // THE QUEUE FILLS THE ROOM, one slab at a time: each drops at row BH + 1
     // and falls a row a frame onto the last, and the next drops only once it
