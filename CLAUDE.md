@@ -402,10 +402,13 @@ ways: a tool not listed, or a path listed that doesn't exist.
   (`survival/viz/build.py` with the scan's `findings.json`) and republished
   at once, then the findings and any viz change are committed and pushed
   with it -- never saved up for a batch. **Every finding carries the scan's
-  budgets beside its count:** frames over the think budget, the slowest
-  decision, frames over the input budget. A change that raises either is not
-  done -- the path that costs more than its work charge is found and
-  calibrated first.
+  budgets beside its count:** frames over the think budget per 1,000
+  played (the work line is set to 1; `scan_deaths.sh` prints the rate and says
+  when it is over), the slowest decision, frames over the input budget. A
+  change that puts either over its line is not done -- the path that costs more
+  than its work charge is found and calibrated first. A search that needs more
+  than a frame has may run over several frames or on a background thread; what
+  counts is the frame's own response time.
 
 ## Infrastructure
 
