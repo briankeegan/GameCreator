@@ -4451,12 +4451,8 @@ static int readyAfter(const int32_t *sw, int n) {
 // THE MASKS PROPOSE, THE ENGINE JUDGES: the lineup's readiness read off the
 // masks (a break in reach when the next slab lands), the arbiter's on the engine (readyInTime)
 static int readyAfterIn(const int32_t *sw, int n) {
-  int32_t t; ST lum; int last;
-  if (lineLanded(sw, n, lum, &t) != 0) return 0;
-  double die = lineEnds(sw, n, &last);
-  int frozen = BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0;
-  int cr = n ? sw[2 * (n - 1)] : (int)BIN[IN_CROW], cc = n ? sw[2 * (n - 1) + 1] : (int)BIN[IN_CCOL];
-  return searchInTime(lum, cr, cc, n ? last + stepGap(frozen) : 0, t, die - 1, frozen, 0, 0, READYWORK, sitBreaks, 0, 0, 0, 0);
+  int r, c;
+  return readyInTime(sw, n, &r, &c);   // the one question, asked the one way: the engine's word on a break in reach where the slab lands (or, if it cannot come down, against the garbage held)
 }
 // Where a lineup can matter: the rows up to the one the next slab lands on,
 // in its columns and one either side.
