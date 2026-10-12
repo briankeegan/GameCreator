@@ -213,7 +213,7 @@ module.exports = function think(cfg) {
         }
         else {
           // nothing on the board, nothing coming and the stack low: all the time and depth it takes to plan a big attack
-          var quiet = !garb && comingRows === 0 && SH.top(board) < (A.quietTop || 9) && !(bot._planUntil > board.clock), P2 = quiet ? { ms: A.bigMs || 1500, width: A.bigWidth || 100, depth: A.bigDepth || 14 } : { ms: Math.min(A.ms || 300, due ? Math.max(40, due - Date.now() - DEADLINE_MARGIN_MS) : 300), width: A.width || 60, depth: A.depth || 10 };
+          var quiet = !garb && comingRows === 0 && SH.top(board) < (A.quietTop || 9) && !(bot._planUntil > board.clock), P2 = quiet ? { ms: A.boundPlans && due ? Math.min(A.bigMs || 1500, Math.max(60, due - Date.now() - DEADLINE_MARGIN_MS)) : A.bigMs || 1500, width: A.bigWidth || 100, depth: A.bigDepth || 14 } : { ms: Math.min(A.ms || 300, due ? Math.max(40, due - Date.now() - DEADLINE_MARGIN_MS) : 300), width: A.width || 60, depth: A.depth || 10 };
           // the opponent topped out: any combo or chain there is, soonest. Not: a big chain, however tall the stack.
           var minChain = oppOut ? 0 : minChainOf;
           var floor = oppOut || aggro ? (A.outCells || 3) : 1;
