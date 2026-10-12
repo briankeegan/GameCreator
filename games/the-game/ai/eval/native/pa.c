@@ -1013,6 +1013,7 @@ static void run(Board *b) {
 // panel is at rest or popping garbage, no flag is set and no popping timer
 // runs out -- the least popping timer less one; 0 if any panel would move,
 // match or change, or nothing pops.
+PATLS double paCdScan, paCdSup;   // cells countdownRoom looked at, and supportedFromBelow calls it made (the bot log, to calibrate what a frame costs)
 static int32_t countdownRoom(Board *b) {
   int32_t k = 0x7fffffff, popping = 0;
   int n = rowsTo(b), top = imin(n - 1, b->height + 2);
@@ -1020,10 +1021,12 @@ static int32_t countdownRoom(Board *b) {
     for (int c = 1; c <= W; c++) {
       Panel *p = P(b, r, c);
       const int32_t *f = p->f;
+      paCdScan++;
       if (f[STATECHANGED] || f[PROPCHAIN] || f[PROPFALL] || f[MATCHING] || f[MATCHANYWAY] || SETB(f[QUEUEDHOVER])) return 0;
       if (r <= top && SETB(f[CHAINING]) && (canMatch(p) || f[COLOR] == 9)) return 0;   // clearChainingFlags would clear it
       if (f[ISGARBAGE]) {
         if (f[STATE] == MATCHED) { if (f[TIMER] < 2) return 0; k = imin(k, f[TIMER] - 1); popping = 1; continue; }
+        paCdSup++;
         if (f[STATE] != NORMAL || !supportedFromBelow(b, p)) return 0;
         continue;
       }
