@@ -3423,7 +3423,8 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
   if (workLeft() <= 0 || !tGrid(st)) return;
   int N = st[O_N];
   int32_t sw[2 * LINEMAX]; int row[WMAX + 1];
-  tDrops(cr, cc, t0, limit);
+  extern PATLS double paWork; double tw0 = paWork, tw1, tw2, tw3, tw4;
+  tDrops(cr, cc, t0, limit); tw1 = paWork;
   for (int a = 1; a <= N && workLeft() > 0; a++) {
     // M in a column, the game's minimum first and every longer length the board holds after it: each row's nearest panel of
     // the colour walked to it
@@ -3466,9 +3467,13 @@ static void targetLines(const int32_t *st, int cr, int cc, double t0, double lim
         }
     }
   }
-  tStacks(N, cr, cc, t0, limit);
-  tRows(N, cr, cc, t0, limit);
+  tw2 = paWork;
+  tStacks(N, cr, cc, t0, limit); tw3 = paWork;
+  tRows(N, cr, cc, t0, limit); tw4 = paWork;
   tClears(cr, cc, t0, limit);
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "TLWORK drops %.0f shapes %.0f stacks %.0f rows %.0f clears %.0f | grid %d\n", tw1 - tw0, tw2 - tw1, tw3 - tw2, tw4 - tw3, paWork - tw4, tH); }
+#endif
 }
 // A PILE LET DOWN FIRST. Garbage perched on a column or two touches little; a
 // line that pulls its support -- however many swaps -- lets it down onto the
