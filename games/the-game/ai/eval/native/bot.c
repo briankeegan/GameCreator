@@ -4488,18 +4488,21 @@ static int maskBreaks(const int32_t *st, const int32_t *sw, int n) {
   }
   return 0;
 }
+static int luWhy[6];   // why lineupRank turned a line down, for the bot log: 0 needs more than any rank, 1 no break and a break wanted, 2 not ready after, 3 does not live, 4 no rank, 5 ranked
 static int lineupRank(const int32_t *st, const int32_t *sw, int n, int need) {
-  if (need > LUBEST) return 0;
+  if (need > LUBEST) { luWhy[0]++; return 0; }
   int mb = maskBreaks(st, sw, n);
-  if (!mb && need > 3) return 0;
-  if (!mb && !readyAfter(sw, n)) return 0;
+  if (!mb && need > 3) { luWhy[1]++; return 0; }
+  if (!mb && !readyAfter(sw, n)) { luWhy[2]++; return 0; }
   int v = lineJudge(sw, n, 0);
-  if (!(v & LV_LIVES)) return 0;
+  if (!(v & LV_LIVES)) { luWhy[3]++; return 0; }
   luHollow = HOLLOW(LNO);
   int spends = LNO[3] > LNA[3];
   int rank = (v & LV_BREAKS) ? 4 : 0;
   if (!rank && need <= 3 && (!mb || readyAfter(sw, n))) rank = 2;
-  return rank ? rank + !spends : 0;
+  if (!rank) { luWhy[4]++; return 0; }
+  luWhy[5]++;
+  return rank + !spends;
 }
 // THE LINEUP'S LINES: the shared search in time grows every line near the
 // slab, soonest first; each is judged on the engine (lineupRank) at a rank
@@ -4533,7 +4536,7 @@ static Dec lineupFirst(Dec d) {
   uint32_t can0[WMAX];
   Wait waits0[32][WMAX];
   if (lineState(0, 0, st0, can0, waits0, cur, &t) != 0) { LUWHY(4); return d; }
-  luStates = luRanks = luReady = luNearCut = luNodes = 0; luStateMs = luRankMs = luReadyMs = 0;
+  luStates = luRanks = luReady = luNearCut = luNodes = 0; for (int q = 0; q < 6; q++) luWhy[q] = 0; luStateMs = luRankMs = luReadyMs = 0;
   Best B = { 0 };
   // THE LINEUP'S SHARE: what the decision has left once the stages after it keep theirs
   double luEnd = stageLeaves(4);
@@ -4549,7 +4552,7 @@ static Dec lineupFirst(Dec d) {
 #endif
   if (!(paWork < luEnd)) LUWHY(5);
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINEUPSTATS nodes %d ranked %d nearcut %d rootkids %d legal %d filt %d can %d late %d left %.0f work %.0f of %.0f\n", luNodes, luRanks, luNearCut, sitRootKids, sitRootLegal, sitRootFilt, sitRootCan, sitRootLate, sitRootLeft, paWork, luEnd); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINEUPSTATS nodes %d ranked %d nearcut %d why %d %d %d %d %d %d rootkids %d legal %d filt %d can %d late %d left %.0f work %.0f of %.0f\n", luNodes, luRanks, luNearCut, luWhy[0], luWhy[1], luWhy[2], luWhy[3], luWhy[4], luWhy[5], sitRootKids, sitRootLegal, sitRootFilt, sitRootCan, sitRootLate, sitRootLeft, paWork, luEnd); }
 #endif
   if (!B.has) { LUWHY(6); return d; }
   if (B.n == 1 && d.kind == K_SWAP && d.hasMove && d.sr == B.sw[0] && d.sc == B.sw[1]) { LUWHY(7); return d; }
