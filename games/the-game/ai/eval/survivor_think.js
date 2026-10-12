@@ -158,7 +158,7 @@ module.exports = function think(cfg) {
         // nothing on the board, nothing coming and the stack low: all the time and depth it takes to plan a big attack
         var quiet = comingRows === 0 && SH.top(board) < (A.quietTop || 9) && !(bot._planUntil > board.clock), P2 = quiet ? { ms: A.bigMs || 1500, width: A.bigWidth || 100, depth: A.bigDepth || 14 } : { ms: Math.min(A.ms || 300, due ? Math.max(40, due - Date.now() - DEADLINE_MARGIN_MS) : 300), width: A.width || 60, depth: A.depth || 10 };
         var ap = attacker.plan(board, m.hold, { ms: P2.ms, width: P2.width, depth: P2.depth, pool: A.pool || 250 });
-        if (attackLogged++ < 60) console.error('ATTACK clock ' + board.clock + ' quiet ' + quiet + ' plan ' + (ap ? ap.cells + ' cells chain ' + ap.chain + ' swaps ' + ap.seq.length + ' first ' + JSON.stringify(ap.seq[0] || null) + ' setup ' + JSON.stringify(ap.setup) + ' in ' + ap.ms + ' ms' : 'none'));
+        if (attackLogged++ < 60) console.error('ATTACK clock ' + board.clock + ' quiet ' + quiet + ' plan ' + (ap ? ap.cells + ' cells chain ' + ap.chain + ' swaps ' + ap.seq.length + ' first ' + JSON.stringify(ap.seq[0] || null) + ' setup ' + JSON.stringify(ap.setup) + ' base ' + ap.base + ' in ' + ap.ms + ' ms' : 'none'));
         if (ap && ap.cells >= (A.minCells || 12)) { d = { kind: 'swap', move: ap.seq[0], overruled: true }; bot._attackCells = ap.cells; if (quiet) bot._planUntil = board.clock + 40 * ap.seq.length; }
         // no big fire in reach: the swap that builds the board toward one
         else if (ap && ap.setup) { d = { kind: 'swap', move: ap.setup, overruled: true }; bot._setups = (bot._setups || 0) + 1; }

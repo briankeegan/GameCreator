@@ -36,6 +36,9 @@ module.exports = function (opts) {
     var s = search(), t0 = Date.now(), best = null;
     s.reset();
     var root = s.root(board.copy(), hold, [], false);
+    // a cascade already running sends what it sends whatever is swapped: only what a swap adds to it counts
+    var baseOut = s.advanceMany([[root, 'settle', null, 0]], true)[0], base = 0;
+    if (baseOut && !baseOut.dead) { var bs = s.stepStats(baseOut); if (bs.cleared > 0) base = sent(bs).cells; }
     var rootH = connected(root.b.grid), setup = null;
     var pool = [{ n: root, seq: [], h: rootH }];
     for (var d = 1; d <= o.depth && pool.length && Date.now() - t0 < o.ms; d++) {
@@ -49,6 +52,7 @@ module.exports = function (opts) {
         var st = s.stepStats(out);
         if (st.cleared > 0) {
           var g = sent(st), seq = it.seq.concat([m]);
+          g.cells = Math.max(0, g.cells - base);
           if (g.cells > it.reach) it.reach = g.cells;
           if (!best || g.cells > best.cells || (g.cells === best.cells && seq.length < best.seq.length)) best = { cells: g.cells, chain: g.chain, seq: seq, n: out };
         } else it.kids.push({ n: out, seq: it.seq.concat([m]) });
@@ -76,6 +80,7 @@ module.exports = function (opts) {
     }
     if (!best) best = { cells: 0, chain: 0, seq: [] };
     best.setup = setup ? setup.move : null;
+    best.base = base;
     best.ms = Date.now() - t0;
     return best;
   }
