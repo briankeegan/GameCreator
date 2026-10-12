@@ -289,11 +289,12 @@ module.exports = function think(cfg) {
   // A CHAIN OR A CLEAR IS LIVE: a chain counting, panels falling from a clear, or -- while stop time runs -- panels still matched
   // or popping. Nothing is swapped then: a swap can take a panel out of what is about to fall or pop. With free, a board whose
   // panels have all settled is free at once whatever stop time is left (it only matters to a stack that is topped out).
-  // How high the stack may be raised: raiseMax less the rows of garbage on their way and queued, so that what lands still fits.
+  // How high the stack may be raised: raiseMax -- garbage coming is a reason to raise (panels to break it with), not to hold back --
+  // or, with raiseLeaveRoom, less the rows on their way and queued, so that what lands still fits.
   function raiseCap(board, coming, A) {
     var queued = 0;
-    (board.incoming || []).forEach(function (g) { queued += g.height || 0; });
-    return (A.raiseMax || 11) - coming - queued;
+    if (A.raiseLeaveRoom) (board.incoming || []).forEach(function (g) { queued += g.height || 0; });
+    return (A.raiseMax || 11) - (A.raiseLeaveRoom ? coming + queued : 0);
   }
   function cascadeLive(board, free) {
     if ((board.chainCounter || 0) > 0) return true;
