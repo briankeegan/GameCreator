@@ -3376,10 +3376,15 @@ static int gSwapResolve(int dst[][WMAX + 2], int src[][WMAX + 2], int r, int c, 
   return gResolve(dst, cleared);
 }
 #define TNEARG 3   // a second swap is tried this near garbage (cells, either way)
+// a match touches garbage only where the garbage is bare: a cell of it with a free side below or beside -- the inside of a block
+// is not in reach, so a block twelve rows tall is as near as the bottom of it, not the whole grid
+static int gBare(int g[][WMAX + 2], int k, int q) {
+  return (k > 1 && g[k - 1][q] != -1) || (q > 1 && g[k][q - 1] != -1) || (q < tW && g[k][q + 1] != -1);
+}
 static int gNearGarbage(int g[][WMAX + 2], int r, int c) {
   for (int k = r - TNEARG; k <= r + TNEARG; k++)
     for (int q = c - TNEARG; q <= c + 1 + TNEARG; q++)
-      if (k >= 1 && k <= tH && q >= 1 && q <= tW && g[k][q] == -1) return 1;
+      if (k >= 1 && k <= tH && q >= 1 && q <= tW && g[k][q] == -1 && gBare(g, k, q)) return 1;
   return 0;
 }
 static void tClears(int cr, int cc, double t0, double limit) {
