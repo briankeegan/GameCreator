@@ -401,7 +401,11 @@ ways: a tool not listed, or a path listed that doesn't exist.
   scan read, each change tried and each result is one finding added to it
   (`survival/viz/build.py` with the scan's `findings.json`) and republished
   at once, then the findings and any viz change are committed and pushed
-  with it -- never saved up for a batch.
+  with it -- never saved up for a batch. **Every finding carries the scan's
+  budgets beside its count:** frames over the think budget, the slowest
+  decision, frames over the input budget. A change that raises either is not
+  done -- the path that costs more than its work charge is found and
+  calibrated first.
 
 ## Infrastructure
 
