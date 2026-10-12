@@ -111,6 +111,20 @@ module.exports = function think(cfg) {
         var aim = (prep.calm || cfg.profile.vsAlways) && opp ? (near ? cfg.profile.vs.out : cfg.profile.vs.idle) : null;
         bot.goal = aim ? MODES.goal(aim.goal, aim.alsoTake) : bot._baseAim.goal;
         bot.buildToward = aim ? aim.toward : bot._baseAim.toward;
+      } else if (cfg.profile.pressure) {
+        // PRESSURE: keep the opponent topped out. Topped out: a combo as soon as one comes. Not: the attack that
+        // fills the rows it has left -- a chain of N links is a slab N - 1 rows tall -- so the goal is sized to them.
+        if (!bot._baseAim) bot._baseAim = { goal: bot.goal, toward: bot.buildToward };
+        var po = m.opp, P = cfg.profile.pressure, aimP = null;
+        if (po) {
+          if (po.out) aimP = P.out;
+          else {
+            var need = (P.rows || 12) - po.top;
+            aimP = need <= 3 ? P.small : need <= 5 ? P.medium : P.large;
+          }
+        }
+        bot.goal = aimP ? MODES.goal(aimP.goal, aimP.alsoTake) : bot._baseAim.goal;
+        bot.buildToward = aimP ? aimP.toward : bot._baseAim.toward;
       } else if (cfg.profile.calmGoal) {
         if (!bot._baseAim) bot._baseAim = { goal: bot.goal, toward: bot.buildToward };
         bot.goal = prep.calm ? MODES.goal(cfg.profile.calmGoal, cfg.profile.alsoTake) : bot._baseAim.goal;
