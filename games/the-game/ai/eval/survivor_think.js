@@ -16,6 +16,7 @@ require(path.join(DIR, '..', '..', 'panel-cpu.js'));
 var P = require(path.join(DIR, 'puyocpu.js')), PA = require(path.join(DIR, '..', '..', 'pa-engine.js'));
 var SH = require(path.join(DIR, 'survivor_shared.js')), SP = require(path.join(DIR, 'survivor_prefer.js')), MODES = require(path.join(DIR, 'modes.js'));
 var ATTACK = require(path.join(DIR, 'survivor_attack.js'));
+var CK = require(path.join(DIR, 'survivor_checks.js')), fullTop = CK.fullTop, lowPeak = CK.lowPeak, lowPeakOf = CK.lowPeakOf, panelCount = CK.panelCount, raiseCap = CK.raiseCap, cascadeLive = CK.cascadeLive;
 var SPEND = Number(process.env.GC_SURVIVOR_SPEND) || 0.6;   // budget searched per millisecond over the last decisions, and the share of the time there is spent searching
 // The search ends this long before the answer is due, for the rest of the decision and its post.
 var DEADLINE_MARGIN_MS = Number(process.env.GC_SURVIVOR_MARGIN) || 30;
@@ -158,13 +159,11 @@ module.exports = function think(cfg) {
       (board.incoming || []).forEach(function (g) { queuedRows += g.height || 0; });
       // topped out, or one row from it with no stop time running: the stack rises by itself into the top row and, with no stop time,
       // is lost -- from here a three is a move like any other (life first), where below it it is the last resort
-      var toppedEarly = !!m.topped || (typeof board.isToppedOut === 'function' && board.isToppedOut()) || (SH.top(board) >= 11 && (board.stopTime || 0) + (board.preStopTime || 0) === 0);
+      var toppedEarly = CK.toppedOrNearly(board, m.topped);
       bot.toppedOutNow = toppedEarly;
       // (danger is the stack in jeopardy, not the stack raised high: its height counting the garbage on it, or what is about to land on it
       // overflowing the board -- raising to row 10 is the plan, and a hit of a row or two on it is not an emergency)
-      var fullH = fullTop(board), landSoon = Infinity;
-      arrivals.forEach(function (a) { if (a.at < landSoon) landSoon = a.at; });
-      var danger = !!(A && A.lifeFirst && (toppedEarly || fullH >= (A.dangerTop || 11) || (landSoon <= (A.dangerSoon || 120) && fullH + comingRows + queuedRows >= 12 + (A.dangerOver === undefined ? 1 : A.dangerOver))));
+      var danger = !!(A && A.lifeFirst && CK.inDanger(board, arrivals, comingRows, m.topped, A));
       bot._danger = danger;
       if (danger) bot._dangers = (bot._dangers || 0) + 1;
       // A BIG CHAIN COMES BEFORE EVERYTHING ELSE: with garbage on the board only a chain found is played (the setups, raising and the holds are for a board without)
@@ -362,48 +361,6 @@ module.exports = function think(cfg) {
     }
     return out;
     }
-  // THE COUNTDOWN IS PLANNING TIME: the board the match opens on is planned for while the game counts down, and the line
-  // is played from the first frame the board still is what was planned for.
-  // A CHAIN OR A CLEAR IS LIVE: a chain counting, panels falling from a clear, or -- while stop time runs -- panels still matched
-  // or popping. Nothing is swapped then: a swap can take a panel out of what is about to fall or pop. With free, a board whose
-  // panels have all settled is free at once whatever stop time is left (it only matters to a stack that is topped out).
-  // How high the stack may be raised: raiseMax -- garbage coming is a reason to raise (panels to break it with), not to hold back --
-  // or, with raiseLeaveRoom, less the rows on their way and queued, so that what lands still fits.
-  function raiseCap(board, coming, A) {
-    var queued = 0;
-    if (A.raiseLeaveRoom) (board.incoming || []).forEach(function (g) { queued += g.height || 0; });
-    // (while stop time runs the stack does not rise by itself, so one row more is safe: raiseStopBonus, from raiseStopFrames of it)
-    var bonus = (A.raiseStopBonus || 0) && (board.stopTime || 0) + (board.preStopTime || 0) >= (A.raiseStopFrames || 60) ? A.raiseStopBonus : 0;
-    return (A.raiseMax || 11) + bonus - (A.raiseLeaveRoom ? coming + queued : 0);
-  }
-  // The lowest peak: the fewest panels any column has -- a stack with one tall column and the rest empty has nothing to break with.
-  // the highest row with a panel or garbage on it
-  function fullTop(board) {
-    for (var r = board.panels.length - 1; r >= 1; r--) for (var c = 1; c <= 6; c++) { var p = board.panels[r] && board.panels[r][c]; if (p && (p.color || p.isGarbage)) return r; }
-    return 0;
-  }
-  function lowPeak(board) {
-    var low = 99, c, r, pk;
-    for (c = 1; c <= 6; c++) { pk = 0; for (r = board.panels.length - 1; r >= 1 && !pk; r--) { var p = board.panels[r] && board.panels[r][c]; if (p && p.color && !p.isGarbage) pk = r; } if (pk < low) low = pk; }
-    return low;
-  }
-  function lowPeakOf(grid) {
-    var low = 99, c, r, pk;
-    for (c = 1; c <= 6; c++) { pk = 0; for (r = grid.length - 2; r >= 1 && !pk; r--) if (grid[r] && grid[r][c] > 0 && grid[r][c] < 8) pk = r; if (pk < low) low = pk; }
-    return low;
-  }
-  function panelCount(board) {
-    var n = 0, r, c;
-    for (r = 1; r < board.panels.length; r++) for (c = 1; c <= 6; c++) { var p = board.panels[r] && board.panels[r][c]; if (p && p.color && !p.isGarbage) n++; }
-    return n;
-  }
-  function cascadeLive(board, free) {
-    if ((board.chainCounter || 0) > 0) return true;
-    var stop = (board.stopTime || 0) + (board.preStopTime || 0) > 0;
-    if (!free) return stop;
-    if (typeof board.hasChainingPanels === 'function' && board.hasChainingPanels()) return true;
-    return stop && typeof board.hasActivePanels === 'function' && board.hasActivePanels();
-  }
   function boardKey(board) {
     var k = '', r, c;
     for (r = 1; r <= 12; r++) for (c = 1; c <= 6; c++) { var p = board.panels[r] && board.panels[r][c]; k += p ? (p.isGarbage ? 'G' : (p.color || 0)) : 0; }
