@@ -4561,7 +4561,9 @@ static Dec lineupFirst(Dec d) {
 static int roomForBreak(const int32_t *st) {
   int occ = 0;   // the panels and every garbage cell: all of it panels once broken
   for (int c = 1; c <= BW; c++) occ += popc(U(st, OCC + c));
-  return (occ + BIN[IN_NEXTSLAB]) / BW + 1 <= BH;
+  // a slab taller than the board never fits whole, and a break converts one row of a block at a time: the row it makes is what must fit
+  double slab = BIN[IN_NEXTSLAB] / BW + 1 > BH ? BW : BIN[IN_NEXTSLAB];
+  return (occ + slab) / BW + 1 <= BH;
 }
 // READY IN TIME: after `sw`, the slab lands, and a swap breaks it that the
 // cursor reaches by then -- from where the line leaves it, in the frames
