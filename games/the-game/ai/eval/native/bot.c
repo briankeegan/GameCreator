@@ -161,7 +161,7 @@ static int depthIn(double left, int frozen) {
 enum { SIT_GROW = 0, SIT_TAKE = 1, SIT_END = 2 };
 typedef int (*SitAccept)(const int32_t *res, const int32_t *sw, int n, double at, void *ctx);
 static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double notBefore, double left, int frozen,
-                        const uint32_t *can0, uint8_t (*wait0)[WMAX], double work, SitAccept accept, void *ctx,
+                        const uint32_t *can0, Wait (*wait0)[WMAX], double work, SitAccept accept, void *ctx,
                         int32_t *sw, int *nOut, double *atOut);
 // THE CLOCK COUNTS A PRESS ON THE FRAME IT IS SEEN (travelCost's PRESS: the
 // frame after it is made); the engine's judge (LNO[1]) on the frame it is
@@ -2215,7 +2215,7 @@ static int lineHorizon(void) { return lineHorizonV > 0 ? lineHorizonV : 2 * live
 #define MAXLINES 512
 #define MAXJUDGED 96
 int lineOnEngine(const int32_t *steps, int n, int horizon, int waitAll, int32_t *out);
-int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t);
+int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, Wait (*wait)[WMAX], int32_t *cur, int32_t *t);
 // LIVES: no health lost before the next decision after its last step. PAYS:
 // clears more than the board left alone, BREAKS: converts more. GAINS: the
 // board left alone loses health within the horizon and the line loses it
@@ -2538,7 +2538,7 @@ static int swapBreaks(Dec d) {
 }
 // THE LINES' SETTINGS (linesFrom): topped, breaks only, the engine's board
 static JLOCAL int lsTopped, lsBreaks;
-static JLOCAL uint8_t (*ENGINE_WAITS)[WMAX];   // a grown board's pairs: the frame each settles
+static JLOCAL Wait (*ENGINE_WAITS)[WMAX];   // a grown board's pairs: the frame each settles
 static JLOCAL Rs lsAlone;
 // lines grown on the engine: the steps already played (pfx) and the frames they took
 static JLOCAL int32_t pfx[2 * REROOTS]; static JLOCAL int nPfx; static JLOCAL double pfxT;
@@ -2649,7 +2649,7 @@ static int sitSeen(u64 h) {   // 1 if the board was grown already; else noted
 }
 static void disturbed(const int32_t *a, const int32_t *b, uint32_t *out);
 static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefore, double left, int frozen,
-                  const uint32_t *can0, uint8_t (*wait0)[WMAX], double work, SitAccept accept, void *ctx,
+                  const uint32_t *can0, Wait (*wait0)[WMAX], double work, SitAccept accept, void *ctx,
                   int32_t *sw, int *nOut, double *atOut);
 static JLOCAL int inWorker;   // a parallelDo task: shared caches are read, never written
 static JLOCAL double taskEnd;   // a parallelDo task: where its share of the decision's work ends (front.c pjShareOf)
@@ -2683,7 +2683,7 @@ static void sitWarm(void) {
   }
 }
 static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double notBefore, double left, int frozen,
-                        const uint32_t *can0, uint8_t (*wait0)[WMAX], double work, SitAccept accept, void *ctx,
+                        const uint32_t *can0, Wait (*wait0)[WMAX], double work, SitAccept accept, void *ctx,
                         int32_t *sw, int *nOut, double *atOut) {
   if (sitLevel >= SITLEVELS) return 0;   // nested past its memory: no answer, never a corrupted one
 #ifndef __wasm__
@@ -2715,7 +2715,7 @@ static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double no
 // a kept line's steps offered: each legal pair, pressed when the clock says
 // (from the line's last press and cursor; a pair the line disturbed once it is
 // still), kept only if pressed in time
-static void sitOffer(int i, int *nk, int *nh, double notBefore, int frozen, const uint32_t *can0, uint8_t (*wait0)[WMAX]) {
+static void sitOffer(int i, int *nk, int *nh, double notBefore, int frozen, const uint32_t *can0, Wait (*wait0)[WMAX]) {
   extern PATLS double paWork;
   SitNode *nd = &SITND[i];
   int root = nd->n == 0;
@@ -2740,7 +2740,7 @@ static void sitOffer(int i, int *nk, int *nh, double notBefore, int frozen, cons
   }
 }
 static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefore, double left, int frozen,
-                  const uint32_t *can0, uint8_t (*wait0)[WMAX], double work, SitAccept accept, void *ctx,
+                  const uint32_t *can0, Wait (*wait0)[WMAX], double work, SitAccept accept, void *ctx,
                   int32_t *sw, int *nOut, double *atOut) {
   extern PATLS double paWork;
   double w0 = paWork;
@@ -2989,11 +2989,11 @@ static JLOCAL double growRootMs, growKidMs, growStateMs; static JLOCAL int growK
 static void prereplayN(const int32_t *sws, int stride, int count, int n);
 static int parAvailable(void), parTasks(void);
 static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const int32_t *st, int cr, int cc,
-                   const uint32_t *can, uint8_t (*waits)[WMAX], double limit);
+                   const uint32_t *can, Wait (*waits)[WMAX], double limit);
 // the line search's work is spent: its share (lfEnd) or the thread's (workLeft)
 static int growSpent(void) { extern PATLS double paWork; return workLeft() <= 0 || (lfEnd > 0 && lfEnd - paWork <= 0); }
 static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const int32_t *st, int cr, int cc,
-                   const uint32_t *can, uint8_t (*waits)[WMAX], double limit) {
+                   const uint32_t *can, Wait (*waits)[WMAX], double limit) {
   int from = nLines;
   for (int k = 0; k < 2 * np; k++) pfx[k] = pre[k];
   nPfx = np; pfxT = preT;
@@ -3019,7 +3019,7 @@ static void growAt(const int32_t *pre, int np, double preT, int depthLeft, const
   }
   int32_t pre2[2 * REROOTS], st2[ST_INTS], cur[2], t;
   uint32_t can2[WMAX];
-  uint8_t waits2[32][WMAX];
+  Wait waits2[32][WMAX];
   for (int k = 0; k < 2 * np; k++) pre2[k] = pre[k];
   // the next steps' boards, replayed together
   if (nn > 1 && np + 1 <= REROOTS && !growSpent()) {
@@ -3486,7 +3486,7 @@ static void targetAfterDrops(const int32_t *st, int cr, int cc, double t0, doubl
   // soonest drop first; timing wants only the soonest break, so it stops at the first board that gives one
   double bound0 = tTimeMin;
   for (int i = 0; i < x.n && workLeft() > 0 && !(tTimeMode && tTimeMin < bound0); i++) {
-    int32_t st1[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t wt[32][WMAX];
+    int32_t st1[ST_INTS], cur[2], t; uint32_t can[WMAX]; Wait wt[32][WMAX];
     int ls = lineState(x.sw[i], x.len[i], st1, can, wt, cur, &t), n0 = nLines;
     if (ls == 0 && t <= limit) { for (int k = 0; k < 2 * x.len[i]; k++) tPfx[k] = x.sw[i][k]; tPfxN = x.len[i]; targetLines(st1, cur[0], cur[1], t, limit); tPfxN = 0; }
 #ifndef __wasm__
@@ -3525,7 +3525,7 @@ static void linesFind(int depth, int breaks) {
   // the engine judges: only the lock (topped) bounds the proposals.
   int32_t st0[ST_INTS], cur[2], t;
   uint32_t can0[WMAX];
-  uint8_t waits0[32][WMAX];
+  Wait waits0[32][WMAX];
   if (BIN[IN_HASPA] && lineState(0, 0, st0, can0, waits0, cur, &t) == 0) {
     growAt(0, 0, t, depth, st0, cur[0], cur[1], can0, waits0, lsLimit);
     if (breaks) breakLines(st0, cur[0], cur[1], t, lsTopped ? timeLeft() - 2 : INF);
@@ -3980,7 +3980,7 @@ static int optReady(Opt *o) {
     o->rdy = 0;
     if (o->lives && BIN[IN_HASPA]) {
       if (BIN[IN_INCOMING] > 0) o->rdy = hold ? readyInTime(0, 0, &r, &c) : readyInTime(o->sw, o->n, &r, &c);
-      else { int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t w[32][WMAX];
+      else { int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
              if (lineState(hold ? 0 : o->sw, hold ? 0 : o->n, st, can, w, cur, &t) == 0) o->rdy = waveReady(st); }
     }
     o->rdyKnown = 1;
@@ -4016,7 +4016,7 @@ static void optAhead(Opt *o) {
   if (o->aheadKnown) return;
   o->aheadKnown = 1; o->ahead = atkOf(0, 0); o->twos = 0;
   if (!o->lives || !BIN[IN_HASPA] || paWork >= optLine()) return;
-  static ST st; int32_t cur[2], t; uint32_t can[WMAX]; uint8_t w[32][WMAX];
+  static ST st; int32_t cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
   int hold = o->d.kind == K_HOLD;
   if (lineState(hold ? 0 : o->sw, hold ? 0 : o->n, st, can, w, cur, &t) != 0) return;
   o->twos = twosOf(st);
@@ -4032,7 +4032,7 @@ static int gScramble;   // this decision is a last resort: a stop in danger, and
 static int reachOption(Opt *O, int n, Dec d, int frozen) {
   extern PATLS double paWork;
   if (!BIN[IN_HASPA] || paWork >= optLine()) return n;
-  static ST st; int32_t cur[2], t; uint32_t can[WMAX]; uint8_t w[32][WMAX];
+  static ST st; int32_t cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
   if (lineState(0, 0, st, can, w, cur, &t) != 0) return n;
   static ReachCtx rx; rx.best = atkOf(0, 0); rx.n = 0;
   double work = optLine() - paWork; if (work > REACHWORK) work = REACHWORK;
@@ -4401,7 +4401,7 @@ static Dec keepBreak(Dec d) {
 // the board it settles to (readyAfter). A lineup must live, and spends no panels when one
 // that spends none will do.
 int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);
-int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t);
+int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, Wait (*wait)[WMAX], int32_t *cur, int32_t *t);
 static ST LUM;
 static int lineupLast;
 static int luStates, luRanks, luReady; static double luStateMs, luRankMs, luReadyMs;   // GC_WORKSTAT
@@ -4519,7 +4519,7 @@ static Dec lineupFirst(Dec d) {
   linesReset();
   int32_t st0[ST_INTS], cur[2], t;
   uint32_t can0[WMAX];
-  uint8_t waits0[32][WMAX];
+  Wait waits0[32][WMAX];
   if (lineState(0, 0, st0, can0, waits0, cur, &t) != 0) return d;
   luStates = luRanks = luReady = 0; luStateMs = luRankMs = luReadyMs = 0;
   Best B = { 0 };
@@ -4568,7 +4568,7 @@ static int roomForBreak(const int32_t *st) {
 // frame the slab lands, before the board goes quiet and the slab after it
 // drops too. The nearest such swap (none: 0); the cursor waits on it.
 static ST RBL, RBS; static int32_t RBR[R_INTS + ST_INTS], RBSW[2 * 128];
-int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t);
+int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, Wait (*wait)[WMAX], int32_t *cur, int32_t *t);
 // each line's answer is the decision's: asked again, it is not replayed again
 #define RMEMO 512
 static struct { int dec, n, ok, r, c; int32_t sw[2 * LINEMAX]; } RMEM[RMEMO];   // asked of a line once a decision, whoever asks
@@ -4619,14 +4619,14 @@ static void traceMasks(const int32_t *st) {
 // -- so a break pressed as ANY of them lands stops the dump, and every slab
 // down gives the break more garbage to touch. The k-th landing is asked in
 // turn (lineLandedK) until one has a break in reach or the dump tops the board.
-int lineLandedK(const int32_t *steps, int n, int k, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t);
+int lineLandedK(const int32_t *steps, int n, int k, int32_t *masks, uint32_t *can, Wait (*wait)[WMAX], int32_t *cur, int32_t *t);
 // READY, BY TIME: once a slab has landed, a break -- however many swaps --
 // whose last press comes after the garbage rests and before the board loses
 // health (the line's own judged loss, else the board left alone's, else the
 // judge's reach), walked from where the line leaves the cursor. Searched
 // soonest first (searchInTime); `br, bc` its first step.
 static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc) {
-  uint32_t can[WMAX]; uint8_t wt[32][WMAX]; int32_t cur[2], t;
+  uint32_t can[WMAX]; Wait wt[32][WMAX]; int32_t cur[2], t;
   int last = -1, found = 0; double die = LINEREACH;
   for (int k = 1; !found; k++) {
     // A SLAB THAT DOES NOT COME DOWN waits on the pile until a break makes it
@@ -4688,7 +4688,7 @@ static Dec dropReady(Dec d) {
 static void waitSearchW(double left, SitAccept accept, void *ctx, double cap);
 static void waitSearch(double left, SitAccept accept, void *ctx) { waitSearchW(left, accept, ctx, 1e300); }
 static void waitSearchW(double left, SitAccept accept, void *ctx, double cap) {
-  static ST w0; int32_t cur0[2], t0; uint32_t can0[WMAX]; uint8_t wt0[32][WMAX];
+  static ST w0; int32_t cur0[2], t0; uint32_t can0[WMAX]; Wait wt0[32][WMAX];
   extern PATLS double paWork;
   int32_t keepO[LNOLEN]; for (int k = 0; k < LNOLEN; k++) keepO[k] = LNO[k];
   double work = optLine() - paWork; if (work > cap) work = cap;
@@ -4832,7 +4832,7 @@ static int nextSetup(SetupCtx *x) {
 // has left. 0: no board to search from.
 static int setupLines(SetupCtx *x, double left) {
   extern PATLS double paWork;
-  static ST st1; int32_t cur1[2], t1; uint32_t can1[WMAX]; uint8_t waits1[32][WMAX];
+  static ST st1; int32_t cur1[2], t1; uint32_t can1[WMAX]; Wait waits1[32][WMAX];
   x->n = 0;
   if (lineState(0, 0, st1, can1, waits1, cur1, &t1) != 0 || paWork >= optLine()) return 0;
   x->base = twosOf(st1);
@@ -4957,7 +4957,7 @@ static int sitReadies(const int32_t *res, const int32_t *sw, int n, double at, v
 // engine. 1: found (sw, n; the break r, c); 0: none; -1: the board left alone
 // has no landing to ready.
 static int readiesLine(Dec d, int dieRef, int spare, int32_t *sw, int *n, int *r, int *c) {
-  static ST rq0, RWL; int32_t cur0[2], t0, tLand; uint32_t can0[WMAX]; uint8_t wt0[32][WMAX];
+  static ST rq0, RWL; int32_t cur0[2], t0, tLand; uint32_t can0[WMAX]; Wait wt0[32][WMAX];
   extern PATLS double paWork;
   if (lineLanded(0, 0, RWL, &tLand) != 0) return -1;
   if (lineState(0, 0, rq0, can0, wt0, cur0, &t0) != 0 || paWork >= optLine()) return 0;
@@ -5001,7 +5001,7 @@ static Dec readyWhenLands(Dec d) {
   // by the landing: the last step comes after it; the engine judges the
   // steps before it and readyInTime the break.
   {
-    static ST RWB; uint32_t can[WMAX]; uint8_t wt[32][WMAX]; int32_t cur[2], tl;
+    static ST RWB; uint32_t can[WMAX]; Wait wt[32][WMAX]; int32_t cur[2], tl;
     if (lineLandedFull(0, 0, RWB, can, wt, cur, &tl) == 0) {
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "RWL by distance: lands at %d | garbage %d work left %.0f lines before %d\n", tl, hasGarbage(RWB), workLeft(), nLines); }
@@ -5183,11 +5183,11 @@ static double breakTime(const int32_t *steps, int n) {
 // what could answer it -- every line past the bound is pruned
 static double breakWithinT(const int32_t *steps, int n, double limit) { return breakTimeOf(steps, n, limit); }
 static JLOCAL double btReplayMs, btSearchMs;   // GC_WORKSTAT
-static double breakTimeAfter(const int32_t *steps, int n, double limit, int32_t *st, uint32_t *can, uint8_t (*w)[WMAX], int32_t *cur, int32_t t);
+static double breakTimeAfter(const int32_t *steps, int n, double limit, int32_t *st, uint32_t *can, Wait (*w)[WMAX], int32_t *cur, int32_t t);
 // A SEARCH ONLY WHERE THE BUDGET HOLDS ONE, as a judge (btCost: the most one
 // has taken); past that no break is found
 static double breakTimeOf(const int32_t *steps, int n, double limit) {
-  int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t w[32][WMAX];
+  int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
   if (btCost > workLeft()) { budgetRefused++; return INF; }   // the work this thread has left (workLeft)
   double w0 = paWork, bt0 = NOWMS2();
   int lsr = lineState(steps, n, st, can, w, cur, &t);
@@ -5197,7 +5197,7 @@ static double breakTimeOf(const int32_t *steps, int n, double limit) {
   return r;
 }
 // the same, from the board `steps` leave (lineState's), replayed already
-static double breakTimeAfter(const int32_t *steps, int n, double limit, int32_t *st, uint32_t *can, uint8_t (*w)[WMAX], int32_t *cur, int32_t t) {
+static double breakTimeAfter(const int32_t *steps, int n, double limit, int32_t *st, uint32_t *can, Wait (*w)[WMAX], int32_t *cur, int32_t t) {
   // garbage still to drop: the break is made against it once it has landed
   if (!hasGarbage(st) && BIN[IN_INCOMING] > 0 && lineLandedFull(steps, n, st, can, w, cur, &t) != 0) return INF;
   double bt1 = NOWMS2();
@@ -5206,7 +5206,7 @@ static double breakTimeAfter(const int32_t *steps, int n, double limit, int32_t 
   double bound = tTimeMin;
   breakLines(st, cur[0], cur[1], 0, INF);
   // and the masks' lines on the same board, in time (linesFrom, TIMEWORK)
-  { const int32_t *sb = ENGINE_BASE; uint8_t (*sw8)[WMAX] = ENGINE_WAITS; uint32_t sc[WMAX]; int snp = nPfx, stp = lsTopped, sbr = lsBreaks; double spt = pfxT;
+  { const int32_t *sb = ENGINE_BASE; Wait (*sw8)[WMAX] = ENGINE_WAITS; uint32_t sc[WMAX]; int snp = nPfx, stp = lsTopped, sbr = lsBreaks; double spt = pfxT;
     for (int c = 0; c < WMAX; c++) sc[c] = ENGINE_CAN[c];
     ENGINE_BASE = st; ENGINE_WAITS = w; for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = can[c];
     nPfx = 0; pfxT = 0; lsTopped = BIN[IN_TOPPED] != 0; lsBreaks = 1;
@@ -5390,7 +5390,7 @@ static void fillTake(Best *b, int *btw, double score, double t, const int32_t *s
 }
 // the twos on the board a line leaves (0 where the budget holds no replay)
 static int twosAfter(const int32_t *sw, int n) {
-  static ST TA; int32_t c1[2], t1; uint32_t cn[WMAX]; uint8_t wt[32][WMAX];
+  static ST TA; int32_t c1[2], t1; uint32_t cn[WMAX]; Wait wt[32][WMAX];
   return lineState(sw, n, TA, cn, wt, c1, &t1) == 0 ? breakTwosOf(TA) : 0;
 }
 // BREAKING FIRST, LIFE KEPT: a fill after which the garbage breaks before the
@@ -5490,7 +5490,7 @@ static Dec fillFirstIn(Dec d) {
   // column moves its top before the cursor gets there
   int32_t fsw[2 * LINEMAX], first[2] = { 0, 0 };
   Best W = { 0 }; int wtw = -1;
-  { int32_t st0[ST_INTS], cur[2], t; uint32_t can0[WMAX]; uint8_t waits0[32][WMAX];
+  { int32_t st0[ST_INTS], cur[2], t; uint32_t can0[WMAX]; Wait waits0[32][WMAX];
     tGrid(lineState(0, 0, st0, can0, waits0, cur, &t) == 0 ? st0 : DBASE); }
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  grid H %d:", tH); for (int r = tH; r >= 1; r--) { fprintf(BLOG, " "); for (int c = 1; c <= tW; c++) fprintf(BLOG, "%c", tCell[r][c] == 0 ? '.' : tCell[r][c] < 0 ? 'g' : '0' + tCell[r][c]); } fprintf(BLOG, "\n"); }
@@ -5781,7 +5781,7 @@ static void waitQuietJudge(MwCtx *x) {
     int hl = HOLLOW(LNO);
     if ((v & x->need) != x->need || LNO[1] > x->last0 || mwDiesSooner(x)) continue;
     if (hl > x->hb) continue;
-    static ST MW1; int32_t mc1[2], mt1; uint32_t mcan[WMAX]; uint8_t mwt[32][WMAX];
+    static ST MW1; int32_t mc1[2], mt1; uint32_t mcan[WMAX]; Wait mwt[32][WMAX];
     int tw = lineState(x->qsw[at], n, MW1, mcan, mwt, mc1, &mt1) == 0 ? twosOf(MW1) : 0;
     if (hl == x->hb && tw <= x->vb) continue;
     x->hb = hl; x->vb = tw; x->bn = n; for (int k = 0; k < 2 * n; k++) x->bsw[k] = x->qsw[at][k];
@@ -5809,11 +5809,11 @@ static Dec meanwhile(Dec d) {
   // first only when nothing levels, since a clear spends what a break needs.
   {
     int32_t keepO[LNOLEN]; for (int k = 0; k < LNOLEN; k++) keepO[k] = LNO[k];
-    static ST MW0; int32_t mc0[2], mt0; uint32_t mcan0[WMAX]; uint8_t mwt0[32][WMAX];
+    static ST MW0; int32_t mc0[2], mt0; uint32_t mcan0[WMAX]; Wait mwt0[32][WMAX];
     int tw0 = lineState(0, 0, MW0, mcan0, mwt0, mc0, &mt0) == 0 ? twosOf(MW0) : 0;
     int h0 = HOLLOW(LNO);
     x.hb = h0; x.vb = tw0; x.qn = 0;
-    static ST MWL; int32_t mcl[2], mtl; uint32_t mcanl[WMAX]; uint8_t mwtl[32][WMAX];
+    static ST MWL; int32_t mcl[2], mtl; uint32_t mcanl[WMAX]; Wait mwtl[32][WMAX];
     if (lineState(ln + 2, n, MWL, mcanl, mwtl, mcl, &mtl) == 0 && tw0 >= 0) { lineUses(MW0, MWL, x.used); x.pre = MW0; }
     x.hm = tw0 >= 0 ? hollowOnMasks(MW0) : 0;
     waitSearchW(pressSeen(x.last0) - REACT, sitWaitQuiet, &x, SETUPWORK);

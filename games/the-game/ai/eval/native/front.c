@@ -20,7 +20,7 @@ static int comboCells(int size) {
 static const double STARTER_W[] = { -20, -10, -40, 5, 13, 20, 30, 4, 6, 8, 10, 10, 5, 15, 5, 5, 25, 5, 50, 30 };
 
 enum { H_NONE, H_UP, H_DOWN, H_LEFT, H_RIGHT };   // BIN[IN_HELD]
-typedef struct { uint8_t last[32][W + 2], first[32][W + 2], same[32][W + 2], garb[32][W + 2]; } Settle;   // per cell (unsettled): the frame it settles from, the frame it first changes, whether it settles to what it holds now, and whether it settles to garbage
+typedef struct { uint16_t last[32][W + 2], first[32][W + 2], same[32][W + 2], garb[32][W + 2]; } Settle;   // per cell (unsettled): the frame it settles from, the frame it first changes, whether it settles to what it holds now, and whether it settles to garbage
 // THE INPUT BUDGET, the game's (InputBudget.lua): at most ACTIONLIMIT actions
 // in any ACTIONWINDOW frames, an action being a swap, up, down, left or right
 // going down; a held direction is one action, raise none. A key the budget
@@ -287,12 +287,11 @@ static u64 boardKey(void) {
 }
 
 // UNSETTLED PANELS, from the engine: a copy of the board runs on with nothing
-// pressed (and nothing more dropped) until nothing moves, UNSETTLEMOST frames
-// at most, and each cell's panel is watched frame to frame -- moved, landed,
+// pressed (and nothing more dropped) until the engine says nothing moves --
+// as long as that takes -- and each cell's panel is watched frame to frame -- moved, landed,
 // matched, popped, converted. settleAt[r][c]: the frame from which the cell
 // stays as it is (0: it never changes). A row risen carries the cells up.
 // out: the unsettled cells now, a bit per row, per column.
-#define UNSETTLEMOST 180
 static JLOCAL Board *USB;
 static JLOCAL int32_t usPrev[32][W + 2][3];
 static void unsettled(Board *b, uint32_t *out, Settle *S) {
@@ -310,7 +309,7 @@ static void unsettled(Board *b, uint32_t *out, Settle *S) {
       for (int i = 0; i < 3; i++) usNow[r][c][i] = usPrev[r][c][i];
     }
   int risen = 0, disp = USB->displacement;
-  for (int k = 0; k < UNSETTLEMOST; k++) {
+  for (int k = 0; k < 65534; k++) {   // the stamp's width; the engine ends it long before
     USB->input = 0; USB->pressSwap = 0;
     nb_run(USB);
     if (USB->err || USB->gameOverClock > 0) break;
@@ -325,7 +324,7 @@ static void unsettled(Board *b, uint32_t *out, Settle *S) {
           y[0] = p[COLOR]; y[1] = p[ISGARBAGE]; y[2] = p[STATE] == DEAD ? NORMAL : p[STATE];
         }
         if (y[0] != usPrev[r][c][0] || y[1] != usPrev[r][c][1] || y[2] != usPrev[r][c][2]) {
-          S->last[r][c] = (uint8_t)(k + 1 < 255 ? k + 1 : 255);
+          S->last[r][c] = (uint16_t)(k + 1);
           if (!S->first[r][c]) S->first[r][c] = S->last[r][c];
           usPrev[r][c][0] = y[0]; usPrev[r][c][1] = y[1]; usPrev[r][c][2] = y[2];
         }
@@ -879,12 +878,12 @@ int lineOnEngine(const int32_t *steps, int n, int horizon, int waitAll, int32_t 
 // the pairs the bot may target on it (swappable, settled), the cursor and the
 // frames it took. -1: a step refused, or the board lost health on the way.
 // landing: the board instead once the next slab has dropped and landed.
-static int lineStateRun(const int32_t *steps, int n, int landing, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t);
+static int lineStateRun(const int32_t *steps, int n, int landing, int32_t *masks, uint32_t *can, Wait (*wait)[WMAX], int32_t *cur, int32_t *t);
 // ONE REPLAY PER LINE PER DECISION: the board a line leaves depends only on
 // the line and this decision's board, so every search that replays it again
 // is answered from the first replay.
 #define LSMN 4096
-typedef struct { int dec, n, landing, rc; int32_t sw[2 * LINEMAX], masks[ST_INTS], cur[2], t; uint32_t can[WMAX]; uint8_t wait[32][WMAX]; } LSMemo;
+typedef struct { int dec, n, landing, rc; int32_t sw[2 * LINEMAX], masks[ST_INTS], cur[2], t; uint32_t can[WMAX]; Wait wait[32][WMAX]; } LSMemo;
 static LSMemo LSM[LSMN];
 static LSMemo *lsmSlot(const int32_t *steps, int n, int landing) {
   unsigned h = 2166136261u ^ (unsigned)(n * 7 + landing);
@@ -957,7 +956,7 @@ static void baTask(int k) {
   snapTo = BASLOT[k];
   j->rc = lineStateRun(j->sw, 1, 0, j->masks, j->can, j->wait, j->cur, &j->t);
   snapTo = -1;
-  int32_t st[ST_INTS], cur[2] = { j->cur[0], j->cur[1] }; uint32_t can[WMAX]; uint8_t w[32][WMAX];
+  int32_t st[ST_INTS], cur[2] = { j->cur[0], j->cur[1] }; uint32_t can[WMAX]; Wait w[32][WMAX];
   __builtin_memcpy(st, j->masks, sizeof st); __builtin_memcpy(can, j->can, sizeof can); __builtin_memcpy(w, j->wait, sizeof w);
   BAV[k] = j->rc != 0 ? INF : breakTimeAfter(j->sw, 1, INF, st, can, w, cur, j->t);
   BAD[k] = 1;
@@ -1006,7 +1005,7 @@ static int breakAhead(const int32_t *sw, double lim, double *out) {
   }
   return 0;
 }
-static int lineStateAt(const int32_t *steps, int n, int landing, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
+static int lineStateAt(const int32_t *steps, int n, int landing, int32_t *masks, uint32_t *can, Wait (*wait)[WMAX], int32_t *cur, int32_t *t) {
   if (n < 0 || n > LINEMAX) return lineStateRun(steps, n, landing, masks, can, wait, cur, t);
   unsigned h = 2166136261u ^ (unsigned)(n * 7 + landing);
   for (int k = 0; k < 2 * n; k++) h = (h ^ (unsigned)steps[k]) * 16777619u;
@@ -1030,7 +1029,7 @@ static int lineStateAt(const int32_t *steps, int n, int landing, int32_t *masks,
   }
   return rc;
 }
-static int lineStateRun(const int32_t *steps, int n, int landing, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
+static int lineStateRun(const int32_t *steps, int n, int landing, int32_t *masks, uint32_t *can, Wait (*wait)[WMAX], int32_t *cur, int32_t *t) {
   int32_t out[LNOLEN];
   snapLast = 0;
   landK = landing > 0 ? landing : 1;
@@ -1051,7 +1050,7 @@ static int lineStateRun(const int32_t *steps, int n, int landing, int32_t *masks
   for (int r = 0; r < 32; r++) for (int c = 0; c < WMAX; c++) wait[r][c] = 0;
   for (int c = 1; c < W; c++)
     for (int r = 1; r <= USB->height && r <= 31; r++)
-      if (nb_can_swap(USB, r, c)) { can[c] |= 1u << (r - 1); wait[r][c] = (uint8_t)pairWait(&LSET, r, c); }
+      if (nb_can_swap(USB, r, c)) { can[c] |= 1u << (r - 1); wait[r][c] = (Wait)pairWait(&LSET, r, c); }
   cur[0] = LNB->curRow; cur[1] = LNB->curCol; *t = out[8];
   return masks[O_BAD] ? -1 : 0;
 }
@@ -1318,20 +1317,20 @@ static int parTasks(void) { return 0; }
 static void parallelBg(int count, void (*task)(int)) { (void)count; (void)task; }
 static void parallelJoin(void) {}
 #endif
-int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
+int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, Wait (*wait)[WMAX], int32_t *cur, int32_t *t) {
   return lineStateAt(steps, n, 0, masks, can, wait, cur, t);
 }
 // THE BOARD THE NEXT SLAB LANDS ON: `steps` played, then the board left alone
 // until the next slab has dropped and landed, then settled.
-int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
+int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, Wait (*wait)[WMAX], int32_t *cur, int32_t *t) {
   return lineStateAt(steps, n, 1, masks, can, wait, cur, t);
 }
 // THE BOARD THE K-TH SLAB LANDS ON: as lineLandedFull, k slabs of the queue down
-int lineLandedK(const int32_t *steps, int n, int k, int32_t *masks, uint32_t *can, uint8_t (*wait)[WMAX], int32_t *cur, int32_t *t) {
+int lineLandedK(const int32_t *steps, int n, int k, int32_t *masks, uint32_t *can, Wait (*wait)[WMAX], int32_t *cur, int32_t *t) {
   return lineStateAt(steps, n, k, masks, can, wait, cur, t);
 }
 int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t) {
-  uint32_t can[WMAX]; uint8_t wait[32][WMAX]; int32_t cur[2];
+  uint32_t can[WMAX]; Wait wait[32][WMAX]; int32_t cur[2];
   return lineStateAt(steps, n, 1, masks, can, wait, cur, t);
 }
 

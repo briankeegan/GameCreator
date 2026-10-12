@@ -9,6 +9,8 @@
 typedef int int32_t;
 typedef unsigned int uint32_t;
 typedef unsigned char uint8_t;
+typedef unsigned short uint16_t;
+typedef uint16_t Wait;   // a frame count the engine reports: as wide as the longest board settles
 #ifdef __wasm__
 __attribute__((weak)) void *memcpy(void *d, const void *s, unsigned long n) { __builtin_memcpy(d, s, n); return d; }
 __attribute__((weak)) void *memset(void *d, int c, unsigned long n) { __builtin_memset(d, c, n); return d; }
