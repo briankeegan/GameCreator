@@ -36,7 +36,8 @@ module.exports = function (opts) {
     var s = search(), t0 = Date.now(), best = null;
     s.reset();
     var root = s.root(board.copy(), hold, [], false);
-    var pool = [{ n: root, seq: [], h: 0 }];
+    var rootH = connected(root.b.grid), setup = null;
+    var pool = [{ n: root, seq: [], h: rootH }];
     for (var d = 1; d <= o.depth && pool.length && Date.now() - t0 < o.ms; d++) {
       var jobs = [], meta = [];
       pool.forEach(function (it) { it.n.b.legalSwaps().forEach(function (m) { jobs.push([it.n, 'settle', m, 0]); meta.push([it, m]); }); });
@@ -65,13 +66,17 @@ module.exports = function (opts) {
       next.sort(function (a, b) { return b.h - a.h; });
       var old = pool;
       pool = next.slice(0, o.pool);
+      // the most connected board reached so far, if better than the one now: its first swap is a setup
+      if (pool.length && pool[0].h > (setup ? setup.h : rootH)) setup = { h: pool[0].h, move: pool[0].seq[0] };
       var keep = new Set(pool.map(function (it) { return it.n; }));
       if (best) keep.add(best.n);
       var spent = outs.filter(function (x) { return x && !x.dead && !keep.has(x); });
       old.forEach(function (it) { if (it.n !== root && !keep.has(it.n)) spent.push(it.n); });
       if (spent.length) s.drop(spent);
     }
-    if (best) best.ms = Date.now() - t0;
+    if (!best) best = { cells: 0, chain: 0, seq: [] };
+    best.setup = setup ? setup.move : null;
+    best.ms = Date.now() - t0;
     return best;
   }
   return { plan: plan };
