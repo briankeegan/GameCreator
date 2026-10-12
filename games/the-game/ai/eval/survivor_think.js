@@ -163,11 +163,14 @@ module.exports = function think(cfg) {
         if (bot._refill && (SH.top(board) >= (A.raiseTo || 8) || !quietBoard)) bot._refill = false;
         else if (!bot._refill && SH.top(board) < (A.lowTop || 6) && quietBoard) bot._refill = true;
         // a chain running is left alone: a swap made while it goes can break it (not when the opponent is topped out: combos are short)
-        var busy = (board.stopTime || 0) + (board.preStopTime || 0) > 0 || (board.chainCounter || 0) > 0;
+        // (stop time only matters to a stack that is topped out: with freeRaise a board whose panels have settled is free
+        // again at once, and a raise ends the stop time that is left)
+        var busy = A.freeRaise ? ((board.chainCounter || 0) > 0 || (board.riseLock && (board.stopTime || 0) + (board.preStopTime || 0) > 0))
+                               : (board.stopTime || 0) + (board.preStopTime || 0) > 0 || (board.chainCounter || 0) > 0;
         if (busy && (!oppOut || aggro)) {
           // a chain going is continued: the line of swaps made while it pops that makes it longest, else it is left alone
           var ex = attacker.extend(board, m.hold, { ms: Math.min(A.extendMs || 250, due ? Math.max(40, due - Date.now() - DEADLINE_MARGIN_MS) : 250), width: A.extendWidth || 40, depth: A.extendDepth || 6 });
-          if (ex.seq.length && ex.cells >= ex.base + 6) { d = { kind: 'swap', move: ex.seq[0], overruled: true }; attackLine = ex.seq.slice(1); attackMove = ex.seq[0]; bot._extends = (bot._extends || 0) + 1; }
+          if (ex.seq.length && ex.cells >= ex.base + (A.extendGain || 6)) { d = { kind: 'swap', move: ex.seq[0], overruled: true }; attackLine = ex.seq.slice(1); attackMove = ex.seq[0]; bot._extends = (bot._extends || 0) + 1; }
           else { d = { kind: 'hold', overruled: true }; bot._chainHolds = (bot._chainHolds || 0) + 1; }
         }
         else if (!oppOut && warmPlan && !warmPlan.used && warmPlan.ap.seq.length && warmPlan.ap.cells >= 1 && warmPlan.key === boardKey(board)) {
