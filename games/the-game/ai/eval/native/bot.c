@@ -4101,7 +4101,11 @@ static int reachOption(Opt *O, int n, Dec d, int frozen) {
 #ifndef __wasm__
       if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "REACH planner match: %d swaps first %d,%d\n", an, asw[0], asw[1]); }
 #endif
-      if (optJudge(o)) n++;
+      int okj = optJudge(o);
+#ifndef __wasm__
+      if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "REACH planner judged %d lives %d die %d alone %d size %d chain %d breaks %d\n", okj, o->lives, o->die, aloneDie(1 << 20), o->size, o->chain, o->breaks); }
+#endif
+      if (okj) n++;
     }
   }
   static ReachCtx rx; rx.best = atkOf(0, 0); rx.n = 0;
