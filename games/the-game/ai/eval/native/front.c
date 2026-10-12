@@ -632,6 +632,7 @@ static int driveWalk(Front *F, int input) {
 #ifndef __wasm__
     { extern int botTraceOn; if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "PRESS clock %d at %d,%d\n", FB->clock, FB->curRow, FB->curCol); } }
 #endif
+    { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "PRESSED clock %d at %d,%d\n", FB->clock, FB->curRow, FB->curCol); }   // every swap pressed, always: count_threes.sh joins it to the SWAP line that chose it
     F->hasLast = 1; F->lastR = FB->curRow; F->lastC = FB->curCol; F->cooldown = F->wCooldown; F->pkAt = 0; F->presses++; return input; }
   // REFUSED, THE BOT DECIDES AGAIN. The swap was the one chosen; another
   // cell walked to instead is a choice nothing judged.

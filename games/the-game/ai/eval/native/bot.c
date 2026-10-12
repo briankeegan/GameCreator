@@ -2206,6 +2206,7 @@ static Dec waitForDrain(Dec d) {
 #define REROOTS 3   // a line's first steps replayed on the engine before the masks propose the rest: precision, never reach
 static int liveHorizon(void);
 #define LIVEHORIZON liveHorizon()
+#define MINMATCH 3   // the game's smallest match
 #define LINEHORIZON 240
 #define UNSETTLEMOST 180   // the most frames a board is followed while it settles (front.c's settle sim and the judge's busy tail)
 // THE JUDGE'S REACH: it plays to LINEHORIZON, and on while the board is busy
@@ -6092,8 +6093,9 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // (the full trace covers a match's first and last frames only, as writing it inside a timed decision costs time)
   if (d.kind == K_SWAP && d.hasMove) { extern int fprintf(void *, const char *, ...); extern void *stderr;
     Cand *sp = poolSwap(d.sr, d.sc);
-    fprintf(stderr, "SWAP clock %d via %d %d,%d total %d biggest %d chain %d broke %d line %d\n", (int)BIN[IN_STACKCLOCK], d.via, d.sr, d.sc,
-            sp ? sp->res.total : -1, sp ? sp->res.biggest : -1, sp ? sp->res.chain : -1, sp ? sp->res.broke : -1, lineLast); }
+    fprintf(stderr, "SWAP clock %d via %d %d,%d total %d biggest %d chain %d broke %d line %d three %d\n", (int)BIN[IN_STACKCLOCK], d.via, d.sr, d.sc,
+            sp ? sp->res.total : -1, sp ? sp->res.biggest : -1, sp ? sp->res.chain : -1, sp ? sp->res.broke : -1, lineLast,
+            sp && sp->res.biggest == MINMATCH && sp->res.chain < 2); }   // three: this swap makes a plain match of the game's minimum, no chain
 #endif
   double *o = BOUT;
   for (int i = 0; i < 128; i++) o[i] = 0;
