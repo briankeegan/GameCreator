@@ -19,6 +19,9 @@ on:
       depth:
         description: 'Most swaps in a sequence'
         default: '14'
+      plan:
+        description: 'planner options (JSON) to run opener_plan.js with; empty: do not'
+        default: ''
 
 permissions:
   contents: read
@@ -33,13 +36,20 @@ jobs:
         with:
           node-version: 20
       - name: Search on the JS engine
-        if: ${{ inputs.js == 'yes' }}
+        if: ${{ inputs.js == 'yes' && inputs.plan == '' }}
         timeout-minutes: 20
         run: |
           node games/the-game/ai/eval/opener_search.js '${{ inputs.seeds }}' '${{ inputs.ms }}' '${{ inputs.width }}' '${{ inputs.depth }}' 2>&1 | tee search.log
           sed 's/^/::notice title=opener::/' search.log
       - name: Search on the native engine
+        if: ${{ inputs.plan == '' }}
         timeout-minutes: 20
         run: |
           node games/the-game/ai/eval/opener_native.js '${{ inputs.seeds }}' '${{ inputs.width }}' '${{ inputs.depth }}' 3 2>&1 | tee native.log
           sed 's/^/::notice title=native::/' native.log
+      - name: The attack planner
+        if: ${{ inputs.plan != '' }}
+        timeout-minutes: 20
+        run: |
+          node games/the-game/ai/eval/opener_plan.js '${{ inputs.seeds }}' '${{ inputs.plan }}' 2>&1 | tee plan.log
+          sed 's/^/::notice title=plan::/' plan.log
