@@ -4136,7 +4136,9 @@ static int optRank(Opt *a, Opt *b) {
   // line that takes longer to finish still outlives a hold that dies first
   // dying within LIVEHORIZON, the later loss of health is the time there is: a
   // line that takes longer to finish still outlives a hold that dies first
-  int da = a->die < LIVEHORIZON ? a->die : LIVEHORIZON, db = b->die < LIVEHORIZON ? b->die : LIVEHORIZON;
+  // the scramble is called for a board dying within the judge's reach (boardDying), so the life it buys is told apart to that reach
+  int hz = gScramble ? LINEHORIZON : LIVEHORIZON;
+  int da = a->die < hz ? a->die : hz, db = b->die < hz ? b->die : hz;
   if (da != db) return da > db ? 1 : -1;
   // SAVING A DYING BOARD: of two options that live as long, a combo or a chain goes before a plain three
   if (ka == 1 && kb == 1 && aloneOnEngine() && aloneDie(1 << 20) < LIVEHORIZON) { int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
