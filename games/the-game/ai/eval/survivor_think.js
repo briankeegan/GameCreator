@@ -167,7 +167,7 @@ module.exports = function think(cfg) {
         safeA = !garb;
         if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
         // raising: the stack comes up for material until highTop
-        var attacking = !!bot._attacking, oppOut = !!(m.opp && m.opp.out);
+        var attacking = !!bot._attacking, oppOut = !A.ignoreOpp && !!(m.opp && m.opp.out);
         // a chain running is left alone: a swap made while it goes can break it (not when the opponent is topped out: combos are short)
         var busy = (board.stopTime || 0) + (board.preStopTime || 0) > 0 || (board.chainCounter || 0) > 0;
         if (busy && !oppOut) { d = { kind: 'hold', overruled: true }; bot._chainHolds = (bot._chainHolds || 0) + 1; }
@@ -204,7 +204,7 @@ module.exports = function think(cfg) {
       // (the attack profile: a three is played only when the survival search left nothing else -- bot.threeForced)
       if (((A || HT) && safeA || (A && !bot.threeForced)) && !d.overruled && d.kind === 'swap' && d.move && bot.threeOnlySwap(d.move)) { d = { kind: 'hold', overruled: true }; bot._threesHeld = (bot._threesHeld || 0) + 1; }
       // WHILE THE BOARD IS SAFE AND THE OPPONENT IS NOT TOPPED OUT a combo is held back too: the bot builds toward a chain
-      if (A && safeA && !(m.opp && m.opp.out) && !d.overruled && d.kind === 'swap' && d.move && bot.comboOnlySwap(d.move)) { d = { kind: 'hold', overruled: true }; bot._combosHeld = (bot._combosHeld || 0) + 1; }
+      if (A && safeA && !oppOut && !d.overruled && d.kind === 'swap' && d.move && bot.comboOnlySwap(d.move)) { d = { kind: 'hold', overruled: true }; bot._combosHeld = (bot._combosHeld || 0) + 1; }
       var why = null;
       if (process.env.GC_SURVIVOR_WHY) {
         var sp = bot._searchProofs;
