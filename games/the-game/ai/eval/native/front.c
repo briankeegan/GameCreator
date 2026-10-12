@@ -100,7 +100,10 @@ static int fTopRow(void) {
 // risen board's row 1 is the incoming row). Writes the native layout
 // (bitnative.js putAt).
 static void fMasks(int32_t *m, int rise) {
-  int H = FB->height, top = fTopRow(), r, c;
+  // THE BOARD ABOVE ITS TOP: a block taller than the room lies on the stack past the ceiling (the engine keeps those rows); the masks hold them
+  // to the width of their words, or a break's remainder falling into view would be a surprise
+  int top = fTopRow(), H = top < 31 ? top : 31, r, c;
+  if (H < FB->height) H = FB->height;
   memset(m, 0, ST_INTS * 4);
   m[O_W] = W; m[O_H] = H; m[O_BUSYF] = 1;
   // what was at row r is at r + rise; row 1 of a risen board is the incoming row, without motion
