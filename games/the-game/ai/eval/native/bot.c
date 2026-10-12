@@ -2714,6 +2714,7 @@ static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double no
 // a kept line's steps offered: each legal pair, pressed when the clock says
 // (from the line's last press and cursor; a pair the line disturbed once it is
 // still), kept only if pressed in time
+static JLOCAL int sitRootLegal, sitRootFilt, sitRootCan, sitRootLate;
 static JLOCAL int sitRootKids; static JLOCAL double sitRootLeft;
 static JLOCAL int (*sitFilter)(const int32_t *st, int r, int c);   // a search that matters only in one region offers no swap outside it: the cost is not paid for a child that is then cut
 static void sitOffer(int i, int *nk, int *nh, double notBefore, int frozen, const uint32_t *can0, Wait (*wait0)[WMAX]) {
@@ -2727,14 +2728,15 @@ static void sitOffer(int i, int *nk, int *nh, double notBefore, int frozen, cons
   for (int q = 0; q < m && *nk < SITKIDS; q++) {
     int r = SITL[2 * q], c = SITL[2 * q + 1];
     if (r > 31) continue;
-    if (sitFilter && !sitFilter(SITST[i], r, c)) continue;
+    if (root) sitRootLegal++;
+    if (sitFilter && !sitFilter(SITST[i], r, c)) { if (root) sitRootFilt++; continue; }
     uint32_t bit = 1u << (r - 1);
-    if (root && can0 && !(can0[c] & bit)) continue;
+    if (root && can0 && !(can0[c] & bit)) { sitRootCan++; continue; }
     double ready = notBefore;
     if (root && wait0 && nd->t + wait0[r][c] > ready) ready = nd->t + wait0[r][c];
     if (!root && ((nd->dist[c] | nd->dist[c + 1]) & bit) && nd->settled > ready) ready = nd->settled;
     double at = stepPress(start, nd->r, nd->c, r, c, ready);
-    if (at > bound) continue;
+    if (at > bound) { if (root) sitRootLate++; continue; }
     int k = (*nk)++;
     paWork += SITOFFERWORK;
     SITKD[k].parent = i; SITKD[k].r = r; SITKD[k].c = c; SITKD[k].t = at;
@@ -4534,7 +4536,7 @@ static Dec lineupFirst(Dec d) {
   double luEnd = stageLeaves(4);
   int last;
   LuCtx x = { &B, st0 };
-  sitFilter = lineupNear; sitRootKids = -1; sitRootLeft = -1;
+  sitFilter = lineupNear; sitRootKids = -1; sitRootLeft = -1; sitRootLegal = sitRootFilt = sitRootCan = sitRootLate = 0;
   if (paWork < luEnd)
     searchInTime(st0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, lineEnds(0, 0, &last), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0,
                  can0, waits0, luEnd - paWork, sitLineup, &x, 0, 0, 0);
@@ -4544,7 +4546,7 @@ static Dec lineupFirst(Dec d) {
 #endif
   if (!(paWork < luEnd)) LUWHY(5);
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINEUPSTATS nodes %d ranked %d nearcut %d rootkids %d left %.0f work %.0f of %.0f\n", luNodes, luRanks, luNearCut, sitRootKids, sitRootLeft, paWork, luEnd); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINEUPSTATS nodes %d ranked %d nearcut %d rootkids %d legal %d filt %d can %d late %d left %.0f work %.0f of %.0f\n", luNodes, luRanks, luNearCut, sitRootKids, sitRootLegal, sitRootFilt, sitRootCan, sitRootLate, sitRootLeft, paWork, luEnd); }
 #endif
   if (!B.has) { LUWHY(6); return d; }
   if (B.n == 1 && d.kind == K_SWAP && d.hasMove && d.sr == B.sw[0] && d.sc == B.sw[1]) { LUWHY(7); return d; }
