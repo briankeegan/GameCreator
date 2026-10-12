@@ -4256,12 +4256,12 @@ static Dec arbitrate(Dec d) {
 // BREAKING COMES FIRST.
 static Dec breakDeeper(Dec d);
 // INCREMENTAL PLANNING: with no line that breaks in the time there is, the step toward one -- the soonest line that lets the
-// pile down, played if it lives and leaves no more hollow than the board left alone -- and the next decision plans on from the
+// pile down, played if it lives, loses health no sooner and leaves less hollow than the board left alone -- and the next decision plans on from the
 // board it makes. The arbiter weighs it against the hold.
 static Dec breakPartial(Dec d) {
   if (tadDec != btDecision || tadN < 1 || !aloneOnEngine()) return d;
   int v = lineJudge(tadSw, tadN, 0);
-  if (!(v & LV_LIVES) || HOLLOW(LNO) > HOLLOW(LNA)) return d;
+  if (!(v & LV_LIVES) || !(HOLLOW(LNO) < HOLLOW(LNA)) || lnoDie(LNO) < lnoDie(LNA)) return d;
   lineLast = 3;
   plansDrop();
   BT->nLine = 0;
