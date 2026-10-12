@@ -1316,6 +1316,8 @@ static Sig HERE;
 static int hereSet;
 static int32_t *DBASE;
 static double DDEADLINE;
+static int lineHorizonV;
+static int liveHorizon(void);
 static int lastSurvivalNeeded, lastBreakOnPool, clearRaiseFrames;
 
 static int slabOnScreen(void) { return hasGarbage(DBASE); }
@@ -1479,6 +1481,7 @@ static Dec decideCore(void) {
   int tallPool = tallestBoard(POOL[0].masks);
   double deadline = framesToDeath(tallPool, fpr);
   DDEADLINE = deadline;
+  { int lh = liveHorizon(); double tl = BIN[IN_TOPPED] ? BIN[IN_DRAINBOUND] : deadline; lineHorizonV = (int)(tl > lh ? tl : lh) + lh; }
   int landed = garbageRows(base);
   if (landed > BT->maxSlab) BT->maxSlab = landed;
   int poolBreak = 0;
@@ -2202,12 +2205,12 @@ static Dec waitForDrain(Dec d) {
 static int liveHorizon(void);
 #define LIVEHORIZON liveHorizon()
 #define MINMATCH 3   // the game's smallest match
-#define LINEHORIZON 240
-#define UNSETTLEMOST 180   // the most frames a board is followed while it settles (front.c's settle sim and the judge's busy tail)
-// THE JUDGE'S REACH: it plays to LINEHORIZON, and on while the board is busy
-// for up to UNSETTLEMOST more; a line that loses no health (LNO[0] 0) is
-// counted as losing none within it, never as losing it at LINEHORIZON
-#define LINEREACH (LINEHORIZON + UNSETTLEMOST)
+// THE JUDGE'S REACH IS THE TIME THE BOARD HAS: how long the engine says it lasts (the rise at its speed, the queue and the shake of the slab
+// it lands, the drain), and the walk beyond it -- set once a decision (lineHorizonV, where its deadline is). It plays on while the board is busy,
+// as long as the engine keeps it so; a line that loses no health (LNO[0] 0) is counted as losing none within it
+static int lineHorizon(void) { return lineHorizonV > 0 ? lineHorizonV : 2 * liveHorizon(); }
+#define LINEHORIZON lineHorizon()
+#define LINEREACH (2 * LINEHORIZON)
 #define NEXTMOVE 6
 #define MAXLINES 512
 #define MAXJUDGED 96
@@ -3749,7 +3752,7 @@ static int clearLivesAfter(const int32_t *sw, int n, int delay) {
   for (int k = 0; k < 2 * n; k++) h = (h ^ (unsigned)sw[k]) * 16777619u;
   ClMemo *m = &CLM[h & (CLMEMO - 1)];
   if (m->dec == btDecision + 1 && m->n == n && m->delay == delay && !__builtin_memcmp(m->sw, sw, (unsigned long)n * 8)) return m->lives;
-  int horizon = LNA[0] + 40; if (horizon > LINEHORIZON) horizon = LINEHORIZON; if (horizon < 60) horizon = 60;
+  int horizon = LNA[0] + LIVEHORIZON; if (horizon > LINEHORIZON) horizon = LINEHORIZON; if (horizon < LIVEHORIZON) horizon = LIVEHORIZON;
   int32_t out[LNOLEN];
   lineDelay(delay);
   int rc = lineOnEngine(sw, n, horizon, 0, out);

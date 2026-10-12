@@ -740,9 +740,9 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   // converting or falling, a landing shaking, a topped board held up by stop
   // time (it loses health the frame the stop ends; pa.c drops nothing on a
   // topped board, so nothing else moves) -- for as long as a board settles
-  // (UNSETTLEMOST), so a break whose chain and conversion run past the horizon
+  // (the engine ends a busy board, and each frame charges the work), so a break whose chain and conversion run past the horizon
   // is seen to the quiet board the queue drops on
-  for (f = f0; f < horizon || (stopAtNext == 0 && f < horizon + UNSETTLEMOST && (b->nActive > 0 || nb_falling_garbage(b) || b->shakeTime > 0 || (b->stopTime > 0 && nb_topped(b)))); f++) {
+  for (f = f0; f < horizon || (stopAtNext == 0 && (b->nActive > 0 || nb_falling_garbage(b) || b->shakeTime > 0 || (b->stopTime > 0 && nb_topped(b)))); f++) {
     { extern int paBudgetOut(void); if (paBudgetOut() || workLeft() <= 0) return -1; }   // past the budget, or this thread's share of it, mid-line: not played
     int input = 0;
     // stopAtNext 2: on until the next landK slabs have dropped and landed
