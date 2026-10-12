@@ -147,7 +147,9 @@ module.exports = function think(cfg) {
       if (due) N.deadline(due - DEADLINE_MARGIN_MS);
       var d;
       // ATTACK: while the board is safe, the line to the biggest fire it can reach is played, one swap at a time.
-      var A = cfg.profile.attack, safeA = false;
+      var A = cfg.profile.attack, HT = cfg.profile.holdThrees, safeA = false;
+      // a board with no garbage on it, little coming and the stack low is safe: a plain three is not played on it
+      if (HT && !SH.lowestGarbageRow(board) && comingRows <= (HT.maxComing === undefined ? 6 : HT.maxComing) && SH.top(board) < (HT.maxTop || 8)) safeA = true;
       bot._attackCells = 0;
       if (A && !SH.lowestGarbageRow(board) && comingRows <= (A.maxComing === undefined ? 6 : A.maxComing) && SH.top(board) < (A.maxTop || 8)) {
         safeA = true;
@@ -174,7 +176,7 @@ module.exports = function think(cfg) {
       try { if (!d) d = bot._decide(); } finally { bot._abort = null; N.deadline(0); bot.depth = depth0; bot._dueAt = 0; }
       // A PLAIN THREE IS A LAST RESORT: while the board is safe it is not played -- the bot waits, and the stack rises
       // to bring more to build with. (Breaking garbage, a chain, a bigger match and a topped-out board are not plain threes.)
-      if (A && safeA && !d.overruled && d.kind === 'swap' && d.move && bot.threeOnlySwap(d.move)) { d = { kind: 'hold', overruled: true }; bot._threesHeld = (bot._threesHeld || 0) + 1; }
+      if ((A || HT) && safeA && !d.overruled && d.kind === 'swap' && d.move && bot.threeOnlySwap(d.move)) { d = { kind: 'hold', overruled: true }; bot._threesHeld = (bot._threesHeld || 0) + 1; }
       var why = null;
       if (process.env.GC_SURVIVOR_WHY) {
         var sp = bot._searchProofs;

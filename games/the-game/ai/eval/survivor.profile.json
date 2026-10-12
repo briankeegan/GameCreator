@@ -17,5 +17,9 @@
  "bank": true,
  "raiseTo": 8,
  "bankTop": 11,
- "bankForce": true
+ "bankForce": true,
+ "holdThrees": {
+  "maxComing": 6,
+  "maxTop": 8
+ }
 }
