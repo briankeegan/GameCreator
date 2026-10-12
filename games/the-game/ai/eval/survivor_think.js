@@ -172,7 +172,7 @@ module.exports = function think(cfg) {
         var unlock = !!(A.alwaysRaise && !busy && SH.top(board) < raiseCap(board, comingRows, A) && bot.stack && bot.stack.preventManualRaise && !bot._canRaise());
         if (busy && (!oppOut || aggro)) {
           // a chain going is continued: the line of swaps made while it pops that makes it longest, else it is left alone
-          var ex = A.minRows && SH.top(board) < A.minRows ? { seq: [], cells: 0, base: 0 } : attacker.extend(board, m.hold, { ms: Math.min(A.extendMs || 250, due ? Math.max(40, due - Date.now() - DEADLINE_MARGIN_MS) : 250), width: A.extendWidth || 40, depth: A.extendDepth || 6 });
+          var ex = A.minRows && lowPeak(board) < A.minRows ? { seq: [], cells: 0, base: 0 } : attacker.extend(board, m.hold, { ms: Math.min(A.extendMs || 250, due ? Math.max(40, due - Date.now() - DEADLINE_MARGIN_MS) : 250), width: A.extendWidth || 40, depth: A.extendDepth || 6 });
           if (ex.seq.length && ex.cells >= ex.base + (A.extendGain || 6)) { d = { kind: 'swap', move: ex.seq[0], overruled: true }; attackLine = ex.seq.slice(1); attackMove = ex.seq[0]; bot._extends = (bot._extends || 0) + 1; }
           else { d = { kind: 'hold', overruled: true }; bot._chainHolds = (bot._chainHolds || 0) + 1; }
         }
@@ -256,7 +256,8 @@ module.exports = function think(cfg) {
       // A CLEAR THAT LEAVES THE STACK UNDER minRows ROWS is not made while the stack is not topped out: panels are kept to break what lands with
       if (A && A.minRows && !toppedNow && !d.overruled && d.kind === 'swap' && d.move) {
         var mc = (bot._allCands || []).filter(function (c) { return c.kind === 'swap' && c.move && c.move[0] === d.move[0] && c.move[1] === d.move[1]; })[0];
-        if (mc && mc.resolved && mc.resolved.clearedPanels > 0 && (panelCount(board) - mc.resolved.clearedPanels) < A.minRows * 6) { d = { kind: 'hold', overruled: true }; bot._rowsHeld = (bot._rowsHeld || 0) + 1; }
+        var sb = mc && mc.resolved && mc.resolved.clearedPanels > 0 ? bot._settledOf(mc) : null;
+        if (sb && sb.grid && lowPeakOf(sb.grid) < A.minRows) { d = { kind: 'hold', overruled: true }; bot._rowsHeld = (bot._rowsHeld || 0) + 1; }
       }
       // WHILE THE BOARD IS SAFE AND THE OPPONENT IS NOT TOPPED OUT a combo is held back too: the bot builds toward a chain
       if (A && safeA && !oppOut && !A.aggro && !d.overruled && d.kind === 'swap' && d.move && bot.comboOnlySwap(d.move)) { d = { kind: 'hold', overruled: true }; bot._combosHeld = (bot._combosHeld || 0) + 1; }
@@ -265,7 +266,9 @@ module.exports = function think(cfg) {
         var sp = bot._searchProofs;
         why = { provenRanks: provenRanked.join(' '), ranked: ranked.join(' '), want: Object.keys(want), cands: sp ? sp.cands.map(key) : null, proven: sp ? sp.cands.filter(function (c, i) { return sp.proofs[i]; }).map(key) : null };
       }
-      d = SP.overrule(d, prep, bot);   // a lineup while a slab pops (survivor_prefer.js)
+      // (no three is played below the top, so no aimed lineup to a break -- its last swap is a three -- is either)
+      var noAimed = !!(A && A.threesOnlyTopped && !toppedNow);
+      d = SP.overrule(d, noAimed ? Object.assign({}, prep, { br: null, want: {} }) : prep, bot);   // a lineup while a slab pops (survivor_prefer.js)
       var overruled = !!d.overruled;
       var took = Date.now() - t1;
       if (took > 20) { rates.push(bot.SURVIVE_SEARCH_BUDGET / took); if (rates.length > 8) rates.shift(); }
@@ -279,7 +282,7 @@ module.exports = function think(cfg) {
       var lineFree = false;
       // the rest of an attack line is played on while the next question is thought about
       if (attackLine && attackLine.length && d.kind === 'swap' && d.move && attackMove && d.move[0] === attackMove[0] && d.move[1] === attackMove[1]) { line = attackLine; lineFree = true; }
-      if (br && br.path && d.kind === 'swap' && d.move && br.path[0][0] === d.move[0] && br.path[0][1] === d.move[1] && br.path.length > 1) { line = br.path.slice(1); lineFree = true; }
+      if (!noAimed && br && br.path && d.kind === 'swap' && d.move && br.path[0][0] === d.move[0] && br.path[0][1] === d.move[1] && br.path.length > 1) { line = br.path.slice(1); lineFree = true; }
       out = { id: m.id, epoch: m.epoch, at: m.at, kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, ms: Date.now() - t0, queued: m.posted ? t0 - m.posted : 0, brMs: brMs, why: why,
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
             mem: NativeMem(),
@@ -308,6 +311,17 @@ module.exports = function think(cfg) {
     var queued = 0;
     if (A.raiseLeaveRoom) (board.incoming || []).forEach(function (g) { queued += g.height || 0; });
     return (A.raiseMax || 11) - (A.raiseLeaveRoom ? coming + queued : 0);
+  }
+  // The lowest peak: the fewest panels any column has -- a stack with one tall column and the rest empty has nothing to break with.
+  function lowPeak(board) {
+    var low = 99, c, r, pk;
+    for (c = 1; c <= 6; c++) { pk = 0; for (r = board.panels.length - 1; r >= 1 && !pk; r--) { var p = board.panels[r] && board.panels[r][c]; if (p && p.color && !p.isGarbage) pk = r; } if (pk < low) low = pk; }
+    return low;
+  }
+  function lowPeakOf(grid) {
+    var low = 99, c, r, pk;
+    for (c = 1; c <= 6; c++) { pk = 0; for (r = grid.length - 2; r >= 1 && !pk; r--) if (grid[r] && grid[r][c] > 0 && grid[r][c] < 8) pk = r; if (pk < low) low = pk; }
+    return low;
   }
   function panelCount(board) {
     var n = 0, r, c;

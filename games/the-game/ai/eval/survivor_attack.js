@@ -85,10 +85,12 @@ module.exports = function (opts) {
       if (spent.length) s.drop(spent);
     }
     if (!best) best = { cells: 0, chain: 0, seq: [] };
-    else { // the highest row with a panel on the board the fire leaves
-      var ga = best.n && best.n.b && best.n.b.grid, ar = 0, rr, cc;
-      if (ga) for (rr = ga.length - 2; rr >= 1 && !ar; rr--) for (cc = 1; cc <= W; cc++) if (ga[rr] && ga[rr][cc] > 0 && ga[rr][cc] < 8) { ar = rr; break; }
-      best.after = ar;
+    else { // the lowest peak of the board the fire leaves: the fewest panels any column has
+      var ga = best.n && best.n.b && best.n.b.grid, low = 99, rr, cc, pk;
+      if (ga) {
+        for (cc = 1; cc <= W; cc++) { pk = 0; for (rr = ga.length - 2; rr >= 1 && !pk; rr--) if (ga[rr] && ga[rr][cc] > 0 && ga[rr][cc] < 8) pk = rr; if (pk < low) low = pk; }
+        best.after = low;
+      } else best.after = 0;
     }
     best.setup = setup ? setup.move : null;
     // any swap at all: one that moves nothing that matters is how the rise is let go of (see survivor_think.js, unlock)
