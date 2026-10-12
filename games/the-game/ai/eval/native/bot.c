@@ -3625,6 +3625,7 @@ static LineC *bestBreak(void) {
   const int need = LV_LIVES | LV_BREAKS;
   int ask = BIN[IN_INCOMING] > 0, pickReady = 0, alone = aloneOnEngine() ? LNA[0] : 0;
   LineC *pick = 0;
+  int bigC = 0, bigS = 0;
   bbFound = 0; bbLastN = 0;
   for (int i = 0; i < nLines; i++) taken[i] = 0;
   for (int found = 0; found < LIVINGS;) {
@@ -3640,11 +3641,17 @@ static LineC *bestBreak(void) {
     judgeAhead(l, taken, 0);
     if ((judged(l) & need) != need) continue;
     found++; bbFound = found; bbLastN = l->n; bbLastEst = l->est;
+    if (l->chain >= 2 || l->size >= 4) { if (l->chain > bigC || (l->chain == bigC && l->size > bigS)) { bigC = l->chain; bigS = l->size; } }   // the best attack among the breaks judged
     if (pick && pickReady && lineRank(l, 1, pick, pickReady) < 0) continue;   // not better even if ready: not asked
     int rdy = ask ? readyCounts(l, alone) : 0;
     if (!pick || lineRank(l, rdy, pick, pickReady) > 0) { pick = l; pickReady = rdy; }
   }
   bbReady = !ask || pickReady;
+#ifndef __wasm__
+  // A THREE CHOSEN OVER AN ATTACK, always in the run log: the break picked makes no more than a plain three while a judged break made a combo or chain
+  if (pick && pick->chain < 2 && pick->size < 4 && (bigC >= 2 || bigS >= 4)) { extern int fprintf(void *, const char *, ...); extern void *stderr;
+    fprintf(stderr, "BREAK3 clock %d chose size %d chain %d over size %d chain %d (%d judged)\n", (int)BIN[IN_STACKCLOCK], pick->size, pick->chain, bigS, bigC, bbFound); }
+#endif
   return pick;
 }
 static int blReady, blAlone;
