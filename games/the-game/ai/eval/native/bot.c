@@ -2717,7 +2717,7 @@ static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double no
 static JLOCAL int sitRootLegal, sitRootFilt, sitRootCan, sitRootLate;
 static JLOCAL int sitRootKids; static JLOCAL double sitRootLeft;
 static JLOCAL int (*sitFilter)(const int32_t *st, int r, int c);   // a search that matters only in one region offers no swap outside it: the cost is not paid for a child that is then cut
-static void sitOffer(int i, int *nk, int *nh, double notBefore, int frozen, const uint32_t *can0, Wait (*wait0)[WMAX]) {
+static void sitOffer(int i, int *nk, int *nh, double notBefore, int frozen, const uint32_t *can0, Wait (*wait0)[WMAX], int (*filter)(const int32_t *st, int r, int c)) {
   extern PATLS double paWork;
   SitNode *nd = &SITND[i];
   int root = nd->n == 0;
@@ -2729,7 +2729,7 @@ static void sitOffer(int i, int *nk, int *nh, double notBefore, int frozen, cons
     int r = SITL[2 * q], c = SITL[2 * q + 1];
     if (r > 31) continue;
     if (root) sitRootLegal++;
-    if (sitFilter && !sitFilter(SITST[i], r, c)) { if (root) sitRootFilt++; continue; }
+    if (filter && !filter(SITST[i], r, c)) { if (root) sitRootFilt++; continue; }
     uint32_t bit = 1u << (r - 1);
     if (root && can0 && !(can0[c] & bit)) { sitRootCan++; continue; }
     double ready = notBefore;
@@ -2754,7 +2754,9 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
   for (int c = 0; c < WMAX; c++) SITND[0].dist[c] = 0;
   sitSeen(hashOf(SITST[0]));
   int nn = 1, nk = 0, nh = 0;
-  sitOffer(0, &nk, &nh, notBefore, frozen, can0, wait0);
+  // the filter is this search's own: a search its accept starts is asked everything
+  int (*mine)(const int32_t *st, int r, int c) = sitFilter; sitFilter = 0;
+  sitOffer(0, &nk, &nh, notBefore, frozen, can0, wait0, mine);
   sitRootKids = nk; sitRootLeft = left;
   int32_t line[2 * LINEMAX];
   while (nh > 0 && paWork - w0 < work) {
@@ -2800,7 +2802,7 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
       return 1;
     }
     if (say == SIT_END || j < 0) continue;
-    sitOffer(j, &nk, &nh, notBefore, frozen, 0, 0);
+    sitOffer(j, &nk, &nh, notBefore, frozen, 0, 0, mine);
   }
   return 0;
 }
