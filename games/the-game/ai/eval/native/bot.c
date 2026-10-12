@@ -3943,7 +3943,7 @@ static Dec stayAlive(Dec d) {
 // the slab to come) is life lost, so the rank holds a clear that digs under a pile. Each is judged on the
 // engine (lineJudge, which keeps to the work there is); one it cannot judge is
 // not weighed, and a decision it cannot judge stands.
-typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, plain, clears, stall, size, chain, die, conv, hollow, pri, aheadKnown, twos, land, landKnown; Atk ahead; double life, soon; } Opt;
+typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, plain, clears, stall, size, chain, die, conv, hollow, pri, aheadKnown, twos; Atk ahead; double life, soon; } Opt;
 static int optJudge(Opt *o) {
   int last = 0, spent = 0;
   o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = o->early = o->plain = o->clears = o->size = o->chain = 0;
@@ -3989,15 +3989,6 @@ static int optReady(Opt *o) {
     o->rdyKnown = 1;
   }
   return o->rdy;
-}
-// WHERE THE NEXT SLAB WOULD REST ON THE BOARD THE OPTION LEAVES: the engine's landing (landingOf: the columns it touches, the height it rests at)
-static int optLanding(Opt *o) {
-  if (!o->landKnown) {
-    int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX]; int hold = o->d.kind == K_HOLD;
-    o->land = BIN[IN_HASPA] && lineState(hold ? 0 : o->sw, hold ? 0 : o->n, st, can, w, cur, &t) == 0 ? landingOf(st) : 0;
-    o->landKnown = 1;
-  }
-  return o->land;
 }
 // THE FRAMES FROM NOW TO THE SOONEST BREAK after the candidate (breakTime: the
 // shared question; INF: none within the work there is), asked only of
@@ -4097,8 +4088,6 @@ static int optRank(Opt *a, Opt *b) {
   }
   if (a->cash && b->cash) { int w = attackCmp(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
   if (ka && a->cash != b->cash && gScramble) return a->cash > b->cash ? 1 : -1;   // the freeze is spent continuing the chain
-  // NO BREAK READY FOR THE SLAB QUEUED: the board that gives it more to touch is the better one (the engine's landing)
-  if (ka && BIN[IN_INCOMING] > 0 && !optReady(a) && !optReady(b)) { int la = optLanding(a), lb = optLanding(b); if (la != lb) return la > lb ? 1 : -1; }
   if (a->life != b->life) return a->life > b->life ? 1 : -1;
   if (a->cash != b->cash) return a->cash > b->cash ? 1 : -1;
   if (a->conv != b->conv) return a->conv > b->conv ? 1 : -1;
