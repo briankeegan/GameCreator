@@ -445,6 +445,20 @@ Match.prototype.frame = function (truth, arrivals, fresh) {
   var bits;
   if (planned) { bits = planned.bits; this.hold = { left: planned.hold.left, started: planned.hold.started }; delete this.plan[now]; }
   else { var id = L.hands.idle(truth, this.hold, arrivals); bits = id.bits; this.hold = id.hold; this.stats.idle++; }
+  // A RAISE HELD DOWN IS LET GO OF AT ONCE when the stack is topped out or garbage is landing: a manual raise on a topped-out stack is a
+  // loss on the spot. The plan behind it is void and the next decision is asked now.
+  if ((bits & IN.raise) && L.profile && L.profile.attack && L.profile.attack.holdRaise) {
+    var unsafe = (typeof truth.isToppedOut === 'function' && truth.isToppedOut()) || truth.wasToppedOut || (truth.shakeTime > 0) || (typeof truth.hasFallingGarbage === 'function' && truth.hasFallingGarbage());
+    if (unsafe) {
+      bits &= ~IN.raise; this.hold = { left: 0, started: false };
+      if (!(now < (this.raiseCut || 0))) {
+        if (L.pending) Atomics.store(L.abort, 0, L.pending.id);
+        this.epoch++; this.plan = {}; this.nextAt = 0; this.line = null; L.pending = null; this.acted = false;
+        this.stats.raiseCut = (this.stats.raiseCut || 0) + 1;
+      }
+      this.raiseCut = now + 30;
+    }
+  }
   T.push(process.hrtime.bigint());
   this.countActions(bits, now);
   if (process.env.GC_SURVIVOR_DUMP) this.record(truth, bits, arrivals);
