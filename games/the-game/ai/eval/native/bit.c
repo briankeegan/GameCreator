@@ -41,6 +41,8 @@ void *paHeap(unsigned long n) { return grab(n); }
 #define NCOL 13
 #define MAXSLAB 24
 #define MAXD 24
+// THE ROWS ON THE SCREEN, told by the host (front.c fMasks): the engine times a break by the garbage cells on the screen, not by the rows past the ceiling
+int bitCeiling = 12;
 enum { O_W = 0, O_H, O_N, O_NSLAB, O_BUSYF, O_BAD,
        OCC = 8, INERT = 16, GARB = 24, BUSY = 32, SCOL = 40,
        SLAB = SCOL + NCOL * WMAX, SL = WMAX + 2, ST_INTS = SLAB + MAXSLAB * SL };
@@ -324,7 +326,7 @@ static int resolveT(const int32_t *st, int32_t *r, int wantSettled, const Timed 
         for (int sl = 0; sl < s->nslab; sl++) {
           if (!(haveGroup && inGroup[sl])) continue;
           uint32_t *sm = s->slab[sl];
-          for (c = 1; c <= W; c++) touched += popc(sm[c]);
+          for (c = 1; c <= W; c++) touched += popc(sm[c] & ((1u << bitCeiling) - 1u));   // the cells on the screen: pa.c checkMatches times a break by them (onScreen), not by the rows past the ceiling
           int low = 32;
           for (c = 1; c <= W; c++) if (sm[c]) { int lb = topRow(lowb(sm[c])); if (lb < low) low = lb; }
           if (low < 32) {
@@ -800,7 +802,7 @@ static int resolveU(const int32_t *st, int32_t *r, int wantSettled) {
           for (int sl = 0; sl < s->nslab; sl++) {
             if (!(haveGroup && inGroup[sl])) continue;
             uint32_t *sm = s->slab[sl];
-            for (c = 1; c <= W; c++) touched += popc(sm[c]);
+            for (c = 1; c <= W; c++) touched += popc(sm[c] & ((1u << bitCeiling) - 1u));   // the cells on the screen: pa.c checkMatches times a break by them (onScreen), not by the rows past the ceiling
             int low = 32;
             for (c = 1; c <= W; c++) if (sm[c]) { int lb = topRow(lowb(sm[c])); if (lb < low) low = lb; }
             if (low < 32) {

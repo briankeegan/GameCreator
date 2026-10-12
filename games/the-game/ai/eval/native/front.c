@@ -103,6 +103,7 @@ static int fTopRow(void) {
 static void fMasks(int32_t *m, int rise) {
   // THE BOARD ABOVE ITS TOP: a block taller than the room lies on the stack past the ceiling (the engine keeps those rows); the masks hold them
   // to the width of their words, or a break's remainder falling into view would be a surprise
+  extern int bitCeiling; bitCeiling = FB->height;
   int top = fTopRow(), H = top < 31 ? top : 31, r, c;
   if (H < FB->height) H = FB->height;
   memset(m, 0, ST_INTS * 4);
