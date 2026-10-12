@@ -305,6 +305,12 @@ Match.prototype.take = function (truth) {
     }
     var step = L.hands.keys(board, hold, a.kind, move, arrivals);
     if (!step) { this.stats.refused++; this.acted = false; continue; }
+    // A RAISE HELD DOWN (the profile's holdRaise): the button stays down for the frames it takes to bring the rows in, not one row and a rest
+    if (a.kind === 'raise' && a.raiseFrames > step.inputs.length) {
+      var held = [], hh = [];
+      for (var q = 0; q < a.raiseFrames; q++) { held.push(IN.raise); hh.push({ left: 0, started: false }); }
+      step = { inputs: held, holds: hh };
+    }
     this.acted = true;
     this.stats.played++;
     var walked = this.walkKeys(step, at), ins = walked.inputs;
