@@ -158,6 +158,10 @@ module.exports = function think(cfg) {
         safeA = !garb;
         if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
         var oppOut = !A.ignoreOpp && !!(m.opp && m.opp.out);
+        // BELOW lowTop AND NOT UNDER ATTACK, THE STACK IS RAISED, AND ON UNTIL raiseTo
+        var quietBoard = comingRows === 0 && !(board.incoming && board.incoming.length);
+        if (bot._refill && (SH.top(board) >= (A.raiseTo || 8) || !quietBoard)) bot._refill = false;
+        else if (!bot._refill && SH.top(board) < (A.lowTop || 6) && quietBoard) bot._refill = true;
         // a chain running is left alone: a swap made while it goes can break it (not when the opponent is topped out: combos are short)
         var busy = (board.stopTime || 0) + (board.preStopTime || 0) > 0 || (board.chainCounter || 0) > 0;
         if (busy && !oppOut) {
@@ -172,6 +176,10 @@ module.exports = function think(cfg) {
           var wp = warmPlan.ap;
           d = { kind: 'swap', move: wp.seq[0], overruled: true }; bot._attackCells = wp.cells; attackLine = wp.seq.slice(1); attackMove = wp.seq[0]; bot._planUntil = board.clock + 40 * wp.seq.length;
           console.error('WARM played at ' + board.clock + ': ' + wp.cells + ' cells chain ' + wp.chain + ' swaps ' + wp.seq.length);
+        }
+        else if (bot._refill && bot._canRaise()) {
+          // the stack has run low and nothing is coming: raised for panels, and on, up to raiseTo
+          d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1;
         }
         else if (!garb && !oppOut && SH.top(board) < (A.raiseTo || 8) && bot._canRaise()) {
           // the first thing: the stack is raised for panels to build with, up to raiseTo
