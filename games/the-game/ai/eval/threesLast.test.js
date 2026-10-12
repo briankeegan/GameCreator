@@ -11,7 +11,7 @@
 var assert = require('assert');
 var P = require('./puyocpu.js');
 function cand(name, comboSizes, chainLength, brokeGarbage) {
-  return { name: name, resolved: { comboSizes: comboSizes, chainLength: chainLength, brokeGarbage: brokeGarbage } };
+  return { name: name, resolved: { comboSizes: comboSizes, chainLength: chainLength, brokeGarbage: brokeGarbage, clearedPanels: comboSizes.reduce(function (a, b) { return a + b; }, 0) } };
 }
 var bot = Object.create(P.prototype);
 bot.refuseBareThree = true; bot.bareThreesDropped = 0; bot.bareThreesKept = 0; bot.bareThreesTopped = 0;
@@ -67,14 +67,13 @@ assert.strictEqual(names(bot._noBareThree([bare, brk, hold, chain], true)), 'hol
 assert.strictEqual(names(bot._noBareThree([bare, brk], true)), '', 'only threes proven: the others are left to the unproven ones');
 assert.strictEqual(names(bot._noBareThree([bare, brk], false)), 'bare,break', 'the pool that is not the proven one keeps what it has');
 bot.stack = { wasToppedOut: true };
-assert.strictEqual(names(bot._noBareThree([bare, brk, hold], true)), 'hold', 'topped out: a three is still the last resort');
-assert.strictEqual(names(bot._noBareThree([bare, brk], true)), 'bare,break', 'topped out and only threes proven: they are played');
-bot.stack = { wasToppedOut: false }; bot._danger = true;
-assert.strictEqual(names(bot._noBareThree([bare, brk, chain], true)), 'chain', 'in danger: a three is the last resort');
-assert.strictEqual(names(bot._noBareThree([bare, brk], true)), '', 'in danger but not topped out: not even then, the unproven moves are looked at');
+assert.strictEqual(names(bot._noBareThree([bare, brk, hold], true)), 'bare,break,hold', 'topped out and nothing else makes progress: a three is played');
+assert.strictEqual(names(bot._noBareThree([bare, brk, hold, chain], true)), 'hold,chain', 'topped out and a chain is there: the three is the last resort');
+bot.stack = { wasToppedOut: false };
+assert.strictEqual(names(bot._noBareThree([bare, brk, chain], true)), 'chain', 'below the top a three is the last resort');
+assert.strictEqual(names(bot._noBareThree([bare, brk], true)), '', 'below the top and only threes proven: the unproven moves are looked at');
 bot.toppedOutNow = true;
-assert.strictEqual(names(bot._noBareThree([bare, brk], true)), 'bare,break', 'topped out (as the frame loop says) and only threes proven: they are played');
+assert.strictEqual(names(bot._noBareThree([bare, brk], true)), 'bare,break', 'topped out (as the frame loop says) and only threes: they are played');
 bot.toppedOutNow = false;
-bot._danger = false;
 bot.noThreesUntilTopped = false;
 console.log('threesLast: ok');
