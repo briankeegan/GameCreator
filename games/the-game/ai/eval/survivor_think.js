@@ -47,7 +47,7 @@ module.exports = function think(cfg) {
     if (!BS) BS = new (require(path.join(DIR, 'native.js')).server.Search)({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames, threads: OPTS.threads || 1 });
     return BS;
   }
-  var bot = null, snap = null, nat = null, candNat = null, BS = null, attacker = null;   // BS: a search context of its own for breakMoves   // nat, candNat: the search's and the candidates' C contexts, kept from match to match
+  var bot = null, snap = null, nat = null, candNat = null, BS = null, attacker = null, attackLogged = 0, attackGate = 0;   // BS: a search context of its own for breakMoves   // nat, candNat: the search's and the candidates' C contexts, kept from match to match
   var NativeMem = function () {
     var N = require(path.join(DIR, 'native.js')).server, X = N.exports(), free = [];
     for (var k = 0; k < 4; k++) free.push(X.nb_pool_stat(k));
@@ -148,6 +148,7 @@ module.exports = function think(cfg) {
       var d;
       // ATTACK: while the board is safe, the line to the biggest fire it can reach is played, one swap at a time.
       var A = cfg.profile.attack, HT = cfg.profile.holdThrees, safeA = false;
+      if (A && attackGate++ < 8) console.error('ATTACKGATE clock ' + board.clock + ' garbageRow ' + SH.lowestGarbageRow(board) + ' coming ' + comingRows + ' top ' + SH.top(board));
       // a board with no garbage on it, little coming and the stack low is safe: a plain three is not played on it
       if (HT && !SH.lowestGarbageRow(board) && comingRows <= (HT.maxComing === undefined ? 6 : HT.maxComing) && SH.top(board) < (HT.maxTop || 8)) safeA = true;
       bot._attackCells = 0;
@@ -157,6 +158,7 @@ module.exports = function think(cfg) {
         // nothing on the board, nothing coming and the stack low: all the time and depth it takes to plan a big attack
         var quiet = comingRows === 0 && SH.top(board) < (A.quietTop || 7), P2 = quiet ? { ms: A.bigMs || 1500, width: A.bigWidth || 100, depth: A.bigDepth || 14 } : { ms: Math.min(A.ms || 300, due ? Math.max(40, due - Date.now() - DEADLINE_MARGIN_MS) : 300), width: A.width || 60, depth: A.depth || 10 };
         var ap = attacker.plan(board, m.hold, { ms: P2.ms, width: P2.width, depth: P2.depth, pool: A.pool || 250 });
+        if (attackLogged++ < 60) console.error('ATTACK clock ' + board.clock + ' quiet ' + quiet + ' plan ' + (ap ? ap.cells + ' cells chain ' + ap.chain + ' swaps ' + ap.seq.length + ' first ' + JSON.stringify(ap.seq[0] || null) + ' setup ' + JSON.stringify(ap.setup) + ' in ' + ap.ms + ' ms' : 'none'));
         if (ap && ap.cells >= (A.minCells || 12)) { d = { kind: 'swap', move: ap.seq[0], overruled: true }; bot._attackCells = ap.cells; }
         // no big fire in reach: the swap that builds the board toward one
         else if (ap && ap.setup) { d = { kind: 'swap', move: ap.setup, overruled: true }; bot._setups = (bot._setups || 0) + 1; }
