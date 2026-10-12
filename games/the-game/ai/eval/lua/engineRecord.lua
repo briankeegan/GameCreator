@@ -133,7 +133,11 @@ while written < FRAMES do
     if a.clock > 188 and GARBAGE_EVERY > 0 and rand(GARBAGE_EVERY) == 0 then
       local k = rand(4)
       local g
-      if k == 0 then g = { width = 6, height = 1 + rand(6), isChain = true, isMetal = false }
+      local block = os.getenv("GC_BLOCK")   -- WxH: every piece one block of that size, as the training presets send them
+      if block then
+        local w, h = block:match("(%d+)x(%d+)")
+        g = { width = tonumber(w), height = tonumber(h), isChain = false, isMetal = false }
+      elseif k == 0 then g = { width = 6, height = 1 + rand(6), isChain = true, isMetal = false }
       elseif k == 1 then g = { width = 6, height = 1, isChain = false, isMetal = true }
       else g = { width = 3 + rand(4), height = 1, isChain = false, isMetal = false } end
       g.frameEarned = a.stopWatch; g.rowEarned = 1; g.colEarned = 1; g.finalized = true

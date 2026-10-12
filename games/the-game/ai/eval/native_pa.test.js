@@ -102,8 +102,9 @@ while (frames < FRAMES) {
       presses++;
     }
     if (!calm && rand(100) === 0) {
-      var k = rand(4), g;
-      if (k === 0) g = { width: 6, height: 1 + rand(6), isChain: true, isMetal: false, finalized: true };
+      var k = rand(4), g, block = process.env.GC_BLOCK && process.env.GC_BLOCK.match(/(\d+)x(\d+)/);   // GC_BLOCK=WxH: every piece one block of that size, as the training presets send them
+      if (block) g = { width: +block[1], height: +block[2], isChain: false, isMetal: false, finalized: null };
+      else if (k === 0) g = { width: 6, height: 1 + rand(6), isChain: true, isMetal: false, finalized: true };
       else if (k === 1) { g = { width: 6, height: 1, isChain: false, isMetal: true, finalized: null }; metal++; }
       else g = { width: 3 + rand(4), height: 1, isChain: false, isMetal: false, finalized: null };
       g.frameEarned = js.stopWatch - rand(30);

@@ -6061,11 +6061,11 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   int32_t lineAfterPlay[2 * LINEMAX]; int nLineAfterPlay = BT->nLine;
   for (int q = 0; q < 2 * BT->nLine; q++) lineAfterPlay[q] = BT->line[q];
   d = waitForDrain(d); d = raiseHold(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(25); d = breakFirst(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(5); d = stayAlive(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(15); d = keepBreak(d); d = lineupFirst(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(5); d = batchBreak(d); d = spendToBreak(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(10); d = breakSoon(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  { double keep = stageOpen(2); SHARE(25); d = breakFirst(d); stageClose(keep); } cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  { double keep = stageOpen(3); SHARE(5); d = stayAlive(d); stageClose(keep); } cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  { double keep = stageOpen(4); SHARE(15); d = keepBreak(d); d = lineupFirst(d); stageClose(keep); } cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  { double keep = stageOpen(5); SHARE(5); d = batchBreak(d); d = spendToBreak(d); stageClose(keep); } cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  { double keep = stageOpen(6); SHARE(10); d = breakSoon(d); stageClose(keep); } cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   // FILL LEAVES THE STEPS AFTER IT THEIR SHARE (stageOpen): the leveling,
   // readiness and guards that follow it are measured as a stage of their own
   Dec dF;
