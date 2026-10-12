@@ -61,4 +61,4 @@ jobs:
         timeout-minutes: 20
         run: |
           node games/the-game/ai/eval/extend_replay.js '${{ inputs.seeds }}' 2>&1 | tee extend.log
-          sed 's/^/::notice title=extend::/' extend.log
+          tail -n 9 extend.log | sed 's/^/::notice title=extend::/'
