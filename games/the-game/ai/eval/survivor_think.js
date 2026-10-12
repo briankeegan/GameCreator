@@ -147,7 +147,7 @@ module.exports = function think(cfg) {
       if (due) N.deadline(due - DEADLINE_MARGIN_MS);
       var d;
       // ATTACK: while the board is safe, the line to the biggest fire it can reach is played, one swap at a time.
-      var A = cfg.profile.attack, HT = cfg.profile.holdThrees, safeA = false;
+      var A = cfg.profile.attack, HT = cfg.profile.holdThrees, safeA = false, attackLine = null, attackMove = null;
       if (A && attackGate++ < 8) console.error('ATTACKGATE clock ' + board.clock + ' garbageRow ' + SH.lowestGarbageRow(board) + ' coming ' + comingRows + ' top ' + SH.top(board));
       // a board with no garbage on it, little coming and the stack low is safe: a plain three is not played on it
       if (HT && !SH.lowestGarbageRow(board) && comingRows <= (HT.maxComing === undefined ? 6 : HT.maxComing) && SH.top(board) < (HT.maxTop || 8)) safeA = true;
@@ -157,9 +157,12 @@ module.exports = function think(cfg) {
         if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
         // nothing on the board, nothing coming and the stack low: all the time and depth it takes to plan a big attack
         var quiet = comingRows === 0 && SH.top(board) < (A.quietTop || 9) && !(bot._planUntil > board.clock), P2 = quiet ? { ms: A.bigMs || 1500, width: A.bigWidth || 100, depth: A.bigDepth || 14 } : { ms: Math.min(A.ms || 300, due ? Math.max(40, due - Date.now() - DEADLINE_MARGIN_MS) : 300), width: A.width || 60, depth: A.depth || 10 };
-        var ap = attacker.plan(board, m.hold, { ms: P2.ms, width: P2.width, depth: P2.depth, pool: A.pool || 250 });
-        if (attackLogged++ < 60) console.error('ATTACK clock ' + board.clock + ' quiet ' + quiet + ' plan ' + (ap ? ap.cells + ' cells chain ' + ap.chain + ' swaps ' + ap.seq.length + ' first ' + JSON.stringify(ap.seq[0] || null) + ' setup ' + JSON.stringify(ap.setup) + ' base ' + ap.base + ' in ' + ap.ms + ' ms' : 'none'));
-        if (ap && ap.cells >= (A.minCells || 12)) { d = { kind: 'swap', move: ap.seq[0], overruled: true }; bot._attackCells = ap.cells; if (quiet) bot._planUntil = board.clock + 40 * ap.seq.length; }
+        // the opponent topped out: any combo, soonest. Not: a big attack, unless the stack is getting tall.
+        var oppOut = !!(m.opp && m.opp.out), tall = SH.top(board) >= (A.fireTop || 8);
+        var floor = oppOut ? (A.outCells || 3) : tall ? (A.minCells || 12) : (A.bigCells || 24);
+        var ap = attacker.plan(board, m.hold, { ms: oppOut ? Math.min(P2.ms, 300) : P2.ms, width: P2.width, depth: P2.depth, pool: A.pool || 250, stopAt: oppOut ? floor : 0 });
+        if (attackLogged++ < 60) console.error('ATTACK clock ' + board.clock + ' quiet ' + quiet + ' out ' + oppOut + ' floor ' + floor + ' plan ' + (ap ? ap.cells + ' cells chain ' + ap.chain + ' swaps ' + ap.seq.length + ' first ' + JSON.stringify(ap.seq[0] || null) + ' setup ' + JSON.stringify(ap.setup) + ' base ' + ap.base + ' in ' + ap.ms + ' ms' : 'none'));
+        if (ap && ap.cells >= floor && ap.seq.length) { d = { kind: 'swap', move: ap.seq[0], overruled: true }; bot._attackCells = ap.cells; attackLine = ap.seq.slice(1); attackMove = ap.seq[0]; bot._planUntil = board.clock + 40 * ap.seq.length; }
         // no big fire in reach: the swap that builds the board toward one
         else if (ap && ap.setup) { d = { kind: 'swap', move: ap.setup, overruled: true }; bot._setups = (bot._setups || 0) + 1; }
       }
@@ -195,6 +198,8 @@ module.exports = function think(cfg) {
       // An aimed lineup is its whole path: the swaps after the first are the
       // line, from wherever the first ends.
       var lineFree = false;
+      // the rest of an attack line is played on while the next question is thought about
+      if (attackLine && attackLine.length && d.kind === 'swap' && d.move && attackMove && d.move[0] === attackMove[0] && d.move[1] === attackMove[1]) { line = attackLine; lineFree = true; }
       if (br && br.path && d.kind === 'swap' && d.move && br.path[0][0] === d.move[0] && br.path[0][1] === d.move[1] && br.path.length > 1) { line = br.path.slice(1); lineFree = true; }
       out = { id: m.id, epoch: m.epoch, at: m.at, kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, ms: Date.now() - t0, queued: m.posted ? t0 - m.posted : 0, brMs: brMs, why: why,
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,

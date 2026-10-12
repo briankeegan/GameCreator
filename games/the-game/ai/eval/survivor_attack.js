@@ -1,13 +1,14 @@
 // THE ATTACK PLANNER: while the board is safe, the line of swaps to the biggest fire the board can reach.
 //
 // A beam search on the native engine over swaps that clear nothing, each board ranked by the best fire one
-// swap from it; the line ends in the swap that fires the most garbage. plan() returns that line, and the
-// caller plays its first swap and plans again on the board that follows (the stack rises, so a line is
-// never carried across a decision). Used by survivor_think.js for a profile with `attack`.
+// swap from it; the line ends in the swap that fires the most garbage. plan() returns that line. The caller
+// plays its first swap, the rest of the line while the next plan is made, and plans again on the board that
+// follows. Used by survivor_think.js for a profile with `attack`.
 var path = require('path');
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js')), N = require(path.join(__dirname, 'native.js')).server;
 var W = 6;
-function comboCells(size) { var n = 0, ps = PA.comboGarbage(size); for (var i = 0; i < ps.length; i++) n += ps[i][0] * ps[i][1]; return n; }
+// a combo's garbage is a list of widths, one row each (PA.COMBO_GARBAGE)
+function comboCells(size) { var n = 0, ps = PA.comboGarbage(size); for (var i = 0; i < ps.length; i++) n += ps[i]; return n; }
 // the garbage a step's clears send: each clear's combo garbage and a slab for the chain they make
 function sent(stat) {
   var n = 0, chain = 0;
@@ -31,7 +32,7 @@ module.exports = function (opts) {
     if (!S) S = new N.Search({ reaction: opts.reaction, swapGap: opts.swapGap, cursorMoveFrames: opts.cursorMoveFrames, threads: 1 });
     return S;
   }
-  // o: { ms, width, depth, pool }
+  // o: { ms, width, depth, pool, stopAt }: stopAt ends the search at the first depth with a fire of that many cells
   function plan(board, hold, o) {
     var s = search(), t0 = Date.now(), best = null;
     s.reset();
@@ -41,7 +42,7 @@ module.exports = function (opts) {
     if (baseOut && !baseOut.dead) { var bs = s.stepStats(baseOut); if (bs.cleared > 0) base = sent(bs).cells; }
     var rootH = connected(root.b.grid), setup = null;
     var pool = [{ n: root, seq: [], h: rootH }];
-    for (var d = 1; d <= o.depth && pool.length && Date.now() - t0 < o.ms; d++) {
+    for (var d = 1; d <= o.depth && pool.length && Date.now() - t0 < o.ms && !(o.stopAt && best && best.cells >= o.stopAt); d++) {
       var jobs = [], meta = [];
       pool.forEach(function (it) { it.n.b.legalSwaps().forEach(function (m) { jobs.push([it.n, 'settle', m, 0]); meta.push([it, m]); }); });
       var outs = s.advanceMany(jobs, true);
