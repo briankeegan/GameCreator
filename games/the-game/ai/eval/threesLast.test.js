@@ -67,6 +67,11 @@ assert.strictEqual(names(bot._noBareThree([bare, brk, hold, chain], true)), 'hol
 assert.strictEqual(names(bot._noBareThree([bare, brk], true)), '', 'only threes proven: the others are left to the unproven ones');
 assert.strictEqual(names(bot._noBareThree([bare, brk], false)), 'bare,break', 'the pool that is not the proven one keeps what it has');
 bot.stack = { wasToppedOut: true };
-assert.strictEqual(names(bot._noBareThree([bare, brk, hold], true)), 'bare,break,hold', 'topped out: a failsafe, threes may');
+assert.strictEqual(names(bot._noBareThree([bare, brk, hold], true)), 'hold', 'topped out: a three is still the last resort');
+assert.strictEqual(names(bot._noBareThree([bare, brk], true)), 'bare,break', 'topped out and only threes proven: they are played');
+bot.stack = { wasToppedOut: false }; bot._danger = true;
+assert.strictEqual(names(bot._noBareThree([bare, brk, chain], true)), 'chain', 'in danger: a three is the last resort');
+assert.strictEqual(names(bot._noBareThree([bare, brk], true)), 'bare,break', 'in danger and only threes proven: they are played');
+bot._danger = false;
 bot.noThreesUntilTopped = false;
 console.log('threesLast: ok');

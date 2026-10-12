@@ -1779,8 +1779,14 @@
     // lineups (preferRank) come first, and of those the one living longest.
     if (!live.length) {
       this.doomedDecisions++;
-      var breaking = this.preferRank ? this._preferred(cands, []) : [];
-      return this._longestLived(breaking.length ? breaking : cands);
+      // (a three is the last resort here too: of the moves, the ones that are not threes, when there are any)
+      var pool = cands;
+      if (this.noThreesUntilTopped) {
+        var tb3 = this.refuseThreeBreak, nt3 = cands.filter(function (c) { return !(bareThree(c) || (tb3 && threeBreak(c))); });
+        if (nt3.length) pool = nt3;
+      }
+      var breaking = this.preferRank ? this._preferred(pool, []) : [];
+      return this._longestLived(breaking.length ? breaking : pool);
     }
     if (proven.length > 1) {
       // A line already known to run past the horizon (the one being followed)
@@ -2124,11 +2130,13 @@
   };
   PuyoCpu.prototype._noBareThree = function (cands, strict) {
     if (!this.refuseBareThree || !cands || !cands.length) return cands;
-    if (strict && this.noThreesUntilTopped && !this._danger) {
-      var stk = this.stack || {};
-      if (stk.wasToppedOut || (this._board && this._boardToppedOut(this._board))) { this.threeForced = true; return cands; }
+    if (strict && this.noThreesUntilTopped) {
+      // A three is the last resort wherever the stack is: of the moves proven to live it is never chosen while another is. When only threes
+      // are proven: in danger or topped out they are played; otherwise the unproven moves are looked at before them.
       var tbs = this.refuseThreeBreak, notThree = cands.filter(function (c) { return !(bareThree(c) || (tbs && threeBreak(c))); });
-      this.bareThreesDropped += cands.length - notThree.length;
+      if (notThree.length) { this.bareThreesDropped += cands.length - notThree.length; return notThree; }
+      var stk = this.stack || {};
+      if (this._danger || stk.wasToppedOut || (this._board && this._boardToppedOut(this._board))) { this.threeForced = true; return cands; }
       return notThree;
     }
     // Topped out with nothing holding the stack (no stop time, no clear
