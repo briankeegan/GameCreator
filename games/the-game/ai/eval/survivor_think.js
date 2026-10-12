@@ -241,6 +241,23 @@ module.exports = function think(cfg) {
           if (cp && cp.cells >= 1 && cp.seq.length && !(A.minRows && cp.after < A.minRows)) { d = { kind: 'swap', move: cp.seq[0], overruled: true }; bot._attackCells = cp.cells; attackLine = cp.seq.slice(1); attackMove = cp.seq[0]; bot._planUntil = board.clock + 40 * cp.seq.length; bot._chainFirst = (bot._chainFirst || 0) + 1; }
         }
       }
+      // IN DANGER THE ATTACK IS STILL WANTED, BUT ONLY AS A MOVE THE SURVIVAL SEARCH PROVES TO LIVE: the fire the planner finds is asked for
+      // like a break (it is chosen if it is among the proven moves, never over them) and must leave minRows rows
+      if (A && danger && A.dangerAttack !== false && !d) {
+        // only with time to spare: the survival search is the decision here, and it is given what is left
+        var dms = due ? Math.min(A.dangerMs || 80, due - Date.now() - 2 * DEADLINE_MARGIN_MS - 120) : (A.dangerMs || 80);
+        if (dms >= 40) {
+          if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
+          var dp = attacker.plan(board, m.hold, { ms: dms, width: A.width || 60, depth: A.chainSwaps || 6, pool: A.pool || 250, minChain: A.minChain === undefined ? 4 : A.minChain, guideChain: A.guideChain, arrivals: arrivals, rate: A.rate });
+          if (dp && dp.seq.length && dp.cells >= (A.aggro ? (A.outCells || 3) : 1) && !(A.minRows && dp.after < A.minRows)) {
+            var dk = dp.seq[0][0] + ',' + dp.seq[0][1];
+            if (!prep.want[dk]) prep.want[dk] = 0.5;   // after a break (0), before the rest
+            bot._dangerFires = (bot._dangerFires || 0) + 1;
+          }
+          // the survival search has what the planning left of the time
+          bot.SURVIVE_SEARCH_BUDGET = due ? Math.max(CHEAP, Math.min(FULL, Math.round((due - Date.now()) * nodesPerMs * SPEND))) : FULL;
+        }
+      }
       var t1 = Date.now();
       bot._svMs = 0;
       var ranked = [], key = function (c) { return c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[1] : c.kind; };
@@ -295,7 +312,7 @@ module.exports = function think(cfg) {
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
             mem: NativeMem(),
             breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
-            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0 } };
+            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0 } };
     } catch (e) {
       if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
       else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e) + ' [inc ' + (board && board.incoming ? board.incoming.length : '?') + ', arr ' + (m.arrivals ? m.arrivals.length : '?') + ']', ms: Date.now() - t0 };

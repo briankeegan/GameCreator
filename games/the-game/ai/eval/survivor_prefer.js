@@ -112,7 +112,8 @@ function prepare(bot, board, o) {
     // stack's top reaches that row -- from the first frame of a match on.
     if (o.profile.raiseTo && !(br && br.depth) && !SH.lowestGarbageRow(board) && SH.top(board) < o.profile.raiseTo) want = { raise: true };
     bot.preferRank = function (c, i) {
-      if (want[c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[1] : c.kind]) return 0;
+      var wk = want[c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[1] : c.kind];
+      if (wk) return wk === true ? 0 : wk;   // a break (true) first; a number is the rank asked for (survivor_think.js: an attack in danger)
       // While a slab pops nothing can die, so a line breaking garbage later
       // earns no place over keeping panels (conserve): only a break now or a
       // lineup outranks it.
@@ -150,7 +151,7 @@ function overrule(d, prep, bot) {
   // whatever they chose, until the stack reaches the row it banks to.
   if (prep.banking && prep.profile && prep.profile.bankForce && d.kind !== 'raise' && bot && bot._canRaise()) return { kind: 'raise', overruled: true };
   if (br && (prep.popping && br.lineup || br.touch) && !want[key(d)]) {
-    var keys = Object.keys(want).filter(function (k) { return /^\d+,\d+$/.test(k); }), lk = keys[0];
+    var keys = Object.keys(want).filter(function (k) { return /^\d+,\d+$/.test(k) && want[k] === true; }), lk = keys[0];
     // of the breaks wanted, the one the cursor reaches soonest
     if (bot && bot.nearestFirst && keys.length > 1) {
       var near = Infinity;
