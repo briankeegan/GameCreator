@@ -34,7 +34,7 @@ on:
 
 # one scan per commit: a push never cancels the scan of the commit before it
 concurrency:
-  group: ai-survival-scan-${{ github.sha }}-${{ inputs.input_limit }}-${{ inputs.frames }}-${{ inputs.seeds }}-${{ inputs.fixed_budget }}
+  group: ai-survival-scan-${{ inputs.mode }}-${{ github.sha }}-${{ inputs.input_limit }}-${{ inputs.frames }}-${{ inputs.seeds }}-${{ inputs.fixed_budget }}
   cancel-in-progress: true
 
 jobs:
