@@ -2824,13 +2824,13 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
 // the line wanted: one that breaks
 static int sitBreaks(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) { (void)sw; (void)n; (void)at; (void)ctx; return res[R_SCOPE] == SC_BROKE ? SIT_TAKE : SIT_GROW; }
 #ifndef __wasm__
-// GC_PROBE=C: every 10th stack clock from C for 300 frames, the soonest break any line reaches on the board as it stands, searched
+// GC_PROBE=C: every 10th stack clock from C for GC_PROBE_SPAN frames (300), the soonest break any line reaches on the board as it stands, searched
 // without a work bound (storage only), beside what the decision found -- a diagnostic for the log, never the decision
 static void probeBreaks(void) {
   extern char *getenv(const char *); extern int atoi(const char *);
-  static int want = -2; if (want == -2) { const char *e = getenv("GC_PROBE"); want = e ? atoi(e) : -1; }
+  static int want = -2, span = 300; if (want == -2) { const char *e = getenv("GC_PROBE"), *g = getenv("GC_PROBE_SPAN"); want = e ? atoi(e) : -1; if (g) span = atoi(g); }
   int clk = (int)BIN[IN_STACKCLOCK];
-  if (want < 0 || clk < want || clk >= want + 300 || (clk - want) % 10) return;
+  if (want < 0 || clk < want || clk >= want + span || (clk - want) % 10) return;
   extern PATLS double paWork; double keep = paWork;
   static ST st; int32_t cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
   probeOn = 1;
@@ -4002,11 +4002,13 @@ static Dec stayAlive(Dec d) {
 // the slab to come) is life lost, so the rank holds a clear that digs under a pile. Each is judged on the
 // engine (lineJudge, which keeps to the work there is); one it cannot judge is
 // not weighed, and a decision it cannot judge stands.
-typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, plain, clears, stall, size, chain, die, conv, hollow, pri, aheadKnown, twos; Atk ahead; double life, soon; } Opt;
+static int twosOf(const int32_t *st);
+typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, plain, clears, stall, size, chain, die, conv, hollow, pri, aheadKnown, twosKnown, twos; Atk ahead; double life, soon; } Opt;
 static int optJudge(Opt *o) {
   int last = 0, spent = 0;
   o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = o->early = o->plain = o->clears = o->size = o->chain = 0;
   if (o->d.kind == K_HOLD) {
+    o->twos = twosOf(DBASE); o->twosKnown = 1;   // read off the masks, so the setup rule has it when the work is spent
     o->die = aloneDie(1 << 20);
     o->hollow = aloneOnEngine() ? HOLLOW(LNA) : 0;
     o->lives = o->die > NEXTMOVE;
@@ -4078,12 +4080,12 @@ static int sitReach(const int32_t *res, const int32_t *sw, int n, double at, voi
 static void optAhead(Opt *o) {
   extern PATLS double paWork;
   if (o->aheadKnown) return;
-  o->aheadKnown = 1; o->ahead = atkOf(0, 0); o->twos = 0;
+  o->aheadKnown = 1; o->ahead = atkOf(0, 0); if (!o->twosKnown) o->twos = 0;
   if (!o->lives || !BIN[IN_HASPA] || paWork >= optLine()) return;
   static ST st; int32_t cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
   int hold = o->d.kind == K_HOLD;
   if (lineState(hold ? 0 : o->sw, hold ? 0 : o->n, st, can, w, cur, &t) != 0) return;
-  o->twos = twosOf(st);
+  if (!o->twosKnown) o->twos = twosOf(st);
   ReachCtx rx = { atkOf(0, 0) };
   double work = optLine() - paWork; if (work > REACHWORK) work = REACHWORK;
   searchInTime(st, cur[0], cur[1], t, 0, timeLeft(), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can, w, work, sitReach, &rx, 0, 0, 0);
@@ -4291,7 +4293,9 @@ static int setupOptions(Opt *O, int n, Dec d) {
     Cand *c = &POOL[at[j]];
     Opt *o = &O[n];
     o->d = mkSwap(c->sr, c->sc, V_SETUP, d.mode, d.alive);
-    o->n = 1; o->wait = 0; o->sw[0] = c->sr; o->sw[1] = c->sc; o->pri = 2; o->stall = 1;   // a setup has no reason but what it sets up: the rise it locks buys no time
+    // a setup has no reason but what it sets up: the rise it locks buys no time; its vertical twos are read off the masks it leaves
+    o->n = 1; o->wait = 0; o->sw[0] = c->sr; o->sw[1] = c->sc; o->pri = 2; o->stall = 1;
+    o->twos = twosOf(c->masks); o->twosKnown = 1;
     if (optJudge(o)) n++;
   }
   return n;
