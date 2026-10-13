@@ -2833,14 +2833,16 @@ static int sitBreaks(const int32_t *res, const int32_t *sw, int n, double at, vo
 #ifndef __wasm__
 // GC_PROBE=C: every 10th stack clock from C for GC_PROBE_SPAN frames (300), the soonest break any line reaches on the board as it stands, searched
 // without a work bound (storage only), beside what the decision found -- a diagnostic for the log, never the decision
+static void linesFind(int depth, int breaks);
+static LineC *bestBreak(void);
 static void probeBreaks(void) {
   extern char *getenv(const char *); extern int atoi(const char *);
   static int want = -2, span = 300; if (want == -2) { const char *e = getenv("GC_PROBE"), *g = getenv("GC_PROBE_SPAN"); want = e ? atoi(e) : -1; if (g) span = atoi(g); }
   int clk = (int)BIN[IN_STACKCLOCK];
   if (want < 0 || clk < want || clk >= want + span || (clk - want) % 10) return;
-  extern PATLS double paWork; double keep = paWork;
+  extern PATLS double paWork, paWorkEnd; double keep = paWork, keepEnd = paWorkEnd;
   static ST st; int32_t cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
-  probeOn = 1;
+  probeOn = 1; paWorkEnd = 1e300;   // the probe's replays are not the decision's: no cut
   if (lineState(0, 0, st, can, w, cur, &t) == 0) {
     int32_t sw[2 * LINEMAX]; int n = 0; double at = 0;
     int got = searchInTime(st, cur[0], cur[1], t, 0, timeLeft(), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can, w, 1e9, sitBreaks, 0, sw, &n, &at);
@@ -2848,8 +2850,29 @@ static void probeBreaks(void) {
     fprintf(stderr, "PROBE clock %d break %d swaps %d at %.0f left %.0f work %.0f", clk, got, n, at, timeLeft(), paWork - keep);
     for (int q = 0; q < n; q++) fprintf(stderr, " %d,%d", sw[2 * q], sw[2 * q + 1]);
     fprintf(stderr, "\n");
+    { linesReset(); linesFind(REROOTS, 1); LineC *bb = bestBreak();
+      fprintf(stderr, "PROBE-PLANNER clock %d lines %d best %d swaps %d (the planner's own search, no work bound)\n", clk, nLines, bb ? 1 : 0, bb ? bb->n : 0); }
+    // THE ENGINE'S OWN WORD on the same board: every line of one and two swaps judged on the engine (lineJudge), none of the masks' --
+    // a break the engine makes that the masks' search did not is a break the masks cannot see
+    { extern char *getenv(const char *); const char *dv = getenv("GC_PROBE_DEPTH"); int depth = dv ? atoi(dv) : 0;
+      if (depth > 0) {
+        int32_t L1[2 * 128]; int m1 = legal(st, L1); int found = 0, tried = 0, lives = 0;
+        int32_t line[6]; int32_t L2[2 * 128];
+        for (int a1 = 0; a1 < m1; a1++) {
+          line[0] = L1[2 * a1]; line[1] = L1[2 * a1 + 1];
+          int v = lineJudge(line, 1, 0); tried++; if (v & LV_LIVES) lives++;
+          if ((v & LV_BREAKS) && (v & LV_LIVES)) { found++; if (found <= 3) fprintf(stderr, "PROBE-ENGINE break by %d,%d\n", line[0], line[1]); }
+          if (depth >= 2) for (int a2 = 0; a2 < m1; a2++) {
+            line[2] = L1[2 * a2]; line[3] = L1[2 * a2 + 1];
+            if (line[2] == line[0] && line[3] == line[1]) continue;
+            int w = lineJudge(line, 2, 0); tried++;
+            if ((w & LV_BREAKS) && (w & LV_LIVES)) { found++; if (found <= 3) fprintf(stderr, "PROBE-ENGINE break by %d,%d then %d,%d\n", line[0], line[1], line[2], line[3]); }
+          }
+        }
+        fprintf(stderr, "PROBE-ENGINE clock %d judged %d lives %d breaks %d (legal swaps on the masks %d)\n", clk, tried, lives, found, m1);
+        (void)L2; } }
   }
-  probeOn = 0; paWork = keep;
+  probeOn = 0; paWork = keep; paWorkEnd = keepEnd;
 }
 #endif
 // A BREAK IN TIME, ON THE MASKS: a break -- any length -- pressed before the
