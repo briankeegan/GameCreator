@@ -2793,7 +2793,9 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
   int nn = 1, nk = 0, nh = 0;
   // the filter is this search's own: a search its accept starts is asked everything
   int (*mine)(const int32_t *st, int r, int c) = sitFilter; sitFilter = 0;
-  sitOffer(0, &nk, &nh, notBefore, frozen, can0, wait0, mine);
+  // and so is its guide: the searches its accept starts grow soonest first
+  double (*myGuide)(const int32_t *st) = sitGuide; sitGuide = 0;
+  sitGuide = myGuide; sitOffer(0, &nk, &nh, notBefore, frozen, can0, wait0, mine); sitGuide = 0;
   sitRootKids = nk; sitRootLeft = left;
   int32_t line[2 * LINEMAX];
   while (nh > 0 && paWork - w0 < work) {
@@ -2839,7 +2841,7 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
       return 1;
     }
     if (say == SIT_END || j < 0) continue;
-    sitOffer(j, &nk, &nh, notBefore, frozen, 0, 0, mine);
+    sitGuide = myGuide; sitOffer(j, &nk, &nh, notBefore, frozen, 0, 0, mine); sitGuide = 0;
   }
   return 0;
 }
@@ -5189,6 +5191,32 @@ static Dec noStall(Dec d) {
 // judges, the soonest READYTRIES of them. Asked,
 // it must live, as long as the readiness bar asks (dieRef), and be ready when
 // the slab lands (readyInTime).
+// HOW FAR A BOARD IS FROM READY, for the guided search (sitGuide; lower is nearer): the board with the next slab placed where it rests, and on it
+// what a break is made of -- two panels of a colour at the top of the columns the slab rests on: a vertical two (the top panel and the one under
+// it), or a horizontal two (the top panels of two neighbouring columns at the same height), each worth its two panels, and the twos whose
+// third is a swap away and touches garbage (breakTwosOf) worth more. A board with more of them is a break nearer; the soonest press only orders
+// between equals
+#define READYGUIDECAP 40
+static double readyGuide(const int32_t *st) {
+  SLABW = (int)BIN[IN_SLABW]; SLABH = (int)BIN[IN_SLABH]; SLABC = (int)BIN[IN_SLABC];
+  int placed = slabPlace(st, SLABST);
+  const int32_t *b = placed > 0 ? SLABST : st;
+  int W = b[O_W], n = 0;
+#define GP(r, c) ((r) >= 1 && (U(b, OCC + (c)) & (1u << ((r) - 1))) && !(U(b, GARB + (c)) & (1u << ((r) - 1))) && !(U(b, INERT + (c)) & (1u << ((r) - 1))))
+  int top[WMAX + 2];
+  for (int c = 1; c <= W; c++) top[c] = workTop(b, c);
+  for (int c = 1; c <= W; c++) {
+    int r = top[c];
+    if (r < 1 || !GP(r, c)) continue;
+    int col = colourFirst(b, c, 1u << (r - 1));
+    if (!col) continue;
+    if (r >= 2 && GP(r - 1, c) && colourFirst(b, c, 1u << (r - 2)) == col) n += 2;
+    if (c < W && top[c + 1] == r && GP(r, c + 1) && colourFirst(b, c + 1, 1u << (r - 1)) == col) n += 2;
+  }
+#undef GP
+  n += 4 * breakTwosOf(b);
+  return READYGUIDECAP - (n < READYGUIDECAP ? n : READYGUIDECAP);
+}
 typedef struct { int dieRef, spare, dr, dc, tried, masks, ok, r, c, seen, dies, sooner; } RqCtx;
 static int sitReadies(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
   RqCtx *x = ctx; (void)at;
@@ -5224,7 +5252,9 @@ static int readiesLine(Dec d, int dieRef, int spare, int32_t *sw, int *n, int *r
   sitRootLegal = sitRootFilt = sitRootCan = sitRootLate = 0;
   RqCtx x = { dieRef, spare, d.kind == K_SWAP && d.hasMove ? d.sr : 0, d.kind == K_SWAP && d.hasMove ? d.sc : 0, 0, 0, 0, 0, 0, 0, 0, 0 };
   *n = 0;
+  sitGuide = readyGuide;   // best-first: the board nearest a break is grown first, so the same work reaches deeper than the root's children
   searchInTime(rq0, cur0[0], cur0[1], t0, 0, dmin(tLand, timeLeft()), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can0, wt0, optLine() - paWork, sitReadies, &x, sw, n, 0);
+  sitGuide = 0;
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "READIES root: legal %d filtered %d not swappable %d late %d\n", sitRootLegal, sitRootFilt, sitRootCan, sitRootLate); fprintf(BLOG, "READIES lines: %d ready on the masks, %d asked, %d seen, %d die, %d die sooner, %s", x.masks, x.tried, x.seen, x.dies, x.sooner, x.ok ? "ready:" : "none");
     if (x.ok) { for (int k = 0; k < *n; k++) fprintf(BLOG, " %d,%d", sw[2 * k], sw[2 * k + 1]); fprintf(BLOG, " break %d,%d", x.r, x.c); } fprintf(BLOG, "\n"); }
