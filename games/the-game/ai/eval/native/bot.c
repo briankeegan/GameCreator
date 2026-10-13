@@ -4549,9 +4549,10 @@ static int luStates, luRanks, luReady, luNearCut, luNodes; static double luState
 static int readyAfterIn(const int32_t *sw, int n);
 static int maskBreaks(const int32_t *st, const int32_t *sw, int n);
 static void parallelDo(int count, void (*task)(int));
+static int rdRefused;   // questions refused for work this decision (defined with readyInTime)
 // a lineup's readiness, once a decision
 #define RAN 512
-typedef struct { int dec, n, v; int32_t sw[2 * LINEMAX]; } RAMemo;
+typedef struct { int dec, dec2, n, v; int32_t sw[2 * LINEMAX]; } RAMemo;   // dec: the position a refusal was found on; dec2: the decision a verdict was found in
 static RAMemo RAM[RAN];
 // the decision's memos, touched before the game (frontWarm)
 static void botWarm(void) { __builtin_memset(JM, 0, sizeof JM); __builtin_memset(RAM, 0, sizeof RAM); }
@@ -4560,22 +4561,28 @@ static RAMemo *raSlot(const int32_t *sw, int n) {
   for (int k = 0; k < 2 * n; k++) h = (h ^ (unsigned)sw[k]) * 16777619u;
   return &RAM[h & (RAN - 1)];
 }
+// A LINE NOT READY STAYS NOT READY WHILE THE POSITION STANDS: the board, the cursor, the queue and the slab are the same and the
+// clock only runs toward the end of the time there is, so a line that left no break in reach does not gain one. The refusal is kept
+// for the position (raPos), not the decision: a pop holds one position for hundreds of frames, and the lineup goes on to lines not
+// yet judged instead of judging the same ones again. A line that is ready is kept for the decision only.
+static int raPos;
 static int raFind(const int32_t *sw, int n, int *v) {
   RAMemo *m = raSlot(sw, n);
-  if (m->dec != btDecision || m->n != n || __builtin_memcmp(m->sw, sw, (unsigned long)n * 8)) return 0;
+  if (m->n != n || __builtin_memcmp(m->sw, sw, (unsigned long)n * 8)) return 0;
+  if (m->dec2 != btDecision && !(m->v == 0 && m->dec == raPos)) return 0;
   *v = m->v; return 1;
 }
 static void raPut(const int32_t *sw, int n, int v) {
   RAMemo *m = raSlot(sw, n);
-  m->dec = btDecision; m->n = n; m->v = v;
+  m->dec = raPos; m->dec2 = btDecision; m->n = n; m->v = v;
   for (int k = 0; k < 2 * n; k++) m->sw[k] = sw[k];
 }
 static int readyAfter(const int32_t *sw, int n) {
   int v;
   if (n >= 1 && n <= LINEMAX && raFind(sw, n, &v)) return v;
-  double t0 = NOWMS2(); v = readyAfterIn(sw, n); luReady++; luReadyMs += NOWMS2() - t0;
+  double t0 = NOWMS2(); int refused0 = rdRefused; v = readyAfterIn(sw, n); luReady++; luReadyMs += NOWMS2() - t0;
   extern int paBudgetOut(void);
-  if (n >= 1 && n <= LINEMAX && !paBudgetOut()) raPut(sw, n, v);
+  if (n >= 1 && n <= LINEMAX && !paBudgetOut() && rdRefused == refused0) raPut(sw, n, v);   // a question the work refused is no verdict
   return v;
 }
 // THE MASKS PROPOSE, THE ENGINE JUDGES: the lineup's readiness read off the
@@ -6152,6 +6159,9 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
       for (int i = 0; i < BT->nPr; i++) BT->prR[i] += dr;
     }
     BT->risenSeen = BIN[IN_RISEN]; }
+  { u64 h = hashOf(IN) ^ ((u64)BIN[IN_CROW] << 52) ^ ((u64)BIN[IN_CCOL] << 56) ^ ((u64)(BIN[IN_INCOMING] > 0 ? (u64)BIN[IN_INCOMING] : 0) << 20)
+        ^ ((u64)BIN[IN_SLABW] << 12) ^ ((u64)BIN[IN_SLABH] << 8) ^ ((u64)BIN[IN_SLABC] << 4) ^ ((u64)BIN[IN_TGW] << 30) ^ ((u64)BIN[IN_TGH] << 34) ^ (u64)(BIN[IN_TOPPED] != 0);
+    raPos = (int)((h * 0x9E3779B97F4A7C15ull) >> 33) | 1; }   // the position the lineup's refusals hold for
   DBASE = IN; notePresses();
   // THE SWAPS NOT TO UNDO are the last two pressed, never the last decided:
   // a swap decided and still walked to has undone nothing
