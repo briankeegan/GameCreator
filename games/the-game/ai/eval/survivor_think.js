@@ -449,6 +449,32 @@ module.exports = function think(cfg) {
           else if (nip && (nip.setup || nip.anySwap)) { d = { kind: 'swap', move: nip.setup || nip.anySwap, overruled: true, src: 'noIdle' }; bot._idleFilled = (bot._idleFilled || 0) + 1; }
         }
       }
+      // A HOLD IS TIME TO THINK (thinkOnHold): the whole time the answer has left goes to the next big move -- a deep search for a fire or the
+      // setup toward one -- and the survival search is asked again with it wanted: it is played if the search proves it lives, else the hold stands
+      if (A && A.thinkOnHold && d.kind === 'hold' && !cascadeLive(board, true) && due) {
+        var hrem = due - Date.now() - 2 * DEADLINE_MARGIN_MS;
+        if (hrem > (A.holdMinMs || 350)) {
+          try {
+            if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
+            var hp = attacker.plan(board, m.hold, { ms: Math.min(A.holdMs || 500, Math.round(hrem * 0.45)), width: A.bigWidth || 100, depth: A.bigDepth || 14, pool: A.pool || 250, minChain: A.minChain === undefined ? 4 : A.minChain, arrivals: arrivals, rate: A.rate });
+            var hmv = hp && hp.seq.length && hp.cells >= (A.aggro ? (A.outCells || 3) : 1) && !(A.minRows && hp.after < A.minRows) ? hp.seq[0] : (hp && (hp.setup || hp.anySwap));
+            if (hmv) {
+              var hk = hmv[0] + ',' + hmv[1];
+              if (!prep.want[hk]) prep.want[hk] = 0.5;
+              bot._abort = cfg.abort ? stale : null; N.deadline(due - DEADLINE_MARGIN_MS);
+              bot.SURVIVE_SEARCH_BUDGET = Math.max(CHEAP, Math.min(FULL, Math.round((due - Date.now()) * nodesPerMs * SPEND)));
+              bot._dueAt = due - LOOKAHEAD_MARGIN_MS; bot.threeForced = false;
+              var d2 = null;
+              try { d2 = bot._decide(); } finally { bot._abort = null; N.deadline(0); bot._dueAt = 0; }
+              if (d2 && d2.kind === 'swap' && d2.move && d2.move[0] === hmv[0] && d2.move[1] === hmv[1]) {
+                d = { kind: 'swap', move: hmv, overruled: true, src: 'thought', planChain: hp.chain };
+                if (hp.seq.length && hp.seq[0][0] === hmv[0] && hp.seq[0][1] === hmv[1]) { attackLine = hp.seq.slice(1); attackMove = hmv; }
+                bot._thoughtMoves = (bot._thoughtMoves || 0) + 1;
+              } else bot._thoughtHolds = (bot._thoughtHolds || 0) + 1;
+            }
+          } catch (e) { bot._thinkErr = String(e && e.message || e).slice(0, 80); }
+        }
+      }
       // (no three is played below the top, so no aimed lineup to a break -- its last swap is a three -- is either)
       var noAimed = !!(A && A.threesOnlyTopped && !toppedNow);
       d = SP.overrule(d, noAimed ? Object.assign({}, prep, { br: null, want: {} }) : prep, bot);   // a lineup while a slab pops (survivor_prefer.js)
@@ -498,7 +524,7 @@ module.exports = function think(cfg) {
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
             mem: NativeMem(),
             breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
-            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0, useless3: bot._useless3 || 0, toppedFree: bot._toppedFree || 0, survAsked: bot._survivalAsked || 0, busySetups: bot._busySetups || 0, pingPong: bot._pingPong || 0, survOver: bot._survivalOver || 0 } };
+            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0, useless3: bot._useless3 || 0, toppedFree: bot._toppedFree || 0, survAsked: bot._survivalAsked || 0, busySetups: bot._busySetups || 0, thought: bot._thoughtMoves || 0, thoughtHolds: bot._thoughtHolds || 0, thinkErr: bot._thinkErr || null, pingPong: bot._pingPong || 0, survOver: bot._survivalOver || 0 } };
     } catch (e) {
       if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
       else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e) + ' [inc ' + (board && board.incoming ? board.incoming.length : '?') + ', arr ' + (m.arrivals ? m.arrivals.length : '?') + ']', ms: Date.now() - t0 };
