@@ -3771,6 +3771,10 @@ static LineC *bestBreak(void) {
   }
   bbReady = !ask || pickReady;
 #ifndef __wasm__
+  // THE BREAK CHOSEN AGAINST THE BREAKS JUDGED, for the log: whether it spends panels, and how many of the living breaks judged spend and how many spend none
+  if (botTraceOn && pick) { extern int fprintf(void *, const char *, ...); extern void *stderr; int pay = 0, free_ = 0;
+    for (int i = 0; i < nLines; i++) { const LineC *q = &LINES[i]; if (q->verdict >= 0 && (q->verdict & need) == need) { if (q->verdict & LV_PAYS) pay++; else free_++; } }
+    fprintf(BLOG, "BREAKCHOICE pick pays %d swaps %d | living breaks judged: %d spend, %d spend nothing\n", (pick->verdict & LV_PAYS) != 0, pick->n, pay, free_); }
   // THE LONGER SHAPES A DECISION PROPOSED (a match of four or more): how many, how many were judged, how many live and break
   { int P = 0, J = 0, L = 0, V = 0, B = 0; for (int i = 0; i < nLines; i++) { const LineC *q = &LINES[i]; if (!q->brk || q->pm < 4) continue; P++; if (q->verdict >= 0) { J++; if (q->verdict & LV_LIVES) V++; if (q->verdict & LV_BREAKS) B++; if ((q->verdict & need) == need) L++; } }
     if (P) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "LONGLINES clock %d proposed %d judged %d lives %d breaks %d both %d of %d lines\n", (int)BIN[IN_STACKCLOCK], P, J, V, B, L, nLines); } }
