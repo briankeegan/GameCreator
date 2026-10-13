@@ -114,6 +114,13 @@ function prepare(bot, board, o) {
     bot.preferRank = function (c, i) {
       var wk = want[c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[1] : c.kind];
       if (wk) return wk === true ? 0 : wk;   // a break (true) first; a number is the rank asked for (survivor_think.js: an attack in danger)
+      // (attackRank: of the moves proven to live, one that makes a combo of four or more or a chain outranks the rest, the larger first --
+      // the attack is the survival move whenever one lives)
+      if (o.profile.attack && o.profile.attack.attackRank && c.kind === 'swap' && c.resolved) {
+        var rs = c.resolved, big = 0, ci;
+        for (ci = 0; ci < (rs.comboSizes || []).length; ci++) if (rs.comboSizes[ci] > big) big = rs.comboSizes[ci];
+        if ((rs.chainLength || 0) >= 2 || big >= 4) return 0.6 - Math.min(0.09, ((rs.chainLength || 0) * 3 + big) / 200);
+      }
       // While a slab pops nothing can die, so a line breaking garbage later
       // earns no place over keeping panels (conserve): only a break now or a
       // lineup outranks it.
