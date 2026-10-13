@@ -72,7 +72,9 @@ module.exports = function think(cfg) {
     var th = SH.threat(cfg.profile, m.lead || 0);
     if (th && arrivals.length < 64) arrivals.push(th);
     var view = PA.toPanelEngine(board), comingRows = 0;
-    (m.arrivals || []).forEach(function (a) { comingRows += a.g ? a.g.height : 0; });
+    // (garbage the game holds back -- a chain's pieces not finalized -- is not a hit on its way for the danger and readiness checks)
+    var heldOff = !!(cfg.profile.attack && cfg.profile.attack.heldChain);
+    (m.arrivals || []).forEach(function (a) { if (heldOff && a.g && a.g.isChain && a.g.finalized === false) return; comingRows += a.g ? a.g.height : 0; });
     try {
       if (!bot) {
         bot = new P(view, OPTS);
@@ -179,7 +181,8 @@ module.exports = function think(cfg) {
       // overflowing the board -- raising to row 10 is the plan, and a hit of a row or two on it is not an emergency)
       // GARBAGE ON ITS WAY for the readiness check: the game's landing times, else -- when the stack's own queue holds garbage the link has
       // given no time for -- a landing in readyAt frames
-      var readyArr = arrivals.length ? arrivals : (board.incoming || []).slice(0, 8).map(function (g) {
+      var realArrivals = heldOff ? arrivals.filter(function (a) { return !a.held; }) : arrivals;
+      var readyArr = realArrivals.length ? realArrivals : (board.incoming || []).slice(0, 8).map(function (g) {
         return { at: A && A.readyAt || 90, width: g.width, height: g.height, isChain: !!g.isChain, isMetal: !!g.isMetal, capped: false };
       });
       // A BREAK STAYS READY WITHIN THE TIME THERE IS: an attack is played while the first garbage on its way still leaves the time to finish
@@ -187,7 +190,7 @@ module.exports = function think(cfg) {
       var firstLand = Infinity;
       readyArr.forEach(function (a) { if (a.at < firstLand) firstLand = a.at; });
       var leavesBreakTime = function (plan) { return !(A && A.readyFrames) || firstLand === Infinity || plan.chain >= 3 || plan.seq.length * 18 + A.readyFrames <= firstLand; };
-      var dangerWhy = A && A.lifeFirst ? CK.dangerWhy(board, arrivals, comingRows, m.topped, A) : '';
+      var dangerWhy = A && A.lifeFirst ? CK.dangerWhy(board, typeof realArrivals !== 'undefined' ? realArrivals : arrivals, comingRows, m.topped, A) : '';
       // A HIT THAT WOULD TOP THE STACK OUT, on its way by the game's own landing times, makes a three a last resort now: it is the one way left
       // to lower the stack before it lands (realThrees)
       if (A && A.realThrees && dangerWhy === 'incoming' && !toppedReal) { toppedReal = true; bot.toppedOutNow = true; bot._threesForHit = (bot._threesForHit || 0) + 1; }

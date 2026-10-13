@@ -124,7 +124,7 @@ function arrivalsFrom(board, arrivals) {
     if (a.at <= board.stopWatch && !a.capped) return;
     var r = a.at - board.stopWatch;
     if (a.capped) { r = a.at === prev ? rel : Math.max(r, rel + 1); rel = r; prev = a.at; }
-    out.push({ at: Math.max(1, r), width: a.g.width, height: a.g.height, isChain: !!a.g.isChain, isMetal: !!a.g.isMetal, capped: !!a.capped });
+    out.push({ at: Math.max(1, r), width: a.g.width, height: a.g.height, isChain: !!a.g.isChain, isMetal: !!a.g.isMetal, capped: !!a.capped, held: !!(a.g.isChain && a.g.finalized === false) });
   });
   return out.slice(0, 64);
 }
