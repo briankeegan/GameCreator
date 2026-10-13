@@ -1771,7 +1771,8 @@
       if (verdict[i] === 'proven') proven.push(cands[i]);
       else if (verdict[i] === 'weak') {
         weakly.push(cands[i]);
-        if (this.preferRank && this.preferRank(cands[i], i) === 0) breakWeak.push(cands[i]);
+        var wr = this.preferRank ? this.preferRank(cands[i], i) : Infinity;
+        if (wr === 0 || (this.attackFirst && wr < 1)) breakWeak.push(cands[i]);
       }
       else if (verdict[i] === 'unproven') unproven.push(cands[i]);
     }
@@ -1781,6 +1782,8 @@
     // past the horizon, and the ones dying last are the ones that wait, so
     // proof past it picks waiting over breaking: seed 2 frame 11557, a break
     // reaching 312 frames dropped for a wait reaching 372, dead 780 later.
+    // (attackFirst: so does an attack, and a move the attack logic asks for -- it lives the horizon, and the attack is what
+    // buys stop time and sends garbage)
     else if (breakWeak.length) proven = proven.concat(breakWeak);
     proven = this._noBareThree(proven, true);
     // measureLife: the proven moves the engine shows living longest, then
