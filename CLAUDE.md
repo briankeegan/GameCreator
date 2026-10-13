@@ -382,8 +382,8 @@ ways: a tool not listed, or a path listed that doesn't exist.
   survives the end of a pop only if a combo of four or more, or a chain, bought stop time during it. So a dying decision keeps a share of
   its work (`REACHSHARE`, 15% of `OPTWORK`) for the scramble, and the planner's matches of four or more (`attackShapes`) are offered
   there from their latest start. The share was found on 48 seeds (6% to 28%): a plateau between 12% and 20%; more starves the break search.
-- **Compare builds on 48 seeds, never 24.** The same build gave 4,164 and 20,638 on one seed in two runs (the wall-clock cut), and a mean of
-  48 moves about 1,000 between runs. `ai-survival-scan.yml` takes a `source` commit and a `seeds` list: scan a change and its predecessor
+- **A scan is 24 seeds (1 to 24), the workflow's default; never more.** The same build gave 4,164 and 20,638 on one seed in two runs (the wall-clock cut), and a mean of
+  24 moves more than that between runs. `ai-survival-scan.yml` takes a `source` commit and a `seeds` list: scan a change and its predecessor
   side by side, and read a difference only above 1,500. A rank or cap that moves the mean down is undone, not tuned.
 - **A search loop that charges no work is not bounded by the budget.** `targetLines` had two such loops; with its garbage condition off
   (`attackShapes`) they ran 20 ms a decision on a combo board. Every loop that tries a shape charges `TSHAPEWORK`.
