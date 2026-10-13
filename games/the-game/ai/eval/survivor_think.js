@@ -160,7 +160,9 @@ module.exports = function think(cfg) {
       // topped out, or one row from it with no stop time running: the stack rises by itself into the top row and, with no stop time,
       // is lost -- from here a three is a move like any other (life first), where below it it is the last resort
       var toppedEarly = CK.toppedOrNearly(board, m.topped, A);
-      bot.toppedOutNow = toppedEarly;
+      // a three is played only on a stack the engine says is topped out (a panel in the top row), and then only as the last resort
+      var toppedReal = !!m.topped || (typeof board.isToppedOut === 'function' && board.isToppedOut());
+      bot.toppedOutNow = toppedReal;
       // (danger is the stack in jeopardy, not the stack raised high: its height counting the garbage on it, or what is about to land on it
       // overflowing the board -- raising to row 10 is the plan, and a hit of a row or two on it is not an emergency)
       var dangerWhy = A && A.lifeFirst ? CK.dangerWhy(board, arrivals, comingRows, m.topped, A) : '';
@@ -296,10 +298,10 @@ module.exports = function think(cfg) {
       // to bring more to build with. (Breaking garbage, a chain, a bigger match and a topped-out board are not plain threes.)
       // (the attack profile: a three is played only when the survival search left nothing else -- bot.threeForced)
       // (threesOnlyTopped: not even then, unless the stack is topped out -- a failsafe)
-      var toppedNow = toppedEarly;
+      var toppedNow = toppedReal;
       if ((((A || HT) && safeA || (A && !bot.threeForced)) || (A && A.threesOnlyTopped && !toppedNow)) && !d.overruled && d.kind === 'swap' && d.move && bot.threeOnlySwap(d.move)) { d = { kind: 'hold', overruled: true }; bot._threesHeld = (bot._threesHeld || 0) + 1; }
       // A CLEAR THAT LEAVES THE STACK UNDER minRows ROWS is not made while the stack is not topped out: panels are kept to break what lands with
-      if (A && A.minRows && !toppedNow && !danger && !d.overruled && d.kind === 'swap' && d.move) {
+      if (A && A.minRows && !toppedEarly && !danger && !d.overruled && d.kind === 'swap' && d.move) {
         var mc = (bot._allCands || []).filter(function (c) { return c.kind === 'swap' && c.move && c.move[0] === d.move[0] && c.move[1] === d.move[1]; })[0];
         var sb = mc && mc.resolved && mc.resolved.clearedPanels > 0 ? bot._settledOf(mc) : null;
         if (sb && sb.grid && lowPeakOf(sb.grid) < A.minRows) { d = { kind: 'hold', overruled: true }; bot._rowsHeld = (bot._rowsHeld || 0) + 1; }

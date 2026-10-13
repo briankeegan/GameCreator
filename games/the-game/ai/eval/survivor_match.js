@@ -339,14 +339,14 @@ Match.prototype.take = function (truth) {
 var pressLogged = 0;
 function pressAudit(match, board, move, src, at) {
   var P = match.L.profile && match.L.profile.attack;
-  if (!P || !P.pressAudit || CK.toppedOrNearly(board, false, { nearFrames: 120 })) return;
+  if (!P || !P.pressAudit || (typeof board.isToppedOut === 'function' && board.isToppedOut())) return;
   try {
     var t = board.copy(); t.behaviours = Object.assign({}, t.behaviours, { passiveRaise: false }); t.curRow = move[0]; t.curCol = move[1];
     if (!t.tryQueueSwap(move[0], move[1])) return;
     var r = t.settle(), kind = !r.combos.length ? 'none' : r.chain >= 2 ? 'chain' : r.combos.every(function (x) { return x === 3; }) ? 'three' : 'combo';
     var st = match.stats; st['press_' + kind] = (st['press_' + kind] || 0) + 1;
     if (kind === 'three') {
-      var topped = CK.toppedOrNearly(board, false, { nearFrames: 120 });
+      var topped = false;
       var k = 'press3_' + (topped ? 'topped' : 'open') + '_' + src; st[k] = (st[k] || 0) + 1;
       if (!topped && pressLogged++ < 120) console.error('PRESS3 clock ' + board.clock + ' at ' + at + ' top ' + CK.fullTop(board) + ' panels ' + CK.panelTop(board) + ' src ' + src + ' stop ' + ((board.stopTime || 0) + (board.preStopTime || 0)) + ' coming ' + ((board.incoming || []).length));
     }
