@@ -347,6 +347,24 @@ module.exports = function think(cfg) {
       }
       };
       guard3();
+      // ON A STACK TOPPED OUT a plain three is the last resort, and only worth playing if it digs: one that breaks no garbage and leaves the
+      // stack as high as it was clears nothing that matters (it gives no stop time). The move is the first of the line that goes to the
+      // garbage if there is one, else a hold.
+      var guardTopped = function () {
+        if (!(A && A.guardThrees && toppedNow && d.kind === 'swap' && d.move && !(d.planChain >= 2))) return;
+        var tt = board.copy(); tt.behaviours = Object.assign({}, tt.behaviours, { passiveRaise: false }); tt.curRow = d.move[0]; tt.curCol = d.move[1];
+        var rt = tt.tryQueueSwap(d.move[0], d.move[1]) ? tt.settle() : null;
+        if (!(rt && rt.combos.length && rt.chain < 2 && rt.combos.every(function (x) { return x === 3; }))) return;
+        var gBefore = 0, gAfter = 0;
+        for (var gr = 1; gr < board.panels.length; gr++) for (var gc = 1; gc <= 6; gc++) { if (board.panels[gr][gc] && board.panels[gr][gc].isGarbage) gBefore++; if (tt.panels[gr] && tt.panels[gr][gc] && tt.panels[gr][gc].isGarbage) gAfter++; }
+        if (gAfter < gBefore || fullTop(tt) < fullTop(board)) return;
+        bot._useless3 = (bot._useless3 || 0) + 1;
+        if (threeLogged++ < 80) console.error('THREE-USELESS clock ' + board.clock + ' top ' + fullTop(board) + ' src ' + (d.src || (d.overruled ? 'overrule' : 'default')) + ' garbage ' + gBefore + '->' + gAfter);
+        var alt = br && br.path && br.path.length ? br.path[0] : null;
+        d = alt && !(alt[0] === d.move[0] && alt[1] === d.move[1]) ? { kind: 'swap', move: alt, overruled: true, src: 'touchline' } : { kind: 'hold', overruled: true };
+        attackLine = null;
+      };
+      guardTopped();
       // NEVER IDLE (noIdle): a hold on a board that is safe, with nothing resolving, is a move wasted -- the stack is raised, or the best fire
       // is played, or a swap that builds toward one
       if (A && A.noIdle && d.kind === 'hold' && !danger && !toppedEarly && !cascadeLive(board, true)) {
@@ -363,6 +381,7 @@ module.exports = function think(cfg) {
       var noAimed = !!(A && A.threesOnlyTopped && !toppedNow);
       d = SP.overrule(d, noAimed ? Object.assign({}, prep, { br: null, want: {} }) : prep, bot);   // a lineup while a slab pops (survivor_prefer.js)
       guard3();
+      guardTopped();
       var overruled = !!d.overruled;
       var took = Date.now() - t1;
       if (took > 20) { rates.push(bot.SURVIVE_SEARCH_BUDGET / took); if (rates.length > 8) rates.shift(); }
@@ -392,7 +411,7 @@ module.exports = function think(cfg) {
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
             mem: NativeMem(),
             breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
-            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0 } };
+            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0, useless3: bot._useless3 || 0 } };
     } catch (e) {
       if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
       else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e) + ' [inc ' + (board && board.incoming ? board.incoming.length : '?') + ', arr ' + (m.arrivals ? m.arrivals.length : '?') + ']', ms: Date.now() - t0 };
