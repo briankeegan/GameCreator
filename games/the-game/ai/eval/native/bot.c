@@ -8,7 +8,7 @@ static void frontCalm(int calm);
 enum { IN_TOPPED, IN_STOP, IN_INCOMING, IN_NEXTSLAB, IN_FALLING, IN_CROW, IN_CCOL, IN_HEALTH, IN_DRAIN, IN_FPR,
        IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISING, IN_INFLIGHT,
        IN_DRAINBOUND, IN_STACKTOPPED, IN_MOVING, IN_HASTIMED, IN_REVEALOPEN, IN_CONVN, IN_CONVTIMER, IN_BCROW, IN_BCCOL,
-       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_PRESSES = 600, IN_PHANTOM, IN_RISEN, IN_OPPTOPPED, IN_OPPPRESENT, IN_LEAD, IN_SIZE = 610 };   // IN_POPLOW + 1..W runs to 599
+       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_PRESSES = 600, IN_PHANTOM, IN_RISEN, IN_OPPTOPPED, IN_OPPPRESENT, IN_LEAD, IN_TGW, IN_TGH, IN_TGC, IN_SIZE = 610 };   // IN_POPLOW + 1..W runs to 599
 enum { TF_DEADLY = 1, TF_FORCE = 2, TF_REFUSE = 4, TF_RAISE = 8, TF_STUB = 16, TF_SLAB = 32 };
 static int deadlyCalls;
 #define TFLAG(f) (((int)BIN[IN_T]) & (f))
@@ -1254,7 +1254,9 @@ static JLOCAL int raiseGate;   // the gate that decided raiseMode, for the trace
 static int waveReady(const int32_t *st) {
   if (BIN[IN_INCOMING] > 0) return slabReadyHook(st);
   if (TFLAG(TF_SLAB)) return BIN[IN_T + 6] != 0;
-  SLABW = st[O_W]; SLABH = 1; SLABC = 1;
+  // before a wave reaches the stack: the block the game shows queued for it (the attacker's telegraph, front_telegraph); with none shown, a slab the width of the board
+  if (BIN[IN_TGW] > 0 && BIN[IN_LEAD] > 0) { SLABW = (int)BIN[IN_TGW]; SLABH = (int)BIN[IN_TGH]; SLABC = (int)BIN[IN_TGC]; }
+  else { SLABW = st[O_W]; SLABH = 1; SLABC = 1; }
   return slabReady(st);
 }
 static int raiseModeOf(const int32_t *base, int poolBreak) {
@@ -1666,7 +1668,7 @@ static Dec decideCore(void) {
       nRanked = k; } }
 
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "READY base %d readyFirst %d incoming %g slab %d,%d,%d\n", baseReady, readyFirst, BIN[IN_INCOMING], (int)BIN[IN_SLABW], (int)BIN[IN_SLABH], (int)BIN[IN_SLABC]); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "READY base %d readyFirst %d incoming %g slab %d,%d,%d telegraph %d,%d in %g\n", baseReady, readyFirst, BIN[IN_INCOMING], (int)BIN[IN_SLABW], (int)BIN[IN_SLABH], (int)BIN[IN_SLABC], (int)BIN[IN_TGW], (int)BIN[IN_TGH], BIN[IN_LEAD]); }
 #endif
   if (readyFirst) {
     mainOptions(base, deadline, lookDepth, digging);

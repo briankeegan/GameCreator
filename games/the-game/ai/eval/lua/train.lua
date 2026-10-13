@@ -65,8 +65,7 @@ local mode = GameModes.getPreset(GameModes.IDs.ONE_PLAYER_TRAINING)
 local match = Match(GeneratorSource(SEED, true), mode.matchRules)
 local a = match:createStackWithSettings(LevelPresets.getModern(LEVEL), true, "controller")
 a:setMaxRunsPerFrame(1)
-local trainingMode = basicTrainingMode(size[1], size[2])
-local foe = match:createSimulatedStackWithSettings(trainingMode)
+local foe = match:createSimulatedStackWithSettings(basicTrainingMode(size[1], size[2]))
 foe:setMaxRunsPerFrame(1)
 match:addTarget(foe, a)
 match:start()
@@ -86,7 +85,7 @@ int nb_pressed(Board *b);
 int front_new(Board *b, int reaction, int allowRaise);
 int front_frame(int fid, Board *b);
 void front_opponent(int fid, int present, int topped);
-void front_lead(int fid, int frames);
+void front_telegraph(int fid, int width, int height, int eta);
 void bot_time(double ceilingMs, double lastMs, double leftMs);
 int botTraceOn;
 void *botLogTo;
@@ -241,7 +240,22 @@ while f < FRAMES do
   if (DEATHLOG > 0 or GAMELOG) and C.botTraceOn == 0 then mem = ffi.C.open_memstream(LOGP, LOGN); C.botLogTo = mem; C.botTraceOn = 1 end
   local tk1 = now()
   if not FIXED_BUDGET then C.bot_time(ThinkBudget.ceilingMillis(), lastThought * 1000, ThinkBudget.ceilingMillis() - loadMs) end
-  C.front_lead(fid, math.max(0, trainingMode.delayBeforeStart - f))   -- the preset's start delay: the frames left before its first attack
+  -- THE TELEGRAPH, as the game shows it above the attacker: the next block it has queued, its size, and the frames until it reaches this stack
+  -- (GarbageQueue: a staged piece leaves frameEarned + STAGING_DURATION later; a piece in transit arrives at its delivery clock)
+  do
+    local best, og, now_ = nil, foe.outgoingGarbage, foe.stopWatch
+    for _, g in ipairs(og.stagedGarbage) do
+      local eta = g.frameEarned + (GARBAGE_TRANSIT_TIME + GARBAGE_TELEGRAPH_TIME + 1) - now_
+      if not best or eta < best.eta then best = { w = g.width, h = g.height, eta = eta } end
+    end
+    for clock, list in pairs(og.garbageInTransit) do
+      for _, g in ipairs(list) do
+        local eta = clock - now_
+        if not best or eta < best.eta then best = { w = g.width, h = g.height, eta = eta } end
+      end
+    end
+    if best and best.eta > 0 then C.front_telegraph(fid, best.w, best.h, best.eta) else C.front_telegraph(fid, 0, 0, 0) end
+  end
   local bits = os.getenv("GC_NOBOT") and 0 or C.front_frame(fid, board)
   local thought = loadMs + (now() - tk1)
   local blog = ""

@@ -45,7 +45,7 @@ typedef struct {
   int wWaitTo, wFrames, wWaitAll, wR0, wKept;
   Pad pad;
   int sawWave;   // a real garbage slab has been queued
-  int lead;   // told by the host (front_lead): the frames left before the preset's first attack, 0 when it is not known or has passed
+  int tgW, tgH, lead;   // told by the host (front_telegraph): the next block the attacker has queued -- its size and the frames until it reaches this stack, 0 when none is shown
   int oppPresent, oppTopped;   // told by the host (front_opponent): another player is in the match; that player's stack has lost
   int risen, riseDisp, riseHas;   // rows risen since the game began (IN_RISEN), counted every frame
   int pkR, pkC, pkAt, pkAll, presses;   // presses: every swap pressed, counted (IN_PRESSES)   // the swap walked to, and the clock its first plan pressed it at (pkAt 0: none)   // a walk: the frame its swap's panels settle (every panel's: wWaitAll), the frames it has taken
@@ -443,7 +443,7 @@ static void fPrepare(Front *F) {
         if (f[ISGARBAGE] && f[COLOR] > 0 && f[COLOR] != 9 && f[COLOR] < 130 && !fConv(f)) f[COLOR] = 130 + (W * r + c - 1) % 90;
       } }
   if (FB->ninc > 0 || FB->garbageCreatedCount > 0) F->sawWave = 1;
-  d[IN_OPPPRESENT] = F->oppPresent; d[IN_OPPTOPPED] = F->oppTopped; d[IN_LEAD] = F->lead;
+  d[IN_OPPPRESENT] = F->oppPresent; d[IN_OPPTOPPED] = F->oppTopped; d[IN_LEAD] = F->lead; d[IN_TGW] = F->tgW; d[IN_TGH] = F->tgH; d[IN_TGC] = F->tgW > 0 ? nb_spawn_col(FB, F->tgW) : 0;
   d[IN_HASTIMED] = timed;
   d[IN_REVEALOPEN] = open;
   if (conv) { d[IN_CONVN] = nconv; d[IN_CONVTIMER] = convTimer; }
@@ -1484,7 +1484,7 @@ static void frontRestart(Front *F) {
 // player's stack has lost (topped). With an opponent in the match the first wave is not assumed (fPrepare): the bot
 // plays for setups, combos and chains while none comes; a combo goes before a chain against a topped-out player
 // (attackCmp). Alone, as in the survival scan, the first wave is assumed.
-EXPORT(front_lead) void front_lead(int fid, int frames) { FRONTS[fid].lead = frames > 0 ? frames : 0; }
+EXPORT(front_telegraph) void front_telegraph(int fid, int width, int height, int eta) { Front *F = &FRONTS[fid]; F->tgW = width; F->tgH = height; F->lead = eta > 0 ? eta : 0; }
 EXPORT(front_opponent) void front_opponent(int fid, int present, int topped) { Front *F = &FRONTS[fid]; F->oppPresent = present != 0; F->oppTopped = topped != 0; }
 // The last decision's swap (or park) cell, row * 10 + column.
 EXPORT(front_move) int front_move(int fid) { return FRONTS[fid].lastMoveR * 10 + FRONTS[fid].lastMoveC; }
