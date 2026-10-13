@@ -360,12 +360,18 @@ function matchedBySwap(b, r, c) {
   for (var key in cells) n++;
   return n;
 }
+// A THREE IS THE LAST RESORT, and from this on: the stack topped out, or one row from the top and within nearFrames of it -- the same
+// test the decision made (survivor_think.js), on the stack as it is.
+function lastResort(truth, A) {
+  if ((typeof truth.isToppedOut === 'function' && truth.isToppedOut()) || truth.wasToppedOut) return true;
+  return CK.fullTop(truth) >= (truth.height || 12) - 1 && CK.framesToTop(truth) <= ((A && A.nearFrames) || 90);
+}
 var pressVetoLogged = 0;
 function threePressed(match, truth) {
   try {
     var A = match.L.profile && match.L.profile.attack;
     if (!A || !A.guardThrees) return false;
-    if ((typeof truth.isToppedOut === 'function' && truth.isToppedOut()) || truth.wasToppedOut) return false;
+    if (lastResort(truth, A)) return false;
     var r = truth.curRow, c = truth.curCol;
     if (matchedBySwap(truth, r, c) !== 3) return false;
     var t = truth.copy(); t.behaviours = Object.assign({}, t.behaviours, { passiveRaise: false });
@@ -383,7 +389,7 @@ var pressLogged = 0;
 function pressAudit(match, board, move, src, at) {
   var P = match.L.profile && match.L.profile.attack;
   if (!P || !P.pressAudit) return;
-  var toppedP = typeof board.isToppedOut === 'function' && board.isToppedOut();
+  var toppedP = lastResort(board, P);
   try {
     var t = board.copy(); t.behaviours = Object.assign({}, t.behaviours, { passiveRaise: false }); t.curRow = move[0]; t.curCol = move[1];
     if (!t.tryQueueSwap(move[0], move[1])) return;
