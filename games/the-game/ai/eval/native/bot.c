@@ -5191,33 +5191,39 @@ static Dec noStall(Dec d) {
 // judges, the soonest READYTRIES of them. Asked,
 // it must live, as long as the readiness bar asks (dieRef), and be ready when
 // the slab lands (readyInTime).
-// HOW FAR A BOARD IS FROM READY, for the guided search (sitGuide; lower is nearer): the board with the next slab placed where it rests, and on it
-// what a break is made of -- panels of one colour together where the slab touches. In the top three rows of each column (from the highest panel
-// a swap can reach) every pair of one colour counts: vertical or side by side, three if it touches the slab's row and one if not, and two a gap
-// apart one, since a swap closes the gap; the twos whose third is a swap away and touches garbage (breakTwosOf) count four. A swap that brings
-// colours together moves it, which a count of the twos already made does not; the soonest press only orders between equals
-#define READYGUIDECAP 60
+// HOW FAR A BOARD IS FROM READY, for the guided search (sitGuide; lower is nearer): the board with the next slab placed where it rests, and what a
+// break against it is made of. Garbage breaks beside a three that touches it, and a slab rests on the top of the columns under it, so the three
+// is stacked in one of those contact columns: its top panel, the panels under it of its colour, and each panel still missing -- the
+// swaps to bring the nearest of that colour in the row of the missing cell along its row to the column (a gap of eight where there is none). The
+// nearest contact column's count is the board's: 0 where the three stands. A swap that brings a colour nearer moves it, which a count of the twos
+// already made does not; the soonest press only orders between equals
+#define READYGUIDENONE 8
 static double readyGuide(const int32_t *st) {
   SLABW = (int)BIN[IN_SLABW]; SLABH = (int)BIN[IN_SLABH]; SLABC = (int)BIN[IN_SLABC];
   int placed = slabPlace(st, SLABST);
   const int32_t *b = placed > 0 ? SLABST : st;
-  int W = b[O_W], n = 0;
+  int W = b[O_W];
 #define GP(r, c) ((c) >= 1 && (c) <= W && (r) >= 1 && (U(b, OCC + (c)) & (1u << ((r) - 1))) && !(U(b, GARB + (c)) & (1u << ((r) - 1))) && !(U(b, INERT + (c)) & (1u << ((r) - 1))))
-  int top[WMAX + 3];
-  for (int c = 1; c <= W; c++) top[c] = workTop(b, c);
-  for (int c = 1; c <= W; c++)
-    for (int k = 0; k < 3; k++) {
-      int r = top[c] - k;
-      if (r < 1 || !GP(r, c)) continue;
-      int col = colourFirst(b, c, 1u << (r - 1));
-      if (!col) continue;
-      if (k < 2 && GP(r - 1, c) && colourFirst(b, c, 1u << (r - 2)) == col) n += k == 0 ? 3 : 1;
-      if (GP(r, c + 1) && colourFirst(b, c + 1, 1u << (r - 1)) == col) n += (k == 0 || r == top[c + 1]) ? 3 : 1;
-      else if (GP(r, c + 2) && colourFirst(b, c + 2, 1u << (r - 1)) == col) n += 1;
+  double best = 2 * READYGUIDENONE + 4;
+  for (int c = 1; c <= W; c++) {
+    uint32_t g = U(b, GARB + c), pan = U(b, OCC + c) & ~g & ~U(b, INERT + c);
+    if (g) pan &= (1u << __builtin_ctz(g)) - 1u;   // the panels under the lowest garbage
+    int r = pan ? 32 - __builtin_clz(pan) : 0;
+    if (r < 1 || !(g & (1u << r))) continue;      // not a contact column: no garbage directly over its top panel
+    int col = colourFirst(b, c, 1u << (r - 1));
+    if (!col) continue;
+    int v = 1;
+    while (v < 3 && r - v >= 1 && GP(r - v, c) && colourFirst(b, c, 1u << (r - v - 1)) == col) v++;
+    double cost = 0;
+    for (int m = r - v; m > r - 3; m--) {   // each cell of the three still missing
+      int d = READYGUIDENONE;
+      if (m >= 1) for (int c2 = 1; c2 <= W; c2++) if (c2 != c && GP(m, c2) && colourFirst(b, c2, 1u << (m - 1)) == col) { int dd = c2 > c ? c2 - c : c - c2; if (dd < d) d = dd; }
+      cost += d;
     }
+    if (cost < best) best = cost;
+  }
 #undef GP
-  n += 4 * breakTwosOf(b);
-  return READYGUIDECAP - (n < READYGUIDECAP ? n : READYGUIDECAP);
+  return best;
 }
 typedef struct { int dieRef, spare, dr, dc, tried, masks, ok, r, c, seen, dies, sooner, near; double g0; } RqCtx;
 static int sitReadies(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
