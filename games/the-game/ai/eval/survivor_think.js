@@ -166,7 +166,7 @@ module.exports = function think(cfg) {
       if (realNear) toppedEarly = true;
       // a three is played only on a stack the engine says is topped out (a panel in the top row), and then only as the last resort
       // (a stack topped out with no stop time is lost the frame it is: a three is the last resort from nearFrames before that, on the stack as the game shows it)
-      var toppedReal = A && A.realTopped ? (!!m.topped || realNear) : (!!m.topped || (typeof board.isToppedOut === 'function' && board.isToppedOut()));
+      var toppedReal = A && A.realTopped ? (!!m.topped || realNear) : (!!m.topped || toppedEarly);
       bot.toppedOutNow = toppedReal;
       bot.realToppedOnly = !!(A && A.realTopped);
       // (danger is the stack in jeopardy, not the stack raised high: its height counting the garbage on it, or what is about to land on it
@@ -366,7 +366,7 @@ module.exports = function think(cfg) {
       // stack as high as it was clears nothing that matters (it gives no stop time). The move is the first of the line that goes to the
       // garbage if there is one, else a hold.
       var guardTopped = function () {
-        if (!(A && A.guardThrees && toppedNow && d.kind === 'swap' && d.move && !(d.planChain >= 2))) return;
+        if (!(A && A.guardThrees && A.guardUseless && toppedNow && d.kind === 'swap' && d.move && !(d.planChain >= 2))) return;
         var tt = board.copy(); tt.behaviours = Object.assign({}, tt.behaviours, { passiveRaise: false }); tt.curRow = d.move[0]; tt.curCol = d.move[1];
         var rt = tt.tryQueueSwap(d.move[0], d.move[1]) ? tt.settle() : null;
         if (!(rt && rt.combos.length && rt.chain < 2 && rt.combos.every(function (x) { return x === 3; }))) return;
