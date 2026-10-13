@@ -2348,7 +2348,7 @@ static double optLine(void) { double e = rdW0 + OPTWORK; return (stageEnd < e ? 
 // EVERY STAGE HAS A SHARE OF OPTWORK (percent), and the stages before it leave
 // the shares of the stages after it, no more: a later stage takes whatever is
 // left it, so what it took lately says what it was given, not what it needs
-static const int STAGESHARE[NSTAGES] = { 30, 0, 25, 5, 20, 5, 5, 5, 5 };
+static const int STAGESHARE[NSTAGES] = { 30, 0, 35, 5, 10, 5, 5, 5, 5 };
 static double stageLeaves(int i) {
   int after = 0; for (int j = i + 1; j < NSTAGES; j++) after += STAGESHARE[j];
   double keep = OPTWORK * after / 100;
