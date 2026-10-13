@@ -1287,14 +1287,13 @@ static int raiseModeOf(const int32_t *base, int poolBreak) {
   BT->wantRows = rows;
   if (BT->opening && realIn > 0) BT->opening = 0;   // the opening ends with the first real garbage, not a raise refused for a moment
   if (!fits) { raiseGate = raiseShort ? 4 : 10; return 0; }
-  // READY BEFORE IT RAISES: with garbage to come -- the first wave too, before
-  // it is seen (waveReady) -- a raise may not cost the
+  // READY BEFORE IT RAISES: with garbage queued a raise may not cost the
   // break ready for the slab that lands -- the risen board keeps it. A board
   // with none ready loses nothing by rising, and gains the material to build one.
   // A break line being played is a break ready: the raise would move the
   // board under it.
   if (BT->nLine && BT->lineKind == LINE_BREAK) { raiseGate = 5; return 0; }
-  if ((BIN[IN_INCOMING] > 0 || BT->opening) && !(risenMasks(base, RZ) && waveReady(RZ)) && waveReady(base)) { raiseGate = 6; return 0; }
+  if (BIN[IN_INCOMING] > 0 && !(risenMasks(base, RZ) && waveReady(RZ)) && waveReady(base)) { raiseGate = 6; return 0; }   // the opening has nothing queued to keep ready for: it raises
   // THE OPENING RAISES AS HIGH AS IT CAN: the rows are the material every break after the first is made of (a stack of 36 panels meets the
   // first block with a fatal landing in 1 of 100, one under 18 in 1 of 4: panelWorth). A board with a break ready keeps it (above); one
   // with none is not held back until it has one -- the block the telegraph shows can be too tall for any board to be ready for.
