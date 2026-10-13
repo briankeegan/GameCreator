@@ -256,7 +256,9 @@ module.exports = function think(cfg) {
         }
         else {
           // nothing on the board, nothing coming and the stack low: all the time and depth it takes to plan a big attack
-          var quiet = !garb && comingRows === 0 && SH.top(board) < (A.quietTop || 9) && !(bot._planUntil > board.clock), P2 = quiet ? { ms: A.boundPlans && due ? Math.min(A.bigMs || 1500, Math.max(60, due - Date.now() - DEADLINE_MARGIN_MS)) : A.bigMs || 1500, width: A.bigWidth || 100, depth: A.bigDepth || 14 } : { ms: Math.min(A.ms || 300, due ? Math.max(40, due - Date.now() - DEADLINE_MARGIN_MS) : 300), width: A.width || 60, depth: A.depth || 10 };
+          var quiet = !garb && comingRows === 0 && SH.top(board) < (A.quietTop || 9) && !(bot._planUntil > board.clock),
+              // THE STACK CREEPING UP is cleared by combos and chains, not threes: the whole time there is goes to finding one (climbBig)
+              climbing = !!(A.climbBig && SH.top(board) >= (A.climbTop || 9)), P2 = quiet || climbing ? { ms: A.boundPlans && due ? Math.min(A.bigMs || 1500, Math.max(60, due - Date.now() - DEADLINE_MARGIN_MS)) : A.bigMs || 1500, width: A.bigWidth || 100, depth: A.bigDepth || 14 } : { ms: Math.min(A.ms || 300, due ? Math.max(40, due - Date.now() - DEADLINE_MARGIN_MS) : 300), width: A.width || 60, depth: A.depth || 10 };
           // the opponent topped out: any combo or chain there is, soonest. Not: a big chain, however tall the stack.
           var minChain = oppOut ? 0 : minChainOf;
           var floor = oppOut || aggro ? (A.outCells || 3) : 1;
@@ -267,7 +269,8 @@ module.exports = function think(cfg) {
           if (ap && ap.cells >= floor && ap.seq.length && !(A.minRows && ap.after < A.minRows) && !(toppedFree && ap.seq.length * 18 + 30 > stopLeft) && leavesBreakTime(ap)) { d = { kind: 'swap', move: ap.seq[0], overruled: true, src: 'fire', planChain: ap.chain }; bot._attackCells = ap.cells; attackLine = ap.seq.slice(1); attackMove = ap.seq[0]; bot._planUntil = board.clock + 40 * ap.seq.length; }
           // no fire in reach: more panels to build with (the stack is raised) up to raiseMax, then the swap that builds the board toward one
           else if (!garb && !oppOut && SH.top(board) < (A.raiseMax || 10) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1; bot._replanAt = board.clock + (A.replanFrames || 30); }
-          else if (building && ap && (ap.setup || (unlock && ap.anySwap))) { d = { kind: 'swap', move: ap.setup || ap.anySwap, overruled: true, src: 'setup' }; bot._setups = (bot._setups || 0) + 1; if (unlock) bot._unlocks = (bot._unlocks || 0) + 1; }
+          // (a profile that attacks builds toward the next fire whatever is on the board or whoever is topped out: the swap, never a hold)
+          else if ((building || A.aggro) && ap && (ap.setup || (unlock && ap.anySwap))) { d = { kind: 'swap', move: ap.setup || ap.anySwap, overruled: true, src: 'setup' }; bot._setups = (bot._setups || 0) + 1; if (unlock) bot._unlocks = (bot._unlocks || 0) + 1; }
           else if (building) { d = { kind: 'hold', overruled: true }; bot._buildHolds = (bot._buildHolds || 0) + 1; }
         }
       }
