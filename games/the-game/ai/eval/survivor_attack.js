@@ -60,7 +60,7 @@ module.exports = function (opts) {
           if (g.cells === 0) continue;
           // the fire kept: the most garbage, or with o.rate the most garbage for the time it takes (cells over swaps + rate) -- pressure, not the biggest
           var rated = o.rate ? g.cells / (seq.length + o.rate) : g.cells, bestRated = best ? (o.rate ? best.cells / (best.seq.length + o.rate) : best.cells) : -1;
-          if (!best || rated > bestRated || (rated === bestRated && seq.length < best.seq.length)) best = { cells: g.cells, chain: g.chain, seq: seq, n: out };
+          if (!best || rated > bestRated || (rated === bestRated && seq.length < best.seq.length)) best = { cells: g.cells, chain: g.chain, seq: seq, n: out, broke: st.broke || 0, earned: st.earned || 0 };
         } else it.kids.push({ n: out, seq: it.seq.concat([m]) });
       }
       pool.sort(function (a, b) { return b.reach - a.reach || b.h - a.h; });
@@ -85,6 +85,14 @@ module.exports = function (opts) {
       if (spent.length) s.drop(spent);
     }
     if (!best) best = { cells: 0, chain: 0, seq: [] };
+    // A LINE THAT RUNS ON: every step of it was played on the engine with the garbage on its way landing at its time, and no
+    // step left the board dead (a dead node is never grown), so it is continuous to its end. `continuous` says it also ends
+    // with no garbage left on the board, or having broken some -- it gets the board out from under what is on it.
+    else if (best.n && best.n.b && best.n.b.grid) {
+      var gl = best.n.b.grid, left = false;
+      for (var r0 = 1; r0 < gl.length && !left; r0++) for (var c0 = 1; c0 <= W && !left; c0++) if (gl[r0] && gl[r0][c0] >= 8) left = true;
+      best.continuous = !!(o.arrivals && (!left || best.broke > 0));
+    }
     else { // the lowest peak of the board the fire leaves: the fewest panels any column has
       var ga = best.n && best.n.b && best.n.b.grid, low = 99, rr, cc, pk;
       if (ga) {
