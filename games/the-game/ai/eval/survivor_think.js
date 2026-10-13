@@ -391,11 +391,11 @@ module.exports = function think(cfg) {
           var rdA = rmsA >= 30 ? attacker[A.readyTime ? 'readyInTime' : 'readyFor'](board, m.hold, readyArr, { ms: rmsA }) : null;
           if (rdA && !rdA.ready && rdA.setup) put(arbKey(rdA.setup), -1, { src: 'ready' });
         }
-        // THE RAISE: with nothing on the board, nothing on its way and nothing popping, the stack is raised -- before any setup up to
-        // calmRaiseTo, and before a planned fire too while it is under lowTop; otherwise only up to raiseCap, after the setups
+        // THE RAISE: nothing popping, a stack under lowTop is raised before a planned fire (out of danger, whatever is coming); with
+        // nothing on the board or on its way, before any setup up to calmRaiseTo; otherwise only up to raiseCap, after the setups
         if (!busyA && !toppedForRaise && bot._canRaise()) {
           var topA = fullTop(board), calmA = !garbA && comingRows === 0 && !(board.incoming || []).length;
-          if (calmA && topA < (A.lowTop || 6)) put('raise', -1.4, { src: 'raise' });
+          if (topA < (A.lowTop || 6) && !danger) put('raise', -1.4, { src: 'raise' });   // a low stack has nothing to build with, whatever is coming
           else if (calmA && topA < (A.calmRaiseTo || 9)) put('raise', -0.6, { src: 'raise' });
           else if (topA < raiseCap(board, comingRows, A)) put('raise', -0.3, { src: 'raise' });
         }
