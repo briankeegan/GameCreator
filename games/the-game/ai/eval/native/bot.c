@@ -6183,7 +6183,12 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   extern PATLS double paWork;
   double w0 = paWork, ws[12], ts[12], jm[12]; int k = 0, cutAt[12], js[12];
   fillJudges = 0; fillJudgeMs = 0;
+#ifdef __wasm__
 #define NOWMS() 0.0
+#else
+  extern double paClockMs(void);
+#define NOWMS() (botTraceOn ? paClockMs() : 0.0)   // the stages' milliseconds are the trace's: the bot's decisions read no clock
+#endif
   double t0 = NOWMS();
   extern int paBudgetOut(void), paBudgetSpent(void), paCutPast(double);
 #define SHARE(p) ((void)(p))   // one budget for the whole decision, opened above
