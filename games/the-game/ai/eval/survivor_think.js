@@ -172,12 +172,16 @@ module.exports = function think(cfg) {
         : A && A.realThrees ? (!!m.topped || (m.realTop >= 11 && m.realFtt <= (A.nearFrames || 90) + (m.lead || 0)))
         : (!!m.topped || toppedEarly);
       bot.toppedOutNow = toppedReal;
+      // (the stack is raised, and a break made ready, unless it is near the top as the game shows it -- realThrees)
+      var toppedForRaise = A && A.realThrees ? (!!m.topped || (m.realTop >= 11 && m.realFtt <= (A.nearFrames || 90) + 30)) : toppedEarly;
       bot.realToppedOnly = !!(A && (A.realTopped || A.realThrees));
       // (danger is the stack in jeopardy, not the stack raised high: its height counting the garbage on it, or what is about to land on it
       // overflowing the board -- raising to row 10 is the plan, and a hit of a row or two on it is not an emergency)
       // GARBAGE ON ITS WAY for the readiness check: the game's landing times, else -- when the stack's own queue holds garbage the link has
       // given no time for -- a landing in readyAt frames
-      var readyArr = arrivals.length ? arrivals : ((board.incoming || []).length ? [{ at: A && A.readyAt || 90 }] : []);
+      var readyArr = arrivals.length ? arrivals : (board.incoming || []).slice(0, 8).map(function (g) {
+        return { at: A && A.readyAt || 90, width: g.width, height: g.height, isChain: !!g.isChain, isMetal: !!g.isMetal, capped: false };
+      });
       // A BREAK STAYS READY WITHIN THE TIME THERE IS: an attack is played while the first garbage on its way still leaves the time to finish
       // it and then make a break (readyFrames); a chain of three or more is worth the risk
       var firstLand = Infinity;
@@ -268,12 +272,12 @@ module.exports = function think(cfg) {
       // what is coming would no longer fit; the survival logic breaks what lands
       // GARBAGE ON ITS WAY, WHEREVER THE BOARD IS (danger too): before the stack is raised for it, a swap that will break it when it lands
       // is made ready -- the hit is told of 150 frames before it lands
-      if (A && !toppedEarly && A.readyBreak && !d && !SH.lowestGarbageRow(board) && readyArr.length && !cascadeLive(board, true)) {
+      if (A && !toppedForRaise && A.readyBreak && !d && !SH.lowestGarbageRow(board) && readyArr.length && !cascadeLive(board, true)) {
         var rdy2 = attacker ? attacker.readyFor(board, m.hold, readyArr, { ms: A.readyMs || 150 }) : null;
         if (!attacker) { attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames }); rdy2 = attacker.readyFor(board, m.hold, readyArr, { ms: A.readyMs || 150 }); }
         if (rdy2 && !rdy2.ready && rdy2.setup) { d = { kind: 'swap', move: rdy2.setup, overruled: true, src: 'ready' }; bot._readies = (bot._readies || 0) + 1; }
       }
-      if (A && !toppedEarly && A.alwaysRaise && !d && !cascadeLive(board, true) && fullTop(board) < raiseCap(board, comingRows, A) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1; }
+      if (A && !toppedForRaise && A.alwaysRaise && !d && !cascadeLive(board, true) && fullTop(board) < raiseCap(board, comingRows, A) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1; }
       // (why the stack was not raised this decision, counted for the diag)
       if (A && A.alwaysRaise && !(d && d.kind === 'raise')) {
         var nr = toppedEarly ? 'topped' : danger ? 'danger' : fullTop(board) >= raiseCap(board, comingRows, A) ? 'cap' : cascadeLive(board, true) ? 'busy' : bot.stack && bot.stack.preventManualRaise ? 'prevent' : bot.stack && bot.stack.riseLock ? 'riseLock' : bot.stack && bot.stack.hasActivePanels && bot.stack.hasActivePanels() ? 'active' : bot.stack && (bot.stack.shakeTime || 0) > 0 ? 'shake' : bot.stack && bot.stack.hasFallingGarbage && bot.stack.hasFallingGarbage() ? 'fallG' : d ? 'other-' + d.kind : 'none';
@@ -394,7 +398,7 @@ module.exports = function think(cfg) {
       guardTopped();
       // NEVER IDLE (noIdle): a hold on a board that is safe, with nothing resolving, is a move wasted -- the stack is raised, or the best fire
       // is played, or a swap that builds toward one
-      if (A && A.noIdle && d.kind === 'hold' && !danger && !toppedEarly && !cascadeLive(board, true)) {
+      if (A && A.noIdle && d.kind === 'hold' && !danger && !toppedForRaise && !cascadeLive(board, true)) {
         var niMs = due ? Math.min(A.noIdleMs || 80, due - Date.now() - 2 * DEADLINE_MARGIN_MS - 60) : (A.noIdleMs || 80);
         if (fullTop(board) < raiseCap(board, comingRows, A) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._idleFilled = (bot._idleFilled || 0) + 1; }
         else if (niMs >= 30) {

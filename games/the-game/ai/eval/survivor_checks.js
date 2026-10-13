@@ -59,9 +59,12 @@ function cascadeLive(board, free) {
 // How high the stack may be raised (the profile's raiseMax, one row more while stop time runs).
 function raiseCap(board, coming, A) {
   var queued = 0;
-  if (A.raiseLeaveRoom) (board.incoming || []).forEach(function (g) { queued += g.height || 0; });
+  if (A.raiseLeaveRoom || A.raiseNoTop) (board.incoming || []).forEach(function (g) { queued += g.height || 0; });
   var bonus = (A.raiseStopBonus || 0) && (board.stopTime || 0) + (board.preStopTime || 0) >= (A.raiseStopFrames || 60) ? A.raiseStopBonus : 0;
-  return (A.raiseMax || 11) + bonus - (A.raiseLeaveRoom ? coming + queued : 0);
+  var cap = (A.raiseMax || 11) + bonus - (A.raiseLeaveRoom ? coming + queued : 0);
+  // (raiseNoTop: never raised to where the garbage already on its way would reach the top row: the stack plus the hit stops at row 11)
+  if (A.raiseNoTop && coming + queued > 0) cap = Math.min(cap, 11 - coming - queued);
+  return cap;
 }
 // How many frames until the stack is topped out if nothing stops it rising: the stop time left, then the rest of the row it is rising
 // through and a whole row for each one more it has to go (a row is 16 steps of the rise time at the stack's speed). 0 for a stack

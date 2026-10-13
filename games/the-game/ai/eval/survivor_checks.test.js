@@ -90,6 +90,8 @@ even.stopTime = 30;
 assert.strictEqual(C.raiseCap(even, 0, A), 10, 'not for a short stop');
 assert.strictEqual(C.raiseCap(even, 3, { raiseMax: 10, raiseLeaveRoom: true }), 7, 'room left for the rows coming');
 assert.strictEqual(C.raiseCap(even, 3, { raiseMax: 10 }), 10, 'garbage coming is a reason to raise, not to hold back');
+assert.strictEqual(C.raiseCap(even, 3, { raiseMax: 10, raiseNoTop: true }), 8, 'a hit of 3 on its way: the stack plus it stops at row 11');
+assert.strictEqual(C.raiseCap(even, 0, { raiseMax: 10, raiseNoTop: true }), 10, 'nothing on its way: raised as high as it goes');
 // danger
 even.stopTime = 0;
 var tall = board(['111111', '222222', '333333', '444444', '555555', '666666', '111111', '222222', '333333', '444444']);
