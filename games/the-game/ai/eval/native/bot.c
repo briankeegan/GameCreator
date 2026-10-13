@@ -1295,10 +1295,9 @@ static int raiseModeOf(const int32_t *base, int poolBreak) {
   // board under it.
   if (BT->nLine && BT->lineKind == LINE_BREAK) { raiseGate = 5; return 0; }
   if ((BIN[IN_INCOMING] > 0 || BT->opening) && !(risenMasks(base, RZ) && waveReady(RZ)) && waveReady(base)) { raiseGate = 6; return 0; }
-  // THE OPENING RAISES WITH A BREAK READY: as high as it can, each row only
-  // onto a board the first wave can land on and be broken (waveReady, the
-  // phantom first wave). A board not ready is made ready first, then raised.
-  if ((BT->opening || BIN[IN_PHANTOM] > 0) && !(risenMasks(base, RZ) && waveReady(RZ))) { raiseGate = 12; return 0; }
+  // THE OPENING RAISES AS HIGH AS IT CAN: the rows are the material every break after the first is made of (a stack of 36 panels meets the
+  // first block with a fatal landing in 1 of 100, one under 18 in 1 of 4: panelWorth). A board with a break ready keeps it (above); one
+  // with none is not held back until it has one -- the block the telegraph shows can be too tall for any board to be ready for.
   // AS HIGH AS IT CAN: after the opening the rise is locked nearly every
   // frame (garbage in motion), so the opening's raise is the material the
   // board gets besides what breaks -- raised while the next slab still has
@@ -2608,7 +2607,7 @@ static void disturbed(const int32_t *a, const int32_t *b, uint32_t *out) {
 #define SITNODEWORK 1
 #define SITHASH 2048
 typedef struct { int parent, n, r, c, stopped; double t, settled, left; uint32_t dist[WMAX]; int32_t rh[R_INTS]; } SitNode;   // stopped: a step before cleared, so the board is stopped; rh: the step's resolve record
-typedef struct { int parent, r, c; double t; } SitKid;   // a step offered: the line it grows (a SitNode) and when it is pressed
+typedef struct { int parent, r, c; double t, key; } SitKid;   // a step offered: the line it grows (a SitNode), when it is pressed, and the key it is popped by (the press frame; with a guide, the board's guide first)
 typedef struct { double t; int k; } SitHeap;   // the heap holds each step's press frame beside it, so it sorts without reading the steps
 // THE BOUND, LOWERED AS IT GOES: an accept that only wants something sooner
 // than what it has (the soonest break) lowers it, and the search prunes to it
@@ -2632,9 +2631,9 @@ static int sitLine(int i, int32_t *sw) {
   for (int j = i; SITND[j].n > 0; j = SITND[j].parent) { sw[2 * (SITND[j].n - 1)] = SITND[j].r; sw[2 * (SITND[j].n - 1) + 1] = SITND[j].c; }
   return n;
 }
-static void sitPush(int *nh, int i) {   // the heap of steps offered: the soonest press on top
+static void sitPush(int *nh, int i) {   // the heap of steps offered: the lowest key on top (the soonest press, or the guide's best board first)
   int k = (*nh)++;
-  double t = SITKD[i].t;
+  double t = SITKD[i].key;
   while (k > 0) { int p = (k - 1) / 2; if (SITHP[p].t <= t) break; SITHP[k] = SITHP[p]; k = p; }
   SITHP[k].t = t; SITHP[k].k = i;
 }
@@ -2730,6 +2729,12 @@ static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double no
 // a kept line's steps offered: each legal pair, pressed when the clock says
 // (from the line's last press and cursor; a pair the line disturbed once it is
 // still), kept only if pressed in time
+// A GUIDED SEARCH grows the line whose board looks nearest its goal first (best-first; the established way to reach a goal several steps off):
+// a step offered carries its line's board's guide (lower is nearer), and the soonest press only orders between equals. Only the order
+// changes: the same steps, the same bounds, the same accept.
+#define SITGUIDEWORK 30
+#define SITGUIDEKEY 1e4
+static JLOCAL double (*sitGuide)(const int32_t *st);
 static JLOCAL int sitRootLegal, sitRootFilt, sitRootCan, sitRootLate;
 static JLOCAL int sitRootKids; static JLOCAL double sitRootLeft;
 static JLOCAL int (*sitFilter)(const int32_t *st, int r, int c);   // a search that matters only in one region offers no swap outside it: the cost is not paid for a child that is then cut
@@ -2739,6 +2744,8 @@ static void sitOffer(int i, int *nk, int *nh, double notBefore, int frozen, cons
   int root = nd->n == 0;
   double start = root ? nd->t : nd->t + stepGap(frozen || nd->stopped);   // a clear's stop time: no reaction to wait out
   double bound = nd->left < sitLeft ? nd->left : sitLeft;
+  double gp = 0;
+  if (sitGuide) { gp = sitGuide(SITST[i]); paWork += SITGUIDEWORK; }
   int m = legal(SITST[i], SITL);
   paWork += SITLEGALWORK;
   for (int q = 0; q < m && *nk < SITKIDS; q++) {
@@ -2755,7 +2762,7 @@ static void sitOffer(int i, int *nk, int *nh, double notBefore, int frozen, cons
     if (at > bound) { if (root) sitRootLate++; continue; }
     int k = (*nk)++;
     paWork += SITOFFERWORK;
-    SITKD[k].parent = i; SITKD[k].r = r; SITKD[k].c = c; SITKD[k].t = at;
+    SITKD[k].parent = i; SITKD[k].r = r; SITKD[k].c = c; SITKD[k].t = at; SITKD[k].key = sitGuide ? gp * SITGUIDEKEY + at : at;
     sitPush(nh, k);
   }
 }
