@@ -2442,13 +2442,15 @@ static int lineJudge(const int32_t *sw, int n, int waitAll) {
   fillJudges++; fillJudgeMs += NOWMS2() - t;
   return v;
 }
+static int luJudgeWhy[4];   // why lineJudgeIn gave no verdict: the engine refused the line, a step never pressed, health lost before the line is done, the board it ends on is the board left alone's (for the log)
 static int lineJudgeIn(const int32_t *sw, int n, int waitAll) {
   if (!BIN[IN_HASPA]) return 0;
   if (!aloneOnEngine()) return 0;
-  if (lineOnEngine(sw, n, LINEHORIZON, waitAll, LNO) != 0 || LNO[1] < 0) return 0;
-  if (LNO[0] && LNO[0] <= LNO[1] + NEXTMOVE) return 0;
+  int rcl = lineOnEngine(sw, n, LINEHORIZON, waitAll, LNO);
+  if (rcl != 0 || LNO[1] < 0) { luJudgeWhy[rcl != 0 ? 0 : 1]++; return 0; }
+  if (LNO[0] && LNO[0] <= LNO[1] + NEXTMOVE) { luJudgeWhy[2]++; return 0; }
   // a line that ends on the board the board left alone ends on has done nothing
-  if (LNO[0] == LNA[0] && LNO[11] == LNA[11]) return 0;
+  if (LNO[0] == LNA[0] && LNO[11] == LNA[11]) { luJudgeWhy[3]++; return 0; }
   int v = LV_LIVES;
   if (LNO[2] > LNA[2]) v |= LV_PAYS | LV_BREAKS;
   else if (LNO[3] > LNA[3]) v |= LV_PAYS;
@@ -2835,6 +2837,7 @@ static int sitBreaks(const int32_t *res, const int32_t *sw, int n, double at, vo
 // without a work bound (storage only), beside what the decision found -- a diagnostic for the log, never the decision
 static void linesFind(int depth, int breaks);
 static LineC *bestBreak(void);
+static void traceMasks(const int32_t *st);
 static void probeBreaks(void) {
   extern char *getenv(const char *); extern int atoi(const char *);
   static int want = -2, span = 300; if (want == -2) { const char *e = getenv("GC_PROBE"), *g = getenv("GC_PROBE_SPAN"); want = e ? atoi(e) : -1; if (g) span = atoi(g); }
@@ -2852,6 +2855,7 @@ static void probeBreaks(void) {
     fprintf(stderr, "\n");
     { linesReset(); linesFind(REROOTS, 1); LineC *bb = bestBreak();
       fprintf(stderr, "PROBE-PLANNER clock %d lines %d best %d swaps %d (the planner's own search, no work bound)\n", clk, nLines, bb ? 1 : 0, bb ? bb->n : 0); }
+    { fprintf(BLOG, "PROBEBOARD clock %d bfs %d planner %d cursor %d,%d |", clk, got, 0, cur[0], cur[1]); traceMasks(st); fprintf(BLOG, "\n"); }
     // THE ENGINE'S OWN WORD on the same board: every line of one and two swaps judged on the engine (lineJudge), none of the masks' --
     // a break the engine makes that the masks' search did not is a break the masks cannot see
     { extern char *getenv(const char *); const char *dv = getenv("GC_PROBE_DEPTH"); int depth = dv ? atoi(dv) : 0;
@@ -6339,6 +6343,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
 #ifndef __wasm__
   // what the decision is and which stage it came from, with what its swap
   // clears on its own (the pool's resolve): the trace's, read by scan tools
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "JUDGEWHY refused %d unpressed %d dies %d same-board %d\n", luJudgeWhy[0], luJudgeWhy[1], luJudgeWhy[2], luJudgeWhy[3]); for (int q = 0; q < 4; q++) luJudgeWhy[q] = 0; }
   if (botTraceOn && !(d.kind == K_SWAP && d.hasMove)) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "DECIDE %s via %d\n", d.kind == K_RAISE ? "raise" : "hold", d.via); }
   if (botTraceOn && d.kind == K_SWAP && d.hasMove) { extern int fprintf(void *, const char *, ...); extern void *stderr;
     Cand *pc = poolSwap(d.sr, d.sc);
