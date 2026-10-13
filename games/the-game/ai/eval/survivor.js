@@ -177,6 +177,7 @@ var server = net.createServer(function (sock) {
         if (process.env.GC_SURVIVOR_RELOAD === '1') mind.postMessage({ type: 'weights', weights: SH.botOptions(SH.profile(), 1).weights });
         match = new Match({ levelData: m.levelData, behaviours: m.behaviours, stackOverConditions: m.stackOverConditions }, LINK);
         nativeNow();   // the engine compiled in the countdown, not on the first frame that predicts
+        match.openFrames();
         if (global.gc) global.gc();   // in the countdown: no frame is waiting on it
         reply = { ok: true };
       } else if (m.t === 'f') {

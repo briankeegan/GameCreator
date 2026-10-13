@@ -645,12 +645,15 @@ Match.prototype.record = function (truth, bits, arrivals) {
 };
 // GC_SURVIVOR_FRAMES=file.gz: every frame of the match, a line each, as it is played -- the board
 // only on the frames it changed on, the rest as the history keeps them.
+// The frame log is opened with the match (survivor.js, in the countdown): the gzip stream and the file cost the frame they are made in.
+Match.prototype.openFrames = function () {
+  if (this.frames || !process.env.GC_SURVIVOR_FRAMES) return;
+  var gz = require('zlib').createGzip({ level: 6 });
+  gz.pipe(require('fs').createWriteStream(numbered(process.env.GC_SURVIVOR_FRAMES, this.no)));
+  this.frames = gz;
+};
 Match.prototype.frameLog = function (rec) {
-  if (!this.frames) {
-    var gz = require('zlib').createGzip({ level: 6 });
-    gz.pipe(require('fs').createWriteStream(numbered(process.env.GC_SURVIVOR_FRAMES, this.no)));
-    this.frames = gz;
-  }
+  if (!this.frames) this.openFrames();
   var same = rec.grid === this.framesGrid;
   this.framesGrid = rec.grid;
   this.frames.write(JSON.stringify(same ? Object.assign({}, rec, { grid: undefined }) : rec) + '\n');
