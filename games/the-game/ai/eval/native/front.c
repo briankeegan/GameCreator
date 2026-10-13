@@ -716,6 +716,7 @@ static int standingHollow(const Board *b) {
     }
   return h;
 }
+static JLOCAL int lpEvent;   // linePlay's first frame anything cleared, broke, chained or fell (-1: none)
 static JLOCAL int lpArrive;   // linePlay's frame the cursor first stood on the first step's pair (-1: never)
 static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, int32_t *out) {
   if (!LNB) LNB = nb_new();
@@ -739,7 +740,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
     fprintf(BLOG, "  WAIT %d,%d to %d | first %d,%d last %d,%d\n", r, c, waitTo, LF->settle.first[r][c], LF->settle.first[r][c + 1], LF->settle.last[r][c], LF->settle.last[r][c + 1]); }
 #endif
   out[0] = 0; out[1] = -1; out[2] = out[3] = out[4] = 0; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = out[13] = out[14] = 0; out[15] = out[16] = -1;   // out[16]: the clock the first step is pressed at
-  lpArrive = -1;
+  lpArrive = -1; lpEvent = -1;
   int32_t landedFrom = b->garbageCreatedCount;   // out[15]: read once the next slab has landed
   int pressStep = -1, pressLast = 0;   // the step pressed this frame, and the last press before it
   { extern int paBudgetOut(void); if (paBudgetOut() || workLeft() <= 0) return -1; }   // past the decision's budget, or this thread's share of it (workLeft): not played
@@ -809,6 +810,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
       if (b->swapDenied) { step = pressStep; last = pressLast; if (step == 0) out[16] = -1; cool = 0; }
       pressStep = -1;
     }
+    if (lpEvent < 0 && (b->sCleared || b->sBroke || b->sNCombo || b->sFell || b->sEarned || b->sHollow)) lpEvent = f;
     if (b->health < h0 || b->gameOverClock > 0) { out[0] = f + 1; break; }
     if (out[15] < 0 && b->garbageCreatedCount > landedFrom && !nb_falling_garbage(b)) out[15] = standingHollow(b);
   }
@@ -882,13 +884,13 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   return 0;
 }
 
-// A LINE JUDGED ONCE FOR AS LONG AS THE POSITION STANDS. The engine is deterministic: from a board with no key pressed, a line replayed one
+// A LINE JUDGED ONCE FOR AS LONG AS THE POSITION STANDS (off unless GC_LINECACHE=1). The engine is deterministic: from a board with no key pressed, a line replayed one
 // frame later is the same replay with everything a frame sooner -- while the board's layout, the cursor and the queue are the same (lnEpoch)
 // and the line's first press is still ahead of the cursor's walk. A pop holds one position for hundreds of frames, and the bot asked
 // the engine the same lines every one of them. The times of the answer (the frame health is lost, the last press, the frame the front
 // decides again) move by the frames gone; the counts (broken, cleared, hollow) stay.
 #define LNCN 4096
-typedef struct { int epoch, n, waitAll, delay, clock0, absEnd, arrive, rc; int32_t sw[2 * LINEMAX], out[19]; } LnMemo;
+typedef struct { int epoch, n, waitAll, delay, clock0, absEnd, arrive, event, rc; int32_t sw[2 * LINEMAX], out[19]; } LnMemo;
 static LnMemo LNM[LNCN];
 static int lnEpoch, lnHits, lnMiss, lnCheck = -1, lnBad;
 static uint32_t lnHash;
@@ -905,7 +907,7 @@ static void lnNote(Front *F) {   // once a frame: a new position starts a new ep
 }
 static int lineOnEngineFresh(const int32_t *steps, int n, int horizon, int waitAll, int32_t *out) { LWAITALL = waitAll; int rc = linePlay(steps, n, horizon, 0, out); LWAITALL = 0; return rc < 0 ? -1 : 0; }
 int lineOnEngine(const int32_t *steps, int n, int horizon, int waitAll, int32_t *out) {
-  if (lnCheck < 0) { extern char *getenv(const char *); const char *e = getenv("GC_LINECACHE"); lnCheck = e ? atoi(e) : 1; }   // 0 off, 1 on, 2 on and checked against a fresh replay
+  if (lnCheck < 0) { extern char *getenv(const char *); const char *e = getenv("GC_LINECACHE"); lnCheck = e ? atoi(e) : 0; }   // 0 off (the default), 1 on, 2 on and checked against a fresh replay: the board a reused replay ends on can differ from a fresh one in the cells dealt unseen
   if (!lnCheck || n < 0 || n > LINEMAX || inWorker) return lineOnEngineFresh(steps, n, horizon, waitAll, out);
   int now = paLibBoard()->clock;
   unsigned h = 2166136261u ^ (unsigned)(n * 31 + waitAll * 7 + LDELAY * 131 + lnEpoch * 977);
@@ -914,7 +916,7 @@ int lineOnEngine(const int32_t *steps, int n, int horizon, int waitAll, int32_t 
   if (m->epoch == lnEpoch && m->n == n && m->waitAll == waitAll && m->delay == LDELAY && m->rc >= 0 && (n == 0 || !__builtin_memcmp(m->sw, steps, (unsigned long)n * 8))) {
     int d = now - m->clock0;
     int f1 = n ? m->out[16] - m->clock0 : 0;
-    int ok = d >= 0 && m->absEnd == now + horizon && (n == 0 || (m->out[16] >= 0 && f1 > d && m->arrive >= 0 && m->arrive <= f1 - d)) && (m->out[0] <= 0 || m->out[0] > d);
+    int ok = d >= 0 && m->absEnd == now + horizon && (n == 0 || (m->out[16] >= 0 && f1 > d && m->arrive >= 0 && m->arrive <= f1 - d)) && (m->out[0] <= 0 || m->out[0] > d) && (m->event < 0 || m->event > d);
     if (ok) {
       int32_t keep[19]; if (lnCheck == 2) for (int k = 0; k < 19; k++) keep[k] = 0;
       for (int k = 0; k < 19; k++) out[k] = m->out[k];
@@ -935,7 +937,7 @@ int lineOnEngine(const int32_t *steps, int n, int horizon, int waitAll, int32_t 
   lnMiss++;
   extern int paBudgetOut(void);
   if (rc == 0 && !paBudgetOut()) {
-    m->epoch = lnEpoch; m->n = n; m->waitAll = waitAll; m->delay = LDELAY; m->clock0 = now; m->absEnd = now + horizon; m->arrive = n ? lpArrive : 0; m->rc = 0;
+    m->epoch = lnEpoch; m->n = n; m->waitAll = waitAll; m->delay = LDELAY; m->clock0 = now; m->absEnd = now + horizon; m->arrive = n ? lpArrive : 0; m->event = lpEvent; m->rc = 0;
     for (int k = 0; k < 2 * n; k++) m->sw[k] = steps[k];
     for (int k = 0; k < 19; k++) m->out[k] = out[k];
   }

@@ -51,12 +51,12 @@ static double gWorkBudget = WORKBUDGET0, gOptWork = OPTWORK0;
 #define OPTWORK gOptWork
 #define UNDERWAY 9600
 // the quantile of milliseconds per unit the cut is held to, and how far a decision moves it
-#define RATEQUANTILE 0.9988   // of the decisions that reach the line (84% do): 1 in 1,000 of all decisions over the ceiling
+#define RATEQUANTILE 0.9999   // of the decisions that reach the line (84% do): 1 in 10,000 of all decisions over the ceiling
 #define RATESTEP 0.01
 #define TAILSTEP 0.05   // ms: how far a frame moves the time the front takes after the decision, held to the same quantile
 #define OPTFLOOR (OPTWORK0 / 4)   // the work a decision always has, whatever the frame's load: the stages it cannot skip
 static double dcQ0, dcC0, dcA0, dcK0;   // the engine frames at the decision's start, for the log's cost line
-static double tkCeiling, tkRate, tkLastWork, tkLeft, tkTail = 0.3, tkOver = 0.5, tkT0, tkDecMs;   // the ceiling told, ms per unit tracked, the work of the decision the last frame made, the frame's time left when it began, the time the front takes after a decision's work stops, when the decision began, how long it took
+static double tkCeiling, tkRate, tkLastWork, tkLeft, tkTail = 0.3, tkOver = 1.0, tkT0, tkDecMs;   // the ceiling told, ms per unit tracked, the work of the decision the last frame made, the frame's time left when it began, the time the front takes after a decision's work stops, when the decision began, how long it took
 enum { C_REFUSEDDEADLY, C_ALLDEAD, C_REFUSEDRETURN, C_REFUSEDTOOSLOW, C_PLANNED, C_PLANDROPPED, C_ATTACKED,
        C_ATTACKDROPPED, C_CELLSPLANNED, C_REFUSEDPAYLESS, C_REFUSEDSTARVING, C_REFUSEDOTHER, C_REFUSEDATEXIT,
        C_RAISEDFORMATERIAL, C_WAITEDTORAISE, C_DUGFOR, C_DIGDROPPED, C_BROKENOW, C_FLATTENBLIND, C_OPENINGRAISES,
