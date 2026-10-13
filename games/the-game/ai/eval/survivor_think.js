@@ -169,7 +169,7 @@ module.exports = function think(cfg) {
       // (realThrees: a three is the last resort on the stack as the game shows it -- topped out, or within nearFrames of it by the time the
       // swap is pressed -- never on the prediction, which can show garbage that is held back)
       var toppedReal = A && A.realTopped ? (!!m.topped || realNear)
-        : A && A.realThrees ? (!!m.topped || (m.realTop >= 11 && m.realFtt <= (A.nearFrames || 90) + (m.lead || 0)))
+        : A && A.realThrees ? (!!m.topped || (m.realTop >= (A.threeTop || 11) && m.realFtt <= (A.threeFrames || A.nearFrames || 90) + (m.lead || 0)))
         : (!!m.topped || toppedEarly);
       bot.toppedOutNow = toppedReal;
       // (the stack is raised, and a break made ready, unless it is near the top as the game shows it -- realThrees)

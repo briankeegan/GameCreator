@@ -375,7 +375,7 @@ function matchedBySwap(b, r, c) {
 // test the decision made (survivor_think.js), on the stack as it is.
 function lastResort(truth, A) {
   if ((typeof truth.isToppedOut === 'function' && truth.isToppedOut()) || truth.wasToppedOut) return true;
-  return CK.fullTop(truth) >= (truth.height || 12) - 1 && CK.framesToTop(truth) <= ((A && A.nearFrames) || 90);
+  return CK.fullTop(truth) >= ((A && A.threeTop) || (truth.height || 12) - 1) && CK.framesToTop(truth) <= ((A && (A.threeFrames || A.nearFrames)) || 90);
 }
 var pressVetoLogged = 0;
 function threePressed(match, truth) {
