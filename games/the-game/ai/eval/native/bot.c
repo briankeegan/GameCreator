@@ -5221,11 +5221,12 @@ static int readiesLine(Dec d, int dieRef, int spare, int32_t *sw, int *n, int *r
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "READIES start: lands in %d, time left %.0f, search time %.0f, work %.0f, cursor %d,%d at %d\n", tLand, timeLeft(), dmin(tLand, timeLeft()), optLine() - paWork, cur0[0], cur0[1], t0); }
 #endif
+  sitRootLegal = sitRootFilt = sitRootCan = sitRootLate = 0;
   RqCtx x = { dieRef, spare, d.kind == K_SWAP && d.hasMove ? d.sr : 0, d.kind == K_SWAP && d.hasMove ? d.sc : 0, 0, 0, 0, 0, 0, 0, 0, 0 };
   *n = 0;
   searchInTime(rq0, cur0[0], cur0[1], t0, 0, dmin(tLand, timeLeft()), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can0, wt0, optLine() - paWork, sitReadies, &x, sw, n, 0);
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "READIES lines: %d ready on the masks, %d asked, %d seen, %d die, %d die sooner, %s", x.masks, x.tried, x.seen, x.dies, x.sooner, x.ok ? "ready:" : "none");
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "READIES root: legal %d filtered %d not swappable %d late %d\n", sitRootLegal, sitRootFilt, sitRootCan, sitRootLate); fprintf(BLOG, "READIES lines: %d ready on the masks, %d asked, %d seen, %d die, %d die sooner, %s", x.masks, x.tried, x.seen, x.dies, x.sooner, x.ok ? "ready:" : "none");
     if (x.ok) { for (int k = 0; k < *n; k++) fprintf(BLOG, " %d,%d", sw[2 * k], sw[2 * k + 1]); fprintf(BLOG, " break %d,%d", x.r, x.c); } fprintf(BLOG, "\n"); }
 #endif
   if (!x.ok) return 0;
