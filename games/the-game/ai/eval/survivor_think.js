@@ -406,7 +406,8 @@ module.exports = function think(cfg) {
         var holdC = (bot._allCands || []).filter(function (c) { return c.kind === 'hold'; })[0], hollow0 = -1;
         // A WELL UNDER WHAT IS COMING: with garbage on the board or on its way, a move whose settled board is more uneven (the tallest
         // column less the lowest) than the board left alone, past wellRows, leaves a slab to rest on the towers over a pit. Of the
-        // moves no ranking above names, the ones that keep the board level come first.
+        // moves no ranking above names, the swaps that keep the board level come first, then the hold; an attack is ranked as
+        // one whatever its shape, unless it digs under the pile.
         var spreadOf = function (b) {
           if (!b || !b.grid) return 0;
           var hi = 0, lo = 99, c, r;
@@ -414,17 +415,17 @@ module.exports = function think(cfg) {
           return hi - lo;
         };
         var shapeAt = !!(garbA || readyArr.length), spread0 = -1, wellRows = A.wellRows || 4;
-        var shapeBad = function (c) {
-          if (!shapeAt || c.kind !== 'swap') return false;
+        var shapeOf = function (c) {
+          if (!shapeAt || c.kind !== 'swap') return { hollow: false, well: false };
           if (hollow0 < 0) hollow0 = holdC ? hollowOf(bot._settledOf(holdC)) : 0;
           if (spread0 < 0) spread0 = holdC ? spreadOf(bot._settledOf(holdC)) : 0;
           var sb = bot._settledOf(c);
-          return (garbA && hollowOf(sb) > hollow0) || spreadOf(sb) > Math.max(spread0, wellRows);
+          return { hollow: garbA && hollowOf(sb) > hollow0, well: spreadOf(sb) > Math.max(spread0, wellRows) };
         };
         bot.preferRank = function (c) {
           var k = c.kind === 'swap' && c.move ? arbKey(c.move) : c.kind, r = Infinity, add = c.added || c.resolved;
-          var bad = shapeBad(c);
-          if (bad && add && (add.comboSizes || []).length && !((add.brokeGarbage || 0) > 0)) { bot._digs = (bot._digs || 0) + 1; return props[k] && props[k].src !== 'fire' ? props[k].rank : Infinity; }
+          var sh = shapeOf(c);
+          if (sh.hollow && add && (add.comboSizes || []).length && !((add.brokeGarbage || 0) > 0)) { bot._digs = (bot._digs || 0) + 1; return props[k] && props[k].src !== 'fire' ? props[k].rank : Infinity; }
           if (add && c.kind === 'swap') {
             var sizes = add.comboSizes || [], big = 0, ch = add.chainLength || 0, brk = (add.brokeGarbage || 0) > 0;
             sizes.forEach(function (x) { if (x > big) big = x; });
@@ -436,7 +437,8 @@ module.exports = function think(cfg) {
           }
           if (k !== 'raise' && prep.want[k] === true) r = Math.min(r, -3);
           if (props[k]) r = Math.min(r, props[k].rank);
-          if (r === Infinity && shapeAt && !bad) r = 0.5;
+          // (a hold after them: waiting is not keeping the board level)
+          if (r === Infinity && shapeAt) r = c.kind === 'hold' ? 0.6 : c.kind === 'swap' && !sh.hollow && !sh.well ? 0.5 : Infinity;
           return r;
         };
         bot._arbiter = (bot._arbiter || 0) + 1;
