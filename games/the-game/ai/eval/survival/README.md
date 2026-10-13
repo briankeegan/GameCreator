@@ -17,4 +17,5 @@ Work files (scans, the git lock, the page) live in `$GC_WORK`
   gates, landings by material and the readiness read before each, what spent material before each death
 - `slip.py DIR 900`: in each death's last 900 frames, options judged and not played
 - `look.py LOG LO HI`: breaks one or two swaps away on a death's boards
-- `openready.py DIR`: was the board ready before the first wave
+- `scan.sh`: one scan, dispatch to result -- `GC_MODE=large_garbage GC_SOURCE=<commit> scan.sh` (the scan of a change beside its predecessor); the run is found among the scan workflow's own, every fetch is retried, the games are kept in `$GC_WORK/run-<id>`
+- `readiness.py DIR`: was the board ready when each slab landed, how soon the first break came and how many landings were fatal, and how often the search that readies a board ran and what stopped it

@@ -32,7 +32,7 @@ on:
         description: "actions the bot may press in any 600 frames; empty is the game's 76, another is a diagnostic of what the input budget costs"
         default: ''
       source:
-        description: "a commit of this repository to scan instead of the dispatched one (to find which change moved a mode); empty is the dispatched commit"
+        description: "a commit of this repository to scan instead of the dispatched one (to find which change moved a mode), as its full 40-character SHA -- survival/scan.sh resolves one; empty is the dispatched commit"
         default: ''
 
 # one scan per commit: a push never cancels the scan of the commit before it

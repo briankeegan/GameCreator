@@ -384,7 +384,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   there from their latest start. The share was found on 48 seeds (6% to 28%): a plateau between 12% and 20%; more starves the break search.
 - **A scan is 24 seeds (1 to 24), the workflow's default; never more.** The same build gave 4,164 and 20,638 on one seed in two runs (the wall-clock cut), and a mean of
   24 moves more than that between runs. `ai-survival-scan.yml` takes a `source` commit and a `seeds` list: scan a change and its predecessor
-  side by side, and read a difference only above 1,500. A rank or cap that moves the mean down is undone, not tuned.
+  side by side, and read a difference only above 1,500. `survival/scan.sh` runs one scan end to end (`GC_MODE`, `GC_SOURCE`: a commit, given to the workflow as its full SHA), every fetch retried. A rank or cap that moves the mean down is undone, not tuned.
 - **A search loop that charges no work is not bounded by the budget.** `targetLines` had two such loops; with its garbage condition off
   (`attackShapes`) they ran 20 ms a decision on a combo board. Every loop that tries a shape charges `TSHAPEWORK`.
 - **Survival is a loop on Actions. Run every step of it in the background**
