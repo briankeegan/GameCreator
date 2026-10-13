@@ -374,6 +374,19 @@ ways: a tool not listed, or a path listed that doesn't exist.
   slab taller than the board still has the shake's time (`framesToDeathS`).
   A new fixed number in these paths is a bug: derive it, or read it from
   `BIN`.
+- **What the bot is told is what the game shows, and it comes from the engine.** The attacker's telegraph (`train.lua`) gives the next block
+  queued for the stack -- its size, and the frames until it lands (earned + `GARBAGE_TRANSIT_TIME` + `GARBAGE_TELEGRAPH_TIME` + 1 +
+  `GARBAGE_DELAY_LAND_TIME`) -- through `front_telegraph`; before a wave reaches the stack the opening readies for that block
+  (`waveReady`), and the fill levels in that window. No preset, no pretend wave, no constant for a size or a delay.
+- **A break pops its whole block, and a plain three gives no stop time** (`pa.c` `checkMatches`, `calculateStopTime`): a topped board
+  survives the end of a pop only if a combo of four or more, or a chain, bought stop time during it. So a dying decision keeps a share of
+  its work (`REACHSHARE`, a fifth of `OPTWORK`) for the scramble, and the planner's matches of four or more (`attackShapes`) are offered
+  there from their latest start. The share was found on 48 seeds (6% to 28%): a plateau between 12% and 20%; more starves the break search.
+- **Compare builds on 48 seeds, never 24.** The same build gave 4,164 and 20,638 on one seed in two runs (the wall-clock cut), and a mean of
+  48 moves about 1,000 between runs. `ai-survival-scan.yml` takes a `source` commit and a `seeds` list: scan a change and its predecessor
+  side by side, and read a difference only above 1,500. A rank or cap that moves the mean down is undone, not tuned.
+- **A search loop that charges no work is not bounded by the budget.** `targetLines` had two such loops; with its garbage condition off
+  (`attackShapes`) they ran 20 ms a decision on a combo board. Every loop that tries a shape charges `TSHAPEWORK`.
 - **Survival is a loop on Actions. Run every step of it in the background**
   -- the push, the scan, the fetch, the rebuild -- so nothing waits on it. `ai-survival-scan.yml` plays all 24 seeds
   at once and keeps each seed's whole game (`game.log.gz`, every frame's bot
