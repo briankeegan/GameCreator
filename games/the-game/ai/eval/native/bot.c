@@ -2352,6 +2352,11 @@ static double bgReserve;
 // is the one thing that outlives a pop (pa.c checkMatches), and it was asked 22,433 times with no work left
 static double reachHold;
 static double optLine(void) { double e = rdW0 + OPTWORK; return (stageEnd < e ? stageEnd : e) - bgReserve - reachHold; }
+#ifndef __wasm__
+static void workTrace(const char *tag) { if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; extern PATLS double paWork; fprintf(BLOG, "WORKAT %s spent %.0f line %.0f left %.0f\n", tag, paWork - rdW0, optLine() - rdW0, optLine() - paWork); } }
+#else
+static void workTrace(const char *tag) { (void)tag; }
+#endif
 // THE STAGES AFTER KEEP THEIRS: a stage's optional work stops where the
 // stages after it keep their shares (STAGESHARE). stageOpen lowers where
 // optional work stops for the stage, stageClose puts it back.
@@ -4492,7 +4497,9 @@ static Dec breakFirst(Dec d) {
   LineC *l = 0;
   { growRootMs = growKidMs = growStateMs = 0; growKids = 0;
     double lf0 = NOWMS2();
+    workTrace("breakFirst before linesFind");
     linesFind(REROOTS, 1);
+    workTrace("breakFirst after linesFind");
 #ifndef __wasm__
     if (0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINESFIND %.2f ms | root %.2f kids %d %.2f states %.2f | lines %d\n", NOWMS2() - lf0, growRootMs, growKids, growKidMs, growStateMs, nLines); }
 #endif
@@ -4502,7 +4509,7 @@ static Dec breakFirst(Dec d) {
     for (int i = 0; i < nLines; i++) { if (LINES[i].grown) g++; if (LINES[i].verdict != 0) live++; }
     fprintf(BLOG, "BREAKFIRST lines %d grown %d open %d k %g\n", nLines, g, live, timeLeft()); }
 #endif
-  if (!l) return breakDeeper(d);
+  if (!l) { workTrace("breakFirst before breakDeeper"); Dec bd = breakDeeper(d); workTrace("breakFirst after breakDeeper"); return bd; }
   // ROOM FIRST: a break whose panels the board cannot hold tops it out with
   // them; while a clear can make the room and lives, it goes first
   if (!roomForBreak(DBASE)) {
