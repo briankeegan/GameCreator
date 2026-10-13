@@ -258,6 +258,7 @@ while f < FRAMES do
   end
   local bits = os.getenv("GC_NOBOT") and 0 or C.front_frame(fid, board)
   local thought = loadMs + (now() - tk1)
+  if thought > ThinkBudget.ceilingMillis() then print(string.format("OVER frame %d: %.2f ms (board read %.2f, bot and front %.2f)", f, thought, loadMs, thought - loadMs)) end
   local blog = ""
   if mem then
     ffi.C.fclose(mem); C.botLogTo = nil; C.botTraceOn = 0
