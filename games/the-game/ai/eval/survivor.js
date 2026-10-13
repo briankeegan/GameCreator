@@ -144,8 +144,19 @@ function overStats(match) {
   return JSON.stringify(match.stats);
 }
 // ---------------------------------------------------------------- the link
+// A RUN CANCELLED MID-MATCH leaves its record: on a stop signal the match in play is dumped (its frames and decisions) before the process ends.
+var DUMPERS = [];
+['SIGINT', 'SIGTERM', 'SIGHUP'].forEach(function (sig) {
+  process.on(sig, function () {
+    DUMPERS.slice().forEach(function (f) { try { f(); } catch (e) { console.log('dump on ' + sig + ': ' + e.message); } });
+    setTimeout(function () { process.exit(0); }, 1500);
+  });
+});
 var server = net.createServer(function (sock) {
   var buf = '', match = null;
+  var dumper = function () { if (match) { console.log('match over (stopped): ' + overStats(match)); match.dump(); match = null; } };
+  DUMPERS.push(dumper);
+  sock.on('close', function () { var i = DUMPERS.indexOf(dumper); if (i >= 0) DUMPERS.splice(i, 1); });
   sock.setNoDelay(true);
   sock.setEncoding('utf8');   // lines arrive as strings: no buffer made per read
   sock.on('error', function (e) { console.log('link: ' + e.message); });
