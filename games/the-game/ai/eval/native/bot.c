@@ -715,7 +715,7 @@ static int optsBuilt;
 // when no save holds and no saves record exists, so it is built on demand
 static int optSkip, optSkipBuilt;
 static const int32_t *moBase; static double moDeadline; static int moDepth, moDigging;
-static double saMs, moMs, moJoinMs; static int saN;   // GC_WORKSTAT: scoring, the main option search
+static double saMs, moMs, moJoinMs, saW, moW, dcCandW; static int saN;   // GC_WORKSTAT: scoring, the main option search
 static void buildOptions(const int32_t *base, double deadline, int lookDepth, int digging, double spend) {
   int topped = BIN[IN_TOPPED] != 0;
   timingParams(OPTP, BIN[IN_FPR], deadline, BIN[IN_STOP], topped);
@@ -749,13 +749,13 @@ static void mainOptions(const int32_t *base, double deadline, int lookDepth, int
   buildOptions(base, deadline, lookDepth, digging, 0);
   OD = ODATA; LD = LANDS;
   int r0 = nRes;
-  double mo0 = NOWMS2();
+  double mo0 = NOWMS2(), moW0 = paWork;
   breakAheadStart();   // the workers, idle while this search runs, find the pool's break times
   if (optionsShared(base)) botFailed = 1;
   double mj0 = NOWMS2();
   parallelJoin(); breakAheadEnd();
   moJoinMs += NOWMS2() - mj0;
-  moMs += NOWMS2() - mo0;
+  moMs += NOWMS2() - mo0; moW += paWork - moW0;
   rMain += nRes - r0;
   nPile = pileOf(ODATA, PILE);
   optsBuilt = 1;
@@ -1469,9 +1469,9 @@ static void scoreAll(Cand **cs, int n, double *out, int idle, const int32_t *bas
   { extern PATLS double paWork; double e = rdW0 + SCOREWORK; if (e > optLine()) e = optLine();
     scoreShare = n > 0 && e > paWork ? (e - paWork) / n : 1e-9; }   // spent: no deeper look, never a cut decision
   pool.cands = cs; pool.out = out;
-  double t0 = NOWMS2();
+  double t0 = NOWMS2(), sw0 = paWork;
   parRun(1, n);
-  saMs += NOWMS2() - t0; saN += n;
+  saMs += NOWMS2() - t0; saN += n; saW += paWork - sw0;
 }
 typedef struct { Cand *c; double cheap; } Cheap;
 
@@ -1491,8 +1491,9 @@ static Dec decideCore(void) {
   optsBuilt = 0;
   planReset(base);
   double dc0 = NOWMS2();
+  double dcw0 = paWork;
   candidates(base);
-  dcCandMs = NOWMS2() - dc0;
+  dcCandMs = NOWMS2() - dc0; dcCandW = paWork - dcw0;
   // the raise the pool offers is one that lives
   if (!raiseSafe(base))
     for (int q = 0; q < nPool; q++)
@@ -6349,7 +6350,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   }
 #ifndef __wasm__
   { extern char *getenv(const char *); extern int fprintf(void *, const char *, ...); extern void *stderr;
-    if (botTraceOn) { fprintf(BLOG, "STAGES%s pool %.3f", paBudgetOut() ? " OUT" : "", dcCandMs); fprintf(BLOG, " SA %.3f %d MO %.3f JOIN %.3f", saMs, saN, moMs, moJoinMs); saMs = moMs = moJoinMs = 0; saN = 0; for (int i = 0; i < k; i++) fprintf(BLOG, " %.0f/%.3f/%d/%.3f", ws[i] - (i ? ws[i - 1] : w0), ts[i] - (i ? ts[i - 1] : t0), js[i] - (i ? js[i - 1] : 0), jm[i] - (i ? jm[i - 1] : 0)); fprintf(BLOG, "\n"); } }
+    if (botTraceOn) { fprintf(BLOG, "STAGES%s pool %.3f", paBudgetOut() ? " OUT" : "", dcCandMs); fprintf(BLOG, " SA %.3f %d MO %.3f JOIN %.3f W %.0f %.0f %.0f", saMs, saN, moMs, moJoinMs, dcCandW, saW, moW); saMs = moMs = moJoinMs = saW = moW = 0; saN = 0; for (int i = 0; i < k; i++) fprintf(BLOG, " %.0f/%.3f/%d/%.3f", ws[i] - (i ? ws[i - 1] : w0), ts[i] - (i ? ts[i - 1] : t0), js[i] - (i ? js[i - 1] : 0), jm[i] - (i ? jm[i - 1] : 0)); fprintf(BLOG, "\n"); } }
 #endif
   ENGINE_BASE = 0;
 #ifndef __wasm__
