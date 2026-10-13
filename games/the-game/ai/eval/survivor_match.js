@@ -122,6 +122,11 @@ Match.prototype.ahead = function () {
 // The board at `at`, from `board` now, pressing what is planned till then,
 // and the garbage still to land after it (SH.land: what the game holds back
 // is still L.pending).
+// GARBAGE THE GAME HOLDS BACK: a chain's pieces wait for their sender's chain to end, and a sender that is topped out may never end it.
+// The telegraph lists them as due; they do not land. They are not put on the board the decision is made on -- they stay on their way, a
+// HELD_AT frames from now (the readiness window), for the search and the danger check to weigh.
+var HELD_AT = 90, heldLogged = 0;
+Match.prototype.held = function (a) { var A = this.L.profile && this.L.profile.attack; return !!(A && A.heldChain && this.opp && this.opp.out && a.g && a.g.isChain && a.g.finalized !== true); };
 Match.prototype.predict = function (board, at, hold, from) {
   var L = this.L;
   var fast = this.predictNative(board, at, hold, from);
@@ -158,7 +163,7 @@ Match.prototype.predictNative = function (board, at, hold, from) {
     var open = first < Infinity && X.nb_ninc(b) < SH.CAP;
     for (i = 0; i < arrivals.length; i++) {
       var a = arrivals[i], g = a.g;
-      if (a.at > sw || (a.capped && !(open && a.at === first))) continue;
+      if (a.at > sw || (a.capped && !(open && a.at === first)) || this.held(a)) continue;
       X.nb_receive(b, g.width, g.height, g.isChain ? 1 : 0, g.isMetal ? 1 : 0, g.frameEarned === undefined ? sw : g.frameEarned,
                    g.finalized === undefined || g.finalized === null ? -2147483648 : g.finalized ? 1 : 0);
       arrivals.splice(i--, 1);
@@ -178,13 +183,18 @@ Match.prototype.predictJS = function (board, at, hold, from) {
     st.setInput(bits & ~IN.swap);
     if (bits & IN.swap) st.pressSwap = true;
     st.run();
-    land(st, arrivals);
+    land(st, arrivals, this.held.bind(this));
   }
   return { board: st, hold: h, pending: arrivals };
 };
 Match.prototype.ask = function (at, board, hold, pend) {
   var L = this.L;
-  var arrivals = (pend || this.arrivals).filter(function (a) { return a.at > board.stopWatch || a.capped; });
+  var self = this, sw0 = board.stopWatch;
+  var arrivals = (pend || this.arrivals).filter(function (a) { return a.at > sw0 || a.capped || self.held(a); }).map(function (a) {
+    if (a.at > sw0 || a.capped || !self.held(a)) return a;
+    if (heldLogged++ < 40) console.error('HELD t=' + Math.round((board.clock - 189) / 60) + 's piece ' + a.g.width + 'x' + a.g.height + ' chain ' + !!a.g.isChain + ' finalized ' + a.g.finalized + ' due ' + (sw0 - a.at) + ' frames ago');
+    return { at: sw0 + HELD_AT, g: a.g, capped: !!a.capped };
+  });
   // The board goes and is kept as bytes, off this thread's heap: held till
   // its answer comes, a board object would outlive the young generation.
   var packed = V8.serialize(board);

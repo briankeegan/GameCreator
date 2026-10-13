@@ -104,13 +104,13 @@ function unforeseen(knew, now) {
 // the caller's own copy (pending()): what lands is taken out of it.
 var CAP = 72;
 function pending(arrivals) { return arrivals.map(function (a) { return { at: a.at, g: a.g, capped: !!a.capped }; }); }
-function land(st, pend) {
+function land(st, pend, hold) {
   var first = Infinity, i;
   for (i = 0; i < pend.length; i++) if (pend[i].capped && pend[i].at <= st.stopWatch && pend[i].at < first) first = pend[i].at;
   var open = first < Infinity && (st.incoming || []).length < CAP;
   for (i = 0; i < pend.length; i++) {
     var a = pend[i];
-    if (a.at > st.stopWatch || (a.capped && !(open && a.at === first))) continue;
+    if (a.at > st.stopWatch || (a.capped && !(open && a.at === first)) || (hold && hold(a))) continue;
     st.receiveGarbage([a.g]); pend.splice(i--, 1);
   }
 }
