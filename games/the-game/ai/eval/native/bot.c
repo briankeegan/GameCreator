@@ -5259,7 +5259,11 @@ static Dec readyWhenLands(Dec d) {
   // steps before it and readyInTime the break.
   {
     static ST RWB; uint32_t can[WMAX]; Wait wt[32][WMAX]; int32_t cur[2], tl;
-    if (lineLandedFull(0, 0, RWB, can, wt, cur, &tl) == 0) {
+    int rlf = lineLandedFull(0, 0, RWB, can, wt, cur, &tl);
+#ifndef __wasm__
+    if (botTraceOn && rlf != 0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "RWL no landing: rc %d work left %.0f replay %.0f dying %d topped %d alone die %d\n", rlf, workLeft(), rpCost, boardDying(), BIN[IN_TOPPED] != 0, aloneOnEngine() ? lnoDie(LNA) : -1); }
+#endif
+    if (rlf == 0) {
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "RWL by distance: lands at %d | garbage %d work left %.0f lines before %d\n", tl, hasGarbage(RWB), workLeft(), nLines); }
 #endif
