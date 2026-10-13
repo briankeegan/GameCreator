@@ -167,7 +167,7 @@ var server = net.createServer(function (sock) {
       var line = buf.slice(0, nl);
       if (!line) { buf = buf.slice(nl + 1); continue; }
       var sched0 = TIMES ? schedstat() : null;
-      var tp = process.hrtime.bigint(), tWall = TIMES ? performance.timeOrigin + performance.now() : 0, m = JSON.parse(line), reply, tParse = process.hrtime.bigint(), tBoard = tParse;
+      var tp = process.hrtime.bigint(), tWall = TIMES ? performance.timeOrigin + performance.now() : 0, m = JSON.parse(line), reply, tParse = process.hrtime.bigint(), tBoard = tParse, tArr = tParse, tFrame = tParse, tPlanned = tParse;
       if (SYNC && m.t === 'f' && match && LINK.pending && !LINK.answers.some(function (a) { return a.id === LINK.pending.id; })) { resume = pump; return; }
       buf = buf.slice(nl + 1);
       if (m.t === 'match') {
@@ -187,7 +187,9 @@ var server = net.createServer(function (sock) {
           if (m.budget) match.budget(truth.clock, m.budget);
           if (m.opp) match.opp = m.opp;
           tBoard = process.hrtime.bigint();
-          reply = { clock: truth.clock, input: match.frame(truth, arrivalsOf(state), function () { return PA.fromLua(state, match.level, new PA.Unseen()); }), next: match.planned(truth.clock + 1, NEXT) };
+          var arrF = arrivalsOf(state); tArr = process.hrtime.bigint();
+          var inF = match.frame(truth, arrF, function () { return PA.fromLua(state, match.level, new PA.Unseen()); }); tFrame = process.hrtime.bigint();
+          reply = { clock: truth.clock, input: inF, next: match.planned(truth.clock + 1, NEXT) }; tPlanned = process.hrtime.bigint();
         }
       } else if (m.t === 'warm') {
         // the board in the countdown: the mind plans on it while the game counts down
@@ -210,7 +212,7 @@ var server = net.createServer(function (sock) {
         if (rms > 8) {
           match.stats.slowReplies = (match.stats.slowReplies || 0) + 1;
           var ms = function (a, b) { return (Number(b - a) / 1e6).toFixed(1); };
-          console.error('slow reply ' + rms.toFixed(1) + ' ms at ' + match.now + ': parse ' + ms(tp, tParse) + ', board ' + ms(tParse, tBoard) + ', keys ' + ms(tBoard, process.hrtime.bigint()) + ' (differ ' + ms(match.parts[0], match.parts[1]) + ', checks ' + ms(match.parts[1], match.parts[2]) + ', take ' + ms(match.parts[2], match.parts[3]) + ', idle ' + ms(match.parts[3], match.parts[4]) + '), gc so far ' + GC.slow);
+          console.error('slow reply ' + rms.toFixed(1) + ' ms at ' + match.now + ': parse ' + ms(tp, tParse) + ', board ' + ms(tParse, tBoard) + ', keys ' + ms(tBoard, process.hrtime.bigint()) + ' (differ ' + ms(match.parts[0], match.parts[1]) + ', checks ' + ms(match.parts[1], match.parts[2]) + ', take ' + ms(match.parts[2], match.parts[3]) + ', idle ' + ms(match.parts[3], match.parts[4]) + '; arrivals ' + ms(tBoard, tArr) + ', frame ' + ms(tArr, tFrame) + ', planned ' + ms(tFrame, tPlanned) + ', write ' + ms(tPlanned, process.hrtime.bigint()) + '), gc so far ' + GC.slow);
         }
         match.afterFrame();
         // A frame's time here, the answer and the question after it, is what
