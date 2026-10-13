@@ -334,6 +334,49 @@ Match.prototype.take = function (truth) {
     this.line = a.line && (a.lineFree || a.lineAt === this.nextAt) && at === a.at ? { steps: a.line.slice(), at: this.nextAt } : null;
   }
 };
+// THE SWAP ABOUT TO BE PRESSED, ON THE BOARD IT IS PRESSED ON (guardThrees): the decision was made on the board as it was predicted to be
+// when the swap lands, and the game may have gone another way since. A swap that makes a plain three on a stack that is not topped out
+// is not pressed. The cheap look comes first (the cells the swap would match, counted on the grid); only a swap that matches exactly
+// three is played out on a copy of the board, for the chain it may start.
+function matchedBySwap(b, r, c) {
+  var P = b.panels, a = P[r] && P[r][c], z = P[r] && P[r][c + 1];
+  if (!a || !z) return -1;
+  function col(p) { return p && !p.isGarbage && p.color > 0 && p.color < 8 ? p.color : 0; }
+  var ca = col(a), cz = col(z);
+  if (!ca && !cz) return 0;
+  function at(rr, cc) { if (rr === r && cc === c) return cz; if (rr === r && cc === c + 1) return ca; return col(P[rr] && P[rr][cc]); }
+  var cells = {}, n = 0;
+  [[r, c], [r, c + 1]].forEach(function (pt) {
+    var v = at(pt[0], pt[1]); if (!v) return;
+    var h = [[pt[0], pt[1]]], k;
+    for (k = pt[1] - 1; k >= 1 && at(pt[0], k) === v; k--) h.push([pt[0], k]);
+    for (k = pt[1] + 1; k <= 6 && at(pt[0], k) === v; k++) h.push([pt[0], k]);
+    var w = [[pt[0], pt[1]]];
+    for (k = pt[0] - 1; k >= 1 && at(k, pt[1]) === v; k--) w.push([k, pt[1]]);
+    for (k = pt[0] + 1; k < P.length && at(k, pt[1]) === v; k++) w.push([k, pt[1]]);
+    if (h.length >= 3) h.forEach(function (q) { cells[q[0] + ',' + q[1]] = 1; });
+    if (w.length >= 3) w.forEach(function (q) { cells[q[0] + ',' + q[1]] = 1; });
+  });
+  for (var key in cells) n++;
+  return n;
+}
+var pressVetoLogged = 0;
+function threePressed(match, truth) {
+  try {
+    var A = match.L.profile && match.L.profile.attack;
+    if (!A || !A.guardThrees) return false;
+    if ((typeof truth.isToppedOut === 'function' && truth.isToppedOut()) || truth.wasToppedOut) return false;
+    var r = truth.curRow, c = truth.curCol;
+    if (matchedBySwap(truth, r, c) !== 3) return false;
+    var t = truth.copy(); t.behaviours = Object.assign({}, t.behaviours, { passiveRaise: false });
+    t.curRow = r; t.curCol = c;
+    if (!t.tryQueueSwap(r, c)) return false;
+    var res = t.settle();
+    var three = res.combos.length && res.chain < 2 && res.combos.every(function (x) { return x === 3; });
+    if (three && pressVetoLogged++ < 100) console.error('PRESS-VETO t=' + Math.round((truth.clock - 189) / 60) + 's score ' + (truth.score || 0) + ' clock ' + truth.clock + ' top ' + CK.fullTop(truth) + ' stop ' + ((truth.stopTime || 0) + (truth.preStopTime || 0)));
+    return !!three;
+  } catch (e) { return false; }
+}
 // THE AUDIT OF EVERY SWAP PRESSED: played out on a copy of the board it is pressed on, what it clears. A plain three that is not pressed on
 // a stack topped out is logged with who asked for it (the decision's source, or the line behind an earlier one).
 var pressLogged = 0;
@@ -463,7 +506,15 @@ Match.prototype.frame = function (truth, arrivals, fresh) {
   T.push(process.hrtime.bigint());
   var planned = this.plan[now];
   var bits;
-  if (planned) { bits = planned.bits; this.hold = { left: planned.hold.left, started: planned.hold.started }; delete this.plan[now]; }
+  if (planned) {
+    bits = planned.bits; this.hold = { left: planned.hold.left, started: planned.hold.started }; delete this.plan[now];
+    if ((bits & IN.swap) && threePressed(this, truth)) {
+      bits &= ~IN.swap; this.hold = { left: 0, started: false };
+      if (L.pending) Atomics.store(L.abort, 0, L.pending.id);
+      this.epoch++; this.plan = {}; this.nextAt = 0; this.line = null; L.pending = null; this.acted = false;
+      this.stats.pressVetoed = (this.stats.pressVetoed || 0) + 1;
+    }
+  }
   else { var id = L.hands.idle(truth, this.hold, arrivals); bits = id.bits; this.hold = id.hold; this.stats.idle++; }
   // A RAISE HELD DOWN IS LET GO OF AT ONCE when the stack is topped out or garbage is landing: a manual raise on a topped-out stack is a
   // loss on the spot. The plan behind it is void and the next decision is asked now.
