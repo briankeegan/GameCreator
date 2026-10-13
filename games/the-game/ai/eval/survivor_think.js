@@ -166,11 +166,18 @@ module.exports = function think(cfg) {
       if (realNear) toppedEarly = true;
       // a three is played only on a stack the engine says is topped out (a panel in the top row), and then only as the last resort
       // (a stack topped out with no stop time is lost the frame it is: a three is the last resort from nearFrames before that, on the stack as the game shows it)
-      var toppedReal = A && A.realTopped ? (!!m.topped || realNear) : (!!m.topped || toppedEarly);
+      // (realThrees: a three is the last resort on the stack as the game shows it -- topped out, or within nearFrames of it by the time the
+      // swap is pressed -- never on the prediction, which can show garbage that is held back)
+      var toppedReal = A && A.realTopped ? (!!m.topped || realNear)
+        : A && A.realThrees ? (!!m.topped || (m.realTop >= 11 && m.realFtt <= (A.nearFrames || 90) + (m.lead || 0)))
+        : (!!m.topped || toppedEarly);
       bot.toppedOutNow = toppedReal;
-      bot.realToppedOnly = !!(A && A.realTopped);
+      bot.realToppedOnly = !!(A && (A.realTopped || A.realThrees));
       // (danger is the stack in jeopardy, not the stack raised high: its height counting the garbage on it, or what is about to land on it
       // overflowing the board -- raising to row 10 is the plan, and a hit of a row or two on it is not an emergency)
+      // GARBAGE ON ITS WAY for the readiness check: the game's landing times, else -- when the stack's own queue holds garbage the link has
+      // given no time for -- a landing in readyAt frames
+      var readyArr = arrivals.length ? arrivals : ((board.incoming || []).length ? [{ at: A && A.readyAt || 90 }] : []);
       var dangerWhy = A && A.lifeFirst ? CK.dangerWhy(board, arrivals, comingRows, m.topped, A) : '';
       if (A && A.lifeFirst && A.realTopped && !dangerWhy) {
         if (realNear) dangerWhy = 'topped';
@@ -215,7 +222,7 @@ module.exports = function think(cfg) {
           d = { kind: 'swap', move: wp.seq[0], overruled: true, src: 'warm', planChain: wp.chain }; bot._attackCells = wp.cells; attackLine = wp.seq.slice(1); attackMove = wp.seq[0]; bot._planUntil = board.clock + 40 * wp.seq.length;
           console.error('WARM played at ' + board.clock + ': ' + wp.cells + ' cells chain ' + wp.chain + ' swaps ' + wp.seq.length);
         }
-        else if (A.readyBreak && !garb && arrivals.length && (rdy = attacker.readyFor(board, m.hold, arrivals, { ms: A.readyMs || 150 })) && !rdy.ready && rdy.setup) {
+        else if (A.readyBreak && !garb && readyArr.length && (rdy = attacker.readyFor(board, m.hold, readyArr, { ms: A.readyMs || 150 })) && !rdy.ready && rdy.setup) {
           // garbage is on its way and no swap will break it when it lands: the swap that makes one ready, before the stack is raised
           d = { kind: 'swap', move: rdy.setup, overruled: true, src: 'ready' }; bot._readies = (bot._readies || 0) + 1;
         }
@@ -256,9 +263,9 @@ module.exports = function think(cfg) {
       // what is coming would no longer fit; the survival logic breaks what lands
       // GARBAGE ON ITS WAY, WHEREVER THE BOARD IS (danger too): before the stack is raised for it, a swap that will break it when it lands
       // is made ready -- the hit is told of 150 frames before it lands
-      if (A && !toppedEarly && A.readyBreak && !d && !SH.lowestGarbageRow(board) && arrivals.length && !cascadeLive(board, true)) {
-        var rdy2 = attacker ? attacker.readyFor(board, m.hold, arrivals, { ms: A.readyMs || 150 }) : null;
-        if (!attacker) { attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames }); rdy2 = attacker.readyFor(board, m.hold, arrivals, { ms: A.readyMs || 150 }); }
+      if (A && !toppedEarly && A.readyBreak && !d && !SH.lowestGarbageRow(board) && readyArr.length && !cascadeLive(board, true)) {
+        var rdy2 = attacker ? attacker.readyFor(board, m.hold, readyArr, { ms: A.readyMs || 150 }) : null;
+        if (!attacker) { attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames }); rdy2 = attacker.readyFor(board, m.hold, readyArr, { ms: A.readyMs || 150 }); }
         if (rdy2 && !rdy2.ready && rdy2.setup) { d = { kind: 'swap', move: rdy2.setup, overruled: true, src: 'ready' }; bot._readies = (bot._readies || 0) + 1; }
       }
       if (A && !toppedEarly && A.alwaysRaise && !d && !cascadeLive(board, true) && fullTop(board) < raiseCap(board, comingRows, A) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1; }

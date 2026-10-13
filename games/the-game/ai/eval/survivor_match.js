@@ -122,11 +122,11 @@ Match.prototype.ahead = function () {
 // The board at `at`, from `board` now, pressing what is planned till then,
 // and the garbage still to land after it (SH.land: what the game holds back
 // is still L.pending).
-// GARBAGE THE GAME HOLDS BACK: a chain's pieces wait for their sender's chain to end, and a sender that is topped out may never end it.
+// GARBAGE THE GAME HOLDS BACK: a chain's pieces wait for their sender's chain to end (finalized false), which can take far longer than the telegraph says.
 // The telegraph lists them as due; they do not land. They are not put on the board the decision is made on -- they stay on their way, a
 // HELD_AT frames from now (the readiness window), for the search and the danger check to weigh.
 var HELD_AT = 90, heldLogged = 0;
-Match.prototype.held = function (a) { var A = this.L.profile && this.L.profile.attack; return !!(A && A.heldChain && this.opp && this.opp.out && a.g && a.g.isChain && a.g.finalized !== true); };
+Match.prototype.held = function (a) { var A = this.L.profile && this.L.profile.attack; return !!(A && A.heldChain && a.g && a.g.isChain && a.g.finalized === false); };
 Match.prototype.predict = function (board, at, hold, from) {
   var L = this.L;
   var fast = this.predictNative(board, at, hold, from);
