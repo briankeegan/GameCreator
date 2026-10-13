@@ -276,8 +276,8 @@ ways: a tool not listed, or a path listed that doesn't exist.
   decision they made, the walk's target and stayAlive's choice (or the hold)
   are judged on the engine and ranked once: breaks the next garbage in time
   (it lives), lives, a clear that breaks nothing and is no combo ranks below any
-  option that lives until it is due (`clearDue`), a break in reach when the next slab lands (none queued: a
-  slab the width of the board on the stack, `waveReady`; the engine's one
+  option that lives until it is due (`clearDue`), a break in reach when the next slab lands (the block the attacker's telegraph shows, none shown: a
+  slab the width of the board, `waveReady`; the engine's one
   readiness, `readyInTime`, the masks' only to propose), the later loss
   of health inside `LIVEHORIZON` (`liveHorizon`: the wait for the front's next decision, the walk to the farthest corner, and `NEXTMOVE` -- what one save needs), of two breaks the combo or chain before a plain
   three (`attackFirst`), a plain clear last (it clears, breaks nothing,
@@ -367,8 +367,8 @@ ways: a tool not listed, or a path listed that doesn't exist.
   shows: no wave is pretended before one is seen. A break converts one row of a
   block (`pa.c matchGarbagePanels`), so a slab taller than the board holds one
   row of the room (`slabRowsHeld`, `roomForBreak`). What the stages after one
-  keep (`stageLeaves`) is what they have taken lately, capped at twice their
-  shares, so a stage that takes what is left cannot starve the ones before it.
+  keep (`stageLeaves`) is the shares of the stages after it (`STAGESHARE`),
+  so a stage that takes what is left cannot starve the ones after it.
   A board a landing slab fills is held by that landing's shake before the
   drain ends it (`pa.c checkDeath`, `nb_shake_frames`), so a break against a
   slab taller than the board still has the shake's time (`framesToDeathS`).
@@ -380,7 +380,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   (`waveReady`), and the fill levels in that window. No preset, no pretend wave, no constant for a size or a delay.
 - **A break pops its whole block, and a plain three gives no stop time** (`pa.c` `checkMatches`, `calculateStopTime`): a topped board
   survives the end of a pop only if a combo of four or more, or a chain, bought stop time during it. So a dying decision keeps a share of
-  its work (`REACHSHARE`, a fifth of `OPTWORK`) for the scramble, and the planner's matches of four or more (`attackShapes`) are offered
+  its work (`REACHSHARE`, 15% of `OPTWORK`) for the scramble, and the planner's matches of four or more (`attackShapes`) are offered
   there from their latest start. The share was found on 48 seeds (6% to 28%): a plateau between 12% and 20%; more starves the break search.
 - **Compare builds on 48 seeds, never 24.** The same build gave 4,164 and 20,638 on one seed in two runs (the wall-clock cut), and a mean of
   48 moves about 1,000 between runs. `ai-survival-scan.yml` takes a `source` commit and a `seeds` list: scan a change and its predecessor
