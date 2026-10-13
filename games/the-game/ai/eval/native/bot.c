@@ -5192,27 +5192,29 @@ static Dec noStall(Dec d) {
 // it must live, as long as the readiness bar asks (dieRef), and be ready when
 // the slab lands (readyInTime).
 // HOW FAR A BOARD IS FROM READY, for the guided search (sitGuide; lower is nearer): the board with the next slab placed where it rests, and on it
-// what a break is made of -- two panels of a colour at the top of the columns the slab rests on: a vertical two (the top panel and the one under
-// it), or a horizontal two (the top panels of two neighbouring columns at the same height), each worth its two panels, and the twos whose
-// third is a swap away and touches garbage (breakTwosOf) worth more. A board with more of them is a break nearer; the soonest press only orders
-// between equals
-#define READYGUIDECAP 40
+// what a break is made of -- panels of one colour together where the slab touches. In the top three rows of each column (from the highest panel
+// a swap can reach) every pair of one colour counts: vertical or side by side, three if it touches the slab's row and one if not, and two a gap
+// apart one, since a swap closes the gap; the twos whose third is a swap away and touches garbage (breakTwosOf) count four. A swap that brings
+// colours together moves it, which a count of the twos already made does not; the soonest press only orders between equals
+#define READYGUIDECAP 60
 static double readyGuide(const int32_t *st) {
   SLABW = (int)BIN[IN_SLABW]; SLABH = (int)BIN[IN_SLABH]; SLABC = (int)BIN[IN_SLABC];
   int placed = slabPlace(st, SLABST);
   const int32_t *b = placed > 0 ? SLABST : st;
   int W = b[O_W], n = 0;
-#define GP(r, c) ((r) >= 1 && (U(b, OCC + (c)) & (1u << ((r) - 1))) && !(U(b, GARB + (c)) & (1u << ((r) - 1))) && !(U(b, INERT + (c)) & (1u << ((r) - 1))))
-  int top[WMAX + 2];
+#define GP(r, c) ((c) >= 1 && (c) <= W && (r) >= 1 && (U(b, OCC + (c)) & (1u << ((r) - 1))) && !(U(b, GARB + (c)) & (1u << ((r) - 1))) && !(U(b, INERT + (c)) & (1u << ((r) - 1))))
+  int top[WMAX + 3];
   for (int c = 1; c <= W; c++) top[c] = workTop(b, c);
-  for (int c = 1; c <= W; c++) {
-    int r = top[c];
-    if (r < 1 || !GP(r, c)) continue;
-    int col = colourFirst(b, c, 1u << (r - 1));
-    if (!col) continue;
-    if (r >= 2 && GP(r - 1, c) && colourFirst(b, c, 1u << (r - 2)) == col) n += 2;
-    if (c < W && top[c + 1] == r && GP(r, c + 1) && colourFirst(b, c + 1, 1u << (r - 1)) == col) n += 2;
-  }
+  for (int c = 1; c <= W; c++)
+    for (int k = 0; k < 3; k++) {
+      int r = top[c] - k;
+      if (r < 1 || !GP(r, c)) continue;
+      int col = colourFirst(b, c, 1u << (r - 1));
+      if (!col) continue;
+      if (k < 2 && GP(r - 1, c) && colourFirst(b, c, 1u << (r - 2)) == col) n += k == 0 ? 3 : 1;
+      if (GP(r, c + 1) && colourFirst(b, c + 1, 1u << (r - 1)) == col) n += (k == 0 || r == top[c + 1]) ? 3 : 1;
+      else if (GP(r, c + 2) && colourFirst(b, c + 2, 1u << (r - 1)) == col) n += 1;
+    }
 #undef GP
   n += 4 * breakTwosOf(b);
   return READYGUIDECAP - (n < READYGUIDECAP ? n : READYGUIDECAP);
