@@ -56,12 +56,30 @@ var eleven = board(['111111', '222222', '333333', '444444', '555555', '666666', 
 assert.strictEqual(C.panelTop(eleven), 11);
 assert.strictEqual(eleven.isToppedOut(), false);
 eleven.stopTime = 0; eleven.preStopTime = 0;
-assert.strictEqual(C.toppedOrNearly(eleven, false), true, 'one row from the top with no stop time is as good as topped out');
+// framesToTop is the engine's: run the stack until a panel is in the top row and compare
+function framesUntilTopped(st) { var n = 0; st = st.copy(); st.behaviours.passiveRaise = true; st.stopTime = 0; st.preStopTime = 0; while (!st.isToppedOut() && n < 5000) { st.run(); n++; } return n; }
+[1, 10, 30].forEach(function (speed) {
+  var e = board(['111111', '222222', '333333', '444444', '555555', '666666', '111111', '222222', '333333', '444444', '555555']);
+  e.speed = speed; e.displacement = 16; e.riseTimer = PA.riseTime(speed); e.stopTime = 0; e.preStopTime = 0;
+  var want = framesUntilTopped(e), got = C.framesToTop(e);
+  assert(Math.abs(want - got) <= 2, 'speed ' + speed + ': the engine tops it out in ' + want + ' frames, framesToTop says ' + got);
+  var ten = board(['111111', '222222', '333333', '444444', '555555', '666666', '111111', '222222', '333333', '444444']);
+  ten.speed = speed; ten.displacement = 16; ten.riseTimer = PA.riseTime(speed); ten.stopTime = 0; ten.preStopTime = 0;
+  want = framesUntilTopped(ten); got = C.framesToTop(ten);
+  assert(Math.abs(want - got) <= 40, 'speed ' + speed + ' one row lower: the engine tops it out in ' + want + ' frames, framesToTop says ' + got);
+});
+eleven.speed = 1;
+assert.strictEqual(C.toppedOrNearly(eleven, false), false, 'one row from the top, a row of rise away: time to act in, not topped out');
+eleven.speed = 99; eleven.displacement = 3; eleven.riseTimer = 2;
+assert.strictEqual(C.toppedOrNearly(eleven, false), true, 'one row from the top and the row nearly risen: as good as topped out');
+eleven.speed = 1; eleven.displacement = 16; eleven.riseTimer = 50;
 var garbageEleven = board(['111111', '222222']);
 garbageEleven.panels[11][2].isGarbage = true; garbageEleven.stopTime = 0; garbageEleven.preStopTime = 0;
-assert.strictEqual(C.toppedOrNearly(garbageEleven, false), true, 'garbage in row 11 with no stop time: the next row up tops it out');
-eleven.stopTime = 50;
-assert.strictEqual(C.toppedOrNearly(eleven, false), false, 'with stop time running it is not');
+garbageEleven.speed = 99; garbageEleven.displacement = 2; garbageEleven.riseTimer = 1;
+assert.strictEqual(C.toppedOrNearly(garbageEleven, false), true, 'garbage in row 11 and the next row about to rise: the next row up tops it out');
+eleven.speed = 99; eleven.displacement = 3; eleven.riseTimer = 2; eleven.stopTime = 200;
+assert.strictEqual(C.toppedOrNearly(eleven, false), false, 'with a long stop time running it is not');
+eleven.stopTime = 0;
 // raise cap
 var A = { raiseMax: 10, raiseStopBonus: 1, raiseStopFrames: 60 };
 even.stopTime = 0; even.preStopTime = 0;
@@ -84,5 +102,10 @@ assert.strictEqual(C.inDanger(full, [], 0, false, {}), true, 'topped out');
 assert.strictEqual(C.inDanger(even, [], 0, true, {}), true, 'the frame loop says topped out');
 var buried = board(['111111', '222222', '333333', '444444', '555555']);
 buried.panels[11][2].isGarbage = true;
-assert.strictEqual(C.inDanger(buried, [], 0, false, {}), true, 'garbage in row 11 makes the stack 11 high');
+buried.speed = 99; buried.displacement = 3; buried.riseTimer = 2; buried.stopTime = 0; buried.preStopTime = 0;
+assert.strictEqual(C.inDanger(buried, [], 0, false, {}), true, 'garbage in row 11 with the next row nearly up: the stack is as good as topped');
+buried.speed = 1; buried.displacement = 16; buried.riseTimer = 900;
+assert.strictEqual(C.inDanger(buried, [], 0, false, {}), false, 'garbage in row 11 with a whole row of rise to go is a stack with time, not one in danger');
+assert.strictEqual(C.dangerWhy(buried, [{ at: 60 }], 3, false, {}), 'incoming', 'a hit that would overflow it is the reason when the stack is not the one');
+assert.strictEqual(C.dangerWhy(full, [], 0, false, {}), 'topped');
 console.log('survivor_checks: ok');

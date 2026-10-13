@@ -48,7 +48,7 @@ module.exports = function think(cfg) {
     if (!BS) BS = new (require(path.join(DIR, 'native.js')).server.Search)({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames, threads: OPTS.threads || 1 });
     return BS;
   }
-  var bot = null, snap = null, nat = null, candNat = null, BS = null, attacker = null, attackLogged = 0, attackGate = 0, warmPlan = null;   // BS: a search context of its own for breakMoves   // nat, candNat: the search's and the candidates' C contexts, kept from match to match
+  var bot = null, snap = null, nat = null, candNat = null, BS = null, attacker = null, attackLogged = 0, attackGate = 0, noRaiseLogged = 0, warmPlan = null;   // BS: a search context of its own for breakMoves   // nat, candNat: the search's and the candidates' C contexts, kept from match to match
   var NativeMem = function () {
     var N = require(path.join(DIR, 'native.js')).server, X = N.exports(), free = [];
     for (var k = 0; k < 4; k++) free.push(X.nb_pool_stat(k));
@@ -159,13 +159,14 @@ module.exports = function think(cfg) {
       (board.incoming || []).forEach(function (g) { queuedRows += g.height || 0; });
       // topped out, or one row from it with no stop time running: the stack rises by itself into the top row and, with no stop time,
       // is lost -- from here a three is a move like any other (life first), where below it it is the last resort
-      var toppedEarly = CK.toppedOrNearly(board, m.topped);
+      var toppedEarly = CK.toppedOrNearly(board, m.topped, A);
       bot.toppedOutNow = toppedEarly;
       // (danger is the stack in jeopardy, not the stack raised high: its height counting the garbage on it, or what is about to land on it
       // overflowing the board -- raising to row 10 is the plan, and a hit of a row or two on it is not an emergency)
-      var danger = !!(A && A.lifeFirst && CK.inDanger(board, arrivals, comingRows, m.topped, A));
+      var dangerWhy = A && A.lifeFirst ? CK.dangerWhy(board, arrivals, comingRows, m.topped, A) : '';
+      var danger = dangerWhy !== '';
       bot._danger = danger;
-      if (danger) bot._dangers = (bot._dangers || 0) + 1;
+      if (danger) { bot._dangers = (bot._dangers || 0) + 1; bot._dangerWhy = bot._dangerWhy || {}; bot._dangerWhy[dangerWhy] = (bot._dangerWhy[dangerWhy] || 0) + 1; }
       // A BIG CHAIN COMES BEFORE EVERYTHING ELSE: with garbage on the board only a chain found is played (the setups, raising and the holds are for a board without)
       if (A && !danger && comingRows <= (A.maxComing === undefined ? 6 : A.maxComing) && SH.top(board) < (A.maxTop || 8)) {
         var garb = !!SH.lowestGarbageRow(board);
@@ -244,6 +245,12 @@ module.exports = function think(cfg) {
         if (rdy2 && !rdy2.ready && rdy2.setup) { d = { kind: 'swap', move: rdy2.setup, overruled: true }; bot._readies = (bot._readies || 0) + 1; }
       }
       if (A && !toppedEarly && A.alwaysRaise && !d && !cascadeLive(board, true) && fullTop(board) < raiseCap(board, comingRows, A) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1; }
+      // (why the stack was not raised this decision, counted for the diag)
+      if (A && A.alwaysRaise && !(d && d.kind === 'raise')) {
+        var nr = toppedEarly ? 'topped' : danger ? 'danger' : fullTop(board) >= raiseCap(board, comingRows, A) ? 'cap' : cascadeLive(board, true) ? 'busy' : bot.stack && bot.stack.preventManualRaise ? 'prevent' : bot.stack && bot.stack.riseLock ? 'riseLock' : bot.stack && bot.stack.hasActivePanels && bot.stack.hasActivePanels() ? 'active' : bot.stack && (bot.stack.shakeTime || 0) > 0 ? 'shake' : bot.stack && bot.stack.hasFallingGarbage && bot.stack.hasFallingGarbage() ? 'fallG' : d ? 'other-' + d.kind : 'none';
+        bot._noRaise = bot._noRaise || {}; bot._noRaise[nr] = (bot._noRaise[nr] || 0) + 1;
+        if ((nr === 'danger' || nr === 'none' || nr.indexOf('other') === 0) && bot.stack && !bot.stack.riseLock && noRaiseLogged++ < 150) console.error('NORAISE clock ' + board.clock + ' top ' + fullTop(board) + ' why ' + nr + (danger ? '/' + dangerWhy : '') + ' kind ' + (d ? d.kind : 'default') + ' coming ' + comingRows + ' soon ' + (arrivals.length ? Math.min.apply(null, arrivals.map(function (a) { return a.at; })) : '-') + ' stop ' + ((board.stopTime || 0) + (board.preStopTime || 0)));
+      }
       // A BIG CHAIN COMES FIRST WHEREVER THE BOARD IS: past the gate above (the stack tall, a lot coming, garbage all over it) a chain
       // the planner finds in a few swaps -- on the board with the garbage on its way counted -- is played before anything else
       if (A && !danger && !d && !(!A.ignoreOpp && m.opp && m.opp.out)) {
@@ -348,7 +355,7 @@ module.exports = function think(cfg) {
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
             mem: NativeMem(),
             breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
-            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0 } };
+            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null } };
     } catch (e) {
       if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
       else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e) + ' [inc ' + (board && board.incoming ? board.incoming.length : '?') + ', arr ' + (m.arrivals ? m.arrivals.length : '?') + ']', ms: Date.now() - t0 };

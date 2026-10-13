@@ -1,5 +1,6 @@
 // THE CHECKS THE ATTACK PROFILES MAKE ON A BOARD, in one place and held to the engine by survivor_checks.test.js: how high a stack is,
 // how few panels its lowest column holds, whether a chain or clear is live on it, how far it may be raised, whether it is in danger.
+var PA = require('../../pa-engine.js');
 // A board is a pa-engine.js Stack (or View): board.panels[row][col] with .color and .isGarbage, and the stack's own fields.
 function eachPanel(board, fn) {
   for (var r = 1; r < board.panels.length; r++) for (var c = 1; c <= 6; c++) { var p = board.panels[r] && board.panels[r][c]; if (p) fn(p, r, c); }
@@ -50,20 +51,35 @@ function raiseCap(board, coming, A) {
   var bonus = (A.raiseStopBonus || 0) && (board.stopTime || 0) + (board.preStopTime || 0) >= (A.raiseStopFrames || 60) ? A.raiseStopBonus : 0;
   return (A.raiseMax || 11) + bonus - (A.raiseLeaveRoom ? coming + queued : 0);
 }
-// Topped out, or one row from it with no stop time running (the stack rises by itself into the top row, and is lost).
-function toppedOrNearly(board, toppedReal) {
-  // (the height counts garbage: a stack with garbage in row 11 rises into row 12 as surely as one with a panel there)
-  return !!toppedReal || (typeof board.isToppedOut === 'function' && board.isToppedOut()) || (fullTop(board) >= 11 && (board.stopTime || 0) + (board.preStopTime || 0) === 0);
+// How many frames until the stack is topped out if nothing stops it rising: the stop time left, then the rest of the row it is rising
+// through and a whole row for each one more it has to go (a row is 16 steps of the rise time at the stack's speed). 0 for a stack
+// already topped out with no stop time running; with stop time running, that much longer.
+function framesToTop(board) {
+  var h = board.height || 12, rows = h - fullTop(board), stop = (board.stopTime || 0) + (board.preStopTime || 0);
+  if (rows <= 0) return stop;
+  var T = PA.riseTime(board.speed || 1), disp = Math.max(1, board.displacement || 16);
+  return stop + Math.max(0, board.riseTimer || 0) + (disp - 1) * T + (rows - 1) * 16 * T;
 }
-// The stack in jeopardy: topped out (or nearly), its height with the garbage on it at dangerTop or more, or a hit landing within dangerSoon
-// frames that would overflow the board (rows coming and queued on top of its height, dangerOver rows over the 12).
+// Topped out, or so near it that the next row up tops it out within nearFrames (the stack rises by itself into the top row, and is lost
+// without stop time). One row from the top is not that on its own: it is that many frames of time to act in.
+function toppedOrNearly(board, toppedReal, A) {
+  var h = board.height || 12, full = fullTop(board);
+  return !!toppedReal || (typeof board.isToppedOut === 'function' && board.isToppedOut()) || full >= h ||
+         (full >= h - 1 && framesToTop(board) <= ((A && A.nearFrames) || 90));
+}
+// Why the stack is in jeopardy, or '' when it is not: 'topped' (topped out, or the next row up would, within nearFrames), 'tall' (its
+// height with the garbage on it at dangerTop or more and within dangerFrames of the top), or 'incoming' (a hit landing within dangerSoon
+// frames that would overflow the board: rows coming and queued on top of its height, dangerOver rows over the 12).
 // arrivals: the garbage on its way, as the bot's serverArrivals ({ at: frames to landing }).
-function inDanger(board, arrivals, comingRows, toppedReal, A) {
+function dangerWhy(board, arrivals, comingRows, toppedReal, A) {
   var queued = 0, soon = Infinity;
   (board.incoming || []).forEach(function (g) { queued += g.height || 0; });
   (arrivals || []).forEach(function (a) { if (a.at < soon) soon = a.at; });
   var full = fullTop(board);
-  return toppedOrNearly(board, toppedReal) || full >= (A.dangerTop || 11) ||
-         (soon <= (A.dangerSoon || 120) && full + comingRows + queued >= 12 + (A.dangerOver === undefined ? 1 : A.dangerOver));
+  if (toppedOrNearly(board, toppedReal, A)) return 'topped';
+  if (full >= (A.dangerTop || 11) && framesToTop(board) <= (A.dangerFrames || 240)) return 'tall';
+  if (soon <= (A.dangerSoon || 120) && full + comingRows + queued >= 12 + (A.dangerOver === undefined ? 1 : A.dangerOver)) return 'incoming';
+  return '';
 }
-module.exports = { fullTop: fullTop, panelTop: panelTop, lowPeak: lowPeak, lowPeakOf: lowPeakOf, panelCount: panelCount, cascadeLive: cascadeLive, raiseCap: raiseCap, toppedOrNearly: toppedOrNearly, inDanger: inDanger };
+function inDanger(board, arrivals, comingRows, toppedReal, A) { return dangerWhy(board, arrivals, comingRows, toppedReal, A) !== ''; }
+module.exports = { framesToTop: framesToTop, dangerWhy: dangerWhy, fullTop: fullTop, panelTop: panelTop, lowPeak: lowPeak, lowPeakOf: lowPeakOf, panelCount: panelCount, cascadeLive: cascadeLive, raiseCap: raiseCap, toppedOrNearly: toppedOrNearly, inDanger: inDanger };
