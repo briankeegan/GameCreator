@@ -190,7 +190,14 @@ module.exports = function think(cfg) {
       var firstLand = Infinity;
       readyArr.forEach(function (a) { if (a.at < firstLand) firstLand = a.at; });
       var leavesBreakTime = function (plan) { return !(A && A.readyFrames) || firstLand === Infinity || plan.chain >= 3 || plan.seq.length * 18 + A.readyFrames <= firstLand; };
-      var dangerWhy = A && A.lifeFirst ? CK.dangerWhy(board, typeof realArrivals !== 'undefined' ? realArrivals : arrivals, comingRows, m.topped, A) : '';
+      var dangerWhy = A && A.lifeFirst ? CK.dangerWhy(board, realArrivals, comingRows, m.topped, A) : '';
+      // DANGER IS THE REAL STACK, OR A REAL HIT (realDanger): the stack as the game shows it topped out, or within the time it takes to
+      // get out of it -- or garbage the game will land that overflows it. Not the board predicted ahead, with the garbage queued on it.
+      if (A && A.lifeFirst && A.realDanger) {
+        var rNear = m.realTop >= 11 && m.realFtt <= (A.nearFrames || 90) + (m.lead || 0);
+        var dw0 = dangerWhy;
+        dangerWhy = m.topped || rNear ? 'topped' : (m.realTop >= (A.dangerTop || 11) && m.realFtt <= (A.dangerFrames || 240)) ? 'tall' : dw0 === 'incoming' ? 'incoming' : '';
+      }
       // A HIT THAT WOULD TOP THE STACK OUT, on its way by the game's own landing times, makes a three a last resort now: it is the one way left
       // to lower the stack before it lands (realThrees)
       if (A && A.realThrees && dangerWhy === 'incoming' && !toppedReal) { toppedReal = true; bot.toppedOutNow = true; bot._threesForHit = (bot._threesForHit || 0) + 1; }
@@ -207,7 +214,8 @@ module.exports = function think(cfg) {
       bot._danger = danger;
       if (danger) { bot._dangers = (bot._dangers || 0) + 1; bot._dangerWhy = bot._dangerWhy || {}; bot._dangerWhy[dangerWhy] = (bot._dangerWhy[dangerWhy] || 0) + 1; }
       // A BIG CHAIN COMES BEFORE EVERYTHING ELSE: with garbage on the board only a chain found is played (the setups, raising and the holds are for a board without)
-      if (A && !danger && comingRows <= (A.maxComing === undefined ? 6 : A.maxComing) && SH.top(board) < (A.maxTop || 8)) {
+      // (survivalFirst: the attack is planned in danger too -- what it chooses has to be proven to live -- so danger does not switch it off)
+      if (A && (!danger || A.survivalFirst) && comingRows <= (A.maxComing === undefined ? 6 : A.maxComing) && SH.top(board) < (A.maxTop || 8)) {
         var garb = !!SH.lowestGarbageRow(board);
         safeA = !garb;
         if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
