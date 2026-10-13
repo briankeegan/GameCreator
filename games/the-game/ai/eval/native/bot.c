@@ -3969,6 +3969,7 @@ static Dec stayAlive(Dec d) {
 // engine (lineJudge, which keeps to the work there is); one it cannot judge is
 // not weighed, and a decision it cannot judge stands.
 typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, plain, clears, stall, size, chain, die, conv, hollow, pri, aheadKnown, twos; Atk ahead; double life, soon; } Opt;
+static int gScramble;   // (declared again below, where it is described)
 static int optJudge(Opt *o) {
   int last = 0, spent = 0;
   o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = o->early = o->plain = o->clears = o->size = o->chain = 0;
@@ -3990,7 +3991,8 @@ static int optJudge(Opt *o) {
     o->chain = LNO[18] > LNA[18] && LNO[18] >= 2 ? LNO[18] : 0;
     o->size = LNO[17] > LNA[17] ? LNO[17] : 0;
     o->clears = LNO[3] > LNA[3];
-    o->cash = (o->chain || comboWorth(o->size) >= 0) && (!aloneOnEngine() || o->hollow <= HOLLOW(LNA));
+    // in the scramble the combo or chain is there for its stop time (pa.c calculateStopTime): the gaps it leaves are not what it is asked for
+    o->cash = (o->chain || comboWorth(o->size) >= 0) && (gScramble || !aloneOnEngine() || o->hollow <= HOLLOW(LNA));
     // a clear that breaks nothing, is no combo and fills nothing under the garbage (less hollow than the board
     // left alone), before it is due (clearDue), is a spend the board does not need yet
     // a plain clear: it clears, breaks nothing, is no combo or chain and fills nothing under the garbage -- a last resort
