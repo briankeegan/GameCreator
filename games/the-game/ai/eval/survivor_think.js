@@ -178,6 +178,11 @@ module.exports = function think(cfg) {
       // GARBAGE ON ITS WAY for the readiness check: the game's landing times, else -- when the stack's own queue holds garbage the link has
       // given no time for -- a landing in readyAt frames
       var readyArr = arrivals.length ? arrivals : ((board.incoming || []).length ? [{ at: A && A.readyAt || 90 }] : []);
+      // A BREAK STAYS READY WITHIN THE TIME THERE IS: an attack is played while the first garbage on its way still leaves the time to finish
+      // it and then make a break (readyFrames); a chain of three or more is worth the risk
+      var firstLand = Infinity;
+      readyArr.forEach(function (a) { if (a.at < firstLand) firstLand = a.at; });
+      var leavesBreakTime = function (plan) { return !(A && A.readyFrames) || firstLand === Infinity || plan.chain >= 3 || plan.seq.length * 18 + A.readyFrames <= firstLand; };
       var dangerWhy = A && A.lifeFirst ? CK.dangerWhy(board, arrivals, comingRows, m.topped, A) : '';
       if (A && A.lifeFirst && A.realTopped && !dangerWhy) {
         if (realNear) dangerWhy = 'topped';
@@ -252,7 +257,7 @@ module.exports = function think(cfg) {
           if (attackLogged++ < 60) console.error('ATTACK clock ' + board.clock + ' out ' + oppOut + ' quiet ' + quiet + ' plan ' + (ap ? ap.cells + ' cells chain ' + ap.chain + ' swaps ' + ap.seq.length + ' first ' + JSON.stringify(ap.seq[0] || null) + ' setup ' + JSON.stringify(ap.setup) + ' base ' + ap.base + ' in ' + ap.ms + ' ms' : 'none'));
           // a board that can be built on while it is low and little is coming: garbage on it or not, the bot builds a chain, it does not break
           var building = unlock || !oppOut && (!garb || (!A.alwaysRaise && SH.top(board) < (A.setupTop || 9) && comingRows <= (A.setupComing === undefined ? 3 : A.setupComing)));
-          if (ap && ap.cells >= floor && ap.seq.length && !(A.minRows && ap.after < A.minRows) && !(toppedFree && ap.seq.length * 18 + 30 > stopLeft)) { d = { kind: 'swap', move: ap.seq[0], overruled: true, src: 'fire', planChain: ap.chain }; bot._attackCells = ap.cells; attackLine = ap.seq.slice(1); attackMove = ap.seq[0]; bot._planUntil = board.clock + 40 * ap.seq.length; }
+          if (ap && ap.cells >= floor && ap.seq.length && !(A.minRows && ap.after < A.minRows) && !(toppedFree && ap.seq.length * 18 + 30 > stopLeft) && leavesBreakTime(ap)) { d = { kind: 'swap', move: ap.seq[0], overruled: true, src: 'fire', planChain: ap.chain }; bot._attackCells = ap.cells; attackLine = ap.seq.slice(1); attackMove = ap.seq[0]; bot._planUntil = board.clock + 40 * ap.seq.length; }
           // no fire in reach: more panels to build with (the stack is raised) up to raiseMax, then the swap that builds the board toward one
           else if (!garb && !oppOut && SH.top(board) < (A.raiseMax || 10) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1; bot._replanAt = board.clock + (A.replanFrames || 30); }
           else if (building && ap && (ap.setup || (unlock && ap.anySwap))) { d = { kind: 'swap', move: ap.setup || ap.anySwap, overruled: true, src: 'setup' }; bot._setups = (bot._setups || 0) + 1; if (unlock) bot._unlocks = (bot._unlocks || 0) + 1; }
@@ -282,7 +287,7 @@ module.exports = function think(cfg) {
         if (chainMs >= 60) {
           if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
           var cp = attacker.plan(board, m.hold, { ms: chainMs, width: A.width || 60, depth: A.chainSwaps || 6, pool: A.pool || 250, minChain: A.minChain === undefined ? 4 : A.minChain, guideChain: A.guideChain, arrivals: arrivals, rate: A.rate });
-          if (cp && cp.cells >= 1 && cp.seq.length && !(A.minRows && cp.after < A.minRows) && !(toppedFree && cp.seq.length * 18 + 30 > stopLeft)) { d = { kind: 'swap', move: cp.seq[0], overruled: true, src: 'chainFirst', planChain: cp.chain }; bot._attackCells = cp.cells; attackLine = cp.seq.slice(1); attackMove = cp.seq[0]; bot._planUntil = board.clock + 40 * cp.seq.length; bot._chainFirst = (bot._chainFirst || 0) + 1; }
+          if (cp && cp.cells >= 1 && cp.seq.length && !(A.minRows && cp.after < A.minRows) && !(toppedFree && cp.seq.length * 18 + 30 > stopLeft) && leavesBreakTime(cp)) { d = { kind: 'swap', move: cp.seq[0], overruled: true, src: 'chainFirst', planChain: cp.chain }; bot._attackCells = cp.cells; attackLine = cp.seq.slice(1); attackMove = cp.seq[0]; bot._planUntil = board.clock + 40 * cp.seq.length; bot._chainFirst = (bot._chainFirst || 0) + 1; }
         }
       }
       // IN DANGER THE ATTACK IS STILL WANTED, BUT ONLY AS A MOVE THE SURVIVAL SEARCH PROVES TO LIVE: the fire the planner finds is asked for
