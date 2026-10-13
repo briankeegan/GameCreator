@@ -17,8 +17,9 @@ for line in open(os.path.join(d,'results.tsv')):
             pan=sum(1 for r in rows for k in range(0,12,2) if r[k].isdigit()); gar=sum(1 for r in rows for k in range(0,12,2) if r[k]=='g')
             frames.append((frame,pan,gar))
             if prev is not None:
-                n=sum(1 for i,r in enumerate(rows) for k in range(0,12,2) if r[k].isdigit() and r[k+1]=='m' and prev[i][k+1]!='m')
-                g=sum(1 for i,r in enumerate(rows) for k in range(0,12,2) if r[k]=='g' and r[k+1]=='m' and prev[i][k+1]!='m')
+                off=len(rows)-len(prev); pv=lambda i: prev[i-off] if 0<=i-off<len(prev) else None   # rows align from the bottom: the stack rises
+                n=sum(1 for i,r in enumerate(rows) for k in range(0,12,2) if r[k].isdigit() and r[k+1]=='m' and pv(i) and pv(i)[k+1]!='m')
+                g=sum(1 for i,r in enumerate(rows) for k in range(0,12,2) if r[k]=='g' and r[k+1]=='m' and pv(i) and pv(i)[k+1]!='m')
                 if g and not prevbrk: breaks+=1
                 prevbrk = g>0 or any(r[k]=='g' and r[k+1] in 'mpx' for r in rows for k in range(0,12,2))
                 if n and not g:
