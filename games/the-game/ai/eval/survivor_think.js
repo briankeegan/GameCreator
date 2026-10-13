@@ -160,6 +160,10 @@ module.exports = function think(cfg) {
       // topped out, or one row from it with no stop time running: the stack rises by itself into the top row and, with no stop time,
       // is lost -- from here a three is a move like any other (life first), where below it it is the last resort
       var toppedEarly = CK.toppedOrNearly(board, m.topped, A);
+      // (realTopped: the stack as the game shows it -- its height with the garbage landed on it and the frames until the next row tops it
+      // out -- is what is near the top; the board asked about is a prediction)
+      var realNear = !!(A && A.realTopped && m.realTop >= 11 && m.realFtt <= (A.nearFrames || 90));
+      if (realNear) toppedEarly = true;
       // a three is played only on a stack the engine says is topped out (a panel in the top row), and then only as the last resort
       var toppedReal = A && A.realTopped ? !!m.topped : (!!m.topped || (typeof board.isToppedOut === 'function' && board.isToppedOut()));
       bot.toppedOutNow = toppedReal;
@@ -167,6 +171,10 @@ module.exports = function think(cfg) {
       // (danger is the stack in jeopardy, not the stack raised high: its height counting the garbage on it, or what is about to land on it
       // overflowing the board -- raising to row 10 is the plan, and a hit of a row or two on it is not an emergency)
       var dangerWhy = A && A.lifeFirst ? CK.dangerWhy(board, arrivals, comingRows, m.topped, A) : '';
+      if (A && A.lifeFirst && A.realTopped && !dangerWhy) {
+        if (realNear) dangerWhy = 'topped';
+        else if (m.realTop >= (A.dangerTop || 11) && m.realFtt <= (A.dangerFrames || 240)) dangerWhy = 'tall';
+      }
       // TOPPED OUT WITH STOP TIME LEFT (toppedStop) is a clock, not a loss: nothing but a raise ends stop time, so the frames it has left
       // are the time to play an attack in -- one that fits them, and never a plain three that digs nothing (below)
       var stopLeft = (board.stopTime || 0) + (board.preStopTime || 0);
