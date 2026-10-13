@@ -5557,8 +5557,7 @@ static Dec fillFirstIn(Dec d) {
   // breaks in time a fill must too; if not, a fill leaves at least as much
   // time between its break and its loss of health
   double need = marginAfter(0, 0, LNA[0]);
-  // a death further off than the preset's start delay is not urgent: the first attack lands before it, and the pile it makes decides the board (pa.c shouldDropGarbage)
-  fillUrgent = LNA[0] && need < 0 && !(BIN[IN_LEAD] > 0 && LNA[0] > BIN[IN_LEAD]);
+  fillUrgent = LNA[0] && need < 0;
   double ref = fillScore(LNA[0], -1, HOLLOW(LNA), 0) + (reachFirst() && breakKept(0, 0) ? BREAK_IN_REACH : 0);   // what a fill must beat: the board left alone, and the choice
   int refDie = lnoDie(LNA);   // the later loss of health of the two
   if (d.kind == K_SWAP && d.hasMove) {
