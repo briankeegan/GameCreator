@@ -2136,7 +2136,7 @@
       // A three is the last resort wherever the stack is: of the moves proven to live it is never chosen while another is. When only threes
       // are proven: in danger or topped out they are played; otherwise the unproven moves are looked at before them.
       var tbs = this.refuseThreeBreak, notThree = cands.filter(function (c) { return !(bareThree(c) || (tbs && threeBreak(c))); });
-      var stk = this.stack || {}, topped = this.toppedOutNow || stk.wasToppedOut || (this._board && this._boardToppedOut(this._board));
+      var stk = this.stack || {}, topped = this.realToppedOnly ? !!this.toppedOutNow : (this.toppedOutNow || stk.wasToppedOut || (this._board && this._boardToppedOut(this._board)));
       // Topped out (or about to be, no stop time): a three is dropped only while another move makes progress -- clears something or breaks
       // garbage. A hold that lives a while longer is not progress: a stack stuck at the top under garbage is dug out, by a three if it must.
       if (topped) {

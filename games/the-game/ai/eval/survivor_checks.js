@@ -76,6 +76,9 @@ function framesToTop(board) {
 // without stop time). One row from the top is not that on its own: it is that many frames of time to act in.
 function toppedOrNearly(board, toppedReal, A) {
   var h = board.height || 12, full = fullTop(board);
+  // (realTopped: the board asked about is a prediction, with the garbage still queued landed on it: only the stack as the game shows it
+  // is topped out, and a stack of panels one row from the top within nearFrames of it)
+  if (A && A.realTopped) return !!toppedReal || (panelTop(board) >= h - 1 && framesToTop(board) <= (A.nearFrames || 90));
   return !!toppedReal || (typeof board.isToppedOut === 'function' && board.isToppedOut()) || full >= h ||
          (full >= h - 1 && framesToTop(board) <= ((A && A.nearFrames) || 90));
 }
@@ -89,8 +92,8 @@ function dangerWhy(board, arrivals, comingRows, toppedReal, A) {
   (arrivals || []).forEach(function (a) { if (a.at < soon) soon = a.at; });
   var full = fullTop(board);
   if (toppedOrNearly(board, toppedReal, A)) return 'topped';
-  if (full >= (A.dangerTop || 11) && framesToTop(board) <= (A.dangerFrames || 240)) return 'tall';
-  if (projectedTop(board) >= (board.height || 12)) return 'landing';
+  if ((A.realTopped ? panelTop(board) : full) >= (A.dangerTop || 11) && framesToTop(board) <= (A.dangerFrames || 240)) return 'tall';
+  if (!A.realTopped && projectedTop(board) >= (board.height || 12)) return 'landing';
   if (soon <= (A.dangerSoon || 120) && full + comingRows + queued >= 12 + (A.dangerOver || 0)) return 'incoming';
   return '';
 }

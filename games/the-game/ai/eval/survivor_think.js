@@ -161,8 +161,9 @@ module.exports = function think(cfg) {
       // is lost -- from here a three is a move like any other (life first), where below it it is the last resort
       var toppedEarly = CK.toppedOrNearly(board, m.topped, A);
       // a three is played only on a stack the engine says is topped out (a panel in the top row), and then only as the last resort
-      var toppedReal = !!m.topped || (typeof board.isToppedOut === 'function' && board.isToppedOut());
+      var toppedReal = A && A.realTopped ? !!m.topped : (!!m.topped || (typeof board.isToppedOut === 'function' && board.isToppedOut()));
       bot.toppedOutNow = toppedReal;
+      bot.realToppedOnly = !!(A && A.realTopped);
       // (danger is the stack in jeopardy, not the stack raised high: its height counting the garbage on it, or what is about to land on it
       // overflowing the board -- raising to row 10 is the plan, and a hit of a row or two on it is not an emergency)
       var dangerWhy = A && A.lifeFirst ? CK.dangerWhy(board, arrivals, comingRows, m.topped, A) : '';
