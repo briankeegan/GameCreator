@@ -55,6 +55,7 @@ static double gWorkBudget = WORKBUDGET0, gOptWork = OPTWORK0;
 #define RATESTEP 0.01
 #define TAILSTEP 0.05   // ms: how far a frame moves the time the front takes after the decision, held to the same quantile
 #define OPTFLOOR (OPTWORK0 / 4)   // the work a decision always has, whatever the frame's load: the stages it cannot skip
+static double dcQ0, dcC0, dcA0, dcK0;   // the engine frames at the decision's start, for the log's cost line
 static double tkCeiling, tkRate, tkLastWork, tkLeft, tkTail = 0.3, tkOver = 0.5, tkT0, tkDecMs;   // the ceiling told, ms per unit tracked, the work of the decision the last frame made, the frame's time left when it began, the time the front takes after a decision's work stops, when the decision began, how long it took
 enum { C_REFUSEDDEADLY, C_ALLDEAD, C_REFUSEDRETURN, C_REFUSEDTOOSLOW, C_PLANNED, C_PLANDROPPED, C_ATTACKED,
        C_ATTACKDROPPED, C_CELLSPLANNED, C_REFUSEDPAYLESS, C_REFUSEDSTARVING, C_REFUSEDOTHER, C_REFUSEDATEXIT,
@@ -6113,6 +6114,9 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // OPTWORK resolves and engine lines are refused and every search keeps what
   // it found; past WORKBUDGET the decision is cut and the game fails.
   { extern void paBudget(double); paBudget(OPTWORK); }
+#ifndef __wasm__
+  { extern PATLS double paFrQ, paFrC, paFrA, paFrCells; dcQ0 = paFrQ; dcC0 = paFrC; dcA0 = paFrA; dcK0 = paFrCells; }
+#endif
   { extern void paWall(double); extern double paClockMs(void); tkT0 = paClockMs(); paWall(tkLeft > 0 ? tkLeft - tkTail - tkOver : 0); }
   { extern PATLS double paWork; rdW0 = paWork; budgetRefused = 0; }
   btDecision++;
@@ -6241,6 +6245,10 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
 #endif
   cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
 #undef SHARE
+#ifndef __wasm__
+  if (botTraceOn) { extern PATLS double paFrQ, paFrC, paFrA, paFrCells; extern PATLS double paWork; extern double paClockMs(void); extern int fprintf(void *, const char *, ...); extern void *stderr;
+    fprintf(BLOG, "COST ms %.3f work %.0f q %.0f c %.0f a %.0f cells %.0f\n", paClockMs() - tkT0, paWork - rdW0, paFrQ - dcQ0, paFrC - dcC0, paFrA - dcA0, paFrCells - dcK0); }
+#endif
   { extern PATLS double paWork; extern double paClockMs(void); tkLastWork = paWork - rdW0; tkDecMs = paClockMs() - tkT0;
     { extern double paWallOver(void); double o = paWallOver(); if (o >= 0) { if (o > tkOver) tkOver = o; } else tkOver *= 0.9999; } }
 #ifndef __wasm__

@@ -897,6 +897,7 @@ static void countdownFrame(Board *b);
 #define FRAMEWORK_COUNT 1.78
 #define FRAMEWORK_ACTIVE 4.79
 extern PATLS double paWork;
+PATLS double paFrQ, paFrC, paFrA, paFrCells;   // engine frames by kind, and the panels in motion in the active ones, for the log's cost line
 static void runPhysics(Board *b) {
   b->nlanded = 0;
   b->wasToppedOut = isToppedOut(b);
@@ -908,17 +909,18 @@ static void runPhysics(Board *b) {
   if (b->displacement % 16 != 0) b->topCurRow = b->height - 1;
   if (swapQueued(b)) { doSwap(b, b->queuedSwapRow, b->queuedSwapCol); b->queuedSwapCol = 0; b->queuedSwapRow = 0; }
   if (b->quiet && !b->noQuiet) {
-    STAT(17)++; paWork += FRAMEWORK_QUIET;
+    STAT(17)++; paFrQ++; paWork += FRAMEWORK_QUIET;
     b->shakeTimeOnFrame = 0;
     b->nPrevActive = b->nActive;
   } else if (b->cdLeft > 0 && !b->noQuiet) {
-    STAT(19)++; paWork += FRAMEWORK_COUNT;
+    STAT(19)++; paFrC++; paWork += FRAMEWORK_COUNT;
     countdownFrame(b);
   } else {
-    STAT(16)++; paWork += FRAMEWORK_ACTIVE;
+    STAT(16)++; paFrA++; paWork += FRAMEWORK_ACTIVE;
     checkMatches(b);
     updatePanels(b);
     updateActivePanelCount(b);
+    paFrCells += b->nActive;
     if (b->chainCounter != 0 && !hasChainingPanels(b)) b->chainCounter = 0;
     removeExtraRows(b);
     b->quiet = !b->noQuiet && isQuiet(b);
