@@ -166,7 +166,12 @@ module.exports = function think(cfg) {
       // (danger is the stack in jeopardy, not the stack raised high: its height counting the garbage on it, or what is about to land on it
       // overflowing the board -- raising to row 10 is the plan, and a hit of a row or two on it is not an emergency)
       var dangerWhy = A && A.lifeFirst ? CK.dangerWhy(board, arrivals, comingRows, m.topped, A) : '';
-      var danger = dangerWhy !== '';
+      // TOPPED OUT WITH STOP TIME LEFT (toppedStop) is a clock, not a loss: nothing but a raise ends stop time, so the frames it has left
+      // are the time to play an attack in -- one that fits them, and never a plain three that digs nothing (below)
+      var stopLeft = (board.stopTime || 0) + (board.preStopTime || 0);
+      var toppedFree = !!(A && A.toppedStop && dangerWhy === 'topped' && toppedReal && stopLeft >= A.toppedStop);
+      var danger = dangerWhy !== '' && !toppedFree;
+      if (toppedFree) bot._toppedFree = (bot._toppedFree || 0) + 1;
       bot._danger = danger;
       if (danger) { bot._dangers = (bot._dangers || 0) + 1; bot._dangerWhy = bot._dangerWhy || {}; bot._dangerWhy[dangerWhy] = (bot._dangerWhy[dangerWhy] || 0) + 1; }
       // A BIG CHAIN COMES BEFORE EVERYTHING ELSE: with garbage on the board only a chain found is played (the setups, raising and the holds are for a board without)
@@ -230,7 +235,7 @@ module.exports = function think(cfg) {
           if (attackLogged++ < 60) console.error('ATTACK clock ' + board.clock + ' out ' + oppOut + ' quiet ' + quiet + ' plan ' + (ap ? ap.cells + ' cells chain ' + ap.chain + ' swaps ' + ap.seq.length + ' first ' + JSON.stringify(ap.seq[0] || null) + ' setup ' + JSON.stringify(ap.setup) + ' base ' + ap.base + ' in ' + ap.ms + ' ms' : 'none'));
           // a board that can be built on while it is low and little is coming: garbage on it or not, the bot builds a chain, it does not break
           var building = unlock || !oppOut && (!garb || (!A.alwaysRaise && SH.top(board) < (A.setupTop || 9) && comingRows <= (A.setupComing === undefined ? 3 : A.setupComing)));
-          if (ap && ap.cells >= floor && ap.seq.length && !(A.minRows && ap.after < A.minRows)) { d = { kind: 'swap', move: ap.seq[0], overruled: true, src: 'fire', planChain: ap.chain }; bot._attackCells = ap.cells; attackLine = ap.seq.slice(1); attackMove = ap.seq[0]; bot._planUntil = board.clock + 40 * ap.seq.length; }
+          if (ap && ap.cells >= floor && ap.seq.length && !(A.minRows && ap.after < A.minRows) && !(toppedFree && ap.seq.length * 18 + 30 > stopLeft)) { d = { kind: 'swap', move: ap.seq[0], overruled: true, src: 'fire', planChain: ap.chain }; bot._attackCells = ap.cells; attackLine = ap.seq.slice(1); attackMove = ap.seq[0]; bot._planUntil = board.clock + 40 * ap.seq.length; }
           // no fire in reach: more panels to build with (the stack is raised) up to raiseMax, then the swap that builds the board toward one
           else if (!garb && !oppOut && SH.top(board) < (A.raiseMax || 10) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1; bot._replanAt = board.clock + (A.replanFrames || 30); }
           else if (building && ap && (ap.setup || (unlock && ap.anySwap))) { d = { kind: 'swap', move: ap.setup || ap.anySwap, overruled: true, src: 'setup' }; bot._setups = (bot._setups || 0) + 1; if (unlock) bot._unlocks = (bot._unlocks || 0) + 1; }
@@ -260,7 +265,7 @@ module.exports = function think(cfg) {
         if (chainMs >= 60) {
           if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
           var cp = attacker.plan(board, m.hold, { ms: chainMs, width: A.width || 60, depth: A.chainSwaps || 6, pool: A.pool || 250, minChain: A.minChain === undefined ? 4 : A.minChain, guideChain: A.guideChain, arrivals: arrivals, rate: A.rate });
-          if (cp && cp.cells >= 1 && cp.seq.length && !(A.minRows && cp.after < A.minRows)) { d = { kind: 'swap', move: cp.seq[0], overruled: true, src: 'chainFirst', planChain: cp.chain }; bot._attackCells = cp.cells; attackLine = cp.seq.slice(1); attackMove = cp.seq[0]; bot._planUntil = board.clock + 40 * cp.seq.length; bot._chainFirst = (bot._chainFirst || 0) + 1; }
+          if (cp && cp.cells >= 1 && cp.seq.length && !(A.minRows && cp.after < A.minRows) && !(toppedFree && cp.seq.length * 18 + 30 > stopLeft)) { d = { kind: 'swap', move: cp.seq[0], overruled: true, src: 'chainFirst', planChain: cp.chain }; bot._attackCells = cp.cells; attackLine = cp.seq.slice(1); attackMove = cp.seq[0]; bot._planUntil = board.clock + 40 * cp.seq.length; bot._chainFirst = (bot._chainFirst || 0) + 1; }
         }
       }
       // IN DANGER THE ATTACK IS STILL WANTED, BUT ONLY AS A MOVE THE SURVIVAL SEARCH PROVES TO LIVE: the fire the planner finds is asked for
@@ -411,7 +416,7 @@ module.exports = function think(cfg) {
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
             mem: NativeMem(),
             breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
-            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0, useless3: bot._useless3 || 0 } };
+            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0, useless3: bot._useless3 || 0, toppedFree: bot._toppedFree || 0 } };
     } catch (e) {
       if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
       else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e) + ' [inc ' + (board && board.incoming ? board.incoming.length : '?') + ', arr ' + (m.arrivals ? m.arrivals.length : '?') + ']', ms: Date.now() - t0 };
