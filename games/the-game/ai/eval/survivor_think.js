@@ -311,24 +311,10 @@ module.exports = function think(cfg) {
         var sp = bot._searchProofs;
         why = { provenRanks: provenRanked.join(' '), ranked: ranked.join(' '), want: Object.keys(want), cands: sp ? sp.cands.map(key) : null, proven: sp ? sp.cands.filter(function (c, i) { return sp.proofs[i]; }).map(key) : null };
       }
-      // NEVER IDLE (noIdle): a hold on a board that is safe, with nothing resolving, is a move wasted -- the stack is raised, or the best fire
-      // is played, or a swap that builds toward one
-      if (A && A.noIdle && d.kind === 'hold' && !danger && !toppedEarly && !cascadeLive(board, true)) {
-        var niMs = due ? Math.min(A.noIdleMs || 80, due - Date.now() - 2 * DEADLINE_MARGIN_MS - 100) : (A.noIdleMs || 80);
-        if (fullTop(board) < raiseCap(board, comingRows, A) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._idleFilled = (bot._idleFilled || 0) + 1; }
-        else if (niMs >= 30) {
-          if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
-          var nip = attacker.plan(board, m.hold, { ms: niMs, width: 30, depth: 4, pool: 100, minChain: A.minChain === undefined ? 4 : A.minChain, arrivals: arrivals, rate: A.rate });
-          if (nip && nip.seq.length && nip.cells >= (A.aggro ? (A.outCells || 3) : 1) && !(A.minRows && nip.after < A.minRows)) { d = { kind: 'swap', move: nip.seq[0], overruled: true, src: 'noIdle', planChain: nip.chain }; attackLine = nip.seq.slice(1); attackMove = nip.seq[0]; bot._idleFilled = (bot._idleFilled || 0) + 1; }
-          else if (nip && (nip.setup || nip.anySwap)) { d = { kind: 'swap', move: nip.setup || nip.anySwap, overruled: true, src: 'noIdle' }; bot._idleFilled = (bot._idleFilled || 0) + 1; }
-        }
-      }
-      // (no three is played below the top, so no aimed lineup to a break -- its last swap is a three -- is either)
-      var noAimed = !!(A && A.threesOnlyTopped && !toppedNow);
-      d = SP.overrule(d, noAimed ? Object.assign({}, prep, { br: null, want: {} }) : prep, bot);   // a lineup while a slab pops (survivor_prefer.js)
       // NO PLAIN THREE BELOW THE TOP, WHOEVER CHOSE IT (guardThrees): the move the decision ends on -- the survival search's, a fire's, a
       // setup's, an extension's -- is played out on a copy of the board, and a swap whose clears are all threes (breaking garbage or not)
       // and that makes no chain is not played unless the plan it starts is a chain. The stack is raised instead, or held.
+      var guard3 = function () {
       if (A && A.guardThrees && !toppedNow && d.kind === 'swap' && d.move && !(d.planChain >= 2)) {
         var t3 = board.copy(); t3.behaviours = Object.assign({}, t3.behaviours, { passiveRaise: false }); t3.curRow = d.move[0]; t3.curCol = d.move[1];
         var r3 = t3.tryQueueSwap(d.move[0], d.move[1]) ? t3.settle() : null;
@@ -341,6 +327,24 @@ module.exports = function think(cfg) {
           attackLine = null;
         }
       }
+      };
+      guard3();
+      // NEVER IDLE (noIdle): a hold on a board that is safe, with nothing resolving, is a move wasted -- the stack is raised, or the best fire
+      // is played, or a swap that builds toward one
+      if (A && A.noIdle && d.kind === 'hold' && !danger && !toppedEarly && !cascadeLive(board, true)) {
+        var niMs = due ? Math.min(A.noIdleMs || 80, due - Date.now() - 2 * DEADLINE_MARGIN_MS - 60) : (A.noIdleMs || 80);
+        if (fullTop(board) < raiseCap(board, comingRows, A) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._idleFilled = (bot._idleFilled || 0) + 1; }
+        else if (niMs >= 30) {
+          if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
+          var nip = attacker.plan(board, m.hold, { ms: niMs, width: A.noIdleWidth || 30, depth: A.noIdleDepth || 4, pool: A.noIdleWidth ? 250 : 100, minChain: A.minChain === undefined ? 4 : A.minChain, arrivals: arrivals, rate: A.rate });
+          if (nip && nip.seq.length && nip.cells >= (A.aggro ? (A.outCells || 3) : 1) && !(A.minRows && nip.after < A.minRows)) { d = { kind: 'swap', move: nip.seq[0], overruled: true, src: 'noIdle', planChain: nip.chain }; attackLine = nip.seq.slice(1); attackMove = nip.seq[0]; bot._idleFilled = (bot._idleFilled || 0) + 1; }
+          else if (nip && (nip.setup || nip.anySwap)) { d = { kind: 'swap', move: nip.setup || nip.anySwap, overruled: true, src: 'noIdle' }; bot._idleFilled = (bot._idleFilled || 0) + 1; }
+        }
+      }
+      // (no three is played below the top, so no aimed lineup to a break -- its last swap is a three -- is either)
+      var noAimed = !!(A && A.threesOnlyTopped && !toppedNow);
+      d = SP.overrule(d, noAimed ? Object.assign({}, prep, { br: null, want: {} }) : prep, bot);   // a lineup while a slab pops (survivor_prefer.js)
+      guard3();
       var overruled = !!d.overruled;
       var took = Date.now() - t1;
       if (took > 20) { rates.push(bot.SURVIVE_SEARCH_BUDGET / took); if (rates.length > 8) rates.shift(); }
