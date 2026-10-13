@@ -338,6 +338,8 @@ Match.prototype.take = function (truth) {
 // a stack topped out is logged with who asked for it (the decision's source, or the line behind an earlier one).
 var pressLogged = 0;
 function pressAudit(match, board, move, src, at) {
+  var P = match.L.profile && match.L.profile.attack;
+  if (!P || !P.pressAudit || CK.toppedOrNearly(board, false, { nearFrames: 120 })) return;
   try {
     var t = board.copy(); t.behaviours = Object.assign({}, t.behaviours, { passiveRaise: false }); t.curRow = move[0]; t.curCol = move[1];
     if (!t.tryQueueSwap(move[0], move[1])) return;
