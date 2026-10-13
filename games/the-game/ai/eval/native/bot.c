@@ -4111,6 +4111,9 @@ static int reachOption(Opt *O, int n, Dec d, int frozen) {
       if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "REACH planner match: %d swaps first %d,%d\n", an, asw[0], asw[1]); }
 #endif
       int okj = optJudge(o);
+      // THE LATEST START: a combo taken while the pop still has its frames spends the panels the next break needs; it is offered from the frame the board's
+      // time is the line's last press plus what one save needs, and not before
+      if (okj && aloneOnEngine() && aloneDie(1 << 20) > LNO[1] + LIVEHORIZON) okj = 0;
 #ifndef __wasm__
       if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "REACH planner judged %d lives %d die %d alone %d size %d chain %d breaks %d\n", okj, o->lives, o->die, aloneDie(1 << 20), o->size, o->chain, o->breaks); }
 #endif
@@ -4129,7 +4132,9 @@ static int reachOption(Opt *O, int n, Dec d, int frozen) {
   o->d = mkSwap(rx.sw[0], rx.sw[1], V_BESTATTACK, d.mode, d.alive);
   o->n = rx.n; o->wait = 0; o->pri = 2;
   for (int q = 0; q < 2 * rx.n; q++) o->sw[q] = rx.sw[q];
-  return optJudge(o) ? n + 1 : n;
+  if (!optJudge(o)) return n;
+  if (gScramble && aloneOnEngine() && aloneDie(1 << 20) > LNO[1] + LIVEHORIZON) return n;   // the latest start, as the planner's option
+  return n + 1;
 }
 // A PLAIN CLEAR THAT OPENS AN ATTACK IS NOT PLAIN: the board it settles to reaches a combo or a chain in the time there
 // is (the first clear starts it, the rest is set up on what falls), so it is not a last resort.
@@ -4145,7 +4150,9 @@ static int optRank(Opt *a, Opt *b) {
   // line that takes longer to finish still outlives a hold that dies first
   // dying within LIVEHORIZON, the later loss of health is the time there is: a
   // line that takes longer to finish still outlives a hold that dies first
-  int da = a->die < LIVEHORIZON ? a->die : LIVEHORIZON, db = b->die < LIVEHORIZON ? b->die : LIVEHORIZON;
+  // the scramble is called for a board dying within the judge's reach (boardDying): the life a combo buys is told apart to that reach
+  int hz = gScramble ? LINEHORIZON : LIVEHORIZON;
+  int da = a->die < hz ? a->die : hz, db = b->die < hz ? b->die : hz;
   if (da != db) return da > db ? 1 : -1;
   // SAVING A DYING BOARD: of two options that live as long, a combo or a chain goes before a plain three
   if (ka == 1 && kb == 1 && aloneOnEngine() && aloneDie(1 << 20) < LIVEHORIZON) { int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
