@@ -3618,6 +3618,11 @@ static void breakLines(const int32_t *st, int cr, int cc, double t0, double limi
 // whose last press comes later is one the engine never finishes playing, so
 // it can never be judged to live
 static double linesLimit(int breaks) { (void)breaks; return lsTopped ? timeLeft() - 2 : LINEHORIZON; }
+// NO LINE IN THE TIME THERE IS STAYS SO WHILE THE POSITION STANDS (raPos): the search goes soonest first, so one that found none by `limit`
+// found none by any less, and a pop holds one position for hundreds of frames -- the same question is not put again with less time
+static int raPos;   // the position (defined with the lineup's refusals)
+typedef struct { int none, pos, depth, breaks, topped; double limit; } LfNone;
+static LfNone LFN[4];   // by what was asked: depth REROOTS or not, breaks or not
 static void linesFind(int depth, int breaks) {
   // the same lines asked for twice in a decision are found once
   if (lfDecision == btDecision && lfDepth == depth && lfBreaks == breaks) return;
@@ -3627,6 +3632,9 @@ static void linesFind(int depth, int breaks) {
   lfEnd = paWork + LINESWORK;
   lsTopped = BIN[IN_TOPPED] != 0; lsBreaks = breaks;
   double lsLimit = linesLimit(breaks);
+  LfNone *fn = &LFN[(breaks ? 1 : 0) + (depth == REROOTS ? 2 : 0)];
+  if (fn->none && fn->pos == raPos && fn->depth == depth && fn->breaks == breaks && fn->topped == lsTopped && lsLimit <= fn->limit) { lfEnd = 0; return; }
+  double lf0 = paWork, lfWorkLeft = workLeft();
   const int32_t *saveBase = ENGINE_BASE;
   uint32_t saveCan[WMAX];
   for (int c = 0; c < WMAX; c++) saveCan[c] = ENGINE_CAN[c];
@@ -3646,6 +3654,9 @@ static void linesFind(int depth, int breaks) {
   ENGINE_BASE = saveBase; ENGINE_WAITS = 0;
   for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = saveCan[c];
   nPfx = 0; pfxT = 0; lfEnd = 0;
+  // remembered only when the search had its whole share of work to find them
+  fn->none = nLines == 0 && lfWorkLeft >= LINESWORK; fn->pos = raPos; fn->depth = depth; fn->breaks = breaks; fn->topped = lsTopped; fn->limit = lsLimit;
+  (void)lf0;
 }
 // A line's rank: a break before a clear, then the sooner done (est, on the
 // clock) -- never the fewer swaps. Equal: by the swaps themselves, so the rank
