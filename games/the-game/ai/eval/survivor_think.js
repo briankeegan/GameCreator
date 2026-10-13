@@ -391,7 +391,14 @@ module.exports = function think(cfg) {
           var rdA = rmsA >= 30 ? attacker[A.readyTime ? 'readyInTime' : 'readyFor'](board, m.hold, readyArr, { ms: rmsA }) : null;
           if (rdA && !rdA.ready && rdA.setup) put(arbKey(rdA.setup), -1, { src: 'ready' });
         }
-        if (!busyA && !toppedForRaise && fullTop(board) < raiseCap(board, comingRows, A) && bot._canRaise()) put('raise', -0.3, { src: 'raise' });
+        // THE RAISE: with nothing on the board, nothing on its way and nothing popping, the stack is raised -- before any setup up to
+        // calmRaiseTo, and before a planned fire too while it is under lowTop; otherwise only up to raiseCap, after the setups
+        if (!busyA && !toppedForRaise && bot._canRaise()) {
+          var topA = fullTop(board), calmA = !garbA && comingRows === 0 && !(board.incoming || []).length;
+          if (calmA && topA < (A.lowTop || 6)) put('raise', -1.4, { src: 'raise' });
+          else if (calmA && topA < (A.calmRaiseTo || 9)) put('raise', -0.6, { src: 'raise' });
+          else if (topA < raiseCap(board, comingRows, A)) put('raise', -0.3, { src: 'raise' });
+        }
         bot.SURVIVE_SEARCH_BUDGET = due ? Math.max(CHEAP, Math.min(FULL, Math.round((due - Date.now()) * nodesPerMs * SPEND))) : FULL;
         var lastResA = !!toppedReal;
         // HOLLOW UNDER THE PILE: the empty cells with garbage above them in their column, on a settled grid (-2 garbage, 0 empty).
