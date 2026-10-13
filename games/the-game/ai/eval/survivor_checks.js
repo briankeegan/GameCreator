@@ -81,7 +81,7 @@ function toppedOrNearly(board, toppedReal, A) {
 }
 // Why the stack is in jeopardy, or '' when it is not: 'topped' (topped out, or the next row up would, within nearFrames), 'tall' (its
 // height with the garbage on it at dangerTop or more and within dangerFrames of the top), 'landing' (garbage falling now will top the stack out when it lands), or 'incoming' (a hit landing within dangerSoon
-// frames that would overflow the board: rows coming and queued on top of its height, dangerOver rows over the 12).
+// frames that would overflow the board: rows coming and queued on top of its height, dangerOver rows over the 12 -- a hit that reaches row 12 tops it out).
 // arrivals: the garbage on its way, as the bot's serverArrivals ({ at: frames to landing }).
 function dangerWhy(board, arrivals, comingRows, toppedReal, A) {
   var queued = 0, soon = Infinity;
@@ -91,7 +91,7 @@ function dangerWhy(board, arrivals, comingRows, toppedReal, A) {
   if (toppedOrNearly(board, toppedReal, A)) return 'topped';
   if (full >= (A.dangerTop || 11) && framesToTop(board) <= (A.dangerFrames || 240)) return 'tall';
   if (projectedTop(board) >= (board.height || 12)) return 'landing';
-  if (soon <= (A.dangerSoon || 120) && full + comingRows + queued >= 12 + (A.dangerOver === undefined ? 1 : A.dangerOver)) return 'incoming';
+  if (soon <= (A.dangerSoon || 120) && full + comingRows + queued >= 12 + (A.dangerOver || 0)) return 'incoming';
   return '';
 }
 function inDanger(board, arrivals, comingRows, toppedReal, A) { return dangerWhy(board, arrivals, comingRows, toppedReal, A) !== ''; }
