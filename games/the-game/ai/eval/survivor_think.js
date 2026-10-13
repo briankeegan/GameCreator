@@ -462,9 +462,10 @@ module.exports = function think(cfg) {
       }
       // A HOLD IS TIME TO THINK (thinkOnHold): the whole time the answer has left goes to the next big move -- a deep search for a fire or the
       // setup toward one -- and the survival search is asked again with it wanted: it is played if the search proves it lives, else the hold stands
-      if (A && A.thinkOnHold && d.kind === 'hold' && !cascadeLive(board, true) && due) {
+      if (A && A.thinkOnHold && d.kind === 'hold' && !cascadeLive(board, true) && due && board.clock - (bot._lastThink === undefined ? -9999 : bot._lastThink) >= (A.thinkEvery || 36)) {
         var hrem = due - Date.now() - 2 * DEADLINE_MARGIN_MS;
         if (hrem > (A.holdMinMs || 350)) {
+          bot._lastThink = board.clock;
           try {
             if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
             var hp = attacker.plan(board, m.hold, { ms: Math.min(A.holdMs || 500, Math.round(hrem * 0.45)), width: A.bigWidth || 100, depth: A.bigDepth || 14, pool: A.pool || 250, minChain: A.minChain === undefined ? 4 : A.minChain, arrivals: arrivals, rate: A.rate });
