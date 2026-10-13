@@ -4630,6 +4630,10 @@ static int maskBreaks(const int32_t *st, const int32_t *sw, int n) {
   }
   return 0;
 }
+#define LUREJN 8192
+static u64 LUREJ[LUREJN];   // the lines lineupRank turned down, by position and line
+static int luSkipped;   // lines of this search answered from LUREJ, for the log
+static JLOCAL int luCacheable;   // lineupRank turned the line down on what the position says (not ready, does not live), never on work refused or on the rank asked
 static int luWhy[6];   // why lineupRank turned a line down, for the bot log: 0 needs more than any rank, 1 no break and a break wanted, 2 not ready after, 3 does not live, 4 no rank, 5 ranked
 // THE MASKS FIRST: a line whose board, with the slab placed where it rests, has no break in reach even on the masks
 // is not asked of the engine -- the engine's readiness replays the line and searches the landing, a hundred times the masks' cost
@@ -4640,18 +4644,20 @@ static int maskReadyAfter(const int32_t *post) {
   return inTimeOf(placed ? SLABST : post, sitBreaks);
 }
 static int lineupRank(const int32_t *st, const int32_t *post, const int32_t *sw, int n, int need) {
+  luCacheable = 0;
   if (need > LUBEST) { luWhy[0]++; return 0; }
   int mb = maskBreaks(st, sw, n);
   if (!mb && need > 3) { luWhy[1]++; return 0; }
-  if (!mb && !maskReadyAfter(post)) { luWhy[2]++; return 0; }
-  if (!mb && !readyAfter(sw, n)) { luWhy[2]++; return 0; }
+  if (!mb && !maskReadyAfter(post)) { luWhy[2]++; luCacheable = 1; return 0; }
+  int refused0 = rdRefused;
+  if (!mb && !readyAfter(sw, n)) { luWhy[2]++; luCacheable = rdRefused == refused0; return 0; }
   int v = lineJudge(sw, n, 0);
-  if (!(v & LV_LIVES)) { luWhy[3]++; return 0; }
+  if (!(v & LV_LIVES)) { luWhy[3]++; luCacheable = !judgeRefused; return 0; }
   luHollow = HOLLOW(LNO);
   int spends = LNO[3] > LNA[3];
   int rank = (v & LV_BREAKS) ? 4 : 0;
   if (!rank && need <= 3 && (!mb || readyAfter(sw, n))) rank = 2;
-  if (!rank) { luWhy[4]++; return 0; }
+  if (!rank) { luWhy[4]++; luCacheable = rdRefused == refused0 && !judgeRefused; return 0; }
   luWhy[5]++;
   return rank + !spends;
 }
@@ -4665,8 +4671,15 @@ static int sitLineup(const int32_t *res, const int32_t *sw, int n, double at, vo
   luNodes++;
   if (outPast(x->B, LUMOST, at)) return SIT_END;
   if (!lineupNear(res + R_INTS, sw[2 * n - 2], sw[2 * n - 1])) { luNearCut++; return SIT_END; }
+  // A LINE TURNED DOWN ON THE POSITION STAYS TURNED DOWN WHILE THE POSITION STANDS (raPos): a pop holds one position for hundreds
+  // of frames, and the lineup's work goes to the lines it has not judged
+  u64 key = 1469598103934665603ull ^ (u64)raPos;
+  for (int q = 0; q < 2 * n; q++) key = (key ^ (u64)(unsigned)sw[q]) * 1099511628211ull;
+  key |= 1;
+  if (LUREJ[key & (LUREJN - 1)] == key) { luSkipped++; return SIT_GROW; }
   double rk = NOWMS2();
   int rank = lineupRank(x->st0, res + R_INTS, sw, n, !x->B->has ? 0 : (int)x->B->score);
+  if (!rank && luCacheable) LUREJ[key & (LUREJN - 1)] = key;
   luRanks++; luRankMs += NOWMS2() - rk;
   if (rank) bestTake(x->B, luScore(rank), at, sw, n);
   return rank >= 4 ? SIT_END : SIT_GROW;
@@ -4687,7 +4700,7 @@ static Dec lineupFirst(Dec d) {
   uint32_t can0[WMAX];
   Wait waits0[32][WMAX];
   if (lineState(0, 0, st0, can0, waits0, cur, &t) != 0) { LUWHY(4); return d; }
-  luStates = luRanks = luReady = luNearCut = luNodes = 0; for (int q = 0; q < 6; q++) luWhy[q] = 0; luStateMs = luRankMs = luReadyMs = 0;
+  luStates = luRanks = luReady = luNearCut = luNodes = luSkipped = 0; for (int q = 0; q < 6; q++) luWhy[q] = 0; luStateMs = luRankMs = luReadyMs = 0;
   Best B = { 0 };
   // THE LINEUP'S SHARE: what the decision has left once the stages after it keep theirs
   double luEnd = stageLeaves(4);
@@ -4703,7 +4716,7 @@ static Dec lineupFirst(Dec d) {
 #endif
   if (!(paWork < luEnd)) LUWHY(5);
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINEUPSTATS nodes %d ranked %d nearcut %d why %d %d %d %d %d %d rootkids %d legal %d filt %d can %d late %d left %.0f work %.0f of %.0f\n", luNodes, luRanks, luNearCut, luWhy[0], luWhy[1], luWhy[2], luWhy[3], luWhy[4], luWhy[5], sitRootKids, sitRootLegal, sitRootFilt, sitRootCan, sitRootLate, sitRootLeft, paWork, luEnd); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINEUPSTATS skipped %d nodes %d ranked %d nearcut %d why %d %d %d %d %d %d rootkids %d legal %d filt %d can %d late %d left %.0f work %.0f of %.0f\n", luSkipped, luNodes, luRanks, luNearCut, luWhy[0], luWhy[1], luWhy[2], luWhy[3], luWhy[4], luWhy[5], sitRootKids, sitRootLegal, sitRootFilt, sitRootCan, sitRootLate, sitRootLeft, paWork, luEnd); }
 #endif
   if (!B.has) { LUWHY(6); return d; }
   if (B.n == 1 && d.kind == K_SWAP && d.hasMove && d.sr == B.sw[0] && d.sc == B.sw[1]) { LUWHY(7); return d; }
