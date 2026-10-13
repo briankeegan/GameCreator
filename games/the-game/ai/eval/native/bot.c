@@ -4366,8 +4366,12 @@ static Dec arbitrate(Dec d) {
     if (!breaking && aloneOnEngine() && aloneDie(1 << 20) > LIVEHORIZON && d.kind == K_HOLD && !BT->nLine && workLeft() > 4 * jdCost) {
       int before = n; n = reachOption(O, n, d, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0); if (n > before) ra = before;
     }
-    // downtime: the board left alone loses no health within the horizon, or between actions: a line that saves the board is kept and the setup must spare it
-    if (!breaking && aloneOnEngine() && (aloneDie(1 << 20) > LIVEHORIZON || saSet) && (d.kind == K_HOLD || O[at].early)) { setupAt = n; n = setupOptions(O, n, d); } }
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "SETUPGATE breaking %d alone %d aloneDie %d live %d line %d saSet %d hold %d early %d\n", breaking, aloneOnEngine(), aloneDie(1 << 20), (int)LIVEHORIZON, (int)LINEHORIZON, saSet, d.kind == K_HOLD, O[at].early); }
+#endif
+    // downtime: the board left alone loses no health within the horizon, or between actions: a line that saves the board is kept and the setup must spare it;
+    // the setups stand beside the hold wherever the hold is an option, whatever swap the stages proposed
+    if (!breaking && aloneOnEngine() && (aloneDie(1 << 20) > LIVEHORIZON || saSet) && (d.kind == K_HOLD || ih >= 0 || O[at].early)) { setupAt = n; n = setupOptions(O, n, d); } }
   // the line that saves the board: what an option must still be able to play after it (getsBackInTime)
   int32_t sv[2 * LINEMAX]; int sn = 0;
   if (saSet && aloneOnEngine()) {
