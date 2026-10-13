@@ -165,7 +165,8 @@ module.exports = function think(cfg) {
       var realNear = !!(A && A.realTopped && m.realTop >= 11 && m.realFtt <= (A.nearFrames || 90));
       if (realNear) toppedEarly = true;
       // a three is played only on a stack the engine says is topped out (a panel in the top row), and then only as the last resort
-      var toppedReal = A && A.realTopped ? !!m.topped : (!!m.topped || (typeof board.isToppedOut === 'function' && board.isToppedOut()));
+      // (a stack topped out with no stop time is lost the frame it is: a three is the last resort from nearFrames before that, on the stack as the game shows it)
+      var toppedReal = A && A.realTopped ? (!!m.topped || realNear) : (!!m.topped || (typeof board.isToppedOut === 'function' && board.isToppedOut()));
       bot.toppedOutNow = toppedReal;
       bot.realToppedOnly = !!(A && A.realTopped);
       // (danger is the stack in jeopardy, not the stack raised high: its height counting the garbage on it, or what is about to land on it
