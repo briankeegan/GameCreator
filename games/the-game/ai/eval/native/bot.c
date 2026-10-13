@@ -5206,10 +5206,15 @@ static double readyGuide(const int32_t *st) {
 #define GP(r, c) ((c) >= 1 && (c) <= W && (r) >= 1 && (U(b, OCC + (c)) & (1u << ((r) - 1))) && !(U(b, GARB + (c)) & (1u << ((r) - 1))) && !(U(b, INERT + (c)) & (1u << ((r) - 1))))
   double best = 2 * READYGUIDENONE + 4;
   for (int c = 1; c <= W; c++) {
-    uint32_t g = U(b, GARB + c), pan = U(b, OCC + c) & ~g & ~U(b, INERT + c);
-    if (g) pan &= (1u << __builtin_ctz(g)) - 1u;   // the panels under the lowest garbage
+    uint32_t g = U(b, GARB + c), occ = U(b, OCC + c), pan = occ & ~g & ~U(b, INERT + c), colr = 0;
+    for (int a = 1; a <= b[O_N]; a++) colr |= (uint32_t)CL(b, a, c);
+    pan &= colr;   // a panel mid-pop has no colour: it is gone by the time a swap is pressed
+    if (!g) continue;
+    int gb = __builtin_ctz(g);   // the cells under the lowest garbage
+    pan &= (1u << gb) - 1u;
     int r = pan ? 32 - __builtin_clz(pan) : 0;
-    if (r < 1 || !(g & (1u << r))) continue;      // not a contact column: no garbage directly over its top panel
+    // a contact column: nothing but cells still occupied (a pop under way) between its top panel and the garbage
+    if (r < 1 || (gb > r && ((occ >> r) & ((1u << (gb - r)) - 1u)) != (1u << (gb - r)) - 1u)) continue;
     int col = colourFirst(b, c, 1u << (r - 1));
     if (!col) continue;
     int v = 1;
@@ -5259,7 +5264,10 @@ static int readiesLine(Dec d, int dieRef, int spare, int32_t *sw, int *n, int *r
   if (lineLanded(0, 0, RWL, &tLand) != 0) return -1;
   if (lineState(0, 0, rq0, can0, wt0, cur0, &t0) != 0 || paWork >= optLine()) return 0;
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "READIES start: lands in %d, time left %.0f, search time %.0f, work %.0f, cursor %d,%d at %d\n", tLand, timeLeft(), dmin(tLand, timeLeft()), optLine() - paWork, cur0[0], cur0[1], t0); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; SLABW = (int)BIN[IN_SLABW]; SLABH = (int)BIN[IN_SLABH]; SLABC = (int)BIN[IN_SLABC];
+    int pl = slabPlace(rq0, SLABST), contacts = 0; const int32_t *gb = pl > 0 ? SLABST : rq0;
+    for (int c = 1; c <= gb[O_W]; c++) { uint32_t g = U(gb, GARB + c), occ = U(gb, OCC + c), pan = occ & ~g & ~U(gb, INERT + c), colr = 0; for (int a = 1; a <= gb[O_N]; a++) colr |= (uint32_t)CL(gb, a, c); pan &= colr; if (!g) continue; int gbi = __builtin_ctz(g); pan &= (1u << gbi) - 1u; int r = pan ? 32 - __builtin_clz(pan) : 0; if (r >= 1 && !(gbi > r && ((occ >> r) & ((1u << (gbi - r)) - 1u)) != (1u << (gbi - r)) - 1u)) { contacts++; } }
+    fprintf(BLOG, "READIES start: lands in %d, time left %.0f, search time %.0f, work %.0f, cursor %d,%d at %d | slab %dx%d at col %d placed %d, contact columns %d, guide %.0f\n", tLand, timeLeft(), dmin(tLand, timeLeft()), optLine() - paWork, cur0[0], cur0[1], t0, SLABW, SLABH, SLABC, pl, contacts, readyGuide(rq0)); }
 #endif
   sitRootLegal = sitRootFilt = sitRootCan = sitRootLate = 0;
   RqCtx x = { dieRef, spare, d.kind == K_SWAP && d.hasMove ? d.sr : 0, d.kind == K_SWAP && d.hasMove ? d.sc : 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, readyGuide(rq0) };
