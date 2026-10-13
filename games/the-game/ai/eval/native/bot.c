@@ -4542,6 +4542,8 @@ static int breakWithin(const int32_t *st, double left) {
 // PAST THE LINES: when none of the lines breaks, the shared search is asked
 // again for a break with what the decision has left of its work, and the line
 // it finds is played if the engine says it lives and breaks -- in the time there is.
+static int raPos;   // the position (below)
+static int bdNone, bdPos; static double bdTime;   // the position (raPos) and the time left for which breakDeeper found no break within its work
 static Dec breakDeeper(Dec d) {
   if (!BIN[IN_HASPA]) return d;
   resolve(DBASE, KBR, 1);
@@ -4549,9 +4551,17 @@ static Dec breakDeeper(Dec d) {
   static ST kb0; stcpy(kb0, KBR + R_INTS);
   kbEnd = stageLeaves(2);
   if (paWork >= kbEnd) return d;
+  // NO BREAK IN THE TIME THERE IS STAYS SO WHILE THE POSITION STANDS (raPos), as a lineup turned down does: a search that ended with
+  // its frontier spent, not its work, has said there is none within that time, and on the same position there is none within less
+  if (bdNone && bdPos == raPos && timeLeft() <= bdTime) return d;
   int32_t sw[2 * LINEMAX]; int n = 0;
-  if (!searchInTime(kb0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, timeLeft(), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0,
-                    0, 0, kbEnd - paWork, sitBreaks, 0, sw, &n, 0)) return d;
+  double bd0 = paWork, bdT = timeLeft();
+  if (!searchInTime(kb0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, bdT, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0,
+                    0, 0, kbEnd - paWork, sitBreaks, 0, sw, &n, 0)) {
+    bdNone = paWork - bd0 < 0.9 * (kbEnd - bd0); bdPos = raPos; bdTime = bdT;
+    return d;
+  }
+  bdNone = 0;
   if ((lineJudge(sw, n, 0) & (LV_LIVES | LV_BREAKS)) != (LV_LIVES | LV_BREAKS)) return d;
   LineC l = { 0 }; l.n = n; l.brk = 1; for (int k = 0; k < 2 * n; k++) l.sw[k] = sw[k];
   lineLast = 3;
