@@ -349,7 +349,7 @@ function pressAudit(match, board, move, src, at) {
     if (kind === 'three') {
       var topped = toppedP;
       var k = 'press3_' + (topped ? 'topped' : 'open') + '_' + src; st[k] = (st[k] || 0) + 1;
-      if (pressLogged++ < 200) console.error('PRESS3 ' + (topped ? 'TOPPED' : 'OPEN') + ' t=' + Math.round((board.clock - 189) / 60) + 's clock ' + board.clock + ' at ' + at + ' top ' + CK.fullTop(board) + ' panels ' + CK.panelTop(board) + ' src ' + src + ' stop ' + ((board.stopTime || 0) + (board.preStopTime || 0)) + ' coming ' + ((board.incoming || []).length));
+      if (pressLogged++ < 200) console.error('PRESS3 ' + (topped ? 'TOPPED' : 'OPEN') + ' t=' + Math.round((board.clock - 189) / 60) + 's score ' + (board.score || 0) + ' clock ' + board.clock + ' at ' + at + ' top ' + CK.fullTop(board) + ' panels ' + CK.panelTop(board) + ' src ' + src + ' stop ' + ((board.stopTime || 0) + (board.preStopTime || 0)) + ' coming ' + ((board.incoming || []).length));
     }
   } catch (e) { /* the audit never costs a move */ }
 }
