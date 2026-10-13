@@ -197,6 +197,8 @@ var server = net.createServer(function (sock) {
           wb.inCountdown = false; wb.countdownTimer = null; wb.stopWatchIsRunning = true; wb.doCountdown = false; wb.animatingCursorDuringCountdown = false;
           wb.clock = Math.max(wb.clock, PA.COUNTDOWN_TOTAL + 1);
           LINK.post({ type: 'warm', packed: require('v8').serialize(wb) });
+          // the frame loop's own paths run once on it too, so the first frame of play is not the one that compiles them
+          try { arrivalsOf(m.state); match.planned(wb.clock + 1, NEXT); match.predictNative(wb, wb.clock + 60, { left: 0, started: false }, []); LINK.hands.idle(wb, { left: 0, started: false }); } catch (e) { /* a warm-up never costs a match */ }
         }
         reply = { ok: true };
       } else if (m.t === 'bye') { if (match) { console.log('match over: ' + overStats(match)); match.dump(); } match = null; reply = { ok: true }; }
