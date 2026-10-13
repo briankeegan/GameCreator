@@ -123,6 +123,10 @@ static JLOCAL double scoreEnd;   // a scored candidate's share of the work ends 
 static double scoreShare;        // the share each candidate scoreAll scores gets
 static double rdW0;              // the work done when the decision began
 static double optLine(void);
+#ifndef __wasm__
+static void probeBreaks(void);
+static int probeOn;
+#endif
 static double nz(double v) { return v != v ? 0 : v; }
 static double dmax(double a, double b) { return a > b ? a : b; }
 static double dmin(double a, double b) { return a < b ? a : b; }
@@ -1670,6 +1674,9 @@ static Dec decideCore(void) {
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "READY base %d readyFirst %d incoming %g slab %d,%d,%d telegraph %d,%d in %g\n", baseReady, readyFirst, BIN[IN_INCOMING], (int)BIN[IN_SLABW], (int)BIN[IN_SLABH], (int)BIN[IN_SLABC], (int)BIN[IN_TGW], (int)BIN[IN_TGH], BIN[IN_LEAD]); }
 #endif
+#ifndef __wasm__
+  probeBreaks();
+#endif
   if (readyFirst) {
     mainOptions(base, deadline, lookDepth, digging);
 #ifndef __wasm__
@@ -2662,6 +2669,9 @@ static JLOCAL double taskEnd;   // a parallelDo task: where its share of the dec
 // replay that is optional stops at it, or the decision is cut.
 static double workLeft(void) {
   extern PATLS double paWork;
+#ifndef __wasm__
+  if (probeOn) return 1e9;
+#endif
   double e = inWorker ? taskEnd : optLine();
   if (scoreEnd > 0 && scoreEnd < e) e = scoreEnd;
   return e - paWork;
@@ -2813,6 +2823,28 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
 }
 // the line wanted: one that breaks
 static int sitBreaks(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) { (void)sw; (void)n; (void)at; (void)ctx; return res[R_SCOPE] == SC_BROKE ? SIT_TAKE : SIT_GROW; }
+#ifndef __wasm__
+// GC_PROBE=C: every 10th stack clock from C for 300 frames, the soonest break any line reaches on the board as it stands, searched
+// without a work bound (storage only), beside what the decision found -- a diagnostic for the log, never the decision
+static void probeBreaks(void) {
+  extern char *getenv(const char *); extern int atoi(const char *);
+  static int want = -2; if (want == -2) { const char *e = getenv("GC_PROBE"); want = e ? atoi(e) : -1; }
+  int clk = (int)BIN[IN_STACKCLOCK];
+  if (want < 0 || clk < want || clk >= want + 300 || (clk - want) % 10) return;
+  extern PATLS double paWork; double keep = paWork;
+  static ST st; int32_t cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
+  probeOn = 1;
+  if (lineState(0, 0, st, can, w, cur, &t) == 0) {
+    int32_t sw[2 * LINEMAX]; int n = 0; double at = 0;
+    int got = searchInTime(st, cur[0], cur[1], t, 0, timeLeft(), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can, w, 1e9, sitBreaks, 0, sw, &n, &at);
+    extern int fprintf(void *, const char *, ...); extern void *stderr;
+    fprintf(stderr, "PROBE clock %d break %d swaps %d at %.0f left %.0f work %.0f", clk, got, n, at, timeLeft(), paWork - keep);
+    for (int q = 0; q < n; q++) fprintf(stderr, " %d,%d", sw[2 * q], sw[2 * q + 1]);
+    fprintf(stderr, "\n");
+  }
+  probeOn = 0; paWork = keep;
+}
+#endif
 // A BREAK IN TIME, ON THE MASKS: a break -- any length -- pressed before the
 // board loses health (framesToDeath), walked from the cursor: soonest first,
 // with a small share of work, since it is asked of every option and
