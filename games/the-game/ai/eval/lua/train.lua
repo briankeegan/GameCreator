@@ -241,11 +241,11 @@ while f < FRAMES do
   local tk1 = now()
   if not FIXED_BUDGET then C.bot_time(ThinkBudget.ceilingMillis(), lastThought * 1000, ThinkBudget.ceilingMillis() - loadMs) end
   -- THE TELEGRAPH, as the game shows it above the attacker: the next block it has queued, its size, and the frames until it reaches this stack
-  -- (GarbageQueue: a staged piece leaves frameEarned + STAGING_DURATION later; a piece in transit arrives at its delivery clock)
+  -- (GarbageQueue: a staged piece leaves frameEarned + STAGING_DURATION later and lands GARBAGE_DELAY_LAND_TIME after that; a piece in transit lands at its delivery clock)
   do
     local best, og, now_ = nil, foe.outgoingGarbage, foe.stopWatch
     for _, g in ipairs(og.stagedGarbage) do
-      local eta = g.frameEarned + (GARBAGE_TRANSIT_TIME + GARBAGE_TELEGRAPH_TIME + 1) - now_
+      local eta = g.frameEarned + (GARBAGE_TRANSIT_TIME + GARBAGE_TELEGRAPH_TIME + 1) + GARBAGE_DELAY_LAND_TIME - now_
       if not best or eta < best.eta then best = { w = g.width, h = g.height, eta = eta } end
     end
     for clock, list in pairs(og.garbageInTransit) do
