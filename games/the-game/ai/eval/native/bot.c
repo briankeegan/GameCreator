@@ -91,10 +91,15 @@ static int nBots = 0;
 static Bot *BT;
 static double BIN[IN_SIZE], BOUT[256];
 // the game's ThinkBudget is the only clock: the bot reads none
-#define NOWMS2() 0.0
 #ifndef __wasm__
 extern char *getenv(const char *);
 extern int atoi(const char *);
+#endif
+#ifdef __wasm__
+#define NOWMS2() 0.0
+#else
+extern double paClockMs(void);
+#define NOWMS2() (botTraceOn ? paClockMs() : 0.0)   // the trace's own clock: a decision reads none
 #endif
 int botTraceOn;   // the native drill's GC_BOTLOG: the pool, as the engine plays it
 void *botLogTo;    // where the bot log goes: stderr, or a run's own buffer (train.lua's death report)
@@ -6342,7 +6347,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   }
 #ifndef __wasm__
   { extern char *getenv(const char *); extern int fprintf(void *, const char *, ...); extern void *stderr;
-    if (0) { fprintf(BLOG, "STAGES%s pool %.3f", paBudgetOut() ? " OUT" : "", dcCandMs); fprintf(BLOG, " SA %.3f %d MO %.3f", saMs, saN, moMs); saMs = moMs = 0; saN = 0; for (int i = 0; i < k; i++) fprintf(BLOG, " %.0f/%.3f/%d/%.3f", ws[i] - (i ? ws[i - 1] : w0), ts[i] - (i ? ts[i - 1] : t0), js[i] - (i ? js[i - 1] : 0), jm[i] - (i ? jm[i - 1] : 0)); fprintf(BLOG, "\n"); } }
+    if (botTraceOn) { fprintf(BLOG, "STAGES%s pool %.3f", paBudgetOut() ? " OUT" : "", dcCandMs); fprintf(BLOG, " SA %.3f %d MO %.3f", saMs, saN, moMs); saMs = moMs = 0; saN = 0; for (int i = 0; i < k; i++) fprintf(BLOG, " %.0f/%.3f/%d/%.3f", ws[i] - (i ? ws[i - 1] : w0), ts[i] - (i ? ts[i - 1] : t0), js[i] - (i ? js[i - 1] : 0), jm[i] - (i ? jm[i - 1] : 0)); fprintf(BLOG, "\n"); } }
 #endif
   ENGINE_BASE = 0;
 #ifndef __wasm__
