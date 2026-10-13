@@ -225,7 +225,26 @@ module.exports = function think(cfg) {
           // a chain going is continued: the line of swaps made while it pops that makes it longest, else it is left alone
           var ex = A.minRows && lowPeak(board) < A.minRows ? { seq: [], cells: 0, base: 0 } : attacker.extend(board, m.hold, { ms: Math.min(A.extendMs || 250, due ? Math.max(40, due - Date.now() - DEADLINE_MARGIN_MS) : 250), width: A.extendWidth || 40, depth: A.extendDepth || 6 });
           if (ex.seq.length && ex.cells >= ex.base + (A.extendGain || 6)) { d = { kind: 'swap', move: ex.seq[0], overruled: true, src: 'extend' }; attackLine = ex.seq.slice(1); attackMove = ex.seq[0]; bot._extends = (bot._extends || 0) + 1; }
-          else { d = { kind: 'hold', overruled: true }; bot._chainHolds = (bot._chainHolds || 0) + 1; }
+          else {
+            // A CHAIN POPPING IS NOT THE END OF THE ATTACK: its stop time is spent setting up the next fire -- a swap the engine shows leaves what
+            // is popping as it is (no shorter a chain, no fewer cells) -- and the survival search has the last word on it (survivalFirst)
+            var bsw = null;
+            if (A.setupBusy) {
+              if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
+              var bms = due ? Math.min(A.busyMs || 120, due - Date.now() - 2 * DEADLINE_MARGIN_MS - 100) : (A.busyMs || 120);
+              var bp = bms >= 40 ? attacker.plan(board, m.hold, { ms: bms, width: 30, depth: 4, pool: 100, minChain: A.minChain === undefined ? 4 : A.minChain, arrivals: arrivals, rate: A.rate }) : null;
+              var bmv = bp && (bp.setup || bp.anySwap);
+              if (bmv) {
+                var sum = function (r) { return r.combos.reduce(function (a, b) { return a + b; }, 0); };
+                var b0 = board.copy(); b0.behaviours = Object.assign({}, b0.behaviours, { passiveRaise: false }); var r0 = b0.settle();
+                var b1 = board.copy(); b1.behaviours = Object.assign({}, b1.behaviours, { passiveRaise: false }); b1.curRow = bmv[0]; b1.curCol = bmv[1];
+                var r1 = b1.tryQueueSwap(bmv[0], bmv[1]) ? b1.settle() : null;
+                if (r1 && r1.chain >= r0.chain && sum(r1) >= sum(r0)) bsw = bmv;
+              }
+            }
+            if (bsw) { d = { kind: 'swap', move: bsw, overruled: true, src: 'busySetup' }; bot._busySetups = (bot._busySetups || 0) + 1; }
+            else { d = { kind: 'hold', overruled: true }; bot._chainHolds = (bot._chainHolds || 0) + 1; }
+          }
         }
         else if (!oppOut && warmPlan && !warmPlan.used && warmPlan.ap.seq.length && warmPlan.ap.cells >= 1 && !(A.minRows && warmPlan.ap.after < A.minRows) && warmPlan.key === boardKey(board)) {
           // the plan made in the countdown, while the board is still the one it was made for
@@ -435,6 +454,21 @@ module.exports = function think(cfg) {
       d = SP.overrule(d, noAimed ? Object.assign({}, prep, { br: null, want: {} }) : prep, bot);   // a lineup while a slab pops (survivor_prefer.js)
       guard3();
       guardTopped();
+      // A SWAP IS NOT MADE TO BE UNDONE (noPingPong): the pair just swapped is not swapped again within pingFrames unless this one clears
+      // something -- the setup that keeps coming back changes nothing. The stack is raised instead, or the move is the hold.
+      if (A && A.noPingPong && d.kind === 'swap' && d.move) {
+        var pk = d.move[0] + ',' + d.move[1], again = (bot._swapLog || []).filter(function (e) { return e.pk === pk && m.at - e.at < (A.pingFrames || 150) && m.at >= e.at; }).length > 0;
+        if (again) {
+          var tp = board.copy(); tp.behaviours = Object.assign({}, tp.behaviours, { passiveRaise: false }); tp.curRow = d.move[0]; tp.curCol = d.move[1];
+          var rp = tp.tryQueueSwap(d.move[0], d.move[1]) ? tp.settle() : null;
+          if (!(rp && rp.combos.length)) {
+            bot._pingPong = (bot._pingPong || 0) + 1;
+            d = !cascadeLive(board, true) && !toppedForRaise && fullTop(board) < raiseCap(board, comingRows, A) && bot._canRaise() ? { kind: 'raise', overruled: true } : { kind: 'hold', overruled: true };
+            attackLine = null; attackMove = null;
+          }
+        }
+        if (d.kind === 'swap' && d.move) { bot._swapLog = (bot._swapLog || []).filter(function (e) { return m.at - e.at < 400; }).concat([{ pk: d.move[0] + ',' + d.move[1], at: m.at }]).slice(-12); }
+      }
       var overruled = !!d.overruled;
       var took = Date.now() - t1;
       if (took > 20) { rates.push(bot.SURVIVE_SEARCH_BUDGET / took); if (rates.length > 8) rates.shift(); }
@@ -464,7 +498,7 @@ module.exports = function think(cfg) {
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
             mem: NativeMem(),
             breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
-            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0, useless3: bot._useless3 || 0, toppedFree: bot._toppedFree || 0, survAsked: bot._survivalAsked || 0, survOver: bot._survivalOver || 0 } };
+            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0, useless3: bot._useless3 || 0, toppedFree: bot._toppedFree || 0, survAsked: bot._survivalAsked || 0, busySetups: bot._busySetups || 0, pingPong: bot._pingPong || 0, survOver: bot._survivalOver || 0 } };
     } catch (e) {
       if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
       else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e) + ' [inc ' + (board && board.incoming ? board.incoming.length : '?') + ', arr ' + (m.arrivals ? m.arrivals.length : '?') + ']', ms: Date.now() - t0 };
