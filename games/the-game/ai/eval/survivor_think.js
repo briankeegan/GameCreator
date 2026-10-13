@@ -235,7 +235,7 @@ module.exports = function think(cfg) {
         if (busy && (!oppOut || aggro)) {
           // a chain going is continued: the line of swaps made while it pops that makes it longest, else it is left alone
           var ex = A.minRows && lowPeak(board) < A.minRows ? { seq: [], cells: 0, base: 0 } : attacker.extend(board, m.hold, { ms: Math.min(A.extendMs || 250, due ? Math.max(40, due - Date.now() - DEADLINE_MARGIN_MS) : 250), width: A.extendWidth || 40, depth: A.extendDepth || 6 });
-          if (ex.seq.length && ex.cells >= ex.base + (A.extendGain || 6)) { d = { kind: 'swap', move: ex.seq[0], overruled: true, src: 'extend' }; attackLine = ex.seq.slice(1); attackMove = ex.seq[0]; bot._extends = (bot._extends || 0) + 1; }
+          if (ex.seq.length && ex.cells >= ex.base + (A.extendGain || 6)) { d = { kind: 'swap', move: ex.seq[0], overruled: true, src: 'extend', cells: ex.cells }; attackLine = ex.seq.slice(1); attackMove = ex.seq[0]; bot._extends = (bot._extends || 0) + 1; }
           else {
             // A CHAIN POPPING IS NOT THE END OF THE ATTACK: its stop time is spent setting up the next fire -- a swap the engine shows leaves what
             // is popping as it is (no shorter a chain, no fewer cells) -- and the survival search has the last word on it (survivalFirst)
@@ -296,7 +296,7 @@ module.exports = function think(cfg) {
           if (attackLogged++ < 60) console.error('ATTACK clock ' + board.clock + ' out ' + oppOut + ' quiet ' + quiet + ' plan ' + (ap ? ap.cells + ' cells chain ' + ap.chain + ' swaps ' + ap.seq.length + ' first ' + JSON.stringify(ap.seq[0] || null) + ' setup ' + JSON.stringify(ap.setup) + ' base ' + ap.base + ' in ' + ap.ms + ' ms' : 'none'));
           // a board that can be built on while it is low and little is coming: garbage on it or not, the bot builds a chain, it does not break
           var building = unlock || !oppOut && (!garb || (!A.alwaysRaise && SH.top(board) < (A.setupTop || 9) && comingRows <= (A.setupComing === undefined ? 3 : A.setupComing)));
-          if (ap && ap.cells >= floor && ap.seq.length && !(A.minRows && ap.after < A.minRows) && !(toppedFree && ap.seq.length * 18 + 30 > stopLeft) && leavesBreakTime(ap)) { d = { kind: 'swap', move: ap.seq[0], overruled: true, src: 'fire', planChain: ap.chain }; bot._attackCells = ap.cells; attackLine = ap.seq.slice(1); attackMove = ap.seq[0]; bot._planUntil = board.clock + 40 * ap.seq.length; }
+          if (ap && ap.cells >= floor && ap.seq.length && !(A.minRows && ap.after < A.minRows) && !(toppedFree && ap.seq.length * 18 + 30 > stopLeft) && leavesBreakTime(ap)) { d = { kind: 'swap', move: ap.seq[0], overruled: true, src: 'fire', planChain: ap.chain, cells: ap.cells }; bot._attackCells = ap.cells; attackLine = ap.seq.slice(1); attackMove = ap.seq[0]; bot._planUntil = board.clock + 40 * ap.seq.length; }
           // no fire in reach: more panels to build with (the stack is raised) up to raiseMax, then the swap that builds the board toward one
           else if (!garb && !oppOut && SH.top(board) < (A.raiseMax || 10) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1; bot._replanAt = board.clock + (A.replanFrames || 30); }
           // (a profile that attacks builds toward the next fire whatever is on the board or whoever is topped out: the swap, never a hold)
@@ -368,7 +368,10 @@ module.exports = function think(cfg) {
           (danger || SH.top(board) >= (A.riskTop || 8) || SH.lowestGarbageRow(board) || comingRows > 0 || (board.incoming || []).length)) {
         wanted = d;
         var wk = d.kind === 'swap' ? d.move[0] + ',' + d.move[1] : 'raise';
-        if (!prep.want[wk]) prep.want[wk] = 0.5;
+        // (an attack -- a fire or an extension -- is ranked by its worth, as the attacks the survival search sees are: a bigger
+        // plan before a smaller combo made at once; anything else the attack logic asks for after the breaks)
+        var worth = A.attackRank && (d.src === 'fire' || d.src === 'extend') && d.cells ? (d.planChain || 0) * 3 + d.cells : 0;
+        if (!prep.want[wk]) prep.want[wk] = worth ? -0.5 - Math.min(0.49, worth / 200) : 0.5;
         d = undefined; bot._survivalAsked = (bot._survivalAsked || 0) + 1;
       }
       try { if (!d) d = bot._decide(); } finally { bot._abort = null; N.deadline(0); bot.depth = depth0; bot._dueAt = 0; }
