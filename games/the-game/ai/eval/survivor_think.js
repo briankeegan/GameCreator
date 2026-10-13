@@ -39,6 +39,12 @@ function clearsOf(bot, d) {
     if (all[i].kind === 'swap' && all[i].move && all[i].move[0] === d.move[0] && all[i].move[1] === d.move[1]) return (all[i].resolved && all[i].resolved.clearedPanels) || 0;
   return 0;
 }
+// The garbage cells on a board (landed).
+function garbCells(st) {
+  var n = 0, r, c, p;
+  for (r = 1; r < st.panels.length; r++) for (c = 1; c <= (st.width || 6); c++) { p = st.panels[r] && st.panels[r][c]; if (p && p.isGarbage) n++; }
+  return n;
+}
 module.exports = function think(cfg) {
   var OPTS = SH.botOptions(cfg.profile, cfg.threads);
   var floored = SH.floorTravel;
@@ -292,11 +298,11 @@ module.exports = function think(cfg) {
           // the opponent topped out: any combo or chain there is, soonest. Not: a big chain, however tall the stack.
           var minChain = oppOut ? 0 : minChainOf;
           var floor = oppOut || aggro ? (A.outCells || 3) : 1;
-          var ap = attacker.plan(board, m.hold, { ms: oppOut ? Math.min(P2.ms, 300) : P2.ms, width: P2.width, depth: P2.depth, pool: A.pool || 250, stopAt: oppOut ? floor : 0, minChain: minChain, guideChain: A.guideChain, rate: A.rate, arrivals: A.continuousLines ? arrivals : undefined });
+          var ap = attacker.plan(board, m.hold, { ms: oppOut ? Math.min(P2.ms, 300) : P2.ms, width: P2.width, depth: P2.depth, pool: A.pool || 250, stopAt: oppOut ? floor : 0, minChain: minChain, guideChain: A.guideChain, rate: A.rate, arrivals: A.continuousLines ? arrivals : undefined, breakFirst: !!(A.breakFirst && garb) });
           if (attackLogged++ < 60) console.error('ATTACK clock ' + board.clock + ' out ' + oppOut + ' quiet ' + quiet + ' plan ' + (ap ? ap.cells + ' cells chain ' + ap.chain + ' swaps ' + ap.seq.length + ' first ' + JSON.stringify(ap.seq[0] || null) + ' setup ' + JSON.stringify(ap.setup) + ' base ' + ap.base + ' in ' + ap.ms + ' ms' : 'none'));
           // a board that can be built on while it is low and little is coming: garbage on it or not, the bot builds a chain, it does not break
           var building = unlock || !oppOut && (!garb || (!A.alwaysRaise && SH.top(board) < (A.setupTop || 9) && comingRows <= (A.setupComing === undefined ? 3 : A.setupComing)));
-          if (ap && ap.cells >= floor && ap.seq.length && !(A.minRows && ap.after < A.minRows) && !(toppedFree && ap.seq.length * 18 + 30 > stopLeft) && leavesBreakTime(ap)) { d = { kind: 'swap', move: ap.seq[0], overruled: true, src: 'fire', planChain: ap.chain, cells: ap.cells, continuous: !!ap.continuous }; bot._attackCells = ap.cells; attackLine = ap.seq.slice(1); attackMove = ap.seq[0]; bot._planUntil = board.clock + 40 * ap.seq.length; }
+          if (ap && (ap.cells >= floor || (A.breakFirst && ap.brk)) && ap.seq.length && !(A.minRows && ap.after < A.minRows) && !(toppedFree && ap.seq.length * 18 + 30 > stopLeft) && leavesBreakTime(ap)) { d = { kind: 'swap', move: ap.seq[0], overruled: true, src: 'fire', planChain: ap.chain, cells: ap.cells, continuous: !!ap.continuous }; bot._attackCells = ap.cells; attackLine = ap.seq.slice(1); attackMove = ap.seq[0]; bot._planUntil = board.clock + 40 * ap.seq.length; }
           // no fire in reach: more panels to build with (the stack is raised) up to raiseMax, then the swap that builds the board toward one
           else if (!garb && !oppOut && SH.top(board) < (A.raiseMax || 10) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1; bot._replanAt = board.clock + (A.replanFrames || 30); }
           // (a profile that attacks builds toward the next fire whatever is on the board or whoever is topped out: the swap, never a hold)
@@ -373,7 +379,8 @@ module.exports = function think(cfg) {
         var wk = d.kind === 'swap' ? d.move[0] + ',' + d.move[1] : 'raise';
         // (an attack -- a fire or an extension -- is ranked by its worth, as the attacks the survival search sees are: a bigger
         // plan before a smaller combo made at once; anything else the attack logic asks for after the breaks)
-        var worth = A.attackRank && (d.src === 'fire' || d.src === 'extend') && d.cells ? (d.planChain || 0) * 3 + d.cells : 0;
+        // (with garbage on the board, only a line that gets out from under it -- continuous -- is ranked before the breaks)
+        var worth = A.attackRank && (d.src === 'fire' || d.src === 'extend') && d.cells && (!SH.lowestGarbageRow(board) || d.continuous) ? (d.planChain || 0) * 3 + d.cells : 0;
         if (!prep.want[wk]) prep.want[wk] = worth ? -0.5 - Math.min(0.49, worth / 200) : 0.5;
         d = undefined; bot._survivalAsked = (bot._survivalAsked || 0) + 1;
       }
@@ -408,8 +415,9 @@ module.exports = function think(cfg) {
       var guard3 = function () {
       if (A && A.guardThrees && !toppedNow && d.kind === 'swap' && d.move && !(d.planChain >= 2)) {
         var t3 = board.copy(); t3.behaviours = Object.assign({}, t3.behaviours, { passiveRaise: false }); t3.curRow = d.move[0]; t3.curCol = d.move[1];
-        var r3 = t3.tryQueueSwap(d.move[0], d.move[1]) ? t3.settle() : null;
-        var three3 = !!(r3 && r3.combos.length && r3.chain < 2 && r3.combos.every(function (x) { return x === 3; }));
+        var g3 = garbCells(board), r3 = t3.tryQueueSwap(d.move[0], d.move[1]) ? t3.settle() : null;
+        // (a three that breaks garbage is a break, not a plain three: breakFirst)
+        var three3 = !!(r3 && r3.combos.length && r3.chain < 2 && r3.combos.every(function (x) { return x === 3; })) && !(A.breakFirst && garbCells(t3) < g3);
         if (three3) {
           var src3 = d.src || (d.overruled ? 'overrule' : 'default');
           bot._guarded = bot._guarded || {}; bot._guarded[src3] = (bot._guarded[src3] || 0) + 1;
@@ -429,8 +437,8 @@ module.exports = function think(cfg) {
           if (!Array.isArray(mv)) continue;
           tl.curRow = mv[0]; tl.curCol = mv[1];
           if (!tl.tryQueueSwap(mv[0], mv[1])) { cut = step; break; }
-          var rl = tl.settle();
-          if (rl.combos.length && rl.chain < 2 && rl.combos.every(function (x) { return x === 3; })) { cut = step; break; }
+          var gl0 = garbCells(tl), rl = tl.settle();
+          if (rl.combos.length && rl.chain < 2 && rl.combos.every(function (x) { return x === 3; }) && !(A.breakFirst && garbCells(tl) < gl0)) { cut = step; break; }
         }
         if (cut < attackLine.length) { bot._lineCuts = (bot._lineCuts || 0) + 1; attackLine = attackLine.slice(0, cut); }
       }

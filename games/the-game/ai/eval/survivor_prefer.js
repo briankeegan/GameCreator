@@ -111,10 +111,12 @@ function prepare(bot, board, o) {
     // the board and no break is to be made, a raise is played first until the
     // stack's top reaches that row -- from the first frame of a match on.
     if (o.profile.raiseTo && !(br && br.depth) && !SH.lowestGarbageRow(board) && SH.top(board) < o.profile.raiseTo) want = { raise: true };
+    var garbOn = !!SH.lowestGarbageRow(board);
     bot.preferRank = function (c, i) {
       // (attackRank: of the moves proven to live, one that adds a combo of four or more or a longer chain to the board left
-      // alone outranks the rest, a break included, the larger first -- the attack is the survival move whenever one lives)
-      if (o.profile.attack && o.profile.attack.attackRank && c.kind === 'swap' && c.resolved) {
+      // alone outranks the rest, the larger first -- the attack is the survival move whenever one lives. With garbage on the
+      // board it outranks a break only if it breaks garbage too: a combo that leaves the pile where it is is not a way out)
+      if (o.profile.attack && o.profile.attack.attackRank && c.kind === 'swap' && c.resolved && (!garbOn || ((c.added || c.resolved).brokeGarbage || 0) > 0)) {
         var rs = c.added || c.resolved, big = 0, ci;
         for (ci = 0; ci < (rs.comboSizes || []).length; ci++) if (rs.comboSizes[ci] > big) big = rs.comboSizes[ci];
         if ((rs.chainLength || 0) >= 2 || big >= 4) return -0.5 - Math.min(0.49, ((rs.chainLength || 0) * 3 + big) / 200);

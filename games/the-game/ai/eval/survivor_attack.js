@@ -57,10 +57,13 @@ module.exports = function (opts) {
           var shown = Math.max(0, g.cells - base);
           if (g.chain >= (o.guideChain || o.minChain || 0) && shown > it.reach) it.reach = shown;
           g.cells = g.chain >= (o.minChain || 0) ? shown : 0;
-          if (g.cells === 0) continue;
+          // (breakFirst, garbage on the board: a line that breaks some is kept however little it sends, and ranks before any that breaks none)
+          var brk = o.breakFirst && (st.broke || 0) > 0;
+          if (g.cells === 0 && !brk) continue;
           // the fire kept: the most garbage, or with o.rate the most garbage for the time it takes (cells over swaps + rate) -- pressure, not the biggest
           var rated = o.rate ? g.cells / (seq.length + o.rate) : g.cells, bestRated = best ? (o.rate ? best.cells / (best.seq.length + o.rate) : best.cells) : -1;
-          if (!best || rated > bestRated || (rated === bestRated && seq.length < best.seq.length)) best = { cells: g.cells, chain: g.chain, seq: seq, n: out, broke: st.broke || 0, earned: st.earned || 0 };
+          var better = !best || (o.breakFirst && brk !== !!best.brk ? brk : rated > bestRated || (rated === bestRated && seq.length < best.seq.length));
+          if (better) best = { brk: brk, cells: g.cells, chain: g.chain, seq: seq, n: out, broke: st.broke || 0, earned: st.earned || 0 };
         } else it.kids.push({ n: out, seq: it.seq.concat([m]) });
       }
       pool.sort(function (a, b) { return b.reach - a.reach || b.h - a.h; });
