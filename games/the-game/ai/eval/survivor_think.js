@@ -493,8 +493,9 @@ module.exports = function think(cfg) {
       guard3();
       guardTopped();
       // A SWAP IS NOT MADE TO BE UNDONE (noPingPong): the pair just swapped is not swapped again within pingFrames unless this one clears
-      // something -- the setup that keeps coming back changes nothing. The stack is raised instead, or the move is the hold.
-      if (A && A.noPingPong && d.kind === 'swap' && d.move) {
+      // something -- the setup that keeps coming back changes nothing. The stack is raised instead, or the move is the hold. Never in danger:
+      // there the swap is a move the survival search proved, and a hold in its place is a stack left to die.
+      if (A && A.noPingPong && !danger && d.kind === 'swap' && d.move) {
         var pk = d.move[0] + ',' + d.move[1], again = (bot._swapLog || []).filter(function (e) { return e.pk === pk && m.at - e.at < (A.pingFrames || 150) && m.at >= e.at; }).length > 0;
         if (again) {
           var tp = board.copy(); tp.behaviours = Object.assign({}, tp.behaviours, { passiveRaise: false }); tp.curRow = d.move[0]; tp.curCol = d.move[1];
