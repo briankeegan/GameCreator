@@ -2363,10 +2363,15 @@ static double optLine(void) { double e = rdW0 + OPTWORK; return (stageEnd < e ? 
 // the shares of the stages after it, no more: a later stage takes whatever is
 // left it, so what it took lately says what it was given, not what it needs
 static const int STAGESHARE[NSTAGES] = { 30, 0, 15, 5, 30, 5, 5, 5, 5 };
+// THE CLOSING ALSO KEEPS WHAT ASKING FOR READINESS ONCE COSTS: with a slab queued and the board not ready, the line that readies the landing is
+// searched at the closing (readyWhenLands): one replay to the landing, a judge of the line and the readiness question of it, each at the most one
+// has taken -- all three or the search is refused for work and the board lands unready
+static double rpCost, rdCost;
+static double readyNeed(void) { return BIN[IN_HASPA] && BIN[IN_INCOMING] > 0 && !baseReady ? rpCost + jdCost + rdCost : 0; }
 static double stageLeaves(int i) {
   int after = 0; for (int j = i + 1; j < NSTAGES; j++) after += STAGESHARE[j];
   double keep = OPTWORK * after / 100;
-  if (keep < FINALJUDGES * jdCost) keep = FINALJUDGES * jdCost;
+  if (keep < FINALJUDGES * jdCost + readyNeed()) keep = FINALJUDGES * jdCost + readyNeed();
   return rdW0 + OPTWORK - keep;
 }
 static double stageOpen(int i) { double keep = stageEnd, e = stageLeaves(i); if (e < stageEnd) stageEnd = e; return keep; }
@@ -2380,7 +2385,6 @@ static int fitTasks(int count, double cost) {
   if (k < count) budgetRefused += count - k;
   return k < count ? k : count;
 }
-static double rpCost;   // a replay's (prereplay)
 static JLOCAL int judgeRefused;   // the last judge was refused for the budget: no verdict, never one to keep
 static int lineJudgeIn2(const int32_t *sw, int n, int waitAll) {
   extern PATLS double paWork;
@@ -4805,7 +4809,6 @@ static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc);
 // running mean of what replays have taken) must fit in the work this thread
 // has left; past that a board is not called ready. One that runs past it is
 // stopped by the engine at OPTWORK and answers not ready, unremembered.
-static double rdCost;
 static int rdRefused;   // questions refused for work this decision, for the bot log
 static int readyInTime(const int32_t *sw, int n, int *br, int *bc) {
   extern PATLS double paWork;
@@ -6267,9 +6270,9 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   int32_t lineAfterPlay[2 * LINEMAX]; int nLineAfterPlay = BT->nLine;
   for (int q = 0; q < 2 * BT->nLine; q++) lineAfterPlay[q] = BT->line[q];
   d = waitForDrain(d); d = raiseHold(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(25); d = breakFirst(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  { double keep = stageOpen(2); SHARE(25); d = breakFirst(d); stageClose(keep); } cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(5); d = stayAlive(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
-  SHARE(15); d = keepBreak(d); d = lineupFirst(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
+  { double keep = stageOpen(4); SHARE(15); d = keepBreak(d); d = lineupFirst(d); stageClose(keep); } cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(5); d = batchBreak(d); d = spendToBreak(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   SHARE(10); d = breakSoon(d); cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   // FILL LEAVES THE STEPS AFTER IT THEIR SHARE (stageOpen): the leveling,
