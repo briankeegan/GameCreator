@@ -2856,7 +2856,8 @@ static void probeBreaks(void) {
   probeOn = 1; paWorkEnd = 1e300;   // the probe's replays are not the decision's: no cut
   if (lineState(0, 0, st, can, w, cur, &t) == 0) {
     int32_t sw[2 * LINEMAX]; int n = 0; double at = 0;
-    int got = searchInTime(st, cur[0], cur[1], t, 0, timeLeft(), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can, w, 1e9, sitBreaks, 0, sw, &n, &at);
+    const char *ptv = getenv("GC_PROBE_TIME"); double ptime = ptv ? atoi(ptv) : 0;   // another horizon than the board's: how far is a break at all
+    int got = searchInTime(st, cur[0], cur[1], t, 0, ptime > 0 ? ptime : timeLeft(), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can, w, 1e9, sitBreaks, 0, sw, &n, &at);
     extern int fprintf(void *, const char *, ...); extern void *stderr;
     fprintf(stderr, "PROBE clock %d break %d swaps %d at %.0f left %.0f work %.0f", clk, got, n, at, timeLeft(), paWork - keep);
     for (int q = 0; q < n; q++) fprintf(stderr, " %d,%d", sw[2 * q], sw[2 * q + 1]);
@@ -5760,16 +5761,18 @@ static Dec fillFirstIn(Dec d) {
       if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  walk %d,%d dir %d n %d v %d hollow %d die %d last %d\n", r, c, dir, n, v, HOLLOW(LNO), LNO[0], LNO[1]); }
 #endif
       int spend = (v & LV_PAYS) != 0;
-      if (!(v & LV_LIVES) || (spend && !LIVES_LONGER())) continue;
+#define WALKWHY(why) do { if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  walk %d,%d -> %s\n", r, c, why); } } while (0)
+      if (!(v & LV_LIVES) || (spend && !LIVES_LONGER())) { WALKWHY("dies, or spends and lives no longer"); continue; }
       // its time: the engine's own last press (it has just played it); the clock where it could not
       double est = LNO[1] > 0 ? pressSeen(LNO[1]) : lineFrames(fsw, n, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, BIN[IN_TOPPED] || BIN[IN_STOP] > 0);
       // a walk must beat the pool's best; among walks, the same order (time: its estimate)
       int wdie = LNO[0], wlast = LNO[1];
       LEVELTAKE(fsw, n, est);
       double sc = fillScoreOf(fsw, n, wdie, wlast, HOLLOW(LNO), spentOf());
-      if (W.has ? !fillBeats(&W, &wtw, sc, est, fsw, n) : sc <= ref) continue;
-      if (!fillKeeps(marginWithin(fsw, n, wdie, need), need)) continue;
-      if (spend && !readyAfterSpend(fsw, n) && (nonSpendLives() || spendKeepsRaiseOut())) continue;
+      if (W.has ? !fillBeats(&W, &wtw, sc, est, fsw, n) : sc <= ref) { WALKWHY("does not beat the board left alone or the best fill"); if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "    score %.0f ref %.0f urgent %d need %.0f\n", sc, ref, fillUrgent, need); } continue; }
+      if (!fillKeeps(marginWithin(fsw, n, wdie, need), need)) { WALKWHY("costs the break's time"); if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "    margin %.0f need %.0f\n", marginWithin(fsw, n, wdie, need), need); } continue; }
+      if (spend && !readyAfterSpend(fsw, n) && (nonSpendLives() || spendKeepsRaiseOut())) { WALKWHY("spends, not ready"); continue; }
+      WALKWHY("taken");
       fillTake(&W, &wtw, sc, est, fsw, n); first[0] = fsw[0]; first[1] = fsw[1];
     }
   }
@@ -6276,7 +6279,10 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   // READY BEFORE THE WAIT: the line that readies the landing is chosen first,
   // with the work there is; the wait then fills the time before that line
-  { Dec dC = dropReady(meanwhile(readyWhenLands(keepReady(onePlan(dF))))), dS = noStall(dC);
+#define WORKAT(tag) do { if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; extern PATLS double paWork; fprintf(BLOG, "WORKAT %s spent %.0f line %.0f left %.0f\n", tag, paWork - rdW0, optLine() - rdW0, optLine() - paWork); } } while (0)
+  WORKAT("before ready");
+  Dec dOne = onePlan(dF); WORKAT("after onePlan"); Dec dKeep = keepReady(dOne); WORKAT("after keepReady"); Dec dRwl = readyWhenLands(dKeep); WORKAT("after readyWhenLands"); Dec dMw = meanwhile(dRwl); WORKAT("after meanwhile");
+  { Dec dC = dropReady(dMw), dS = noStall(dC);
     // A STALL REFUSED FALLS BACK TO THE CHOICE IT WAS PUT BEFORE, not to
     // standing still: the fill (or what came before it), if that is no stall
     if (dS.kind == K_HOLD && dC.kind == K_SWAP && dF.kind == K_SWAP && !(dF.sr == dC.sr && dF.sc == dC.sc)) { Dec a = noStall(dF); if (a.kind == K_SWAP) dS = dF; }
@@ -6294,8 +6300,8 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // whichever route returned it
   if (d.kind == K_SWAP && BT->nLine == 1 && BT->line[0] == d.sr && BT->line[1] == d.sc) d.waitAll = BT->lineWaitAll;
   // the one choice (arbitrate): survival's above all
-  d = setupTwos(d);
-  d = arbitrate(d);
+  WORKAT("before setupTwos"); d = setupTwos(d); WORKAT("after setupTwos");
+  d = arbitrate(d); WORKAT("after arbitrate");
   recordTarget(d);
   // a line set this decision is stamped with the presses made before it
   if (BT->nLine && (BT->nLine != nLineAfterPlay || __builtin_memcmp(BT->line, lineAfterPlay, (unsigned long)BT->nLine * 8))) { BT->linePresses = BIN[IN_PRESSES]; BT->lineBorn = BT->nNotes; }
