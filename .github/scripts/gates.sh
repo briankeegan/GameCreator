@@ -131,6 +131,7 @@ gate_garbage_rules() {
   node games/the-game/ai/eval/survivor_room.test.js &&
   node games/the-game/ai/eval/threesLast.test.js &&
   node games/the-game/ai/eval/survivor_checks.test.js &&
+  node games/the-game/ai/eval/survivor_held.test.js &&
   node games/the-game/ai/eval/raiseTo.test.js &&
   node games/the-game/ai/eval/cursorWalk.test.js &&
   node games/the-game/ai/eval/holdWalk.test.js &&

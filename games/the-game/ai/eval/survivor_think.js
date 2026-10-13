@@ -231,7 +231,7 @@ module.exports = function think(cfg) {
           d = { kind: 'swap', move: wp.seq[0], overruled: true, src: 'warm', planChain: wp.chain }; bot._attackCells = wp.cells; attackLine = wp.seq.slice(1); attackMove = wp.seq[0]; bot._planUntil = board.clock + 40 * wp.seq.length;
           console.error('WARM played at ' + board.clock + ': ' + wp.cells + ' cells chain ' + wp.chain + ' swaps ' + wp.seq.length);
         }
-        else if (A.readyBreak && !garb && readyArr.length && (rdy = attacker.readyFor(board, m.hold, readyArr, { ms: A.readyMs || 150 })) && !rdy.ready && rdy.setup) {
+        else if (A.readyBreak && !garb && readyArr.length && (rdy = attacker[A.readyTime ? 'readyInTime' : 'readyFor'](board, m.hold, readyArr, { ms: A.readyMs || 150 })) && !rdy.ready && rdy.setup) {
           // garbage is on its way and no swap will break it when it lands: the swap that makes one ready, before the stack is raised
           d = { kind: 'swap', move: rdy.setup, overruled: true, src: 'ready' }; bot._readies = (bot._readies || 0) + 1;
         }
@@ -273,8 +273,8 @@ module.exports = function think(cfg) {
       // GARBAGE ON ITS WAY, WHEREVER THE BOARD IS (danger too): before the stack is raised for it, a swap that will break it when it lands
       // is made ready -- the hit is told of 150 frames before it lands
       if (A && !toppedForRaise && A.readyBreak && !d && !SH.lowestGarbageRow(board) && readyArr.length && !cascadeLive(board, true)) {
-        var rdy2 = attacker ? attacker.readyFor(board, m.hold, readyArr, { ms: A.readyMs || 150 }) : null;
-        if (!attacker) { attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames }); rdy2 = attacker.readyFor(board, m.hold, readyArr, { ms: A.readyMs || 150 }); }
+        var rdy2 = attacker ? attacker[A.readyTime ? 'readyInTime' : 'readyFor'](board, m.hold, readyArr, { ms: A.readyMs || 150 }) : null;
+        if (!attacker) { attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames }); rdy2 = attacker[A.readyTime ? 'readyInTime' : 'readyFor'](board, m.hold, readyArr, { ms: A.readyMs || 150 }); }
         if (rdy2 && !rdy2.ready && rdy2.setup) { d = { kind: 'swap', move: rdy2.setup, overruled: true, src: 'ready' }; bot._readies = (bot._readies || 0) + 1; }
       }
       if (A && !toppedForRaise && A.alwaysRaise && !d && !cascadeLive(board, true) && fullTop(board) < raiseCap(board, comingRows, A) && bot._canRaise()) { d = { kind: 'raise', overruled: true }; bot._raises = (bot._raises || 0) + 1; }

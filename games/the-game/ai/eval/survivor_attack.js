@@ -178,5 +178,31 @@ module.exports = function (opts) {
     }
     return { ready: false, setup: found, at: first, ms: Date.now() - t0 };
   }
-  return { plan: plan, extend: extend, readyFor: readyFor };
+  // READY WITHIN THE TIME THERE IS (readyInTime): the garbage on its way is landed on the board (the engine run to its landing) and a break
+  // is looked for there as a line of swaps the board survives to play (SH.breakMoves, up to three swaps, the stack rising as it goes) --
+  // not only a single swap. Not ready: the swap, from the top of the stack, after which one is.
+  var SH = require(path.join(__dirname, 'survivor_shared.js'));
+  function landed(b0, pieces, first) {
+    var st = b0.copy(), pend = pieces.map(function (a) { return { at: st.stopWatch + a.at, g: { width: a.width, height: a.height, isChain: !!a.isChain, isMetal: !!a.isMetal, frameEarned: st.stopWatch, finalized: true }, capped: false }; });
+    for (var i = 0; i < first + 2 && st.gameOverClock <= 0; i++) { st.setInput(0); st.run(); SH.land(st, pend); }
+    return st;
+  }
+  function readyInTime(board, hold, arrivals, o) {
+    var t0 = Date.now(), first = null, ms = (o && o.ms) || 220;
+    (arrivals || []).forEach(function (a) { if (first === null || a.at < first) first = a.at; });
+    if (first === null) return { ready: true, setup: null, at: 0 };
+    var s = search();
+    function breaks(st, share) { var r = SH.breakMoves(s, st, hold, [], 3, 0, Date.now() + share); return r && r.depth > 0; }
+    if (breaks(landed(board, arrivals, first), Math.max(40, ms / 2))) return { ready: true, setup: null, at: first, ms: Date.now() - t0 };
+    var top = 0, r, c;
+    for (r = 1; r < board.panels.length; r++) for (c = 1; c <= 6; c++) { var p = board.panels[r] && board.panels[r][c]; if (p && (p.color || p.isGarbage) && r > top) top = r; }
+    var cands = board.legalSwaps().filter(function (m) { return m[0] >= top - 2; }).sort(function (a, b) { return b[0] - a[0]; }), found = null;
+    for (var i = 0; i < cands.length && !found && Date.now() - t0 < ms; i++) {
+      var b1 = board.copy(); b1.curRow = cands[i][0]; b1.curCol = cands[i][1];
+      if (!b1.tryQueueSwap(cands[i][0], cands[i][1])) continue;
+      if (breaks(landed(b1, arrivals, first), 40)) found = cands[i];
+    }
+    return { ready: false, setup: found, at: first, ms: Date.now() - t0 };
+  }
+  return { plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime };
 };
