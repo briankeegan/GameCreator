@@ -11,7 +11,7 @@
 //   the link's owner pushes the mind's answers onto link.answers
 var path = require('path');
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js')), SH = require(path.join(__dirname, 'survivor_shared.js'));
-var KEYS = require('./survivor_keys.js'), land = SH.land, IN = PA.IN, V8 = require('v8');
+var CK = require('./survivor_checks.js'), KEYS = require('./survivor_keys.js'), land = SH.land, IN = PA.IN, V8 = require('v8');
 function unpack(packed) { return PA.revive(V8.deserialize(packed)); }
 // ---------------------------------------------------------------- the board, as predicted
 // Two boards agree when every panel and every counter does, except the
@@ -321,6 +321,7 @@ Match.prototype.take = function (truth) {
     // the swaps played, and the last few kept to tell a swap back
     if (a.kind === 'swap' && move && sw && sw.ids) {
       this.stats.swaps++;
+      pressAudit(this, board, move, a.src || 'default', at);
       var ids = panelIds(board);
       this.swapHistory.push({ ids: sw.ids, all: ids.all, garbage: ids.garbage, backs: back ? back.backs + 1 : 0, at: at });
       while (this.swapHistory.length > SWAP_HISTORY || (this.swapHistory.length && at - this.swapHistory[0].at > SWAP_BACK_FRAMES)) this.swapHistory.shift();
@@ -333,6 +334,22 @@ Match.prototype.take = function (truth) {
     this.line = a.line && (a.lineFree || a.lineAt === this.nextAt) && at === a.at ? { steps: a.line.slice(), at: this.nextAt } : null;
   }
 };
+// THE AUDIT OF EVERY SWAP PRESSED: played out on a copy of the board it is pressed on, what it clears. A plain three that is not pressed on
+// a stack topped out is logged with who asked for it (the decision's source, or the line behind an earlier one).
+var pressLogged = 0;
+function pressAudit(match, board, move, src, at) {
+  try {
+    var t = board.copy(); t.behaviours = Object.assign({}, t.behaviours, { passiveRaise: false }); t.curRow = move[0]; t.curCol = move[1];
+    if (!t.tryQueueSwap(move[0], move[1])) return;
+    var r = t.settle(), kind = !r.combos.length ? 'none' : r.chain >= 2 ? 'chain' : r.combos.every(function (x) { return x === 3; }) ? 'three' : 'combo';
+    var st = match.stats; st['press_' + kind] = (st['press_' + kind] || 0) + 1;
+    if (kind === 'three') {
+      var topped = CK.toppedOrNearly(board, false, { nearFrames: 120 });
+      var k = 'press3_' + (topped ? 'topped' : 'open') + '_' + src; st[k] = (st[k] || 0) + 1;
+      if (!topped && pressLogged++ < 120) console.error('PRESS3 clock ' + board.clock + ' at ' + at + ' top ' + CK.fullTop(board) + ' panels ' + CK.panelTop(board) + ' src ' + src + ' stop ' + ((board.stopTime || 0) + (board.preStopTime || 0)) + ' coming ' + ((board.incoming || []).length));
+    }
+  } catch (e) { /* the audit never costs a move */ }
+}
 // THE INPUT BUDGET (the game's InputBudget): swap and direction keys going down,
 // at most ACTION_LIMIT of them in any ACTION_WINDOW frames (456 a minute).
 var SWAP_HISTORY = 8, SWAP_BACK_FRAMES = 300, ACTION_WINDOW = 600, ACTION_LIMIT = Math.floor(456 * ACTION_WINDOW / 3600);   // until the game's own InputBudget says otherwise (Match.budget)
@@ -601,6 +618,7 @@ Match.prototype.follow = function () {
   if (kind === 'swap' && KEYS.actionsFor(pr.board.curRow, pr.board.curCol, move, left) > left) { this.line = null; this.stats.unaffordableFollow = (this.stats.unaffordableFollow || 0) + 1; return false; }
   this.stats.heldWalks += walked.held;
   var sw = kind === 'swap' ? swapOf(pr.board, move) : null;
+  if (kind === 'swap') pressAudit(this, pr.board, move, 'line', this.nextAt);
   for (var i = 0; i < ins.length; i++) this.plan[this.nextAt + i] = { bits: ins[i], hold: walked.holds[i], swap: sw };
   this.nextAt += ins.length;
   this.line.steps.shift();
