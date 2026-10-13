@@ -44,7 +44,7 @@ function botOptions(p, threads) {
   if (p.buildToward !== undefined) goal.buildToward = p.buildToward;
   return Object.assign(goal, { weights: weights,
            reaction: p.reaction, swapGap: p.swapGap, cursorMoveFrames: p.cursorMoveFrames, depth: p.depth, beam: 0, rise: true, allowRaise: true,
-           modes: p.modes, engine: true, native: true, nativeCands: !!p.nativeCands, threesLast: !!p.threesLast, threeBreaksLast: !!p.threeBreaksLast, threesOnlyTopped: !!(p.attack && p.attack.threesOnlyTopped), nearestFirst: true, threads: threads });
+           modes: p.modes, engine: true, native: true, nativeCands: !!p.nativeCands, threesLast: !!p.threesLast, threeBreaksLast: !!p.threeBreaksLast, threesOnlyTopped: !!(p.attack && p.attack.threesOnlyTopped), attackFirst: !!(p.attack && p.attack.attackRank), nearestFirst: true, threads: threads });
 }
 
 // ---------------------------------------------------------------- garbage on its way

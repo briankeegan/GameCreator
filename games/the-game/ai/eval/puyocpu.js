@@ -248,6 +248,8 @@
     // NO THREE UNTIL TOPPED OUT (opts.threesOnlyTopped): of the moves proven to live a three -- bare or breaking garbage -- is
     // never chosen while the stack is not topped out; the best of the others is, and when none is proven the unproven ones are.
     this.noThreesUntilTopped = opts.threesOnlyTopped === true;
+    // ATTACK FIRST (opts.attackFirst): a followed survival line is not the whole answer while an attack is among the moves (_attackAmong)
+    this.attackFirst = opts.attackFirst === true;
     this.nearestFirst = opts.nearestFirst === true;
     this.bareThreesDropped = 0;
     this.bareThreesKept = 0;
@@ -1484,6 +1486,22 @@
     return { fi: fi, n: n };
   };
   function isLong(m) { return m === 'long' || (!!m && typeof m === 'object' && !Array.isArray(m) && m.long !== undefined); }
+  // An attack among the moves (attackFirst): the move the caller asks for (a rank between a break's and none), or one
+  // that adds a combo of four or more or a longer chain to the board left alone.
+  PuyoCpu.prototype._attackAmong = function (cands) {
+    if (!this.attackFirst) return false;
+    for (var i = 0; i < cands.length; i++) {
+      var c = cands[i], r = this.preferRank ? this.preferRank(c, -1) : Infinity;
+      if (r < 1 && r !== 0) return true;
+      if (c.kind === 'swap' && attackAdded(c)) return true;
+    }
+    return false;
+  };
+  function attackAdded(c) {
+    var r = addedOf(c);
+    return !!r && ((r.chainLength || 0) >= 2 || (r.comboSizes || []).some(function (x) { return x >= 4; }));
+  }
+  PuyoCpu.attackAdded = attackAdded;
   PuyoCpu.prototype._survivalSearch = function (cands) {
     var verdict = new Array(cands.length), level = [], self = this, i, j, n, c, proofs = {}, weak = {};
     // HOW FAR EACH MOVE'S BEST LINE GOT, dead or alive, and the node that got
@@ -1505,7 +1523,9 @@
     // A FOLLOWED LINE STILL ALIVE WELL PAST THE HORIZON IS THE ANSWER. Its
     // next move is played without searching the others; the full search runs
     // again once what is left of the line drops under FOLLOW_FAST frames.
-    var fast = real && this.FOLLOW_FAST ? this._fastFollow(root, cands) : null;
+    // (not while an attack is among the moves: a combo of four or more, a chain, or a move the caller ranks -- those are searched
+    // and ranked with the rest, or the followed line is all that is ever proven and the attack is never played)
+    var fast = real && this.FOLLOW_FAST && !this._attackAmong(cands) ? this._fastFollow(root, cands) : null;
     if (fast) {
       for (i = 0; i < cands.length; i++) verdict[i] = i === fast.fi ? 'proven' : 'skipped';
       proofs[fast.fi] = fast.n; reach[fast.fi] = fast.n.t; far[fast.fi] = fast.n;
@@ -2098,15 +2118,35 @@
     }
     return Math.ceil(cells / w);
   };
+  // WHAT A MOVE ADDS to the board left alone (the hold): a chain already popping is in every move's resolve, so a swap
+  // that adds one three to it reads as a chain. `added` is the move's own part -- the clears the hold does not make, the
+  // chain only when the move makes it longer, the garbage the hold does not break -- and every test of what a move
+  // clears (a three, a combo, an attack) reads it.
+  function addedOver(cands) {
+    var h = null, i;
+    for (i = 0; i < cands.length; i++) if (cands[i].kind === 'hold' && cands[i].resolved) { h = cands[i].resolved; break; }
+    for (i = 0; i < cands.length; i++) {
+      var r = cands[i].resolved;
+      if (!r) continue;
+      if (!h || cands[i].kind === 'hold') { cands[i].added = r; continue; }
+      var left = (h.comboSizes || []).slice(), mine = [];
+      (r.comboSizes || []).forEach(function (x) { var k = left.indexOf(x); if (k >= 0) left.splice(k, 1); else mine.push(x); });
+      var longer = (r.chainLength || 0) > (h.chainLength || 0);
+      cands[i].added = { comboSizes: mine, chainLength: longer ? r.chainLength : mine.length ? 1 : 0,
+                         brokeGarbage: Math.max(0, (r.brokeGarbage || 0) - (h.brokeGarbage || 0)) };
+    }
+  }
+  function addedOf(c) { return c && (c.added || c.resolved); }
+  PuyoCpu.addedOf = addedOf;
   function bareThree(c) {
-    var r = c && c.resolved, sizes = r && r.comboSizes;
+    var r = addedOf(c), sizes = r && r.comboSizes;
     if (!sizes || !sizes.length || (r.brokeGarbage || 0) > 0 || (r.chainLength || 0) >= 2) return false;
     for (var i = 0; i < sizes.length; i++) if (sizes[i] > 3) return false;
     return true;
   }
   // A move whose clears are all threes, one of them breaking garbage.
   function threeBreak(c) {
-    var r = c && c.resolved, sizes = r && r.comboSizes;
+    var r = addedOf(c), sizes = r && r.comboSizes;
     if (!sizes || !sizes.length || !((r.brokeGarbage || 0) > 0) || (r.chainLength || 0) >= 2) return false;
     for (var i = 0; i < sizes.length; i++) if (sizes[i] > 3) return false;
     return true;
@@ -2117,7 +2157,7 @@
     for (var i = 0; i < all.length; i++) {
       var c = all[i];
       if (c.kind === 'swap' && c.move && c.move[0] === move[0] && c.move[1] === move[1]) {
-        var r = c.resolved;
+        var r = addedOf(c);
         return !!(r && r.comboSizes && r.comboSizes.length && (r.chainLength || 0) < 2 && !((r.brokeGarbage || 0) > 0));
       }
     }
@@ -2810,6 +2850,7 @@
       cands.natDone = true;
     }
     this._nativeNodes(cands);
+    addedOver(cands);
     this._allCands = cands;
     var out = this._levelForSlab(this._flatten(this._towardBreak(
         this._heightCap(this._noBareThree(this._doomed(this._survivors(this._affordable(cands))))))));
