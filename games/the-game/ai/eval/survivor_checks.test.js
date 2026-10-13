@@ -108,4 +108,17 @@ buried.speed = 1; buried.displacement = 16; buried.riseTimer = 900;
 assert.strictEqual(C.inDanger(buried, [], 0, false, {}), false, 'garbage in row 11 with a whole row of rise to go is a stack with time, not one in danger');
 assert.strictEqual(C.dangerWhy(buried, [{ at: 60 }], 3, false, {}), 'incoming', 'a hit that would overflow it is the reason when the stack is not the one');
 assert.strictEqual(C.dangerWhy(full, [], 0, false, {}), 'topped');
+// garbage still falling is not on the stack: a slab in the air over a low stack is not a stack topped out
+var air = board(['111111', '222222', '333333', '444444', '555555', '666666']);
+for (var ac = 1; ac <= 6; ac++) for (var ar = 8; ar <= 10; ar++) { var ap = air.panels[ar][ac]; ap.isGarbage = true; ap.state = 'falling'; }
+air.stopTime = 0; air.preStopTime = 0;
+assert.strictEqual(C.fullTop(air), 6, 'the stack is 6 high; the slab above it is not part of it yet');
+assert.strictEqual(C.projectedTop(air), 9, 'it will be 9 high once the 3-row slab lands');
+assert.strictEqual(C.toppedOrNearly(air, false), false, 'not topped out');
+assert.strictEqual(C.inDanger(air, [], 0, false, {}), false, 'and a slab that fits is not danger');
+var tallAir = board(['111111', '222222', '333333', '444444', '555555', '666666', '111111', '222222', '333333', '444444']);
+for (ac = 1; ac <= 6; ac++) for (ar = 11; ar <= 12; ar++) { ap = tallAir.panels[ar][ac]; ap.isGarbage = true; ap.state = 'falling'; }
+tallAir.stopTime = 0; tallAir.preStopTime = 0;
+assert.strictEqual(C.toppedOrNearly(tallAir, false), false, 'still not topped out in the air');
+assert.strictEqual(C.dangerWhy(tallAir, [], 0, false, {}), 'landing', 'but it will be when the slab lands');
 console.log('survivor_checks: ok');

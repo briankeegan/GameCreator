@@ -5,10 +5,22 @@ var PA = require('../../pa-engine.js');
 function eachPanel(board, fn) {
   for (var r = 1; r < board.panels.length; r++) for (var c = 1; c <= 6; c++) { var p = board.panels[r] && board.panels[r][c]; if (p) fn(p, r, c); }
 }
-// the highest row with a panel or garbage on it
+// garbage still falling has not landed: it is above the stack, not on it
+function falling(p) { return !!(p.isGarbage && p.state === 'falling'); }
+// the highest row with a panel or LANDED garbage on it (garbage still falling is not part of the stack yet)
 function fullTop(board) {
   var top = 0;
-  eachPanel(board, function (p, r) { if ((p.color || p.isGarbage) && r > top) top = r; });
+  eachPanel(board, function (p, r) { if ((p.color || p.isGarbage) && !falling(p) && r > top) top = r; });
+  return top;
+}
+// where the stack will reach when the garbage falling now has landed: each column's landed height and the rows of garbage over it
+function projectedTop(board) {
+  var landed = [0, 0, 0, 0, 0, 0, 0], fall = [0, 0, 0, 0, 0, 0, 0], top = 0, c;
+  eachPanel(board, function (p, r, col) {
+    if (falling(p)) fall[col]++;
+    else if ((p.color || p.isGarbage) && r > landed[col]) landed[col] = r;
+  });
+  for (c = 1; c <= 6; c++) if (landed[c] + fall[c] > top) top = landed[c] + fall[c];
   return top;
 }
 // the highest row with a panel (not garbage) on it
@@ -68,7 +80,7 @@ function toppedOrNearly(board, toppedReal, A) {
          (full >= h - 1 && framesToTop(board) <= ((A && A.nearFrames) || 90));
 }
 // Why the stack is in jeopardy, or '' when it is not: 'topped' (topped out, or the next row up would, within nearFrames), 'tall' (its
-// height with the garbage on it at dangerTop or more and within dangerFrames of the top), or 'incoming' (a hit landing within dangerSoon
+// height with the garbage on it at dangerTop or more and within dangerFrames of the top), 'landing' (garbage falling now will top the stack out when it lands), or 'incoming' (a hit landing within dangerSoon
 // frames that would overflow the board: rows coming and queued on top of its height, dangerOver rows over the 12).
 // arrivals: the garbage on its way, as the bot's serverArrivals ({ at: frames to landing }).
 function dangerWhy(board, arrivals, comingRows, toppedReal, A) {
@@ -78,8 +90,9 @@ function dangerWhy(board, arrivals, comingRows, toppedReal, A) {
   var full = fullTop(board);
   if (toppedOrNearly(board, toppedReal, A)) return 'topped';
   if (full >= (A.dangerTop || 11) && framesToTop(board) <= (A.dangerFrames || 240)) return 'tall';
+  if (projectedTop(board) >= (board.height || 12)) return 'landing';
   if (soon <= (A.dangerSoon || 120) && full + comingRows + queued >= 12 + (A.dangerOver === undefined ? 1 : A.dangerOver)) return 'incoming';
   return '';
 }
 function inDanger(board, arrivals, comingRows, toppedReal, A) { return dangerWhy(board, arrivals, comingRows, toppedReal, A) !== ''; }
-module.exports = { framesToTop: framesToTop, dangerWhy: dangerWhy, fullTop: fullTop, panelTop: panelTop, lowPeak: lowPeak, lowPeakOf: lowPeakOf, panelCount: panelCount, cascadeLive: cascadeLive, raiseCap: raiseCap, toppedOrNearly: toppedOrNearly, inDanger: inDanger };
+module.exports = { projectedTop: projectedTop, framesToTop: framesToTop, dangerWhy: dangerWhy, fullTop: fullTop, panelTop: panelTop, lowPeak: lowPeak, lowPeakOf: lowPeakOf, panelCount: panelCount, cascadeLive: cascadeLive, raiseCap: raiseCap, toppedOrNearly: toppedOrNearly, inDanger: inDanger };
