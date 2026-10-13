@@ -188,6 +188,9 @@ module.exports = function think(cfg) {
       readyArr.forEach(function (a) { if (a.at < firstLand) firstLand = a.at; });
       var leavesBreakTime = function (plan) { return !(A && A.readyFrames) || firstLand === Infinity || plan.chain >= 3 || plan.seq.length * 18 + A.readyFrames <= firstLand; };
       var dangerWhy = A && A.lifeFirst ? CK.dangerWhy(board, arrivals, comingRows, m.topped, A) : '';
+      // A HIT THAT WOULD TOP THE STACK OUT, on its way by the game's own landing times, makes a three a last resort now: it is the one way left
+      // to lower the stack before it lands (realThrees)
+      if (A && A.realThrees && dangerWhy === 'incoming' && !toppedReal) { toppedReal = true; bot.toppedOutNow = true; bot._threesForHit = (bot._threesForHit || 0) + 1; }
       if (A && A.lifeFirst && A.realTopped && !dangerWhy) {
         if (realNear) dangerWhy = 'topped';
         else if (m.realTop >= (A.dangerTop || 11) && m.realFtt <= (A.dangerFrames || 240)) dangerWhy = 'tall';
@@ -438,7 +441,7 @@ module.exports = function think(cfg) {
         if (holdFrames < 1 && landIn <= lead) { d = { kind: 'hold', overruled: true }; holdFrames = 0; }
         else if (holdFrames < 1) holdFrames = 0;
       }
-      out = { id: m.id, epoch: m.epoch, at: m.at, src: d.src || (d.overruled ? 'overrule' : 'default'), kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, raiseFrames: holdFrames, ms: Date.now() - t0, queued: m.posted ? t0 - m.posted : 0, brMs: brMs, why: why,
+      out = { id: m.id, epoch: m.epoch, at: m.at, threeOK: !!(A && A.realThrees && dangerWhy === 'incoming'), src: d.src || (d.overruled ? 'overrule' : 'default'), kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, raiseFrames: holdFrames, ms: Date.now() - t0, queued: m.posted ? t0 - m.posted : 0, brMs: brMs, why: why,
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
             mem: NativeMem(),
             breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,

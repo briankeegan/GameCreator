@@ -331,6 +331,7 @@ Match.prototype.take = function (truth) {
     // the swaps played, and the last few kept to tell a swap back
     if (a.kind === 'swap' && move && sw && sw.ids) {
       this.stats.swaps++;
+      if (a.threeOK) this.threeOKUntil = at + 90;   // a hit that would top the stack out is on its way: a three is the last resort until it has landed
       pressAudit(this, board, move, a.src || 'default', at);
       var ids = panelIds(board);
       this.swapHistory.push({ ids: sw.ids, all: ids.all, garbage: ids.garbage, backs: back ? back.backs + 1 : 0, at: at });
@@ -525,7 +526,7 @@ Match.prototype.frame = function (truth, arrivals, fresh) {
   var bits;
   if (planned) {
     bits = planned.bits; this.hold = { left: planned.hold.left, started: planned.hold.started }; delete this.plan[now];
-    if ((bits & IN.swap) && threePressed(this, truth)) {
+    if ((bits & IN.swap) && !(now <= (this.threeOKUntil || 0)) && threePressed(this, truth)) {
       bits &= ~IN.swap; this.hold = { left: 0, started: false };
       if (L.pending) Atomics.store(L.abort, 0, L.pending.id);
       this.epoch++; this.plan = {}; this.nextAt = 0; this.line = null; L.pending = null; this.acted = false;
