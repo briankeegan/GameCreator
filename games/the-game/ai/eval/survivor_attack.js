@@ -95,6 +95,15 @@ module.exports = function (opts) {
       var gl = best.n.b.grid, left = false;
       for (var r0 = 1; r0 < gl.length && !left; r0++) for (var c0 = 1; c0 <= W && !left; c0++) if (gl[r0] && gl[r0][c0] >= 8) left = true;
       best.continuous = !!(o.arrivals && (!left || best.broke > 0));
+      // ... and the board it ends on, left alone, lives through what is on its way and the survival horizon after it: a line
+      // that ends with garbage perched on a tower it cannot break is not a way out
+      if (best.continuous && o.horizon) {
+        var lastAt = 0;
+        (o.arrivals || []).forEach(function (a) { if (a.at > lastAt) lastAt = a.at; });
+        var wait = s.advanceMany([[best.n, 'long', null, Math.max(0, lastAt - best.n.t) + o.horizon]], true)[0];
+        if (!wait || wait.dead) best.continuous = false;
+        if (wait && !wait.dead) s.drop([wait]);
+      }
     }
     else { // the lowest peak of the board the fire leaves: the fewest panels any column has
       var ga = best.n && best.n.b && best.n.b.grid, low = 99, rr, cc, pk;

@@ -298,7 +298,7 @@ module.exports = function think(cfg) {
           // the opponent topped out: any combo or chain there is, soonest. Not: a big chain, however tall the stack.
           var minChain = oppOut ? 0 : minChainOf;
           var floor = oppOut || aggro ? (A.outCells || 3) : 1;
-          var ap = attacker.plan(board, m.hold, { ms: oppOut ? Math.min(P2.ms, 300) : P2.ms, width: P2.width, depth: P2.depth, pool: A.pool || 250, stopAt: oppOut ? floor : 0, minChain: minChain, guideChain: A.guideChain, rate: A.rate, arrivals: A.continuousLines ? arrivals : undefined, breakFirst: !!(A.breakFirst && garb) });
+          var ap = attacker.plan(board, m.hold, { ms: oppOut ? Math.min(P2.ms, 300) : P2.ms, width: P2.width, depth: P2.depth, pool: A.pool || 250, stopAt: oppOut ? floor : 0, minChain: minChain, guideChain: A.guideChain, rate: A.rate, arrivals: A.continuousLines ? arrivals : undefined, horizon: A.continuousLines ? bot.SURVIVE_FRAMES : 0, breakFirst: !!(A.breakFirst && garb) });
           if (attackLogged++ < 60) console.error('ATTACK clock ' + board.clock + ' out ' + oppOut + ' quiet ' + quiet + ' plan ' + (ap ? ap.cells + ' cells chain ' + ap.chain + ' swaps ' + ap.seq.length + ' first ' + JSON.stringify(ap.seq[0] || null) + ' setup ' + JSON.stringify(ap.setup) + ' base ' + ap.base + ' in ' + ap.ms + ' ms' : 'none'));
           // a board that can be built on while it is low and little is coming: garbage on it or not, the bot builds a chain, it does not break
           var building = unlock || !oppOut && (!garb || (!A.alwaysRaise && SH.top(board) < (A.setupTop || 9) && comingRows <= (A.setupComing === undefined ? 3 : A.setupComing)));

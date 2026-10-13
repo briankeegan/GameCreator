@@ -381,7 +381,8 @@ var pressVetoLogged = 0;
 function threePressed(match, truth) {
   try {
     var A = match.L.profile && match.L.profile.attack;
-    if (!A || !A.guardThrees) return false;
+    // (pressVeto false: the decision's own guard stands alone -- the settle this plays costs the frame loop up to 15 ms)
+    if (!A || !A.guardThrees || A.pressVeto === false) return false;
     if (lastResort(truth, A)) return false;
     var r = truth.curRow, c = truth.curCol;
     if (matchedBySwap(truth, r, c) !== 3) return false;
