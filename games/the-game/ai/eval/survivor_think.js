@@ -382,7 +382,7 @@ module.exports = function think(cfg) {
       // stack as high as it was clears nothing that matters (it gives no stop time). The move is the first of the line that goes to the
       // garbage if there is one, else a hold.
       var guardTopped = function () {
-        if (!(A && A.guardThrees && A.guardUseless && toppedNow && d.kind === 'swap' && d.move && !(d.planChain >= 2))) return;
+        if (!(A && A.guardThrees && A.guardUseless && toppedNow && d.kind === 'swap' && d.move && !(d.planChain >= 2) && (board.stopTime || 0) + (board.preStopTime || 0) >= (A.uselessStop || 30))) return;
         var tt = board.copy(); tt.behaviours = Object.assign({}, tt.behaviours, { passiveRaise: false }); tt.curRow = d.move[0]; tt.curCol = d.move[1];
         var rt = tt.tryQueueSwap(d.move[0], d.move[1]) ? tt.settle() : null;
         if (!(rt && rt.combos.length && rt.chain < 2 && rt.combos.every(function (x) { return x === 3; }))) return;
