@@ -395,8 +395,12 @@ module.exports = function think(cfg) {
         // nothing on the board or on its way, before any setup up to calmRaiseTo; otherwise only up to raiseCap, after the setups
         if (!busyA && !toppedForRaise && bot._canRaise()) {
           var topA = fullTop(board), calmA = !garbA && comingRows === 0 && !(board.incoming || []).length;
+          // (the calm raise leaves room for the tallest slab this match has sent: raised past it, the next hit tops the stack out)
+          (m.arrivals || []).forEach(function (a) { if (a.g && a.g.height > (bot._maxSlab || 0)) bot._maxSlab = a.g.height; });
+          (board.incoming || []).forEach(function (g) { if (g.height > (bot._maxSlab || 0)) bot._maxSlab = g.height; });
+          var roomA = (board.height || 12) - Math.max(bot._maxSlab || 0, A.slabGuess || 3) - 1;
           if (topA < (A.lowTop || 6) && !danger) put('raise', -1.4, { src: 'raise' });   // a low stack has nothing to build with, whatever is coming
-          else if (calmA && topA < (A.calmRaiseTo || 9)) put('raise', -0.6, { src: 'raise' });
+          else if (calmA && topA < Math.min(A.calmRaiseTo || 9, roomA)) put('raise', -0.6, { src: 'raise' });
           else if (topA < raiseCap(board, comingRows, A)) put('raise', -0.3, { src: 'raise' });
         }
         bot.SURVIVE_SEARCH_BUDGET = due ? Math.max(CHEAP, Math.min(FULL, Math.round((due - Date.now()) * nodesPerMs * SPEND))) : FULL;
