@@ -60,7 +60,7 @@ module.exports = function think(cfg) {
     if (!BS) BS = new (require(path.join(DIR, 'native.js')).server.Search)({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames, threads: OPTS.threads || 1 });
     return BS;
   }
-  var matchMode = 'unknown';
+  var matchMode = 'unknown', planRealUntil = -1;
   var bot = null, snap = null, nat = null, candNat = null, BS = null, attacker = null, attackLogged = 0, attackGate = 0, noRaiseLogged = 0, threeLogged = 0, warmPlan = null;   // BS: a search context of its own for breakMoves   // nat, candNat: the search's and the candidates' C contexts, kept from match to match
   var NativeMem = function () {
     var N = require(path.join(DIR, 'native.js')).server, X = N.exports(), free = [];
@@ -79,7 +79,10 @@ module.exports = function think(cfg) {
     var t0 = Date.now(), board = PA.revive(m.packed ? require('v8').deserialize(m.packed) : m.board), arrivals = [], out;
     // LEVEL 10 HEALTH (planHealth): every board is judged with the health level 10 gives, whatever the game's own -- a topped board
     // that stops moving with no stop time and no shake left dies that frame. Training gives 51; spending it is a loss at level 10.
-    if (cfg.profile.planHealth) {
+    // (while every move dies at that health, the decisions for planReal frames after are judged on the health the board has: a
+    // board level 10 has lost is still fought for, not given up)
+    var planned = !!(cfg.profile.planHealth && !(planRealUntil > m.at));
+    if (planned) {
       board.health = Math.min(board.health, cfg.profile.planHealth);
       board.levelData = Object.assign({}, board.levelData, { maxHealth: Math.min(board.levelData.maxHealth, cfg.profile.planHealth) });
     }
@@ -821,6 +824,7 @@ module.exports = function think(cfg) {
         if (holdFrames < 1 && landIn <= lead) { d = { kind: 'hold', overruled: true }; holdFrames = 0; }
         else if (holdFrames < 1) holdFrames = 0;
       }
+      if (planned && bot.allDoomedNow) planRealUntil = m.at + (cfg.profile.planReal || 120);
       out = { id: m.id, epoch: m.epoch, at: m.at, threeOK: !!(A && A.realThrees && dangerWhy === 'incoming'), src: d.src || (d.overruled ? 'overrule' : 'default'), kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, raiseFrames: holdFrames, ms: Date.now() - t0, queued: m.posted ? t0 - m.posted : 0, brMs: brMs, why: why,
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
             mem: NativeMem(),
@@ -858,7 +862,7 @@ module.exports = function think(cfg) {
       console.error('WARM plan failed: ' + String(e && e.message || e));
     }
   }
-  function reset() { if (bot && bot._nat) nat = bot._nat; if (bot && bot._candNat) candNat = bot._candNat; bot = null; snap = null; }
+  function reset() { if (bot && bot._nat) nat = bot._nat; if (bot && bot._candNat) candNat = bot._candNat; bot = null; snap = null; planRealUntil = -1; }
   // New weights take effect from the next match (reset).
   function setWeights(w) { OPTS.weights = floored(w); }
   // The match's mode (survivor.js, from the link): 'timeattack', 'vs', 'solo', 'other' or 'unknown'.
