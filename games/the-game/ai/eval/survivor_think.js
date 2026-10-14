@@ -37,8 +37,8 @@ function clearsOf(bot, d) {
   var all = bot._allCands || [];
   for (var i = 0; i < all.length; i++)
     if (all[i].kind === 'swap' && all[i].move && all[i].move[0] === d.move[0] && all[i].move[1] === d.move[1]) {
-      // what the move clears beyond what the board left alone clears: a chain popping clears panels whatever is swapped
-      var hold = all.filter(function (c) { return c.kind === 'hold' && c.resolved; })[0], base = hold ? hold.resolved.clearedPanels || 0 : 0;
+      // (measureAdded, the agro bot: what the move clears beyond what the board left alone clears -- a chain popping clears panels whatever is swapped)
+      var hold = bot.measureAdded && all.filter(function (c) { return c.kind === 'hold' && c.resolved; })[0], base = hold ? hold.resolved.clearedPanels || 0 : 0;
       return Math.max(0, ((all[i].resolved && all[i].resolved.clearedPanels) || 0) - base);
     }
   return 0;
@@ -51,6 +51,8 @@ function garbCells(st) {
 }
 module.exports = function think(cfg) {
   var OPTS = SH.botOptions(cfg.profile, cfg.threads);
+  // (the agro profile's holdThrough: a held raise goes on through the rows it brings in, in every search this mind makes)
+  if (cfg.profile.attack && cfg.profile.attack.holdThrough) require(path.join(DIR, 'native.js')).server.holdThrough();
   var floored = SH.floorTravel;
   if (cfg.weights) OPTS.weights = floored(cfg.weights);
   var rates = [];   // budget searched per millisecond over the last decisions

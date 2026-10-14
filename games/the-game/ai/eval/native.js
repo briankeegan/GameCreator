@@ -616,6 +616,9 @@
     },
     gameOver: function (h) { return X.nb_game_over(h) === 1; },
     Search: Search,
+    // the agro profile's holdThrough: a held raise goes on through the rows it brings in (search.h raiseStep); never set, it ends
+    // where the engine lets go of the button
+    holdThrough: function () { init(); if (X.ns_hold_through) X.ns_hold_through(1); },
     exports: function () { init(); return X; }
   };
   return Native;

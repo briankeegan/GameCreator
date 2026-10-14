@@ -467,7 +467,10 @@ function panelsOf(b) {
 // idle(board, hold) is a frame with nothing decided: the raise in hand goes
 // on being held.
 function Hands(p) {
-  this.S = new (require(path.join(__dirname, 'native.js')).server.Search)({ reaction: p.reaction, swapGap: p.swapGap, cursorMoveFrames: p.cursorMoveFrames, threads: 1 });
+  var N = require(path.join(__dirname, 'native.js')).server;
+  this.through = !!(p.attack && p.attack.holdThrough);
+  if (this.through) N.holdThrough();
+  this.S = new N.Search({ reaction: p.reaction, swapGap: p.swapGap, cursorMoveFrames: p.cursorMoveFrames, threads: 1 });
 }
 Hands.prototype.keys = function (board, hold, kind, move, arrivals, frames) {
   this.S.reset();
@@ -480,7 +483,7 @@ Hands.prototype.keys = function (board, hold, kind, move, arrivals, frames) {
 Hands.prototype.idle = function (board, hold) {
   if (!hold.left) return { bits: 0, hold: hold };
   var started = hold.started || !!board.manualRaise;
-  if (board.preventManualRaise && !started) return { bits: 0, hold: { left: 0, started: started } };
+  if (this.through ? (board.preventManualRaise && !started) : (board.preventManualRaise || (started && !board.manualRaise))) return { bits: 0, hold: { left: 0, started: started } };
   return { bits: PA.IN.raise, hold: { left: hold.left - 1, started: started } };
 };
 // The same frame as the search plays it, for the test that holds idle to it.

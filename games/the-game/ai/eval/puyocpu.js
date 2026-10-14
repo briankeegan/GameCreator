@@ -250,6 +250,9 @@
     this.noThreesUntilTopped = opts.threesOnlyTopped === true;
     // ATTACK FIRST (opts.attackFirst): a followed survival line is not the whole answer while an attack is among the moves (_attackAmong)
     this.attackFirst = opts.attackFirst === true;
+    // WHAT A MOVE ADDS (addedOver) is measured for a bot built with the attack's ranking (attackFirst); any other reads each move's
+    // whole resolve, as it always has
+    this.measureAdded = opts.attackFirst === true;
     this.nearestFirst = opts.nearestFirst === true;
     this.bareThreesDropped = 0;
     this.bareThreesKept = 0;
@@ -2853,7 +2856,7 @@
       cands.natDone = true;
     }
     this._nativeNodes(cands);
-    addedOver(cands);
+    if (this.measureAdded) addedOver(cands);
     this._allCands = cands;
     var out = this._levelForSlab(this._flatten(this._towardBreak(
         this._heightCap(this._noBareThree(this._doomed(this._survivors(this._affordable(cands))))))));

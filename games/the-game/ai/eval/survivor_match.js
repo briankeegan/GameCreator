@@ -150,7 +150,7 @@ Match.prototype.predictNative = function (board, at, hold, from) {
     if (planned !== undefined) { bits = planned.bits; h = { left: planned.hold.left, started: planned.hold.started }; }
     else if (h.left > 0) {
       var rs = X.nb_raise_state(b), started = h.started || !!(rs & 1);
-      if ((rs & 2) && !started) h = { left: 0, started: started };
+      if (L.hands.through ? ((rs & 2) && !started) : ((rs & 2) || (started && !(rs & 1)))) h = { left: 0, started: started };
       else { h = { left: h.left - 1, started: started }; bits = IN.raise; }
     }
     X.nb_set_input(b, bits & ~IN.swap);
@@ -229,10 +229,11 @@ function panelIds(board) {
   }
   return { all: all, garbage: garbage };
 }
-// Whether garbage came onto the board since `then`: a slab landed reshapes what is under it. A clear elsewhere is not a change --
-// a chain popping clears panels on every frame, and a swap undone while it pops is still undone. A row rising is not one either:
-// the stack scrolls and its squares are not the same ones.
-function changedSince(then, now) {
+// Whether a panel left the board (a clear) or garbage came onto it since `then`. A row rising is not a change: the stack scrolls
+// and its squares are not the same ones. With strict (the agro profile's strictSwapBack) only garbage landing is: a chain popping
+// clears panels on every frame, and a swap undone while it pops is still undone.
+function changedSince(then, now, strict) {
+  if (!strict) for (var id in then.all) if (!now.all[id]) return true;
   for (var g in now.garbage) if (!then.garbage[g]) return true;
   return false;
 }
@@ -305,9 +306,10 @@ Match.prototype.take = function (truth) {
       }
       if (back) {
         now = panelIds(board);
-        // (only what the swap itself clears: a break line's first step that undoes the last swap breaks nothing)
-        var clears = !!(a.diag && a.diag.clears > 0);
-        if (!clears && !(changedSince(back, now) && !back.backs)) {
+        // (strictSwapBack: only what the swap itself clears -- a break line's first step that undoes the last swap breaks nothing)
+        var AS = L.profile && L.profile.attack, strictB = !!(AS && AS.strictSwapBack);
+        var clears = !!(a.diag && a.diag.clears > 0) || (!strictB && !!(a.breaks && a.breaks.took));
+        if (!clears && !(changedSince(back, now, strictB) && !back.backs)) {
           a = Object.assign({}, a, { kind: 'hold', move: null, line: null });
           move = null; back = null;
           this.stats.undone++;
