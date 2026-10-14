@@ -411,7 +411,8 @@ module.exports = function think(cfg) {
           // (calm: raised all the way to calmRaiseTo before anything else is built -- the break is made ready at the top; a low stack
           // with garbage on its way is raised to lowTop before a planned fire)
           // (time attack: no chain going, the stack goes up to calmRaiseTo and the next chain is built from there; a combo only to live)
-          if ((calmA || taA) && topA < (A.calmRaiseTo || 10) && !danger) put('raise', -2.5, { src: 'raise', to: A.calmRaiseTo || 10 });
+          // (past lowTop the full raise goes on only while a break is ready for the next slab -- in time attack, none can come)
+          if ((calmA || taA) && topA < (A.calmRaiseTo || 10) && !danger && (taA || readyA || topA < (A.lowTop || 6))) put('raise', -2.5, { src: 'raise', to: A.calmRaiseTo || 10 });
           else if (topA < (A.lowTop || 6) && !danger) put('raise', -1.4, { src: 'raise', to: A.lowTop || 6 });   // a low stack has nothing to build with, whatever is coming
           else if (topA < raiseCap(board, comingRows, A)) put('raise', -0.3, { src: 'raise', to: raiseCap(board, comingRows, A) });
         }

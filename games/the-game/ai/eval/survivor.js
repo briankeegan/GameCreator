@@ -179,7 +179,9 @@ var server = net.createServer(function (sock) {
         match = new Match({ levelData: m.levelData, behaviours: m.behaviours, stackOverConditions: m.stackOverConditions }, LINK);
         // TIME ATTACK OR VERSUS: the link sends the match's mode -- a time limit means time attack; stack interaction 1 or 4 is versus
         var md = m.mode || null;
-        match.mode = !md ? 'unknown' : md.timeLimit ? 'timeattack' : (md.stackInteraction === 1 || md.stackInteraction === 4) ? 'vs' : md.stackInteraction === 0 ? 'solo' : 'other';
+        // (a match made from a replay carries no rules: then two stacks or more is versus, one is solo)
+        match.mode = !md ? 'unknown' : md.timeLimit ? 'timeattack' : (md.stackInteraction === 1 || md.stackInteraction === 4) ? 'vs' : md.stackInteraction === 0 ? 'solo'
+                   : md.stacks >= 2 ? 'vs' : md.stacks === 1 ? 'solo' : 'other';
         console.log('match mode: ' + match.mode + ' ' + JSON.stringify(md));
         LINK.post({ type: 'mode', mode: match.mode });
         nativeNow();   // the engine compiled in the countdown, not on the first frame that predicts
