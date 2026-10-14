@@ -413,6 +413,30 @@ module.exports = function think(cfg) {
       //   at the top (the last resort); a planned fire or extension; a break made ready; a setup; a raise;
       // bigger before smaller within each, and, when none of them lives, the survival search's own choice.
       var arbProps = null, arbKey = function (mv) { return mv[0] + ',' + mv[1]; };
+      // ATTACK LINES UNDER THREAT (defendLines): the defence's own moves are single swaps, so a better line a few swaps away -- a combo of
+      // outCells or more, or a chain, done before the next garbage leaves no time to break it -- is planned and offered to its ranking:
+      // a line that breaks garbage before any single break, a three's included; one that breaks nothing before the breaks only out of
+      // danger. The survival search proves its first swap lives like any move; the line is played on from there (arbProps)
+      if (defendA && A0.defendLines && bot.preferRank) {
+        var lmsD = Math.min(A0.defendLineMs || 60, due ? due - Date.now() - 2 * DEADLINE_MARGIN_MS - 100 : 1e9);
+        if (lmsD >= 25) {
+          if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
+          var apD = attacker.plan(board, m.hold, { ms: lmsD, width: A0.width || 40, depth: A0.depth || 7, pool: A0.pool || 250, stopAt: 0, minChain: 0,
+                                                   guideChain: A0.guideChain, rate: A0.rate, arrivals: arrivals, breakFirst: !!SH.lowestGarbageRow(board) });
+          // (in time and out of danger as agro's own settings judge them: the attack block is set aside under threat)
+          var fitsD = !A0.readyFrames || firstLand === Infinity || (apD.chain || 0) >= 3 || apD.seq.length * 18 + A0.readyFrames <= firstLand;
+          var dangerD = CK.dangerWhy(board, realArrivals, comingRows, m.topped, A0) !== '';
+          if (apD.seq.length && ((apD.chain || 0) >= 2 || (apD.cells || 0) >= (A0.outCells || 4)) && fitsD) {
+            var kD = arbKey(apD.seq[0]), rD = apD.brk ? -0.6 : (!dangerD ? -0.3 : null);
+            if (rD !== null) {
+              arbProps = {}; arbProps[kD] = { rank: rD, src: 'fire', line: apD.seq.slice(1), planChain: apD.chain, cells: apD.cells, brk: !!apD.brk };
+              var prD = bot.preferRank;
+              bot.preferRank = function (c, i) { var r = prD.call(this, c, i); return c.kind === 'swap' && c.move && arbKey(c.move) === kD ? Math.min(r, rD) : r; };
+              bot._defendLines = (bot._defendLines || 0) + 1;
+            }
+          }
+        }
+      }
       if (A && A.arbiter) {
         if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
         // TIME ATTACK: no one to send to -- only chains count, the bigger the better; a combo is no attack
@@ -844,7 +868,7 @@ module.exports = function think(cfg) {
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
             mem: NativeMem(),
             breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
-            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0, useless3: bot._useless3 || 0, toppedFree: bot._toppedFree || 0, survAsked: bot._survivalAsked || 0, busySetups: bot._busySetups || 0, thought: bot._thoughtMoves || 0, thoughtHolds: bot._thoughtHolds || 0, thinkErr: bot._thinkErr || null, pingPong: bot._pingPong || 0, survOver: bot._survivalOver || 0, continuous: bot._continuous || 0, fireWhy: bot._fireWhy || null, arbSrc: bot._arbSrc || null, mode: matchMode, buried: bot._buried || 0, pitAttacks: bot._pitAttacks || 0, backs: bot._backs || 0, digs: bot._digs || 0, flips: bot._flips || 0, volley: bot._volley || 0, floored: bot._floored || 0, merged: bot._merged || 0, mergeWaits: bot._mergeWaits || 0, defended: bot._defended || 0 } };
+            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0, useless3: bot._useless3 || 0, toppedFree: bot._toppedFree || 0, survAsked: bot._survivalAsked || 0, busySetups: bot._busySetups || 0, thought: bot._thoughtMoves || 0, thoughtHolds: bot._thoughtHolds || 0, thinkErr: bot._thinkErr || null, pingPong: bot._pingPong || 0, survOver: bot._survivalOver || 0, continuous: bot._continuous || 0, fireWhy: bot._fireWhy || null, arbSrc: bot._arbSrc || null, mode: matchMode, buried: bot._buried || 0, pitAttacks: bot._pitAttacks || 0, backs: bot._backs || 0, digs: bot._digs || 0, flips: bot._flips || 0, volley: bot._volley || 0, floored: bot._floored || 0, merged: bot._merged || 0, mergeWaits: bot._mergeWaits || 0, defended: bot._defended || 0, defendLines: bot._defendLines || 0, threeAfterBig: bot._threeAfterBig || 0 } };
     } catch (e) {
       if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
       else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e) + ' [inc ' + (board && board.incoming ? board.incoming.length : '?') + ', arr ' + (m.arrivals ? m.arrivals.length : '?') + ']', ms: Date.now() - t0 };
