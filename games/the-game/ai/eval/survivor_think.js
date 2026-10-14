@@ -469,7 +469,10 @@ module.exports = function think(cfg) {
             // the slab lands under them)
             var comingD = comingRows; (board.incoming || []).forEach(function (g) { comingD += g.height || 0; });
             var heavyD = comingD > (A0.maxComing === undefined ? 6 : A0.maxComing);
-            var kD = arbKey(apD.seq[0]), rD = apD.brk ? (spareD ? -0.6 : 0.3) : (!dangerD && !floorD && !brkNear && !heavyD ? -0.3 : null);
+            // (a breaking line longer than two swaps while a break is one swap away comes after that break: under a slab every break
+            // put off is a row of panels had later, and the breaks come as fast as they are made)
+            var oneBrk = !!(br && br.depth && !br.touch && !br.lineup), longD = apD.seq.length > 2;
+            var kD = arbKey(apD.seq[0]), rD = apD.brk ? (spareD && !(oneBrk && longD) ? -0.6 : 0.3) : (!dangerD && !floorD && !brkNear && !heavyD ? -0.3 : null);
             if (rD !== null) {
               arbProps = {}; arbProps[kD] = { rank: rD, src: 'fire', line: apD.seq.slice(1), planChain: apD.chain, cells: apD.cells, brk: !!apD.brk };
               var prD = bot.preferRank;
