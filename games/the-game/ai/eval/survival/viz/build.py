@@ -41,7 +41,7 @@ def seed(n):
                           'readies': share('READIES', lambda l: 'ready:' in l)},
             'timeline': [[fr[0], fr[4], fr[5], fr[6], fr[3], 1 if fr[2] else 0] for fr in frames[::30]] + [[died, frames[-1][4], frames[-1][5], frames[-1][6], frames[-1][3], 0]],
             'breakAt': breaks,
-            'frames': [[fr[0], fr[1], fr[2], fr[8], logs.get(fr[0], []), fr[9]] for fr in frames[-1500:]]}
+            'frames': [[fr[0], fr[1], fr[2], fr[8], logs.get(fr[0], []), fr[9]] for fr in frames[-900:]]}
 results = [l.rstrip('\n').split('\t') for l in open(os.path.join(d, 'results.tsv'))]
 H = [l.rstrip('\n').split('\t') for l in open(hist)][1:]
 if mode: H = [h for h in H if h[-1] == mode]
