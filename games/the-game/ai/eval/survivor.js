@@ -141,6 +141,7 @@ mind.on('error', function (e) { console.error('mind: ' + (e && e.stack || e)); p
 // The match's stats, with this thread's GC pauses since the last match.
 function overStats(match) {
   match.stats.gcMs = Math.round(GC.max * 10) / 10; match.stats.slowGc = GC.slow; GC.max = 0; GC.slow = 0;
+  match.stats.mode = match.mode;
   return JSON.stringify(match.stats);
 }
 // ---------------------------------------------------------------- the link
@@ -176,6 +177,11 @@ var server = net.createServer(function (sock) {
         // match, so whoever keeps the file (island2) changes them between matches.
         if (process.env.GC_SURVIVOR_RELOAD === '1') mind.postMessage({ type: 'weights', weights: SH.botOptions(SH.profile(), 1).weights });
         match = new Match({ levelData: m.levelData, behaviours: m.behaviours, stackOverConditions: m.stackOverConditions }, LINK);
+        // TIME ATTACK OR VERSUS: the link sends the match's mode -- a time limit means time attack; stack interaction 1 or 4 is versus
+        var md = m.mode || null;
+        match.mode = !md ? 'unknown' : md.timeLimit ? 'timeattack' : (md.stackInteraction === 1 || md.stackInteraction === 4) ? 'vs' : md.stackInteraction === 0 ? 'solo' : 'other';
+        console.log('match mode: ' + match.mode + ' ' + JSON.stringify(md));
+        LINK.post({ type: 'mode', mode: match.mode });
         nativeNow();   // the engine compiled in the countdown, not on the first frame that predicts
         match.openFrames();
         if (global.gc) global.gc();   // in the countdown: no frame is waiting on it

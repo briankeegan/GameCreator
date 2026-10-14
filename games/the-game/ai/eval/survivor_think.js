@@ -54,6 +54,7 @@ module.exports = function think(cfg) {
     if (!BS) BS = new (require(path.join(DIR, 'native.js')).server.Search)({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames, threads: OPTS.threads || 1 });
     return BS;
   }
+  var matchMode = 'unknown';
   var bot = null, snap = null, nat = null, candNat = null, BS = null, attacker = null, attackLogged = 0, attackGate = 0, noRaiseLogged = 0, threeLogged = 0, warmPlan = null;   // BS: a search context of its own for breakMoves   // nat, candNat: the search's and the candidates' C contexts, kept from match to match
   var NativeMem = function () {
     var N = require(path.join(DIR, 'native.js')).server, X = N.exports(), free = [];
@@ -366,6 +367,8 @@ module.exports = function think(cfg) {
       var arbProps = null, arbKey = function (mv) { return mv[0] + ',' + mv[1]; };
       if (A && A.arbiter) {
         if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
+        // TIME ATTACK: no one to send to -- only chains count, the bigger the better; a combo is no attack
+        var taA = matchMode === 'timeattack';
         var garbA = !!SH.lowestGarbageRow(board), busyA = cascadeLive(board, A.freeRaise), props = arbProps = {};
         var leftMs = function () { return due ? due - Date.now() - 2 * DEADLINE_MARGIN_MS - 100 : 1e9; };
         var worthOf = function (chain, cells) { return Math.min(0.49, ((chain || 0) * 3 + (cells || 0)) / 1000); };
@@ -380,8 +383,9 @@ module.exports = function think(cfg) {
         var quietA = !garbA && comingRows === 0 && SH.top(board) < (A.quietTop || 9), climbA = !!(A.climbBig && SH.top(board) >= (A.climbTop || 9));
         var pms = Math.min(quietA || climbA ? (A.bigMs || 200) : (A.ms || 60), leftMs());
         if (pms >= 30) {
-          var apA = attacker.plan(board, m.hold, { ms: pms, width: quietA || climbA ? (A.bigWidth || 100) : (A.width || 40), depth: quietA || climbA ? (A.bigDepth || 14) : (A.depth || 7),
-                                                   pool: A.pool || 250, stopAt: 0, minChain: 0, guideChain: A.guideChain, rate: A.rate, arrivals: arrivals, breakFirst: garbA });
+          // (time attack: chains only, the biggest -- no rate for speed, no combo)
+          var apA = attacker.plan(board, m.hold, { ms: taA ? Math.min(A.bigMs || 200, leftMs()) : pms, width: quietA || climbA || taA ? (A.bigWidth || 100) : (A.width || 40), depth: quietA || climbA || taA ? (A.bigDepth || 14) : (A.depth || 7),
+                                                   pool: A.pool || 250, stopAt: 0, minChain: taA ? 2 : 0, guideChain: A.guideChain, rate: taA ? 0 : A.rate, arrivals: arrivals, breakFirst: garbA });
           if (apA.seq.length && (apA.cells >= (A.outCells || 4) || apA.brk) && leavesBreakTime(apA))
             put(arbKey(apA.seq[0]), (apA.brk ? -3.5 : -1.5) - worthOf(apA.chain, apA.cells), { src: 'fire', line: apA.seq.slice(1), planChain: apA.chain, cells: apA.cells });
           if (apA.setup) put(arbKey(apA.setup), -0.5, { src: busyA ? 'busySetup' : 'setup' });
@@ -450,7 +454,7 @@ module.exports = function think(cfg) {
           if (add && c.kind === 'swap') {
             var sizes = add.comboSizes || [], big = 0, ch = add.chainLength || 0, brk = (add.brokeGarbage || 0) > 0;
             sizes.forEach(function (x) { if (x > big) big = x; });
-            var atk = ch >= 2 || big >= 4;
+            var atk = ch >= 2 || (big >= 4 && !taA);
             if (atk && brk) r = -4 - worthOf(ch, big);
             else if (brk) r = -3 - big / 1000;
             else if (atk) r = -2 - worthOf(ch, big);
@@ -458,8 +462,9 @@ module.exports = function think(cfg) {
           }
           if (k !== 'raise' && prep.want[k] === true) r = Math.min(r, -3);
           if (props[k]) r = Math.min(r, props[k].rank);
-          // (a hold after them: waiting is not keeping the board level; a flip ranks nowhere, so the hold comes before it)
-          if (r === Infinity) r = c.kind === 'hold' ? 0.6 : c.kind === 'swap' && !sh.hollow && !sh.well ? 0.5 : Infinity;
+          // (a hold after them: waiting is not keeping the board level; a flip ranks nowhere, so the hold comes before it; a swap that
+          // clears is ranked by what it clears above, never as a levelling swap)
+          if (r === Infinity) r = c.kind === 'hold' ? 0.6 : c.kind === 'swap' && !sh.hollow && !sh.well && !(add && (add.comboSizes || []).length) ? 0.5 : Infinity;
           return r;
         };
         bot._arbiter = (bot._arbiter || 0) + 1;
@@ -679,7 +684,7 @@ module.exports = function think(cfg) {
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
             mem: NativeMem(),
             breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
-            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0, useless3: bot._useless3 || 0, toppedFree: bot._toppedFree || 0, survAsked: bot._survivalAsked || 0, busySetups: bot._busySetups || 0, thought: bot._thoughtMoves || 0, thoughtHolds: bot._thoughtHolds || 0, thinkErr: bot._thinkErr || null, pingPong: bot._pingPong || 0, survOver: bot._survivalOver || 0, continuous: bot._continuous || 0, fireWhy: bot._fireWhy || null, arbSrc: bot._arbSrc || null, digs: bot._digs || 0, flips: bot._flips || 0 } };
+            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0, useless3: bot._useless3 || 0, toppedFree: bot._toppedFree || 0, survAsked: bot._survivalAsked || 0, busySetups: bot._busySetups || 0, thought: bot._thoughtMoves || 0, thoughtHolds: bot._thoughtHolds || 0, thinkErr: bot._thinkErr || null, pingPong: bot._pingPong || 0, survOver: bot._survivalOver || 0, continuous: bot._continuous || 0, fireWhy: bot._fireWhy || null, arbSrc: bot._arbSrc || null, mode: matchMode, digs: bot._digs || 0, flips: bot._flips || 0 } };
     } catch (e) {
       if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
       else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e) + ' [inc ' + (board && board.incoming ? board.incoming.length : '?') + ', arr ' + (m.arrivals ? m.arrivals.length : '?') + ']', ms: Date.now() - t0 };
@@ -715,5 +720,7 @@ module.exports = function think(cfg) {
   function reset() { if (bot && bot._nat) nat = bot._nat; if (bot && bot._candNat) candNat = bot._candNat; bot = null; snap = null; }
   // New weights take effect from the next match (reset).
   function setWeights(w) { OPTS.weights = floored(w); }
-  return { answer: answer, reset: reset, setWeights: setWeights, warm: warm };
+  // The match's mode (survivor.js, from the link): 'timeattack', 'vs', 'solo', 'other' or 'unknown'.
+  function setMode(mode) { matchMode = mode || 'unknown'; }
+  return { answer: answer, reset: reset, setWeights: setWeights, warm: warm, setMode: setMode };
 };

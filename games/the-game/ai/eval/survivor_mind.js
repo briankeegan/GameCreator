@@ -16,6 +16,7 @@ var mind = require(path.join(DIR, 'survivor_think.js'))(wt.workerData);
 wt.parentPort.on('message', function (m) {
   if (m.type === 'reset') { mind.reset(); return; }
   if (m.type === 'warm') { mind.warm(m); return; }
+  if (m.type === 'mode') { mind.setMode(m.mode); return; }
   if (m.type === 'weights') { mind.setWeights(m.weights); mind.reset(); return; }
   wt.parentPort.postMessage(mind.answer(m));
 });
