@@ -1003,7 +1003,7 @@ static JLOCAL int raiseShort;   // raiseSafe refused for room (1) or for a clear
 static int raiseSafe(const int32_t *base) {
   raiseShort = 1;
   if (BIN[IN_TOPPED] || BIN[IN_STACKTOPPED]) return 0;
-  int queued = BIN[IN_PHANTOM] > 0 ? 0 : slabRowsHeld((int)BIN[IN_SLABH]);   // the real next slab, never the phantom
+  int queued = slabRowsHeld((int)BIN[IN_SLABH]);
   int free = raiseRoom(tallestBoard(base), queued, BIN[IN_RAISING] != 0, BIN[IN_FTNR] * 16 <= BIN[IN_FPR]);
   if (free <= 0) return 0;
   raiseShort = 0;
@@ -1278,7 +1278,7 @@ static int waveReady(const int32_t *st) {
 }
 static int raiseModeOf(const int32_t *base, int poolBreak) {
   raiseAfter = 0;
-  double realIn = BIN[IN_INCOMING] - BIN[IN_PHANTOM];   // the raise reads the real queue, never the phantom first wave
+  double realIn = BIN[IN_INCOMING];
   if (TFLAG(TF_RAISE)) { raiseGate = 1; return (int)BIN[IN_T + 3]; }
   int topped = BIN[IN_TOPPED] != 0;
   if (BIN[IN_OPPPRESENT]) BT->opening = 0;   // with another player in the match there is no first wave to wait for (front_opponent)
@@ -1289,7 +1289,7 @@ static int raiseModeOf(const int32_t *base, int poolBreak) {
   // as soon as it lifts -- in a storm, nearly every frame. No raise is wanted
   // that the board cannot take: material comes from what breaks.
   if (BIN[IN_LOCKLEFT] > 0 && realIn > 0) { raiseGate = 11; return 0; }
-  int rows = BIN[IN_PHANTOM] > 0 ? 0 : slabRowsHeld((int)__builtin_ceil(BIN[IN_NEXTSLAB] / BW));
+  int rows = slabRowsHeld((int)__builtin_ceil(BIN[IN_NEXTSLAB] / BW));
   int fits = raiseSafe(base);
   // A QUEUE THAT FILLS THE ROOM KILLS A BOARD WITH NO BREAK READY, raised or
   // not: only material builds the break, and the raise costs its row -- it
@@ -1712,6 +1712,7 @@ static Dec decideCore(void) {
       // the engine plays it whole, and it is played if it lives
       if (nsw && planInTime(sw, nsw, ready[F_DURATION], base, deadline)) {
         if (poolSwap(sw[0], sw[1]) ? playable(sw[0], sw[1]) : routeLives(sw, nsw)) {
+          if (nsw > 1) lineSet(sw, nsw, LINE_PLAN, 0); else BT->nLine = 0;
           BT->wantRaise = 0;
           clearRaiseFrames = 1;
           BT->counts[C_READIEDFIRST]++;
