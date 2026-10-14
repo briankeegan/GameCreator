@@ -1519,7 +1519,7 @@ static Dec decideCore(void) {
   for (int i = 0; i < nPool; i++) if (poolBreaks(&POOL[i])) { poolBreak = 1; break; }
   int topped = BIN[IN_TOPPED] != 0;
   int readyBase = slabReadyBoard(base) && heldReady();
-  int readyFirst = !poolBreak && !topped && !readyBase && !(BT->nLine > 1 && BT->lineKind == LINE_PLAN);   // the slab-ready record is read; a plan kept is played to its end, not made again
+  int readyFirst = !poolBreak && !topped && !readyBase && !(BT->nLine >= 1 && BT->lineKind == LINE_PLAN);   // the slab-ready record is read; a plan kept is played to its end, not made again
   optSkip = 4 | (readyFirst ? 0 : 8);
   baseReady = BIN[IN_INCOMING] > 0 && readyBase;
   baseLanding = landingOf(base);
@@ -3977,7 +3977,11 @@ static Dec playOn(Dec d) {
   if (!BT->nLine) return d;
   // NOR BY GOING BACK: a line whose next step undoes a press is dropped here,
   // where it is chosen, so the choice falls to the next best and not to a hold
-  if (undoesOld(BT->line[0], BT->line[1])) { BT->nLine = 0; return d; }
+  if (undoesOld(BT->line[0], BT->line[1])) {
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "DROPLINE undoes a press: %d,%d\n", BT->line[0], BT->line[1]); }
+#endif
+    BT->nLine = 0; return d; }
   linesReset();
   int v = lineJudge(BT->line, BT->nLine, BT->lineWaitAll);
   int need = LV_LIVES | (BT->lineKind == LINE_BREAK ? LV_BREAKS : BT->lineKind == LINE_CASH ? LV_GAINS : 0);
@@ -3996,7 +4000,11 @@ static Dec playOn(Dec d) {
     int buys = aloneOnEngine() && LNA[0] && (!keepO[0] || keepO[0] > LNA[0]);
     int ok = readyAfterSpend(BT->line, BT->nLine) || (buys && !nonSpendLives() && !spendKeepsRaiseOut());
     for (int q = 0; q < LNOLEN; q++) LNO[q] = keepO[q];
-    if (!ok) { BT->nLine = 0; return d; }
+    if (!ok) {
+#ifndef __wasm__
+      if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "DROPLINE plan spends: v %d die %d buys %d\n", v, playDie, buys); }
+#endif
+      BT->nLine = 0; return d; }
   }
   lineLast = 1;
   plansDrop();
@@ -5967,7 +5975,13 @@ static Dec fillFirstIn(Dec d) {
       if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  walk %d,%d dir %d n %d v %d hollow %d die %d last %d\n", r, c, dir, n, v, HOLLOW(LNO), LNO[0], LNO[1]); }
 #endif
       int spend = (v & LV_PAYS) != 0;
+#ifndef __wasm__
+#define BOTTRACE botTraceOn
 #define WALKWHY(why) do { if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  walk %d,%d -> %s\n", r, c, why); } } while (0)
+#else
+#define BOTTRACE 0
+#define WALKWHY(why) do { } while (0)
+#endif
       if (!(v & LV_LIVES) || (spend && !LIVES_LONGER())) { WALKWHY("dies, or spends and lives no longer"); continue; }
       // its time: the engine's own last press (it has just played it); the clock where it could not
       double est = LNO[1] > 0 ? pressSeen(LNO[1]) : lineFrames(fsw, n, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, BIN[IN_TOPPED] || BIN[IN_STOP] > 0);
@@ -5975,8 +5989,8 @@ static Dec fillFirstIn(Dec d) {
       int wdie = LNO[0], wlast = LNO[1];
       LEVELTAKE(fsw, n, est);
       double sc = fillScoreOf(fsw, n, wdie, wlast, HOLLOW(LNO), spentOf());
-      if (W.has ? !fillBeats(&W, &wtw, sc, est, fsw, n) : sc <= ref) { WALKWHY("does not beat the board left alone or the best fill"); if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "    score %.0f ref %.0f urgent %d need %.0f\n", sc, ref, fillUrgent, need); } continue; }
-      if (!fillKeeps(marginWithin(fsw, n, wdie, need), need)) { WALKWHY("costs the break's time"); if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "    margin %.0f need %.0f\n", marginWithin(fsw, n, wdie, need), need); } continue; }
+      if (W.has ? !fillBeats(&W, &wtw, sc, est, fsw, n) : sc <= ref) { WALKWHY("does not beat the board left alone or the best fill"); if (BOTTRACE) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "    score %.0f ref %.0f urgent %d need %.0f\n", sc, ref, fillUrgent, need); } continue; }
+      if (!fillKeeps(marginWithin(fsw, n, wdie, need), need)) { WALKWHY("costs the break's time"); if (BOTTRACE) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "    margin %.0f need %.0f\n", marginWithin(fsw, n, wdie, need), need); } continue; }
       if (spend && !readyAfterSpend(fsw, n) && (nonSpendLives() || spendKeepsRaiseOut())) { WALKWHY("spends, not ready"); continue; }
       WALKWHY("taken");
       fillTake(&W, &wtw, sc, est, fsw, n); first[0] = fsw[0]; first[1] = fsw[1];
@@ -6352,9 +6366,13 @@ static Dec keepReady(Dec d) {
 // five frames are done before the lock ends; otherwise the bot holds.
 static Dec raiseHold(Dec d) {
   if (!raiseWaiting || d.kind != K_SWAP || !d.hasMove) return d;
+  if (lineLast == 1) return d;   // a line played on goes before the raise: playOn gives it the frame the lock ends too, so holding for the raise only loses the line
   Cand *pc = poolSwap(d.sr, d.sc);
   double mf = pc ? pc->moveFrames : travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], d.sr, d.sc);
   if (mf + 5 <= raiseWaitLeft()) return d;
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "RAISEHOLD swap %d,%d walk %g left %g lock %g after %g\n", d.sr, d.sc, mf, raiseWaitLeft(), BIN[IN_LOCKLEFT], raiseAfter); }
+#endif
   lineLast = 0;   // a hold is no line played on: what follows judges the hold
   return mkHold(V_RAISING, d.mode, d.alive, 0, 0, 0);
 }
@@ -6485,7 +6503,11 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   // READY BEFORE THE WAIT: the line that readies the landing is chosen first,
   // with the work there is; the wait then fills the time before that line
+#ifndef __wasm__
 #define WORKAT(tag) do { if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; extern PATLS double paWork; fprintf(BLOG, "WORKAT %s spent %.0f line %.0f left %.0f\n", tag, paWork - rdW0, optLine() - rdW0, optLine() - paWork); } } while (0)
+#else
+#define WORKAT(tag) do { } while (0)
+#endif
   WORKAT("before ready");
   Dec dOne = onePlan(dF); WORKAT("after onePlan"); Dec dKeep = keepReady(dOne); WORKAT("after keepReady"); Dec dRwl = readyWhenLands(dKeep); WORKAT("after readyWhenLands"); Dec dMw = meanwhile(dRwl); WORKAT("after meanwhile");
   { Dec dC = dropReady(dMw), dS = noStall(dC);
