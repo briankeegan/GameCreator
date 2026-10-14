@@ -495,8 +495,9 @@ module.exports = function think(cfg) {
       // (not on a stack the game shows topped out: there a hold is a frame of health, and stop time is what is needed)
       if (defendA && A0.floorRows && bot.preferRank && lowPeak(board) < A0.floorRows && !m.topped && !(m.realTop >= 11)) {
         var prF = bot.preferRank;
-        // (ranked as the arbiter ranks it: a swap that clears nothing 0.5, the hold 0.6, a clear that breaks no garbage left unranked --
-        // an unranked move comes after every ranked one; the breaks, the lines and the raise keep their places before them)
+        // (the hold 0.6, a swap that clears nothing after it at 0.65 -- a swap with no aim is no better than waiting, and of equal ranks
+        // the nearest is played: the one under the cursor, which puts the last swap back -- a clear that breaks no garbage left unranked;
+        // an unranked move comes after every ranked one; the breaks, the lines, the levelling and the raise keep their places before them)
         bot.preferRank = function (c, i) {
           var r = prF.call(this, c, i), rr = c.added || c.resolved;
           if (r < 0.5) {
@@ -504,7 +505,7 @@ module.exports = function think(cfg) {
             return r;
           }
           if (c.kind === 'hold') return 0.6;
-          if (c.kind === 'swap' && !(rr && (rr.comboSizes || []).length)) return 0.5;
+          if (c.kind === 'swap' && !(rr && (rr.comboSizes || []).length)) return 0.65;
           if (c.kind === 'swap' && rr && (rr.comboSizes || []).length && !((rr.brokeGarbage || 0) > 0)) { bot._floorHeld = (bot._floorHeld || 0) + 1; return Infinity; }
           return r;
         };
