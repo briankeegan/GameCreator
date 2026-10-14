@@ -912,7 +912,7 @@ static void lnNote(Front *F) {   // once a frame: a new position starts a new ep
 }
 static int lineOnEngineFresh(const int32_t *steps, int n, int horizon, int waitAll, int32_t *out) { LWAITALL = waitAll; int rc = linePlay(steps, n, horizon, 0, out); LWAITALL = 0; return rc < 0 ? -1 : 0; }
 int lineOnEngine(const int32_t *steps, int n, int horizon, int waitAll, int32_t *out) {
-  if (lnCheck < 0) { extern char *getenv(const char *); const char *e = getenv("GC_LINECACHE"); lnCheck = e ? atoi(e) : 0; }   // 0 off (the default), 1 on, 2 on and checked against a fresh replay: the board a reused replay ends on can differ from a fresh one in the cells dealt unseen
+  if (lnCheck < 0) { extern char *getenv(const char *); const char *e = getenv("GC_LINECACHE"); lnCheck = e ? (e[0] - '0') : 0; }   // 0 off (the default), 1 on, 2 on and checked against a fresh replay: the board a reused replay ends on can differ from a fresh one in the cells dealt unseen
   if (!lnCheck || n < 0 || n > LINEMAX || inWorker) return lineOnEngineFresh(steps, n, horizon, waitAll, out);
   int now = paLibBoard()->clock;
   unsigned h = 2166136261u ^ (unsigned)(n * 31 + waitAll * 7 + LDELAY * 131 + lnEpoch * 977);

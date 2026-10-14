@@ -1519,7 +1519,7 @@ static Dec decideCore(void) {
   for (int i = 0; i < nPool; i++) if (poolBreaks(&POOL[i])) { poolBreak = 1; break; }
   int topped = BIN[IN_TOPPED] != 0;
   int readyBase = slabReadyBoard(base) && heldReady();
-  int readyFirst = !poolBreak && !topped && !readyBase && !(BT->nLine > 1 && BT->lineKind == LINE_PLAN);   // the slab-ready record is read; a plan kept is played to its end, not made again
+  int readyFirst = !poolBreak && !topped && !readyBase && !(BT->nLine >= 1 && BT->lineKind == LINE_PLAN);   // the slab-ready record is read; a plan kept is played to its end, not made again
   optSkip = 4 | (readyFirst ? 0 : 8);
   baseReady = BIN[IN_INCOMING] > 0 && readyBase;
   baseLanding = landingOf(base);
@@ -3977,7 +3977,11 @@ static Dec playOn(Dec d) {
   if (!BT->nLine) return d;
   // NOR BY GOING BACK: a line whose next step undoes a press is dropped here,
   // where it is chosen, so the choice falls to the next best and not to a hold
-  if (undoesOld(BT->line[0], BT->line[1])) { BT->nLine = 0; return d; }
+  if (undoesOld(BT->line[0], BT->line[1])) {
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "DROPLINE undoes a press: %d,%d\n", BT->line[0], BT->line[1]); }
+#endif
+    BT->nLine = 0; return d; }
   linesReset();
   int v = lineJudge(BT->line, BT->nLine, BT->lineWaitAll);
   int need = LV_LIVES | (BT->lineKind == LINE_BREAK ? LV_BREAKS : BT->lineKind == LINE_CASH ? LV_GAINS : 0);
@@ -3996,7 +4000,11 @@ static Dec playOn(Dec d) {
     int buys = aloneOnEngine() && LNA[0] && (!keepO[0] || keepO[0] > LNA[0]);
     int ok = readyAfterSpend(BT->line, BT->nLine) || (buys && !nonSpendLives() && !spendKeepsRaiseOut());
     for (int q = 0; q < LNOLEN; q++) LNO[q] = keepO[q];
-    if (!ok) { BT->nLine = 0; return d; }
+    if (!ok) {
+#ifndef __wasm__
+      if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "DROPLINE plan spends: v %d die %d buys %d\n", v, playDie, buys); }
+#endif
+      BT->nLine = 0; return d; }
   }
   lineLast = 1;
   plansDrop();
@@ -6352,9 +6360,13 @@ static Dec keepReady(Dec d) {
 // five frames are done before the lock ends; otherwise the bot holds.
 static Dec raiseHold(Dec d) {
   if (!raiseWaiting || d.kind != K_SWAP || !d.hasMove) return d;
+  if (lineLast == 1) return d;   // a line played on goes before the raise: playOn gives it the frame the lock ends too, so holding for the raise only loses the line
   Cand *pc = poolSwap(d.sr, d.sc);
   double mf = pc ? pc->moveFrames : travelCost((int)BIN[IN_CROW], (int)BIN[IN_CCOL], d.sr, d.sc);
   if (mf + 5 <= raiseWaitLeft()) return d;
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "RAISEHOLD swap %d,%d walk %g left %g lock %g after %g\n", d.sr, d.sc, mf, raiseWaitLeft(), BIN[IN_LOCKLEFT], raiseAfter); }
+#endif
   lineLast = 0;   // a hold is no line played on: what follows judges the hold
   return mkHold(V_RAISING, d.mode, d.alive, 0, 0, 0);
 }
