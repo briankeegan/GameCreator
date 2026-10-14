@@ -229,10 +229,10 @@ function panelIds(board) {
   }
   return { all: all, garbage: garbage };
 }
-// Whether a panel left the board (a clear) or garbage came onto it since `then`.
-// A row rising is not a change: the stack scrolls and its squares are not the same ones.
+// Whether garbage came onto the board since `then`: a slab landed reshapes what is under it. A clear elsewhere is not a change --
+// a chain popping clears panels on every frame, and a swap undone while it pops is still undone. A row rising is not one either:
+// the stack scrolls and its squares are not the same ones.
 function changedSince(then, now) {
-  for (var id in then.all) if (!now.all[id]) return true;
   for (var g in now.garbage) if (!then.garbage[g]) return true;
   return false;
 }

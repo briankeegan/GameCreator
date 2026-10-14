@@ -36,7 +36,11 @@ function clearsOf(bot, d) {
   if (!d || d.kind !== 'swap' || !d.move) return 0;
   var all = bot._allCands || [];
   for (var i = 0; i < all.length; i++)
-    if (all[i].kind === 'swap' && all[i].move && all[i].move[0] === d.move[0] && all[i].move[1] === d.move[1]) return (all[i].resolved && all[i].resolved.clearedPanels) || 0;
+    if (all[i].kind === 'swap' && all[i].move && all[i].move[0] === d.move[0] && all[i].move[1] === d.move[1]) {
+      // what the move clears beyond what the board left alone clears: a chain popping clears panels whatever is swapped
+      var hold = all.filter(function (c) { return c.kind === 'hold' && c.resolved; })[0], base = hold ? hold.resolved.clearedPanels || 0 : 0;
+      return Math.max(0, ((all[i].resolved && all[i].resolved.clearedPanels) || 0) - base);
+    }
   return 0;
 }
 // The garbage cells on a board (landed).
