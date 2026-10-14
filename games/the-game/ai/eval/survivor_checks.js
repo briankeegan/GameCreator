@@ -29,11 +29,15 @@ function panelTop(board) {
   eachPanel(board, function (p, r) { if (p.color && !p.isGarbage && r > top) top = r; });
   return top;
 }
-// The lowest peak: the fewest panels any column has (its highest panel's row).
+// The lowest peak: the fewest panels any column has to match with (its highest panel's row under the column's lowest garbage). A row
+// converted and buried under the next slab is out of reach until that slab is broken through: it is no panel to spare.
 function lowPeak(board) {
-  var peak = [0, 0, 0, 0, 0, 0, 0], low = 99, c;
-  eachPanel(board, function (p, r, col) { if (p.color && !p.isGarbage && r > peak[col]) peak[col] = r; });
-  for (c = 1; c <= 6; c++) if (peak[c] < low) low = peak[c];
+  var low = 99, c, r;
+  for (c = 1; c <= 6; c++) {
+    var pk = 0;
+    for (r = 1; r < board.panels.length; r++) { var p = board.panels[r] && board.panels[r][c]; if (!p) continue; if (p.isGarbage) break; if (p.color) pk = r; }
+    if (pk < low) low = pk;
+  }
   return low;
 }
 // the same on a grid (node boards: 0 empty, -2 garbage, 1..7 colours, 8 and up shock and the like)

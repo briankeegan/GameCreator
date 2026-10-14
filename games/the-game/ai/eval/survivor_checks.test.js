@@ -46,6 +46,10 @@ withGarbage.panels[5][3].isGarbage = true;
 assert.strictEqual(C.fullTop(withGarbage), 5, 'garbage in row 5 makes the stack 5 high');
 assert.strictEqual(C.panelTop(withGarbage), 2, 'and the panels 2');
 assert.strictEqual(C.lowPeak(withGarbage), 2);
+// panels buried above a slab are out of reach: a column's peak is its highest panel under its lowest garbage
+var buried = board(['333333', '000000', '111111', '222222']);
+for (var bc = 1; bc <= 6; bc++) buried.panels[3][bc].isGarbage = true;
+assert.strictEqual(C.lowPeak(buried), 2, 'a row of panels above a slab is no peak: the columns under it are 2 high, not 4');
 // topped out: a panel in the top row
 var full = board(['111111', '222222', '333333', '444444', '555555', '666666', '111111', '222222', '333333', '444444', '555555', '666666']);
 assert.strictEqual(full.isToppedOut(), true);
