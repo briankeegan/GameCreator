@@ -122,7 +122,11 @@ module.exports = function think(cfg) {
       // that leaves its top lowest: a move leaving the top at row h ranks as a
       // break TALL_RANK + h frames away. Six-wide garbage lands on the tallest
       // column, so that column is the board's height.
-      var prep = SP.prepare(bot, board, { profile: cfg.profile, hold: m.hold, arrivals: arrivals, comingRows: comingRows, due: due, ms: m.ms, margin: DEADLINE_MARGIN_MS,
+      // (under threat with defendUnderThreat the preferences are the defence's own: the profile with no attack block, at defendRaiseTo)
+      var A0 = cfg.profile.attack;
+      var defendA = !!(A0 && A0.defendUnderThreat && matchMode !== 'timeattack' && (SH.lowestGarbageRow(board) || (board.incoming || []).length || arrivals.length));
+      var prepProfile = defendA ? Object.assign({}, cfg.profile, { attack: undefined, raiseTo: A0.defendRaiseTo || cfg.profile.raiseTo }) : cfg.profile;
+      var prep = SP.prepare(bot, board, { profile: prepProfile, hold: m.hold, arrivals: arrivals, comingRows: comingRows, due: due, ms: m.ms, margin: DEADLINE_MARGIN_MS,
                                         search: search, stale: stale, aborted: P.ABORTED });
       var br = prep.br, brMs = prep.brMs, want = prep.want;
       // WHILE CALM, THE PROFILE'S calmGoal IS WHAT IS BUILT, pulled toward by calmToward; otherwise the bot's own.
@@ -173,12 +177,11 @@ module.exports = function think(cfg) {
       // DEFENCE UNDER THREAT (defendUnderThreat): with garbage on the board, queued, or on its way, the decision is the defence's --
       // the survival search alone, as the profile with no attack block plays it (8 of 8 to six minutes of large_garbage, where the
       // attack logic over it lost 7 of 8) -- and the attack plays only on a board with nothing on it or coming. Not in time attack.
-      var defendA = !!(A && A.defendUnderThreat && matchMode !== 'timeattack' && (SH.lowestGarbageRow(board) || (board.incoming || []).length || arrivals.length));
       bot.attackFirst = !!OPTS.attackFirst && !defendA;
       bot.noThreesUntilTopped = !!OPTS.threesOnlyTopped && !defendA;   // (the defence plays a three like any other move)
       if (defendA) {
         HT = A.defendHoldThrees || null; A = null;
-        bot.preferRank = null; bot.SURVIVE_FRAMES = P.prototype.SURVIVE_FRAMES;
+        bot.SURVIVE_FRAMES = P.prototype.SURVIVE_FRAMES;   // (bot.preferRank stays the one prepare made for the defence's profile)
         bot._defended = (bot._defended || 0) + 1;
       }
       if (A && attackGate++ < 8) console.error('ATTACKGATE clock ' + board.clock + ' garbageRow ' + SH.lowestGarbageRow(board) + ' coming ' + comingRows + ' top ' + SH.top(board));
