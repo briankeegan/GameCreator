@@ -2385,12 +2385,10 @@ static void workTrace(const char *tag) { (void)tag; }
 // the shares of the stages after it, no more: a later stage takes whatever is
 // left it, so what it took lately says what it was given, not what it needs
 static const int STAGESHARE[NSTAGES] = { 30, 0, 15, 5, 30, 5, 5, 5, 5 };
-static double rdCost;   // what a readiness question has cost (readyInTime's running mean)
 static double stageLeaves(int i) {
   int after = 0; for (int j = i + 1; j < NSTAGES; j++) after += STAGESHARE[j];
   double keep = OPTWORK * after / 100;
-  // the closing's questions are a judge and a readiness each: a readiness the work cannot hold is answered not ready
-  if (keep < FINALJUDGES * (jdCost + rdCost)) keep = FINALJUDGES * (jdCost + rdCost);
+  if (keep < FINALJUDGES * jdCost) keep = FINALJUDGES * jdCost;
   return rdW0 + OPTWORK - keep;
 }
 static double stageOpen(int i) { double keep = stageEnd, e = stageLeaves(i); if (e < stageEnd) stageEnd = e; return keep; }
