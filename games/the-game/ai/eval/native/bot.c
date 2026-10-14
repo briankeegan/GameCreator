@@ -2682,10 +2682,11 @@ static int sitPop(int *nh) {
   if (*nh > 0) SITHP[k] = last;
   return top;
 }
+static JLOCAL int sitSeenN;   // the boards noted by this search: a table past three parts in four is full -- a board is then taken as grown, never searched for down a chain
 static int sitSeen(u64 h) {   // 1 if the board was grown already; else noted
   unsigned k = (unsigned)(h ^ (h >> 31)) & (SITHASH - 1);
   for (int probe = 0; probe < SITHASH; probe++, k = (k + 1) & (SITHASH - 1)) {
-    if (SITHG[k] != SITGEN) { SITHK[k] = h ? h : 1; SITHG[k] = SITGEN; return 0; }
+    if (SITHG[k] != SITGEN) { if (sitSeenN >= SITHASH / 4 * 3) return 1; sitSeenN++; SITHK[k] = h ? h : 1; SITHG[k] = SITGEN; return 0; }
     if (SITHK[k] == h) return 1;
   }
   return 1;
@@ -2733,7 +2734,7 @@ static JLOCAL double (*sitGuide)(const int32_t *st);
 // decisions, so a search that did not finish in a frame's work is not made again from nothing the next: its lines, its steps waiting and the
 // boards it has seen are kept (a set of memory of its own) and the next frame's work grows them further, for as long as the position stands.
 // The caller names the search (sitKeepSlot, 1..SITKEEPS) and the position it is for (sitKeepKey).
-typedef struct { u64 key; int valid, nn, nk, nh; } SitKeep;
+typedef struct { u64 key; int valid, nn, nk, nh, seen; } SitKeep;
 static SitKeep SITKEEP[SITKEEPS];
 static int sitKeepSlot; static u64 sitKeepKey;
 static JLOCAL int sitKeepIn; static JLOCAL SitKeep *sitKeepP;   // this search: resumed from the kept state, and where it keeps its own
@@ -2758,7 +2759,7 @@ static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double no
   sitKeepIn = slot && SITKEEP[slot - 1].valid && SITKEEP[slot - 1].key == kkey;
   sitKeepP = slot ? &SITKEEP[slot - 1] : 0; if (sitKeepP) sitKeepP->key = kkey;
   // the caller's level, kept to be put back
-  ST *pst = SITST; SitNode *pnd = SITND; SitKid *pkd = SITKD; SitHeap *php = SITHP; u64 *phk = SITHK; uint32_t *phg = SITHG, pgen = SITGEN; int32_t *pt = SITT, *pr = SITR, *pl = SITL; double pleft = sitLeft;
+  ST *pst = SITST; SitNode *pnd = SITND; SitKid *pkd = SITKD; SitHeap *php = SITHP; u64 *phk = SITHK; uint32_t *phg = SITHG, pgen = SITGEN; int32_t *pt = SITT, *pr = SITR, *pl = SITL; double pleft = sitLeft; int pseen = sitSeenN;
   SITST = m->st; SITND = m->nd; SITKD = m->kd; SITHP = m->hp; SITHK = m->hk; SITT = m->t; SITR = m->r; SITL = m->l;
   if (!sitKeepIn && ++m->gen == 0) { __builtin_memset(m->hg, 0, sizeof(uint32_t) * SITHASH); m->gen = 1; }
   SITHG = m->hg; SITGEN = m->gen;
@@ -2769,7 +2770,7 @@ static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double no
 #ifndef __wasm__
   if (calTop && !inWorker) { calMs += NOWMS2() - cal0; calW += paWork - calw0; if (++calN % 20000 == 0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "CAL sit %.3f ms/kwork over %.0f kwork\n", calMs / (calW / 1000), calW / 1000); } }
 #endif
-  SITST = pst; SITND = pnd; SITKD = pkd; SITHP = php; SITHK = phk; SITHG = phg; SITGEN = pgen; SITT = pt; SITR = pr; SITL = pl; sitLeft = pleft;
+  SITST = pst; SITND = pnd; SITKD = pkd; SITHP = php; SITHK = phk; SITHG = phg; SITGEN = pgen; SITT = pt; SITR = pr; SITL = pl; sitLeft = pleft; sitSeenN = pseen;
   return got;
 }
 // a kept line's steps offered: each legal pair, pressed when the clock says
@@ -2822,8 +2823,9 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
   int (*mine)(const int32_t *st, int r, int c) = sitFilter; sitFilter = 0;
   // and so is its guide: the searches its accept starts grow soonest first
   double (*myGuide)(const int32_t *st) = sitGuide; sitGuide = 0;
-  if (resumed) { nn = kp->nn; nk = kp->nk; nh = kp->nh; sitLeft = INF; }   // the lines, the steps waiting and the boards seen are where the last frame left them
+  if (resumed) { nn = kp->nn; nk = kp->nk; nh = kp->nh; sitSeenN = kp->seen; sitLeft = INF; }   // the lines, the steps waiting and the boards seen are where the last frame left them
   else {
+    sitSeenN = 0;
     stcpy(SITST[0], st0);
     SITND[0].parent = -1; SITND[0].n = 0; SITND[0].r = cr; SITND[0].c = cc; SITND[0].t = t0; SITND[0].settled = 0; SITND[0].left = left; SITND[0].stopped = 0;
     sitLeft = INF;   // lowered only by a break found (time mode); each line keeps its own time (left)
@@ -2880,7 +2882,7 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
     sitGuide = myGuide; sitOffer(j, &nk, &nh, notBefore, frozen, 0, 0, mine); sitGuide = 0;
   }
   // steps still waiting: the next frame's work goes on from here
-  if (kp) { kp->valid = nh > 0; kp->nn = nn; kp->nk = nk; kp->nh = nh; }
+  if (kp) { kp->valid = nh > 0 && sitSeenN < SITHASH / 4 * 3; kp->nn = nn; kp->nk = nk; kp->nh = nh; kp->seen = sitSeenN; }
   return 0;
 }
 // the line wanted: one that breaks
