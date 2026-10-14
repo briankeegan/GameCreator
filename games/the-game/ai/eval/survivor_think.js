@@ -451,7 +451,7 @@ module.exports = function think(cfg) {
           if (apD.seq.length && apD.continuous && (apD.brk ? bigD2 : ((apD.chain || 0) >= 2 || (apD.cells || 0) >= (A0.outCells || 4))) && fitsD) {
             // (under the floor -- the lowest column of panels under floorRows -- a line that breaks nothing is not offered: its panels are
             // what the garbage is broken with)
-            var floorD = !!(A0.floorRows && lowPeak(board) < A0.floorRows);
+            var floorD = !!(A0.floorRows && lowPeak(board) < A0.floorRows && !m.topped && !(m.realTop >= 11));
             var kD = arbKey(apD.seq[0]), rD = apD.brk ? -0.6 : (!dangerD && !floorD ? -0.3 : null);
             if (rD !== null) {
               arbProps = {}; arbProps[kD] = { rank: rD, src: 'fire', line: apD.seq.slice(1), planChain: apD.chain, cells: apD.cells, brk: !!apD.brk };
@@ -464,7 +464,8 @@ module.exports = function think(cfg) {
       }
       // THE FLOOR UNDER THREAT (floorRows): the lowest column of panels under floorRows, a clear that breaks no garbage ranks after the
       // hold -- played only when nothing ranked before it lives: the garbage is broken first, stop time only when it is needed
-      if (defendA && A0.floorRows && bot.preferRank && lowPeak(board) < A0.floorRows) {
+      // (not on a stack the game shows topped out: there a hold is a frame of health, and stop time is what is needed)
+      if (defendA && A0.floorRows && bot.preferRank && lowPeak(board) < A0.floorRows && !m.topped && !(m.realTop >= 11)) {
         var prF = bot.preferRank;
         // (ranked as the arbiter ranks it: a swap that clears nothing 0.5, the hold 0.6, a clear that breaks no garbage left unranked --
         // an unranked move comes after every ranked one; the breaks, the lines and the raise keep their places before them)
