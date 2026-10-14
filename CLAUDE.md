@@ -358,6 +358,12 @@ ways: a tool not listed, or a path listed that doesn't exist.
   build plays the same games every time: the way to compare two builds -- on
   the same engine: the scan runs on the `panel_game_ref` commit, and two scans
   compare only with the same one.
+- **The frames the bot waits are think time.** The game holds a computer player to 8 ms a frame, not to one decision a reaction, so the
+  front (`front.c`, the cooldown) makes the decision for the board as it stands every frame it waits and plays it when the wait ends
+  if the board is the same; the guided searches for a break and for readiness (`sitKeepSlot`, `sitKeepKey`) keep their lines, steps
+  waiting and boards seen in memory of their own and grow them further each frame while the position (`raPos`) stands. A search with
+  a table of boards seen counts them and is full at three parts in four. Compare two builds on the fixed-budget scan (the same games
+  every time); read the think budget on the ordinary one -- the fixed scan has no wall-clock guard.
 - **No fixed numbers: the engine and the host say it.** The judge's reach
   (`LINEHORIZON`) is the time the engine says the board has -- the rise at its
   speed, the queue, the shake of the slab it lands, the drain -- plus the walk
