@@ -791,9 +791,9 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
 #ifndef __wasm__
           if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
             Panel *p1 = &b->p[row][col], *p2 = &b->p[row][col + 1], *a1 = &b->p[row + 1][col], *a2 = &b->p[row + 1][col + 1];
-            fprintf(BLOG, "REFUSE step %d f %d at %d,%d cur %d,%d clock %d | p1 c%d s%d ds%d g%d p2 c%d s%d ds%d g%d above s%d s%d canNow(fresh) %d\n", step, f, row, col,
+            fprintf(BLOG, "REFUSE step %d f %d at %d,%d cur %d,%d clock %d | p1 c%d s%d ds%d g%d p2 c%d s%d ds%d g%d above s%d s%d canNow(fresh) %d | landing q%d sw%d ps%d waitTo %d LDELAY %d\n", step, f, row, col,
                     b->curRow, b->curCol, b->clock, p1->f[COLOR], p1->f[STATE], p1->f[DONTSWAP], p1->f[ISGARBAGE], p2->f[COLOR], p2->f[STATE], p2->f[DONTSWAP], p2->f[ISGARBAGE],
-                    a1->f[STATE], a2->f[STATE], nb_can_swap(paLibBoard(), row, col)); }
+                    a1->f[STATE], a2->f[STATE], nb_can_swap(paLibBoard(), row, col), b->queuedSwapRow, b->swappingCount, b->pressSwap, waitTo, LDELAY); }
 #endif
           out[1] = -1; out[5] = step; out[6] = f; out[7] = b->ninc; return -1;
         }
