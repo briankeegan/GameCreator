@@ -463,6 +463,9 @@ module.exports = function think(cfg) {
       // line to a bigger break comes before it
       // (judged on the board the game shows: not topped out, its stack -- landed garbage counted, queued garbage not -- under lowTop.
       // The queue is not on it: counted as landed, ninety rows queued read as a stack topped out, and the stack was never raised)
+      if (process.env.GC_RAISE_WHY && A0 && A0.defendRaise && fullTop(board) < (A0.lowTop || 6))
+        console.error('RAISEWHY clock ' + board.clock + ' defend ' + defendA + ' pref ' + !!bot.preferRank + ' topped ' + !!m.topped + ' realTop ' + m.realTop + ' top ' + fullTop(board) + ' canRaise ' + bot._canRaise() +
+          ' prevent ' + !!(bot.stack && bot.stack.preventManualRaise) + ' lock ' + !!(bot.stack && bot.stack.riseLock) + ' active ' + !!(bot.stack && bot.stack.hasActivePanels && bot.stack.hasActivePanels()) + ' shake ' + (bot.stack && bot.stack.shakeTime));
       if (defendA && A0.defendRaise && bot.preferRank && !(m.topped) && !(m.realTop >= 11) && fullTop(board) < (A0.lowTop || 6) && bot._canRaise()) {
         arbProps = arbProps || {};
         arbProps.raise = { rank: -0.5, src: 'raise', to: A0.lowTop || 6 };
