@@ -395,7 +395,7 @@ module.exports = function think(cfg) {
         // when none is, and the stack is raised only while one is
         (m.arrivals || []).forEach(function (a) { if (a.g && a.g.height > (bot._maxSlab || 0)) bot._maxSlab = a.g.height; });
         (board.incoming || []).forEach(function (g) { if (g.height > (bot._maxSlab || 0)) bot._maxSlab = g.height; });
-        var hypoA = readyArr.length ? readyArr : fullTop(board) >= (A.lowTop || 6) ? [{ at: A.readyAt || 90, width: board.width || 6, height: Math.max(bot._maxSlab || 0, A.slabGuess || 3), isChain: false, isMetal: false, capped: false }] : [];
+        var hypoA = readyArr.length ? readyArr : !taA && fullTop(board) >= (A.lowTop || 6) ? [{ at: A.readyAt || 90, width: board.width || 6, height: Math.max(bot._maxSlab || 0, A.slabGuess || 3), isChain: false, isMetal: false, capped: false }] : [];
         var rdA = null;
         if (hypoA.length && !garbA) {
           var rmsA = Math.min(A.readyMs || 80, leftMs());
@@ -410,7 +410,8 @@ module.exports = function think(cfg) {
           var topA = fullTop(board), calmA = !garbA && comingRows === 0 && !(board.incoming || []).length;
           // (calm: raised all the way to calmRaiseTo before anything else is built -- the break is made ready at the top; a low stack
           // with garbage on its way is raised to lowTop before a planned fire)
-          if (calmA && topA < (A.calmRaiseTo || 10) && !danger) put('raise', -2.5, { src: 'raise', to: A.calmRaiseTo || 10 });
+          // (time attack: no chain going, the stack goes up to calmRaiseTo and the next chain is built from there; a combo only to live)
+          if ((calmA || taA) && topA < (A.calmRaiseTo || 10) && !danger) put('raise', -2.5, { src: 'raise', to: A.calmRaiseTo || 10 });
           else if (topA < (A.lowTop || 6) && !danger) put('raise', -1.4, { src: 'raise', to: A.lowTop || 6 });   // a low stack has nothing to build with, whatever is coming
           else if (topA < raiseCap(board, comingRows, A)) put('raise', -0.3, { src: 'raise', to: raiseCap(board, comingRows, A) });
         }
