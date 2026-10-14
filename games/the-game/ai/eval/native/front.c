@@ -912,7 +912,13 @@ static void lnNote(Front *F) {   // once a frame: a new position starts a new ep
 }
 static int lineOnEngineFresh(const int32_t *steps, int n, int horizon, int waitAll, int32_t *out) { LWAITALL = waitAll; int rc = linePlay(steps, n, horizon, 0, out); LWAITALL = 0; return rc < 0 ? -1 : 0; }
 int lineOnEngine(const int32_t *steps, int n, int horizon, int waitAll, int32_t *out) {
-  if (lnCheck < 0) { extern char *getenv(const char *); const char *e = getenv("GC_LINECACHE"); lnCheck = e ? (e[0] - '0') : 0; }   // 0 off (the default), 1 on, 2 on and checked against a fresh replay: the board a reused replay ends on can differ from a fresh one in the cells dealt unseen
+  if (lnCheck < 0) {
+#ifndef __wasm__
+    extern char *getenv(const char *); const char *e = getenv("GC_LINECACHE"); lnCheck = e ? (e[0] - '0') : 0;
+#else
+    lnCheck = 0;
+#endif
+  }   // 0 off (the default), 1 on, 2 on and checked against a fresh replay: the board a reused replay ends on can differ from a fresh one in the cells dealt unseen
   if (!lnCheck || n < 0 || n > LINEMAX || inWorker) return lineOnEngineFresh(steps, n, horizon, waitAll, out);
   int now = paLibBoard()->clock;
   unsigned h = 2166136261u ^ (unsigned)(n * 31 + waitAll * 7 + LDELAY * 131 + lnEpoch * 977);
@@ -933,7 +939,11 @@ int lineOnEngine(const int32_t *steps, int n, int horizon, int waitAll, int32_t 
         int32_t fr[19]; int rc2 = lineOnEngineFresh(steps, n, horizon, waitAll, fr); (void)keep;
         int same = 1;   // a replay the budget refused says nothing
         if (rc2 != 0) same = 1; else for (int k = 0; k < 19 && same; k++) if (fr[k] != out[k] && k != 4 && k != 5 && k != 6 && k != 7) same = 0;   // out[4..7]: unset or a refusal's, never read
-        if (!same) { lnBad++; extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "LINECACHE MISMATCH n %d d %d | cached", n, d); for (int k = 0; k < 19; k++) fprintf(stderr, " %d", out[k]); fprintf(stderr, " | fresh"); for (int k = 0; k < 19; k++) fprintf(stderr, " %d", fr[k]); fprintf(stderr, "\n"); }
+        if (!same) { lnBad++;
+#ifndef __wasm__
+          extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "LINECACHE MISMATCH n %d d %d | cached", n, d); for (int k = 0; k < 19; k++) fprintf(stderr, " %d", out[k]); fprintf(stderr, " | fresh"); for (int k = 0; k < 19; k++) fprintf(stderr, " %d", fr[k]); fprintf(stderr, "\n");
+#endif
+        }
       }
       return 0;
     }

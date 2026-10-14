@@ -5975,7 +5975,13 @@ static Dec fillFirstIn(Dec d) {
       if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  walk %d,%d dir %d n %d v %d hollow %d die %d last %d\n", r, c, dir, n, v, HOLLOW(LNO), LNO[0], LNO[1]); }
 #endif
       int spend = (v & LV_PAYS) != 0;
+#ifndef __wasm__
+#define BOTTRACE botTraceOn
 #define WALKWHY(why) do { if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  walk %d,%d -> %s\n", r, c, why); } } while (0)
+#else
+#define BOTTRACE 0
+#define WALKWHY(why) do { } while (0)
+#endif
       if (!(v & LV_LIVES) || (spend && !LIVES_LONGER())) { WALKWHY("dies, or spends and lives no longer"); continue; }
       // its time: the engine's own last press (it has just played it); the clock where it could not
       double est = LNO[1] > 0 ? pressSeen(LNO[1]) : lineFrames(fsw, n, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, BIN[IN_TOPPED] || BIN[IN_STOP] > 0);
@@ -5983,8 +5989,8 @@ static Dec fillFirstIn(Dec d) {
       int wdie = LNO[0], wlast = LNO[1];
       LEVELTAKE(fsw, n, est);
       double sc = fillScoreOf(fsw, n, wdie, wlast, HOLLOW(LNO), spentOf());
-      if (W.has ? !fillBeats(&W, &wtw, sc, est, fsw, n) : sc <= ref) { WALKWHY("does not beat the board left alone or the best fill"); if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "    score %.0f ref %.0f urgent %d need %.0f\n", sc, ref, fillUrgent, need); } continue; }
-      if (!fillKeeps(marginWithin(fsw, n, wdie, need), need)) { WALKWHY("costs the break's time"); if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "    margin %.0f need %.0f\n", marginWithin(fsw, n, wdie, need), need); } continue; }
+      if (W.has ? !fillBeats(&W, &wtw, sc, est, fsw, n) : sc <= ref) { WALKWHY("does not beat the board left alone or the best fill"); if (BOTTRACE) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "    score %.0f ref %.0f urgent %d need %.0f\n", sc, ref, fillUrgent, need); } continue; }
+      if (!fillKeeps(marginWithin(fsw, n, wdie, need), need)) { WALKWHY("costs the break's time"); if (BOTTRACE) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "    margin %.0f need %.0f\n", marginWithin(fsw, n, wdie, need), need); } continue; }
       if (spend && !readyAfterSpend(fsw, n) && (nonSpendLives() || spendKeepsRaiseOut())) { WALKWHY("spends, not ready"); continue; }
       WALKWHY("taken");
       fillTake(&W, &wtw, sc, est, fsw, n); first[0] = fsw[0]; first[1] = fsw[1];
@@ -6497,7 +6503,11 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   cutAt[k] = paCutPast(WORKBUDGET); ts[k] = NOWMS(); js[k] = fillJudges; jm[k] = fillJudgeMs; ws[k++] = paWork;
   // READY BEFORE THE WAIT: the line that readies the landing is chosen first,
   // with the work there is; the wait then fills the time before that line
+#ifndef __wasm__
 #define WORKAT(tag) do { if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; extern PATLS double paWork; fprintf(BLOG, "WORKAT %s spent %.0f line %.0f left %.0f\n", tag, paWork - rdW0, optLine() - rdW0, optLine() - paWork); } } while (0)
+#else
+#define WORKAT(tag) do { } while (0)
+#endif
   WORKAT("before ready");
   Dec dOne = onePlan(dF); WORKAT("after onePlan"); Dec dKeep = keepReady(dOne); WORKAT("after keepReady"); Dec dRwl = readyWhenLands(dKeep); WORKAT("after readyWhenLands"); Dec dMw = meanwhile(dRwl); WORKAT("after meanwhile");
   { Dec dC = dropReady(dMw), dS = noStall(dC);
