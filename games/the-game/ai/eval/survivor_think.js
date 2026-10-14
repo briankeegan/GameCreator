@@ -386,21 +386,26 @@ module.exports = function think(cfg) {
             put(arbKey(apA.seq[0]), (apA.brk ? -3.5 : -1.5) - worthOf(apA.chain, apA.cells), { src: 'fire', line: apA.seq.slice(1), planChain: apA.chain, cells: apA.cells });
           if (apA.setup) put(arbKey(apA.setup), -0.5, { src: busyA ? 'busySetup' : 'setup' });
         }
-        if (readyArr.length && !garbA) {
+        // READY TO BREAK: the garbage on its way -- and, on a stack at lowTop or more with none shown, a slab the size of the tallest
+        // this match has sent, landing as soon as one can -- has a break ready when it lands; the swap that makes one is proposed
+        // when none is, and the stack is raised only while one is
+        (m.arrivals || []).forEach(function (a) { if (a.g && a.g.height > (bot._maxSlab || 0)) bot._maxSlab = a.g.height; });
+        (board.incoming || []).forEach(function (g) { if (g.height > (bot._maxSlab || 0)) bot._maxSlab = g.height; });
+        var hypoA = readyArr.length ? readyArr : fullTop(board) >= (A.lowTop || 6) ? [{ at: A.readyAt || 90, width: board.width || 6, height: Math.max(bot._maxSlab || 0, A.slabGuess || 3), isChain: false, isMetal: false, capped: false }] : [];
+        var rdA = null;
+        if (hypoA.length && !garbA) {
           var rmsA = Math.min(A.readyMs || 80, leftMs());
-          var rdA = rmsA >= 30 ? attacker[A.readyTime ? 'readyInTime' : 'readyFor'](board, m.hold, readyArr, { ms: rmsA }) : null;
+          rdA = rmsA >= 30 ? attacker[A.readyTime ? 'readyInTime' : 'readyFor'](board, m.hold, hypoA, { ms: rmsA }) : null;
           if (rdA && !rdA.ready && rdA.setup) put(arbKey(rdA.setup), -1, { src: 'ready' });
         }
+        var readyA = !rdA || !!rdA.ready;
         // THE RAISE: nothing popping, a stack under lowTop is raised before a planned fire (out of danger, whatever is coming); with
-        // nothing on the board or on its way, before any setup up to calmRaiseTo; otherwise only up to raiseCap, after the setups
+        // nothing on the board or on its way and a break ready for the next slab, before any setup up to calmRaiseTo; otherwise only
+        // up to raiseCap, after the setups
         if (!busyA && !toppedForRaise && bot._canRaise()) {
           var topA = fullTop(board), calmA = !garbA && comingRows === 0 && !(board.incoming || []).length;
-          // (the calm raise leaves room for the tallest slab this match has sent: raised past it, the next hit tops the stack out)
-          (m.arrivals || []).forEach(function (a) { if (a.g && a.g.height > (bot._maxSlab || 0)) bot._maxSlab = a.g.height; });
-          (board.incoming || []).forEach(function (g) { if (g.height > (bot._maxSlab || 0)) bot._maxSlab = g.height; });
-          var roomA = (board.height || 12) - Math.max(bot._maxSlab || 0, A.slabGuess || 3) - 1;
-          if (topA < (A.lowTop || 6) && !danger) put('raise', -1.4, { src: 'raise', to: calmA ? Math.min(A.calmRaiseTo || 9, roomA) : (A.lowTop || 6) });   // a low stack has nothing to build with, whatever is coming
-          else if (calmA && topA < Math.min(A.calmRaiseTo || 9, roomA)) put('raise', -0.6, { src: 'raise', to: Math.min(A.calmRaiseTo || 9, roomA) });
+          if (topA < (A.lowTop || 6) && !danger) put('raise', -1.4, { src: 'raise', to: calmA ? (A.calmRaiseTo || 10) : (A.lowTop || 6) });   // a low stack has nothing to build with, whatever is coming
+          else if (calmA && readyA && topA < (A.calmRaiseTo || 10)) put('raise', -0.6, { src: 'raise', to: A.calmRaiseTo || 10 });
           else if (topA < raiseCap(board, comingRows, A)) put('raise', -0.3, { src: 'raise', to: raiseCap(board, comingRows, A) });
         }
         bot.SURVIVE_SEARCH_BUDGET = due ? Math.max(CHEAP, Math.min(FULL, Math.round((due - Date.now()) * nodesPerMs * SPEND))) : FULL;
