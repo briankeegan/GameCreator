@@ -465,6 +465,30 @@ module.exports = function think(cfg) {
           var time = (sb.stopTime || 0) + (sb.preStopTime || 0) + (sb.health || 0);
           return (floorSeen[key] = !!(pl && pl.brk && pl.seq.length * (A.swapFrames || 18) <= time));
         };
+        // MORE GARBAGE ABOUT TO LAND ON THE GARBAGE THERE (mergeWait): a block falling now that settles on another block, or a block
+        // queued (dropping as soon as the board is not topped out) or on its way within mergeWait frames that lands on a column topped
+        // by garbage -- touching blocks pop together, so one break then takes them all
+        var mergeSeen = null;
+        var mergeA = function () {
+          if (mergeSeen !== null) return mergeSeen;
+          mergeSeen = false;
+          if (!A.mergeWait || !holdC) return false;
+          var sb = bot._settledOf(holdC), r, c, p, q, fall = {}, falling = false;
+          if (!sb || !sb.panels) return false;
+          var rows = Math.min(board.panels.length, (board.height || 12) + 4);
+          for (r = 1; r < rows; r++) for (c = 1; c <= (board.width || 6); c++) { p = board.panels[r] && board.panels[r][c]; if (p && p.isGarbage && p.state === 'falling') { fall[p.garbageId] = true; falling = true; } }
+          var srows = Math.min(sb.panels.length, (board.height || 12) + 4);
+          if (falling) for (r = 2; r < srows && !mergeSeen; r++) for (c = 1; c <= (board.width || 6); c++) {
+            p = sb.panels[r] && sb.panels[r][c]; q = sb.panels[r - 1] && sb.panels[r - 1][c];
+            if (p && p.isGarbage && fall[p.garbageId] && q && q.isGarbage && !fall[q.garbageId]) { mergeSeen = true; break; }
+          }
+          var coming = ((board.incoming || []).length && !(board.isToppedOut && board.isToppedOut())) || realArrivals.some(function (a) { return a.at <= A.mergeWait; });
+          if (!mergeSeen && coming) for (c = 1; c <= (board.width || 6) && !mergeSeen; c++) {
+            for (r = srows - 1; r >= 1; r--) { p = sb.panels[r] && sb.panels[r][c]; if (p && (p.isGarbage || p.color)) { if (p.isGarbage) mergeSeen = true; break; } }
+          }
+          if (mergeSeen) bot._mergeWaits = (bot._mergeWaits || 0) + 1;
+          return mergeSeen;
+        };
         var lowA = function () {
           if (!A.floorRows || taA) return false;   // (time attack has no garbage to break)
           if (panels0 < 0) panels0 = holdC ? panelsOf(bot._settledOf(holdC)) : 0;
@@ -521,6 +545,9 @@ module.exports = function think(cfg) {
           }
           if (k !== 'raise' && prep.want[k] === true) r = Math.min(r, -3);
           if (props[k]) r = Math.min(r, props[k].rank);
+          // A BREAK WAITS FOR WHAT IS LANDING ON IT (mergeA): breaking before it lands takes the one block and leaves the next to be broken
+          // again -- it ranks after the hold, so it is played now only when waiting does not live
+          if (c.kind === 'swap' && add && (add.brokeGarbage || 0) > 0 && r < 0.6 && mergeA()) { bot._merged = (bot._merged || 0) + 1; r = 0.65; }
           // UNDER THE FLOOR (floorRows): a stack of fewer than floorRows rows of panels (counted on the board left alone, settled) breaks
           // the garbage before anything else -- a plain break as much as one that attacks -- and makes stop time only when nothing else
           // lives: a clear, or a planned fire or extension, that breaks nothing and is no line to a break ranks after the hold, and of
@@ -763,7 +790,7 @@ module.exports = function think(cfg) {
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
             mem: NativeMem(),
             breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
-            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0, useless3: bot._useless3 || 0, toppedFree: bot._toppedFree || 0, survAsked: bot._survivalAsked || 0, busySetups: bot._busySetups || 0, thought: bot._thoughtMoves || 0, thoughtHolds: bot._thoughtHolds || 0, thinkErr: bot._thinkErr || null, pingPong: bot._pingPong || 0, survOver: bot._survivalOver || 0, continuous: bot._continuous || 0, fireWhy: bot._fireWhy || null, arbSrc: bot._arbSrc || null, mode: matchMode, buried: bot._buried || 0, pitAttacks: bot._pitAttacks || 0, backs: bot._backs || 0, digs: bot._digs || 0, flips: bot._flips || 0, volley: bot._volley || 0, floored: bot._floored || 0 } };
+            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0, useless3: bot._useless3 || 0, toppedFree: bot._toppedFree || 0, survAsked: bot._survivalAsked || 0, busySetups: bot._busySetups || 0, thought: bot._thoughtMoves || 0, thoughtHolds: bot._thoughtHolds || 0, thinkErr: bot._thinkErr || null, pingPong: bot._pingPong || 0, survOver: bot._survivalOver || 0, continuous: bot._continuous || 0, fireWhy: bot._fireWhy || null, arbSrc: bot._arbSrc || null, mode: matchMode, buried: bot._buried || 0, pitAttacks: bot._pitAttacks || 0, backs: bot._backs || 0, digs: bot._digs || 0, flips: bot._flips || 0, volley: bot._volley || 0, floored: bot._floored || 0, merged: bot._merged || 0, mergeWaits: bot._mergeWaits || 0 } };
     } catch (e) {
       if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
       else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e) + ' [inc ' + (board && board.incoming ? board.incoming.length : '?') + ', arr ' + (m.arrivals ? m.arrivals.length : '?') + ']', ms: Date.now() - t0 };
