@@ -4636,7 +4636,7 @@ int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);
 int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, Wait (*wait)[WMAX], int32_t *cur, int32_t *t);
 static ST LUM;
 static int lineupLast;
-static int luStates, luRanks, luReady, luNearCut, luNodes; static double luStateMs, luRankMs, luReadyMs;   // GC_WORKSTAT
+static int luStates, luRanks, luReady, luNodes; static double luStateMs, luRankMs, luReadyMs;   // GC_WORKSTAT
 static int readyAfterIn(const int32_t *sw, int n);
 static int maskBreaks(const int32_t *st, const int32_t *sw, int n);
 static void parallelDo(int count, void (*task)(int));
@@ -4681,19 +4681,6 @@ static int readyAfter(const int32_t *sw, int n) {
 static int readyAfterIn(const int32_t *sw, int n) {
   int r, c;
   return readyInTime(sw, n, &r, &c);   // the one question, asked the one way: the engine's word on a break in reach where the slab lands (or, if it cannot come down, against the garbage held)
-}
-// Where a lineup can matter: the rows up to the one the next slab lands on,
-// in its columns and one either side.
-static int lineupNear(const int32_t *st, int r, int c) {
-  // a swap beside garbage already on the board can make the break it needs
-  for (int cc = c - 1; cc <= c + 2; cc++)
-    if (cc >= 1 && cc <= BW && (U(st, GARB + cc) & (7u << (r >= 2 ? r - 2 : 0)))) return 1;
-  int w = (int)BIN[IN_SLABW], c0 = (int)BIN[IN_SLABC];
-  if (w <= 0 || c0 <= 0) return 1;
-  int land = 0;
-  for (int cc = c0; cc < c0 + w && cc <= BW; cc++) { int top = topRow(U(st, OCC + cc)); if (top > land) land = top; }
-  land++;
-  return r >= land - 2 && r <= land && c + 1 >= c0 - 1 && c <= c0 + w;
 }
 #define LUBEST 5   // a break that spends nothing
 // A LINEUP'S SCORE: its rank, then -- among lineups of one rank -- the less
@@ -4761,7 +4748,6 @@ static int sitLineup(const int32_t *res, const int32_t *sw, int n, double at, vo
   LuCtx *x = ctx;
   luNodes++;
   if (outPast(x->B, LUMOST, at)) return SIT_END;
-  if (!lineupNear(res + R_INTS, sw[2 * n - 2], sw[2 * n - 1])) { luNearCut++; return SIT_END; }
   // A LINE TURNED DOWN ON THE POSITION STAYS TURNED DOWN WHILE THE POSITION STANDS (raPos): a pop holds one position for hundreds
   // of frames, and the lineup's work goes to the lines it has not judged
   u64 key = 1469598103934665603ull ^ (u64)raPos;
@@ -4780,6 +4766,7 @@ static int sitLineup(const int32_t *res, const int32_t *sw, int n, double at, vo
 #else
 #define LUWHY(code) do { } while (0)
 #endif
+static double readyGuide(const int32_t *st);
 static Dec lineupFirst(Dec d) {
   lineupLast = 0;
   // a lineup is for a board with time: topped with death in sight, staying alive comes first
@@ -4791,23 +4778,23 @@ static Dec lineupFirst(Dec d) {
   uint32_t can0[WMAX];
   Wait waits0[32][WMAX];
   if (lineState(0, 0, st0, can0, waits0, cur, &t) != 0) { LUWHY(4); return d; }
-  luStates = luRanks = luReady = luNearCut = luNodes = luSkipped = 0; for (int q = 0; q < 6; q++) luWhy[q] = 0; luStateMs = luRankMs = luReadyMs = 0;
+  luStates = luRanks = luReady = luNodes = luSkipped = 0; for (int q = 0; q < 6; q++) luWhy[q] = 0; luStateMs = luRankMs = luReadyMs = 0;
   Best B = { 0 };
   // THE LINEUP'S SHARE: what the decision has left once the stages after it keep theirs
   double luEnd = stageLeaves(4);
   int last;
   LuCtx x = { &B, st0 };
-  sitFilter = lineupNear; sitRootKids = -1; sitRootLeft = -1; sitRootLegal = sitRootFilt = sitRootCan = sitRootLate = 0;
+  sitGuide = readyGuide; sitRootKids = -1; sitRootLeft = -1; sitRootLegal = sitRootFilt = sitRootCan = sitRootLate = 0;   // best-first by the contact column's distance, no region cut
   if (paWork < luEnd)
     searchInTime(st0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, lineEnds(0, 0, &last), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0,
                  can0, waits0, luEnd - paWork, sitLineup, &x, 0, 0, 0);
-  sitFilter = 0;
+  sitGuide = 0;
 #ifndef __wasm__
   if (0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINEUP states %d %.2f ms | ranks %d %.2f ms (ready %d %.2f ms)\n", luStates, luStateMs, luRanks, luRankMs, luReady, luReadyMs); }
 #endif
   if (!(paWork < luEnd)) LUWHY(5);
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINEUPSTATS skipped %d nodes %d ranked %d nearcut %d why %d %d %d %d %d %d rootkids %d legal %d filt %d can %d late %d left %.0f work %.0f of %.0f\n", luSkipped, luNodes, luRanks, luNearCut, luWhy[0], luWhy[1], luWhy[2], luWhy[3], luWhy[4], luWhy[5], sitRootKids, sitRootLegal, sitRootFilt, sitRootCan, sitRootLate, sitRootLeft, paWork, luEnd); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINEUPSTATS skipped %d nodes %d ranked %d why %d %d %d %d %d %d rootkids %d legal %d filt %d can %d late %d left %.0f work %.0f of %.0f\n", luSkipped, luNodes, luRanks, luWhy[0], luWhy[1], luWhy[2], luWhy[3], luWhy[4], luWhy[5], sitRootKids, sitRootLegal, sitRootFilt, sitRootCan, sitRootLate, sitRootLeft, paWork, luEnd); }
 #endif
   if (!B.has) { LUWHY(6); return d; }
   if (B.n == 1 && d.kind == K_SWAP && d.hasMove && d.sr == B.sw[0] && d.sc == B.sw[1]) { LUWHY(7); return d; }
