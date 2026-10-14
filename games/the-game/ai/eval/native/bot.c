@@ -3758,6 +3758,7 @@ static int readyCounts(const LineC *l, int alone) {
   for (int k = 0; k < LNOLEN; k++) LNO[k] = keep[k];
   return rdy;
 }
+static int rdRefused; static double rdCost;   // (defined with readyInTime)
 static int bbReady;   // the break bestBreak picked leaves the board ready for the next slab
 static LineC bbDeferred; static int bbHasDeferred;   // a living break held for a better time, this decision
 static LineC *bestBreak(void) {
@@ -3787,6 +3788,9 @@ static LineC *bestBreak(void) {
     if (!pick || lineRank(l, rdy, pick, pickReady) > 0) { pick = l; pickReady = rdy; }
   }
   bbReady = !ask || pickReady;
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "BBREADY ask %d found %d pickReady %d refused %d workLeft %.0f rdCost %.0f\n", ask, bbFound, pickReady, rdRefused, workLeft(), rdCost); }
+#endif
 #ifndef __wasm__
   // THE BREAK CHOSEN AGAINST THE BREAKS JUDGED, for the log: whether it spends panels, and how many of the living breaks judged spend and how many spend none
   if (botTraceOn && pick) { extern int fprintf(void *, const char *, ...); extern void *stderr; int pay = 0, free_ = 0;
@@ -4590,6 +4594,7 @@ static int breakWithin(const int32_t *st, double left) {
 // it finds is played if the engine says it lives and breaks -- in the time there is.
 static int raPos;   // the position (below)
 static int bdNone, bdPos; static double bdTime;   // the position (raPos) and the time left for which breakDeeper found no break within its work
+static double readyGuide(const int32_t *st);
 static Dec breakDeeper(Dec d) {
   if (!BIN[IN_HASPA]) return d;
   resolve(DBASE, KBR, 1);
@@ -4602,8 +4607,11 @@ static Dec breakDeeper(Dec d) {
   if (bdNone && bdPos == raPos && timeLeft() <= bdTime) return d;
   int32_t sw[2 * LINEMAX]; int n = 0;
   double bd0 = paWork, bdT = timeLeft();
-  if (!searchInTime(kb0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, bdT, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0,
-                    0, 0, kbEnd - paWork, sitBreaks, 0, sw, &n, 0)) {
+  sitGuide = readyGuide;   // best-first by the contact column's distance: the work reaches the lines of three or four swaps, not every line of two
+  int got = searchInTime(kb0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, bdT, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0,
+                         0, 0, kbEnd - paWork, sitBreaks, 0, sw, &n, 0);
+  sitGuide = 0;
+  if (!got) {
     bdNone = paWork - bd0 < 0.9 * (kbEnd - bd0); bdPos = raPos; bdTime = bdT;
     return d;
   }
