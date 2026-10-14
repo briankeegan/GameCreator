@@ -523,24 +523,24 @@ module.exports = function think(cfg) {
       // (only on a stack with room: topped out, or at flattenTop or above, the time is for living, not the shape)
       var downD = !!(defendA && D0.defendFlatten && bot.preferRank && !m.topped && m.realTop < (A0.flattenTop || 10) &&
                      (((board.stopTime || 0) + (board.preStopTime || 0)) > 0 || (!(board.incoming || []).length && !arrivals.length)));
+      // (a cell of either board: the game's (panels) or the settled one the search leaves (grid: 0 empty, -2 garbage, 1..7 colours))
+      var cellOf = function (b, r, c) {
+        if (b.panels) { var p = b.panels[r] && b.panels[r][c]; return !p ? 0 : p.isGarbage ? -2 : (p.color || 0); }
+        var v = b.grid[r] && b.grid[r][c]; return v || 0;
+      };
+      var rowsB = function (b) { return b.panels ? b.panels.length : b.grid ? b.grid.length - 1 : 0; };
+      var colsOf = function (b) {
+        var hs = [], c, r, n; if (!b || !(n = rowsB(b))) return null;
+        for (c = 1; c <= 6; c++) { var h = 0; for (r = n - 1; r >= 1 && !h; r--) if (cellOf(b, r, c) !== 0) h = r; hs.push(h); }
+        return hs;
+      };
+      var hollowB = function (b) {
+        var k = 0, c, r, n; if (!b || !(n = rowsB(b))) return 0;
+        for (c = 1; c <= 6; c++) { var over = false; for (r = n - 1; r >= 1; r--) { var v = cellOf(b, r, c); if (v === -2) over = true; else if (over && !(v > 0)) k++; } }
+        return k;
+      };
+      var shapeOfB = function (b) { var hs = colsOf(b); return hs ? { spread: Math.max.apply(null, hs) - Math.min.apply(null, hs), hollow: hollowB(b) } : null; };
       if (downD) {
-        // (a cell of either board: the game's (panels) or the settled one the search leaves (grid: 0 empty, -2 garbage, 1..7 colours))
-        var cellOf = function (b, r, c) {
-          if (b.panels) { var p = b.panels[r] && b.panels[r][c]; return !p ? 0 : p.isGarbage ? -2 : (p.color || 0); }
-          var v = b.grid[r] && b.grid[r][c]; return v || 0;
-        };
-        var rowsB = function (b) { return b.panels ? b.panels.length : b.grid ? b.grid.length - 1 : 0; };
-        var colsOf = function (b) {
-          var hs = [], c, r, n; if (!b || !(n = rowsB(b))) return null;
-          for (c = 1; c <= 6; c++) { var h = 0; for (r = n - 1; r >= 1 && !h; r--) if (cellOf(b, r, c) !== 0) h = r; hs.push(h); }
-          return hs;
-        };
-        var hollowB = function (b) {
-          var k = 0, c, r, n; if (!b || !(n = rowsB(b))) return 0;
-          for (c = 1; c <= 6; c++) { var over = false; for (r = n - 1; r >= 1; r--) { var v = cellOf(b, r, c); if (v === -2) over = true; else if (over && !(v > 0)) k++; } }
-          return k;
-        };
-        var shapeOfB = function (b) { var hs = colsOf(b); return hs ? { spread: Math.max.apply(null, hs) - Math.min.apply(null, hs), hollow: hollowB(b) } : null; };
         var candsF = null, base = null, prFl = bot.preferRank;
         bot.preferRank = function (c, i) {
           var r = prFl.call(this, c, i);
@@ -795,6 +795,18 @@ module.exports = function think(cfg) {
       var ranked = [], key = function (c) { return c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[1] : c.kind; };
       var provenRanked = [];
       if (process.env.GC_SURVIVOR_WHY && bot.preferProven) { var pp0 = bot.preferProven; bot.preferProven = function (c, i) { var r = pp0.call(this, c, i); provenRanked.push(key(c) + '=' + r); return r; }; }
+      // NO DIGGING UNDER THE PILE, UNDER THREAT TOO (the attack path's own rule, light hits): a clear that breaks no garbage and leaves
+      // more hollow under it than the board left alone ranks nowhere -- a slab left resting on some columns can be broken only from those
+      if (defendA && D0.defendLines && bot.preferRank) {
+        var prDig = bot.preferRank, candsDg = null, hollow0D = 0;
+        bot.preferRank = function (c, i) {
+          var r = prDig.call(this, c, i), add = c.added || c.resolved;
+          if (c.kind !== 'swap' || !add || !(add.comboSizes || []).length || (add.brokeGarbage || 0) > 0) return r;
+          if (bot._allCands !== candsDg) { candsDg = bot._allCands; var hc = (candsDg || []).filter(function (x) { return x.kind === 'hold'; })[0]; hollow0D = hc ? hollowB(bot._settledOf(hc)) : -1; }
+          if (hollow0D >= 0 && hollowB(bot._settledOf(c)) > hollow0D) { bot._digs = (bot._digs || 0) + 1; return Infinity; }
+          return r;
+        };
+      }
       // (last of the wrappers, so no later rank lifts a swap back again)
       if (defendA && D0.strictSwapBack && bot.preferRank && backSet) {
         var prSB = bot.preferRank;
