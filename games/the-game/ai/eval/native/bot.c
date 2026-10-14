@@ -125,6 +125,7 @@ __attribute__((export_name("bot_counts"))) double *bot_counts(int32_t id) { retu
 
 static double opt(int i) { return TB[T_OPT + i]; }
 static int REACT, botFailed;
+static int parkValid, parkR, parkC;   // this decision: the first swap of the line nearest a break, where an idle hold parks the cursor
 static JLOCAL double scoreEnd;   // a scored candidate's share of the work ends here (score, scoreAll); 0: none
 static double scoreShare;        // the share each candidate scoreAll scores gets
 static double rdW0;              // the work done when the decision began
@@ -4669,6 +4670,7 @@ static Dec breakDeeper(Dec d) {
   int got = searchInTime(kb0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, bdT, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0,
                          0, 0, kbEnd - paWork, sitNear, &nx, sw, &n, 0);
   nearKeep = nx;
+  if (nx.bestN > 0) { parkValid = 1; parkR = nx.sw[0]; parkC = nx.sw[1]; }
   sitGuide = 0;
   if (!got) {
     bdNone = paWork - bd0 < 0.9 * (kbEnd - bd0); bdPos = raPos; bdTime = bdT;
@@ -5387,6 +5389,7 @@ static int readiesLine(Dec d, int dieRef, int spare, int partial, int32_t *sw, i
   searchInTime(rq0, cur0[0], cur0[1], t0, 0, dmin(tLand, timeLeft()), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can0, wt0, optLine() - paWork, sitReadies, &x, sw, n, 0);
   sitGuide = 0;
   rqKeep.bestG = x.bestG; rqKeep.bestN = x.bestN; for (int k = 0; k < 2 * x.bestN; k++) rqKeep.bestSw[k] = x.bestSw[k];
+  if (x.bestN > 0 && !parkValid) { parkValid = 1; parkR = x.bestSw[0]; parkC = x.bestSw[1]; }
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "READIES root: legal %d filtered %d not swappable %d late %d\n", sitRootLegal, sitRootFilt, sitRootCan, sitRootLate); fprintf(BLOG, "READIES lines: %d ready on the masks, %d asked, %d seen, %d die, %d die sooner, %d nearer (guide now %.0f), %s", x.masks, x.tried, x.seen, x.dies, x.sooner, x.near, x.g0, x.ok ? "ready:" : "none");
     if (x.ok) { for (int k = 0; k < *n; k++) fprintf(BLOG, " %d,%d", sw[2 * k], sw[2 * k + 1]); fprintf(BLOG, " break %d,%d", x.r, x.c); } fprintf(BLOG, "\n"); }
@@ -6390,6 +6393,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   { extern void paWall(double); extern double paClockMs(void); tkT0 = paClockMs(); paWall(tkLeft > 0 ? tkLeft - tkTail - tkOver : 0); }
   { extern PATLS double paWork; rdW0 = paWork; budgetRefused = 0; }
   btDecision++;
+  parkValid = 0;
   btDecisionJ = btDecision;
   memoRoom();
   nSettle = nLandR = nFireR = nSavesR = nAnyR = 0;
@@ -6508,6 +6512,8 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // the one choice (arbitrate): survival's above all
   WORKAT("before setupTwos"); d = setupTwos(d); WORKAT("after setupTwos");
   d = arbitrate(d); WORKAT("after arbitrate");
+  // THE CURSOR IS WALKED TO THE LINE'S FIRST CELL while the pop runs: idle time and a window that has room, so the break that comes does not spend them
+  if (d.kind == K_HOLD && !d.hasPark && parkValid && aloneOnEngine() && aloneDie(1 << 20) > LIVEHORIZON) { d.hasPark = 1; d.pr = parkR; d.pc = parkC; }
   recordTarget(d);
   // a line set this decision is stamped with the presses made before it
   if (BT->nLine && (BT->nLine != nLineAfterPlay || __builtin_memcmp(BT->line, lineAfterPlay, (unsigned long)BT->nLine * 8))) { BT->linePresses = BIN[IN_PRESSES]; BT->lineBorn = BT->nNotes; }
