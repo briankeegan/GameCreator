@@ -344,6 +344,7 @@ Match.prototype.take = function (truth) {
     for (var i = 0; i < ins.length; i++) this.plan[at + i] = { bits: ins[i], hold: walked.holds[i], swap: sw };
     this.nextAt = at + ins.length;
     if (sw) this.lastSwapEnd = this.nextAt;
+    this.lastPace = a.pace || null;
     this.knew = knew;
     // The line behind the move holds from where the move ends, played as decided.
     this.line = a.line && (a.lineFree || a.lineAt === this.nextAt) && at === a.at ? { steps: a.line.slice(), at: this.nextAt } : null;
@@ -624,10 +625,28 @@ Match.prototype.afterFrame = function () {
 // top, a move is begun no sooner than `gap` frames after the last swap pressed -- with busy, garbage resting on the board too (the
 // break it needs is made as well a moment later while nothing more is on its way). The decision is asked about the frame it begins on, so it
 // is judged from there like any other; anything less calm and the moves come as fast as they are found.
+// WAITING THAT COSTS NOTHING (pace.slack): the last decision proved holding lives through the survival horizon and wanted no break, no
+// chain of its own is running, the stack is not topped out without stop time to hold it, and no garbage lands within `clear` frames of
+// the move -- stop time and garbage resting on the board are no reason to hurry. The decision is asked about the frame the move begins.
+Match.prototype.slack = function (next, P) {
+  var lp = this.lastPace;
+  if (!lp || !lp.hold || lp.brk || next.chainCounter) return null;
+  var stop = (next.stopTime || 0) + (next.preStopTime || 0);
+  if (this.toppedNow && !(stop > P.gap)) return null;
+  var off = next.clock - next.stopWatch, by = this.lastSwapEnd + P.gap + P.clear;
+  if (this.arrivals.some(function (a) { return a.at + off <= by; })) return null;
+  if ((next.incoming || []).length) {
+    var ck = this.epoch + ':' + by;   // (once per swap: the prediction runs the engine to `by`)
+    if (this.calmKey !== ck) { this.calmKey = ck; this.calmLands = garbageCells(this.predict(next, by, this.hold, this.nextPending).board) > garbageCells(next); }
+    if (this.calmLands) return null;
+  }
+  return { gap: P.gap };
+};
 function garbageCells(b) { var n = 0; b.panels.forEach(function (row) { if (row) for (var c = 1; c <= 6; c++) if (row[c] && row[c].isGarbage) n++; }); return n; }
 Match.prototype.calm = function (next) {
   var P = this.L.profile && this.L.profile.pace;
   if (!P || this.L.sync || this.lastSwapEnd == null) return null;
+  if (P.slack) return this.slack(next, P);
   if (this.toppedNow || next.chainCounter || (next.stopTime || 0) + (next.preStopTime || 0) > 0) return null;
   if (!P.busy && ((next.incoming || []).length || SH.lowestGarbageRow(next))) return null;
   var off = next.clock - next.stopWatch, by = this.lastSwapEnd + P.gap + P.clear;

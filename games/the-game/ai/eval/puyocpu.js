@@ -1769,6 +1769,7 @@
     var i, proven = [], weakly = [], unproven = [];
     var svT = Date.now(), verdict = this._survivalSearch(cands);
     this._lastVerdict = { cands: cands, verdict: verdict };   // (read by GC_BREAK_WHY)
+    this._verdictNo = (this._verdictNo || 0) + 1;   // (which decision the verdict is of: survivor_think.js reads it for the pace)
     this._svMs = (this._svMs || 0) + Date.now() - svT;   // the survival search's milliseconds, read and cleared by the caller
     var breakWeak = [];
     for (i = 0; i < cands.length; i++) {

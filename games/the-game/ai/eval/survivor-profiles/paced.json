@@ -24,8 +24,7 @@
  },
  "pace": {
   "gap": 20,
-  "clear": 180,
-  "room": 600,
-  "busy": true
+  "clear": 60,
+  "slack": true
  }
 }
