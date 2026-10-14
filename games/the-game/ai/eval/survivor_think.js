@@ -214,7 +214,9 @@ module.exports = function think(cfg) {
       }
       if (defendA) {
         HT = A.defendHoldThrees || null; A = null;
-        bot.SURVIVE_FRAMES = P.prototype.SURVIVE_FRAMES;   // (bot.preferRank stays the one prepare made for the defence's profile)
+        // (the horizon reaches past the stop time, as the attack's does: while stop time runs nothing can die, so a hold looks safe for
+        // all of it and the break is never made -- the stop time left and pastStop frames after it are what a move must live through)
+        bot.SURVIVE_FRAMES = Math.max(P.prototype.SURVIVE_FRAMES, (board.stopTime || 0) + (board.preStopTime || 0) + (A0.pastStop || P.prototype.SURVIVE_FRAMES / 2));
         bot._defended = (bot._defended || 0) + 1;
       }
       if (A && attackGate++ < 8) console.error('ATTACKGATE clock ' + board.clock + ' garbageRow ' + SH.lowestGarbageRow(board) + ' coming ' + comingRows + ' top ' + SH.top(board));
