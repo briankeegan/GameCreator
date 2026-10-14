@@ -5293,7 +5293,8 @@ static int readiesLine(Dec d, int dieRef, int spare, int partial, int32_t *sw, i
   // the engine's landing; before the first wave is queued the block the telegraph shows, landing in the frames it says
   int lands = lineLanded(0, 0, RWL, &tLand) == 0;
   // nothing queued: the block the telegraph shows, in the frames it says; with none shown, ready just in case, as soon as the time there is allows
-  if (!lands) { if (BIN[IN_INCOMING] > 0) return -1; tLand = BIN[IN_TGW] > 0 && BIN[IN_LEAD] > 0 ? (int)BIN[IN_LEAD] : (int)timeLeft(); }
+  // a slab queued that cannot land (a pile on the board): ready is a break against the pile, in the time the board has
+  if (!lands) tLand = BIN[IN_INCOMING] <= 0 && BIN[IN_TGW] > 0 && BIN[IN_LEAD] > 0 ? (int)BIN[IN_LEAD] : (int)timeLeft();
   if (lineState(0, 0, rq0, can0, wt0, cur0, &t0) != 0 || paWork >= optLine()) return 0;
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; SLABW = (int)BIN[IN_SLABW]; SLABH = (int)BIN[IN_SLABH]; SLABC = (int)BIN[IN_SLABC];
@@ -5396,7 +5397,7 @@ static Dec readyWhenLands(Dec d) {
   // the cheaper breaks by distance: the first the engine confirms is played
   {
     int32_t rl[2 * LINEMAX]; int rn;
-    int got = readiesLine(d, dieRef, spare, 0, rl, &rn, &r, &c);
+    int got = readiesLine(d, dieRef, spare, 1, rl, &rn, &r, &c);
     if (got < 0) return room ? d : makeRoom(d);
     if (got) {
       if (rn > 1) lineSet(rl, rn, LINE_PLAN, 0); else BT->nLine = 0;
