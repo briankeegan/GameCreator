@@ -437,7 +437,7 @@ module.exports = function think(cfg) {
           for (c = 1; c <= (b.width || 6); c++) { var h = 0; for (r = b.grid.length - 1; r >= 1 && !h; r--) if (b.grid[r] && b.grid[r][c]) h = r; if (h > hi) hi = h; if (h < lo) lo = h; }
           return hi - lo;
         };
-        var shapeAt = !!(garbA || readyArr.length), spread0 = -1, wellRows = A.wellRows || 4;
+        var shapeAt = !!(garbA || readyArr.length), spread0 = -1, wellRows = A.wellRows || 4; var spreadT = -1;
         var shapeOf = function (c) {
           if (!shapeAt || c.kind !== 'swap') return { hollow: false, well: false };
           if (hollow0 < 0) hollow0 = holdC ? hollowOf(bot._settledOf(holdC)) : 0;
@@ -460,6 +460,12 @@ module.exports = function think(cfg) {
             else if (brk) r = -3 - big / 1000;
             else if (atk) r = -2 - worthOf(ch, big);
             else if (sizes.length && lastResA) r = -1.8;
+          }
+          // TIME ATTACK, THE CYCLE: no chain going, an uneven board is levelled first -- a swap that clears nothing and leaves the board
+          // less uneven than it is, before the raise -- then raised to calmRaiseTo, then the biggest chain is built; and again
+          if (taA && !busyA && c.kind === 'swap' && !(add && (add.comboSizes || []).length)) {
+            if (spreadT < 0) spreadT = holdC ? spreadOf(bot._settledOf(holdC)) : 0;
+            if (spreadT > (A.flatRows || 2)) { var sT = spreadOf(bot._settledOf(c)); if (sT < spreadT) r = Math.min(r, -3 - (spreadT - sT) / 100); }
           }
           if (k !== 'raise' && prep.want[k] === true) r = Math.min(r, -3);
           if (props[k]) r = Math.min(r, props[k].rank);
