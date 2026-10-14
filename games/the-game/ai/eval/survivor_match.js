@@ -625,12 +625,13 @@ Match.prototype.afterFrame = function () {
 // top, a move is begun no sooner than `gap` frames after the last swap pressed -- with busy, garbage resting on the board too (the
 // break it needs is made as well a moment later while nothing more is on its way). The decision is asked about the frame it begins on, so it
 // is judged from there like any other; anything less calm and the moves come as fast as they are found.
-// WAITING THAT COSTS NOTHING (pace.slack): the last decision proved holding lives through the survival horizon and wanted no break, no
-// chain of its own is running, the stack is not topped out without stop time to hold it, and no garbage lands within `clear` frames of
-// the move -- stop time and garbage resting on the board are no reason to hurry. The decision is asked about the frame the move begins.
+// WAITING THAT COSTS NOTHING (pace.slack): the last decision proved holding lives through the survival horizon and was not pressed for
+// time (urgent: tight, or every move doomed), no chain of its own is running, the stack is not topped out without stop time to hold it,
+// and no garbage lands within `clear` frames of the move -- stop time, garbage resting on the board and a break in reach are no reason
+// to hurry (with pace.breaks false, a break in reach is). The decision is asked about the frame the move begins.
 Match.prototype.slack = function (next, P) {
   var lp = this.lastPace;
-  if (!lp || !lp.hold || lp.brk || next.chainCounter) return null;
+  if (!lp || !lp.hold || lp.urgent || (lp.brk && P.breaks === false) || next.chainCounter) return null;
   var stop = (next.stopTime || 0) + (next.preStopTime || 0);
   if (this.toppedNow && !(stop > P.gap)) return null;
   var off = next.clock - next.stopWatch, by = this.lastSwapEnd + P.gap + P.clear;
