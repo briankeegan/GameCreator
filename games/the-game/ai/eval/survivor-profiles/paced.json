@@ -24,7 +24,6 @@
  },
  "pace": {
   "gap": 20,
-  "clear": 60,
   "slack": true
  }
 }
