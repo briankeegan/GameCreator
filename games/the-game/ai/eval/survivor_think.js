@@ -399,9 +399,9 @@ module.exports = function think(cfg) {
           (m.arrivals || []).forEach(function (a) { if (a.g && a.g.height > (bot._maxSlab || 0)) bot._maxSlab = a.g.height; });
           (board.incoming || []).forEach(function (g) { if (g.height > (bot._maxSlab || 0)) bot._maxSlab = g.height; });
           var roomA = (board.height || 12) - Math.max(bot._maxSlab || 0, A.slabGuess || 3) - 1;
-          if (topA < (A.lowTop || 6) && !danger) put('raise', -1.4, { src: 'raise' });   // a low stack has nothing to build with, whatever is coming
-          else if (calmA && topA < Math.min(A.calmRaiseTo || 9, roomA)) put('raise', -0.6, { src: 'raise' });
-          else if (topA < raiseCap(board, comingRows, A)) put('raise', -0.3, { src: 'raise' });
+          if (topA < (A.lowTop || 6) && !danger) put('raise', -1.4, { src: 'raise', to: calmA ? Math.min(A.calmRaiseTo || 9, roomA) : (A.lowTop || 6) });   // a low stack has nothing to build with, whatever is coming
+          else if (calmA && topA < Math.min(A.calmRaiseTo || 9, roomA)) put('raise', -0.6, { src: 'raise', to: Math.min(A.calmRaiseTo || 9, roomA) });
+          else if (topA < raiseCap(board, comingRows, A)) put('raise', -0.3, { src: 'raise', to: raiseCap(board, comingRows, A) });
         }
         bot.SURVIVE_SEARCH_BUDGET = due ? Math.max(CHEAP, Math.min(FULL, Math.round((due - Date.now()) * nodesPerMs * SPEND))) : FULL;
         var lastResA = !!toppedReal;
@@ -489,7 +489,7 @@ module.exports = function think(cfg) {
       if (arbProps && d) {
         var ap0 = d.kind === 'swap' && d.move ? arbProps[arbKey(d.move)] : d.kind === 'raise' ? arbProps.raise : null;
         if (ap0) {
-          d.src = ap0.src; d.overruled = true; if (ap0.planChain) d.planChain = ap0.planChain;
+          d.src = ap0.src; d.overruled = true; if (ap0.planChain) d.planChain = ap0.planChain; if (ap0.to) d.raiseTo = ap0.to;
           if (ap0.line && ap0.line.length) { attackLine = ap0.line; attackMove = d.move; }
           bot._arbSrc = bot._arbSrc || {}; bot._arbSrc[ap0.src] = (bot._arbSrc[ap0.src] || 0) + 1;
         } else { bot._arbSrc = bot._arbSrc || {}; bot._arbSrc[d.kind === 'swap' ? 'survival' : d.kind] = (bot._arbSrc[d.kind === 'swap' ? 'survival' : d.kind] || 0) + 1; }
@@ -651,7 +651,8 @@ module.exports = function think(cfg) {
       if (d.kind === 'raise' && A && A.holdRaise) {
         var landIn = Infinity, lead = A.raiseLead || 10;
         arrivals.forEach(function (a) { if (a.at < landIn) landIn = a.at; });
-        holdFrames = Math.max(18, Math.min(A.raiseHoldMax || 54, 18 * (raiseCap(board, comingRows, A) - fullTop(board))));
+        // (held for the rows to the arbiter's target when it set one, else to raiseCap)
+        holdFrames = Math.max(18, Math.min(A.raiseHoldMax || 54, 18 * ((d.raiseTo || raiseCap(board, comingRows, A)) - fullTop(board))));
         if (landIn < Infinity) holdFrames = Math.min(holdFrames, landIn - lead);
         if (holdFrames < 1 && landIn <= lead) { d = { kind: 'hold', overruled: true }; holdFrames = 0; }
         else if (holdFrames < 1) holdFrames = 0;
