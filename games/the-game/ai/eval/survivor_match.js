@@ -305,7 +305,8 @@ Match.prototype.take = function (truth) {
       }
       if (back) {
         now = panelIds(board);
-        var clears = (a.diag && a.diag.clears > 0) || (a.breaks && a.breaks.took);
+        // (only what the swap itself clears: a break line's first step that undoes the last swap breaks nothing)
+        var clears = !!(a.diag && a.diag.clears > 0);
         if (!clears && !(changedSince(back, now) && !back.backs)) {
           a = Object.assign({}, a, { kind: 'hold', move: null, line: null });
           move = null; back = null;
