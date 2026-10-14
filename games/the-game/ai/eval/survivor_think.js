@@ -438,7 +438,11 @@ module.exports = function think(cfg) {
           // (in time and out of danger as agro's own settings judge them: the attack block is set aside under threat)
           var fitsD = !A0.readyFrames || firstLand === Infinity || (apD.chain || 0) >= 3 || apD.seq.length * 18 + A0.readyFrames <= firstLand;
           var dangerD = CK.dangerWhy(board, realArrivals, comingRows, m.topped, A0) !== '';
-          if (apD.seq.length && ((apD.chain || 0) >= 2 || (apD.cells || 0) >= (A0.outCells || 4)) && fitsD) {
+          // (a line that breaks garbage counts with anything bigger than a plain three in it -- a combo of four or more sends garbage,
+          // a chain links: the planner keeps the most garbage sent, so it is the biggest break in reach; one that breaks nothing
+          // needs outCells)
+          var bigD2 = (apD.chain || 0) >= 2 || (apD.cells || 0) > 0;
+          if (apD.seq.length && (apD.brk ? bigD2 : ((apD.chain || 0) >= 2 || (apD.cells || 0) >= (A0.outCells || 4))) && fitsD) {
             var kD = arbKey(apD.seq[0]), rD = apD.brk ? -0.6 : (!dangerD ? -0.3 : null);
             if (rD !== null) {
               arbProps = {}; arbProps[kD] = { rank: rD, src: 'fire', line: apD.seq.slice(1), planChain: apD.chain, cells: apD.cells, brk: !!apD.brk };
