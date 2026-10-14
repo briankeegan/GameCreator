@@ -5225,6 +5225,7 @@ static Dec noStall(Dec d) {
 // nearest contact column's count is the board's: 0 where the three stands. A swap that brings a colour nearer moves it, which a count of the twos
 // already made does not; the soonest press only orders between equals
 #define READYGUIDENONE 8
+#define READYGUIDEGAP 0.01
 static double readyGuide(const int32_t *st) {
   waveSlab(st[O_W], &SLABW, &SLABH, &SLABC);
   int placed = slabPlace(st, SLABST);
@@ -5232,12 +5233,14 @@ static double readyGuide(const int32_t *st) {
   int W = b[O_W];
 #define GP(r, c) ((c) >= 1 && (c) <= W && (r) >= 1 && (U(b, OCC + (c)) & (1u << ((r) - 1))) && !(U(b, GARB + (c)) & (1u << ((r) - 1))) && !(U(b, INERT + (c)) & (1u << ((r) - 1))))
   double best = 2 * READYGUIDENONE + 4;
+  int gaps = 0;   // the empty cells between the pile and the stack under it, summed: the pile rests on the tall columns and hangs over the rest
   for (int c = 1; c <= W; c++) {
     uint32_t g = U(b, GARB + c), occ = U(b, OCC + c), pan = occ & ~g & ~U(b, INERT + c), colr = 0;
     for (int a = 1; a <= b[O_N]; a++) colr |= (uint32_t)CL(b, a, c);
     pan &= colr;   // a panel mid-pop has no colour: it is gone by the time a swap is pressed
     if (!g) continue;
     int gb = __builtin_ctz(g);   // the cells under the lowest garbage
+    { uint32_t under = occ & ((1u << gb) - 1u); gaps += gb - (under ? 32 - __builtin_clz(under) : 0); }
     pan &= (1u << gb) - 1u;
     int r = pan ? 32 - __builtin_clz(pan) : 0;
     // a contact column: nothing but cells still occupied (a pop under way) between its top panel and the garbage
@@ -5255,7 +5258,7 @@ static double readyGuide(const int32_t *st) {
     if (cost < best) best = cost;
   }
 #undef GP
-  return best;
+  return best + gaps * READYGUIDEGAP;   // contact first (whole steps), then a pile brought lower (a step is never reached by gaps alone)
 }
 typedef struct { int dieRef, spare, dr, dc, tried, masks, ok, r, c, seen, dies, sooner, near; double g0; int wave; double bestG; int bestN; int32_t bestSw[2 * LINEMAX]; } RqCtx;   // wave: no slab is queued, only the block the telegraph shows: the masks' word on it (waveReady) stands, the engine has no landing to confirm
 static int sitReadies(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
