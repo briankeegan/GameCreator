@@ -24,6 +24,8 @@ mkdir -p "$OUT_DIR"; OUT_DIR=$(cd "$OUT_DIR" && pwd)
 CMD="$OUT_DIR/pa_cmd.txt" OUT="$OUT_DIR/pa_out.txt"
 : > "$OUT"
 case "$BOT" in wasm|bitbot) ;; *) echo "training.sh: BOT is wasm or bitbot, not $BOT" >&2; exit 2 ;; esac
+# the block each pattern sends (TrainingMenu.lua), checked against what the menu reports before a game starts
+case "$PATTERN" in combo_storm) SIZE=4x1 ;; factory) SIZE=6x2 ;; large_garbage) SIZE=6x12 ;; *) echo "training.sh: PATTERN is combo_storm, factory or large_garbage, not $PATTERN" >&2; exit 2 ;; esac
 
 # THE BOT HAS THE MACHINE THE DRILLS GIVE IT. The client draws every frame in
 # software (llvmpipe), which spreads over every core it is given; it is held
@@ -62,7 +64,11 @@ for g in $(seq 1 "$GAMES"); do
     send "tap return" "wait 60" "scene"; sleep 3
   done
   send "menusel og stuff" "menusel mm_1_training" "waitscene TrainingMenu 600"
-  for i in $(seq 1 "$STEPS"); do send "tap right"; done
+  # the pattern is set by name and its block size checked before Go: a pattern not set plays Custom, 1x1
+  send "trainingpattern $PATTERN"
+  for i in $(seq 1 60); do grep -q '^trainingpattern ' "$OUT" && break; sleep 1; done
+  got=$(grep -h '^trainingpattern ' "$OUT" | tail -1 | awk '{print $NF}')
+  [ "$got" = "$SIZE" ] || { echo "game $g: the pattern is $got, not $PATTERN ($SIZE)" | tee -a "$OUT_DIR/results.txt"; kill "$CLIENT" 2>/dev/null; wait "$CLIENT" 2>/dev/null; continue; }
   send "menusel go_" "waitscene CharacterSelectVsSelf 600" "hold z 40" "wait 30" "trainingloop"
   while kill -0 $CLIENT 2>/dev/null; do grep -q '^training ' "$OUT" && break; sleep 5; done
   sleep 3; kill "$CLIENT" 2>/dev/null; wait "$CLIENT" 2>/dev/null
