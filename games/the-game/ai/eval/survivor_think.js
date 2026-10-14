@@ -180,7 +180,9 @@ module.exports = function think(cfg) {
       // DEFENCE UNDER THREAT (defendUnderThreat): with garbage on the board, queued, or on its way, the decision is the defence's --
       // the survival search alone, as the profile with no attack block plays it (8 of 8 to six minutes of large_garbage, where the
       // attack logic over it lost 7 of 8) -- and the attack plays only on a board with nothing on it or coming. Not in time attack.
-      bot.attackFirst = !!OPTS.attackFirst && !defendA;
+      // (attackFirst under threat too: a followed survival line is not played on unranked while a combo, a chain or a ranked line is
+      // among the moves -- otherwise the line's next swap, a three, is played without the bigger break being looked at)
+      bot.attackFirst = !!OPTS.attackFirst && (!defendA || !!A0.defendRanked);
       // (a three that breaks nothing waits for the stack to top out under threat too with defendNoBareThrees; a three that breaks garbage
       // is let through either way -- the profile has no threeBreaksLast)
       bot.noThreesUntilTopped = !!OPTS.threesOnlyTopped && (!defendA || !!A0.defendNoBareThrees);
