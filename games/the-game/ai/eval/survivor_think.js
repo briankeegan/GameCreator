@@ -462,6 +462,13 @@ module.exports = function think(cfg) {
         };
         bot._arbiter = (bot._arbiter || 0) + 1;
       }
+      // THE HORIZON REACHES PAST THE STOP TIME: while stop time runs the stack cannot rise, so every move lives through it -- the
+      // horizon a move must live through is the stop time left and pastStop frames after it, or the stack left at the top when
+      // it runs out is seen too late
+      if (A) {
+        var stopNowA = (board.stopTime || 0) + (board.preStopTime || 0);
+        bot.SURVIVE_FRAMES = Math.max(P.prototype.SURVIVE_FRAMES, stopNowA + (A.pastStop || P.prototype.SURVIVE_FRAMES / 2));
+      }
       var t1 = Date.now();
       bot._svMs = 0;
       var ranked = [], key = function (c) { return c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[1] : c.kind; };
