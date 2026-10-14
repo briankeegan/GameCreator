@@ -457,8 +457,9 @@ module.exports = function think(cfg) {
       // and is in no danger is raised to lowTop, before any single break -- the defence never raises with garbage on the board, and a
       // low stack has nothing to break or attack with. The survival search proves the raise lives like any move; only a planned
       // line to a bigger break comes before it
-      if (defendA && A0.defendRaise && bot.preferRank && !toppedForRaise && !(m.topped) && fullTop(board) < (A0.lowTop || 6) && bot._canRaise() &&
-          CK.dangerWhy(board, realArrivals, comingRows, m.topped, A0) === '') {
+      // (judged on the board the game shows: not topped out, its stack -- landed garbage counted, queued garbage not -- under lowTop.
+      // The queue is not on it: counted as landed, ninety rows queued read as a stack topped out, and the stack was never raised)
+      if (defendA && A0.defendRaise && bot.preferRank && !(m.topped) && !(m.realTop >= 11) && fullTop(board) < (A0.lowTop || 6) && bot._canRaise()) {
         arbProps = arbProps || {};
         arbProps.raise = { rank: -0.5, src: 'raise', to: A0.lowTop || 6 };
         var prR = bot.preferRank;
