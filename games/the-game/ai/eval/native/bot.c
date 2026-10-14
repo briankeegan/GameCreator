@@ -4094,10 +4094,10 @@ static Dec stayAlive(Dec d) {
 // engine (lineJudge, which keeps to the work there is); one it cannot judge is
 // not weighed, and a decision it cannot judge stands.
 static int twosOf(const int32_t *st);
-typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, plain, clears, stall, size, chain, die, conv, hollow, pri, aheadKnown, twosKnown, twos; Atk ahead; double life, soon; } Opt;
+typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, plain, clears, stall, size, chain, die, conv, hollow, pri, aheadKnown, twosKnown, twos, nearKnown; Atk ahead; double life, soon, near; } Opt;
 static int optJudge(Opt *o) {
   int last = 0, spent = 0;
-  o->rdy = o->rdyKnown = o->soonKnown = o->breaks = o->conv = o->cash = o->early = o->plain = o->clears = o->size = o->chain = 0;
+  o->rdy = o->rdyKnown = o->soonKnown = o->nearKnown = o->breaks = o->conv = o->cash = o->early = o->plain = o->clears = o->size = o->chain = 0;
   if (o->d.kind == K_HOLD) {
     o->twos = twosOf(DBASE); o->twosKnown = 1;   // read off the masks, so the setup rule has it when the work is spent
     o->die = aloneDie(1 << 20);
@@ -4150,6 +4150,17 @@ static double breakTime(const int32_t *steps, int n);
 static double optSoon(Opt *o) {
   if (!o->soonKnown) { o->soon = breakTime(o->d.kind == K_HOLD ? 0 : o->sw, o->d.kind == K_HOLD ? 0 : o->n); o->soonKnown = 1; }
   return o->soon;
+}// HOW NEAR A BREAK THE BOARD AN OPTION SETTLES TO IS (readyGuide): when no break is in reach in the time there is, the option that leaves the
+// board nearer one is the progress; INF for one the engine cannot settle
+static double readyGuide(const int32_t *st);
+static double optNear(Opt *o) {
+  if (!o->nearKnown) {
+    static ST st; int32_t cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
+    int hold = o->d.kind == K_HOLD;
+    o->near = BIN[IN_HASPA] && lineState(hold ? 0 : o->sw, hold ? 0 : o->n, st, can, w, cur, &t) == 0 ? readyGuide(st) : INF;
+    o->nearKnown = 1;
+  }
+  return o->near;
 }
 // WHAT AN OPTION LEAVES WITHIN REACH, for the options that clear nothing (the hold, the setups): the board the option
 // settles to, searched in the time there is (searchInTime, any number of swaps), the best attack any line reaches
@@ -4299,7 +4310,9 @@ static int optRank(Opt *a, Opt *b) {
   // the longer life (the stop time a clear buys less the material it spends),
   // then a combo or a chain
   // a break sooner by more than NEXTMOVE: less is the walk's own movement, and the target stands
-  if (ka) { double sa = optSoon(a), sb = optSoon(b), gap = sa > sb ? sa - sb : sb - sa; if (sa != sb && !(gap <= NEXTMOVE)) return sa < sb ? 1 : -1; }
+  if (ka) { double sa = optSoon(a), sb = optSoon(b), gap = sa > sb ? sa - sb : sb - sa; if (sa != sb && !(gap <= NEXTMOVE)) return sa < sb ? 1 : -1;
+    // no break in reach for either: the one that leaves the board nearer one is the progress (the lineup toward the break the next slab needs)
+    if (ka == 1 && kb == 1 && sa >= INF && sb >= INF && !a->clears && !b->clears) { double na = optNear(a), nb = optNear(b); if (na != nb) return na < nb ? 1 : -1; } }
   // two options that clear nothing (the hold, the setups): the one that leaves the better attack within reach in the time there is -- then more vertical twos
   // only a setup against the hold or another setup: any other swap that clears nothing (a fill, a levelling) is ranked by life and hollow
   if (ka && !a->clears && !a->breaks && !a->cash && !b->clears && !b->breaks && !b->cash && (a->stall || b->stall)
