@@ -441,6 +441,9 @@ module.exports = function think(cfg) {
         bot.preferRank = function (c) {
           var k = c.kind === 'swap' && c.move ? arbKey(c.move) : c.kind, r = Infinity, add = c.added || c.resolved;
           var sh = shapeOf(c);
+          // A SWAP IS NOT MADE TO BE UNDONE: the pair swapped within pingFrames, again, clearing nothing, is no setup, readiness or levelling
+          var again = c.kind === 'swap' && c.move && !(add && (add.comboSizes || []).length) && (bot._swapLog || []).some(function (e) { return e.pk === k && m.at - e.at < (A.pingFrames || 150) && m.at >= e.at; });
+          if (again) { bot._flips = (bot._flips || 0) + 1; return Infinity; }
           if (sh.hollow && add && (add.comboSizes || []).length && !((add.brokeGarbage || 0) > 0)) { bot._digs = (bot._digs || 0) + 1; return props[k] && props[k].src !== 'fire' ? props[k].rank : Infinity; }
           if (add && c.kind === 'swap') {
             var sizes = add.comboSizes || [], big = 0, ch = add.chainLength || 0, brk = (add.brokeGarbage || 0) > 0;
@@ -453,8 +456,8 @@ module.exports = function think(cfg) {
           }
           if (k !== 'raise' && prep.want[k] === true) r = Math.min(r, -3);
           if (props[k]) r = Math.min(r, props[k].rank);
-          // (a hold after them: waiting is not keeping the board level)
-          if (r === Infinity && shapeAt) r = c.kind === 'hold' ? 0.6 : c.kind === 'swap' && !sh.hollow && !sh.well ? 0.5 : Infinity;
+          // (a hold after them: waiting is not keeping the board level; a flip ranks nowhere, so the hold comes before it)
+          if (r === Infinity) r = c.kind === 'hold' ? 0.6 : c.kind === 'swap' && !sh.hollow && !sh.well ? 0.5 : Infinity;
           return r;
         };
         bot._arbiter = (bot._arbiter || 0) + 1;
@@ -491,6 +494,7 @@ module.exports = function think(cfg) {
         d = undefined; bot._survivalAsked = (bot._survivalAsked || 0) + 1;
       }
       try { if (!d) d = bot._decide(); } finally { bot._abort = null; N.deadline(0); bot.depth = depth0; bot._dueAt = 0; }
+      if (arbProps && d && d.kind === 'swap' && d.move) bot._swapLog = (bot._swapLog || []).filter(function (e) { return m.at - e.at < 400; }).concat([{ pk: arbKey(d.move), at: m.at }]).slice(-12);
       if (arbProps && d) {
         var ap0 = d.kind === 'swap' && d.move ? arbProps[arbKey(d.move)] : d.kind === 'raise' ? arbProps.raise : null;
         if (ap0) {
@@ -666,7 +670,7 @@ module.exports = function think(cfg) {
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
             mem: NativeMem(),
             breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
-            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0, useless3: bot._useless3 || 0, toppedFree: bot._toppedFree || 0, survAsked: bot._survivalAsked || 0, busySetups: bot._busySetups || 0, thought: bot._thoughtMoves || 0, thoughtHolds: bot._thoughtHolds || 0, thinkErr: bot._thinkErr || null, pingPong: bot._pingPong || 0, survOver: bot._survivalOver || 0, continuous: bot._continuous || 0, fireWhy: bot._fireWhy || null, arbSrc: bot._arbSrc || null, digs: bot._digs || 0 } };
+            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0, useless3: bot._useless3 || 0, toppedFree: bot._toppedFree || 0, survAsked: bot._survivalAsked || 0, busySetups: bot._busySetups || 0, thought: bot._thoughtMoves || 0, thoughtHolds: bot._thoughtHolds || 0, thinkErr: bot._thinkErr || null, pingPong: bot._pingPong || 0, survOver: bot._survivalOver || 0, continuous: bot._continuous || 0, fireWhy: bot._fireWhy || null, arbSrc: bot._arbSrc || null, digs: bot._digs || 0, flips: bot._flips || 0 } };
     } catch (e) {
       if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
       else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e) + ' [inc ' + (board && board.incoming ? board.incoming.length : '?') + ', arr ' + (m.arrivals ? m.arrivals.length : '?') + ']', ms: Date.now() - t0 };
