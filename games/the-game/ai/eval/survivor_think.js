@@ -183,6 +183,9 @@ module.exports = function think(cfg) {
       // (attackFirst under threat too: a followed survival line is not played on unranked while a combo, a chain or a ranked line is
       // among the moves -- otherwise the line's next swap, a three, is played without the bigger break being looked at)
       bot.attackFirst = !!OPTS.attackFirst && (!defendA || !!A0.defendRanked);
+      // (under threat the moves the attack ranks are played only when proven: what stands unproven past the horizon is the defence's
+      // own break, as it always was)
+      bot.weakAttacks = !defendA;
       // (a three that breaks nothing waits for the stack to top out under threat too with defendNoBareThrees; a three that breaks garbage
       // is let through either way -- the profile has no threeBreaksLast)
       bot.noThreesUntilTopped = !!OPTS.threesOnlyTopped && (!defendA || !!A0.defendNoBareThrees);

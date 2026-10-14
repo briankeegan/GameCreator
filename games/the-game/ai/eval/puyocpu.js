@@ -1776,7 +1776,9 @@
       else if (verdict[i] === 'weak') {
         weakly.push(cands[i]);
         var wr = this.preferRank ? this.preferRank(cands[i], i) : Infinity;
-        if (wr === 0 || (this.attackFirst && wr < 1)) breakWeak.push(cands[i]);
+        // (weakAttacks false: attackFirst keeps the followed line from being played unranked, but only a break the caller asks for
+        // stands unproven past the horizon -- an attack, a line or a raise must be proven)
+        if (wr === 0 || (this.attackFirst && this.weakAttacks !== false && wr < 1)) breakWeak.push(cands[i]);
       }
       else if (verdict[i] === 'unproven') unproven.push(cands[i]);
     }
