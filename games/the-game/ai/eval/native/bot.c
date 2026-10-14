@@ -5360,7 +5360,7 @@ static int readiesLine(Dec d, int dieRef, int spare, int partial, int32_t *sw, i
 }
 static Dec readyWhenLands(Dec d) {
   if (d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA]) return d;
-  if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;   // a break being played
+  if (lineLast == 3 || (lineLast == 1 && (BT->lineKind == LINE_BREAK || BT->lineKind == LINE_PLAN))) return d;   // a break, or a plan, being played: played to its end
   // no room for what a break makes: the room is made only when no line readies the landing
   int room = roomForBreak(DBASE);
   int32_t sw[2] = { d.sr, d.sc };
