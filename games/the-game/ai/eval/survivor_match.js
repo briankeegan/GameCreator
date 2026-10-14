@@ -343,6 +343,7 @@ Match.prototype.take = function (truth) {
     for (var t in this.plan) if (+t >= at) delete this.plan[t];
     for (var i = 0; i < ins.length; i++) this.plan[at + i] = { bits: ins[i], hold: walked.holds[i], swap: sw };
     this.nextAt = at + ins.length;
+    if (sw) this.lastSwapEnd = this.nextAt;
     this.knew = knew;
     // The line behind the move holds from where the move ends, played as decided.
     this.line = a.line && (a.lineFree || a.lineAt === this.nextAt) && at === a.at ? { steps: a.line.slice(), at: this.nextAt } : null;
@@ -586,20 +587,22 @@ Match.prototype.afterFrame = function () {
   A.push(process.hrtime.bigint());
   var now = this.now, next = this.expect;
   if (!next || next.gameOverClock > 0) return;
-  if (L.pending && this.nextAt - now === 1 && !L.answers.some(function (a) { return a.id === L.pending.id; })) {
+  if (L.pending && !L.pending.paced && this.nextAt - now === 1 && !L.answers.some(function (a) { return a.id === L.pending.id; })) {
     if (this.line) this.follow(); else this.stats.noLine++;
   }
   if (L.pending) return;
   // A question due sooner than an answer can come is asked further on: the
   // line behind the move is played till then -- but never a long wait of
   // it, which would leave the frames after it undecided.
-  while (this.line && this.nextAt > now && this.nextAt - now < this.soon() && !isWait(this.line.steps[0]) && this.follow()) {}
+  var calm = this.calm(next);
+  while (!calm && this.line && this.nextAt > now && this.nextAt - now < this.soon() && !isWait(this.line.steps[0]) && this.follow()) {}
   // Never sooner than an answer can come: the frames between are held.
   // While a slab pops nothing can die, so with nothing planned the question
   // is asked a quarter of the pop on (at most `ahead`): the lineup it needs
   // has the time to be found and the pop's frames to be played in.
   var lead = this.nextAt > now ? this.soon() : Math.max(this.soon(), Math.min(this.ahead(), Math.floor(SH.popLeft(next) / 4)));
-  var at = Math.max(this.nextAt > now ? this.nextAt : 0, now + lead);
+  var at = Math.max(this.nextAt > now ? this.nextAt : 0, now + lead), paced = false;
+  if (calm && this.lastSwapEnd + calm.gap > at) { at = this.lastSwapEnd + calm.gap; paced = true; }
   if (at - now > this.ahead()) return;
   A.push(process.hrtime.bigint());
   var pr = this.predict(next, at, this.hold, this.nextPending);
@@ -614,6 +617,20 @@ Match.prototype.afterFrame = function () {
   }
   if (pr.board.gameOverClock > 0) { at = now + 1; pr = { board: next, hold: this.hold, pending: this.nextPending }; }
   this.ask(at, pr.board, pr.hold, pr.pending);
+  if (paced && at > now + 1) { L.pending.paced = true; this.stats.paced = (this.stats.paced || 0) + 1; }
+};
+// TIME TO SPARE IS PLAYED OVER, NOT RUSHED (the profile's pace: { gap, clear, room }, frames): on a board not topped out, with no chain
+// or stop time running, no garbage on it or queued, none landing within `clear` frames of the move and the stack `room` frames from the
+// top, a move is begun no sooner than `gap` frames after the last swap pressed. The decision is asked about the frame it begins on, so it
+// is judged from there like any other; anything less calm and the moves come as fast as they are found.
+Match.prototype.calm = function (next) {
+  var P = this.L.profile && this.L.profile.pace;
+  if (!P || this.L.sync || this.lastSwapEnd == null) return null;
+  if (this.toppedNow || next.chainCounter || (next.stopTime || 0) + (next.preStopTime || 0) > 0 || (next.incoming || []).length || SH.lowestGarbageRow(next)) return null;
+  var off = next.clock - next.stopWatch, by = this.lastSwapEnd + P.gap + P.clear;
+  if (this.arrivals.some(function (a) { return a.at + off <= by; })) return null;
+  if (CK.framesToTop(next) < P.room) return null;
+  return { gap: P.gap };
 };
 
 // The keys planned from frame `from` on, at most n, up to the first frame
@@ -700,6 +717,7 @@ Match.prototype.follow = function () {
   if (kind === 'swap') pressAudit(this, pr.board, move, 'line', this.nextAt);
   for (var i = 0; i < ins.length; i++) this.plan[this.nextAt + i] = { bits: ins[i], hold: walked.holds[i], swap: sw };
   this.nextAt += ins.length;
+  if (sw) this.lastSwapEnd = this.nextAt;
   this.line.steps.shift();
   if (!this.line.steps.length) this.line = null;
   this.stats.followed++;
