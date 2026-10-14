@@ -36,6 +36,7 @@ local GameModes = require("common.data.GameModes")
 local LevelPresets = require("common.data.LevelPresets")
 local GeneratorSource = require("common.engine.GeneratorSource")
 local KeyDataEncoding = require("common.data.KeyDataEncoding")
+local consts = require("common.engine.consts")
 local here = debug.getinfo(1, "S").source:sub(2):match("(.*/)") or "./"
 local CB = dofile(here .. "cboard.lua")
 
@@ -86,6 +87,7 @@ int front_new(Board *b, int reaction, int allowRaise);
 int front_frame(int fid, Board *b);
 void front_opponent(int fid, int present, int topped);
 void front_telegraph(int fid, int width, int height, int eta);
+int front_plan(int fid, Board *b, int frames);
 void bot_time(double ceilingMs, double lastMs, double leftMs);
 int botTraceOn;
 void *botLogTo;
@@ -206,7 +208,11 @@ end
 -- the countdown, nothing pressed; the bot is made during it, not on a live frame
 local fid = -1
 while a.in_countdown or not a.stopWatchIsRunning do
-  if fid < 0 then load(); fid = C.front_new(board, 12, 1) end
+  if fid < 0 then
+    load(); fid = C.front_new(board, 12, 1)
+    -- the countdown is the bot's time to plan, as it is the player's: one decision of all its frames' work
+    if not os.getenv("GC_NOBOT") then C.front_plan(fid, board, consts.COUNTDOWN_START + consts.COUNTDOWN_LENGTH) end
+  end
   a:receiveConfirmedInput(KeyDataEncoding.base64encode[1])
   match:run()
 end

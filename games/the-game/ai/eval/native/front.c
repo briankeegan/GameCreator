@@ -32,6 +32,8 @@ typedef struct { uint16_t last[32][W + 2], first[32][W + 2], same[32][W + 2], ga
 #define HOLDTIGHT 40   // the actions short of the limit at which short walks are held too (survivor_keys.js HOLDTIGHT)
 #define ACTIONRING 128   // room for the diagnostic limit (GC_INPUT_LIMIT) above the game's
 typedef struct { int actAt[ACTIONRING], actOld, actN, holdKey, limit, holdMin; } Pad;
+// The decision, out of the bot: K_HOLD / K_RAISE / K_SWAP, the move, the park.
+typedef struct { int kind, hasMove, mr, mc, hasPark, pr, pc, via, waitAll; } FDec;
 typedef struct {
   int id, reaction, reveal, allowRaise, lastClock;
   int cooldown, raiseHeld, wantRaise, wantRows, raiseLives;   // raiseHeld: the raise key pressed this frame
@@ -39,7 +41,9 @@ typedef struct {
   int park, pRow, pCol, pTimer, pTr, pTc, pDisp;
   int hasLast, lastR, lastC, held;
   double escapeWalk;
-  u64 decidedOn, restOn;   // the board, and its cells at rest, the last decision was made on
+  u64 decidedOn, restOn;
+  int hasPlan; u64 planOn;   // the countdown's decision (front_plan) and the board it was made on: the first live frame plays it if the board is the same
+  FDec plan;   // the board, and its cells at rest, the last decision was made on
   int lastKind, lastVia, lastMoveR, lastMoveC;
   Settle settle;   // the board's cells, when each settles (unsettled), at the last decision
   int wWaitTo, wFrames, wWaitAll, wR0, wKept;
@@ -1404,8 +1408,6 @@ int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t) {
   return lineStateAt(steps, n, 1, masks, can, wait, cur, t);
 }
 
-// The decision, out of the bot: K_HOLD / K_RAISE / K_SWAP, the move, the park.
-typedef struct { int kind, hasMove, mr, mc, hasPark, pr, pc, via, waitAll; } FDec;
 static int fDecide(Front *F, FDec *out) {
   fPrepare(F);
   LF = F;
@@ -1423,6 +1425,23 @@ static int fDecide(Front *F, FDec *out) {
   F->lastKind = out->kind; F->lastVia = out->via;
   F->lastMoveR = out->hasMove ? out->mr : out->hasPark ? out->pr : 0; F->lastMoveC = out->hasMove ? out->mc : out->hasPark ? out->pc : 0;
   return 0;
+}
+
+// THE COUNTDOWN IS THINK TIME: a player has it before the first frame to plan, and so has the bot -- one decision of `frames`
+// frames' work on the board as it stands, no clock guard. What it plans (a line, a target) stays in the bot's memory and the first
+// live frame plays on from it; no telegraph or queue is told, only what the player sees.
+EXPORT(front_plan) int front_plan(int fid, Board *b, int frames) {
+  Front *F = &FRONTS[fid];
+  FB = b;
+  double opt = gOptWork, bud = gWorkBudget, left = tkLeft;
+  if (frames < 1) frames = 1;
+  gOptWork = OPTWORK0 * frames; gWorkBudget = gOptWork + UNDERWAY; tkLeft = 0;
+  FDec d;
+  int rc = fDecide(F, &d);
+  gOptWork = opt; gWorkBudget = bud; tkLeft = left; tkLastWork = 0; tkDecMs = 0;
+  F->cooldown = 0; F->walk = 0; F->park = 0;
+  if (rc == 0) { F->plan = d; F->planOn = boardKey(); F->hasPlan = 1; }
+  return rc;
 }
 
 // One frame: the keys to press (the server's bits), the swap queued on the
@@ -1475,7 +1494,8 @@ static int frontFrame(int fid, Board *b) {
   // the held key the decision measures from is the one held before this frame
   int heldNow = F->held;
   F->held = held;
-  if (fDecide(F, &d)) return -1;
+  if (F->hasPlan && F->planOn == boardKey()) d = F->plan; else if (fDecide(F, &d)) return -1;
+  F->hasPlan = 0;
   F->held = heldNow;
   if (d.kind == K_RAISE) {
     F->wantRaise = !nb_topped(b); F->cooldown = F->reaction;
