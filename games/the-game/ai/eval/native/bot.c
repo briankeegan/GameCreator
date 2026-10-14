@@ -3650,7 +3650,10 @@ static void linesFind(int depth, int breaks) {
   linesReset();
   lfDecision = btDecision; lfDepth = depth; lfBreaks = breaks;
   extern PATLS double paWork;
-  lfEnd = paWork + LINESWORK;
+  // the break stage keeps half of what its share has left for the deeper search (breakDeeper), which is the one that reaches the longer lines
+  double lfShare = LINESWORK;
+  if (breaks) { double room = stageLeaves(2) - paWork; if (room / 2 < lfShare) lfShare = room > 0 ? room / 2 : 0; }
+  lfEnd = paWork + lfShare;
   lsTopped = BIN[IN_TOPPED] != 0; lsBreaks = breaks;
   double lsLimit = linesLimit(breaks);
   LfNone *fn = &LFN[(breaks ? 1 : 0) + (depth == REROOTS ? 2 : 0)];
@@ -3676,7 +3679,7 @@ static void linesFind(int depth, int breaks) {
   for (int c = 0; c < WMAX; c++) ENGINE_CAN[c] = saveCan[c];
   nPfx = 0; pfxT = 0; lfEnd = 0;
   // remembered only when the search had its whole share of work to find them
-  fn->none = nLines == 0 && lfWorkLeft >= LINESWORK; fn->pos = raPos; fn->depth = depth; fn->breaks = breaks; fn->topped = lsTopped; fn->limit = lsLimit;
+  fn->none = nLines == 0 && lfWorkLeft >= lfShare; fn->pos = raPos; fn->depth = depth; fn->breaks = breaks; fn->topped = lsTopped; fn->limit = lsLimit;
   (void)lf0;
 }
 // A line's rank: a break before a clear, then the sooner done (est, on the
@@ -4613,6 +4616,9 @@ static Dec breakDeeper(Dec d) {
   if (KBR[R_SCOPE] != SC_OK) return d;
   static ST kb0; stcpy(kb0, KBR + R_INTS);
   kbEnd = stageLeaves(2);
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "BREAKDEEPER work %.0f of end %.0f spent %.0f none %d same %d\n", paWork - rdW0, kbEnd - rdW0, paWork - rdW0, bdNone, bdPos == raPos); }
+#endif
   if (paWork >= kbEnd) return d;
   // NO BREAK IN THE TIME THERE IS STAYS SO WHILE THE POSITION STANDS (raPos), as a lineup turned down does: a search that ended with
   // its frontier spent, not its work, has said there is none within that time, and on the same position there is none within less
@@ -4626,6 +4632,9 @@ static Dec breakDeeper(Dec d) {
   sitGuide = 0;
   if (!got) {
     bdNone = paWork - bd0 < 0.9 * (kbEnd - bd0); bdPos = raPos; bdTime = bdT;
+#ifndef __wasm__
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "BREAKDEEPER none: nearest %d swaps guide %.2f of %.2f, work used %.0f\n", nx.bestN, nx.bestG, readyGuide(kb0), paWork - bd0); }
+#endif
     // no break in the time there is: the line that got nearest one is played, and the search made again from where it leaves the board
     if (nx.bestN > 0 && (lineJudge(nx.sw, nx.bestN, 0), lnoDie(LNO) >= readyBar())) {
       lineLast = 8; plansDrop();
@@ -5268,7 +5277,12 @@ static double readyGuide(const int32_t *st) {
     double cost = 0;
     for (int m = r - v; m > r - 3; m--) {   // each cell of the three still missing
       int d = READYGUIDENONE;
-      if (m >= 1) for (int c2 = 1; c2 <= W; c2++) if (c2 != c && GP(m, c2) && colourFirst(b, c2, 1u << (m - 1)) == col) { int dd = c2 > c ? c2 - c : c - c2; if (dd < d) d = dd; }
+      // the nearest panel of the colour: in the row first, in the rows beside it a row of distance more (it has to come to this one)
+      for (int rr = m - 2; rr <= m + 2; rr++) {
+        if (rr < 1 || m < 1) continue;
+        int dr = rr > m ? rr - m : m - rr;
+        for (int c2 = 1; c2 <= W; c2++) if ((c2 != c || dr) && GP(rr, c2) && colourFirst(b, c2, 1u << (rr - 1)) == col) { int dd = (c2 > c ? c2 - c : c - c2) + 2 * dr; if (dd < d) d = dd; }
+      }
       cost += d;
     }
     if (cost < best) best = cost;
