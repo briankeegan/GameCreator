@@ -533,9 +533,10 @@ static int slabReadyHook(const int32_t *st) {
 // (READYWORK); an option's small share finds no break of two swaps
 static int inTimeOfWork(const int32_t *st, SitAccept want, double work);
 static int sitBreaks(const int32_t *res, const int32_t *sw, int n, double at, void *ctx);
+static void waveSlab(int width, int *w, int *h, int *c);
 static int slabReadyBoard(const int32_t *st) {
   if (TFLAG(TF_SLAB)) return BIN[IN_T + 6] != 0;
-  SLABW = (int)BIN[IN_SLABW]; SLABH = (int)BIN[IN_SLABH]; SLABC = (int)BIN[IN_SLABC];
+  waveSlab(st[O_W], &SLABW, &SLABH, &SLABC);   // the slab queued, else the block the telegraph shows, else one just in case
   int placed = slabPlace(st, SLABST);
   if (placed < 0) return slabReadyFast(st);
   return inTimeOfWork(placed ? SLABST : st, sitBreaks, READYWORK);
@@ -1488,7 +1489,7 @@ static double dcCandMs;   // GC_WORKSTAT: the pool's share of decideRuled
 // every stage asks it; a hold's claim is the board's own and stands
 static int swapBreaks(Dec d);
 static int poolBreaks(const Cand *pc) { return pc->res.broke && (pc->kind != K_SWAP || swapBreaks(mkSwap(pc->sr, pc->sc, V_BREAKREACH, 0, 0))); }
-static int readiesLine(Dec d, int dieRef, int spare, int32_t *sw, int *n, int *r, int *c);
+static int readiesLine(Dec d, int dieRef, int spare, int partial, int32_t *sw, int *n, int *r, int *c);
 static int readyBar(void);
 static Dec decideCore(void) {
   raiseWaiting = 0;
@@ -1693,8 +1694,9 @@ static Dec decideCore(void) {
 #endif
   if (readyFirst) {
     // a line that readies the block the telegraph shows, by the search that readies a landing; the option search's own line stands behind it
-    { int32_t osw[2 * LINEMAX]; int on = 0, r, c;
-      if (!waveReady(base) && readiesLine(mkHold(V_NONE, mode, alive, 0, 0, 0), readyBar(), materialRows(base) >= 6, osw, &on, &r, &c) == 1 && on > 0 && routeLives(osw, on)) {
+    { int32_t osw[2 * LINEMAX]; int on = 0, r, c, got = 0;
+      if (!waveReady(base)) got = readiesLine(mkHold(V_NONE, mode, alive, 0, 0, 0), readyBar(), materialRows(base) >= 6, 1, osw, &on, &r, &c);
+      if (got >= 1 && on > 0 && (got == 2 || routeLives(osw, on))) {   // 2: the line nearest a break, no worse than the board left alone
         if (on > 1) lineSet(osw, on, LINE_PLAN, 0); else BT->nLine = 0;
         BT->wantRaise = 0; clearRaiseFrames = 1; BT->counts[C_READIEDFIRST]++;
         return mkSwap(osw[0], osw[1], V_READYFIRST, mode, alive);
@@ -4929,7 +4931,7 @@ static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc) {
 // gives way to the soonest living line that does and clears the readiness
 // bar (readyBar; readiesLine, clears allowed). With none, the drop is played: standing still readies
 // nothing, and the pile let down lowers the stack.
-static int readiesLine(Dec d, int dieRef, int spare, int32_t *sw, int *n, int *r, int *c);
+static int readiesLine(Dec d, int dieRef, int spare, int partial, int32_t *sw, int *n, int *r, int *c);
 static Dec dropReady(Dec d) {
   if (d.kind != K_SWAP || !d.hasMove || !BIN[IN_HASPA] || !hasGarbage(DBASE)) return d;
   if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK) || endsInBreak(d)) return d;
@@ -4940,7 +4942,7 @@ static Dec dropReady(Dec d) {
   int dieRef = readyBar(), r, c;
   if (readyInTime(sw, 1, &r, &c)) return d;
   int32_t rl[2 * LINEMAX]; int rn;
-  if (readiesLine(d, dieRef, 1, rl, &rn, &r, &c) != 1) return d;
+  if (readiesLine(d, dieRef, 1, 0, rl, &rn, &r, &c) != 1) return d;
   if (rn > 1) lineSet(rl, rn, LINE_PLAN, 0); else BT->nLine = 0;
   lineLast = 8;
   return mkSwap(rl[0], rl[1], V_LINEUP, d.mode, d.alive);
@@ -5238,7 +5240,7 @@ static double readyGuide(const int32_t *st) {
 #undef GP
   return best;
 }
-typedef struct { int dieRef, spare, dr, dc, tried, masks, ok, r, c, seen, dies, sooner, near; double g0; int wave; } RqCtx;   // wave: no slab is queued, only the block the telegraph shows: the masks' word on it (waveReady) stands, the engine has no landing to confirm
+typedef struct { int dieRef, spare, dr, dc, tried, masks, ok, r, c, seen, dies, sooner, near; double g0; int wave; double bestG; int bestN; int32_t bestSw[2 * LINEMAX]; } RqCtx;   // wave: no slab is queued, only the block the telegraph shows: the masks' word on it (waveReady) stands, the engine has no landing to confirm
 static int sitReadies(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
   RqCtx *x = ctx; (void)at;
   // a break is the break stages'; a clear on the way is spent for the break
@@ -5248,9 +5250,11 @@ static int sitReadies(const int32_t *res, const int32_t *sw, int n, double at, v
   x->seen++;
   // THE ORACLE IS ASKED OF A BOARD THAT IS NEARER A BREAK THAN THE BOARD IS NOW (readyGuide): it is a search of its own, READYWORK a board, and
   // asked of every board the line passes it spends the search's work on its first few
-  if (readyGuide(res + R_INTS) >= x->g0) return SIT_GROW;
+  double gd = readyGuide(res + R_INTS);
+  if (gd >= x->g0) return SIT_GROW;
+  if (n <= LINEMAX && gd < x->bestG) { x->bestG = gd; x->bestN = n; for (int k = 0; k < 2 * n; k++) x->bestSw[k] = sw[k]; }   // the nearest board met, kept for a line that gets nearer when none readies
   x->near++;
-  if (!(x->wave ? waveReady(res + R_INTS) : slabReadyBoard(res + R_INTS))) return SIT_GROW;
+  if (!slabReadyBoard(res + R_INTS)) return SIT_GROW;
   x->masks++;
   if (x->tried >= READYTRIES) return SIT_TAKE;   // asked enough: the search ends, none confirmed
   x->tried++;
@@ -5266,12 +5270,13 @@ static int sitReadies(const int32_t *res, const int32_t *sw, int n, double at, v
 // health (timeLeft; a line's clear holds it longer), sitReadies asking the
 // engine. 1: found (sw, n; the break r, c); 0: none; -1: the board left alone
 // has no landing to ready.
-static int readiesLine(Dec d, int dieRef, int spare, int32_t *sw, int *n, int *r, int *c) {
+static int readiesLine(Dec d, int dieRef, int spare, int partial, int32_t *sw, int *n, int *r, int *c) {
   static ST rq0, RWL; int32_t cur0[2], t0, tLand; uint32_t can0[WMAX]; Wait wt0[32][WMAX];
   extern PATLS double paWork;
   // the engine's landing; before the first wave is queued the block the telegraph shows, landing in the frames it says
   int lands = lineLanded(0, 0, RWL, &tLand) == 0;
-  if (!lands) { if (!(BIN[IN_TGW] > 0 && BIN[IN_LEAD] > 0 && BIN[IN_INCOMING] <= 0)) return -1; tLand = (int)BIN[IN_LEAD]; }
+  // nothing queued: the block the telegraph shows, in the frames it says; with none shown, ready just in case, as soon as the time there is allows
+  if (!lands) { if (BIN[IN_INCOMING] > 0) return -1; tLand = BIN[IN_TGW] > 0 && BIN[IN_LEAD] > 0 ? (int)BIN[IN_LEAD] : (int)timeLeft(); }
   if (lineState(0, 0, rq0, can0, wt0, cur0, &t0) != 0 || paWork >= optLine()) return 0;
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; SLABW = (int)BIN[IN_SLABW]; SLABH = (int)BIN[IN_SLABH]; SLABC = (int)BIN[IN_SLABC];
@@ -5281,6 +5286,7 @@ static int readiesLine(Dec d, int dieRef, int spare, int32_t *sw, int *n, int *r
 #endif
   sitRootLegal = sitRootFilt = sitRootCan = sitRootLate = 0;
   RqCtx x = { dieRef, spare, d.kind == K_SWAP && d.hasMove ? d.sr : 0, d.kind == K_SWAP && d.hasMove ? d.sc : 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, readyGuide(rq0), !lands };
+  x.bestG = x.g0; x.bestN = 0;
   *n = 0;
   sitGuide = readyGuide;   // best-first: the board nearest a break is grown first, so the same work reaches deeper than the root's children
   searchInTime(rq0, cur0[0], cur0[1], t0, 0, dmin(tLand, timeLeft()), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can0, wt0, optLine() - paWork, sitReadies, &x, sw, n, 0);
@@ -5289,9 +5295,17 @@ static int readiesLine(Dec d, int dieRef, int spare, int32_t *sw, int *n, int *r
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "READIES root: legal %d filtered %d not swappable %d late %d\n", sitRootLegal, sitRootFilt, sitRootCan, sitRootLate); fprintf(BLOG, "READIES lines: %d ready on the masks, %d asked, %d seen, %d die, %d die sooner, %d nearer (guide now %.0f), %s", x.masks, x.tried, x.seen, x.dies, x.sooner, x.near, x.g0, x.ok ? "ready:" : "none");
     if (x.ok) { for (int k = 0; k < *n; k++) fprintf(BLOG, " %d,%d", sw[2 * k], sw[2 * k + 1]); fprintf(BLOG, " break %d,%d", x.r, x.c); } fprintf(BLOG, "\n"); }
 #endif
-  if (!x.ok) return 0;
-  *r = x.r; *c = x.c;
-  return 1;
+  if (x.ok) { *r = x.r; *c = x.c; return 1; }
+  // none readies in the time there is: the line that got nearest a break is the preparation, played on and the search made again from where it leaves the board
+#ifndef __wasm__
+  if (botTraceOn && partial) { extern int fprintf(void *, const char *, ...); extern void *stderr; int v_ = x.bestN > 0 ? lineJudge(x.bestSw, x.bestN, 0) : -1; fprintf(BLOG, "READIES nearest: %d swaps, guide %.0f of %.0f, verdict %d die %d bar %d\n", x.bestN, x.bestG, x.g0, v_, v_ >= 0 ? lnoDie(LNO) : -1, dieRef); }
+#endif
+  if (partial && x.bestN > 0 && (lineJudge(x.bestSw, x.bestN, 0), lnoDie(LNO) >= dieRef)) {   // no worse than the board left alone: the line readies, the break it readies is what lives
+    for (int k = 0; k < 2 * x.bestN; k++) sw[k] = x.bestSw[k];
+    *n = x.bestN; *r = *c = 0;
+    return 2;
+  }
+  return 0;
 }
 static Dec readyWhenLands(Dec d) {
   if (d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA]) return d;
@@ -5365,7 +5379,7 @@ static Dec readyWhenLands(Dec d) {
   // the cheaper breaks by distance: the first the engine confirms is played
   {
     int32_t rl[2 * LINEMAX]; int rn;
-    int got = readiesLine(d, dieRef, spare, rl, &rn, &r, &c);
+    int got = readiesLine(d, dieRef, spare, 0, rl, &rn, &r, &c);
     if (got < 0) return room ? d : makeRoom(d);
     if (got) {
       if (rn > 1) lineSet(rl, rn, LINE_PLAN, 0); else BT->nLine = 0;
