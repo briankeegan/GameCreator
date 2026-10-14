@@ -970,14 +970,15 @@ module.exports = function think(cfg) {
         else if (holdFrames < 1) holdFrames = 0;
       }
       // THE LAST WORD ON A THREE (defendNoBareThrees): whatever stage chose it, a swap whose clears are plain threes breaking no garbage
-      // is not played on a stack the game does not show topped out (or one row from it, within nearFrames) while holding is proven
-      // to live -- the first swap of a planned chain excepted
+      // is not played while holding is proven to live -- on a stack topped out (or one row from it, within nearFrames) proven outright,
+      // elsewhere proven or weak; the first swap of a planned chain excepted. A three that breaks nothing spends three panels and buys
+      // no stop time, and under a slab the panels are what every break is made of
       if (defendA && A0.defendNoBareThrees && d && d.kind === 'swap' && d.move && !(d.src === 'fire' && (d.planChain || 0) >= 2)) {
         var toppedG = !!m.topped || (m.realTop >= 11 && m.realFtt <= (A0.nearFrames || 90));
-        if (!toppedG && bot.threeOnlySwap(d.move)) {
+        if (bot.threeOnlySwap(d.move)) {
           var lvG = bot._lastVerdict, hiG = -1;
           if (lvG) for (var gi = 0; gi < lvG.cands.length; gi++) if (lvG.cands[gi].kind === 'hold') { hiG = gi; break; }
-          if (hiG >= 0 && (lvG.verdict[hiG] === 'proven' || lvG.verdict[hiG] === 'weak')) {
+          if (hiG >= 0 && (lvG.verdict[hiG] === 'proven' || (!toppedG && lvG.verdict[hiG] === 'weak'))) {
             d = { kind: 'hold', overruled: true }; attackLine = null; bot._threeHeldD = (bot._threeHeldD || 0) + 1;
           }
         }
