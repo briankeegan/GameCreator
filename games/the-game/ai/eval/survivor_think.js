@@ -214,9 +214,7 @@ module.exports = function think(cfg) {
       }
       if (defendA) {
         HT = A.defendHoldThrees || null; A = null;
-        // (the horizon reaches past the stop time, as the attack's does: while stop time runs nothing can die, so a hold looks safe for
-        // all of it and the break is never made -- the stop time left and pastStop frames after it are what a move must live through)
-        bot.SURVIVE_FRAMES = Math.max(P.prototype.SURVIVE_FRAMES, (board.stopTime || 0) + (board.preStopTime || 0) + (A0.pastStop || P.prototype.SURVIVE_FRAMES / 2));
+        bot.SURVIVE_FRAMES = P.prototype.SURVIVE_FRAMES;   // (bot.preferRank stays the one prepare made for the defence's profile)
         bot._defended = (bot._defended || 0) + 1;
       }
       if (A && attackGate++ < 8) console.error('ATTACKGATE clock ' + board.clock + ' garbageRow ' + SH.lowestGarbageRow(board) + ' coming ' + comingRows + ' top ' + SH.top(board));
@@ -480,6 +478,33 @@ module.exports = function think(cfg) {
           if (c.kind === 'hold') return 0.6;
           if (c.kind === 'swap' && !(rr && (rr.comboSizes || []).length)) return 0.5;
           if (c.kind === 'swap' && rr && (rr.comboSizes || []).length && !((rr.brokeGarbage || 0) > 0)) { bot._floorHeld = (bot._floorHeld || 0) + 1; return Infinity; }
+          return r;
+        };
+      }
+      // DOWN TIME IS FOR THE SHAPE (defendFlatten): while stop time runs, or nothing is landing or on its way, a swap that leaves the
+      // board flatter (its tallest column less its lowest, settled) or with less hollow under garbage than the board left alone ranks
+      // before the hold and every move unranked -- the breaks, the lines and the raise still before it
+      var downD = !!(defendA && A0.defendFlatten && bot.preferRank && (((board.stopTime || 0) + (board.preStopTime || 0)) > 0 || (!m.topped && !(board.incoming || []).length && !arrivals.length)));
+      if (downD) {
+        var colsOf = function (b) {
+          var hs = [], c, r; if (!b || !b.panels) return null;
+          for (c = 1; c <= 6; c++) { var h = 0; for (r = b.panels.length - 1; r >= 1 && !h; r--) { var p = b.panels[r] && b.panels[r][c]; if (p && (p.isGarbage || p.color)) h = r; } hs.push(h); }
+          return hs;
+        };
+        var hollowB = function (b) {
+          var n = 0, c, r; if (!b || !b.panels) return 0;
+          for (c = 1; c <= 6; c++) { var over = false; for (r = b.panels.length - 1; r >= 1; r--) { var p = b.panels[r] && b.panels[r][c]; if (p && p.isGarbage) over = true; else if (over && !(p && p.color)) n++; } }
+          return n;
+        };
+        var shapeOfB = function (b) { var hs = colsOf(b); return hs ? { spread: Math.max.apply(null, hs) - Math.min.apply(null, hs), hollow: hollowB(b) } : null; };
+        var candsF = null, base = null, prFl = bot.preferRank;
+        bot.preferRank = function (c, i) {
+          var r = prFl.call(this, c, i);
+          if (r < 0.5 || c.kind !== 'swap') return r;
+          if (bot._allCands !== candsF) { candsF = bot._allCands; var hc = (candsF || []).filter(function (x) { return x.kind === 'hold'; })[0]; base = hc ? shapeOfB(bot._settledOf(hc)) : null; }
+          var rr = c.added || c.resolved; if (!base || (rr && (rr.comboSizes || []).length)) return r;
+          var sh = shapeOfB(bot._settledOf(c)); if (!sh) return r;
+          if (sh.hollow < base.hollow || (sh.hollow === base.hollow && sh.spread < base.spread)) { bot._flattened = (bot._flattened || 0) + 1; return Math.min(r, 0.5 - Math.min(0.09, (base.spread - sh.spread + 2 * (base.hollow - sh.hollow)) / 100)); }
           return r;
         };
       }
@@ -956,7 +981,7 @@ module.exports = function think(cfg) {
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
             mem: NativeMem(),
             breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
-            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0, useless3: bot._useless3 || 0, toppedFree: bot._toppedFree || 0, survAsked: bot._survivalAsked || 0, busySetups: bot._busySetups || 0, thought: bot._thoughtMoves || 0, thoughtHolds: bot._thoughtHolds || 0, thinkErr: bot._thinkErr || null, pingPong: bot._pingPong || 0, survOver: bot._survivalOver || 0, continuous: bot._continuous || 0, fireWhy: bot._fireWhy || null, arbSrc: bot._arbSrc || null, mode: matchMode, buried: bot._buried || 0, pitAttacks: bot._pitAttacks || 0, backs: bot._backs || 0, digs: bot._digs || 0, flips: bot._flips || 0, volley: bot._volley || 0, floored: bot._floored || 0, merged: bot._merged || 0, mergeWaits: bot._mergeWaits || 0, defended: bot._defended || 0, defendLines: bot._defendLines || 0, threeAfterBig: bot._threeAfterBig || 0, threeHeldD: bot._threeHeldD || 0, keptBig: bot._keptBig || 0, defendRaises: bot._defendRaises || 0, floorHeld: bot._floorHeld || 0 } };
+            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0, useless3: bot._useless3 || 0, toppedFree: bot._toppedFree || 0, survAsked: bot._survivalAsked || 0, busySetups: bot._busySetups || 0, thought: bot._thoughtMoves || 0, thoughtHolds: bot._thoughtHolds || 0, thinkErr: bot._thinkErr || null, pingPong: bot._pingPong || 0, survOver: bot._survivalOver || 0, continuous: bot._continuous || 0, fireWhy: bot._fireWhy || null, arbSrc: bot._arbSrc || null, mode: matchMode, buried: bot._buried || 0, pitAttacks: bot._pitAttacks || 0, backs: bot._backs || 0, digs: bot._digs || 0, flips: bot._flips || 0, volley: bot._volley || 0, floored: bot._floored || 0, merged: bot._merged || 0, mergeWaits: bot._mergeWaits || 0, defended: bot._defended || 0, defendLines: bot._defendLines || 0, threeAfterBig: bot._threeAfterBig || 0, threeHeldD: bot._threeHeldD || 0, keptBig: bot._keptBig || 0, defendRaises: bot._defendRaises || 0, floorHeld: bot._floorHeld || 0, flattened: bot._flattened || 0 } };
     } catch (e) {
       if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
       else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e) + ' [inc ' + (board && board.incoming ? board.incoming.length : '?') + ', arr ' + (m.arrivals ? m.arrivals.length : '?') + ']', ms: Date.now() - t0 };
