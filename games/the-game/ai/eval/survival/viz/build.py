@@ -1,6 +1,7 @@
 # packs a scan's games into the page: boards, the bot's decision lines, a timeline
 import gzip, json, os, re, sys
 d, hist, tpl, out = sys.argv[1:5]
+mode = sys.argv[5] if len(sys.argv) > 5 else None   # one mode's scans only: the page of that mode, no other mode's runs beside it
 FRAME = re.compile(r'^F (\d+) keys (\d+) stop (\d+) shake \d+ lock \d+ raise \d+ health (\d+) cur (\d+),(\d+) in (\d+) \| (.*)$')
 TAGS = ('READIES', 'BREAKFIRST', 'SOON!', 'FILL!', 'PLAN', 'KEEPREADY', 'KEPT', 'SPEND', 'GUARD', 'MEANWHILE', 'SA ', 'budget', 'PERCH', 'RETURN', 'RWL by', 'READY ')
 def cells(rows):
@@ -43,10 +44,11 @@ def seed(n):
             'frames': [[fr[0], fr[1], fr[2], fr[8], logs.get(fr[0], []), fr[9]] for fr in frames[-1500:]]}
 results = [l.rstrip('\n').split('\t') for l in open(os.path.join(d, 'results.tsv'))]
 H = [l.rstrip('\n').split('\t') for l in open(hist)][1:]
+if mode: H = [h for h in H if h[-1] == mode]
 data = {'results': [[int(s), e, int(f) if f.isdigit() else None] for s, e, f in results],
         'scans': [{'run': r, 'commit': c, 'alive': int(a), 'died': [int(x) for x in ds.split(' ')[0].split(',') if x.isdigit()]} for r, c, a, ds, *_ in H],
         'findings': json.load(open(os.path.join(d, 'findings.json'))), 'seeds': {}}
 for s, e, f in data['results']:
     if e == 'died' and os.path.exists(os.path.join(d, 'seed%d.log.gz' % s)): data['seeds'][s] = seed(s)
-page = open(tpl).read().replace('/*DATA*/null', json.dumps(data, separators=(',', ':')))
+page = open(tpl).read().replace('BitBot Death Patterns', mode.replace('_', ' ').title() + ' Deaths' if mode else 'BitBot Death Patterns').replace('BitBot death patterns', mode.replace('_', ' ') + ' deaths' if mode else 'BitBot death patterns').replace('/*DATA*/null', json.dumps(data, separators=(',', ':')))
 open(out, 'w').write(page); print(out, '%.1f MB' % (len(page) / 1e6), len(data['seeds']), 'seeds')
