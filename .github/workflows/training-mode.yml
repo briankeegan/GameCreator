@@ -15,8 +15,8 @@ on:
         description: 'combo_storm, factory or large_garbage'
         default: 'large_garbage'
       games:
-        description: 'How many games'
-        default: '10'
+        description: 'The games, as a JSON list -- each a runner of its own, played at once'
+        default: '[1,2,3,4,5,6,7,8]'
       frames:
         description: 'A game survived this many frames counts as survived and ends (10800 = three minutes)'
         default: '10800'
@@ -31,6 +31,10 @@ jobs:
   play:
     runs-on: ubuntu-latest
     timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        game: ${{ fromJSON(inputs.games || '[1,2,3,4,5,6,7,8]') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -63,16 +67,16 @@ jobs:
           PROFILE: ${{ inputs.profile }}
           FRAMES: ${{ inputs.frames }}
           MINUTES: '60'
-        run: bash games/the-game/ai/eval/training.sh "${{ inputs.bot || 'wasm' }}" "${{ inputs.pattern || 'large_garbage' }}" "${{ inputs.games || '10' }}"
+        run: bash games/the-game/ai/eval/training.sh "${{ inputs.bot || 'wasm' }}" "${{ inputs.pattern || 'large_garbage' }}" 1
       - name: Results
         if: always()
         run: |
-          grep -h '^game ' out/results.txt 2>/dev/null | sed 's/^/::notice title=training::/' || true
+          grep -h '^game ' out/results.txt 2>/dev/null | sed 's/^game 1/game ${{ matrix.game }}/; s/^/::notice title=training::/' || true
           grep -h 'match over' out/survivor.log 2>/dev/null | sed 's/^/::notice title=survivor::/' || true
-          { echo '## Training mode: ${{ inputs.pattern }}'; echo '```'; cat out/results.txt 2>/dev/null || echo 'no game finished'; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo '## Training mode: ${{ inputs.pattern }}, game ${{ matrix.game }}'; echo '```'; sed 's/^game 1/game ${{ matrix.game }}/' out/results.txt 2>/dev/null || echo 'no game finished'; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: training-mode
+          name: training-mode-${{ matrix.game }}
           path: out/
           if-no-files-found: warn
