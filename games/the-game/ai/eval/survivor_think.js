@@ -181,7 +181,22 @@ module.exports = function think(cfg) {
       // the survival search alone, as the profile with no attack block plays it (8 of 8 to six minutes of large_garbage, where the
       // attack logic over it lost 7 of 8) -- and the attack plays only on a board with nothing on it or coming. Not in time attack.
       bot.attackFirst = !!OPTS.attackFirst && !defendA;
-      bot.noThreesUntilTopped = !!OPTS.threesOnlyTopped && !defendA;   // (the defence plays a three like any other move)
+      // (a three that breaks nothing waits for the stack to top out under threat too with defendNoBareThrees; a three that breaks garbage
+      // is let through either way -- the profile has no threeBreaksLast)
+      bot.noThreesUntilTopped = !!OPTS.threesOnlyTopped && (!defendA || !!A0.defendNoBareThrees);
+      // THE BIGGER BREAK FIRST (defendBigBreaks): of the breaks the defence's preferences put first, a plain three breaking garbage
+      // comes after a combo or chain breaking garbage when one is among the moves; with none it keeps its place
+      if (defendA && A0.defendBigBreaks && bot.preferRank) {
+        var pr0D = bot.preferRank, candsD = null, bigD = false;
+        var bigBreak = function (c) { var r = c && (c.added || c.resolved); if (!r || !((r.brokeGarbage || 0) > 0)) return false; return (r.chainLength || 0) >= 2 || (r.comboSizes || []).some(function (x) { return x >= 4; }); };
+        var threeBreakD = function (c) { var r = c && (c.added || c.resolved); if (!r || !((r.brokeGarbage || 0) > 0) || (r.chainLength || 0) >= 2) return false; var z = r.comboSizes || []; return z.length > 0 && z.every(function (x) { return x <= 3; }); };
+        bot.preferRank = function (c, i) {
+          var r = pr0D.call(this, c, i);
+          if (bot._allCands !== candsD) { candsD = bot._allCands; bigD = (candsD || []).some(function (x) { return x.kind === 'swap' && bigBreak(x); }); }
+          if (c.kind === 'swap' && bigD) { if (bigBreak(c)) return Math.min(r, 0); if (r === 0 && threeBreakD(c)) { bot._threeAfterBig = (bot._threeAfterBig || 0) + 1; return 0.4; } }
+          return r;
+        };
+      }
       if (defendA) {
         HT = A.defendHoldThrees || null; A = null;
         bot.SURVIVE_FRAMES = P.prototype.SURVIVE_FRAMES;   // (bot.preferRank stays the one prepare made for the defence's profile)
