@@ -5430,7 +5430,7 @@ static Dec readyWhenLands(Dec d) {
   // the cheaper breaks by distance: the first the engine confirms is played
   {
     int32_t rl[2 * LINEMAX]; int rn;
-    int got = readiesLine(d, dieRef, spare, 1, rl, &rn, &r, &c);
+    int got = readiesLine(d, dieRef, spare, aloneOnEngine() && aloneDie(1 << 20) > LIVEHORIZON, rl, &rn, &r, &c);   // the line nearest a break is played only on a board with time: a dying one saves itself first
     if (got < 0) return room ? d : makeRoom(d);
     if (got) {
       if (rn > 1) lineSet(rl, rn, LINE_PLAN, 0); else BT->nLine = 0;
