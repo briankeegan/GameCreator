@@ -364,6 +364,12 @@ ways: a tool not listed, or a path listed that doesn't exist.
   waiting and boards seen in memory of their own and grow them further each frame while the position (`raPos`) stands. A search with
   a table of boards seen counts them and is full at three parts in four. Compare two builds on the fixed-budget scan (the same games
   every time); read the think budget on the ordinary one -- the fixed scan has no wall-clock guard.
+- **The input budget is kept for the break, and a break takes its block's time.** A break pops its block in 38 + 7 x (3 + cells)
+  frames (`pa.c matchGarbagePanels`, level 10: FLASH 28, FACE 10, POP 7), and blocks arrive about as fast as one pops, so the idle
+  frames between pops decide the game. A break line takes about ten actions of the 76 a window allows, so the front (`front.c`,
+  `idleVia`) does not press an idle decision (setups, lineups, readiness, an attack with nothing to save: the bot's `idle` flag, the
+  board left alone losing no health within `LIVEHORIZON`) when the window has left less than a break line has taken (`bkActs`,
+  measured, nothing held back until one has been seen). `GC_INPUT_LIMIT` (`survival/scan.sh`) measures what the limit costs.
 - **No fixed numbers: the engine and the host say it.** The judge's reach
   (`LINEHORIZON`) is the time the engine says the board has -- the rise at its
   speed, the queue, the shake of the slab it lands, the drain -- plus the walk
