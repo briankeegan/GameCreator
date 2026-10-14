@@ -167,6 +167,7 @@ module.exports = function think(cfg) {
       // attack logic over it lost 7 of 8) -- and the attack plays only on a board with nothing on it or coming. Not in time attack.
       var defendA = !!(A && A.defendUnderThreat && matchMode !== 'timeattack' && (SH.lowestGarbageRow(board) || (board.incoming || []).length || arrivals.length));
       bot.attackFirst = !!OPTS.attackFirst && !defendA;
+      bot.noThreesUntilTopped = !!OPTS.threesOnlyTopped && !defendA;   // (the defence plays a three like any other move)
       if (defendA) {
         HT = A.defendHoldThrees || null; A = null;
         bot.preferRank = null; bot.SURVIVE_FRAMES = P.prototype.SURVIVE_FRAMES;
