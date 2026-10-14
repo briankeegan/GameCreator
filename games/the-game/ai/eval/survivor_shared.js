@@ -480,7 +480,7 @@ Hands.prototype.keys = function (board, hold, kind, move, arrivals, frames) {
 Hands.prototype.idle = function (board, hold) {
   if (!hold.left) return { bits: 0, hold: hold };
   var started = hold.started || !!board.manualRaise;
-  if (board.preventManualRaise || (started && !board.manualRaise)) return { bits: 0, hold: { left: 0, started: started } };
+  if (board.preventManualRaise && !started) return { bits: 0, hold: { left: 0, started: started } };
   return { bits: PA.IN.raise, hold: { left: hold.left - 1, started: started } };
 };
 // The same frame as the search plays it, for the test that holds idle to it.

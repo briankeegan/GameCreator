@@ -181,10 +181,13 @@ static void driveWalk(Ctx *x, Bot *bot, Board *b, int32_t *input) {
   }
   bot->cooldown = old.cooldown;
 }
+// A RAISE HELD GOES ON THROUGH THE ROWS: the engine lets go of the button as each row comes in (preventManualRaise, for the frame
+// the row is finished on) and takes it again the frame after, so the button stays down for the frames held -- only a raise refused
+// before it has started ends at once.
 static void raiseStep(Bot *h, Board *st, int32_t *input) {
   if (h->raiseFrames > 0) {
     if (st->manualRaise) h->raiseStarted = 1;
-    if (st->preventManualRaise || (h->raiseStarted && !st->manualRaise)) h->raiseFrames = 0;
+    if (st->preventManualRaise && !h->raiseStarted) h->raiseFrames = 0;
     else { h->raiseFrames--; *input |= IN_RAISE; }
   }
 }

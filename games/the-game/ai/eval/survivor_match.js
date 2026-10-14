@@ -150,7 +150,7 @@ Match.prototype.predictNative = function (board, at, hold, from) {
     if (planned !== undefined) { bits = planned.bits; h = { left: planned.hold.left, started: planned.hold.started }; }
     else if (h.left > 0) {
       var rs = X.nb_raise_state(b), started = h.started || !!(rs & 1);
-      if ((rs & 2) || (started && !(rs & 1))) h = { left: 0, started: started };
+      if ((rs & 2) && !started) h = { left: 0, started: started };
       else { h = { left: h.left - 1, started: started }; bits = IN.raise; }
     }
     X.nb_set_input(b, bits & ~IN.swap);
