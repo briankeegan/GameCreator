@@ -1,0 +1,78 @@
+name: Training mode (the real client)
+
+# A bot plays the panel-game client's own Training mode against its attack engine -- combo_storm, factory or
+# large_garbage, the presets of the client's Training menu -- the game as a player runs it:
+# games/the-game/ai/eval/training.sh (each game a client of its own, the menus clicked through by the client's
+# e2e harness, the player's keys from the bot). A game ends when the stack tops out or `frames` frames have gone;
+# each game's result is an annotation, and the harness's, bot's and client's logs are the artifact.
+on:
+  workflow_dispatch:
+    inputs:
+      bot:
+        description: 'wasm (WasmSurvivor) or bitbot (BitBot)'
+        default: 'wasm'
+      pattern:
+        description: 'combo_storm, factory or large_garbage'
+        default: 'large_garbage'
+      games:
+        description: 'How many games'
+        default: '10'
+      frames:
+        description: 'A game survived this many frames counts as survived and ends (10800 = three minutes)'
+        default: '10800'
+      profile:
+        description: 'With bot wasm: the WasmSurvivor profile, relative to games/the-game/ai/eval (empty = survivor.profile.json)'
+        default: 'survivor-profiles/agro.json'
+      panel_ref:
+        description: 'The panel-game branch with AppDriver PA_SURVIVOR and trainingloop'
+        default: 'bramp/multi-player'
+
+jobs:
+  play:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/checkout@v4
+        with:
+          repository: briankeegan/panel-game
+          ref: ${{ inputs.panel_ref || 'bramp/multi-player' }}
+          path: panel-game
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: xvfb, love and clang
+        timeout-minutes: 15
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for i in 1 2 3; do timeout 240 sudo apt-get $APT update && timeout 240 sudo apt-get $APT install -y libfuse2 xvfb clang && break; sleep 10; done
+          mkdir -p ~/love2d
+          for i in 1 2 3; do curl -fsSL "https://github.com/panel-attack/panel-game/releases/download/love2d-12.0/love-12.0-linux-x86_64.tar.gz" -o /tmp/love.tar.gz && break; sleep 10; done
+          tar -xzf /tmp/love.tar.gz -C ~/love2d
+          mv ~/love2d/*.AppImage ~/love2d/love.AppImage
+          chmod +x ~/love2d/love.AppImage
+      - name: Play
+        timeout-minutes: 340
+        env:
+          PG: ${{ github.workspace }}/panel-game
+          LOVE: /home/runner/love2d/love.AppImage
+          OUT_DIR: ${{ github.workspace }}/out
+          PROFILE: ${{ inputs.profile }}
+          FRAMES: ${{ inputs.frames }}
+          MINUTES: '60'
+        run: bash games/the-game/ai/eval/training.sh "${{ inputs.bot || 'wasm' }}" "${{ inputs.pattern || 'large_garbage' }}" "${{ inputs.games || '10' }}"
+      - name: Results
+        if: always()
+        run: |
+          grep -h '^game ' out/results.txt 2>/dev/null | sed 's/^/::notice title=training::/' || true
+          grep -h 'match over' out/survivor.log 2>/dev/null | sed 's/^/::notice title=survivor::/' || true
+          { echo '## Training mode: ${{ inputs.pattern }}'; echo '```'; cat out/results.txt 2>/dev/null || echo 'no game finished'; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: training-mode
+          path: out/
+          if-no-files-found: warn
