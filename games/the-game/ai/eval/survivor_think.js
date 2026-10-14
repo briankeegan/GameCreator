@@ -211,6 +211,10 @@ module.exports = function think(cfg) {
       }
       // A HIT THAT WOULD TOP THE STACK OUT, on its way by the game's own landing times, makes a three a last resort now: it is the one way left
       // to lower the stack before it lands (realThrees)
+      // A VOLLEY (volley): what is coming and queued fills the board by itself, wherever the stack is -- lowering the stack cannot keep it
+      // from topping out, so the hit is no danger to play threes against: the panels are what it is broken with, and are kept
+      var volleyA = !!(A && A.volley) && comingRows + queuedRows >= (board.height || 12);
+      if (volleyA && dangerWhy === 'incoming') { dangerWhy = ''; bot._volley = (bot._volley || 0) + 1; }
       if (A && A.realThrees && dangerWhy === 'incoming' && !toppedReal) { toppedReal = true; bot.toppedOutNow = true; bot._threesForHit = (bot._threesForHit || 0) + 1; }
       if (A && A.lifeFirst && A.realTopped && !dangerWhy) {
         if (realNear) dangerWhy = 'topped';
@@ -422,6 +426,7 @@ module.exports = function think(cfg) {
           // (time attack: no chain going, the stack goes up to calmRaiseTo and the next chain is built from there; a combo only to live)
           // (past lowTop the full raise goes on only while a break is ready for the next slab -- in time attack, none can come)
           if ((calmA || taA) && topA < (A.calmRaiseTo || 10) && !danger && (taA || readyA || topA < (A.lowTop || 6))) put('raise', -2.5, { src: 'raise', to: A.calmRaiseTo || 10 });
+          else if (volleyA && topA < (A.volleyTo || 9) && !danger) put('raise', -1.4, { src: 'volley', to: A.volleyTo || 9 });   // material to break the volley with
           else if (topA < (A.lowTop || 6) && !danger) put('raise', -1.4, { src: 'raise', to: A.lowTop || 6 });   // a low stack has nothing to build with, whatever is coming
           else if (topA < raiseCap(board, comingRows, A)) put('raise', -0.3, { src: 'raise', to: raiseCap(board, comingRows, A) });
         }
