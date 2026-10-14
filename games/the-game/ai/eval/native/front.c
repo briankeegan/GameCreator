@@ -31,9 +31,9 @@ typedef struct { uint16_t last[32][W + 2], first[32][W + 2], same[32][W + 2], ga
 // frames of the actions inside the window (a ring), and a direction held down
 #define HOLDTIGHT 40   // the actions short of the limit at which short walks are held too (survivor_keys.js HOLDTIGHT)
 #define ACTIONRING 128   // room for the diagnostic limit (GC_INPUT_LIMIT) above the game's
-typedef struct { int actAt[ACTIONRING], actOld, actN, holdKey, limit, holdMin; } Pad;
+typedef struct { int actAt[ACTIONRING], actOld, actN, holdKey, limit, holdMin, total; } Pad;   // total: every action spent
 // The decision, out of the bot: K_HOLD / K_RAISE / K_SWAP, the move, the park.
-typedef struct { int kind, hasMove, mr, mc, hasPark, pr, pc, via, waitAll; } FDec;
+typedef struct { int kind, hasMove, mr, mc, hasPark, pr, pc, via, waitAll, idle; } FDec;
 typedef struct {
   int id, reaction, reveal, allowRaise, lastClock;
   int cooldown, raiseHeld, wantRaise, wantRows, raiseLives;   // raiseHeld: the raise key pressed this frame
@@ -48,6 +48,7 @@ typedef struct {
   Settle settle;   // the board's cells, when each settles (unsettled), at the last decision
   int wWaitTo, wFrames, wWaitAll, wR0, wKept;
   Pad pad;
+  int bkOn, bk0, bkSeen; double bkActs;   // the actions a break line takes, measured: from its first decision to the garbage it touches matching (the next break's reserve in the input budget)
   int sawWave;   // a real garbage slab has been queued
   int tgW, tgH, lead;   // told by the host (front_telegraph): the next block the attacker has queued -- its size and the frames until it reaches this stack, 0 when none is shown
   int oppPresent, oppTopped;   // told by the host (front_opponent): another player is in the match; that player's stack has lost
@@ -529,7 +530,7 @@ static int padCount(Pad *p, int clock) {
 static int padAllowed(Pad *p, int clock) { return padCount(p, clock) < (p->limit ? p->limit : ACTIONLIMIT); }
 static void padSpend(Pad *p, int clock) {
   if (padCount(p, clock) >= ACTIONRING) return;
-  p->actAt[(p->actOld + p->actN) % ACTIONRING] = clock; p->actN++;
+  p->actAt[(p->actOld + p->actN) % ACTIONRING] = clock; p->actN++; p->total++;
 }
 // THE KEYS OF ONE FRAME: a direction held over two frames is let go (the walk
 // taps), except a held walk; a direction that goes down, or a swap, is an action
@@ -1417,7 +1418,7 @@ static int fDecide(Front *F, FDec *out) {
   if (rc != 0) return -1;
   double *o = BOUT;
   out->kind = (int)o[0]; out->hasMove = o[1] != 0; out->mr = (int)o[2]; out->mc = (int)o[3];
-  out->hasPark = o[4] != 0; out->pr = (int)o[5]; out->pc = (int)o[6]; out->via = (int)o[7]; out->waitAll = o[98] != 0;
+  out->hasPark = o[4] != 0; out->pr = (int)o[5]; out->pc = (int)o[6]; out->via = (int)o[7]; out->waitAll = o[98] != 0; out->idle = o[99] != 0;
   F->wantRaise = o[12] != 0;
   F->wantRows = (int)o[13];
   if (o[14]) F->wantRaise = 0;
@@ -1451,6 +1452,15 @@ static void frontRestart(Front *F);
 // THE BUDGET is the decision's work (bot.c WORKBUDGET), the same here as in the browser; the game's ThinkBudget
 // (train.lua) is the only clock
 EXPORT(front_frame) int front_frame(int fid, Board *b) { return frontFrame(fid, b); }
+// A GARBAGE CELL MATCHED: a break has begun (the pop that takes the block down)
+static int garbageMatched(void) {
+  for (int r = 1; r <= FB->height; r++)
+    for (int c = 1; c <= W; c++) { const int32_t *f = fp(r, c); if (f[ISGARBAGE] && fState(f) == MATCHED) return 1; }
+  return 0;
+}
+// THE INPUT BUDGET IS KEPT FOR THE BREAK: an idle decision (setups, lineups, readiness, an attack with nothing to save) is not pressed
+// when what the window has left is less than a break line has taken (measured: bkActs) -- the break would wait for the window
+static int idleVia(int via) { return via == V_SETUP || via == V_LINEUP || via == V_READYFIRST || via == V_BESTATTACK; }
 static int frontFrame(int fid, Board *b) {
   Front *F = &FRONTS[fid];
   FB = b;
@@ -1462,6 +1472,9 @@ static int frontFrame(int fid, Board *b) {
   F->riseDisp = b->displacement; F->riseHas = 1;
   F->lastKind = -1;
   if (b->gameOverClock > 0) return 0;
+  { int gm = garbageMatched();
+    if (gm && !F->bkSeen && F->bkOn) { double sample = F->pad.total - F->bk0; F->bkActs = F->bkActs > 0 ? 0.8 * F->bkActs + 0.2 * sample : sample; F->bkOn = 0; }
+    F->bkSeen = gm; }
   int held = F->held, input = 0;
   // RAISING WHILE IT CANNOT KILL (Stack.lua: a held raise key starts the
   // next row as soon as one is done): a raise the bot wants is held every
@@ -1508,6 +1521,9 @@ static int frontFrame(int fid, Board *b) {
   if (F->hasPlan && F->planOn == boardKey()) d = F->plan; else if (fDecide(F, &d)) return -1;
   F->hasPlan = 0;
   F->held = heldNow;
+  if (d.kind == K_SWAP && d.via == V_BREAKREACH && F->lastVia != V_BREAKREACH && F->lastVia != V_PLANSAVE) { F->bkOn = 1; F->bk0 = F->pad.total; }   // a break line begins
+  if (d.kind == K_SWAP && d.hasMove && d.idle && idleVia(d.via) && F->bkActs > 0
+      && padCount(&F->pad, b->clock) + F->bkActs > (F->pad.limit ? F->pad.limit : ACTIONLIMIT)) { d.kind = K_HOLD; d.hasMove = 0; d.hasPark = 0; }
   if (d.kind == K_RAISE) {
     F->wantRaise = !nb_topped(b); F->cooldown = F->reaction;
     if (F->pad.holdKey) { F->pad.holdKey = 0; return fSend(F, input & ~DIRS, held); }
