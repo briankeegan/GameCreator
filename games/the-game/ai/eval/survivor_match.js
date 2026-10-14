@@ -624,13 +624,21 @@ Match.prototype.afterFrame = function () {
 // top, a move is begun no sooner than `gap` frames after the last swap pressed -- with busy, garbage resting on the board too (the
 // break it needs is made as well a moment later while nothing more is on its way). The decision is asked about the frame it begins on, so it
 // is judged from there like any other; anything less calm and the moves come as fast as they are found.
+function garbageCells(b) { var n = 0; b.panels.forEach(function (row) { if (row) for (var c = 1; c <= 6; c++) if (row[c] && row[c].isGarbage) n++; }); return n; }
 Match.prototype.calm = function (next) {
   var P = this.L.profile && this.L.profile.pace;
   if (!P || this.L.sync || this.lastSwapEnd == null) return null;
-  if (this.toppedNow || next.chainCounter || (next.stopTime || 0) + (next.preStopTime || 0) > 0 || (next.incoming || []).length || (!P.busy && SH.lowestGarbageRow(next))) return null;
+  if (this.toppedNow || next.chainCounter || (next.stopTime || 0) + (next.preStopTime || 0) > 0) return null;
+  if (!P.busy && ((next.incoming || []).length || SH.lowestGarbageRow(next))) return null;
   var off = next.clock - next.stopWatch, by = this.lastSwapEnd + P.gap + P.clear;
   if (this.arrivals.some(function (a) { return a.at + off <= by; })) return null;
   if (CK.framesToTop(next) < P.room) return null;
+  // (busy: the queue may hold garbage the whole game; what counts is whether any of it lands by then, on the board predicted with the plan)
+  if (P.busy && (next.incoming || []).length) {
+    var ck = this.epoch + ':' + by;   // (once per swap: the prediction runs the engine to `by`)
+    if (this.calmKey !== ck) { this.calmKey = ck; this.calmLands = garbageCells(this.predict(next, by, this.hold, this.nextPending).board) > garbageCells(next); }
+    if (this.calmLands) return null;
+  }
   return { gap: P.gap };
 };
 
