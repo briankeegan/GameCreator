@@ -2,7 +2,7 @@
 # ONE SCAN, from its dispatch to its result, as the loop in CLAUDE.md runs it: the scan is dispatched (ai-survival-scan.yml), its run is found
 # among THIS workflow's runs, waited for, fetched (scan_deaths.sh, every fetch retried) with every seed's whole game, and its numbers printed.
 #
-#   [GC_MODE=large_garbage] [GC_SOURCE=REF] [GC_FIXED=1] [GC_SEEDS='[1,2,3]'] [GC_WORK=DIR] scan.sh
+#   [GC_MODE=large_garbage] [GC_SOURCE=REF] [GC_FIXED=1] [GC_INPUT_LIMIT=N] [GC_SEEDS='[1,2,3]'] [GC_WORK=DIR] scan.sh
 #
 # GC_SOURCE is a commit, tag or branch of this repository to scan instead of main (the scan of a change beside its predecessor: the workflow
 # is handed the full SHA it names, which checkout needs). GC_FIXED=1 is the scan that tells the bot no time, so a build plays the same games
@@ -20,6 +20,7 @@ if [ -n "${GC_SOURCE:-}" ]; then
   args+=(-f "inputs[source]=$full")
 fi
 [ -n "${GC_FIXED:-}" ] && args+=(-f inputs[fixed_budget]=true)
+[ -n "${GC_INPUT_LIMIT:-}" ] && args+=(-f "inputs[input_limit]=$GC_INPUT_LIMIT")
 [ -n "${GC_SEEDS:-}" ] && args+=(-f "inputs[seeds]=$GC_SEEDS")
 t0=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 retry gh api -X POST "repos/$REPO/actions/workflows/$WF/dispatches" "${args[@]}" --silent

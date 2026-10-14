@@ -1486,7 +1486,18 @@ static int frontFrame(int fid, Board *b) {
     int lift = (urgent || (F->reveal && windowOpen())) && !swapLanding();
     // a line being played goes on to its next step as its replay does, the swap landed
     if (lift && toppedNow() && !(F->reveal && windowOpen()) && boardKey() == F->decidedOn && drainBound() > F->escapeWalk + 2 && !BOTS[F->id].nLine) lift = 0;
-    if (!lift) { F->cooldown--; return sent; }
+    if (!lift) {
+      F->cooldown--;
+      // THE COOLDOWN IS THINK TIME: the game holds a computer player to 8 ms a frame, not to one decision a reaction. The decision for the board
+      // as it stands is made every frame the bot waits, and played when the wait ends if the board is the same: what a frame's search judged
+      // (the memos kept for the position) the next frame's goes on from, not a search made again from nothing.
+      { double wr = F->wantRaise; int wrows = F->wantRows; double esc = F->escapeWalk; int lk = F->lastKind, lv = F->lastVia, lmr = F->lastMoveR, lmc = F->lastMoveC;
+        int heldNow = F->held; F->held = held;
+        FDec dp;
+        if (fDecide(F, &dp) == 0) { F->plan = dp; F->planOn = boardKey(); F->hasPlan = 1; }
+        F->held = heldNow; F->wantRaise = wr != 0; F->wantRows = wrows; F->escapeWalk = esc; F->lastKind = lk; F->lastVia = lv; F->lastMoveR = lmr; F->lastMoveC = lmc; }
+      return sent;
+    }
     F->cooldown = 0;
   }
   F->decidedOn = boardKey(); F->restOn = restKey();
