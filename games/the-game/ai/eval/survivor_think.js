@@ -410,10 +410,12 @@ module.exports = function think(cfg) {
         (board.incoming || []).forEach(function (g) { if (g.height > (bot._maxSlab || 0)) bot._maxSlab = g.height; });
         var hypoA = readyArr.length ? readyArr : !taA && fullTop(board) >= (A.lowTop || 6) ? [{ at: A.readyAt || 90, width: board.width || 6, height: Math.max(bot._maxSlab || 0, A.slabGuess || 3), isChain: false, isMetal: false, capped: false }] : [];
         var rdA = null;
-        if (hypoA.length && !garbA) {
+        var lowNowA = !!(A.floorRows && !taA && lowPeak(board) < A.floorRows);
+        if (hypoA.length && (!garbA || lowNowA)) {
           var rmsA = Math.min(A.readyMs || 80, leftMs());
           rdA = rmsA >= 30 ? attacker[A.readyTime ? 'readyInTime' : 'readyFor'](board, m.hold, hypoA, { ms: rmsA }) : null;
-          if (rdA && !rdA.ready && rdA.setup) put(arbKey(rdA.setup), -1, { src: 'ready' });
+          // (under the floor, the swap that makes the break ready comes before any attack: it is what keeps the stack)
+          if (rdA && !rdA.ready && rdA.setup) put(arbKey(rdA.setup), lowNowA ? -2.9 : -1, { src: 'ready' });
         }
         var readyA = !rdA || !!rdA.ready;
         // THE RAISE: nothing popping and out of danger, a calm board (nothing on it, nothing on its way) is raised to calmRaiseTo
@@ -443,7 +445,9 @@ module.exports = function think(cfg) {
           for (c = 1; c <= (b.width || 6); c++) { over = false; for (r = b.grid.length - 1; r >= 1; r--) { var v = b.grid[r] && b.grid[r][c]; if (v === -2) over = true; else if (over && !v) n++; } }
           return n;
         };
-        var holdC = (bot._allCands || []).filter(function (c) { return c.kind === 'hold'; })[0], hollow0 = -1;
+        // (the board left alone is this decision's hold: the candidates are built inside the decision, after this, so every
+        // measure of it is reset the first time a ranking sees a new candidate list)
+        var holdC = null, hollow0 = -1, candsSeen = null;
         // (the panels on a settled grid: every coloured cell, garbage and empty not counted)
         var panelsOf = function (b) {
           if (!b || !b.grid) return 0;
@@ -489,10 +493,11 @@ module.exports = function think(cfg) {
           if (mergeSeen) bot._mergeWaits = (bot._mergeWaits || 0) + 1;
           return mergeSeen;
         };
+        // (under the floor: the lowest column of panels, on the board left alone once it settles, is under floorRows)
         var lowA = function () {
           if (!A.floorRows || taA) return false;   // (time attack has no garbage to break)
-          if (panels0 < 0) panels0 = holdC ? panelsOf(bot._settledOf(holdC)) : 0;
-          return panels0 < A.floorRows * (board.width || 6);
+          if (panels0 < 0) { var sb0 = holdC && bot._settledOf(holdC); panels0 = sb0 && sb0.panels ? lowPeak(sb0) : lowPeak(board); }
+          return panels0 < A.floorRows;
         };
         // A WELL UNDER WHAT IS COMING: with garbage on the board or on its way, a move whose settled board is more uneven (the tallest
         // column less the lowest) than the board left alone, past wellRows, leaves a slab to rest on the towers over a pit. Of the
@@ -515,6 +520,11 @@ module.exports = function think(cfg) {
           return { hollow: garbA && hollowOf(sb) > hollow0, well: spreadOf(sb) > Math.max(spread0, wellRows) };
         };
         bot.preferRank = function (c) {
+          if (bot._allCands !== candsSeen) {
+            candsSeen = bot._allCands;
+            holdC = (candsSeen || []).filter(function (x) { return x.kind === 'hold'; })[0] || null;
+            hollow0 = -1; spread0 = -1; spreadT = -1; panels0 = -1; mergeSeen = null;
+          }
           var k = c.kind === 'swap' && c.move ? arbKey(c.move) : c.kind, r = Infinity, add = c.added || c.resolved;
           var sh = shapeOf(c);
           // A SWAP BACK -- the two panels one of the last swaps exchanged (the frame loop's own record, m.backs, by panel id) put back
@@ -548,7 +558,7 @@ module.exports = function think(cfg) {
           // A BREAK WAITS FOR WHAT IS LANDING ON IT (mergeA): breaking before it lands takes the one block and leaves the next to be broken
           // again -- it ranks after the hold, so it is played now only when waiting does not live
           if (c.kind === 'swap' && add && (add.brokeGarbage || 0) > 0 && r < 0.6 && mergeA()) { bot._merged = (bot._merged || 0) + 1; r = 0.65; }
-          // UNDER THE FLOOR (floorRows): a stack of fewer than floorRows rows of panels (counted on the board left alone, settled) breaks
+          // UNDER THE FLOOR (floorRows): a stack whose lowest column of panels is under floorRows (on the board left alone, settled) breaks
           // the garbage before anything else -- a plain break as much as one that attacks -- and makes stop time only when nothing else
           // lives: a clear, or a planned fire or extension, that breaks nothing and is no line to a break ranks after the hold, and of
           // those the ones whose board has a break within the time they buy come first (breakAfter)
