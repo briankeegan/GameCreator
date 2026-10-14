@@ -139,6 +139,17 @@ module.exports = function think(cfg) {
       var prep = SP.prepare(bot, board, { profile: prepProfile, hold: m.hold, arrivals: arrivals, comingRows: comingRows, due: due, ms: m.ms, margin: DEADLINE_MARGIN_MS,
                                         search: search, stale: stale, aborted: P.ABORTED, keep: keepL });
       var br = prep.br, brMs = prep.brMs, want = prep.want;
+      // A SWAP BACK THE FRAME LOOP WOULD HOLD (m.backs: the pairs it would not let be put back on this board, by panel id) clearing and
+      // breaking nothing -- every stage ranks it nowhere, so the next best move is played instead of a hold
+      var backSet = null;
+      (m.backs || []).forEach(function (ids) { if (ids) { backSet = backSet || {}; backSet[ids[1] + ',' + ids[0]] = true; } });
+      var swapBack = function (c) {
+        if (!backSet || c.kind !== 'swap' || !c.move) return false;
+        var add = c.added || c.resolved;
+        if (add && ((add.comboSizes || []).length || (add.brokeGarbage || 0) > 0)) return false;
+        var rowB = board.panels[c.move[0]], pa = rowB && rowB[c.move[1]], pb = rowB && rowB[c.move[1] + 1];
+        return !!(pa && pb && backSet[pa.id + ',' + pb.id]);
+      };
       // WHILE CALM, THE PROFILE'S calmGoal IS WHAT IS BUILT, pulled toward by calmToward; otherwise the bot's own.
       // VERSUS: while the board is calm (always, with vsAlways -- the survival search still keeps it alive), what is built depends on the opponent -- combos as fast as they come
       // when it is topped out, large combos while it is not.
@@ -776,6 +787,11 @@ module.exports = function think(cfg) {
       var ranked = [], key = function (c) { return c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[1] : c.kind; };
       var provenRanked = [];
       if (process.env.GC_SURVIVOR_WHY && bot.preferProven) { var pp0 = bot.preferProven; bot.preferProven = function (c, i) { var r = pp0.call(this, c, i); provenRanked.push(key(c) + '=' + r); return r; }; }
+      // (last of the wrappers, so no later rank lifts a swap back again)
+      if (defendA && A0.strictSwapBack && bot.preferRank && backSet) {
+        var prSB = bot.preferRank;
+        bot.preferRank = function (c, i) { if (swapBack(c)) { bot._backs = (bot._backs || 0) + 1; return Infinity; } return prSB.call(this, c, i); };
+      }
       if (process.env.GC_SURVIVOR_WHY && bot.preferRank) { var pr0 = bot.preferRank; bot.preferRank = function (c, i) { var r = pr0.call(this, c, i); ranked.push(key(c) + '=' + r); return r; }; }
       // A question due within TIGHT_MS is decided one move deep: the lookahead
       // has no clock, and its second ply is most of what is left.

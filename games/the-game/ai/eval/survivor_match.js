@@ -205,7 +205,11 @@ Match.prototype.ask = function (at, board, hold, pend) {
                       board: packed.toString('base64') });
     if (this.asked.length > 40 * KEEP) this.asked.shift();
   }
-  L.post({ id: L.pending.id, epoch: this.epoch, at: at, lead: at - this.now, ms: L.sync ? 0 : (at - this.now) * this.msPerFrame, posted: Date.now(), allowance: this.allowanceAt(at), backs: this.swapHistory.map(function (e) { return e.ids; }), opp: this.opp || null, topped: !!this.toppedNow, realTop: this.realTop, realFtt: this.realFtt,
+  // (the swaps back the frame loop would play as a hold on this board: those whose pair has not seen the board change since, or has
+  // been swapped back already)
+  var AS = this.L.profile && this.L.profile.attack, strictB = !!(AS && AS.strictSwapBack), idsNow = panelIds(board);
+  var blocked = this.swapHistory.filter(function (e) { return !(changedSince(e, idsNow, strictB) && !e.backs); });
+  L.post({ id: L.pending.id, epoch: this.epoch, at: at, lead: at - this.now, ms: L.sync ? 0 : (at - this.now) * this.msPerFrame, posted: Date.now(), allowance: this.allowanceAt(at), backs: blocked.map(function (e) { return e.ids; }), opp: this.opp || null, topped: !!this.toppedNow, realTop: this.realTop, realFtt: this.realFtt,
                     packed: packed, hold: hold, arrivals: arrivals, acted: this.acted });
   this.stats.decisions++;
 };
