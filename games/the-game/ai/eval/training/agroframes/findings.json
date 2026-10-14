@@ -6,5 +6,6 @@
   "2dd2bc89ce, the 4-row floor with breaks first under it (cancelled after 7 games): large_garbage mean 4,800, 0/7.",
   "4d341d5b30, the first run on real 6x12 blocks (the floor by the lowest column, readiness under it): 0 of 6, mean 7,100 frames. The queue is pinned at 72 slabs (864 rows); the bot is down to one row of panels under a slab when every move dies.",
   "c9008a4da0, the defence's decision under threat (garbage on the board, queued or coming), the attack on a clear board: large_garbage 7 of 8 to six minutes (from 1 of 8). 95% of decisions were the defence's: on this pattern garbage is almost always coming.",
-  "cc66cc2940, the defence's decision under threat with threes allowed there too (the bot was built never to play a three until topped out, and that held on the defence's decisions): factory 8 of 8 to six minutes, from 5 of 8."
+  "cc66cc2940, the defence's decision under threat with threes allowed there too (the bot was built never to play a three until topped out, and that held on the defence's decisions): factory 8 of 8 to six minutes, from 5 of 8.",
+  "The same build on the other two: combo_storm 8 of 8, large_garbage 7 of 8 (one loss at 14,498). The defence is 24 of 24 on the three."
 ]
