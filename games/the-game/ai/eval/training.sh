@@ -37,8 +37,9 @@ cleanup() { [ -n "$MIND" ] && kill "$MIND" 2>/dev/null; [ -n "${CLIENT:-}" ] && 
 trap cleanup EXIT
 if [ "$BOT" = wasm ]; then
   [ -n "${PROFILE:-}" ] && export GC_SURVIVOR_PROFILE="$EVAL/$PROFILE"
-  # each stage it loses: its last frames, boards and decisions (survivor_death.js reads them)
-  GC_SURVIVOR_DUMP="$OUT_DIR/death.jsonl" GC_SURVIVOR_KEEP=4 \
+  # each stage it loses: its last frames, boards and decisions (survivor_death.js reads them), and every frame of the game
+  # (frames.jsonl.gz: the board on the frames it changed on; training/lastframes replays it)
+  GC_SURVIVOR_DUMP="$OUT_DIR/death.jsonl" GC_SURVIVOR_KEEP=4 GC_SURVIVOR_FRAMES="$OUT_DIR/frames.jsonl.gz" \
     taskset -c "$MIND_CPUS" node "$EVAL/survivor.js" --port "$PORT" --threads $(( NCPU - 1 )) > "$OUT_DIR/survivor.log" 2>&1 &
   MIND=$!
   for i in $(seq 1 300); do grep -q listening "$OUT_DIR/survivor.log" && break; sleep 0.2; done
