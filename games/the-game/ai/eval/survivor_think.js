@@ -399,13 +399,15 @@ module.exports = function think(cfg) {
           if (rdA && !rdA.ready && rdA.setup) put(arbKey(rdA.setup), -1, { src: 'ready' });
         }
         var readyA = !rdA || !!rdA.ready;
-        // THE RAISE: nothing popping, a stack under lowTop is raised before a planned fire (out of danger, whatever is coming); with
-        // nothing on the board or on its way and a break ready for the next slab, before any setup up to calmRaiseTo; otherwise only
-        // up to raiseCap, after the setups
+        // THE RAISE: nothing popping and out of danger, a calm board (nothing on it, nothing on its way) is raised to calmRaiseTo
+        // before anything but a break; a stack under lowTop, whatever is coming, before a planned fire; otherwise only up to raiseCap,
+        // after the setups
         if (!busyA && !toppedForRaise && bot._canRaise()) {
           var topA = fullTop(board), calmA = !garbA && comingRows === 0 && !(board.incoming || []).length;
-          if (topA < (A.lowTop || 6) && !danger) put('raise', -1.4, { src: 'raise', to: calmA ? (A.calmRaiseTo || 10) : (A.lowTop || 6) });   // a low stack has nothing to build with, whatever is coming
-          else if (calmA && readyA && topA < (A.calmRaiseTo || 10)) put('raise', -0.6, { src: 'raise', to: A.calmRaiseTo || 10 });
+          // (calm: raised all the way to calmRaiseTo before anything else is built -- the break is made ready at the top; a low stack
+          // with garbage on its way is raised to lowTop before a planned fire)
+          if (calmA && topA < (A.calmRaiseTo || 10) && !danger) put('raise', -2.5, { src: 'raise', to: A.calmRaiseTo || 10 });
+          else if (topA < (A.lowTop || 6) && !danger) put('raise', -1.4, { src: 'raise', to: A.lowTop || 6 });   // a low stack has nothing to build with, whatever is coming
           else if (topA < raiseCap(board, comingRows, A)) put('raise', -0.3, { src: 'raise', to: raiseCap(board, comingRows, A) });
         }
         bot.SURVIVE_SEARCH_BUDGET = due ? Math.max(CHEAP, Math.min(FULL, Math.round((due - Date.now()) * nodesPerMs * SPEND))) : FULL;
