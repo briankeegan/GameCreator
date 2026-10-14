@@ -4445,7 +4445,8 @@ static Dec arbitrate(Dec d) {
     }
     // downtime, nothing to break and the board safe: the best combo or chain any line reaches in the time there is is an option too -- the
     // setup of many swaps that ends in an attack, played on once chosen -- on the work the decision has left over
-    if (!breaking && aloneOnEngine() && aloneDie(1 << 20) > LIVEHORIZON && d.kind == K_HOLD && !BT->nLine && workLeft() > 4 * jdCost) {
+    int downtime = d.kind == K_HOLD || ih >= 0 || O[at].early;   // the hold is an option, whatever swap the stages proposed: the setups' condition and this one are the one
+    if (!breaking && aloneOnEngine() && aloneDie(1 << 20) > LIVEHORIZON && downtime && !BT->nLine && workLeft() > 4 * jdCost) {
       int before = n; n = reachOption(O, n, d, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0); if (n > before) ra = before;
     }
 #ifndef __wasm__
@@ -4453,7 +4454,7 @@ static Dec arbitrate(Dec d) {
 #endif
     // downtime: the board left alone loses no health within the horizon, or between actions: a line that saves the board is kept and the setup must spare it;
     // the setups stand beside the hold wherever the hold is an option, whatever swap the stages proposed
-    if (!breaking && aloneOnEngine() && (aloneDie(1 << 20) > LIVEHORIZON || saSet) && (d.kind == K_HOLD || ih >= 0 || O[at].early)) { setupAt = n; n = setupOptions(O, n, d); } }
+    if (!breaking && aloneOnEngine() && (aloneDie(1 << 20) > LIVEHORIZON || saSet) && downtime) { setupAt = n; n = setupOptions(O, n, d); } }
   // the line that saves the board: what an option must still be able to play after it (getsBackInTime)
   int32_t sv[2 * LINEMAX]; int sn = 0;
   if (saSet && aloneOnEngine()) {
