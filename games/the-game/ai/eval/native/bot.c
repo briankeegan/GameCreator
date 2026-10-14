@@ -2648,8 +2648,9 @@ static JLOCAL double sitLeft;
 // (is this board ready?), so each level of nesting has its own memory, the
 // current level's set in place on entry and the caller's put back on exit
 #define SITLEVELS 4
+#define SITKEEPS 2   // searches that go on from one frame to the next: each keeps a set of memory of its own
 typedef struct { ST *st; SitNode *nd; SitKid *kd; SitHeap *hp; u64 *hk; uint32_t *hg, gen; int32_t *t, *r, *l; double left; } SitMem;
-static JLOCAL SitMem SITM[SITLEVELS];
+static JLOCAL SitMem SITM[SITLEVELS + SITKEEPS];
 static JLOCAL int sitLevel;
 static JLOCAL ST *SITST; static JLOCAL SitNode *SITND; static JLOCAL SitKid *SITKD; static JLOCAL SitHeap *SITHP; static JLOCAL u64 *SITHK;
 // A BOARD SEEN IS STAMPED WITH ITS SEARCH: an entry another search wrote reads
@@ -2720,7 +2721,7 @@ static SitMem *sitMem(int level) {
 // EVERY LEVEL'S MEMORY TOUCHED BEFORE THE GAME (front.c frontWarm, on every
 // thread): a page first touched mid-decision faults in on the decision's time
 static void sitWarm(void) {
-  for (int level = 0; level < SITLEVELS; level++) {
+  for (int level = 0; level < SITLEVELS + SITKEEPS; level++) {
     SitMem *m = sitMem(level);
     if (!m) return;
     __builtin_memset(m->st, 0, sizeof(ST) * SITCAP); __builtin_memset(m->nd, 0, sizeof(SitNode) * SITCAP);
@@ -2728,9 +2729,18 @@ static void sitWarm(void) {
   }
 }
 static JLOCAL double (*sitGuide)(const int32_t *st);
+// A SEARCH THAT GOES ON FROM ONE FRAME TO THE NEXT: the game holds a computer player to 8 ms a frame, and the bot waits a reaction between its
+// decisions, so a search that did not finish in a frame's work is not made again from nothing the next: its lines, its steps waiting and the
+// boards it has seen are kept (a set of memory of its own) and the next frame's work grows them further, for as long as the position stands.
+// The caller names the search (sitKeepSlot, 1..SITKEEPS) and the position it is for (sitKeepKey).
+typedef struct { u64 key; int valid, nn, nk, nh; } SitKeep;
+static SitKeep SITKEEP[SITKEEPS];
+static int sitKeepSlot; static u64 sitKeepKey;
+static JLOCAL int sitKeepIn; static JLOCAL SitKeep *sitKeepP;   // this search: resumed from the kept state, and where it keeps its own
 static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double notBefore, double left, int frozen,
                         const uint32_t *can0, Wait (*wait0)[WMAX], double work, SitAccept accept, void *ctx,
                         int32_t *sw, int *nOut, double *atOut) {
+  int slot = sitKeepSlot; u64 kkey = sitKeepKey; sitKeepSlot = 0; sitKeepKey = 0;   // the caller's, taken before any return
   if (sitLevel >= SITLEVELS) { sitGuide = 0; return 0; }   // nested past its memory: no answer, never a corrupted one
 #ifndef __wasm__
   // GC_WORKSTAT: the search's milliseconds per work, beside the decision's (WORK lines) -- SITPOPWORK's calibration
@@ -2742,16 +2752,20 @@ static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double no
   // search that ran on would cut the decision
   { double room = workLeft(); if (work > room) work = room; }
   if (!(work > 0)) { sitGuide = 0; return 0; }
-  SitMem *m = sitMem(sitLevel);
+  if (slot < 1 || slot > SITKEEPS || inWorker || sitLevel != 0) slot = 0;
+  SitMem *m = sitMem(slot ? SITLEVELS + slot - 1 : sitLevel);
   if (!m) { sitGuide = 0; return 0; }
+  sitKeepIn = slot && SITKEEP[slot - 1].valid && SITKEEP[slot - 1].key == kkey;
+  sitKeepP = slot ? &SITKEEP[slot - 1] : 0; if (sitKeepP) sitKeepP->key = kkey;
   // the caller's level, kept to be put back
   ST *pst = SITST; SitNode *pnd = SITND; SitKid *pkd = SITKD; SitHeap *php = SITHP; u64 *phk = SITHK; uint32_t *phg = SITHG, pgen = SITGEN; int32_t *pt = SITT, *pr = SITR, *pl = SITL; double pleft = sitLeft;
   SITST = m->st; SITND = m->nd; SITKD = m->kd; SITHP = m->hp; SITHK = m->hk; SITT = m->t; SITR = m->r; SITL = m->l;
-  if (++m->gen == 0) { __builtin_memset(m->hg, 0, sizeof(uint32_t) * SITHASH); m->gen = 1; }
+  if (!sitKeepIn && ++m->gen == 0) { __builtin_memset(m->hg, 0, sizeof(uint32_t) * SITHASH); m->gen = 1; }
   SITHG = m->hg; SITGEN = m->gen;
   sitLevel++;
   int got = sitRun(st0, cr, cc, t0, notBefore, left, frozen, can0, wait0, work, accept, ctx, sw, nOut, atOut);
   sitLevel--;
+  sitKeepP = 0; sitKeepIn = 0;
 #ifndef __wasm__
   if (calTop && !inWorker) { calMs += NOWMS2() - cal0; calW += paWork - calw0; if (++calN % 20000 == 0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "CAL sit %.3f ms/kwork over %.0f kwork\n", calMs / (calW / 1000), calW / 1000); } }
 #endif
@@ -2802,17 +2816,21 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
                   int32_t *sw, int *nOut, double *atOut) {
   extern PATLS double paWork;
   double w0 = paWork;
-  stcpy(SITST[0], st0);
-  SITND[0].parent = -1; SITND[0].n = 0; SITND[0].r = cr; SITND[0].c = cc; SITND[0].t = t0; SITND[0].settled = 0; SITND[0].left = left; SITND[0].stopped = 0;
-  sitLeft = INF;   // lowered only by a break found (time mode); each line keeps its own time (left)
-  for (int c = 0; c < WMAX; c++) SITND[0].dist[c] = 0;
-  sitSeen(hashOf(SITST[0]));
+  SitKeep *kp = sitKeepP; sitKeepP = 0; int resumed = sitKeepIn; sitKeepIn = 0;
   int nn = 1, nk = 0, nh = 0;
   // the filter is this search's own: a search its accept starts is asked everything
   int (*mine)(const int32_t *st, int r, int c) = sitFilter; sitFilter = 0;
   // and so is its guide: the searches its accept starts grow soonest first
   double (*myGuide)(const int32_t *st) = sitGuide; sitGuide = 0;
-  sitGuide = myGuide; sitOffer(0, &nk, &nh, notBefore, frozen, can0, wait0, mine); sitGuide = 0;
+  if (resumed) { nn = kp->nn; nk = kp->nk; nh = kp->nh; sitLeft = INF; }   // the lines, the steps waiting and the boards seen are where the last frame left them
+  else {
+    stcpy(SITST[0], st0);
+    SITND[0].parent = -1; SITND[0].n = 0; SITND[0].r = cr; SITND[0].c = cc; SITND[0].t = t0; SITND[0].settled = 0; SITND[0].left = left; SITND[0].stopped = 0;
+    sitLeft = INF;   // lowered only by a break found (time mode); each line keeps its own time (left)
+    for (int c = 0; c < WMAX; c++) SITND[0].dist[c] = 0;
+    sitSeen(hashOf(SITST[0]));
+    sitGuide = myGuide; sitOffer(0, &nk, &nh, notBefore, frozen, can0, wait0, mine); sitGuide = 0;
+  }
   sitRootKids = nk; sitRootLeft = left;
   int32_t line[2 * LINEMAX];
   while (nh > 0 && paWork - w0 < work) {
@@ -2855,11 +2873,14 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
       if (sw) for (int k = 0; k < 2 * n; k++) sw[k] = line[k];
       if (nOut) *nOut = n;
       if (atOut) *atOut = kd.t;
+      if (kp) kp->valid = 0;
       return 1;
     }
     if (say == SIT_END || j < 0) continue;
     sitGuide = myGuide; sitOffer(j, &nk, &nh, notBefore, frozen, 0, 0, mine); sitGuide = 0;
   }
+  // steps still waiting: the next frame's work goes on from here
+  if (kp) { kp->valid = nh > 0; kp->nn = nn; kp->nk = nk; kp->nh = nh; }
   return 0;
 }
 // the line wanted: one that breaks
@@ -4639,9 +4660,13 @@ static Dec breakDeeper(Dec d) {
   int32_t sw[2 * LINEMAX]; int n = 0;
   double bd0 = paWork, bdT = timeLeft();
   sitGuide = readyGuide;   // best-first by the contact column's distance: the work reaches the lines of three or four swaps, not every line of two
-  NearCtx nx = { readyGuide(kb0), 0, { 0 } }; nx.bestN = 0;
+  // the search goes on from the last frame's if the position is the same (sitKeepSlot): its lines and the nearest of them are kept
+  static NearCtx nearKeep; u64 pk = ((u64)(unsigned)raPos << 1) | 1;
+  NearCtx nx; if (SITKEEP[0].valid && SITKEEP[0].key == pk) nx = nearKeep; else { nx.bestG = readyGuide(kb0); nx.bestN = 0; }
+  sitKeepSlot = 1; sitKeepKey = pk;
   int got = searchInTime(kb0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, bdT, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0,
                          0, 0, kbEnd - paWork, sitNear, &nx, sw, &n, 0);
+  nearKeep = nx;
   sitGuide = 0;
   if (!got) {
     bdNone = paWork - bd0 < 0.9 * (kbEnd - bd0); bdPos = raPos; bdTime = bdT;
@@ -5352,9 +5377,14 @@ static int readiesLine(Dec d, int dieRef, int spare, int partial, int32_t *sw, i
   RqCtx x = { dieRef, spare, d.kind == K_SWAP && d.hasMove ? d.sr : 0, d.kind == K_SWAP && d.hasMove ? d.sc : 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, readyGuide(rq0), !lands };
   x.bestG = x.g0; x.bestN = 0;
   *n = 0;
+  // the search goes on from the last frame's if the position is the same: its lines and the nearest of them are kept (sitKeepSlot)
+  static RqCtx rqKeep; u64 pk = (u64)(unsigned)raPos << 1;
+  if (SITKEEP[1].valid && SITKEEP[1].key == pk) { x.bestG = rqKeep.bestG; x.bestN = rqKeep.bestN; for (int k = 0; k < 2 * x.bestN; k++) x.bestSw[k] = rqKeep.bestSw[k]; }
+  sitKeepSlot = 2; sitKeepKey = pk;
   sitGuide = readyGuide;   // best-first: the board nearest a break is grown first, so the same work reaches deeper than the root's children
   searchInTime(rq0, cur0[0], cur0[1], t0, 0, dmin(tLand, timeLeft()), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can0, wt0, optLine() - paWork, sitReadies, &x, sw, n, 0);
   sitGuide = 0;
+  rqKeep.bestG = x.bestG; rqKeep.bestN = x.bestN; for (int k = 0; k < 2 * x.bestN; k++) rqKeep.bestSw[k] = x.bestSw[k];
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "READIES root: legal %d filtered %d not swappable %d late %d\n", sitRootLegal, sitRootFilt, sitRootCan, sitRootLate); fprintf(BLOG, "READIES lines: %d ready on the masks, %d asked, %d seen, %d die, %d die sooner, %d nearer (guide now %.0f), %s", x.masks, x.tried, x.seen, x.dies, x.sooner, x.near, x.g0, x.ok ? "ready:" : "none");
     if (x.ok) { for (int k = 0; k < *n; k++) fprintf(BLOG, " %d,%d", sw[2 * k], sw[2 * k + 1]); fprintf(BLOG, " break %d,%d", x.r, x.c); } fprintf(BLOG, "\n"); }
