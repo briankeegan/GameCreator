@@ -306,9 +306,11 @@ Match.prototype.take = function (truth) {
       }
       if (back) {
         now = panelIds(board);
-        // (strictSwapBack: only what the swap itself clears -- a break line's first step that undoes the last swap breaks nothing)
+        // (strictSwapBack: only what the swap itself clears, or the first step of a planned line that breaks -- once: the swap back
+        // of a pair already swapped back is never played)
         var AS = L.profile && L.profile.attack, strictB = !!(AS && AS.strictSwapBack);
-        var clears = !!(a.diag && a.diag.clears > 0) || (!strictB && !!(a.breaks && a.breaks.took));
+        var lineBreak = !!(a.breaks && a.breaks.took) && !!(a.line && a.line.length) && !back.backs;
+        var clears = !!(a.diag && a.diag.clears > 0) || (!strictB && !!(a.breaks && a.breaks.took)) || (strictB && lineBreak);
         if (!clears && !(changedSince(back, now, strictB) && !back.backs)) {
           a = Object.assign({}, a, { kind: 'hold', move: null, line: null });
           move = null; back = null;
