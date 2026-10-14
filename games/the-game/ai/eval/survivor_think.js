@@ -187,7 +187,7 @@ module.exports = function think(cfg) {
       // is let through either way -- the profile has no threeBreaksLast)
       bot.noThreesUntilTopped = !!OPTS.threesOnlyTopped && (!defendA || !!A0.defendNoBareThrees);
       // THE BIGGER BREAK FIRST (defendBigBreaks): of the breaks the defence's preferences put first, a plain three breaking garbage
-      // comes after a combo or chain breaking garbage when one is among the moves; with none it keeps its place
+      // comes after anything bigger breaking garbage -- a combo or a chain -- when one is among the moves; with none it keeps its place
       if (defendA && A0.defendBigBreaks && bot.preferRank) {
         var pr0D = bot.preferRank, candsD = null, bigD = false;
         var bigBreak = function (c) { var r = c && (c.added || c.resolved); if (!r || !((r.brokeGarbage || 0) > 0)) return false; return (r.chainLength || 0) >= 2 || (r.comboSizes || []).some(function (x) { return x >= 4; }); };
@@ -195,7 +195,8 @@ module.exports = function think(cfg) {
         bot.preferRank = function (c, i) {
           var r = pr0D.call(this, c, i);
           if (bot._allCands !== candsD) { candsD = bot._allCands; bigD = (candsD || []).some(function (x) { return x.kind === 'swap' && bigBreak(x); }); }
-          if (c.kind === 'swap' && bigD) { if (bigBreak(c)) return Math.min(r, 0); if (r === 0 && threeBreakD(c)) { bot._threeAfterBig = (bot._threeAfterBig || 0) + 1; return 0.4; } }
+          // (and so does the first swap of a line toward a break, ranked with the breaks: a bigger break now is not traded for a walk to one)
+          if (c.kind === 'swap' && bigD) { if (bigBreak(c)) return Math.min(r, 0); if (r === 0) { bot._threeAfterBig = (bot._threeAfterBig || 0) + 1; return 0.4; } }
           return r;
         };
       }
