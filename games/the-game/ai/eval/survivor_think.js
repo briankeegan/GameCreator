@@ -497,7 +497,9 @@ module.exports = function think(cfg) {
       // DOWN TIME IS FOR THE SHAPE (defendFlatten): while stop time runs, or nothing is landing or on its way, a swap that leaves the
       // board flatter (its tallest column less its lowest, settled) or with less hollow under garbage than the board left alone ranks
       // before the hold and every move unranked -- the breaks, the lines and the raise still before it
-      var downD = !!(defendA && A0.defendFlatten && bot.preferRank && (((board.stopTime || 0) + (board.preStopTime || 0)) > 0 || (!m.topped && !(board.incoming || []).length && !arrivals.length)));
+      // (only on a stack with room: topped out, or at flattenTop or above, the time is for living, not the shape)
+      var downD = !!(defendA && A0.defendFlatten && bot.preferRank && !m.topped && m.realTop < (A0.flattenTop || 10) &&
+                     (((board.stopTime || 0) + (board.preStopTime || 0)) > 0 || (!(board.incoming || []).length && !arrivals.length)));
       if (downD) {
         // (a cell of either board: the game's (panels) or the settled one the search leaves (grid: 0 empty, -2 garbage, 1..7 colours))
         var cellOf = function (b, r, c) {
