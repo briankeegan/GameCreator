@@ -475,9 +475,13 @@ module.exports = function think(cfg) {
           }
           if (k !== 'raise' && prep.want[k] === true) r = Math.min(r, -3);
           if (props[k]) r = Math.min(r, props[k].rank);
+          // (buried, life first: a break now or a line to one; failing those, what keeps it alive -- a combo or chain now, or the
+          // extension of the chain popping, for the stop time they buy; failing those, the survival search's own move)
           if (buriedA) {
             var breaksNow = !!(add && c.kind === 'swap' && (add.brokeGarbage || 0) > 0), breakLine = (props[k] && props[k].brk) || (k !== 'raise' && prep.want[k] === true);
-            return breaksNow || breakLine ? r : Infinity;
+            if (breaksNow || breakLine) return r;
+            var holdsOn = (props[k] && props[k].src === 'extend') || (r <= -2 && r > -3);
+            return holdsOn ? r + 1 : Infinity;
           }
           // (a hold after them: waiting is not keeping the board level; a flip ranks nowhere, so the hold comes before it; a swap that
           // clears is ranked by what it clears above, never as a levelling swap)
