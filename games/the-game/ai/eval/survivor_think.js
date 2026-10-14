@@ -469,7 +469,8 @@ module.exports = function think(cfg) {
             sizes.forEach(function (x) { if (x > big) big = x; });
             var atk = ch >= 2 || (big >= 4 && !taA);
             if (atk && brk) r = -4 - worthOf(ch, big);
-            else if (brk) r = -3 - big / 1000;
+            // (topped with no stop time the stack drains and only stop time holds it: a plain break comes after a combo or chain)
+            else if (brk) r = !!toppedReal && !((board.stopTime || 0) + (board.preStopTime || 0)) ? -1.9 - big / 1000 : -3 - big / 1000;
             else if (atk) r = -2 - worthOf(ch, big);
             else if (sizes.length && lastResA) r = -1.8;
           }
@@ -488,7 +489,10 @@ module.exports = function think(cfg) {
           // extension of the chain popping, for the stop time they buy; failing those, the survival search's own move)
           if (buriedA) {
             var breaksNow = !!(add && c.kind === 'swap' && (add.brokeGarbage || 0) > 0), breakLine = (props[k] && props[k].brk) || (k !== 'raise' && prep.want[k] === true);
-            if (breaksNow || breakLine) return r;
+            // (topped with no stop time the stack drains: only stop time holds it, so a combo or chain comes before a plain break)
+            var drainA = !!toppedReal && !((board.stopTime || 0) + (board.preStopTime || 0));
+            var atkNowA = !!(add && c.kind === 'swap' && ((add.chainLength || 0) >= 2 || (add.comboSizes || []).some(function (x) { return x >= 4; })));
+            if (breaksNow || breakLine) return drainA && breaksNow && !atkNowA ? r + 2.5 : r;
             var holdsOn = (props[k] && props[k].src === 'extend') || (r <= -2 && r > -3);
             return holdsOn ? r + 1 : Infinity;
           }
