@@ -866,6 +866,15 @@ module.exports = function think(cfg) {
         else if (holdFrames < 1) holdFrames = 0;
       }
       if (planned && bot.allDoomedNow) planRealUntil = m.at + (cfg.profile.planReal || 120);
+      // (GC_BREAK_WHY: every move that breaks garbage, what it clears, the rank it was given, and what was chosen -- to see a three
+      // chosen over a bigger break)
+      if (process.env.GC_BREAK_WHY && bot._allCands) {
+        var bw = bot._allCands.filter(function (c) { var r = c.added || c.resolved; return c.kind === 'swap' && r && (r.brokeGarbage || 0) > 0; });
+        if (bw.length > 1 && bw.some(function (c) { var r = c.added || c.resolved; return (r.chainLength || 0) >= 2 || (r.comboSizes || []).some(function (x) { return x >= 4; }); })) {
+          console.error('BREAKWHY clock ' + board.clock + ' defend ' + defendA + ' topped ' + !!m.topped + ' chose ' + (d && d.kind === 'swap' && d.move ? d.move.join(',') : d && d.kind) + ' src ' + (d && d.src) + ' doomed ' + !!bot.allDoomedNow + ' fast ' + (bot.followFast || 0) + ' :: ' +
+            bw.map(function (c) { var r = c.added || c.resolved; return c.move.join(',') + '[' + (r.comboSizes || []).join('+') + (r.chainLength >= 2 ? ' x' + r.chainLength : '') + '] rank ' + (bot.preferRank ? bot.preferRank(c, -1) : '-'); }).join(' | '));
+        }
+      }
       out = { id: m.id, epoch: m.epoch, at: m.at, threeOK: !!(A && A.realThrees && dangerWhy === 'incoming'), src: d.src || (d.overruled ? 'overrule' : 'default'), kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, raiseFrames: holdFrames, ms: Date.now() - t0, queued: m.posted ? t0 - m.posted : 0, brMs: brMs, why: why,
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
             mem: NativeMem(),
