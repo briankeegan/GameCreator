@@ -619,14 +619,15 @@ Match.prototype.afterFrame = function () {
   this.ask(at, pr.board, pr.hold, pr.pending);
   if (paced && at > now + 1) { L.pending.paced = true; this.stats.paced = (this.stats.paced || 0) + 1; }
 };
-// TIME TO SPARE IS PLAYED OVER, NOT RUSHED (the profile's pace: { gap, clear, room }, frames): on a board not topped out, with no chain
-// or stop time running, no garbage on it or queued, none landing within `clear` frames of the move and the stack `room` frames from the
-// top, a move is begun no sooner than `gap` frames after the last swap pressed. The decision is asked about the frame it begins on, so it
+// TIME TO SPARE IS PLAYED OVER, NOT RUSHED (the profile's pace: { gap, clear, room, busy }, frames): on a board not topped out, with no
+// chain or stop time running, nothing queued for it, none landing within `clear` frames of the move and the stack `room` frames from the
+// top, a move is begun no sooner than `gap` frames after the last swap pressed -- with busy, garbage resting on the board too (the
+// break it needs is made as well a moment later while nothing more is on its way). The decision is asked about the frame it begins on, so it
 // is judged from there like any other; anything less calm and the moves come as fast as they are found.
 Match.prototype.calm = function (next) {
   var P = this.L.profile && this.L.profile.pace;
   if (!P || this.L.sync || this.lastSwapEnd == null) return null;
-  if (this.toppedNow || next.chainCounter || (next.stopTime || 0) + (next.preStopTime || 0) > 0 || (next.incoming || []).length || SH.lowestGarbageRow(next)) return null;
+  if (this.toppedNow || next.chainCounter || (next.stopTime || 0) + (next.preStopTime || 0) > 0 || (next.incoming || []).length || (!P.busy && SH.lowestGarbageRow(next))) return null;
   var off = next.clock - next.stopWatch, by = this.lastSwapEnd + P.gap + P.clear;
   if (this.arrivals.some(function (a) { return a.at + off <= by; })) return null;
   if (CK.framesToTop(next) < P.room) return null;
