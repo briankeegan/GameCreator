@@ -1,0 +1,229 @@
+<title>Agro Last Frames</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@600;800&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Built by training/lastframes/build.py from a training-mode run: every run, what the losses share, each loss's last frames */
+/* layout: one column -- runs strip, findings, a sheet of last boards, then the replay bench */
+:root {
+  --bg: #f3f0ec; --surface: #fffdfa; --ink: #231d19; --muted: #6e645c; --line: #ddd5cc;
+  --well: #1d1714; --garbage: #7b6f66; --garbage-hi: #cfc3b8; --accent: #c4621c; --alive: #3c8f5a; --dead: #c23b33; --queue: #7a5bd1; --panel: #2f7fb8;
+  --display: "Saira Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "Atkinson Hyperlegible", system-ui, -apple-system, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #16120f; --surface: #211b17; --ink: #efe8e1; --muted: #a89c91; --line: #3a312a;
+  --well: #0c0a08; --garbage: #6e635b; --garbage-hi: #b9ada2; --accent: #f08a3e; --alive: #5cc07f; --dead: #f26b62; --queue: #a58bf0; --panel: #5aa8de; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #16120f; --surface: #211b17; --ink: #efe8e1; --muted: #a89c91; --line: #3a312a;
+  --well: #0c0a08; --garbage: #6e635b; --garbage-hi: #b9ada2; --accent: #f08a3e; --alive: #5cc07f; --dead: #f26b62; --queue: #a58bf0; --panel: #5aa8de; color-scheme: dark }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); line-height: 1.5; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px 48px; display: grid; gap: 28px; }
+h1 { font-family: var(--display); font-weight: 800; font-size: 2.3rem; letter-spacing: .02em; text-transform: uppercase; margin: 0; line-height: 1.05; text-wrap: balance; }
+h1 em { font-style: normal; color: var(--accent); }
+h2 { font-family: var(--display); font-weight: 600; font-size: 1.35rem; letter-spacing: .03em; text-transform: uppercase; margin: 0; text-wrap: balance; }
+.lede { color: var(--muted); max-width: 65ch; margin: 6px 0 0; }
+.runs { display: grid; gap: 6px; }
+.runrow { display: grid; grid-template-columns: 6.5em 9.5em 3em minmax(0, 1fr); gap: 10px; align-items: center; font-family: var(--mono); font-size: .8rem; font-variant-numeric: tabular-nums; }
+@media (max-width: 560px) { .runrow { grid-template-columns: 6em minmax(0, 1fr); } .runrow .md, .runrow .n { display: none; } }
+.bars { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 3px; max-width: 520px; }
+.bar { height: 18px; border-radius: 2px; background: var(--line); position: relative; overflow: hidden; }
+.bar i { position: absolute; inset: 0 auto 0 0; background: var(--dead); }
+.bar.s i { background: var(--alive); }
+.findings { display: grid; gap: 10px; max-width: 72ch; }
+.findings ol { margin: 0; padding-left: 1.3em; display: grid; gap: 8px; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: .85rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend canvas { width: 18px; height: 18px; border-radius: 3px; }
+.sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 8px; display: grid; gap: 6px; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+.card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+.card:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.card .lab { display: flex; justify-content: space-between; font-family: var(--mono); font-size: .78rem; color: var(--muted); }
+.card .lab b { font-family: var(--display); color: var(--ink); font-size: 1rem; letter-spacing: .03em; white-space: nowrap; }
+.card canvas { width: 100%; height: auto; display: block; border-radius: 2px; }
+.card .facts { font-family: var(--mono); font-size: .7rem; color: var(--muted); line-height: 1.35; font-variant-numeric: tabular-nums; }
+.viewer { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 18px; display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 24px; }
+@media (max-width: 680px) { .viewer { grid-template-columns: minmax(0, 1fr); } }
+.viewer > canvas { width: 100%; max-width: 300px; height: auto; display: block; border-radius: 3px; }
+.panel { display: grid; gap: 14px; align-content: start; min-width: 0; }
+.stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 480px) { .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.stat { border-top: 2px solid var(--line); padding-top: 6px; min-width: 0; }
+.stat .k { font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.stat .v { font-family: var(--mono); font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+.stat .v.zero { color: var(--dead); }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.controls button { font: 700 .85rem var(--body); padding: 6px 12px; border-radius: 4px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; }
+.controls button.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+#scrub { width: 100%; accent-color: var(--accent); }
+#timeline { width: 100%; height: 150px; display: block; cursor: crosshair; }
+.tkey { display: flex; flex-wrap: wrap; gap: 12px; font-size: .78rem; color: var(--muted); }
+.tkey i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 5px; }
+.log { font-family: var(--mono); font-size: .72rem; line-height: 1.45; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; max-height: 240px; overflow: auto; white-space: pre; color: var(--ink); }
+.log .f { color: var(--muted); }
+.log .dm { color: var(--dead); }
+.note { color: var(--muted); font-size: .85rem; margin: 0; }
+</style>
+<div class="wrap">
+  <header>
+    <h1>Agro <em>last frames</em></h1>
+    <p class="lede" id="lede"></p>
+  </header>
+  <section class="runs" aria-label="Training runs">
+    <h2>Every training run, each game a bar to the 6-minute mark</h2>
+    <div id="runs"></div>
+  </section>
+  <section class="findings" aria-label="What the losses share" id="findings"></section>
+  <div class="legend" id="legend" aria-label="Legend"></div>
+  <section class="sheet" id="sheet" aria-label="Last boards"></section>
+  <section class="viewer">
+    <canvas id="big" width="300" height="650" aria-label="Board"></canvas>
+    <div class="panel">
+      <h2 id="title">Game</h2>
+      <div class="stats">
+        <div class="stat"><div class="k">Frame</div><div class="v" id="vf">0</div></div>
+        <div class="stat"><div class="k">To loss</div><div class="v" id="vd">0</div></div>
+        <div class="stat"><div class="k">Health</div><div class="v" id="vh">0</div></div>
+        <div class="stat"><div class="k">Stop time</div><div class="v" id="vs">0</div></div>
+        <div class="stat"><div class="k">Queued rows</div><div class="v" id="vq">0</div></div>
+      </div>
+      <input type="range" id="scrub" min="0" max="0" value="0" aria-label="Frame">
+      <div class="controls">
+        <button id="play" class="primary">Play</button>
+        <button id="back">−60</button><button id="fwd">+60</button>
+        <button id="prevd">◀ decision</button><button id="nextd">decision ▶</button>
+        <button id="doom">Doomed from</button><button id="end">Last frame</button>
+        <label class="mono" style="font-size:.85rem;color:var(--muted)"><input type="checkbox" id="slow"> slow</label>
+      </div>
+      <div class="log" id="log" aria-label="The bot's decisions"></div>
+      <canvas id="timeline" aria-label="The whole game"></canvas>
+      <div class="tkey"><span><i style="background:var(--garbage)"></i>garbage cells</span><span><i style="background:var(--panel)"></i>panels</span><span><i style="background:var(--queue)"></i>rows queued (own scale)</span><span><i style="background:var(--dead);height:8px;width:2px"></i>a break</span><span><i style="background:var(--accent);height:8px;width:2px"></i>every move dies from here</span></div>
+      <p class="note">The whole game above; the shaded part is what the board replays. Click the timeline to jump there.</p>
+    </div>
+  </section>
+</div>
+<script>
+const D = /*DATA*/null;
+const COL = {1:'#e5484d',2:'#3fb950',3:'#39c5cf',4:'#f2c037',5:'#a371f7',6:'#3b82f6',7:'#c0c4cc',8:'#ff8a3d',9:'#d0d4dc'};
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmt = n => n == null ? '—' : n.toLocaleString();
+const secs = f => (f / 60).toFixed(0) + 's';
+function rr(g, x, y, w, h, r) { g.beginPath(); if (g.roundRect) g.roundRect(x, y, w, h, r); else g.rect(x, y, w, h); }
+function cellAt(g, x, y, cell, col, st) {
+  if (col === '.') return;
+  const pad = Math.max(1, cell * 0.06), w = cell - 2 * pad, gar = col === 'g';
+  const clearing = st === 'm' || st === 'p', unlanded = st === 'f' || st === 'h' || st === 'l', rising = st === 'd';
+  g.save();
+  g.globalAlpha = rising ? 0.38 : unlanded ? 0.5 : 1;
+  g.fillStyle = gar ? (clearing ? css('--garbage-hi') : css('--garbage')) : (COL[col] || '#888');
+  rr(g, x + pad, y + pad, w, w, cell * 0.12); g.fill();
+  g.globalAlpha = 1;
+  if (gar && !clearing) { g.strokeStyle = 'rgba(0,0,0,.3)'; g.lineWidth = Math.max(1, cell * .05); g.beginPath(); g.moveTo(x + cell * .28, y + cell * .5); g.lineTo(x + cell * .72, y + cell * .5); g.stroke(); }
+  if (clearing) { g.strokeStyle = '#ffffff'; g.lineWidth = Math.max(1.5, cell * .1); rr(g, x + pad * 2.2, y + pad * 2.2, cell - 4.4 * pad, cell - 4.4 * pad, cell * 0.1); g.stroke(); }
+  if (st === 's') { g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = Math.max(1, cell * .07); g.beginPath(); g.moveTo(x + cell * .22, y + cell * .5); g.lineTo(x + cell * .78, y + cell * .5); g.stroke(); }
+  g.restore();
+}
+function draw(cv, rows, cell, cur) {
+  const g = cv.getContext('2d'), W = 6, H = rows.length;
+  cv.width = W * cell; cv.height = H * cell;
+  g.fillStyle = css('--well'); g.fillRect(0, 0, cv.width, cv.height);
+  // the top of the board: a stack reaching this line is topped out
+  g.fillStyle = css('--dead'); g.globalAlpha = .55; g.fillRect(0, (H - 13) * cell - 1, cv.width, Math.max(1, cell * .05)); g.globalAlpha = 1;
+  g.fillStyle = css('--line'); g.fillRect(0, (H - 1) * cell - 1, cv.width, Math.max(1, cell * .04));   // the rising row sits under the line
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) cellAt(g, c * cell, r * cell, cell, rows[r][2 * c], rows[r][2 * c + 1]);
+  if (cur) { const y = (H - 1 - cur[0]) * cell, x = (cur[1] - 1) * cell, lw = Math.max(2, cell * .1);
+    g.strokeStyle = '#ffffff'; g.lineWidth = lw; g.strokeRect(x + lw / 2, y + lw / 2, 2 * cell - lw, cell - lw); }
+}
+const LEGEND = [['3n', 'panel'], ['3d', 'rising row'], ['3f', 'not landed'], ['3m', 'clearing'], ['3s', 'swapping'], ['gn', 'garbage'], ['gf', 'garbage falling'], ['gm', 'garbage breaking']];
+function legend() {
+  const el = document.getElementById('legend'); el.innerHTML = '';
+  LEGEND.forEach(([code, label]) => { const s = document.createElement('span'), cv = document.createElement('canvas'); cv.width = cv.height = 36;
+    const g = cv.getContext('2d'); g.fillStyle = css('--well'); g.fillRect(0, 0, 36, 36); cellAt(g, 0, 0, 36, code[0], code[1]);
+    s.appendChild(cv); s.appendChild(document.createTextNode(label)); el.appendChild(s); });
+}
+const alive = D.results.filter(r => r[1] === 'survived').length;
+document.getElementById('lede').textContent = `This run: ${D.mode.replace('_', ' ')}, ${alive} of ${D.results.length} games survived to frame 21,600 (6 minutes) in the real client. Each card is a loss's last board; pick one to replay its last frames with the bot's decisions, over a timeline of its whole game.`;
+const runsEl = document.getElementById('runs');
+D.runs.forEach(r => {
+  const row = document.createElement('div'); row.className = 'runrow';
+  const ok = r.games.filter(g => g[1]).length;
+  row.innerHTML = `<span>${r.commit}</span><span class="md">${r.mode.replace('_', ' ')}</span><span class="n">${ok}/${r.games.length}</span>`;
+  const bars = document.createElement('div'); bars.className = 'bars';
+  r.games.forEach((g, i) => { const b = document.createElement('span'); b.className = 'bar' + (g[1] ? ' s' : ''); b.title = `game ${i + 1}: ${g[1] ? 'survived' : 'lost at'} ${fmt(g[0])} (${secs(g[0])})`;
+    const f = document.createElement('i'); f.style.width = Math.min(100, g[0] / r.frames * 100) + '%'; b.appendChild(f); bars.appendChild(b); });
+  row.appendChild(bars); runsEl.appendChild(row);
+});
+const fEl = document.getElementById('findings');
+if (D.findings.length) { fEl.innerHTML = '<h2>What the losses share</h2><ol></ol>'; D.findings.forEach(t => { const li = document.createElement('li'); li.textContent = t; fEl.querySelector('ol').appendChild(li); }); }
+legend();
+const games = Object.keys(D.games).map(Number).sort((a, b) => a - b);
+const sheet = document.getElementById('sheet'), big = document.getElementById('big'), scrub = document.getElementById('scrub'), tl = document.getElementById('timeline');
+let cur = games[0], idx = 0, timer = null;
+function card(n) {
+  const d = D.games[n], last = d.frames[d.frames.length - 1];
+  const b = document.createElement('button'); b.className = 'card'; b.id = 'game' + n;
+  b.innerHTML = `<div class="lab"><b>Game ${n}</b><span>${fmt(d.died)}</span></div><div class="facts">doomed ${d.doomed == null ? '—' : '−' + fmt(d.died - d.doomed)}<br>last break ${d.lastBreak == null ? 'none' : '−' + fmt(d.died - d.lastBreak)}<br>topped ${d.topped}% · stop ${d.stopped}%<br>${d.panels} panels left<br>${d.queue} rows queued</div>`;
+  const cv = document.createElement('canvas'); b.appendChild(cv); draw(cv, last[3], 20, last[5]);
+  b.onclick = () => select(n); return b;
+}
+function timeline() {
+  const d = D.games[cur], r = tl.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  tl.width = Math.max(1, r.width * dpr); tl.height = 150 * dpr;
+  const g = tl.getContext('2d'); g.scale(dpr, dpr);
+  const W = r.width, H = 150, top = 8, bot = H - 18, x = f => f / d.died * W, y = (v, m) => bot - v / m * (bot - top);
+  g.clearRect(0, 0, W, H);
+  const f0 = d.frames[0][0]; g.fillStyle = css('--line'); g.fillRect(x(f0), top, W - x(f0), bot - top);
+  const qmax = Math.max(1, ...d.timeline.map(t => t[4]));
+  const line = (k, m, color, dash) => { g.strokeStyle = color; g.lineWidth = 1.5; g.setLineDash(dash || []); g.beginPath(); d.timeline.forEach((t, i) => i ? g.lineTo(x(t[0]), y(t[k], m)) : g.moveTo(x(t[0]), y(t[k], m))); g.stroke(); g.setLineDash([]); };
+  line(1, 72, css('--garbage')); line(2, 72, css('--panel')); line(4, qmax, css('--queue'), [4, 3]);
+  g.fillStyle = css('--dead'); d.breakAt.forEach(f => g.fillRect(x(f), bot + 3, 1.5, 7));
+  if (d.doomed != null) { g.fillStyle = css('--accent'); g.fillRect(x(d.doomed) - 1, top, 2, bot - top); }
+  g.fillStyle = css('--muted'); g.font = '11px ' + css('--mono'); g.fillText('0', 2, H - 2); const lab = fmt(d.died); g.fillText(lab, W - g.measureText(lab).width - 2, H - 2);
+  g.fillText('72 cells', 2, top + 9); g.fillText(qmax + ' rows queued', W - g.measureText(qmax + ' rows queued').width - 2, top + 9);
+  const fx = x(d.frames[idx][0]); g.fillStyle = css('--ink'); g.fillRect(fx - 0.75, top, 1.5, bot - top);
+}
+const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+function show() {
+  const d = D.games[cur], f = d.frames[idx];
+  draw(big, f[3], 46, f[5]);
+  document.getElementById('vf').textContent = fmt(f[0]);
+  document.getElementById('vd').textContent = fmt(d.died - f[0]);
+  const vh = document.getElementById('vh'); vh.textContent = f[1]; vh.classList.toggle('zero', f[1] < 20);
+  const vs = document.getElementById('vs'); vs.textContent = f[2]; vs.classList.toggle('zero', f[2] === 0);
+  document.getElementById('vq').textContent = f[6];
+  const log = document.getElementById('log'), out = [];
+  for (let k = Math.max(0, idx - 120); k <= idx; k++) if (d.frames[k][4].length) out.push(`<span class="f">@ ${d.frames[k][0]}</span>\n` + d.frames[k][4].map(l => /DOOMED/.test(l) ? `<span class="dm">${esc(l)}</span>` : esc(l)).join('\n'));
+  log.innerHTML = out.slice(-8).join('\n') || '<span class="f">no decision in the last 120 frames</span>';
+  log.scrollTop = log.scrollHeight;
+  scrub.value = idx; timeline();
+}
+function select(n) {
+  stop(); cur = n; const d = D.games[n];
+  document.querySelectorAll('.card').forEach(c => c.setAttribute('aria-pressed', c.id === 'game' + n));
+  document.getElementById('title').textContent = `Game ${n}, lost at frame ${fmt(d.died)} (${secs(d.died)})`;
+  scrub.max = d.frames.length - 1; idx = d.frames.length - 1; show();
+}
+function stop() { if (timer) clearInterval(timer); timer = null; document.getElementById('play').textContent = 'Play'; }
+const go = k => { stop(); idx = Math.max(0, Math.min(D.games[cur].frames.length - 1, k)); show(); };
+document.getElementById('play').onclick = () => {
+  if (timer) return stop();
+  if (idx >= D.games[cur].frames.length - 1) idx = 0;
+  document.getElementById('play').textContent = 'Pause';
+  timer = setInterval(() => { if (idx >= D.games[cur].frames.length - 1) return stop(); idx++; show(); }, document.getElementById('slow').checked ? 150 : 50);
+};
+scrub.oninput = () => go(+scrub.value);
+document.getElementById('back').onclick = () => go(idx - 60);
+document.getElementById('fwd').onclick = () => go(idx + 60);
+document.getElementById('end').onclick = () => go(D.games[cur].frames.length - 1);
+document.getElementById('doom').onclick = () => { const d = D.games[cur]; if (d.doomed == null) return; let k = d.frames.findIndex(x => x[0] >= d.doomed); go(k < 0 ? 0 : k); };
+document.getElementById('prevd').onclick = () => { const F = D.games[cur].frames; let k = idx - 1; while (k > 0 && !F[k][4].length) k--; go(k); };
+document.getElementById('nextd').onclick = () => { const F = D.games[cur].frames; let k = idx + 1; while (k < F.length - 1 && !F[k][4].length) k++; go(k); };
+tl.onclick = e => { const d = D.games[cur], r = tl.getBoundingClientRect(), f = (e.clientX - r.left) / r.width * d.died;
+  let k = d.frames.findIndex(x => x[0] >= f); if (k < 0) k = d.frames.length - 1; go(k); };
+games.forEach(n => sheet.appendChild(card(n)));
+if (games.length) select(games[0]);
+addEventListener('resize', () => games.length && timeline());
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { legend(); games.forEach(n => { const d = D.games[n], l = d.frames[d.frames.length - 1]; draw(document.querySelector('#game' + n + ' canvas'), l[3], 20, l[5]); }); if (games.length) show(); });
+</script>
