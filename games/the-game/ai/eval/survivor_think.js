@@ -521,30 +521,26 @@ module.exports = function think(cfg) {
       // board flatter (its tallest column less its lowest, settled) or with less hollow under garbage than the board left alone ranks
       // before the hold and every move unranked -- the breaks, the lines and the raise still before it
       // (only on a stack with room: topped out, or at flattenTop or above, the time is for living, not the shape)
-      // (the shape of a board: the game's or a settled one -- its columns' heights and the empty cells under garbage)
-      // (a cell of either board: the game's (panels) or the settled one the search leaves (grid: 0 empty, -2 garbage, 1..7 colours))
-      var cellOf = function (b, r, c) {
-        if (b.panels) { var p = b.panels[r] && b.panels[r][c]; return !p ? 0 : p.isGarbage ? -2 : (p.color || 0); }
-        var v = b.grid[r] && b.grid[r][c]; return v || 0;
-      };
-      var rowsB = function (b) { return b.panels ? b.panels.length : b.grid ? b.grid.length - 1 : 0; };
-      var colsOf = function (b) {
-        var hs = [], c, r, n; if (!b || !(n = rowsB(b))) return null;
-        for (c = 1; c <= 6; c++) { var h = 0; for (r = n - 1; r >= 1 && !h; r--) if (cellOf(b, r, c) !== 0) h = r; hs.push(h); }
-        return hs;
-      };
-      var hollowB = function (b) {
-        var k = 0, c, r, n; if (!b || !(n = rowsB(b))) return 0;
-        for (c = 1; c <= 6; c++) { var over = false; for (r = n - 1; r >= 1; r--) { var v = cellOf(b, r, c); if (v === -2) over = true; else if (over && !(v > 0)) k++; } }
-        return k;
-      };
-      var shapeOfB = function (b) { var hs = colsOf(b); return hs ? { spread: Math.max.apply(null, hs) - Math.min.apply(null, hs), hollow: hollowB(b) } : null; };
       var downD = !!(defendA && D0.defendFlatten && bot.preferRank && !m.topped && m.realTop < (A0.flattenTop || 10) &&
                      (((board.stopTime || 0) + (board.preStopTime || 0)) > 0 || (!(board.incoming || []).length && !arrivals.length)));
-      // A PERCHED SLAB (hollow under garbage on the board as it is): the swaps that leave less hollow under it rank before the hold
-      // whenever it is perched, down time or not -- a slab resting on some columns can only be broken from those
-      var perchD = !!(defendA && D0.defendFlatten && bot.preferRank && !m.topped && hollowB(board) > 0);
-      if (downD || perchD) {
+      if (downD) {
+        // (a cell of either board: the game's (panels) or the settled one the search leaves (grid: 0 empty, -2 garbage, 1..7 colours))
+        var cellOf = function (b, r, c) {
+          if (b.panels) { var p = b.panels[r] && b.panels[r][c]; return !p ? 0 : p.isGarbage ? -2 : (p.color || 0); }
+          var v = b.grid[r] && b.grid[r][c]; return v || 0;
+        };
+        var rowsB = function (b) { return b.panels ? b.panels.length : b.grid ? b.grid.length - 1 : 0; };
+        var colsOf = function (b) {
+          var hs = [], c, r, n; if (!b || !(n = rowsB(b))) return null;
+          for (c = 1; c <= 6; c++) { var h = 0; for (r = n - 1; r >= 1 && !h; r--) if (cellOf(b, r, c) !== 0) h = r; hs.push(h); }
+          return hs;
+        };
+        var hollowB = function (b) {
+          var k = 0, c, r, n; if (!b || !(n = rowsB(b))) return 0;
+          for (c = 1; c <= 6; c++) { var over = false; for (r = n - 1; r >= 1; r--) { var v = cellOf(b, r, c); if (v === -2) over = true; else if (over && !(v > 0)) k++; } }
+          return k;
+        };
+        var shapeOfB = function (b) { var hs = colsOf(b); return hs ? { spread: Math.max.apply(null, hs) - Math.min.apply(null, hs), hollow: hollowB(b) } : null; };
         var candsF = null, base = null, prFl = bot.preferRank;
         bot.preferRank = function (c, i) {
           var r = prFl.call(this, c, i);
@@ -552,7 +548,7 @@ module.exports = function think(cfg) {
           if (bot._allCands !== candsF) { candsF = bot._allCands; var hc = (candsF || []).filter(function (x) { return x.kind === 'hold'; })[0]; base = hc ? shapeOfB(bot._settledOf(hc)) : null; }
           var rr = c.added || c.resolved; if (!base || (rr && (rr.comboSizes || []).length)) return r;
           var sh = shapeOfB(bot._settledOf(c)); if (!sh) return r;
-          if (sh.hollow < base.hollow || (downD && sh.hollow === base.hollow && sh.spread < base.spread)) { bot._flattened = (bot._flattened || 0) + 1; return Math.min(r, 0.5 - Math.min(0.09, (base.spread - sh.spread + 2 * (base.hollow - sh.hollow)) / 100)); }
+          if (sh.hollow < base.hollow || (sh.hollow === base.hollow && sh.spread < base.spread)) { bot._flattened = (bot._flattened || 0) + 1; return Math.min(r, 0.5 - Math.min(0.09, (base.spread - sh.spread + 2 * (base.hollow - sh.hollow)) / 100)); }
           return r;
         };
       }
