@@ -113,8 +113,12 @@
     var inst = new WebAssembly.Instance(new WebAssembly.Module(bytes), imports(null));
     X = inst.exports; MEM = X.memory;
     readNames();
+    holdNow();
     return Native;
   }
+  // the agro profile's holdThrough, asked for before or after the module is made: applied the moment it is
+  var HOLD_THROUGH = false;
+  function holdNow() { if (HOLD_THROUGH && X && X.ns_hold_through) X.ns_hold_through(1); }
   // THREADS: pa-mt.wasm on one shared memory, this thread and n - 1
   // workers (node worker_threads), each an instance with its own stack. The
   // level loop hands them steps; see search.h THREADS. Once per process, and
@@ -134,6 +138,7 @@
     MEM = new WebAssembly.Memory({ initial: 256, maximum: 65536, shared: true });
     X = new WebAssembly.Instance(mod, imports(MEM)).exports;
     X.ns_thread_init(0);
+    holdNow();
     THREADS = n;
     var STACK = 1 << 20;
     for (var k = 1; k < n; k++) {
@@ -618,7 +623,7 @@
     Search: Search,
     // the agro profile's holdThrough: a held raise goes on through the rows it brings in (search.h raiseStep); never set, it ends
     // where the engine lets go of the button
-    holdThrough: function () { init(); if (X.ns_hold_through) X.ns_hold_through(1); },
+    holdThrough: function () { HOLD_THROUGH = true; holdNow(); },
     exports: function () { init(); return X; }
   };
   return Native;
