@@ -104,8 +104,10 @@ for name in sorted(os.listdir(run_dir), key=lambda n: int(re.sub(r'\D', '', n) o
     if not m: continue
     n = int(re.sub(r'\D', '', name)); mode, end, fr = m.group(1), m.group(2), int(m.group(3))
     results.append([n, end, fr, mode])
-    if end == 'lost' and os.path.exists(os.path.join(run_dir, name, 'death.jsonl')):
+    # every game with its frames: a loss, and a game that lived to the end (the page tells them apart)
+    if os.path.exists(os.path.join(run_dir, name, 'death.jsonl')):
         games[n], frames = game(os.path.join(run_dir, name))
+        games[n]['survived'] = end == 'survived'
         os.makedirs(os.path.join(out_dir, 'games'), exist_ok=True)
         json.dump(frames, open(os.path.join(out_dir, 'games', '%d.json' % n), 'w'), separators=(',', ':'))
 runs = []

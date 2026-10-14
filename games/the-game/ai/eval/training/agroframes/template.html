@@ -84,7 +84,7 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 1.35rem; letter-s
       <h2 id="title">Game</h2>
       <div class="stats">
         <div class="stat"><div class="k">Frame</div><div class="v" id="vf">0</div></div>
-        <div class="stat"><div class="k">To loss</div><div class="v" id="vd">0</div></div>
+        <div class="stat"><div class="k">To end</div><div class="v" id="vd">0</div></div>
         <div class="stat"><div class="k">Health</div><div class="v" id="vh">0</div></div>
         <div class="stat"><div class="k">Stop time</div><div class="v" id="vs">0</div></div>
         <div class="stat"><div class="k">Queued rows</div><div class="v" id="vq">0</div></div>
@@ -144,7 +144,7 @@ function legend() {
     s.appendChild(cv); s.appendChild(document.createTextNode(label)); el.appendChild(s); });
 }
 const alive = D.results.filter(r => r[1] === 'survived').length;
-document.getElementById('lede').textContent = `This run: ${D.mode.replace('_', ' ')}, ${alive} of ${D.results.length} games survived to frame 21,600 (6 minutes) in the real client. Each card is a loss's last board; pick one to replay the whole game, every frame from the start to the loss, with the bot's decisions.`;
+document.getElementById('lede').textContent = `This run: ${D.mode.replace('_', ' ')}, ${alive} of ${D.results.length} games survived to frame 21,600 (6 minutes) in the real client. Each card is a game's last board; pick one to replay the whole game, every frame from the start to the end, with the bot's decisions.`;
 const runsEl = document.getElementById('runs');
 D.runs.forEach(r => {
   const row = document.createElement('div'); row.className = 'runrow';
@@ -167,7 +167,7 @@ async function load(n) { if (!loaded[n]) loaded[n] = fetch('games/' + n + '.json
 function card(n) {
   const d = D.games[n];
   const b = document.createElement('button'); b.className = 'card'; b.id = 'game' + n;
-  b.innerHTML = `<div class="lab"><b>Game ${n}</b><span>${fmt(d.died)}</span></div><div class="facts">doomed ${d.doomed == null ? '—' : '−' + fmt(d.died - d.doomed)}<br>last break ${d.lastBreak == null ? 'none' : '−' + fmt(d.died - d.lastBreak)}<br>topped ${d.topped}% · stop ${d.stopped}%<br>${d.panels} panels left<br>${d.queue} rows queued</div>`;
+  b.innerHTML = `<div class="lab"><b>Game ${n}</b><span>${d.survived ? 'lived' : fmt(d.died)}</span></div><div class="facts">doomed ${d.doomed == null ? '—' : '−' + fmt(d.died - d.doomed)}<br>last break ${d.lastBreak == null ? 'none' : '−' + fmt(d.died - d.lastBreak)}<br>topped ${d.topped}% · stop ${d.stopped}%<br>${d.panels} panels left<br>${d.queue} rows queued</div>`;
   const cv = document.createElement('canvas'); b.appendChild(cv); draw(cv, d.lastGrid, 20, d.lastCursor);
   b.onclick = () => select(n); return b;
 }
@@ -204,7 +204,7 @@ function show() {
 async function select(n) {
   stop(); cur = n; const d = D.games[n];
   document.querySelectorAll('.card').forEach(c => c.setAttribute('aria-pressed', c.id === 'game' + n));
-  document.getElementById('title').textContent = `Game ${n}, lost at frame ${fmt(d.died)} (${secs(d.died)})`;
+  document.getElementById('title').textContent = d.survived ? `Game ${n}, alive at frame ${fmt(d.died)} (${secs(d.died)})` : `Game ${n}, lost at frame ${fmt(d.died)} (${secs(d.died)})`;
   document.getElementById('note').textContent = `Loading ${fmt(d.count)} frames…`;
   try { const g = await load(n); if (cur !== n) return; G = g; }
   catch (e) { document.getElementById('note').textContent = `This game's frames did not load (${e.message}). Reload the page to try again.`; return; }
