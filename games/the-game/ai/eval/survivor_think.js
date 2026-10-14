@@ -444,6 +444,18 @@ module.exports = function think(cfg) {
           return n;
         };
         var holdC = (bot._allCands || []).filter(function (c) { return c.kind === 'hold'; })[0], hollow0 = -1;
+        // (the panels on a settled grid: every coloured cell, garbage and empty not counted)
+        var panelsOf = function (b) {
+          if (!b || !b.grid) return 0;
+          var n = 0, r, c;
+          for (r = 1; r < b.grid.length; r++) for (c = 1; c <= (b.width || 6); c++) { var v = b.grid[r] && b.grid[r][c]; if (v > 0) n++; }
+          return n;
+        }, panels0 = -1;
+        var lowA = function () {
+          if (!A.floorRows || taA) return false;   // (time attack has no garbage to break)
+          if (panels0 < 0) panels0 = holdC ? panelsOf(bot._settledOf(holdC)) : 0;
+          return panels0 < A.floorRows * (board.width || 6);
+        };
         // A WELL UNDER WHAT IS COMING: with garbage on the board or on its way, a move whose settled board is more uneven (the tallest
         // column less the lowest) than the board left alone, past wellRows, leaves a slab to rest on the towers over a pit. Of the
         // moves no ranking above names, the swaps that keep the board level come first, then the hold; an attack is ranked as
@@ -483,7 +495,7 @@ module.exports = function think(cfg) {
             var atk = ch >= 2 || (big >= 4 && !taA);
             if (atk && brk) r = -4 - worthOf(ch, big);
             // (topped with no stop time the stack drains and only stop time holds it: a plain break comes after a combo or chain)
-            else if (brk) r = !!toppedReal && !((board.stopTime || 0) + (board.preStopTime || 0)) ? -1.9 - big / 1000 : -3 - big / 1000;
+            else if (brk) r = !!toppedReal && !((board.stopTime || 0) + (board.preStopTime || 0)) && !lowA() ? -1.9 - big / 1000 : -3 - big / 1000;
             else if (atk) r = -2 - worthOf(ch, big);
             else if (sizes.length && lastResA) r = -1.8;
           }
@@ -495,13 +507,11 @@ module.exports = function think(cfg) {
           }
           if (k !== 'raise' && prep.want[k] === true) r = Math.min(r, -3);
           if (props[k]) r = Math.min(r, props[k].rank);
-          // MATERIAL UNDER A VOLLEY (volley): what is queued fills the board by itself, and panels come back only by breaking it -- the
-          // floor is locked while it falls, and a break gives back a row of panels for the three it spends. A topped board loses health
-          // only while nothing on it moves, and a pop moves; so a clear that breaks no garbage and is no line to a break spends what the
-          // volley is broken with: it ranks after the hold, and is played only when nothing ranked before it lives
-          // (a planned fire or extension that breaks nothing is the same spend, made a swap later)
-          var spendA = props[k] && (props[k].src === 'fire' || props[k].src === 'extend') && !props[k].brk;
-          if (volleyA && r < 0.6 && c.kind === 'swap' && !(add && (add.brokeGarbage || 0) > 0) && !(props[k] && props[k].brk) && (spendA || (add && (add.comboSizes || []).length))) { bot._spared = (bot._spared || 0) + 1; r = 0.7; }
+          // UNDER THE FLOOR (floorRows): a stack of fewer than floorRows rows of panels (counted on the board left alone, settled) breaks
+          // the garbage before anything else -- a plain break as much as one that attacks -- and makes stop time only when nothing else
+          // lives: a clear, or a planned fire or extension, that breaks nothing and is no line to a break ranks after the hold
+          if (lowA() && r < 0.6 && c.kind === 'swap' && !(add && (add.brokeGarbage || 0) > 0) && !(props[k] && props[k].brk) && !(k !== 'raise' && prep.want[k] === true) &&
+              ((props[k] && (props[k].src === 'fire' || props[k].src === 'extend')) || (add && (add.comboSizes || []).length))) { bot._floored = (bot._floored || 0) + 1; r = 0.7; }
           // A BIG HIT ON ITS WAY (bigQueueRows rows queued or coming): an attack that breaks nothing and leaves a well past
           // wellRows spends the panels the hit is broken with and leaves a pit for it -- it ranks after the levelling swaps
           if (bigQA && r < 0 && sh.well && !(add && (add.brokeGarbage || 0) > 0)) { bot._pitAttacks = (bot._pitAttacks || 0) + 1; r = 1 - r; }
@@ -512,7 +522,7 @@ module.exports = function think(cfg) {
             // (topped with no stop time the stack drains: only stop time holds it, so a combo or chain comes before a plain break)
             var drainA = !!toppedReal && !((board.stopTime || 0) + (board.preStopTime || 0));
             var atkNowA = !!(add && c.kind === 'swap' && ((add.chainLength || 0) >= 2 || (add.comboSizes || []).some(function (x) { return x >= 4; })));
-            if (breaksNow || breakLine) return drainA && breaksNow && !atkNowA ? r + 2.5 : r;
+            if (breaksNow || breakLine) return drainA && breaksNow && !atkNowA && !lowA() ? r + 2.5 : r;
             var holdsOn = (props[k] && props[k].src === 'extend') || (r <= -2 && r > -3);
             return holdsOn ? r + 1 : Infinity;
           }
@@ -738,7 +748,7 @@ module.exports = function think(cfg) {
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
             mem: NativeMem(),
             breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
-            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0, useless3: bot._useless3 || 0, toppedFree: bot._toppedFree || 0, survAsked: bot._survivalAsked || 0, busySetups: bot._busySetups || 0, thought: bot._thoughtMoves || 0, thoughtHolds: bot._thoughtHolds || 0, thinkErr: bot._thinkErr || null, pingPong: bot._pingPong || 0, survOver: bot._survivalOver || 0, continuous: bot._continuous || 0, fireWhy: bot._fireWhy || null, arbSrc: bot._arbSrc || null, mode: matchMode, buried: bot._buried || 0, pitAttacks: bot._pitAttacks || 0, backs: bot._backs || 0, digs: bot._digs || 0, flips: bot._flips || 0, volley: bot._volley || 0, spared: bot._spared || 0 } };
+            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0, useless3: bot._useless3 || 0, toppedFree: bot._toppedFree || 0, survAsked: bot._survivalAsked || 0, busySetups: bot._busySetups || 0, thought: bot._thoughtMoves || 0, thoughtHolds: bot._thoughtHolds || 0, thinkErr: bot._thinkErr || null, pingPong: bot._pingPong || 0, survOver: bot._survivalOver || 0, continuous: bot._continuous || 0, fireWhy: bot._fireWhy || null, arbSrc: bot._arbSrc || null, mode: matchMode, buried: bot._buried || 0, pitAttacks: bot._pitAttacks || 0, backs: bot._backs || 0, digs: bot._digs || 0, flips: bot._flips || 0, volley: bot._volley || 0, floored: bot._floored || 0 } };
     } catch (e) {
       if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
       else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e) + ' [inc ' + (board && board.incoming ? board.incoming.length : '?') + ', arr ' + (m.arrivals ? m.arrivals.length : '?') + ']', ms: Date.now() - t0 };
