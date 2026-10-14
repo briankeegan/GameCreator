@@ -68,7 +68,7 @@ h2 { font-family: var(--display); font-size: 1.25rem; margin: 0; text-wrap: bala
     <p class="lede" id="lede"></p>
   </header>
   <section class="scans" aria-label="Scans">
-    <h2>Every scan, 24 combo-storm seeds to frame 60,000</h2>
+    <h2>Every scan of this mode</h2>
     <div id="scans"></div>
   </section>
   <section class="findings" aria-label="What the deaths share" id="findings"></section>
@@ -143,7 +143,7 @@ function legend() {
 // the scans, newest last; the page's own scan marked
 const curDied = D.results.filter(r => r[1] === 'died').map(r => r[0]);
 const alive = D.results.filter(r => r[1] === 'alive').length;
-document.getElementById('lede').textContent = `This scan: ${alive} of ${D.results.length} seeds alive at frame 60,000, level 10, on the server's Lua engine. Each card is a death's last board; pick one to replay its last frames with the bot's decisions, over a timeline of its whole game.`;
+document.getElementById('lede').textContent = `This scan: ${alive} of ${D.results.length} seeds alive at the end of the game, level 10, on the server's Lua engine. Each card is a death's last board; pick one to replay its last frames with the bot's decisions, over a timeline of its whole game.`;
 const scansEl = document.getElementById('scans');
 D.scans.forEach((s, i) => {
   const row = document.createElement('div'); row.className = 'scanrow';
