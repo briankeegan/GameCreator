@@ -205,17 +205,32 @@ local function deathReport(f)
   print("END DEATH REPORT")
 end
 
--- the countdown, nothing pressed; the bot is made during it, not on a live frame
 local fid = -1
-while a.in_countdown or not a.stopWatchIsRunning do
-  if fid < 0 then
-    load(); fid = C.front_new(board, 12, 1)
-    -- the countdown is the bot's time to plan, as it is the player's: one decision of all its frames' work
-    if not os.getenv("GC_NOBOT") then C.front_plan(fid, board, consts.COUNTDOWN_START + consts.COUNTDOWN_LENGTH) end
+-- THE TELEGRAPH, as the game shows it above the attacker: the next block it has queued, its size, and the frames until it reaches this stack
+-- (GarbageQueue: a staged piece leaves frameEarned + STAGING_DURATION later and lands GARBAGE_DELAY_LAND_TIME after that; a piece in transit lands at its delivery clock)
+local function telegraph()
+  local best, og, now_ = nil, foe.outgoingGarbage, foe.stopWatch
+  for _, g in ipairs(og.stagedGarbage) do
+    local eta = g.frameEarned + (GARBAGE_TRANSIT_TIME + GARBAGE_TELEGRAPH_TIME + 1) + GARBAGE_DELAY_LAND_TIME - now_
+    if not best or eta < best.eta then best = { w = g.width, h = g.height, eta = eta } end
   end
+  for clock, list in pairs(og.garbageInTransit) do
+    for _, g in ipairs(list) do
+      local eta = clock - now_
+      if not best or eta < best.eta then best = { w = g.width, h = g.height, eta = eta } end
+    end
+  end
+  if best and best.eta > 0 then C.front_telegraph(fid, best.w, best.h, best.eta) else C.front_telegraph(fid, 0, 0, 0) end
+end
+-- the countdown, nothing pressed; the bot is made during it, not on a live frame
+while a.in_countdown or not a.stopWatchIsRunning do
+  if fid < 0 then load(); fid = C.front_new(board, 12, 1) end
   a:receiveConfirmedInput(KeyDataEncoding.base64encode[1])
   match:run()
 end
+-- the countdown is the bot's time to plan, as it is the player's: one decision of all its frames' work, on the board the game starts with
+-- (nothing is swapped during the countdown, so the plan is made where the first press can be)
+if not os.getenv("GC_NOBOT") then load(); telegraph(); C.front_plan(fid, board, consts.COUNTDOWN_START + consts.COUNTDOWN_LENGTH) end
 -- the rows and garbage colours to come, as the drill deals them (deal.lua),
 -- and how many of each the stack has taken
 ROWS, BRKS = CB.stream(a, 20000)
@@ -246,22 +261,7 @@ while f < FRAMES do
   if (DEATHLOG > 0 or GAMELOG) and C.botTraceOn == 0 then mem = ffi.C.open_memstream(LOGP, LOGN); C.botLogTo = mem; C.botTraceOn = 1 end
   local tk1 = now()
   if not FIXED_BUDGET then C.bot_time(ThinkBudget.ceilingMillis(), lastThought * 1000, ThinkBudget.ceilingMillis() - loadMs) end
-  -- THE TELEGRAPH, as the game shows it above the attacker: the next block it has queued, its size, and the frames until it reaches this stack
-  -- (GarbageQueue: a staged piece leaves frameEarned + STAGING_DURATION later and lands GARBAGE_DELAY_LAND_TIME after that; a piece in transit lands at its delivery clock)
-  do
-    local best, og, now_ = nil, foe.outgoingGarbage, foe.stopWatch
-    for _, g in ipairs(og.stagedGarbage) do
-      local eta = g.frameEarned + (GARBAGE_TRANSIT_TIME + GARBAGE_TELEGRAPH_TIME + 1) + GARBAGE_DELAY_LAND_TIME - now_
-      if not best or eta < best.eta then best = { w = g.width, h = g.height, eta = eta } end
-    end
-    for clock, list in pairs(og.garbageInTransit) do
-      for _, g in ipairs(list) do
-        local eta = clock - now_
-        if not best or eta < best.eta then best = { w = g.width, h = g.height, eta = eta } end
-      end
-    end
-    if best and best.eta > 0 then C.front_telegraph(fid, best.w, best.h, best.eta) else C.front_telegraph(fid, 0, 0, 0) end
-  end
+  telegraph()
   local bits = os.getenv("GC_NOBOT") and 0 or C.front_frame(fid, board)
   local thought = loadMs + (now() - tk1)
   if thought > ThinkBudget.ceilingMillis() then print(string.format("OVER frame %d: %.2f ms (board read %.2f, bot and front %.2f)", f, thought, loadMs, thought - loadMs)) end

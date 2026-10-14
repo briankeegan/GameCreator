@@ -483,7 +483,7 @@ static void fPrepare(Front *F) {
     d[IN_POPLOW + c] = popLow;
   }
   d[IN_SF] = FB->fHOVER; d[IN_SF + 1] = FB->fFLASH; d[IN_SF + 2] = FB->fFACE; d[IN_SF + 3] = FB->fPOP;
-  d[IN_SF + 4] = next ? nb_shake_frames(next->width * next->height) : 0;   // the next slab's landing shake
+  d[IN_SF + 4] = next ? nb_shake_frames(next->width * next->height) : F->tgW > 0 && F->lead > 0 ? nb_shake_frames(F->tgW * F->tgH) : 0;   // the landing shake of the next slab: the queued one, else the block the telegraph shows
   // the pairs the bot may target: the engine would swap them now, and
   // neither panel is unsettled -- a bit per row, for columns 1..5
   uint32_t still[W + 2];
