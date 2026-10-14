@@ -207,7 +207,7 @@ Match.prototype.ask = function (at, board, hold, pend) {
   }
   // (the swaps back the frame loop would play as a hold on this board: those whose pair has not seen the board change since, or has
   // been swapped back already)
-  var AS = this.L.profile && this.L.profile.attack, strictB = !!(AS && AS.strictSwapBack), idsNow = panelIds(board);
+  var AS = this.L.profile && this.L.profile.attack, strictB = !!(AS && AS.strictSwapBack) && !heavyHit(board, pend || this.arrivals, AS), idsNow = panelIds(board);
   var blocked = this.swapHistory.filter(function (e) { return !(changedSince(e, idsNow, strictB) && !e.backs); });
   L.post({ id: L.pending.id, epoch: this.epoch, at: at, lead: at - this.now, ms: L.sync ? 0 : (at - this.now) * this.msPerFrame, posted: Date.now(), allowance: this.allowanceAt(at), backs: blocked.map(function (e) { return e.ids; }), opp: this.opp || null, topped: !!this.toppedNow, realTop: this.realTop, realFtt: this.realFtt,
                     packed: packed, hold: hold, arrivals: arrivals, acted: this.acted });
@@ -312,7 +312,7 @@ Match.prototype.take = function (truth) {
         now = panelIds(board);
         // (strictSwapBack: only what the swap itself clears, or the first step of a planned line that breaks -- once: the swap back
         // of a pair already swapped back is never played)
-        var AS = L.profile && L.profile.attack, strictB = !!(AS && AS.strictSwapBack);
+        var AS = L.profile && L.profile.attack, strictB = !!(AS && AS.strictSwapBack) && !heavyHit(board, arrivals, AS);
         var lineBreak = !!(a.breaks && a.breaks.took) && !!(a.line && a.line.length) && !back.backs;
         var clears = !!(a.diag && a.diag.clears > 0) || (!strictB && !!(a.breaks && a.breaks.took)) || (strictB && lineBreak);
         if (!clears && !(changedSince(back, now, strictB) && !back.backs)) {
@@ -643,6 +643,13 @@ Match.prototype.slack = function (next, P) {
   if (this.toppedNow && !(stop > P.gap)) return null;
   return { gap: P.gap };
 };
+// A HEAVY HIT (survivor_think.js heavyA): the garbage on its way and the next block queued over agro's maxComing rows -- defended as the
+// default defends, its swap-back rule included
+function heavyHit(board, arrivals, A) {
+  var rows = 0; (arrivals || []).forEach(function (a) { rows += a.g ? a.g.height : 0; });
+  rows += ((board.incoming || [])[0] || {}).height || 0;
+  return rows > (A.maxComing === undefined ? 6 : A.maxComing);
+}
 function garbageCells(b) { var n = 0; b.panels.forEach(function (row) { if (row) for (var c = 1; c <= 6; c++) if (row[c] && row[c].isGarbage) n++; }); return n; }
 Match.prototype.calm = function (next) {
   var P = this.L.profile && this.L.profile.pace;
