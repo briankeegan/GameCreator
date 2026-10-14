@@ -1,6 +1,8 @@
 [
+  "Every run before 4d341d5b30 played the Custom 1x1 pattern, not the one named: the menu's right-taps never moved the pattern. The driver now sets it by name and checks the block size before a game starts.",
   "58efc7eb43, large_garbage 0/8 (mean 3,100 frames): the stack is spent before the volley -- with 116 rows queued and the board not topped, it fires combos that break no garbage and goes from 9 rows of panels to 1. The floor is locked nearly every frame by falling garbage, so what is spent never comes back.",
   "e3c43867b6, holding back clears that break nothing while a volley is queued: large_garbage mean 7,400 (from 3,100), factory 6,000 (from 3,700), combo_storm 8,900 (from 4,800). Still 0 of 24.",
   "In the engine a 2-row or taller block drops even while panels move; only a 1-row block waits. A topped board loses health only while nothing on it moves.",
-  "2dd2bc89ce, the 4-row floor with breaks first under it (cancelled after 7 games): large_garbage mean 4,800, 0/7."
+  "2dd2bc89ce, the 4-row floor with breaks first under it (cancelled after 7 games): large_garbage mean 4,800, 0/7.",
+  "4d341d5b30, the first run on real 6x12 blocks (the floor by the lowest column, readiness under it): 0 of 6, mean 7,100 frames. The queue is pinned at 72 slabs (864 rows); the bot is down to one row of panels under a slab when every move dies."
 ]

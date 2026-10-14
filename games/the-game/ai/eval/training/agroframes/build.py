@@ -1,11 +1,12 @@
 # Agro Frames: packs a training run's games into the page -- every frame of each loss with the bot's decisions, a timeline
 # of the whole game, and every training run so far. Each game's frames are a file of their own (games/<n>.json beside the page),
 # loaded when the game is picked.
-# build.py RUN_DIR RUNS_TSV FINDINGS_JSON TEMPLATE OUT_DIR
+# build.py RUN_DIR RUNS_TSV FINDINGS_JSON TEMPLATE OUT_DIR [NAME]   (NAME the bot the page is for, default Agro)
 #   RUN_DIR holds the run's artifacts, one folder per game (training-mode-<n>: results.txt, death.jsonl, death.txt)
 #   RUNS_TSV: run, commit, mode, frames, one game per column as <frames><s|l> (s survived, l lost)
 import gzip, json, os, re, sys, zlib
 run_dir, runs_tsv, findings, tpl, out_dir = sys.argv[1:6]
+name = sys.argv[6] if len(sys.argv) > 6 else 'Agro'
 RESULT = re.compile(r'(\w+) training (lost|survived) frames=(\d+)')
 DECISION = re.compile(r'^(\d+) (\d+)>(\d+)@(\d+) (.*)$')
 
@@ -114,7 +115,7 @@ for l in open(runs_tsv).read().splitlines()[1:]:
                  'games': [[int(g[:-1]), g[-1] == 's'] for g in gs if g]})
 data = {'results': results, 'runs': runs, 'findings': json.load(open(findings)), 'games': games,
         'mode': results[0][3] if results else ''}
-page = open(tpl).read().replace('/*DATA*/null', json.dumps(data, separators=(',', ':')))
+page = open(tpl).read().replace('/*NAME*/', name).replace('/*DATA*/null', json.dumps(data, separators=(',', ':')))
 out = os.path.join(out_dir, 'index.html')
 open(out, 'w').write(page)
 size = sum(os.path.getsize(os.path.join(out_dir, 'games', f)) for f in os.listdir(os.path.join(out_dir, 'games'))) if games else 0
