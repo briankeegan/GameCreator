@@ -462,7 +462,10 @@ module.exports = function think(cfg) {
             // (under the floor -- the lowest column of panels under floorRows -- a line that breaks nothing is not offered: its panels are
             // what the garbage is broken with)
             var floorD = !!(A0.floorRows && lowPeak(board) < A0.floorRows && !m.topped && !(m.realTop >= 11));
-            var kD = arbKey(apD.seq[0]), rD = apD.brk ? (spareD ? -0.6 : 0.3) : (!dangerD && !floorD ? -0.3 : null);
+            // (one that breaks nothing, with garbage on the board, only while no break is in reach: under a slab a break put off is
+            // a row of panels not had)
+            var brkNear = !!(SH.lowestGarbageRow(board) && br && br.depth);
+            var kD = arbKey(apD.seq[0]), rD = apD.brk ? (spareD ? -0.6 : 0.3) : (!dangerD && !floorD && !brkNear ? -0.3 : null);
             if (rD !== null) {
               arbProps = {}; arbProps[kD] = { rank: rD, src: 'fire', line: apD.seq.slice(1), planChain: apD.chain, cells: apD.cells, brk: !!apD.brk };
               var prD = bot.preferRank;
@@ -496,15 +499,21 @@ module.exports = function think(cfg) {
       // before the hold and every move unranked -- the breaks, the lines and the raise still before it
       var downD = !!(defendA && A0.defendFlatten && bot.preferRank && (((board.stopTime || 0) + (board.preStopTime || 0)) > 0 || (!m.topped && !(board.incoming || []).length && !arrivals.length)));
       if (downD) {
+        // (a cell of either board: the game's (panels) or the settled one the search leaves (grid: 0 empty, -2 garbage, 1..7 colours))
+        var cellOf = function (b, r, c) {
+          if (b.panels) { var p = b.panels[r] && b.panels[r][c]; return !p ? 0 : p.isGarbage ? -2 : (p.color || 0); }
+          var v = b.grid[r] && b.grid[r][c]; return v || 0;
+        };
+        var rowsB = function (b) { return b.panels ? b.panels.length : b.grid ? b.grid.length - 1 : 0; };
         var colsOf = function (b) {
-          var hs = [], c, r; if (!b || !b.panels) return null;
-          for (c = 1; c <= 6; c++) { var h = 0; for (r = b.panels.length - 1; r >= 1 && !h; r--) { var p = b.panels[r] && b.panels[r][c]; if (p && (p.isGarbage || p.color)) h = r; } hs.push(h); }
+          var hs = [], c, r, n; if (!b || !(n = rowsB(b))) return null;
+          for (c = 1; c <= 6; c++) { var h = 0; for (r = n - 1; r >= 1 && !h; r--) if (cellOf(b, r, c) !== 0) h = r; hs.push(h); }
           return hs;
         };
         var hollowB = function (b) {
-          var n = 0, c, r; if (!b || !b.panels) return 0;
-          for (c = 1; c <= 6; c++) { var over = false; for (r = b.panels.length - 1; r >= 1; r--) { var p = b.panels[r] && b.panels[r][c]; if (p && p.isGarbage) over = true; else if (over && !(p && p.color)) n++; } }
-          return n;
+          var k = 0, c, r, n; if (!b || !(n = rowsB(b))) return 0;
+          for (c = 1; c <= 6; c++) { var over = false; for (r = n - 1; r >= 1; r--) { var v = cellOf(b, r, c); if (v === -2) over = true; else if (over && !(v > 0)) k++; } }
+          return k;
         };
         var shapeOfB = function (b) { var hs = colsOf(b); return hs ? { spread: Math.max.apply(null, hs) - Math.min.apply(null, hs), hollow: hollowB(b) } : null; };
         var candsF = null, base = null, prFl = bot.preferRank;
