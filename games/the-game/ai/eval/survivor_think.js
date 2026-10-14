@@ -465,7 +465,11 @@ module.exports = function think(cfg) {
             // (one that breaks nothing, with garbage on the board, only while no break is in reach: under a slab a break put off is
             // a row of panels not had)
             var brkNear = !!(SH.lowestGarbageRow(board) && br && br.depth);
-            var kD = arbKey(apD.seq[0]), rD = apD.brk ? (spareD ? -0.6 : 0.3) : (!dangerD && !floorD && !brkNear ? -0.3 : null);
+            // (nor with more garbage on its way and queued than agro's attack takes on, maxComing rows: the panels are spent the moment
+            // the slab lands under them)
+            var comingD = comingRows; (board.incoming || []).forEach(function (g) { comingD += g.height || 0; });
+            var heavyD = comingD > (A0.maxComing === undefined ? 6 : A0.maxComing);
+            var kD = arbKey(apD.seq[0]), rD = apD.brk ? (spareD ? -0.6 : 0.3) : (!dangerD && !floorD && !brkNear && !heavyD ? -0.3 : null);
             if (rD !== null) {
               arbProps = {}; arbProps[kD] = { rank: rD, src: 'fire', line: apD.seq.slice(1), planChain: apD.chain, cells: apD.cells, brk: !!apD.brk };
               var prD = bot.preferRank;
