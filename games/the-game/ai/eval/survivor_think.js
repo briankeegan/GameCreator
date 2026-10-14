@@ -433,12 +433,11 @@ module.exports = function think(cfg) {
         var lmsD = Math.min(A0.defendLineMs || 60, due ? due - Date.now() - 2 * DEADLINE_MARGIN_MS - 100 : 1e9);
         if (lmsD >= 25) {
           if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
-          // (the whole line proven, not its first swap: the frame loop plays the rest of it without asking again, so the line is
-          // played on the engine with the garbage on its way landing, never dead -- at level 10's health, never idle topped out --
-          // and the board it ends on lives the survival horizon after it: continuous)
+          // (the whole line, not its first swap: the frame loop plays the rest of it without asking again, so the line is played on
+          // the engine with the garbage on its way landing and is never dead -- at level 10's health, never idle topped out -- however
+          // many swaps it takes; what the board does after it is the next decisions': continuous)
           var apD = attacker.plan(board, m.hold, { ms: lmsD, width: A0.width || 40, depth: A0.depth || 7, pool: A0.pool || 250, stopAt: 0, minChain: 0,
-                                                   guideChain: A0.guideChain, rate: A0.rate, arrivals: arrivals, breakFirst: !!SH.lowestGarbageRow(board),
-                                                   horizon: bot.SURVIVE_FRAMES || P.prototype.SURVIVE_FRAMES });
+                                                   guideChain: A0.guideChain, rate: A0.rate, arrivals: arrivals, breakFirst: !!SH.lowestGarbageRow(board) });
           // (in time and out of danger as agro's own settings judge them: the attack block is set aside under threat)
           var fitsD = !A0.readyFrames || firstLand === Infinity || (apD.chain || 0) >= 3 || apD.seq.length * 18 + A0.readyFrames <= firstLand;
           var dangerD = CK.dangerWhy(board, realArrivals, comingRows, m.topped, A0) !== '';
