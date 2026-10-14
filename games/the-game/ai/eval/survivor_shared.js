@@ -237,7 +237,7 @@ function touchScore(grid) {
 }
 // stop(): the question is no longer wanted; checked between batches, and
 // throws what it returns (survivor_think.js: PuyoCpu.ABORTED).
-function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop) {
+function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, keep) {
   maxDepth = maxDepth || 3;
   deadline = deadline || Infinity;
   var g = lowestGarbageRow(board);
@@ -279,6 +279,17 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop) {
   // garbage is to a match (touchScore), for as long as `deadline` allows. A
   // line is played on the engine with the stack rising as it does, so one the
   // board would die on before its break is never offered.
+  // A LINE BEGUN IS PLAYED ON (keep: the rest of the last decision's touch line, on this board's rows): while every step of it is still
+  // legal and it still breaks before the board dies, it is the break -- the beam would find another line each decision and finish none
+  if (!(wait > 0) && keep && keep.length) {
+    var kn = root, kp = [];
+    for (i = 0; i < keep.length && kn && !kn.dead; i++) {
+      var km = keep[i], legal = kn.b.legalSwaps().some(function (m) { return m[0] === km[0] && m[1] === km[1]; });
+      if (!legal) { kn = null; break; }
+      kn = S.advanceMany([[kn, 'swap', km, 0]], true)[0]; kp.push(km);
+      if (breaks(kn)) return { depth: 1, moves: (function (o) { o[keep[0][0] + ',' + keep[0][1]] = true; return o; })({}), touch: true, path: kp, kept: true };
+    }
+  }
   if (!(wait > 0)) {
     var tl0 = firsts.filter(function (f) { return f.n && !f.n.dead; }).map(function (f) { return { key: f.key, n: f.n, path: [f.m] }; }), tpath = null;
     // TOUCH_BEAM first; finding nothing, wider (TOUCH_WIDER) while time is left.
