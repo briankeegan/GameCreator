@@ -451,6 +451,20 @@ module.exports = function think(cfg) {
           for (r = 1; r < b.grid.length; r++) for (c = 1; c <= (b.width || 6); c++) { var v = b.grid[r] && b.grid[r][c]; if (v > 0) n++; }
           return n;
         }, panels0 = -1;
+        // A BREAK IN THE TIME A CLEAR BUYS: on the board the clear settles to, a line of floorDepth swaps or fewer that breaks garbage,
+        // its swaps done (swapFrames each) within the stop time and health that board has. Asked of floorAsks moves a decision at most.
+        var floorAsked = 0, floorSeen = {};
+        var breakAfter = function (c) {
+          var key = c.move ? arbKey(c.move) : c.kind;
+          if (key in floorSeen) return floorSeen[key];
+          var sb = bot._settledOf(c), ms = Math.min(A.floorMs || 15, leftMs());
+          if (!sb || !sb.copy || floorAsked >= (A.floorAsks || 4) || ms < 5) return (floorSeen[key] = false);
+          floorAsked++;
+          if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
+          var pl = attacker.plan(sb, m.hold, { ms: ms, width: 6, depth: A.floorDepth || 2, pool: 12, minChain: 99, breakFirst: true, arrivals: realArrivals });
+          var time = (sb.stopTime || 0) + (sb.preStopTime || 0) + (sb.health || 0);
+          return (floorSeen[key] = !!(pl && pl.brk && pl.seq.length * (A.swapFrames || 18) <= time));
+        };
         var lowA = function () {
           if (!A.floorRows || taA) return false;   // (time attack has no garbage to break)
           if (panels0 < 0) panels0 = holdC ? panelsOf(bot._settledOf(holdC)) : 0;
@@ -509,9 +523,10 @@ module.exports = function think(cfg) {
           if (props[k]) r = Math.min(r, props[k].rank);
           // UNDER THE FLOOR (floorRows): a stack of fewer than floorRows rows of panels (counted on the board left alone, settled) breaks
           // the garbage before anything else -- a plain break as much as one that attacks -- and makes stop time only when nothing else
-          // lives: a clear, or a planned fire or extension, that breaks nothing and is no line to a break ranks after the hold
+          // lives: a clear, or a planned fire or extension, that breaks nothing and is no line to a break ranks after the hold, and of
+          // those the ones whose board has a break within the time they buy come first (breakAfter)
           if (lowA() && r < 0.6 && c.kind === 'swap' && !(add && (add.brokeGarbage || 0) > 0) && !(props[k] && props[k].brk) && !(k !== 'raise' && prep.want[k] === true) &&
-              ((props[k] && (props[k].src === 'fire' || props[k].src === 'extend')) || (add && (add.comboSizes || []).length))) { bot._floored = (bot._floored || 0) + 1; r = 0.7; }
+              ((props[k] && (props[k].src === 'fire' || props[k].src === 'extend')) || (add && (add.comboSizes || []).length))) { bot._floored = (bot._floored || 0) + 1; r = breakAfter(c) ? 0.7 : 0.8; }
           // A BIG HIT ON ITS WAY (bigQueueRows rows queued or coming): an attack that breaks nothing and leaves a well past
           // wellRows spends the panels the hit is broken with and leaves a pit for it -- it ranks after the levelling swaps
           if (bigQA && r < 0 && sh.well && !(add && (add.brokeGarbage || 0) > 0)) { bot._pitAttacks = (bot._pitAttacks || 0) + 1; r = 1 - r; }
