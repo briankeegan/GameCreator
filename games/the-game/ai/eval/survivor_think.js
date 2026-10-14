@@ -182,10 +182,10 @@ module.exports = function think(cfg) {
       // attack logic over it lost 7 of 8) -- and the attack plays only on a board with nothing on it or coming. Not in time attack.
       // (attackFirst under threat too: a followed survival line is not played on unranked while a combo, a chain or a ranked line is
       // among the moves -- otherwise the line's next swap, a three, is played without the bigger break being looked at)
-      // (an opponent to send to -- a vs match: under threat the bigger break, the attack line and the ranking that weighs them are for
-      // sending garbage, and with no one to send it to a bigger break spends more panels on the same row of garbage)
-      var oppD = matchMode === 'vs';
-      bot.attackFirst = !!OPTS.attackFirst && (!defendA || (!!A0.defendRanked && oppD));
+      // (panels to spare: the lowest column of panels at floorRows or more. Under it a bigger break burns the panels the next slab is
+      // broken with, so the cheapest break that works comes first and a line that breaks comes after it -- in any match alike)
+      var spareD = !(A0 && A0.floorRows && lowPeak(board) < A0.floorRows);
+      bot.attackFirst = !!OPTS.attackFirst && (!defendA || !!A0.defendRanked);
       // (under threat the moves the attack ranks are played only when proven: what stands unproven past the horizon is the defence's
       // own break, as it always was)
       bot.weakAttacks = !defendA;
@@ -199,7 +199,7 @@ module.exports = function think(cfg) {
         var c = (bot._allCands || []).filter(function (x) { return x.kind === 'swap' && x.move && x.move[0] === mv[0] && x.move[1] === mv[1]; })[0], r = c && (c.added || c.resolved);
         return !!(r && (r.brokeGarbage || 0) > 0 && ((r.chainLength || 0) >= 2 || (r.comboSizes || []).some(function (x) { return x >= 4; })));
       };
-      if (defendA && oppD && A0.defendBigBreaks && bot.preferRank) {
+      if (defendA && spareD && A0.defendBigBreaks && bot.preferRank) {
         var pr0D = bot.preferRank, candsD = null, bigD = false;
         var bigBreak = function (c) { var r = c && (c.added || c.resolved); if (!r || !((r.brokeGarbage || 0) > 0)) return false; return (r.chainLength || 0) >= 2 || (r.comboSizes || []).some(function (x) { return x >= 4; }); };
         var threeBreakD = function (c) { var r = c && (c.added || c.resolved); if (!r || !((r.brokeGarbage || 0) > 0) || (r.chainLength || 0) >= 2) return false; var z = r.comboSizes || []; return z.length > 0 && z.every(function (x) { return x <= 3; }); };
@@ -435,7 +435,7 @@ module.exports = function think(cfg) {
       // outCells or more, or a chain, done before the next garbage leaves no time to break it -- is planned and offered to its ranking:
       // a line that breaks garbage before any single break, a three's included; one that breaks nothing before the breaks only out of
       // danger. The survival search proves its first swap lives like any move; the line is played on from there (arbProps)
-      if (defendA && oppD && A0.defendLines && bot.preferRank) {
+      if (defendA && A0.defendLines && bot.preferRank) {
         var lmsD = Math.min(A0.defendLineMs || 60, due ? due - Date.now() - 2 * DEADLINE_MARGIN_MS - 100 : 1e9);
         if (lmsD >= 25) {
           if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
@@ -455,7 +455,7 @@ module.exports = function think(cfg) {
             // (under the floor -- the lowest column of panels under floorRows -- a line that breaks nothing is not offered: its panels are
             // what the garbage is broken with)
             var floorD = !!(A0.floorRows && lowPeak(board) < A0.floorRows && !m.topped && !(m.realTop >= 11));
-            var kD = arbKey(apD.seq[0]), rD = apD.brk ? -0.6 : (!dangerD && !floorD ? -0.3 : null);
+            var kD = arbKey(apD.seq[0]), rD = apD.brk ? (spareD ? -0.6 : 0.3) : (!dangerD && !floorD ? -0.3 : null);
             if (rD !== null) {
               arbProps = {}; arbProps[kD] = { rank: rD, src: 'fire', line: apD.seq.slice(1), planChain: apD.chain, cells: apD.cells, brk: !!apD.brk };
               var prD = bot.preferRank;
@@ -910,7 +910,7 @@ module.exports = function think(cfg) {
       var noAimed = !!(A && A.threesOnlyTopped && !toppedNow);
       // (defendBigBreaks: the lineup forced here never replaces a bigger break or an attack line the ranking chose, and of the breaks
       // it may force, the bigger is taken)
-      var keepD = defendA && oppD && A0.defendBigBreaks && d && d.kind === 'swap' && d.move && (bigOfMove(d.move) || (arbProps && arbProps[arbKey(d.move)]));
+      var keepD = defendA && spareD && A0.defendBigBreaks && d && d.kind === 'swap' && d.move && (bigOfMove(d.move) || (arbProps && arbProps[arbKey(d.move)]));
       if (!keepD) d = SP.overrule(d, noAimed ? Object.assign({}, prep, { br: null, want: {} }) : prep, bot);   // a lineup while a slab pops (survivor_prefer.js)
       else bot._keptBig = (bot._keptBig || 0) + 1;
       guard3();
