@@ -75,6 +75,11 @@ for g in $(seq 1 "$GAMES"); do
   sleep 3; kill "$CLIENT" 2>/dev/null; wait "$CLIENT" 2>/dev/null
   cp "$OUT" "$OUT_DIR/pa_out-$g.txt"
   r=$(grep -h '^training ' "$OUT" | tail -1); echo "game $g $PATTERN ${r:-no result}" | tee -a "$OUT_DIR/results.txt"
+  # level 10 has one health: the first frame this game's health fell is where a level-10 game is lost
+  [ -s "$OUT_DIR/frames.jsonl.gz" ] && node -e '
+    var L = require("zlib").gunzipSync(require("fs").readFileSync(process.argv[1]), { finishFlush: require("zlib").constants.Z_SYNC_FLUSH }).toString().split("\n"), max = 0, at = null;
+    for (var i = 0; i < L.length && at === null; i++) { try { var r = JSON.parse(L[i]); } catch (e) { continue; } if (r.health > max) max = r.health; else if (r.health < max) at = r.clock; }
+    console.log("game '"$g"' level10 " + (at === null ? "kept all health" : "lost health at frame " + at));' "$OUT_DIR/frames.jsonl.gz" | tee -a "$OUT_DIR/results.txt"
   grep -h 'not in\|no menu\|TIMEOUT' "$OUT" | sed "s/^/game $g: /" >> "$OUT_DIR/results.txt"
 done
 CLIENT=

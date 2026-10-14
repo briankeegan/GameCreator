@@ -75,6 +75,12 @@ module.exports = function think(cfg) {
     function stale() { return !!cfg.abort && Atomics.load(cfg.abort, 0) >= m.id; }
     if (stale()) return { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: 0 };
     var t0 = Date.now(), board = PA.revive(m.packed ? require('v8').deserialize(m.packed) : m.board), arrivals = [], out;
+    // LEVEL 10 HEALTH (planHealth): every board is judged with the health level 10 gives, whatever the game's own -- a topped board
+    // that stops moving with no stop time and no shake left dies that frame. Training gives 51; spending it is a loss at level 10.
+    if (cfg.profile.planHealth) {
+      board.health = Math.min(board.health, cfg.profile.planHealth);
+      board.levelData = Object.assign({}, board.levelData, { maxHealth: Math.min(board.levelData.maxHealth, cfg.profile.planHealth) });
+    }
     // When the answer is due: m.ms from when it was asked (m.posted), so the
     // time a question waited behind the one before counts.
     var due = m.ms > 0 ? (m.posted || t0) + m.ms : 0;
