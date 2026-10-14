@@ -161,7 +161,13 @@ function overrule(d, prep, bot) {
   if (prep.banking && prep.profile && prep.profile.bankForce && d.kind !== 'raise' && bot && bot._canRaise()) return { kind: 'raise', overruled: true };
   if (br && (prep.popping && br.lineup || br.touch) && !want[key(d)]) {
     var keys = Object.keys(want).filter(function (k) { return /^\d+,\d+$/.test(k) && want[k] === true; }), lk = keys[0];
-    // of the breaks wanted, the one the cursor reaches soonest
+    // of the breaks wanted, the best by the caller's order when it gives one (bot.breakOrder: the bigger break first), the one the
+    // cursor reaches soonest among those
+    if (bot && bot.breakOrder && keys.length > 1) {
+      var bestO = Infinity, ord = {};
+      keys.forEach(function (k) { ord[k] = bot.breakOrder(k); if (ord[k] < bestO) bestO = ord[k]; });
+      keys = keys.filter(function (k) { return ord[k] === bestO; }); lk = keys[0];
+    }
     if (bot && bot.nearestFirst && keys.length > 1) {
       var near = Infinity;
       (bot._allCands || []).forEach(function (c) {

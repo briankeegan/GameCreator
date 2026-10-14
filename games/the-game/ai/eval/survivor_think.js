@@ -188,10 +188,19 @@ module.exports = function think(cfg) {
       bot.noThreesUntilTopped = !!OPTS.threesOnlyTopped && (!defendA || !!A0.defendNoBareThrees);
       // THE BIGGER BREAK FIRST (defendBigBreaks): of the breaks the defence's preferences put first, a plain three breaking garbage
       // comes after anything bigger breaking garbage -- a combo or a chain -- when one is among the moves; with none it keeps its place
+      bot.breakOrder = null;
+      var bigOfMove = function (mv) {
+        var c = (bot._allCands || []).filter(function (x) { return x.kind === 'swap' && x.move && x.move[0] === mv[0] && x.move[1] === mv[1]; })[0], r = c && (c.added || c.resolved);
+        return !!(r && (r.brokeGarbage || 0) > 0 && ((r.chainLength || 0) >= 2 || (r.comboSizes || []).some(function (x) { return x >= 4; })));
+      };
       if (defendA && A0.defendBigBreaks && bot.preferRank) {
         var pr0D = bot.preferRank, candsD = null, bigD = false;
         var bigBreak = function (c) { var r = c && (c.added || c.resolved); if (!r || !((r.brokeGarbage || 0) > 0)) return false; return (r.chainLength || 0) >= 2 || (r.comboSizes || []).some(function (x) { return x >= 4; }); };
         var threeBreakD = function (c) { var r = c && (c.added || c.resolved); if (!r || !((r.brokeGarbage || 0) > 0) || (r.chainLength || 0) >= 2) return false; var z = r.comboSizes || []; return z.length > 0 && z.every(function (x) { return x <= 3; }); };
+        bot.breakOrder = function (k) {
+          var c = (bot._allCands || []).filter(function (x) { return x.kind === 'swap' && x.move && x.move[0] + ',' + x.move[1] === k; })[0];
+          return c ? bot.preferRank(c, -1) : 1;
+        };
         bot.preferRank = function (c, i) {
           var r = pr0D.call(this, c, i);
           if (bot._allCands !== candsD) { candsD = bot._allCands; bigD = (candsD || []).some(function (x) { return x.kind === 'swap' && bigBreak(x); }); }
@@ -821,7 +830,11 @@ module.exports = function think(cfg) {
       }
       // (no three is played below the top, so no aimed lineup to a break -- its last swap is a three -- is either)
       var noAimed = !!(A && A.threesOnlyTopped && !toppedNow);
-      d = SP.overrule(d, noAimed ? Object.assign({}, prep, { br: null, want: {} }) : prep, bot);   // a lineup while a slab pops (survivor_prefer.js)
+      // (defendBigBreaks: the lineup forced here never replaces a bigger break or an attack line the ranking chose, and of the breaks
+      // it may force, the bigger is taken)
+      var keepD = defendA && A0.defendBigBreaks && d && d.kind === 'swap' && d.move && (bigOfMove(d.move) || (arbProps && arbProps[arbKey(d.move)]));
+      if (!keepD) d = SP.overrule(d, noAimed ? Object.assign({}, prep, { br: null, want: {} }) : prep, bot);   // a lineup while a slab pops (survivor_prefer.js)
+      else bot._keptBig = (bot._keptBig || 0) + 1;
       guard3();
       guardTopped();
       // A SWAP IS NOT MADE TO BE UNDONE (noPingPong): the pair just swapped is not swapped again within pingFrames unless this one clears
@@ -866,6 +879,19 @@ module.exports = function think(cfg) {
         if (holdFrames < 1 && landIn <= lead) { d = { kind: 'hold', overruled: true }; holdFrames = 0; }
         else if (holdFrames < 1) holdFrames = 0;
       }
+      // THE LAST WORD ON A THREE (defendNoBareThrees): whatever stage chose it, a swap whose clears are plain threes breaking no garbage
+      // is not played on a stack the game does not show topped out (or one row from it, within nearFrames) while holding is proven
+      // to live -- the first swap of a planned chain excepted
+      if (defendA && A0.defendNoBareThrees && d && d.kind === 'swap' && d.move && !(d.src === 'fire' && (d.planChain || 0) >= 2)) {
+        var toppedG = !!m.topped || (m.realTop >= 11 && m.realFtt <= (A0.nearFrames || 90));
+        if (!toppedG && bot.threeOnlySwap(d.move)) {
+          var lvG = bot._lastVerdict, hiG = -1;
+          if (lvG) for (var gi = 0; gi < lvG.cands.length; gi++) if (lvG.cands[gi].kind === 'hold') { hiG = gi; break; }
+          if (hiG >= 0 && (lvG.verdict[hiG] === 'proven' || lvG.verdict[hiG] === 'weak')) {
+            d = { kind: 'hold', overruled: true }; attackLine = null; bot._threeHeldD = (bot._threeHeldD || 0) + 1;
+          }
+        }
+      }
       if (planned && bot.allDoomedNow) planRealUntil = m.at + (cfg.profile.planReal || 120);
       // (GC_BREAK_WHY: every move that breaks garbage, what it clears, the rank it was given, and what was chosen -- to see a three
       // chosen over a bigger break)
@@ -880,7 +906,7 @@ module.exports = function think(cfg) {
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree,
             mem: NativeMem(),
             breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
-            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0, useless3: bot._useless3 || 0, toppedFree: bot._toppedFree || 0, survAsked: bot._survivalAsked || 0, busySetups: bot._busySetups || 0, thought: bot._thoughtMoves || 0, thoughtHolds: bot._thoughtHolds || 0, thinkErr: bot._thinkErr || null, pingPong: bot._pingPong || 0, survOver: bot._survivalOver || 0, continuous: bot._continuous || 0, fireWhy: bot._fireWhy || null, arbSrc: bot._arbSrc || null, mode: matchMode, buried: bot._buried || 0, pitAttacks: bot._pitAttacks || 0, backs: bot._backs || 0, digs: bot._digs || 0, flips: bot._flips || 0, volley: bot._volley || 0, floored: bot._floored || 0, merged: bot._merged || 0, mergeWaits: bot._mergeWaits || 0, defended: bot._defended || 0, defendLines: bot._defendLines || 0, threeAfterBig: bot._threeAfterBig || 0 } };
+            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0, useless3: bot._useless3 || 0, toppedFree: bot._toppedFree || 0, survAsked: bot._survivalAsked || 0, busySetups: bot._busySetups || 0, thought: bot._thoughtMoves || 0, thoughtHolds: bot._thoughtHolds || 0, thinkErr: bot._thinkErr || null, pingPong: bot._pingPong || 0, survOver: bot._survivalOver || 0, continuous: bot._continuous || 0, fireWhy: bot._fireWhy || null, arbSrc: bot._arbSrc || null, mode: matchMode, buried: bot._buried || 0, pitAttacks: bot._pitAttacks || 0, backs: bot._backs || 0, digs: bot._digs || 0, flips: bot._flips || 0, volley: bot._volley || 0, floored: bot._floored || 0, merged: bot._merged || 0, mergeWaits: bot._mergeWaits || 0, defended: bot._defended || 0, defendLines: bot._defendLines || 0, threeAfterBig: bot._threeAfterBig || 0, threeHeldD: bot._threeHeldD || 0, keptBig: bot._keptBig || 0 } };
     } catch (e) {
       if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
       else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e) + ' [inc ' + (board && board.incoming ? board.incoming.length : '?') + ', arr ' + (m.arrivals ? m.arrivals.length : '?') + ']', ms: Date.now() - t0 };
