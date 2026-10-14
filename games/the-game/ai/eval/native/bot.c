@@ -4743,11 +4743,14 @@ static int lineupRank(const int32_t *st, const int32_t *post, const int32_t *sw,
 // slab, soonest first; each is judged on the engine (lineupRank) at a rank
 // that can still win, and a line is ended once it breaks, leaves the slab, or
 // arrives too late to win (outPast: what follows it is later still)
-typedef struct { Best *B; const int32_t *st0; } LuCtx;
+static double readyGuide(const int32_t *st);
+typedef struct { Best *B; const int32_t *st0; double g0; } LuCtx;   // g0: the contact column's distance on the board now
 static int sitLineup(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
   LuCtx *x = ctx;
   luNodes++;
   if (outPast(x->B, LUMOST, at)) return SIT_END;
+  // THE ENGINE IS ASKED OF A BOARD NEARER A BREAK THAN THE BOARD IS NOW (readyGuide), or one that breaks: the rest are grown, not judged
+  if (readyGuide(res + R_INTS) >= x->g0 && !maskBreaks(x->st0, sw, n)) return SIT_GROW;
   // A LINE TURNED DOWN ON THE POSITION STAYS TURNED DOWN WHILE THE POSITION STANDS (raPos): a pop holds one position for hundreds
   // of frames, and the lineup's work goes to the lines it has not judged
   u64 key = 1469598103934665603ull ^ (u64)raPos;
@@ -4766,7 +4769,6 @@ static int sitLineup(const int32_t *res, const int32_t *sw, int n, double at, vo
 #else
 #define LUWHY(code) do { } while (0)
 #endif
-static double readyGuide(const int32_t *st);
 static Dec lineupFirst(Dec d) {
   lineupLast = 0;
   // a lineup is for a board with time: topped with death in sight, staying alive comes first
@@ -4783,7 +4785,7 @@ static Dec lineupFirst(Dec d) {
   // THE LINEUP'S SHARE: what the decision has left once the stages after it keep theirs
   double luEnd = stageLeaves(4);
   int last;
-  LuCtx x = { &B, st0 };
+  LuCtx x = { &B, st0, readyGuide(st0) };
   sitGuide = readyGuide; sitRootKids = -1; sitRootLeft = -1; sitRootLegal = sitRootFilt = sitRootCan = sitRootLate = 0;   // best-first by the contact column's distance, no region cut
   if (paWork < luEnd)
     searchInTime(st0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, lineEnds(0, 0, &last), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0,
