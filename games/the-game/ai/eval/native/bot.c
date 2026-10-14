@@ -4148,8 +4148,7 @@ static double optSoon(Opt *o) {
 static int twosOf(const int32_t *st);
 #define REACHWORK 6000   // the share of the decision's work one option's reach search may spend
 #define REACHSHARE() (OPTWORK * 15 / 100)   // the scramble's share of a dying decision's work: the combo or chain that buys stop time, as the stages have theirs
-static double setupKey(const int32_t *m);
-typedef struct { Atk best; int n; int32_t sw[2 * LINEMAX]; double skey; int sn; int32_t ssw[2 * LINEMAX]; int setups; } ReachCtx;   // the best attack found, and the line that reaches it; idle (setups), the line that leaves the best shape (setupKey)
+typedef struct { Atk best; int n; int32_t sw[2 * LINEMAX]; } ReachCtx;   // the best attack found, and the line that reaches it
 static int sitReach(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
   ReachCtx *x = ctx; (void)at;
   if (res[R_SCOPE] != SC_OK) return SIT_END;   // a break is the break stages'
@@ -4158,7 +4157,6 @@ static int sitReach(const int32_t *res, const int32_t *sw, int n, double at, voi
     if (isAttack(k) && attackFirst(k, x->best) > 0 && n <= LINEMAX) { x->best = k; x->n = n; for (int q = 0; q < 2 * n; q++) x->sw[q] = sw[q]; }
     return SIT_END;   // a clear ends the line
   }
-  if (x->setups && n <= LINEMAX) { double k = setupKey(res + R_INTS); if (k > x->skey) { x->skey = k; x->sn = n; for (int q = 0; q < 2 * n; q++) x->ssw[q] = sw[q]; } }
   return SIT_GROW;
 }
 static void optAhead(Opt *o) {
@@ -4244,20 +4242,13 @@ static int reachOption(Opt *O, int n, Dec d, int frozen) {
       if (okj) n++;
     }
   }
-  static ReachCtx rx; rx.best = atkOf(0, 0); rx.n = 0; rx.sn = 0; rx.setups = !gScramble && !BT->nLine && d.kind != K_RAISE; rx.skey = setupKey(DBASE);
+  static ReachCtx rx; rx.best = atkOf(0, 0); rx.n = 0;
   double work = optLine() - paWork, cap = gScramble ? REACHSHARE() : REACHWORK; if (work > cap) work = cap;
   double rw0 = paWork;
   searchInTime(st, cur[0], cur[1], t, 0, timeLeft(), frozen, can, w, work, sitReach, &rx, 0, 0, 0);
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "REACH scramble %d work %.0f of %.0f time %.0f found %d size %d chain %d\n", gScramble, paWork - rw0, work, timeLeft(), rx.n, rx.best.size, rx.best.chain); }
 #endif
-  if (!rx.n && rx.sn > 0) {   // no attack in the time there is: the idle time goes to the shape the setups value (setupKey), by lines, not one swap
-    Opt *o = &O[n];
-    o->d = mkSwap(rx.ssw[0], rx.ssw[1], V_SETUP, d.mode, d.alive);
-    o->n = rx.sn; o->wait = 0; o->pri = 2; o->stall = 1;
-    for (int q = 0; q < 2 * rx.sn; q++) o->sw[q] = rx.ssw[q];
-    return optJudge(o) ? n + 1 : n;
-  }
   if (!rx.n) return n;
   Opt *o = &O[n];
   o->d = mkSwap(rx.sw[0], rx.sw[1], V_BESTATTACK, d.mode, d.alive);
@@ -4460,14 +4451,14 @@ static Dec arbitrate(Dec d) {
     // setup of many swaps that ends in an attack, played on once chosen -- on the work the decision has left over
     int downtime = d.kind == K_HOLD || ih >= 0 || O[at].early;   // the hold is an option, whatever swap the stages proposed: the setups' condition and this one are the one
     if (!breaking && aloneOnEngine() && aloneDie(1 << 20) > LIVEHORIZON && downtime && !BT->nLine && workLeft() > 4 * jdCost) {
-      int before = n; n = reachOption(O, n, d, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0); if (n > before) { ra = before; if (O[before].d.via == V_SETUP) setupAt = before; }   // a setup line is a setup: it must spare what is kept
+      int before = n; n = reachOption(O, n, d, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0); if (n > before) ra = before;
     }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "SETUPGATE breaking %d alone %d aloneDie %d live %d line %d saSet %d hold %d early %d | idle: downtime %d nLine %d workLeft %.0f jdCost %.0f\n", breaking, aloneOnEngine(), aloneDie(1 << 20), (int)LIVEHORIZON, (int)LINEHORIZON, saSet, d.kind == K_HOLD, O[at].early, d.kind == K_HOLD || ih >= 0 || O[at].early, BT->nLine, workLeft(), jdCost); }
 #endif
     // downtime: the board left alone loses no health within the horizon, or between actions: a line that saves the board is kept and the setup must spare it;
     // the setups stand beside the hold wherever the hold is an option, whatever swap the stages proposed
-    if (!breaking && aloneOnEngine() && (aloneDie(1 << 20) > LIVEHORIZON || saSet) && downtime) { if (setupAt > n) setupAt = n; n = setupOptions(O, n, d); } }
+    if (!breaking && aloneOnEngine() && (aloneDie(1 << 20) > LIVEHORIZON || saSet) && downtime) { setupAt = n; n = setupOptions(O, n, d); } }
   // the line that saves the board: what an option must still be able to play after it (getsBackInTime)
   int32_t sv[2 * LINEMAX]; int sn = 0;
   if (saSet && aloneOnEngine()) {
@@ -4514,7 +4505,7 @@ static Dec arbitrate(Dec d) {
       b->lives, b->breaks, b->rdyKnown ? b->rdy : -1, b->die, b->soonKnown ? b->soon : -1.0, b->cash, b->life, b->hollow,
       O[at].lives, O[at].breaks, O[at].rdyKnown ? O[at].rdy : -1, O[at].die, O[at].soonKnown ? O[at].soon : -1.0, O[at].cash, O[at].life, O[at].hollow); }
 #endif
-  if (best == ra) { if (O[best].n > 1) lineSet(O[best].sw, O[best].n, O[best].d.via == V_SETUP ? LINE_PLAN : LINE_CASH, 0); else BT->nLine = 0; }
+  if (best == ra) { if (O[best].n > 1) lineSet(O[best].sw, O[best].n, LINE_CASH, 0); else BT->nLine = 0; }
   else if (best == ia) lineSet(saLine, saN, saKind, saWait);
   else if (best == ih || best >= setupAt) BT->nLine = 0;
   else if (BT->tgtN > 1) lineSet(BT->tgt, BT->tgtN, BT->tgtKind, BT->tgtWait);
