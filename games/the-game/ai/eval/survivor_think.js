@@ -437,7 +437,10 @@ module.exports = function think(cfg) {
           // with garbage on its way is raised to lowTop before a planned fire)
           // (time attack: no chain going, the stack goes up to calmRaiseTo and the next chain is built from there; a combo only to live)
           // (past lowTop the full raise goes on only while a break is ready for the next slab -- in time attack, none can come)
-          if ((calmA || taA) && topA < (A.calmRaiseTo || 10) && !danger && (taA || readyA || topA < (A.lowTop || 6))) put('raise', -2.5, { src: 'raise', to: A.calmRaiseTo || 10 });
+          // (room for the next slab: a calm stack is raised no higher than leaves the tallest slab this match has sent -- slabGuess
+          // before any, and no more than slabGuess rows of one taller than that -- landing under the top row; in time attack none comes)
+          var calmTo = taA ? (A.calmRaiseTo || 10) : Math.min(A.calmRaiseTo || 10, 11 - Math.min(bot._maxSlab || A.slabGuess || 3, A.slabGuess || 3));
+          if ((calmA || taA) && topA < calmTo && !danger && (taA || readyA || topA < (A.lowTop || 6))) put('raise', -2.5, { src: 'raise', to: calmTo });
           else if (volleyA && topA < (A.volleyTo || 9) && !danger) put('raise', -1.4, { src: 'volley', to: A.volleyTo || 9 });   // material to break the volley with
           else if (topA < (A.lowTop || 6) && !danger) put('raise', -1.4, { src: 'raise', to: A.lowTop || 6 });   // a low stack has nothing to build with, whatever is coming
           else if (topA < raiseCap(board, comingRows, A)) put('raise', -0.3, { src: 'raise', to: raiseCap(board, comingRows, A) });
