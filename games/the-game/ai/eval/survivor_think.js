@@ -496,11 +496,12 @@ module.exports = function think(cfg) {
           if (k !== 'raise' && prep.want[k] === true) r = Math.min(r, -3);
           if (props[k]) r = Math.min(r, props[k].rank);
           // MATERIAL UNDER A VOLLEY (volley): what is queued fills the board by itself, and panels come back only by breaking it -- the
-          // floor is locked while it falls. Not topped out, stop time buys nothing, so a clear that breaks no garbage and is no line to
-          // a break spends what the volley is broken with: it ranks after the hold
+          // floor is locked while it falls, and a break gives back a row of panels for the three it spends. A topped board loses health
+          // only while nothing on it moves, and a pop moves; so a clear that breaks no garbage and is no line to a break spends what the
+          // volley is broken with: it ranks after the hold, and is played only when nothing ranked before it lives
           // (a planned fire or extension that breaks nothing is the same spend, made a swap later)
           var spendA = props[k] && (props[k].src === 'fire' || props[k].src === 'extend') && !props[k].brk;
-          if (volleyA && !toppedReal && r < 0.6 && c.kind === 'swap' && !(add && (add.brokeGarbage || 0) > 0) && !(props[k] && props[k].brk) && (spendA || (add && (add.comboSizes || []).length))) { bot._spared = (bot._spared || 0) + 1; r = 0.7; }
+          if (volleyA && r < 0.6 && c.kind === 'swap' && !(add && (add.brokeGarbage || 0) > 0) && !(props[k] && props[k].brk) && (spendA || (add && (add.comboSizes || []).length))) { bot._spared = (bot._spared || 0) + 1; r = 0.7; }
           // A BIG HIT ON ITS WAY (bigQueueRows rows queued or coming): an attack that breaks nothing and leaves a well past
           // wellRows spends the panels the hit is broken with and leaves a pit for it -- it ranks after the levelling swaps
           if (bigQA && r < 0 && sh.well && !(add && (add.brokeGarbage || 0) > 0)) { bot._pitAttacks = (bot._pitAttacks || 0) + 1; r = 1 - r; }
