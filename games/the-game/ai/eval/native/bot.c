@@ -4598,6 +4598,15 @@ static int breakWithin(const int32_t *st, double left) {
 static int raPos;   // the position (below)
 static int bdNone, bdPos; static double bdTime;   // the position (raPos) and the time left for which breakDeeper found no break within its work
 static double readyGuide(const int32_t *st);
+// THE LINE NEAREST A BREAK: a break ends the search; else the board met whose contact distance is least is kept
+typedef struct { double bestG; int bestN; int32_t sw[2 * LINEMAX]; } NearCtx;
+static int sitNear(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
+  NearCtx *x = ctx; (void)at;
+  if (res[R_SCOPE] == SC_BROKE) return SIT_TAKE;
+  if (res[R_SCOPE] != SC_OK) return SIT_END;
+  if (n <= LINEMAX) { double g = readyGuide(res + R_INTS); if (g < x->bestG) { x->bestG = g; x->bestN = n; for (int k = 0; k < 2 * n; k++) x->sw[k] = sw[k]; } }
+  return SIT_GROW;
+}
 static Dec breakDeeper(Dec d) {
   if (!BIN[IN_HASPA]) return d;
   resolve(DBASE, KBR, 1);
@@ -4611,11 +4620,18 @@ static Dec breakDeeper(Dec d) {
   int32_t sw[2 * LINEMAX]; int n = 0;
   double bd0 = paWork, bdT = timeLeft();
   sitGuide = readyGuide;   // best-first by the contact column's distance: the work reaches the lines of three or four swaps, not every line of two
+  NearCtx nx = { readyGuide(kb0), 0, { 0 } }; nx.bestN = 0;
   int got = searchInTime(kb0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, bdT, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0,
-                         0, 0, kbEnd - paWork, sitBreaks, 0, sw, &n, 0);
+                         0, 0, kbEnd - paWork, sitNear, &nx, sw, &n, 0);
   sitGuide = 0;
   if (!got) {
     bdNone = paWork - bd0 < 0.9 * (kbEnd - bd0); bdPos = raPos; bdTime = bdT;
+    // no break in the time there is: the line that got nearest one is played, and the search made again from where it leaves the board
+    if (nx.bestN > 0 && (lineJudge(nx.sw, nx.bestN, 0), lnoDie(LNO) >= readyBar())) {
+      lineLast = 8; plansDrop();
+      if (nx.bestN > 1) lineSet(nx.sw, nx.bestN, LINE_PLAN, 0); else BT->nLine = 0;
+      return mkSwap(nx.sw[0], nx.sw[1], V_LINEUP, d.mode, d.alive);
+    }
     return d;
   }
   bdNone = 0;
