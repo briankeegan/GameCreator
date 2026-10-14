@@ -1519,7 +1519,7 @@ static Dec decideCore(void) {
   for (int i = 0; i < nPool; i++) if (poolBreaks(&POOL[i])) { poolBreak = 1; break; }
   int topped = BIN[IN_TOPPED] != 0;
   int readyBase = slabReadyBoard(base) && heldReady();
-  int readyFirst = !poolBreak && !topped && !readyBase;   // the slab-ready record is read
+  int readyFirst = !poolBreak && !topped && !readyBase && !(BT->nLine > 1 && BT->lineKind == LINE_PLAN);   // the slab-ready record is read; a plan kept is played to its end, not made again
   optSkip = 4 | (readyFirst ? 0 : 8);
   baseReady = BIN[IN_INCOMING] > 0 && readyBase;
   baseLanding = landingOf(base);
@@ -2611,8 +2611,8 @@ static void disturbed(const int32_t *a, const int32_t *b, uint32_t *out) {
 // work goes to the lines asked, not to the many offered and never reached.
 // LINEMAX, SITCAP (lines played) and SITKIDS (steps offered) are only how
 // much a line and the heap hold.
-#define SITCAP 1024
-#define SITKIDS 32768
+#define SITCAP 4096
+#define SITKIDS 131072
 // WHAT THE SEARCH'S OWN BOOKKEEPING COSTS, as work: each step taken off the
 // heap (its board copied out, played, hashed) and each line kept (its board
 // copied in, its disturbed cells and settle found). Calibrated on drill seed 4 so the
@@ -2636,7 +2636,7 @@ static void disturbed(const int32_t *a, const int32_t *b, uint32_t *out) {
 // instructions a unit there (26.58e9 over 23.43e6 units)
 #define SITLEGALWORK 1.9
 #define SITNODEWORK 1
-#define SITHASH 2048
+#define SITHASH 16384
 typedef struct { int parent, n, r, c, stopped; double t, settled, left; uint32_t dist[WMAX]; int32_t rh[R_INTS]; } SitNode;   // stopped: a step before cleared, so the board is stopped; rh: the step's resolve record
 typedef struct { int parent, r, c; double t, key; } SitKid;   // a step offered: the line it grows (a SitNode), when it is pressed, and the key it is popped by (the press frame; with a guide, the board's guide first)
 typedef struct { double t; int k; } SitHeap;   // the heap holds each step's press frame beside it, so it sorts without reading the steps
