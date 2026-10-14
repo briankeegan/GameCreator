@@ -4460,14 +4460,14 @@ static Dec arbitrate(Dec d) {
     // setup of many swaps that ends in an attack, played on once chosen -- on the work the decision has left over
     int downtime = d.kind == K_HOLD || ih >= 0 || O[at].early;   // the hold is an option, whatever swap the stages proposed: the setups' condition and this one are the one
     if (!breaking && aloneOnEngine() && aloneDie(1 << 20) > LIVEHORIZON && downtime && !BT->nLine && workLeft() > 4 * jdCost) {
-      int before = n; n = reachOption(O, n, d, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0); if (n > before) ra = before;
+      int before = n; n = reachOption(O, n, d, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0); if (n > before) { ra = before; if (O[before].d.via == V_SETUP) setupAt = before; }   // a setup line is a setup: it must spare what is kept
     }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "SETUPGATE breaking %d alone %d aloneDie %d live %d line %d saSet %d hold %d early %d | idle: downtime %d nLine %d workLeft %.0f jdCost %.0f\n", breaking, aloneOnEngine(), aloneDie(1 << 20), (int)LIVEHORIZON, (int)LINEHORIZON, saSet, d.kind == K_HOLD, O[at].early, d.kind == K_HOLD || ih >= 0 || O[at].early, BT->nLine, workLeft(), jdCost); }
 #endif
     // downtime: the board left alone loses no health within the horizon, or between actions: a line that saves the board is kept and the setup must spare it;
     // the setups stand beside the hold wherever the hold is an option, whatever swap the stages proposed
-    if (!breaking && aloneOnEngine() && (aloneDie(1 << 20) > LIVEHORIZON || saSet) && downtime) { setupAt = n; n = setupOptions(O, n, d); } }
+    if (!breaking && aloneOnEngine() && (aloneDie(1 << 20) > LIVEHORIZON || saSet) && downtime) { if (setupAt > n) setupAt = n; n = setupOptions(O, n, d); } }
   // the line that saves the board: what an option must still be able to play after it (getsBackInTime)
   int32_t sv[2 * LINEMAX]; int sn = 0;
   if (saSet && aloneOnEngine()) {
