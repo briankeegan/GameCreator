@@ -1263,12 +1263,17 @@ static JLOCAL int raiseGate;   // the gate that decided raiseMode, for the trace
 // READY FOR THE WAVE: the slab queued, placed where it rests (slabReadyHook);
 // with none queued yet -- the opening, before the first wave is seen -- a slab
 // the width of the board on the stack, wherever the wave lands
+// THE SLAB A BOARD IS READIED FOR, the one answer every caller reads: the slab queued; before a wave reaches the stack, the block the game shows queued
+// for it (the attacker's telegraph, front_telegraph); with none shown, a slab the width of the board
+static void waveSlab(int width, int *w, int *h, int *c) {
+  if (BIN[IN_INCOMING] > 0) { *w = (int)BIN[IN_SLABW]; *h = (int)BIN[IN_SLABH]; *c = (int)BIN[IN_SLABC]; }
+  else if (BIN[IN_TGW] > 0 && BIN[IN_LEAD] > 0) { *w = (int)BIN[IN_TGW]; *h = (int)BIN[IN_TGH]; *c = (int)BIN[IN_TGC]; }
+  else { *w = width; *h = 1; *c = 1; }
+}
 static int waveReady(const int32_t *st) {
   if (BIN[IN_INCOMING] > 0) return slabReadyHook(st);
   if (TFLAG(TF_SLAB)) return BIN[IN_T + 6] != 0;
-  // before a wave reaches the stack: the block the game shows queued for it (the attacker's telegraph, front_telegraph); with none shown, a slab the width of the board
-  if (BIN[IN_TGW] > 0 && BIN[IN_LEAD] > 0) { SLABW = (int)BIN[IN_TGW]; SLABH = (int)BIN[IN_TGH]; SLABC = (int)BIN[IN_TGC]; }
-  else { SLABW = st[O_W]; SLABH = 1; SLABC = 1; }
+  waveSlab(st[O_W], &SLABW, &SLABH, &SLABC);
   return slabReady(st);
 }
 static int raiseModeOf(const int32_t *base, int poolBreak) {
@@ -1483,6 +1488,7 @@ static double dcCandMs;   // GC_WORKSTAT: the pool's share of decideRuled
 // every stage asks it; a hold's claim is the board's own and stands
 static int swapBreaks(Dec d);
 static int poolBreaks(const Cand *pc) { return pc->res.broke && (pc->kind != K_SWAP || swapBreaks(mkSwap(pc->sr, pc->sc, V_BREAKREACH, 0, 0))); }
+static int openingReadyLine(int32_t *sw, int *n);
 static Dec decideCore(void) {
   raiseWaiting = 0;
   int32_t *base = IN;
@@ -1685,6 +1691,13 @@ static Dec decideCore(void) {
   probeBreaks();
 #endif
   if (readyFirst) {
+    // a line ready for the block the telegraph shows, when the masks find one; the option search's own line stands behind it
+    { int32_t osw[2 * LINEMAX]; int on = 0;
+      if (openingReadyLine(osw, &on) && on > 0 && routeLives(osw, on)) {
+        if (on > 1) lineSet(osw, on, LINE_PLAN, 0); else BT->nLine = 0;
+        BT->wantRaise = 0; clearRaiseFrames = 1; BT->counts[C_READIEDFIRST]++;
+        return mkSwap(osw[0], osw[1], V_READYFIRST, mode, alive);
+      } }
     mainOptions(base, deadline, lookDepth, digging);
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "READYFIRST found %d\n", haveRecIn(ODATA, 3) ? (int)recIn(ODATA, 3)[F_NSW] : -1); }
@@ -5203,7 +5216,7 @@ static Dec noStall(Dec d) {
 // already made does not; the soonest press only orders between equals
 #define READYGUIDENONE 8
 static double readyGuide(const int32_t *st) {
-  SLABW = (int)BIN[IN_SLABW]; SLABH = (int)BIN[IN_SLABH]; SLABC = (int)BIN[IN_SLABC];
+  waveSlab(st[O_W], &SLABW, &SLABH, &SLABC);
   int placed = slabPlace(st, SLABST);
   const int32_t *b = placed > 0 ? SLABST : st;
   int W = b[O_W];
@@ -5286,6 +5299,29 @@ static int readiesLine(Dec d, int dieRef, int spare, int32_t *sw, int *n, int *r
   if (!x.ok) return 0;
   *r = x.r; *c = x.c;
   return 1;
+}
+// THE OPENING'S READINESS FOR THE BLOCK THE TELEGRAPH SHOWS: before the first wave is queued the engine has no slab to land, so the line is searched on the
+// masks -- the shared search in time, best-first by readyGuide, every step pressed before the slab lands, the first the masks call ready for the
+// block (waveReady, the arbiter's own word) taken. 1: found (sw, n)
+static int sitWave(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
+  (void)sw; (void)n; (void)at; (void)ctx;
+  if (res[R_SCOPE] != SC_OK) return SIT_END;   // a break or a clear is the break stages'
+  return waveReady(res + R_INTS) ? SIT_TAKE : SIT_GROW;
+}
+static int openingReadyLine(int32_t *sw, int *n) {
+  extern PATLS double paWork;
+  if (!(BIN[IN_TGW] > 0 && BIN[IN_LEAD] > 0) || BIN[IN_INCOMING] > 0 || TFLAG(TF_SLAB) || !BIN[IN_HASPA]) return 0;
+  static ST oq0; int32_t cur0[2], t0; uint32_t can0[WMAX]; Wait wt0[32][WMAX];
+  if (lineState(0, 0, oq0, can0, wt0, cur0, &t0) != 0 || paWork >= optLine()) return 0;
+  if (waveReady(oq0)) return 0;   // the board is ready as it stands
+  *n = 0;
+  sitGuide = readyGuide;
+  int got = searchInTime(oq0, cur0[0], cur0[1], t0, 0, BIN[IN_LEAD], 0, can0, wt0, optLine() - paWork, sitWave, 0, sw, n, 0);
+  sitGuide = 0;
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "OPENREADY lands in %.0f: %s", BIN[IN_LEAD], got ? "found" : "none"); if (got) for (int k = 0; k < *n; k++) fprintf(BLOG, " %d,%d", sw[2 * k], sw[2 * k + 1]); fprintf(BLOG, "\n"); }
+#endif
+  return got;
 }
 static Dec readyWhenLands(Dec d) {
   if (d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA]) return d;
