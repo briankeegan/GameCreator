@@ -2727,10 +2727,11 @@ static void sitWarm(void) {
     __builtin_memset(m->kd, 0, sizeof(SitKid) * SITKIDS); __builtin_memset(m->hp, 0, sizeof(SitHeap) * SITKIDS); __builtin_memset(m->hk, 0, sizeof(u64) * SITHASH); __builtin_memset(m->hg, 0, sizeof(uint32_t) * SITHASH);
   }
 }
+static JLOCAL double (*sitGuide)(const int32_t *st);
 static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double notBefore, double left, int frozen,
                         const uint32_t *can0, Wait (*wait0)[WMAX], double work, SitAccept accept, void *ctx,
                         int32_t *sw, int *nOut, double *atOut) {
-  if (sitLevel >= SITLEVELS) return 0;   // nested past its memory: no answer, never a corrupted one
+  if (sitLevel >= SITLEVELS) { sitGuide = 0; return 0; }   // nested past its memory: no answer, never a corrupted one
 #ifndef __wasm__
   // GC_WORKSTAT: the search's milliseconds per work, beside the decision's (WORK lines) -- SITPOPWORK's calibration
   static int calOn = -1; if (calOn < 0) calOn = 0;
@@ -2740,9 +2741,9 @@ static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double no
   // optional work stops (optLine; a parallel task's own share, taskEnd) -- a
   // search that ran on would cut the decision
   { double room = workLeft(); if (work > room) work = room; }
-  if (!(work > 0)) return 0;
+  if (!(work > 0)) { sitGuide = 0; return 0; }
   SitMem *m = sitMem(sitLevel);
-  if (!m) return 0;
+  if (!m) { sitGuide = 0; return 0; }
   // the caller's level, kept to be put back
   ST *pst = SITST; SitNode *pnd = SITND; SitKid *pkd = SITKD; SitHeap *php = SITHP; u64 *phk = SITHK; uint32_t *phg = SITHG, pgen = SITGEN; int32_t *pt = SITT, *pr = SITR, *pl = SITL; double pleft = sitLeft;
   SITST = m->st; SITND = m->nd; SITKD = m->kd; SITHP = m->hp; SITHK = m->hk; SITT = m->t; SITR = m->r; SITL = m->l;
@@ -2765,7 +2766,6 @@ static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double no
 // changes: the same steps, the same bounds, the same accept.
 #define SITGUIDEWORK 30
 #define SITGUIDEKEY 1e4
-static JLOCAL double (*sitGuide)(const int32_t *st);
 static JLOCAL int sitRootLegal, sitRootFilt, sitRootCan, sitRootLate;
 static JLOCAL int sitRootKids; static JLOCAL double sitRootLeft;
 static JLOCAL int (*sitFilter)(const int32_t *st, int r, int c);   // a search that matters only in one region offers no swap outside it: the cost is not paid for a child that is then cut
@@ -2917,7 +2917,9 @@ static void probeBreaks(void) {
 // with a small share of work, since it is asked of every option and
 // candidate (bit.c anyBreakOf, and through it slabReady's slab placed where it rests)
 #define BREAKOFWORK 240
+static double readyGuide(const int32_t *st);
 static int inTimeOfWork(const int32_t *st, SitAccept want, double work) {
+  if (want == sitBreaks) sitGuide = readyGuide;   // a break is looked for best-first, by the contact column's distance
   return searchInTime(st, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, framesToDeath(tallestBoard(st), BIN[IN_FPR]),
                       BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, 0, 0, work, want, 0, 0, 0, 0);
 }
@@ -4586,6 +4588,7 @@ static int breakWithin(const int32_t *st, double left) {
   if (KBR[R_SCOPE] == SC_BROKE) return 1;
   if (KBR[R_SCOPE] != SC_OK) return 0;
   static JLOCAL ST kb0; stcpy(kb0, KBR + R_INTS);
+  sitGuide = readyGuide;
   return searchInTime(kb0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, left, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0,
                       0, 0, BREAKWORK, sitBreaks, 0, 0, 0, 0);
 }
@@ -4927,6 +4930,7 @@ static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc) {
     { int32_t bsw[2 * LINEMAX]; int bn; double bat;
       int frozen = BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0;
       double start = n ? last + stepGap(frozen) : 0;
+      sitGuide = readyGuide;
       if (searchInTime(RBL, cur[0], cur[1], start, t, die - 1, frozen, 0, 0, READYWORK, sitBreaks, 0, bsw, &bn, &bat)) { *br = bsw[0]; *bc = bsw[1]; found = 1; } }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
