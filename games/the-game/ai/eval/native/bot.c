@@ -2749,6 +2749,7 @@ static void sitWarm(void) {
   }
 }
 static JLOCAL double (*sitGuide)(const int32_t *st);
+static JLOCAL Wait (*sitWait)[WMAX];   // this search's root: the frame each pair of the board it starts from settles
 // A SEARCH THAT GOES ON FROM ONE FRAME TO THE NEXT: the game holds a computer player to 8 ms a frame, and the bot waits a reaction between its
 // decisions, so a search that did not finish in a frame's work is not made again from nothing the next: its lines, its steps waiting and the
 // boards it has seen are kept (a set of memory of its own) and the next frame's work grows them further, for as long as the position stands.
@@ -2776,6 +2777,7 @@ static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double no
   SitMem *m = sitMem(slot ? SITLEVELS + slot - 1 : sitLevel);
   if (!m) { sitGuide = 0; return 0; }
   sitKeepIn = slot && SITKEEP[slot - 1].valid && SITKEEP[slot - 1].key == kkey;
+  Wait (*pwait)[WMAX] = sitWait; sitWait = wait0;
 #ifndef __wasm__
   if (botTraceOn && slot) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "RESUME slot %d %d\n", slot, sitKeepIn); }
 #endif
@@ -2788,6 +2790,7 @@ static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double no
   sitLevel++;
   int got = sitRun(st0, cr, cc, t0, notBefore, left, frozen, can0, wait0, work, accept, ctx, sw, nOut, atOut);
   sitLevel--;
+  sitWait = pwait;
   sitKeepP = 0; sitKeepIn = 0;
 #ifndef __wasm__
   if (calTop && !inWorker) { calMs += NOWMS2() - cal0; calW += paWork - calw0; if (++calN % 20000 == 0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "CAL sit %.3f ms/kwork over %.0f kwork\n", calMs / (calW / 1000), calW / 1000); } }
@@ -2816,6 +2819,17 @@ static void sitOffer(int i, int *nk, int *nh, double notBefore, int frozen, cons
   if (sitGuide) { gp = sitGuide(SITST[i]); paWork += SITGUIDEWORK; }
   int m = legal(SITST[i], SITL);
   paWork += SITLEGALWORK;
+  // WHEN EACH CELL THE LINE DISTURBED IS STILL: the latest settle among the steps that touched it, from every step of the line
+  double cellT[32][WMAX]; int hasCellT = 0;
+  if (!root && nd->n > 1) {
+    hasCellT = 1;
+    for (int r2 = 0; r2 < 32; r2++) for (int c2 = 0; c2 < WMAX; c2++) cellT[r2][c2] = 0;
+    for (int j = i; SITND[j].n > 0; j = SITND[j].parent)
+      for (int c2 = 1; c2 <= BW; c2++) {
+        uint32_t mk = SITND[j].dist[c2];
+        while (mk) { int rb = __builtin_ctz(mk); mk &= mk - 1; if (rb < 32 && SITND[j].settled > cellT[rb][c2]) cellT[rb][c2] = SITND[j].settled; }
+      }
+  }
   for (int q = 0; q < m && *nk < SITKIDS; q++) {
     int r = SITL[2 * q], c = SITL[2 * q + 1];
     if (r > 31) continue;
@@ -2826,6 +2840,8 @@ static void sitOffer(int i, int *nk, int *nh, double notBefore, int frozen, cons
     double ready = notBefore;
     if (root && wait0 && nd->t + wait0[r][c] > ready) ready = nd->t + wait0[r][c];
     if (!root && ((nd->dist[c] | nd->dist[c + 1]) & bit) && nd->settled > ready) ready = nd->settled;
+    if (hasCellT) { if (cellT[r - 1][c] > ready) ready = cellT[r - 1][c]; if (cellT[r - 1][c + 1] > ready) ready = cellT[r - 1][c + 1]; }
+    if (!root && sitWait && SITND[0].t + sitWait[r][c] > ready) ready = SITND[0].t + sitWait[r][c];   // panels the board has yet to settle, whatever the line did
     double at = stepPress(start, nd->r, nd->c, r, c, ready);
     if (at > bound) { if (root) sitRootLate++; continue; }
     int k = (*nk)++;
@@ -2884,7 +2900,7 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
       for (int k = 0; k < R_INTS; k++) SITND[j].rh[k] = SITR[k];
       SITND[j].parent = kd.parent; SITND[j].n = n; SITND[j].r = kd.r; SITND[j].c = kd.c; SITND[j].t = kd.t;
       SITND[j].stopped = pa->stopped || SITR[R_TOTAL] > 0;
-      SITND[j].settled = kd.t + (SITR[R_TOTAL] > 0 ? SITR[R_FRAMES] : quietSettle(SITST[kd.parent], kd.r, kd.c, SITR + R_INTS));
+      SITND[j].settled = kd.t + (SITR[R_TOTAL] > 0 ? 4 + resolveFramesOf(SITR[R_TOTAL], 0) + 9 : quietSettle(SITST[kd.parent], kd.r, kd.c, SITR + R_INTS));
       // A LINE'S OWN CLEARS MOVE THE TIME THERE IS: topped, a clear holds the
       // board while it settles; and a clear that lowers the stack moves its
       // loss of health later -- the break looked for while it resolves

@@ -1136,7 +1136,10 @@ static int lineStateRun(const int32_t *steps, int n, int landing, int32_t *masks
   for (int r = 0; r < 32; r++) for (int c = 0; c < WMAX; c++) wait[r][c] = 0;
   for (int c = 1; c < W; c++)
     for (int r = 1; r <= USB->height && r <= 31; r++)
-      if (nb_can_swap(USB, r, c)) { can[c] |= 1u << (r - 1); wait[r][c] = (Wait)pairWait(&LSET, r, c); }
+    {
+      wait[r][c] = (Wait)pairWait(&LSET, r, c);   // every pair's, a swappable one or not: a later step of a line reaches pairs the board has yet to free
+      if (nb_can_swap(USB, r, c)) can[c] |= 1u << (r - 1);
+    }
   cur[0] = LNB->curRow; cur[1] = LNB->curCol; *t = out[8];
   return masks[O_BAD] ? -1 : 0;
 }
