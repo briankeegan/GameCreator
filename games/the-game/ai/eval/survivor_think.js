@@ -801,10 +801,10 @@ module.exports = function think(cfg) {
       // THE AIM (gambit): the facts of both boards, the first rule whose `when` holds, and a line that makes what its aim asks by its
       // deadline (else what its `else` asks). The line's first swap ranks before every other move; the survival search alone stands
       // over it, so the aim is chased while the board lives, under garbage or not. The rest of the line is played on (attackLine).
-      bot._gambit = null; bot._gambitRaise = 0;
+      bot._gambit = null; bot._gambitRaise = 0; bot._gambitLines = null;
       if (gambitRules) {
         var GP = cfg.profile.gambit, FG = { us: GAMBIT.facts(board, arrivals, m.topped), enemy: GAMBIT.enemyFacts(m.opp) };
-        var apG = null, exG = null, tablesG = gambitRules.get(m.opp && m.opp.name), pickG = GP.mode ? GAMBIT.named(tablesG, GP.mode) : GAMBIT.choose(tablesG, FG), lineG = null, setupG = null, readyG = false, triedG = 0;
+        var apG = null, exG = null, tablesG = gambitRules.get(m.opp && m.opp.name), pickG = GP.mode ? GAMBIT.named(tablesG, GP.mode) : GAMBIT.choose(tablesG, FG), lineG = null, setupG = null, readyG = false, playG = null, triedG = 0;
         if (pickG) {
           var keepG = pickG.rule.keep || tablesG.keep || null, keepF = keepG ? function (grid) { return GAMBIT.keeps(keepG, grid); } : null;
           // THE PRIORITY LIST (aims): the first entry a line can make in time is played; an entry "default" or "hold" ends the list there
@@ -847,24 +847,37 @@ module.exports = function think(cfg) {
                                                        aims: predsG, by: byG || undefined, keep: keepF, readyAt: readyAtG, near: function (made) { return GAMBIT.nearList(aimsG, made); } });
               // (the plan's line wins over a falling chain's link only when its entry comes first in the list)
               if (apG.seq.length && apG.aimIndex >= 0 && (!lineG || apG.aimIndex < lineG.aimIndex)) lineG = { ap: apG, aimIndex: apG.aimIndex };
-              // NO ENTRY IN TIME: the list is still what is played toward -- the line that comes nearest its first entry (under garbage, one
-              // that breaks it too), else, with no garbage to break, the setup the search found; under garbage, the line in time that breaks
-              // the most of it (a plain three when nothing better is in time), and only with none of those the default's own move
-              else if (!lineG && ((apG.nearest && apG.nearest.seq.length) || (exG && exG.nearest))) {
-                // (the nearer of the plan's line and the falling chain's -- or the popping slab's line-up)
-                var nx = exG && exG.nearest, np = apG.nearest && apG.nearest.seq.length ? apG.nearest : null;
-                lineG = nx && (!np || nx.near > np.near) ? { ap: nx, aimIndex: -1, near: nx.near, extend: true } : { ap: np, aimIndex: -1, near: np.near };
-              }
-              else if (!lineG && underG && apG.quick && apG.quick.seq.length) { lineG = { ap: apG.quick, aimIndex: -1, quick: true }; }
-              // (garbage on its way: the setup is the READY play -- the swap after which the next block can be broken once it lands --
-              // and none while the board is ready already; nothing on its way, the setup toward the list)
-              else if (!lineG && !underG && readyAtG !== null) {
-                var rdG = arrivals.length ? attacker.readyFor(board, m.hold, arrivals, { ms: Math.max(20, Math.min(60, leftG())) }) : null;
-                if (rdG && !rdG.ready && rdG.setup) { setupG = rdG.setup; readyG = true; }
-              }
-              else if (!lineG && !underG && apG.setup) setupG = apG.setup;
             }
-            else if (!lineG && exG && exG.nearest) lineG = { ap: exG.nearest, aimIndex: -1, near: exG.nearest.near, extend: true };
+            // NO ENTRY IN TIME: the plays of the plan, in their order, each by its deadline (plans/plays.md):
+            //   the nearest attack -- the nearer of the plan's line and the falling chain's or the popping slab's line-up; under garbage one
+            //     that breaks it too, garbage on its way one that leaves the next block's break (READY)
+            //   garbage on the board: BREAK LINE -- the planner's line in time that breaks the most (a plain three when nothing better is in
+            //     time), else the break search's (SH.breakMoves: a line it offers never dies before its break); the board being lost: SCRAMBLE,
+            //     the line done before it is that buys the most stop time, else CLEAR, the one that leaves the lowest stack
+            //   garbage on its way: READY -- the swap after which the next block breaks once it lands; else LEVEL -- the swap that clears
+            //     nothing and leaves less hollow, then a flatter stack, settled before the block lands
+            //   nothing on its way: SETUP toward the list
+            //   and only with none of those the default's own move
+            var nx = exG && exG.nearest, np = apG && apG.nearest && apG.nearest.seq.length ? apG.nearest : null;
+            var dyingG = !!(FG.us.topped || CK.toppedOrNearly(board, m.topped));
+            if (lineG) {}
+            else if (nx || np) lineG = nx && (!np || nx.near > np.near) ? { ap: nx, aimIndex: -1, near: nx.near, extend: true } : { ap: np, aimIndex: -1, near: np.near };
+            else if (underG) {
+              var brG = br && br.depth ? (br.path && br.path.length ? br.path[0] : Object.keys(br.moves || {}).map(function (k) { return k.split(',').map(Number); })[0]) : null;
+              if (apG && apG.quick && apG.quick.seq.length) { lineG = { ap: apG.quick, aimIndex: -1, quick: true }; playG = 'break line'; }
+              else if (brG) { setupG = brG; playG = 'break search'; }
+              else if (dyingG && apG && apG.stopBest) { lineG = { ap: apG.stopBest, aimIndex: -1 }; playG = 'scramble'; }
+              else if (dyingG && apG && apG.lowest) { lineG = { ap: apG.lowest, aimIndex: -1 }; playG = 'clear'; }
+            }
+            else if (readyAtG !== null) {
+              var rdG = arrivals.length && attacker ? attacker.readyFor(board, m.hold, arrivals, { ms: Math.max(20, Math.min(60, leftG())) }) : null;
+              if (rdG && !rdG.ready && rdG.setup) { setupG = rdG.setup; readyG = true; playG = 'ready'; }
+              else {
+                var lvG = attacker ? attacker.level(board, m.hold, arrivals, { by: readyAtG || undefined }) : null;
+                if (lvG) { setupG = lvG.move; playG = 'level'; }
+              }
+            }
+            else if (apG && apG.setup) { setupG = apG.setup; playG = 'setup'; }
           }
           // THE RAISE (the file's or the rule's `raise: { to }`): below `to` rows, not under garbage, not topped and no chain running, the stack
           // is raised first -- held down to `to` in one press, not a row a decision -- and the list played from the panels it brings
@@ -877,17 +890,37 @@ module.exports = function think(cfg) {
           var waitG = lowG && !upG && !(lineG && lineG.extend);
           if (waitG) { lineG = null; setupG = null; }
           var kG = lineG ? arbKey(lineG.ap.seq[0]) : setupG ? arbKey(setupG) : null, holdG = !lineG && (endG === 'hold' || waitG), prG = bot.preferRank || function () { return Infinity; };
-          if (kG || holdG || upG) {
+          // GAMBIT RANKS EVERY PLAY IT FOUND, the one chosen first and the rest in the plays' order after it, so a play the survival search
+          // will not prove is followed by gambit's next one, never by another stage's: the entries' lines in the list's order, the nearest
+          // attacks, the break line, the break search's first swaps, scramble, clear, ready, level, the setup, a hold last. Each first
+          // swap carries the rest of its line (linesG), played on if it is the one played.
+          var orderG = [], linesG = {};
+          var addG = function (mv, seq) { if (!mv) return; var k = mv === 'raise' || mv === 'hold' ? mv : arbKey(mv); if (orderG.indexOf(k) < 0) { orderG.push(k); if (seq && seq.length > 1) linesG[k] = seq.slice(1); } };
+          if (upG) addG('raise');
+          if (holdG) addG('hold');
+          if (lineG) addG(lineG.ap.seq[0], lineG.ap.seq);
+          if (setupG) addG(setupG);
+          if (!upG && !waitG) {
+            if (apG && apG.perAim) apG.perAim.forEach(function (pa) { if (pa && pa.seq.length) addG(pa.seq[0], pa.seq); });
+            if (exG && exG.seq.length && exG.aimIndex >= 0) addG(exG.seq[0], exG.seq);
+            if (nx) addG(nx.seq[0], nx.seq);
+            if (np) addG(np.seq[0], np.seq);
+            if (underG) {
+              if (apG && apG.quick && apG.quick.seq.length) addG(apG.quick.seq[0], apG.quick.seq);
+              if (br && br.depth) { if (br.path && br.path.length) addG(br.path[0], br.path); Object.keys(br.moves || {}).forEach(function (k) { addG(k.split(',').map(Number)); }); }
+              if (dyingG && apG && apG.stopBest) addG(apG.stopBest.seq[0], apG.stopBest.seq);
+              if (dyingG && apG && apG.lowest) addG(apG.lowest.seq[0], apG.lowest.seq);
+            } else if (apG && apG.setup && typeof readyAtG !== 'number') addG(apG.setup);
+            addG('hold');
+          }
+          if (orderG.length) {
             bot.preferRank = function gambitRank(c, i) {
-              var r = prG.call(this, c, i);
-              if (upG && c.kind === 'raise') return Math.min(r, -10);
-              if (kG && c.kind === 'swap' && c.move && arbKey(c.move) === kG) return Math.min(r, -10);
-              if (holdG && c.kind === 'hold') return Math.min(r, -10);
-              return r;
+              var r = prG.call(this, c, i), k = c.kind === 'swap' && c.move ? arbKey(c.move) : c.kind, at = orderG.indexOf(k);
+              return at >= 0 ? Math.min(r, -10 + at * 0.001) : r;
             };
           }
-          if (lineG) { attackLine = lineG.ap.seq.slice(1); attackMove = lineG.ap.seq[0]; }
-          bot._gambit = { table: pickG.table, under: !!underG, rule: pickG.index, name: pickG.rule.name || null, found: !!lineG, entry: lineG ? lineG.aimIndex : -1, near: lineG && lineG.near || 0, quick: !!(lineG && lineG.quick), ms: apG ? apG.ms : 0, setup: !!setupG, ready: readyG, readyAt: typeof readyAtG === 'number' ? readyAtG : null, raise: upG ? toG : 0, wait: !!waitG, extend: !!(lineG && lineG.extend), tried: triedG, pop: SH.popLeft(board), xs: exG ? [exG.seq.length, exG.chain, exG.cells, exG.base, exG.nearest ? exG.nearest.chain : 0] : null,
+          bot._gambitLines = linesG;
+          bot._gambit = { table: pickG.table, under: !!underG, rule: pickG.index, name: pickG.rule.name || null, want: orderG[0] || null, options: orderG.length, order: orderG, found: !!lineG, play: playG || (lineG ? (lineG.aimIndex >= 0 ? 'entry' : 'nearest') : null), entry: lineG ? lineG.aimIndex : -1, near: lineG && lineG.near || 0, quick: !!(lineG && lineG.quick), ms: apG ? apG.ms : 0, setup: !!setupG, ready: readyG, readyAt: typeof readyAtG === 'number' ? readyAtG : null, raise: upG ? toG : 0, wait: !!waitG, extend: !!(lineG && lineG.extend), tried: triedG, pop: SH.popLeft(board), xs: exG ? [exG.seq.length, exG.chain, exG.cells, exG.base, exG.nearest ? exG.nearest.chain : 0] : null,
                           chain: lineG ? lineG.ap.chain : 0, combo: lineG ? lineG.ap.combo || 0 : 0, swaps: lineG ? lineG.ap.seq.length : 0, done: lineG ? lineG.ap.done : null, by: byG };
         }
       }
@@ -1048,7 +1081,7 @@ module.exports = function think(cfg) {
       // (defendBigBreaks: the lineup forced here never replaces a bigger break or an attack line the ranking chose, and of the breaks
       // it may force, the bigger is taken)
       var keepD = defendA && spareD && D0.defendBigBreaks && d && d.kind === 'swap' && d.move && (bigOfMove(d.move) || (arbProps && arbProps[arbKey(d.move)]));
-      if (!keepD) d = SP.overrule(d, noAimed ? Object.assign({}, prep, { br: null, want: {} }) : prep, bot);   // a lineup while a slab pops (survivor_prefer.js)
+      if (!keepD && !bot._gambit) d = SP.overrule(d, noAimed ? Object.assign({}, prep, { br: null, want: {} }) : prep, bot);   // a lineup while a slab pops (survivor_prefer.js)
       else bot._keptBig = (bot._keptBig || 0) + 1;
       guard3();
       guardTopped();
@@ -1080,6 +1113,7 @@ module.exports = function think(cfg) {
       // line, from wherever the first ends.
       var lineFree = false;
       // the rest of an attack line is played on while the next question is thought about
+      if (bot._gambitLines && d.kind === 'swap' && d.move && bot._gambitLines[d.move[0] + ',' + d.move[1]]) { attackLine = bot._gambitLines[d.move[0] + ',' + d.move[1]]; attackMove = d.move; }
       if (attackLine && attackLine.length && d.kind === 'swap' && d.move && attackMove && d.move[0] === attackMove[0] && d.move[1] === attackMove[1]) { line = attackLine; lineFree = true; }
       if (!noAimed && br && br.path && d.kind === 'swap' && d.move && br.path[0][0] === d.move[0] && br.path[0][1] === d.move[1] && br.path.length > 1) { line = br.path.slice(1); lineFree = true; }
       if (D0.keepLine && br && br.touch && br.path && br.path.length > 1 && d.kind === 'swap' && d.move && br.path[0][0] === d.move[0] && br.path[0][1] === d.move[1]) {
@@ -1133,6 +1167,13 @@ module.exports = function think(cfg) {
       }
       // WHETHER WAITING COSTS ANYTHING (read by the frame loop's pace): holding is proven to live through the survival horizon, and no break
       // is wanted now -- a break put off is a break made later, and under a slab breaks are where the panels come from
+      // (what the survival search made of gambit's own move: its verdict, 'unsearched' when this decision ran no search, 'not offered'
+      // when the move was not among the candidates)
+      if (bot._gambit && bot._gambit.want) {
+        var lvW = (bot._verdictNo || 0) !== verdictNo0 ? bot._lastVerdict : null, vW = lvW ? 'not offered' : 'unsearched';
+        if (lvW) for (var qW = 0; qW < lvW.cands.length; qW++) { var cW = lvW.cands[qW], kW = cW.kind === 'swap' && cW.move ? cW.move[0] + ',' + cW.move[1] : cW.kind; if (kW === bot._gambit.want) { vW = lvW.verdict[qW]; break; } }
+        bot._gambit.verdict = vW;
+      }
       var lvP = (bot._verdictNo || 0) !== verdictNo0 ? bot._lastVerdict : null, holdP = false;
       if (lvP) for (var pi = 0; pi < lvP.cands.length; pi++) if (lvP.cands[pi].kind === 'hold') { holdP = lvP.verdict[pi] === 'proven'; break; }
       out = { id: m.id, epoch: m.epoch, at: m.at, threeOK: !!(A && A.realThrees && dangerWhy === 'incoming'), src: d.src || (d.overruled ? 'overrule' : 'default'), kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, raiseFrames: holdFrames, ms: Date.now() - t0, queued: m.posted ? t0 - m.posted : 0, brMs: brMs, why: why,

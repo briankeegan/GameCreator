@@ -38,9 +38,27 @@ module.exports = function (opts) {
   // last swap's clears done by frame o.by (frames from now), and o.keep(grid) true of the board it ends on; o: { ms, width, depth, pool, stopAt, minChain, guideChain, arrivals, rate }: with rate the fire kept is the best per swap of its line; arrivals is the garbage on its way, as the bot's serverArrivals; only a fire of a chain of minChain links or more counts; boards are ranked by fires of guideChain links or more; stopAt ends the search at the first depth with a fire of that many cells
   // o.near(made): with aims, how near a line comes to them (0: not at all) -- the nearest line is kept beside them (best.nearest),
   // the line to play when none meets an aim in time; and the line in time that breaks the most garbage (best.quick). o.readyAt: see READY.
+  // THE SHAPE of a settled grid (0 empty, garbage 8 and up or below 0): its top row, evenness (tallest panel column less lowest) and
+  // hollow (empty cells under garbage in its column)
+  function shapeOf(g) {
+    var top = 0, peaks = [], hollow = 0, r, c;
+    for (c = 1; c <= W; c++) {
+      var pk = 0, seenG = false;
+      for (r = g.length - 2; r >= 1; r--) {
+        var v = g[r] && g[r][c];
+        if (v >= 8 || v < 0) seenG = true;
+        else if (!v) { if (seenG) hollow++; }
+        else if (!pk && !seenG) pk = r;
+        if (v && r > top) top = r;
+      }
+      if (!pk) for (r = g.length - 2; r >= 1; r--) { var v2 = g[r] && g[r][c]; if (v2 > 0 && v2 < 8) { pk = r; break; } }
+      peaks.push(pk);
+    }
+    return { top: top, even: Math.max.apply(null, peaks) - Math.min.apply(null, peaks), hollow: hollow };
+  }
   var SLICE = 256;   // about 9 ms of jobs (8,987 in 318 ms on a runner's board under a slab)
   function plan(board, hold, o) {
-    var s = search(), t0 = Date.now(), best = null, nearest = null, quick = null, aims = o.aims || (o.aim ? [o.aim] : null), perAim = aims ? aims.map(function () { return null; }) : null;
+    var s = search(), t0 = Date.now(), best = null, nearest = null, quick = null, lowest = null, stopBest = null, aims = o.aims || (o.aim ? [o.aim] : null), perAim = aims ? aims.map(function () { return null; }) : null;
     s.reset();
     var root = s.root(board.copy(), hold, o.arrivals || [], false);
     // a cascade already running sends what it sends whatever is swapped: only what a swap adds to it counts
@@ -69,6 +87,15 @@ module.exports = function (opts) {
             // (aims: the line is kept for every aim it meets, by its deadline and keeping what o.keep asks; the search goes on past it)
             var made = { combo: bigC, combos: st.comboSizes, chain: g.chain, broke: st.broke || 0, cells: Math.max(0, g.cells - base) };
             var inTime = !(o.by && out.t - root.t > o.by), kept = !(o.keep && !o.keep(out.b.grid));
+            // (CLEAR and SCRAMBLE, the plays of a board that would be lost: done before it is (o.dies), whatever the floor -- the line that
+            // leaves the lowest stack, and the one that buys the most stop time)
+            if (o.near && !(o.dies && out.t - root.t > o.dies)) {
+              var shp = shapeOf(out.b.grid);
+              if (!lowest || shp.top < lowest.top || (shp.top === lowest.top && seq.length < lowest.seq.length))
+                lowest = { top: shp.top, cells: made.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: made.broke, done: out.t - root.t, aimIndex: -1 };
+              if ((st.earned || 0) > 0 && (!stopBest || st.earned > stopBest.earned || (st.earned === stopBest.earned && seq.length < stopBest.seq.length)))
+                stopBest = { earned: st.earned, cells: made.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: made.broke, done: out.t - root.t, aimIndex: -1 };
+            }
             // (of the lines in time that break garbage at all, a plain three included, the one that breaks the most -- the sooner between
             // equals: the last line before the default's own)
             if (o.near && inTime && kept && made.broke > 0 && (!quick || made.broke > quick.broke || (made.broke === quick.broke && out.t - root.t < quick.done)))
@@ -123,6 +150,8 @@ module.exports = function (opts) {
       if (perAim) perAim.forEach(function (pa) { if (pa) keep.add(pa.n); });
       if (nearest) keep.add(nearest.n);
       if (quick) keep.add(quick.n);
+      if (lowest) keep.add(lowest.n);
+      if (stopBest) keep.add(stopBest.n);
       var spent = outs.filter(function (x) { return x && !x.dead && !keep.has(x); });
       old.forEach(function (it) { if (it.n !== root && !keep.has(it.n)) spent.push(it.n); });
       if (spent.length) s.drop(spent);
@@ -170,7 +199,7 @@ module.exports = function (opts) {
       } else best.after = 0;
     }
     best.setup = setup ? setup.move : null;
-    best.nearest = nearest; best.quick = quick;
+    best.nearest = nearest; best.quick = quick; best.lowest = lowest; best.stopBest = stopBest; best.perAim = perAim;
     // any swap at all: one that moves nothing that matters is how the rise is let go of (see survivor_think.js, unlock)
     var legal = root.b.legalSwaps(), same = null, g0 = root.b.grid;
     legal.forEach(function (m) { if (!same && g0[m[0]] && g0[m[0]][m[1]] > 0 && g0[m[0]][m[1]] < 8 && g0[m[0]][m[1]] === g0[m[0]][m[1] + 1]) same = m; });
@@ -296,5 +325,22 @@ module.exports = function (opts) {
     }
     return { ready: false, setup: found, at: first, ms: Date.now() - t0 };
   }
-  return { plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime };
+  // LEVEL: of the swaps that clear nothing and are settled by o.by (frames: the next block lands), the one that leaves the least hollow
+  // under the garbage, then the flattest stack -- only one better than the board left alone. Returns { move, before, after } or null.
+  function level(board, hold, arrivals, o) {
+    var s = search();
+    s.reset();
+    var root = s.root(board.copy(), hold, arrivals || [], false), r0 = s.advanceMany([[root, 'settle', null, 0]], true)[0];
+    if (!r0 || r0.dead) return null;
+    var before = shapeOf(r0.b.grid), ms = root.b.legalSwaps(), outs = s.advanceMany(ms.map(function (m) { return [root, 'settle', m, 0]; }), true), bestL = null;
+    outs.forEach(function (out, i) {
+      if (!out || out.dead || s.stepStats(out).cleared > 0 || (o && o.by && out.t - root.t > o.by)) return;
+      var sh = shapeOf(out.b.grid);
+      if (sh.hollow > before.hollow || (sh.hollow === before.hollow && sh.even >= before.even)) return;
+      if (!bestL || sh.hollow < bestL.after.hollow || (sh.hollow === bestL.after.hollow && sh.even < bestL.after.even)) bestL = { move: ms[i], before: before, after: sh };
+    });
+    s.drop([r0].concat(outs.filter(function (x) { return x && !x.dead; })));
+    return bestL;
+  }
+  return { plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf };
 };
