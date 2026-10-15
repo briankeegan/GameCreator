@@ -224,20 +224,14 @@ module.exports = function think(cfg) {
         var c = (bot._allCands || []).filter(function (x) { return x.kind === 'swap' && x.move && x.move[0] === mv[0] && x.move[1] === mv[1]; })[0], r = c && (c.added || c.resolved);
         return !!(r && (r.brokeGarbage || 0) > 0 && ((r.chainLength || 0) >= 2 || (r.comboSizes || []).some(function (x) { return x >= 4; })));
       };
-      if (defendA && spareD && D0.defendBigBreaks && bot.preferRank) {
-        var pr0D = bot.preferRank, candsD = null, bigD = false;
+      var baseRank = bot.preferRank;   // the defence's own preferences (prepare); every step of defenseRank starts from it
+      var bigOn = !!(defendA && spareD && D0.defendBigBreaks && baseRank), candsD = null, bigD = false;
+      if (bigOn) {
         var bigBreak = function (c) { var r = c && (c.added || c.resolved); if (!r || !((r.brokeGarbage || 0) > 0)) return false; return (r.chainLength || 0) >= 2 || (r.comboSizes || []).some(function (x) { return x >= 4; }); };
         var threeBreakD = function (c) { var r = c && (c.added || c.resolved); if (!r || !((r.brokeGarbage || 0) > 0) || (r.chainLength || 0) >= 2) return false; var z = r.comboSizes || []; return z.length > 0 && z.every(function (x) { return x <= 3; }); };
         bot.breakOrder = function (k) {
           var c = (bot._allCands || []).filter(function (x) { return x.kind === 'swap' && x.move && x.move[0] + ',' + x.move[1] === k; })[0];
           return c ? bot.preferRank(c, -1) : 1;
-        };
-        bot.preferRank = function (c, i) {
-          var r = pr0D.call(this, c, i);
-          if (bot._allCands !== candsD) { candsD = bot._allCands; bigD = (candsD || []).some(function (x) { return x.kind === 'swap' && bigBreak(x); }); }
-          // (and so does the first swap of a line toward a break, ranked with the breaks: a bigger break now is not traded for a walk to one)
-          if (c.kind === 'swap' && bigD) { if (bigBreak(c)) return Math.min(r, 0); if (r === 0) { bot._threeAfterBig = (bot._threeAfterBig || 0) + 1; return 0.4; } }
-          return r;
         };
       }
       if (defendA) {
@@ -460,7 +454,8 @@ module.exports = function think(cfg) {
       // outCells or more, or a chain, done before the next garbage leaves no time to break it -- is planned and offered to its ranking:
       // a line that breaks garbage before any single break, a three's included; one that breaks nothing before the breaks only out of
       // danger. The survival search proves its first swap lives like any move; the line is played on from there (arbProps)
-      if (defendA && D0.defendLines && bot.preferRank) {
+      var lineD = null;
+      if (defendA && D0.defendLines && baseRank) {
         var lmsD = Math.min(A0.defendLineMs || 60, due ? due - Date.now() - 2 * DEADLINE_MARGIN_MS - 100 : 1e9);
         if (lmsD >= 25) {
           if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
@@ -490,8 +485,7 @@ module.exports = function think(cfg) {
             var kD = arbKey(apD.seq[0]), rD = apD.brk ? (spareD ? -0.6 : 0.3) : (!dangerD && !floorD && !brkNear && !heavyD ? -0.3 : null);
             if (rD !== null) {
               arbProps = {}; arbProps[kD] = { rank: rD, src: 'fire', line: apD.seq.slice(1), planChain: apD.chain, cells: apD.cells, brk: !!apD.brk };
-              var prD = bot.preferRank;
-              bot.preferRank = function (c, i) { var r = prD.call(this, c, i); return c.kind === 'swap' && c.move && arbKey(c.move) === kD ? Math.min(r, rD) : r; };
+              lineD = { key: kD, rank: rD };
               bot._defendLines = (bot._defendLines || 0) + 1;
             }
           }
@@ -500,28 +494,12 @@ module.exports = function think(cfg) {
       // THE FLOOR UNDER THREAT (floorRows): the lowest column of panels under floorRows, a clear that breaks no garbage ranks after the
       // hold -- played only when nothing ranked before it lives: the garbage is broken first, stop time only when it is needed
       // (not on a stack the game shows topped out: there a hold is a frame of health, and stop time is what is needed)
-      if (defendA && D0.floorRows && bot.preferRank && lowPeak(board) < D0.floorRows && !m.topped && !(m.realTop >= 11)) {
-        var prF = bot.preferRank;
-        // (the hold 0.6, a swap that clears nothing after it at 0.65 -- a swap with no aim is no better than waiting, and of equal ranks
-        // the nearest is played: the one under the cursor, which puts the last swap back -- a clear that breaks no garbage left unranked;
-        // an unranked move comes after every ranked one; the breaks, the lines, the levelling and the raise keep their places before them)
-        bot.preferRank = function (c, i) {
-          var r = prF.call(this, c, i), rr = c.added || c.resolved;
-          if (r < 0.5) {
-            if (c.kind === 'swap' && rr && (rr.comboSizes || []).length && !((rr.brokeGarbage || 0) > 0) && !(r < 0)) { bot._floorHeld = (bot._floorHeld || 0) + 1; return Infinity; }
-            return r;
-          }
-          if (c.kind === 'hold') return 0.6;
-          if (c.kind === 'swap' && !(rr && (rr.comboSizes || []).length)) return 0.65;
-          if (c.kind === 'swap' && rr && (rr.comboSizes || []).length && !((rr.brokeGarbage || 0) > 0)) { bot._floorHeld = (bot._floorHeld || 0) + 1; return Infinity; }
-          return r;
-        };
-      }
+      var floorOn = !!(defendA && D0.floorRows && baseRank && lowPeak(board) < D0.floorRows && !m.topped && !(m.realTop >= 11));
       // DOWN TIME IS FOR THE SHAPE (defendFlatten): while stop time runs, or nothing is landing or on its way, a swap that leaves the
       // board flatter (its tallest column less its lowest, settled) or with less hollow under garbage than the board left alone ranks
       // before the hold and every move unranked -- the breaks, the lines and the raise still before it
       // (only on a stack with room: topped out, or at flattenTop or above, the time is for living, not the shape)
-      var downD = !!(defendA && D0.defendFlatten && bot.preferRank && !m.topped && m.realTop < (A0.flattenTop || 10) &&
+      var downD = !!(defendA && D0.defendFlatten && baseRank && !m.topped && m.realTop < (A0.flattenTop || 10) &&
                      (((board.stopTime || 0) + (board.preStopTime || 0)) > 0 || (!(board.incoming || []).length && !arrivals.length)));
       if (downD) {
         // (a cell of either board: the game's (panels) or the settled one the search leaves (grid: 0 empty, -2 garbage, 1..7 colours))
@@ -541,16 +519,7 @@ module.exports = function think(cfg) {
           return k;
         };
         var shapeOfB = function (b) { var hs = colsOf(b); return hs ? { spread: Math.max.apply(null, hs) - Math.min.apply(null, hs), hollow: hollowB(b) } : null; };
-        var candsF = null, base = null, prFl = bot.preferRank;
-        bot.preferRank = function (c, i) {
-          var r = prFl.call(this, c, i);
-          if (r < 0.5 || c.kind !== 'swap') return r;
-          if (bot._allCands !== candsF) { candsF = bot._allCands; var hc = (candsF || []).filter(function (x) { return x.kind === 'hold'; })[0]; base = hc ? shapeOfB(bot._settledOf(hc)) : null; }
-          var rr = c.added || c.resolved; if (!base || (rr && (rr.comboSizes || []).length)) return r;
-          var sh = shapeOfB(bot._settledOf(c)); if (!sh) return r;
-          if (sh.hollow < base.hollow || (sh.hollow === base.hollow && sh.spread < base.spread)) { bot._flattened = (bot._flattened || 0) + 1; return Math.min(r, 0.5 - Math.min(0.09, (base.spread - sh.spread + 2 * (base.hollow - sh.hollow)) / 100)); }
-          return r;
-        };
+        var candsF = null, base = null;
       }
       // MATERIAL UNDER THREAT (defendRaise): a stack under lowTop rows (garbage landed counted) that the game does not show topped out
       // and is in no danger is raised to lowTop, before any single break -- the defence never raises with garbage on the board, and a
@@ -561,11 +530,10 @@ module.exports = function think(cfg) {
       if (process.env.GC_RAISE_WHY && A0 && A0.defendRaise && fullTop(board) < (A0.lowTop || 6))
         console.error('RAISEWHY clock ' + board.clock + ' defend ' + defendA + ' pref ' + !!bot.preferRank + ' topped ' + !!m.topped + ' realTop ' + m.realTop + ' top ' + fullTop(board) + ' canRaise ' + bot._canRaise() +
           ' prevent ' + !!(bot.stack && bot.stack.preventManualRaise) + ' lock ' + !!(bot.stack && bot.stack.riseLock) + ' active ' + !!(bot.stack && bot.stack.hasActivePanels && bot.stack.hasActivePanels()) + ' shake ' + (bot.stack && bot.stack.shakeTime));
-      if (defendA && D0.defendRaise && bot.preferRank && !(m.topped) && !(m.realTop >= 11) && fullTop(board) < (A0.lowTop || 6) && bot._canRaise()) {
+      var raiseOn = !!(defendA && D0.defendRaise && baseRank && !(m.topped) && !(m.realTop >= 11) && fullTop(board) < (A0.lowTop || 6) && bot._canRaise());
+      if (raiseOn) {
         arbProps = arbProps || {};
         arbProps.raise = { rank: -0.5, src: 'raise', to: A0.lowTop || 6 };
-        var prR = bot.preferRank;
-        bot.preferRank = function (c, i) { var r = prR.call(this, c, i); return c.kind === 'raise' ? Math.min(r, -0.5) : r; };
         bot._defendRaises = (bot._defendRaises || 0) + 1;
       }
       if (A && A.arbiter) {
@@ -795,10 +763,39 @@ module.exports = function think(cfg) {
       var ranked = [], key = function (c) { return c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[1] : c.kind; };
       var provenRanked = [];
       if (process.env.GC_SURVIVOR_WHY && bot.preferProven) { var pp0 = bot.preferProven; bot.preferProven = function (c, i) { var r = pp0.call(this, c, i); provenRanked.push(key(c) + '=' + r); return r; }; }
-      // (last of the wrappers, so no later rank lifts a swap back again)
-      if (defendA && D0.strictSwapBack && bot.preferRank && backSet) {
-        var prSB = bot.preferRank;
-        bot.preferRank = function (c, i) { if (swapBack(c)) { bot._backs = (bot._backs || 0) + 1; return Infinity; } return prSB.call(this, c, i); };
+      // THE DEFENCE'S ONE ORDER (agro under a hit): each move is ranked once, from the defence's own preferences, by the steps below in
+      // this order -- lower first, an unranked move after every ranked one, of equal ranks the nearest
+      //   1. a big break (combo or chain breaking garbage) at 0 or better; a plain-three break after it at 0.4 (panels to spare)
+      //   2. the planned line's first swap at its rank: breaking -0.6 (panels to spare) or 0.3; breaking nothing -0.3
+      //   3. under the floor: the hold 0.6, a swap clearing nothing 0.65, a clear breaking nothing nowhere
+      //   4. down time: a swap leaving less hollow, or as much and flatter, just before the hold
+      //   5. a low stack's raise at -0.5
+      //   6. a swap back the frame loop would hold, nowhere
+      var sbOn = !!(defendA && D0.strictSwapBack && baseRank && backSet);
+      if (defendA && baseRank && (bigOn || lineD || floorOn || downD || raiseOn || sbOn)) {
+        bot.preferRank = function defenseRank(c, i) {
+          var r = baseRank.call(this, c, i), rr = c.added || c.resolved;
+          if (bigOn) {
+            if (bot._allCands !== candsD) { candsD = bot._allCands; bigD = (candsD || []).some(function (x) { return x.kind === 'swap' && bigBreak(x); }); }
+            if (c.kind === 'swap' && bigD) { if (bigBreak(c)) r = Math.min(r, 0); else if (r === 0) { bot._threeAfterBig = (bot._threeAfterBig || 0) + 1; r = 0.4; } }
+          }
+          if (lineD && c.kind === 'swap' && c.move && arbKey(c.move) === lineD.key) r = Math.min(r, lineD.rank);
+          if (floorOn) {
+            var clears = !!(rr && (rr.comboSizes || []).length), breaks = !!(rr && (rr.brokeGarbage || 0) > 0);
+            if (r < 0.5) { if (c.kind === 'swap' && clears && !breaks && !(r < 0)) { bot._floorHeld = (bot._floorHeld || 0) + 1; r = Infinity; } }
+            else if (c.kind === 'hold') r = 0.6;
+            else if (c.kind === 'swap' && !clears) r = 0.65;
+            else if (c.kind === 'swap' && clears && !breaks) { bot._floorHeld = (bot._floorHeld || 0) + 1; r = Infinity; }
+          }
+          if (downD && !(r < 0.5) && c.kind === 'swap') {
+            if (bot._allCands !== candsF) { candsF = bot._allCands; var hc = (candsF || []).filter(function (x) { return x.kind === 'hold'; })[0]; base = hc ? shapeOfB(bot._settledOf(hc)) : null; }
+            var sh = base && !(rr && (rr.comboSizes || []).length) ? shapeOfB(bot._settledOf(c)) : null;
+            if (sh && (sh.hollow < base.hollow || (sh.hollow === base.hollow && sh.spread < base.spread))) { bot._flattened = (bot._flattened || 0) + 1; r = Math.min(r, 0.5 - Math.min(0.09, (base.spread - sh.spread + 2 * (base.hollow - sh.hollow)) / 100)); }
+          }
+          if (raiseOn && c.kind === 'raise') r = Math.min(r, -0.5);
+          if (sbOn && swapBack(c)) { bot._backs = (bot._backs || 0) + 1; r = Infinity; }
+          return r;
+        };
       }
       if (process.env.GC_SURVIVOR_WHY && bot.preferRank) { var pr0 = bot.preferRank; bot.preferRank = function (c, i) { var r = pr0.call(this, c, i); ranked.push(key(c) + '=' + r); return r; }; }
       // A question due within TIGHT_MS is decided one move deep: the lookahead
