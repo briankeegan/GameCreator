@@ -2648,7 +2648,7 @@ static JLOCAL double sitLeft;
 // (is this board ready?), so each level of nesting has its own memory, the
 // current level's set in place on entry and the caller's put back on exit
 #define SITLEVELS 4
-#define SITKEEPS 2   // searches that go on from one frame to the next: each keeps a set of memory of its own
+#define SITKEEPS 3   // searches that go on from one frame to the next: each keeps a set of memory of its own
 typedef struct { ST *st; SitNode *nd; SitKid *kd; SitHeap *hp; u64 *hk; uint32_t *hg, gen; int32_t *t, *r, *l; double left; } SitMem;
 static JLOCAL SitMem SITM[SITLEVELS + SITKEEPS];
 static JLOCAL int sitLevel;
@@ -4298,10 +4298,15 @@ static int reachOption(Opt *O, int n, Dec d, int frozen) {
       if (okj) n++;
     }
   }
-  static ReachCtx rx; rx.best = atkOf(0, 0); rx.n = 0;
+  // the search goes on from the last frame's if the position is the same: the best it found and the lines it keeps (sitKeepSlot)
+  static ReachCtx rx, rxKeep;
+  u64 pk = ((u64)(unsigned)raPos << 2) | (gScramble ? 3 : 2);
+  if (SITKEEP[2].valid && SITKEEP[2].key == pk) rx = rxKeep; else { rx.best = atkOf(0, 0); rx.n = 0; }
   double work = optLine() - paWork, cap = gScramble ? REACHSHARE() : REACHWORK; if (work > cap) work = cap;
   double rw0 = paWork;
+  sitKeepSlot = 3; sitKeepKey = pk;
   searchInTime(st, cur[0], cur[1], t, 0, timeLeft(), frozen, can, w, work, sitReach, &rx, 0, 0, 0);
+  rxKeep = rx;
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "REACH scramble %d work %.0f of %.0f time %.0f found %d size %d chain %d\n", gScramble, paWork - rw0, work, timeLeft(), rx.n, rx.best.size, rx.best.chain); }
 #endif
