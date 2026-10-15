@@ -164,7 +164,8 @@ module.exports = function (opts) {
   }
   // A CHAIN GOING IS CONTINUED: from a board mid-cascade (stop time running), the swaps made while it pops that make
   // it longer. A beam over swaps played as the cascade runs, each board ranked by what the cascade sends once it
-  // settles; the line ends at the board that sends the most. o: { ms, width, depth }
+  // settles; the line ends at the board that sends the most. o: { ms, width, depth, keep } -- with o.keep(grid), a cascade is kept for an
+  // aim only when the board it settles to keeps what o.keep asks
   function extend(board, hold, o) {
     var s = search(), t0 = Date.now();
     s.reset();
@@ -175,7 +176,7 @@ module.exports = function (opts) {
         if (!out || out.dead) return null;
         var st = s.stepStats(out), g = sent(st), big = 0;
         st.comboSizes.forEach(function (z) { if (z > big) big = z; });
-        return { cells: g.cells, chain: g.chain, combo: big, broke: st.broke || 0 };
+        return { cells: g.cells, chain: g.chain, combo: big, broke: st.broke || 0, kept: !(o.keep && !o.keep(out.b.grid)) };
       });
     }
     var base = sends([root])[0] || { cells: 0, chain: 0 };
@@ -200,7 +201,7 @@ module.exports = function (opts) {
         // (o.aims: the cascade that ends making the most for each aim -- { combo, chain, broke, cells added } -- is kept per aim)
         if (xAims) {
           var madeX = { combo: g.combo, chain: g.chain, broke: g.broke, cells: g.cells - base.cells };
-          for (var xa = 0; xa < xAims.length; xa++) if (xAims[xa] && xAims[xa](madeX) && (!xPer[xa] || g.cells > xPer[xa].cells)) xPer[xa] = { cells: g.cells, chain: g.chain, combo: g.combo, seq: k.seq, base: base.cells, aimIndex: xa };
+          for (var xa = 0; xa < xAims.length; xa++) if (g.kept && xAims[xa] && xAims[xa](madeX) && (!xPer[xa] || g.cells > xPer[xa].cells)) xPer[xa] = { cells: g.cells, chain: g.chain, combo: g.combo, seq: k.seq, base: base.cells, aimIndex: xa };
         } else if (g.cells > best.cells) best = { cells: g.cells, chain: g.chain, combo: g.combo, seq: k.seq, base: base.cells };
         next.push(k);
       });

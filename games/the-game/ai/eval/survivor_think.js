@@ -826,7 +826,7 @@ module.exports = function think(cfg) {
             var leftG = function () { return due ? due - Date.now() - 2 * DEADLINE_MARGIN_MS - 100 : 1e9; };
             if (cascadeLive(board, true) && GP.extend !== false && Math.min(GP.extendMs || 40, leftG()) >= 20) {
               triedG++;
-              var exG = attacker.extend(board, m.hold, { ms: Math.min(GP.extendMs || 40, leftG()), width: GP.width || 40, depth: GP.extendDepth || 6, aims: predsG });
+              var exG = attacker.extend(board, m.hold, { ms: Math.min(GP.extendMs || 40, leftG()), width: GP.width || 40, depth: GP.extendDepth || 6, aims: predsG, keep: keepF });
               if (exG.seq.length && exG.aimIndex >= 0 && exG.cells > exG.base) lineG = { ap: exG, aimIndex: exG.aimIndex, extend: true };
             }
             var msG = Math.min(GP.ms || 80, leftG());
