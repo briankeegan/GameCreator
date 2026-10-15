@@ -845,12 +845,11 @@ module.exports = function think(cfg) {
             }
           }
           // THE RAISE (the file's or the rule's `raise: { to }`): below `to` rows, not under garbage, not topped and no chain running, with no
-          // entry in time the stack is raised -- held down to `to`, less the rows on their way, in one press, not a row a decision -- before any nearest line or setup:
+          // entry in time the stack is raised -- held down to `to` in one press, not a row a decision -- before any nearest line or setup:
           // the list is built from panels
           var raiseG = pickG.rule.raise || tablesG.raise || null, toG = raiseG && raiseG.to;
-          var roomG = toG ? toG - (FG.us.coming || 0) : 0;   // (the rows on their way count: the stack is raised to `to` as it will stand once they land)
-          var upG = !!(toG && !(lineG && lineG.aimIndex >= 0) && !underG && !FG.us.topped && !cascadeLive(board, true) && fullTop(board) < roomG && bot._canRaise());
-          if (upG) { lineG = null; setupG = null; bot._gambitRaise = roomG; } else bot._gambitRaise = 0;
+                    var upG = !!(toG && !(lineG && lineG.aimIndex >= 0) && !underG && !FG.us.topped && !cascadeLive(board, true) && fullTop(board) < toG && bot._canRaise());
+          if (upG) { lineG = null; setupG = null; bot._gambitRaise = toG; } else bot._gambitRaise = 0;
           var kG = lineG ? arbKey(lineG.ap.seq[0]) : setupG ? arbKey(setupG) : null, holdG = !lineG && endG === 'hold', prG = bot.preferRank || function () { return Infinity; };
           if (kG || holdG || upG) {
             bot.preferRank = function gambitRank(c, i) {
