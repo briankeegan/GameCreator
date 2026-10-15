@@ -809,6 +809,10 @@ module.exports = function think(cfg) {
           var keepG = pickG.rule.keep || tablesG.keep || null, keepF = keepG ? function (grid) { return GAMBIT.keeps(keepG, grid); } : null;
           var byG = GAMBIT.deadline(FG, pickG.rule.by), triesG = [pickG.rule.aim];
           if (pickG.rule.else && typeof pickG.rule.else === 'object') triesG.push(pickG.rule.else);
+          // (garbage on our board: every aim breaks it too -- the aim and a break in one line; none, and the default's own move,
+          // which breaks it, is played)
+          var underG = tablesG.underGarbage !== 'ignore' && (FG.us.contact !== null || FG.us.topped);
+          if (underG) triesG = triesG.map(function (a) { return a && Object.assign({}, a, { break: true }); });
           // (a chain already falling is run on first: the links that keep it going and make what the aim asks -- a second
           // chain is built while the first one runs)
           if (cascadeLive(board, true) && GP.extend !== false) {
@@ -831,7 +835,7 @@ module.exports = function think(cfg) {
                                                      aim: function (made) { return GAMBIT.meets(aimT, made); }, by: byG || undefined, keep: keepF });
             if (apG.seq.length && GAMBIT.meets(aimT, { combo: apG.combo || 0, chain: apG.chain || 0, broke: apG.broke || 0, cells: apG.cells || 0 })) lineG = { ap: apG, aim: aimT, fallback: tg > 0 };
           }
-          var kG = lineG ? arbKey(lineG.ap.seq[0]) : null, holdG = !lineG && pickG.rule.else === 'hold', prG = bot.preferRank || function () { return Infinity; };
+          var kG = lineG ? arbKey(lineG.ap.seq[0]) : null, holdG = !lineG && !underG && pickG.rule.else === 'hold', prG = bot.preferRank || function () { return Infinity; };
           if (kG || holdG) {
             bot.preferRank = function gambitRank(c, i) {
               var r = prG.call(this, c, i);
@@ -841,7 +845,7 @@ module.exports = function think(cfg) {
             };
           }
           if (lineG) { attackLine = lineG.ap.seq.slice(1); attackMove = lineG.ap.seq[0]; }
-          bot._gambit = { table: pickG.table, rule: pickG.index, name: pickG.rule.name || null, found: !!lineG, fallback: !!(lineG && lineG.fallback), extend: !!(lineG && lineG.extend), tried: triedG,
+          bot._gambit = { table: pickG.table, under: !!underG, rule: pickG.index, name: pickG.rule.name || null, found: !!lineG, fallback: !!(lineG && lineG.fallback), extend: !!(lineG && lineG.extend), tried: triedG,
                           chain: lineG ? lineG.ap.chain : 0, combo: lineG ? lineG.ap.combo || 0 : 0, swaps: lineG ? lineG.ap.seq.length : 0, done: lineG ? lineG.ap.done : null, by: byG };
         }
       }

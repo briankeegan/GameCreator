@@ -6,6 +6,8 @@
 //
 //   file: { defend: [rule, ...], attack: [rule, ...], opponents: { "<name>": { defend, attack } } }
 //   rule: { name, when: { field: test, ... }, aim: { ... }, by: frames | field, else: aim | "default" | "hold", keep: { fact: test } }
+//   underGarbage (the file's): "break" (the default) -- with garbage on our board, or topped out, every aim must break it too, and with
+//   no line that does both the default's own move (which breaks it) is played; "ignore" -- aims are played as written
 //   keep: what our board must still have once the line is done (material, height, evenness); the file's own `keep` is every rule's
 //   that has none
 //   field: "us.<fact>" or "enemy.<fact>"; test: a value (equal) or a string ">=9", "<4", "==0", "!=0"
@@ -132,8 +134,8 @@ Rules.prototype.get = function (opponent) {
     if (st.mtimeMs !== this.mtime) {
       var j = JSON.parse(fs.readFileSync(this.file, 'utf8')), c = checked(j), own = {}, errs = c.errors.slice();
       Object.keys(j.opponents || {}).forEach(function (name) { var co = checked(j.opponents[name]); own[name] = co.tables; co.errors.forEach(function (e) { errs.push(name + ': ' + e); }); });
-      this.all = c.tables; this.all.keep = j.keep || null; this.own = own; this.errors = errs;
-      Object.keys(own).forEach(function (n) { own[n].keep = (j.opponents[n] && j.opponents[n].keep) || j.keep || null; });
+      this.all = c.tables; this.all.keep = j.keep || null; this.all.underGarbage = j.underGarbage || 'break'; this.own = own; this.errors = errs;
+      Object.keys(own).forEach(function (n) { own[n].keep = (j.opponents[n] && j.opponents[n].keep) || j.keep || null; own[n].underGarbage = (j.opponents[n] && j.opponents[n].underGarbage) || j.underGarbage || 'break'; });
       this.mtime = st.mtimeMs; this.error = null;
       console.error('GAMBIT rules ' + this.file + ': ' + this.all.defend.length + ' defend, ' + this.all.attack.length + ' attack, ' + Object.keys(own).length + ' opponents' + (errs.length ? '; dropped: ' + errs.join(' | ') : ''));
     }

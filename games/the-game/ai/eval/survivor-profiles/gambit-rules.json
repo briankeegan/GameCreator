@@ -2,45 +2,7 @@
  "keep": {
   "material": ">=12"
  },
- "defend": [
-  {
-   "name": "dig with a punch",
-   "when": {
-    "us.heavy": true
-   },
-   "aim": {
-    "break": true,
-    "any": [
-     {
-      "combo": ">=4"
-     },
-     {
-      "chain": ">=2"
-     }
-    ]
-   },
-   "by": "us.nextLands",
-   "else": "default"
-  },
-  {
-   "name": "break back",
-   "when": {
-    "us.contact": ">=1"
-   },
-   "aim": {
-    "break": true,
-    "any": [
-     {
-      "combo": ">=4"
-     },
-     {
-      "chain": ">=2"
-     }
-    ]
-   },
-   "else": "default"
-  }
- ],
+ "underGarbage": "break",
  "attack": [
   {
    "name": "finish them",
