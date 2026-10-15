@@ -829,7 +829,10 @@ module.exports = function think(cfg) {
             var leftG = function () { return due ? due - Date.now() - 2 * DEADLINE_MARGIN_MS - 100 : 1e9; };
             // (a slab popping: the line-up is held to the list as written -- the pop is the break -- and has the decision's whole search
             // time, the plan what it leaves)
-            var popG = SH.popLeft(board) > 0, xAimsG = popG ? listAimsG : aimsG, xMsG = popG ? (GP.ms || 80) : (GP.extendMs || 40);
+            // (with garbage left on the board the line-up does both, in this order: an entry that breaks it again, the entry as written, then
+            // any line-up that breaks it again -- the panels it turns into matched against the rows still above)
+            var popG = SH.popLeft(board) > 0, xMsG = popG ? (GP.ms || 80) : (GP.extendMs || 40);
+            var xAimsG = !popG ? aimsG : underG ? aimsG.concat(listAimsG, [{ break: true }]) : listAimsG;
             if ((cascadeLive(board, true) || popG) && GP.extend !== false && Math.min(xMsG, leftG()) >= 20) {
               triedG++;
               exG = attacker.extend(board, m.hold, { ms: Math.min(xMsG, leftG()), width: GP.width || 40, depth: GP.extendDepth || 6, keep: keepF,
@@ -849,10 +852,11 @@ module.exports = function think(cfg) {
               if (apG.seq.length && apG.aimIndex >= 0 && (!lineG || apG.aimIndex < lineG.aimIndex)) lineG = { ap: apG, aimIndex: apG.aimIndex };
             }
             // NO ENTRY IN TIME: the plays of the plan, in their order, each by its deadline (plans/plays.md):
+            //   garbage on the board: BREAK LINE -- the planner's line in time that breaks the most (a plain three when nothing better is in
+            //     time), else the break search's (SH.breakMoves: a line it offers never dies before its break)
             //   the nearest attack -- the nearer of the plan's line and the falling chain's or the popping slab's line-up; under garbage one
             //     that breaks it too, garbage on its way one that leaves the next block's break (READY)
-            //   garbage on the board: BREAK LINE -- the planner's line in time that breaks the most (a plain three when nothing better is in
-            //     time), else the break search's (SH.breakMoves: a line it offers never dies before its break); the board being lost: SCRAMBLE,
+            //   garbage on the board and the board being lost: SCRAMBLE,
             //     the line done before it is that buys the most stop time, else CLEAR, the one that leaves the lowest stack
             //   garbage on its way: READY -- the swap after which the next block breaks once it lands; else LEVEL -- the swap that clears
             //     nothing and leaves less hollow, then a flatter stack, settled before the block lands
@@ -860,13 +864,16 @@ module.exports = function think(cfg) {
             //   and only with none of those the default's own move
             var nx = exG && exG.nearest, np = apG && apG.nearest && apG.nearest.seq.length ? apG.nearest : null;
             var dyingG = !!(FG.us.topped || CK.toppedOrNearly(board, m.topped));
+            var nearG = nx || np ? (nx && (!np || nx.near > np.near) ? { ap: nx, aimIndex: -1, near: nx.near, extend: true } : { ap: np, aimIndex: -1, near: np.near }) : null;
+            var brG = underG && br && br.depth ? (br.path && br.path.length ? br.path[0] : Object.keys(br.moves || {}).map(function (k) { return k.split(',').map(Number); })[0]) : null;
+            // (under garbage, no entry: the break comes first -- the most garbage broken in time, a three if nothing better -- then the
+            // nearest attack)
             if (lineG) {}
-            else if (nx || np) lineG = nx && (!np || nx.near > np.near) ? { ap: nx, aimIndex: -1, near: nx.near, extend: true } : { ap: np, aimIndex: -1, near: np.near };
+            else if (underG && apG && apG.quick && apG.quick.seq.length) { lineG = { ap: apG.quick, aimIndex: -1, quick: true }; playG = 'break line'; }
+            else if (brG) { setupG = brG; playG = 'break search'; }
+            else if (nearG) lineG = nearG;
             else if (underG) {
-              var brG = br && br.depth ? (br.path && br.path.length ? br.path[0] : Object.keys(br.moves || {}).map(function (k) { return k.split(',').map(Number); })[0]) : null;
-              if (apG && apG.quick && apG.quick.seq.length) { lineG = { ap: apG.quick, aimIndex: -1, quick: true }; playG = 'break line'; }
-              else if (brG) { setupG = brG; playG = 'break search'; }
-              else if (dyingG && apG && apG.stopBest) { lineG = { ap: apG.stopBest, aimIndex: -1 }; playG = 'scramble'; }
+              if (dyingG && apG && apG.stopBest) { lineG = { ap: apG.stopBest, aimIndex: -1 }; playG = 'scramble'; }
               else if (dyingG && apG && apG.lowest) { lineG = { ap: apG.lowest, aimIndex: -1 }; playG = 'clear'; }
             }
             else if (readyAtG !== null) {
@@ -904,11 +911,13 @@ module.exports = function think(cfg) {
           if (!upG && !waitG) {
             if (apG && apG.perAim) apG.perAim.forEach(function (pa) { if (pa && pa.seq.length) addG(pa.seq[0], pa.seq); });
             if (exG && exG.seq.length && exG.aimIndex >= 0) addG(exG.seq[0], exG.seq);
-            if (nx) addG(nx.seq[0], nx.seq);
-            if (np) addG(np.seq[0], np.seq);
             if (underG) {
               if (apG && apG.quick && apG.quick.seq.length) addG(apG.quick.seq[0], apG.quick.seq);
               if (br && br.depth) { if (br.path && br.path.length) addG(br.path[0], br.path); Object.keys(br.moves || {}).forEach(function (k) { addG(k.split(',').map(Number)); }); }
+            }
+            if (nx) addG(nx.seq[0], nx.seq);
+            if (np) addG(np.seq[0], np.seq);
+            if (underG) {
               if (dyingG && apG && apG.stopBest) addG(apG.stopBest.seq[0], apG.stopBest.seq);
               if (dyingG && apG && apG.lowest) addG(apG.lowest.seq[0], apG.lowest.seq);
             } else if (apG && apG.setup && typeof readyAtG !== 'number') addG(apG.setup);

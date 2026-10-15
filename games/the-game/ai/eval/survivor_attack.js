@@ -57,6 +57,7 @@ module.exports = function (opts) {
     return { top: top, even: Math.max.apply(null, peaks) - Math.min.apply(null, peaks), hollow: hollow };
   }
   var SLICE = 256;   // about 9 ms of jobs (8,987 in 318 ms on a runner's board under a slab)
+  var SETTLE_SLICE = 32;   // a settle runs a cascade to its end: a popping slab's is a few hundred frames (256 of them took 160 ms here)
   function plan(board, hold, o) {
     var s = search(), t0 = Date.now(), best = null, nearest = null, quick = null, lowest = null, stopBest = null, aims = o.aims || (o.aim ? [o.aim] : null), perAim = aims ? aims.map(function () { return null; }) : null;
     s.reset();
@@ -216,8 +217,13 @@ module.exports = function (opts) {
     var s = search(), t0 = Date.now();
     s.reset();
     var root = s.root(board.copy(), hold, [], false);
+    // (settled SETTLE_SLICE at a time, the clock read between: past o.ms the rest come back unsettled, as lines not there)
     function sends(nodes) {
-      var outs = s.advanceMany(nodes.map(function (n) { return [n, 'settle', null, 0]; }), true);
+      var outs = [];
+      for (var q0 = 0; q0 < nodes.length; q0 += SETTLE_SLICE) {
+        if (q0 && Date.now() - t0 >= o.ms) { while (outs.length < nodes.length) outs.push(null); break; }
+        outs = outs.concat(s.advanceMany(nodes.slice(q0, q0 + SETTLE_SLICE).map(function (n) { return [n, 'settle', null, 0]; }), true));
+      }
       return outs.map(function (out) {
         if (!out || out.dead) return null;
         var st = s.stepStats(out), g = sent(st), big = 0;
