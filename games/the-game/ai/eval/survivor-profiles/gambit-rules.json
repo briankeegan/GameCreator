@@ -3,7 +3,7 @@
   "material": ">=12"
  },
  "raise": {
-  "to": 9
+  "to": 10
  },
  "underGarbage": "break",
  "attack": [
