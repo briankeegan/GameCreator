@@ -1499,6 +1499,7 @@ static void scoreAll(Cand **cs, int n, double *out, int idle, const int32_t *bas
 typedef struct { Cand *c; double cheap; } Cheap;
 
 static int raiseWaiting;
+static double nearLineG = -1; static int nearLineN; static int32_t nearLineSw[2 * LINEMAX];   // (the line nearest a break, below: optNear)
 // the frames until a waiting raise can fire: the rise lock, or the stop it waits on
 static double raiseWaitLeft(void) { return dmax(BIN[IN_LOCKLEFT], raiseAfter); }
 static double dcCandMs;   // GC_WORKSTAT: the pool's share of decideRuled
@@ -1510,6 +1511,7 @@ static int readiesLine(Dec d, int dieRef, int spare, int partial, int32_t *sw, i
 static int readyBar(void);
 static Dec decideCore(void) {
   raiseWaiting = 0;
+  nearLineG = -1;
   int32_t *base = IN;
   DBASE = base;
   hereSet = 0;
@@ -4209,7 +4211,10 @@ static double optSoon(Opt *o) {
 }// HOW NEAR A BREAK THE BOARD AN OPTION SETTLES TO IS (readyGuide): when no break is in reach in the time there is, the option that leaves the
 // board nearer one is the progress; INF for one the engine cannot settle
 static double readyGuide(const int32_t *st);
+// THE LINE NEAREST A BREAK, AS breakDeeper FOUND IT: its board's guide is known from the search that found it, so the arbiter does not ask the
+// engine for it again (at the end of a decision the work is spent and a replay is refused: a line then reads as infinitely far)
 static double optNear(Opt *o) {
+  if (!o->nearKnown && nearLineG >= 0 && o->n == nearLineN && o->n > 0 && !__builtin_memcmp(o->sw, nearLineSw, (unsigned long)o->n * 8)) { o->near = nearLineG; o->nearKnown = 1; }
   if (!o->nearKnown) {
     static ST st; int32_t cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
     int hold = o->d.kind == K_HOLD;
@@ -4719,6 +4724,7 @@ static Dec breakDeeper(Dec d) {
     // no break in the time there is: the line that got nearest one is played, and the search made again from where it leaves the board
     if (nx.bestN > 0 && (lineJudge(nx.sw, nx.bestN, 0), lnoDie(LNO) >= readyBar())) {
       lineLast = 8; plansDrop();
+      nearLineG = nx.bestG; nearLineN = nx.bestN; for (int k = 0; k < 2 * nx.bestN; k++) nearLineSw[k] = nx.sw[k];
       if (nx.bestN > 1) lineSet(nx.sw, nx.bestN, LINE_PLAN, 0); else BT->nLine = 0;
       return mkSwap(nx.sw[0], nx.sw[1], V_LINEUP, d.mode, d.alive);
     }
