@@ -847,9 +847,14 @@ module.exports = function think(cfg) {
           // THE RAISE (the file's or the rule's `raise: { to }`): below `to` rows, not under garbage, not topped and no chain running, the stack
           // is raised first -- held down to `to` in one press, not a row a decision -- and the list played from the panels it brings
           var raiseG = pickG.rule.raise || tablesG.raise || null, toG = raiseG && raiseG.to;
-          var upG = !!(toG && !underG && !FG.us.topped && !cascadeLive(board, true) && fullTop(board) < toG && bot._canRaise());
+          var lowG = !!(toG && !underG && !FG.us.topped && fullTop(board) < toG);
+          var upG = lowG && !cascadeLive(board, true) && bot._canRaise();
           if (upG) { lineG = null; setupG = null; bot._gambitRaise = toG; } else bot._gambitRaise = 0;
-          var kG = lineG ? arbKey(lineG.ap.seq[0]) : setupG ? arbKey(setupG) : null, holdG = !lineG && endG === 'hold', prG = bot.preferRank || function () { return Infinity; };
+          // (the raise due but the board busy -- a clear or a fall still going, which locks the rise: nothing new is begun, so the board
+          // comes to rest and the next decision raises; a chain already falling is still run on)
+          var waitG = lowG && !upG && !(lineG && lineG.extend);
+          if (waitG) { lineG = null; setupG = null; }
+          var kG = lineG ? arbKey(lineG.ap.seq[0]) : setupG ? arbKey(setupG) : null, holdG = !lineG && (endG === 'hold' || waitG), prG = bot.preferRank || function () { return Infinity; };
           if (kG || holdG || upG) {
             bot.preferRank = function gambitRank(c, i) {
               var r = prG.call(this, c, i);
@@ -860,7 +865,7 @@ module.exports = function think(cfg) {
             };
           }
           if (lineG) { attackLine = lineG.ap.seq.slice(1); attackMove = lineG.ap.seq[0]; }
-          bot._gambit = { table: pickG.table, under: !!underG, rule: pickG.index, name: pickG.rule.name || null, found: !!lineG, entry: lineG ? lineG.aimIndex : -1, near: lineG && lineG.near || 0, quick: !!(lineG && lineG.quick), ms: apG ? apG.ms : 0, setup: !!setupG, raise: upG ? toG : 0, extend: !!(lineG && lineG.extend), tried: triedG,
+          bot._gambit = { table: pickG.table, under: !!underG, rule: pickG.index, name: pickG.rule.name || null, found: !!lineG, entry: lineG ? lineG.aimIndex : -1, near: lineG && lineG.near || 0, quick: !!(lineG && lineG.quick), ms: apG ? apG.ms : 0, setup: !!setupG, raise: upG ? toG : 0, wait: !!waitG, extend: !!(lineG && lineG.extend), tried: triedG,
                           chain: lineG ? lineG.ap.chain : 0, combo: lineG ? lineG.ap.combo || 0 : 0, swaps: lineG ? lineG.ap.seq.length : 0, done: lineG ? lineG.ap.done : null, by: byG };
         }
       }
