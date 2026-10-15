@@ -892,7 +892,8 @@ module.exports = function think(cfg) {
           var kG = lineG ? arbKey(lineG.ap.seq[0]) : setupG ? arbKey(setupG) : null, holdG = !lineG && (endG === 'hold' || waitG), prG = bot.preferRank || function () { return Infinity; };
           // GAMBIT RANKS EVERY PLAY IT FOUND, the one chosen first and the rest in the plays' order after it, so a play the survival search
           // will not prove is followed by gambit's next one, never by another stage's: the entries' lines in the list's order, the nearest
-          // attacks, the break line, the break search's first swaps, scramble, clear, ready, level, the setup, a hold last. Each first
+          // attacks, the break line, the break search's first swaps, scramble, clear, ready, level, the setup (a hold only when it is the play
+          // chosen: ranked last it would stand above every break of the survival search's own). Each first
           // swap carries the rest of its line (linesG), played on if it is the one played.
           var orderG = [], linesG = {};
           var addG = function (mv, seq) { if (!mv) return; var k = mv === 'raise' || mv === 'hold' ? mv : arbKey(mv); if (orderG.indexOf(k) < 0) { orderG.push(k); if (seq && seq.length > 1) linesG[k] = seq.slice(1); } };
@@ -911,7 +912,6 @@ module.exports = function think(cfg) {
               if (dyingG && apG && apG.stopBest) addG(apG.stopBest.seq[0], apG.stopBest.seq);
               if (dyingG && apG && apG.lowest) addG(apG.lowest.seq[0], apG.lowest.seq);
             } else if (apG && apG.setup && typeof readyAtG !== 'number') addG(apG.setup);
-            addG('hold');
           }
           if (orderG.length) {
             bot.preferRank = function gambitRank(c, i) {

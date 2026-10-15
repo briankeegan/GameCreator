@@ -651,12 +651,15 @@ Match.prototype.afterFrame = function () {
 // topped out without stop time to hold it. Otherwise it begins `gap` frames after the last swap: garbage landing, a chain running and a
 // break in reach are in the proof already (with pace.breaks false a break in reach is played at once). The decision is asked about the
 // frame the move begins.
+// (pace.jitter, frames: each gap is the pace's gap and a share of jitter drawn afresh for every swap, so the moves come at a person's
+// uneven rhythm rather than a metronome's)
 Match.prototype.slack = function (next, P) {
   var lp = this.lastPace;
   if (!lp || !lp.hold || lp.urgent || (lp.brk && P.breaks === false)) return null;
   var stop = (next.stopTime || 0) + (next.preStopTime || 0);
   if (this.toppedNow && !(stop > P.gap)) return null;
-  return { gap: P.gap };
+  if (P.jitter && this.jitterFor !== this.lastSwapEnd) { this.jitterFor = this.lastSwapEnd; this.jitterGap = P.gap + Math.floor(Math.random() * (P.jitter + 1)); }
+  return { gap: P.jitter ? this.jitterGap : P.gap };
 };
 // A HEAVY HIT (survivor_think.js heavyA): the garbage on its way and the next block queued over agro's maxComing rows -- defended as the
 // default defends, its swap-back rule included

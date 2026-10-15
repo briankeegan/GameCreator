@@ -32,6 +32,7 @@
  },
  "pace": {
   "gap": 20,
+  "jitter": 16,
   "slack": true
  }
 }
