@@ -32,7 +32,8 @@ module.exports = function (opts) {
     if (!S) S = new N.Search({ reaction: opts.reaction, swapGap: opts.swapGap, cursorMoveFrames: opts.cursorMoveFrames, threads: 1 });
     return S;
   }
-  // o: { ms, width, depth, pool, stopAt, minChain, guideChain, arrivals, rate }: with rate the fire kept is the best per swap of its line; arrivals is the garbage on its way, as the bot's serverArrivals; only a fire of a chain of minChain links or more counts; boards are ranked by fires of guideChain links or more; stopAt ends the search at the first depth with a fire of that many cells
+  // o.aim (with o.by): a line counts only when what it makes meets the aim -- aim({ combo, combos, chain, broke, cells }) -- with its
+  // last swap's clears done by frame o.by (frames from now); o: { ms, width, depth, pool, stopAt, minChain, guideChain, arrivals, rate }: with rate the fire kept is the best per swap of its line; arrivals is the garbage on its way, as the bot's serverArrivals; only a fire of a chain of minChain links or more counts; boards are ranked by fires of guideChain links or more; stopAt ends the search at the first depth with a fire of that many cells
   function plan(board, hold, o) {
     var s = search(), t0 = Date.now(), best = null;
     s.reset();
@@ -53,17 +54,19 @@ module.exports = function (opts) {
         var st = s.stepStats(out);
         if (st.cleared > 0) {
           var g = sent(st), seq = it.seq.concat([m]);
+          var bigC = 0; st.comboSizes.forEach(function (z) { if (z > bigC) bigC = z; });
+          if (o.aim && !(o.aim({ combo: bigC, combos: st.comboSizes, chain: g.chain, broke: st.broke || 0, cells: Math.max(0, g.cells - base) }) && !(o.by && out.t - root.t > o.by))) { it.kids.push({ n: out, seq: seq }); continue; }
           // a board is ranked by the chain one swap from it (guideChain links or more), the fire kept is minChain links or more
           var shown = Math.max(0, g.cells - base);
           if (g.chain >= (o.guideChain || o.minChain || 0) && shown > it.reach) it.reach = shown;
           g.cells = g.chain >= (o.minChain || 0) ? shown : 0;
           // (breakFirst, garbage on the board: a line that breaks some is kept however little it sends, and ranks before any that breaks none)
-          var brk = o.breakFirst && (st.broke || 0) > 0;
-          if (g.cells === 0 && !brk) continue;
+          var brk = (o.breakFirst || o.aim) && (st.broke || 0) > 0;
+          if (g.cells === 0 && !brk && !o.aim) continue;
           // the fire kept: the most garbage, or with o.rate the most garbage for the time it takes (cells over swaps + rate) -- pressure, not the biggest
           var rated = o.rate ? g.cells / (seq.length + o.rate) : g.cells, bestRated = best ? (o.rate ? best.cells / (best.seq.length + o.rate) : best.cells) : -1;
           var better = !best || (o.breakFirst && brk !== !!best.brk ? brk : rated > bestRated || (rated === bestRated && seq.length < best.seq.length));
-          if (better) best = { brk: brk, cells: g.cells, chain: g.chain, seq: seq, n: out, broke: st.broke || 0, earned: st.earned || 0 };
+          if (better) best = { brk: brk, cells: g.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: st.broke || 0, earned: st.earned || 0, done: out.t - root.t };
         } else it.kids.push({ n: out, seq: it.seq.concat([m]) });
       }
       pool.sort(function (a, b) { return b.reach - a.reach || b.h - a.h; });
