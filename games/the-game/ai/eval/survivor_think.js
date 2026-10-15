@@ -815,6 +815,7 @@ module.exports = function think(cfg) {
           // (garbage on our board, or topped out: every entry breaks it too -- the entry and a break in one line; none, and the
           // default's own move, which breaks it, is played)
           var underG = tablesG.underGarbage !== 'ignore' && (FG.us.contact !== null || FG.us.topped);
+          var listAimsG = aimsG;   // (as written: a line-up of a slab popping is the break already made, so it is held to these)
           if (underG) { aimsG = aimsG.map(function (a) { return Object.assign({}, a, { break: true }); }); endG = 'default'; }
           // (under garbage the break is due before the next garbage lands: a break after it is a break of a deeper pile)
           if (underG && FG.us.nextLands > 0 && !(byG && byG < FG.us.nextLands)) byG = FG.us.nextLands;
@@ -824,12 +825,16 @@ module.exports = function think(cfg) {
             // (a chain already falling is run on first: the links that keep it going and make an entry -- the next chain is built
             // while the first one runs; and a slab popping is lined up: the panels it turns into are matched as they fall, a link more)
             var leftG = function () { return due ? due - Date.now() - 2 * DEADLINE_MARGIN_MS - 100 : 1e9; };
-            if ((cascadeLive(board, true) || SH.popLeft(board) > 0) && GP.extend !== false && Math.min(GP.extendMs || 40, leftG()) >= 20) {
+            // (a slab popping: the line-up is held to the list as written -- the pop is the break -- and has the decision's whole search
+            // time, the plan what it leaves)
+            var popG = SH.popLeft(board) > 0, xAimsG = popG ? listAimsG : aimsG, xMsG = popG ? (GP.ms || 80) : (GP.extendMs || 40);
+            if ((cascadeLive(board, true) || popG) && GP.extend !== false && Math.min(xMsG, leftG()) >= 20) {
               triedG++;
-              exG = attacker.extend(board, m.hold, { ms: Math.min(GP.extendMs || 40, leftG()), width: GP.width || 40, depth: GP.extendDepth || 6, aims: predsG, keep: keepF, near: function (made) { return GAMBIT.nearList(aimsG, made); } });
+              exG = attacker.extend(board, m.hold, { ms: Math.min(xMsG, leftG()), width: GP.width || 40, depth: GP.extendDepth || 6, keep: keepF,
+                                                     aims: xAimsG.map(function (a) { return function (made) { return GAMBIT.meets(a, made); }; }), near: function (made) { return GAMBIT.nearList(xAimsG, made); } });
               if (exG.seq.length && exG.aimIndex >= 0 && exG.cells > exG.base) lineG = { ap: exG, aimIndex: exG.aimIndex, extend: true };
             }
-            var msG = Math.min(GP.ms || 80, leftG());
+            var msG = Math.min(GP.ms || 80, leftG()) - (popG && exG ? exG.ms : 0);
             if (msG >= 20) {
               triedG++;
               apG = attacker.plan(board, m.hold, { ms: msG, width: GP.width || 40, depth: GP.depth || 7, pool: GP.pool || 250, minChain: 0, arrivals: arrivals,
@@ -870,7 +875,7 @@ module.exports = function think(cfg) {
             };
           }
           if (lineG) { attackLine = lineG.ap.seq.slice(1); attackMove = lineG.ap.seq[0]; }
-          bot._gambit = { table: pickG.table, under: !!underG, rule: pickG.index, name: pickG.rule.name || null, found: !!lineG, entry: lineG ? lineG.aimIndex : -1, near: lineG && lineG.near || 0, quick: !!(lineG && lineG.quick), ms: apG ? apG.ms : 0, setup: !!setupG, raise: upG ? toG : 0, wait: !!waitG, extend: !!(lineG && lineG.extend), tried: triedG,
+          bot._gambit = { table: pickG.table, under: !!underG, rule: pickG.index, name: pickG.rule.name || null, found: !!lineG, entry: lineG ? lineG.aimIndex : -1, near: lineG && lineG.near || 0, quick: !!(lineG && lineG.quick), ms: apG ? apG.ms : 0, setup: !!setupG, raise: upG ? toG : 0, wait: !!waitG, extend: !!(lineG && lineG.extend), tried: triedG, pop: SH.popLeft(board), xs: exG ? [exG.seq.length, exG.chain, exG.cells, exG.base, exG.nearest ? exG.nearest.chain : 0] : null,
                           chain: lineG ? lineG.ap.chain : 0, combo: lineG ? lineG.ap.combo || 0 : 0, swaps: lineG ? lineG.ap.seq.length : 0, done: lineG ? lineG.ap.done : null, by: byG };
         }
       }
