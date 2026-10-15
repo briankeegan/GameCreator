@@ -3639,7 +3639,7 @@ static void targetAfterDrops(const int32_t *st, int cr, int cc, double t0, doubl
   if (x.n > 0) { tadN = x.len[0]; for (int k = 0; k < 2 * tadN; k++) tadSw[k] = x.sw[0][k]; tadDec = btDecision; }
   // soonest drop first; timing wants only the soonest break, so it stops at the first board that gives one
   double bound0 = tTimeMin;
-  for (int i = 0; i < x.n && workLeft() > 0 && !(tTimeMode && tTimeMin < bound0); i++) {
+  for (int i = 0; i < x.n && !growSpent() && !(tTimeMode && tTimeMin < bound0); i++) {
     int32_t st1[ST_INTS], cur[2], t; uint32_t can[WMAX]; Wait wt[32][WMAX];
     int ls = lineState(x.sw[i], x.len[i], st1, can, wt, cur, &t), n0 = nLines;
     if (ls == 0 && t <= limit) { for (int k = 0; k < 2 * x.len[i]; k++) tPfx[k] = x.sw[i][k]; tPfxN = x.len[i]; targetLines(st1, cur[0], cur[1], t, limit); tPfxN = 0; }
@@ -3667,6 +3667,7 @@ static double linesLimit(int breaks) { (void)breaks; return lsTopped ? timeLeft(
 static int raPos;   // the position (defined with the lineup's refusals)
 typedef struct { int none, pos, depth, breaks, topped; double limit; } LfNone;
 static LfNone LFN[4];   // by what was asked: depth REROOTS or not, breaks or not
+static void workTrace(const char *tag);
 static void linesFind(int depth, int breaks) {
   // the same lines asked for twice in a decision are found once
   if (lfDecision == btDecision && lfDepth == depth && lfBreaks == breaks) return;
@@ -3680,6 +3681,9 @@ static void linesFind(int depth, int breaks) {
   lsTopped = BIN[IN_TOPPED] != 0; lsBreaks = breaks;
   double lsLimit = linesLimit(breaks);
   LfNone *fn = &LFN[(breaks ? 1 : 0) + (depth == REROOTS ? 2 : 0)];
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LFNONE raPos %d none %d pos %d depth %d/%d topped %d/%d limit %g/%g\n", raPos, fn->none, fn->pos, fn->depth, depth, fn->topped, lsTopped, fn->limit, lsLimit); }
+#endif
   if (fn->none && fn->pos == raPos && fn->depth == depth && fn->breaks == breaks && fn->topped == lsTopped && lsLimit <= fn->limit) { lfEnd = 0; return; }
   double lf0 = paWork, lfWorkLeft = workLeft();
   const int32_t *saveBase = ENGINE_BASE;
@@ -3693,6 +3697,7 @@ static void linesFind(int depth, int breaks) {
   Wait waits0[32][WMAX];
   if (BIN[IN_HASPA] && lineState(0, 0, st0, can0, waits0, cur, &t) == 0) {
     growAt(0, 0, t, depth, st0, cur[0], cur[1], can0, waits0, lsLimit);
+    workTrace("linesFind grown");
     if (breaks) breakLines(st0, cur[0], cur[1], t, lsTopped ? timeLeft() - 2 : INF);
   } else {
     growAt(0, 0, 0, depth, DBASE, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], saveCan, 0, lsLimit);
