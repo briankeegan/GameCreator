@@ -57,6 +57,13 @@ assert.strictEqual(f2.material, 12, 'every panel is under the garbage or in a co
 b.panels[6][1].color = 1;   // a panel above the garbage in column 1 is out of reach
 assert.strictEqual(G.facts(b, [], false).material, 12, 'a panel above the garbage is not material');
 
+// keep: what the board a line ends on must still have (a settled grid: 0 empty, -2 garbage, 1..7 colours)
+var grid = [[0,0,0,0,0,0,0],[0,1,2,3,4,5,1],[0,2,3,0,0,0,0],[0,-2,-2,-2,0,0,0],[0,4,0,0,0,0,0],[0,0,0,0,0,0,0]];
+var gf = G.gridFacts(grid);
+assert.strictEqual(gf.material, 8, 'the panels under the garbage, not the one above it: ' + gf.material);
+assert(G.keeps({ material: '>=8' }, grid) && !G.keeps({ material: '>=12' }, grid), 'a line that leaves 8 panels keeps 8, not 12');
+assert(G.keeps(null, grid), 'no keep asks nothing');
+
 // the rules file, read again when it changes
 var file = path.join(__dirname, 'gambit.test.rules.json');
 function write(j, ms) { fs.writeFileSync(file, JSON.stringify(j)); fs.utimesSync(file, ms / 1000, ms / 1000); }

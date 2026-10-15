@@ -33,7 +33,7 @@ module.exports = function (opts) {
     return S;
   }
   // o.aim (with o.by): a line counts only when what it makes meets the aim -- aim({ combo, combos, chain, broke, cells }) -- with its
-  // last swap's clears done by frame o.by (frames from now); o: { ms, width, depth, pool, stopAt, minChain, guideChain, arrivals, rate }: with rate the fire kept is the best per swap of its line; arrivals is the garbage on its way, as the bot's serverArrivals; only a fire of a chain of minChain links or more counts; boards are ranked by fires of guideChain links or more; stopAt ends the search at the first depth with a fire of that many cells
+  // last swap's clears done by frame o.by (frames from now), and o.keep(grid) true of the board it ends on; o: { ms, width, depth, pool, stopAt, minChain, guideChain, arrivals, rate }: with rate the fire kept is the best per swap of its line; arrivals is the garbage on its way, as the bot's serverArrivals; only a fire of a chain of minChain links or more counts; boards are ranked by fires of guideChain links or more; stopAt ends the search at the first depth with a fire of that many cells
   function plan(board, hold, o) {
     var s = search(), t0 = Date.now(), best = null;
     s.reset();
@@ -55,7 +55,7 @@ module.exports = function (opts) {
         if (st.cleared > 0) {
           var g = sent(st), seq = it.seq.concat([m]);
           var bigC = 0; st.comboSizes.forEach(function (z) { if (z > bigC) bigC = z; });
-          if (o.aim && !(o.aim({ combo: bigC, combos: st.comboSizes, chain: g.chain, broke: st.broke || 0, cells: Math.max(0, g.cells - base) }) && !(o.by && out.t - root.t > o.by))) { it.kids.push({ n: out, seq: seq }); continue; }
+          if (o.aim && !(o.aim({ combo: bigC, combos: st.comboSizes, chain: g.chain, broke: st.broke || 0, cells: Math.max(0, g.cells - base) }) && !(o.by && out.t - root.t > o.by) && !(o.keep && !o.keep(out.b.grid)))) { it.kids.push({ n: out, seq: seq }); continue; }
           // a board is ranked by the chain one swap from it (guideChain links or more), the fire kept is minChain links or more
           var shown = Math.max(0, g.cells - base);
           if (g.chain >= (o.guideChain || o.minChain || 0) && shown > it.reach) it.reach = shown;

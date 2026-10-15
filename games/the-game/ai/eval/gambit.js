@@ -5,7 +5,9 @@
 // tables live in a JSON file (the profile's `gambit.rules`) read again whenever it changes.
 //
 //   file: { defend: [rule, ...], attack: [rule, ...], opponents: { "<name>": { defend, attack } } }
-//   rule: { name, when: { field: test, ... }, aim: { ... }, by: frames | field, else: aim | "default" | "hold" }
+//   rule: { name, when: { field: test, ... }, aim: { ... }, by: frames | field, else: aim | "default" | "hold", keep: { fact: test } }
+//   keep: what our board must still have once the line is done (material, height, evenness); the file's own `keep` is every rule's
+//   that has none
 //   field: "us.<fact>" or "enemy.<fact>"; test: a value (equal) or a string ">=9", "<4", "==0", "!=0"
 //   aim: { combo: test, chain: test, break: true | false, send: test (cells), any: [aim, ...] }  -- every key given must hold
 //
@@ -37,6 +39,28 @@ function facts(board, arrivals, topped) {
     topped: !!topped, stop: stop, height: top, material: material, contact: garb ? contact : null,
     evenness: Math.max.apply(null, peaks) - Math.min.apply(null, peaks), coming: coming, heavy: coming > 8, nextLands: next
   };
+}
+// The facts of a settled grid the search leaves (0 empty, garbage 8 and up or below 0, 1..7 colours): what a line's end board keeps.
+function gridFacts(grid) {
+  var top = 0, material = 0, peaks = [], c, r;
+  for (c = 1; c <= 6; c++) {
+    var pk = 0, g = 0;
+    for (r = 1; r < grid.length - 1; r++) {
+      var v = grid[r] && grid[r][c];
+      var garbage = v >= 8 || v < 0;
+      if (garbage) { if (!g) g = r; }
+      else if (v > 0 && !g) { pk = r; material++; }
+      if (v && r > top) top = r;
+    }
+    peaks.push(pk);
+  }
+  return { height: top, material: material, evenness: Math.max.apply(null, peaks) - Math.min.apply(null, peaks) };
+}
+// KEEP: what our board must still have once a line is done ({ material: ">=12", height: "<=9", ... }); every key given must hold.
+function keeps(keep, grid) {
+  if (!keep || !grid) return true;
+  var f = gridFacts(grid);
+  return Object.keys(keep).every(function (k) { return test(f[k.replace(/^us\./, '')], keep[k]); });
 }
 // The enemy's facts, from what the host sends of the enemy's board (opp: { out, top, stop, ... }); the rest stay undefined.
 function enemyFacts(opp) {
@@ -108,7 +132,8 @@ Rules.prototype.get = function (opponent) {
     if (st.mtimeMs !== this.mtime) {
       var j = JSON.parse(fs.readFileSync(this.file, 'utf8')), c = checked(j), own = {}, errs = c.errors.slice();
       Object.keys(j.opponents || {}).forEach(function (name) { var co = checked(j.opponents[name]); own[name] = co.tables; co.errors.forEach(function (e) { errs.push(name + ': ' + e); }); });
-      this.all = c.tables; this.own = own; this.errors = errs;
+      this.all = c.tables; this.all.keep = j.keep || null; this.own = own; this.errors = errs;
+      Object.keys(own).forEach(function (n) { own[n].keep = (j.opponents[n] && j.opponents[n].keep) || j.keep || null; });
       this.mtime = st.mtimeMs; this.error = null;
       console.error('GAMBIT rules ' + this.file + ': ' + this.all.defend.length + ' defend, ' + this.all.attack.length + ' attack, ' + Object.keys(own).length + ' opponents' + (errs.length ? '; dropped: ' + errs.join(' | ') : ''));
     }
@@ -124,4 +149,4 @@ function rulesFor(profile, dir) {
   return new Rules(path.isAbsolute(g.rules) ? g.rules : path.join(dir, g.rules));
 }
 
-module.exports = { facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };
+module.exports = { gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };

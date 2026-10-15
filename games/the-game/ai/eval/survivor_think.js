@@ -804,8 +804,9 @@ module.exports = function think(cfg) {
       bot._gambit = null;
       if (gambitRules) {
         var GP = cfg.profile.gambit, FG = { us: GAMBIT.facts(board, arrivals, m.topped), enemy: GAMBIT.enemyFacts(m.opp) };
-        var pickG = GAMBIT.choose(gambitRules.get(m.opp && m.opp.name), FG), lineG = null, triedG = 0;
+        var tablesG = gambitRules.get(m.opp && m.opp.name), pickG = GAMBIT.choose(tablesG, FG), lineG = null, triedG = 0;
         if (pickG) {
+          var keepG = pickG.rule.keep || tablesG.keep || null, keepF = keepG ? function (grid) { return GAMBIT.keeps(keepG, grid); } : null;
           var byG = GAMBIT.deadline(FG, pickG.rule.by), triesG = [pickG.rule.aim];
           if (pickG.rule.else && typeof pickG.rule.else === 'object') triesG.push(pickG.rule.else);
           // (a chain already falling is run on first: the links that keep it going and make what the aim asks -- a second
@@ -827,7 +828,7 @@ module.exports = function think(cfg) {
             if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
             triedG++;
             var apG = attacker.plan(board, m.hold, { ms: msG, width: GP.width || 40, depth: GP.depth || 7, pool: GP.pool || 250, minChain: 0, arrivals: arrivals,
-                                                     aim: function (made) { return GAMBIT.meets(aimT, made); }, by: byG || undefined });
+                                                     aim: function (made) { return GAMBIT.meets(aimT, made); }, by: byG || undefined, keep: keepF });
             if (apG.seq.length && GAMBIT.meets(aimT, { combo: apG.combo || 0, chain: apG.chain || 0, broke: apG.broke || 0, cells: apG.cells || 0 })) lineG = { ap: apG, aim: aimT, fallback: tg > 0 };
           }
           var kG = lineG ? arbKey(lineG.ap.seq[0]) : null, holdG = !lineG && pickG.rule.else === 'hold', prG = bot.preferRank || function () { return Infinity; };

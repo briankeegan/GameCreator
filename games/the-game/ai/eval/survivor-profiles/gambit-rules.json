@@ -1,4 +1,7 @@
 {
+ "keep": {
+  "material": ">=12"
+ },
  "defend": [
   {
    "name": "dig with a punch",
