@@ -920,11 +920,11 @@ module.exports = function think(cfg) {
             };
           }
           bot._gambitLines = linesG;
-          // PACE (the profile's pace, plans/gambit.md step 7): a play is begun later only when nothing about it is due -- never a play with
-          // a window (a chain falling, a slab popping), never a break of garbage on the board, never a play whose line is done within a
-          // pace gap of its deadline
+          // PACE (the profile's pace, plans/gambit.md step 7): moves are spread out, never pulsed, whenever nothing is due -- a play is begun
+          // at once only in a window (a chain falling, a slab popping) or when its line is done within a pace gap of its deadline (the break
+          // under garbage: the next block or the board lost; the ready and level: the block landing; an attack: its rule's by)
           var gapG = (cfg.profile.pace && cfg.profile.pace.gap) || 0, doneG = lineG && lineG.ap && lineG.ap.done, dueG = byG || (typeof readyAtG === 'number' ? readyAtG : null);
-          bot._gambitUrgent = !!(lineG && lineG.extend) || SH.popLeft(board) > 0 || cascadeLive(board, true) || !!underG || playG === 'ready' || playG === 'level' ||
+          bot._gambitUrgent = !!(lineG && lineG.extend) || SH.popLeft(board) > 0 || cascadeLive(board, true) ||
                               (dueG !== null && dueG !== undefined && (doneG || 0) + gapG >= dueG);
           bot._gambit = { table: pickG.table, under: !!underG, rule: pickG.index, name: pickG.rule.name || null, want: orderG[0] || null, options: orderG.length, order: orderG, found: !!lineG, play: playG || (lineG ? (lineG.aimIndex >= 0 ? 'entry' : 'nearest') : null), entry: lineG ? lineG.aimIndex : -1, near: lineG && lineG.near || 0, quick: !!(lineG && lineG.quick), ms: apG ? apG.ms : 0, setup: !!setupG, ready: readyG, readyAt: typeof readyAtG === 'number' ? readyAtG : null, raise: upG ? toG : 0, wait: !!waitG, extend: !!(lineG && lineG.extend), tried: triedG, pop: SH.popLeft(board), xs: exG ? [exG.seq.length, exG.chain, exG.cells, exG.base, exG.nearest ? exG.nearest.chain : 0] : null,
                           chain: lineG ? lineG.ap.chain : 0, combo: lineG ? lineG.ap.combo || 0 : 0, swaps: lineG ? lineG.ap.seq.length : 0, done: lineG ? lineG.ap.done : null, by: byG };
