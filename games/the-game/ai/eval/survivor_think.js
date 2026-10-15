@@ -844,11 +844,10 @@ module.exports = function think(cfg) {
               else if (!lineG && !underG && apG.setup) setupG = apG.setup;
             }
           }
-          // THE RAISE (the file's or the rule's `raise: { to }`): below `to` rows, not under garbage, not topped and no chain running, with no
-          // entry in time the stack is raised -- held down to `to` in one press, not a row a decision -- before any nearest line or setup:
-          // the list is built from panels
+          // THE RAISE (the file's or the rule's `raise: { to }`): below `to` rows, not under garbage, not topped and no chain running, the stack
+          // is raised first -- held down to `to` in one press, not a row a decision -- and the list played from the panels it brings
           var raiseG = pickG.rule.raise || tablesG.raise || null, toG = raiseG && raiseG.to;
-                    var upG = !!(toG && !(lineG && lineG.aimIndex >= 0) && !underG && !FG.us.topped && !cascadeLive(board, true) && fullTop(board) < toG && bot._canRaise());
+          var upG = !!(toG && !underG && !FG.us.topped && !cascadeLive(board, true) && fullTop(board) < toG && bot._canRaise());
           if (upG) { lineG = null; setupG = null; bot._gambitRaise = toG; } else bot._gambitRaise = 0;
           var kG = lineG ? arbKey(lineG.ap.seq[0]) : setupG ? arbKey(setupG) : null, holdG = !lineG && endG === 'hold', prG = bot.preferRank || function () { return Infinity; };
           if (kG || holdG || upG) {
