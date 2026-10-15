@@ -32,10 +32,12 @@ module.exports = function (opts) {
     if (!S) S = new N.Search({ reaction: opts.reaction, swapGap: opts.swapGap, cursorMoveFrames: opts.cursorMoveFrames, threads: 1 });
     return S;
   }
+  // o.aims: a priority list of aims, searched in one beam -- the best line for each aim is kept, and the line returned is the first
+  // aim's that has one (best.aimIndex); o.aim is a list of one.
   // o.aim (with o.by): a line counts only when what it makes meets the aim -- aim({ combo, combos, chain, broke, cells }) -- with its
   // last swap's clears done by frame o.by (frames from now), and o.keep(grid) true of the board it ends on; o: { ms, width, depth, pool, stopAt, minChain, guideChain, arrivals, rate }: with rate the fire kept is the best per swap of its line; arrivals is the garbage on its way, as the bot's serverArrivals; only a fire of a chain of minChain links or more counts; boards are ranked by fires of guideChain links or more; stopAt ends the search at the first depth with a fire of that many cells
   function plan(board, hold, o) {
-    var s = search(), t0 = Date.now(), best = null;
+    var s = search(), t0 = Date.now(), best = null, aims = o.aims || (o.aim ? [o.aim] : null), perAim = aims ? aims.map(function () { return null; }) : null;
     s.reset();
     var root = s.root(board.copy(), hold, o.arrivals || [], false);
     // a cascade already running sends what it sends whatever is swapped: only what a swap adds to it counts
@@ -55,7 +57,19 @@ module.exports = function (opts) {
         if (st.cleared > 0) {
           var g = sent(st), seq = it.seq.concat([m]);
           var bigC = 0; st.comboSizes.forEach(function (z) { if (z > bigC) bigC = z; });
-          if (o.aim && !(o.aim({ combo: bigC, combos: st.comboSizes, chain: g.chain, broke: st.broke || 0, cells: Math.max(0, g.cells - base) }) && !(o.by && out.t - root.t > o.by) && !(o.keep && !o.keep(out.b.grid)))) { it.kids.push({ n: out, seq: seq }); continue; }
+          if (aims) {
+            // (aims: the line is kept for every aim it meets, by its deadline and keeping what o.keep asks; the search goes on past it)
+            var made = { combo: bigC, combos: st.comboSizes, chain: g.chain, broke: st.broke || 0, cells: Math.max(0, g.cells - base) };
+            var inTime = !(o.by && out.t - root.t > o.by), kept = !(o.keep && !o.keep(out.b.grid));
+            if (inTime && kept) for (var ai = 0; ai < aims.length; ai++) {
+              if (!aims[ai] || !aims[ai](made)) continue;
+              var pa = perAim[ai];
+              if (!pa || made.cells > pa.cells || (made.cells === pa.cells && seq.length < pa.seq.length))
+                perAim[ai] = { brk: made.broke > 0, cells: made.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: made.broke, earned: st.earned || 0, done: out.t - root.t, aimIndex: ai };
+            }
+            it.kids.push({ n: out, seq: seq });
+            continue;
+          }
           // a board is ranked by the chain one swap from it (guideChain links or more), the fire kept is minChain links or more
           var shown = Math.max(0, g.cells - base);
           if (g.chain >= (o.guideChain || o.minChain || 0) && shown > it.reach) it.reach = shown;
@@ -86,11 +100,13 @@ module.exports = function (opts) {
       if (pool.length && pool[0].h > (setup ? setup.h : rootH)) setup = { h: pool[0].h, move: pool[0].seq[0] };
       var keep = new Set(pool.map(function (it) { return it.n; }));
       if (best) keep.add(best.n);
+      if (perAim) perAim.forEach(function (pa) { if (pa) keep.add(pa.n); });
       var spent = outs.filter(function (x) { return x && !x.dead && !keep.has(x); });
       old.forEach(function (it) { if (it.n !== root && !keep.has(it.n)) spent.push(it.n); });
       if (spent.length) s.drop(spent);
     }
-    if (!best) best = { cells: 0, chain: 0, seq: [] };
+    if (perAim) { best = null; for (var fa = 0; fa < perAim.length && !best; fa++) if (perAim[fa]) best = perAim[fa]; }
+    if (!best) best = { cells: 0, chain: 0, seq: [], aimIndex: -1 };
     // A LINE THAT RUNS ON: every step of it was played on the engine with the garbage on its way landing at its time, and no
     // step left the board dead (a dead node is never grown), so it is continuous to its end. `continuous` says it also ends
     // with no garbage left on the board, or having broken some -- it gets the board out from under what is on it.
@@ -142,6 +158,7 @@ module.exports = function (opts) {
     }
     var base = sends([root])[0] || { cells: 0, chain: 0 };
     var best = { cells: base.cells, chain: base.chain, seq: [], base: base.cells };
+    var xAims = o.aims || (o.aim ? [o.aim] : null), xPer = xAims ? xAims.map(function () { return null; }) : null;
     var pool = [{ n: root, seq: [] }];
     for (var d = 1; d <= o.depth && pool.length && Date.now() - t0 < o.ms; d++) {
       var jobs = [], meta = [];
@@ -154,8 +171,11 @@ module.exports = function (opts) {
         if (!g) return;
         k.score = g.cells;
         k.h = connected(k.n.b.grid);
-        // (o.aim: only a cascade that ends making what the aim asks -- { combo, chain, broke, cells added } -- is kept)
-        if (g.cells > best.cells && (!o.aim || o.aim({ combo: g.combo, chain: g.chain, broke: g.broke, cells: g.cells - base.cells }))) best = { cells: g.cells, chain: g.chain, combo: g.combo, seq: k.seq, base: base.cells };
+        // (o.aims: the cascade that ends making the most for each aim -- { combo, chain, broke, cells added } -- is kept per aim)
+        if (xAims) {
+          var madeX = { combo: g.combo, chain: g.chain, broke: g.broke, cells: g.cells - base.cells };
+          for (var xa = 0; xa < xAims.length; xa++) if (xAims[xa] && xAims[xa](madeX) && (!xPer[xa] || g.cells > xPer[xa].cells)) xPer[xa] = { cells: g.cells, chain: g.chain, combo: g.combo, seq: k.seq, base: base.cells, aimIndex: xa };
+        } else if (g.cells > best.cells) best = { cells: g.cells, chain: g.chain, combo: g.combo, seq: k.seq, base: base.cells };
         next.push(k);
       });
       var seen = {};
@@ -169,6 +189,7 @@ module.exports = function (opts) {
       if (spent.length) s.drop(spent);
       pool = keepNodes;
     }
+    if (xPer) { for (var fx = 0; fx < xPer.length; fx++) if (xPer[fx]) { best = xPer[fx]; break; } if (!best.seq.length) best.aimIndex = -1; }
     best.ms = Date.now() - t0;
     return best;
   }

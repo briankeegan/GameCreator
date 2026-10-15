@@ -9,51 +9,79 @@
    "when": {
     "enemy.topped": true
    },
-   "aim": {
-    "combo": ">=4"
-   },
-   "else": {
-    "chain": ">=2"
-   }
+   "aims": [
+    {
+     "combo": ">=6"
+    },
+    {
+     "combo": ">=5"
+    },
+    {
+     "combo": ">=4"
+    },
+    {
+     "chain": ">=2"
+    },
+    "default"
+   ]
   },
   {
    "name": "pressure",
    "when": {
     "enemy.height": ">=9"
    },
-   "aim": {
-    "chain": ">=2"
-   },
-   "else": {
-    "combo": ">=4"
-   }
+   "aims": [
+    {
+     "chain": ">=3"
+    },
+    {
+     "chain": ">=2"
+    },
+    {
+     "combo": ">=5"
+    },
+    {
+     "combo": ">=4"
+    },
+    "default"
+   ]
   },
   {
    "name": "build",
    "when": {
     "enemy.height": "<9"
    },
-   "aim": {
-    "chain": ">=3"
-   },
-   "else": {
-    "combo": ">=5"
-   }
+   "aims": [
+    {
+     "chain": ">=4"
+    },
+    {
+     "chain": ">=3"
+    },
+    {
+     "combo": ">=8"
+    },
+    {
+     "combo": ">=6"
+    },
+    {
+     "combo": ">=5"
+    },
+    "default"
+   ]
   },
   {
    "name": "anything big",
    "when": {},
-   "aim": {
-    "any": [
-     {
-      "combo": ">=4"
-     },
-     {
-      "chain": ">=2"
-     }
-    ]
-   },
-   "else": "default"
+   "aims": [
+    {
+     "chain": ">=2"
+    },
+    {
+     "combo": ">=4"
+    },
+    "default"
+   ]
   }
  ],
  "opponents": {}

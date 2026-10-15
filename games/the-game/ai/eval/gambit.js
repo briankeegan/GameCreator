@@ -5,7 +5,9 @@
 // tables live in a JSON file (the profile's `gambit.rules`) read again whenever it changes.
 //
 //   file: { defend: [rule, ...], attack: [rule, ...], opponents: { "<name>": { defend, attack } } }
-//   rule: { name, when: { field: test, ... }, aim: { ... }, by: frames | field, else: aim | "default" | "hold", keep: { fact: test } }
+//   rule: { name, when: { field: test, ... }, aims: [aim, aim, ..., "default" | "hold"], by: frames | field, keep: { fact: test } }
+//   aims: a priority list -- the first entry a line can make in time is played; "default" (the default bot's own move) or "hold" ends it
+//   (aim + else is a list of two)
 //   underGarbage (the file's): "break" (the default) -- with garbage on our board, or topped out, every aim must break it too, and with
 //   no line that does both the default's own move (which breaks it) is played; "ignore" -- aims are played as written
 //   keep: what our board must still have once the line is done (material, height, evenness); the file's own `keep` is every rule's
@@ -92,6 +94,11 @@ function meets(aim, made) {
   if (aim.break === false && made.broke > 0) return false;
   return true;
 }
+// A rule's priority list: `aims` as written, or aim then else. Entries are aims, or "default" / "hold", which end the list.
+function aimsOf(rule) {
+  if (Array.isArray(rule.aims)) return rule.aims;
+  var l = []; if (rule.aim) l.push(rule.aim); if (rule.else) l.push(rule.else); return l;
+}
 // A deadline: frames, or a fact ("us.nextLands", "enemy.stop", ...). An unknown one is no deadline.
 function deadline(F, by) {
   if (typeof by === 'number') return by;
@@ -117,7 +124,7 @@ function checked(tables) {
     ((tables && tables[t]) || []).forEach(function (r, i) {
       var keys = Object.keys(r.when || {}), own = keys.filter(function (k) { return k.indexOf(SIDE[t]) === 0; });
       if (keys.length && !own.length) errors.push(t + ' rule ' + i + ' (' + (r.name || '') + ') tests only ' + keys.join(', ') + ': a ' + t + ' rule tests ' + SIDE[t] + '* first');
-      else if (!r.aim || typeof r.aim !== 'object') errors.push(t + ' rule ' + i + ' (' + (r.name || '') + ') has no aim');
+      else if (!aimsOf(r).length || !aimsOf(r).every(function (a) { return (a && typeof a === 'object') || a === 'default' || a === 'hold'; })) errors.push(t + ' rule ' + i + ' (' + (r.name || '') + ') has no aims, or one that is not an aim, "default" or "hold"');
       else out[t].push(r);
     });
   });
@@ -151,4 +158,4 @@ function rulesFor(profile, dir) {
   return new Rules(path.isAbsolute(g.rules) ? g.rules : path.join(dir, g.rules));
 }
 
-module.exports = { gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };
+module.exports = { aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };

@@ -39,6 +39,11 @@ assert(!G.meets(dig, { combo: 5, chain: 1, broke: 0, cells: 4 }), 'a combo that 
 assert(G.meets({ combo: '>=5', chain: '>=3' }, { combo: 5, chain: 3, broke: 0 }) && !G.meets({ combo: '>=5', chain: '>=3' }, { combo: 5, chain: 2 }), 'both asked: both must hold');
 assert(!G.meets({ break: false, combo: '>=4' }, { combo: 4, chain: 1, broke: 6 }), 'break false: a line that breaks is not the aim');
 
+// a priority list: aims as written, or aim then else; "default" / "hold" end it
+assert.deepStrictEqual(G.aimsOf({ aims: [{ chain: '>=4' }, { combo: '>=8' }, 'default'] }).length, 3);
+assert.deepStrictEqual(G.aimsOf({ aim: { combo: '>=4' }, else: 'hold' }), [{ combo: '>=4' }, 'hold']);
+assert(/not an aim/.test(G.checked({ attack: [{ when: {}, aims: [{ chain: '>=2' }, 'sometimes'] }] }).errors.join(' ')), 'a list entry that is no aim, default or hold is refused');
+
 // deadlines
 assert.strictEqual(G.deadline({ us: { nextLands: 120 } }, 'us.nextLands'), 120);
 assert.strictEqual(G.deadline({ us: {} }, 300), 300);

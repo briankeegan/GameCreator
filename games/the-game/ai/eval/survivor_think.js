@@ -807,35 +807,36 @@ module.exports = function think(cfg) {
         var tablesG = gambitRules.get(m.opp && m.opp.name), pickG = GAMBIT.choose(tablesG, FG), lineG = null, triedG = 0;
         if (pickG) {
           var keepG = pickG.rule.keep || tablesG.keep || null, keepF = keepG ? function (grid) { return GAMBIT.keeps(keepG, grid); } : null;
-          var byG = GAMBIT.deadline(FG, pickG.rule.by), triesG = [pickG.rule.aim];
-          if (pickG.rule.else && typeof pickG.rule.else === 'object') triesG.push(pickG.rule.else);
-          // (garbage on our board: every aim breaks it too -- the aim and a break in one line; none, and the default's own move,
-          // which breaks it, is played)
+          // THE PRIORITY LIST (aims): the first entry a line can make in time is played; an entry "default" or "hold" ends the list there
+          // (the default's own move, or a hold). One search looks for every entry at once. aim/else is a list of two.
+          var byG = GAMBIT.deadline(FG, pickG.rule.by), listG = GAMBIT.aimsOf(pickG.rule), endAt = listG.length, endG = null;
+          for (var la = 0; la < listG.length; la++) if (typeof listG[la] === 'string') { endAt = la; endG = listG[la]; break; }
+          var aimsG = listG.slice(0, endAt);
+          // (garbage on our board, or topped out: every entry breaks it too -- the entry and a break in one line; none, and the
+          // default's own move, which breaks it, is played)
           var underG = tablesG.underGarbage !== 'ignore' && (FG.us.contact !== null || FG.us.topped);
-          if (underG) triesG = triesG.map(function (a) { return a && Object.assign({}, a, { break: true }); });
-          // (a chain already falling is run on first: the links that keep it going and make what the aim asks -- a second
-          // chain is built while the first one runs)
-          if (cascadeLive(board, true) && GP.extend !== false) {
+          if (underG) { aimsG = aimsG.map(function (a) { return Object.assign({}, a, { break: true }); }); endG = 'default'; }
+          var predsG = aimsG.map(function (a) { return function (made) { return GAMBIT.meets(a, made); }; });
+          if (predsG.length) {
             if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
-            var msX = Math.min(GP.extendMs || 40, due ? due - Date.now() - 2 * DEADLINE_MARGIN_MS - 100 : 1e9);
-            for (var tx = 0; tx < triesG.length && !lineG && msX >= 20; tx++) {
-              var aimX = triesG[tx];
-              if (!aimX) continue;
+            // (a chain already falling is run on first: the links that keep it going and make an entry -- the next chain is built
+            // while the first one runs)
+            var leftG = function () { return due ? due - Date.now() - 2 * DEADLINE_MARGIN_MS - 100 : 1e9; };
+            if (cascadeLive(board, true) && GP.extend !== false && Math.min(GP.extendMs || 40, leftG()) >= 20) {
               triedG++;
-              var exG = attacker.extend(board, m.hold, { ms: msX / triesG.length, width: GP.width || 40, depth: GP.extendDepth || 6, aim: function (made) { return GAMBIT.meets(aimX, made); } });
-              if (exG.seq.length && exG.cells > exG.base) lineG = { ap: exG, aim: aimX, fallback: tx > 0, extend: true };
+              var exG = attacker.extend(board, m.hold, { ms: Math.min(GP.extendMs || 40, leftG()), width: GP.width || 40, depth: GP.extendDepth || 6, aims: predsG });
+              if (exG.seq.length && exG.aimIndex >= 0 && exG.cells > exG.base) lineG = { ap: exG, aimIndex: exG.aimIndex, extend: true };
+            }
+            var msG = Math.min(GP.ms || 80, leftG());
+            if (msG >= 20) {
+              triedG++;
+              var apG = attacker.plan(board, m.hold, { ms: msG, width: GP.width || 40, depth: GP.depth || 7, pool: GP.pool || 250, minChain: 0, arrivals: arrivals,
+                                                       aims: predsG, by: byG || undefined, keep: keepF });
+              // (the plan's line wins over a falling chain's link only when its entry comes first in the list)
+              if (apG.seq.length && apG.aimIndex >= 0 && (!lineG || apG.aimIndex < lineG.aimIndex)) lineG = { ap: apG, aimIndex: apG.aimIndex };
             }
           }
-          for (var tg = 0; tg < triesG.length && !lineG; tg++) {
-            var aimT = triesG[tg], msG = Math.min((GP.ms || 80) / triesG.length, due ? due - Date.now() - 2 * DEADLINE_MARGIN_MS - 100 : 1e9);
-            if (!aimT || msG < 20) continue;
-            if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
-            triedG++;
-            var apG = attacker.plan(board, m.hold, { ms: msG, width: GP.width || 40, depth: GP.depth || 7, pool: GP.pool || 250, minChain: 0, arrivals: arrivals,
-                                                     aim: function (made) { return GAMBIT.meets(aimT, made); }, by: byG || undefined, keep: keepF });
-            if (apG.seq.length && GAMBIT.meets(aimT, { combo: apG.combo || 0, chain: apG.chain || 0, broke: apG.broke || 0, cells: apG.cells || 0 })) lineG = { ap: apG, aim: aimT, fallback: tg > 0 };
-          }
-          var kG = lineG ? arbKey(lineG.ap.seq[0]) : null, holdG = !lineG && !underG && pickG.rule.else === 'hold', prG = bot.preferRank || function () { return Infinity; };
+          var kG = lineG ? arbKey(lineG.ap.seq[0]) : null, holdG = !lineG && endG === 'hold', prG = bot.preferRank || function () { return Infinity; };
           if (kG || holdG) {
             bot.preferRank = function gambitRank(c, i) {
               var r = prG.call(this, c, i);
@@ -845,7 +846,7 @@ module.exports = function think(cfg) {
             };
           }
           if (lineG) { attackLine = lineG.ap.seq.slice(1); attackMove = lineG.ap.seq[0]; }
-          bot._gambit = { table: pickG.table, under: !!underG, rule: pickG.index, name: pickG.rule.name || null, found: !!lineG, fallback: !!(lineG && lineG.fallback), extend: !!(lineG && lineG.extend), tried: triedG,
+          bot._gambit = { table: pickG.table, under: !!underG, rule: pickG.index, name: pickG.rule.name || null, found: !!lineG, entry: lineG ? lineG.aimIndex : -1, extend: !!(lineG && lineG.extend), tried: triedG,
                           chain: lineG ? lineG.ap.chain : 0, combo: lineG ? lineG.ap.combo || 0 : 0, swaps: lineG ? lineG.ap.seq.length : 0, done: lineG ? lineG.ap.done : null, by: byG };
         }
       }
