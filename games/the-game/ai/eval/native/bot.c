@@ -1004,7 +1004,8 @@ static JLOCAL int raiseShort;   // raiseSafe refused for room (1) or for a clear
 static int raiseSafe(const int32_t *base) {
   raiseShort = 1;
   if (BIN[IN_TOPPED] || BIN[IN_STACKTOPPED]) return 0;
-  int queued = slabRowsHeld((int)BIN[IN_SLABH]);
+  int sw, sh, sc; waveSlab(base[O_W], &sw, &sh, &sc);   // the slab queued, else the block the telegraph shows, else one just in case
+  int queued = slabRowsHeld(sh);
   int free = raiseRoom(tallestBoard(base), queued, BIN[IN_RAISING] != 0, BIN[IN_FTNR] * 16 <= BIN[IN_FPR]);
   if (free <= 0) return 0;
   raiseShort = 0;
