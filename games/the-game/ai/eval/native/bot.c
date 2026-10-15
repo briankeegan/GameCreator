@@ -5357,29 +5357,6 @@ static double readyGuide(const int32_t *st) {
       cost += d;
     }
     if (cost < best) best = cost;
-    // OR ACROSS THE ROW: the contact panel with two beside it in its row (the match that breaks the pile need not be a column). A cell of the
-    // window holds the colour (nothing to bring), is empty over a supported column (a panel brought there stays), or hangs over a gap (the panel
-    // falls: two a row to bring the support first); a cell under the pile or past the wall closes the window.
-    for (int c0 = c - 2; c0 <= c; c0++) {
-      if (c0 < 1 || c0 + 2 > W) continue;
-      double hc = 0; int ok = 1;
-      for (int c1 = c0; c1 <= c0 + 2 && ok; c1++) {
-        if (c1 == c) continue;
-        uint32_t g1 = U(b, GARB + c1), o1 = U(b, OCC + c1);
-        if (g1 && __builtin_ctz(g1) < r) { ok = 0; break; }   // the pile hangs lower there: no cell of this row
-        if (GC(r, c1) == col) continue;
-        int h1 = o1 & ((1u << (r - 1)) - 1u) ? 32 - __builtin_clz(o1 & ((1u << (r - 1)) - 1u)) : 0;   // the column's height under this row
-        int hole = (o1 >> (r - 1)) & 1u;   // the cell is taken by another colour: it has to be swapped out for one
-        int d = READYGUIDENONE;
-        if (col < 9) for (int q = 0; q < ln[col]; q++) {
-          int rr = lr[col][q], c2 = lc[col][q], dr = rr > r ? rr - r : r - rr;
-          if (dr > 2 || c2 == c1 || (dr == 0 && c2 >= c0 && c2 <= c0 + 2)) continue;
-          int dd = (c2 > c1 ? c2 - c1 : c1 - c2) + 2 * dr; if (dd < d) d = dd;
-        }
-        hc += d + (hole ? 0 : 2 * (r - 1 - h1));
-      }
-      if (ok && hc < best) best = hc;
-    }
   }
 #undef GC
   return best + gaps * READYGUIDEGAP;   // contact first (whole steps), then a pile brought lower (a step is never reached by gaps alone)
