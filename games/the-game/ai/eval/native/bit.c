@@ -719,6 +719,22 @@ static u64 hashOf(const int32_t *st) {
   h ^= h >> 29;
   return h | 1ull;
 }
+// THE BOARD'S LAYOUT, WITHOUT ITS MOTION: what is where (panels, their colours, garbage), not which cells are mid-pop or busy -- the position a
+// search that goes on from frame to frame is kept for, so a pop's every frame does not make a new one of it
+static u64 layoutOf(const int32_t *st) {
+  u64 h0 = 1469598103934665603ull, h1 = 0x9E3779B97F4A7C15ull, h2 = 0xC2B2AE3D27D4EB4Full, h3 = 0x165667B19E3779F9ull;
+  int W = st[O_W], N = st[O_N], c, a, i;
+#define MX(h, v) (h = (h ^ (uint32_t)(v)) * 1099511628211ull)
+  MX(h0, W); MX(h1, st[O_H]); MX(h2, N); MX(h3, st[O_BAD]);
+  for (c = 0; c <= W + 1; c++) { MX(h1, st[OCC + c]); MX(h3, st[GARB + c]); }
+  for (a = 1; a <= N; a++) for (c = 0; c <= W + 1; c += 2) { MX(h0, st[SCOL + a * WMAX + c]); MX(h1, st[SCOL + a * WMAX + c + 1]); }
+  MX(h2, st[O_NSLAB]);
+  for (i = 0; i < st[O_NSLAB]; i++) { for (c = 0; c <= W + 1; c++) MX(h3, st[SM(i, c)]); MX(h2, st[SLK(i)]); }
+#undef MX
+  u64 h = h0 ^ (h1 * 0x9E3779B97F4A7C15ull) ^ (h2 * 0xC2B2AE3D27D4EB4Full) ^ (h3 * 0x165667B19E3779F9ull);
+  h ^= h >> 29;
+  return h | 1ull;
+}
 #define TCAP (1 << 17)
 typedef struct { u64 key; double v; } Slot;
 typedef struct { Slot *s; int n; } Table;

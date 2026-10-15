@@ -1052,6 +1052,12 @@ static Rs paRes(const int32_t *o, const int32_t *alone) {
   return r;
 }
 static ST TMC;
+// THE POOL'S ENGINE OUTCOMES ARE MADE ONCE A REACTION: a decision made while the bot waits (the cooldown is think time) is not played, so the
+// outcomes of every legal swap on the engine -- the cost of a pop's every frame -- are the last one's while the position and the cursor stand;
+// the decision that is played, the last of the wait, plays them fresh
+static int raPos;   // the position (defined with the lineup's refusals)
+static int gPreview;   // the front is waiting out a reaction and this decision will not be played (front.c)
+static struct { u64 key; int n, valid; int32_t rc[128], out[128][8], alone[8]; } POOLMEMO;
 static void candidates(int32_t *base) {
   nPool = 0; nFits = 0;
   Cand *h = &POOL[nPool++];
@@ -1076,17 +1082,27 @@ static void candidates(int32_t *base) {
   // linked in and holds this board: each swap is pressed when the walk
   // arrives and run until nothing moves, against the board left alone, so a
   // swap's result is what the game does.
-  int onEngine = moving && BIN[IN_HASPA] != 0 && paOutcome(0, 0, 0, PAHORIZON, PALONE) == 0;
-  if (onEngine) h->res = paRes(PALONE, 0);
   int32_t lg[2 * 128];
   int n = legal(base, lg);
   int cr = (int)BIN[IN_CROW], cc = (int)BIN[IN_CCOL];
+  u64 pkey = ((u64)(unsigned)raPos << 24) ^ ((u64)cr << 16) ^ ((u64)cc << 8) ^ (u64)n;
+  int memo = moving && gPreview && POOLMEMO.valid && POOLMEMO.key == pkey && POOLMEMO.n == n;
+  int onEngine = moving && BIN[IN_HASPA] != 0 && (memo || paOutcome(0, 0, 0, PAHORIZON, PALONE) == 0);
+  if (memo) for (int k = 0; k < 8; k++) PALONE[k] = POOLMEMO.alone[k];
+  if (onEngine) h->res = paRes(PALONE, 0);
   // every swap's outcome on the engine, played together (parallelDo), then taken one by one
-  if (onEngine) {
+  if (onEngine && memo) {
+    for (int i = 0; i < n && i < 128; i++) { PORC[i] = POOLMEMO.rc[i]; for (int k = 0; k < 8; k++) POOUT[i][k] = POOLMEMO.out[i][k]; }
+  } else if (onEngine) {
     extern void paPrefix(const int *ats, int n, int horizon);
     int ats[128]; for (int i = 0; i < n && i < 128; i++) ats[i] = travelCost(cr, cc, lg[2 * i], lg[2 * i + 1]);
     paPrefix(ats, n < 128 ? n : 128, PAHORIZON);
     poLg = lg; poCr = cr; poCc = cc; parallelDo(n, poTask);
+    if (n <= 128) {
+      POOLMEMO.key = pkey; POOLMEMO.n = n; POOLMEMO.valid = 1;
+      for (int i = 0; i < n; i++) { POOLMEMO.rc[i] = PORC[i]; for (int k = 0; k < 8; k++) POOLMEMO.out[i][k] = POOUT[i][k]; }
+      for (int k = 0; k < 8; k++) POOLMEMO.alone[k] = PALONE[k];
+    }
   }
   for (int i = 0; i < n; i++) {
     int r = lg[2 * i], c = lg[2 * i + 1];
@@ -4657,6 +4673,7 @@ static int breakWithin(const int32_t *st, double left) {
 // again for a break with what the decision has left of its work, and the line
 // it finds is played if the engine says it lives and breaks -- in the time there is.
 static int raPos;   // the position (below)
+#define READYGUIDENONE 8   // (readyGuide's, below)
 static int bdNone, bdPos; static double bdTime;   // the position (raPos) and the time left for which breakDeeper found no break within its work
 static double readyGuide(const int32_t *st);
 // THE LINE NEAREST A BREAK: a break ends the search; else the board met whose contact distance is least is kept
@@ -4683,7 +4700,9 @@ static Dec breakDeeper(Dec d) {
   if (bdNone && bdPos == raPos && timeLeft() <= bdTime) return d;
   int32_t sw[2 * LINEMAX]; int n = 0;
   double bd0 = paWork, bdT = timeLeft();
-  sitGuide = readyGuide;   // best-first by the contact column's distance: the work reaches the lines of three or four swaps, not every line of two
+  // best-first by the contact column's distance: the work reaches the lines of three or four swaps, not every line of two -- unless no column
+  // is in contact (the guide is flat: every board it meets reads the same), when the soonest press first is the order that finds a break at all
+  sitGuide = readyGuide(kb0) < 2 * READYGUIDENONE + 4 ? readyGuide : 0;
   // the search goes on from the last frame's if the position is the same (sitKeepSlot): its lines and the nearest of them are kept
   static NearCtx nearKeep; u64 pk = ((u64)(unsigned)raPos << 1) | 1;
   NearCtx nx; if (SITKEEP[0].valid && SITKEEP[0].key == pk) nx = nearKeep; else { nx.bestG = readyGuide(kb0); nx.bestN = 0; }
@@ -6471,7 +6490,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
       for (int i = 0; i < BT->nPr; i++) BT->prR[i] += dr;
     }
     BT->risenSeen = BIN[IN_RISEN]; }
-  { u64 h = hashOf(IN) ^ ((u64)BIN[IN_CROW] << 52) ^ ((u64)BIN[IN_CCOL] << 56) ^ ((u64)(BIN[IN_INCOMING] > 0 ? (u64)BIN[IN_INCOMING] : 0) << 20)
+  { u64 h = layoutOf(IN) ^ ((u64)BIN[IN_CROW] << 52) ^ ((u64)BIN[IN_CCOL] << 56) ^ ((u64)(BIN[IN_INCOMING] > 0 ? (u64)BIN[IN_INCOMING] : 0) << 20)
         ^ ((u64)BIN[IN_SLABW] << 12) ^ ((u64)BIN[IN_SLABH] << 8) ^ ((u64)BIN[IN_SLABC] << 4) ^ ((u64)BIN[IN_TGW] << 30) ^ ((u64)BIN[IN_TGH] << 34) ^ (u64)(BIN[IN_TOPPED] != 0);
     raPos = (int)((h * 0x9E3779B97F4A7C15ull) >> 33) | 1; }   // the position the lineup's refusals hold for
   DBASE = IN; notePresses();

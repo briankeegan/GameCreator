@@ -1518,7 +1518,9 @@ static int frontFrame(int fid, Board *b) {
       { double wr = F->wantRaise; int wrows = F->wantRows; double esc = F->escapeWalk; int lk = F->lastKind, lv = F->lastVia, lmr = F->lastMoveR, lmc = F->lastMoveC;
         int heldNow = F->held; F->held = held;
         FDec dp;
-        if (fDecide(F, &dp) == 0) { F->plan = dp; F->planOn = boardKey(); F->hasPlan = 1; }
+        gPreview = F->cooldown > 0;   // the last frame of the wait decides fresh: it is the decision played
+        int fdr = fDecide(F, &dp); gPreview = 0;
+        if (fdr == 0) { F->plan = dp; F->planOn = boardKey(); F->hasPlan = 1; }
         F->held = heldNow; F->wantRaise = wr != 0; F->wantRows = wrows; F->escapeWalk = esc; F->lastKind = lk; F->lastVia = lv; F->lastMoveR = lmr; F->lastMoveC = lmc; }
       return sent;
     }
