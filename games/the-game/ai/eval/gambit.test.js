@@ -44,6 +44,13 @@ assert.deepStrictEqual(G.aimsOf({ aims: [{ chain: '>=4' }, { combo: '>=8' }, 'de
 assert.deepStrictEqual(G.aimsOf({ aim: { combo: '>=4' }, else: 'hold' }), [{ combo: '>=4' }, 'hold']);
 assert(/not an aim/.test(G.checked({ attack: [{ when: {}, aims: [{ chain: '>=2' }, 'sometimes'] }] }).errors.join(' ')), 'a list entry that is no aim, default or hold is refused');
 
+// how near a line comes: a plain three is near no chain or combo; a longer chain is nearer a chain of 8; a break aim needs a break
+assert.strictEqual(G.near({ chain: '>=8' }, { chain: 1, combo: 3 }), 0, 'a plain three is not near a chain');
+assert(G.near({ chain: '>=8' }, { chain: 3, combo: 3 }) > G.near({ chain: '>=8' }, { chain: 2, combo: 3 }), 'a chain of 3 is nearer 8 than a chain of 2');
+assert.strictEqual(G.near({ chain: '>=8', break: true }, { chain: 3, combo: 3, broke: 0 }), 0, 'under garbage a line that breaks nothing is near nothing');
+assert(G.near({ chain: '==4' }, { chain: 5 }) > 0 && G.near({ chain: '==4' }, { chain: 5 }) < 1, 'past an exact size is near, not met');
+assert(G.nearList([{ chain: '>=8' }, { combo: '>=6' }], { chain: 3, combo: 3 }) > G.nearList([{ chain: '>=8' }, { combo: '>=6' }], { chain: 2, combo: 5 }), 'the first entry decides first');
+
 // deadlines
 assert.strictEqual(G.deadline({ us: { nextLands: 120 } }, 'us.nextLands'), 120);
 assert.strictEqual(G.deadline({ us: {} }, 300), 300);

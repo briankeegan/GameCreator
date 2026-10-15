@@ -7,7 +7,8 @@
 //   file: { defend: [rule, ...], attack: [rule, ...], opponents: { "<name>": { defend, attack } } }
 //   rule: { name, when: { field: test, ... }, aims: [aim, aim, ..., "default" | "hold"], by: frames | field, keep: { fact: test } }
 //   aims: a priority list -- the first entry a line can make in time is played; "default" (the default bot's own move) or "hold" ends it
-//   (aim + else is a list of two)
+//   (aim + else is a list of two). A list with no end is played toward even when no entry fits: the line nearest its first entry
+//   (`near`), else a setup
 //   underGarbage (the file's): "break" (the default) -- with garbage on our board, or topped out, every aim must break it too, and with
 //   no line that does both the default's own move (which breaks it) is played; "ignore" -- aims are played as written
 //   keep: what our board must still have once the line is done (material, height, evenness); the file's own `keep` is every rule's
@@ -94,6 +95,34 @@ function meets(aim, made) {
   if (aim.break === false && made.broke > 0) return false;
   return true;
 }
+// HOW NEAR a line comes to an aim, 0..1 (1: it meets it): a chain is measured from one link, a combo from three panels, so a plain
+// three is near no chain and no combo. An aim that asks a break is not neared by a line that breaks nothing.
+var FROM = { chain: 1, combo: 3 };
+function nearKey(v, t, b) {
+  var m = typeof t === 'string' && /^(>=|<=|==|>|<)\s*(\d+)$/.exec(t.trim());
+  if (!m) return test(v, t) ? 1 : 0;
+  var n = +m[2] + (m[1] === '>' ? 1 : 0);
+  if (m[1] === '<' || m[1] === '<=') return test(v, t) ? 1 : 0;
+  if (n <= b) return v === n || (m[1] !== '==' && v > n) ? 1 : 0;
+  var up = Math.max(0, Math.min(1, (v - b) / (n - b)));
+  return m[1] === '==' && v > n ? Math.max(0, 1 - (v - n) / (n - b + 1)) : up;
+}
+function near(aim, made) {
+  if (!aim || typeof aim !== 'object') return 0;
+  if (meets(aim, made)) return 1;
+  if (aim.break === true && !(made.broke > 0)) return 0;
+  if (aim.break === false && made.broke > 0) return 0;
+  if (aim.any) return Math.max.apply(null, aim.any.map(function (a) { return near(a, made); }).concat([0]));
+  var ks = ['chain', 'combo'].filter(function (k) { return aim[k] !== undefined; });
+  if (!ks.length) return 0;
+  return ks.reduce(function (s, k) { return s + nearKey(made[k] || 0, aim[k], FROM[k]); }, 0) / ks.length;
+}
+// How near a line comes to a priority list: the first entry first, a later one only between lines as near the ones before it.
+function nearList(aims, made) {
+  var s = 0, w = 1;
+  for (var i = 0; i < aims.length; i++) { s += Math.round(near(aims[i], made) * 100) * w; w /= 101; }
+  return s;
+}
 // A rule's priority list: `aims` as written, or aim then else. Entries are aims, or "default" / "hold", which end the list.
 function aimsOf(rule) {
   if (Array.isArray(rule.aims)) return rule.aims;
@@ -158,4 +187,4 @@ function rulesFor(profile, dir) {
   return new Rules(path.isAbsolute(g.rules) ? g.rules : path.join(dir, g.rules));
 }
 
-module.exports = { aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };
+module.exports = { near: near, nearList: nearList, aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };
