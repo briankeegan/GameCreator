@@ -38,6 +38,7 @@ module.exports = function (opts) {
   // last swap's clears done by frame o.by (frames from now), and o.keep(grid) true of the board it ends on; o: { ms, width, depth, pool, stopAt, minChain, guideChain, arrivals, rate }: with rate the fire kept is the best per swap of its line; arrivals is the garbage on its way, as the bot's serverArrivals; only a fire of a chain of minChain links or more counts; boards are ranked by fires of guideChain links or more; stopAt ends the search at the first depth with a fire of that many cells
   // o.near(made): with aims, how near a line comes to them (0: not at all) -- the nearest line is kept beside them (best.nearest),
   // the line to play when none meets an aim in time; and the soonest line that breaks garbage (best.quick).
+  var SLICE = 256;   // about 9 ms of jobs (8,987 in 318 ms on a runner's board under a slab)
   function plan(board, hold, o) {
     var s = search(), t0 = Date.now(), best = null, nearest = null, quick = null, aims = o.aims || (o.aim ? [o.aim] : null), perAim = aims ? aims.map(function () { return null; }) : null;
     s.reset();
@@ -50,7 +51,12 @@ module.exports = function (opts) {
     for (var d = 1; d <= o.depth && pool.length && Date.now() - t0 < o.ms && !(o.stopAt && best && best.cells >= o.stopAt); d++) {
       var jobs = [], meta = [];
       pool.forEach(function (it) { it.n.b.legalSwaps().forEach(function (m) { jobs.push([it.n, 'settle', m, 0]); meta.push([it, m]); }); });
-      var outs = s.advanceMany(jobs, true);
+      // (the clock is read every SLICE jobs, not once a depth: one depth of a wide pool is many times the whole budget)
+      var outs = [];
+      for (var j0 = 0; j0 < jobs.length; j0 += SLICE) {
+        if (j0 && Date.now() - t0 >= o.ms) break;
+        outs = outs.concat(s.advanceMany(jobs.slice(j0, j0 + SLICE), true));
+      }
       pool.forEach(function (it) { it.reach = 0; it.kids = []; });
       for (var i = 0; i < outs.length; i++) {
         var out = outs[i], it = meta[i][0], m = meta[i][1];
@@ -179,7 +185,11 @@ module.exports = function (opts) {
     for (var d = 1; d <= o.depth && pool.length && Date.now() - t0 < o.ms; d++) {
       var jobs = [], meta = [];
       pool.forEach(function (it) { it.n.b.legalSwaps().forEach(function (m) { jobs.push([it.n, 'swap', m, 0]); meta.push([it, m]); }); });
-      var outs = s.advanceMany(jobs, false), kids = [];
+      var outs = [], kids = [];
+      for (var j0 = 0; j0 < jobs.length; j0 += SLICE) {
+        if (j0 && Date.now() - t0 >= o.ms) break;
+        outs = outs.concat(s.advanceMany(jobs.slice(j0, j0 + SLICE), false));
+      }
       outs.forEach(function (out, i) { if (out && !out.dead) kids.push({ n: out, seq: meta[i][0].seq.concat([meta[i][1]]) }); });
       var got = sends(kids.map(function (k) { return k.n; })), next = [];
       kids.forEach(function (k, i) {
