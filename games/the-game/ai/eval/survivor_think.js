@@ -801,7 +801,7 @@ module.exports = function think(cfg) {
       // THE AIM (gambit): the facts of both boards, the first rule whose `when` holds, and a line that makes what its aim asks by its
       // deadline (else what its `else` asks). The line's first swap ranks before every other move; the survival search alone stands
       // over it, so the aim is chased while the board lives, under garbage or not. The rest of the line is played on (attackLine).
-      bot._gambit = null;
+      bot._gambit = null; bot._gambitRaise = 0;
       if (gambitRules) {
         var GP = cfg.profile.gambit, FG = { us: GAMBIT.facts(board, arrivals, m.topped), enemy: GAMBIT.enemyFacts(m.opp) };
         var tablesG = gambitRules.get(m.opp && m.opp.name), pickG = GAMBIT.choose(tablesG, FG), lineG = null, setupG = null, triedG = 0;
@@ -841,17 +841,24 @@ module.exports = function think(cfg) {
               else if (!lineG && !underG && apG.setup) setupG = apG.setup;
             }
           }
+          // THE RAISE (the file's or the rule's `raise: { to }`): below `to` rows, not under garbage, not topped and no chain running, with no
+          // entry in time the stack is raised -- held down to `to` in one press, not a row a decision -- before any nearest line or setup:
+          // the list is built from panels
+          var raiseG = pickG.rule.raise || tablesG.raise || null, toG = raiseG && raiseG.to;
+          var upG = !!(toG && !(lineG && lineG.aimIndex >= 0) && !underG && !FG.us.topped && !cascadeLive(board, true) && fullTop(board) < toG && bot._canRaise());
+          if (upG) { lineG = null; setupG = null; bot._gambitRaise = toG; } else bot._gambitRaise = 0;
           var kG = lineG ? arbKey(lineG.ap.seq[0]) : setupG ? arbKey(setupG) : null, holdG = !lineG && endG === 'hold', prG = bot.preferRank || function () { return Infinity; };
-          if (kG || holdG) {
+          if (kG || holdG || upG) {
             bot.preferRank = function gambitRank(c, i) {
               var r = prG.call(this, c, i);
+              if (upG && c.kind === 'raise') return Math.min(r, -10);
               if (kG && c.kind === 'swap' && c.move && arbKey(c.move) === kG) return Math.min(r, -10);
               if (holdG && c.kind === 'hold') return Math.min(r, -10);
               return r;
             };
           }
           if (lineG) { attackLine = lineG.ap.seq.slice(1); attackMove = lineG.ap.seq[0]; }
-          bot._gambit = { table: pickG.table, under: !!underG, rule: pickG.index, name: pickG.rule.name || null, found: !!lineG, entry: lineG ? lineG.aimIndex : -1, near: lineG && lineG.near || 0, setup: !!setupG, extend: !!(lineG && lineG.extend), tried: triedG,
+          bot._gambit = { table: pickG.table, under: !!underG, rule: pickG.index, name: pickG.rule.name || null, found: !!lineG, entry: lineG ? lineG.aimIndex : -1, near: lineG && lineG.near || 0, setup: !!setupG, raise: upG ? toG : 0, extend: !!(lineG && lineG.extend), tried: triedG,
                           chain: lineG ? lineG.ap.chain : 0, combo: lineG ? lineG.ap.combo || 0 : 0, swaps: lineG ? lineG.ap.seq.length : 0, done: lineG ? lineG.ap.done : null, by: byG };
         }
       }
@@ -1063,6 +1070,13 @@ module.exports = function think(cfg) {
         if (landIn < Infinity) holdFrames = Math.min(holdFrames, landIn - lead);
         if (holdFrames < 1 && landIn <= lead) { d = { kind: 'hold', overruled: true }; holdFrames = 0; }
         else if (holdFrames < 1) holdFrames = 0;
+      }
+      // (gambit's raise: held for every row to its `to`, up to the garbage on its way landing, less a lead to act in)
+      if (d.kind === 'raise' && bot._gambitRaise) {
+        var landG = Infinity;
+        arrivals.forEach(function (a) { if (a.at < landG) landG = a.at; });
+        holdFrames = Math.max(18, 18 * (bot._gambitRaise - fullTop(board)));
+        if (landG < Infinity) holdFrames = Math.max(0, Math.min(holdFrames, landG - 10));
       }
       // THE LAST WORD ON A THREE (defendNoBareThrees): whatever stage chose it, a swap whose clears are plain threes breaking no garbage
       // is not played while holding is proven to live -- on a stack topped out (or one row from it, within nearFrames) proven outright,
