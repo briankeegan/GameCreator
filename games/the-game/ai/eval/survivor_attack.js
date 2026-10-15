@@ -135,8 +135,9 @@ module.exports = function (opts) {
       var outs = s.advanceMany(nodes.map(function (n) { return [n, 'settle', null, 0]; }), true);
       return outs.map(function (out) {
         if (!out || out.dead) return null;
-        var st = s.stepStats(out), g = sent(st);
-        return { cells: g.cells, chain: g.chain };
+        var st = s.stepStats(out), g = sent(st), big = 0;
+        st.comboSizes.forEach(function (z) { if (z > big) big = z; });
+        return { cells: g.cells, chain: g.chain, combo: big, broke: st.broke || 0 };
       });
     }
     var base = sends([root])[0] || { cells: 0, chain: 0 };
@@ -153,7 +154,8 @@ module.exports = function (opts) {
         if (!g) return;
         k.score = g.cells;
         k.h = connected(k.n.b.grid);
-        if (g.cells > best.cells) best = { cells: g.cells, chain: g.chain, seq: k.seq, base: base.cells };
+        // (o.aim: only a cascade that ends making what the aim asks -- { combo, chain, broke, cells added } -- is kept)
+        if (g.cells > best.cells && (!o.aim || o.aim({ combo: g.combo, chain: g.chain, broke: g.broke, cells: g.cells - base.cells }))) best = { cells: g.cells, chain: g.chain, combo: g.combo, seq: k.seq, base: base.cells };
         next.push(k);
       });
       var seen = {};

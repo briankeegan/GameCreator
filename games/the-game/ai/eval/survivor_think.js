@@ -808,6 +808,19 @@ module.exports = function think(cfg) {
         if (pickG) {
           var byG = GAMBIT.deadline(FG, pickG.rule.by), triesG = [pickG.rule.aim];
           if (pickG.rule.else && typeof pickG.rule.else === 'object') triesG.push(pickG.rule.else);
+          // (a chain already falling is run on first: the links that keep it going and make what the aim asks -- a second
+          // chain is built while the first one runs)
+          if (cascadeLive(board, true) && GP.extend !== false) {
+            if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
+            var msX = Math.min(GP.extendMs || 40, due ? due - Date.now() - 2 * DEADLINE_MARGIN_MS - 100 : 1e9);
+            for (var tx = 0; tx < triesG.length && !lineG && msX >= 20; tx++) {
+              var aimX = triesG[tx];
+              if (!aimX) continue;
+              triedG++;
+              var exG = attacker.extend(board, m.hold, { ms: msX / triesG.length, width: GP.width || 40, depth: GP.extendDepth || 6, aim: function (made) { return GAMBIT.meets(aimX, made); } });
+              if (exG.seq.length && exG.cells > exG.base) lineG = { ap: exG, aim: aimX, fallback: tx > 0, extend: true };
+            }
+          }
           for (var tg = 0; tg < triesG.length && !lineG; tg++) {
             var aimT = triesG[tg], msG = Math.min((GP.ms || 80) / triesG.length, due ? due - Date.now() - 2 * DEADLINE_MARGIN_MS - 100 : 1e9);
             if (!aimT || msG < 20) continue;
@@ -827,7 +840,7 @@ module.exports = function think(cfg) {
             };
           }
           if (lineG) { attackLine = lineG.ap.seq.slice(1); attackMove = lineG.ap.seq[0]; }
-          bot._gambit = { rule: pickG.index, name: pickG.rule.name || null, found: !!lineG, fallback: !!(lineG && lineG.fallback), tried: triedG,
+          bot._gambit = { rule: pickG.index, name: pickG.rule.name || null, found: !!lineG, fallback: !!(lineG && lineG.fallback), extend: !!(lineG && lineG.extend), tried: triedG,
                           chain: lineG ? lineG.ap.chain : 0, combo: lineG ? lineG.ap.combo || 0 : 0, swaps: lineG ? lineG.ap.seq.length : 0, done: lineG ? lineG.ap.done : null, by: byG };
         }
       }
