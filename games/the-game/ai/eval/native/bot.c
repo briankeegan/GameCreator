@@ -5315,7 +5315,19 @@ static double readyGuide(const int32_t *st) {
   int placed = slabPlace(st, SLABST);
   const int32_t *b = placed > 0 ? SLABST : st;
   int W = b[O_W];
-#define GP(r, c) ((c) >= 1 && (c) <= W && (r) >= 1 && (U(b, OCC + (c)) & (1u << ((r) - 1))) && !(U(b, GARB + (c)) & (1u << ((r) - 1))) && !(U(b, INERT + (c)) & (1u << ((r) - 1))))
+  // each panel's colour, read once (colourFirst per cell per look was most of the guide's time): 0 where there is none to move
+  int H = b[O_H] < 30 ? b[O_H] : 30;
+  static JLOCAL uint8_t cg[34][16];
+  for (int c = 0; c <= W + 1; c++) for (int r = 0; r <= H + 2; r++) cg[r][c] = 0;
+  for (int c = 1; c <= W; c++) {
+    uint32_t live = U(b, OCC + c) & ~U(b, GARB + c) & ~U(b, INERT + c);
+    while (live) { int r1 = __builtin_ctz(live) + 1; live &= live - 1; if (r1 <= H) cg[r1][c] = (uint8_t)colourFirst(b, c, 1u << (r1 - 1)); }
+  }
+#define GC(r, c) ((r) >= 1 && (r) <= H && (c) >= 1 && (c) <= W ? (int)cg[r][c] : 0)
+  // and where each colour lies, so the nearest of a colour is a walk over its panels, not over the board
+  static JLOCAL uint8_t lr[9][80], lc[9][80]; static JLOCAL int ln[9];
+  for (int k = 0; k < 9; k++) ln[k] = 0;
+  for (int c = 1; c <= W; c++) for (int r = 1; r <= H; r++) { int k = cg[r][c]; if (k > 0 && k < 9 && ln[k] < 80) { lr[k][ln[k]] = (uint8_t)r; lc[k][ln[k]++] = (uint8_t)c; } }
   double best = 2 * READYGUIDENONE + 4;
   int gaps = 0;   // the empty cells between the pile and the stack under it, summed: the pile rests on the tall columns and hangs over the rest
   for (int c = 1; c <= W; c++) {
@@ -5332,15 +5344,15 @@ static double readyGuide(const int32_t *st) {
     int col = colourFirst(b, c, 1u << (r - 1));
     if (!col) continue;
     int v = 1;
-    while (v < 3 && r - v >= 1 && GP(r - v, c) && colourFirst(b, c, 1u << (r - v - 1)) == col) v++;
+    while (v < 3 && r - v >= 1 && GC(r - v, c) == col) v++;
     double cost = 0;
     for (int m = r - v; m > r - 3; m--) {   // each cell of the three still missing
       int d = READYGUIDENONE;
       // the nearest panel of the colour: in the row first, in the rows beside it a row of distance more (it has to come to this one)
-      for (int rr = m - 2; rr <= m + 2; rr++) {
-        if (rr < 1 || m < 1) continue;
-        int dr = rr > m ? rr - m : m - rr;
-        for (int c2 = 1; c2 <= W; c2++) if ((c2 != c || dr) && GP(rr, c2) && colourFirst(b, c2, 1u << (rr - 1)) == col) { int dd = (c2 > c ? c2 - c : c - c2) + 2 * dr; if (dd < d) d = dd; }
+      if (m >= 1 && col < 9) for (int q = 0; q < ln[col]; q++) {
+        int rr = lr[col][q], c2 = lc[col][q], dr = rr > m ? rr - m : m - rr;
+        if (dr > 2 || (c2 == c && !dr)) continue;
+        int dd = (c2 > c ? c2 - c : c - c2) + 2 * dr; if (dd < d) d = dd;
       }
       cost += d;
     }
@@ -5355,21 +5367,21 @@ static double readyGuide(const int32_t *st) {
         if (c1 == c) continue;
         uint32_t g1 = U(b, GARB + c1), o1 = U(b, OCC + c1);
         if (g1 && __builtin_ctz(g1) < r) { ok = 0; break; }   // the pile hangs lower there: no cell of this row
-        if (GP(r, c1) && colourFirst(b, c1, 1u << (r - 1)) == col) continue;
+        if (GC(r, c1) == col) continue;
         int h1 = o1 & ((1u << (r - 1)) - 1u) ? 32 - __builtin_clz(o1 & ((1u << (r - 1)) - 1u)) : 0;   // the column's height under this row
         int hole = (o1 >> (r - 1)) & 1u;   // the cell is taken by another colour: it has to be swapped out for one
         int d = READYGUIDENONE;
-        for (int rr = r - 2; rr <= r + 2; rr++) {
-          if (rr < 1) continue;
-          int dr = rr > r ? rr - r : r - rr;
-          for (int c2 = 1; c2 <= W; c2++) if (c2 != c1 && !(c2 >= c0 && c2 <= c0 + 2 && rr == r) && GP(rr, c2) && colourFirst(b, c2, 1u << (rr - 1)) == col) { int dd = (c2 > c1 ? c2 - c1 : c1 - c2) + 2 * dr; if (dd < d) d = dd; }
+        if (col < 9) for (int q = 0; q < ln[col]; q++) {
+          int rr = lr[col][q], c2 = lc[col][q], dr = rr > r ? rr - r : r - rr;
+          if (dr > 2 || c2 == c1 || (dr == 0 && c2 >= c0 && c2 <= c0 + 2)) continue;
+          int dd = (c2 > c1 ? c2 - c1 : c1 - c2) + 2 * dr; if (dd < d) d = dd;
         }
         hc += d + (hole ? 0 : 2 * (r - 1 - h1));
       }
       if (ok && hc < best) best = hc;
     }
   }
-#undef GP
+#undef GC
   return best + gaps * READYGUIDEGAP;   // contact first (whole steps), then a pile brought lower (a step is never reached by gaps alone)
 }
 typedef struct { int dieRef, spare, dr, dc, tried, masks, ok, r, c, seen, dies, sooner, near; double g0; int wave; double bestG; int bestN; int32_t bestSw[2 * LINEMAX]; } RqCtx;   // wave: no slab is queued, only the block the telegraph shows: the masks' word on it (waveReady) stands, the engine has no landing to confirm
