@@ -804,7 +804,7 @@ module.exports = function think(cfg) {
       bot._gambit = null; bot._gambitRaise = 0;
       if (gambitRules) {
         var GP = cfg.profile.gambit, FG = { us: GAMBIT.facts(board, arrivals, m.topped), enemy: GAMBIT.enemyFacts(m.opp) };
-        var apG = null, exG = null, tablesG = gambitRules.get(m.opp && m.opp.name), pickG = GP.mode ? GAMBIT.named(tablesG, GP.mode) : GAMBIT.choose(tablesG, FG), lineG = null, setupG = null, triedG = 0;
+        var apG = null, exG = null, tablesG = gambitRules.get(m.opp && m.opp.name), pickG = GP.mode ? GAMBIT.named(tablesG, GP.mode) : GAMBIT.choose(tablesG, FG), lineG = null, setupG = null, readyG = false, triedG = 0;
         if (pickG) {
           var keepG = pickG.rule.keep || tablesG.keep || null, keepF = keepG ? function (grid) { return GAMBIT.keeps(keepG, grid); } : null;
           // THE PRIORITY LIST (aims): the first entry a line can make in time is played; an entry "default" or "hold" ends the list there
@@ -836,11 +836,15 @@ module.exports = function think(cfg) {
                                                      aims: xAimsG.map(function (a) { return function (made) { return GAMBIT.meets(a, made); }; }), near: function (made) { return GAMBIT.nearList(xAimsG, made); } });
               if (exG.seq.length && exG.aimIndex >= 0 && exG.cells > exG.base) lineG = { ap: exG, aimIndex: exG.aimIndex, extend: true };
             }
+            // (READY: garbage on its way and none on the board -- the frames until the next block lands, 0 for one queued to drop once the
+            // board settles: every line kept must leave its break)
+            var readyAtG = null;
+            if (!underG) { arrivals.forEach(function (a) { if (readyAtG === null || a.at < readyAtG) readyAtG = a.at; }); if (readyAtG === null && (board.incoming || []).length) readyAtG = 0; }
             var msG = Math.min(GP.ms || 80, leftG()) - (popG && exG ? exG.ms : 0);
             if (msG >= 20) {
               triedG++;
               apG = attacker.plan(board, m.hold, { ms: msG, width: GP.width || 40, depth: GP.depth || 7, pool: GP.pool || 250, minChain: 0, arrivals: arrivals,
-                                                       aims: predsG, by: byG || undefined, keep: keepF, near: function (made) { return GAMBIT.nearList(aimsG, made); } });
+                                                       aims: predsG, by: byG || undefined, keep: keepF, readyAt: readyAtG, near: function (made) { return GAMBIT.nearList(aimsG, made); } });
               // (the plan's line wins over a falling chain's link only when its entry comes first in the list)
               if (apG.seq.length && apG.aimIndex >= 0 && (!lineG || apG.aimIndex < lineG.aimIndex)) lineG = { ap: apG, aimIndex: apG.aimIndex };
               // NO ENTRY IN TIME: the list is still what is played toward -- the line that comes nearest its first entry (under garbage, one
@@ -852,6 +856,12 @@ module.exports = function think(cfg) {
                 lineG = nx && (!np || nx.near > np.near) ? { ap: nx, aimIndex: -1, near: nx.near, extend: true } : { ap: np, aimIndex: -1, near: np.near };
               }
               else if (!lineG && underG && apG.quick && apG.quick.seq.length) { lineG = { ap: apG.quick, aimIndex: -1, quick: true }; }
+              // (garbage on its way: the setup is the READY play -- the swap after which the next block can be broken once it lands --
+              // and none while the board is ready already; nothing on its way, the setup toward the list)
+              else if (!lineG && !underG && readyAtG !== null) {
+                var rdG = arrivals.length ? attacker.readyFor(board, m.hold, arrivals, { ms: Math.max(20, Math.min(60, leftG())) }) : null;
+                if (rdG && !rdG.ready && rdG.setup) { setupG = rdG.setup; readyG = true; }
+              }
               else if (!lineG && !underG && apG.setup) setupG = apG.setup;
             }
             else if (!lineG && exG && exG.nearest) lineG = { ap: exG.nearest, aimIndex: -1, near: exG.nearest.near, extend: true };
@@ -877,7 +887,7 @@ module.exports = function think(cfg) {
             };
           }
           if (lineG) { attackLine = lineG.ap.seq.slice(1); attackMove = lineG.ap.seq[0]; }
-          bot._gambit = { table: pickG.table, under: !!underG, rule: pickG.index, name: pickG.rule.name || null, found: !!lineG, entry: lineG ? lineG.aimIndex : -1, near: lineG && lineG.near || 0, quick: !!(lineG && lineG.quick), ms: apG ? apG.ms : 0, setup: !!setupG, raise: upG ? toG : 0, wait: !!waitG, extend: !!(lineG && lineG.extend), tried: triedG, pop: SH.popLeft(board), xs: exG ? [exG.seq.length, exG.chain, exG.cells, exG.base, exG.nearest ? exG.nearest.chain : 0] : null,
+          bot._gambit = { table: pickG.table, under: !!underG, rule: pickG.index, name: pickG.rule.name || null, found: !!lineG, entry: lineG ? lineG.aimIndex : -1, near: lineG && lineG.near || 0, quick: !!(lineG && lineG.quick), ms: apG ? apG.ms : 0, setup: !!setupG, ready: readyG, readyAt: typeof readyAtG === 'number' ? readyAtG : null, raise: upG ? toG : 0, wait: !!waitG, extend: !!(lineG && lineG.extend), tried: triedG, pop: SH.popLeft(board), xs: exG ? [exG.seq.length, exG.chain, exG.cells, exG.base, exG.nearest ? exG.nearest.chain : 0] : null,
                           chain: lineG ? lineG.ap.chain : 0, combo: lineG ? lineG.ap.combo || 0 : 0, swaps: lineG ? lineG.ap.seq.length : 0, done: lineG ? lineG.ap.done : null, by: byG };
         }
       }

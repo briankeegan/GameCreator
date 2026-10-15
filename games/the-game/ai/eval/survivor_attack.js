@@ -37,7 +37,7 @@ module.exports = function (opts) {
   // o.aim (with o.by): a line counts only when what it makes meets the aim -- aim({ combo, combos, chain, broke, cells }) -- with its
   // last swap's clears done by frame o.by (frames from now), and o.keep(grid) true of the board it ends on; o: { ms, width, depth, pool, stopAt, minChain, guideChain, arrivals, rate }: with rate the fire kept is the best per swap of its line; arrivals is the garbage on its way, as the bot's serverArrivals; only a fire of a chain of minChain links or more counts; boards are ranked by fires of guideChain links or more; stopAt ends the search at the first depth with a fire of that many cells
   // o.near(made): with aims, how near a line comes to them (0: not at all) -- the nearest line is kept beside them (best.nearest),
-  // the line to play when none meets an aim in time; and the line in time that breaks the most garbage (best.quick).
+  // the line to play when none meets an aim in time; and the line in time that breaks the most garbage (best.quick). o.readyAt: see READY.
   var SLICE = 256;   // about 9 ms of jobs (8,987 in 318 ms on a runner's board under a slab)
   function plan(board, hold, o) {
     var s = search(), t0 = Date.now(), best = null, nearest = null, quick = null, aims = o.aims || (o.aim ? [o.aim] : null), perAim = aims ? aims.map(function () { return null; }) : null;
@@ -126,6 +126,22 @@ module.exports = function (opts) {
       var spent = outs.filter(function (x) { return x && !x.dead && !keep.has(x); });
       old.forEach(function (it) { if (it.n !== root && !keep.has(it.n)) spent.push(it.n); });
       if (spent.length) s.drop(spent);
+    }
+    // READY (o.readyAt: frames from now the next block lands, garbage on its way and none on the board): a line is kept only if the
+    // board it leaves breaks that block once it has landed -- one swap then breaks it -- so an attack never costs the next break its
+    // deadline. The aims' lines in their order, then the nearest.
+    function readyAfter(n) {
+      var wait = Math.max(1, o.readyAt + 2 - (n.t - root.t)), land = s.advance(n, 'long', null, wait);
+      if (land && !land.dead) { var st0 = s.advance(land, 'settle', null, 0); if (st0) { s.drop([land]); land = st0; } }
+      if (!land || land.dead) return false;
+      var base = s.breaks(land), outs = s.advanceMany(land.b.legalSwaps().map(function (m) { return [land, 'swap', m, 0]; }), true), any = false;
+      outs.forEach(function (x) { if (x && !x.dead && (x.brk !== undefined ? x.brk : s.breaks(x)) > base) any = true; });
+      s.drop([land].concat(outs.filter(function (x) { return x && !x.dead; })));
+      return any;
+    }
+    if (o.readyAt !== undefined && o.readyAt !== null) {
+      if (perAim) for (var ra = 0; ra < perAim.length; ra++) if (perAim[ra] && Date.now() - t0 < 2 * o.ms && !readyAfter(perAim[ra].n)) perAim[ra] = null;
+      if (nearest && !readyAfter(nearest.n)) nearest = null;
     }
     if (perAim) { best = null; for (var fa = 0; fa < perAim.length && !best; fa++) if (perAim[fa]) best = perAim[fa]; }
     if (!best) best = { cells: 0, chain: 0, seq: [], aimIndex: -1 };
