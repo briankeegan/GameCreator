@@ -1,6 +1,6 @@
 {
  "keep": {
-  "material": ">=12"
+  "material": ">=24"
  },
  "raise": {
   "to": 10
