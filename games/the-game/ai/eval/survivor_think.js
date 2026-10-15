@@ -840,7 +840,7 @@ module.exports = function think(cfg) {
             };
           }
           if (lineG) { attackLine = lineG.ap.seq.slice(1); attackMove = lineG.ap.seq[0]; }
-          bot._gambit = { rule: pickG.index, name: pickG.rule.name || null, found: !!lineG, fallback: !!(lineG && lineG.fallback), extend: !!(lineG && lineG.extend), tried: triedG,
+          bot._gambit = { table: pickG.table, rule: pickG.index, name: pickG.rule.name || null, found: !!lineG, fallback: !!(lineG && lineG.fallback), extend: !!(lineG && lineG.extend), tried: triedG,
                           chain: lineG ? lineG.ap.chain : 0, combo: lineG ? lineG.ap.combo || 0 : 0, swaps: lineG ? lineG.ap.seq.length : 0, done: lineG ? lineG.ap.done : null, by: byG };
         }
       }

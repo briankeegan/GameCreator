@@ -1,7 +1,10 @@
-// GAMBIT: a bot whose aims are a rule table. Each decision reads the same facts off both boards, takes the first rule whose `when`
-// holds, and searches for a line that makes what its `aim` asks by its `by`; the survival search only vetoes a line that dies, so the
-// aim is chased while the board lives. The rules live in a JSON file (the profile's `gambit.rules`) read again whenever it changes.
+// GAMBIT: a bot whose aims are two rule tables. Each decision reads the same facts off both boards. The DEFEND table is read first:
+// its `when` is led by our own board (us.*). If none of its rules holds, the ATTACK table is: its `when` is led by the enemy's board
+// (enemy.*), with our board at most an extra condition -- the attack pattern is chosen by the enemy's state. The rule taken sets the aim, a line that makes what it asks by
+// its `by` is searched for, and the survival search only vetoes a line that dies, so the aim is chased while the board lives. The
+// tables live in a JSON file (the profile's `gambit.rules`) read again whenever it changes.
 //
+//   file: { defend: [rule, ...], attack: [rule, ...], opponents: { "<name>": { defend, attack } } }
 //   rule: { name, when: { field: test, ... }, aim: { ... }, by: frames | field, else: aim | "default" | "hold" }
 //   field: "us.<fact>" or "enemy.<fact>"; test: a value (equal) or a string ">=9", "<4", "==0", "!=0"
 //   aim: { combo: test, chain: test, break: true | false, send: test (cells), any: [aim, ...] }  -- every key given must hold
@@ -69,36 +72,56 @@ function deadline(F, by) {
   if (typeof by === 'string') { var v = field(F, by); return typeof v === 'number' ? v : null; }
   return null;
 }
-// The rule that applies: the first whose `when` holds. { rule, index } or null.
-function choose(rules, F) {
-  for (var i = 0; i < (rules || []).length; i++) if (holds(F, rules[i].when)) return { rule: rules[i], index: i };
+// The rule that applies: the first defend rule whose `when` holds, else the first attack rule. { rule, index, table } or null.
+function choose(tables, F) {
+  var order = ['defend', 'attack'];
+  for (var t = 0; t < order.length; t++) {
+    var rules = (tables && tables[order[t]]) || [];
+    for (var i = 0; i < rules.length; i++) if (holds(F, rules[i].when)) return { rule: rules[i], index: i, table: order[t] };
+  }
   return null;
+}
+// A table's rules, each `when` led by its own side's board: an attack rule tests the enemy (enemy.*), a defend rule our board (us.*);
+// either may add a test on the other side, and an empty `when` is the table's catch-all. A rule that tests only the other side is
+// dropped, and the reason kept.
+var SIDE = { defend: 'us.', attack: 'enemy.' };
+function checked(tables) {
+  var out = { defend: [], attack: [] }, errors = [];
+  ['defend', 'attack'].forEach(function (t) {
+    ((tables && tables[t]) || []).forEach(function (r, i) {
+      var keys = Object.keys(r.when || {}), own = keys.filter(function (k) { return k.indexOf(SIDE[t]) === 0; });
+      if (keys.length && !own.length) errors.push(t + ' rule ' + i + ' (' + (r.name || '') + ') tests only ' + keys.join(', ') + ': a ' + t + ' rule tests ' + SIDE[t] + '* first');
+      else if (!r.aim || typeof r.aim !== 'object') errors.push(t + ' rule ' + i + ' (' + (r.name || '') + ') has no aim');
+      else out[t].push(r);
+    });
+  });
+  return { tables: out, errors: errors };
 }
 
 // THE RULES FILE, read again whenever it changes (its mtime): it may be rewritten between matches or while one runs, and the next
-// decision plays by it. { rules: [...], opponents: { "<name>": [...] } } -- an opponent with rules of its own is played by those.
-// A file that fails to read or parse leaves the last good rules in force.
-function Rules(file) { this.file = file; this.mtime = -1; this.all = { rules: [] }; this.error = null; }
+// decision plays by it. An opponent with tables of its own is played by those. A file that fails to read or parse leaves the last
+// good tables in force; the rules it drops (a when on the wrong side's board, no aim) are listed in `errors`.
+function Rules(file) { this.file = file; this.mtime = -1; this.all = { defend: [], attack: [] }; this.own = {}; this.error = null; this.errors = []; }
 Rules.prototype.get = function (opponent) {
   try {
     var st = fs.statSync(this.file);
     if (st.mtimeMs !== this.mtime) {
-      var j = JSON.parse(fs.readFileSync(this.file, 'utf8'));
-      this.all = Array.isArray(j) ? { rules: j } : { rules: j.rules || [], opponents: j.opponents || {} };
+      var j = JSON.parse(fs.readFileSync(this.file, 'utf8')), c = checked(j), own = {}, errs = c.errors.slice();
+      Object.keys(j.opponents || {}).forEach(function (name) { var co = checked(j.opponents[name]); own[name] = co.tables; co.errors.forEach(function (e) { errs.push(name + ': ' + e); }); });
+      this.all = c.tables; this.own = own; this.errors = errs;
       this.mtime = st.mtimeMs; this.error = null;
-      console.error('GAMBIT rules ' + this.file + ': ' + this.all.rules.length + ' rules, ' + Object.keys(this.all.opponents || {}).length + ' opponents');
+      console.error('GAMBIT rules ' + this.file + ': ' + this.all.defend.length + ' defend, ' + this.all.attack.length + ' attack, ' + Object.keys(own).length + ' opponents' + (errs.length ? '; dropped: ' + errs.join(' | ') : ''));
     }
   } catch (e) { this.error = String(e && e.message || e); }
-  var own = opponent && this.all.opponents && this.all.opponents[opponent];
-  return own || this.all.rules;
+  return (opponent && this.own[opponent]) || this.all;
 };
 function rulesFor(profile, dir) {
   var g = profile && profile.gambit;
   if (!g) return null;
-  if (Array.isArray(g.rules)) return { get: function () { return g.rules; } };
+  if (g.rules && typeof g.rules === 'object') { var fixed = checked(g.rules).tables; return { get: function () { return fixed; } }; }
   // (GC_GAMBIT_RULES names another file: a run can hand the bot its own rules without touching the profile)
   if (process.env.GC_GAMBIT_RULES) return new Rules(process.env.GC_GAMBIT_RULES);
   return new Rules(path.isAbsolute(g.rules) ? g.rules : path.join(dir, g.rules));
 }
 
-module.exports = { facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, Rules: Rules, rulesFor: rulesFor };
+module.exports = { facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };

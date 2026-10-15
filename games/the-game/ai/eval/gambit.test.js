@@ -11,18 +11,27 @@ assert(G.test(9, '>=9') && !G.test(8, '>=9') && G.test(3, '<4') && G.test(0, '==
 assert(G.test(true, true) && !G.test(false, true), 'a plain value is tested for equality');
 assert(!G.test(undefined, '>=0') && !G.test(null, true), 'a fact the host does not send is never true');
 
-// the first rule whose `when` holds
-var rules = [
-  { name: 'finish', when: { 'enemy.topped': true }, aim: { combo: '>=4' } },
-  { name: 'dig', when: { 'us.heavy': true, 'us.contact': '>=1' }, aim: { break: true, any: [{ combo: '>=4' }, { chain: '>=2' }] } },
-  { name: 'rest', when: {}, aim: { chain: '>=2' } }
-];
-assert.strictEqual(G.choose(rules, { us: {}, enemy: { topped: true } }).rule.name, 'finish');
-assert.strictEqual(G.choose(rules, { us: { heavy: true, contact: 2 }, enemy: { topped: false } }).rule.name, 'dig');
-assert.strictEqual(G.choose(rules, { us: { heavy: true, contact: null }, enemy: {} }).rule.name, 'rest', 'contact with no garbage is no contact');
+// the tables: defend first (led by our board), then attack (led by the enemy's)
+var tables = G.checked({
+  defend: [{ name: 'dig', when: { 'us.heavy': true, 'us.contact': '>=1' }, aim: { break: true, any: [{ combo: '>=4' }, { chain: '>=2' }] } }],
+  attack: [
+    { name: 'finish', when: { 'enemy.topped': true }, aim: { combo: '>=4' } },
+    { name: 'pressure', when: { 'enemy.height': '>=9', 'us.material': '>=12' }, aim: { chain: '>=2' } },
+    { name: 'mine', when: { 'us.material': '>=24' }, aim: { chain: '>=3' } },
+    { name: 'rest', when: {}, aim: { chain: '>=2' } }
+  ]
+});
+assert.strictEqual(tables.tables.attack.length, 3, 'an attack rule that tests only our board is dropped');
+assert(/mine.*tests only us\.material/.test(tables.errors.join(' ')), 'and the reason kept: ' + tables.errors);
+var T = tables.tables, rules = T.attack.concat(T.defend);
+assert.strictEqual(G.choose(T, { us: { heavy: true, contact: 2 }, enemy: { topped: true } }).rule.name, 'dig', 'defend comes first');
+assert.strictEqual(G.choose(T, { us: { heavy: false }, enemy: { topped: true } }).rule.name, 'finish');
+assert.strictEqual(G.choose(T, { us: { material: 20 }, enemy: { height: 10 } }).rule.name, 'pressure', 'an attack rule led by the enemy may add our board');
+assert.strictEqual(G.choose(T, { us: { material: 5 }, enemy: { height: 10 } }).rule.name, 'rest');
+assert.strictEqual(G.choose(T, { us: { heavy: true, contact: null }, enemy: {} }).table, 'attack', 'contact with no garbage is no contact');
 
 // aims against what a line makes
-var dig = rules[1].aim;
+var dig = T.defend[0].aim;
 assert(G.meets(dig, { combo: 4, chain: 1, broke: 6, cells: 3 }), 'a combo of 4 that breaks meets the dig');
 assert(G.meets(dig, { combo: 3, chain: 2, broke: 6, cells: 6 }), 'a chain of 2 that breaks meets it');
 assert(!G.meets(dig, { combo: 3, chain: 1, broke: 6, cells: 0 }), 'a plain three does not');
@@ -52,19 +61,19 @@ assert.strictEqual(G.facts(b, [], false).material, 12, 'a panel above the garbag
 var file = path.join(__dirname, 'gambit.test.rules.json');
 function write(j, ms) { fs.writeFileSync(file, JSON.stringify(j)); fs.utimesSync(file, ms / 1000, ms / 1000); }
 try {
-  write({ rules: [{ name: 'a', when: {}, aim: { combo: '>=4' } }] }, 1e12);
+  write({ attack: [{ name: 'a', when: {}, aim: { combo: '>=4' } }] }, 1e12);
   var R = new G.Rules(file);
-  assert.strictEqual(R.get()[0].name, 'a');
-  write({ rules: [{ name: 'b', when: {}, aim: { chain: '>=3' } }], opponents: { Bob: [{ name: 'bob', when: {}, aim: { combo: '>=6' } }] } }, 1e12 + 5000);
-  assert.strictEqual(R.get()[0].name, 'b', 'a rewritten file is read again');
-  assert.strictEqual(R.get('Bob')[0].name, 'bob', 'an opponent with rules of its own is played by them');
-  assert.strictEqual(R.get('Alice')[0].name, 'b', 'any other opponent by the shared rules');
+  assert.strictEqual(R.get().attack[0].name, 'a');
+  write({ attack: [{ name: 'b', when: {}, aim: { chain: '>=3' } }], opponents: { Bob: { attack: [{ name: 'bob', when: {}, aim: { combo: '>=6' } }] } } }, 1e12 + 5000);
+  assert.strictEqual(R.get().attack[0].name, 'b', 'a rewritten file is read again');
+  assert.strictEqual(R.get('Bob').attack[0].name, 'bob', 'an opponent with tables of its own is played by them');
+  assert.strictEqual(R.get('Alice').attack[0].name, 'b', 'any other opponent by the shared tables');
   fs.writeFileSync(file, '{ not json'); fs.utimesSync(file, 1e9 + 9, 1e9 + 9);
-  assert.strictEqual(R.get()[0].name, 'b', 'a broken file keeps the last good rules');
+  assert.strictEqual(R.get().attack[0].name, 'b', 'a broken file keeps the last good tables');
   assert(R.error, 'and says why');
 } finally { try { fs.unlinkSync(file); } catch (e) {} }
 
-// the profile's own rules file parses and every rule has an aim
-var shipped = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles', 'gambit-rules.json'), 'utf8'));
-shipped.rules.forEach(function (r, i) { assert(r.aim && typeof r.aim === 'object', 'rule ' + i + ' has no aim'); });
-console.log('ok: gambit rules, aims, facts and the rules file');
+// the profile's own rules file parses and drops nothing
+var shipped = G.checked(JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles', 'gambit-rules.json'), 'utf8')));
+assert.deepStrictEqual(shipped.errors, [], 'the shipped rules drop nothing');
+console.log('ok: gambit tables, aims, facts and the rules file');
