@@ -2751,6 +2751,11 @@ static JLOCAL double (*sitGuide)(const int32_t *st);
 // decisions, so a search that did not finish in a frame's work is not made again from nothing the next: its lines, its steps waiting and the
 // boards it has seen are kept (a set of memory of its own) and the next frame's work grows them further, for as long as the position stands.
 // The caller names the search (sitKeepSlot, 1..SITKEEPS) and the position it is for (sitKeepKey).
+// THE POSITION A KEPT SEARCH IS FOR: the board it starts from, as it lays, and where the cursor stands -- not the frame's motion, so a pop's every
+// frame (a cell turned panel) that leaves the board the search starts from as it was does not begin the search again
+static u64 sitRootKey(const int32_t *st0, int cr, int cc, int tag) {
+  return ((layoutOf(st0) ^ ((u64)(unsigned)cr << 58) ^ ((u64)(unsigned)cc << 52)) * 0x9E3779B97F4A7C15ull + (u64)tag) | 1;
+}
 typedef struct { u64 key; int valid, nn, nk, nh, seen; } SitKeep;
 static SitKeep SITKEEP[SITKEEPS];
 static int sitKeepSlot; static u64 sitKeepKey;
@@ -4320,7 +4325,7 @@ static int reachOption(Opt *O, int n, Dec d, int frozen) {
   }
   // the search goes on from the last frame's if the position is the same: the best it found and the lines it keeps (sitKeepSlot)
   static ReachCtx rx, rxKeep;
-  u64 pk = ((u64)(unsigned)raPos << 2) | (gScramble ? 3 : 2);
+  u64 pk = sitRootKey(st, cur[0], cur[1], gScramble ? 3 : 2);
   if (SITKEEP[2].valid && SITKEEP[2].key == pk) rx = rxKeep; else { rx.best = atkOf(0, 0); rx.n = 0; }
   double work = optLine() - paWork, cap = gScramble ? REACHSHARE() : REACHWORK; if (work > cap) work = cap;
   double rw0 = paWork;
@@ -4704,7 +4709,7 @@ static Dec breakDeeper(Dec d) {
   // is in contact (the guide is flat: every board it meets reads the same), when the soonest press first is the order that finds a break at all
   sitGuide = readyGuide(kb0) < 2 * READYGUIDENONE + 4 ? readyGuide : 0;
   // the search goes on from the last frame's if the position is the same (sitKeepSlot): its lines and the nearest of them are kept
-  static NearCtx nearKeep; u64 pk = ((u64)(unsigned)raPos << 1) | 1;
+  static NearCtx nearKeep; u64 pk = sitRootKey(kb0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 1);
   NearCtx nx; if (SITKEEP[0].valid && SITKEEP[0].key == pk) nx = nearKeep; else { nx.bestG = readyGuide(kb0); nx.bestN = 0; }
   sitKeepSlot = 1; sitKeepKey = pk;
   int got = searchInTime(kb0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, bdT, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0,
@@ -5433,7 +5438,7 @@ static int readiesLine(Dec d, int dieRef, int spare, int partial, int32_t *sw, i
   x.bestG = x.g0; x.bestN = 0;
   *n = 0;
   // the search goes on from the last frame's if the position is the same: its lines and the nearest of them are kept (sitKeepSlot)
-  static RqCtx rqKeep; u64 pk = (u64)(unsigned)raPos << 1;
+  static RqCtx rqKeep; u64 pk = sitRootKey(rq0, cur0[0], cur0[1], 4 + (lands ? 1 : 0));
   if (SITKEEP[1].valid && SITKEEP[1].key == pk) { x.bestG = rqKeep.bestG; x.bestN = rqKeep.bestN; for (int k = 0; k < 2 * x.bestN; k++) x.bestSw[k] = rqKeep.bestSw[k]; }
   sitKeepSlot = 2; sitKeepKey = pk;
   sitGuide = readyGuide;   // best-first: the board nearest a break is grown first, so the same work reaches deeper than the root's children
