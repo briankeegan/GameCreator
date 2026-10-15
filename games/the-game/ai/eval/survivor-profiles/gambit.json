@@ -29,5 +29,9 @@
   "width": 40,
   "depth": 7,
   "pool": 250
+ },
+ "pace": {
+  "gap": 20,
+  "slack": true
  }
 }
