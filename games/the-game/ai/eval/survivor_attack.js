@@ -37,9 +37,9 @@ module.exports = function (opts) {
   // o.aim (with o.by): a line counts only when what it makes meets the aim -- aim({ combo, combos, chain, broke, cells }) -- with its
   // last swap's clears done by frame o.by (frames from now), and o.keep(grid) true of the board it ends on; o: { ms, width, depth, pool, stopAt, minChain, guideChain, arrivals, rate }: with rate the fire kept is the best per swap of its line; arrivals is the garbage on its way, as the bot's serverArrivals; only a fire of a chain of minChain links or more counts; boards are ranked by fires of guideChain links or more; stopAt ends the search at the first depth with a fire of that many cells
   // o.near(made): with aims, how near a line comes to them (0: not at all) -- the nearest line is kept beside them (best.nearest),
-  // the line to play when none meets an aim in time.
+  // the line to play when none meets an aim in time; and the soonest line that breaks garbage (best.quick).
   function plan(board, hold, o) {
-    var s = search(), t0 = Date.now(), best = null, nearest = null, aims = o.aims || (o.aim ? [o.aim] : null), perAim = aims ? aims.map(function () { return null; }) : null;
+    var s = search(), t0 = Date.now(), best = null, nearest = null, quick = null, aims = o.aims || (o.aim ? [o.aim] : null), perAim = aims ? aims.map(function () { return null; }) : null;
     s.reset();
     var root = s.root(board.copy(), hold, o.arrivals || [], false);
     // a cascade already running sends what it sends whatever is swapped: only what a swap adds to it counts
@@ -63,6 +63,9 @@ module.exports = function (opts) {
             // (aims: the line is kept for every aim it meets, by its deadline and keeping what o.keep asks; the search goes on past it)
             var made = { combo: bigC, combos: st.comboSizes, chain: g.chain, broke: st.broke || 0, cells: Math.max(0, g.cells - base) };
             var inTime = !(o.by && out.t - root.t > o.by), kept = !(o.keep && !o.keep(out.b.grid));
+            // (the soonest line that breaks garbage at all, a plain three included: the last line before the default's own)
+            if (o.near && inTime && kept && made.broke > 0 && (!quick || out.t - root.t < quick.done || (out.t - root.t === quick.done && seq.length < quick.seq.length)))
+              quick = { near: 0, brk: true, cells: made.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: made.broke, done: out.t - root.t, aimIndex: -1 };
             if (o.near && inTime && kept) {
               var nr = o.near(made);
               if (nr > it.reach) it.reach = nr;   // (the beam is led by the list: a board ranks by the nearest line one swap from it)
@@ -112,6 +115,7 @@ module.exports = function (opts) {
       if (best) keep.add(best.n);
       if (perAim) perAim.forEach(function (pa) { if (pa) keep.add(pa.n); });
       if (nearest) keep.add(nearest.n);
+      if (quick) keep.add(quick.n);
       var spent = outs.filter(function (x) { return x && !x.dead && !keep.has(x); });
       old.forEach(function (it) { if (it.n !== root && !keep.has(it.n)) spent.push(it.n); });
       if (spent.length) s.drop(spent);
@@ -143,7 +147,7 @@ module.exports = function (opts) {
       } else best.after = 0;
     }
     best.setup = setup ? setup.move : null;
-    best.nearest = nearest;
+    best.nearest = nearest; best.quick = quick;
     // any swap at all: one that moves nothing that matters is how the rise is let go of (see survivor_think.js, unlock)
     var legal = root.b.legalSwaps(), same = null, g0 = root.b.grid;
     legal.forEach(function (m) { if (!same && g0[m[0]] && g0[m[0]][m[1]] > 0 && g0[m[0]][m[1]] < 8 && g0[m[0]][m[1]] === g0[m[0]][m[1] + 1]) same = m; });
