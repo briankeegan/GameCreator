@@ -804,7 +804,7 @@ module.exports = function think(cfg) {
       bot._gambit = null; bot._gambitRaise = 0;
       if (gambitRules) {
         var GP = cfg.profile.gambit, FG = { us: GAMBIT.facts(board, arrivals, m.topped), enemy: GAMBIT.enemyFacts(m.opp) };
-        var apG = null, tablesG = gambitRules.get(m.opp && m.opp.name), pickG = GP.mode ? GAMBIT.named(tablesG, GP.mode) : GAMBIT.choose(tablesG, FG), lineG = null, setupG = null, triedG = 0;
+        var apG = null, exG = null, tablesG = gambitRules.get(m.opp && m.opp.name), pickG = GP.mode ? GAMBIT.named(tablesG, GP.mode) : GAMBIT.choose(tablesG, FG), lineG = null, setupG = null, triedG = 0;
         if (pickG) {
           var keepG = pickG.rule.keep || tablesG.keep || null, keepF = keepG ? function (grid) { return GAMBIT.keeps(keepG, grid); } : null;
           // THE PRIORITY LIST (aims): the first entry a line can make in time is played; an entry "default" or "hold" ends the list there
@@ -822,11 +822,11 @@ module.exports = function think(cfg) {
           if (predsG.length) {
             if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
             // (a chain already falling is run on first: the links that keep it going and make an entry -- the next chain is built
-            // while the first one runs)
+            // while the first one runs; and a slab popping is lined up: the panels it turns into are matched as they fall, a link more)
             var leftG = function () { return due ? due - Date.now() - 2 * DEADLINE_MARGIN_MS - 100 : 1e9; };
-            if (cascadeLive(board, true) && GP.extend !== false && Math.min(GP.extendMs || 40, leftG()) >= 20) {
+            if ((cascadeLive(board, true) || SH.popLeft(board) > 0) && GP.extend !== false && Math.min(GP.extendMs || 40, leftG()) >= 20) {
               triedG++;
-              var exG = attacker.extend(board, m.hold, { ms: Math.min(GP.extendMs || 40, leftG()), width: GP.width || 40, depth: GP.extendDepth || 6, aims: predsG, keep: keepF });
+              exG = attacker.extend(board, m.hold, { ms: Math.min(GP.extendMs || 40, leftG()), width: GP.width || 40, depth: GP.extendDepth || 6, aims: predsG, keep: keepF, near: function (made) { return GAMBIT.nearList(aimsG, made); } });
               if (exG.seq.length && exG.aimIndex >= 0 && exG.cells > exG.base) lineG = { ap: exG, aimIndex: exG.aimIndex, extend: true };
             }
             var msG = Math.min(GP.ms || 80, leftG());
@@ -839,10 +839,15 @@ module.exports = function think(cfg) {
               // NO ENTRY IN TIME: the list is still what is played toward -- the line that comes nearest its first entry (under garbage, one
               // that breaks it too), else, with no garbage to break, the setup the search found; under garbage, the soonest line that breaks
               // it at all (a plain three the last of them), and only with none of those the default's own move
-              else if (!lineG && apG.nearest && apG.nearest.seq.length) { lineG = { ap: apG.nearest, aimIndex: -1, near: apG.nearest.near }; }
+              else if (!lineG && ((apG.nearest && apG.nearest.seq.length) || (exG && exG.nearest))) {
+                // (the nearer of the plan's line and the falling chain's -- or the popping slab's line-up)
+                var nx = exG && exG.nearest, np = apG.nearest && apG.nearest.seq.length ? apG.nearest : null;
+                lineG = nx && (!np || nx.near > np.near) ? { ap: nx, aimIndex: -1, near: nx.near, extend: true } : { ap: np, aimIndex: -1, near: np.near };
+              }
               else if (!lineG && underG && apG.quick && apG.quick.seq.length) { lineG = { ap: apG.quick, aimIndex: -1, quick: true }; }
               else if (!lineG && !underG && apG.setup) setupG = apG.setup;
             }
+            else if (!lineG && exG && exG.nearest) lineG = { ap: exG.nearest, aimIndex: -1, near: exG.nearest.near, extend: true };
           }
           // THE RAISE (the file's or the rule's `raise: { to }`): below `to` rows, not under garbage, not topped and no chain running, the stack
           // is raised first -- held down to `to` in one press, not a row a decision -- and the list played from the panels it brings

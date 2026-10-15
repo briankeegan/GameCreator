@@ -165,7 +165,7 @@ module.exports = function (opts) {
   // A CHAIN GOING IS CONTINUED: from a board mid-cascade (stop time running), the swaps made while it pops that make
   // it longer. A beam over swaps played as the cascade runs, each board ranked by what the cascade sends once it
   // settles; the line ends at the board that sends the most. o: { ms, width, depth, keep } -- with o.keep(grid), a cascade is kept for an
-  // aim only when the board it settles to keeps what o.keep asks
+  // aim only when the board it settles to keeps what o.keep asks; with o.near(made) the nearest cascade is kept too (best.nearest)
   function extend(board, hold, o) {
     var s = search(), t0 = Date.now();
     s.reset();
@@ -181,7 +181,7 @@ module.exports = function (opts) {
     }
     var base = sends([root])[0] || { cells: 0, chain: 0 };
     var best = { cells: base.cells, chain: base.chain, seq: [], base: base.cells };
-    var xAims = o.aims || (o.aim ? [o.aim] : null), xPer = xAims ? xAims.map(function () { return null; }) : null;
+    var xAims = o.aims || (o.aim ? [o.aim] : null), xPer = xAims ? xAims.map(function () { return null; }) : null, xNear = null;
     var pool = [{ n: root, seq: [] }];
     for (var d = 1; d <= o.depth && pool.length && Date.now() - t0 < o.ms; d++) {
       var jobs = [], meta = [];
@@ -201,6 +201,7 @@ module.exports = function (opts) {
         // (o.aims: the cascade that ends making the most for each aim -- { combo, chain, broke, cells added } -- is kept per aim)
         if (xAims) {
           var madeX = { combo: g.combo, chain: g.chain, broke: g.broke, cells: g.cells - base.cells };
+          if (o.near && g.kept) { var xn = o.near(madeX); if (xn > 0 && (!xNear || xn > xNear.near || (xn === xNear.near && g.cells > xNear.cells))) xNear = { near: xn, cells: g.cells, chain: g.chain, combo: g.combo, seq: k.seq, base: base.cells, aimIndex: -1 }; }
           for (var xa = 0; xa < xAims.length; xa++) if (g.kept && xAims[xa] && xAims[xa](madeX) && (!xPer[xa] || g.cells > xPer[xa].cells)) xPer[xa] = { cells: g.cells, chain: g.chain, combo: g.combo, seq: k.seq, base: base.cells, aimIndex: xa };
         } else if (g.cells > best.cells) best = { cells: g.cells, chain: g.chain, combo: g.combo, seq: k.seq, base: base.cells };
         next.push(k);
@@ -217,6 +218,7 @@ module.exports = function (opts) {
       pool = keepNodes;
     }
     if (xPer) { for (var fx = 0; fx < xPer.length; fx++) if (xPer[fx]) { best = xPer[fx]; break; } if (!best.seq.length) best.aimIndex = -1; }
+    best.nearest = xNear;
     best.ms = Date.now() - t0;
     return best;
   }
