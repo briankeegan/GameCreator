@@ -2820,15 +2820,20 @@ static void sitOffer(int i, int *nk, int *nh, double notBefore, int frozen, cons
   int m = legal(SITST[i], SITL);
   paWork += SITLEGALWORK;
   // WHEN EACH CELL THE LINE DISTURBED IS STILL: the latest settle among the steps that touched it, from every step of the line
+  // (only the steps still settling when the next press could come: a quiet swap is still long before it)
   double cellT[32][WMAX]; int hasCellT = 0;
   if (!root && nd->n > 1) {
-    hasCellT = 1;
-    for (int r2 = 0; r2 < 32; r2++) for (int c2 = 0; c2 < WMAX; c2++) cellT[r2][c2] = 0;
-    for (int j = i; SITND[j].n > 0; j = SITND[j].parent)
-      for (int c2 = 1; c2 <= BW; c2++) {
-        uint32_t mk = SITND[j].dist[c2];
-        while (mk) { int rb = __builtin_ctz(mk); mk &= mk - 1; if (rb < 32 && SITND[j].settled > cellT[rb][c2]) cellT[rb][c2] = SITND[j].settled; }
+    for (int j = i; SITND[j].n > 0; j = SITND[j].parent) if (SITND[j].settled > start) { hasCellT = 1; break; }
+    if (hasCellT) {
+      for (int r2 = 0; r2 < 32; r2++) for (int c2 = 0; c2 < WMAX; c2++) cellT[r2][c2] = 0;
+      for (int j = i; SITND[j].n > 0; j = SITND[j].parent) {
+        if (!(SITND[j].settled > start)) continue;
+        for (int c2 = 1; c2 <= BW; c2++) {
+          uint32_t mk = SITND[j].dist[c2];
+          while (mk) { int rb = __builtin_ctz(mk); mk &= mk - 1; if (rb < 32 && SITND[j].settled > cellT[rb][c2]) cellT[rb][c2] = SITND[j].settled; }
+        }
       }
+    }
   }
   for (int q = 0; q < m && *nk < SITKIDS; q++) {
     int r = SITL[2 * q], c = SITL[2 * q + 1];
