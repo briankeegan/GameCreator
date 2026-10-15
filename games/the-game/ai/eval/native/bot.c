@@ -2758,6 +2758,9 @@ static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double no
   SitMem *m = sitMem(slot ? SITLEVELS + slot - 1 : sitLevel);
   if (!m) { sitGuide = 0; return 0; }
   sitKeepIn = slot && SITKEEP[slot - 1].valid && SITKEEP[slot - 1].key == kkey;
+#ifndef __wasm__
+  if (botTraceOn && slot) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "RESUME slot %d %d\n", slot, sitKeepIn); }
+#endif
   sitKeepP = slot ? &SITKEEP[slot - 1] : 0; if (sitKeepP) sitKeepP->key = kkey;
   // the caller's level, kept to be put back
   ST *pst = SITST; SitNode *pnd = SITND; SitKid *pkd = SITKD; SitHeap *php = SITHP; u64 *phk = SITHK; uint32_t *phg = SITHG, pgen = SITGEN; int32_t *pt = SITT, *pr = SITR, *pl = SITL; double pleft = sitLeft; int pseen = sitSeenN;
