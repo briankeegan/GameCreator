@@ -787,6 +787,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
         pad.holdKey = 0;
         if (f < waitTo && ((LWAITALL && step == n - 1) || !pairFree(step == 0 ? &LF->settle : &LSET, r0, col, f - fs))) { /* its panels settle at waitTo: never pressed on panels still moving */ }
         else if (!padAllowed(&pad, b->clock)) { /* the input budget's next action */ }
+        else if (!nb_can_swap(b, row, col) && (b->swappingCount > 0 || b->nActive > 0 || b->nPrevActive > 0 || b->shakeTime > 0 || nb_falling_garbage(b))) { /* a board still moving refuses a press it takes a frame later: the real front tries again, and so does the replay */ }
         else if (!nb_can_swap(b, row, col) || !nb_try_queue_swap(b, row, col)) {
 #ifndef __wasm__
           if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
