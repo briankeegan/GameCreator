@@ -144,6 +144,15 @@ function choose(tables, F) {
   }
   return null;
 }
+// One rule by its name, whatever its `when` (the profile's gambit.mode: a mode played the whole game, to test it on its own).
+function named(tables, name) {
+  var order = ['defend', 'attack'];
+  for (var t = 0; t < order.length; t++) {
+    var rules = (tables && tables[order[t]]) || [];
+    for (var i = 0; i < rules.length; i++) if (rules[i].name === name) return { rule: rules[i], index: i, table: order[t] };
+  }
+  return null;
+}
 // A table's rules, each `when` led by its own side's board: an attack rule tests the enemy (enemy.*), a defend rule our board (us.*);
 // either may add a test on the other side, and an empty `when` is the table's catch-all. A rule that tests only the other side is
 // dropped, and the reason kept.
@@ -188,4 +197,4 @@ function rulesFor(profile, dir) {
   return new Rules(path.isAbsolute(g.rules) ? g.rules : path.join(dir, g.rules));
 }
 
-module.exports = { near: near, nearList: nearList, aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };
+module.exports = { named: named, near: near, nearList: nearList, aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };

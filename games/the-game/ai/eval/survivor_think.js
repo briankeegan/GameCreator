@@ -804,7 +804,7 @@ module.exports = function think(cfg) {
       bot._gambit = null; bot._gambitRaise = 0;
       if (gambitRules) {
         var GP = cfg.profile.gambit, FG = { us: GAMBIT.facts(board, arrivals, m.topped), enemy: GAMBIT.enemyFacts(m.opp) };
-        var tablesG = gambitRules.get(m.opp && m.opp.name), pickG = GAMBIT.choose(tablesG, FG), lineG = null, setupG = null, triedG = 0;
+        var tablesG = gambitRules.get(m.opp && m.opp.name), pickG = GP.mode ? GAMBIT.named(tablesG, GP.mode) : GAMBIT.choose(tablesG, FG), lineG = null, setupG = null, triedG = 0;
         if (pickG) {
           var keepG = pickG.rule.keep || tablesG.keep || null, keepF = keepG ? function (grid) { return GAMBIT.keeps(keepG, grid); } : null;
           // THE PRIORITY LIST (aims): the first entry a line can make in time is played; an entry "default" or "hold" ends the list there

@@ -478,10 +478,25 @@ Match.prototype.walkKeys = function (k, at) {
   var ins = KEYS.holdWalks(k.inputs);
   return { inputs: ins, holds: k.holds, held: ins.held };
 };
+// THE ATTACKS MADE, counted off the board the game shows: a match is the panels that turn matched in one frame (a combo when it is 4 or
+// more), a chain is counted at its longest when it ends. stats.attacks: { combo: { size: n }, chain: { links: n } }.
+Match.prototype.countAttacks = function (truth) {
+  var seen = this._matched || {}, now = {}, fresh = 0, r, c, p, cc = truth.chainCounter || 0;
+  for (r = 1; r < truth.panels.length; r++) for (c = 1; c <= 6; c++) {
+    p = truth.panels[r] && truth.panels[r][c];
+    if (p && p.state === 'matched' && !p.isGarbage && p.color > 0) { now[p.id] = 1; if (!seen[p.id]) fresh++; }
+  }
+  this._matched = now;
+  var at = this.stats.attacks || (this.stats.attacks = { combo: {}, chain: {} });
+  if (fresh >= 4) at.combo[fresh] = (at.combo[fresh] || 0) + 1;
+  if (cc > (this._chainMax || 0)) this._chainMax = cc;
+  if (cc === 0 && this._chainMax >= 2) { at.chain[this._chainMax] = (at.chain[this._chainMax] || 0) + 1; this._chainMax = 0; }
+};
 Match.prototype.frame = function (truth, arrivals, fresh) {
   var L = this.L;
   var now = truth.clock, d, before = this.arrivals;
   this.now = now;
+  if (truth.panels) this.countAttacks(truth);
   this.toppedNow = typeof truth.isToppedOut === 'function' && truth.isToppedOut();
   this.realTop = CK.fullTop(truth); this.realFtt = CK.framesToTop(truth);   // the stack as the game shows it: its height and the frames until it tops out   // the stack as it is this frame, with the questions
   this.arrivals = arrivals;

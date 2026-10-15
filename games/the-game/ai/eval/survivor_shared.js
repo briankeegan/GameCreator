@@ -12,6 +12,13 @@ var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
 function profile() {
   var file = process.env.GC_SURVIVOR_PROFILE || path.join(__dirname, 'survivor.profile.json');
   var p = JSON.parse(fs.readFileSync(file, 'utf8'));
+  // (base: another profile, relative to this one's folder, that this one changes -- its keys over the base's, an object key merged a level)
+  if (p.base) {
+    var b = JSON.parse(fs.readFileSync(path.resolve(path.dirname(file), p.base), 'utf8')), own = p;
+    p = Object.assign({}, b);
+    Object.keys(own).forEach(function (k) { p[k] = own[k] && typeof own[k] === 'object' && !Array.isArray(own[k]) && b[k] && typeof b[k] === 'object' ? Object.assign({}, b[k], own[k]) : own[k]; });
+    delete p.base;
+  }
   ['name', 'weights', 'reaction', 'cursorMoveFrames', 'depth', 'modes', 'ahead'].forEach(function (k) {
     if (p[k] === undefined) throw new Error('survivor profile ' + file + ': no ' + k);
   });
