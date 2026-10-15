@@ -913,6 +913,7 @@ module.exports = function think(cfg) {
               if (dyingG && apG && apG.lowest) addG(apG.lowest.seq[0], apG.lowest.seq);
             } else if (apG && apG.setup && typeof readyAtG !== 'number') addG(apG.setup);
           }
+          if (GP.rankAll === false) orderG = orderG.slice(0, 1);   // (rankAll false: gambit's first play alone is ranked)
           if (orderG.length) {
             bot.preferRank = function gambitRank(c, i) {
               var r = prG.call(this, c, i), k = c.kind === 'swap' && c.move ? arbKey(c.move) : c.kind, at = orderG.indexOf(k);
@@ -1087,7 +1088,7 @@ module.exports = function think(cfg) {
       // (defendBigBreaks: the lineup forced here never replaces a bigger break or an attack line the ranking chose, and of the breaks
       // it may force, the bigger is taken)
       var keepD = defendA && spareD && D0.defendBigBreaks && d && d.kind === 'swap' && d.move && (bigOfMove(d.move) || (arbProps && arbProps[arbKey(d.move)]));
-      if (!keepD && !bot._gambit) d = SP.overrule(d, noAimed ? Object.assign({}, prep, { br: null, want: {} }) : prep, bot);   // a lineup while a slab pops (survivor_prefer.js)
+      if (!keepD && !(bot._gambit && cfg.profile.gambit.standDown !== false)) d = SP.overrule(d, noAimed ? Object.assign({}, prep, { br: null, want: {} }) : prep, bot);   // a lineup while a slab pops (survivor_prefer.js)
       else bot._keptBig = (bot._keptBig || 0) + 1;
       guard3();
       guardTopped();
