@@ -65,6 +65,7 @@ module.exports = function (opts) {
             var inTime = !(o.by && out.t - root.t > o.by), kept = !(o.keep && !o.keep(out.b.grid));
             if (o.near && inTime && kept) {
               var nr = o.near(made);
+              if (nr > it.reach) it.reach = nr;   // (the beam is led by the list: a board ranks by the nearest line one swap from it)
               if (nr > 0 && (!nearest || nr > nearest.near || (nr === nearest.near && seq.length < nearest.seq.length)))
                 nearest = { near: nr, brk: made.broke > 0, cells: made.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: made.broke, done: out.t - root.t, aimIndex: -1 };
             }
@@ -103,8 +104,10 @@ module.exports = function (opts) {
       next.sort(function (a, b) { return b.h - a.h; });
       var old = pool;
       pool = next.slice(0, o.pool);
-      // the most connected board reached so far, if better than the one now: its first swap is a setup
-      if (pool.length && pool[0].h > (setup ? setup.h : rootH)) setup = { h: pool[0].h, move: pool[0].seq[0] };
+      // the most connected board reached so far, if better than the one now: its first swap is a setup -- with o.near, a board
+      // nearer the list one swap on comes first (its reach), so the setup is played toward the same list
+      if (o.near) old.forEach(function (it) { if (it.seq.length && (it.reach > (setup ? setup.reach || 0 : 0) || (!(setup && setup.reach) && !it.reach && it.h > (setup ? setup.h : rootH)))) setup = { reach: it.reach, h: it.h, move: it.seq[0] }; });
+      else if (pool.length && pool[0].h > (setup ? setup.h : rootH)) setup = { h: pool[0].h, move: pool[0].seq[0] };
       var keep = new Set(pool.map(function (it) { return it.n; }));
       if (best) keep.add(best.n);
       if (perAim) perAim.forEach(function (pa) { if (pa) keep.add(pa.n); });
