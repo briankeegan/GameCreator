@@ -37,7 +37,7 @@ module.exports = function (opts) {
   // o.aim (with o.by): a line counts only when what it makes meets the aim -- aim({ combo, combos, chain, broke, cells }) -- with its
   // last swap's clears done by frame o.by (frames from now), and o.keep(grid) true of the board it ends on; o: { ms, width, depth, pool, stopAt, minChain, guideChain, arrivals, rate }: with rate the fire kept is the best per swap of its line; arrivals is the garbage on its way, as the bot's serverArrivals; only a fire of a chain of minChain links or more counts; boards are ranked by fires of guideChain links or more; stopAt ends the search at the first depth with a fire of that many cells
   // o.near(made): with aims, how near a line comes to them (0: not at all) -- the nearest line is kept beside them (best.nearest),
-  // the line to play when none meets an aim in time; and the soonest line that breaks garbage (best.quick).
+  // the line to play when none meets an aim in time; and the line in time that breaks the most garbage (best.quick).
   var SLICE = 256;   // about 9 ms of jobs (8,987 in 318 ms on a runner's board under a slab)
   function plan(board, hold, o) {
     var s = search(), t0 = Date.now(), best = null, nearest = null, quick = null, aims = o.aims || (o.aim ? [o.aim] : null), perAim = aims ? aims.map(function () { return null; }) : null;
@@ -69,8 +69,9 @@ module.exports = function (opts) {
             // (aims: the line is kept for every aim it meets, by its deadline and keeping what o.keep asks; the search goes on past it)
             var made = { combo: bigC, combos: st.comboSizes, chain: g.chain, broke: st.broke || 0, cells: Math.max(0, g.cells - base) };
             var inTime = !(o.by && out.t - root.t > o.by), kept = !(o.keep && !o.keep(out.b.grid));
-            // (the soonest line that breaks garbage at all, a plain three included: the last line before the default's own)
-            if (o.near && inTime && kept && made.broke > 0 && (!quick || out.t - root.t < quick.done || (out.t - root.t === quick.done && seq.length < quick.seq.length)))
+            // (of the lines in time that break garbage at all, a plain three included, the one that breaks the most -- the sooner between
+            // equals: the last line before the default's own)
+            if (o.near && inTime && kept && made.broke > 0 && (!quick || made.broke > quick.broke || (made.broke === quick.broke && out.t - root.t < quick.done)))
               quick = { near: 0, brk: true, cells: made.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: made.broke, done: out.t - root.t, aimIndex: -1 };
             if (o.near && inTime && kept) {
               var nr = o.near(made);

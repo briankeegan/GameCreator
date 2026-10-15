@@ -817,8 +817,10 @@ module.exports = function think(cfg) {
           var underG = tablesG.underGarbage !== 'ignore' && (FG.us.contact !== null || FG.us.topped);
           var listAimsG = aimsG;   // (as written: a line-up of a slab popping is the break already made, so it is held to these)
           if (underG) { aimsG = aimsG.map(function (a) { return Object.assign({}, a, { break: true }); }); endG = 'default'; }
-          // (under garbage the break is due before the next garbage lands: a break after it is a break of a deeper pile)
+          // (under garbage the break is due before the next garbage lands -- a break after it is a break of a deeper pile -- and before the
+          // board would be lost: the best break that is done in time, not the soonest)
           if (underG && FG.us.nextLands > 0 && !(byG && byG < FG.us.nextLands)) byG = FG.us.nextLands;
+          if (underG && FG.us.dies > 0 && !(byG && byG < FG.us.dies)) byG = FG.us.dies;
           var predsG = aimsG.map(function (a) { return function (made) { return GAMBIT.meets(a, made); }; });
           if (predsG.length) {
             if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
@@ -842,8 +844,8 @@ module.exports = function think(cfg) {
               // (the plan's line wins over a falling chain's link only when its entry comes first in the list)
               if (apG.seq.length && apG.aimIndex >= 0 && (!lineG || apG.aimIndex < lineG.aimIndex)) lineG = { ap: apG, aimIndex: apG.aimIndex };
               // NO ENTRY IN TIME: the list is still what is played toward -- the line that comes nearest its first entry (under garbage, one
-              // that breaks it too), else, with no garbage to break, the setup the search found; under garbage, the soonest line that breaks
-              // it at all (a plain three the last of them), and only with none of those the default's own move
+              // that breaks it too), else, with no garbage to break, the setup the search found; under garbage, the line in time that breaks
+              // the most of it (a plain three when nothing better is in time), and only with none of those the default's own move
               else if (!lineG && ((apG.nearest && apG.nearest.seq.length) || (exG && exG.nearest))) {
                 // (the nearer of the plan's line and the falling chain's -- or the popping slab's line-up)
                 var nx = exG && exG.nearest, np = apG.nearest && apG.nearest.seq.length ? apG.nearest : null;
