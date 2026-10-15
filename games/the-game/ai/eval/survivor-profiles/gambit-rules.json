@@ -10,19 +10,23 @@
     "enemy.topped": true
    },
    "aims": [
-    {
-     "combo": ">=6"
-    },
-    {
-     "combo": ">=5"
-    },
-    {
-     "combo": ">=4"
-    },
-    {
-     "chain": ">=2"
-    },
-    "default"
+    { "combo": ">=8" },
+    { "combo": "==5" },
+    { "combo": "==6" },
+    { "combo": "==7" },
+    { "combo": "==4" },
+    { "chain": "==2" },
+    { "chain": "==3" },
+    { "chain": "==1" }
+   ]
+  },
+  {
+   "name": "big chain",
+   "when": {
+    "enemy.height": "<5"
+   },
+   "aims": [
+    { "chain": ">=8" }
    ]
   },
   {
@@ -31,19 +35,7 @@
     "enemy.height": ">=9"
    },
    "aims": [
-    {
-     "chain": ">=3"
-    },
-    {
-     "chain": ">=2"
-    },
-    {
-     "combo": ">=5"
-    },
-    {
-     "combo": ">=4"
-    },
-    "default"
+    { "chain": "==4" }
    ]
   },
   {
@@ -52,35 +44,7 @@
     "enemy.height": "<9"
    },
    "aims": [
-    {
-     "chain": ">=4"
-    },
-    {
-     "chain": ">=3"
-    },
-    {
-     "combo": ">=8"
-    },
-    {
-     "combo": ">=6"
-    },
-    {
-     "combo": ">=5"
-    },
-    "default"
-   ]
-  },
-  {
-   "name": "anything big",
-   "when": {},
-   "aims": [
-    {
-     "chain": ">=2"
-    },
-    {
-     "combo": ">=4"
-    },
-    "default"
+    { "chain": "==5" }
    ]
   }
  ],
