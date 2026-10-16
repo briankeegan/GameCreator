@@ -35,7 +35,7 @@ module.exports = function (opts) {
   // o.aims: a priority list of aims, searched in one beam -- the best line for each aim is kept, and the line returned is the first
   // aim's that has one (best.aimIndex); o.aim is a list of one.
   // o.aim (with o.by): a line counts only when what it makes meets the aim -- aim({ combo, combos, chain, broke, cells }) -- with its
-  // last swap's clears done by frame o.by (frames from now), and o.keep(grid) true of the board it ends on; o: { ms, width, depth, pool, stopAt, minChain, guideChain, arrivals, rate }: with rate the fire kept is the best per swap of its line; arrivals is the garbage on its way, as the bot's serverArrivals; only a fire of a chain of minChain links or more counts; boards are ranked by fires of guideChain links or more; stopAt ends the search at the first depth with a fire of that many cells
+  // last swap's clears done by frame o.by (frames from now), and o.keep(grid, made) true of the board it ends on; o: { ms, width, depth, pool, stopAt, minChain, guideChain, arrivals, rate }: with rate the fire kept is the best per swap of its line; arrivals is the garbage on its way, as the bot's serverArrivals; only a fire of a chain of minChain links or more counts; boards are ranked by fires of guideChain links or more; stopAt ends the search at the first depth with a fire of that many cells
   // o.near(made): with aims, how near a line comes to them (0: not at all) -- the nearest line is kept beside them (best.nearest),
   // the line to play when none meets an aim in time; and the line in time that breaks the most garbage (best.quick). o.readyAt: see READY.
   // THE SHAPE of a settled grid (0 empty, garbage 8 and up or below 0): its top row, evenness (tallest panel column less lowest) and
@@ -87,7 +87,7 @@ module.exports = function (opts) {
           if (aims) {
             // (aims: the line is kept for every aim it meets, by its deadline and keeping what o.keep asks; the search goes on past it)
             var made = { combo: bigC, combos: st.comboSizes, chain: g.chain, broke: st.broke || 0, cells: Math.max(0, g.cells - base) };
-            var inTime = !(o.by && out.t - root.t > o.by), kept = !(o.keep && !o.keep(out.b.grid));
+            var inTime = !(o.by && out.t - root.t > o.by), kept = !(o.keep && !o.keep(out.b.grid, made));
             // (CLEAR and SCRAMBLE, the plays of a board that would be lost: done before it is (o.dies), whatever the floor -- the line that
             // leaves the lowest stack, and the one that buys the most stop time)
             if (o.near && !(o.dies && out.t - root.t > o.dies)) {
@@ -228,7 +228,7 @@ module.exports = function (opts) {
         if (!out || out.dead) return null;
         var st = s.stepStats(out), g = sent(st), big = 0;
         st.comboSizes.forEach(function (z) { if (z > big) big = z; });
-        return { cells: g.cells, chain: g.chain, combo: big, broke: st.broke || 0, kept: !(o.keep && !o.keep(out.b.grid)) };
+        return { cells: g.cells, chain: g.chain, combo: big, broke: st.broke || 0, kept: !(o.keep && !o.keep(out.b.grid, { broke: st.broke || 0 })) };
       });
     }
     var base = sends([root])[0] || { cells: 0, chain: 0 };
