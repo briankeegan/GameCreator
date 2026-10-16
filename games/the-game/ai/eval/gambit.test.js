@@ -100,13 +100,12 @@ try {
   assert(R.error, 'and says why');
 } finally { try { fs.unlinkSync(file); } catch (e) {} }
 
-// under garbage the search is led by the must-do, whatever the list: a break that buys stop time, then the most broken, then the list
+// under garbage the search is led by the list, a break of any kind nearer than none
 var P4 = [{ chain: '==4', break: true }];
-assert(G.lead(P4, { combo: 4, chain: 1, broke: 6 }, true) > G.lead(P4, { combo: 3, chain: 1, broke: 12 }, true), 'a combo break before a plain break');
-assert(G.lead(P4, { combo: 3, chain: 1, broke: 12 }, true) > G.lead(P4, { combo: 3, chain: 1, broke: 6 }, true), 'then the more broken');
 assert(G.lead(P4, { combo: 3, chain: 1, broke: 1 }, true) > G.lead(P4, { combo: 3, chain: 3, broke: 0 }, true), 'any break before a line that breaks nothing');
 assert(G.lead(P4, { combo: 3, chain: 4, broke: 6 }, true) > G.lead(P4, { combo: 3, chain: 2, broke: 6 }, true), 'the list between equal breaks');
 assert.strictEqual(G.lead([{ chain: '==4' }], { chain: 2, broke: 6 }, false), G.nearList([{ chain: '==4' }], { chain: 2, broke: 6 }), 'no garbage: the list');
+assert(G.lead(P4, { combo: 3, chain: 1, broke: 6 }, true) > 0, 'a three that breaks is near');
 
 // the pick's tiers: under garbage a break is a must-do; a chain that breaks nothing is still a best that fits (a topped board lives on
 // its stop time), above hold (5); a clear that buys nothing is below it

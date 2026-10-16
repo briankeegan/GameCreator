@@ -139,14 +139,9 @@ function nearList(aims, made) {
   for (var i = 0; i < aims.length; i++) { s += Math.round(near(aims[i], made) * 100) * w; w /= 101; }
   return s;
 }
-// What leads the search, in the pick's order (plans/gambit.md section 5): under garbage the must-do first -- a break that buys stop
-// time (a combo of 4+ or a chain) over a plain break, then the most garbage broken -- and the list only between equal breaks; a line
-// that breaks nothing is below every break. With no garbage, the list.
-function lead(aims, made, under) {
-  var l = nearList(aims, made);
-  if (!under || !(made.broke > 0)) return l;
-  return ((made.combo >= 4 || made.chain >= 2) ? 2e6 : 1e6) + Math.min(made.broke, 999) * 1e3 + l;
-}
+// What leads the search: the list -- under garbage its entries ask a break, so a line that breaks nothing is near none of them -- and
+// any line that breaks a little nearer than one that does not, a three included. The pick's order (tier) chooses among what is found.
+function lead(aims, made, under) { return nearList(aims, made) + (under && made.broke > 0 ? 0.5 : 0); }
 // THE PICK'S TIERS (plans/gambit.md section 5), lower first, and the order within one: x is what the line makes ({ combo, chain, broke,
 // cells, earned, done, near }), aim its entry in the list (-1: none), under garbage on the board or topped, enemyOut the enemy topped.
 //   1 MUST-DO, under garbage: a break -- one whose board keeps the floor first (a break is made below it, but of two the one that leaves
