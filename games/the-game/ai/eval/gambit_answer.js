@@ -67,14 +67,16 @@ function lives(c, D) {
     return at >= 0 ? -1e6 + at : GAMBIT.fits(list, madeOf(k)) ? -1e3 : -1;
   };
   var before = bot._verdictNo || 0, d = bot._decide();
-  var V = (bot._verdictNo || 0) !== before ? bot._lastVerdict : null, verdict = 'unsearched', holdLives = false;
+  var V = (bot._verdictNo || 0) !== before ? bot._lastVerdict : null, verdict = 'unsearched', holdLives = false, live = 0, searched = 0;
   if (V) for (var i = 0; i < V.cands.length; i++) {
     var k = keyOf(V.cands[i]);
     if (k === keyOf(d)) verdict = V.verdict[i];
     if (k === 'hold') holdLives = V.verdict[i] === 'proven';
+    if (order.indexOf(k) >= 0) { searched++; if (V.verdict[i] === 'proven' || V.verdict[i] === 'weak') live++; }
   }
   var cand = (bot._allCands || []).filter(function (k) { return keyOf(k) === keyOf(d); })[0] || null;
-  return { d: d, verdict: verdict, holdLives: holdLives, gambits: order.indexOf(keyOf(d)) >= 0, cand: cand };
+  // (live: of Gambit's moves, how many the survival search searched and how many it found live)
+  return { d: d, verdict: verdict, holdLives: holdLives, gambits: order.indexOf(keyOf(d)) >= 0, cand: cand, live: live + '/' + searched + '/' + order.length };
 }
 
 // THE RAISE HELD: for every row to the rule's `to`, up to the garbage on its way landing, less a lead to act in
@@ -100,7 +102,7 @@ function logLine(c, D, L, br, brMs) {
     ' broke=' + (g.broke || 0) + ' tier=' + (g.tier || 0) + ' by=' + (g.by || '-') + ' plan=' + (g.pl || '-') + ' done=' + (g.done != null ? g.done : '-') + ' fire=' + (g.fire != null ? g.fire : '-') +
     ' ats=' + (g.ats || '-') + ' swaps=' + (g.swaps || 0) + ' land=' + (F.nextLands != null ? F.nextLands : '-') + ' dies=' + F.dies + ' casc=' + (CK.cascadeLive(c.board, true) ? 1 : 0) +
     ' pop=' + SH.popLeft(c.board) + ' stop=' + F.stop + ' fall=' + (F.falling ? 1 : 0) +
-    ' br=' + (br ? (br.depth || 0) + '/' + (br.path ? br.path.length : br.toward ? 't' + br.toward.length : 0) + (br.cut ? '/cut' : '') : 'none') + ' brMs=' + brMs);
+    ' br=' + (br ? (br.depth || 0) + '/' + (br.path ? br.path.length : br.toward ? 't' + br.toward.length : 0) + (br.cut ? '/cut' : '') : 'none') + ' brMs=' + brMs + ' cands=' + (g.cands || '-') + ' live=' + L.live);
 }
 
 function answer(c) {

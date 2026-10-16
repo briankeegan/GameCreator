@@ -35,8 +35,10 @@ function read(c) {
 
 // 2-4. PROPOSE, JUDGE AND RANK: every candidate offered, judged, the ones left in rank order
 function ranked(c, R, S) {
-  c.judged = {};
-  var out = PROPOSE.all(c, R, S).map(function (k) { return JUDGE.judge(c, R, k); }).filter(Boolean);
+  c.judged = {}; c.dropped = {}; c.offered = {};
+  var offered = PROPOSE.all(c, R, S);
+  offered.forEach(function (k) { c.offered[k.play] = (c.offered[k.play] || 0) + 1; });
+  var out = offered.map(function (k) { return JUDGE.judge(c, R, k); }).filter(Boolean);
   // (the line in progress: first of its tier when its next step is due now; one that waits for the board ranks as any other line)
   var C = R.preds.length ? PROPOSE.carried(c, R) : null, cj = C && JUDGE.judge(c, R, C.cand);
   if (cj) { cj.wait = C.wait; if (!cj.wait) cj.sub = [-Infinity].concat(cj.sub); out.push(cj); }
@@ -78,7 +80,9 @@ function play(c, R, S, cands) {
                xs: ex ? [ex.seq.length, ex.chain, ex.cells, ex.base, ex.nearest ? ex.nearest.chain : 0] : null,
                chain: line ? line.ap.chain : 0, combo: line ? line.ap.combo || 0 : 0, broke: line ? line.ap.broke || 0 : 0, tier: line ? line.tier : (hold ? 5 : 0),
                seq: line ? line.seq.map(function (mv) { return mv.slice(); }) : null, swaps: line ? line.ap.seq.length : 0, done: line ? line.ap.done : null,
-               fire: line ? line.ap.fire : null, ats: line && line.ap.ats ? line.ap.ats.join('/') : null, by: R.by };
+               fire: line ? line.ap.fire : null, ats: line && line.ap.ats ? line.ap.ats.join('/') : null, by: R.by,
+               // (per kind of move: how many were offered, and of them how many were dropped and why)
+               cands: Object.keys(c.offered || {}).map(function (p) { var d = (c.dropped || {})[p]; return p.replace(/ /g, '_') + ':' + c.offered[p] + (d ? '-' + ['back', 'list', 'late'].filter(function (w) { return d[w]; }).map(function (w) { return w[0] + d[w]; }).join('') : ''); }).join(',') };
   return { R: R, line: line, play: name, order: order, lines: lines, carry: carry, raise: R.up ? R.to : 0, mustBreak: mustBreak, urgent: urgent, info: info, idleMs: S.idleMs };
 }
 

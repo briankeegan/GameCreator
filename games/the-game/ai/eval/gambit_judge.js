@@ -27,8 +27,11 @@ function made(c, seq, play) {
 }
 
 // THE JUDGE: a candidate, filtered and ranked -- null when it is no candidate. { play, seq, tier, sub, ap, aim, extend, near }
+// (why each candidate was dropped, counted per decision for the log: c.dropped[play] = { back, list, late })
+function drop(c, play, why) { var d = c.dropped || (c.dropped = {}), t = d[play] || (d[play] = { back: 0, list: 0, late: 0 }); t[why]++; return null; }
 function judge(c, R, k) {
-  if (!k || swapBack(c, k.seq[0])) return null;
+  if (!k) return null;
+  if (swapBack(c, k.seq[0])) return drop(c, k.play, 'back');
   var x = k.x, play = k.play, seq = k.seq, aim = k.aim;
   var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0;
   // (what it makes is the whole line on the engine -- every step's clears, the chain broken garbage sets off, a link added to a chain
@@ -36,12 +39,12 @@ function judge(c, R, k) {
   var w = made(c, seq, play);
   var m = w ? { combo: Math.max(combo, w.combo), chain: Math.max(chain, w.chain), broke: Math.max(broke, w.broke), cells: x.cells || 0 } : x;
   // (it fits the list, or it is no candidate; its place in the list is the first entry it matches)
-  if (!GAMBIT.fits(R.list, m)) return null;
+  if (!GAMBIT.fits(R.list, m)) return drop(c, k.play, 'list');
   var entry = GAMBIT.entryOf(R.aims, m);
   if (entry >= 0 && (aim < 0 || entry < aim)) aim = entry;
   // (in time: every step its own time, the line's last swap begun by the deadline; the cascade it sets off runs on after)
   var fire = x.fire != null ? x.fire : x.done;
-  if (R.by && fire && fire > R.by) return null;
+  if (R.by && fire && fire > R.by) return drop(c, k.play, 'late');
   // (a setup, level or ready is to clear nothing: played to the board's settle step by step it ends before its first step that clears
   // panels and breaks nothing -- and when that is its first, the play is a clear)
   if (play === 'setup' || play === 'level' || play === 'ready') {
