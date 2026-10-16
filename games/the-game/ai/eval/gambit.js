@@ -197,15 +197,17 @@ function tier(play, x, aim, under, enemyOut, topped, waits) {
   var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0, cells = x.cells || 0, stop = x.earned || 0;
   var clears = combo >= 3 || chain >= 2 || broke > 0 || cells > 0 || play === 'clear';
   var buys = combo >= 4 || chain >= 2, rate = broke / Math.max(1, x.done || 1);
+  // (x.dropAt: the frame the queued garbage next drops once the line is over -- of two lines for the same entry, the one that keeps the
+  // stop time running longer comes first)
   // (THE BREAK WAITS, plans/decision.md: the next block lands on the garbage it would take -- an entry first, then a set-up, then the
   // hold, then the break: of these the first that lives is played, so the break is made at the last moment it lives)
   if (under && waits) {
     if (aim >= 0 && !(broke > 0)) return { tier: 2, sub: [aim, x.done || 0] };
     if (broke > 0) return { tier: 6, sub: [-Infinity, x.floor === false ? 1 : 0, aim >= 0 ? aim : 99, -rate, buys ? 0 : 1, -broke] };
   }
-  if (under && broke > 0) return { tier: 1, sub: [x.floor === false ? 1 : 0, aim >= 0 ? aim : 99, -rate, buys ? 0 : 1, -broke] };
+  if (under && broke > 0) return { tier: 1, sub: [x.floor === false ? 1 : 0, aim >= 0 ? aim : 99, -(x.dropAt || 0), -rate, buys ? 0 : 1, -broke] };
   if (play === 'clear') return { tier: 6, sub: [-stop] };   // (only when there is nothing else)
-  if (aim >= 0 && !under) return { tier: 2, sub: [aim, x.done || 0] };
+  if (aim >= 0 && !under) return { tier: 2, sub: [aim, -(x.dropAt || 0), x.done || 0] };
   if (clears && (buys || cells > 0) && (!under || (topped && buys))) return { tier: 3, sub: [-cells, enemyOut ? -combo : -chain, enemyOut ? -chain : -combo, -stop, -(x.near || 0)] };
   if (!clears) return { tier: 4, sub: [{ ready: 0, toward: 1, level: 2, setup: 3 }[play] || 4] };
   return { tier: 6, sub: [-stop] };

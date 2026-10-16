@@ -99,6 +99,11 @@ assert.ok(tb.isToppedOut(), 'the stack has risen to the top');
 var tc = { bot: { _canRaise: function () { return false; }, _gambitHit: true }, m: { at: tb.clock, hold: hold, topped: true, opp: null }, board: tb, arrivals: [], br: null, brMs: 0, attacker: at, rules: rules,
            GP: { mode: 'finish them', ms: 60, width: 30, depth: 5, pool: 120 }, pace: null, canRaise: function () { return false; }, left: function () { return 200; } };
 var TR = DECIDE.read(tc);
+// (topped out, the lines that keep the stop time running come first, in the list's order)
+tc.judged = {}; tc.dropped = {};
+var tk = DECIDE.ranked(tc, TR, require('./gambit_propose.js').search(tc, TR)), stop0 = (tb.stopTime || 0) + (tb.preStopTime || 0), seenOther = false;
+tk.forEach(function (k) { if (k.tier === 0) assert.ok(!seenOther, 'a line keeping the stop running ranks before every other'); else seenOther = true; });
+for (var ti = 1; ti < tk.length; ti++) if (tk[ti].tier === 0 && tk[ti - 1].tier === 0) assert.ok(tk[ti - 1].sub[0] <= tk[ti].sub[0], 'in the list\'s order');
 assert.ok(TR.F.us.topped && TR.F.us.contact === null, 'topped, no garbage');
 assert.ok(!TR.under && TR.aims.every(function (a) { return !a.break; }), 'no entry asks for a break with no garbage to break');
 assert.ok(TR.by !== undefined, 'a deadline is read');

@@ -498,8 +498,12 @@ Match.prototype.walkKeys = function (k, at) {
 // chain began, or 'itself' when none was (the chain grew from what it had set falling).
 Match.prototype.countAttacks = function (truth) {
   var seen = this._matched || {}, now = {}, fresh = 0, conv = 0, r, c, p, cc = truth.chainCounter || 0, wasG = this._wasG || (this._wasG = {});
+  var seenG = this._brokeG || (this._brokeG = {}), gs = this.stats.garbage || (this.stats.garbage = { landed: 0, broken: 0 });
   for (r = 1; r < truth.panels.length; r++) for (c = 1; c <= 6; c++) {
     p = truth.panels[r] && truth.panels[r][c];
+    // (garbage cells landed on the board, and garbage cells broken -- matched -- each counted once)
+    if (p && p.isGarbage && p.id != null && !wasG[p.id]) gs.landed++;
+    if (p && p.isGarbage && p.id != null && p.state === 'matched' && !seenG[p.id]) { seenG[p.id] = 1; gs.broken++; }
     if (p && p.isGarbage && p.id != null) wasG[p.id] = 1;
     if (p && p.state === 'matched' && !p.isGarbage && p.color > 0) { now[p.id] = 1; if (!seen[p.id]) { fresh++; if (wasG[p.id] || p.fellFromGarbage > 0) conv++; } }
   }

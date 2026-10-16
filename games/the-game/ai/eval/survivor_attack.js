@@ -500,7 +500,10 @@ module.exports = function (opts) {
     // continuation included only as far as the line leaves it running: a swap that cuts it ends it there)
     // (singles: the sizes of 4 or more of the line's matches that are clears of their own, no link of a chain -- the board's own included,
     // as far as the line leaves them to happen)
-    var res = { made: sofar(), chainAll: Math.max(chain, board.chainCounter || 0), singles: Object.keys(singles).map(Number), cut: cut, dead: dead, done: done, ats: ats, fire: ats.length ? ats[ats.length - 1] : null };
+    // (dropAt: the frame, from now, the garbage queued can next drop once the line is over -- the frame its board has settled, and the
+    // stop time left there; the stop a combo or chain earns along the line counts, as the engine runs it)
+    var dropAt = dead || !n.carry ? 0 : (n.t - root.t) + (n.carry.stopTime || 0) + (n.carry.preStopTime || 0);
+    var res = { made: sofar(), chainAll: Math.max(chain, board.chainCounter || 0), singles: Object.keys(singles).map(Number), dropAt: dropAt, cut: cut, dead: dead, done: done, ats: ats, fire: ats.length ? ats[ats.length - 1] : null };
     // (readiness, o.readyAt: the next block landed on the board the line ends on, can a break be made then -- the readiness check every
     // move that breaks nothing is held to)
     if (o.readyAt != null && !dead) res.ready = breaksAfterLanding(s, root, n, Math.max(1, o.readyAt + 2), made);
