@@ -903,10 +903,9 @@ module.exports = function think(cfg) {
             // (must-do: the list's breaks first, then the most garbage broken per frame -- the rows a slab interval needs come from the rate,
             // a multi-break's rows per link highest -- then the one that buys stop time)
             var rate = broke / Math.max(1, x.done || 1);
-            // (IN TIME, step 2: a line whose last swap lands after the deadline is not in time -- below every play that is, above the hold)
-            var late = !!(byG && x.done && x.done > byG);
-            if (late) { tier = 4.5; sub = [x.done]; }
-            else if (underG && broke > 0) { tier = 1; sub = [aim >= 0 ? aim : 99, -rate, buys ? 0 : 1, -broke]; }                    // must-do
+            // (IN TIME, step 2: a line whose last swap lands after its deadline is not kept)
+            if (byG && x.done && x.done > byG) return;
+            if (underG && broke > 0) { tier = 1; sub = [aim >= 0 ? aim : 99, -rate, buys ? 0 : 1, -broke]; }                    // must-do
             else if (aim >= 0 && !underG) { tier = 2; sub = [aim, x.done || 0]; }                                                       // aim
             else if (clears && !underG && (buys || cells > 0)) {                                                                       // best that fits
               tier = 3; sub = [-cells, enemyOutG ? -combo : -chain, enemyOutG ? -chain : -combo, -stop, -(x.near || 0)];
