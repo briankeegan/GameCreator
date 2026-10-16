@@ -6607,7 +6607,13 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
 #define WORKAT(tag) do { } while (0)
 #endif
   WORKAT("before ready");
-  Dec dOne = onePlan(dF); WORKAT("after onePlan"); Dec dKeep = keepReady(dOne); WORKAT("after keepReady"); Dec dRwl = readyWhenLands(dKeep); WORKAT("after readyWhenLands"); Dec dMw = meanwhile(dRwl); WORKAT("after meanwhile");
+  Dec dOne = onePlan(dF); WORKAT("after onePlan"); Dec dKeep = keepReady(dOne); WORKAT("after keepReady"); Dec dRwl;
+  // THE READINESS SEARCH TAKES HALF OF WHAT IS LEFT and the steps after it (meanwhile, the setups) the rest: it is kept from frame to frame, so half a
+  // frame's work a frame reaches as far as the whole of one
+  { double keep = stageEnd, line = optLine(), half = paWork + (line - paWork) / 2 + bgReserve + reachHold;
+    if (line > paWork && half < stageEnd) stageEnd = half;
+    dRwl = readyWhenLands(dKeep); stageEnd = keep; }
+  WORKAT("after readyWhenLands"); Dec dMw = meanwhile(dRwl); WORKAT("after meanwhile");
   { Dec dC = dropReady(dMw), dS = noStall(dC);
     // A STALL REFUSED FALLS BACK TO THE CHOICE IT WAS PUT BEFORE, not to
     // standing still: the fill (or what came before it), if that is no stall
