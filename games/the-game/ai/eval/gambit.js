@@ -180,6 +180,18 @@ function fits(aims, made) {
     return meets(plain, { combo: combo, chain: chain, broke: broke, cells: made.cells || 0 });
   });
 }
+// A MOVE'S PLACE IN THE LIST: the first entry its clears match (its break aside) -- the list is the priority, whatever search found the
+// move; -1 for a move that matches none (one that clears nothing, or a plain three that breaks)
+function entryOf(aims, made) {
+  made = made || {};
+  if (!(made.combo > 0 || made.chain > 0)) return -1;
+  for (var i = 0; i < (aims || []).length; i++) {
+    var a = aims[i]; if (!a || typeof a !== 'object') continue;
+    var plain = Object.assign({}, a); delete plain.break;
+    if (meets(plain, { combo: made.combo || 0, chain: made.chain || 0, broke: made.broke || 0, cells: made.cells || 0 })) return i;
+  }
+  return -1;
+}
 // A rule's priority list: `aims` as written, or aim then else. Entries are aims, or "default" / "hold", which end the list.
 function aimsOf(rule) {
   if (Array.isArray(rule.aims)) return rule.aims;
@@ -253,4 +265,4 @@ function rulesFor(profile, dir) {
   return new Rules(path.isAbsolute(g.rules) ? g.rules : path.join(dir, g.rules));
 }
 
-module.exports = { fits: fits, named: named, near: near, nearList: nearList, lead: lead, tier: tier, floor: floor, breakBy: breakBy, aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };
+module.exports = { fits: fits, entryOf: entryOf, named: named, near: near, nearList: nearList, lead: lead, tier: tier, floor: floor, breakBy: breakBy, aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };

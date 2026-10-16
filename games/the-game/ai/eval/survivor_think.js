@@ -910,6 +910,9 @@ module.exports = function think(cfg) {
             // (EVERYTHING FITS THE LIST: a line whose clears match no entry of the mode's list is no candidate, whatever it is -- a plain
             // three that breaks garbage excepted; the survival search alone plays outside it, when nothing that fits lives)
             if (!GAMBIT.fits(listG, x)) return;
+            // (THE LIST IS THE PRIORITY: a move is ranked by the first entry its clears match, whatever search found it)
+            var entryG = GAMBIT.entryOf(aimsG, x);
+            if (entryG >= 0 && (aim < 0 || entryG < aim)) aim = entryG;
             // (IN TIME, step 2: every step has its own time -- a line whose last swap is begun after its deadline is not kept; the cascade
             // it sets off runs on after)
             var fireX = x.fire != null ? x.fire : x.done;
