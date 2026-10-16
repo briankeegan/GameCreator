@@ -3,7 +3,7 @@
 // settles past the deadline is kept; every line kept has its last swap by the deadline, and one time per swap. Run: node attack_fire.test.js
 var assert = require('assert'), path = require('path');
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
-var ATTACK = require('./survivor_attack.js');
+var ATTACK = require('./survivor_attack.js'), SH = require('./survivor_shared.js');
 var at = ATTACK({ reaction: 6, swapGap: 2, cursorMoveFrames: 4 });
 var chain2 = function (made) { return made.chain >= 2; };
 var found = 0, late = 0, carried = 0, carriedSame = 0;
@@ -42,6 +42,14 @@ for (var seed = 1; seed <= 40 && found < 3; seed++) {
 assert.ok(found >= 3, 'chain lines found on real boards: ' + found);
 assert.ok(late >= 1, 'a line whose cascade settles past the deadline was kept');
 assert.ok(carried === 0 || carriedSame >= 1, 'a line carried on makes its chain: ' + carriedSame + ' of ' + carried);
+// READY UNDER GARBAGE: a board with garbage on it and another block on its way is asked whether a break is ready when that block lands
+var rb = PA.game({ level: 10, seed: 3, countdown: false }), rf, RH = { left: 0, started: false };
+for (rf = 0; rf < 150; rf++) rb.run();
+rb.incoming = [{ width: 6, height: 2 }];
+for (rf = 0; rf < 260 && !SH.lowestGarbageRow(rb); rf++) rb.run();
+assert.ok(SH.lowestGarbageRow(rb), 'garbage on the board');
+var rr = at.readyFor(rb, RH, [{ at: 120, width: 6, height: 1 }], { ms: 200 });
+assert.ok(rr && (rr.ready === true || rr.ready === false) && rr.at === 120, 'ready is judged for the block on its way, garbage on the board or not');
 console.log('carried on: ' + carriedSame + ' of ' + carried + ' make the chain they were planned to');
 // A LINE THAT IS TO CLEAR NOTHING, played to the board's settle: its first step that clears panels and breaks nothing -- a clear made by
 // a panel falling into a match too

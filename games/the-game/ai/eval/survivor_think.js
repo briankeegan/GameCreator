@@ -842,13 +842,13 @@ module.exports = function think(cfg) {
                                                      aims: xAimsG.map(function (a) { return function (made) { return GAMBIT.meets(a, made); }; }), near: function (made) { return GAMBIT.nearList(xAimsG, made); } });
               if (exG.seq.length && exG.aimIndex >= 0 && exG.cells > exG.base) lineG = { ap: exG, aimIndex: exG.aimIndex, extend: true };
             }
-            // (READY: garbage on its way and none on the board -- the frames until the next block lands, 0 for one queued to drop once the
-            // board settles: every line kept must leave its break)
+            // (READY for the block on its way, garbage on the board or not -- plays.md: ready and level for garbage that is coming; under a
+            // stream there is always some on the board, and a block that lands with no break ready is a board losing health. Between the
+            // attacks: every planned line kept leaves the next block's break, and the ready play is offered beside them)
             var readyAtG = null;
-            if (!underG) { arrivals.forEach(function (a) { if (readyAtG === null || a.at < readyAtG) readyAtG = a.at; }); if (readyAtG === null && (board.incoming || []).length) readyAtG = 0; }
-            // (the search is led in the pick's order, plans/gambit.md section 5: under garbage the must-do first -- a break that buys stop
-            // time (a combo or chain break) over a plain break, then the most garbage broken -- and the list only between equal breaks; with
-            // no garbage, the list)
+            arrivals.forEach(function (a) { if (readyAtG === null || a.at < readyAtG) readyAtG = a.at; });
+            if (readyAtG === null && !underG && (board.incoming || []).length) readyAtG = 0;
+            // (the search is led by the list, a break of any kind nearer than none: GAMBIT.lead)
             var nearG0 = function (made) { return GAMBIT.lead(aimsG, made, underG); };
             // (idle time is planning time: after a decision that held or had nothing to play, the planner has all the time the decision
             // has, not its usual share -- the big chain is planned for, not waited for)
@@ -866,7 +866,7 @@ module.exports = function think(cfg) {
             }
             var nx = exG && exG.nearest, np = apG && apG.nearest && apG.nearest.seq.length ? apG.nearest : null;
             var lvU = underG && attacker ? attacker.level(board, m.hold, arrivals, { by: FG.us.nextLands > 0 ? FG.us.nextLands : (byG || undefined) }) : null;
-            var rdG = !underG && readyAtG !== null && arrivals.length && attacker ? attacker.readyFor(board, m.hold, arrivals, { ms: Math.max(20, Math.min(60, leftG())) }) : null;
+            var rdG = readyAtG !== null && arrivals.length && attacker ? attacker.readyFor(board, m.hold, arrivals, { ms: Math.max(20, Math.min(60, leftG())) }) : null;
             var lvG = !underG && readyAtG !== null && !(rdG && !rdG.ready && rdG.setup) && attacker ? attacker.level(board, m.hold, arrivals, { by: readyAtG || undefined }) : null;
           }
           // THE RAISE (the file's or the rule's `raise: { to }`): below `to` rows, not under garbage, not topped and no chain running, the stack
