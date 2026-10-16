@@ -40,7 +40,10 @@ function read(c) {
     var rows = c.attacker.raiseReady(c.board, c.m.hold, c.arrivals, to - CK.fullTop(c.board), Math.min(RAISE_MS, Math.max(20, c.left())));
     if (rows <= 0) up = low = false; else to = CK.fullTop(c.board) + rows;
   }
-  return { F: F, pick: pick, list: list, aims: aims, listAims: listAims, end: end, by: by, under: under, keep: keep, keepF: keepF, readyAt: readyAt,
+  // (the chain the board left alone makes, as the game counts it: past the list, holding is outside it too)
+  var aloneChain = CK.cascadeLive(c.board, true) ? (c.attacker.judge(c.board, c.m.hold, [], c.arrivals, { tight: c.tight }).chainAll || 0) : 0;
+  var aloneOut = aloneChain >= 2 && !GAMBIT.fits(list, { combo: 0, chain: aloneChain });
+  return { F: F, pick: pick, list: list, aloneChain: aloneChain, aloneOut: aloneOut, aims: aims, listAims: listAims, end: end, by: by, under: under, keep: keep, keepF: keepF, readyAt: readyAt,
            pop: SH.popLeft(c.board) > 0, to: to, low: low, up: up,
            preds: aims.map(function (a) { return function (made) { return GAMBIT.meets(a, made); }; }) };
 }
@@ -84,13 +87,14 @@ function play(c, R, S, cands) {
   var top = cands[0] || null;
   // (the raise due but the board busy -- a clear or a fall still going locks the rise: nothing new is begun, a chain falling still run on)
   var wait = R.low && !R.up && !(top && top.extend);
-  var line = R.up || wait || !top ? null : top, hold = !R.up && (wait || !top || top.tier >= 6 || !!top.wait);
+  // (a hold is no choice while the chain the board makes alone runs past the list: a move that keeps it in comes first, whatever its tier)
+  var line = R.up || wait || !top ? null : top, hold = !R.up && (wait || !top || (top.tier >= 6 && !R.aloneOut) || !!top.wait);
   var name = line ? line.play : R.up ? 'raise' : hold ? 'hold' : null;
   var order = [];
   var add = function (mv) { var k = mv === 'raise' || mv === 'hold' ? mv : mv[0] + ',' + mv[1]; if (order.indexOf(k) < 0) order.push(k); };
   if (R.up) add('raise');
   if (wait || (line && line.wait)) add('hold');
-  cands.forEach(function (k) { if (k.tier >= 6 && order.indexOf('hold') < 0 && !R.up) add('hold'); if (!k.wait) add(k.seq[0]); });
+  cands.forEach(function (k) { if (k.tier >= 6 && order.indexOf('hold') < 0 && !R.up && !R.aloneOut) add('hold'); if (!k.wait) add(k.seq[0]); });
   if (!R.up && order.indexOf('hold') < 0) add('hold');
   if (c.GP.rankAll === false) order = order.slice(0, 1);
   // (pace: begun at once only in a window -- a chain falling, a slab popping -- or when its line is done within a pace gap of its deadline)

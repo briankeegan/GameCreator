@@ -63,9 +63,9 @@ function lives(c, D) {
     order.forEach(function (k) { if (!d && lived(k)) { d = asMove(k); verdict = verdictOf[k]; why = 'gambit'; } });
     // (the survival exception: of the moves found live, the first that fits the list as Gambit judges it, else the first)
     if (!d) {
-      var madeBy = function (mv) { var j = c.attacker.judge(c.board, c.m.hold, [mv], c.arrivals, { tight: c.tight }); return j.dead ? null : j.made; };
+      var madeBy = function (mv) { var j = c.attacker.judge(c.board, c.m.hold, [mv], c.arrivals, { tight: c.tight }); return j.dead ? null : Object.assign({}, j.made, { chain: Math.max(j.made.chain || 0, j.chainAll >= 2 ? j.chainAll : 0) }); };
       var alive = V.cands.filter(function (vc, q) { return (V.verdict[q] === 'proven' || V.verdict[q] === 'weak') && order.indexOf(keyOf(vc)) < 0; });
-      var fitting = alive.filter(function (vc) { if (vc.kind !== 'swap') return true; var mk = madeBy(vc.move); return mk && GAMBIT.fits(list, mk) && mk.chain <= GAMBIT.MAXCHAIN; })[0];
+      var fitting = alive.filter(function (vc) { if (vc.kind !== 'swap') return !D.R.aloneOut; var mk = madeBy(vc.move); return mk && GAMBIT.fits(list, mk) && mk.chain <= GAMBIT.MAXCHAIN; })[0];
       var any = fitting || alive.filter(function (vc) { if (vc.kind !== 'swap') return true; var mk = madeBy(vc.move); return mk && mk.chain <= GAMBIT.MAXCHAIN; })[0];
       if (any) { d = asMove(keyOf(any)); verdict = verdictOf[keyOf(any)]; why = fitting ? 'fits' : 'lives'; }
     }
@@ -99,7 +99,7 @@ function logLine(c, D, L, br, brMs) {
   console.error('GAMBITD ' + c.m.at + ' ' + (g.name || '') + ' play=' + (g.play || '-') + ' want=' + (g.want || '-') + ' got=' + (d.kind === 'swap' && d.move ? d.move.join(',') : d.kind) +
     ' src=' + (L.gambits ? 'gambit' : 'survival') + ' v=' + L.verdict + ' under=' + (g.under ? 1 : 0) + ' mat=' + F.material + ' chain=' + (g.chain || 0) + ' combo=' + (g.combo || 0) +
     ' broke=' + (g.broke || 0) + ' tier=' + (g.tier || 0) + ' by=' + (g.by || '-') + ' plan=' + (g.pl || '-') + ' done=' + (g.done != null ? g.done : '-') + ' fire=' + (g.fire != null ? g.fire : '-') +
-    ' ats=' + (g.ats || '-') + ' swaps=' + (g.swaps || 0) + ' land=' + (F.nextLands != null ? F.nextLands : '-') + ' dies=' + F.dies + (F.queueKills ? ' qk=1' : '') + ' casc=' + (CK.cascadeLive(c.board, true) ? 1 : 0) +
+    ' ats=' + (g.ats || '-') + ' swaps=' + (g.swaps || 0) + ' land=' + (F.nextLands != null ? F.nextLands : '-') + ' dies=' + F.dies + (F.queueKills ? ' qk=1' : '') + (D.R.aloneOut ? ' alone=' + D.R.aloneChain : '') + ' casc=' + (CK.cascadeLive(c.board, true) ? 1 : 0) +
     ' pop=' + SH.popLeft(c.board) + ' stop=' + F.stop + ' waits=' + (F.breakWaits ? 1 : 0) + ' tight=' + (c.tight ? 1 : 0) +
     ' br=' + (br ? (br.depth || 0) + '/' + (br.path ? br.path.length : br.toward ? 't' + br.toward.length : 0) + (br.cut ? '/cut' : '') : 'none') + ' brMs=' + brMs + ' cands=' + (g.cands || '-') + ' live=' + L.live + ' why=' + L.why);
 }

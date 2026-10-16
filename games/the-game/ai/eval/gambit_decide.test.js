@@ -22,6 +22,31 @@ for (var seed = 1; seed <= 30 && judged < 3; seed++) {
 }
 assert.ok(judged >= 2, 'boards with a chain line to judge');
 
+// THE CHAIN AS THE GAME COUNTS IT: a planned chain's swaps pressed on the engine at the frames the judge presses them, then the board
+// left to fall -- the judge's chainAll on it, mid-chain, is the chain counter the game reaches (a continuation goes up, it is not a new one)
+var counted = 0;
+for (var cs = 1; cs <= 40 && counted < 3; cs++) {
+  var cb = PA.game({ level: 10, seed: cs, countdown: false });
+  for (var cf = 0; cf < 200; cf++) cb.run();
+  var cp = at.plan(cb, hold, { ms: 300, width: 30, depth: 4, pool: 120, aims: [function (mk) { return mk.chain >= 2; }] }).perAim[0];
+  if (!cp) continue;
+  var jj = at.judge(cb, hold, cp.seq, [], { settled: true });
+  if (jj.dead || jj.ats.length !== cp.seq.length) continue;
+  var gb = cb.copy(), clock0 = gb.clock, pressed = 0;
+  for (var t = 0; t < 900 && pressed < cp.seq.length; t++) {
+    if (gb.clock - clock0 >= jj.ats[pressed] + 1) { var mv = cp.seq[pressed]; gb.curRow = mv[0]; gb.curCol = mv[1]; if (gb.tryQueueSwap(mv[0], mv[1])) pressed++; else break; }
+    gb.run();
+  }
+  if (pressed < cp.seq.length) continue;
+  for (t = 0; t < 300 && !(gb.chainCounter >= 2); t++) gb.run();
+  if (!(gb.chainCounter >= 2)) continue;
+  var mid = at.judge(gb, hold, [], [], {}).chainAll, run = gb.copy(), most = run.chainCounter;
+  for (t = 0; t < 600; t++) { run.run(); if (run.chainCounter > most) most = run.chainCounter; }
+  assert.strictEqual(mid, most, 'seed ' + cs + ': mid-chain, the judge counts ' + mid + ', the game reaches ' + most);
+  counted++;
+}
+assert.ok(counted >= 2, 'boards caught mid-chain: ' + counted);
+
 // THE DECISION: every mode, on boards a few seconds in -- it runs, ranks in order, and every line ranked fits the list
 var modes = ['finish them', 'pressure', 'big chain', 'build'], decided = 0;
 modes.forEach(function (mode) {

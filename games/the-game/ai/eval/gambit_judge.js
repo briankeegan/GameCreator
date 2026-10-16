@@ -44,8 +44,9 @@ function judge(c, R, k) {
   // (the search that found it said it breaks and the judge, playing it as it will be pressed, says it does not: counted for the log)
   if (w && x.broke > 0 && !(w.broke > 0)) drop(c, play, 'unbroken');
   if (swapBack(c, seq[0], (m.combo || 0) > 0 || (m.chain || 0) > 0 || (m.broke || 0) > 0)) return drop(c, play, 'back');
-  // (it fits the list, or it is no candidate; its place in the list is the first entry it matches)
-  if (!GAMBIT.fits(R.list, m)) return drop(c, k.play, 'list');
+  // (it fits the list, or it is no candidate -- the chain as the game counts it: with a chain already falling, what the board makes after
+  // the move, its own continuation and every link the move adds; its place in the list is the first entry it matches)
+  if (!GAMBIT.fits(R.list, w && w.chainAll >= 2 ? Object.assign({}, m, { chain: Math.max(m.chain || 0, w.chainAll) }) : m)) return drop(c, k.play, 'list');
   // (below the rule's material floor -- `keep: { material }` -- a line that clears panels and breaks no garbage spends what the board
   // needs: no candidate, whoever offered it. A break is never held to the floor: it is where the panels come from)
   if (R.keep && R.keep.material !== undefined && !GAMBIT.test(R.F.us.material, R.keep.material) && (m.combo > 0 || m.chain > 0) && !(m.broke > 0)) return drop(c, k.play, 'floor');
