@@ -269,7 +269,9 @@ Match.prototype.take = function (truth) {
   while (L.answers.length) {
     var a = L.answers.shift();
     if (a.aborted) continue;
-    L.thinking.push(a.ms); if (L.thinking.length > 8) L.thinking.shift();
+    // (how soon an answer comes: its time, less the idle plan's spare time -- a decision that could spare time is no sign the next one
+    // needs it, and counting it would ask every later question that much further ahead)
+    L.thinking.push(Math.max(0, a.ms - (a.idleMs || 0))); if (L.thinking.length > 8) L.thinking.shift();
     this.stats.maxMs = Math.max(this.stats.maxMs, a.ms);
     if (a.mem) this.stats.memMB = Math.round(a.mem.bytes / 1048576);
     if (process.env.GC_SURVIVOR_DEBUG && a.mem) console.error('decision ' + a.id + ' at ' + a.at + ': ' + a.ms + ' ms (break ' + a.brMs + ') ' + a.kind + ' ' + JSON.stringify(a.move) + ' ' + JSON.stringify(a.diag) + ' ' + Math.round(a.mem.bytes / 1048576) + 'MB');
