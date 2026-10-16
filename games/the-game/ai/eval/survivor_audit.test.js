@@ -43,4 +43,8 @@ a2.claim({ play: 'nearest', chain: 2, done: 60, seq: [[4, 2]] }, 740);
 assert.ok(!s2.audit || !s2.audit.entry, 'the entry is still open: its next swap was played');
 a2.claim({ play: 'setup', done: 10, seq: [[1, 1]] }, 760);
 assert.strictEqual(s2.audit.entry.cut, 1, 'a swap off the line cuts it');
+var s3 = {}, a3 = new AUDIT.Audit(s3);
+a3.claim({ play: 'lineup', chain: 2, done: 100, seq: [[3, 1], [4, 2], [5, 3]] }, 800);
+a3.claim({ play: 'lineup', chain: 2, done: 60, seq: [[5, 3]] }, 840);
+assert.ok(!s3.audit, 'the frame loop pressed the swap between: the line still goes on');
 console.log('ok: claim audit -- right, over, under, cut, carried');
