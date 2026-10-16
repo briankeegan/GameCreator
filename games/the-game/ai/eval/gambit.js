@@ -73,9 +73,6 @@ function keeps(keep, grid) {
   var f = gridFacts(grid);
   return Object.keys(keep).every(function (k) { return test(f[k.replace(/^us\./, '')], keep[k]); });
 }
-// IDLE PLANNING WITHIN THE TIME FRAME (ms): half the time the board has before it is lost (dies, frames), less a reaction; no limit when
-// nothing threatens it; none while the board loses health (topped, no stop time): every frame of it costs health
-function idleMs(dies, reaction, draining) { if (draining) return 0; return dies > 0 ? Math.max(0, (dies - reaction) * 1000 / 60 / 2) : Infinity; }
 // WHERE A SWAP'S TWO PANELS ARE NOW (ids: left, right, as they were): [row, col] while they are still side by side in that order -- a
 // swap already played has put them the other way round -- else null
 function pairAt(board, ids) {
@@ -255,4 +252,4 @@ function rulesFor(profile, dir) {
   return new Rules(path.isAbsolute(g.rules) ? g.rules : path.join(dir, g.rules));
 }
 
-module.exports = { named: named, near: near, nearList: nearList, lead: lead, tier: tier, floor: floor, breakBy: breakBy, idleMs: idleMs, pairAt: pairAt, aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };
+module.exports = { named: named, near: near, nearList: nearList, lead: lead, tier: tier, floor: floor, breakBy: breakBy, pairAt: pairAt, aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };

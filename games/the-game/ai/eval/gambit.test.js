@@ -79,9 +79,6 @@ assert.strictEqual(gf.material, 8, 'the panels under the garbage, not the one ab
 assert(G.keeps({ material: '>=8' }, grid) && !G.keeps({ material: '>=12' }, grid), 'a line that leaves 8 panels keeps 8, not 12');
 assert(G.keeps(null, grid), 'no keep asks nothing');
 assert.strictEqual(G.breakBy({ us: { dies: 97, nextLands: 1 } }), null, 'a break is due before the board dies -- the engine judges it, not the next block landing or the estimate');
-assert.strictEqual(G.idleMs(24, 12), 100, 'a board lost in 24 frames plans idle for half the 12 left: 100 ms');
-assert.strictEqual(G.idleMs(0, 12), Infinity, 'nothing threatening: the decision\'s time');
-assert.strictEqual(G.idleMs(48, 12, true), 0, 'losing health: no idle plan');
 assert(before(G.tier('lineup break', { combo: 4, broke: 6, done: 90 }, -1, true, false, true), G.tier('break search', { broke: 6, done: 30 }, -1, true, false, true)), 'topped, a break that buys stop time before a quicker plain three');
 var pb0 = PA.puzzle(['000000', '000000', '000000', '000000', '112100', '345612'].join('')), idsP = [pb0.panels[2][3].id, pb0.panels[2][4].id];
 assert.deepStrictEqual(G.pairAt(pb0, idsP), [2, 3], 'a swap\'s panels found where they are');
