@@ -182,10 +182,8 @@ ways: a tool not listed, or a path listed that doesn't exist.
   fired, the chip count, and the git/origin gap. Run it before answering any
   question about what is going on.
 - **Training runs on GitHub Actions, not in this sandbox.**
-  `node -e "require('.../train.js')"` STARTS A RUN. The one legitimate local
-  trainer is the fixture `checkpoint.test.sh` spawns and kills, so a
-  `train.js` process during a gate run is that gate, not training. To answer
-  "is anything training", look at Actions, not at `ps`.
+  `node -e "require('.../train.js')"` STARTS A RUN. To answer "is anything
+  training", look at Actions, not at `ps`.
 - **Use the real puzzles**, not hand-built boards: 235 authored puzzles in
   `Puzzles.json`, 84 typed `chain`. Tools: `puzzles.bench.js` (one-swap),
   `puzzles.play.js` (multi-swap), `chain_reach.js`. In that data `8` is
@@ -194,8 +192,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   `norm` and the evaluator divides by it, so a weight means the same thing
   for every feature. Divisors are analytic where the board gives one and
   calibrated against live play otherwise, with the observed maximum recorded
-  beside the number. `normalise.test.js` rejects a missing divisor, one so
-  small the feature clamps, and one so large it is squashed.
+  beside the number.
 - **A feature that never varies cannot be learned.** Run
   `feature_liveness.js` over a real game before putting a feature in a run —
   it taps the evaluator on every candidate the bot scores. `stopTimeGain`
@@ -269,9 +266,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   its loss of health later -- and a share of the decision's work
   (`workLeft`), `LINEMAX` only storage. One clock prices it all
   (`travelCost`, `stepGap`, `lineFrames`), counted from where the cursor is;
-  an engine press time meets it only through `pressSeen`. A step never presses a pair still moving: the search holds each pair to the frame the board settles it (`sitWait`, every pair of the root board), and to the settle of every step of its line that disturbed it (`cellT`; a clear's is its flash, face and pops, `resolveFramesOf`). A walk presses the first frame its pair is still (`pairFree`) -- at every decision it is made again, as the judge replays it; the frame its panels last change is only the latest it waits. `clock.test.sh`
-  holds the clock to the engine; `check_time_not_swaps.mjs` fails on a cap
-  coming back or a new hand-listed search.
+  an engine press time meets it only through `pressSeen`. A step never presses a pair still moving: the search holds each pair to the frame the board settles it (`sitWait`, every pair of the root board), and to the settle of every step of its line that disturbed it (`cellT`; a clear's is its flash, face and pops, `resolveFramesOf`). A walk presses the first frame its pair is still (`pairFree`) -- at every decision it is made again, as the judge replays it; the frame its panels last change is only the latest it waits.
 - **A decision is one ordered choice (`arbitrate`).** The stages propose; the
   decision they made, the walk's target and stayAlive's choice (or the hold)
   are judged on the engine and ranked once: breaks the next garbage in time

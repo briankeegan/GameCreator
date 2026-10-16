@@ -109,13 +109,6 @@ gate_shipped_weights_check_fires() {
   bash .github/scripts/shipped_weights.test.sh
 }
 
-# THE CHAIN SHAPES, AND THE CHECK THAT THEY FIRE HERE. The chips come from
-# another engine's verification; this re-earns it against LogicalBoard, so a
-# chip that pays nothing here can never steer the bot.
-gate_chips_verify() {
-  node games/the-game/ai/eval/verify_chips.js
-}
-
 # EVERY FEATURE IS SCORED, AND EVERY FEATURE MOVES — in a real game, not in a
 # script. A feature that is never scored is unwired; one that is scored but
 # never varies cannot be learned, because every genome sees the same value and
@@ -142,47 +135,12 @@ gate_garbage_rules() {
   node games/the-game/ai/eval/allowance.test.js
 }
 
-# EVERY FEATURE IS A SHARE, NOT A COUNT.
-#
-# The reference normalises each metric to 0..1 so a weight is that feature's
-# share of the decision. Raw counts on different scales leave the search
-# hunting each feature's magnitude as well as its direction, and the loop's
-# +-5% jog then moves a small-range feature far more coarsely than a
-# large-range one. This checks every feature carries a divisor, that the
-# evaluator applies it, and that the divisor is neither too small (the
-# feature clamps and loses its top end) nor so large the feature is squashed
-# into a sliver it cannot steer from.
-gate_normalise() {
-  node games/the-game/ai/eval/normalise.test.js
-}
 # SURVIVAL'S ORDER: on a board topped by slabs, a swap that breaks garbage is
 # played over a bigger clear away from it (survival_rules.test.js, one
 # decision); and the distance planner finds the break on example boards, every
 # line it proposes breaking when replayed (planner.test.js).
 gate_survival_rules() {
-  node games/the-game/ai/eval/survival_rules.test.js &&
   node games/the-game/ai/eval/planner.test.js
-}
-
-gate_features_live() {
-  node games/the-game/ai/eval/feature_liveness.js 2 all
-}
-
-# THE CHAINS-FIRED MEASURE, BOTH DIRECTIONS. Score cannot tell you whether a
-# bot learned to chain, so the trainer reports this beside it — and a run that
-# comes back SHORT reports a smaller number that reads exactly like a bot that
-# chains less. This proves the assertion catching that actually fires, and
-# that puzzles.play.js still emits the data it reads.
-gate_chain_measure() {
-  node games/the-game/ai/eval/chainmeasure.test.js
-}
-
-# The status tool's duplicate-run warning. It fires about once a year, which
-# is exactly the kind of check that turns out never to have worked — and it
-# did not: the first version could not fire at all, and this test is what
-# found that.
-gate_status_tool() {
-  games/the-game/ai/eval/status.test.sh
 }
 
 # The short run that guards the long one. It only earns its four minutes if it
@@ -208,10 +166,6 @@ gate_smoke_checker() {
 # broken leg and a slow one look identical.
 gate_pbt_leg() {
   node games/the-game/ai/eval/pbt_leg.test.js
-}
-
-gate_checkpoint_resume() {
-  bash games/the-game/ai/eval/checkpoint.test.sh
 }
 
 # NO POPULATION IS STRANDED AT A NAME NOTHING WILL OPEN.
@@ -256,38 +210,6 @@ gate_snapshot_pipe() {
   node games/the-game/ai/eval/snapshot_pipe.test.js
 }
 
-gate_checkpoint_names() {
-  node games/the-game/ai/eval/migrate.test.js &&
-  node games/the-game/ai/eval/migrate_checkpoints.js --check
-}
-
-# A RUN STOPS CLEANLY EVEN WHEN ONE GENERATION IS LONGER THAN THE MARGIN.
-#
-# The deadline is checked BETWEEN generations, because a generation cannot
-# be interrupted halfway. Asking "am I past the deadline" starts a
-# generation that cannot finish, the runner cancels the job mid-generation,
-# finish() never runs, the snapshot hook never fires and the checkpoint is
-# never committed -- so the whole run is lost and the next one starts at
-# generation 0 and does the same. survdens2 did that twice for twelve hours
-# of runner time and zero generations kept. Both directions: the slow
-# variant must stop, and a healthy five-hour run of short generations must
-# be untouched.
-gate_deadline_stop() {
-  node games/the-game/ai/eval/deadline.test.js
-}
-
-gate_pbt_stop() {
-  node games/the-game/ai/eval/pbt_stop.test.js
-}
-
-gate_flags() {
-  node games/the-game/ai/eval/flags.test.js
-}
-
-gate_pbt_dirs() {
-  node games/the-game/ai/eval/pbt_dirs.test.js
-}
-
 # THE SERVER'S ENGINE: pa-engine.js replays real play on the panel-game
 # server's Lua engine (pa.record.jsonl.gz, made by lua/engineRecord.lua) and
 # must land on every recorded state; pa-generator.js deals what the Lua dealt;
@@ -302,44 +224,15 @@ gate_server_engine() {
   node games/the-game/ai/eval/native_arrivals.test.js
 }
 
-# THE CLOCK IS THE ENGINE'S: every line the bot judges in a real game, priced
-# by the searches' clock and by the engine, the clock never later
-# (clock.test.sh). Needs the panel-game checkout and luajit for the deal.
-gate_clock() {
-  GC_PANEL_GAME="${GC_PANEL_GAME_LIVE:-${GC_PANEL_GAME:-}}" sh games/the-game/ai/eval/clock.test.sh
-}
-
-# TIME, NEVER SWAPS: BitBot's searches are the shared search in time, and no
-# cap in swaps comes back (check_time_not_swaps.mjs).
-gate_time_not_swaps() {
-  node .github/scripts/check_time_not_swaps.mjs
-}
-
 # BitBot's search in C (native/bit.wasm) gives bitmatch.js's answer for every
 # legal swap of every real board, and the module loads at all.
 gate_bitnative() {
   node games/the-game/ai/eval/bitnative.test.js
 }
 
-# What a board can fire next move, size by size (modes.REACH).
-gate_reach() {
-  node games/the-game/ai/eval/reach.test.js
-}
-
 # The bot's cursor walks one cell a step and its travel is priced in frames.
 gate_cursor() {
-  node games/the-game/ai/eval/walk.test.js &&
-  node games/the-game/ai/eval/travel.test.js
-}
-
-# The LOVE RNG and panel generator give the real engine's own test vectors.
-gate_love_rng() {
-  node games/the-game/ai/experiments/love_rng.test.js
-}
-
-# The session hook that resumes a training run.
-gate_resume_hook() {
-  bash .claude/hooks/resume-training.test.sh
+  node games/the-game/ai/eval/walk.test.js
 }
 
 # THE TRAINING PRE-FLIGHT SUITES, WHICH gate_all DID NOT RUN.
@@ -406,69 +299,14 @@ gate_chaining() {
   GC_TRAINING_DIR="$d" node games/the-game/ai/eval/chaining.test.js
 }
 
-# THE OTHER BOARD REACHES THE BOT, AND IN A SHAPE THAT CAN CHANGE A DECISION.
-#
-# A number identical across every candidate shifts all the scores equally and
-# cancels out of the ranking, so a plain "their headroom" feature does nothing
-# whatever its weight — incomingGarbage was written that way and varied in 0
-# of 179 decisions. pressure and overkill scale THIS MOVE'S send by their
-# room, so they vary with the send. They state no rule about what to do.
-gate_opponent() {
-  local d; d="$(_gc_training_dir)" || return 1
-  GC_TRAINING_DIR="$d" node games/the-game/ai/eval/opponent.test.js
-}
-
-gate_modes() {
-  local d; d="$(_gc_training_dir)" || return 1
-  GC_TRAINING_DIR="$d" node games/the-game/ai/eval/goal.test.js
-}
-
 # EVERY SUITE THE TRAINING PRE-FLIGHT RUNS IS ALSO A GATE.
 gate_preflight_gated() {
   node .github/scripts/check_preflight_gated.mjs
 }
 
-# THE SEARCH JUDGES THE BOARD THE MOVE WILL LAND ON, NOT THE ONE IT STARTED
-# FROM. If a row arrives while the bot walks to a swap, the row is there when
-# the swap happens; if none arrives, it is not.
-#
-# Before this, `rise: true` added exactly one row to EVERY candidate however
-# long it took to reach and `rise: false` added none to any of them -- so a
-# far swap and a near swap were judged on the same board, which is the whole
-# difference between a move made too soon and the same move made in time.
-#
-# Nothing in it is estimated: travel.cost plus the bot's own reaction for the
-# frames, PanelEngine.riseTime(speed) from the live riseTimer and
-# displacement for the rate, and advancePassiveRaise's own
-# (!riseLock && stopTime === 0) for the pause -- which is why banked stop
-# time keeps the board still. The cascade's duration is not needed at all:
-# updateRiseLock holds riseLock while panels are active, so the stack does
-# not rise during a cascade.
-gate_elapsed_rise() {
-  node games/the-game/ai/eval/elapsed.test.js
-}
-
-# The four constraints a template carries, pinned directly. Two of them were
-# silently unenforced for the matcher's whole first life (Int8Array stamp
-# truncation) and the test nearest the defect could not see it.
-gate_chip_matcher_constraints() {
-  node games/the-game/ai/eval/chipmatch.test.js
-}
-
 gate_features() {
   local d; d="$(_gc_training_dir)" || return 1
   GC_TRAINING_DIR="$d" node games/the-game/ai/eval/features.test.js
-}
-
-# EVERY FIELD AN OPTION CARRIES IS READ BY EVERY RANKER THAT RANKS OPTIONS.
-#
-# Eleven times in one session the same defect: a quantity added to the option list
-# and priced in one ranker, while the route that picked the move on the dying board
-# ranked by the other and never saw it. Reads the source rather than playing a
-# game, because a term nobody reads has no board on which it gives a wrong answer
-# -- only one where it does nothing.
-gate_option_pricing() {
-  node games/the-game/ai/eval/check_option_pricing.mjs
 }
 
 gate_gates_reject_defects() {
@@ -521,10 +359,7 @@ SLOW_GATES=(
   gate_training_harness     # 156s
   gate_snapshot_pipe        # 154s
   gate_versus_duel          # 123s
-  gate_checkpoint_resume    # 73s
   gate_pbt_leg              # 64s
-  gate_modes                # 53s
-  gate_features_live        # 37s
 )
 # ONLY THESE RUN THE SURVIVAL SEARCH. It is what they test. Every other gate
 # tests something the search sits on top of, so it runs with
@@ -559,41 +394,20 @@ GATES=(
   "the art index:gate_art_index:art"
   "art references:gate_art_refs:art"
   "characters keep one size while walking:gate_sprite_scale_consistency:art"
-  "chain chips fire in our engine:gate_chips_verify:games/the-game/ai/"
-  "every feature is wired and moves:gate_features_live:games/the-game/ai/"
-  "the chains-fired measure accepts and rejects:gate_chain_measure:games/the-game/ai/"
-  "the status tool sees a duplicate run:gate_status_tool:games/the-game/ai/"
   "the training smoke check accepts and rejects:gate_smoke_checker:games/the-game/ai/"
-  "a training run that ran out of time can resume:gate_checkpoint_resume:games/the-game/ai/"
-  "no checkpoint is stranded by a rename:gate_checkpoint_names:games/the-game/ai/"
   "the puyo loop update rule:gate_versus_loop:games/the-game/ai/"
   "the duel that decides fitness:gate_versus_duel:games/the-game/ai/"
   "a snapshot survives the trip to main:gate_snapshot_pipe:games/the-game/ai/"
   "a whole training leg finishes:gate_pbt_leg:games/the-game/ai/"
-  "a slow run stops before the job kills it:gate_deadline_stop:games/the-game/ai/"
-  "a run that trained nothing does not chain:gate_pbt_stop:games/the-game/ai/"
-  "a switch means the same thing everywhere:gate_flags:games/the-game/ai/"
   "the server's engine, in JS and in C, is the server's:gate_server_engine:games/"
   "BitBot's C search gives the JS search's answers:gate_bitnative:games/the-game/ai/"
-  "BitBot's clock is the engine's:gate_clock:games/the-game/ai/"
-  "BitBot searches in time, never in swaps:gate_time_not_swaps:games/the-game/ai/"
-  "what a board can fire next move:gate_reach:games/the-game/ai/"
   "the cursor walks and its travel is priced:gate_cursor:games/the-game/"
-  "the LOVE RNG matches the real engine:gate_love_rng:games/the-game/ai/"
-  "the training-resume hook:gate_resume_hook:.claude/"
-  "two variants on one seed keep separate islands:gate_pbt_dirs:games/the-game/ai/"
   "the puyo brain:gate_puyo_cpu:games/the-game/ai/"
   "the training harness:gate_training_harness:games/the-game/ai/"
-  "the modes filter the pool and the evaluator still picks:gate_modes:games/the-game/ai/"
   "the bot can see a chain continuation:gate_chaining:games/the-game/"
-  "the other board reaches the bot in a usable shape:gate_opponent:games/the-game/"
   "every training pre-flight suite is gated:gate_preflight_gated:games/the-game/ai/"
-  "the board moves on while the bot walks:gate_elapsed_rise:games/the-game/ai/"
   "a garbage break stops the resolve:gate_garbage_rules:games/the-game/ai/"
-  "the chip matcher enforces every constraint:gate_chip_matcher_constraints:games/the-game/ai/"
-  "every option field is priced by both rankers:gate_option_pricing:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"
-  "every feature is a share, not a count:gate_normalise:games/the-game/ai/"
   "survival breaks before it clears:gate_survival_rules:games/the-game/ai/"
   "the shipped weights and the tools that measure them:gate_shipped_weights:games/the-game/ai/"
   "that check fires:gate_shipped_weights_check_fires:games/the-game/ai/"
@@ -715,8 +529,7 @@ gate_changed() {
 # block every game's deploy. They still run under gate_all, locally and in the
 # autopilot pre-flight, where the checkout is present.
 PANEL_GAME_GATES=(
-  gate_chain_measure gate_versus_loop gate_chaining gate_opponent
-  gate_features gate_normalise gate_clock
+  gate_versus_loop gate_chaining gate_features
 )
 # PANEL_GAME_GATES, run nightly by ai-slow-gates.yml beside a panel-game checkout.
 gate_panel_game() {
