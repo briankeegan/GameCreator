@@ -89,6 +89,17 @@ modes.forEach(function (mode) {
     decided++;
   }
 });
+// TOPPED OUT BY ITS OWN PANELS, NO GARBAGE ON THE BOARD: nothing to break, so the entries are the list as written (none asks for a break)
+// and the deadline is the board's
+var tb = PA.game({ level: 10, seed: 3, countdown: false });
+for (var tf = 0; tf < 3000 && !(tb.isToppedOut && tb.isToppedOut()); tf++) tb.run();
+assert.ok(tb.isToppedOut(), 'the stack has risen to the top');
+var tc = { bot: { _canRaise: function () { return false; }, _gambitHit: true }, m: { at: tb.clock, hold: hold, topped: true, opp: null }, board: tb, arrivals: [], br: null, brMs: 0, attacker: at, rules: rules,
+           GP: { mode: 'finish them', ms: 60, width: 30, depth: 5, pool: 120 }, pace: null, canRaise: function () { return false; }, left: function () { return 200; } };
+var TR = DECIDE.read(tc);
+assert.ok(TR.F.us.topped && TR.F.us.contact === null, 'topped, no garbage');
+assert.ok(!TR.under && TR.aims.every(function (a) { return !a.break; }), 'no entry asks for a break with no garbage to break');
+assert.ok(TR.by !== undefined, 'a deadline is read');
 // THE PRESS AS THE FRAME LOOP MAKES IT: with the input budget tight the frame loop walks held from two cells, and the judge presses
 // each swap on the very frame that walk does -- not the search's own walk
 var SHK = require('./survivor_shared.js'), KEYSK = require('./survivor_keys.js'), INK = PA.IN, slowed = 0;

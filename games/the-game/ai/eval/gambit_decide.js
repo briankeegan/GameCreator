@@ -23,10 +23,12 @@ function read(c) {
   var list = GAMBIT.aimsOf(pick.rule), endAt = list.length, end = null;
   for (var i = 0; i < list.length; i++) if (typeof list[i] === 'string') { endAt = i; end = list[i]; break; }
   var aims = list.slice(0, endAt), listAims = aims, by = GAMBIT.deadline(F, pick.rule.by);
-  // (garbage on the board, or topped out: the search asks every entry to break it too, and the deadline is a break's -- before the
-  // board dies; the rule's `by` is an attack's)
-  var under = tables.underGarbage !== 'ignore' && (F.us.contact !== null || F.us.topped);
-  if (under) { aims = aims.map(function (a) { return Object.assign({}, a, { break: true }); }); end = 'default'; by = GAMBIT.breakBy(F); }
+  // (garbage on the board: the search asks every entry to break it too; garbage on it or topped out, the deadline is a break's --
+  // before the board dies; the rule's `by` is an attack's)
+  // (topped out with no garbage on the board, there is nothing to break: the list as written, and the deadline is the board's)
+  var under = tables.underGarbage !== 'ignore' && F.us.contact !== null;
+  if (under) { aims = aims.map(function (a) { return Object.assign({}, a, { break: true }); }); end = 'default'; }
+  if (under || F.us.topped) by = GAMBIT.breakBy(F);
   // (ready: garbage on its way and none on the board -- the frames until the next block lands, 0 for one queued to drop once settled)
   var readyAt = null;
   if (!under) { c.arrivals.forEach(function (a) { if (readyAt === null || a.at < readyAt) readyAt = a.at; }); if (readyAt === null && (c.board.incoming || []).length) readyAt = 0; }
