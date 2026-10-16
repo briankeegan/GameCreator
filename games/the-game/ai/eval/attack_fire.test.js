@@ -23,6 +23,10 @@ for (var seed = 1; seed <= 40 && found < 3; seed++) {
   assert.ok(held, 'seed ' + seed + ': a chain fired by ' + by + ' (settling at ' + pa.done + ') is in time');
   assert.ok(held.fire <= by, 'its last swap is by the deadline');
   if (held.done > by) late++;
+  // (a line played on: the planner's line, replayed step by step from the same board, makes what the planner said it makes)
+  var rp = at.replay(b, { left: 0, started: false }, pa.seq, []);
+  assert.ok(rp && rp.chain === pa.chain && rp.combo === pa.combo, 'seed ' + seed + ': the line replayed makes chain ' + pa.chain + ' combo ' + pa.combo + ', got ' + JSON.stringify(rp));
+  assert.deepStrictEqual(rp.ats, pa.ats, 'each step at the same frame');
 }
 assert.ok(found >= 3, 'chain lines found on real boards: ' + found);
 assert.ok(late >= 1, 'a line whose cascade settles past the deadline was kept');

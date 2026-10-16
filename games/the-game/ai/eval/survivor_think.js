@@ -935,6 +935,20 @@ module.exports = function think(cfg) {
             if (apG && apG.setup && typeof readyAtG !== 'number') candG('setup', [apG.setup], {}, -1);
             if (apG && apG.stopBest) candG('scramble', apG.stopBest.seq, apG.stopBest, -1);
             if (apG && apG.lowest) candG('clear', apG.lowest.seq, apG.lowest, -1);
+            // (A LINE BEGUN IS PLAYED ON: the steps of the last decision's line the frame loop has not pressed yet (m.line) are played on the
+            // engine from this board; while they are legal, the board lives and the last still makes what the line was begun for, in time,
+            // the line is carried on -- first of its tier -- rather than a different line begun each decision and none finished)
+            var CG = bot._gambitCarry;
+            if (CG && m.line && m.line.length && m.line.length < CG.seq.length && attacker) {
+              var tailG = CG.seq.slice(CG.seq.length - m.line.length), sameG = tailG.every(function (mv, i) { return mv[0] === m.line[i][0] && mv[1] === m.line[i][1]; });
+              var rxG = sameG ? attacker.replay(board, m.hold, m.line, arrivals) : null;
+              if (rxG && (!CG.broke || rxG.broke > 0) && (CG.aim ? GAMBIT.meets(CG.aim, rxG) : (rxG.chain >= 2 || rxG.combo >= 4 || rxG.broke > 0))) {
+                var aiG = -1; if (CG.aim) aimsG.forEach(function (a, i) { if (aiG < 0 && JSON.stringify(a) === JSON.stringify(CG.aim)) aiG = i; });
+                var nG = candsG.length;
+                candG('carry', m.line.map(function (mv) { return mv.slice(); }), rxG, aiG);
+                if (candsG.length > nG) candsG[nG].sub = [-Infinity].concat(candsG[nG].sub);
+              }
+            }
           }
           candsG.sort(function (x, y) { if (x.tier !== y.tier) return x.tier - y.tier; for (var q = 0; q < x.sub.length; q++) if (x.sub[q] !== y.sub[q]) return x.sub[q] - y.sub[q]; return 0; });
           var topG = candsG[0] || null;
@@ -943,6 +957,9 @@ module.exports = function think(cfg) {
           var waitG = lowG && !upG && !(topG && topG.extend);
           var lineG = upG || waitG || !topG ? null : topG, holdG = !upG && (waitG || !topG || topG.tier >= 6);
           if (lineG) playG = lineG.play; else if (upG) playG = 'raise'; else if (holdG) playG = 'hold';
+          // (the line begun, to be carried on: a planned line of more than one swap that makes what it is played for)
+          var carryG = lineG && lineG.seq.length > 1 && lineG.tier <= 3 && ['entry', 'nearest', 'break line', 'carry'].indexOf(lineG.play) >= 0;
+          bot._gambitCarry = carryG ? { seq: lineG.seq.map(function (mv) { return mv.slice(); }), aim: lineG.aim >= 0 ? aimsG[lineG.aim] : null, broke: (lineG.ap.broke || 0) > 0 } : null;
           var prG = bot.preferRank || function () { return Infinity; };
           var addG = function (mv, seq) { var k = mv === 'raise' || mv === 'hold' ? mv : arbKey(mv); if (orderG.indexOf(k) < 0) { orderG.push(k); if (seq && seq.length > 1) linesG[k] = seq.slice(1); } };
           if (upG) addG('raise');

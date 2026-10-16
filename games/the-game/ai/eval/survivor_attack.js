@@ -394,5 +394,31 @@ module.exports = function (opts) {
     if (made.length) s.drop(made);
     return at;
   }
-  return { plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear };
+  // A LINE PLAYED ON (the rest of a line begun): each step played on the engine to the board's settle, as the planner plays a line; what
+  // its last step makes ({ combo, chain, broke, cells, earned, done, fire, ats }, as the planner's lines), or null when a step is not
+  // legal or the board dies
+  function replay(board, hold, seq, arrivals) {
+    var s = search();
+    s.reset();
+    var root = s.root(board.copy(), hold, arrivals || [], false), n = root, made = [], ats = [], res = null;
+    var baseOut = s.advanceMany([[root, 'settle', null, 0]], true)[0], base = 0;
+    if (baseOut && !baseOut.dead) { var bs = s.stepStats(baseOut); if (bs.cleared > 0) base = sent(bs).cells; made.push(baseOut); }
+    for (var k = 0; k < seq.length; k++) {
+      var legal = n.b.legalSwaps().some(function (m) { return m[0] === seq[k][0] && m[1] === seq[k][1]; });
+      if (!legal) break;
+      ats.push(n.t - root.t);
+      var out = s.advanceMany([[n, 'settle', seq[k], 0]], true)[0];
+      if (!out || out.dead) break;
+      made.push(out);
+      if (k === seq.length - 1) {
+        var st = s.stepStats(out), g = sent(st), big = 0;
+        st.comboSizes.forEach(function (z) { if (z > big) big = z; });
+        res = { combo: big, chain: g.chain, broke: st.broke || 0, cells: Math.max(0, g.cells - base), earned: st.earned || 0, done: out.t - root.t, fire: ats[k], ats: ats };
+      }
+      n = out;
+    }
+    if (made.length) s.drop(made);
+    return res;
+  }
+  return { plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear, replay: replay };
 };
