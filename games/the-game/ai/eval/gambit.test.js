@@ -120,6 +120,8 @@ assert(before(G.tier('setup', {}, -1, true, true), G.tier('break search', { brok
 assert(before(G.tier('break search', { broke: 6 }, -1, true, true), { tier: 5, sub: [0] }), 'but a break before hold');
 assert(before(G.tier('setup', { near: 40 }, -1, false), G.tier('level', { near: 10 }, -1, false)), 'set up nearest the ask first, flattening among them');
 assert.strictEqual(G.tier('clear', { chain: 1, combo: 3 }, -1, true).tier, 6, 'a clear only when there is nothing else');
+assert(before(G.tier('extend', { chain: 3, near: 40 }, -1, true), G.tier('break search', { broke: 6 }, -1, true)), 'in the middle of a chain: continued before a new break');
+assert(before(G.tier('lineup', { chain: 2, broke: 6 }, -1, true), G.tier('lineup', { chain: 3, near: 80 }, -1, true)), 'one that breaks too ahead');
 var fb = PA.puzzle(['000000', '000000', '000000', '120000', '341200', '123412'].join('')); fb.incoming = [{ width: 6, height: 2 }]; fb.stopTime = 0;
 assert.strictEqual(G.facts(fb, [], false).falling, true, 'a block queued to drop now is garbage still falling');
 fb.stopTime = 60; assert.strictEqual(G.facts(fb, [], false).falling, false, 'held by stop time it is not falling yet');

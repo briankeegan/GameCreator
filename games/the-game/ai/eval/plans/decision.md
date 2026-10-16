@@ -14,6 +14,10 @@ nearest the list.
 | Done by its deadline | each step at its own time, the deadline read from the engine |
 | The next block can still be broken when it lands | the engine, the move played to the landing (entries and set-up; never a break) |
 
+## In the middle of something, first
+
+A chain still falling is run on, a slab popping is lined up, a line begun is carried on -- one that breaks too ahead.
+
 ## Then, by the board
 
 | | No garbage | Garbage still falling | Garbage landed |

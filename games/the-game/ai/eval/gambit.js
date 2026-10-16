@@ -156,10 +156,14 @@ function lead(aims, made, under) { return nearList(aims, made) + (under && made.
 //   garbage still falling: 1 an entry   3 set up the ask, ready for the landing   4 a break -- not yet: broken before the rest has
 //                          landed, the next block buries the panels it made
 //   no garbage:            1 an entry   3 set up the ask, flattening included
+//   0 in the middle of something: a chain falling, a slab popping, a line begun -- continued first, one that breaks too ahead
 //   5 hold, only with no move; 6 clear (a match that touches no garbage), only for a stack about to top out with nothing else
 function tier(play, x, aim, under, falling) {
   x = x || {};
   var broke = x.broke || 0, stop = x.earned || 0, near = x.near || 0, brk = under && broke > 0;
+  // (IN THE MIDDLE OF SOMETHING: a chain still falling run on, a slab popping lined up, a line begun carried on -- continued first,
+  // one that breaks too ahead)
+  if (play === 'extend' || play === 'lineup' || play === 'carry') return { tier: 0, sub: [brk ? 0 : 1, aim >= 0 ? aim : 99, -near] };
   // (garbage landed: the break first -- an entry that breaks, then the break nearest the attack -- then an entry that breaks nothing)
   if (under && !falling) {
     if (brk) return { tier: 1, sub: [aim >= 0 ? aim : 99, -near, -broke] };
