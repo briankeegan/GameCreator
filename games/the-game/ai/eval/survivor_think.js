@@ -907,6 +907,9 @@ module.exports = function think(cfg) {
             if (!seq || !seq.length || !seq[0] || backG(seq[0])) return;
             x = x || {};
             var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0;
+            // (EVERYTHING FITS THE LIST: a line whose clears match no entry of the mode's list is no candidate, whatever it is -- a plain
+            // three that breaks garbage excepted; the survival search alone plays outside it, when nothing that fits lives)
+            if (!GAMBIT.fits(listG, x)) return;
             // (IN TIME, step 2: every step has its own time -- a line whose last swap is begun after its deadline is not kept; the cascade
             // it sets off runs on after)
             var fireX = x.fire != null ? x.fire : x.done;

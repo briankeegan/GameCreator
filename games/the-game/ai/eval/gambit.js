@@ -165,6 +165,21 @@ function tier(play, x, aim, under, enemyOut, topped) {
   if (!clears) return { tier: 4, sub: [{ ready: 0, toward: 1, level: 2, setup: 3 }[play] || 4] };
   return { tier: 6, sub: [-stop] };
 }
+// WHAT A MOVE MAY MAKE (the mode's list): everything fits the list -- a move that clears nothing (a setup, a level, a step toward a
+// break), one whose clears match an entry of the list (combo and chain alike, its break aside), or a plain three that breaks garbage
+// (garbage can always be broken with a three). Anything else is no candidate; only the survival search, when no move that fits lives,
+// plays outside it. made: { combo (the largest match), chain (links), broke }.
+function fits(aims, made) {
+  made = made || {};
+  var combo = made.combo || 0, chain = made.chain || 0, broke = made.broke || 0;
+  if (combo === 0 && chain === 0) return true;
+  if (combo <= 3 && chain <= 1 && broke > 0) return true;
+  return (aims || []).some(function (a) {
+    if (!a || typeof a !== 'object') return false;
+    var plain = Object.assign({}, a); delete plain.break;
+    return meets(plain, { combo: combo, chain: chain, broke: broke, cells: made.cells || 0 });
+  });
+}
 // A rule's priority list: `aims` as written, or aim then else. Entries are aims, or "default" / "hold", which end the list.
 function aimsOf(rule) {
   if (Array.isArray(rule.aims)) return rule.aims;
@@ -238,4 +253,4 @@ function rulesFor(profile, dir) {
   return new Rules(path.isAbsolute(g.rules) ? g.rules : path.join(dir, g.rules));
 }
 
-module.exports = { named: named, near: near, nearList: nearList, lead: lead, tier: tier, floor: floor, breakBy: breakBy, aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };
+module.exports = { fits: fits, named: named, near: near, nearList: nearList, lead: lead, tier: tier, floor: floor, breakBy: breakBy, aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };

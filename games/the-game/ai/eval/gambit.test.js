@@ -122,6 +122,18 @@ assert.strictEqual(G.tier('scramble', { chain: 5, combo: 3, earned: 120 }, -1, t
 assert.strictEqual(G.tier('entry', { chain: 4, cells: 18 }, 0, false, false).tier, 2, 'no garbage: the aim');
 assert.strictEqual(G.tier('setup', {}, -1, false, false).tier, 4, 'a setup: nothing fits');
 
+// everything fits the list: finish allows combos of 4 to 8+ and chains of 1 to 3; pressure a chain of 4 only; a plain three that breaks
+// garbage is always allowed; a move that clears nothing is
+var FIN = [{ combo: '>=8' }, { combo: '==5' }, { combo: '==6' }, { combo: '==7' }, { chain: '==2' }, { chain: '==3' }, { chain: '==1' }, { combo: '==4' }];
+assert(G.fits(FIN, { combo: 6, chain: 1 }), 'finish: a combo of 6 fits');
+assert(G.fits(FIN, { combo: 3, chain: 3 }), 'finish: a chain of 3 fits');
+assert(!G.fits(FIN, { combo: 3, chain: 5 }), 'finish: a chain of 5 does not');
+assert(!G.fits([{ chain: '==4' }], { combo: 6, chain: 1 }), 'pressure: a combo of 6 does not');
+assert(G.fits([{ chain: '==4' }], { combo: 3, chain: 1, broke: 6 }), 'pressure: a plain three that breaks garbage does');
+assert(!G.fits([{ chain: '==4' }], { combo: 3, chain: 1, broke: 0 }), 'pressure: a plain three that breaks nothing does not');
+assert(G.fits([{ chain: '>=8' }], { chain: 0, combo: 0 }), 'a move that clears nothing fits');
+assert(G.fits([{ chain: '>=8', break: true }], { chain: 9, combo: 3, broke: 0 }), 'an entry fits whether it breaks or not');
+
 // the profile's own rules file parses and drops nothing
 var shipped = G.checked(JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles', 'gambit-rules.json'), 'utf8')));
 assert.deepStrictEqual(shipped.errors, [], 'the shipped rules drop nothing');
