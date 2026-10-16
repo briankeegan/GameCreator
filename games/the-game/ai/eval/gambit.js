@@ -20,7 +20,7 @@
 // Facts, the same names for both boards (an enemy fact the host does not send is undefined, and a test on it is false):
 //   topped, stop (frames), height (rows, garbage included), material (panels under the garbage), contact (columns reaching the
 //   garbage), evenness (tallest panel column less lowest), coming (rows on their way), heavy (coming > 8), nextLands (frames),
-//   dies (frames until the board is lost if nothing is done), falling (garbage on the board not all landed: see facts)
+//   dies (frames until the board is lost if nothing is done), falling (topped out, garbage not all landed)
 var fs = require('fs'), path = require('path'), CK = require('./survivor_checks.js');
 
 function cellOf(b, r, c) { var p = b.panels[r] && b.panels[r][c]; return !p ? 0 : p.isGarbage ? -1 : (p.color || 0); }
@@ -46,16 +46,8 @@ function facts(board, arrivals, topped) {
   // (dies: the frames until the board is lost if nothing is done -- the stop time, the rise to the top row unless already topped, then
   // the health it drains there)
   var dies = topped ? stop + (board.health || 0) : CK.framesToTop(board) + (board.health || 0);
-  // (falling: garbage not all landed -- a block still in the air, or the next one landing before a break begun now has popped: a break
-  // against the lowest block takes FLASH + FACE + POP x (3 + its cells on screen), as the engine's checkMatches times it)
-  var falling = false;
-  if (garb) {
-    falling = typeof board.hasFallingGarbage === 'function' && board.hasFallingGarbage();
-    var f = board.frames, low = null, onScreen = 0;
-    for (r = 1; r <= H && low === null; r++) for (c = 1; c <= 6; c++) { var lp = board.panels[r] && board.panels[r][c]; if (lp && lp.isGarbage) { low = lp.garbageId; break; } }
-    for (r = 1; r <= Math.min(H, board.height || H); r++) for (c = 1; c <= 6; c++) { var gp = board.panels[r] && board.panels[r][c]; if (gp && gp.isGarbage && gp.garbageId === low) onScreen++; }
-    if (!falling && f && next !== null) falling = next <= f.FLASH + f.FACE + f.POP * (3 + onScreen);
-  }
+  // (falling: on a board topped out, garbage not all landed -- a block still in the air, or one queued to land)
+  var falling = !!(topped && garb && ((typeof board.hasFallingGarbage === 'function' && board.hasFallingGarbage()) || next !== null));
   return {
     topped: !!topped, stop: stop, height: top, material: material, contact: garb ? contact : null, dies: dies,
     evenness: Math.max.apply(null, peaks) - Math.min.apply(null, peaks), coming: coming, heavy: coming > 8, nextLands: next, falling: falling
