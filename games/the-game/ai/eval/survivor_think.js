@@ -893,7 +893,7 @@ module.exports = function think(cfg) {
           //   NOTHING FITS: ready, toward a break, level, setup -- then hold
           //   a clear that breaks nothing, sends nothing and buys nothing is below hold: played only when even holding is not proven to live
           // Each candidate's first swap carries the rest of its line (linesG). (pace, step 7: below.)
-          var orderG = [], linesG = {}, candsG = [], enemyOutG = !!FG.enemy.topped, nAimG = aimsG.length;
+          var wholeG = {}, orderG = [], linesG = {}, candsG = [], enemyOutG = !!FG.enemy.topped, nAimG = aimsG.length;
           // (NO SWAP BACK: a swap of the same two panels the last one swapped puts the board back as it was -- it is no play of gambit's
           // unless it clears; played over and over it is a loop that spends the time the garbage gives)
           var idsAtG = function (mv) { var row = board.panels[mv[0]], a = row && row[mv[1]], b = row && row[mv[1] + 1]; return a && b && a.id != null && b.id != null ? [a.id, b.id].sort().join(',') : null; };
@@ -908,10 +908,15 @@ module.exports = function think(cfg) {
             x = x || {};
             var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0;
             // (EVERYTHING FITS THE LIST: a line whose clears match no entry of the mode's list is no candidate, whatever it is -- a plain
-            // three that breaks garbage excepted; the survival search alone plays outside it, when nothing that fits lives)
-            if (!GAMBIT.fits(listG, x)) return;
+            // three that breaks garbage excepted; the survival search alone plays outside it, when nothing that fits lives. What a line
+            // makes is the whole line played on the engine (attacker.replay's `whole`): every step's clears, the chain the garbage it breaks
+            // sets off and a link added to a chain running already -- whatever the search that found it counted)
+            var wk = seq.map(function (mv) { return mv[0] + ',' + mv[1]; }).join(' '), wh = wholeG[wk];
+            if (wh === undefined && attacker) { var rw = attacker.replay(board, m.hold, seq, arrivals); wh = wholeG[wk] = rw ? rw.whole : null; }
+            var madeG = wh ? { combo: Math.max(combo, wh.combo), chain: Math.max(chain, wh.chain), broke: Math.max(broke, wh.broke), cells: x.cells || 0 } : x;
+            if (!GAMBIT.fits(listG, madeG)) return;
             // (THE LIST IS THE PRIORITY: a move is ranked by the first entry its clears match, whatever search found it)
-            var entryG = GAMBIT.entryOf(aimsG, x);
+            var entryG = GAMBIT.entryOf(aimsG, madeG);
             if (entryG >= 0 && (aim < 0 || entryG < aim)) aim = entryG;
             // (IN TIME, step 2: every step has its own time -- a line whose last swap is begun after its deadline is not kept; the cascade
             // it sets off runs on after)

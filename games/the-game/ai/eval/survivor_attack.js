@@ -399,13 +399,16 @@ module.exports = function (opts) {
   // A LINE PLAYED ON (the rest of a line begun): each step played on the engine to the board's settle, as the planner plays a line; what
   // its last step makes ({ combo, chain, broke, cells, earned, done, fire, ats, wait }, as the planner's lines), or null when a step is
   // not legal or the board dies. o.settleFirst: the rest of a line, whose next step is pressed once the board has settled from the last
-  // -- the board is let settle first, and `wait` is the frames until it has (each step its own time)
+  // -- the board is let settle first, and `wait` is the frames until it has (each step its own time).
+  // `whole`: what the whole line makes, every step's clears counted -- its largest match and longest chain, beyond what the board left
+  // alone makes (a chain running already is the line's only when the line adds a link to it), and the garbage it breaks
   function replay(board, hold, seq, arrivals, o) {
     var s = search();
     s.reset();
     var root = s.root(board.copy(), hold, arrivals || [], false), n = root, made = [], ats = [], res = null;
-    var baseOut = s.advanceMany([[root, 'settle', null, 0]], true)[0], base = 0;
-    if (baseOut && !baseOut.dead) { var bs = s.stepStats(baseOut); if (bs.cleared > 0) base = sent(bs).cells; made.push(baseOut); }
+    var baseOut = s.advanceMany([[root, 'settle', null, 0]], true)[0], base = 0, baseChain = 0, baseCombo = 0;
+    if (baseOut && !baseOut.dead) { var bs = s.stepStats(baseOut); if (bs.cleared > 0) { var bg = sent(bs); base = bg.cells; baseChain = bg.chain; bs.comboSizes.forEach(function (z) { if (z > baseCombo) baseCombo = z; }); } made.push(baseOut); }
+    var wCombo = 0, wChain = 0, wBroke = 0;
     var wait = 0;
     if (o && o.settleFirst) { if (!baseOut || baseOut.dead) { if (made.length) s.drop(made); return null; } n = baseOut; wait = baseOut.t - root.t; }
     for (var k = 0; k < seq.length; k++) {
@@ -415,10 +418,15 @@ module.exports = function (opts) {
       var out = s.advanceMany([[n, 'settle', seq[k], 0]], true)[0];
       if (!out || out.dead) break;
       made.push(out);
+      var stW = s.stepStats(out), gW = sent(stW);
+      stW.comboSizes.forEach(function (z) { if (z > wCombo) wCombo = z; });
+      if (gW.chain > wChain) wChain = gW.chain;
+      wBroke += stW.broke || 0;
       if (k === seq.length - 1) {
-        var st = s.stepStats(out), g = sent(st), big = 0;
+        var st = stW, g = gW, big = 0;
         st.comboSizes.forEach(function (z) { if (z > big) big = z; });
-        res = { combo: big, chain: g.chain, broke: st.broke || 0, cells: Math.max(0, g.cells - base), earned: st.earned || 0, done: out.t - root.t, fire: ats[k], ats: ats, wait: wait };
+        res = { combo: big, chain: g.chain, broke: st.broke || 0, cells: Math.max(0, g.cells - base), earned: st.earned || 0, done: out.t - root.t, fire: ats[k], ats: ats, wait: wait,
+                whole: { combo: wCombo > baseCombo ? wCombo : 0, chain: wChain > baseChain ? wChain : 0, broke: wBroke } };
       }
       n = out;
     }
