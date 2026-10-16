@@ -2328,7 +2328,7 @@ static int aloneOnEngine(void);
 // next landing carries, against its floor. Calibrated on 9,918 landings of four
 // survival scans (landings.py): 36 panels and more 0.65% fatal, 30-35 1.05%,
 // 24-29 2.34%, 18-23 5.2%, under 18 23%.
-static double panelWorth(int panels) { return panels >= 36 ? 1 : panels >= 30 ? 1.6 : panels >= 24 ? 3.6 : panels >= 18 ? 8 : 35; }
+static double panelWorth(int panels) { static double mult = -1; if (mult < 0) mult = knob("GC_PW_MULT", 1); return mult * (panels >= 36 ? 1 : panels >= 30 ? 1.6 : panels >= 24 ? 3.6 : panels >= 18 ? 8 : 35); }
 // THE MATERIAL A JUDGED LINE (LNO) SPENDS against the board left alone: the
 // panels it ends with and the garbage it converted, less the board left
 // alone's, each worth what a panel is worth on the board the line leaves
