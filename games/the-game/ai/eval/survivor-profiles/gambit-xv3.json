@@ -1,9 +1,0 @@
-{
- "base": "gambit.json",
- "gambit": {
-  "mode": "finish them",
-  "standDown": false,
-  "rankAll": false
- },
- "pace": null
-}
