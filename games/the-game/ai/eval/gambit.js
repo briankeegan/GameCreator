@@ -73,6 +73,8 @@ function keeps(keep, grid) {
   var f = gridFacts(grid);
   return Object.keys(keep).every(function (k) { return test(f[k.replace(/^us\./, '')], keep[k]); });
 }
+// A BREAK'S DEADLINE (plays.md): before the board dies, however soon the next block lands -- that is the level's and the ready's
+function breakBy(F) { return F && F.us && F.us.dies > 0 ? F.us.dies : null; }
 // THE FLOOR (a rule's or the file's `keep`): a line's board must keep it -- unless the line breaks garbage, which is made with any
 // allowed move, garbage on the board or not. null: no floor.
 function floor(keep) {
@@ -235,4 +237,4 @@ function rulesFor(profile, dir) {
   return new Rules(path.isAbsolute(g.rules) ? g.rules : path.join(dir, g.rules));
 }
 
-module.exports = { named: named, near: near, nearList: nearList, lead: lead, tier: tier, floor: floor, aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };
+module.exports = { named: named, near: near, nearList: nearList, lead: lead, tier: tier, floor: floor, breakBy: breakBy, aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };

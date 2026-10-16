@@ -821,16 +821,9 @@ module.exports = function think(cfg) {
           var underG = tablesG.underGarbage !== 'ignore' && (FG.us.contact !== null || FG.us.topped);
           var listAimsG = aimsG;   // (as written: a line-up of a slab popping is the break already made, so it is held to these)
           if (underG) { aimsG = aimsG.map(function (a) { return Object.assign({}, a, { break: true }); }); endG = 'default'; }
-          // (under garbage the break is due before the next garbage lands -- a break after it is a break of a deeper pile -- and before the
-          // board would be lost: the best break that is done in time, not the soonest)
-          // (under garbage the deadline is the garbage's -- a break is due before the next block lands and before the board dies (plays.md:
-          // break, board dies); the rule's `by` is an attack's, the enemy recovering, and does not bind a break. A block landing now is no
-          // deadline for breaking the pile -- the next one after it is)
-          if (underG) {
-            byG = null;
-            if (FG.us.nextLands > 0) byG = FG.us.nextLands;
-            if (FG.us.dies > 0 && !(byG && byG < FG.us.dies)) byG = FG.us.dies;
-          }
+          // (under garbage the deadline is a break's, plays.md: before the board dies -- the rule's `by` is an attack's, the enemy recovering,
+          // and does not bind a break; the next block landing is the level's and the ready's)
+          if (underG) byG = GAMBIT.breakBy(FG);
           var predsG = aimsG.map(function (a) { return function (made) { return GAMBIT.meets(a, made); }; });
           if (predsG.length) {
             if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
@@ -868,7 +861,7 @@ module.exports = function think(cfg) {
               if (apG.seq.length && apG.aimIndex >= 0 && (!lineG || apG.aimIndex < lineG.aimIndex)) lineG = { ap: apG, aimIndex: apG.aimIndex };
             }
             var nx = exG && exG.nearest, np = apG && apG.nearest && apG.nearest.seq.length ? apG.nearest : null;
-            var lvU = underG && attacker ? attacker.level(board, m.hold, arrivals, { by: byG || undefined }) : null;
+            var lvU = underG && attacker ? attacker.level(board, m.hold, arrivals, { by: FG.us.nextLands > 0 ? FG.us.nextLands : (byG || undefined) }) : null;
             var rdG = !underG && readyAtG !== null && arrivals.length && attacker ? attacker.readyFor(board, m.hold, arrivals, { ms: Math.max(20, Math.min(60, leftG())) }) : null;
             var lvG = !underG && readyAtG !== null && !(rdG && !rdG.ready && rdG.setup) && attacker ? attacker.level(board, m.hold, arrivals, { by: readyAtG || undefined }) : null;
           }
