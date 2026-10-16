@@ -25,7 +25,7 @@ function swapBack(c, mv, clears) {
 // null when the judge could not play it out
 function played(c, seq, isSettled) {
   var key = (isSettled ? 's ' : 'r ') + seq.map(function (mv) { return mv[0] + ',' + mv[1]; }).join(' ');
-  if (!(key in c.judged)) { var j = c.attacker.judge(c.board, c.m.hold, seq, c.arrivals, { settled: isSettled }); c.judged[key] = j && !j.dead ? j : null; }
+  if (!(key in c.judged)) { var j = c.attacker.judge(c.board, c.m.hold, seq, c.arrivals, { settled: isSettled, tight: c.tight }); c.judged[key] = j && !j.dead ? j : null; }
   return c.judged[key];
 }
 
