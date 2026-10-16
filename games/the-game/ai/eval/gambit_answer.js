@@ -11,7 +11,6 @@
 // search's engine), rules, GP (the profile's gambit), pace, margin (ms), nativeMem() }
 var path = require('path');
 var GAMBIT = require(path.join(__dirname, 'gambit.js')), DECIDE = require(path.join(__dirname, 'gambit_decide.js')), JUDGE = require(path.join(__dirname, 'gambit_judge.js'));
-var PLAN = require(path.join(__dirname, 'gambit_plan.js'));
 var SH = require(path.join(__dirname, 'survivor_shared.js')), CK = require(path.join(__dirname, 'survivor_checks.js')), KEYS = require(path.join(__dirname, 'survivor_keys.js'));
 
 // THE BREAK SEARCH: the lines to a break, in the share of the decision's time it is given (a line begun is carried on as the line in
@@ -76,9 +75,6 @@ function lives(c, D) {
   if (V) {
     // (Gambit's, in its order: the first that lives -- its place in the order first, not how far it is proven)
     order.forEach(function (k) { if (!d && lived(k)) { d = asMove(k); verdict = verdictOf[k] || 'judged'; why = 'gambit'; } });
-    // (none of Gambit's moves living: the standing plan's first swap, when its line keeps the board alive longer than holding)
-    var SP = c.plan && c.plan.best;
-    if (!d && SP && SP.dies > c.plan.alone) { d = asMove(SP.seq[0][0] + ',' + SP.seq[0][1]); verdict = 'plan'; why = 'plan'; }
     // (the survival exception: of the moves found live, the first that fits the list as Gambit judges it, else the first)
     if (!d) {
       var judgeOf = function (mv) { var j = c.attacker.judge(c.board, c.m.hold, [mv], c.arrivals, { tight: c.tight }); return j.dead ? null : j; };
@@ -123,7 +119,7 @@ function logLine(c, D, L, br, brMs) {
     ' broke=' + (g.broke || 0) + ' tier=' + (g.tier || 0) + ' by=' + (g.by || '-') + ' plan=' + (g.pl || '-') + ' done=' + (g.done != null ? g.done : '-') + ' fire=' + (g.fire != null ? g.fire : '-') +
     ' ats=' + (g.ats || '-') + ' swaps=' + (g.swaps || 0) + ' land=' + (F.nextLands != null ? F.nextLands : '-') + ' dies=' + F.dies + (F.queueKills ? ' qk=1' : '') + (D.R.aloneOut ? ' alone=' + D.R.aloneChain : '') + ' casc=' + (CK.cascadeLive(c.board, true) ? 1 : 0) +
     ' pop=' + SH.popLeft(c.board) + ' stop=' + F.stop + ' waits=' + (F.breakWaits ? 1 : 0) + ' unseen=' + unseenOf(c.board) + ' tight=' + (c.tight ? 1 : 0) +
-    ' br=' + (br ? (br.depth || 0) + '/' + (br.path ? br.path.length : br.toward ? 't' + br.toward.length : 0) + (br.cut ? '/cut' : '') : 'none') + ' brMs=' + brMs + ' cands=' + (g.cands || '-') + ' live=' + L.live + ' sp=' + (c.plan && c.plan.best ? c.plan.best.dies + '/' + c.plan.best.seq.length : '-') + '/' + (c.plan ? c.plan.alone + '/' + c.plan.judged : '-') + ' why=' + L.why);
+    ' br=' + (br ? (br.depth || 0) + '/' + (br.path ? br.path.length : br.toward ? 't' + br.toward.length : 0) + (br.cut ? '/cut' : '') : 'none') + ' brMs=' + brMs + ' cands=' + (g.cands || '-') + ' live=' + L.live + ' why=' + L.why);
 }
 
 function answer(c) {
@@ -137,10 +133,7 @@ function answer(c) {
   var D = DECIDE.decide(c);
   if (!D) return null;
   if (D.R.F.us.contact !== null || D.R.F.us.topped) bot._gambitHit = true;
-  // (the standing plan, grown on this board -- for when none of Gambit's moves lives: gambit_plan.js)
-  c.plan = PLAN.grow(c, D.R, D.cands);
   var L = lives(c, D), d = L.d;
-  bot._gambitPlayed = d.kind === 'swap' && d.move ? d.move.slice() : null;
   // (the line in progress is the line of the move played; a hold for a waiting line in progress keeps it)
   if (!(d.kind === 'hold' && D.line && D.line.wait)) {
     var playedK = d.kind === 'swap' ? D.cands.filter(function (k) { return !k.wait && k.seq[0][0] === d.move[0] && k.seq[0][1] === d.move[1]; })[0] : null;

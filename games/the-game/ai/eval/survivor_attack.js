@@ -504,15 +504,6 @@ module.exports = function (opts) {
     // (readiness, o.readyAt: the next block landed on the board the line ends on, can a break be made then -- the readiness check every
     // move that breaks nothing is held to)
     if (o.readyAt != null && !dead) res.ready = breaksAfterLanding(s, root, n, Math.max(1, o.readyAt + 2), made);
-    // (o.diesAfter, frames: when the board is lost if nothing more is done once the line is over -- the garbage shown landing when it lands,
-    // the stack rising -- in frames from now; Infinity when it lives past the horizon. The end swaps: what the board then allows)
-    if (o.diesAfter != null && !dead) {
-      var lostBy = function (t) { var w = s.advance(n, 'long', null, t); if (w && w._i >= 0) made.push(w); return !w || w.dead; };
-      var span = Math.max(1, Math.ceil(o.diesAfter - (n.t - root.t)));
-      if (!lostBy(span)) res.dies = Infinity;
-      else { var lo = 0, hi = span; while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (lostBy(mid)) hi = mid; else lo = mid; } res.dies = n.t - root.t + hi; }
-      res.ends = n.b.legalSwaps();
-    }
     if (made.length) s.drop(made);
     return res;
   }
