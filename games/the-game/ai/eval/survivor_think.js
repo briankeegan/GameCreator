@@ -948,7 +948,9 @@ module.exports = function think(cfg) {
                 var aiG = -1; if (CG.aim) aimsG.forEach(function (a, i) { if (aiG < 0 && JSON.stringify(a) === JSON.stringify(CG.aim)) aiG = i; });
                 var nG = candsG.length;
                 candG(rxG.wait > 1 ? 'carry wait' : 'carry', CG.rest.map(function (mv) { return mv.slice(); }), rxG, aiG);
-                if (candsG.length > nG) { candsG[nG].sub = [-Infinity].concat(candsG[nG].sub); candsG[nG].wait = rxG.wait > 1; }
+                // (first of its tier when its next step is due now; one that must wait for the board to settle ranks as any other line,
+                // the wait counted in its time -- holding for it never beats a break to be had at once)
+                if (candsG.length > nG) { candsG[nG].wait = rxG.wait > 1; if (!candsG[nG].wait) candsG[nG].sub = [-Infinity].concat(candsG[nG].sub); }
               }
             }
           }
