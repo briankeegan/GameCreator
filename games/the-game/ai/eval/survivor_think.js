@@ -865,7 +865,7 @@ module.exports = function think(cfg) {
             //   the nearest attack -- the nearer of the plan's line and the falling chain's or the popping slab's line-up; under garbage one
             //     that breaks it too, garbage on its way one that leaves the next block's break (READY)
             //   garbage on the board, no break in reach: LEVEL (the hollow under it filled, then flatter); with literally nothing else,
-            //     SCRAMBLE (the line that buys the most stop time); CLEAR is never played
+            //     SCRAMBLE (the line that buys the most stop time); last of all, the board about to top out, CLEAR (the lowest stack)
             //   garbage on its way: READY -- the swap after which the next block breaks once it lands; else LEVEL -- the swap that clears
             //     nothing and leaves less hollow, then a flatter stack, settled before the block lands
             //   nothing on its way: SETUP toward the list, else HOLD
@@ -892,8 +892,10 @@ module.exports = function think(cfg) {
               if (br && br.toward && br.toward.length) { lineG = { ap: { seq: br.toward, done: null }, aimIndex: -1 }; playG = 'break toward'; }
               else if (nearG) { lineG = nearG; playG = 'nearest break'; }
               else if (lvU) { setupG = lvU.move; playG = 'level'; }
-              // (literally nothing else: SCRAMBLE, the line that buys the most stop time; a clear that buys nothing is never a play)
+              // (literally nothing else: SCRAMBLE, the line that buys the most stop time; and last of all, only when the board would top out
+              // -- its deadline -- CLEAR, the line that leaves the lowest stack)
               else if (apG && apG.stopBest) { lineG = { ap: apG.stopBest, aimIndex: -1 }; playG = 'scramble'; }
+              else if (apG && apG.lowest && CK.toppedOrNearly(board, m.topped)) { lineG = { ap: apG.lowest, aimIndex: -1 }; playG = 'clear'; }
             }
             else if (readyAtG !== null) {
               var rdG = arrivals.length && attacker ? attacker.readyFor(board, m.hold, arrivals, { ms: Math.max(20, Math.min(60, leftG())) }) : null;
@@ -957,6 +959,7 @@ module.exports = function think(cfg) {
               if (br && br.toward && br.toward.length) addG(br.toward[0], br.toward);
               if (lvU) addG(lvU.move);
               if (apG && apG.stopBest) addG(apG.stopBest.seq[0], apG.stopBest.seq);
+              if (apG && apG.lowest && CK.toppedOrNearly(board, m.topped)) addG(apG.lowest.seq[0], apG.lowest.seq);
             } else if (apG && apG.setup && typeof readyAtG !== 'number') addG(apG.setup);
           }
           if (GP.rankAll === false) orderG = orderG.slice(0, 1);
