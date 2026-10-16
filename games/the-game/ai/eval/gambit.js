@@ -46,7 +46,11 @@ function facts(board, arrivals, topped) {
   // (dies: the frames until the board is lost if nothing is done -- the stop time, the rise to the top row unless already topped, then
   // the health it drains there)
   var dies = topped ? stop + (board.health || 0) : CK.framesToTop(board) + (board.health || 0);
+  // (falling: garbage still coming down -- on the board falling, or queued to drop now -- not all of it has landed yet)
+  var falling = (board.incoming || []).length > 0 && stop === 0;
+  for (r = 1; r <= H && !falling; r++) for (c = 1; c <= 6 && !falling; c++) { var fp = board.panels[r] && board.panels[r][c]; if (fp && fp.isGarbage && fp.state === 'falling') falling = true; }
   return {
+    falling: falling,
     topped: !!topped, stop: stop, height: top, material: material, contact: garb ? contact : null, dies: dies,
     evenness: Math.max.apply(null, peaks) - Math.min.apply(null, peaks), coming: coming, heavy: coming > 8, nextLands: next
   };
@@ -143,19 +147,20 @@ function nearList(aims, made) {
 // any line that breaks a little nearer than one that does not, a three included. The pick's order (tier) chooses among what is found.
 function lead(aims, made, under) { return nearList(aims, made) + (under && made.broke > 0 ? 0.5 : 0); }
 // THE PICK: every move is the next step of the ask -- the mode's list entry -- and the ask runs the whole time: while it is built the
-// garbage is broken, for the panels the build is made of, and the board is set up. Lower first; x is what the line makes ({ combo,
-// chain, broke, earned, done, near: how near the list it leaves the board }), aim its entry in the list (-1: none), under garbage on
-// the board or topped. Live and in time are the engine's: a line that dies, or is done after its deadline, is never a candidate.
-//   1 FIRE an entry: a line that makes it, in the list's order -- under garbage one that breaks too before one that does not
-//   2 BREAK, while building: any break -- one that buys stop time before a plain three, then the one nearest the ask, then more broken
-//   3 SET UP the ask, flattening included: nearest the list first
+// garbage is broken, for the panels the build is made of, and the board is set up. What kind of break, and what kind of set-up, is the
+// attack's: the one that leaves the board nearest the list. Lower first; x is what the line makes ({ combo, chain, broke, earned, done,
+// near: how near the list it leaves the board }), aim its entry in the list (-1: none), under garbage on the board or topped, falling
+// garbage still coming down. Live and in time are the engine's: a line that dies, or is done after its deadline, is never a candidate.
+//   garbage landed:        1 an entry (one that breaks too first)   2 a break, nearest the attack   3 set up the ask
+//   garbage still falling: 1 an entry   3 set up the ask, ready for the landing   4 a break -- not yet: broken before the rest has
+//                          landed, the next block buries the panels it made
+//   no garbage:            1 an entry   3 set up the ask, flattening included
 //   5 hold, only with no move; 6 clear (a match that touches no garbage), only for a stack about to top out with nothing else
-function tier(play, x, aim, under) {
+function tier(play, x, aim, under, falling) {
   x = x || {};
-  var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0, stop = x.earned || 0, near = x.near || 0;
-  var buys = combo >= 4 || chain >= 2;
-  if (aim >= 0) return { tier: 1, sub: [aim, under && broke > 0 ? 0 : 1, x.done || 0] };
-  if (under && broke > 0) return { tier: 2, sub: [buys ? 0 : 1, -near, -broke] };
+  var broke = x.broke || 0, stop = x.earned || 0, near = x.near || 0, brk = under && broke > 0;
+  if (aim >= 0) return { tier: 1, sub: [aim, brk && !falling ? 0 : 1, x.done || 0] };
+  if (brk) return { tier: falling ? 4 : 2, sub: [-near, -broke] };
   if (play === 'clear') return { tier: 6, sub: [-stop] };
   return { tier: 3, sub: [-near] };
 }

@@ -107,18 +107,21 @@ assert(G.lead(P4, { combo: 3, chain: 4, broke: 6 }, true) > G.lead(P4, { combo: 
 assert.strictEqual(G.lead([{ chain: '==4' }], { chain: 2, broke: 6 }, false), G.nearList([{ chain: '==4' }], { chain: 2, broke: 6 }), 'no garbage: the list');
 assert(G.lead(P4, { combo: 3, chain: 1, broke: 6 }, true) > 0, 'a three that breaks is near');
 
-// the pick: fire the entry; while building, break; set up toward the ask; hold only with no move; clear and scramble last
+// the pick: an entry; a break nearest the attack (not yet while garbage is still falling); set up the ask; hold only with no move
 function before(x, y) { if (x.tier !== y.tier) return x.tier < y.tier; for (var q = 0; q < x.sub.length; q++) if (x.sub[q] !== y.sub[q]) return x.sub[q] < y.sub[q]; return false; }
-assert.strictEqual(G.tier('entry', { chain: 4, cells: 18 }, 0, false).tier, 1, 'fire the entry first');
-assert(before(G.tier('entry', { chain: 2, broke: 6 }, 0, true), G.tier('lineup', { combo: 6, broke: 12 }, -1, true)), 'under garbage the entry that breaks first');
+assert.strictEqual(G.tier('entry', { chain: 4, cells: 18 }, 0, false).tier, 1, 'an entry first');
 assert.strictEqual(G.tier('entry', { chain: 4, broke: 0 }, 0, true).tier, 1, 'under garbage an entry that breaks nothing is still the entry');
 assert(before(G.tier('entry', { chain: 4, broke: 6 }, 0, true), G.tier('entry', { chain: 4, broke: 0 }, 0, true)), 'one that breaks too goes first');
-assert(before(G.tier('break search', { broke: 6 }, -1, true), G.tier('nearest', { chain: 2, near: 50 }, -1, true)), 'while building, a break before a setup');
-assert(before(G.tier('lineup', { combo: 4, broke: 6 }, -1, true), G.tier('break search', { broke: 12, near: 90 }, -1, true)), 'a break that buys stop time before a plain three');
-assert(before(G.tier('break search', { broke: 6, near: 60 }, -1, true), G.tier('break search', { broke: 12, near: 10 }, -1, true)), 'then the break nearest the ask');
+assert(before(G.tier('break search', { broke: 6 }, -1, true), G.tier('nearest', { chain: 2, near: 50 }, -1, true)), 'garbage landed: a break before a set-up');
+assert(before(G.tier('break search', { broke: 6, near: 60 }, -1, true), G.tier('lineup', { combo: 6, broke: 12, near: 10 }, -1, true)), 'the break nearest the attack first, whatever kind it is');
+assert(before(G.tier('break search', { broke: 12 }, -1, true), G.tier('break search', { broke: 6 }, -1, true)), 'then more garbage broken');
+assert(before(G.tier('setup', {}, -1, true, true), G.tier('break search', { broke: 6 }, -1, true, true)), 'garbage still falling: set up and get ready before breaking it too soon');
+assert(before(G.tier('break search', { broke: 6 }, -1, true, true), { tier: 5, sub: [0] }), 'but a break before hold');
 assert(before(G.tier('setup', { near: 40 }, -1, false), G.tier('level', { near: 10 }, -1, false)), 'set up nearest the ask first, flattening among them');
-assert(before(G.tier('level', {}, -1, false), { tier: 5, sub: [0] }), 'any set-up before hold');
 assert.strictEqual(G.tier('clear', { chain: 1, combo: 3 }, -1, true).tier, 6, 'a clear only when there is nothing else');
+var fb = PA.puzzle(['000000', '000000', '000000', '120000', '341200', '123412'].join('')); fb.incoming = [{ width: 6, height: 2 }]; fb.stopTime = 0;
+assert.strictEqual(G.facts(fb, [], false).falling, true, 'a block queued to drop now is garbage still falling');
+fb.stopTime = 60; assert.strictEqual(G.facts(fb, [], false).falling, false, 'held by stop time it is not falling yet');
 
 // the profile's own rules file parses and drops nothing
 var shipped = G.checked(JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles', 'gambit-rules.json'), 'utf8')));
