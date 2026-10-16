@@ -38,6 +38,20 @@ function madeOf(k) {
 }
 function keyOf(k) { return k.kind === 'swap' && k.move ? k.move[0] + ',' + k.move[1] : k.kind; }
 
+// WHICH MOVES LIVE: the survival search's verdict on each (verdictOf) -- or, for a line of Gambit's that breaks garbage, the judge's: the
+// whole line played out on the engine without the board lost (the survival search judges a swap alone, not the line it begins). The
+// hold does not live while the garbage the game shows loses the board sooner than its rise would and no plan is left once it has landed
+// (holdDies). { lived(key, how?), breaksOf }
+function living(verdictOf, cands, holdDies) {
+  var breaksOf = {};
+  (cands || []).forEach(function (k) { if (k.ap && k.ap.played && (k.ap.broke || 0) > 0 && !k.wait) breaksOf[k.seq[0][0] + ',' + k.seq[0][1]] = true; });
+  return { breaksOf: breaksOf, lived: function (k, how) {
+    if (how) return verdictOf[k] === how;
+    if (k === 'hold' && holdDies) return false;
+    return verdictOf[k] === 'proven' || verdictOf[k] === 'weak' || !!breaksOf[k];
+  } };
+}
+
 // LIVES: the survival search asked one thing, which moves live -- its verdict on every move (none past MAXCHAIN). The choice is
 // Gambit's, never the survival search's own ranking: of Gambit's moves in its order, the first that lives (proven or weakly -- the order
 // first); with none of Gambit's moves living, the survival exception -- of the moves found live, the first that fits the list as
@@ -55,17 +69,17 @@ function lives(c, D) {
     verdictOf[k] = V.verdict[i]; candOf[k] = V.cands[i];
     if (k === 'hold') holdLives = V.verdict[i] === 'proven';
   }
-  var lived = function (k, how) { return how ? verdictOf[k] === how : verdictOf[k] === 'proven' || verdictOf[k] === 'weak'; };
+  var holdDies = !!(D.R.F.us.queueKills && D.R.aloneReady === false), L0 = living(verdictOf, D.cands, holdDies), breaksOf = L0.breaksOf, lived = L0.lived;
   var asMove = function (k) { return k === 'hold' || k === 'raise' ? { kind: k } : { kind: 'swap', move: k.split(',').map(Number) }; };
-  order.forEach(function (k) { if (k in verdictOf) { searched++; if (lived(k)) live++; } });
+  order.forEach(function (k) { if (k in verdictOf || breaksOf[k]) { searched++; if (lived(k)) live++; } });
   if (V) {
     // (Gambit's, in its order: the first that lives -- its place in the order first, not how far it is proven)
-    order.forEach(function (k) { if (!d && lived(k)) { d = asMove(k); verdict = verdictOf[k]; why = 'gambit'; } });
+    order.forEach(function (k) { if (!d && lived(k)) { d = asMove(k); verdict = verdictOf[k] || 'judged'; why = 'gambit'; } });
     // (the survival exception: of the moves found live, the first that fits the list as Gambit judges it, else the first)
     if (!d) {
       var madeBy = function (mv) { var j = c.attacker.judge(c.board, c.m.hold, [mv], c.arrivals, { tight: c.tight }); return j.dead ? null : JUDGE.listMade(j.made, j); };
       var alive = V.cands.filter(function (vc, q) { return (V.verdict[q] === 'proven' || V.verdict[q] === 'weak') && order.indexOf(keyOf(vc)) < 0; });
-      var fitting = alive.filter(function (vc) { if (vc.kind !== 'swap') return !D.R.aloneOut; var mk = madeBy(vc.move); return mk && GAMBIT.fits(list, mk) && mk.chain <= GAMBIT.MAXCHAIN; })[0];
+      var fitting = alive.filter(function (vc) { if (vc.kind !== 'swap') return !D.R.aloneOut && !(vc.kind === 'hold' && holdDies); var mk = madeBy(vc.move); return mk && GAMBIT.fits(list, mk) && mk.chain <= GAMBIT.MAXCHAIN; })[0];
       var any = fitting || alive.filter(function (vc) { if (vc.kind !== 'swap') return true; var mk = madeBy(vc.move); return mk && mk.chain <= GAMBIT.MAXCHAIN; })[0];
       if (any) { d = asMove(keyOf(any)); verdict = verdictOf[keyOf(any)]; why = fitting ? 'fits' : 'lives'; }
     }
@@ -147,4 +161,4 @@ function answer(c) {
                    clears: (made.combo > 0 || made.broke > 0) ? 1 : 0, gambit: D.info } };
 }
 
-module.exports = { answer: answer, lives: lives, breakSearch: breakSearch, madeOf: madeOf };
+module.exports = { answer: answer, lives: lives, living: living, breakSearch: breakSearch, madeOf: madeOf };

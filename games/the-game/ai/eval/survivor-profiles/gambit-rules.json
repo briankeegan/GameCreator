@@ -23,19 +23,14 @@
      "combo": "==6"
     },
     {
-     "combo": "==7"
-    },
-    {
      "chain": "==2"
     },
     {
      "chain": "==3"
     },
     {
+     "combo": "<=3",
      "chain": "==1"
-    },
-    {
-     "combo": "==4"
     }
    ],
    "by": "enemy.stop"

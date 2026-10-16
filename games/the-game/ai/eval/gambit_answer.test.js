@@ -43,5 +43,13 @@ var fewer = AT.raiseReady(low, H0, flood, 5, 300);
 assert.ok(fewer < 5, 'nine rows coming: fewer rows raised (' + fewer + ')');
 var est = GAMBIT.facts(low, flood, false).dies;
 assert.ok(AT.diesIn(low, H0, flood, est) < est, 'the garbage on its way decides the frames left, not the rise alone');
+// WHICH MOVES LIVE: a line of Gambit's that breaks, played out on the engine, lives though the survival search judged its first swap alone
+// to die; the hold does not while the garbage shown loses the board and no plan is left; a line the judge could not play out does not
+var GA = require('./gambit_answer.js'), brk = { seq: [[3, 2], [4, 2]], ap: { played: true, broke: 6 } }, lost = { seq: [[5, 1]], ap: { played: false, broke: 6 } };
+var Lv = GA.living({ '3,2': 'dies', '5,1': 'dies', hold: 'weak' }, [brk, lost], true);
+assert.ok(Lv.lived('3,2'), 'a break line the judge played out lives');
+assert.ok(!Lv.lived('5,1'), 'a line the judge could not play out is the survival search\'s to judge');
+assert.ok(!Lv.lived('hold'), 'no hold while the garbage shown loses an unready board');
+assert.ok(GA.living({ hold: 'weak' }, [], false).lived('hold'), 'with a plan left, the hold is the survival search\'s to judge');
 assert.ok(gambit >= answered / 2, 'Gambit chooses most moves: ' + gambit + ' of ' + answered);
 console.log('ok: gambit answers -- ' + answered + ' questions over ' + modes.length + ' modes, ' + gambit + ' Gambit\'s own');

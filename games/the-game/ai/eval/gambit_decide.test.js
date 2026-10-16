@@ -125,13 +125,17 @@ assert.ok(floored > 0, 'moves were ranked below the floor: the check above is no
 // EVERY MOVE IS HELD TO THE SAME CHECKS, whoever offered it (plans/decision.md, every move first): on boards with a block on its way
 var PROPOSE = require('./gambit_propose.js'), SHD = require('./survivor_shared.js'), kinds = {}, lateDropped = 0, readyKept = 0, carriedN = 0, aloneReady = 0, readyFirst = 0;
 var BSD = new (require('./native.js').server.Search)({ reaction: 12, swapGap: 12, cursorMoveFrames: 4, threads: 1 });
+// (these checks hold whatever the mode's list is: run on a list of their own, so a change to the shipped list leaves them the boards to check)
+var wideFile = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles', 'gambit-rules.json'), 'utf8'));
+wideFile.attack.forEach(function (r) { if (r.name === 'finish them') r.aims = [{ combo: '>=8' }, { combo: '==5' }, { combo: '==6' }, { combo: '==7' }, { chain: '==2' }, { chain: '==3' }, { chain: '==1' }, { combo: '==4' }]; });
+var wide = GAMBIT.rulesFor({ gambit: { rules: wideFile } }, __dirname);
 for (var eseed = 1; eseed <= 10; eseed++) {
   var eb = PA.game({ level: 10, seed: eseed, countdown: false });
   for (var ef = 0; ef < 260; ef++) eb.run();
   if (eseed % 2) { eb.receiveGarbage([{ width: 6, height: 1, isChain: false, isMetal: false }]); for (ef = 0; ef < 260; ef++) eb.run(); }
   var arr = [{ at: 90, width: 6, height: 1 }];
   var ebr = SHD.breakMoves(BSD, eb, hold, arr, 1, 0, Date.now() + 200, null, null, { touchInPop: true });
-  var ec = { bot: { _canRaise: function () { return false; } }, m: { at: eb.clock, hold: hold, topped: false, opp: null }, board: eb, arrivals: arr, br: ebr, brMs: 0, attacker: at, rules: rules,
+  var ec = { bot: { _canRaise: function () { return false; } }, m: { at: eb.clock, hold: hold, topped: false, opp: null }, board: eb, arrivals: arr, br: ebr, brMs: 0, attacker: at, rules: wide,
              GP: { mode: 'finish them', ms: 60, width: 30, depth: 5, pool: 120 }, pace: null, canRaise: function () { return false; }, left: function () { return 200; } };
   var ER = DECIDE.read(ec), ES = PROPOSE.search(ec, ER), offered = PROPOSE.all(ec, ER, ES);
   // (1) THE DEADLINE, from the judge, for every move: with one frame to begin the last swap, a line the judge presses later is dropped

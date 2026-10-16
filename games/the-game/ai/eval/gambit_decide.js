@@ -83,6 +83,7 @@ function ready(c, R, cands) {
     var j = c.attacker.judge(c.board, c.m.hold, k.seq, c.arrivals, { settled: k.settled, readyAt: land, tight: c.tight });
     if (j.dead || j.ready === true) { yes.push(k); found++; } else no.push(k);
   });
+  R.aloneReady = alone.ready === true;
   if (alone.ready === true) { no.forEach(function (k) { JUDGE.drop(c, k.play, 'ready'); }); return yes; }
   return yes.concat(no);
 }
