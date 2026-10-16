@@ -18,8 +18,8 @@ nearest the list.
 
 | | No garbage | Garbage still falling | Garbage landed |
 |---|---|---|---|
-| 1 | Fire an entry, in the list's order | Fire an entry | Fire an entry -- one that breaks too first |
-| 2 | Set up the ask, flattening included | Set up the ask, ready to break it when it lands | Break it, the break nearest the attack first (a three is as good), then more broken |
+| 1 | Fire an entry, in the list's order | Fire an entry | Break it: an entry that breaks, then the break nearest the attack (a three is as good), then more broken |
+| 2 | Set up the ask, flattening included | Set up the ask, ready to break it when it lands | Fire an entry that breaks nothing |
 | 3 | Raise to 10 when low | Break it -- not yet: broken before the rest has landed, the next block buries the panels it made | Set up the ask |
 | 4 | Hold, only with no move | Hold, only with no move | Hold, only with no move |
 | 5 | | | Clear (a match that touches no garbage), only for a stack about to top out with nothing else |

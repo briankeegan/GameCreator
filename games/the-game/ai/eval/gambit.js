@@ -151,7 +151,8 @@ function lead(aims, made, under) { return nearList(aims, made) + (under && made.
 // attack's: the one that leaves the board nearest the list. Lower first; x is what the line makes ({ combo, chain, broke, earned, done,
 // near: how near the list it leaves the board }), aim its entry in the list (-1: none), under garbage on the board or topped, falling
 // garbage still coming down. Live and in time are the engine's: a line that dies, or is done after its deadline, is never a candidate.
-//   garbage landed:        1 an entry (one that breaks too first)   2 a break, nearest the attack   3 set up the ask
+//   garbage landed:        1 a break -- an entry that breaks, then the break nearest the attack   2 an entry that breaks nothing
+//                          3 set up the ask
 //   garbage still falling: 1 an entry   3 set up the ask, ready for the landing   4 a break -- not yet: broken before the rest has
 //                          landed, the next block buries the panels it made
 //   no garbage:            1 an entry   3 set up the ask, flattening included
@@ -159,8 +160,13 @@ function lead(aims, made, under) { return nearList(aims, made) + (under && made.
 function tier(play, x, aim, under, falling) {
   x = x || {};
   var broke = x.broke || 0, stop = x.earned || 0, near = x.near || 0, brk = under && broke > 0;
-  if (aim >= 0) return { tier: 1, sub: [aim, brk && !falling ? 0 : 1, x.done || 0] };
-  if (brk) return { tier: falling ? 4 : 2, sub: [-near, -broke] };
+  // (garbage landed: the break first -- an entry that breaks, then the break nearest the attack -- then an entry that breaks nothing)
+  if (under && !falling) {
+    if (brk) return { tier: 1, sub: [aim >= 0 ? aim : 99, -near, -broke] };
+    if (aim >= 0) return { tier: 2, sub: [aim, x.done || 0] };
+  }
+  if (aim >= 0) return { tier: 1, sub: [aim, x.done || 0] };
+  if (brk) return { tier: 4, sub: [-near, -broke] };   // (garbage still falling: not yet)
   if (play === 'clear') return { tier: 6, sub: [-stop] };
   return { tier: 3, sub: [-near] };
 }

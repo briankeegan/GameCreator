@@ -110,9 +110,10 @@ assert(G.lead(P4, { combo: 3, chain: 1, broke: 6 }, true) > 0, 'a three that bre
 // the pick: an entry; a break nearest the attack (not yet while garbage is still falling); set up the ask; hold only with no move
 function before(x, y) { if (x.tier !== y.tier) return x.tier < y.tier; for (var q = 0; q < x.sub.length; q++) if (x.sub[q] !== y.sub[q]) return x.sub[q] < y.sub[q]; return false; }
 assert.strictEqual(G.tier('entry', { chain: 4, cells: 18 }, 0, false).tier, 1, 'an entry first');
-assert.strictEqual(G.tier('entry', { chain: 4, broke: 0 }, 0, true).tier, 1, 'under garbage an entry that breaks nothing is still the entry');
+assert.strictEqual(G.tier('entry', { chain: 4, broke: 0 }, 0, true).tier, 2, 'garbage landed: an entry that breaks nothing is still an entry, after the break');
 assert(before(G.tier('entry', { chain: 4, broke: 6 }, 0, true), G.tier('entry', { chain: 4, broke: 0 }, 0, true)), 'one that breaks too goes first');
-assert(before(G.tier('break search', { broke: 6 }, -1, true), G.tier('nearest', { chain: 2, near: 50 }, -1, true)), 'garbage landed: a break before a set-up');
+assert(before(G.tier('break search', { broke: 6 }, -1, true), G.tier('entry', { chain: 4, broke: 0 }, 0, true)), 'garbage landed: a break before an entry that breaks nothing');
+assert(before(G.tier('break search', { broke: 6 }, -1, true), G.tier('nearest', { chain: 2, near: 50 }, -1, true)), 'and before a set-up');
 assert(before(G.tier('break search', { broke: 6, near: 60 }, -1, true), G.tier('lineup', { combo: 6, broke: 12, near: 10 }, -1, true)), 'the break nearest the attack first, whatever kind it is');
 assert(before(G.tier('break search', { broke: 12 }, -1, true), G.tier('break search', { broke: 6 }, -1, true)), 'then more garbage broken');
 assert(before(G.tier('setup', {}, -1, true, true), G.tier('break search', { broke: 6 }, -1, true, true)), 'garbage still falling: set up and get ready before breaking it too soon');
