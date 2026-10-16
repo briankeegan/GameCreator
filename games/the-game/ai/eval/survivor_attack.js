@@ -496,9 +496,9 @@ module.exports = function (opts) {
       if (o.ok && cut === seq.length && !o.ok(sofar())) { cut = last ? seq.length - 1 : k; break; }
       n = out;
     }
-    // (chainAll: the chain as the game counts it -- a link the line adds to a chain already falling, or the board's own continuation,
-    // goes up from the links before it)
-    var res = { made: sofar(), chainAll: Math.max(chain, baseChain, board.chainCounter || 0), cut: cut, dead: dead, done: done, ats: ats, fire: ats.length ? ats[ats.length - 1] : null };
+    // (chainAll: the chain the line reaches as the game counts it -- the chain already falling and every link after it, the board's own
+    // continuation included only as far as the line leaves it running: a swap that cuts it ends it there)
+    var res = { made: sofar(), chainAll: Math.max(chain, board.chainCounter || 0), cut: cut, dead: dead, done: done, ats: ats, fire: ats.length ? ats[ats.length - 1] : null };
     // (readiness, o.readyAt: the next block landed on the board the line ends on, can a break be made then -- the readiness check every
     // move that breaks nothing is held to)
     if (o.readyAt != null && !dead) res.ready = breaksAfterLanding(s, root, n, Math.max(1, o.readyAt + 2), made);

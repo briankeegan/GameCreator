@@ -24,7 +24,7 @@ assert.ok(judged >= 2, 'boards with a chain line to judge');
 
 // THE CHAIN AS THE GAME COUNTS IT: a planned chain's swaps pressed on the engine at the frames the judge presses them, then the board
 // left to fall -- the judge's chainAll on it, mid-chain, is the chain counter the game reaches (a continuation goes up, it is not a new one)
-var counted = 0, listChecked = 0;
+var counted = 0, listChecked = 0, moveChecked = 0, cutFound = 0;
 for (var cs = 1; cs <= 40 && counted < 3; cs++) {
   var cb = PA.game({ level: 10, seed: cs, countdown: false });
   for (var cf = 0; cf < 200; cf++) cb.run();
@@ -45,8 +45,14 @@ for (var cs = 1; cs <= 40 && counted < 3; cs++) {
   assert.strictEqual(mid, most, 'seed ' + cs + ': mid-chain, the judge counts ' + mid + ', the game reaches ' + most);
   // (and the list check reads that chain: with a list that stops below it, a move made now that leaves the chain running is dropped as
   // outside the list -- JUDGE.judge, as the decision asks it)
-  gb.legalSwaps().slice(0, 6).forEach(function (mv0) {
+  gb.legalSwaps().slice(0, 12).forEach(function (mv0) {
     var jm = at.judge(gb, hold, [mv0], [], {});
+    // (the move's own chain, against the game: the swap pressed on the engine at the frame the judge presses it)
+    if (!jm.dead) {
+      var pb = gb.copy(), p0 = pb.clock, done0 = false, top = pb.chainCounter;
+      for (var q = 0; q < 700; q++) { if (!done0 && pb.clock - p0 >= jm.ats[0] + 1) { pb.curRow = mv0[0]; pb.curCol = mv0[1]; done0 = pb.tryQueueSwap(mv0[0], mv0[1]); } pb.run(); if (pb.chainCounter > top) top = pb.chainCounter; }
+      if (done0) { assert.strictEqual(jm.chainAll, top, 'seed ' + cs + ': swap ' + mv0 + ' mid-chain: the judge counts ' + jm.chainAll + ', the game reaches ' + top); moveChecked++; if (top < most) cutFound++; }
+    }
     if (jm.dead || jm.chainAll < most) return;
     var cj = { bot: {}, board: gb, m: { hold: hold, at: gb.clock }, arrivals: [], attacker: at, judged: {}, dropped: {}, tight: false };
     var Rj = { list: [{ chain: '<' + most }], aims: [{ chain: '<' + most }], keep: null, by: null, under: false, F: { us: { material: 99, topped: false, breakWaits: false }, enemy: { topped: false } } };
@@ -56,7 +62,8 @@ for (var cs = 1; cs <= 40 && counted < 3; cs++) {
   });
   counted++;
 }
-assert.ok(counted >= 2 && listChecked > 0, 'boards caught mid-chain: ' + counted + ', moves held to the list there: ' + listChecked);
+assert.ok(counted >= 2 && listChecked > 0 && moveChecked > 0, 'boards caught mid-chain: ' + counted + ', moves held to the list there: ' + listChecked + ', moves held to the game: ' + moveChecked);
+console.log('ok: mid-chain -- ' + moveChecked + ' swaps judged as the game counts them, ' + cutFound + ' of them cut the chain short');
 
 // THE DECISION: every mode, on boards a few seconds in -- it runs, ranks in order, and every line ranked fits the list
 var modes = ['finish them', 'pressure', 'big chain', 'build'], decided = 0;
