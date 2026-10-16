@@ -72,3 +72,23 @@ for (var seed = 1; seed <= 150 && busyLines < 30; seed++) {
 assert.ok(busyLines >= 20, 'lines found on busy boards: ' + busyLines);
 assert.strictEqual(busyBroke, busyLines, 'every line the break search finds on a busy board breaks as the judge plays it: ' + busyBroke + ' of ' + busyLines);
 console.log('ok: busy boards -- ' + busyBroke + ' of ' + busyLines + ' break lines found while a slab pops break as the judge plays them');
+
+// THE BREAKS OFFERED ARE THE BREAKS FOUND: every candidate the break search's proposer offers breaks as the judge plays it -- a line found
+// is offered whole, never its first swap alone
+var PROP = require('./gambit_propose.js'), offered = 0, offeredBroke = 0;
+for (seed = 1; seed <= 80 && offered < 30; seed++) {
+  var ob = PA.game({ level: 10, seed: seed, countdown: false });
+  for (f = 0; f < 150 + (seed % 6) * 40; f++) ob.run();
+  ob.receiveGarbage([{ width: 3 + seed % 4, height: 1 + seed % 2, isChain: false, isMetal: false }]);
+  for (f = 0; f < 120 + (seed % 7) * 15; f++) ob.run();
+  if (ob.gameOverClock > 0 || !SH.lowestGarbageRow(ob)) continue;
+  var obr = SH.breakMoves(S, ob, hold, [], 1, 0, Date.now() + 200, null, null, { touchInPop: true, near: true });
+  PROP.breaks({ br: obr }).forEach(function (k) {
+    var jo = A.judge(ob, hold, k.seq, [], { settled: !!k.settled });
+    if (jo.dead) return;
+    offered++; if (jo.made.broke > 0) offeredBroke++;
+  });
+}
+assert.ok(offered >= 15, 'break candidates offered: ' + offered);
+assert.strictEqual(offeredBroke, offered, 'every break candidate offered breaks as the judge plays it: ' + offeredBroke + ' of ' + offered);
+console.log('ok: breaks offered -- ' + offeredBroke + ' of ' + offered + ' break candidates break as the judge plays them');

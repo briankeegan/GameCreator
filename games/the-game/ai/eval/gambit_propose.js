@@ -63,8 +63,9 @@ function breaks(c) {
   if (!br || !br.depth) return out;
   var play = br.lineup ? 'lineup break' : 'break search', x = function () { return { broke: 6, done: br.at || null, fire: br.at || null }; };
   if (br.path && br.path.length) out.push(cand(play, br.path, x(), -1));
-  // (a line-up is the whole line: two swaps in the pop, or one now and one once the pop is over -- 'ready', judged settle by settle)
-  Object.keys(br.moves || {}).forEach(function (k) {
+  // (a line-up is the whole line: two swaps in the pop, or one now and one once the pop is over -- 'ready', judged settle by settle. A
+  // search that found a line (path) names its first swap in moves: the line is the break, its first swap alone is not offered as one)
+  if (!(br.path && br.path.length)) Object.keys(br.moves || {}).forEach(function (k) {
     var k1 = cand(play, br.lines && br.lines[k] ? br.lines[k] : [k.split(',').map(Number)], x(), -1);
     if (k1 && br.lineup === 'ready' && br.lines && br.lines[k]) k1.settled = true;
     out.push(k1);
