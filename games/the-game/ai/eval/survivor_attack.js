@@ -379,6 +379,23 @@ module.exports = function (opts) {
     s.drop([r0].concat(outs.filter(function (x) { return x && !x.dead; })));
     return bestL;
   }
+  // THE FIRST CLEAR OF A LINE THAT IS TO CLEAR NOTHING: each step played on the engine to the board's settle (falls and all), in turn;
+  // the index of the first that clears panels and breaks no garbage, -1 if none does (or the line cannot be played on)
+  function firstClear(board, hold, seq, arrivals) {
+    var s = search();
+    s.reset();
+    var n = s.root(board.copy(), hold, arrivals || [], false), made = [], at = -1;
+    for (var k = 0; k < seq.length; k++) {
+      var out = s.advanceMany([[n, 'settle', seq[k], 0]], true)[0];
+      if (!out || out.dead) break;
+      made.push(out);
+      var st = s.stepStats(out);
+      if (st.cleared > 0 && !((st.broke || 0) > 0)) { at = k; break; }
+      n = out;
+    }
+    if (made.length) s.drop(made);
+    return at;
+  }
   // A LINE PLAYED ON (the rest of a line begun): each step played on the engine to the board's settle, as the planner plays a line; what
   // its last step makes ({ combo, chain, broke, cells, earned, done, fire, ats, wait }, as the planner's lines), or null when a step is
   // not legal or the board dies. o.settleFirst: the rest of a line, whose next step is pressed once the board has settled from the last
@@ -408,24 +425,5 @@ module.exports = function (opts) {
     if (made.length) s.drop(made);
     return res;
   }
-  // THE JUDGE OF A MOVE BETWEEN BLOCKS (readyAfter): the move is played on the engine and the board run on to the next block's landing,
-  // the garbage on its way landing at its time; ready when a swap then breaks that block. true / false, or null with no block on its way.
-  // Every attack is asked this: attacking goes on between the blocks, and never leaves the next one with no break.
-  function readyAfter(board, hold, mv, arrivals) {
-    var first = null;
-    (arrivals || []).forEach(function (a) { if (first === null || a.at < first) first = a.at; });
-    if (first === null) return null;
-    var s = search();
-    s.reset();
-    var root = s.root(board.copy(), hold, arrivals, false), wait = Math.max(1, first + 2);
-    var n1 = s.advance(root, 'swap', mv, 0);
-    if (!n1 || n1.dead) return false;
-    var land = s.advance(n1, 'long', null, Math.max(1, wait - (n1.t - root.t)));
-    if (!land || land.dead) { s.drop([n1]); return false; }
-    var base = s.breaks(land), outs = s.advanceMany(land.b.legalSwaps().map(function (m) { return [land, 'swap', m, 0]; }), true), any = false, made = [n1, land];
-    outs.forEach(function (out) { if (out && !out.dead) { made.push(out); if ((out.brk !== undefined ? out.brk : s.breaks(out)) > base) any = true; } });
-    s.drop(made);
-    return any;
-  }
-  return { plan: plan, extend: extend, readyFor: readyFor, readyAfter: readyAfter, readyInTime: readyInTime, level: level, shapeOf: shapeOf, replay: replay };
+  return { plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear, replay: replay };
 };

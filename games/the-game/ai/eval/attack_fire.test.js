@@ -3,7 +3,7 @@
 // settles past the deadline is kept; every line kept has its last swap by the deadline, and one time per swap. Run: node attack_fire.test.js
 var assert = require('assert'), path = require('path');
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
-var ATTACK = require('./survivor_attack.js'), SH = require('./survivor_shared.js');
+var ATTACK = require('./survivor_attack.js');
 var at = ATTACK({ reaction: 6, swapGap: 2, cursorMoveFrames: 4 });
 var chain2 = function (made) { return made.chain >= 2; };
 var found = 0, late = 0, carried = 0, carriedSame = 0;
@@ -42,18 +42,14 @@ for (var seed = 1; seed <= 40 && found < 3; seed++) {
 assert.ok(found >= 3, 'chain lines found on real boards: ' + found);
 assert.ok(late >= 1, 'a line whose cascade settles past the deadline was kept');
 assert.ok(carried === 0 || carriedSame >= 1, 'a line carried on makes its chain: ' + carriedSame + ' of ' + carried);
-// READY UNDER GARBAGE: a board with garbage on it and another block on its way is asked whether a break is ready when that block lands
-var rb = PA.game({ level: 10, seed: 3, countdown: false }), rf, RH = { left: 0, started: false };
-for (rf = 0; rf < 150; rf++) rb.run();
-rb.incoming = [{ width: 6, height: 2 }];
-for (rf = 0; rf < 260 && !SH.lowestGarbageRow(rb); rf++) rb.run();
-assert.ok(SH.lowestGarbageRow(rb), 'garbage on the board');
-var rr = at.readyFor(rb, RH, [{ at: 120, width: 6, height: 1 }], { ms: 200 });
-assert.ok(rr && (rr.ready === true || rr.ready === false) && rr.at === 120, 'ready is judged for the block on its way, garbage on the board or not');
-// THE JUDGE BETWEEN BLOCKS: a move is judged by whether the next block can be broken once it lands; with nothing on its way, no judgement
-var ra = at.readyAfter(rb, RH, rb.legalSwaps()[0], [{ at: 120, width: 6, height: 1 }]);
-assert.ok(ra === true || ra === false, 'a move is judged against the block on its way');
-assert.strictEqual(at.readyAfter(rb, RH, rb.legalSwaps()[0], []), null, 'nothing on its way: nothing to be ready for');
 console.log('carried on: ' + carriedSame + ' of ' + carried + ' make the chain they were planned to');
+// A LINE THAT IS TO CLEAR NOTHING, played to the board's settle: its first step that clears panels and breaks nothing -- a clear made by
+// a panel falling into a match too
 var H = { left: 0, started: false };
+var three = PA.puzzle(['000000', '000000', '000000', '000000', '112100', '345612'].join(''));
+assert.strictEqual(at.firstClear(three, H, [[2, 3]]), 0, 'a swap that makes a three clears');
+assert.strictEqual(at.firstClear(three, H, [[1, 1], [2, 3]]), 1, 'the second step clears');
+assert.strictEqual(at.firstClear(three, H, [[1, 1]]), -1, 'a swap that makes nothing does not');
+var fall = PA.puzzle(['000000', '000000', '000000', '000200', '220000', '345612'].join(''));
+assert.strictEqual(at.firstClear(fall, H, [[3, 3]]), 0, 'a panel swapped over a hole falls into a three: a clear');
 console.log('ok: every step its own time -- ' + found + ' boards, ' + late + ' kept with the cascade settling past the deadline');

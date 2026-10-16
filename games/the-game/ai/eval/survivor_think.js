@@ -808,7 +808,7 @@ module.exports = function think(cfg) {
       // deadline (else what its `else` asks). The line's first swap ranks before every other move; the survival search alone stands
       // over it, so the aim is chased while the board lives, under garbage or not. The rest of the line is played on (attackLine).
       var FGmat = null, FGland = null, FGdies = null;
-      bot._idleMs = 0; bot._gambitWalk = null; bot._gambit = null; bot._gambitRaise = 0; bot._gambitLines = null; bot._gambitUrgent = false; bot._gambitOpen = false; bot._gambitBreak = null;
+      bot._idleMs = 0; bot._gambit = null; bot._gambitRaise = 0; bot._gambitLines = null; bot._gambitUrgent = false; bot._gambitOpen = false; bot._gambitBreak = null;
       if (gambitRules) {
         var GP = cfg.profile.gambit, FG = { us: GAMBIT.facts(board, arrivals, m.topped), enemy: GAMBIT.enemyFacts(m.opp) };
         var apG = null, exG = null, tablesG = gambitRules.get(m.opp && m.opp.name), pickG = GP.mode ? GAMBIT.named(tablesG, GP.mode) : GAMBIT.choose(tablesG, FG), lineG = null, setupG = null, readyG = false, playG = null, triedG = 0;
@@ -821,10 +821,11 @@ module.exports = function think(cfg) {
           var byG = GAMBIT.deadline(FG, pickG.rule.by), listG = GAMBIT.aimsOf(pickG.rule), endAt = listG.length, endG = null;
           for (var la = 0; la < listG.length; la++) if (typeof listG[la] === 'string') { endAt = la; endG = listG[la]; break; }
           var aimsG = listG.slice(0, endAt);
+          // (garbage on our board, or topped out: every entry breaks it too -- the entry and a break in one line; none, and the
+          // default's own move, which breaks it, is played)
           var underG = tablesG.underGarbage !== 'ignore' && (FG.us.contact !== null || FG.us.topped);
-          // (under garbage an entry is the entry as written: one that breaks too is better, but firing it and breaking with a three after
-          // is as good a way)
-          if (underG) endG = 'default';
+          var listAimsG = aimsG;   // (as written: a line-up of a slab popping is the break already made, so it is held to these)
+          if (underG) { aimsG = aimsG.map(function (a) { return Object.assign({}, a, { break: true }); }); endG = 'default'; }
           // (under garbage the deadline is a break's, plays.md: before the board dies -- the rule's `by` is an attack's, the enemy recovering,
           // and does not bind a break; the next block landing is the level's and the ready's)
           if (underG) byG = GAMBIT.breakBy(FG);
@@ -839,24 +840,23 @@ module.exports = function think(cfg) {
             // (with garbage left on the board the line-up does both, in this order: an entry that breaks it again, the entry as written, then
             // any line-up that breaks it again -- the panels it turns into matched against the rows still above)
             var popG = SH.popLeft(board) > 0, xMsG = popG ? (GP.ms || 80) : (GP.extendMs || 40);
-            var xAimsG = underG ? aimsG.concat([{ break: true }]) : aimsG;
+            var xAimsG = !popG ? aimsG : underG ? aimsG.concat(listAimsG, [{ break: true }]) : listAimsG;
             if ((cascadeLive(board, true) || popG) && GP.extend !== false && Math.min(xMsG, leftG()) >= 20) {
               triedG++;
               exG = attacker.extend(board, m.hold, { ms: Math.min(xMsG, leftG()), width: GP.width || 40, depth: GP.extendDepth || 6, keep: keepF, by: byG || undefined,
                                                      aims: xAimsG.map(function (a) { return function (made) { return GAMBIT.meets(a, made); }; }), near: function (made) { return GAMBIT.nearList(xAimsG, made); } });
               if (exG.seq.length && exG.aimIndex >= 0 && exG.cells > exG.base) lineG = { ap: exG, aimIndex: exG.aimIndex, extend: true };
             }
-            // (READY for the block on its way, garbage on the board or not -- plays.md: ready and level for garbage that is coming; under a
-            // stream there is always some on the board, and a block that lands with no break ready is a board losing health. Between the
-            // attacks: every planned line kept leaves the next block's break, and the ready play is offered beside them)
+            // (READY: garbage on its way and none on the board -- the frames until the next block lands, 0 for one queued to drop once the
+            // board settles: every line kept must leave its break)
             var readyAtG = null;
-            arrivals.forEach(function (a) { if (readyAtG === null || a.at < readyAtG) readyAtG = a.at; });
-            if (readyAtG === null && !underG && (board.incoming || []).length) readyAtG = 0;
-            // (the search is led by the list, a break of any kind nearer than none: GAMBIT.lead)
+            if (!underG) { arrivals.forEach(function (a) { if (readyAtG === null || a.at < readyAtG) readyAtG = a.at; }); if (readyAtG === null && (board.incoming || []).length) readyAtG = 0; }
+            // (the search is led in the pick's order, plans/gambit.md section 5: under garbage the must-do first -- a break that buys stop
+            // time (a combo or chain break) over a plain break, then the most garbage broken -- and the list only between equal breaks; with
+            // no garbage, the list)
             var nearG0 = function (made) { return GAMBIT.lead(aimsG, made, underG); };
             // (idle time is planning time: after a decision that held or had nothing to play, the planner has all the time the decision
             // has, not its usual share -- the big chain is planned for, not waited for)
-            // (the idle plan's deadline is its answer's: the frame the question is for)
             var usualG = Math.min(GP.ms || 80, leftG()) - (popG && exG ? exG.ms : 0);
             var msG = bot._gambitIdle ? Math.max(usualG, leftG()) : usualG;
             var idleExtraG = msG - Math.max(0, usualG);
@@ -871,9 +871,8 @@ module.exports = function think(cfg) {
             }
             var nx = exG && exG.nearest, np = apG && apG.nearest && apG.nearest.seq.length ? apG.nearest : null;
             var lvU = underG && attacker ? attacker.level(board, m.hold, arrivals, { by: FG.us.nextLands > 0 ? FG.us.nextLands : (byG || undefined) }) : null;
-            var rdG = readyAtG !== null && arrivals.length && attacker ? attacker.readyFor(board, m.hold, arrivals, { ms: Math.max(20, Math.min(60, leftG())) }) : null;
-            // (level and setup are offered whenever they are there, a block on its way or not: holding is almost never the play)
-            var lvG = !underG && !(rdG && !rdG.ready && rdG.setup) && attacker ? attacker.level(board, m.hold, arrivals, { by: readyAtG || undefined }) : null;
+            var rdG = !underG && readyAtG !== null && arrivals.length && attacker ? attacker.readyFor(board, m.hold, arrivals, { ms: Math.max(20, Math.min(60, leftG())) }) : null;
+            var lvG = !underG && readyAtG !== null && !(rdG && !rdG.ready && rdG.setup) && attacker ? attacker.level(board, m.hold, arrivals, { by: readyAtG || undefined }) : null;
           }
           // THE RAISE (the file's or the rule's `raise: { to }`): below `to` rows, not under garbage, not topped and no chain running, the stack
           // is raised first -- held down to `to` in one press, not a row a decision -- and the list played from the panels it brings
@@ -883,9 +882,18 @@ module.exports = function think(cfg) {
           bot._gambitRaise = upG ? toG : 0;
           if (FG.us.contact !== null || FG.us.topped) bot._gambitHit = true;
           bot._gambitOpen = !!(upG && !bot._gambitHit);
-          // THE PICK: every play found is one candidate, ranked by GAMBIT.tier -- everything goes off the mode's list (gambit.js)
+          // THE PICK (plans/gambit.md, section 5): every play found is one candidate -- what it makes (combo, chain), what it does to the
+          // garbage (broke), what it sends (cells), the stop time it buys, when it is done -- and they are taken in the plan's order:
+          //   live (the survival search, over gambit's ranking) and in time (each search keeps only lines done by their deadline)
+          //   MUST-DO, garbage on the board: the breaks -- the list's entries that break first, then one that buys stop time (a combo or
+          //     chain break) over a plain break, then the most garbage broken
+          //   AIM: the plays that meet the rule's list, in its order
+          //   BEST THAT FITS (anything left, garbage on the board or not): a break that sends, then garbage sent (enemy topped: combos
+          //     first, else chains), garbage broken, stop time -- a chain that breaks nothing buys a topped board its stop time
+          //   NOTHING FITS: ready, toward a break, level, setup -- then hold
+          //   a clear that breaks nothing, sends nothing and buys nothing is below hold: played only when even holding is not proven to live
           // Each candidate's first swap carries the rest of its line (linesG). (pace, step 7: below.)
-          var orderG = [], linesG = {}, candsG = [], keepCarryG = false, carryWhyG = '-', nAimG = aimsG.length;
+          var orderG = [], linesG = {}, candsG = [], enemyOutG = !!FG.enemy.topped, nAimG = aimsG.length;
           // (NO SWAP BACK: a swap of the same two panels the last one swapped puts the board back as it was -- it is no play of gambit's
           // unless it clears; played over and over it is a loop that spends the time the garbage gives)
           var idsAtG = function (mv) { var row = board.panels[mv[0]], a = row && row[mv[1]], b = row && row[mv[1] + 1]; return a && b && a.id != null && b.id != null ? [a.id, b.id].sort().join(',') : null; };
@@ -904,14 +912,22 @@ module.exports = function think(cfg) {
             var fireX = x.fire != null ? x.fire : x.done;
             if (byG && fireX && fireX > byG) return;
             // (a play that clears nothing is judged by what its first swap does, on this board: one that clears is a clear -- below hold)
-            var tg = GAMBIT.tier(play, x, aim, underG, !!FG.us.falling), tier = tg.tier, sub = tg.sub;
+            // (a setup, level or ready is to clear nothing: played on the engine to the board's settle, step by step, it ends before its
+            // first step that clears panels and breaks nothing, and when that is its first, the play is a clear -- below hold. A line toward
+            // a break is not: the clears on its way are how its panels reach the garbage)
+            if ((play === 'setup' || play === 'level' || play === 'ready') && attacker) {
+              var fc = attacker.firstClear(board, m.hold, seq, arrivals);
+              if (fc === 0) { play = 'clear'; x = { combo: 3, chain: 1 }; combo = 3; chain = 1; broke = 0; }
+              else if (fc > 0) seq = seq.slice(0, fc);
+            }
+            var tg = GAMBIT.tier(play, x, aim, underG, enemyOutG, !!FG.us.topped), tier = tg.tier, sub = tg.sub;
             candsG.push({ play: play, seq: seq, tier: tier, sub: sub, ap: { seq: seq, done: x.done || null, fire: fireX || null, ats: x.ats || null, chain: chain, combo: combo, broke: broke }, aim: aim, extend: !!extend, near: x.near || 0 });
           };
           if (pickG && predsG.length) {
             if (apG && apG.perAim) apG.perAim.forEach(function (pa, i) { if (pa) candG('entry', pa.seq, pa, i); });
             if (exG && exG.seq.length && exG.aimIndex >= 0) {
               // (the extension's aims: under a pop with garbage left, the entries that break, the entries as written, then any break again)
-              var xi = exG.aimIndex, xa = xi < nAimG ? xi : -1;
+              var xi = exG.aimIndex, xa = !(popG && underG) ? xi : xi < nAimG ? xi : xi < 2 * nAimG ? xi - nAimG : -1;
               candG(popG ? 'lineup' : 'extend', exG.seq, Object.assign({ broke: exG.broke }, exG), xa, true);
             }
             if (nx) candG(popG ? 'lineup' : 'extend', nx.seq, nx, -1, true);
@@ -926,62 +942,40 @@ module.exports = function think(cfg) {
             if (rdG && !rdG.ready && rdG.setup) candG('ready', [rdG.setup], {}, -1);
             if (lvU) candG('level', [lvU.move], {}, -1);
             if (lvG) candG('level', [lvG.move], {}, -1);
-            if (apG && apG.setup) candG('setup', [apG.setup], {}, -1);
+            if (apG && apG.setup && typeof readyAtG !== 'number') candG('setup', [apG.setup], {}, -1);
+            if (apG && apG.stopBest) candG('scramble', apG.stopBest.seq, apG.stopBest, -1);
             if (apG && apG.lowest) candG('clear', apG.lowest.seq, apG.lowest, -1);
             // (A LINE BEGUN IS PLAYED ON, each step at its own time: a planned line presses each step once the board has settled from the
             // last, as the planner played it. The rest of the last decision's line is played on the engine from this board, the board let
             // settle first; while its steps are legal, the board lives and the last still makes what the line was begun for, in time, it
-            // is carried on -- its next step pressed once the board has settled -- rather than a different line begun each decision and
-            // none finished)
+            // is carried on -- first of its tier: its next step pressed once the board has settled, held for until then -- rather than a
+            // different line begun each decision and none finished)
             var CG = bot._gambitCarry;
-            var firstAimG = function (rx, ai) { for (var q = 0; q < aimsG.length; q++) if (GAMBIT.meets(aimsG[q], rx)) return q; return ai; };
             if (CG && CG.rest.length && attacker) {
-              // (its next step pressed now, if the rest still makes what the line was begun for; else once the board has settled -- the
-              // wait is the step's own time, held for, the line kept; neither, and the line is dropped)
-              // (it still makes what it was begun for: an entry of the list -- any, the timing of a step played for real is never the
-              // planner's to the frame -- or a break, when it was begun as one)
-              var makesG = function (rx) { return !!rx && ((CG.broke && rx.broke > 0) || aimsG.some(function (a) { return GAMBIT.meets(a, rx); }) || (!CG.aim && (rx.chain >= 2 || rx.combo >= 4))); };
-              var aiG = -1; if (CG.aim) aimsG.forEach(function (a, i) { if (aiG < 0 && JSON.stringify(a) === JSON.stringify(CG.aim)) aiG = i; });
-              var restG = CG.rest.map(function (mv) { return mv.slice(); });
-              var nowG = attacker.replay(board, m.hold, CG.rest, arrivals);
-              if (makesG(nowG)) { aiG = firstAimG(nowG, aiG); candG('carry', restG, nowG, aiG); carryWhyG = 'now'; }
-              else {
-                var rxG = attacker.replay(board, m.hold, CG.rest, arrivals, { settleFirst: true });
-                if (makesG(rxG)) { aiG = firstAimG(rxG, aiG); var nW = candsG.length; candG('carry', restG, rxG, aiG); if (candsG.length > nW) candsG[nW].wait = true; keepCarryG = true; carryWhyG = 'wait'; }
-                else carryWhyG = !nowG && !rxG ? 'notlegal' : 'nomake';
+              var rxG = attacker.replay(board, m.hold, CG.rest, arrivals, { settleFirst: true });
+              if (rxG && (!CG.broke || rxG.broke > 0) && (CG.aim ? GAMBIT.meets(CG.aim, rxG) : (rxG.chain >= 2 || rxG.combo >= 4 || rxG.broke > 0))) {
+                var aiG = -1; if (CG.aim) aimsG.forEach(function (a, i) { if (aiG < 0 && JSON.stringify(a) === JSON.stringify(CG.aim)) aiG = i; });
+                var nG = candsG.length;
+                candG(rxG.wait > 1 ? 'carry wait' : 'carry', CG.rest.map(function (mv) { return mv.slice(); }), rxG, aiG);
+                // (first of its tier when its next step is due now; one that must wait for the board to settle ranks as any other line,
+                // the wait counted in its time -- holding for it never beats a break to be had at once)
+                if (candsG.length > nG) { candsG[nG].wait = rxG.wait > 1; if (!candsG[nG].wait) candsG[nG].sub = [-Infinity].concat(candsG[nG].sub); }
               }
             }
           }
-          var sortG = function () { candsG.sort(function (x, y) { if (x.tier !== y.tier) return x.tier - y.tier; for (var q = 0; q < x.sub.length; q++) if (x.sub[q] !== y.sub[q]) return x.sub[q] - y.sub[q]; return 0; }); };
-          sortG();
-          // (ALWAYS READY, WHILE ATTACKING -- never making a break miss its deadline: firing the entry or a set-up move is kept
-          // only if, its first move played, the next block on its way can still be broken when it lands (readyAfter, on the engine). The
-          // leading ones are judged, as many as the decision's time allows)
-          if (attacker && arrivals.length) {
-            var judgedG = 0, demotedG = false;
-            for (var jg = 0; jg < candsG.length && judgedG < 4 && leftG() > 15; jg++) {
-              var cj = candsG[jg];
-              if ((cj.tier !== 1 && cj.tier !== 3) || cj.wait) continue;   // (the entry and the set-up; a break is never held back: garbage can always be broken)
-              judgedG++;
-              if (attacker.readyAfter(board, m.hold, cj.seq[0], arrivals) === false) { cj.unready = true; demotedG = true; }
-            }
-            if (demotedG && candsG.some(function (c) { return !c.unready; })) candsG = candsG.filter(function (c) { return !c.unready; });
-          }
+          candsG.sort(function (x, y) { if (x.tier !== y.tier) return x.tier - y.tier; for (var q = 0; q < x.sub.length; q++) if (x.sub[q] !== y.sub[q]) return x.sub[q] - y.sub[q]; return 0; });
           var topG = candsG[0] || null;
           // (the raise due but the board busy -- a clear or a fall still going, which locks the rise: nothing new is begun, so the board
           // comes to rest and the next decision raises; a chain already falling is still run on)
           var waitG = lowG && !upG && !(topG && topG.extend);
           var lineG = upG || waitG || !topG ? null : topG, holdG = !upG && (waitG || !topG || topG.tier >= 6 || !!topG.wait);
           if (lineG) playG = lineG.play; else if (upG) playG = 'raise'; else if (holdG) playG = 'hold';
-          // (why a hold: no move found at all, the raise waiting for the board to settle, or only a clear left)
-          var holdWhyG = holdG ? (waitG ? 'raisewait' : !topG ? 'nomove' : topG.wait ? 'linewait' : 'onlyclear') : null;
           // (the line begun, to be carried on: a planned line of more than one swap that makes what it is played for)
           // (the planner's lines press each step once the board has settled: the frame loop is not handed the rest to press after the
           // first, the next decision carries it on)
-          var SETTLED = ['entry', 'nearest', 'break line', 'carry', 'clear'];
+          var SETTLED = ['entry', 'nearest', 'break line', 'carry', 'carry wait', 'clear', 'scramble'];
           var carryG = lineG && !lineG.wait && lineG.seq.length > 1 && lineG.tier <= 3 && SETTLED.indexOf(lineG.play) >= 0;
-          if (lineG && lineG.wait) { bot._gambitWalk = lineG.seq[0]; /* the line begun waits for its next step's time: it stays as it is */ }
-          else if (!carryG && keepCarryG && !lineG) { /* nothing else chosen: the waiting line stays */ }
+          if (lineG && lineG.wait) { /* the carried line is held for: it stays as it is */ }
           else bot._gambitCarry = carryG ? { rest: lineG.seq.slice(1).map(function (mv) { return mv.slice(); }), aim: lineG.aim >= 0 ? aimsG[lineG.aim] : null, broke: (lineG.ap.broke || 0) > 0 } : null;
           var prG = bot.preferRank || function () { return Infinity; };
           var addG = function (mv, seq, settled) { var k = mv === 'raise' || mv === 'hold' ? mv : arbKey(mv); if (orderG.indexOf(k) < 0) { orderG.push(k); if (seq && seq.length > 1 && !settled) linesG[k] = seq.slice(1); } };
@@ -1010,7 +1004,7 @@ module.exports = function think(cfg) {
           FGmat = FG.us.material; FGland = FG.us.nextLands; FGdies = FG.us.dies;
           var plG = apG ? [apG.ms, apG.quick ? apG.quick.seq.length : 0, apG.nearest ? apG.nearest.seq.length : 0, (apG.perAim || []).filter(Boolean).length].join('/') + (nx ? '+x' : '') : 'none';
           bot._gambit = { pl: plG, table: pickG.table, under: !!underG, rule: pickG.index, name: pickG.rule.name || null, want: orderG[0] || null, options: orderG.length, order: orderG, found: !!lineG, play: playG || (lineG ? (lineG.aimIndex >= 0 ? 'entry' : 'nearest') : null), entry: lineG ? lineG.aimIndex : -1, near: lineG && lineG.near || 0, quick: !!(lineG && lineG.quick), ms: apG ? apG.ms : 0, setup: !!setupG, ready: readyG, readyAt: typeof readyAtG === 'number' ? readyAtG : null, raise: upG ? toG : 0, wait: !!waitG, extend: !!(lineG && lineG.extend), tried: triedG, br: br ? [br.depth, br.toward ? br.toward.length : -1, br.lineup ? 1 : 0, br.touch ? 1 : 0] : null, brMs: brMs, pop: SH.popLeft(board), xs: exG ? [exG.seq.length, exG.chain, exG.cells, exG.base, exG.nearest ? exG.nearest.chain : 0] : null,
-                          chain: lineG ? lineG.ap.chain : 0, combo: lineG ? lineG.ap.combo || 0 : 0, broke: lineG ? lineG.ap.broke || 0 : 0, tier: lineG ? lineG.tier : (holdG ? 5 : 0), seq: lineG ? lineG.seq.map(function (mv) { return mv.slice(); }) : null, holdWhy: holdWhyG, cands: candsG.length, carry: carryWhyG, swaps: lineG ? lineG.ap.seq.length : 0, done: lineG ? lineG.ap.done : null, fire: lineG ? lineG.ap.fire : null, ats: lineG && lineG.ap.ats ? lineG.ap.ats.join('/') : null, by: byG };
+                          chain: lineG ? lineG.ap.chain : 0, combo: lineG ? lineG.ap.combo || 0 : 0, broke: lineG ? lineG.ap.broke || 0 : 0, tier: lineG ? lineG.tier : (holdG ? 5 : 0), seq: lineG ? lineG.seq.map(function (mv) { return mv.slice(); }) : null, swaps: lineG ? lineG.ap.seq.length : 0, done: lineG ? lineG.ap.done : null, fire: lineG ? lineG.ap.fire : null, ats: lineG && lineG.ap.ats ? lineG.ap.ats.join('/') : null, by: byG };
         }
       }
       if (process.env.GC_SURVIVOR_WHY && bot.preferRank) { var pr0 = bot.preferRank; bot.preferRank = function (c, i) { var r = pr0.call(this, c, i); ranked.push(key(c) + '=' + r); return r; }; }
@@ -1053,9 +1047,6 @@ module.exports = function think(cfg) {
           d = { kind: 'swap', move: mvB, overruled: true, src: 'break' }; attackLine = bot._gambitBreak.rest || null; attackMove = attackLine ? mvB : null;
         }
       }
-      // (A LINE WAITING FOR ITS STEP'S TIME: the board settles first, as the engine says it will -- the cursor walks to the step's panels
-      // meanwhile, so the swap goes off the frame the board has settled; nothing is swapped yet)
-      if (bot._gambitWalk && d && d.kind === 'hold') d = { kind: 'walk', move: bot._gambitWalk, overruled: true, src: 'linewait' };
       if (arbProps && d && d.kind === 'swap' && d.move) bot._swapLog = (bot._swapLog || []).filter(function (e) { return m.at - e.at < 400; }).concat([{ pk: arbKey(d.move), at: m.at }]).slice(-12);
       if (arbProps && d) {
         var ap0 = d.kind === 'swap' && d.move ? arbProps[arbKey(d.move)] : d.kind === 'raise' ? arbProps.raise : null;
@@ -1280,7 +1271,7 @@ module.exports = function think(cfg) {
         bot._gambit.verdict = vW;
       }
       // (one line a decision on stderr, the survivor's log: what gambit chose, what was played and by whom, the verdict, the material)
-      if (bot._gambit) { var gl = bot._gambit; console.error('GAMBITD ' + m.at + ' ' + (gl.name || '') + ' play=' + (gl.play || '-') + ' want=' + (gl.want || '-') + ' got=' + (d.kind === 'swap' && d.move ? d.move.join(',') : d.kind) + ' src=' + (d.src || (d.overruled ? 'overrule' : 'default')) + ' v=' + (gl.verdict || '-') + ' under=' + (gl.under ? 1 : 0) + ' mat=' + FGmat + ' chain=' + (gl.chain || 0) + ' combo=' + (gl.combo || 0) + ' broke=' + (gl.broke || 0) + ' tier=' + (gl.tier || 0) + ' hold=' + (gl.holdWhy || '-') + ' cands=' + (gl.cands || 0) + ' carry=' + (gl.carry || '-') + ' by=' + (gl.by || '-') + ' plan=' + (gl.pl || '-') + ' done=' + (gl.done != null ? gl.done : '-') + ' fire=' + (gl.fire != null ? gl.fire : '-') + ' ats=' + (gl.ats || '-') + ' swaps=' + (gl.swaps || 0) + ' land=' + (FGland != null ? FGland : '-') + ' dies=' + (FGdies != null ? FGdies : '-') + ' casc=' + (cascadeLive(board, true) ? 1 : 0) + ' pop=' + SH.popLeft(board) + ' stop=' + ((board.stopTime || 0) + (board.preStopTime || 0))); }
+      if (bot._gambit) { var gl = bot._gambit; console.error('GAMBITD ' + m.at + ' ' + (gl.name || '') + ' play=' + (gl.play || '-') + ' want=' + (gl.want || '-') + ' got=' + (d.kind === 'swap' && d.move ? d.move.join(',') : d.kind) + ' src=' + (d.src || (d.overruled ? 'overrule' : 'default')) + ' v=' + (gl.verdict || '-') + ' under=' + (gl.under ? 1 : 0) + ' mat=' + FGmat + ' chain=' + (gl.chain || 0) + ' combo=' + (gl.combo || 0) + ' broke=' + (gl.broke || 0) + ' tier=' + (gl.tier || 0) + ' by=' + (gl.by || '-') + ' plan=' + (gl.pl || '-') + ' done=' + (gl.done != null ? gl.done : '-') + ' fire=' + (gl.fire != null ? gl.fire : '-') + ' ats=' + (gl.ats || '-') + ' swaps=' + (gl.swaps || 0) + ' land=' + (FGland != null ? FGland : '-') + ' dies=' + (FGdies != null ? FGdies : '-') + ' casc=' + (cascadeLive(board, true) ? 1 : 0) + ' pop=' + SH.popLeft(board) + ' stop=' + ((board.stopTime || 0) + (board.preStopTime || 0))); }
       if (bot._gambit) {
         var pr = d.kind === 'swap' && d.move && board.panels[d.move[0]], pa = pr && pr[d.move[1]], pb = pr && pr[d.move[1] + 1];
         var pairNow = pa && pb && pa.id != null && pb.id != null ? [pa.id, pb.id].sort().join(',') : (d.kind === 'swap' ? null : bot._gambitLastPair);

@@ -46,11 +46,7 @@ function facts(board, arrivals, topped) {
   // (dies: the frames until the board is lost if nothing is done -- the stop time, the rise to the top row unless already topped, then
   // the health it drains there)
   var dies = topped ? stop + (board.health || 0) : CK.framesToTop(board) + (board.health || 0);
-  // (falling: garbage still coming down -- on the board falling, or queued to drop now -- not all of it has landed yet)
-  var falling = (board.incoming || []).length > 0 && stop === 0;
-  for (r = 1; r <= H && !falling; r++) for (c = 1; c <= 6 && !falling; c++) { var fp = board.panels[r] && board.panels[r][c]; if (fp && fp.isGarbage && fp.state === 'falling') falling = true; }
   return {
-    falling: falling,
     topped: !!topped, stop: stop, height: top, material: material, contact: garb ? contact : null, dies: dies,
     evenness: Math.max.apply(null, peaks) - Math.min.apply(null, peaks), coming: coming, heavy: coming > 8, nextLands: next
   };
@@ -146,33 +142,28 @@ function nearList(aims, made) {
 // What leads the search: the list -- under garbage its entries ask a break, so a line that breaks nothing is near none of them -- and
 // any line that breaks a little nearer than one that does not, a three included. The pick's order (tier) chooses among what is found.
 function lead(aims, made, under) { return nearList(aims, made) + (under && made.broke > 0 ? 0.5 : 0); }
-// THE PICK: every move is the next step of the ask -- the mode's list entry -- and the ask runs the whole time: while it is built the
-// garbage is broken, for the panels the build is made of, and the board is set up. What kind of break, and what kind of set-up, is the
-// attack's: the one that leaves the board nearest the list. Lower first; x is what the line makes ({ combo, chain, broke, earned, done,
-// near: how near the list it leaves the board }), aim its entry in the list (-1: none), under garbage on the board or topped, falling
-// garbage still coming down. Live and in time are the engine's: a line that dies, or is done after its deadline, is never a candidate.
-//   garbage landed:        1 a break -- an entry that breaks, then the break nearest the attack   2 an entry that breaks nothing
-//                          3 set up the ask
-//   garbage still falling: 1 an entry   3 set up the ask, ready for the landing   4 a break -- not yet: broken before the rest has
-//                          landed, the next block buries the panels it made
-//   no garbage:            1 an entry   3 set up the ask, flattening included
-//   0 in the middle of something: a chain falling, a slab popping, a line begun -- continued first, one that breaks too ahead
-//   5 hold, only with no move; 6 clear (a match that touches no garbage), only for a stack about to top out with nothing else
-function tier(play, x, aim, under, falling) {
+// THE PICK'S TIERS (plans/gambit.md section 5), lower first, and the order within one: x is what the line makes ({ combo, chain, broke,
+// cells, earned, done, near }), aim its entry in the list (-1: none), under garbage on the board or topped, enemyOut the enemy topped.
+//   1 MUST-DO, under garbage: a break -- one whose board keeps the floor first (a break is made below it, but of two the one that leaves
+//     the panels the next break is made of comes first: a three converts more than it spends), then the most garbage broken per frame,
+//     then one that buys stop time, then the most broken; the
+//     list is the aim's (step 4), not the must-do's: a break the list asks for done after the pop ranks below one made during it
+//   2 AIM, no garbage: the list, in its order
+//   3 BEST THAT FITS: garbage sent (enemy topped: combos first, else chains), stop time -- never making a must-do miss its deadline: under
+//     garbage a clear that breaks nothing is only this on a topped board, where the stop time it buys is what keeps the board alive
+//   4 NOTHING FITS: ready, toward a break, level, setup
+//   6 CLEAR and SCRAMBLE, and any clear that breaks nothing, sends nothing and buys nothing: only when there is nothing else (hold is 5)
+function tier(play, x, aim, under, enemyOut, topped) {
   x = x || {};
-  var broke = x.broke || 0, stop = x.earned || 0, near = x.near || 0, brk = under && broke > 0;
-  // (IN THE MIDDLE OF SOMETHING: a chain still falling run on, a slab popping lined up, a line begun carried on -- continued first,
-  // one that breaks too ahead)
-  if (play === 'extend' || play === 'lineup' || play === 'carry') return { tier: 0, sub: [brk ? 0 : 1, aim >= 0 ? aim : 99, -near] };
-  // (garbage landed: the break first -- an entry that breaks, then the break nearest the attack -- then an entry that breaks nothing)
-  if (under && !falling) {
-    if (brk) return { tier: 1, sub: [aim >= 0 ? aim : 99, -near, -broke] };
-    if (aim >= 0) return { tier: 2, sub: [aim, x.done || 0] };
-  }
-  if (aim >= 0) return { tier: 1, sub: [aim, x.done || 0] };
-  if (brk) return { tier: 4, sub: [-near, -broke] };   // (garbage still falling: not yet)
-  if (play === 'clear') return { tier: 6, sub: [-stop] };
-  return { tier: 3, sub: [-near] };
+  var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0, cells = x.cells || 0, stop = x.earned || 0;
+  var clears = combo >= 3 || chain >= 2 || broke > 0 || cells > 0 || play === 'clear' || play === 'scramble';
+  var buys = combo >= 4 || chain >= 2, rate = broke / Math.max(1, x.done || 1);
+  if (under && broke > 0) return { tier: 1, sub: [x.floor === false ? 1 : 0, -rate, buys ? 0 : 1, -broke] };
+  if (play === 'clear' || play === 'scramble') return { tier: 6, sub: [-stop] };   // (only when there is nothing else)
+  if (aim >= 0 && !under) return { tier: 2, sub: [aim, x.done || 0] };
+  if (clears && (buys || cells > 0) && (!under || (topped && buys))) return { tier: 3, sub: [-cells, enemyOut ? -combo : -chain, enemyOut ? -chain : -combo, -stop, -(x.near || 0)] };
+  if (!clears) return { tier: 4, sub: [{ ready: 0, toward: 1, level: 2, setup: 3 }[play] || 4] };
+  return { tier: 6, sub: [-stop] };
 }
 // A rule's priority list: `aims` as written, or aim then else. Entries are aims, or "default" / "hold", which end the list.
 function aimsOf(rule) {
