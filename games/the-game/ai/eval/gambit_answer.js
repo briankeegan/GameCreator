@@ -79,12 +79,14 @@ function lives(c, D) {
   return { d: d, verdict: verdict, holdLives: holdLives, gambits: order.indexOf(keyOf(d)) >= 0, cand: cand, live: live + '/' + searched + '/' + order.length };
 }
 
-// THE RAISE HELD: for every row to the rule's `to`, up to the garbage on its way landing, less a lead to act in
-var RAISE_FRAMES_PER_ROW = 18, RAISE_LEAD = 10;
-function raiseFrames(c, to) {
+// THE RAISE HELD FOR ONE ROW: the engine raises a row a press, a displacement step a frame, so the button is held for the steps the
+// row has left -- up to the garbage on its way landing, less a lead to act in. The next decision sees the board it leaves and decides
+// again: another row, or the plan.
+var RAISE_LEAD = 10;
+function raiseFrames(c) {
   var land = Infinity;
   c.arrivals.forEach(function (a) { if (a.at < land) land = a.at; });
-  var f = Math.max(RAISE_FRAMES_PER_ROW, RAISE_FRAMES_PER_ROW * (to - CK.fullTop(c.board)));
+  var f = Math.max(1, (c.board.displacement || 16) - 1);
   return land < Infinity ? Math.max(0, Math.min(f, land - RAISE_LEAD)) : f;
 }
 
@@ -130,7 +132,7 @@ function answer(c) {
   logLine(c, D, L, c.br, c.brMs);
   var made = L.cand ? madeOf(L.cand) : { combo: 0, chain: 0, broke: 0 };
   return { id: m.id, epoch: m.epoch, at: m.at, src: L.gambits ? 'gambit' : 'survival', kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null,
-           raiseFrames: d.kind === 'raise' && D.raise ? raiseFrames(c, D.raise) : 0, ms: Date.now() - c.t0, idleMs: D.idleMs || 0,
+           raiseFrames: d.kind === 'raise' ? raiseFrames(c) : 0, ms: Date.now() - c.t0, idleMs: D.idleMs || 0,
            claim: claimOf(D.info, d), queued: m.posted ? c.t0 - m.posted : 0, brMs: c.brMs,
            line: line, lineAt: null, lineFree: !!line,
            pace: { hold: L.holdLives, brk: !!(c.br && c.br.depth), urgent: !!(bot.allDoomedNow || D.urgent) },

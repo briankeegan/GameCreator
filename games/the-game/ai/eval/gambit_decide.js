@@ -25,8 +25,8 @@ function read(c) {
   // (ready: garbage on its way and none on the board -- the frames until the next block lands, 0 for one queued to drop once settled)
   var readyAt = null;
   if (!under) { c.arrivals.forEach(function (a) { if (readyAt === null || a.at < readyAt) readyAt = a.at; }); if (readyAt === null && (c.board.incoming || []).length) readyAt = 0; }
-  // (the opening raise: until garbage first reaches the board, below `to` rows and no chain running -- the stack held down to `to` in
-  // one press; never after)
+  // (the opening raise: until garbage first reaches the board, below `to` rows and no chain running -- a row a decision, each decided
+  // on what the board shows then; never after)
   var to = (pick.rule.raise || tables.raise || {}).to, opening = !c.bot._gambitHit && F.us.contact === null && !F.us.topped;
   var low = !!(to && opening && CK.fullTop(c.board) < to), up = low && !CK.cascadeLive(c.board, true) && c.canRaise();
   return { F: F, pick: pick, list: list, aims: aims, listAims: listAims, end: end, by: by, under: under, keepF: keepF, readyAt: readyAt,
