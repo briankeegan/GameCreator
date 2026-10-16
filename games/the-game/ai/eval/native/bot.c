@@ -541,6 +541,16 @@ static int slabReadyBoard(const int32_t *st) {
   if (placed < 0) return slabReadyFast(st);
   return inTimeOfWork(placed ? SLABST : st, sitBreaks, READYWORK);
 }
+// WHETHER A BREAK IS ONE SWAP AWAY: the readiness question asked only to the depth of one swap -- every swap of the board taken off the heap and
+// none grown on, so the search ends of itself when they are all asked
+static int sitBreakOne(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) { (void)sw; (void)n; (void)at; (void)ctx; return res[R_SCOPE] == SC_BROKE ? SIT_TAKE : SIT_END; }
+static int slabReadyOne(const int32_t *st) {
+  if (TFLAG(TF_SLAB)) return BIN[IN_T + 6] != 0;
+  waveSlab(st[O_W], &SLABW, &SLABH, &SLABC);
+  int placed = slabPlace(st, SLABST);
+  if (placed < 0) return slabReadyFast(st);
+  return inTimeOfWork(placed ? SLABST : st, sitBreakOne, READYWORK);
+}
 static double idleScore(const Cand *cand, const int32_t *base) {
   const int32_t *m = cand->masks;
   double fpr = BIN[IN_FPR], perPanel = fpr / BW;
@@ -5438,7 +5448,9 @@ static int sitReadies(const int32_t *res, const int32_t *sw, int n, double at, v
   if (gd >= x->g0) return SIT_GROW;
   if (n <= LINEMAX && gd < x->bestG) { x->bestG = gd; x->bestN = n; for (int k = 0; k < 2 * n; k++) x->bestSw[k] = sw[k]; }   // the nearest board met, kept for a line that gets nearer when none readies
   x->near++;
-  if (!slabReadyBoard(res + R_INTS)) return SIT_GROW;
+  // the whole readiness search (a break at any depth) is asked of a board a swap or fewer from the three the guide counts; a board further from it is asked
+  // the one swap, and grown on, which reaches the same break a swap later at a tenth of the work
+  if (!(gd < 2 ? slabReadyBoard(res + R_INTS) : slabReadyOne(res + R_INTS))) return SIT_GROW;
   x->masks++;
   if (x->tried >= READYTRIES) return SIT_TAKE;   // asked enough: the search ends, none confirmed
   x->tried++;
