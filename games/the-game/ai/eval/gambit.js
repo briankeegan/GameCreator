@@ -150,11 +150,11 @@ function lead(aims, made, under) {
 //   1 MUST-DO, under garbage: a break -- the most garbage broken per frame, then one that buys stop time, then the most broken; the
 //     list is the aim's (step 4), not the must-do's: a break the list asks for done after the pop ranks below one made during it
 //   2 AIM, no garbage: the list, in its order
-//   3 BEST THAT FITS, anything left, garbage on the board or not: garbage sent (enemy topped: combos first, else chains), stop time --
-//     a chain that breaks nothing buys a topped board its stop time
+//   3 BEST THAT FITS: garbage sent (enemy topped: combos first, else chains), stop time -- never making a must-do miss its deadline: under
+//     garbage a clear that breaks nothing is only this on a topped board, where the stop time it buys is what keeps the board alive
 //   4 NOTHING FITS: ready, toward a break, level, setup
 //   6 CLEAR and SCRAMBLE, and any clear that breaks nothing, sends nothing and buys nothing: only when there is nothing else (hold is 5)
-function tier(play, x, aim, under, enemyOut) {
+function tier(play, x, aim, under, enemyOut, topped) {
   x = x || {};
   var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0, cells = x.cells || 0, stop = x.earned || 0;
   var clears = combo >= 3 || chain >= 2 || broke > 0 || cells > 0 || play === 'clear' || play === 'scramble';
@@ -162,7 +162,7 @@ function tier(play, x, aim, under, enemyOut) {
   if (under && broke > 0) return { tier: 1, sub: [-rate, buys ? 0 : 1, -broke] };
   if (play === 'clear' || play === 'scramble') return { tier: 6, sub: [-stop] };   // (only when there is nothing else)
   if (aim >= 0 && !under) return { tier: 2, sub: [aim, x.done || 0] };
-  if (clears && (buys || cells > 0)) return { tier: 3, sub: [-cells, enemyOut ? -combo : -chain, enemyOut ? -chain : -combo, -stop, -(x.near || 0)] };
+  if (clears && (buys || cells > 0) && (!under || (topped && buys))) return { tier: 3, sub: [-cells, enemyOut ? -combo : -chain, enemyOut ? -chain : -combo, -stop, -(x.near || 0)] };
   if (!clears) return { tier: 4, sub: [{ ready: 0, toward: 1, level: 2, setup: 3 }[play] || 4] };
   return { tier: 6, sub: [-stop] };
 }

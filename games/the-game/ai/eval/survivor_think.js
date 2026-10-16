@@ -911,7 +911,7 @@ module.exports = function think(cfg) {
               if (fc === 0) { play = 'clear'; x = { combo: 3, chain: 1 }; combo = 3; chain = 1; broke = 0; }
               else if (fc > 0) seq = seq.slice(0, fc);
             }
-            var tg = GAMBIT.tier(play, x, aim, underG, enemyOutG), tier = tg.tier, sub = tg.sub;
+            var tg = GAMBIT.tier(play, x, aim, underG, enemyOutG, !!FG.us.topped), tier = tg.tier, sub = tg.sub;
             candsG.push({ play: play, seq: seq, tier: tier, sub: sub, ap: { seq: seq, done: x.done || null, fire: fireX || null, ats: x.ats || null, chain: chain, combo: combo, broke: broke }, aim: aim, extend: !!extend, near: x.near || 0 });
           };
           if (pickG && predsG.length) {
