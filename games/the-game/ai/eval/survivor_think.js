@@ -902,6 +902,8 @@ module.exports = function think(cfg) {
             // it sets off runs on after)
             var fireX = x.fire != null ? x.fire : x.done;
             if (byG && fireX && fireX > byG) return;
+            // (a play that clears nothing is judged by what its first swap does, on this board: one that clears is a clear -- below hold)
+            if ((play === 'toward' || play === 'setup' || play === 'level' || play === 'ready') && GAMBIT.swapClears(board, seq[0])) { play = 'clear'; x = { combo: 3, chain: 1 }; combo = 3; chain = 1; broke = 0; }
             var tg = GAMBIT.tier(play, x, aim, underG, enemyOutG), tier = tg.tier, sub = tg.sub;
             candsG.push({ play: play, seq: seq, tier: tier, sub: sub, ap: { seq: seq, done: x.done || null, fire: fireX || null, ats: x.ats || null, chain: chain, combo: combo, broke: broke }, aim: aim, extend: !!extend, near: x.near || 0 });
           };

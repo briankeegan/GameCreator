@@ -73,6 +73,16 @@ function keeps(keep, grid) {
   var f = gridFacts(grid);
   return Object.keys(keep).every(function (k) { return test(f[k.replace(/^us\./, '')], keep[k]); });
 }
+// DOES A SWAP CLEAR on this board (the engine's board): it is played on a copy until it has landed, and a panel newly matched is a clear
+function swapClears(board, mv) {
+  var b1 = board.copy(), was = {}, r, c, p;
+  function each(f) { for (r = 1; r < b1.panels.length; r++) for (c = 1; c <= 6; c++) { p = b1.panels[r] && b1.panels[r][c]; if (p && p.color && !p.isGarbage && f(p)) return true; } return false; }
+  each(function (q) { if (q.state === 'matched') was[q.id] = 1; });
+  b1.curRow = mv[0]; b1.curCol = mv[1];
+  if (!b1.tryQueueSwap(mv[0], mv[1])) return false;
+  for (var f = 0; f < 8; f++) { b1.setInput(0); b1.run(); }
+  return each(function (q) { return q.state === 'matched' && !was[q.id]; });
+}
 // A BREAK'S DEADLINE (plays.md): before the board dies, however soon the next block lands -- that is the level's and the ready's
 function breakBy(F) { return F && F.us && F.us.dies > 0 ? F.us.dies : null; }
 // THE FLOOR (a rule's or the file's `keep`): a line's board must keep it -- unless the line breaks garbage, which is made with any
@@ -237,4 +247,4 @@ function rulesFor(profile, dir) {
   return new Rules(path.isAbsolute(g.rules) ? g.rules : path.join(dir, g.rules));
 }
 
-module.exports = { named: named, near: near, nearList: nearList, lead: lead, tier: tier, floor: floor, breakBy: breakBy, aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };
+module.exports = { named: named, near: near, nearList: nearList, lead: lead, tier: tier, floor: floor, breakBy: breakBy, swapClears: swapClears, aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };
