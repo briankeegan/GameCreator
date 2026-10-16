@@ -900,7 +900,10 @@ module.exports = function think(cfg) {
             var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0, cells = x.cells || 0, stop = x.earned || 0;
             var clears = combo >= 3 || chain >= 2 || broke > 0 || cells > 0 || play === 'clear' || play === 'scramble';
             var buys = combo >= 4 || chain >= 2, tier, sub;
-            if (underG && broke > 0) { tier = 1; sub = [aim >= 0 ? aim : 99, buys ? 0 : 1, -broke, x.done || 0]; }                 // must-do
+            // (must-do: the list's breaks first, then the most garbage broken per frame -- the rows a slab interval needs come from the rate,
+            // a multi-break's rows per link highest -- then the one that buys stop time)
+            var rate = broke / Math.max(1, x.done || 1);
+            if (underG && broke > 0) { tier = 1; sub = [aim >= 0 ? aim : 99, -rate, buys ? 0 : 1, -broke]; }                         // must-do
             else if (aim >= 0 && !underG) { tier = 2; sub = [aim, x.done || 0]; }                                                       // aim
             else if (clears && !underG && (buys || cells > 0)) {                                                                       // best that fits
               tier = 3; sub = [-cells, enemyOutG ? -combo : -chain, enemyOutG ? -chain : -combo, -stop, -(x.near || 0)];
@@ -921,8 +924,8 @@ module.exports = function think(cfg) {
             if (apG && apG.quick) candG('break line', apG.quick.seq, apG.quick, -1);
             if (br && br.depth) {
               var brPlay = br.lineup ? 'lineup break' : 'break search';
-              if (br.path && br.path.length) candG(brPlay, br.path, { broke: 1 }, -1);
-              Object.keys(br.moves || {}).forEach(function (k) { candG(brPlay, [k.split(',').map(Number)], { broke: 1 }, -1); });
+              if (br.path && br.path.length) candG(brPlay, br.path, { broke: 6, done: br.at || null }, -1);   // (a row: the break search counts rows, the planner cells)
+              Object.keys(br.moves || {}).forEach(function (k) { candG(brPlay, [k.split(',').map(Number)], { broke: 6, done: br.at || null }, -1); });
             }
             if (underG && br && br.toward && br.toward.length) candG('toward', br.toward, {}, -1);
             if (rdG && !rdG.ready && rdG.setup) candG('ready', [rdG.setup], {}, -1);

@@ -280,8 +280,9 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
   var firsts = swapsOf(root).map(function (m) { return { key: m[0] + ',' + m[1], m: m }; }), found = {}, any = false;
   var toward = null;
   var made = swapsFrom(root, firsts.map(function (f) { return f.m; }), true);
-  firsts.forEach(function (f, q) { f.n = made[q]; if (breaks(f.n)) { found[f.key] = true; any = true; } });
-  if (any) return { depth: 1, moves: found };
+  var at1 = null;
+  firsts.forEach(function (f, q) { f.n = made[q]; if (breaks(f.n)) { found[f.key] = true; any = true; if (at1 === null || f.n.t - root.t < at1) at1 = f.n.t - root.t; } });
+  if (any) return { depth: 1, moves: found, at: at1 };
   // GARBAGE RESTING, NOTHING POPPING: a break sooner rather than later. A
   // beam of lines up to TOUCH_DEPTH swaps, kept by how near the row under the
   // garbage is to a match (touchScore), for as long as `deadline` allows. A
@@ -299,7 +300,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
     }
   }
   function touchBeam() {
-    var tl0 = firsts.filter(function (f) { return f.n && !f.n.dead; }).map(function (f) { return { key: f.key, n: f.n, path: [f.m] }; }), tpath = null;
+    var tl0 = firsts.filter(function (f) { return f.n && !f.n.dead; }).map(function (f) { return { key: f.key, n: f.n, path: [f.m] }; }), tpath = null, tat = null;
     // TOUCH_BEAM first; finding nothing, wider (TOUCH_WIDER) while time is left.
     for (var tb = 0; tb < TOUCH_WIDER.length + 1 && !tpath && Date.now() < deadline; tb++) {
       var beam = tb ? TOUCH_WIDER[tb - 1] : TOUCH_BEAM, tl = tl0;
@@ -339,7 +340,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
             var t3 = made[at + j];
             if (!t3 || t3.dead) continue;
             var tp = tl[i].path.concat([tms[i][j]]);
-            if (breaks(t3)) { found[tl[i].key] = true; any = true; tpath = tp; break; }
+            if (breaks(t3)) { found[tl[i].key] = true; any = true; tpath = tp; tat = t3.t - root.t; break; }
             tn.push({ key: tl[i].key, n: t3, path: tp });
           }
           at += tms[i].length;
@@ -349,7 +350,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
         tl = tn;
       }
     }
-    if (any) return { depth: 1, moves: found, touch: true, path: tpath };
+    if (any) return { depth: 1, moves: found, touch: true, path: tpath, at: tat };
     return null;
   }
   if (!(wait > 0)) { var tb0 = touchBeam(); if (tb0) return tb0; }
