@@ -333,7 +333,8 @@ Match.prototype.take = function (truth) {
     // A RAISE HELD DOWN (the profile's holdRaise): the button stays down for the frames it takes to bring the rows in, not one row and a rest
     if (a.kind === 'raise' && a.raiseFrames > step.inputs.length) {
       var held = [], hh = [];
-      for (var q = 0; q < a.raiseFrames; q++) { held.push(IN.raise); hh.push({ left: 0, started: false }); }
+      // (raiseAfter: the frames the button stays held after these, between decisions -- the raise goes on until a decision lets it go)
+      for (var q = 0; q < a.raiseFrames; q++) { held.push(IN.raise); hh.push({ left: q === a.raiseFrames - 1 ? (a.raiseAfter || 0) : 0, started: q === a.raiseFrames - 1 && !!a.raiseAfter }); }
       step = { inputs: held, holds: hh };
     }
     this.acted = true;
@@ -577,7 +578,7 @@ Match.prototype.frame = function (truth, arrivals, fresh) {
   else { var id = L.hands.idle(truth, this.hold, arrivals); bits = id.bits; this.hold = id.hold; this.stats.idle++; }
   // A RAISE HELD DOWN IS LET GO OF AT ONCE when the stack is topped out or garbage is landing: a manual raise on a topped-out stack is a
   // loss on the spot. The plan behind it is void and the next decision is asked now.
-  if ((bits & IN.raise) && L.profile && L.profile.attack && L.profile.attack.holdRaise) {
+  if ((bits & IN.raise) && L.profile && ((L.profile.attack && L.profile.attack.holdRaise) || L.profile.gambit)) {
     var unsafe = (typeof truth.isToppedOut === 'function' && truth.isToppedOut()) || truth.wasToppedOut || (truth.shakeTime > 0) || (typeof truth.hasFallingGarbage === 'function' && truth.hasFallingGarbage());
     if (unsafe) {
       bits &= ~IN.raise; this.hold = { left: 0, started: false };

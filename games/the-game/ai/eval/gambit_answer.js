@@ -79,15 +79,17 @@ function lives(c, D) {
   return { d: d, verdict: verdict, holdLives: holdLives, gambits: order.indexOf(keyOf(d)) >= 0, cand: cand, live: live + '/' + searched + '/' + order.length };
 }
 
-// THE RAISE HELD FOR ONE ROW: the engine raises a row a press, a displacement step a frame, so the button is held for the steps the
-// row has left -- up to the garbage on its way landing, less a lead to act in. The next decision sees the board it leaves and decides
-// again: another row, or the plan.
-var RAISE_LEAD = 10;
-function raiseFrames(c) {
+// THE RAISE HELD DOWN: the engine raises a displacement step a frame while the button is held, row after row. A raise answer presses
+// the steps the row has left and leaves the button held for the rows on to the rule's `to` -- all of it up to the garbage on its way
+// landing, less a lead to act in. Every decision while it is held sees the board as it is and decides again: it keeps the raise going
+// or lets it go for the plan. { now, after } in frames.
+var RAISE_LEAD = 10, ROW_STEPS = 16;
+function raiseHeld(c, to) {
   var land = Infinity;
   c.arrivals.forEach(function (a) { if (a.at < land) land = a.at; });
-  var f = Math.max(1, (c.board.displacement || 16) - 1);
-  return land < Infinity ? Math.max(0, Math.min(f, land - RAISE_LEAD)) : f;
+  var now = Math.max(1, (c.board.displacement || ROW_STEPS) - 1), rows = Math.max(0, (to || 0) - CK.fullTop(c.board) - 1), after = rows * ROW_STEPS;
+  if (land < Infinity) { now = Math.max(0, Math.min(now, land - RAISE_LEAD)); after = Math.max(0, Math.min(after, land - RAISE_LEAD - now)); }
+  return { now: now, after: after };
 }
 
 // THE CLAIM (survivor_audit.js): what the line Gambit chose said it would make, when the move played is its first swap
@@ -130,9 +132,9 @@ function answer(c) {
   bot._gambitIdle = d.kind === 'hold' || !D.info.want;
   D.info.verdict = L.verdict;
   logLine(c, D, L, c.br, c.brMs);
-  var made = L.cand ? madeOf(L.cand) : { combo: 0, chain: 0, broke: 0 };
+  var made = L.cand ? madeOf(L.cand) : { combo: 0, chain: 0, broke: 0 }, held = d.kind === 'raise' ? raiseHeld(c, D.R.to) : { now: 0, after: 0 };
   return { id: m.id, epoch: m.epoch, at: m.at, src: L.gambits ? 'gambit' : 'survival', kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null,
-           raiseFrames: d.kind === 'raise' ? raiseFrames(c) : 0, ms: Date.now() - c.t0, idleMs: D.idleMs || 0,
+           raiseFrames: held.now, raiseAfter: held.after, ms: Date.now() - c.t0, idleMs: D.idleMs || 0,
            claim: claimOf(D.info, d), queued: m.posted ? c.t0 - m.posted : 0, brMs: c.brMs,
            line: line, lineAt: null, lineFree: !!line,
            pace: { hold: L.holdLives, brk: !!(c.br && c.br.depth), urgent: !!(bot.allDoomedNow || D.urgent) },
