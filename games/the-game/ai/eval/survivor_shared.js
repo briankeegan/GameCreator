@@ -52,7 +52,9 @@ function botOptions(p, threads) {
   if (p.buildToward !== undefined) goal.buildToward = p.buildToward;
   return Object.assign(goal, { weights: weights,
            reaction: p.reaction, swapGap: p.swapGap, cursorMoveFrames: p.cursorMoveFrames, depth: p.depth, beam: 0, rise: true, allowRaise: true,
-           modes: p.modes, engine: true, native: true, nativeCands: !!p.nativeCands, threesLast: !!p.threesLast, threeBreaksLast: !!p.threeBreaksLast, threesOnlyTopped: !!(p.attack && p.attack.threesOnlyTopped), attackFirst: !!(p.attack && p.attack.attackRank), nearestFirst: true, threads: threads });
+           modes: p.modes, engine: true, native: true, nativeCands: !!p.nativeCands, threesLast: !!p.threesLast, threeBreaksLast: !!p.threeBreaksLast, threesOnlyTopped: !!(p.attack && p.attack.threesOnlyTopped), attackFirst: !!(p.attack && p.attack.attackRank), nearestFirst: true, threads: threads,
+           // (a Gambit bot's survival search judges a raise by whether the board lives, as every move: no rule of its own for the raise)
+           refuseBrokeRaise: p.gambit ? false : undefined });
 }
 
 // ---------------------------------------------------------------- garbage on its way
