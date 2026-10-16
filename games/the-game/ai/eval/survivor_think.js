@@ -851,7 +851,9 @@ module.exports = function think(cfg) {
             // (under garbage every line that breaks it is near: breaking comes first, so the search grows the lines that break, a three
             // included, whatever the list asks -- the nearest of them to the list first)
             var nearG0 = function (made) { return GAMBIT.nearList(aimsG, made) + (underG && made.broke > 0 ? 0.5 : 0); };
-            var msG = Math.min(GP.ms || 80, leftG()) - (popG && exG ? exG.ms : 0);
+            // (idle time is planning time: after a decision that held or had nothing to play, the planner has all the time the decision
+            // has, not its usual share -- the big chain is planned for, not waited for)
+            var msG = bot._gambitIdle ? leftG() : Math.min(GP.ms || 80, leftG()) - (popG && exG ? exG.ms : 0);
             if (msG >= 20) {
               triedG++;
               apG = attacker.plan(board, m.hold, { ms: msG, width: GP.width || 40, depth: GP.depth || 7, pool: GP.pool || 250, minChain: 0, arrivals: arrivals,
@@ -892,6 +894,8 @@ module.exports = function think(cfg) {
               if (br && br.toward && br.toward.length) { lineG = { ap: { seq: br.toward, done: null }, aimIndex: -1 }; playG = 'break toward'; }
               else if (nearG) { lineG = nearG; playG = 'nearest break'; }
               else if (lvU) { setupG = lvU.move; playG = 'level'; }
+              // (and nothing to break or level: SETUP toward the list -- the chain is built while the garbage waits)
+              else if (apG && apG.setup) { setupG = apG.setup; playG = 'setup'; }
               // (literally nothing else: SCRAMBLE, the line that buys the most stop time; and last of all, only when the board would top out
               // -- its deadline -- CLEAR, the line that leaves the lowest stack)
               else if (apG && apG.stopBest) { lineG = { ap: apG.stopBest, aimIndex: -1 }; playG = 'scramble'; }
@@ -1259,6 +1263,7 @@ module.exports = function think(cfg) {
         // (a loop found -- the same pair three times running -- keeps that pair out of gambit's plays for a second)
         if (bot._gambitPairRuns >= 2) bot._gambitBlock = { pair: pairNow, until: m.at + 60 };
         bot._gambitLastPair = pairNow;
+        bot._gambitIdle = d.kind === 'hold' || !bot._gambit.want;
       }
       var lvP = (bot._verdictNo || 0) !== verdictNo0 ? bot._lastVerdict : null, holdP = false;
       if (lvP) for (var pi = 0; pi < lvP.cands.length; pi++) if (lvP.cands[pi].kind === 'hold') { holdP = lvP.verdict[pi] === 'proven'; break; }
