@@ -1549,9 +1549,6 @@
       note(i, c);
       if (c.t >= FULL) { verdict[i] = 'proven'; proofs[i] = c; if (this._proofs) this._proofs[i] = c; continue; }
       if (c.t >= this.SURVIVE_FRAMES && !weak[i]) weak[i] = c;
-      // (searchFirst(cand): the caller's chosen move is searched like the followed line -- kept first in the beam at every level -- so it
-      // is proven, weak or dead before the budget runs out on the rest, never left unproven for want of it)
-      if (this.searchFirst && this.searchFirst(cd)) c.seed = true;
       c.first = true; level.push(c); open++;
     }
     // THE LINE BEING FOLLOWED IS STILL A PROOF. The bot played the first move
@@ -1786,9 +1783,6 @@
       }
       else if (verdict[i] === 'unproven') unproven.push(cands[i]);
     }
-    // (searchFirst: with no move proven, the caller's chosen move stands among the weak while the search has not found it dead -- left
-    // unproven only because the budget ran out on a board where nothing reaches proof)
-    if (!proven.length && this.searchFirst) for (i = 0; i < cands.length; i++) if (verdict[i] === 'unproven' && this.searchFirst(cands[i])) weakly.push(cands[i]);
     if (!proven.length) proven = weakly;
     // A BREAK THE CALLER ASKS FOR (preferRank 0) THAT LIVES THE HORIZON STANDS
     // with the moves proven past it. Under a stream every line dies a little

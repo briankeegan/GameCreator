@@ -801,7 +801,7 @@ module.exports = function think(cfg) {
       // THE AIM (gambit): the facts of both boards, the first rule whose `when` holds, and a line that makes what its aim asks by its
       // deadline (else what its `else` asks). The line's first swap ranks before every other move; the survival search alone stands
       // over it, so the aim is chased while the board lives, under garbage or not. The rest of the line is played on (attackLine).
-      bot._gambit = null; bot._gambitRaise = 0; bot._gambitLines = null; bot._gambitUrgent = false; bot._gambitOpen = false; bot.searchFirst = null;
+      bot._gambit = null; bot._gambitRaise = 0; bot._gambitLines = null; bot._gambitUrgent = false; bot._gambitOpen = false;
       if (gambitRules) {
         var GP = cfg.profile.gambit, FG = { us: GAMBIT.facts(board, arrivals, m.topped), enemy: GAMBIT.enemyFacts(m.opp) };
         var apG = null, exG = null, tablesG = gambitRules.get(m.opp && m.opp.name), pickG = GP.mode ? GAMBIT.named(tablesG, GP.mode) : GAMBIT.choose(tablesG, FG), lineG = null, setupG = null, readyG = false, playG = null, triedG = 0;
@@ -931,7 +931,6 @@ module.exports = function think(cfg) {
             } else if (apG && apG.setup && typeof readyAtG !== 'number') addG(apG.setup);
           }
           if (GP.rankAll === false) orderG = orderG.slice(0, 1);   // (rankAll false: gambit's first play alone is ranked)
-          bot.searchFirst = orderG.length ? function (c) { return (c.kind === 'swap' && c.move ? arbKey(c.move) : c.kind) === orderG[0]; } : null;
           if (orderG.length) {
             bot.preferRank = function gambitRank(c, i) {
               var r = prG.call(this, c, i), k = c.kind === 'swap' && c.move ? arbKey(c.move) : c.kind, at = orderG.indexOf(k);
@@ -1202,7 +1201,6 @@ module.exports = function think(cfg) {
         var lvW = (bot._verdictNo || 0) !== verdictNo0 ? bot._lastVerdict : null, vW = lvW ? 'not offered' : 'unsearched';
         if (lvW) for (var qW = 0; qW < lvW.cands.length; qW++) { var cW = lvW.cands[qW], kW = cW.kind === 'swap' && cW.move ? cW.move[0] + ',' + cW.move[1] : cW.kind; if (kW === bot._gambit.want) { vW = lvW.verdict[qW]; break; } }
         bot._gambit.verdict = vW;
-        if (lvW) { var tally = {}; lvW.verdict.forEach(function (v, qi) { var c = lvW.cands[qi], k = c.kind === 'swap' ? 'swap' : c.kind; tally[k + ':' + v] = (tally[k + ':' + v] || 0) + 1; }); bot._gambit.verdicts = tally; }
       }
       var lvP = (bot._verdictNo || 0) !== verdictNo0 ? bot._lastVerdict : null, holdP = false;
       if (lvP) for (var pi = 0; pi < lvP.cands.length; pi++) if (lvP.cands[pi].kind === 'hold') { holdP = lvP.verdict[pi] === 'proven'; break; }
