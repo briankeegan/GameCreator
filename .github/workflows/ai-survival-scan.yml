@@ -31,13 +31,16 @@ on:
       input_limit:
         description: "actions the bot may press in any 600 frames; empty is the game's 76, another is a diagnostic of what the input budget costs"
         default: ''
+      knobs:
+        description: "settings of the bot for this scan, as NAME=VALUE words (GC_SH_AFTER=20 GC_READYWORK=1500): native/bot.c knob(); empty is the build as it stands"
+        default: ''
       source:
         description: "a commit of this repository to scan instead of the dispatched one (to find which change moved a mode), as its full 40-character SHA -- survival/scan.sh resolves one; empty is the dispatched commit"
         default: ''
 
 # one scan per commit: a push never cancels the scan of the commit before it
 concurrency:
-  group: ai-survival-scan-${{ inputs.mode }}-${{ github.sha }}-${{ inputs.input_limit }}-${{ inputs.frames }}-${{ inputs.seeds }}-${{ inputs.fixed_budget }}-${{ inputs.source }}
+  group: ai-survival-scan-${{ inputs.mode }}-${{ github.sha }}-${{ inputs.input_limit }}-${{ inputs.frames }}-${{ inputs.seeds }}-${{ inputs.fixed_budget }}-${{ inputs.source }}-${{ inputs.knobs }}
   cancel-in-progress: true
 
 jobs:
@@ -94,7 +97,9 @@ jobs:
           GC_GAMELOG: game.log   # the whole game, every frame's bot log and board: the artifact
           GC_INPUT_LIMIT: ${{ inputs.input_limit }}
           GC_FIXED_BUDGET: ${{ inputs.fixed_budget && '1' || '' }}
+          KNOBS: ${{ inputs.knobs }}
         run: |
+          [ -z "$KNOBS" ] || export $KNOBS
           games/the-game/ai/eval/train.sh ${{ inputs.mode }} ${{ matrix.seed }} ${{ inputs.frames }} | tee out.txt | grep -E "^(died|alive|bot over|think budget|input budget)"
           end=$(grep -E "^(died|alive)" out.txt | tail -1)
           echo "seed ${{ matrix.seed }}: $end" >> "$GITHUB_STEP_SUMMARY"

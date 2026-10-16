@@ -44,6 +44,12 @@ int lineLanded(const int32_t *steps, int n, int32_t *masks, int32_t *t);   // th
 // stops at stands 9,600 units under it, what was under way when it is crossed.
 // With no host the start values stand: 65,600 and 56,000, the line of a
 // decision that took 8.2 ms at the 99.9th percentile on the scan's runner.
+// A NUMBER THE ENVIRONMENT MAY SET (native only; the browser's is the default): the scan sets it, to play one build with several settings side by side
+#ifndef __wasm__
+static double knob(const char *name, double def) { extern char *getenv(const char *); extern double atof(const char *); const char *v = getenv(name); return v && *v ? atof(v) : def; }
+#else
+static double knob(const char *name, double def) { (void)name; return def; }
+#endif
 #define WORKBUDGET0 65600
 #define OPTWORK0 56000
 static double gWorkBudget = WORKBUDGET0, gOptWork = OPTWORK0;
@@ -526,7 +532,8 @@ static int slabReadyHook(const int32_t *st) {
   SLABW = (int)BIN[IN_SLABW]; SLABH = (int)BIN[IN_SLABH]; SLABC = (int)BIN[IN_SLABC];
   return slabReady(st);
 }
-#define READYWORK 2500   // the readiness search's share of a decision's work
+static double readyWorkV(void) { static double v = -1; if (v < 0) v = knob("GC_READYWORK", 2500); return v; }
+#define READYWORK readyWorkV()   // the readiness search's share of a decision's work
 // A BOARD'S READINESS: the board's own, asked once a decision, and the board
 // each line of the lineup leaves -- the same question as an option's
 // (slabReady), with the readiness search's share of the decision's work
@@ -2413,8 +2420,10 @@ static void workTrace(const char *tag) { (void)tag; }
 // EVERY STAGE HAS A SHARE OF OPTWORK (percent), and the stages before it leave
 // the shares of the stages after it, no more: a later stage takes whatever is
 // left it, so what it took lately says what it was given, not what it needs
-static const int STAGESHARE[NSTAGES] = { 30, 0, 30, 5, 15, 5, 5, 5, 5 };
+static int STAGESHARE[NSTAGES] = { 30, 0, 30, 5, 15, 5, 5, 5, 5 };
+static void stageShareInit(void) { static int done; if (done) return; done = 1; STAGESHARE[0] = (int)knob("GC_SH_RULED", 30); STAGESHARE[2] = (int)knob("GC_SH_BREAK", 30); STAGESHARE[3] = (int)knob("GC_SH_ALIVE", 5); STAGESHARE[4] = (int)knob("GC_SH_LINEUP", 15); STAGESHARE[5] = (int)knob("GC_SH_SPEND", 5); STAGESHARE[6] = (int)knob("GC_SH_SOON", 5); STAGESHARE[7] = (int)knob("GC_SH_FILL", 5); STAGESHARE[8] = (int)knob("GC_SH_AFTER", 5); }
 static double stageLeaves(int i) {
+  stageShareInit();
   int after = 0; for (int j = i + 1; j < NSTAGES; j++) after += STAGESHARE[j];
   double keep = OPTWORK * after / 100;
   if (keep < FINALJUDGES * jdCost) keep = FINALJUDGES * jdCost;
@@ -6610,7 +6619,8 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   Dec dOne = onePlan(dF); WORKAT("after onePlan"); Dec dKeep = keepReady(dOne); WORKAT("after keepReady"); Dec dRwl;
   // THE READINESS SEARCH TAKES HALF OF WHAT IS LEFT and the steps after it (meanwhile, the setups) the rest: it is kept from frame to frame, so half a
   // frame's work a frame reaches as far as the whole of one
-  { double keep = stageEnd, line = optLine(), half = paWork + (line - paWork) / 2 + bgReserve + reachHold;
+  { static double frac = -1; if (frac < 0) frac = knob("GC_RWL_FRAC", 0.5);
+    double keep = stageEnd, line = optLine(), half = paWork + (line - paWork) * frac + bgReserve + reachHold;
     if (line > paWork && half < stageEnd) stageEnd = half;
     dRwl = readyWhenLands(dKeep); stageEnd = keep; }
   WORKAT("after readyWhenLands"); Dec dMw = meanwhile(dRwl); WORKAT("after meanwhile");
