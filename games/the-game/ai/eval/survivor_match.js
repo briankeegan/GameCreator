@@ -342,7 +342,7 @@ Match.prototype.take = function (truth) {
     var walked = this.walkKeys(step, at), ins = walked.inputs;
     if (!this.fits(at, ins)) { this.stats.guarded++; this.acted = false; continue; }
     if (a.claim && a.kind === 'swap') this.audit.claim(a.claim, at);
-    if (a.kind === 'swap') this._swapBy = a.claim ? 'gambit ' + a.claim.play : (a.src || 'default');
+    if (a.kind === 'swap') { this._swapBy = a.claim ? 'gambit ' + a.claim.play : (a.src || 'default'); this._swapAt = at; }
     this.stats.heldWalks += walked.held;
     // Each planned frame carries the raise held after it.
     var sw = a.kind === 'swap' ? swapOf(board, move) : null;
@@ -491,6 +491,8 @@ Match.prototype.walkKeys = function (k, at) {
 // more), a chain is counted at its longest when it ends. stats.attacks: { combo: { size: n }, chain: { links: n } }.
 // stats.attacksBy: the same, by who chose the swap that made it -- 'gambit <play>' when it was the first swap of the line Gambit chose,
 // else the decision's source (the survival search's own choice among them): a combo is the last swap's, a chain the swap it began on.
+// stats.linkBy: { links: { who: n } } -- for each chain, who pressed the swap that made its last link: the last swap pressed since the
+// chain began, or 'itself' when none was (the chain grew from what it had set falling).
 Match.prototype.countAttacks = function (truth) {
   var seen = this._matched || {}, now = {}, fresh = 0, r, c, p, cc = truth.chainCounter || 0;
   for (r = 1; r < truth.panels.length; r++) for (c = 1; c <= 6; c++) {
@@ -502,9 +504,13 @@ Match.prototype.countAttacks = function (truth) {
   var byAll = this.stats.attacksBy || (this.stats.attacksBy = {}), by = this._swapBy || 'default';
   var mine = function (who) { return byAll[who] || (byAll[who] = { combo: {}, chain: {} }); };
   if (fresh >= 4) { at.combo[fresh] = (at.combo[fresh] || 0) + 1; mine(by).combo[fresh] = (mine(by).combo[fresh] || 0) + 1; }
-  if (cc > 0 && !(this._chainMax > 0)) this._chainBy = by;
-  if (cc > (this._chainMax || 0)) this._chainMax = cc;
-  if (cc === 0 && this._chainMax >= 2) { var cb = mine(this._chainBy || by); at.chain[this._chainMax] = (at.chain[this._chainMax] || 0) + 1; cb.chain[this._chainMax] = (cb.chain[this._chainMax] || 0) + 1; }
+  if (cc > 0 && !(this._chainMax > 0)) { this._chainBy = by; this._chainAt = truth.clock; }
+  if (cc > (this._chainMax || 0)) { this._chainMax = cc; this._lastLink = (this._swapAt || -1) >= this._chainAt ? by : 'itself'; }
+  if (cc === 0 && this._chainMax >= 2) {
+    var cb = mine(this._chainBy || by); at.chain[this._chainMax] = (at.chain[this._chainMax] || 0) + 1; cb.chain[this._chainMax] = (cb.chain[this._chainMax] || 0) + 1;
+    var lb = this.stats.linkBy || (this.stats.linkBy = {}), lk = lb[this._chainMax] || (lb[this._chainMax] = {});
+    lk[this._lastLink] = (lk[this._lastLink] || 0) + 1;
+  }
   if (cc === 0) this._chainMax = 0;
 };
 Match.prototype.frame = function (truth, arrivals, fresh) {

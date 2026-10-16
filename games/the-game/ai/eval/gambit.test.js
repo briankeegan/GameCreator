@@ -112,8 +112,9 @@ assert(G.lead(P4, { combo: 3, chain: 1, broke: 6 }, true) > 0, 'a three that bre
 assert.strictEqual(G.tier('lineup', { chain: 1, combo: 3, broke: 6, done: 30 }, -1, true, false).tier, 1, 'under garbage a three that breaks is a must-do');
 function before(x, y) { for (var q = 0; q < x.sub.length; q++) if (x.sub[q] !== y.sub[q]) return x.sub[q] < y.sub[q]; return false; }
 assert(G.tier('break search', { broke: 6, done: 90 }, -1, true, false).sub[0] < G.tier('lineup', { chain: 3, combo: 6, broke: 6, done: 40, floor: false }, -1, true, false).sub[0], 'of two breaks the one that keeps the floor first');
-var slowAim = G.tier('entry', { chain: 2, combo: 6, broke: 6, done: 900 }, 0, true, false), fastBreak = G.tier('lineup break', { broke: 6, done: 60 }, -1, true, false);
-assert(before(fastBreak, slowAim), 'under garbage a break in the list but done after the pop ranks below one made during it');
+var aimBreak = G.tier('entry', { chain: 2, combo: 6, broke: 6, done: 300 }, 0, true, false), plainBreak = G.tier('lineup break', { broke: 6, done: 60 }, -1, true, false);
+assert(before(aimBreak, plainBreak), 'under garbage an entry that breaks ranks before a plain break, the list first (each in time)');
+assert(before(G.tier('entry', { combo: 9, broke: 6, done: 300 }, 0, true, false), G.tier('entry', { combo: 4, broke: 6, done: 60 }, 7, true, false)), 'of two breaks in the list, the earlier entry first');
 assert.strictEqual(G.tier('lineup', { chain: 6, combo: 3, broke: 0, cells: 30 }, -1, true, false, true).tier, 3, 'under garbage, topped, a chain that breaks nothing buys the stop time that keeps the board alive');
 assert.strictEqual(G.tier('lineup', { chain: 2, combo: 3, broke: 0, cells: 0 }, -1, true, false, true).tier, 3, 'one that buys stop time and sends nothing too');
 assert.strictEqual(G.tier('lineup', { chain: 6, combo: 3, broke: 0, cells: 30 }, -1, true, false, false).tier, 6, 'under garbage, not topped, a chain that breaks nothing would make the break wait: below hold');

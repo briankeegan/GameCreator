@@ -171,7 +171,9 @@ function tier(play, x, aim, under, enemyOut, topped, falling) {
     if (aim >= 0) return { tier: 2, sub: [aim, x.done || 0] };
     if (broke > 0) return { tier: 4, sub: [9, x.floor === false ? 1 : 0, -rate, buys ? 0 : 1, -broke] };
   }
-  if (under && broke > 0) return { tier: 1, sub: [x.floor === false ? 1 : 0, -rate, buys ? 0 : 1, -broke] };
+  // (garbage landed, plans/decision.md: break it -- an entry that breaks, in the list's order, then the break nearest the attack, then
+  // more broken; each in time, or it is no candidate)
+  if (under && broke > 0) return { tier: 1, sub: [x.floor === false ? 1 : 0, aim >= 0 ? aim : 99, -rate, buys ? 0 : 1, -broke] };
   if (play === 'clear') return { tier: 6, sub: [-stop] };   // (only when there is nothing else)
   if (aim >= 0 && !under) return { tier: 2, sub: [aim, x.done || 0] };
   if (clears && (buys || cells > 0) && (!under || (topped && buys))) return { tier: 3, sub: [-cells, enemyOut ? -combo : -chain, enemyOut ? -chain : -combo, -stop, -(x.near || 0)] };
