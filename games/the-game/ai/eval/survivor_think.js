@@ -807,6 +807,9 @@ module.exports = function think(cfg) {
         var apG = null, exG = null, tablesG = gambitRules.get(m.opp && m.opp.name), pickG = GP.mode ? GAMBIT.named(tablesG, GP.mode) : GAMBIT.choose(tablesG, FG), lineG = null, setupG = null, readyG = false, playG = null, triedG = 0;
         if (pickG) {
           var keepG = pickG.rule.keep || tablesG.keep || null, keepF = keepG ? function (grid) { return GAMBIT.keeps(keepG, grid); } : null;
+          // (the floor is what an attack may spend with no garbage on the board; under garbage a break is where the panels come from, so no
+          // line there is held to it)
+          if (FG.us.contact !== null || FG.us.topped) keepF = null;
           // THE PRIORITY LIST (aims): the first entry a line can make in time is played; an entry "default" or "hold" ends the list there
           // (the default's own move, or a hold). One search looks for every entry at once. aim/else is a list of two.
           var byG = GAMBIT.deadline(FG, pickG.rule.by), listG = GAMBIT.aimsOf(pickG.rule), endAt = listG.length, endG = null;
@@ -906,6 +909,10 @@ module.exports = function think(cfg) {
           var addG = function (mv, seq) { if (!mv) return; var k = mv === 'raise' || mv === 'hold' ? mv : arbKey(mv); if (orderG.indexOf(k) < 0) { orderG.push(k); if (seq && seq.length > 1) linesG[k] = seq.slice(1); } };
           if (upG) addG('raise');
           if (holdG) addG('hold');
+          // (a slab popping under more garbage: the break search's line-up -- the swaps after which the panels it turns into break the next
+          // rows once the pop is over (SH.breakMoves with the pop's wait) -- comes before a line-up of gambit's own that only chains)
+          var luBrG = !!(underG && SH.popLeft(board) > 0 && br && br.depth && br.lineup) && !(lineG && lineG.extend && lineG.aimIndex >= 0 && lineG.aimIndex < aimsG.length);
+          if (luBrG) { Object.keys(br.moves || {}).forEach(function (k) { addG(k.split(',').map(Number)); }); if (orderG.length && !playG) playG = 'lineup break'; }
           if (lineG) addG(lineG.ap.seq[0], lineG.ap.seq);
           if (setupG) addG(setupG);
           if (!upG && !waitG) {
