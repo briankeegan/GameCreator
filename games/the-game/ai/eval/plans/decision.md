@@ -44,18 +44,21 @@ in step 4, or the judge answers it in step 3.
 
 ## By the board
 
-| | No garbage | Garbage still falling | Garbage landed |
+| | No garbage | The break waits | Garbage landed |
 |---|---|---|---|
-| 1 | Fire an entry, in the list's order | Fire an entry | Break it: an entry that breaks, then the break nearest the attack (a three is as good), then more broken |
+| 1 | Fire an entry, in the list's order | Fire an entry that breaks nothing | Break it: an entry that breaks, then the break nearest the attack (a three is as good), then more broken |
 | 2 | Set up the ask, flattening included | Set up the ask, ready to break it when it lands | Fire an entry that breaks nothing |
-| 3 | Raise to 10 when low | Break it -- not yet: broken before the rest has landed, the next block buries the panels it made | Set up the ask |
-| 4 | Hold, only with no move | Hold, only with no move | Hold, only with no move |
+| 3 | Raise to 10 when low (the opening only) | Hold | Set up the ask |
+| 4 | Hold, only with no move | Break it, at the last moment: the first of these that lives is played | Hold, only with no move |
 | 5 | | | Clear (a match that touches no garbage), only for a stack about to top out with nothing else |
 
 A break is a match that touches garbage: its bottom row turns into panels. Garbage can always be broken with a three.
 
-Garbage still falling: the board topped out, with a block in the air -- one only queued has not begun to fall. A raise is never made on a board
-topped out.
+The break waits when the next block lands on the garbage it would take before a break begun now has popped: a break converts the
+connected garbage on screen, so one break then takes both. The next block lands on the top of the stack, so: the top of the stack is
+that garbage, the screen has room above it, and the next block lands within the pop (FLASH + FACE + POP x (3 + its cells on screen),
+`facts().breakWaits`). A block coming later than that is broken separately: the panels the break makes are free before it lands.
+A raise is never made on a board topped out.
 
 ## Every number from the engine or the budget
 

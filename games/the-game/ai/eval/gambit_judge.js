@@ -57,7 +57,7 @@ function judge(c, R, k) {
     if (fc === 0) { play = 'clear'; x = { combo: 3, chain: 1 }; m = x; combo = 3; chain = 1; broke = 0; }
     else if (fc > 0) seq = seq.slice(0, fc);
   }
-  var t = GAMBIT.tier(play, Object.assign({}, x, { combo: m.combo, chain: m.chain, broke: m.broke }), aim, R.under, !!R.F.enemy.topped, !!R.F.us.topped, !!R.F.us.falling);
+  var t = GAMBIT.tier(play, Object.assign({}, x, { combo: m.combo, chain: m.chain, broke: m.broke }), aim, R.under, !!R.F.enemy.topped, !!R.F.us.topped, !!R.F.us.breakWaits);
   return { play: play, seq: seq, tier: t.tier, sub: t.sub, aim: aim, extend: k.extend, near: x.near || 0,
            ap: { seq: seq, done: x.done || null, fire: fire || null, ats: x.ats || null, chain: chain, combo: combo, broke: broke } };
 }

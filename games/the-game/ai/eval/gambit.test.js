@@ -143,12 +143,27 @@ assert(!G.fits([{ chain: '==4' }], { combo: 3, chain: 1, broke: 0 }), 'pressure:
 assert(G.fits([{ chain: '>=8' }], { chain: 0, combo: 0 }), 'a move that clears nothing fits');
 assert(G.fits([{ chain: '>=8', break: true }], { chain: 9, combo: 3, broke: 0 }), 'an entry fits whether it breaks or not');
 
-// garbage still falling: an entry, then setting up, then the break, then hold (plans/decision.md)
+// the break waits (the next block lands on screen on the garbage it would take): an entry, a set-up, the hold, then the break -- the
+// survival search plays the first that lives, so the break comes at the last moment (plans/decision.md)
 var fe = G.tier('entry', { chain: 2, combo: 3 }, 4, true, false, false, true), fs0 = G.tier('setup', {}, -1, true, false, false, true);
 var fb = G.tier('break search', { broke: 6, done: 90 }, -1, true, false, false, true), fh = { tier: 5, sub: [] };   // (the hold is tier 5, put beside the candidates)
+var fc0 = G.tier('clear', { chain: 1, combo: 3 }, -1, true, false, false, true);
 var rank = function (t) { return [t.tier].concat(t.sub); }, before = function (a, b) { var x = rank(a), y = rank(b); for (var i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
-assert(before(fe, fs0) && before(fs0, fb) && before(fb, fh), 'falling: entry, setup, break, hold');
+assert(before(fe, fs0) && before(fs0, fh) && before(fh, fb) && before(fb, fc0), 'the break waits: entry, set-up, hold, break, then a clear');
 assert.strictEqual(G.tier('break search', { broke: 6, done: 90 }, -1, true, false, false, false).tier, 1, 'landed: the break first');
+// when the break waits, on a board with a row of garbage landed on top: the next block landing within the break's pop, it waits; one
+// landing seconds later, or none coming, it does not
+(function () {
+  var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
+  var b = PA.game({ level: 10, seed: 3, countdown: false }), f;
+  for (f = 0; f < 200; f++) b.run();
+  b.receiveGarbage([{ width: 6, height: 1, isChain: false, isMetal: false }]);
+  for (f = 0; f < 300; f++) b.run();
+  assert.ok(G.facts(b, [], false).contact !== null, 'the garbage has landed');
+  assert.strictEqual(G.facts(b, [{ at: 20, width: 6, height: 1 }], false).breakWaits, true, 'the next block lands within the pop: wait for it');
+  assert.strictEqual(G.facts(b, [{ at: 900, width: 6, height: 1 }], false).breakWaits, false, 'the next block lands seconds after: break now');
+  assert.strictEqual(G.facts(b, [], false).breakWaits, false, 'nothing coming: break now');
+})();
 
 // a move's place in the list: the first entry its clears match, whatever found it
 assert.strictEqual(G.entryOf(FIN, { combo: 9, chain: 1 }), 0, 'finish: a combo of 9 is the first entry');

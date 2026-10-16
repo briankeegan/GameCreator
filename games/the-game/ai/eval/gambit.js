@@ -20,7 +20,7 @@
 // Facts, the same names for both boards (an enemy fact the host does not send is undefined, and a test on it is false):
 //   topped, stop (frames), height (rows, garbage included), material (panels under the garbage), contact (columns reaching the
 //   garbage), evenness (tallest panel column less lowest), coming (rows on their way), heavy (coming > 8), nextLands (frames),
-//   dies (frames until the board is lost if nothing is done), falling (topped out, a block of garbage in the air)
+//   dies (frames until the board is lost if nothing is done), breakWaits (the next block lands on screen on the garbage a break would take)
 var fs = require('fs'), path = require('path'), CK = require('./survivor_checks.js');
 
 function cellOf(b, r, c) { var p = b.panels[r] && b.panels[r][c]; return !p ? 0 : p.isGarbage ? -1 : (p.color || 0); }
@@ -46,12 +46,44 @@ function facts(board, arrivals, topped) {
   // (dies: the frames until the board is lost if nothing is done -- the stop time, the rise to the top row unless already topped, then
   // the health it drains there)
   var dies = topped ? stop + (board.health || 0) : CK.framesToTop(board) + (board.health || 0);
-  // (falling: on a board topped out, a block of garbage in the air -- landing on it now; one only queued has not begun to fall)
-  var falling = !!(topped && garb && typeof board.hasFallingGarbage === 'function' && board.hasFallingGarbage());
+  // (breakWaits: a break converts the garbage connected to what it matches that is on screen -- touching blocks go together -- so it
+  // waits while the next block will land on that garbage before a break begun now has popped: one break then takes both. The next block
+  // lands on the top of the stack, so: the top of the stack is the group of the lowest block, the screen has room above it, and the
+  // next block lands within the break's pop -- FLASH + FACE + POP x (3 + the group's cells on screen), as checkMatches times it. Otherwise
+  // the break is made first: the panels it makes are free before the next block comes.)
+  var breakWaits = false;
+  if (garb) {
+    var group = lowestGroupTop(board, H), f = board.frames, inAir = typeof board.hasFallingGarbage === 'function' && board.hasFallingGarbage();
+    var pop = f && group ? f.FLASH + f.FACE + f.POP * (3 + group.onScreen) : 0;
+    breakWaits = !!(group && group.top === top && top < (board.height || H) && (inAir || (next !== null && next <= pop)));
+  }
   return {
     topped: !!topped, stop: stop, height: top, material: material, contact: garb ? contact : null, dies: dies,
-    evenness: Math.max.apply(null, peaks) - Math.min.apply(null, peaks), coming: coming, heavy: coming > 8, nextLands: next, falling: falling
+    evenness: Math.max.apply(null, peaks) - Math.min.apply(null, peaks), coming: coming, heavy: coming > 8, nextLands: next, breakWaits: breakWaits
   };
+}
+// THE GARBAGE A BREAK TAKES: the lowest block and every block touching it (by edge, one block to the next) -- its top row and its cells
+// on screen; null for none
+function lowestGroupTop(board, H) {
+  var at = {}, low = null, r, c;
+  for (r = 1; r <= H; r++) for (c = 1; c <= 6; c++) {
+    var p = board.panels[r] && board.panels[r][c];
+    if (p && p.isGarbage) { at[r + ',' + c] = p.garbageId; if (low === null) low = p.garbageId; }
+  }
+  if (low === null) return null;
+  var ids = {}, todo = [low], top = 0, onScreen = 0, h = board.height || H;
+  ids[low] = true;
+  while (todo.length) {
+    var id = todo.pop();
+    Object.keys(at).forEach(function (k) {
+      if (at[k] !== id) return;
+      var rc = k.split(',').map(Number);
+      if (rc[0] > top) top = rc[0];
+      if (rc[0] <= h) onScreen++;
+      [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) { var o = at[(rc[0] + d[0]) + ',' + (rc[1] + d[1])]; if (o !== undefined && !ids[o]) { ids[o] = true; todo.push(o); } });
+    });
+  }
+  return { top: top, onScreen: onScreen };
 }
 // The facts of a settled grid the search leaves (0 empty, garbage 8 and up or below 0, 1..7 colours): what a line's end board keeps.
 function gridFacts(grid) {
@@ -160,19 +192,17 @@ function lead(aims, made, under) { return nearList(aims, made) + (under && made.
 //     garbage a clear that breaks nothing is only this on a topped board, where the stop time it buys is what keeps the board alive
 //   4 NOTHING FITS: ready, toward a break, level, setup
 //   6 CLEAR, and any clear that breaks nothing, sends nothing and buys nothing: only when there is nothing else (hold is 5)
-function tier(play, x, aim, under, enemyOut, topped, falling) {
+function tier(play, x, aim, under, enemyOut, topped, waits) {
   x = x || {};
   var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0, cells = x.cells || 0, stop = x.earned || 0;
   var clears = combo >= 3 || chain >= 2 || broke > 0 || cells > 0 || play === 'clear';
   var buys = combo >= 4 || chain >= 2, rate = broke / Math.max(1, x.done || 1);
-  // (GARBAGE STILL FALLING, plans/decision.md: an entry first, then set up the ask ready to break it when it lands, then the break --
-  // broken before the rest has landed, the next block buries the panels it made -- then hold)
-  if (under && falling) {
-    if (aim >= 0) return { tier: 2, sub: [aim, x.done || 0] };
-    if (broke > 0) return { tier: 4, sub: [9, x.floor === false ? 1 : 0, -rate, buys ? 0 : 1, -broke] };
+  // (THE BREAK WAITS, plans/decision.md: the next block lands on the garbage it would take -- an entry first, then a set-up, then the
+  // hold, then the break: of these the first that lives is played, so the break is made at the last moment it lives)
+  if (under && waits) {
+    if (aim >= 0 && !(broke > 0)) return { tier: 2, sub: [aim, x.done || 0] };
+    if (broke > 0) return { tier: 6, sub: [-Infinity, x.floor === false ? 1 : 0, aim >= 0 ? aim : 99, -rate, buys ? 0 : 1, -broke] };
   }
-  // (garbage landed, plans/decision.md: break it -- an entry that breaks, in the list's order, then the break nearest the attack, then
-  // more broken; each in time, or it is no candidate)
   if (under && broke > 0) return { tier: 1, sub: [x.floor === false ? 1 : 0, aim >= 0 ? aim : 99, -rate, buys ? 0 : 1, -broke] };
   if (play === 'clear') return { tier: 6, sub: [-stop] };   // (only when there is nothing else)
   if (aim >= 0 && !under) return { tier: 2, sub: [aim, x.done || 0] };
