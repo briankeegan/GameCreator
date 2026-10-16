@@ -507,7 +507,18 @@ Match.prototype.countAttacks = function (truth) {
   var at = this.stats.attacks || (this.stats.attacks = { combo: {}, chain: {} });
   var byAll = this.stats.attacksBy || (this.stats.attacksBy = {}), by = this._swapBy || 'default';
   var mine = function (who) { return byAll[who] || (byAll[who] = { combo: {}, chain: {} }); };
-  if (fresh >= 4) { at.combo[fresh] = (at.combo[fresh] || 0) + 1; mine(by).combo[fresh] = (mine(by).combo[fresh] || 0) + 1; }
+  // (a match of 4 or more is a combo when it is a clear of its own; one that is a link of a chain (the chain counter at 2 or more) is the
+  // chain's, counted apart in links -- and every single combo is logged with who pressed last and how much of it came out of garbage)
+  // (the first clear of a chain is known to be one only when a second link follows: held until the chain counter says which)
+  var link = function (z) { var lk0 = at.links || (at.links = {}); lk0[z] = (lk0[z] || 0) + 1; };
+  var single = function (q) {
+    at.combo[q.size] = (at.combo[q.size] || 0) + 1; mine(q.by).combo[q.size] = (mine(q.by).combo[q.size] || 0) + 1;
+    console.error('COMBO ' + q.clock + ' size=' + q.size + ' by=' + q.by.replace(/ /g, '_') + '@' + q.at + ' conv=' + q.conv);
+  };
+  var pend = this._pendCombos || (this._pendCombos = []);
+  if (cc >= 2 && pend.length) { pend.forEach(function (q) { link(q.size); }); this._pendCombos = pend = []; }
+  if (cc === 0 && pend.length) { pend.forEach(single); this._pendCombos = pend = []; }
+  if (fresh >= 4) { if (cc >= 2) link(fresh); else pend.push({ size: fresh, by: by, at: this._swapAt, conv: conv, clock: truth.clock }); }
   if (cc > 0 && !(this._chainMax > 0)) { this._chainBy = by; this._chainAt = truth.clock; this._links = []; }
   if (cc > (this._chainMax || 0)) {
     this._chainMax = cc; this._lastLink = (this._swapAt || -1) >= this._chainAt ? by : 'itself';
