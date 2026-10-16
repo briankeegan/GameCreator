@@ -1273,9 +1273,10 @@ module.exports = function think(cfg) {
       }
       // EVERY SWAP PRESSED FITS THE MODE'S LIST, WHOEVER CHOSE IT (gambit): the move the decision ends on and the rest of its line are played
       // on the engine, and the line is cut before the first step after which what it has made fits no entry (GAMBIT.fits). A first swap
-      // outside the list is replaced by the first of gambit's ranked moves that fits, else held -- unless holding dies: then a move the
-      // survival search found lives that fits, and only with none the survival search's own pick (the one exception: survival that is
-      // absolutely necessary). Counted in bot._listCuts { line, move, live, survival }.
+      // outside the list is replaced by a move that fits and lives: with holding dying, one the survival search found lives; else the first
+      // of gambit's ranked moves the search found lives (any, when it did not search), else a hold it did not find dies. With none, the move
+      // stands (the one exception: survival that is absolutely necessary) -- never past GAMBIT.MAXCHAIN. Counted in bot._listCuts
+      // { line, move, live, survival }.
       if (bot._gambitList && attacker && d && d.kind === 'swap' && d.move) {
         var listF = bot._gambitList, okF = function (w) { return GAMBIT.fits(listF, w); };
         var lineF = [d.move].concat((attackLine || []).filter(function (mv) { return Array.isArray(mv); }));
@@ -1294,16 +1295,20 @@ module.exports = function think(cfg) {
             if (attacker.lineFits(board, m.hold, [cF.move], arrivals, okF) === 1) liveF = cF.move;
           }
           if (liveF) { cutsF.live = (cutsF.live || 0) + 1; d = { kind: 'swap', move: [liveF[0], liveF[1]], overruled: true, src: 'list' }; attackLine = null; attackMove = null; }
-          else if (holdF === 'dies' && !claimOf(bot._gambit, d) && attacker.lineFits(board, m.hold, [d.move], arrivals, function (w) { return (w.chain || 0) <= GAMBIT.MAXCHAIN; }) === 1) cutsF.survival++;
           else {
-            cutsF.move++;
+            // (a replacement lives: of gambit's ranked moves, one the survival search found lives when it searched this decision; else a
+            // hold the search did not find dies. With neither, the move stands -- survival that is necessary -- unless it makes a chain
+            // longer than any list allows)
+            var livesF = function (key) { if (!lvF) return true; for (var q = 0; q < lvF.cands.length; q++) { var c = lvF.cands[q], kc = c.kind === 'swap' && c.move ? c.move[0] + ',' + c.move[1] : c.kind; if (kc === key) return lvF.verdict[q] === 'proven' || lvF.verdict[q] === 'weak'; } return false; };
             var altF = null, ordF = (bot._gambit && bot._gambit.order) || [];
             for (var oF = 0; oF < ordF.length && oF < 4 && !altF; oF++) {
               var pF = String(ordF[oF]).split(',').map(Number);
-              if (pF.length === 2 && !(pF[0] === d.move[0] && pF[1] === d.move[1]) && attacker.lineFits(board, m.hold, [pF], arrivals, okF) === 1) altF = pF;
+              if (pF.length === 2 && !(pF[0] === d.move[0] && pF[1] === d.move[1]) && livesF(ordF[oF]) && attacker.lineFits(board, m.hold, [pF], arrivals, okF) === 1) altF = pF;
             }
-            d = altF ? { kind: 'swap', move: altF, overruled: true, src: 'list' } : { kind: 'hold', overruled: true, src: 'list' };
-            attackLine = null; attackMove = null;
+            if (altF) { cutsF.move++; d = { kind: 'swap', move: altF, overruled: true, src: 'list' }; attackLine = null; attackMove = null; }
+            else if (holdF === 'proven' || holdF === 'weak' || holdF === 'unsearched') { cutsF.move++; d = { kind: 'hold', overruled: true, src: 'list' }; attackLine = null; attackMove = null; }
+            else if (attacker.lineFits(board, m.hold, [d.move], arrivals, function (w) { return (w.chain || 0) <= GAMBIT.MAXCHAIN; }) === 1) cutsF.survival++;
+            else { cutsF.move++; d = { kind: 'hold', overruled: true, src: 'list' }; attackLine = null; attackMove = null; }
           }
         }
       }

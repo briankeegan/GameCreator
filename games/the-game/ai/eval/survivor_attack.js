@@ -435,7 +435,8 @@ module.exports = function (opts) {
   }
   // HOW FAR A LINE STAYS INSIDE ok(made): each step played on the engine to the board's settle, as replay plays it, with what the line
   // has made so far ({ combo, chain, broke }, as replay's `whole`: beyond what the board left alone makes) asked of ok after each; the
-  // index of the first step after which ok is false or that is not legal, seq.length when every step stays inside
+  // index of the first step after which ok is false, seq.length when every step it can play stays inside (a step not legal, or a board
+  // lost, ends the judging: whether the line lives is the survival search's question, not the list's)
   function lineFits(board, hold, seq, arrivals, ok) {
     var s = search();
     s.reset();
@@ -445,9 +446,9 @@ module.exports = function (opts) {
     var wCombo = 0, wChain = 0, wBroke = 0;
     for (k = 0; k < seq.length; k++) {
       var mv = seq[k];
-      if (!n.b.legalSwaps().some(function (m) { return m[0] === mv[0] && m[1] === mv[1]; })) break;
+      if (!n.b.legalSwaps().some(function (m) { return m[0] === mv[0] && m[1] === mv[1]; })) { k = seq.length; break; }
       var out = s.advanceMany([[n, 'settle', mv, 0]], true)[0];
-      if (!out || out.dead) break;
+      if (!out || out.dead) { k = seq.length; break; }
       made.push(out);
       var st = s.stepStats(out), g = sent(st);
       st.comboSizes.forEach(function (z) { if (z > wCombo) wCombo = z; });
