@@ -944,18 +944,18 @@ module.exports = function think(cfg) {
           }
           var sortG = function () { candsG.sort(function (x, y) { if (x.tier !== y.tier) return x.tier - y.tier; for (var q = 0; q < x.sub.length; q++) if (x.sub[q] !== y.sub[q]) return x.sub[q] - y.sub[q]; return 0; }); };
           sortG();
-          // (ALWAYS READY, WHILE ATTACKING -- plan step 5, never making a must-do miss its deadline: an attack, a setup or a level is kept
+          // (ALWAYS READY, WHILE ATTACKING -- never making a break miss its deadline: firing the entry or a set-up move is kept
           // only if, its first move played, the next block on its way can still be broken when it lands (readyAfter, on the engine). The
           // leading ones are judged, as many as the decision's time allows)
           if (attacker && arrivals.length) {
             var judgedG = 0, demotedG = false;
             for (var jg = 0; jg < candsG.length && judgedG < 4 && leftG() > 15; jg++) {
               var cj = candsG[jg];
-              if (cj.tier !== 2 && cj.tier !== 3 && !(cj.tier === 4 && (cj.play === 'setup' || cj.play === 'level'))) continue;
+              if (cj.tier !== 1 && cj.tier !== 3) continue;   // (the entry and the set-up; a break is never held back: garbage can always be broken)
               judgedG++;
               if (attacker.readyAfter(board, m.hold, cj.seq[0], arrivals) === false) { cj.unready = true; demotedG = true; }
             }
-            if (demotedG) candsG = candsG.filter(function (c) { return !c.unready; });
+            if (demotedG && candsG.some(function (c) { return !c.unready; })) candsG = candsG.filter(function (c) { return !c.unready; });
           }
           var topG = candsG[0] || null;
           // (the raise due but the board busy -- a clear or a fall still going, which locks the rise: nothing new is begun, so the board
