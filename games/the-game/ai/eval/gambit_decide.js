@@ -34,15 +34,17 @@ function read(c) {
            preds: aims.map(function (a) { return function (made) { return GAMBIT.meets(a, made); }; }) };
 }
 
+var HOLD_TIER = 5;   // (GAMBIT.tier: a hold ranks below every play that fits, above a clear)
 // 2-4. PROPOSE, JUDGE AND RANK: every candidate offered, judged, the ones left in rank order
 function ranked(c, R, S) {
   c.judged = {}; c.dropped = {}; c.offered = {};
   var offered = PROPOSE.all(c, R, S);
   offered.forEach(function (k) { c.offered[k.play] = (c.offered[k.play] || 0) + 1; });
   var out = offered.map(function (k) { return JUDGE.judge(c, R, k); }).filter(Boolean);
-  // (the line in progress: first of its tier when its next step is due now; one that waits for the board ranks as any other line)
+  // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
+  // until then -- it ranks with the hold, below every move that can be made now)
   var C = R.preds.length ? PROPOSE.carried(c, R) : null, cj = C && JUDGE.judge(c, R, C.cand);
-  if (cj) { cj.wait = C.wait; if (!cj.wait) cj.sub = [-Infinity].concat(cj.sub); out.push(cj); }
+  if (cj) { cj.wait = C.wait; if (cj.wait) { cj.tier = Math.max(cj.tier, HOLD_TIER); cj.sub = [-1]; } else cj.sub = [-Infinity].concat(cj.sub); out.push(cj); }
   return out.sort(JUDGE.compare);
 }
 
