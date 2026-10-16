@@ -205,7 +205,8 @@ function tier(play, x, aim, under, enemyOut, topped, waits) {
     if (aim >= 0 && !(broke > 0)) return { tier: 2, sub: [aim, x.done || 0] };
     if (broke > 0) return { tier: 6, sub: [-Infinity, x.floor === false ? 1 : 0, aim >= 0 ? aim : 99, -rate, buys ? 0 : 1, -broke] };
   }
-  if (under && broke > 0) return { tier: 1, sub: [x.floor === false ? 1 : 0, aim >= 0 ? aim : 99, -(x.dropAt || 0), -rate, buys ? 0 : 1, -broke] };
+  // (a line that breaks garbage is a break, whether that garbage is on the board yet or lands while the line plays out)
+  if (broke > 0) return { tier: 1, sub: [x.floor === false ? 1 : 0, aim >= 0 ? aim : 99, -(x.dropAt || 0), -rate, buys ? 0 : 1, -broke] };
   if (play === 'clear') return { tier: 6, sub: [-stop] };   // (only when there is nothing else)
   if (aim >= 0 && !under) return { tier: 2, sub: [aim, -(x.dropAt || 0), x.done || 0] };
   if (clears && (buys || cells > 0) && (!under || (topped && buys))) return { tier: 3, sub: [-cells, enemyOut ? -combo : -chain, enemyOut ? -chain : -combo, -stop, -(x.near || 0)] };

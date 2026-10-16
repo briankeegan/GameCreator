@@ -175,4 +175,5 @@ assert.strictEqual(G.entryOf([{ chain: '==4', break: true }], { combo: 3, chain:
 // the profile's own rules file parses and drops nothing
 var shipped = G.checked(JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles', 'gambit-rules.json'), 'utf8')));
 assert.deepStrictEqual(shipped.errors, [], 'the shipped rules drop nothing');
+assert.strictEqual(G.tier('break line', { broke: 6, done: 40 }, -1, false, false, false, false).tier, 1, 'a line that breaks garbage landing while it plays is a break, ranked above the hold');
 console.log('ok: gambit tables, aims, facts and the rules file');
