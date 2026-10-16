@@ -10,7 +10,7 @@
 // c: { bot (the survival search, puyocpu.js), m (the question), board, arrivals, due (ms clock), t0, attacker, search() (the break
 // search's engine), rules, GP (the profile's gambit), pace, margin (ms), nativeMem() }
 var path = require('path');
-var GAMBIT = require(path.join(__dirname, 'gambit.js')), DECIDE = require(path.join(__dirname, 'gambit_decide.js'));
+var GAMBIT = require(path.join(__dirname, 'gambit.js')), DECIDE = require(path.join(__dirname, 'gambit_decide.js')), JUDGE = require(path.join(__dirname, 'gambit_judge.js'));
 var SH = require(path.join(__dirname, 'survivor_shared.js')), CK = require(path.join(__dirname, 'survivor_checks.js')), KEYS = require(path.join(__dirname, 'survivor_keys.js'));
 
 // THE BREAK SEARCH: the lines to a break, in the share of the decision's time it is given (a line begun is carried on as the line in
@@ -63,7 +63,7 @@ function lives(c, D) {
     order.forEach(function (k) { if (!d && lived(k)) { d = asMove(k); verdict = verdictOf[k]; why = 'gambit'; } });
     // (the survival exception: of the moves found live, the first that fits the list as Gambit judges it, else the first)
     if (!d) {
-      var madeBy = function (mv) { var j = c.attacker.judge(c.board, c.m.hold, [mv], c.arrivals, { tight: c.tight }); return j.dead ? null : Object.assign({}, j.made, { chain: Math.max(j.made.chain || 0, j.chainAll >= 2 ? j.chainAll : 0) }); };
+      var madeBy = function (mv) { var j = c.attacker.judge(c.board, c.m.hold, [mv], c.arrivals, { tight: c.tight }); return j.dead ? null : JUDGE.listMade(j.made, j); };
       var alive = V.cands.filter(function (vc, q) { return (V.verdict[q] === 'proven' || V.verdict[q] === 'weak') && order.indexOf(keyOf(vc)) < 0; });
       var fitting = alive.filter(function (vc) { if (vc.kind !== 'swap') return !D.R.aloneOut; var mk = madeBy(vc.move); return mk && GAMBIT.fits(list, mk) && mk.chain <= GAMBIT.MAXCHAIN; })[0];
       var any = fitting || alive.filter(function (vc) { if (vc.kind !== 'swap') return true; var mk = madeBy(vc.move); return mk && mk.chain <= GAMBIT.MAXCHAIN; })[0];

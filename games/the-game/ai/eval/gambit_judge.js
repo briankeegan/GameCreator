@@ -21,6 +21,10 @@ function swapBack(c, mv, clears) {
   return !!(bot._gambitLastPair && ids === bot._gambitLastPair && (!clears || (bot._gambitPairRuns || 0) >= 2));
 }
 
+// What the list reads of a line: what it makes, its chain the chain as the game counts it (j: attacker.judge's answer, chainAll) -- with a
+// chain already falling, the links before it and the board's own continuation count
+function listMade(m, j) { return j && j.chainAll >= 2 ? Object.assign({}, m, { chain: Math.max(m.chain || 0, j.chainAll) }) : m; }
+
 // The whole line played as it will be pressed (attacker.judge), once per line a decision: what it makes and when each step is begun --
 // null when the judge could not play it out
 function played(c, seq, isSettled) {
@@ -46,7 +50,7 @@ function judge(c, R, k) {
   if (swapBack(c, seq[0], (m.combo || 0) > 0 || (m.chain || 0) > 0 || (m.broke || 0) > 0)) return drop(c, play, 'back');
   // (it fits the list, or it is no candidate -- the chain as the game counts it: with a chain already falling, what the board makes after
   // the move, its own continuation and every link the move adds; its place in the list is the first entry it matches)
-  if (!GAMBIT.fits(R.list, w && w.chainAll >= 2 ? Object.assign({}, m, { chain: Math.max(m.chain || 0, w.chainAll) }) : m)) return drop(c, k.play, 'list');
+  if (!GAMBIT.fits(R.list, listMade(m, j))) return drop(c, k.play, 'list');
   // (below the rule's material floor -- `keep: { material }` -- a line that clears panels and breaks no garbage spends what the board
   // needs: no candidate, whoever offered it. A break is never held to the floor: it is where the panels come from)
   if (R.keep && R.keep.material !== undefined && !GAMBIT.test(R.F.us.material, R.keep.material) && (m.combo > 0 || m.chain > 0) && !(m.broke > 0)) return drop(c, k.play, 'floor');
@@ -66,7 +70,7 @@ function judge(c, R, k) {
   // (ranked on the judge's count and time: what the line makes, and when it is done)
   var t = GAMBIT.tier(play, Object.assign({}, x, { combo: m.combo, chain: m.chain, broke: m.broke, done: j ? j.done : x.done }), aim, R.under, !!R.F.enemy.topped, !!R.F.us.topped, !!R.F.us.breakWaits);
   return { play: play, seq: seq, settled: st, tier: t.tier, sub: t.sub, aim: aim, extend: k.extend, near: x.near || 0,
-           ap: { seq: seq, done: j ? j.done : (x.done || null), fire: fire, ats: j ? j.ats : (x.ats || null), chain: m.chain || 0, chainAll: w ? w.chainAll || 0 : 0, combo: m.combo || 0, broke: m.broke || 0 } };
+           ap: { seq: seq, done: j ? j.done : (x.done || null), fire: fire, ats: j ? j.ats : (x.ats || null), chain: m.chain || 0, chainAll: j ? j.chainAll || 0 : 0, combo: m.combo || 0, broke: m.broke || 0 } };
 }
 
 // THE RANK: lower tier first, then each sub-key in turn
@@ -76,4 +80,4 @@ function compare(x, y) {
   return 0;
 }
 
-module.exports = { judge: judge, compare: compare, settled: settled, SETTLED: SETTLED, swapBack: swapBack, drop: drop };
+module.exports = { listMade: listMade, judge: judge, compare: compare, settled: settled, SETTLED: SETTLED, swapBack: swapBack, drop: drop };
