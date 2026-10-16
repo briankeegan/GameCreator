@@ -1,5 +1,8 @@
 # Gambit's decision
 
+The rules here are the owner's. A new rule, or a condition a rule does not state, is agreed with the owner before it is written;
+making an existing rule work as it is written is a fix.
+
 A mode is its list: the entries it asks for, in order, each with a deadline. Every mode decides the same way; only the list differs.
 
 Every move is the next step of the ask, and the ask runs the whole time: while it is built, garbage is broken (that is where the
