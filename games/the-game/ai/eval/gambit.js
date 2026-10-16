@@ -73,8 +73,10 @@ function keeps(keep, grid) {
   var f = gridFacts(grid);
   return Object.keys(keep).every(function (k) { return test(f[k.replace(/^us\./, '')], keep[k]); });
 }
-// A BREAK'S DEADLINE (plays.md): before the board dies, however soon the next block lands -- that is the level's and the ready's
-function breakBy(F) { return F && F.us && F.us.dies > 0 ? F.us.dies : null; }
+// A BREAK'S DEADLINE (plays.md): before the board dies, however soon the next block lands (that is the level's and the ready's) -- and the
+// engine is the judge of that: every line is played on it with the garbage landing, and one the board dies on is never offered. The
+// estimate of the frames left (dies) is no deadline for a break; it is what the pace hurries for
+function breakBy(F) { return null; }
 // THE FLOOR (a rule's or the file's `keep`): a line's board must keep it -- unless the line breaks garbage, which is made with any
 // allowed move, garbage on the board or not. null: no floor.
 function floor(keep) {

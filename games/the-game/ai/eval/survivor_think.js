@@ -987,7 +987,7 @@ module.exports = function think(cfg) {
           // PACE (the profile's pace, plans/gambit.md step 7): moves are spread out, never pulsed, whenever nothing is due -- a play is begun
           // at once only in a window (a chain falling, a slab popping) or when its line is done within a pace gap of its deadline (the break
           // under garbage: the next block or the board lost; the ready and level: the block landing; an attack: its rule's by)
-          var gapG = (cfg.profile.pace && cfg.profile.pace.gap) || 0, doneG = lineG && lineG.ap && (lineG.ap.fire != null ? lineG.ap.fire : lineG.ap.done), dueG = byG || (typeof readyAtG === 'number' ? readyAtG : null);
+          var gapG = (cfg.profile.pace && cfg.profile.pace.gap) || 0, doneG = lineG && lineG.ap && (lineG.ap.fire != null ? lineG.ap.fire : lineG.ap.done), dueG = byG || (underG && FG.us.dies > 0 ? FG.us.dies : null) || (typeof readyAtG === 'number' ? readyAtG : null);
           bot._gambitUrgent = !!(lineG && lineG.extend) || SH.popLeft(board) > 0 || cascadeLive(board, true) ||
                               (dueG !== null && dueG !== undefined && (doneG || 0) + gapG >= dueG);
           FGmat = FG.us.material; FGland = FG.us.nextLands; FGdies = FG.us.dies;
