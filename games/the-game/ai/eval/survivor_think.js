@@ -898,8 +898,9 @@ module.exports = function think(cfg) {
               else if (lvU) { setupG = lvU.move; playG = 'level'; }
               else if (dyingG && apG && apG.stopBest) { lineG = { ap: apG.stopBest, aimIndex: -1 }; playG = 'scramble'; }
               else if (toppingG && apG && apG.lowest) { lineG = { ap: apG.lowest, aimIndex: -1 }; playG = 'clear'; }
-              // (nothing at all to do under the garbage: HOLD -- the panels are what the next break is made of)
-              else { endG = 'hold'; playG = 'hold'; }
+              // (nothing at all to do under the garbage, the board not near the top: HOLD -- the panels are what the next break is made of;
+              // near the top a hold is how the board is lost, and the survival search's own move stands)
+              else if (!toppingG) { endG = 'hold'; playG = 'hold'; }
             }
             else if (readyAtG !== null) {
               var rdG = arrivals.length && attacker ? attacker.readyFor(board, m.hold, arrivals, { ms: Math.max(20, Math.min(60, leftG())) }) : null;
