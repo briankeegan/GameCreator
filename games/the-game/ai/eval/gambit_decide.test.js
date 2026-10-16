@@ -62,6 +62,7 @@ for (var cs = 1; cs <= 40 && counted < 3; cs++) {
     assert.ok(!JUDGE.fitsList([{ chain: '==' + most }], { combo: 4, chain: 0 }, { chainAll: most }), 'a combo of 4 made beside a chain is no link of it');
     assert.ok(!JUDGE.fitsList([{ combo: '==6' }, { chain: '==' + most }], { combo: 6, chain: 0 }, { chainAll: 0, singles: [6, 4] }), 'a combo of 4 the board makes beside the line\'s own 6 is outside the list');
     assert.ok(JUDGE.fitsList([{ combo: '==6' }], { combo: 6, chain: 0 }, { chainAll: 0, singles: [6] }), 'the line\'s own 6, alone, fits');
+    assert.ok(JUDGE.fitsList([{ combo: '==6' }], { combo: 6, chain: 0, broke: 6 }, { chainAll: 0, singles: [6, 4] }), 'a break is not dropped over a combo of 4 its garbage makes');
     listChecked++;
   });
   counted++;
