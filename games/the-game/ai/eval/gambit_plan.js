@@ -38,7 +38,9 @@ function grow(c, R, cands) {
     if (seen[k] !== undefined) return seen[k];
     var j = c.attacker.judge(c.board, c.m.hold, seq, c.arrivals, { settled: false, tight: c.tight, diesAfter: horizon });
     judged++;
-    var L = !j || j.dead || j.ats.length < seq.length || !JUDGE.fitsList(R.list, j.made, j) ? null : { seq: seq, dies: j.dies, broke: j.made.broke || 0, ends: j.ends || [] };
+    // (a line the board is lost on is kept, as long as it lasts: when every line loses it, the latest loss is the plan)
+    var L = !j || (!j.dead && j.ats.length < seq.length) || !JUDGE.fitsList(R.list, j.made, j) ? null :
+            { seq: seq, dies: j.dead ? j.done : j.dies, broke: j.made.broke || 0, ends: j.dead ? [] : j.ends || [] };
     seen[k] = L;
     return L;
   };
@@ -69,4 +71,12 @@ function grow(c, R, cands) {
   return { best: kept[0] || null, alone: alone, judged: judged };
 }
 
-module.exports = { grow: grow, better: better };
+// The frames the board lives after a line, judged as the plan judges its own (null when it is no plan: outside the list, not played out)
+function diesOf(c, R, seq) {
+  var last = 0; (c.arrivals || []).forEach(function (a) { if (a.at > last) last = a.at; });
+  var j = c.attacker.judge(c.board, c.m.hold, seq, c.arrivals, { settled: false, tight: c.tight, diesAfter: last + BEYOND });
+  if (!j || (!j.dead && j.ats.length < seq.length) || !JUDGE.fitsList(R.list, j.made, j)) return null;
+  return j.dead ? j.done : j.dies;
+}
+
+module.exports = { grow: grow, better: better, diesOf: diesOf };
