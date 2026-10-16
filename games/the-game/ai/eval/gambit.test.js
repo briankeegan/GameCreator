@@ -114,7 +114,7 @@ assert.strictEqual(G.tier('entry', { chain: 4, broke: 0 }, 0, true).tier, 2, 'ga
 assert(before(G.tier('entry', { chain: 4, broke: 6 }, 0, true), G.tier('entry', { chain: 4, broke: 0 }, 0, true)), 'one that breaks too goes first');
 assert(before(G.tier('break search', { broke: 6 }, -1, true), G.tier('entry', { chain: 4, broke: 0 }, 0, true)), 'garbage landed: a break before an entry that breaks nothing');
 assert(before(G.tier('break search', { broke: 6 }, -1, true), G.tier('nearest', { chain: 2, near: 50 }, -1, true)), 'and before a set-up');
-assert(before(G.tier('break search', { broke: 6, near: 60 }, -1, true), G.tier('lineup', { combo: 6, broke: 12, near: 10 }, -1, true)), 'the break nearest the attack first, whatever kind it is');
+assert(before(G.tier('break search', { broke: 6, near: 60 }, -1, true), G.tier('nearest', { combo: 6, broke: 12, near: 10 }, -1, true)), 'the break nearest the attack first, whatever kind it is');
 assert(before(G.tier('break search', { broke: 12 }, -1, true), G.tier('break search', { broke: 6 }, -1, true)), 'then more garbage broken');
 assert(before(G.tier('setup', {}, -1, true, true), G.tier('break search', { broke: 6 }, -1, true, true)), 'garbage still falling: set up and get ready before breaking it too soon');
 assert(before(G.tier('break search', { broke: 6 }, -1, true, true), { tier: 5, sub: [0] }), 'but a break before hold');

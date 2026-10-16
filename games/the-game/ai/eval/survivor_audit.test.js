@@ -36,4 +36,11 @@ assert.deepStrictEqual(stats.audit.toward, { n: 1, cut: 1, chain: [0, 0, 0], com
 a.claim({ play: 'carry', chain: 9 }, 515);
 run(a, 511, 600, {});
 assert.strictEqual(stats.audit.setup.n, 1, 'carried on: the setup kept its claim'); assert.ok(!stats.audit.carry, 'no claim of its own');
+// a new decision whose first swap is the open line's next one is the line going on, not a cut
+var s2 = {}, a2 = new AUDIT.Audit(s2);
+a2.claim({ play: 'entry', chain: 2, done: 100, seq: [[3, 1], [4, 2]] }, 700);
+a2.claim({ play: 'nearest', chain: 2, done: 60, seq: [[4, 2]] }, 740);
+assert.ok(!s2.audit || !s2.audit.entry, 'the entry is still open: its next swap was played');
+a2.claim({ play: 'setup', done: 10, seq: [[1, 1]] }, 760);
+assert.strictEqual(s2.audit.entry.cut, 1, 'a swap off the line cuts it');
 console.log('ok: claim audit -- right, over, under, cut, carried');

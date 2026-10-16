@@ -75,7 +75,7 @@ module.exports = function think(cfg) {
   // THE CLAIM of the line Gambit chose, when the move played is its first swap: what it said it would make (survivor_audit.js)
   function claimOf(g, d) {
     if (!g || !g.found || !d || d.kind !== 'swap' || !d.move || !g.order || g.order[0] !== d.move[0] + ',' + d.move[1]) return null;
-    return { play: g.play, chain: g.chain || 0, combo: g.combo || 0, broke: g.broke || 0, done: g.done != null ? g.done : (g.fire || 0) };
+    return { play: g.play, chain: g.chain || 0, combo: g.combo || 0, broke: g.broke || 0, done: g.done != null ? g.done : (g.fire || 0), seq: g.seq || null };
   }
   function answer(m) {
     // A question at or before the one the frame loop stopped is not wanted:
@@ -1002,7 +1002,7 @@ module.exports = function think(cfg) {
           FGmat = FG.us.material; FGland = FG.us.nextLands; FGdies = FG.us.dies;
           var plG = apG ? [apG.ms, apG.quick ? apG.quick.seq.length : 0, apG.nearest ? apG.nearest.seq.length : 0, (apG.perAim || []).filter(Boolean).length].join('/') + (nx ? '+x' : '') : 'none';
           bot._gambit = { pl: plG, table: pickG.table, under: !!underG, rule: pickG.index, name: pickG.rule.name || null, want: orderG[0] || null, options: orderG.length, order: orderG, found: !!lineG, play: playG || (lineG ? (lineG.aimIndex >= 0 ? 'entry' : 'nearest') : null), entry: lineG ? lineG.aimIndex : -1, near: lineG && lineG.near || 0, quick: !!(lineG && lineG.quick), ms: apG ? apG.ms : 0, setup: !!setupG, ready: readyG, readyAt: typeof readyAtG === 'number' ? readyAtG : null, raise: upG ? toG : 0, wait: !!waitG, extend: !!(lineG && lineG.extend), tried: triedG, br: br ? [br.depth, br.toward ? br.toward.length : -1, br.lineup ? 1 : 0, br.touch ? 1 : 0] : null, brMs: brMs, pop: SH.popLeft(board), xs: exG ? [exG.seq.length, exG.chain, exG.cells, exG.base, exG.nearest ? exG.nearest.chain : 0] : null,
-                          chain: lineG ? lineG.ap.chain : 0, combo: lineG ? lineG.ap.combo || 0 : 0, broke: lineG ? lineG.ap.broke || 0 : 0, tier: lineG ? lineG.tier : (holdG ? 5 : 0), holdWhy: holdWhyG, cands: candsG.length, swaps: lineG ? lineG.ap.seq.length : 0, done: lineG ? lineG.ap.done : null, fire: lineG ? lineG.ap.fire : null, ats: lineG && lineG.ap.ats ? lineG.ap.ats.join('/') : null, by: byG };
+                          chain: lineG ? lineG.ap.chain : 0, combo: lineG ? lineG.ap.combo || 0 : 0, broke: lineG ? lineG.ap.broke || 0 : 0, tier: lineG ? lineG.tier : (holdG ? 5 : 0), seq: lineG ? lineG.seq.map(function (mv) { return mv.slice(); }) : null, holdWhy: holdWhyG, cands: candsG.length, swaps: lineG ? lineG.ap.seq.length : 0, done: lineG ? lineG.ap.done : null, fire: lineG ? lineG.ap.fire : null, ats: lineG && lineG.ap.ats ? lineG.ap.ats.join('/') : null, by: byG };
         }
       }
       if (process.env.GC_SURVIVOR_WHY && bot.preferRank) { var pr0 = bot.preferRank; bot.preferRank = function (c, i) { var r = pr0.call(this, c, i); ranked.push(key(c) + '=' + r); return r; }; }

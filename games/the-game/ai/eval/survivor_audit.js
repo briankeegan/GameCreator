@@ -24,9 +24,11 @@ Audit.prototype.resolve = function (cut) {
 };
 // a line chosen and its first swap pressed at frame `at`: { play, chain, combo, broke, done (frames from `at` to its settle) }
 Audit.prototype.claim = function (claim, at) {
-  if (claim.play === 'carry' && this.open) return;   // (the line carried on: still the claim it was begun with)
+  // (the line carried on -- named so, or a new decision whose first swap is the open line's next one: still the claim it was begun with)
+  var o = this.open, next = o && o.seq && o.seq[o.step + 1], first = claim.seq && claim.seq[0];
+  if (o && (claim.play === 'carry' || (next && first && next[0] === first[0] && next[1] === first[1]))) { o.step++; return; }
   if (this.open) this.resolve(true);
-  this.open = { play: claim.play, chain: claim.chain || 0, combo: claim.combo || 0, broke: claim.broke || 0, at: at,
+  this.open = { play: claim.play, chain: claim.chain || 0, combo: claim.combo || 0, broke: claim.broke || 0, at: at, seq: claim.seq || null, step: 0,
                 until: at + Math.max(30, claim.done || 0) + 30, got: { chain: 0, combo: 0, broke: 0 } };
 };
 // every frame the game shows: the panels newly matched (a combo when 4 or more), the chain counter, the garbage newly matched (broken)
