@@ -137,7 +137,7 @@ assert(G.fits([{ chain: '>=8', break: true }], { chain: 9, combo: 3, broke: 0 })
 // a move's place in the list: the first entry its clears match, whatever found it
 assert.strictEqual(G.entryOf(FIN, { combo: 9, chain: 1 }), 0, 'finish: a combo of 9 is the first entry');
 assert.strictEqual(G.entryOf(FIN, { combo: 3, chain: 2 }), 4, 'a chain of 2 the fifth');
-assert.strictEqual(G.entryOf(FIN, { combo: 4, chain: 1 }), 7, 'a combo of 4 the last');
+assert.strictEqual(G.entryOf(FIN, { combo: 4, chain: 1 }), 6, 'a combo of 4 is a single clear: chain ==1, the seventh, before combo ==4');
 assert.strictEqual(G.entryOf(FIN, { combo: 0, chain: 0 }), -1, 'a move that clears nothing has no place');
 assert.strictEqual(G.entryOf([{ chain: '==4', break: true }], { combo: 3, chain: 4, broke: 0 }), 0, 'an entry counts whether it breaks or not');
 
