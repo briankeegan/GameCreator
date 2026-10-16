@@ -857,7 +857,7 @@ module.exports = function think(cfg) {
             if (msG >= 20) {
               triedG++;
               apG = attacker.plan(board, m.hold, { ms: msG, width: GP.width || 40, depth: GP.depth || 7, pool: GP.pool || 250, minChain: 0, arrivals: arrivals,
-                                                       aims: predsG, by: byG || undefined, keep: keepF, readyAt: readyAtG, near: nearG0, dies: FG.us.dies > 0 ? FG.us.dies : undefined });
+                                                       aims: predsG, by: byG || undefined, keep: keepF, readyAt: readyAtG, near: nearG0, dies: FG.us.dies > 0 ? FG.us.dies : undefined, breakAtSwap: !!underG });
               // (the plan's line wins over a falling chain's link only when its entry comes first in the list)
               if (apG.seq.length && apG.aimIndex >= 0 && (!lineG || apG.aimIndex < lineG.aimIndex)) lineG = { ap: apG, aimIndex: apG.aimIndex };
             }

@@ -66,6 +66,9 @@ module.exports = function (opts) {
     var baseOut = s.advanceMany([[root, 'settle', null, 0]], true)[0], base = 0;
     if (baseOut && !baseOut.dead) { var bs = s.stepStats(baseOut); if (bs.cleared > 0) base = sent(bs).cells; }
     var rootH = connected(root.b.grid), setup = null;
+    // (garbage broken by frame t standing still: a slab already popping goes on converting whatever is pressed)
+    var stillAt = {};
+    function stillBreaks(t) { if (!(t in stillAt)) { var w = t > root.t ? s.advance(root, 'long', null, t - root.t) : root; stillAt[t] = w ? s.breaks(w) : s.breaks(root); } return stillAt[t]; }
     var pool = [{ n: root, seq: [], h: rootH }];
     for (var d = 1; d <= o.depth && pool.length && Date.now() - t0 < o.ms && !(o.stopAt && best && best.cells >= o.stopAt); d++) {
       var jobs = [], meta = [];
@@ -77,6 +80,25 @@ module.exports = function (opts) {
         outs = outs.concat(s.advanceMany(jobs.slice(j0, j0 + SLICE), true));
       }
       pool.forEach(function (it) { it.reach = 0; it.kids = []; });
+      // (A BREAK JUDGED AT ITS BREAK, o.breakAtSwap: a line the engine settles dead -- under a stream the next slab lands while the board
+      // settles -- is played again only to its swap; if the board then breaks garbage that standing still would not have by the same
+      // frame, the line is a break, kept as the quick break and grown no further)
+      if (o.breakAtSwap && Date.now() - t0 < o.ms) {
+        var dj = [], dm = [];
+        for (var di = 0; di < outs.length; di++) if (outs[di] && outs[di].dead) { dj.push([meta[di][0].n, 'swap', meta[di][1], 0]); dm.push(meta[di]); }
+        if (dj.length) {
+          var sw = s.advanceMany(dj, true);
+          for (var dk = 0; dk < sw.length; dk++) {
+            var x = sw[dk];
+            if (!x || x.dead) continue;
+            var bk = s.breaks(x) - stillBreaks(x.t);
+            if (bk > 0 && (!quick || bk > quick.broke || (bk === quick.broke && x.t - root.t < quick.done))) {
+              if (quick && quick.n && quick.n !== x) { if (quick.atSwap) s.drop([quick.n]); }
+              quick = { near: 0, brk: true, cells: 0, chain: 0, combo: 0, seq: dm[dk][0].seq.concat([dm[dk][1]]), n: x, broke: bk, done: x.t - root.t, aimIndex: -1, atSwap: true };
+            } else s.drop([x]);
+          }
+        }
+      }
       for (var i = 0; i < outs.length; i++) {
         var out = outs[i], it = meta[i][0], m = meta[i][1];
         if (!out || out.dead) continue;
