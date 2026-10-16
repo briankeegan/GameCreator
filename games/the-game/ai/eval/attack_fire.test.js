@@ -26,4 +26,13 @@ for (var seed = 1; seed <= 40 && found < 3; seed++) {
 }
 assert.ok(found >= 3, 'chain lines found on real boards: ' + found);
 assert.ok(late >= 1, 'a line whose cascade settles past the deadline was kept');
+// A LINE THAT IS TO CLEAR NOTHING, played to the board's settle: its first step that clears panels and breaks nothing -- a clear made by
+// a panel falling into a match too
+var H = { left: 0, started: false };
+var three = PA.puzzle(['000000', '000000', '000000', '000000', '112100', '345612'].join(''));
+assert.strictEqual(at.firstClear(three, H, [[2, 3]]), 0, 'a swap that makes a three clears');
+assert.strictEqual(at.firstClear(three, H, [[1, 1], [2, 3]]), 1, 'the second step clears');
+assert.strictEqual(at.firstClear(three, H, [[1, 1]]), -1, 'a swap that makes nothing does not');
+var fall = PA.puzzle(['000000', '000000', '000000', '000200', '220000', '345612'].join(''));
+assert.strictEqual(at.firstClear(fall, H, [[3, 3]]), 0, 'a panel swapped over a hole falls into a three: a clear');
 console.log('ok: every step its own time -- ' + found + ' boards, ' + late + ' kept with the cascade settling past the deadline');

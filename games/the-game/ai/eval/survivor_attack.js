@@ -377,5 +377,22 @@ module.exports = function (opts) {
     s.drop([r0].concat(outs.filter(function (x) { return x && !x.dead; })));
     return bestL;
   }
-  return { plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf };
+  // THE FIRST CLEAR OF A LINE THAT IS TO CLEAR NOTHING: each step played on the engine to the board's settle (falls and all), in turn;
+  // the index of the first that clears panels and breaks no garbage, -1 if none does (or the line cannot be played on)
+  function firstClear(board, hold, seq, arrivals) {
+    var s = search();
+    s.reset();
+    var n = s.root(board.copy(), hold, arrivals || [], false), made = [], at = -1;
+    for (var k = 0; k < seq.length; k++) {
+      var out = s.advanceMany([[n, 'settle', seq[k], 0]], true)[0];
+      if (!out || out.dead) break;
+      made.push(out);
+      var st = s.stepStats(out);
+      if (st.cleared > 0 && !((st.broke || 0) > 0)) { at = k; break; }
+      n = out;
+    }
+    if (made.length) s.drop(made);
+    return at;
+  }
+  return { plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear };
 };

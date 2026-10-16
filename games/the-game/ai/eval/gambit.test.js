@@ -80,8 +80,6 @@ assert(G.keeps({ material: '>=8' }, grid) && !G.keeps({ material: '>=12' }, grid
 assert(G.keeps(null, grid), 'no keep asks nothing');
 assert.strictEqual(G.breakBy({ us: { dies: 97, nextLands: 1 } }), 97, 'a break is due before the board dies, not when the next block lands');
 assert.strictEqual(G.breakBy({ us: { dies: 0 } }), null, 'no death in sight, no deadline');
-var bc = PA.puzzle(['000000', '000000', '000000', '000000', '112100', '345612'].join(''));
-assert(G.swapClears(bc, [2, 3]) && !G.swapClears(bc, [1, 1]), 'a swap that makes a three clears, one that makes nothing does not');
 var fl = G.floor({ material: '>=12' });
 assert(!fl(grid, { broke: 0, chain: 2 }), 'the floor holds an attack, garbage on the board or not');
 assert(fl(grid, { broke: 6 }), 'a break is not held to the floor');
