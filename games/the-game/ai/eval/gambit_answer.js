@@ -90,8 +90,11 @@ function raiseHeld(c, to) {
 // THE CLAIM (survivor_audit.js): what the line Gambit chose said it would make, when the move played is its first swap
 function claimOf(info, d) {
   if (!info || !info.found || d.kind !== 'swap' || !info.order || info.order[0] !== keyOf(d)) return null;
-  return { play: info.play, chain: info.chain || 0, combo: info.combo || 0, broke: info.broke || 0, done: info.done != null ? info.done : (info.fire || 0), seq: info.seq || null };
+  return { play: info.play, chain: info.chain || 0, chainAll: info.chainAll || 0, combo: info.combo || 0, broke: info.broke || 0, done: info.done != null ? info.done : (info.fire || 0), seq: info.seq || null };
 }
+
+// the panels on the board whose colour the game has not shown yet (a broken slab's row before it is revealed: 130..219)
+function unseenOf(b) { var n = 0; for (var r = 0; r < b.panels.length; r++) for (var k = 1; k <= 6; k++) { var p = b.panels[r] && b.panels[r][k]; if (p && p.color >= 130 && p.color <= 219) n++; } return n; }
 
 // ONE LINE A DECISION on stderr, the survivor's log: what Gambit chose, what was played and why, the verdict, the board
 function logLine(c, D, L, br, brMs) {
@@ -100,7 +103,7 @@ function logLine(c, D, L, br, brMs) {
     ' src=' + (L.gambits ? 'gambit' : 'survival') + ' v=' + L.verdict + ' under=' + (g.under ? 1 : 0) + ' mat=' + F.material + ' chain=' + (g.chain || 0) + ' combo=' + (g.combo || 0) +
     ' broke=' + (g.broke || 0) + ' tier=' + (g.tier || 0) + ' by=' + (g.by || '-') + ' plan=' + (g.pl || '-') + ' done=' + (g.done != null ? g.done : '-') + ' fire=' + (g.fire != null ? g.fire : '-') +
     ' ats=' + (g.ats || '-') + ' swaps=' + (g.swaps || 0) + ' land=' + (F.nextLands != null ? F.nextLands : '-') + ' dies=' + F.dies + (F.queueKills ? ' qk=1' : '') + (D.R.aloneOut ? ' alone=' + D.R.aloneChain : '') + ' casc=' + (CK.cascadeLive(c.board, true) ? 1 : 0) +
-    ' pop=' + SH.popLeft(c.board) + ' stop=' + F.stop + ' waits=' + (F.breakWaits ? 1 : 0) + ' tight=' + (c.tight ? 1 : 0) +
+    ' pop=' + SH.popLeft(c.board) + ' stop=' + F.stop + ' waits=' + (F.breakWaits ? 1 : 0) + ' unseen=' + unseenOf(c.board) + ' tight=' + (c.tight ? 1 : 0) +
     ' br=' + (br ? (br.depth || 0) + '/' + (br.path ? br.path.length : br.toward ? 't' + br.toward.length : 0) + (br.cut ? '/cut' : '') : 'none') + ' brMs=' + brMs + ' cands=' + (g.cands || '-') + ' live=' + L.live + ' why=' + L.why);
 }
 

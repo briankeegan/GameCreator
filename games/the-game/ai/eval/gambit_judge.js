@@ -66,7 +66,7 @@ function judge(c, R, k) {
   // (ranked on the judge's count and time: what the line makes, and when it is done)
   var t = GAMBIT.tier(play, Object.assign({}, x, { combo: m.combo, chain: m.chain, broke: m.broke, done: j ? j.done : x.done }), aim, R.under, !!R.F.enemy.topped, !!R.F.us.topped, !!R.F.us.breakWaits);
   return { play: play, seq: seq, settled: st, tier: t.tier, sub: t.sub, aim: aim, extend: k.extend, near: x.near || 0,
-           ap: { seq: seq, done: j ? j.done : (x.done || null), fire: fire, ats: j ? j.ats : (x.ats || null), chain: m.chain || 0, combo: m.combo || 0, broke: m.broke || 0 } };
+           ap: { seq: seq, done: j ? j.done : (x.done || null), fire: fire, ats: j ? j.ats : (x.ats || null), chain: m.chain || 0, chainAll: w ? w.chainAll || 0 : 0, combo: m.combo || 0, broke: m.broke || 0 } };
 }
 
 // THE RANK: lower tier first, then each sub-key in turn

@@ -109,7 +109,7 @@ function play(c, R, S, cands) {
                readyAt: typeof R.readyAt === 'number' ? R.readyAt : null, raise: R.up ? R.to : 0, wait: !!wait, extend: !!(line && line.extend), tried: S.tried,
                br: br ? [br.depth, br.toward ? br.toward.length : -1, br.lineup ? 1 : 0, br.touch ? 1 : 0] : null, brMs: c.brMs, pop: SH.popLeft(c.board),
                xs: ex ? [ex.seq.length, ex.chain, ex.cells, ex.base, ex.nearest ? ex.nearest.chain : 0] : null,
-               chain: line ? line.ap.chain : 0, combo: line ? line.ap.combo || 0 : 0, broke: line ? line.ap.broke || 0 : 0, tier: line ? line.tier : (hold ? 5 : 0),
+               chain: line ? line.ap.chain : 0, chainAll: line ? line.ap.chainAll || 0 : 0, combo: line ? line.ap.combo || 0 : 0, broke: line ? line.ap.broke || 0 : 0, tier: line ? line.tier : (hold ? 5 : 0),
                seq: line ? line.seq.map(function (mv) { return mv.slice(); }) : null, swaps: line ? line.ap.seq.length : 0, done: line ? line.ap.done : null,
                fire: line ? line.ap.fire : null, ats: line && line.ap.ats ? line.ap.ats.join('/') : null, by: R.by,
                // (per kind of move: how many were offered, and of them how many were dropped and why, DROP_CODE)

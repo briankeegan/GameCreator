@@ -345,7 +345,7 @@ Match.prototype.take = function (truth) {
     var walked = this.walkKeys(step, at), ins = walked.inputs;
     if (!this.fits(at, ins)) { this.stats.guarded++; this.acted = false; continue; }
     if (a.claim && a.kind === 'swap') this.audit.claim(a.claim, at);
-    if (a.kind === 'swap') { this._swapBy = a.claim ? 'gambit ' + a.claim.play : (a.src || 'default'); this._swapAt = at; this._swapClaim = a.claim ? a.claim.chain || 0 : null; }
+    if (a.kind === 'swap') { this._swapBy = a.claim ? 'gambit ' + a.claim.play : (a.src || 'default'); this._swapAt = at; this._swapClaim = a.claim ? (a.claim.chain || 0) + '/' + (a.claim.chainAll || 0) : null; }
     this.stats.heldWalks += walked.held;
     // Each planned frame carries the raise held after it.
     var sw = a.kind === 'swap' ? swapOf(board, move) : null;
@@ -511,7 +511,8 @@ Match.prototype.countAttacks = function (truth) {
   if (cc > 0 && !(this._chainMax > 0)) { this._chainBy = by; this._chainAt = truth.clock; this._links = []; }
   if (cc > (this._chainMax || 0)) {
     this._chainMax = cc; this._lastLink = (this._swapAt || -1) >= this._chainAt ? by : 'itself';
-    // (each link: who pressed the swap it follows, the chain that decision's judge said its line makes, and how many of the link's panels
+    // (each link: who pressed the swap it follows, the chain that decision's judge said its line makes (its own / the chain as the game
+    // counts it), and how many of the link's panels
     // came out of broken garbage -- colours no judge saw before the game showed them)
     if (this._links) this._links.push(cc + ':' + (this._lastLink === 'itself' ? 'itself' : by.replace(/ /g, '_') + '@' + this._swapAt + ':said' + this._swapClaim) + ':conv' + conv + '/' + fresh);
   }
