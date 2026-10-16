@@ -39,8 +39,8 @@ function madeOf(k) {
 function keyOf(k) { return k.kind === 'swap' && k.move ? k.move[0] + ',' + k.move[1] : k.kind; }
 
 // LIVES: the survival search asked one thing, which moves live -- its verdict on every move (none past MAXCHAIN). The choice is
-// Gambit's, never the survival search's own ranking: of Gambit's moves in its order, the first proven to live, else the first that
-// lives weakly; with none of Gambit's moves living, the survival exception -- of the moves found live, the first that fits the list as
+// Gambit's, never the survival search's own ranking: of Gambit's moves in its order, the first that lives (proven or weakly -- the order
+// first); with none of Gambit's moves living, the survival exception -- of the moves found live, the first that fits the list as
 // Gambit judges its own (attacker.judge: every link added to a chain already falling counted; a three that breaks garbage fits), else
 // the first that lives; with nothing living, the survival search's own pick, the move that lives longest.
 function lives(c, D) {
@@ -59,8 +59,8 @@ function lives(c, D) {
   var asMove = function (k) { return k === 'hold' || k === 'raise' ? { kind: k } : { kind: 'swap', move: k.split(',').map(Number) }; };
   order.forEach(function (k) { if (k in verdictOf) { searched++; if (lived(k)) live++; } });
   if (V) {
-    // (Gambit's, in its order: the first proven, else the first weak)
-    ['proven', 'weak'].forEach(function (how) { if (!d) order.forEach(function (k) { if (!d && lived(k, how)) { d = asMove(k); verdict = how; why = 'gambit'; } }); });
+    // (Gambit's, in its order: the first that lives -- its place in the order first, not how far it is proven)
+    order.forEach(function (k) { if (!d && lived(k)) { d = asMove(k); verdict = verdictOf[k]; why = 'gambit'; } });
     // (the survival exception: of the moves found live, the first that fits the list as Gambit judges it, else the first)
     if (!d) {
       var madeBy = function (mv) { var j = c.attacker.judge(c.board, c.m.hold, [mv], c.arrivals, { tight: c.tight }); return j.dead ? null : j.made; };
