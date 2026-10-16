@@ -371,7 +371,7 @@ module.exports = function (opts) {
     }
     return null;
   }
-  function raiseReady(board, hold, arrivals, rows, ms, o) {
+  function raiseReady(board, hold, arrivals, rows, ms) {
     var last = null;
     (arrivals || []).forEach(function (a) { if (last === null || a.at > last) last = a.at; });
     if (last === null || rows <= 0) return Math.max(0, rows);
@@ -383,7 +383,7 @@ module.exports = function (opts) {
       var left = arrivals.map(function (a) { return Object.assign({}, a, { at: Math.max(0, a.at - f) }); });
       var at = landedAll(st, left, Math.max(0, last - f));
       if (!at) break;
-      var r = SH.breakMoves(s, at, hold, [], 3, 0, t0 + Math.max(20, ms), null, null, { touchInPop: true, near: true, tight: o && o.tight });
+      var r = SH.breakMoves(s, at, hold, [], 3, 0, t0 + Math.max(20, ms), null, null, { touchInPop: true, near: true });
       if (!(r && r.depth > 0)) break;
       ok = k;
     }

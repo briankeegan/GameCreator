@@ -4,7 +4,6 @@
 // ns_keys), so the keys pressed are the ones the search played.
 var fs = require('fs'), path = require('path');
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
-var KEYS = require(path.join(__dirname, 'survivor_keys.js'));
 
 // ---------------------------------------------------------------- the profile
 // survivor.profile.json: the weights and the switches they play under, and
@@ -311,30 +310,15 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
   // `deadline` the steps not yet played come back null, as lines that are not
   // there; the first swaps (made, below) are always played.
   var BATCH = 64;
-  // (each swap pressed when the frame loop presses it: with the input budget tight (opts.tight) the walk is held from two cells and the
-  // swap waits for it -- KEYS.pressDelay, the judge's own clock)
-  function press(steps) {
-    if (!(opts && opts.tight)) return S.advanceMany(steps, true);
-    var pre = [], at = [], i;
-    for (i = 0; i < steps.length; i++) { var late = steps[i][1] === 'swap' ? KEYS.pressDelay(S, steps[i][0], steps[i][2], true) : 0; if (late > 0) { pre.push([steps[i][0], 'long', null, late]); at.push(i); } }
-    if (!pre.length) return S.advanceMany(steps, true);
-    var waited = S.advanceMany(pre, true), real = steps.slice(), live = [], idx = [];
-    at.forEach(function (k, q) { var w = waited[q]; real[k] = w && !w.dead ? [w, real[k][1], real[k][2], real[k][3]] : null; });
-    real.forEach(function (st, k) { if (st) { live.push(st); idx.push(k); } });
-    var outs = live.length ? S.advanceMany(live, true) : [], res = steps.map(function () { return null; });
-    idx.forEach(function (k, q) { res[k] = outs[q]; });
-    if (S.drop) S.drop(waited.filter(function (w) { return w && !w.dead && w._i >= 0; }));
-    return res;
-  }
   function many(steps, whole) {
     if (!steps.length) return [];
-    if (whole) return press(steps);
+    if (whole) return S.advanceMany(steps, true);
     var out = [];
     for (var b = 0; b < steps.length; b += BATCH) {
       var halt = stop && stop();
       if (halt) throw halt;
       if (Date.now() >= deadline) { while (out.length < steps.length) out.push(null); break; }
-      out = out.concat(press(steps.slice(b, b + BATCH)));
+      out = out.concat(S.advanceMany(steps.slice(b, b + BATCH), true));
     }
     return out;
   }
@@ -357,7 +341,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
     for (i = 0; i < keep.length && kn && !kn.dead; i++) {
       var km = keep[i], legal = kn.b.legalSwaps().some(function (m) { return m[0] === km[0] && m[1] === km[1]; });
       if (!legal) { kn = null; break; }
-      kn = press([[kn, 'swap', km, 0]])[0]; kp.push(km);
+      kn = S.advanceMany([[kn, 'swap', km, 0]], true)[0]; kp.push(km);
       if (breaks(kn)) return { depth: 1, moves: (function (o) { o[keep[0][0] + ',' + keep[0][1]] = true; return o; })({}), touch: true, path: kp, kept: true };
     }
   }
@@ -436,6 +420,8 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
     // move and the next parent goes on. Played a batch at a time from the
     // parent the reading has got to, as if none hits; after a hit the rest
     // is played again, with the tries it left.
+    // (a hit is a line of two swaps, the parent's and the one after it: pairOf, the whole line, so it is judged as it will be pressed)
+    var pairOf = {};
     function inTurn(parents, cap, hitsOf) {
       var k = 0;
       while (k < parents.length && tries < cap) {
@@ -446,7 +432,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
         for (var x = 0; x < plan.length && !again; x++) {
           var p = plan[x];
           k = p.q + 1;
-          for (j = 0; j < p.ms.length && tries < cap; j++) { tries++; if (hit[at + j]) { found[parents[p.q].key] = true; any = true; again = true; break; } }
+          for (j = 0; j < p.ms.length && tries < cap; j++) { tries++; if (hit[at + j]) { found[parents[p.q].key] = true; pairOf[parents[p.q].key] = [parents[p.q].m, p.ms[j]]; any = true; again = true; break; } }
           at += p.ms.length;
         }
         if (!again) break;
@@ -454,7 +440,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
     }
     inTurn(firsts.filter(function (f) { return f.n && !f.n.dead && f.n.t < end; }), LINEUP_BUDGET,
            function (n2s) { return linedAll(n2s.map(function (n2) { return n2 && n2.t < end ? n2 : null; })); });
-    if (any) return { depth: 1, moves: found, lineup: 2 };
+    if (any) return { depth: 1, moves: found, lineup: 2, lines: pairOf };
     // Further, aimed: the colours the row turns into are known from the
     // pop's start, and two of a column's colour on top of that column make
     // three with the panel landing there, under the slab. A beam of lines up
@@ -489,13 +475,14 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
       }
       if (any) return { depth: 1, moves: found, lineup: 'aimed', path: path };
     }
-    // failing that, a first swap leaving a break one swap away when the pop ends
+    // failing that, a first swap leaving a break one swap away once the board has settled from it (the pop over, its panels down) -- the
+    // second swap pressed when the frame loop would press it, as the judge plays a settled line
     if (tries < 2 * LINEUP_BUDGET) {
-      var rs = firsts.filter(function (f) { return f.n && !f.n.dead; }), ws = many(rs.map(function (f) { return [f.n, 'long', null, Math.max(1, end - f.n.t)]; }));
-      inTurn(rs.map(function (f, q) { return { key: f.key, n: ws[q] }; }).filter(function (x) { return x.n && !x.n.dead; }), 2 * LINEUP_BUDGET,
+      var rs = firsts.filter(function (f) { return f.n && !f.n.dead; }), ws = many(rs.map(function (f) { return [f.n, 'settle', null, 0]; }));
+      inTurn(rs.map(function (f, q) { return { key: f.key, n: ws[q], m: f.m }; }).filter(function (x) { return x.n && !x.n.dead; }), 2 * LINEUP_BUDGET,
              function (wn) { return wn.map(function (n) { return breaks(n); }); });
     }
-    if (any) return { depth: 1, moves: found, lineup: 'ready' };
+    if (any) return { depth: 1, moves: found, lineup: 'ready', lines: pairOf };
   }
   // (opts.touchInPop: no line-up of the popping slab breaks again -- a break of the garbage elsewhere while it pops, the cursor being free)
   if (wait > 0 && opts && opts.touchInPop) { var tb1 = touchBeam(); if (tb1) return tb1; }
