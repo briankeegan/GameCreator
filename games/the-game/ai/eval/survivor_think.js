@@ -852,7 +852,11 @@ module.exports = function think(cfg) {
             var nearG0 = function (made) { return GAMBIT.lead(aimsG, made, underG); };
             // (idle time is planning time: after a decision that held or had nothing to play, the planner has all the time the decision
             // has, not its usual share -- the big chain is planned for, not waited for)
-            var msG = bot._gambitIdle ? leftG() : Math.min(GP.ms || 80, leftG()) - (popG && exG ? exG.ms : 0);
+            // (within the time frame of the real game: the idle plan stops at half the time the board has before it is lost, less a
+            // reaction -- a board losing health plans no longer than any decision)
+            var usualG = Math.min(GP.ms || 80, leftG()) - (popG && exG ? exG.ms : 0);
+            var idleCapG = GAMBIT.idleMs(FG.us.dies, OPTS.reaction || 12);
+            var msG = bot._gambitIdle ? Math.max(usualG, Math.min(leftG(), idleCapG)) : usualG;
             if (msG >= 20) {
               triedG++;
               apG = attacker.plan(board, m.hold, { ms: msG, width: GP.width || 40, depth: GP.depth || 7, pool: GP.pool || 250, minChain: 0, arrivals: arrivals,
