@@ -290,6 +290,9 @@ Match.prototype.take = function (truth) {
     L.pending = null;
     if (a.epoch !== this.epoch) { this.stats.late++; this.acted = false; continue; }
     if (at < now) {
+      // (Gambit: a swap is pressed only on the board it was judged on -- a late answer is not played; the next question is asked of the
+      // board as it is)
+      if (L.profile && L.profile.gambit) { this.stats.late++; this.acted = false; continue; }
       if (a.kind === 'swap' && !(move = moved(swapOf(board, a.move), truth))) { this.stats.late++; this.acted = false; continue; }
       board = truth; hold = this.hold; at = now; arrivals = this.arrivals; knew = this.arrivals;
       this.stats.lateTaken++;
@@ -531,7 +534,8 @@ Match.prototype.frame = function (truth, arrivals, fresh) {
     // come up): every plan and question made before is void -- but a swap
     // not yet made is walked to again from this board, so a lost key costs
     // a frame, not the decision.
-    var again = this.rewalk(truth), asking = !!L.pending;
+    // (Gambit: no swap is walked to again on a board it was not judged on -- the next decision is made on this one)
+    var again = L.profile && L.profile.gambit ? null : this.rewalk(truth), asking = !!L.pending;
     if (L.pending) Atomics.store(L.abort, 0, L.pending.id);
     this.epoch++; this.plan = {}; this.nextAt = 0; this.line = null; L.pending = null; this.acted = false;
     this.stats.diverged++;
