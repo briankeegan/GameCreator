@@ -3255,6 +3255,17 @@ static int tWalk(int *row, int r, int s, int t, int32_t *sw, int *n) {
 static JLOCAL int32_t tPfx[2 * LINEMAX]; static JLOCAL int tPfxN;
 static JLOCAL int tMatch = MINMATCH;   // the match length the shape being proposed makes (targetLines)
 static JLOCAL int tFrom = MINMATCH, tNeedBeside = 1;   // attackLines: matches of four or more anywhere, not only against garbage (stop time is a combo's, pa.c calculateStopTime)
+// A planned line's clock: lineFrames, with each step also held to the frame its pair is still on the board the plan starts from
+// (`waits`, the engine's; the plan's time t0 is that board's), as the search in time holds it
+static double lineFramesW(const int32_t *sw, int n, int cr, int cc, double t0, int frozen, Wait (*waits)[WMAX]) {
+  double at = t0;
+  for (int k = 0; k < n; k++) {
+    int r = sw[2 * k], c = sw[2 * k + 1];
+    at = stepPress(k ? at + stepGap(frozen) : at, cr, cc, r, c, waits ? t0 + waits[r][c] : 0);
+    cr = r; cc = c;
+  }
+  return at;
+}
 static void tProposeIn(const int32_t *sw, int n, int cr, int cc, double t0, double limit);
 static int tDupes;   // proposals already in the table (the trace's)
 static void tPropose(const int32_t *sw0, int n0, int cr, int cc, double t0, double limit) {
@@ -3268,7 +3279,7 @@ static void tPropose(const int32_t *sw0, int n0, int cr, int cc, double t0, doub
   if (!tTimeMode && nLines >= MAXLINES) return;
   for (int i = 0; i < nLines; i++)
     if (LINES[i].n == n && !__builtin_memcmp(LINES[i].sw, sw, (unsigned long)n * 8)) { tDupes++; return; }
-  double at = lineFrames(sw0, n0, cr, cc, t0, lsTopped);   // the clock, from the frame the prefix leaves the front deciding
+  double at = lineFramesW(sw0, n0, cr, cc, t0, lsTopped, ENGINE_WAITS);   // the clock, from the frame the prefix leaves the front deciding
   if (tTimeMode) { if (at < tTimeMin) tTimeMin = at; return; }
   if (at > limit) return;
   LineC *l = &LINES[nLines++];
@@ -3280,7 +3291,7 @@ static void tProposeIn(const int32_t *sw, int n, int cr, int cc, double t0, doub
   if (!tTimeMode)
     for (int i = 0; i < nLines; i++)
       if (LINES[i].n == n && !__builtin_memcmp(LINES[i].sw, sw, (unsigned long)n * 8)) { tDupes++; return; }
-  double at = lineFrames(sw, n, cr, cc, t0, lsTopped);   // the clock
+  double at = lineFramesW(sw, n, cr, cc, t0, lsTopped, ENGINE_WAITS);   // the clock
   if (tTimeMode) { if (at < tTimeMin) tTimeMin = at; return; }
   if (at > limit) return;
   LineC *l = &LINES[nLines++];
