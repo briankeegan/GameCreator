@@ -66,15 +66,6 @@ if [ -f "$LOG" ]; then
 fi
 
 echo
-echo "=== CHIPS ==="
-node -e '
-var fs=require("fs"), n=0, f=[];
-try { f=fs.readdirSync("chips").filter(function(x){return /\.json$/.test(x)}); } catch(e){}
-f.forEach(function(x){ try { var j=JSON.parse(fs.readFileSync("chips/"+x,"utf8"));
-  n += (j.chips||j).length||0; } catch(e){} });
-console.log("  " + n + " chips in " + f.length + " files");
-' 2>/dev/null || echo "  (could not count)"
-[ -d chips-engine-only ] && echo "  !! chips-engine-only/ exists again — that category was closed."
 
 echo
 echo "=== GIT ==="
