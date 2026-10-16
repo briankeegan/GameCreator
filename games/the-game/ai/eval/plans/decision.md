@@ -57,12 +57,15 @@ count of swaps or lines.
 
 | Step | Code |
 |---|---|
-| 1 Read | `GAMBIT.facts` (gambit.js) |
-| 2 Propose | the searches in survivor_attack.js and survivor_shared.js; candG in survivor_think.js collects them |
-| 3 Judge | `attacker.replay` (`whole`) and `attacker.lineFits` (survivor_attack.js): each step played to the board's settle -- not yet at its press frame |
-| 4 Filter and rank | `GAMBIT.fits`, `GAMBIT.entryOf`, `GAMBIT.tier` (gambit.js), held by gambit.test.js |
-| 5 Play | survivor_think.js; one line in progress (`bot._gambitCarry`), not one per mode |
+| The five steps, in order | `decide` (gambit_decide.js) |
+| 1 Read | `read` (gambit_decide.js), `GAMBIT.facts` (gambit.js) |
+| 2 Propose | gambit_propose.js: one function per kind of move -- `entries`, `extension`, `nearest`, `breakLine`, `breaks`, `toward`, `ready`, `level`, `setup`, `clear`, `carried`; `search` runs the searches once |
+| 3 Judge | `attacker.judge` (survivor_attack.js): a planned line settle by settle, any other line step after step as the frame loop presses it |
+| 4 Filter and rank | `judge` and `compare` (gambit_judge.js), `GAMBIT.fits`, `GAMBIT.entryOf`, `GAMBIT.tier` (gambit.js) |
+| 5 Play | `play` (gambit_decide.js); one line in progress (`bot._gambitCarry`), not one per mode |
 
-Still outside the five steps, to be folded into step 4: the plain-three guard (guard3), the topped guard (guardTopped), ping-pong,
-the break played whatever is found (`_gambitBreak`), the arbiter's preferences, the survival search's override (`wanted`), and the
-list gate at the end of a decision.
+Held by gambit.test.js (the rules) and gambit_decide.test.js (the judge, and a decision in every mode: every line ranked fits the list).
+
+Still outside the five steps, to be folded into step 4 (survivor_think.js, after the decision): the plain-three guard (guard3), the
+topped guard (guardTopped), ping-pong, the break played whatever is found (`_gambitBreak`), the arbiter's preferences, the survival
+search's override (`wanted`), and the list gate at the end of a decision.
