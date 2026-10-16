@@ -808,10 +808,9 @@ module.exports = function think(cfg) {
         var GP = cfg.profile.gambit, FG = { us: GAMBIT.facts(board, arrivals, m.topped), enemy: GAMBIT.enemyFacts(m.opp) };
         var apG = null, exG = null, tablesG = gambitRules.get(m.opp && m.opp.name), pickG = GP.mode ? GAMBIT.named(tablesG, GP.mode) : GAMBIT.choose(tablesG, FG), lineG = null, setupG = null, readyG = false, playG = null, triedG = 0;
         if (pickG) {
-          // (the floor is what no line may spend below: a line ends at or above it, or with no less material than the board has now -- the
-          // panels a break turns garbage into count, so a break that refills is never held back and a chain that drains always is)
-          var keepG = pickG.rule.keep || tablesG.keep || null, matNowG = FG.us.material;
-          var keepF = keepG ? function (grid) { return GAMBIT.keeps(keepG, grid) || GAMBIT.gridFacts(grid).material >= matNowG; } : null;
+          // (the keep floor holds the attacks; under garbage a break is made with any allowed move, and is not held to it)
+          var keepG = pickG.rule.keep || tablesG.keep || null;
+          var keepF = keepG && !(FG.us.contact !== null || FG.us.topped) ? function (grid) { return GAMBIT.keeps(keepG, grid); } : null;
           // THE PRIORITY LIST (aims): the first entry a line can make in time is played; an entry "default" or "hold" ends the list there
           // (the default's own move, or a hold). One search looks for every entry at once. aim/else is a list of two.
           var byG = GAMBIT.deadline(FG, pickG.rule.by), listG = GAMBIT.aimsOf(pickG.rule), endAt = listG.length, endG = null;
@@ -865,15 +864,13 @@ module.exports = function think(cfg) {
             //     time), else the break search's (SH.breakMoves: a line it offers never dies before its break)
             //   the nearest attack -- the nearer of the plan's line and the falling chain's or the popping slab's line-up; under garbage one
             //     that breaks it too, garbage on its way one that leaves the next block's break (READY)
-            //   garbage on the board, no break in reach: LEVEL (the hollow under it filled, then flatter); CLEAR when the board would top
-            //     out (the line leaving the lowest stack); SCRAMBLE only topped out and draining (the line that buys the most stop time)
+            //   garbage on the board, no break in reach: LEVEL (the hollow under it filled, then flatter); with literally nothing else,
+            //     CLEAR (the line leaving the lowest stack), then SCRAMBLE (the line that buys the most stop time)
             //   garbage on its way: READY -- the swap after which the next block breaks once it lands; else LEVEL -- the swap that clears
             //     nothing and leaves less hollow, then a flatter stack, settled before the block lands
             //   nothing on its way: SETUP toward the list, else HOLD
             //   and only with none of those the default's own move
             var nx = exG && exG.nearest, np = apG && apG.nearest && apG.nearest.seq.length ? apG.nearest : null;
-            // (SCRAMBLE and CLEAR are for a board being lost: topped out, its health draining -- not one merely near the top)
-            var dyingG = !!(FG.us.topped && !(FG.us.stop > 0)), toppingG = dyingG || CK.toppedOrNearly(board, m.topped);
             // (under garbage the nearest attack must break it: a line-up or extension that only chains is no break)
             if (underG && nx && !(nx.broke > 0)) nx = null;   // (a line-up that only chains spends panels under garbage without breaking it: no play)
             var nearG = nx || np ? (nx && (!np || nx.near > np.near) ? { ap: nx, aimIndex: -1, near: nx.near, extend: true } : { ap: np, aimIndex: -1, near: np.near }) : null;
@@ -888,19 +885,16 @@ module.exports = function think(cfg) {
             else if (nearG && !underG) lineG = nearG;
             else if (underG) {
               // (no break in reach: LEVEL -- fill the hollow under the garbage, then flatter, so a break comes into reach -- by the time
-              // frame; then CLEAR when the board would top out, the line that leaves the lowest stack; SCRAMBLE only on a board topped
-              // out and draining, the line that buys the most stop time)
+              // frame)
               var lvU = attacker ? attacker.level(board, m.hold, arrivals, { by: byG || undefined }) : null;
               // (BREAK LINE, toward: no break in reach, the break search's line that comes nearest one -- the swaps that build toward a
               // match next to the garbage -- played on)
               if (br && br.toward && br.toward.length) { lineG = { ap: { seq: br.toward, done: null }, aimIndex: -1 }; playG = 'break toward'; }
               else if (nearG) { lineG = nearG; playG = 'nearest break'; }
               else if (lvU) { setupG = lvU.move; playG = 'level'; }
-              else if (dyingG && apG && apG.stopBest) { lineG = { ap: apG.stopBest, aimIndex: -1 }; playG = 'scramble'; }
-              else if (toppingG && apG && apG.lowest) { lineG = { ap: apG.lowest, aimIndex: -1 }; playG = 'clear'; }
-              // (nothing at all to do under the garbage, the board not near the top: HOLD -- the panels are what the next break is made of;
-              // near the top a hold is how the board is lost, and the survival search's own move stands)
-              else if (!toppingG) { endG = 'hold'; playG = 'hold'; }
+              // (literally nothing else: CLEAR, the line that leaves the lowest stack, then SCRAMBLE, the one that buys the most stop time)
+              else if (apG && apG.lowest) { lineG = { ap: apG.lowest, aimIndex: -1 }; playG = 'clear'; }
+              else if (apG && apG.stopBest) { lineG = { ap: apG.stopBest, aimIndex: -1 }; playG = 'scramble'; }
             }
             else if (readyAtG !== null) {
               var rdG = arrivals.length && attacker ? attacker.readyFor(board, m.hold, arrivals, { ms: Math.max(20, Math.min(60, leftG())) }) : null;
@@ -963,8 +957,8 @@ module.exports = function think(cfg) {
             if (underG) {
               if (br && br.toward && br.toward.length) addG(br.toward[0], br.toward);
               if (lvU) addG(lvU.move);
-              if (dyingG && apG && apG.stopBest) addG(apG.stopBest.seq[0], apG.stopBest.seq);
-              if (toppingG && apG && apG.lowest) addG(apG.lowest.seq[0], apG.lowest.seq);
+              if (apG && apG.lowest) addG(apG.lowest.seq[0], apG.lowest.seq);
+              if (apG && apG.stopBest) addG(apG.stopBest.seq[0], apG.stopBest.seq);
             } else if (apG && apG.setup && typeof readyAtG !== 'number') addG(apG.setup);
           }
           if (GP.rankAll === false) orderG = orderG.slice(0, 1);
