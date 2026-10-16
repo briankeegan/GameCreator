@@ -92,6 +92,7 @@ module.exports = function (opts) {
             var x = sw[dk];
             if (!x || x.dead) continue;
             var bk = s.breaks(x) - stillBreaks(x.t);
+            if (o.by && x.t - root.t > o.by) bk = 0;   // (in time, as every line)
             if (bk > 0 && (!quick || bk > quick.broke || (bk === quick.broke && x.t - root.t < quick.done))) {
               if (quick && quick.n && quick.n !== x) { if (quick.atSwap) s.drop([quick.n]); }
               quick = { near: 0, brk: true, cells: 0, chain: 0, combo: 0, seq: dm[dk][0].seq.concat([dm[dk][1]]), n: x, broke: bk, done: x.t - root.t, aimIndex: -1, atSwap: true };
@@ -250,7 +251,7 @@ module.exports = function (opts) {
         if (!out || out.dead) return null;
         var st = s.stepStats(out), g = sent(st), big = 0;
         st.comboSizes.forEach(function (z) { if (z > big) big = z; });
-        return { cells: g.cells, chain: g.chain, combo: big, broke: st.broke || 0, kept: !(o.keep && !o.keep(out.b.grid, { broke: st.broke || 0 })) };
+        return { cells: g.cells, chain: g.chain, combo: big, broke: st.broke || 0, kept: !(o.keep && !o.keep(out.b.grid, { broke: st.broke || 0 })) && !(o.by && out.t - root.t > o.by), done: out.t - root.t };
       });
     }
     var base = sends([root])[0] || { cells: 0, chain: 0 };
@@ -275,8 +276,8 @@ module.exports = function (opts) {
         // (o.aims: the cascade that ends making the most for each aim -- { combo, chain, broke, cells added } -- is kept per aim)
         if (xAims) {
           var madeX = { combo: g.combo, chain: g.chain, broke: g.broke, cells: g.cells - base.cells };
-          if (o.near && g.kept) { var xn = o.near(madeX); if (xn > 0 && (!xNear || xn > xNear.near || (xn === xNear.near && g.cells > xNear.cells))) xNear = { near: xn, cells: g.cells, chain: g.chain, combo: g.combo, broke: g.broke, seq: k.seq, base: base.cells, aimIndex: -1 }; }
-          for (var xa = 0; xa < xAims.length; xa++) if (g.kept && xAims[xa] && xAims[xa](madeX) && (!xPer[xa] || g.cells > xPer[xa].cells)) xPer[xa] = { cells: g.cells, chain: g.chain, combo: g.combo, broke: g.broke, seq: k.seq, base: base.cells, aimIndex: xa };
+          if (o.near && g.kept) { var xn = o.near(madeX); if (xn > 0 && (!xNear || xn > xNear.near || (xn === xNear.near && g.cells > xNear.cells))) xNear = { near: xn, cells: g.cells, chain: g.chain, combo: g.combo, broke: g.broke, done: g.done, seq: k.seq, base: base.cells, aimIndex: -1 }; }
+          for (var xa = 0; xa < xAims.length; xa++) if (g.kept && xAims[xa] && xAims[xa](madeX) && (!xPer[xa] || g.cells > xPer[xa].cells)) xPer[xa] = { cells: g.cells, chain: g.chain, combo: g.combo, broke: g.broke, done: g.done, seq: k.seq, base: base.cells, aimIndex: xa };
         } else if (g.cells > best.cells) best = { cells: g.cells, chain: g.chain, combo: g.combo, seq: k.seq, base: base.cells };
         next.push(k);
       });

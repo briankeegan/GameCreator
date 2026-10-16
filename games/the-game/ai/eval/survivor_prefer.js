@@ -93,7 +93,7 @@ function prepare(bot, board, o) {
     var tb = Date.now();
     if (breakTime) br = SH.breakMoves(o.search(), board, { left: o.hold.left, started: o.hold.started }, o.arrivals, o.profile.breakDepth, o.profile.lineup && SH.popLeft(board) ? SH.popLeft(board) + LINEUP_AFTER : 0,
                        o.due ? Math.min(Date.now() + Math.max(LINEUP_MIN_MS, o.ms * LINEUP_SHARE), o.due - o.margin) : Date.now() + LINEUP_MAX_MS,
-                       o.stale ? function () { return o.stale() ? o.aborted : null; } : null, o.keep || null);
+                       o.stale ? function () { return o.stale() ? o.aborted : null; } : null, o.keep || null, o.profile.gambit ? { touchInPop: true } : null);
     brMs = Date.now() - tb;
     if (o.stale && o.stale()) throw o.aborted;
     want = br && br.depth ? br.moves : {};

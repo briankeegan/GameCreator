@@ -244,7 +244,7 @@ function touchScore(grid) {
 }
 // stop(): the question is no longer wanted; checked between batches, and
 // throws what it returns (survivor_think.js: PuyoCpu.ABORTED).
-function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, keep) {
+function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, keep, opts) {
   maxDepth = maxDepth || 3;
   deadline = deadline || Infinity;
   var g = lowestGarbageRow(board);
@@ -298,7 +298,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
       if (breaks(kn)) return { depth: 1, moves: (function (o) { o[keep[0][0] + ',' + keep[0][1]] = true; return o; })({}), touch: true, path: kp, kept: true };
     }
   }
-  if (!(wait > 0)) {
+  function touchBeam() {
     var tl0 = firsts.filter(function (f) { return f.n && !f.n.dead; }).map(function (f) { return { key: f.key, n: f.n, path: [f.m] }; }), tpath = null;
     // TOUCH_BEAM first; finding nothing, wider (TOUCH_WIDER) while time is left.
     for (var tb = 0; tb < TOUCH_WIDER.length + 1 && !tpath && Date.now() < deadline; tb++) {
@@ -350,7 +350,9 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
       }
     }
     if (any) return { depth: 1, moves: found, touch: true, path: tpath };
+    return null;
   }
+  if (!(wait > 0)) { var tb0 = touchBeam(); if (tb0) return tb0; }
   if (wait > 0 && !breaks(S.advance(root, 'long', null, wait))) {
     // till the pop is over, from wherever a line has got to
     var end = root.t + wait;
@@ -431,6 +433,8 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
     }
     if (any) return { depth: 1, moves: found, lineup: 'ready' };
   }
+  // (opts.touchInPop: no line-up of the popping slab breaks again -- a break of the garbage elsewhere while it pops, the cursor being free)
+  if (wait > 0 && opts && opts.touchInPop) { var tb1 = touchBeam(); if (tb1) return tb1; }
   if (maxDepth < 2) return { depth: 0, moves: {}, toward: toward ? toward.path : null };
   firsts.push({ key: 'hold', n: S.advance(root, 'hold', null, 0) });
   var live = firsts.filter(function (f) { return f.n && !f.n.dead; });

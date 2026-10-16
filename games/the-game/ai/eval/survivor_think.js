@@ -840,7 +840,7 @@ module.exports = function think(cfg) {
             var xAimsG = !popG ? aimsG : underG ? aimsG.concat(listAimsG, [{ break: true }]) : listAimsG;
             if ((cascadeLive(board, true) || popG) && GP.extend !== false && Math.min(xMsG, leftG()) >= 20) {
               triedG++;
-              exG = attacker.extend(board, m.hold, { ms: Math.min(xMsG, leftG()), width: GP.width || 40, depth: GP.extendDepth || 6, keep: keepF,
+              exG = attacker.extend(board, m.hold, { ms: Math.min(xMsG, leftG()), width: GP.width || 40, depth: GP.extendDepth || 6, keep: keepF, by: byG || undefined,
                                                      aims: xAimsG.map(function (a) { return function (made) { return GAMBIT.meets(a, made); }; }), near: function (made) { return GAMBIT.nearList(xAimsG, made); } });
               if (exG.seq.length && exG.aimIndex >= 0 && exG.cells > exG.base) lineG = { ap: exG, aimIndex: exG.aimIndex, extend: true };
             }
