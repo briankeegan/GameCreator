@@ -5,7 +5,7 @@
 //   decide        read, propose, judge, rank (gambit_decide.js)
 //   lives         the survival search, asked of every move: of those that live, Gambit's in its order, then any that fits the list,
 //                 then any other -- never one past GAMBIT.MAXCHAIN; with none that lives, the one that dies latest
-//   answer        the move, the rest of its line for the frame loop, the raise held, what the log and the audit read
+//   answer        the move, the raise held, what the log and the audit read
 //
 // c: { bot (the survival search, puyocpu.js), m (the question), board, arrivals, due (ms clock), t0, attacker, search() (the break
 // search's engine), rules, GP (the profile's gambit), pace, margin (ms), nativeMem() }
@@ -74,6 +74,23 @@ function lives(c, D) {
     if (k === 'hold') holdLives = V.verdict[i] === 'proven';
     if (order.indexOf(k) >= 0) { searched++; if (V.verdict[i] === 'proven' || V.verdict[i] === 'weak') live++; }
   }
+  // (none of Gambit's moves lives -- the survival exception: every move found live is judged as Gambit judges its own (attacker.judge:
+  // every link it adds to a chain already falling counted), and the first that fits the list is played -- a three that breaks garbage
+  // fits; only with none, the survival search's pick, never past MAXCHAIN)
+  if (V && order.indexOf(keyOf(d)) < 0 && d.kind === 'swap') {
+    var madeBy = function (mv) { var j = c.attacker.judge(c.board, c.m.hold, [mv], c.arrivals, {}); return j.dead ? null : j.made; };
+    var fitting = null, own = madeBy(d.move);
+    if (!(own && GAMBIT.fits(list, own))) {
+      for (var q = 0; q < V.cands.length && !fitting; q++) {
+        var vc = V.cands[q];
+        if (vc.kind !== 'swap' || !vc.move || (V.verdict[q] !== 'proven' && V.verdict[q] !== 'weak')) continue;
+        var mk = madeBy(vc.move);
+        if (mk && GAMBIT.fits(list, mk)) fitting = vc;
+      }
+      if (fitting) { d = { kind: 'swap', move: [fitting.move[0], fitting.move[1]] }; verdict = V.verdict[V.cands.indexOf(fitting)]; }
+      else if (own && own.chain > GAMBIT.MAXCHAIN) d = { kind: 'hold' };
+    }
+  }
   var cand = (bot._allCands || []).filter(function (k) { return keyOf(k) === keyOf(d); })[0] || null;
   // (live: of Gambit's moves, how many the survival search searched and how many it found live)
   return { d: d, verdict: verdict, holdLives: holdLives, gambits: order.indexOf(keyOf(d)) >= 0, cand: cand, live: live + '/' + searched + '/' + order.length };
@@ -117,8 +134,9 @@ function answer(c) {
   if (D.carry !== 'keep') bot._gambitCarry = D.carry;
   if (D.R.F.us.contact !== null || D.R.F.us.topped) bot._gambitHit = true;
   var L = lives(c, D), d = L.d;
-  // (the rest of a line Gambit chose is pressed by the frame loop; a planned line is carried on by the next decision instead)
-  var line = L.gambits && d.kind === 'swap' ? D.lines[keyOf(d)] || null : null;
+  // (every swap is its own decision, judged on the board as it is when it is pressed: the frame loop is handed no line to press on its
+  // own clock -- the rest of a line is carried on by the next decisions, as the line in progress or the break line kept)
+  var line = null;
   keepBreakLine(c, c.br, d);
   // (no swap back: the pair the last swap swapped is kept out for a second when it is swapped three times running)
   var pr = d.kind === 'swap' && c.board.panels[d.move[0]], pa = pr && pr[d.move[1]], pb = pr && pr[d.move[1] + 1];

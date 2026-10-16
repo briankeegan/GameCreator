@@ -48,8 +48,7 @@ function ranked(c, R, S) {
   return out.sort(JUDGE.compare);
 }
 
-// 5. PLAY: the top line, or the raise, or a hold -- the line kept to be carried on, the order the survival search is asked in, the rest
-// of each line for the frame loop
+// 5. PLAY: the top line, or the raise, or a hold -- the line kept to be carried on, and the order the survival search is asked in
 function play(c, R, S, cands) {
   var top = cands[0] || null;
   // (the raise due but the board busy -- a clear or a fall still going locks the rise: nothing new is begun, a chain falling still run on)
@@ -59,16 +58,13 @@ function play(c, R, S, cands) {
   // (the line begun, carried on by the next decisions: a planned line of more than one swap that makes what it is played for)
   var carry = line && line.wait ? 'keep' : line && line.seq.length > 1 && line.tier <= 3 && JUDGE.settled(line.play)
     ? { rest: line.seq.slice(1).map(function (mv) { return mv.slice(); }), aim: line.aim >= 0 ? R.aims[line.aim] : null, broke: (line.ap.broke || 0) > 0 } : null;
-  var order = [], lines = {};
-  var add = function (mv, seq, isSettled) { var k = mv === 'raise' || mv === 'hold' ? mv : mv[0] + ',' + mv[1]; if (order.indexOf(k) < 0) { order.push(k); if (seq && seq.length > 1 && !isSettled) lines[k] = seq.slice(1); } };
+  var order = [];
+  var add = function (mv) { var k = mv === 'raise' || mv === 'hold' ? mv : mv[0] + ',' + mv[1]; if (order.indexOf(k) < 0) order.push(k); };
   if (R.up) add('raise');
   if (wait || (line && line.wait)) add('hold');
-  cands.forEach(function (k) { if (k.tier >= 6 && order.indexOf('hold') < 0 && !R.up) add('hold'); if (!k.wait) add(k.seq[0], k.seq, JUDGE.settled(k.play)); });
+  cands.forEach(function (k) { if (k.tier >= 6 && order.indexOf('hold') < 0 && !R.up) add('hold'); if (!k.wait) add(k.seq[0]); });
   if (!R.up && order.indexOf('hold') < 0) add('hold');
   if (c.GP.rankAll === false) order = order.slice(0, 1);
-  // (a break chosen under garbage, its next step due)
-  var mustBreak = !!(line && line.tier === 1 && !line.wait) && order[0] && order[0] !== 'raise' && order[0] !== 'hold'
-    ? { move: order[0].split(',').map(Number), rest: lines[order[0]] || null } : null;
   // (pace: begun at once only in a window -- a chain falling, a slab popping -- or when its line is done within a pace gap of its deadline)
   var gap = (c.pace && c.pace.gap) || 0, done = line && line.ap && (line.ap.fire != null ? line.ap.fire : line.ap.done);
   var due = R.by || (R.under && R.F.us.dies > 0 ? R.F.us.dies : null) || (typeof R.readyAt === 'number' ? R.readyAt : null);
@@ -86,7 +82,7 @@ function play(c, R, S, cands) {
                fire: line ? line.ap.fire : null, ats: line && line.ap.ats ? line.ap.ats.join('/') : null, by: R.by,
                // (per kind of move: how many were offered, and of them how many were dropped and why)
                cands: Object.keys(c.offered || {}).map(function (p) { var d = (c.dropped || {})[p]; return p.replace(/ /g, '_') + ':' + c.offered[p] + (d ? '-' + ['back', 'list', 'late'].filter(function (w) { return d[w]; }).map(function (w) { return w[0] + d[w]; }).join('') : ''); }).join(',') };
-  return { R: R, line: line, play: name, order: order, lines: lines, carry: carry, raise: R.up ? R.to : 0, mustBreak: mustBreak, urgent: urgent, info: info, idleMs: S.idleMs };
+  return { R: R, line: line, play: name, order: order, carry: carry, raise: R.up ? R.to : 0, urgent: urgent, info: info, idleMs: S.idleMs };
 }
 
 function decide(c) {
