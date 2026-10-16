@@ -151,7 +151,7 @@ function lead(aims, made, under) { return nearList(aims, made) + (under && made.
 //   4 NOTHING FROM THE LIST: ready, toward a break, level, setup
 //   5 hold
 //   6 CLEAR and SCRAMBLE, and any other clear: only when there is nothing else
-function tier(play, x, aim, under, enemyOut) {
+function tier(play, x, aim, under) {
   x = x || {};
   var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0, cells = x.cells || 0, stop = x.earned || 0;
   var clears = combo >= 3 || chain >= 2 || broke > 0 || cells > 0 || play === 'clear' || play === 'scramble';

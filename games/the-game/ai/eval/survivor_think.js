@@ -879,18 +879,9 @@ module.exports = function think(cfg) {
           bot._gambitRaise = upG ? toG : 0;
           if (FG.us.contact !== null || FG.us.topped) bot._gambitHit = true;
           bot._gambitOpen = !!(upG && !bot._gambitHit);
-          // THE PICK (plans/gambit.md, section 5): every play found is one candidate -- what it makes (combo, chain), what it does to the
-          // garbage (broke), what it sends (cells), the stop time it buys, when it is done -- and they are taken in the plan's order:
-          //   live (the survival search, over gambit's ranking) and in time (each search keeps only lines done by their deadline)
-          //   MUST-DO, garbage on the board: the breaks -- the list's entries that break first, then one that buys stop time (a combo or
-          //     chain break) over a plain break, then the most garbage broken
-          //   AIM: the plays that meet the rule's list, in its order
-          //   BEST THAT FITS (anything left, garbage on the board or not): a break that sends, then garbage sent (enemy topped: combos
-          //     first, else chains), garbage broken, stop time -- a chain that breaks nothing buys a topped board its stop time
-          //   NOTHING FITS: ready, toward a break, level, setup -- then hold
-          //   a clear that breaks nothing, sends nothing and buys nothing is below hold: played only when even holding is not proven to live
+          // THE PICK: every play found is one candidate, ranked by GAMBIT.tier -- everything goes off the mode's list (gambit.js)
           // Each candidate's first swap carries the rest of its line (linesG). (pace, step 7: below.)
-          var orderG = [], linesG = {}, candsG = [], keepCarryG = false, enemyOutG = !!FG.enemy.topped, nAimG = aimsG.length;
+          var orderG = [], linesG = {}, candsG = [], keepCarryG = false, nAimG = aimsG.length;
           // (NO SWAP BACK: a swap of the same two panels the last one swapped puts the board back as it was -- it is no play of gambit's
           // unless it clears; played over and over it is a loop that spends the time the garbage gives)
           var idsAtG = function (mv) { var row = board.panels[mv[0]], a = row && row[mv[1]], b = row && row[mv[1] + 1]; return a && b && a.id != null && b.id != null ? [a.id, b.id].sort().join(',') : null; };
@@ -909,7 +900,7 @@ module.exports = function think(cfg) {
             var fireX = x.fire != null ? x.fire : x.done;
             if (byG && fireX && fireX > byG) return;
             // (a play that clears nothing is judged by what its first swap does, on this board: one that clears is a clear -- below hold)
-            var tg = GAMBIT.tier(play, x, aim, underG, enemyOutG), tier = tg.tier, sub = tg.sub;
+            var tg = GAMBIT.tier(play, x, aim, underG), tier = tg.tier, sub = tg.sub;
             candsG.push({ play: play, seq: seq, tier: tier, sub: sub, ap: { seq: seq, done: x.done || null, fire: fireX || null, ats: x.ats || null, chain: chain, combo: combo, broke: broke }, aim: aim, extend: !!extend, near: x.near || 0 });
           };
           if (pickG && predsG.length) {
