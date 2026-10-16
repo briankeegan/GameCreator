@@ -113,30 +113,32 @@ module.exports = function (opts) {
             // (aims: the line is kept for every aim it meets, by its deadline and keeping what o.keep asks; the search goes on past it)
             var made = { combo: bigC, combos: st.comboSizes, chain: g.chain, broke: st.broke || 0, cells: Math.max(0, g.cells - base) };
             var inTime = !(o.by && fire > o.by), kept = !(o.keep && !o.keep(out.b.grid, made));
+            // (floor: the board it ends on keeps the floor, a break or not -- of two breaks, the one that leaves the panels comes first)
+            var floor = !(o.keep && !o.keep(out.b.grid, { broke: 0 }));
             // (CLEAR and SCRAMBLE, the plays of a board that would be lost: done before it is (o.dies), whatever the floor -- the line that
             // leaves the lowest stack, and the one that buys the most stop time)
             if (o.near && !(o.dies && out.t - root.t > o.dies)) {
               var shp = shapeOf(out.b.grid);
               if (!lowest || shp.top < lowest.top || (shp.top === lowest.top && seq.length < lowest.seq.length))
-                lowest = { top: shp.top, cells: made.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: made.broke, done: out.t - root.t, fire: fire, ats: ats, aimIndex: -1 };
+                lowest = { top: shp.top, cells: made.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: made.broke, done: out.t - root.t, fire: fire, ats: ats, floor: floor, aimIndex: -1 };
               if ((st.earned || 0) > 0 && (!stopBest || st.earned > stopBest.earned || (st.earned === stopBest.earned && seq.length < stopBest.seq.length)))
-                stopBest = { earned: st.earned, cells: made.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: made.broke, done: out.t - root.t, fire: fire, ats: ats, aimIndex: -1 };
+                stopBest = { earned: st.earned, cells: made.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: made.broke, done: out.t - root.t, fire: fire, ats: ats, floor: floor, aimIndex: -1 };
             }
             // (of the lines in time that break garbage at all, a plain three included, the one that breaks the most -- the sooner between
             // equals: the last line before the default's own)
             if (o.near && inTime && kept && made.broke > 0 && (!quick || made.broke > quick.broke || (made.broke === quick.broke && out.t - root.t < quick.done)))
-              quick = { near: 0, brk: true, cells: made.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: made.broke, done: out.t - root.t, fire: fire, ats: ats, aimIndex: -1 };
+              quick = { near: 0, brk: true, cells: made.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: made.broke, done: out.t - root.t, fire: fire, ats: ats, floor: floor, aimIndex: -1 };
             if (o.near && inTime && kept) {
               var nr = o.near(made);
               if (nr > it.reach) it.reach = nr;   // (the beam is led by the list: a board ranks by the nearest line one swap from it)
               if (nr > 0 && (!nearest || nr > nearest.near || (nr === nearest.near && seq.length < nearest.seq.length)))
-                nearest = { near: nr, brk: made.broke > 0, cells: made.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: made.broke, done: out.t - root.t, fire: fire, ats: ats, aimIndex: -1 };
+                nearest = { near: nr, brk: made.broke > 0, cells: made.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: made.broke, done: out.t - root.t, fire: fire, ats: ats, floor: floor, aimIndex: -1 };
             }
             if (inTime && kept) for (var ai = 0; ai < aims.length; ai++) {
               if (!aims[ai] || !aims[ai](made)) continue;
               var pa = perAim[ai];
               if (!pa || made.cells > pa.cells || (made.cells === pa.cells && seq.length < pa.seq.length))
-                perAim[ai] = { brk: made.broke > 0, cells: made.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: made.broke, earned: st.earned || 0, done: out.t - root.t, fire: fire, ats: ats, aimIndex: ai };
+                perAim[ai] = { brk: made.broke > 0, cells: made.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: made.broke, earned: st.earned || 0, done: out.t - root.t, fire: fire, ats: ats, floor: floor, aimIndex: ai };
             }
             it.kids.push({ n: out, seq: seq, ats: ats });
             continue;
@@ -253,7 +255,7 @@ module.exports = function (opts) {
         if (!out || out.dead) return null;
         var st = s.stepStats(out), g = sent(st), big = 0;
         st.comboSizes.forEach(function (z) { if (z > big) big = z; });
-        return { cells: g.cells, chain: g.chain, combo: big, broke: st.broke || 0, kept: !(o.keep && !o.keep(out.b.grid, { broke: st.broke || 0 })), done: out.t - root.t };
+        return { cells: g.cells, chain: g.chain, combo: big, broke: st.broke || 0, kept: !(o.keep && !o.keep(out.b.grid, { broke: st.broke || 0 })), floor: !(o.keep && !o.keep(out.b.grid, { broke: 0 })), done: out.t - root.t };
       });
     }
     var base = sends([root])[0] || { cells: 0, chain: 0 };
@@ -282,8 +284,8 @@ module.exports = function (opts) {
         // (o.aims: the cascade that ends making the most for each aim -- { combo, chain, broke, cells added } -- is kept per aim)
         if (xAims) {
           var madeX = { combo: g.combo, chain: g.chain, broke: g.broke, cells: g.cells - base.cells };
-          if (o.near && g.kept) { var xn = o.near(madeX); if (xn > 0 && (!xNear || xn > xNear.near || (xn === xNear.near && g.cells > xNear.cells))) xNear = { near: xn, cells: g.cells, chain: g.chain, combo: g.combo, broke: g.broke, done: g.done, fire: g.fire, seq: k.seq, base: base.cells, aimIndex: -1 }; }
-          for (var xa = 0; xa < xAims.length; xa++) if (g.kept && xAims[xa] && xAims[xa](madeX) && (!xPer[xa] || g.cells > xPer[xa].cells)) xPer[xa] = { cells: g.cells, chain: g.chain, combo: g.combo, broke: g.broke, done: g.done, fire: g.fire, seq: k.seq, base: base.cells, aimIndex: xa };
+          if (o.near && g.kept) { var xn = o.near(madeX); if (xn > 0 && (!xNear || xn > xNear.near || (xn === xNear.near && g.cells > xNear.cells))) xNear = { near: xn, cells: g.cells, chain: g.chain, combo: g.combo, broke: g.broke, done: g.done, fire: g.fire, floor: g.floor, seq: k.seq, base: base.cells, aimIndex: -1 }; }
+          for (var xa = 0; xa < xAims.length; xa++) if (g.kept && xAims[xa] && xAims[xa](madeX) && (!xPer[xa] || g.cells > xPer[xa].cells)) xPer[xa] = { cells: g.cells, chain: g.chain, combo: g.combo, broke: g.broke, done: g.done, fire: g.fire, floor: g.floor, seq: k.seq, base: base.cells, aimIndex: xa };
         } else if (g.cells > best.cells) best = { cells: g.cells, chain: g.chain, combo: g.combo, seq: k.seq, base: base.cells };
         next.push(k);
       });

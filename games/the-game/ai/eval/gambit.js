@@ -149,7 +149,9 @@ function lead(aims, made, under) {
 }
 // THE PICK'S TIERS (plans/gambit.md section 5), lower first, and the order within one: x is what the line makes ({ combo, chain, broke,
 // cells, earned, done, near }), aim its entry in the list (-1: none), under garbage on the board or topped, enemyOut the enemy topped.
-//   1 MUST-DO, under garbage: a break -- the most garbage broken per frame, then one that buys stop time, then the most broken; the
+//   1 MUST-DO, under garbage: a break -- one whose board keeps the floor first (a break is made below it, but of two the one that leaves
+//     the panels the next break is made of comes first: a three converts more than it spends), then the most garbage broken per frame,
+//     then one that buys stop time, then the most broken; the
 //     list is the aim's (step 4), not the must-do's: a break the list asks for done after the pop ranks below one made during it
 //   2 AIM, no garbage: the list, in its order
 //   3 BEST THAT FITS: garbage sent (enemy topped: combos first, else chains), stop time -- never making a must-do miss its deadline: under
@@ -161,7 +163,7 @@ function tier(play, x, aim, under, enemyOut, topped) {
   var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0, cells = x.cells || 0, stop = x.earned || 0;
   var clears = combo >= 3 || chain >= 2 || broke > 0 || cells > 0 || play === 'clear' || play === 'scramble';
   var buys = combo >= 4 || chain >= 2, rate = broke / Math.max(1, x.done || 1);
-  if (under && broke > 0) return { tier: 1, sub: [-rate, buys ? 0 : 1, -broke] };
+  if (under && broke > 0) return { tier: 1, sub: [x.floor === false ? 1 : 0, -rate, buys ? 0 : 1, -broke] };
   if (play === 'clear' || play === 'scramble') return { tier: 6, sub: [-stop] };   // (only when there is nothing else)
   if (aim >= 0 && !under) return { tier: 2, sub: [aim, x.done || 0] };
   if (clears && (buys || cells > 0) && (!under || (topped && buys))) return { tier: 3, sub: [-cells, enemyOut ? -combo : -chain, enemyOut ? -chain : -combo, -stop, -(x.near || 0)] };
