@@ -40,4 +40,7 @@ A chain still falling is run on, a slab popping is lined up, a line begun is car
 
 A break is a match that touches garbage: its bottom row turns into panels. Garbage can always be broken with a three.
 
+Garbage still falling is `facts().falling`: a block still in the air, or the next landing before a break begun now has popped (the
+engine's FLASH + FACE + POP x (3 + the lowest block's cells on screen)).
+
 The code: `GAMBIT.tier` (gambit.js), held by gambit.test.js.

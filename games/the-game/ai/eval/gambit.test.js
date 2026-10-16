@@ -142,6 +142,13 @@ assert(!G.fits([{ chain: '==4' }], { combo: 3, chain: 1, broke: 0 }), 'pressure:
 assert(G.fits([{ chain: '>=8' }], { chain: 0, combo: 0 }), 'a move that clears nothing fits');
 assert(G.fits([{ chain: '>=8', break: true }], { chain: 9, combo: 3, broke: 0 }), 'an entry fits whether it breaks or not');
 
+// garbage still falling: an entry, then setting up, then the break, then hold (plans/decision.md)
+var fe = G.tier('entry', { chain: 2, combo: 3 }, 4, true, false, false, true), fs0 = G.tier('setup', {}, -1, true, false, false, true);
+var fb = G.tier('break search', { broke: 6, done: 90 }, -1, true, false, false, true), fh = { tier: 5, sub: [] };   // (the hold is tier 5, put beside the candidates)
+var rank = function (t) { return [t.tier].concat(t.sub); }, before = function (a, b) { var x = rank(a), y = rank(b); for (var i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
+assert(before(fe, fs0) && before(fs0, fb) && before(fb, fh), 'falling: entry, setup, break, hold');
+assert.strictEqual(G.tier('break search', { broke: 6, done: 90 }, -1, true, false, false, false).tier, 1, 'landed: the break first');
+
 // a move's place in the list: the first entry its clears match, whatever found it
 assert.strictEqual(G.entryOf(FIN, { combo: 9, chain: 1 }), 0, 'finish: a combo of 9 is the first entry');
 assert.strictEqual(G.entryOf(FIN, { combo: 3, chain: 2 }), 4, 'a chain of 2 the fifth');

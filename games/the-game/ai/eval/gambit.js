@@ -20,7 +20,7 @@
 // Facts, the same names for both boards (an enemy fact the host does not send is undefined, and a test on it is false):
 //   topped, stop (frames), height (rows, garbage included), material (panels under the garbage), contact (columns reaching the
 //   garbage), evenness (tallest panel column less lowest), coming (rows on their way), heavy (coming > 8), nextLands (frames),
-//   dies (frames until the board is lost if nothing is done)
+//   dies (frames until the board is lost if nothing is done), falling (garbage on the board not all landed: see facts)
 var fs = require('fs'), path = require('path'), CK = require('./survivor_checks.js');
 
 function cellOf(b, r, c) { var p = b.panels[r] && b.panels[r][c]; return !p ? 0 : p.isGarbage ? -1 : (p.color || 0); }
@@ -46,9 +46,19 @@ function facts(board, arrivals, topped) {
   // (dies: the frames until the board is lost if nothing is done -- the stop time, the rise to the top row unless already topped, then
   // the health it drains there)
   var dies = topped ? stop + (board.health || 0) : CK.framesToTop(board) + (board.health || 0);
+  // (falling: garbage not all landed -- a block still in the air, or the next one landing before a break begun now has popped: a break
+  // against the lowest block takes FLASH + FACE + POP x (3 + its cells on screen), as the engine's checkMatches times it)
+  var falling = false;
+  if (garb) {
+    falling = typeof board.hasFallingGarbage === 'function' && board.hasFallingGarbage();
+    var f = board.frames, low = null, onScreen = 0;
+    for (r = 1; r <= H && low === null; r++) for (c = 1; c <= 6; c++) { var lp = board.panels[r] && board.panels[r][c]; if (lp && lp.isGarbage) { low = lp.garbageId; break; } }
+    for (r = 1; r <= Math.min(H, board.height || H); r++) for (c = 1; c <= 6; c++) { var gp = board.panels[r] && board.panels[r][c]; if (gp && gp.isGarbage && gp.garbageId === low) onScreen++; }
+    if (!falling && f && next !== null) falling = next <= f.FLASH + f.FACE + f.POP * (3 + onScreen);
+  }
   return {
     topped: !!topped, stop: stop, height: top, material: material, contact: garb ? contact : null, dies: dies,
-    evenness: Math.max.apply(null, peaks) - Math.min.apply(null, peaks), coming: coming, heavy: coming > 8, nextLands: next
+    evenness: Math.max.apply(null, peaks) - Math.min.apply(null, peaks), coming: coming, heavy: coming > 8, nextLands: next, falling: falling
   };
 }
 // The facts of a settled grid the search leaves (0 empty, garbage 8 and up or below 0, 1..7 colours): what a line's end board keeps.
@@ -158,11 +168,17 @@ function lead(aims, made, under) { return nearList(aims, made) + (under && made.
 //     garbage a clear that breaks nothing is only this on a topped board, where the stop time it buys is what keeps the board alive
 //   4 NOTHING FITS: ready, toward a break, level, setup
 //   6 CLEAR, and any clear that breaks nothing, sends nothing and buys nothing: only when there is nothing else (hold is 5)
-function tier(play, x, aim, under, enemyOut, topped) {
+function tier(play, x, aim, under, enemyOut, topped, falling) {
   x = x || {};
   var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0, cells = x.cells || 0, stop = x.earned || 0;
   var clears = combo >= 3 || chain >= 2 || broke > 0 || cells > 0 || play === 'clear';
   var buys = combo >= 4 || chain >= 2, rate = broke / Math.max(1, x.done || 1);
+  // (GARBAGE STILL FALLING, plans/decision.md: an entry first, then set up the ask ready to break it when it lands, then the break --
+  // broken before the rest has landed, the next block buries the panels it made -- then hold)
+  if (under && falling) {
+    if (aim >= 0) return { tier: 2, sub: [aim, x.done || 0] };
+    if (broke > 0) return { tier: 4, sub: [9, x.floor === false ? 1 : 0, -rate, buys ? 0 : 1, -broke] };
+  }
   if (under && broke > 0) return { tier: 1, sub: [x.floor === false ? 1 : 0, -rate, buys ? 0 : 1, -broke] };
   if (play === 'clear') return { tier: 6, sub: [-stop] };   // (only when there is nothing else)
   if (aim >= 0 && !under) return { tier: 2, sub: [aim, x.done || 0] };
