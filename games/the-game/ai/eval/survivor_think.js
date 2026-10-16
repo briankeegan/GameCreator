@@ -932,7 +932,16 @@ module.exports = function think(cfg) {
           // chosen: ranked last it would stand above every break of the survival search's own). Each first
           // swap carries the rest of its line (linesG), played on if it is the one played.
           var orderG = [], linesG = {};
-          var addG = function (mv, seq) { if (!mv) return; var k = mv === 'raise' || mv === 'hold' ? mv : arbKey(mv); if (orderG.indexOf(k) < 0) { orderG.push(k); if (seq && seq.length > 1) linesG[k] = seq.slice(1); } };
+          // (NO SWAP BACK: a swap of the same two panels the last one swapped puts the board back as it was -- it is no play of gambit's
+          // unless it clears; played over and over it is a loop that spends the time the garbage gives)
+          var idsAtG = function (mv) { var row = board.panels[mv[0]], a = row && row[mv[1]], b = row && row[mv[1] + 1]; return a && b && a.id != null && b.id != null ? [a.id, b.id].sort().join(',') : null; };
+          var backG = function (mv) { var cl = bot._allCands && bot._allCands.filter(function (c) { return c.kind === 'swap' && c.move && c.move[0] === mv[0] && c.move[1] === mv[1]; })[0], add = cl && (cl.added || cl.resolved);
+                                      // (a swap that clears is no swap back -- unless the same two panels have been swapped twice running already: a
+                                      // clear predicted on panels not yet seen that never comes is the same loop)
+                                      var ids = idsAtG(mv);
+                                      if (ids && bot._gambitBlock && bot._gambitBlock.pair === ids && m.at < bot._gambitBlock.until) return true;
+                                      return !!(bot._gambitLastPair && ids === bot._gambitLastPair && (!(add && (add.comboSizes || []).length) || (bot._gambitPairRuns || 0) >= 2)); };
+          var addG = function (mv, seq) { if (!mv) return; if (mv !== 'raise' && mv !== 'hold' && backG(mv)) return; var k = mv === 'raise' || mv === 'hold' ? mv : arbKey(mv); if (orderG.indexOf(k) < 0) { orderG.push(k); if (seq && seq.length > 1) linesG[k] = seq.slice(1); } };
           if (upG) addG('raise');
           if (holdG) addG('hold');
           // (a slab popping under more garbage: the break search's line-up -- the swaps after which the panels it turns into break the next
@@ -1247,6 +1256,14 @@ module.exports = function think(cfg) {
       }
       // (one line a decision on stderr, the survivor's log: what gambit chose, what was played and by whom, the verdict, the material)
       if (bot._gambit) { var gl = bot._gambit; console.error('GAMBITD ' + m.at + ' ' + (gl.name || '') + ' play=' + (gl.play || '-') + ' want=' + (gl.want || '-') + ' got=' + (d.kind === 'swap' && d.move ? d.move.join(',') : d.kind) + ' src=' + (d.src || (d.overruled ? 'overrule' : 'default')) + ' v=' + (gl.verdict || '-') + ' under=' + (gl.under ? 1 : 0) + ' mat=' + FGmat + ' chain=' + (gl.chain || 0) + ' combo=' + (gl.combo || 0) + ' by=' + (gl.by || '-') + ' plan=' + (gl.pl || '-')); }
+      if (bot._gambit) {
+        var pr = d.kind === 'swap' && d.move && board.panels[d.move[0]], pa = pr && pr[d.move[1]], pb = pr && pr[d.move[1] + 1];
+        var pairNow = pa && pb && pa.id != null && pb.id != null ? [pa.id, pb.id].sort().join(',') : (d.kind === 'swap' ? null : bot._gambitLastPair);
+        bot._gambitPairRuns = pairNow && pairNow === bot._gambitLastPair ? (bot._gambitPairRuns || 0) + 1 : 0;
+        // (a loop found -- the same pair three times running -- keeps that pair out of gambit's plays for a second)
+        if (bot._gambitPairRuns >= 2) bot._gambitBlock = { pair: pairNow, until: m.at + 60 };
+        bot._gambitLastPair = pairNow;
+      }
       var lvP = (bot._verdictNo || 0) !== verdictNo0 ? bot._lastVerdict : null, holdP = false;
       if (lvP) for (var pi = 0; pi < lvP.cands.length; pi++) if (lvP.cands[pi].kind === 'hold') { holdP = lvP.verdict[pi] === 'proven'; break; }
       out = { id: m.id, epoch: m.epoch, at: m.at, threeOK: !!(A && A.realThrees && dangerWhy === 'incoming'), src: d.src || (d.overruled ? 'overrule' : 'default'), kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, raiseFrames: holdFrames, ms: Date.now() - t0, queued: m.posted ? t0 - m.posted : 0, brMs: brMs, why: why,
