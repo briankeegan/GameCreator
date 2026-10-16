@@ -155,6 +155,7 @@ function lead(aims, made, under) { return nearList(aims, made) + (under && made.
 //   3 BEST THAT FITS: garbage sent (enemy topped: combos first, else chains), stop time -- never making a must-do miss its deadline: under
 //     garbage a clear that breaks nothing is only this on a topped board, where the stop time it buys is what keeps the board alive
 //   4 NOTHING FITS: ready, toward a break, level, setup
+//   (1, after the breaks, on a topped board: a clear that brings the stack below the top, a scramble that buys stop time)
 //   6 CLEAR and SCRAMBLE, and any clear that breaks nothing, sends nothing and buys nothing: only when there is nothing else (hold is 5)
 function tier(play, x, aim, under, enemyOut, topped) {
   x = x || {};
@@ -162,6 +163,9 @@ function tier(play, x, aim, under, enemyOut, topped) {
   var clears = combo >= 3 || chain >= 2 || broke > 0 || cells > 0 || play === 'clear' || play === 'scramble';
   var buys = combo >= 4 || chain >= 2, rate = broke / Math.max(1, x.done || 1);
   if (under && broke > 0) return { tier: 1, sub: [x.floor === false ? 1 : 0, -rate, buys ? 0 : 1, -broke] };
+  // (a topped board loses health every frame it has no stop time: the plays that keep it alive are the must-do there -- a clear that
+  // brings the stack below the top, a scramble that buys stop time -- after any break)
+  if (topped && ((play === 'clear' && x.top != null && x.top < 12) || (play === 'scramble' && stop > 0))) return { tier: 1, sub: [2, play === 'clear' ? 0 : 1, -stop] };
   if (play === 'clear' || play === 'scramble') return { tier: 6, sub: [-stop] };   // (only when there is nothing else)
   if (aim >= 0 && !under) return { tier: 2, sub: [aim, x.done || 0] };
   if (clears && (buys || cells > 0) && (!under || (topped && buys))) return { tier: 3, sub: [-cells, enemyOut ? -combo : -chain, enemyOut ? -chain : -combo, -stop, -(x.near || 0)] };
