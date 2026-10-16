@@ -978,10 +978,10 @@ module.exports = function think(cfg) {
           if (waitG || (lineG && lineG.wait)) addG('hold');
           candsG.forEach(function (c) { if (c.tier >= 6 && orderG.indexOf('hold') < 0 && !upG) addG('hold'); if (!c.wait) addG(c.seq[0], c.seq, SETTLED.indexOf(c.play) >= 0); });
           if (!upG && orderG.indexOf('hold') < 0) addG('hold');
-          // (NO TIME TO SEARCH: the question came too soon for the planner and the break search alike -- nothing was searched, and holding
+          // (NO TIME TO SEARCH: the question came too soon for the planner and the break search alike -- nothing was found, and holding
           // is no decision. The last decision's move is played, while its two panels are still side by side as they were (by id: a move
           // already played has swapped them) and it is a few reactions old; a break stays a break)
-          var searchedG = triedG > 0 || !!(br && (br.depth > 0 || (br.toward && br.toward.length))), lastBreakG = null, LG = bot._gambitLast;
+          var searchedG = candsG.length > 0, lastBreakG = null, LG = bot._gambitLast;
           if (!searchedG && !upG && LG && m.at >= LG.at && m.at - LG.at <= 4 * (OPTS.reaction || 12)) {
             var mvL = GAMBIT.pairAt(board, LG.ids);
             if (mvL && !backG(mvL)) { var kL = arbKey(mvL); orderG = [kL].concat(orderG.filter(function (k) { return k !== kL; })); playG = 'last ' + LG.play; if (LG.tier === 1) lastBreakG = mvL; }
