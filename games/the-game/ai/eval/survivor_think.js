@@ -870,7 +870,8 @@ module.exports = function think(cfg) {
             var nx = exG && exG.nearest, np = apG && apG.nearest && apG.nearest.seq.length ? apG.nearest : null;
             var lvU = underG && attacker ? attacker.level(board, m.hold, arrivals, { by: FG.us.nextLands > 0 ? FG.us.nextLands : (byG || undefined) }) : null;
             var rdG = readyAtG !== null && arrivals.length && attacker ? attacker.readyFor(board, m.hold, arrivals, { ms: Math.max(20, Math.min(60, leftG())) }) : null;
-            var lvG = !underG && readyAtG !== null && !(rdG && !rdG.ready && rdG.setup) && attacker ? attacker.level(board, m.hold, arrivals, { by: readyAtG || undefined }) : null;
+            // (level and setup are offered whenever they are there, a block on its way or not: holding is almost never the play)
+            var lvG = !underG && !(rdG && !rdG.ready && rdG.setup) && attacker ? attacker.level(board, m.hold, arrivals, { by: readyAtG || undefined }) : null;
           }
           // THE RAISE (the file's or the rule's `raise: { to }`): below `to` rows, not under garbage, not topped and no chain running, the stack
           // is raised first -- held down to `to` in one press, not a row a decision -- and the list played from the panels it brings
@@ -940,7 +941,7 @@ module.exports = function think(cfg) {
             if (rdG && !rdG.ready && rdG.setup) candG('ready', [rdG.setup], {}, -1);
             if (lvU) candG('level', [lvU.move], {}, -1);
             if (lvG) candG('level', [lvG.move], {}, -1);
-            if (apG && apG.setup && typeof readyAtG !== 'number') candG('setup', [apG.setup], {}, -1);
+            if (apG && apG.setup) candG('setup', [apG.setup], {}, -1);
             if (apG && apG.stopBest) candG('scramble', apG.stopBest.seq, apG.stopBest, -1);
             if (apG && apG.lowest) candG('clear', apG.lowest.seq, apG.lowest, -1);
             // (A LINE BEGUN IS PLAYED ON, each step at its own time: a planned line presses each step once the board has settled from the
@@ -963,14 +964,14 @@ module.exports = function think(cfg) {
           }
           var sortG = function () { candsG.sort(function (x, y) { if (x.tier !== y.tier) return x.tier - y.tier; for (var q = 0; q < x.sub.length; q++) if (x.sub[q] !== y.sub[q]) return x.sub[q] - y.sub[q]; return 0; }); };
           sortG();
-          // (ALWAYS READY, WHILE ATTACKING: an attack -- the aim, a best that fits -- is played only if, its first move played, the next
+          // (ALWAYS READY, WHILE ATTACKING: an attack -- the aim, a best that fits -- a setup or a level is played ahead only if, its first move played, the next
           // block on its way can still be broken when it lands (readyAfter, on the engine). One that leaves it unbreakable drops below
           // the plays that get ready, just above hold. The leading attacks are judged, as many as the decision's time allows)
           if (attacker && arrivals.length) {
             var judgedG = 0, demotedG = false;
             for (var jg = 0; jg < candsG.length && judgedG < 4 && leftG() > 15; jg++) {
               var cj = candsG[jg];
-              if (cj.tier !== 2 && cj.tier !== 3) continue;
+              if (cj.tier !== 2 && cj.tier !== 3 && !(cj.tier === 4 && (cj.play === 'setup' || cj.play === 'level'))) continue;
               judgedG++;
               if (attacker.readyAfter(board, m.hold, cj.seq[0], arrivals) === false) { cj.tier = 4; cj.sub = [4.5]; cj.unready = true; demotedG = true; }
             }
