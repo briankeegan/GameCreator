@@ -325,7 +325,9 @@ Match.prototype.take = function (truth) {
         }
       }
     }
-    var step = L.hands.keys(board, hold, a.kind, move, arrivals);
+    var step = L.hands.keys(board, hold, a.kind === 'walk' ? 'swap' : a.kind, move, arrivals);
+    // (a walk: the keys of the swap up to its press -- the cursor waits on the panels, nothing swapped)
+    if (step && a.kind === 'walk') step = walkOnly(step);
     if (!step) { this.stats.refused++; this.acted = false; continue; }
     // A RAISE HELD DOWN (the profile's holdRaise): the button stays down for the frames it takes to bring the rows in, not one row and a rest
     if (a.kind === 'raise' && a.raiseFrames > step.inputs.length) {
@@ -750,6 +752,11 @@ Match.prototype.dump = function () {
 // decision was proven by is played instead of holding, and the question --
 // about a board that will not now be reached -- is stopped; the next one is
 // asked for where the step ends.
+function walkOnly(step) {
+  var n = 0;
+  while (n < step.inputs.length && !(step.inputs[n] & IN.swap)) n++;
+  return n ? { inputs: step.inputs.slice(0, n), holds: step.holds.slice(0, n) } : { inputs: [0], holds: [step.holds[0]] };   // (already there: a frame waited)
+}
 function isWait(st) { return !!st && typeof st === 'object' && !Array.isArray(st) && st.long !== undefined; }
 Match.prototype.follow = function () {
   var L = this.L;

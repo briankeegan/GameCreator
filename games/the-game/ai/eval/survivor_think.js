@@ -808,7 +808,7 @@ module.exports = function think(cfg) {
       // deadline (else what its `else` asks). The line's first swap ranks before every other move; the survival search alone stands
       // over it, so the aim is chased while the board lives, under garbage or not. The rest of the line is played on (attackLine).
       var FGmat = null, FGland = null, FGdies = null;
-      bot._idleMs = 0; bot._gambit = null; bot._gambitRaise = 0; bot._gambitLines = null; bot._gambitUrgent = false; bot._gambitOpen = false; bot._gambitBreak = null;
+      bot._idleMs = 0; bot._gambitWalk = null; bot._gambit = null; bot._gambitRaise = 0; bot._gambitLines = null; bot._gambitUrgent = false; bot._gambitOpen = false; bot._gambitBreak = null;
       if (gambitRules) {
         var GP = cfg.profile.gambit, FG = { us: GAMBIT.facts(board, arrivals, m.topped), enemy: GAMBIT.enemyFacts(m.opp) };
         var apG = null, exG = null, tablesG = gambitRules.get(m.opp && m.opp.name), pickG = GP.mode ? GAMBIT.named(tablesG, GP.mode) : GAMBIT.choose(tablesG, FG), lineG = null, setupG = null, readyG = false, playG = null, triedG = 0;
@@ -976,7 +976,7 @@ module.exports = function think(cfg) {
           // first, the next decision carries it on)
           var SETTLED = ['entry', 'nearest', 'break line', 'carry', 'clear'];
           var carryG = lineG && !lineG.wait && lineG.seq.length > 1 && lineG.tier <= 3 && SETTLED.indexOf(lineG.play) >= 0;
-          if (lineG && lineG.wait) { /* the line begun waits for its next step's time: it stays as it is */ }
+          if (lineG && lineG.wait) { bot._gambitWalk = lineG.seq[0]; /* the line begun waits for its next step's time: it stays as it is */ }
           else if (!carryG && keepCarryG && !lineG) { /* nothing else chosen: the waiting line stays */ }
           else bot._gambitCarry = carryG ? { rest: lineG.seq.slice(1).map(function (mv) { return mv.slice(); }), aim: lineG.aim >= 0 ? aimsG[lineG.aim] : null, broke: (lineG.ap.broke || 0) > 0 } : null;
           var prG = bot.preferRank || function () { return Infinity; };
@@ -1049,6 +1049,9 @@ module.exports = function think(cfg) {
           d = { kind: 'swap', move: mvB, overruled: true, src: 'break' }; attackLine = bot._gambitBreak.rest || null; attackMove = attackLine ? mvB : null;
         }
       }
+      // (A LINE WAITING FOR ITS STEP'S TIME: the board settles first, as the engine says it will -- the cursor walks to the step's panels
+      // meanwhile, so the swap goes off the frame the board has settled; nothing is swapped yet)
+      if (bot._gambitWalk && d && d.kind === 'hold') d = { kind: 'walk', move: bot._gambitWalk, overruled: true, src: 'linewait' };
       if (arbProps && d && d.kind === 'swap' && d.move) bot._swapLog = (bot._swapLog || []).filter(function (e) { return m.at - e.at < 400; }).concat([{ pk: arbKey(d.move), at: m.at }]).slice(-12);
       if (arbProps && d) {
         var ap0 = d.kind === 'swap' && d.move ? arbProps[arbKey(d.move)] : d.kind === 'raise' ? arbProps.raise : null;
