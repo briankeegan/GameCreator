@@ -542,5 +542,30 @@ module.exports = function (opts) {
     s.drop(made);
     return hi;
   }
-  return { plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear, replay: replay, judge: judge, diesIn: diesIn, raiseReady: raiseReady };
+  // A LINE THAT LEAVES A PLAN (readyLines): of the lines of one swap, then of two from the first swaps that live, the first that, played
+  // as pressed and run on until the last block shown has landed and the board has settled, leaves a break within two swaps
+  // (breaksAfterLanding) -- each judged on the engine, for as long as `ms` lasts. { seq, at } or null
+  function readyLines(board, hold, arrivals, land, ms, o) {
+    var t0 = Date.now(), firsts = board.legalSwaps(), live = [];
+    var top = CK.fullTop(board);
+    firsts.sort(function (a, b) { return Math.abs(b[0] - top) < Math.abs(a[0] - top) ? 1 : -1; });   // (near the top of the stack first)
+    var check = function (seq) { var j = judge(board, hold, seq, arrivals, { settled: false, tight: o && o.tight, readyAt: land }); return j; };
+    for (var i = 0; i < firsts.length && Date.now() - t0 < ms; i++) {
+      var j = check([firsts[i]]);
+      if (j.dead) continue;
+      if (j.ready === true) return { seq: [firsts[i]], at: j.done };
+      live.push(firsts[i]);
+    }
+    for (i = 0; i < live.length && Date.now() - t0 < ms; i++) {
+      var b1 = board.copy(); b1.curRow = live[i][0]; b1.curCol = live[i][1];
+      if (!b1.tryQueueSwap(live[i][0], live[i][1])) continue;
+      var seconds = b1.legalSwaps();
+      for (var k = 0; k < seconds.length && Date.now() - t0 < ms; k++) {
+        var j2 = check([live[i], seconds[k]]);
+        if (!j2.dead && j2.ready === true) return { seq: [live[i], seconds[k]], at: j2.done };
+      }
+    }
+    return null;
+  }
+  return { readyLines: readyLines, plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear, replay: replay, judge: judge, diesIn: diesIn, raiseReady: raiseReady };
 };

@@ -7,6 +7,7 @@ var path = require('path');
 var GAMBIT = require(path.join(__dirname, 'gambit.js')), SH = require(path.join(__dirname, 'survivor_shared.js'));
 var CK = require(path.join(__dirname, 'survivor_checks.js'));
 
+var READY_LINE_MS = 120;   // (the most the search for a line that leaves a plan takes of a decision)
 function cand(play, seq, x, aim, extend) { return seq && seq.length && seq[0] ? { play: play, seq: seq, x: x || {}, aim: aim, extend: !!extend } : null; }
 
 // THE SEARCHES, run once a decision: the planner (a line for every entry of the list, in time), the extension of a chain already falling
@@ -35,6 +36,13 @@ function search(c, R) {
   }
   out.lvU = R.under ? A.level(board, hold, arrivals, { by: R.F.us.nextLands > 0 ? R.F.us.nextLands : (R.by || undefined) }) : null;
   out.rd = !R.under && R.readyAt !== null && arrivals.length ? A.readyFor(board, hold, arrivals, { ms: Math.max(20, Math.min(60, c.left())) }) : null;
+  // (the board left alone with no plan once everything shown has landed: a line of one or two swaps that leaves one -- A.readyLines)
+  var lastLand = null; arrivals.forEach(function (a) { if (lastLand === null || a.at > lastLand) lastLand = a.at; });
+  out.rl = null;
+  if (lastLand !== null) {
+    var aloneR = A.judge(board, hold, [], arrivals, { tight: c.tight, readyAt: lastLand });
+    if (aloneR.ready !== true) out.rl = A.readyLines(board, hold, arrivals, lastLand, Math.max(20, Math.min(READY_LINE_MS, c.left() / 2)), { tight: c.tight });
+  }
   out.lvG = !R.under && R.readyAt !== null && !(out.rd && !out.rd.ready && out.rd.setup) ? A.level(board, hold, arrivals, { by: R.readyAt || undefined }) : null;
   return out;
 }
@@ -74,8 +82,13 @@ function breaks(c) {
 }
 // TOWARD A BREAK: under garbage with none in reach, the break search's line nearest one
 function toward(c, R) { return R.under && c.br && c.br.toward && c.br.toward.length ? [cand('toward', c.br.toward, {}, -1)] : []; }
-// READY: the swap that leaves the next block breakable when it lands
-function ready(S) { return S.rd && !S.rd.ready && S.rd.setup ? [cand('ready', [S.rd.setup], {}, -1)] : []; }
+// READY: the swap that leaves the next block breakable when it lands, and the line of one or two swaps that leaves a plan once everything
+// shown has landed
+function ready(S) {
+  var out = S.rd && !S.rd.ready && S.rd.setup ? [cand('ready', [S.rd.setup], {}, -1)] : [];
+  if (S.rl) out.push(cand('ready', S.rl.seq, { done: S.rl.at }, -1));
+  return out;
+}
 // LEVEL: the swap that flattens the stack, under garbage or before a block lands
 function level(S) { return [S.lvU, S.lvG].filter(Boolean).map(function (lv) { return cand('level', [lv.move], {}, -1); }); }
 // SET UP: the planner's swap toward the ask, with no block on its way
