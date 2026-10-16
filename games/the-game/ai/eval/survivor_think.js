@@ -15,7 +15,7 @@ var DIR = __dirname;
 require(path.join(DIR, '..', '..', 'panel-cpu.js'));
 var P = require(path.join(DIR, 'puyocpu.js')), PA = require(path.join(DIR, '..', '..', 'pa-engine.js'));
 var SH = require(path.join(DIR, 'survivor_shared.js')), SP = require(path.join(DIR, 'survivor_prefer.js')), MODES = require(path.join(DIR, 'modes.js'));
-var ATTACK = require(path.join(DIR, 'survivor_attack.js')), GAMBIT = require(path.join(DIR, 'gambit.js'));
+var ATTACK = require(path.join(DIR, 'survivor_attack.js')), GAMBIT = require(path.join(DIR, 'gambit.js')), KEYS = require(path.join(DIR, 'survivor_keys.js'));
 var CK = require(path.join(DIR, 'survivor_checks.js')), fullTop = CK.fullTop, lowPeak = CK.lowPeak, lowPeakOf = CK.lowPeakOf, panelCount = CK.panelCount, raiseCap = CK.raiseCap, cascadeLive = CK.cascadeLive;
 var SPEND = Number(process.env.GC_SURVIVOR_SPEND) || 0.6;   // budget searched per millisecond over the last decisions, and the share of the time there is spent searching
 // The search ends this long before the answer is due, for the rest of the decision and its post.
@@ -802,7 +802,7 @@ module.exports = function think(cfg) {
       // deadline (else what its `else` asks). The line's first swap ranks before every other move; the survival search alone stands
       // over it, so the aim is chased while the board lives, under garbage or not. The rest of the line is played on (attackLine).
       var FGmat = null;
-      bot._gambit = null; bot._gambitRaise = 0; bot._gambitLines = null; bot._gambitUrgent = false; bot._gambitOpen = false;
+      bot._gambit = null; bot._gambitRaise = 0; bot._gambitLines = null; bot._gambitUrgent = false; bot._gambitOpen = false; bot._gambitBreak = null;
       if (gambitRules) {
         var GP = cfg.profile.gambit, FG = { us: GAMBIT.facts(board, arrivals, m.topped), enemy: GAMBIT.enemyFacts(m.opp) };
         var apG = null, exG = null, tablesG = gambitRules.get(m.opp && m.opp.name), pickG = GP.mode ? GAMBIT.named(tablesG, GP.mode) : GAMBIT.choose(tablesG, FG), lineG = null, setupG = null, readyG = false, playG = null, triedG = 0;
@@ -955,6 +955,8 @@ module.exports = function think(cfg) {
             };
           }
           bot._gambitLines = linesG;
+          var breakPlayG = underG && (playG === 'break line' || playG === 'break search' || playG === 'lineup break' || (!playG && lineG && (lineG.aimIndex >= 0 || lineG.near)));
+          bot._gambitBreak = breakPlayG && orderG[0] && orderG[0] !== 'raise' && orderG[0] !== 'hold' ? { move: orderG[0].split(',').map(Number), rest: linesG[orderG[0]] || null } : null;
           // PACE (the profile's pace, plans/gambit.md step 7): moves are spread out, never pulsed, whenever nothing is due -- a play is begun
           // at once only in a window (a chain falling, a slab popping) or when its line is done within a pace gap of its deadline (the break
           // under garbage: the next block or the board lost; the ready and level: the block landing; an attack: its rule's by)
@@ -997,6 +999,15 @@ module.exports = function think(cfg) {
       // board lets it -- the countdown is the time to plan, and the match opens with panels to plan with. It is the play, whatever else
       // ranks; the held press lets go before the first block lands (holdFrames, below).
       if (bot._gambitOpen && !(d && d.kind === 'raise')) { d = { kind: 'raise', overruled: true, src: 'opening' }; attackLine = null; attackMove = null; }
+      // A BREAK FOUND IS A BREAK PLAYED (gambit, under garbage): when gambit's chosen play breaks the garbage -- an entry, the break line,
+      // the break search's line, a line-up that breaks -- it is the play, as the opening raise is, whatever the survival search's verdict
+      // on it (breaking is where a buried board's panels come from); only a swap the allowance of keys cannot pay for is left
+      if (bot._gambitBreak && d && !(d.kind === 'swap' && d.move && arbKey(d.move) === arbKey(bot._gambitBreak.move))) {
+        var mvB = bot._gambitBreak.move;
+        if (!(bot.allowance < Infinity && bot.stack && KEYS.actionsFor(bot.stack.curRow, bot.stack.curCol, mvB, bot.allowance) > bot.allowance)) {
+          d = { kind: 'swap', move: mvB, overruled: true, src: 'break' }; attackLine = bot._gambitBreak.rest || null; attackMove = attackLine ? mvB : null;
+        }
+      }
       if (arbProps && d && d.kind === 'swap' && d.move) bot._swapLog = (bot._swapLog || []).filter(function (e) { return m.at - e.at < 400; }).concat([{ pk: arbKey(d.move), at: m.at }]).slice(-12);
       if (arbProps && d) {
         var ap0 = d.kind === 'swap' && d.move ? arbProps[arbKey(d.move)] : d.kind === 'raise' ? arbProps.raise : null;
