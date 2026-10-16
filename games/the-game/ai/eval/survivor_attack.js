@@ -314,23 +314,15 @@ module.exports = function (opts) {
     if (first === null) return { ready: true, setup: null, at: 0 };
     s.reset();
     var root = s.root(board.copy(), hold, arrivals, false), wait = Math.max(1, first + 2);
-    function breaksAfterLanding(n) {
-      var land = n === root ? s.advance(n, 'long', null, wait) : s.advance(n, 'long', null, Math.max(1, wait - (n.t - root.t)));
-      if (!land || land.dead) return null;
-      var base = s.breaks(land), swaps = land.b.legalSwaps(), outs = s.advanceMany(swaps.map(function (m) { return [land, 'swap', m, 0]; }), true), any = false;
-      var made = [land];
-      outs.forEach(function (out) { if (out && !out.dead) { made.push(out); if ((out.brk !== undefined ? out.brk : s.breaks(out)) > base) any = true; } });
-      s.drop(made);   // the nodes of this check are let go of: the next is made from the root
-      return any;
-    }
-    var now = breaksAfterLanding(root);
+    var check = function (n) { var made = [], r = breaksAfterLanding(s, root, n, wait, made); s.drop(made); return r; };   // (the next check is made from the root)
+    var now = check(root);
     if (now === null || now) return { ready: now === true, setup: null, at: first, ms: Date.now() - t0 };
     var found = null;
     var firsts = root.b.legalSwaps();
     for (var i = 0; i < firsts.length && !found && Date.now() - t0 < (o.ms || 150); i++) {
       var n1 = s.advance(root, 'swap', firsts[i], 0);
       if (!n1 || n1.dead) continue;
-      var okFirst = breaksAfterLanding(n1);
+      var okFirst = check(n1);
       s.drop([n1]);
       if (okFirst) found = firsts[i];
     }
@@ -431,13 +423,14 @@ module.exports = function (opts) {
   // the largest match, the longest chain, the garbage broken -- beyond what the board left alone makes (a chain already falling is the
   // line's only when the line adds a link to it; a slab already popping converts its panels whatever is pressed).
   // { made: { combo, chain, broke }, cut: the first step after which ok(made so far) is false (seq.length when none is), dead: the board
-  // lost on the way, done: frames until it has settled }. A step not legal ends the judging there, as a board lost does: whether the
-  // line lives is the survival search's question.
+  // lost on the way, ats: the frame each step is begun (from now), fire: the last's, done: frames until it has settled, node: the board
+  // it ends on (for readiness, when o.keep) }. A step not legal ends the judging there, as a board lost does: whether the line lives is
+  // the survival search's question.
   function judge(board, hold, seq, arrivals, o) {
     o = o || {};
     var s = search();
     s.reset();
-    var root = s.root(board.copy(), hold, arrivals || [], false), n = root, made = [], cut = seq.length, dead = false, done = 0;
+    var root = s.root(board.copy(), hold, arrivals || [], false), n = root, made = [], cut = seq.length, dead = false, done = 0, ats = [];
     var baseOut = s.advanceMany([[root, 'settle', null, 0]], true)[0], baseChain = 0, baseCombo = 0, baseBroke = 0;
     if (baseOut && !baseOut.dead) { var bs = s.stepStats(baseOut); baseBroke = bs.broke || 0; if (bs.cleared > 0) { baseChain = sent(bs).chain; bs.comboSizes.forEach(function (z) { if (z > baseCombo) baseCombo = z; }); } made.push(baseOut); }
     var combo = 0, chain = 0, broke = 0;
@@ -453,6 +446,7 @@ module.exports = function (opts) {
       var last = k === seq.length, mv = last ? null : seq[k];
       if (last && o.settled) break;   // (each step settled already)
       if (mv && !n.b.legalSwaps().some(function (m) { return m[0] === mv[0] && m[1] === mv[1]; })) break;
+      if (mv) ats.push(n.t - root.t);
       var out = s.advanceMany([[n, last || o.settled ? 'settle' : 'swap', mv, 0]], true)[0];
       if (!out || out.dead) { dead = true; break; }
       made.push(out);
@@ -461,8 +455,23 @@ module.exports = function (opts) {
       if (o.ok && cut === seq.length && !o.ok(sofar())) { cut = last ? seq.length - 1 : k; break; }
       n = out;
     }
+    var res = { made: sofar(), cut: cut, dead: dead, done: done, ats: ats, fire: ats.length ? ats[ats.length - 1] : null };
+    // (readiness, o.readyAt: the next block landed on the board the line ends on, can a break be made then -- the readiness check every
+    // move that breaks nothing is held to)
+    if (o.readyAt != null && !dead) res.ready = breaksAfterLanding(s, root, n, Math.max(1, o.readyAt + 2), made);
     if (made.length) s.drop(made);
-    return { made: sofar(), cut: cut, dead: dead, done: done };
+    return res;
+  }
+  // A BREAK IN REACH ONCE THE NEXT BLOCK HAS LANDED: from node n, the board run to `wait` frames after the root, then every first swap
+  // tried -- true when one breaks more garbage than standing still, false when none does, null when the board is lost before; the nodes
+  // made are added to `made`, for the caller to let go of
+  function breaksAfterLanding(s, root, n, wait, made) {
+    var land = s.advance(n, 'long', null, Math.max(1, wait - (n.t - root.t)));
+    if (!land || land.dead) return null;
+    made.push(land);
+    var base = s.breaks(land), outs = s.advanceMany(land.b.legalSwaps().map(function (m) { return [land, 'swap', m, 0]; }), true), any = false;
+    outs.forEach(function (out) { if (out && !out.dead) { made.push(out); if ((out.brk !== undefined ? out.brk : s.breaks(out)) > base) any = true; } });
+    return any;
   }
   return { plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear, replay: replay, judge: judge };
 };

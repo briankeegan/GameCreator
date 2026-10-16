@@ -76,17 +76,31 @@ function level(S) { return [S.lvU, S.lvG].filter(Boolean).map(function (lv) { re
 function setup(S, R) { return S.ap && S.ap.setup && typeof R.readyAt !== 'number' ? [cand('setup', [S.ap.setup], {}, -1)] : []; }
 // CLEAR: the line that leaves the lowest stack (a match that touches no garbage: only for a stack about to top out)
 function clear(S) { return S.ap && S.ap.lowest ? [cand('clear', S.ap.lowest.seq, S.ap.lowest, -1)] : []; }
-// CARRIED ON: the rest of the line in progress, played on from this board once it has settled, while it still makes what it was begun
-// for. { cand, wait } -- wait: its next step must wait for the board to settle
+// CARRIED ON: the rest of the line in progress, found again on this board by its bottom-row panel (the stack may have risen) and played
+// on as it is pressed -- a planned line once the board has settled from the last step, any other at once -- while every step is legal and
+// it still makes what it was begun for (its entry, a break). { cand, wait } -- wait: its next step must wait for the board to settle
 function carried(c, R) {
-  var C = c.bot._gambitCarry;
-  if (!C || !C.rest.length) return null;
-  var rx = c.attacker.replay(c.board, c.m.hold, C.rest, c.arrivals, { settleFirst: true });
-  if (!rx || (C.broke && !(rx.broke > 0))) return null;
-  if (C.aim ? !GAMBIT.meets(C.aim, rx) : !(rx.chain >= 2 || rx.combo >= 4 || rx.broke > 0)) return null;
+  var C = c.bot._gambitCarry, board = c.board;
+  if (!C || !C.rest.length || !C.anchor) return null;
+  var dr = null;
+  for (var r = 1; r < board.panels.length && dr === null; r++) { var p = board.panels[r] && board.panels[r][C.anchor.col]; if (p && p.id === C.anchor.id) dr = r - C.anchor.row; }
+  if (dr === null) return null;
+  var rest = C.rest.map(function (mv) { return [mv[0] + dr, mv[1]]; }), x, wait = false;
+  if (C.settled) {
+    x = c.attacker.replay(board, c.m.hold, rest, c.arrivals, { settleFirst: true });
+    if (!x) return null;
+    wait = x.wait > 1;
+  } else {
+    var j = c.attacker.judge(board, c.m.hold, rest, c.arrivals, { settled: false });
+    if (!j || j.dead || j.ats.length < rest.length) return null;   // (a step no longer legal: the judge pressed fewer than the line has)
+    x = { combo: j.made.combo, chain: j.made.chain, broke: j.made.broke, done: j.done, fire: j.fire, ats: j.ats };
+  }
+  if ((C.broke && !(x.broke > 0)) || (C.aim && !GAMBIT.meets(C.aim, x))) return null;
   var aim = -1;
   if (C.aim) R.aims.forEach(function (a, i) { if (aim < 0 && JSON.stringify(a) === JSON.stringify(C.aim)) aim = i; });
-  return { cand: cand(rx.wait > 1 ? 'carry wait' : 'carry', C.rest.map(function (mv) { return mv.slice(); }), rx, aim), wait: rx.wait > 1 };
+  var k = cand(wait ? 'carry wait' : 'carry', rest, x, aim);
+  if (k) k.settled = !!C.settled;
+  return { cand: k, wait: wait };
 }
 
 // Every candidate, in the order they are offered

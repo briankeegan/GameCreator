@@ -62,4 +62,58 @@ for (var fseed = 1; fseed <= 4; fseed++) {
   });
 }
 assert.ok(floored > 0, 'moves were ranked below the floor: the check above is not empty');
+// EVERY MOVE IS HELD TO THE SAME CHECKS, whoever offered it (plans/decision.md, every move first): on boards with a block on its way
+var PROPOSE = require('./gambit_propose.js'), SHD = require('./survivor_shared.js'), kinds = {}, lateDropped = 0, readyKept = 0, carriedN = 0;
+var BSD = new (require('./native.js').server.Search)({ reaction: 12, swapGap: 12, cursorMoveFrames: 4, threads: 1 });
+for (var eseed = 1; eseed <= 10; eseed++) {
+  var eb = PA.game({ level: 10, seed: eseed, countdown: false });
+  for (var ef = 0; ef < 260; ef++) eb.run();
+  if (eseed % 2) { eb.receiveGarbage([{ width: 6, height: 1, isChain: false, isMetal: false }]); for (ef = 0; ef < 260; ef++) eb.run(); }
+  var arr = [{ at: 90, width: 6, height: 1 }];
+  var ebr = SHD.breakMoves(BSD, eb, hold, arr, 1, 0, Date.now() + 200, null, null, { touchInPop: true });
+  var ec = { bot: { _canRaise: function () { return false; } }, m: { at: eb.clock, hold: hold, topped: false, opp: null }, board: eb, arrivals: arr, br: ebr, brMs: 0, attacker: at, rules: rules,
+             GP: { mode: 'finish them', ms: 60, width: 30, depth: 5, pool: 120 }, pace: null, canRaise: function () { return false; }, left: function () { return 200; } };
+  var ER = DECIDE.read(ec), ES = PROPOSE.search(ec, ER), offered = PROPOSE.all(ec, ER, ES);
+  // (1) THE DEADLINE, from the judge, for every move: with one frame to begin the last swap, a line the judge presses later is dropped
+  ec.judged = {}; ec.dropped = {};
+  var tight = Object.assign({}, ER, { by: 1 });
+  offered.forEach(function (k) {
+    kinds[k.play] = true;
+    var settledK = JUDGE.settled(k.play), jj = at.judge(eb, hold, k.seq, arr, { settled: settledK });
+    var got = JUDGE.judge(ec, tight, k);
+    if (!jj.dead && jj.fire > 1) { assert.strictEqual(got, null, k.play + ': begun at frame ' + jj.fire + ', after the deadline, and kept'); lateDropped++; }
+  });
+  // (2) READINESS, for every move that breaks nothing: each one ranked leaves a break in reach when the next block lands
+  ec.judged = {}; ec.dropped = {};
+  DECIDE.ranked(ec, ER, ES).forEach(function (k) {
+    if ((k.ap.broke || 0) > 0) return;
+    var jr = at.judge(eb, hold, k.seq, arr, { settled: k.settled, readyAt: ER.F.us.nextLands });
+    assert.ok(jr.dead || jr.ready === true, k.play + ': ranked, but the next block cannot be broken when it lands');
+    readyKept++;
+  });
+  // (3) THE LINE IN PROGRESS, for every line of more than one swap: kept, its first swap pressed and the board run on, then found again
+  // by its bottom-row panel -- the rest of the same line, its rows moved by as far as the stack rose
+  DECIDE.ranked(ec, ER, ES).filter(function (k) { return k.seq.length > 1 && k.tier <= 4; }).forEach(function (k) {
+    var keep = DECIDE.carryOf(ec, ER, k);
+    if (!keep) return;
+    var nb = eb.copy(), mv = k.seq[0];
+    nb.curRow = mv[0]; nb.curCol = mv[1];
+    if (!nb.tryQueueSwap(mv[0], mv[1])) return;
+    for (var q = 0; q < 40; q++) nb.run();
+    var dr = null;
+    for (var r = 1; r < nb.panels.length && dr === null; r++) { var p0 = nb.panels[r] && nb.panels[r][keep.anchor.col]; if (p0 && p0.id === keep.anchor.id) dr = r - keep.anchor.row; }
+    assert.ok(dr !== null, k.play + ': the anchor panel is found again');
+    var nc = Object.assign({}, ec, { board: nb, bot: { _gambitCarry: keep, _canRaise: function () { return false; } }, judged: {}, dropped: {} });
+    var back = PROPOSE.carried(nc, ER);
+    if (back && back.cand) {
+      assert.deepStrictEqual(back.cand.seq, keep.rest.map(function (m0) { return [m0[0] + dr, m0[1]]; }), k.play + ': the rest of the same line, moved by the rise');
+      assert.strictEqual(back.cand.settled, k.settled, k.play + ': carried on as it is pressed');
+      carriedN++;
+    }
+  });
+  ec.bot._gambitCarry = null;
+}
+assert.ok(lateDropped > 0 && readyKept > 0 && carriedN > 0, 'every check ran: ' + lateDropped + ' late, ' + readyKept + ' ready, ' + carriedN + ' carried');
+assert.ok(kinds['break search'] || kinds.toward, 'the break search\'s moves were among those checked');
+console.log('ok: every move held to the deadline, readiness and the line in progress -- ' + Object.keys(kinds).sort().join(', '));
 console.log('ok: gambit decision -- the judge on ' + judged + ' planned lines, ' + decided + ' decisions over ' + modes.length + ' modes');

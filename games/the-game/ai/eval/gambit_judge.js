@@ -21,24 +21,24 @@ function swapBack(c, mv, clears) {
   return !!(bot._gambitLastPair && ids === bot._gambitLastPair && (!clears || (bot._gambitPairRuns || 0) >= 2));
 }
 
-// What the whole line makes, played as it will be pressed (attacker.judge), once per line a decision
-function made(c, seq, play) {
-  var key = (settled(play) ? 's ' : 'r ') + seq.map(function (mv) { return mv[0] + ',' + mv[1]; }).join(' ');
-  if (!(key in c.judged)) { var j = c.attacker.judge(c.board, c.m.hold, seq, c.arrivals, { settled: settled(play) }); c.judged[key] = j && !j.dead ? j.made : null; }
+// The whole line played as it will be pressed (attacker.judge), once per line a decision: what it makes and when each step is begun --
+// null when the judge could not play it out
+function played(c, seq, isSettled) {
+  var key = (isSettled ? 's ' : 'r ') + seq.map(function (mv) { return mv[0] + ',' + mv[1]; }).join(' ');
+  if (!(key in c.judged)) { var j = c.attacker.judge(c.board, c.m.hold, seq, c.arrivals, { settled: isSettled }); c.judged[key] = j && !j.dead ? j : null; }
   return c.judged[key];
 }
 
 // THE JUDGE: a candidate, filtered and ranked -- null when it is no candidate. { play, seq, tier, sub, ap, aim, extend, near }
-// (why each candidate was dropped, counted per decision for the log: c.dropped[play] = { back, list, late, floor })
-function drop(c, play, why) { var d = c.dropped || (c.dropped = {}), t = d[play] || (d[play] = { back: 0, list: 0, late: 0, floor: 0 }); t[why]++; return null; }
+// (why each candidate was dropped, counted per decision for the log: c.dropped[play] = { back, list, late, floor, ready })
+function drop(c, play, why) { var d = c.dropped || (c.dropped = {}), t = d[play] || (d[play] = { back: 0, list: 0, late: 0, floor: 0, ready: 0 }); t[why]++; return null; }
 function judge(c, R, k) {
   if (!k) return null;
   var x = k.x, play = k.play, seq = k.seq, aim = k.aim;
-  var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0;
   // (what it makes is the whole line on the engine, as the judge counts it -- every step's clears, the chain broken garbage sets off, a
   // link added to a chain already falling, the garbage broken beyond what the board breaks alone -- not what the search that found it
   // counted; a line the judge could not play out is judged on the search's word)
-  var w = made(c, seq, play);
+  var st = k.settled !== undefined ? k.settled : settled(play), j = played(c, seq, st), w = j ? j.made : null;
   var m = w ? { combo: w.combo, chain: w.chain, broke: w.broke, cells: x.cells || 0 } : x;
   if (swapBack(c, seq[0], (m.combo || 0) > 0 || (m.chain || 0) > 0 || (m.broke || 0) > 0)) return drop(c, play, 'back');
   // (it fits the list, or it is no candidate; its place in the list is the first entry it matches)
@@ -48,19 +48,21 @@ function judge(c, R, k) {
   if (R.keep && R.keep.material !== undefined && !GAMBIT.test(R.F.us.material, R.keep.material) && (m.combo > 0 || m.chain > 0) && !(m.broke > 0)) return drop(c, k.play, 'floor');
   var entry = GAMBIT.entryOf(R.aims, m);
   if (entry >= 0 && (aim < 0 || entry < aim)) aim = entry;
-  // (in time: every step its own time, the line's last swap begun by the deadline; the cascade it sets off runs on after)
-  var fire = x.fire != null ? x.fire : x.done;
-  if (R.by && fire && fire > R.by) return drop(c, k.play, 'late');
+  // (in time: every step its own time, the line's last swap begun by the deadline -- the frame the judge pressed it, for every move; the
+  // search's own word only when the judge could not play the line out. The cascade it sets off runs on after.)
+  var fire = j && j.fire != null ? j.fire : (x.fire != null ? x.fire : x.done);
+  if (R.by && fire != null && fire > R.by) return drop(c, k.play, 'late');
   // (a set-up -- setup, level, ready, a step toward a break -- is to clear nothing: played to the board's settle step by step it ends
   // before its first step that clears panels and breaks nothing, and when that is its first, the play is a clear)
   if (SETUPS.indexOf(play) >= 0) {
     var fc = c.attacker.firstClear(c.board, c.m.hold, seq, c.arrivals);
-    if (fc === 0) { play = 'clear'; x = { combo: 3, chain: 1 }; m = x; combo = 3; chain = 1; broke = 0; }
+    if (fc === 0) { play = 'clear'; x = { combo: 3, chain: 1 }; m = x; }
     else if (fc > 0) seq = seq.slice(0, fc);
   }
-  var t = GAMBIT.tier(play, Object.assign({}, x, { combo: m.combo, chain: m.chain, broke: m.broke }), aim, R.under, !!R.F.enemy.topped, !!R.F.us.topped, !!R.F.us.breakWaits);
-  return { play: play, seq: seq, tier: t.tier, sub: t.sub, aim: aim, extend: k.extend, near: x.near || 0,
-           ap: { seq: seq, done: x.done || null, fire: fire || null, ats: x.ats || null, chain: chain, combo: combo, broke: broke } };
+  // (ranked on the judge's count and time: what the line makes, and when it is done)
+  var t = GAMBIT.tier(play, Object.assign({}, x, { combo: m.combo, chain: m.chain, broke: m.broke, done: j ? j.done : x.done }), aim, R.under, !!R.F.enemy.topped, !!R.F.us.topped, !!R.F.us.breakWaits);
+  return { play: play, seq: seq, settled: st, tier: t.tier, sub: t.sub, aim: aim, extend: k.extend, near: x.near || 0,
+           ap: { seq: seq, done: j ? j.done : (x.done || null), fire: fire, ats: j ? j.ats : (x.ats || null), chain: m.chain || 0, combo: m.combo || 0, broke: m.broke || 0 } };
 }
 
 // THE RANK: lower tier first, then each sub-key in turn
@@ -70,4 +72,4 @@ function compare(x, y) {
   return 0;
 }
 
-module.exports = { judge: judge, compare: compare, settled: settled, SETTLED: SETTLED, swapBack: swapBack };
+module.exports = { judge: judge, compare: compare, settled: settled, SETTLED: SETTLED, swapBack: swapBack, drop: drop };

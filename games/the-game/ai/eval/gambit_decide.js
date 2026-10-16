@@ -34,8 +34,9 @@ function read(c) {
            preds: aims.map(function (a) { return function (made) { return GAMBIT.meets(a, made); }; }) };
 }
 
-// (the log's code for why a candidate was dropped: a swap back, outside the list, too late, below the material floor)
-var DROP_CODE = { back: 'b', list: 'o', late: 't', floor: 'f' };
+// (the log's code for why a candidate was dropped: a swap back, outside the list, too late, below the material floor, leaves the next
+// block unbreakable)
+var DROP_CODE = { back: 'b', list: 'o', late: 't', floor: 'f', ready: 'r' };
 var HOLD_TIER = 5;   // (GAMBIT.tier: a hold ranks below every play that fits, above a clear)
 // 2-4. PROPOSE, JUDGE AND RANK: every candidate offered, judged, the ones left in rank order
 function ranked(c, R, S) {
@@ -47,19 +48,28 @@ function ranked(c, R, S) {
   // until then -- it ranks with the hold, below every move that can be made now)
   var C = R.preds.length ? PROPOSE.carried(c, R) : null, cj = C && JUDGE.judge(c, R, C.cand);
   if (cj) { cj.wait = C.wait; if (cj.wait) { cj.tier = Math.max(cj.tier, HOLD_TIER); cj.sub = [-1]; } else cj.sub = [-Infinity].concat(cj.sub); out.push(cj); }
-  return out.sort(JUDGE.compare);
+  return ready(c, R, out.sort(JUDGE.compare));
+}
+// EVERY MOVE, FIRST: THE NEXT BLOCK CAN STILL BE BROKEN WHEN IT LANDS (plans/decision.md) -- every move that breaks nothing, played as
+// the judge plays it and run on to the next landing, must leave a break in reach then; one that does not is no candidate. Checked in
+// rank order while the decision has time (one that time runs out on stands as ranked). A break is not held to it.
+function ready(c, R, cands) {
+  var land = R.F.us.nextLands;
+  if (land === null || land === undefined) return cands;
+  return cands.filter(function (k) {
+    if ((k.ap.broke || 0) > 0 || c.left() <= 0) return true;
+    var j = c.attacker.judge(c.board, c.m.hold, k.seq, c.arrivals, { settled: k.settled, readyAt: land });
+    return j.dead || j.ready === true ? true : JUDGE.drop(c, k.play, 'ready') !== null;
+  });
 }
 
-// 5. PLAY: the top line, or the raise, or a hold -- the line kept to be carried on, and the order the survival search is asked in
+// 5. PLAY: the top line, or the raise, or a hold, and the order the survival search is asked in
 function play(c, R, S, cands) {
   var top = cands[0] || null;
   // (the raise due but the board busy -- a clear or a fall still going locks the rise: nothing new is begun, a chain falling still run on)
   var wait = R.low && !R.up && !(top && top.extend);
   var line = R.up || wait || !top ? null : top, hold = !R.up && (wait || !top || top.tier >= 6 || !!top.wait);
   var name = line ? line.play : R.up ? 'raise' : hold ? 'hold' : null;
-  // (the line begun, carried on by the next decisions: a planned line of more than one swap that makes what it is played for)
-  var carry = line && line.wait ? 'keep' : line && line.seq.length > 1 && line.tier <= 3 && JUDGE.settled(line.play)
-    ? { rest: line.seq.slice(1).map(function (mv) { return mv.slice(); }), aim: line.aim >= 0 ? R.aims[line.aim] : null, broke: (line.ap.broke || 0) > 0 } : null;
   var order = [];
   var add = function (mv) { var k = mv === 'raise' || mv === 'hold' ? mv : mv[0] + ',' + mv[1]; if (order.indexOf(k) < 0) order.push(k); };
   if (R.up) add('raise');
@@ -84,7 +94,20 @@ function play(c, R, S, cands) {
                fire: line ? line.ap.fire : null, ats: line && line.ap.ats ? line.ap.ats.join('/') : null, by: R.by,
                // (per kind of move: how many were offered, and of them how many were dropped and why, DROP_CODE)
                cands: Object.keys(c.offered || {}).map(function (p) { var d = (c.dropped || {})[p]; return p.replace(/ /g, '_') + ':' + c.offered[p] + (d ? '-' + Object.keys(DROP_CODE).filter(function (w) { return d[w]; }).map(function (w) { return DROP_CODE[w] + d[w]; }).join('') : ''); }).join(',') };
-  return { R: R, line: line, play: name, order: order, carry: carry, raise: R.up ? R.to : 0, urgent: urgent, info: info, idleMs: S.idleMs };
+  return { R: R, line: line, play: name, order: order, cands: cands, raise: R.up ? R.to : 0, urgent: urgent, info: info, idleMs: S.idleMs };
+}
+// THE LINE IN PROGRESS (plans/decision.md, step 5): the line of the move played, when it has more than one swap and is a play -- not a
+// hold or a clear. It keeps how it is pressed (settle by settle, or swap after swap), what it was begun for (its entry, a break), and a
+// panel of the bottom row it does not touch, by which it is found again once the stack has risen.
+function carryOf(c, R, k) {
+  if (!k || k.wait || k.seq.length < 2 || k.tier > 4) return null;
+  var anchor = null;
+  for (var col = 1; col <= 6 && !anchor; col++) {
+    var p = c.board.panels[1] && c.board.panels[1][col];
+    if (p && p.id != null && !k.seq.some(function (mv) { return mv[0] === 1 && (mv[1] === col || mv[1] + 1 === col); })) anchor = { row: 1, col: col, id: p.id };
+  }
+  if (!anchor) return null;
+  return { rest: k.seq.slice(1).map(function (mv) { return mv.slice(); }), settled: k.settled, aim: k.aim >= 0 ? R.aims[k.aim] : null, broke: (k.ap.broke || 0) > 0, anchor: anchor };
 }
 
 function decide(c) {
@@ -94,4 +117,4 @@ function decide(c) {
   return play(c, R, S, ranked(c, R, S));
 }
 
-module.exports = { decide: decide, read: read, ranked: ranked, play: play };
+module.exports = { decide: decide, read: read, ranked: ranked, play: play, carryOf: carryOf };

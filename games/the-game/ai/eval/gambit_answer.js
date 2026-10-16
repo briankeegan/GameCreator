@@ -13,38 +13,20 @@ var path = require('path');
 var GAMBIT = require(path.join(__dirname, 'gambit.js')), DECIDE = require(path.join(__dirname, 'gambit_decide.js'));
 var SH = require(path.join(__dirname, 'survivor_shared.js')), CK = require(path.join(__dirname, 'survivor_checks.js'));
 
-// THE BREAK SEARCH: the lines to a break, in the share of the decision's time it is given; the rest of the line begun last decision is
-// played on while it still breaks (found again on this board by a bottom-row panel's id, the stack having risen since)
-var BREAK_SHARE = 0.4, BREAK_MIN_MS = 40, BREAK_MAX_MS = 400, KEEP_FRAMES = 180, LINEUP_AFTER = 30;
+// THE BREAK SEARCH: the lines to a break, in the share of the decision's time it is given (a line begun is carried on as the line in
+// progress, not by the break search)
+var BREAK_SHARE = 0.4, BREAK_MIN_MS = 40, BREAK_MAX_MS = 400, LINEUP_AFTER = 30;
 function breakSearch(c) {
-  var board = c.board, bot = c.bot, keep = null, K = bot._gambitKeep;
-  if (K && c.m.at > K.at && c.m.at - K.at <= KEEP_FRAMES) {
-    for (var r = 1; r < board.panels.length && keep === null; r++) {
-      var p = board.panels[r] && board.panels[r][K.col];
-      if (p && p.id === K.id) { var dr = r - K.row; keep = K.rest.map(function (mv) { return [mv[0] + dr, mv[1]]; }); }
-    }
-  }
-  bot._gambitKeep = null;
+  var board = c.board, bot = c.bot;
   // (no break search on a question due sooner than it could take: the answer would come late)
   if (c.due && c.due - Date.now() < c.margin + BREAK_MIN_MS) return { br: null, ms: 0 };
   bot._natSearch();   // (the engine, on the bot's threads, before a second context is made on it)
   var t = Date.now(), pop = SH.popLeft(board);
   var by = c.due ? Math.min(t + Math.max(BREAK_MIN_MS, c.m.ms * BREAK_SHARE), c.due - c.margin) : t + BREAK_MAX_MS;
   var br = SH.breakMoves(c.search(), board, { left: c.m.hold.left, started: c.m.hold.started }, c.arrivals, 1, pop ? pop + LINEUP_AFTER : 0, by,
-                         c.stale ? function () { return c.stale() ? c.aborted : null; } : null, keep, { touchInPop: true });
+                         c.stale ? function () { return c.stale() ? c.aborted : null; } : null, null, { touchInPop: true });
   if (br) br.cut = Date.now() >= by;
   return { br: br, ms: Date.now() - t };
-}
-// The line the break search began, kept for the next decision when its first swap is the move played
-function keepBreakLine(c, br, d) {
-  if (!(br && br.touch && br.path && br.path.length > 1 && d.kind === 'swap' && br.path[0][0] === d.move[0] && br.path[0][1] === d.move[1])) return;
-  for (var col = 1; col <= 6; col++) {
-    var p = c.board.panels[1] && c.board.panels[1][col];
-    if (p && p.id != null && !br.path.some(function (mv) { return mv[0] === 1 && (mv[1] === col || mv[1] + 1 === col); })) {
-      c.bot._gambitKeep = { rest: br.path.slice(1), at: c.m.at, row: 1, col: col, id: p.id };
-      return;
-    }
-  }
 }
 
 // What a survival candidate's own swap makes, as the list reads it
@@ -131,10 +113,13 @@ function answer(c) {
   c.left = function () { return c.due ? c.due - Date.now() - 2 * c.margin - 100 : 1e9; };
   var D = DECIDE.decide(c);
   if (!D) return null;
-  if (D.carry !== 'keep') bot._gambitCarry = D.carry;
   if (D.R.F.us.contact !== null || D.R.F.us.topped) bot._gambitHit = true;
   var L = lives(c, D), d = L.d;
-  keepBreakLine(c, c.br, d);
+  // (the line in progress is the line of the move played; a hold for a waiting line in progress keeps it)
+  if (!(d.kind === 'hold' && D.line && D.line.wait)) {
+    var playedK = d.kind === 'swap' ? D.cands.filter(function (k) { return !k.wait && k.seq[0][0] === d.move[0] && k.seq[0][1] === d.move[1]; })[0] : null;
+    bot._gambitCarry = DECIDE.carryOf(c, D.R, playedK);
+  }
   // (no swap back: the pair the last swap swapped is kept out for a second when it is swapped three times running)
   var pr = d.kind === 'swap' && c.board.panels[d.move[0]], pa = pr && pr[d.move[1]], pb = pr && pr[d.move[1] + 1];
   var pair = pa && pb && pa.id != null && pb.id != null ? [pa.id, pb.id].sort().join(',') : (d.kind === 'swap' ? null : bot._gambitLastPair);
@@ -149,7 +134,7 @@ function answer(c) {
            raiseFrames: held.now, raiseAfter: held.after, ms: Date.now() - c.t0, idleMs: D.idleMs || 0,
            claim: claimOf(D.info, d), queued: m.posted ? c.t0 - m.posted : 0, brMs: c.brMs,
            // (every swap is its own decision, judged on the board as it is when it is pressed: the frame loop is handed no line to press
-           // on its own clock -- the rest of a line is carried on by the next decisions, as the line in progress or the break line kept)
+           // on its own clock -- the rest of a line is carried on by the next decisions, as the line in progress)
            line: null, lineAt: null, lineFree: false,
            pace: { hold: L.holdLives, brk: !!(c.br && c.br.depth), urgent: !!(bot.allDoomedNow || D.urgent) },
            mem: c.nativeMem(),
