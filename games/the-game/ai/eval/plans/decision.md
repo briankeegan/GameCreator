@@ -17,7 +17,7 @@ panels come from) and the board is set up.
 
 | # | Play | Order within |
 |---|---|---|
-| 1 | **Fire an entry** of the list | the list's order (under garbage the entry breaks too) |
+| 1 | **Fire an entry** of the list | the list's order; under garbage one that breaks too before one that does not (firing it and breaking with a three after is as good) |
 | 2 | **Break garbage**, while building | a combo or chain break before a three, then the break nearest the ask, then more broken |
 | 3 | **Set up the ask**, flattening included | nearest the list first |
 | 4 | Raise to 10 when low | the raise rule: its own deadline, the next block landing |

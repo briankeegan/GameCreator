@@ -146,7 +146,7 @@ function lead(aims, made, under) { return nearList(aims, made) + (under && made.
 // garbage is broken, for the panels the build is made of, and the board is set up. Lower first; x is what the line makes ({ combo,
 // chain, broke, earned, done, near: how near the list it leaves the board }), aim its entry in the list (-1: none), under garbage on
 // the board or topped. Live and in time are the engine's: a line that dies, or is done after its deadline, is never a candidate.
-//   1 FIRE the entry: a line that makes it, in the list's order (under garbage the entries break too)
+//   1 FIRE an entry: a line that makes it, in the list's order -- under garbage one that breaks too before one that does not
 //   2 BREAK, while building: any break -- one that buys stop time before a plain three, then the one nearest the ask, then more broken
 //   3 SET UP the ask, flattening included: nearest the list first
 //   5 hold, only with no move; 6 clear (a match that touches no garbage), only for a stack about to top out with nothing else
@@ -154,7 +154,7 @@ function tier(play, x, aim, under) {
   x = x || {};
   var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0, stop = x.earned || 0, near = x.near || 0;
   var buys = combo >= 4 || chain >= 2;
-  if (aim >= 0) return { tier: 1, sub: [aim, x.done || 0] };
+  if (aim >= 0) return { tier: 1, sub: [aim, under && broke > 0 ? 0 : 1, x.done || 0] };
   if (under && broke > 0) return { tier: 2, sub: [buys ? 0 : 1, -near, -broke] };
   if (play === 'clear') return { tier: 6, sub: [-stop] };
   return { tier: 3, sub: [-near] };

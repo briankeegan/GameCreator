@@ -816,11 +816,10 @@ module.exports = function think(cfg) {
           var byG = GAMBIT.deadline(FG, pickG.rule.by), listG = GAMBIT.aimsOf(pickG.rule), endAt = listG.length, endG = null;
           for (var la = 0; la < listG.length; la++) if (typeof listG[la] === 'string') { endAt = la; endG = listG[la]; break; }
           var aimsG = listG.slice(0, endAt);
-          // (garbage on our board, or topped out: every entry breaks it too -- the entry and a break in one line; none, and the
-          // default's own move, which breaks it, is played)
           var underG = tablesG.underGarbage !== 'ignore' && (FG.us.contact !== null || FG.us.topped);
-          var listAimsG = aimsG;   // (as written: a line-up of a slab popping is the break already made, so it is held to these)
-          if (underG) { aimsG = aimsG.map(function (a) { return Object.assign({}, a, { break: true }); }); endG = 'default'; }
+          // (under garbage an entry is the entry as written: one that breaks too is better, but firing it and breaking with a three after
+          // is as good a way)
+          if (underG) endG = 'default';
           // (under garbage the deadline is a break's, plays.md: before the board dies -- the rule's `by` is an attack's, the enemy recovering,
           // and does not bind a break; the next block landing is the level's and the ready's)
           if (underG) byG = GAMBIT.breakBy(FG);
@@ -835,7 +834,7 @@ module.exports = function think(cfg) {
             // (with garbage left on the board the line-up does both, in this order: an entry that breaks it again, the entry as written, then
             // any line-up that breaks it again -- the panels it turns into matched against the rows still above)
             var popG = SH.popLeft(board) > 0, xMsG = popG ? (GP.ms || 80) : (GP.extendMs || 40);
-            var xAimsG = !popG ? aimsG : underG ? aimsG.concat(listAimsG, [{ break: true }]) : listAimsG;
+            var xAimsG = underG ? aimsG.concat([{ break: true }]) : aimsG;
             if ((cascadeLive(board, true) || popG) && GP.extend !== false && Math.min(xMsG, leftG()) >= 20) {
               triedG++;
               exG = attacker.extend(board, m.hold, { ms: Math.min(xMsG, leftG()), width: GP.width || 40, depth: GP.extendDepth || 6, keep: keepF, by: byG || undefined,
@@ -907,7 +906,7 @@ module.exports = function think(cfg) {
             if (apG && apG.perAim) apG.perAim.forEach(function (pa, i) { if (pa) candG('entry', pa.seq, pa, i); });
             if (exG && exG.seq.length && exG.aimIndex >= 0) {
               // (the extension's aims: under a pop with garbage left, the entries that break, the entries as written, then any break again)
-              var xi = exG.aimIndex, xa = !(popG && underG) ? xi : xi < nAimG ? xi : xi < 2 * nAimG ? xi - nAimG : -1;
+              var xi = exG.aimIndex, xa = xi < nAimG ? xi : -1;
               candG(popG ? 'lineup' : 'extend', exG.seq, Object.assign({ broke: exG.broke }, exG), xa, true);
             }
             if (nx) candG(popG ? 'lineup' : 'extend', nx.seq, nx, -1, true);
