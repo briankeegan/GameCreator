@@ -107,19 +107,16 @@ assert(G.lead(P4, { combo: 3, chain: 4, broke: 6 }, true) > G.lead(P4, { combo: 
 assert.strictEqual(G.lead([{ chain: '==4' }], { chain: 2, broke: 6 }, false), G.nearList([{ chain: '==4' }], { chain: 2, broke: 6 }), 'no garbage: the list');
 assert(G.lead(P4, { combo: 3, chain: 1, broke: 6 }, true) > 0, 'a three that breaks is near');
 
-// the pick's tiers: under garbage a break is a must-do; a chain that breaks nothing is still a best that fits (a topped board lives on
-// its stop time), above hold (5); a clear that buys nothing is below it
-assert.strictEqual(G.tier('lineup', { chain: 1, combo: 3, broke: 6, done: 30 }, -1, true, false).tier, 1, 'under garbage a three that breaks is a must-do');
-function before(x, y) { for (var q = 0; q < x.sub.length; q++) if (x.sub[q] !== y.sub[q]) return x.sub[q] < y.sub[q]; return false; }
-assert(before(G.tier('entry', { chain: 2, broke: 6 }, 0, true, false), G.tier('lineup', { combo: 6, broke: 12 }, -1, true, false)), 'under garbage the list\'s breaks first');
-assert(before(G.tier('lineup', { combo: 4, broke: 6 }, -1, true, false), G.tier('break search', { broke: 12 }, -1, true, false)), 'then any break: one that buys stop time before a plain three');
-assert(before(G.tier('break search', { broke: 12 }, -1, true, false), G.tier('break search', { broke: 6 }, -1, true, false)), 'then more garbage broken');
-assert.strictEqual(G.tier('lineup', { chain: 6, combo: 3, broke: 0, cells: 30 }, -1, true, false).tier, 6, 'under garbage a clear that breaks nothing would make the break wait: below hold');
-assert.strictEqual(G.tier('clear', { chain: 1, combo: 3 }, -1, true, false).tier, 6, 'a plain clear is below hold');
-assert.strictEqual(G.tier('scramble', { chain: 5, combo: 3, earned: 120 }, -1, true, false).tier, 6, 'a scramble is below hold, whatever it buys');
-assert.strictEqual(G.tier('entry', { chain: 4, cells: 18 }, 0, false, false).tier, 2, 'no garbage: the list');
-assert.strictEqual(G.tier('extend', { chain: 3, cells: 12 }, -1, false, false).tier, 6, 'an attack that is not on the list is only a clear');
-assert.strictEqual(G.tier('setup', {}, -1, false, false).tier, 4, 'a setup: nothing fits');
+// the pick: fire the entry; while building, break; set up toward the ask; hold only with no move; clear and scramble last
+function before(x, y) { if (x.tier !== y.tier) return x.tier < y.tier; for (var q = 0; q < x.sub.length; q++) if (x.sub[q] !== y.sub[q]) return x.sub[q] < y.sub[q]; return false; }
+assert.strictEqual(G.tier('entry', { chain: 4, cells: 18 }, 0, false).tier, 1, 'fire the entry first');
+assert(before(G.tier('entry', { chain: 2, broke: 6 }, 0, true), G.tier('lineup', { combo: 6, broke: 12 }, -1, true)), 'under garbage the entry that breaks first');
+assert(before(G.tier('break search', { broke: 6 }, -1, true), G.tier('nearest', { chain: 2, near: 50 }, -1, true)), 'while building, a break before a setup');
+assert(before(G.tier('lineup', { combo: 4, broke: 6 }, -1, true), G.tier('break search', { broke: 12, near: 90 }, -1, true)), 'a break that buys stop time before a plain three');
+assert(before(G.tier('break search', { broke: 6, near: 60 }, -1, true), G.tier('break search', { broke: 12, near: 10 }, -1, true)), 'then the break nearest the ask');
+assert(before(G.tier('setup', { near: 40 }, -1, false), G.tier('level', { near: 10 }, -1, false)), 'set up nearest the ask first, flattening among them');
+assert(before(G.tier('level', {}, -1, false), { tier: 5, sub: [0] }), 'any set-up before hold');
+assert.strictEqual(G.tier('clear', { chain: 1, combo: 3 }, -1, true).tier, 6, 'a clear only when there is nothing else');
 
 // the profile's own rules file parses and drops nothing
 var shipped = G.checked(JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles', 'gambit-rules.json'), 'utf8')));
