@@ -117,6 +117,7 @@ assert.strictEqual(G.tier('lineup', { chain: 1, combo: 3, broke: 6, done: 30 }, 
 assert.strictEqual(G.tier('lineup', { chain: 6, combo: 3, broke: 0, cells: 30 }, -1, true, false).tier, 3, 'under garbage a chain that breaks nothing is a best that fits');
 assert.strictEqual(G.tier('lineup', { chain: 2, combo: 3, broke: 0, cells: 0 }, -1, true, false).tier, 3, 'one that buys stop time and sends nothing too');
 assert.strictEqual(G.tier('clear', { chain: 1, combo: 3 }, -1, true, false).tier, 6, 'a plain clear is below hold');
+assert.strictEqual(G.tier('scramble', { chain: 5, combo: 3, earned: 120 }, -1, true, false).tier, 6, 'a scramble is below hold, whatever it buys');
 assert.strictEqual(G.tier('entry', { chain: 4, cells: 18 }, 0, false, false).tier, 2, 'no garbage: the aim');
 assert.strictEqual(G.tier('setup', {}, -1, false, false).tier, 4, 'a setup: nothing fits');
 

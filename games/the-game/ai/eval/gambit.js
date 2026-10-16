@@ -162,13 +162,14 @@ function lead(aims, made, under) {
 //   3 BEST THAT FITS, anything left, garbage on the board or not: garbage sent (enemy topped: combos first, else chains), stop time --
 //     a chain that breaks nothing buys a topped board its stop time
 //   4 NOTHING FITS: ready, toward a break, level, setup
-//   6 a clear that breaks nothing, sends nothing and buys nothing (hold is 5)
+//   6 CLEAR and SCRAMBLE, and any clear that breaks nothing, sends nothing and buys nothing: only when there is nothing else (hold is 5)
 function tier(play, x, aim, under, enemyOut) {
   x = x || {};
   var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0, cells = x.cells || 0, stop = x.earned || 0;
   var clears = combo >= 3 || chain >= 2 || broke > 0 || cells > 0 || play === 'clear' || play === 'scramble';
   var buys = combo >= 4 || chain >= 2, rate = broke / Math.max(1, x.done || 1);
   if (under && broke > 0) return { tier: 1, sub: [aim >= 0 ? aim : 99, -rate, buys ? 0 : 1, -broke] };
+  if (play === 'clear' || play === 'scramble') return { tier: 6, sub: [-stop] };   // (only when there is nothing else)
   if (aim >= 0 && !under) return { tier: 2, sub: [aim, x.done || 0] };
   if (clears && (buys || cells > 0)) return { tier: 3, sub: [-cells, enemyOut ? -combo : -chain, enemyOut ? -chain : -combo, -stop, -(x.near || 0)] };
   if (!clears) return { tier: 4, sub: [{ ready: 0, toward: 1, level: 2, setup: 3 }[play] || 4] };
