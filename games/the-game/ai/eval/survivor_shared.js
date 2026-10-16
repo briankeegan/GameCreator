@@ -278,6 +278,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
   }
   function swapsFrom(n, ms, whole) { return many(ms.map(function (m) { return [n, 'swap', m, 0]; }), whole); }
   var firsts = swapsOf(root).map(function (m) { return { key: m[0] + ',' + m[1], m: m }; }), found = {}, any = false;
+  var toward = null;
   var made = swapsFrom(root, firsts.map(function (f) { return f.m; }), true);
   firsts.forEach(function (f, q) { f.n = made[q]; if (breaks(f.n)) { found[f.key] = true; any = true; } });
   if (any) return { depth: 1, moves: found };
@@ -306,6 +307,8 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
         var ts = S.touchScores ? S.touchScores(tl.map(function (x) { return x.n; })) : null;
         tl.forEach(function (x, q) { x.s = ts ? ts.score[q] : touchScore(x.n.b.grid); x.h = ts ? ts.hash[q] : 0; });
         tl.sort(function (a, b) { return b.s - a.s; });
+        // (the line nearest a break the beam has seen: TOWARD, returned when no break is found, the swaps that build toward one)
+        if (tl.length && (!toward || tl[0].s > toward.s)) toward = { s: tl[0].s, path: tl[0].path };
         // Swaps made in another order often leave the same board: each board
         // is kept once, its best-scoring line. Equal boards have equal hashes,
         // so only boards whose hashes meet are told apart by key.
@@ -428,7 +431,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
     }
     if (any) return { depth: 1, moves: found, lineup: 'ready' };
   }
-  if (maxDepth < 2) return { depth: 0, moves: {} };
+  if (maxDepth < 2) return { depth: 0, moves: {}, toward: toward ? toward.path : null };
   firsts.push({ key: 'hold', n: S.advance(root, 'hold', null, 0) });
   var live = firsts.filter(function (f) { return f.n && !f.n.dead; });
   var all = [];
@@ -444,7 +447,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
     if (f.seconds.some(breaks)) { found[f.key] = true; any = true; }
   });
   if (any) return { depth: 2, moves: found };
-  if (maxDepth < 3) return { depth: 0, moves: {} };
+  if (maxDepth < 3) return { depth: 0, moves: {}, toward: toward ? toward.path : null };
   for (i = 0; i < live.length && steps < BREAK_BUDGET; i++) {
     var f = live[i];
     for (j = 0; j < f.seconds.length && !found[f.key] && steps < BREAK_BUDGET; j++) {
@@ -454,7 +457,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
       for (k = 0; k < thirds.length; k++) { steps++; if (breaks(n3m[k])) { found[f.key] = true; any = true; break; } }
     }
   }
-  return { depth: any ? 3 : 0, moves: found };
+  return { depth: any ? 3 : 0, moves: found, toward: !any && toward ? toward.path : null };
 }
 
 

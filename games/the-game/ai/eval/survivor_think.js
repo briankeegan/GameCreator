@@ -860,15 +860,15 @@ module.exports = function think(cfg) {
             //     time), else the break search's (SH.breakMoves: a line it offers never dies before its break)
             //   the nearest attack -- the nearer of the plan's line and the falling chain's or the popping slab's line-up; under garbage one
             //     that breaks it too, garbage on its way one that leaves the next block's break (READY)
-            //   garbage on the board and the board being lost: SCRAMBLE,
-            //     the line done before it is that buys the most stop time, else CLEAR, the one that leaves the lowest stack
+            //   garbage on the board, no break in reach: LEVEL (the hollow under it filled, then flatter); CLEAR when the board would top
+            //     out (the line leaving the lowest stack); SCRAMBLE only topped out and draining (the line that buys the most stop time)
             //   garbage on its way: READY -- the swap after which the next block breaks once it lands; else LEVEL -- the swap that clears
             //     nothing and leaves less hollow, then a flatter stack, settled before the block lands
-            //   nothing on its way: SETUP toward the list
+            //   nothing on its way: SETUP toward the list, else HOLD
             //   and only with none of those the default's own move
             var nx = exG && exG.nearest, np = apG && apG.nearest && apG.nearest.seq.length ? apG.nearest : null;
             // (SCRAMBLE and CLEAR are for a board being lost: topped out, its health draining -- not one merely near the top)
-            var dyingG = !!(FG.us.topped && !(FG.us.stop > 0));
+            var dyingG = !!(FG.us.topped && !(FG.us.stop > 0)), toppingG = dyingG || CK.toppedOrNearly(board, m.topped);
             var nearG = nx || np ? (nx && (!np || nx.near > np.near) ? { ap: nx, aimIndex: -1, near: nx.near, extend: true } : { ap: np, aimIndex: -1, near: np.near }) : null;
             var brG = underG && br && br.depth ? (br.path && br.path.length ? br.path[0] : Object.keys(br.moves || {}).map(function (k) { return k.split(',').map(Number); })[0]) : null;
             // (under garbage, no entry: the break comes first -- the most garbage broken in time, a three if nothing better -- then the
@@ -880,8 +880,16 @@ module.exports = function think(cfg) {
             else if (brG) { if (br.path && br.path.length) lineG = { ap: { seq: br.path, done: null }, aimIndex: -1 }; else setupG = brG; playG = 'break search'; }
             else if (nearG) lineG = nearG;
             else if (underG) {
-              if (dyingG && apG && apG.stopBest) { lineG = { ap: apG.stopBest, aimIndex: -1 }; playG = 'scramble'; }
-              else if (dyingG && apG && apG.lowest) { lineG = { ap: apG.lowest, aimIndex: -1 }; playG = 'clear'; }
+              // (no break in reach: LEVEL -- fill the hollow under the garbage, then flatter, so a break comes into reach -- by the time
+              // frame; then CLEAR when the board would top out, the line that leaves the lowest stack; SCRAMBLE only on a board topped
+              // out and draining, the line that buys the most stop time)
+              var lvU = attacker ? attacker.level(board, m.hold, arrivals, { by: byG || undefined }) : null;
+              // (BREAK LINE, toward: no break in reach, the break search's line that comes nearest one -- the swaps that build toward a
+              // match next to the garbage -- played on)
+              if (br && br.toward && br.toward.length) { lineG = { ap: { seq: br.toward, done: null }, aimIndex: -1 }; playG = 'break toward'; }
+              else if (lvU) { setupG = lvU.move; playG = 'level'; }
+              else if (dyingG && apG && apG.stopBest) { lineG = { ap: apG.stopBest, aimIndex: -1 }; playG = 'scramble'; }
+              else if (toppingG && apG && apG.lowest) { lineG = { ap: apG.lowest, aimIndex: -1 }; playG = 'clear'; }
             }
             else if (readyAtG !== null) {
               var rdG = arrivals.length && attacker ? attacker.readyFor(board, m.hold, arrivals, { ms: Math.max(20, Math.min(60, leftG())) }) : null;
@@ -892,6 +900,8 @@ module.exports = function think(cfg) {
               }
             }
             else if (apG && apG.setup) { setupG = apG.setup; playG = 'setup'; }
+            // (nothing coming, nothing on the board, nothing to set up: HOLD)
+            if (!lineG && !setupG && !underG && readyAtG === null) { endG = 'hold'; playG = 'hold'; }
           }
           // THE RAISE (the file's or the rule's `raise: { to }`): below `to` rows, not under garbage, not topped and no chain running, the stack
           // is raised first -- held down to `to` in one press, not a row a decision -- and the list played from the panels it brings
@@ -931,8 +941,10 @@ module.exports = function think(cfg) {
             if (nx) addG(nx.seq[0], nx.seq);
             if (np) addG(np.seq[0], np.seq);
             if (underG) {
+              if (br && br.toward && br.toward.length) addG(br.toward[0], br.toward);
+              if (lvU) addG(lvU.move);
               if (dyingG && apG && apG.stopBest) addG(apG.stopBest.seq[0], apG.stopBest.seq);
-              if (dyingG && apG && apG.lowest) addG(apG.lowest.seq[0], apG.lowest.seq);
+              if (toppingG && apG && apG.lowest) addG(apG.lowest.seq[0], apG.lowest.seq);
             } else if (apG && apG.setup && typeof readyAtG !== 'number') addG(apG.setup);
           }
           if (GP.rankAll === false) orderG = orderG.slice(0, 1);
@@ -950,7 +962,7 @@ module.exports = function think(cfg) {
           bot._gambitUrgent = !!(lineG && lineG.extend) || SH.popLeft(board) > 0 || cascadeLive(board, true) ||
                               (dueG !== null && dueG !== undefined && (doneG || 0) + gapG >= dueG);
           FGmat = FG.us.material;
-          bot._gambit = { table: pickG.table, under: !!underG, rule: pickG.index, name: pickG.rule.name || null, want: orderG[0] || null, options: orderG.length, order: orderG, found: !!lineG, play: playG || (lineG ? (lineG.aimIndex >= 0 ? 'entry' : 'nearest') : null), entry: lineG ? lineG.aimIndex : -1, near: lineG && lineG.near || 0, quick: !!(lineG && lineG.quick), ms: apG ? apG.ms : 0, setup: !!setupG, ready: readyG, readyAt: typeof readyAtG === 'number' ? readyAtG : null, raise: upG ? toG : 0, wait: !!waitG, extend: !!(lineG && lineG.extend), tried: triedG, pop: SH.popLeft(board), xs: exG ? [exG.seq.length, exG.chain, exG.cells, exG.base, exG.nearest ? exG.nearest.chain : 0] : null,
+          bot._gambit = { table: pickG.table, under: !!underG, rule: pickG.index, name: pickG.rule.name || null, want: orderG[0] || null, options: orderG.length, order: orderG, found: !!lineG, play: playG || (lineG ? (lineG.aimIndex >= 0 ? 'entry' : 'nearest') : null), entry: lineG ? lineG.aimIndex : -1, near: lineG && lineG.near || 0, quick: !!(lineG && lineG.quick), ms: apG ? apG.ms : 0, setup: !!setupG, ready: readyG, readyAt: typeof readyAtG === 'number' ? readyAtG : null, raise: upG ? toG : 0, wait: !!waitG, extend: !!(lineG && lineG.extend), tried: triedG, br: br ? [br.depth, br.toward ? br.toward.length : -1, br.lineup ? 1 : 0, br.touch ? 1 : 0] : null, brMs: brMs, pop: SH.popLeft(board), xs: exG ? [exG.seq.length, exG.chain, exG.cells, exG.base, exG.nearest ? exG.nearest.chain : 0] : null,
                           chain: lineG ? lineG.ap.chain : 0, combo: lineG ? lineG.ap.combo || 0 : 0, swaps: lineG ? lineG.ap.seq.length : 0, done: lineG ? lineG.ap.done : null, by: byG };
         }
       }
