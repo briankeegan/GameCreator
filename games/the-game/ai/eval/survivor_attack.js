@@ -472,12 +472,12 @@ module.exports = function (opts) {
     var root = s.root(board.copy(), hold, arrivals || [], false), n = root, made = [], cut = seq.length, dead = false, done = 0, ats = [];
     var baseOut = s.advanceMany([[root, 'settle', null, 0]], true)[0], baseChain = 0, baseCombo = 0, baseBroke = 0;
     if (baseOut && !baseOut.dead) { var bs = s.stepStats(baseOut); baseBroke = bs.broke || 0; if (bs.cleared > 0) { baseChain = sent(bs).chain; bs.comboSizes.forEach(function (z) { if (z > baseCombo) baseCombo = z; }); } made.push(baseOut); }
-    var combo = 0, chain = 0, broke = 0;
+    var combo = 0, chain = 0, broke = 0, singles = {};
     // (the garbage the line breaks is what it breaks beyond the board left alone: a slab popping converts its panels whatever is pressed)
     var sofar = function () { return { combo: combo > baseCombo ? combo : 0, chain: chain > baseChain ? chain : 0, broke: Math.max(0, broke - baseBroke) }; };
     var count = function (out) {
       var st = s.stepStats(out), g = sent(st);
-      st.comboSizes.forEach(function (z) { if (z > combo) combo = z; });
+      st.comboSizes.forEach(function (z, i) { if (z > combo) combo = z; if (!(st.chainAt[i] > 1) && z >= 4) singles[z] = true; });
       if (g.chain > chain) chain = g.chain;
       broke += st.broke || 0;
     };
@@ -498,7 +498,9 @@ module.exports = function (opts) {
     }
     // (chainAll: the chain the line reaches as the game counts it -- the chain already falling and every link after it, the board's own
     // continuation included only as far as the line leaves it running: a swap that cuts it ends it there)
-    var res = { made: sofar(), chainAll: Math.max(chain, board.chainCounter || 0), cut: cut, dead: dead, done: done, ats: ats, fire: ats.length ? ats[ats.length - 1] : null };
+    // (singles: the sizes of 4 or more of the line's matches that are clears of their own, no link of a chain -- the board's own included,
+    // as far as the line leaves them to happen)
+    var res = { made: sofar(), chainAll: Math.max(chain, board.chainCounter || 0), singles: Object.keys(singles).map(Number), cut: cut, dead: dead, done: done, ats: ats, fire: ats.length ? ats[ats.length - 1] : null };
     // (readiness, o.readyAt: the next block landed on the board the line ends on, can a break be made then -- the readiness check every
     // move that breaks nothing is held to)
     if (o.readyAt != null && !dead) res.ready = breaksAfterLanding(s, root, n, Math.max(1, o.readyAt + 2), made);

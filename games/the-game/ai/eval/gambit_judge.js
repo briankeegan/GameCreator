@@ -22,9 +22,13 @@ function swapBack(c, mv, clears) {
 }
 
 // WHETHER A LINE FITS THE LIST: what it makes fits it (its own clears: a combo it makes alone is a combo, a link it adds is the chain's),
-// and so does the chain it reaches as the game counts it (j: attacker.judge's answer, chainAll) -- a chain already falling, the links
-// before it and the board's own continuation as far as the line leaves it running
-function fitsList(list, m, j) { return GAMBIT.fits(list, m) && !(j && j.chainAll >= 2 && !GAMBIT.fits(list, { combo: 0, chain: j.chainAll })); }
+// and so does what the board makes along it as the game counts it (j: attacker.judge's answer) -- the chain it reaches (chainAll: a chain
+// already falling, the links before it and the board's own continuation as far as the line leaves it running) and every clear of its own
+// (singles: panels out of a broken slab falling into a match of their own among them)
+function fitsList(list, m, j) {
+  return GAMBIT.fits(list, m) && !(j && j.chainAll >= 2 && !GAMBIT.fits(list, { combo: 0, chain: j.chainAll })) &&
+         !(j && (j.singles || []).some(function (z) { return !GAMBIT.fits(list, { combo: z, chain: 1 }); }));
+}
 
 // The whole line played as it will be pressed (attacker.judge), once per line a decision: what it makes and when each step is begun --
 // null when the judge could not play it out

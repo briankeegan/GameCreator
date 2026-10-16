@@ -42,9 +42,11 @@ function read(c) {
     var rows = c.attacker.raiseReady(c.board, c.m.hold, c.arrivals, to - CK.fullTop(c.board), Math.min(RAISE_MS, Math.max(20, c.left())));
     if (rows <= 0) up = low = false; else to = CK.fullTop(c.board) + rows;
   }
-  // (the chain the board left alone makes, as the game counts it: past the list, holding is outside it too)
-  var aloneChain = CK.cascadeLive(c.board, true) ? (c.attacker.judge(c.board, c.m.hold, [], c.arrivals, { tight: c.tight }).chainAll || 0) : 0;
-  var aloneOut = aloneChain >= 2 && !GAMBIT.fits(list, { combo: 0, chain: aloneChain });
+  // (what the board left alone makes while a chain falls or a slab pops, as the game counts it -- the chain, and the clears of its own
+  // the panels out of the slab make: outside the list, holding is outside it too)
+  var aloneJ = CK.cascadeLive(c.board, true) || SH.popLeft(c.board) > 0 ? c.attacker.judge(c.board, c.m.hold, [], c.arrivals, { tight: c.tight }) : null;
+  var aloneChain = aloneJ ? aloneJ.chainAll || 0 : 0;
+  var aloneOut = !!(aloneJ && !JUDGE.fitsList(list, { combo: 0, chain: 0 }, aloneJ));
   return { F: F, pick: pick, list: list, aloneChain: aloneChain, aloneOut: aloneOut, aims: aims, listAims: listAims, end: end, by: by, under: under, keep: keep, keepF: keepF, readyAt: readyAt,
            pop: SH.popLeft(c.board) > 0, to: to, low: low, up: up,
            preds: aims.map(function (a) { return function (made) { return GAMBIT.meets(a, made); }; }) };
