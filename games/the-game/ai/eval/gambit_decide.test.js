@@ -44,4 +44,22 @@ modes.forEach(function (mode) {
     decided++;
   }
 });
+// THE MATERIAL FLOOR: with the floor above every board's panels, no move ranked clears panels without breaking garbage
+var fs = require('fs'), rulesFile = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles', 'gambit-rules.json'), 'utf8'));
+rulesFile.keep = { material: '>=99' };
+var high = GAMBIT.rulesFor({ gambit: { rules: rulesFile } }, __dirname), floored = 0;
+for (var fseed = 1; fseed <= 4; fseed++) {
+  var fb = PA.game({ level: 10, seed: fseed, countdown: false });
+  for (var ff = 0; ff < 240; ff++) fb.run();
+  var fc = { bot: { _canRaise: function () { return true; } }, m: { at: fb.clock, hold: hold, topped: false, opp: null }, board: fb, arrivals: [], br: null, brMs: 0, attacker: at, rules: high,
+             GP: { mode: 'finish them', ms: 60, width: 30, depth: 5, pool: 120 }, pace: null, canRaise: function () { return false; }, left: function () { return 200; } };
+  var FR = DECIDE.read(fc);
+  var fr = DECIDE.ranked(fc, FR, require('./gambit_propose.js').search(fc, FR));
+  floored += fr.length;
+  fr.forEach(function (k) {
+    var mk = at.judge(fb, hold, k.seq, [], { settled: JUDGE.settled(k.play) }).made;
+    assert.ok(!((mk.combo > 0 || mk.chain > 0) && !(mk.broke > 0)), 'below the floor: ' + k.play + ' clears without breaking, ' + JSON.stringify(mk));
+  });
+}
+assert.ok(floored > 0, 'moves were ranked below the floor: the check above is not empty');
 console.log('ok: gambit decision -- the judge on ' + judged + ' planned lines, ' + decided + ' decisions over ' + modes.length + ' modes');

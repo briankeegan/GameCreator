@@ -13,7 +13,7 @@ function read(c) {
   var F = { us: GAMBIT.facts(c.board, c.arrivals, c.m.topped), enemy: GAMBIT.enemyFacts(c.m.opp) };
   var tables = c.rules.get(c.m.opp && c.m.opp.name), pick = c.GP.mode ? GAMBIT.named(tables, c.GP.mode) : GAMBIT.choose(tables, F);
   if (!pick) return null;
-  var keepF = GAMBIT.floor(pick.rule.keep || tables.keep || null);
+  var keep = pick.rule.keep || tables.keep || null, keepF = GAMBIT.floor(keep);
   // (the list as written; an entry "default" or "hold" ends it there)
   var list = GAMBIT.aimsOf(pick.rule), endAt = list.length, end = null;
   for (var i = 0; i < list.length; i++) if (typeof list[i] === 'string') { endAt = i; end = list[i]; break; }
@@ -29,11 +29,13 @@ function read(c) {
   // on what the board shows then; never after)
   var to = (pick.rule.raise || tables.raise || {}).to, opening = !c.bot._gambitHit && F.us.contact === null && !F.us.topped;
   var low = !!(to && opening && CK.fullTop(c.board) < to), up = low && !CK.cascadeLive(c.board, true) && c.canRaise();
-  return { F: F, pick: pick, list: list, aims: aims, listAims: listAims, end: end, by: by, under: under, keepF: keepF, readyAt: readyAt,
+  return { F: F, pick: pick, list: list, aims: aims, listAims: listAims, end: end, by: by, under: under, keep: keep, keepF: keepF, readyAt: readyAt,
            pop: SH.popLeft(c.board) > 0, to: to, low: low, up: up,
            preds: aims.map(function (a) { return function (made) { return GAMBIT.meets(a, made); }; }) };
 }
 
+// (the log's code for why a candidate was dropped: a swap back, outside the list, too late, below the material floor)
+var DROP_CODE = { back: 'b', list: 'o', late: 't', floor: 'f' };
 var HOLD_TIER = 5;   // (GAMBIT.tier: a hold ranks below every play that fits, above a clear)
 // 2-4. PROPOSE, JUDGE AND RANK: every candidate offered, judged, the ones left in rank order
 function ranked(c, R, S) {
@@ -80,8 +82,8 @@ function play(c, R, S, cands) {
                chain: line ? line.ap.chain : 0, combo: line ? line.ap.combo || 0 : 0, broke: line ? line.ap.broke || 0 : 0, tier: line ? line.tier : (hold ? 5 : 0),
                seq: line ? line.seq.map(function (mv) { return mv.slice(); }) : null, swaps: line ? line.ap.seq.length : 0, done: line ? line.ap.done : null,
                fire: line ? line.ap.fire : null, ats: line && line.ap.ats ? line.ap.ats.join('/') : null, by: R.by,
-               // (per kind of move: how many were offered, and of them how many were dropped and why)
-               cands: Object.keys(c.offered || {}).map(function (p) { var d = (c.dropped || {})[p]; return p.replace(/ /g, '_') + ':' + c.offered[p] + (d ? '-' + ['back', 'list', 'late'].filter(function (w) { return d[w]; }).map(function (w) { return w[0] + d[w]; }).join('') : ''); }).join(',') };
+               // (per kind of move: how many were offered, and of them how many were dropped and why, DROP_CODE)
+               cands: Object.keys(c.offered || {}).map(function (p) { var d = (c.dropped || {})[p]; return p.replace(/ /g, '_') + ':' + c.offered[p] + (d ? '-' + Object.keys(DROP_CODE).filter(function (w) { return d[w]; }).map(function (w) { return DROP_CODE[w] + d[w]; }).join('') : ''); }).join(',') };
   return { R: R, line: line, play: name, order: order, carry: carry, raise: R.up ? R.to : 0, urgent: urgent, info: info, idleMs: S.idleMs };
 }
 

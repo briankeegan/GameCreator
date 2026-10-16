@@ -7,6 +7,8 @@ var GAMBIT = require(path.join(__dirname, 'gambit.js'));
 // carries it on); every other line's rest is handed to the frame loop, which presses its steps one after the other
 var SETTLED = ['entry', 'nearest', 'break line', 'carry', 'carry wait', 'clear'];
 function settled(play) { return SETTLED.indexOf(play) >= 0; }
+// THE SET-UPS: plays that move panels toward the ask or a break and clear nothing on the way
+var SETUPS = ['setup', 'level', 'ready', 'toward'];
 
 // A SWAP BACK: the same two panels the last swap swapped, which puts the board back as it was -- no play, unless it clears (and even a
 // clear, after the same pair twice running: a clear predicted on panels not yet seen that never comes is the same loop)
@@ -27,8 +29,8 @@ function made(c, seq, play) {
 }
 
 // THE JUDGE: a candidate, filtered and ranked -- null when it is no candidate. { play, seq, tier, sub, ap, aim, extend, near }
-// (why each candidate was dropped, counted per decision for the log: c.dropped[play] = { back, list, late })
-function drop(c, play, why) { var d = c.dropped || (c.dropped = {}), t = d[play] || (d[play] = { back: 0, list: 0, late: 0 }); t[why]++; return null; }
+// (why each candidate was dropped, counted per decision for the log: c.dropped[play] = { back, list, late, floor })
+function drop(c, play, why) { var d = c.dropped || (c.dropped = {}), t = d[play] || (d[play] = { back: 0, list: 0, late: 0, floor: 0 }); t[why]++; return null; }
 function judge(c, R, k) {
   if (!k) return null;
   if (swapBack(c, k.seq[0])) return drop(c, k.play, 'back');
@@ -40,14 +42,17 @@ function judge(c, R, k) {
   var m = w ? { combo: Math.max(combo, w.combo), chain: Math.max(chain, w.chain), broke: Math.max(broke, w.broke), cells: x.cells || 0 } : x;
   // (it fits the list, or it is no candidate; its place in the list is the first entry it matches)
   if (!GAMBIT.fits(R.list, m)) return drop(c, k.play, 'list');
+  // (below the rule's material floor -- `keep: { material }` -- a line that clears panels and breaks no garbage spends what the board
+  // needs: no candidate, whoever offered it. A break is never held to the floor: it is where the panels come from)
+  if (R.keep && R.keep.material !== undefined && !GAMBIT.test(R.F.us.material, R.keep.material) && (m.combo > 0 || m.chain > 0) && !(m.broke > 0)) return drop(c, k.play, 'floor');
   var entry = GAMBIT.entryOf(R.aims, m);
   if (entry >= 0 && (aim < 0 || entry < aim)) aim = entry;
   // (in time: every step its own time, the line's last swap begun by the deadline; the cascade it sets off runs on after)
   var fire = x.fire != null ? x.fire : x.done;
   if (R.by && fire && fire > R.by) return drop(c, k.play, 'late');
-  // (a setup, level or ready is to clear nothing: played to the board's settle step by step it ends before its first step that clears
-  // panels and breaks nothing -- and when that is its first, the play is a clear)
-  if (play === 'setup' || play === 'level' || play === 'ready') {
+  // (a set-up -- setup, level, ready, a step toward a break -- is to clear nothing: played to the board's settle step by step it ends
+  // before its first step that clears panels and breaks nothing, and when that is its first, the play is a clear)
+  if (SETUPS.indexOf(play) >= 0) {
     var fc = c.attacker.firstClear(c.board, c.m.hold, seq, c.arrivals);
     if (fc === 0) { play = 'clear'; x = { combo: 3, chain: 1 }; m = x; combo = 3; chain = 1; broke = 0; }
     else if (fc > 0) seq = seq.slice(0, fc);

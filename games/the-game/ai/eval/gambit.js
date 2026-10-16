@@ -255,15 +255,26 @@ function checked(tables) {
 // THE RULES FILE, read again whenever it changes (its mtime): it may be rewritten between matches or while one runs, and the next
 // decision plays by it. An opponent with tables of its own is played by those. A file that fails to read or parse leaves the last
 // good tables in force; the rules it drops (a when on the wrong side's board, no aim) are listed in `errors`.
+// THE RULES READ (one way, from a file or from a profile's own object): every table checked, each with the file's settings -- the
+// material floor (keep), the raise, what is done under garbage -- an opponent's own over the file's
+function parse(j) {
+  var c = checked(j), own = {}, errors = c.errors.slice();
+  var settings = function (o) { return { keep: (o && o.keep) || j.keep || null, raise: (o && o.raise) || j.raise || null, underGarbage: (o && o.underGarbage) || j.underGarbage || 'break' }; };
+  Object.assign(c.tables, settings(null));
+  Object.keys(j.opponents || {}).forEach(function (name) {
+    var co = checked(j.opponents[name]);
+    own[name] = Object.assign(co.tables, settings(j.opponents[name]));
+    co.errors.forEach(function (e) { errors.push(name + ': ' + e); });
+  });
+  return { all: c.tables, own: own, errors: errors };
+}
 function Rules(file) { this.file = file; this.mtime = -1; this.all = { defend: [], attack: [] }; this.own = {}; this.error = null; this.errors = []; }
 Rules.prototype.get = function (opponent) {
   try {
     var st = fs.statSync(this.file);
     if (st.mtimeMs !== this.mtime) {
-      var j = JSON.parse(fs.readFileSync(this.file, 'utf8')), c = checked(j), own = {}, errs = c.errors.slice();
-      Object.keys(j.opponents || {}).forEach(function (name) { var co = checked(j.opponents[name]); own[name] = co.tables; co.errors.forEach(function (e) { errs.push(name + ': ' + e); }); });
-      this.all = c.tables; this.all.keep = j.keep || null; this.all.raise = j.raise || null; this.all.underGarbage = j.underGarbage || 'break'; this.own = own; this.errors = errs;
-      Object.keys(own).forEach(function (n) { own[n].keep = (j.opponents[n] && j.opponents[n].keep) || j.keep || null; own[n].raise = (j.opponents[n] && j.opponents[n].raise) || j.raise || null; own[n].underGarbage = (j.opponents[n] && j.opponents[n].underGarbage) || j.underGarbage || 'break'; });
+      var P = parse(JSON.parse(fs.readFileSync(this.file, 'utf8'))), own = P.own, errs = P.errors;
+      this.all = P.all; this.own = own; this.errors = errs;
       this.mtime = st.mtimeMs; this.error = null;
       console.error('GAMBIT rules ' + this.file + ': ' + this.all.defend.length + ' defend, ' + this.all.attack.length + ' attack, ' + Object.keys(own).length + ' opponents' + (errs.length ? '; dropped: ' + errs.join(' | ') : ''));
     }
@@ -273,7 +284,7 @@ Rules.prototype.get = function (opponent) {
 function rulesFor(profile, dir) {
   var g = profile && profile.gambit;
   if (!g) return null;
-  if (g.rules && typeof g.rules === 'object') { var fixed = checked(g.rules).tables; return { get: function () { return fixed; } }; }
+  if (g.rules && typeof g.rules === 'object') { var P = parse(g.rules); return { get: function (opponent) { return (opponent && P.own[opponent]) || P.all; } }; }
   // (GC_GAMBIT_RULES names another file: a run can hand the bot its own rules without touching the profile)
   if (process.env.GC_GAMBIT_RULES) return new Rules(process.env.GC_GAMBIT_RULES);
   return new Rules(path.isAbsolute(g.rules) ? g.rules : path.join(dir, g.rules));

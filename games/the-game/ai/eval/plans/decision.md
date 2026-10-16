@@ -26,6 +26,11 @@ in step 4, or the judge answers it in step 3.
    - A line that fits the list and lives is a candidate. Fitting: it clears nothing, or what it makes matches an entry (an entry that
      names a combo and no chain is one clear), or it is a plain three that breaks garbage. No line makes a chain longer than 13
      (`GAMBIT.MAXCHAIN`), whoever proposed it.
+   - Below the rules' material floor (`keep: { material }`), a line that clears panels and breaks no garbage is no candidate: it spends
+     what the board needs. A break is never held to the floor.
+   - A set-up (setup, level, ready, a step toward a break) clears nothing: it ends before its first step that clears panels and
+     breaks nothing, and one whose first step does is a clear.
+   - A line in progress whose next step must wait for the board ranks with the hold.
    - Candidates are ranked by the board's column of the table below, then by the first entry of the list each matches, then by time.
    - With no candidate, a line that lives but fits no entry is next -- survival, ranked after every line that fits.
    - With nothing that lives, the line that dies latest.
