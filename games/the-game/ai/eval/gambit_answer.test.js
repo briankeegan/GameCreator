@@ -34,5 +34,14 @@ for (var f0 = 0; f0 < 30; f0++) low.run();
 var mindL = require('./survivor_think.js')({ profile: require('./survivor_shared.js').profile(), threads: 1 });
 var up = mindL.answer({ id: 99, epoch: 0, at: low.clock, ms: 0, hold: { left: 0, started: false }, arrivals: [], board: low.copy(), acted: true });
 assert.ok(up.kind === 'raise' && up.raiseFrames > 0 && up.raiseAfter > 0, 'a low stack is raised held down: ' + up.kind + ' ' + up.raiseFrames + '+' + up.raiseAfter);
+// THE RAISE IS HELD FOR THE ROWS THAT LEAVE A PLAN: with nothing shown coming, every row asked; with more rows shown coming than the
+// board can take once raised, fewer -- each row tried raised on the engine, everything landed, and a break line the board survives looked for
+var AT = require('./survivor_attack.js')({ reaction: 12, swapGap: 12, cursorMoveFrames: 4 }), H0 = { left: 0, started: false };
+var flood = Array.apply(null, Array(9)).map(function (_, i) { return { at: 90 + i, width: 6, height: 1 }; });
+assert.strictEqual(AT.raiseReady(low, H0, [], 5, 150), 5, 'nothing coming: every row');
+var fewer = AT.raiseReady(low, H0, flood, 5, 300);
+assert.ok(fewer < 5, 'nine rows coming: fewer rows raised (' + fewer + ')');
+var est = GAMBIT.facts(low, flood, false).dies;
+assert.ok(AT.diesIn(low, H0, flood, est) < est, 'the garbage on its way decides the frames left, not the rise alone');
 assert.ok(gambit >= answered / 2, 'Gambit chooses most moves: ' + gambit + ' of ' + answered);
 console.log('ok: gambit answers -- ' + answered + ' questions over ' + modes.length + ' modes, ' + gambit + ' Gambit\'s own');

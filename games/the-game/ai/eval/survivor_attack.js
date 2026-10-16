@@ -6,6 +6,7 @@
 // follows. Used by survivor_think.js for a profile with `attack`.
 var path = require('path');
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js')), N = require(path.join(__dirname, 'native.js')).server;
+var CK = require(path.join(__dirname, 'survivor_checks.js'));
 var W = 6, KEYS = require(path.join(__dirname, 'survivor_keys.js'));
 // THE PRESS AS THE FRAME LOOP MAKES IT: with the input budget tight (o.tight: the decision's allowance at or under KEYS.HOLDTIGHT) the
 // frame loop walks the cursor held from two cells (survivor_match.js walkKeys, KEYS.slowWalks), which presses the swap later than the
@@ -365,6 +366,39 @@ module.exports = function (opts) {
     }
     return { ready: false, setup: found, at: first, ms: Date.now() - t0 };
   }
+  // THE ROWS THE RAISE MAY HOLD (raiseReady): the most rows, of `rows`, the stack can be raised by and still have a plan once all the
+  // garbage the game shows has landed -- the board raised on the engine, every block landed when the game lands it, and then a line of
+  // swaps to a break the board survives to play (SH.breakMoves: the stack rising as it goes, a combo or chain on the way buying its stop
+  // time). With nothing shown coming, every row. ms: the time the search has, shared out over the rows tried.
+  var RAISE_IN = 32, SETTLE_MAX = 600;
+  // the board once every block shown has come down on it: delivered when the game delivers it, dropped from the queue, and done falling
+  // (null when the board is lost first, or still busy SETTLE_MAX frames after the last is delivered)
+  function landedAll(b0, pieces, last) {
+    var st = b0.copy(), pend = pieces.map(function (a) { return { at: st.stopWatch + a.at, g: { width: a.width, height: a.height, isChain: !!a.isChain, isMetal: !!a.isMetal, frameEarned: st.stopWatch, finalized: true }, capped: false }; });
+    for (var i = 0; i < last + 2 + SETTLE_MAX && st.gameOverClock <= 0; i++) {
+      if (i > last + 1 && !pend.length && !(st.incoming || []).length && !(typeof st.hasFallingGarbage === 'function' && st.hasFallingGarbage())) return st;
+      st.setInput(0); st.run(); SH.land(st, pend);
+    }
+    return null;
+  }
+  function raiseReady(board, hold, arrivals, rows, ms) {
+    var last = null;
+    (arrivals || []).forEach(function (a) { if (last === null || a.at > last) last = a.at; });
+    if (last === null || rows <= 0) return Math.max(0, rows);
+    var s = search(), t0 = Date.now(), ok = 0, top0 = CK.fullTop(board);
+    for (var k = 1; k <= rows; k++) {
+      var st = board.copy(), f = 0;
+      while (CK.fullTop(st) < top0 + k && st.gameOverClock <= 0 && f < 40 * k) { st.setInput(RAISE_IN); st.run(); f++; }
+      if (st.gameOverClock > 0 || CK.fullTop(st) < top0 + k) break;
+      var left = arrivals.map(function (a) { return Object.assign({}, a, { at: Math.max(0, a.at - f) }); });
+      var at = landedAll(st, left, Math.max(0, last - f));
+      if (!at) break;
+      var r = SH.breakMoves(s, at, hold, [], 3, 0, t0 + Math.max(20, ms), null, null, { touchInPop: true, near: true });
+      if (!(r && r.depth > 0)) break;
+      ok = k;
+    }
+    return ok;
+  }
   // LEVEL: of the swaps that clear nothing and are settled by o.by (frames: the next block lands), the one that leaves the least hollow
   // under the garbage, then the flattest stack -- only one better than the board left alone. Returns { move, before, after } or null.
   function level(board, hold, arrivals, o) {
@@ -490,5 +524,17 @@ module.exports = function (opts) {
     outs.forEach(function (out) { if (out && !out.dead) { made.push(out); if ((out.brk !== undefined ? out.brk : s.breaks(out)) > base) any = true; } });
     return any;
   }
-  return { plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear, replay: replay, judge: judge };
+  // THE FRAMES UNTIL THE BOARD IS LOST IF NOTHING IS DONE, on the engine: the stack rising, the garbage the game shows landing when it
+  // lands, the health drained -- the first frame within `horizon` the board left alone is lost, Infinity when it lives through it
+  function diesIn(board, hold, arrivals, horizon) {
+    var s = search();
+    s.reset();
+    var root = s.root(board.copy(), hold, arrivals || [], false), made = [], lo = 0, hi = Math.max(1, Math.ceil(horizon));
+    var lost = function (t) { var n = s.advance(root, 'long', null, t); if (n && n._i >= 0) made.push(n); return !n || n.dead; };
+    if (!lost(hi)) { s.drop(made); return Infinity; }
+    while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (lost(mid)) hi = mid; else lo = mid; }
+    s.drop(made);
+    return hi;
+  }
+  return { plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear, replay: replay, judge: judge, diesIn: diesIn, raiseReady: raiseReady };
 };

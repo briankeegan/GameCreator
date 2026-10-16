@@ -11,6 +11,11 @@ var CK = require(path.join(__dirname, 'survivor_checks.js'));
 // 1. READ: the facts of both boards, the mode and its list, the deadline, the floor every line keeps
 function read(c) {
   var F = { us: GAMBIT.facts(c.board, c.arrivals, c.m.topped), enemy: GAMBIT.enemyFacts(c.m.opp) };
+  // (the frames until the board is lost if nothing is done, from the engine with the garbage the game shows landing on it when it lands:
+  // sooner than the rise alone takes, the garbage on its way decides it -- queueKills)
+  var alone = c.attacker.diesIn(c.board, c.m.hold, c.arrivals, F.us.dies);
+  F.us.queueKills = alone < F.us.dies;
+  if (F.us.queueKills) F.us.dies = alone;
   var tables = c.rules.get(c.m.opp && c.m.opp.name), pick = c.GP.mode ? GAMBIT.named(tables, c.GP.mode) : GAMBIT.choose(tables, F);
   if (!pick) return null;
   var keep = pick.rule.keep || tables.keep || null, keepF = GAMBIT.floor(keep);
@@ -29,6 +34,12 @@ function read(c) {
   // on what the board shows then; never after)
   var to = (pick.rule.raise || tables.raise || {}).to, opening = !c.bot._gambitHit && F.us.contact === null && !F.us.topped;
   var low = !!(to && opening && CK.fullTop(c.board) < to), up = low && !CK.cascadeLive(c.board, true) && c.canRaise();
+  // (the raise is held for as many rows as leave the board a plan once everything the game shows has landed -- attacker.raiseReady,
+  // played out on the engine; none of them: no raise now, the decision readies the board instead)
+  if (up) {
+    var rows = c.attacker.raiseReady(c.board, c.m.hold, c.arrivals, to - CK.fullTop(c.board), Math.min(RAISE_MS, Math.max(20, c.left())));
+    if (rows <= 0) up = low = false; else to = CK.fullTop(c.board) + rows;
+  }
   return { F: F, pick: pick, list: list, aims: aims, listAims: listAims, end: end, by: by, under: under, keep: keep, keepF: keepF, readyAt: readyAt,
            pop: SH.popLeft(c.board) > 0, to: to, low: low, up: up,
            preds: aims.map(function (a) { return function (made) { return GAMBIT.meets(a, made); }; }) };
@@ -38,6 +49,7 @@ function read(c) {
 // block unbreakable)
 var DROP_CODE = { back: 'b', list: 'o', late: 't', floor: 'f', ready: 'r', unbroken: 'u' };
 var HOLD_TIER = 5;   // (GAMBIT.tier: a hold ranks below every play that fits, above a clear)
+var RAISE_MS = 150;   // (the most of a decision the raise's readiness search takes)
 // 2-4. PROPOSE, JUDGE AND RANK: every candidate offered, judged, the ones left in rank order
 function ranked(c, R, S) {
   c.judged = {}; c.dropped = {}; c.offered = {};
