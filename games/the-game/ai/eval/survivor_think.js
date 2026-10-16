@@ -978,6 +978,19 @@ module.exports = function think(cfg) {
           if (waitG || (lineG && lineG.wait)) addG('hold');
           candsG.forEach(function (c) { if (c.tier >= 6 && orderG.indexOf('hold') < 0 && !upG) addG('hold'); if (!c.wait) addG(c.seq[0], c.seq, SETTLED.indexOf(c.play) >= 0); });
           if (!upG && orderG.indexOf('hold') < 0) addG('hold');
+          // (NO TIME TO SEARCH: the question came too soon for the planner and the break search alike -- nothing was searched, and holding
+          // is no decision. The last decision's move is played, while its two panels are still side by side as they were (by id: a move
+          // already played has swapped them) and it is a few reactions old; a break stays a break)
+          var searchedG = triedG > 0 || !!br, lastBreakG = null, LG = bot._gambitLast;
+          if (!searchedG && !upG && LG && m.at >= LG.at && m.at - LG.at <= 4 * (OPTS.reaction || 12)) {
+            var mvL = GAMBIT.pairAt(board, LG.ids);
+            if (mvL && !backG(mvL)) { var kL = arbKey(mvL); orderG = [kL].concat(orderG.filter(function (k) { return k !== kL; })); playG = 'last ' + LG.play; if (LG.tier === 1) lastBreakG = mvL; }
+          }
+          if (searchedG) {
+            var k0G = orderG[0], mv0G = k0G && k0G !== 'hold' && k0G !== 'raise' ? k0G.split(',').map(Number) : null, row0G = mv0G && board.panels[mv0G[0]];
+            var a0G = row0G && row0G[mv0G[1]], b0G = row0G && row0G[mv0G[1] + 1];
+            bot._gambitLast = a0G && b0G && a0G.id != null && b0G.id != null ? { at: m.at, ids: [a0G.id, b0G.id], play: playG, tier: lineG ? lineG.tier : 0 } : null;
+          }
           var kG = orderG[0] || null;
           if (GP.rankAll === false) orderG = orderG.slice(0, 1);
           if (orderG.length) {
@@ -990,6 +1003,7 @@ module.exports = function think(cfg) {
           // (a must-do break -- garbage on the board, the play chosen breaks it -- is played, whatever the survival search's verdict)
           var breakPlayG = !!(lineG && lineG.tier === 1 && !lineG.wait);
           bot._gambitBreak = breakPlayG && orderG[0] && orderG[0] !== 'raise' && orderG[0] !== 'hold' ? { move: orderG[0].split(',').map(Number), rest: linesG[orderG[0]] || null } : null;
+          if (lastBreakG) bot._gambitBreak = { move: lastBreakG, rest: null };
           // PACE (the profile's pace, plans/gambit.md step 7): moves are spread out, never pulsed, whenever nothing is due -- a play is begun
           // at once only in a window (a chain falling, a slab popping) or when its line is done within a pace gap of its deadline (the break
           // under garbage: the next block or the board lost; the ready and level: the block landing; an attack: its rule's by)

@@ -81,6 +81,10 @@ assert(G.keeps(null, grid), 'no keep asks nothing');
 assert.strictEqual(G.breakBy({ us: { dies: 97, nextLands: 1 } }), null, 'a break is due before the board dies -- the engine judges it, not the next block landing or the estimate');
 assert.strictEqual(G.idleMs(24, 12), 100, 'a board lost in 24 frames plans idle for half the 12 left: 100 ms');
 assert.strictEqual(G.idleMs(0, 12), Infinity, 'nothing threatening: the decision\'s time');
+var pb0 = PA.puzzle(['000000', '000000', '000000', '000000', '112100', '345612'].join('')), idsP = [pb0.panels[2][3].id, pb0.panels[2][4].id];
+assert.deepStrictEqual(G.pairAt(pb0, idsP), [2, 3], 'a swap\'s panels found where they are');
+var pb1 = pb0.copy(); pb1.curRow = 2; pb1.curCol = 3; pb1.tryQueueSwap(2, 3); for (var fz = 0; fz < 6; fz++) { pb1.setInput(0); pb1.run(); }
+assert.strictEqual(G.pairAt(pb1, idsP), null, 'once swapped they are the other way round: not that swap again');
 var fl = G.floor({ material: '>=12' });
 assert(!fl(grid, { broke: 0, chain: 2 }), 'the floor holds an attack, garbage on the board or not');
 assert(fl(grid, { broke: 6 }), 'a break is not held to the floor');

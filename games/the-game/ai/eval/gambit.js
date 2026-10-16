@@ -76,6 +76,15 @@ function keeps(keep, grid) {
 // IDLE PLANNING WITHIN THE TIME FRAME (ms): half the time the board has before it is lost (dies, frames), less a reaction; no limit when
 // nothing threatens it
 function idleMs(dies, reaction) { return dies > 0 ? Math.max(0, (dies - reaction) * 1000 / 60 / 2) : Infinity; }
+// WHERE A SWAP'S TWO PANELS ARE NOW (ids: left, right, as they were): [row, col] while they are still side by side in that order -- a
+// swap already played has put them the other way round -- else null
+function pairAt(board, ids) {
+  for (var r = 1; r < board.panels.length; r++) for (var c = 1; c <= 5; c++) {
+    var p = board.panels[r] && board.panels[r][c], q = board.panels[r] && board.panels[r][c + 1];
+    if (p && q && p.id === ids[0] && q.id === ids[1]) return [r, c];
+  }
+  return null;
+}
 // A BREAK'S DEADLINE (plays.md): before the board dies, however soon the next block lands (that is the level's and the ready's) -- and the
 // engine is the judge of that: every line is played on it with the garbage landing, and one the board dies on is never offered. The
 // estimate of the frames left (dies) is no deadline for a break; it is what the pace hurries for
@@ -245,4 +254,4 @@ function rulesFor(profile, dir) {
   return new Rules(path.isAbsolute(g.rules) ? g.rules : path.join(dir, g.rules));
 }
 
-module.exports = { named: named, near: near, nearList: nearList, lead: lead, tier: tier, floor: floor, breakBy: breakBy, idleMs: idleMs, aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };
+module.exports = { named: named, near: near, nearList: nearList, lead: lead, tier: tier, floor: floor, breakBy: breakBy, idleMs: idleMs, pairAt: pairAt, aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };
