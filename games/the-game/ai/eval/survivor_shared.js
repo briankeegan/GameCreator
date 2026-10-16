@@ -345,6 +345,16 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
       if (breaks(kn)) return { depth: 1, moves: (function (o) { o[keep[0][0] + ',' + keep[0][1]] = true; return o; })({}), touch: true, path: kp, kept: true };
     }
   }
+  // (how near a break each line's board is, read on the board once what the line cleared has fallen: a clear under the slab lets it
+  // down onto more panels, which the board at the swap does not show yet)
+  function nearScores(ns) {
+    var clearing = [], at = [];
+    ns.forEach(function (n, q) { if (S.stepStats && S.stepStats(n).cleared > 0) { clearing.push([n, 'settle', null, 0]); at.push(q); } });
+    var settled = clearing.length ? S.advanceMany(clearing, true) : [], out = ns.map(function (n) { return nearScore(n.b.grid); });
+    at.forEach(function (q, i) { var w = settled[i]; if (w && !w.dead) out[q] = Math.max(out[q], nearScore(w.b.grid)); });
+    if (S.drop) S.drop(settled.filter(function (w) { return w && !w.dead && w._i >= 0; }));
+    return out;
+  }
   function touchBeam() {
     var tl0 = firsts.filter(function (f) { return f.n && !f.n.dead; }).map(function (f) { return { key: f.key, n: f.n, path: [f.m] }; }), tpath = null, tat = null;
     // TOUCH_BEAM first; finding nothing, wider (TOUCH_WIDER) while time is left.
@@ -352,7 +362,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
       var beam = tb ? TOUCH_WIDER[tb - 1] : TOUCH_BEAM, tl = tl0;
       for (var td = 2; td <= TOUCH_DEPTH && tl.length && !tpath && Date.now() < deadline; td++) {
         var ts = S.touchScores ? S.touchScores(tl.map(function (x) { return x.n; })) : null;
-        if (ts && opts && opts.near) ts.score = tl.map(function (x) { return nearScore(x.n.b.grid); });
+        if (ts && opts && opts.near) ts.score = nearScores(tl.map(function (x) { return x.n; }));
         tl.forEach(function (x, q) { x.s = ts ? ts.score[q] : opts && opts.near ? nearScore(x.n.b.grid) : touchScore(x.n.b.grid); x.h = ts ? ts.hash[q] : 0; });
         tl.sort(function (a, b) { return b.s - a.s; });
         // (the line nearest a break the beam has seen: TOWARD, returned when no break is found, the swaps that build toward one)
