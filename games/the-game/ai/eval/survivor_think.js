@@ -822,7 +822,7 @@ module.exports = function think(cfg) {
           if (underG) { aimsG = aimsG.map(function (a) { return Object.assign({}, a, { break: true }); }); endG = 'default'; }
           // (under garbage the break is due before the next garbage lands -- a break after it is a break of a deeper pile -- and before the
           // board would be lost: the best break that is done in time, not the soonest)
-          if (underG && FG.us.nextLands > 0 && !(byG && byG < FG.us.nextLands)) byG = FG.us.nextLands;
+          if (underG && FG.us.nextLands !== null && !(byG && byG < Math.max(1, FG.us.nextLands))) byG = Math.max(1, FG.us.nextLands);
           if (underG && FG.us.dies > 0 && !(byG && byG < FG.us.dies)) byG = FG.us.dies;
           var predsG = aimsG.map(function (a) { return function (made) { return GAMBIT.meets(a, made); }; });
           if (predsG.length) {
@@ -903,7 +903,7 @@ module.exports = function think(cfg) {
           if (waitG) { lineG = null; setupG = null; }
           var kG = lineG ? arbKey(lineG.ap.seq[0]) : setupG ? arbKey(setupG) : null, holdG = !lineG && (endG === 'hold' || waitG), prG = bot.preferRank || function () { return Infinity; };
           // GAMBIT RANKS EVERY PLAY IT FOUND, the one chosen first and the rest in the plays' order after it, so a play the survival search
-          // will not prove is followed by gambit's next one (under garbage: the soonest proven break, below): the entries' lines in the list's order, the nearest
+          // will not prove is followed by gambit's next one, never by another stage's -- each in its time frame: the entries' lines in the list's order, the nearest
           // attacks, the break line, the break search's first swaps, scramble, clear, ready, level, the setup (a hold only when it is the play
           // chosen: ranked last it would stand above every break of the survival search's own). Each first
           // swap carries the rest of its line (linesG), played on if it is the one played.
@@ -931,9 +931,7 @@ module.exports = function think(cfg) {
               if (dyingG && apG && apG.lowest) addG(apG.lowest.seq[0], apG.lowest.seq);
             } else if (apG && apG.setup && typeof readyAtG !== 'number') addG(apG.setup);
           }
-          // (under garbage, after its first play, gambit's next is the soonest break the survival search proves -- the engine's own break
-          // times (breakAt), which the rank below the first play is left to: a slower line that breaks later is a deeper pile)
-          if (GP.rankAll === false || underG) orderG = orderG.slice(0, 1);
+          if (GP.rankAll === false) orderG = orderG.slice(0, 1);
           if (orderG.length) {
             bot.preferRank = function gambitRank(c, i) {
               var r = prG.call(this, c, i), k = c.kind === 'swap' && c.move ? arbKey(c.move) : c.kind, at = orderG.indexOf(k);

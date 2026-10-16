@@ -62,6 +62,9 @@ var f = G.facts(b, [{ at: 40, height: 2 }, { at: 90, height: 12 }], false);
 assert.strictEqual(f.material, 12, 'every panel counts with no garbage: ' + f.material);
 assert.strictEqual(f.contact, null, 'no garbage, no contact');
 assert.strictEqual(f.coming, 14); assert.strictEqual(f.heavy, true); assert.strictEqual(f.nextLands, 40);
+var bq = PA.puzzle(['000000', '000000', '000000', '120000', '341200', '123412'].join('')); bq.incoming = [{ width: 6, height: 2 }]; bq.stopTime = 75;
+assert.strictEqual(G.facts(bq, [], false).nextLands, 75, 'a queued block lands when the stop time runs out');
+bq.stopTime = 0; assert.strictEqual(G.facts(bq, [], false).nextLands, 0, 'with no stop time it drops now');
 for (var c = 1; c <= 3; c++) b.panels[4][c].isGarbage = true;   // garbage across columns 1-3 in row 4: columns 1-2 are 3 high, column 3 is 2
 var f2 = G.facts(b, [], false);
 assert.strictEqual(f2.contact, 2, 'columns 1 and 2 reach the garbage, column 3 does not: ' + f2.contact);

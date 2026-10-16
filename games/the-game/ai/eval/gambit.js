@@ -41,7 +41,8 @@ function facts(board, arrivals, topped) {
   }
   var stop = (board.stopTime || 0) + (board.preStopTime || 0), coming = 0, next = null;
   (arrivals || []).forEach(function (a) { coming += a.height || 0; if (next === null || a.at < next) next = a.at; });
-  (board.incoming || []).slice(0, 1).forEach(function (g) { coming += g.height || 0; if (next === null) next = 0; });
+  // (a block queued for the board drops once the stop time runs out: its landing is the stop time left)
+  (board.incoming || []).slice(0, 1).forEach(function (g) { coming += g.height || 0; if (next === null || stop < next) next = stop; });
   // (dies: the frames until the board is lost if nothing is done -- the stop time, the rise to the top row unless already topped, then
   // the health it drains there)
   var dies = topped ? stop + (board.health || 0) : CK.framesToTop(board) + (board.health || 0);
