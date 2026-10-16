@@ -101,9 +101,11 @@ function field(F, name) { var i = name.indexOf('.'); var side = F[name.slice(0, 
 function holds(F, when) { return Object.keys(when || {}).every(function (k) { return test(field(F, k), when[k]); }); }
 
 // What a line makes ({ combo, combos, chain, broke, cells }) against an aim.
+// An aim that names a combo and no chain is a combo of one clear: a chain whose largest match is that size does not meet it.
 function meets(aim, made) {
   if (!aim) return false;
   if (aim.any && !aim.any.some(function (a) { return meets(a, made); })) return false;
+  if (aim.combo !== undefined && aim.chain === undefined && (made.chain || 0) > 1) return false;
   if (aim.combo !== undefined && !test(made.combo, aim.combo)) return false;
   if (aim.chain !== undefined && !test(made.chain, aim.chain)) return false;
   if (aim.send !== undefined && !test(made.cells, aim.send)) return false;
@@ -129,6 +131,7 @@ function near(aim, made) {
   if (aim.break === true && !(made.broke > 0)) return 0;
   if (aim.break === false && made.broke > 0) return 0;
   if (aim.any) return Math.max.apply(null, aim.any.map(function (a) { return near(a, made); }).concat([0]));
+  if (aim.combo !== undefined && aim.chain === undefined && (made.chain || 0) > 1) return 0;
   var ks = ['chain', 'combo'].filter(function (k) { return aim[k] !== undefined; });
   if (!ks.length) return 0;
   return ks.reduce(function (s, k) { return s + nearKey(made[k] || 0, aim[k], FROM[k]); }, 0) / ks.length;
@@ -152,14 +155,14 @@ function lead(aims, made, under) { return nearList(aims, made) + (under && made.
 //   3 BEST THAT FITS: garbage sent (enemy topped: combos first, else chains), stop time -- never making a must-do miss its deadline: under
 //     garbage a clear that breaks nothing is only this on a topped board, where the stop time it buys is what keeps the board alive
 //   4 NOTHING FITS: ready, toward a break, level, setup
-//   6 CLEAR and SCRAMBLE, and any clear that breaks nothing, sends nothing and buys nothing: only when there is nothing else (hold is 5)
+//   6 CLEAR, and any clear that breaks nothing, sends nothing and buys nothing: only when there is nothing else (hold is 5)
 function tier(play, x, aim, under, enemyOut, topped) {
   x = x || {};
   var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0, cells = x.cells || 0, stop = x.earned || 0;
-  var clears = combo >= 3 || chain >= 2 || broke > 0 || cells > 0 || play === 'clear' || play === 'scramble';
+  var clears = combo >= 3 || chain >= 2 || broke > 0 || cells > 0 || play === 'clear';
   var buys = combo >= 4 || chain >= 2, rate = broke / Math.max(1, x.done || 1);
   if (under && broke > 0) return { tier: 1, sub: [x.floor === false ? 1 : 0, -rate, buys ? 0 : 1, -broke] };
-  if (play === 'clear' || play === 'scramble') return { tier: 6, sub: [-stop] };   // (only when there is nothing else)
+  if (play === 'clear') return { tier: 6, sub: [-stop] };   // (only when there is nothing else)
   if (aim >= 0 && !under) return { tier: 2, sub: [aim, x.done || 0] };
   if (clears && (buys || cells > 0) && (!under || (topped && buys))) return { tier: 3, sub: [-cells, enemyOut ? -combo : -chain, enemyOut ? -chain : -combo, -stop, -(x.near || 0)] };
   if (!clears) return { tier: 4, sub: [{ ready: 0, toward: 1, level: 2, setup: 3 }[play] || 4] };

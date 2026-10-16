@@ -118,7 +118,7 @@ assert.strictEqual(G.tier('lineup', { chain: 6, combo: 3, broke: 0, cells: 30 },
 assert.strictEqual(G.tier('lineup', { chain: 2, combo: 3, broke: 0, cells: 0 }, -1, true, false, true).tier, 3, 'one that buys stop time and sends nothing too');
 assert.strictEqual(G.tier('lineup', { chain: 6, combo: 3, broke: 0, cells: 30 }, -1, true, false, false).tier, 6, 'under garbage, not topped, a chain that breaks nothing would make the break wait: below hold');
 assert.strictEqual(G.tier('clear', { chain: 1, combo: 3 }, -1, true, false).tier, 6, 'a plain clear is below hold');
-assert.strictEqual(G.tier('scramble', { chain: 5, combo: 3, earned: 120 }, -1, true, false).tier, 6, 'a scramble is below hold, whatever it buys');
+assert.strictEqual(G.tier('clear', { chain: 5, combo: 3, earned: 120 }, -1, true, false).tier, 6, 'a clear is below hold, whatever it buys');
 assert.strictEqual(G.tier('entry', { chain: 4, cells: 18 }, 0, false, false).tier, 2, 'no garbage: the aim');
 assert.strictEqual(G.tier('setup', {}, -1, false, false).tier, 4, 'a setup: nothing fits');
 
@@ -128,6 +128,12 @@ var FIN = [{ combo: '>=8' }, { combo: '==5' }, { combo: '==6' }, { combo: '==7' 
 assert(G.fits(FIN, { combo: 6, chain: 1 }), 'finish: a combo of 6 fits');
 assert(G.fits(FIN, { combo: 3, chain: 3 }), 'finish: a chain of 3 fits');
 assert(!G.fits(FIN, { combo: 3, chain: 5 }), 'finish: a chain of 5 does not');
+assert(!G.fits(FIN, { combo: 5, chain: 4 }), 'finish: a chain of 4 whose largest match is 5 is no combo of 5');
+assert(!G.fits(FIN, { combo: 9, chain: 6 }), 'finish: nor is a chain of 6 with a match of 9 a combo of 8 or more');
+assert(G.fits(FIN, { combo: 5, chain: 3 }), 'finish: a chain of 3 fits, whatever its matches');
+assert(!G.meets({ combo: '==5' }, { combo: 5, chain: 2 }), 'a combo aim is met by one clear only');
+assert(G.meets({ combo: '==5', chain: '==2' }, { combo: 5, chain: 2 }), 'an aim naming both is met by both');
+assert.strictEqual(G.near({ combo: '>=8' }, { combo: 9, chain: 4 }), 0, 'a chain is near no combo aim');
 assert(!G.fits([{ chain: '==4' }], { combo: 6, chain: 1 }), 'pressure: a combo of 6 does not');
 assert(G.fits([{ chain: '==4' }], { combo: 3, chain: 1, broke: 6 }), 'pressure: a plain three that breaks garbage does');
 assert(!G.fits([{ chain: '==4' }], { combo: 3, chain: 1, broke: 0 }), 'pressure: a plain three that breaks nothing does not');
