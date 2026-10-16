@@ -253,8 +253,8 @@ module.exports = function (opts) {
         // (o.aims: the cascade that ends making the most for each aim -- { combo, chain, broke, cells added } -- is kept per aim)
         if (xAims) {
           var madeX = { combo: g.combo, chain: g.chain, broke: g.broke, cells: g.cells - base.cells };
-          if (o.near && g.kept) { var xn = o.near(madeX); if (xn > 0 && (!xNear || xn > xNear.near || (xn === xNear.near && g.cells > xNear.cells))) xNear = { near: xn, cells: g.cells, chain: g.chain, combo: g.combo, seq: k.seq, base: base.cells, aimIndex: -1 }; }
-          for (var xa = 0; xa < xAims.length; xa++) if (g.kept && xAims[xa] && xAims[xa](madeX) && (!xPer[xa] || g.cells > xPer[xa].cells)) xPer[xa] = { cells: g.cells, chain: g.chain, combo: g.combo, seq: k.seq, base: base.cells, aimIndex: xa };
+          if (o.near && g.kept) { var xn = o.near(madeX); if (xn > 0 && (!xNear || xn > xNear.near || (xn === xNear.near && g.cells > xNear.cells))) xNear = { near: xn, cells: g.cells, chain: g.chain, combo: g.combo, broke: g.broke, seq: k.seq, base: base.cells, aimIndex: -1 }; }
+          for (var xa = 0; xa < xAims.length; xa++) if (g.kept && xAims[xa] && xAims[xa](madeX) && (!xPer[xa] || g.cells > xPer[xa].cells)) xPer[xa] = { cells: g.cells, chain: g.chain, combo: g.combo, broke: g.broke, seq: k.seq, base: base.cells, aimIndex: xa };
         } else if (g.cells > best.cells) best = { cells: g.cells, chain: g.chain, combo: g.combo, seq: k.seq, base: base.cells };
         next.push(k);
       });
