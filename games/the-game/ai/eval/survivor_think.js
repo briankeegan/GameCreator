@@ -867,14 +867,17 @@ module.exports = function think(cfg) {
             //   nothing on its way: SETUP toward the list
             //   and only with none of those the default's own move
             var nx = exG && exG.nearest, np = apG && apG.nearest && apG.nearest.seq.length ? apG.nearest : null;
-            var dyingG = !!(FG.us.topped || CK.toppedOrNearly(board, m.topped));
+            // (SCRAMBLE and CLEAR are for a board being lost: topped out, its health draining -- not one merely near the top)
+            var dyingG = !!(FG.us.topped && !(FG.us.stop > 0));
             var nearG = nx || np ? (nx && (!np || nx.near > np.near) ? { ap: nx, aimIndex: -1, near: nx.near, extend: true } : { ap: np, aimIndex: -1, near: np.near }) : null;
             var brG = underG && br && br.depth ? (br.path && br.path.length ? br.path[0] : Object.keys(br.moves || {}).map(function (k) { return k.split(',').map(Number); })[0]) : null;
             // (under garbage, no entry: the break comes first -- the most garbage broken in time, a three if nothing better -- then the
             // nearest attack)
             if (lineG) {}
             else if (underG && apG && apG.quick && apG.quick.seq.length) { lineG = { ap: apG.quick, aimIndex: -1, quick: true }; playG = 'break line'; }
-            else if (brG) { setupG = brG; playG = 'break search'; }
+            // (the break search's line is played to its end: its first swap alone, decision after decision, begins a different line each
+            // time and finishes none)
+            else if (brG) { if (br.path && br.path.length) lineG = { ap: { seq: br.path, done: null }, aimIndex: -1 }; else setupG = brG; playG = 'break search'; }
             else if (nearG) lineG = nearG;
             else if (underG) {
               if (dyingG && apG && apG.stopBest) { lineG = { ap: apG.stopBest, aimIndex: -1 }; playG = 'scramble'; }
