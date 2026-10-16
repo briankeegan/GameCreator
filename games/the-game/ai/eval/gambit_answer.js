@@ -75,16 +75,7 @@ function lives(c, D) {
   order.forEach(function (k) { if (k in verdictOf || breaksOf[k]) { searched++; if (lived(k)) live++; } });
   if (V) {
     // (Gambit's, in its order: the first that lives -- its place in the order first, not how far it is proven)
-    // (a move lives only as long as the standing plan's best line, or longer, on the engine with everything shown landing: one whose line
-    // loses the board sooner than the plan's is passed over while the plan has time to play)
-    var SP0 = c.plan && c.plan.best, seqOf = {};
-    (D.cands || []).forEach(function (k) { var key = k.seq[0][0] + ',' + k.seq[0][1]; if (!(key in seqOf)) seqOf[key] = k.seq; });
-    var outlived = function (k) {
-      if (!SP0 || SP0.dies === undefined || k === 'raise') return false;
-      var dk = k === 'hold' ? c.plan.alone : seqOf[k] ? PLAN.diesOf(c, D.R, seqOf[k]) : null;
-      return dk !== null && dk !== undefined && dk < SP0.dies;
-    };
-    order.forEach(function (k) { if (!d && lived(k) && !outlived(k)) { d = asMove(k); verdict = verdictOf[k] || 'judged'; why = 'gambit'; } });
+    order.forEach(function (k) { if (!d && lived(k)) { d = asMove(k); verdict = verdictOf[k] || 'judged'; why = 'gambit'; } });
     // (none of Gambit's moves living: the standing plan's first swap, when its line keeps the board alive longer than holding)
     var SP = c.plan && c.plan.best;
     if (!d && SP && SP.dies > c.plan.alone) { d = asMove(SP.seq[0][0] + ',' + SP.seq[0][1]); verdict = 'plan'; why = 'plan'; }
@@ -102,7 +93,7 @@ function lives(c, D) {
   if (!d) { d = own && own.kind === 'raise' && !D.R.up ? { kind: 'hold' } : own; verdict = V ? verdictOf[keyOf(d)] || 'not offered' : 'unsearched'; }
   var cand = (bot._allCands || []).filter(function (k) { return keyOf(k) === keyOf(d); })[0] || candOf[keyOf(d)] || null;
   // (live: of Gambit's moves, how many the survival search found live / searched / Gambit ranked; why: how the move was chosen)
-  return { d: d, verdict: verdict, holdLives: holdLives, gambits: order.indexOf(keyOf(d)) >= 0 || why === 'plan', cand: cand, live: live + '/' + searched + '/' + order.length, why: why };
+  return { d: d, verdict: verdict, holdLives: holdLives, gambits: order.indexOf(keyOf(d)) >= 0, cand: cand, live: live + '/' + searched + '/' + order.length, why: why };
 }
 
 // THE RAISE HELD DOWN: the engine raises a displacement step a frame while the button is held, row after row. A raise answer presses

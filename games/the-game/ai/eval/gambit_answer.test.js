@@ -20,10 +20,9 @@ modes.forEach(function (mode) {
     assert.ok(a.diag && a.diag.gambit && a.diag.gambit.name, mode + ': the decision is Gambit\'s');
     // (the opening: a low stack with no garbage yet is raised)
     if (seed === 1) assert.strictEqual(a.kind, 'raise', mode + ': the opening raise is played (' + a.kind + ' ' + JSON.stringify(a.move) + ')');
-    // (the choice is Gambit's: when any of its moves lives, the one played is Gambit's or its standing plan's -- not the survival search's
-    // own ranking)
+    // (the choice is Gambit's: when any of its moves lives, the one played is Gambit's -- not the survival search's own ranking)
     var liveN = +String(a.diag.gambit.live || '0').split('/')[0];
-    if (liveN > 0) assert.ok(a.src === 'gambit' && (a.diag.gambit.why === 'gambit' || a.diag.gambit.why === 'plan'), mode + ' seed ' + seed + ': ' + liveN + ' of Gambit\'s moves live, but ' + a.src + ' (' + a.diag.gambit.why + ') chose');
+    if (liveN > 0) assert.ok(a.src === 'gambit' && a.diag.gambit.why === 'gambit', mode + ' seed ' + seed + ': ' + liveN + ' of Gambit\'s moves live, but ' + a.src + ' (' + a.diag.gambit.why + ') chose');
     answered++; if (a.src === 'gambit') gambit++;
     mind.reset();
   }
