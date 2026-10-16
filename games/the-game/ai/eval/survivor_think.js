@@ -935,18 +935,19 @@ module.exports = function think(cfg) {
             if (apG && apG.setup && typeof readyAtG !== 'number') candG('setup', [apG.setup], {}, -1);
             if (apG && apG.stopBest) candG('scramble', apG.stopBest.seq, apG.stopBest, -1);
             if (apG && apG.lowest) candG('clear', apG.lowest.seq, apG.lowest, -1);
-            // (A LINE BEGUN IS PLAYED ON: the steps of the last decision's line the frame loop has not pressed yet (m.line) are played on the
-            // engine from this board; while they are legal, the board lives and the last still makes what the line was begun for, in time,
-            // the line is carried on -- first of its tier -- rather than a different line begun each decision and none finished)
+            // (A LINE BEGUN IS PLAYED ON, each step at its own time: a planned line presses each step once the board has settled from the
+            // last, as the planner played it. The rest of the last decision's line is played on the engine from this board, the board let
+            // settle first; while its steps are legal, the board lives and the last still makes what the line was begun for, in time, it
+            // is carried on -- first of its tier: its next step pressed once the board has settled, held for until then -- rather than a
+            // different line begun each decision and none finished)
             var CG = bot._gambitCarry;
-            if (CG && m.line && m.line.length && m.line.length < CG.seq.length && attacker) {
-              var tailG = CG.seq.slice(CG.seq.length - m.line.length), sameG = tailG.every(function (mv, i) { return mv[0] === m.line[i][0] && mv[1] === m.line[i][1]; });
-              var rxG = sameG ? attacker.replay(board, m.hold, m.line, arrivals) : null;
+            if (CG && CG.rest.length && attacker) {
+              var rxG = attacker.replay(board, m.hold, CG.rest, arrivals, { settleFirst: true });
               if (rxG && (!CG.broke || rxG.broke > 0) && (CG.aim ? GAMBIT.meets(CG.aim, rxG) : (rxG.chain >= 2 || rxG.combo >= 4 || rxG.broke > 0))) {
                 var aiG = -1; if (CG.aim) aimsG.forEach(function (a, i) { if (aiG < 0 && JSON.stringify(a) === JSON.stringify(CG.aim)) aiG = i; });
                 var nG = candsG.length;
-                candG('carry', m.line.map(function (mv) { return mv.slice(); }), rxG, aiG);
-                if (candsG.length > nG) candsG[nG].sub = [-Infinity].concat(candsG[nG].sub);
+                candG(rxG.wait > 1 ? 'carry wait' : 'carry', CG.rest.map(function (mv) { return mv.slice(); }), rxG, aiG);
+                if (candsG.length > nG) { candsG[nG].sub = [-Infinity].concat(candsG[nG].sub); candsG[nG].wait = rxG.wait > 1; }
               }
             }
           }
@@ -955,16 +956,20 @@ module.exports = function think(cfg) {
           // (the raise due but the board busy -- a clear or a fall still going, which locks the rise: nothing new is begun, so the board
           // comes to rest and the next decision raises; a chain already falling is still run on)
           var waitG = lowG && !upG && !(topG && topG.extend);
-          var lineG = upG || waitG || !topG ? null : topG, holdG = !upG && (waitG || !topG || topG.tier >= 6);
+          var lineG = upG || waitG || !topG ? null : topG, holdG = !upG && (waitG || !topG || topG.tier >= 6 || !!topG.wait);
           if (lineG) playG = lineG.play; else if (upG) playG = 'raise'; else if (holdG) playG = 'hold';
           // (the line begun, to be carried on: a planned line of more than one swap that makes what it is played for)
-          var carryG = lineG && lineG.seq.length > 1 && lineG.tier <= 3 && ['entry', 'nearest', 'break line', 'carry'].indexOf(lineG.play) >= 0;
-          bot._gambitCarry = carryG ? { seq: lineG.seq.map(function (mv) { return mv.slice(); }), aim: lineG.aim >= 0 ? aimsG[lineG.aim] : null, broke: (lineG.ap.broke || 0) > 0 } : null;
+          // (the planner's lines press each step once the board has settled: the frame loop is not handed the rest to press after the
+          // first, the next decision carries it on)
+          var SETTLED = ['entry', 'nearest', 'break line', 'carry', 'carry wait', 'clear', 'scramble'];
+          var carryG = lineG && !lineG.wait && lineG.seq.length > 1 && lineG.tier <= 3 && SETTLED.indexOf(lineG.play) >= 0;
+          if (lineG && lineG.wait) { /* the carried line is held for: it stays as it is */ }
+          else bot._gambitCarry = carryG ? { rest: lineG.seq.slice(1).map(function (mv) { return mv.slice(); }), aim: lineG.aim >= 0 ? aimsG[lineG.aim] : null, broke: (lineG.ap.broke || 0) > 0 } : null;
           var prG = bot.preferRank || function () { return Infinity; };
-          var addG = function (mv, seq) { var k = mv === 'raise' || mv === 'hold' ? mv : arbKey(mv); if (orderG.indexOf(k) < 0) { orderG.push(k); if (seq && seq.length > 1) linesG[k] = seq.slice(1); } };
+          var addG = function (mv, seq, settled) { var k = mv === 'raise' || mv === 'hold' ? mv : arbKey(mv); if (orderG.indexOf(k) < 0) { orderG.push(k); if (seq && seq.length > 1 && !settled) linesG[k] = seq.slice(1); } };
           if (upG) addG('raise');
-          if (waitG) addG('hold');
-          candsG.forEach(function (c) { if (c.tier >= 6 && orderG.indexOf('hold') < 0 && !upG) addG('hold'); addG(c.seq[0], c.seq); });
+          if (waitG || (lineG && lineG.wait)) addG('hold');
+          candsG.forEach(function (c) { if (c.tier >= 6 && orderG.indexOf('hold') < 0 && !upG) addG('hold'); if (!c.wait) addG(c.seq[0], c.seq, SETTLED.indexOf(c.play) >= 0); });
           if (!upG && orderG.indexOf('hold') < 0) addG('hold');
           var kG = orderG[0] || null;
           if (GP.rankAll === false) orderG = orderG.slice(0, 1);
@@ -976,7 +981,7 @@ module.exports = function think(cfg) {
           }
           bot._gambitLines = linesG;
           // (a must-do break -- garbage on the board, the play chosen breaks it -- is played, whatever the survival search's verdict)
-          var breakPlayG = !!(lineG && lineG.tier === 1);
+          var breakPlayG = !!(lineG && lineG.tier === 1 && !lineG.wait);
           bot._gambitBreak = breakPlayG && orderG[0] && orderG[0] !== 'raise' && orderG[0] !== 'hold' ? { move: orderG[0].split(',').map(Number), rest: linesG[orderG[0]] || null } : null;
           // PACE (the profile's pace, plans/gambit.md step 7): moves are spread out, never pulsed, whenever nothing is due -- a play is begun
           // at once only in a window (a chain falling, a slab popping) or when its line is done within a pace gap of its deadline (the break

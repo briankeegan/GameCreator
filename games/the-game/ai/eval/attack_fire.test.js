@@ -6,7 +6,7 @@ var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
 var ATTACK = require('./survivor_attack.js');
 var at = ATTACK({ reaction: 6, swapGap: 2, cursorMoveFrames: 4 });
 var chain2 = function (made) { return made.chain >= 2; };
-var found = 0, late = 0;
+var found = 0, late = 0, carried = 0, carriedSame = 0;
 for (var seed = 1; seed <= 40 && found < 3; seed++) {
   var b = PA.game({ level: 10, seed: seed, countdown: false });
   for (var f = 0; f < 200; f++) b.run();
@@ -27,9 +27,22 @@ for (var seed = 1; seed <= 40 && found < 3; seed++) {
   var rp = at.replay(b, { left: 0, started: false }, pa.seq, []);
   assert.ok(rp && rp.chain === pa.chain && rp.combo === pa.combo, 'seed ' + seed + ': the line replayed makes chain ' + pa.chain + ' combo ' + pa.combo + ', got ' + JSON.stringify(rp));
   assert.deepStrictEqual(rp.ats, pa.ats, 'each step at the same frame');
+  // (the rest of a line, carried on: its first step pressed, the board still settling -- the rest waits for the settle, each step at its
+  // own time, and makes what the line makes)
+  if (pa.seq.length > 1) {
+    var b1 = b.copy(); b1.curRow = pa.seq[0][0]; b1.curCol = pa.seq[0][1];
+    if (b1.tryQueueSwap(pa.seq[0][0], pa.seq[0][1])) {
+      for (var w = 0; w < 4; w++) { b1.setInput(0); b1.run(); }
+      var rest = at.replay(b1, { left: 0, started: false }, pa.seq.slice(1), [], { settleFirst: true });
+      assert.ok(rest && rest.wait > 0, 'seed ' + seed + ': the rest waits for the board to settle');
+      carried++; if (rest.chain === pa.chain) carriedSame++;
+    }
+  }
 }
 assert.ok(found >= 3, 'chain lines found on real boards: ' + found);
 assert.ok(late >= 1, 'a line whose cascade settles past the deadline was kept');
+assert.ok(carried === 0 || carriedSame >= 1, 'a line carried on makes its chain: ' + carriedSame + ' of ' + carried);
+console.log('carried on: ' + carriedSame + ' of ' + carried + ' make the chain they were planned to');
 // A LINE THAT IS TO CLEAR NOTHING, played to the board's settle: its first step that clears panels and breaks nothing -- a clear made by
 // a panel falling into a match too
 var H = { left: 0, started: false };

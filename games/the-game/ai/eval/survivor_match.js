@@ -187,14 +187,6 @@ Match.prototype.predictJS = function (board, at, hold, from) {
   }
   return { board: st, hold: h, pending: arrivals };
 };
-// THE LINE STILL TO PLAY (the swaps of the line behind the last move the follower has not pressed, up to its first step that is no swap):
-// sent with every question, so the mind knows how far along the line it began the board is
-function lineLeft(line) {
-  if (!line || !line.steps) return null;
-  var out = [];
-  for (var i = 0; i < line.steps.length && Array.isArray(line.steps[i]); i++) out.push(line.steps[i].slice());
-  return out.length ? out : null;
-}
 Match.prototype.ask = function (at, board, hold, pend) {
   var L = this.L;
   var self = this, sw0 = board.stopWatch;
@@ -218,7 +210,7 @@ Match.prototype.ask = function (at, board, hold, pend) {
   var AS = this.L.profile && this.L.profile.attack, strictB = !!(AS && AS.strictSwapBack) && !heavyHit(board, pend || this.arrivals, AS), idsNow = panelIds(board);
   var blocked = this.swapHistory.filter(function (e) { return !(changedSince(e, idsNow, strictB) && !e.backs); });
   L.post({ id: L.pending.id, epoch: this.epoch, at: at, lead: at - this.now, ms: L.sync ? 0 : (at - this.now) * this.msPerFrame, posted: Date.now(), allowance: this.allowanceAt(at), backs: blocked.map(function (e) { return e.ids; }), opp: this.opp || null, topped: !!this.toppedNow, realTop: this.realTop, realFtt: this.realFtt,
-                    packed: packed, hold: hold, arrivals: arrivals, acted: this.acted, line: lineLeft(this.line) });
+                    packed: packed, hold: hold, arrivals: arrivals, acted: this.acted });
   this.stats.decisions++;
 };
 // The answer: its keys go in the plan, and the next decision is due on the
