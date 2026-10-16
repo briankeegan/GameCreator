@@ -80,16 +80,13 @@ function lives(c, D) {
 }
 
 // THE RAISE HELD DOWN: the engine raises a displacement step a frame while the button is held, row after row. A raise answer presses
-// the steps the row has left and leaves the button held for the rows on to the rule's `to` -- all of it up to the garbage on its way
-// landing, less a lead to act in. Every decision while it is held sees the board as it is and decides again: it keeps the raise going
-// or lets it go for the plan. { now, after } in frames.
-var RAISE_LEAD = 10, ROW_STEPS = 16;
+// the steps the row has left and leaves the button held for the rows on to the rule's `to`; the frame loop lets go when the stack tops
+// out. Every decision while it is held sees the board as it is and decides again: it keeps the raise going or lets it go for the plan.
+// { now, after } in frames.
+var ROW_STEPS = 16;
 function raiseHeld(c, to) {
-  var land = Infinity;
-  c.arrivals.forEach(function (a) { if (a.at < land) land = a.at; });
-  var now = Math.max(1, (c.board.displacement || ROW_STEPS) - 1), rows = Math.max(0, (to || 0) - CK.fullTop(c.board) - 1), after = rows * ROW_STEPS;
-  if (land < Infinity) { now = Math.max(0, Math.min(now, land - RAISE_LEAD)); after = Math.max(0, Math.min(after, land - RAISE_LEAD - now)); }
-  return { now: now, after: after };
+  var now = Math.max(1, (c.board.displacement || ROW_STEPS) - 1), rows = Math.max(0, (to || 0) - CK.fullTop(c.board) - 1);
+  return { now: now, after: rows * ROW_STEPS };
 }
 
 // THE CLAIM (survivor_audit.js): what the line Gambit chose said it would make, when the move played is its first swap

@@ -578,8 +578,11 @@ Match.prototype.frame = function (truth, arrivals, fresh) {
   else { var id = L.hands.idle(truth, this.hold, arrivals); bits = id.bits; this.hold = id.hold; this.stats.idle++; }
   // A RAISE HELD DOWN IS LET GO OF AT ONCE when the stack is topped out or garbage is landing: a manual raise on a topped-out stack is a
   // loss on the spot. The plan behind it is void and the next decision is asked now.
-  if ((bits & IN.raise) && L.profile && ((L.profile.attack && L.profile.attack.holdRaise) || L.profile.gambit)) {
-    var unsafe = (typeof truth.isToppedOut === 'function' && truth.isToppedOut()) || truth.wasToppedOut || (truth.shakeTime > 0) || (typeof truth.hasFallingGarbage === 'function' && truth.hasFallingGarbage());
+  // (Gambit: let go only when the stack is topped out -- a raise there is the loss)
+  var gambitR = !!(L.profile && L.profile.gambit);
+  if ((bits & IN.raise) && L.profile && ((L.profile.attack && L.profile.attack.holdRaise) || gambitR)) {
+    var topped = (typeof truth.isToppedOut === 'function' && truth.isToppedOut()) || truth.wasToppedOut;
+    var unsafe = topped || (!gambitR && ((truth.shakeTime > 0) || (typeof truth.hasFallingGarbage === 'function' && truth.hasFallingGarbage())));
     if (unsafe) {
       bits &= ~IN.raise; this.hold = { left: 0, started: false };
       if (!(now < (this.raiseCut || 0))) {
