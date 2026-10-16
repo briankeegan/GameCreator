@@ -875,8 +875,7 @@ module.exports = function think(cfg) {
             // (SCRAMBLE and CLEAR are for a board being lost: topped out, its health draining -- not one merely near the top)
             var dyingG = !!(FG.us.topped && !(FG.us.stop > 0)), toppingG = dyingG || CK.toppedOrNearly(board, m.topped);
             // (under garbage the nearest attack must break it: a line-up or extension that only chains is no break)
-            var nxChain = underG && nx && !(nx.broke > 0) ? nx : null;   // (kept for last: a line-up that only chains, played but never forced)
-            if (nxChain) nx = null;
+            if (underG && nx && !(nx.broke > 0)) nx = null;   // (a line-up that only chains spends panels under garbage without breaking it: no play)
             var nearG = nx || np ? (nx && (!np || nx.near > np.near) ? { ap: nx, aimIndex: -1, near: nx.near, extend: true } : { ap: np, aimIndex: -1, near: np.near }) : null;
             var brG = underG && br && br.depth ? (br.path && br.path.length ? br.path[0] : Object.keys(br.moves || {}).map(function (k) { return k.split(',').map(Number); })[0]) : null;
             // (under garbage, no entry: the break comes first -- the most garbage broken in time, a three if nothing better -- then the
@@ -897,9 +896,10 @@ module.exports = function think(cfg) {
               if (br && br.toward && br.toward.length) { lineG = { ap: { seq: br.toward, done: null }, aimIndex: -1 }; playG = 'break toward'; }
               else if (nearG) { lineG = nearG; playG = 'nearest break'; }
               else if (lvU) { setupG = lvU.move; playG = 'level'; }
-              else if (nxChain) { lineG = { ap: nxChain, aimIndex: -1, near: nxChain.near, extend: true }; playG = 'lineup chain'; }
               else if (dyingG && apG && apG.stopBest) { lineG = { ap: apG.stopBest, aimIndex: -1 }; playG = 'scramble'; }
               else if (toppingG && apG && apG.lowest) { lineG = { ap: apG.lowest, aimIndex: -1 }; playG = 'clear'; }
+              // (nothing at all to do under the garbage: HOLD -- the panels are what the next break is made of)
+              else { endG = 'hold'; playG = 'hold'; }
             }
             else if (readyAtG !== null) {
               var rdG = arrivals.length && attacker ? attacker.readyFor(board, m.hold, arrivals, { ms: Math.max(20, Math.min(60, leftG())) }) : null;
