@@ -853,9 +853,10 @@ module.exports = function think(cfg) {
             // board settles: every line kept must leave its break)
             var readyAtG = null;
             if (!underG) { arrivals.forEach(function (a) { if (readyAtG === null || a.at < readyAtG) readyAtG = a.at; }); if (readyAtG === null && (board.incoming || []).length) readyAtG = 0; }
-            // (under garbage every line that breaks it is near: breaking comes first, so the search grows the lines that break, a three
-            // included, whatever the list asks -- the nearest of them to the list first)
-            var nearG0 = function (made) { return GAMBIT.nearList(aimsG, made) + (underG && made.broke > 0 ? 0.5 : 0); };
+            // (the search is led in the pick's order, plans/gambit.md section 5: under garbage the must-do first -- a break that buys stop
+            // time (a combo or chain break) over a plain break, then the most garbage broken -- and the list only between equal breaks; with
+            // no garbage, the list)
+            var nearG0 = function (made) { return GAMBIT.lead(aimsG, made, underG); };
             // (idle time is planning time: after a decision that held or had nothing to play, the planner has all the time the decision
             // has, not its usual share -- the big chain is planned for, not waited for)
             var msG = bot._gambitIdle ? leftG() : Math.min(GP.ms || 80, leftG()) - (popG && exG ? exG.ms : 0);

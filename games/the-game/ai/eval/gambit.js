@@ -129,6 +129,14 @@ function nearList(aims, made) {
   for (var i = 0; i < aims.length; i++) { s += Math.round(near(aims[i], made) * 100) * w; w /= 101; }
   return s;
 }
+// What leads the search, in the pick's order (plans/gambit.md section 5): under garbage the must-do first -- a break that buys stop
+// time (a combo of 4+ or a chain) over a plain break, then the most garbage broken -- and the list only between equal breaks; a line
+// that breaks nothing is below every break. With no garbage, the list.
+function lead(aims, made, under) {
+  var l = nearList(aims, made);
+  if (!under || !(made.broke > 0)) return l;
+  return ((made.combo >= 4 || made.chain >= 2) ? 2e6 : 1e6) + Math.min(made.broke, 999) * 1e3 + l;
+}
 // A rule's priority list: `aims` as written, or aim then else. Entries are aims, or "default" / "hold", which end the list.
 function aimsOf(rule) {
   if (Array.isArray(rule.aims)) return rule.aims;
@@ -202,4 +210,4 @@ function rulesFor(profile, dir) {
   return new Rules(path.isAbsolute(g.rules) ? g.rules : path.join(dir, g.rules));
 }
 
-module.exports = { named: named, near: near, nearList: nearList, aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };
+module.exports = { named: named, near: near, nearList: nearList, lead: lead, aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };
