@@ -429,7 +429,7 @@ module.exports = function (opts) {
   // has settled from the last (a planned line, carried on a decision at a time); else every step at once, one after the other, as the
   // frame loop presses the rest of a line, the board then let settle. What it makes is counted over every step and the settle after:
   // the largest match, the longest chain, the garbage broken -- beyond what the board left alone makes (a chain already falling is the
-  // line's only when the line adds a link to it).
+  // line's only when the line adds a link to it; a slab already popping converts its panels whatever is pressed).
   // { made: { combo, chain, broke }, cut: the first step after which ok(made so far) is false (seq.length when none is), dead: the board
   // lost on the way, done: frames until it has settled }. A step not legal ends the judging there, as a board lost does: whether the
   // line lives is the survival search's question.
@@ -438,10 +438,11 @@ module.exports = function (opts) {
     var s = search();
     s.reset();
     var root = s.root(board.copy(), hold, arrivals || [], false), n = root, made = [], cut = seq.length, dead = false, done = 0;
-    var baseOut = s.advanceMany([[root, 'settle', null, 0]], true)[0], baseChain = 0, baseCombo = 0;
-    if (baseOut && !baseOut.dead) { var bs = s.stepStats(baseOut); if (bs.cleared > 0) { baseChain = sent(bs).chain; bs.comboSizes.forEach(function (z) { if (z > baseCombo) baseCombo = z; }); } made.push(baseOut); }
+    var baseOut = s.advanceMany([[root, 'settle', null, 0]], true)[0], baseChain = 0, baseCombo = 0, baseBroke = 0;
+    if (baseOut && !baseOut.dead) { var bs = s.stepStats(baseOut); baseBroke = bs.broke || 0; if (bs.cleared > 0) { baseChain = sent(bs).chain; bs.comboSizes.forEach(function (z) { if (z > baseCombo) baseCombo = z; }); } made.push(baseOut); }
     var combo = 0, chain = 0, broke = 0;
-    var sofar = function () { return { combo: combo > baseCombo ? combo : 0, chain: chain > baseChain ? chain : 0, broke: broke }; };
+    // (the garbage the line breaks is what it breaks beyond the board left alone: a slab popping converts its panels whatever is pressed)
+    var sofar = function () { return { combo: combo > baseCombo ? combo : 0, chain: chain > baseChain ? chain : 0, broke: Math.max(0, broke - baseBroke) }; };
     var count = function (out) {
       var st = s.stepStats(out), g = sent(st);
       st.comboSizes.forEach(function (z) { if (z > combo) combo = z; });

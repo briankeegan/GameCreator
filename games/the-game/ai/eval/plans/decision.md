@@ -22,7 +22,8 @@ in step 4, or the judge answers it in step 3.
 3. **Judge.** One function for every line (`judge`): the line played on the engine, each step at the frame it is pressed -- the walk
    to it, the wait for the board -- as the game will play it. What it gives back:
    - what it makes: the largest match, the longest chain, the garbage it breaks -- every step's clears, the chain broken garbage sets
-     off, a link added to a chain already falling;
+     off, a link added to a chain already falling; all of it beyond what the board does left alone (a slab already popping converts its
+     panels whatever is pressed). Every candidate is ranked on this, not on what the search that found it counted;
    - whether the board lives (the survival search's verdict), and when the line is done;
    - whether the next block can still be broken when it lands (entries and set-ups; never a break).
 4. **Filter and rank.** One comparator (`GAMBIT.rank`):

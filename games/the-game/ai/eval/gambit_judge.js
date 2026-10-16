@@ -10,15 +10,14 @@ function settled(play) { return SETTLED.indexOf(play) >= 0; }
 // THE SET-UPS: plays that move panels toward the ask or a break and clear nothing on the way
 var SETUPS = ['setup', 'level', 'ready', 'toward'];
 
-// A SWAP BACK: the same two panels the last swap swapped, which puts the board back as it was -- no play, unless it clears (and even a
-// clear, after the same pair twice running: a clear predicted on panels not yet seen that never comes is the same loop)
-function swapBack(c, mv) {
+// A SWAP BACK: the same two panels the last swap swapped, which puts the board back as it was -- no play, unless the line clears or
+// breaks on this board (as the judge plays it); and even then not after the same pair twice running -- a clear predicted on panels not
+// yet seen that never comes is the same loop
+function swapBack(c, mv, clears) {
   var bot = c.bot, row = c.board.panels[mv[0]], a = row && row[mv[1]], b = row && row[mv[1] + 1];
   var ids = a && b && a.id != null && b.id != null ? [a.id, b.id].sort().join(',') : null;
   if (ids && bot._gambitBlock && bot._gambitBlock.pair === ids && c.m.at < bot._gambitBlock.until) return true;
-  var cl = bot._allCands && bot._allCands.filter(function (k) { return k.kind === 'swap' && k.move && k.move[0] === mv[0] && k.move[1] === mv[1]; })[0];
-  var add = cl && (cl.added || cl.resolved);
-  return !!(bot._gambitLastPair && ids === bot._gambitLastPair && (!(add && (add.comboSizes || []).length) || (bot._gambitPairRuns || 0) >= 2));
+  return !!(bot._gambitLastPair && ids === bot._gambitLastPair && (!clears || (bot._gambitPairRuns || 0) >= 2));
 }
 
 // What the whole line makes, played as it will be pressed (attacker.judge), once per line a decision
@@ -33,13 +32,14 @@ function made(c, seq, play) {
 function drop(c, play, why) { var d = c.dropped || (c.dropped = {}), t = d[play] || (d[play] = { back: 0, list: 0, late: 0, floor: 0 }); t[why]++; return null; }
 function judge(c, R, k) {
   if (!k) return null;
-  if (swapBack(c, k.seq[0])) return drop(c, k.play, 'back');
   var x = k.x, play = k.play, seq = k.seq, aim = k.aim;
   var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0;
-  // (what it makes is the whole line on the engine -- every step's clears, the chain broken garbage sets off, a link added to a chain
-  // already falling -- whatever the search that found it counted)
+  // (what it makes is the whole line on the engine, as the judge counts it -- every step's clears, the chain broken garbage sets off, a
+  // link added to a chain already falling, the garbage broken beyond what the board breaks alone -- not what the search that found it
+  // counted; a line the judge could not play out is judged on the search's word)
   var w = made(c, seq, play);
-  var m = w ? { combo: Math.max(combo, w.combo), chain: Math.max(chain, w.chain), broke: Math.max(broke, w.broke), cells: x.cells || 0 } : x;
+  var m = w ? { combo: w.combo, chain: w.chain, broke: w.broke, cells: x.cells || 0 } : x;
+  if (swapBack(c, seq[0], (m.combo || 0) > 0 || (m.chain || 0) > 0 || (m.broke || 0) > 0)) return drop(c, play, 'back');
   // (it fits the list, or it is no candidate; its place in the list is the first entry it matches)
   if (!GAMBIT.fits(R.list, m)) return drop(c, k.play, 'list');
   // (below the rule's material floor -- `keep: { material }` -- a line that clears panels and breaks no garbage spends what the board
