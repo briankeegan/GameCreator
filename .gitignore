@@ -30,7 +30,6 @@ games/the-game/ai/eval/*.smoke.json
 # leave one to be committed. Its test's temp dir is ignored for the same
 # reason.
 games/the-game/ai/eval/.chainmeasure.*
-games/the-game/ai/eval/.chainmeasure-test-*/
 
 # The Puyo loop's population, same rule as train.js's checkpoint: it is a
 # resume point, committed deliberately by commit_snapshot.sh, never swept in.
