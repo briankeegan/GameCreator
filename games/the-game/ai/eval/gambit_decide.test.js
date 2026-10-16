@@ -58,6 +58,8 @@ for (var cs = 1; cs <= 40 && counted < 3; cs++) {
     var Rj = { list: [{ chain: '<' + most }], aims: [{ chain: '<' + most }], keep: null, by: null, under: false, F: { us: { material: 99, topped: false, breakWaits: false }, enemy: { topped: false } } };
     assert.strictEqual(JUDGE.judge(cj, Rj, { play: 'entry', seq: [mv0], x: {}, aim: -1 }), null, 'seed ' + cs + ': swap ' + mv0 + ' leaves the chain of ' + most + ' running, past the list');
     assert.strictEqual(cj.dropped.entry.list, 1, 'dropped as outside the list');
+    // (a clear of its own the list does not allow is outside it too, whatever chain is falling beside it)
+    assert.ok(!JUDGE.fitsList([{ chain: '==' + most }], { combo: 4, chain: 0 }, { chainAll: most }), 'a combo of 4 made beside a chain is no link of it');
     listChecked++;
   });
   counted++;

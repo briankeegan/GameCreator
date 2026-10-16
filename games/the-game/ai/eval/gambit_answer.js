@@ -77,10 +77,10 @@ function lives(c, D) {
     order.forEach(function (k) { if (!d && lived(k)) { d = asMove(k); verdict = verdictOf[k] || 'judged'; why = 'gambit'; } });
     // (the survival exception: of the moves found live, the first that fits the list as Gambit judges it, else the first)
     if (!d) {
-      var madeBy = function (mv) { var j = c.attacker.judge(c.board, c.m.hold, [mv], c.arrivals, { tight: c.tight }); return j.dead ? null : JUDGE.listMade(j.made, j); };
+      var judgeOf = function (mv) { var j = c.attacker.judge(c.board, c.m.hold, [mv], c.arrivals, { tight: c.tight }); return j.dead ? null : j; };
       var alive = V.cands.filter(function (vc, q) { return (V.verdict[q] === 'proven' || V.verdict[q] === 'weak') && order.indexOf(keyOf(vc)) < 0; });
-      var fitting = alive.filter(function (vc) { if (vc.kind !== 'swap') return !D.R.aloneOut && !(vc.kind === 'hold' && holdDies); var mk = madeBy(vc.move); return mk && GAMBIT.fits(list, mk) && mk.chain <= GAMBIT.MAXCHAIN; })[0];
-      var any = fitting || alive.filter(function (vc) { if (vc.kind !== 'swap') return true; var mk = madeBy(vc.move); return mk && mk.chain <= GAMBIT.MAXCHAIN; })[0];
+      var fitting = alive.filter(function (vc) { if (vc.kind !== 'swap') return !D.R.aloneOut && !(vc.kind === 'hold' && holdDies); var jk = judgeOf(vc.move); return jk && JUDGE.fitsList(list, jk.made, jk) && Math.max(jk.made.chain || 0, jk.chainAll || 0) <= GAMBIT.MAXCHAIN; })[0];
+      var any = fitting || alive.filter(function (vc) { if (vc.kind !== 'swap') return true; var jk = judgeOf(vc.move); return jk && Math.max(jk.made.chain || 0, jk.chainAll || 0) <= GAMBIT.MAXCHAIN; })[0];
       if (any) { d = asMove(keyOf(any)); verdict = verdictOf[keyOf(any)]; why = fitting ? 'fits' : 'lives'; }
     }
   }

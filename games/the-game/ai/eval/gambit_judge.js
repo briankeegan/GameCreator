@@ -21,9 +21,10 @@ function swapBack(c, mv, clears) {
   return !!(bot._gambitLastPair && ids === bot._gambitLastPair && (!clears || (bot._gambitPairRuns || 0) >= 2));
 }
 
-// What the list reads of a line: what it makes, its chain the chain as the game counts it (j: attacker.judge's answer, chainAll) -- with a
-// chain already falling, the links before it and the board's own continuation count
-function listMade(m, j) { return j && j.chainAll >= 2 ? Object.assign({}, m, { chain: Math.max(m.chain || 0, j.chainAll) }) : m; }
+// WHETHER A LINE FITS THE LIST: what it makes fits it (its own clears: a combo it makes alone is a combo, a link it adds is the chain's),
+// and so does the chain it reaches as the game counts it (j: attacker.judge's answer, chainAll) -- a chain already falling, the links
+// before it and the board's own continuation as far as the line leaves it running
+function fitsList(list, m, j) { return GAMBIT.fits(list, m) && !(j && j.chainAll >= 2 && !GAMBIT.fits(list, { combo: 0, chain: j.chainAll })); }
 
 // The whole line played as it will be pressed (attacker.judge), once per line a decision: what it makes and when each step is begun --
 // null when the judge could not play it out
@@ -50,7 +51,7 @@ function judge(c, R, k) {
   if (swapBack(c, seq[0], (m.combo || 0) > 0 || (m.chain || 0) > 0 || (m.broke || 0) > 0)) return drop(c, play, 'back');
   // (it fits the list, or it is no candidate -- the chain as the game counts it: with a chain already falling, what the board makes after
   // the move, its own continuation and every link the move adds; its place in the list is the first entry it matches)
-  if (!GAMBIT.fits(R.list, listMade(m, j))) return drop(c, k.play, 'list');
+  if (!fitsList(R.list, m, j)) return drop(c, k.play, 'list');
   // (below the rule's material floor -- `keep: { material }` -- a line that clears panels and breaks no garbage spends what the board
   // needs: no candidate, whoever offered it. A break is never held to the floor: it is where the panels come from)
   if (R.keep && R.keep.material !== undefined && !GAMBIT.test(R.F.us.material, R.keep.material) && (m.combo > 0 || m.chain > 0) && !(m.broke > 0)) return drop(c, k.play, 'floor');
@@ -80,4 +81,4 @@ function compare(x, y) {
   return 0;
 }
 
-module.exports = { listMade: listMade, judge: judge, compare: compare, settled: settled, SETTLED: SETTLED, swapBack: swapBack, drop: drop };
+module.exports = { fitsList: fitsList, judge: judge, compare: compare, settled: settled, SETTLED: SETTLED, swapBack: swapBack, drop: drop };
