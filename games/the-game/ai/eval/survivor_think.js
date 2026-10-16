@@ -903,9 +903,10 @@ module.exports = function think(cfg) {
             var fireX = x.fire != null ? x.fire : x.done;
             if (byG && fireX && fireX > byG) return;
             // (a play that clears nothing is judged by what its first swap does, on this board: one that clears is a clear -- below hold)
-            // (a line that is to clear nothing is played on the engine to the board's settle, step by step: it ends before its first step
-            // that clears panels and breaks nothing, and when that is its first, the play is a clear -- below hold)
-            if ((play === 'toward' || play === 'setup' || play === 'level' || play === 'ready') && attacker) {
+            // (a setup, level or ready is to clear nothing: played on the engine to the board's settle, step by step, it ends before its
+            // first step that clears panels and breaks nothing, and when that is its first, the play is a clear -- below hold. A line toward
+            // a break is not: the clears on its way are how its panels reach the garbage)
+            if ((play === 'setup' || play === 'level' || play === 'ready') && attacker) {
               var fc = attacker.firstClear(board, m.hold, seq, arrivals);
               if (fc === 0) { play = 'clear'; x = { combo: 3, chain: 1 }; combo = 3; chain = 1; broke = 0; }
               else if (fc > 0) seq = seq.slice(0, fc);
