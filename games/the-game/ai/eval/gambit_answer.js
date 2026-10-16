@@ -38,44 +38,43 @@ function madeOf(k) {
 }
 function keyOf(k) { return k.kind === 'swap' && k.move ? k.move[0] + ',' + k.move[1] : k.kind; }
 
-// LIVES: the survival search over every move (none past MAXCHAIN); of the ones it finds live, Gambit's first in its order, then a move
-// that fits the list, then any other. It returns its choice (puyocpu.js _decide: preferRank picks the moves it searches, preferProven
-// orders the ones that live; with none that lives, the one living longest).
+// LIVES: the survival search asked one thing, which moves live -- its verdict on every move (none past MAXCHAIN). The choice is
+// Gambit's, never the survival search's own ranking: of Gambit's moves in its order, the first proven to live, else the first that
+// lives weakly; with none of Gambit's moves living, the survival exception -- of the moves found live, the first that fits the list as
+// Gambit judges its own (attacker.judge: every link added to a chain already falling counted; a three that breaks garbage fits), else
+// the first that lives; with nothing living, the survival search's own pick, the move that lives longest.
 function lives(c, D) {
   var bot = c.bot, order = D.order, list = D.R.list;
   bot.preferRank = function (k) { return madeOf(k).chain > GAMBIT.MAXCHAIN ? Infinity : 5; };
-  bot.preferProven = function (k) {
-    var at = order.indexOf(keyOf(k));
-    return at >= 0 ? -1e6 + at : GAMBIT.fits(list, madeOf(k)) ? -1e3 : -1;
-  };
-  var before = bot._verdictNo || 0, d = bot._decide();
-  var V = (bot._verdictNo || 0) !== before ? bot._lastVerdict : null, verdict = 'unsearched', holdLives = false, live = 0, searched = 0;
+  bot.preferProven = null;
+  var before = bot._verdictNo || 0, own = bot._decide();
+  var V = (bot._verdictNo || 0) !== before ? bot._lastVerdict : null, holdLives = false, live = 0, searched = 0, d = null, verdict = 'unsearched', why = 'own';
+  var verdictOf = {}, candOf = {};
   if (V) for (var i = 0; i < V.cands.length; i++) {
     var k = keyOf(V.cands[i]);
-    if (k === keyOf(d)) verdict = V.verdict[i];
+    verdictOf[k] = V.verdict[i]; candOf[k] = V.cands[i];
     if (k === 'hold') holdLives = V.verdict[i] === 'proven';
-    if (order.indexOf(k) >= 0) { searched++; if (V.verdict[i] === 'proven' || V.verdict[i] === 'weak') live++; }
   }
-  // (none of Gambit's moves lives -- the survival exception: every move found live is judged as Gambit judges its own (attacker.judge:
-  // every link it adds to a chain already falling counted), and the first that fits the list is played -- a three that breaks garbage
-  // fits; only with none, the survival search's pick, never past MAXCHAIN)
-  if (V && order.indexOf(keyOf(d)) < 0 && d.kind === 'swap') {
-    var madeBy = function (mv) { var j = c.attacker.judge(c.board, c.m.hold, [mv], c.arrivals, { tight: c.tight }); return j.dead ? null : j.made; };
-    var fitting = null, own = madeBy(d.move);
-    if (!(own && GAMBIT.fits(list, own))) {
-      for (var q = 0; q < V.cands.length && !fitting; q++) {
-        var vc = V.cands[q];
-        if (vc.kind !== 'swap' || !vc.move || (V.verdict[q] !== 'proven' && V.verdict[q] !== 'weak')) continue;
-        var mk = madeBy(vc.move);
-        if (mk && GAMBIT.fits(list, mk)) fitting = vc;
-      }
-      if (fitting) { d = { kind: 'swap', move: [fitting.move[0], fitting.move[1]] }; verdict = V.verdict[V.cands.indexOf(fitting)]; }
-      else if (own && own.chain > GAMBIT.MAXCHAIN) d = { kind: 'hold' };
+  var lived = function (k, how) { return how ? verdictOf[k] === how : verdictOf[k] === 'proven' || verdictOf[k] === 'weak'; };
+  var asMove = function (k) { return k === 'hold' || k === 'raise' ? { kind: k } : { kind: 'swap', move: k.split(',').map(Number) }; };
+  order.forEach(function (k) { if (k in verdictOf) { searched++; if (lived(k)) live++; } });
+  if (V) {
+    // (Gambit's, in its order: the first proven, else the first weak)
+    ['proven', 'weak'].forEach(function (how) { if (!d) order.forEach(function (k) { if (!d && lived(k, how)) { d = asMove(k); verdict = how; why = 'gambit'; } }); });
+    // (the survival exception: of the moves found live, the first that fits the list as Gambit judges it, else the first)
+    if (!d) {
+      var madeBy = function (mv) { var j = c.attacker.judge(c.board, c.m.hold, [mv], c.arrivals, { tight: c.tight }); return j.dead ? null : j.made; };
+      var alive = V.cands.filter(function (vc, q) { return (V.verdict[q] === 'proven' || V.verdict[q] === 'weak') && order.indexOf(keyOf(vc)) < 0; });
+      var fitting = alive.filter(function (vc) { if (vc.kind !== 'swap') return true; var mk = madeBy(vc.move); return mk && GAMBIT.fits(list, mk) && mk.chain <= GAMBIT.MAXCHAIN; })[0];
+      var any = fitting || alive.filter(function (vc) { if (vc.kind !== 'swap') return true; var mk = madeBy(vc.move); return mk && mk.chain <= GAMBIT.MAXCHAIN; })[0];
+      if (any) { d = asMove(keyOf(any)); verdict = verdictOf[keyOf(any)]; why = fitting ? 'fits' : 'lives'; }
     }
   }
-  var cand = (bot._allCands || []).filter(function (k) { return keyOf(k) === keyOf(d); })[0] || null;
-  // (live: of Gambit's moves, how many the survival search searched and how many it found live)
-  return { d: d, verdict: verdict, holdLives: holdLives, gambits: order.indexOf(keyOf(d)) >= 0, cand: cand, live: live + '/' + searched + '/' + order.length };
+  // (nothing lives -- or no verdict this decision: the survival search's own pick, the move that lives longest)
+  if (!d) { d = own; verdict = V ? verdictOf[keyOf(own)] || 'not offered' : 'unsearched'; }
+  var cand = (bot._allCands || []).filter(function (k) { return keyOf(k) === keyOf(d); })[0] || candOf[keyOf(d)] || null;
+  // (live: of Gambit's moves, how many the survival search found live / searched / Gambit ranked; why: how the move was chosen)
+  return { d: d, verdict: verdict, holdLives: holdLives, gambits: order.indexOf(keyOf(d)) >= 0, cand: cand, live: live + '/' + searched + '/' + order.length, why: why };
 }
 
 // THE RAISE HELD DOWN: the engine raises a displacement step a frame while the button is held, row after row. A raise answer presses
@@ -102,7 +101,7 @@ function logLine(c, D, L, br, brMs) {
     ' broke=' + (g.broke || 0) + ' tier=' + (g.tier || 0) + ' by=' + (g.by || '-') + ' plan=' + (g.pl || '-') + ' done=' + (g.done != null ? g.done : '-') + ' fire=' + (g.fire != null ? g.fire : '-') +
     ' ats=' + (g.ats || '-') + ' swaps=' + (g.swaps || 0) + ' land=' + (F.nextLands != null ? F.nextLands : '-') + ' dies=' + F.dies + ' casc=' + (CK.cascadeLive(c.board, true) ? 1 : 0) +
     ' pop=' + SH.popLeft(c.board) + ' stop=' + F.stop + ' waits=' + (F.breakWaits ? 1 : 0) + ' tight=' + (c.tight ? 1 : 0) +
-    ' br=' + (br ? (br.depth || 0) + '/' + (br.path ? br.path.length : br.toward ? 't' + br.toward.length : 0) + (br.cut ? '/cut' : '') : 'none') + ' brMs=' + brMs + ' cands=' + (g.cands || '-') + ' live=' + L.live);
+    ' br=' + (br ? (br.depth || 0) + '/' + (br.path ? br.path.length : br.toward ? 't' + br.toward.length : 0) + (br.cut ? '/cut' : '') : 'none') + ' brMs=' + brMs + ' cands=' + (g.cands || '-') + ' live=' + L.live + ' why=' + L.why);
 }
 
 function answer(c) {
@@ -129,7 +128,7 @@ function answer(c) {
   if (bot._gambitPairRuns >= 2) bot._gambitBlock = { pair: pair, until: m.at + 60 };
   bot._gambitLastPair = pair;
   bot._gambitIdle = d.kind === 'hold' || !D.info.want;
-  D.info.verdict = L.verdict;
+  D.info.verdict = L.verdict; D.info.live = L.live; D.info.why = L.why;
   logLine(c, D, L, c.br, c.brMs);
   var made = L.cand ? madeOf(L.cand) : { combo: 0, chain: 0, broke: 0 }, held = d.kind === 'raise' ? raiseHeld(c, D.R.to) : { now: 0, after: 0 };
   return { id: m.id, epoch: m.epoch, at: m.at, src: L.gambits ? 'gambit' : 'survival', kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null,
