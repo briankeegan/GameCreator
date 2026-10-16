@@ -11,7 +11,7 @@
 // search's engine), rules, GP (the profile's gambit), pace, margin (ms), nativeMem() }
 var path = require('path');
 var GAMBIT = require(path.join(__dirname, 'gambit.js')), DECIDE = require(path.join(__dirname, 'gambit_decide.js'));
-var SH = require(path.join(__dirname, 'survivor_shared.js')), CK = require(path.join(__dirname, 'survivor_checks.js'));
+var SH = require(path.join(__dirname, 'survivor_shared.js')), CK = require(path.join(__dirname, 'survivor_checks.js')), KEYS = require(path.join(__dirname, 'survivor_keys.js'));
 
 // THE BREAK SEARCH: the lines to a break, in the share of the decision's time it is given (a line begun is carried on as the line in
 // progress, not by the break search)
@@ -60,7 +60,7 @@ function lives(c, D) {
   // every link it adds to a chain already falling counted), and the first that fits the list is played -- a three that breaks garbage
   // fits; only with none, the survival search's pick, never past MAXCHAIN)
   if (V && order.indexOf(keyOf(d)) < 0 && d.kind === 'swap') {
-    var madeBy = function (mv) { var j = c.attacker.judge(c.board, c.m.hold, [mv], c.arrivals, {}); return j.dead ? null : j.made; };
+    var madeBy = function (mv) { var j = c.attacker.judge(c.board, c.m.hold, [mv], c.arrivals, { tight: c.tight }); return j.dead ? null : j.made; };
     var fitting = null, own = madeBy(d.move);
     if (!(own && GAMBIT.fits(list, own))) {
       for (var q = 0; q < V.cands.length && !fitting; q++) {
@@ -101,12 +101,14 @@ function logLine(c, D, L, br, brMs) {
     ' src=' + (L.gambits ? 'gambit' : 'survival') + ' v=' + L.verdict + ' under=' + (g.under ? 1 : 0) + ' mat=' + F.material + ' chain=' + (g.chain || 0) + ' combo=' + (g.combo || 0) +
     ' broke=' + (g.broke || 0) + ' tier=' + (g.tier || 0) + ' by=' + (g.by || '-') + ' plan=' + (g.pl || '-') + ' done=' + (g.done != null ? g.done : '-') + ' fire=' + (g.fire != null ? g.fire : '-') +
     ' ats=' + (g.ats || '-') + ' swaps=' + (g.swaps || 0) + ' land=' + (F.nextLands != null ? F.nextLands : '-') + ' dies=' + F.dies + ' casc=' + (CK.cascadeLive(c.board, true) ? 1 : 0) +
-    ' pop=' + SH.popLeft(c.board) + ' stop=' + F.stop + ' waits=' + (F.breakWaits ? 1 : 0) +
+    ' pop=' + SH.popLeft(c.board) + ' stop=' + F.stop + ' waits=' + (F.breakWaits ? 1 : 0) + ' tight=' + (c.tight ? 1 : 0) +
     ' br=' + (br ? (br.depth || 0) + '/' + (br.path ? br.path.length : br.toward ? 't' + br.toward.length : 0) + (br.cut ? '/cut' : '') : 'none') + ' brMs=' + brMs + ' cands=' + (g.cands || '-') + ' live=' + L.live);
 }
 
 function answer(c) {
   var bot = c.bot, m = c.m;
+  // (the input budget tight: the frame loop walks held from two cells, so every line is judged pressed as it walks -- attacker.judge)
+  c.tight = m.allowance != null && m.allowance <= KEYS.HOLDTIGHT;
   var B = breakSearch(c);
   c.br = B.br; c.brMs = B.ms;
   c.canRaise = function () { return bot._canRaise(); };

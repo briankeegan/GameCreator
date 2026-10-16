@@ -6,7 +6,18 @@
 // follows. Used by survivor_think.js for a profile with `attack`.
 var path = require('path');
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js')), N = require(path.join(__dirname, 'native.js')).server;
-var W = 6;
+var W = 6, KEYS = require(path.join(__dirname, 'survivor_keys.js'));
+// THE PRESS AS THE FRAME LOOP MAKES IT: with the input budget tight (o.tight: the decision's allowance at or under KEYS.HOLDTIGHT) the
+// frame loop walks the cursor held from two cells (survivor_match.js walkKeys, KEYS.slowWalks), which presses the swap later than the
+// search's own walk. The frames later, from node n: the search's keys for the swap, walked as the frame loop walks them.
+function pressDelay(s, n, mv, tight) {
+  if (!tight || !mv) return 0;
+  var k = s.keys(n, 'swap', mv, 0);
+  if (!k) return 0;
+  var at = function (ins) { for (var i = 0; i < ins.length; i++) if (ins[i] & PA.IN.swap) return i; return -1; };
+  var tap = at(k.inputs), slow = at(KEYS.slowWalks(k.inputs, k.holds, 2).inputs);
+  return tap >= 0 && slow > tap ? slow - tap : 0;
+}
 // a combo's garbage is a list of widths, one row each (PA.COMBO_GARBAGE)
 function comboCells(size) { var n = 0, ps = PA.comboGarbage(size); for (var i = 0; i < ps.length; i++) n += ps[i]; return n; }
 // the garbage a step's clears send: each clear's combo garbage and a slab for the chain they make
@@ -403,6 +414,8 @@ module.exports = function (opts) {
     for (var k = 0; k < seq.length; k++) {
       var legal = n.b.legalSwaps().some(function (m) { return m[0] === seq[k][0] && m[1] === seq[k][1]; });
       if (!legal) break;
+      var late = pressDelay(s, n, seq[k], o && o.tight);
+      if (late > 0) { var waited = s.advance(n, 'long', null, late); if (!waited || waited.dead) break; made.push(waited); n = waited; }
       ats.push(n.t - root.t);
       var out = s.advanceMany([[n, 'settle', seq[k], 0]], true)[0];
       if (!out || out.dead) break;
@@ -418,8 +431,8 @@ module.exports = function (opts) {
     return res;
   }
   // THE JUDGE (plans/decision.md, step 3): a line played on the engine as the game will press it -- `settled`, each step once the board
-  // has settled from the last (a planned line, carried on a decision at a time); else every step at once, one after the other, as the
-  // frame loop presses the rest of a line, the board then let settle. What it makes is counted over every step and the settle after:
+  // has settled from the last (a planned line, carried on a decision at a time); else every step at once, one after the other, the board
+  // then let settle -- each swap pressed when the frame loop presses it (o.tight: walked held from two cells, pressDelay). What it makes is counted over every step and the settle after:
   // the largest match, the longest chain, the garbage broken -- beyond what the board left alone makes (a chain already falling is the
   // line's only when the line adds a link to it; a slab already popping converts its panels whatever is pressed).
   // { made: { combo, chain, broke }, cut: the first step after which ok(made so far) is false (seq.length when none is), dead: the board
@@ -446,6 +459,8 @@ module.exports = function (opts) {
       var last = k === seq.length, mv = last ? null : seq[k];
       if (last && o.settled) break;   // (each step settled already)
       if (mv && !n.b.legalSwaps().some(function (m) { return m[0] === mv[0] && m[1] === mv[1]; })) break;
+      var late = pressDelay(s, n, mv, o.tight);
+      if (late > 0) { var waited = s.advance(n, 'long', null, late); if (!waited || waited.dead) { dead = true; break; } made.push(waited); n = waited; }
       if (mv) ats.push(n.t - root.t);
       var out = s.advanceMany([[n, last || o.settled ? 'settle' : 'swap', mv, 0]], true)[0];
       if (!out || out.dead) { dead = true; break; }

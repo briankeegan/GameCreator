@@ -58,7 +58,7 @@ function ready(c, R, cands) {
   if (land === null || land === undefined) return cands;
   return cands.filter(function (k) {
     if ((k.ap.broke || 0) > 0 || c.left() <= 0) return true;
-    var j = c.attacker.judge(c.board, c.m.hold, k.seq, c.arrivals, { settled: k.settled, readyAt: land });
+    var j = c.attacker.judge(c.board, c.m.hold, k.seq, c.arrivals, { settled: k.settled, readyAt: land, tight: c.tight });
     return j.dead || j.ready === true ? true : JUDGE.drop(c, k.play, 'ready') !== null;
   });
 }

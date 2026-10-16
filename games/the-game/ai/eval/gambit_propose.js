@@ -87,11 +87,11 @@ function carried(c, R) {
   if (dr === null) return null;
   var rest = C.rest.map(function (mv) { return [mv[0] + dr, mv[1]]; }), x, wait = false;
   if (C.settled) {
-    x = c.attacker.replay(board, c.m.hold, rest, c.arrivals, { settleFirst: true });
+    x = c.attacker.replay(board, c.m.hold, rest, c.arrivals, { settleFirst: true, tight: c.tight });
     if (!x) return null;
     wait = x.wait > 1;
   } else {
-    var j = c.attacker.judge(board, c.m.hold, rest, c.arrivals, { settled: false });
+    var j = c.attacker.judge(board, c.m.hold, rest, c.arrivals, { settled: false, tight: c.tight });
     if (!j || j.dead || j.ats.length < rest.length) return null;   // (a step no longer legal: the judge pressed fewer than the line has)
     x = { combo: j.made.combo, chain: j.made.chain, broke: j.made.broke, done: j.done, fire: j.fire, ats: j.ats };
   }

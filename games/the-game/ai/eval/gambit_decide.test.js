@@ -44,6 +44,23 @@ modes.forEach(function (mode) {
     decided++;
   }
 });
+// THE PRESS AS THE FRAME LOOP MAKES IT: with the input budget tight the frame loop walks held from two cells, and the judge presses
+// each swap on the very frame that walk does -- not the search's own walk
+var SHK = require('./survivor_shared.js'), KEYSK = require('./survivor_keys.js'), INK = PA.IN, slowed = 0;
+process.env.GC_SURVIVOR_PROFILE = path.join(__dirname, 'survivor-profiles', 'gambit-finish.json');
+var hands = new SHK.Hands(SHK.profile());
+var kb = PA.game({ level: 10, seed: 2, countdown: false });
+for (var kf = 0; kf < 300; kf++) kb.run();
+kb.legalSwaps().forEach(function (mv) {
+  var k = hands.keys(kb, hold, 'swap', mv, []);
+  if (!k) return;
+  var idx = function (ins) { return ins.findIndex(function (x) { return x & INK.swap; }); };
+  var later = idx(KEYSK.slowWalks(k.inputs, k.holds, 2).inputs) - idx(k.inputs);
+  var free = at.judge(kb, hold, [mv], [], {}), tightJ = at.judge(kb, hold, [mv], [], { tight: true });
+  assert.strictEqual(tightJ.ats[0] - free.ats[0], later, 'swap ' + mv + ': judged ' + (tightJ.ats[0] - free.ats[0]) + ' frames later, the frame loop presses ' + later + ' later');
+  if (later > 0) slowed++;
+});
+assert.ok(slowed > 0, 'some swaps walk slower with the budget tight');
 // THE MATERIAL FLOOR: with the floor above every board's panels, no move ranked clears panels without breaking garbage
 var fs = require('fs'), rulesFile = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles', 'gambit-rules.json'), 'utf8'));
 rulesFile.keep = { material: '>=99' };
