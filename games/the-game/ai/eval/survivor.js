@@ -142,6 +142,7 @@ mind.on('error', function (e) { console.error('mind: ' + (e && e.stack || e)); p
 function overStats(match) {
   match.stats.gcMs = Math.round(GC.max * 10) / 10; match.stats.slowGc = GC.slow; GC.max = 0; GC.slow = 0;
   match.stats.mode = match.mode;
+  if (match.audit) match.audit.end();
   return JSON.stringify(match.stats);
 }
 // ---------------------------------------------------------------- the link

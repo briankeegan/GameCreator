@@ -11,7 +11,7 @@
 //   the link's owner pushes the mind's answers onto link.answers
 var path = require('path');
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js')), SH = require(path.join(__dirname, 'survivor_shared.js'));
-var CK = require('./survivor_checks.js'), KEYS = require('./survivor_keys.js'), land = SH.land, IN = PA.IN, V8 = require('v8');
+var CK = require('./survivor_checks.js'), KEYS = require('./survivor_keys.js'), AUDIT = require('./survivor_audit.js'), land = SH.land, IN = PA.IN, V8 = require('v8');
 function unpack(packed) { return PA.revive(V8.deserialize(packed)); }
 // ---------------------------------------------------------------- the board, as predicted
 // Two boards agree when every panel and every counter does, except the
@@ -98,6 +98,7 @@ function Match(level, L) {
   this.line = null;        // the proven line after the plan: { steps, at } (follow)
   this.knew = [];          // the garbage on its way the plan was decided knowing
   this.stats = { frames: 0, frameMs: 0, slowFrames: 0, decisions: 0, played: 0, late: 0, diverged: 0, refused: 0, maxMs: 0, idle: 0, lateTaken: 0, followed: 0, noLine: 0, unforeseen: 0, reasked: 0, revealed: 0, lineup: 0, tookLineup: 0, touch: 0, tookTouch: 0, unasked: 0, rewalked: 0, break1: 0, took1: 0, break2: 0, took2: 0, break3: 0, took3: 0, swaps: 0, undone: 0, actions: 0, maxWindow: 0, overInput: 0, heldWalks: 0, guarded: 0 };
+  this.audit = new AUDIT.Audit(this.stats);   // (what each chosen line claimed, against what the game made: survivor_audit.js)
   this.history = []; this.decided = []; this.asked = []; this.snaps = []; this.losses = []; this.dumped = false; this.no = ++MATCHES;
   this.msPerFrame = L.msPerFrame || 1000 / 60; this.wall = 0;   // how fast frames come (soon); a link may fix it (msPerFrame)
   // A question from the last match is not this one's: its answer is dropped.
@@ -336,6 +337,7 @@ Match.prototype.take = function (truth) {
     this.stats.played++;
     var walked = this.walkKeys(step, at), ins = walked.inputs;
     if (!this.fits(at, ins)) { this.stats.guarded++; this.acted = false; continue; }
+    if (a.claim && a.kind === 'swap') this.audit.claim(a.claim, at);
     this.stats.heldWalks += walked.held;
     // Each planned frame carries the raise held after it.
     var sw = a.kind === 'swap' ? swapOf(board, move) : null;
@@ -498,7 +500,7 @@ Match.prototype.frame = function (truth, arrivals, fresh) {
   var L = this.L;
   var now = truth.clock, d, before = this.arrivals;
   this.now = now;
-  if (truth.panels) this.countAttacks(truth);
+  if (truth.panels) { this.countAttacks(truth); this.audit.frame(truth); }
   this.toppedNow = typeof truth.isToppedOut === 'function' && truth.isToppedOut();
   this.realTop = CK.fullTop(truth); this.realFtt = CK.framesToTop(truth);   // the stack as the game shows it: its height and the frames until it tops out   // the stack as it is this frame, with the questions
   this.arrivals = arrivals;

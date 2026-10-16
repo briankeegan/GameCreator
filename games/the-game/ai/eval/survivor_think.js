@@ -72,6 +72,11 @@ module.exports = function think(cfg) {
   var failWritten = false;
   // The engine and its threads, compiled before the first question.
   (function () { var N = require(path.join(DIR, 'native.js')).server; if ((OPTS.threads || 1) > 1) N.initThreads(OPTS.threads); else N.init(); })();
+  // THE CLAIM of the line Gambit chose, when the move played is its first swap: what it said it would make (survivor_audit.js)
+  function claimOf(g, d) {
+    if (!g || !g.found || !d || d.kind !== 'swap' || !d.move || !g.order || g.order[0] !== d.move[0] + ',' + d.move[1]) return null;
+    return { play: g.play, chain: g.chain || 0, combo: g.combo || 0, broke: g.broke || 0, done: g.done != null ? g.done : (g.fire || 0) };
+  }
   function answer(m) {
     // A question at or before the one the frame loop stopped is not wanted:
     // ids only grow, and only the newest is ever waited on.
@@ -1276,7 +1281,7 @@ module.exports = function think(cfg) {
       }
       var lvP = (bot._verdictNo || 0) !== verdictNo0 ? bot._lastVerdict : null, holdP = false;
       if (lvP) for (var pi = 0; pi < lvP.cands.length; pi++) if (lvP.cands[pi].kind === 'hold') { holdP = lvP.verdict[pi] === 'proven'; break; }
-      out = { id: m.id, epoch: m.epoch, at: m.at, threeOK: !!(A && A.realThrees && dangerWhy === 'incoming'), src: d.src || (d.overruled ? 'overrule' : 'default'), kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, raiseFrames: holdFrames, ms: Date.now() - t0, idleMs: bot._idleMs || 0, queued: m.posted ? t0 - m.posted : 0, brMs: brMs, why: why,
+      out = { id: m.id, epoch: m.epoch, at: m.at, threeOK: !!(A && A.realThrees && dangerWhy === 'incoming'), src: d.src || (d.overruled ? 'overrule' : 'default'), kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null, raiseFrames: holdFrames, ms: Date.now() - t0, idleMs: bot._idleMs || 0, claim: claimOf(bot._gambit, d), queued: m.posted ? t0 - m.posted : 0, brMs: brMs, why: why,
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree, pace: { hold: holdP, brk: !!(br && br.depth), urgent: !!(tight || bot.allDoomedNow || bot._gambitUrgent) },
             mem: NativeMem(),
             breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
