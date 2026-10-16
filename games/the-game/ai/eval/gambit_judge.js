@@ -30,8 +30,9 @@ function played(c, seq, isSettled) {
 }
 
 // THE JUDGE: a candidate, filtered and ranked -- null when it is no candidate. { play, seq, tier, sub, ap, aim, extend, near }
-// (why each candidate was dropped, counted per decision for the log: c.dropped[play] = { back, list, late, floor, ready })
-function drop(c, play, why) { var d = c.dropped || (c.dropped = {}), t = d[play] || (d[play] = { back: 0, list: 0, late: 0, floor: 0, ready: 0 }); t[why]++; return null; }
+// (why each candidate was dropped, counted per decision for the log: c.dropped[play] = { back, list, late, floor, ready }; and unbroken,
+// a line its search said breaks that the judge says does not -- counted, not dropped for it)
+function drop(c, play, why) { var d = c.dropped || (c.dropped = {}), t = d[play] || (d[play] = { back: 0, list: 0, late: 0, floor: 0, ready: 0, unbroken: 0 }); t[why] = (t[why] || 0) + 1; return null; }
 function judge(c, R, k) {
   if (!k) return null;
   var x = k.x, play = k.play, seq = k.seq, aim = k.aim;
@@ -40,6 +41,8 @@ function judge(c, R, k) {
   // counted; a line the judge could not play out is judged on the search's word)
   var st = k.settled !== undefined ? k.settled : settled(play), j = played(c, seq, st), w = j ? j.made : null;
   var m = w ? { combo: w.combo, chain: w.chain, broke: w.broke, cells: x.cells || 0 } : x;
+  // (the search that found it said it breaks and the judge, playing it as it will be pressed, says it does not: counted for the log)
+  if (w && x.broke > 0 && !(w.broke > 0)) drop(c, play, 'unbroken');
   if (swapBack(c, seq[0], (m.combo || 0) > 0 || (m.chain || 0) > 0 || (m.broke || 0) > 0)) return drop(c, play, 'back');
   // (it fits the list, or it is no candidate; its place in the list is the first entry it matches)
   if (!GAMBIT.fits(R.list, m)) return drop(c, k.play, 'list');

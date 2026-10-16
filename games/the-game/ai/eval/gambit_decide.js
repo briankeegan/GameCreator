@@ -36,7 +36,7 @@ function read(c) {
 
 // (the log's code for why a candidate was dropped: a swap back, outside the list, too late, below the material floor, leaves the next
 // block unbreakable)
-var DROP_CODE = { back: 'b', list: 'o', late: 't', floor: 'f', ready: 'r' };
+var DROP_CODE = { back: 'b', list: 'o', late: 't', floor: 'f', ready: 'r', unbroken: 'u' };
 var HOLD_TIER = 5;   // (GAMBIT.tier: a hold ranks below every play that fits, above a clear)
 // 2-4. PROPOSE, JUDGE AND RANK: every candidate offered, judged, the ones left in rank order
 function ranked(c, R, S) {

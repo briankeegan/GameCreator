@@ -345,7 +345,7 @@ Match.prototype.take = function (truth) {
     var walked = this.walkKeys(step, at), ins = walked.inputs;
     if (!this.fits(at, ins)) { this.stats.guarded++; this.acted = false; continue; }
     if (a.claim && a.kind === 'swap') this.audit.claim(a.claim, at);
-    if (a.kind === 'swap') { this._swapBy = a.claim ? 'gambit ' + a.claim.play : (a.src || 'default'); this._swapAt = at; }
+    if (a.kind === 'swap') { this._swapBy = a.claim ? 'gambit ' + a.claim.play : (a.src || 'default'); this._swapAt = at; this._swapClaim = a.claim ? a.claim.chain || 0 : null; }
     this.stats.heldWalks += walked.held;
     // Each planned frame carries the raise held after it.
     var sw = a.kind === 'swap' ? swapOf(board, move) : null;
@@ -497,19 +497,26 @@ Match.prototype.walkKeys = function (k, at) {
 // stats.linkBy: { links: { who: n } } -- for each chain, who pressed the swap that made its last link: the last swap pressed since the
 // chain began, or 'itself' when none was (the chain grew from what it had set falling).
 Match.prototype.countAttacks = function (truth) {
-  var seen = this._matched || {}, now = {}, fresh = 0, r, c, p, cc = truth.chainCounter || 0;
+  var seen = this._matched || {}, now = {}, fresh = 0, conv = 0, r, c, p, cc = truth.chainCounter || 0, wasG = this._wasG || (this._wasG = {});
   for (r = 1; r < truth.panels.length; r++) for (c = 1; c <= 6; c++) {
     p = truth.panels[r] && truth.panels[r][c];
-    if (p && p.state === 'matched' && !p.isGarbage && p.color > 0) { now[p.id] = 1; if (!seen[p.id]) fresh++; }
+    if (p && p.isGarbage && p.id != null) wasG[p.id] = 1;
+    if (p && p.state === 'matched' && !p.isGarbage && p.color > 0) { now[p.id] = 1; if (!seen[p.id]) { fresh++; if (wasG[p.id] || p.fellFromGarbage > 0) conv++; } }
   }
   this._matched = now;
   var at = this.stats.attacks || (this.stats.attacks = { combo: {}, chain: {} });
   var byAll = this.stats.attacksBy || (this.stats.attacksBy = {}), by = this._swapBy || 'default';
   var mine = function (who) { return byAll[who] || (byAll[who] = { combo: {}, chain: {} }); };
   if (fresh >= 4) { at.combo[fresh] = (at.combo[fresh] || 0) + 1; mine(by).combo[fresh] = (mine(by).combo[fresh] || 0) + 1; }
-  if (cc > 0 && !(this._chainMax > 0)) { this._chainBy = by; this._chainAt = truth.clock; }
-  if (cc > (this._chainMax || 0)) { this._chainMax = cc; this._lastLink = (this._swapAt || -1) >= this._chainAt ? by : 'itself'; }
+  if (cc > 0 && !(this._chainMax > 0)) { this._chainBy = by; this._chainAt = truth.clock; this._links = []; }
+  if (cc > (this._chainMax || 0)) {
+    this._chainMax = cc; this._lastLink = (this._swapAt || -1) >= this._chainAt ? by : 'itself';
+    // (each link: who pressed the swap it follows, the chain that decision's judge said its line makes, and how many of the link's panels
+    // came out of broken garbage -- colours no judge saw before the game showed them)
+    if (this._links) this._links.push(cc + ':' + (this._lastLink === 'itself' ? 'itself' : by.replace(/ /g, '_') + '@' + this._swapAt + ':said' + this._swapClaim) + ':conv' + conv + '/' + fresh);
+  }
   if (cc === 0 && this._chainMax >= 2) {
+    console.error('CHAIN ' + truth.clock + ' len=' + this._chainMax + ' links=' + (this._links || []).join(','));
     var cb = mine(this._chainBy || by); at.chain[this._chainMax] = (at.chain[this._chainMax] || 0) + 1; cb.chain[this._chainMax] = (cb.chain[this._chainMax] || 0) + 1;
     var lb = this.stats.linkBy || (this.stats.linkBy = {}), lk = lb[this._chainMax] || (lb[this._chainMax] = {});
     lk[this._lastLink] = (lk[this._lastLink] || 0) + 1;
