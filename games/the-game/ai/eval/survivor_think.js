@@ -958,7 +958,21 @@ module.exports = function think(cfg) {
               }
             }
           }
-          candsG.sort(function (x, y) { if (x.tier !== y.tier) return x.tier - y.tier; for (var q = 0; q < x.sub.length; q++) if (x.sub[q] !== y.sub[q]) return x.sub[q] - y.sub[q]; return 0; });
+          var sortG = function () { candsG.sort(function (x, y) { if (x.tier !== y.tier) return x.tier - y.tier; for (var q = 0; q < x.sub.length; q++) if (x.sub[q] !== y.sub[q]) return x.sub[q] - y.sub[q]; return 0; }); };
+          sortG();
+          // (ALWAYS READY, WHILE ATTACKING: an attack -- the aim, a best that fits -- is played only if, its first move played, the next
+          // block on its way can still be broken when it lands (readyAfter, on the engine). One that leaves it unbreakable drops below
+          // the plays that get ready, just above hold. The leading attacks are judged, as many as the decision's time allows)
+          if (attacker && arrivals.length) {
+            var judgedG = 0, demotedG = false;
+            for (var jg = 0; jg < candsG.length && judgedG < 4 && leftG() > 15; jg++) {
+              var cj = candsG[jg];
+              if (cj.tier !== 2 && cj.tier !== 3) continue;
+              judgedG++;
+              if (attacker.readyAfter(board, m.hold, cj.seq[0], arrivals) === false) { cj.tier = 4; cj.sub = [4.5]; cj.unready = true; demotedG = true; }
+            }
+            if (demotedG) sortG();
+          }
           var topG = candsG[0] || null;
           // (the raise due but the board busy -- a clear or a fall still going, which locks the rise: nothing new is begun, so the board
           // comes to rest and the next decision raises; a chain already falling is still run on)

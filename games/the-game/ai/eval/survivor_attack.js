@@ -425,5 +425,24 @@ module.exports = function (opts) {
     if (made.length) s.drop(made);
     return res;
   }
-  return { plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear, replay: replay };
+  // THE JUDGE OF A MOVE BETWEEN BLOCKS (readyAfter): the move is played on the engine and the board run on to the next block's landing,
+  // the garbage on its way landing at its time; ready when a swap then breaks that block. true / false, or null with no block on its way.
+  // Every attack is asked this: attacking goes on between the blocks, and never leaves the next one with no break.
+  function readyAfter(board, hold, mv, arrivals) {
+    var first = null;
+    (arrivals || []).forEach(function (a) { if (first === null || a.at < first) first = a.at; });
+    if (first === null) return null;
+    var s = search();
+    s.reset();
+    var root = s.root(board.copy(), hold, arrivals, false), wait = Math.max(1, first + 2);
+    var n1 = s.advance(root, 'swap', mv, 0);
+    if (!n1 || n1.dead) return false;
+    var land = s.advance(n1, 'long', null, Math.max(1, wait - (n1.t - root.t)));
+    if (!land || land.dead) { s.drop([n1]); return false; }
+    var base = s.breaks(land), outs = s.advanceMany(land.b.legalSwaps().map(function (m) { return [land, 'swap', m, 0]; }), true), any = false, made = [n1, land];
+    outs.forEach(function (out) { if (out && !out.dead) { made.push(out); if ((out.brk !== undefined ? out.brk : s.breaks(out)) > base) any = true; } });
+    s.drop(made);
+    return any;
+  }
+  return { plan: plan, extend: extend, readyFor: readyFor, readyAfter: readyAfter, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear, replay: replay };
 };

@@ -50,6 +50,10 @@ for (rf = 0; rf < 260 && !SH.lowestGarbageRow(rb); rf++) rb.run();
 assert.ok(SH.lowestGarbageRow(rb), 'garbage on the board');
 var rr = at.readyFor(rb, RH, [{ at: 120, width: 6, height: 1 }], { ms: 200 });
 assert.ok(rr && (rr.ready === true || rr.ready === false) && rr.at === 120, 'ready is judged for the block on its way, garbage on the board or not');
+// THE JUDGE BETWEEN BLOCKS: a move is judged by whether the next block can be broken once it lands; with nothing on its way, no judgement
+var ra = at.readyAfter(rb, RH, rb.legalSwaps()[0], [{ at: 120, width: 6, height: 1 }]);
+assert.ok(ra === true || ra === false, 'a move is judged against the block on its way');
+assert.strictEqual(at.readyAfter(rb, RH, rb.legalSwaps()[0], []), null, 'nothing on its way: nothing to be ready for');
 console.log('carried on: ' + carriedSame + ' of ' + carried + ' make the chain they were planned to');
 // A LINE THAT IS TO CLEAR NOTHING, played to the board's settle: its first step that clears panels and breaks nothing -- a clear made by
 // a panel falling into a match too
