@@ -433,5 +433,31 @@ module.exports = function (opts) {
     if (made.length) s.drop(made);
     return res;
   }
-  return { plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear, replay: replay };
+  // HOW FAR A LINE STAYS INSIDE ok(made): each step played on the engine to the board's settle, as replay plays it, with what the line
+  // has made so far ({ combo, chain, broke }, as replay's `whole`: beyond what the board left alone makes) asked of ok after each; the
+  // index of the first step after which ok is false or that is not legal, seq.length when every step stays inside
+  function lineFits(board, hold, seq, arrivals, ok) {
+    var s = search();
+    s.reset();
+    var root = s.root(board.copy(), hold, arrivals || [], false), n = root, made = [], k;
+    var baseOut = s.advanceMany([[root, 'settle', null, 0]], true)[0], baseChain = 0, baseCombo = 0;
+    if (baseOut && !baseOut.dead) { var bs = s.stepStats(baseOut); if (bs.cleared > 0) { baseChain = sent(bs).chain; bs.comboSizes.forEach(function (z) { if (z > baseCombo) baseCombo = z; }); } made.push(baseOut); }
+    var wCombo = 0, wChain = 0, wBroke = 0;
+    for (k = 0; k < seq.length; k++) {
+      var mv = seq[k];
+      if (!n.b.legalSwaps().some(function (m) { return m[0] === mv[0] && m[1] === mv[1]; })) break;
+      var out = s.advanceMany([[n, 'settle', mv, 0]], true)[0];
+      if (!out || out.dead) break;
+      made.push(out);
+      var st = s.stepStats(out), g = sent(st);
+      st.comboSizes.forEach(function (z) { if (z > wCombo) wCombo = z; });
+      if (g.chain > wChain) wChain = g.chain;
+      wBroke += st.broke || 0;
+      if (!ok({ combo: wCombo > baseCombo ? wCombo : 0, chain: wChain > baseChain ? wChain : 0, broke: wBroke })) break;
+      n = out;
+    }
+    if (made.length) s.drop(made);
+    return k;
+  }
+  return { plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear, replay: replay, lineFits: lineFits };
 };

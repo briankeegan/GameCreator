@@ -808,7 +808,7 @@ module.exports = function think(cfg) {
       // deadline (else what its `else` asks). The line's first swap ranks before every other move; the survival search alone stands
       // over it, so the aim is chased while the board lives, under garbage or not. The rest of the line is played on (attackLine).
       var FGmat = null, FGland = null, FGdies = null;
-      bot._idleMs = 0; bot._gambit = null; bot._gambitRaise = 0; bot._gambitLines = null; bot._gambitUrgent = false; bot._gambitOpen = false; bot._gambitBreak = null;
+      bot._idleMs = 0; bot._gambit = null; bot._gambitRaise = 0; bot._gambitLines = null; bot._gambitUrgent = false; bot._gambitOpen = false; bot._gambitBreak = null; bot._gambitList = null;
       if (gambitRules) {
         var GP = cfg.profile.gambit, FG = { us: GAMBIT.facts(board, arrivals, m.topped), enemy: GAMBIT.enemyFacts(m.opp) };
         var apG = null, exG = null, tablesG = gambitRules.get(m.opp && m.opp.name), pickG = GP.mode ? GAMBIT.named(tablesG, GP.mode) : GAMBIT.choose(tablesG, FG), lineG = null, setupG = null, readyG = false, playG = null, triedG = 0;
@@ -818,7 +818,7 @@ module.exports = function think(cfg) {
           var keepF = GAMBIT.floor(keepG);
           // THE PRIORITY LIST (aims): the first entry a line can make in time is played; an entry "default" or "hold" ends the list there
           // (the default's own move, or a hold). One search looks for every entry at once. aim/else is a list of two.
-          var byG = GAMBIT.deadline(FG, pickG.rule.by), listG = GAMBIT.aimsOf(pickG.rule), endAt = listG.length, endG = null;
+          var byG = GAMBIT.deadline(FG, pickG.rule.by), listG = bot._gambitList = GAMBIT.aimsOf(pickG.rule), endAt = listG.length, endG = null;
           for (var la = 0; la < listG.length; la++) if (typeof listG[la] === 'string') { endAt = la; endG = listG[la]; break; }
           var aimsG = listG.slice(0, endAt);
           // (garbage on our board, or topped out: every entry breaks it too -- the entry and a break in one line; none, and the
@@ -1271,6 +1271,31 @@ module.exports = function think(cfg) {
             bw.map(function (c) { var r = c.added || c.resolved, lv = bot._lastVerdict, vi = lv ? lv.cands.indexOf(c) : -1; return c.move.join(',') + '[' + (r.comboSizes || []).join('+') + (r.chainLength >= 2 ? ' x' + r.chainLength : '') + '] rank ' + (bot.preferRank ? bot.preferRank(c, -1) : '-') + ' ' + (vi >= 0 ? lv.verdict[vi] : 'unsearched'); }).join(' | '));
         }
       }
+      // EVERY SWAP PRESSED FITS THE MODE'S LIST, WHOEVER CHOSE IT (gambit): the move the decision ends on and the rest of its line are played
+      // on the engine, and the line is cut before the first step after which what it has made fits no entry (GAMBIT.fits). A first swap
+      // outside the list is replaced by the first of gambit's ranked moves that fits, else held -- unless holding dies and the survival
+      // search chose it (the one exception: survival that is absolutely necessary). Counted in bot._listCuts { line, move, survival }.
+      if (bot._gambitList && attacker && d && d.kind === 'swap' && d.move) {
+        var listF = bot._gambitList, okF = function (w) { return GAMBIT.fits(listF, w); };
+        var lineF = [d.move].concat((attackLine || []).filter(function (mv) { return Array.isArray(mv); }));
+        var kF = attacker.lineFits(board, m.hold, lineF, arrivals, okF), cutsF = bot._listCuts || (bot._listCuts = { line: 0, move: 0, survival: 0 });
+        if (kF > 0 && kF < lineF.length) { cutsF.line++; attackLine = lineF.slice(1, kF); if (!attackLine.length) { attackLine = null; attackMove = null; } }
+        else if (kF === 0) {
+          var lvF = (bot._verdictNo || 0) !== verdictNo0 ? bot._lastVerdict : null, holdF = 'unsearched';
+          if (lvF) for (var qF = 0; qF < lvF.cands.length; qF++) if (lvF.cands[qF].kind === 'hold') { holdF = lvF.verdict[qF]; break; }
+          if (holdF === 'dies' && !claimOf(bot._gambit, d)) cutsF.survival++;
+          else {
+            cutsF.move++;
+            var altF = null, ordF = (bot._gambit && bot._gambit.order) || [];
+            for (var oF = 0; oF < ordF.length && oF < 4 && !altF; oF++) {
+              var pF = String(ordF[oF]).split(',').map(Number);
+              if (pF.length === 2 && !(pF[0] === d.move[0] && pF[1] === d.move[1]) && attacker.lineFits(board, m.hold, [pF], arrivals, okF) === 1) altF = pF;
+            }
+            d = altF ? { kind: 'swap', move: altF, overruled: true, src: 'list' } : { kind: 'hold', overruled: true, src: 'list' };
+            attackLine = null; attackMove = null;
+          }
+        }
+      }
       // WHETHER WAITING COSTS ANYTHING (read by the frame loop's pace): holding is proven to live through the survival horizon, and no break
       // is wanted now -- a break put off is a break made later, and under a slab breaks are where the panels come from
       // (what the survival search made of gambit's own move: its verdict, 'unsearched' when this decision ran no search, 'not offered'
@@ -1297,7 +1322,7 @@ module.exports = function think(cfg) {
             line: line, lineAt: line && !lineFree ? fl.at : null, lineFree: lineFree, pace: { hold: holdP, brk: !!(br && br.depth), urgent: !!(tight || bot.allDoomedNow || bot._gambitUrgent) },
             mem: NativeMem(),
             breaks: br && br.depth ? { offered: br.depth, lineup: !!br.lineup, touch: !!br.touch, took: !!want[d.move ? d.move[0] + ',' + d.move[1] : d.kind] } : null,
-            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0, useless3: bot._useless3 || 0, toppedFree: bot._toppedFree || 0, survAsked: bot._survivalAsked || 0, busySetups: bot._busySetups || 0, thought: bot._thoughtMoves || 0, thoughtHolds: bot._thoughtHolds || 0, thinkErr: bot._thinkErr || null, pingPong: bot._pingPong || 0, survOver: bot._survivalOver || 0, continuous: bot._continuous || 0, fireWhy: bot._fireWhy || null, arbSrc: bot._arbSrc || null, mode: matchMode, buried: bot._buried || 0, pitAttacks: bot._pitAttacks || 0, backs: bot._backs || 0, digs: bot._digs || 0, flips: bot._flips || 0, volley: bot._volley || 0, floored: bot._floored || 0, merged: bot._merged || 0, mergeWaits: bot._mergeWaits || 0, defended: bot._defended || 0, defendLines: bot._defendLines || 0, threeAfterBig: bot._threeAfterBig || 0, threeHeldD: bot._threeHeldD || 0, keptBig: bot._keptBig || 0, defendRaises: bot._defendRaises || 0, floorHeld: bot._floorHeld || 0, flattened: bot._flattened || 0, keptLines: bot._keptLines || 0, heavy: bot._heavy || 0, gambit: bot._gambit } };
+            diag: { tight: tight, budget: bot.SURVIVE_SEARCH_BUDGET, took: took, survive: bot._svMs || 0, doomed: bot.doomedDecisions, allDoomed: bot.allDoomedNow, unproven: bot.survivalUnproven || 0, fast: bot.followFast || 0, dropped: bot.doomedMovesDropped, bare3Dropped: bot.bareThreesDropped, bare3Kept: bot.bareThreesKept, bare3Topped: bot.bareThreesTopped, unaffordable: bot.unaffordableDropped, walk: walkOf(bot, d), clears: clearsOf(bot, d), attack: bot._attackCells, setups: bot._setups || 0, threesHeld: bot._threesHeld || 0, combosHeld: bot._combosHeld || 0, chainHolds: bot._chainHolds || 0, extends: bot._extends || 0, buildHolds: bot._buildHolds || 0, raises: bot._raises || 0, chainFirst: bot._chainFirst || 0, readies: bot._readies || 0, unlocks: bot._unlocks || 0, rowsHeld: bot._rowsHeld || 0, dangers: bot._dangers || 0, dangerFires: bot._dangerFires || 0, idleFilled: bot._idleFilled || 0, noRaise: bot._noRaise || null, dangerWhy: bot._dangerWhy || null, guarded: bot._guarded || null, lineCuts: bot._lineCuts || 0, useless3: bot._useless3 || 0, toppedFree: bot._toppedFree || 0, survAsked: bot._survivalAsked || 0, busySetups: bot._busySetups || 0, thought: bot._thoughtMoves || 0, thoughtHolds: bot._thoughtHolds || 0, thinkErr: bot._thinkErr || null, pingPong: bot._pingPong || 0, survOver: bot._survivalOver || 0, continuous: bot._continuous || 0, fireWhy: bot._fireWhy || null, arbSrc: bot._arbSrc || null, mode: matchMode, buried: bot._buried || 0, pitAttacks: bot._pitAttacks || 0, backs: bot._backs || 0, digs: bot._digs || 0, flips: bot._flips || 0, volley: bot._volley || 0, floored: bot._floored || 0, merged: bot._merged || 0, mergeWaits: bot._mergeWaits || 0, defended: bot._defended || 0, defendLines: bot._defendLines || 0, threeAfterBig: bot._threeAfterBig || 0, threeHeldD: bot._threeHeldD || 0, keptBig: bot._keptBig || 0, defendRaises: bot._defendRaises || 0, floorHeld: bot._floorHeld || 0, flattened: bot._flattened || 0, keptLines: bot._keptLines || 0, heavy: bot._heavy || 0, listCuts: bot._listCuts || null, gambit: bot._gambit } };
     } catch (e) {
       if (e === P.ABORTED) out = { id: m.id, epoch: m.epoch, at: m.at, aborted: true, ms: Date.now() - t0 };
       else out = { id: m.id, epoch: m.epoch, at: m.at, error: String(e && e.stack || e) + ' [inc ' + (board && board.incoming ? board.incoming.length : '?') + ', arr ' + (m.arrivals ? m.arrivals.length : '?') + ']', ms: Date.now() - t0 };

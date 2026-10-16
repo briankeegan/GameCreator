@@ -14,6 +14,14 @@ nearest the list.
 | Done by its deadline | each step at its own time, the deadline read from the engine |
 | The next block can still be broken when it lands | the engine, the move played to the landing (entries and set-up; never a break) |
 
+## Every swap pressed, last
+
+What a line makes is the whole line played on the engine: every step's clears, the chain broken garbage sets off, a link added to a
+chain already falling. Whoever chose it, a swap is pressed only while that fits an entry of the list (a combo entry is one clear; a
+three that breaks garbage always fits). The line is cut before the first step that does not; a first swap that does not is replaced by
+the best ranked move that does. The one exception: holding dies and the survival search chose the move.
+The code: `attacker.lineFits` (survivor_attack.js) and the list gate at the end of a decision (survivor_think.js), `GAMBIT.fits`.
+
 ## In the middle of something, first
 
 A chain still falling is run on, a slab popping is lined up, a line begun is carried on -- one that breaks too ahead.
