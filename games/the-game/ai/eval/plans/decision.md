@@ -73,7 +73,7 @@ count of swaps or lines.
 | The five steps, in order | `decide` (gambit_decide.js) |
 | 1 Read | `read` (gambit_decide.js), `GAMBIT.facts` (gambit.js) |
 | 2 Propose | gambit_propose.js: one function per kind of move -- `entries`, `extension`, `nearest`, `breakLine`, `breaks`, `toward`, `ready`, `level`, `setup`, `clear`, `carried`; `search` runs the searches once |
-| 3 Judge | `attacker.judge` (survivor_attack.js): a planned line settle by settle, any other line step after step as the frame loop presses it |
+| 3 Judge | `attacker.judge` (survivor_attack.js): a planned line settle by settle, any other line step after step -- and every swap judged again at its own decision, on the board as it then is |
 | 4 Filter and rank | `judge` and `compare` (gambit_judge.js), `GAMBIT.fits`, `GAMBIT.entryOf`, `GAMBIT.tier` (gambit.js) |
 | 5 Play | `play` (gambit_decide.js); one line in progress (`bot._gambitCarry`), not one per mode |
 
