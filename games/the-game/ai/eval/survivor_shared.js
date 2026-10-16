@@ -245,6 +245,49 @@ function touchScore(grid) {
   }
   return s;
 }
+// HOW MANY SWAPS AWAY THE NEAREST BREAK IS: the fewest swaps that line up a match of three with a panel touching garbage (above, below
+// or beside it) -- each other panel of the match brought along its own row, one swap a column, over cells that hold it up and are not
+// garbage. Infinity when no match is in reach that way. grid: rows 0 (coming up) to the top, columns 1-6; >0 a colour, <0 garbage.
+function breakNear(grid) {
+  var top = grid.length - 2, best = Infinity, r, c;
+  var cell = function (q, k) { return q >= 1 && q <= top && grid[q] ? grid[q][k] : 0; };
+  var held = function (q, k) { return cell(q, k) >= 0 && (q === 1 || cell(q - 1, k) !== 0); };
+  // the swaps that bring a panel of colour `want` in row q to column k, not taking any column in `used`
+  var bring = function (q, k, want, used) {
+    if (cell(q, k) === want && !used[k]) return { d: 0, from: k };
+    var out = null;
+    for (var dir = -1; dir <= 1; dir += 2) {
+      for (var j = k + dir, ok = held(q, k); j >= 1 && j <= 6 && ok; j += dir) {
+        if (cell(q, j) === want && !used[j]) { if (!out || Math.abs(j - k) < out.d) out = { d: Math.abs(j - k), from: j }; break; }
+        if (!held(q, j)) ok = false;
+      }
+    }
+    return out;
+  };
+  for (r = 1; r <= top; r++) for (c = 1; c <= 6; c++) {
+    var k = cell(r, c);
+    if (!(k > 0) || !(cell(r + 1, c) < 0 || cell(r - 1, c) < 0 || cell(r, c - 1) < 0 || cell(r, c + 1) < 0)) continue;
+    // a column of three through it: every other row brings a panel of its colour to this column
+    for (var r0 = r - 2; r0 <= r; r0++) {
+      if (r0 < 1 || r0 + 2 > top) continue;
+      var dv = 0;
+      for (var q = r0; q <= r0 + 2 && dv < best; q++) { if (q === r) continue; var b = bring(q, c, k, {}); dv = b ? dv + b.d : Infinity; }
+      if (dv < best) best = dv;
+    }
+    // a row of three through it: two other panels of its colour in its row brought beside it
+    for (var c0 = c - 2; c0 <= c; c0++) {
+      if (c0 < 1 || c0 + 2 > 6) continue;
+      var used = {}, dh = 0;
+      used[c] = true;
+      for (var t = c0; t <= c0 + 2 && dh < best; t++) { if (t === c) continue; var bh = bring(r, t, k, used); if (bh) { used[bh.from] = true; dh += bh.d; } else dh = Infinity; }
+      if (dh < best) best = dh;
+    }
+  }
+  return best;
+}
+// The break search's beam ranked by how near a break is (breakNear), then by how even the stack under the garbage is
+var NEAR_MISS = 20;
+function nearScore(grid) { return -1000 * Math.min(NEAR_MISS, breakNear(grid)) - uneven(grid); }
 // stop(): the question is no longer wanted; checked between batches, and
 // throws what it returns (survivor_think.js: PuyoCpu.ABORTED).
 function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, keep, opts) {
@@ -309,7 +352,8 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
       var beam = tb ? TOUCH_WIDER[tb - 1] : TOUCH_BEAM, tl = tl0;
       for (var td = 2; td <= TOUCH_DEPTH && tl.length && !tpath && Date.now() < deadline; td++) {
         var ts = S.touchScores ? S.touchScores(tl.map(function (x) { return x.n; })) : null;
-        tl.forEach(function (x, q) { x.s = ts ? ts.score[q] : touchScore(x.n.b.grid); x.h = ts ? ts.hash[q] : 0; });
+        if (ts && opts && opts.near) ts.score = tl.map(function (x) { return nearScore(x.n.b.grid); });
+        tl.forEach(function (x, q) { x.s = ts ? ts.score[q] : opts && opts.near ? nearScore(x.n.b.grid) : touchScore(x.n.b.grid); x.h = ts ? ts.hash[q] : 0; });
         tl.sort(function (a, b) { return b.s - a.s; });
         // (the line nearest a break the beam has seen: TOWARD, returned when no break is found, the swaps that build toward one)
         if (tl.length && (!toward || tl[0].s > toward.s)) toward = { s: tl[0].s, path: tl[0].path };
@@ -522,4 +566,4 @@ Hands.prototype.idleSearched = function (board, hold, arrivals) {
   return { bits: k.inputs[0], hold: k.holds[0] };
 };
 
-module.exports = { touchScore: touchScore, profile: profile, botOptions: botOptions, floorTravel: floorTravel, TRAVEL_FLOOR: TRAVEL_FLOOR, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, pending: pending, arrivalsFrom: arrivalsFrom, threat: threat, top: top, gridTop: gridTop, popLeft: popLeft, lowestGarbageRow: lowestGarbageRow, breakMoves: breakMoves, Hands: Hands, convertingOf: convertingOf, keepRank: keepRank, panelsOf: panelsOf, ROOM: ROOM, CAP: CAP };
+module.exports = { touchScore: touchScore, breakNear: breakNear, nearScore: nearScore, profile: profile, botOptions: botOptions, floorTravel: floorTravel, TRAVEL_FLOOR: TRAVEL_FLOOR, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, pending: pending, arrivalsFrom: arrivalsFrom, threat: threat, top: top, gridTop: gridTop, popLeft: popLeft, lowestGarbageRow: lowestGarbageRow, breakMoves: breakMoves, Hands: Hands, convertingOf: convertingOf, keepRank: keepRank, panelsOf: panelsOf, ROOM: ROOM, CAP: CAP };
