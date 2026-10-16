@@ -91,10 +91,13 @@ function prepare(bot, board, o) {
   if (o.profile.breakFirst) {
     bot._natSearch();   // the engine, on this bot's threads, before a second context is made on it
     var tb = Date.now();
+    var brBy = o.due ? Math.min(Date.now() + Math.max(LINEUP_MIN_MS, o.ms * LINEUP_SHARE), o.due - o.margin) : Date.now() + LINEUP_MAX_MS;
     if (breakTime) br = SH.breakMoves(o.search(), board, { left: o.hold.left, started: o.hold.started }, o.arrivals, o.profile.breakDepth, o.profile.lineup && SH.popLeft(board) ? SH.popLeft(board) + LINEUP_AFTER : 0,
-                       o.due ? Math.min(Date.now() + Math.max(LINEUP_MIN_MS, o.ms * LINEUP_SHARE), o.due - o.margin) : Date.now() + LINEUP_MAX_MS,
+                       brBy,
                        o.stale ? function () { return o.stale() ? o.aborted : null; } : null, o.keep || null, o.profile.gambit ? { touchInPop: true } : null);
     brMs = Date.now() - tb;
+    // (whether the break search ran out of time: its answer is then where the time ended, not that no break is there)
+    if (br) br.cut = Date.now() >= brBy;
     if (o.stale && o.stale()) throw o.aborted;
     want = br && br.depth ? br.moves : {};
     // BANK PANELS BEFORE THE GARBAGE LANDS: once a slab is on the board the
