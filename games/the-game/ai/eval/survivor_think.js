@@ -1273,8 +1273,9 @@ module.exports = function think(cfg) {
       }
       // EVERY SWAP PRESSED FITS THE MODE'S LIST, WHOEVER CHOSE IT (gambit): the move the decision ends on and the rest of its line are played
       // on the engine, and the line is cut before the first step after which what it has made fits no entry (GAMBIT.fits). A first swap
-      // outside the list is replaced by the first of gambit's ranked moves that fits, else held -- unless holding dies and the survival
-      // search chose it (the one exception: survival that is absolutely necessary). Counted in bot._listCuts { line, move, survival }.
+      // outside the list is replaced by the first of gambit's ranked moves that fits, else held -- unless holding dies: then a move the
+      // survival search found lives that fits, and only with none the survival search's own pick (the one exception: survival that is
+      // absolutely necessary). Counted in bot._listCuts { line, move, live, survival }.
       if (bot._gambitList && attacker && d && d.kind === 'swap' && d.move) {
         var listF = bot._gambitList, okF = function (w) { return GAMBIT.fits(listF, w); };
         var lineF = [d.move].concat((attackLine || []).filter(function (mv) { return Array.isArray(mv); }));
@@ -1283,7 +1284,17 @@ module.exports = function think(cfg) {
         else if (kF === 0) {
           var lvF = (bot._verdictNo || 0) !== verdictNo0 ? bot._lastVerdict : null, holdF = 'unsearched';
           if (lvF) for (var qF = 0; qF < lvF.cands.length; qF++) if (lvF.cands[qF].kind === 'hold') { holdF = lvF.verdict[qF]; break; }
-          if (holdF === 'dies' && !claimOf(bot._gambit, d)) cutsF.survival++;
+          // (holding dies: a move the survival search found lives that fits the list is played before its own pick -- a three that breaks
+          // the garbage is one; only when none does is the survival search's pick played outside the list)
+          var liveF = null;
+          if (holdF === 'dies' && lvF) for (var vF = 0, triedF = 0; vF < lvF.cands.length && !liveF && triedF < 8; vF++) {
+            var cF = lvF.cands[vF];
+            if (cF.kind !== 'swap' || !cF.move || (lvF.verdict[vF] !== 'proven' && lvF.verdict[vF] !== 'weak') || (cF.move[0] === d.move[0] && cF.move[1] === d.move[1])) continue;
+            triedF++;
+            if (attacker.lineFits(board, m.hold, [cF.move], arrivals, okF) === 1) liveF = cF.move;
+          }
+          if (liveF) { cutsF.live = (cutsF.live || 0) + 1; d = { kind: 'swap', move: [liveF[0], liveF[1]], overruled: true, src: 'list' }; attackLine = null; attackMove = null; }
+          else if (holdF === 'dies' && !claimOf(bot._gambit, d)) cutsF.survival++;
           else {
             cutsF.move++;
             var altF = null, ordF = (bot._gambit && bot._gambit.order) || [];
