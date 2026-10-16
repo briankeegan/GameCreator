@@ -54,6 +54,9 @@ jobs:
         timeout-minutes: 5
         with:
           ref: ${{ inputs.source }}
+          sparse-checkout: |
+            games/the-game/ai/eval/native
+            games/the-game/ai/eval/lua
       - uses: actions/checkout@v4
         timeout-minutes: 5
         with:
@@ -61,6 +64,15 @@ jobs:
           ref: ${{ inputs.panel_game_ref }}   # a commit of bramp/multi-player (the branch with bot/headlessBoot.lua): the engine a scan runs on, fixed so two scans compare
           path: panel-game
           fetch-depth: 1
+      - name: The runner image
+        id: image
+        run: echo "version=$ImageVersion" >> "$GITHUB_OUTPUT"
+      - name: The rocks, as the last scan built them
+        uses: actions/cache@v4
+        timeout-minutes: 5
+        with:
+          path: ~/.luarocks
+          key: luarocks-${{ steps.image.outputs.version }}-luafilesystem-luasocket-luautf8
       - name: LuaJIT and the panel-game rocks
         timeout-minutes: 20
         run: |
@@ -68,8 +80,8 @@ jobs:
           # and each try is cut at three minutes, so a hung mirror is a try lost
           # and not the step's whole time
           try() { for n in 1 2 3; do timeout 180 "$@" && return 0; sleep 15; done; return 1; }
-          try sudo apt-get update -qq
-          try sudo apt-get install -y -qq luajit luarocks liblua5.1-0-dev clang
+          # the package lists are refreshed only when the packages are not found without it
+          sudo apt-get install -y -qq luajit luarocks liblua5.1-0-dev clang || { try sudo apt-get update -qq; try sudo apt-get install -y -qq luajit luarocks liblua5.1-0-dev clang; }
           for r in luafilesystem luasocket luautf8; do try luarocks --lua-version 5.1 --local install $r; done
       - name: Build the bot
         working-directory: games/the-game/ai/eval/native
