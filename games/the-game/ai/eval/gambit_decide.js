@@ -50,12 +50,16 @@ function ranked(c, R, S) {
   if (cj) { cj.wait = C.wait; if (cj.wait) { cj.tier = Math.max(cj.tier, HOLD_TIER); cj.sub = [-1]; } else cj.sub = [-Infinity].concat(cj.sub); out.push(cj); }
   return ready(c, R, out.sort(JUDGE.compare));
 }
-// EVERY MOVE, FIRST: THE NEXT BLOCK CAN STILL BE BROKEN WHEN IT LANDS (plans/decision.md) -- every move that breaks nothing, played as
-// the judge plays it and run on to the next landing, must leave a break in reach then; one that does not is no candidate. Checked in
-// rank order while the decision has time (one that time runs out on stands as ranked). A break is not held to it.
+// EVERY MOVE, FIRST: THE NEXT BLOCK CAN STILL BE BROKEN WHEN IT LANDS (plans/decision.md) -- when the board left alone leaves a break
+// in reach once the next block has landed, every move that breaks nothing, played as the judge plays it and run on to the landing, must
+// still leave one; one that does not is no candidate. With none in reach for the board left alone either, no move is held to it: no
+// move takes away what is not there. Checked in rank order while the decision has time (one that time runs out on stands as ranked). A
+// break is not held to it.
 function ready(c, R, cands) {
   var land = R.F.us.nextLands;
   if (land === null || land === undefined) return cands;
+  var alone = c.attacker.judge(c.board, c.m.hold, [], c.arrivals, { readyAt: land, tight: c.tight });
+  if (alone.ready !== true) return cands;
   return cands.filter(function (k) {
     if ((k.ap.broke || 0) > 0 || c.left() <= 0) return true;
     var j = c.attacker.judge(c.board, c.m.hold, k.seq, c.arrivals, { settled: k.settled, readyAt: land, tight: c.tight });
