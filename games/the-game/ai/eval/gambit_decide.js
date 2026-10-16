@@ -44,14 +44,10 @@ function read(c) {
   }
   // (what the board left alone makes while a chain falls or a slab pops, as the game counts it -- the chain, and the clears of its own
   // the panels out of the slab make: outside the list, holding is outside it too)
-  // (topped out: every line is judged for how long the board lives after it, to the last block shown landed and LIFE_BEYOND more)
-  var lastLand = 0; c.arrivals.forEach(function (a) { if (a.at > lastLand) lastLand = a.at; });
-  c.lifeHorizon = F.us.topped ? lastLand + LIFE_BEYOND : 0;
-  var aloneLife = F.us.topped ? c.attacker.judge(c.board, c.m.hold, [], c.arrivals, { tight: c.tight, diesAfter: c.lifeHorizon }).dies : undefined;
   var aloneJ = CK.cascadeLive(c.board, true) || SH.popLeft(c.board) > 0 ? c.attacker.judge(c.board, c.m.hold, [], c.arrivals, { tight: c.tight }) : null;
   var aloneChain = aloneJ ? aloneJ.chainAll || 0 : 0;
   var aloneOut = !!(aloneJ && !JUDGE.fitsList(list, { combo: 0, chain: 0 }, aloneJ));
-  return { F: F, pick: pick, list: list, aloneChain: aloneChain, aloneOut: aloneOut, aloneLife: aloneLife, aims: aims, listAims: listAims, end: end, by: by, under: under, keep: keep, keepF: keepF, readyAt: readyAt,
+  return { F: F, pick: pick, list: list, aloneChain: aloneChain, aloneOut: aloneOut, aims: aims, listAims: listAims, end: end, by: by, under: under, keep: keep, keepF: keepF, readyAt: readyAt,
            pop: SH.popLeft(c.board) > 0, to: to, low: low, up: up,
            preds: aims.map(function (a) { return function (made) { return GAMBIT.meets(a, made); }; }) };
 }
@@ -61,7 +57,6 @@ function read(c) {
 var DROP_CODE = { back: 'b', list: 'o', late: 't', floor: 'f', ready: 'r', unbroken: 'u' };
 var HOLD_TIER = 5;   // (GAMBIT.tier: a hold ranks below every play that fits, above a clear)
 var RAISE_MS = 150;
-var LIFE_BEYOND = 600;   // (frames a topped board's life is judged past the last block shown landing)
 var READY_ENOUGH = 3;   // (the moves found ready, in rank order, after which the rest stand as ranked: each check is a two-swap search)   // (the most of a decision the raise's readiness search takes)
 // 2-4. PROPOSE, JUDGE AND RANK: every candidate offered, judged, the ones left in rank order
 function ranked(c, R, S) {
