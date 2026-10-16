@@ -303,7 +303,8 @@ Match.prototype.take = function (truth) {
     // panel has cleared or garbage landed since; otherwise it is played as a
     // hold. A second swap back of the same pair never is.
     var back = null, now = null;
-    if (a.kind === 'swap' && move && this.swapHistory.length) {
+    // (Gambit judges its own swaps back: gambit_judge.js)
+    if (a.kind === 'swap' && move && this.swapHistory.length && !(L.profile && L.profile.gambit)) {
       var us = swapOf(board, move);
       if (us.ids) {
         for (var h = this.swapHistory.length - 1; h >= 0; h--) {
