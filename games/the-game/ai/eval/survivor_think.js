@@ -801,7 +801,7 @@ module.exports = function think(cfg) {
       // THE AIM (gambit): the facts of both boards, the first rule whose `when` holds, and a line that makes what its aim asks by its
       // deadline (else what its `else` asks). The line's first swap ranks before every other move; the survival search alone stands
       // over it, so the aim is chased while the board lives, under garbage or not. The rest of the line is played on (attackLine).
-      bot._gambit = null; bot._gambitRaise = 0; bot._gambitLines = null; bot._gambitUrgent = false;
+      bot._gambit = null; bot._gambitRaise = 0; bot._gambitLines = null; bot._gambitUrgent = false; bot._gambitOpen = false;
       if (gambitRules) {
         var GP = cfg.profile.gambit, FG = { us: GAMBIT.facts(board, arrivals, m.topped), enemy: GAMBIT.enemyFacts(m.opp) };
         var apG = null, exG = null, tablesG = gambitRules.get(m.opp && m.opp.name), pickG = GP.mode ? GAMBIT.named(tablesG, GP.mode) : GAMBIT.choose(tablesG, FG), lineG = null, setupG = null, readyG = false, playG = null, triedG = 0;
@@ -894,6 +894,8 @@ module.exports = function think(cfg) {
           var lowG = !!(toG && !underG && !FG.us.topped && fullTop(board) < toG);
           var upG = lowG && !cascadeLive(board, true) && bot._canRaise();
           if (upG) { lineG = null; setupG = null; bot._gambitRaise = toG; } else bot._gambitRaise = 0;
+          if (FG.us.contact !== null || FG.us.topped) bot._gambitHit = true;
+          bot._gambitOpen = !!(upG && !bot._gambitHit);
           // (the raise due but the board busy -- a clear or a fall still going, which locks the rise: nothing new is begun, so the board
           // comes to rest and the next decision raises; a chain already falling is still run on)
           var waitG = lowG && !upG && !(lineG && lineG.extend);
@@ -973,6 +975,10 @@ module.exports = function think(cfg) {
         d = undefined; bot._survivalAsked = (bot._survivalAsked || 0) + 1;
       }
       try { if (!d) d = bot._decide(); } finally { bot._abort = null; N.deadline(0); bot.depth = depth0; bot._dueAt = 0; }
+      // THE OPENING RAISE (gambit): until the first garbage reaches the board, the stack is raised to the rules' raise.to whenever the
+      // board lets it -- the countdown is the time to plan, and the match opens with panels to plan with. It is the play, whatever else
+      // ranks; the held press lets go before the first block lands (holdFrames, below).
+      if (bot._gambitOpen && !(d && d.kind === 'raise')) { d = { kind: 'raise', overruled: true, src: 'opening' }; attackLine = null; attackMove = null; }
       if (arbProps && d && d.kind === 'swap' && d.move) bot._swapLog = (bot._swapLog || []).filter(function (e) { return m.at - e.at < 400; }).concat([{ pk: arbKey(d.move), at: m.at }]).slice(-12);
       if (arbProps && d) {
         var ap0 = d.kind === 'swap' && d.move ? arbProps[arbKey(d.move)] : d.kind === 'raise' ? arbProps.raise : null;
