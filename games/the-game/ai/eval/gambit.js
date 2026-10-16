@@ -149,9 +149,10 @@ function lead(aims, made, under) { return nearList(aims, made) + (under && made.
 //     then one that buys stop time, then the most broken; the
 //     list is the aim's (step 4), not the must-do's: a break the list asks for done after the pop ranks below one made during it
 //   2 AIM, no garbage: the list, in its order
-//   3 BEST THAT FITS: garbage sent (enemy topped: combos first, else chains), stop time -- never making a must-do miss its deadline: under
-//     garbage a clear that breaks nothing is only this on a topped board, where the stop time it buys is what keeps the board alive
-//   4 NOTHING FITS: ready, toward a break, level, setup
+//   3 BEST THAT FITS, no garbage on the board: garbage sent (enemy topped: combos first, else chains), stop time -- never making a must-do
+//     miss its deadline: under garbage a clear that breaks nothing makes the break wait
+//   4 NOTHING FITS: ready, toward a break, then -- under garbage on a topped board -- a combo or chain that breaks nothing, for the stop
+//     time that keeps the board alive, then level, setup
 //   6 CLEAR and SCRAMBLE, and any clear that breaks nothing, sends nothing and buys nothing: only when there is nothing else (hold is 5)
 function tier(play, x, aim, under, enemyOut, topped) {
   x = x || {};
@@ -161,8 +162,9 @@ function tier(play, x, aim, under, enemyOut, topped) {
   if (under && broke > 0) return { tier: 1, sub: [x.floor === false ? 1 : 0, -rate, buys ? 0 : 1, -broke] };
   if (play === 'clear' || play === 'scramble') return { tier: 6, sub: [-stop] };   // (only when there is nothing else)
   if (aim >= 0 && !under) return { tier: 2, sub: [aim, x.done || 0] };
-  if (clears && (buys || cells > 0) && (!under || (topped && buys))) return { tier: 3, sub: [-cells, enemyOut ? -combo : -chain, enemyOut ? -chain : -combo, -stop, -(x.near || 0)] };
+  if (clears && (buys || cells > 0) && !under) return { tier: 3, sub: [-cells, enemyOut ? -combo : -chain, enemyOut ? -chain : -combo, -stop, -(x.near || 0)] };
   if (!clears) return { tier: 4, sub: [{ ready: 0, toward: 1, level: 2, setup: 3 }[play] || 4] };
+  if (under && topped && buys) return { tier: 4, sub: [1.5, -stop] };   // (after the line toward a break, before level, setup and hold)
   return { tier: 6, sub: [-stop] };
 }
 // A rule's priority list: `aims` as written, or aim then else. Entries are aims, or "default" / "hold", which end the list.
