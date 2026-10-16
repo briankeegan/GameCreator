@@ -832,8 +832,8 @@ module.exports = function think(cfg) {
             // (a chain already falling is run on first: the links that keep it going and make an entry -- the next chain is built
             // while the first one runs; and a slab popping is lined up: the panels it turns into are matched as they fall, a link more)
             var leftG = function () { return due ? due - Date.now() - 2 * DEADLINE_MARGIN_MS - 100 : 1e9; };
-            // (a slab popping: the line-up is held to the list as written -- the pop is the break -- and has the planner's share of time
-            // too; the planner keeps its own)
+            // (a slab popping: the line-up is held to the list as written -- the pop is the break -- and has the decision's whole search
+            // time, the plan what it leaves)
             // (with garbage left on the board the line-up does both, in this order: an entry that breaks it again, the entry as written, then
             // any line-up that breaks it again -- the panels it turns into matched against the rows still above)
             var popG = SH.popLeft(board) > 0, xMsG = popG ? (GP.ms || 80) : (GP.extendMs || 40);
@@ -851,7 +851,7 @@ module.exports = function think(cfg) {
             // (under garbage every line that breaks it is near: breaking comes first, so the search grows the lines that break, a three
             // included, whatever the list asks -- the nearest of them to the list first)
             var nearG0 = function (made) { return GAMBIT.nearList(aimsG, made) + (underG && made.broke > 0 ? 0.5 : 0); };
-            var msG = Math.min(GP.ms || 80, leftG());   // (the planner's own share, a line-up or extension before it or not)
+            var msG = Math.min(GP.ms || 80, leftG()) - (popG && exG ? exG.ms : 0);
             if (msG >= 20) {
               triedG++;
               apG = attacker.plan(board, m.hold, { ms: msG, width: GP.width || 40, depth: GP.depth || 7, pool: GP.pool || 250, minChain: 0, arrivals: arrivals,
