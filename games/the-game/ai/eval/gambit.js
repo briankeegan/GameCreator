@@ -181,17 +181,17 @@ function nearList(aims, made) {
 // What leads the search: the list -- under garbage its entries ask a break, so a line that breaks nothing is near none of them -- and
 // any line that breaks a little nearer than one that does not, a three included. The pick's order (tier) chooses among what is found.
 function lead(aims, made, under) { return nearList(aims, made) + (under && made.broke > 0 ? 0.5 : 0); }
-// THE PICK'S TIERS (plans/gambit.md section 5), lower first, and the order within one: x is what the line makes ({ combo, chain, broke,
-// cells, earned, done, near }), aim its entry in the list (-1: none), under garbage on the board or topped, enemyOut the enemy topped.
-//   1 MUST-DO, under garbage: a break -- one whose board keeps the floor first (a break is made below it, but of two the one that leaves
-//     the panels the next break is made of comes first: a three converts more than it spends), then the most garbage broken per frame,
-//     then one that buys stop time, then the most broken; the
-//     list is the aim's (step 4), not the must-do's: a break the list asks for done after the pop ranks below one made during it
-//   2 AIM, no garbage: the list, in its order
-//   3 BEST THAT FITS: garbage sent (enemy topped: combos first, else chains), stop time -- never making a must-do miss its deadline: under
-//     garbage a clear that breaks nothing is only this on a topped board, where the stop time it buys is what keeps the board alive
-//   4 NOTHING FITS: ready, toward a break, level, setup
-//   6 CLEAR, and any clear that breaks nothing, sends nothing and buys nothing: only when there is nothing else (hold is 5)
+// THE PICK'S TIERS (plans/decision.md, the table by the board), lower first, and the order within one: x is what the line makes ({ combo,
+// chain, broke, cells, earned, done, near }), aim its entry in the list (-1: none), under garbage on the board or topped, enemyOut the
+// enemy topped, waits the break waiting for the next block (facts().breakWaits).
+//   1 BREAK IT, under garbage: one whose board keeps the floor first, then an entry that breaks in the list's order, then the most
+//     garbage broken per frame, then one that buys stop time, then the most broken
+//   2 AN ENTRY, no garbage (or the break waiting): the list, in its order
+//   3 BEST THAT FITS: garbage sent (enemy topped: combos first, else chains), stop time -- under garbage a clear that breaks nothing is
+//     only this on a topped board, where the stop time it buys is what keeps the board alive
+//   4 SET UP: ready, toward a break, level, setup
+//   5 the hold (put beside the candidates, gambit_decide.js)
+//   6 the break when it waits, then a CLEAR that breaks nothing, sends nothing and buys nothing: only when there is nothing else
 function tier(play, x, aim, under, enemyOut, topped, waits) {
   x = x || {};
   var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0, cells = x.cells || 0, stop = x.earned || 0;

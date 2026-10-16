@@ -134,9 +134,6 @@ function answer(c) {
   if (D.carry !== 'keep') bot._gambitCarry = D.carry;
   if (D.R.F.us.contact !== null || D.R.F.us.topped) bot._gambitHit = true;
   var L = lives(c, D), d = L.d;
-  // (every swap is its own decision, judged on the board as it is when it is pressed: the frame loop is handed no line to press on its
-  // own clock -- the rest of a line is carried on by the next decisions, as the line in progress or the break line kept)
-  var line = null;
   keepBreakLine(c, c.br, d);
   // (no swap back: the pair the last swap swapped is kept out for a second when it is swapped three times running)
   var pr = d.kind === 'swap' && c.board.panels[d.move[0]], pa = pr && pr[d.move[1]], pb = pr && pr[d.move[1] + 1];
@@ -151,7 +148,9 @@ function answer(c) {
   return { id: m.id, epoch: m.epoch, at: m.at, src: L.gambits ? 'gambit' : 'survival', kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null,
            raiseFrames: held.now, raiseAfter: held.after, ms: Date.now() - c.t0, idleMs: D.idleMs || 0,
            claim: claimOf(D.info, d), queued: m.posted ? c.t0 - m.posted : 0, brMs: c.brMs,
-           line: line, lineAt: null, lineFree: !!line,
+           // (every swap is its own decision, judged on the board as it is when it is pressed: the frame loop is handed no line to press
+           // on its own clock -- the rest of a line is carried on by the next decisions, as the line in progress or the break line kept)
+           line: null, lineAt: null, lineFree: false,
            pace: { hold: L.holdLives, brk: !!(c.br && c.br.depth), urgent: !!(bot.allDoomedNow || D.urgent) },
            mem: c.nativeMem(),
            breaks: c.br && c.br.depth ? { offered: c.br.depth, lineup: !!c.br.lineup, touch: !!c.br.touch, took: !!(c.br.moves && d.move && c.br.moves[keyOf(d)]) } : null,

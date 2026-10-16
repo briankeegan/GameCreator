@@ -3,8 +3,9 @@
 var path = require('path');
 var GAMBIT = require(path.join(__dirname, 'gambit.js'));
 
-// THE PLAYS PRESSED A DECISION AT A TIME: a planned line presses each step once the board has settled from the last (the next decision
-// carries it on); every other line's rest is handed to the frame loop, which presses its steps one after the other
+// THE PLAYS JUDGED SETTLE BY SETTLE: a planned line presses each step once the board has settled from the last, and is judged so; any
+// other line is a run of swaps made one after the other, and is judged so. (Every swap is still its own decision: each later step is
+// judged again, on the board as it then is.)
 var SETTLED = ['entry', 'nearest', 'break line', 'carry', 'carry wait', 'clear'];
 function settled(play) { return SETTLED.indexOf(play) >= 0; }
 // THE SET-UPS: plays that move panels toward the ask or a break and clear nothing on the way
