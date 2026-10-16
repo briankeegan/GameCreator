@@ -50,7 +50,7 @@ in step 4, or the judge answers it in step 3.
 
 A break is a match that touches garbage: its bottom row turns into panels. Garbage can always be broken with a three.
 
-Garbage still falling: the board topped out, with a block still in the air or one queued to land. A raise is never made on a board
+Garbage still falling: the board topped out, with a block in the air -- one only queued has not begun to fall. A raise is never made on a board
 topped out.
 
 ## Every number from the engine or the budget
