@@ -55,13 +55,5 @@ var ra = at.readyAfter(rb, RH, rb.legalSwaps()[0], [{ at: 120, width: 6, height:
 assert.ok(ra === true || ra === false, 'a move is judged against the block on its way');
 assert.strictEqual(at.readyAfter(rb, RH, rb.legalSwaps()[0], []), null, 'nothing on its way: nothing to be ready for');
 console.log('carried on: ' + carriedSame + ' of ' + carried + ' make the chain they were planned to');
-// A LINE THAT IS TO CLEAR NOTHING, played to the board's settle: its first step that clears panels and breaks nothing -- a clear made by
-// a panel falling into a match too
 var H = { left: 0, started: false };
-var three = PA.puzzle(['000000', '000000', '000000', '000000', '112100', '345612'].join(''));
-assert.strictEqual(at.firstClear(three, H, [[2, 3]]), 0, 'a swap that makes a three clears');
-assert.strictEqual(at.firstClear(three, H, [[1, 1], [2, 3]]), 1, 'the second step clears');
-assert.strictEqual(at.firstClear(three, H, [[1, 1]]), -1, 'a swap that makes nothing does not');
-var fall = PA.puzzle(['000000', '000000', '000000', '000200', '220000', '345612'].join(''));
-assert.strictEqual(at.firstClear(fall, H, [[3, 3]]), 0, 'a panel swapped over a hole falls into a three: a clear');
 console.log('ok: every step its own time -- ' + found + ' boards, ' + late + ' kept with the cascade settling past the deadline');

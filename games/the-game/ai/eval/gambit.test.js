@@ -79,11 +79,6 @@ assert.strictEqual(gf.material, 8, 'the panels under the garbage, not the one ab
 assert(G.keeps({ material: '>=8' }, grid) && !G.keeps({ material: '>=12' }, grid), 'a line that leaves 8 panels keeps 8, not 12');
 assert(G.keeps(null, grid), 'no keep asks nothing');
 assert.strictEqual(G.breakBy({ us: { dies: 97, nextLands: 1 } }), null, 'a break is due before the board dies -- the engine judges it, not the next block landing or the estimate');
-assert(before(G.tier('lineup break', { combo: 4, broke: 6, done: 90 }, -1, true, false, true), G.tier('break search', { broke: 6, done: 30 }, -1, true, false, true)), 'topped, a break that buys stop time before a quicker plain three');
-var pb0 = PA.puzzle(['000000', '000000', '000000', '000000', '112100', '345612'].join('')), idsP = [pb0.panels[2][3].id, pb0.panels[2][4].id];
-assert.deepStrictEqual(G.pairAt(pb0, idsP), [2, 3], 'a swap\'s panels found where they are');
-var pb1 = pb0.copy(); pb1.curRow = 2; pb1.curCol = 3; pb1.tryQueueSwap(2, 3); for (var fz = 0; fz < 6; fz++) { pb1.setInput(0); pb1.run(); }
-assert.strictEqual(G.pairAt(pb1, idsP), null, 'once swapped they are the other way round: not that swap again');
 var fl = G.floor({ material: '>=12' });
 assert(!fl(grid, { broke: 0, chain: 2 }), 'the floor holds an attack, garbage on the board or not');
 assert(fl(grid, { broke: 6 }), 'a break is not held to the floor');
@@ -116,17 +111,11 @@ assert(G.lead(P4, { combo: 3, chain: 1, broke: 6 }, true) > 0, 'a three that bre
 // its stop time), above hold (5); a clear that buys nothing is below it
 assert.strictEqual(G.tier('lineup', { chain: 1, combo: 3, broke: 6, done: 30 }, -1, true, false).tier, 1, 'under garbage a three that breaks is a must-do');
 function before(x, y) { for (var q = 0; q < x.sub.length; q++) if (x.sub[q] !== y.sub[q]) return x.sub[q] < y.sub[q]; return false; }
-assert(G.tier('break search', { broke: 6, done: 90 }, -1, true, false).sub[0] < G.tier('lineup', { chain: 3, combo: 6, broke: 6, done: 40, floor: false }, -1, true, false).sub[0], 'of two breaks the one that keeps the floor first');
-var slowAim = G.tier('entry', { chain: 2, combo: 6, broke: 6, done: 900 }, 0, true, false), fastBreak = G.tier('lineup break', { broke: 6, done: 60 }, -1, true, false);
-assert(before(fastBreak, slowAim), 'under garbage a break in the list but done after the pop ranks below one made during it');
-assert.strictEqual(G.tier('lineup', { chain: 6, combo: 3, broke: 0, cells: 30 }, -1, true, false, true).tier, 3, 'under garbage, topped, a chain that breaks nothing buys the stop time that keeps the board alive');
-assert.strictEqual(G.tier('lineup', { chain: 6, combo: 3, broke: 0, cells: 30 }, -1, true, false, false).tier, 6, 'under garbage, not topped, a chain that breaks nothing would make the break wait: below hold');
+assert(before(G.tier('lineup', { combo: 4, broke: 6 }, -1, true, false), G.tier('break search', { broke: 12 }, -1, true, false)), 'must-do: a break that buys stop time over a plain break');
+assert(before(G.tier('break search', { broke: 12 }, -1, true, false), G.tier('break search', { broke: 6 }, -1, true, false)), 'then more garbage broken');
+assert.strictEqual(G.tier('lineup', { chain: 6, combo: 3, broke: 0, cells: 30 }, -1, true, false).tier, 6, 'under garbage a clear that breaks nothing would make the break wait: below hold');
 assert.strictEqual(G.tier('clear', { chain: 1, combo: 3 }, -1, true, false).tier, 6, 'a plain clear is below hold');
 assert.strictEqual(G.tier('scramble', { chain: 5, combo: 3, earned: 120 }, -1, true, false).tier, 6, 'a scramble is below hold, whatever it buys');
-assert.strictEqual(G.tier('clear', { chain: 1, combo: 3, top: 11 }, -1, true, false, true).tier, 1, 'topped, a clear that brings the stack below the top keeps the board alive: a must-do');
-assert.strictEqual(G.tier('scramble', { chain: 2, combo: 3, earned: 60 }, -1, true, false, true).tier, 1, 'topped, a scramble that buys stop time too');
-assert.strictEqual(G.tier('clear', { chain: 1, combo: 3, top: 12 }, -1, true, false, true).tier, 6, 'topped, a clear that leaves it topped does not');
-assert(G.tier('break search', { broke: 6, done: 90 }, -1, true, false, true).sub[0] < 2, 'a break comes before them');
 assert.strictEqual(G.tier('entry', { chain: 4, cells: 18 }, 0, false, false).tier, 2, 'no garbage: the aim');
 assert.strictEqual(G.tier('setup', {}, -1, false, false).tier, 4, 'a setup: nothing fits');
 

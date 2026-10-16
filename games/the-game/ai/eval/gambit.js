@@ -73,15 +73,6 @@ function keeps(keep, grid) {
   var f = gridFacts(grid);
   return Object.keys(keep).every(function (k) { return test(f[k.replace(/^us\./, '')], keep[k]); });
 }
-// WHERE A SWAP'S TWO PANELS ARE NOW (ids: left, right, as they were): [row, col] while they are still side by side in that order -- a
-// swap already played has put them the other way round -- else null
-function pairAt(board, ids) {
-  for (var r = 1; r < board.panels.length; r++) for (var c = 1; c <= 5; c++) {
-    var p = board.panels[r] && board.panels[r][c], q = board.panels[r] && board.panels[r][c + 1];
-    if (p && q && p.id === ids[0] && q.id === ids[1]) return [r, c];
-  }
-  return null;
-}
 // A BREAK'S DEADLINE (plays.md): before the board dies, however soon the next block lands (that is the level's and the ready's) -- and the
 // engine is the judge of that: every line is played on it with the garbage landing, and one the board dies on is never offered. The
 // estimate of the frames left (dies) is no deadline for a break; it is what the pace hurries for
@@ -153,29 +144,23 @@ function nearList(aims, made) {
 function lead(aims, made, under) { return nearList(aims, made) + (under && made.broke > 0 ? 0.5 : 0); }
 // THE PICK'S TIERS (plans/gambit.md section 5), lower first, and the order within one: x is what the line makes ({ combo, chain, broke,
 // cells, earned, done, near }), aim its entry in the list (-1: none), under garbage on the board or topped, enemyOut the enemy topped.
-//   1 MUST-DO, under garbage: a break -- one whose board keeps the floor first (a break is made below it, but of two the one that leaves
-//     the panels the next break is made of comes first: a three converts more than it spends), then the most garbage broken per frame,
-//     then one that buys stop time, then the most broken -- on a topped board one that buys stop time first (a plain three buys none,
-//     and the board loses health every frame it has none); the
-//     list is the aim's (step 4), not the must-do's: a break the list asks for done after the pop ranks below one made during it
+// Live and in time (steps 1 and 2) are the engine's: a line that dies, or is done after its deadline, is never a candidate.
+//   1 MUST-DO, under garbage: a break -- one that buys stop time (a combo or chain break) over a plain break, then more garbage broken
 //   2 AIM, no garbage: the list, in its order
-//   3 BEST THAT FITS: garbage sent (enemy topped: combos first, else chains), stop time -- never making a must-do miss its deadline: under
-//     garbage a clear that breaks nothing is only this on a topped board, where the stop time it buys is what keeps the board alive
+//   3 BEST THAT FITS, no garbage: garbage sent (enemy topped: combos first, else chains), then stop time -- never making a must-do miss
+//     its deadline (under garbage a clear that breaks nothing does)
 //   4 NOTHING FITS: ready, toward a break, level, setup
-//   (1, after the breaks, on a topped board: a clear that brings the stack below the top, a scramble that buys stop time)
-//   6 CLEAR and SCRAMBLE, and any clear that breaks nothing, sends nothing and buys nothing: only when there is nothing else (hold is 5)
-function tier(play, x, aim, under, enemyOut, topped) {
+//   5 hold
+//   6 CLEAR and SCRAMBLE, and any clear that breaks nothing, sends nothing and buys nothing: only when there is nothing else
+function tier(play, x, aim, under, enemyOut) {
   x = x || {};
   var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0, cells = x.cells || 0, stop = x.earned || 0;
   var clears = combo >= 3 || chain >= 2 || broke > 0 || cells > 0 || play === 'clear' || play === 'scramble';
-  var buys = combo >= 4 || chain >= 2, rate = broke / Math.max(1, x.done || 1);
-  if (under && broke > 0) return { tier: 1, sub: topped ? [buys ? 0 : 1, x.floor === false ? 1 : 0, -rate, -broke] : [x.floor === false ? 1 : 0, -rate, buys ? 0 : 1, -broke] };
-  // (a topped board loses health every frame it has no stop time: the plays that keep it alive are the must-do there -- a clear that
-  // brings the stack below the top, a scramble that buys stop time -- after any break)
-  if (topped && ((play === 'clear' && x.top != null && x.top < 12) || (play === 'scramble' && stop > 0))) return { tier: 1, sub: [2, play === 'clear' ? 0 : 1, -stop] };
+  var buys = combo >= 4 || chain >= 2;
+  if (under && broke > 0) return { tier: 1, sub: [buys ? 0 : 1, -broke] };
   if (play === 'clear' || play === 'scramble') return { tier: 6, sub: [-stop] };   // (only when there is nothing else)
   if (aim >= 0 && !under) return { tier: 2, sub: [aim, x.done || 0] };
-  if (clears && (buys || cells > 0) && (!under || (topped && buys))) return { tier: 3, sub: [-cells, enemyOut ? -combo : -chain, enemyOut ? -chain : -combo, -stop, -(x.near || 0)] };
+  if (clears && (buys || cells > 0) && !under) return { tier: 3, sub: [-cells, enemyOut ? -combo : -chain, enemyOut ? -chain : -combo, -stop, -(x.near || 0)] };
   if (!clears) return { tier: 4, sub: [{ ready: 0, toward: 1, level: 2, setup: 3 }[play] || 4] };
   return { tier: 6, sub: [-stop] };
 }
@@ -252,4 +237,4 @@ function rulesFor(profile, dir) {
   return new Rules(path.isAbsolute(g.rules) ? g.rules : path.join(dir, g.rules));
 }
 
-module.exports = { named: named, near: near, nearList: nearList, lead: lead, tier: tier, floor: floor, breakBy: breakBy, pairAt: pairAt, aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };
+module.exports = { named: named, near: near, nearList: nearList, lead: lead, tier: tier, floor: floor, breakBy: breakBy, aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };
