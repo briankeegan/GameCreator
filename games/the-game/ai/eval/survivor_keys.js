@@ -74,4 +74,16 @@ function actionsFor(row, col, move, left) {
   });
   return cost;
 }
-module.exports = { holdWalks: holdWalks, slowWalks: slowWalks, actionsFor: actionsFor, MIN_LEG: MIN_LEG, HOLDTIGHT: HOLDTIGHT };
+var SWAP_KEY = require(require('path').join(__dirname, '..', '..', 'pa-engine.js')).IN.swap;
+// THE PRESS AS THE FRAME LOOP MAKES IT: with the input budget tight (o.tight: the decision's allowance at or under KEYS.HOLDTIGHT) the
+// frame loop walks the cursor held from two cells (survivor_match.js walkKeys, KEYS.slowWalks), which presses the swap later than the
+// search's own walk. The frames later, from node n: the search's keys for the swap, walked as the frame loop walks them.
+function pressDelay(s, n, mv, tight) {
+  if (!tight || !mv) return 0;
+  var k = s.keys(n, 'swap', mv, 0);
+  if (!k) return 0;
+  var at = function (ins) { for (var i = 0; i < ins.length; i++) if (ins[i] & SWAP_KEY) return i; return -1; };
+  var tap = at(k.inputs), slow = at(slowWalks(k.inputs, k.holds, 2).inputs);
+  return tap >= 0 && slow > tap ? slow - tap : 0;
+}
+module.exports = { pressDelay: pressDelay, holdWalks: holdWalks, slowWalks: slowWalks, actionsFor: actionsFor, MIN_LEG: MIN_LEG, HOLDTIGHT: HOLDTIGHT };

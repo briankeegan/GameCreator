@@ -4,6 +4,7 @@
 // ns_keys), so the keys pressed are the ones the search played.
 var fs = require('fs'), path = require('path');
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
+var KEYS = require(path.join(__dirname, 'survivor_keys.js'));
 
 // ---------------------------------------------------------------- the profile
 // survivor.profile.json: the weights and the switches they play under, and
@@ -310,15 +311,30 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
   // `deadline` the steps not yet played come back null, as lines that are not
   // there; the first swaps (made, below) are always played.
   var BATCH = 64;
+  // (each swap pressed when the frame loop presses it: with the input budget tight (opts.tight) the walk is held from two cells and the
+  // swap waits for it -- KEYS.pressDelay, the judge's own clock)
+  function press(steps) {
+    if (!(opts && opts.tight)) return S.advanceMany(steps, true);
+    var pre = [], at = [], i;
+    for (i = 0; i < steps.length; i++) { var late = steps[i][1] === 'swap' ? KEYS.pressDelay(S, steps[i][0], steps[i][2], true) : 0; if (late > 0) { pre.push([steps[i][0], 'long', null, late]); at.push(i); } }
+    if (!pre.length) return S.advanceMany(steps, true);
+    var waited = S.advanceMany(pre, true), real = steps.slice(), live = [], idx = [];
+    at.forEach(function (k, q) { var w = waited[q]; real[k] = w && !w.dead ? [w, real[k][1], real[k][2], real[k][3]] : null; });
+    real.forEach(function (st, k) { if (st) { live.push(st); idx.push(k); } });
+    var outs = live.length ? S.advanceMany(live, true) : [], res = steps.map(function () { return null; });
+    idx.forEach(function (k, q) { res[k] = outs[q]; });
+    if (S.drop) S.drop(waited.filter(function (w) { return w && !w.dead && w._i >= 0; }));
+    return res;
+  }
   function many(steps, whole) {
     if (!steps.length) return [];
-    if (whole) return S.advanceMany(steps, true);
+    if (whole) return press(steps);
     var out = [];
     for (var b = 0; b < steps.length; b += BATCH) {
       var halt = stop && stop();
       if (halt) throw halt;
       if (Date.now() >= deadline) { while (out.length < steps.length) out.push(null); break; }
-      out = out.concat(S.advanceMany(steps.slice(b, b + BATCH), true));
+      out = out.concat(press(steps.slice(b, b + BATCH)));
     }
     return out;
   }
@@ -341,7 +357,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
     for (i = 0; i < keep.length && kn && !kn.dead; i++) {
       var km = keep[i], legal = kn.b.legalSwaps().some(function (m) { return m[0] === km[0] && m[1] === km[1]; });
       if (!legal) { kn = null; break; }
-      kn = S.advanceMany([[kn, 'swap', km, 0]], true)[0]; kp.push(km);
+      kn = press([[kn, 'swap', km, 0]])[0]; kp.push(km);
       if (breaks(kn)) return { depth: 1, moves: (function (o) { o[keep[0][0] + ',' + keep[0][1]] = true; return o; })({}), touch: true, path: kp, kept: true };
     }
   }

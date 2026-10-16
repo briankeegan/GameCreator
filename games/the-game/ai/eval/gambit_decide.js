@@ -37,7 +37,7 @@ function read(c) {
   // (the raise is held for as many rows as leave the board a plan once everything the game shows has landed -- attacker.raiseReady,
   // played out on the engine; none of them: no raise now, the decision readies the board instead)
   if (up) {
-    var rows = c.attacker.raiseReady(c.board, c.m.hold, c.arrivals, to - CK.fullTop(c.board), Math.min(RAISE_MS, Math.max(20, c.left())));
+    var rows = c.attacker.raiseReady(c.board, c.m.hold, c.arrivals, to - CK.fullTop(c.board), Math.min(RAISE_MS, Math.max(20, c.left())), { tight: c.tight });
     if (rows <= 0) up = low = false; else to = CK.fullTop(c.board) + rows;
   }
   // (the chain the board left alone makes, as the game counts it: past the list, holding is outside it too)

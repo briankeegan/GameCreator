@@ -8,17 +8,7 @@ var path = require('path');
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js')), N = require(path.join(__dirname, 'native.js')).server;
 var CK = require(path.join(__dirname, 'survivor_checks.js'));
 var W = 6, KEYS = require(path.join(__dirname, 'survivor_keys.js'));
-// THE PRESS AS THE FRAME LOOP MAKES IT: with the input budget tight (o.tight: the decision's allowance at or under KEYS.HOLDTIGHT) the
-// frame loop walks the cursor held from two cells (survivor_match.js walkKeys, KEYS.slowWalks), which presses the swap later than the
-// search's own walk. The frames later, from node n: the search's keys for the swap, walked as the frame loop walks them.
-function pressDelay(s, n, mv, tight) {
-  if (!tight || !mv) return 0;
-  var k = s.keys(n, 'swap', mv, 0);
-  if (!k) return 0;
-  var at = function (ins) { for (var i = 0; i < ins.length; i++) if (ins[i] & PA.IN.swap) return i; return -1; };
-  var tap = at(k.inputs), slow = at(KEYS.slowWalks(k.inputs, k.holds, 2).inputs);
-  return tap >= 0 && slow > tap ? slow - tap : 0;
-}
+var pressDelay = KEYS.pressDelay;
 // a combo's garbage is a list of widths, one row each (PA.COMBO_GARBAGE)
 function comboCells(size) { var n = 0, ps = PA.comboGarbage(size); for (var i = 0; i < ps.length; i++) n += ps[i]; return n; }
 // the garbage a step's clears send: each clear's combo garbage and a slab for the chain they make
@@ -381,7 +371,7 @@ module.exports = function (opts) {
     }
     return null;
   }
-  function raiseReady(board, hold, arrivals, rows, ms) {
+  function raiseReady(board, hold, arrivals, rows, ms, o) {
     var last = null;
     (arrivals || []).forEach(function (a) { if (last === null || a.at > last) last = a.at; });
     if (last === null || rows <= 0) return Math.max(0, rows);
@@ -393,7 +383,7 @@ module.exports = function (opts) {
       var left = arrivals.map(function (a) { return Object.assign({}, a, { at: Math.max(0, a.at - f) }); });
       var at = landedAll(st, left, Math.max(0, last - f));
       if (!at) break;
-      var r = SH.breakMoves(s, at, hold, [], 3, 0, t0 + Math.max(20, ms), null, null, { touchInPop: true, near: true });
+      var r = SH.breakMoves(s, at, hold, [], 3, 0, t0 + Math.max(20, ms), null, null, { touchInPop: true, near: true, tight: o && o.tight });
       if (!(r && r.depth > 0)) break;
       ok = k;
     }

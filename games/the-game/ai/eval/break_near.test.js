@@ -40,3 +40,26 @@ var S = new (require('./native.js').server.Search)({ reaction: 12, swapGap: 12, 
 var found = SH.breakMoves(S, b, hold, [], 1, 0, Date.now() + 2000, null, null, { touchInPop: true, near: true });
 assert.ok(found && found.depth && found.path && found.path.length <= 4, 'the search finds the break within four swaps: ' + JSON.stringify(found && found.path));
 console.log('ok: break near -- the beam ranks by swaps to a break, and finds the factory board\'s in ' + found.path.length);
+
+// ONE PRESS CLOCK: with the input budget tight the frame loop walks held from two cells and presses later. The break search searches on
+// that clock (opts.tight), so every line it finds is one the judge, pressing as the frame loop presses, sees break
+var A = require('./survivor_attack.js')({ reaction: 12, swapGap: 12, cursorMoveFrames: 4 }), lines = 0, agree = 0, fastOff = 0;
+for (var seed = 1; seed <= 60 && lines < 20; seed++) {
+  var eb = PA.game({ level: 10, seed: seed, countdown: false });
+  for (f = 0; f < 150 + (seed % 6) * 40; f++) eb.run();
+  eb.receiveGarbage([{ width: 3 + seed % 4, height: 1 + seed % 2, isChain: false, isMetal: false }]);
+  for (f = 0; f < 120 + (seed % 7) * 15; f++) eb.run();
+  if (eb.gameOverClock > 0 || !SH.lowestGarbageRow(eb)) continue;
+  [true, false].forEach(function (tight) {
+    var br = SH.breakMoves(S, eb, hold, [], 1, 0, Date.now() + 200, null, null, { touchInPop: true, near: true, tight: tight });
+    if (!br || !br.depth) return;
+    var seqs = br.path ? [br.path] : Object.keys(br.moves).map(function (k) { return [k.split(',').map(Number)]; });
+    seqs.forEach(function (seq) {
+      var ok = A.judge(eb, hold, seq, [], { settled: false, tight: true }).made.broke > 0;
+      if (tight) { lines++; if (ok) agree++; } else if (!ok) fastOff++;
+    });
+  });
+}
+assert.ok(lines >= 10, 'break lines found on the tight clock: ' + lines);
+assert.strictEqual(agree, lines, 'every line the break search finds on the tight clock breaks as the judge presses it: ' + agree + ' of ' + lines);
+console.log('ok: one press clock -- ' + agree + ' of ' + lines + ' break lines agree with the judge (' + fastOff + ' found on the untight walk do not)');
