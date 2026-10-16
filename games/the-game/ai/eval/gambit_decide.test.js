@@ -123,7 +123,7 @@ for (var fseed = 1; fseed <= 4; fseed++) {
 }
 assert.ok(floored > 0, 'moves were ranked below the floor: the check above is not empty');
 // EVERY MOVE IS HELD TO THE SAME CHECKS, whoever offered it (plans/decision.md, every move first): on boards with a block on its way
-var PROPOSE = require('./gambit_propose.js'), SHD = require('./survivor_shared.js'), kinds = {}, lateDropped = 0, readyKept = 0, carriedN = 0, aloneReady = 0;
+var PROPOSE = require('./gambit_propose.js'), SHD = require('./survivor_shared.js'), kinds = {}, lateDropped = 0, readyKept = 0, carriedN = 0, aloneReady = 0, readyFirst = 0;
 var BSD = new (require('./native.js').server.Search)({ reaction: 12, swapGap: 12, cursorMoveFrames: 4, threads: 1 });
 for (var eseed = 1; eseed <= 10; eseed++) {
   var eb = PA.game({ level: 10, seed: eseed, countdown: false });
@@ -148,6 +148,12 @@ for (var eseed = 1; eseed <= 10; eseed++) {
   ec.judged = {}; ec.dropped = {};
   var alone = at.judge(eb, hold, [], arr, { readyAt: ER.F.us.nextLands });
   if (alone.ready === true) aloneReady++;
+  // (the board left alone not ready: a move that leaves a plan ranks first -- the first move ranked breaks, or is ready, whenever any is)
+  if (alone.ready !== true) {
+    var rk = DECIDE.ranked(ec, ER, ES), rdy = function (k) { return (k.ap.broke || 0) > 0 || at.judge(eb, hold, k.seq, arr, { settled: k.settled, readyAt: ER.F.us.nextLands }).ready === true; };
+    if (rk.some(rdy)) { assert.ok(rdy(rk[0]), 'seed ' + eseed + ': a move that leaves a plan is ranked first, not ' + rk[0].play); readyFirst++; }
+    ec.judged = {}; ec.dropped = {};
+  }
   DECIDE.ranked(ec, ER, ES).forEach(function (k) {
     if ((k.ap.broke || 0) > 0 || alone.ready !== true) return;
     var jr = at.judge(eb, hold, k.seq, arr, { settled: k.settled, readyAt: ER.F.us.nextLands });
@@ -178,5 +184,5 @@ for (var eseed = 1; eseed <= 10; eseed++) {
 }
 assert.ok(lateDropped > 0 && readyKept > 0 && carriedN > 0 && aloneReady > 0, 'every check ran: ' + lateDropped + ' late, ' + readyKept + ' ready (' + aloneReady + ' boards ready alone), ' + carriedN + ' carried');
 assert.ok(kinds['break search'] || kinds.toward, 'the break search\'s moves were among those checked');
-console.log('ok: every move held to the deadline, readiness and the line in progress -- ' + Object.keys(kinds).sort().join(', '));
+console.log('ok: every move held to the deadline, readiness (' + readyFirst + ' boards not ready alone, a ready move first) and the line in progress -- ' + Object.keys(kinds).sort().join(', '));
 console.log('ok: gambit decision -- the judge on ' + judged + ' planned lines, ' + decided + ' decisions over ' + modes.length + ' modes');

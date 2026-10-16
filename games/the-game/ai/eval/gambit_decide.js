@@ -52,7 +52,8 @@ function read(c) {
 // block unbreakable)
 var DROP_CODE = { back: 'b', list: 'o', late: 't', floor: 'f', ready: 'r', unbroken: 'u' };
 var HOLD_TIER = 5;   // (GAMBIT.tier: a hold ranks below every play that fits, above a clear)
-var RAISE_MS = 150;   // (the most of a decision the raise's readiness search takes)
+var RAISE_MS = 150;
+var READY_ENOUGH = 3;   // (the moves found ready, in rank order, after which the rest stand as ranked: each check is a two-swap search)   // (the most of a decision the raise's readiness search takes)
 // 2-4. PROPOSE, JUDGE AND RANK: every candidate offered, judged, the ones left in rank order
 function ranked(c, R, S) {
   c.judged = {}; c.dropped = {}; c.offered = {};
@@ -65,21 +66,25 @@ function ranked(c, R, S) {
   if (cj) { cj.wait = C.wait; if (cj.wait) { cj.tier = Math.max(cj.tier, HOLD_TIER); cj.sub = [-1]; } else cj.sub = [-Infinity].concat(cj.sub); out.push(cj); }
   return ready(c, R, out.sort(JUDGE.compare));
 }
-// EVERY MOVE, FIRST: THE NEXT BLOCK CAN STILL BE BROKEN WHEN IT LANDS (plans/decision.md) -- when the board left alone leaves a break
-// in reach once the next block has landed, every move that breaks nothing, played as the judge plays it and run on to the landing, must
-// still leave one; one that does not is no candidate. With none in reach for the board left alone either, no move is held to it: no
-// move takes away what is not there. Checked in rank order while the decision has time (one that time runs out on stands as ranked). A
-// break is not held to it.
+// EVERY MOVE, FIRST: A PLAN ONCE EVERYTHING SHOWN HAS LANDED (plans/decision.md) -- every move that breaks nothing, played as the judge
+// plays it and run on until the last block the game shows has landed and the board has settled, must leave a break within two swaps
+// (attacker.judge readyAt). When the board left alone leaves one, a move that does not is no candidate; when it does not, the moves
+// that do come first and the rest are kept after them -- no move takes away what is not there. Checked in rank order while the decision
+// has time, until READY_ENOUGH are found (the rest stand as ranked). A break is not held to it.
 function ready(c, R, cands) {
-  var land = R.F.us.nextLands;
+  var land = null;
+  c.arrivals.forEach(function (a) { if (land === null || a.at > land) land = a.at; });
+  if (land === null) land = R.F.us.nextLands;
   if (land === null || land === undefined) return cands;
   var alone = c.attacker.judge(c.board, c.m.hold, [], c.arrivals, { readyAt: land, tight: c.tight });
-  if (alone.ready !== true) return cands;
-  return cands.filter(function (k) {
-    if ((k.ap.broke || 0) > 0 || c.left() <= 0) return true;
+  var yes = [], no = [], found = 0;
+  cands.forEach(function (k) {
+    if ((k.ap.broke || 0) > 0 || c.left() <= 0 || found >= READY_ENOUGH) { yes.push(k); return; }
     var j = c.attacker.judge(c.board, c.m.hold, k.seq, c.arrivals, { settled: k.settled, readyAt: land, tight: c.tight });
-    return j.dead || j.ready === true ? true : JUDGE.drop(c, k.play, 'ready') !== null;
+    if (j.dead || j.ready === true) { yes.push(k); found++; } else no.push(k);
   });
+  if (alone.ready === true) { no.forEach(function (k) { JUDGE.drop(c, k.play, 'ready'); }); return yes; }
+  return yes.concat(no);
 }
 
 // 5. PLAY: the top line, or the raise, or a hold, and the order the survival search is asked in

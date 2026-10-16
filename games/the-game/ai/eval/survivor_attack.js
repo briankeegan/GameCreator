@@ -505,17 +505,25 @@ module.exports = function (opts) {
     if (made.length) s.drop(made);
     return res;
   }
-  // A BREAK IN REACH ONCE THE NEXT BLOCK HAS LANDED: from node n, the board run to `wait` frames after the root, then every first swap
-  // tried -- true when one breaks more garbage than standing still, false when none does, null when the board is lost before; the nodes
-  // made are added to `made`, for the caller to let go of
+  // A PLAN ONCE EVERYTHING SHOWN HAS LANDED: from node n, the board run to `wait` frames after the root (the last block the game shows
+  // landed) and settled, then a break looked for in two swaps -- true when a line of one or two swaps breaks more garbage than standing
+  // still, false when none does, null when the board is lost before; the nodes made are added to `made`, for the caller to let go of
   function breaksAfterLanding(s, root, n, wait, made) {
     var land = s.advance(n, 'long', null, Math.max(1, wait - (n.t - root.t)));
     if (!land || land.dead) return null;
     made.push(land);
-    var base = s.breaks(land), outs = s.advanceMany(land.b.legalSwaps().map(function (m) { return [land, 'swap', m, 0]; }), true), any = false;
-    outs.forEach(function (out) { if (out && !out.dead) { made.push(out); if ((out.brk !== undefined ? out.brk : s.breaks(out)) > base) any = true; } });
+    var calm = s.advanceMany([[land, 'settle', null, 0]], true)[0];
+    if (calm && !calm.dead) { made.push(calm); land = calm; }
+    var base = s.breaks(land), brk = function (x) { return x && !x.dead && (x.brk !== undefined ? x.brk : s.breaks(x)) > base; };
+    var firsts = s.advanceMany(land.b.legalSwaps().map(function (m) { return [land, 'swap', m, 0]; }), true), any = false, live = [];
+    firsts.forEach(function (out) { if (out && !out.dead) { made.push(out); if (brk(out)) any = true; else live.push(out); } });
+    if (any) return true;
+    var seconds = [];
+    live.forEach(function (out) { out.b.legalSwaps().forEach(function (m) { seconds.push([out, 'swap', m, 0]); }); });
+    s.advanceMany(seconds, true).forEach(function (out) { if (out && !out.dead) { made.push(out); if (brk(out)) any = true; } });
     return any;
   }
+
   // THE FRAMES UNTIL THE BOARD IS LOST IF NOTHING IS DONE, on the engine: the stack rising, the garbage the game shows landing when it
   // lands, the health drained -- the first frame within `horizon` the board left alone is lost, Infinity when it lives through it
   function diesIn(board, hold, arrivals, horizon) {
