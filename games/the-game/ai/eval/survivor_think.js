@@ -823,9 +823,14 @@ module.exports = function think(cfg) {
           if (underG) { aimsG = aimsG.map(function (a) { return Object.assign({}, a, { break: true }); }); endG = 'default'; }
           // (under garbage the break is due before the next garbage lands -- a break after it is a break of a deeper pile -- and before the
           // board would be lost: the best break that is done in time, not the soonest)
-          // (a block landing now is no deadline for breaking the pile -- the next one after it is; one landing later is)
-          if (underG && FG.us.nextLands > 0 && !(byG && byG < FG.us.nextLands)) byG = FG.us.nextLands;
-          if (underG && FG.us.dies > 0 && !(byG && byG < FG.us.dies)) byG = FG.us.dies;
+          // (under garbage the deadline is the garbage's -- a break is due before the next block lands and before the board dies (plays.md:
+          // break, board dies); the rule's `by` is an attack's, the enemy recovering, and does not bind a break. A block landing now is no
+          // deadline for breaking the pile -- the next one after it is)
+          if (underG) {
+            byG = null;
+            if (FG.us.nextLands > 0) byG = FG.us.nextLands;
+            if (FG.us.dies > 0 && !(byG && byG < FG.us.dies)) byG = FG.us.dies;
+          }
           var predsG = aimsG.map(function (a) { return function (made) { return GAMBIT.meets(a, made); }; });
           if (predsG.length) {
             if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
