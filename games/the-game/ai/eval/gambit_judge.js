@@ -74,9 +74,9 @@ function judge(c, R, k) {
   }
   // (ranked on the judge's count and time: what the line makes, and when it is done)
   var t = GAMBIT.tier(play, Object.assign({}, x, { combo: m.combo, chain: m.chain, broke: m.broke, done: j ? j.done : x.done, dropAt: j ? j.dropAt : 0 }), aim, R.under, !!R.F.enemy.topped, !!R.F.us.topped, !!R.F.us.breakWaits);
-  // (topped out, the stop time is the board's life: a line that keeps it running past the stop left now comes first -- in the list's
+  // (topped out, the stop time and the shake are the board's life: a line that keeps it held past what is left now comes first -- in the list's
   // order, the longer stop only between two of the same entry)
-  var stopNow = (c.board.stopTime || 0) + (c.board.preStopTime || 0);
+  var stopNow = Math.max((c.board.stopTime || 0) + (c.board.preStopTime || 0), c.board.shakeTime || 0);
   if (R.F.us.topped && j && j.dropAt > stopNow) t = { tier: 0, sub: [aim >= 0 ? aim : 99, -j.dropAt] };
   return { play: play, seq: seq, settled: st, tier: t.tier, sub: t.sub, aim: aim, extend: k.extend, near: x.near || 0,
            ap: { seq: seq, done: j ? j.done : (x.done || null), fire: fire, ats: j ? j.ats : (x.ats || null), chain: m.chain || 0, chainAll: j ? j.chainAll || 0 : 0, combo: m.combo || 0, broke: m.broke || 0, played: !!j } };
