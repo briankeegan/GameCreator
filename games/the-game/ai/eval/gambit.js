@@ -74,8 +74,8 @@ function keeps(keep, grid) {
   return Object.keys(keep).every(function (k) { return test(f[k.replace(/^us\./, '')], keep[k]); });
 }
 // IDLE PLANNING WITHIN THE TIME FRAME (ms): half the time the board has before it is lost (dies, frames), less a reaction; no limit when
-// nothing threatens it
-function idleMs(dies, reaction) { return dies > 0 ? Math.max(0, (dies - reaction) * 1000 / 60 / 2) : Infinity; }
+// nothing threatens it; none while the board loses health (topped, no stop time): every frame of it costs health
+function idleMs(dies, reaction, draining) { if (draining) return 0; return dies > 0 ? Math.max(0, (dies - reaction) * 1000 / 60 / 2) : Infinity; }
 // WHERE A SWAP'S TWO PANELS ARE NOW (ids: left, right, as they were): [row, col] while they are still side by side in that order -- a
 // swap already played has put them the other way round -- else null
 function pairAt(board, ids) {
@@ -158,7 +158,8 @@ function lead(aims, made, under) { return nearList(aims, made) + (under && made.
 // cells, earned, done, near }), aim its entry in the list (-1: none), under garbage on the board or topped, enemyOut the enemy topped.
 //   1 MUST-DO, under garbage: a break -- one whose board keeps the floor first (a break is made below it, but of two the one that leaves
 //     the panels the next break is made of comes first: a three converts more than it spends), then the most garbage broken per frame,
-//     then one that buys stop time, then the most broken; the
+//     then one that buys stop time, then the most broken -- on a topped board one that buys stop time first (a plain three buys none,
+//     and the board loses health every frame it has none); the
 //     list is the aim's (step 4), not the must-do's: a break the list asks for done after the pop ranks below one made during it
 //   2 AIM, no garbage: the list, in its order
 //   3 BEST THAT FITS: garbage sent (enemy topped: combos first, else chains), stop time -- never making a must-do miss its deadline: under
@@ -171,7 +172,7 @@ function tier(play, x, aim, under, enemyOut, topped) {
   var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0, cells = x.cells || 0, stop = x.earned || 0;
   var clears = combo >= 3 || chain >= 2 || broke > 0 || cells > 0 || play === 'clear' || play === 'scramble';
   var buys = combo >= 4 || chain >= 2, rate = broke / Math.max(1, x.done || 1);
-  if (under && broke > 0) return { tier: 1, sub: [x.floor === false ? 1 : 0, -rate, buys ? 0 : 1, -broke] };
+  if (under && broke > 0) return { tier: 1, sub: topped ? [buys ? 0 : 1, x.floor === false ? 1 : 0, -rate, -broke] : [x.floor === false ? 1 : 0, -rate, buys ? 0 : 1, -broke] };
   // (a topped board loses health every frame it has no stop time: the plays that keep it alive are the must-do there -- a clear that
   // brings the stack below the top, a scramble that buys stop time -- after any break)
   if (topped && ((play === 'clear' && x.top != null && x.top < 12) || (play === 'scramble' && stop > 0))) return { tier: 1, sub: [2, play === 'clear' ? 0 : 1, -stop] };

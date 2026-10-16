@@ -855,7 +855,7 @@ module.exports = function think(cfg) {
             // (within the time frame of the real game: the idle plan stops at half the time the board has before it is lost, less a
             // reaction -- a board losing health plans no longer than any decision)
             var usualG = Math.min(GP.ms || 80, leftG()) - (popG && exG ? exG.ms : 0);
-            var idleCapG = GAMBIT.idleMs(FG.us.dies, OPTS.reaction || 12);
+            var idleCapG = GAMBIT.idleMs(FG.us.dies, OPTS.reaction || 12, !!FG.us.topped && !(FG.us.stop > 0));
             var msG = bot._gambitIdle ? Math.max(usualG, Math.min(leftG(), idleCapG)) : usualG;
             if (msG >= 20) {
               triedG++;
