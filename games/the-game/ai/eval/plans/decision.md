@@ -20,7 +20,8 @@ What a line makes is the whole line played on the engine: every step's clears, t
 chain already falling. Whoever chose it, a swap is pressed only while that fits an entry of the list (a combo entry is one clear; a
 three that breaks garbage always fits). The line is cut before the first step that does not; a first swap that does not is replaced by
 the best ranked move that does. When holding dies, a move the survival search found lives that fits is played (a three that breaks
-the garbage always fits); the one exception is none fitting: then the survival search's pick.
+the garbage always fits); the one exception is none fitting: then the survival search's pick. No chain is ever longer than 13, the
+exception included (`GAMBIT.MAXCHAIN`).
 The code: `attacker.lineFits` (survivor_attack.js) and the list gate at the end of a decision (survivor_think.js), `GAMBIT.fits`.
 
 ## In the middle of something, first

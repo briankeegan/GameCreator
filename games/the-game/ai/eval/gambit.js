@@ -100,6 +100,8 @@ function test(v, t) {
 function field(F, name) { var i = name.indexOf('.'); var side = F[name.slice(0, i)]; return side ? side[name.slice(i + 1)] : undefined; }
 function holds(F, when) { return Object.keys(when || {}).every(function (k) { return test(field(F, k), when[k]); }); }
 
+// THE LONGEST CHAIN EVER: no move in any mode makes a chain longer, whoever chose it
+var MAXCHAIN = 13;
 // What a line makes ({ combo, combos, chain, broke, cells }) against an aim.
 // An aim that names a combo and no chain is a combo of one clear: a chain whose largest match is that size does not meet it.
 function meets(aim, made) {
@@ -175,6 +177,7 @@ function tier(play, x, aim, under, enemyOut, topped) {
 function fits(aims, made) {
   made = made || {};
   var combo = made.combo || 0, chain = made.chain || 0, broke = made.broke || 0;
+  if (chain > MAXCHAIN) return false;
   if (combo === 0 && chain === 0) return true;
   if (combo <= 3 && chain <= 1 && broke > 0) return true;
   return (aims || []).some(function (a) {
@@ -268,4 +271,4 @@ function rulesFor(profile, dir) {
   return new Rules(path.isAbsolute(g.rules) ? g.rules : path.join(dir, g.rules));
 }
 
-module.exports = { fits: fits, entryOf: entryOf, named: named, near: near, nearList: nearList, lead: lead, tier: tier, floor: floor, breakBy: breakBy, aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };
+module.exports = { MAXCHAIN: MAXCHAIN, fits: fits, entryOf: entryOf, named: named, near: near, nearList: nearList, lead: lead, tier: tier, floor: floor, breakBy: breakBy, aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };

@@ -1294,7 +1294,7 @@ module.exports = function think(cfg) {
             if (attacker.lineFits(board, m.hold, [cF.move], arrivals, okF) === 1) liveF = cF.move;
           }
           if (liveF) { cutsF.live = (cutsF.live || 0) + 1; d = { kind: 'swap', move: [liveF[0], liveF[1]], overruled: true, src: 'list' }; attackLine = null; attackMove = null; }
-          else if (holdF === 'dies' && !claimOf(bot._gambit, d)) cutsF.survival++;
+          else if (holdF === 'dies' && !claimOf(bot._gambit, d) && attacker.lineFits(board, m.hold, [d.move], arrivals, function (w) { return (w.chain || 0) <= GAMBIT.MAXCHAIN; }) === 1) cutsF.survival++;
           else {
             cutsF.move++;
             var altF = null, ordF = (bot._gambit && bot._gambit.order) || [];

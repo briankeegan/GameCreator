@@ -128,6 +128,8 @@ var FIN = [{ combo: '>=8' }, { combo: '==5' }, { combo: '==6' }, { combo: '==7' 
 assert(G.fits(FIN, { combo: 6, chain: 1 }), 'finish: a combo of 6 fits');
 assert(G.fits(FIN, { combo: 3, chain: 3 }), 'finish: a chain of 3 fits');
 assert(!G.fits(FIN, { combo: 3, chain: 5 }), 'finish: a chain of 5 does not');
+assert(G.fits([{ chain: '>=8' }], { combo: 3, chain: 13 }), 'big chain: a chain of 13 fits');
+assert(!G.fits([{ chain: '>=8' }], { combo: 3, chain: 14 }), 'no chain longer than 13 fits any list');
 assert(!G.fits(FIN, { combo: 5, chain: 4 }), 'finish: a chain of 4 whose largest match is 5 is no combo of 5');
 assert(!G.fits(FIN, { combo: 9, chain: 6 }), 'finish: nor is a chain of 6 with a match of 9 a combo of 8 or more');
 assert(G.fits(FIN, { combo: 5, chain: 3 }), 'finish: a chain of 3 fits, whatever its matches');
