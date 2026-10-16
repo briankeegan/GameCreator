@@ -137,6 +137,25 @@ function lead(aims, made, under) {
   if (!under || !(made.broke > 0)) return l;
   return ((made.combo >= 4 || made.chain >= 2) ? 2e6 : 1e6) + Math.min(made.broke, 999) * 1e3 + l;
 }
+// THE PICK'S TIERS (plans/gambit.md section 5), lower first, and the order within one: x is what the line makes ({ combo, chain, broke,
+// cells, earned, done, near }), aim its entry in the list (-1: none), under garbage on the board or topped, enemyOut the enemy topped.
+//   1 MUST-DO, under garbage: a break -- the list's breaks first, then the most garbage broken per frame, then one that buys stop time
+//   2 AIM, no garbage: the list, in its order
+//   3 BEST THAT FITS, anything left, garbage on the board or not: garbage sent (enemy topped: combos first, else chains), stop time --
+//     a chain that breaks nothing buys a topped board its stop time
+//   4 NOTHING FITS: ready, toward a break, level, setup
+//   6 a clear that breaks nothing, sends nothing and buys nothing (hold is 5)
+function tier(play, x, aim, under, enemyOut) {
+  x = x || {};
+  var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0, cells = x.cells || 0, stop = x.earned || 0;
+  var clears = combo >= 3 || chain >= 2 || broke > 0 || cells > 0 || play === 'clear' || play === 'scramble';
+  var buys = combo >= 4 || chain >= 2, rate = broke / Math.max(1, x.done || 1);
+  if (under && broke > 0) return { tier: 1, sub: [aim >= 0 ? aim : 99, -rate, buys ? 0 : 1, -broke] };
+  if (aim >= 0 && !under) return { tier: 2, sub: [aim, x.done || 0] };
+  if (clears && (buys || cells > 0)) return { tier: 3, sub: [-cells, enemyOut ? -combo : -chain, enemyOut ? -chain : -combo, -stop, -(x.near || 0)] };
+  if (!clears) return { tier: 4, sub: [{ ready: 0, toward: 1, level: 2, setup: 3 }[play] || 4] };
+  return { tier: 6, sub: [-stop] };
+}
 // A rule's priority list: `aims` as written, or aim then else. Entries are aims, or "default" / "hold", which end the list.
 function aimsOf(rule) {
   if (Array.isArray(rule.aims)) return rule.aims;
@@ -210,4 +229,4 @@ function rulesFor(profile, dir) {
   return new Rules(path.isAbsolute(g.rules) ? g.rules : path.join(dir, g.rules));
 }
 
-module.exports = { named: named, near: near, nearList: nearList, lead: lead, aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };
+module.exports = { named: named, near: near, nearList: nearList, lead: lead, tier: tier, aimsOf: aimsOf, gridFacts: gridFacts, keeps: keeps, facts: facts, enemyFacts: enemyFacts, test: test, holds: holds, meets: meets, deadline: deadline, choose: choose, checked: checked, Rules: Rules, rulesFor: rulesFor };

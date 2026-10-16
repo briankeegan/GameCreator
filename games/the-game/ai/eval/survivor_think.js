@@ -886,7 +886,8 @@ module.exports = function think(cfg) {
           //   MUST-DO, garbage on the board: the breaks -- the list's entries that break first, then one that buys stop time (a combo or
           //     chain break) over a plain break, then the most garbage broken
           //   AIM: the plays that meet the rule's list, in its order
-          //   BEST THAT FITS: a break that sends, then garbage sent (enemy topped: combos first, else chains), garbage broken, stop time
+          //   BEST THAT FITS (anything left, garbage on the board or not): a break that sends, then garbage sent (enemy topped: combos
+          //     first, else chains), garbage broken, stop time -- a chain that breaks nothing buys a topped board its stop time
           //   NOTHING FITS: ready, toward a break, level, setup -- then hold
           //   a clear that breaks nothing, sends nothing and buys nothing is below hold: played only when even holding is not proven to live
           // Each candidate's first swap carries the rest of its line (linesG). (pace, step 7: below.)
@@ -903,23 +904,12 @@ module.exports = function think(cfg) {
           var candG = function (play, seq, x, aim, extend) {
             if (!seq || !seq.length || !seq[0] || backG(seq[0])) return;
             x = x || {};
-            var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0, cells = x.cells || 0, stop = x.earned || 0;
-            var clears = combo >= 3 || chain >= 2 || broke > 0 || cells > 0 || play === 'clear' || play === 'scramble';
-            var buys = combo >= 4 || chain >= 2, tier, sub;
-            // (must-do: the list's breaks first, then the most garbage broken per frame -- the rows a slab interval needs come from the rate,
-            // a multi-break's rows per link highest -- then the one that buys stop time)
-            var rate = broke / Math.max(1, x.done || 1);
+            var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0;
             // (IN TIME, step 2: every step has its own time -- a line whose last swap is begun after its deadline is not kept; the cascade
             // it sets off runs on after)
             var fireX = x.fire != null ? x.fire : x.done;
             if (byG && fireX && fireX > byG) return;
-            if (underG && broke > 0) { tier = 1; sub = [aim >= 0 ? aim : 99, -rate, buys ? 0 : 1, -broke]; }                    // must-do
-            else if (aim >= 0 && !underG) { tier = 2; sub = [aim, x.done || 0]; }                                                       // aim
-            else if (clears && !underG && (buys || cells > 0)) {                                                                       // best that fits
-              tier = 3; sub = [-cells, enemyOutG ? -combo : -chain, enemyOutG ? -chain : -combo, -stop, -(x.near || 0)];
-            }
-            else if (!clears) { tier = 4; sub = [{ ready: 0, toward: 1, level: 2, setup: 3 }[play] || 4]; }                              // nothing fits
-            else { tier = 6; sub = [-stop]; }                                                                                            // clear / no-break under garbage
+            var tg = GAMBIT.tier(play, x, aim, underG, enemyOutG), tier = tg.tier, sub = tg.sub;
             candsG.push({ play: play, seq: seq, tier: tier, sub: sub, ap: { seq: seq, done: x.done || null, fire: fireX || null, ats: x.ats || null, chain: chain, combo: combo, broke: broke }, aim: aim, extend: !!extend, near: x.near || 0 });
           };
           if (pickG && predsG.length) {

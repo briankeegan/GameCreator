@@ -103,6 +103,15 @@ assert(G.lead(P4, { combo: 3, chain: 1, broke: 1 }, true) > G.lead(P4, { combo: 
 assert(G.lead(P4, { combo: 3, chain: 4, broke: 6 }, true) > G.lead(P4, { combo: 3, chain: 2, broke: 6 }, true), 'the list between equal breaks');
 assert.strictEqual(G.lead([{ chain: '==4' }], { chain: 2, broke: 6 }, false), G.nearList([{ chain: '==4' }], { chain: 2, broke: 6 }), 'no garbage: the list');
 
+// the pick's tiers: under garbage a break is a must-do; a chain that breaks nothing is still a best that fits (a topped board lives on
+// its stop time), above hold (5); a clear that buys nothing is below it
+assert.strictEqual(G.tier('lineup', { chain: 1, combo: 3, broke: 6, done: 30 }, -1, true, false).tier, 1, 'under garbage a three that breaks is a must-do');
+assert.strictEqual(G.tier('lineup', { chain: 6, combo: 3, broke: 0, cells: 30 }, -1, true, false).tier, 3, 'under garbage a chain that breaks nothing is a best that fits');
+assert.strictEqual(G.tier('lineup', { chain: 2, combo: 3, broke: 0, cells: 0 }, -1, true, false).tier, 3, 'one that buys stop time and sends nothing too');
+assert.strictEqual(G.tier('clear', { chain: 1, combo: 3 }, -1, true, false).tier, 6, 'a plain clear is below hold');
+assert.strictEqual(G.tier('entry', { chain: 4, cells: 18 }, 0, false, false).tier, 2, 'no garbage: the aim');
+assert.strictEqual(G.tier('setup', {}, -1, false, false).tier, 4, 'a setup: nothing fits');
+
 // the profile's own rules file parses and drops nothing
 var shipped = G.checked(JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles', 'gambit-rules.json'), 'utf8')));
 assert.deepStrictEqual(shipped.errors, [], 'the shipped rules drop nothing');
