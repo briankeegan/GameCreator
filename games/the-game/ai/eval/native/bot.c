@@ -2955,25 +2955,6 @@ static void probeBreaks(void) {
     { linesReset(); linesFind(REROOTS, 1); LineC *bb = bestBreak();
       fprintf(stderr, "PROBE-PLANNER clock %d lines %d best %d swaps %d (the planner's own search, no work bound)\n", clk, nLines, bb ? 1 : 0, bb ? bb->n : 0); }
     { fprintf(BLOG, "PROBEBOARD clock %d bfs %d planner %d cursor %d,%d |", clk, got, 0, cur[0], cur[1]); traceMasks(st); fprintf(BLOG, "\n"); }
-    // THE ENGINE'S OWN WORD on the same board: every line of one and two swaps judged on the engine (lineJudge), none of the masks' --
-    // a break the engine makes that the masks' search did not is a break the masks cannot see
-    { extern char *getenv(const char *); const char *dv = getenv("GC_PROBE_DEPTH"); int depth = dv ? atoi(dv) : 0;
-      if (depth > 0) {
-        int32_t L1[2 * 128]; int m1 = legal(st, L1); int found = 0, tried = 0, lives = 0;
-        int32_t line[6]; int32_t L2[2 * 128];
-        for (int a1 = 0; a1 < m1; a1++) {
-          line[0] = L1[2 * a1]; line[1] = L1[2 * a1 + 1];
-          int v = lineJudge(line, 1, 0); tried++; if (v & LV_LIVES) lives++;
-          if ((v & LV_BREAKS) && (v & LV_LIVES)) { found++; if (found <= 3) fprintf(stderr, "PROBE-ENGINE break by %d,%d\n", line[0], line[1]); }
-          if (depth >= 2) for (int a2 = 0; a2 < m1; a2++) {
-            line[2] = L1[2 * a2]; line[3] = L1[2 * a2 + 1];
-            if (line[2] == line[0] && line[3] == line[1]) continue;
-            int w = lineJudge(line, 2, 0); tried++;
-            if ((w & LV_BREAKS) && (w & LV_LIVES)) { found++; if (found <= 3) fprintf(stderr, "PROBE-ENGINE break by %d,%d then %d,%d\n", line[0], line[1], line[2], line[3]); }
-          }
-        }
-        fprintf(stderr, "PROBE-ENGINE clock %d judged %d lives %d breaks %d (legal swaps on the masks %d)\n", clk, tried, lives, found, m1);
-        (void)L2; } }
   }
   probeOn = 0; paWork = keep; paWorkEnd = keepEnd;
 }
