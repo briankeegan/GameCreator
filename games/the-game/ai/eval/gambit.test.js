@@ -78,6 +78,10 @@ var gf = G.gridFacts(grid);
 assert.strictEqual(gf.material, 8, 'the panels under the garbage, not the one above it: ' + gf.material);
 assert(G.keeps({ material: '>=8' }, grid) && !G.keeps({ material: '>=12' }, grid), 'a line that leaves 8 panels keeps 8, not 12');
 assert(G.keeps(null, grid), 'no keep asks nothing');
+var fl = G.floor({ material: '>=12' });
+assert(!fl(grid, { broke: 0, chain: 2 }), 'the floor holds an attack, garbage on the board or not');
+assert(fl(grid, { broke: 6 }), 'a break is not held to the floor');
+assert.strictEqual(G.floor(null), null, 'no keep, no floor');
 
 // the rules file, read again when it changes
 var file = path.join(__dirname, 'gambit.test.rules.json');

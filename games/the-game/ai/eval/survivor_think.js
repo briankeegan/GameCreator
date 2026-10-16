@@ -808,9 +808,9 @@ module.exports = function think(cfg) {
         var GP = cfg.profile.gambit, FG = { us: GAMBIT.facts(board, arrivals, m.topped), enemy: GAMBIT.enemyFacts(m.opp) };
         var apG = null, exG = null, tablesG = gambitRules.get(m.opp && m.opp.name), pickG = GP.mode ? GAMBIT.named(tablesG, GP.mode) : GAMBIT.choose(tablesG, FG), lineG = null, setupG = null, readyG = false, playG = null, triedG = 0;
         if (pickG) {
-          // (the keep floor holds the attacks; under garbage a break is made with any allowed move, and is not held to it)
+          // (the keep floor holds the attacks, garbage on the board or not; a break is made with any allowed move, and is not held to it)
           var keepG = pickG.rule.keep || tablesG.keep || null;
-          var keepF = keepG && !(FG.us.contact !== null || FG.us.topped) ? function (grid) { return GAMBIT.keeps(keepG, grid); } : null;
+          var keepF = GAMBIT.floor(keepG);
           // THE PRIORITY LIST (aims): the first entry a line can make in time is played; an entry "default" or "hold" ends the list there
           // (the default's own move, or a hold). One search looks for every entry at once. aim/else is a list of two.
           var byG = GAMBIT.deadline(FG, pickG.rule.by), listG = GAMBIT.aimsOf(pickG.rule), endAt = listG.length, endG = null;
