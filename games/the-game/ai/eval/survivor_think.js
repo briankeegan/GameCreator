@@ -865,7 +865,7 @@ module.exports = function think(cfg) {
             //   the nearest attack -- the nearer of the plan's line and the falling chain's or the popping slab's line-up; under garbage one
             //     that breaks it too, garbage on its way one that leaves the next block's break (READY)
             //   garbage on the board, no break in reach: LEVEL (the hollow under it filled, then flatter); with literally nothing else,
-            //     CLEAR (the line leaving the lowest stack), then SCRAMBLE (the line that buys the most stop time)
+            //     SCRAMBLE (the line that buys the most stop time); CLEAR is never played
             //   garbage on its way: READY -- the swap after which the next block breaks once it lands; else LEVEL -- the swap that clears
             //     nothing and leaves less hollow, then a flatter stack, settled before the block lands
             //   nothing on its way: SETUP toward the list, else HOLD
@@ -892,8 +892,7 @@ module.exports = function think(cfg) {
               if (br && br.toward && br.toward.length) { lineG = { ap: { seq: br.toward, done: null }, aimIndex: -1 }; playG = 'break toward'; }
               else if (nearG) { lineG = nearG; playG = 'nearest break'; }
               else if (lvU) { setupG = lvU.move; playG = 'level'; }
-              // (literally nothing else: CLEAR, the line that leaves the lowest stack, then SCRAMBLE, the one that buys the most stop time)
-              else if (apG && apG.lowest) { lineG = { ap: apG.lowest, aimIndex: -1 }; playG = 'clear'; }
+              // (literally nothing else: SCRAMBLE, the line that buys the most stop time; a clear that buys nothing is never a play)
               else if (apG && apG.stopBest) { lineG = { ap: apG.stopBest, aimIndex: -1 }; playG = 'scramble'; }
             }
             else if (readyAtG !== null) {
@@ -957,7 +956,6 @@ module.exports = function think(cfg) {
             if (underG) {
               if (br && br.toward && br.toward.length) addG(br.toward[0], br.toward);
               if (lvU) addG(lvU.move);
-              if (apG && apG.lowest) addG(apG.lowest.seq[0], apG.lowest.seq);
               if (apG && apG.stopBest) addG(apG.stopBest.seq[0], apG.stopBest.seq);
             } else if (apG && apG.setup && typeof readyAtG !== 'number') addG(apG.setup);
           }
