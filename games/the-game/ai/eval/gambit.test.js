@@ -112,6 +112,8 @@ assert.strictEqual(G.lead([{ chain: '==4' }], { chain: 2, broke: 6 }, false), G.
 // the pick's tiers: under garbage a break is a must-do; a chain that breaks nothing is still a best that fits (a topped board lives on
 // its stop time), above hold (5); a clear that buys nothing is below it
 assert.strictEqual(G.tier('lineup', { chain: 1, combo: 3, broke: 6, done: 30 }, -1, true, false).tier, 1, 'under garbage a three that breaks is a must-do');
+var slowAim = G.tier('entry', { chain: 2, combo: 6, broke: 6, done: 900 }, 0, true, false), fastBreak = G.tier('lineup break', { broke: 6, done: 60 }, -1, true, false);
+assert(slowAim.sub[0] > fastBreak.sub[0], 'under garbage a break in the list but done after the pop ranks below one made during it');
 assert.strictEqual(G.tier('lineup', { chain: 6, combo: 3, broke: 0, cells: 30 }, -1, true, false).tier, 3, 'under garbage a chain that breaks nothing is a best that fits');
 assert.strictEqual(G.tier('lineup', { chain: 2, combo: 3, broke: 0, cells: 0 }, -1, true, false).tier, 3, 'one that buys stop time and sends nothing too');
 assert.strictEqual(G.tier('clear', { chain: 1, combo: 3 }, -1, true, false).tier, 6, 'a plain clear is below hold');

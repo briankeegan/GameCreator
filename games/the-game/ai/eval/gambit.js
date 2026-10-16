@@ -147,7 +147,8 @@ function lead(aims, made, under) {
 }
 // THE PICK'S TIERS (plans/gambit.md section 5), lower first, and the order within one: x is what the line makes ({ combo, chain, broke,
 // cells, earned, done, near }), aim its entry in the list (-1: none), under garbage on the board or topped, enemyOut the enemy topped.
-//   1 MUST-DO, under garbage: a break -- the list's breaks first, then the most garbage broken per frame, then one that buys stop time
+//   1 MUST-DO, under garbage: a break -- the most garbage broken per frame, then one that buys stop time, then the most broken; the
+//     list is the aim's (step 4), not the must-do's: a break the list asks for done after the pop ranks below one made during it
 //   2 AIM, no garbage: the list, in its order
 //   3 BEST THAT FITS, anything left, garbage on the board or not: garbage sent (enemy topped: combos first, else chains), stop time --
 //     a chain that breaks nothing buys a topped board its stop time
@@ -158,7 +159,7 @@ function tier(play, x, aim, under, enemyOut) {
   var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0, cells = x.cells || 0, stop = x.earned || 0;
   var clears = combo >= 3 || chain >= 2 || broke > 0 || cells > 0 || play === 'clear' || play === 'scramble';
   var buys = combo >= 4 || chain >= 2, rate = broke / Math.max(1, x.done || 1);
-  if (under && broke > 0) return { tier: 1, sub: [aim >= 0 ? aim : 99, -rate, buys ? 0 : 1, -broke] };
+  if (under && broke > 0) return { tier: 1, sub: [-rate, buys ? 0 : 1, -broke] };
   if (play === 'clear' || play === 'scramble') return { tier: 6, sub: [-stop] };   // (only when there is nothing else)
   if (aim >= 0 && !under) return { tier: 2, sub: [aim, x.done || 0] };
   if (clears && (buys || cells > 0)) return { tier: 3, sub: [-cells, enemyOut ? -combo : -chain, enemyOut ? -chain : -combo, -stop, -(x.near || 0)] };
