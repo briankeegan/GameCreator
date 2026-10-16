@@ -923,7 +923,6 @@ module.exports = function think(cfg) {
             if (lvU) candG('level', [lvU.move], {}, -1);
             if (lvG) candG('level', [lvG.move], {}, -1);
             if (apG && apG.setup) candG('setup', [apG.setup], {}, -1);
-            if (apG && apG.stopBest) candG('scramble', apG.stopBest.seq, apG.stopBest, -1);
             if (apG && apG.lowest) candG('clear', apG.lowest.seq, apG.lowest, -1);
             // (A LINE BEGUN IS PLAYED ON, each step at its own time: a planned line presses each step once the board has settled from the
             // last, as the planner played it. The rest of the last decision's line is played on the engine from this board, the board let
@@ -966,7 +965,7 @@ module.exports = function think(cfg) {
           // (the line begun, to be carried on: a planned line of more than one swap that makes what it is played for)
           // (the planner's lines press each step once the board has settled: the frame loop is not handed the rest to press after the
           // first, the next decision carries it on)
-          var SETTLED = ['entry', 'nearest', 'break line', 'carry', 'clear', 'scramble'];
+          var SETTLED = ['entry', 'nearest', 'break line', 'carry', 'clear'];
           var carryG = lineG && lineG.seq.length > 1 && lineG.tier <= 3 && SETTLED.indexOf(lineG.play) >= 0;
           if (!carryG && keepCarryG) { /* the line begun waits for the board to settle: it stays as it is */ }
           else bot._gambitCarry = carryG ? { rest: lineG.seq.slice(1).map(function (mv) { return mv.slice(); }), aim: lineG.aim >= 0 ? aimsG[lineG.aim] : null, broke: (lineG.ap.broke || 0) > 0 } : null;
