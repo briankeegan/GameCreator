@@ -138,8 +138,9 @@ module.exports = function think(cfg) {
       if (heavyA) bot._heavy = (bot._heavy || 0) + 1;
       var prepProfile = defendA ? Object.assign({}, cfg.profile, { attack: undefined, raiseTo: A0.defendRaiseTo || cfg.profile.raiseTo }) : cfg.profile;
       // (keepLine: the rest of the touch line the last decision began, on this board's rows -- found again by a bottom-row panel's id)
-      var keepL = null, KL = D0.keepLine ? bot._keepLine : null;
-      if (KL && m.at > KL.at && m.at - KL.at <= (A0.keepFrames || 180)) {
+      // (gambit too: under a stream the frame loop asks again before a line is done, and a line not carried on is a different line each time)
+      var keepLineOn = !!(D0.keepLine || gambitRules), keepL = null, KL = keepLineOn ? bot._keepLine : null;
+      if (KL && m.at > KL.at && m.at - KL.at <= ((A0 && A0.keepFrames) || 180)) {
         for (var kr = 1; kr < board.panels.length && keepL === null; kr++) { var kp0 = board.panels[kr] && board.panels[kr][KL.col]; if (kp0 && kp0.id === KL.id) { var kd = kr - KL.row; keepL = KL.rest.map(function (mv) { return [mv[0] + kd, mv[1]]; }); } }
       }
       bot._keepLine = null;
@@ -1173,7 +1174,7 @@ module.exports = function think(cfg) {
       if (bot._gambitLines && d.kind === 'swap' && d.move && bot._gambitLines[d.move[0] + ',' + d.move[1]]) { attackLine = bot._gambitLines[d.move[0] + ',' + d.move[1]]; attackMove = d.move; }
       if (attackLine && attackLine.length && d.kind === 'swap' && d.move && attackMove && d.move[0] === attackMove[0] && d.move[1] === attackMove[1]) { line = attackLine; lineFree = true; }
       if (!noAimed && br && br.path && d.kind === 'swap' && d.move && br.path[0][0] === d.move[0] && br.path[0][1] === d.move[1] && br.path.length > 1) { line = br.path.slice(1); lineFree = true; }
-      if (D0.keepLine && br && br.touch && br.path && br.path.length > 1 && d.kind === 'swap' && d.move && br.path[0][0] === d.move[0] && br.path[0][1] === d.move[1]) {
+      if (keepLineOn && br && br.touch && br.path && br.path.length > 1 && d.kind === 'swap' && d.move && br.path[0][0] === d.move[0] && br.path[0][1] === d.move[1]) {
         var refC = 0, refP = null;
         for (var rc = 1; rc <= 6 && !refP; rc++) { var rp = board.panels[1] && board.panels[1][rc]; if (rp && rp.id != null && !br.path.some(function (mv) { return mv[0] === 1 && (mv[1] === rc || mv[1] + 1 === rc); })) { refC = rc; refP = rp; } }
         if (refP) bot._keepLine = { rest: br.path.slice(1), at: m.at, row: 1, col: refC, id: refP.id };
