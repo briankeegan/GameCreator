@@ -82,14 +82,15 @@ function lives(c, D) {
     // (the survival exception: of the moves found live, the first that fits the list as Gambit judges it, else the first)
     if (!d) {
       var judgeOf = function (mv) { var j = c.attacker.judge(c.board, c.m.hold, [mv], c.arrivals, { tight: c.tight }); return j.dead ? null : j; };
-      var alive = V.cands.filter(function (vc, q) { return (V.verdict[q] === 'proven' || V.verdict[q] === 'weak') && order.indexOf(keyOf(vc)) < 0; });
+      // (never the raise: it is held down until the board tops out, and whether to raise is Gambit's own decision -- R.up)
+      var alive = V.cands.filter(function (vc, q) { return (V.verdict[q] === 'proven' || V.verdict[q] === 'weak') && order.indexOf(keyOf(vc)) < 0 && !(vc.kind === 'raise' && !D.R.up); });
       var fitting = alive.filter(function (vc) { if (vc.kind !== 'swap') return !D.R.aloneOut && !(vc.kind === 'hold' && holdDies); var jk = judgeOf(vc.move); return jk && JUDGE.fitsList(list, jk.made, jk) && Math.max(jk.made.chain || 0, jk.chainAll || 0) <= GAMBIT.MAXCHAIN; })[0];
       var any = fitting || alive.filter(function (vc) { if (vc.kind !== 'swap') return true; var jk = judgeOf(vc.move); return jk && Math.max(jk.made.chain || 0, jk.chainAll || 0) <= GAMBIT.MAXCHAIN; })[0];
       if (any) { d = asMove(keyOf(any)); verdict = verdictOf[keyOf(any)]; why = fitting ? 'fits' : 'lives'; }
     }
   }
   // (nothing lives -- or no verdict this decision: the survival search's own pick, the move that lives longest)
-  if (!d) { d = own; verdict = V ? verdictOf[keyOf(own)] || 'not offered' : 'unsearched'; }
+  if (!d) { d = own && own.kind === 'raise' && !D.R.up ? { kind: 'hold' } : own; verdict = V ? verdictOf[keyOf(d)] || 'not offered' : 'unsearched'; }
   var cand = (bot._allCands || []).filter(function (k) { return keyOf(k) === keyOf(d); })[0] || candOf[keyOf(d)] || null;
   // (live: of Gambit's moves, how many the survival search found live / searched / Gambit ranked; why: how the move was chosen)
   return { d: d, verdict: verdict, holdLives: holdLives, gambits: order.indexOf(keyOf(d)) >= 0, cand: cand, live: live + '/' + searched + '/' + order.length, why: why };

@@ -45,11 +45,17 @@ var est = GAMBIT.facts(low, flood, false).dies;
 assert.ok(AT.diesIn(low, H0, flood, est) < est, 'the garbage on its way decides the frames left, not the rise alone');
 // WHICH MOVES LIVE: a line of Gambit's that breaks, played out on the engine, lives though the survival search judged its first swap alone
 // to die; the hold does not while the garbage shown loses the board and no plan is left; a line the judge could not play out does not
-var GA = require('./gambit_answer.js'), brk = { seq: [[3, 2], [4, 2]], ap: { played: true, broke: 6 } }, lost = { seq: [[5, 1]], ap: { played: false, broke: 6 } };
+var AT0 = require('./survivor_attack.js')({ reaction: 12, swapGap: 12, cursorMoveFrames: 4 }), GA = require('./gambit_answer.js'), brk = { seq: [[3, 2], [4, 2]], ap: { played: true, broke: 6 } }, lost = { seq: [[5, 1]], ap: { played: false, broke: 6 } };
 var Lv = GA.living({ '3,2': 'dies', '5,1': 'dies', hold: 'weak' }, [brk, lost], true);
 assert.ok(Lv.lived('3,2'), 'a break line the judge played out lives');
 assert.ok(!Lv.lived('5,1'), 'a line the judge could not play out is the survival search\'s to judge');
 assert.ok(!Lv.lived('hold'), 'no hold while the garbage shown loses an unready board');
 assert.ok(GA.living({ hold: 'weak' }, [], false).lived('hold'), 'with a plan left, the hold is the survival search\'s to judge');
+// NEVER A RAISE GAMBIT DID NOT DECIDE: with none of Gambit's moves living, neither the survival exception nor the survival search's own
+// pick is a raise (it is held down until the board tops out)
+var fakeBot = { _verdictNo: 0, _decide: function () { this._verdictNo++; this._lastVerdict = { cands: [{ kind: 'raise' }, { kind: 'hold' }], verdict: ['proven', 'dies'] }; return { kind: 'raise' }; } };
+var fakeD = { order: ['hold'], cands: [], R: { list: [{ combo: '>=5' }], up: false, aloneOut: false, F: { us: { queueKills: false } } } };
+var picked = GA.lives({ bot: fakeBot, board: low, m: { hold: { left: 0, started: false } }, arrivals: [], attacker: AT0, tight: false, plan: null, left: function () { return 100; } }, fakeD).d;
+assert.notStrictEqual(picked.kind, 'raise', 'no raise Gambit did not decide: ' + picked.kind);
 assert.ok(gambit >= answered / 2, 'Gambit chooses most moves: ' + gambit + ' of ' + answered);
 console.log('ok: gambit answers -- ' + answered + ' questions over ' + modes.length + ' modes, ' + gambit + ' Gambit\'s own');
