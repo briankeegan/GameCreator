@@ -142,25 +142,23 @@ function nearList(aims, made) {
 // What leads the search: the list -- under garbage its entries ask a break, so a line that breaks nothing is near none of them -- and
 // any line that breaks a little nearer than one that does not, a three included. The pick's order (tier) chooses among what is found.
 function lead(aims, made, under) { return nearList(aims, made) + (under && made.broke > 0 ? 0.5 : 0); }
-// THE PICK'S TIERS (plans/gambit.md section 5), lower first, and the order within one: x is what the line makes ({ combo, chain, broke,
-// cells, earned, done, near }), aim its entry in the list (-1: none), under garbage on the board or topped, enemyOut the enemy topped.
-// Live and in time (steps 1 and 2) are the engine's: a line that dies, or is done after its deadline, is never a candidate.
-//   1 MUST-DO, under garbage: a break -- one that buys stop time (a combo or chain break) over a plain break, then more garbage broken
-//   2 AIM, no garbage: the list, in its order
-//   3 BEST THAT FITS, no garbage: garbage sent (enemy topped: combos first, else chains), then stop time -- never making a must-do miss
-//     its deadline (under garbage a clear that breaks nothing does)
-//   4 NOTHING FITS: ready, toward a break, level, setup
+// THE PICK'S TIERS, lower first, and the order within one: everything goes off the mode's list. x is what the line makes ({ combo,
+// chain, broke, cells, earned, done, near }), aim its entry in the list (-1: none), under garbage on the board or topped. Live and in
+// time are the engine's: a line that dies, or is done after its deadline, is never a candidate.
+//   1 BREAK, under garbage: the list's entries that break first, in its order; then any break -- one that buys stop time (a combo or
+//     chain) before a plain three, then more garbage broken
+//   2 THE LIST, no garbage: its entries, in its order
+//   4 NOTHING FROM THE LIST: ready, toward a break, level, setup
 //   5 hold
-//   6 CLEAR and SCRAMBLE, and any clear that breaks nothing, sends nothing and buys nothing: only when there is nothing else
+//   6 CLEAR and SCRAMBLE, and any other clear: only when there is nothing else
 function tier(play, x, aim, under, enemyOut) {
   x = x || {};
   var combo = x.combo || 0, chain = x.chain || 0, broke = x.broke || 0, cells = x.cells || 0, stop = x.earned || 0;
   var clears = combo >= 3 || chain >= 2 || broke > 0 || cells > 0 || play === 'clear' || play === 'scramble';
   var buys = combo >= 4 || chain >= 2;
-  if (under && broke > 0) return { tier: 1, sub: [buys ? 0 : 1, -broke] };
+  if (under && broke > 0) return { tier: 1, sub: [aim >= 0 ? aim : 99, buys ? 0 : 1, -broke] };
   if (play === 'clear' || play === 'scramble') return { tier: 6, sub: [-stop] };   // (only when there is nothing else)
   if (aim >= 0 && !under) return { tier: 2, sub: [aim, x.done || 0] };
-  if (clears && (buys || cells > 0) && !under) return { tier: 3, sub: [-cells, enemyOut ? -combo : -chain, enemyOut ? -chain : -combo, -stop, -(x.near || 0)] };
   if (!clears) return { tier: 4, sub: [{ ready: 0, toward: 1, level: 2, setup: 3 }[play] || 4] };
   return { tier: 6, sub: [-stop] };
 }

@@ -111,12 +111,14 @@ assert(G.lead(P4, { combo: 3, chain: 1, broke: 6 }, true) > 0, 'a three that bre
 // its stop time), above hold (5); a clear that buys nothing is below it
 assert.strictEqual(G.tier('lineup', { chain: 1, combo: 3, broke: 6, done: 30 }, -1, true, false).tier, 1, 'under garbage a three that breaks is a must-do');
 function before(x, y) { for (var q = 0; q < x.sub.length; q++) if (x.sub[q] !== y.sub[q]) return x.sub[q] < y.sub[q]; return false; }
-assert(before(G.tier('lineup', { combo: 4, broke: 6 }, -1, true, false), G.tier('break search', { broke: 12 }, -1, true, false)), 'must-do: a break that buys stop time over a plain break');
+assert(before(G.tier('entry', { chain: 2, broke: 6 }, 0, true, false), G.tier('lineup', { combo: 6, broke: 12 }, -1, true, false)), 'under garbage the list\'s breaks first');
+assert(before(G.tier('lineup', { combo: 4, broke: 6 }, -1, true, false), G.tier('break search', { broke: 12 }, -1, true, false)), 'then any break: one that buys stop time before a plain three');
 assert(before(G.tier('break search', { broke: 12 }, -1, true, false), G.tier('break search', { broke: 6 }, -1, true, false)), 'then more garbage broken');
 assert.strictEqual(G.tier('lineup', { chain: 6, combo: 3, broke: 0, cells: 30 }, -1, true, false).tier, 6, 'under garbage a clear that breaks nothing would make the break wait: below hold');
 assert.strictEqual(G.tier('clear', { chain: 1, combo: 3 }, -1, true, false).tier, 6, 'a plain clear is below hold');
 assert.strictEqual(G.tier('scramble', { chain: 5, combo: 3, earned: 120 }, -1, true, false).tier, 6, 'a scramble is below hold, whatever it buys');
-assert.strictEqual(G.tier('entry', { chain: 4, cells: 18 }, 0, false, false).tier, 2, 'no garbage: the aim');
+assert.strictEqual(G.tier('entry', { chain: 4, cells: 18 }, 0, false, false).tier, 2, 'no garbage: the list');
+assert.strictEqual(G.tier('extend', { chain: 3, cells: 12 }, -1, false, false).tier, 6, 'an attack that is not on the list is only a clear');
 assert.strictEqual(G.tier('setup', {}, -1, false, false).tier, 4, 'a setup: nothing fits');
 
 // the profile's own rules file parses and drops nothing
