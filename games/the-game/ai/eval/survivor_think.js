@@ -908,8 +908,10 @@ module.exports = function think(cfg) {
             // (must-do: the list's breaks first, then the most garbage broken per frame -- the rows a slab interval needs come from the rate,
             // a multi-break's rows per link highest -- then the one that buys stop time)
             var rate = broke / Math.max(1, x.done || 1);
-            // (IN TIME, step 2: a line whose last swap lands after its deadline is not kept)
-            if (byG && x.done && x.done > byG) return;
+            // (IN TIME, step 2: every step has its own time -- a line whose last swap is begun after its deadline is not kept; the cascade
+            // it sets off runs on after)
+            var fireX = x.fire != null ? x.fire : x.done;
+            if (byG && fireX && fireX > byG) return;
             if (underG && broke > 0) { tier = 1; sub = [aim >= 0 ? aim : 99, -rate, buys ? 0 : 1, -broke]; }                    // must-do
             else if (aim >= 0 && !underG) { tier = 2; sub = [aim, x.done || 0]; }                                                       // aim
             else if (clears && !underG && (buys || cells > 0)) {                                                                       // best that fits
@@ -917,7 +919,7 @@ module.exports = function think(cfg) {
             }
             else if (!clears) { tier = 4; sub = [{ ready: 0, toward: 1, level: 2, setup: 3 }[play] || 4]; }                              // nothing fits
             else { tier = 6; sub = [-stop]; }                                                                                            // clear / no-break under garbage
-            candsG.push({ play: play, seq: seq, tier: tier, sub: sub, ap: { seq: seq, done: x.done || null, chain: chain, combo: combo, broke: broke }, aim: aim, extend: !!extend, near: x.near || 0 });
+            candsG.push({ play: play, seq: seq, tier: tier, sub: sub, ap: { seq: seq, done: x.done || null, fire: fireX || null, ats: x.ats || null, chain: chain, combo: combo, broke: broke }, aim: aim, extend: !!extend, near: x.near || 0 });
           };
           if (pickG && predsG.length) {
             if (apG && apG.perAim) apG.perAim.forEach(function (pa, i) { if (pa) candG('entry', pa.seq, pa, i); });
@@ -931,8 +933,8 @@ module.exports = function think(cfg) {
             if (apG && apG.quick) candG('break line', apG.quick.seq, apG.quick, -1);
             if (br && br.depth) {
               var brPlay = br.lineup ? 'lineup break' : 'break search';
-              if (br.path && br.path.length) candG(brPlay, br.path, { broke: 6, done: br.at || null }, -1);   // (a row: the break search counts rows, the planner cells)
-              Object.keys(br.moves || {}).forEach(function (k) { candG(brPlay, [k.split(',').map(Number)], { broke: 6, done: br.at || null }, -1); });
+              if (br.path && br.path.length) candG(brPlay, br.path, { broke: 6, done: br.at || null, fire: br.at || null }, -1);   // (a row: the break search counts rows, the planner cells)
+              Object.keys(br.moves || {}).forEach(function (k) { candG(brPlay, [k.split(',').map(Number)], { broke: 6, done: br.at || null, fire: br.at || null }, -1); });
             }
             if (underG && br && br.toward && br.toward.length) candG('toward', br.toward, {}, -1);
             if (rdG && !rdG.ready && rdG.setup) candG('ready', [rdG.setup], {}, -1);
@@ -970,13 +972,13 @@ module.exports = function think(cfg) {
           // PACE (the profile's pace, plans/gambit.md step 7): moves are spread out, never pulsed, whenever nothing is due -- a play is begun
           // at once only in a window (a chain falling, a slab popping) or when its line is done within a pace gap of its deadline (the break
           // under garbage: the next block or the board lost; the ready and level: the block landing; an attack: its rule's by)
-          var gapG = (cfg.profile.pace && cfg.profile.pace.gap) || 0, doneG = lineG && lineG.ap && lineG.ap.done, dueG = byG || (typeof readyAtG === 'number' ? readyAtG : null);
+          var gapG = (cfg.profile.pace && cfg.profile.pace.gap) || 0, doneG = lineG && lineG.ap && (lineG.ap.fire != null ? lineG.ap.fire : lineG.ap.done), dueG = byG || (typeof readyAtG === 'number' ? readyAtG : null);
           bot._gambitUrgent = !!(lineG && lineG.extend) || SH.popLeft(board) > 0 || cascadeLive(board, true) ||
                               (dueG !== null && dueG !== undefined && (doneG || 0) + gapG >= dueG);
           FGmat = FG.us.material; FGland = FG.us.nextLands; FGdies = FG.us.dies;
           var plG = apG ? [apG.ms, apG.quick ? apG.quick.seq.length : 0, apG.nearest ? apG.nearest.seq.length : 0, (apG.perAim || []).filter(Boolean).length].join('/') + (nx ? '+x' : '') : 'none';
           bot._gambit = { pl: plG, table: pickG.table, under: !!underG, rule: pickG.index, name: pickG.rule.name || null, want: orderG[0] || null, options: orderG.length, order: orderG, found: !!lineG, play: playG || (lineG ? (lineG.aimIndex >= 0 ? 'entry' : 'nearest') : null), entry: lineG ? lineG.aimIndex : -1, near: lineG && lineG.near || 0, quick: !!(lineG && lineG.quick), ms: apG ? apG.ms : 0, setup: !!setupG, ready: readyG, readyAt: typeof readyAtG === 'number' ? readyAtG : null, raise: upG ? toG : 0, wait: !!waitG, extend: !!(lineG && lineG.extend), tried: triedG, br: br ? [br.depth, br.toward ? br.toward.length : -1, br.lineup ? 1 : 0, br.touch ? 1 : 0] : null, brMs: brMs, pop: SH.popLeft(board), xs: exG ? [exG.seq.length, exG.chain, exG.cells, exG.base, exG.nearest ? exG.nearest.chain : 0] : null,
-                          chain: lineG ? lineG.ap.chain : 0, combo: lineG ? lineG.ap.combo || 0 : 0, swaps: lineG ? lineG.ap.seq.length : 0, done: lineG ? lineG.ap.done : null, by: byG };
+                          chain: lineG ? lineG.ap.chain : 0, combo: lineG ? lineG.ap.combo || 0 : 0, swaps: lineG ? lineG.ap.seq.length : 0, done: lineG ? lineG.ap.done : null, fire: lineG ? lineG.ap.fire : null, ats: lineG && lineG.ap.ats ? lineG.ap.ats.join('/') : null, by: byG };
         }
       }
       if (process.env.GC_SURVIVOR_WHY && bot.preferRank) { var pr0 = bot.preferRank; bot.preferRank = function (c, i) { var r = pr0.call(this, c, i); ranked.push(key(c) + '=' + r); return r; }; }
@@ -1243,7 +1245,7 @@ module.exports = function think(cfg) {
         bot._gambit.verdict = vW;
       }
       // (one line a decision on stderr, the survivor's log: what gambit chose, what was played and by whom, the verdict, the material)
-      if (bot._gambit) { var gl = bot._gambit; console.error('GAMBITD ' + m.at + ' ' + (gl.name || '') + ' play=' + (gl.play || '-') + ' want=' + (gl.want || '-') + ' got=' + (d.kind === 'swap' && d.move ? d.move.join(',') : d.kind) + ' src=' + (d.src || (d.overruled ? 'overrule' : 'default')) + ' v=' + (gl.verdict || '-') + ' under=' + (gl.under ? 1 : 0) + ' mat=' + FGmat + ' chain=' + (gl.chain || 0) + ' combo=' + (gl.combo || 0) + ' by=' + (gl.by || '-') + ' plan=' + (gl.pl || '-') + ' done=' + (gl.done != null ? gl.done : '-') + ' swaps=' + (gl.swaps || 0) + ' land=' + (FGland != null ? FGland : '-') + ' dies=' + (FGdies != null ? FGdies : '-') + ' casc=' + (cascadeLive(board, true) ? 1 : 0) + ' pop=' + SH.popLeft(board) + ' stop=' + ((board.stopTime || 0) + (board.preStopTime || 0))); }
+      if (bot._gambit) { var gl = bot._gambit; console.error('GAMBITD ' + m.at + ' ' + (gl.name || '') + ' play=' + (gl.play || '-') + ' want=' + (gl.want || '-') + ' got=' + (d.kind === 'swap' && d.move ? d.move.join(',') : d.kind) + ' src=' + (d.src || (d.overruled ? 'overrule' : 'default')) + ' v=' + (gl.verdict || '-') + ' under=' + (gl.under ? 1 : 0) + ' mat=' + FGmat + ' chain=' + (gl.chain || 0) + ' combo=' + (gl.combo || 0) + ' by=' + (gl.by || '-') + ' plan=' + (gl.pl || '-') + ' done=' + (gl.done != null ? gl.done : '-') + ' fire=' + (gl.fire != null ? gl.fire : '-') + ' ats=' + (gl.ats || '-') + ' swaps=' + (gl.swaps || 0) + ' land=' + (FGland != null ? FGland : '-') + ' dies=' + (FGdies != null ? FGdies : '-') + ' casc=' + (cascadeLive(board, true) ? 1 : 0) + ' pop=' + SH.popLeft(board) + ' stop=' + ((board.stopTime || 0) + (board.preStopTime || 0))); }
       if (bot._gambit) {
         var pr = d.kind === 'swap' && d.move && board.panels[d.move[0]], pa = pr && pr[d.move[1]], pb = pr && pr[d.move[1] + 1];
         var pairNow = pa && pb && pa.id != null && pb.id != null ? [pa.id, pb.id].sort().join(',') : (d.kind === 'swap' ? null : bot._gambitLastPair);
