@@ -5349,9 +5349,9 @@ static Dec noStall(Dec d) {
 // the slab lands (readyInTime).
 // HOW FAR A BOARD IS FROM READY, for the guided search (sitGuide; lower is nearer): the board with the next slab placed where it rests, and what a
 // break against it is made of. Garbage breaks beside a three that touches it, and a slab rests on the top of the columns under it, so the three
-// is stacked in one of those contact columns, or lies along its top row: its top panel, the panels of its colour in the cells of the three, and each
-// panel still missing -- the swaps to bring the nearest of that colour to the cell (a gap of eight where there is none). The nearest contact
-// column's, and of its shapes the nearest, count is the board's: 0 where the three stands. A swap that brings a colour nearer moves it, which a count of the twos
+// is stacked in one of those contact columns: its top panel, the panels under it of its colour, and each panel still missing -- the
+// swaps to bring the nearest of that colour in the row of the missing cell along its row to the column (a gap of eight where there is none). The
+// nearest contact column's count is the board's: 0 where the three stands. A swap that brings a colour nearer moves it, which a count of the twos
 // already made does not; the soonest press only orders between equals
 #define READYGUIDENONE 8
 #define READYGUIDEGAP 0.01
@@ -5400,24 +5400,6 @@ static double readyGuide(const int32_t *st) {
         int dd = (c2 > c ? c2 - c : c - c2) + 2 * dr; if (dd < d) d = dd;
       }
       cost += d;
-    }
-    // or the three lies along the top row, the contact panel and the two cells beside it (any of the three windows that hold the column):
-    // each cell of another colour takes the nearest panel of this one, none that is already in the three
-    for (int s0 = c - 2; s0 <= c; s0++) {
-      if (s0 < 1 || s0 + 2 > W) continue;
-      double hc = 0; int ok = 1;
-      for (int x = s0; x < s0 + 3 && ok; x++) {
-        if (x == c || GC(r, x) == col) continue;
-        if (!GC(r, x)) { ok = 0; break; }   // nothing there to swap out: garbage, empty, or a panel mid-pop
-        int d = READYGUIDENONE;
-        if (col < 9) for (int q = 0; q < ln[col]; q++) {
-          int rr = lr[col][q], c2 = lc[col][q], dr = rr > r ? rr - r : r - rr;
-          if (dr > 2 || (!dr && c2 >= s0 && c2 < s0 + 3)) continue;
-          int dd = (c2 > x ? c2 - x : x - c2) + 2 * dr; if (dd < d) d = dd;
-        }
-        hc += d;
-      }
-      if (ok && hc < cost) cost = hc;
     }
     if (cost < best) best = cost;
   }
