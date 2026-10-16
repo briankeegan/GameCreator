@@ -55,7 +55,7 @@ function judge(c, R, k) {
   // (a set-up -- setup, level, ready, a step toward a break -- is to clear nothing: played to the board's settle step by step it ends
   // before its first step that clears panels and breaks nothing, and when that is its first, the play is a clear)
   if (SETUPS.indexOf(play) >= 0) {
-    var fc = c.attacker.firstClear(c.board, c.m.hold, seq, c.arrivals);
+    var fc = c.attacker.firstClear(c.board, c.m.hold, seq, c.arrivals, { tight: c.tight });
     if (fc === 0) { play = 'clear'; x = { combo: 3, chain: 1 }; m = x; }
     else if (fc > 0) seq = seq.slice(0, fc);
   }
