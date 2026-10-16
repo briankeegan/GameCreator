@@ -6,23 +6,8 @@
  "swapGap": 12,
  "cursorMoveFrames": 4,
  "depth": 2,
- "modes": true,
  "ahead": 90,
- "threat": null,
- "breakFirst": true,
- "breakDepth": 1,
- "lineup": true,
- "conserve": true,
- "threesLast": true,
  "nativeCands": true,
- "bank": true,
- "raiseTo": 8,
- "bankTop": 11,
- "bankForce": true,
- "holdThrees": {
-  "maxComing": 6,
-  "maxTop": 8
- },
  "gambit": {
   "rules": "survivor-profiles/gambit-rules.json",
   "ms": 80,

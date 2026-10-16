@@ -57,6 +57,7 @@ count of swaps or lines.
 
 | Step | Code |
 |---|---|
+| Gambit's turn | `answer` (gambit_answer.js): the break search, `decide`, the survival search asked which moves live, the answer |
 | The five steps, in order | `decide` (gambit_decide.js) |
 | 1 Read | `read` (gambit_decide.js), `GAMBIT.facts` (gambit.js) |
 | 2 Propose | gambit_propose.js: one function per kind of move -- `entries`, `extension`, `nearest`, `breakLine`, `breaks`, `toward`, `ready`, `level`, `setup`, `clear`, `carried`; `search` runs the searches once |
@@ -66,6 +67,6 @@ count of swaps or lines.
 
 Held by gambit.test.js (the rules) and gambit_decide.test.js (the judge, and a decision in every mode: every line ranked fits the list).
 
-Still outside the five steps, to be folded into step 4 (survivor_think.js, after the decision): the plain-three guard (guard3), the
-topped guard (guardTopped), ping-pong, the break played whatever is found (`_gambitBreak`), the arbiter's preferences, the survival
-search's override (`wanted`), and the list gate at the end of a decision.
+The survival search is asked one thing (`lives`): of every move (none past `GAMBIT.MAXCHAIN`), the ones that live -- Gambit's first,
+in its order, then any that fits the list, then any other; with none that lives, the one that dies latest. A Gambit profile has only
+what this path reads (survivor-profiles/gambit.json): none of the older bots' preferences, guards or overrides run for it.

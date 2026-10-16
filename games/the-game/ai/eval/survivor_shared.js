@@ -19,7 +19,8 @@ function profile() {
     Object.keys(own).forEach(function (k) { p[k] = own[k] && typeof own[k] === 'object' && !Array.isArray(own[k]) && b[k] && typeof b[k] === 'object' ? Object.assign({}, b[k], own[k]) : own[k]; });
     delete p.base;
   }
-  ['name', 'weights', 'reaction', 'cursorMoveFrames', 'depth', 'modes', 'ahead'].forEach(function (k) {
+  // (a Gambit profile decides by its own rules: it has no modes)
+  ['name', 'weights', 'reaction', 'cursorMoveFrames', 'depth', 'ahead'].concat(p.gambit ? [] : ['modes']).forEach(function (k) {
     if (p[k] === undefined) throw new Error('survivor profile ' + file + ': no ' + k);
   });
   if (p.name.length > 16) throw new Error('survivor profile: name "' + p.name + '" is over the server\'s 16 characters');
