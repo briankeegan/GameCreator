@@ -2632,6 +2632,7 @@ static void disturbed(const int32_t *a, const int32_t *b, uint32_t *out) {
 // much a line and the heap hold.
 #define SITCAP 4096
 #define SITKIDS 131072
+#define SITKEPT 4   // a search kept from one frame to the next grows over many frames: its set holds this many times a nested search's lines, steps and boards
 // WHAT THE SEARCH'S OWN BOOKKEEPING COSTS, as work: each step taken off the
 // heap (its board copied out, played, hashed) and each line kept (its board
 // copied in, its disturbed cells and settle found). Calibrated on drill seed 4 so the
@@ -2668,7 +2669,7 @@ static JLOCAL double sitLeft;
 // current level's set in place on entry and the caller's put back on exit
 #define SITLEVELS 4
 #define SITKEEPS 3   // searches that go on from one frame to the next: each keeps a set of memory of its own
-typedef struct { ST *st; SitNode *nd; SitKid *kd; SitHeap *hp; u64 *hk; uint32_t *hg, gen; int32_t *t, *r, *l; double left; } SitMem;
+typedef struct { ST *st; SitNode *nd; SitKid *kd; SitHeap *hp; u64 *hk; uint32_t *hg, gen; int32_t *t, *r, *l; double left; int cap, kids, hash; } SitMem;
 static JLOCAL SitMem SITM[SITLEVELS + SITKEEPS];
 static JLOCAL int sitLevel;
 static JLOCAL ST *SITST; static JLOCAL SitNode *SITND; static JLOCAL SitKid *SITKD; static JLOCAL SitHeap *SITHP; static JLOCAL u64 *SITHK;
@@ -2676,6 +2677,7 @@ static JLOCAL ST *SITST; static JLOCAL SitNode *SITND; static JLOCAL SitKid *SIT
 // as empty, so a search starts without clearing the table
 static JLOCAL uint32_t *SITHG, SITGEN;
 static JLOCAL int32_t *SITT, *SITR, *SITL;
+static JLOCAL int SITCAPV = SITCAP, SITKIDSV = SITKIDS, SITHASHV = SITHASH;   // the current set's sizes
 
 static int sitLine(int i, int32_t *sw) {
   int n = SITND[i].n;
@@ -2703,9 +2705,9 @@ static int sitPop(int *nh) {
 }
 static JLOCAL int sitSeenN;   // the boards noted by this search: a table past three parts in four is full -- a board is then taken as grown, never searched for down a chain
 static int sitSeen(u64 h) {   // 1 if the board was grown already; else noted
-  unsigned k = (unsigned)(h ^ (h >> 31)) & (SITHASH - 1);
-  for (int probe = 0; probe < SITHASH; probe++, k = (k + 1) & (SITHASH - 1)) {
-    if (SITHG[k] != SITGEN) { if (sitSeenN >= SITHASH / 4 * 3) return 1; sitSeenN++; SITHK[k] = h ? h : 1; SITHG[k] = SITGEN; return 0; }
+  unsigned k = (unsigned)(h ^ (h >> 31)) & (SITHASHV - 1);
+  for (int probe = 0; probe < SITHASHV; probe++, k = (k + 1) & (SITHASHV - 1)) {
+    if (SITHG[k] != SITGEN) { if (sitSeenN >= SITHASHV / 4 * 3) return 1; sitSeenN++; SITHK[k] = h ? h : 1; SITHG[k] = SITGEN; return 0; }
     if (SITHK[k] == h) return 1;
   }
   return 1;
@@ -2732,7 +2734,8 @@ static double workLeft(void) {
 static SitMem *sitMem(int level) {
   SitMem *m = &SITM[level];
   if (!m->st) {
-    m->st = grab(sizeof(ST) * SITCAP); m->nd = grab(sizeof(SitNode) * SITCAP); m->kd = grab(sizeof(SitKid) * SITKIDS); m->hp = grab(sizeof(SitHeap) * SITKIDS); m->hk = grab(sizeof(u64) * SITHASH); m->hg = grab(sizeof(uint32_t) * SITHASH);
+    int big = level >= SITLEVELS; m->cap = SITCAP * (big ? SITKEPT : 1); m->kids = SITKIDS * (big ? SITKEPT : 1); m->hash = SITHASH * (big ? SITKEPT : 1);
+    m->st = grab(sizeof(ST) * m->cap); m->nd = grab(sizeof(SitNode) * m->cap); m->kd = grab(sizeof(SitKid) * m->kids); m->hp = grab(sizeof(SitHeap) * m->kids); m->hk = grab(sizeof(u64) * m->hash); m->hg = grab(sizeof(uint32_t) * m->hash);
     m->t = grab(sizeof(ST)); m->r = grab(sizeof(int32_t) * (R_INTS + ST_INTS)); m->l = grab(sizeof(int32_t) * 2 * 128);
     if (!m->st || !m->nd || !m->kd || !m->hp || !m->hk || !m->hg || !m->t || !m->r || !m->l) { m->st = 0; return 0; }
   }
@@ -2744,8 +2747,8 @@ static void sitWarm(void) {
   for (int level = 0; level < SITLEVELS + SITKEEPS; level++) {
     SitMem *m = sitMem(level);
     if (!m) return;
-    __builtin_memset(m->st, 0, sizeof(ST) * SITCAP); __builtin_memset(m->nd, 0, sizeof(SitNode) * SITCAP);
-    __builtin_memset(m->kd, 0, sizeof(SitKid) * SITKIDS); __builtin_memset(m->hp, 0, sizeof(SitHeap) * SITKIDS); __builtin_memset(m->hk, 0, sizeof(u64) * SITHASH); __builtin_memset(m->hg, 0, sizeof(uint32_t) * SITHASH);
+    __builtin_memset(m->st, 0, sizeof(ST) * m->cap); __builtin_memset(m->nd, 0, sizeof(SitNode) * m->cap);
+    __builtin_memset(m->kd, 0, sizeof(SitKid) * m->kids); __builtin_memset(m->hp, 0, sizeof(SitHeap) * m->kids); __builtin_memset(m->hk, 0, sizeof(u64) * m->hash); __builtin_memset(m->hg, 0, sizeof(uint32_t) * m->hash);
   }
 }
 static JLOCAL double (*sitGuide)(const int32_t *st);
@@ -2783,9 +2786,10 @@ static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double no
 #endif
   sitKeepP = slot ? &SITKEEP[slot - 1] : 0; if (sitKeepP) sitKeepP->key = kkey;
   // the caller's level, kept to be put back
-  ST *pst = SITST; SitNode *pnd = SITND; SitKid *pkd = SITKD; SitHeap *php = SITHP; u64 *phk = SITHK; uint32_t *phg = SITHG, pgen = SITGEN; int32_t *pt = SITT, *pr = SITR, *pl = SITL; double pleft = sitLeft; int pseen = sitSeenN;
+  ST *pst = SITST; SitNode *pnd = SITND; SitKid *pkd = SITKD; SitHeap *php = SITHP; u64 *phk = SITHK; uint32_t *phg = SITHG, pgen = SITGEN; int32_t *pt = SITT, *pr = SITR, *pl = SITL; double pleft = sitLeft; int pseen = sitSeenN; int pcap = SITCAPV, pkids = SITKIDSV, phash = SITHASHV;
   SITST = m->st; SITND = m->nd; SITKD = m->kd; SITHP = m->hp; SITHK = m->hk; SITT = m->t; SITR = m->r; SITL = m->l;
-  if (!sitKeepIn && ++m->gen == 0) { __builtin_memset(m->hg, 0, sizeof(uint32_t) * SITHASH); m->gen = 1; }
+  SITCAPV = m->cap; SITKIDSV = m->kids; SITHASHV = m->hash;
+  if (!sitKeepIn && ++m->gen == 0) { __builtin_memset(m->hg, 0, sizeof(uint32_t) * m->hash); m->gen = 1; }
   SITHG = m->hg; SITGEN = m->gen;
   sitLevel++;
   int got = sitRun(st0, cr, cc, t0, notBefore, left, frozen, can0, wait0, work, accept, ctx, sw, nOut, atOut);
@@ -2795,7 +2799,7 @@ static int searchInTime(const int32_t *st0, int cr, int cc, double t0, double no
 #ifndef __wasm__
   if (calTop && !inWorker) { calMs += NOWMS2() - cal0; calW += paWork - calw0; if (++calN % 20000 == 0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "CAL sit %.3f ms/kwork over %.0f kwork\n", calMs / (calW / 1000), calW / 1000); } }
 #endif
-  SITST = pst; SITND = pnd; SITKD = pkd; SITHP = php; SITHK = phk; SITHG = phg; SITGEN = pgen; SITT = pt; SITR = pr; SITL = pl; sitLeft = pleft; sitSeenN = pseen;
+  SITST = pst; SITND = pnd; SITKD = pkd; SITHP = php; SITHK = phk; SITHG = phg; SITGEN = pgen; SITT = pt; SITR = pr; SITL = pl; sitLeft = pleft; sitSeenN = pseen; SITCAPV = pcap; SITKIDSV = pkids; SITHASHV = phash;
   return got;
 }
 // a kept line's steps offered: each legal pair, pressed when the clock says
@@ -2835,7 +2839,7 @@ static void sitOffer(int i, int *nk, int *nh, double notBefore, int frozen, cons
       }
     }
   }
-  for (int q = 0; q < m && *nk < SITKIDS; q++) {
+  for (int q = 0; q < m && *nk < SITKIDSV; q++) {
     int r = SITL[2 * q], c = SITL[2 * q + 1];
     if (r > 31) continue;
     if (root) sitRootLegal++;
@@ -2898,7 +2902,7 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
     line[2 * (n - 1)] = kd.r; line[2 * (n - 1) + 1] = kd.c;
     // kept before it is asked (the ask may use the resolve's buffer): a break
     // ends a line (what it converts is unseen), and the storage ends it too
-    int j = scope != SC_BROKE && n < LINEMAX && nn < SITCAP ? nn++ : -1;
+    int j = scope != SC_BROKE && n < LINEMAX && nn < SITCAPV ? nn++ : -1;
     if (j >= 0) {
       paWork += SITNODEWORK;
       stcpy(SITST[j], SITR + R_INTS);
@@ -2925,7 +2929,7 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
     sitGuide = myGuide; sitOffer(j, &nk, &nh, notBefore, frozen, 0, 0, mine); sitGuide = 0;
   }
   // steps still waiting: the next frame's work goes on from here
-  if (kp) { kp->valid = nh > 0 && sitSeenN < SITHASH / 4 * 3; kp->nn = nn; kp->nk = nk; kp->nh = nh; kp->seen = sitSeenN; }
+  if (kp) { kp->valid = nh > 0 && sitSeenN < SITHASHV / 4 * 3; kp->nn = nn; kp->nk = nk; kp->nh = nh; kp->seen = sitSeenN; }
   return 0;
 }
 // the line wanted: one that breaks
