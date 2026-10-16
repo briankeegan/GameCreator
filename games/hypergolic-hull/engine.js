@@ -3227,7 +3227,11 @@
   // a scrambler" — so every new kind of ground was instant death until
   // somebody remembered to special-case it.
   const HAZARDS = {
-    asteroid: { blocksMove: true, blocksShot: true },
+    // ROCK IS SOLID, NOT PERMANENT. Two hits open it, which is what keeps
+    // "there is always a way through" true however the board rolled: a lane
+    // you cannot walk round is a lane you can shoot open. It also gives every
+    // gun a second job and makes a chokepoint a decision rather than a wall.
+    asteroid: { blocksMove: true, blocksShot: true, hp: 2 },
     blackhole: { lethal: true },
     scrambler: { jams: true },
     // COVER YOU CAN WALK THROUGH, and the direct answer to reach. A gun
@@ -3443,16 +3447,29 @@
   // hexes. Off by default: findPath's plain shortest-hop behaviour is what
   // the engine's own rules (and its tests) expect.
   function findPath(state, from, to, opts) {
-    const blocked = (pos) => enemyAt(state, pos) || hazardAt(state, pos);
+    // THE ROUTER OBEYS THE MOVEMENT RULE, not "is there anything here". It
+    // treated every hazard as impassable, which was true while the only two
+    // kinds were a wall and a black hole and false the moment ground you fly
+    // through existed: dust and mines are crossable, and a route that refuses
+    // them reports no way through a board that has one, on a hex the player
+    // can see is open. Same test as canFlyInto, so the course and the step
+    // agree.
+    const blocked = (pos) =>
+      enemyAt(state, pos) || isBlockingHazard(hazardAt(state, pos)) || wreckAt(state, pos);
     if (!onBoard(state, to) || blocked(to)) return null;
     if (posEq(from, to)) return [{ q: from.q, r: from.r }];
 
     const avoid = Boolean(opts && opts.avoidThreats);
     const killZones = avoid ? staticKillZones(state) : null;
     const goalKey = hexKey(to);
-    const stepCost = (key) => {
-      if (!avoid || key === goalKey) return 1; // you tapped it; going there is the point
-      return 1 + (killZones.has(key) ? KILL_ZONE_STEP_COST : 0);
+    // Ground that costs hull is expensive to cross, never impossible — the
+    // long way round a minefield wins whenever there is one, and crossing it
+    // stays available when there is not.
+    const harmCost = (pos) => (hazardRule(hazardAt(state, pos)).damageOnEnd ? KILL_ZONE_STEP_COST : 0);
+    const stepCost = (key, pos) => {
+      if (key === goalKey) return 1; // you tapped it; going there is the point
+      if (!avoid) return 1 + harmCost(pos);
+      return 1 + (killZones.has(key) ? KILL_ZONE_STEP_COST : 0) + harmCost(pos);
     };
 
     // Uniform-cost search. With every step costing 1 this is exactly the
@@ -3481,7 +3498,7 @@
         const n = neighbor(cur.pos, i);
         const key = hexKey(n);
         if (!onBoard(state, n) || blocked(n)) continue;
-        const next = cur.cost + stepCost(key);
+        const next = cur.cost + stepCost(key, n);
         if (next >= (dist.get(key) ?? Infinity)) continue;
         dist.set(key, next);
         prev.set(key, { q: cur.pos.q, r: cur.pos.r });
@@ -3968,6 +3985,28 @@
 
   // Every wreck inside a footprint, paid and gone. Called with the hexes a
   // shot actually covered, so cover and range are already settled.
+  // Rock inside a footprint takes the hit. Same rule for both sides: a shot
+  // that lands on a boulder breaks the boulder, whoever fired it.
+  function breakRockIn(state, hexKeys, damage) {
+    if (!damage) return 0;
+    let opened = 0;
+    for (const hazard of state.hazards.slice()) {
+      const rule = hazardRule(hazard);
+      if (!rule.hp || !hexKeys.has(hexKey(hazard))) continue;
+      hazard.hp = (hazard.hp === undefined ? rule.hp : hazard.hp) - damage;
+      if (hazard.hp > 0) {
+        state.events.push({ type: "rockHit", q: hazard.q, r: hazard.r });
+        pushLog(state, "Rock splits — it will not hold much more.");
+        continue;
+      }
+      state.hazards = state.hazards.filter((h) => h !== hazard);
+      state.events.push({ type: "rockCleared", q: hazard.q, r: hazard.r });
+      pushLog(state, "The rock breaks apart — the lane is open.");
+      opened += 1;
+    }
+    return opened;
+  }
+
   function clearWrecksIn(state, hexKeys) {
     const hit = liveWrecks(state).filter((w) => hexKeys.has(hexKey(w)));
     if (!hit.length) return 0;
@@ -4546,6 +4585,7 @@
     // worth its 3 energy against an Autocannon's 1. A "one" weapon puts its
     // shot into a hull if there is one to hit, and can only be spent on a
     // wreck when there is nothing alive in reach.
+    const coveredRock = state.hazards.filter((h) => hazardRule(h).hp && hexKeys.has(hexKey(h)));
     const coveredWrecks = liveWrecks(state).filter((w) => hexKeys.has(hexKey(w)));
     const spread = weapon.targets === "all";
     const wreckSpoils = new Set(
@@ -4556,6 +4596,15 @@
     // fire at all. It is the one weapon here whose whole point is the
     // ground you are leaving rather than anything you can see.
     if (targets.length === 0 && !weapon.placesSelf) {
+      // Nothing alive in reach and no wreckage, but there is rock: the shot
+      // opens ground. A single-target gun takes the first boulder it covers;
+      // a footprint takes every one of them.
+      if (!wreckSpoils.size && coveredRock.length) {
+        const rock = new Set((spread ? coveredRock : coveredRock.slice(0, 1)).map(hexKey));
+        state.energy = Math.max(0, state.energy - weapon.energyCost);
+        breakRockIn(state, rock, weapon.damage || 1);
+        return;
+      }
       // Nothing alive in reach, but there is wreckage: the shot is spent
       // cutting it open, which is the whole second step of a kill.
       if (wreckSpoils.size) {
@@ -5221,6 +5270,9 @@
       // kill and the only way salvage is ever banked, so a gun covering one
       // has to read as bearing or the loop cannot be played at all.
       if (liveWrecks(state).some((w) => hexKeys.has(hexKey(w)))) return true;
+      // Rock is something to shoot at: it is how a walled lane gets opened,
+      // so a gun covering one has to read as bearing.
+      if (state.hazards.some((h) => hazardRule(h).hp && hexKeys.has(hexKey(h)))) return true;
       return livingEnemies(state).some((e) => hexKeys.has(hexKey(e)));
     });
   }

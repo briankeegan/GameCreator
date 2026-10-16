@@ -2663,7 +2663,7 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
 {
   const areaByRoster = new Map();
   const mixes = new Set();
-  const rockCounts = new Set();
+  const groundKinds = new Set();
   const flavours = new Set();
   for (let depth = 1; depth <= 40; depth++) {
     for (const variant of ["aggressive", "quiet", "drift"]) {
@@ -2694,12 +2694,26 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
       // expensive one, since every hex of it is a hex you walk. These are
       // what actually differ between two sectors of the same weight.
       mixes.add([...level.enemies.map((e) => e.type)].sort().join("+"));
-      rockCounts.add(level.hazards.length);
+      // COMPOSITION, not a total. Ground is several kinds now — rock, dust,
+      // mines — and a board of four boulders is not the same place as a board
+      // of four mines, so counting how MANY hazards a sector deals stopped
+      // measuring whether its ground differs.
+      groundKinds.add(
+        Object.entries(
+          level.hazards.reduce((acc, h) => ((acc[h.type] = (acc[h.type] || 0) + 1), acc), {})
+        )
+          .sort()
+          .map(([t, n]) => `${t}:${n}`)
+          .join(",")
+      );
       flavours.add(`${level.locale && level.locale.id}|${level.condition}|${level.objective}`);
     }
   }
   assert.ok(mixes.size >= 20, `sectors deal genuinely different rosters (saw ${mixes.size} distinct mixes)`);
-  assert.ok(rockCounts.size >= 4, `sectors deal genuinely different ground (saw ${rockCounts.size} rock counts)`);
+  assert.ok(
+    groundKinds.size >= 6,
+    `sectors deal genuinely different ground (saw ${groundKinds.size} distinct mixes)`
+  );
   assert.ok(flavours.size >= 8, `sectors deal genuinely different situations (saw ${flavours.size} locale/condition/objective combinations)`);
   // DENSITY DOES NOT FALL AS THE CRAWL DEEPENS. The old rule here was the
   // opposite — "more hostiles, more room, monotonically" — and that is
@@ -2737,6 +2751,32 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
       );
     }
   }
+}
+
+// ROCK OPENS. A lane you cannot walk around is a lane you can shoot through,
+// which is what keeps "there is always a way through" true however the board
+// rolled — and it is the only thing that keeps it true once wrecks, which also
+// block, start landing in corridors mid-sector.
+{
+  const rockLevel = {
+    id: 9001, name: "rock", board: { type: "rect", cols: 5, rows: 7 },
+    playerStart: { q: 2, r: 4 }, exit: { q: 2, r: -1 }, exits: [{ q: 2, r: -1 }],
+    outpost: null, enemies: [], hazards: [{ type: "asteroid", q: 2, r: 3 }],
+    exitRule: "always", locale: { id: "test" }, salvageBonus: 0, theme: {},
+    condition: null, objective: null, intro: "",
+  };
+  const st = Engine.createGameState(rockLevel);
+  const rocks = () => st.hazards.filter((h) => h.type === "asteroid").length;
+  const boulder = { q: 2, r: 3 };
+  assert.strictEqual(rocks(), 1, "the fixture starts with one boulder in the way");
+  assert.ok(!Engine.canFlyInto(st, boulder, "player"), "and nothing can fly into it");
+  Engine.setFacing(st, 0);
+  Engine.applyFire(st);
+  assert.strictEqual(rocks(), 1, "one hit splits rock but does not open it");
+  assert.strictEqual(st.hazards[0].hp, 1, "and the damage is remembered on the hazard");
+  Engine.applyFire(st);
+  assert.strictEqual(rocks(), 0, "the second hit breaks it apart");
+  assert.ok(Engine.canFlyInto(st, boulder, "player"), "and the lane is open afterwards");
 }
 
 // The dock moves. It used to be nailed to hex (0,0) on every single board

@@ -1079,8 +1079,13 @@
     // a hex by what you can SEE from it, a mine drift by what it costs to
     // STOP on it, and both are there on the 42.6% of rounds when nothing is
     // alive, which no hostile can be.
-    const CLOUD_PATCHES = Math.max(0, Math.round(envNumber("GC_IONCLOUD", 2)));
-    const MINE_SHARE = envNumber("GC_MINES", 0.06);
+    // ONE PATCH, AND A FEW MINES. Two patches of four plus a mine scatter put
+    // eleven of a thirty-five hex board under terrain, which drew a band right
+    // across the middle: passable ground that reads as a wall is worse than a
+    // wall, because the player routes around something that was never there.
+    const CLOUD_PATCHES = Math.max(0, Math.round(envNumber("GC_IONCLOUD", 1)));
+    const CLOUD_SIZE = Math.max(1, Math.round(envNumber("GC_IONCLOUD_SIZE", 3)));
+    const MINE_SHARE = envNumber("GC_MINES", 0.035);
     // GROUND NEVER COSTS THE BOARD ITS SHIPS. Hostiles are placed later from
     // the same candidate list and skip any hex holding a hazard, so terrain
     // laid down greedily simply spawns fewer of them — a sector quietly
@@ -1105,7 +1110,7 @@
         (at) => candidates.some((c) => c.q === at.q && c.r === at.r) && !takenHex(at)
       );
       if (patch.length < 3) continue;
-      for (const at of patch.slice(0, 4)) hazards.push({ type: "ionCloud", q: at.q, r: at.r });
+      for (const at of patch.slice(0, CLOUD_SIZE)) hazards.push({ type: "ionCloud", q: at.q, r: at.r });
       patches++;
     }
 

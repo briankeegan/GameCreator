@@ -2106,11 +2106,20 @@ function drawWormhole(center, r, now) {
 // engine's HAZARDS table uses, so a type added there without a look here
 // falls back to the most cautious reading rather than the prettiest.
 const HAZARD_LOOK = {
-  asteroid: { fill: "#38302b", alpha: 0.8 },   // a wall
-  blackhole: { fill: "#3a1030", alpha: 0.8 },  // ends you
-  scrambler: { fill: "#16303a", alpha: 0.55 }, // crossable, takes your guns
-  ionCloud: { fill: "#4a5f7a", alpha: 0.5 },   // crossable, and nothing sees through it
-  mineDrift: { fill: "#5a4410", alpha: 0.55 }, // crossable, costs a hull to STOP in
+  // THE RIM SAYS WHETHER YOU CAN FLY THROUGH IT, which is the most
+  // consequential thing a hex says. A hard bright rim means stop; a soft one
+  // means this is still open space. The fallback is the black hole's, so a
+  // ground nobody has given a look to reads as the most dangerous thing on
+  // the board rather than the prettiest — ion clouds and mine drifts both
+  // inherited that pink rim and read as walls you could in fact fly straight
+  // through.
+  asteroid: { fill: "#38302b", alpha: 0.8, stroke: "rgba(255,214,168,0.72)", width: 2 },
+  blackhole: { fill: "#3a1030", alpha: 0.8, stroke: "rgba(255,150,235,0.72)", width: 2 },
+  scrambler: { fill: "#16303a", alpha: 0.55, stroke: "rgba(120,220,245,0.55)", width: 2 },
+  // Barely there. A cloud is open space you can fly through — the dust drawn
+  // on top is what says it is there, not the hex underneath it.
+  ionCloud: { fill: "#3d5068", alpha: 0.22, stroke: "rgba(150,190,225,0.3)", width: 1.5 },
+  mineDrift: { fill: "#4a3608", alpha: 0.38, stroke: "rgba(232,180,80,0.5)", width: 1.5 },
 };
 
 // A scrambler field: ionised dust you can fly straight through. It takes
@@ -2118,6 +2127,64 @@ const HAZARD_LOOK = {
 // it does the same to anything else standing in one. Drawn as drifting
 // static rather than as an object, because the hex is empty: the thing in
 // it is the interference.
+// An ion cloud: drifting dust you fly straight through, and nothing — yours
+// or theirs — shoots through. Soft overlapping blobs with no hard edge, so it
+// never reads as a wall; the point of it is ground you duck INTO.
+function drawIonCloud(center, r, now, seed) {
+  const rng = seededRandom(`ion-${seed}`);
+  ctx.save();
+  ctx.translate(center.x, center.y);
+  for (let i = 0; i < 5; i++) {
+    const a = rng() * Math.PI * 2;
+    const d = r * rng() * 0.45;
+    const br = r * (0.38 + rng() * 0.3);
+    const drift = Math.sin(now / 1400 + i) * r * 0.05;
+    const g = ctx.createRadialGradient(Math.cos(a) * d, Math.sin(a) * d + drift, 0,
+                                       Math.cos(a) * d, Math.sin(a) * d + drift, br);
+    g.addColorStop(0, "rgba(150,186,224,0.42)");
+    g.addColorStop(1, "rgba(120,150,190,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(Math.cos(a) * d, Math.sin(a) * d + drift, br, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// A mine drift: loose ordnance you may cross but must not stop in. Hard little
+// bodies with spikes and a slow amber blink — it has to read as a thing that
+// goes off, not as scenery.
+function drawMineDrift(center, r, now, seed) {
+  const rng = seededRandom(`mine-${seed}`);
+  ctx.save();
+  ctx.translate(center.x, center.y);
+  const blink = 0.45 + 0.4 * (0.5 + 0.5 * Math.sin(now / 420 + rng() * 6));
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2 + rng() * 0.8;
+    const d = r * (0.1 + rng() * 0.3);
+    const cx = Math.cos(a) * d;
+    const cy = Math.sin(a) * d;
+    const br = r * 0.16;
+    ctx.strokeStyle = "rgba(226,170,70,0.85)";
+    ctx.lineWidth = Math.max(1, r * 0.045);
+    for (let sp = 0; sp < 6; sp++) {
+      const sa = (sp / 6) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(sa) * br, cy + Math.sin(sa) * br);
+      ctx.lineTo(cx + Math.cos(sa) * br * 1.75, cy + Math.sin(sa) * br * 1.75);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#2b2213";
+    ctx.beginPath();
+    ctx.arc(cx, cy, br, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(240,190,96," + blink.toFixed(2) + ")";
+    ctx.lineWidth = Math.max(1, r * 0.05);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawScramblerField(center, radius, now, seed) {
   const rng = seededRandom(`scrambler-${seed}`);
   const motes = 14;
@@ -2152,11 +2219,13 @@ function drawScramblerField(center, radius, now, seed) {
 // dark rocks reads as "a wall," distinct from the smooth circular Outpost/
 // Warp Gate. Shape is seeded per hex so it doesn't jitter frame to frame,
 // but still varies field to field.
-function drawAsteroidField(center, r, seed) {
+function drawAsteroidField(center, r, seed, hurt) {
   const rng = seededRandom(`asteroid-${seed}`);
   ctx.save();
   ctx.translate(center.x, center.y);
-  const rockCount = 4;
+  // A SPLIT BOULDER LOOKS SPLIT. Rock takes two hits and opens, so the hex
+  // has to say which of them it has taken, or the second shot is a guess.
+  const rockCount = hurt ? 2 : 4;
   for (let i = 0; i < rockCount; i++) {
     const angle = (i / rockCount) * Math.PI * 2 + rng() * 0.6;
     const dist = r * (0.18 + rng() * 0.22);
@@ -3241,13 +3310,9 @@ function draw() {
       // most of the maw and the shoals. It wears a bright warm rim now, on
       // every sky, because "can I fly through this" is the single most
       // consequential thing a hex says.
-      stroke =
-        isHazard.type === "asteroid"
-          ? "rgba(255,214,168,0.72)"
-          : isHazard.type === "scrambler"
-            ? "rgba(120,220,245,0.55)"
-            : "rgba(255,150,235,0.72)";
-      strokeWidth = 2;
+      const look = HAZARD_LOOK[isHazard.type] || HAZARD_LOOK.blackhole;
+      stroke = look.stroke;
+      strokeWidth = look.width;
     } else {
       // The grid belongs to the PLACE, not to the game engine. One fixed
       // near-white lattice everywhere was doing most of the looking, which
@@ -3275,9 +3340,13 @@ function draw() {
     } else if (isDiscovery) {
       drawDiscovery(center, geom.sx * 0.56, now, state.discoveryFlavor, `${state.levelId}-${k}`);
     } else if (isHazard && isHazard.type === "asteroid") {
-      drawAsteroidField(center, geom.sx * 0.56, k);
+      drawAsteroidField(center, geom.sx * 0.56, k, isHazard.hp !== undefined && isHazard.hp < 2);
     } else if (isHazard && isHazard.type === "scrambler") {
       drawScramblerField(center, geom.sx * 0.58, now, k);
+    } else if (isHazard && isHazard.type === "ionCloud") {
+      drawIonCloud(center, geom.sx * 0.58, now, k);
+    } else if (isHazard && isHazard.type === "mineDrift") {
+      drawMineDrift(center, geom.sx * 0.56, now, k);
     }
   }
 
