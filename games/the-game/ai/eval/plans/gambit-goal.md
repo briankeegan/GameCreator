@@ -47,15 +47,15 @@ engine at level 10, the game's own think and input budgets.
 - **The true test is that things survive**: the 24 games. A test is kept only where it holds something the games cannot.
 - **Each change is measured once on the real game**, all 24, and reported: survived per mode and the frames lost at; the combos and
   chains made; the budgets (frames over, keys dropped, late moves); the loss report (`gambit_losses.js`), the reach report and the turn
-  (`gambit_reach.js`) -- written by the run on Actions; and the time it finishes, in EDT.
+  (`gambit_reach.js`) -- written by the run on Actions; and the time it finishes, in ET on the 24-hour clock.
 - Commit and push every change. Never rerun code that has not changed.
 
 ## Where it stands
 
 | mode | survived | runs |
 |---|---|---|
-| finish them | accepted at 23 of 24 (the owner: close enough; checked again as the infra changes) | 19, 19, 17, 17, 17, 17, 22, 21 (C), 22, 23, 21, 22, 23 (C in the client) |
-| pressure | 17 of 24 | 0 (no chain begun), 17 (chains begun and continued) |
+| finish them | accepted at 23 of 24 (the owner: close enough; checked again as the infra changes) | 19, 19, 17, 17, 17, 17, 22, 21 (C), 22, 23, 21, 22, 23 (C in the client), 17, 20, 17, 20, 16, 20 |
+| pressure | 20 of 24 | 0 (no chain begun), 17 (chains begun and continued), 19, 18, 18, 19, 20 |
 | big chain | not yet run | |
 | build | not yet run | |
 | switching | not yet built | |
