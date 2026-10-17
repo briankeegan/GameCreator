@@ -31,6 +31,7 @@ static int32_t popLeft(const Board *b) {
   return t;
 }
 
+#define MAXSTARTS 8
 // THE SEARCHES, run once a decision: the planner, the extension of a chain falling or a slab popping, readiness, levelling
 typedef struct {
   int32_t haveAp; Plan ap;
@@ -38,15 +39,55 @@ typedef struct {
   int32_t haveRd; Readied rd;
   int32_t lvU, lvG;                       // a level swap (0: none)
   int32_t haveRl, rlN, rl[2], rlAt;
+  int32_t nstart; XLine start[MAXSTARTS];  // chains begun: a swap that starts a clear, and the links its fall is continued by
   int32_t tried; double idleMs, searchMs;
 } Found;
 #define READY_LINE_MS 120
+// whether a list asks for a chain at all
+static int wantsChain(const List *L) { for (int i = 0; i < L->n; i++) if (L->aim[i].chain.op && listWantsLonger(L, 1)) return 1; return 0; }
+static Ctx *startCtx;
+static void startChains(const Read *R, Found *S, double ms) {
+  if (ms < 5) return;
+  Profile *GP = &C2.GP;
+  double t0 = nowMs(), shareOld = clockShareBegin(t0 + ms);
+  Ctx *x = startCtx = ctxOf(startCtx);
+  int root = rootOf(x, &decQ);
+  if (root < 0) { clockShareEnd(shareOld); return; }
+  static int32_t ms_[MAXROWS * W], starts[MAXROWS * W];
+  int nm = swapsOfNode(x, root, ms_), ns = 0;
+  // (the swaps that start a clear: played to the settle, they clear panels)
+  for (int j = 0; j < nm && !clockOut(); j++) {
+    int out = step(x, root, MK_SETTLE, CR(ms_[j]), CC(ms_[j]), 0);
+    Stats st;
+    if (liveNode(x, out) && statsOf(x, out, &st) && st.cleared > 0) starts[ns++] = ms_[j];
+  }
+  for (int j = 0; j < ns && S->nstart < MAXSTARTS && !clockOut(); j++) {
+    int sw = step(x, root, MK_SWAP, CR(starts[j]), CC(starts[j]), 0);
+    if (!liveNode(x, sw)) continue;
+    Question q = decQ; q.b = ensureBoard(x, sw); q.holdLeft = 0; q.holdStarted = 0;
+    if (!q.b) continue;
+    double left = t0 + ms - nowMs();
+    if (left < 2) break;
+    ExtOpts eo = { GP->width ? GP->width : 40, GP->extendDepth ? GP->extendDepth : 6, &R->aims, R->by ? R->by : NOT_ASKED, R->keepOn ? &R->keep : 0,
+                   left / (ns - j) };
+    Ext E;
+    extend(&q, &eo, &E);
+    if (!E.best.set || E.best.aimIndex < 0 || E.best.nseq + 1 > PLAN_SEQ) continue;
+    XLine *l = &S->start[S->nstart++];
+    *l = E.best;
+    l->nseq = E.best.nseq + 1; l->seq[0] = starts[j];
+    for (int k = 0; k < E.best.nseq; k++) l->seq[k + 1] = E.best.seq[k];
+  }
+  clockShareEnd(shareOld);
+}
 static void searchAll(const Read *R, Found *S) {
   memset(S, 0, sizeof *S);
   if (!R->aims.n) return;
   Profile *GP = &C2.GP;
   Board *board = decQ.b;
-  double xMs = R->pop ? (GP->ms ? GP->ms : 80) : (GP->extendMs ? GP->extendMs : 40);
+  // (EVERY SEARCH TAKES A SHARE OF THE TIME THE DECISION HAS: half of what is left when it begins -- leftMs already keeps back the
+  // judging's quarter -- so a decision with a second to its move searches a second's worth, and one with a frame, a frame's)
+  double xMs = leftMs() / 2;
   // (a slab popping is lined up as the list is written -- the pop is the break; with garbage left, the entries that break again first)
   S->xAims = !R->pop ? R->aims : R->listAims;
   if (R->pop && R->under) {
@@ -60,8 +101,11 @@ static void searchAll(const Read *R, Found *S) {
     ExtOpts eo = { GP->width ? GP->width : 40, GP->extendDepth ? GP->extendDepth : 6, &S->xAims, R->by ? R->by : NOT_ASKED, R->keepOn ? &R->keep : 0, xm };
     extend(&decQ, &eo, &S->ex); S->haveEx = 1;
   }
+  // (A CHAIN IS BEGUN AND CONTINUED: on a board at rest, each swap that starts a clear, then the links its fall is continued by -- the
+  // extension's own search, from the board the swap leaves falling; a beginning whose chain ends in the list is a line)
+  if (!cascadeLive(board) && !R->pop && !GP->extendOff && wantsChain(&R->aims)) startChains(R, S, leftMs() / 2);
   // (idle time is planning time -- while the board left alone lives; a board the hold loses keeps the time for the survival search)
-  double gms = GP->ms ? GP->ms : 80, usual = (gms < leftMs() ? gms : leftMs()) - (R->pop && S->haveEx ? S->ex.ms : 0);
+  double usual = leftMs() / 2;
   int idle = C2.idle && outcome(0, 0, 0).lives;
   double ms = idle ? (usual > leftMs() ? usual : leftMs()) : usual, extra = ms - (usual > 0 ? usual : 0);
   if (ms >= 20) {
@@ -120,6 +164,8 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
     }
     if (S->ex.nearest.set) { int m0 = n; ADD(R->pop ? PLAY_LINEUP : PLAY_EXTEND, S->ex.nearest.seq, S->ex.nearest.nseq, -1, 1); if (n > m0) xFromExt(&out[m0], &S->ex.nearest); }
   }
+  // A CHAIN BEGUN: a swap that starts a clear and the links that continue its fall into an entry of the list
+  for (int i = 0; i < S->nstart; i++) { int m0 = n; ADD(PLAY_EXTEND, S->start[i].seq, S->start[i].nseq, S->start[i].aimIndex, 1); if (n > m0) xFromExt(&out[m0], &S->start[i]); }
   // THE NEAREST: the planner's line nearest the list; THE BREAK LINE: its line in time that breaks the most garbage
   if (S->haveAp && S->ap.nearest.set && S->ap.nearest.nseq) { int m0 = n; ADD(PLAY_NEAREST, S->ap.nearest.seq, S->ap.nearest.nseq, -1, 0); if (n > m0) xFromPlan(&out[m0], &S->ap.nearest); }
   if (S->haveAp && S->ap.quick.set) { int m0 = n; ADD(PLAY_BREAKLINE, S->ap.quick.seq, S->ap.quick.nseq, -1, 0); if (n > m0) xFromPlan(&out[m0], &S->ap.quick); }

@@ -72,13 +72,30 @@ static int32_t pressDelay(Ctx *x, int pi, int mr, int mc, int tightOn) {
 // THE LIST FOR ONE STEP (attacker stepFits): its own clears, each no link of a chain, and the chain it reaches -- held to the list when
 // the decision has handed the searches one (listOn)
 static int32_t listOn;
+// Whether the list wants a chain longer than `chain`: an entry a longer chain (within MAXCHAIN) meets.
+static int listWantsLonger(const List *L, int32_t chain) {
+  for (int i = 0; i < L->n; i++) {
+    const Aim *a = &L->aim[i];
+    if (!a->chain.op) continue;
+    for (int32_t c = chain + 1; c <= MAXCHAIN; c++) if (test(c, a->chain)) return 1;
+  }
+  return 0;
+}
+// A STEP BEGINS A CHAIN, OR ENDS ONE: on a board still falling, its chain so far -- and a plain three, its first link -- is a beginning
+// while the list wants a longer chain, held to the list as it ends, on the whole line (lineFits); a combo of its own fits as itself.
 static int stepFitsAt(Ctx *x, int i) {
   if (!listOn) return 1;
   Stats s;
   if (!statsOf(x, i, &s)) return 0;
   int32_t own[MAXCOMBOS], n = 0;
   for (int j = 0; j < s.n; j++) if (!(s.chainAt[j] > 1)) own[n++] = s.size[j];
-  return stepFits(&theList, own, n, chainOfStats(&s));
+  int32_t chain = chainOfStats(&s);
+  if (stepFits(&theList, own, n, chain)) return 1;
+  Board *b = ensureBoard(x, i);
+  if (!b || !(b->chainCounter > 0 || hasChainingPanels(b) || hasActivePanels(b))) return 0;
+  if (chain > MAXCHAIN || !listWantsLonger(&theList, chain > 1 ? chain : 1)) return 0;
+  for (int k = 0; k < n; k++) if (own[k] > 3) { Made m = { own[k], 1, 0, 0 }; if (!fits(&theList, m)) return 0; }
+  return 1;
 }
 static int settleOf(Ctx *x, int i) { return step(x, i, MK_SETTLE, 0, 0, 0); }
 

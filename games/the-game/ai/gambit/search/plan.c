@@ -144,8 +144,18 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
       PItem *it = &pool[jobP[j]];
       int32_t m = jobM[j];
       int out = jobOut[j];
-      if (!liveNode(x, out) || !stepFitsAt(x, out)) continue;
+      if (!liveNode(x, out)) continue;
       Stats st; statsOf(x, out, &st);
+      // (HOW NEAR A BOARD IS, it is of the board: a swap outside the list -- never played -- still says how near its parent comes, so it
+      // counts toward the parent's reach; it is kept as no line and grows no kid)
+      if (!stepFitsAt(x, out)) {
+        if (st.cleared > 0 && !(o->by != NOT_ASKED && NODE(x, it->n)->t > o->by)) {
+          Made mo = { biggestOf(&st), chainOfStats(&st), st.broke, imax(0, sentCells(&st) - base) };
+          double nr = leadOf(o->aims, mo, o->under);
+          if (nr > it->reach) it->reach = nr;
+        }
+        continue;
+      }
       if (!it->nseq && !firstOk(CR(m), CC(m), st.cleared > 0 || NODE(x, out)->brk > stillAt(&still, NODE(x, out)->t))) continue;
       if (st.cleared > 0) {
         int32_t fire = NODE(x, it->n)->t, chain = chainOfStats(&st), bigC = biggestOf(&st), done = NODE(x, out)->t;
@@ -233,4 +243,19 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
   if (!haveSetup) P->setup = 0;
   P->ms = nowMs() - t0;
   clockShareEnd(shareOld);
+}
+
+// ---- for a host's check: the planner on the question set (gb_question), the list set (gb_list), its numbers given; back into the io:
+// per entry of the list whether a line meets it, its swaps and chain, then the nearest line's near and chain, and the planner's ms
+EXPORT(gb_plan) int gb_plan(int width, int depth, int pool, int by, double ms) {
+  static Plan P;
+  clockStart(0);
+  decQ = hostQ; decQ.b = hostBoard;
+  PlanOpts o = { width, depth, pool, &theList, by > 0 ? by : NOT_ASKED, 0, NOT_ASKED, 0, 0, 0, ms };
+  plan(&decQ, &o, &P);
+  int32_t *w = gbIo, k = 0;
+  w[k++] = theList.n;
+  for (int i = 0; i < theList.n; i++) { w[k++] = P.perAim[i].set; w[k++] = P.perAim[i].nseq; w[k++] = P.perAim[i].chain; }
+  w[k++] = (int32_t)(P.nearest.near * 1000); w[k++] = P.nearest.chain; w[k++] = (int32_t)P.ms;
+  return k;
 }
