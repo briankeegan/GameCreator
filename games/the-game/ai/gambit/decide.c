@@ -76,7 +76,7 @@ static int carriedCand(const Read *R, Cand *k, int *wait);
 static const Judge *carriedJ;   // the line in progress among the ranked, for the log
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered);
-  carriedJ = 0;
+  carriedJ = 0; unbroken.set = 0;
   double t0 = nowMs();
   int nc = proposeAll(R, S, theCands, MAXCANDS), n = 0;
   double t1 = nowMs();

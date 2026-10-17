@@ -278,6 +278,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   }
   if (!any) L_s("-");
   L_s(" live="); L_i(P.nlive); L_s("/"); L_i(P.ncands);
+  if (unbroken.set) { L_s(" unbroken="); L_play(unbroken.play); L_s(":"); for (int i = 0; i < unbroken.nseq; i++) { if (i) L_s(";"); L_mv(unbroken.seq[i]); } L_s(":"); L_i(unbroken.said); L_s("/"); L_i(unbroken.judged); }
   // (the one order, its first eight: the play -- * the line in progress -- whether it lives or the frame its board is lost, the garbage it breaks)
   L_s(" opts=");
   for (int i = 0; i < P.ncands && i < 8; i++) {

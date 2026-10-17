@@ -88,14 +88,14 @@ static int b64(const unsigned char *p, int n, char *out) {
   out[k] = 0;
   return k;
 }
-static void dumpBoard(int32_t at, const Board *b, const Arr *arr, int narr) {
+static void dumpBoard(const char *tag, int32_t at, const Board *b, const Arr *arr, int narr) {
   static unsigned char bytes[sizeof(Board)];
   static char line[sizeof(Board) * 2];
   unsigned long n = BOARD_HEAD;
   memcpy(bytes, b, BOARD_HEAD);
   memcpy(bytes + n, b->inc, (unsigned long)b->ninc * sizeof(Incoming)); n += (unsigned long)b->ninc * sizeof(Incoming);
   memcpy(bytes + n, b->p, (unsigned long)b->nrows * sizeof(Panel) * (W + 1)); n += (unsigned long)b->nrows * sizeof(Panel) * (W + 1);
-  int k = snprintf(line, sizeof line, "GAMBITB %d C%d:", at, (int)sizeof(Board));
+  int k = snprintf(line, sizeof line, "%s %d C%d:", tag, at, (int)sizeof(Board));
   k += b64(bytes, (int)n, line + k);
   k += snprintf(line + k, sizeof line - (unsigned long)k, " [");
   for (int i = 0; i < narr; i++) k += snprintf(line + k, sizeof line - (unsigned long)k, "%s[%d,%d,%d]", i ? "," : "", arr[i].at, arr[i].width, arr[i].height);
@@ -162,7 +162,10 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   }
   snprintf(line + k, sizeof line - (unsigned long)k, "%s wallMs=%d", s, (int)(clock_ms() - t0));
   flog(line);
-  if (A->dumpBoard) dumpBoard(q->at, hostBoard, hostQ.arr, hostQ.narr);
+  if (A->dumpBoard) dumpBoard("GAMBITB", q->at, hostBoard, hostQ.arr, hostQ.narr);
+  // (a line the break search said breaks and the judge says does not: its board, rate-limited, for replaying both on it -- GAMBITU)
+  static int32_t lastU = NUL;
+  if (unbroken.set && (lastU == NUL || q->at - lastU >= 120 || q->at < lastU)) { lastU = q->at; dumpBoard("GAMBITU", q->at, hostBoard, hostQ.arr, hostQ.narr); }
 }
 static void *workerMain(void *arg) {
   (void)arg;
