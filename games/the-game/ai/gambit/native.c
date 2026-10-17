@@ -102,7 +102,7 @@ static void dumpBoard(const char *tag, int32_t at, const Board *b, const Arr *ar
   snprintf(line + k, sizeof line - (unsigned long)k, "]");
   flog(line);
 }
-// A question answered: the board judged at level 10's health, a clock behind the last a new game. It stops in time for its move, on
+// A question answered: the board judged at level 10's health. It stops in time for its move, on
 // the game's own frame, which the frame loop publishes (the frame played, when it began, the ms a frame takes): out once the frame
 // before its move has begun, or sooner when what it still has to do once out (its closing work, the slowest of the last CLOSEN
 // decisions') would not be done before its move's frame begins. Its searches share the time until then.
@@ -124,14 +124,11 @@ static int frameOut(void) {
   if (__atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST) >= dueFrame - __atomic_load_n(&gameBurst, __ATOMIC_SEQ_CST)) return 1;
   return clock_ms() + closeWorst() >= moveStartMs(dueFrame + 1);
 }
-static int32_t lastAt = NUL;
 static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   double t0 = clock_ms();
   if (gnPlanHealth) { b->health = imin(b->health, gnPlanHealth); b->maxHealth = imin(b->maxHealth, gnPlanHealth); }
   dueFrame = q->at - 1; clockFrameOut = frameOut;
   double due = moveStartMs(q->at) - closeWorst();
-  if (lastAt != NUL && q->at < lastAt) gb_new_game();
-  lastAt = q->at;
   if (!hostBoard) hostBoard = nb_new();
   cloneBoard(hostBoard, b);
   memset(&hostQ, 0, sizeof hostQ);
@@ -175,7 +172,7 @@ static void *workerMain(void *arg) {
   for (;;) {
     hostLock();
     while (!qHas && !qReset) hostWait();
-    if (qReset) { qReset = 0; hostUnlock(); gb_new_game(); lastAt = NUL; continue; }
+    if (qReset) { qReset = 0; hostUnlock(); gb_new_game(); continue; }
     q = qSlot; copyBoard(b, qSlotBoard); q.b = b; qHas = 0;
     __atomic_store_n(&curQid, q.id, __ATOMIC_SEQ_CST);
     hostUnlock();
@@ -224,9 +221,14 @@ void gn_match(void) {
 }
 // A frame in play: the board in the engine's io (the host wrote it, nb_io_head / nb_io_body), the telegraphs in gn_tele, the input
 // budget's limit and window and the frames ago each key inside it went down (gn_ages), and the opponent. The keys to press, or -1.
+// (a clock behind the last frame's is a game begun again without gn_match: begun so. A question asked for a frame sooner than the
+// last one asked is the same game -- the frame loop asks again after it drops its plans.)
 int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTop) {
+  static int32_t lastClock = NUL;
   if (nb_load(F.truth)) return -1;
   int32_t clock = F.truth->clock;
+  if (lastClock != NUL && clock < lastClock) gn_match();
+  lastClock = clock;
   { double t = clock_ms(), per = F.msPerFrame, last;
     static int32_t run;
     __atomic_load(&gameFrameMs, &last, __ATOMIC_SEQ_CST);
