@@ -22,24 +22,35 @@ assert.strictEqual(SH.breakNear(grid(pad.repeat(9) + 'G G G . . .\n1 1 2 G 3 1\n
 assert.strictEqual(SH.breakNear(grid(pad.repeat(9) + '. . . . . .\n1 1 2 1 3 4\n1 2 3 4 5 1')), Infinity, 'no garbage: no break');
 
 // THE SEARCH, on the engine: the factory board as the game had it (health 51, stop 60, shake 17), its slab one block
-var b = PA.game({ level: 10, seed: 7, countdown: false });
-for (var f = 0; f < 60; f++) b.run();
-var G = grid(FACTORY), id = 1000;
-while (b.panels.length < b.height + 4) {
-  var tm = b.panels[1], nr = [null];
-  for (var c = 1; c <= 6; c++) { var np = Object.create(Object.getPrototypeOf(tm[c])); Object.assign(np, tm[c], { row: b.panels.length }); nr.push(np); }
-  b.panels.push(nr);
+// (a board from rows written top first, its one slab gh rows tall with its lowest row at g0)
+function boardOf(txt, gh, g0) {
+  var bd = PA.game({ level: 10, seed: 7, countdown: false });
+  for (var f0 = 0; f0 < 60; f0++) bd.run();
+  var G = grid(txt), id = 1000;
+  while (bd.panels.length < bd.height + 4) {
+    var tm = bd.panels[1], nr = [null];
+    for (var c0 = 1; c0 <= 6; c0++) { var np = Object.create(Object.getPrototypeOf(tm[c0])); Object.assign(np, tm[c0], { row: bd.panels.length }); nr.push(np); }
+    bd.panels.push(nr);
+  }
+  for (var r = 0; r < bd.panels.length; r++) for (var c = 1; c <= 6; c++) {
+    var p = bd.panels[r][c], v = G[r] ? G[r][c] : 0;
+    Object.assign(p, { color: v > 0 ? v : 0, isGarbage: false, garbageId: null, xOffset: null, yOffset: null, gWidth: 0, gHeight: 0, state: 'normal', timer: 0, chaining: false, matching: false, id: ++id });
+    if (v < 0) Object.assign(p, { isGarbage: true, color: 9, garbageId: 1, gWidth: 6, gHeight: gh, xOffset: c - 1, yOffset: r - g0 });
+  }
+  Object.assign(bd, { garbageCreatedCount: 1, highestGarbageIdMatched: 0, panelIdCount: id, health: 51, stopTime: 60, shakeTime: 17 });
+  return bd;
 }
-for (var r = 0; r < b.panels.length; r++) for (c = 1; c <= 6; c++) {
-  var p = b.panels[r][c], v = G[r] ? G[r][c] : 0;
-  Object.assign(p, { color: v > 0 ? v : 0, isGarbage: false, garbageId: null, xOffset: null, yOffset: null, gWidth: 0, gHeight: 0, state: 'normal', timer: 0, chaining: false, matching: false, id: ++id });
-  if (v < 0) Object.assign(p, { isGarbage: true, color: 9, garbageId: 1, gWidth: 6, gHeight: 3, xOffset: c - 1, yOffset: r - 11 });
-}
-Object.assign(b, { garbageCreatedCount: 1, highestGarbageIdMatched: 0, panelIdCount: id, health: 51, stopTime: 60, shakeTime: 17 });
+var b = boardOf(FACTORY, 3, 11), f;
 var S = new (require('./native.js').server.Search)({ reaction: 12, swapGap: 12, cursorMoveFrames: 4, threads: 1 }), hold = { left: 0, started: false };
 var found = SH.breakMoves(S, b, hold, [], 1, 0, Date.now() + 2000, null, null, { touchInPop: true, near: true });
 assert.ok(found && found.depth && found.path && found.path.length <= 4, 'the search finds the break within four swaps: ' + JSON.stringify(found && found.path));
 console.log('ok: break near -- the beam ranks by swaps to a break, and finds the factory board\'s in ' + found.path.length);
+// THE SEARCH'S CHECKS ARE ITS WORK: a line check that takes 20 ms and refuses every line is asked only until the deadline -- the search
+// ends within it and one check, not after a check of every line that breaks
+var slowB = boardOf(pad.repeat(8) + 'G G G G G G\n1 1 2 1 3 4\n5 4 3 2 5 4\n1 2 3 4 5 1', 1, 3), slowT0 = Date.now(), slowN = 0;
+SH.breakMoves(S, slowB, hold, [], 1, 0, Date.now() + 60, null, null, { touchInPop: true, near: true,
+  lineOk: function () { slowN++; for (var w0 = Date.now(); Date.now() - w0 < 20;) {} return false; } });
+assert.ok(Date.now() - slowT0 < 60 + 20 + 60, 'a search 60 ms long with 20 ms checks took ' + (Date.now() - slowT0) + ' ms (' + slowN + ' checks)');
 
 // BUSY BOARDS: a break made and its slab popping, the board read every few frames while it pops and falls -- every line the break search
 // finds there (a line-up is its whole line, two swaps; one pressed once the pop is over is judged settle by settle) breaks as the judge

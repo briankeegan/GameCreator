@@ -332,8 +332,12 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
     return outs;
   }
   // (opts.lineOk(path): the shared line check, asked of the whole line a break was found on -- one the judge would not take is passed
-  // over and the search goes on for one it will)
-  function breaks(n, path) { return n && !n.dead && !(stepOk && outside[n._i]) && (n.brk !== undefined ? n.brk : S.breaks(n)) > still(n.t) && (!opts || !opts.ok || opts.ok(S, n, still)) && (!path || !opts || !opts.lineOk || opts.lineOk(path, false)); }
+  // over and the search goes on for one it will. Its checks are the search's work: past `deadline` none is asked, so no break is found)
+  function breaks(n, path) {
+    if (!(n && !n.dead && !(stepOk && outside[n._i]) && (n.brk !== undefined ? n.brk : S.breaks(n)) > still(n.t))) return false;
+    if ((opts && (opts.ok || (path && opts.lineOk))) && Date.now() >= deadline) return false;
+    return (!opts || !opts.ok || opts.ok(S, n, still)) && (!path || !opts || !opts.lineOk || opts.lineOk(path, false));
+  }
   function within(n) { return !(stepOk && n && n._i >= 0 && outside[n._i]); }
   function swapsOf(n, near) {
     var ms = n.b.legalSwaps();
