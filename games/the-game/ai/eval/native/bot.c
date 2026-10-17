@@ -4734,6 +4734,11 @@ static Dec breakDeeper(Dec d) {
   resolve(DBASE, KBR, 1);
   if (KBR[R_SCOPE] != SC_OK) return d;
   static ST kb0; stcpy(kb0, KBR + R_INTS);
+  // THE SEARCH STARTS WHERE THE READINESS SEARCH DOES, on the board as it is (lineState): its cursor and clock, the pairs it lets be
+  // swapped and the frames each pair waits to be still -- a settled copy would offer a pair at a frame its panels are not there
+  static ST kl0; int32_t kcur[2], kt0 = 0; uint32_t kcan[WMAX]; Wait kwt[32][WMAX];
+  int klive = lineState(0, 0, kl0, kcan, kwt, kcur, &kt0) == 0;
+  const int32_t *kroot = klive ? kl0 : kb0;
   kbEnd = stageLeaves(2);
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "BREAKDEEPER work %.0f of end %.0f spent %.0f none %d same %d\n", paWork - rdW0, kbEnd - rdW0, paWork - rdW0, bdNone, bdPos == raPos); }
@@ -4750,20 +4755,20 @@ static Dec breakDeeper(Dec d) {
   // below starts with swaps that do not shorten the contact distance): the search goes on soonest press first, which reaches every line
   static int bdFlatPos, bdFlat; if (bdFlatPos != raPos) { bdFlatPos = raPos; bdFlat = 0; }
   int flat = bdFlat >= BDFLATFRAMES;
-  sitGuide = !flat && readyGuide(kb0) < 2 * READYGUIDENONE + 4 ? readyGuide : 0;
+  sitGuide = !flat && readyGuide(kroot) < 2 * READYGUIDENONE + 4 ? readyGuide : 0;
   // the search goes on from the last frame's if the position is the same (sitKeepSlot): its lines and the nearest of them are kept
   static NearCtx nearKeep; u64 pk = ((u64)(unsigned)raPos << 2) | 1 | (flat ? 2 : 0);
-  NearCtx nx; if (SITKEEP[0].valid && SITKEEP[0].key == pk) nx = nearKeep; else { nx.bestG = readyGuide(kb0); nx.bestN = 0; }
+  NearCtx nx; if (SITKEEP[0].valid && SITKEEP[0].key == pk) nx = nearKeep; else { nx.bestG = readyGuide(kroot); nx.bestN = 0; }
   sitKeepSlot = 1; sitKeepKey = pk;
-  int got = searchInTime(kb0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, bdT, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0,
-                         0, 0, kbEnd - paWork, sitNear, &nx, sw, &n, 0);
+  int got = searchInTime(kroot, klive ? kcur[0] : (int)BIN[IN_CROW], klive ? kcur[1] : (int)BIN[IN_CCOL], klive ? kt0 : 0, 0, bdT, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0,
+                         klive ? kcan : 0, klive ? kwt : 0, kbEnd - paWork, sitNear, &nx, sw, &n, 0);
   nearKeep = nx;
   sitGuide = 0;
   if (got || (!flat && nx.bestN > 0)) bdFlat = 0; else if (!flat) bdFlat++;   // flat stays so while the position stands
   if (!got) {
     bdNone = paWork - bd0 < 0.9 * (kbEnd - bd0); bdPos = raPos; bdTime = bdT;
 #ifndef __wasm__
-    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "BREAKDEEPER none: nearest %d swaps guide %.2f of %.2f, work used %.0f\n", nx.bestN, nx.bestG, readyGuide(kb0), paWork - bd0); }
+    if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "BREAKDEEPER none: nearest %d swaps guide %.2f of %.2f, work used %.0f\n", nx.bestN, nx.bestG, readyGuide(kroot), paWork - bd0); }
 #endif
     // no break in the time there is: the line that got nearest one is played, and the search made again from where it leaves the board
     if (nx.bestN > 0 && (lineJudge(nx.sw, nx.bestN, 0), lnoDie(LNO) >= readyBar())) {
