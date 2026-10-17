@@ -4485,7 +4485,7 @@ static int optRank(Opt *a, Opt *b) {
     // no break in reach for either: the one that leaves the board nearer one is the progress (the lineup toward the break the next slab needs)
     if (ka == 1 && kb == 1 && sa >= INF && sb >= INF && !a->clears && !b->clears) {
       // nearer a break is the progress; of two as near, the contact the slab will have is what a break is made at
-      double na = optNear(a), nb = optNear(b); if (na != nb) return na < nb ? 1 : -1;
+      double na = optNear(a), nb = optNear(b); if (na != nb && na < INF && nb < INF) return na < nb ? 1 : -1;   // a guide that could not be read says nothing of the distance
       if (waveExpected() && !a->cash && !b->cash) { int ca = optContact(a), cb = optContact(b); if (ca != cb) return ca > cb ? 1 : -1; } } }
   // two options that clear and break nothing (the hold, a setup, a fill or a levelling swap): the one that leaves the coming slab more contact comes first --
   // a break can only be made at a contact (contactOf); a line is told by the board it leaves
