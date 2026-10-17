@@ -1050,6 +1050,11 @@ module.exports = function think(cfg) {
     // GAMBIT'S TURN (gambit_answer.js): its own judge on the engine, the native searches cut at the answer's due time
     function gambitTurn() {
       var N = require(path.join(DIR, 'native.js')).server;
+      // (A DECISION'S TIME IS THE TIME TO ITS MOVE: no more than a reaction's frames -- the soonest a next swap could be pressed anyway --
+      // however far ahead it was asked, so moves come every reaction and a slow decision does not buy the next one more time. The break
+      // search carries its work on across decisions, so what it does not finish in one it goes on with in the next)
+      var perFrame = m.lead > 0 && m.ms > 0 ? m.ms / m.lead : 1000 / 60;
+      if (due) due = Math.min(due, (m.posted || t0) + (OPTS.reaction + 1) * perFrame);
       if (due) N.deadline(due - DEADLINE_MARGIN_MS);
       if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
       try {

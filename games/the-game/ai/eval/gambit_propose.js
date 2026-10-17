@@ -35,11 +35,11 @@ function search(c, R) {
     if (extra > 0) out.idleMs = Math.max(0, Math.min(extra, out.ap.ms - Math.max(0, usual)));
   }
   out.lvU = R.under ? A.level(board, hold, arrivals, { by: R.F.us.nextLands > 0 ? R.F.us.nextLands : (R.by || undefined) }) : null;
-  out.rd = !R.under && R.readyAt !== null && arrivals.length ? A.readyFor(board, hold, arrivals, { ms: Math.max(20, Math.min(60, c.left())) }) : null;
+  out.rd = !R.under && R.readyAt !== null && arrivals.length ? A.readyFor(board, hold, arrivals, { ms: Math.max(1, Math.min(60, c.left())) }) : null;
   // (the board left alone with no plan once everything shown has landed: a line of one or two swaps that leaves one -- A.readyLines)
   var lastLand = null; arrivals.forEach(function (a) { if (lastLand === null || a.at > lastLand) lastLand = a.at; });
   out.rl = null;
-  if (lastLand !== null && !JUDGE.outcome(c, R, [], false).lives) out.rl = A.readyLines(board, hold, arrivals, lastLand, Math.max(20, Math.min(READY_LINE_MS, c.left() / 2)), { tight: c.tight });
+  if (lastLand !== null && !JUDGE.outcome(c, R, [], false).lives) out.rl = A.readyLines(board, hold, arrivals, lastLand, Math.max(1, Math.min(READY_LINE_MS, c.left() / 2)), { tight: c.tight });
   out.lvG = !R.under && R.readyAt !== null && !(out.rd && !out.rd.ready && out.rd.setup) ? A.level(board, hold, arrivals, { by: R.readyAt || undefined }) : null;
   return out;
 }

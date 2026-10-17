@@ -5,7 +5,7 @@
 //   node gambit_losses.js DIR [LAST]       LAST: the decisions shown before each loss (default 12)
 //
 // Per lost game: the mode, the frame it was lost, then its decisions up to the last one with the board still having frames left --
-// the frame, what Gambit's ranking wanted, what was played, how it was chosen (why), how many of the moves judged lived (live), the stop time, the frames the board had left (dies), the frames
+// the frame and the frames since the decision before it, what Gambit's ranking wanted, what was played, how it was chosen (why), how many of the moves judged lived (live), the stop time, the frames the board had left (dies), the frames
 // until the next block lands (land), and every proposer's candidates with why each was dropped (o outside the list, t too late, r not
 // ready, b swap back, f below the floor, u the judge broke nothing). Across every loss: how the moves of the last LAST decisions were
 // chosen, and the drop codes counted.
@@ -39,8 +39,9 @@ games.forEach(function (g) {
   while (turn > 0 && !(Number(ds[turn].dies) > 12)) turn--;
   var tail = ds.slice(Math.max(0, turn - LAST + 2), turn + 2);
   console.log('\n== ' + g + '  ' + m[1] + ' lost at frame ' + m[3] + '  (' + ds.length + ' decisions)');
-  tail.forEach(function (d) {
-    console.log('  ' + String(d.at).padStart(6) + '  ' + FIELDS.map(function (k) { return k + '=' + (d[k] === undefined ? '-' : d[k]); }).join(' '));
+  tail.forEach(function (d, q) {
+    var prevAt = q > 0 ? tail[q - 1].at : null;
+    console.log('  ' + String(d.at).padStart(6) + ' ' + ('+' + (prevAt === null ? '-' : d.at - prevAt)).padStart(5) + '  ' + FIELDS.map(function (k) { return k + '=' + (d[k] === undefined ? '-' : d[k]); }).join(' '));
     whyAll[d.why] = (whyAll[d.why] || 0) + 1;
     String(d.cands || '').split(',').forEach(function (c) {
       var x = /-(.*)$/.exec(c);

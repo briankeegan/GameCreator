@@ -101,5 +101,21 @@ var K0 = { paths: [[[2, 1], [2, 3], [3, 4], [4, 5]], [[2, 2], [2, 3]]], gid: gid
 var cc0 = function (from, pressed) { return { bot: { _brKeep: K0 }, board: cb, m: { lineFrom: from, linePressed: pressed } }; };
 assert.deepStrictEqual(GA.carriedPaths(cc0(77, 1)), [[[3, 4], [4, 5]]], 'the move and one pressed step of the handed line taken off');
 assert.deepStrictEqual(GA.carriedPaths(cc0(12, 3)), [[[2, 3], [3, 4], [4, 5]]], 'another answer\'s line: the decided move alone taken off');
+// A DECISION'S TIME IS THE TIME TO ITS MOVE: a question asked 90 frames ahead, with 1.5 s to spare, is answered within a reaction's
+// frames (13 at 60 a second, 217 ms) -- the answer's margin over it at most
+process.env.GC_SURVIVOR_PROFILE = path.join(__dirname, 'survivor-profiles', 'gambit-finish.json');
+var mindT = require('./survivor_think.js')({ profile: require('./survivor_shared.js').profile(), threads: 1 }), worstT = 0;
+for (var ts2 = 1; ts2 <= 4; ts2++) {
+  var tb2 = PA.game({ level: 10, seed: ts2, countdown: false });
+  for (var tf2 = 0; tf2 < 200; tf2++) tb2.run();
+  tb2.receiveGarbage([{ width: 6, height: 2, isChain: false, isMetal: false }]);
+  for (tf2 = 0; tf2 < 100; tf2++) tb2.run();
+  if (tb2.gameOverClock > 0) continue;
+  var tq = Date.now(), ta = mindT.answer({ id: 900 + ts2, epoch: 0, at: tb2.clock, lead: 90, ms: 1500, posted: tq, hold: { left: 0, started: false }, arrivals: [{ at: 60, width: 6, height: 2 }], board: tb2.copy(), acted: true });
+  assert.ok(ta && !ta.error, 'answered: ' + (ta && ta.error));
+  worstT = Math.max(worstT, Date.now() - tq);
+  mindT.reset();
+}
+assert.ok(worstT < 217 + 30 + 60, 'a decision asked 90 frames ahead takes the time to its move, not the lead: ' + worstT + ' ms');
 assert.ok(gambit >= answered / 2, 'Gambit chooses most moves: ' + gambit + ' of ' + answered);
 console.log('ok: gambit answers -- ' + answered + ' questions over ' + modes.length + ' modes, ' + gambit + ' Gambit\'s own');

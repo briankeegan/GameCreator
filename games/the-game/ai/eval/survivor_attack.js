@@ -71,15 +71,20 @@ module.exports = function (opts) {
     // (garbage broken by frame t standing still: a slab already popping goes on converting whatever is pressed)
     var stillAt = {};
     function stillBreaks(t) { if (!(t in stillAt)) { var w = t > root.t ? s.advance(root, 'long', null, t - root.t) : root; stillAt[t] = w ? s.breaks(w) : s.breaks(root); } return stillAt[t]; }
-    var pool = [{ n: root, seq: [], ats: [], h: rootH }];
+    var pool = [{ n: root, seq: [], ats: [], h: rootH }], perJob = 0;
     for (var d = 1; d <= o.depth && pool.length && Date.now() - t0 < o.ms && !(o.stopAt && best && best.cells >= o.stopAt); d++) {
       var jobs = [], meta = [];
       pool.forEach(function (it) { it.n.b.legalSwaps().forEach(function (m) { jobs.push([it.n, 'settle', m, 0]); meta.push([it, m]); }); });
       // (the clock is read every SLICE jobs, not once a depth: one depth of a wide pool is many times the whole budget)
+      // (each slice sized to the time left at the rate the last ones ran -- perJob, ms a job -- so the search stops near its budget)
       var outs = [];
-      for (var j0 = 0; j0 < jobs.length; j0 += SLICE) {
-        if (j0 && Date.now() - t0 >= o.ms) break;
-        outs = outs.concat(s.advanceMany(jobs.slice(j0, j0 + SLICE), true));
+      for (var j0 = 0, n0; j0 < jobs.length; j0 += n0) {
+        var leftMs = o.ms - (Date.now() - t0);
+        if (j0 && leftMs <= 0) break;
+        n0 = perJob > 0 ? Math.max(8, Math.min(SLICE, Math.floor(leftMs / perJob))) : 32;
+        var tj = Date.now();
+        outs = outs.concat(s.advanceMany(jobs.slice(j0, j0 + n0), true));
+        var took = Date.now() - tj; if (took > 0) perJob = took / Math.min(n0, jobs.length - j0);
       }
       pool.forEach(function (it) { it.reach = 0; it.kids = []; });
       // (A BREAK JUDGED AT ITS BREAK, o.breakAtSwap: a line the engine settles dead -- under a stream the next slab lands while the board
@@ -89,7 +94,8 @@ module.exports = function (opts) {
         var dj = [], dm = [];
         for (var di = 0; di < outs.length; di++) if (outs[di] && outs[di].dead) { dj.push([meta[di][0].n, 'swap', meta[di][1], 0]); dm.push(meta[di]); }
         if (dj.length) {
-          var sw = s.advanceMany(dj, true);
+          var sw = [];
+          for (var dc = 0; dc < dj.length && (dc === 0 || Date.now() - t0 < o.ms); dc += 32) sw = sw.concat(s.advanceMany(dj.slice(dc, dc + 32), true));
           for (var dk = 0; dk < sw.length; dk++) {
             var x = sw[dk];
             if (!x || x.dead || !stepFits(s, x, stillBreaks)) continue;   // (within the rules, useRules)
@@ -103,6 +109,7 @@ module.exports = function (opts) {
         }
       }
       for (var i = 0; i < outs.length; i++) {
+        if ((i & 31) === 31 && Date.now() - t0 >= o.ms) break;   // (the level's reading stops at the budget too)
         var out = outs[i], it = meta[i][0], m = meta[i][1];
         if (!out || out.dead) continue;
         // (a line that breaks the rules -- the list, the floor (useRules) -- at any step is no line, and grows no further)
@@ -167,6 +174,7 @@ module.exports = function (opts) {
       pool.sort(function (a, b) { return b.reach - a.reach || b.h - a.h; });
       var seen = {}, next = [];
       pool.slice(0, o.width).forEach(function (it) {
+        if (Date.now() - t0 >= o.ms && next.length) return;
         it.kids.forEach(function (k) {
           var key = String(k.n.b.key);
           if (seen[key]) return;
