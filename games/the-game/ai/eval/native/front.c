@@ -1489,8 +1489,10 @@ static int garbageMatched(void) {
     for (int c = 1; c <= W; c++) { const int32_t *f = fp(r, c); if (f[ISGARBAGE] && fState(f) == MATCHED) return 1; }
   return 0;
 }
-// THE INPUT BUDGET IS KEPT FOR THE BREAK: an idle decision (setups, lineups, readiness, an attack with nothing to save) is not pressed
-// when what the window has left is less than a break line has taken (measured: bkActs) -- the break would wait for the window
+// THE INPUT BUDGET IS KEPT FOR THE BREAKS: an idle decision (setups, lineups, readiness, an attack with nothing to save) is not pressed
+// when what the window has left is less than BKRESERVE break lines have taken (measured: bkActs) -- the break a landing needs and the one
+// after it would wait for the window, which frees an action only as the press 600 frames ago ages out
+#define BKRESERVE 2
 static int idleVia(int via) { return via == V_SETUP || via == V_LINEUP || via == V_READYFIRST || via == V_BESTATTACK; }
 static int frontFrame(int fid, Board *b) {
   Front *F = &FRONTS[fid];
@@ -1556,7 +1558,7 @@ static int frontFrame(int fid, Board *b) {
   F->held = heldNow;
   if (d.kind == K_SWAP && d.via == V_BREAKREACH && F->lastVia != V_BREAKREACH && F->lastVia != V_PLANSAVE) { F->bkOn = 1; F->bk0 = F->pad.total; }   // a break line begins
   { static double first = -1; if (first < 0) first = knob("GC_BK0", 0);
-    double reserve = F->bkActs > 0 ? F->bkActs : first;   // before a break has been seen the reserve is the first guess
+    double reserve = F->bkActs > 0 ? BKRESERVE * F->bkActs : first;   // before a break has been seen the reserve is the first guess
     if (d.kind == K_SWAP && d.hasMove && d.idle && idleVia(d.via) && reserve > 0
         && padCount(&F->pad, b->clock) + reserve > (F->pad.limit ? F->pad.limit : ACTIONLIMIT)) { d.kind = K_HOLD; d.hasMove = 0; d.hasPark = 0; } }
   if (d.kind == K_RAISE) {
