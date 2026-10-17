@@ -225,15 +225,16 @@ gate_server_engine() {
   node games/the-game/ai/eval/native_arrivals.test.js
 }
 
-# GAMBIT IN C (games/the-game/ai/gambit/, PLAN.md): the wasm is built from its sources and the one C engine (BUILT holds every hash),
-# and the engine in it is the server's -- the engine tests, played on gambit.wasm. Its decisions are held by gambit_answer.test.js
-# (gate_garbage_rules) and by the 24 games (gambit-24.yml).
+# GAMBIT IN C (games/the-game/ai/gambit/, README.md): the wasm is built from its sources and the one C engine (BUILT holds every hash),
+# and the engine in it is the server's -- the engine tests, played on gambit.wasm; the native library the client loads (libgambit.so)
+# builds where clang does. Its decisions are held by gambit_answer.test.js (gate_garbage_rules) and by the 24 games (gambit-24.yml).
 gate_gambit_engine() {
   local G=games/the-game/ai/gambit E=games/the-game/ai/eval
   (cd $G && while read -r f h; do [ "$(sha256sum "$f" | cut -c1-64)" = "$h" ] || { echo "gambit: $f is not what BUILT says -- run build.sh"; exit 1; }; done < BUILT) &&
   GC_NATIVE_WASM=$PWD/$G/gambit.wasm node $E/native_pa.test.js 20000 &&
   GC_NATIVE_WASM=$PWD/$G/gambit.wasm node $E/native_countdown.test.js &&
-  GC_NATIVE_WASM=$PWD/$G/gambit.wasm node $E/native_arrivals.test.js
+  GC_NATIVE_WASM=$PWD/$G/gambit.wasm node $E/native_arrivals.test.js &&
+  { ! command -v clang >/dev/null || $G/build.sh native; }
 }
 
 # BitBot's search in C (native/bit.wasm) gives bitmatch.js's answer for every

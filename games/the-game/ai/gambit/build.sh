@@ -4,6 +4,13 @@
 # memory, abort_poll (the host's abort) and clock_ms (the host's time).
 set -e
 cd "$(dirname "$0")"
+# ./build.sh native: libgambit.so, Gambit in the game's own process (native.c, host.c; lua/GambitNative.lua loads it). Built on the
+# machine that plays (training.sh); not tracked.
+if [ "${1:-}" = native ]; then
+  clang -O3 -march=native -pthread -fPIC -shared -Wl,-z,nodelete -DPA_HEAP -Wall -Wno-unused-function -Wno-unknown-attributes \
+    -Wno-ignored-attributes native.c host.c -lm -o libgambit.so
+  exit
+fi
 FLAGS="--target=wasm32 -O3 -matomics -mbulk-memory -nostdlib -Wall -Wno-unused-function -Wl,--no-entry -Wl,--allow-undefined"
 clang $FLAGS gambit.c -o gambit.wasm
 node -e '

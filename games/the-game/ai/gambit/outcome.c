@@ -106,8 +106,13 @@ static int lineFits(const int32_t *seq, int n, int settled) {
 
 // ---- a decision begun: the question (from a node of a host search, until the decision reads its own) and the facts; every line is
 // judged again
+EXPORT(gb_decision_on) int gb_decision_on(int land, int topped, int timeLeft, int belowFloor);
 EXPORT(gb_decision_start) int gb_decision_start(Ctx *hx, int i, int tight, int land, int topped, int timeLeft, int belowFloor) {
   if (gb_question(hx, i, tight) < 0) return -1;
+  return gb_decision_on(land, topped, timeLeft, belowFloor);
+}
+// the same, on the question already set (gb_question_bytes)
+EXPORT(gb_decision_on) int gb_decision_on(int land, int topped, int timeLeft, int belowFloor) {
   decQ = hostQ; decQ.b = hostBoard; backBoard = hostBoard;
   Facts f = { land, topped, timeLeft, belowFloor };
   decF = f;
@@ -118,9 +123,9 @@ EXPORT(gb_decision_start) int gb_decision_start(Ctx *hx, int i, int tight, int l
 EXPORT(gb_outcome) int gb_outcome(int nseq, int settled) {
   static int32_t seq[MAXLINE];
   if (nseq < 0 || nseq > MAXLINE) return -1;
-  for (int i = 0; i < nseq; i++) seq[i] = ioBody[i];
+  for (int i = 0; i < nseq; i++) seq[i] = gbIo[i];
   Outcome o = outcome(seq, nseq, settled);
-  int32_t *w = ioBody, k = 0;
+  int32_t *w = gbIo, k = 0;
   w[k++] = o.dead; w[k++] = o.lostAt; w[k++] = o.lives; w[k++] = o.fits; w[k++] = o.ready; w[k++] = o.late;
   w[k++] = o.j.made.combo; w[k++] = o.j.made.chain; w[k++] = o.j.made.broke; w[k++] = o.j.chainAll; w[k++] = o.j.dropAt; w[k++] = o.j.done; w[k++] = o.j.fire;
   w[k++] = o.j.nats; for (int q = 0; q < o.j.nats; q++) w[k++] = o.j.ats[q];
@@ -129,6 +134,6 @@ EXPORT(gb_outcome) int gb_outcome(int nseq, int settled) {
 EXPORT(gb_line_fits) int gb_line_fits(int nseq, int settled) {
   static int32_t seq[MAXLINE];
   if (nseq < 0 || nseq > MAXLINE) return -1;
-  for (int i = 0; i < nseq; i++) seq[i] = ioBody[i];
+  for (int i = 0; i < nseq; i++) seq[i] = gbIo[i];
   return lineFits(seq, nseq, settled);
 }

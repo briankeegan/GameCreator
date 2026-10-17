@@ -23,12 +23,19 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
   var bs = lines.map(function (l) { var p = l.split(' '); return { at: +p[1], b64: p[2], arr: JSON.parse(p[3] || '[]') }; }).filter(function (x) { return x.at <= lostAt && x.at >= lostAt - LAST; });
   var out = [];
   bs.forEach(function (x) {
-    var board = PA.revive(v8.deserialize(require('zlib').gunzipSync(Buffer.from(x.b64, 'base64'))));
-    var arr = x.arr.map(function (a) { return { at: a[0], width: a[1], height: a[2] }; });
-    // (Gambit's own break search, its list and line check, with MS to spend)
-    var line = G.breakOn(board, arr, list, MS);
-    var j = line ? A.judge(board, { left: 0, started: false }, line, arr, {}) : null;
-    var found = !!(j && !j.dead && j.made.broke > 0);
+    // (Gambit's own break search, its list and line check, with MS to spend: on a board a native host logged as the C engine's bytes, or
+    // on one the JavaScript host logged, judged again on the engine)
+    var line, found;
+    if (/^C\d+:/.test(x.b64)) {
+      line = G.breakOnBytes(x.b64.slice(x.b64.indexOf(':') + 1), x.arr, list, MS);
+      found = !!line;
+    } else {
+      var board = PA.revive(v8.deserialize(require('zlib').gunzipSync(Buffer.from(x.b64, 'base64'))));
+      var arr = x.arr.map(function (a) { return { at: a[0], width: a[1], height: a[2] }; });
+      line = G.breakOn(board, arr, list, MS);
+      var j = line ? A.judge(board, { left: 0, started: false }, line, arr, {}) : null;
+      found = !!(j && !j.dead && j.made.broke > 0);
+    }
     totals.boards++; if (found) totals.missed++; else totals.impossible++;
     out.push(x.at + (found ? ' MISSED(' + line.length + ')' : ' none'));
   });

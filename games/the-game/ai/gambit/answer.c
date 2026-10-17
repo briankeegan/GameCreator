@@ -283,7 +283,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
 static int readTest(const int32_t **w, Test *t) { t->op = (*w)[0]; t->n = (*w)[1]; t->near = (*w)[2]; *w += 3; return 1; }
 EXPORT(gb_rules) int gb_rules(int n) {
   if (n < 0 || n > MAXRULES) return -1;
-  const int32_t *w = ioBody;
+  const int32_t *w = gbIo;
   memset(&theTables, 0, sizeof theTables);
   for (int i = 0; i < n; i++) {
     Rule *r = &theTables.r[i];
@@ -317,11 +317,9 @@ EXPORT(gb_new_game) void gb_new_game(void) {
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; C2.idle = 0;
   gb_back(0, 0, 0, 0, 0, 0, 0);
 }
-// A QUESTION: its board, hold and garbage on its way are node i of the host's search (the root it made); then its own facts. The answer
-// into the io body (gb_answer's words below); the log line at gb_log.
-EXPORT(gb_answer) int gb_answer(Ctx *hx, int i, int qid, int at, int topped, int oppHas, int oppOut, int oppTopKnown, int oppTop, int oppStopKnown, int oppStop,
-                                int allowanceKnown, int allowance, int lineFrom, int linePressed, int canRaise, double due, double t0, double margin) {
-  if (gb_question(hx, i, 0) < 0) return -1;
+// A QUESTION ON THE BOARD IN hostQ (hostBoard, its hold and garbage on its way): the answer into theAnswer, the log line at logBuf
+static void answerQuestion(int qid, int at, int topped, int oppHas, int oppOut, int oppTopKnown, int oppTop, int oppStopKnown, int oppStop,
+                           int allowanceKnown, int allowance, int lineFrom, int linePressed, int canRaise, double due, double t0, double margin) {
   decQ = hostQ; decQ.b = hostBoard;
   ncache = 0;
   hostTopped = topped;
@@ -331,8 +329,16 @@ EXPORT(gb_answer) int gb_answer(Ctx *hx, int i, int qid, int at, int topped, int
   clockStart(due ? due - margin : 0);
   decF.timeLeft = -1;   // (readiness is asked while the searches have time left, as each outcome finds it)
   answerTurn(qid, at, allowanceKnown, allowance, lineFrom, linePressed);
+}
+// A QUESTION: its board, hold and garbage on its way are node i of the host's search (the root it made); then its own facts. The answer
+// into the io body (gb_answer's words below); the log line at gb_log.
+EXPORT(gb_answer) int gb_answer(Ctx *hx, int i, int qid, int at, int topped, int oppHas, int oppOut, int oppTopKnown, int oppTop, int oppStopKnown, int oppStop,
+                                int allowanceKnown, int allowance, int lineFrom, int linePressed, int canRaise, double due, double t0, double margin) {
+  if (gb_question(hx, i, 0) < 0) return -1;
+  answerQuestion(qid, at, topped, oppHas, oppOut, oppTopKnown, oppTop, oppStopKnown, oppStop, allowanceKnown, allowance, lineFrom, linePressed,
+                 canRaise, due, t0, margin);
   Answer *A = &theAnswer;
-  int32_t *w = ioBody, k = 0;
+  int32_t *w = gbIo, k = 0;
   w[k++] = A->d.kind; w[k++] = A->d.move ? CR(A->d.move) : 0; w[k++] = A->d.move ? CC(A->d.move) : 0;
   w[k++] = A->raiseNow; w[k++] = A->raiseAfter; w[k++] = A->verdict; w[k++] = A->holdLives; w[k++] = A->brk; w[k++] = A->urgent;
   w[k++] = A->offered; w[k++] = A->lineup; w[k++] = A->touch; w[k++] = A->took; w[k++] = A->clears; w[k++] = A->dumpBoard;

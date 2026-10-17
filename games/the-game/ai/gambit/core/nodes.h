@@ -3,6 +3,11 @@
 #ifndef GAMBIT_NODES_H
 #define GAMBIT_NODES_H
 #include "clock.h"
+// GAMBIT'S OWN IO: what the host hands Gambit (rules, a list, a line, the lines carried on) and what Gambit answers, apart from the
+// engine's io (pa.c ioBody), which the host writes a board into -- natively from another thread while Gambit thinks.
+#define GBIO (1 << 16)
+static int32_t gbIo[GBIO];
+EXPORT(gb_io) int32_t *gb_io(void) { return gbIo; }
 // The child of node pi by one step (search.h advance: MK_SWAP, MK_SETTLE, MK_LONG, MK_HOLD), STEP_NULL when the clock is out or the
 // step is refused, STEP_DEAD when the board is lost on it (deadAt).
 static int step(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {

@@ -456,10 +456,10 @@ static void putPaths(int32_t *w, int *k, const Paths *p) { w[(*k)++] = p->n; for
 EXPORT(gb_break) int gb_break(int wait, int nresume) {
   int k = 0;
   hostResume.n = 0;
-  for (int i = 0; i < nresume && i < KEEPN; i++) { int len = ioBody[k++]; hostResume.len[i] = len; for (int j = 0; j < len; j++) hostResume.path[i][j] = ioBody[k++]; hostResume.n++; }
+  for (int i = 0; i < nresume && i < KEEPN; i++) { int len = gbIo[k++]; hostResume.len[i] = len; for (int j = 0; j < len; j++) hostResume.path[i][j] = gbIo[k++]; hostResume.n++; }
   breakMoves(&decQ, wait, &hostResume, &theBroke);
   Broke *o = &theBroke;
-  int32_t *w = ioBody;
+  int32_t *w = gbIo;
   k = 0;
   w[k++] = o->depth; w[k++] = o->at; w[k++] = o->touch; w[k++] = o->carried; w[k++] = o->wide; w[k++] = o->lineup; w[k++] = linesFull;
   w[k++] = o->nmoves; for (int i = 0; i < o->nmoves; i++) { w[k++] = o->moves[i]; w[k++] = o->pairs[i][0]; w[k++] = o->pairs[i][1]; }

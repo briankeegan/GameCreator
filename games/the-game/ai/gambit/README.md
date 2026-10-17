@@ -13,6 +13,10 @@ differ. Its only imports are the host's abort flag and clock (`abort_poll`, `clo
 - `search/` -- `break.c` (the break search), `plan.c`, `extend.c`, `ready.c`, `level.c`, `outlive.c` (the survival search).
 - `propose.c` -- every kind of move, one proposer each; `rank.c` -- each candidate judged, filtered and put in the one order.
 - `decide.c` -- read, propose, judge, rank, play; `answer.c` -- a question from the frame loop answered, and the log line.
-- `gambit.js` -- the loader: reads the rules file, writes the board in, reads the answer out (`Gambit.answer`, `Gambit.breakOn`).
+- `gambit.js` -- the wasm's loader: reads the rules file, writes the board in, reads the answer out (`Gambit.answer`, `Gambit.breakOn`).
+- In the game's own process (`build.sh native`: `libgambit.so`): `front.c` (the frame loop: the board predicted and checked every frame,
+  questions asked ahead, answers turned into keys, the input budget kept), `native.c` (Gambit's thread and the host's calls), `host.c`
+  (the heap, clock, lock, thread and log). `lua/GambitNative.lua` writes the stack into the engine (`lua/board.lua`, as the player sees
+  it) and presses what comes back; `words.js` hands it the profile as numbers; `lua/check.lua` checks the hookup headless.
 
 What survives is the test: `gambit-24.yml` plays 24 Training games and reports them (`plans/gambit-goal.md`).

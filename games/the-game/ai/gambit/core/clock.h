@@ -4,7 +4,9 @@
 // of its own. Work (the engine's frames) is counted beside it, for the log.
 #ifndef GAMBIT_CLOCK_H
 #define GAMBIT_CLOCK_H
-typedef long long int64_t;   // (the engine's libc.h has the 32-bit ones)
+#ifndef GAMBIT_SYSTEM_INTS
+typedef long long int64_t;   // (the engine's libc.h has the 32-bit ones; a native host has the system's)
+#endif
 double clock_ms(void) __attribute__((import_module("env"), import_name("clock_ms")));
 static double clockDue = 0, clockShare = 0;   // the decision's deadline and the share in force (ms since the epoch; 0: none)
 static int64_t clockWork;

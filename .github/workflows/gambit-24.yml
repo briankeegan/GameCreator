@@ -21,6 +21,9 @@ on:
       report_run:
         description: 'A past run of this workflow: its games written up again, nothing played'
         default: ''
+      bot:
+        description: 'gambit (in the client, libgambit.so; needs a panel_ref with PA_BOT=gambit) or wasm (survivor.js beside it)'
+        default: 'gambit'
 
 permissions:
   contents: read
@@ -68,7 +71,7 @@ jobs:
           PROFILE: ${{ inputs.profile }}
           FRAMES: ${{ inputs.frames }}
           MINUTES: '60'
-        run: bash games/the-game/ai/eval/training.sh wasm "${{ matrix.pattern }}" 1
+        run: bash games/the-game/ai/eval/training.sh "${{ inputs.bot || 'gambit' }}" "${{ matrix.pattern }}" 1
       - name: Results
         if: always()
         run: grep -h '^game ' out/results.txt 2>/dev/null | sed 's/^/::notice title=${{ matrix.pattern }} ${{ matrix.game }}::/' || true

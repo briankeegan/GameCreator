@@ -6,8 +6,8 @@
 // _Thread_local here. Memory is taken under a lock; each thread keeps its own
 // free boards (a list per thread, so the main thread can hand boards over
 // while the others wait).
-#ifdef PA_LIB
-// Linked into the bot (bit.c): one heap, the bot's.
+#if defined(PA_LIB) || defined(PA_HEAP)
+// Linked into the bot (bit.c), or a native host (PA_HEAP: gambit/native.c): one heap, the host's.
 void *paHeap(unsigned long n);
 static unsigned long heapTop;
 static void *grab(unsigned long n) { return paHeap(n); }
@@ -30,7 +30,7 @@ static void *grab(unsigned long n) {
 }
 #endif
 #define MAXTHREADS 16
-#ifdef THREADS
+#if defined(THREADS) || !defined(__wasm__)
 #define LOCAL _Thread_local
 #else
 #define LOCAL

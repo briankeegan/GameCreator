@@ -202,17 +202,34 @@ EXPORT(gb_question) int gb_question(Ctx *hx, int i, int tight) {
   for (int k = 0; k < n->narr; k++) hostQ.arr[k] = n->arr[k];
   return 0;
 }
+// The question from a board's bytes as a native host logs them (GAMBITB: the head, the queue and the rows, packed), in the io from its
+// first word, then narr arrivals (at, width, height) -- for the reach report.
+EXPORT(gb_question_bytes) int gb_question_bytes(int nbytes, int narr) {
+  if (!hostBoard) hostBoard = nb_new();
+  const unsigned char *p = (const unsigned char *)gbIo;
+  memcpy(hostBoard, p, BOARD_HEAD);
+  if (hostBoard->ninc < 0 || hostBoard->ninc > MAXINC || hostBoard->nrows < 13 || hostBoard->nrows > MAXROWS || narr > MAXARR) return -1;
+  unsigned long qn = (unsigned long)hostBoard->ninc * sizeof(Incoming), rn = (unsigned long)hostBoard->nrows * sizeof(Panel) * (W + 1);
+  if (BOARD_HEAD + qn + rn != (unsigned long)nbytes) return -1;
+  memcpy(hostBoard->inc, p + BOARD_HEAD, qn);
+  memcpy(hostBoard->p, p + BOARD_HEAD + qn, rn);
+  const int32_t *a = gbIo + (nbytes + 3) / 4;
+  memset(&hostQ, 0, sizeof hostQ);
+  hostQ.b = hostBoard; hostQ.narr = narr;
+  for (int k = 0; k < narr; k++) hostQ.arr[k] = (Arr){ a[3 * k], a[3 * k + 1], a[3 * k + 2], 0, 0 };
+  return 0;
+}
 EXPORT(gb_list_on) void gb_list_on(int on) { listOn = on; }
 // The line in the io body (nseq words, r * 8 + c); the answer back into it: dead, deadAt, combo, chain, broke, chainAll, dropAt, done,
 // fire, lostAt, ready, late, nats, ats..., nsingles, singles..., readyN, readyLine...
 EXPORT(gb_judge) int gb_judge(int nseq, int settled, int tight, int readyAt, int readyIfLost, int readyIfBreak, int lifeTo, int lifeRest, int why) {
   static int32_t seq[MAXLINE];
   if (nseq < 0 || nseq > MAXLINE) return -1;
-  for (int i = 0; i < nseq; i++) seq[i] = ioBody[i];
+  for (int i = 0; i < nseq; i++) seq[i] = gbIo[i];
   JudgeOpts o = { settled, tight, readyAt, readyIfLost, readyIfBreak, lifeTo, lifeRest, why };
   Judged j;
   judge(&hostQ, seq, nseq, &o, &j);
-  int32_t *w = ioBody, k = 0;
+  int32_t *w = gbIo, k = 0;
   w[k++] = j.dead; w[k++] = j.deadAt; w[k++] = j.made.combo; w[k++] = j.made.chain; w[k++] = j.made.broke; w[k++] = j.chainAll;
   w[k++] = j.dropAt; w[k++] = j.done; w[k++] = j.fire; w[k++] = j.lostAt; w[k++] = j.ready; w[k++] = j.late;
   w[k++] = j.nats; for (int i = 0; i < j.nats; i++) w[k++] = j.ats[i];

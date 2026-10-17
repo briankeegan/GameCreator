@@ -78,7 +78,7 @@ static int32_t comboCells(int32_t size) {
 static List theList;
 EXPORT(gb_list) int gb_list(int n) {
   if (n < 0 || n > MAXAIMS) return -1;
-  const int32_t *w = ioBody;
+  const int32_t *w = gbIo;
   for (int i = 0; i < n; i++, w += 10) {
     Aim a = { { w[0], w[1], w[2] }, { w[3], w[4], w[5] }, { w[6], w[7], w[8] }, w[9] };
     theList.aim[i] = a;

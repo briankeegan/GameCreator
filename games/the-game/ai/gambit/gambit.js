@@ -21,7 +21,7 @@ function aimWords(a) {
 
 // The exports of a gambit.wasm instance, bound: its io body and the calls that hand it what it decides on.
 function bind(X) {
-  function body(n) { return new Int32Array(X.memory.buffer, (X.nb_io_body() >>> 0), n); }
+  function body(n) { return new Int32Array(X.memory.buffer, (X.gb_io() >>> 0), n); }
   return {
     X: X, body: body,
     // The mode's list (its aims, as the rules file has them), into rules.c.
@@ -187,6 +187,21 @@ Gambit.prototype.breakOn = function (board, arrivals, aims, ms) {
   var r = this.S.root(board.copy(), { left: 0, started: false }, arrivals || [], false), X = this.X;
   this.G.list(aims); X.gb_list_on(1);
   X.gb_decision_start(this.S.ctx, r._i, 0, -1, 0, 1, 0);
+  return this.breakPath(ms);
+};
+// The same from a board as a native host logs it (GAMBITB C<size>:<base64>) and its arrivals ([at, width, height], frames from it)
+Gambit.prototype.breakOnBytes = function (b64, arrivals, aims, ms) {
+  var bytes = Buffer.from(b64, 'base64'), X = this.X, io = new Uint8Array(X.memory.buffer, X.gb_io() >>> 0, bytes.length);
+  io.set(bytes);
+  var w = this.G.body(Math.ceil(bytes.length / 4) + 3 * arrivals.length), k = Math.ceil(bytes.length / 4);
+  arrivals.forEach(function (a) { w[k++] = a[0]; w[k++] = a[1]; w[k++] = a[2]; });
+  if (X.gb_question_bytes(bytes.length, arrivals.length) < 0) throw new Error('gambit: the board bytes were refused');
+  this.G.list(aims); X.gb_list_on(1);
+  X.gb_decision_on(-1, 0, 1, 0);
+  return this.breakPath(ms);
+};
+Gambit.prototype.breakPath = function (ms) {
+  var X = this.X;
   X.gb_clock_start(Date.now() + ms);
   var w = this.G.body(X.gb_break(0, 0)), depth = w[0], k = 7, nm = w[k++];
   if (!depth) return null;
