@@ -8,7 +8,7 @@
 set -u
 REPO=briankeegan/GameCreator WF=gambit-24.yml
 PROFILE=${1:-survivor-profiles/gambit-finish.json} WAIT=${2:-}
-edt() { TZ=America/New_York date -d "@$1" '+%-I:%M %p ET'; }
+edt() { TZ=America/New_York date -d "@$1" '+%H:%M ET'; }
 T0=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 for n in 1 2 3 4; do
   gh api -X POST repos/$REPO/actions/workflows/$WF/dispatches -f ref=main -f "inputs[profile]=$PROFILE" \
