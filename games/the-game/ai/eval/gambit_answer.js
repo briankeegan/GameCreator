@@ -23,7 +23,7 @@ function breakSearch(c) {
   var t = Date.now(), pop = SH.popLeft(board);
   var by = c.due ? Math.min(t + Math.max(BREAK_MIN_MS, c.m.ms * BREAK_SHARE), c.due - c.margin) : t + BREAK_MAX_MS;
   var br = SH.breakMoves(c.search(), board, { left: c.m.hold.left, started: c.m.hold.started }, c.arrivals, 1, pop ? pop + LINEUP_AFTER : 0, by,
-                         c.stale ? function () { return c.stale() ? c.aborted : null; } : null, null, { touchInPop: true, near: true });
+                         c.stale ? function () { return c.stale() ? c.aborted : null; } : null, null, { touchInPop: true, near: true, ok: c.attacker.allowed, stepOk: c.attacker.stepOk });
   if (br) br.cut = Date.now() >= by;
   return { br: br, ms: Date.now() - t };
 }
@@ -74,12 +74,15 @@ function answer(c) {
   c.wall0 = process.hrtime.bigint();   // (the decision's real time, whatever clock the searches read: GC_FIXED_CLOCK)
   // (the input budget tight: the frame loop walks held from two cells, so every line is judged pressed as it walks -- attacker.judge)
   c.tight = m.allowance != null && m.allowance <= KEYS.HOLDTIGHT;
-  var B = breakSearch(c);
-  c.br = B.br; c.brMs = B.ms;
   c.canRaise = function () { return bot._canRaise(); };
   c.left = function () { return c.due ? c.due - Date.now() - 2 * c.margin - 100 : 1e9; };
-  var D = DECIDE.decide(c);
-  if (!D) return null;
+  bot._natSearch();   // (the engine, on the bot's threads, before a second context is made on it)
+  // (the rules read first -- the list, the floor -- so the break search finds only breaks the judge will take)
+  var R = DECIDE.read(c);
+  if (!R) return null;
+  var B = breakSearch(c);
+  c.br = B.br; c.brMs = B.ms;
+  var D = DECIDE.decide(c, R);
   if (D.R.F.us.contact !== null || D.R.F.us.topped) bot._gambitHit = true;
   var L = chosen(D), d = L.d;
   // (the line in progress is the line of the move played; a hold for a waiting line in progress keeps it)

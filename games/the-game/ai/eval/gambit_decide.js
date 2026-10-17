@@ -24,7 +24,9 @@ function read(c) {
   for (var i = 0; i < list.length; i++) if (typeof list[i] === 'string') { endAt = i; end = list[i]; break; }
   var aims = list.slice(0, endAt), listAims = aims, by = GAMBIT.deadline(F, pick.rule.by);
   // (every search on the engine this decision reads the list: readiness, the raise, the survival search)
-  if (c.attacker.useList) c.attacker.useList(JUDGE.stepFits(list));
+  // (and the material floor: below it a step that clears and breaks nothing is out, as the judge drops it)
+  var keep0 = pick.rule.keep || tables.keep || null;
+  if (c.attacker.useRules) c.attacker.useRules({ fits: JUDGE.stepFits(list), floorLow: !!(keep0 && keep0.material !== undefined && !GAMBIT.test(F.us.material, keep0.material)) });
   // (garbage on the board: the search asks every entry to break it too; garbage on it or topped out, the deadline is a break's --
   // before the board dies; the rule's `by` is an attack's)
   // (topped out with no garbage on the board, there is nothing to break: the list as written, and the deadline is the board's)
@@ -130,8 +132,8 @@ function carryOf(c, R, k) {
   return { rest: k.seq.slice(1).map(function (mv) { return mv.slice(); }), settled: k.settled, aim: k.aim >= 0 ? R.aims[k.aim] : null, broke: (k.ap.broke || 0) > 0, anchor: anchor };
 }
 
-function decide(c) {
-  var R = read(c);
+function decide(c, R) {
+  R = R || read(c);
   if (!R) return null;
   var S = PROPOSE.search(c, R);
   return play(c, R, S, ranked(c, R, S));

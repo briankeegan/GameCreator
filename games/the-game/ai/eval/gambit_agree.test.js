@@ -5,11 +5,13 @@
 //   outlive     a line the survival search says lives, the judge plays out alive to the same frame, within the list
 //   lostAt      the frame the judge says a board left alone is lost is the frame the game's engine loses it
 //   dropAt      the frame the judge says garbage can next drop (stop, pre-stop, shake) is the frame the game's engine has them all spent
+//   offered     every line the break search and the survival search offer, the judge takes: within the list, and below the material
+//               floor clearing nothing that breaks no garbage (attacker.allowed, the rules every search on the engine reads)
 // Boards from real games at level 10, with garbage on them, on its way, and topped out under stop time. Run: node gambit_agree.test.js
 var assert = require('assert'), path = require('path');
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js')), JUDGE = require('./gambit_judge.js'), CPU = require('./puyocpu.js').prototype;
 var A = require('./survivor_attack.js')({ reaction: 12, swapGap: 12, cursorMoveFrames: 4 }), H0 = { left: 0, started: false };
-var LIST = require('./survivor-profiles/gambit-rules.json');
+var LIST = require('./survivor-profiles/gambit-rules.json'), SH0 = require('./survivor_shared.js'), S00 = new (require('./native.js').server.Search)({ reaction: 12, swapGap: 12, cursorMoveFrames: 4, threads: 1 });
 var list = (function find(o) { if (Array.isArray(o)) { for (var i = 0; i < o.length; i++) { var f = find(o[i]); if (f) return f; } return null; } if (o && typeof o === 'object') { if (o.name === 'finish them' && (o.aims || o.list)) return o.aims || o.list; for (var k in o) { var g = find(o[k]); if (g) return g; } } return null; })(LIST);
 assert.ok(list && list.length, 'the finish list is read from the rules file');
 list = list.filter(function (a) { return typeof a !== 'string'; });
@@ -31,9 +33,28 @@ for (var seed = 1; seed <= 12; seed++) {
   boards.push({ b: b, arr: arr, name: 'seed ' + seed });
   if (seed % 3 === 0) { var t = b.copy(); t.stopTime = 60 + seed * 5; boards.push({ b: t, arr: arr, name: 'seed ' + seed + ' with stop ' + t.stopTime }); }
 }
+// (and a board whose break is one the list forbids: the 1 in row 3 swapped into column 1 makes four 1s under the slab, a combo of four)
+(function () {
+  var rows = ['G G G G G G', '1 4 2 3 4 5', '2 1 5 2 3 4', '1 3 4 5 2 3', '1 2 3 4 5 2'];   // top first
+  var G = rows.reverse().map(function (l) { return [0].concat(l.split(' ').map(function (x) { return x === 'G' ? -2 : +x; })); });
+  var fb = PA.game({ level: 10, seed: 3, countdown: false });
+  for (var q = 0; q < 60; q++) fb.run();
+  var id = 1000;
+  for (var r = 0; r < fb.panels.length; r++) for (var c = 1; c <= 6; c++) {
+    var p = fb.panels[r][c], v = r >= 1 && G[r - 1] ? G[r - 1][c] : (r === 0 ? p.color : 0);
+    if (r === 0) continue;
+    Object.assign(p, { color: v > 0 ? v : 0, isGarbage: false, garbageId: null, xOffset: null, yOffset: null, gWidth: 0, gHeight: 0, state: 'normal', timer: 0, chaining: false, matching: false, id: ++id });
+    if (v < 0) Object.assign(p, { isGarbage: true, color: 9, garbageId: 1, gWidth: 6, gHeight: 1, xOffset: c - 1, yOffset: 0 });
+  }
+  Object.assign(fb, { garbageCreatedCount: 1, highestGarbageIdMatched: 0, panelIdCount: id });
+  var probe = SH0.breakMoves(S00, fb, H0, [], 1, 0, Date.now() + 300, null, null, { touchInPop: true, near: true });
+  assert.ok(probe && probe.depth, 'the built board has a break (the four)');
+  boards.push({ b: fb, arr: [], name: 'the board whose break is a four', forbidden: true });
+})();
 assert.ok(boards.length >= 12, 'boards: ' + boards.length);
 
-var n = { ready: 0, outlive: 0, outliveLost: 0, lost: 0, drop: 0 };
+var n = { ready: 0, outlive: 0, outliveLost: 0, lost: 0, drop: 0, offered: 0 };
+var SH = require('./survivor_shared.js'), PROPOSE = require('./gambit_propose.js'), S0 = new (require('./native.js').server.Search)({ reaction: 12, swapGap: 12, cursorMoveFrames: 4, threads: 1 });
 var landOf = function (arr) { var l = 0; arr.forEach(function (a) { if (a.at > l) l = a.at; }); return l; };
 boards.forEach(function (B) {
   var b = B.b, arr = B.arr, land = landOf(arr);
@@ -61,6 +82,22 @@ boards.forEach(function (B) {
       n.outliveLost++;
     }
   }
+  // OFFERED: the break search's lines, and the survival search's under the floor too, each taken by the judge's filters
+  [false, true].forEach(function (low) {
+    A.useRules({ fits: JUDGE.stepFits(list), floorLow: low });
+    var br = SH.breakMoves(S0, b, H0, arr, 1, 0, Date.now() + 300, null, null, { touchInPop: true, near: true, ok: A.allowed, stepOk: A.stepOk });
+    var lines = PROPOSE.breaks({ br: br }).map(function (k) { return k.seq; });
+    var so = A.outlive(b, H0, arr, { to: HORIZON + REST, rest: REST, beam: 30, ms: 300 });
+    if (so && so.seq.length && so.lostAt === Infinity) lines.push(so.seq);
+    lines.forEach(function (seq) {
+      var jo = A.judge(b, H0, seq, arr, {});
+      if (jo.dead) return;
+      assert.ok(JUDGE.fitsList(list, jo.made, jo), B.name + ': a search offered ' + JSON.stringify(seq) + ', which the list forbids (' + JSON.stringify(jo.made) + ')');
+      if (low) assert.ok(!(jo.made.combo > 0 || jo.made.chain > 0) || jo.made.broke > 0, B.name + ': below the floor a search offered ' + JSON.stringify(seq) + ', which clears and breaks nothing');
+      n.offered++;
+    });
+  });
+  A.useRules({ fits: JUDGE.stepFits(list), floorLow: false });
   // LOSTAT: the board left alone, nothing coming but what is queued, against the game's engine run on until it is lost
   var jn = A.judge(b, H0, [], [], { lifeTo: 3000 }), g = b.copy(), c0 = g.clock;
   while (g.gameOverClock <= 0 && g.clock - c0 < 3000) g.run();
@@ -83,4 +120,5 @@ boards.forEach(function (B) {
 assert.ok(n.ready >= 10, 'ready lines judged again: ' + n.ready);
 assert.ok(n.outlive + n.outliveLost >= 8, 'survival lines judged: ' + (n.outlive + n.outliveLost));
 assert.ok(n.drop >= 8, 'drop frames checked: ' + n.drop);
-console.log('ok: every check agrees with the judge -- ' + n.ready + ' ready boards, ' + n.outlive + ' living and ' + n.outliveLost + ' losing survival lines, ' + n.lost + ' loss frames and ' + n.drop + ' drop frames, on ' + boards.length + ' boards');
+assert.ok(n.offered >= 10, 'offered lines checked: ' + n.offered);
+console.log('ok: every check agrees with the judge -- ' + n.ready + ' ready boards, ' + n.outlive + ' living and ' + n.outliveLost + ' losing survival lines, ' + n.lost + ' loss frames and ' + n.drop + ' drop frames, ' + n.offered + ' offered lines taken, on ' + boards.length + ' boards');

@@ -300,7 +300,15 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
   // A break is one standing still would not have made by the same frame: a
   // popping slab goes on converting whatever is pressed.
   function still(t) { if (!(t in idle)) { var w = t > root.t ? S.advance(root, 'long', null, t - root.t) : root; idle[t] = w ? S.breaks(w) : S.breaks(root); } return idle[t]; }
-  function breaks(n) { return n && !n.dead && (n.brk !== undefined ? n.brk : S.breaks(n)) > still(n.t); }
+  // (opts.ok(S, n): the caller's rules for a break -- Gambit's: within the list, played through its settle (attacker.allowed))
+  // (opts.stepOk(S, n): the same rules for every step of a line -- a node made from a parent that broke them, or by a step that breaks
+  // them, is out (outside[i]), so a break counts only on a line within them from its first swap)
+  var stepOk = opts && opts.stepOk, outside = {};
+  function mark(steps, outs) {
+    if (stepOk) outs.forEach(function (o, q) { if (o && !o.dead && o._i >= 0) { var par = steps[q][0]; outside[o._i] = !!(par && par._i >= 0 && outside[par._i]) || !stepOk(S, o); } });
+    return outs;
+  }
+  function breaks(n) { return n && !n.dead && !(stepOk && outside[n._i]) && (n.brk !== undefined ? n.brk : S.breaks(n)) > still(n.t) && (!opts || !opts.ok || opts.ok(S, n)); }
   function swapsOf(n, near) {
     var ms = n.b.legalSwaps();
     return near ? ms.filter(function (m) { return m[0] >= g - 3 && m[0] <= g + 1; }) : ms;
@@ -312,15 +320,16 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
   var BATCH = 64;
   function many(steps, whole) {
     if (!steps.length) return [];
-    if (whole) return S.advanceMany(steps, true);
-    var out = [];
+    if (whole) return mark(steps, S.advanceMany(steps, true));
+    var got = [];
     for (var b = 0; b < steps.length; b += BATCH) {
       var halt = stop && stop();
       if (halt) throw halt;
-      if (Date.now() >= deadline) { while (out.length < steps.length) out.push(null); break; }
-      out = out.concat(S.advanceMany(steps.slice(b, b + BATCH), true));
+      if (Date.now() >= deadline) { while (got.length < steps.length) got.push(null); break; }
+      var part = steps.slice(b, b + BATCH);
+      got = got.concat(mark(part, S.advanceMany(part, true)));
     }
-    return out;
+    return got;
   }
   function swapsFrom(n, ms, whole) { return many(ms.map(function (m) { return [n, 'swap', m, 0]; }), whole); }
   var firsts = swapsOf(root).map(function (m) { return { key: m[0] + ',' + m[1], m: m }; }), found = {}, any = false;
@@ -341,7 +350,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
     for (i = 0; i < keep.length && kn && !kn.dead; i++) {
       var km = keep[i], legal = kn.b.legalSwaps().some(function (m) { return m[0] === km[0] && m[1] === km[1]; });
       if (!legal) { kn = null; break; }
-      kn = S.advanceMany([[kn, 'swap', km, 0]], true)[0]; kp.push(km);
+      var kst = [[kn, 'swap', km, 0]]; kn = mark(kst, S.advanceMany(kst, true))[0]; kp.push(km);
       if (breaks(kn)) return { depth: 1, moves: (function (o) { o[keep[0][0] + ',' + keep[0][1]] = true; return o; })({}), touch: true, path: kp, kept: true };
     }
   }
@@ -411,7 +420,9 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
     return null;
   }
   if (!(wait > 0)) { var tb0 = touchBeam(); if (tb0) return tb0; }
-  if (wait > 0 && !breaks(S.advance(root, 'long', null, wait))) {
+  var waited0 = wait > 0 ? S.advance(root, 'long', null, wait) : null;
+  if (waited0 && waited0._i >= 0) delete outside[waited0._i];   // (made from the root: within the rules so far)
+  if (wait > 0 && !breaks(waited0)) {
     // till the pop is over, from wherever a line has got to
     var end = root.t + wait;
     // whether each node breaks once the pop is over, all at once
@@ -497,7 +508,9 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
   // (opts.touchInPop: no line-up of the popping slab breaks again -- a break of the garbage elsewhere while it pops, the cursor being free)
   if (wait > 0 && opts && opts.touchInPop) { var tb1 = touchBeam(); if (tb1) return tb1; }
   if (maxDepth < 2) return { depth: 0, moves: {}, toward: toward ? toward.path : null };
-  firsts.push({ key: 'hold', n: S.advance(root, 'hold', null, 0) });
+  var held0 = S.advance(root, 'hold', null, 0);
+  if (held0 && held0._i >= 0) delete outside[held0._i];
+  firsts.push({ key: 'hold', n: held0 });
   var live = firsts.filter(function (f) { return f.n && !f.n.dead; });
   var all = [];
   live.forEach(function (f) {

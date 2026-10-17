@@ -540,12 +540,25 @@ module.exports = function (opts) {
   // still, false when none does, null when the board is lost before; the nodes made are added to `made`, for the caller to let go of
   // THE LIST, as every search on the engine reads it (useList: set once a decision): fits(sizes, chain) for a step's own clears and the
   // chain it reaches; a break that makes what the list does not allow is no break
-  var listFits = null;
-  function useList(fits) { listFits = fits || null; }
+  // THE RULES, as every search on the engine reads them (useRules: set once a decision): fits(sizes, chain) -- a step's own clears and
+  // the chain it reaches within the list -- and floorLow, the board below the rule's material floor, where a step that clears panels and
+  // breaks no garbage spends what the board needs. allowed(s, node): a step and the settle after it both within them -- what the judge
+  // filters by, so a search finds only what the judge will take
+  var listFits = null, floorLow = false;
+  function useRules(r) { listFits = (r && r.fits) || null; floorLow = !!(r && r.floorLow); }
+  function useList(fits) { useRules({ fits: fits, floorLow: floorLow }); }
   function stepFits(s, out) {
-    if (!listFits) return true;
+    if (!listFits && !floorLow) return true;
     var st = s.stepStats(out);
-    return listFits(st.comboSizes.filter(function (z, i) { return !(st.chainAt[i] > 1); }), sent(st).chain);
+    if (floorLow && st.comboSizes.length && !(st.broke > 0)) return false;
+    return !listFits || listFits(st.comboSizes.filter(function (z, i) { return !(st.chainAt[i] > 1); }), sent(st).chain);
+  }
+  function allowed(s, out) {
+    if (!out || out.dead || !stepFits(s, out)) return false;
+    var z = s.advanceMany([[out, 'settle', null, 0]], true)[0];
+    var ok = !!(z && !z.dead) && stepFits(s, z);
+    if (z && !z.dead && z._i >= 0) s.drop([z]);
+    return ok;
   }
   // (why, when given: the board landed and settled, and the break found on it -- what the agreement gate judges again)
   function breaksAfterLanding(s, root, n, wait, made, why) {
@@ -607,7 +620,7 @@ module.exports = function (opts) {
       outs.forEach(function (out, q) {
         if (!out || out.dead) return;
         made.push(out);
-        if (!stepFits(s, out)) return;
+        if (!stepFits(s, out)) return;   // (the line's end is held to allowed() before it is the answer)
         var key = out.b.key;
         if (seen[key]) return;
         seen[key] = true;
@@ -620,6 +633,7 @@ module.exports = function (opts) {
       var losts = lostMany(s, root, kids.map(function (x) { return x.n; }), kids.map(function (x) { return Math.max(o.to, x.n.t - root.t + (o.rest || 0)); }), made);
       for (var i = 0; i < kids.length; i++) {
         var lost = kids[i].lost = losts[i];
+        if (!(lost === Infinity ? allowed(s, kids[i].n) : true)) { kids[i].lost = -1; continue; }
         if (!best || lost > best.lostAt) best = { seq: kids[i].seq, lostAt: lost };
         if (lost === Infinity) { s.drop(made); return best; }
       }
@@ -658,5 +672,5 @@ module.exports = function (opts) {
     }
     return null;
   }
-  return { useList: useList, outlive: outlive, readyLines: readyLines, plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear, replay: replay, judge: judge, diesIn: diesIn, raiseReady: raiseReady };
+  return { useRules: useRules, useList: useList, allowed: allowed, stepOk: stepFits, outlive: outlive, readyLines: readyLines, plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear, replay: replay, judge: judge, diesIn: diesIn, raiseReady: raiseReady };
 };
