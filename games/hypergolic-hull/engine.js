@@ -357,7 +357,16 @@
       // nothing here for the shared-hex check to compare against.
       ...(level.outpost && level.outpost !== true ? [{ label: "outpost", pos: level.outpost }] : []),
       ...level.enemies.map((e, i) => ({ label: `enemy${i}`, pos: e })),
-      ...(level.hazards || []).map((h, i) => ({ label: `hazard${i}`, pos: h })),
+      // FOG IS NOT AN OCCUPANT. Ground that neither blocks a hull nor hurts
+      // one is something a ship stands IN, which is the entire point of
+      // cover — so it is not checked for sharing a hex. Everything that does
+      // block or harm still is, because two of those on one hex is a bug.
+      ...(level.hazards || [])
+        .filter((h) => {
+          const rule = HAZARDS[h.type] || {};
+          return rule.blocksMove || rule.lethal || rule.damageOnEnd;
+        })
+        .map((h, i) => ({ label: `hazard${i}`, pos: h })),
     ];
     for (const entity of entities) {
       const k = hexKey(entity.pos);

@@ -3817,10 +3817,21 @@ assert.deepStrictEqual(
         `a Debris Field (${fieldRock[i]} rocks) must be rockier than the same board plain (${plainRock[i]})`
       );
     }
-    const plainFog = terrainAt("none", "scrambler");
-    const nebulaFog = terrainAt("nebula", "scrambler");
-    assert.ok(plainFog.every((n) => n === 0), "an ordinary sector carries no scrambler fog");
+    // Fog is ion cloud. An ordinary sector gets a patch of it; a nebula is a
+    // sector thick with it, which is the whole of what the condition means.
+    const plainFog = terrainAt("none", "ionCloud");
+    const nebulaFog = terrainAt("nebula", "ionCloud");
     assert.ok(nebulaFog.every((n) => n > 0), "an Ion Nebula must actually put fog on the board");
+    for (let i = 0; i < plainFog.length; i++) {
+      assert.ok(
+        nebulaFog[i] > plainFog[i],
+        `an Ion Nebula (${nebulaFog[i]} fog) must be foggier than the same board plain (${plainFog[i]})`
+      );
+    }
+    assert.ok(
+      terrainAt("nebula", "scrambler").every((n) => n === 0),
+      "nothing deals scrambler fog — one kind of gas on the board"
+    );
   }
 }
 

@@ -1038,34 +1038,15 @@
     // Cloud goes down after the rock and may sit beside itself — a field of
     // ionised dust is a field, not a scatter of boulders. It never blocks
     // anything, so it is allowed nearer the furniture than rock is.
-    // PATCHES, not a sprinkle. A field of ionised dust is a place on the
-    // board you can duck into, which is how the games that use this kind of
-    // ground use it; scattering the same number of hexes evenly is just a
-    // tax on everyone's firing positions. GC_CLOUD_PATCH sets how many
-    // hexes one patch is.
-    const PATCH = Math.max(1, Math.round(envNumber("GC_CLOUD_PATCH", 4)));
-    let clouds = 0;
-    for (const hex of candidates) {
-      if (clouds >= cloudCount) break;
-      if (hazards.some((h) => h.q === hex.q && h.r === hex.r)) continue;
-      if (exits.some((ex) => hexDist(hex, ex) < 2) || (outpost && hexDist(hex, outpost) < 2)) continue;
-      // Grow one patch from here, so the cloud is somewhere rather than
-      // everywhere.
-      const seedHex = hex;
-      for (let dq = -1; dq <= 1 && clouds < cloudCount; dq++) {
-        for (let dr = -1; dr <= 1 && clouds < cloudCount; dr++) {
-          if (Math.abs(dq + dr) > 1) continue; // stay on the hex ring
-          const at = { q: seedHex.q + dq, r: seedHex.r + dr };
-          if (!candidates.some((c) => c.q === at.q && c.r === at.r)) continue;
-          if (hazards.some((h) => h.q === at.q && h.r === at.r)) continue;
-          if (exits.some((ex) => hexDist(at, ex) < 2) || (outpost && hexDist(at, outpost) < 2)) continue;
-          hazards.push({ type: "scrambler", q: at.q, r: at.r });
-          clouds++;
-          if (clouds % PATCH === 0) break;
-        }
-        if (clouds % PATCH === 0) break;
-      }
-    }
+    //
+    // ONE KIND OF GAS. A nebula used to lay scrambler fields, which are also
+    // dust you fly straight through and also drawn as haze — two tiles that
+    // look the same and do different things (one stops shots crossing it, the
+    // other stops you shooting from inside it) is two things sharing one slot,
+    // and neither reads. A nebula is simply a sector thick with ion cloud now;
+    // the scrambler rule stays in the engine but nothing deals one.
+    const nebulaPatches = condition === "nebula" ? 3 : 0;
+
     // ---- GROUND THAT IS NOT A WALL --------------------------------------
     //
     // Measured before these existed: 9.2% of the board was ever dangerous and
@@ -1083,8 +1064,12 @@
     // eleven of a thirty-five hex board under terrain, which drew a band right
     // across the middle: passable ground that reads as a wall is worse than a
     // wall, because the player routes around something that was never there.
-    const CLOUD_PATCHES = Math.max(0, Math.round(envNumber("GC_IONCLOUD", 1)));
-    const CLOUD_SIZE = Math.max(1, Math.round(envNumber("GC_IONCLOUD_SIZE", 3)));
+    const CLOUD_PATCHES = Math.max(0, Math.round(envNumber("GC_IONCLOUD", 1))) + nebulaPatches;
+    // A nebula is THICK, not merely patchier: a small board has room for one
+    // patch however many are asked for, so the condition grows the patch as
+    // well as the count or a cramped sector reads exactly like a clear one.
+    const CLOUD_SIZE =
+      Math.max(1, Math.round(envNumber("GC_IONCLOUD_SIZE", 3))) + (condition === "nebula" ? 3 : 0);
     const MINE_SHARE = envNumber("GC_MINES", 0.035);
     // GROUND NEVER COSTS THE BOARD ITS SHIPS. Hostiles are placed later from
     // the same candidate list and skip any hex holding a hazard, so terrain
@@ -1093,7 +1078,8 @@
     // wide cloud. The roster is what the board is sized for, so it is
     // reserved: spacing means a contact needs roughly three hexes to itself.
     const spawnRoom = roster * 3;
-    const roomLeft = () => candidates.length - hazards.length > spawnRoom;
+    const roomLeft = () =>
+      candidates.length - hazards.filter((h) => h.type !== "ionCloud").length > spawnRoom;
     const takenHex = (at) =>
       hazards.some((h) => h.q === at.q && h.r === at.r) ||
       exits.some((ex) => hexDist(at, ex) < 2) ||
@@ -1106,11 +1092,27 @@
     for (const hex of candidates) {
       if (patches >= CLOUD_PATCHES || !roomLeft()) break;
       if (takenHex(hex)) continue;
-      const patch = [hex, ...ringOf(hex, 1)].filter(
-        (at) => candidates.some((c) => c.q === at.q && c.r === at.r) && !takenHex(at)
-      );
+      // Grown outward until it is the size asked for, not taken from the one
+      // ring around the seed: near an edge that ring holds two or three free
+      // hexes, so every patch came out the same small size however thick the
+      // sector was supposed to be.
+      const free = (at) => candidates.some((c) => c.q === at.q && c.r === at.r) && !takenHex(at);
+      const patch = [];
+      const queue = [hex];
+      const seenHex = new Set([`${hex.q},${hex.r}`]);
+      while (queue.length && patch.length < CLOUD_SIZE) {
+        const at = queue.shift();
+        if (!free(at)) continue;
+        patch.push(at);
+        for (const n of ringOf(at, 1)) {
+          const nk = `${n.q},${n.r}`;
+          if (seenHex.has(nk)) continue;
+          seenHex.add(nk);
+          queue.push(n);
+        }
+      }
       if (patch.length < 3) continue;
-      for (const at of patch.slice(0, CLOUD_SIZE)) hazards.push({ type: "ionCloud", q: at.q, r: at.r });
+      for (const at of patch) hazards.push({ type: "ionCloud", q: at.q, r: at.r });
       patches++;
     }
 
@@ -1236,7 +1238,13 @@
       if (condition === "debrisField") for (const goal of mustReach) uncorkLane(goal);
     }
 
-    const hazardKeys = new Set(hazards.map((h) => `${h.q},${h.r}`));
+    // A SHIP CAN SIT IN FOG. Only ground that blocks a hull or hurts it is
+    // off limits for a spawn — a cloud does neither, so excluding it cost the
+    // sector contacts for nothing and made a foggy sector a thinner one.
+    const SPAWN_BLOCKING = new Set(["asteroid", "blackhole", "mineDrift"]);
+    const hazardKeys = new Set(
+      hazards.filter((h) => SPAWN_BLOCKING.has(h.type)).map((h) => `${h.q},${h.r}`)
+    );
 
     // The hand-authored campaign runs 1, 2, then 3 hostiles; the crawl has
     // to continue that line rather than jumping to five the moment it goes

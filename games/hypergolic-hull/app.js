@@ -2119,7 +2119,7 @@ const HAZARD_LOOK = {
   // Barely there. A cloud is open space you can fly through — the dust drawn
   // on top is what says it is there, not the hex underneath it.
   ionCloud: { fill: "#3d5068", alpha: 0.22, stroke: "rgba(150,190,225,0.3)", width: 1.5 },
-  mineDrift: { fill: "#4a3608", alpha: 0.38, stroke: "rgba(232,180,80,0.5)", width: 1.5 },
+  mineDrift: { fill: "#3a2a06", alpha: 0.2, stroke: "rgba(232,180,80,0.45)", width: 1.5 },
 };
 
 // A scrambler field: ionised dust you can fly straight through. It takes
@@ -2151,35 +2151,32 @@ function drawIonCloud(center, r, now, seed) {
   ctx.restore();
 }
 
-// A mine drift: loose ordnance you may cross but must not stop in. Hard little
-// bodies with spikes and a slow amber blink — it has to read as a thing that
-// goes off, not as scenery.
+// A mine drift: ground you may cross but must not stop on.
+//
+// HAZARD STRIPES, because that is what "do not stand here" looks like
+// everywhere, and because the alternative read as a settings icon: spiked
+// discs at hex size are gears. Stripes cannot be mistaken for a mechanism, a
+// button or a ship, they tile a whole hex so the warning is the GROUND rather
+// than an object sitting on it, and they are legible at any zoom.
 function drawMineDrift(center, r, now, seed) {
   const rng = seededRandom(`mine-${seed}`);
   ctx.save();
-  ctx.translate(center.x, center.y);
-  const blink = 0.45 + 0.4 * (0.5 + 0.5 * Math.sin(now / 420 + rng() * 6));
-  for (let i = 0; i < 3; i++) {
-    const a = (i / 3) * Math.PI * 2 + rng() * 0.8;
-    const d = r * (0.1 + rng() * 0.3);
-    const cx = Math.cos(a) * d;
-    const cy = Math.sin(a) * d;
-    const br = r * 0.16;
-    ctx.strokeStyle = "rgba(226,170,70,0.85)";
-    ctx.lineWidth = Math.max(1, r * 0.045);
-    for (let sp = 0; sp < 6; sp++) {
-      const sa = (sp / 6) * Math.PI * 2;
-      ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(sa) * br, cy + Math.sin(sa) * br);
-      ctx.lineTo(cx + Math.cos(sa) * br * 1.75, cy + Math.sin(sa) * br * 1.75);
-      ctx.stroke();
-    }
-    ctx.fillStyle = "#2b2213";
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const c = hexCorner(center, i);
+    if (i === 0) ctx.moveTo(c.x, c.y);
+    else ctx.lineTo(c.x, c.y);
+  }
+  ctx.closePath();
+  ctx.clip();
+  const pulse = 0.34 + 0.16 * Math.sin(now / 900 + rng() * 6);
+  ctx.strokeStyle = `rgba(236,176,62,${pulse.toFixed(2)})`;
+  ctx.lineWidth = Math.max(2, r * 0.13);
+  const step = Math.max(11, r * 0.46);
+  for (let d = -r * 2; d < r * 2; d += step) {
     ctx.beginPath();
-    ctx.arc(cx, cy, br, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(240,190,96," + blink.toFixed(2) + ")";
-    ctx.lineWidth = Math.max(1, r * 0.05);
+    ctx.moveTo(center.x + d, center.y - r * 1.2);
+    ctx.lineTo(center.x + d + r * 1.2, center.y + r * 1.2);
     ctx.stroke();
   }
   ctx.restore();
