@@ -90,9 +90,11 @@ function GambitNative.new(opts)
   return self
 end
 
+-- (the stack loaded once before play, so the first frame does not pay for the first load: the library's functions bound, the tables made)
 function GambitNative:startMatch(stack, match)
   self.match, self.stack, self.frames = match, stack, 0
   C.gn_match()
+  if stack and stack.panels then pcall(self.load, self, stack) end
 end
 
 -- The stack into the engine's io as the player sees it. The queue keeps the 192 to drop soonest (the search's boards hold 256, and 64
