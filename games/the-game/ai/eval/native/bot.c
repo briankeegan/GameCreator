@@ -6884,7 +6884,17 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   o[12] = BT->wantRaise; o[13] = BT->wantRows; o[14] = clearRaiseFrames;
   BT->lastVia = d.via;
   o[98] = d.waitAll;   // the swap waits for the board to settle (front.c)
-  o[99] = aloneOnEngine() && aloneDie(1 << 20) >= (1 << 20);   // the board left alone loses no health within the judge's reach: nothing to save, the decision is for idle time (the front spends the input budget on it only above what the breaks need) -- a line that saves a board dying later is not idle
+  // IDLE: the board left alone loses no health within the horizon, and the decision does not outlive the board left alone -- nothing to save, so the front spends
+  // the input budget on it only above what the breaks need. A line that saves a board dying later is not idle.
+  { int idle = aloneOnEngine() && aloneDie(1 << 20) > LIVEHORIZON;
+    if (idle && aloneDie(1 << 20) < (1 << 20) && d.kind == K_SWAP && d.hasMove) {
+      int32_t one[2] = { d.sr, d.sc };
+      int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
+      judgeRefused = 0;
+      int v = playsLine ? lineJudge(BT->line, BT->nLine, BT->lineWaitAll) : lineJudge(one, 1, d.waitAll);
+      if (judgedDie(v) > aloneDie(1 << 20)) idle = 0;
+    }
+    o[99] = idle; }
   double ew = INF;
   for (int i = 0; i < nPool; i++) {
     Cand *c = &POOL[i];
