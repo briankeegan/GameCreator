@@ -4800,12 +4800,11 @@ static Dec breakFirst(Dec d) {
     if (m.kind == K_SWAP && m.hasMove && !(d.kind == K_SWAP && m.sr == d.sr && m.sc == d.sc) && m.via == V_KEEPHEALTH) return m;
   }
   // BREAK AT THE RIGHT TIME: a break after which the next slab lands with no
-  // break in reach waits until it is due (clearDue: a board left alone that
-  // never dies never makes it due) -- the other routes ready the board
-  // meanwhile, and the break is still there
+  // break in reach waits while the board left alone does not die -- the
+  // other routes ready the board meanwhile, and the break is still there
   // -- and only while the board can still hold what the break makes, the next
   // slab on the pile included: past that, waiting only grows the pile
-  if (!bbReady && roomForBreak(DBASE) && aloneOnEngine() && !clearDue(l->sw, l->n, 0)) { bbDeferred = *l; bbHasDeferred = 1; return d; }
+  if (!bbReady && roomForBreak(DBASE) && aloneOnEngine() && !LNA[0]) { bbDeferred = *l; bbHasDeferred = 1; return d; }
   if (roomForBreak(DBASE) && windowShort(l)) { bbDeferred = *l; bbHasDeferred = 1; bbWinWait = 1; return d; }
   lineLast = 3;
   plansDrop();
