@@ -116,6 +116,7 @@ void nb_copy(Board *dst, Board *src);
 int nb_run(Board *b);
 int nb_can_swap(Board *b, int r, int c);
 int nb_try_queue_swap(Board *b, int r, int c);
+void nb_push_incoming(Board *b, int32_t w, int32_t h, int32_t isChain, int32_t isMetal);
 int nb_topped(Board *b);
 int nb_pressed(Board *b);
 int nb_falling_garbage(Board *b);

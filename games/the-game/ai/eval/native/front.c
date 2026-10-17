@@ -738,6 +738,10 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   pad.holdKey = 0;   // the line begins with the key let go
   if (from) { step = from->n; walking = 0; held = from->held; cool = from->cool; last = from->last; dropped = from->dropped; f0 = from->f; }
   int snapSettle = from && from->hasSettle;
+  // THE BLOCK THE GAME SHOWS IS COMING (front_telegraph): with nothing queued yet, the attacker's next block lands in the world the line is
+  // judged in, at the frame the game says -- a board is judged for the slab that lands on it, as the one queued is. A prefix kept past that
+  // frame has it on its board already
+  int tgAt = LF && LF->tgW > 0 && LF->lead > 0 && paLibBoard()->ninc == 0 ? LF->lead : -1;
   int fs = 0, r0 = tr;   // the frame the step's settle was taken, its row then
   int waitTo = n > 0 && LF ? pressWait(LF, steps[0], steps[1], paLibBoard()->clock, LWAITALL && n == 1 ? breakWait(&LF->settle, steps[0], steps[1]) : pairWait(&LF->settle, steps[0], steps[1]), LWAITALL && n == 1) : 0;
 #ifndef __wasm__
@@ -807,6 +811,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
       input = padSend(&pad, input, &held, b->clock);
       if (had && !input) timer = 0; }
     b->input = input;
+    if (f == tgAt && b->ninc == 0) nb_push_incoming(b, LF->tgW, LF->tgH, 0, 0);
     nb_run(b);
     if (b->err) return -1;
     // A PRESS THE ENGINE DENIES IS NO PRESS: the swap is checked after the
