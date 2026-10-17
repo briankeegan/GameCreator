@@ -1,4 +1,4 @@
-// LEVEL (attacker.level): of the swaps that clear nothing and are settled by `by` (the next block lands), the one that leaves the least
+// LEVEL: of the swaps that clear nothing and are settled by `by` (the next block lands), the one that leaves the least
 // hollow under the garbage, then the flattest stack -- only one better than the board left alone, through the shared line check.
 // The swap, or 0 for none.
 static Ctx *levelCtx;

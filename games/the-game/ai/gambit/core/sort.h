@@ -1,5 +1,5 @@
-// A STABLE SORT, as JavaScript's Array.prototype.sort is: of two elements that compare equal, the one first stays first -- a beam
-// whose lines score the same keeps them in the order they were made, as the JavaScript's did.
+// A STABLE SORT: of two elements that compare equal, the one first stays first -- a beam whose lines score the same keeps them in the
+// order they were made.
 #ifndef GAMBIT_SORT_H
 #define GAMBIT_SORT_H
 // Sorts n ints a[] by key[a[i]] descending, ties in their order (a merge sort into tmp, n at most the room tmp has).

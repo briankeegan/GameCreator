@@ -1,12 +1,12 @@
-// THE OUTCOME OF A LINE (gambit_judge.js outcome; plans/decision.md step 3): the whole line judged once a decision, and every fact the
+// THE OUTCOME OF A LINE (plans/decision.md step 3): the whole line judged once a decision, and every fact the
 // decision reads about it taken from that one judging -- no search, filter or rank works one out for itself. And THE SHARED LINE CHECK
 // (lineFits): the line every search keeps only when the ranking would take it. Both cached per decision (gb_decision_start).
 //
-// What the decision knows of the board (Facts) comes from its reading of it (gambit_decide.js read, until that is C too).
+// What the decision knows of the board (Facts) comes from its reading of it.
 
 static double leftMsOf(void);   // (propose.c leftMs: the time the decision's searches have left)
-#define HORIZON 240   // puyocpu.js SURVIVE_FRAMES: a board stands when it is alive this long after now
-#define REST 120      // puyocpu.js SURVIVE_REST: and this long after the line's last swap
+#define HORIZON 240   // a board stands when it is alive this long after now
+#define REST 120      // and this long after the line's last swap
 
 typedef struct {
   int32_t land;        // frames until the last block shown lands (NOT_ASKED: none coming) -- JUDGE.lastLanding
@@ -19,7 +19,7 @@ typedef struct {
   Judged j;
 } Outcome;
 
-// WHETHER WHAT A LINE MAKES FITS THE LIST (gambit_judge.js fitsList): what it makes, the chain it reaches as the game counts it, and
+// WHETHER WHAT A LINE MAKES FITS THE LIST: what it makes, the chain it reaches as the game counts it, and
 // every clear of its own
 static int fitsList(const List *L, Made m, const Judged *j) {
   if (!fits(L, m)) return 0;

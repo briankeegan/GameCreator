@@ -1,4 +1,4 @@
-// THE PLANNER (attacker.plan, survivor_attack.js, as Gambit asks it: a list of aims): a beam over swaps, each step played to the
+// THE PLANNER (as Gambit asks it: a list of aims): a beam over swaps, each step played to the
 // board's settle, ranked by how near the list the lines one swap on come (o.near: GAMBIT.lead) and then by how connected the board is.
 // It keeps, of the lines in time (their last swap begun by `by`) whose board keeps the floor:
 //   perAim    for each entry of the list, the line that meets it sending the most garbage (the fewer swaps between equals)
@@ -42,7 +42,7 @@ static int32_t connectedOf(const Board *b) {
   }
   return n;
 }
-// THE SHAPE of a settled board (attacker.shapeOf): its top row, evenness (tallest panel column less lowest), hollow (empty cells under garbage)
+// THE SHAPE of a settled board: its top row, evenness (tallest panel column less lowest), hollow (empty cells under garbage)
 typedef struct { int32_t top, even, hollow; } Shape;
 static Shape shapeOf(const Board *b) {
   int R = gridLen(b), top = 0, hollow = 0, peaks[W + 1];

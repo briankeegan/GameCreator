@@ -34,13 +34,6 @@ module.exports = function (opts) {
     if (!S) S = new N.Search({ reaction: opts.reaction, swapGap: opts.swapGap, cursorMoveFrames: opts.cursorMoveFrames, threads: 1 });
     return S;
   }
-  // (the judge in a context of its own: for a search that judges a line while its own nodes must stand)
-  var S2 = null;
-  function judgeIn(board, hold, seq, arrivals, o) {
-    if (!S2) S2 = new N.Search({ reaction: opts.reaction, swapGap: opts.swapGap, cursorMoveFrames: opts.cursorMoveFrames, threads: 1 });
-    var keepS = S, keep2 = S2; S = S2; S2 = null;   // (and a judge asked from within this one gets a context of its own again)
-    try { return judge(board, hold, seq, arrivals, o || {}); } finally { S = keepS; S2 = keep2; }
-  }
   // o.aims: a priority list of aims, searched in one beam -- the best line for each aim is kept, and the line returned is the first
   // aim's that has one (best.aimIndex); o.aim is a list of one.
   // o.aim (with o.by): a line counts only when what it makes meets the aim -- aim({ combo, combos, chain, broke, cells }) -- with its
@@ -378,59 +371,6 @@ module.exports = function (opts) {
     }
     return { ready: false, setup: found, at: first, ms: Date.now() - t0 };
   }
-  // THE ROWS THE RAISE MAY HOLD (raiseReady): the most rows, of `rows`, the stack can be raised by and still have a plan once all the
-  // garbage the game shows has landed -- the board raised on the engine, every block landed when the game lands it, and then a line of
-  // swaps to a break the board survives to play (SH.breakMoves: the stack rising as it goes, a combo or chain on the way buying its stop
-  // time). With nothing shown coming, every row. ms: the time the search has, shared out over the rows tried.
-  var RAISE_IN = 32, SETTLE_MAX = 600;
-  // the board once every block shown has come down on it: delivered when the game delivers it, dropped from the queue, and done falling
-  // (null when the board is lost first, or still busy SETTLE_MAX frames after the last is delivered)
-  function landedAll(b0, pieces, last) {
-    var st = b0.copy(), pend = pieces.map(function (a) { return { at: st.stopWatch + a.at, g: { width: a.width, height: a.height, isChain: !!a.isChain, isMetal: !!a.isMetal, frameEarned: st.stopWatch, finalized: true }, capped: false }; });
-    for (var i = 0; i < last + 2 + SETTLE_MAX && st.gameOverClock <= 0; i++) {
-      if (i > last + 1 && !pend.length && !(st.incoming || []).length && !(typeof st.hasFallingGarbage === 'function' && st.hasFallingGarbage())) return st;
-      st.setInput(0); st.run(); SH.land(st, pend);
-    }
-    return null;
-  }
-  function raiseReady(board, hold, arrivals, rows, ms) {
-    var last = null;
-    (arrivals || []).forEach(function (a) { if (last === null || a.at > last) last = a.at; });
-    if (last === null || rows <= 0) return Math.max(0, rows);
-    var s = search(), t0 = Date.now(), ok = 0, top0 = CK.fullTop(board);
-    for (var k = 1; k <= rows; k++) {
-      var st = board.copy(), f = 0;
-      while (CK.fullTop(st) < top0 + k && st.gameOverClock <= 0 && f < 40 * k) { st.setInput(RAISE_IN); st.run(); f++; }
-      if (st.gameOverClock > 0 || CK.fullTop(st) < top0 + k) break;
-      var left = arrivals.map(function (a) { return Object.assign({}, a, { at: Math.max(0, a.at - f) }); });
-      var at = landedAll(st, left, Math.max(0, last - f));
-      if (!at || Date.now() - t0 > ms) break;
-      // (a plan once landed: the readiness every move is held to -- a break within two swaps that the list allows)
-      s.reset();
-      var made = [], rt = s.root(at, hold, [], false), r = breaksAfterLanding(s, rt, rt, 1, made);
-      s.drop(made);
-      if (r !== true) break;
-      ok = k;
-    }
-    return ok;
-  }
-  // LEVEL: of the swaps that clear nothing and are settled by o.by (frames: the next block lands), the one that leaves the least hollow
-  // under the garbage, then the flattest stack -- only one better than the board left alone. Returns { move, before, after } or null.
-  function level(board, hold, arrivals, o) {
-    var s = search();
-    s.reset();
-    var root = s.root(board.copy(), hold, arrivals || [], false), r0 = s.advanceMany([[root, 'settle', null, 0]], true)[0];
-    if (!r0 || r0.dead) return null;
-    var before = shapeOf(r0.b.grid), ms = root.b.legalSwaps(), outs = s.advanceMany(ms.map(function (m) { return [root, 'settle', m, 0]; }), true), bestL = null;
-    outs.forEach(function (out, i) {
-      if (!out || out.dead || s.stepStats(out).cleared > 0 || (o && o.by && out.t - root.t > o.by) || !firstFits(ms[i], false)) return;
-      var sh = shapeOf(out.b.grid);
-      if (sh.hollow > before.hollow || (sh.hollow === before.hollow && sh.even >= before.even)) return;
-      if ((!bestL || sh.hollow < bestL.after.hollow || (sh.hollow === bestL.after.hollow && sh.even < bestL.after.even)) && lineOk([ms[i]], true)) bestL = { move: ms[i], before: before, after: sh };
-    });
-    s.drop([r0].concat(outs.filter(function (x) { return x && !x.dead; })));
-    return bestL;
-  }
   // THE FIRST CLEAR OF A LINE THAT IS TO CLEAR NOTHING: each step played on the engine to the board's settle (falls and all), in turn;
   // the index of the first that clears panels and breaks no garbage, -1 if none does (or the line cannot be played on)
   function firstClear(board, hold, seq, arrivals, o) {
@@ -624,92 +564,5 @@ module.exports = function (opts) {
     outs.forEach(function (out, i) { if (out && !out.dead) { made.push(out); if (!any && brk(out)) { any = true; if (why) why.seq = meta[i]; } } });
     return any;
   }
-
-  // THE FRAMES UNTIL THE BOARD IS LOST IF NOTHING IS DONE, on the engine: the stack rising, the garbage the game shows landing when it
-  // lands, the health drained -- the first frame within `horizon` the board left alone is lost, Infinity when it lives through it
-  function diesIn(board, hold, arrivals, horizon) {
-    var s = search();
-    s.reset();
-    var root = s.root(board.copy(), hold, arrivals || [], false), made = [], lost = lostAlone(s, root, root, Math.max(1, Math.ceil(horizon)), made);
-    s.drop(made);
-    return lost;
-  }
-  // GAMBIT'S SURVIVAL SEARCH (outlive): lines of swaps played on the engine one after another, a beam of the boards lost latest left
-  // alone, on the engine, of those held longest -- the frame the garbage queued could next drop (the line's frames, then the later of
-  // stop + pre-stop and the shake: they count down together) -- then with the most room over the stack, then the least garbage; each step's clears held to the list (useList), for as long as o.ms lasts. The first line whose board, left alone,
-  // is still alive at o.to (frames from now), and o.rest past its own end, is the answer; else the line whose board is lost latest.
-  // { seq, lostAt } or null. o: { to, rest, ms, depth, beam, ok }
-  function outlive(board, hold, arrivals, o) {
-    var t0 = Date.now(), s = search(), depth = o.depth || 6, width = o.beam || 12, best = null, made = [];
-    s.reset();
-    var root = s.root(board.copy(), hold, arrivals || [], false), stillAt = {};
-    var still = function (t) { if (!(t in stillAt)) { var w = t > root.t ? s.advance(root, 'long', null, t - root.t) : root; stillAt[t] = w && !w.dead ? s.breaks(w) : s.breaks(root); } return stillAt[t]; };
-    // (a line's whole outcome as the judge counts it, for the floor -- played in a context of its own, so this search's nodes stand)
-    var judgeLine = function (seq) { var j = judgeIn(board, hold, seq, arrivals || []); return j.dead ? { combo: 0, chain: 0, broke: 0 } : j.made; };
-    var held = function (n) { return (n.t - root.t) + Math.max((n.carry.stopTime || 0) + (n.carry.preStopTime || 0), n.carry.shakeTime || 0); };
-    var level = [{ n: root, seq: [] }];
-    for (var d = 1, perStep = 0; d <= depth && level.length; d++) {
-      var tl = Date.now(), steps = [], meta = [];
-      level.forEach(function (x) { x.n.b.legalSwaps().forEach(function (m) { steps.push([x.n, 'swap', m, 0]); meta.push(x.seq.concat([m])); }); });
-      // (a level is begun only while what the last took a step, over this one's steps, is left)
-      if (Date.now() - t0 + perStep * steps.length > o.ms) break;
-      var outs = s.advanceMany(steps, true), kids = [], seen = {};
-      outs.forEach(function (out, q) {
-        if (!out || out.dead) return;
-        made.push(out);
-        if (!stepFits(s, out, still)) return;   // (the line's end is held to allowed() before it is the answer)
-        if (d === 1 && !firstFits(meta[q][0], s.stepStats(out).cleared > 0 || s.breaks(out) > still(out.t))) return;
-        var key = out.b.key;
-        if (seen[key]) return;
-        seen[key] = true;
-        kids.push({ n: out, seq: meta[q], room: out.b.height - out.b._top, h: held(out), g: out.b._garb });
-      });
-      // (the boards held longest, then with the most room, then the least garbage, are each run on alone to the frame they are lost; the
-      // beam keeps the ones lost latest)
-      kids.sort(function (a, b) { return b.h - a.h || b.room - a.room || a.g - b.g; });
-      kids = kids.slice(0, 2 * width);
-      var losts = lostMany(s, root, kids.map(function (x) { return x.n; }), kids.map(function (x) { return Math.max(o.to, x.n.t - root.t + (o.rest || 0)); }), made);
-      for (var i = 0; i < kids.length; i++) {
-        var lost = kids[i].lost = losts[i];
-        if (lost === Infinity && !(lineRule ? lineOk(kids[i].seq, false) : allowed(s, kids[i].n, still) && floorOk(judgeLine(kids[i].seq)))) { kids[i].lost = -1; continue; }
-        if (!best || lost > best.lostAt) best = { seq: kids[i].seq, lostAt: lost };
-        if (lost === Infinity) { s.drop(made); return best; }
-      }
-      level = kids.sort(function (a, b) { return b.lost - a.lost; }).slice(0, width);
-      // (every board not kept is let go before the next level: the search holds one level's boards)
-      var keep = new Set(level.map(function (x) { return x.n; }));
-      s.drop(made.filter(function (x) { return !keep.has(x); }));
-      made = level.map(function (x) { return x.n; });
-      perStep = (Date.now() - tl) / steps.length;
-    }
-    s.drop(made);
-    return best;
-  }
-  // A LINE THAT LEAVES A PLAN (readyLines): of the lines of one swap, then of two from the first swaps that live, the first that, played
-  // as pressed and run on until the last block shown has landed and the board has settled, leaves a break within two swaps
-  // (breaksAfterLanding) -- each judged on the engine, for as long as `ms` lasts. { seq, at } or null
-  function readyLines(board, hold, arrivals, land, ms, o) {
-    var t0 = Date.now(), firsts = board.legalSwaps(), live = [];
-    var top = CK.fullTop(board);
-    firsts.sort(function (a, b) { return Math.abs(b[0] - top) < Math.abs(a[0] - top) ? 1 : -1; });   // (near the top of the stack first)
-    var check = function (seq) { var j = judge(board, hold, seq, arrivals, { settled: false, tight: o && o.tight, readyAt: land }); return j; };
-    for (var i = 0; i < firsts.length && Date.now() - t0 < ms; i++) {
-      var j = check([firsts[i]]);
-      if (j.dead) continue;
-      if (!firstFits(firsts[i], j.made.combo > 0 || j.made.chain > 0 || j.made.broke > 0)) continue;
-      if (j.ready === true && lineOk([firsts[i]], false)) return { seq: [firsts[i]], at: j.done };
-      live.push(firsts[i]);
-    }
-    for (i = 0; i < live.length && Date.now() - t0 < ms; i++) {
-      var b1 = board.copy(); b1.curRow = live[i][0]; b1.curCol = live[i][1];
-      if (!b1.tryQueueSwap(live[i][0], live[i][1])) continue;
-      var seconds = b1.legalSwaps();
-      for (var k = 0; k < seconds.length && Date.now() - t0 < ms; k++) {
-        var j2 = check([live[i], seconds[k]]);
-        if (!j2.dead && j2.ready === true && firstFits(live[i], j2.made.combo > 0 || j2.made.chain > 0 || j2.made.broke > 0) && lineOk([live[i], seconds[k]], false)) return { seq: [live[i], seconds[k]], at: j2.done };
-      }
-    }
-    return null;
-  }
-  return { useRules: useRules, useList: useList, allowed: allowed, stepOk: stepFits, firstOk: firstFits, lineOk: lineOk, judgeIn: judgeIn, outlive: outlive, readyLines: readyLines, plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear, replay: replay, judge: judge, diesIn: diesIn, raiseReady: raiseReady };
+  return { useRules: useRules, useList: useList, allowed: allowed, stepOk: stepFits, firstOk: firstFits, lineOk: lineOk, plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, shapeOf: shapeOf, firstClear: firstClear, replay: replay, judge: judge };
 };

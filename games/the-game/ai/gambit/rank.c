@@ -1,9 +1,9 @@
-// THE RANK (gambit_judge.js judge, hold, compare, digWaits; plans/decision.md step 4): every candidate a proposer offers, judged by its
+// THE RANK (hold, compare, digWaits; plans/decision.md step 4): every candidate a proposer offers, judged by its
 // outcome and filtered -- a swap back, outside the list, below the floor, too late -- then given its place: one order for every
 // candidate, a line that lives before one that does not; of two that live, the tier and its sub-keys; of two that do not, the one
 // whose board is lost later.
 
-// A CANDIDATE (gambit_propose.js cand): the play, its swaps, what the search that found it says it makes (x), the entry it was found
+// A CANDIDATE: the play, its swaps, what the search that found it says it makes (x), the entry it was found
 // for (aim, -1 none), whether it extends a cascade, how it is judged (settled: -1 as its play is)
 typedef struct {
   int32_t set, play, nseq, seq[MAXLINE], aim, extend, settled;
@@ -110,7 +110,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   for (int q = 0; q < n; q++) if (x->t.sub[q] != y->t.sub[q]) return x->t.sub[q] < y->t.sub[q] ? -1 : 1;
   return 0;
 }
-// sorted stably by the one order, as Array.prototype.sort is
+// sorted stably by the one order
 static void sortJudged(Judge **a, int n) {
   static Judge *tmp[512];
   for (int w = 1; w < n; w *= 2)

@@ -124,11 +124,8 @@ gate_garbage_rules() {
   node games/the-game/ai/eval/survivor_room.test.js &&
   node games/the-game/ai/eval/threesLast.test.js &&
   node games/the-game/ai/eval/survivor_checks.test.js &&
-  node games/the-game/ai/eval/gambit.test.js &&
   node games/the-game/ai/eval/break_near.test.js &&
-  node games/the-game/ai/eval/gambit_decide.test.js &&
   node games/the-game/ai/eval/gambit_answer.test.js &&
-  node games/the-game/ai/eval/gambit_agree.test.js &&
   node games/the-game/ai/eval/attack_fire.test.js &&
   node games/the-game/ai/eval/survivor_audit.test.js &&
   node games/the-game/ai/eval/survivor_held.test.js &&
@@ -229,17 +226,14 @@ gate_server_engine() {
 }
 
 # GAMBIT IN C (games/the-game/ai/gambit/, PLAN.md): the wasm is built from its sources and the one C engine (BUILT holds every hash),
-# the engine in it is the server's -- the engine tests, played on gambit.wasm -- and every piece agrees with the JavaScript Gambit
-# (rules.test.js the list, judge.test.js the judge, outcome.test.js the outcome and the shared line check).
+# and the engine in it is the server's -- the engine tests, played on gambit.wasm. Its decisions are held by gambit_answer.test.js
+# (gate_garbage_rules) and by the 24 games (gambit-24.yml).
 gate_gambit_engine() {
   local G=games/the-game/ai/gambit E=games/the-game/ai/eval
   (cd $G && while read -r f h; do [ "$(sha256sum "$f" | cut -c1-64)" = "$h" ] || { echo "gambit: $f is not what BUILT says -- run build.sh"; exit 1; }; done < BUILT) &&
   GC_NATIVE_WASM=$PWD/$G/gambit.wasm node $E/native_pa.test.js 20000 &&
   GC_NATIVE_WASM=$PWD/$G/gambit.wasm node $E/native_countdown.test.js &&
-  GC_NATIVE_WASM=$PWD/$G/gambit.wasm node $E/native_arrivals.test.js &&
-  node $G/rules.test.js &&
-  node $G/judge.test.js &&
-  node $G/outcome.test.js
+  GC_NATIVE_WASM=$PWD/$G/gambit.wasm node $E/native_arrivals.test.js
 }
 
 # BitBot's search in C (native/bit.wasm) gives bitmatch.js's answer for every

@@ -67,18 +67,9 @@ count of swaps or lines.
 
 ## Where the code is
 
-| Step | Code |
-|---|---|
-| Gambit's turn | `answer` (gambit_answer.js): the break search, `decide`, the survival search asked which moves live, the answer |
-| The five steps, in order | `decide` (gambit_decide.js) |
-| 1 Read | `read` (gambit_decide.js), `GAMBIT.facts` (gambit.js) |
-| 2 Propose | gambit_propose.js: one function per kind of move -- `entries`, `extension`, `nearest`, `breakLine`, `breaks`, `toward`, `ready`, `level`, `setup`, `clear`, `carried`; `search` runs the searches once |
-| 3 Judge | `attacker.judge` (survivor_attack.js): a planned line settle by settle, any other line step after step -- and every swap judged again at its own decision, on the board as it then is |
-| 4 Filter and rank | `judge` and `compare` (gambit_judge.js): every move's deadline on the judge's press times; `ready` (gambit_decide.js): every move that breaks nothing leaves a break in reach when the next block lands; `GAMBIT.fits`, `GAMBIT.entryOf`, `GAMBIT.tier` (gambit.js) |
-| 5 Play | `play` (gambit_decide.js); the line in progress is the line of the move played (`carryOf`), any line of more than one swap, found again by a bottom-row panel and carried on as it is pressed (`carried`, gambit_propose.js) -- one, not one per mode |
-
-Held by gambit.test.js (the rules) and gambit_decide.test.js (the judge; a decision in every mode, every line ranked fitting the list;
-the material floor; every kind of move offered held to the deadline, readiness and the line in progress).
+In C, `games/the-game/ai/gambit/` (its README has the layout): `answer.c` Gambit's turn, `decide.c` the five steps in order --
+1 read (`decide.c`, `facts.c`), 2 propose (`propose.c`, one function per kind of move, the searches in `search/`), 3 judge (`judge.c`,
+`outcome.c`), 4 filter and rank (`rank.c`, `rules.c`), 5 play (`decide.c`: the line in progress carried on as it is pressed).
 
 The survival search is asked one thing (`lives`): of every move (none past `GAMBIT.MAXCHAIN`), the ones that live -- Gambit's first,
 in its order, then any that fits the list, then any other; with none that lives, the one that dies latest. A Gambit profile has only

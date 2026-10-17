@@ -1,4 +1,4 @@
-// A CHAIN GOING IS CONTINUED (attacker.extend, as Gambit asks it: a list of aims): from a board mid-cascade (stop time running) or a slab
+// A CHAIN GOING IS CONTINUED (as Gambit asks it: a list of aims): from a board mid-cascade (stop time running) or a slab
 // popping, the swaps made while it falls that make it longer. A beam over swaps played as the cascade runs, each board ranked by what
 // the cascade sends once it settles; per entry of the list the cascade that meets it sending the most, and beside them the one nearest
 // the list (near). A line is kept for an aim only when its board keeps the floor and its line passes the shared line check, its last

@@ -1,4 +1,4 @@
-// THE PROPOSERS (gambit_propose.js; plans/decision.md step 2): each kind of move the bot can make, one function each. A proposer reads
+// THE PROPOSERS (plans/decision.md step 2): each kind of move the bot can make, one function each. A proposer reads
 // what the searches found and offers lines; it decides nothing. The searches run once a decision (searchAll).
 
 // THE DECISION'S CONTEXT the proposers and the rank read (answer.c fills it): the question, the profile's numbers, the clock
@@ -18,7 +18,7 @@ static Ctx2 C2;
 static double leftMs(void) { if (!C2.due) return 1e9; double span = C2.due - C2.t0; return C2.due - nowMs() - C2.margin - span / 4; }
 static double leftMsOf(void) { return leftMs(); }
 
-// ---- the board's state the proposers read (survivor_checks.js cascadeLive, survivor_shared.js popLeft)
+// ---- the board's state the proposers read
 static int cascadeLive(Board *b) {
   if (b->chainCounter > 0) return 1;
   int stop = b->stopTime + b->preStopTime > 0;
@@ -104,7 +104,7 @@ static void xFromExt(Cand *k, const XLine *l) {
 }
 static int seenDigHas(const Board *b, int32_t mv);   // (answer.c: the boards this dig has stood on)
 static int32_t towardRest[MAXPATH], towardRestLen;   // (answer.c: the rest of the line toward a break played last)
-// Every candidate, in the order they are offered (gambit_propose.js all): entries, the extension, the nearest, the break line, the break
+// Every candidate, in the order they are offered: entries, the extension, the nearest, the break line, the break
 // search's breaks, toward a break, ready, level, setup, clear
 static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   int n = 0;

@@ -38,7 +38,7 @@ engine at level 10, the game's own think and input budgets.
 
 ## How -- infra, not patches
 
-- **Gambit is its own program, in C**, in `games/the-game/ai/gambit/` -- its layout and how it is ported: `gambit/PLAN.md`.
+- **Gambit is its own program, in C**, in `games/the-game/ai/gambit/` -- its layout: `gambit/README.md`.
 
 - **One of each**: one judge (`JUDGE.outcome`), one ranking (`JUDGE.compare`), one shared line check every play keeps its lines
   through (`JUDGE.lineFits`), one set of rules handed to every search (`attacker.useRules`).
@@ -54,7 +54,7 @@ engine at level 10, the game's own think and input budgets.
 
 | mode | survived | runs |
 |---|---|---|
-| finish them | 17-22 of 24 | 19, 19, 17, 17, 17, 17, 22 |
+| finish them | 17-22 of 24 | 19, 19, 17, 17, 17, 17, 22, 21 (C) |
 | pressure | not yet run | |
 | big chain | not yet run | |
 | build | not yet run | |

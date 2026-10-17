@@ -1,4 +1,4 @@
-// GAMBIT'S TURN (gambit_answer.js; plans/decision.md): a question from the frame loop answered by Gambit alone -- the break search, the
+// GAMBIT'S TURN (plans/decision.md): a question from the frame loop answered by Gambit alone -- the break search, the
 // decision, the move. What carries from one decision to the next lives here: the break search's lines, the boards this dig has stood
 // on, the line toward a break begun, the line in progress, the pair the last swap swapped.
 
@@ -7,7 +7,7 @@
 #define BREAK_MIN_MS 5
 #define BREAK_MAX_MS 400
 #define LINEUP_AFTER 30
-#define HOLDTIGHT 40       // survivor_keys.js: the actions short of the input limit at which every walk is held
+#define HOLDTIGHT 40       // the actions short of the input limit at which every walk is held
 #define ROW_STEPS 16
 
 
@@ -22,8 +22,8 @@ static int32_t digTargetOf(const Board *b) {
   return NUL;
 }
 
-// ---- THE DIG: the boards stood on since the garbage the break search digs toward was first the lowest (survivor_shared.js boardKey:
-// each row's colours, garbage as G)
+// ---- THE DIG: the boards stood on since the garbage the break search digs toward was first the lowest:
+// each row's colours, garbage as G
 #define KEYLEN 160
 #define DIGMAX 8192
 static char digSeen[DIGMAX][KEYLEN]; static int32_t digN, digGid = NUL, digOn;
@@ -43,7 +43,7 @@ static int keyOf(const Board *b, char *out) {
 static int sameDigKey(const char *a, const char *b) { while (*a && *a == *b) { a++; b++; } return *a == *b; }
 static int digHas(const char *key) { for (int i = 0; i < digN; i++) if (sameDigKey(digSeen[i], key)) return 1; return 0; }
 static void digAdd(const char *key) { if (digN < DIGMAX && !digHas(key)) { for (int i = 0; i < KEYLEN; i++) { digSeen[digN][i] = key[i]; if (!key[i]) break; } digN++; } }
-// (the board a first swap leaves: pressed and six frames run, survivor_shared.js boardAfter)
+// (the board a first swap leaves: pressed and six frames run)
 static int seenDigHas(const Board *b, int32_t mv) {
   if (!digOn) return 0;
   static Board *t;
@@ -137,7 +137,7 @@ static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, dou
   return 1;
 }
 
-// ---- THE LOG LINE (gambit_answer.js logLine): one a decision, what Gambit chose, what was played and why
+// ---- THE LOG LINE: one a decision, what Gambit chose, what was played and why
 static char logBuf[8192]; static int logN;
 static void L_s(const char *s) { while (*s && logN < (int)sizeof logBuf - 1) logBuf[logN++] = *s++; logBuf[logN] = 0; }
 static void L_i(int64_t v) { char d[24]; int n = 0, neg = v < 0; if (neg) v = -v; if (!v) d[n++] = '0'; while (v > 0) { d[n++] = (char)('0' + v % 10); v /= 10; } if (neg) L_s("-"); while (n) { char c[2] = { d[--n], 0 }; L_s(c); } }
@@ -270,14 +270,14 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" lost="); if (top) { if (top->o.lostAt == FOREVER) L_s("inf"); else L_i(top->o.lostAt); } else L_s("-");
   L_s(" ms_c="); L_i((int64_t)(nowMs() - tStart));
   L_s(" why="); if (top) L_play(top->k.play); else L_s(d.kind == 2 ? "raise" : "hold");
-  // (THE BOARD THE BREAK SEARCH CAME UP EMPTY ON, under garbage, for gambit_reach.js: at most one every 30 frames)
+  // (THE BOARD THE BREAK SEARCH CAME UP EMPTY ON, under garbage, for the reach report: at most one every 30 frames)
   if (R.under && !(ran && theBr.depth) && (emptyAt == NUL || at - emptyAt >= 30 || at < emptyAt)) { emptyAt = at; A->dumpBoard = 1; }
   // THE RAISE HELD DOWN: the steps the row has left, and the rows on to the rule's `to`
   if (d.kind == 2) { A->raiseNow = imax(1, (decQ.b->displacement ? decQ.b->displacement : ROW_STEPS) - 1); A->raiseAfter = imax(0, R.to - fullTop(decQ.b) - 1) * ROW_STEPS; }
 }
 
-// ---- THE HOST'S SIDE (gambit.js): the rules, the profile, a question, the log
-// The rules (gambit.js encodes the rules file): rule count, then per rule -- table, name, nwhen, when (fact, op, n, near each), naims,
+// ---- THE HOST'S SIDE: the rules, the profile, a question, the log
+// The rules (the loader encodes the rules file): rule count, then per rule -- table, name, nwhen, when (fact, op, n, near each), naims,
 // aims (ten words each), end, byFact, byFrames, keep (on, then height, material, evenness tests: op, n, near each), raiseTo -- then the
 // file's keep (as a rule's), raiseTo and underIgnore.
 static int readTest(const int32_t **w, Test *t) { t->op = (*w)[0]; t->n = (*w)[1]; t->near = (*w)[2]; *w += 3; return 1; }

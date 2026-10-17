@@ -1,8 +1,8 @@
-// THE FACTS AND THE RULES (gambit.js): the facts read off both boards each decision, the rule they choose and its list, the floor a
+// THE FACTS AND THE RULES: the facts read off both boards each decision, the rule they choose and its list, the floor a
 // line's board keeps, how near a line comes to the list, and the pick's tier. The rules file is read by the host and handed over
 // whole (gb_rules); its tests name facts by id (FACT_*).
 
-// ---- the facts of a board (gambit.js facts). A fact the host does not know (the enemy's height, say) is unknown, and a test of it
+// ---- the facts of a board. A fact the host does not know (the enemy's height, say) is unknown, and a test of it
 // is false.
 enum { FACT_US_TOPPED, FACT_US_STOP, FACT_US_HEIGHT, FACT_US_MATERIAL, FACT_US_CONTACT, FACT_US_DIES, FACT_US_EVENNESS, FACT_US_COMING,
        FACT_US_HEAVY, FACT_US_NEXTLANDS, FACT_US_BREAKWAITS, FACT_US_QUEUEKILLS, FACT_ENEMY_TOPPED, FACT_ENEMY_HEIGHT, FACT_ENEMY_STOP, NFACTS };
@@ -11,7 +11,7 @@ typedef struct { int32_t known[NFACTS]; double v[NFACTS]; } FactSet;   // (dies 
 static void factSet(FactSet *F, int k, double v) { F->known[k] = 1; F->v[k] = v; }
 
 static int32_t cellOfB(const Board *b, int r, int c) { const int32_t *f = b->p[r][c].f; return f[ISGARBAGE] ? -1 : (f[COLOR] == NUL ? 0 : f[COLOR]); }
-// the highest row with a panel or landed garbage on it (survivor_checks.js fullTop: garbage still falling is not part of the stack)
+// the highest row with a panel or landed garbage on it (garbage still falling is not part of the stack)
 static int32_t fullTop(const Board *b) {
   int32_t top = 0;
   for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
@@ -21,7 +21,7 @@ static int32_t fullTop(const Board *b) {
   }
   return top;
 }
-// the frames until the stack rises to the top row (survivor_checks.js framesToTop)
+// the frames until the stack rises to the top row
 static double framesToTop(const Board *b) {
   int32_t h = b->height ? b->height : 12, rows = h - fullTop(b), stop = b->stopTime + b->preStopTime;
   if (rows <= 0) return stop;
@@ -92,7 +92,7 @@ static void factsOf(const Board *b, const Arr *arr, int narr, int topped, FactSe
   factSet(F, FACT_US_BREAKWAITS, breakWaits); factSet(F, FACT_US_QUEUEKILLS, 0);
 }
 
-// ---- THE RULES (the rules file, gambit.js parse/checked): a rule's `when` (tests of facts), its list (aims, ended by "default" or
+// ---- THE RULES (the rules file): a rule's `when` (tests of facts), its list (aims, ended by "default" or
 // "hold"), its deadline (`by`: frames or a fact), its floor (`keep`: tests of the end board's facts) and the raise
 #define MAXRULES 32
 #define MAXWHEN 8
@@ -127,7 +127,7 @@ static int32_t deadlineOf(const FactSet *F, const Rule *r) {
   return r->byFrames >= 0 ? r->byFrames : NOT_ASKED;
 }
 
-// ---- THE FLOOR (gambit.js floor, keeps, gridFacts): a line's board keeps it -- unless the line breaks garbage
+// ---- THE FLOOR (keeps, gridFacts): a line's board keeps it -- unless the line breaks garbage
 static void endFacts(const Board *b, int32_t *height, int32_t *material, int32_t *evenness) {
   int R = gridLen(b), top = 0, mat = 0, hi = 0, lo = 1 << 30;
   for (int c = 1; c <= W; c++) {
@@ -151,7 +151,7 @@ static int keepsFloor(const Keep *k, const Board *b, int32_t broke) {
   return 1;
 }
 
-// ---- HOW NEAR a line comes to an aim, 0..1 (gambit.js near): a chain is measured from one link, a combo from three panels
+// ---- HOW NEAR a line comes to an aim, 0..1: a chain is measured from one link, a combo from three panels
 static double nearKey(int32_t v, Test t, int32_t from) {
   if (!t.near) return test(v, t) ? 1 : 0;
   int32_t n = t.n + (t.op == OP_GT ? 1 : 0);
@@ -181,14 +181,14 @@ static double nearList(const List *L, Made m) {
 // What leads the search: the list, and any line that breaks a little nearer than one that does not
 static double leadOf(const List *L, Made m, int under) { return nearList(L, m) + (under && m.broke > 0 ? 0.5 : 0); }
 
-// ---- THE PICK'S TIERS (gambit.js tier), lower first, and the order within one
+// ---- THE PICK'S TIERS, lower first, and the order within one
 #define MAXSUB 7
 typedef struct { int32_t tier, nsub; double sub[MAXSUB]; } Tier;
 enum { PLAY_ENTRY, PLAY_NEAREST, PLAY_BREAKLINE, PLAY_CARRY, PLAY_CARRYWAIT, PLAY_CLEAR, PLAY_EXTEND, PLAY_LINEUP, PLAY_BREAKSEARCH,
        PLAY_LINEUPBREAK, PLAY_TOWARD, PLAY_READY, PLAY_LEVEL, PLAY_SETUP, PLAY_SURVIVE, PLAY_HOLD, NPLAYS };
 static const char *PLAY_NAME[NPLAYS] = { "entry", "nearest", "break line", "carry", "carry wait", "clear", "extend", "lineup", "break search",
                                          "lineup break", "toward", "ready", "level", "setup", "survive", "hold" };
-// the plays judged settle by settle (gambit_judge.js SETTLED); the set-ups (SETUPS)
+// the plays judged settle by settle; the set-ups (SETUPS)
 static int settledPlay(int p) { return p == PLAY_ENTRY || p == PLAY_NEAREST || p == PLAY_BREAKLINE || p == PLAY_CARRY || p == PLAY_CARRYWAIT || p == PLAY_CLEAR; }
 static int setupPlay(int p) { return p == PLAY_SETUP || p == PLAY_LEVEL || p == PLAY_READY || p == PLAY_TOWARD; }
 typedef struct { int32_t combo, chain, broke, cells, earned, done, near100, dropAt, floor; double near; } Xs;   // floor: -1 not said, 0, 1

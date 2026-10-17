@@ -1,4 +1,4 @@
-// THE BREAK SEARCH (survivor_shared.js breakMoves, as Gambit asks it: maxDepth 1, no line kept from the default bot's touch line).
+// THE BREAK SEARCH (as Gambit asks it: maxDepth 1, no line kept from the default bot's touch line).
 // Garbage on the board, a break is a line after which more garbage is broken than the board left alone breaks by the same frame (a
 // popping slab goes on converting whatever is pressed). In order, the first that finds one answers:
 //   1. a first swap that breaks;
@@ -54,7 +54,7 @@ static Line *lineIn(int a) {
 #define SEARCH_OUT() (clockOut() || linesFull)
 static Line *lineNew(void) { return lineIn(KEEPS); }
 
-// ---- the grid (native.js b.grid: rows 0..height+1, 0 empty, -2 garbage, else the colour)
+// ---- the grid (rows 0..height+1, 0 empty, -2 garbage, else the colour)
 static int32_t cellAt(const Board *b, int r, int c) { return r < 0 || r > b->height + 1 || c < 1 || c > W ? 0 : gridCell(b, r, c); }
 static int32_t gridLen(const Board *b) { return b->height + 2; }
 // the lowest row with garbage, from row 1 (G = grid length when none)
@@ -180,7 +180,7 @@ static int stepMarked(BS *s, int par, int kind, int mv, int32_t frames) {
   markStep(s, par, kind, mv, o);
   return o;
 }
-// THE BREAK: more broken than standing still by then, within the rules, played through its settle within the list (attacker.allowed),
+// THE BREAK: more broken than standing still by then, within the rules, played through its settle within the list,
 // and its whole line through the shared line check. Past the clock no check is asked, and nothing breaks.
 static int allowedAt(Ctx *x, int o) {
   if (!liveNode(x, o) || !stepFitsAt(x, o)) return 0;
@@ -448,7 +448,7 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
   if (s.haveToward && out->towards.n < KEEPN) { int t = out->towards.n++; out->towards.len[t] = s.towardLen; for (int k = 0; k < s.towardLen; k++) out->towards.path[t][k] = s.toward[k]; }
 }
 
-// ---- for the break search's own check (break.test.js): the decision's question, the lines carried on in the io body (n lines, each
+// ---- for a host's check: the decision's question, the lines carried on in the io body (n lines, each
 // its length then its swaps), and the answer back into it
 static Broke theBroke;
 static Paths hostResume;

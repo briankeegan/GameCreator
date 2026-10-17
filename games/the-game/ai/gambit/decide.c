@@ -1,4 +1,4 @@
-// GAMBIT'S DECISION (gambit_decide.js; plans/decision.md): read the board, propose, judge, rank, play -- in that order, once a decision.
+// GAMBIT'S DECISION (plans/decision.md): read the board, propose, judge, rank, play -- in that order, once a decision.
 
 // THE QUESTION'S OWN FACTS from the host (answer.c gb_answer): the enemy as the host sends it, whether a raise may begin
 typedef struct { int32_t has, out, topKnown, top, stopKnown, stop; } Opp;
@@ -140,7 +140,7 @@ static void carryOf(const Read *R, const Judge *k) {
   theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0;
   if (k->aim >= 0) { theCarry.hasAim = 1; theCarry.aim = R->aims.aim[k->aim]; }
 }
-// CARRIED ON (gambit_propose.js carried): the rest of the line in progress, found again on this board by its bottom-row panel and
+// CARRIED ON: the rest of the line in progress, found again on this board by its bottom-row panel and
 // played on as it is pressed, while every step is legal and it still makes what it was begun for. wait: its next step must wait for
 // the board to settle.
 static int carriedCand(const Read *R, Cand *k, int *wait) {

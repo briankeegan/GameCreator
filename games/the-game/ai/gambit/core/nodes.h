@@ -14,7 +14,7 @@ static int step(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
 }
 
 // THE BOT'S HANDS, as the host has them (gb_config): the frames it waits after a decision, after a swap, and a cursor step. Every
-// context a search makes is set so (native.js Search: surviveFrames and surviveRest 0).
+// context a search makes is set so (surviveFrames and surviveRest 0).
 static int32_t cfgReaction = 12, cfgSwapGap = 12, cfgCursor = 4;
 EXPORT(gb_config) void gb_config(int reaction, int swapGap, int cursorMoveFrames) { cfgReaction = reaction; cfgSwapGap = swapGap; cfgCursor = cursorMoveFrames; }
 static Ctx *ctxOf(Ctx *x) {
@@ -24,7 +24,7 @@ static Ctx *ctxOf(Ctx *x) {
 }
 // THE QUESTION: the board a decision is made on, the raise in hand and the garbage on its way -- what every search roots its lines at.
 typedef struct { Board *b; int32_t holdLeft, holdStarted, narr; Arr arr[MAXARR]; int32_t tight; } Question;
-// A search's root, made from the question (native.js Search.root): every node before it is let go.
+// A search's root, made from the question: every node before it is let go.
 static int rootOf(Ctx *x, const Question *q) {
   ns_reset(x);
   Board *b = nb_new();

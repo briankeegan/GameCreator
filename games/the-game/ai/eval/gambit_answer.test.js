@@ -1,8 +1,8 @@
-// GAMBIT'S TURN through the mind (survivor_think.js -> gambit_answer.js), every mode, on real boards and on a board with a block landed:
-// an answer comes back, Gambit's, and nothing it plays makes a chain past GAMBIT.MAXCHAIN.
+// GAMBIT'S TURN through the mind (survivor_think.js -> gambit/gambit.wasm), every mode, on real boards and on a board with a block landed:
+// an answer comes back, Gambit's, and what it plays lives when anything does.
 // Run: node gambit_answer.test.js
 var assert = require('assert'), path = require('path');
-var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js')), GAMBIT = require('./gambit.js');
+var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
 var modes = ['finish', 'pressure', 'bigchain', 'build'], answered = 0, gambit = 0;
 modes.forEach(function (mode) {
   process.env.GC_SURVIVOR_PROFILE = path.join(__dirname, 'survivor-profiles', 'gambit-' + mode + '.json');
@@ -34,41 +34,6 @@ for (var f0 = 0; f0 < 30; f0++) low.run();
 var mindL = require('./survivor_think.js')({ profile: require('./survivor_shared.js').profile(), threads: 1 });
 var up = mindL.answer({ id: 99, epoch: 0, at: low.clock, ms: 0, hold: { left: 0, started: false }, arrivals: [], board: low.copy(), acted: true });
 assert.ok(up.kind === 'raise' && up.raiseFrames > 0 && up.raiseAfter > 0, 'a low stack is raised held down: ' + up.kind + ' ' + up.raiseFrames + '+' + up.raiseAfter);
-// THE RAISE IS HELD FOR THE ROWS THAT LEAVE A PLAN: with nothing shown coming, every row asked; with more rows shown coming than the
-// board can take once raised, fewer -- each row tried raised on the engine, everything landed, and a break line the board survives looked for
-var AT = require('./survivor_attack.js')({ reaction: 12, swapGap: 12, cursorMoveFrames: 4 }), H0 = { left: 0, started: false };
-var flood = Array.apply(null, Array(9)).map(function (_, i) { return { at: 90 + i, width: 6, height: 1 }; });
-assert.strictEqual(AT.raiseReady(low, H0, [], 5, 150), 5, 'nothing coming: every row');
-var fewer = AT.raiseReady(low, H0, flood, 5, 300);
-assert.ok(fewer < 5, 'nine rows coming: fewer rows raised (' + fewer + ')');
-var est = GAMBIT.facts(low, flood, false).dies;
-assert.ok(AT.diesIn(low, H0, flood, est) < est, 'the garbage on its way decides the frames left, not the rise alone');
-// WHICH MOVES LIVE, from the one outcome (JUDGE.outcome): a low board with nothing coming lives held; under fourteen slabs shown coming
-// it is lost left alone; topped out the hold buys no stop, so a break left for later is no life for it
-var JUDGE = require('./gambit_judge.js'), AT0 = require('./survivor_attack.js')({ reaction: 12, swapGap: 12, cursorMoveFrames: 4 });
-var Rq = function (topped) { return { list: [{ combo: '>=5' }, { combo: '<=3', chain: '==1' }], F: { us: { nextLands: null, topped: !!topped } } }; };
-var cOf = function (b, arr) { return { board: b, m: { hold: H0 }, arrivals: arr, attacker: AT0, tight: false, left: function () { return 1e9; } }; };
-assert.ok(JUDGE.outcome(cOf(low, []), Rq(), [], false).lives, 'nothing coming: the hold lives');
-var heavy = Array.apply(null, Array(14)).map(function (_, i) { return { at: 40 + i, width: 6, height: 2 }; });
-var hv = JUDGE.outcome(cOf(low, heavy), Rq(), [], false);
-assert.ok(!hv.lives && hv.lostAt < Infinity, 'fourteen slabs coming: the hold is lost (' + hv.lostAt + ')');
-var tb = null;
-for (var ts = 1; ts <= 20 && !tb; ts++) {
-  var tg = PA.game({ level: 10, seed: ts, countdown: false });
-  for (var tf = 0; tf < 400; tf++) tg.run();
-  tg.receiveGarbage([{ width: 6, height: 4, isChain: false, isMetal: false }]);
-  for (tf = 0; tf < 600 && !(tg.isToppedOut && tg.isToppedOut()) && tg.gameOverClock <= 0; tf++) tg.run();
-  if (tg.gameOverClock <= 0 && tg.isToppedOut && tg.isToppedOut()) { tg.stopTime = 90; tb = tg; }
-}
-assert.ok(tb, 'a topped board');
-var th = JUDGE.outcome(cOf(tb, []), Rq(true), [], false);
-assert.ok(th.dead || th.ready !== true, 'topped: the hold buys no stop, and no plan left for later makes it live (ready ' + th.ready + ')');
-// THE MOVE PLAYED IS THE ORDER'S FIRST: the raise only as the opening called for it; else the first candidate's first swap, or the hold
-var GA = require('./gambit_answer.js'), lv = { o: { lives: true } }, dd = { o: { lives: false, lostAt: 50 } };
-assert.strictEqual(GA.chosen({ R: { up: true }, info: {}, top: null, line: null }).d.kind, 'raise', 'the raise the opening called for');
-assert.strictEqual(GA.chosen({ R: { up: false }, info: {}, top: Object.assign({ play: 'hold', hold: true }, lv), line: null }).d.kind, 'hold', 'the hold, ranked first');
-var ln = Object.assign({ play: 'break search', seq: [[3, 2], [4, 2]] }, dd);
-assert.deepStrictEqual(GA.chosen({ R: { up: false }, info: {}, top: ln, line: ln }).d.move, [3, 2], 'a line ranked first: its first swap');
 // THE LINE PRESSED ON: an answer for a line the judge plays swap after swap hands the frame loop the swaps after the first
 var handed = 0, settledHanded = 0;
 ['finish'].forEach(function (mode) {
@@ -89,24 +54,6 @@ var handed = 0, settledHanded = 0;
   }
 });
 assert.ok(handed > 0, 'lines handed on to the frame loop: ' + handed);
-// THE SEARCH CARRIED ON PAST WHAT WAS PRESSED: the kept lines less the move decided and the steps of the handed-on line the frame loop
-// says it pressed (lineFrom, linePressed); a question about another answer's line strips the decided move alone
-var cb = PA.game({ level: 10, seed: 4, countdown: false });
-for (var cf = 0; cf < 200; cf++) cb.run();
-cb.receiveGarbage([{ width: 6, height: 1, isChain: false, isMetal: false }]);
-for (cf = 0; cf < 100; cf++) cb.run();
-var gid0 = null, gr0 = require('./survivor_shared.js').lowestGarbageRow(cb);
-for (var gc0 = 1; gc0 <= 6 && gid0 === null; gc0++) if (cb.panels[gr0][gc0].isGarbage) gid0 = cb.panels[gr0][gc0].garbageId;
-var K0 = { paths: [[[2, 1], [2, 3], [3, 4], [4, 5]], [[2, 2], [2, 3]]], gid: gid0, anchor: { row: 1, col: 6, id: cb.panels[1][6].id }, id: 77, played: [2, 1], handed: [[2, 3], [3, 4], [4, 5]] };
-var cc0 = function (from, pressed) { return { bot: { _brKeep: K0 }, board: cb, m: { lineFrom: from, linePressed: pressed } }; };
-assert.deepStrictEqual(GA.carriedPaths(cc0(77, 1)), [[[3, 4], [4, 5]]], 'the move and one pressed step of the handed line taken off');
-assert.deepStrictEqual(GA.carriedPaths(cc0(12, 3)), [[[2, 3], [3, 4], [4, 5]]], 'another answer\'s line: the decided move alone taken off');
-// (the line toward a break played last is carried as its rest, the same moves taken off -- and none when another line was played)
-var cT = { bot: { _brKeep: Object.assign({}, K0, { toward: [[2, 1], [2, 3], [3, 4], [4, 5]] }) }, board: cb, m: { lineFrom: 77, linePressed: 1 } };
-GA.carriedPaths(cT);
-assert.deepStrictEqual(cT.towardRest, [[3, 4], [4, 5]], 'the toward line begun: its rest carried on');
-var cN = cc0(77, 1); GA.carriedPaths(cN);
-assert.strictEqual(cN.towardRest, null, 'no toward line played: no rest');
 // A DECISION'S TIME IS THE TIME TO ITS MOVE: a question asked 90 frames ahead, with 1.5 s to spare, is answered within a reaction's
 // frames (13 at 60 a second, 217 ms) -- the answer's margin over it at most
 process.env.GC_SURVIVOR_PROFILE = path.join(__dirname, 'survivor-profiles', 'gambit-finish.json');
@@ -149,61 +96,6 @@ for (var ds = 1; ds <= 3; ds++) {
   mindD.reset();
 }
 assert.ok(towardN > 0, 'swaps toward a break played: ' + towardN + ' of ' + dugBoards + ' moves');
-// (and the rule itself: of two lines toward a break, the first leading back to a board the dig stood on, the second is offered)
-var PROPt = require('./gambit_propose.js'), tbd = PA.game({ level: 10, seed: 5, countdown: false });
-for (dfr = 0; dfr < 200; dfr++) tbd.run();
-var tsw = tbd.legalSwaps(), backLine = [tsw[0]], fwdLine = [tsw[1]], seenT = new Set([SHt.boardAfter(tbd, tsw[0])]);
-var offeredT = PROPt.toward({ board: tbd, br: { towards: [backLine, fwdLine] }, seenDig: seenT }, { under: true });
-assert.deepStrictEqual(offeredT[0] && offeredT[0].seq, fwdLine, 'the line back to a board stood on is passed over');
-assert.deepStrictEqual(PROPt.toward({ board: tbd, br: { towards: [backLine, fwdLine] }, seenDig: new Set() }, { under: true })[0].seq, backLine, 'with nothing stood on, the first line');
-// (THE DIG GOES ON ALONG THE LINE BEGUN: the search ranks another line first this decision, the rest of the one begun is offered)
-var restT = [tsw[2]], otherT = [tsw[3]];
-assert.deepStrictEqual(PROPt.toward({ board: tbd, br: { towards: [otherT, restT.concat([tsw[4]])] }, seenDig: new Set(), towardRest: restT }, { under: true })[0].seq,
-                       restT.concat([tsw[4]]), 'a line of the search that carries the one begun further comes first');
-assert.deepStrictEqual(PROPt.toward({ board: tbd, br: { towards: [otherT] }, seenDig: new Set(), towardRest: restT }, { under: true })[0].seq,
-                       restT, 'the rest of the line begun before a line the search ranks first');
-// READY WHEN EVERYTHING LANDS: with garbage on its way, a line that breaks nothing lives only when a break is there once it has landed --
-// standing on stop time is not enough. A board under a slab with 600 frames of stop, a second twelve-row slab shown coming: the hold
-// stands to the horizon, and lives only as it is ready
-var Rr = { list: [{ combo: '>=5' }, { combo: '<=3', chain: '==1' }], F: { us: { nextLands: null, topped: false } } }, readyChecked = 0;
-for (var rs = 1; rs <= 6; rs++) {
-  var rb = PA.game({ level: 10, seed: rs, countdown: false });
-  for (var rf = 0; rf < 200; rf++) rb.run();
-  rb.receiveGarbage([{ width: 6, height: 6, isChain: false, isMetal: false }]);
-  for (rf = 0; rf < 160 && rb.gameOverClock <= 0 && !SHt.lowestGarbageRow(rb); rf++) rb.run();
-  if (rb.gameOverClock > 0) continue;
-  rb.stopTime = 600;
-  var ro = JUDGE.outcome(cOf(rb, [{ at: 40, width: 6, height: 12 }]), Rr, [], false);
-  if (ro.dead || ro.lostAt !== Infinity) continue;
-  assert.strictEqual(ro.lives, ro.ready === true, 'seed ' + rs + ': the hold stands on its stop (lostAt Infinity) and lives only as it is ready (' + ro.ready + ')');
-  readyChecked++;
-}
-assert.ok(readyChecked > 0, 'boards standing on stop with a slab coming: ' + readyChecked);
-// READINESS IS ASKED WHERE IT DECIDES, IN TIME: a line that breaks and stands to the horizon lives whatever readiness says, so it is not
-// asked (readyIfBreak); and past the decision's deadline (readyBy) the search after the first swaps is not begun -- unknown, not false
-var SHq = require('./survivor_shared.js'), Sq = new (require('./native.js').server.Search)({ reaction: 12, swapGap: 12, cursorMoveFrames: 4, threads: 1 }), brkAsked = 0, byAsked = 0;
-for (var qs = 1; qs <= 12 && !(brkAsked && byAsked); qs++) {
-  var qb = PA.game({ level: 10, seed: qs, countdown: false });
-  for (var qf = 0; qf < 200; qf++) qb.run();
-  qb.receiveGarbage([{ width: 6, height: 2, isChain: false, isMetal: false }]);
-  for (qf = 0; qf < 160 && qb.gameOverClock <= 0 && !SHq.lowestGarbageRow(qb); qf++) qb.run();
-  if (qb.gameOverClock > 0 || !SHq.lowestGarbageRow(qb)) continue;
-  var qarr = [{ at: 60, width: 6, height: 2 }];
-  var qall = AT0.judge(qb, H0, [], qarr, { readyAt: 60, lifeTo: 360, lifeRest: 120 });
-  if (qall.ready === false) {
-    assert.strictEqual(AT0.judge(qb, H0, [], qarr, { readyAt: 60, lifeTo: 360, lifeRest: 120, readyBy: Date.now() - 1 }).ready, undefined, 'seed ' + qs + ': past the deadline readiness is unknown');
-    byAsked++;
-  }
-  var qbr = SHq.breakMoves(Sq, qb, H0, qarr, 1, 0, Date.now() + 500, null, null, { touchInPop: true, near: true });
-  var qseq = qbr && qbr.depth ? (qbr.path || [Object.keys(qbr.moves)[0].split(',').map(Number)]) : null;
-  var qj = qseq && AT0.judge(qb, H0, qseq, qarr, { readyAt: 60, lifeTo: 360, lifeRest: 120, readyIfBreak: true });
-  if (qj && !qj.dead && qj.made.broke > 0 && qj.lostAt === Infinity) { assert.strictEqual(qj.ready, undefined, 'seed ' + qs + ': a break that stands is not asked readiness'); brkAsked++; }
-}
-// (and the shared line check is the decision's work too: one not begun by the decision's deadline keeps no line)
-var lfSwap = low.legalSwaps().filter(function (mv) { return JUDGE.lineFits(cOf(low, []), Rr, [mv], false).ok; })[0];
-assert.ok(lfSwap, 'a swap the line check keeps');
-assert.strictEqual(JUDGE.lineFits(Object.assign(cOf(low, []), { due: Date.now() - 1, margin: 0 }), Rr, [lfSwap], false).ok, false, 'past the deadline the line check keeps nothing');
-assert.ok(brkAsked > 0 && byAsked > 0, 'readiness skipped for a standing break (' + brkAsked + ') and past the deadline (' + byAsked + ')');
 // HEALTH IS IGNORED: every board Gambit judges has level 10's health (planHealth), and one where nothing lives is judged so again --
 // no decision ever counts on the health a game gives
 var SHh = require('./survivor_shared.js'), mindH2 = require('./survivor_think.js')({ profile: SHh.profile(), threads: 1 }), doomedSeen = 0;

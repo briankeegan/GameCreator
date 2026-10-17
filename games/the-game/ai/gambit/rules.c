@@ -1,4 +1,4 @@
-// THE RULES (gambit.js): the mode's list -- what a line may make -- read once a decision and handed to every search. A list is its
+// THE RULES: the mode's list -- what a line may make -- read once a decision and handed to every search. A list is its
 // entries in priority order; an entry (an aim) tests what a line makes: { combo, chain, send, break }.
 //
 // What a line makes ({ combo: the largest match, chain: links, broke: garbage cells converted, cells: garbage sent }) is counted by
@@ -10,7 +10,7 @@
 
 // One test of a number: an operator and its operand ("<=3"); OP_NONE where the aim does not ask it.
 enum { OP_NONE, OP_GE, OP_LE, OP_EQ, OP_NE, OP_GT, OP_LT };
-// near: written as a string near() reads (gambit.js nearKey: ">=8", not a plain number or a negative)
+// near: written as a string near() reads (">=8", not a plain number or a negative)
 typedef struct { int32_t op, n, near; } Test;
 // brk: -1 not asked, 0 a line that breaks nothing, 1 a line that breaks
 typedef struct { Test combo, chain, send; int32_t brk; } Aim;
@@ -73,7 +73,7 @@ static int32_t comboCells(int32_t size) {
   return size < 20 ? 24 : size < 27 ? 36 : 48;
 }
 
-// THE LIST FROM THE HOST: n entries, each ten words -- combo, chain and send (each op, n, near) and break -- in the io body (gambit.js
+// THE LIST FROM THE HOST: n entries, each ten words -- combo, chain and send (each op, n, near) and break -- in the io body (the loader
 // writes them from the rules file).
 static List theList;
 EXPORT(gb_list) int gb_list(int n) {
@@ -86,12 +86,12 @@ EXPORT(gb_list) int gb_list(int n) {
   theList.n = n;
   return n;
 }
-// (for the rules' own check, gambit_c.test.js: what fits and meets say of a made line, against the JavaScript's)
+// (for a host's check: what fits and meets say of a made line)
 EXPORT(gb_fits) int gb_fits(int combo, int chain, int broke, int cells) { Made m = { combo, chain, broke, cells }; return fits(&theList, m); }
 EXPORT(gb_entry_of) int gb_entry_of(int combo, int chain, int broke, int cells) { Made m = { combo, chain, broke, cells }; return entryOf(&theList, m); }
 EXPORT(gb_meets) int gb_meets(int i, int combo, int chain, int broke, int cells) { Made m = { combo, chain, broke, cells }; return i >= 0 && i < theList.n && meets(&theList.aim[i], m); }
 
-// A SWAP BACK (gambit_judge.js swapBack): the same two panels the last swap swapped, which puts the board back as it was -- no play,
+// A SWAP BACK: the same two panels the last swap swapped, which puts the board back as it was -- no play,
 // unless the line clears or breaks on this board; and even then not after the same pair twice running; and never a pair blocked
 // until a frame. What the last decisions swapped is the host's (gb_back), the panels' ids on the board the decision is made on.
 typedef struct { int32_t lastA, lastB, runs, blockA, blockB, blockUntil, at; } Back;

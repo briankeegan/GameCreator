@@ -15,7 +15,7 @@ var DIR = __dirname;
 require(path.join(DIR, '..', '..', 'panel-cpu.js'));
 var P = require(path.join(DIR, 'puyocpu.js')), PA = require(path.join(DIR, '..', '..', 'pa-engine.js'));
 var SH = require(path.join(DIR, 'survivor_shared.js')), SP = require(path.join(DIR, 'survivor_prefer.js')), MODES = require(path.join(DIR, 'modes.js'));
-var ATTACK = require(path.join(DIR, 'survivor_attack.js')), GAMBIT = require(path.join(DIR, 'gambit.js')), GANSWER = require(path.join(DIR, 'gambit_answer.js')), KEYS = require(path.join(DIR, 'survivor_keys.js'));
+var ATTACK = require(path.join(DIR, 'survivor_attack.js')), GAMBIT = require(path.join(DIR, '..', 'gambit', 'gambit.js')), KEYS = require(path.join(DIR, 'survivor_keys.js'));
 var CK = require(path.join(DIR, 'survivor_checks.js')), fullTop = CK.fullTop, lowPeak = CK.lowPeak, lowPeakOf = CK.lowPeakOf, panelCount = CK.panelCount, raiseCap = CK.raiseCap, cascadeLive = CK.cascadeLive;
 var SPEND = Number(process.env.GC_SURVIVOR_SPEND) || 0.6;   // budget searched per millisecond over the last decisions, and the share of the time there is spent searching
 // The search ends this long before the answer is due, for the rest of the decision and its post.
@@ -127,7 +127,7 @@ module.exports = function think(cfg) {
       // break TALL_RANK + h frames away. Six-wide garbage lands on the tallest
       // column, so that column is the board's height.
       // (under threat with defendUnderThreat the preferences are the defence's own: the profile with no attack block, at defendRaiseTo)
-      // GAMBIT plays its own turn (gambit_answer.js): nothing below is Gambit's
+      // GAMBIT plays its own turn (gambit/gambit.wasm): nothing below is Gambit's
       if (gambitRules) return gambitTurn();
       var A0 = cfg.profile.attack;
       var defendA = !!(A0 && A0.defendUnderThreat && matchMode !== 'timeattack' && (SH.lowestGarbageRow(board) || (board.incoming || []).length || arrivals.length));
@@ -1047,31 +1047,16 @@ module.exports = function think(cfg) {
       out = failed(e);
     }
     return out;
-    // GAMBIT'S TURN (gambit_answer.js): its own judge on the engine, the native searches cut at the answer's due time
+    // GAMBIT'S TURN (gambit/gambit.wasm): its own decision, cut at the answer's due time
     function gambitTurn() {
-      var N = require(path.join(DIR, 'native.js')).server;
       // (A DECISION'S TIME IS THE TIME TO ITS MOVE: no more than a reaction's frames -- the soonest a next swap could be pressed anyway --
       // however far ahead it was asked, so moves come every reaction and a slow decision does not buy the next one more time. The break
       // search carries its work on across decisions, so what it does not finish in one it goes on with in the next)
       var perFrame = m.lead > 0 && m.ms > 0 ? m.ms / m.lead : 1000 / 60;
       if (due) due = Math.min(due, (m.posted || t0) + (OPTS.reaction + 1) * perFrame);
-      if (due) N.deadline(due - DEADLINE_MARGIN_MS);
-      // (THE C GAMBIT, gambit/gambit.wasm: the game's Gambit -- GC_GAMBIT_JS=1 plays the JavaScript one it was ported from)
-      if (process.env.GC_GAMBIT_JS !== '1') {
-        if (!gambitC) gambitC = new (require(path.join(DIR, '..', 'gambit', 'gambit.js')).Gambit)({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames,
-                                                                                                    rules: gambitRules, gambit: cfg.profile.gambit });
-        return gambitC.answer({ m: m, board: board, arrivals: arrivals, due: due, t0: t0, margin: DEADLINE_MARGIN_MS, canRaise: function () { return bot._canRaise(); }, mem: NativeMem });
-      }
-      if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
-      try {
-        var ga = GANSWER.answer({ bot: bot, m: m, board: board, arrivals: arrivals, due: due, t0: t0, attacker: attacker, search: search, rules: gambitRules, reaction: OPTS.reaction,
-                                  GP: cfg.profile.gambit, pace: cfg.profile.pace, margin: DEADLINE_MARGIN_MS, nativeMem: NativeMem, stale: stale, aborted: P.ABORTED });
-        // (Gambit ignores health: every board is judged at level 10's -- planHealth -- however its decisions go; the default's planReal
-        // fallback is not Gambit's)
-        return ga;
-      } finally {
-        N.deadline(0);
-      }
+      // (GAMBIT, gambit/gambit.wasm: one per mind, its rules read again whenever the file changes)
+      if (!gambitC) gambitC = new GAMBIT.Gambit({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames, rules: gambitRules, gambit: cfg.profile.gambit });
+      return gambitC.answer({ m: m, board: board, arrivals: arrivals, due: due, t0: t0, margin: DEADLINE_MARGIN_MS, canRaise: function () { return bot._canRaise(); }, mem: NativeMem });
     }
     function failed(e) {
       var out;

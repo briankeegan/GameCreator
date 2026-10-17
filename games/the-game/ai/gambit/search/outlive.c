@@ -1,4 +1,4 @@
-// GAMBIT'S SURVIVAL SEARCH (attacker.outlive): lines of swaps played one after another, a beam of the boards lost latest left alone, of
+// GAMBIT'S SURVIVAL SEARCH: lines of swaps played one after another, a beam of the boards lost latest left alone, of
 // those held longest -- the frame the garbage queued could next drop (the line's frames, then the later of stop + pre-stop and the
 // shake) -- then with the most room over the stack, then the least garbage; each step's clears held to the list. The first line whose
 // board, left alone, is still alive at `to` (frames from now) and `rest` past its own end, and passes the shared line check, is the

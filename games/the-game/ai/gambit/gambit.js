@@ -1,4 +1,4 @@
-// GAMBIT'S LOADER: the only JavaScript of the C Gambit (PLAN.md). It loads gambit.wasm and hands it what it decides on.
+// GAMBIT'S LOADER (README.md). It loads gambit.wasm and hands it what it decides on.
 var fs = require('fs'), path = require('path');
 
 var OPS = { '>=': 1, '<=': 2, '==': 3, '!=': 4, '>': 5, '<': 6 };   // rules.c OP_*
@@ -55,7 +55,7 @@ function rulesWords(tables, names) {
   [['defend', 0], ['attack', 1]].forEach(function (tb) {
     (tables[tb[0]] || []).forEach(function (r) {
       if (names.indexOf(r.name) < 0) names.push(r.name);
-      var when = Object.keys(r.when || {}), list = Array.isArray(r.aims) ? r.aims : [r.aim, r.else].filter(Boolean), end = 0, aims = [];
+      var when = Object.keys(r.when || {}), list = aimsOf(r), end = 0, aims = [];
       for (var i = 0; i < list.length; i++) { if (typeof list[i] === 'string') { end = list[i] === 'hold' ? 2 : 1; break; } aims.push(list[i]); }
       w.push(tb[1], names.indexOf(r.name), when.length);
       when.forEach(function (k) { w.push(FACTS.indexOf(k)); w = w.concat(testOf(r.when[k], 'when ' + k)); });
@@ -67,6 +67,57 @@ function rulesWords(tables, names) {
   });
   w = w.concat(keepWords(tables.keep), [(tables.raise && tables.raise.to) || 0, tables.underGarbage === 'ignore' ? 1 : 0]);
   return { n: n, words: w };
+}
+
+// ---- THE RULES FILE, read again whenever it changes (its mtime): it may be rewritten between matches or while one runs, and the next
+// decision plays by it. An opponent with tables of its own is played by those. A file that fails to read or parse leaves the last good
+// tables in force; the rules it drops (a `when` on the wrong side's board, no aim) are listed in `errors`.
+var SIDE = { defend: 'us.', attack: 'enemy.' };
+function aimsOf(rule) { if (Array.isArray(rule.aims)) return rule.aims; var l = []; if (rule.aim) l.push(rule.aim); if (rule.else) l.push(rule.else); return l; }
+// a table's rules, each `when` led by its own side's board: a rule that tests only the other side is dropped, and the reason kept
+function checked(tables) {
+  var out = { defend: [], attack: [] }, errors = [];
+  ['defend', 'attack'].forEach(function (t) {
+    ((tables && tables[t]) || []).forEach(function (r, i) {
+      var keys = Object.keys(r.when || {}), own = keys.filter(function (k) { return k.indexOf(SIDE[t]) === 0; });
+      if (keys.length && !own.length) errors.push(t + ' rule ' + i + ' (' + (r.name || '') + ') tests only ' + keys.join(', ') + ': a ' + t + ' rule tests ' + SIDE[t] + '* first');
+      else if (!aimsOf(r).length || !aimsOf(r).every(function (a) { return (a && typeof a === 'object') || a === 'default' || a === 'hold'; })) errors.push(t + ' rule ' + i + ' (' + (r.name || '') + ') has no aims, or one that is not an aim, "default" or "hold"');
+      else out[t].push(r);
+    });
+  });
+  return { tables: out, errors: errors };
+}
+// every table checked, each with the file's settings -- the floor (keep), the raise, what is done under garbage -- an opponent's over the file's
+function parse(j) {
+  var c = checked(j), own = {}, errors = c.errors.slice();
+  var settings = function (o) { return { keep: (o && o.keep) || j.keep || null, raise: (o && o.raise) || j.raise || null, underGarbage: (o && o.underGarbage) || j.underGarbage || 'break' }; };
+  Object.assign(c.tables, settings(null));
+  Object.keys(j.opponents || {}).forEach(function (name) {
+    var co = checked(j.opponents[name]);
+    own[name] = Object.assign(co.tables, settings(j.opponents[name]));
+    co.errors.forEach(function (e) { errors.push(name + ': ' + e); });
+  });
+  return { all: c.tables, own: own, errors: errors };
+}
+function Rules(file) { this.file = file; this.mtime = -1; this.all = { defend: [], attack: [] }; this.own = {}; this.error = null; this.errors = []; }
+Rules.prototype.get = function (opponent) {
+  try {
+    var st = fs.statSync(this.file);
+    if (st.mtimeMs !== this.mtime) {
+      var P = parse(JSON.parse(fs.readFileSync(this.file, 'utf8')));
+      this.all = P.all; this.own = P.own; this.errors = P.errors; this.mtime = st.mtimeMs; this.error = null;
+      console.error('GAMBIT rules ' + this.file + ': ' + this.all.defend.length + ' defend, ' + this.all.attack.length + ' attack, ' + Object.keys(P.own).length + ' opponents' + (P.errors.length ? '; dropped: ' + P.errors.join(' | ') : ''));
+    }
+  } catch (e) { this.error = String(e && e.message || e); }
+  return (opponent && this.own[opponent]) || this.all;
+};
+// The rules of a profile with `gambit` (null without): its own object, the file GC_GAMBIT_RULES names, or the file the profile names
+function rulesFor(profile, dir) {
+  var g = profile && profile.gambit;
+  if (!g) return null;
+  if (g.rules && typeof g.rules === 'object') { var P = parse(g.rules); return { get: function (opponent) { return (opponent && P.own[opponent]) || P.all; } }; }
+  if (process.env.GC_GAMBIT_RULES) return new Rules(process.env.GC_GAMBIT_RULES);
+  return new Rules(path.isAbsolute(g.rules) ? g.rules : path.join(dir, g.rules));
 }
 
 // ---- GAMBIT: one bot's C Gambit, on a gambit.wasm of its own (native.js's machinery on it: the board written in, the root made)
@@ -129,5 +180,20 @@ Gambit.prototype.answer = function (q) {
            diag: { walk: null, clears: clears, gambit: info } };
 };
 Gambit.prototype.newGame = function () { this.X.gb_new_game(); this.lastAt = null; };
+// THE BREAK SEARCH ALONE (the reach report: was a break there to find?): the board and the mode's list, searched for up to `ms` -- the
+// break's line (swaps as [row, col]) or null
+Gambit.prototype.breakOn = function (board, arrivals, aims, ms) {
+  this.S.reset();
+  var r = this.S.root(board.copy(), { left: 0, started: false }, arrivals || [], false), X = this.X;
+  this.G.list(aims); X.gb_list_on(1);
+  X.gb_decision_start(this.S.ctx, r._i, 0, -1, 0, 1, 0);
+  X.gb_clock_start(Date.now() + ms);
+  var w = this.G.body(X.gb_break(0, 0)), depth = w[0], k = 7, nm = w[k++];
+  if (!depth) return null;
+  var first = nm ? [w[k] >> 3, w[k] & 7] : null; k += 3 * nm;
+  var pl = w[k++], path = [];
+  for (var i = 0; i < pl; i++) path.push([w[k + i] >> 3, w[k + i] & 7]);
+  return pl ? path : [first];
+};
 
-module.exports = { load: load, bind: bind, aimWords: aimWords, rulesWords: rulesWords, Gambit: Gambit };
+module.exports = { load: load, bind: bind, aimWords: aimWords, testOf: testOf, rulesWords: rulesWords, aimsOf: aimsOf, checked: checked, parse: parse, Rules: Rules, rulesFor: rulesFor, FACTS: FACTS, Gambit: Gambit };

@@ -1,4 +1,4 @@
-// THE JUDGE (attacker.judge, survivor_attack.js; plans/decision.md step 3): a line played on the engine as the game will press it --
+// THE JUDGE (plans/decision.md step 3): a line played on the engine as the game will press it --
 // `settled`, each step once the board has settled from the last (a planned line); else every step at once, one after the other, the
 // board then let settle -- each swap pressed when the frame loop presses it (tight: walked held from two cells, pressDelay). What it
 // makes is counted over every step and the settle after: the largest match, the longest chain, the garbage broken -- beyond what the
@@ -9,9 +9,9 @@
 // stops comes back `late`, and is no answer.
 
 #define MAXLINE 64
-#define NOT_ASKED (-1)   // a readiness not asked, or not finished in time (the JavaScript's undefined)
+#define NOT_ASKED (-1)   // a readiness not asked, or not finished in time
 #define FOREVER 0x7fffffff
-#define LOST_FIRST 2     // breaksAfterLanding: the board is lost before everything lands (the JavaScript's null)   // a board that stands to the horizon: lostAt (the JavaScript's Infinity)
+#define LOST_FIRST 2     // breaksAfterLanding: the board is lost before everything lands   // a board that stands to the horizon: lostAt
 
 typedef struct {
   int32_t settled, tight;
@@ -34,13 +34,13 @@ typedef struct {
 
 static Ctx *judgeCtx;   // the judge's own nodes: a search can ask it while its own nodes stand
 
-// THE PRESS AS THE FRAME LOOP MAKES IT (survivor_keys.js pressDelay): with the input budget tight the frame loop walks the cursor held
+// THE PRESS AS THE FRAME LOOP MAKES IT: with the input budget tight the frame loop walks the cursor held
 // from two cells (slowWalks), which presses the swap later than the search's own walk. The frames later, from node pi.
 #define TAP_GAP 4         // frames between taps (cursorMoveFrames)
 #define REPEAT_FIRST 10   // frames from the press to the second cell (curWaitTime 20, counted twice a frame)
 static int32_t keyBuf[3 * 4096], walkBuf[2 * 4096];
 static int firstSwap(const int32_t *in, int n) { for (int i = 0; i < n; i++) if (in[i] & IN_SWAP) return i; return -1; }
-// slowWalks' keys (survivor_keys.js): every walk of two cells or more held, the frames it is late by put in before the next key
+// slowWalks' keys: every walk of two cells or more held, the frames it is late by put in before the next key
 static int slowWalks(const int32_t *in, int n, int32_t *out, int cap) {
   int k = 0, i = 0;
   while (i < n && k < cap) {
@@ -189,7 +189,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   j->late = j->late || clockOut();
 }
 
-// ---- for the judge's own check (judge.test.js): the question from a node of a search the host made, and a line judged
+// ---- for a host's check: the question from a node of a search the host made, and a line judged
 static Board *hostBoard;
 static Question hostQ;
 EXPORT(gb_question) int gb_question(Ctx *hx, int i, int tight) {
@@ -221,7 +221,7 @@ EXPORT(gb_judge) int gb_judge(int nseq, int settled, int tight, int readyAt, int
   return k;
 }
 
-// THE FIRST CLEAR OF A LINE THAT IS TO CLEAR NOTHING (attacker.firstClear): each step played to the board's settle, in turn, pressed when
+// THE FIRST CLEAR OF A LINE THAT IS TO CLEAR NOTHING: each step played to the board's settle, in turn, pressed when
 // the frame loop presses it; the index of the first that clears panels and breaks no garbage, -1 if none does
 static int firstClear(const Question *q, const int32_t *seq, int nseq) {
   Ctx *x = judgeCtx = ctxOf(judgeCtx);
@@ -238,7 +238,7 @@ static int firstClear(const Question *q, const int32_t *seq, int nseq) {
   }
   return -1;
 }
-// A LINE PLAYED ON (attacker.replay: the rest of a line begun): each step played to the board's settle, as the planner plays a line,
+// A LINE PLAYED ON (the rest of a line begun): each step played to the board's settle, as the planner plays a line,
 // the next step pressed once the board has settled from the last (settleFirst); what its last step makes, or 0 when a step is not
 // legal or the board dies. wait: the frames until the board has settled first.
 typedef struct { int32_t combo, chain, broke, cells, earned, done, fire, wait, nats, ats[MAXLINE]; } Replayed;

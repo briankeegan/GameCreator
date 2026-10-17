@@ -1,4 +1,4 @@
-// READINESS (survivor_attack.js readyFor, readyLines, raiseReady): whether the board can break the garbage on its way once it lands, and
+// READINESS (readyLines, raiseReady): whether the board can break the garbage on its way once it lands, and
 // the moves that make it so -- every one asked of breaksAfterLanding (judge.c), the readiness every move that breaks nothing is held to.
 
 static Ctx *readyCtx;
@@ -32,9 +32,8 @@ static Readied readyFor(const Question *q, double ms) {
   return out;
 }
 
-// THE ORDER OF THE FIRST SWAPS (readyLines' sort, near the top of the stack first), as the game's JavaScript ordered them: its comparator
-// says "b first" only when b is strictly nearer, so the order is V8's sort of the swaps with it -- a run found and turned, then binary
-// insertion (an array of a board's swaps is always shorter than the merges begin at)
+// THE ORDER OF THE FIRST SWAPS: nearest the top of the stack first. The comparator says "b first" only when b is strictly nearer; the
+// order it leaves (a run found and turned, then binary insertion) is part of what the search finds first, so it is kept exactly
 static int nearerFirst(int32_t a, int32_t b, int32_t top) { int da = CR(a) - top, db = CR(b) - top; if (da < 0) da = -da; if (db < 0) db = -db; return db < da ? 1 : -1; }
 static void sortNearTop(int32_t *a, int n, int32_t top) {
   if (n < 2) return;
