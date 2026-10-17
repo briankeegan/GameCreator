@@ -2102,6 +2102,32 @@ function drawWormhole(center, r, now) {
   ctx.restore();
 }
 
+// What each kind of ground IS, in the ship's own words, for the Scan card.
+// Every one says the two things that decide a turn: whether we can fly into
+// it, and what it costs us.
+const GROUND_CARD = {
+  asteroid: {
+    name: "ASTEROID FIELD",
+    text: "Solid rock. Nothing flies through it and nothing shoots through it — but it is only rock. Two good hits and there is a way past.",
+  },
+  blackhole: {
+    name: "COLLAPSAR",
+    text: "A hole with a hull's worth of gravity. Anything that stops in there does not come out.",
+  },
+  ionCloud: {
+    name: "ION CLOUD",
+    text: "Charged dust, thick enough to hide a ship. We can fly straight through it — and while we are in it nothing can shoot us, and we cannot shoot out.",
+  },
+  mineDrift: {
+    name: "MINE DRIFT",
+    text: "Someone else's war, still live. Crossing it is fine. Holding station in it costs us a hull.",
+  },
+  scrambler: {
+    name: "SCRAMBLER FIELD",
+    text: "Jamming dust. We can fly through it, but our guns will not get a solution from inside it.",
+  },
+};
+
 // What each kind of ground looks like. Keyed by the same type names the
 // engine's HAZARDS table uses, so a type added there without a look here
 // falls back to the most cautious reading rather than the prettiest.
@@ -2118,8 +2144,8 @@ const HAZARD_LOOK = {
   scrambler: { fill: "#16303a", alpha: 0.55, stroke: "rgba(120,220,245,0.55)", width: 2 },
   // Barely there. A cloud is open space you can fly through — the dust drawn
   // on top is what says it is there, not the hex underneath it.
-  ionCloud: { fill: "#3d5068", alpha: 0.22, stroke: "rgba(150,190,225,0.3)", width: 1.5 },
-  mineDrift: { fill: "#3a2a06", alpha: 0.2, stroke: "rgba(232,180,80,0.45)", width: 1.5 },
+  ionCloud: { fill: "#2c4a50", alpha: 0.24, stroke: "rgba(130,205,196,0.32)", width: 1.5 },
+  mineDrift: { fill: "#2e2622", alpha: 0.26, stroke: "rgba(214,138,96,0.42)", width: 1.5 },
 };
 
 // A scrambler field: ionised dust you can fly straight through. It takes
@@ -2134,50 +2160,90 @@ function drawIonCloud(center, r, now, seed) {
   const rng = seededRandom(`ion-${seed}`);
   ctx.save();
   ctx.translate(center.x, center.y);
-  for (let i = 0; i < 5; i++) {
+  // Gas with grain in it, not a soft circle: overlapping irregular veils that
+  // drift against each other, plus the charged motes that make it ion dust
+  // rather than a smudge. It has to look like weather you fly into.
+  for (let i = 0; i < 4; i++) {
     const a = rng() * Math.PI * 2;
-    const d = r * rng() * 0.45;
-    const br = r * (0.38 + rng() * 0.3);
-    const drift = Math.sin(now / 1400 + i) * r * 0.05;
-    const g = ctx.createRadialGradient(Math.cos(a) * d, Math.sin(a) * d + drift, 0,
-                                       Math.cos(a) * d, Math.sin(a) * d + drift, br);
-    g.addColorStop(0, "rgba(150,186,224,0.42)");
-    g.addColorStop(1, "rgba(120,150,190,0)");
-    ctx.fillStyle = g;
+    const d = r * rng() * 0.4;
+    const br = r * (0.45 + rng() * 0.3);
+    const t = now / 2600 + i * 1.9;
+    const cx = Math.cos(a) * d + Math.cos(t) * r * 0.07;
+    const cy = Math.sin(a) * d + Math.sin(t * 0.8) * r * 0.07;
     ctx.beginPath();
-    ctx.arc(Math.cos(a) * d, Math.sin(a) * d + drift, br, 0, Math.PI * 2);
+    for (let p = 0; p < 9; p++) {
+      const pa = (p / 9) * Math.PI * 2;
+      const pr = br * (0.62 + 0.38 * Math.sin(pa * 3 + i * 2 + t * 0.4));
+      const px = cx + Math.cos(pa) * pr;
+      const py = cy + Math.sin(pa) * pr * 0.78;
+      if (p === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, br);
+    g.addColorStop(0, "rgba(118,206,196,0.3)");
+    g.addColorStop(0.6, "rgba(86,150,178,0.16)");
+    g.addColorStop(1, "rgba(70,120,160,0)");
+    ctx.fillStyle = g;
+    ctx.fill();
+  }
+  for (let m = 0; m < 7; m++) {
+    const a = rng() * Math.PI * 2;
+    const d = r * (0.1 + rng() * 0.6);
+    const tw = 0.25 + 0.6 * (0.5 + 0.5 * Math.sin(now / 700 + m * 2.3));
+    ctx.fillStyle = `rgba(190,240,230,${tw.toFixed(2)})`;
+    ctx.beginPath();
+    ctx.arc(Math.cos(a) * d, Math.sin(a) * d, Math.max(0.8, r * 0.028), 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.restore();
 }
 
-// A mine drift: ground you may cross but must not stop on.
+// A mine drift: two or three of someone else's mines, still live, drifting.
 //
-// HAZARD STRIPES, because that is what "do not stand here" looks like
-// everywhere, and because the alternative read as a settings icon: spiked
-// discs at hex size are gears. Stripes cannot be mistaken for a mechanism, a
-// button or a ship, they tile a whole hex so the warning is the GROUND rather
-// than an object sitting on it, and they are legible at any zoom.
+// Drawn as OBJECTS, because everything else on this board is one — hulls,
+// boulders, a gate. A flat hazard stripe is a road marking and a soft wash is
+// a UI tint; neither is a thing floating in space, and the board stops being
+// a place the moment it carries either. One body big enough to read, a few
+// blunt horns, and a red lamp that will not let you mistake it for scenery.
 function drawMineDrift(center, r, now, seed) {
   const rng = seededRandom(`mine-${seed}`);
   ctx.save();
-  ctx.beginPath();
-  for (let i = 0; i < 6; i++) {
-    const c = hexCorner(center, i);
-    if (i === 0) ctx.moveTo(c.x, c.y);
-    else ctx.lineTo(c.x, c.y);
-  }
-  ctx.closePath();
-  ctx.clip();
-  const pulse = 0.34 + 0.16 * Math.sin(now / 900 + rng() * 6);
-  ctx.strokeStyle = `rgba(236,176,62,${pulse.toFixed(2)})`;
-  ctx.lineWidth = Math.max(2, r * 0.13);
-  const step = Math.max(11, r * 0.46);
-  for (let d = -r * 2; d < r * 2; d += step) {
+  ctx.translate(center.x, center.y);
+  const count = 2;
+  for (let i = 0; i < count; i++) {
+    const a = rng() * Math.PI * 2;
+    const d = r * (0.16 + rng() * 0.26);
+    const cx = Math.cos(a) * d;
+    const cy = Math.sin(a) * d + Math.sin(now / 2200 + i * 2) * r * 0.04;
+    const br = r * (0.42 - i * 0.1);
+    // Blunt horns, few and long — a ring of short teeth is a cog.
+    ctx.strokeStyle = "#6a6358";
+    ctx.lineCap = "round";
+    ctx.lineWidth = Math.max(2, br * 0.3);
+    for (let h = 0; h < 5; h++) {
+      const ha = (h / 5) * Math.PI * 2 + a;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(ha) * br * 0.85, cy + Math.sin(ha) * br * 0.85);
+      ctx.lineTo(cx + Math.cos(ha) * br * 1.5, cy + Math.sin(ha) * br * 1.5);
+      ctx.stroke();
+    }
+    const g = ctx.createRadialGradient(cx - br * 0.35, cy - br * 0.4, br * 0.1, cx, cy, br);
+    g.addColorStop(0, "#5d5750");
+    g.addColorStop(1, "#211e1b");
+    ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.moveTo(center.x + d, center.y - r * 1.2);
-    ctx.lineTo(center.x + d + r * 1.2, center.y + r * 1.2);
+    ctx.arc(cx, cy, br, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#17120f";
+    ctx.lineWidth = Math.max(1, br * 0.16);
     ctx.stroke();
+    // The lamp. A mine you cannot tell is armed is just a rock.
+    const lamp = 0.35 + 0.65 * Math.pow(0.5 + 0.5 * Math.sin(now / 520 + i * 1.7), 3);
+    ctx.fillStyle = `rgba(255,96,70,${lamp.toFixed(2)})`;
+    ctx.beginPath();
+    ctx.arc(cx, cy, br * 0.26, 0, Math.PI * 2);
+    ctx.fill();
   }
   ctx.restore();
 }
@@ -4104,8 +4170,16 @@ function updateScanInfo() {
     name.textContent = (state.discoveryLabel || "WRECKAGE").toUpperCase();
     stats.textContent = "Unclaimed. Worth a look — flying onto it is enough.";
   } else {
-    name.textContent = "ASTEROID FIELD";
-    stats.textContent = "Solid rock and dust. Nothing gets through it.";
+    // EVERY KIND OF GROUND SAYS WHAT IT IS. This was one else-branch calling
+    // all of it an asteroid field, so inspecting a cloud or a minefield
+    // reported solid rock that nothing gets through — the board's own card
+    // telling the player the opposite of the rule it plays by. An unlisted
+    // type says it is unsurveyed rather than borrowing rock's description.
+    const ground = GROUND_CARD[hazard.type];
+    name.textContent = ground ? ground.name : "UNCHARTED GROUND";
+    stats.textContent = ground
+      ? ground.text
+      : "Nothing in the book about this. Approach it like you would anything else out here.";
   }
   header.appendChild(name);
   enemyInfoEl.appendChild(header);
