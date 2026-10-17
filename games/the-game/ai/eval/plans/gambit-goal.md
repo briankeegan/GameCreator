@@ -38,6 +38,8 @@ engine at level 10, the game's own think and input budgets.
 
 ## How -- infra, not patches
 
+- **Gambit is its own program, in C**, in `games/the-game/ai/gambit/` -- its layout and how it is ported: `gambit/PLAN.md`.
+
 - **One of each**: one judge (`JUDGE.outcome`), one ranking (`JUDGE.compare`), one shared line check every play keeps its lines
   through (`JUDGE.lineFits`), one set of rules handed to every search (`attacker.useRules`).
 - **When something fails, find where two things measure the same fact differently, and make them one.**
