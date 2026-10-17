@@ -130,18 +130,21 @@ static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, dou
   double by = C2.due ? (t + (BREAK_MIN_MS > (C2.due - C2.t0) * share ? BREAK_MIN_MS : (C2.due - C2.t0) * share)) : t + BREAK_MAX_MS;
   if (C2.due && by > C2.due - C2.margin) by = C2.due - C2.margin;
   double old = clockShareBegin(by);
-  // (within the list first; a list ended by "default" -- every list under garbage -- is searched off it only when no break within it
-  // was found, and the first search's lines stand unless the second finds a break)
+  // (a list ended by "default" -- every list under garbage -- plays off it only when no break within it is found: the break off the list
+  // is searched first, quick to find, so a break to play is in hand however long the list's own takes; the rest of the share then goes
+  // to a break within the list, which is played instead if found)
   listDefault = 0;
-  breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, have ? &resume : 0, &theBr);
-  if (!theBr.depth && R->end == 1 && !clockOut()) {
-    static Broke first;
-    first = theBr;
+  if (R->end == 1) {
+    static Broke off;
     listDefault = 1;
     breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, 0, &theBr);
     listDefault = 0;
-    if (!theBr.depth) theBr = first;
-  }
+    off = theBr;
+    if (off.depth && !clockOut()) {
+      breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, have ? &resume : 0, &theBr);
+      if (!theBr.depth) theBr = off;
+    }
+  } else breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, have ? &resume : 0, &theBr);
   clockShareEnd(old);
   brCut = nowMs() >= by; brResumed = have ? resume.n : 0;
   *ms = nowMs() - t;
