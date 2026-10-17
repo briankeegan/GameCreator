@@ -522,3 +522,4 @@ run	commit	alive	died	think_over	worst_ms	mode
 39041990457	b4bf2ddf6a	0	1,2,3,4,5,6,7,8	6	10.9	large_garbage
 39041992024	b4bf2ddf6a	0	1,2,3,4,5,6,7,8	8	11.1	large_garbage
 39041993547	b4bf2ddf6a	0	1,2,3,4,5,6,7,8	4	8.5	large_garbage
+39041995122	b4bf2ddf6a	1	1,2,3,4,5,6,8	11	9.0	large_garbage
