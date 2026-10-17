@@ -77,8 +77,20 @@ function breaks(c) {
   });
   return out;
 }
-// TOWARD A BREAK: under garbage with none in reach, the break search's line nearest one
-function toward(c, R) { return R.under && c.br && c.br.toward && c.br.toward.length ? [cand('toward', c.br.toward, {}, -1)] : []; }
+// TOWARD A BREAK: under garbage with none in reach, the break search's line nearest one -- of its lines (towards: the frontier it carries
+// on first), the first whose first swap does not bring back a board this dig has already stood on (c.seenDig: the boards since the
+// garbage it digs toward was first the lowest), so the board never goes round in a circle
+function toward(c, R) {
+  if (!R.under || !c.br) return [];
+  var lines = c.br.towards || (c.br.toward ? [c.br.toward] : []);
+  for (var i = 0; i < lines.length; i++) {
+    var ln = lines[i];
+    if (!ln || !ln.length) continue;
+    if (c.seenDig && c.seenDig.has(SH.boardAfter(c.board, ln[0]))) continue;
+    return [cand('toward', ln, {}, -1)];
+  }
+  return [];
+}
 // READY: the swap that leaves the next block breakable when it lands, and the line of one or two swaps that leaves a plan once everything
 // shown has landed
 function ready(S) {

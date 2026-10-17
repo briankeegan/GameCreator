@@ -156,6 +156,23 @@ function threat(p, lead) {
 // which one swap does; failing those, after which two do -- the last swap
 // only where a match can touch garbage, the rows under its lowest. Returns
 // { depth, moves } (keys "row,col" or "hold"), depth 0 for none.
+// A BOARD'S PLACE, as a dig reads it: every panel's colour and garbage, row by row -- the same panels in the same places are the
+// same board, whatever the timers. boardAfter(board, move): the place the swap leaves once its panels have swapped
+function boardKey(board) {
+  var k = '';
+  for (var r = 1; r < board.panels.length; r++) {
+    var row = board.panels[r]; if (!row) continue;
+    for (var c = 1; c <= 6; c++) { var p = row[c]; k += p ? (p.isGarbage ? 'G' : String(p.color || 0)) : '.'; }
+    k += '|';
+  }
+  return k;
+}
+function boardAfter(board, mv) {
+  var b = board.copy();
+  b.curRow = mv[0]; b.curCol = mv[1];
+  if (b.tryQueueSwap(mv[0], mv[1])) for (var f = 0; f < 6; f++) b.run();
+  return boardKey(b);
+}
 function lowestGarbageRow(board) {
   for (var r = 1; r < board.panels.length; r++) {
     var row = board.panels[r];
@@ -395,6 +412,13 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
     }
     return done;
   }
+  // (TOWARDS: the lines toward a break to choose among, best first -- the frontier the beam has grown furthest, which the next decision
+  // carries on, then the best line it saw at any depth)
+  function towardsOf() {
+    var out = (opts && opts.keepOut && opts.keepOut.paths ? opts.keepOut.paths.slice() : []);
+    if (toward && toward.path) out.push(toward.path);
+    return out.length ? out : null;
+  }
   function touchBeam() {
     var seeds = resumed();
     // (what is carried on stays carried until this beam grows past it)
@@ -544,7 +568,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
   }
   // (opts.touchInPop: no line-up of the popping slab breaks again -- a break of the garbage elsewhere while it pops, the cursor being free)
   if (wait > 0 && opts && opts.touchInPop) { var tb1 = touchBeam(); if (tb1) return tb1; }
-  if (maxDepth < 2) return { depth: 0, moves: {}, toward: toward ? toward.path : null };
+  if (maxDepth < 2) return { depth: 0, moves: {}, toward: toward ? toward.path : null, towards: towardsOf() };
   var held0 = S.advance(root, 'hold', null, 0);
   if (held0 && held0._i >= 0) delete outside[held0._i];
   firsts.push({ key: 'hold', n: held0 });
@@ -562,7 +586,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
     if (f.seconds.some(breaks)) { found[f.key] = true; any = true; }
   });
   if (any) return { depth: 2, moves: found };
-  if (maxDepth < 3) return { depth: 0, moves: {}, toward: toward ? toward.path : null };
+  if (maxDepth < 3) return { depth: 0, moves: {}, toward: toward ? toward.path : null, towards: towardsOf() };
   for (i = 0; i < live.length && steps < BREAK_BUDGET; i++) {
     var f = live[i];
     for (j = 0; j < f.seconds.length && !found[f.key] && steps < BREAK_BUDGET; j++) {
@@ -572,7 +596,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
       for (k = 0; k < thirds.length; k++) { steps++; if (breaks(n3m[k])) { found[f.key] = true; any = true; break; } }
     }
   }
-  return { depth: any ? 3 : 0, moves: found, toward: !any && toward ? toward.path : null };
+  return { depth: any ? 3 : 0, moves: found, toward: !any && toward ? toward.path : null, towards: any ? null : towardsOf() };
 }
 
 
@@ -629,4 +653,4 @@ Hands.prototype.idleSearched = function (board, hold, arrivals) {
   return { bits: k.inputs[0], hold: k.holds[0] };
 };
 
-module.exports = { touchScore: touchScore, breakNear: breakNear, nearScore: nearScore, profile: profile, botOptions: botOptions, floorTravel: floorTravel, TRAVEL_FLOOR: TRAVEL_FLOOR, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, pending: pending, arrivalsFrom: arrivalsFrom, threat: threat, top: top, gridTop: gridTop, popLeft: popLeft, lowestGarbageRow: lowestGarbageRow, breakMoves: breakMoves, Hands: Hands, convertingOf: convertingOf, keepRank: keepRank, panelsOf: panelsOf, ROOM: ROOM, CAP: CAP };
+module.exports = { touchScore: touchScore, breakNear: breakNear, nearScore: nearScore, profile: profile, botOptions: botOptions, floorTravel: floorTravel, TRAVEL_FLOOR: TRAVEL_FLOOR, arrivalsOf: arrivalsOf, unforeseen: unforeseen, land: land, pending: pending, arrivalsFrom: arrivalsFrom, threat: threat, top: top, gridTop: gridTop, popLeft: popLeft, lowestGarbageRow: lowestGarbageRow, boardKey: boardKey, boardAfter: boardAfter, breakMoves: breakMoves, Hands: Hands, convertingOf: convertingOf, keepRank: keepRank, panelsOf: panelsOf, ROOM: ROOM, CAP: CAP };

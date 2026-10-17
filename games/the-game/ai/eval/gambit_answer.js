@@ -121,6 +121,12 @@ function answer(c) {
   var span = c.due ? c.due - c.t0 : 0;
   c.left = function () { return c.due ? c.due - Date.now() - c.margin - span / 4 : 1e9; };
   bot._natSearch();   // (the engine, on the bot's threads, before a second context is made on it)
+  // (THE DIG: the boards stood on since the garbage the break search digs toward was first the lowest -- a line toward a break never
+  // brings one back, PROPOSE.toward)
+  var gid = digTarget(c.board);
+  if (gid === null) bot._dig = null;
+  else { if (!bot._dig || bot._dig.gid !== gid) bot._dig = { gid: gid, seen: new Set() }; bot._dig.seen.add(SH.boardKey(c.board)); }
+  c.seenDig = bot._dig ? bot._dig.seen : null;
   // (the rules read first -- the list, the floor -- so the break search finds only breaks the judge will take)
   var R = DECIDE.read(c);
   if (!R) return null;

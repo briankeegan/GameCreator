@@ -117,5 +117,38 @@ for (var ts2 = 1; ts2 <= 4; ts2++) {
   mindT.reset();
 }
 assert.ok(worstT < 217 + 30 + 60, 'a decision asked 90 frames ahead takes the time to its move, not the lead: ' + worstT + ' ms');
+// A DIG NEVER GOES ROUND IN A CIRCLE: a topped board under a twelve-row slab, played decision after decision as the frame loop plays it,
+// each move pressed on the engine -- every swap toward a break leaves a board this dig has not stood on before
+var SHt = require('./survivor_shared.js'), mindD = require('./survivor_think.js')({ profile: SHt.profile(), threads: 1 }), towardN = 0, dugBoards = 0;
+for (var ds = 1; ds <= 3; ds++) {
+  var db = PA.game({ level: 10, seed: ds, countdown: false });
+  for (var dfr = 0; dfr < 200; dfr++) db.run();
+  db.receiveGarbage([{ width: 6, height: 12, isChain: false, isMetal: false }]);
+  for (dfr = 0; dfr < 120 && !SHt.lowestGarbageRow(db) && db.gameOverClock <= 0; dfr++) db.run();
+  if (db.gameOverClock > 0 || !SHt.lowestGarbageRow(db)) continue;
+  db.stopTime = 600;   // (landed: the stop a break would have bought, the time the dig is given)
+  var stood = new Set();
+  for (var dn = 0; dn < 20 && db.gameOverClock <= 0; dn++) {
+    stood.add(SHt.boardKey(db));
+    var da = mindD.answer({ id: 2000 + ds * 50 + dn, epoch: 0, at: db.clock, lead: 13, ms: 216, posted: Date.now(), hold: { left: 0, started: false }, arrivals: [], board: db.copy(), acted: true });
+    if (!da || da.kind !== 'swap') { for (dfr = 0; dfr < 13; dfr++) db.run(); continue; }
+    var dplay = da.diag && da.diag.gambit && da.diag.gambit.play;
+    db.curRow = da.move[0]; db.curCol = da.move[1];
+    if (!db.tryQueueSwap(da.move[0], da.move[1])) { for (dfr = 0; dfr < 13; dfr++) db.run(); continue; }
+    for (dfr = 0; dfr < 6; dfr++) db.run();
+    if (dplay === 'toward') { towardN++; assert.ok(!stood.has(SHt.boardKey(db)), 'seed ' + ds + ' decision ' + dn + ': a swap toward a break went back to a board the dig stood on'); }
+    for (dfr = 0; dfr < 7; dfr++) db.run();
+    dugBoards++;
+  }
+  mindD.reset();
+}
+assert.ok(towardN > 0, 'swaps toward a break played: ' + towardN + ' of ' + dugBoards + ' moves');
+// (and the rule itself: of two lines toward a break, the first leading back to a board the dig stood on, the second is offered)
+var PROPt = require('./gambit_propose.js'), tbd = PA.game({ level: 10, seed: 5, countdown: false });
+for (dfr = 0; dfr < 200; dfr++) tbd.run();
+var tsw = tbd.legalSwaps(), backLine = [tsw[0]], fwdLine = [tsw[1]], seenT = new Set([SHt.boardAfter(tbd, tsw[0])]);
+var offeredT = PROPt.toward({ board: tbd, br: { towards: [backLine, fwdLine] }, seenDig: seenT }, { under: true });
+assert.deepStrictEqual(offeredT[0] && offeredT[0].seq, fwdLine, 'the line back to a board stood on is passed over');
+assert.deepStrictEqual(PROPt.toward({ board: tbd, br: { towards: [backLine, fwdLine] }, seenDig: new Set() }, { under: true })[0].seq, backLine, 'with nothing stood on, the first line');
 assert.ok(gambit >= answered / 2, 'Gambit chooses most moves: ' + gambit + ' of ' + answered);
 console.log('ok: gambit answers -- ' + answered + ' questions over ' + modes.length + ' modes, ' + gambit + ' Gambit\'s own');
