@@ -203,7 +203,10 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   // (readiness, the dearer check, only when the board left alone does not stand to lifeTo -- always, or for a line that breaks)
   int standsOut = j->lostAt == FOREVER && (o->readyIfLost || (o->readyIfBreak && j->made.broke > 0));
   if (o->readyAt != NOT_ASKED && !j->dead && !standsOut) {
-    j->ready = breaksAfterLanding(x, n, imax(1, o->readyAt + 2), o->why ? j->readyLine : 0, &j->readyN);
+    // (ready from the frame the line's next decision can act: a line's own end, the hold's a reaction on -- a hold presses nothing
+    // until the next decision)
+    int32_t from = nseq ? 0 : cfgReaction;
+    j->ready = breaksAfterLanding(x, n, imax(1, imax(o->readyAt, from) + 2), o->why ? j->readyLine : 0, &j->readyN);
     if (j->ready == LOST_FIRST) j->ready = 0;   // (lost first: not ready)
   }
   j->late = j->late || clockOut();
