@@ -92,7 +92,7 @@ jobs:
       - name: Seed ${{ matrix.seed }}
         env:
           GC_PANEL_GAME: ${{ github.workspace }}/panel-game
-          GC_DEATHLOG: '300'     # a death's report in the job log: the bot's log of its last 300 frames,
+          GC_DEATHLOG: '1200'    # a death's report in the job log: the bot's log of its last 1200 frames,
           GC_DEATHBOARD: '3000'  # the boards of its last 3000
           GC_GAMELOG: game.log   # the whole game, every frame's bot log and board: the artifact
           GC_INPUT_LIMIT: ${{ inputs.input_limit }}
