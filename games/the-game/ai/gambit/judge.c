@@ -19,6 +19,8 @@ typedef struct {
   int32_t readyIfLost, readyIfBreak; // readiness only when the board does not stand to lifeTo -- always, or for a line that breaks
   int32_t lifeTo, lifeRest;          // lostAt: whether the board the line ends on stands to lifeTo, and lifeRest past its last swap (-1: not asked)
   int32_t why;                       // keep the line the readiness found (readyLine)
+  int32_t waitAt, waitTo;            // (waitTo > 0) before swap waitAt, the board run to frame waitTo and let settle -- a readiness break
+                                     // played where the readiness found it
 } JudgeOpts;
 typedef struct {
   Made made;                    // beyond the board left alone: { combo, chain, broke }
@@ -29,6 +31,7 @@ typedef struct {
   int32_t lostAt;               // FOREVER, a frame, or NOT_ASKED
   int32_t ready;                // 1, 0, or NOT_ASKED
   int32_t readyLine[2], readyN; // the swaps the readiness found (why), as r * 8 + c
+  int32_t readyWait;            // the frame from the root the readiness looked from (its waitTo)
   int32_t late;                 // the clock stopped it: no answer
   int32_t cut;                  // the step a swap was not there to press at (the line played no further), -1 none
   int32_t base;                 // the garbage the board left alone breaks, which the line's own is counted beyond
@@ -141,6 +144,12 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   for (int k = 0; k <= nseq; k++) {
     int last = k == nseq, mr = last ? 0 : CR(seq[k]), mc = last ? 0 : CC(seq[k]);
     if (last && o->settled) break;   // (each step settled already)
+    if (o->waitTo > 0 && k == o->waitAt) {
+      int w = step(x, n, MK_LONG, 0, 0, imax(1, o->waitTo - NODE(x, n)->t));
+      if (!liveNode(x, w)) { j->dead = 1; j->deadAt = w == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
+      int calm = settleOf(x, w);
+      n = liveNode(x, calm) ? calm : w;
+    }
     if (!last && !legalAt(x, n, mr, mc)) { j->cut = k; break; }
     if (!last && j->nats < MAXLINE) j->ats[j->nats++] = NODE(x, n)->t;
     int out = step(x, n, last || o->settled ? MK_SETTLE : MK_SWAP, mr, mc, 0);
@@ -169,7 +178,8 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     // (ready from the frame the line's next decision can act: a line's own end, the hold's a reaction on -- a hold presses nothing
     // until the next decision)
     int32_t from = nseq ? 0 : cfgReaction;
-    j->ready = breaksAfterLanding(x, n, imax(1, imax(o->readyAt, from) + 2), o->why ? j->readyLine : 0, &j->readyN);
+    j->readyWait = imax(1, imax(o->readyAt, from) + 2);
+    j->ready = breaksAfterLanding(x, n, j->readyWait, o->why ? j->readyLine : 0, &j->readyN);
     if (j->ready == LOST_FIRST) j->ready = 0;   // (lost first: not ready)
   }
   j->late = j->late || clockOut();

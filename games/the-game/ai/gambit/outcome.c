@@ -62,13 +62,17 @@ static Outcome *keep(const int32_t *seq, int n, int settled, int kind, const Out
 
 // THE OUTCOME. With garbage on its way, a line that breaks nothing lives only when a break is there once everything has landed --
 // ready, however long the stop it stands on lasts; a break, or a board with nothing coming, lives by standing to the horizon too.
-// Topped out, readiness counts only for a line that buys stop: the board always has to have some stop.
-static Outcome outcome(const int32_t *seq, int n, int settled) {
-  Outcome *hit = cached(seq, n, settled, 0);
+// Topped out, readiness counts only for a line that buys stop: the board always has to have some stop. A line that lives only by being
+// ready lives as its readiness break does, played where the readiness found it and judged as any break is (waitTo): a break kept
+// for later is worth no more than the break played.
+static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo);
+static Outcome outcome(const int32_t *seq, int n, int settled) { return outcomeOf(seq, n, settled, 0, 0); }
+static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo) {
+  Outcome *hit = waitTo ? 0 : cached(seq, n, settled, 0);
   if (hit) return *hit;
   int coming = decF.land != NOT_ASKED;
   int timeLeft = decF.timeLeft >= 0 ? decF.timeLeft : leftMsOf() > 0;
-  JudgeOpts jo = { settled, decQ.tight, timeLeft && coming ? decF.land : NOT_ASKED, !coming, 1, HORIZON + REST, REST, 0 };
+  JudgeOpts jo = { settled, decQ.tight, timeLeft && coming ? decF.land : NOT_ASKED, !coming, 1, HORIZON + REST, REST, !waitTo, waitAt, waitTo };
   Outcome o;
   memset(&o, 0, sizeof o);
   judge(&decQ, seq, n, &jo, &o.j);
@@ -82,9 +86,16 @@ static Outcome outcome(const int32_t *seq, int n, int settled) {
     o.dead = 0; o.ready = ready;
     o.lives = breaks || !coming ? (stands || ready == 1) : (ready == 1 || (ready == NOT_ASKED && stands));
     o.fits = fitsList(&theList, o.j.made, &o.j) && imax(o.j.made.chain, o.j.chainAll) <= MAXCHAIN;
+    if (o.lives && !breaks && ready == 1 && !(stands && !coming) && !waitTo && o.j.readyN > 0 && n + o.j.readyN <= MAXLINE) {
+      int32_t ext[MAXLINE];
+      for (int k = 0; k < n; k++) ext[k] = seq[k];
+      for (int k = 0; k < o.j.readyN; k++) ext[n + k] = o.j.readyLine[k];
+      Outcome e = outcomeOf(ext, n + o.j.readyN, settled, n, o.j.readyWait);
+      if (e.late) o.late = 1; else if (!e.lives) o.lives = 0;
+    }
   }
   // (a judging the clock stopped is no answer: it is not kept, and the next asking judges it again)
-  if (!o.late) keep(seq, n, settled, 0, &o);
+  if (!o.late && !waitTo) keep(seq, n, settled, 0, &o);
   return o;
 }
 // READY FOR THE NEXT BLOCK: after the line, a break in reach once the next block shown has landed -- what a board that cannot be ready
