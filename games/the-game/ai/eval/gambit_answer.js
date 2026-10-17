@@ -85,8 +85,12 @@ function answer(c) {
   var D = DECIDE.decide(c, R);
   if (D.R.F.us.contact !== null || D.R.F.us.topped) bot._gambitHit = true;
   var L = chosen(D), d = L.d;
-  // (the line in progress is the line of the move played; a hold for a waiting line in progress keeps it)
-  if (!(d.kind === 'hold' && D.top && D.top.wait)) bot._gambitCarry = DECIDE.carryOf(c, D.R, D.line);
+  // (THE LINE PRESSED ON: a line the judge plays swap after swap -- not settle by settle -- is handed to the frame loop whole, which
+  // presses the swaps after the first as the judge pressed them while the next decision is thought about; the next decision sees the
+  // board they make and its answer replaces the rest. A line handed on is not carried as well: the frame loop is pressing it)
+  var handOn = d.kind === 'swap' && D.line && !D.line.settled && D.line.seq.length > 1 ? D.line.seq.slice(1).map(function (mv) { return mv.slice(); }) : null;
+  if (handOn) bot._gambitCarry = null;
+  else if (!(d.kind === 'hold' && D.top && D.top.wait)) bot._gambitCarry = DECIDE.carryOf(c, D.R, D.line);
   // (no swap back: the pair the last swap swapped is kept out for a second when it is swapped three times running)
   var pr = d.kind === 'swap' && c.board.panels[d.move[0]], pa = pr && pr[d.move[1]], pb = pr && pr[d.move[1] + 1];
   var pair = pa && pb && pa.id != null && pb.id != null ? [pa.id, pb.id].sort().join(',') : (d.kind === 'swap' ? null : bot._gambitLastPair);
@@ -100,9 +104,7 @@ function answer(c) {
   return { id: m.id, epoch: m.epoch, at: m.at, src: L.gambits ? 'gambit' : 'survival', kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null,
            raiseFrames: held.now, raiseAfter: held.after, ms: Date.now() - c.t0, idleMs: D.idleMs || 0,
            claim: claimOf(D.info, d), queued: m.posted ? c.t0 - m.posted : 0, brMs: c.brMs,
-           // (every swap is its own decision, judged on the board as it is when it is pressed: the frame loop is handed no line to press
-           // on its own clock -- the rest of a line is carried on by the next decisions, as the line in progress)
-           line: null, lineAt: null, lineFree: false,
+           line: handOn, lineAt: null, lineFree: !!handOn,
            pace: { hold: L.holdLives, brk: !!(c.br && c.br.depth), urgent: !!D.urgent },
            mem: c.nativeMem(),
            breaks: c.br && c.br.depth ? { offered: c.br.depth, lineup: !!c.br.lineup, touch: !!c.br.touch, took: !!(c.br.moves && d.move && c.br.moves[keyOf(d)]) } : null,

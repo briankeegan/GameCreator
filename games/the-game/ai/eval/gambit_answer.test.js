@@ -69,5 +69,25 @@ assert.strictEqual(GA.chosen({ R: { up: true }, info: {}, top: null, line: null 
 assert.strictEqual(GA.chosen({ R: { up: false }, info: {}, top: Object.assign({ play: 'hold', hold: true }, lv), line: null }).d.kind, 'hold', 'the hold, ranked first');
 var ln = Object.assign({ play: 'break search', seq: [[3, 2], [4, 2]] }, dd);
 assert.deepStrictEqual(GA.chosen({ R: { up: false }, info: {}, top: ln, line: ln }).d.move, [3, 2], 'a line ranked first: its first swap');
+// THE LINE PRESSED ON: an answer for a line the judge plays swap after swap hands the frame loop the swaps after the first
+var handed = 0, settledHanded = 0;
+['finish'].forEach(function (mode) {
+  process.env.GC_SURVIVOR_PROFILE = path.join(__dirname, 'survivor-profiles', 'gambit-' + mode + '.json');
+  var mindH = require('./survivor_think.js')({ profile: require('./survivor_shared.js').profile(), threads: 1 });
+  for (var hs = 1; hs <= 12; hs++) {
+    var hb = PA.game({ level: 10, seed: hs, countdown: false });
+    for (var hf = 0; hf < 200; hf++) hb.run();
+    hb.receiveGarbage([{ width: 6, height: 2, isChain: false, isMetal: false }]);
+    for (hf = 0; hf < 100; hf++) hb.run();
+    if (hb.gameOverClock > 0) continue;
+    var ha = mindH.answer({ id: 500 + hs, epoch: 0, at: hb.clock, ms: 0, hold: { left: 0, started: false }, arrivals: [], board: hb.copy(), acted: true });
+    var g = ha.diag && ha.diag.gambit;
+    if (ha.kind === 'swap' && g && g.seq && g.seq.length > 1) {
+      if (ha.line) { handed++; assert.ok(ha.lineFree && ha.line.length === g.seq.length - 1, 'seed ' + hs + ': the rest of the line is handed on'); }
+    }
+    mindH.reset();
+  }
+});
+assert.ok(handed > 0, 'lines handed on to the frame loop: ' + handed);
 assert.ok(gambit >= answered / 2, 'Gambit chooses most moves: ' + gambit + ' of ' + answered);
 console.log('ok: gambit answers -- ' + answered + ' questions over ' + modes.length + ' modes, ' + gambit + ' Gambit\'s own');
