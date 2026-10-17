@@ -106,14 +106,14 @@ static int digWaits(const Judge *k, const Judge *H, int32_t react) {
   return k->k.play == PLAY_TOWARD && !k->o.lives && !H->o.lives && H->o.lostAt != NOT_ASKED && k->o.j.done >= 0 && !k->o.dead &&
          k->o.lostAt <= H->o.lostAt && (double)H->o.lostAt - k->o.j.done > react;
 }
-// THE ONE ORDER: a line that lives before one that does not; then the one within the list before the default's own (taken only by
-// living where nothing within the list does); of two that do not live, the one with a break in reach once the next block lands, then
-// the one whose board is lost later; then the tier, then each sub-key in turn
+// THE ONE ORDER: a line that lives before one that does not; of two that live, the one within the list before the default's own (a
+// list that cannot be made -- nothing within it lives -- falls back to it); of two that do not live, the one with a break in reach
+// once the next block lands, then the one whose board is lost later; then the tier, then each sub-key in turn
 static double lostOf(const Judge *x) { return x->o.lostAt == FOREVER ? 1e300 : x->o.lostAt == NOT_ASKED ? -1 : x->o.lostAt; }
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
   if (lx != ly) return lx ? -1 : 1;
-  if (x->outside != y->outside) return x->outside ? 1 : -1;   // (the default's own only by living where nothing within the list does)
+  if (lx && x->outside != y->outside) return x->outside ? 1 : -1;   // (of two that live, the one within the list)
   if (!lx && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return x->readyNext ? -1 : 1;
   if (!lx && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
   if (x->t.tier != y->t.tier) return x->t.tier - y->t.tier;
