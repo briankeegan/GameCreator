@@ -4484,9 +4484,9 @@ static int optRank(Opt *a, Opt *b) {
   if (ka) { double sa = optSoon(a), sb = optSoon(b), gap = sa > sb ? sa - sb : sb - sa; if (sa != sb && !(gap <= NEXTMOVE)) return sa < sb ? 1 : -1;
     // no break in reach for either: the one that leaves the board nearer one is the progress (the lineup toward the break the next slab needs)
     if (ka == 1 && kb == 1 && sa >= INF && sb >= INF && !a->clears && !b->clears) {
-      // the contact the slab will have is what a break is made at, so it comes before how near a three is to it
-      if (waveExpected() && !a->cash && !b->cash) { int ca = optContact(a), cb = optContact(b); if (ca != cb) return ca > cb ? 1 : -1; }
-      double na = optNear(a), nb = optNear(b); if (na != nb) return na < nb ? 1 : -1; } }
+      // nearer a break is the progress; of two as near, the contact the slab will have is what a break is made at
+      double na = optNear(a), nb = optNear(b); if (na != nb) return na < nb ? 1 : -1;
+      if (waveExpected() && !a->cash && !b->cash) { int ca = optContact(a), cb = optContact(b); if (ca != cb) return ca > cb ? 1 : -1; } } }
   // two options that clear and break nothing (the hold, a setup, a fill or a levelling swap): the one that leaves the coming slab more contact comes first --
   // a break can only be made at a contact (contactOf); a line is told by the board it leaves
   if (ka && waveExpected() && !a->clears && !a->breaks && !a->cash && !b->clears && !b->breaks && !b->cash) {
@@ -4724,9 +4724,10 @@ static Dec arbitrate(Dec d) {
   if (best == at) return d;
   Opt *b = &O[best];
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "ARBITER %s %d,%d over via %d %d,%d | keys (lives breaks ready die soon cash life hollow; -1 unasked) won %d %d %d %d %g %d %g %d | lost %d %d %d %d %g %d %g %d\n", best == ia || best == ih ? "the alternative" : "the target", b->d.sr, b->d.sc, d.via, d.sr, d.sc,
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "ARBITER %s %d,%d over via %d %d,%d | keys (lives breaks ready die soon cash life hollow; -1 unasked) won %d %d %d %d %g %d %g %d | lost %d %d %d %d %g %d %g %d | near %g/%g contact %d/%d\n", best == ia || best == ih ? "the alternative" : "the target", b->d.sr, b->d.sc, d.via, d.sr, d.sc,
       b->lives, b->breaks, b->rdyKnown ? b->rdy : -1, b->die, b->soonKnown ? b->soon : -1.0, b->cash, b->life, b->hollow,
-      O[at].lives, O[at].breaks, O[at].rdyKnown ? O[at].rdy : -1, O[at].die, O[at].soonKnown ? O[at].soon : -1.0, O[at].cash, O[at].life, O[at].hollow); }
+      O[at].lives, O[at].breaks, O[at].rdyKnown ? O[at].rdy : -1, O[at].die, O[at].soonKnown ? O[at].soon : -1.0, O[at].cash, O[at].life, O[at].hollow,
+      b->nearKnown ? b->near : -1.0, O[at].nearKnown ? O[at].near : -1.0, b->contactKnown ? b->contact : -1, O[at].contactKnown ? O[at].contact : -1); }
 #endif
   if (best == ra) { if (O[best].n > 1) lineSet(O[best].sw, O[best].n, LINE_CASH, 0); else BT->nLine = 0; }
   else if (best == ia) lineSet(saLine, saN, saKind, saWait);
