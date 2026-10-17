@@ -150,5 +150,26 @@ var tsw = tbd.legalSwaps(), backLine = [tsw[0]], fwdLine = [tsw[1]], seenT = new
 var offeredT = PROPt.toward({ board: tbd, br: { towards: [backLine, fwdLine] }, seenDig: seenT }, { under: true });
 assert.deepStrictEqual(offeredT[0] && offeredT[0].seq, fwdLine, 'the line back to a board stood on is passed over');
 assert.deepStrictEqual(PROPt.toward({ board: tbd, br: { towards: [backLine, fwdLine] }, seenDig: new Set() }, { under: true })[0].seq, backLine, 'with nothing stood on, the first line');
+// PLANNED AT LEVEL 10 HEALTH, AND NOTHING LIVES: the next decisions judge the health the board has (planReal), as the default's do
+var SHh = require('./survivor_shared.js'), mindH2 = require('./survivor_think.js')({ profile: SHh.profile(), threads: 1 }), hpSeen = [], realFell = 0;
+var origErr = console.error;
+for (var hs2 = 1; hs2 <= 6 && !realFell; hs2++) {
+  var hb2 = PA.game({ level: 10, seed: hs2, countdown: false });
+  hb2.levelData = Object.assign({}, hb2.levelData, { maxHealth: 51 }); hb2.health = 51;   // (training's health)
+  for (var hf2 = 0; hf2 < 200; hf2++) hb2.run();
+  hb2.receiveGarbage([{ width: 6, height: 12, isChain: false, isMetal: false }]);
+  for (hf2 = 0; hf2 < 160 && hb2.gameOverClock <= 0 && !(SHh.lowestGarbageRow(hb2) && hb2.isToppedOut && hb2.isToppedOut()); hf2++) hb2.run();
+  if (hb2.gameOverClock > 0) continue;
+  hb2.health = 51;
+  var logs = [];
+  console.error = function (x) { if (typeof x === 'string' && x.indexOf('GAMBITD ') === 0) logs.push(x); };
+  var a1 = mindH2.answer({ id: 3000 + hs2, epoch: 0, at: hb2.clock, lead: 13, ms: 216, posted: Date.now(), hold: { left: 0, started: false }, arrivals: [], board: hb2.copy(), acted: true });
+  var a2 = mindH2.answer({ id: 3100 + hs2, epoch: 0, at: hb2.clock + 13, lead: 13, ms: 216, posted: Date.now(), hold: { left: 0, started: false }, arrivals: [], board: hb2.copy(), acted: true });
+  console.error = origErr;
+  var hp1 = +((/ hp=(\d+)/.exec(logs[0] || '') || [])[1]), hp2 = +((/ hp=(\d+)/.exec(logs[1] || '') || [])[1]);
+  if (a1.diag.gambit.lives === false) { assert.strictEqual(hp1, 1, 'planned at level 10 health'); assert.ok(hp2 > 1, 'nothing lived: the next decision judges the health the board has (' + hp2 + ')'); realFell++; }
+  mindH2.reset();
+}
+assert.ok(realFell > 0, 'a board where nothing lives at level 10 health was found and fought for');
 assert.ok(gambit >= answered / 2, 'Gambit chooses most moves: ' + gambit + ' of ' + answered);
 console.log('ok: gambit answers -- ' + answered + ' questions over ' + modes.length + ' modes, ' + gambit + ' Gambit\'s own');

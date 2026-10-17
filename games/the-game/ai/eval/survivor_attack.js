@@ -34,6 +34,13 @@ module.exports = function (opts) {
     if (!S) S = new N.Search({ reaction: opts.reaction, swapGap: opts.swapGap, cursorMoveFrames: opts.cursorMoveFrames, threads: 1 });
     return S;
   }
+  // (the judge in a context of its own: for a search that judges a line while its own nodes must stand)
+  var S2 = null;
+  function judgeIn(board, hold, seq, arrivals) {
+    if (!S2) S2 = new N.Search({ reaction: opts.reaction, swapGap: opts.swapGap, cursorMoveFrames: opts.cursorMoveFrames, threads: 1 });
+    var keepS = S; S = S2;
+    try { return judge(board, hold, seq, arrivals, {}); } finally { S = keepS; }
+  }
   // o.aims: a priority list of aims, searched in one beam -- the best line for each aim is kept, and the line returned is the first
   // aim's that has one (best.aimIndex); o.aim is a list of one.
   // o.aim (with o.by): a line counts only when what it makes meets the aim -- aim({ combo, combos, chain, broke, cells }) -- with its
@@ -565,12 +572,14 @@ module.exports = function (opts) {
   function useRules(r) { listFits = (r && r.fits) || null; floorLow = !!(r && r.floorLow); firstOk = (r && r.first) || null; }
   function useList(fits) { useRules({ fits: fits, floorLow: floorLow, first: firstOk }); }
   function firstFits(mv, clears) { return !firstOk || firstOk(mv, clears); }
-  function stepFits(s, out, still) {
-    if (!listFits && !floorLow) return true;
+  // (the floor is the judge's, a whole line's: one that clears panels and breaks nothing -- never a step of a line on its way to a break,
+  // which may clear panels to get down to the garbage. floorOk(made) is asked of a line once it is done)
+  function stepFits(s, out) {
+    if (!listFits) return true;
     var st = s.stepStats(out);
-    if (floorLow && st.comboSizes.length && !(still ? s.breaks(out) > still(out.t) : st.broke > 0)) return false;
-    return !listFits || listFits(st.comboSizes.filter(function (z, i) { return !(st.chainAt[i] > 1); }), sent(st).chain);
+    return listFits(st.comboSizes.filter(function (z, i) { return !(st.chainAt[i] > 1); }), sent(st).chain);
   }
+  function floorOk(made) { return !floorLow || !((made.combo > 0 || made.chain > 0) && !(made.broke > 0)); }
   function allowed(s, out, still) {
     if (!out || out.dead || !stepFits(s, out, still)) return false;
     var z = s.advanceMany([[out, 'settle', null, 0]], true)[0];
@@ -628,6 +637,8 @@ module.exports = function (opts) {
     s.reset();
     var root = s.root(board.copy(), hold, arrivals || [], false), stillAt = {};
     var still = function (t) { if (!(t in stillAt)) { var w = t > root.t ? s.advance(root, 'long', null, t - root.t) : root; stillAt[t] = w && !w.dead ? s.breaks(w) : s.breaks(root); } return stillAt[t]; };
+    // (a line's whole outcome as the judge counts it, for the floor -- played in a context of its own, so this search's nodes stand)
+    var judgeLine = function (seq) { var j = judgeIn(board, hold, seq, arrivals || []); return j.dead ? { combo: 0, chain: 0, broke: 0 } : j.made; };
     var held = function (n) { return (n.t - root.t) + Math.max((n.carry.stopTime || 0) + (n.carry.preStopTime || 0), n.carry.shakeTime || 0); };
     var level = [{ n: root, seq: [] }];
     for (var d = 1, perStep = 0; d <= depth && level.length; d++) {
@@ -654,6 +665,7 @@ module.exports = function (opts) {
       for (var i = 0; i < kids.length; i++) {
         var lost = kids[i].lost = losts[i];
         if (!(lost === Infinity ? allowed(s, kids[i].n, still) : true)) { kids[i].lost = -1; continue; }
+        if (lost === Infinity && floorLow && !floorOk(judgeLine(kids[i].seq))) { kids[i].lost = -1; continue; }
         if (!best || lost > best.lostAt) best = { seq: kids[i].seq, lostAt: lost };
         if (lost === Infinity) { s.drop(made); return best; }
       }

@@ -109,7 +109,7 @@ function logLine(c, D, L, br, brMs) {
     ' src=' + (L.gambits ? 'gambit' : 'survival') + ' v=' + L.verdict + ' under=' + (g.under ? 1 : 0) + ' mat=' + F.material + ' chain=' + (g.chain || 0) + ' combo=' + (g.combo || 0) +
     ' broke=' + (g.broke || 0) + ' tier=' + (g.tier || 0) + ' by=' + (g.by || '-') + ' plan=' + (g.pl || '-') + ' done=' + (g.done != null ? g.done : '-') + ' fire=' + (g.fire != null ? g.fire : '-') +
     ' ats=' + (g.ats || '-') + ' swaps=' + (g.swaps || 0) + ' land=' + (F.nextLands != null ? F.nextLands : '-') + ' dies=' + F.dies + (F.queueKills ? ' qk=1' : '') + (D.R.aloneOut ? ' alone=' + D.R.aloneChain : '') + ' casc=' + (CK.cascadeLive(c.board, true) ? 1 : 0) +
-    ' pop=' + SH.popLeft(c.board) + ' stop=' + F.stop + ' waits=' + (F.breakWaits ? 1 : 0) + ' unseen=' + unseenOf(c.board) + ' tight=' + (c.tight ? 1 : 0) +
+    ' pop=' + SH.popLeft(c.board) + ' hp=' + (c.board.health || 0) + ' stop=' + F.stop + ' waits=' + (F.breakWaits ? 1 : 0) + ' unseen=' + unseenOf(c.board) + ' tight=' + (c.tight ? 1 : 0) +
     ' br=' + (br ? (br.depth || 0) + '/' + (br.path ? br.path.length : br.toward ? 't' + br.toward.length : 0) + (br.cut ? '/cut' : '') + (br.resumed ? '/r' + br.resumed : '') + (br.carried ? '/carried' : '') : 'none') + ' brMs=' + brMs + ' cands=' + (g.cands || '-') + ' live=' + L.live + ' lost=' + (g.lostAt == null ? '-' : g.lostAt === Infinity ? 'inf' : g.lostAt) + ' wallMs=' + (c.wall0 ? Number(process.hrtime.bigint() - c.wall0) / 1e6 : 0).toFixed(1) + ' why=' + L.why);
 }
 
@@ -155,10 +155,10 @@ function answer(c) {
   D.info.verdict = L.verdict; D.info.live = L.live; D.info.why = L.why;
   logLine(c, D, L, c.br, c.brMs);
   // (THE BOARD THE BREAK SEARCH CAME UP EMPTY ON, under garbage, for gambit_reach.js to search again without a time limit: was a break
-  // there to find? At most one every 30 frames, the board as the question carried it)
+  // there to find? At most one every 30 frames)
   if (D.R.under && !(c.br && c.br.depth) && (!bot._emptyAt || c.m.at - bot._emptyAt >= 30 || c.m.at < bot._emptyAt)) {
     bot._emptyAt = c.m.at;
-    var pk = c.m.packed || require('v8').serialize(c.board);
+    var pk = require('v8').serialize(c.board);   // (the board as Gambit judged it -- its health the plan's -- not as the question carried it)
     console.error('GAMBITB ' + c.m.at + ' ' + require('zlib').gzipSync(Buffer.from(pk)).toString('base64') + ' ' + JSON.stringify((c.arrivals || []).map(function (a) { return [a.at, a.width, a.height]; })));
   }
   var made = L.gambits && d.kind === 'swap' ? { combo: D.info.combo || 0, chain: D.info.chain || 0, broke: D.info.broke || 0 } : { combo: 0, chain: 0, broke: 0 }, held = d.kind === 'raise' ? raiseHeld(c, D.R.to) : { now: 0, after: 0 };

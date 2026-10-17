@@ -1058,8 +1058,12 @@ module.exports = function think(cfg) {
       if (due) N.deadline(due - DEADLINE_MARGIN_MS);
       if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
       try {
-        return GANSWER.answer({ bot: bot, m: m, board: board, arrivals: arrivals, due: due, t0: t0, attacker: attacker, search: search, rules: gambitRules,
-                                GP: cfg.profile.gambit, pace: cfg.profile.pace, margin: DEADLINE_MARGIN_MS, nativeMem: NativeMem, stale: stale, aborted: P.ABORTED });
+        var ga = GANSWER.answer({ bot: bot, m: m, board: board, arrivals: arrivals, due: due, t0: t0, attacker: attacker, search: search, rules: gambitRules,
+                                  GP: cfg.profile.gambit, pace: cfg.profile.pace, margin: DEADLINE_MARGIN_MS, nativeMem: NativeMem, stale: stale, aborted: P.ABORTED });
+        // (PLANNED AT LEVEL 10 HEALTH, AND NOTHING LIVES: the decisions for planReal frames after are judged on the health the board
+        // has, as the default's are -- a board level 10 has lost is still fought for. Gambit's one order says so: its choice lives or not)
+        if (planned && ga && ga.diag && ga.diag.gambit && ga.diag.gambit.lives === false) planRealUntil = m.at + (cfg.profile.planReal || 120);
+        return ga;
       } finally {
         N.deadline(0);
       }
