@@ -128,6 +128,7 @@ gate_garbage_rules() {
   node games/the-game/ai/eval/break_near.test.js &&
   node games/the-game/ai/eval/gambit_decide.test.js &&
   node games/the-game/ai/eval/gambit_answer.test.js &&
+  node games/the-game/ai/eval/gambit_agree.test.js &&
   node games/the-game/ai/eval/attack_fire.test.js &&
   node games/the-game/ai/eval/survivor_audit.test.js &&
   node games/the-game/ai/eval/survivor_held.test.js &&

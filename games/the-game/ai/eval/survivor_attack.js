@@ -472,7 +472,7 @@ module.exports = function (opts) {
     o = o || {};
     var s = search();
     s.reset();
-    var root = s.root(board.copy(), hold, arrivals || [], false), n = root, made = [], cut = seq.length, dead = false, done = 0, ats = [];
+    var root = s.root(board.copy(), hold, arrivals || [], false), n = root, made = [], cut = seq.length, dead = false, deadAt = 0, done = 0, ats = [], lastAt = 0;
     var baseOut = s.advanceMany([[root, 'settle', null, 0]], true)[0], baseChain = 0, baseCombo = 0, baseBroke = 0;
     if (baseOut && !baseOut.dead) { var bs = s.stepStats(baseOut); baseBroke = bs.broke || 0; if (bs.cleared > 0) { baseChain = sent(bs).chain; bs.comboSizes.forEach(function (z) { if (z > baseCombo) baseCombo = z; }); } made.push(baseOut); }
     var combo = 0, chain = 0, broke = 0, singles = {};
@@ -489,13 +489,14 @@ module.exports = function (opts) {
       if (last && o.settled) break;   // (each step settled already)
       if (mv && !n.b.legalSwaps().some(function (m) { return m[0] === mv[0] && m[1] === mv[1]; })) break;
       var late = pressDelay(s, n, mv, o.tight);
-      if (late > 0) { var waited = s.advance(n, 'long', null, late); if (!waited || waited.dead) { dead = true; break; } made.push(waited); n = waited; }
+      if (late > 0) { var waited = s.advance(n, 'long', null, late); if (!waited || waited.dead) { dead = true; deadAt = waited ? waited.t - root.t : n.t - root.t; break; } made.push(waited); n = waited; }
       if (mv) ats.push(n.t - root.t);
       var out = s.advanceMany([[n, last || o.settled ? 'settle' : 'swap', mv, 0]], true)[0];
-      if (!out || out.dead) { dead = true; break; }
+      if (!out || out.dead) { dead = true; deadAt = out ? out.t - root.t : n.t - root.t; break; }
       made.push(out);
       count(out);
       done = out.t - root.t;
+      if (mv) lastAt = done;
       if (o.ok && cut === seq.length && !o.ok(sofar())) { cut = last ? seq.length - 1 : k; break; }
       n = out;
     }
@@ -511,11 +512,15 @@ module.exports = function (opts) {
     // (readiness, o.readyAt: the next block landed on the board the line ends on, can a break be made then -- the readiness check every
     // move that breaks nothing is held to)
     // (lostAt, o.lifeTo: the frame, from now, the board the line ends on is lost left alone -- the rise, the garbage shown landing when it
-    // lands, the health drained -- Infinity when it is still alive at lifeTo; the frame the line itself lost it, when it did)
-    // (o.lifeRest: and that many frames past the line's own end)
-    if (o.lifeTo != null) res.lostAt = dead ? (n.t - root.t) : lostAlone(s, root, n, Math.max(o.lifeTo, (n.t - root.t) + (o.lifeRest || 0)), made);
+    // lands, the health drained -- Infinity when it is still alive at lifeTo; the frame the engine lost it on, when the line itself did)
+    // (o.lifeRest: and that many frames past the line's own end -- the frame its last swap is made, as the survival search counts it)
+    if (o.lifeTo != null) res.lostAt = dead ? deadAt : lostAlone(s, root, n, Math.max(o.lifeTo, lastAt + (o.lifeRest || 0)), made);
     // (o.readyIfLost: the readiness check, the dearer one, only when the board left alone does not stand to lifeTo)
-    if (o.readyAt != null && !dead && !(o.readyIfLost && res.lostAt === Infinity)) res.ready = breaksAfterLanding(s, root, n, Math.max(1, o.readyAt + 2), made);
+    if (o.readyAt != null && !dead && !(o.readyIfLost && res.lostAt === Infinity)) {
+      var why = o.why ? {} : null;
+      res.ready = breaksAfterLanding(s, root, n, Math.max(1, o.readyAt + 2), made, why);
+      if (why && why.land && why.seq) res.readyLine = { board: why.land.st, seq: why.seq };
+    }
     if (made.length) s.drop(made);
     return res;
   }
@@ -542,19 +547,34 @@ module.exports = function (opts) {
     var st = s.stepStats(out);
     return listFits(st.comboSizes.filter(function (z, i) { return !(st.chainAt[i] > 1); }), sent(st).chain);
   }
-  function breaksAfterLanding(s, root, n, wait, made) {
+  // (why, when given: the board landed and settled, and the break found on it -- what the agreement gate judges again)
+  function breaksAfterLanding(s, root, n, wait, made, why) {
     var land = s.advance(n, 'long', null, Math.max(1, wait - (n.t - root.t)));
     if (!land || land.dead) return null;
     made.push(land);
     var calm = s.advanceMany([[land, 'settle', null, 0]], true)[0];
     if (calm && !calm.dead) { made.push(calm); land = calm; }
-    var base = s.breaks(land), brk = function (x) { return x && !x.dead && (x.brk !== undefined ? x.brk : s.breaks(x)) > base && stepFits(s, x); };
-    var firsts = s.advanceMany(land.b.legalSwaps().map(function (m) { return [land, 'swap', m, 0]; }), true), any = false, live = [];
-    firsts.forEach(function (out) { if (out && !out.dead) { made.push(out); if (brk(out)) any = true; else if (stepFits(s, out)) live.push(out); } });
-    if (any) return true;
-    var seconds = [];
-    live.forEach(function (out) { out.b.legalSwaps().forEach(function (m) { seconds.push([out, 'swap', m, 0]); }); });
-    s.advanceMany(seconds, true).forEach(function (out) { if (out && !out.dead) { made.push(out); if (brk(out)) any = true; } });
+    if (why) why.land = land;
+    // (a break is one the board left alone would not have made by the same frame, as the judge and the break search count it)
+    var idle = {}, still = function (t) {
+      if (!(t in idle)) { var w = t > land.t ? s.advance(land, 'long', null, t - land.t) : land; if (w && w !== land && !w.dead) made.push(w); idle[t] = w && !w.dead ? s.breaks(w) : s.breaks(land); }
+      return idle[t];
+    };
+    // (and the board it breaks on lives through the break's settle, as the judge plays the line out)
+    var settles = function (x) { var z = s.advanceMany([[x, 'settle', null, 0]], true)[0]; if (z && !z.dead) { made.push(z); return stepFits(s, z); } return false; };
+    var brk = function (x) { return x && !x.dead && (x.brk !== undefined ? x.brk : s.breaks(x)) > still(x.t) && stepFits(s, x) && settles(x); };
+    var ms1 = land.b.legalSwaps(), firsts = s.advanceMany(ms1.map(function (m) { return [land, 'swap', m, 0]; }), true), live = [];
+    for (var q = 0; q < firsts.length; q++) {
+      var out = firsts[q];
+      if (!out || out.dead) continue;
+      made.push(out);
+      if (brk(out)) { if (why) why.seq = [ms1[q]]; return true; }
+      if (stepFits(s, out)) live.push({ n: out, m: ms1[q] });
+    }
+    var seconds = [], meta = [];
+    live.forEach(function (x) { x.n.b.legalSwaps().forEach(function (m) { seconds.push([x.n, 'swap', m, 0]); meta.push([x.m, m]); }); });
+    var outs = s.advanceMany(seconds, true), any = false;
+    outs.forEach(function (out, i) { if (out && !out.dead) { made.push(out); if (!any && brk(out)) { any = true; if (why) why.seq = meta[i]; } } });
     return any;
   }
 
