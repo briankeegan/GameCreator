@@ -85,6 +85,8 @@ function lineFits(c, R, seq, isSettled) {
   var key = (isSettled ? 's ' : 'r ') + seq.map(function (mv) { return mv[0] + ',' + mv[1]; }).join(' ');
   c.fitsOf = c.fitsOf || {};
   if (key in c.fitsOf) return c.fitsOf[key];
+  // (the searches asking it are the decision's work: a check not begun by the decision's deadline keeps no line)
+  if (c.due && Date.now() >= c.due - (c.margin || 0)) return { ok: false, made: null, late: true };
   var A = c.attacker, j = (A.judgeIn || A.judge)(c.board, c.m.hold, seq, c.arrivals, { settled: isSettled, tight: c.tight }), m = j.made, ok = !j.dead;
   ok = ok && fitsList(R.list, m, j) && Math.max(m.chain || 0, j.chainAll || 0) <= GAMBIT.MAXCHAIN;
   ok = ok && !(R.keep && R.keep.material !== undefined && !GAMBIT.test(R.F.us.material, R.keep.material) && (m.combo > 0 || m.chain > 0) && !(m.broke > 0));

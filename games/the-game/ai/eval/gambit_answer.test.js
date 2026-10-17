@@ -199,6 +199,10 @@ for (var qs = 1; qs <= 12 && !(brkAsked && byAsked); qs++) {
   var qj = qseq && AT0.judge(qb, H0, qseq, qarr, { readyAt: 60, lifeTo: 360, lifeRest: 120, readyIfBreak: true });
   if (qj && !qj.dead && qj.made.broke > 0 && qj.lostAt === Infinity) { assert.strictEqual(qj.ready, undefined, 'seed ' + qs + ': a break that stands is not asked readiness'); brkAsked++; }
 }
+// (and the shared line check is the decision's work too: one not begun by the decision's deadline keeps no line)
+var lfSwap = low.legalSwaps().filter(function (mv) { return JUDGE.lineFits(cOf(low, []), Rr, [mv], false).ok; })[0];
+assert.ok(lfSwap, 'a swap the line check keeps');
+assert.strictEqual(JUDGE.lineFits(Object.assign(cOf(low, []), { due: Date.now() - 1, margin: 0 }), Rr, [lfSwap], false).ok, false, 'past the deadline the line check keeps nothing');
 assert.ok(brkAsked > 0 && byAsked > 0, 'readiness skipped for a standing break (' + brkAsked + ') and past the deadline (' + byAsked + ')');
 // HEALTH IS IGNORED: every board Gambit judges has level 10's health (planHealth), and one where nothing lives is judged so again --
 // no decision ever counts on the health a game gives
