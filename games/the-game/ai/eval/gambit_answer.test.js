@@ -20,9 +20,9 @@ modes.forEach(function (mode) {
     assert.ok(a.diag && a.diag.gambit && a.diag.gambit.name, mode + ': the decision is Gambit\'s');
     // (the opening: a low stack with no garbage yet is raised)
     if (seed === 1) assert.strictEqual(a.kind, 'raise', mode + ': the opening raise is played (' + a.kind + ' ' + JSON.stringify(a.move) + ')');
-    // (the choice is Gambit's: when any of its moves lives, the one played is Gambit's)
+    // (the one order's choice is what is played: when any candidate lives, the move played lives -- or is the opening's raise)
     var liveN = +String(a.diag.gambit.live || '0').split('/')[0];
-    if (liveN > 0) assert.ok(a.src === 'gambit' && a.diag.gambit.why === 'gambit', mode + ' seed ' + seed + ': ' + liveN + ' of Gambit\'s moves live, but ' + a.src + ' (' + a.diag.gambit.why + ') chose');
+    if (liveN > 0 && a.kind !== 'raise') assert.ok(a.diag.gambit.verdict === 'lives', mode + ' seed ' + seed + ': ' + liveN + ' candidates live, but ' + a.kind + ' (' + a.diag.gambit.verdict + ') was played');
     answered++; if (a.src === 'gambit') gambit++;
     mind.reset();
   }
@@ -43,20 +43,15 @@ var fewer = AT.raiseReady(low, H0, flood, 5, 300);
 assert.ok(fewer < 5, 'nine rows coming: fewer rows raised (' + fewer + ')');
 var est = GAMBIT.facts(low, flood, false).dies;
 assert.ok(AT.diesIn(low, H0, flood, est) < est, 'the garbage on its way decides the frames left, not the rise alone');
-// WHICH MOVES LIVE, on the engine alone: a low board with nothing coming lives held; under nine rows shown coming it is lost left alone,
-// and the move chosen is the one whose board is lost latest when none lives; a raise Gambit did not decide is never played
-var GA = require('./gambit_answer.js'), AT0 = require('./survivor_attack.js')({ reaction: 12, swapGap: 12, cursorMoveFrames: 4 });
-var Rq = function (up) { return { list: [{ combo: '>=5' }, { combo: '<=3', chain: '==1' }], up: up, aloneOut: false, F: { us: { nextLands: null } } }; };
+// WHICH MOVES LIVE, from the one outcome (JUDGE.outcome): a low board with nothing coming lives held; under fourteen slabs shown coming
+// it is lost left alone; topped out the hold buys no stop, so a break left for later is no life for it
+var JUDGE = require('./gambit_judge.js'), AT0 = require('./survivor_attack.js')({ reaction: 12, swapGap: 12, cursorMoveFrames: 4 });
+var Rq = function (topped) { return { list: [{ combo: '>=5' }, { combo: '<=3', chain: '==1' }], F: { us: { nextLands: null, topped: !!topped } } }; };
 var cOf = function (b, arr) { return { board: b, m: { hold: H0 }, arrivals: arr, attacker: AT0, tight: false, left: function () { return 1e9; } }; };
-assert.ok(GA.survives(cOf(low, []), Rq(false), [], false).lives, 'nothing coming: the hold lives');
+assert.ok(JUDGE.outcome(cOf(low, []), Rq(), [], false).lives, 'nothing coming: the hold lives');
 var heavy = Array.apply(null, Array(14)).map(function (_, i) { return { at: 40 + i, width: 6, height: 2 }; });
-var hv = GA.survives(cOf(low, heavy), Rq(false), [], false);
+var hv = JUDGE.outcome(cOf(low, heavy), Rq(), [], false);
 assert.ok(!hv.lives && hv.lostAt < Infinity, 'fourteen slabs coming: the hold is lost (' + hv.lostAt + ')');
-var Lh = GA.lives(cOf(low, heavy), { order: ['raise', 'hold'], cands: [], R: Rq(false) });
-assert.notStrictEqual(Lh.d.kind, 'raise', 'no raise Gambit did not decide: ' + Lh.d.kind);
-assert.ok(Lh.why === 'latest' || Lh.verdict !== 'dies', 'with none living, the latest lost is played: ' + Lh.why + ' ' + Lh.verdict);
-assert.ok(GA.lives(cOf(low, []), { order: ['raise', 'hold'], cands: [], R: Rq(true) }).d.kind === 'raise', 'the raise Gambit decided is played');
-// TOPPED OUT, ALWAYS SOME STOP: on a topped board the hold buys no stop, so a break left for later is no life for it
 var tb = null;
 for (var ts = 1; ts <= 20 && !tb; ts++) {
   var tg = PA.game({ level: 10, seed: ts, countdown: false });
@@ -66,9 +61,13 @@ for (var ts = 1; ts <= 20 && !tb; ts++) {
   if (tg.gameOverClock <= 0 && tg.isToppedOut && tg.isToppedOut()) { tg.stopTime = 90; tb = tg; }
 }
 assert.ok(tb, 'a topped board');
-var Rt = { list: Rq(false).list, up: false, aloneOut: false, F: { us: { nextLands: null, topped: true } } };
-var th = GA.survives(cOf(tb, []), Rt, [], false);
-assert.ok(th.ready !== true, 'topped: the hold buys no stop, and no plan left for later makes it live (ready ' + th.ready + ')');
-assert.ok(GA.lives(cOf(tb, []), { order: ['hold'], cands: [], R: Rt }).why !== 'gambit' || !th.lives, 'topped: the hold is not chosen as living on a plan');
+var th = JUDGE.outcome(cOf(tb, []), Rq(true), [], false);
+assert.ok(th.dead || th.ready !== true, 'topped: the hold buys no stop, and no plan left for later makes it live (ready ' + th.ready + ')');
+// THE MOVE PLAYED IS THE ORDER'S FIRST: the raise only as the opening called for it; else the first candidate's first swap, or the hold
+var GA = require('./gambit_answer.js'), lv = { o: { lives: true } }, dd = { o: { lives: false, lostAt: 50 } };
+assert.strictEqual(GA.chosen({ R: { up: true }, info: {}, top: null, line: null }).d.kind, 'raise', 'the raise the opening called for');
+assert.strictEqual(GA.chosen({ R: { up: false }, info: {}, top: Object.assign({ play: 'hold', hold: true }, lv), line: null }).d.kind, 'hold', 'the hold, ranked first');
+var ln = Object.assign({ play: 'break search', seq: [[3, 2], [4, 2]] }, dd);
+assert.deepStrictEqual(GA.chosen({ R: { up: false }, info: {}, top: ln, line: ln }).d.move, [3, 2], 'a line ranked first: its first swap');
 assert.ok(gambit >= answered / 2, 'Gambit chooses most moves: ' + gambit + ' of ' + answered);
 console.log('ok: gambit answers -- ' + answered + ' questions over ' + modes.length + ' modes, ' + gambit + ' Gambit\'s own');

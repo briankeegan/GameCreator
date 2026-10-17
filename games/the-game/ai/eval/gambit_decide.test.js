@@ -167,8 +167,8 @@ for (var eseed = 1; eseed <= 10; eseed++) {
     var got = JUDGE.judge(ec, tight, k);
     if (!jj.dead && jj.fire > 1) { assert.strictEqual(got, null, k.play + ': begun at frame ' + jj.fire + ', after the deadline, and kept'); lateDropped++; }
   });
-  // (2) READINESS, for every move that breaks nothing: when the board left alone has a break in reach once the next block lands, each
-  // move ranked still leaves one; when it has none, no move is held to it
+  // (2) THE ONE ORDER: every candidate ranked, the hold among them, by its outcome -- each that lives ahead of each that does not, so
+  // the first lives whenever any does; and what the outcome says of a line is what the judge says, played on its own
   ec.judged = {}; ec.dropped = {};
   var alone = at.judge(eb, hold, [], arr, { readyAt: ER.F.us.nextLands });
   if (alone.ready === true) aloneReady++;
@@ -177,18 +177,14 @@ for (var eseed = 1; eseed <= 10; eseed++) {
     var rl = at.readyLines(eb, hold, arr, ER.F.us.nextLands, 300, {});
     if (rl) { assert.strictEqual(at.judge(eb, hold, rl.seq, arr, { settled: false, readyAt: ER.F.us.nextLands }).ready, true, 'seed ' + eseed + ': the line found leaves a plan'); readyLinesFound++; }
   }
-  // (the board left alone not ready: a move that leaves a plan ranks first -- the first move ranked breaks, or is ready, whenever any is)
-  if (alone.ready !== true) {
-    var rk = DECIDE.ranked(ec, ER, ES), rdy = function (k) { return (k.ap.broke || 0) > 0 || at.judge(eb, hold, k.seq, arr, { settled: k.settled, readyAt: ER.F.us.nextLands }).ready === true; };
-    if (rk.some(rdy)) { assert.ok(rdy(rk[0]), 'seed ' + eseed + ': a move that leaves a plan is ranked first, not ' + rk[0].play); readyFirst++; }
-    ec.judged = {}; ec.dropped = {};
-  }
-  DECIDE.ranked(ec, ER, ES).forEach(function (k) {
-    if ((k.ap.broke || 0) > 0 || alone.ready !== true) return;
-    var jr = at.judge(eb, hold, k.seq, arr, { settled: k.settled, readyAt: ER.F.us.nextLands });
-    assert.ok(jr.dead || jr.ready === true, k.play + ': ranked, but the next block cannot be broken when it lands');
-    readyKept++;
+  var rk = DECIDE.ranked(ec, ER, ES), seenDead = false;
+  assert.ok(rk.some(function (k) { return k.hold; }) || ER.aloneOut, 'seed ' + eseed + ': the hold is ranked with the rest');
+  rk.forEach(function (k) {
+    if (!k.o.lives) seenDead = true;
+    else assert.ok(!seenDead, 'seed ' + eseed + ': ' + k.play + ' lives but ranks below one that does not');
+    if (k.o.lives) readyKept++;
   });
+  if (rk.some(function (k) { return k.o.lives; })) { assert.ok(rk[0].o.lives, 'seed ' + eseed + ': a move lives, and the first ranked does not'); readyFirst++; }
   // (3) THE LINE IN PROGRESS, for every line of more than one swap: kept, its first swap pressed and the board run on, then found again
   // by its bottom-row panel -- the rest of the same line, its rows moved by as far as the stack rose
   DECIDE.ranked(ec, ER, ES).filter(function (k) { return k.seq.length > 1 && k.tier <= 4; }).forEach(function (k) {

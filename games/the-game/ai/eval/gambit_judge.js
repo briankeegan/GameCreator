@@ -37,12 +37,40 @@ function stepFits(list) {
   };
 }
 
-// The whole line played as it will be pressed (attacker.judge), once per line a decision: what it makes and when each step is begun --
-// null when the judge could not play it out
-function played(c, seq, isSettled) {
+// THE OUTCOME OF A LINE (plans/decision.md, step 3): the whole line played on the engine as it will be pressed (attacker.judge), once per
+// line a decision, and every fact the decision reads about it taken from that one playing -- no search, filter or rank works any out
+// for itself:
+//   made, chainAll, singles   what it makes, as the game counts it; fits: all of it within the list (fitsList)
+//   done, fire, ats           when it is done, its last swap begun, every swap begun
+//   dropAt                    the frame garbage can next drop once it is over (stop, pre-stop, shake)
+//   lostAt                    the frame its board, left alone, is lost -- Infinity when it stands to the horizon (SURVIVE_FRAMES, or its
+//                             last swap if later) and SURVIVE_REST past it, as the default's survival search proves a move
+//   ready                     once everything shown has landed and settled, a break within two swaps the list allows
+//   lives                     it stands, or it leaves a plan -- topped out, a plan only for a line that buys stop: the board always has
+//                             to have some stop
+// { dead, lostAt } when the judge could not play the line out (its board lost on the way, or a step not legal).
+var CPU = require(path.join(__dirname, 'puyocpu.js')).prototype, HORIZON = CPU.SURVIVE_FRAMES, REST = CPU.SURVIVE_REST, BEAM = CPU.SURVIVE_BEAM;
+function lastLanding(c, R) {
+  var land = null;
+  c.arrivals.forEach(function (a) { if (land === null || a.at > land) land = a.at; });
+  if (land === null && R.F.us.nextLands != null) land = R.F.us.nextLands;
+  return land;
+}
+function outcome(c, R, seq, isSettled) {
   var key = (isSettled ? 's ' : 'r ') + seq.map(function (mv) { return mv[0] + ',' + mv[1]; }).join(' ');
-  if (!(key in c.judged)) { var j = c.attacker.judge(c.board, c.m.hold, seq, c.arrivals, { settled: isSettled, tight: c.tight }); c.judged[key] = j && !j.dead ? j : null; }
-  return c.judged[key];
+  c.outcomes = c.outcomes || {};
+  if (key in c.outcomes) return c.outcomes[key];
+  var land = lastLanding(c, R), timeLeft = !c.left || c.left() > 0;
+  var j = c.attacker.judge(c.board, c.m.hold, seq, c.arrivals, { settled: isSettled, tight: c.tight, readyAt: timeLeft ? land : null, readyIfLost: true, lifeTo: HORIZON + REST, lifeRest: REST });
+  var o = { dead: true, lostAt: j.lostAt, lives: false };
+  if (!j.dead) {
+    var stopNow = Math.max((c.board.stopTime || 0) + (c.board.preStopTime || 0), c.board.shakeTime || 0);
+    var ready = R.F.us.topped && !(j.dropAt > stopNow) ? false : j.ready;
+    o = { made: j.made, chainAll: j.chainAll || 0, singles: j.singles || [], fits: fitsList(R.list, j.made, j) && Math.max(j.made.chain || 0, j.chainAll || 0) <= GAMBIT.MAXCHAIN,
+          done: j.done, fire: j.fire, ats: j.ats, dropAt: j.dropAt, lostAt: j.lostAt, ready: ready, lives: j.lostAt === Infinity || ready === true };
+  }
+  c.outcomes[key] = o;
+  return o;
 }
 
 // THE JUDGE: a candidate, filtered and ranked -- null when it is no candidate. { play, seq, tier, sub, ap, aim, extend, near }
@@ -55,7 +83,7 @@ function judge(c, R, k) {
   // (what it makes is the whole line on the engine, as the judge counts it -- every step's clears, the chain broken garbage sets off, a
   // link added to a chain already falling, the garbage broken beyond what the board breaks alone -- not what the search that found it
   // counted; a line the judge could not play out is judged on the search's word)
-  var st = k.settled !== undefined ? k.settled : settled(play), j = played(c, seq, st), w = j ? j.made : null;
+  var st = k.settled !== undefined ? k.settled : settled(play), oc = outcome(c, R, seq, st), j = oc.dead ? null : oc, w = j ? j.made : null;
   var m = w ? { combo: w.combo, chain: w.chain, broke: w.broke, cells: x.cells || 0 } : x;
   // (the search that found it said it breaks and the judge, playing it as it will be pressed, says it does not: counted for the log)
   if (w && x.broke > 0 && !(w.broke > 0)) drop(c, play, 'unbroken');
@@ -85,15 +113,28 @@ function judge(c, R, k) {
   // order, the longer stop only between two of the same entry)
   var stopNow = Math.max((c.board.stopTime || 0) + (c.board.preStopTime || 0), c.board.shakeTime || 0);
   if (R.F.us.topped && j && j.dropAt > stopNow) t = { tier: 0, sub: [aim >= 0 ? aim : 99, -j.dropAt] };
-  return { play: play, seq: seq, settled: st, tier: t.tier, sub: t.sub, aim: aim, extend: k.extend, near: x.near || 0,
+  return { play: play, seq: seq, settled: st, tier: t.tier, sub: t.sub, aim: aim, extend: k.extend, near: x.near || 0, o: oc,
            ap: { seq: seq, done: j ? j.done : (x.done || null), fire: fire, ats: j ? j.ats : (x.ats || null), chain: m.chain || 0, chainAll: j ? j.chainAll || 0 : 0, combo: m.combo || 0, broke: m.broke || 0, played: !!j } };
 }
+// THE HOLD, a candidate like any other: nothing pressed, its outcome the board's own -- below every play that fits, above a clear
+var HOLD_TIER = 5;
+function hold(c, R, wait) {
+  var oc = outcome(c, R, [], false), j = oc.dead ? null : oc;
+  return { play: 'hold', seq: [], settled: false, tier: HOLD_TIER, sub: wait ? [-1] : [0], aim: -1, near: 0, o: oc, hold: true, wait: !!wait,
+           ap: { seq: [], done: j ? j.done : null, fire: null, ats: null, chain: 0, chainAll: j ? j.chainAll : 0, combo: 0, broke: 0, played: !!j } };
+}
 
-// THE RANK: lower tier first, then each sub-key in turn
+// THE RANK, one order for every candidate (plans/decision.md, step 4): a line that lives before one that does not; of two that live, the
+// tier (the list's order and the engine's timing within it), then each sub-key in turn; of two that do not, the one whose board is lost
+// later, then the tier
+function lostOf(x) { return x.o && x.o.lostAt != null ? x.o.lostAt : -1; }
 function compare(x, y) {
+  var lx = !!(x.o && x.o.lives), ly = !!(y.o && y.o.lives);
+  if (lx !== ly) return lx ? -1 : 1;
+  if (!lx && lostOf(x) !== lostOf(y)) return lostOf(y) - lostOf(x);
   if (x.tier !== y.tier) return x.tier - y.tier;
-  for (var q = 0; q < x.sub.length; q++) if (x.sub[q] !== y.sub[q]) return x.sub[q] - y.sub[q];
+  for (var q = 0; q < Math.min(x.sub.length, y.sub.length); q++) if (x.sub[q] !== y.sub[q]) return x.sub[q] - y.sub[q];
   return 0;
 }
 
-module.exports = { stepFits: stepFits, fitsList: fitsList, judge: judge, compare: compare, settled: settled, SETTLED: SETTLED, swapBack: swapBack, drop: drop };
+module.exports = { stepFits: stepFits, fitsList: fitsList, outcome: outcome, hold: hold, HOLD_TIER: HOLD_TIER, HORIZON: HORIZON, REST: REST, BEAM: BEAM, lastLanding: lastLanding, judge: judge, compare: compare, settled: settled, SETTLED: SETTLED, swapBack: swapBack, drop: drop };

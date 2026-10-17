@@ -46,7 +46,8 @@ function read(c) {
   }
   // (what the board left alone makes while a chain falls or a slab pops, as the game counts it -- the chain, and the clears of its own
   // the panels out of the slab make: outside the list, holding is outside it too)
-  var aloneJ = CK.cascadeLive(c.board, true) || SH.popLeft(c.board) > 0 ? c.attacker.judge(c.board, c.m.hold, [], c.arrivals, { tight: c.tight }) : null;
+  var R0 = { F: F, list: list }, aloneJ = CK.cascadeLive(c.board, true) || SH.popLeft(c.board) > 0 ? JUDGE.outcome(c, R0, [], false) : null;
+  if (aloneJ && aloneJ.dead) aloneJ = null;
   var aloneChain = aloneJ ? aloneJ.chainAll || 0 : 0;
   var aloneOut = !!(aloneJ && !JUDGE.fitsList(list, { combo: 0, chain: 0 }, aloneJ));
   return { F: F, pick: pick, list: list, aloneChain: aloneChain, aloneOut: aloneOut, aims: aims, listAims: listAims, end: end, by: by, under: under, keep: keep, keepF: keepF, readyAt: readyAt,
@@ -54,80 +55,66 @@ function read(c) {
            preds: aims.map(function (a) { return function (made) { return GAMBIT.meets(a, made); }; }) };
 }
 
-// (the log's code for why a candidate was dropped: a swap back, outside the list, too late, below the material floor, leaves the next
-// block unbreakable)
+// (the log's code for why a candidate was dropped: a swap back, outside the list, too late, below the material floor; unbroken, a line
+// its search said breaks that the judge says does not -- counted, not dropped for it)
 var DROP_CODE = { back: 'b', list: 'o', late: 't', floor: 'f', ready: 'r', unbroken: 'u' };
-var HOLD_TIER = 5;   // (GAMBIT.tier: a hold ranks below every play that fits, above a clear)
 var RAISE_MS = 150;
-var READY_ENOUGH = 3;   // (the moves found ready, in rank order, after which the rest stand as ranked: each check is a two-swap search)   // (the most of a decision the raise's readiness search takes)
-// 2-4. PROPOSE, JUDGE AND RANK: every candidate offered, judged, the ones left in rank order
+// 2-4. PROPOSE, JUDGE AND RANK: every candidate offered -- the hold among them -- judged by its outcome (JUDGE.outcome) and put in the
+// one order (JUDGE.compare). With none that lives and time left, Gambit's survival search proposes its line too (attacker.outlive: the
+// default's beam), judged and ranked like the rest.
 function ranked(c, R, S) {
-  c.judged = {}; c.dropped = {}; c.offered = {};
+  c.dropped = {}; c.offered = {};
   var offered = PROPOSE.all(c, R, S);
   offered.forEach(function (k) { c.offered[k.play] = (c.offered[k.play] || 0) + 1; });
   var out = offered.map(function (k) { return JUDGE.judge(c, R, k); }).filter(Boolean);
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
-  // until then -- it ranks with the hold, below every move that can be made now)
+  // until then -- it ranks with the hold)
   var C = R.preds.length ? PROPOSE.carried(c, R) : null, cj = C && JUDGE.judge(c, R, C.cand);
-  if (cj) { cj.wait = C.wait; if (cj.wait) { cj.tier = Math.max(cj.tier, HOLD_TIER); cj.sub = [-1]; } else cj.sub = [-Infinity].concat(cj.sub); out.push(cj); }
-  return ready(c, R, out.sort(JUDGE.compare));
-}
-// EVERY MOVE, FIRST: A PLAN ONCE EVERYTHING SHOWN HAS LANDED (plans/decision.md) -- every move that breaks nothing, played as the judge
-// plays it and run on until the last block the game shows has landed and the board has settled, must leave a break within two swaps
-// (attacker.judge readyAt). When the board left alone leaves one, a move that does not is no candidate; when it does not, the moves
-// that do come first and the rest are kept after them -- no move takes away what is not there. Checked in rank order while the decision
-// has time, until READY_ENOUGH are found (the rest stand as ranked). A break is not held to it.
-function ready(c, R, cands) {
-  var land = null;
-  c.arrivals.forEach(function (a) { if (land === null || a.at > land) land = a.at; });
-  if (land === null) land = R.F.us.nextLands;
-  if (land === null || land === undefined) return cands;
-  var alone = c.attacker.judge(c.board, c.m.hold, [], c.arrivals, { readyAt: land, tight: c.tight });
-  var yes = [], no = [], found = 0;
-  cands.forEach(function (k) {
-    if ((k.ap.broke || 0) > 0 || c.left() <= 0 || found >= READY_ENOUGH) { yes.push(k); return; }
-    var j = c.attacker.judge(c.board, c.m.hold, k.seq, c.arrivals, { settled: k.settled, readyAt: land, tight: c.tight });
-    k.ready = j.dead ? null : j.ready;   // (kept for the check of which moves live, gambit_answer.js)
-    if (!j.dead && j.ready === true) { yes.push(k); found++; } else no.push(k);
-  });
-  R.aloneReady = alone.ready === true; R.aloneReadyJ = alone.ready;
-  if (alone.ready === true) { no.forEach(function (k) { JUDGE.drop(c, k.play, 'ready'); }); return yes; }
-  return yes.concat(no);
+  if (cj) { cj.wait = C.wait; if (cj.wait) { cj.tier = Math.max(cj.tier, JUDGE.HOLD_TIER); cj.sub = [-1]; } else cj.sub = [-Infinity].concat(cj.sub); out.push(cj); }
+  // (the hold: never while the chain the board makes alone runs past the list)
+  if (!R.aloneOut) out.push(JUDGE.hold(c, R, false));
+  out.sort(JUDGE.compare);
+  if (!(out[0] && out[0].o.lives) && c.left() > 0) {
+    var sv = c.attacker.outlive(c.board, c.m.hold, c.arrivals, { to: JUDGE.HORIZON + JUDGE.REST, rest: JUDGE.REST, beam: JUDGE.BEAM, ms: c.left() });
+    c.offered.survive = sv && sv.seq.length ? 1 : 0;
+    var sk = sv && sv.seq.length ? JUDGE.judge(c, R, { play: 'survive', seq: sv.seq, x: {}, aim: -1, settled: false }) : null;
+    if (sk) { out.push(sk); out.sort(JUDGE.compare); }
+  }
+  return out;
 }
 
-// 5. PLAY: the top line, or the raise, or a hold, and the order the survival search is asked in
+// 5. PLAY: the raise when the opening calls for it (R.up: raiseReady played it out), a hold while the raise waits for a busy board, else
+// the first candidate in the one order -- a line's first swap, or the hold
 function play(c, R, S, cands) {
-  var top = cands[0] || null;
-  // (the raise due but the board busy -- a clear or a fall still going locks the rise: nothing new is begun, a chain falling still run on)
-  var wait = R.low && !R.up && !(top && top.extend);
-  // (a hold is no choice while the chain the board makes alone runs past the list: a move that keeps it in comes first, whatever its tier)
-  var line = R.up || wait || !top ? null : top, hold = !R.up && (wait || !top || (top.tier >= 6 && !R.aloneOut) || !!top.wait);
-  var name = line ? line.play : R.up ? 'raise' : hold ? 'hold' : null;
+  var wait = R.low && !R.up && !(cands[0] && cands[0].extend);
+  var top = R.up || wait ? null : cands[0] || null;
+  var line = top && !top.hold && !top.wait ? top : null, hold = !R.up && !line;
+  var name = line ? line.play : R.up ? 'raise' : 'hold';
   var order = [];
-  var add = function (mv) { var k = mv === 'raise' || mv === 'hold' ? mv : mv[0] + ',' + mv[1]; if (order.indexOf(k) < 0) order.push(k); };
+  var add = function (k) { if (order.indexOf(k) < 0) order.push(k); };
   if (R.up) add('raise');
-  if (wait || (line && line.wait)) add('hold');
-  cands.forEach(function (k) { if (k.tier >= 6 && order.indexOf('hold') < 0 && !R.up && !R.aloneOut) add('hold'); if (!k.wait) add(k.seq[0]); });
-  if (!R.up && order.indexOf('hold') < 0) add('hold');
-  if (c.GP.rankAll === false) order = order.slice(0, 1);
+  if (wait) add('hold');
+  cands.forEach(function (k) { add(k.hold || k.wait ? 'hold' : k.seq[0][0] + ',' + k.seq[0][1]); });
   // (pace: begun at once only in a window -- a chain falling, a slab popping -- or when its line is done within a pace gap of its deadline)
   var gap = (c.pace && c.pace.gap) || 0, done = line && line.ap && (line.ap.fire != null ? line.ap.fire : line.ap.done);
   var due = R.by || (R.under && R.F.us.dies > 0 ? R.F.us.dies : null) || (typeof R.readyAt === 'number' ? R.readyAt : null);
   var urgent = !!(line && line.extend) || SH.popLeft(c.board) > 0 || CK.cascadeLive(c.board, true) || (due !== null && due !== undefined && (done || 0) + gap >= due);
   var ap = S.ap, ex = S.ex;
   var pl = ap ? [ap.ms, ap.quick ? ap.quick.seq.length : 0, ap.nearest ? ap.nearest.seq.length : 0, (ap.perAim || []).filter(Boolean).length].join('/') + (ex && ex.nearest ? '+x' : '') : 'none';
-  var br = c.br;
+  var br = c.br, chosen = R.up ? null : wait ? null : top, live = cands.filter(function (k) { return k.o && k.o.lives; }).length;
   var info = { pl: pl, table: R.pick.table, under: !!R.under, rule: R.pick.index, name: R.pick.rule.name || null, want: order[0] || null, options: order.length, order: order,
-               found: !!line, play: name || (line ? (line.aim >= 0 ? 'entry' : 'nearest') : null), entry: line ? line.aim : -1, near: line && line.near || 0, ms: ap ? ap.ms : 0,
+               found: !!line, play: name, entry: line ? line.aim : -1, near: line && line.near || 0, ms: ap ? ap.ms : 0,
                readyAt: typeof R.readyAt === 'number' ? R.readyAt : null, raise: R.up ? R.to : 0, wait: !!wait, extend: !!(line && line.extend), tried: S.tried,
                br: br ? [br.depth, br.toward ? br.toward.length : -1, br.lineup ? 1 : 0, br.touch ? 1 : 0] : null, brMs: c.brMs, pop: SH.popLeft(c.board),
                xs: ex ? [ex.seq.length, ex.chain, ex.cells, ex.base, ex.nearest ? ex.nearest.chain : 0] : null,
-               chain: line ? line.ap.chain : 0, chainAll: line ? line.ap.chainAll || 0 : 0, combo: line ? line.ap.combo || 0 : 0, broke: line ? line.ap.broke || 0 : 0, tier: line ? line.tier : (hold ? 5 : 0),
+               chain: line ? line.ap.chain : 0, chainAll: line ? line.ap.chainAll || 0 : 0, combo: line ? line.ap.combo || 0 : 0, broke: line ? line.ap.broke || 0 : 0, tier: line ? line.tier : (hold ? JUDGE.HOLD_TIER : 0),
                seq: line ? line.seq.map(function (mv) { return mv.slice(); }) : null, swaps: line ? line.ap.seq.length : 0, done: line ? line.ap.done : null,
                fire: line ? line.ap.fire : null, ats: line && line.ap.ats ? line.ap.ats.join('/') : null, by: R.by,
+               // (the one order's choice: whether it lives, the frame its board is lost, and how many candidates live of those ranked)
+               lives: chosen ? !!chosen.o.lives : null, lostAt: chosen && chosen.o.lostAt != null ? chosen.o.lostAt : null, live: live + '/' + cands.length,
                // (per kind of move: how many were offered, and of them how many were dropped and why, DROP_CODE)
                cands: Object.keys(c.offered || {}).map(function (p) { var d = (c.dropped || {})[p]; return p.replace(/ /g, '_') + ':' + c.offered[p] + (d ? '-' + Object.keys(DROP_CODE).filter(function (w) { return d[w]; }).map(function (w) { return DROP_CODE[w] + d[w]; }).join('') : ''); }).join(',') };
-  return { R: R, line: line, play: name, order: order, cands: cands, raise: R.up ? R.to : 0, urgent: urgent, info: info, idleMs: S.idleMs };
+  return { R: R, line: line, top: top, play: name, order: order, cands: cands, raise: R.up ? R.to : 0, urgent: urgent, info: info, idleMs: S.idleMs };
 }
 // THE LINE IN PROGRESS (plans/decision.md, step 5): the line of the move played, when it has more than one swap and is a play -- not a
 // hold or a clear. It keeps how it is pressed (settle by settle, or swap after swap), what it was begun for (its entry, a break), and a

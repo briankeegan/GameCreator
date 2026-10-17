@@ -5,7 +5,7 @@
 // The searches are run once, by search(); the proposers read what they found.
 var path = require('path');
 var GAMBIT = require(path.join(__dirname, 'gambit.js')), SH = require(path.join(__dirname, 'survivor_shared.js'));
-var CK = require(path.join(__dirname, 'survivor_checks.js'));
+var CK = require(path.join(__dirname, 'survivor_checks.js')), JUDGE = require(path.join(__dirname, 'gambit_judge.js'));
 
 var READY_LINE_MS = 120;   // (the most the search for a line that leaves a plan takes of a decision)
 function cand(play, seq, x, aim, extend) { return seq && seq.length && seq[0] ? { play: play, seq: seq, x: x || {}, aim: aim, extend: !!extend } : null; }
@@ -39,10 +39,7 @@ function search(c, R) {
   // (the board left alone with no plan once everything shown has landed: a line of one or two swaps that leaves one -- A.readyLines)
   var lastLand = null; arrivals.forEach(function (a) { if (lastLand === null || a.at > lastLand) lastLand = a.at; });
   out.rl = null;
-  if (lastLand !== null) {
-    var aloneR = A.judge(board, hold, [], arrivals, { tight: c.tight, readyAt: lastLand });
-    if (aloneR.ready !== true) out.rl = A.readyLines(board, hold, arrivals, lastLand, Math.max(20, Math.min(READY_LINE_MS, c.left() / 2)), { tight: c.tight });
-  }
+  if (lastLand !== null && !JUDGE.outcome(c, R, [], false).lives) out.rl = A.readyLines(board, hold, arrivals, lastLand, Math.max(20, Math.min(READY_LINE_MS, c.left() / 2)), { tight: c.tight });
   out.lvG = !R.under && R.readyAt !== null && !(out.rd && !out.rd.ready && out.rd.setup) ? A.level(board, hold, arrivals, { by: R.readyAt || undefined }) : null;
   return out;
 }
