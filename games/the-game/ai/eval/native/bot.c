@@ -2689,6 +2689,7 @@ typedef struct { double t; int k; } SitHeap;   // the heap holds each step's pre
 // THE BOUND, LOWERED AS IT GOES: an accept that only wants something sooner
 // than what it has (the soonest break) lowers it, and the search prunes to it
 static JLOCAL double sitLeft;
+static JLOCAL double sitNodeLeft;   // the time the line just offered to the accept can wait: its board's cover (set before each ask; -1 for a line that keeps no board)
 
 // A SEARCH INSIDE A SEARCH: an accept may ask a question that searches again
 // (is this board ready?), so each level of nesting has its own memory, the
@@ -2946,6 +2947,7 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
       if (SITR[R_TOTAL] > 0) { double cover = SITND[j].settled - 2 + stopAwardOf(SITR[R_CHAIN], SITR[R_TOTAL], BIN[IN_TOPPED] != 0); if (cover > SITND[j].left) SITND[j].left = cover; }
       disturbed(SITST[kd.parent], SITR + R_INTS, SITND[j].dist);
     }
+    sitNodeLeft = j >= 0 ? SITND[j].left : -1;
     int say = accept(SITR, line, n, kd.t, ctx);
     if (say == SIT_TAKE) {
       if (sw) for (int k = 0; k < 2 * n; k++) sw[k] = line[k];
@@ -4377,6 +4379,35 @@ static int attackShapes(const int32_t *st, int cr, int cc, double t0, int32_t *b
   for (int k = 0; k < 2 * *bn; k++) bsw[k] = LINES[best].sw[k];
   return 1;
 }
+// THE LINE THAT OUTLIVES: lines of swaps that go on through their own clears -- each clear holds the board while it settles, lowers its stack, and awards
+// the stop time (the search's cover of a line, sitNodeLeft) -- and the one whose cover reaches furthest, of those that clear. The engine judges it as any
+// option: it is played if it outlives the board left alone and every other option.
+typedef struct { double best; int n; int32_t sw[2 * LINEMAX]; } OutCtx;
+static int sitOutlive(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
+  OutCtx *x = ctx; (void)at;
+  if (res[R_SCOPE] != SC_OK) return SIT_END;   // a break is the break stages'
+  if (res[R_TOTAL] > 0 && sitNodeLeft > x->best && n <= LINEMAX) { x->best = sitNodeLeft; x->n = n; for (int q = 0; q < 2 * n; q++) x->sw[q] = sw[q]; }
+  return SIT_GROW;
+}
+static int outliveOption(Opt *O, int n, Dec d, int frozen, const int32_t *st, const int32_t *cur, int32_t t, const uint32_t *can, Wait (*w)[WMAX]) {
+  extern PATLS double paWork;
+  if (paWork >= optLine()) return n;
+  OutCtx x; x.best = timeLeft(); x.n = 0;
+  double work = optLine() - paWork, cap = REACHSHARE() / 2; if (work > cap) work = cap;
+  double w0 = paWork;
+  searchInTime(st, cur[0], cur[1], t, 0, timeLeft(), frozen, can, w, work, sitOutlive, &x, 0, 0, 0);
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "REACH outlive work %.0f of %.0f cover %.0f of %.0f swaps %d\n", paWork - w0, work, x.n ? x.best : -1.0, timeLeft(), x.n); }
+#endif
+  if (!x.n) return n;
+  Opt *o = &O[n];
+  o->d = mkSwap(x.sw[0], x.sw[1], V_SURVIVALPLAN, d.mode, d.alive);
+  o->n = x.n; o->wait = 0; o->pri = 2;
+  for (int q = 0; q < 2 * x.n; q++) o->sw[q] = x.sw[q];
+  if (!optJudge(o)) return n;
+  if (aloneOnEngine() && aloneDie(1 << 20) > LNO[1] + LIVEHORIZON) return n;   // the latest start, as the planner's option
+  return n + 1;
+}
 static int reachOption(Opt *O, int n, Dec d, int frozen) {
   extern PATLS double paWork;
   const int nIn = n;
@@ -4429,12 +4460,12 @@ static int reachOption(Opt *O, int n, Dec d, int frozen) {
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "REACH scramble %d work %.0f of %.0f time %.0f found %d size %d chain %d\n", gScramble, paWork - rw0, work, timeLeft(), rx.n, rx.best.size, rx.best.chain); }
 #endif
-  if (!rx.n) return n;
+  if (!rx.n) return gScramble && n == nIn ? outliveOption(O, n, d, frozen, st, cur, t, can, w) : n;
   Opt *o = &O[n];
   o->d = mkSwap(rx.sw[0], rx.sw[1], V_BESTATTACK, d.mode, d.alive);
   o->n = rx.n; o->wait = 0; o->pri = 2;
   for (int q = 0; q < 2 * rx.n; q++) o->sw[q] = rx.sw[q];
-  if (!optJudge(o)) return n;
+  if (!optJudge(o)) return gScramble && n == nIn ? outliveOption(O, n, d, frozen, st, cur, t, can, w) : n;
   if (gScramble && aloneOnEngine() && aloneDie(1 << 20) > LNO[1] + LIVEHORIZON) return n;   // the latest start, as the planner's option
   return n + 1;
 }
