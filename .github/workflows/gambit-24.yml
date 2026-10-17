@@ -1,0 +1,112 @@
+name: Gambit 24
+
+# A Gambit profile plays all 24 training games in the real client's Training mode -- 8 each of combo_storm, factory and
+# large_garbage, every game a job of its own, as training-mode.yml plays one pattern -- and a report job reads all 24 games'
+# logs and writes the run up: games/the-game/ai/eval/gambit_summary.js (survived per mode, the frames lost at, combos and
+# chains, the budgets), gambit_losses.js (the decisions before each loss), gambit_reach.js (was the break there; the turn).
+# The summary is the run's notices; every report is the gambit-report artifact.
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'The Gambit profile, relative to games/the-game/ai/eval'
+        default: 'survivor-profiles/gambit-finish.json'
+      frames:
+        description: 'A game survived this many frames counts as survived and ends (21600 = six minutes)'
+        default: '21600'
+      panel_ref:
+        description: 'The panel-game branch with AppDriver PA_SURVIVOR and trainingloop'
+        default: 'bramp/multi-player'
+
+jobs:
+  play:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        pattern: [combo_storm, factory, large_garbage]
+        game: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/checkout@v4
+        with:
+          repository: briankeegan/panel-game
+          ref: ${{ inputs.panel_ref || 'bramp/multi-player' }}
+          path: panel-game
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: xvfb, love and clang
+        timeout-minutes: 15
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for i in 1 2 3; do timeout 240 sudo apt-get $APT update && timeout 240 sudo apt-get $APT install -y libfuse2 xvfb clang && break; sleep 10; done
+          mkdir -p ~/love2d
+          for i in 1 2 3; do curl -fsSL "https://github.com/panel-attack/panel-game/releases/download/love2d-12.0/love-12.0-linux-x86_64.tar.gz" -o /tmp/love.tar.gz && break; sleep 10; done
+          tar -xzf /tmp/love.tar.gz -C ~/love2d
+          mv ~/love2d/*.AppImage ~/love2d/love.AppImage
+          chmod +x ~/love2d/love.AppImage
+      - name: Play
+        timeout-minutes: 340
+        env:
+          PG: ${{ github.workspace }}/panel-game
+          LOVE: /home/runner/love2d/love.AppImage
+          OUT_DIR: ${{ github.workspace }}/out
+          PROFILE: ${{ inputs.profile }}
+          FRAMES: ${{ inputs.frames }}
+          MINUTES: '60'
+        run: bash games/the-game/ai/eval/training.sh wasm "${{ matrix.pattern }}" 1
+      - name: Results
+        if: always()
+        run: grep -h '^game ' out/results.txt 2>/dev/null | sed 's/^/::notice title=${{ matrix.pattern }} ${{ matrix.game }}::/' || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        timeout-minutes: 5
+        with:
+          name: gambit-${{ matrix.pattern }}-${{ matrix.game }}
+          path: |
+            out/results.txt
+            out/survivor.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  report:
+    needs: play
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        timeout-minutes: 10
+        with:
+          pattern: gambit-*
+          path: games-of-run
+      - name: The run, written up
+        timeout-minutes: 45
+        run: |
+          EV=games/the-game/ai/eval
+          mkdir -p report
+          node $EV/gambit_summary.js games-of-run > report/summary.txt 2>&1 || true
+          node $EV/gambit_losses.js games-of-run 10 > report/losses.txt 2>&1 || true
+          node $EV/gambit_reach.js games-of-run 300 3000 > report/reach.txt 2>&1 || true
+          sed 's/^/::notice title=summary::/' report/summary.txt
+          tail -3 report/losses.txt | sed 's/^/::notice title=losses::/'
+          grep -h "boards searched again\|moves at the turn" report/reach.txt | sed 's/^/::notice title=reach::/' || true
+          { echo '## Gambit 24'; echo '```'; cat report/summary.txt; echo; tail -3 report/losses.txt; grep -h "boards searched again\|moves at the turn" report/reach.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        timeout-minutes: 5
+        with:
+          name: gambit-report
+          path: report/
+          retention-days: 30
