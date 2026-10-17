@@ -4715,6 +4715,7 @@ static int breakWithin(const int32_t *st, double left) {
 // it finds is played if the engine says it lives and breaks -- in the time there is.
 static int raPos;   // the position (below)
 #define READYGUIDENONE 8   // (readyGuide's, below)
+#define BDFLATFRAMES 6   // frames of one position the guided break search may go without a board nearer a break than the root
 static int bdNone, bdPos; static double bdTime;   // the position (raPos) and the time left for which breakDeeper found no break within its work
 static double readyGuide(const int32_t *st);
 // THE LINE NEAREST A BREAK: a break ends the search; else the board met whose contact distance is least is kept
@@ -4743,15 +4744,20 @@ static Dec breakDeeper(Dec d) {
   double bd0 = paWork, bdT = timeLeft();
   // best-first by the contact column's distance: the work reaches the lines of three or four swaps, not every line of two -- unless no column
   // is in contact (the guide is flat: every board it meets reads the same), when the soonest press first is the order that finds a break at all
-  sitGuide = readyGuide(kb0) < 2 * READYGUIDENONE + 4 ? readyGuide : 0;
+  // A guide that has not got nearer in BDFLATFRAMES frames of this position says nothing about it (a break through a chain from
+  // below starts with swaps that do not shorten the contact distance): the search goes on soonest press first, which reaches every line
+  static int bdFlatPos, bdFlat; if (bdFlatPos != raPos) { bdFlatPos = raPos; bdFlat = 0; }
+  int flat = bdFlat >= BDFLATFRAMES;
+  sitGuide = !flat && readyGuide(kb0) < 2 * READYGUIDENONE + 4 ? readyGuide : 0;
   // the search goes on from the last frame's if the position is the same (sitKeepSlot): its lines and the nearest of them are kept
-  static NearCtx nearKeep; u64 pk = ((u64)(unsigned)raPos << 1) | 1;
+  static NearCtx nearKeep; u64 pk = ((u64)(unsigned)raPos << 2) | 1 | (flat ? 2 : 0);
   NearCtx nx; if (SITKEEP[0].valid && SITKEEP[0].key == pk) nx = nearKeep; else { nx.bestG = readyGuide(kb0); nx.bestN = 0; }
   sitKeepSlot = 1; sitKeepKey = pk;
   int got = searchInTime(kb0, (int)BIN[IN_CROW], (int)BIN[IN_CCOL], 0, 0, bdT, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0,
                          0, 0, kbEnd - paWork, sitNear, &nx, sw, &n, 0);
   nearKeep = nx;
   sitGuide = 0;
+  if (got || (!flat && nx.bestN > 0)) bdFlat = 0; else if (!flat) bdFlat++;   // flat stays so while the position stands
   if (!got) {
     bdNone = paWork - bd0 < 0.9 * (kbEnd - bd0); bdPos = raPos; bdTime = bdT;
 #ifndef __wasm__
