@@ -34,6 +34,16 @@ The C Gambit uses none of the JavaScript. What only the JavaScript Gambit called
 - `survivor_shared.js` `breakMoves`: delete the Gambit-only options -- `ok`, `stepOk`, `firstOk`, `lineOk`, `resume`, `keepOut` and the
   marks they need (`outside`, `mark`, `within`, `resumed`, `towardsOf`, `toward`). The default bot never passes them, so it plays the same.
 
+## What the C Gambit still takes from JavaScript (checked)
+
+`gambit.wasm` imports only `abort_poll` and `clock_ms`, the host's abort and its clock; every decision is made in C. The loader
+(`gambit.js`) takes:
+
+- `eval/native.js` -- the WebAssembly bridge every bot uses: it writes the board into `gambit.wasm` and makes the root node. It stays.
+- `eval/gambit.js` `rulesFor` -- the rules file read and checked. It moves into `gambit/gambit.js` (above).
+- the board as a JavaScript object, for the `GAMBITB` dump the reach report reads. It stays while the reach report reads it.
+- `survivor_think.js` still loads `gambit.js` and `gambit_answer.js` for the `GC_GAMBIT_JS` switch. They go with the switch (above).
+
 ## Keep, untouched
 
 `native.js`, `search.h`, the default bot's own code.
