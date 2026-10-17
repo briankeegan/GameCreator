@@ -2395,6 +2395,7 @@ static void jmPut(const int32_t *sw, int n, int waitAll, int v, const int32_t *l
 // taken) must fit in OPTWORK; past that the line is not judged, and a line
 // not judged is no option -- the decision is never cut
 static double jdCost, btCost;
+static double rdCost;   // what a readiness replay has cost (below)
 static int budgetRefused;
 // THE LINE OPTIONAL WORK STOPS AT: the decision's (OPTWORK from its start), or
 // lower while a stage runs that must leave a later stage its share (stageEnd)
@@ -2426,7 +2427,9 @@ static double stageLeaves(int i) {
   stageShareInit();
   int after = 0; for (int j = i + 1; j < NSTAGES; j++) after += STAGESHARE[j];
   double keep = OPTWORK * after / 100;
-  if (keep < FINALJUDGES * jdCost) keep = FINALJUDGES * jdCost;
+  // and with a slab queued, the readiness the closing asks of the hold, the decision and the best alternative (rdCost each)
+  double fin = FINALJUDGES * jdCost + (BIN[IN_INCOMING] > 0 ? 3 * rdCost : 0);
+  if (keep < fin) keep = fin;
   return rdW0 + OPTWORK - keep;
 }
 static double stageOpen(int i) { double keep = stageEnd, e = stageLeaves(i); if (e < stageEnd) stageEnd = e; return keep; }
@@ -3849,7 +3852,7 @@ static int readyCounts(const LineC *l, int alone) {
   for (int k = 0; k < LNOLEN; k++) LNO[k] = keep[k];
   return rdy;
 }
-static int rdRefused; static double rdCost;   // (defined with readyInTime)
+static int rdRefused;   // (defined with readyInTime)
 static int bbReady;   // the break bestBreak picked leaves the board ready for the next slab
 static LineC bbDeferred; static int bbHasDeferred;   // a living break held for a better time, this decision
 static LineC *bestBreak(void) {
@@ -5028,7 +5031,6 @@ static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc);
 // running mean of what replays have taken) must fit in the work this thread
 // has left; past that a board is not called ready. One that runs past it is
 // stopped by the engine at OPTWORK and answers not ready, unremembered.
-static double rdCost;
 static int rdRefused;   // questions refused for work this decision, for the bot log
 // A LINE NOT READY STAYS NOT READY WHILE THE POSITION STANDS (raPos): the clock only runs toward the end of the time there is, so a line that
 // left no break in reach for the landing does not gain one. It is kept across decisions (a pop holds one position for hundreds of frames) and
