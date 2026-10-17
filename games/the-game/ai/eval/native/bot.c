@@ -23,7 +23,7 @@ enum { M_BUILD, M_DEFEND, M_ATTACK };
 // the line a bot plays (Bot.line): what it is for, and the most steps it holds
 enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
 #define LINEMAX 16   // the most steps a line holds: storage, never a limit on what is searched -- a line that does not fit is refused, never cut
-#define LNOLEN 21   // out[19]: the stop time still running (stop and pre-stop) when the next slab lands in the line's world, -1 when none lands in it; out[20]: the frame it lands
+#define LNOLEN 22   // out[19]: the stop time still running (stop and pre-stop) when the next slab lands in the line's world, -1 when none lands in it; out[20]: the frame it lands; out[21]: the actions the line takes
 // THE HOLLOW of a judged line: the gaps under garbage on the board it ends on
 // ([10]) and the gaps the slabs to come would leave over its towers ([13]). A
 // tower lowered also lets a pile perched on it down onto panels it can break on.
@@ -2316,7 +2316,9 @@ typedef struct { int n, brk, ok, grown, waitAll, hollow, conv, die, size, chain,
 // the stack -- its hollow, and the material it ends without that the board
 // left alone keeps (spent; less than none when it ends with more, garbage
 // converted): a cell is a sixth of a row, a row FPR frames of rise
-static double lifeOf(int die, int last, int hollow, int spent) { return (double)die - (double)(last > 0 ? last : 0) - (double)(hollow + spent) * BIN[IN_FPR] / BW; }
+// and the actions it takes: the game allows 76 in 600 frames, so an action is 600 / 76 frames of the allowance (front.c ACTIONWINDOW, ACTIONLIMIT)
+#define ACTIONFRAMES (600.0 / 76)
+static double lifeOf(int die, int last, int hollow, int spent, int acts) { return (double)die - (double)(last > 0 ? last : 0) - (double)(hollow + spent) * BIN[IN_FPR] / BW - acts * ACTIONFRAMES; }
 // a thread's lines: the decision's, or a grown subtree's on a worker (growAt)
 static LineC LINES_MAIN[MAXLINES];
 static JLOCAL LineC *LNS = LINES_MAIN;
@@ -2572,13 +2574,13 @@ static int judged(LineC *l) {
     l->conv = l->verdict ? LNO[2] - LNA[2] : 0;
     l->die = l->verdict ? lnoDie(LNO) : 0;   // the frame it loses health (1 << 20: not within the horizon)
     l->size = l->verdict ? LNO[17] : 0; l->chain = l->verdict ? LNO[18] : 0;   // the largest match it makes, its longest chain
-    l->life = l->verdict ? lifeOf(l->die, LNO[1], l->hollow, spentOf()) : 0;
+    l->life = l->verdict ? lifeOf(l->die, LNO[1], l->hollow, spentOf(), LNO[21]) : 0;
     // A BREAK PRESSED ONCE THE BOARD HAS SETTLED: a break needs garbage at
     // rest beside the match, and a press made while the slab still lands
     // matches beside it in vain. The last press then waits for the garbage to land (breakWait).
     if (l->brk && (l->verdict & LV_PAYS) && !(l->verdict & LV_BREAKS) && nJudged < MAXJUDGED) {
       int v = lineJudge(l->sw, l->n, 1); nJudged++;
-      if (v & LV_BREAKS) { l->verdict = v; l->waitAll = 1; l->hollow = HOLLOW(LNO); l->conv = LNO[2] - LNA[2]; l->die = lnoDie(LNO); l->size = LNO[17]; l->chain = LNO[18]; l->life = lifeOf(l->die, LNO[1], l->hollow, spentOf()); }
+      if (v & LV_BREAKS) { l->verdict = v; l->waitAll = 1; l->hollow = HOLLOW(LNO); l->conv = LNO[2] - LNA[2]; l->die = lnoDie(LNO); l->size = LNO[17]; l->chain = LNO[18]; l->life = lifeOf(l->die, LNO[1], l->hollow, spentOf(), LNO[21]); }
     }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr;
@@ -4094,7 +4096,7 @@ static Dec playOn(Dec d) {
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "DROPLINE kind %d n %d", BT->lineKind, BT->nLine); for (int k = 0; k < BT->nLine; k++) fprintf(BLOG, " %d,%d", BT->line[2 * k], BT->line[2 * k + 1]); fprintf(BLOG, " | v %d need %d die %d last %d refused step %d at %d\n", v, need, LNO[0], LNO[1], LNO[5], LNO[6]); }
 #endif
     BT->nLine = 0; return d; }
-  playDie = lnoDie(LNO); playLife = lifeOf(playDie, LNO[1], HOLLOW(LNO), spentOf());
+  playDie = lnoDie(LNO); playLife = lifeOf(playDie, LNO[1], HOLLOW(LNO), spentOf(), LNO[21]);
   // A PLAN SPENDS AS EVERY CHOICE DOES: what is left of a plan line that
   // clears without breaking and leaves no break ready is dropped -- unless the
   // board left alone dies and the line buys time: it loses health later. A
@@ -4233,7 +4235,7 @@ static int waveExpected(void);
 static int contactOf(const int32_t *st);
 typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, plain, clears, stall, size, chain, die, conv, hollow, pri, aheadKnown, twosKnown, twos, nearKnown, contact, contactKnown, cover; Atk ahead; double life, soon, near; } Opt;
 static int optJudge(Opt *o) {
-  int last = 0, spent = 0;
+  int last = 0, spent = 0, acts = 0;
   o->contactKnown = o->contact = 0; o->cover = -1;
   o->rdy = o->rdyKnown = o->soonKnown = o->nearKnown = o->breaks = o->conv = o->cash = o->early = o->plain = o->clears = o->size = o->chain = 0;
   if (o->d.kind == K_HOLD) {
@@ -4247,7 +4249,7 @@ static int optJudge(Opt *o) {
     int v = lineJudge(o->sw, o->n, o->wait), die = judgedDie(v);
     if (die < 0) return 0;   // no verdict: nothing to weigh
     o->die = die; o->lives = die > 0; o->breaks = (v & LV_BREAKS) != 0;
-    o->conv = LNO[2] - LNA[2]; o->hollow = HOLLOW(LNO); last = LNO[1]; spent = spentOf(); o->cover = LNO[19];
+    o->conv = LNO[2] - LNA[2]; o->hollow = HOLLOW(LNO); last = LNO[1]; spent = spentOf(); acts = LNO[21]; o->cover = LNO[19];
     // A SETUP SWAP THAT CLEARS NOTHING BUYS NO TIME: the rise it locks while it lands is no reason to press it, so
     // the board loses health no later for it than left alone; it is pressed for what it sets up (ready, hollow)
     if (o->stall && aloneOnEngine() && !o->breaks && o->conv <= 0 && LNO[3] <= LNA[3]) { int alone = aloneDie(1 << 20); if (o->die > alone) o->die = alone; }
@@ -4268,7 +4270,7 @@ static int optJudge(Opt *o) {
     int banks = o->cover >= 0 && aloneOnEngine() && o->cover > (LNA[19] > 0 ? LNA[19] : 0);
     o->early = (o->plain || (o->cash && !o->breaks && !banks)) && !clearDue(o->sw, o->n, 0);
   }
-  o->life = lifeOf(o->die, last, o->hollow, spent);
+  o->life = lifeOf(o->die, last, o->hollow, spent, acts);
   return 1;
 }
 // READY FOR THE NEXT WAVE: a break in reach when the queued slab lands
@@ -6064,7 +6066,7 @@ static int walkTop(int c) {
 // (later first: its life, hollow and material costed as every line's is);
 // otherwise by the hollow it leaves and the material it spends, a cell each
 static int fillUrgent;
-static double fillScore(int die, int last, int hollow, int spent) { return (fillUrgent && die ? lifeOf(die, last, hollow, spent) : (1 << 20)) * 4096.0 - hollow - spent; }
+static double fillScore(int die, int last, int hollow, int spent) { return (fillUrgent && die ? lifeOf(die, last, hollow, spent, 0) : (1 << 20)) * 4096.0 - hollow - spent; }
 // FILLS THAT TIE ORGANIZE: of two fills as good and as soon, the one leaving
 // more vertical twos whose three touches garbage (breakTwosOf) -- asked only
 // on the tie, since each costs a replay. btw: the best's twos (-1: not asked).

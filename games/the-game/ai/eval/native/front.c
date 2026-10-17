@@ -748,7 +748,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   if (botTraceOn && n == 1 && waitTo > 60 && LF) { extern int fprintf(void *, const char *, ...); extern void *stderr; int r = steps[0], c = steps[1];
     fprintf(BLOG, "  WAIT %d,%d to %d | first %d,%d last %d,%d\n", r, c, waitTo, LF->settle.first[r][c], LF->settle.first[r][c + 1], LF->settle.last[r][c], LF->settle.last[r][c + 1]); }
 #endif
-  out[0] = 0; out[1] = -1; out[2] = out[3] = out[4] = 0; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = out[13] = out[14] = 0; out[15] = out[16] = -1; out[19] = out[20] = -1;   // out[16]: the clock the first step is pressed at
+  out[0] = 0; out[1] = -1; out[2] = out[3] = out[4] = 0; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = out[13] = out[14] = 0; out[15] = out[16] = -1; out[19] = out[20] = -1; out[21] = 0;   // out[16]: the clock the first step is pressed at
   lpArrive = -1; lpEvent = -1;
   int32_t landedFrom = b->garbageCreatedCount;   // out[15]: read once the next slab has landed
   int pressStep = -1, pressLast = 0;   // the step pressed this frame, and the last press before it
@@ -765,7 +765,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
     int input = 0;
     // stopAtNext 2: on until the next landK slabs have dropped and landed
     if (stopAtNext == 2 && step == n && !walking && b->garbageCreatedCount >= dropped + landK && !nb_falling_garbage(b)) {
-      out[1] = last; out[8] = f; return 1;
+      out[1] = last; out[8] = f; out[21] = pad.total - (LF ? LF->pad.total : 0); return 1;
     }
     if (!walking && (step < n || stopAtNext == 1)) {
       int coolIn = cool;
@@ -774,7 +774,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
       if (!landing && (step > 0 || f >= LDELAY) && (cool == 0 || b->stopTime > 0 || nb_topped(b))) {
         if (step == n) {   // the front decides again here
           if (stopAtNext == 1) snapKeep(steps, n, b, f, coolIn, held, last, dropped, &pad);
-          out[1] = last; out[8] = f; return 1;
+          out[1] = last; out[8] = f; out[21] = pad.total - (LF ? LF->pad.total : 0); return 1;
         }
         walking = 1; tr = steps[2 * step]; tc = steps[2 * step + 1]; timer = 0; disp = b->displacement;
         { uint32_t still[W + 2];
@@ -827,6 +827,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
     if (out[15] < 0 && b->garbageCreatedCount > landedFrom && !nb_falling_garbage(b)) out[15] = standingHollow(b);
   }
   out[1] = step == n ? last : -1;
+  out[21] = pad.total - (LF ? LF->pad.total : 0);   // the actions the line takes
   out[2] = b->sBroke; out[3] = b->sCleared; out[9] = b->sFell; out[10] = b->sHollow;
   // the largest single match the line made (out[17]) and the longest chain (out[18]: the engine's chain counter at a link, 2 and up)
   out[17] = out[18] = 0;
