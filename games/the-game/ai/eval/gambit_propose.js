@@ -77,12 +77,18 @@ function breaks(c) {
   });
   return out;
 }
-// TOWARD A BREAK: under garbage with none in reach, the break search's line nearest one -- of its lines (towards: the frontier it carries
-// on first), the first whose first swap does not bring back a board this dig has already stood on (c.seenDig: the boards since the
+// TOWARD A BREAK: under garbage with none in reach, the break search's line nearest one -- the line begun last gone on with first
+// (towardRest), then its lines (towards: the frontier it carries on first): the first whose first swap does not bring back a board this
+// dig has already stood on (c.seenDig: the boards since the
 // garbage it digs toward was first the lowest), so the board never goes round in a circle
 function toward(c, R) {
   if (!R.under || !c.br) return [];
-  var lines = c.br.towards || (c.br.toward ? [c.br.toward] : []);
+  // (the line begun is gone on with first: the rest of it, or a line of the search's that carries it further -- c.towardRest)
+  var lines = c.br.towards || (c.br.toward ? [c.br.toward] : []), rest = c.towardRest;
+  if (rest && rest.length) {
+    var starts = function (ln) { return ln.length >= rest.length && rest.every(function (mv, i) { return ln[i][0] === mv[0] && ln[i][1] === mv[1]; }); };
+    lines = lines.filter(starts).concat([rest], lines.filter(function (ln) { return !starts(ln); }));
+  }
   for (var i = 0; i < lines.length; i++) {
     var ln = lines[i];
     if (!ln || !ln.length) continue;

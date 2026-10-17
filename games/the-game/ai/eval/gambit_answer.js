@@ -40,9 +40,11 @@ function carriedPaths(c) {
   if (!K || !K.paths || !K.anchor || K.played === undefined || digTarget(c.board) !== K.gid) return null;
   var dr = riseSince(c.board, K.anchor);
   if (dr === null) return null;
-  var pre = playedSince(c, K);
-  return K.paths.filter(function (p) { return p.length > pre.length && pre.every(function (mv, i) { return p[i][0] === mv[0] && p[i][1] === mv[1]; }); })
-                .map(function (p) { return p.slice(pre.length).map(function (m) { return [m[0] + dr, m[1]]; }); });
+  var pre = playedSince(c, K), on = function (p) { return p.length > pre.length && pre.every(function (mv, i) { return p[i][0] === mv[0] && p[i][1] === mv[1]; }); };
+  var move = function (p) { return p.slice(pre.length).map(function (m) { return [m[0] + dr, m[1]]; }); };
+  // (THE LINE TOWARD A BREAK BEGUN: the rest of the one played last, the same moves taken off -- the dig goes on along it, PROPOSE.toward)
+  c.towardRest = K.toward && on(K.toward) ? move(K.toward) : null;
+  return K.paths.filter(on).map(move);
 }
 // (what the next decision carries on: this beam's lines, on this board, the garbage they dig toward, the move played and the line
 // handed on after it, and a bottom-row panel none of them touches)
@@ -55,7 +57,8 @@ function keep(c, br, keepOut, d, handed) {
     var p = c.board.panels[1] && c.board.panels[1][col];
     if (p && p.id != null && !moved.some(function (mv) { return mv[0] === 1 && (mv[1] === col || mv[1] + 1 === col); })) anchor = { row: 1, col: col, id: p.id };
   }
-  if (anchor) bot._brKeep = { paths: keepOut.paths, gid: digTarget(c.board), anchor: anchor, id: c.m.id, played: d.kind === 'hold' ? 'hold' : d.move.slice(), handed: handed || null };
+  if (anchor) bot._brKeep = { paths: keepOut.paths, gid: digTarget(c.board), anchor: anchor, id: c.m.id, played: d.kind === 'hold' ? 'hold' : d.move.slice(), handed: handed || null,
+                              toward: c.towardPlayed || null };
 }
 function breakSearch(c, R) {
   var board = c.board, bot = c.bot, share = R && R.under ? UNDER_SHARE : BREAK_SHARE;
@@ -141,6 +144,7 @@ function answer(c) {
   // presses the swaps after the first as the judge pressed them while the next decision is thought about; the next decision sees the
   // board they make and its answer replaces the rest. A line handed on is not carried as well: the frame loop is pressing it)
   var handOn = d.kind === 'swap' && D.line && !D.line.settled && D.line.seq.length > 1 ? D.line.seq.slice(1).map(function (mv) { return mv.slice(); }) : null;
+  c.towardPlayed = d.kind === 'swap' && D.line && D.line.play === 'toward' ? D.line.seq.map(function (mv) { return mv.slice(); }) : null;
   // (the break search's work carried on to the next decision, past the move and as much of the line handed on as gets pressed)
   keep(c, c.br, c.keepOut || {}, d, handOn);
   if (handOn) bot._gambitCarry = null;
@@ -173,4 +177,4 @@ function answer(c) {
                    clears: (made.combo > 0 || made.broke > 0) ? 1 : 0, gambit: D.info } };
 }
 
-module.exports = { answer: answer, chosen: chosen, breakSearch: breakSearch, carriedPaths: carriedPaths };
+module.exports = { answer: answer, chosen: chosen, breakSearch: breakSearch, carriedPaths: carriedPaths, keep: keep };

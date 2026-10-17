@@ -101,6 +101,12 @@ var K0 = { paths: [[[2, 1], [2, 3], [3, 4], [4, 5]], [[2, 2], [2, 3]]], gid: gid
 var cc0 = function (from, pressed) { return { bot: { _brKeep: K0 }, board: cb, m: { lineFrom: from, linePressed: pressed } }; };
 assert.deepStrictEqual(GA.carriedPaths(cc0(77, 1)), [[[3, 4], [4, 5]]], 'the move and one pressed step of the handed line taken off');
 assert.deepStrictEqual(GA.carriedPaths(cc0(12, 3)), [[[2, 3], [3, 4], [4, 5]]], 'another answer\'s line: the decided move alone taken off');
+// (the line toward a break played last is carried as its rest, the same moves taken off -- and none when another line was played)
+var cT = { bot: { _brKeep: Object.assign({}, K0, { toward: [[2, 1], [2, 3], [3, 4], [4, 5]] }) }, board: cb, m: { lineFrom: 77, linePressed: 1 } };
+GA.carriedPaths(cT);
+assert.deepStrictEqual(cT.towardRest, [[3, 4], [4, 5]], 'the toward line begun: its rest carried on');
+var cN = cc0(77, 1); GA.carriedPaths(cN);
+assert.strictEqual(cN.towardRest, null, 'no toward line played: no rest');
 // A DECISION'S TIME IS THE TIME TO ITS MOVE: a question asked 90 frames ahead, with 1.5 s to spare, is answered within a reaction's
 // frames (13 at 60 a second, 217 ms) -- the answer's margin over it at most
 process.env.GC_SURVIVOR_PROFILE = path.join(__dirname, 'survivor-profiles', 'gambit-finish.json');
@@ -150,6 +156,12 @@ var tsw = tbd.legalSwaps(), backLine = [tsw[0]], fwdLine = [tsw[1]], seenT = new
 var offeredT = PROPt.toward({ board: tbd, br: { towards: [backLine, fwdLine] }, seenDig: seenT }, { under: true });
 assert.deepStrictEqual(offeredT[0] && offeredT[0].seq, fwdLine, 'the line back to a board stood on is passed over');
 assert.deepStrictEqual(PROPt.toward({ board: tbd, br: { towards: [backLine, fwdLine] }, seenDig: new Set() }, { under: true })[0].seq, backLine, 'with nothing stood on, the first line');
+// (THE DIG GOES ON ALONG THE LINE BEGUN: the search ranks another line first this decision, the rest of the one begun is offered)
+var restT = [tsw[2]], otherT = [tsw[3]];
+assert.deepStrictEqual(PROPt.toward({ board: tbd, br: { towards: [otherT, restT.concat([tsw[4]])] }, seenDig: new Set(), towardRest: restT }, { under: true })[0].seq,
+                       restT.concat([tsw[4]]), 'a line of the search that carries the one begun further comes first');
+assert.deepStrictEqual(PROPt.toward({ board: tbd, br: { towards: [otherT] }, seenDig: new Set(), towardRest: restT }, { under: true })[0].seq,
+                       restT, 'the rest of the line begun before a line the search ranks first');
 // READY WHEN EVERYTHING LANDS: with garbage on its way, a line that breaks nothing lives only when a break is there once it has landed --
 // standing on stop time is not enough. A board under a slab with 600 frames of stop, a second twelve-row slab shown coming: the hold
 // stands to the horizon, and lives only as it is ready
