@@ -4813,6 +4813,9 @@ static Dec breakDeeper(Dec d) {
   // the search goes on from the last frame's if the position is the same (sitKeepSlot): its lines and the nearest of them are kept
   static NearCtx nearKeep; u64 pk = ((u64)(unsigned)raPos << 2) | 1 | (flat ? 2 : 0);
   NearCtx nx; if (SITKEEP[0].valid && SITKEEP[0].key == pk) nx = nearKeep; else { nx.bestG = readyGuide(kroot); nx.bestN = 0; }
+  // A position whose search has gone BDFLATFRAMES without a board nearer a break goes on at a quarter of the pace: it is kept and grows over
+  // the frames the position stands, and the stages after it -- the lineup that readies the next break among them -- were left no work
+  if (flat) kbEnd = paWork + (kbEnd - paWork) / 4;
   sitKeepSlot = 1; sitKeepKey = pk;
   int got = searchInTime(kroot, klive ? kcur[0] : (int)BIN[IN_CROW], klive ? kcur[1] : (int)BIN[IN_CCOL], klive ? kt0 : 0, 0, bdT, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0,
                          klive ? kcan : 0, klive ? kwt : 0, kbEnd - paWork, sitNear, &nx, sw, &n, 0);
