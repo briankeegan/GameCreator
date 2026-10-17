@@ -36,55 +36,66 @@ function keyOf(k) { return k.kind === 'swap' && k.move ? k.move[0] + ',' + k.mov
 // line's own end), or when, everything shown landed and settled, a break is left within two swaps (ready: a plan). One judge for every
 // move: Gambit's lines, the hold, and when none of them lives every other swap that fits the list. A raise lives only as Gambit decided
 // it (R.up: raiseReady played it out). With nothing living, the move whose board is lost latest -- Gambit's order between equals.
-var LIFE = 240;   // (the frames past the last landing the board must stand: the survival search's horizon, SURVIVE_FRAMES)
+var LIFE = 240, OUTLIVE_MS = 150;   // (OUTLIVE_MS: the most of a decision the survival search takes)   // (the frames past the last landing the board must stand: the survival search's horizon, SURVIVE_FRAMES)
 function lastLanding(c, R) {
   var land = null;
   c.arrivals.forEach(function (a) { if (land === null || a.at > land) land = a.at; });
   if (land === null && R.F.us.nextLands != null) land = R.F.us.nextLands;
   return land;
 }
-// one move judged: { lives, lostAt, j }
-function survives(c, R, seq, isSettled) {
-  var land = lastLanding(c, R), j = c.attacker.judge(c.board, c.m.hold, seq, c.arrivals, { settled: isSettled, tight: c.tight, readyAt: land, lifeTo: Math.max(land || 0, 0) + LIFE });
-  var to = Math.max(land || 0, j.done || 0) + LIFE;
-  return { lives: !j.dead && (j.lostAt >= to || j.ready === true), lostAt: j.lostAt, j: j };
+// one move judged: { lives, lostAt, ready } -- the readiness the decision already found for a candidate (k.ready, gambit_decide ready())
+// is not looked for again; the readiness check only when the board left alone does not stand
+function lifeSpan(c, R) { var land = lastLanding(c, R); return { land: land, to: Math.max(land || 0, 0) + LIFE }; }
+function survives(c, R, seq, isSettled, k) {
+  var sp = lifeSpan(c, R), known = k && k.ready !== undefined;
+  var j = c.attacker.judge(c.board, c.m.hold, seq, c.arrivals, { settled: isSettled, tight: c.tight, readyAt: known ? null : sp.land, readyIfLost: true, lifeTo: sp.to, lifeRest: LIFE });
+  var ready = known ? k.ready : j.ready;
+  return { lives: !j.dead && (j.lostAt === Infinity || ready === true), lostAt: j.lostAt, ready: ready, dead: j.dead };
 }
 function lives(c, D) {
-  var R = D.R, order = D.order, list = R.list, seen = {}, best = null, tried = 0, live = 0, d = null, why = 'gambit', verdict = 'dies';
+  var left0 = Math.round(c.left()), R = D.R, order = D.order, list = R.list, seen = {}, best = null, tried = 0, live = 0, d = null, why = 'gambit', verdict = 'dies';
   var asMove = function (k) { return k === 'hold' || k === 'raise' ? { kind: k } : { kind: 'swap', move: k.split(',').map(Number) }; };
   var lineOf = function (k) {
-    if (k === 'hold') return { seq: [], settled: false };
+    if (k === 'hold') return { seq: [], settled: false, k: { ready: D.R.aloneReadyJ } };
     var cand = D.cands.filter(function (x) { return !x.wait && x.seq[0][0] + ',' + x.seq[0][1] === k; })[0];
-    return cand ? { seq: cand.seq, settled: !!cand.settled } : { seq: [k.split(',').map(Number)], settled: false };
+    return cand ? { seq: cand.seq, settled: !!cand.settled, k: cand } : { seq: [k.split(',').map(Number)], settled: false, k: null };
   };
-  var weigh = function (k, src) {
+  var weigh = function (k, src, given) {
     if (seen[k]) return false;
     seen[k] = true;
     if (k === 'raise') { if (!R.up) return false; d = asMove(k); verdict = 'ready'; why = src; return true; }
-    var ln = lineOf(k), v = survives(c, R, ln.seq, ln.settled);
+    var ln = given || lineOf(k), v = survives(c, R, ln.seq, ln.settled, ln.k);
     tried++;
-    if (v.lives) { live++; d = asMove(k); verdict = v.j.ready === true ? 'ready' : 'proven'; why = src; return true; }
+    if (v.lives) { live++; d = asMove(k); verdict = v.ready === true ? 'ready' : 'proven'; why = src; return true; }
     if (!best || v.lostAt > best.lostAt) best = { k: k, lostAt: v.lostAt };
     return false;
   };
   // (Gambit's, in its order: the first that lives -- its place in the order first)
   for (var i = 0; i < order.length && !d; i++) if (i === 0 || c.left() > 0) weigh(order[i], 'gambit');
-  // (none lives: every other swap that fits the list and keeps the chain within MAXCHAIN, while the decision has time; and the hold)
+  // (none lives: the hold, then Gambit's survival search -- a line of swaps whose board stands, every clear on it within the list --
+  // judged as every move is; its first swap is played, and the next decision searches again from the board it makes)
   if (!d) {
-    if (!R.aloneOut) weigh('hold', 'fits');
-    var all = c.board.legalSwaps();
-    for (var q = 0; q < all.length && !d && c.left() > 0; q++) {
-      var k = all[q][0] + ',' + all[q][1];
-      if (seen[k]) continue;
-      var jk = c.attacker.judge(c.board, c.m.hold, [all[q]], c.arrivals, { tight: c.tight });
-      if (jk.dead || !JUDGE.fitsList(list, jk.made, jk) || Math.max(jk.made.chain || 0, jk.chainAll || 0) > GAMBIT.MAXCHAIN) { seen[k] = true; continue; }
-      weigh(k, 'fits');
+    if (!R.aloneOut && c.left() > 0) weigh('hold', 'fits');
+    var ms = Math.min(c.left(), OUTLIVE_MS);
+    if (!d && ms > 0) {
+      var fitsAll = function (sizes, chain) {
+        return chain <= GAMBIT.MAXCHAIN && (chain < 2 || GAMBIT.fits(list, { combo: 0, chain: chain })) && sizes.every(function (z) { return GAMBIT.fits(list, { combo: z, chain: 1 }); });
+      };
+      var sv = c.attacker.outlive(c.board, c.m.hold, c.arrivals, { to: lifeSpan(c, R).to, rest: LIFE, ms: ms, ok: fitsAll });
+      if (sv && sv.seq.length) {
+        var k0 = sv.seq[0][0] + ',' + sv.seq[0][1], jl = c.attacker.judge(c.board, c.m.hold, sv.seq, c.arrivals, { tight: c.tight });
+        if (!jl.dead && JUDGE.fitsList(list, jl.made, jl) && Math.max(jl.made.chain || 0, jl.chainAll || 0) <= GAMBIT.MAXCHAIN) {
+          seen[k0] = false;
+          weigh(k0, 'survive', { seq: sv.seq, settled: false, k: null });
+          if (!d && sv.lostAt > ((best && best.lostAt) || 0)) best = { k: k0, lostAt: sv.lostAt };
+        }
+      }
     }
   }
   // (nothing lives: the move whose board is lost latest; nothing judged at all, the hold)
   if (!d) { d = best ? asMove(best.k) : { kind: 'hold' }; why = 'latest'; verdict = 'dies'; }
   // (live: of the moves judged, how many live / how many judged / how many Gambit ranked)
-  return { d: d, verdict: verdict, holdLives: d.kind === 'hold' && verdict !== 'dies', gambits: order.indexOf(keyOf(d)) >= 0, cand: null, live: live + '/' + tried + '/' + order.length, why: why };
+  return { d: d, verdict: verdict, holdLives: d.kind === 'hold' && verdict !== 'dies', gambits: order.indexOf(keyOf(d)) >= 0, cand: null, live: live + '/' + tried + '/' + order.length, why: why, left: left0 };
 }
 
 // THE RAISE HELD DOWN: the engine raises a displacement step a frame while the button is held, row after row. A raise answer presses
@@ -114,7 +125,7 @@ function logLine(c, D, L, br, brMs) {
     ' broke=' + (g.broke || 0) + ' tier=' + (g.tier || 0) + ' by=' + (g.by || '-') + ' plan=' + (g.pl || '-') + ' done=' + (g.done != null ? g.done : '-') + ' fire=' + (g.fire != null ? g.fire : '-') +
     ' ats=' + (g.ats || '-') + ' swaps=' + (g.swaps || 0) + ' land=' + (F.nextLands != null ? F.nextLands : '-') + ' dies=' + F.dies + (F.queueKills ? ' qk=1' : '') + (D.R.aloneOut ? ' alone=' + D.R.aloneChain : '') + ' casc=' + (CK.cascadeLive(c.board, true) ? 1 : 0) +
     ' pop=' + SH.popLeft(c.board) + ' stop=' + F.stop + ' waits=' + (F.breakWaits ? 1 : 0) + ' unseen=' + unseenOf(c.board) + ' tight=' + (c.tight ? 1 : 0) +
-    ' br=' + (br ? (br.depth || 0) + '/' + (br.path ? br.path.length : br.toward ? 't' + br.toward.length : 0) + (br.cut ? '/cut' : '') : 'none') + ' brMs=' + brMs + ' cands=' + (g.cands || '-') + ' live=' + L.live + ' wallMs=' + (c.wall0 ? Number(process.hrtime.bigint() - c.wall0) / 1e6 : 0).toFixed(1) + ' why=' + L.why);
+    ' br=' + (br ? (br.depth || 0) + '/' + (br.path ? br.path.length : br.toward ? 't' + br.toward.length : 0) + (br.cut ? '/cut' : '') : 'none') + ' brMs=' + brMs + ' cands=' + (g.cands || '-') + ' live=' + L.live + ' left=' + (L.left > 1e8 ? '-' : L.left) + ' wallMs=' + (c.wall0 ? Number(process.hrtime.bigint() - c.wall0) / 1e6 : 0).toFixed(1) + ' why=' + L.why);
 }
 
 function answer(c) {

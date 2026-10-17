@@ -85,9 +85,10 @@ function ready(c, R, cands) {
   cands.forEach(function (k) {
     if ((k.ap.broke || 0) > 0 || c.left() <= 0 || found >= READY_ENOUGH) { yes.push(k); return; }
     var j = c.attacker.judge(c.board, c.m.hold, k.seq, c.arrivals, { settled: k.settled, readyAt: land, tight: c.tight });
+    k.ready = j.dead ? null : j.ready;   // (kept for the check of which moves live, gambit_answer.js)
     if (!j.dead && j.ready === true) { yes.push(k); found++; } else no.push(k);
   });
-  R.aloneReady = alone.ready === true;
+  R.aloneReady = alone.ready === true; R.aloneReadyJ = alone.ready;
   if (alone.ready === true) { no.forEach(function (k) { JUDGE.drop(c, k.play, 'ready'); }); return yes; }
   return yes.concat(no);
 }

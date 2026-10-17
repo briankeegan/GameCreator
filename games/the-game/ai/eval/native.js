@@ -463,7 +463,7 @@
     if (S.nodes[i]) return S.nodes[i];
     var gen = S.gen, full = null;
     function wrapped() { if (S.gen !== gen) throw new Error('Native: a node from an earlier decision was read'); return full || (full = S.wrap(i)); }
-    return { _nat: S, _i: i, t: t, brk: brk, get b() { return wrapped().b; }, get st() { return wrapped().st; } };
+    return { _nat: S, _i: i, t: t, brk: brk, get b() { return wrapped().b; }, get st() { return wrapped().st; }, get carry() { return wrapped().carry; } };
   }
   // Settles from [node, move] pairs (move null: hold), at most `frames` each.
   Search.prototype.settleMany = function (steps, frames) {

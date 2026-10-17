@@ -507,10 +507,12 @@ module.exports = function (opts) {
     var res = { made: sofar(), chainAll: Math.max(chain, board.chainCounter || 0), singles: Object.keys(singles).map(Number), dropAt: dropAt, cut: cut, dead: dead, done: done, ats: ats, fire: ats.length ? ats[ats.length - 1] : null };
     // (readiness, o.readyAt: the next block landed on the board the line ends on, can a break be made then -- the readiness check every
     // move that breaks nothing is held to)
-    if (o.readyAt != null && !dead) res.ready = breaksAfterLanding(s, root, n, Math.max(1, o.readyAt + 2), made);
     // (lostAt, o.lifeTo: the frame, from now, the board the line ends on is lost left alone -- the rise, the garbage shown landing when it
     // lands, the health drained -- Infinity when it is still alive at lifeTo; the frame the line itself lost it, when it did)
-    if (o.lifeTo != null) res.lostAt = dead ? (n.t - root.t) : lostAlone(s, root, n, o.lifeTo, made);
+    // (o.lifeRest: and that many frames past the line's own end)
+    if (o.lifeTo != null) res.lostAt = dead ? (n.t - root.t) : lostAlone(s, root, n, Math.max(o.lifeTo, (n.t - root.t) + (o.lifeRest || 0)), made);
+    // (o.readyIfLost: the readiness check, the dearer one, only when the board left alone does not stand to lifeTo)
+    if (o.readyAt != null && !dead && !(o.readyIfLost && res.lostAt === Infinity)) res.ready = breaksAfterLanding(s, root, n, Math.max(1, o.readyAt + 2), made);
     if (made.length) s.drop(made);
     return res;
   }
@@ -553,6 +555,46 @@ module.exports = function (opts) {
     s.drop(made);
     return hi;
   }
+  // GAMBIT'S SURVIVAL SEARCH (outlive): lines of swaps played on the engine one after another, a beam of the boards lost latest left
+  // alone, on the engine, of those held longest -- the frame the garbage queued could next drop (the line's frames, then the later of
+  // stop + pre-stop and the shake: they count down together) -- then with the most room over the stack, then the least garbage; each step's clears held to o.ok(sizes, chain) (the
+  // list), for as long as o.ms lasts (a level is begun only while the last one's time is left). The first line whose board, left alone,
+  // is still alive at o.to (frames from now), and o.rest past its own end, is the answer; else the line whose board is lost latest.
+  // { seq, lostAt } or null. o: { to, rest, ms, depth, beam, ok }
+  function outlive(board, hold, arrivals, o) {
+    var t0 = Date.now(), s = search(), depth = o.depth || 6, width = o.beam || 12, best = null, made = [], levelMs = 0;
+    s.reset();
+    var root = s.root(board.copy(), hold, arrivals || [], false);
+    var held = function (n) { return (n.t - root.t) + Math.max((n.carry.stopTime || 0) + (n.carry.preStopTime || 0), n.carry.shakeTime || 0); };
+    var level = [{ n: root, seq: [] }];
+    for (var d = 1; d <= depth && level.length && Date.now() - t0 + levelMs < o.ms; d++) {
+      var tl = Date.now(), steps = [], meta = [];
+      level.forEach(function (x) { x.n.b.legalSwaps().forEach(function (m) { steps.push([x.n, 'swap', m, 0]); meta.push(x.seq.concat([m])); }); });
+      var outs = s.advanceMany(steps, true), kids = [], seen = {};
+      outs.forEach(function (out, q) {
+        if (!out || out.dead) return;
+        made.push(out);
+        if (o.ok) { var st = s.stepStats(out); if (!o.ok(st.comboSizes.filter(function (z, i) { return !(st.chainAt[i] > 1); }), sent(st).chain)) return; }
+        var key = out.b.key;
+        if (seen[key]) return;
+        seen[key] = true;
+        kids.push({ n: out, seq: meta[q], room: out.b.height - out.b._top, h: held(out), g: out.b._garb });
+      });
+      // (the boards held longest, then with the most room, then the least garbage, are each run on alone to the frame they are lost; the
+      // beam keeps the ones lost latest)
+      kids.sort(function (a, b) { return b.h - a.h || b.room - a.room || a.g - b.g; });
+      kids = kids.slice(0, 2 * width);
+      for (var i = 0; i < kids.length && Date.now() - t0 < o.ms; i++) {
+        var lost = kids[i].lost = lostAlone(s, root, kids[i].n, Math.max(o.to, kids[i].n.t - root.t + (o.rest || 0)), made);
+        if (!best || lost > best.lostAt) best = { seq: kids[i].seq, lostAt: lost };
+        if (lost === Infinity) { s.drop(made); return best; }
+      }
+      level = kids.filter(function (x) { return x.lost !== undefined; }).sort(function (a, b) { return b.lost - a.lost; }).slice(0, width);
+      levelMs = Date.now() - tl;
+    }
+    s.drop(made);
+    return best;
+  }
   // A LINE THAT LEAVES A PLAN (readyLines): of the lines of one swap, then of two from the first swaps that live, the first that, played
   // as pressed and run on until the last block shown has landed and the board has settled, leaves a break within two swaps
   // (breaksAfterLanding) -- each judged on the engine, for as long as `ms` lasts. { seq, at } or null
@@ -578,5 +620,5 @@ module.exports = function (opts) {
     }
     return null;
   }
-  return { readyLines: readyLines, plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear, replay: replay, judge: judge, diesIn: diesIn, raiseReady: raiseReady };
+  return { outlive: outlive, readyLines: readyLines, plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear, replay: replay, judge: judge, diesIn: diesIn, raiseReady: raiseReady };
 };
