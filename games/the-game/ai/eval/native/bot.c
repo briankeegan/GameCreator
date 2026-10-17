@@ -3863,8 +3863,8 @@ int frontWindowLeft(int ahead);
 double frontBreakActs(void);
 static int bbWinWait;   // the break held is held for the input window: it plays only when the window has the actions for the break and the one the landing needs
 // A LANDING MET WITH THE WINDOW SPENT: the slab a break lets land is met with a break of its own, and a break line takes about bkActs of the actions a window
-// allows (front.c). Landings that found 60 or more of the 76 spent were fatal 9%, the rest 1%. The window frees an action only as the press 600 frames ago
-// ages out, so a break that lands the next slab while the window would hold less than two break lines at the landing waits -- while the board left alone lives.
+// allows (front.c). Landings that found 68 or more of the 76 spent (this break's own included) were fatal 12%, 60 to 67 7%, the rest 1%. The window frees an
+// action only as the press 600 frames ago ages out, so a break that lands the next slab with 68 or more spent at the landing waits -- while the board left alone lives.
 static int windowShort(const LineC *l) {
   double need = frontBreakActs();
   if (need <= 0 || !aloneOnEngine() || LNA[0]) return 0;
@@ -3873,7 +3873,7 @@ static int windowShort(const LineC *l) {
   int at = LNO[20], cover = LNO[19];
   for (int k = 0; k < LNOLEN; k++) LNO[k] = keep[k];
   if (at < 0 || cover < 0) return 0;
-  return frontWindowLeft(at) < 2 * need;
+  return frontWindowLeft(at) - need < 76 - 67;   // the game's allowance (front.c ACTIONLIMIT) less 67
 }
 static LineC bbDeferred; static int bbHasDeferred;   // a living break held for a better time, this decision
 static LineC *bestBreak(void) {
