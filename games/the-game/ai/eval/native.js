@@ -635,5 +635,6 @@
   };
   return Native;
   }
-  return { server: make() };
+  // (make: another instance of the same machinery, on a module of its own -- gambit/gambit.js runs the C Gambit on gambit.wasm so)
+  return { server: make(), make: make };
 }));

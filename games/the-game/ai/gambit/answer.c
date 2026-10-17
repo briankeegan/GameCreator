@@ -162,7 +162,7 @@ typedef struct {
   Move d; int32_t raiseNow, raiseAfter, nhand, hand[MAXLINE];
   int32_t verdict;    // 0 none, 1 lives, 2 dies, 3 raise
   int32_t holdLives, brk, urgent, offered, lineup, touch, took, clears, dumpBoard;
-  int32_t play, combo, chain, chainAll, broke, done, fire, nseq, seq[MAXLINE];
+  int32_t play, combo, chain, chainAll, broke, done, fire, nseq, seq[MAXLINE], rule, nlive, ncands;
   double idleMs, brMs;
 } Answer;
 static Answer theAnswer;
@@ -230,11 +230,12 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   A->brk = ran && theBr.depth; A->offered = ran ? theBr.depth : 0; A->lineup = ran && theBr.lineup; A->touch = ran && theBr.touch;
   if (ran && theBr.depth && d.kind == 1) for (int i = 0; i < theBr.nmoves; i++) if (theBr.moves[i] == d.move) A->took = 1;
   A->idleMs = S.idleMs; A->brMs = brMs;
+  A->rule = theTables.r[R.rule].name; A->nlive = P.nlive; A->ncands = P.ncands;
   // (urgent: a cascade or a pop, an extension, or the line done within a pace gap of its deadline -- the frame loop's pace)
   A->urgent = (P.line && P.line->k.extend) || popLeft(decQ.b) > 0 || cascadeLive(decQ.b);
   // THE LOG LINE
   const Rule *rule = &theTables.r[R.rule];
-  L_s("GAMBITD "); L_i(at); L_s(" r"); L_i(rule->name); L_s(" play="); L_play(P.name);
+  L_s("GAMBITD "); L_i(at); L_s(" @"); L_i(rule->name); L_s(" play="); L_play(P.name);
   L_s(" want="); if (R.up) L_s("raise"); else if (P.wait) L_s("hold"); else if (!n) L_s("-"); else if (order[0]->hold || order[0]->wait) L_s("hold"); else L_mv(order[0]->k.seq[0]);
   L_s(" got="); if (d.kind == 1) L_mv(d.move); else L_s(d.kind == 2 ? "raise" : "hold");
   L_s(" src=gambit v="); L_s(A->verdict == 1 ? "lives" : A->verdict == 2 ? "dies" : A->verdict == 3 ? "raise" : "none");
@@ -339,6 +340,7 @@ EXPORT(gb_answer) int gb_answer(Ctx *hx, int i, int qid, int at, int topped, int
   w[k++] = (int32_t)A->idleMs; w[k++] = (int32_t)A->brMs;
   w[k++] = A->nhand; for (int q = 0; q < A->nhand; q++) w[k++] = A->hand[q];
   w[k++] = A->nseq; for (int q = 0; q < A->nseq; q++) w[k++] = A->seq[q];
+  w[k++] = A->d.kind < 0 ? -1 : A->rule; w[k++] = A->nlive; w[k++] = A->ncands;
   return k;
 }
 EXPORT(gb_log) const char *gb_log(void) { return logBuf; }

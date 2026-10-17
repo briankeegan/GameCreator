@@ -38,4 +38,96 @@ function load(file) {
   return bind(inst.exports);
 }
 
-module.exports = { load: load, bind: bind, aimWords: aimWords };
+// ---- THE RULES, as gambit.c reads them (gb_rules): every rule's `when` (facts by id), its list, its deadline, its floor and its raise
+var FACTS = ['us.topped', 'us.stop', 'us.height', 'us.material', 'us.contact', 'us.dies', 'us.evenness', 'us.coming', 'us.heavy', 'us.nextLands',
+             'us.breakWaits', 'us.queueKills', 'enemy.topped', 'enemy.height', 'enemy.stop'];   // facts.c FACT_*
+var KEEPS = ['height', 'material', 'evenness'];   // facts.c KEEP_*
+function keepWords(keep) {
+  if (!keep) return [0].concat(testOf(), testOf(), testOf());
+  var w = [1];
+  KEEPS.forEach(function (k) { w = w.concat(testOf(keep[k] !== undefined ? keep[k] : keep['us.' + k], 'keep ' + k)); });
+  Object.keys(keep).forEach(function (k) { if (KEEPS.indexOf(k.replace(/^us\./, '')) < 0) throw new Error('gambit: a floor asks ' + k + ', which facts.c does not keep'); });
+  return w;
+}
+// the words of a table set ({ defend, attack, keep, raise, underGarbage }), its rules' names numbered in `names`
+function rulesWords(tables, names) {
+  var w = [], n = 0;
+  [['defend', 0], ['attack', 1]].forEach(function (tb) {
+    (tables[tb[0]] || []).forEach(function (r) {
+      if (names.indexOf(r.name) < 0) names.push(r.name);
+      var when = Object.keys(r.when || {}), list = Array.isArray(r.aims) ? r.aims : [r.aim, r.else].filter(Boolean), end = 0, aims = [];
+      for (var i = 0; i < list.length; i++) { if (typeof list[i] === 'string') { end = list[i] === 'hold' ? 2 : 1; break; } aims.push(list[i]); }
+      w.push(tb[1], names.indexOf(r.name), when.length);
+      when.forEach(function (k) { w.push(FACTS.indexOf(k)); w = w.concat(testOf(r.when[k], 'when ' + k)); });
+      w.push(aims.length); aims.forEach(function (a) { w = w.concat(aimWords(a)); });
+      w.push(end, typeof r.by === 'string' ? FACTS.indexOf(r.by) : -1, typeof r.by === 'number' ? r.by : -1);
+      w = w.concat(keepWords(r.keep), [(r.raise && r.raise.to) || 0]);
+      n++;
+    });
+  });
+  w = w.concat(keepWords(tables.keep), [(tables.raise && tables.raise.to) || 0, tables.underGarbage === 'ignore' ? 1 : 0]);
+  return { n: n, words: w };
+}
+
+// ---- GAMBIT: one bot's C Gambit, on a gambit.wasm of its own (native.js's machinery on it: the board written in, the root made)
+var KIND = ['hold', 'swap', 'raise'];
+function Gambit(o) {
+  var NAT = require(path.join(__dirname, '..', 'eval', 'native.js')), N = NAT.make();
+  N.init(fs.readFileSync(path.join(__dirname, 'gambit.wasm')));
+  this.N = N; this.X = N.exports(); this.G = bind(this.X);
+  this.S = new N.Search({ reaction: o.reaction, swapGap: o.swapGap, cursorMoveFrames: o.cursorMoveFrames, threads: 1 });
+  this.rules = o.rules; this.names = []; this.tables = null;
+  var gp = o.gambit || {};
+  this.mode = gp.mode || null;
+  this.gp = [gp.ms || 0, gp.extendMs || 0, gp.width || 0, gp.depth || 0, gp.pool || 0, gp.extendDepth || 0, gp.extend === false ? 1 : 0, o.reaction, o.swapGap, o.cursorMoveFrames];
+  this.lastAt = null;
+}
+// The tables for this opponent, into gambit.wasm when they change (the rules file is read again whenever it changes: rules.get)
+Gambit.prototype.useTables = function (opp) {
+  var t = this.rules.get(opp && opp.name);
+  if (t === this.tables) return;
+  var R = rulesWords(t, this.names), b = this.G.body(R.words.length);
+  for (var i = 0; i < R.words.length; i++) b[i] = R.words[i];
+  if (this.X.gb_rules(R.n) !== R.n) throw new Error('gambit: the rules were refused');
+  this.tables = t;
+  var mode = this.mode ? this.names.indexOf(this.mode) : -1;
+  this.X.gb_profile.apply(null, [mode].concat(this.gp));
+};
+// THE TURN: q { m (the question), board, arrivals, due, t0, margin, canRaise, mem } -- the answer as the frame loop reads it
+Gambit.prototype.answer = function (q) {
+  var m = q.m, X = this.X;
+  this.useTables(m.opp);
+  if (this.lastAt !== null && m.at < this.lastAt) X.gb_new_game();   // (a clock behind the last: a new game, nothing carried on)
+  this.lastAt = m.at;
+  this.S.reset();
+  var root = this.S.root(q.board.copy(), m.hold, q.arrivals || [], false), opp = m.opp || null;
+  var n = X.gb_answer(this.S.ctx, root._i, m.id | 0, m.at | 0, m.topped ? 1 : 0, opp ? 1 : 0, opp && opp.out ? 1 : 0, opp && opp.top != null ? 1 : 0, opp && opp.top != null ? opp.top : 0,
+                      opp && opp.stop != null ? 1 : 0, opp && opp.stop != null ? opp.stop : 0, m.allowance != null ? 1 : 0, m.allowance != null ? m.allowance : 0,
+                      m.lineFrom != null ? m.lineFrom : -1, m.linePressed || 0, q.canRaise() ? 1 : 0, q.due || 0, q.t0 || Date.now(), q.margin || 0);
+  if (n < 0) throw new Error('gambit: the question was refused');
+  var w = this.G.body(n), k = 0, r = function () { return w[k++]; };
+  var kind = r(), mr = r(), mc = r(), raiseNow = r(), raiseAfter = r(), verdict = r(), holdLives = r(), brk = r(), urgent = r();
+  var offered = r(), lineup = r(), touch = r(), took = r(), clears = r(), dump = r();
+  var play = r(), combo = r(), chain = r(), chainAll = r(), broke = r(), done = r(), fire = r(), idleMs = r(), brMs = r();
+  var hand = [], nh = r(); for (var i = 0; i < nh; i++) { var h = r(); hand.push([h >> 3, h & 7]); }
+  var seq = [], ns = r(); for (i = 0; i < ns; i++) { var s = r(); seq.push([s >> 3, s & 7]); }
+  var rule = r(), nlive = r(), ncands = r(), ruleName = rule >= 0 ? this.names[rule] : null;
+  var log = Buffer.from(new Uint8Array(X.memory.buffer, X.gb_log() >>> 0, X.gb_log_len())).toString('latin1');
+  console.error(log.replace(/^(GAMBITD \d+) @\d+/, '$1 ' + (ruleName || '')) + ' wallMs=' + (Date.now() - (q.t0 || Date.now())));
+  if (dump) console.error('GAMBITB ' + m.at + ' ' + require('zlib').gzipSync(require('v8').serialize(q.board)).toString('base64') + ' ' + JSON.stringify((q.arrivals || []).map(function (a) { return [a.at, a.width, a.height]; })));
+  if (kind < 0) return null;
+  var name = Buffer.from(new Uint8Array(X.memory.buffer, X.gb_play_name(play) >>> 0, 32)).toString('latin1').replace(/\0.*$/, '');
+  var found = kind === 1 && ns > 0, move = kind === 1 ? [mr, mc] : null;
+  var info = { name: ruleName, live: nlive + '/' + ncands, lives: verdict === 1 ? true : verdict === 2 ? false : null, play: name, found: found, verdict: ['none', 'lives', 'dies', 'raise'][verdict], combo: combo, chain: chain, chainAll: chainAll, broke: broke,
+               done: done >= 0 ? done : null, fire: fire >= 0 ? fire : null, seq: found ? seq : null };
+  return { id: m.id, epoch: m.epoch, at: m.at, src: 'gambit', kind: KIND[kind], move: move, raiseFrames: raiseNow, raiseAfter: raiseAfter,
+           ms: Date.now() - (q.t0 || Date.now()), idleMs: idleMs,
+           claim: found ? { play: name, chain: chain, chainAll: chainAll, combo: combo, broke: broke, done: done >= 0 ? done : (fire >= 0 ? fire : 0), seq: seq } : null,
+           queued: m.posted ? (q.t0 || 0) - m.posted : 0, brMs: brMs, line: hand.length ? hand : null, lineAt: null, lineFree: hand.length > 0,
+           pace: { hold: !!holdLives, brk: !!brk, urgent: !!urgent }, mem: q.mem ? q.mem() : null,
+           breaks: brk ? { offered: offered, lineup: !!lineup, touch: !!touch, took: !!took } : null,
+           diag: { walk: null, clears: clears, gambit: info } };
+};
+Gambit.prototype.newGame = function () { this.X.gb_new_game(); this.lastAt = null; };
+
+module.exports = { load: load, bind: bind, aimWords: aimWords, rulesWords: rulesWords, Gambit: Gambit };

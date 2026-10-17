@@ -61,7 +61,7 @@ module.exports = function think(cfg) {
     return BS;
   }
   var matchMode = 'unknown', planRealUntil = -1;
-  var gambitRules = GAMBIT.rulesFor(cfg.profile, DIR);   // (a profile with `gambit`: its aims are a rule table)
+  var gambitRules = GAMBIT.rulesFor(cfg.profile, DIR), gambitC = null;   // (a profile with `gambit`: its aims are a rule table)
   var bot = null, snap = null, nat = null, candNat = null, BS = null, attacker = null, attackLogged = 0, attackGate = 0, noRaiseLogged = 0, threeLogged = 0, warmPlan = null;   // BS: a search context of its own for breakMoves   // nat, candNat: the search's and the candidates' C contexts, kept from match to match
   var NativeMem = function () {
     var N = require(path.join(DIR, 'native.js')).server, X = N.exports(), free = [];
@@ -1056,6 +1056,12 @@ module.exports = function think(cfg) {
       var perFrame = m.lead > 0 && m.ms > 0 ? m.ms / m.lead : 1000 / 60;
       if (due) due = Math.min(due, (m.posted || t0) + (OPTS.reaction + 1) * perFrame);
       if (due) N.deadline(due - DEADLINE_MARGIN_MS);
+      // (THE C GAMBIT, gambit/gambit.wasm: the game's Gambit -- GC_GAMBIT_JS=1 plays the JavaScript one it was ported from)
+      if (process.env.GC_GAMBIT_JS !== '1') {
+        if (!gambitC) gambitC = new (require(path.join(DIR, '..', 'gambit', 'gambit.js')).Gambit)({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames,
+                                                                                                    rules: gambitRules, gambit: cfg.profile.gambit });
+        return gambitC.answer({ m: m, board: board, arrivals: arrivals, due: due, t0: t0, margin: DEADLINE_MARGIN_MS, canRaise: function () { return bot._canRaise(); }, mem: NativeMem });
+      }
       if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
       try {
         var ga = GANSWER.answer({ bot: bot, m: m, board: board, arrivals: arrivals, due: due, t0: t0, attacker: attacker, search: search, rules: gambitRules, reaction: OPTS.reaction,
@@ -1100,7 +1106,7 @@ module.exports = function think(cfg) {
       console.error('WARM plan failed: ' + String(e && e.message || e));
     }
   }
-  function reset() { if (bot && bot._nat) nat = bot._nat; if (bot && bot._candNat) candNat = bot._candNat; bot = null; snap = null; planRealUntil = -1; }
+  function reset() { if (gambitC) gambitC.newGame(); if (bot && bot._nat) nat = bot._nat; if (bot && bot._candNat) candNat = bot._candNat; bot = null; snap = null; planRealUntil = -1; }
   // New weights take effect from the next match (reset).
   function setWeights(w) { OPTS.weights = floored(w); }
   // The match's mode (survivor.js, from the link): 'timeattack', 'vs', 'solo', 'other' or 'unknown'.
