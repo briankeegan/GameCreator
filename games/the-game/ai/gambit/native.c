@@ -118,8 +118,10 @@ static double moveStartMs(int32_t at) {
   int32_t f = __atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST);
   return began + (at - f) * per;
 }
+// (the client runs frames back to back to catch up: the longest such run seen, which a decision's frame comes that much sooner by)
+static int32_t gameBurst;
 static int frameOut(void) {
-  if (__atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST) >= dueFrame) return 1;
+  if (__atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST) >= dueFrame - __atomic_load_n(&gameBurst, __ATOMIC_SEQ_CST)) return 1;
   return clock_ms() + closeWorst() >= moveStartMs(dueFrame + 1);
 }
 static int32_t lastAt = NUL;
@@ -222,7 +224,11 @@ void gn_match(void) {
 int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTop) {
   if (nb_load(F.truth)) return -1;
   int32_t clock = F.truth->clock;
-  { double t = clock_ms(), per = F.msPerFrame;
+  { double t = clock_ms(), per = F.msPerFrame, last;
+    static int32_t run;
+    __atomic_load(&gameFrameMs, &last, __ATOMIC_SEQ_CST);
+    run = last && t - last < per / 2 ? run + 1 : 0;
+    if (run > __atomic_load_n(&gameBurst, __ATOMIC_SEQ_CST)) __atomic_store_n(&gameBurst, run, __ATOMIC_SEQ_CST);
     __atomic_store(&gameFrameMs, &t, __ATOMIC_SEQ_CST); __atomic_store(&gameMsPerFrame, &per, __ATOMIC_SEQ_CST); __atomic_store_n(&gameFrame, clock, __ATOMIC_SEQ_CST); }
   if (limit > 0) F.limit = limit;
   if (window > 0) F.window = window;
