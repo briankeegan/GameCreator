@@ -4416,6 +4416,10 @@ static int optContact(Opt *o) {
 }
 static int optEarly(Opt *o) { return o->early && (o->cash || optPlain(o)); }
 // 1: a is better, -1: b is, 0: the same
+// AN ATTACK IS PREFERRED TO A CLEAR THAT LIVES AS LONG only when it is not the dearer of the two: the stop time it awards is all it buys here, and the
+// panels it spends (life: the frame the board loses health, less its last press, its hollow and the material it spends) are the cover the next landing
+// is met with. w > 0: a's attack comes first, w < 0: b's
+static int attackPays(const Opt *a, const Opt *b, int w) { return w > 0 ? a->life >= b->life : b->life >= a->life; }
 static int optRank(Opt *a, Opt *b) {
   int ka = a->lives ? 1 + a->breaks : 0, kb = b->lives ? 1 + b->breaks : 0;
   if (ka != kb) return ka > kb ? 1 : -1;
@@ -4436,9 +4440,9 @@ static int optRank(Opt *a, Opt *b) {
   int da = a->die < hz ? a->die : hz, db = b->die < hz ? b->die : hz;
   if (da != db) return da > db ? 1 : -1;
   // SAVING A DYING BOARD: of two options that live as long, a combo or a chain goes before a plain three
-  if (ka == 1 && kb == 1 && aloneOnEngine() && aloneDie(1 << 20) < LIVEHORIZON) { int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
+  if (ka == 1 && kb == 1 && aloneOnEngine() && aloneDie(1 << 20) < LIVEHORIZON) { int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w && attackPays(a, b, w)) return w; }
   // OF TWO CLEARS that break nothing, a combo or a chain goes before a plain three, whether or not it digs under the pile (attackFirst)
-  if (ka == 1 && kb == 1 && a->clears && b->clears) { int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w) return w; }
+  if (ka == 1 && kb == 1 && a->clears && b->clears) { int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w && attackPays(a, b, w)) return w; }
   // DOWNTIME: the board left alone loses no health within the horizon, so a combo or a chain that lives as long goes before an option that clears nothing
   if (ka == 1 && kb == 1 && aloneOnEngine() && aloneDie(1 << 20) > LIVEHORIZON && (a->cash > 0) != (b->cash > 0) && (a->cash > 0 ? !b->clears : !a->clears)) return a->cash > 0 ? 1 : -1;
   // a plain clear is the last resort: it ranks below any option that lives as long
