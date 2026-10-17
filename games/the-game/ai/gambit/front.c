@@ -52,7 +52,7 @@ enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 
 static struct {
   int32_t now, epoch, nextAt, lastSwapEnd, haveSwapEnd, jitterFor, jitterGap, raiseCutUntil;
-  int32_t holdLeft, holdStarted;
+  int32_t holdLeft, holdStarted, overLogged;
   Planned plan[PLANN]; int32_t planAt[PLANN];
   Board *truth, *expect, *pr, *scratch;
   int32_t haveExpect;

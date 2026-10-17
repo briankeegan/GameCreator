@@ -231,6 +231,8 @@ int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTo
   int32_t clock = F.truth->clock;
   if (lastClock != NUL && clock < lastClock) gn_match();
   lastClock = clock;
+  // (the game over, once: what is logged after it is the frame loop asking on a board that no longer plays)
+  if (F.truth->gameOver && !F.overLogged) { char l[64]; snprintf(l, sizeof l, "GAMEOVER clock %d", clock); flog(l); F.overLogged = 1; }
   { double t = clock_ms(), per = F.msPerFrame, last;
     static int32_t run;
     __atomic_load(&gameFrameMs, &last, __ATOMIC_SEQ_CST);

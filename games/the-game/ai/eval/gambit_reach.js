@@ -13,13 +13,15 @@ if (!DIR) { console.error('usage: node gambit_reach.js DIR [LAST] [MS]'); proces
 var O = { reaction: 12, swapGap: 12, cursorMoveFrames: 4 }, A = require('./survivor_attack.js')(O), G = new (require('../gambit/gambit.js').Gambit)(O);
 var rules = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles', 'gambit-rules.json'), 'utf8'));
 var list = rules.attack.filter(function (r) { return r.name === 'finish them'; })[0].aims.filter(function (a) { return typeof a !== 'string'; });
+// (a log's lines up to the game over: after it the frame loop asks on a board that no longer plays)
+function played(lines) { var i = -1; lines.forEach(function (l, k) { if (l.indexOf('GAMEOVER ') === 0) i = k; }); return i < 0 ? lines : lines.slice(0, i); }
 var totals = { missed: 0, impossible: 0, boards: 0 }, turns = {};
 fs.readdirSync(DIR).sort().forEach(function (g) {
   var rf = path.join(DIR, g, 'results.txt'), lf = path.join(DIR, g, 'survivor.log');
   if (!fs.existsSync(rf) || !fs.existsSync(lf)) return;
   var m = /(\w+) training lost frames=(\d+)/.exec(fs.readFileSync(rf, 'utf8'));
   if (!m) return;
-  var lostAt = +m[2], lines = fs.readFileSync(lf, 'utf8').split('\n').filter(function (l) { return l.indexOf('GAMBITB ') === 0; });
+  var lostAt = +m[2], lines = played(fs.readFileSync(lf, 'utf8').split('\n')).filter(function (l) { return l.indexOf('GAMBITB ') === 0; });
   // (the match's own: the last run of boards before the loss, clock forward)
   var bs = lines.map(function (l) { var p = l.split(' '); return { at: +p[1], b64: p[2], arr: JSON.parse(p[3] || '[]') }; }).filter(function (x) { return x.at <= lostAt && x.at >= lostAt - LAST; });
   var out = [];
@@ -43,7 +45,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
   console.log(g + '  ' + m[1] + ' lost at ' + lostAt + ': ' + (out.length ? out.join(', ') : 'no empty searches logged'));
   // THE TURN: the last frame a break was there -- a decision whose break search found one, or a board searched again that had one --
   // and the decisions from it to the first board after it with none to find: the moves that left the board without a break
-  var ds = fs.readFileSync(lf, 'utf8').split('\n').filter(function (l) { return l.indexOf('GAMBITD ') === 0; }).map(function (l) {
+  var ds = played(fs.readFileSync(lf, 'utf8').split('\n')).filter(function (l) { return l.indexOf('GAMBITD ') === 0; }).map(function (l) {
     var o = { at: +l.split(' ')[1] }; l.split(' ').forEach(function (p) { var i = p.indexOf('='); if (i > 0) o[p.slice(0, i)] = p.slice(i + 1); }); return o;
   }).filter(function (d) { return d.at <= lostAt && d.at >= lostAt - 3 * LAST; }).sort(function (a, b) { return a.at - b.at; });
   var none = bs.map(function (x, i) { return { at: x.at, had: /MISSED/.test(out[i]) }; }).sort(function (a, b) { return a.at - b.at; });

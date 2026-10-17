@@ -19,6 +19,8 @@ function parse(line) {
   parts.forEach(function (p) { var i = p.indexOf('='); if (i > 0) o[p.slice(0, i)] = p.slice(i + 1); });
   return o;
 }
+// (a log's lines up to the game over: after it the frame loop asks on a board that no longer plays)
+function played(lines) { var i = -1; lines.forEach(function (l, k) { if (l.indexOf('GAMEOVER ') === 0) i = k; }); return i < 0 ? lines : lines.slice(0, i); }
 var games = fs.readdirSync(DIR).filter(function (d) { return fs.existsSync(path.join(DIR, d, 'results.txt')); }).sort();
 var lost = 0, won = 0, whyAll = {}, dropAll = {};
 games.forEach(function (g) {
@@ -27,7 +29,7 @@ games.forEach(function (g) {
   if (m[2] === 'survived') { won++; return; }
   lost++;
   var logf = path.join(DIR, g, 'survivor.log');
-  var ds = fs.existsSync(logf) ? fs.readFileSync(logf, 'utf8').split('\n').filter(function (l) { return l.indexOf('GAMBITD ') === 0; }).map(parse) : [];
+  var ds = fs.existsSync(logf) ? played(fs.readFileSync(logf, 'utf8').split('\n')).filter(function (l) { return l.indexOf('GAMBITD ') === 0; }).map(parse) : [];
   // (the match is the last run of decisions: a log may hold a pre-flight before it, which starts again from the opening; decisions
   // re-asked near the end step back a few frames, which is the same match)
   var start = 0;
