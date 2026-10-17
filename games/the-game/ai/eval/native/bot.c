@@ -4587,7 +4587,8 @@ static int contactOf(const int32_t *st) {
   }
   return contacts;
 }
-static double setupKey(const int32_t *m) { Shape sh; shapeOf(m, &sh); return (waveExpected() ? contactOf(m) * 1e6 : 0) + twosOf(m) * 1000.0 - sh.bumps; }
+static int setupScore(const int32_t *m);
+static double setupKey(const int32_t *m) { return (waveExpected() ? contactOf(m) * 1e6 : 0) + setupScore(m) * 1000.0; }
 // A SETUP LEAVES THE SETUPS THERE ARE: a saved line -- the one kept, the target, the plan, the attack -- must play
 // out as well after the swap as before it, on the engine: it breaks and clears as much, makes the same combo and
 // chain, and loses health no sooner.
@@ -5408,6 +5409,15 @@ static int twosOfIn(const int32_t *st, int breaking) {
   if (!breaking) n += __builtin_popcount(pairCol & ~readyCol);
   return n;
 }
+// WHAT A SETUP IS FOR: the break after the pop. Its converted row falls on each column's top, so a stack that is level (a column height range of one or two)
+// leaves a row of six cells in six colours -- a match across it, or a pair under it, is a swap or two -- and a ragged one leaves cells at different
+// heights that match across nothing. A level stack has the gap to the next break a half as long (median 29-51 frames against 90-178, 508 gaps), and the
+// pairs the row completes (twosOf) are the rest. Positive, higher is better.
+static int setupScore(const int32_t *m) {
+  Shape sh; shapeOf(m, &sh);
+  int level = 60 - 2 * (int)sh.spread - (int)sh.bumps;
+  return 4 * twosOf(m) + (level > 0 ? level : 0) + 1;
+}
 // SETUPS IN TIME: lines found soonest first by the shared search on the board
 // the engine settles to, every step pressed in the time there is; a line is a
 // setup if the board it leaves has more vertical twos (twosOf, read where the
@@ -5425,7 +5435,7 @@ static int sitSetup(const int32_t *res, const int32_t *sw, int n, double at, voi
   // that break -- and grows on otherwise
   int tw, reach = 0;
   if (res[R_TOTAL] > 0) { if (!anyBreakOf(res + R_INTS)) return SIT_GROW; tw = SETUPREACH; reach = 1; }
-  else tw = twosOf(res + R_INTS);
+  else tw = setupScore(res + R_INTS);
   if (tw > x->base && x->n < SETUPTRIES) {
     int k = x->n++;
     x->len[k] = n; x->tw[k] = tw; x->at[k] = at; x->reach[k] = reach;
@@ -5449,7 +5459,7 @@ static int setupLines(SetupCtx *x, double left) {
   static ST st1; int32_t cur1[2], t1; uint32_t can1[WMAX]; Wait waits1[32][WMAX];
   x->n = 0;
   if (lineState(0, 0, st1, can1, waits1, cur1, &t1) != 0 || paWork >= optLine()) return 0;
-  x->base = twosOf(st1);
+  x->base = setupScore(st1);
   double work = optLine() - paWork; if (work > SETUPWORK) work = SETUPWORK;
   searchInTime(st1, cur1[0], cur1[1], t1, 0, left, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can1, waits1, work, sitSetup, x, 0, 0, 0);
   return 1;
