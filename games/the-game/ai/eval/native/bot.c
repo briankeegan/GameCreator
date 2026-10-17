@@ -5030,6 +5030,10 @@ static int readyInTimeRaw(const int32_t *sw, int n, int *br, int *bc);
 // stopped by the engine at OPTWORK and answers not ready, unremembered.
 static double rdCost;
 static int rdRefused;   // questions refused for work this decision, for the bot log
+// A LINE NOT READY STAYS NOT READY WHILE THE POSITION STANDS (raPos): the clock only runs toward the end of the time there is, so a line that
+// left no break in reach for the landing does not gain one. It is kept across decisions (a pop holds one position for hundreds of frames) and
+// answered before the work is asked about: a refusal for want of work is no answer and is never kept
+static struct { int pos, n; int32_t sw[2 * LINEMAX]; } RMEMP[RMEMO];
 static int readyInTime(const int32_t *sw, int n, int *br, int *bc) {
   extern PATLS double paWork;
   unsigned h = 2166136261u ^ (unsigned)n;
@@ -5037,14 +5041,18 @@ static int readyInTime(const int32_t *sw, int n, int *br, int *bc) {
   int slot = n <= LINEMAX ? (int)(h & (RMEMO - 1)) : -1;
   if (slot >= 0 && RMEM[slot].dec == btDecision && RMEM[slot].n == n && (!n || !__builtin_memcmp(RMEM[slot].sw, sw, (unsigned long)n * 8))) {
     *br = RMEM[slot].r; *bc = RMEM[slot].c; return RMEM[slot].ok; }
+  if (slot >= 0 && !inWorker && RMEMP[slot].pos == raPos && RMEMP[slot].n == n && (!n || !__builtin_memcmp(RMEMP[slot].sw, sw, (unsigned long)n * 8))) {
+    *br = *bc = 0; return 0; }
   if (rdCost > workLeft()) { rdRefused++; return 0; }   // the work this thread has left (workLeft)
   double w = paWork;
+  int refused0 = rdRefused, brefused0 = budgetRefused, whole = workLeft() > 2 * READYWORK;   // asked with the work the search is given whole
   int ok = readyInTimeRaw(sw, n, br, bc);
   rdCost = rdCost ? 0.9 * rdCost + 0.1 * (paWork - w) : paWork - w;
   extern int paBudgetOut(void);
   if (slot >= 0 && !paBudgetOut() && !inWorker) {
     RMEM[slot].dec = btDecision; RMEM[slot].n = n; RMEM[slot].ok = ok; RMEM[slot].r = ok ? *br : 0; RMEM[slot].c = ok ? *bc : 0;
     for (int k = 0; k < 2 * n; k++) RMEM[slot].sw[k] = sw[k];
+    if (!ok && whole && rdRefused == refused0 && budgetRefused == brefused0) { RMEMP[slot].pos = raPos; RMEMP[slot].n = n; for (int k = 0; k < 2 * n; k++) RMEMP[slot].sw[k] = sw[k]; }
   }
   return ok;
 }
