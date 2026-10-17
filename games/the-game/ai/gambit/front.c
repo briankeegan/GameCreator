@@ -405,7 +405,10 @@ static void take(void) {
   static Keys k;
   while (takeAnswer(&a)) {
     if (F.nthinking == FTHINK) { memmove(F.thinking, F.thinking + 1, sizeof(double) * (FTHINK - 1)); F.nthinking--; }
-    F.thinking[F.nthinking++] = a.ms - a.idleMs > 0 ? a.ms - a.idleMs : 0;
+    // (how soon an answer can be had: what it took, up to a reaction's frames -- a decision given longer, because its move was further
+    // off, used time it was given, not time the next one needs)
+    double took = a.ms - a.idleMs > 0 ? a.ms - a.idleMs : 0, most = (F.reaction + 1) * F.msPerFrame;
+    F.thinking[F.nthinking++] = took < most ? took : most;
     if (!F.pending || a.id != F.pId) { F.st.unasked++; continue; }
     F.pending = 0;
     if (a.error || a.kind < 0) continue;

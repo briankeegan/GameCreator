@@ -102,15 +102,13 @@ static void dumpBoard(int32_t at, const Board *b, const Arr *arr, int narr) {
   snprintf(line + k, sizeof line - (unsigned long)k, "]");
   flog(line);
 }
-// A question answered, as the mind answers it: the board judged at level 10's health, due a reaction's frames after it was asked at the
-// most, a clock behind the last a new game.
+// A question answered: the board judged at level 10's health, due when its move is (the frame it was asked for -- Gambit thinks on its
+// own thread, so the frames before the move are its to think in), a clock behind the last a new game.
 static int32_t lastAt = NUL;
 static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   double t0 = clock_ms();
   if (gnPlanHealth) { b->health = imin(b->health, gnPlanHealth); b->maxHealth = imin(b->maxHealth, gnPlanHealth); }
   double due = q->ms > 0 ? q->posted + q->ms : 0;
-  double perFrame = q->lead > 0 && q->ms > 0 ? q->ms / q->lead : 1000.0 / 60;
-  if (due && q->posted + (gnReaction + 1) * perFrame < due) due = q->posted + (gnReaction + 1) * perFrame;
   if (lastAt != NUL && q->at < lastAt) gb_new_game();
   lastAt = q->at;
   if (!hostBoard) hostBoard = nb_new();
