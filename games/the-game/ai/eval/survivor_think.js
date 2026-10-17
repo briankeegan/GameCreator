@@ -82,7 +82,7 @@ module.exports = function think(cfg) {
     // that stops moving with no stop time and no shake left dies that frame. Training gives 51; spending it is a loss at level 10.
     // (while every move dies at that health, the decisions for planReal frames after are judged on the health the board has: a
     // board level 10 has lost is still fought for, not given up)
-    var planned = !!(cfg.profile.planHealth && !(planRealUntil > m.at));
+    var planned = !!(cfg.profile.planHealth && (gambitRules || !(planRealUntil > m.at)));
     if (planned) {
       board.health = Math.min(board.health, cfg.profile.planHealth);
       board.levelData = Object.assign({}, board.levelData, { maxHealth: Math.min(board.levelData.maxHealth, cfg.profile.planHealth) });
@@ -1060,9 +1060,8 @@ module.exports = function think(cfg) {
       try {
         var ga = GANSWER.answer({ bot: bot, m: m, board: board, arrivals: arrivals, due: due, t0: t0, attacker: attacker, search: search, rules: gambitRules,
                                   GP: cfg.profile.gambit, pace: cfg.profile.pace, margin: DEADLINE_MARGIN_MS, nativeMem: NativeMem, stale: stale, aborted: P.ABORTED });
-        // (PLANNED AT LEVEL 10 HEALTH, AND NOTHING LIVES: the decisions for planReal frames after are judged on the health the board
-        // has, as the default's are -- a board level 10 has lost is still fought for. Gambit's one order says so: its choice lives or not)
-        if (planned && ga && ga.diag && ga.diag.gambit && ga.diag.gambit.lives === false) planRealUntil = m.at + (cfg.profile.planReal || 120);
+        // (Gambit ignores health: every board is judged at level 10's -- planHealth -- however its decisions go; the default's planReal
+        // fallback is not Gambit's)
         return ga;
       } finally {
         N.deadline(0);
