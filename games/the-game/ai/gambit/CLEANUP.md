@@ -27,10 +27,10 @@ The C Gambit uses none of the JavaScript. What only the JavaScript Gambit called
 `opener_plan.js`, `extend_replay.js`, `attack_fire.test.js`, `bitbot.js`) call stays as it is.
 
 - `survivor_attack.js`: delete `useRules`, `useList`, `lineOk`, `firstFits`, `floorOk`, `allowed`, `judgeIn`, `outlive`, `readyLines`,
-  `readyFor`, `readyInTime`, `landed`, `landedAll`, `raiseReady`, `level`, `diesIn`, `breaksAfterLanding`, `lostMany`, `lostAlone`, and the
-  judge's `readyAt`, `readyIfLost`, `readyIfBreak`, `readyBy`, `lifeTo`, `lifeRest` and `why`, with every `stepFits`/`firstFits`/`lineOk`
-  call in `plan` and `extend` (they pass when no rules are set, which is how the attack profiles run them). Keep `plan`, `extend`,
-  `firstClear`, `replay`, `judge`, `shapeOf`.
+  `landedAll`, `raiseReady`, `level`, `diesIn`, `lostMany`, `lostAlone`, and the judge's `readyAt`, `readyIfLost`, `readyIfBreak`,
+  `readyBy`, `lifeTo`, `lifeRest` and `why`, with every `stepFits`/`firstFits`/`lineOk` call left (they pass when no rules are set, which
+  is how the attack profiles run them). Keep `plan`, `extend`, `firstClear`, `replay`, `judge`, `shapeOf`, and `readyFor`,
+  `readyInTime`, `landed`, `breaksAfterLanding` -- agro asks them (`attacker[A.readyTime ? 'readyInTime' : 'readyFor']`).
 - `survivor_shared.js` `breakMoves`: delete the Gambit-only options -- `ok`, `stepOk`, `firstOk`, `lineOk`, `resume`, `keepOut` and the
   marks they need (`outside`, `mark`, `within`, `resumed`, `towardsOf`, `toward`). The default bot never passes them, so it plays the same.
 
