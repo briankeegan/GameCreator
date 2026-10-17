@@ -238,11 +238,19 @@ int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTo
   F.npress = 0;
   for (int i = 0; i < nages && i < 512; i++) F.pressFrames[F.npress++] = clock - ages[i];
   F.oppHas = oppHas; F.oppOut = oppOut; F.oppTop = oppTop;
+  double t0 = clock_ms();
   arrivalsOf(F.truth);
+  double t1 = clock_ms();
   int32_t bits = frontFrame();
+  double t2 = clock_ms();
   afterFrame(bits);
+  double t3 = clock_ms();
+  // (a frame loop over a frame's time: where it went)
+  if (t3 - t0 > 8) { char l[200]; snprintf(l, sizeof l, "SLOWLOOP clock %d: %.1f ms (arrivals %.1f, frame %.1f, after %.1f)", clock, t3 - t0, t1 - t0, t2 - t1, t3 - t2); flog(l); }
   // (the stats now and then, and when the game is lost: a client may be stopped at any frame)
   if (++gnFrames % 600 == 0 || F.truth->gameOverClock > 0) statsOut();
   return bits;
 }
 void gn_end(void) { statsOut(); }
+// A line from the host into the run's log (a slow frame's parts, say)
+void gn_log(const char *s) { flog(s); }

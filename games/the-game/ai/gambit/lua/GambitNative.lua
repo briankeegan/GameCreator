@@ -41,6 +41,7 @@ int32_t *gn_ages(void);
 void gn_match(void);
 int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTop);
 void gn_end(void);
+void gn_log(const char *s);
 ]]
 local C = ffi.load(DIR .. "/libgambit.so")
 local B = dofile(DIR .. "/lua/board.lua")
@@ -223,7 +224,7 @@ function GambitNative:input(stack, sources)
   -- a frame over the ceiling, and where its time went
   if took > self.thinking:snapshot().ceiling and self.steps and (self.slowLogged or 0) < 50 then
     self.slowLogged = (self.slowLogged or 0) + 1
-    print(string.format("gambit: slow frame at clock %d: %.1f ms (load %.1f, telegraph %.1f, frame loop %.1f)", stack.clock, took * 1000,
+    C.gn_log(string.format("SLOWFRAME clock %d: %.1f ms (load %.1f, telegraph %.1f, frame loop %.1f)", stack.clock, took * 1000,
       self.steps.load * 1000, self.steps.telegraph * 1000, self.steps.frame * 1000))
   end
   self.steps = nil
