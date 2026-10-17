@@ -4191,9 +4191,12 @@ static Dec stayAlive(Dec d) {
 // engine (lineJudge, which keeps to the work there is); one it cannot judge is
 // not weighed, and a decision it cannot judge stands.
 static int twosOf(const int32_t *st);
-typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, plain, clears, stall, size, chain, die, conv, hollow, pri, aheadKnown, twosKnown, twos, nearKnown; Atk ahead; double life, soon, near; } Opt;
+static int waveExpected(void);
+static int contactOf(const int32_t *st);
+typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, plain, clears, stall, size, chain, die, conv, hollow, pri, aheadKnown, twosKnown, twos, nearKnown, contact, contactKnown; Atk ahead; double life, soon, near; } Opt;
 static int optJudge(Opt *o) {
   int last = 0, spent = 0;
+  o->contactKnown = o->contact = 0;
   o->rdy = o->rdyKnown = o->soonKnown = o->nearKnown = o->breaks = o->conv = o->cash = o->early = o->plain = o->clears = o->size = o->chain = 0;
   if (o->d.kind == K_HOLD) {
     o->twos = twosOf(DBASE); o->twosKnown = 1;   // read off the masks, so the setup rule has it when the work is spent
@@ -4388,6 +4391,13 @@ static int reachOption(Opt *O, int n, Dec d, int frozen) {
 // A PLAIN CLEAR THAT OPENS AN ATTACK IS NOT PLAIN: the board it settles to reaches a combo or a chain in the time there
 // is (the first clear starts it, the rest is set up on what falls), so it is not a last resort.
 static int optPlain(Opt *o) { if (!o->plain) return 0; optAhead(o); return !isAttack(o->ahead); }
+static int optContact(Opt *o) {
+  if (!o->contactKnown) {
+    Cand *pc = o->d.kind == K_HOLD || o->n != 1 ? 0 : poolSwap(o->sw[0], o->sw[1]);
+    o->contact = contactOf(pc ? pc->masks : DBASE); o->contactKnown = 1;
+  }
+  return o->contact;
+}
 static int optEarly(Opt *o) { return o->early && (o->cash || optPlain(o)); }
 // 1: a is better, -1: b is, 0: the same
 static int optRank(Opt *a, Opt *b) {
@@ -4430,6 +4440,8 @@ static int optRank(Opt *a, Opt *b) {
   // only a setup against the hold or another setup: any other swap that clears nothing (a fill, a levelling) is ranked by life and hollow
   if (ka && !a->clears && !a->breaks && !a->cash && !b->clears && !b->breaks && !b->cash && (a->stall || b->stall)
       && (a->stall || a->d.kind == K_HOLD) && (b->stall || b->d.kind == K_HOLD)) {
+    // the contact the coming slab will have comes first: a break can only be made at a contact (contactOf)
+    if (waveExpected()) { int ca = optContact(a), cb = optContact(b); if (ca != cb) return ca > cb ? 1 : -1; }
     optAhead(a); optAhead(b);
     int w = attackFirst(a->ahead, b->ahead); if (w) return w;
     if (a->twos != b->twos) return a->twos > b->twos ? 1 : -1;
@@ -4448,7 +4460,29 @@ static int optRank(Opt *a, Opt *b) {
 // a setup is played only if it leaves the board readier (or living longer) than the board left alone.
 #define SETUPOPTS 3
 static int twosOf(const int32_t *st);
-static double setupKey(const int32_t *m) { Shape sh; shapeOf(m, &sh); return twosOf(m) * 1000.0 - sh.bumps; }
+// THE CONTACT THE NEXT SLAB WILL HAVE: the columns whose lowest garbage rests on a panel (nothing but cells still occupied between them), the slab
+// placed where it lands (waveSlab, slabPlace). A break can only be made at a contact, so the more the board leaves the slab, the likelier one is in reach
+static int waveExpected(void) { return BIN[IN_INCOMING] > 0 || (BIN[IN_TGW] > 0 && BIN[IN_LEAD] > 0); }
+static int contactOf(const int32_t *st) {
+  extern PATLS double paWork;
+  paWork += 20;
+  waveSlab(st[O_W], &SLABW, &SLABH, &SLABC);
+  int placed = slabPlace(st, SLABST);
+  if (placed <= 0) return 0;
+  int contacts = 0;
+  for (int c = 1; c <= SLABST[O_W]; c++) {
+    uint32_t g = U(SLABST, GARB + c), occ = U(SLABST, OCC + c), pan = occ & ~g & ~U(SLABST, INERT + c), colr = 0;
+    if (!g) continue;
+    for (int a = 1; a <= SLABST[O_N]; a++) colr |= (uint32_t)CL(SLABST, a, c);
+    pan &= colr;
+    int gb = __builtin_ctz(g);
+    pan &= (1u << gb) - 1u;
+    int r = pan ? 32 - __builtin_clz(pan) : 0;
+    if (r >= 1 && !(gb > r && ((occ >> r) & ((1u << (gb - r)) - 1u)) != (1u << (gb - r)) - 1u)) contacts++;
+  }
+  return contacts;
+}
+static double setupKey(const int32_t *m) { Shape sh; shapeOf(m, &sh); return (waveExpected() ? contactOf(m) * 1e6 : 0) + twosOf(m) * 1000.0 - sh.bumps; }
 // A SETUP LEAVES THE SETUPS THERE ARE: a saved line -- the one kept, the target, the plan, the attack -- must play
 // out as well after the swap as before it, on the engine: it breaks and clears as much, makes the same combo and
 // chain, and loses health no sooner.
@@ -4517,7 +4551,7 @@ static int setupOptions(Opt *O, int n, Dec d) {
     // a setup has no reason but what it sets up: the rise it locks buys no time; its vertical twos are read off the masks it leaves
     o->n = 1; o->wait = 0; o->sw[0] = c->sr; o->sw[1] = c->sc; o->pri = 2; o->stall = 1;
     o->twos = twosOf(c->masks); o->twosKnown = 1;
-    if (optJudge(o)) n++;
+    if (optJudge(o)) { o->contact = waveExpected() ? contactOf(c->masks) : 0; o->contactKnown = 1; n++; }
   }
   return n;
 }
