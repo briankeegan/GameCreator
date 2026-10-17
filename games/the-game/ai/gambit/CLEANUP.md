@@ -21,9 +21,22 @@ With the JavaScript gone they have nothing to compare to. Each keeps the rule it
 - `eval/break_near.test.js`: drops the parts that call `gambit_answer.js` and `gambit_propose.js`; its `breakMoves` checks are the default bot's and stay.
 - `eval/gambit_reach.js` (the reach report): searches the logged boards again with the C break search (`gambit.js` exposes it) instead of `SH.breakMoves` and `JUDGE`.
 
+## Strip: Gambit's parts of the shared JavaScript
+
+The C Gambit uses none of the JavaScript. What only the JavaScript Gambit called goes; what the attack profiles (agro and the like,
+`opener_plan.js`, `extend_replay.js`, `attack_fire.test.js`, `bitbot.js`) call stays as it is.
+
+- `survivor_attack.js`: delete `useRules`, `useList`, `lineOk`, `firstFits`, `floorOk`, `allowed`, `judgeIn`, `outlive`, `readyLines`,
+  `readyFor`, `readyInTime`, `landed`, `landedAll`, `raiseReady`, `level`, `diesIn`, `breaksAfterLanding`, `lostMany`, `lostAlone`, and the
+  judge's `readyAt`, `readyIfLost`, `readyIfBreak`, `readyBy`, `lifeTo`, `lifeRest` and `why`, with every `stepFits`/`firstFits`/`lineOk`
+  call in `plan` and `extend` (they pass when no rules are set, which is how the attack profiles run them). Keep `plan`, `extend`,
+  `firstClear`, `replay`, `judge`, `shapeOf`.
+- `survivor_shared.js` `breakMoves`: delete the Gambit-only options -- `ok`, `stepOk`, `firstOk`, `lineOk`, `resume`, `keepOut` and the
+  marks they need (`outside`, `mark`, `within`, `resumed`, `towardsOf`, `toward`). The default bot never passes them, so it plays the same.
+
 ## Keep, untouched
 
-`survivor_attack.js`, `survivor_shared.js` `breakMoves`, `native.js`, `search.h` and the default bot. `survivor_attack.js` is the attack profiles' planner (agro and the like, plus `opener_plan.js`, `extend_replay.js` and `attack_fire.test.js`), so it isn't Gambit's.
+`native.js`, `search.h`, the default bot's own code.
 
 ## Comments: every file in `gambit/`
 
