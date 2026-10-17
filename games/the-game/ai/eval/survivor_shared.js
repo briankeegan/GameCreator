@@ -371,8 +371,36 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
     if (S.drop) S.drop(settled.filter(function (w) { return w && !w.dead && w._i >= 0; }));
     return out;
   }
+  // THE SEARCH CARRIED ON (opts.resume, opts.keepOut): the lines the last decision's beam was growing, on this board -- the caller has
+  // taken off the swap played since and moved their rows by the stack's rise -- are played again, swap by swap within the rules, and
+  // join the first swaps as the beam's start, so the search goes on from where it stopped instead of beginning again; a line that now
+  // breaks is the break. keepOut.paths gets this beam's best lines, for the next decision to carry on.
+  var KEEPN = TOUCH_BEAM, LONGEST = 2 * TOUCH_DEPTH;
+  function resumed() {
+    var act = ((opts && opts.resume) || []).filter(function (p) { return p.length && p.length < LONGEST; }).map(function (p) { return { p: p, n: root, k: 0 }; }), done = [];
+    while (act.length) {
+      var st = [], who = [];
+      act.forEach(function (a) {
+        var mv = a.p[a.k];
+        if (a.n.b.legalSwaps().some(function (m) { return m[0] === mv[0] && m[1] === mv[1]; })) { st.push([a.n, 'swap', mv, 0]); who.push(a); }
+      });
+      var got = many(st, true), next = [];
+      got.forEach(function (n, q) {
+        var a = who[q];
+        if (!n || n.dead || !within(n)) return;
+        a.n = n; a.k++;
+        if (a.k === a.p.length) done.push({ key: a.p[0][0] + ',' + a.p[0][1], n: n, path: a.p.slice() }); else next.push(a);
+      });
+      act = next;
+    }
+    return done;
+  }
   function touchBeam() {
-    var tl0 = firsts.filter(function (f) { return f.n && !f.n.dead && within(f.n); }).map(function (f) { return { key: f.key, n: f.n, path: [f.m] }; }), tpath = null, tat = null;
+    var seeds = resumed();
+    // (what is carried on stays carried until this beam grows past it)
+    if (opts && opts.keepOut && seeds.length) opts.keepOut.paths = seeds.slice(0, KEEPN).map(function (x) { return x.path.map(function (mv) { return mv.slice(); }); });
+    for (var si = 0; si < seeds.length; si++) if (breaks(seeds[si].n)) { found[seeds[si].key] = true; return { depth: 1, moves: found, touch: true, path: seeds[si].path, at: seeds[si].n.t - root.t, carried: true }; }
+    var tl0 = seeds.concat(firsts.filter(function (f) { return f.n && !f.n.dead && within(f.n); }).map(function (f) { return { key: f.key, n: f.n, path: [f.m] }; })), tpath = null, tat = null;
     // TOUCH_BEAM first; finding nothing, wider (TOUCH_WIDER) while time is left.
     for (var tb = 0; tb < TOUCH_WIDER.length + 1 && !tpath && Date.now() < deadline; tb++) {
       var beam = tb ? TOUCH_WIDER[tb - 1] : TOUCH_BEAM, tl = tl0;
@@ -383,6 +411,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
         tl.sort(function (a, b) { return b.s - a.s; });
         // (the line nearest a break the beam has seen: TOWARD, returned when no break is found, the swaps that build toward one)
         if (tl.length && (!toward || tl[0].s > toward.s)) toward = { s: tl[0].s, path: tl[0].path };
+        if (opts && opts.keepOut && tl.length) opts.keepOut.paths = tl.slice(0, KEEPN).filter(function (x) { return x.path.length < LONGEST; }).map(function (x) { return x.path.map(function (mv) { return mv.slice(); }); });
         // Swaps made in another order often leave the same board: each board
         // is kept once, its best-scoring line. Equal boards have equal hashes,
         // so only boards whose hashes meet are told apart by key.
@@ -418,7 +447,8 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
           }
           at += tms[i].length;
         }
-        // and the level expanded: its boards are its children's now
+        // and the level expanded: its boards are its children's now -- the frontier the next decision carries on, in its parents' order
+        if (opts && opts.keepOut && tn.length) opts.keepOut.paths = tn.slice(0, KEEPN).filter(function (x) { return x.path.length < LONGEST; }).map(function (x) { return x.path.map(function (mv) { return mv.slice(); }); });
         if (S.drop && !first) S.drop(tl.map(function (x) { return x.n; }));
         tl = tn;
       }

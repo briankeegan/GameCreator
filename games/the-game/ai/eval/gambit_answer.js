@@ -12,19 +12,55 @@ var path = require('path');
 var GAMBIT = require(path.join(__dirname, 'gambit.js')), DECIDE = require(path.join(__dirname, 'gambit_decide.js')), JUDGE = require(path.join(__dirname, 'gambit_judge.js'));
 var SH = require(path.join(__dirname, 'survivor_shared.js')), CK = require(path.join(__dirname, 'survivor_checks.js')), KEYS = require(path.join(__dirname, 'survivor_keys.js'));
 
-// THE BREAK SEARCH: the lines to a break, in the share of the decision's time it is given (a line begun is carried on as the line in
-// progress, not by the break search)
+// THE BREAK SEARCH: the lines to a break, in the share of the decision's time it is given -- carried on from the last decision's
+// (bot._brKeep) while it digs toward the same garbage: its best lines, less the swap played since, their rows moved by the stack's rise
 var BREAK_SHARE = 0.4, BREAK_MIN_MS = 40, BREAK_MAX_MS = 400, LINEUP_AFTER = 30;
+// (the garbage the search digs toward: the id of the lowest block on the board)
+function digTarget(board) {
+  var r = SH.lowestGarbageRow(board), row = r && board.panels[r];
+  if (row) for (var k = 1; k <= 6; k++) if (row[k] && row[k].isGarbage) return row[k].garbageId;
+  return null;
+}
+// (the rows the stack has risen since the kept search: by a bottom-row panel it did not move)
+function riseSince(board, anchor) {
+  for (var r = 1; r < board.panels.length; r++) { var p = board.panels[r] && board.panels[r][anchor.col]; if (p && p.id === anchor.id) return r - anchor.row; }
+  return null;
+}
+function carriedPaths(c) {
+  var K = c.bot._brKeep;
+  if (!K || !K.paths || !K.anchor || K.played === undefined || digTarget(c.board) !== K.gid) return null;
+  var dr = riseSince(c.board, K.anchor);
+  if (dr === null) return null;
+  var mv = K.played;
+  return K.paths.filter(function (p) { return mv === 'hold' || (p[0][0] === mv[0] && p[0][1] === mv[1]); })
+                .map(function (p) { return (mv === 'hold' ? p : p.slice(1)).map(function (m) { return [m[0] + dr, m[1]]; }); })
+                .filter(function (p) { return p.length > 0; });
+}
+// (what the next decision carries on: this beam's lines, on this board, the garbage they dig toward, and a bottom-row panel the move
+// played does not touch -- kept() once the move is known)
+function keep(c, br, keepOut, d) {
+  var bot = c.bot;
+  bot._brKeep = null;
+  if (!keepOut.paths || !keepOut.paths.length || (br && br.depth) || !(d.kind === 'hold' || d.kind === 'swap')) return;
+  var anchor = null;
+  for (var col = 1; col <= 6 && !anchor; col++) {
+    var p = c.board.panels[1] && c.board.panels[1][col];
+    if (p && p.id != null && !(d.kind === 'swap' && d.move[0] === 1 && (d.move[1] === col || d.move[1] + 1 === col))) anchor = { row: 1, col: col, id: p.id };
+  }
+  if (anchor) bot._brKeep = { paths: keepOut.paths, gid: digTarget(c.board), anchor: anchor, played: d.kind === 'hold' ? 'hold' : d.move.slice() };
+}
 function breakSearch(c) {
   var board = c.board, bot = c.bot;
+  c.keepOut = {};
   // (no break search on a question due sooner than it could take: the answer would come late)
   if (c.due && c.due - Date.now() < c.margin + BREAK_MIN_MS) return { br: null, ms: 0 };
   bot._natSearch();   // (the engine, on the bot's threads, before a second context is made on it)
-  var t = Date.now(), pop = SH.popLeft(board);
+  var t = Date.now(), pop = SH.popLeft(board), resume = carriedPaths(c);
   var by = c.due ? Math.min(t + Math.max(BREAK_MIN_MS, c.m.ms * BREAK_SHARE), c.due - c.margin) : t + BREAK_MAX_MS;
   var br = SH.breakMoves(c.search(), board, { left: c.m.hold.left, started: c.m.hold.started }, c.arrivals, 1, pop ? pop + LINEUP_AFTER : 0, by,
-                         c.stale ? function () { return c.stale() ? c.aborted : null; } : null, null, { touchInPop: true, near: true, ok: c.attacker.allowed, stepOk: c.attacker.stepOk, firstOk: c.attacker.firstOk });
-  if (br) br.cut = Date.now() >= by;
+                         c.stale ? function () { return c.stale() ? c.aborted : null; } : null, null,
+                         { touchInPop: true, near: true, ok: c.attacker.allowed, stepOk: c.attacker.stepOk, firstOk: c.attacker.firstOk, resume: resume, keepOut: c.keepOut });
+  if (br) { br.cut = Date.now() >= by; br.resumed = resume ? resume.length : 0; }
   return { br: br, ms: Date.now() - t };
 }
 
@@ -66,7 +102,7 @@ function logLine(c, D, L, br, brMs) {
     ' broke=' + (g.broke || 0) + ' tier=' + (g.tier || 0) + ' by=' + (g.by || '-') + ' plan=' + (g.pl || '-') + ' done=' + (g.done != null ? g.done : '-') + ' fire=' + (g.fire != null ? g.fire : '-') +
     ' ats=' + (g.ats || '-') + ' swaps=' + (g.swaps || 0) + ' land=' + (F.nextLands != null ? F.nextLands : '-') + ' dies=' + F.dies + (F.queueKills ? ' qk=1' : '') + (D.R.aloneOut ? ' alone=' + D.R.aloneChain : '') + ' casc=' + (CK.cascadeLive(c.board, true) ? 1 : 0) +
     ' pop=' + SH.popLeft(c.board) + ' stop=' + F.stop + ' waits=' + (F.breakWaits ? 1 : 0) + ' unseen=' + unseenOf(c.board) + ' tight=' + (c.tight ? 1 : 0) +
-    ' br=' + (br ? (br.depth || 0) + '/' + (br.path ? br.path.length : br.toward ? 't' + br.toward.length : 0) + (br.cut ? '/cut' : '') : 'none') + ' brMs=' + brMs + ' cands=' + (g.cands || '-') + ' live=' + L.live + ' lost=' + (g.lostAt == null ? '-' : g.lostAt === Infinity ? 'inf' : g.lostAt) + ' wallMs=' + (c.wall0 ? Number(process.hrtime.bigint() - c.wall0) / 1e6 : 0).toFixed(1) + ' why=' + L.why);
+    ' br=' + (br ? (br.depth || 0) + '/' + (br.path ? br.path.length : br.toward ? 't' + br.toward.length : 0) + (br.cut ? '/cut' : '') + (br.resumed ? '/r' + br.resumed : '') + (br.carried ? '/carried' : '') : 'none') + ' brMs=' + brMs + ' cands=' + (g.cands || '-') + ' live=' + L.live + ' lost=' + (g.lostAt == null ? '-' : g.lostAt === Infinity ? 'inf' : g.lostAt) + ' wallMs=' + (c.wall0 ? Number(process.hrtime.bigint() - c.wall0) / 1e6 : 0).toFixed(1) + ' why=' + L.why);
 }
 
 function answer(c) {
@@ -88,7 +124,9 @@ function answer(c) {
   // (THE LINE PRESSED ON: a line the judge plays swap after swap -- not settle by settle -- is handed to the frame loop whole, which
   // presses the swaps after the first as the judge pressed them while the next decision is thought about; the next decision sees the
   // board they make and its answer replaces the rest. A line handed on is not carried as well: the frame loop is pressing it)
-  var handOn = d.kind === 'swap' && D.line && !D.line.settled && D.line.seq.length > 1 ? D.line.seq.slice(1).map(function (mv) { return mv.slice(); }) : null;
+  // (a line toward a break is not handed on: the break search carries on from the board its first swap makes -- keep())
+  var handOn = d.kind === 'swap' && D.line && !D.line.settled && D.line.play !== 'toward' && D.line.seq.length > 1 ? D.line.seq.slice(1).map(function (mv) { return mv.slice(); }) : null;
+  if (handOn) bot._brKeep = null; else keep(c, c.br, c.keepOut || {}, d);
   if (handOn) bot._gambitCarry = null;
   else if (!(d.kind === 'hold' && D.top && D.top.wait)) bot._gambitCarry = DECIDE.carryOf(c, D.R, D.line);
   // (no swap back: the pair the last swap swapped is kept out for a second when it is swapped three times running)

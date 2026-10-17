@@ -92,3 +92,43 @@ for (seed = 1; seed <= 80 && offered < 30; seed++) {
 assert.ok(offered >= 15, 'break candidates offered: ' + offered);
 assert.strictEqual(offeredBroke, offered, 'every break candidate offered breaks as the judge plays it: ' + offeredBroke + ' of ' + offered);
 console.log('ok: breaks offered -- ' + offeredBroke + ' of ' + offered + ' break candidates break as the judge plays them');
+
+// THE SEARCH CARRIED ON (opts.resume, opts.keepOut): on the factory board, given a sliver of time each decision (5 ms), the break search keeps
+// the lines it was growing, the swap played since taken off -- as Gambit carries them (gambit_answer.js) -- and reaches the break in
+// fewer decisions than a search begun again each time; the break it reaches breaks as the judge plays it
+var GAx = require('./gambit_answer.js');
+var SLICE_MS = 4;   // (work-milliseconds a decision gives the search here: below what reaches the break in one)
+function carryRun(resumeOn) {
+  var bb = b.copy(), keepK = null, played = null;
+  for (var dec = 0; dec < 12; dec++) {
+    var resume = null;
+    if (resumeOn && keepK) {
+      var dr = null;
+      for (var rr = 1; rr < bb.panels.length && dr === null; rr++) { var pp = bb.panels[rr][keepK.anchor.col]; if (pp && pp.id === keepK.anchor.id) dr = rr - keepK.anchor.row; }
+      if (dr !== null) resume = keepK.paths.filter(function (p) { return p[0][0] === played[0] && p[0][1] === played[1]; }).map(function (p) { return p.slice(1).map(function (m) { return [m[0] + dr, m[1]]; }); }).filter(function (p) { return p.length; });
+    }
+    var ko = {}, bx = SH.breakMoves(S, bb, hold, [], 1, 0, Date.now() + SLICE_MS, null, null, { touchInPop: true, near: true, resume: resume, keepOut: ko });
+    if (bx && bx.depth && bx.path) return { dec: dec, path: bx.path, board: bb.copy() };
+    if (!ko.paths || !ko.paths.length) return null;
+    played = ko.paths[0][0];
+    var a0 = null;
+    for (var cc = 1; cc <= 6 && !a0; cc++) { var q0 = bb.panels[1][cc]; if (q0 && q0.id != null && !(played[0] === 1 && (played[1] === cc || played[1] + 1 === cc))) a0 = { row: 1, col: cc, id: q0.id }; }
+    keepK = { paths: ko.paths, anchor: a0 };
+    bb.curRow = played[0]; bb.curCol = played[1];
+    if (!bb.tryQueueSwap(played[0], played[1])) return null;
+    for (var ff = 0; ff < 20; ff++) bb.run();
+    if (bb.gameOverClock > 0) return null;
+  }
+  return null;
+}
+// (the slice measured in the engine's work, not the wall clock: the same games played the same way however busy the machine --
+// GC_FIXED_CLOCK's clock, frames simulated at 1378 a millisecond)
+var NW = require('./native.js').server, realNow = Date.now, w0 = NW.work(), t00 = realNow();
+Date.now = function () { return t00 + (NW.work() - w0) / 1378; };
+var withKeep = carryRun(true), withoutKeep = carryRun(false);
+Date.now = realNow;
+assert.ok(withKeep && (!withoutKeep || withKeep.dec < withoutKeep.dec), 'carried on, the search reaches the break sooner than begun again each decision (' + (withKeep && withKeep.dec) + ' against ' + (withoutKeep && withoutKeep.dec) + ' decisions)');
+assert.ok(withKeep, 'carried on, the search reaches the factory board\'s break');
+var jk = A.judge(withKeep.board, hold, withKeep.path, [], {});
+assert.ok(!jk.dead && jk.made.broke > 0, 'the break the carried search reaches breaks as the judge plays it: ' + JSON.stringify(jk.made));
+console.log('ok: carried on -- the break found after ' + withKeep.dec + ' decisions of ' + SLICE_MS + ' work-ms each (begun again each time: ' + (withoutKeep ? withoutKeep.dec : 'never') + '), ' + withKeep.path.length + ' swaps from where it was found');
