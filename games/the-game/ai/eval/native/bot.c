@@ -6033,8 +6033,19 @@ static double breakTier(const int32_t *sw, int n, int die) {
   if (fillUrgent && marginWithin(sw, n, die ? die : LINEREACH, 0) >= 0) return BREAKS_IN_TIME;
   return reachFirst() && breakKept(sw, n) ? BREAK_IN_REACH : 0;
 }
+// THE CONTACT A FILL LEAVES THE COMING SLAB, ahead of the hollow and the material (a break can only be made at a contact, contactOf): a column
+// of it is worth more than the hollow cells or the panels' worth that any fill moves
+#define CONTACT_WORTH 1024.0
+static double contactBonus(const int32_t *sw, int n) {
+  if (!waveExpected()) return 0;
+  Cand *pc = n == 1 ? poolSwap(sw[0], sw[1]) : 0;
+  if (n < 1) return CONTACT_WORTH * contactOf(DBASE);
+  if (pc) return CONTACT_WORTH * contactOf(pc->masks);
+  int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
+  return CONTACT_WORTH * contactOf(lineState(sw, n, st, can, w, cur, &t) == 0 ? st : DBASE);
+}
 static double fillScoreOf(const int32_t *sw, int n, int die, int last, int hollow, int spent) {
-  return fillScore(die, last, hollow, spent) + breakTier(sw, n, die);
+  return fillScore(die, last, hollow, spent) + breakTier(sw, n, die) + contactBonus(sw, n);
 }
 // a clear judged (LNO) leaves six rows of material, read off the line's own matches
 static int readyAfterSpend(const int32_t *sw, int n);
@@ -6058,11 +6069,11 @@ static Dec fillFirstIn(Dec d) {
   // time between its break and its loss of health
   double need = marginAfter(0, 0, LNA[0]);
   fillUrgent = LNA[0] && need < 0;
-  double ref = fillScore(LNA[0], -1, HOLLOW(LNA), 0) + (reachFirst() && breakKept(0, 0) ? BREAK_IN_REACH : 0);   // what a fill must beat: the board left alone, and the choice
+  double ref = fillScore(LNA[0], -1, HOLLOW(LNA), 0) + (reachFirst() && breakKept(0, 0) ? BREAK_IN_REACH : 0) + contactBonus(0, 0);   // what a fill must beat: the board left alone, and the choice
   int refDie = lnoDie(LNA);   // the later loss of health of the two
   if (d.kind == K_SWAP && d.hasMove) {
     int32_t sw[2] = { d.sr, d.sc };
-    if (lineJudge(sw, 1, 0) & LV_LIVES) { best = HOLLOW(LNO) < best ? HOLLOW(LNO) : best; if (lnoDie(LNO) > refDie) refDie = lnoDie(LNO); double cs = fillScore(LNO[0], LNO[1], HOLLOW(LNO), spentOf()); double m = marginAfter(sw, 1, LNO[0]); cs += fillUrgent && m >= 0 ? BREAKS_IN_TIME : reachFirst() && breakKept(sw, 1) ? BREAK_IN_REACH : 0; if (cs > ref) ref = cs; if (m > need) need = m; }
+    if (lineJudge(sw, 1, 0) & LV_LIVES) { best = HOLLOW(LNO) < best ? HOLLOW(LNO) : best; if (lnoDie(LNO) > refDie) refDie = lnoDie(LNO); double cs = fillScore(LNO[0], LNO[1], HOLLOW(LNO), spentOf()); double m = marginAfter(sw, 1, LNO[0]); cs += (fillUrgent && m >= 0 ? BREAKS_IN_TIME : reachFirst() && breakKept(sw, 1) ? BREAK_IN_REACH : 0) + contactBonus(sw, 1); if (cs > ref) ref = cs; if (m > need) need = m; }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "  choice %d,%d die %d last %d hollow %d | alone die %d\n", d.sr, d.sc, LNO[0], LNO[1], HOLLOW(LNO), LNA[0]); }   // the log does no work of its own: under a work budget it would change the decision
 #endif
