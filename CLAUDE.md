@@ -177,6 +177,9 @@ ways: a tool not listed, or a path listed that doesn't exist.
 
 ## The AI trainer (`games/the-game/ai/eval/`)
 
+- **Gambit's goal is `plans/gambit-goal.md`**: every mode 24/24 on the real Training mode, then switching between them. Its rules and
+  its order are there; read it before working on Gambit.
+
 - **Read state, never recall it: `status.sh`.** It prints what is training,
   the genome from the run's own log, the last snapshot's score and chains
   fired, the chip count, and the git/origin gap. Run it before answering any
