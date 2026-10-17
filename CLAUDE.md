@@ -283,7 +283,8 @@ ways: a tool not listed, or a path listed that doesn't exist.
   (it lives), lives, a clear that breaks nothing and is no combo ranks below any
   option that lives until it is due (`clearDue`), a break in reach when the next slab lands (the block the attacker's telegraph shows, none shown: a
   slab the width of the board, `waveReady`; the engine's one
-  readiness, `readyInTime`, the masks' only to propose), the later loss
+  readiness, `readyInTime`, the masks' only to propose; asked only while the board left alone has a slab land in the judge's reach, `waveSoon` --
+  a topped board holds the queue back), the later loss
   of health inside `LIVEHORIZON` (`liveHorizon`: the wait for the front's next decision, the walk to the farthest corner, and `NEXTMOVE` -- what one save needs), of two breaks the combo or chain before a plain
   three (`attackFirst`), a plain clear last (it clears, breaks nothing,
   is no combo or chain and fills nothing under garbage: `plain`, ranked below

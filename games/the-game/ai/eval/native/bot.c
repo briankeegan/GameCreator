@@ -2326,6 +2326,11 @@ static JLOCAL LineC *LNS = LINES_MAIN;
 static JLOCAL int nLines;
 static int nJudged;
 static int32_t LNA[LNOLEN];
+static int waveExpected(void);
+// A SLAB THAT CAN LAND: one queued, and the board left alone has it land in the time the judge looks at (out[20]: the frame it lands). A topped board holds
+// the queue back -- nothing drops on it -- so while its pile stands, readiness for the next slab is for a landing that is not in the world.
+static int aloneOnEngine(void);
+static int waveSoon(void) { return waveExpected() && (!aloneOnEngine() || LNA[20] >= 0); }
 static JLOCAL int32_t LNO[LNOLEN];
 static int aloneOnEngine(void);
 // WHAT A PANEL IS WORTH, by the panels the board is left with: the risk the
@@ -4285,7 +4290,7 @@ static int optReady(Opt *o) {
     int r, c, hold = o->d.kind == K_HOLD;
     o->rdy = 0;
     if (o->lives && BIN[IN_HASPA]) {
-      if (waveExpected()) o->rdy = hold ? readyInTime(0, 0, &r, &c) : readyInTime(o->sw, o->n, &r, &c);
+      if (waveSoon()) o->rdy = hold ? readyInTime(0, 0, &r, &c) : readyInTime(o->sw, o->n, &r, &c);
       else { int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
              if (lineState(hold ? 0 : o->sw, hold ? 0 : o->n, st, can, w, cur, &t) == 0) o->rdy = waveReady(st); }
     }
@@ -4492,16 +4497,16 @@ static int optEarly(Opt *o) { return o->early && (o->cash || optPlain(o)); }
 // board with 25 stop frames as the slab lands had 17.6% of its unready landings fatal, 60 frames 8%). With none coming it is preferred only when it is
 // not the dearer of the two in life -- the frame the board loses health, less its last press, its hollow and the material it spends.
 // w > 0: a's attack comes first, w < 0: b's
-static int attackPays(const Opt *a, const Opt *b, int w) { return waveExpected() || (w > 0 ? a->life >= b->life : b->life >= a->life); }
+static int attackPays(const Opt *a, const Opt *b, int w) { return waveSoon() || (w > 0 ? a->life >= b->life : b->life >= a->life); }
 static int optRank(Opt *a, Opt *b) {
   int ka = a->lives ? 1 + a->breaks : 0, kb = b->lives ? 1 + b->breaks : 0;
   if (ka != kb) return ka > kb ? 1 : -1;
   // a clear that is not yet due ranks below any option that lives -- an attack that readies the landing the other does not is the readiness's to place
   if (ka && (a->early || b->early)) {
     int ea = optEarly(a), eb = optEarly(b);
-    if (ea != eb && !(waveExpected() && ((ea && a->cash) || (eb && b->cash)) && optReady(a) != optReady(b))) return ea ? -1 : 1;
+    if (ea != eb && !(waveSoon() && ((ea && a->cash) || (eb && b->cash)) && optReady(a) != optReady(b))) return ea ? -1 : 1;
   }
-  if (ka && waveExpected()) { int ra = optReady(a), rb = optReady(b); if (ra != rb) return ra > rb ? 1 : -1; }
+  if (ka && waveSoon()) { int ra = optReady(a), rb = optReady(b); if (ra != rb) return ra > rb ? 1 : -1; }
   // dying within LIVEHORIZON, the later loss of health is the time there is: a
   // line that takes longer to finish still outlives a hold that dies first
   // dying within LIVEHORIZON, the later loss of health is the time there is: a
@@ -4514,7 +4519,7 @@ static int optRank(Opt *a, Opt *b) {
   if (da != db) return da > db ? 1 : -1;
   // THE COVER THE LANDING IS MET WITH: of two options that live as long, the one with more stop time still running as the slab lands, up to what a
   // chain awards topped beyond the landing's shake -- the stop time carries a board through a landing that has no break in reach
-  if (ka == 1 && kb == 1 && waveExpected() && a->cover >= 0 && b->cover >= 0) {
+  if (ka == 1 && kb == 1 && waveSoon() && a->cover >= 0 && b->cover >= 0) {
     int cap = (int)BIN[IN_SF + 4] + stopAwardOf(2, 6, 1), ca = a->cover < cap ? a->cover : cap, cb = b->cover < cap ? b->cover : cap;
     if (ca != cb) return ca > cb ? 1 : -1;
   }
@@ -4537,10 +4542,10 @@ static int optRank(Opt *a, Opt *b) {
     if (ka == 1 && kb == 1 && sa >= INF && sb >= INF && !a->clears && !b->clears) {
       // nearer a break is the progress; of two as near, the contact the slab will have is what a break is made at
       double na = optNear(a), nb = optNear(b); if (na != nb && na < INF && nb < INF) return na < nb ? 1 : -1;   // a guide that could not be read says nothing of the distance
-      if (waveExpected() && !a->cash && !b->cash) { int ca = optContact(a), cb = optContact(b); if (ca != cb) return ca > cb ? 1 : -1; } } }
+      if (waveSoon() && !a->cash && !b->cash) { int ca = optContact(a), cb = optContact(b); if (ca != cb) return ca > cb ? 1 : -1; } } }
   // two options that clear and break nothing (the hold, a setup, a fill or a levelling swap): the one that leaves the coming slab more contact comes first --
   // a break can only be made at a contact (contactOf); a line is told by the board it leaves
-  if (ka && waveExpected() && !a->clears && !a->breaks && !a->cash && !b->clears && !b->breaks && !b->cash) {
+  if (ka && waveSoon() && !a->clears && !a->breaks && !a->cash && !b->clears && !b->breaks && !b->cash) {
     int ca = optContact(a), cb = optContact(b); if (ca != cb) return ca > cb ? 1 : -1;
   }
   // two options that clear nothing (the hold, the setups): the one that leaves the better attack within reach in the time there is -- then more vertical twos
@@ -4588,7 +4593,7 @@ static int contactOf(const int32_t *st) {
   return contacts;
 }
 static int setupScore(const int32_t *m);
-static double setupKey(const int32_t *m) { return (waveExpected() ? contactOf(m) * 1e6 : 0) + setupScore(m) * 1000.0; }
+static double setupKey(const int32_t *m) { return (waveSoon() ? contactOf(m) * 1e6 : 0) + setupScore(m) * 1000.0; }
 // A SETUP LEAVES THE SETUPS THERE ARE: a saved line -- the one kept, the target, the plan, the attack -- must play
 // out as well after the swap as before it, on the engine: it breaks and clears as much, makes the same combo and
 // chain, and loses health no sooner.
@@ -4657,7 +4662,7 @@ static int setupOptions(Opt *O, int n, Dec d) {
     // a setup has no reason but what it sets up: the rise it locks buys no time; its vertical twos are read off the masks it leaves
     o->n = 1; o->wait = 0; o->sw[0] = c->sr; o->sw[1] = c->sc; o->pri = 2; o->stall = 1;
     o->twos = twosOf(c->masks); o->twosKnown = 1;
-    if (optJudge(o)) { o->contact = waveExpected() ? contactOf(c->masks) : 0; o->contactKnown = 1; n++; }
+    if (optJudge(o)) { o->contact = waveSoon() ? contactOf(c->masks) : 0; o->contactKnown = 1; n++; }
   }
   return n;
 }
@@ -5719,7 +5724,7 @@ static int readiesLine(Dec d, int dieRef, int spare, int partial, int32_t *sw, i
   return 0;
 }
 static Dec readyWhenLands(Dec d) {
-  if (d.kind == K_RAISE || !waveExpected() || !BIN[IN_HASPA]) return d;
+  if (d.kind == K_RAISE || !waveSoon() || !BIN[IN_HASPA]) return d;
   if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;   // a break being played
   // no room for what a break makes: the room is made only when no line readies the landing
   int room = roomForBreak(DBASE);
@@ -6163,7 +6168,7 @@ static double breakTier(const int32_t *sw, int n, int die) {
 // that leave as much of both, the one with more of it. A column is worth under a cell, so it never outweighs what the others count
 #define CONTACT_WORTH 0.1
 static double contactBonus(const int32_t *sw, int n) {
-  if (!waveExpected()) return 0;
+  if (!waveSoon()) return 0;
   Cand *pc = n == 1 ? poolSwap(sw[0], sw[1]) : 0;
   if (n < 1) return CONTACT_WORTH * contactOf(DBASE);
   if (pc) return CONTACT_WORTH * contactOf(pc->masks);
@@ -6665,7 +6670,7 @@ static Dec meanwhile(Dec d) {
 // that leaves it unready is not played -- unless it breaks now, is a step of
 // a break or lineup line, or the board held loses health before the swap does.
 static Dec keepReady(Dec d) {
-  if (!waveExpected() || !baseReady || d.kind != K_SWAP || !d.hasMove) return d;
+  if (!waveSoon() || !baseReady || d.kind != K_SWAP || !d.hasMove) return d;
   if (lineLast == 3 || lineLast == 5 || (lineLast == 1 && (BT->lineKind == LINE_BREAK || BT->lineKind == LINE_PLAN))) return d;
   Cand *pc = poolSwap(d.sr, d.sc);
   if (!pc || swapBreaks(d) || slabReadyHook(pc->masks)) return d;
