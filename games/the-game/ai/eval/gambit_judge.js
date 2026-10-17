@@ -77,6 +77,19 @@ function outcome(c, R, seq, isSettled) {
   return o;
 }
 
+// THE SHARED LINE CHECK (attacker.useRules line, every play's): the whole line judged once on the engine, in a context of its own so a
+// search can ask it mid-search (attacker.judgeIn), and taken as the ranking takes it -- what it makes and sets off fits the list, the chain
+// is within MAXCHAIN, and below the rule's material floor it does not clear panels and break nothing. Cached per decision. { ok, made }
+function lineFits(c, R, seq, isSettled) {
+  var key = (isSettled ? 's ' : 'r ') + seq.map(function (mv) { return mv[0] + ',' + mv[1]; }).join(' ');
+  c.fitsOf = c.fitsOf || {};
+  if (key in c.fitsOf) return c.fitsOf[key];
+  var A = c.attacker, j = (A.judgeIn || A.judge)(c.board, c.m.hold, seq, c.arrivals, { settled: isSettled, tight: c.tight }), m = j.made, ok = !j.dead;
+  ok = ok && fitsList(R.list, m, j) && Math.max(m.chain || 0, j.chainAll || 0) <= GAMBIT.MAXCHAIN;
+  ok = ok && !(R.keep && R.keep.material !== undefined && !GAMBIT.test(R.F.us.material, R.keep.material) && (m.combo > 0 || m.chain > 0) && !(m.broke > 0));
+  return (c.fitsOf[key] = { ok: ok, made: m });
+}
+
 // THE JUDGE: a candidate, filtered and ranked -- null when it is no candidate. { play, seq, tier, sub, ap, aim, extend, near }
 // (why each candidate was dropped, counted per decision for the log: c.dropped[play] = { back, list, late, floor, ready }; and unbroken,
 // a line its search said breaks that the judge says does not -- counted, not dropped for it)
@@ -141,4 +154,4 @@ function compare(x, y) {
   return 0;
 }
 
-module.exports = { stepFits: stepFits, fitsList: fitsList, outcome: outcome, hold: hold, HOLD_TIER: HOLD_TIER, HORIZON: HORIZON, REST: REST, BEAM: BEAM, lastLanding: lastLanding, judge: judge, compare: compare, settled: settled, SETTLED: SETTLED, swapBack: swapBack, drop: drop };
+module.exports = { stepFits: stepFits, fitsList: fitsList, lineFits: lineFits, outcome: outcome, hold: hold, HOLD_TIER: HOLD_TIER, HORIZON: HORIZON, REST: REST, BEAM: BEAM, lastLanding: lastLanding, judge: judge, compare: compare, settled: settled, SETTLED: SETTLED, swapBack: swapBack, drop: drop };

@@ -67,7 +67,7 @@ function breakSearch(c, R) {
   var by = c.due ? Math.min(t + Math.max(BREAK_MIN_MS, (c.due - c.t0) * share), c.due - c.margin) : t + BREAK_MAX_MS;
   var br = SH.breakMoves(c.search(), board, { left: c.m.hold.left, started: c.m.hold.started }, c.arrivals, 1, pop ? pop + LINEUP_AFTER : 0, by,
                          c.stale ? function () { return c.stale() ? c.aborted : null; } : null, null,
-                         { touchInPop: true, near: true, ok: c.attacker.allowed, stepOk: c.attacker.stepOk, firstOk: c.attacker.firstOk, resume: resume, keepOut: c.keepOut });
+                         { touchInPop: true, near: true, ok: c.attacker.allowed, stepOk: c.attacker.stepOk, firstOk: c.attacker.firstOk, resume: resume, keepOut: c.keepOut, lineOk: c.attacker.lineOk });
   if (br) { br.cut = Date.now() >= by; br.resumed = resume ? resume.length : 0; }
   return { br: br, ms: Date.now() - t };
 }

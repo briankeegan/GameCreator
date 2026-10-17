@@ -331,7 +331,9 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
     });
     return outs;
   }
-  function breaks(n) { return n && !n.dead && !(stepOk && outside[n._i]) && (n.brk !== undefined ? n.brk : S.breaks(n)) > still(n.t) && (!opts || !opts.ok || opts.ok(S, n, still)); }
+  // (opts.lineOk(path): the shared line check, asked of the whole line a break was found on -- one the judge would not take is passed
+  // over and the search goes on for one it will)
+  function breaks(n, path) { return n && !n.dead && !(stepOk && outside[n._i]) && (n.brk !== undefined ? n.brk : S.breaks(n)) > still(n.t) && (!opts || !opts.ok || opts.ok(S, n, still)) && (!path || !opts || !opts.lineOk || opts.lineOk(path, false)); }
   function within(n) { return !(stepOk && n && n._i >= 0 && outside[n._i]); }
   function swapsOf(n, near) {
     var ms = n.b.legalSwaps();
@@ -360,7 +362,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
   var toward = null;
   var made = swapsFrom(root, firsts.map(function (f) { return f.m; }), true);
   var at1 = null;
-  firsts.forEach(function (f, q) { f.n = made[q]; if (breaks(f.n)) { found[f.key] = true; any = true; if (at1 === null || f.n.t - root.t < at1) at1 = f.n.t - root.t; } });
+  firsts.forEach(function (f, q) { f.n = made[q]; if (breaks(f.n, [f.m])) { found[f.key] = true; any = true; if (at1 === null || f.n.t - root.t < at1) at1 = f.n.t - root.t; } });
   if (any) return { depth: 1, moves: found, at: at1 };
   // GARBAGE RESTING, NOTHING POPPING: a break sooner rather than later. A
   // beam of lines up to TOUCH_DEPTH swaps, kept by how near the row under the
@@ -375,7 +377,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
       var km = keep[i], legal = kn.b.legalSwaps().some(function (m) { return m[0] === km[0] && m[1] === km[1]; });
       if (!legal) { kn = null; break; }
       var kst = [[kn, 'swap', km, 0]]; kn = mark(kst, S.advanceMany(kst, true))[0]; kp.push(km);
-      if (breaks(kn)) return { depth: 1, moves: (function (o) { o[keep[0][0] + ',' + keep[0][1]] = true; return o; })({}), touch: true, path: kp, kept: true };
+      if (breaks(kn, kp)) return { depth: 1, moves: (function (o) { o[keep[0][0] + ',' + keep[0][1]] = true; return o; })({}), touch: true, path: kp, kept: true };
     }
   }
   // (how near a break each line's board is, read on the board once what the line cleared has fallen: a clear under the slab lets it
@@ -423,7 +425,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
     var seeds = resumed();
     // (what is carried on stays carried until this beam grows past it)
     if (opts && opts.keepOut && seeds.length) opts.keepOut.paths = seeds.slice(0, KEEPN).map(function (x) { return x.path.map(function (mv) { return mv.slice(); }); });
-    for (var si = 0; si < seeds.length; si++) if (breaks(seeds[si].n)) { found[seeds[si].key] = true; return { depth: 1, moves: found, touch: true, path: seeds[si].path, at: seeds[si].n.t - root.t, carried: true }; }
+    for (var si = 0; si < seeds.length; si++) if (breaks(seeds[si].n, seeds[si].path)) { found[seeds[si].key] = true; return { depth: 1, moves: found, touch: true, path: seeds[si].path, at: seeds[si].n.t - root.t, carried: true }; }
     var tl0 = seeds.concat(firsts.filter(function (f) { return f.n && !f.n.dead && within(f.n); }).map(function (f) { return { key: f.key, n: f.n, path: [f.m] }; })), tpath = null, tat = null;
     // TOUCH_BEAM first; finding nothing, wider (TOUCH_WIDER) while time is left.
     for (var tb = 0; tb < TOUCH_WIDER.length + 1 && !tpath && Date.now() < deadline; tb++) {
@@ -466,7 +468,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
             var t3 = made[at + j];
             if (!t3 || t3.dead) continue;
             var tp = tl[i].path.concat([tms[i][j]]);
-            if (breaks(t3)) { found[tl[i].key] = true; any = true; tpath = tp; tat = t3.t - root.t; break; }
+            if (breaks(t3, tp)) { found[tl[i].key] = true; any = true; tpath = tp; tat = t3.t - root.t; break; }
             if (within(t3)) tn.push({ key: tl[i].key, n: t3, path: tp });
           }
           at += tms[i].length;

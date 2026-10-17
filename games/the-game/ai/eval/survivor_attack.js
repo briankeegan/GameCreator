@@ -36,10 +36,10 @@ module.exports = function (opts) {
   }
   // (the judge in a context of its own: for a search that judges a line while its own nodes must stand)
   var S2 = null;
-  function judgeIn(board, hold, seq, arrivals) {
+  function judgeIn(board, hold, seq, arrivals, o) {
     if (!S2) S2 = new N.Search({ reaction: opts.reaction, swapGap: opts.swapGap, cursorMoveFrames: opts.cursorMoveFrames, threads: 1 });
-    var keepS = S; S = S2;
-    try { return judge(board, hold, seq, arrivals, {}); } finally { S = keepS; }
+    var keepS = S, keep2 = S2; S = S2; S2 = null;   // (and a judge asked from within this one gets a context of its own again)
+    try { return judge(board, hold, seq, arrivals, o || {}); } finally { S = keepS; S2 = keep2; }
   }
   // o.aims: a priority list of aims, searched in one beam -- the best line for each aim is kept, and the line returned is the first
   // aim's that has one (best.aimIndex); o.aim is a list of one.
@@ -129,7 +129,7 @@ module.exports = function (opts) {
           var g = sent(st), seq = it.seq.concat([m]), fire = it.n.t - root.t, ats = it.ats.concat([fire]);
           // (a line is kept as an answer only when it is within the rules through its settle, as the judge plays it -- allowed(), asked
           // once, only of a line about to be kept)
-          var endOk = null, okE = function () { if (endOk === null) endOk = allowed(s, out, stillBreaks); return endOk; };
+          var endOk = null, okE = function () { if (endOk === null) endOk = allowed(s, out, stillBreaks) && lineOk(seq, true); return endOk; };
           var bigC = 0; st.comboSizes.forEach(function (z) { if (z > bigC) bigC = z; });
           if (aims) {
             // (aims: the line is kept for every aim it meets, by its deadline and keeping what o.keep asks; the search goes on past it)
@@ -307,9 +307,9 @@ module.exports = function (opts) {
         // (o.aims: the cascade that ends making the most for each aim -- { combo, chain, broke, cells added } -- is kept per aim)
         if (xAims) {
           var madeX = { combo: g.combo, chain: g.chain, broke: g.broke, cells: g.cells - base.cells };
-          if (o.near && g.kept) { var xn = o.near(madeX); if (xn > 0 && (!xNear || xn > xNear.near || (xn === xNear.near && g.cells > xNear.cells))) xNear = { near: xn, cells: g.cells, chain: g.chain, combo: g.combo, broke: g.broke, done: g.done, fire: g.fire, floor: g.floor, seq: k.seq, base: base.cells, aimIndex: -1 }; }
-          for (var xa = 0; xa < xAims.length; xa++) if (g.kept && xAims[xa] && xAims[xa](madeX) && (!xPer[xa] || g.cells > xPer[xa].cells)) xPer[xa] = { cells: g.cells, chain: g.chain, combo: g.combo, broke: g.broke, done: g.done, fire: g.fire, floor: g.floor, seq: k.seq, base: base.cells, aimIndex: xa };
-        } else if (g.cells > best.cells) best = { cells: g.cells, chain: g.chain, combo: g.combo, seq: k.seq, base: base.cells };
+          if (o.near && g.kept) { var xn = o.near(madeX); if (xn > 0 && (!xNear || xn > xNear.near || (xn === xNear.near && g.cells > xNear.cells)) && lineOk(k.seq, false)) xNear = { near: xn, cells: g.cells, chain: g.chain, combo: g.combo, broke: g.broke, done: g.done, fire: g.fire, floor: g.floor, seq: k.seq, base: base.cells, aimIndex: -1 }; }
+          for (var xa = 0; xa < xAims.length; xa++) if (g.kept && xAims[xa] && xAims[xa](madeX) && (!xPer[xa] || g.cells > xPer[xa].cells) && lineOk(k.seq, false)) xPer[xa] = { cells: g.cells, chain: g.chain, combo: g.combo, broke: g.broke, done: g.done, fire: g.fire, floor: g.floor, seq: k.seq, base: base.cells, aimIndex: xa };
+        } else if (g.cells > best.cells && lineOk(k.seq, false)) best = { cells: g.cells, chain: g.chain, combo: g.combo, seq: k.seq, base: base.cells };
         next.push(k);
       });
       var seen = {};
@@ -426,7 +426,7 @@ module.exports = function (opts) {
       if (!out || out.dead || s.stepStats(out).cleared > 0 || (o && o.by && out.t - root.t > o.by) || !firstFits(ms[i], false)) return;
       var sh = shapeOf(out.b.grid);
       if (sh.hollow > before.hollow || (sh.hollow === before.hollow && sh.even >= before.even)) return;
-      if (!bestL || sh.hollow < bestL.after.hollow || (sh.hollow === bestL.after.hollow && sh.even < bestL.after.even)) bestL = { move: ms[i], before: before, after: sh };
+      if ((!bestL || sh.hollow < bestL.after.hollow || (sh.hollow === bestL.after.hollow && sh.even < bestL.after.even)) && lineOk([ms[i]], true)) bestL = { move: ms[i], before: before, after: sh };
     });
     s.drop([r0].concat(outs.filter(function (x) { return x && !x.dead; })));
     return bestL;
@@ -568,9 +568,13 @@ module.exports = function (opts) {
   // filters by, so a search finds only what the judge will take
   // first(mv, clears): a line's first swap is not the swap back the judge refuses (JUDGE.swapBack). still(t): what the board left alone
   // has broken by frame t -- a break is garbage broken beyond it, as the judge counts one
-  var listFits = null, floorLow = false, firstOk = null;
-  function useRules(r) { listFits = (r && r.fits) || null; floorLow = !!(r && r.floorLow); firstOk = (r && r.first) || null; }
-  function useList(fits) { useRules({ fits: fits, floorLow: floorLow, first: firstOk }); }
+  // line(seq, settled): THE SHARED LINE CHECK, every play's -- the whole line judged once on the engine with the list, the chain and
+  // the floor as the ranking takes them (JUDGE.lineFits); a search keeps a line as an answer only when it passes. The step checks
+  // above only prune a search early.
+  var listFits = null, floorLow = false, firstOk = null, lineRule = null;
+  function useRules(r) { listFits = (r && r.fits) || null; floorLow = !!(r && r.floorLow); firstOk = (r && r.first) || null; lineRule = (r && r.line) || null; }
+  function useList(fits) { useRules({ fits: fits, floorLow: floorLow, first: firstOk, line: lineRule }); }
+  function lineOk(seq, settled) { return !lineRule || lineRule(seq, !!settled); }
   function firstFits(mv, clears) { return !firstOk || firstOk(mv, clears); }
   // (the floor is the judge's, a whole line's: one that clears panels and breaks nothing -- never a step of a line on its way to a break,
   // which may clear panels to get down to the garbage. floorOk(made) is asked of a line once it is done)
@@ -664,8 +668,7 @@ module.exports = function (opts) {
       var losts = lostMany(s, root, kids.map(function (x) { return x.n; }), kids.map(function (x) { return Math.max(o.to, x.n.t - root.t + (o.rest || 0)); }), made);
       for (var i = 0; i < kids.length; i++) {
         var lost = kids[i].lost = losts[i];
-        if (!(lost === Infinity ? allowed(s, kids[i].n, still) : true)) { kids[i].lost = -1; continue; }
-        if (lost === Infinity && floorLow && !floorOk(judgeLine(kids[i].seq))) { kids[i].lost = -1; continue; }
+        if (lost === Infinity && !(lineRule ? lineOk(kids[i].seq, false) : allowed(s, kids[i].n, still) && floorOk(judgeLine(kids[i].seq)))) { kids[i].lost = -1; continue; }
         if (!best || lost > best.lostAt) best = { seq: kids[i].seq, lostAt: lost };
         if (lost === Infinity) { s.drop(made); return best; }
       }
@@ -691,7 +694,7 @@ module.exports = function (opts) {
       var j = check([firsts[i]]);
       if (j.dead) continue;
       if (!firstFits(firsts[i], j.made.combo > 0 || j.made.chain > 0 || j.made.broke > 0)) continue;
-      if (j.ready === true) return { seq: [firsts[i]], at: j.done };
+      if (j.ready === true && lineOk([firsts[i]], false)) return { seq: [firsts[i]], at: j.done };
       live.push(firsts[i]);
     }
     for (i = 0; i < live.length && Date.now() - t0 < ms; i++) {
@@ -700,10 +703,10 @@ module.exports = function (opts) {
       var seconds = b1.legalSwaps();
       for (var k = 0; k < seconds.length && Date.now() - t0 < ms; k++) {
         var j2 = check([live[i], seconds[k]]);
-        if (!j2.dead && j2.ready === true && firstFits(live[i], j2.made.combo > 0 || j2.made.chain > 0 || j2.made.broke > 0)) return { seq: [live[i], seconds[k]], at: j2.done };
+        if (!j2.dead && j2.ready === true && firstFits(live[i], j2.made.combo > 0 || j2.made.chain > 0 || j2.made.broke > 0) && lineOk([live[i], seconds[k]], false)) return { seq: [live[i], seconds[k]], at: j2.done };
       }
     }
     return null;
   }
-  return { useRules: useRules, useList: useList, allowed: allowed, stepOk: stepFits, firstOk: firstFits, outlive: outlive, readyLines: readyLines, plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear, replay: replay, judge: judge, diesIn: diesIn, raiseReady: raiseReady };
+  return { useRules: useRules, useList: useList, allowed: allowed, stepOk: stepFits, firstOk: firstFits, lineOk: lineOk, judgeIn: judgeIn, outlive: outlive, readyLines: readyLines, plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear, replay: replay, judge: judge, diesIn: diesIn, raiseReady: raiseReady };
 };

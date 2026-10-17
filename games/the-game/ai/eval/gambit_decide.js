@@ -27,8 +27,12 @@ function read(c) {
   // (and the material floor: below it a step that clears and breaks nothing is out, as the judge drops it)
   var keep0 = pick.rule.keep || tables.keep || null;
   // (and a line's first swap is not the swap back the judge refuses)
+  // (and every search's lines are kept only through the shared line check, JUDGE.lineFits)
+  c.fitsOf = {};
+  var Rl = { list: list, keep: keep0, F: F };
   if (c.attacker.useRules) c.attacker.useRules({ fits: JUDGE.stepFits(list), floorLow: !!(keep0 && keep0.material !== undefined && !GAMBIT.test(F.us.material, keep0.material)),
-                                                 first: function (mv, clears) { return !JUDGE.swapBack(c, mv, clears); } });
+                                                 first: function (mv, clears) { return !JUDGE.swapBack(c, mv, clears); },
+                                                 line: function (seq, st) { return JUDGE.lineFits(c, Rl, seq, st).ok; } });
   // (garbage on the board: the search asks every entry to break it too; garbage on it or topped out, the deadline is a break's --
   // before the board dies; the rule's `by` is an attack's)
   // (topped out with no garbage on the board, there is nothing to break: the list as written, and the deadline is the board's)
