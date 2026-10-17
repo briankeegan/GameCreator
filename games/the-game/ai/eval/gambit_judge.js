@@ -144,6 +144,12 @@ function hold(c, R, wait) {
            ap: { seq: [], done: j ? j.done : null, fire: null, ats: null, chain: 0, chainAll: j ? j.chainAll : 0, combo: 0, broke: 0, played: !!j } };
 }
 
+// A DIG THAT CAN WAIT (gambit_decide.js ranked): a line toward a break that lives no longer than the hold H, and is still done before the
+// hold is lost after `react` frames more
+function digWaits(k, H, react) {
+  return k.play === 'toward' && !k.o.lives && !H.o.lives && H.o.lostAt != null && k.o.done != null && k.o.lostAt <= H.o.lostAt && H.o.lostAt - k.o.done > react;
+}
+
 // THE RANK, one order for every candidate (plans/decision.md, step 4): a line that lives before one that does not; of two that live, the
 // tier (the list's order and the engine's timing within it), then each sub-key in turn; of two that do not, the one whose board is lost
 // later, then the tier
@@ -157,4 +163,4 @@ function compare(x, y) {
   return 0;
 }
 
-module.exports = { stepFits: stepFits, fitsList: fitsList, lineFits: lineFits, outcome: outcome, hold: hold, HOLD_TIER: HOLD_TIER, HORIZON: HORIZON, REST: REST, BEAM: BEAM, lastLanding: lastLanding, judge: judge, compare: compare, settled: settled, SETTLED: SETTLED, swapBack: swapBack, drop: drop };
+module.exports = { stepFits: stepFits, fitsList: fitsList, lineFits: lineFits, outcome: outcome, hold: hold, HOLD_TIER: HOLD_TIER, HORIZON: HORIZON, REST: REST, BEAM: BEAM, lastLanding: lastLanding, judge: judge, compare: compare, digWaits: digWaits, settled: settled, SETTLED: SETTLED, swapBack: swapBack, drop: drop };

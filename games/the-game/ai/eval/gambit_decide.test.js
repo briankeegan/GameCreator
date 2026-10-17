@@ -219,4 +219,24 @@ assert.ok(backBoards > 0, 'boards with an offered move\'s swap back to refuse: '
 assert.ok(lateDropped > 0 && readyKept > 0 && carriedN > 0 && aloneReady > 0, 'every check ran: ' + lateDropped + ' late, ' + readyKept + ' ready (' + aloneReady + ' boards ready alone), ' + carriedN + ' carried');
 assert.ok(kinds['break search'] || kinds.toward, 'the break search\'s moves were among those checked');
 console.log('ok: every move held to the deadline, readiness (' + readyFirst + ' boards not ready alone, a ready move first, ' + readyLinesFound + ' lines found that leave a plan) and the line in progress -- ' + Object.keys(kinds).sort().join(', '));
+// A DIG THAT CAN WAIT, WAITS: a line toward a break, done at frame 40 of a hold lost at 100, waits a reaction (13 frames); done at 90 it
+// is played; one that outlives the hold, or a hold that lives, never waits
+var Hd = { o: { lives: false, lostAt: 100 } }, tw = function (done, lost) { return { play: 'toward', o: { lives: false, done: done, lostAt: lost } }; };
+assert.ok(JUDGE.digWaits(tw(40, 100), Hd, 13), 'time for another decision: the dig waits');
+assert.ok(!JUDGE.digWaits(tw(90, 100), Hd, 13), 'no time left: the toward line is played');
+assert.ok(!JUDGE.digWaits(tw(40, 150), Hd, 13), 'a line that outlives the hold is played');
+assert.ok(!JUDGE.digWaits(tw(40, 100), { o: { lives: true, lostAt: Infinity } }, 13), 'a hold that lives is ranked as it is');
+// IDLE TIME IS PLANNING TIME ONLY WHILE THE BOARD LIVES: after a hold, a board fourteen slabs bury gives the planner its usual share
+// (GP.ms), not all the decision's time -- the rest is the survival search's
+var ib = PA.game({ level: 10, seed: 3, countdown: false });
+for (var ifr = 0; ifr < 200; ifr++) ib.run();
+var iarr = Array.apply(null, Array(14)).map(function (_, i) { return { at: 40 + i, width: 6, height: 2 }; });
+var ic = { bot: { _canRaise: function () { return false; }, _gambitIdle: true }, m: { at: ib.clock, hold: hold, topped: false, opp: null }, board: ib, arrivals: iarr, br: null, brMs: 0, attacker: at, rules: wide,
+           GP: { mode: 'finish them', ms: 30, width: 30, depth: 5, pool: 120 }, pace: null, canRaise: function () { return false; }, left: function () { return 400; } };
+var IR = DECIDE.read(ic);
+if (IR && IR.preds.length) {
+  assert.ok(!JUDGE.outcome(ic, IR, [], false).lives, 'the buried board is lost left alone');
+  var it0 = Date.now(); PROPOSE.search(ic, IR);
+  assert.ok(Date.now() - it0 < 300, 'a dying board after a hold plans its usual share, not the decision\'s 400 ms: ' + (Date.now() - it0) + ' ms');
+}
 console.log('ok: gambit decision -- the judge on ' + judged + ' planned lines, ' + decided + ' decisions over ' + modes.length + ' modes');

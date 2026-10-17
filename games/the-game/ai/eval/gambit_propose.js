@@ -24,9 +24,11 @@ function search(c, R) {
                                      aims: xAims.map(function (a) { return function (made) { return GAMBIT.meets(a, made); }; }), near: function (made) { return GAMBIT.nearList(xAims, made); } });
     out.ex.xAims = xAims;
   }
-  // (idle time is planning time: after a decision that held or had nothing to play, the planner has all the time the decision has)
+  // (idle time is planning time: after a decision that held or had nothing to play, the planner has all the time the decision has -- while
+  // the board left alone lives; a board the hold loses keeps the time for the survival search)
   var usual = Math.min(GP.ms || 80, c.left()) - (R.pop && out.ex ? out.ex.ms : 0);
-  var ms = c.bot._gambitIdle ? Math.max(usual, c.left()) : usual, extra = ms - Math.max(0, usual);
+  var idle = c.bot._gambitIdle && JUDGE.outcome(c, R, [], false).lives;
+  var ms = idle ? Math.max(usual, c.left()) : usual, extra = ms - Math.max(0, usual);
   if (ms >= 20) {
     out.tried++;
     out.ap = A.plan(board, hold, { ms: ms, width: GP.width || 40, depth: GP.depth || 7, pool: GP.pool || 250, minChain: 0, arrivals: arrivals,

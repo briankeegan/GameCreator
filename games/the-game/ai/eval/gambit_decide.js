@@ -80,7 +80,12 @@ function ranked(c, R, S) {
   var C = R.preds.length ? PROPOSE.carried(c, R) : null, cj = C && JUDGE.judge(c, R, C.cand);
   if (cj) { cj.wait = C.wait; if (cj.wait) { cj.tier = Math.max(cj.tier, JUDGE.HOLD_TIER); cj.sub = [-1]; } else cj.sub = [-Infinity].concat(cj.sub); out.push(cj); }
   // (the hold: never while the chain the board makes alone runs past the list)
-  if (!R.aloneOut) out.push(JUDGE.hold(c, R, false));
+  var H = JUDGE.hold(c, R, false);
+  if (!R.aloneOut) out.push(H);
+  // (A DIG THAT CAN WAIT, WAITS: a line toward a break that lives no longer than the hold, and is still done before the hold is lost
+  // after one more decision -- the reaction's frames -- ranks with the hold: the break search carries every line it grew on to that
+  // decision, instead of only the ones that begin with the move played)
+  if (!R.aloneOut) out.forEach(function (k) { if (JUDGE.digWaits(k, H, (c.reaction || 0) + 1)) { k.wait = true; k.tier = JUDGE.HOLD_TIER; k.sub = [-1]; } });
   out.sort(JUDGE.compare);
   var t2 = Date.now();
   if (!(out[0] && out[0].o.lives) && c.left() > 0) {

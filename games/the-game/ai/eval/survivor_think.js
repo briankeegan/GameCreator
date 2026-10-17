@@ -1058,7 +1058,7 @@ module.exports = function think(cfg) {
       if (due) N.deadline(due - DEADLINE_MARGIN_MS);
       if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
       try {
-        var ga = GANSWER.answer({ bot: bot, m: m, board: board, arrivals: arrivals, due: due, t0: t0, attacker: attacker, search: search, rules: gambitRules,
+        var ga = GANSWER.answer({ bot: bot, m: m, board: board, arrivals: arrivals, due: due, t0: t0, attacker: attacker, search: search, rules: gambitRules, reaction: OPTS.reaction,
                                   GP: cfg.profile.gambit, pace: cfg.profile.pace, margin: DEADLINE_MARGIN_MS, nativeMem: NativeMem, stale: stale, aborted: P.ABORTED });
         // (Gambit ignores health: every board is judged at level 10's -- planHealth -- however its decisions go; the default's planReal
         // fallback is not Gambit's)
