@@ -8,7 +8,7 @@ static void frontCalm(int calm);
 enum { IN_TOPPED, IN_STOP, IN_INCOMING, IN_NEXTSLAB, IN_FALLING, IN_CROW, IN_CCOL, IN_HEALTH, IN_DRAIN, IN_FPR,
        IN_FTNR, IN_SPEED, IN_NEXTUP, IN_STARTSPEED, IN_CLOCK, IN_STACKCLOCK, IN_HASRISEN, IN_RAISING, IN_INFLIGHT,
        IN_DRAINBOUND, IN_STACKTOPPED, IN_MOVING, IN_HASTIMED, IN_REVEALOPEN, IN_CONVN, IN_CONVTIMER, IN_BCROW, IN_BCCOL,
-       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_PRESSES = 600, IN_PHANTOM, IN_RISEN, IN_OPPTOPPED, IN_OPPPRESENT, IN_LEAD, IN_TGW, IN_TGH, IN_TGC, IN_SIZE = 610 };   // IN_POPLOW + 1..W runs to 599
+       IN_NLEGAL, IN_HASINROW, IN_INROW = 30, IN_HASLAST = 37, IN_LASTR, IN_LASTC, IN_SETTLING = 40, IN_LOCKLEFT = 47, IN_HASPA = 48, IN_HELD = 49, IN_SF = 50, IN_CANSWAP = 54, IN_CONV = 60, IN_LEGAL = 300, IN_T = 560, IN_SLABW = 590, IN_SLABH, IN_SLABC, IN_INROWS, IN_POPLOW = IN_INROWS, IN_PRESSES = 600, IN_PHANTOM, IN_RISEN, IN_OPPTOPPED, IN_OPPPRESENT, IN_LEAD, IN_TGW, IN_TGH, IN_TGC, IN_POPPING = 609, IN_SIZE = 610 };   // IN_POPLOW + 1..W runs to 599
 enum { TF_DEADLY = 1, TF_FORCE = 2, TF_REFUSE = 4, TF_RAISE = 8, TF_STUB = 16, TF_SLAB = 32 };
 static int deadlyCalls;
 #define TFLAG(f) (((int)BIN[IN_T]) & (f))
@@ -4924,7 +4924,7 @@ static Dec breakDeeper(Dec d) {
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "BREAKDEEPER none: nearest %d swaps guide %.2f of %.2f, work used %.0f\n", nx.bestN, nx.bestG, readyGuide(kroot), paWork - bd0); }
 #endif
     // no break in the time there is: the line that got nearest one is played, and the search made again from where it leaves the board
-    if (nx.bestN > 0 && (lineJudge(nx.sw, nx.bestN, 0), lnoDie(LNO) >= readyBar())) {
+    if (nx.bestN > 0 && BIN[IN_POPPING] <= 0 && (lineJudge(nx.sw, nx.bestN, 0), lnoDie(LNO) >= readyBar())) {
       lineLast = 8; plansDrop();
       nearLineG = nx.bestG; nearLineN = nx.bestN; for (int k = 0; k < 2 * nx.bestN; k++) nearLineSw[k] = nx.sw[k];
       if (nx.bestN > 1) lineSet(nx.sw, nx.bestN, LINE_PLAN, 0); else BT->nLine = 0;
@@ -5105,6 +5105,8 @@ static Dec lineupFirst(Dec d) {
   lineupLast = 0;
   // a lineup is for a board with time: topped with death in sight, staying alive comes first
   if (lineLast || d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA]) { LUWHY(1); return d; }
+  // a pop in progress has converted the row the next break is made on: a board lined up for the stack as it stands is lined up for a row that is not there
+  if (BIN[IN_POPPING] > 0) { LUWHY(10); return d; }
   if (BIN[IN_TOPPED] && (!aloneOnEngine() || (LNA[0] && LNA[0] <= LIVEHORIZON))) { LUWHY(2); return d; }
   if (swapBreaks(d)) { LUWHY(3); return d; }
   linesReset();

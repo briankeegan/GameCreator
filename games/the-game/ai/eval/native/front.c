@@ -235,6 +235,7 @@ static int drainBound(void) {
   if (active) k = imaxf(k, 1 + imaxf(1, air));
   return k;
 }
+static int garbageBreaking(void);
 static int toppedNow(void) { return nb_topped(FB); }
 // the tallest column's top row on the board as it is (0: empty)
 static int fTallest(void) {
@@ -467,6 +468,7 @@ static void fPrepare(Front *F) {
     d[IN_NLEGAL] = nl;
   }
   d[IN_HASINROW] = 1;
+  d[IN_POPPING] = garbageBreaking();
   for (c = 1; c <= W; c++) { const int32_t *f = fp(0, c); d[IN_INROW + c] = !f[ISGARBAGE] && f[COLOR] ? f[COLOR] : -1; }
   if (F->hasLast) { d[IN_HASLAST] = 1; d[IN_LASTR] = F->lastR; d[IN_LASTC] = F->lastC; }
   d[IN_PRESSES] = F->presses;
@@ -1485,6 +1487,12 @@ static void frontRestart(Front *F);
 // THE BUDGET is the decision's work (bot.c WORKBUDGET), the same here as in the browser; the game's ThinkBudget
 // (train.lua) is the only clock
 EXPORT(front_frame) int front_frame(int fid, Board *b) { return frontFrame(fid, b); }
+// A BREAK IN PROGRESS: a garbage cell matched or popping -- the row it converts is on the board (its colours not yet shown) until the last cell pops
+static int garbageBreaking(void) {
+  for (int r = 1; r <= FB->height; r++)
+    for (int c = 1; c <= W; c++) { const int32_t *f = fp(r, c); if (f[ISGARBAGE] && (fState(f) == MATCHED || fState(f) == POPPING)) return 1; }
+  return 0;
+}
 // A GARBAGE CELL MATCHED: a break has begun (the pop that takes the block down)
 static int garbageMatched(void) {
   for (int r = 1; r <= FB->height; r++)
