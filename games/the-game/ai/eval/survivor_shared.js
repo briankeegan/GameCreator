@@ -483,7 +483,8 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
         tl = tn;
       }
     }
-    if (any) return { depth: 1, moves: found, touch: true, path: tpath, at: tat };
+    // (wide: the beam the break was found in -- 0 TOUCH_BEAM, then TOUCH_WIDER's)
+    if (any) return { depth: 1, moves: found, touch: true, path: tpath, at: tat, wide: tb - 1 };
     return null;
   }
   if (!(wait > 0)) { var tb0 = touchBeam(); if (tb0) return tb0; }

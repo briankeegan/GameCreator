@@ -35,7 +35,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
     var j = line ? A.judge(board, { left: 0, started: false }, line, arr, {}) : null;
     var found = !!(j && !j.dead && j.made.broke > 0 && JUDGE.lineFits(cur, Rl, line, false).ok);
     totals.boards++; if (found) totals.missed++; else totals.impossible++;
-    out.push(x.at + (found ? ' MISSED(' + line.length + ')' : ' none'));
+    out.push(x.at + (found ? ' MISSED(' + line.length + (br.wide ? ' w' + br.wide : '') + ')' : ' none'));
   });
   console.log(g + '  ' + m[1] + ' lost at ' + lostAt + ': ' + (out.length ? out.join(', ') : 'no empty searches logged'));
   // THE TURN: the last frame a break was there -- a decision whose break search found one, or a board searched again that had one --

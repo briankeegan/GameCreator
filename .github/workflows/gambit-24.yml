@@ -4,7 +4,8 @@ name: Gambit 24
 # large_garbage, every game a job of its own, as training-mode.yml plays one pattern -- and a report job reads all 24 games'
 # logs and writes the run up: games/the-game/ai/eval/gambit_summary.js (survived per mode, the frames lost at, combos and
 # chains, the budgets), gambit_losses.js (the decisions before each loss), gambit_reach.js (was the break there; the turn).
-# The summary is the run's notices; every report is the gambit-report artifact.
+# The summary is the run's notices; every report is the gambit-report artifact. With report_run, nothing is played: that run's games
+# are written up again by this commit's reports.
 on:
   workflow_dispatch:
     inputs:
@@ -17,9 +18,17 @@ on:
       panel_ref:
         description: 'The panel-game branch with AppDriver PA_SURVIVOR and trainingloop'
         default: 'bramp/multi-player'
+      report_run:
+        description: 'A past run of this workflow: its games written up again, nothing played'
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
 
 jobs:
   play:
+    if: ${{ inputs.report_run == '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 350
     strategy:
@@ -89,8 +98,10 @@ jobs:
       - uses: actions/download-artifact@v4
         timeout-minutes: 10
         with:
-          pattern: gambit-*
+          pattern: gambit-*-*
           path: games-of-run
+          run-id: ${{ inputs.report_run || github.run_id }}
+          github-token: ${{ github.token }}
       - name: The run, written up
         timeout-minutes: 45
         run: |
