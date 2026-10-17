@@ -1,10 +1,10 @@
-// GAMBIT'S TURN (plans/decision.md): a question from the frame loop answered by Gambit alone -- its own searches, its own decision, and
-// the survival search asked one thing only: which moves live. Nothing of the older bots' preferences, guards or overrides.
+// GAMBIT'S TURN (plans/decision.md): a question from the frame loop answered by Gambit alone -- its own searches, its own decision, its
+// own judge of which moves live. Nothing of the older bots' search, preferences, guards or overrides.
 //
 //   breakSearch   the break search's lines, for the proposers
 //   decide        read, propose, judge, rank (gambit_decide.js)
-//   lives         the survival search, asked of every move: of those that live, Gambit's in its order, then any that fits the list,
-//                 then any other -- never one past GAMBIT.MAXCHAIN; with none that lives, the one that dies latest
+//   lives         which moves live, on the engine: Gambit's first in its order, then any swap that fits the list -- never one past
+//                 GAMBIT.MAXCHAIN; with none that lives, the one that dies latest
 //   answer        the move, the raise held, what the log and the audit read
 //
 // c: { bot (the survival search, puyocpu.js), m (the question), board, arrivals, due (ms clock), t0, attacker, search() (the break
@@ -29,67 +29,62 @@ function breakSearch(c) {
   return { br: br, ms: Date.now() - t };
 }
 
-// What a survival candidate's own swap makes, as the list reads it
-function madeOf(k) {
-  var r = k.added || k.resolved;
-  if (!r) return { combo: 0, chain: 0, broke: 0 };
-  var big = 0; (r.comboSizes || []).forEach(function (z) { if (z > big) big = z; });
-  return { combo: big, chain: r.chainLength || 0, broke: r.brokeGarbage || 0 };
-}
 function keyOf(k) { return k.kind === 'swap' && k.move ? k.move[0] + ',' + k.move[1] : k.kind; }
 
-// WHICH MOVES LIVE: the survival search's verdict on each (verdictOf) -- or, for a line of Gambit's that breaks garbage, the judge's: the
-// whole line played out on the engine without the board lost (the survival search judges a swap alone, not the line it begins). The
-// hold does not live while the garbage the game shows loses the board sooner than its rise would and no plan is left once it has landed
-// (holdDies). { lived(key, how?), breaksOf }
-function living(verdictOf, cands, holdDies) {
-  var breaksOf = {};
-  (cands || []).forEach(function (k) { if (k.ap && k.ap.played && (k.ap.broke || 0) > 0 && !k.wait) breaksOf[k.seq[0][0] + ',' + k.seq[0][1]] = true; });
-  return { breaksOf: breaksOf, lived: function (k, how) {
-    if (how) return verdictOf[k] === how;
-    if (k === 'hold' && holdDies) return false;
-    return verdictOf[k] === 'proven' || verdictOf[k] === 'weak' || !!breaksOf[k];
-  } };
+// WHICH MOVES LIVE, GAMBIT'S OWN (plans/decision.md): every move judged on the engine as it will be pressed (attacker.judge), the board it
+// leaves then left alone -- it lives when that board is still alive LIFE frames past the last block the game shows landing (and past the
+// line's own end), or when, everything shown landed and settled, a break is left within two swaps (ready: a plan). One judge for every
+// move: Gambit's lines, the hold, and when none of them lives every other swap that fits the list. A raise lives only as Gambit decided
+// it (R.up: raiseReady played it out). With nothing living, the move whose board is lost latest -- Gambit's order between equals.
+var LIFE = 240;   // (the frames past the last landing the board must stand: the survival search's horizon, SURVIVE_FRAMES)
+function lastLanding(c, R) {
+  var land = null;
+  c.arrivals.forEach(function (a) { if (land === null || a.at > land) land = a.at; });
+  if (land === null && R.F.us.nextLands != null) land = R.F.us.nextLands;
+  return land;
 }
-
-// LIVES: the survival search asked one thing, which moves live -- its verdict on every move (none past MAXCHAIN). The choice is
-// Gambit's, never the survival search's own ranking: of Gambit's moves in its order, the first that lives (proven or weakly -- the order
-// first); with none of Gambit's moves living, the survival exception -- of the moves found live, the first that fits the list as
-// Gambit judges its own (attacker.judge: every link added to a chain already falling counted; a three that breaks garbage fits), else
-// the first that lives; with nothing living, the survival search's own pick, the move that lives longest.
+// one move judged: { lives, lostAt, j }
+function survives(c, R, seq, isSettled) {
+  var land = lastLanding(c, R), j = c.attacker.judge(c.board, c.m.hold, seq, c.arrivals, { settled: isSettled, tight: c.tight, readyAt: land, lifeTo: Math.max(land || 0, 0) + LIFE });
+  var to = Math.max(land || 0, j.done || 0) + LIFE;
+  return { lives: !j.dead && (j.lostAt >= to || j.ready === true), lostAt: j.lostAt, j: j };
+}
 function lives(c, D) {
-  var bot = c.bot, order = D.order, list = D.R.list;
-  bot.preferRank = function (k) { return madeOf(k).chain > GAMBIT.MAXCHAIN ? Infinity : 5; };
-  bot.preferProven = null;
-  var before = bot._verdictNo || 0, own = bot._decide();
-  var V = (bot._verdictNo || 0) !== before ? bot._lastVerdict : null, holdLives = false, live = 0, searched = 0, d = null, verdict = 'unsearched', why = 'own';
-  var verdictOf = {}, candOf = {};
-  if (V) for (var i = 0; i < V.cands.length; i++) {
-    var k = keyOf(V.cands[i]);
-    verdictOf[k] = V.verdict[i]; candOf[k] = V.cands[i];
-    if (k === 'hold') holdLives = V.verdict[i] === 'proven';
-  }
-  var holdDies = !!(D.R.F.us.queueKills && D.R.aloneReady === false), L0 = living(verdictOf, D.cands, holdDies), breaksOf = L0.breaksOf, lived = L0.lived;
+  var R = D.R, order = D.order, list = R.list, seen = {}, best = null, tried = 0, live = 0, d = null, why = 'gambit', verdict = 'dies';
   var asMove = function (k) { return k === 'hold' || k === 'raise' ? { kind: k } : { kind: 'swap', move: k.split(',').map(Number) }; };
-  order.forEach(function (k) { if (k in verdictOf || breaksOf[k]) { searched++; if (lived(k)) live++; } });
-  if (V) {
-    // (Gambit's, in its order: the first that lives -- its place in the order first, not how far it is proven)
-    order.forEach(function (k) { if (!d && lived(k)) { d = asMove(k); verdict = verdictOf[k] || 'judged'; why = 'gambit'; } });
-    // (the survival exception: of the moves found live, the first that fits the list as Gambit judges it, else the first)
-    if (!d) {
-      var judgeOf = function (mv) { var j = c.attacker.judge(c.board, c.m.hold, [mv], c.arrivals, { tight: c.tight }); return j.dead ? null : j; };
-      // (never the raise: it is held down until the board tops out, and whether to raise is Gambit's own decision -- R.up)
-      var alive = V.cands.filter(function (vc, q) { return (V.verdict[q] === 'proven' || V.verdict[q] === 'weak') && order.indexOf(keyOf(vc)) < 0 && !(vc.kind === 'raise' && !D.R.up); });
-      var fitting = alive.filter(function (vc) { if (vc.kind !== 'swap') return !D.R.aloneOut && !(vc.kind === 'hold' && holdDies); var jk = judgeOf(vc.move); return jk && JUDGE.fitsList(list, jk.made, jk) && Math.max(jk.made.chain || 0, jk.chainAll || 0) <= GAMBIT.MAXCHAIN; })[0];
-      var any = fitting || alive.filter(function (vc) { if (vc.kind !== 'swap') return true; var jk = judgeOf(vc.move); return jk && Math.max(jk.made.chain || 0, jk.chainAll || 0) <= GAMBIT.MAXCHAIN; })[0];
-      if (any) { d = asMove(keyOf(any)); verdict = verdictOf[keyOf(any)]; why = fitting ? 'fits' : 'lives'; }
+  var lineOf = function (k) {
+    if (k === 'hold') return { seq: [], settled: false };
+    var cand = D.cands.filter(function (x) { return !x.wait && x.seq[0][0] + ',' + x.seq[0][1] === k; })[0];
+    return cand ? { seq: cand.seq, settled: !!cand.settled } : { seq: [k.split(',').map(Number)], settled: false };
+  };
+  var weigh = function (k, src) {
+    if (seen[k]) return false;
+    seen[k] = true;
+    if (k === 'raise') { if (!R.up) return false; d = asMove(k); verdict = 'ready'; why = src; return true; }
+    var ln = lineOf(k), v = survives(c, R, ln.seq, ln.settled);
+    tried++;
+    if (v.lives) { live++; d = asMove(k); verdict = v.j.ready === true ? 'ready' : 'proven'; why = src; return true; }
+    if (!best || v.lostAt > best.lostAt) best = { k: k, lostAt: v.lostAt };
+    return false;
+  };
+  // (Gambit's, in its order: the first that lives -- its place in the order first)
+  for (var i = 0; i < order.length && !d; i++) if (i === 0 || c.left() > 0) weigh(order[i], 'gambit');
+  // (none lives: every other swap that fits the list and keeps the chain within MAXCHAIN, while the decision has time; and the hold)
+  if (!d) {
+    if (!R.aloneOut) weigh('hold', 'fits');
+    var all = c.board.legalSwaps();
+    for (var q = 0; q < all.length && !d && c.left() > 0; q++) {
+      var k = all[q][0] + ',' + all[q][1];
+      if (seen[k]) continue;
+      var jk = c.attacker.judge(c.board, c.m.hold, [all[q]], c.arrivals, { tight: c.tight });
+      if (jk.dead || !JUDGE.fitsList(list, jk.made, jk) || Math.max(jk.made.chain || 0, jk.chainAll || 0) > GAMBIT.MAXCHAIN) { seen[k] = true; continue; }
+      weigh(k, 'fits');
     }
   }
-  // (nothing lives -- or no verdict this decision: the survival search's own pick, the move that lives longest)
-  if (!d) { d = own && own.kind === 'raise' && !D.R.up ? { kind: 'hold' } : own; verdict = V ? verdictOf[keyOf(d)] || 'not offered' : 'unsearched'; }
-  var cand = (bot._allCands || []).filter(function (k) { return keyOf(k) === keyOf(d); })[0] || candOf[keyOf(d)] || null;
-  // (live: of Gambit's moves, how many the survival search found live / searched / Gambit ranked; why: how the move was chosen)
-  return { d: d, verdict: verdict, holdLives: holdLives, gambits: order.indexOf(keyOf(d)) >= 0, cand: cand, live: live + '/' + searched + '/' + order.length, why: why };
+  // (nothing lives: the move whose board is lost latest; nothing judged at all, the hold)
+  if (!d) { d = best ? asMove(best.k) : { kind: 'hold' }; why = 'latest'; verdict = 'dies'; }
+  // (live: of the moves judged, how many live / how many judged / how many Gambit ranked)
+  return { d: d, verdict: verdict, holdLives: d.kind === 'hold' && verdict !== 'dies', gambits: order.indexOf(keyOf(d)) >= 0, cand: null, live: live + '/' + tried + '/' + order.length, why: why };
 }
 
 // THE RAISE HELD DOWN: the engine raises a displacement step a frame while the button is held, row after row. A raise answer presses
@@ -149,7 +144,7 @@ function answer(c) {
   bot._gambitIdle = d.kind === 'hold' || !D.info.want;
   D.info.verdict = L.verdict; D.info.live = L.live; D.info.why = L.why;
   logLine(c, D, L, c.br, c.brMs);
-  var made = L.cand ? madeOf(L.cand) : { combo: 0, chain: 0, broke: 0 }, held = d.kind === 'raise' ? raiseHeld(c, D.R.to) : { now: 0, after: 0 };
+  var made = L.gambits && d.kind === 'swap' ? { combo: D.info.combo || 0, chain: D.info.chain || 0, broke: D.info.broke || 0 } : { combo: 0, chain: 0, broke: 0 }, held = d.kind === 'raise' ? raiseHeld(c, D.R.to) : { now: 0, after: 0 };
   return { id: m.id, epoch: m.epoch, at: m.at, src: L.gambits ? 'gambit' : 'survival', kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null,
            raiseFrames: held.now, raiseAfter: held.after, ms: Date.now() - c.t0, idleMs: D.idleMs || 0,
            claim: claimOf(D.info, d), queued: m.posted ? c.t0 - m.posted : 0, brMs: c.brMs,
@@ -159,8 +154,8 @@ function answer(c) {
            pace: { hold: L.holdLives, brk: !!(c.br && c.br.depth), urgent: !!(bot.allDoomedNow || D.urgent) },
            mem: c.nativeMem(),
            breaks: c.br && c.br.depth ? { offered: c.br.depth, lineup: !!c.br.lineup, touch: !!c.br.touch, took: !!(c.br.moves && d.move && c.br.moves[keyOf(d)]) } : null,
-           diag: { budget: bot.SURVIVE_SEARCH_BUDGET, allDoomed: bot.allDoomedNow, walk: L.cand && L.cand.travel != null ? L.cand.travel : null,
+           diag: { budget: bot.SURVIVE_SEARCH_BUDGET, allDoomed: bot.allDoomedNow, walk: null,
                    clears: (made.combo > 0 || made.broke > 0) ? 1 : 0, gambit: D.info } };
 }
 
-module.exports = { answer: answer, lives: lives, living: living, breakSearch: breakSearch, madeOf: madeOf };
+module.exports = { answer: answer, lives: lives, survives: survives, breakSearch: breakSearch };

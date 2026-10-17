@@ -508,8 +508,19 @@ module.exports = function (opts) {
     // (readiness, o.readyAt: the next block landed on the board the line ends on, can a break be made then -- the readiness check every
     // move that breaks nothing is held to)
     if (o.readyAt != null && !dead) res.ready = breaksAfterLanding(s, root, n, Math.max(1, o.readyAt + 2), made);
+    // (lostAt, o.lifeTo: the frame, from now, the board the line ends on is lost left alone -- the rise, the garbage shown landing when it
+    // lands, the health drained -- Infinity when it is still alive at lifeTo; the frame the line itself lost it, when it did)
+    if (o.lifeTo != null) res.lostAt = dead ? (n.t - root.t) : lostAlone(s, root, n, o.lifeTo, made);
     if (made.length) s.drop(made);
     return res;
+  }
+  // the first frame (from the root) the board at node n, left alone, is lost before `to` -- Infinity when it is alive at `to`
+  function lostAlone(s, root, n, to, made) {
+    var from = n.t - root.t, lo = 0, hi = Math.max(1, Math.ceil(to - from));
+    var lost = function (t) { var x = s.advance(n, 'long', null, t); if (x && x._i >= 0) made.push(x); return !x || x.dead; };
+    if (!lost(hi)) return Infinity;
+    while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (lost(mid)) hi = mid; else lo = mid; }
+    return from + hi;
   }
   // A PLAN ONCE EVERYTHING SHOWN HAS LANDED: from node n, the board run to `wait` frames after the root (the last block the game shows
   // landed) and settled, then a break looked for in two swaps -- true when a line of one or two swaps breaks more garbage than standing
