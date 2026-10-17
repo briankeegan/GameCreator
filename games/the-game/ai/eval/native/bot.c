@@ -3998,24 +3998,34 @@ void lineDelay(int d);
 // from now (lineDelay), judged as the judge judges a line: it loses no health before its last press and the next move.
 // One play a line a decision, to as far as the board left alone could lose health and a little past it.
 #define CLMEMO 64
-typedef struct { int dec, n, delay, lives; int32_t sw[2 * LINEMAX]; } ClMemo;
+typedef struct { int dec, n, delay, lives, last; int32_t sw[2 * LINEMAX]; } ClMemo;
 static JLOCAL ClMemo CLM[CLMEMO];
+static JLOCAL int clLast;   // the last press of the line clearLivesAfter judged last (frames from the line's start; -1 none)
 static int clearLivesAfter(const int32_t *sw, int n, int delay) {
   if (n < 1 || n > LINEMAX) return 0;
   unsigned h = 2166136261u ^ (unsigned)(n * 31 + delay);
   for (int k = 0; k < 2 * n; k++) h = (h ^ (unsigned)sw[k]) * 16777619u;
   ClMemo *m = &CLM[h & (CLMEMO - 1)];
-  if (m->dec == btDecision + 1 && m->n == n && m->delay == delay && !__builtin_memcmp(m->sw, sw, (unsigned long)n * 8)) return m->lives;
+  if (m->dec == btDecision + 1 && m->n == n && m->delay == delay && !__builtin_memcmp(m->sw, sw, (unsigned long)n * 8)) { clLast = m->last; return m->lives; }
   int horizon = LNA[0] + LIVEHORIZON; if (horizon > LINEHORIZON) horizon = LINEHORIZON; if (horizon < LIVEHORIZON) horizon = LIVEHORIZON;
   int32_t out[LNOLEN];
   lineDelay(delay);
   int rc = lineOnEngine(sw, n, horizon, 0, out);
   lineDelay(0);
-  if (rc != 0) return 0;   // not played (a step refused, or the budget): it cannot be waited on
+  if (rc != 0) { clLast = -1; return 0; }   // not played (a step refused, or the budget): it cannot be waited on
   int lives = out[1] >= 0 && !(out[0] && out[0] <= out[1] + NEXTMOVE);
-  m->dec = btDecision + 1; m->n = n; m->delay = delay; m->lives = lives;
+  clLast = out[1];
+  m->dec = btDecision + 1; m->n = n; m->delay = delay; m->lives = lives; m->last = out[1];
   for (int k = 0; k < 2 * n; k++) m->sw[k] = sw[k];
   return lives;
+}
+// A LINE IS BEGUN WITH ITS OWN LENGTH IN HAND: its presses are paced by the input allowance and walks, and a replan can move them, so a
+// line that only just lives when begun at the front's next decision has no room for either. It is due once it would not live
+// begun half its length (the frame of its last press) later.
+static int dueAfter(const int32_t *sw, int n, int delay) {
+  if (!clearLivesAfter(sw, n, delay)) return 1;
+  int slack = clLast > 0 ? clLast / 2 : 0;
+  return slack > 0 && !clearLivesAfter(sw, n, delay + slack);
 }
 static int clearDue(const int32_t *sw, int n, const int32_t *alt) {
   if (!aloneOnEngine()) return 1;
@@ -4024,9 +4034,9 @@ static int clearDue(const int32_t *sw, int n, const int32_t *alt) {
     int32_t both[2 * LINEMAX + 2]; int m = n < LINEMAX ? n : LINEMAX - 1;
     both[0] = alt[0]; both[1] = alt[1];
     for (int k = 0; k < 2 * m; k++) both[2 + k] = sw[k];
-    return !clearLivesAfter(both, m + 1, 0);   // begun after the swap played in its place
+    return dueAfter(both, m + 1, 0);   // begun after the swap played in its place
   }
-  return !clearLivesAfter(sw, n, (int)holdGap());   // begun at the front's next decision
+  return dueAfter(sw, n, (int)holdGap());   // begun at the front's next decision
 }
 // A SPEND THAT KEEPS A WAITING RAISE OUT: a clear holds the rise lock and
 // renews the stop, so while a raise for material waits on either, a spend
