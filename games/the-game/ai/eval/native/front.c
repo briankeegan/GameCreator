@@ -1492,7 +1492,7 @@ static int garbageMatched(void) {
 // THE INPUT BUDGET IS KEPT FOR THE BREAKS: an idle decision (setups, lineups, readiness, an attack with nothing to save) is not pressed
 // when what the window has left is less than BKRESERVE break lines have taken (measured: bkActs) -- the break a landing needs and the one
 // after it would wait for the window, which frees an action only as the press 600 frames ago ages out
-#define BKRESERVE 2
+#define BKRESERVE 3
 static int idleVia(int via) { return via == V_SETUP || via == V_LINEUP || via == V_READYFIRST || via == V_BESTATTACK; }
 static int frontFrame(int fid, Board *b) {
   Front *F = &FRONTS[fid];
