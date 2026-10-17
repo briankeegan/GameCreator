@@ -1,0 +1,43 @@
+# Cleanup once the C Gambit holds
+
+Done when a 24-game run on the C Gambit survives about as well as the JavaScript's last runs did.
+
+## Delete: the JavaScript Gambit (`games/the-game/ai/eval/`)
+
+- `gambit_answer.js`, `gambit_decide.js`, `gambit_propose.js`, `gambit_judge.js`
+- `gambit.js`, after its rules-file reading (`Rules`, `parse`, `checked`, `rulesFor`, `aimsOf`) moves into `gambit/gambit.js`. The loader reads the rules file itself; nothing else is used.
+- `gambit_agree.test.js` and `gambit_decide.test.js`: they test the JavaScript's internals.
+- In `survivor_think.js`, the JavaScript path: the `GC_GAMBIT_JS` switch, `GANSWER`, the `attacker` it built for Gambit, and the `GAMBIT` require, which becomes the loader's rules.
+
+## Rewrite: the checks that compare the C to the JavaScript
+
+With the JavaScript gone they have nothing to compare to. Each keeps the rule it held, stated against fixed expected results:
+
+- `gambit/rules.test.js`: the list's fits, meets and entryOf on hand-picked made lines.
+- `gambit/judge.test.js` and `gambit/outcome.test.js`: the facts asserted directly (a break breaks, a line the board dies on is dead, a hold that stands lives, ready only when a break is there once landed). The judge itself was proved equal before the JavaScript is deleted.
+- `gambit/break.test.js`: written as a fixed check (finds a known break on the factory board, honours its deadline, never offers a swap back). It was never committed.
+- `eval/gambit.test.js`: the rules tests move to `gambit/rules.test.js`.
+- `eval/gambit_answer.test.js`: already runs the C Gambit through the frame loop's mind. It stays; only its header comment changes.
+- `eval/break_near.test.js`: drops the parts that call `gambit_answer.js` and `gambit_propose.js`; its `breakMoves` checks are the default bot's and stay.
+- `eval/gambit_reach.js` (the reach report): searches the logged boards again with the C break search (`gambit.js` exposes it) instead of `SH.breakMoves` and `JUDGE`.
+
+## Keep, untouched
+
+`survivor_attack.js`, `survivor_shared.js` `breakMoves`, `native.js`, `search.h` and the default bot. `survivor_attack.js` is the attack profiles' planner (agro and the like, plus `opener_plan.js`, `extend_replay.js` and `attack_fire.test.js`), so it isn't Gambit's.
+
+## Comments: every file in `gambit/`
+
+Strip every reference to the JavaScript it came from. Each comment says what the code does and what constrains it, nothing more.
+
+- `rules.c`, `judge.c`, `outcome.c`, `facts.c`, `rank.c`, `propose.c`, `decide.c`, `answer.c`
+- `search/break.c`, `search/plan.c`, `search/extend.c`, `search/ready.c`, `search/level.c`, `search/outlive.c`
+- `core/clock.h`, `core/nodes.h`, `core/sort.h`, `gambit.c`, `gambit.js`
+
+Remove: names in parentheses pointing at JavaScript (`(attacker.judge, survivor_attack.js)`, `(gambit_judge.js outcome)`), "as the JavaScript did", "the JavaScript's null/undefined/Infinity", V8 sort notes (keep the rule, drop the history), and "ported" wording. Trim long comments to a line or two.
+
+## Docs and gates
+
+- `PLAN.md` becomes the layout only. Remove the porting section.
+- `eval/plans/decision.md`: its "Where the code is" table points at the C files.
+- `.github/scripts/gates.sh`: `gate_garbage_rules` drops the deleted tests; `gate_gambit_engine` runs the rewritten checks.
+- `CLAUDE.md`: the Gambit pointer names `gambit/`.
