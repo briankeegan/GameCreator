@@ -1494,6 +1494,7 @@ static int garbageMatched(void) {
 // when what the window has left is less than BKRESERVE break lines have taken (measured: bkActs) -- the break a landing needs and the one
 // after it would wait for the window, which frees an action only as the press 600 frames ago ages out
 #define BKRESERVE 3
+#define BKFIRST 14   // the actions a break line takes before one has been measured: 13.8 on average over 349 breaks of 21 games
 // THE ACTIONS THE WINDOW HAS LEFT `ahead` frames from now, if none are made until then: the limit less those pressed within the window then
 int frontWindowLeft(int ahead) {
   if (!LF) return ACTIONLIMIT;
@@ -1585,8 +1586,7 @@ static int frontFrame1(int fid, Board *b) {
   F->hasPlan = 0;
   F->held = heldNow;
   if (d.kind == K_SWAP && d.via == V_BREAKREACH && F->lastVia != V_BREAKREACH && F->lastVia != V_PLANSAVE) { F->bkOn = 1; F->bk0 = F->pad.total; }   // a break line begins
-  { static double first = -1; if (first < 0) first = knob("GC_BK0", 0);
-    double reserve = F->bkActs > 0 ? BKRESERVE * F->bkActs : first;   // before a break has been seen the reserve is the first guess
+  { double reserve = BKRESERVE * (F->bkActs > 0 ? F->bkActs : BKFIRST);   // before a break has been seen, the reserve is the average one
     if (d.kind == K_SWAP && d.hasMove && d.idle && idleVia(d.via) && reserve > 0
         && padCount(&F->pad, b->clock) + reserve > (F->pad.limit ? F->pad.limit : ACTIONLIMIT)) {
 #ifndef __wasm__
