@@ -5373,7 +5373,7 @@ static int twosOf(const int32_t *st) { return twosOfIn(st, 0); }
 // the twos whose three touches garbage: lined up, they break
 static int breakTwosOf(const int32_t *st) { return twosOfIn(st, 1); }
 static int twosOfIn(const int32_t *st, int breaking) {
-  int W = st[O_W], n = 0;
+  int W = st[O_W], n = 0; uint32_t pairCol = 0, readyCol = 0;
 #define VP(r, c) ((r) >= 1 && (U(st, OCC + (c)) & (1u << ((r) - 1))) && !(U(st, (GARB) + (c)) & (1u << ((r) - 1))) && !(U(st, INERT + (c)) & (1u << ((r) - 1))))
   for (int c = 1; c <= W; c++) {
     int r = workTop(st, c);
@@ -5393,9 +5393,15 @@ static int twosOfIn(const int32_t *st, int breaking) {
       if (c < W) g |= U(st, GARB + c + 1) & three;
       ready = g != 0;
     }
-    n += ready;
+    if (breaking) n += ready;
+    else if (ready) { n += 2; readyCol |= 1u << col; }
+    else pairCol |= 1u << col;
   }
 #undef VP
+  // THE PAIRS A BREAK'S ROW COMPLETES: two of a colour atop a column are a three for any panel of that colour that lands on them -- the row a break
+  // converts has six of six colours, so each colour with a pair is two chances in three of a break a swap or two away. A ready pair (its third beside
+  // it) counts double, and a colour counts once however many columns hold its pair.
+  if (!breaking) n += __builtin_popcount(pairCol & ~readyCol);
   return n;
 }
 // SETUPS IN TIME: lines found soonest first by the shared search on the board
@@ -5445,7 +5451,9 @@ static int setupLines(SetupCtx *x, double left) {
   return 1;
 }
 static Dec setupTwos(Dec d) {
-  if (d.kind != K_HOLD || d.via == V_RAISING || BT->nLine || !BIN[IN_HASPA] || BIN[IN_TOPPED]) return d;
+  if (d.kind != K_HOLD || d.via == V_RAISING || BT->nLine || !BIN[IN_HASPA]) return d;
+  // a topped board is held by its pop or its stop: with nothing to save in the time (the board left alone lives past the horizon), the pairs the next break's row will complete are built
+  if (BIN[IN_TOPPED] && !(aloneOnEngine() && aloneDie(1 << 20) > LIVEHORIZON)) return d;
   // levelling first: a slab that perches breaks on nothing
   if (fillLevelDec == btDecision && fillLevel.has && levelInTime()) return mkSwap(fillLevel.sw[0], fillLevel.sw[1], V_FILL, d.mode, d.alive);
   if (!aloneOnEngine()) return d;
