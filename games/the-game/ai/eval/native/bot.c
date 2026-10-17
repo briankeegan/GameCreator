@@ -5581,8 +5581,13 @@ static int readiesLine(Dec d, int dieRef, int spare, int partial, int32_t *sw, i
   if (SITKEEP[1].valid && SITKEEP[1].key == pk) { x.bestG = rqKeep.bestG; x.bestN = rqKeep.bestN; for (int k = 0; k < 2 * x.bestN; k++) x.bestSw[k] = rqKeep.bestSw[k]; }
   sitKeepSlot = 2; sitKeepKey = pk;
   sitGuide = readyGuide;   // best-first: the board nearest a break is grown first, so the same work reaches deeper than the root's children
-  searchInTime(rq0, cur0[0], cur0[1], t0, 0, dmin(tLand, timeLeft()), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can0, wt0, optLine() - paWork, sitReadies, &x, sw, n, 0);
+  // a position the search has gone BDFLATFRAMES frames on without a board nearer a break or a line that readies goes on at a quarter of the pace (kept)
+  static int rdyFutile, rdyFutilePos; double rwork = optLine() - paWork;
+  if (rdyFutilePos == raPos && rdyFutile >= BDFLATFRAMES) rwork /= 4;
+  double bestG0 = x.bestG;
+  searchInTime(rq0, cur0[0], cur0[1], t0, 0, dmin(tLand, timeLeft()), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can0, wt0, rwork, sitReadies, &x, sw, n, 0);
   sitGuide = 0;
+  if (x.ok || x.bestG < bestG0) rdyFutile = 0; else { if (rdyFutilePos != raPos) { rdyFutilePos = raPos; rdyFutile = 0; } rdyFutile++; }
   rqKeep.bestG = x.bestG; rqKeep.bestN = x.bestN; for (int k = 0; k < 2 * x.bestN; k++) rqKeep.bestSw[k] = x.bestSw[k];
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "READIES root: legal %d filtered %d not swappable %d late %d\n", sitRootLegal, sitRootFilt, sitRootCan, sitRootLate); fprintf(BLOG, "READIES lines: %d ready on the masks, %d asked, %d seen, %d die, %d die sooner, %d nearer (guide now %.0f), %s", x.masks, x.tried, x.seen, x.dies, x.sooner, x.near, x.g0, x.ok ? "ready:" : "none");
