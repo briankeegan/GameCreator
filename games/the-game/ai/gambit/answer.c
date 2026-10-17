@@ -186,6 +186,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   double tStart = nowMs();
   // (the input budget tight: the frame loop walks held from two cells, so every line is judged pressed as it walks)
   decQ.tight = allowanceKnown && allowance <= HOLDTIGHT;
+  pressTight = decQ.tight; pressMemoClear();
   towardRestLen = 0;
   // (THE DIG: the boards stood on since the garbage the break search digs toward was first the lowest)
   int32_t gid = digTargetOf(decQ.b);

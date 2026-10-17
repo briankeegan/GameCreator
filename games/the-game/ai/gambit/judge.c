@@ -30,44 +30,12 @@ typedef struct {
   int32_t ready;                // 1, 0, or NOT_ASKED
   int32_t readyLine[2], readyN; // the swaps the readiness found (why), as r * 8 + c
   int32_t late;                 // the clock stopped it: no answer
+  int32_t cut;                  // the step a swap was not there to press at (the line played no further), -1 none
+  int32_t base;                 // the garbage the board left alone breaks, which the line's own is counted beyond
 } Judged;
 
 static Ctx *judgeCtx;   // the judge's own nodes: a search can ask it while its own nodes stand
 
-// THE PRESS AS THE FRAME LOOP MAKES IT: with the input budget tight the frame loop walks the cursor held
-// from two cells (slowWalks), which presses the swap later than the search's own walk. The frames later, from node pi.
-#define TAP_GAP 4         // frames between taps (cursorMoveFrames)
-#define REPEAT_FIRST 10   // frames from the press to the second cell (curWaitTime 20, counted twice a frame)
-static int32_t keyBuf[3 * 4096], walkBuf[2 * 4096];
-static int firstSwap(const int32_t *in, int n) { for (int i = 0; i < n; i++) if (in[i] & IN_SWAP) return i; return -1; }
-// slowWalks' keys: every walk of two cells or more held, the frames it is late by put in before the next key
-static int slowWalks(const int32_t *in, int n, int32_t *out, int cap) {
-  int k = 0, i = 0;
-  while (i < n && k < cap) {
-    int32_t v = in[i], dir = v & 15;
-    if (!dir || (dir & (dir - 1)) || i + 1 >= n || (in[i + 1] & 15) || (v & ~15) != in[i + 1]) { out[k++] = v; i++; continue; }
-    int32_t base = in[i + 1], cnt = 1, p = i;
-    while (p + TAP_GAP < n && in[p + TAP_GAP] == v && in[p + 1] == base && in[p + 2] == base && in[p + 3] == base) { p += TAP_GAP; cnt++; }
-    int last = i + cnt + REPEAT_FIRST - 2, end = p;
-    while (end + 1 < n && end + 1 <= p + TAP_GAP - 1 && in[end + 1] == base) end++;
-    if (cnt < 2) { for (int f = i; f <= end && k < cap; f++) out[k++] = in[f]; i = end + 1; continue; }
-    for (int g = i; g <= imax(last, end) && k < cap; g++) out[k++] = g <= last ? v : base;
-    i = end + 1;
-  }
-  return k;
-}
-static int32_t pressDelay(Ctx *x, int pi, int mr, int mc, int tightOn) {
-  if (!tightOn) return 0;
-  tape = keyBuf; tapeN = 0; tapeCap = (int32_t)(sizeof keyBuf / sizeof keyBuf[0]) / 3;
-  int r = advance(x, pi, MK_SWAP, mr, mc, 0);
-  tape = 0;
-  if (r == STEP_NULL || r == STEP_ERR) return 0;
-  int n = tapeN;
-  static int32_t in[4096];
-  for (int i = 0; i < n; i++) in[i] = keyBuf[3 * i];
-  int tap = firstSwap(in, n), slow = firstSwap(walkBuf, slowWalks(in, n, walkBuf, (int)(sizeof walkBuf / sizeof walkBuf[0])));
-  return tap >= 0 && slow > tap ? slow - tap : 0;
-}
 
 // THE LIST FOR ONE STEP (attacker stepFits): its own clears, each no link of a chain, and the chain it reaches -- held to the list when
 // the decision has handed the searches one (listOn)
@@ -160,7 +128,7 @@ static int32_t lostAlone(Ctx *x, int n, int32_t to) {
 // THE JUDGE: the line seq (n swaps, r * 8 + c) from the question, as the options say.
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
-  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->fire = -1;
+  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->fire = -1; j->cut = -1;
   Ctx *x = judgeCtx = ctxOf(judgeCtx);
   int root = rootOf(x, q), n = root;
   if (root < 0) { j->dead = 1; return; }
@@ -168,17 +136,12 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   int32_t baseChain = 0, baseCombo = 0, baseBroke = 0;
   Stats bs;
   if (liveNode(x, base) && statsOf(x, base, &bs)) { baseBroke = bs.broke; if (bs.cleared > 0) { baseChain = chainOfStats(&bs); baseCombo = biggestOf(&bs); } }
+  j->base = baseBroke;
   int32_t combo = 0, chain = 0, broke = 0, lastAt = 0, single[MAXCOMBOS + 64] = { 0 };
   for (int k = 0; k <= nseq; k++) {
     int last = k == nseq, mr = last ? 0 : CR(seq[k]), mc = last ? 0 : CC(seq[k]);
     if (last && o->settled) break;   // (each step settled already)
-    if (!last && !legalAt(x, n, mr, mc)) break;
-    int32_t late = last ? 0 : pressDelay(x, n, mr, mc, o->tight);
-    if (late > 0) {
-      int w = step(x, n, MK_LONG, 0, 0, late);
-      if (!liveNode(x, w)) { j->dead = 1; j->deadAt = w == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
-      n = w;
-    }
+    if (!last && !legalAt(x, n, mr, mc)) { j->cut = k; break; }
     if (!last && j->nats < MAXLINE) j->ats[j->nats++] = NODE(x, n)->t;
     int out = step(x, n, last || o->settled ? MK_SETTLE : MK_SWAP, mr, mc, 0);
     if (!liveNode(x, out)) { j->dead = 1; j->deadAt = out == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
@@ -250,6 +213,7 @@ EXPORT(gb_judge) int gb_judge(int nseq, int settled, int tight, int readyAt, int
   if (nseq < 0 || nseq > MAXLINE) return -1;
   for (int i = 0; i < nseq; i++) seq[i] = gbIo[i];
   JudgeOpts o = { settled, tight, readyAt, readyIfLost, readyIfBreak, lifeTo, lifeRest, why };
+  pressTight = tight; pressMemoClear();
   Judged j;
   judge(&hostQ, seq, nseq, &o, &j);
   int32_t *w = gbIo, k = 0;
@@ -258,6 +222,7 @@ EXPORT(gb_judge) int gb_judge(int nseq, int settled, int tight, int readyAt, int
   w[k++] = j.nats; for (int i = 0; i < j.nats; i++) w[k++] = j.ats[i];
   w[k++] = j.nsingles; for (int i = 0; i < j.nsingles; i++) w[k++] = j.singles[i];
   w[k++] = j.readyN; for (int i = 0; i < j.readyN; i++) w[k++] = j.readyLine[i];
+  w[k++] = j.cut; w[k++] = j.base;
   return k;
 }
 
@@ -268,8 +233,6 @@ static int firstClear(const Question *q, const int32_t *seq, int nseq) {
   int n = rootOf(x, q);
   if (n < 0) return -1;
   for (int k = 0; k < nseq; k++) {
-    int32_t late = pressDelay(x, n, CR(seq[k]), CC(seq[k]), q->tight);
-    if (late > 0) { int w = step(x, n, MK_LONG, 0, 0, late); if (!liveNode(x, w)) break; n = w; }
     int out = step(x, n, MK_SETTLE, CR(seq[k]), CC(seq[k]), 0);
     if (!liveNode(x, out)) break;
     Stats st; statsOf(x, out, &st);
@@ -298,8 +261,6 @@ static int replay(const Question *q, const int32_t *seq, int nseq, int settleFir
   if (settleFirst) { if (!liveNode(x, baseOut)) return 0; n = baseOut; r->wait = NODE(x, baseOut)->t; }
   for (int k = 0; k < nseq; k++) {
     if (!legalAt(x, n, CR(seq[k]), CC(seq[k]))) break;
-    int32_t late = pressDelay(x, n, CR(seq[k]), CC(seq[k]), q->tight);
-    if (late > 0) { int w = step(x, n, MK_LONG, 0, 0, late); if (!liveNode(x, w)) break; n = w; }
     if (r->nats < MAXLINE) r->ats[r->nats++] = NODE(x, n)->t;
     int out = step(x, n, MK_SETTLE, CR(seq[k]), CC(seq[k]), 0);
     if (!liveNode(x, out)) break;

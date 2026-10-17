@@ -8,11 +8,68 @@
 #define GBIO (1 << 16)
 static int32_t gbIo[GBIO];
 EXPORT(gb_io) int32_t *gb_io(void) { return gbIo; }
+// THE PRESS AS THE FRAME LOOP MAKES IT: with the input budget tight (pressTight: the decision's allowance at or under the frame loop's
+// HOLDTIGHT) the frame loop walks the cursor held from two cells, which presses a swap later than the search's own tapped walk. The
+// frames later, from node pi -- the search's keys for the swap, walked as the frame loop walks them.
+#define TAP_GAP 4         // frames between taps (cursorMoveFrames)
+#define REPEAT_FIRST 10   // frames from the press to the second cell (curWaitTime 20, counted twice a frame)
+static int32_t pressTight;
+static int32_t keyBuf[3 * 4096], walkBuf[2 * 4096];
+static int firstSwap(const int32_t *in, int n) { for (int i = 0; i < n; i++) if (in[i] & IN_SWAP) return i; return -1; }
+// slowWalks' keys: every walk of two cells or more held, the frames it is late by put in before the next key
+static int slowWalks(const int32_t *in, int n, int32_t *out, int cap) {
+  int k = 0, i = 0;
+  while (i < n && k < cap) {
+    int32_t v = in[i], dir = v & 15;
+    if (!dir || (dir & (dir - 1)) || i + 1 >= n || (in[i + 1] & 15) || (v & ~15) != in[i + 1]) { out[k++] = v; i++; continue; }
+    int32_t base = in[i + 1], cnt = 1, p = i;
+    while (p + TAP_GAP < n && in[p + TAP_GAP] == v && in[p + 1] == base && in[p + 2] == base && in[p + 3] == base) { p += TAP_GAP; cnt++; }
+    int last = i + cnt + REPEAT_FIRST - 2, end = p;
+    while (end + 1 < n && end + 1 <= p + TAP_GAP - 1 && in[end + 1] == base) end++;
+    if (cnt < 2) { for (int f = i; f <= end && k < cap; f++) out[k++] = in[f]; i = end + 1; continue; }
+    for (int g = i; g <= (last > end ? last : end) && k < cap; g++) out[k++] = g <= last ? v : base;
+    i = end + 1;
+  }
+  return k;
+}
+static int32_t pressDelayOf(Ctx *x, int pi, int mr, int mc) {
+  tape = keyBuf; tapeN = 0; tapeCap = (int32_t)(sizeof keyBuf / sizeof keyBuf[0]) / 3;
+  int r = advance(x, pi, MK_SWAP, mr, mc, 0);
+  tape = 0;
+  if (r == STEP_NULL || r == STEP_ERR) return 0;
+  int n = tapeN;
+  static int32_t in[4096];
+  for (int i = 0; i < n; i++) in[i] = keyBuf[3 * i];
+  int tap = firstSwap(in, n), slow = firstSwap(walkBuf, slowWalks(in, n, walkBuf, (int)(sizeof walkBuf / sizeof walkBuf[0])));
+  return tap >= 0 && slow > tap ? slow - tap : 0;
+}
+// (the delay is the walk's -- where the cursor is and where the swap is -- kept per decision: pressMemoClear at its start)
+#define PRESS_MEMO (MAXROWS * 8 * MAXROWS * 8)
+static short pressMemo[PRESS_MEMO];
+static void pressMemoClear(void) { for (int i = 0; i < PRESS_MEMO; i++) pressMemo[i] = -1; }
+static int32_t pressDelay(Ctx *x, int pi, int mr, int mc) {
+  if (!pressTight || !mr) return 0;
+  Board *b = ensureBoard(x, pi);
+  if (!b || b->curRow < 0 || b->curRow >= MAXROWS || b->curCol < 0 || b->curCol > 7) return 0;
+  int key = ((b->curRow * 8 + b->curCol) * MAXROWS + mr) * 8 + mc;
+  if (key < 0 || key >= PRESS_MEMO) return pressDelayOf(x, pi, mr, mc);
+  if (pressMemo[key] < 0) pressMemo[key] = (short)pressDelayOf(x, pi, mr, mc);
+  return pressMemo[key];
+}
 // The child of node pi by one step (search.h advance: MK_SWAP, MK_SETTLE, MK_LONG, MK_HOLD), STEP_NULL when the clock is out or the
-// step is refused, STEP_DEAD when the board is lost on it (deadAt).
+// step is refused, STEP_DEAD when the board is lost on it (deadAt). A swap is pressed as the frame loop presses it: with the input
+// budget tight, the frames its held walk is later by are waited first -- every search and the judge on the one press clock.
 static int step(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
   if (clockOut()) return STEP_NULL;
   int32_t t0 = NODE(x, pi)->t;
+  if (pressTight && mr && (kind == MK_SWAP || kind == MK_SETTLE)) {
+    int32_t late = pressDelay(x, pi, mr, mc);
+    if (late > 0) {
+      int w = advance(x, pi, MK_LONG, 0, 0, late);
+      if (w < 0 || NODE(x, w)->dead) { clockCharge(late); return w == STEP_DEAD || (w >= 0 && NODE(x, w)->dead) ? STEP_DEAD : w; }
+      pi = w;
+    }
+  }
   int r = advance(x, pi, kind, mr, mc, frames);
   clockCharge(r >= 0 ? NODE(x, r)->t - t0 : r == STEP_DEAD ? deadAt - t0 : 1);
   return r;
