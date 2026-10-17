@@ -1,0 +1,38 @@
+#!/usr/bin/env node
+// WAS THE BREAK THERE? For every game Gambit lost in a run, the boards its break search came up empty on (GAMBITB lines: under garbage, no
+// break found) in the last LAST frames before the loss, each searched again by the same break search with no time limit to speak of
+// (MS each) and the same rules: a board where it now finds a break is one the live search MISSED (its reach, its time); one where it
+// still finds none had no break to find (IMPOSSIBLE: the panels there cannot make one). Read from each game's own log (gambit_fetch.sh).
+//
+//   node gambit_reach.js DIR [LAST] [MS]       LAST frames before each loss (default 300), MS per board (default 3000)
+var fs = require('fs'), path = require('path'), v8 = require('v8');
+var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js')), SH = require('./survivor_shared.js'), GAMBIT = require('./gambit.js'), JUDGE = require('./gambit_judge.js');
+var DIR = process.argv[2], LAST = Number(process.argv[3]) || 300, MS = Number(process.argv[4]) || 3000;
+if (!DIR) { console.error('usage: node gambit_reach.js DIR [LAST] [MS]'); process.exit(2); }
+var A = require('./survivor_attack.js')({ reaction: 12, swapGap: 12, cursorMoveFrames: 4 }), S = new (require('./native.js').server.Search)({ reaction: 12, swapGap: 12, cursorMoveFrames: 4, threads: 1 });
+var rules = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles', 'gambit-rules.json'), 'utf8'));
+var list = rules.attack.filter(function (r) { return r.name === 'finish them'; })[0].aims.filter(function (a) { return typeof a !== 'string'; });
+A.useRules({ fits: JUDGE.stepFits(list), floorLow: false });
+var totals = { missed: 0, impossible: 0, boards: 0 };
+fs.readdirSync(DIR).sort().forEach(function (g) {
+  var rf = path.join(DIR, g, 'results.txt'), lf = path.join(DIR, g, 'survivor.log');
+  if (!fs.existsSync(rf) || !fs.existsSync(lf)) return;
+  var m = /(\w+) training lost frames=(\d+)/.exec(fs.readFileSync(rf, 'utf8'));
+  if (!m) return;
+  var lostAt = +m[2], lines = fs.readFileSync(lf, 'utf8').split('\n').filter(function (l) { return l.indexOf('GAMBITB ') === 0; });
+  // (the match's own: the last run of boards before the loss, clock forward)
+  var bs = lines.map(function (l) { var p = l.split(' '); return { at: +p[1], b64: p[2], arr: JSON.parse(p[3] || '[]') }; }).filter(function (x) { return x.at <= lostAt && x.at >= lostAt - LAST; });
+  var out = [];
+  bs.forEach(function (x) {
+    var board = PA.revive(v8.deserialize(require('zlib').gunzipSync(Buffer.from(x.b64, 'base64'))));
+    var arr = x.arr.map(function (a) { return { at: a[0], width: a[1], height: a[2] }; });
+    var br = SH.breakMoves(S, board, { left: 0, started: false }, arr, 3, 0, Date.now() + MS, null, null, { touchInPop: true, near: true, ok: A.allowed, stepOk: A.stepOk });
+    var line = br && br.depth ? (br.path || [Object.keys(br.moves)[0].split(',').map(Number)]) : null;
+    var j = line ? A.judge(board, { left: 0, started: false }, line, arr, {}) : null;
+    var found = !!(j && !j.dead && j.made.broke > 0);
+    totals.boards++; if (found) totals.missed++; else totals.impossible++;
+    out.push(x.at + (found ? ' MISSED(' + line.length + ')' : ' none'));
+  });
+  console.log(g + '  ' + m[1] + ' lost at ' + lostAt + ': ' + (out.length ? out.join(', ') : 'no empty searches logged'));
+});
+console.log('\n' + totals.boards + ' boards searched again: ' + totals.missed + ' had a break the live search missed, ' + totals.impossible + ' had none to find');

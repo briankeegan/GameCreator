@@ -152,6 +152,13 @@ function answer(c) {
   bot._gambitIdle = d.kind === 'hold' || !D.info.want;
   D.info.verdict = L.verdict; D.info.live = L.live; D.info.why = L.why;
   logLine(c, D, L, c.br, c.brMs);
+  // (THE BOARD THE BREAK SEARCH CAME UP EMPTY ON, under garbage, for gambit_reach.js to search again without a time limit: was a break
+  // there to find? At most one every 30 frames, the board as the question carried it)
+  if (D.R.under && !(c.br && c.br.depth) && (!bot._emptyAt || c.m.at - bot._emptyAt >= 30 || c.m.at < bot._emptyAt)) {
+    bot._emptyAt = c.m.at;
+    var pk = c.m.packed || require('v8').serialize(c.board);
+    console.error('GAMBITB ' + c.m.at + ' ' + require('zlib').gzipSync(Buffer.from(pk)).toString('base64') + ' ' + JSON.stringify((c.arrivals || []).map(function (a) { return [a.at, a.width, a.height]; })));
+  }
   var made = L.gambits && d.kind === 'swap' ? { combo: D.info.combo || 0, chain: D.info.chain || 0, broke: D.info.broke || 0 } : { combo: 0, chain: 0, broke: 0 }, held = d.kind === 'raise' ? raiseHeld(c, D.R.to) : { now: 0, after: 0 };
   return { id: m.id, epoch: m.epoch, at: m.at, src: L.gambits ? 'gambit' : 'survival', kind: d.kind, move: d.move ? [d.move[0], d.move[1]] : null,
            raiseFrames: held.now, raiseAfter: held.after, ms: Date.now() - c.t0, idleMs: D.idleMs || 0,
