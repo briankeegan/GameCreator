@@ -6505,6 +6505,8 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   HELDR = (int)BIN[IN_CROW]; HELDC = (int)BIN[IN_CCOL]; HELDDIR = (int)BIN[IN_HELD];
   botFailed = 0;
   clearRaiseFrames = 0;
+  { static double wm = -1; if (wm < 0) wm = knob("GC_WORK_MULT", 1);   // a diagnostic: more work a decision where the host does not set the line (the fixed-budget scan)
+    if (wm != 1 && tkCeiling == 0) { gOptWork = OPTWORK0 * wm; gWorkBudget = WORKBUDGET0 * wm; } }
   // EVERY DECISION WITHIN ITS BUDGET, in work (WORKBUDGET, OPTWORK): past
   // OPTWORK resolves and engine lines are refused and every search keeps what
   // it found; past WORKBUDGET the decision is cut and the game fails.
