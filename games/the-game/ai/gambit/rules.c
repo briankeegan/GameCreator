@@ -1,0 +1,91 @@
+// THE RULES (gambit.js): the mode's list -- what a line may make -- read once a decision and handed to every search. A list is its
+// entries in priority order; an entry (an aim) tests what a line makes: { combo, chain, send, break }.
+//
+// What a line makes ({ combo: the largest match, chain: links, broke: garbage cells converted, cells: garbage sent }) is counted by
+// the judge (judge.c). A clear is a chain of one link: a match made with no chain running is chain 1 (chainOf).
+
+// THE LONGEST CHAIN EVER: no move in any mode makes a chain longer, whoever chose it (GAMBIT.MAXCHAIN)
+#define MAXCHAIN 13
+#define MAXAIMS 16
+
+// One test of a number: an operator and its operand ("<=3"); OP_NONE where the aim does not ask it.
+enum { OP_NONE, OP_GE, OP_LE, OP_EQ, OP_NE, OP_GT, OP_LT };
+typedef struct { int32_t op, n; } Test;
+// brk: -1 not asked, 0 a line that breaks nothing, 1 a line that breaks
+typedef struct { Test combo, chain, send; int32_t brk; } Aim;
+typedef struct { Aim aim[MAXAIMS]; int32_t n; } List;
+typedef struct { int32_t combo, chain, broke, cells; } Made;
+
+static int test(int32_t v, Test t) {
+  switch (t.op) {
+    case OP_GE: return v >= t.n;
+    case OP_LE: return v <= t.n;
+    case OP_EQ: return v == t.n;
+    case OP_NE: return v != t.n;
+    case OP_GT: return v > t.n;
+    case OP_LT: return v < t.n;
+  }
+  return 1;
+}
+static int32_t chainOf(Made m) { return imax(m.chain, m.combo > 0 ? 1 : 0); }
+// What a line makes against an aim. An aim that names a combo and no chain is a combo of one clear: a chain whose largest match is
+// that size does not meet it.
+static int meets(const Aim *a, Made m) {
+  m.chain = chainOf(m);
+  if (a->combo.op && !a->chain.op && m.chain > 1) return 0;
+  if (a->combo.op && !test(m.combo, a->combo)) return 0;
+  if (a->chain.op && !test(m.chain, a->chain)) return 0;
+  if (a->send.op && !test(m.cells, a->send)) return 0;
+  if (a->brk == 1 && !(m.broke > 0)) return 0;
+  if (a->brk == 0 && m.broke > 0) return 0;
+  return 1;
+}
+// WHAT A MOVE MAY MAKE: it clears nothing, or its clears match an entry of the list (its break aside), or it is a plain three that
+// breaks garbage (garbage can always be broken with a three); never a chain past MAXCHAIN.
+static int fits(const List *L, Made m) {
+  if (m.chain > MAXCHAIN) return 0;
+  if (m.combo == 0 && m.chain == 0) return 1;
+  if (m.combo <= 3 && m.chain <= 1 && m.broke > 0) return 1;
+  for (int i = 0; i < L->n; i++) { Aim plain = L->aim[i]; plain.brk = -1; if (meets(&plain, m)) return 1; }
+  return 0;
+}
+// A MOVE'S PLACE IN THE LIST: the first entry its clears match (its break aside); -1 for one that clears nothing, or a plain three
+static int entryOf(const List *L, Made m) {
+  if (!(m.combo > 0 || m.chain > 0)) return -1;
+  for (int i = 0; i < L->n; i++) { Aim plain = L->aim[i]; plain.brk = -1; if (meets(&plain, m)) return i; }
+  return -1;
+}
+// THE LIST FOR ONE STEP ON THE ENGINE (JUDGE.stepFits): each of its own clears fits as a clear of its own, and the chain it reaches
+// fits and is within MAXCHAIN. sizes: the step's clears that are no link of a chain.
+static int stepFits(const List *L, const int32_t *sizes, int32_t nsizes, int32_t chain) {
+  if (chain > MAXCHAIN) return 0;
+  if (chain >= 2) { Made c = { 0, chain, 0, 0 }; if (!fits(L, c)) return 0; }
+  for (int i = 0; i < nsizes; i++) { Made s = { sizes[i], 1, 0, 0 }; if (!fits(L, s)) return 0; }
+  return 1;
+}
+
+// THE GARBAGE A CLEAR SENDS: the cells of its combo garbage (the server's combo garbage table, a row per piece), and a slab the width
+// of the board for every link past the first.
+static int32_t comboCells(int32_t size) {
+  static const int32_t CELLS[16] = { 0, 0, 0, 0, 3, 4, 5, 6, 7, 8, 10, 11, 12, 18, 24, 24 };
+  if (size < 16) return CELLS[size];
+  return size < 20 ? 24 : size < 27 ? 36 : 48;
+}
+
+// THE LIST FROM THE HOST: n entries, each seven words -- combo op, combo n, chain op, chain n, send op, send n, break -- in the io
+// body (gambit.js writes them from the rules file).
+static List theList;
+EXPORT(gb_list) int gb_list(int n) {
+  if (n < 0 || n > MAXAIMS) return -1;
+  const int32_t *w = ioBody;
+  for (int i = 0; i < n; i++, w += 7) {
+    Aim a = { { w[0], w[1] }, { w[2], w[3] }, { w[4], w[5] }, w[6] };
+    theList.aim[i] = a;
+  }
+  theList.n = n;
+  return n;
+}
+// (for the rules' own check, gambit_c.test.js: what fits and meets say of a made line, against the JavaScript's)
+EXPORT(gb_fits) int gb_fits(int combo, int chain, int broke, int cells) { Made m = { combo, chain, broke, cells }; return fits(&theList, m); }
+EXPORT(gb_entry_of) int gb_entry_of(int combo, int chain, int broke, int cells) { Made m = { combo, chain, broke, cells }; return entryOf(&theList, m); }
+EXPORT(gb_meets) int gb_meets(int i, int combo, int chain, int broke, int cells) { Made m = { combo, chain, broke, cells }; return i >= 0 && i < theList.n && meets(&theList.aim[i], m); }

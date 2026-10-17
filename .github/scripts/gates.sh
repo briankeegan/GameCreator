@@ -228,8 +228,8 @@ gate_server_engine() {
   node games/the-game/ai/eval/native_arrivals.test.js
 }
 
-# GAMBIT IN C (games/the-game/ai/gambit/, PLAN.md): the wasm is built from the sources beside it (BUILT holds every hash), and its
-# copy of the server's engine and node store is the server's -- the engine tests, played on gambit.wasm.
+# GAMBIT IN C (games/the-game/ai/gambit/, PLAN.md): the wasm is built from its sources and the one C engine (BUILT holds every hash),
+# and the engine in it is the server's -- the engine tests, played on gambit.wasm.
 gate_gambit_engine() {
   local G=games/the-game/ai/gambit E=games/the-game/ai/eval
   (cd $G && while read -r f h; do [ "$(sha256sum "$f" | cut -c1-64)" = "$h" ] || { echo "gambit: $f is not what BUILT says -- run build.sh"; exit 1; }; done < BUILT) &&
@@ -414,7 +414,7 @@ GATES=(
   "a snapshot survives the trip to main:gate_snapshot_pipe:games/the-game/ai/"
   "a whole training leg finishes:gate_pbt_leg:games/the-game/ai/"
   "the server's engine, in JS and in C, is the server's:gate_server_engine:games/"
-  "Gambit's C engine is the server's:gate_gambit_engine:games/the-game/ai/"
+  "Gambit's wasm is built from its sources, on the server's engine:gate_gambit_engine:games/the-game/ai/"
   "BitBot's C search gives the JS search's answers:gate_bitnative:games/the-game/ai/"
   "the cursor walks and its travel is priced:gate_cursor:games/the-game/"
   "the puyo brain:gate_puyo_cpu:games/the-game/ai/"

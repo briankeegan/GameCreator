@@ -1,8 +1,8 @@
 # Gambit in C
 
-Gambit is its own program, in this folder, written in C. Everything it uses is here: the engine, the node store, the clock, the
-rules, the judge, the searches, the decision. Nothing in it is shared with the default bot (`eval/native/`); what it needed from
-there was copied in, and is checked here on its own.
+Gambit is its own program, in this folder, written in C: the clock, the rules, the judge, the searches, the decision. It runs on the
+one C engine, `eval/native/pa.c` and its node store `search.h` (the server's Lua, ported and checked frame by frame) -- never a copy
+of it.
 
 The design is `eval/plans/decision.md` (one decision, five steps) and the goal is `eval/plans/gambit-goal.md`. This file says how the
 code is laid out and how it is ported without losing anything.
@@ -13,8 +13,8 @@ Every play stands on these. A play that needs one of them uses it; none keeps it
 
 | Piece | File | What it is |
 |---|---|---|
-| The engine | `engine/` | The server's rules (`pa.c`, `pa.h`, `libc.h`, `memory.h`), copied from `eval/native/`. Held to the Lua's recordings by its own gate. |
-| The nodes | `core/nodes.h` | A board at a frame and the steps that make the next: a swap pressed as the game presses it (the walk, the wait), a settle, a wait. The one way any search plays a line. |
+| The engine | `eval/native/pa.c`, `search.h` | The one C engine and its node store: a board at a frame and the steps that make the next. |
+| The nodes | `core/nodes.h` | The one way any of Gambit's searches plays a step: a swap pressed as the game presses it (the walk, the wait), a settle, a wait -- charged to the clock. |
 | The clock | `core/clock.h` | One budget for the decision, in work: every engine frame and every search step is charged where it is made. Past the budget every step comes back "not there", so every search stops at the same moment and none reads a clock of its own. The host's time reaches it through the one import (`abort_poll`). |
 | The rules | `rules.c` | The mode's list (fits, meets, the chain limit), the material floor and the swap-back rule: read once a decision and handed to every search. |
 | The judge | `judge.c` | One function for every line: played as it will be pressed, it gives what it makes, when it is done, when garbage can next drop, when the board is lost, whether a break is ready once everything lands, whether it lives. The shared line check is the judge's. Cached per decision. |
