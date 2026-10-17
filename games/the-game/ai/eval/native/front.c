@@ -1538,8 +1538,10 @@ static int frontFrame(int fid, Board *b) {
   F->hasPlan = 0;
   F->held = heldNow;
   if (d.kind == K_SWAP && d.via == V_BREAKREACH && F->lastVia != V_BREAKREACH && F->lastVia != V_PLANSAVE) { F->bkOn = 1; F->bk0 = F->pad.total; }   // a break line begins
-  if (d.kind == K_SWAP && d.hasMove && d.idle && idleVia(d.via) && F->bkActs > 0
-      && padCount(&F->pad, b->clock) + F->bkActs > (F->pad.limit ? F->pad.limit : ACTIONLIMIT)) { d.kind = K_HOLD; d.hasMove = 0; d.hasPark = 0; }
+  { static double first = -1; if (first < 0) first = knob("GC_BK0", 0);
+    double reserve = F->bkActs > 0 ? F->bkActs : first;   // before a break has been seen the reserve is the first guess
+    if (d.kind == K_SWAP && d.hasMove && d.idle && idleVia(d.via) && reserve > 0
+        && padCount(&F->pad, b->clock) + reserve > (F->pad.limit ? F->pad.limit : ACTIONLIMIT)) { d.kind = K_HOLD; d.hasMove = 0; d.hasPark = 0; } }
   if (d.kind == K_RAISE) {
     F->wantRaise = !nb_topped(b); F->cooldown = F->reaction;
     if (F->pad.holdKey) { F->pad.holdKey = 0; return fSend(F, input & ~DIRS, held); }
