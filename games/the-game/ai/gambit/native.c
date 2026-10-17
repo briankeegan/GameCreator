@@ -111,10 +111,11 @@ static int32_t gameFrame, dueFrame;
 static double gameFrameMs, gameMsPerFrame = 1000.0 / 60, closeMs[CLOSEN];
 static int32_t nclose; static uint32_t frameCounter;
 static double closeWorst(void) { double w = 0; for (int i = 0; i < nclose; i++) if (closeMs[i] > w) w = closeMs[i]; return w; }
+// (read without a lock: the frame loop's thread must never wait on Gambit's, which reads these on every step)
 static double moveStartMs(int32_t at) {
-  hostLock();
-  double began = gameFrameMs, per = gameMsPerFrame; int32_t f = gameFrame;
-  hostUnlock();
+  double began, per;
+  __atomic_load(&gameFrameMs, &began, __ATOMIC_SEQ_CST); __atomic_load(&gameMsPerFrame, &per, __ATOMIC_SEQ_CST);
+  int32_t f = __atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST);
   return began + (at - f) * per;
 }
 static int frameOut(void) {
@@ -144,7 +145,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   out->raiseNow = A->raiseNow; out->raiseAfter = A->raiseAfter; out->nhand = A->nhand;
   for (int i = 0; i < A->nhand; i++) out->hand[i] = A->hand[i];
   out->holdLives = A->holdLives; out->brk = A->brk; out->urgent = A->urgent; out->idleMs = A->idleMs;
-  out->ms = clock_ms() - t0;
+  out->ms = clock_ms() - t0; out->closeMs = clockWentOut ? clock_ms() - clockWentOut : 0;
   // the log line, its rule named and its wall time added
   static char line[sizeof logBuf + 128];
   const char *s = logBuf;
@@ -221,7 +222,8 @@ void gn_match(void) {
 int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTop) {
   if (nb_load(F.truth)) return -1;
   int32_t clock = F.truth->clock;
-  hostLock(); gameFrameMs = clock_ms(); gameMsPerFrame = F.msPerFrame; __atomic_store_n(&gameFrame, clock, __ATOMIC_SEQ_CST); hostUnlock();
+  { double t = clock_ms(), per = F.msPerFrame;
+    __atomic_store(&gameFrameMs, &t, __ATOMIC_SEQ_CST); __atomic_store(&gameMsPerFrame, &per, __ATOMIC_SEQ_CST); __atomic_store_n(&gameFrame, clock, __ATOMIC_SEQ_CST); }
   if (limit > 0) F.limit = limit;
   if (window > 0) F.window = window;
   F.npress = 0;

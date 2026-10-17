@@ -237,4 +237,14 @@ end
 
 function GambitNative:endMatch() C.gn_end() end
 
+-- NOTHING IN A FRAME IS COMPILED. The compiler records and compiles a loop the first time it runs hot, and a compile inside a frame
+-- costs tens of milliseconds; this code is calls into C and table writes, which compiling does not speed up, so it runs interpreted, at
+-- the same speed every frame.
+if jit and jit.off then
+  for _, t in ipairs({ GambitNative, B }) do
+    for _, f in pairs(t) do if type(f) == "function" then jit.off(f, true) end end
+  end
+  jit.off(opponentOf, true)
+end
+
 return GambitNative

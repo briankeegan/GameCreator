@@ -23,7 +23,13 @@ static int64_t clockPoll;
 static int (*clockFrameOut)(void);
 static int clockOut(void) {
   if (clockAborted) return 1;
+#ifdef __wasm__
   if (clockWork >= clockPoll) { clockPoll = clockWork + 400; if (abort_poll() == 1) { clockAborted = 1; return 1; } }
+#else
+  // (natively the host's abort is an atomic load, asked every step: a question the frame loop dropped stops at once, and the one asked
+  // after it waits behind nothing)
+  if (abort_poll() == 1) { clockAborted = 1; return 1; }
+#endif
   if (clockFrameOut && clockFrameOut()) { if (!clockWentOut) clockWentOut = nowMs(); return 1; }
   if (!clockDue && !clockShare) return 0;
   double t = nowMs();

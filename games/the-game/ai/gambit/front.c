@@ -32,7 +32,7 @@ typedef struct {
 } FQuestion;
 typedef struct {
   int32_t id, epoch, at, kind, move, raiseNow, raiseAfter, nhand, hand[MAXLINE], holdLives, brk, urgent, error;
-  double ms, idleMs;
+  double ms, idleMs, closeMs;
 } FAnswer;
 static void postQuestion(FQuestion *q);   // native.c
 static int takeAnswer(FAnswer *a);        // native.c: 1 when one was waiting
@@ -411,7 +411,11 @@ static void take(void) {
     if (!F.pending || a.id != F.pId) { F.st.unasked++; continue; }
     F.pending = 0;
     if (a.error || a.kind < 0) continue;
-    if (a.epoch != F.epoch || a.at < F.now) { F.st.late++; continue; }
+    if (a.epoch != F.epoch || a.at < F.now) {
+      F.st.late++;
+      if (a.epoch == F.epoch && F.st.late <= 40) { char l[160]; snprintf(l, sizeof l, "LATE answer for %d taken at %d: %.0f ms, closing %.0f ms, %.1f ms a frame", a.at, F.now, a.ms, a.closeMs, F.msPerFrame); flog(l); }
+      continue;
+    }
     int32_t at = a.at;
     int kind = a.kind == 1 ? MK_SWAP : a.kind == 2 ? MK_RAISE : MK_HOLD;
     if (!keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, kind, a.kind == 1 ? CR(a.move) : 0, a.kind == 1 ? CC(a.move) : 0, &k)) { F.st.refused++; continue; }
