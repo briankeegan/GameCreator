@@ -368,8 +368,9 @@ ways: a tool not listed, or a path listed that doesn't exist.
 - **The input budget is kept for the break, and a break takes its block's time.** A break pops its block in 38 + 7 x (3 + cells)
   frames (`pa.c matchGarbagePanels`, level 10: FLASH 28, FACE 10, POP 7), and blocks arrive about as fast as one pops, so the idle
   frames between pops decide the game. A break line takes about ten actions of the 76 a window allows, so the front (`front.c`,
-  `idleVia`) does not press an idle decision (setups, lineups, readiness, an attack with nothing to save: the bot's `idle` flag, the
-  board left alone losing no health within `LIVEHORIZON` and the decision not outliving it) when the window has left less than `BKRESERVE` (3) break lines have taken (`bkActs`,
+  `idleVia`) does not press an idle decision (setups, lineups, readiness, an attack with nothing to save: the bot's `idle` flag: a press
+  that could wait -- the board left alone loses no health, or the line would still live begun later, `clearDue`) when the window has left less than
+  `BKRESERVE` (3) break lines have taken (`bkActs`,
   measured; `BKFIRST` (14) until one has been seen). `GC_INPUT_LIMIT` (`survival/scan.sh`) measures what the limit costs.
 - **No fixed numbers: the engine and the host say it.** The judge's reach
   (`LINEHORIZON`) is the time the engine says the board has -- the rise at its
