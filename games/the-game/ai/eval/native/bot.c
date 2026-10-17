@@ -23,7 +23,7 @@ enum { M_BUILD, M_DEFEND, M_ATTACK };
 // the line a bot plays (Bot.line): what it is for, and the most steps it holds
 enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
 #define LINEMAX 16   // the most steps a line holds: storage, never a limit on what is searched -- a line that does not fit is refused, never cut
-#define LNOLEN 19
+#define LNOLEN 20   // out[19]: the stop time still running (stop and pre-stop) when the next slab lands in the line's world, -1 when none lands in it
 // THE HOLLOW of a judged line: the gaps under garbage on the board it ends on
 // ([10]) and the gaps the slabs to come would leave over its towers ([13]). A
 // tower lowered also lets a pile perched on it down onto panels it can break on.
@@ -4198,14 +4198,15 @@ static Dec stayAlive(Dec d) {
 static int twosOf(const int32_t *st);
 static int waveExpected(void);
 static int contactOf(const int32_t *st);
-typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, plain, clears, stall, size, chain, die, conv, hollow, pri, aheadKnown, twosKnown, twos, nearKnown, contact, contactKnown; Atk ahead; double life, soon, near; } Opt;
+typedef struct { Dec d; int32_t sw[2 * LINEMAX]; int n, wait, rdy, rdyKnown, soonKnown, lives, breaks, cash, early, plain, clears, stall, size, chain, die, conv, hollow, pri, aheadKnown, twosKnown, twos, nearKnown, contact, contactKnown, cover; Atk ahead; double life, soon, near; } Opt;
 static int optJudge(Opt *o) {
   int last = 0, spent = 0;
-  o->contactKnown = o->contact = 0;
+  o->contactKnown = o->contact = 0; o->cover = -1;
   o->rdy = o->rdyKnown = o->soonKnown = o->nearKnown = o->breaks = o->conv = o->cash = o->early = o->plain = o->clears = o->size = o->chain = 0;
   if (o->d.kind == K_HOLD) {
     o->twos = twosOf(DBASE); o->twosKnown = 1;   // read off the masks, so the setup rule has it when the work is spent
     o->die = aloneDie(1 << 20);
+    o->cover = aloneOnEngine() ? LNA[19] : -1;
     o->hollow = aloneOnEngine() ? HOLLOW(LNA) : 0;
     o->lives = o->die > NEXTMOVE;
   } else {
@@ -4213,7 +4214,7 @@ static int optJudge(Opt *o) {
     int v = lineJudge(o->sw, o->n, o->wait), die = judgedDie(v);
     if (die < 0) return 0;   // no verdict: nothing to weigh
     o->die = die; o->lives = die > 0; o->breaks = (v & LV_BREAKS) != 0;
-    o->conv = LNO[2] - LNA[2]; o->hollow = HOLLOW(LNO); last = LNO[1]; spent = spentOf();
+    o->conv = LNO[2] - LNA[2]; o->hollow = HOLLOW(LNO); last = LNO[1]; spent = spentOf(); o->cover = LNO[19];
     // A SETUP SWAP THAT CLEARS NOTHING BUYS NO TIME: the rise it locks while it lands is no reason to press it, so
     // the board loses health no later for it than left alone; it is pressed for what it sets up (ready, hollow)
     if (o->stall && aloneOnEngine() && !o->breaks && o->conv <= 0 && LNO[3] <= LNA[3]) { int alone = aloneDie(1 << 20); if (o->die > alone) o->die = alone; }
@@ -4229,7 +4230,10 @@ static int optJudge(Opt *o) {
     o->plain = !o->breaks && !o->cash && LNO[3] > LNA[3] && (!aloneOnEngine() || o->hollow >= HOLLOW(LNA));
     // an attack that breaks nothing buys only the stop time it awards, and the engine keeps the larger of that and the stop running
     // (checkMatches awardStopTime): begun with time to spare it wastes what it replaces and spends the material -- it too waits until due
-    o->early = (o->plain || (o->cash && !o->breaks)) && !clearDue(o->sw, o->n, 0);
+    // (an attack is not put off when it leaves more stop time running as the slab lands in the world it is judged in than the board left alone: that
+    // stop time is the cover the landing is met with)
+    int banks = o->cover >= 0 && aloneOnEngine() && o->cover > (LNA[19] > 0 ? LNA[19] : 0);
+    o->early = (o->plain || (o->cash && !o->breaks && !banks)) && !clearDue(o->sw, o->n, 0);
   }
   o->life = lifeOf(o->die, last, o->hollow, spent);
   return 1;
@@ -4440,6 +4444,12 @@ static int optRank(Opt *a, Opt *b) {
   int hz = gScramble || (aloneOnEngine() && aloneDie(1 << 20) < LINEHORIZON) ? LINEHORIZON : LIVEHORIZON;
   int da = a->die < hz ? a->die : hz, db = b->die < hz ? b->die : hz;
   if (da != db) return da > db ? 1 : -1;
+  // THE COVER THE LANDING IS MET WITH: of two options that live as long, the one with more stop time still running as the slab lands, up to what a
+  // chain awards topped beyond the landing's shake -- the stop time carries a board through a landing that has no break in reach
+  if (ka == 1 && kb == 1 && waveExpected() && a->cover >= 0 && b->cover >= 0) {
+    int cap = (int)BIN[IN_SF + 4] + stopAwardOf(2, 6, 1), ca = a->cover < cap ? a->cover : cap, cb = b->cover < cap ? b->cover : cap;
+    if (ca != cb) return ca > cb ? 1 : -1;
+  }
   // SAVING A DYING BOARD: of two options that live as long, a combo or a chain goes before a plain three
   if (ka == 1 && kb == 1 && aloneOnEngine() && aloneDie(1 << 20) < LIVEHORIZON) { int w = attackFirst(atkOf(a->size, a->chain), atkOf(b->size, b->chain)); if (w && attackPays(a, b, w)) return w; }
   // OF TWO CLEARS that break nothing, a combo or a chain goes before a plain three, whether or not it digs under the pile (attackFirst)
