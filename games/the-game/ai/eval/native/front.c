@@ -1494,7 +1494,22 @@ static int garbageMatched(void) {
 // after it would wait for the window, which frees an action only as the press 600 frames ago ages out
 #define BKRESERVE 3
 static int idleVia(int via) { return via == V_SETUP || via == V_LINEUP || via == V_READYFIRST || via == V_BESTATTACK; }
+static int frontFrame1(int fid, Board *b);
+// THE ACTIONS SPENT, BY THE ROUTE THAT DECIDED THEM, in the run log every 2,000 frames
 static int frontFrame(int fid, Board *b) {
+  Front *F = &FRONTS[fid];
+  int t0 = F->pad.total;
+  int r = frontFrame1(fid, b);
+#ifndef __wasm__
+  static long acts[64]; static int next = 2000;
+  if (b->clock < 100) { for (int i = 0; i < 64; i++) acts[i] = 0; next = 2000; }
+  if (F->pad.total > t0) acts[F->lastVia & 63] += F->pad.total - t0;
+  if (b->clock >= next) { next += 2000; extern int fprintf(void *, const char *, ...); extern void *stderr;
+    fprintf(stderr, "ACTVIA clock %d", (int)b->clock); for (int i = 0; i < 64; i++) if (acts[i]) fprintf(stderr, " %d:%ld", i, acts[i]); fprintf(stderr, "\n"); }
+#endif
+  return r;
+}
+static int frontFrame1(int fid, Board *b) {
   Front *F = &FRONTS[fid];
   FB = b;
   if (b->clock < F->lastClock) frontRestart(F);
