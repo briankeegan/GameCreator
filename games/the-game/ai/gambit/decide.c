@@ -39,9 +39,8 @@ static int readBoard_(Read *R) {
   R->under = !theTables.underIgnore && F->known[FACT_US_CONTACT];
   if (R->under) { for (int i = 0; i < R->aims.n; i++) R->aims.aim[i].brk = 1; R->end = 1; }
   // (A LIST ENDED BY "default" -- every list under garbage -- falls back to the default's own move when none of it can be made: the
-  // break search keeps lines outside it -- the searches that aim, the extension, a chain begun, the planner, keep to it -- and the
-  // order takes one only after every line within it that lives)
-  listDefault = R->end == 1;
+  // break search looks off it when it finds no break within it (breakSearch), the searches that aim keep to it, and the order takes a
+  // line off it only by living where nothing within it does)
   R->topped = !!F->v[FACT_US_TOPPED]; R->breakWaits = !!F->v[FACT_US_BREAKWAITS];
   if (R->under || R->topped) R->by = NOT_ASKED;
   // (ready: garbage on its way and none on the board -- the frames until the next block lands, 0 for one queued to drop once settled)

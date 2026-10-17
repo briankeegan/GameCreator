@@ -130,7 +130,18 @@ static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, dou
   double by = C2.due ? (t + (BREAK_MIN_MS > (C2.due - C2.t0) * share ? BREAK_MIN_MS : (C2.due - C2.t0) * share)) : t + BREAK_MAX_MS;
   if (C2.due && by > C2.due - C2.margin) by = C2.due - C2.margin;
   double old = clockShareBegin(by);
+  // (within the list first; a list ended by "default" -- every list under garbage -- is searched off it only when no break within it
+  // was found, and the first search's lines stand unless the second finds a break)
+  listDefault = 0;
   breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, have ? &resume : 0, &theBr);
+  if (!theBr.depth && R->end == 1 && !clockOut()) {
+    static Broke first;
+    first = theBr;
+    listDefault = 1;
+    breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, 0, &theBr);
+    listDefault = 0;
+    if (!theBr.depth) theBr = first;
+  }
   clockShareEnd(old);
   brCut = nowMs() >= by; brResumed = have ? resume.n : 0;
   *ms = nowMs() - t;
