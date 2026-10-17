@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// WAS THE BREAK THERE? For every game Gambit lost in a run, the boards its break search came up empty on (GAMBITB lines: under garbage, no
+// WAS THE BREAK THERE? (Every board here is under garbage, where a mode's list ends by "default": a native host's boards are searched
+// with no line held to the list, as the live search was.) For every game Gambit lost in a run, the boards its break search came up empty on (GAMBITB lines: under garbage, no
 // break found) in the last LAST frames before the loss, each searched again by the same break search with no time limit to speak of
 // (MS each) and the same rules: a board where it now finds a break is one the live search MISSED (its reach, its time); one where it
 // still finds none had no break to find (IMPOSSIBLE: the panels there cannot make one). Read from each game's own log (gambit_fetch.sh).
@@ -27,7 +28,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
     // on one the JavaScript host logged, judged again on the engine)
     var line, found;
     if (/^C\d+:/.test(x.b64)) {
-      line = G.breakOnBytes(x.b64.slice(x.b64.indexOf(':') + 1), x.arr, list, MS);
+      line = G.breakOnBytes(x.b64.slice(x.b64.indexOf(':') + 1), x.arr, list, MS, 0);
       found = !!line;
     } else {
       var board = PA.revive(v8.deserialize(require('zlib').gunzipSync(Buffer.from(x.b64, 'base64'))));

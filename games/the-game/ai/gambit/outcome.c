@@ -116,6 +116,8 @@ static int lineFits(const int32_t *seq, int n, int settled) {
   Made m = o.j.made;
   o.fits = !o.j.dead && fitsList(&theList, m, &o.j) && imax(m.chain, o.j.chainAll) <= MAXCHAIN &&
            !(decF.belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0));
+  // (a list ended by "default": a line outside it is the default's own, kept while the board lives through it)
+  if (!listOn) o.fits = !o.j.dead && imax(m.chain, o.j.chainAll) <= MAXCHAIN;
   if (o.j.late) return 0;
   keep(seq, n, settled, 1, &o);
   return o.fits;

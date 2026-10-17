@@ -17,6 +17,7 @@ typedef struct {
   Outcome o;
   int32_t apDone, apFire, apNats, apAts[MAXLINE], apChain, apChainAll, apCombo, apBroke, apPlayed;
   int32_t readyNext;   // a break in reach once the next block lands (readyNextOf), asked when none lives; NOT_ASKED: not asked
+  int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
 } Judge;
 // why a candidate was dropped, counted per decision for the log (DROP_CODE: b back, o list, t late, f floor, r ready, u unbroken)
 enum { DROP_BACK, DROP_LIST, DROP_LATE, DROP_FLOOR, DROP_READY, DROP_UNBROKEN, NDROPS };
@@ -51,7 +52,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   if (j && k->x.broke > 0 && !(j->made.broke > 0)) dropAs(play, DROP_UNBROKEN);
   if (k->nseq && swapBack(CR(k->seq[0]), CC(k->seq[0]), m.combo > 0 || m.chain > 0 || m.broke > 0)) { dropAs(play, DROP_BACK); return 0; }
   // (it fits the list, or it is no candidate -- the chain as the game counts it)
-  if (!(j ? fitsList(&R->list, m, j) : fits(&R->list, m))) { dropAs(play, DROP_LIST); return 0; }
+  if (!(j ? fitsList(&R->list, m, j) : fits(&R->list, m))) { if (R->end != 1 || m.chain > MAXCHAIN) { dropAs(play, DROP_LIST); return 0; } J->outside = 1; }
   // (below the rule's material floor a line that clears panels and breaks no garbage spends what the board needs)
   if (R->belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0)) { dropAs(play, DROP_FLOOR); return 0; }
   int entry = entryOf(&R->aims, m);
@@ -105,12 +106,14 @@ static int digWaits(const Judge *k, const Judge *H, int32_t react) {
   return k->k.play == PLAY_TOWARD && !k->o.lives && !H->o.lives && H->o.lostAt != NOT_ASKED && k->o.j.done >= 0 && !k->o.dead &&
          k->o.lostAt <= H->o.lostAt && (double)H->o.lostAt - k->o.j.done > react;
 }
-// THE ONE ORDER: a line that lives before one that does not; of two that do not, the one with a break in reach once the next block
-// lands, then the one whose board is lost later; then the tier, then each sub-key in turn
+// THE ONE ORDER: a line that lives before one that does not; of two that live, the one within the list before the default's own; of
+// two that do not, the one with a break in reach once the next block lands, then the one whose board is lost later; then the tier,
+// then each sub-key in turn
 static double lostOf(const Judge *x) { return x->o.lostAt == FOREVER ? 1e300 : x->o.lostAt == NOT_ASKED ? -1 : x->o.lostAt; }
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
   if (lx != ly) return lx ? -1 : 1;
+  if (lx && x->outside != y->outside) return x->outside ? 1 : -1;   // (of two that live, the one within the list)
   if (!lx && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return x->readyNext ? -1 : 1;
   if (!lx && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
   if (x->t.tier != y->t.tier) return x->t.tier - y->t.tier;
