@@ -72,7 +72,7 @@ var RAISE_MS = 150;
 // default's beam), judged and ranked like the rest.
 function ranked(c, R, S) {
   c.dropped = {}; c.offered = {};
-  var offered = PROPOSE.all(c, R, S);
+  var t0 = Date.now(), offered = PROPOSE.all(c, R, S), t1 = Date.now();
   offered.forEach(function (k) { c.offered[k.play] = (c.offered[k.play] || 0) + 1; });
   var out = offered.map(function (k) { return JUDGE.judge(c, R, k); }).filter(Boolean);
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
@@ -82,12 +82,15 @@ function ranked(c, R, S) {
   // (the hold: never while the chain the board makes alone runs past the list)
   if (!R.aloneOut) out.push(JUDGE.hold(c, R, false));
   out.sort(JUDGE.compare);
+  var t2 = Date.now();
   if (!(out[0] && out[0].o.lives) && c.left() > 0) {
     var sv = c.attacker.outlive(c.board, c.m.hold, c.arrivals, { to: JUDGE.HORIZON + JUDGE.REST, rest: JUDGE.REST, beam: JUDGE.BEAM, ms: c.left() });
     c.offered.survive = sv && sv.seq.length ? 1 : 0;
     var sk = sv && sv.seq.length ? JUDGE.judge(c, R, { play: 'survive', seq: sv.seq, x: {}, aim: -1, settled: false }) : null;
     if (sk) { out.push(sk); out.sort(JUDGE.compare); }
   }
+  // (where the decision's time went, ms: offering, judging, the survival search)
+  c.phaseMs = [t1 - t0, t2 - t1, Date.now() - t2];
   return out;
 }
 
@@ -141,7 +144,8 @@ function carryOf(c, R, k) {
 function decide(c, R) {
   R = R || read(c);
   if (!R) return null;
-  var S = PROPOSE.search(c, R);
+  var t0 = Date.now(), S = PROPOSE.search(c, R);
+  c.searchMs = Date.now() - t0;
   return play(c, R, S, ranked(c, R, S));
 }
 

@@ -179,6 +179,27 @@ for (var rs = 1; rs <= 6; rs++) {
   readyChecked++;
 }
 assert.ok(readyChecked > 0, 'boards standing on stop with a slab coming: ' + readyChecked);
+// READINESS IS ASKED WHERE IT DECIDES, IN TIME: a line that breaks and stands to the horizon lives whatever readiness says, so it is not
+// asked (readyIfBreak); and past the decision's deadline (readyBy) the search after the first swaps is not begun -- unknown, not false
+var SHq = require('./survivor_shared.js'), Sq = new (require('./native.js').server.Search)({ reaction: 12, swapGap: 12, cursorMoveFrames: 4, threads: 1 }), brkAsked = 0, byAsked = 0;
+for (var qs = 1; qs <= 12 && !(brkAsked && byAsked); qs++) {
+  var qb = PA.game({ level: 10, seed: qs, countdown: false });
+  for (var qf = 0; qf < 200; qf++) qb.run();
+  qb.receiveGarbage([{ width: 6, height: 2, isChain: false, isMetal: false }]);
+  for (qf = 0; qf < 160 && qb.gameOverClock <= 0 && !SHq.lowestGarbageRow(qb); qf++) qb.run();
+  if (qb.gameOverClock > 0 || !SHq.lowestGarbageRow(qb)) continue;
+  var qarr = [{ at: 60, width: 6, height: 2 }];
+  var qall = AT0.judge(qb, H0, [], qarr, { readyAt: 60, lifeTo: 360, lifeRest: 120 });
+  if (qall.ready === false) {
+    assert.strictEqual(AT0.judge(qb, H0, [], qarr, { readyAt: 60, lifeTo: 360, lifeRest: 120, readyBy: Date.now() - 1 }).ready, undefined, 'seed ' + qs + ': past the deadline readiness is unknown');
+    byAsked++;
+  }
+  var qbr = SHq.breakMoves(Sq, qb, H0, qarr, 1, 0, Date.now() + 500, null, null, { touchInPop: true, near: true });
+  var qseq = qbr && qbr.depth ? (qbr.path || [Object.keys(qbr.moves)[0].split(',').map(Number)]) : null;
+  var qj = qseq && AT0.judge(qb, H0, qseq, qarr, { readyAt: 60, lifeTo: 360, lifeRest: 120, readyIfBreak: true });
+  if (qj && !qj.dead && qj.made.broke > 0 && qj.lostAt === Infinity) { assert.strictEqual(qj.ready, undefined, 'seed ' + qs + ': a break that stands is not asked readiness'); brkAsked++; }
+}
+assert.ok(brkAsked > 0 && byAsked > 0, 'readiness skipped for a standing break (' + brkAsked + ') and past the deadline (' + byAsked + ')');
 // HEALTH IS IGNORED: every board Gambit judges has level 10's health (planHealth), and one where nothing lives is judged so again --
 // no decision ever counts on the health a game gives
 var SHh = require('./survivor_shared.js'), mindH2 = require('./survivor_think.js')({ profile: SHh.profile(), threads: 1 }), doomedSeen = 0;

@@ -537,10 +537,12 @@ module.exports = function (opts) {
     // lands, the health drained -- Infinity when it is still alive at lifeTo; the frame the engine lost it on, when the line itself did)
     // (o.lifeRest: and that many frames past the line's own end -- the frame its last swap is made, as the survival search counts it)
     if (o.lifeTo != null) res.lostAt = dead ? deadAt : lostAlone(s, root, n, Math.max(o.lifeTo, lastAt + (o.lifeRest || 0)), made);
-    // (o.readyIfLost: the readiness check, the dearer one, only when the board left alone does not stand to lifeTo)
-    if (o.readyAt != null && !dead && !(o.readyIfLost && res.lostAt === Infinity)) {
+    // (o.readyIfLost: the readiness check, the dearer one, only when the board left alone does not stand to lifeTo; o.readyIfBreak: so
+    // too for a line that breaks. o.readyBy: past it (ms since the epoch) the check is not finished, and readiness is unknown)
+    var standsOut = res.lostAt === Infinity && (o.readyIfLost || (o.readyIfBreak && (res.made.broke || 0) > 0));
+    if (o.readyAt != null && !dead && !standsOut) {
       var why = o.why ? {} : null;
-      res.ready = breaksAfterLanding(s, root, n, Math.max(1, o.readyAt + 2), made, why);
+      res.ready = breaksAfterLanding(s, root, n, Math.max(1, o.readyAt + 2), made, why, o.readyBy);
       if (why && why.land && why.seq) res.readyLine = { board: why.land.st, seq: why.seq };
     }
     if (made.length) s.drop(made);
@@ -592,7 +594,7 @@ module.exports = function (opts) {
     return ok;
   }
   // (why, when given: the board landed and settled, and the break found on it -- what the agreement gate judges again)
-  function breaksAfterLanding(s, root, n, wait, made, why) {
+  function breaksAfterLanding(s, root, n, wait, made, why, by) {
     var land = s.advance(n, 'long', null, Math.max(1, wait - (n.t - root.t)));
     if (!land || land.dead) return null;
     made.push(land);
@@ -615,6 +617,7 @@ module.exports = function (opts) {
       if (brk(out)) { if (why) why.seq = [ms1[q]]; return true; }
       if (stepFits(s, out)) live.push({ n: out, m: ms1[q] });
     }
+    if (by && Date.now() >= by) return undefined;
     var seconds = [], meta = [];
     live.forEach(function (x) { x.n.b.legalSwaps().forEach(function (m) { seconds.push([x.n, 'swap', m, 0]); meta.push([x.m, m]); }); });
     var outs = s.advanceMany(seconds, true), any = false;

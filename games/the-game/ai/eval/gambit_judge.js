@@ -64,7 +64,8 @@ function outcome(c, R, seq, isSettled) {
   // landed, however long the stop it stands on lasts -- ready when everything lands, with a plan; the readiness is asked of it always.
   // A break, or a board with nothing coming, lives by standing to the horizon too)
   var land = lastLanding(c, R), timeLeft = !c.left || c.left() > 0, coming = land !== null && land !== undefined;
-  var j = c.attacker.judge(c.board, c.m.hold, seq, c.arrivals, { settled: isSettled, tight: c.tight, readyAt: timeLeft ? land : null, readyIfLost: !coming, lifeTo: HORIZON + REST, lifeRest: REST });
+  var j = c.attacker.judge(c.board, c.m.hold, seq, c.arrivals, { settled: isSettled, tight: c.tight, readyAt: timeLeft ? land : null, readyIfLost: !coming, readyIfBreak: true,
+                                                                          readyBy: c.due ? c.due - c.margin : null, lifeTo: HORIZON + REST, lifeRest: REST });
   var o = { dead: true, lostAt: j.lostAt, lives: false };
   if (!j.dead) {
     var stopNow = Math.max((c.board.stopTime || 0) + (c.board.preStopTime || 0), c.board.shakeTime || 0);
