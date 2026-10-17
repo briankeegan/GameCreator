@@ -3937,6 +3937,13 @@ static Dec lineSwap(const LineC *l, int via, Dec d) {
   return s;
 }
 static void plansDrop(void) { BT->plan.has = 0; BT->attack.has = 0; BT->flatten.has = 0; BT->dig.has = 0; BT->digIsBreak = 0; }
+static void lineKeep(const LineC *l, int kind);
+static Dec playDeferred(Dec d) {
+  const LineC *l = &bbDeferred;
+  lineLast = 3; plansDrop();
+  if (l->n > 1) lineKeep(l, LINE_BREAK); else BT->nLine = 0;
+  return lineSwap(l, V_BREAKREACH, d);
+}
 // lineLast: what the line rules last did, for the drill's trace: 1 played on
 // with the line kept, 2 a dying choice replaced, 3 a break line played, 4 a
 // choice that lost the break replaced, 5 a lineup played.
@@ -6759,12 +6766,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     d = dS; }
   // A BREAK HELD FOR A BETTER TIME IS NOT HELD FOR NOTHING: if the decision
   // comes to standing still, the break is played -- idle readies nothing
-  if (d.kind == K_HOLD && bbHasDeferred) {
-    LineC *l = &bbDeferred;
-    lineLast = 3; plansDrop();
-    if (l->n > 1) lineKeep(l, LINE_BREAK); else BT->nLine = 0;
-    d = lineSwap(l, V_BREAKREACH, d);
-  }
+  if (d.kind == K_HOLD && bbHasDeferred) d = playDeferred(d);
   // A LINE IS PRESSED AS IT WAS JUDGED: a decision that plays the kept line's
   // step takes the line's timing (a break waits for its panels to settle),
   // whichever route returned it
@@ -6772,6 +6774,8 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // the one choice (arbitrate): survival's above all
   WORKAT("before setupTwos"); d = setupTwos(d); WORKAT("after setupTwos");
   d = arbitrate(d); WORKAT("after arbitrate");
+  // the one choice may come to standing still after the stages did not (a clear not yet due is refused for the hold): the break held for a better time is played then too
+  if (d.kind == K_HOLD && bbHasDeferred) d = playDeferred(d);
   recordTarget(d);
   // a line set this decision is stamped with the presses made before it
   if (BT->nLine && (BT->nLine != nLineAfterPlay || __builtin_memcmp(BT->line, lineAfterPlay, (unsigned long)BT->nLine * 8))) { BT->linePresses = BIN[IN_PRESSES]; BT->lineBorn = BT->nNotes; }
