@@ -5377,6 +5377,8 @@ static int twosOfIn(const int32_t *st, int breaking) {
 #define VP(r, c) ((r) >= 1 && (U(st, OCC + (c)) & (1u << ((r) - 1))) && !(U(st, (GARB) + (c)) & (1u << ((r) - 1))) && !(U(st, INERT + (c)) & (1u << ((r) - 1))))
   for (int c = 1; c <= W; c++) {
     int r = workTop(st, c);
+    // the row a break converts is a panel of a colour not yet dealt (it fills its cell and matches nothing): the pair under it is the pair it lands on
+    while (r >= 3 && VP(r, c) && !colourFirst(st, c, 1u << (r - 1))) r--;
     if (r < 3 || !VP(r, c) || !VP(r - 1, c)) continue;
     int col = colourFirst(st, c, 1u << (r - 1));
     if (!col || colourFirst(st, c, 1u << (r - 2)) != col || (VP(r - 2, c) && colourFirst(st, c, 1u << (r - 3)) == col)) continue;
