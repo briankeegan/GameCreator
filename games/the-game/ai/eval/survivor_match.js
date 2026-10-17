@@ -211,7 +211,8 @@ Match.prototype.ask = function (at, board, hold, pend) {
   var AS = this.L.profile && this.L.profile.attack, strictB = !!(AS && AS.strictSwapBack) && !heavyHit(board, pend || this.arrivals, AS), idsNow = panelIds(board);
   var blocked = this.swapHistory.filter(function (e) { return !(changedSince(e, idsNow, strictB) && !e.backs); });
   L.post({ id: L.pending.id, epoch: this.epoch, at: at, lead: at - this.now, ms: L.sync ? 0 : (at - this.now) * this.msPerFrame, posted: Date.now(), allowance: this.allowanceAt(at), backs: blocked.map(function (e) { return e.ids; }), opp: this.opp || null, topped: !!this.toppedNow, realTop: this.realTop, realFtt: this.realFtt,
-                    packed: packed, hold: hold, arrivals: arrivals, acted: this.acted });
+                    packed: packed, hold: hold, arrivals: arrivals, acted: this.acted,
+                    lineFrom: this.lineOf ? this.lineOf.id : null, linePressed: this.lineOf ? this.lineOf.pressed : 0 });
   this.stats.decisions++;
 };
 // The answer: its keys go in the plan, and the next decision is due on the
@@ -366,6 +367,8 @@ Match.prototype.take = function (truth) {
     this.knew = knew;
     // The line behind the move holds from where the move ends, played as decided.
     this.line = a.line && (a.lineFree || a.lineAt === this.nextAt) && at === a.at ? { steps: a.line.slice(), at: this.nextAt } : null;
+    // (which answer's line the frame loop presses, and how many of its steps it has pressed: told to the mind with each question)
+    this.lineOf = { id: a.id, pressed: 0 };
   }
 };
 // THE SWAP ABOUT TO BE PRESSED, ON THE BOARD IT IS PRESSED ON (guardThrees): the decision was made on the board as it was predicted to be
@@ -829,6 +832,7 @@ Match.prototype.follow = function () {
   this.nextAt += ins.length;
   if (sw) this.lastSwapEnd = this.nextAt;
   this.line.steps.shift();
+  if (this.lineOf) this.lineOf.pressed++;
   if (!this.line.steps.length) this.line = null;
   this.stats.followed++;
   return true;

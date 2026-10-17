@@ -89,5 +89,17 @@ var handed = 0, settledHanded = 0;
   }
 });
 assert.ok(handed > 0, 'lines handed on to the frame loop: ' + handed);
+// THE SEARCH CARRIED ON PAST WHAT WAS PRESSED: the kept lines less the move decided and the steps of the handed-on line the frame loop
+// says it pressed (lineFrom, linePressed); a question about another answer's line strips the decided move alone
+var cb = PA.game({ level: 10, seed: 4, countdown: false });
+for (var cf = 0; cf < 200; cf++) cb.run();
+cb.receiveGarbage([{ width: 6, height: 1, isChain: false, isMetal: false }]);
+for (cf = 0; cf < 100; cf++) cb.run();
+var gid0 = null, gr0 = require('./survivor_shared.js').lowestGarbageRow(cb);
+for (var gc0 = 1; gc0 <= 6 && gid0 === null; gc0++) if (cb.panels[gr0][gc0].isGarbage) gid0 = cb.panels[gr0][gc0].garbageId;
+var K0 = { paths: [[[2, 1], [2, 3], [3, 4], [4, 5]], [[2, 2], [2, 3]]], gid: gid0, anchor: { row: 1, col: 6, id: cb.panels[1][6].id }, id: 77, played: [2, 1], handed: [[2, 3], [3, 4], [4, 5]] };
+var cc0 = function (from, pressed) { return { bot: { _brKeep: K0 }, board: cb, m: { lineFrom: from, linePressed: pressed } }; };
+assert.deepStrictEqual(GA.carriedPaths(cc0(77, 1)), [[[3, 4], [4, 5]]], 'the move and one pressed step of the handed line taken off');
+assert.deepStrictEqual(GA.carriedPaths(cc0(12, 3)), [[[2, 3], [3, 4], [4, 5]]], 'another answer\'s line: the decided move alone taken off');
 assert.ok(gambit >= answered / 2, 'Gambit chooses most moves: ' + gambit + ' of ' + answered);
 console.log('ok: gambit answers -- ' + answered + ' questions over ' + modes.length + ' modes, ' + gambit + ' Gambit\'s own');
