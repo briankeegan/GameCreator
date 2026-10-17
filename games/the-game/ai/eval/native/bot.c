@@ -4272,7 +4272,11 @@ static double optNear(Opt *o) {
 // (attackFirst), and its vertical twos (twosOf). Read once, and only while the decision has work left.
 static int twosOf(const int32_t *st);
 #define REACHWORK 6000   // the share of the decision's work one option's reach search may spend
-#define REACHSHARE() (OPTWORK * 15 / 100)   // the scramble's share of a dying decision's work: the combo or chain that buys stop time, as the stages have theirs
+#define BDFLATFRAMES 6   // frames of one position a kept search may go without a result (a board nearer a break; a combo or chain) before it goes on at a quarter of the pace
+// the frames in a row the scramble has found no combo or chain on this position (raPos): a position it found none on goes on at a quarter of its share --
+// the search is kept and grows over the frames the position stands, and the stages after it were left no work
+static int reachFutile, reachFutilePos;
+#define REACHSHARE() (OPTWORK * 15 / 100 / (reachFutilePos == raPos && reachFutile >= BDFLATFRAMES ? 4 : 1))   // the scramble's share of a dying decision's work: the combo or chain that buys stop time, as the stages have theirs
 typedef struct { Atk best; int n; int32_t sw[2 * LINEMAX]; } ReachCtx;   // the best attack found, and the line that reaches it
 static int sitReach(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
   ReachCtx *x = ctx; (void)at;
@@ -4331,6 +4335,7 @@ static int attackShapes(const int32_t *st, int cr, int cc, double t0, int32_t *b
 }
 static int reachOption(Opt *O, int n, Dec d, int frozen) {
   extern PATLS double paWork;
+  const int nIn = n;
   if (!BIN[IN_HASPA] || paWork >= optLine()) {
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "REACH scramble %d no work: %.0f of %.0f\n", gScramble, paWork, optLine()); }
@@ -4376,6 +4381,7 @@ static int reachOption(Opt *O, int n, Dec d, int frozen) {
   sitKeepSlot = 3; sitKeepKey = pk;
   searchInTime(st, cur[0], cur[1], t, 0, timeLeft(), frozen, can, w, work, sitReach, &rx, 0, 0, 0);
   rxKeep = rx;
+  if (rx.n || (gScramble && n > nIn)) reachFutile = 0; else { if (reachFutilePos != raPos) { reachFutilePos = raPos; reachFutile = 0; } reachFutile++; }
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "REACH scramble %d work %.0f of %.0f time %.0f found %d size %d chain %d\n", gScramble, paWork - rw0, work, timeLeft(), rx.n, rx.best.size, rx.best.chain); }
 #endif
@@ -4771,7 +4777,6 @@ static int breakWithin(const int32_t *st, double left) {
 // it finds is played if the engine says it lives and breaks -- in the time there is.
 static int raPos;   // the position (below)
 #define READYGUIDENONE 8   // (readyGuide's, below)
-#define BDFLATFRAMES 6   // frames of one position the guided break search may go without a board nearer a break than the root
 static int bdNone, bdPos; static double bdTime;   // the position (raPos) and the time left for which breakDeeper found no break within its work
 static double readyGuide(const int32_t *st);
 // THE LINE NEAREST A BREAK: a break ends the search; else the board met whose contact distance is least is kept
