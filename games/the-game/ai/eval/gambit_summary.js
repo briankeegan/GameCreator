@@ -7,7 +7,7 @@
 var fs = require('fs'), path = require('path');
 var DIR = process.argv[2];
 if (!DIR) { console.error('usage: node gambit_summary.js DIR'); process.exit(2); }
-var modes = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, games: 0 };
+var modes = {}, links = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, games: 0 };
 fs.readdirSync(DIR).sort().forEach(function (g) {
   var rf = path.join(DIR, g, 'results.txt'), lf = path.join(DIR, g, 'survivor.log');
   if (!fs.existsSync(rf)) return;
@@ -28,6 +28,8 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       budget.late += o.late || 0; budget.lateWorst = Math.max(budget.lateWorst, o.late || 0);
       var a = o.attacks || {};
       ['combo', 'chain'].forEach(function (k) { Object.keys(a[k] || {}).forEach(function (z) { t[k][z] = (t[k][z] || 0) + a[k][z]; }); });
+      // (every chain link past two, by its cause: garbage's colours, a swap since the link before, or the stack alone)
+      Object.keys(o.linkBy || {}).forEach(function (w) { Object.keys(o.linkBy[w]).forEach(function (z) { var m = links[w] || (links[w] = {}); m[z] = (m[z] || 0) + o.linkBy[w][z]; }); });
     }
   }
 });
@@ -39,5 +41,6 @@ Object.keys(modes).sort().forEach(function (k) {
               '; combos ' + fmt(t.combo) + '; chains ' + fmt(t.chain));
 });
 console.log('SURVIVED ' + all + '/' + games);
+if (Object.keys(links).length) console.log('chain links past two, by cause: ' + ['garbage', 'swap', 'alone'].map(function (w) { return w + ' ' + fmt(links[w] || {}); }).join('; '));
 console.log('budgets: ' + budget.over + ' frames over the think budget, slowest frame ' + budget.worst + ' ms, ' + budget.dropped + ' keys dropped, ' +
             budget.late + ' late moves (at most ' + budget.lateWorst + ' in a game), over ' + budget.games + ' games');

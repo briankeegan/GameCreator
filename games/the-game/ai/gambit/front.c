@@ -44,7 +44,11 @@ typedef struct {
   int32_t frames, decisions, played, late, diverged, refused, guarded, unasked, idle, followed, noLine, unforeseen, reasked, revealed,
           raiseCut, actions, maxWindow, overInput, heldWalks, paced, swaps;
   int32_t combo[64], chain[32];
+  // each chain link past the list's two, by its cause: panels out of garbage (colours not shown when it was decided), a swap pressed
+  // since the link before it, or neither (the stack alone)
+  int32_t linkBy[3][32];
 } FStats;
+enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 
 static struct {
   int32_t now, epoch, nextAt, lastSwapEnd, haveSwapEnd, jitterFor, jitterGap, raiseCutUntil;
@@ -70,7 +74,7 @@ static struct {
   int32_t oppHas, oppOut, oppTop;
   int32_t toppedNow;
   // the attacks made, read off the board as it is shown
-  int32_t chainMax, pendCombo[16], npendCombo, matchedIds[MAXROWS * W], nmatched;
+  int32_t chainMax, pendCombo[16], npendCombo, matchedIds[MAXROWS * W], nmatched, swapSince;
   int32_t reaction, ahead, gap, jitter;
   uint32_t rnd;
   FStats st;
@@ -464,16 +468,20 @@ static int follow(void) {
 
 // ---------------------------------------------------------------- the attacks made, counted off the board shown
 // A match of 4 or more is a combo when it is a clear of its own; a chain is counted at its longest when it ends.
+// (a panel out of garbage keeps the garbage's id: every id seen as garbage is kept)
+#define WASG (1 << 20)
+static uint8_t wasGarbage[WASG];
 static void countAttacks(const Board *b) {
   static int32_t now[MAXROWS * W];
-  int nn = 0, fresh = 0;
+  int nn = 0, fresh = 0, fromGarbage = 0;
   for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
     const int32_t *f = b->p[r][c].f;
+    if (f[ISGARBAGE] && f[ID] != NUL) wasGarbage[f[ID] & (WASG - 1)] = 1;
     if (f[STATE] == MATCHED && !f[ISGARBAGE] && f[COLOR] > 0) {
       now[nn++] = f[ID];
       int seen = 0;
       for (int i = 0; i < F.nmatched && !seen; i++) seen = F.matchedIds[i] == f[ID];
-      if (!seen) fresh++;
+      if (!seen) { fresh++; if ((f[ID] != NUL && wasGarbage[f[ID] & (WASG - 1)]) || (f[FELL] != NUL && f[FELL] > 0)) fromGarbage++; }
     }
   }
   memcpy(F.matchedIds, now, sizeof(int32_t) * (unsigned long)nn); F.nmatched = nn;
@@ -481,7 +489,10 @@ static void countAttacks(const Board *b) {
   if (cc >= 2 && F.npendCombo) F.npendCombo = 0;
   if (cc == 0 && F.npendCombo) { for (int i = 0; i < F.npendCombo; i++) F.st.combo[imin(F.pendCombo[i], 63)]++; F.npendCombo = 0; }
   if (fresh >= 4 && cc < 2 && F.npendCombo < 16) F.pendCombo[F.npendCombo++] = fresh;
-  if (cc > F.chainMax) F.chainMax = cc;
+  if (cc > F.chainMax) {
+    if (cc >= 3) F.st.linkBy[fromGarbage ? LINK_GARBAGE : F.swapSince ? LINK_SWAP : LINK_ALONE][imin(cc, 31)]++;
+    F.chainMax = cc; F.swapSince = 0;
+  }
   if (cc == 0 && F.chainMax >= 2) F.st.chain[imin(F.chainMax, 31)]++;
   if (cc == 0) F.chainMax = 0;
 }
@@ -527,6 +538,7 @@ static int frontFrame(void) {
     F.raiseCutUntil = now + 30;
   }
   countActions(bits, now);
+  if (bits & IN_SWAP) F.swapSince = 1;
   return bits;
 }
 // After the frame: the board it makes, then the line followed on or the next question asked.
@@ -577,7 +589,15 @@ static void statsLine(char *out, int cap) {
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "},\"chain\":{");
   first = 1;
   for (int z = 0; z < 32 && k < cap; z++) if (F.st.chain[z]) { k += snprintf(out + k, (unsigned long)(cap - k), "%s\"%d\":%d", first ? "" : ",", z, F.st.chain[z]); first = 0; }
-  if (k < cap) snprintf(out + k, (unsigned long)(cap - k), "}}}");
+  if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "}},\"linkBy\":{");
+  static const char *CAUSE[3] = { "garbage", "swap", "alone" };
+  for (int w = 0; w < 3 && k < cap; w++) {
+    k += snprintf(out + k, (unsigned long)(cap - k), "%s\"%s\":{", w ? "," : "", CAUSE[w]);
+    first = 1;
+    for (int z = 0; z < 32 && k < cap; z++) if (F.st.linkBy[w][z]) { k += snprintf(out + k, (unsigned long)(cap - k), "%s\"%d\":%d", first ? "" : ",", z, F.st.linkBy[w][z]); first = 0; }
+    if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "}");
+  }
+  if (k < cap) snprintf(out + k, (unsigned long)(cap - k), "}}");
 }
 
 static void frontNew(int reaction, int ahead, int gap, int jitter) {
@@ -591,4 +611,5 @@ static void frontNew(int reaction, int ahead, int gap, int jitter) {
   F.reaction = reaction; F.ahead = ahead; F.gap = gap; F.jitter = jitter;
   F.msPerFrame = 1000.0 / 60; F.limit = 76; F.window = 600;
   F.rnd = (uint32_t)fNow();
+  memset(wasGarbage, 0, sizeof wasGarbage);
 }
