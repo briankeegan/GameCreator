@@ -2409,7 +2409,9 @@ static double bgReserve;
 // reachHold: a board that is dying keeps the scramble's work (reachOption) out of every stage before the arbiter's: the combo or chain that buys stop time
 // is the one thing that outlives a pop (pa.c checkMatches), and it was asked 22,433 times with no work left
 static double reachHold;
-static double optLine(void) { double e = rdW0 + OPTWORK; return (stageEnd < e ? stageEnd : e) - bgReserve - reachHold; }
+// setupHold: a topped board held by its pop, with nothing to save in the time, keeps the work the setups need (setupTwos): the stages before it are cut short of it
+static double setupHold;
+static double optLine(void) { double e = rdW0 + OPTWORK; return (stageEnd < e ? stageEnd : e) - bgReserve - reachHold - setupHold; }
 #ifndef __wasm__
 static void workTrace(const char *tag) { if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; extern PATLS double paWork; fprintf(BLOG, "WORKAT %s spent %.0f line %.0f left %.0f\n", tag, paWork - rdW0, optLine() - rdW0, optLine() - paWork); } }
 #else
@@ -2430,7 +2432,7 @@ static void stageShareInit(void) { static int done; if (done) return; done = 1; 
 static double stageLeaves(int i) {
   stageShareInit();
   int after = 0; for (int j = i + 1; j < NSTAGES; j++) after += STAGESHARE[j];
-  double keep = OPTWORK * after / 100;
+  double keep = OPTWORK * after / 100 + setupHold;
   // and with a slab queued, the readiness the closing asks of the hold, the decision and the best alternative (rdCost each)
   double fin = FINALJUDGES * jdCost + (BIN[IN_INCOMING] > 0 ? 3 * rdCost : 0);
   if (keep < fin) keep = fin;
@@ -5453,6 +5455,7 @@ static int setupLines(SetupCtx *x, double left) {
   return 1;
 }
 static Dec setupTwos(Dec d) {
+  setupHold = 0;   // the work held for the setups is theirs to spend now
   if (d.kind != K_HOLD || d.via == V_RAISING || BT->nLine || !BIN[IN_HASPA]) return d;
   // a topped board is held by its pop or its stop: with nothing to save in the time (the board left alone lives past the horizon), the pairs the next break's row will complete are built
   if (BIN[IN_TOPPED] && !(aloneOnEngine() && aloneDie(1 << 20) > LIVEHORIZON)) return d;
@@ -6737,6 +6740,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   // through -- so it is judged while the budget is whole, once
   aloneOnEngine();
   reachHold = boardDying() ? REACHSHARE() : 0;
+  setupHold = BIN[IN_TOPPED] && BIN[IN_HASPA] && !BT->nLine && aloneOnEngine() && aloneDie(1 << 20) > LIVEHORIZON ? SETUPWORK : 0;
   frontCalm(aloneOnEngine() && !LNA[0]);   // a board that loses no health holds its walks: the input allowance kept for one that does
   // STORED ROWS FOLLOW THE STACK: every row the bot keeps from one decision
   // to the next -- the line, the target, the routes, the presses -- moves up
