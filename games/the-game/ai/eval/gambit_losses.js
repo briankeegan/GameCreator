@@ -12,7 +12,7 @@
 var fs = require('fs'), path = require('path');
 var DIR = process.argv[2], LAST = Number(process.argv[3]) || 12;
 if (!DIR) { console.error('usage: node gambit_losses.js DIR [LAST]'); process.exit(2); }
-var FIELDS = ['play', 'want', 'got', 'why', 'live', 'under', 'stop', 'dies', 'land', 'br', 'cands'];
+var FIELDS = ['play', 'want', 'got', 'why', 'live', 'under', 'stop', 'dies', 'land', 'br', 'cands', 'opts'];
 function parse(line) {
   var o = {}, parts = line.split(' ');
   o.at = +parts[1];

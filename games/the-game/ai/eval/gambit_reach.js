@@ -53,7 +53,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
   if (lastHad >= 0 && firstNone) {
     console.log('   THE TURN: a break was there at ' + lastHad + ', none from ' + firstNone.at + '; the decisions between:');
     ds.filter(function (d) { return d.at >= lastHad && d.at <= firstNone.at; }).forEach(function (d) {
-      console.log('     ' + d.at + ' play=' + d.play + ' got=' + d.got + ' stop=' + d.stop + ' land=' + d.land + ' br=' + d.br + ' cands=' + d.cands);
+      console.log('     ' + d.at + ' play=' + d.play + ' got=' + d.got + ' stop=' + d.stop + ' land=' + d.land + ' br=' + d.br + ' cands=' + d.cands + (d.opts ? ' opts=' + d.opts : ''));
       turns[d.play] = (turns[d.play] || 0) + 1;
     });
   }

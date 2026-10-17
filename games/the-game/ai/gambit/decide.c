@@ -69,8 +69,10 @@ static Cand theCands[MAXCANDS];
 static Judge theJudged[MAXCANDS + 4], *order[MAXCANDS + 4];
 static int32_t phaseMs[3];
 static int carriedCand(const Read *R, Cand *k, int *wait);
+static const Judge *carriedJ;   // the line in progress among the ranked, for the log
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered);
+  carriedJ = 0;
   double t0 = nowMs();
   int nc = proposeAll(R, S, theCands, MAXCANDS), n = 0;
   double t1 = nowMs();
@@ -84,7 +86,7 @@ static int ranked(const Read *R, const Found *S) {
     cj->wait = cwait;
     if (cwait) { cj->t.tier = imax(cj->t.tier, HOLD_TIER); cj->t.nsub = 1; cj->t.sub[0] = -1; }
     else { for (int q = imin(cj->t.nsub, MAXSUB - 1); q > 0; q--) cj->t.sub[q] = cj->t.sub[q - 1]; cj->t.sub[0] = -1e300; cj->t.nsub = imin(cj->t.nsub + 1, MAXSUB); }
-    order[n] = cj; n++;
+    order[n] = cj; n++; carriedJ = cj;
   }
   // (the hold: never while the chain the board makes alone runs past the list)
   Judge *H = &theJudged[n];
