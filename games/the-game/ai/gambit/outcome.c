@@ -106,7 +106,7 @@ static int lineFits(const int32_t *seq, int n, int settled) {
 // judged again
 EXPORT(gb_decision_start) int gb_decision_start(Ctx *hx, int i, int tight, int land, int topped, int timeLeft, int belowFloor) {
   if (gb_question(hx, i, tight) < 0) return -1;
-  decQ = hostQ; decQ.b = hostBoard;
+  decQ = hostQ; decQ.b = hostBoard; backBoard = hostBoard;
   Facts f = { land, topped, timeLeft, belowFloor };
   decF = f;
   ncache = 0;

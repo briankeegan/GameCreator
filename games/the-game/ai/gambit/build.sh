@@ -12,5 +12,5 @@ for (var i of WebAssembly.Module.imports(new WebAssembly.Module(fs.readFileSync(
   if (i.name !== "memory" && i.name !== "abort_poll") bad.push("gambit.wasm imports " + i.module + "." + i.name);
 if (bad.length) { console.error(bad.join("\n")); process.exit(1); }'
 h() { sha256sum "$1" | cut -c1-64; }
-{ for f in ../eval/native/pa.c ../eval/native/pa.h ../eval/native/libc.h ../eval/native/memory.h ../eval/native/search.h core/*.h *.c gambit.wasm; do printf '%s %s\n' "$f" "$(h $f)"; done; } > BUILT
+{ for f in ../eval/native/pa.c ../eval/native/pa.h ../eval/native/libc.h ../eval/native/memory.h ../eval/native/search.h core/*.h *.c search/*.c gambit.wasm; do printf '%s %s\n' "$f" "$(h $f)"; done; } > BUILT
 cat BUILT

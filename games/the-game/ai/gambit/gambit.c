@@ -5,5 +5,7 @@
 #include "rules.c"
 #include "judge.c"
 #include "outcome.c"
+#include "core/sort.h"
+#include "search/break.c"
 
 EXPORT(gb_version) int gb_version(void) { return 1; }
