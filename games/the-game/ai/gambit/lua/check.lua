@@ -1,6 +1,7 @@
 -- THE HOOKUP CHECKED: the server's Lua plays a training match as the game builds it (the player's stack at level 10, a simulated
 -- opponent sending the pattern) and Gambit plays the stack in this process (GambitNative.lua), for FRAMES frames. It checks the
--- plumbing -- keys pressed, swaps made, every board the frame loop predicted the one the game made -- not how well Gambit plays.
+-- plumbing -- keys pressed, swaps made, every board the frame loop predicted the one the game made (it exits 1 on any other) -- not how
+-- well Gambit plays.
 --
 --   (in a panel-game checkout with its LUA_PATH; GC_GAMBIT_WORDS from words.js)
 --   luajit <GameCreator>/games/the-game/ai/gambit/lua/check.lua MODE [FRAMES] [SEED]
@@ -47,3 +48,16 @@ bot:endMatch()
 local over, worst, dropped = bot:budget()
 print(string.format("check %s: %d frames, %d with keys, swaps %d, cleared %d, died %s, thinkOver %d, thinkWorstMs %.1f, dropped %d",
   MODE, frame, pressed, a.swapCount or 0, a.panels_cleared or 0, tostring(a:game_ended()), over, worst * 1000, dropped))
+-- THE TRUTH: every board the frame loop predicted is the one the game made (the match's last stats line in the run's log). A board that
+-- differs is a plan made on a board that never was; any is a failure.
+local logf = os.getenv("GC_GAMBIT_LOG")
+local diverged
+if logf then
+  local f = io.open(logf, "r")
+  if f then
+    for l in f:lines() do local d = l:match('^match over: .*"diverged":(%d+)'); if d then diverged = tonumber(d) end end
+    f:close()
+  end
+end
+print(string.format("truth %s: %s boards predicted otherwise", MODE, diverged and tostring(diverged) or "no stats"))
+if diverged ~= 0 then os.exit(1) end

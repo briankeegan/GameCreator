@@ -182,6 +182,10 @@ ways: a tool not listed, or a path listed that doesn't exist.
 - **Gambit is C, in `games/the-game/ai/gambit/`** (layout in its README), on the one C engine (`eval/native/pa.c`). In the Lua
   client it runs in-process (`libgambit.so`, `PA_BOT=gambit`): the stack goes straight into the C engine. `gambit.wasm` and its loader
   `gambit.js` are for JavaScript hosts.
+- **The truth never falters: every board Gambit's frame loop predicts is the one the game makes.** A board that differs is a plan made
+  on a board that never was. The telegraph carries everything on its way, held-back garbage too, and the frame loop lands it as the
+  search does. `gambit_summary.js` counts the games' own divergences and a 24-game run with any is red (`gambit-24.yml`, "The truth
+  held"); `lua/check.lua` exits 1 on one.
 
 - **Read state, never recall it: `status.sh`.** It prints what is training,
   the genome from the run's own log, the last snapshot's score and chains

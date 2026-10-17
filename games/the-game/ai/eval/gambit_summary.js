@@ -7,7 +7,7 @@
 var fs = require('fs'), path = require('path');
 var DIR = process.argv[2];
 if (!DIR) { console.error('usage: node gambit_summary.js DIR'); process.exit(2); }
-var modes = {}, links = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, games: 0, decisions: 0, out: 0 };
+var modes = {}, links = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, games: 0, decisions: 0, out: 0, diverged: 0, divergedGames: 0 };
 fs.readdirSync(DIR).sort().forEach(function (g) {
   var rf = path.join(DIR, g, 'results.txt'), lf = path.join(DIR, g, 'survivor.log');
   if (!fs.existsSync(rf)) return;
@@ -29,6 +29,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
     if (over2) {
       var o = JSON.parse(over2.slice(over2.indexOf('match over: ') + 12));
       budget.late += o.late || 0; budget.lateWorst = Math.max(budget.lateWorst, o.late || 0);
+      budget.diverged += o.diverged || 0; if (o.diverged) budget.divergedGames++;
       var a = o.attacks || {};
       ['combo', 'chain'].forEach(function (k) { Object.keys(a[k] || {}).forEach(function (z) { t[k][z] = (t[k][z] || 0) + a[k][z]; }); });
       // (every chain link past two, by its cause: garbage's colours, a swap since the link before, or the stack alone)
@@ -48,3 +49,5 @@ if (Object.keys(links).length) console.log('chain links past two, by cause: ' + 
 console.log('budgets: ' + budget.over + ' frames over the think budget, slowest frame ' + budget.worst + ' ms, ' + budget.dropped + ' keys dropped, ' +
             budget.late + ' late moves (at most ' + budget.lateWorst + ' in a game), over ' + budget.games + ' games');
 if (budget.decisions) console.log('decisions the clock cut: ' + budget.out + ' of ' + budget.decisions + ' (' + (100 * budget.out / budget.decisions).toFixed(1) + '%)');
+// THE TRUTH: every board the frame loop predicted is the one the game made; one that is not is a plan made on a board that never was
+console.log('truth: ' + budget.diverged + ' boards predicted otherwise than the game made them, in ' + budget.divergedGames + ' of ' + budget.games + ' games');

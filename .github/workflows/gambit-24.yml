@@ -124,3 +124,8 @@ jobs:
           name: gambit-report
           path: report/
           retention-days: 30
+      # THE TRUTH: every board the frame loop predicted is the one the game made (gambit_summary.js counts the games' own stats);
+      # a run with any other is red
+      - name: The truth held
+        run: |
+          grep -q '^truth: 0 ' report/summary.txt || { grep '^truth:' report/summary.txt | sed 's/^/::error title=truth::/'; exit 1; }
