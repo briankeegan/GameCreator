@@ -87,10 +87,14 @@ static int settles(Ctx *x, int o) { int z = settleOf(x, o); return liveNode(x, z
 // READY ONCE EVERYTHING LANDS (attacker breaksAfterLanding): the board the line ends on run to `wait` frames after the root and let
 // settle, then a break on it -- the break search's own answer (search/break.c readyBreak), bounded by its share of the time and by no
 // count of swaps. 1, 0, LOST_FIRST when the board is lost before it lands, or NOT_ASKED when the clock stops it. why: the break's line.
+// readyDefer: the break is not asked (NOT_ASKED), only whether the board lives to the landing -- the decision ranks first and asks it
+// of the best-ranked in the time left (decide.c ranked).
 static int32_t (*readyBreak)(Ctx *x, int n, int32_t *why, int32_t *whyN);
+static int readyDefer;
 static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int32_t *whyN) {
   int land = step(x, n, MK_LONG, 0, 0, imax(1, wait - NODE(x, n)->t));
   if (!liveNode(x, land)) return clockOut() ? NOT_ASKED : LOST_FIRST;
+  if (readyDefer) return NOT_ASKED;
   int calm = settleOf(x, land);
   if (liveNode(x, calm)) land = calm;
   if (clockOut()) return NOT_ASKED;

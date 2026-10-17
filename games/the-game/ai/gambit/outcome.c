@@ -39,7 +39,9 @@ static uint32_t lineHash(const int32_t *seq, int n, int settled, int kind) {
   for (int i = 0; i < n; i++) h = (h ^ (uint32_t)seq[i]) * 16777619u;
   return h;
 }
+static int readyFresh;   // (the readiness asked now: an outcome kept without it is judged again, and replaced)
 static Outcome *cached(const int32_t *seq, int n, int settled, int kind) {
+  if (readyFresh && kind == 0) return 0;
   uint32_t h = lineHash(seq, n, settled, kind);
   for (int i = 0; i < ncache; i++) {
     Cached *c = &cache[i];
@@ -52,8 +54,17 @@ static Outcome *cached(const int32_t *seq, int n, int settled, int kind) {
 }
 static Outcome *keep(const int32_t *seq, int n, int settled, int kind, const Outcome *o) {
   if (!cache) cache = (Cached *)grab(sizeof(Cached) * CACHEN);
-  if (!cache || ncache >= CACHEN || n > MAXLINE) return 0;
-  Cached *c = &cache[ncache++];
+  if (!cache || n > MAXLINE) return 0;
+  uint32_t h = lineHash(seq, n, settled, kind);
+  Cached *c = 0;
+  for (int i = 0; i < ncache && !c; i++) {
+    Cached *e = &cache[i];
+    if (e->h != h || e->n != n || e->settled != settled || e->kind != kind) continue;
+    int same = 1;
+    for (int k = 0; k < n && same; k++) same = e->seq[k] == seq[k];
+    if (same) c = e;
+  }
+  if (!c) { if (ncache >= CACHEN) return 0; c = &cache[ncache++]; }
   c->h = lineHash(seq, n, settled, kind); c->n = n; c->settled = settled; c->kind = kind;
   for (int k = 0; k < n; k++) c->seq[k] = seq[k];
   c->o = *o;

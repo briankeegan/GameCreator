@@ -81,9 +81,8 @@ static int ranked(const Read *R, const Found *S) {
   int nc = proposeAll(R, S, theCands, MAXCANDS), n = 0;
   double t1 = nowMs();
   for (int i = 0; i < nc; i++) offered[theCands[i].play]++;
-  // (each judging's readiness an equal part of the time left: the candidates still to judge, the line in progress and the hold)
-  for (int i = 0; i < nc; i++) { readyShare(nc - i + 2); if (judgeCand(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; } }
-  readyShare(2);
+  readyDefer = 1;   // (the proposers above ask readiness whole; the judging below ranks first)
+  for (int i = 0; i < nc; i++) if (judgeCand(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
   // until then -- it ranks with the hold)
   Cand ck; int cwait = 0;
@@ -96,11 +95,29 @@ static int ranked(const Read *R, const Found *S) {
   }
   // (the hold: never while the chain the board makes alone runs past the list)
   Judge *H = &theJudged[n];
-  readyShare(1);
   holdCand(0, H);
-  readyShare(0);
   if (!R->aloneOut) { order[n] = H; n++; }
   if (!R->aloneOut) for (int i = 0; i < n; i++) if (order[i] != H && digWaits(order[i], H, C2.reaction + 1)) { order[i]->wait = 1; order[i]->t.tier = HOLD_TIER; order[i]->t.nsub = 1; order[i]->t.sub[0] = -1; }
+  sortJudged(order, n);
+  // (READY, ASKED BEST FIRST: every option is ranked on what the judging alone says; then, in the time left and best-ranked first, each
+  // that does not live yet is asked whether a break is there once everything lands -- the break search on the landed board, an equal
+  // part of the time left each -- and the order is made again)
+  readyDefer = 0; readyFresh = 1;
+  for (int i = 0; i < n && leftMs() > 0; i++) {
+    Judge *J = order[i];
+    if (J->o.lives || J->o.dead || J->o.ready != NOT_ASKED || J == carriedJ) continue;
+    readyShare(n - i);
+    if (J->hold) holdCand(J->wait, J);
+    else {
+      static Judge again; Cand kc = J->k;
+      if (judgeCand(R, &kc, &again)) {
+        if (J->wait) { again.wait = J->wait; again.t.tier = HOLD_TIER; again.t.nsub = 1; again.t.sub[0] = -1; }
+        again.outside = again.outside || J->outside;
+        *J = again;
+      }
+    }
+  }
+  readyShare(0); readyFresh = 0;
   sortJudged(order, n);
   // (none lives: each is asked too whether a break is in reach once the next block lands -- the order puts those first)
   if (!(n && order[0]->o.lives)) { for (int i = 0; i < n; i++) { readyShare(n - i); readyNextFor(order[i]); } readyShare(0); sortJudged(order, n); }
